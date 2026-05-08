@@ -14,10 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/random_seed_ops.h"
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
@@ -95,6 +99,10 @@ absl::Status AnonymousSeedGeneratorHandleOp::CreateResource(
 }
 
 void DeleteSeedGeneratorOp::Compute(OpKernelContext* ctx) {
+  OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ctx->input(0).shape()),
+              absl::InvalidArgumentError(
+                  absl::StrCat("tf.data seed input must be a scalar, got ",
+                               ctx->input(0).shape().DebugString())));
   ResourceHandle handle = ctx->input(0).flat<ResourceHandle>()(0);
   // The resource is guaranteed to exist because the variant tensor wrapping the
   // deleter is provided as an unused input to this op, which guarantees that it

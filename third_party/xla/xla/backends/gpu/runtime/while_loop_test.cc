@@ -88,4 +88,27 @@ TEST(WhileLoopTest, PointerStability) {
   EXPECT_EQ(IsInsideWhileLoop(), nullptr);
 }
 
+TEST(WhileLoopTest, LoopNestSpan) {
+  ScopedWhileLoop outer("while.0", 5);
+  outer.IncLoopIteration();
+  outer.IncLoopIteration();
+
+  {
+    ScopedWhileLoop inner("while.1", 3);
+    inner.IncLoopIteration();
+
+    auto nest = IsInsideWhileLoopNest();
+    EXPECT_EQ(nest.size(), 2);
+    EXPECT_EQ(nest[0].loop_name, "while.0");
+    EXPECT_EQ(nest[0].loop_iteration, 2);
+    EXPECT_EQ(nest[1].loop_name, "while.1");
+    EXPECT_EQ(nest[1].loop_iteration, 1);
+  }
+
+  auto nest = IsInsideWhileLoopNest();
+  EXPECT_EQ(nest.size(), 1);
+  EXPECT_EQ(nest[0].loop_name, "while.0");
+  EXPECT_EQ(nest[0].loop_iteration, 2);
+}
+
 }  // namespace xla::gpu

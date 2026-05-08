@@ -98,7 +98,9 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms/host_runtime:tpu_metadata_utils",
         "//tensorflow/compiler/mlir/tfrt:tf_to_tfrt",
+        "//tensorflow/compiler/mlir/tfrt/ir/mlrt:tf_mlrt_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:random",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
@@ -315,5 +317,20 @@ tf_proto_library(
     deps = [
         "@xla//xla:xla_data_proto",
         "@xla//xla/python/ifrt:layout_proto",
+    ],
+)
+
+cc_library(
+    name = "pack_inputs_pass",
+    srcs = ["pack_inputs_pass.cc"],
+    hdrs = ["pack_inputs_pass.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:stablehlo_ops",
     ],
 )

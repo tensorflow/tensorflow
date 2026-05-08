@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unistd.h>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system_helper.h"
@@ -124,8 +125,7 @@ AssetManagerFileSystem::AssetManagerFileSystem(AAssetManager* asset_manager,
                                                const string& prefix)
     : asset_manager_(asset_manager), prefix_(prefix) {}
 
-Status AssetManagerFileSystem::FileExists(const string& fname,
-                                          TransactionToken* token) {
+Status AssetManagerFileSystem::FileExists(absl::string_view fname) {
   string path = RemoveAssetPrefix(fname);
   auto asset = ScopedAsset(
       AAssetManager_open(asset_manager_, path.c_str(), AASSET_MODE_RANDOM));
@@ -136,8 +136,7 @@ Status AssetManagerFileSystem::FileExists(const string& fname,
 }
 
 Status AssetManagerFileSystem::NewRandomAccessFile(
-    const string& fname, TransactionToken* token,
-    std::unique_ptr<RandomAccessFile>* result) {
+    const string& fname, std::unique_ptr<RandomAccessFile>* result) {
   string path = RemoveAssetPrefix(fname);
   auto asset = ScopedAsset(
       AAssetManager_open(asset_manager_, path.c_str(), AASSET_MODE_RANDOM));
@@ -149,8 +148,7 @@ Status AssetManagerFileSystem::NewRandomAccessFile(
 }
 
 Status AssetManagerFileSystem::NewReadOnlyMemoryRegionFromFile(
-    const string& fname, TransactionToken* token,
-    std::unique_ptr<ReadOnlyMemoryRegion>* result) {
+    const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) {
   string path = RemoveAssetPrefix(fname);
   auto asset = ScopedAsset(
       AAssetManager_open(asset_manager_, path.c_str(), AASSET_MODE_STREAMING));
@@ -187,7 +185,6 @@ Status AssetManagerFileSystem::NewReadOnlyMemoryRegionFromFile(
 }
 
 Status AssetManagerFileSystem::GetChildren(const string& prefixed_dir,
-                                           TransactionToken* token,
                                            std::vector<string>* r) {
   std::string path = NormalizeDirectoryPath(prefixed_dir);
   auto dir =
@@ -203,8 +200,7 @@ Status AssetManagerFileSystem::GetChildren(const string& prefixed_dir,
   return OkStatus();
 }
 
-Status AssetManagerFileSystem::GetFileSize(const string& fname,
-                                           TransactionToken* token, uint64* s) {
+Status AssetManagerFileSystem::GetFileSize(const string& fname, uint64* s) {
   // If fname corresponds to a directory, return early. It doesn't map to an
   // AAsset, and would otherwise return NotFound.
   if (DirectoryExists(fname)) {
@@ -222,7 +218,6 @@ Status AssetManagerFileSystem::GetFileSize(const string& fname,
 }
 
 Status AssetManagerFileSystem::Stat(const string& fname,
-                                    TransactionToken* token,
                                     FileStatistics* stat) {
   uint64 size;
   stat->is_directory = DirectoryExists(fname);
@@ -235,7 +230,7 @@ string AssetManagerFileSystem::NormalizeDirectoryPath(const string& fname) {
   return RemoveSuffix(RemoveAssetPrefix(fname), "/");
 }
 
-string AssetManagerFileSystem::RemoveAssetPrefix(const string& name) {
+string AssetManagerFileSystem::RemoveAssetPrefix(absl::string_view name) {
   StringPiece piece(name);
   absl::ConsumePrefix(&piece, prefix_);
   return string(piece);
@@ -251,35 +246,28 @@ bool AssetManagerFileSystem::DirectoryExists(const std::string& fname) {
 }
 
 Status AssetManagerFileSystem::GetMatchingPaths(const string& pattern,
-                                                TransactionToken* token,
                                                 std::vector<string>* results) {
   return internal::GetMatchingPaths(this, Env::Default(), pattern, results);
 }
 
 Status AssetManagerFileSystem::NewWritableFile(
-    const string& fname, TransactionToken* token,
-    std::unique_ptr<WritableFile>* result) {
+    const string& fname, std::unique_ptr<WritableFile>* result) {
   return errors::Unimplemented("Asset storage is read only.");
 }
 Status AssetManagerFileSystem::NewAppendableFile(
-    const string& fname, TransactionToken* token,
-    std::unique_ptr<WritableFile>* result) {
+    const string& fname, std::unique_ptr<WritableFile>* result) {
   return errors::Unimplemented("Asset storage is read only.");
 }
-Status AssetManagerFileSystem::DeleteFile(const string& f,
-                                          TransactionToken* token) {
+Status AssetManagerFileSystem::DeleteFile(const string& f) {
   return errors::Unimplemented("Asset storage is read only.");
 }
-Status AssetManagerFileSystem::CreateDir(const string& d,
-                                         TransactionToken* token) {
+Status AssetManagerFileSystem::CreateDir(const string& d) {
   return errors::Unimplemented("Asset storage is read only.");
 }
-Status AssetManagerFileSystem::DeleteDir(const string& d,
-                                         TransactionToken* token) {
+Status AssetManagerFileSystem::DeleteDir(const string& d) {
   return errors::Unimplemented("Asset storage is read only.");
 }
-Status AssetManagerFileSystem::RenameFile(const string& s, const string& t,
-                                          TransactionToken* token) {
+Status AssetManagerFileSystem::RenameFile(const string& s, const string& t) {
   return errors::Unimplemented("Asset storage is read only.");
 }
 

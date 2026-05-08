@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.pb.h"
-#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
@@ -42,9 +42,11 @@ namespace gpu {
 // are consolidated.
 class NvshmemAllReduceReduceScatterThunkBase : public NvshmemCollectiveThunk {
  public:
+  ABSL_DEPRECATED("Use NCCL 2.28+ primitives instead.")
   NvshmemAllReduceReduceScatterThunkBase(
       Kind kind, ThunkInfo thunk_info, AllReduceConfig config,
-      std::vector<CollectiveThunk::Buffer> buffers, bool is_sync);
+      std::vector<CollectiveThunk::Buffer> buffers,
+      CommunicationId communication_id = CommunicationId(0));
 
   const CollectiveConfig& config() const override { return config_.config; }
   ReductionKind reduction_kind() const { return config_.reduction_kind; }
@@ -60,13 +62,14 @@ class NvshmemAllReduceReduceScatterThunkBase : public NvshmemCollectiveThunk {
 // AllReduce thunk.
 // -----------------------------------------------------------------------------
 
-class NvshmemAllReduceStartThunk
-    : public NvshmemAllReduceReduceScatterThunkBase {
+// DEPRECATED: Use NCCL 2.28+ API instead.
+class NvshmemAllReduceThunk : public NvshmemAllReduceReduceScatterThunkBase {
  public:
-  NvshmemAllReduceStartThunk(ThunkInfo thunk_info,
-                             const HloAllReduceInstruction* inst,
-                             std::vector<CollectiveThunk::Buffer> buffers,
-                             bool p2p_memcpy_enabled = false);
+  ABSL_DEPRECATED("Use NCCL 2.28+ primitives instead.")
+  NvshmemAllReduceThunk(ThunkInfo thunk_info,
+                        const HloAllReduceInstruction* inst,
+                        std::vector<CollectiveThunk::Buffer> buffers,
+                        bool p2p_memcpy_enabled = false);
   static const char* GetHloOpName() { return "all-reduce-start:nvshmem"; }
 
   static absl::Status CheckImplementable(const HloAllReduceInstruction* inst,
@@ -78,16 +81,13 @@ class NvshmemAllReduceStartThunk
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
-  static absl::StatusOr<std::unique_ptr<NvshmemAllReduceStartThunk>> FromProto(
-      ThunkInfo thunk_info, const NvshmemAllReduceStartThunkProto& thunk_proto,
-      absl::Span<const BufferAllocation> buffer_allocations,
-      CollectiveThunk::AsyncEventsMap& async_events_map);
+  static absl::StatusOr<std::unique_ptr<NvshmemAllReduceThunk>> FromProto(
+      ThunkInfo thunk_info, const NvshmemAllReduceThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
 
  private:
-  NvshmemAllReduceStartThunk(
-      ThunkInfo thunk_info, AllReduceConfig config,
-      std::vector<CollectiveThunk::Buffer> buffers,
-      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
+  NvshmemAllReduceThunk(ThunkInfo thunk_info, AllReduceConfig config,
+                        std::vector<CollectiveThunk::Buffer> buffers);
 
  protected:
   absl::Status RunNvshmemCollective(const ExecuteParams& params,
@@ -96,6 +96,7 @@ class NvshmemAllReduceStartThunk
 
 // -----------------------------------------------------------------------------
 
+ABSL_DEPRECATED("Use NCCL 2.28+ primitives instead.")
 absl::Status RunNvshmemAllReduce(GpuCollectives* collectives,
                                  ReductionKind reduction_kind,
                                  std::vector<DeviceBufferPair>& buffers,

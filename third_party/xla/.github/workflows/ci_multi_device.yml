@@ -17,6 +17,15 @@ permissions:
   contents: read
 on:
   workflow_dispatch:  # Allows manual triggering
+    inputs:
+      halt-for-connection:
+        description: 'Should this workflow run wait for a remote connection?'
+        type: choice
+        required: true
+        default: 'no'
+        options:
+          - 'yes'
+          - 'no'
   schedule:
     - cron: "0 0 * * *"  # Run at midnight every day
 
@@ -61,10 +70,11 @@ jobs:
       - name: "Run build.py"
         working-directory: ${{ matrix.job_info.repo }}
         run: |
-          if [[ "${{ matrix.job_info.pool }}" == *windows* ]]; then
-            python $GITHUB_WORKSPACE\\openxla\\xla\\build_tools\\ci\\build.py --build="${{ matrix.job_info.name }}_github_actions"
+          # shellcheck disable=SC2193
+          if [[ "${{ matrix.job_info.pool }}" == *"windows"* ]]; then
+            python "$GITHUB_WORKSPACE"\\openxla\\xla\\build_tools\\ci\\build.py --build="${{ matrix.job_info.name }}_github_actions"
           else
-            $GITHUB_WORKSPACE/openxla/xla/build_tools/ci/build.py --build="${{ matrix.job_info.name }}_github_actions"
+            "$GITHUB_WORKSPACE"/openxla/xla/build_tools/ci/build.py --build="${{ matrix.job_info.name }}_github_actions"
           fi
 
 

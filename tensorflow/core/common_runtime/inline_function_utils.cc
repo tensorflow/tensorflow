@@ -281,7 +281,7 @@ absl::Status ValidateNoInline(const FunctionBody* fbody) {
   const auto attr = AttrSlice(&fbody->record->fdef().attr());
   bool noinline = false;
   if (TryGetNodeAttr(attr, kNoInlineAttr, &noinline) && noinline) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Can't inline function marked with '_noinline'");
   }
   return absl::OkStatus();
@@ -350,37 +350,37 @@ absl::Status ValidateInlining(const Node* node, const FunctionBody* fbody,
 
   if (num_node_inputs != fbody->arg_types.size() ||
       num_node_inputs != fbody->arg_nodes.size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Node inputs do not match function arguments: inputs=", num_node_inputs,
         " arg_types=", fbody->arg_types.size(),
-        " arg_nodes=", fbody->arg_nodes.size());
+        " arg_nodes=", fbody->arg_nodes.size()));
   }
 
   if (num_node_outputs != fbody->ret_types.size() ||
       num_node_outputs != fbody->ret_nodes.size()) {
-    return errors::InvalidArgument(
-        "Node outputs do not match function returns: outputs=",
-        num_node_outputs, " ret_types=", fbody->ret_types.size(),
-        " ret_nodes=", fbody->ret_nodes.size());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Node outputs do not match function returns: outputs=",
+                     num_node_outputs, " ret_types=", fbody->ret_types.size(),
+                     " ret_nodes=", fbody->ret_nodes.size()));
   }
 
   for (int i = 0; i < node->num_inputs(); ++i) {
     if (node->input_type(i) != fbody->arg_types[i]) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Node input type doesn't match function argument type: ",
-          node->input_type(i), " != ", fbody->arg_types[i], " @ index=", i);
+          node->input_type(i), " != ", fbody->arg_types[i], " @ index=", i));
     }
   }
   for (int i = 0; i < node->num_outputs(); ++i) {
     if (node->output_type(i) != fbody->ret_types[i]) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Node output type doesn't match function return type: ",
-          node->output_type(i), " != ", fbody->ret_types[i], " @ index=", i);
+          node->output_type(i), " != ", fbody->ret_types[i], " @ index=", i));
     }
   }
 
   if (options.disable_inlining) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Function inlining explicitly disabled by 'options.disable_inlining'");
   }
 
@@ -389,10 +389,10 @@ absl::Status ValidateInlining(const Node* node, const FunctionBody* fbody,
         fbody->record->fdef().attr().find("api_implements") !=
         fbody->record->fdef().attr().end();
     if (is_impl_selection_group_function) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Inlining of implementation selection group function ",
           fbody->record->fdef().signature().name(),
-          " is disabled by options.inline_impl_selection_group_functions");
+          " is disabled by options.inline_impl_selection_group_functions"));
     }
   }
 
@@ -495,7 +495,8 @@ absl::Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def,
 
   absl::Status validation = ValidateInlining(caller, fbody, options);
   if (!validation.ok()) {
-    return errors::Internal("Inlining mismatch: ", validation.message());
+    return absl::InternalError(
+        absl::StrCat("Inlining mismatch: ", validation.message()));
   }
 
   // Placer is responsible for assigning devices for all nodes that we will add
@@ -588,7 +589,7 @@ absl::Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def,
   std::map<absl::string_view, absl::string_view> input_node_name_map;
   for (std::size_t i = 0; i < fbody->arg_nodes.size(); ++i) {
     if (inputs[i].node == nullptr)
-      return errors::Internal("Null node found for input ", i);
+      return absl::InternalError(absl::StrCat("Null node found for input ", i));
 
     Node* n = input_identity("input", inputs[i], i);
     input_node_name_map[arg_name(fbody->record->fdef().signature().input_arg(),

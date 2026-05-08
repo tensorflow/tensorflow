@@ -12,3 +12,9 @@ license(
     package_name = "xla",
     license_kinds = ["@rules_license//licenses/spdx:Apache-2.0"],
 )
+
+filegroup(
+    name = "clang_tidy_config",
+    srcs = [".clang-tidy"],
+    visibility = ["//visibility:public"],
+)

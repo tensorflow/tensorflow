@@ -148,3 +148,133 @@ func.func @topk_2d_k_equals_one(%arg0: tensor<16x10xf32>) -> tensor<16x1xf32> {
   %0:2 = mhlo.topk(%arg0, k=1, largest=true) : tensor<16x10xf32> -> (tensor<16x1xf32>, tensor<16x1xi32>)
   return %0#0 : tensor<16x1xf32>
 }
+
+// Associative scans expose the scan dim as a permutation factor (parallel-prefix
+// can shard it at the cost of inter-shard combine traffic).
+// CHECK-LABEL: func @scan_1d_associative
+func.func @scan_1d_associative(%input: tensor<10xf32>, %init: tensor<f32>)
+    -> tensor<10xf32> {
+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i], [])->([i], []) {i=10} permutation={i}>
+  %0:2 = mhlo.scan (%input) inits (%init) dimension=0 attributes {
+      is_associative = true
+  } {
+  ^bb0(%input0: tensor<f32>, %carry0: tensor<f32>):
+    %1 = stablehlo.add %input0, %carry0 : tensor<f32>
+    stablehlo.return %1, %1 : tensor<f32>, tensor<f32>
+  } : (tensor<10xf32>, tensor<f32>) -> (tensor<10xf32>, tensor<f32>)
+  return %0#0 : tensor<10xf32>
+}
+
+// Non-associative scans require sequential evaluation along the scan dim, so
+// it must be replicated.
+// CHECK-LABEL: func @scan_1d_non_associative
+func.func @scan_1d_non_associative(%input: tensor<10xf32>, %init: tensor<f32>)
+    -> tensor<10xf32> {
+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i], [])->([i], []) {i=10} need_replication={i}>
+  %0:2 = mhlo.scan (%input) inits (%init) dimension=0 attributes {
+      is_associative = false
+  } {
+  ^bb0(%input0: tensor<f32>, %carry0: tensor<f32>):
+    %1 = stablehlo.add %input0, %carry0 : tensor<f32>
+    stablehlo.return %1, %1 : tensor<f32>, tensor<f32>
+  } : (tensor<10xf32>, tensor<f32>) -> (tensor<10xf32>, tensor<f32>)
+  return %0#0 : tensor<10xf32>
+}
+
+// Missing `is_associative` defaults to non-associative for the rule (safe).
+// CHECK-LABEL: func @scan_1d_unspecified_is_associative
+func.func @scan_1d_unspecified_is_associative(%input: tensor<10xf32>, %init: tensor<f32>)
+    -> tensor<10xf32> {
+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i], [])->([i], []) {i=10} need_replication={i}>
+  %0:2 = mhlo.scan (%input) inits (%init) dimension=0 {
+  ^bb0(%input0: tensor<f32>, %carry0: tensor<f32>):
+    %1 = stablehlo.add %input0, %carry0 : tensor<f32>
+    stablehlo.return %1, %1 : tensor<f32>, tensor<f32>
+  } : (tensor<10xf32>, tensor<f32>) -> (tensor<10xf32>, tensor<f32>)
+  return %0#0 : tensor<10xf32>
+}
+
+// 2D shape-preserving scan with the scan dim as the leading (major) dim. The
+// non-scan dim is shared across input/output/init/carry as a pass-through
+// factor, allowing it to be sharded freely.
+// CHECK-LABEL: func @scan_2d_scan_dim_0
+func.func @scan_2d_scan_dim_0(%input: tensor<2x3xf32>, %init: tensor<3xf32>)
+    -> tensor<2x3xf32> {
+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j], [j])->([i, j], [j]) {i=2, j=3} permutation={i}>
+  %0:2 = mhlo.scan (%input) inits (%init) dimension=0 attributes {
+      is_associative = true
+  } {
+  ^bb0(%input0: tensor<3xf32>, %carry0: tensor<3xf32>):
+    %1 = stablehlo.add %input0, %carry0 : tensor<3xf32>
+    stablehlo.return %1, %1 : tensor<3xf32>, tensor<3xf32>
+  } : (tensor<2x3xf32>, tensor<3xf32>) -> (tensor<2x3xf32>, tensor<3xf32>)
+  return %0#0 : tensor<2x3xf32>
+}
+
+// 2D shape-preserving scan with the scan dim as the trailing (minor) dim.
+// CHECK-LABEL: func @scan_2d_scan_dim_1
+func.func @scan_2d_scan_dim_1(%input: tensor<3x2xf32>, %init: tensor<3xf32>)
+    -> tensor<3x2xf32> {
+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j], [i])->([i, j], [i]) {i=3, j=2} permutation={j}>
+  %0:2 = mhlo.scan (%input) inits (%init) dimension=1 attributes {
+      is_associative = true
+  } {
+  ^bb0(%input0: tensor<3xf32>, %carry0: tensor<3xf32>):
+    %1 = stablehlo.add %input0, %carry0 : tensor<3xf32>
+    stablehlo.return %1, %1 : tensor<3xf32>, tensor<3xf32>
+  } : (tensor<3x2xf32>, tensor<3xf32>) -> (tensor<3x2xf32>, tensor<3xf32>)
+  return %0#0 : tensor<3x2xf32>
+}
+
+// 3D shape-preserving scan with the scan dim in the middle. Both surrounding
+// dims pass through identically across input/output/init/carry.
+// CHECK-LABEL: func @scan_3d_scan_dim_middle
+func.func @scan_3d_scan_dim_middle(%input: tensor<4x5x6xf32>, %init: tensor<4x6xf32>)
+    -> tensor<4x5x6xf32> {
+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j, k], [i, k])->([i, j, k], [i, k]) {i=4, j=5, k=6} permutation={j}>
+  %0:2 = mhlo.scan (%input) inits (%init) dimension=1 attributes {
+      is_associative = true
+  } {
+  ^bb0(%input0: tensor<4x6xf32>, %carry0: tensor<4x6xf32>):
+    %1 = stablehlo.add %input0, %carry0 : tensor<4x6xf32>
+    stablehlo.return %1, %1 : tensor<4x6xf32>, tensor<4x6xf32>
+  } : (tensor<4x5x6xf32>, tensor<4x6xf32>) -> (tensor<4x5x6xf32>, tensor<4x6xf32>)
+  return %0#0 : tensor<4x5x6xf32>
+}
+
+// Multi-input/output shape-preserving scan: every input/output/init/carry
+// shares the same dim factors, the scan dim still permutation, the non-scan
+// dim still pass-through.
+// CHECK-LABEL: func @scan_2d_multi_input
+func.func @scan_2d_multi_input(%input1: tensor<2x3xf32>, %input2: tensor<2x3xf32>,
+                               %init1: tensor<3xf32>, %init2: tensor<3xf32>)
+    -> (tensor<2x3xf32>, tensor<2x3xf32>) {
+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j], [i, j], [j], [j])->([i, j], [i, j], [j], [j]) {i=2, j=3} permutation={i}>
+  %0:4 = mhlo.scan (%input1, %input2) inits (%init1, %init2) dimension=0 attributes {
+      is_associative = true
+  } {
+  ^bb0(%in1: tensor<3xf32>, %in2: tensor<3xf32>, %c1: tensor<3xf32>, %c2: tensor<3xf32>):
+    %a = stablehlo.add %in1, %c1 : tensor<3xf32>
+    %b = stablehlo.add %in2, %c2 : tensor<3xf32>
+    stablehlo.return %a, %b, %a, %b : tensor<3xf32>, tensor<3xf32>, tensor<3xf32>, tensor<3xf32>
+  } : (tensor<2x3xf32>, tensor<2x3xf32>, tensor<3xf32>, tensor<3xf32>)
+   -> (tensor<2x3xf32>, tensor<2x3xf32>, tensor<3xf32>, tensor<3xf32>)
+  return %0#0, %0#1 : tensor<2x3xf32>, tensor<2x3xf32>
+}
+
+// Shape-changing scan (output shape != input shape): falls back to the
+// conservative rule that only models the scan dim and leaves every other
+// dim with a fresh size-1 factor that nothing can propagate through.
+// CHECK-LABEL: func @scan_2d_shape_changing
+func.func @scan_2d_shape_changing(%input: tensor<10xf32>, %init: tensor<f32>)
+    -> tensor<10x3xf32> {
+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i], [])->([i, j], []) {i=10, j=1} permutation={i}>
+  %0:2 = mhlo.scan (%input) inits (%init) dimension=0 attributes {
+      is_associative = true
+  } {
+  ^bb0(%input0: tensor<f32>, %carry0: tensor<f32>):
+    %1 = stablehlo.broadcast_in_dim %input0, dims = [] : (tensor<f32>) -> tensor<3xf32>
+    stablehlo.return %1, %carry0 : tensor<3xf32>, tensor<f32>
+  } : (tensor<10xf32>, tensor<f32>) -> (tensor<10x3xf32>, tensor<f32>)
+  return %0#0 : tensor<10x3xf32>
+}

@@ -96,9 +96,9 @@ absl::Status PopulateTensorFromResponse(const RecvBufResponse& response,
   }
 
   if (num_bytes != total_bytes) {
-    return errors::Internal("Tensor Size Mismatch: RecvBufResponse returned ",
-                            num_bytes,
-                            " bytes, expected: ", cpu_tensor->TotalBytes());
+    return absl::InternalError(absl::StrCat(
+        "Tensor Size Mismatch: RecvBufResponse returned ", num_bytes,
+        " bytes, expected: ", cpu_tensor->TotalBytes()));
   }
   PopulateTensorFromExtra(extra, cpu_tensor);
   return absl::OkStatus();
@@ -221,7 +221,7 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
   bool already_aborted = !abortion_cancel_mgr_.RegisterCallback(
       abortion_token, [state] { state->call->Cancel(); });
   if (already_aborted) {
-    recv_buf_callback(errors::Cancelled("collective ops already aborted"));
+    recv_buf_callback(absl::CancelledError("collective ops already aborted"));
   } else {
     state->call->Start(
         [this, abortion_token,
@@ -246,9 +246,10 @@ void CollectiveRemoteAccessDistributed::CheckPeerHealth(
   // attributes.
   WorkerInterface* wi = worker_cache_->GetOrCreateWorker(peer_task);
   if (wi == nullptr) {
-    done(errors::InvalidArgument(peer_task,
-                                 " not found. It's probably invalid. The "
-                                 "valid form is /job:xxx/replica:0/task:N"));
+    done(absl::InvalidArgumentError(
+        absl::StrCat(peer_task,
+                     " not found. It's probably invalid. The "
+                     "valid form is /job:xxx/replica:0/task:N")));
     return;
   }
   auto opts = new CallOptions();
@@ -272,10 +273,10 @@ void CollectiveRemoteAccessDistributed::CheckPeerHealth(
           }
           for (const DeviceAttributes& attr : cached_attrs) {
             if (!remote_incarnations.contains(attr.incarnation())) {
-              s = errors::FailedPrecondition(
+              s = absl::FailedPreconditionError(absl::StrCat(
                   attr.name(), " with incarnation ", attr.incarnation(),
                   " is not available. This usually means ", peer_task,
-                  " has restarted");
+                  " has restarted"));
               break;
             }
           }

@@ -246,8 +246,6 @@ class TileAssignment {
   std::string ToString() const;
   std::string ArrayToString() const;
 
-  bool UsesDevice(int64_t device) const;
-
   // Returns non-nullopt iota tile assignment iff it holds that format.
   const std::optional<IotaTileAssignment>& iota() const { return iota_; }
   // Returns reference to the full array representation. If it holds iota
@@ -309,6 +307,7 @@ struct SubDimInfo {
 struct AnalyzeTileAssignmentResult {
   std::vector<SubDimInfo> sub_dims;
   std::vector<int64_t> local_mesh;
+  std::optional<IotaTileAssignment> iota;
 };
 
 // Given a vector of integers, we can factorize its elements into a product of

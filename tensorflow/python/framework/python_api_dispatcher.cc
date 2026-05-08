@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/python/framework/python_api_dispatcher.h"
 
 #include <set>
+#include <vector>
 
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/platform/logging.h"
@@ -114,10 +115,7 @@ bool RegisterDispatchableType(PyObject* py_class) {
 PythonAPIDispatcher::PythonAPIDispatcher(const std::string& api_name,
                                          absl::Span<const char*> arg_names,
                                          absl::Span<PyObject*> defaults)
-    : api_name_(api_name),
-      canonicalizer_(arg_names, defaults),
-      canonicalized_args_storage_(canonicalizer_.GetArgSize()),
-      canonicalized_args_span_(canonicalized_args_storage_) {}
+    : api_name_(api_name), canonicalizer_(arg_names, defaults) {}
 
 void PythonAPIDispatcher::Register(PySignatureChecker signature_checker,
                                    PyObject* dispatch_target) {
@@ -134,13 +132,18 @@ Safe_PyObjectPtr PythonAPIDispatcher::Dispatch(PyObject* args,
     kwargs = nullptr;
   }
   // Canonicalize args (so we don't need to deal with kwargs).
-  if (!canonicalizer_.Canonicalize(args, kwargs, canonicalized_args_span_)) {
+  std::vector<PyObject*> canonicalized_args_storage(
+      canonicalizer_.GetArgSize());
+  absl::Span<PyObject*> canonicalized_args_span(
+      canonicalized_args_storage.data(), canonicalized_args_storage.size());
+
+  if (!canonicalizer_.Canonicalize(args, kwargs, canonicalized_args_span)) {
     return nullptr;
   }
 
   PyObject* selected = nullptr;
   for (auto& target : targets_) {
-    if (target.first.CheckCanonicalizedArgs(canonicalized_args_span_)) {
+    if (target.first.CheckCanonicalizedArgs(canonicalized_args_span)) {
       if (selected && selected != target.second.get()) {
         return RaiseDispatchConflictError(api_name_, selected,
                                           target.second.get());

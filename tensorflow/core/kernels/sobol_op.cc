@@ -135,32 +135,34 @@ class SobolSampleOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(context->input(0).shape()),
-                errors::InvalidArgument("dim must be a scalar"));
+                absl::InvalidArgumentError("dim must be a scalar"));
     int32_t dim = context->input(0).scalar<int32_t>()();
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(context->input(1).shape()),
-                errors::InvalidArgument("num_results must be a scalar"));
+                absl::InvalidArgumentError("num_results must be a scalar"));
     int32_t num_results = context->input(1).scalar<int32_t>()();
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(context->input(2).shape()),
-                errors::InvalidArgument("skip must be a scalar"));
+                absl::InvalidArgumentError("skip must be a scalar"));
     int32_t skip = context->input(2).scalar<int32_t>()();
 
     OP_REQUIRES(context, dim >= 1,
-                errors::InvalidArgument("dim must be at least one"));
+                absl::InvalidArgumentError("dim must be at least one"));
     OP_REQUIRES(context, dim <= sobol_data::kMaxSobolDim,
-                errors::InvalidArgument("dim must be at most ",
-                                        sobol_data::kMaxSobolDim));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "dim must be at most ", sobol_data::kMaxSobolDim)));
     OP_REQUIRES(context, num_results >= 1,
-                errors::InvalidArgument("num_results must be at least one"));
+                absl::InvalidArgumentError("num_results must be at least one"));
     OP_REQUIRES(context, skip >= 0,
-                errors::InvalidArgument("skip must be non-negative"));
+                absl::InvalidArgumentError("skip must be non-negative"));
     OP_REQUIRES(context,
                 num_results < std::numeric_limits<int32_t>::max() - skip,
-                errors::InvalidArgument("num_results+skip must be less than ",
-                                        std::numeric_limits<int32_t>::max()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("num_results+skip must be less than ",
+                                 std::numeric_limits<int32_t>::max())));
     OP_REQUIRES(context,
                 num_results < std::numeric_limits<int32_t>::max() / dim,
-                errors::InvalidArgument("num_results*dim must be less than ",
-                                        std::numeric_limits<int32_t>::max()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("num_results*dim must be less than ",
+                                 std::numeric_limits<int32_t>::max())));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,

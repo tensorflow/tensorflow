@@ -42,7 +42,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -61,6 +63,7 @@ limitations under the License.
 #include "xla/overflow_util.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gather_scatter_utils.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_creation_utils.h"
@@ -77,7 +80,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 
@@ -935,6 +937,20 @@ absl::Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
                                           sum_of_constants, a));
   }
 
+  // A + (B - A) => B
+  // (B - A) + A => B
+  HloInstruction *x, *y, *x2;
+  if (Match(add,
+            m::AddAnyOrder(m::Op(&x), m::Subtract(m::Op(&y), m::Op(&x2)))) &&
+      x == x2 &&
+      (ShapeUtil::ElementIsIntegral(add->shape()) ||
+       options_.enable_fast_math())) {
+    VLOG(10) << "trying transform [x + (y - x) => y]: " << add->ToString();
+    if (ReplaceInstructionIfCompatible(add, y)) {
+      return absl::OkStatus();
+    }
+  }
+
   // Convert add with fullshape into add with partial shape when a
   // portion of add is effective:
   //             zero (fullshape)   rhs (partialshape)
@@ -1249,6 +1265,82 @@ absl::Status AlgebraicSimplifierVisitor::HandleAllToAll(
     return ReplaceInstruction(all_to_all, all_to_all->mutable_operand(0));
   }
   return absl::OkStatus();
+}
+
+absl::Status AlgebraicSimplifierVisitor::HandleAllReduceOrReduceScatter(
+    HloInstruction* collective) {
+  if (!collective->shape().IsArray()) {
+    return absl::OkStatus();
+  }
+
+  HloInstruction* operand = collective->mutable_operand(0);
+  if (!Match(operand, m::Broadcast(m::ConstantScalar()))) {
+    return absl::OkStatus();
+  }
+
+  std::optional<ReductionKind> reduction_kind =
+      MatchReductionComputation(collective->to_apply());
+  if (!reduction_kind.has_value()) {
+    return absl::OkStatus();
+  }
+
+  HloInstruction* constant = operand->mutable_operand(0);
+
+  switch (*reduction_kind) {
+    case ReductionKind::MIN:
+    case ReductionKind::MAX: {
+      return ReplaceWithNewInstruction(
+          collective,
+          HloInstruction::CreateBroadcast(collective->shape(), constant, {}));
+    }
+    case ReductionKind::SUM: {
+      TF_ASSIGN_OR_RETURN(auto count_and_size,
+                          GetReplicaGroupCountAndSize(collective));
+      if (!count_and_size.has_value()) {
+        return absl::OkStatus();
+      }
+      int64_t group_size = count_and_size->second;
+
+      PrimitiveType element_type = constant->shape().element_type();
+      const Literal& literal = constant->literal();
+
+      Literal new_literal;
+      primitive_util::ArrayTypeSwitch(
+          [&](auto type_constant) {
+            using T = primitive_util::NativeTypeOf<type_constant>;
+            if constexpr (primitive_util::IsIntegralType(type_constant) ||
+                          primitive_util::IsFloatingPointType(type_constant)) {
+              T val = literal.Get<T>({});
+              T result = val * static_cast<T>(group_size);
+              new_literal = LiteralUtil::CreateR0(element_type, result);
+            }
+          },
+          element_type);
+
+      if (!ShapeUtil::IsInitialized(new_literal.shape())) {
+        return absl::OkStatus();
+      }
+
+      HloInstruction* new_constant = computation_->AddInstruction(
+          HloInstruction::CreateConstant(std::move(new_literal)));
+
+      return ReplaceWithNewInstruction(
+          collective, HloInstruction::CreateBroadcast(collective->shape(),
+                                                      new_constant, {}));
+    }
+    default:
+      return absl::OkStatus();
+  }
+}
+
+absl::Status AlgebraicSimplifierVisitor::HandleAllReduce(
+    HloInstruction* all_reduce) {
+  return HandleAllReduceOrReduceScatter(all_reduce);
+}
+
+absl::Status AlgebraicSimplifierVisitor::HandleReduceScatter(
+    HloInstruction* reduce_scatter) {
+  return HandleAllReduceOrReduceScatter(reduce_scatter);
 }
 
 absl::Status AlgebraicSimplifierVisitor::HandleAnd(
@@ -2231,10 +2323,42 @@ absl::Status AlgebraicSimplifierVisitor::HandleSubtract(HloInstruction* sub) {
                                           negative_const));
   }
 
-  // A - A => 0 for integer A.
-  VLOG(10) << "trying transform [A - A => 0] for integer A.";
-  if (lhs == rhs && ShapeUtil::ElementIsIntegral(sub->shape())) {
-    return ReplaceInstruction(sub, MakeScalarLike(sub, 0));
+  // A - (A - B) => B
+  if (Match(sub, m::Subtract(m::Op(&lhs),
+                             m::Subtract(m::Op().Is(lhs), m::Op(&rhs)))) &&
+      (ShapeUtil::ElementIsIntegral(sub->shape()) ||
+       options_.enable_fast_math())) {
+    VLOG(10) << "trying transform [x - (x - y) => y]: " << sub->ToString();
+    if (ReplaceInstructionIfCompatible(sub, rhs)) {
+      return absl::OkStatus();
+    }
+  }
+
+  // A - (A + B) => -B
+  // A - (B + A) => -B
+  if (Match(sub, m::Subtract(m::Op(&lhs),
+                             m::AddAnyOrder(m::Op().Is(lhs), m::Op(&rhs)))) &&
+      (ShapeUtil::ElementIsIntegral(sub->shape()) ||
+       options_.enable_fast_math())) {
+    VLOG(10) << "trying transform [x - (x + y) => -y]: " << sub->ToString();
+    return ReplaceWithNewInstruction(
+        sub,
+        HloInstruction::CreateUnary(sub->shape(), HloOpcode::kNegate, rhs));
+  }
+
+  // (A + B) - A => B
+  // (B + A) - A => B
+  HloInstruction *x1, *x2;
+  if (Match(sub,
+            m::Subtract(m::AddAnyOrder(m::Op(&x1), m::Op(&x2)), m::Op(&rhs))) &&
+      (x1 == rhs || x2 == rhs) &&
+      (ShapeUtil::ElementIsIntegral(sub->shape()) ||
+       options_.enable_fast_math())) {
+    VLOG(10) << "trying transform [(x + y) - x => y]: " << sub->ToString();
+    HloInstruction* operand_to_replace_with = (x2 == rhs) ? x1 : x2;
+    if (ReplaceInstructionIfCompatible(sub, operand_to_replace_with)) {
+      return absl::OkStatus();
+    }
   }
 
   return absl::OkStatus();
@@ -2424,6 +2548,28 @@ absl::Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
           return absl::OkStatus();
         },
         result_shape.element_type());
+  }
+
+  // A / broadcast(B) => A * broadcast(1 / B)
+  // This simplification allows many of the other simplifications here to apply
+  // when they otherwise would not have, because e.g. A / broadcast(rsqrt(B))
+  // does not match the A / rsqrt(B) rule above.
+  // This rewrite does not preserve Inf/NaN for complex types, so we only use
+  // this rewrite if the type is not complex, or fast math is enabled.
+  // TODO: b/504985408 - This rewrite should apply to any device.
+  if (options_.executing_on_cpu() && options_.enable_sink_broadcast() &&
+      (!primitive_util::IsComplexType(divide->shape().element_type()) ||
+       options_.enable_fast_math()) &&
+      Match(divide,
+            m::Divide(m::Op(&a), m::Broadcast(m::Op(&b).WithOneUse())))) {
+    HloInstruction* bcast = divide->mutable_operand(1);
+    auto* recip = bcast->AddInstruction(HloInstruction::CreateBinary(
+        b->shape(), HloOpcode::kDivide, MakeScalarLike(b, 1), b));
+    auto* recip_bcast = bcast->AddInstruction(HloInstruction::CreateBroadcast(
+        divide->shape(), recip, bcast->dimensions()));
+    return ReplaceWithNewInstruction(
+        divide, HloInstruction::CreateBinary(
+                    divide->shape(), HloOpcode::kMultiply, a, recip_bcast));
   }
 
   // (A / B) / (C / D)  =>  (A / B)*(D / C) => (A * D) / (B * C)
@@ -8617,6 +8763,59 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
     }
   }
 
+  // Commute Reduce and Broadcast when the reduce dimensions map entirely to
+  // dimensions of the original base tensor. This avoids performing reduction
+  // over the replicated elements produced by the broadcast.
+  if (arg->opcode() == HloOpcode::kBroadcast &&
+      !options_.is_layout_sensitive()) {
+    std::vector<int64_t> new_reduce_dims;
+    bool all_reduce_dims_from_original_tensor = true;
+    auto bcast_dims = arg->dimensions();
+    // Find which dimensions of the original unbroadcast input correspond to the
+    // reduction dimensions.
+    for (int64_t dim : reduce->dimensions()) {
+      auto it = absl::c_find(bcast_dims, dim);
+      if (it == bcast_dims.end()) {
+        all_reduce_dims_from_original_tensor = false;
+        break;
+      }
+      new_reduce_dims.push_back(std::distance(bcast_dims.begin(), it));
+    }
+
+    if (all_reduce_dims_from_original_tensor) {
+      // Perform the reduction first on the original tensor.
+      Shape new_reduce_result_shape = ShapeUtil::DeleteDimensions(
+          new_reduce_dims, arg->mutable_operand(0)->shape());
+      simplifier_->UpdateLayout(&new_reduce_result_shape);
+      HloInstruction* new_reduce =
+          reduce->AddInstruction(HloInstruction::CreateReduce(
+              new_reduce_result_shape, arg->mutable_operand(0), init_value,
+              new_reduce_dims, function));
+
+      // Broadcast the reduced result to the final shape, computing the new
+      // target dimensions for any surviving unreduced dimensions.
+      std::vector<int64_t> new_broadcast_dims;
+      for (int64_t orig_dim = 0;
+           orig_dim < arg->mutable_operand(0)->shape().dimensions().size();
+           ++orig_dim) {
+        if (!absl::c_linear_search(new_reduce_dims, orig_dim)) {
+          int64_t bcast_dim = arg->dimensions()[orig_dim];
+          int64_t shift = 0;
+          for (int64_t d : reduce->dimensions()) {
+            if (d < bcast_dim) {
+              shift++;
+            }
+          }
+          new_broadcast_dims.push_back(bcast_dim - shift);
+        }
+      }
+
+      return ReplaceWithNewInstruction(
+          reduce, HloInstruction::CreateBroadcast(
+                      reduce_result_shape, new_reduce, new_broadcast_dims));
+    }
+  }
+
   // Replace Reduce(Broadcast(x), +, init_value) with Broadcast(Add(Multiply(x),
   // init_value))) if all reduction dimensions were introduced by Broadcast
   if (arg->opcode() == HloOpcode::kBroadcast &&
@@ -9944,6 +10143,11 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToDot(
 absl::StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToMultiply(
     HloInstruction* convolution) {
   if (options_.is_layout_sensitive()) {
+    return false;
+  }
+
+  // Don't simplify conv to multiply for sparse convs.
+  if (convolution->sparsity_config().has_rhs()) {
     return false;
   }
 

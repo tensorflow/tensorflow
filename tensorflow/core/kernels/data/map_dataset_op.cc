@@ -195,8 +195,8 @@ class MapDatasetOp::Dataset : public DatasetBase {
           // To guarantee that the transformation preserves the cardinality of
           // the dataset, we convert `OutOfRange` to `InvalidArgument` as the
           // former may be interpreted by a caller as the end of sequence.
-          return errors::InvalidArgument(
-              "Function invocation produced OutOfRangeError: ", s.message());
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Function invocation produced OutOfRangeError: ", s.message()));
         } else {
           // `f` may deliberately raise `errors::OutOfRange` to indicate
           // that we should terminate the iteration early.

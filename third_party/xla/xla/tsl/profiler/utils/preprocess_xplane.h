@@ -108,9 +108,13 @@ class XContextStatsAccessor {
   }
 
   std::optional<StatValueType> GetStat(XEventBuilder& event_builder) {
-    if (stats_metadata_ == nullptr) return std::nullopt;
+    if (stats_metadata_ == nullptr) {
+      return std::nullopt;
+    }
     auto* stat = event_builder.GetStat(*stats_metadata_);
-    if (stat == nullptr) return std::nullopt;
+    if (stat == nullptr) {
+      return std::nullopt;
+    }
     if constexpr (std::is_integral_v<StatValueType>) {
       return event_builder.IntOrUintValue(*stat);
     } else {
@@ -133,9 +137,13 @@ class XContextStatsAccessorWithDefault {
   }
 
   std::optional<StatValueType> GetStat(XEventBuilder& event_builder) {
-    if (stats_metadata_ == nullptr) return kDefaultValue;
+    if (stats_metadata_ == nullptr) {
+      return kDefaultValue;
+    }
     auto* stat = event_builder.GetStat(*stats_metadata_);
-    if (stat == nullptr) return kDefaultValue;
+    if (stat == nullptr) {
+      return kDefaultValue;
+    }
     if constexpr (std::is_integral_v<StatValueType>) {
       return event_builder.IntOrUintValue(*stat);
     } else {
@@ -199,7 +207,9 @@ class XplaneConnectedEventMutatorFactory : public XplaneEventMutatorFactory {
           all_required_stats_exist && accessor.Initialize(xplane);
     };
     for_each(stats_accessors, check_stats_meta);
-    if (!all_required_stats_exist) return {};
+    if (!all_required_stats_exist) {
+      return {};
+    }
 
     XEventMetadata* producer_event_metadata =
         xplane.GetEventMetadata(GetHostEventTypeStr(producer_event));
@@ -247,7 +257,9 @@ class XplaneConnectedEventMutatorFactory : public XplaneEventMutatorFactory {
       std::vector<std::variant<absl::string_view, uint64_t>> required_stats;
       auto check_stats_meta = [&all_required_stats_exist, &required_stats,
                                &event_builder](auto&& accessor) {
-        if (all_required_stats_exist == false) return;
+        if (all_required_stats_exist == false) {
+          return;
+        }
         auto stats_data = accessor.GetStat(event_builder);
         if (!stats_data) {
           all_required_stats_exist = false;
@@ -257,7 +269,9 @@ class XplaneConnectedEventMutatorFactory : public XplaneEventMutatorFactory {
       };
       for_each(accessors_, check_stats_meta);
 
-      if (!all_required_stats_exist) return;
+      if (!all_required_stats_exist) {
+        return;
+      }
 
       int64_t context_id;
       if constexpr (unique_stats) {
@@ -319,7 +333,9 @@ class HostRunIdMutatorFactory : public XplaneEventMutatorFactory {
 
     void Mutate(XEventBuilder& event_builder) override {
       auto run_id = run_id_stats_accessor_.GetStat(event_builder);
-      if (!run_id) return;
+      if (!run_id) {
+        return;
+      }
       int64_t fixed_run_id = ((uint64_t)run_id.value() & kRunIdMask);
       event_builder.SetOrAddStatValue(run_id_metadata_, fixed_run_id);
     }
@@ -398,12 +414,16 @@ class TpuModuleLineMutatorFactory : public XplaneEventMutatorFactory {
     }
 
     void MutateEventsInLine(XLineBuilder& line) override {
-      if (line.Name() != kXlaModuleLineName) return;
+      if (line.Name() != kXlaModuleLineName) {
+        return;
+      }
       line.ForEachEvent([&](XEventBuilder event) {
         auto run_id = run_id_stats_accessor_.GetStat(event);
         auto queue_id = queue_id_stats_accessor_.GetStat(event);
         auto core_type = core_type_stats_accessor_.GetStat(event);
-        if (!run_id || !queue_id) return;
+        if (!run_id || !queue_id) {
+          return;
+        }
         // The order of tuple <device_ordinal, queue_id, run_id> need to be
         // consistent with other kTpuLaunch types.
         std::vector<std::variant<absl::string_view, uint64_t>> required_stats;
@@ -491,7 +511,9 @@ class ThreadpoolLineMutatorFactory : public XplaneEventMutatorFactory {
       line.ForEachEvent([&](const XEventBuilder& event) {
         if (event.MetadataId() == start_region_metadata_->id()) {
           auto consumer_id = event.GetStat(*consumer_);
-          if (!consumer_id) return;
+          if (!consumer_id) {
+            return;
+          }
           start_region_timestamp_ps = event.TimestampPs();
           region_id = event.IntOrUintValue(*consumer_id);
         } else if (event.MetadataId() == stop_region_metadata_->id() &&

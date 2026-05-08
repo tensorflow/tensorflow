@@ -7,8 +7,8 @@ load("//third_party/triton:oss_only/series.bzl", "oss_only_patch_list")
 def repo():
     """Imports Triton."""
 
-    TRITON_COMMIT = "dbb23f1c707b81af4eda0c17a3f343861c0fd71e"
-    TRITON_SHA256 = "d547a25ed7fe66e4860854fd026168d9a2fdbdc3f52b2c5c2bfb74a82edb1626"
+    TRITON_COMMIT = "886365ca82b03edef597b0d2c8c32be62ac2546b"
+    TRITON_SHA256 = "229709fdf967d5d6719225c3eb6b85eaa657f9730b8a6badeb59926315e9ac06"
     tf_http_archive(
         name = "triton",
         sha256 = TRITON_SHA256,

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/stack.h"
 
 #include <limits.h>
+
 #include <atomic>
 #include <vector>
 
@@ -23,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -127,7 +129,9 @@ class Stack : public ResourceBase {
 
 absl::Status GetStack(OpKernelContext* ctx, Stack** stack) {
   if (ctx->input_dtype(0) == DT_RESOURCE) {
-    return LookupResource(ctx, HandleFromInput(ctx, 0), stack);
+    ResourceHandle handle;
+    TF_RETURN_IF_ERROR(HandleFromInput(ctx, 0, &handle));
+    return LookupResource(ctx, handle, stack);
   } else {
     Tensor Tstack_handle = ctx->mutable_input(0, false);
     if (Tstack_handle.NumElements() != 2) {

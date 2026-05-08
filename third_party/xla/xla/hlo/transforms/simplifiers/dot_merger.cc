@@ -478,7 +478,7 @@ absl::StatusOr<bool> MergeDots(
     return false;
   }
 
-  VLOG(0) << "Merging Dots in computation: " << comp->name();
+  VLOG(1) << "Merging Dots in computation: " << comp->name();
   VLOG(1) << "Found " << equivalence_classes.size()
           << " equivalence classes with "
           << std::accumulate(equivalence_classes.begin(),

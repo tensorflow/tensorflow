@@ -196,7 +196,7 @@ common:mkl_aarch64 --config=mkl_aarch64_threadpool
 common:cuda_version --repo_env=HERMETIC_CUDA_VERSION="12.9.1"
 common:cuda_version --repo_env=HERMETIC_CUDNN_VERSION="9.8.0"
 common:cuda_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
-common:cuda_version --repo_env=HERMETIC_NCCL_VERSION="2.28.9"
+common:cuda_version --repo_env=HERMETIC_NCCL_VERSION="2.29.7"
 
 # CUDA: This config refers to building CUDA op kernels with nvcc.
 common:cuda --repo_env TF_NEED_CUDA=1
@@ -209,6 +209,11 @@ common:cuda --@local_config_cuda//cuda:include_cuda_libs=true
 common:cuda_wheel --@local_config_cuda//cuda:include_cuda_libs=false
 
 common:hermetic_cuda_umd --@cuda_driver//:include_cuda_umd_libs=true
+
+# This config is used for building targets with CUDA/NVSHMEM libraries from stubs.
+build:cuda_libraries_from_stubs --@local_config_cuda//cuda:include_cuda_libs=false
+# The stub targets are not yet compatible with the layering check.
+build:cuda_libraries_from_stubs --features=-layering_check
 
 # CUDA: This config refers to building CUDA op kernels with clang.
 common:cuda_clang --config=cuda
@@ -288,7 +293,9 @@ common:rocm_clang_official --linkopt="-fuse-ld=lld"
 common:rocm_clang_official --host_linkopt="-fuse-ld=lld"
 
 common:rocm --config=rocm_clang_official
+
 common:rocm_ci --config=rocm
+common:rocm_ci --@local_config_rocm//rocm:rocm_path_type=hermetic
 
 common:rocm_ci_hermetic --dynamic_mode=off
 common:rocm_ci_hermetic --config=rocm_clang_official
@@ -665,6 +672,7 @@ common:cross_compile_base --config=clang_local
 common:cross_compile_base --host_cpu=k8
 common:cross_compile_base --host_crosstool_top=//tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
 common:cross_compile_base --extra_execution_platforms=//tools/toolchains/cross_compile/config:linux_x86_64
+common:cross_compile_base --extra_toolchains=//tools/toolchains/cross_compile/cc:linux_x86_toolchain
 
 common:rbe_cross_compile_base --config=rbe_base
 common:rbe_cross_compile_base --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
@@ -683,6 +691,7 @@ common:cross_compile_linux_arm64 --config=cross_compile_base
 common:cross_compile_linux_arm64 --platforms=//tools/toolchains/cross_compile/config:linux_aarch64
 common:cross_compile_linux_arm64 --cpu=aarch64
 common:cross_compile_linux_arm64 --crosstool_top=//tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
+common:cross_compile_linux_arm64 --extra_toolchains=//tools/toolchains/cross_compile/cc:linux_aarch64_toolchain
 
 # RBE cross-compile configs for Linux Aarch64
 common:rbe_cross_compile_linux_arm64 --config=cross_compile_linux_arm64

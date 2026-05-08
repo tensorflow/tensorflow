@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/grpc_dispatcher_impl.h"
 
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <string>
@@ -95,6 +96,83 @@ TEST_F(GrpcDispatcherImplTest, GrpcTest) {
   TF_ASSERT_OK(
       FromGrpcStatus(dispatcher_client_stub_->GetVersion(&ctx, req, &resp)));
   EXPECT_EQ(resp.version(), kDataServiceVersion);
+}
+
+TEST_F(GrpcDispatcherImplTest, GetSplitInvalidProviderIndex) {
+  // Register a dataset.
+  std::string dataset_id;
+  {
+    ClientContext ctx;
+    GetOrRegisterDatasetRequest req;
+    *req.mutable_dataset()->mutable_graph() = testing::RangeDataset(10).graph();
+    GetOrRegisterDatasetResponse resp;
+    TF_ASSERT_OK(FromGrpcStatus(
+        dispatcher_client_stub_->GetOrRegisterDataset(&ctx, req, &resp)));
+    dataset_id = resp.dataset_id();
+  }
+
+  // Create an iteration.
+  int64_t iteration_id = -1;
+  {
+    ClientContext ctx;
+    GetOrCreateJobRequest job_req;
+    job_req.set_dataset_id(dataset_id);
+    job_req.mutable_processing_mode_def()->set_sharding_policy(
+        ProcessingModeDef::DYNAMIC);
+    GetOrCreateJobResponse job_resp;
+    TF_ASSERT_OK(FromGrpcStatus(
+        dispatcher_client_stub_->GetOrCreateJob(&ctx, job_req, &job_resp)));
+
+    ClientContext iter_ctx;
+    GetOrCreateIterationRequest req;
+    req.set_job_id(job_resp.job_id());
+    req.set_repetition(0);
+    GetOrCreateIterationResponse resp;
+    TF_ASSERT_OK(FromGrpcStatus(
+        dispatcher_client_stub_->GetOrCreateIteration(&iter_ctx, req, &resp)));
+
+    // Dynamically find iteration_id
+    for (int i = 0; i < 10000; ++i) {
+      ClientContext ctx;
+      GetSplitRequest split_req;
+      split_req.set_iteration_id(i);
+      split_req.set_repetition(0);
+      split_req.set_split_provider_index(0);
+      GetSplitResponse split_resp;
+      ::grpc::Status status =
+          dispatcher_client_stub_->GetSplit(&ctx, split_req, &split_resp);
+      if (status.error_code() != ::grpc::StatusCode::NOT_FOUND) {
+        iteration_id = i;
+        break;
+      }
+    }
+    ASSERT_NE(iteration_id, -1)
+        << "Could not find iteration_id. Iteration was not created correctly?";
+  }
+
+  // GetSplit with invalid provider index (too small).
+  {
+    ClientContext ctx;
+    GetSplitRequest req;
+    req.set_iteration_id(iteration_id);
+    req.set_repetition(0);
+    req.set_split_provider_index(-1);
+    GetSplitResponse resp;
+    ::grpc::Status status = dispatcher_client_stub_->GetSplit(&ctx, req, &resp);
+    EXPECT_EQ(status.error_code(), ::grpc::StatusCode::INVALID_ARGUMENT);
+  }
+
+  // GetSplit with invalid provider index (too large).
+  {
+    ClientContext ctx;
+    GetSplitRequest req;
+    req.set_iteration_id(iteration_id);
+    req.set_repetition(0);
+    req.set_split_provider_index(1000000);
+    GetSplitResponse resp;
+    ::grpc::Status status = dispatcher_client_stub_->GetSplit(&ctx, req, &resp);
+    EXPECT_EQ(status.error_code(), ::grpc::StatusCode::INVALID_ARGUMENT);
+  }
 }
 
 }  // namespace

@@ -42,8 +42,19 @@ message ExecutionUnitDescriptionProto {
   map<int32, RateInfoProto> rate_infos = 1;
 }
 
-// Next ID: 23
+message DeviceInterconnectInfoProto {
+  int32 active_links = 1;
+  string cluster_uuid = 2;
+  string clique_id = 3;
+}
+
+// Next ID: 43
 message GpuDeviceInfoProto {
+  string device_vendor = 30;
+  string platform_version = 31;
+  string pci_bus_id = 32;
+  string name = 34;
+  string model_str = 35;
   int32 threads_per_block_limit = 1;
   int32 threads_per_warp = 2;
   int32 shared_memory_per_block = 3;
@@ -68,6 +79,21 @@ message GpuDeviceInfoProto {
   int64 registers_per_block_limit = 19;
   ExecutionUnitDescriptionProto scalar_unit_description = 20;
   ExecutionUnitDescriptionProto matrix_unit_description = 21;
+  string driver_version = 23;
+  string kernel_mode_driver_version = 24;
+  string runtime_version = 25;
+  string compile_time_toolkit_version = 26;
+  string dnn_version = 27;
+  string cub_version = 28;
+  DeviceInterconnectInfoProto device_interconnect_info = 29;
+
+  int32 numa_node = 36;
+  int64 thread_dim_limit_x = 37;
+  int64 thread_dim_limit_y = 38;
+  int64 thread_dim_limit_z = 39;
+  int64 device_address_bits = 40;
+  int64 pcie_bandwidth = 41;
+  bool ecc_enabled = 42;
 }
 
 message DnnVersionInfoProto {

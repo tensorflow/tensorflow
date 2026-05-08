@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
@@ -56,7 +57,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 namespace {
@@ -798,6 +798,9 @@ absl::Status HoistBitcastUpwardsToCallers(HloInstruction* bitcast,
         break;
     }
     *instruction->mutable_shape() = result_shape;
+    // Sharding is not necessary here and changing the shape can cause an
+    // HloVerifier error.
+    instruction->clear_sharding();
   }
   TF_RETURN_IF_ERROR(bitcast->ReplaceAllUsesWith(bitcast->mutable_operand(0)));
   TF_RETURN_IF_ERROR(bitcast->parent()->RemoveInstruction(bitcast));

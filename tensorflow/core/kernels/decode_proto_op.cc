@@ -887,20 +887,20 @@ class DecodeProtoOp : public OpKernel {
         if (dtype != DT_STRING) {
           const int element_size = DataTypeSize(dtype);
           CHECK_GT(element_size, 0);
-          stride = last_dim_size * element_size;
+          stride = static_cast<int64_t>(last_dim_size) * element_size;
 
           const int64_t flatshape[1] = {tensor->NumElements() * element_size};
           data = tensor->bit_casted_shaped<uint8_t, 1>(flatshape).data();
         } else {
           // DataTypeSize() returns 0 for string types.
-          stride = last_dim_size * sizeof(tstring);
+          stride = static_cast<int64_t>(last_dim_size) * sizeof(tstring);
           data = reinterpret_cast<uint8_t*>(tensor->flat<tstring>().data());
         }
       }
 
       DataType dtype;
       int last_dim_size;
-      int stride;
+      int64_t stride;
       uint8_t* data;
     };
 

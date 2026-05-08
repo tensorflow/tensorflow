@@ -282,7 +282,8 @@ def DotScaledOp : XTile_Op<"dot_scaled", [Pure, AttrSizedOperandSegments]> {
       Optional<RankedTensorOf<[AnyFloat,I8]>>:$rhs_scale,
       BoolAttr:$fastMath,
       DefaultValuedAttr<BoolAttr, "true">:$lhs_k_pack,
-      DefaultValuedAttr<BoolAttr, "true">:$rhs_k_pack
+      DefaultValuedAttr<BoolAttr, "true">:$rhs_k_pack,
+      OptionalAttr<AnyAttr>:$dot_dimension_numbers
     );
 
     let results = (outs RankedTensorOf<[AnyFloat]>:$result);

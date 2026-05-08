@@ -28,7 +28,10 @@ cc_library(
     srcs = ["foo.cc"],
 )
 """
-    self.assertEqual(extract_targets(build, ALLOWED_RULES), ["foo"])
+    result = extract_targets(build, ALLOWED_RULES)
+    self.assertEqual(len(result), 1)
+    self.assertEqual(result[0][0], "foo")
+    self.assertEqual(result[0][1], {"foo.cc"})
 
   def test_xla_test(self):
     build = """\
@@ -37,7 +40,10 @@ xla_test(
     srcs = ["bar_test.cc"],
 )
 """
-    self.assertEqual(extract_targets(build, ALLOWED_RULES), ["bar_test"])
+    result = extract_targets(build, ALLOWED_RULES)
+    self.assertEqual(len(result), 1)
+    self.assertEqual(result[0][0], "bar_test")
+    self.assertEqual(result[0][1], {"bar_test.cc"})
 
   def test_xla_cc_test(self):
     build = """\
@@ -46,7 +52,10 @@ xla_cc_test(
     srcs = ["baz_test.cc"],
 )
 """
-    self.assertEqual(extract_targets(build, ALLOWED_RULES), ["baz_test"])
+    result = extract_targets(build, ALLOWED_RULES)
+    self.assertEqual(len(result), 1)
+    self.assertEqual(result[0][0], "baz_test")
+    self.assertEqual(result[0][1], {"baz_test.cc"})
 
   def test_skips_non_allowed_rules(self):
     build = """\
@@ -79,14 +88,52 @@ xla_test(
     srcs = ["lib_test.cc"],
 )
 """
-    self.assertEqual(extract_targets(build, ALLOWED_RULES), ["lib", "lib_test"])
+    result = extract_targets(build, ALLOWED_RULES)
+    self.assertEqual(len(result), 2)
+    self.assertEqual(result[0][0], "lib")
+    self.assertEqual(result[1][0], "lib_test")
 
   def test_empty_build_file(self):
     self.assertEqual(extract_targets("", ALLOWED_RULES), [])
 
   def test_name_on_same_line(self):
     build = 'cc_library(name = "inline_lib", srcs = ["a.cc"])\n'
-    self.assertEqual(extract_targets(build, ALLOWED_RULES), ["inline_lib"])
+    result = extract_targets(build, ALLOWED_RULES)
+    self.assertEqual(len(result), 1)
+    self.assertEqual(result[0][0], "inline_lib")
+    self.assertEqual(result[0][1], {"a.cc"})
+
+  def test_srcs_and_hdrs(self):
+    build = """\
+cc_library(
+    name = "mylib",
+    srcs = ["mylib.cc"],
+    hdrs = ["mylib.h"],
+)
+"""
+    result = extract_targets(build, ALLOWED_RULES)
+    self.assertEqual(len(result), 1)
+    self.assertEqual(result[0][0], "mylib")
+    self.assertEqual(result[0][1], {"mylib.cc", "mylib.h"})
+
+  def test_multiple_srcs(self):
+    build = """\
+cc_library(
+    name = "multi",
+    srcs = [
+        "a.cc",
+        "b.cc",
+    ],
+    hdrs = [
+        "a.h",
+        "b.h",
+    ],
+)
+"""
+    result = extract_targets(build, ALLOWED_RULES)
+    self.assertEqual(len(result), 1)
+    self.assertEqual(result[0][0], "multi")
+    self.assertEqual(result[0][1], {"a.cc", "b.cc", "a.h", "b.h"})
 
 
 if __name__ == "__main__":

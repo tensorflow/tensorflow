@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
@@ -175,6 +176,65 @@ TEST(HloModuleTest, SharedConfig) {
   EXPECT_EQ(m1.config().device_memory_size(), m2.config().device_memory_size());
   EXPECT_EQ(m1.shared_config().use_count(), 2);
   EXPECT_EQ(m2.shared_config().use_count(), 2);
+}
+
+TEST(HloModuleTest, CanonicalizeComputationLocalIds) {
+  absl::string_view hlo_string = R"(
+HloModule my_module
+
+comp1 {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  mul0 = f32[] multiply(p0, p1)
+  add0 = f32[] add(p0, p1)
+  ROOT out = f32[] add(add0, mul0)
+}
+
+ENTRY entry {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  mul0 = f32[] multiply(p0, p1)
+  add0 = f32[] add(p0, p1)
+  ROOT out = f32[] add(add0, mul0)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  HloComputation* comp1 = module->GetComputationWithName("comp1");
+  HloComputation* entry = module->entry_computation();
+
+  auto get_local_id = [](HloComputation* comp, absl::string_view name) {
+    for (const auto& inst : comp->instructions()) {
+      if (absl::StrContains(inst->name(), name)) {
+        return inst->local_id();
+      }
+    }
+    return -1;
+  };
+
+  // Verify initial IDs reflect construction order (mul0 then add0).
+  EXPECT_EQ(get_local_id(comp1, "mul0"), 2);
+  EXPECT_EQ(get_local_id(comp1, "add0"), 3);
+  EXPECT_EQ(get_local_id(entry, "mul0"), 2);
+  EXPECT_EQ(get_local_id(entry, "add0"), 3);
+
+  module->CanonicalizeComputationLocalIds();
+
+  // We expect the post-order: p0, p1, add0, mul0, out
+  // So IDs should be 0, 1, 2, 3, 4 respectively.
+
+  EXPECT_EQ(get_local_id(comp1, "p0"), 0);
+  EXPECT_EQ(get_local_id(comp1, "p1"), 1);
+  EXPECT_EQ(get_local_id(comp1, "add0"), 2);
+  EXPECT_EQ(get_local_id(comp1, "mul0"), 3);
+  EXPECT_EQ(get_local_id(comp1, "out"), 4);
+
+  EXPECT_EQ(get_local_id(entry, "p0"), 0);
+  EXPECT_EQ(get_local_id(entry, "p1"), 1);
+  EXPECT_EQ(get_local_id(entry, "add0"), 2);
+  EXPECT_EQ(get_local_id(entry, "mul0"), 3);
+  EXPECT_EQ(get_local_id(entry, "out"), 4);
 }
 
 // Common patter across XLA. Besides possibility of a dangling pointer issue
@@ -1393,6 +1453,67 @@ TEST(HloModuleTest, DeviceTypeSerialization) {
   std::unique_ptr<HloModule> module_from_proto_2 =
       std::move(status_or_module_from_proto_2).value();
   EXPECT_EQ(module_from_proto_2->config().device_type(), "GPU");
+}
+
+TEST(HloModuleTest, CreateFromProto_DecodesBackendConfigPayload) {
+  HloModuleProto proto;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        name: "test_module"
+        entry_computation_id: 1
+        payloads: "inlined_large_payload_string"
+        computations {
+          name: "main"
+          id: 1
+          instructions {
+            name: "inst1"
+            opcode: "parameter"
+            shape { element_type: F32 }
+            id: 2
+            backend_config_payload { id: 0 }
+          }
+          instructions {
+            name: "inst2"
+            opcode: "parameter"
+            shape { element_type: F32 }
+            parameter_number: 1
+            id: 3
+            backend_config_payload { value: "small_inline_payload" }
+          }
+          instructions {
+            name: "root"
+            opcode: "add"
+            shape { element_type: F32 }
+            id: 4
+            operand_ids: 2
+            operand_ids: 3
+          }
+          root_id: 4
+        }
+        host_program_shape {
+          parameters { element_type: F32 }
+          parameters { element_type: F32 }
+          result { element_type: F32 }
+          parameter_names: "p0"
+          parameter_names: "p1"
+        }
+      )pb",
+      &proto));
+
+  TF_ASSERT_OK_AND_ASSIGN(HloModuleConfig config,
+                          HloModule::CreateModuleConfigFromProto(
+                              proto, GetDebugOptionsFromFlags()));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          HloModule::CreateFromProto(proto, config));
+
+  HloInstruction* i1 =
+      module->entry_computation()->GetInstructionWithName("inst1");
+  HloInstruction* i2 =
+      module->entry_computation()->GetInstructionWithName("inst2");
+
+  EXPECT_EQ(i1->raw_backend_config_string(), "inlined_large_payload_string");
+  EXPECT_EQ(i2->raw_backend_config_string(), "small_inline_payload");
 }
 
 class TestCacheEntry : public HloModule::CacheEntry {

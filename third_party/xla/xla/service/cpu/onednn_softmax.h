@@ -23,12 +23,10 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 
-void ExecuteOneDnnSoftmax(absl::Span<MemrefInfoHandler> arguments,
-                          absl::Span<MemrefInfoHandler> results,
-                          OneDnnSoftmaxConfig softmax_config,
+void ExecuteOneDnnSoftmax(OneDnnSoftmaxConfig softmax_config,
                           const dnnl::engine& cpu_engine,
                           dnnl::stream& onednn_stream,
-                          OneDnnResources& resources);
+                          OneDnnPrimResources& resources);
 
 }  // namespace cpu
 }  // namespace xla

@@ -723,6 +723,17 @@ absl::StatusOr<std::vector<IndexDomain>> ConcreteEvenSharding::IndexDomains(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
   DCHECK(this);
+  if (devices_->devices().size() == 1 && is_fully_replicated_ &&
+      shape_ == shard_shape_ && shape_ == shape) {
+    std::vector<IndexDomain> result;
+    if (single_device_shard_semantics ==
+            SingleDeviceShardSemantics::kAllShards ||
+        devices_->devices().front()->IsAddressable()) {
+      result.reserve(1);
+      result.push_back(IndexDomain(shape));
+    }
+    return result;
+  }
   return InvalidArgument(
       "ConcreteEvenSharding does not have index domain information");
 }

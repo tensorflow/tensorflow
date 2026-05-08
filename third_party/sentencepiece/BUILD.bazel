@@ -1,0 +1,100 @@
+load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
+
+package(
+    default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//visibility:public"],
+    features = [
+        "layering_check",
+        "parse_headers",
+    ],
+)
+
+licenses(["notice"])
+
+proto_library(
+    name = "sentencepiece_proto",
+    srcs = ["//third_party/sentencepiece/src/sentencepiece.proto"],
+)
+
+cc_proto_library(
+    name = "sentencepiece_cc_proto",
+    deps = [":sentencepiece_proto"],
+)
+
+proto_library(
+    name = "sentencepiece_model_proto",
+    srcs = ["//third_party/sentencepiece/src/sentencepiece_model.proto"],
+)
+
+cc_proto_library(
+    name = "sentencepiece_model_cc_proto",
+    deps = [":sentencepiece_model_proto"],
+)
+
+genrule(
+    name = "config_h",
+    srcs = ["config.h.in"],
+    outs = ["config.h"],
+    cmd = "cp $< $@",
+)
+
+cc_library(
+    name = "common",
+    hdrs = [
+        "config.h",
+        "//third_party/sentencepiece/src/common.h",
+    ],
+    deps = [
+        "//third_party/absl/base",
+    ],
+)
+
+cc_library(
+    name = "sentencepiece_processor",
+    srcs = [
+        "//third_party/sentencepiece/src/bpe_model.cc",
+        "//third_party/sentencepiece/src/char_model.cc",
+        "//third_party/sentencepiece/src/error.cc",
+        "//third_party/sentencepiece/src/filesystem.cc",
+        "//third_party/sentencepiece/src/model_factory.cc",
+        "//third_party/sentencepiece/src/model_interface.cc",
+        "//third_party/sentencepiece/src/normalizer.cc",
+        "//third_party/sentencepiece/src/sentencepiece_processor.cc",
+        "//third_party/sentencepiece/src/unigram_model.cc",
+        "//third_party/sentencepiece/src/util.cc",
+        "//third_party/sentencepiece/src/word_model.cc",
+    ],
+    hdrs = [
+        "//third_party/sentencepiece/src/bpe_model.h",
+        "//third_party/sentencepiece/src/char_model.h",
+        "//third_party/sentencepiece/src/filesystem.h",
+        "//third_party/sentencepiece/src/freelist.h",
+        "//third_party/sentencepiece/src/model_factory.h",
+        "//third_party/sentencepiece/src/model_interface.h",
+        "//third_party/sentencepiece/src/normalizer.h",
+        "//third_party/sentencepiece/src/sentencepiece_processor.h",
+        "//third_party/sentencepiece/src/trainer_interface.h",
+        "//third_party/sentencepiece/src/unigram_model.h",
+        "//third_party/sentencepiece/src/util.h",
+        "//third_party/sentencepiece/src/word_model.h",
+    ],
+    defines = ["_USE_TF_STRING_VIEW"],
+    includes = [
+        ".",
+        "src",
+    ],
+    linkstatic = 1,
+    deps = [
+        ":common",
+        ":sentencepiece_cc_proto",
+        ":sentencepiece_model_cc_proto",
+        "//third_party/absl/container:flat_hash_map",
+        "//third_party/absl/container:flat_hash_set",
+        "//third_party/absl/memory",
+        "//third_party/absl/strings",
+        "//third_party/absl/strings:str_format",
+        "@darts_clone",
+    ],
+)

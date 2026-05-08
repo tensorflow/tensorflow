@@ -15,12 +15,18 @@ limitations under the License.
 
 #include "xla/service/collective_permute_key.h"
 
+#include <cstdint>
 #include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/algorithm/container.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/side_effect_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -34,7 +40,28 @@ std::optional<CollectivePermuteKey> GetCollectivePermuteKey(
   }
 
   const auto* cp = Cast<HloCollectivePermuteInstruction>(instruction);
-  return CollectivePermuteKey{cp->source_target_pairs()};
+  std::vector<std::pair<int64_t, int64_t>> source_target_pairs =
+      cp->source_target_pairs();
+  if (instruction->parent()
+          ->parent()
+          ->config()
+          .debug_options()
+          .xla_enable_enzyme_comms_opt()) {
+    // Canonicalize the source-target pairs so that the order does not matter.
+    absl::c_sort(source_target_pairs);
+  }
+
+  // Include the combiner_key frontend attribute in the key so that
+  // collective-permutes with different keys are not combined.
+  std::string combiner_key;
+  if (instruction->has_frontend_attributes()) {
+    auto it = instruction->frontend_attributes().map().find(kCombinerKeyAttr);
+    if (it != instruction->frontend_attributes().map().end()) {
+      combiner_key = it->second;
+    }
+  }
+
+  return CollectivePermuteKey{source_target_pairs, combiner_key};
 }
 
 }  // namespace xla

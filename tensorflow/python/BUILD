@@ -1435,6 +1435,7 @@ tf_pybind_cc_library_wrapper(
 py_library(
     name = "tf2",
     srcs = ["tf2.py"],
+    lazy_imports = True,
     strict_deps = True,
     deps = [
         "//tensorflow/python/platform:_pywrap_tf2",

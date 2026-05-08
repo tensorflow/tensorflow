@@ -20,6 +20,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/gather_functor_batched.h"
 #include "tensorflow/core/platform/types.h"
@@ -38,13 +39,16 @@ __global__ void GatherOpKernel(const ValueOrVec* __restrict__ params,
                                int64 slice_size, int64 out_size) {
   // params is a tensor of shape
   // [batch_size, outer_size, gather_dim_size, slice_size].
-  GPU_1D_KERNEL_LOOP(i, out_size) {
-    Index batch_i = 0;  // The batch index into params to use for i.
-    Index outer_i = 0;  // The outer index into params to use for i.
-    Index indices_i = 0;  // The index into indices to use for i.
-    Index slice_i = 0;  // Index into the current slice in params to use for i.
+  for (int64_t i : GpuGridRangeX(out_size)) {
+    int64_t batch_i = 0;    // The batch index into params to use for i.
+    int64_t outer_i = 0;    // The outer index into params to use for i.
+    int64_t indices_i = 0;  // The index into indices to use for i.
+    int64_t slice_i =
+        0;  // Index into the current slice in params to use for i.
 
-    const Index slices_count = i / slice_size;
+    // Use int64_t for intermediate products to avoid overflow when Index is
+    // int32.
+    const int64_t slices_count = i / slice_size;
     if (is_batch_dims_zero) {
       if (is_axis_zero) {
         indices_i = slices_count;
@@ -53,7 +57,7 @@ __global__ void GatherOpKernel(const ValueOrVec* __restrict__ params,
         indices_i = slices_count - outer_i * indices_size;
       }
     } else {
-      const Index entries_count = slices_count / indices_size;
+      const int64_t entries_count = slices_count / indices_size;
       if (is_axis_zero) {
         batch_i = entries_count;
       } else {
@@ -65,7 +69,8 @@ __global__ void GatherOpKernel(const ValueOrVec* __restrict__ params,
     slice_i = i - slices_count * slice_size;
 
     // Index into the gather axis to use for i.
-    Index gather_i = ldg(indices + batch_i * indices_size + indices_i);
+    Index gather_i =
+        ldg(indices + static_cast<Index>(batch_i * indices_size + indices_i));
 
     // Check gather_i is in [0, gather_dim_size).
     if (!FastBoundsCheck(gather_i, gather_dim_size)) {
@@ -75,9 +80,10 @@ __global__ void GatherOpKernel(const ValueOrVec* __restrict__ params,
     } else {
       // Read params[batch_i, outer_i, gather_i, slice_i] and write it to the
       // i'th position in out.
-      Index params_i = (
-          (batch_i * outer_size + outer_i) * gather_dim_size + gather_i
-      ) * slice_size + slice_i;
+      int64_t params_i =
+          ((batch_i * outer_size + outer_i) * gather_dim_size + gather_i) *
+              slice_size +
+          slice_i;
       out[i] = params[params_i];
     }
   }
@@ -103,10 +109,12 @@ struct LaunchGatherKernelVectorized {
       const Tvec* params_vec = reinterpret_cast<const Tvec*>(params);
       Tvec* out_vec = reinterpret_cast<Tvec*>(out);
 
-      GpuLaunchConfig config = GetGpuLaunchConfig(
-          out_size_vec, d,
-          &GatherOpKernel<Tvec, Index, is_axis_zero, is_batch_dims_zero>,
-          /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
+      TF_ASSIGN_OR_RETURN(
+          GpuLaunchConfig64 config,
+          GetGpuLaunchConfig64(
+              out_size_vec, d,
+              &GatherOpKernel<Tvec, Index, is_axis_zero, is_batch_dims_zero>,
+              /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0));
       return GpuLaunchKernel(
           GatherOpKernel<Tvec, Index, is_axis_zero, is_batch_dims_zero>,
           config.block_count, config.thread_per_block, 0, d.stream(),

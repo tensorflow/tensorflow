@@ -255,10 +255,10 @@ TEST_F(ShapeInferenceTest, TestInferenceFailure) {
 
   // If parsing attribute returns error, then it won't invoke the
   // InferenceContext. As a result, all the shape inference should be failed.
-  auto error_attr_values_fn = [](Operation *, llvm::StringRef,
-                                 const tensorflow::OpRegistrationData *, bool,
-                                 tensorflow::AttrValueMap *) {
-    return tensorflow::errors::Unknown("Intended error");
+  auto error_attr_values_fn = [](Operation*, llvm::StringRef,
+                                 const tensorflow::OpRegistrationData*, bool,
+                                 tensorflow::AttrValueMap*) {
+    return absl::UnknownError("Intended error");
   };
 
   for (Operation &op : block.without_terminator()) {

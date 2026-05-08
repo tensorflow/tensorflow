@@ -169,7 +169,11 @@ cc_library(
 tf_kernel_library(
     name = "adjust_hue_op",
     prefix = "adjust_hue_op",
-    deps = IMAGE_DEPS + [":adjust_hsv_gpu_lib"],
+    deps = IMAGE_DEPS + [
+        ":adjust_hsv_gpu_lib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -216,7 +220,11 @@ tf_kernel_library(
 tf_kernel_library(
     name = "draw_bounding_box_op",
     prefix = "draw_bounding_box_op",
-    deps = IMAGE_DEPS + ["@com_google_absl//absl/log"],
+    deps = IMAGE_DEPS + [
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -282,13 +290,20 @@ tf_kernel_library(
 tf_kernel_library(
     name = "scale_and_translate_op",
     prefix = "scale_and_translate_op",
-    deps = IMAGE_DEPS + [":sampling_kernels"],
+    deps = IMAGE_DEPS + [
+        ":sampling_kernels",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+    ],
 )
 
 tf_kernel_library(
     name = "random_crop_op",
     prefix = "random_crop_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -324,19 +339,29 @@ tf_kernel_library(
     deps = IMAGE_DEPS + [
         "//tensorflow/core/kernels:stateless_random_ops",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
 tf_kernel_library(
     name = "image_ops",
     prefix = "image_ops",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + [
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
     name = "mirror_pad_op",
     prefix = "mirror_pad_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + [
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 # Tests ------------------------

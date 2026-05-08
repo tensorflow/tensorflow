@@ -265,35 +265,6 @@ def _batch_files_exist(repository_ctx, libs_paths, bash_bin):
             all_paths.append(lib_path)
     return files_exist(repository_ctx, all_paths, bash_bin)
 
-def _soversion(repository_ctx, path, bash_bin = None):
-    """Returns the soversion of a given library.
-
-    Args:
-      repository_ctx: the repository_ctx
-      path: a path on the file system
-      bash_bin: path to the bash interpreter
-
-    Returns:
-      Parsed soversion string form the SONAME dtag of the library
-    """
-    if bash_bin == None:
-        bash_bin = get_bash_bin(repository_ctx)
-
-    exec_result = execute(repository_ctx, [bash_bin, "-c", "readelf --dynamic \"%s\"" % path])
-
-    if exec_result.return_code:
-        auto_configure_fail("Failed to run readelf to find soversion: %s" % err_out(exec_result))
-
-    soversion = ""
-    for row in exec_result.stdout.strip().split("\n"):
-        match = row.find("SONAME")
-        if match >= 0:
-            match = row.find(".so.", match)
-            if match >= 0:
-                soversion = row[match + 4:-1]
-                break
-    return soversion
-
 def _select_rocm_lib_paths(repository_ctx, libs_paths, bash_bin):
     test_results = _batch_files_exist(repository_ctx, libs_paths, bash_bin)
 
@@ -319,7 +290,6 @@ def _select_rocm_lib_paths(repository_ctx, libs_paths, bash_bin):
         libs[name] = struct(
             file_name = selected_path.basename,
             path = realpath(repository_ctx, selected_path, bash_bin),
-            soversion = _soversion(repository_ctx, selected_path, bash_bin),
         )
 
     return libs
@@ -661,6 +631,7 @@ def _create_local_rocm_repository(repository_ctx):
         "%{rocm_toolkit_path}": str(repository_ctx.path(rocm_config.rocm_toolkit_path)),
         "%{rocm_rbe_docker_image}": repository_ctx.os.environ.get(_TF_ROCM_RBE_DOCKER_IMAGE, _DEFAULT_TF_ROCM_RBE_DOCKER_IMAGE),
         "%{rocm_rbe_pool}": repository_ctx.os.environ.get(_TF_ROCM_RBE_POOL, _DEFAULT_TF_ROCM_RBE_POOL),
+        "%{rocm_repo_name}": repository_ctx.name,
     }
 
     is_rocm_clang = _use_rocm_clang(repository_ctx)
@@ -740,7 +711,7 @@ def _create_local_rocm_repository(repository_ctx):
         {
             "%{cpu_compiler}": str(cc),
             "%{compiler_is_clang}": "True",
-            "%{rocm_root}": "external/local_config_rocm/" + str(rocm_config.rocm_toolkit_path),
+            "%{rocm_root}": "external/" + repository_ctx.name + "/" + str(rocm_config.rocm_toolkit_path),
             "%{hipcc_env}": _hipcc_env(repository_ctx),
             "%{rocr_runtime_library}": "hsa-runtime64",
             "%{hip_runtime_library}": "amdhip64",
@@ -771,16 +742,6 @@ def _create_local_rocm_repository(repository_ctx):
             "%{miopen_version_number}": rocm_config.miopen_version_number,
             "%{hipruntime_version_number}": rocm_config.hipruntime_version_number,
             "%{hipblaslt_flag}": "1",
-            "%{hip_soversion_number}": rocm_libs["amdhip64"].soversion,
-            "%{rocblas_soversion_number}": rocm_libs["rocblas"].soversion,
-            "%{hipblaslt_soversion_number}": rocm_libs["hipblaslt"].soversion if rocm_libs["hipblaslt"] != None else "",
-            "%{miopen_soversion_number}": rocm_libs["MIOpen"].soversion,
-            "%{hipfft_soversion_number}": rocm_libs["hipfft"].soversion,
-            "%{rocsolver_soversion_number}": rocm_libs["rocsolver"].soversion if rocm_libs["rocsolver"] != None else "",
-            "%{hipsolver_soversion_number}": rocm_libs["hipsolver"].soversion if rocm_libs["hipsolver"] != None else "",
-            "%{hipsparse_soversion_number}": rocm_libs["hipsparse"].soversion,
-            "%{roctracer_soversion_number}": rocm_libs["roctracer64"].soversion,
-            "%{rocrand_soversion_number}": rocm_libs["rocrand"].soversion,
         },
     )
 
@@ -798,16 +759,6 @@ def _create_local_rocm_repository(repository_ctx):
             "%{miopen_version_number}": rocm_config.miopen_version_number,
             "%{hipruntime_version_number}": rocm_config.hipruntime_version_number,
             "%{hipblaslt_flag}": "1",
-            "%{hip_soversion_number}": rocm_libs["amdhip64"].soversion,
-            "%{rocblas_soversion_number}": rocm_libs["rocblas"].soversion,
-            "%{hipblaslt_soversion_number}": rocm_libs["hipblaslt"].soversion if rocm_libs["hipblaslt"] != None else "",
-            "%{miopen_soversion_number}": rocm_libs["MIOpen"].soversion,
-            "%{hipfft_soversion_number}": rocm_libs["hipfft"].soversion,
-            "%{rocsolver_soversion_number}": rocm_libs["rocsolver"].soversion if rocm_libs["rocsolver"] != None else "",
-            "%{hipsolver_soversion_number}": rocm_libs["hipsolver"].soversion if rocm_libs["hipsolver"] != None else "",
-            "%{hipsparse_soversion_number}": rocm_libs["hipsparse"].soversion,
-            "%{roctracer_soversion_number}": rocm_libs["roctracer64"].soversion,
-            "%{rocrand_soversion_number}": rocm_libs["rocrand"].soversion,
         },
     )
 

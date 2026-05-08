@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <optional>
 
+#include <gtest/gtest.h>
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 
 namespace xla {
@@ -37,9 +38,10 @@ ENTRY fusion.1644 {
 
   RunAndFilecheckHloRewrite(hlo, BroadcastCanonicalizer{}, R"(
 // CHECK: [[parameter_2_0:%[^ ]+]] = f32[2,3,2]{2,1,0} parameter(0)
-// CHECK: [[broadcast_1:%[^ ]+]] = f32[2,3,8,2]{3,2,1,0} broadcast([[parameter_2_0]]), dimensions={0,1,3}
-// CHECK: [[transpose_2:%[^ ]+]] = f32[3,2,8,2]{3,2,1,0} transpose([[broadcast_1]]), dimensions={1,0,2,3}
-// CHECK: ROOT [[reshape_43_3:%[^ ]+]] = f32[3,16,1,2]{3,2,1,0} reshape([[transpose_2]])
+// CHECK: [[transpose_0:%[^ ]+]] = f32[3,2,2]{2,1,0} transpose([[parameter_2_0]]), dimensions={1,0,2}
+// CHECK: [[broadcast_1:%[^ ]+]] = f32[3,2,8,2]{3,2,1,0} broadcast([[transpose_0]]), dimensions={0,1,3}
+// CHECK-NOT: transpose
+// CHECK: ROOT [[reshape_43_3:%[^ ]+]] = f32[3,16,1,2]{3,2,1,0} reshape([[broadcast_1]])
       )");
 }
 
@@ -55,10 +57,26 @@ ENTRY fusion.1644 {
 )";
 
   RunAndFilecheckHloRewrite(hlo, BroadcastCanonicalizer{}, R"(
-// CHECK: [[broadcast_0:%[^ ]+]] = f32[8,5,9,6,7]{4,3,2,1,0} broadcast([[parameter_2_1:%[^ ]+]]), dimensions={1,3,4}
-// CHECK: [[transpose_2:%[^ ]+]] = f32[8,7,9,5,6]{4,3,2,1,0} transpose([[broadcast_0]]), dimensions={0,4,2,1,3}
-// CHECK: ROOT [[reshape_43_3:%[^ ]+]] = f32[8,7,45,1,6]{4,3,2,1,0} reshape([[transpose_2]])
+// CHECK: [[transpose_0:%[^ ]+]] = f32[7,5,6]{2,1,0} transpose([[parameter_2_1:%[^ ]+]]), dimensions={2,0,1}
+// CHECK: [[broadcast_0:%[^ ]+]] = f32[8,7,9,5,6]{4,3,2,1,0} broadcast([[transpose_0]]), dimensions={1,3,4}
+// CHECK-NOT: transpose
+// CHECK: ROOT [[reshape_43_3:%[^ ]+]] = f32[8,7,45,1,6]{4,3,2,1,0} reshape([[broadcast_0]])
       )");
+}
+
+TEST_F(BroadcastCanonicalizerTest, Rank1OperandNoTranspose) {
+  const char* hlo = R"(
+HloModule fusion.1644
+
+ENTRY fusion.1644 {
+  parameter.2 = f32[2]{0} parameter(0)
+  ROOT %broadcast.399 = f32[2,3,8,2]{3,2,1,0} broadcast(%parameter.2), dimensions={0}
+}
+)";
+
+  auto status_or_module = RunAndCheckHloRewrite(hlo, BroadcastCanonicalizer{},
+                                                /*expect_change=*/false);
+  EXPECT_TRUE(status_or_module.ok());
 }
 
 }  // namespace

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -183,6 +184,7 @@ TEST_F(ShardyXLATest, NonFlatGraphForcedDifferentShardingsOnSharedFunc) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
   runShardyWithStablehloImport(module.get());
+  VLOG(10) << "module: " << module->ToString();
   // Computations refer to: %foo, %bar (x2), %entry.
   EXPECT_EQ(module->computation_count(), 4);
 }
@@ -741,7 +743,7 @@ TEST_F(ShardyXLATest, ShardMap) {
       ROOT add = f32[] add(p0, p1)
     }
 
-    shmap_body.11 {
+    xla.sdy.manual_computation_body.11 {
       Arg_0.12 = f32[2,8] parameter(0)
       add.14 = f32[2,8] add(Arg_0.12, Arg_0.12)
       Arg_1.13 = f32[8,32] parameter(1)
@@ -751,18 +753,16 @@ TEST_F(ShardyXLATest, ShardMap) {
 
     ENTRY main {
       p0 = f32[8,16] parameter(0)
-      custom-call.3 = f32[8,16] custom-call(p0), custom_call_target="Sharding", sharding={devices=[4,2]<=[8]}
-      custom-call.4 = f32[2,8] custom-call(custom-call.3), custom_call_target="SPMDFullToShardShape", sharding={manual}
       p1 = f32[16,32] parameter(1)
-      custom-call.5 = f32[16,32] custom-call(p1), custom_call_target="Sharding", sharding={devices=[2,1,4]<=[4,2]T(1,0) last_tile_dim_replicate}
-      custom-call.6 = f32[8,32] custom-call(custom-call.5), custom_call_target="SPMDFullToShardShape", sharding={manual}
-      call.17 = f32[2,32] call(custom-call.4, custom-call.6), to_apply=shmap_body.11
-      custom-call.18 = f32[2,32] custom-call(call.17), custom_call_target="Sharding", sharding={manual}
-      ROOT custom-call.19 = f32[8,32] custom-call(custom-call.18), custom_call_target="SPMDShardToFullShape", sharding={devices=[4,1,2]<=[8] last_tile_dim_replicate}
+      %custom-call.2 = (f32[2,8], f32[8,32]) custom-call(p0, p1), custom_call_target="xla.sdy.GlobalToLocalShape", frontend_attributes={xla.sdy.in_shardings="#sdy.sharding_per_value<[<mesh<[\"a\"=4, \"b\"=2]>, [{\"a\"}, {\"b\"}]>, <mesh<[\"a\"=4, \"b\"=2]>, [{\"b\"}, {}], replicated={\"a\"}>]>",xla.sdy.manual_axes="#sdy<manual_axes{\"a\", \"b\"}>"}
+      %get-tuple-element.2 = f32[2,8] get-tuple-element(%custom-call.2), index=0
+      %get-tuple-element.3 = f32[8,32] get-tuple-element(%custom-call.2), index=1
+      %call.1 = f32[2,32] call(%get-tuple-element.2, %get-tuple-element.3), to_apply=xla.sdy.manual_computation_body.11
+      ROOT %custom-call.3 = f32[8,32] custom-call(%call.1), custom_call_target="xla.sdy.LocalToGlobalShape", frontend_attributes={xla.sdy.manual_axes="#sdy<manual_axes{\"a\", \"b\"}>",xla.sdy.out_shardings="#sdy.sharding_per_value<[<mesh<[\"a\"=4, \"b\"=2]>, [{\"a\"}, {}], replicated={\"b\"}>]>"}
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  runShardyWithStablehloImport(module.get());
+  runShardyWithSdyImport(module.get());
 
   // The entry computation, the region_add for the all-reduce, and the
   // shmap_body.
@@ -1056,6 +1056,82 @@ TEST_F(ShardyXLATest, RaggedDotMode1) {
   EXPECT_THAT(entry->root_instruction(),
               op::Sharding("{devices=[2,2,1,2]<=[8] last_tile_dim_replicate}"));
 }
+
+namespace {
+
+// End-to-end check: an associative scan exposes its non-scan dims as
+// pass-through factors and its scan dim as a permutation factor, so an input
+// sharded along the non-scan dim propagates through Shardy and reaches the
+// scan output. The scan-dim sharding is preserved as well (associative scans
+// allow it via parallel-prefix evaluation). The scan tuple is exported back
+// as an HLO `kScan` followed by `get-tuple-element`, which is what gets
+// inspected here.
+//
+// The scan body sees per-iteration slices: input is `f32[16,32]` with scan
+// dim 0, so the body input parameter is `f32[32]` and the carry init is
+// `f32[32]`.
+TEST_F(ShardyXLATest, ScanAssociative) {
+  const char* const hloString = R"(
+  HloModule scan_associative, allow_spmd_sharding_propagation_to_parameters={true,true}, allow_spmd_sharding_propagation_to_output={true}, frontend_attributes={xla.sdy.meshes={mesh = #sdy.mesh<["a"=2, "b"=2]>}}
+    %scan_combiner {
+      %lhs = f32[32] parameter(0)
+      %rhs = f32[32] parameter(1)
+      %add = f32[32] add(%lhs, %rhs)
+      ROOT %t = (f32[32], f32[32]) tuple(%add, %add)
+    }
+    ENTRY %entry {
+      %p0 = f32[16,32] parameter(0), frontend_attributes={xla.sdy.sharding="#sdy.sharding<@mesh, [{\"a\", ?}, {\"b\", ?}]>"}
+      %init_scalar = f32[] constant(0)
+      %init = f32[32] broadcast(%init_scalar), dimensions={}
+      %scan = (f32[16,32], f32[32]) scan(%p0, %init), dimensions={0}, num_carries=1, is_associative=true, to_apply=%scan_combiner
+      ROOT %result = f32[16,32] get-tuple-element(%scan), index=0
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+  runShardyWithSdyImport(module.get());
+
+  HloComputation* entry = module->entry_computation();
+  EXPECT_THAT(entry->parameter_instruction(0),
+              op::Sharding("{devices=[2,2]<=[4]}"));
+  EXPECT_THAT(entry->root_instruction(), op::Sharding("{devices=[2,2]<=[4]}"));
+}
+
+// Same as above, but non-associative: the scan-dim factor in the rule is
+// `kNeedReplication` instead of `kPermutation`. With an open scan dim
+// sharding (user only pins the non-scan dim to `b`), propagation must NOT
+// introduce a sharding axis on the scan dim — the partitioner can't shard a
+// non-associative scan dim. The non-scan dim's `b` axis still flows from
+// input to output through the rule's pass-through factor.
+TEST_F(ShardyXLATest, ScanNonAssociative) {
+  const char* const hloString = R"(
+  HloModule scan_non_associative, allow_spmd_sharding_propagation_to_parameters={true,true}, allow_spmd_sharding_propagation_to_output={true}, frontend_attributes={xla.sdy.meshes={mesh = #sdy.mesh<["a"=2, "b"=2]>}}
+    %scan_combiner {
+      %lhs = f32[32] parameter(0)
+      %rhs = f32[32] parameter(1)
+      %add = f32[32] add(%lhs, %rhs)
+      ROOT %t = (f32[32], f32[32]) tuple(%add, %add)
+    }
+    ENTRY %entry {
+      %p0 = f32[16,32] parameter(0), frontend_attributes={xla.sdy.sharding="#sdy.sharding<@mesh, [{?}, {\"b\", ?}]>"}
+      %init_scalar = f32[] constant(0)
+      %init = f32[32] broadcast(%init_scalar), dimensions={}
+      %scan = (f32[16,32], f32[32]) scan(%p0, %init), dimensions={0}, num_carries=1, is_associative=false, to_apply=%scan_combiner
+      ROOT %result = f32[16,32] get-tuple-element(%scan), index=0
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+  runShardyWithSdyImport(module.get());
+
+  HloComputation* entry = module->entry_computation();
+  EXPECT_THAT(
+      entry->parameter_instruction(0),
+      op::Sharding("{devices=[1,2,2]<=[2,2]T(1,0) last_tile_dim_replicate}"));
+  EXPECT_THAT(
+      entry->root_instruction(),
+      op::Sharding("{devices=[1,2,2]<=[2,2]T(1,0) last_tile_dim_replicate}"));
+}
+
+}  // namespace
 
 TEST_F(ShardyXLATest, PreserveOriginalValueRecoveryTable) {
   const char* const hloString = R"(

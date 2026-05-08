@@ -19,7 +19,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <deque>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -47,6 +46,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/layout.h"
 #include "xla/map_util.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -142,6 +142,7 @@ struct SchedulerConfig {
   int64_t max_hops_to_closest_selective_overlap = 0;
   int64_t rerun = 0;
   int64_t parallel_collective_overlap_limit = 1;
+  int64_t parallel_async_compute_limit = 2;
   bool schedule_send_recvs = false;
   bool deannotate_group_if_blocked = false;
   // Consider send recv as the same resource. Some platforms do not take well
@@ -408,12 +409,17 @@ class SchedulerCore {
   // Abstract base class for scheduling state.
   struct SchedulingState {
     virtual ~SchedulingState() = default;
+    virtual void Reset() {}
   };
 
   // Hook function to modify scheduling graph before scheduler runs.
   using GraphProcessingHook = std::function<absl::Status(HloScheduleGraph*)>;
 
   virtual absl::Status InitializeScheduler(const HloModule* module) = 0;
+
+  virtual absl::Status ResetScheduler(const HloModule* module) {
+    return InitializeScheduler(module);
+  }
 
   virtual absl::Status CaptureScheduleProto() = 0;
 
@@ -595,6 +601,7 @@ class HloEdge {
   // whose contents are identical to "vals".
   void SetSharableResources(HloScheduleGraph* g,
                             const std::vector<int64_t>& vals);
+  void ResetSharableResources() { sharable_resources_index_ = -1; }
 
  private:
   // Latency between the two nodes connected by this edge. The other end of the
@@ -676,10 +683,14 @@ class HloGraphNode {
   }
   // Reset the node to a state where it's ready to be scheduled again.
   void ResetScheduling() {
+    predecessors_.RevertToStaticSize();
+    successors_.RevertToStaticSize();
     scheduled_ = false;
     indegree_ = predecessors_.size();
     outdegree_ = successors_.size();
     ready_time_ = std::numeric_limits<TimeCost>::max();
+    force_delay_after_target_ = false;
+    ClearAnnotation();
   }
   size_t GetReadyNodesIfScheduled() const { return ready_nodes_if_scheduled_; }
   void UpdateReadyNodesIfScheduled() {
@@ -853,15 +864,17 @@ class HloGraphNode {
   const std::vector<int64_t>& GetShareableResourcesOnEdge(HloScheduleGraph* g,
                                                           HloEdge& edge) const {
     if (!edge.SharableResourcesComputed()) {
-      HloGraphNode& to = edge.Target();
       std::vector<int64_t> resources;
-      absl::c_for_each(rare_->released_shareable_resources,
-                       [this, &to, &resources](const int64_t resource) {
-                         if (to.DoesOccupyShareableResource(resource) &&
-                             this->DoesReleaseResource(resource)) {
-                           resources.push_back(resource);
-                         }
-                       });
+      if (has_rare_) {
+        HloGraphNode& to = edge.Target();
+        absl::c_for_each(rare_->released_shareable_resources,
+                         [this, &to, &resources](const int64_t resource) {
+                           if (to.DoesOccupyShareableResource(resource) &&
+                               this->DoesReleaseResource(resource)) {
+                             resources.push_back(resource);
+                           }
+                         });
+      }
       edge.SetSharableResources(g, resources);
     }
     return edge.GetSharableResources(g);
@@ -1106,6 +1119,9 @@ class HloGraphNode {
       return absl::MakeConstSpan(edges_, size_);
     }
 
+    void RecordStaticSize() { static_size_ = size_; }
+    void RevertToStaticSize() { size_ = static_size_; }
+
     void AddEdge(const HloEdge& e) {
       if (size_ >= alloc_) {
         // Grow: Make sure we always leave room for at least
@@ -1139,6 +1155,7 @@ class HloGraphNode {
     // Allocated space in edges_ array
     int32_t alloc_ : 31;
     bool owned_ : 1;
+    int static_size_ = 0;
   };
   EdgeStorage predecessors_;
   EdgeStorage successors_;
@@ -1206,6 +1223,13 @@ class HloScheduleGraph {
       GetNodePtr(original_order_[i])->SetPreference(preferences[i]);
     }
   }
+  void RecordStaticEdges() {
+    for (auto& pair : nodes_) {
+      node_storage_[pair.second].predecessors_.RecordStaticSize();
+      node_storage_[pair.second].successors_.RecordStaticSize();
+    }
+  }
+
   void ResetScheduling() {
     for (auto& pair : nodes_) {
       node_storage_[pair.second].ResetScheduling();
@@ -1213,6 +1237,13 @@ class HloScheduleGraph {
     for (auto& pair : nodes_) {
       node_storage_[pair.second].UpdateReadyNodesIfScheduled();
     }
+    for (auto& edge : predecessors_storage_) {
+      edge.ResetSharableResources();
+    }
+    for (auto& edge : successors_storage_) {
+      edge.ResetSharableResources();
+    }
+    sharable_resources_storage_.resize(1);
   }
 
  private:
@@ -1322,6 +1353,19 @@ class MemoryPressureTracker {
     int64_t memory_peak = 0;
     absl::flat_hash_set<HloBuffer::Id> live_ids_at_bottom;
   };
+  /*
+  MemoryPressureTracker is used to track the memory pressure of a single
+  computation. It is initialized with the initial live buffers at the bottom of
+  the computation. As the algorithm progresses, the live buffers change and the
+  memory pressure changes.
+  The memory pressure of a computation is the sum of the initial memory
+  pressure and the live memory pressure.
+  The live memory pressure is the difference between the current memory usage
+  and the initial memory pressure.
+
+  The memory pressure of a computation at a certain point is the sum of the
+  initial memory pressure and the live memory pressure at that
+  */
   MemoryPressureTracker(
       const HloAliasAnalysis* hlo_alias_analysis,
       const BufferInfoTracker& buffer_tracker,
@@ -1341,6 +1385,7 @@ class MemoryPressureTracker {
   // Reset the memory pressure tracker to the initialized state.
   void Reset(const HloComputation* computation,
              const LiveBufferSet& initial_live_buffers);
+
   // After an instruction is scheduled, update the memory pressure effect on
   // other instructions.
   void UpdateBuffers(const HloInstruction* instruction);
@@ -1372,6 +1417,12 @@ class MemoryPressureTracker {
 
   // Returns pressure state object for this MemoryPressureTracker object.
   const MemoryPressureState& pressure_state() const { return pressure_state_; }
+
+  int32_t GetInstructionId(const HloInstruction* i) const {
+    auto it = instruction_ids_.find(i);
+    CHECK(it != instruction_ids_.end());
+    return it->second;
+  }
 
   absl::Span<const HloBuffer::Id> allocated_buffer_ids(
       const HloInstruction* i) const {
@@ -1496,7 +1547,18 @@ class ModulePressureState {
         hlo_alias_analysis_(hlo_alias_analysis),
         buffer_tracker_(module, hlo_alias_analysis, shape_size_bytes),
         top_down_scheduling_(top_down_scheduling) {}
-  void InitializePressureStates();
+  // Initializes the pressure states for all computations in the module, only
+  // needs to be called once at the beginning of the scheduling process.
+  void InitializePressureStates(
+      std::shared_ptr<absl::flat_hash_map<
+          const HloComputation*, std::shared_ptr<MemoryPressureTracker>>>
+          pressure_trackers = nullptr);
+  // Resets the pressure states for all computations in the module, must be
+  // called to reset the memory pressure trackers after each scheduling attempt.
+  void ResetPressureStates(
+      std::shared_ptr<absl::flat_hash_map<
+          const HloComputation*, std::shared_ptr<MemoryPressureTracker>>>
+          pressure_trackers);
   bool ComputationIsMemoryTracked(const HloComputation* computation) const {
     return ContainsKey(memory_pressure_states_, computation);
   }
@@ -1523,7 +1585,7 @@ class ModulePressureState {
         memory_peak_ = std::max(memory_peak_, memory_state.second.memory_peak);
       }
     } else {
-      memory_peak_ = state.memory_peak;
+      memory_peak_ = std::max(memory_peak_, state.memory_peak);
     }
   }
   // Returns the underlying pressure state cache object
@@ -1660,7 +1722,7 @@ class DefaultSchedulerCore : public SchedulerCore {
     // states related to the async instructions.
     const AsyncTracker* async_tracker;
     // Tracker of memory pressure for the computation.
-    std::unique_ptr<MemoryPressureTracker> memory_pressure_tracker;
+    std::shared_ptr<MemoryPressureTracker> memory_pressure_tracker;
     // Vector containing a list of nodes that aren't ready to schedule yet in
     // order of time when they are going to become ready.
     std::vector<const HloGraphNode*> next_ready_stack;
@@ -1698,10 +1760,12 @@ class DefaultSchedulerCore : public SchedulerCore {
     absl::flat_hash_set<HloGraphNode*> nodes_holding_annotations;
     // Reference to this scheduler run configuration.
     const SchedulerConfig& config;
+    void Reset() override;
+
     SchedulingState(
         const HloInstructionSequence* instr_sequence,
         std::shared_ptr<const SchedulingContext>& scheduling_context,
-        std::unique_ptr<MemoryPressureTracker> memory_pressure_tracker,
+        std::shared_ptr<MemoryPressureTracker> memory_pressure_tracker,
         const SchedulerConfig& config)
         : sched_graph(&instr_sequence->instructions(), scheduling_context),
           latency_estimator(scheduling_context->GetLatencyEstimator().get()),
@@ -1748,6 +1812,11 @@ class DefaultSchedulerCore : public SchedulerCore {
 
   absl::StatusOr<std::shared_ptr<SchedulerCore::SchedulingState>>
   MakeSchedulingState(const HloComputation* computation) override;
+
+  absl::Status ResetScheduler(const HloModule* module) override {
+    module_pressure_state_->ResetPressureStates(pressure_trackers_);
+    return absl::OkStatus();
+  }
   absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
       const HloComputation* computation) override;
   absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
@@ -1811,6 +1880,10 @@ class DefaultSchedulerCore : public SchedulerCore {
       const LatencyEstimator& estimator,
       const std::vector<HloInstruction*>& instructions);
 
+  ModulePressureState* GetModulePressureState() {
+    return module_pressure_state_.get();
+  }
+
  protected:
   virtual void LogInstruction(const HloInstruction* instr) const;
   // Schedules the given annotated node.
@@ -1833,6 +1906,9 @@ class DefaultSchedulerCore : public SchedulerCore {
       DefaultSchedulerCore::ShouldSkipNodeFunction should_skip_node);
 
   std::unique_ptr<ModulePressureState> module_pressure_state_;
+  std::shared_ptr<absl::flat_hash_map<const HloComputation*,
+                                      std::shared_ptr<MemoryPressureTracker>>>
+      pressure_trackers_;
   SchedulerConfig config_;
   TargetSchedulingRule target_scheduling_rule_ = nullptr;
   TargetSchedulingRule early_target_scheduling_rule_ = nullptr;
@@ -1897,15 +1973,17 @@ class LatencyHidingScheduler : public HloModulePass {
       const HloComputation* computation,
       std::shared_ptr<const SchedulingContext> scheduling_context,
       const ModulePressureState* pressure_state = nullptr,
-      MemoryPressureTracker* memory_pressure_tracker = nullptr);
+      MemoryPressureTracker* memory_pressure_tracker = nullptr,
+      std::shared_ptr<SchedulerCore::SchedulingState> sched_state = nullptr);
 
   // Even with random preferences this function will always return a schedule
   // that obeys overlap constraints.
   absl::StatusOr<
       std::pair<std::vector<HloInstruction*>, ComputationScheduleInfo>>
-  ScheduleWithPreferences(HloModule* module,
-                          const std::vector<double>& preferences,
-                          const HloComputation* computation);
+  ScheduleWithPreferences(
+      HloModule* module, const std::vector<double>& preferences,
+      const HloComputation* computation,
+      std::shared_ptr<SchedulerCore::SchedulingState> sched_state);
 
   virtual void LogScheduleStatistics(const HloComputation* computation);
 

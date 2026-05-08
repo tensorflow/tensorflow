@@ -232,7 +232,7 @@ static absl::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
   TF_RETURN_IF_ERROR(RunRedzoneChecker(stream, rhs_redzone, redzone_pattern,
                                        out_param, comparison_kernel));
   int64_t result;
-  CHECK_EQ(out_param.size(), sizeof(result));
+  CHECK_GE(out_param.size(), sizeof(result));
   TF_RETURN_IF_ERROR(stream->Memcpy(&result, out_param, sizeof(result)));
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 

@@ -69,6 +69,11 @@ class FakeClient : public PjRtClient {
       return absl::UnimplementedError("GetHloModules is not implemented.");
     }
     absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+    GetParameterMemoryKinds() const override {
+      return absl::UnimplementedError(
+          "GetParameterMemoryKinds is not implemented.");
+    }
+    absl::StatusOr<std::vector<std::vector<absl::string_view>>>
     GetOutputMemoryKinds() const override {
       return absl::UnimplementedError(
           "GetOutputMemoryKinds is not implemented.");
@@ -202,8 +207,7 @@ TEST_F(CompilePhaseHloRunnerPjRtTest,
       test::TestCompilationEnvironment1::GetDescriptor(),
       [](std::unique_ptr<tsl::protobuf::Message> msg) {
         std::unique_ptr<test::TestCompilationEnvironment1> env(
-            tensorflow::down_cast<test::TestCompilationEnvironment1*>(
-                msg.release()));
+            absl::down_cast<test::TestCompilationEnvironment1*>(msg.release()));
         if (env == nullptr) {
           env = std::make_unique<test::TestCompilationEnvironment1>();
         }

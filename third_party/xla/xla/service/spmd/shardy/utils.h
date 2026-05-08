@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/TypeRange.h"
 #include "mlir/Support/LLVM.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
@@ -105,7 +106,8 @@ AttrTy parseStringAttr(llvm::StringRef escapedValue,
       absl::string_view(escapedValue.data(), escapedValue.size()),
       &unescapedValue, &error))
       << error;
-  return mlir::cast<AttrTy>(mlir::parseAttribute(unescapedValue, context));
+  return mlir::dyn_cast_or_null<AttrTy>(
+      mlir::parseAttribute(unescapedValue, context));
 }
 
 // Parses `attrName` from `dictAttr` to an attribute of type `AttrTy`.
@@ -113,9 +115,10 @@ template <typename AttrTy>
 AttrTy parseStringAttr(mlir::DictionaryAttr dictAttr,
                        llvm::StringRef attrName) {
   if (mlir::Attribute stringAttr = dictAttr.get(attrName)) {
-    return parseStringAttr<AttrTy>(
-        mlir::cast<mlir::StringAttr>(stringAttr).getValue(),
-        stringAttr.getContext());
+    if (auto stringAttrCasted = mlir::dyn_cast<mlir::StringAttr>(stringAttr)) {
+      return parseStringAttr<AttrTy>(stringAttrCasted.getValue(),
+                                     stringAttr.getContext());
+    }
   }
   return nullptr;
 }
@@ -144,7 +147,7 @@ bool isPythonCallbackCustomCall(mlir::stablehlo::CustomCallOp op);
 
 // Parses `shardingsFrontendAttr` as a `TensorShardingPerValueAttr`, duplicates
 // the shardings at the specified indices, and returns the result as a string.
-std::string duplicateShardingsAtIndices(
+absl::StatusOr<std::string> duplicateShardingsAtIndices(
     mlir::StringRef shardingsFrontendAttr,
     const llvm::BitVector& indicesToDuplicate);
 
@@ -159,11 +162,6 @@ bool hasGspmdAttrsOrOps(mlir::ModuleOp module);
 // - `empty_mesh`
 // TODO(b/420837831): delete this once we don't fall back to GSPMD.
 bool hasShardyMesh(mlir::ModuleOp module);
-
-// Returns the func result shardings of `funcOp`, with fully-replicated
-// shardings for empty shardings on `funcOp`.
-mlir::sdy::TensorShardingPerValueAttr getFuncResultShardings(
-    mlir::func::FuncOp funcOp, const mlir::SymbolTable& symbolTable);
 
 // Converts an XLA Mesh to an SDY MeshAttr.
 mlir::sdy::MeshAttr toSdyMeshAttr(const Mesh& mesh, mlir::MLIRContext* context);
@@ -181,31 +179,19 @@ mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
 mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(
     const HloSharding& hloSharding, mlir::MLIRContext* context);
 
-// TODO(enver): Add a parameter on how to handle 'inlineable' manual
-// computations func names, that is, either hard-fail, or accept as a manual
-// computation.
-// Returns whether the call is on a manual computation. Returns false for
-// an 'inlineable' manual computation.
-bool isManualComputation(mlir::func::CallOp callOp);
-// Returns whether the func is a manual computation. Returns false for
-// an 'inlineable' manual computation.
-bool isManualComputation(mlir::func::FuncOp funcOp);
+// Returns whether the call is on a manual computation. Returns false for an
+// 'inlineable' manual computation if `isInlineable` is false. Returns whether
+// the call is on an 'inlineable' manual computation if `isInlineable` is true.
+bool isManualComputation(mlir::func::CallOp callOp, bool isInlineable = false);
+// Returns whether the func is a manual computation. Returns false for an
+// 'inlineable' manual computation if `isInlineable` is false. Returns whether
+// the func is an 'inlineable' manual computation if `isInlineable` is true.
+bool isManualComputation(mlir::func::FuncOp funcOp, bool isInlineable = false);
 
-// Gets `kOriginalFuncName` attribute attached to `funcOp`. In
-// case there is no such attribute attached, create one on the name of `funcOp`.
-mlir::StringAttr getOriginalFuncName(mlir::func::FuncOp funcOp);
-
-// Clones given `funcOp` recursively and returns the (top) cloned funcOp.
-// Overrides the func result sharding as `callOpResultShardings` in case
-// `callOpResultShardings` is non-null.
-mlir::func::FuncOp cloneFuncRecursively(
-    mlir::func::FuncOp funcOp,
-    mlir::sdy::TensorShardingPerValueAttr callOpResultShardings,
-    mlir::SymbolTable& symbolTable);
-
-// Returns the argument shardings for the given `funcOp`.
-mlir::sdy::TensorShardingPerValueAttr getFuncArgShardings(
-    mlir::func::FuncOp funcOp, const mlir::SymbolTable& symbolTable);
+// Returns if `type` has a total size of one.
+//
+// In case `type` is not a static shaped type, returns false.
+bool isSizeOfOne(mlir::Type type);
 
 }  // namespace sdy
 }  // namespace xla

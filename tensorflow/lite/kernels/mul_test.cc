@@ -65,6 +65,13 @@ class BaseMulOpModel : public SingleOpModel {
   int input1() { return input1_; }
   int input2() { return input2_; }
 
+  void Resize(const std::vector<int>& input1_shape,
+              const std::vector<int>& input2_shape) {
+    interpreter_->ResizeInputTensor(input1_, input1_shape);
+    interpreter_->ResizeInputTensor(input2_, input2_shape);
+    AllocateTensors();
+  }
+
   std::vector<InputType> GetOutput() {
     return ExtractVector<InputType>(output_);
   }
@@ -148,6 +155,13 @@ class QuantizedMulOpModel : public SingleOpModel {
 
   int input1() { return input1_; }
   int input2() { return input2_; }
+
+  void Resize(const std::vector<int>& input1_shape,
+              const std::vector<int>& input2_shape) {
+    interpreter_->ResizeInputTensor(input1_, input1_shape);
+    interpreter_->ResizeInputTensor(input2_, input2_shape);
+    AllocateTensors();
+  }
 
   std::vector<float> GetDequantizedOutput() {
     return Dequantize<QuantizedType>(
@@ -930,8 +944,8 @@ constexpr int kDim6 = 7;
 constexpr int kMaxMulBroadcastDim = 6;
 
 template <typename T>
-void TestFloatBroadcast(std::vector<int> input1_shape,
-                        std::vector<int> input2_shape) {
+void TestFloatBroadcast(MulOpModel<T>& m, const std::vector<int>& input1_shape,
+                        const std::vector<int>& input2_shape) {
   std::array<int, kMaxMulBroadcastDim> input1_dims;
   std::array<int, kMaxMulBroadcastDim> input2_dims;
   std::array<int, kMaxMulBroadcastDim> output_dims;
@@ -1009,18 +1023,18 @@ void TestFloatBroadcast(std::vector<int> input1_shape,
     }
   }
 
-  MulOpModel<T> m({GetTensorType<T>(), input1_shape},
-                  {GetTensorType<T>(), input2_shape}, {GetTensorType<T>(), {}},
-                  ActivationFunctionType_NONE, input1, input2,
-                  /*constant_tensors=*/false);
+  m.Resize(input1_shape, input2_shape);
+  m.template PopulateTensor<T>(m.input1(), input1);
+  m.template PopulateTensor<T>(m.input2(), input2);
   TFLITE_INVOKE_AND_CHECK(T, &m);
   EXPECT_THAT(m.GetOutput(),
               Pointwise(FloatingPointEq(), ToVector<T>(output_ref)));
 }
 
 template <typename IntegerType>
-void TestIntegerBroadcast(std::vector<int> input1_shape,
-                          std::vector<int> input2_shape) {
+void TestIntegerBroadcast(IntegerMulOpModel<IntegerType>& m,
+                          const std::vector<int>& input1_shape,
+                          const std::vector<int>& input2_shape) {
   std::array<int, kMaxMulBroadcastDim> input1_dims;
   std::array<int, kMaxMulBroadcastDim> input2_dims;
   std::array<int, kMaxMulBroadcastDim> output_dims;
@@ -1091,11 +1105,7 @@ void TestIntegerBroadcast(std::vector<int> input1_shape,
     }
   }
 
-  IntegerMulOpModel<IntegerType> m({GetTensorType<IntegerType>(), input1_shape},
-                                   {GetTensorType<IntegerType>(), input2_shape},
-                                   {GetTensorType<IntegerType>(), {}},
-                                   ActivationFunctionType_NONE, input1, input2,
-                                   /*constant_tensors=*/false);
+  m.Resize(input1_shape, input2_shape);
   m.template PopulateTensor<IntegerType>(m.input1(), input1);
   m.template PopulateTensor<IntegerType>(m.input2(), input2);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
@@ -1112,6 +1122,10 @@ void TestIntegerBroadcast(std::vector<int> input1_shape,
 
 template <typename T>
 void TestFloatMultiDimBroadcast(int selected_subshard, int subshard_count) {
+  MulOpModel<T> m({GetTensorType<T>(), {1, 1, 1, 1, 1, 1}},
+                  {GetTensorType<T>(), {1, 1, 1, 1, 1, 1}},
+                  {GetTensorType<T>(), {}}, ActivationFunctionType_NONE, {}, {},
+                  /*constant_tensors=*/false);
   int iteration = 0;
   for (uint32_t bm1 = 0;
        bm1 < (static_cast<uint32_t>(1) << kMaxMulBroadcastDim); bm1++) {
@@ -1157,7 +1171,10 @@ void TestFloatMultiDimBroadcast(int selected_subshard, int subshard_count) {
                     input1_full_shape.end(), input1_shape.data());
           std::copy(input2_full_shape.end() - input2_dims,
                     input2_full_shape.end(), input2_shape.data());
-          TestFloatBroadcast<T>(input1_shape, input2_shape);
+          TestFloatBroadcast<T>(m, input1_shape, input2_shape);
+          if (testing::Test::IsSkipped()) {
+            return;
+          }
         }
       }
     }
@@ -1219,6 +1236,11 @@ TYPED_TEST_SUITE(IntegerMulOpTest, Int16OrInt32Or64Types);
 template <class TypeParam>
 void TestIntegerMultiDimBroadcast(int selected_subshard, int subshard_count) {
   ASSERT_LT(selected_subshard, subshard_count);
+  IntegerMulOpModel<TypeParam> m(
+      {GetTensorType<TypeParam>(), {1, 1, 1, 1, 1, 1}},
+      {GetTensorType<TypeParam>(), {1, 1, 1, 1, 1, 1}},
+      {GetTensorType<TypeParam>(), {}}, ActivationFunctionType_NONE, {}, {},
+      /*constant_tensors=*/false);
   int iteration = 0;
   for (uint32_t bm1 = 0;
        bm1 < (static_cast<uint32_t>(1) << kMaxMulBroadcastDim); bm1++) {
@@ -1264,7 +1286,10 @@ void TestIntegerMultiDimBroadcast(int selected_subshard, int subshard_count) {
                     input1_full_shape.end(), input1_shape.data());
           std::copy(input2_full_shape.end() - input2_dims,
                     input2_full_shape.end(), input2_shape.data());
-          TestIntegerBroadcast<TypeParam>(input1_shape, input2_shape);
+          TestIntegerBroadcast<TypeParam>(m, input1_shape, input2_shape);
+          if (testing::Test::IsSkipped()) {
+            return;
+          }
         }
       }
     }
@@ -1303,8 +1328,10 @@ TYPED_TEST(IntegerMulOpTest, IntegerMultiDimBroadcastSubshard9) {
 }
 
 template <typename QuantizedType>
-void TestQuantizedBroadcast(std::vector<int> input1_shape,
-                            std::vector<int> input2_shape) {
+void TestQuantizedBroadcast(
+    QuantizedMulOpModel<QuantizedType, QuantizedType>& m,
+    const std::vector<int>& input1_shape,
+    const std::vector<int>& input2_shape) {
   std::array<int, kMaxMulBroadcastDim> input1_dims;
   std::array<int, kMaxMulBroadcastDim> input2_dims;
   std::array<int, kMaxMulBroadcastDim> output_dims;
@@ -1353,11 +1380,9 @@ void TestQuantizedBroadcast(std::vector<int> input1_shape,
   std::generate(input1.begin(), input1.end(), [&]() { return dist(rng); });
   std::generate(input2.begin(), input2.end(), [&]() { return dist(rng); });
 
-  QuantizedMulOpModel<QuantizedType, QuantizedType> m(
-      {GetTensorType<QuantizedType>(), input1_shape, -0.5f, 0.5f},
-      {GetTensorType<QuantizedType>(), input2_shape, -0.5f, 0.5f},
-      {GetTensorType<QuantizedType>(), {}, -1.f, 1.f},
-      ActivationFunctionType_NONE, input1, input2, /*constant_tensors=*/false);
+  m.Resize(input1_shape, input2_shape);
+  m.template QuantizeAndPopulate<QuantizedType>(m.input1(), input1);
+  m.template QuantizeAndPopulate<QuantizedType>(m.input2(), input2);
   // Compute reference results.
   for (size_t i = 0; i < output_dims[0]; i++) {
     for (size_t j = 0; j < output_dims[1]; j++) {
@@ -1420,6 +1445,11 @@ void TestQuantizedBroadcast(std::vector<int> input1_shape,
 template <class T>
 void TestQuantizedMultiDimBroadcast(int selected_subshard, int subshard_count) {
   ASSERT_LT(selected_subshard, subshard_count);
+  QuantizedMulOpModel<T, T> m(
+      {GetTensorType<T>(), {1, 1, 1, 1, 1, 1}, -0.5f, 0.5f},
+      {GetTensorType<T>(), {1, 1, 1, 1, 1, 1}, -0.5f, 0.5f},
+      {GetTensorType<T>(), {}, -1.f, 1.f}, ActivationFunctionType_NONE, {}, {},
+      /*constant_tensors=*/false);
   int iteration = 0;
   for (uint32_t bm1 = 0;
        bm1 < (static_cast<uint32_t>(1) << kMaxMulBroadcastDim); bm1++) {
@@ -1465,7 +1495,10 @@ void TestQuantizedMultiDimBroadcast(int selected_subshard, int subshard_count) {
                     input1_full_shape.end(), input1_shape.data());
           std::copy(input2_full_shape.end() - input2_dims,
                     input2_full_shape.end(), input2_shape.data());
-          TestQuantizedBroadcast<T>(input1_shape, input2_shape);
+          TestQuantizedBroadcast<T>(m, input1_shape, input2_shape);
+          if (testing::Test::IsSkipped()) {
+            return;
+          }
         }
       }
     }

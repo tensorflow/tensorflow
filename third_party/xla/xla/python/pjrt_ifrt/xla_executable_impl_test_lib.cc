@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/ifrt/user_context.h"
+#include "xla/python/pjrt_ifrt/basic_string_array.h"
 #include "xla/python/pjrt_ifrt/executable_metadata.pb.h"
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
@@ -359,6 +360,7 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecute) {
       auto array, client->MakeArrayFromHostBuffer(
                       data.data(), dtype, shape,
                       /*byte_strides=*/std::nullopt, sharding,
+                      /*layout=*/nullptr,
                       Client::HostBufferSemantics::kImmutableOnlyDuringCall,
                       /*on_done_with_host_buffer=*/{}));
 
@@ -447,6 +449,44 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecutePortable) {
   EXPECT_THAT(out_data, ElementsAreArray(expected_out_data));
 }
 
+TEST_P(LoadedExecutableImplTest, ExecuteWithNonPjRtCompatibleArrayArg) {
+  bool serialize = GetParam();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  Compiler* compiler = client->GetDefaultCompiler();
+
+  std::vector<Device*> devices = {client->addressable_devices().at(0)};
+  LoadedExecutableRef loaded_executable;
+  {
+    UserContextScope user_context_scope(test_util::MakeUserContext(20));
+    TF_ASSERT_OK_AND_ASSIGN(
+        loaded_executable,
+        CompileOnDevices(client.get(), compiler, module_add_one, devices,
+                         /*replicated=*/false, serialize));
+  }
+
+  Shape shape({2, 3});
+  Device* device = client->addressable_devices().at(0);
+  ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
+
+  BasicStringArray::Buffers buffers;
+  tsl::Future<BasicStringArray::Buffers> buffers_future(buffers);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      ArrayRef pjrt_incompatible_array,
+      BasicStringArray::Create(client.get(), shape, sharding, buffers_future,
+                               /*on_done_with_buffer=*/[]() {}));
+
+  ExecuteOptions execute_options;
+  execute_options.fill_status = true;
+
+  auto result = loaded_executable->Execute(
+      absl::MakeSpan(&pjrt_incompatible_array, 1), execute_options,
+      /*devices=*/std::nullopt);
+
+  EXPECT_THAT(result.status(), StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
 TEST_P(LoadedExecutableImplTest, CancelExecution) {
   bool serialize = GetParam();
 
@@ -475,6 +515,7 @@ TEST_P(LoadedExecutableImplTest, CancelExecution) {
       auto array, client->MakeArrayFromHostBuffer(
                       data.data(), dtype, shape,
                       /*byte_strides=*/std::nullopt, sharding,
+                      /*layout=*/nullptr,
                       Client::HostBufferSemantics::kImmutableOnlyDuringCall,
                       /*on_done_with_host_buffer=*/{}));
 
@@ -530,6 +571,7 @@ TEST_P(LoadedExecutableImplTest, DoNotFillStatus) {
       auto array, client->MakeArrayFromHostBuffer(
                       data.data(), dtype, shape,
                       /*byte_strides=*/std::nullopt, sharding,
+                      /*layout=*/nullptr,
                       Client::HostBufferSemantics::kImmutableOnlyDuringCall,
                       /*on_done_with_host_buffer=*/{}));
 
@@ -620,6 +662,7 @@ module @add_sub {
           client->MakeArrayFromHostBuffer(
               data.data(), DType(DType::kS32), Shape({2, 3}),
               /*byte_strides=*/std::nullopt, sharding,
+              /*layout=*/nullptr,
               Client::HostBufferSemantics::kImmutableOnlyDuringCall,
               /*on_done_with_host_buffer=*/{}));
     }
@@ -879,8 +922,14 @@ TEST(ExecutableTest, ExecutableSerialization) {
   // CompiledMemoryStats upon executable deserialization.
   loaded_compiled_memory_stats.serialized_buffer_assignment = "";
   loaded_compiled_memory_stats.peak_memory_in_bytes = 0;
+  loaded_compiled_memory_stats.total_allocation_bytes = 0;
+  loaded_compiled_memory_stats.indefinite_allocations = 0;
+  loaded_compiled_memory_stats.peak_unpadded_heap_bytes = 0;
   deserialized_compiled_memory_stats.serialized_buffer_assignment = "";
   deserialized_compiled_memory_stats.peak_memory_in_bytes = 0;
+  deserialized_compiled_memory_stats.total_allocation_bytes = 0;
+  deserialized_compiled_memory_stats.indefinite_allocations = 0;
+  deserialized_compiled_memory_stats.peak_unpadded_heap_bytes = 0;
 
   EXPECT_THAT(deserialized_compiled_memory_stats.ToProto(),
               EqualsProto(loaded_compiled_memory_stats.ToProto()));
@@ -910,6 +959,7 @@ TEST(ExecutableTest, ExecutableSerialization) {
       client->MakeArrayFromHostBuffer(
           data.data(), dtype, shard_shape,
           /*byte_strides=*/std::nullopt, shard_sharding0,
+          /*layout=*/nullptr,
           xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
           /*on_done_with_host_buffer=*/{}));
   TF_ASSERT_OK_AND_ASSIGN(
@@ -917,6 +967,7 @@ TEST(ExecutableTest, ExecutableSerialization) {
       client->MakeArrayFromHostBuffer(
           data.data() + 3, dtype, shard_shape,
           /*byte_strides=*/std::nullopt, shard_sharding1,
+          /*layout=*/nullptr,
           xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
           /*on_done_with_host_buffer=*/{}));
   std::vector<xla::ifrt::ArrayRef> shards = {array_shard0, array_shard1};
@@ -937,6 +988,7 @@ TEST(ExecutableTest, ExecutableSerialization) {
       client->MakeArrayFromHostBuffer(
           data.data(), dtype, shape,
           /*byte_strides=*/std::nullopt, input2_sharding,
+          /*layout=*/nullptr,
           xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
           /*on_done_with_host_buffer=*/nullptr));
 

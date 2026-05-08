@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/overload.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/escaping.h"
@@ -98,6 +99,19 @@ HloModule::HloModule(const std::string& name,
     : name_(NameUniquer::GetSanitizedName(name)),
       config_(config),
       unique_id_(next_unique_module_id_++),
+      metadata_(tsl::Env::Default()),
+      autofdo_fingerprint_(""),
+      comp_envs_(std::move(comp_envs)) {
+  metadata_.set_canonical_module_id(unique_id_);
+}
+
+// Private constructor.
+HloModule::HloModule(const std::string& name, HloModuleConfig config,
+                     std::unique_ptr<CompilationEnvironments> comp_envs,
+                     int module_id)
+    : name_(NameUniquer::GetSanitizedName(name)),
+      config_(std::make_shared<HloModuleConfig>(std::move(config))),
+      unique_id_(module_id < 0 ? next_unique_module_id_++ : module_id),
       metadata_(tsl::Env::Default()),
       autofdo_fingerprint_(""),
       comp_envs_(std::move(comp_envs)) {
@@ -544,6 +558,7 @@ void HloModule::ToProto(HloModuleProto* proto) const {
   for (const HloComputation* computation : MakeComputationPostOrder()) {
     computation->ToProto(proto->add_computations());
   }
+
   if (has_schedule()) {
     *proto->mutable_schedule() = schedule().ToProto().value();
   }
@@ -861,8 +876,9 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
         std::unique_ptr<HloComputation> computation,
         HloComputation::CreateFromProto(
             computation_proto, computation_map, prohibit_empty_literal,
-            preserve_instruction_ids,
-            requires_remap_memorization ? &id_remap_map : nullptr));
+            /*preserve_instruction_ids=*/preserve_instruction_ids,
+            requires_remap_memorization ? &id_remap_map : nullptr,
+            &proto.payloads()));
     CHECK_NE(computation.get(), nullptr);
     int64_t computation_id = computation_proto.id();
     TF_RET_CHECK(computation_id != -1);
@@ -879,11 +895,11 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   }
   TF_RET_CHECK(entry != nullptr);
 
-  auto module = comp_envs
-                    ? std::make_unique<HloModule>(proto.name(), module_config,
-                                                  std::move(comp_envs))
-                    : std::make_unique<HloModule>(proto.name(), module_config);
-
+  auto module = absl::WrapUnique(
+      new HloModule(proto.name(), module_config,
+                    comp_envs ? std::move(comp_envs)
+                              : std::make_unique<CompilationEnvironments>(),
+                    proto.has_pjrt_id() ? proto.pjrt_id() : -1));
   if (!proto.device_type().empty()) {
     module->mutable_config().set_device_type(proto.device_type());
   }
@@ -1179,6 +1195,18 @@ void HloModule::CleanupComputations() {
                      }),
       computations_.end());
   to_be_deleted_computations_.clear();
+}
+
+void HloModule::CanonicalizeComputationLocalIds() {
+  for (auto* computation : computations()) {
+    if (computation == nullptr) {
+      continue;
+    }
+    computation->CanonicalizeLocalIds();
+    if (has_schedule() && schedule().is_computation_scheduled(computation)) {
+      schedule().GetOrCreateSequence(computation).update_id_sequence();
+    }
+  }
 }
 
 HloInstruction* HloModule::OutlineExpressionFromComputation(
@@ -1629,10 +1657,14 @@ HloComputation* HloModule::GetComputationWithName(
 }
 
 std::string HloModule::GetFingerprint128(const HloPrintOptions& options) const {
-  const tsl::Fprint128 fingerprint = tsl::Fingerprint128(ToString(options));
-  absl::string_view fp_bytes(reinterpret_cast<const char*>(&fingerprint),
-                             sizeof(tsl::Fprint128));
-  return absl::BytesToHexString(fp_bytes);
+  // Use HighwayHashPrinter to compute the fingerprint by streaming HLO text
+  // directly into the hasher, avoiding materialization of the full module text
+  // as a string. For large modules this avoids multi-GB string allocations.
+  HighwayHashPrinter printer;
+  Print(&printer, options);
+  tsl::Fprint128 fingerprint = printer.ToFingerprint128();
+  return absl::StrCat(absl::Hex(fingerprint.low64, absl::kZeroPad16),
+                      absl::Hex(fingerprint.high64, absl::kZeroPad16));
 }
 
 struct OriginalArrayComparator {

@@ -21,7 +21,7 @@ func.func @error_on_op_attr_from_another_dialect(%arg0: !array_t0)
 func.func @bitcast_drop_one_dimension_different_dtype(%arg0: !array0)
     attributes {ifrt.function} {
   // expected-error@+1 {{failed to legalize operation 'ifrt.BitcastArrays' that was explicitly marked illegal}}
-  %0 = ifrt.BitcastArrays(%arg0) {invalid_attr = #vifrt<devices_v1[0,1]>}
+  %0, %ctrl = ifrt.BitcastArrays(%arg0) {invalid_attr = #vifrt<devices_v1[0,1]>}
       : (!array0) -> (!array1)
   return
 }

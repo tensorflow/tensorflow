@@ -43,8 +43,10 @@ class YnnMatcher : public LibraryMatcher {
     static const absl::NoDestructor<absl::flat_hash_set<HloOpcode>>
         kSupportedOps{[]() {
           absl::flat_hash_set<HloOpcode> supported_ops{
-              HloOpcode::kDot, HloOpcode::kReduce, HloOpcode::kReduceWindow,
-              HloOpcode::kConstant, HloOpcode::kConvolution};
+              HloOpcode::kDot,          HloOpcode::kReduce,
+              HloOpcode::kReduceWindow, HloOpcode::kConstant,
+              HloOpcode::kConvolution,  HloOpcode::kReshape,
+              HloOpcode::kBitcast};
           for (const auto& [op, _] : GetYnnUnaryOpMap()) {
             supported_ops.insert(op);
           }
@@ -76,6 +78,15 @@ class YnnMatcher : public LibraryMatcher {
     // TODO(b/441837668): Need to get the reduction performance right before
     // enabling fusions. Fusions make performance analysis quite challenging.
     if (fuse_reduce_) {
+      if (instr->opcode() == HloOpcode::kReshape) {
+        return IsReshapeOpSupportedByYnn(instr);
+      }
+      if (instr->opcode() == HloOpcode::kBitcast) {
+        return IsBitcastOpSupportedByYnn(instr);
+      }
+      if (instr->opcode() == HloOpcode::kConvert) {
+        return IsElementwiseOpSupportedByYnn(instr);
+      }
       return false;
     }
     if (instr->IsElementwise()) {
@@ -89,6 +100,9 @@ class YnnMatcher : public LibraryMatcher {
   // `--xla_cpu_experimental_ynn_fusion_type` flag.
   bool ShouldCreateFusion(const HloInstruction* instr) override {
     if (fuse_dot_ && instr->opcode() == HloOpcode::kDot) {
+      return true;
+    }
+    if (fuse_conv_ && instr->opcode() == HloOpcode::kConvolution) {
       return true;
     }
     if (fuse_reduce_ && (instr->opcode() == HloOpcode::kReduce ||

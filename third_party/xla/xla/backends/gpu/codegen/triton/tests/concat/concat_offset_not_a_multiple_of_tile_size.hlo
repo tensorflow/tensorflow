@@ -1,0 +1,27 @@
+// RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation 2>&1 | FileCheck %s --check-prefix=CHECK-ERROR
+
+// CHECK-ERROR: FAILED_PRECONDITION: Tiling propagation rejected for Concatenate: The tile offset expression 'v0 * 49 + v1 * 8' must be a clean multiple of its tile size 8 to prevent correctness bugs from tiles covering multiple concat operands.
+
+fusion {
+  p0 = f32[96] parameter(0)
+  p1 = f32[100] parameter(1)
+  concat = f32[196] concatenate(p0, p1), dimensions={0}
+  c1 = f32[] constant(1.0)
+  bcast = f32[196] broadcast(c1), dimensions={}
+  add = f32[196] add(concat, bcast)
+  ROOT reshape = f32[4,49] reshape(add)
+}
+
+ENTRY main {
+  p0 = f32[96] parameter(0)
+  p1 = f32[100] parameter(1)
+  ROOT fusion = f32[4,49] fusion(p0, p1), kind=kCustom,
+    calls=fusion, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["1", "8"]}],
+        "num_warps":"1",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+}

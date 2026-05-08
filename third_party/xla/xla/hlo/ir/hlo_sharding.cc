@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -176,13 +177,14 @@ std::vector<AxisRef> GetOrderedAxisRefs(const NamedSharding& sharding) {
   std::vector<AxisRef> axis_refs;
   for (int64_t i = 0; i < mesh.axis_sizes().size(); ++i) {
     std::vector<int64_t>& pre_sizes = axis_index_to_pre_sizes[i];
-    absl::c_sort(pre_sizes);
-    pre_sizes.erase(std::unique(pre_sizes.begin(), pre_sizes.end()),
-                    pre_sizes.end());
     if (pre_sizes.size() == 2) {
+      // Full axis
       axis_refs.push_back(AxisRef(i));
       continue;
     }
+    absl::c_sort(pre_sizes);
+    pre_sizes.erase(std::unique(pre_sizes.begin(), pre_sizes.end()),
+                    pre_sizes.end());
     for (int64_t j = 0; j < pre_sizes.size() - 1; ++j) {
       int64_t pre_size = pre_sizes[j];
       int64_t size = pre_sizes[j + 1] / pre_size;
@@ -579,8 +581,15 @@ bool HloSharding::UsesDevice(int64_t device) const {
     });
   }
 
-  return IsReplicatedLeaf() || IsManualLeaf() ||
-         TileAgnosticDeviceAssignment().UsesDevice(device);
+  if (IsReplicatedLeaf() || IsManualLeaf()) {
+    return true;
+  }
+
+  if (std::optional<int64_t> unique_device = UniqueDevice()) {
+    return unique_device == device;
+  }
+
+  return device >= 0 && device < num_devices();
 }
 
 std::vector<int64_t> HloSharding::TileIndexForDevice(int64_t device) const {
@@ -700,6 +709,7 @@ absl::Status HloSharding::EachTile(
   absl::InlinedVector<int64_t, 6> tile_limit(dims.size());
   int64_t flat_tile_index = 0;
   const int64_t* flat_tile_assignment = tile_assignment().array().data();
+  const int64_t device_count = num_devices();
   do {
     for (int64_t i = 0; i < dims.size(); ++i) {
       tile_offset[i] = std::min(tile_dims[i] * unique_tile_index[i], dims[i]);
@@ -707,13 +717,13 @@ absl::Status HloSharding::EachTile(
           std::min(tile_dims[i] * (unique_tile_index[i] + 1), dims[i]);
     }
     for (int64_t i = 0; i < num_replicas; ++i) {
-      CHECK_LT(flat_tile_index, num_devices());
+      CHECK_LT(flat_tile_index, device_count);
       const int64_t device_id = flat_tile_assignment[flat_tile_index];
-      if (device_id < 0 || device_id >= num_devices()) {
+      if (device_id < 0 || device_id >= device_count) {
         return absl::InvalidArgumentError(
             absl::StrFormat("Out of range device id in device_assignment: %d; "
                             "valid range: [0, %d)",
-                            device_id, num_devices()));
+                            device_id, device_count));
       }
       f(device_id, tile_offset, tile_limit);
       ++flat_tile_index;
@@ -1164,6 +1174,9 @@ OpSharding HloSharding::ToProto() const {
 /*static*/ NamedSharding HloSharding::ToNamedSharding(
     const HloSharding& sharding) {
   CHECK(!sharding.IsTuple());
+  CHECK(!sharding.IsUnknown());
+  CHECK(!sharding.IsManual());
+  CHECK(!sharding.IsUnreduced());
   if (sharding.UseNamedShardingLeaf()) {
     return sharding.named_sharding();
   }
@@ -1212,7 +1225,7 @@ OpSharding HloSharding::ToProto() const {
   // If we successfully factorized the iota tile assignment, the resulting
   // mesh is guaranteed to be an iota mesh (0, 1, ..., N-1) corresponding
   // to the linearized order of the reshape dimensions (permuted).
-  Mesh mesh = result.has_value()
+  Mesh mesh = (result.has_value() && result->iota.has_value())
                   ? Mesh(local_mesh, axes_names_views)
                   : Mesh(tile_assignment.array(), axes_names_views);
 
@@ -1254,9 +1267,9 @@ OpSharding HloSharding::ToProto() const {
         manual_axes.emplace_back(local_axis_index);
       } else if (type == OpSharding::UNREDUCED) {
         unreduced_axes.emplace_back(local_axis_index);
-      } else if (type == OpSharding::REPLICATED) {
-        replicated_axes.emplace_back(local_axis_index);
-      } else {
+      } else if (type != OpSharding::REPLICATED) {
+        // No need to add explicitly replicated axes; we assume they are
+        // implicitly replicated.
         LOG(FATAL) << "Unsupported subgroup type: "
                    << OpSharding::Type_Name(type);
       }
@@ -1425,6 +1438,15 @@ int64_t HloSharding::NumTiles(absl::Span<const int64_t> dims) const {
     num_tiles *= dimension(d);
   }
   return num_tiles;
+}
+
+int64_t HloSharding::ReplicationFactor() const {
+  if (UseNamedShardingLeaf()) {
+    int64_t sharded_dims_product =
+        absl::c_accumulate(dimensions(), 1LL, std::multiplies<int64_t>());
+    return HasPartialReplication() ? num_devices() / sharded_dims_product : 1;
+  }
+  return HasPartialReplication() ? dimension(SubgroupReplicationDim()) : 1;
 }
 
 HloSharding HloSharding::GetSubSharding(const Shape& shape,

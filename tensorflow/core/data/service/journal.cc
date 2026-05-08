@@ -39,8 +39,8 @@ constexpr absl::string_view kJournal = "journal";
 absl::Status ParseSequenceNumber(const std::string& journal_file,
                                  int64_t* sequence_number) {
   if (!RE2::FullMatch(journal_file, ".*_(\\d+)", sequence_number)) {
-    return errors::InvalidArgument("Failed to parse journal file name: ",
-                                   journal_file);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Failed to parse journal file name: ", journal_file));
   }
   return absl::OkStatus();
 }
@@ -80,8 +80,8 @@ absl::Status FileJournalWriter::Write(const Update& update) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   std::string s = update.SerializeAsString();
   if (s.empty()) {
-    return errors::Internal("Failed to serialize update ", update.DebugString(),
-                            " to string");
+    return absl::InternalError(absl::StrCat(
+        "Failed to serialize update ", update.DebugString(), " to string"));
   }
   TF_RETURN_IF_ERROR(writer_->WriteRecord(s));
   TF_RETURN_IF_ERROR(writer_->Flush());
@@ -122,7 +122,7 @@ absl::Status FileJournalReader::Read(Update& update, bool& end_of_journal) {
     }
     TF_RETURN_IF_ERROR(s);
     if (!update.ParseFromString(record)) {
-      return errors::DataLoss("Failed to parse journal record.");
+      return absl::DataLossError("Failed to parse journal record.");
     }
     if (VLOG_IS_ON(4)) {
       VLOG(4) << "Read journal entry: " << update.DebugString();

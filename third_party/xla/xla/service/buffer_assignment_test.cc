@@ -76,6 +76,7 @@ namespace {
 using memory_space_assignment::PresetAssignments;
 using ::testing::FieldsAre;
 using ::testing::HasSubstr;
+using ::testing::Pointwise;
 using ::testing::UnorderedElementsAre;
 using ::tsl::proto_testing::EqualsProto;
 
@@ -565,6 +566,20 @@ TEST_F(BufferAssignmentTest, Basic) {
   GetAssignedOutputAllocation(*buffers, sub);
 }
 
+MATCHER(IdEq, "") {
+  auto* actual = std::get<0>(arg);
+  auto* expected = std::get<1>(arg);
+  if (actual == nullptr || expected == nullptr) {
+    return actual == expected;
+  }
+  if (actual->id() == expected->id()) {
+    return true;
+  }
+  *result_listener << "whose id is " << actual->id() << ", expected id "
+                   << expected->id();
+  return false;
+}
+
 TEST_F(BufferAssignmentTest, BasicToFromProto) {
   // paramscalar ------- (mul) -- (add) -- (sub)
   //                     /        /        /
@@ -625,8 +640,17 @@ TEST_F(BufferAssignmentTest, BasicToFromProto) {
           orig_value->instruction(), orig_value->index());
       EXPECT_TRUE(buffers_from_proto->HasAllocation(value_proto));
       EXPECT_EQ(orig_value->color(), value_proto.color());
-      EXPECT_EQ(buffers_orig->GetAssignedAllocation(*orig_value).index(),
-                buffers_from_proto->GetAssignedAllocation(value_proto).index());
+      auto& alloc_orig = buffers_orig->GetAssignedAllocation(*orig_value);
+      auto& alloc_from_proto =
+          buffers_from_proto->GetAssignedAllocation(value_proto);
+      EXPECT_EQ(alloc_orig.index(), alloc_from_proto.index());
+
+      // Ensure peak buffers survived the round-trip.
+      auto& peak_buffers_orig = alloc_orig.PeakMemoryLogicalBuffers();
+      auto& peak_buffers_from_proto =
+          alloc_from_proto.PeakMemoryLogicalBuffers();
+      EXPECT_THAT(peak_buffers_from_proto,
+                  Pointwise(IdEq(), peak_buffers_orig));
     }
   }
 }
@@ -4503,6 +4527,31 @@ TEST(ComputePeakMemoryTest, LargeResult) {
   EXPECT_EQ(ValueOrDie(ComputePeakMemory(proto)), 1LL << 33);
 }
 
+TEST(ComputeLogicalBufferUnpaddedSizesTest, Basic) {
+  HloModuleProto hlo;
+  HloComputationProto* computation = hlo.add_computations();
+  BufferAssignmentProto proto;
+
+  LogicalBufferProto* buffer0 = proto.add_logical_buffers();
+  buffer0->set_id(0);
+  buffer0->mutable_defined_at()->set_instruction_id(10);
+  buffer0->set_size(123);
+  SetUnpaddedSize(computation, /*id=*/10, /*size=*/100);
+
+  LogicalBufferProto* buffer1 = proto.add_logical_buffers();
+  buffer1->set_id(1);
+  buffer1->mutable_defined_at()->set_instruction_id(11);
+  buffer1->set_size(456);
+  SetUnpaddedSize(computation, /*id=*/11, /*size=*/400);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto sizes,
+                          ComputeLogicalBufferUnpaddedSizes(hlo, proto));
+
+  EXPECT_EQ(sizes.size(), 2);
+  EXPECT_EQ(sizes[0], 100);
+  EXPECT_EQ(sizes[1], 400);
+}
+
 TEST(ComputeTotalAllocationBytesTest, EmptyProto) {
   BufferAssignmentProto proto;
   EXPECT_EQ(ComputeTotalAllocationBytes(proto, /*memory_color=*/0), 0);
@@ -4744,6 +4793,40 @@ TEST(ComputeTotalAllocationBytesTest, OnlyMatchingColorAllocations) {
   alloc2->set_size(20);
   alloc2->set_color(0);
   EXPECT_EQ(ComputeTotalAllocationBytes(proto, /*memory_color=*/0), 30);
+}
+
+TEST_F(BufferAssignmentTest, ScanComputation) {
+  auto module = CreateNewVerifiedModule();
+
+  auto scan_builder = HloComputation::Builder("scan_add");
+  auto scan_param0 = scan_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32_, "x"));
+  auto scan_param1 = scan_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0f32_, "y"));
+  auto add = scan_builder.AddInstruction(HloInstruction::CreateBinary(
+      r0f32_, HloOpcode::kAdd, scan_param0, scan_param1));
+  scan_builder.AddInstruction(HloInstruction::CreateTuple({add, add}));
+  auto scan_computation = module->AddEmbeddedComputation(scan_builder.Build());
+
+  auto builder = HloComputation::Builder(TestName());
+  auto input = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32vec100_, "input"));
+  auto init = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({f32vec100_, r0f32_});
+  auto scan = builder.AddInstruction(HloInstruction::CreateScan(
+      tuple_shape, {input}, {init}, scan_computation, /*scan_dimension=*/0,
+      /*is_reverse=*/false));
+  module->AddEntryComputation(builder.Build());
+
+  const std::vector<const HloInstruction*> level0 = GetInstructions(scan);
+  const std::vector<const HloInstruction*> level1 =
+      GetInstructions(scan_computation->root_instruction());
+
+  auto buffers = RunBufferAssignment(module.get());
+
+  EXPECT_TRUE(BuffersDistinct(level0, level1, *buffers))
+      << "Reuse between main kernel and embedded scan.";
 }
 
 }  // namespace

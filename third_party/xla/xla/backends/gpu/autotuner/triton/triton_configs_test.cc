@@ -25,15 +25,15 @@ using ::testing::SizeIs;
 
 TEST(TritonConfigsTest, PlatformsReturnNonEmptyConfig) {
   EXPECT_THAT(GetTritonConfigsForPlatform(TritonConfigsPlatform::kAmpere),
-              SizeIs(36));
+              SizeIs(30));
   EXPECT_THAT(GetTritonConfigsForPlatform(TritonConfigsPlatform::kBlackwell),
-              SizeIs(57));
+              SizeIs(40));
   EXPECT_THAT(GetTritonConfigsForPlatform(TritonConfigsPlatform::kDefaultCuda),
-              SizeIs(32));
+              SizeIs(25));
   EXPECT_THAT(GetTritonConfigsForPlatform(TritonConfigsPlatform::kDefaultRocm),
-              SizeIs(6));
+              SizeIs(2));
   EXPECT_THAT(GetTritonConfigsForPlatform(TritonConfigsPlatform::kHopper),
-              SizeIs(63));
+              SizeIs(25));
 }
 
 }  // namespace

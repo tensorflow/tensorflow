@@ -52,7 +52,10 @@ class HangWatchdog {
   // Forward declare.
   struct Guard;
 
-  // Cancel callback has to be copyable because we pass it to thread pool.
+  // Returns a default per-process hang watchdog instance.
+  static HangWatchdog& Global();
+
+  // Cancel callback is move-only; the watchdog moves it into the thread pool.
   using CancelCallback = absl::AnyInvocable<void() &&>;
 
   HangWatchdog(tsl::Env* env, absl::string_view name, size_t num_threads = 1);

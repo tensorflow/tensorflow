@@ -103,7 +103,13 @@ def Ifrt_AssembleOp
     Variadic<Ifrt_ArrayType>:$inputs,
     Variadic<Ifrt_ControlType>:$control_inputs);
   let results = (outs
-    Ifrt_ArrayType:$output);
+    Ifrt_ArrayType:$output,
+    Ifrt_ControlType:$control_output);
+
+  let assemblyFormat = [{
+    `(` $inputs `)` oilist(`after` $control_inputs) attr-dict
+    `:` functional-type($inputs, $output)
+  }];
 
   let hasVerifier = 1;
 }
@@ -124,13 +130,19 @@ def Ifrt_DisassembleOp : Ifrt_Op<"Disassemble", [NestedInIfrtFunc]> {
     Ifrt_ArrayType:$input,
     Variadic<Ifrt_ControlType>:$control_inputs);
   let results = (
-    outs Variadic<Ifrt_ArrayType>:$outputs);
+    outs Variadic<Ifrt_ArrayType>:$outputs,
+    Ifrt_ControlType:$control_output);
+
+  let assemblyFormat = [{
+    `(` $input `)` oilist(`after` $control_inputs) attr-dict
+    `:` functional-type($input, $outputs)
+  }];
 
   let hasVerifier = 1;
 }
 
 def Ifrt_RemapArraysOp
-    : Ifrt_Op<"RemapArrays", [NestedInIfrtFunc]> {
+    : Ifrt_Op<"RemapArrays", [AttrSizedOperandSegments, NestedInIfrtFunc]> {
   let summary = "Remaps shards from input `Array`s to create new `Array`s.";
   let description = [{
     A metadata-only op that remaps shards across input `Array`s to create
@@ -145,19 +157,22 @@ def Ifrt_RemapArraysOp
   let arguments = (ins
     Variadic<Ifrt_ArrayType>:$inputs,
     Ifrt_ArrayMappingAttrArrayAttr:$mappings,
+    Variadic<Ifrt_ControlType>:$control_inputs,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$donated);
-  let results = (outs Variadic<Ifrt_ArrayType>:$outputs);
+  let results = (outs
+    Variadic<Ifrt_ArrayType>:$outputs,
+    Ifrt_ControlType:$control_output);
 
   let assemblyFormat = [{
-    `(` $inputs `)` `mappings` `=` $mappings attr-dict
-    `:` functional-type($inputs, $outputs)
+    `(` $inputs `)` `mappings` `=` $mappings oilist(`after` $control_inputs)
+    attr-dict `:` functional-type($inputs, $outputs)
   }];
 
   let hasVerifier = 1;
 }
 
 def Ifrt_BitcastArraysOp
-    : Ifrt_Op<"BitcastArrays", [NestedInIfrtFunc]> {
+    : Ifrt_Op<"BitcastArrays", [AttrSizedOperandSegments, NestedInIfrtFunc]> {
   let summary = "Bitcasts `Array`s to new `Array`s with a different type.";
   let description = [{
     A metadata-only op that can change the per-shard interpretation without
@@ -170,11 +185,15 @@ def Ifrt_BitcastArraysOp
 
   let arguments = (ins
     Variadic<Ifrt_ArrayType>:$inputs,
+    Variadic<Ifrt_ControlType>:$control_inputs,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$donated);
-  let results = (outs Variadic<Ifrt_ArrayType>:$outputs);
+  let results = (outs
+    Variadic<Ifrt_ArrayType>:$outputs,
+    Ifrt_ControlType:$control_output);
 
   let assemblyFormat = [{
-    `(` $inputs `)` attr-dict `:` functional-type($inputs, $outputs)
+    `(` $inputs `)` oilist(`after` $control_inputs) attr-dict
+    `:` functional-type($inputs, $outputs)
   }];
 
   let hasVerifier = 1;

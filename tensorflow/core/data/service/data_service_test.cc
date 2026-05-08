@@ -320,6 +320,41 @@ TEST(DataServiceTest, WorkerStateExport) {
               SizeIs(1));
 }
 
+TEST(DataServiceTest, RejectInvalidDatasetId) {
+  TestCluster cluster(/*num_workers=*/1);
+  TF_ASSERT_OK(cluster.Initialize());
+
+  DataServiceDispatcherClient dispatcher(cluster.DispatcherAddress(), "grpc");
+
+  std::string dataset_id;
+  EXPECT_THAT(dispatcher.RegisterDataset(
+                  RangeDataset(10), DataServiceMetadata(),
+                  /*requested_dataset_id=*/"nested/path", dataset_id),
+              ::tensorflow::testing::StatusIs(error::INVALID_ARGUMENT));
+
+  EXPECT_THAT(dispatcher.RegisterDataset(
+                  RangeDataset(10), DataServiceMetadata(),
+                  /*requested_dataset_id=*/"some/nested/path", dataset_id),
+              ::tensorflow::testing::StatusIs(error::INVALID_ARGUMENT));
+
+#if defined(_WIN32)
+  EXPECT_THAT(dispatcher.RegisterDataset(
+                  RangeDataset(10), DataServiceMetadata(),
+                  /*requested_dataset_id=*/"invalid\\path", dataset_id),
+              ::tensorflow::testing::StatusIs(error::INVALID_ARGUMENT));
+  EXPECT_THAT(
+      dispatcher.RegisterDataset(RangeDataset(10), DataServiceMetadata(),
+                                 /*requested_dataset_id=*/"c:path", dataset_id),
+      ::tensorflow::testing::StatusIs(error::INVALID_ARGUMENT));
+#endif
+
+  EXPECT_THAT(
+      dispatcher.RegisterDataset(RangeDataset(10), DataServiceMetadata(),
+                                 /*requested_dataset_id=*/"..", dataset_id),
+      ::tensorflow::testing::StatusIs(error::INVALID_ARGUMENT));
+}
+
 }  // namespace
+
 }  // namespace data
 }  // namespace tensorflow

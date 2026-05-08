@@ -122,7 +122,7 @@ LoopOptimizerBestFitHeap::FindAndCommitChunkCandidate(
   std::optional<Chunk> chunk =
       MaybeFindChunkCandidate(allocation_block, preferred_offset);
   if (chunk.has_value()) {
-    CommitChunk(buffer_intervals_[&allocation_block], chunk.value());
+    CommitChunkAndInterval(buffer_intervals_[&allocation_block], chunk.value());
   }
   return chunk;
 }
@@ -624,8 +624,8 @@ float MemoryBoundLoopOptimizer::CalculateExecutionTime() const {
         value.allocations.back()->is_copy_allocation()) {
       prefetches.push_back(
           {static_cast<const CopyAllocation*>(value.allocations.back().get()),
-           cost_analysis_.GetAsyncCopyElapsed(
-               value.hlo_values.front()->shape())});
+           cost_analysis_.GetAsyncCopyElapsed(cost_analysis_.GetShapeSizeBytes(
+               value.hlo_values.front()->shape()))});
     }
   }
 
@@ -1087,8 +1087,8 @@ bool MemoryBoundLoopOptimizer::AllocatePrefetch(
     last_use_idx_sentinel = last_use_idx + loop_size_;
     CHECK_LT(last_use_idx, first_use_idx);
   }
-  float copy_resource =
-      cost_analysis_.GetAsyncCopyElapsed(value->hlo_values.front()->shape());
+  float copy_resource = cost_analysis_.GetAsyncCopyElapsed(
+      cost_analysis_.GetShapeSizeBytes(value->hlo_values.front()->shape()));
   VLOG(3) << "First use: " << value->loop_uses.begin()->second
           << " use idx: " << first_use_idx
           << " copy resource: " << copy_resource;

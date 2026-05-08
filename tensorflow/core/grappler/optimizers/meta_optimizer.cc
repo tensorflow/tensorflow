@@ -180,8 +180,8 @@ absl::Status GetGraphDevice(const GraphDef& g_def,
   for (auto& node : g_def.node()) {
     DeviceNameUtils::ParsedName parsed_name;
     if (!DeviceNameUtils::ParseFullName(node.device(), &parsed_name)) {
-      return errors::InvalidArgument("Unable to parse ", node.device(),
-                                     " as a device name");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unable to parse ", node.device(), " as a device name"));
     }
     devices->insert(parsed_name.type);
   }
@@ -1220,7 +1220,8 @@ absl::Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster,
       // available to the main graph, because after partitioning the function
       // call node might execute on a remote worker.
       if (!func_item.devices().empty()) {
-        return errors::Internal("GrapplerFunctionItem devices must be empty.");
+        return absl::InternalError(
+            "GrapplerFunctionItem devices must be empty.");
       }
 
       // We are not allowed to prune certain types of ops from the graph
@@ -1456,12 +1457,12 @@ absl::Status OptimizeGraph(
   for (Node* node : optimized_graph->nodes()) {
     if (node->IsOp() && node->assigned_device_name().empty()) {
       if (node->requested_device().empty()) {
-        return errors::Internal(
+        return absl::InternalError(absl::StrCat(
             "Either placer did not place the node or Grappler did not "
             "copy the assigned device. Contact Grappler team since latter "
             "is more likely. Node=",
             node->name(),
-            " Graph: ", optimized_graph->ToGraphDefDebug().DebugString());
+            " Graph: ", optimized_graph->ToGraphDefDebug().DebugString()));
       }
       node->set_assigned_device_name(node->requested_device());
     }

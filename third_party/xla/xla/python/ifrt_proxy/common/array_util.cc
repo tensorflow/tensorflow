@@ -63,6 +63,9 @@ absl::StatusOr<std::vector<int64_t>> DefaultByteStrides(const DType dtype,
 absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromZerothElementPointer(
     const void* zeroth_element, const DType dtype, const Shape& shape,
     ByteStrides byte_strides) {
+  if (dtype.kind() == DType::kToken) {
+    return ArrayMemRegion(nullptr, 0);
+  }
   int byte_size;
   if (dtype.byte_size().has_value()) {
     byte_size = *dtype.byte_size();
@@ -130,6 +133,9 @@ absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromZerothElementPointer(
 absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromMinimalMemRegion(
     absl::string_view mem_region, const DType dtype, const Shape& shape,
     ByteStrides byte_strides) {
+  if (dtype.kind() == DType::kToken) {
+    return ArrayMemRegion(nullptr, 0);
+  }
   // FromZerothElementPointer() currently returns an error for any situation
   // where the zeroth_element will is not equal to the place where the minimal
   // memory region starts.

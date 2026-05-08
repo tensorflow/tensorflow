@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/activate_context.h"
-#include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_event.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
 #include "xla/stream_executor/stream.h"
@@ -39,14 +38,14 @@ absl::StatusOr<float> GetEventElapsedTime(StreamExecutor* executor,
   std::unique_ptr<ActivateContext> activation = executor->Activate();
   // The stop event must have completed in order for hipEventElapsedTime to
   // work.
-  hipError_t res = wrap::hipEventSynchronize(stop);
+  hipError_t res = hipEventSynchronize(stop);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to synchronize the stop event: " << ToString(res);
     return false;
   }
   float elapsed_milliseconds;
   TF_RETURN_IF_ERROR(
-      ToStatus(wrap::hipEventElapsedTime(&elapsed_milliseconds, start, stop),
+      ToStatus(hipEventElapsedTime(&elapsed_milliseconds, start, stop),
                "failed to get elapsed time between events"));
 
   return elapsed_milliseconds;

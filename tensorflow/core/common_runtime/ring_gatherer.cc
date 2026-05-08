@@ -57,7 +57,7 @@ absl::Status RingGatherer::InitializeCollectiveParams(
   if (!col_params->instance.impl_details.subdiv_offsets.empty() &&
       (col_params->instance.impl_details.subdiv_offsets.size() > 1 ||
        col_params->instance.impl_details.subdiv_offsets[0] != 0)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "RingGather cannot take any subdiv offset other than 0.");
   }
   if (col_params->instance.impl_details.subdiv_offsets.empty()) {
@@ -161,7 +161,7 @@ bool RingGatherer::RunAsyncParts() {
     } else {
       mutex_lock l(status_mu_);
       status_ =
-          errors::Internal("Failed to dispatch ThenExecute in RingGatherer");
+          absl::InternalError("Failed to dispatch ThenExecute in RingGatherer");
       return false;
     }
   }

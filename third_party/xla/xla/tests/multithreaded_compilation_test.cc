@@ -13,30 +13,38 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/hlo/testlib/test_helpers.h"
-#include "xla/literal.h"
-#include "xla/literal_util.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
-#include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tests/aot_utils.h"
+#include "xla/tests/pjrt_client_registry.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
 
-using MultithreadedCompilation = HloTestBase;
+using MultithreadedCompilation = HloHardwareIndependentTestBase;
+
+std::unique_ptr<HloRunnerInterface> CreateRunnerOrDie() {
+  CHECK(ShouldUsePjRt());
+  absl::StatusOr<std::unique_ptr<PjRtClient>> client =
+      GetGlobalPjRtClientTestFactory().Get()();
+  CHECK_OK(client);
+  return MakeHloRunnerPjRtAotAware(*std::move(client));
+}
 
 //  In this test, we are taking the same module and compiling it `num_threads`
 //  times in parallel and are making it dump hlo files for layout assignment.
@@ -53,59 +61,69 @@ TEST_F(MultithreadedCompilation, EightModuleCompilation) {
     broadcast.5 = f32[3,3,45,1]{3,2,1,0} broadcast(constant.4), dimensions={}
     ROOT multiply.6 = f32[3,3,45,1]{3,2,1,0} multiply(arg0.1, broadcast.5)
 })";
-  constexpr int num_threads = 32;
-  auto config = GetModuleConfigForTest(/*replica_count=*/2,
-                                       /*num_partitions=*/1);
-  auto debug_options = config.debug_options();
+  constexpr int kNumThreads = 32;
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/1,
+                                                  /*num_partitions=*/1);
+  DebugOptions debug_options = config.debug_options();
   debug_options.set_xla_dump_hlo_pass_re("layout-assignment");
   config.set_debug_options(debug_options);
 
-  std::vector<std::unique_ptr<HloModule>> modules(num_threads);
-  for (int i = 0; i < num_threads; i++) {
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseAndReturnVerifiedModule(hlo_text, config));
+  std::array<std::unique_ptr<HloModule>, kNumThreads> modules;
+  for (int i = 0; i < kNumThreads; i++) {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(hlo_text, config));
     module->mutable_config()
         .mutable_debug_options()
         .set_xla_embed_ir_in_executable(true);
     modules[i] = std::move(module);
   }
 
-  absl::Mutex mu;
-  std::vector<std::unique_ptr<OpaqueExecutable>> executables;
-  auto do_compilation = [&](int iteration) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<OpaqueExecutable> executable,
-                        CreateExecutable(std::move(modules[iteration]), true));
-    absl::MutexLock lock(mu);
-    executables.push_back(std::move(executable));
-    VLOG(2) << "Adding executable obtained from thread: " << iteration;
-    return absl::OkStatus();
-  };
-
+  std::array<std::unique_ptr<OpaqueExecutable>, kNumThreads> executables;
+  std::array<const HloModule*, kNumThreads> compiled_modules;
   {
     tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "threads-",
-                                        num_threads);
-    for (int i = 0; i < num_threads; i++) {
-      thread_pool.Schedule([&, i]() { TF_EXPECT_OK(do_compilation(i)); });
+                                        kNumThreads);
+    for (int i = 0; i < kNumThreads; i++) {
+      thread_pool.Schedule([i, &module = modules[i],
+                            &executable = executables[i],
+                            &compiled_module = compiled_modules[i]]() {
+        std::unique_ptr<HloRunnerInterface> runner = CreateRunnerOrDie();
+        absl::StatusOr<std::unique_ptr<OpaqueExecutable>> new_executable =
+            runner->CreateExecutable(std::move(module),
+                                     /*run_hlo_passes=*/true);
+        EXPECT_OK(new_executable);
+        if (!new_executable.status().ok()) {
+          return;
+        }
+        absl::StatusOr<const HloModule*> new_compiled_module =
+            runner->HloModuleFromWrapped(new_executable->get());
+        EXPECT_OK(new_compiled_module);
+        if (!new_compiled_module.status().ok()) {
+          return;
+        }
+        executable = *std::move(new_executable);
+        compiled_module = *new_compiled_module;
+        VLOG(2) << "Adding executable obtained from thread: " << i;
+      });
     }
   }
 
   ::tsl::protobuf::util::MessageDifferencer differencer;
   bool first_time = true;
-  HloProto first_hlo_proto;
-  for (const std::unique_ptr<OpaqueExecutable>& exec : executables) {
-    TF_ASSERT_OK_AND_ASSIGN(
-        const HloProto* const curr_hlo_proto,
-        test_runner_as_hlo_runner().HloProtoFromWrapped(exec.get()));
+  HloModuleProto first_hlo_proto;
+  for (int i = 0; i < kNumThreads; i++) {
+    HloModuleProto curr_hlo_proto = compiled_modules[i]->ToProto();
     if (first_time) {
-      first_hlo_proto = *curr_hlo_proto;
+      first_hlo_proto = std::move(curr_hlo_proto);
       first_time = false;
-      auto ignore_field =
-          curr_hlo_proto->hlo_module().GetDescriptor()->FindFieldByName("id");
-      EXPECT_NE(ignore_field, nullptr);
+      const google::protobuf::FieldDescriptor* ignore_field =
+          HloModuleProto::descriptor()->FindFieldByName("id");
+      ASSERT_NE(ignore_field, nullptr);
       differencer.IgnoreField(ignore_field);
     } else {
-      EXPECT_TRUE(differencer.Compare(first_hlo_proto, *curr_hlo_proto));
+      EXPECT_TRUE(differencer.Compare(first_hlo_proto, curr_hlo_proto));
     }
   }
 }
+
 }  // namespace xla

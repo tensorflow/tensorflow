@@ -209,7 +209,9 @@ void DumpModule(const std::string output_filename, const llvm::Module* module) {
 }
 
 const llvm::Module* GetModule(llvm::Any IR) {
-  if (const auto** M = llvm::any_cast<const llvm::Module*>(&IR)) return *M;
+  if (const auto** M = llvm::any_cast<const llvm::Module*>(&IR)) {
+    return *M;
+  }
 
   if (const auto** F = llvm::any_cast<const llvm::Function*>(&IR)) {
     return (*F)->getParent();

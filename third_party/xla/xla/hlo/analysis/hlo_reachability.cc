@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 
@@ -38,8 +39,15 @@ HloReachabilityMap::HloReachabilityMap(
       words_per_bitset_((bits_per_bitset_ + BitSet::kBits - 1) / BitSet::kBits),
       total_words_((instructions.size() + 1 /*for tmp_bit_set_*/) *
                    words_per_bitset_) {
-  int row = 0;
-  int total_rows = instructions.size() + 1;  // for tmp_bit_set_
+  if (!instructions.empty()) {
+    CHECK(instructions[0]->parent() != nullptr)
+        << "Instruction must be in a computation.";
+    computation_id_ = instructions[0]->parent()->unique_id();
+  } else {
+    computation_id_ = kComputationIdAbsent;
+  }
+  uint64_t row = 0;
+  uint64_t total_rows = instructions.size() + 1;  // for tmp_bit_set_
   while (row < total_rows) {
     const int rows_to_allocate = std::min(kRowsPerAllocation, total_rows - row);
     size_t words_to_allocate = rows_to_allocate * words_per_bitset_;
@@ -49,7 +57,11 @@ HloReachabilityMap::HloReachabilityMap(
   }
 
   tmp_bit_set_ = BitSetFromIndex(instructions.size());
-  indices_.reserve(instructions.size());
+  int32_t max_local_id = 0;
+  for (const HloInstruction* instruction : instructions) {
+    max_local_id = std::max(max_local_id, instruction->local_id());
+  }
+  indices_.resize(max_local_id + 1, kValueAbsent);
   for (size_t i = 0; i < instructions.size(); ++i) {
     BitSetFromIndex(i).Set(i);  // Instructions are reachable from themselves.
     indices_[GetKey(instructions[i])] = i;
@@ -104,9 +116,15 @@ void HloReachabilityMap::SetReachabilityToUnionHelper(
 
 void HloReachabilityMap::Replace(const HloInstruction* original,
                                  const HloInstruction* replacement) {
-  if (GetKey(original) != GetKey(replacement)) {
-    indices_[GetKey(replacement)] = GetIndex(original);
-    indices_.erase(GetKey(original));
+  Key original_key = GetKey(original);
+  Key replacement_key = GetKey(replacement);
+  if (original_key != replacement_key) {
+    DCHECK_LT(original_key, indices_.size());
+    if (replacement_key >= indices_.size()) {
+      indices_.resize(replacement_key + 1, kValueAbsent);
+    }
+    indices_[replacement_key] = GetIndex(original);
+    indices_[original_key] = kValueAbsent;
   }
 }
 

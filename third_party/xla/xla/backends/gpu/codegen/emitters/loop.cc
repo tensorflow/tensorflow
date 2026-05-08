@@ -98,7 +98,7 @@ LaunchDimensions LoopFusion::launch_dimensions() const {
   Shape indexing_shape = emitters::LoopFusionKernelEmitter::GetIndexingShape(
       analysis_.fusion_spec());
   auto dims = CalculateLaunchDimensions(indexing_shape, analysis_.device_info(),
-                                        config_);
+                                        unroll_factor_);
   const auto& blocks = dims.block_counts();
   auto split_x = MaybeSplitGridDimensionX(dims.thread_counts_per_block().x,
                                           blocks.x, analysis_.device_info());
@@ -116,7 +116,7 @@ LaunchDimensions LoopFusion::launch_dimensions() const {
 
 WorkDimensions LoopFusion::GetWorkDimensions() const {
   WorkDimensions work_dimensions = launch_dimensions().AsWorkDimensions();
-  work_dimensions.work_tile_size.dimensions.push_back(config_.unroll_factor);
+  work_dimensions.work_tile_size.dimensions.push_back(unroll_factor_);
   return work_dimensions;
 }
 

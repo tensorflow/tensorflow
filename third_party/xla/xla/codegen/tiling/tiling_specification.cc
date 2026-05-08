@@ -56,7 +56,8 @@ std::string TilingSpecification::ToString() const {
     absl::StrAppend(&s, "    ", instruction->name(), ": ", num_params, "\n");
   }
   absl::StrAppend(&s, "  }\n");
-  absl::StrAppend(&s, "  constraints=", constraints_.ToString(), "\n");
+  absl::StrAppend(&s, "  constraints=", constraints_.ToString(num_parameters_),
+                  "\n");
   absl::StrAppend(&s, "}");
   return s;
 }

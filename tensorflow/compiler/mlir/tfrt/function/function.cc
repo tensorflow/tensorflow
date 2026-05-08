@@ -79,8 +79,8 @@ absl::Status CompileTFMLIRToBEF(const TfrtFunctionCompileOptions& options,
   }
 
   if (mlir::failed(pm.run(module)))
-    return diag_handler.Combine(tensorflow::errors::Internal(
-        "failed to lower TF Dialect to CoreRT dialect."));
+    return diag_handler.Combine(
+        absl::InternalError("failed to lower TF Dialect to CoreRT dialect."));
 
   if (VLOG_IS_ON(1)) {
     VLOG(1) << "TFRT dialect: ";
@@ -91,7 +91,7 @@ absl::Status CompileTFMLIRToBEF(const TfrtFunctionCompileOptions& options,
       tfrt::ConvertMLIRToBEF(module, /* disable_optional_sections = */ true);
   if (bef_buffer->empty())
     return diag_handler.Combine(
-        tensorflow::errors::Internal("failed to convert MLIR to BEF."));
+        absl::InternalError("failed to convert MLIR to BEF."));
 
   return absl::OkStatus();
 }

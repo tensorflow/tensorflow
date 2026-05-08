@@ -122,7 +122,7 @@ absl::Status CreateTestFiles(
     const std::vector<std::vector<std::string>>& contents,
     CompressionType compression_type) {
   if (filenames.size() != contents.size()) {
-    return tensorflow::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "The number of files does not match with the contents");
   }
   for (int i = 0; i < filenames.size(); ++i) {

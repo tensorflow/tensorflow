@@ -110,8 +110,7 @@ TritonDotFusionSearchSpace::TritonDotFusionSearchSpace(
       should_optimize_for_occupancy_(ShouldOptimizeForOccupancy()),
       min_out_tile_(GetMinOutputTile()),
       min_warps_per_cta_(GetMinWarpsPerCta()),
-      min_contracting_tile_size_(GetMinContractingTileSize()),
-      max_contracting_split_(GetMaxContractingSplit(max_out_tile_)) {
+      min_contracting_tile_size_(GetMinContractingTileSize()) {
   // Make sure that the range of output tile sizes is not empty
   // (min_output_tile_ is a hard limit, while max_output_tile_ is a soft one).
   max_out_tile_.lhs_dim =
@@ -122,32 +121,14 @@ TritonDotFusionSearchSpace::TritonDotFusionSearchSpace(
                                   ->config()
                                   .debug_options()
                                   .xla_gpu_exhaustive_tiling_search();
+  has_concatenate_ = HloBfsAnyOf({dot}, [](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kConcatenate;
+  });
 }
 
 std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::GenerateConfigs(
-    std::optional<int64_t> force_contracting_split,
     bool autotune_warp_specialization) const {
-  std::vector<ConfigWithNotes> configs;
-  if (force_contracting_split.has_value()) {
-    ConfigWithNotes config;
-    const int split = force_contracting_split.value();
-    config.config.split_k = split;
-    // It is possible that the user manually forced a huge contracting split
-    // that is outside of the search space. In that case, we would end up
-    // discarding all configs, and use the smallest possible tile size further
-    // down, which is likely not what the user had in mind.
-    config.keep_large_split = GetMaxContractingSplit(max_out_tile_) < split;
-    VLOG(5) << "Forcing split_k, config = " << config.ToString();
-    if (config.keep_large_split) {
-      LOG(WARNING)
-          << "split_k is larger than what we would have found automatically. "
-             "Skipping split and output tile compatibility checks. Should we "
-             "expand the split_k search space?";
-    }
-    configs.push_back(config);
-  } else {
-    configs = GenerateContractingSplitFactors();
-  }
+  std::vector<ConfigWithNotes> configs(1);
 
   ExtendConfigs(configs, &TritonDotFusionSearchSpace::AddOutputTilings);
   EliminateLowOccupancyConfigs(configs);
@@ -160,6 +141,9 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::GenerateConfigs(
   if (autotune_warp_specialization) {
     ExtendConfigs(configs,
                   &TritonDotFusionSearchSpace::AddWarpSpecializationParameter);
+  }
+  if (device_description_.gpu_compute_capability().IsRocm()) {
+    ExtendConfigs(configs, &TritonDotFusionSearchSpace::AddWavesPerEuParameter);
   }
 
   std::vector<TritonGemmConfig> result;
@@ -180,31 +164,6 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::OptimizeConfigSet(
     return configs;
   }
 
-  absl::flat_hash_map<std::pair<int, int>, std::pair<int, int>>
-      m_n_to_split_limits;
-  // Init with first config vals, otherwise they would be 0 and min comparison
-  // won't update properly.
-  std::pair<int, int> global_split_limits{configs.front().split_k,
-                                          configs.front().split_k};
-  auto update_split_limits = [](auto& limits, int value) {
-    limits = std::minmax({limits.first, limits.second, value});
-  };
-  for (const TritonGemmConfig& config : configs) {
-    auto m_n_key = std::make_pair(config.block_m, config.block_n);
-    auto& split_limits =
-        m_n_to_split_limits.try_emplace(m_n_key, config.split_k, config.split_k)
-            .first->second;
-    update_split_limits(split_limits, config.split_k);
-    update_split_limits(global_split_limits, config.split_k);
-  }
-
-  auto get_split_limits = [&](int block_m, int block_n) {
-    auto m_n_key = std::make_pair(block_m, block_n);
-    auto split_limits_it = m_n_to_split_limits.find(m_n_key);
-    return split_limits_it == m_n_to_split_limits.end()
-               ? global_split_limits
-               : split_limits_it->second;
-  };
   absl::flat_hash_set<TritonGemmConfig> filter;
   for (TritonGemmConfig config : hints) {
     // Our default config set does not take problem size into account, so we
@@ -217,11 +176,8 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::OptimizeConfigSet(
                                 max_out_tile_.rhs_dim);
     config.block_k =
         std::clamp(config.block_k, min_contracting_tile_size_,
-                   GetMaxContractingTileSize({config.block_m, config.block_n},
-                                             /*contracting_split=*/1));
-    const auto& split_limits = get_split_limits(config.block_m, config.block_n);
-    config.split_k =
-        std::clamp(config.split_k, split_limits.first, split_limits.second);
+                   GetMaxContractingTileSize({config.block_m, config.block_n}));
+
     VLOG(10) << "Adding config to hint filter: " << config.ToString();
     filter.insert(config);
   }
@@ -249,13 +205,13 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::OptimizeConfigSet(
 std::string TritonDotFusionSearchSpace::ToString() const {
   return absl::StrFormat(
       "problem_size_BxMxNxKxE: %dx%dx%dx%dx(%d->%d) "
-      "tile_range_SxMxNxK: [1-%d]x[%d-%d]x[%d-%d]x[%d-?] "
+      "tile_range_MxNxK: [%d-%d]x[%d-%d]x[%d-?] "
       "desired_total_warps: %d occupancy_optimization: %d "
       "warps_per_cta: [%d-?]",
       batch_size_, lhs_parallel_size_, rhs_parallel_size_, contracting_size_,
-      operand_bitwidth_, compute_bitwidth_, max_contracting_split_,
-      min_out_tile_.lhs_dim, max_out_tile_.lhs_dim, min_out_tile_.rhs_dim,
-      max_out_tile_.rhs_dim, min_contracting_tile_size_, desired_total_warps_,
+      operand_bitwidth_, compute_bitwidth_, min_out_tile_.lhs_dim,
+      max_out_tile_.lhs_dim, min_out_tile_.rhs_dim, max_out_tile_.rhs_dim,
+      min_contracting_tile_size_, desired_total_warps_,
       should_optimize_for_occupancy_, min_warps_per_cta_);
 }
 
@@ -411,43 +367,6 @@ int TritonDotFusionSearchSpace::GetMinContractingTileSize() const {
   return min_contracting_tile_size;
 }
 
-int TritonDotFusionSearchSpace::GetMaxContractingSplit(
-    OutputTile output_tile) const {
-  const int64_t desired_num_ctas = desired_total_warps_ / min_warps_per_cta_;
-  VLOG(5) << "Computing split_k: Considering output tile "
-          << output_tile.lhs_dim << "x" << output_tile.rhs_dim;
-  VLOG(5) << "Computing split_k: Want up to " << desired_num_ctas
-          << " CTAs to occupy all cores.";
-
-  const int64_t min_result_tiles = GetNumResultTiles(output_tile);
-  VLOG(5) << "Computing split_k: Without split_k have " << min_result_tiles
-          << " tiles.";
-
-  const int64_t split_for_occupancy =
-      NextPowerOfTwo(CeilOfRatio(desired_num_ctas, min_result_tiles));
-  VLOG(5) << "Computing split_k: Want split_k of up to " << split_for_occupancy
-          << " for sufficient occupancy.";
-
-  // Calculate the maximum split_k that is valid with the smallest block_k.
-  // The validation in MakeSplitKOperand requires:
-  //   split_k <= ceil(contracting_size / block_k)
-  // Using min_contracting_tile_size_ (smallest block_k) gives largest valid
-  // split.
-  const int64_t max_valid_split = CeilOfRatio(
-      contracting_size_, static_cast<int64_t>(min_contracting_tile_size_));
-  const int64_t split_for_contracting_size =
-      PreviousPowerOfTwo(max_valid_split);
-  VLOG(5) << "Computing split_k: Can't have split_k more than "
-          << split_for_contracting_size
-          << " to have sufficiently large contracting dimension (max_valid="
-          << max_valid_split << ").";
-
-  const int64_t split =
-      std::min(split_for_occupancy, split_for_contracting_size);
-  VLOG(5) << "Computing split_k: max_split_k = " << split;
-  return split;
-}
-
 int TritonDotFusionSearchSpace::GetContractingSizeLimitToFitSharedMemory(
     OutputTile output_tile) const {
   const int64_t shared_memory_budget =
@@ -459,24 +378,23 @@ int TritonDotFusionSearchSpace::GetContractingSizeLimitToFitSharedMemory(
 }
 
 int TritonDotFusionSearchSpace::GetMaxContractingTileSize(
-    OutputTile output_tile, int contracting_split) const {
-  const int64_t available_size = contracting_size_ / contracting_split;
+    OutputTile output_tile) const {
+  const int64_t available_size = contracting_size_;
   const int size_limit = GetContractingSizeLimitToFitSharedMemory(output_tile);
   const int max_size =
       std::min(NextPowerOfTwo(available_size), PreviousPowerOfTwo(size_limit));
-  VLOG(5) << "Computing max_contracting_tile_size for tiling BxMxN = "
-          << contracting_split << "x" << output_tile.lhs_dim << "x"
-          << output_tile.rhs_dim << ": limit based on problem is "
-          << available_size << ", limit based on available shared memory is "
-          << size_limit << ", max_contracting_tile_size = " << max_size;
+  VLOG(5) << "Computing max_contracting_tile_size for tiling BxMxN = " << 1
+          << "x" << output_tile.lhs_dim << "x" << output_tile.rhs_dim
+          << ": limit based on problem is " << available_size
+          << ", limit based on available shared memory is " << size_limit
+          << ", max_contracting_tile_size = " << max_size;
   return std::max(min_contracting_tile_size_, max_size);
 }
 
-int TritonDotFusionSearchSpace::GetMaxNumStages(OutputTile output_tile,
-                                                int contracting_tile_size,
-                                                int contracting_split) const {
-  const int64_t available_stages = CeilOfRatio<int64_t>(
-      contracting_size_, contracting_split * contracting_tile_size);
+int TritonDotFusionSearchSpace::GetMaxNumStages(
+    OutputTile output_tile, int contracting_tile_size) const {
+  const int64_t available_stages =
+      CeilOfRatio<int64_t>(contracting_size_, contracting_tile_size);
   const int64_t stage_limit = std::max(
       1, CeilOfRatio(GetContractingSizeLimitToFitSharedMemory(output_tile),
                      contracting_tile_size));
@@ -484,27 +402,12 @@ int TritonDotFusionSearchSpace::GetMaxNumStages(OutputTile output_tile,
   // the maximum number we want is also limited by kMaxWarpsPerScheduler.
   const int stages = std::min({available_stages, stage_limit,
                                static_cast<int64_t>(kMaxWarpsPerScheduler)});
-  VLOG(5) << "Computing max_num_stages for tiling BxMxNxK = "
-          << contracting_split << "x" << output_tile.lhs_dim << "x"
-          << output_tile.rhs_dim << "x" << contracting_tile_size
-          << ": limit based on problem is " << available_stages
-          << ", limit based on available shared memory is " << stage_limit
-          << ", max_num_stages = " << stages;
+  VLOG(5) << "Computing max_num_stages for tiling BxMxNxK = " << 1 << "x"
+          << output_tile.lhs_dim << "x" << output_tile.rhs_dim << "x"
+          << contracting_tile_size << ": limit based on problem is "
+          << available_stages << ", limit based on available shared memory is "
+          << stage_limit << ", max_num_stages = " << stages;
   return stages;
-}
-
-std::vector<TritonDotFusionSearchSpace::ConfigWithNotes>
-TritonDotFusionSearchSpace::GenerateContractingSplitFactors() const {
-  CHECK_GE(max_contracting_split_, 1);
-  std::vector<ConfigWithNotes> configs;
-  ConfigWithNotes config;
-  for (int split = 1; split <= max_contracting_split_; split *= 2) {
-    config.config.split_k = split;
-    VLOG(10) << "Generating contracting split factors: config = "
-             << config.ToString();
-    configs.push_back(config);
-  }
-  return configs;
 }
 
 void TritonDotFusionSearchSpace::ExtendConfigs(
@@ -522,9 +425,6 @@ void TritonDotFusionSearchSpace::ExtendConfigs(
 void TritonDotFusionSearchSpace::AddOutputTilings(
     const ConfigWithNotes& config,
     std::vector<ConfigWithNotes>& updated_configs) const {
-  CHECK_GT(config.config.split_k, 0)
-      << "Need config with contracting split already set.";
-  const int split = config.config.split_k;
   ConfigWithNotes new_config = config;
   for (int m = min_out_tile_.lhs_dim; m <= max_out_tile_.lhs_dim; m *= 2) {
     int min_n = min_out_tile_.rhs_dim;
@@ -558,17 +458,8 @@ void TritonDotFusionSearchSpace::AddOutputTilings(
     }
     for (int n = min_n; n <= max_n; n *= 2) {
       OutputTile tile = {m, n};
-      // We could make the tile size limits depend on split_k, but then we
-      // need to implement the "inverse" of `GetMaxContractingSplit`.
-      // Simpler is to just verify that the given combination of tiling and
-      // split_k is compatible.
-      if (!config.keep_large_split && GetMaxContractingSplit(tile) < split) {
-        VLOG(10) << "Skipping due to too large split_k, config = "
-                 << new_config.ToString();
-        continue;
-      }
       new_config.not_enough_tiles =
-          GetNumResultTiles(tile) * split < device_description_.core_count();
+          GetNumResultTiles(tile) < device_description_.core_count();
       new_config.config.block_m = m;
       new_config.config.block_n = n;
       VLOG(10) << "Adding output tiling: config = " << new_config.ToString();
@@ -601,29 +492,13 @@ void TritonDotFusionSearchSpace::AddContractingTiling(
     std::vector<ConfigWithNotes>& updated_configs) const {
   const int tile_rows = config.config.block_m;
   const int tile_cols = config.config.block_n;
-  const int split = config.config.split_k;
   CHECK_GT(tile_rows * tile_cols, 0)
       << "Need configs with output tilings determined.";
-  CHECK_GT(split, 0) << "Need config with contracting split determined.";
   int max_tile_size =
-      std::max(GetMaxContractingTileSize({tile_rows, tile_cols}, split),
+      std::max(GetMaxContractingTileSize({tile_rows, tile_cols}),
                min_contracting_tile_size_);
   ConfigWithNotes new_config = config;
   for (int k = min_contracting_tile_size_; k <= max_tile_size; k *= 2) {
-    // Safety check: skip block_k values that are incompatible with split_k.
-    // The validation in MakeSplitKOperand checks:
-    //   split_k > ceil(contracting_size / block_k) → error
-    // So we need: split_k <= ceil(contracting_size / block_k)
-    // Skip this check if keep_large_split is true (user forced a large split).
-    if (!config.keep_large_split) {
-      const int64_t max_split_for_this_k =
-          CeilOfRatio(contracting_size_, static_cast<int64_t>(k));
-      if (split > max_split_for_this_k) {
-        VLOG(10) << "Skipping block_k=" << k << " for split_k=" << split
-                 << " (max_split=" << max_split_for_this_k << ")";
-        continue;
-      }
-    }
     new_config.config.block_k = k;
     VLOG(10) << "Adding contracting tiling: config = " << new_config.ToString();
     updated_configs.push_back(new_config);
@@ -636,14 +511,11 @@ void TritonDotFusionSearchSpace::AddPipeliningParameter(
   const int tile_rows = config.config.block_m;
   const int tile_cols = config.config.block_n;
   const int tile_contracting = config.config.block_k;
-  const int split = config.config.split_k;
   CHECK_GT(tile_rows * tile_cols, 0)
       << "Need config with output tilings determined.";
   CHECK_GT(tile_contracting, 0)
       << "Need config with contracting tiling determined.";
-  CHECK_GT(split, 0) << "Need config with contracting split determined.";
-  int max_stages =
-      GetMaxNumStages({tile_rows, tile_cols}, tile_contracting, split);
+  int max_stages = GetMaxNumStages({tile_rows, tile_cols}, tile_contracting);
   ConfigWithNotes new_config = config;
   for (int num_stages = 1; num_stages <= max_stages; ++num_stages) {
     new_config.config.num_stages = num_stages;
@@ -680,8 +552,19 @@ void TritonDotFusionSearchSpace::AddWarpSpecializationParameter(
   // 32, which would break with auto warp specialization, because the feature
   // will employ `worker warps` that will mean we exceed the maximum block size
   // of 1024 threads.
-  if (config.config.is_tma_allowed && config.config.num_warps <= 16 &&
-      config.config.num_warps % 4 == 0) {
+  // - num_stages = 2 is filtered out due to b/456723426. A
+  // CUDA_ERROR_MISALIGNED_ADDRESS error occurs when the kernel also has a
+  // broadcast of an input parameter. This is potentially related to b/421858850
+  // where TMA-enabled parameters that have a broadcast consumer with num_stages
+  // > 2 also run into address misalignment issues. It might be more precise to
+  // also check for a broadcast consumer, but that would complicate the code
+  // here.
+  // - No concatenate operation in the module due to b/483385760. A
+  // CUDA_ERROR_ILLEGAL_ADDRESS error occurs due to a bug in Triton for this
+  // category of GEMMs.
+  if (!has_concatenate_ && config.config.is_tma_allowed &&
+      config.config.num_warps <= 16 && config.config.num_warps % 4 == 0 &&
+      config.config.num_stages != 2) {
     new_config.config.is_warp_specialization_allowed = true;
     VLOG(10) << "Adding warp specialization parameter: config = "
              << new_config.ToString();
@@ -709,14 +592,6 @@ void TritonDotFusionSearchSpace::EliminateLowOccupancyConfigs(
 
   ConfigWithNotes last_config = configs.back();  // Largest split.
   auto has_too_few_tiles = [](const ConfigWithNotes& config) {
-    // Small dots frequently lead to large split_k values that are not
-    // compatible with codegen. We skip occupancy optimization for them to be
-    // able to consider smaller splits in non-exhaustive mode.
-    // The value of 4 was found by running exhaustive autotuning and noting that
-    // the majority of optimal configs with block_n == 8 had split_k <= 4.
-    if (config.config.block_n == 8 && config.config.split_k <= 4) {
-      return false;
-    }
     if (config.not_enough_tiles) {
       VLOG(10) << "Skipping due to fewer tiles than cores, config = "
                << config.ToString();
@@ -736,6 +611,40 @@ void TritonDotFusionSearchSpace::EliminateLowOccupancyConfigs(
     configs.push_back(last_config);
   }
   VLOG(10) << "Eliminated " << num_configs - configs.size() << " configs.";
+}
+
+void TritonDotFusionSearchSpace::AddWavesPerEuParameter(
+    const ConfigWithNotes& config,
+    std::vector<ConfigWithNotes>& updated_configs) const {
+  // Hints the LLVM backend to reduce VGPR usage so that the given number of
+  // wavefronts can run concurrently on each Execution Unit (EU). On MI300X
+  // each EU has 512 VGPRs allocated in blocks of 16, giving:
+  //
+  //   Num VGPRs   Waves/EU   Waves/CU
+  //   <= 64          8          32
+  //   <= 96          5          20
+  //   <= 128         4          16
+  //   <= 168         3          12
+  //   <= 256         2           8
+  //   > 256          1           4
+  //
+  // 0 means no restriction (the default). Higher values force tighter register
+  // budgets, potentially increasing occupancy at the cost of more spilling.
+  //
+  // Actual occupancy also depends on LDS (shared memory) and num_warps:
+  //   occ = min(floor(occ_vgpr * 4 / num_warps),
+  //             floor(65536 / lds_bytes)) * num_warps / 4
+  // where occ_vgpr is from the table above. Neither lds_bytes nor
+  // the VGPR count are known at search space construction time, so we
+  // enumerate a few values and let the autotuner pick the best one.
+  static constexpr int kWavesPerEuValues[] = {0, 1, 2, 4};
+  for (int waves : kWavesPerEuValues) {
+    ConfigWithNotes new_config = config;
+    new_config.config.waves_per_eu = waves;
+    VLOG(10) << "Adding waves_per_eu parameter: config = "
+             << new_config.ToString();
+    updated_configs.push_back(new_config);
+  }
 }
 
 }  // namespace xla::gpu

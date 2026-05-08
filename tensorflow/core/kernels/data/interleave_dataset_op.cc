@@ -15,25 +15,31 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/interleave_dataset_op.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "xla/tsl/platform/errors.h"
-#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
+#include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/model.h"
-#include "tensorflow/core/framework/partial_tensor_shape.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/stringprintf.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
@@ -80,9 +86,9 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
         output_shapes_(output_shapes),
         traceme_metadata_(
             {{"block_length",
-              strings::Printf("%lld", static_cast<long long>(block_length))},
+              absl::StrFormat("%lld", static_cast<long long>(block_length))},
              {"cycle_length",
-              strings::Printf("%lld", static_cast<long long>(cycle_length))}}) {
+              absl::StrFormat("%lld", static_cast<long long>(cycle_length))}}) {
     input_->Ref();
   }
 
@@ -296,6 +302,11 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
           dataset()->captured_func_->CheckExternalState()));
       mutex_lock l(mu_);
+      if (input_impl_ == nullptr) {
+        return absl::FailedPreconditionError(
+            "`Initialize` should be called before saving/restoring from "
+            "tf.data checkpoints.");
+      }
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(prefix(), kCycleIndex, cycle_index_));
@@ -318,6 +329,11 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
     absl::Status RestoreInternal(IteratorContext* ctx,
                                  IteratorStateReader* reader) override {
       mutex_lock l(mu_);
+      if (input_impl_ == nullptr) {
+        return absl::FailedPreconditionError(
+            "`Initialize` should be called before saving/restoring from "
+            "tf.data checkpoints.");
+      }
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       int64_t cycle_index;
       TF_RETURN_IF_ERROR(

@@ -555,8 +555,12 @@ class BufferAssignment {
     return *hlo_live_range_;
   }
 
+  // Returns true if the buffer assignment has a valid HloLiveRange.
+  bool HasHloLiveRange() const { return hlo_live_range_ != nullptr; }
+
   // Is in use by many compilers to dump the buffer-assignment info.
   std::string ToString() const;
+  std::string ValuesToString() const;
 
   // Returns a memory usage report with the list of buffer allocations ordered
   // by the size(Z-A) and the values assigned to each buffer allocation.
@@ -766,6 +770,15 @@ class BufferAssigner {
     buffer_assignment::BufferAssignmentAlgorithmProto::Value
         buffer_assignment_algorithm =
             buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT;
+
+    buffer_assignment::BufferAssignmentAlgorithmProto::Value
+        fallback_algorithm =
+            buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT;
+
+    // Optional callback to return the memory limit for a given buffer color.
+    // If set and returns > 0, the returned limit is used instead of the
+    // default module config's device memory size.
+    std::function<int64_t(LogicalBuffer::Color)> color_memory_limit;
   };
 
   static Colorer DefaultColorer() {
@@ -782,8 +795,6 @@ class BufferAssigner {
       return absl::OkStatus();
     };
   }
-
-  // Returns false if a buffer cannot be assigned to given allocation.
 
   // Build and return a BufferAssignment for the given module. The given
   // HloOrdering is used to determine buffer liveness. buffer_size and
@@ -820,7 +831,10 @@ class BufferAssigner {
       BufferAssignment* assignment);
 
   // Returns true if buffer's live range interferences with buffer2's.
-  bool LiveRangeInterferes(const HloValue* buffer1, const HloValue* buffer2,
+  bool LiveRangeInterferes(const HloValue* buffer1,
+                           const HloLiveRange::TimeBound& live_range1,
+                           const HloValue* buffer2,
+                           const HloLiveRange::TimeBound& live_range2,
                            BufferAssignment* assignment);
 
   // Assigns pre-set assignments, if provided. These assignments will be added
@@ -924,6 +938,12 @@ int64_t ComputeIndefiniteAllocationsInBytes(const BufferAssignmentProto& proto,
 // color.
 int64_t ComputeTotalAllocationBytes(const BufferAssignmentProto& proto,
                                     int64_t memory_color);
+
+// Computes the unpadded size of each logical buffer.
+absl::StatusOr<absl::flat_hash_map<int64_t, int64_t>>
+ComputeLogicalBufferUnpaddedSizes(
+    const HloModuleProto& hlo_module_proto,
+    const BufferAssignmentProto& buffer_assignment_proto);
 
 }  // namespace xla
 

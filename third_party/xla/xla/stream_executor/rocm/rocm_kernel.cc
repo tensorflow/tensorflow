@@ -25,11 +25,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
@@ -43,7 +43,7 @@ namespace {
 absl::Status FuncGetAttribute(hipFunction_attribute attribute,
                               hipFunction_t func, int* attribute_value) {
   return ToStatus(
-      wrap::hipFuncGetAttribute(attribute_value, attribute, func),
+      hipFuncGetAttribute(attribute_value, attribute, func),
       absl::StrCat("Failed to query kernel attribute: ", attribute));
 }
 
@@ -59,7 +59,7 @@ absl::StatusOr<int32_t> RocmKernel::GetMaxOccupiedBlocksPerCore(
 
   int max_blocks = 0;
   TF_RETURN_IF_ERROR(
-      ToStatus(wrap::hipModuleOccupancyMaxActiveBlocksPerMultiprocessor(
+      ToStatus(hipModuleOccupancyMaxActiveBlocksPerMultiprocessor(
                    &max_blocks, rocm_function_, threads_per_block,
                    dynamic_shared_memory_bytes),
                "Failed to calculate maximal active blocks per SM"));

@@ -22,7 +22,6 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
-#include "google/protobuf/text_format.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
@@ -94,6 +93,20 @@ TEST_F(XlaCompileLibTest, CompilesForGpuWithDevice) {
                         /*num_partitions=*/1, /*num_replicas=*/1, result),
       absl_testing::IsOkAndHolds(Not(IsEmpty())));
   EXPECT_TRUE(result.has_hlo_module()) << result.DebugString();
+}
+
+TEST_F(XlaCompileLibTest, DoesNotOverridePartitionsAndReplicas) {
+  module_->mutable_config().set_num_partitions(3);
+  module_->mutable_config().set_replica_count(3);
+  CompilationResult result;
+  ASSERT_OK_AND_ASSIGN(
+      std::string hlo_text,
+      CompileExecutable(std::move(module_), BackendType::kGpu,
+                        /*gpu_target_config=*/std::nullopt,
+                        /*cpu_target_config=*/std::nullopt,
+                        /*num_partitions=*/1, /*num_replicas=*/1, result));
+  EXPECT_THAT(hlo_text, ::testing::HasSubstr("num_partitions=3"));
+  EXPECT_THAT(hlo_text, ::testing::HasSubstr("replica_count=3"));
 }
 
 TEST_F(XlaCompileLibTest, CompilesForGpuWithoutDevice) {
@@ -212,6 +225,59 @@ TEST_F(XlaCompileLibTest,
   EXPECT_THAT(internal::LoadAutotuneDataFromModule(&mod, BackendType::kGpu),
               absl_testing::IsOkAndHolds(false));
   EXPECT_TRUE(gpu::AutotunerCache::ResultCacheIsEmpty());
+}
+
+TEST_F(XlaCompileLibTest, MainForGpuForceAutoLayout) {
+  static constexpr absl::string_view kHloText = R"(
+HloModule f
+
+ENTRY f {
+  arg = f32[2,2]{0,1} parameter(0)
+  ROOT add_result = f32[2,2]{0,1} add(arg, arg)
+})";
+
+  const std::string module_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "module_force_layout.txt");
+  ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(), module_file, kHloText));
+
+  const std::string output_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "gpu_output_force_layout");
+  const std::string result_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "gpu_result_force_layout.pb");
+
+  XlaCompileOptions options;
+  options.module_path = module_file;
+  options.output_file = output_file;
+  options.platform = "gpu";
+  options.result_output_file = result_file;
+  options.force_auto_layout = true;
+  EXPECT_OK(XlaCompileMain(options));
+
+  CompilationResult result;
+  ASSERT_OK(tsl::ReadBinaryProto(tsl::Env::Default(), result_file, &result));
+  EXPECT_TRUE(result.has_status());
+  EXPECT_EQ(result.status().code(), tensorflow::error::OK);
+  EXPECT_TRUE(result.has_hlo_module());
+
+  // Verify that the layout was overwritten. The input had {0,1} (column-major).
+  // We expect the output to have {1,0} (row-major) as default on GPU.
+  const auto& optimized_hlo = result.hlo_module();
+  bool found_parameter_with_different_layout = false;
+  for (const auto& computation : optimized_hlo.computations()) {
+    if (computation.name() == optimized_hlo.entry_computation_name()) {
+      for (const auto& instruction : computation.instructions()) {
+        if (instruction.opcode() == "parameter") {
+          const auto& minor_to_major =
+              instruction.shape().layout().minor_to_major();
+          EXPECT_EQ(minor_to_major.size(), 2);
+          if (minor_to_major.Get(0) == 1 && minor_to_major.Get(1) == 0) {
+            found_parameter_with_different_layout = true;
+          }
+        }
+      }
+    }
+  }
+  EXPECT_TRUE(found_parameter_with_different_layout);
 }
 
 }  // namespace

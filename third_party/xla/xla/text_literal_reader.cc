@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/text_literal_reader.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -138,9 +139,18 @@ absl::StatusOr<Literal> TextLiteralReader::ReadAllLines() {
     }
     if (coordinate_values.size() != shape.dimensions().size()) {
       return InvalidArgument(
-          "line did not have expected number of coordinates; want %d got %u: "
-          "\"%s\"",
+          "line did not have expected number of coordinates; "
+          "want %d got %u: \"%s\"",
           shape.dimensions().size(), coordinate_values.size(), line);
+    }
+    for (size_t i = 0; i < coordinate_values.size(); ++i) {
+      if (coordinate_values[i] < 0 ||
+          coordinate_values[i] >= shape.dimensions()[i]) {
+        return InvalidArgument(
+            "coordinate out of bounds for dimension %d: "
+            "want [0, %d) got %d: \"%s\"",
+            i, shape.dimensions()[i], coordinate_values[i], line);
+      }
     }
     result.Set<float>(coordinate_values, value);
   }

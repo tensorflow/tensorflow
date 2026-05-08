@@ -42,6 +42,7 @@ void CreateTritonXlaPipeline(
   pm->addPass(mlir::triton::xla::CreateTritonXLALowerXTilePass());
   pm->addPass(mlir::triton::xla::CreateStableHLOLowerToTritonPass(
       warp_specialization_allowed));
+  pm->addPass(mlir::triton::xla::CreateTritonXLAFoldReshapeAroundForLoopPass());
 
   pm->addPass(emitters::CreateSafeIntegerArithmeticPass());
   pm->addPass(mlir::triton::xla::CreateUnsupportedElementwiseToTritonPass());

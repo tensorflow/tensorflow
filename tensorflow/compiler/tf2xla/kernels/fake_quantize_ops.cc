@@ -97,9 +97,10 @@ class FakeQuantWithMinMaxArgsGradOp : public XlaOpKernel {
     int num_bits;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("num_bits", &num_bits));
     OP_REQUIRES(ctx, num_bits >= 2 && num_bits <= 16,
-                errors::InvalidArgument("num_bits is out of range, expected "
-                                        "between 2 and 16, was: ",
-                                        num_bits));
+                absl::InvalidArgumentError(
+                    absl::StrCat("num_bits is out of range, expected "
+                                 "between 2 and 16, was: ",
+                                 num_bits)));
     bool narrow_range;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("narrow_range", &narrow_range));
     const float quant_min = narrow_range ? 1 : 0;
@@ -146,9 +147,10 @@ class FakeQuantWithMinMaxVarsOp : public XlaOpKernel {
       : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("num_bits", &num_bits_));
     OP_REQUIRES(ctx, num_bits_ >= 2 && num_bits_ <= 16,
-                errors::InvalidArgument("num_bits is out of range, expected "
-                                        "between 2 and 16, was: ",
-                                        num_bits_));
+                absl::InvalidArgumentError(
+                    absl::StrCat("num_bits is out of range, expected "
+                                 "between 2 and 16, was: ",
+                                 num_bits_)));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("narrow_range", &narrow_range_));
     quant_min_ = narrow_range_ ? 1 : 0;
     quant_max_ = (1 << num_bits_) - 1;
@@ -186,9 +188,10 @@ class FakeQuantWithMinMaxVarsGradOp : public XlaOpKernel {
     int num_bits;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("num_bits", &num_bits));
     OP_REQUIRES(ctx, num_bits >= 2 && num_bits <= 16,
-                errors::InvalidArgument("num_bits is out of range, expected "
-                                        "between 2 and 16, was: ",
-                                        num_bits));
+                absl::InvalidArgumentError(
+                    absl::StrCat("num_bits is out of range, expected "
+                                 "between 2 and 16, was: ",
+                                 num_bits)));
     bool narrow_range;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("narrow_range", &narrow_range));
     quant_min_ = narrow_range ? 1 : 0;
@@ -250,9 +253,10 @@ class FakeQuantWithMinMaxVarsPerChannelOp : public XlaOpKernel {
       : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("num_bits", &num_bits_));
     OP_REQUIRES(ctx, num_bits_ >= 2 && num_bits_ <= 16,
-                errors::InvalidArgument("num_bits is out of range, expected "
-                                        "between 2 and 16, was: ",
-                                        num_bits_));
+                absl::InvalidArgumentError(
+                    absl::StrCat("num_bits is out of range, expected "
+                                 "between 2 and 16, was: ",
+                                 num_bits_)));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("narrow_range", &narrow_range_));
     quant_min_ = narrow_range_ ? 1 : 0;
     quant_max_ = (1 << num_bits_) - 1;
@@ -301,9 +305,10 @@ class FakeQuantWithMinMaxVarsPerChannelGradOp : public XlaOpKernel {
     int num_bits;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("num_bits", &num_bits));
     OP_REQUIRES(ctx, num_bits >= 2 && num_bits <= 16,
-                errors::InvalidArgument("num_bits is out of range, expected "
-                                        "between 2 and 16, was: ",
-                                        num_bits));
+                absl::InvalidArgumentError(
+                    absl::StrCat("num_bits is out of range, expected "
+                                 "between 2 and 16, was: ",
+                                 num_bits)));
     bool narrow_range;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("narrow_range", &narrow_range));
     quant_min_ = narrow_range ? 1 : 0;

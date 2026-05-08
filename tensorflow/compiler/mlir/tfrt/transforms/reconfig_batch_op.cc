@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
+#include "tensorflow/core/platform/cpu_info.h"
 
 namespace tensorflow {
 namespace tfrt_compiler {
@@ -48,10 +49,14 @@ class ReconfigBatchOpPass
     batch_timeout_micros_ = options.batch_timeout_micros;
     allowed_batch_sizes_ = options.allowed_batch_sizes;
     max_enqueued_batches_ = options.max_enqueued_batches;
+    enable_large_batch_splitting_ = options.enable_large_batch_splitting;
+    mixed_priority_batching_policy_ = options.mixed_priority_batching_policy;
     batch_queue_global_prioritization_num_threads_ =
         options.batch_queue_global_prioritization_num_threads;
     enable_priority_aware_batch_scheduler_ =
         options.enable_priority_aware_batch_scheduler;
+    enable_priority_aware_batch_scheduler_resplit_ =
+        options.enable_priority_aware_batch_scheduler_resplit;
   }
   ReconfigBatchOpPass()
       : mlir::PassWrapper<ReconfigBatchOpPass,
@@ -77,7 +82,8 @@ class ReconfigBatchOpPass
         batch_padding_policy_.empty() && num_batch_threads_ == 0 &&
         max_batch_size_ == 0 && batch_timeout_micros_ == 0 &&
         allowed_batch_sizes_.empty() && max_enqueued_batches_ == 0 &&
-        !enable_priority_aware_batch_scheduler_) {
+        !enable_priority_aware_batch_scheduler_ &&
+        !enable_priority_aware_batch_scheduler_resplit_) {
       return;
     }
     mlir::ModuleOp module = getOperation();
@@ -112,32 +118,24 @@ class ReconfigBatchOpPass
       if (max_enqueued_batches_ > 0) {
         batch_op.setMaxEnqueuedBatches(max_enqueued_batches_);
       }
+      if (enable_large_batch_splitting_) {
+        batch_op.setEnableLargeBatchSplittingAttr(
+            mlir::Builder(module.getContext()).getBoolAttr(true));
+      }
+      if (!mixed_priority_batching_policy_.empty()) {
+        batch_op.setMixedPriorityPolicy(mixed_priority_batching_policy_);
+      }
       if (batch_queue_global_prioritization_num_threads_ > 0) {
         batch_op.setNumBatchThreads(
             batch_queue_global_prioritization_num_threads_);
-        batch_op.setMixedPriorityPolicy("priority_merge");
-
-        // Default queue options for the low priority queue will be copied from
-        // the high priority queue if the model doesn't explicitly set low
-        // priority queue options.
-        if (batch_op.getLowPriorityMaxBatchSize() == 0) {
-          batch_op.setLowPriorityMaxBatchSize(batch_op.getMaxBatchSize());
-        }
-        if (batch_op.getLowPriorityBatchTimeoutMicros() == 0) {
-          batch_op.setLowPriorityBatchTimeoutMicros(
-              batch_op.getBatchTimeoutMicros());
-        }
-        if (batch_op.getLowPriorityAllowedBatchSizes().empty()) {
-          batch_op.setLowPriorityAllowedBatchSizesAttr(
-              batch_op.getAllowedBatchSizes());
-        }
-        if (batch_op.getLowPriorityMaxEnqueuedBatches() == 0) {
-          batch_op.setLowPriorityMaxEnqueuedBatches(
-              batch_op.getMaxEnqueuedBatches());
-        }
+        batch_op.setNumWarmupBatchThreads(port::MaxParallelism());
+        batch_op.setEnablePriorityAwareBatchScheduler(true);
       }
       if (enable_priority_aware_batch_scheduler_) {
         batch_op.setEnablePriorityAwareBatchScheduler(true);
+      }
+      if (enable_priority_aware_batch_scheduler_resplit_) {
+        batch_op.setEnablePriorityAwareBatchSchedulerResplit(true);
       }
     });
   }
@@ -171,6 +169,13 @@ class ReconfigBatchOpPass
       *this, "tfrt-max-enqueued-batches", llvm::cl::init(0),
       llvm::cl::desc("The maximum number of batches enqueued for processing "
                      "before requests are failed fast")};
+  mlir::Pass::Option<bool> enable_large_batch_splitting_{
+      *this, "tfrt-enable-large-batch-splitting", llvm::cl::init(false),
+      llvm::cl::desc("If true, enables large batch splitting to reduce "
+                     "padding inefficiency")};
+  mlir::Pass::Option<std::string> mixed_priority_batching_policy_{
+      *this, "tfrt-mixed-priority-batching-policy", llvm::cl::init(""),
+      llvm::cl::desc("Policy for mixed priority batching")};
   mlir::Pass::Option<int64_t> batch_queue_global_prioritization_num_threads_{
       *this, "tfrt-batch-queue-global-prioritization-num-threads",
       llvm::cl::init(0),
@@ -182,6 +187,11 @@ class ReconfigBatchOpPass
       llvm::cl::init(false),
       llvm::cl::desc("If true, the queue implementation will have a separate "
                      "subqueue for each criticality.")};
+  mlir::Pass::Option<bool> enable_priority_aware_batch_scheduler_resplit_{
+      *this, "tfrt-enable-priority-aware-batch-scheduler-resplit",
+      llvm::cl::init(false),
+      llvm::cl::desc("If true, the queue implementation will allow task "
+                     "resplit for priority aware batch scheduler.")};
 };
 
 }  // namespace

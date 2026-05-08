@@ -55,6 +55,8 @@ defvar CustomHloConverterOps = [
   StableHLO_AllGatherOp,
   StableHLO_AllReduceOp,
   StableHLO_AllToAllOp,
+  StableHLO_AsyncDoneOp,
+  StableHLO_AsyncStartOp,
   StableHLO_BatchNormGradOp,
   StableHLO_BatchNormTrainingOp,
   StableHLO_BitcastConvertOp,

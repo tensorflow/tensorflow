@@ -52,9 +52,9 @@ class CollectiveReduceV2Op : public XlaOpKernel {
                    ctx->ConstantInputAsIntScalar("group_size", &group_size));
     OP_REQUIRES(ctx,
                 communication_hint_ == "nccl" || communication_hint_ == "auto",
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Only compiling NCCL/auto collective is supported, got: ",
-                    communication_hint_));
+                    communication_hint_)));
 
     // Store all traversed collective configurations, and generate channel_id
     // for the collective.
@@ -64,9 +64,10 @@ class CollectiveReduceV2Op : public XlaOpKernel {
 
     DataType dtype = XlaHelpers::SumAccumulationType(ctx->input_type(0));
     OP_REQUIRES(ctx, merge_op_name_ == "Add" || merge_op_name_ == "Mul",
-                errors::InvalidArgument("Only Add and Mul reduction supported "
-                                        "for tf2xla all-reduce lowering, got: ",
-                                        merge_op_name_));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Only Add and Mul reduction supported "
+                                 "for tf2xla all-reduce lowering, got: ",
+                                 merge_op_name_)));
     const xla::XlaComputation* reducer = [&] {
       if (merge_op_name_ == "Add") {
         return ctx->GetOrCreateAdd(dtype);
@@ -75,10 +76,10 @@ class CollectiveReduceV2Op : public XlaOpKernel {
       return ctx->GetOrCreateMul(dtype);
     }();
 
-    OP_REQUIRES(
-        ctx, final_op_name_ == "Id",
-        errors::InvalidArgument("Only 'Id' is supported as a final operation "
-                                "for all-reduce tf2xla lowering"));
+    OP_REQUIRES(ctx, final_op_name_ == "Id",
+                absl::InvalidArgumentError(
+                    "Only 'Id' is supported as a final operation "
+                    "for all-reduce tf2xla lowering"));
     VLOG(2) << "Emitting xla::AllReduce on channel " << *channel_id
             << " for Op " << ctx->op_kernel().name()
             << " group_size=" << group_size << " group_key=" << group_key;

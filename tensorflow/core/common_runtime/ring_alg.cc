@@ -125,7 +125,7 @@ absl::Status GenerateSubdivsInCollectiveParams(CollectiveParams* col_params) {
   }
 
   if (col_params->instance.shape.num_elements() == 0) {
-    return errors::Internal("shape in CollectiveParams should be non-empty");
+    return absl::InternalError("shape in CollectiveParams should be non-empty");
   }
   const int kAvgDevPerTask =
       col_params->group.group_size / col_params->group.num_tasks;
@@ -135,9 +135,9 @@ absl::Status GenerateSubdivsInCollectiveParams(CollectiveParams* col_params) {
           : kMaxSubdivsPerDeviceDefault;
   const int kMaxNumSubdivs = max_subdivs_per_device * kAvgDevPerTask;
   if (kMaxNumSubdivs <= 0) {
-    return errors::Internal("Unexpected kMaxNumSubdivs ", kMaxNumSubdivs,
-                            " in ",
-                            col_params->instance.impl_details.collective_name);
+    return absl::InternalError(
+        absl::StrCat("Unexpected kMaxNumSubdivs ", kMaxNumSubdivs, " in ",
+                     col_params->instance.impl_details.collective_name));
   }
   // NOTE(ayushd): If no subdiv_offsets have been specified, dynamically add
   // as many offsets as needed so that the size of tensor chunks <=
@@ -155,8 +155,9 @@ absl::Status GenerateSubdivsInCollectiveParams(CollectiveParams* col_params) {
             << " chunk_size " << chunk_size;
   } while (chunk_size > kMaxChunkSizeBytes && num_subdivs < kMaxNumSubdivs);
   if (num_subdivs <= 0) {
-    return errors::Internal("Unexpected num_subdivs ", num_subdivs, " in ",
-                            col_params->instance.impl_details.collective_name);
+    return absl::InternalError(
+        absl::StrCat("Unexpected num_subdivs ", num_subdivs, " in ",
+                     col_params->instance.impl_details.collective_name));
   }
 
   int subdiv_stride = kAvgDevPerTask / num_subdivs;

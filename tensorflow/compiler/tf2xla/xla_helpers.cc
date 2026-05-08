@@ -92,14 +92,15 @@ xla::XlaOp XlaHelpers::FloatLiteral(xla::XlaBuilder* b, DataType data_type,
     const xla::Literal& input, absl::Span<const int64_t> dimensions,
     xla::Literal* output) {
   if (input.shape().IsTuple()) {
-    return errors::InvalidArgument("ReshapeLiteral does not support tuples.");
+    return absl::InvalidArgumentError(
+        "ReshapeLiteral does not support tuples.");
   }
   xla::Shape shape =
       xla::ShapeUtil::MakeShape(input.shape().element_type(), dimensions);
   int64_t elements_before = xla::ShapeUtil::ElementsIn(input.shape());
   int64_t elements_after = xla::ShapeUtil::ElementsIn(shape);
   if (elements_before != elements_after) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Shapes before and after ReshapeLiteral have different numbers of "
         "elements.");
   }
@@ -178,7 +179,7 @@ absl::Status ResolveDeviceAssignment(
   // TODO(nnigania): workaround for b/199436990
   static const int kTimeoutSeconds = 1000;
   if (ctx->collective_executor() == nullptr) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "CollectiveExecutor is required but not available");
   }
 
@@ -208,7 +209,7 @@ absl::Status ResolveDeviceAssignment(
         n.Notify();
       });
   if (!n.WaitForNotificationWithTimeout(absl::Seconds(kTimeoutSeconds))) {
-    return errors::InvalidArgument("Timeout reached");
+    return absl::InvalidArgumentError("Timeout reached");
   }
   TF_RETURN_IF_ERROR(st);
   VLOG(5) << "Collective params completed: " << params->ToString();
@@ -220,17 +221,17 @@ absl::Status ResolveDeviceAssignment(
     const DeviceAttributes& device = params->group.members[device_idx].device;
     if (device.xla_global_id() == -1) {
       if (params->group.device_type == DEVICE_TPU) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             absl::StrCat("No global ID was set for TPU device ", device.name(),
                          ". Try initializing the TPU system, e.g. "
                          "`tf.tpu.experimental.initialize_tpu_system()`."));
       } else if (params->group.device_type == DEVICE_GPU) {
-        return errors::Internal(
+        return absl::InternalError(
             absl::StrCat("No global ID was set for ", device.name(),
                          ". This is unexpected, please file a bug."));
       } else {
         // TODO(b/194942685): Implement CPU collectives.
-        return errors::Unimplemented(
+        return absl::UnimplementedError(
             absl::StrCat("Collectives are not yet implemented for ",
                          params->group.device_type.type_string(),
                          " devices when compiling with XLA. Attempted to "

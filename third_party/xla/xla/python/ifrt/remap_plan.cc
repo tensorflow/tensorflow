@@ -379,7 +379,8 @@ absl::Status RemapPlan::Validate() const {
     const std::shared_ptr<const xla::PjRtLayout>& in_layout = input_spec.layout;
     const std::shared_ptr<const xla::PjRtLayout>& out_layout =
         output_spec.layout;
-    if (in_layout != out_layout) {
+    if (in_layout != out_layout &&
+        (!in_layout || !out_layout || *in_layout != *out_layout)) {
       return InvalidArgument(
           "Input and output must have the same layout: %s (input %d) vs. %s "
           "(output %d)",

@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_FILE_STATISTICS_H_
 #define XLA_TSL_PLATFORM_FILE_STATISTICS_H_
 
-#include "xla/tsl/platform/types.h"
+#include <cstdint>
 
 namespace tsl {
 
@@ -28,10 +28,10 @@ struct FileStatistics {
   // True if the file is a directory, otherwise false.
   bool is_directory = false;
 
-  FileStatistics() {}
+  FileStatistics() = default;
   FileStatistics(int64_t length, int64_t mtime_nsec, bool is_directory)
       : length(length), mtime_nsec(mtime_nsec), is_directory(is_directory) {}
-  ~FileStatistics() {}
+  ~FileStatistics() = default;
 };
 
 }  // namespace tsl

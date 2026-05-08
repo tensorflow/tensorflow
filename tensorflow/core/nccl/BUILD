@@ -77,6 +77,7 @@ tf_cuda_cc_test(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ] + if_cuda_or_rocm([

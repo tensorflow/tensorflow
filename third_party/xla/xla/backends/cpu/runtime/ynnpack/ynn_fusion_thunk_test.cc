@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/ynnpack/ynn_threadpool.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/literal_util.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -83,6 +84,39 @@ static absl::StatusOr<YnnSubgraph> BuildBinaryAddSubgraph(
 
   YNN_RETURN_IF_ERROR(ynn_define_binary(subgraph.get(), ynn_binary_add, lhs_id,
                                         rhs_id, &out_id, /*flags=*/0));
+
+  return subgraph;
+}
+
+static absl::StatusOr<YnnSubgraph> BuildIotaSubgraph(
+    absl::Span<const YnnFusionThunk::Argument> arguments,
+    absl::Span<const YnnFusionThunk::Result> results) {
+  TF_ASSIGN_OR_RETURN(YnnSubgraph subgraph,
+                      CreateYnnSubgraph([&](ynn_subgraph_t* subgraph) {
+                        return ynn_create_subgraph(
+                            /*external_value_ids=*/1,
+                            /*flags=*/0, subgraph);
+                      }));
+
+  uint32_t out_id = 0;
+  auto out_shape = results[0].shape;
+  auto out_dims = out_shape.dimensions();
+  std::vector<size_t> ynn_out_dims(out_dims.begin(), out_dims.end());
+
+  YNN_RETURN_IF_ERROR(ynn_define_tensor(
+      subgraph.get(), ynn_type_fp32, ynn_out_dims.size(), ynn_out_dims.data(),
+      /*data=*/nullptr, YNN_VALUE_FLAG_EXTERNAL_OUTPUT, &out_id));
+
+  float stride_data[] = {0.0f, 1.0f};
+  uint32_t stride_id = YNN_INVALID_VALUE_ID;
+  size_t stride_dims[] = {2};
+  YNN_RETURN_IF_ERROR(ynn_define_tensor(
+      subgraph.get(), ynn_type_fp32, 1, stride_dims, stride_data,
+      /*flags=*/YNN_VALUE_FLAG_COPY_DATA, &stride_id));
+
+  YNN_RETURN_IF_ERROR(ynn_define_iota(
+      subgraph.get(), ynn_type_fp32, ynn_out_dims.size(), ynn_out_dims.data(),
+      YNN_INVALID_VALUE_ID, stride_id, &out_id, /*flags=*/0));
 
   return subgraph;
 }
@@ -141,6 +175,47 @@ TEST_P(YnnFusionThunkTest, ElementwiseAdd) {
   ASSERT_FALSE(execute_event.IsError()) << execute_event.GetError();
 
   EXPECT_EQ(out, LiteralUtil::CreateR1<float>({5.0, 5.0, 5.0, 5.0}));
+}
+
+TEST_P(YnnFusionThunkTest, Iota) {
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
+  Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
+                                 threads.NumThreads());
+
+  auto out = LiteralUtil::CreateR2<float>(
+      {{0.0, 0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 0.0}});
+
+  BufferAllocations allocations = CreateBufferAllocations(out);
+
+  auto [out_alloc] = CreateBufferAllocation(out);
+  BufferAllocation::Slice out_slice = CreateBufferAllocationSlice(out_alloc);
+
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 4});
+  YnnFusionThunk::Result out_res = {out_slice, shape};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto thunk, YnnFusionThunk::Create(
+                      YnnFusionThunk::Options{use_threadpool()}, {"fusion"},
+                      reinterpret_cast<HloInstruction*>(0xDEADBEEF), {},
+                      {out_res}, &BuildIotaSubgraph));
+
+  YnnThreadpool threadpool;
+  if (use_threadpool()) {
+    TF_ASSERT_OK_AND_ASSIGN(threadpool, CreateYnnThreadpool(&device));
+  }
+  Thunk::YnnParams ynn_params(std::move(threadpool));
+
+  Thunk::ExecuteParams params;
+  params.buffer_allocations = &allocations;
+  params.intra_op_threadpool = use_threadpool() ? &device : nullptr;
+  params.ynn_params = &ynn_params;
+
+  auto execute_event = thunk->Execute(params);
+  tsl::BlockUntilReady(execute_event);
+  ASSERT_FALSE(execute_event.IsError()) << execute_event.GetError();
+
+  EXPECT_EQ(out, LiteralUtil::CreateR2<float>(
+                     {{0.0, 1.0, 2.0, 3.0}, {0.0, 1.0, 2.0, 3.0}}));
 }
 
 INSTANTIATE_TEST_SUITE_P(YnnFusion, YnnFusionThunkTest, ::testing::Bool(),

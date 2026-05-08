@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/layout_util.h"
 #include "xla/mlir/utils/type_util.h"
 #include "xla/service/collective_ops_utils.h"
@@ -105,14 +106,6 @@ static constexpr auto kGlobalAddressSpace =
 // device_rank, signal_value, signal_buffers.
 static constexpr int32_t kNumCollectiveMetadataArgs = 3;
 static constexpr int32_t kNumTileIndexArgs = 1;
-
-struct AllReduceInfo {
-  ReductionKind reduction_kind;
-  int64_t num_devices;
-  int64_t num_elements;
-  PrimitiveType element_type;
-  AllReduceStrategy all_reduce_strategy;
-};
 
 // Common context for all reduce emitters.
 struct AllReduceEmitterContext {
@@ -207,74 +200,9 @@ absl::StatusOr<AllReduceEmitterContext> CreateAllReduceEmitterContext(
                        8);
   ctx.strategy = GetAllReduceStrategy(input_byte_size,
                                       /*is_multimem_enabled=*/false);
-  ctx.world_size = op.getReplicaGroups().getShapedType().getDimSize(1);
   ctx.op = op;
 
   return ctx;
-}
-
-// Returns the AllReduceInfo for the given all-reduce instruction if the
-// instruction is supported by the codegen.
-std::optional<AllReduceInfo> MaybeBuildAllReduceInfo(
-    const HloAllReduceInstruction* all_reduce) {
-  if (!all_reduce->GetModule()
-           ->config()
-           .debug_options()
-           .xla_gpu_unsupported_use_all_reduce_one_shot_kernel()) {
-    VLOG(1)
-        << "Skipping all-reduce codegen because "
-           "xla_gpu_unsupported_use_all_reduce_one_shot_kernel is disabled.";
-    return std::nullopt;
-  }
-  if (all_reduce->device_list()->replica_groups().empty()) {
-    VLOG(1) << "Replica groups are empty for " << all_reduce->name()
-            << ". Codegen will not be supported.";
-    return std::nullopt;
-  }
-  const int64_t num_devices =
-      all_reduce->device_list()->num_devices_per_group();
-  if (!llvm::has_single_bit(static_cast<uint64_t>(num_devices))) {
-    VLOG(1) << "Number of devices is not a power of 2 for "
-            << all_reduce->name() << ". Codegen will not be supported.";
-    return std::nullopt;
-  }
-  const std::optional<ReductionKind> reduction_kind =
-      MatchReductionComputation(all_reduce->called_computations().front());
-  if (!reduction_kind.has_value()) {
-    return std::nullopt;
-  }
-  // TODO(b/383125489): Support variadic all-reduce.
-  if (all_reduce->operand_count() > 1) {
-    return std::nullopt;
-  }
-  const int64_t num_elements =
-      ShapeUtil::ElementsIn(all_reduce->operand(0)->shape());
-  const PrimitiveType element_type =
-      all_reduce->operand(0)->shape().element_type();
-  const int64_t byte_size =
-      num_elements * ShapeUtil::ByteSizeOfPrimitiveType(element_type);
-  // NB: We do not codegen multimem kernels for now.
-  const AllReduceStrategy all_reduce_strategy =
-      GetAllReduceStrategy(byte_size, /*is_multimem_enabled=*/false);
-  const int64_t max_supported_all_reduce_size_bytes =
-      GetMaxSupportedAllReduceSizeBytes(all_reduce_strategy);
-  if (byte_size > max_supported_all_reduce_size_bytes) {
-    VLOG(3) << "Codegen forall-reduce is only supported for small inputs."
-            << max_supported_all_reduce_size_bytes << " <" << byte_size;
-    return std::nullopt;
-  }
-  if (!IsAllReduceKernelSupported(num_devices, num_elements, element_type,
-                                  reduction_kind.value(),
-                                  all_reduce_strategy)) {
-    return std::nullopt;
-  }
-  return AllReduceInfo{
-      /* .reduction_kind= */ reduction_kind.value(),
-      /* .num_devices= */ num_devices,
-      /* .num_elements= */ num_elements,
-      /* .element_type= */ element_type,
-      /* .all_reduce_strategy= */ all_reduce_strategy,
-  };
 }
 
 // The logic here is very naive and assumes a monotonic layout
@@ -283,25 +211,27 @@ absl::StatusOr<std::optional<BlockLevelFusionConfig>>
 GetBlockLevelFusionConfigForAllReduce(
     const se::DeviceDescription& device_info,
     const HloAllReduceInstruction* all_reduce) {
-  if (device_info.cuda_compute_capability().major < 9) {
-    VLOG(3) << "Collective codegen requires compute capability greater than 9. "
-               "Codegen will not be supported.";
+  absl::StatusOr<AllReduceInfo> maybe_all_reduce_info = BuildAllReduceInfo(
+      /*is_collective_kernel_enabled=*/all_reduce->GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_unsupported_use_all_reduce_one_shot_kernel(),
+      /*is_multimem_enabled=*/false, device_info, all_reduce);
+  if (absl::IsUnimplemented(maybe_all_reduce_info.status())) {
+    VLOG(3) << "Codegen for all-reduce is not supported: "
+            << maybe_all_reduce_info.status();
     return std::nullopt;
   }
-  const std::optional<AllReduceInfo> all_reduce_info =
-      MaybeBuildAllReduceInfo(all_reduce);
-  if (!all_reduce_info.has_value()) {
-    VLOG(3) << "AllReduceInfo is not available for " << all_reduce->name()
-            << ". Codegen will not be supported.";
-    return std::nullopt;
-  }
+  TF_ASSIGN_OR_RETURN(AllReduceInfo all_reduce_info,
+                      std::move(maybe_all_reduce_info));
   const Shape& output_shape = all_reduce->shape();
   const LaunchDimensions launch_dims = AllReduceLaunchDimensions(
-      all_reduce_info->num_elements, all_reduce_info->num_devices,
-      all_reduce_info->all_reduce_strategy);
+      all_reduce_info.num_elements, all_reduce_info.num_devices,
+      all_reduce_info.all_reduce_strategy);
   BlockLevelFusionConfig block_level_config;
-  block_level_config.set_num_warps(launch_dims.num_threads_per_block() /
-                                   WarpSize(device_info));
+  block_level_config.set_num_warps(xla::CeilOfRatio(
+      static_cast<int64_t>(launch_dims.num_threads_per_block()),
+      WarpSize(device_info)));
   block_level_config.set_num_ctas(1);    // No block-level clustering.
   block_level_config.set_num_stages(1);  // No pipelining of loops.
   Tile* output_tile = block_level_config.add_output_tiles();
@@ -309,10 +239,10 @@ GetBlockLevelFusionConfigForAllReduce(
       GreedyPowerOfTwoTiles(output_shape, launch_dims.num_blocks());
   output_tile->mutable_sizes()->Assign(tile_sizes.begin(), tile_sizes.end());
   const int64_t linear_tile_size = Product(tile_sizes);
-  if (all_reduce_info->all_reduce_strategy == AllReduceStrategy::kTwoShot &&
-      linear_tile_size % all_reduce_info->num_devices != 0) {
+  if (all_reduce_info.all_reduce_strategy == AllReduceStrategy::kTwoShot &&
+      linear_tile_size % all_reduce_info.num_devices != 0) {
     VLOG(3) << "Two-shot all-reduce linear_tile_size(" << linear_tile_size
-            << ") % num_devices(" << all_reduce_info->num_devices
+            << ") % num_devices(" << all_reduce_info.num_devices
             << ") != 0. Codegen will not be supported.";
     return std::nullopt;
   }
@@ -458,6 +388,14 @@ class AllReduceEmitter {
     remote_input_buffers_ = ctx_.xtile_entry_fn.getArgument(start_idx + 3);
 
     // 2. Constants and types.
+    auto replica_groups =
+        xla::ConvertReplicaGroups(ctx_.op.getReplicaGroups(), ctx_.op);
+    if (!replica_groups.ok()) {
+      ctx_.op.emitOpError(replica_groups.status().ToString());
+      return absl::InternalError(replica_groups.status().ToString());
+    }
+    ctx_.world_size = (*replica_groups)->num_devices_per_group();
+
     elem_type_ = mlir::getElementTypeOrSelf(ctx_.input_tile.getType());
     elem_storage_type_ = xtile::StorageType(elem_type_);
     ptr_to_i64_type_ =
@@ -466,7 +404,7 @@ class AllReduceEmitter {
         ttir::PointerType::get(elem_storage_type_, kGlobalAddressSpace);
     TF_ASSIGN_OR_RETURN(layout_, xtile::GetPermutationMinorToMajor(
                                      ctx_.input_extract.getSource().getType()));
-    // Make a shape with layout minor to major.
+
     const llvm::ArrayRef<int64_t>& input_tile_shape_dims =
         ctx_.input_tile.getType().getShape();
     Shape input_tile_shape = ShapeUtil::MakeShapeWithDenseLayout(
@@ -559,6 +497,7 @@ class AllReduceEmitter {
   // shape.
   xtile::TensorValue LoadTileForRank(mlir::Value rank_idx,
                                      mlir::ValueRange offsets,
+                                     llvm::ArrayRef<int64_t> strides,
                                      llvm::ArrayRef<int64_t> shape) {
     CHECK(initialized_);
     mlir::Value remote_buf_ptr = GetRemoteBufferPtr(rank_idx);
@@ -571,10 +510,10 @@ class AllReduceEmitter {
         // The full tile shape. This is the same as the input shape plus 1 for
         // every dimension that is reduced. Since we are not reducing any
         // dimensions, this is the same as the input shape.
-        shape,                            //
-        ctx_.input_extract.getStrides(),  //
-        /*reduced_dims=*/{},              // Not reducing for gather
-        shape                             //
+        shape,                //
+        strides,              //
+        /*reduced_dims=*/{},  // Not reducing for gather
+        shape                 //
     );
     // tensor<tile_shape, elem_storage_type>
     auto next_tile = mlir::cast<xtile::TensorValue>(
@@ -597,15 +536,17 @@ class AllReduceEmitter {
 
   // Overload for integer rank.
   xtile::TensorValue LoadTileForRank(int32_t rank, mlir::ValueRange offsets,
+                                     llvm::ArrayRef<int64_t> strides,
                                      llvm::ArrayRef<int64_t> sub_tile_shape) {
     mlir::Value rank_idx = arith::ConstantOp::create(
         builder_, builder_.getI64Type(), builder_.getI64IntegerAttr(rank));
-    return LoadTileForRank(rank_idx, offsets, sub_tile_shape);
+    return LoadTileForRank(rank_idx, offsets, strides, sub_tile_shape);
   }
 
   // Stores an entire tile to the symmetric buffer of device_rank_.
   mlir::LogicalResult EmitCopyToSymmetric(mlir::Value tile_to_store,
                                           mlir::ValueRange offsets,
+                                          llvm::ArrayRef<int64_t> strides,
                                           llvm::ArrayRef<int64_t> shape) {
     CHECK(initialized_);
     mlir::Value remote_buf_ptr = GetRemoteBufferPtr(device_rank_);
@@ -622,15 +563,15 @@ class AllReduceEmitter {
     auto [ptrs, mask] = triton::CreateTensorOfPointersAndMask(
         builder_,        //
         remote_buf_ptr,  // The tensor of rank-specific base pointers
-        ctx_.non_tiled_input_shape,       // The full global shape
-        layout_,                          // The layout of the input tensor
-        offsets,                          // The global base offsets of the tile
-        shape,                            // The full tile shape. Same as
-                                          // input shape since no
-                                          // dimensions are reduced.
-        ctx_.input_extract.getStrides(),  //
-        /*reduced_dims=*/{},              // Not reducing scatter.
-        shape                             // The tile shape.
+        ctx_.non_tiled_input_shape,  // The full global shape
+        layout_,                     // The layout of the input tensor
+        offsets,                     // The global base offsets of the tile
+        shape,                       // The full tile shape. Same as
+                                     // input shape since no
+                                     // dimensions are reduced.
+        strides,                     //
+        /*reduced_dims=*/{},         // Not reducing scatter.
+        shape                        // The tile shape.
     );
     ttir::StoreOp::create(builder_, ptrs, storage_tile,
                           /*mask=*/mask, ttir::CacheModifier::NONE,
@@ -773,18 +714,34 @@ class AllReduceEmitter {
     // tensor<world_size x 1 x !ptr<elem_type>>
     remote_buffers =
         ttir::ExpandDimsOp::create(builder_, remote_buffers, /*axis=*/1);
-    // Broadcast to RxNumElemenetsPerRank
-    mlir::Type broadcasted_type =
-        mlir::RankedTensorType::get({world_size, Product(subtile_shape)},
-                                    ptr_to_elem_type_, tile_type.getEncoding());
+    // Broadcast to RxNumElementsPerRank
+    mlir::Type broadcasted_type = mlir::RankedTensorType::get(
+        {world_size, Product(subtile_shape)}, ptr_to_elem_type_);
     remote_buffers =
         ttir::BroadcastOp::create(builder_, broadcasted_type, remote_buffers);
+    llvm::SmallVector<int64_t> physical_shape(tile_shape.size(), 0);
+    bool requires_transpose = false;
+    for (int i = 0; i < tile_shape.size(); ++i) {
+      const auto idx = layout_[layout_.size() - i - 1];
+      physical_shape[i] = tile_shape[idx];
+      if (layout_[i] != layout_.size() - 1 - i) {
+        requires_transpose = true;
+      }
+    }
     // Reshape to tile shape.
     remote_buffers = ttir::ReshapeOp::create(
         builder_,
-        mlir::RankedTensorType::get(tile_shape, ptr_to_elem_type_,
-                                    tile_type.getEncoding()),
+        mlir::RankedTensorType::get(physical_shape, ptr_to_elem_type_),
         remote_buffers);
+    if (requires_transpose) {
+      llvm::SmallVector<int32_t> permutation(layout_.size());
+      for (int i = 0; i < layout_.size(); ++i) {
+        permutation[layout_[i]] = layout_.size() - 1 - i;
+      }
+      remote_buffers = ttir::TransOp::create(
+          builder_, mlir::RankedTensorType::get(tile_shape, ptr_to_elem_type_),
+          remote_buffers, permutation);
+    }
     return mlir::cast<xtile::TensorValue>(remote_buffers);
   }
 
@@ -828,10 +785,23 @@ class AllReduceEmitter {
 
   mlir::LogicalResult EmitOneShot() {
     CHECK(initialized_);
+    // Lift scalar inputs to a tensor of shape {1}.
+    llvm::SmallVector<mlir::Value> offsets = ctx_.input_extract.getOffsets();
+    llvm::SmallVector<int64_t> strides{ctx_.input_extract.getStrides()};
+    const bool is_scalar = offsets.empty();
+    if (is_scalar) {
+      ctx_.input_tile = xtile::Splat(builder_, ctx_.input_tile, {1});
+      ctx_.non_tiled_input_shape = {1};
+      layout_ = {0};
+      subtile_shape_ = {1};
+      mlir::Value c0 = builder_.create<arith::ConstantIndexOp>(0);
+      offsets = {c0};
+      strides = {1};
+    }
     // 1. CopyPhase: Local tile to the symmetric buffer for the current device.
-    if (mlir::failed(EmitCopyToSymmetric(
-            ctx_.input_tile, ctx_.input_extract.getOffsets(),
-            ctx_.input_tile.getType().getShape()))) {
+    if (mlir::failed(
+            EmitCopyToSymmetric(ctx_.input_tile, offsets, strides,
+                                ctx_.input_tile.getType().getShape()))) {
       return rewriter_.notifyMatchFailure(ctx_.op,
                                           "Failed to emit copy to symmetric");
     }
@@ -841,23 +811,31 @@ class AllReduceEmitter {
                                           "Failed to emit sync for one-shot");
     }
     // 3. Reduce phase: Load tiles from all ranks and reduce them.
-    mlir::ValueRange offsets = ctx_.input_extract.getOffsets();
     llvm::ArrayRef<int64_t> shape = ctx_.input_tile.getType().getShape();
-    xtile::TensorValue accumulator = LoadTileForRank(0, offsets, shape);
+    xtile::TensorValue accumulator =
+        LoadTileForRank(0, offsets, strides, shape);
     for (int32_t rank = 1; rank < ctx_.world_size; ++rank) {
-      xtile::TensorValue next_tile = LoadTileForRank(rank, offsets, shape);
+      xtile::TensorValue next_tile =
+          LoadTileForRank(rank, offsets, strides, shape);
       accumulator =
           reduce_computation_emitter_(builder_, accumulator, next_tile);
     }
-    rewriter_.replaceOp(ctx_.op, accumulator);
+    mlir::Value result = accumulator;
+    if (is_scalar) {
+      result = ttir::UnsplatOp::create(builder_, accumulator);
+      result = mlir::tensor::FromElementsOp::create(
+          builder_, mlir::RankedTensorType::get({}, elem_type_), result);
+    }
+    rewriter_.replaceOp(ctx_.op, result);
     return mlir::success();
   }
 
   mlir::LogicalResult EmitTwoShot() {
     CHECK(initialized_);
     // 1. CopyPhase: Local tile to the symmetric buffer for the current device.
+    llvm::ArrayRef<int64_t> strides = ctx_.input_extract.getStrides();
     if (mlir::failed(EmitCopyToSymmetric(
-            ctx_.input_tile, ctx_.input_extract.getOffsets(),
+            ctx_.input_tile, ctx_.input_extract.getOffsets(), strides,
             ctx_.input_tile.getType().getShape()))) {
       return rewriter_.notifyMatchFailure(ctx_.op,
                                           "Failed to emit copy to symmetric");
@@ -872,16 +850,16 @@ class AllReduceEmitter {
     llvm::SmallVector<mlir::Value> self_offsets =
         CalculateSubtileOffsets(device_rank_);
     xtile::TensorValue accumulator =
-        LoadTileForRank(0, self_offsets, subtile_shape_);
+        LoadTileForRank(0, self_offsets, strides, subtile_shape_);
     for (int rank = 1; rank < ctx_.world_size; ++rank) {
       xtile::TensorValue next_tile =
-          LoadTileForRank(rank, self_offsets, subtile_shape_);
+          LoadTileForRank(rank, self_offsets, strides, subtile_shape_);
       accumulator =
           reduce_computation_emitter_(builder_, accumulator, next_tile);
     }
     // 3.2 Copy reduced sub-tile back to local rank's remote buffer.
-    if (mlir::failed(
-            EmitCopyToSymmetric(accumulator, self_offsets, subtile_shape_))) {
+    if (mlir::failed(EmitCopyToSymmetric(accumulator, self_offsets, strides,
+                                         subtile_shape_))) {
       return rewriter_.notifyMatchFailure(
           ctx_.op, "Failed to emit copy result to symmetric for two-shot");
     }

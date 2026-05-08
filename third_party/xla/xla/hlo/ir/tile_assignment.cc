@@ -665,11 +665,6 @@ std::string TileAssignment::ToString() const {
   return std::move(printer).ToString();
 }
 
-bool TileAssignment::UsesDevice(int64_t device) const {
-  return iota_ ? device < iota_->num_elements()
-               : absl::c_linear_search(array(), device);
-}
-
 const Array<int64_t>& TileAssignment::array() const {
   absl::MutexLock lock(mu_);
   MaybeMaterializeFullArray();
@@ -809,8 +804,6 @@ std::optional<AnalyzeTileAssignmentResult> AnalyzeTileAssignment(
   if (tile_assignment.iota()) {
     std::optional<std::vector<SubDimInfo>> sub_dims =
         GetOrderedSubDimsFromIotaTileAssignment(*tile_assignment.iota());
-    // TODO(b/489003790): Some V2 sharding cannot be converted to V3 with
-    // an iota mesh.
     CHECK(sub_dims.has_value())
         << "tile assignment: " << tile_assignment.ToString();
 
@@ -822,7 +815,44 @@ std::optional<AnalyzeTileAssignmentResult> AnalyzeTileAssignment(
     return AnalyzeTileAssignmentResult{
         /* .sub_dims = */ std::move(*sub_dims),
         /* .local_mesh = */ std::move(mesh),
+        /* .iota = */ *tile_assignment.iota(),
     };
+  }
+
+  // If the input is a full array tile assignment (the corresponding HloSharding
+  // is in V1 format), we try to detect if it's an iota tile assignment.
+  // We try all permutations of the tile assignment dimensions to see if any
+  // matches the original array.
+  if (!tile_assignment.iota()) {
+    // If the input is a full array tile assignment (the corresponding
+    // HloSharding is in V1 format), we try to detect if it's an identity iota
+    // tile assignment.
+    std::vector<int> transpose_perm(tile_assignment.num_dimensions());
+    absl::c_iota(transpose_perm, 0);
+    if (auto sub_dims =
+            GetOrderedSubDims(tile_assignment.dimensions(),
+                              tile_assignment.dimensions(), transpose_perm);
+        sub_dims.ok()) {
+      IotaTileAssignment iota = IotaTileAssignment::Create(
+          tile_assignment.dimensions(), tile_assignment.dimensions(),
+          transpose_perm);
+      bool is_iota = true;
+      tile_assignment.array().Each(
+          [&](absl::Span<const int64_t> index, int64_t device_id) {
+            if (device_id != iota.value_at(index)) {
+              is_iota = false;
+            }
+          });
+      if (is_iota) {
+        std::vector<int64_t> mesh(tile_assignment.dimensions().begin(),
+                                  tile_assignment.dimensions().end());
+        return AnalyzeTileAssignmentResult{
+            /* .sub_dims = */ std::move(*sub_dims),
+            /* .local_mesh = */ std::move(mesh),
+            /* .iota = */ std::move(iota),
+        };
+      }
+    }
   }
 
   return std::nullopt;

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/traced_command.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -45,7 +46,8 @@ GemmThunk::GemmThunk(ThunkInfo thunk_info, GemmConfig config,
                      const BufferAllocation::Slice& output_buffer,
                      std::optional<const BufferAllocation::Slice> workspace,
                      bool deterministic)
-    : Thunk(Kind::kGemm, thunk_info),
+    : TracedCommand(CommandType::kGemmCmd, Thunk::Kind::kGemm,
+                    std::move(thunk_info)),
       config_(std::move(config)),
       lhs_buffer_(lhs_buffer),
       rhs_buffer_(rhs_buffer),
@@ -60,20 +62,17 @@ absl::Status GemmThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (workspace_.has_value()) {
     workspace = allocs.GetDeviceAddress(workspace_.value());
   }
-  TF_ASSIGN_OR_RETURN(
-      se::Stream * stream,
-      GetStreamForExecution(Thunk::execution_stream_id(), params));
 
   // Sanitizer initcheck may return false positives for TMA (DTCS-1123).
   auto output = allocs.GetDeviceAddress(output_buffer_);
   tsl::profiler::MarkMemoryInitialized(
       output.opaque(), output.size(),
       static_cast<tsl::profiler::StreamHandle>(
-          stream->platform_specific_handle().stream));
+          params.stream->platform_specific_handle().stream));
 
   return RunGemm(config_, allocs.GetDeviceAddress(lhs_buffer_),
                  allocs.GetDeviceAddress(rhs_buffer_), output, workspace,
-                 deterministic_, stream);
+                 deterministic_, params.stream);
 }
 
 absl::Status GemmThunk::Initialize(const InitializeParams& params) {

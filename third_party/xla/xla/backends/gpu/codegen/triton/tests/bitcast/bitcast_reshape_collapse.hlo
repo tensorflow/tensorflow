@@ -1,0 +1,38 @@
+// RUN: hlo_to_xtileir %s | FileCheck %s --check-prefixes=CHECK,CHECK-OLD
+// RUN: triton_test_correctness %s
+
+// RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s --check-prefixes=CHECK,CHECK-NEW
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
+
+fusion {
+  p = f32[4096,1,768]{2,1,0} parameter(0)
+  ROOT bitcast = f32[32,128,768]{2,1,0} bitcast(p)
+}
+
+// CHECK: #[[$ATTR_0:.+]] = #xla.indexing_map<"([[PID:pid(_0)?]]) -> (([[PID]] floordiv 128) * 2048 + [[PID]] mod 128), domain: [[PID]] in [0, 255]">
+// CHECK: #[[$ATTR_1:.+]] = #xla.indexing_map<"([[PID]]) -> (([[PID]] floordiv 128) * 16), domain: [[PID]] in [0, 255]">
+// CHECK: #[[$ATTR_2:.+]] = #xla.indexing_map<"([[PID]]) -> ([[PID]] mod 128), domain: [[PID]] in [0, 255]">
+// CHECK-LABEL:   xtile.entry_func @triton_fn(
+// CHECK-SAME:      %[[ARG0:.*]]: memref<4096x1x768xf32>,
+// CHECK-SAME:      %[[ARG1:.*]]: memref<32x128x768xf32>,
+// CHECK-SAME:      %[[ARG2:.*]]: index) attributes {num_opaque_args = 0 : i32} {
+// CHECK:           %[[CONSTANT_0:.*]] = arith.constant 0 : index
+// CHECK:           %[[APPLY_INDEXING_0:.*]] = xla.apply_indexing #[[$ATTR_0]](%[[ARG2]])
+// CHECK-OLD:           %[[EXTRACT_0:.*]] = xtile.extract %[[ARG0]][%[[APPLY_INDEXING_0]], %[[CONSTANT_0]], %[[CONSTANT_0]]] [16, 1, 1024] [128, 0, 1] : memref<4096x1x768xf32> -> tensor<16x1x1024xf32>
+// CHECK-NEW:           %[[EXTRACT_0:.*]] = xtile.extract %[[ARG0]][%[[APPLY_INDEXING_0]], %[[CONSTANT_0]], %[[CONSTANT_0]]] [16, 1, 1024] [128, 1, 1] : memref<4096x1x768xf32> -> tensor<16x1x1024xf32>
+// CHECK:           %[[APPLY_INDEXING_1:.*]] = xla.apply_indexing #[[$ATTR_1]](%[[ARG2]])
+// CHECK:           %[[APPLY_INDEXING_2:.*]] = xla.apply_indexing #[[$ATTR_2]](%[[ARG2]])
+// CHECK:           xtile.insert %[[EXTRACT_0]] into %[[ARG1]][%[[APPLY_INDEXING_1]], %[[APPLY_INDEXING_2]], %[[CONSTANT_0]]] [16, 1, 1024] [1, 1, 1] : tensor<16x1x1024xf32> -> memref<32x128x768xf32>
+
+ENTRY main {
+  p = f32[4096,1,768]{2,1,0} parameter(0)
+  ROOT fusion = f32[32,128,768]{2,1,0} fusion(p), kind=kCustom, calls=fusion,
+    backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["16","1","768"]}],
+        "num_warps":"8",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+}

@@ -203,14 +203,14 @@ namespace {
 absl::StatusOr<std::tuple<int64_t, int64_t, int64_t>> GetParams(
     const Tensor& alpha_t, const TensorShape& samples_shape) {
   if (!TensorShapeUtils::EndsWith(samples_shape, alpha_t.shape())) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Shape passed in must end with broadcasted shape.");
   }
 
   const int64_t num_alphas = alpha_t.NumElements();
   if (num_alphas <= 0) {
-    return errors::InvalidArgument(
-        "Input alpha should have non-zero element count, got: ", num_alphas);
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Input alpha should have non-zero element count, got: ", num_alphas));
   }
 
   const int64_t num_samples = samples_shape.num_elements();
@@ -280,7 +280,8 @@ class StatelessRandomGammaOpWithKeyCounter
                               random::PhiloxRandom() /*dummy*/, samples_flat));
     } else {
       OP_REQUIRES(ctx, false,
-                  errors::InvalidArgument("Unsupported algorithm id: ", alg));
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Unsupported algorithm id: ", alg)));
     }
   }
 };

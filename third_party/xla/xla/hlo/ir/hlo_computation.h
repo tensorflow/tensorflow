@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -419,7 +420,8 @@ class HloComputation {
       const HloComputationProto& proto,
       const absl::flat_hash_map<int64_t, HloComputation*>& computation_map,
       bool prohibit_empty_literal = true, bool preserve_instruction_ids = true,
-      absl::flat_hash_map<int64_t, int64_t>* id_remap_map = nullptr);
+      absl::flat_hash_map<int64_t, int64_t>* id_remap_map = nullptr,
+      const tsl::protobuf::RepeatedPtrField<std::string>* payloads = nullptr);
 
   // Generates a hash value of an HLO computation. Hash considers
   // information on opcode, shape, operands, and typically a root instruction.
@@ -883,6 +885,16 @@ class HloComputation {
   // HloInstructions in a pass.
   // Note: the removal operation is stable because some users depend on it.
   void Cleanup();
+
+  // Canonicalizes the local_ids of all instructions in this computation
+  // based on a stable post-order traversal. This ensures that semantically
+  // equivalent computations get the same local_ids.
+  //
+  // WARNING: This is a dangerous API because it reassigns local IDs (and thus
+  // changes the index in the instruction vector). It should only be used in
+  // contexts where you are certain that nothing is caching instruction unique
+  // IDs or relying on the stability of local IDs.
+  void CanonicalizeLocalIds();
 
   // Returns true if a given instruction is marked dead in this computation.
   bool IsMarkedAsDead(const HloInstruction* inst);

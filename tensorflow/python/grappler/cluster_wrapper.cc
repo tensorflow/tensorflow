@@ -164,8 +164,8 @@ PYBIND11_MODULE(_pywrap_tf_cluster, m) {
           -> std::unordered_map<std::string, std::vector<std::string>> {
         if (cluster == nullptr || item == nullptr) {
           tsl::MaybeRaiseRegisteredFromStatus(absl::Status(
-              tensorflow::errors::Internal("You need both a cluster and an "
-                                           "item to get supported devices.")));
+              absl::InternalError("You need both a cluster and an "
+                                  "item to get supported devices.")));
         }
         const std::unordered_map<std::string, tensorflow::DeviceProperties>&
             devices = cluster->GetDevices();
@@ -301,10 +301,9 @@ PYBIND11_MODULE(_pywrap_tf_cluster, m) {
           -> std::unordered_map<std::string,
                                 std::tuple<int64_t, std::vector<MemoryUsage>>> {
         if (item == nullptr || cluster == nullptr) {
-          tsl::MaybeRaiseRegisteredFromStatus(
-              absl::Status(tensorflow::errors::Internal(
-                  "You need both a cluster and an item to determine peak "
-                  "memory usage.")));
+          tsl::MaybeRaiseRegisteredFromStatus(absl::Status(absl::InternalError(
+              "You need both a cluster and an item to determine peak "
+              "memory usage.")));
         }
         tensorflow::grappler::GraphMemory memory(*item);
 

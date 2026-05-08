@@ -126,7 +126,7 @@ absl::StatusOr<bool> TupleSimplifier::RunImpl(
     }
   }
 
-  if (module->has_schedule()) {
+  if (changed && module->has_schedule()) {
     TF_RETURN_IF_ERROR(module->schedule().Update());
   }
 

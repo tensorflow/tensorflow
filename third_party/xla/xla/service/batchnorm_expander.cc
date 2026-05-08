@@ -315,14 +315,6 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormInference(
   const Shape feature_shape = scale->shape();
   Shape scalar_broadcast_shape = ShapeUtil::MakeStaticShape(feature_shape);
 
-  auto epsilon_literal = LiteralUtil::CreateR0(batch_norm->epsilon());
-  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
-  auto epsilon = computation_->AddInstruction(HloInstruction::CreateBroadcast(
-      scalar_broadcast_shape,
-      computation_->AddInstruction(
-          HloInstruction::CreateConstant(std::move(epsilon_literal))),
-      {}));
-
   std::vector<int64_t> dimensions_without_feature;
   const int64_t rank = operand_shape.dimensions().size();
   dimensions_without_feature.reserve(rank - 1);
@@ -333,6 +325,7 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormInference(
     }
   }
 
+  int64_t instruction_count_before = computation_->instruction_count();
   std::vector<HloInstruction*> added_instructions;
   auto add = [&](std::unique_ptr<HloInstruction> inst) {
     HloInstruction* added_inst = computation_->AddInstruction(std::move(inst));
@@ -344,6 +337,13 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormInference(
                         HloInstruction* a, HloInstruction* b) {
     return add(HloInstruction::CreateBinary(shape, opcode, a, b));
   };
+
+  auto epsilon_literal = LiteralUtil::CreateR0(batch_norm->epsilon());
+  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
+  auto epsilon = add(HloInstruction::CreateBroadcast(
+      scalar_broadcast_shape,
+      add(HloInstruction::CreateConstant(std::move(epsilon_literal))), {}));
+
   auto feature_broadcast = [&](HloInstruction* a) {
     Shape broadcast_shape = ShapeUtil::MakeStaticShape(operand_shape);
     broadcast_shape.set_dynamic_dimension(feature_index,
@@ -352,7 +352,6 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormInference(
         HloInstruction::CreateBroadcast(broadcast_shape, a, {feature_index}));
   };
 
-  int64_t instruction_count_before = computation_->instruction_count();
   auto true_scale = add_binary(
       feature_shape, HloOpcode::kMultiply, scale,
       add(Rsqrt(add_binary(feature_shape, HloOpcode::kAdd, var, epsilon))));

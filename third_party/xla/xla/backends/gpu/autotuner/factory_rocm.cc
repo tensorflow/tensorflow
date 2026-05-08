@@ -17,7 +17,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_BACKENDS_GPU_AUTOTUNER_ROCM_FACTORY_H_
 
 #include <algorithm>
+#include <array>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -48,18 +50,20 @@ namespace gpu {
 namespace {
 
 using ::mlir::MLIRContext;
+using DType = GemmRewriterOptions::DType;
+
+constexpr std::array kFp8OnlyDTypes = {DType::kFp8Only};
+constexpr std::array kAllDTypes = {DType::kFp8Only, DType::kNonFp8Only};
 
 std::unique_ptr<HloPassPipeline> GetGemmRewriterPipeline(
     const stream_executor::DeviceDescription& device_description,
-    bool enable_cublaslt) {
+    bool enable_cublaslt, absl::Span<const DType> dtypes) {
   auto pipeline = std::make_unique<HloPassPipeline>(
       enable_cublaslt ? "hipblaslt_rewriter_pipeline"
                       : "rocblas_rewriter_pipeline");
   pipeline->AddPass(std::make_unique<DotAlgorithmRewriter>());
   pipeline->AddPass(std::make_unique<ScaledDotRewriter>());
-  for (GemmRewriterOptions::DType dtype :
-       {GemmRewriterOptions::DType::kFp8Only,
-        GemmRewriterOptions::DType::kNonFp8Only}) {
+  for (DType dtype : dtypes) {
     GemmRewriterOptions options{dtype};
     options.enable_cublaslt = enable_cublaslt;
     auto gemm_rewriter = std::make_unique<GemmRewriter>(
@@ -74,6 +78,7 @@ std::unique_ptr<HloPassPipeline> GetGemmRewriterPipeline(
 
 std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForROCm(
     stream_executor::StreamExecutor* stream_executor,
+    stream_executor::DeviceAddressAllocator* device_allocator,
     const DebugOptions* debug_options, Compiler* compiler,
     const Compiler::GpuTargetConfig* target_config, const AliasInfo* alias_info,
     MLIRContext* mlir_context,
@@ -81,8 +86,9 @@ std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForROCm(
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::make_unique<TritonBackend>(
       debug_options, compiler, target_config, alias_info, mlir_context));
-  backends.push_back(std::make_unique<MIOpenBackend>(
-      stream_executor, debug_options, compiler, target_config));
+  backends.push_back(
+      std::make_unique<MIOpenBackend>(stream_executor, debug_options, compiler,
+                                      target_config, device_allocator));
   backends.push_back(std::make_unique<RocblasBackend>(
       stream_executor, debug_options, compiler, target_config));
   backends.push_back(std::make_unique<HipblasLtBackend>(
@@ -92,14 +98,17 @@ std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForROCm(
       std::make_unique<RocblasBackend>(stream_executor, debug_options, compiler,
                                        target_config),
       GetGemmRewriterPipeline(target_config->device_description,
-                              /*enable_cublaslt=*/false),
+                              /*enable_cublaslt=*/false, kAllDTypes),
       alias_info, mlir_context));
+  bool enable_cublaslt = debug_options->xla_gpu_enable_cublaslt();
   backends.push_back(std::make_unique<FissionBackend>(
       debug_options, compiler, target_config,
       std::make_unique<HipblasLtBackend>(stream_executor, debug_options,
                                          compiler, target_config),
-      GetGemmRewriterPipeline(target_config->device_description,
-                              /*enable_cublaslt=*/true),
+      GetGemmRewriterPipeline(
+          target_config->device_description, /*enable_cublaslt=*/true,
+          enable_cublaslt ? absl::Span<const DType>(kAllDTypes)
+                          : kFp8OnlyDTypes),
       alias_info, mlir_context));
   if (!backend_allowlist.empty()) {
     backends.erase(

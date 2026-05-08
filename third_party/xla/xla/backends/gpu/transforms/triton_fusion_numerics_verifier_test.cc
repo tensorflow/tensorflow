@@ -25,15 +25,17 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/autotuner/profiler.h"
+#include "xla/backends/gpu/autotuner/gpu_profiler.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/alias_info.h"
-#include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/xla.pb.h"
@@ -67,9 +69,11 @@ class TritonFusionNumericsVerifierTest
 
  protected:
   std::unique_ptr<xla::HloModule> Module(absl::string_view hlo_text_template,
-                                         absl::string_view type) {
+                                         absl::string_view type,
+                                         int value = 0) {
     auto m = ParseAndReturnVerifiedModule(
-        absl::Substitute(hlo_text_template, type), GetModuleConfigForTest());
+        absl::Substitute(hlo_text_template, type, value),
+        GetModuleConfigForTest());
     EXPECT_OK(m);
     return std::move(m.value());
   }
@@ -131,7 +135,7 @@ ENTRY main{
         "num_stages":"1"}}}
 })";
 
-TEST_P(TritonFusionNumericsVerifierTest, VerifyExactSoftmaxFusionNumerics) {
+TEST_P(TritonFusionNumericsVerifierTest, Softmax) {
   auto module = Module(kSoftmaxHlo,
                        primitive_util::LowercasePrimitiveTypeName(GetParam()));
 
@@ -141,13 +145,12 @@ TEST_P(TritonFusionNumericsVerifierTest, VerifyExactSoftmaxFusionNumerics) {
   EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 
-TEST_P(TritonFusionNumericsVerifierTest, VerifyNestedGemmNumerics) {
+TEST_P(TritonFusionNumericsVerifierTest, DotAlgorithms) {
   if (GetParam() == F64) {
-    // TODO(b/446827313): f64 fails at the moment as
     // 'Algorithm not supported by the ElementalIrEmitter: ALG_DOT_F64_F64_F64'.
     GTEST_SKIP() << "Skipping test for F64.";
   }
-  constexpr absl::string_view kNestedGemmFusionHloText = R"(
+  constexpr absl::string_view kHlo = R"hlo(
 fdot {
   fdot.p0 = $0[16,16] parameter(0)
   fdot.p1 = $0[16,16] parameter(1)
@@ -170,9 +173,9 @@ ENTRY entry {
           "num_warps":"1",
           "num_ctas":"1",
           "num_stages":"1"}}}
-})";
-  auto module = Module(kNestedGemmFusionHloText,
-                       primitive_util::LowercasePrimitiveTypeName(GetParam()));
+})hlo";
+  auto module =
+      Module(kHlo, primitive_util::LowercasePrimitiveTypeName(GetParam()));
 
   EXPECT_NE(TritonFusion(*module), nullptr);
   auto verifier = TritonFusionNumericsVerifier(
@@ -180,8 +183,8 @@ ENTRY entry {
   EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 
-TEST_P(TritonFusionNumericsVerifierTest, VerifyMultiOutputFusionNumerics) {
-  constexpr absl::string_view kMultiOutputFusionHloText = R"(
+TEST_P(TritonFusionNumericsVerifierTest, MultiOutput) {
+  constexpr absl::string_view kHlo = R"hlo(
 HloModule m
 fusion_computation {
   param_0 = $0[127,125]{1,0} parameter(0)
@@ -201,9 +204,9 @@ ENTRY main{
         "num_warps":"1",
         "num_ctas":"1",
         "num_stages":"1"}}}
-})";
-  auto module = Module(kMultiOutputFusionHloText,
-                       primitive_util::LowercasePrimitiveTypeName(GetParam()));
+})hlo";
+  auto module =
+      Module(kHlo, primitive_util::LowercasePrimitiveTypeName(GetParam()));
 
   EXPECT_NE(TritonFusion(*module), nullptr);
   auto verifier = TritonFusionNumericsVerifier(
@@ -211,7 +214,7 @@ ENTRY main{
   EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 
-TEST_P(TritonFusionNumericsVerifierTest, VerifyMultipleNestedFusionNumerics) {
+TEST_P(TritonFusionNumericsVerifierTest, DotOfConcatenate) {
   constexpr absl::string_view kMultiOutputFusionHloText = R"(
 HloModule m
 gemm_computation (p0: bf16[128,512], p1: bf16[256,512], p2: bf16[512,512]) -> bf16[384,512] {
@@ -231,19 +234,21 @@ ENTRY main (p0: bf16[128,512], p1: bf16[256,512], p2: bf16[512,512]) -> bf16[384
   ROOT gemm_f = bf16[384,512]{1,0} fusion(p0, p1, p2),
     kind=kCustom, calls=gemm_computation, backend_config={
     "operation_queue_id":"0",
-    "wait_on_operation_queues":[],
     "fusion_backend_config":{
       "kind":"__triton_nested_gemm_fusion",
       "block_level_fusion_config":{
         "num_warps":"8",
         "output_tiles":[{"sizes":["128","256"]}],
         "num_ctas":1,
-        "num_stages":4,
+        "num_stages":$1,
         "is_tma_allowed":false}}}
 }
 )";
+  se::Platform* platform = PlatformUtil::GetPlatform("gpu").value();
+  int num_stages = platform->id() == se::rocm::kROCmPlatformId ? 2 : 4;
   auto module = Module(kMultiOutputFusionHloText,
-                       primitive_util::LowercasePrimitiveTypeName(GetParam()));
+                       primitive_util::LowercasePrimitiveTypeName(GetParam()),
+                       num_stages);
 
   EXPECT_NE(TritonFusion(*module), nullptr);
   auto verifier = TritonFusionNumericsVerifier(
@@ -251,18 +256,15 @@ ENTRY main (p0: bf16[128,512], p1: bf16[256,512], p2: bf16[512,512]) -> bf16[384
   EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 
-TEST_F(TritonFusionNumericsVerifierTest, CheckMismatch) {
-  // This test intentionally compares two different Triton modules to each
-  // other. This is to test that the verifier functions correctly catch and
-  // report mismatches.
+TEST_F(TritonFusionNumericsVerifierTest, DetectMismatch) {
+  // This test intentionally compares two different Triton modules. This is to
+  // test that the verifier functions correctly catch and report mismatches.
   //
   // Note that as part of computing the two modules below, the numerics verifier
   // pass also runs individually for each module. These runs compare the
   // modules to the corresponding emitters generated version, which matches. In
-  // that sense this test covers what is being tested by
-  // VerifyExactSoftmaxFusionNumerics. The reason to keep two tests is that
-  // VerifyExactSoftmaxFusionNumerics is minimal and will be easier to debug if
-  // it fails.
+  // that sense this test covers what is being tested by `Softmax`. But
+  // `Softmax` is minimal and will be easier to debug if it fails.
 
   auto module_f64 = Module(kSoftmaxHlo, "f64");
   auto fusion_f64 = TritonFusion(*module_f64);
@@ -273,29 +275,32 @@ TEST_F(TritonFusionNumericsVerifierTest, CheckMismatch) {
   EXPECT_NE(fusion_f32, nullptr);
 
   const DebugOptions& debug_options = GetDebugOptionsForTest();
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<AutotunerCompileUtil> compile_util,
-                       AutotunerCompileUtil::Create(
-                           *stream_executor_, *allocator_, debug_options));
+  ProfileOptions profile_options;
+  profile_options.redzone_padding_bytes =
+      debug_options.xla_gpu_redzone_padding_bytes();
+  profile_options.should_init_buffers = true;
+
+  auto profile_util =
+      GpuProfiler::Create(stream_executor_, profile_options, allocator_.get());
+  ASSERT_NE(profile_util, nullptr);
 
   auto f64_result = triton_fusion_numerics_pass_internal::CompileAndRunFusion(
-      *compile_util, *fusion_f64, debug_options,
+      *profile_util, *fusion_f64, debug_options,
       /*disable_triton=*/false, *stream_executor_, allocator_.get(),
       alias_info_.get(), &mlir_context_);
-  EXPECT_OK(f64_result);
+  ASSERT_OK(f64_result);
 
   auto f32_result = triton_fusion_numerics_pass_internal::CompileAndRunFusion(
-      *compile_util, *fusion_f32, debug_options,
+      *profile_util, *fusion_f32, debug_options,
       /*disable_triton=*/false, *stream_executor_, allocator_.get(),
       alias_info_.get(), &mlir_context_);
-  EXPECT_OK(f32_result);
+  ASSERT_OK(f32_result);
 
-  // Intentionally compare the fusions from the different modules, triggering a
-  // mismatch.
-  auto cmp = triton_fusion_numerics_pass_internal::CompareBuffers(
-      *f64_result, *f32_result, fusion_f64->shape(), debug_options,
-      &compile_util->stream());
-
-  EXPECT_FALSE(cmp.ok());
+  // Compare the fusions from the different modules, triggering a mismatch.
+  EXPECT_THAT(
+      profile_util->CheckOutputBuffer(
+          *f64_result, *f32_result, debug_options.xla_gpu_autotune_gemm_rtol()),
+      absl_testing::StatusIs(absl::StatusCode::kInternal));
 }
 
 // By default, AutotunerCompileUtil filters out kernels that cause registers to
@@ -339,13 +344,18 @@ ENTRY main {
   auto fusion = TritonFusion(*module);
   EXPECT_NE(fusion, nullptr);
 
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<AutotunerCompileUtil> compile_util,
-      AutotunerCompileUtil::Create(*stream_executor_, *allocator_,
-                                   GetDebugOptionsForTest()));
+  ProfileOptions profile_options;
+  profile_options.redzone_padding_bytes =
+      GetDebugOptionsForTest().xla_gpu_redzone_padding_bytes();
+  profile_options.should_init_buffers = true;
+
+  auto profile_util =
+      GpuProfiler::Create(stream_executor_, profile_options, allocator_.get());
+  ASSERT_NE(profile_util, nullptr);
+
   auto compilation_result =
       triton_fusion_numerics_pass_internal::CompileAndRunFusion(
-          *compile_util, *fusion, GetDebugOptionsForTest(),
+          *profile_util, *fusion, GetDebugOptionsForTest(),
           /*disable_triton=*/false, *stream_executor_, allocator_.get(),
           alias_info_.get(), &mlir_context_);
 

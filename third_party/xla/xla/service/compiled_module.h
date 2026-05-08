@@ -22,9 +22,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/pjrt/compiled_memory_stats.h"
+#include "xla/service/executable.h"
 #include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/xla.pb.h"
 
 namespace stream_executor {
 class DeviceDescription;
@@ -46,11 +48,11 @@ class CompiledModule {
 
   virtual absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
       stream_executor::Platform::Id platform_id,
-      const stream_executor::DeviceDescription& device_description) && = 0;
+      const stream_executor::DeviceDescription& device_description,
+      const DebugOptions& debug_options) && = 0;
 
-  virtual absl::StatusOr<std::unique_ptr<BufferAssignment>> buffer_assignment()
-      const {
-    return absl::UnimplementedError("buffer_assignment is not supported.");
+  virtual absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const {
+    return absl::UnimplementedError("GetCompiledMemoryStats is not supported.");
   }
 
   // Returns the optimized HLO module if one was computed and the implementation

@@ -188,7 +188,9 @@ std::unique_ptr<HloModule> GetModule(absl::string_view lhs_dtype,
   )",
                        lhs_dtype, rhs_dtype, out_dtype, m, n, k, b);
 
-  auto parsed = ParseAndReturnUnverifiedModule(text);
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsFromFlags());
+  auto parsed = ParseAndReturnUnverifiedModule(text, config);
   CHECK_OK(parsed.status());
   return *std::move(parsed);
 }

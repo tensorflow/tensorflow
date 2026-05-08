@@ -105,8 +105,9 @@ constexpr char kCompileFunctionComponent[] =
 absl::Status CheckSignature(const DataTypeVector& types,
                             absl::Span<const XlaCompiler::Argument> args) {
   if (args.size() != types.size()) {
-    return errors::Internal("Compilation arguments have ", args.size(),
-                            " elements while function has ", types.size());
+    return absl::InternalError(
+        absl::StrCat("Compilation arguments have ", args.size(),
+                     " elements while function has ", types.size()));
   }
   for (int i = 0, end = types.size(); i < end; ++i) {
     // Don't perform type checks on resource variables and tensor
@@ -114,9 +115,9 @@ absl::Status CheckSignature(const DataTypeVector& types,
     // plumb them through. DT_VARIANTS are wrapped in a DT_UINT8 tensor.
     if (types[i] != args[i].type && types[i] != DT_RESOURCE &&
         types[i] != DT_VARIANT) {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "Argument ", i, " has declared type ", DataTypeString(args[i].type),
-          " but function parameter has type ", DataTypeString(types[i]));
+          " but function parameter has type ", DataTypeString(types[i])));
     }
   }
   return absl::OkStatus();
@@ -309,7 +310,7 @@ absl::Status BuildComputation(
         break;
 
       case XlaExpression::Kind::kInvalid:
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Invalid expression returned by computation. "
             "This probably means a return value was not set.");
     }
@@ -1000,7 +1001,7 @@ absl::Status XlaCompiler::XLAShapeForArgument(
         }
         case XlaResource::kTensorArray: {
           if (arg.max_array_size < 0) {
-            return errors::InvalidArgument(
+            return absl::InvalidArgumentError(
                 "Negative max_array_size in XLAShapeForArgument");
           }
           TF_RET_CHECK(absl::holds_alternative<TensorShape>(arg.shape));
@@ -1018,7 +1019,7 @@ absl::Status XlaCompiler::XLAShapeForArgument(
         }
         case XlaResource::kStack: {
           if (arg.max_array_size < 0) {
-            return errors::InvalidArgument(
+            return absl::InvalidArgumentError(
                 "Negative max_array_size in XLAShapeForArgument");
           }
           TF_RET_CHECK(absl::holds_alternative<TensorShape>(arg.shape));
@@ -1034,7 +1035,7 @@ absl::Status XlaCompiler::XLAShapeForArgument(
         }
 
         case XlaResource::kInvalid:
-          return errors::Internal(
+          return absl::InternalError(
               "Invalid resource type in XLAShapeForArgument()");
       }
     }
@@ -1043,7 +1044,8 @@ absl::Status XlaCompiler::XLAShapeForArgument(
       return absl::OkStatus();
     }
     case XlaCompiler::Argument::kInvalid:
-      return errors::Internal("Invalid argument type in XLAShapeForArgument()");
+      return absl::InternalError(
+          "Invalid argument type in XLAShapeForArgument()");
   }
 }
 
@@ -1133,7 +1135,7 @@ absl::Status XlaCompiler::BuildArguments(
         arg_expression = XlaExpression::Constant(arg.constant_value);
         break;
       case XlaCompiler::Argument::kInvalid:
-        return errors::Internal(
+        return absl::InternalError(
             "Unreachable case in BuildArguments() while filling constant args");
     }
   }
@@ -1312,7 +1314,7 @@ absl::Status XlaCompiler::BuildArguments(
       }
       case XlaCompiler::Argument::kConstant:
       case XlaCompiler::Argument::kInvalid:
-        return errors::Internal(
+        return absl::InternalError(
             "Unreachable case in BuildArguments() while filling handles");
     }
   }
@@ -1348,9 +1350,9 @@ absl::Status GetPotentialFunctionName(const Node& node,
     TF_RETURN_IF_ERROR(
         node.attrs().Find(FunctionLibraryDefinition::kFuncAttr, &attr_value));
     if (!attr_value->has_func()) {
-      return errors::InvalidArgument(
-          "The attribute value for attribute 'f' in node ", node.DebugString(),
-          " does not have 'func' field set");
+      return absl::InvalidArgumentError(
+          absl::StrCat("The attribute value for attribute 'f' in node ",
+                       node.DebugString(), " does not have 'func' field set"));
     }
     *name = &attr_value->func().name();
     return absl::OkStatus();
@@ -1392,7 +1394,7 @@ absl::Status ValidateGraph(const Graph* graph,
                                    /*drop_internal_frames =*/true}));
       }
 
-      return errors::InvalidArgument(errmsg);
+      return absl::InvalidArgumentError(errmsg);
     }
     return absl::OkStatus();
   };
@@ -1775,8 +1777,8 @@ absl::Status XlaCompiler::SetDeviceToHostMetadata(
                                                   new_transfer)) {
       return absl::OkStatus();
     } else {
-      return errors::InvalidArgument(
-          "Duplicate calls to SetDeviceToHostMetadata with key ", key);
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Duplicate calls to SetDeviceToHostMetadata with key ", key));
     }
   }
   tf2xla::HostTransferMetadata& transfer = host_compute_sends_[key];
@@ -1788,8 +1790,8 @@ absl::Status XlaCompiler::GetDeviceToHostShapes(
     const std::string& key, std::vector<TensorShape>* shapes) const {
   const auto iter = host_compute_sends_.find(key);
   if (iter == host_compute_sends_.end()) {
-    return errors::InvalidArgument(
-        "No host compute send shapes registered for key ", key);
+    return absl::InvalidArgumentError(
+        absl::StrCat("No host compute send shapes registered for key ", key));
   }
   shapes->clear();
   for (int i = 0; i < iter->second.metadata_size(); ++i) {
@@ -1810,8 +1812,8 @@ absl::Status XlaCompiler::SetHostToDeviceMetadata(
                                                   new_transfer)) {
       return absl::OkStatus();
     } else {
-      return errors::InvalidArgument(
-          "Duplicate calls to SetHostToDeviceMetadata with key ", key);
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Duplicate calls to SetHostToDeviceMetadata with key ", key));
     }
   }
   tf2xla::HostTransferMetadata& transfer = host_compute_recvs_[key];
@@ -1823,9 +1825,9 @@ absl::Status XlaCompiler::GetHostComputeControlDependency(
     const std::string& host_compute_name, xla::XlaOp* handle) {
   const auto iter = host_compute_control_output_.find(host_compute_name);
   if (iter == host_compute_control_output_.end()) {
-    return errors::InvalidArgument(
-        "No registered control handle for host compute Op '", host_compute_name,
-        "'");
+    return absl::InvalidArgumentError(
+        absl::StrCat("No registered control handle for host compute Op '",
+                     host_compute_name, "'"));
   } else {
     *handle = iter->second;
   }
@@ -1836,9 +1838,9 @@ absl::Status XlaCompiler::SetHostComputeControlDependency(
     const std::string& host_compute_name, const xla::XlaOp handle) {
   if (host_compute_control_output_.find(host_compute_name) !=
       host_compute_control_output_.end()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Duplicate control handles registered for host compute Op ",
-        host_compute_name);
+        host_compute_name));
   }
   host_compute_control_output_[host_compute_name] = handle;
   return absl::OkStatus();
@@ -1850,7 +1852,7 @@ void XlaCompiler::PushNodeTokenMapping() {
 
 absl::Status XlaCompiler::PopNodeTokenMapping() {
   if (node_token_mapping_stack_.empty()) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Calling PopNodeTokenMapping() when node_token_mapping_stack_ is "
         "empty.");
   }
@@ -1861,14 +1863,14 @@ absl::Status XlaCompiler::PopNodeTokenMapping() {
 absl::Status XlaCompiler::SetNodeToken(const std::string& node_name,
                                        const xla::XlaOp op) {
   if (node_token_mapping_stack_.empty()) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Calling SetNodeToken() when node_token_mapping_stack_ is "
         "empty.");
   }
   auto insert_result = node_token_mapping_stack_.top().insert({node_name, op});
   if (!insert_result.second) {
-    return errors::FailedPrecondition("Token mapping already exists for node ",
-                                      node_name);
+    return absl::FailedPreconditionError(
+        absl::StrCat("Token mapping already exists for node ", node_name));
   }
   return absl::OkStatus();
 }
@@ -1876,14 +1878,14 @@ absl::Status XlaCompiler::SetNodeToken(const std::string& node_name,
 absl::StatusOr<xla::XlaOp> XlaCompiler::GetNodeToken(
     const std::string& node_name) {
   if (node_token_mapping_stack_.empty()) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Calling GetNodeToken() when node_token_mapping_stack_ is "
         "empty.");
   }
   auto iter = node_token_mapping_stack_.top().find(node_name);
   if (iter == node_token_mapping_stack_.top().end()) {
-    return errors::FailedPrecondition("Cannot find token mapping for node ",
-                                      node_name);
+    return absl::FailedPreconditionError(
+        absl::StrCat("Cannot find token mapping for node ", node_name));
   }
   return iter->second;
 }

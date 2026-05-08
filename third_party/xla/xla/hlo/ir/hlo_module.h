@@ -186,7 +186,15 @@ class HloModule {
 
   bool has_entry_computation() const { return entry_computation_ != nullptr; }
 
-  // Returns the root instruction shape of entry computation.
+  // Returns the output shape in entry computation layout. This is the final
+  // result shape when HLO finishes the full compilation.
+  const Shape& output_shape() const {
+    return entry_computation_layout().result_shape();
+  }
+
+  // Returns the shape of the HLO root instruction.
+  // This can be different from the output_shape() when HLO is in an
+  // intermediate state. E.g. when compilation exits early.
   //
   // Precondition: entry_computation_ is not nullptr.
   const Shape& result_shape() const {
@@ -352,6 +360,15 @@ class HloModule {
     }
   }
 
+  // Canonicalizes the local_ids of all instructions in all computations
+  // in this module and updates the schedule's instruction unique IDs.
+  //
+  // WARNING: This is a dangerous API because it reassigns local IDs in all
+  // computations. It should only be used in contexts where you are certain
+  // that nothing is caching instruction unique IDs or relying on the stability
+  // of local IDs.
+  void CanonicalizeComputationLocalIds();
+
   // Compute and return a topological sort of all computations in the module.
   // The sort is defined like so: if computation A has an instruction which
   // calls computation B, then A will appear after B in the sort.
@@ -447,6 +464,10 @@ class HloModule {
   void set_is_dynamic(bool is_dynamic) { is_dynamic_ = is_dynamic; }
 
  private:
+  // Private constructor which accepts the id to allow specifying pre-allocated
+  // module id.
+  HloModule(const std::string& name, HloModuleConfig config,
+            std::unique_ptr<CompilationEnvironments> comp_envs, int module_id);
   void PrintComputations(Printer* printer,
                          const HloPrintOptions& options) const;
   void PrintConfig(Printer* printer, const HloModuleConfig& config) const;
@@ -709,6 +730,9 @@ class HloModule {
   void set_spmd_output_sharding(const HloSharding& sharding) {
     spmd_output_sharding_ = sharding;
   }
+
+  // Returns the next unique module id.
+  static int GetNextUniqueModuleId() { return next_unique_module_id_++; }
 
   // Base class for cached backend-specific data.
   class CacheEntry {

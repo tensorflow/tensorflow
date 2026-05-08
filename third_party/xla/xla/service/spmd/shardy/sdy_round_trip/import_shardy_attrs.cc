@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -50,13 +51,11 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
-#include "shardy/dialect/sdy/transforms/import/passes.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/service/spmd/shardy/constants.h"
-#include "xla/service/spmd/shardy/sdy_round_trip/dedup_meshes.h"
 #include "xla/service/spmd/shardy/utils.h"
 
 namespace xla {
@@ -183,76 +182,34 @@ void handleFuncResultSharding(CustomCallOp funcResultSharding, FuncOp funcOp,
   }
 }
 
-// Builds the shardy attributes coming from Shardy previously. This means
-// the module was exported from Shardy and we are now round-tripping back.
-// This should happen after the meshes were created from the `ModuleOp` attrs
-// (see `SdyRoundTripImportShardyAttrsPass`).
-void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter,
-                        bool enableHloShardingV3) {
-  // Copy over the argument shardings, but not the result shardings yet.
-  // We need to wait until after we've converted all the Operations before
-  // copying the result shardings.
+// The sharding information is in the `kXlaShardingAttr` attribute.
+void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
   for (auto [argNum, argType] : llvm::enumerate(funcOp.getArgumentTypes())) {
-    if (enableHloShardingV3) {
-      if (auto oldSharding =
-              funcOp.getArgAttrOfType<StringAttr>(argNum, kXlaShardingAttr)) {
-        funcOp.setArgAttr(
-            argNum, kShardingAttr,
-            convertToSdyShardingAttr(parseShardingFromString(oldSharding),
-                                     funcOp.getContext()));
-      }
-    } else {
-      // Attempt to extract the TensorShardingAttr from the frontend attributes
-      // of the function argument/result.
-      if (DictionaryAttr dictAttr = getFuncArgFrontendAttrs(funcOp, argNum)) {
-        if (auto sharding = parseStringAttr<TensorShardingAttr>(
-                dictAttr,
-                xla::ToStringRef(HloSharding::kShardingFrontendAttrName))) {
-          funcOp.setArgAttr(argNum, kShardingAttr, sharding);
-          removeFrontendAttribute(
-              funcOp, xla::ToStringRef(HloSharding::kShardingFrontendAttrName),
-              argNum);
-        }
-      }
+    if (auto oldSharding =
+            funcOp.getArgAttrOfType<StringAttr>(argNum, kXlaShardingAttr)) {
+      funcOp.setArgAttr(
+          argNum, kShardingAttr,
+          convertToSdyShardingAttr(parseShardingFromString(oldSharding),
+                                   funcOp.getContext()));
     }
     funcOp.removeArgAttr(argNum, kXlaShardingAttr);
   }
 
-  // Due to `SdyRoundTripExportShardingsPass` keeping `mhlo.sharding`s, remove
-  // them purely for cleanliness of the module.
   for (int64_t resNum = 0; resNum < funcOp.getNumResults(); ++resNum) {
-    if (enableHloShardingV3) {
-      // Result shardings only need to be handled in HloShardingV3 case where we
-      // don't use FuncResultSharding custom call.
-      if (auto oldSharding = funcOp.getResultAttrOfType<StringAttr>(
-              resNum, kXlaShardingAttr)) {
-        funcOp.setResultAttr(
-            resNum, kShardingAttr,
-            convertToSdyShardingAttr(parseShardingFromString(oldSharding),
-                                     funcOp.getContext()));
-      }
+    if (auto oldSharding =
+            funcOp.getResultAttrOfType<StringAttr>(resNum, kXlaShardingAttr)) {
+      funcOp.setResultAttr(
+          resNum, kShardingAttr,
+          convertToSdyShardingAttr(parseShardingFromString(oldSharding),
+                                   funcOp.getContext()));
     }
-    funcOp.removeResultAttr(
-        resNum, StringAttr::get(funcOp.getContext(), kXlaShardingAttr));
+    funcOp.removeResultAttr(resNum, kXlaShardingAttr);
   }
 
   // Extract the round-tripped shardy attributes from the operations.
   funcOp.front().walk([&](Operation* op) {
-    // Preserve hlo shardings on infeed & outfeed ops, as frontend attributes
-    // are not always added for them, and we don't propagate shardings for these
-    // ops.
-    if (!enableHloShardingV3 &&
-        !mlir::isa<stablehlo::InfeedOp, stablehlo::OutfeedOp>(op)) {
-      op->removeAttr(kXlaShardingAttr);
-    }
-    DictionaryAttr dictAttr = getFrontendAttrs(op);
-    // No frontend attributes to import.
-    if (!enableHloShardingV3 && !dictAttr) {
-      return;
-    }
-
     // Import sharding rules.
-    if (dictAttr) {
+    if (DictionaryAttr dictAttr = getFrontendAttrs(op)) {
       if (auto shardingRuleAttr = parseStringAttr<OpShardingRuleAttr>(
               dictAttr, kShardingRuleRoundTripAttr)) {
         op->setAttr(kShardingRuleAttr, shardingRuleAttr);
@@ -260,67 +217,149 @@ void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter,
       }
     }
 
-    // No shardings to import.
-    if (enableHloShardingV3 &&
-        !op->getAttrOfType<StringAttr>(kXlaShardingAttr)) {
+    auto shardingAttr = op->getAttrOfType<StringAttr>(kXlaShardingAttr);
+    if (!shardingAttr) {
       return;
     }
 
     // `SendOp`, `RecvOp`, and `AfterAllOp` can have a sharding when doing TPU
-    // callbacks through JAX.
+    // callbacks through JAX. We also handle known custom-calls.
+    //
+    // Folloiwng the routine without HloShardingV3, we discard the
+    // `kXlaShardingAttr` for any other op. We may revisit this decision in the
+    // future.
     if (mlir::isa<stablehlo::SendOp, stablehlo::RecvOp, stablehlo::AfterAllOp>(
             op)) {
-      if (enableHloShardingV3) {
-        auto sharding = op->getAttrOfType<StringAttr>(kXlaShardingAttr);
-        op->setAttr(kShardingAttr,
-                    convertToSdySharding(parseShardingFromString(sharding),
-                                         op->getContext()));
-      } else {
-        if (auto sharding = parseStringAttr<TensorShardingPerValueAttr>(
-                dictAttr,
-                xla::ToStringRef(HloSharding::kShardingFrontendAttrName))) {
-          op->setAttr(kShardingAttr, sharding);
-        }
-      }
-    }
-    // NOTE: we are only setting the sharding on known custom-calls. For any
-    // other op that has a `HloSharding::kShardingFrontendAttrName` we discard
-    // it. XLA sometimes creates new instructions, copying over the operand's
-    // frontend attrs, which may mean the shapes are wrong when the new
-    // instruction is a reshape for example. This does mean we can't fully
-    // round-trip b/w HLO and MLIR after SDY propagation.
-    if (auto customCallOp = mlir::dyn_cast<CustomCallOp>(op)) {
+      op->setAttr(kShardingAttr,
+                  convertToSdySharding(parseShardingFromString(shardingAttr),
+                                       op->getContext()));
+    } else if (auto customCallOp = mlir::dyn_cast<CustomCallOp>(op)) {
       StringRef targetName = customCallOp.getCallTargetName();
-      if (targetName == kFuncResultShardingTargetName && !enableHloShardingV3) {
-        handleFuncResultSharding(customCallOp, funcOp, dictAttr, rewriter);
-        return;
-      }
       if (targetName == kShardingCustomCallTargetName ||
           isPythonCallbackCustomCall(customCallOp)) {
-        if (enableHloShardingV3) {
-          auto sharding =
-              customCallOp->getAttrOfType<StringAttr>(kXlaShardingAttr);
-          customCallOp->setAttr(
-              kShardingAttr,
-              convertToSdySharding(parseShardingFromString(sharding),
-                                   customCallOp->getContext()));
-        } else {
-          customCallOp->setAttr(
-              kShardingAttr,
-              parseStringAttr<TensorShardingPerValueAttr>(
-                  dictAttr,
-                  xla::ToStringRef(HloSharding::kShardingFrontendAttrName)));
-        }
+        customCallOp->setAttr(
+            kShardingAttr,
+            convertToSdySharding(parseShardingFromString(shardingAttr),
+                                 customCallOp->getContext()));
       }
     }
 
     op->removeAttr(kXlaShardingAttr);
-
-    if (!enableHloShardingV3) {
-      removeFrontendAttribute(
-          op, xla::ToStringRef(HloSharding::kShardingFrontendAttrName));
-    }
   });
+}
+
+// The sharding information is in the `kShardingFrontendAttrName` frontend
+// attribute.
+void convertShardyAttrsWithoutHloShardingV3(FuncOp funcOp,
+                                            IRRewriter& rewriter) {
+  // Copy over the argument shardings, but not the result shardings yet.
+  // We need to wait until after we've converted all the Operations before
+  // copying the result shardings.
+  for (auto [argNum, argType] : llvm::enumerate(funcOp.getArgumentTypes())) {
+    // Attempt to extract the TensorShardingAttr from the frontend attributes
+    // of the function argument/result.
+    if (DictionaryAttr dictAttr = getFuncArgFrontendAttrs(funcOp, argNum)) {
+      if (auto sharding = parseStringAttr<TensorShardingAttr>(
+              dictAttr,
+              xla::ToStringRef(HloSharding::kShardingFrontendAttrName))) {
+        funcOp.setArgAttr(argNum, kShardingAttr, sharding);
+        removeFrontendAttribute(
+            funcOp, xla::ToStringRef(HloSharding::kShardingFrontendAttrName),
+            argNum);
+      }
+    }
+    funcOp.removeArgAttr(argNum, kXlaShardingAttr);
+  }
+
+  // Due to `SdyRoundTripExportShardingsPass` keeping `kXlaShardingAttr`, remove
+  // them purely for cleanliness of the module.
+  llvm::SmallVector<mlir::DictionaryAttr> newResultAttrs;
+  newResultAttrs.reserve(funcOp.getNumResults());
+  for (int64_t resNum = 0; resNum < funcOp.getNumResults(); ++resNum) {
+    mlir::DictionaryAttr dict = funcOp.getResultAttrDict(resNum);
+    mlir::NamedAttrList attrs(dict);
+    if (attrs.erase(kXlaShardingAttr)) {
+      newResultAttrs.push_back(attrs.getDictionary(funcOp.getContext()));
+    } else {
+      newResultAttrs.push_back(dict);
+    }
+  }
+  funcOp.setAllResultAttrs(newResultAttrs);
+
+  llvm::SmallVector<std::pair<CustomCallOp, DictionaryAttr>>
+      funcResultShardingOps;
+
+  // Extract the round-tripped shardy attributes from the operations.
+  funcOp.front().walk([&](Operation* op) {
+    // Preserve `kXlaShardingAttr` on infeed & outfeed ops, as frontend
+    // attributes are not always added for them, and we don't propagate
+    // shardings for these ops.
+    if (!mlir::isa<stablehlo::InfeedOp, stablehlo::OutfeedOp>(op)) {
+      op->removeAttr(kXlaShardingAttr);
+    }
+    DictionaryAttr dictAttr = getFrontendAttrs(op);
+    if (!dictAttr) {
+      return;
+    }
+
+    // Import sharding rules.
+    if (auto shardingRuleAttr = parseStringAttr<OpShardingRuleAttr>(
+            dictAttr, kShardingRuleRoundTripAttr)) {
+      op->setAttr(kShardingRuleAttr, shardingRuleAttr);
+      removeFrontendAttribute(op, kShardingRuleRoundTripAttr);
+    }
+
+    // `SendOp`, `RecvOp`, and `AfterAllOp` can have a sharding when doing TPU
+    // callbacks through JAX. We also handle known custom-calls.
+    //
+    // For any other op with a `HloSharding::kShardingFrontendAttrName`, we
+    // discard it. XLA sometimes creates new instructions, copying over the
+    // operand's frontend attrs, which may mean the shapes are wrong when the
+    // new instruction is a reshape for example. This does mean we can't fully
+    // round-trip b/w HLO and MLIR after SDY propagation.
+    if (mlir::isa<stablehlo::SendOp, stablehlo::RecvOp, stablehlo::AfterAllOp>(
+            op)) {
+      if (auto sharding = parseStringAttr<TensorShardingPerValueAttr>(
+              dictAttr,
+              xla::ToStringRef(HloSharding::kShardingFrontendAttrName))) {
+        op->setAttr(kShardingAttr, sharding);
+      }
+    } else if (auto customCallOp = mlir::dyn_cast<CustomCallOp>(op)) {
+      StringRef targetName = customCallOp.getCallTargetName();
+      if (targetName == kFuncResultShardingTargetName) {
+        funcResultShardingOps.push_back({customCallOp, dictAttr});
+        return;
+      }
+      if (targetName == kShardingCustomCallTargetName ||
+          isPythonCallbackCustomCall(customCallOp)) {
+        customCallOp->setAttr(
+            kShardingAttr,
+            parseStringAttr<TensorShardingPerValueAttr>(
+                dictAttr,
+                xla::ToStringRef(HloSharding::kShardingFrontendAttrName)));
+      }
+    }
+
+    removeFrontendAttribute(
+        op, xla::ToStringRef(HloSharding::kShardingFrontendAttrName));
+  });
+
+  for (auto& [customCallOp, dictAttr] : funcResultShardingOps) {
+    handleFuncResultSharding(customCallOp, funcOp, dictAttr, rewriter);
+  }
+}
+
+// Builds the shardy attributes coming from Shardy previously. This means
+// the module was exported from Shardy and we are now round-tripping back.
+// This should happen after the meshes were created from the `ModuleOp` attrs
+// (see `SdyRoundTripImportShardyAttrsPass`).
+void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter,
+                        bool enableHloShardingV3) {
+  if (enableHloShardingV3) {
+    convertShardyAttrsWithHloShardingV3(funcOp);
+  } else {
+    convertShardyAttrsWithoutHloShardingV3(funcOp, rewriter);
+  }
 }
 
 using ShardingSetter =
@@ -380,7 +419,7 @@ class SdyRoundTripImportShardyAttrsPass
       std::optional<DictionaryAttr> meshesAttr =
           tryGetFrontendAttr<DictionaryAttr>(moduleOp, kMeshesRoundTripAttr);
       mlir::ArrayRef<NamedAttribute> sdyMeshes =
-          meshesAttr.has_value() ? meshesAttr.value().getValue()
+          meshesAttr.has_value() ? meshesAttr->getValue()
                                  : mlir::ArrayRef<NamedAttribute>();
 
       for (NamedAttribute mesh : sdyMeshes) {

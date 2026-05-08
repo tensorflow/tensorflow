@@ -134,68 +134,6 @@ class CpuDeviceMemory {
   CpuDeviceMemory() = default;
 };
 
-// A class that represents a CPU device buffer: it can be a single memory region
-// or multiple memory regions for a tuple buffers. It also tracks the definition
-// and usage of the memory to allow for synchronized usage and deletion of CPU
-// memory. This class is thread-compatible.
-class TrackedCpuDeviceBuffer : public AbstractTrackedDeviceBuffer {
- public:
-  // Variant with single definition event.
-  TrackedCpuDeviceBuffer(tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
-                         tsl::AsyncValueRef<CpuEvent> definition_event);
-
-  TrackedCpuDeviceBuffer(TrackedCpuDeviceBuffer&&) noexcept = default;
-  TrackedCpuDeviceBuffer& operator=(TrackedCpuDeviceBuffer&&) noexcept =
-      default;
-
-  ~TrackedCpuDeviceBuffer();
-
-  const tsl::AsyncValueRef<CpuDeviceMemory>& buffer();
-
-  size_t BufferSize();
-
-  const tsl::AsyncValueRef<CpuEvent>& definition_event() const {
-    return definition_event_;
-  }
-
-  void AddUsageEvents(absl::Span<tsl::AsyncValueRef<CpuEvent>> events);
-
-  // Return the usage events for the buffers. After
-  // LockUseAndTransferUsageEvents is called, it is illegal to AddUsageEvent.
-  absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4>
-  LockUseAndTransferUsageEvents();
-
-  std::vector<tsl::RCReference<tsl::AsyncValue>> GetAsyncValueDefinitionEvents()
-      override;
-
-  std::vector<tsl::RCReference<tsl::AsyncValue>>
-  GetAsyncValueDefinitionAndUsageEvents() override;
-
-  absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> GetDefinitionEvent(
-      PjRtMemorySpace* memory_space) override;
-
-  void AddUsageEvent(tsl::RCReference<PjRtDeviceEvent> event) override;
-
-  void Delete(PjRtMemorySpace* memory_space) override;
-
-  Future<> GetReadyFuture(PjRtMemorySpace* memory_space) override;
-
-  absl::Status BlockForOperationsToComplete(
-      PjRtMemorySpace* memory_space) override;
-
-  bool AddDefinitionEventsToSet(PjRtDeviceEventSet& events) override;
-
-  void AddUsageEventsToSet(PjRtDeviceEventSet& events) override;
-
- private:
-  void ConfirmDonation() override;
-
-  // The definition event are associated with CPU operations that write to the
-  // buffers.
-  tsl::AsyncValueRef<CpuEvent> definition_event_;
-  // Usage events are associated with CPU operations that read from the buffers.
-  absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> usage_events_;
-};
 }  // namespace xla
 
 #endif  // XLA_PJRT_CPU_TRACKED_CPU_DEVICE_BUFFER_H_

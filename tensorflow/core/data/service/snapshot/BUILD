@@ -353,6 +353,7 @@ tf_cc_test(
         "//tensorflow/core/data/service:test_util",
         "//tensorflow/core/framework:tensor_proto_cc",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
         "@xla//xla/tsl/platform:env",
         "@xla//xla/tsl/platform:status",
         "@xla//xla/tsl/platform:status_matchers",

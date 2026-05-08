@@ -116,27 +116,10 @@ absl::Status ApplyConfigAndUpdateWorkspaceInOutputTuple(
 bool IsSupportedCudnnFusion(const HloInstruction& instr,
                             se::StreamExecutor* stream_executor,
                             const DebugOptions& debug_options) {
-  if (!instr.has_backend_config() ||
-      !instr.backend_config<GpuBackendConfig>()->has_fusion_backend_config() ||
-      instr.backend_config<GpuBackendConfig>()
-              ->fusion_backend_config()
-              .kind() != kCuDnnFusionKind) {
-    VLOG(1) << "Instr is not a cudnn fusion.";
-    return false;
-  }
-
   const HloComputation* computation = instr.fused_instructions_computation();
-  const HloInstruction* hero =
-      hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
-  if (hero == nullptr) {
-    hero = hlo_query::GetFirstInstructionWithOpcode(*computation,
-                                                    HloOpcode::kConvolution);
-  }
-  if (hero == nullptr) {
-    hero = hlo_query::GetFirstInstructionWithOpcode(*computation,
-                                                    HloOpcode::kScaledDot);
-  }
-
+  const HloInstruction* hero = hlo_query::GetFirstInstructionWithOpcode(
+      *computation, {HloOpcode::kDot, HloOpcode::kConvolution,
+                     HloOpcode::kScaledDot, HloOpcode::kRaggedDot});
   if (hero == nullptr) {
     VLOG(1) << "Fusion does not contain a dot or convolution.";
     return false;
@@ -149,6 +132,8 @@ bool IsSupportedCudnnFusion(const HloInstruction& instr,
     algorithm = conv->precision_config().algorithm();
   } else if (auto* scaled_dot = DynCast<HloScaledDotInstruction>(hero)) {
     algorithm = scaled_dot->precision_config().algorithm();
+  } else if (auto* ragged_dot = DynCast<HloRaggedDotInstruction>(hero)) {
+    algorithm = ragged_dot->precision_config().algorithm();
   }
 
   if (!algorithm_util::IsSupportedByCudnn(algorithm)) {
@@ -161,7 +146,8 @@ bool IsSupportedCudnnFusion(const HloInstruction& instr,
     return false;
   }
 
-  if (hero->opcode() == HloOpcode::kConvolution) {
+  if (hero->opcode() == HloOpcode::kConvolution ||
+      hero->opcode() == HloOpcode::kRaggedDot) {
     return true;
   }
 
@@ -329,6 +315,7 @@ absl::Status ApplyConfigToCudnnFusion(HloInstruction& instr,
                       instr.backend_config<GpuBackendConfig>());
   FusionBackendConfig* backend_config =
       gpu_config.mutable_fusion_backend_config();
+  backend_config->set_kind(kCuDnnFusionKind);
   backend_config->mutable_cudnn_fusion_config()->set_plan_id(config.algo_id());
   TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
   return absl::OkStatus();

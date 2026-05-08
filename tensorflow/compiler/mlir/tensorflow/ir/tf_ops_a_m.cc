@@ -1730,7 +1730,7 @@ void ConstOp::build(OpBuilder& builder, OperationState& result, Type type,
 
 LogicalResult ConstOp::inferReturnTypes(
     MLIRContext* context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
+    DictionaryAttr attributes, PropertyRef properties, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   ConstOpAdaptor adaptor(operands, attributes, properties, regions);
   auto value = adaptor.getValue();
@@ -1972,8 +1972,8 @@ static LogicalResult inferConvReturnTypeComponents(
 
 LogicalResult Conv2DOp::inferReturnTypeComponents(
     MLIRContext* context, std::optional<Location> location,
-    ValueShapeRange operands, DictionaryAttr attributes,
-    OpaqueProperties properties, RegionRange regions,
+    ValueShapeRange operands, DictionaryAttr attributes, PropertyRef properties,
+    RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   Conv2DOpAdaptor op(operands.getValues(), attributes, properties, regions);
   ArrayRef<Attribute> explicit_padding;
@@ -2172,8 +2172,8 @@ StringRef Conv2DBackpropInputOp::GetOptimalLayout(
 
 LogicalResult Conv3DOp::inferReturnTypeComponents(
     MLIRContext* context, std::optional<Location> location,
-    ValueShapeRange operands, DictionaryAttr attributes,
-    OpaqueProperties properties, RegionRange regions,
+    ValueShapeRange operands, DictionaryAttr attributes, PropertyRef properties,
+    RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   Conv3DOpAdaptor op(operands.getValues(), attributes, properties, regions);
   ArrayAttr explicit_pad = ::mlir::Builder(context).getI64ArrayAttr({});
@@ -2250,7 +2250,7 @@ class DivNoNanOrMulNoNanConstantY : public OpRewritePattern<OpT> {
 
     // Returns true iff `val` (a complex constant with float real and imaginary
     // parts) is zero.
-    auto complexIsZero = [](const std::complex<APFloat> val) {
+    auto complexIsZero = [](const mlir::Complex<APFloat> val) {
       // Note that when `val` is of complex type, it is zero iff both
       // its real and imaginary parts are zero.
       if (val.real().isZero() && val.imag().isZero())
@@ -2273,7 +2273,7 @@ class DivNoNanOrMulNoNanConstantY : public OpRewritePattern<OpT> {
               if (foundZero && foundNonzero) return true;
             }
           } else {
-            for (const auto val : attr.getValues<std::complex<APFloat>>()) {
+            for (const auto val : attr.getValues<mlir::Complex<APFloat>>()) {
               if (complexIsZero(val))
                 foundZero = true;
               else
@@ -2308,7 +2308,7 @@ class DivNoNanOrMulNoNanConstantY : public OpRewritePattern<OpT> {
           if (splatAttr.getSplatValue<APFloat>().isZero())
             splatAttrIsZero = true;
         } else {
-          if (complexIsZero(splatAttr.getSplatValue<std::complex<APFloat>>()))
+          if (complexIsZero(splatAttr.getSplatValue<mlir::Complex<APFloat>>()))
             splatAttrIsZero = true;
         }
         if (splatAttrIsZero) {

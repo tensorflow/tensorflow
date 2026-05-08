@@ -1,0 +1,27 @@
+// Regression test for b/503878530
+// RUN: triton_test_correctness --abs_error_bound=1e-3 --rel_error_bound=1e-3 %s
+
+dot {
+  p0 = f16[64,128,32]{2,1,0} parameter(0)
+  t = f16[64,32,128]{2,1,0} transpose(p0), dimensions={0,2,1}
+  b = f16[2048,128]{1,0} bitcast(t)
+  p1 = f16[128,256]{1,0} parameter(1)
+  ROOT dot = f16[2048,256]{1,0} dot(b, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}, backend_config={"sizes":["128"]}
+}
+
+ENTRY entry_computation {
+  p0 = f16[64,128,32]{2,1,0} parameter(0)
+  p1 = f16[128,256]{1,0} parameter(1)
+  ROOT fusion = f16[2048,256]{1,0} fusion(p0, p1), kind=kCustom,
+    calls=dot,
+    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+      "block_level_fusion_config":{
+        "num_warps":"8",
+        "output_tiles":[{"sizes":["128","128"]}],
+        "num_ctas":1,
+        "num_stages":1,
+        "is_tma_allowed":true
+      }
+    }
+  }
+}

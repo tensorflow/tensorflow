@@ -212,7 +212,7 @@ bool RingReducer::RunAsyncParts() {
     } else {
       mutex_lock l(status_mu_);
       status_ =
-          errors::Internal("Failed to dispatch ThenExecute in RingReducer");
+          absl::InternalError("Failed to dispatch ThenExecute in RingReducer");
       return false;
     }
   }

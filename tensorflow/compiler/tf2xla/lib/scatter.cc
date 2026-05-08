@@ -52,11 +52,11 @@ absl::StatusOr<xla::XlaOp> XlaScatter(
     TF_RET_CHECK(!indices_dims.empty());
     num_index_dims = indices_dims.back();
     if (num_index_dims > buffer_shape.dimensions().size()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "The size of the minor dimension of the indices (shape: ",
           xla::ShapeUtil::HumanString(indices_shape),
           ") must be <= the rank of the buffer (shape: ",
-          xla::ShapeUtil::HumanString(buffer_shape), ")");
+          xla::ShapeUtil::HumanString(buffer_shape), ")"));
     }
     indices_dims.remove_suffix(1);
   }
@@ -75,9 +75,9 @@ absl::StatusOr<xla::XlaOp> XlaScatter(
   // succeed since it updates a slice of size 1.
   for (int64_t i = 0; i < num_index_dims; ++i) {
     if (xla::ShapeUtil::GetDimension(buffer_shape, i) == 0) {
-      return errors::InvalidArgument("Scatter dimension ", i,
-                                     " is of size zero in tensor with shape ",
-                                     xla::ShapeUtil::HumanString(buffer_shape));
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Scatter dimension ", i, " is of size zero in tensor with shape ",
+          xla::ShapeUtil::HumanString(buffer_shape)));
     }
   }
 

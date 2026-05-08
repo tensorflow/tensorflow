@@ -78,10 +78,10 @@ absl::Status ToConfigMap(
     // <optimizer_name>:<config_key>:<config_value>
     std::vector<std::string> split = absl::StrSplit(option_string, ':');
     if (split.size() != 3) {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "Wrong format for optimizer options. Expect <optimizer name>:<config "
           "key>:<config value>, received: ",
-          option_string);
+          option_string));
     }
 
     const std::string& optimizer_name = split[0];
@@ -212,9 +212,9 @@ absl::Status TFDataMetaOptimizer::Init(
 
       enabled_optimizers_[optimizer_name] = std::move(optimizer);
     } else {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "Tried to register a dataset optimizer that doesn't exist: ",
-          optimizer_name);
+          optimizer_name));
     }
   }
 

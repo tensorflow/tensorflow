@@ -73,7 +73,7 @@ class TiledHloComputation {
   // several outputs (i.e. it has a tuple root), the roots are the operands of
   // the root tuple. The roots are order by increasing output index, and point
   // to tiled hlo instructions from `instructions_`.
-  const std::vector<const TiledHloInstruction*>& GetRoots() const {
+  const std::vector<const TiledHloInstruction*>& roots() const {
     return roots_;
   }
 

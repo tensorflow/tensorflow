@@ -108,9 +108,9 @@ class ConstOp : public XlaOpKernel {
     proto_ = *proto;
     OP_REQUIRES(
         ctx, ctx->output_type(0) == proto_.dtype(),
-        errors::InvalidArgument("Type mismatch between value (",
-                                DataTypeString(proto_.dtype()), ") and dtype (",
-                                DataTypeString(ctx->output_type(0)), ")"));
+        absl::InvalidArgumentError(absl::StrCat(
+            "Type mismatch between value (", DataTypeString(proto_.dtype()),
+            ") and dtype (", DataTypeString(ctx->output_type(0)), ")")));
     OP_REQUIRES_OK(ctx, TensorShape::IsValidShape(proto_.tensor_shape()));
   }
 
@@ -130,8 +130,8 @@ class ConstOp : public XlaOpKernel {
 
     Tensor tensor(proto_.dtype());
     OP_REQUIRES(ctx, tensor.FromProto(cpu_allocator(), proto_),
-                errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                        proto_.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Cannot parse tensor from proto: ", proto_.DebugString())));
     ctx->SetConstantOutput(0, tensor);
   }
 

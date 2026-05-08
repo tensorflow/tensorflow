@@ -58,7 +58,7 @@ ResourceHandle::ResourceHandle(const ResourceHandleProto& proto) {
 absl::Status ResourceHandle::BuildResourceHandle(
     const ResourceHandleProto& proto, ResourceHandle* out) {
   if (out == nullptr)
-    return errors::Internal(
+    return absl::InternalError(
         "BuildResourceHandle() was called with nullptr for the output");
   return out->FromProto(proto);
 }

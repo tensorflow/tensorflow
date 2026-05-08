@@ -231,7 +231,7 @@ class ExecutorBarrier {
 
     if (error_rendez != nullptr) {
       error_rendez->StartAbort(
-          errors::Aborted("Stopping remaining executors."));
+          absl::AbortedError("Stopping remaining executors."));
       error_rendez->Unref();
     }
 

@@ -27,6 +27,7 @@ limitations under the License.
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/backends/profiler/gpu/rocm_collector.h"
 #include "xla/backends/profiler/gpu/rocm_tracer_utils.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
@@ -88,6 +89,44 @@ TEST(RocmTracerTest, SingletonInstance) {
   EXPECT_EQ(&tracer1, &tracer2) << "RocmTracer must be a singleton";
 }
 
+TEST(RocmTracerTest, GpuAgentDataMatchesHipDeviceProperties) {
+  RocmTracer& tracer = RocmTracer::GetRocmTracerSingleton();
+  const auto& agents = tracer.GpuAgents();
+  ASSERT_GT(agents.size(), 0u);
+
+  hipDeviceProp_t props;
+  ASSERT_EQ(hipGetDeviceProperties(&props, 0), hipSuccess);
+  const auto& agent = agents[0];
+
+  EXPECT_EQ(agent.cu_count, static_cast<uint32_t>(props.multiProcessorCount));
+  // Agent clocks are in MHz, hipDeviceProp_t clocks are in KHz.
+  EXPECT_EQ(static_cast<uint64_t>(agent.max_engine_clk_fcompute) * 1000,
+            static_cast<uint64_t>(props.clockRate));
+
+  auto gfx_major = (agent.gfx_target_version / 10000) % 100;
+  auto gfx_minor = (agent.gfx_target_version / 100) % 100;
+  EXPECT_EQ(gfx_major, static_cast<uint32_t>(props.major));
+  EXPECT_EQ(gfx_minor, static_cast<uint32_t>(props.minor));
+
+  uint64_t vram_total = 0;
+  uint32_t vram_clock_mhz = 0;
+  uint32_t vram_bus_width = 0;
+  for (uint32_t i = 0; i < agent.mem_banks_count; ++i) {
+    if (agent.mem_banks[i].heap_type == HSA_HEAPTYPE_FRAME_BUFFER_PUBLIC ||
+        agent.mem_banks[i].heap_type == HSA_HEAPTYPE_FRAME_BUFFER_PRIVATE) {
+      vram_total += agent.mem_banks[i].size_in_bytes;
+      if (vram_clock_mhz == 0) {
+        vram_clock_mhz = agent.mem_banks[i].mem_clk_max;
+        vram_bus_width = agent.mem_banks[i].width;
+      }
+    }
+  }
+  EXPECT_EQ(vram_total, props.totalGlobalMem);
+  EXPECT_EQ(static_cast<uint64_t>(vram_clock_mhz) * 1000,
+            static_cast<uint64_t>(props.memoryClockRate));
+  EXPECT_EQ(vram_bus_width, static_cast<uint32_t>(props.memoryBusWidth));
+}
+
 TEST(RocmTracerTest, InitialStateIsAvailable) {
   RocmTracer& tracer = RocmTracer::GetRocmTracerSingleton();
   EXPECT_TRUE(tracer.IsAvailable())
@@ -99,7 +138,7 @@ TEST(RocmTracerTest, EnableAndDisableLifecycle) {
   auto collector = CreateTestCollector();
 
   RocmTracerOptions tracer_options{/*max_annotation_strings=*/128};
-  tracer.Enable(tracer_options, collector.get());
+  TF_ASSERT_OK(tracer.Enable(tracer_options, collector.get()));
 
   EXPECT_FALSE(tracer.IsAvailable())
       << "Tracer should not be available after Enable()";
@@ -187,7 +226,7 @@ TEST(RocmTracerTest, CapturesHipEvents) {
 
   RocmTracer& tracer = RocmTracer::GetRocmTracerSingleton();
   RocmTracerOptions tracer_options{/*max_annotation_strings=*/1024 * 1024};
-  tracer.Enable(tracer_options, collector.get());
+  TF_ASSERT_OK(tracer.Enable(tracer_options, collector.get()));
 
   constexpr size_t kNumFloats = 1024;
   constexpr size_t kSize = kNumFloats * sizeof(float);

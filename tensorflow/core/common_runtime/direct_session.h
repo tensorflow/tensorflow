@@ -139,6 +139,11 @@ class DirectSession : public Session {
 
   const SessionOptions& options() const { return options_; }
 
+  // Resets the global thread pools (both the default and named pools).
+  // FOR TESTING ONLY. Must only be called when no sessions are active.
+  // Never use in production.
+  static void TestOnlyResetGlobalThreadPool();
+
  private:
   // For access to collective_graph_key_.
   friend class DirectSessionCollectiveTest;
@@ -315,15 +320,15 @@ class DirectSession : public Session {
 
   absl::Status CheckNotClosed() {
     mutex_lock l(closed_lock_);
-    if (closed_) return errors::Cancelled("Session has been closed.");
+    if (closed_) return absl::CancelledError("Session has been closed.");
     return absl::OkStatus();
   }
 
   absl::Status CheckGraphCreated(const char* method) {
     mutex_lock l(graph_state_lock_);
     if (!graph_created_) {
-      return errors::InvalidArgument(
-          "Session was not created with a graph before ", method, "!");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Session was not created with a graph before ", method, "!"));
     }
     return absl::OkStatus();
   }

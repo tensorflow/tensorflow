@@ -525,12 +525,12 @@ inline absl::Status SparseTensor::Split(const SparseTensor& input_tensor,
   const int split_size = split_dim_size / num_split;
 
   if (!(num_split > 0 && num_split <= split_dim_size)) {
-    return errors::InvalidArgument("num_split must be in the interval (0, ",
-                                   split_dim_size, "]");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "num_split must be in the interval (0, ", split_dim_size, "]"));
   }
   if (!(split_dim >= 0 && split_dim < num_dim)) {
-    return errors::InvalidArgument("num_dim must be in the interval [0, ",
-                                   num_dim, ")");
+    return absl::InvalidArgumentError(
+        absl::StrCat("num_dim must be in the interval [0, ", num_dim, ")"));
   }
 
   const int residual = split_dim_size % num_split;
@@ -538,8 +538,8 @@ inline absl::Status SparseTensor::Split(const SparseTensor& input_tensor,
     const int dim = input_indices_t(i, split_dim);
     int slice_index = GetSliceIndex(dim, split_size, residual);
     if (slice_index >= num_values.size()) {
-      return errors::InvalidArgument("Slice index ", slice_index,
-                                     " is larger than num_split.");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Slice index ", slice_index, " is larger than num_split."));
     }
     num_values[slice_index]++;
   }

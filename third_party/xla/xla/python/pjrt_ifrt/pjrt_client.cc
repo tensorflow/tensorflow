@@ -363,7 +363,10 @@ absl::StatusOr<GlobalTopology> MakeGlobalTopologyFromPjRtClient(
       device.set_device_kind(
           // OSS requires explicit string conversion
           // NOLINTNEXTLINE(*-redundant-string-conversions)
-          std::string(pjrt_client->addressable_devices()[0]->device_kind()));
+          std::string(
+              pjrt_device != nullptr
+                  ? pjrt_device->device_kind()
+                  : pjrt_client->addressable_devices()[0]->device_kind()));
 
       // TODO(hyeontaek): Take optional device->partition_index mapping in
       // GlobalDeviceMapping and generate the `partition_index` attribute for
@@ -856,7 +859,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
   }
 
   for (Device* ifrt_device : client->addressable_devices_) {
-    auto* device = tensorflow::down_cast<PjRtDevice*>(ifrt_device);
+    auto* device = absl::down_cast<PjRtDevice*>(ifrt_device);
     auto* pjrt_device = device->pjrt_device();
     device->memories_.reserve(pjrt_device->memory_spaces().size());
     for (xla::PjRtMemorySpace* pjrt_memory_space :
@@ -1118,14 +1121,14 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
                           }));
       }
       TF_ASSIGN_OR_RETURN(
-          buffer, pjrt_client_->BufferFromHostBuffer(
-                      data, primitive_type, shape.dims(), byte_strides,
-                      semantics, on_done_with_host_buffer_per_device,
-                      tensorflow::down_cast<PjRtMemory*>(memory)->pjrt_memory(),
-                      xla_layout));
+          buffer,
+          pjrt_client_->BufferFromHostBuffer(
+              data, primitive_type, shape.dims(), byte_strides, semantics,
+              on_done_with_host_buffer_per_device,
+              absl::down_cast<PjRtMemory*>(memory)->pjrt_memory(), xla_layout));
     } else {
       TF_ASSIGN_OR_RETURN(xla::PjRtMemorySpace * memory_space,
-                          tensorflow::down_cast<PjRtDevice*>(device)
+                          absl::down_cast<PjRtDevice*>(device)
                               ->pjrt_device()
                               ->default_memory_space());
       TF_ASSIGN_OR_RETURN(
@@ -1170,8 +1173,12 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
         array_spec.sharding->devices()->AddressableDeviceList()->devices();
     TF_ASSIGN_OR_RETURN(Shape shard_shape,
                         array_spec.sharding->GetShardShape(array_spec.shape));
-    xla::Shape xla_shape =
-        xla::ShapeUtil::MakeShape(primitive_type, shard_shape.dims());
+    xla::Shape xla_shape;
+    if (primitive_type == xla::TOKEN) {
+      xla_shape = xla::ShapeUtil::MakeTokenShape();
+    } else {
+      xla_shape = xla::ShapeUtil::MakeShape(primitive_type, shard_shape.dims());
+    }
 
     PjRtArray::PjRtBuffers buffers;
     buffers.reserve(ifrt_addressable_devices.size());
@@ -1199,7 +1206,7 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
           buffers.emplace_back(),
           pjrt_client_->CreateErrorBuffer(
               error, xla_shape,
-              tensorflow::down_cast<PjRtMemory*>(memory)->pjrt_memory()));
+              absl::down_cast<PjRtMemory*>(memory)->pjrt_memory()));
     }
     TF_ASSIGN_OR_RETURN(
         arrays.emplace_back(),
@@ -1565,22 +1572,22 @@ absl::Status PjRtClient::WatchGlobalProcessInfo(
 
   int64_t version_number = -1;  // latest job state version
   while (true) {
-    // Call WatchJobStateAsync.
-    VLOG(3) << "Calling WatchJobStateAsync for task " << task_id
+    // Call WatchTasksAsync.
+    VLOG(3) << "Calling WatchTasksAsync for task " << task_id
             << " with version number " << version_number;
-    absl::StatusOr<xla::coordination::WatchJobStateResponse> response;
+    absl::StatusOr<xla::coordination::WatchTasksResponse> response;
     bool done = false;
-    std::shared_ptr<tsl::CallOptions> call_opts = agent.WatchJobStateAsync(
+    std::shared_ptr<tsl::CallOptions> call_opts = agent.WatchTasksAsync(
         version_number,
         [this, &response,
-         &done](absl::StatusOr<xla::coordination::WatchJobStateResponse> r) {
+         &done](absl::StatusOr<xla::coordination::WatchTasksResponse> r) {
           response = std::move(r);
           absl::MutexLock lock(shutting_down_mu_);
           done = true;
         });
 
     {
-      // Wait for the WatchJobStateAsync call to finish or for us to shut down,
+      // Wait for the WatchTasksAsync call to finish or for us to shut down,
       // whichever happens first.
       absl::MutexLock lock(shutting_down_mu_);
       auto done_or_shutting_down = [this, &done]() {
@@ -1590,7 +1597,7 @@ absl::Status PjRtClient::WatchGlobalProcessInfo(
       shutting_down_mu_.Await(absl::Condition(&done_or_shutting_down));
 
       if (shutting_down_) {
-        // Cancel the call the WatchJobStateAsync and wait for it to terminate.
+        // Cancel the call the WatchTasksAsync and wait for it to terminate.
         VLOG(3) << "WatchGlobalProcessInfo shutting down for task " << task_id;
         call_opts->StartCancel();
         shutting_down_mu_.Await(absl::Condition(&done));
@@ -1601,7 +1608,7 @@ absl::Status PjRtClient::WatchGlobalProcessInfo(
         // Sleep to avoid repeatedly issuing a request that fails immediately.
         //
         // TODO: mwhittaker - Perform exponential backoff.
-        LOG(WARNING) << "WatchJobStateAsync failed for task " << task_id << ": "
+        LOG(WARNING) << "WatchTasksAsync failed for task " << task_id << ": "
                      << response.status();
         shutting_down_mu_.AwaitWithTimeout(absl::Condition(&shutting_down_),
                                            absl::Seconds(1));
@@ -1611,14 +1618,13 @@ absl::Status PjRtClient::WatchGlobalProcessInfo(
 
     // Parse the response.
     version_number = response->version_number();
-    std::vector<xla::coordination::CoordinatedTaskStateInfo> state(
+    std::vector<xla::coordination::TaskInfo> state(
         response->task_state().begin(), response->task_state().end());
-    absl::c_sort(
-        state,
-        [](const xla::coordination::CoordinatedTaskStateInfo& x,
-           const xla::coordination::CoordinatedTaskStateInfo& y) -> bool {
-          return x.task().task_id() < y.task().task_id();
-        });
+    absl::c_sort(state,
+                 [](const xla::coordination::TaskInfo& x,
+                    const xla::coordination::TaskInfo& y) -> bool {
+                   return x.task_id() < y.task_id();
+                 });
 
     // Pretty print the job state, if VLOG is on.
     if (VLOG_IS_ON(3)) {
@@ -1692,6 +1698,21 @@ PjRtClient::CrossHostReceiveBuffers(absl::Span<const xla::Shape> shapes,
                    << status;
       }
     };
+    for (auto& descriptor : recv_state->descriptors) {
+      if (descriptor.serialized_descriptors.size() != 1) {
+        CHECK_NOTNULL(recv_state->cancel_notifier);
+        absl::Status error_status = absl::InternalError(
+            absl::StrFormat("`descriptor.serialized_descriptors` in "
+                            "xla::PjRtCrossHostRecvNotifier "
+                            "must have length 1, but has length %d",
+                            descriptor.serialized_descriptors.size()));
+        for (auto& sub_descriptor : descriptor.serialized_descriptors) {
+          recv_state->cancel_notifier(sub_descriptor, error_status,
+                                      on_canceled);
+        }
+        return;
+      }
+    }
     if (recv_state->descriptors.size() != keys.size()) {
       absl::Status error_status = absl::InternalError(absl::StrFormat(
           "Descriptors must be the same size as keys. Descriptors: %d, "

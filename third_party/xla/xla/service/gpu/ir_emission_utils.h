@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
@@ -157,6 +158,10 @@ bool IsMosaicWithNvshmem(const HloInstruction& hlo);
 // Returns true if `hlo` will be implemented as a call to a Mosaic GPU kernel
 // with multimem.
 bool IsMosaicWithMultimem(const HloInstruction& hlo);
+
+// Returns true if `hlo` will be implemented as a call to a Mosaic GPU kernel
+// with collective metadata.
+bool IsMosaicWithCollectiveMetadata(const HloInstruction& hlo);
 
 // Returns true if instruction is a Mosaic GPU collective instruction.
 bool IsCollectiveMosaicGpuInstruction(const HloInstruction& hlo);

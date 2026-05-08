@@ -69,6 +69,15 @@ def distribute_py_test(
     )
 
     if "notpu" not in tags and "no_tpu" not in tags:
+        # Extract strict_deps from kwargs to avoid passing it twice when
+        # test_rule is py_strict_test (which already sets strict_deps=True).
+        strict_deps = kwargs.pop("strict_deps", None)
+
+        # Build extra_kwargs for TPU tests, including strict_deps if it was set.
+        extra_tpu_kwargs = {}
+        if strict_deps != None:
+            extra_tpu_kwargs["strict_deps"] = strict_deps
+
         _tpu_py_test(
             disable_experimental = True,
             name = name + "_tpu",
@@ -85,6 +94,7 @@ def distribute_py_test(
             disable_mlir_bridge = disable_mlir_bridge,
             disable_tfrt = disable_tpu_use_tfrt,
             test_rule = test_rule,
+            **extra_tpu_kwargs
         )
 
 def distribute_py_strict_test(**kwargs):

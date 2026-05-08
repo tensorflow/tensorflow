@@ -101,14 +101,14 @@ REGISTER_OP("RestoreV2")
       const Tensor* shape_and_slices_tensor = c->input_tensor(2);
       if (shape_and_slices_tensor) {
         if (shape_and_slices_tensor->dtype() != DT_STRING) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(
               "Expected an input tensor of type string.");
         }
 
         const auto& shape_and_slices_flat =
             shape_and_slices_tensor->flat<tstring>();
         if (shape_and_slices_flat.size() != c->num_outputs()) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(
               "The number of shape_and_slice doesn't match tensor outputs.");
         }
         for (int i = 0; i < shape_and_slices_flat.size(); ++i) {

@@ -137,8 +137,8 @@ absl::Status MaybeRewriteLayoutWithShardedShape(
 
   xla::OpSharding op_sharding;
   if (tensorflow::DecodeShardingAttribute(sharding, op_sharding).failed()) {
-    return errors::InvalidArgument("failed to parse sharding '",
-                                   sharding.getValue().str(), "'");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "failed to parse sharding '", sharding.getValue().str(), "'"));
   }
   std::optional<xla::HloSharding> hlo_sharding;
   TF_ASSIGN_OR_RETURN(hlo_sharding, xla::HloSharding::FromProto(op_sharding));
@@ -272,7 +272,7 @@ absl::Status GetOutputInfo(
         // below.
         buffer_ty = GetBufferType(owner.getOperand().getType());
         if (!buffer_ty || !buffer_ty.hasStaticShape()) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(
               "results needs to be static or bounded");
         }
       }
@@ -280,7 +280,7 @@ absl::Status GetOutputInfo(
 
     xla::Shape shape = xla::TypeToShape(buffer_ty);
     if (shape.element_type() == xla::PRIMITIVE_TYPE_INVALID) {
-      return errors::InvalidArgument("XLA conversion failed for MLIR type.");
+      return absl::InvalidArgumentError("XLA conversion failed for MLIR type.");
     }
     TF_ASSIGN_OR_RETURN(shape, shape_representation_fn_no_fast_memory(shape));
 
@@ -641,7 +641,7 @@ absl::Status RefineShapes(llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
 
   if (failed(result)) {
     return error_handler.Combine(
-        errors::Internal("MLIR Shape refinement failed"));
+        absl::InternalError("MLIR Shape refinement failed"));
   }
   return error_handler.ConsumeStatus();
 }
@@ -937,7 +937,7 @@ static absl::StatusOr<std::vector<int>> RewriteWithArgs(
     if (xla_arg.kind == XlaArgument::kResource) {
       mlir::Type element_type;
       if (xla_arg.type == DT_INVALID) {
-        return errors::Unimplemented(absl::StrCat(
+        return absl::UnimplementedError(absl::StrCat(
             "Argument ", idx,
             " is an uninitialized resource variable which is currently"
             " unsupported in the MLIR-based TPU bridge"));

@@ -92,7 +92,7 @@ class CpuTopologyDescription : public PjRtTopologyDescription {
     return 1;
   }
 
-  absl::StatusOr<std::string> Serialize() const override;
+  absl::StatusOr<uint64_t> Fingerprint() const override;
 
   absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
   ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(

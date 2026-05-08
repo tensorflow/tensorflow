@@ -321,8 +321,8 @@ class GrpcEagerClientCache : public EagerClientCache {
       tensorflow::SharedGrpcChannelPtr shared =
           cache_->FindWorkerChannel(target);
       if (shared == nullptr) {
-        return errors::InvalidArgument("Client for target ", target,
-                                       " not found.");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Client for target ", target, " not found."));
       }
       int assigned_index = AssignClientToThread(target);
       GrpcEagerClientThread* thread = threads_[assigned_index].get();

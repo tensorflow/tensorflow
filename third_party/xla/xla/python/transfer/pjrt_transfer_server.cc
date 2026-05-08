@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/btree_set.h"
 #include "absl/status/status.h"
@@ -85,9 +86,9 @@ absl::StatusOr<xla::PjRtMemorySpace*> GetMemorySpace(
                           absl::StrAppend(out, *ms->Kind().memory_kind());
                         })));
     }
-    return tensorflow::down_cast<xla::ifrt::PjRtMemory*>(memory)->pjrt_memory();
+    return absl::down_cast<PjRtMemory*>(memory)->pjrt_memory();
   }
-  return tensorflow::down_cast<xla::ifrt::PjRtDevice*>(device)
+  return absl::down_cast<PjRtDevice*>(device)
       ->pjrt_device()
       ->default_memory_space();
 }

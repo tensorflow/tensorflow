@@ -56,6 +56,7 @@ TEST(MakeBatchPointersTest, Basic) {
 
   EXPECT_THAT(MakeBatchPointers(stream.get(), base, kStride, kN, ptrs_out),
               absl_testing::IsOk());
+  EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
 
   std::array<void*, kN> result = {};
 

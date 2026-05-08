@@ -20,6 +20,7 @@ limitations under the License.
 #include <mutex>
 
 #include "absl/log/check.h"
+#include "absl/strings/string_view.h"
 #include "sqlite3.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"

@@ -12,6 +12,8 @@ package(
     licenses = ["notice"],
 )
 
+exports_files(["gen_git_source.py"])
+
 py_binary(
     name = "gen_git_source",
     srcs = ["gen_git_source.py"],

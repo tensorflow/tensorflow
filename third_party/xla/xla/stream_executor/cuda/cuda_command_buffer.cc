@@ -422,7 +422,8 @@ absl::Status CudaCommandBuffer::UpdateDnnGraphNode(
 absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateClonedChildNode(
     absl::Span<const GraphNodeHandle> dependencies,
     const CommandBuffer& nested) {
-  auto& child_command_buffer = tsl::down_cast<const CudaCommandBuffer&>(nested);
+  auto& child_command_buffer =
+      absl::down_cast<const CudaCommandBuffer&>(nested);
   CHECK_EQ(child_command_buffer.parent_, nullptr)
       << "Nested command buffer's parent is not null";
 
@@ -443,7 +444,7 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateClonedChildNode(
 
 absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateMovedChildNode(
     absl::Span<const GraphNodeHandle> dependencies, CommandBuffer* nested) {
-  auto* child_command_buffer = tsl::down_cast<CudaCommandBuffer*>(nested);
+  auto* child_command_buffer = absl::down_cast<CudaCommandBuffer*>(nested);
   CHECK_EQ(child_command_buffer->parent_, nullptr)
       << "Nested command buffer's parent is not null";
 
@@ -486,7 +487,8 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateMovedChildNode(
 
 absl::Status CudaCommandBuffer::UpdateClonedChildNode(
     GraphNodeHandle node_handle, const CommandBuffer& nested) {
-  CUgraph child_graph = tsl::down_cast<const CudaCommandBuffer&>(nested).graph_;
+  CUgraph child_graph =
+      absl::down_cast<const CudaCommandBuffer&>(nested).graph_;
   VLOG(2) << "Set child node params " << node_handle << " in graph executable "
           << graph_exec() << " to params contained in " << child_graph;
 
@@ -512,17 +514,10 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateKernelNode(
           << "; deps: " << dependencies.size();
 
   CUgraphNode node_handle = nullptr;
-  CUfunction function = static_cast<const CudaKernel&>(kernel).gpu_function();
-  // TODO(ezhulenev): Why do we do it on every call to launch kernel? This
-  // should be moved one level up to se::Kernel level, and done just once (or
-  // updated once we get a new larger shared memory request).
-  if (shared_mem_bytes != 0) {
-    TF_RETURN_IF_ERROR(cuda::ToStatus(
-        cuFuncSetAttribute(function,
-                           CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
-                           shared_mem_bytes),
-        "Failed to set shared memory size"));
-  }
+  const auto& cuda_kernel = static_cast<const CudaKernel&>(kernel);
+  CUfunction function = cuda_kernel.gpu_function();
+  TF_RETURN_IF_ERROR(
+      cuda_kernel.UpdateMaxDynamicSharedMemoryBytes(shared_mem_bytes));
 
   auto set_params = [&](auto& params) {
     params.func = function;
@@ -617,7 +612,8 @@ absl::Status CudaCommandBuffer::UpdateKernelNode(
           << "; shmem: " << shared_mem_bytes;
 
   CUDA_KERNEL_NODE_PARAMS params{};
-  CUfunction function = static_cast<const CudaKernel&>(kernel).gpu_function();
+  const auto& cuda_kernel = static_cast<const CudaKernel&>(kernel);
+  CUfunction function = cuda_kernel.gpu_function();
   params.func = function;
   params.gridDimX = blocks.x;
   params.gridDimY = blocks.y;
@@ -629,16 +625,9 @@ absl::Status CudaCommandBuffer::UpdateKernelNode(
   params.kernelParams = const_cast<void**>(args.argument_addresses().data());
   params.extra = nullptr;
 
-  // TODO(ezhulenev): Why do we do it on every call to launch kernel? This
-  // should be moved one level up to se::Kernel level, and done just once (or
-  // updated once we get a new larger shared memory request).
-  if (shared_mem_bytes != 0) {
-    TF_RETURN_IF_ERROR(cuda::ToStatus(
-        cuFuncSetAttribute(function,
-                           CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
-                           shared_mem_bytes),
-        "Failed to set shared memory size"));
-  }
+  TF_RETURN_IF_ERROR(
+      cuda_kernel.UpdateMaxDynamicSharedMemoryBytes(shared_mem_bytes));
+
   return cuda::ToStatus(
       cuGraphExecKernelNodeSetParams(graph_exec(),
                                      ToCudaGraphHandle(node_handle), &params),

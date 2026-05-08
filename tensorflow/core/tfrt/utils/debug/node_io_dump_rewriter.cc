@@ -46,7 +46,7 @@ absl::StatusOr<std::string> GetDumpDir(absl::string_view dump_dir) {
   if (!dump_dir.empty()) return std::string(dump_dir);
   const char* prefix = getenv("TF_DUMP_GRAPH_PREFIX");
   if (prefix != nullptr) return std::string(prefix);
-  return errors::InvalidArgument("TF_DUMP_GRAPH_PREFIX not specified");
+  return absl::InvalidArgumentError("TF_DUMP_GRAPH_PREFIX not specified");
 }
 
 absl::Status InsertDumpOpsForNode(Graph& graph, Node& node,

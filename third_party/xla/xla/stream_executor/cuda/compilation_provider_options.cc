@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_format.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/xla.pb.h"
 
 namespace stream_executor::cuda {
@@ -33,7 +34,8 @@ std::string CompilationProviderOptions::ToString() const {
 }
 
 CompilationProviderOptions CompilationProviderOptions::FromDebugOptions(
-    const xla::DebugOptions& debug_options) {
+    const xla::DebugOptions& debug_options,
+    stream_executor::StreamExecutor* stream_exec) {
   CompilationProviderOptions options;
   options.nvjitlink_mode_ = [&] {
     if (debug_options.xla_gpu_libnvjitlink_mode() ==
@@ -53,6 +55,8 @@ CompilationProviderOptions CompilationProviderOptions::FromDebugOptions(
   options.enable_driver_compilation_ =
       debug_options.xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found();
   options.cuda_data_dir_ = debug_options.xla_gpu_cuda_data_dir();
+
+  options.stream_exec_ = stream_exec;
   return options;
 }
 }  //    namespace stream_executor::cuda

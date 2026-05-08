@@ -357,7 +357,10 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os, ShardingParam sharding) {
 absl::StatusOr<ShardingParam> ShardingParam::FromProto(
     const ShardingParamProto& proto) {
   const SerDesVersionNumber version_number(proto.version_number());
-  if (version_number > SerDesVersionNumber(1)) {
+  // We should only accept <= SerDesVersionNumber(1), but we accidentally used
+  // version 2 instead of 1. Since there is no `ShardingParam` serialization
+  // format change at version 2, we gracefully accept this version number.
+  if (version_number > SerDesVersionNumber(2)) {
     return absl::FailedPreconditionError(absl::StrCat(
         "Unsupported ", version_number, " for ShardingParam deserialization"));
   }
@@ -380,25 +383,32 @@ absl::StatusOr<ShardingParam> ShardingParam::FromProto(
 
 absl::Status ShardingParam::ToProto(ShardingParamProto& proto,
                                     SerDesVersion version) const {
-  if (version.version_number() > SerDesVersionNumber(1)) {
+  if (version.version_number() < SerDesVersionNumber(0)) {
     return absl::FailedPreconditionError(
         absl::StrCat("Unsupported ", version.version_number(),
                      " for ShardingParam serialization"));
   }
+  if (version.version_number() < SerDesVersionNumber(1) &&
+      !unreduced_axes().empty()) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("ShardingParamProto with ", version.version_number(),
+                     " does not support `unreduced_axes`"));
+  }
 
   proto.Clear();
-  proto.set_version_number(version.version_number().value());
+  if (unreduced_axes().empty()) {
+    // If the SerDes minimum supported version becomes 1 or larger, we can use
+    // the new minimum version here without breaking version compatibility.
+    proto.set_version_number(SerDesVersionNumber(0).value());
+  } else {
+    proto.set_version_number(SerDesVersionNumber(1).value());
+  }
   proto.mutable_dim_shards()->Add(dim_shards().begin(), dim_shards().end());
   proto.mutable_permutation()->Add(minor_to_major().permutation.begin(),
                                    minor_to_major().permutation.end());
   proto.mutable_axis_sizes()->Add(minor_to_major().axis_sizes.begin(),
                                   minor_to_major().axis_sizes.end());
   if (!unreduced_axes().empty()) {
-    if (version.version_number() == SerDesVersionNumber(0)) {
-      return absl::FailedPreconditionError(
-          absl::StrCat("ShardingParamProto with ", version.version_number(),
-                       " does not support `unreduced_axes`"));
-    }
     proto.mutable_unreduced_axes()->Add(unreduced_axes().begin(),
                                         unreduced_axes().end());
   }

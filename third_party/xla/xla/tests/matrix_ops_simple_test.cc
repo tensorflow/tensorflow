@@ -20,7 +20,6 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
-#include "xla/tests/xla_test_backend_predicates.h"
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -176,21 +175,17 @@ INSTANTIATE_TEST_CASE_P(
                       TestLinspaceMaxParam{64, 8}),
     PrintTestLinspaceMaxParam);
 
-// Returns true if the test is using a GPU.
-bool IsGpu() { return xla::test::DeviceTypeIs(test::kGpu); }
-
 class MatOpsDotAddTest
     : public ClientLibraryTestRunnerMixin<
           HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
-      public ::testing::WithParamInterface<std::tuple<bool, bool, bool, bool>> {
+      public ::testing::WithParamInterface<std::tuple<bool, bool, bool>> {
  public:
   template <typename T>
   void TestImpl() {
     bool row_major = std::get<0>(GetParam());
     bool add_lhs = std::get<1>(GetParam());
     bool transpose = std::get<2>(GetParam());
-    bool use_cublaslt = IsGpu() ? std::get<3>(GetParam()) : false;
-    mutable_debug_options()->set_xla_gpu_enable_cublaslt(use_cublaslt);
+
     Array2D<T> lhs({{1.0f, 2.0f}, {3.0f, 4.0f}});
     Array2D<T> rhs({{10.0f, 11.0f}, {12.0f, 13.0f}});
 
@@ -279,8 +274,7 @@ class MatOpsDotAddTest
   void TestImplBiasAddEpilogueFusion() {
     bool row_major = std::get<0>(GetParam());
     bool transpose = std::get<2>(GetParam());
-    bool use_cublaslt = IsGpu() ? std::get<3>(GetParam()) : false;
-    mutable_debug_options()->set_xla_gpu_enable_cublaslt(use_cublaslt);
+
     Array2D<T> lhs({{1.0f, 2.0f}, {3.0f, 4.0f}});
     Array2D<T> rhs({{10.0f, 11.0f}, {12.0f, 13.0f}});
     auto minor_to_major = [](bool row_major) -> std::vector<int64_t> {
@@ -317,8 +311,7 @@ class MatOpsDotAddTest
   void TestImplReluActivationEpilogueFusion() {
     bool row_major = std::get<0>(GetParam());
     bool transpose = std::get<2>(GetParam());
-    bool use_cublaslt = IsGpu() ? std::get<3>(GetParam()) : false;
-    mutable_debug_options()->set_xla_gpu_enable_cublaslt(use_cublaslt);
+
     Array2D<T> lhs({{-1.0f, 2.0f}, {3.0f, 4.0f}});
     Array2D<T> rhs({{10.0f, 11.0f}, {-12.0f, 13.0f}});
     auto minor_to_major = [](bool row_major) -> std::vector<int64_t> {
@@ -352,8 +345,7 @@ class MatOpsDotAddTest
   void TestImplBiasAddReluActivationEpilogueFusion() {
     bool row_major = std::get<0>(GetParam());
     bool transpose = std::get<2>(GetParam());
-    bool use_cublaslt = IsGpu() ? std::get<3>(GetParam()) : false;
-    mutable_debug_options()->set_xla_gpu_enable_cublaslt(use_cublaslt);
+
     Array2D<T> lhs({{-1.0f, 2.0f}, {3.0f, 4.0f}});
     Array2D<T> rhs({{10.0f, 11.0f}, {-12.0f, 13.0f}});
     auto minor_to_major = [](bool row_major) -> std::vector<int64_t> {
@@ -415,7 +407,6 @@ TEST_P(MatOpsDotAddTest, Dot_BiasAddReluActivation_2x2_2x2F32) {
 
 INSTANTIATE_TEST_CASE_P(MatOpsDotAddTestInstances, MatOpsDotAddTest,
                         ::testing::Combine(::testing::Bool(), ::testing::Bool(),
-                                           ::testing::Bool(),
                                            ::testing::Bool()));
 
 }  // namespace

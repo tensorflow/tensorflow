@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/runtime_intrinsics.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "xla/service/shaped_slice.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -74,15 +74,13 @@ absl::StatusOr<std::unique_ptr<Thunk>> InsertBufferSaverCustomCall(
     Thunk::ThunkInfo info;
     info.profile_annotation =
         absl::StrCat("Buffer saver ", sequence[0]->profile_annotation());
-    info.execution_stream_id = sequence[0]->execution_stream_id();
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         auto log_thunk,
         CustomCallThunk::Create(
             info, std::string{kXlaGpuAppendToFileCustomCallTag}, {output},
             {std::nullopt}, attributes, hlo_module.entry_computation(), "GPU",
             stream_executor::GpuComputeCapability()));
-    log_thunk->add_control_predecessor(sequence[0].get());
     sequence.emplace_back(std::move(log_thunk));
   }
 

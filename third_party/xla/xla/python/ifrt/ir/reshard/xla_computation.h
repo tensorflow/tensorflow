@@ -40,18 +40,15 @@ class XlaComputationBuilder {
       : device_kind_(device_kind) {}
 
   // Builds an XLA computation that reshards inputs in an SPMD manner.
-  absl::StatusOr<std::unique_ptr<xla::ifrt::HloProgram>>
-  BuildXlaReshardComputation(
+  absl::StatusOr<std::unique_ptr<HloProgram>> BuildXlaReshardComputation(
       const xla::Shape& xla_shape, const xla::HloSharding& old_hlo_sharding,
       const xla::HloSharding& new_hlo_sharding,
-      absl::Span<const xla::ifrt::MemoryKind> memory_kinds,
-      bool pre_resharding);
+      absl::Span<const MemoryKind> memory_kinds, bool pre_resharding);
 
   // Builds a zeros XLA computation that emits zeros buffers.
-  absl::StatusOr<std::unique_ptr<xla::ifrt::HloProgram>>
-  BuildXlaZerosComputation(
+  absl::StatusOr<std::unique_ptr<HloProgram>> BuildXlaZerosComputation(
       const xla::Shape& xla_shape, const xla::HloSharding& new_hlo_sharding,
-      absl::Span<const xla::ifrt::MemoryKind> memory_kinds);
+      absl::Span<const MemoryKind> memory_kinds);
 
   // Builds an XLA computation that applies all-reduce and reshards inputs in an
   // SPMD manner. It first takes a replica dimension from the first dimension
@@ -59,18 +56,17 @@ class XlaComputationBuilder {
   // zeros. This reduction effectively replicates the real data to all replica
   // devices. Then, it makes a sharding change (same as pre-resharding) to
   // potentially reshard the data.
-  absl::StatusOr<std::unique_ptr<xla::ifrt::HloProgram>>
-  BuildXlaReduceComputation(
+  absl::StatusOr<std::unique_ptr<HloProgram>> BuildXlaReduceComputation(
       const xla::Shape& old_xla_shape, const xla::HloSharding& old_hlo_sharding,
       const xla::Shape& new_xla_shape, const xla::HloSharding& new_hlo_sharding,
-      absl::Span<const xla::ifrt::MemoryKind> memory_kinds);
+      absl::Span<const MemoryKind> memory_kinds);
 
  private:
   std::string device_kind_;
 };
 
-// Dumps an `xla::ifrt::HloProgram` into a string.
-std::string DumpHloProgram(xla::ifrt::HloProgram& program);
+// Dumps an `HloProgram` into a string.
+std::string DumpHloProgram(HloProgram& program);
 
 }  // namespace reshard
 }  // namespace ifrt

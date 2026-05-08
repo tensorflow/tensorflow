@@ -19,13 +19,11 @@ limitations under the License.
 #include "mlir/Pass/PassOptions.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Transforms/Passes.h"
-#include "xla/service/spmd/shardy/round_trip_common/export_named_computations.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_callback_custom_calls.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_manual_reduction_collectives.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_ops.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_shardings.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/shard_map_export.h"
-#include "xla/service/spmd/shardy/stablehlo_round_trip/unflatten_call_graph.h"
 
 namespace xla {
 namespace sdy {
@@ -40,9 +38,6 @@ void addStablehloExportPipeline(mlir::OpPassManager& pm,
   pm.addPass(createExportOpsPass(options.keepHloShardingConstraints));
   pm.addPass(createStablehloRoundTripShardMapExportPass(
       options.keepHloShardingConstraints));
-  pm.addPass(createExportNamedComputationsPass(options.dedupFunctionsFully));
-  // NOTE: It is currently a literal no-op.
-  pm.addPass(createUnflattenCallGraphPass(options.dedupFunctionsFully));
   pm.addPass(mlir::createSymbolDCEPass());
   // If we don't add a sharding to a control flow op without one,
   // StableHLO -> HLO conversion won't add a sharding for that op even if a

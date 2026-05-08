@@ -305,8 +305,9 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, NestedWhile) {
 
   // We expect the root's latest prefetch start time to be before the while loop
   // (logical time 4).
-  EXPECT_EQ(interval_picker.LatestPrefetchStartTime(shape, /*start_time=*/0,
-                                                    /*end_time=*/23, &use),
+  EXPECT_EQ(interval_picker.LatestPrefetchStartTime(
+                cost_analysis->GetShapeSizeBytes(shape), /*start_time=*/0,
+                /*end_time=*/23, &use),
             4);
 }
 
@@ -388,8 +389,9 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, ConsecutiveConditionals) {
 
   // Expect that the prefetch to start before conditional0's called
   // computations.
-  EXPECT_LT(interval_picker.LatestPrefetchStartTime(shape, /*start_time=*/0,
-                                                    /*end_time=*/11, &use),
+  EXPECT_LT(interval_picker.LatestPrefetchStartTime(
+                cost_analysis->GetShapeSizeBytes(shape), /*start_time=*/0,
+                /*end_time=*/11, &use),
             5);
 }
 

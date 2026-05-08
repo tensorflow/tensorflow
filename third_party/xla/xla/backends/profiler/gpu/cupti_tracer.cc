@@ -1507,8 +1507,9 @@ absl::Status CuptiTracer::DisableActivityTracing() {
       }
       // TODO: b/422262733 - Temporarily skip calling disable because of the NV
       // bug (https://partners.nvidia.com/Bug/ViewBug/5350647). Re-enable after
-      // the fix.
-      if (activity == CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL) {
+      // the fix. CUDA 13.0 has the fix, so no longer skip.
+      if (activity == CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL &&
+          cuda_versions::GetSafeCudaVersion() < 13000) {
         VLOG(1) << "Skip disabling activity tracing for: " << activity
                 << " due to deadlock";
         continue;

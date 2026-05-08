@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/service/gpu/model/hlo_op_profiles_data.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
@@ -60,6 +61,10 @@ namespace gpu {
     }
     return profile_name;
   }
+  if (auto* ptr =
+          device_info.gpu_compute_capability().rocm_compute_capability()) {
+    return ptr->gfx_version();
+  }
   return "<unknown>";
 }
 
@@ -86,7 +91,9 @@ namespace gpu {
 const HloOpProfiles::HloOpProfile& HloOpProfiles::GetProfile(
     const se::DeviceDescription& device_info) const {
   auto it = profiles_.find(GetProfileName(device_info));
-  if (it != profiles_.end()) return it->second;
+  if (it != profiles_.end()) {
+    return it->second;
+  }
   return default_profile_;
 }
 

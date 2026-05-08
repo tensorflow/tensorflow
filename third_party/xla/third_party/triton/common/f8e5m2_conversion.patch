@@ -1,6 +1,6 @@
 --- a/python/test/unit/language/test_conversions.py
 +++ b/python/test/unit/language/test_conversions.py
-@@ -333,14 +333,18 @@ def test_typeconvert_upcast(src_dtype, dst_dtype, device):
+@@ -337,14 +337,18 @@ def test_typeconvert_upcast(src_dtype, dst_dtype, device):
  def test_typeconvert_downcast(src_dtype, dst_dtype, rounding, max_repr, device):
  
      if is_cuda():
@@ -26,7 +26,7 @@
 +                    ...
  
      if is_hip():
-         if dst_dtype in ('float8e4b8', 'float8e5b16') and (is_hip_cdna2() or is_hip_rdna4()):
+         if dst_dtype in FP8_DTYPES and is_hip_rdna3():
 
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp

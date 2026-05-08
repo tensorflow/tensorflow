@@ -163,6 +163,9 @@ ParseMakeArraysFromHostBufferShardsSpecHostBufferProto(
       string_host_buffer.clear();
       host_buffer.reset();
     };
+  } else if (dtype.kind() == DType::kToken) {
+    data = nullptr;
+    on_done_with_host_buffer = []() {};
   } else {
     TF_ASSIGN_OR_RETURN(const auto mem_region,
                         ArrayMemRegion::FromMinimalMemRegion(

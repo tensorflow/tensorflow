@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -44,13 +45,12 @@ namespace ifrt {
 
 char PjRtLayout::ID = 0;
 
-absl_nonnull std::unique_ptr<PjRtLayout> PjRtLayout::Create(
-    std::shared_ptr<const xla::PjRtLayout> pjrt_layout) {
-  return absl::WrapUnique<PjRtLayout>(new PjRtLayout(std::move(pjrt_layout)));
-}
+namespace {
 
-absl::StatusOr<std::optional<int64_t>> PjRtLayout::ByteSize(
-    DType dtype, const Shape& shard_shape) const {
+// Computes the byte size of a shard shape using a concrete `PjRtLayout`.
+absl::StatusOr<std::optional<int64_t>> ComputeByteSize(
+    DType dtype, const Shape& shard_shape,
+    const absl_nonnull std::shared_ptr<const xla::PjRtLayout>& pjrt_layout) {
   auto bit_size = dtype.bit_size();
   if (!bit_size.has_value()) {
     return std::nullopt;
@@ -58,8 +58,47 @@ absl::StatusOr<std::optional<int64_t>> PjRtLayout::ByteSize(
   TF_ASSIGN_OR_RETURN(auto xla_primitive_type, ToPrimitiveType(dtype));
   auto xla_shape =
       xla::ShapeUtil::MakeShape(xla_primitive_type, shard_shape.dims());
-  *xla_shape.mutable_layout() = pjrt_layout_->xla_layout();
+  *xla_shape.mutable_layout() = pjrt_layout->xla_layout();
   return xla::ShapeUtil::ArraySize(xla_shape);
+}
+
+}  // namespace
+
+absl_nonnull std::unique_ptr<PjRtLayout> PjRtLayout::Create(
+    absl_nonnull std::shared_ptr<const xla::PjRtLayout> pjrt_layout) {
+  return absl::WrapUnique<PjRtLayout>(new PjRtLayout(std::move(pjrt_layout)));
+}
+
+absl::StatusOr<std::optional<int64_t>> PjRtLayout::ByteSize(
+    DType dtype, const Shape& shard_shape) const {
+  return ComputeByteSize(dtype, shard_shape, pjrt_layout_);
+}
+
+absl::StatusOr<std::optional<int64_t>> PjRtLayout::ByteSize(
+    DType dtype, const Shape& shape, const ShardingRef& sharding,
+    const absl_nullable std::shared_ptr<const xla::PjRtLayout>& pjrt_layout) {
+  std::optional<absl::StatusOr<Shape>> shard_shape;
+  const Shape* shard_shape_ptr;
+  if (sharding->IsFullyReplicated()) {
+    shard_shape_ptr = &shape;
+  } else {
+    shard_shape = sharding->GetShardShape(shape);
+    if (!shard_shape->ok()) {
+      return {std::nullopt};
+    }
+    shard_shape_ptr = &**shard_shape;
+  }
+  if (pjrt_layout == nullptr) {
+    Device* device = sharding->devices()->devices().front();
+    TF_ASSIGN_OR_RETURN(
+        const std::shared_ptr<const xla::PjRtLayout>
+            concrete_default_pjrt_layout,
+        device->client()->GetDefaultPjRtLayout(
+            dtype, shard_shape_ptr->dims(), device, sharding->memory_kind()));
+    return ComputeByteSize(dtype, *shard_shape_ptr,
+                           concrete_default_pjrt_layout);
+  }
+  return ComputeByteSize(dtype, *shard_shape_ptr, pjrt_layout);
 }
 
 bool PjRtLayout::operator==(const Layout& other) const {

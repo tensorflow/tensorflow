@@ -249,8 +249,8 @@ class XTileMaskToTriton : public mlir::OpRewritePattern<::xla::xtile::MaskOp> {
       ::xla::xtile::MaskOp op, mlir::PatternRewriter& rewriter) const override {
     llvm::SmallVector<int64_t> masked_dimensions = op.getMaskedDimensions();
     if (masked_dimensions.size() != 1) {
-      return rewriter.notifyMatchFailure(
-          op, "triton masking only supports masking over a single dimension");
+      return op.emitOpError(
+          "triton masking only supports masking over a single dimension");
     }
 
     int64_t mask_dimension = masked_dimensions.front();

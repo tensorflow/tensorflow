@@ -63,6 +63,8 @@ struct BatchResourceOptions {
   std::vector<int32_t> low_priority_allowed_batch_sizes;
   MixedPriorityBatchingPolicy mixed_priority_batching_policy;
   bool enable_priority_aware_batch_scheduler;
+  bool enable_priority_aware_batch_scheduler_resplit;
+  int32_t num_warmup_batch_threads;
 };
 
 // Base class for resource that encapsulating the state and logic for batching
@@ -78,9 +80,11 @@ class BatchResourceBase : public ResourceBase {
   // One task to be batched, corresponds to a `slice` of input from one batch-op
   // invocation.
   //
-  // Given input from one batch-op invocation, a `slice` of this input is:
+  // Given input from one batch-op invocation or a subtask that is split from
+  // the input from an invocation, a `slice` is:
   // 1) Split each Tensor in `BatchTask::inputs` along the 0th dimension.
   // 2) 'split_index' is calculated along the 0-th dimension.
+  // A subtask may itself be re-split, allowing arbitrary nesting.
   //
   // Note input from one batch-op invocation is valid and considered a
   // specialized `slice`.
@@ -106,9 +110,11 @@ class BatchResourceBase : public ResourceBase {
     // invocation.
     int split_index = 0;
 
-    // Two-dimensional tensor matrix, ownership shared by:
-    // 1) each split of task (to fill one row in this matrix)
-    // and
+    // Two-dimensional tensor matrix where output of all splits of task is
+    // collected. The splits can be further split; BatchTask supports
+    // arbitrary levels of splits.
+    // Ownership shared by:
+    // 1) each split of task (to fill one row in this matrix) and
     // 2) callback that runs to merge output of individual splits for an op
     // invocation, after all splits complete.
     std::shared_ptr<TensorMatrix> output;
@@ -117,9 +123,20 @@ class BatchResourceBase : public ResourceBase {
 
     uint64 start_time;
 
+    // Absolute RPC deadline. When set, the task is considered expired if
+    // absl::Now() > rpc_deadline. Defaults to nullopt (no enforcement).
+    std::optional<absl::Time> rpc_deadline;
+
+    // Callback: returns true if client actively cancelled the RPC.
+    std::function<bool()> is_rpc_cancelled;
+
     size_t size() const override { return inputs[0].shape().dim_size(0); }
 
     bool is_subtask() const override { return is_partial; }
+
+    bool IsDeadlineExceeded(absl::Time now) const override;
+
+    bool IsCancelled() const override;
 
     // Create a split task from this one. The caller needs to setup the inputs
     // of the new task
@@ -175,6 +192,12 @@ class BatchResourceBase : public ResourceBase {
     }
 
     virtual std::unique_ptr<BatchTask> CreateDerivedTask() {
+#if defined(PLATFORM_GOOGLE)
+      // ScopedCriticality is needed to ensure that the criticality is set
+      // correctly for the derived task.
+      tsl::criticality::ScopedCriticality scoped_criticality(
+          this->criticality());
+#endif
       return std::make_unique<BatchTask>();
     }
 
@@ -256,7 +279,8 @@ class BatchResourceBase : public ResourceBase {
       int32_t low_priority_max_enqueued_batches,
       const std::vector<int32>& low_priority_allowed_batch_sizes,
       MixedPriorityBatchingPolicy mixed_priority_batching_policy,
-      bool enable_priority_aware_batch_scheduler);
+      bool enable_priority_aware_batch_scheduler,
+      bool enable_priority_aware_batch_scheduler_resplit);
 
   static AdaptiveBatcherT::QueueOptions GetAdaptiveBatcherQueueOptions(
       int32_t max_batch_size, int32_t batch_timeout_micros,

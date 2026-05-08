@@ -24,9 +24,9 @@ namespace xla {
 namespace sdy {
 
 // Creates the pass that deduplicates any meshes with the same axis sizes (in
-// the same order) but different names into a single mesh. The mesh that appears
-// first in the module is used as the main mesh for that set of meshes with the
-// same axis sizes.
+// the same order) but different names into a single mesh. The mesh with the
+// most non-size-one axes is used as the main mesh for that set of meshes with
+// the same axis sizes. If there is a tie, the one that appears first is used.
 //
 // This is needed for JAX export where a module may be saved with a mesh with
 // one set of axis names, and then loaded with a different set of axis names.

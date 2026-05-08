@@ -137,7 +137,7 @@ StatusOr<std::vector<T>> GetTaskRunnerOutput(TaskRunner& runner,
       break;
     }
     if (result.components.size() != 1) {
-      return errors::Internal("GetElementResult Tensor size should be 1.");
+      return absl::InternalError("GetElementResult Tensor size should be 1.");
     }
     output.push_back(result.components[0].unaligned_flat<T>().data()[0]);
   }
@@ -150,10 +150,10 @@ StatusOr<T> GetNextFromTaskRunner(TaskRunner& runner,
   GetElementResult result;
   TF_RETURN_IF_ERROR(runner.GetNext(request, result));
   if (result.end_of_sequence) {
-    return errors::OutOfRange("TaskRunner has reached the end of sequence.");
+    return absl::OutOfRangeError("TaskRunner has reached the end of sequence.");
   }
   if (result.components.size() != 1) {
-    return errors::Internal("GetElementResult Tensor size should be 1.");
+    return absl::InternalError("GetElementResult Tensor size should be 1.");
   }
   return result.components[0].unaligned_flat<T>().data()[0];
 }
@@ -294,8 +294,8 @@ TEST(FirstComeFirstServedTaskRunnerTest, Error) {
       std::make_unique<ElementOrErrorIterator<tstring>>(
           std::vector<absl::StatusOr<tstring>>{
               tstring("First element"),
-              errors::InvalidArgument("Invalid argument"),
-              tstring("Second element"), errors::Aborted("Aborted")}));
+              absl::InvalidArgumentError("Invalid argument"),
+              tstring("Second element"), absl::AbortedError("Aborted")}));
   EXPECT_THAT(GetNextFromTaskRunner<tstring>(runner, GetElementRequest()),
               absl_testing::IsOkAndHolds("First element"));
   EXPECT_THAT(GetNextFromTaskRunner<tstring>(runner, GetElementRequest()),
@@ -451,11 +451,11 @@ TEST(CachingTaskRunnerTest, Errors) {
       std::make_unique<ElementOrErrorIterator<tstring>>(
           std::vector<absl::StatusOr<tstring>>{
               tstring("First element"),
-              errors::Cancelled("Cancelled"),
+              absl::CancelledError("Cancelled"),
               tstring("Second element"),
-              errors::FailedPrecondition("FailedPrecondition"),
+              absl::FailedPreconditionError("FailedPrecondition"),
               tstring("Third element"),
-              errors::Unavailable("Unavailable"),
+              absl::UnavailableError("Unavailable"),
           }),
       /*max_cache_size_bytes=*/kLargeCache);
 

@@ -130,15 +130,41 @@ You can often resolve OOMs with these configuration adjustments:
 
 -   **Reduce batch size:** The memory needed for intermediate activations and
     gradients is directly proportional to the batch size. Reducing the batch
-    size can often help reduce memory usage.
--   **Donate input buffers:** When using `jax.jit`, specify
-    [donate_argnums](https://docs.jax.dev/en/latest/buffer_donation.html) for
-    your model parameters. This allows XLA to overwrite the input memory with
-    the output.
+    size can often help reduce memory usage, although you may need to retune
+    your learning rate, momentum, or optimizer hyperparameters to maintain model
+    stability.
+-   **Donate input buffers:** When JAX executes a computation it uses buffers on
+    the device for all inputs and outputs. If you know that one of the inputs is
+    not needed after the computation, and if it matches the shape and element
+    type of one of the outputs, you can specify that you want the corresponding
+    input buffer to be donated to hold an output. This will reduce the memory
+    required for the execution by the size of the donated buffer. You can
+    achieve this by specifying
+    [donate_argnums](https://docs.jax.dev/en/latest/buffer_donation.html)
+    parameter as an argument when using `jax.jit`.
 -   **Enable mixed precision (bfloat16):** Use bfloat16 or quantization (int8
     etc) for the largest tensors in the program if the model architecture and
     quality requirements allow. Note that this change can affect model behaviour
     and should be considered carefully.
+
+##### Micro-batching (optional)
+
+If reducing the global batch size or increasing the chip count is not viable,
+and the batch size per chip is not already minimized, you can try a
+micro-batching strategy:
+
+-   Split each batch into `n` micro-batches;
+-   For each micro-batch, process the forward and backward pass;
+-   Once this is done, accumulate the gradients and update the weight as a
+    whole.
+
+This process reduces the activation memory as we divided each batch into `n`
+micro-batches, so that the if the original batch had size `M`, the activation
+memory size becomes `M/n`.
+
+**Potential issues:** - This process increases step time as we have multiple
+forward and backward passes. - If the sizes of the model and micro-batch are too
+different, you may face convergence issues in your model.
 
 #### Scenario 3.B Optimize architecture and sharding
 
@@ -150,15 +176,23 @@ for the current hardware setup.
 -   **Run on a larger chip topology:** If the model weights are too large for
     the existing topology, you can try sharding them across more chips.
 -   **Implement advanced sharding techniques:**
+
     -   Explore more advanced data, tensor, or pipeline parallelism approaches.
     -   Specify
         [sharding hints](https://docs.jax.dev/en/latest/notebooks/Distributed_arrays_and_automatic_parallelization.html#constraining-shardings-of-intermediates-in-jitted-code)
         for intermediate values and outputs.
+
+    Note that this may cause an increase in network communication overhead due
+    to splitting tensors across multiple chips.
+
 -   **Use JAX host offloading:** Host offloading techniques allow the user to
     offload large tensors to the host CPU memory (e.g.
     [activation offloading](https://docs.jax.dev/en/latest/notebooks/host-offloading.html#activation-offloading)
     and
     [optimizer state offloading](https://docs.jax.dev/en/latest/notebooks/host-offloading.html#optimizer-state-offloading)).
+    Note that host offloading techniques can severely impact performance, since
+    these operations will force the system to constantly move large tensors back
+    and forth between TPU HBM and CPU RAM.
 
 #### Scenario 3.C Check tensor padding and alignment
 
@@ -193,10 +227,14 @@ performance.
 #### Scenario 3.E Tune XLA rematerialization pass/manual checkpointing
 
 If the model is close to fitting into memory, you can use the
-[jax.checkpoint](https://docs.jax.dev/en/latest/notebooks/autodiff_remat.html)
+[jax.checkpoint](https://docs.jax.dev/en/latest/_autosummary/jax.checkpoint.html)
 decorator with `jax.grad` to manually control which intermediates are saved on
-the forward pass versus recomputed on the backward pass, trading compute cycles
-for HBM.
+the forward pass versus recomputed on the backward pass. Note that this
+operation may impact performance, since you are explicitly trading compute
+cycles for HBM. Check out the JAX documentation for more information: -
+[Gradient checkpointing with `jax.checkpoint` (`jax.remat`)](https://docs.jax.dev/en/latest/gradient-checkpointing.html) -
+[Control autodiff’s saved values with `jax.checkpoint` (aka `jax.remat`)](https://docs.jax.dev/en/latest/notebooks/autodiff_remat.html) -
+[JAX Memories and Host Offloading](https://docs.jax.dev/en/latest/notebooks/host-offloading.html)
 
 Alternatively, you can force the `XLA::Rematerialization` pass to prioritize
 memory savings, potentially at the cost of slower compilations:
@@ -224,3 +262,18 @@ is crucial for understanding exactly what consumes HBM at the point of peak
 utilization. For general profiling setup, see
 [Getting started with Xprof](https://openxla.org/xprof#getting_started) and
 [TensorBoard Profiling](https://docs.jax.dev/en/latest/profiling.html#xprof-tensorboard-profiling).
+
+## Summary table
+
+The following table contains a summary of potential interventions to solve OOM
+errors and information that will help you decide what to do.
+
+Intervention                              | Safe to do? (Will it change the behavior of the program?)                                                                                                                                       | Potential gains                                                                                                 | Telltale signs (is this actually the bottleneck that you're experiencing?)
+----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------
+Using advanced sharding techniques        | **Yes.** It almost never changes the numerical correctness of the experiment, although it can cause network communication overhead due to splitting tensors across multiple chips.              | **Massive gains** (up to a 256x reduction)                                                                      | Unexpectedly large individual allocations in the memory viewer (e.g., a single tensor replicated across all TPUs that is 256x bigger than the others). Active arrays showing as un-sharded in TensorBoard hooks.
+Reducing batch size                       | **No.** It changes the training dynamics and usually requires retuning the learning rate. (Note: **Microbatching** is a safe alternative that reduces memory without changing behavior).        | **Massive gains** (can save a factor of thousands).                                                             | "Temporaries" failing to allocate during gradient calculations. Seeing "JVP" in the operation name, and encountering many batch-size-shaped tensors in the memory profile.
+Enabling mixed Precision (e.g., Bfloat16) | **Risky.** It alters numerical precision, which can change experiment results or cause the model to fail to converge entirely.                                                                  | **Moderate gains** (typically a factor of 2x, as it halves memory usage).                                       | The memory viewer confirms that the largest tensors are currently utilizing 32-bit floats (`float32`).
+Manual checkpointing (`jax.checkpoint`)   | **Yes.** It does not alter behavior; it merely trades computation time (flops) to save memory by recomputing tensors instead of storing them.                                                   | **Large gains** (e.g., can result in only half of the activations needing to exist in memory at the same time). | Multiple tensors of the exact same size filling up memory during a backward pass. Often accompanied by "JVP" in the operation name.
+Donating input buffers (`donate_argnums`) | **Yes.** Maintains experiment integrity. If applied incorrectly, it will not corrupt data but will simply throw a clear error message.                                                          | **Marginal gains** (~1% memory savings).                                                                        | There is no specific telltale sign, but it is considered a "free win" that is always worth trying.
+Changing model dimensions                 | **No.** Directly alters the model's behavior. Modifying input or output dimensions can completely break compatibility with the dataset.                                                         | **Variable gains** depending on how drastically hidden dimensions or layers are reduced.                        | The Xprof memory viewer shows a large amount of memory wasted on "padding" because array dimensions are not powers of two or multiples of 128 (e.g., a dimension of 2050 instead of 2048).
+Host offloading (CPU)                     | **Yes (numerically)**, but **No (performance)**. While mathematically safe, it is considered a "foot gun" that may cause severe speed bottlenecks due to data transfer between the CPU and TPU. | **Marginal gains** (the CPU only has about 3x the memory of the TPU).                                           | Typically a last resort for massive optimizer states or for memory-heavy data preparation/pre-processing steps.

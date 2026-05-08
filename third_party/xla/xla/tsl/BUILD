@@ -605,7 +605,7 @@ bzl_library(
         "//xla/tsl/mkl:build_defs_bzl",
         "//xla/tsl/platform:rules_cc_bzl",
         "@local_config_tensorrt//:build_defs_bzl",
-        "@xla//third_party/py/rules_pywrap:pywrap_bzl",
+        "@rules_ml_toolchain//py/rules_pywrap:pywrap_bzl",
         "@local_config_rocm//rocm:build_defs_bzl",
         "@local_config_sycl//sycl:build_defs_bzl",
         "//third_party/compute_library:build_defs_bzl",

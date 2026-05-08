@@ -3,8 +3,8 @@
 // CHECK:     sdy.mesh @mesh1 = <["a"=2, "b"=4]>
 // CHECK-NOT: sdy.mesh @mesh2 = <["data"=2, "model"=4]>
 // CHECK-NOT: sdy.mesh @mesh3 = <["x"=2, "y"=4]>
-// CHECK:     sdy.mesh @mesh4 = <["x"=2, "y"=4], device_ids=[7, 1, 2, 3, 4, 5, 6, 0]>
-// CHECK-NOT: sdy.mesh @mesh5 = <["a"=2, "b"=2, "c"=2], device_ids=[7, 1, 2, 3, 4, 5, 6, 0]>
+// CHECK-NOT: sdy.mesh @mesh4 = <["x"=2, "y"=4], device_ids=[7, 1, 2, 3, 4, 5, 6, 0]>
+// CHECK:     sdy.mesh @mesh5 = <["a"=2, "b"=2, "c"=2], device_ids=[7, 1, 2, 3, 4, 5, 6, 0]>
 sdy.mesh @mesh1 = <["a"=2, "b"=4]>
 sdy.mesh @mesh2 = <["data"=2, "model"=4]>
 sdy.mesh @mesh3 = <["x"=2, "y"=4]>
@@ -27,18 +27,18 @@ sdy.mesh @empty_mesh2 = <[]>
 sdy.mesh @maximal_mesh1 = <[], device_ids=[0]>
 sdy.mesh @maximal_mesh2 = <[], device_ids=[0]>
 
-// CHECK:     sdy.mesh @meshC = <["x"=4]>
-// CHECK-NOT: sdy.mesh @meshD = <["a"=2, "b"=2]>
+// CHECK-NOT: sdy.mesh @meshC = <["x"=4]>
+// CHECK:     sdy.mesh @meshD = <["a"=2, "b"=2]>
 sdy.mesh @meshC = <["x"=4]>
 sdy.mesh @meshD = <["a"=2, "b"=2]>
 
-// CHECK:     sdy.mesh @mesh_with_size_1 = <["a"=8, "b"=1, "c"=8]>
-// CHECK-NOT: sdy.mesh @mesh_with_size_1_dup = <["a"=2, "b"=4, "c"=8]>
+// CHECK-NOT: sdy.mesh @mesh_with_size_1 = <["a"=8, "b"=1, "c"=8]>
+// CHECK:     sdy.mesh @mesh_with_size_1_dup = <["a"=2, "b"=4, "c"=8]>
 sdy.mesh @mesh_with_size_1 = <["a"=8, "b"=1, "c"=8]>
 sdy.mesh @mesh_with_size_1_dup = <["a"=2, "b"=4, "c"=8]>
 
-// CHECK:     sdy.mesh @meshE = <["a"=8, "b"=4]>
-// CHECK-NOT: sdy.mesh @meshF = <["x"=2, "y"=4, "z"=4]>
+// CHECK-NOT: sdy.mesh @meshE = <["a"=8, "b"=4]>
+// CHECK:     sdy.mesh @meshF = <["x"=2, "y"=4, "z"=4]>
 // CHECK-NOT: sdy.mesh @meshG = <["x"=32]>
 // CHECK-NOT: sdy.mesh @meshH = <["x"=4, "y"=4, "z"=2]>
 // CHECK-NOT: sdy.mesh @meshI = <["a"=4, "b"=1, "c"=2, "d"=1, "e"=4, "f"=1]>
@@ -108,7 +108,7 @@ func.func @inlined_mesh(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<mes
 }
 
 // CHECK-LABEL: @different_device_ids
-// CHECK-SAME:  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh4, [{"x"}, {}]>}
+// CHECK-SAME:  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh5, [{"a"}, {}]>}
 func.func @different_device_ids(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh4, [{"x"}, {}]>}) -> tensor<8x8xf32> {
   return %arg0 : tensor<8x8xf32>
 }
@@ -132,31 +132,31 @@ func.func @maximal_mesh(
 }
 
 // CHECK-LABEL: @all_axes_to_sub_axes
-// CHECK-SAME:  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshC, [{"x":(2)2}, {"x":(1)2}]>}
+// CHECK-SAME:  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshD, [{"b"}, {"a"}]>}
 func.func @all_axes_to_sub_axes(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshD, [{"b"}, {"a"}]>}) -> tensor<8x8xf32> {
   return %arg0 : tensor<8x8xf32>
 }
 
 // CHECK-LABEL: @partial_axes_to_sub_axes
-// CHECK-SAME:  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh4, [{"x"}, {"y":(1)2}]>}
+// CHECK-SAME:  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh5, [{"a"}, {"b"}]>}
 func.func @partial_axes_to_sub_axes(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh5, [{"a"}, {"b"}]>}) -> tensor<8x8xf32> {
   return %arg0 : tensor<8x8xf32>
 }
 
 // CHECK-LABEL: @sub_axis_to_sub_axis
-// CHECK-SAME:  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshE, [{"a":(4)2}, {}]>}
+// CHECK-SAME:  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshF, [{"y":(2)2}, {}]>}
 func.func @sub_axis_to_sub_axis(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshF, [{"y":(2)2}, {}]>}) -> tensor<8x8xf32> {
   return %arg0 : tensor<8x8xf32>
 }
 
 // CHECK-LABEL: @axis_to_multiple_axes
-// CHECK-SAME:  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshE, [{"a", "b"}, {}]>}
+// CHECK-SAME:  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshF, [{"x", "y", "z"}, {}]>}
 func.func @axis_to_multiple_axes(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshG, [{"x"}, {}]>}) -> tensor<8x8xf32> {
   return %arg0 : tensor<8x8xf32>
 }
 
 // CHECK-LABEL: @sub_axes_to_multiple_axes
-// CHECK-SAME:  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshE, [{"a":(1)4}, {"b":(2)2}]>}
+// CHECK-SAME:  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshF, [{"x", "y":(1)2}, {"z":(2)2}]>}
 func.func @sub_axes_to_multiple_axes(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshG, [{"x":(1)4}, {"x":(16)2}]>}) -> tensor<8x8xf32> {
   return %arg0 : tensor<8x8xf32>
 }
@@ -180,19 +180,19 @@ func.func @sub_axis_to_partial_target_axis(%arg0: tensor<8x8xf32> {sdy.sharding 
 }
 
 // CHECK-LABEL: @sub_axis_to_second_axis
-// CHECK-SAME:  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshE, [{"a":(4)2}, {"b"}]>}
+// CHECK-SAME:  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshF, [{"y":(2)2}, {"z"}]>}
 func.func @sub_axis_to_second_axis(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshH, [{"y":(1)2}, {"y":(2)2, "z"}]>}) -> tensor<8x8xf32> {
   return %arg0 : tensor<8x8xf32>
 }
 
 // CHECK-LABEL: @sub_axis_to_sub_and_full_axes
-// CHECK-SAME:  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshE, [{}, {"a":(4)2, "b":(1)2}]>}
+// CHECK-SAME:  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshF, [{}, {"y":(2)2, "z":(1)2}]>}
 func.func @sub_axis_to_sub_and_full_axes(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshJ, [{}, {"y":(2)4}]>}) -> tensor<8x8xf32> {
   return %arg0 : tensor<8x8xf32>
 }
 
 // CHECK-LABEL: @target_axis_size_one
-// CHECK-SAME:  %arg0: tensor<8x8x8xf32> {sdy.sharding = #sdy.sharding<@meshE, [{"a"}, {"b"}, {}]>}
+// CHECK-SAME:  %arg0: tensor<8x8x8xf32> {sdy.sharding = #sdy.sharding<@meshF, [{"x", "y"}, {"z"}, {}]>}
 func.func @target_axis_size_one(%arg0: tensor<8x8x8xf32> {sdy.sharding = #sdy.sharding<@meshI, [{"a", "b", "c"}, {"d", "e"}, {"f"}]>}) -> tensor<8x8x8xf32> {
   return %arg0 : tensor<8x8x8xf32>
 }
@@ -240,19 +240,19 @@ func.func @fake_axis_to_real_axis(%arg0: tensor<3x8xf32> {sdy.sharding = #sdy.sh
 }
 
 // CHECK-LABEL: @merge_sub_axes
-// CHECK-SAME:  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshC, [{"x"}, {}]>}
+// CHECK-SAME:  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshD, [{"a", "b"}, {}]>}
 func.func @merge_sub_axes(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshD, [{"a", "b"}, {}]>}) -> tensor<8x8xf32> {
   return %arg0 : tensor<8x8xf32>
 }
 
 // CHECK-LABEL: @full_axes_merge_sub_axes
-// CHECK-SAME:  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshE, [{"a", ?}, {?}]>}
-// CHECK-SAME:  -> (tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshE, [{"b", ?}, {?}], unreduced={"a"}>}) {
+// CHECK-SAME:  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshF, [{"x", "y", ?}, {?}]>}
+// CHECK-SAME:  -> (tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshF, [{"z", ?}, {?}], unreduced={"x", "y"}>}) {
 func.func @full_axes_merge_sub_axes(
   %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshE, [{"a", ?}, {?}]>}
 ) -> (tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshF, [{"z", ?}, {?}], unreduced={"x", "y"}>}) {
   // CHECK-NEXT: stablehlo.add
-  // CHECK-SAME{LITERAL}: #sdy.sharding_per_value<[<@meshE, [{"b", ?}p1, {}], replicated={"a"}>]>
+  // CHECK-SAME{LITERAL}: #sdy.sharding_per_value<[<@meshF, [{"z", ?}p1, {}], replicated={"x", "y"}>]>
   %0 = stablehlo.add %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@meshF, [{"z", ?}p1, {}], replicated={"x", "y"}>]>} : tensor<8x8xf32>
   return %0 : tensor<8x8xf32>
 }
@@ -260,17 +260,17 @@ func.func @full_axes_merge_sub_axes(
 // CHECK-LABEL: func @manual_computation
 func.func @manual_computation(%arg0: tensor<8x16xf32>, %arg1: tensor<16x32xf32>) -> tensor<8x32xf32> {
   // CHECK-NEXT:          %[[MAN_COMP:.*]] = sdy.manual_computation(%arg0, %arg1)
-  // CHECK-SAME{LITERAL}:     in_shardings=[<@meshE, [{"a":(2)4}, {"a":(1)2}]>, <@meshE, [{"a":(1)2}, {}], replicated={"a":(2)4}>]
-  // CHECK-SAME{LITERAL}:     out_shardings=[<@meshE, [{"a":(2)4}, {}], replicated={"a":(1)2}>]
-  // CHECK-SAME{LITERAL}:     manual_axes={"a"}
+  // CHECK-SAME{LITERAL}:     in_shardings=[<@meshF, [{"y"}, {"x"}]>, <@meshF, [{"x"}, {}], replicated={"y"}>]
+  // CHECK-SAME{LITERAL}:     out_shardings=[<@meshF, [{"y"}, {}], replicated={"x"}>]
+  // CHECK-SAME{LITERAL}:     manual_axes={"x", "y"}
   // CHECK-SAME:              (%arg2: tensor<2x8xf32>, %arg3: tensor<8x32xf32>) {
-  // CHECK-NEXT:            stablehlo.add %arg2, %arg2 {sdy.sharding = #sdy.sharding_per_value<[<@meshE, [{?}, {"b", ?}]>]>}
+  // CHECK-NEXT:            stablehlo.add %arg2, %arg2 {sdy.sharding = #sdy.sharding_per_value<[<@meshF, [{?}, {"z", ?}]>]>}
   // CHECK:               } : (tensor<8x16xf32>, tensor<16x32xf32>) -> tensor<8x32xf32>
   // CHECK-NEXT:          return %[[MAN_COMP]]
   %0 = sdy.manual_computation(%arg0, %arg1)
-      in_shardings=[<@meshF, [{"y"}, {"x"}]>, <@meshF, [{"x"}, {}], replicated={"y"}>]
-      out_shardings=[<@meshF, [{"y"}, {}], replicated={"x"}>]
-      manual_axes={"x", "y"} (%arg2: tensor<2x8xf32>, %arg3: tensor<8x32xf32>) {
+      in_shardings=[<@meshE, [{"a":(2)4}, {"a":(1)2}]>, <@meshE, [{"a":(1)2}, {}], replicated={"a":(2)4}>]
+      out_shardings=[<@meshE, [{"a":(2)4}, {}], replicated={"a":(1)2}>]
+      manual_axes={"a"} (%arg2: tensor<2x8xf32>, %arg3: tensor<8x32xf32>) {
     %1 = stablehlo.add %arg2, %arg2 {sdy.sharding = #sdy.sharding_per_value<[<@meshE, [{?}, {"b", ?}]>]>} : tensor<2x8xf32>
     %2 = stablehlo.dot %1, %arg3 : (tensor<2x8xf32>, tensor<8x32xf32>) -> tensor<2x32xf32>
     sdy.return %2 : tensor<2x32xf32>

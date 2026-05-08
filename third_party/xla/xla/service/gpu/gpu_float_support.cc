@@ -106,6 +106,9 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
         }
       }
       return LowPrecisionType() == BF16;
+    case HloOpcode::kConvolution:
+    case HloOpcode::kRaggedDot:
+      return true;
     // Data movement only ops.
     case HloOpcode::kAllGather:
     case HloOpcode::kAllToAll:

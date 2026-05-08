@@ -35,43 +35,6 @@ cc_library(
 )
 
 cc_library(
-    name = "export_named_computations",
-    srcs = ["export_named_computations.cc"],
-    hdrs = ["export_named_computations.h"],
-    deps = [
-        "//xla/mlir_hlo",
-        "//xla/service/spmd/shardy:constants",
-        "//xla/service/spmd/shardy:utils",
-        "@com_google_absl//absl/log:check",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
-        "@shardy//shardy/dialect/sdy/ir:dialect",
-    ],
-)
-
-cc_library(
-    name = "import_func_calls",
-    srcs = ["import_func_calls.cc"],
-    hdrs = ["import_func_calls.h"],
-    deps = [
-        "//xla/service/spmd/shardy:utils",
-        "@com_google_absl//absl/log:check",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Analysis",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
-        "@shardy//shardy/dialect/sdy/ir:dialect",
-    ],
-)
-
-cc_library(
     name = "import_constants",
     srcs = ["import_constants.cc"],
     hdrs = ["import_constants.h"],
@@ -100,18 +63,5 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:stablehlo_ops",
-    ],
-)
-
-cc_library(
-    name = "pipeline_passes",
-    srcs = ["pipeline_passes.cc"],
-    hdrs = ["pipeline_passes.h"],
-    deps = [
-        ":import_constants",
-        "//xla/mlir_hlo:stablehlo_extension_passes",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Transforms",
     ],
 )

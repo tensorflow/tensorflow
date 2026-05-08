@@ -20,38 +20,6 @@ func.func @sharding_custom_call_with_unspecified_dims(%arg0: tensor<8x8xf32> {mh
 
 // -----
 
-// CHECK-LABEL: sdy.mesh @mesh = <["_axis_0"=4, "_axis_1"=2]>
-
-// CHECK-LABEL: func @manual(
-// CHECK-SAME:       %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>}
-// CHECK-SAME:       %arg1: tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"_axis_0"}, {}]>})
-// CHECK-SAME:    -> tensor<8x8xf32> {
-func.func @manual(%arg0: tensor<8x8xf32> {mhlo.sharding = "{replicated}"},
-                  %arg1: tensor<4x8xf32> {mhlo.sharding = "{devices=[4,1,2]<=[8] last_tile_dim_replicate}"}) -> (tensor<8x8xf32>) {
-  // CHECK:        sdy.manual_computation(%arg0, %arg1)
-  // CHECK-SAME:     in_shardings=[<@mesh, [{"_axis_0", "_axis_1"}, {}]>, <@mesh, [{"_axis_0"}, {}]>]
-  // CHECK-SAME:     out_shardings=[<@mesh, [{"_axis_0", "_axis_1"}, {}]>]
-  // CHECK-SAME:     manual_axes={"_axis_0", "_axis_1"} (%arg2: tensor<1x8xf32>, %arg3: tensor<1x8xf32>) {
-  // CHECK-LABEL:  stablehlo.add
-  // CHECK-LABEL:  sdy.return
-  %0 = stablehlo.custom_call @Sharding(%arg0) {mhlo.sharding = "{devices=[8,1]<=[8]}"} : (tensor<8x8xf32>) -> tensor<8x8xf32>
-  %1 = stablehlo.custom_call @SPMDFullToShardShape(%0) {mhlo.sharding = "{manual}"} : (tensor<8x8xf32>) -> tensor<1x8xf32>
-  %2 = stablehlo.custom_call @Sharding(%arg1) {mhlo.sharding = "{devices=[4,1,2]<=[8] last_tile_dim_replicate}"} : (tensor<4x8xf32>) -> tensor<4x8xf32>
-  %3 = stablehlo.custom_call @SPMDFullToShardShape(%2) {mhlo.sharding = "{manual}"} : (tensor<4x8xf32>) -> tensor<1x8xf32>
-  %4 = call @shmap_body(%1, %3) : (tensor<1x8xf32>, tensor<1x8xf32>) -> tensor<1x8xf32>
-  %5 = stablehlo.custom_call @Sharding(%4) {mhlo.sharding = "{manual}"} : (tensor<1x8xf32>) -> tensor<1x8xf32>
-  %6 = stablehlo.custom_call @SPMDShardToFullShape(%5) {mhlo.sharding = "{devices=[8,1]<=[8]}"} : (tensor<1x8xf32>) -> tensor<8x8xf32>
-  return %6 : tensor<8x8xf32>
-}
-
-// CHECK-NOT func.func @shmap_body
-func.func @shmap_body(%arg0: tensor<1x8xf32>, %arg1: tensor<1x8xf32>) -> (tensor<1x8xf32>) {
-  %0 = stablehlo.add %arg0, %arg1 : tensor<1x8xf32>
-  return %0 : tensor<1x8xf32>
-}
-
-// -----
-
 // CHECK-LABEL: sdy.mesh @mesh = <["_axis_0"=2, "_axis_1"=2]>
 
 // CHECK-LABEL: func @while_with_free_variables

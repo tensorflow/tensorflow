@@ -48,9 +48,10 @@ class VariantTensorData {
   const std::string& type_name() const { return type_name_; }
   void set_type_name(const std::string& type_name) { type_name_ = type_name; }
 
-  template <typename T,
-            bool =
-                std::is_trivially_copyable<typename std::decay<T>::type>::value>
+  template <
+      typename T,
+      bool = std::is_trivially_copyable<typename std::decay<T>::type>::value &&
+             !std::is_pointer<typename std::decay<T>::type>::value>
   struct PODResolver {};
 
   // Portions of the object that are not Tensors.
@@ -130,6 +131,21 @@ class VariantTensorData {
     if (metadata_.size() != sizeof(T)) return false;
     std::copy_n(metadata_.data(), sizeof(T), reinterpret_cast<char*>(value));
     return true;
+  }
+
+  template <typename T>
+  void SetMetadata(const T& value, PODResolver<T, false /* is_pod */>) {
+    static_assert(
+        std::is_pointer<typename std::decay<T>::type>::value,
+        "Only strings and pointers are supported for non-POD SetMetadata");
+  }
+
+  template <typename T>
+  bool GetMetadata(T* value, PODResolver<T, false /* is_pod */>) const {
+    static_assert(
+        std::is_pointer<typename std::decay<T>::type>::value,
+        "Only strings and pointers are supported for non-POD GetMetadata");
+    return false;
   }
 };
 

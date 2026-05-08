@@ -82,6 +82,12 @@ std::string CrashProgram() {
   return tsl::io::AppendDotExeIfWindows(path);
 }
 
+std::string GetEnvProgram() {
+  std::string path = io::JoinPath(testing::XlaSrcRoot(), "tsl", "platform",
+                                  "testdata", "test_getenv");
+  return tsl::io::AppendDotExeIfWindows(path);
+}
+
 class SubProcessTest : public ::testing::Test {};
 
 TEST_F(SubProcessTest, NoOutputNoComm) {
@@ -478,6 +484,36 @@ TEST_F(SubProcessTest, Running) {
   EXPECT_TRUE(proc.Kill(SIGKILL));
   EXPECT_TRUE(proc.Wait());
   EXPECT_FALSE(proc.running());
+}
+
+TEST_F(SubProcessTest, GetFD) {
+  tsl::SubProcess proc;
+  proc.SetProgram(NoopProgram(), {NoopProgram()});
+  proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
+  EXPECT_EQ(proc.GetFD(CHAN_STDOUT), -1);
+  EXPECT_TRUE(proc.Start());
+  int fd = proc.GetFD(CHAN_STDOUT);
+  EXPECT_GE(fd, 0);
+  EXPECT_TRUE(proc.Wait());
+  EXPECT_EQ(proc.GetFD(CHAN_STDOUT), fd);
+}
+
+TEST_F(SubProcessTest, SetEnviron) {
+  tsl::SubProcess proc;
+  proc.SetProgram(GetEnvProgram(), {GetEnvProgram(), "MY_VAR"});
+  SubProcess::EnvMap env;
+  env["MY_VAR"] = "my_value";
+  proc.SetEnviron(env);
+  proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
+  proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
+  EXPECT_TRUE(proc.Start());
+
+  std::string out, err;
+  int status = proc.Communicate(nullptr, &out, &err);
+  EXPECT_TRUE(WIFEXITED(status));
+  EXPECT_EQ(0, WEXITSTATUS(status));
+  EXPECT_EQ("my_value", out);
+  EXPECT_EQ("", err);
 }
 }  // namespace
 }  // namespace tsl

@@ -80,7 +80,8 @@ int64_t FindMostFrequentScatterDim(
 // entries in to_combine must be ReduceScatter ops with exactly one operand
 // and the same reduction operation.
 absl::Status CombineReduceScatters(
-    absl::Span<HloInstruction* const> to_combine) {
+    absl::Span<HloInstruction* const> to_combine,
+    const ReduceScatterCombiner::PostCombineFn& post_combine = nullptr) {
   if (to_combine.size() < 2) {
     return absl::OkStatus();
   }
@@ -148,7 +149,11 @@ absl::Status CombineReduceScatters(
           Cast<HloReduceScatterInstruction>(to_combine.front())
               ->use_global_device_ids(),
           most_frequent_dim));
-  combined->set_metadata(to_combine.front()->metadata());
+  combined->set_metadata(MergeMetadata(to_combine));
+  combined->set_frontend_attributes(MergeFrontendAttributes(to_combine));
+  if (post_combine != nullptr) {
+    TF_RETURN_IF_ERROR(post_combine(to_combine, combined));
+  }
 
   // We have to propagate the sharding manually because Domain instructions are
   // not guaranteed to preserve it for side effecting instructions.
@@ -205,6 +210,16 @@ absl::StatusOr<bool> ReduceScatterCombiner::RunWithKeyCombiner(
     absl::FunctionRef<std::optional<ReduceScatterCombiner::GroupKey>(
         const HloInstruction*, const HloDomainMap&, bool)>
         combine_key) {
+  return RunWithKeyCombiner(module, execution_threads, combine_key, nullptr);
+}
+
+absl::StatusOr<bool> ReduceScatterCombiner::RunWithKeyCombiner(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    absl::FunctionRef<std::optional<ReduceScatterCombiner::GroupKey>(
+        const HloInstruction*, const HloDomainMap&, bool)>
+        combine_key,
+    PostCombineFn post_combine) {
   VLOG(1) << "Running ReduceScatterCombiner with threshold of "
           << combine_threshold_in_bytes_ << " bytes";
 
@@ -235,12 +250,16 @@ absl::StatusOr<bool> ReduceScatterCombiner::RunWithKeyCombiner(
     auto key_fn = [&](const HloInstruction* instruction) {
       return combine_key(instruction, *domain_map, combine_by_dim_);
     };
+    auto combine_fn =
+        [&](absl::Span<HloInstruction* const> to_combine) -> absl::Status {
+      return CombineReduceScatters(to_combine, post_combine);
+    };
 
     TF_ASSIGN_OR_RETURN(
         bool computation_changed,
         CombineInstructionsByKey<ReduceScatterCombiner::GroupKey>(
-            computation, key_fn, &CombineReduceScatters,
-            combine_threshold_in_bytes_, combine_threshold_count_));
+            computation, key_fn, combine_fn, combine_threshold_in_bytes_,
+            combine_threshold_count_));
     changed |= computation_changed;
   }
 

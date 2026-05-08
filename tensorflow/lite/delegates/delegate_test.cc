@@ -1498,6 +1498,17 @@ TEST_F(TestDelegateWithControlEdges, CompatibleControlEdges2) {
   EXPECT_EQ(interpreter_->execution_plan().size(), 3);  // [ {0, 2}, 1, 3]
 }
 
+TEST_F(TestDelegateWithControlEdges,
+       MismatchedControlEdgeMetadataSubgraphCountIgnored) {
+  SetMetadata({{kModelControlDependenciesMetadataKey,
+                SerializeModelControlDependencies({})}});
+  delegate_ = std::make_unique<SimpleDelegate>(std::vector<int>({0, 2}));
+  EXPECT_EQ(
+      interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
+      kTfLiteOk);
+  EXPECT_EQ(interpreter_->execution_plan().size(), 3);  // [ {0, 2}, 1, 3]
+}
+
 // Tests for FP16 graphs
 // =====================
 

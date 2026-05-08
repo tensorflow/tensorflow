@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/tests/hlo_legacy_gpu_test_base.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -39,7 +40,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_compiler.h"
-#include "xla/service/gpu/tests/hlo_legacy_gpu_test_base.h"
+#include "xla/service/gpu/kernel_reuse_cache.pb.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
@@ -54,6 +55,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -81,13 +83,6 @@ class AotCompilationTest : public HloLegacyGpuTestBase,
     GpuTopology gpu_topology = GetSingleDeviceGpuTopology(
         /*platform_version=*/"", gpu_target_config());
     aot_options_->set_gpu_topology(gpu_topology);
-  }
-
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options =
-        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_experimental_aot_compiled_thunks(GetParam());
-    return debug_options;
   }
 
   std::unique_ptr<AotCompilationOptions> aot_options_;
@@ -128,7 +123,8 @@ TEST_P(AotCompilationTest, CompileAndLoadAotResult) {
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Executable> executable,
       std::move(*aot_result)
-          .LoadExecutable(compiler()->PlatformId(), device_description()));
+          .LoadExecutable(compiler()->PlatformId(), device_description(),
+                          GetDebugOptionsForTest()));
   auto hlo_runner = std::make_unique<HloRunnerLegacy>(GpuPlatform());
   std::unique_ptr<OpaqueExecutable> wrapped_executable =
       hlo_runner->WrapExecutable(std::move(executable));
@@ -170,7 +166,8 @@ TEST_P(AotCompilationTest, ExportAndImportAotResult) {
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Executable> new_executable,
       std::move(*aot_result)
-          .LoadExecutable(compiler()->PlatformId(), device_description()));
+          .LoadExecutable(compiler()->PlatformId(), device_description(),
+                          GetDebugOptionsForTest()));
   auto hlo_runner = std::make_unique<HloRunnerLegacy>(GpuPlatform());
   std::unique_ptr<OpaqueExecutable> wrapped_executable =
       hlo_runner->WrapExecutable(std::move(new_executable));
@@ -214,9 +211,12 @@ class KernelCacheTest : public HloLegacyGpuTestBase {
     CHECK(tsl::Env::Default()->LocalTempFilename(&cache_file_name_));
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
-    ASSERT_OK_AND_ASSIGN(bool can_use_link_modules,
-                         dynamic_cast<GpuCompiler*>(compiler())
-                             ->CanUseLinkModules(config, device_description()));
+    ASSERT_OK_AND_ASSIGN(auto stream_exec,
+                         GetTestPlatform()->ExecutorForDevice(0));
+    ASSERT_OK_AND_ASSIGN(
+        bool can_use_link_modules,
+        dynamic_cast<GpuCompiler*>(compiler())
+            ->CanUseLinkModules(config, device_description(), stream_exec));
     if (!can_use_link_modules) {
       GTEST_SKIP() << "Caching compiled kernels requires support of linking.";
     }
@@ -356,7 +356,8 @@ ENTRY e {
     ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<Executable> executable,
         std::move(*aot_result)
-            .LoadExecutable(compiler()->PlatformId(), device_description()));
+            .LoadExecutable(compiler()->PlatformId(), device_description(),
+                            GetDebugOptionsForTest()));
     auto hlo_runner = std::make_unique<HloRunnerLegacy>(GpuPlatform());
     std::unique_ptr<OpaqueExecutable> wrapped_executable =
         hlo_runner->WrapExecutable(std::move(executable));

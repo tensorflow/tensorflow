@@ -1,5 +1,6 @@
 load("//xla:lit.bzl", "lit_test_suite")
 load("//xla:xla.default.bzl", "xla_cc_binary")
+load("//xla/backends/gpu/tests:helper.bzl", "get_canonical_repo_name")
 load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl/platform/default:build_config_root.bzl", "tf_gpu_tests_tags")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
@@ -52,7 +53,7 @@ lit_test_suite(
     ]),
     cfg = "//xla:lit.cfg.py",
     default_tags = tf_gpu_tests_tags(),
-    hermetic_cuda_data_dir = "%S/../../../../../cuda_nvcc",
+    hermetic_cuda_data_dir = "%S/../../../../../" + get_canonical_repo_name("cuda_nvcc"),
     tags = [
         "cuda-only",
         "gpu",

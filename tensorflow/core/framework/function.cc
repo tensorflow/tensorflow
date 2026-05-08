@@ -84,8 +84,8 @@ absl::Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
   if (!arg_def.type_list_attr().empty()) {
     const AttrValue* v = attrs.FindByString(arg_def.type_list_attr());
     if (v == nullptr) {
-      return errors::NotFound("type list attr not found: ",
-                              arg_def.type_list_attr());
+      return absl::NotFoundError(
+          absl::StrCat("type list attr not found: ", arg_def.type_list_attr()));
     }
     *is_type_list = true;
     for (int i = 0; i < v->list().type_size(); ++i) {
@@ -99,7 +99,8 @@ absl::Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
   if (!arg_def.number_attr().empty()) {
     const AttrValue* v = attrs.FindByString(arg_def.number_attr());
     if (v == nullptr) {
-      return errors::NotFound("number attr not found: ", arg_def.number_attr());
+      return absl::NotFoundError(
+          absl::StrCat("number attr not found: ", arg_def.number_attr()));
     }
     num = v->i();
   }
@@ -112,7 +113,8 @@ absl::Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
   } else {
     const AttrValue* v = attrs.FindByString(arg_def.type_attr());
     if (v == nullptr) {
-      return errors::NotFound("type attr not found: ", arg_def.type_attr());
+      return absl::NotFoundError(
+          absl::StrCat("type attr not found: ", arg_def.type_attr()));
     }
     dtype = v->type();
   }
@@ -140,8 +142,8 @@ absl::Status ValidateSignatureWithAttrs(const OpDef& sig,
         return status;
       }
     } else if (!attr.has_default_value()) {
-      return errors::NotFound("Attr ", attr.name(), " is not found from ",
-                              SummarizeOpDef(sig));
+      return absl::NotFoundError(absl::StrCat(
+          "Attr ", attr.name(), " is not found from ", SummarizeOpDef(sig)));
     }
   }
 
@@ -194,7 +196,7 @@ class FunctionInstantiationHelper {
     TF_RETURN_IF_ERROR(
         ArgNumType(attr_values, arg_def, &is_type_list, &dtypes));
     if (dtypes.size() < size_t{1}) {
-      return errors::Internal("Expected a list of at least one dtype");
+      return absl::InternalError("Expected a list of at least one dtype");
     }
     int arg_index = result_.nodes.size();
     TF_RETURN_IF_ERROR(
@@ -204,9 +206,9 @@ class FunctionInstantiationHelper {
       TF_RETURN_IF_ERROR(AddItem(absl::StrCat(arg_def.name(), ":", i),
                                  {true, arg_index, 0, false, {dtypes[i]}}));
       if (arg_index != result_.nodes.size()) {
-        return errors::Internal(
+        return absl::InternalError(absl::StrCat(
             "Expected arg_index to be equal to the number of nodes in result.",
-            " Got ", arg_index, " and ", result_.nodes.size());
+            " Got ", arg_index, " and ", result_.nodes.size()));
       }
       std::string name = arg_def.name();
       if (dtypes.size() > 1) {
@@ -295,21 +297,22 @@ class FunctionInstantiationHelper {
       for (size_t j = 0; j < dtypes.size(); ++fnode_arg_index) {
         if (fnode_arg_index >= fnode.input_size()) {
           // Should never happen if we computed dtypes correctly.
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Attempt to access beyond input size: ", fnode_arg_index,
-              " >= ", fnode.input_size());
+              " >= ", fnode.input_size()));
         }
         // Look up the next input.
         const std::string& input_name = fnode.input(fnode_arg_index);
         const auto* item = GetItemOrNull(input_name);
         if (item == nullptr) {
-          return errors::InvalidArgument(
-              "input ", input_name,
-              " is not found: ", FormatNodeDefForError(fnode));
+          return absl::InvalidArgumentError(
+              absl::StrCat("input ", input_name,
+                           " is not found: ", FormatNodeDefForError(fnode)));
         }
         if (item->dtypes.size() > dtypes.size() - j) {
-          return errors::InvalidArgument("Input ", input_name, " too long for ",
-                                         fnode_sig->input_arg(i).name());
+          return absl::InvalidArgumentError(
+              absl::StrCat("Input ", input_name, " too long for ",
+                           fnode_sig->input_arg(i).name()));
         }
         // Match up all the elements of this input (indexed by k) with
         // elements of dtypes (advancing j).
@@ -334,8 +337,8 @@ class FunctionInstantiationHelper {
     for (int i = fnode_arg_index; i < fnode.input_size(); ++i) {
       const std::string& input = fnode.input(i);
       if (input.empty() || input[0] != '^') {
-        return errors::InvalidArgument("Expected input[", i, "] == '", input,
-                                       "' to be a control input.");
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Expected input[", i, "] == '", input, "' to be a control input."));
       }
       int nid = -1;
       const std::string node_name = input.substr(1);
@@ -352,8 +355,8 @@ class FunctionInstantiationHelper {
         ++it;
       }
       if (nid == -1) {
-        return errors::InvalidArgument("input[", i, "] == '", input,
-                                       "', is not found.");
+        return absl::InvalidArgumentError(
+            absl::StrCat("input[", i, "] == '", input, "', is not found."));
       }
       AddDep(gnode_idx, nid);
     }
@@ -384,7 +387,8 @@ class FunctionInstantiationHelper {
       bool ints_on_device, int* ret_index) {
     auto ret_iter = ret_map.find(ret_def.name());
     if (ret_iter == ret_map.end()) {
-      return errors::InvalidArgument("Return ", ret_def.name(), " missing.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Return ", ret_def.name(), " missing."));
     }
     bool is_type_list;
     DataTypeVector dtypes;
@@ -392,14 +396,15 @@ class FunctionInstantiationHelper {
     CHECK_GE(dtypes.size(), size_t{1});
     const auto* item = GetItemOrNull(ret_iter->second);
     if (item == nullptr) {
-      return errors::InvalidArgument("Return ", ret_def.name(), " -> ",
-                                     ret_iter->second, " is not found.");
+      return absl::InvalidArgumentError(absl::StrCat("Return ", ret_def.name(),
+                                                     " -> ", ret_iter->second,
+                                                     " is not found."));
     }
     if (dtypes != item->dtypes) {
-      return errors::InvalidArgument("Invalid ret types ", ret_def.name(),
-                                     " : ", DataTypeVectorString(dtypes),
-                                     " vs. ",
-                                     DataTypeVectorString(item->dtypes));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Invalid ret types ", ret_def.name(), " : ",
+                       DataTypeVectorString(dtypes), " vs. ",
+                       DataTypeVectorString(item->dtypes)));
     }
     for (size_t i = 0; i < dtypes.size(); ++i) {
       std::string name = absl::StrCat(ret_def.name(), "_RetVal");
@@ -459,10 +464,10 @@ class FunctionInstantiationHelper {
   // Adds an item into the input name index.
   absl::Status AddItem(const std::string& name, const NameInfoItem& item) {
     if (!index_.insert({name, item}).second) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           absl::StrCat("Duplicated ", item.is_func_arg ? "arg" : "ret",
                        " name: "),
-          name);
+          name));
     }
     return absl::OkStatus();
   }
@@ -745,7 +750,8 @@ absl::Status AddDefaultAttrs(const std::string& op,
   for (const auto& attr_def : op_def->attr()) {
     if (attr_def.has_default_value() && !attr_slice.Find(attr_def.name())) {
       if (!attrs->insert({attr_def.name(), attr_def.default_value()}).second) {
-        return errors::Internal("Somehow duplicated: ", attr_def.name());
+        return absl::InternalError(
+            absl::StrCat("Somehow duplicated: ", attr_def.name()));
       }
     }
   }
@@ -825,11 +831,13 @@ absl::Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
   for (int i = 0; i < fdef.node_def_size(); ++i) {
     for (auto attr : fdef.node_def(i).attr()) {
       if (!SubstitutePlaceholders(substitute, &attr.second)) {
-        return errors::InvalidArgument("Failed to bind all placeholders in ",
-                                       SummarizeAttrValue(attr.second));
+        return absl::InvalidArgumentError(
+            absl::StrCat("Failed to bind all placeholders in ",
+                         SummarizeAttrValue(attr.second)));
       }
       if (!node_attrs[i].insert(attr).second) {
-        return errors::Internal("Somehow duplicated: ", attr.first);
+        return absl::InternalError(
+            absl::StrCat("Somehow duplicated: ", attr.first));
       }
     }
     TF_RETURN_IF_ERROR(
@@ -1165,15 +1173,15 @@ FunctionCallFrame::~FunctionCallFrame() {}
 absl::Status FunctionCallFrame::SetArgs(absl::Span<const Tensor> args) {
   // Input type checks.
   if (args.size() != arg_types_.size()) {
-    return errors::InvalidArgument("Expects ", arg_types_.size(),
-                                   " arguments, but ", args.size(),
-                                   " is provided");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expects ", arg_types_.size(), " arguments, but ",
+                     args.size(), " is provided"));
   }
   for (size_t i = 0; i < args.size(); ++i) {
     if (arg_types_[i] != args[i].dtype()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Expects arg[", i, "] to be ", DataTypeString(arg_types_[i]), " but ",
-          DataTypeString(args[i].dtype()), " is provided");
+          DataTypeString(args[i].dtype()), " is provided"));
     }
     args_[i] = args[i];
   }
@@ -1188,7 +1196,8 @@ absl::Status FunctionCallFrame::GetRetvals(std::vector<Tensor>* rets) const {
     if (item.has_val) {
       rets->push_back(item.val);
     } else {
-      return errors::Internal("Retval[", i, "] does not have value");
+      return absl::InternalError(
+          absl::StrCat("Retval[", i, "] does not have value"));
     }
   }
   return absl::OkStatus();
@@ -1204,7 +1213,8 @@ absl::Status FunctionCallFrame::ConsumeRetvals(std::vector<Tensor>* rets,
     } else if (allow_dead_tensors) {
       rets->emplace_back();
     } else {
-      return errors::Internal("Retval[", i, "] does not have value");
+      return absl::InternalError(
+          absl::StrCat("Retval[", i, "] does not have value"));
     }
   }
   return absl::OkStatus();
@@ -1212,8 +1222,8 @@ absl::Status FunctionCallFrame::ConsumeRetvals(std::vector<Tensor>* rets,
 
 absl::Status FunctionCallFrame::GetArg(int index, const Tensor** val) {
   if (index < 0 || static_cast<size_t>(index) >= args_.size()) {
-    return errors::InvalidArgument("GetArg ", index, " is not within [0, ",
-                                   args_.size(), ")");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "GetArg ", index, " is not within [0, ", args_.size(), ")"));
   }
   *val = &args_[index];
   return absl::OkStatus();
@@ -1221,20 +1231,21 @@ absl::Status FunctionCallFrame::GetArg(int index, const Tensor** val) {
 
 absl::Status FunctionCallFrame::SetRetval(int index, const Tensor& val) {
   if (index < 0 || static_cast<size_t>(index) >= rets_.size()) {
-    return errors::InvalidArgument("SetRetval ", index, " is not within [0, ",
-                                   rets_.size(), ")");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "SetRetval ", index, " is not within [0, ", rets_.size(), ")"));
   }
   if (val.dtype() != ret_types_[index]) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Expects ret[", index, "] to be ", DataTypeString(ret_types_[index]),
-        ", but ", DataTypeString(val.dtype()), " is provided.");
+        ", but ", DataTypeString(val.dtype()), " is provided."));
   }
   Retval* item = &rets_[index];
   if (!item->has_val) {
     item->has_val = true;
     item->val = val;
   } else {
-    return errors::Internal("Retval[", index, "] has already been set.");
+    return absl::InternalError(
+        absl::StrCat("Retval[", index, "] has already been set."));
   }
   return absl::OkStatus();
 }
@@ -1456,10 +1467,10 @@ absl::Status FunctionLibraryDefinition::AddHelper(FunctionRecord* registration,
   auto iter = records_.find(registration->fdef().signature().name());
   if (iter != records_.end()) {
     if (!FunctionDefsEqual(iter->second->fdef(), registration->fdef())) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Cannot add function '", registration->fdef().signature().name(),
           "' because a different function with the same name already "
-          "exists.");
+          "exists."));
     }
     // Ignore duplicate FunctionDefs.
     return absl::OkStatus();
@@ -1468,9 +1479,9 @@ absl::Status FunctionLibraryDefinition::AddHelper(FunctionRecord* registration,
   if (default_registry_
           ->LookUpOpDef(registration->fdef().signature().name(), &op_def)
           .ok()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Cannot add function '", registration->fdef().signature().name(),
-        "' because an op with the same name already exists.");
+        "' because an op with the same name already exists."));
   }
   registration->Ref();
   registration->finalize();
@@ -1482,24 +1493,24 @@ absl::Status FunctionLibraryDefinition::AddHelper(FunctionRecord* registration,
 absl::Status FunctionLibraryDefinition::CopyFunctionDefFrom(
     const std::string& name, const FunctionLibraryDefinition& other) {
   if (default_registry() != other.default_registry()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Cannot copy function '", name,
         "' because CopyFunctionDefFrom() requires that both libraries have the "
-        "same default registry.");
+        "same default registry."));
   }
   core::RefCountPtr<FunctionRecord> other_record = other.FindRecord(name);
   if (!other_record) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Cannot copy function '", name,
-        "' because no function with that name exists in the other library.");
+        "' because no function with that name exists in the other library."));
   }
   core::RefCountPtr<FunctionRecord> self_record = FindRecord(name);
   if (self_record) {
     if (!FunctionDefsEqual(self_record->fdef(), other_record->fdef())) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Cannot copy function '", name,
           "' because a different function with the same name already "
-          "exists.");
+          "exists."));
     } else {
       return absl::OkStatus();
     }
@@ -1525,10 +1536,10 @@ absl::Status FunctionLibraryDefinition::AddGradientDefHelper(
   std::string* entry = &func_grad_[grad.function_name()];
   if (!entry->empty()) {
     if (*entry != grad.gradient_func()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Cannot assign gradient function '", grad.gradient_func(), "' to '",
           grad.function_name(), "' because it already has gradient function ",
-          "'", *entry, "'");
+          "'", *entry, "'"));
     }
     // Ignore duplicate GradientDefs
     return absl::OkStatus();
@@ -1677,8 +1688,8 @@ absl::Status FunctionLibraryDefinition::RemoveFunctionHelper(
     const std::string& func) {
   auto iter = records_.find(func);
   if (iter == records_.end()) {
-    return errors::InvalidArgument("Tried to remove non-existent function '",
-                                   func, "'.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Tried to remove non-existent function '", func, "'."));
   }
   iter->second->Unref();
   records_.erase(iter);
@@ -1699,8 +1710,8 @@ absl::Status FunctionLibraryDefinition::RemoveGradient(
     const std::string& func) {
   const auto& i = func_grad_.find(func);
   if (i == func_grad_.end()) {
-    return errors::InvalidArgument("Tried to remove non-existent gradient '",
-                                   func, "'.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Tried to remove non-existent gradient '", func, "'."));
   }
   func_grad_.erase(i);
   return absl::OkStatus();
@@ -1824,7 +1835,8 @@ absl::Status FunctionLibraryDefinition::GetAttr(const NodeDef& ndef,
   if (fdef && TryGetNodeAttr(AttrSlice(&fdef->attr()), attr, value)) {
     return absl::OkStatus();
   }
-  return errors::InvalidArgument("Attr ", attr, " is not defined.");
+  return absl::InvalidArgumentError(
+      absl::StrCat("Attr ", attr, " is not defined."));
 }
 
 template <typename T>
@@ -2264,7 +2276,8 @@ absl::Status GetOpGradientCreator(const std::string& op, Creator* creator) {
   auto fac = GetOpGradFactory();
   auto iter = fac->find(op);
   if (iter == fac->end()) {
-    return errors::NotFound("No gradient defined for op: ", op);
+    return absl::NotFoundError(
+        absl::StrCat("No gradient defined for op: ", op));
   }
   *creator = iter->second;
   return absl::OkStatus();

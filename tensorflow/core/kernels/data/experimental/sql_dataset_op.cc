@@ -143,7 +143,7 @@ class SqlDatasetOp : public DatasetOpKernel {
       explicit Iterator(const Params& params)
           : DatasetIterator<Dataset>(params) {}
       ~Iterator() override {
-        if (query_connection_initialized_) {
+        if (query_connection_initialized_ && query_connection_ != nullptr) {
           absl::Status s = query_connection_->Close();
           if (!s.ok()) {
             LOG(WARNING) << "Failed to close query connection: " << s;
@@ -191,6 +191,11 @@ class SqlDatasetOp : public DatasetOpKernel {
           TF_RETURN_IF_ERROR(InitializeQueryConnection());
           TF_RETURN_IF_ERROR(
               reader->ReadScalar(full_name("next_calls"), &next_calls_));
+          if (next_calls_ < 0) {
+            return absl::InvalidArgumentError(absl::StrCat(
+                "Restored SqlDataset `next_calls` should be >= 0. Got: ",
+                next_calls_, "."));
+          }
           int64_t rem_next_calls = next_calls_;
           std::vector<Tensor> out_tensors;
           end_of_sequence_ = false;
@@ -198,6 +203,9 @@ class SqlDatasetOp : public DatasetOpKernel {
             TF_RETURN_IF_ERROR(query_connection_->GetNext(ctx, &out_tensors,
                                                           &end_of_sequence_));
             out_tensors.clear();
+            if (end_of_sequence_) {
+              break;
+            }
           }
         } else {
           query_connection_initialized_ = false;
@@ -209,7 +217,6 @@ class SqlDatasetOp : public DatasetOpKernel {
      private:
       absl::Status InitializeQueryConnection()
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        query_connection_initialized_ = true;
         end_of_sequence_ = false;
         query_connection_ =
             sql::DriverManager::CreateQueryConnection(dataset()->driver_name_);
@@ -221,6 +228,7 @@ class SqlDatasetOp : public DatasetOpKernel {
           LOG(WARNING) << "Failed to connect to database: " << s;
           return s;
         }
+        query_connection_initialized_ = true;
         return absl::OkStatus();
       }
 

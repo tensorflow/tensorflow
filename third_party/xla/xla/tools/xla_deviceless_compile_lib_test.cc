@@ -61,7 +61,7 @@ absl::StatusOr<Compiler::GpuTargetConfig> GetGpuTargetConfig() {
 
 class XlaDevicelessCompileLibTest : public testing::TestWithParam<bool> {};
 
-TEST_P(XlaDevicelessCompileLibTest, CompilesForGpuWithoutDevice) {
+TEST_F(XlaDevicelessCompileLibTest, CompilesForGpuWithoutDevice) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule(R"hlo(
     HloModule module
@@ -71,9 +71,6 @@ TEST_P(XlaDevicelessCompileLibTest, CompilesForGpuWithoutDevice) {
       b_f32 = f32[10,2] convert(b)
       ROOT dot = f32[2,2] dot(a, b_f32), lhs_contracting_dims={1}, rhs_contracting_dims={0}
     })hlo"));
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_experimental_aot_compiled_thunks(GetParam());
 
   TF_ASSERT_OK_AND_ASSIGN(gpu::GpuTargetConfig target_config,
                           GetGpuTargetConfig());
@@ -86,12 +83,6 @@ TEST_P(XlaDevicelessCompileLibTest, CompilesForGpuWithoutDevice) {
       absl_testing::IsOkAndHolds(Not(IsEmpty())));
   EXPECT_TRUE(result.has_hlo_module()) << result.DebugString();
 }
-
-INSTANTIATE_TEST_SUITE_P(XlaDevicelessCompileLibTest,
-                         XlaDevicelessCompileLibTest, testing::Bool(),
-                         [](const testing::TestParamInfo<bool>& info) {
-                           return info.param ? "NewAotFlow" : "LegacyAotFlow";
-                         });
 
 }  // namespace
 }  // namespace xla

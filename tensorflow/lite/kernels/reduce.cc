@@ -385,16 +385,26 @@ TfLiteStatus PrepareProd(TfLiteContext* context, TfLiteNode* node) {
   const int input_size = GetTensorShape(op_context.input).FlatSize();
   const int output_size = GetTensorShape(op_context.output).FlatSize();
   // We support both quantized and non-quantized int8/int16 inputs
-  if (op_context.input->quantization.type != kTfLiteNoQuantization &&
-      (op_context.input->type == kTfLiteInt8 ||
-       op_context.input->type == kTfLiteInt16) &&
-      input_size != 0 && output_size != 0) {
-    const int reduced_axis_size = input_size / output_size;
-    const double scaling = GetQuantProdScaling(
-        static_cast<double>(op_context.input->params.scale),
-        static_cast<double>(op_context.output->params.scale),
-        reduced_axis_size);
-    QuantizeMultiplier(scaling, &data->multiplier, &data->shift);
+  if (op_context.input->quantization.type != kTfLiteNoQuantization) {
+    if (op_context.input->quantization.type != kTfLiteAffineQuantization) {
+      TF_LITE_KERNEL_LOG(context, "Unsupported quantization type: %d",
+                         op_context.input->quantization.type);
+      return kTfLiteError;
+    }
+    if (op_context.input->type != kTfLiteInt8 &&
+        op_context.input->type != kTfLiteInt16) {
+      TF_LITE_KERNEL_LOG(context, "Unsupported quantized data type: %d",
+                         op_context.input->type);
+      return kTfLiteError;
+    }
+    if (input_size != 0 && output_size != 0) {
+      const int reduced_axis_size = input_size / output_size;
+      const double scaling = GetQuantProdScaling(
+          static_cast<double>(op_context.input->params.scale),
+          static_cast<double>(op_context.output->params.scale),
+          reduced_axis_size);
+      QuantizeMultiplier(scaling, &data->multiplier, &data->shift);
+    }
   }
 
   if (data->noop) {
@@ -596,7 +606,10 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
       case kTfLiteInt8: {
         tflite::MeanParams op_params;
         op_params.axis_count = num_axis;
-        ResolveAxis(GetTensorData<int>(op_context.axis), num_axis, &op_params);
+        if (num_axis <= 4) {
+          ResolveAxis(GetTensorData<int>(op_context.axis), num_axis,
+                      &op_params);
+        }
         if (op_context.params->keep_dims && NumDimensions(input) == 4 &&
             op_params.axis_count == 2 &&
             ((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
@@ -615,7 +628,10 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
       case kTfLiteUInt8: {
         tflite::MeanParams op_params;
         op_params.axis_count = num_axis;
-        ResolveAxis(GetTensorData<int>(op_context.axis), num_axis, &op_params);
+        if (num_axis <= 4) {
+          ResolveAxis(GetTensorData<int>(op_context.axis), num_axis,
+                      &op_params);
+        }
         if (op_context.params->keep_dims && NumDimensions(input) == 4 &&
             op_params.axis_count == 2 &&
             ((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||

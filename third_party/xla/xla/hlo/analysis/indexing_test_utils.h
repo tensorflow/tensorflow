@@ -16,10 +16,11 @@ limitations under the License.
 #ifndef XLA_HLO_ANALYSIS_INDEXING_TEST_UTILS_H_
 #define XLA_HLO_ANALYSIS_INDEXING_TEST_UTILS_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <optional>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -38,6 +39,11 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 
 namespace xla {
+
+// Returns the first mismatching non-whitespace character pair in the two
+// strings.
+std::pair<size_t, size_t> FindApproximateMismatch(absl::string_view lhs,
+                                                  absl::string_view rhs);
 
 // Matches two strings ignoring whitespaces.
 bool ApproximateMatch(absl::string_view lhs, absl::string_view rhs);
@@ -90,17 +96,6 @@ class IndexingTestBase : public HloHardwareIndependentTestBase {
   std::unique_ptr<VerifiedHloModule> module_;
 };
 
-// TODO(b/446858351): Remove this function once we migrate constraint_expression
-// to use SymbolicExpr.
-mlir::AffineExpr ParseAffineExpr(absl::string_view serialized_affine_expr,
-                                 mlir::MLIRContext* mlir_context);
-
-// Safely evaluates the given expression, returning nullopt if the result is
-// undefined (due to undefined behavior, e.g. division by zero or overflow).
-std::optional<int64_t> SafeEvaluateAffineExpr(mlir::AffineExpr expr,
-                                              absl::Span<int64_t const> dims,
-                                              absl::Span<int64_t const> syms);
-
 // Enumerates all the points in the domain of the given indexing map: points
 // within the bounds of the dimensions and symbols that do not violate any of
 // the constraints.
@@ -123,7 +118,7 @@ absl::Status VerifyBijection(const IndexingMap& indexing_map,
 // ignored. If `other` is undefined at a point, but `reference` is not, this is
 // a failure.
 absl::Status VerifyExprsAreIdentical(
-    mlir::AffineExpr reference, mlir::AffineExpr other,
+    SymbolicExpr reference, SymbolicExpr other,
     absl::Span<Interval const> dimension_ranges,
     absl::Span<Interval const> symbol_ranges);
 

@@ -31,6 +31,8 @@ toc:
     path: /xla/effort_levels
   - title: Emitters
     path: /xla/emitters
+  - title: GPU architecture
+    path: /xla/gpu_architecture
   - title: Hermetic CUDA overview
     path: /xla/hermetic_cuda
   - title: HLO Passes
@@ -49,6 +51,8 @@ toc:
     path: /xla/shapes
   - title: SparseCore
     path: /xla/sparsecore
+  - title: Symbolic expressions and maps
+    path: /xla/symbolic_expression
   - title: Testing HLO passes
     path: /xla/test_hlo_passes
   - title: Tiled layout

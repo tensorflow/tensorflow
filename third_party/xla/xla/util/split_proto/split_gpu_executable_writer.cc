@@ -26,6 +26,7 @@ limitations under the License.
 #include "riegeli/bytes/writer.h"
 #include "riegeli/records/record_writer.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_proto_util.h"
 #include "xla/sort_json.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util/split_proto/split_proto.pb.h"
@@ -69,21 +70,46 @@ SplitProtoManifest BuildManifest(int32_t num_of_contants) {
 // deterministic because the order of keys in json is not guaranteed.
 //
 // If the backend config is not a json string, it is not modified.
-void NormalizeBackendConfig(gpu::GpuExecutableProto& executable) {
+absl::Status NormalizeBackendConfig(gpu::GpuExecutableProto& executable) {
   for (HloComputationProto& computation :
        *executable.mutable_hlo_module_with_config()
             ->mutable_hlo_module()
             ->mutable_computations()) {
     for (HloInstructionProto& instruction :
          *computation.mutable_instructions()) {
-      absl::StatusOr<std::string> normalized_backend_config =
-          SortJson(instruction.backend_config());
-      if (normalized_backend_config.ok()) {
-        instruction.set_backend_config(*normalized_backend_config);
+      TF_ASSIGN_OR_RETURN(
+          std::string backend_config_str,
+          GetBackendConfigString(
+              instruction, &executable.hlo_module_with_config().hlo_module()));
+      auto normalized_or = SortJson(backend_config_str);
+      if (!normalized_or.ok()) {
+        continue;
       }
-      // If the backend config is not a json string, then do nothing.
+      std::string normalized = std::move(normalized_or).value();
+      if (normalized == backend_config_str) {
+        continue;
+      }
+      if (instruction.has_backend_config_payload()) {
+        Payload* payload = instruction.mutable_backend_config_payload();
+        switch (payload->payload_source_case()) {
+          case Payload::kId: {
+            int id = static_cast<int>(payload->id());
+            auto* module = executable.mutable_hlo_module_with_config()
+                               ->mutable_hlo_module();
+            *module->mutable_payloads(id) = normalized;
+            break;
+          }
+          case Payload::kValue:
+          case Payload::PAYLOAD_SOURCE_NOT_SET:
+            payload->set_value(normalized);
+            break;
+        }
+      } else {
+        instruction.set_backend_config(normalized);
+      }
     }
   }
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -115,7 +141,7 @@ absl::Status WriteSplitGpuExecutable(gpu::GpuExecutableProto executable,
   executable.clear_constants();
 
   // The rest of the fields (i.e. the non-offloaded fields)
-  NormalizeBackendConfig(executable);
+  TF_RETURN_IF_ERROR(NormalizeBackendConfig(executable));
   // Module IDs are created via a static counter when deserializing, and they
   // can cause non-determinism, so we don't preserve them.
   executable.mutable_hlo_module_with_config()->mutable_hlo_module()->clear_id();

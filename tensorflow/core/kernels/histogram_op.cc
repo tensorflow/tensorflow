@@ -64,7 +64,8 @@ struct HistogramFixedWidthFunctor<CPUDevice, T, Tout> {
     const Eigen::Tensor<int32_t, 0, 1> reduced_tensor = nans_tensor.sum();
     const int num_nans = reduced_tensor(0);
     if (num_nans > 0) {
-      return errors::InvalidArgument("Histogram values must not contain NaN");
+      return absl::InvalidArgumentError(
+          "Histogram values must not contain NaN");
     }
 
     // The calculation is done by finding the slot of each value in `values`.
@@ -105,12 +106,12 @@ class HistogramFixedWidthOp : public OpKernel {
     const Tensor& nbins_tensor = ctx->input(2);
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(value_range_tensor.shape()),
-                errors::InvalidArgument("value_range should be a vector."));
+                absl::InvalidArgumentError("value_range should be a vector."));
     OP_REQUIRES(ctx, (value_range_tensor.shape().num_elements() == 2),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "value_range should be a vector of 2 elements."));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(nbins_tensor.shape()),
-                errors::InvalidArgument("nbins should be a scalar."));
+                absl::InvalidArgumentError("nbins should be a scalar."));
 
     const auto values = values_tensor.flat<T>();
     const auto value_range = value_range_tensor.flat<T>();
@@ -123,8 +124,8 @@ class HistogramFixedWidthOp : public OpKernel {
                                 value_range(0), ", ", value_range(1), "]'"));
     OP_REQUIRES(
         ctx, nbins > 0,
-        errors::InvalidArgument("nbins should be a positive number, but got '",
-                                nbins, "'"));
+        absl::InvalidArgumentError(absl::StrCat(
+            "nbins should be a positive number, but got '", nbins, "'")));
 
     Tensor* out_tensor;
     OP_REQUIRES_OK(ctx,

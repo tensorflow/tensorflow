@@ -50,14 +50,14 @@ using KernelEmitter = emitters::ConcatenateFusionKernelEmitter;
 ConcatenateFusion::ConcatenateFusion(const HloFusionAnalysis& analysis)
     : analysis_(analysis),
       largest_shape_(KernelEmitter::GetIndexingShape(analysis_.fusion_spec())),
-      config_(ComputeLoopFusionConfig(analysis_, largest_shape_)) {
-  config_.unroll_factor = KernelEmitter::GetValidUnrollFactor(
-      analysis_.fusion_spec(), config_.unroll_factor);
+      unroll_factor_(ComputeLoopFusionConfig(analysis_, largest_shape_)) {
+  unroll_factor_ = KernelEmitter::GetValidUnrollFactor(analysis_.fusion_spec(),
+                                                       unroll_factor_);
 }
 
 LaunchDimensions ConcatenateFusion::launch_dimensions() const {
   return CalculateLaunchDimensions(largest_shape_, analysis_.device_info(),
-                                   config_);
+                                   unroll_factor_);
 }
 
 std::optional<IndexingMap> ConcatenateFusion::ComputeThreadIdToOutputIndexing(
@@ -102,7 +102,7 @@ absl::Status ConcatenateFusion::EmitEntryFunction(
 
 WorkDimensions ConcatenateFusion::GetWorkDimensions() const {
   WorkDimensions work_dimensions = launch_dimensions().AsWorkDimensions();
-  work_dimensions.work_tile_size.dimensions.push_back(config_.unroll_factor);
+  work_dimensions.work_tile_size.dimensions.push_back(unroll_factor_);
   return work_dimensions;
 }
 

@@ -101,23 +101,23 @@ XlaResource::XlaResource(
 absl::Status XlaResource::SetTypeAndShape(DataType type,
                                           const TensorShape& shape) {
   if (type == DT_INVALID) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Attempted to set type of resource '", name_, "'' to an invalid type",
-        DefinitionLocationMsg(definition_stack_trace_));
+        DefinitionLocationMsg(definition_stack_trace_)));
   }
   if (initialized() && type_ != type) {
-    return errors::InvalidArgument(
-        "Trying to assign variable with wrong dtype. Expected ",
-        DataTypeString(type_), " got ", DataTypeString(type),
-        DefinitionLocationMsg(definition_stack_trace_));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Trying to assign variable with wrong dtype. Expected ",
+                     DataTypeString(type_), " got ", DataTypeString(type),
+                     DefinitionLocationMsg(definition_stack_trace_)));
   }
   if (initialized() && shape_ != shape) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Shape of resource ", name_,
         " cannot be changed after initialization: "
         "old shape was ",
         shape_.DebugString(), ", new shape is ", shape.DebugString(),
-        DefinitionLocationMsg(definition_stack_trace_));
+        DefinitionLocationMsg(definition_stack_trace_)));
   }
   type_ = type;
   shape_ = shape;
@@ -126,9 +126,9 @@ absl::Status XlaResource::SetTypeAndShape(DataType type,
 
 absl::Status XlaResource::SetValue(const xla::XlaOp value) {
   if (type_ == DT_INVALID) {
-    return errors::InvalidArgument(
-        "Resource '", name_,
-        "' must be initialized with a valid type before use.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Resource '", name_,
+                     "' must be initialized with a valid type before use."));
   }
   value_ = value;
   is_overwritten_ = true;
@@ -138,9 +138,9 @@ absl::Status XlaResource::SetValue(const xla::XlaOp value) {
 absl::Status XlaResource::SetZeroValue(xla::XlaBuilder* builder) {
   is_overwritten_ = true;
   if (type_ == DT_INVALID) {
-    return errors::InvalidArgument(
-        "Resource '", name_,
-        "' must be initialized with a valid type before use.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Resource '", name_,
+                     "' must be initialized with a valid type before use."));
   }
   switch (kind_) {
     case kVariable: {

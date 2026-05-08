@@ -102,6 +102,9 @@ bool IsCublasLtMatmulF8(const HloInstruction& hlo);
 // Block-scaled matrix multiplication in MX formats. Calls into hipBLASLt.
 bool IsCublasLtMatmulMx(const HloInstruction& hlo);
 
+// Matrix multiplication that calls into cublasLt-ext.
+bool IsCublasLtGroupedMatmul(const HloInstruction& hlo);
+
 // Triangular solve that calls into legacy cublas.
 bool IsTriangularSolve(const HloInstruction& hlo);
 
@@ -249,26 +252,25 @@ inline constexpr absl::string_view kCudnnBlockScaledDotCallTarget =
 bool IsCustomCallToBlockScaledDot(const HloInstruction& hlo);
 
 // CUB library calls.
-// Reference: https://nvlabs.github.io/cub/
-inline constexpr absl::string_view kCubDeviceRadixSortTarget =
-    "__cub$DeviceRadixSort";
+// Reference: https://nvidia.github.io/cccl/unstable/cub/
 
-// CUB library call that allows to not specify the scratch size.
-// EstimateCubScratchSizePass will assign the correct scratch size.
+// Custom call before scratch size is assigned by EstimateCubScratchSizePass.
 inline constexpr absl::string_view
     kCubDeviceRadixSortUnassignedScratchSizeTarget =
-        "__cub$DeviceRadixSortUnassignedScratchSize";
+        "xla.gpu.ext.cub_sort_unassigned_scratch_size";
 
-bool IsCubDeviceRadixSort(const HloInstruction& hlo);
+inline constexpr absl::string_view kCubDeviceRadixSortPairsTarget =
+    "xla.gpu.ext.cub_sort_pairs";
+inline constexpr absl::string_view kCubDeviceRadixSortKeysTarget =
+    "xla.gpu.ext.cub_sort_keys";
+
 bool IsCubDeviceRadixSortNoScratchSize(const HloInstruction& hlo);
 
-inline constexpr absl::string_view kCubDeviceScanTarget = "__cub$DeviceScan";
-
 inline constexpr absl::string_view kCubDeviceScanUnassignedScratchSizeTarget =
-    "__cub$DeviceScanUnassignedScratchSize";
+    "xla.gpu.ext.cub_scan_unassigned_scratch_size";
 
-bool IsCubDeviceScan(const HloInstruction& hlo);
-bool IsCubDeviceScanNoScratchSize(const HloInstruction& hlo);
+inline constexpr absl::string_view kCubDeviceScanTarget =
+    "xla.gpu.ext.cub_scan";
 
 }  // namespace gpu
 }  // namespace xla

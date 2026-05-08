@@ -547,12 +547,12 @@ absl::Status Quantize::Run(Model* model, std::size_t op_index, bool* modified) {
     }
   }
   if (!SupportsQuantization(model, op)) {
-    return tensorflow::errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Unimplemented: this graph contains an operator of type ",
         HelpfulOperatorTypeName(op),
         " for which the quantized form is not yet implemented. Sorry, and "
         "patches welcome (that's a relatively fun patch to write, mostly "
-        "providing the actual quantized arithmetic code for this op).");
+        "providing the actual quantized arithmetic code for this op)."));
   }
 
   for (const auto& input : op.inputs) {

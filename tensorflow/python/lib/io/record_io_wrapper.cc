@@ -56,7 +56,7 @@ class PyRecordReader {
 
   absl::Status ReadNextRecord(tensorflow::tstring* out) {
     if (IsClosed()) {
-      return tensorflow::errors::FailedPrecondition("Reader is closed.");
+      return absl::FailedPreconditionError("Reader is closed.");
     }
     return reader_->ReadRecord(&offset_, out);
   }
@@ -78,7 +78,7 @@ class PyRecordReader {
   // it grows, which supports use cases such as TensorBoard.
   absl::Status Reopen() {
     if (!IsClosed()) {
-      return tensorflow::errors::FailedPrecondition("Reader is not closed.");
+      return absl::FailedPreconditionError("Reader is not closed.");
     }
     TF_RETURN_IF_ERROR(
         tensorflow::Env::Default()->NewRandomAccessFile(filename_, &file_));
@@ -138,8 +138,7 @@ class PyRecordRandomReader {
 
   absl::Status ReadRecord(uint64_t* offset, tensorflow::tstring* out) {
     if (IsClosed()) {
-      return tensorflow::errors::FailedPrecondition(
-          "Random TFRecord Reader is closed.");
+      return absl::FailedPreconditionError("Random TFRecord Reader is closed.");
     }
     return reader_->ReadRecord(offset, out);
   }
@@ -184,14 +183,14 @@ class PyRecordWriter {
 
   absl::Status WriteRecord(absl::string_view record) {
     if (IsClosed()) {
-      return tensorflow::errors::FailedPrecondition("Writer is closed.");
+      return absl::FailedPreconditionError("Writer is closed.");
     }
     return writer_->WriteRecord(record);
   }
 
   absl::Status Flush() {
     if (IsClosed()) {
-      return tensorflow::errors::FailedPrecondition("Writer is closed.");
+      return absl::FailedPreconditionError("Writer is closed.");
     }
 
     auto status = writer_->Flush();

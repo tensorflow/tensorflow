@@ -73,6 +73,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -296,6 +297,8 @@ class HloInstruction {
 
   inline static constexpr char kMainExecutionThread[] = "main";
   inline static constexpr char kHostThread[] = "host";
+  // Iota based id unique inside parent computation.
+  using LocalId = int32_t;
 
   virtual ~HloInstruction() { DetachFromOperandsAndUsers(); }
 
@@ -323,7 +326,8 @@ class HloInstruction {
       const HloInstructionProto& proto,
       const absl::flat_hash_map<int64_t, HloInstruction*>& instruction_map,
       const absl::flat_hash_map<int64_t, HloComputation*>& computation_map = {},
-      bool prohibit_empty_literal = true);
+      bool prohibit_empty_literal = true,
+      const tsl::protobuf::RepeatedPtrField<std::string>* payloads = nullptr);
 
   // Creates a parameter-retrieving instruction.
   static std::unique_ptr<HloInstruction> CreateParameter(
@@ -420,7 +424,8 @@ class HloInstruction {
       const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
       const PrecisionConfig& precision_config,
-      const SparsityConfig& sparsity_config = {});
+      const SparsityConfig& sparsity_config = {},
+      ConvolutionKind convolution_kind = CONVOLUTION_KIND_UNSET);
 
   // Creates an FFT op, of the type indicated by fft_type.
   static std::unique_ptr<HloInstruction> CreateFft(
@@ -1901,7 +1906,7 @@ class HloInstruction {
   // equivalent to the least significant 32 bits of the unique ID. This is not
   // guaranteed to be unique across all instructions in a module, only within
   // the computation.
-  int32_t local_id() const;
+  int32_t local_id() const { return local_id_; }
 
   // Returns the unique ID that would be assigned to this instruction if it were
   // inserted into the given parent without an internal ID change. Can be used
@@ -2452,7 +2457,7 @@ class HloInstruction {
 
   // Returns true if the instruction is an async-start, async-update, or
   // async-done.
-  bool IsAsynchronous() const;
+  bool IsAsynchronous() const { return HloOpcodeIsAsync(opcode_); }
 
   // Delagates to HloAsyncInstruction::async_chain_start().
   HloInstruction* async_chain_start() const;
@@ -2736,7 +2741,7 @@ class HloInstruction {
         user_map_;
   };
 
-  int32_t local_id_;  // Unique to this HloInstruction within a HloComputation.
+  LocalId local_id_;  // Unique to this HloInstruction within a HloComputation.
                       // Index that identifies where the inst is stored in the
                       // parent computation.
 

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/stream_executor/memory_reservation.h"
 
 #include <cstddef>
+#include <utility>
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/log.h"
@@ -25,7 +26,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/memory_allocation.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace stream_executor {
 

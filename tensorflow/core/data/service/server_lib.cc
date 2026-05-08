@@ -56,7 +56,7 @@ GrpcDataServerBase::GrpcDataServerBase(
 
 absl::Status GrpcDataServerBase::Start() {
   if (stopped_) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Server cannot be started after it has been stopped.");
   }
   if (started_) {
@@ -79,7 +79,7 @@ absl::Status GrpcDataServerBase::Start() {
   AddProfilerServiceToBuilder(builder);
   server_ = builder.BuildAndStart();
   if (!server_) {
-    return errors::Internal("Could not start gRPC server");
+    return absl::InternalError("Could not start gRPC server");
   }
 
   TF_RETURN_IF_ERROR(StartServiceInternal());

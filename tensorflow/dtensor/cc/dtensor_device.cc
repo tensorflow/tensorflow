@@ -240,7 +240,8 @@ class DTensorDevice {
     // happens when initialize_tpu_system is called multiple times
     // especially in tests. All the set mappings should be the same anyway.
     if (!mesh_name.empty() && Mesh::tpu_core_ids().count(mesh_name) > 0) {
-      return errors::AlreadyExists("Mesh name already in use: ", mesh_name);
+      return absl::AlreadyExistsError(
+          absl::StrCat("Mesh name already in use: ", mesh_name));
     }
     Mesh::tpu_core_ids()[mesh_name].assign(tpu_core_ids.begin(),
                                            tpu_core_ids.end());
@@ -547,8 +548,9 @@ class DTensorDevice {
       }
     }
     if (parallel_device == nullptr) {
-      return errors::Internal(absl::StrCat("Mesh in Unpack: ", mesh.ToString(),
-                                           "is not registered with DTensor"));
+      return absl::InternalError(
+          absl::StrCat("Mesh in Unpack: ", mesh.ToString(),
+                       "is not registered with DTensor"));
     }
     return parallel_device;
   }
@@ -875,7 +877,7 @@ StatusOr<NameAttrList> FetchAttributes(const TFE_OpAttrs* attributes) {
   NameAttrList name_and_attrs;
   if (!name_and_attrs.ParseFromArray(serialized_attributes->data,
                                      serialized_attributes->length)) {
-    return tensorflow::errors::Unknown("Could not parse attributes");
+    return absl::UnknownError("Could not parse attributes");
   }
   return name_and_attrs;
 }

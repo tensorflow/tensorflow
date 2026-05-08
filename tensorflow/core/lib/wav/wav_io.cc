@@ -92,25 +92,27 @@ inline float Int16SampleToFloat(int16_t data) {
 absl::Status IncrementOffset(int old_offset, int64_t increment, size_t max_size,
                              int* new_offset) {
   if (old_offset < 0) {
-    return errors::InvalidArgument("Negative offsets are not allowed: ",
-                                   old_offset);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Negative offsets are not allowed: ", old_offset));
   }
   if (increment < 0) {
-    return errors::InvalidArgument("Negative increment is not allowed: ",
-                                   increment);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Negative increment is not allowed: ", increment));
   }
   if (old_offset > max_size) {
-    return errors::InvalidArgument("Initial offset is outside data range: ",
-                                   old_offset);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Initial offset is outside data range: ", old_offset));
   }
   int64_t sum = old_offset + increment;
   if (sum > max_size) {
-    return errors::InvalidArgument("Data too short when trying to read string");
+    return absl::InvalidArgumentError(
+        "Data too short when trying to read string");
   }
   // See above for the check that the input offset is positive. If it's negative
   // here then it means that there's been an overflow in the arithmetic.
   if (sum < 0) {
-    return errors::InvalidArgument("Offset too large, overflowed: ", sum);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Offset too large, overflowed: ", sum));
   }
   *new_offset = sum;
   return absl::OkStatus();
@@ -124,8 +126,9 @@ absl::Status ExpectText(const std::string& data,
   const std::string found_text(data.begin() + *offset,
                                data.begin() + new_offset);
   if (found_text != expected_text) {
-    return errors::InvalidArgument("Header mismatch: Expected ", expected_text,
-                                   " but found ", found_text);
+    return absl::InvalidArgumentError(absl::StrCat("Header mismatch: Expected ",
+                                                   expected_text, " but found ",
+                                                   found_text));
   }
   *offset = new_offset;
   return absl::OkStatus();
@@ -153,19 +156,19 @@ absl::Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
 
   // If num_frames is zero, audio can be nullptr.
   if (audio == nullptr && num_frames > 0) {
-    return errors::InvalidArgument("audio is null");
+    return absl::InvalidArgumentError("audio is null");
   }
   if (wav_string == nullptr) {
-    return errors::InvalidArgument("wav_string is null");
+    return absl::InvalidArgumentError("wav_string is null");
   }
   if (sample_rate == 0 || sample_rate > std::numeric_limits<uint32_t>::max()) {
-    return errors::InvalidArgument("sample_rate must be in (0, 2^32), got: ",
-                                   sample_rate);
+    return absl::InvalidArgumentError(
+        absl::StrCat("sample_rate must be in (0, 2^32), got: ", sample_rate));
   }
   if (num_channels == 0 ||
       num_channels > std::numeric_limits<uint16_t>::max()) {
-    return errors::InvalidArgument("num_channels must be in (0, 2^16), got: ",
-                                   num_channels);
+    return absl::InvalidArgumentError(
+        absl::StrCat("num_channels must be in (0, 2^16), got: ", num_channels));
   }
 
   const size_t bytes_per_second = sample_rate * kBytesPerSample * num_channels;
@@ -177,7 +180,7 @@ absl::Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
   // WAV represents the length of the file as a uint32 so file_size cannot
   // exceed std::numeric_limits<uint32_t>::max().
   if (file_size > std::numeric_limits<uint32_t>::max()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Provided channels and frames cannot be encoded as a WAV.");
   }
 
@@ -251,7 +254,8 @@ absl::Status DecodeLin16WaveAsFloatVector(const std::string& wav_string,
     if (found_text != "JUNK" && found_text != "bext" && found_text != "iXML" &&
         found_text != "qlty" && found_text != "mext" && found_text != "levl" &&
         found_text != "link" && found_text != "axml") {
-      return errors::InvalidArgument("Unexpected field ", found_text);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unexpected field ", found_text));
     }
     uint32_t size_of_chunk;
     TF_RETURN_IF_ERROR(
@@ -264,21 +268,21 @@ absl::Status DecodeLin16WaveAsFloatVector(const std::string& wav_string,
   TF_RETURN_IF_ERROR(
       ReadValue<uint32_t>(wav_string, &format_chunk_size, &offset));
   if ((format_chunk_size != 16) && (format_chunk_size != 18)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Bad format chunk size for WAV: Expected 16 or 18, but got",
-        format_chunk_size);
+        format_chunk_size));
   }
   uint16_t audio_format;
   TF_RETURN_IF_ERROR(ReadValue<uint16_t>(wav_string, &audio_format, &offset));
   if (audio_format != 1) {
-    return errors::InvalidArgument(
-        "Bad audio format for WAV: Expected 1 (PCM), but got", audio_format);
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Bad audio format for WAV: Expected 1 (PCM), but got", audio_format));
   }
   TF_RETURN_IF_ERROR(ReadValue<uint16_t>(wav_string, channel_count, &offset));
   if (*channel_count < 1) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Bad number of channels for WAV: Expected at least 1, but got ",
-        *channel_count);
+        *channel_count));
   }
   TF_RETURN_IF_ERROR(ReadValue<uint32_t>(wav_string, sample_rate, &offset));
   uint32_t bytes_per_second;
@@ -295,24 +299,24 @@ absl::Status DecodeLin16WaveAsFloatVector(const std::string& wav_string,
   TF_RETURN_IF_ERROR(
       ReadValue<uint16_t>(wav_string, &bits_per_sample, &offset));
   if (bits_per_sample != 16) {
-    return errors::InvalidArgument(
-        "Can only read 16-bit WAV files, but received ", bits_per_sample);
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Can only read 16-bit WAV files, but received ", bits_per_sample));
   }
   const uint32_t expected_bytes_per_sample =
       ((bits_per_sample * *channel_count) + 7) / 8;
   if (bytes_per_sample != expected_bytes_per_sample) {
-    return errors::InvalidArgument(
-        "Bad bytes per sample in WAV header: Expected ",
-        expected_bytes_per_sample, " but got ", bytes_per_sample);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Bad bytes per sample in WAV header: Expected ",
+                     expected_bytes_per_sample, " but got ", bytes_per_sample));
   }
   const uint64_t expected_bytes_per_second =
       static_cast<uint64_t>(bytes_per_sample) * *sample_rate;
   if (static_cast<uint64_t>(bytes_per_second) != expected_bytes_per_second) {
-    return errors::InvalidArgument(
-        "Bad bytes per second in WAV header: Expected ",
-        expected_bytes_per_second, " but got ", bytes_per_second,
-        " (sample_rate=", *sample_rate, ", bytes_per_sample=", bytes_per_sample,
-        ")");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Bad bytes per second in WAV header: Expected ",
+                     expected_bytes_per_second, " but got ", bytes_per_second,
+                     " (sample_rate=", *sample_rate,
+                     ", bytes_per_sample=", bytes_per_sample, ")"));
   }
   if (format_chunk_size == 18) {
     // Skip over this unused section.
@@ -326,13 +330,14 @@ absl::Status DecodeLin16WaveAsFloatVector(const std::string& wav_string,
     uint32_t chunk_size;
     TF_RETURN_IF_ERROR(ReadValue<uint32_t>(wav_string, &chunk_size, &offset));
     if (chunk_size > std::numeric_limits<int32_t>::max()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "WAV data chunk '", chunk_id, "' is too large: ", chunk_size,
-          " bytes, but the limit is ", std::numeric_limits<int32_t>::max());
+          " bytes, but the limit is ", std::numeric_limits<int32_t>::max()));
     }
     if (chunk_id == kDataChunkId) {
       if (was_data_found) {
-        return errors::InvalidArgument("More than one data chunk found in WAV");
+        return absl::InvalidArgumentError(
+            "More than one data chunk found in WAV");
       }
       was_data_found = true;
       *sample_count = chunk_size / bytes_per_sample;
@@ -355,7 +360,7 @@ absl::Status DecodeLin16WaveAsFloatVector(const std::string& wav_string,
     }
   }
   if (!was_data_found) {
-    return errors::InvalidArgument("No data chunk found in WAV");
+    return absl::InvalidArgumentError("No data chunk found in WAV");
   }
   return absl::OkStatus();
 }

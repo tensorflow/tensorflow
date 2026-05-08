@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -30,7 +31,8 @@ namespace gpu {
 
 bool IsCublasGemm(const HloInstruction& hlo) {
   return IsLegacyCublasMatmul(hlo) || IsCublasLtMatmul(hlo) ||
-         IsCublasLtMatmulF8(hlo) || IsCublasLtMatmulMx(hlo);
+         IsCublasLtMatmulF8(hlo) || IsCublasLtMatmulMx(hlo) ||
+         IsCublasLtGroupedMatmul(hlo);
 }
 
 bool IsLegacyCublasMatmul(const HloInstruction& hlo) {
@@ -41,6 +43,11 @@ bool IsLegacyCublasMatmul(const HloInstruction& hlo) {
 bool IsCublasLtMatmul(const HloInstruction& hlo) {
   return hlo.opcode() == HloOpcode::kCustomCall &&
          hlo.custom_call_target() == kCublasLtMatmulCallTarget;
+}
+
+bool IsCublasLtGroupedMatmul(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kCustomCall &&
+         hlo.custom_call_target() == kCublasLtGroupedMatmulCallTarget;
 }
 
 bool IsCublasLtMatmulF8(const HloInstruction& hlo) {
@@ -143,25 +150,10 @@ bool IsCustomCallToBlockScaledDot(const HloInstruction& hlo) {
          hlo.custom_call_target() == kCudnnBlockScaledDotCallTarget;
 }
 
-bool IsCubDeviceRadixSort(const HloInstruction& hlo) {
-  return hlo.opcode() == HloOpcode::kCustomCall &&
-         hlo.custom_call_target() == kCubDeviceRadixSortTarget;
-}
-
 bool IsCubDeviceRadixSortNoScratchSize(const HloInstruction& hlo) {
   return hlo.opcode() == HloOpcode::kCustomCall &&
          hlo.custom_call_target() ==
              kCubDeviceRadixSortUnassignedScratchSizeTarget;
-}
-
-bool IsCubDeviceScan(const HloInstruction& hlo) {
-  return hlo.opcode() == HloOpcode::kCustomCall &&
-         hlo.custom_call_target() == kCubDeviceScanTarget;
-}
-
-bool IsCubDeviceScanNoScratchSize(const HloInstruction& hlo) {
-  return hlo.opcode() == HloOpcode::kCustomCall &&
-         hlo.custom_call_target() == kCubDeviceScanUnassignedScratchSizeTarget;
 }
 
 absl::StatusOr<CudnnConvKind> GetCudnnConvKind(

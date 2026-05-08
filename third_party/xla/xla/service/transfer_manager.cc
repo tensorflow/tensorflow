@@ -248,7 +248,7 @@ absl::Status TransferManager::WriteTupleIndexTablesAsync(
         if (device_subshape.IsTuple() &&
             ShapeUtil::TupleElementCount(device_subshape) > 0) {
           se::DeviceAddressBase device_memory = device_buffer.buffer(index);
-          TF_RET_CHECK(GetByteSizeRequirement(device_subshape) ==
+          TF_RET_CHECK(GetByteSizeRequirement(device_subshape) <=
                        device_memory.size());
 
           std::vector<se::DeviceAddressBase> elements;
@@ -274,7 +274,7 @@ absl::Status TransferManager::WriteRootTupleIndexTable(
     return absl::OkStatus();
   }
   se::DeviceAddressBase device_memory = device_buffer.buffer({});
-  TF_RET_CHECK(GetByteSizeRequirement(device_buffer.on_device_shape()) ==
+  TF_RET_CHECK(GetByteSizeRequirement(device_buffer.on_device_shape()) <=
                device_memory.size());
 
   std::vector<se::DeviceAddressBase> elements;
@@ -297,7 +297,7 @@ absl::Status TransferManager::WriteRootTupleIndexTable(
   }
   se::DeviceAddressBase device_memory =
       buffer_tree.element({}).AsDeviceAddress();
-  TF_RET_CHECK(GetByteSizeRequirement(buffer_tree.shape()) ==
+  TF_RET_CHECK(GetByteSizeRequirement(buffer_tree.shape()) <=
                device_memory.size());
 
   std::vector<se::DeviceAddressBase> elements;

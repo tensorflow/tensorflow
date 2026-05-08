@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/instruction_hoister.h"
 
+#include <vector>
+
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -138,6 +142,83 @@ bool HoistConstantOperations(
   }
   return modified;
 }
+
+// Modifies the schedules in the given module to hoist the given opcode to
+// immediately follow its producer.
+bool HoistOpcodeAfterProducer(
+    HloModule& module, HloOpcode opcode,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  CHECK(module.has_schedule());
+  HloSchedule& schedule = module.schedule();
+
+  bool modified = false;
+  for (const HloComputation* computation :
+       module.MakeNonfusionComputations(execution_threads)) {
+    CHECK(schedule.is_computation_scheduled(computation));
+    const HloInstructionSequence& sequence = schedule.sequence(computation);
+
+    // Map from producer to a list of its opcode users that should be hoisted.
+    absl::flat_hash_map<const HloInstruction*, std::vector<HloInstruction*>>
+        hoisted_instructions;
+    absl::flat_hash_set<const HloInstruction*> instructions_to_hoist;
+
+    for (HloInstruction* instruction : sequence.instructions()) {
+      if (instruction->opcode() == opcode &&
+          instruction->control_predecessors().empty() &&
+          instruction->control_successors().empty()) {
+        hoisted_instructions[instruction->operand(0)].push_back(instruction);
+        instructions_to_hoist.insert(instruction);
+      }
+    }
+
+    if (instructions_to_hoist.empty()) {
+      continue;
+    }
+    modified = true;
+    HloInstructionSequence new_sequence;
+
+    // Helper to recursively add instructions.
+    absl::AnyInvocable<void(HloInstruction*)>
+        add_instruction_and_hoisted_users = [&](HloInstruction* instr) {
+          new_sequence.push_back(instr);
+          auto it = hoisted_instructions.find(instr);
+          if (it != hoisted_instructions.end()) {
+            for (HloInstruction* hoisted_user : it->second) {
+              add_instruction_and_hoisted_users(hoisted_user);
+            }
+          }
+        };
+
+    for (HloInstruction* instruction : sequence.instructions()) {
+      if (instructions_to_hoist.contains(instruction)) {
+        continue;
+      }
+      add_instruction_and_hoisted_users(instruction);
+    }
+
+    CHECK_EQ(new_sequence.size(), sequence.size());
+    schedule.set_sequence(computation, new_sequence);
+  }
+  return modified;
+}
+
+// Modifies the schedules in the given module to hoist bitcast operations to
+// immediately follow their producers.
+bool HoistBitcastOperations(
+    HloModule& module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  return HoistOpcodeAfterProducer(module, HloOpcode::kBitcast,
+                                  execution_threads);
+}
+
+// Modifies the schedules in the given module to hoist GetTupleElement
+// operations to immediately follow their producers.
+bool HoistGetTupleElementOperations(
+    HloModule& module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  return HoistOpcodeAfterProducer(module, HloOpcode::kGetTupleElement,
+                                  execution_threads);
+}
 }  // namespace
 
 absl::StatusOr<bool> InstructionHoister::RunImpl(
@@ -150,6 +231,15 @@ absl::StatusOr<bool> InstructionHoister::RunImpl(
   if (host_constants_) {
     modified |= HoistConstantOperations(*module, execution_threads);
   }
+
+  if (hoist_gtes_) {
+    modified |= HoistGetTupleElementOperations(*module, execution_threads);
+  }
+
+  if (hoist_bitcasts_) {
+    modified |= HoistBitcastOperations(*module, execution_threads);
+  }
+
   return modified;
 }
 

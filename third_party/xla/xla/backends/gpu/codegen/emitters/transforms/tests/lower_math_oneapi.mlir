@@ -1,5 +1,5 @@
 // RUN: emitters_opt %s --split-input-file \
-// RUN:   --xla-lower-to-llvm-gpu="gpu_device_info='oneapi_compute_capability { architecture: \"bmg\"}'" \
+// RUN:   --xla-gpu-test-to-llvm="gpu_device_info='oneapi_compute_capability { architecture: \"bmg\"}'" \
 // RUN: | FileCheck %s
 
 module {
@@ -13,3 +13,25 @@ module {
     return %0 : f32
   }
 }
+
+// -----
+
+module {
+  func.func @test_tan(%arg0: complex<f32>) -> complex<f32> {
+    %0 = complex.tan %arg0 : complex<f32>
+    func.return %0 : complex<f32>
+  }
+}
+
+// CHECK-LABEL: @test_tan
+// CHECK-SAME: %[[ARG0:.*]]: !llvm.struct<(f32, f32)>
+// CHECK: %[[V0:.*]] = llvm.extractvalue %[[ARG0]][0]
+// CHECK: %[[V1:.*]] = llvm.extractvalue %[[ARG0]][1]
+// CHECK: %[[E0:.*]] = llvm.intr.exp
+// CHECK: %[[EM0:.*]] = llvm.fsub %[[E0]], %{{.*}}
+// CHECK: %[[E1:.*]] = llvm.intr.exp
+// CHECK: %[[EM1:.*]] = llvm.fsub %[[E1]], %{{.*}}
+// CHECK: llvm.fsub %[[EM0]], %[[EM1]] : f32
+// CHECK-DAG: llvm.intr.cos(%[[V0]])
+// CHECK-DAG: llvm.intr.sin(%[[V0]])
+// CHECK: llvm.return %{{.*}} : !llvm.struct<(f32, f32)>

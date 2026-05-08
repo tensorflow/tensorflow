@@ -22,14 +22,16 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
+#include "xla/codegen/tiling/experimental/tiled_hlo.h"
+#include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
-#include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/codegen/tiling/tiled_hlo_schedule.h"
 #include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
@@ -585,28 +587,18 @@ TEST_F(CoalescingTest, Param) {
   EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(true, true, true));
 }
 
-class CoalescingForTiledHloTest : public CoalescingTest {
+class CoalescingForTiledHloTest : public CoalescingTest,
+                                  public ::testing::WithParamInterface<bool> {
  public:
-  std::vector<bool> IsTiledReadCoalescedPerOperand(
-      const HloInstruction* root, absl::Span<int64_t const> tile_sizes) {
-    auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  bool use_experimental_tiling() const { return GetParam(); }
 
-    SymbolicTileAnalysis symbolic_tile_analysis =
-        std::get<SymbolicTileAnalysis>(SymbolicTileAnalysis::AnalyzeFusion(
-            *fusion_adaptor, &mlir_context_));
-
-    TiledHloComputation tiled_hlo_computation =
-        *symbolic_tile_analysis.ComputeTiledComputation(
-            Tiling({{root, FlatTiling(tile_sizes.begin(), tile_sizes.end())}}),
-            CreateMajorToMinorTiledHloSchedule,
-            /*constraints_are_known_satisfied=*/true,
-            /*compute_all_tile_offset_indexing_maps=*/true);
-
-    const TiledHloInstruction* tiled_hlo_root =
-        tiled_hlo_computation.GetRoots()[0];
-    std::vector<bool> result;
-    for (const TiledHloInstruction* operand : tiled_hlo_root->operands()) {
-      result.push_back(IsTiledReadCoalescedHeuristic(*operand, device_info_));
+  template <typename TiledHloInstructionType>
+  std::vector<double> EffectiveBandwidthUtilizationRatePerOperandImpl(
+      const TiledHloInstructionType* tiled_hlo_root) {
+    std::vector<double> result;
+    for (const TiledHloInstructionType* operand : tiled_hlo_root->operands()) {
+      result.push_back(BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
+          *operand, device_info_));
     }
     return result;
   }
@@ -615,132 +607,42 @@ class CoalescingForTiledHloTest : public CoalescingTest {
       const HloInstruction* root, absl::Span<int64_t const> tile_sizes) {
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
 
+    if (use_experimental_tiling()) {
+      std::unique_ptr<experimental::TilingSpace> tiling_space =
+          experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+
+      tiling_space->AssignTileSizes(tile_sizes);
+
+      absl::StatusOr<experimental::TiledHloComputation> tiled_hlo_computation =
+          experimental::TiledHloComputation::Tile(*fusion_adaptor,
+                                                  std::move(tiling_space));
+      CHECK_OK(tiled_hlo_computation);
+
+      return EffectiveBandwidthUtilizationRatePerOperandImpl(
+          tiled_hlo_computation->roots()[0]);
+    }
+
     SymbolicTileAnalysis symbolic_tile_analysis =
         std::get<SymbolicTileAnalysis>(SymbolicTileAnalysis::AnalyzeFusion(
             *fusion_adaptor, &mlir_context_));
 
-    TiledHloComputation tiled_hlo_computation =
-        *symbolic_tile_analysis.ComputeTiledComputation(
+    absl::StatusOr<TiledHloComputation> tiled_hlo_computation =
+        symbolic_tile_analysis.ComputeTiledComputation(
             Tiling({{root, FlatTiling(tile_sizes.begin(), tile_sizes.end())}}),
             CreateMajorToMinorTiledHloSchedule,
             /*constraints_are_known_satisfied=*/true,
             /*compute_all_tile_offset_indexing_maps=*/true);
+    CHECK_OK(tiled_hlo_computation);
 
-    const TiledHloInstruction* tiled_hlo_root =
-        tiled_hlo_computation.GetRoots()[0];
-    std::vector<double> result;
-    for (const TiledHloInstruction* operand : tiled_hlo_root->operands()) {
-      result.push_back(BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
-          *operand, device_info_));
-    }
-    return result;
+    return EffectiveBandwidthUtilizationRatePerOperandImpl(
+        tiled_hlo_computation->roots()[0]);
   }
 };
 
-TEST_F(CoalescingForTiledHloTest, TiledReadCoalescedHeuristic_Transpose) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
-HloModule m
+INSTANTIATE_TEST_SUITE_P(CoalescingForTiledHloTest, CoalescingForTiledHloTest,
+                         testing::Bool());
 
-ENTRY main {
-  p0 = f32[2048, 48] parameter(0)
-  ROOT transpose = f32[48, 2048] transpose(p0), dimensions={1, 0}
-})"));
-
-  const HloInstruction* root = module->entry_computation()->root_instruction();
-
-  // The operand is not coalesced because the tile has stride 48.
-  EXPECT_THAT(IsTiledReadCoalescedPerOperand(root, {1, 2048}),
-              ElementsAre(false));
-
-  // The operand is coalesced because we read 48 contiguous elements.
-  EXPECT_THAT(IsTiledReadCoalescedPerOperand(root, {48, 32}),
-              ElementsAre(true));
-}
-
-TEST_F(CoalescingForTiledHloTest,
-       TiledReadCoalescedHeuristic_MaskingIsHandledCorrectly) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
-HloModule m
-
-ENTRY main {
-  p0 = f32[2048, 12] parameter(0)
-  ROOT transpose = f32[12, 2048] transpose(p0), dimensions={1, 0}
-})"));
-
-  const HloInstruction* root = module->entry_computation()->root_instruction();
-
-  constexpr int kNumBytesPerParamRow = 12 * 4;
-
-  // The transaction size can be configured in different ways, and the minimum
-  // possible value on A100 is 32 bytes---which would make this test fail.
-  // Ensure that the transaction size is configured to be large enough.
-  ASSERT_GT(device_info_.dram_to_l2_transaction_size_bytes(),
-            kNumBytesPerParamRow);
-
-  // The operand is coalesced because we read 4 * 12 = 48 contiguous elements
-  // (though the tile contains 64 elements due to the mask).
-  EXPECT_THAT(IsTiledReadCoalescedPerOperand(root, {16, 4}), ElementsAre(true));
-
-  // The mask should be ignored when checking whether reads are coalesced.
-  EXPECT_THAT(IsTiledReadCoalescedPerOperand(root, {1024, 1}),
-              ElementsAre(false));
-}
-
-TEST_F(CoalescingForTiledHloTest, RhsTransposedLayout) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
-HloModule m
-
-ENTRY main {
-  p0 = f32[256, 512]{1,0} parameter(0)
-  p1 = f32[256, 512]{0,1} parameter(1)
-  ROOT add = f32[256, 512]{1,0} add(p0, p1)
-})"));
-
-  const HloInstruction* root = module->entry_computation()->root_instruction();
-
-  constexpr int kExpectedDramToL2TransactionSize = 64;
-  ASSERT_EQ(device_info_.dram_to_l2_transaction_size_bytes(),
-            kExpectedDramToL2TransactionSize);
-
-  EXPECT_THAT(IsTiledReadCoalescedPerOperand(root, {1, 16}),
-              ElementsAre(true, false));
-  EXPECT_THAT(IsTiledReadCoalescedPerOperand(root, {16, 1}),
-              ElementsAre(false, true));
-  EXPECT_THAT(IsTiledReadCoalescedPerOperand(root, {16, 16}),
-              ElementsAre(true, true));
-  EXPECT_THAT(IsTiledReadCoalescedPerOperand(root, {8, 8}),
-              ElementsAre(false, false));
-}
-
-TEST_F(CoalescingForTiledHloTest, SmallDataTypes) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
-HloModule m
-
-ENTRY main {
-  p0 = s8[256, 512] parameter(0)
-  p1 = s8[256, 512] parameter(1)
-  ROOT add = s8[256, 512] add(p0, p1)
-})"));
-
-  const HloInstruction* root = module->entry_computation()->root_instruction();
-
-  constexpr int kExpectedDramToL2TransactionSize = 64;
-  ASSERT_EQ(device_info_.dram_to_l2_transaction_size_bytes(),
-            kExpectedDramToL2TransactionSize);
-
-  // To be coalesced, a contiguous chunk of memory load should be at least
-  // kExpectedDramToL2TransactionSize bytes long.
-  EXPECT_THAT(IsTiledReadCoalescedPerOperand(root, {16, 16}),
-              ElementsAre(false, false));
-  EXPECT_THAT(IsTiledReadCoalescedPerOperand(root, {16, 32}),
-              ElementsAre(false, false));
-  EXPECT_THAT(IsTiledReadCoalescedPerOperand(root, {16, 64}),
-              ElementsAre(true, true));
-  EXPECT_THAT(IsTiledReadCoalescedPerOperand(root, {16, 128}),
-              ElementsAre(true, true));
-}
-
-TEST_F(
+TEST_P(
     CoalescingForTiledHloTest,
     EffectiveBandwidthUtilizationRateIsComputedCorrectlyForTiledMemoryAccess) {  // NOLINT(whitespace/line_length)
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(

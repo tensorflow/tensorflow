@@ -128,7 +128,7 @@ int main(int argc, char* argv[]) {
   CHECK(interpreter->Invoke() == kTfLiteOk);
 
   // Get output buffer.
-  // The only ouput to the test model is a single tensor of floats.
+  // The only output to the test model is a single tensor of floats.
   float* output = interpreter->typed_output_tensor<float>(0);
   int64_t num_output_elements =
       TfLiteTensorByteSize(interpreter->output_tensor(0)) / sizeof(float);

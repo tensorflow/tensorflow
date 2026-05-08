@@ -287,13 +287,6 @@ class CStreamExecutor : public StreamExecutorCommon {
     }
     return true;
   }
-  absl::Status SynchronousMemZero(DeviceMemoryBase* location,
-                                  uint64_t size) override {
-    // TODO(annarev): figure out if we should support memzero/memset
-    // functionality by allocating on host and then copying to device.
-    return tsl::errors::Unimplemented(
-        "SynchronousMemZero is not supported by pluggable device.");
-  }
   absl::Status SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
                                  const void* host_src, uint64_t size) override {
     OwnedTFStatus c_status(TF_NewStatus());
@@ -323,7 +316,7 @@ class CStreamExecutor : public StreamExecutorCommon {
   }
 
   absl::Status EnablePeerAccessTo(StreamExecutor* other) override {
-    return tsl::errors::Unimplemented(
+    return absl::UnimplementedError(
         "EnablePeerAccessTo is not supported by pluggable device.");
   }
   bool CanEnablePeerAccessTo(StreamExecutor* other) override { return false; }
@@ -384,8 +377,8 @@ class CStreamExecutor : public StreamExecutorCommon {
   }
 
   absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
-      MemoryType type) override {
-    if (type == MemoryType::kUnified) {
+      MemorySpace type) override {
+    if (type == MemorySpace::kUnified) {
       return std::make_unique<GenericMemoryAllocator>(
           [this](uint64_t size)
               -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
@@ -399,7 +392,7 @@ class CStreamExecutor : public StreamExecutorCommon {
                   stream_executor_->unified_memory_deallocate(&device_, ptr);
                 });
           });
-    } else if (type == MemoryType::kHost) {
+    } else if (type == MemorySpace::kHost) {
       return std::make_unique<GenericMemoryAllocator>(
           [this](uint64_t size)
               -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {

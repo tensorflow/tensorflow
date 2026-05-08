@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/rocm_tracer_utils.h"
 #include "xla/debug_options_flags.h"
 #include "xla/tsl/platform/env_time.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/profiler/backends/cpu/annotation_stack.h"
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/lib/profiler_interface.h"
@@ -109,9 +110,10 @@ absl::Status GpuTracer::DoStart() {
       GetRocmTraceCollectorOptions(rocm_tracer_->NumGpus());
   rocm_trace_collector_ = CreateRocmCollector(
       trace_collector_options, start_walltime_ns, start_gputime_ns);
+  rocm_trace_collector_->SetGpuAgents(rocm_tracer_->GpuAgents());
 
-  rocm_tracer_->Enable(tracer_options, rocm_trace_collector_.get());
-
+  TF_RETURN_IF_ERROR(
+      rocm_tracer_->Enable(tracer_options, rocm_trace_collector_.get()));
   return absl::OkStatus();
 }
 
@@ -155,7 +157,11 @@ absl::Status GpuTracer::CollectData(XSpace* space) {
       VLOG(3) << "No trace data collected";
       return absl::OkStatus();
     case State::kStoppedOk: {
-      if (rocm_trace_collector_) rocm_trace_collector_->Export(space);
+      if (rocm_trace_collector_) {
+        rocm_trace_collector_->SetScopeRangeIdTree(
+            rocm_tracer_->annotation_map()->TakeScopeRangeIdTree());
+        rocm_trace_collector_->Export(space);
+      }
       return absl::OkStatus();
     }
   }

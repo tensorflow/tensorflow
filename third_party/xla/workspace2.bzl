@@ -5,6 +5,7 @@ load("@bazel_skylib//lib:versions.bzl", "versions")
 load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
 load("@bazel_tools//tools/build_defs/repo:utils.bzl", "maybe")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
+load("@rules_ml_toolchain//gpu/rocm:hipcc_configure.bzl", "hipcc_configure")
 load("@rules_ml_toolchain//gpu/sycl:sycl_configure.bzl", "sycl_configure")
 load("@rules_ml_toolchain//gpu/sycl:sycl_init_repository.bzl", "sycl_init_repository")
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
@@ -27,6 +28,7 @@ load("//third_party/gemmlowp:workspace.bzl", gemmlowp = "repo")
 load("//third_party/gloo:workspace.bzl", gloo = "repo")
 load("//third_party/gpus:rocm_configure.bzl", "rocm_configure")
 load("//third_party/gutil:workspace.bzl", gutil = "repo")
+load("//third_party/highway:workspace.bzl", highway = "repo")
 load("//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
 load("//third_party/hwloc:workspace.bzl", hwloc = "repo")
 load("//third_party/implib_so:workspace.bzl", implib_so = "repo")
@@ -36,8 +38,10 @@ load("//third_party/mkl_dnn:workspace.bzl", onednn = "repo")
 load("//third_party/mpitrampoline:workspace.bzl", mpitrampoline = "repo")
 load("//third_party/nanobind:workspace.bzl", nanobind = "repo")
 load("//third_party/nasm:workspace.bzl", nasm = "repo")
+load("//third_party/nccl:workspace.bzl", nccl = "repo")
 load("//third_party/net_zstd:workspace.bzl", net_zstd = "repo")
 load("//third_party/nvshmem:workspace.bzl", nvshmem = "repo")
+load("//third_party/nvtx:workspace.bzl", nvtx = "repo")
 load("//third_party/pthreadpool:workspace.bzl", pthreadpool = "repo")
 load("//third_party/py:python_configure.bzl", "python_configure")
 load("//third_party/py/ml_dtypes:workspace.bzl", ml_dtypes = "repo")
@@ -86,6 +90,7 @@ def _initialize_third_party():
     gemmlowp()
     gloo()
     gutil()
+    highway()
     highwayhash()
     hwloc()
     implib_so()
@@ -94,8 +99,10 @@ def _initialize_third_party():
     mpitrampoline()
     nanobind()
     nasm()
+    nccl()
     net_zstd()
     nvshmem()
+    nvtx()
     onednn()
     pybind11_abseil()
     pybind11_bazel()
@@ -132,6 +139,7 @@ def _tf_toolchains():
     cc_download_clang_toolchain(name = "local_config_download_clang")
     tensorrt_configure(name = "local_config_tensorrt")
     python_configure(name = "local_config_python")
+    hipcc_configure(name = "config_rocm_hipcc")  # Must be before rocm_configure.
     rocm_configure(name = "local_config_rocm")
     sycl_init_repository()
     sycl_configure(name = "local_config_sycl")
@@ -347,7 +355,7 @@ def _tf_repositories():
         name = "com_github_grpc_grpc",
         sha256 = "e2ace790a5f2d0f83259d1390a816a33b013ea34df2e86084d927e58daa4c5d9",
         strip_prefix = "grpc-1.78.0",
-        patch_file = ["//third_party/grpc:grpc.patch"],
+        patch_file = ["//third_party/grpc:grpc.patch", "//third_party/grpc:layering_check.patch"],
         urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.78.0.tar.gz"),
     )
 
@@ -376,23 +384,6 @@ def _tf_repositories():
         sha256 = "736aeb64d86566d2236ddffa2865ee5d7a82d26c9016b36218fcc27ea4f09f86",
         strip_prefix = "snappy-1.2.1",
         urls = tf_mirror_urls("https://github.com/google/snappy/archive/refs/tags/1.2.1.tar.gz"),
-    )
-
-    tf_http_archive(
-        name = "nccl_archive",
-        build_file = "//third_party/nccl:archive.BUILD",
-        patch_file = ["//third_party/nccl:archive.patch"],
-        sha256 = "98e6262bd55932c51e7c8ffc50cc764f019e4b94a8fd6694d839ae828ec8d128",
-        strip_prefix = "nccl-2.27.7-1",
-        urls = tf_mirror_urls("https://github.com/NVIDIA/nccl/archive/refs/tags/v2.27.7-1.tar.gz"),
-    )
-
-    tf_http_archive(
-        name = "nvtx_archive",
-        build_file = "//third_party:nvtx/BUILD.bazel",
-        sha256 = "5a581c3234c5a6b2fd94363e3fdd5a4f5d2a3d9c53c4b9442b0784e6cdfe722c",
-        strip_prefix = "NVTX-2942f167cc30c5e3a44a2aecd5b0d9c07ff61a07/c/include",
-        urls = tf_mirror_urls("https://github.com/NVIDIA/NVTX/archive/2942f167cc30c5e3a44a2aecd5b0d9c07ff61a07.tar.gz"),
     )
 
     tf_http_archive(

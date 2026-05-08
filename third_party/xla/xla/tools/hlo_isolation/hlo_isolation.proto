@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package xla;
+
+import "google/protobuf/any.proto";
+
+option java_outer_classname = "HloIsolation";
+option java_multiple_files = true;
+
+enum State {
+  IN_PROGRESS = 0;
+  SUCCESS = 1;
+  FAILURE = 2;
+  SKIPPED = 3;
+  QUEUED = 4;
+}
+
+message NumericMismatch {
+  optional double actual = 1;
+  optional double expected = 2;
+  optional double rel_error = 3;
+  optional double percentage_of_elems_exceeding_abs_error = 4;
+  optional double percentage_of_elems_exceeding_rel_error = 5;
+  optional double percentage_of_elems_exceeding_both_errors = 6;
+  optional int64 output_shape_index = 7;
+  optional bool result_of_reduce = 8;
+}
+
+message NumericCheck {
+  optional string name = 1;
+  NumericMismatch top_mismatch = 2;
+  repeated NumericMismatch top_mismatches = 6;
+  optional bool actual_contains_inf_or_nan = 3;
+  optional bool expected_contains_inf_or_nan = 4;
+}
+
+message HloIsolationTestResult {
+  optional string module_name = 1;
+  optional State state = 2;
+  optional int64 shard_index = 3;
+  optional string reason = 4;
+  repeated NumericCheck numeric_checks = 5;
+  google.protobuf.Any platform_payload = 6;
+}

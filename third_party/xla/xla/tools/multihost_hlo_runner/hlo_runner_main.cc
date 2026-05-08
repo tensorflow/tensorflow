@@ -310,8 +310,10 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
     } else {
       std::cout << "\n** Compiling " << hlo_file << " **\n";
       TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
-          *env.client, GetDebugOptionsFromFlags(), preproc_options,
-          raw_compile_options, argv[c], opts.input_format, opts.task_id));
+                             *env.client, GetDebugOptionsFromFlags(),
+                             preproc_options, raw_compile_options, argv[c],
+                             opts.input_format, opts.task_id)
+                             .status());
     }
     for (int i = 0; i < execution_profiles.size(); ++i) {
       std::cout << "## Execution time, file=" << hlo_file << " repeat=" << i

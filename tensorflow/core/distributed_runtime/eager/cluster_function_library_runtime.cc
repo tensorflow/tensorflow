@@ -67,7 +67,8 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
     return;
   }
   if (!released_op->is_function()) {
-    done(errors::Internal(function_name, " is not a function."));
+    done(absl::InternalError(
+        absl::StrCat(function_name, " is not a function.")));
     return;
   }
 
@@ -81,8 +82,8 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
   }
 
   if (eager_client == nullptr) {
-    done(errors::InvalidArgument("Could not find eager client for target: ",
-                                 target));
+    done(absl::InvalidArgumentError(
+        absl::StrCat("Could not find eager client for target: ", target)));
     return;
   }
 
@@ -109,13 +110,14 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
     auto iter =
         fdef_attrs.find(FunctionLibraryDefinition::kFunctionRunsAtMostOnce);
     if (iter == fdef_attrs.end()) {
-      done(errors::Internal("Missing function_runs_at_most_once attribute."));
+      done(
+          absl::InternalError("Missing function_runs_at_most_once attribute."));
       return;
     }
     if (!iter->second.b()) {
       done(
-          errors::Internal("Unexpected `false` value for "
-                           "function_runs_at_most_once attribute."));
+          absl::InternalError("Unexpected `false` value for "
+                              "function_runs_at_most_once attribute."));
       return;
     }
   }
@@ -156,8 +158,8 @@ void EagerClusterFunctionLibraryRuntime::Run(
               rets->push_back(std::get<Tensor>(t));
             } else {
               status.Update(
-                  errors::Internal("Expect a Tensor as a remote function "
-                                   "output but got a TensorShape."));
+                  absl::InternalError("Expect a Tensor as a remote function "
+                                      "output but got a TensorShape."));
               break;
             }
           }
@@ -181,13 +183,13 @@ void EagerClusterFunctionLibraryRuntime::Run(
 
   EagerClient* eager_client = function_data->eager_client.get();
   if (eager_client == nullptr) {
-    done(errors::Internal("Could not find eager client"));
+    done(absl::InternalError("Could not find eager client"));
     return;
   }
 
   EagerOperation* op = function_data->op.get();
   if (!op->Inputs().empty()) {
-    done(errors::Internal("Inputs should not be set during instantiation."));
+    done(absl::InternalError("Inputs should not be set during instantiation."));
     return;
   }
 
@@ -238,7 +240,7 @@ void EagerClusterFunctionLibraryRuntime::Run(
         token,
         [call_opts, request, response, done]() { call_opts->StartCancel(); });
     if (already_cancelled) {
-      done(errors::Cancelled("EagerClusterFunctionLibraryRuntime::Run"));
+      done(absl::CancelledError("EagerClusterFunctionLibraryRuntime::Run"));
       return;
     }
   }
@@ -259,7 +261,7 @@ void EagerClusterFunctionLibraryRuntime::Run(
           return;
         }
         if (!response->shape().empty() && !response->tensor().empty()) {
-          done(errors::Internal(
+          done(absl::InternalError(
               "Both shape and tensor are specified in the same response"));
           return;
         }
@@ -271,8 +273,9 @@ void EagerClusterFunctionLibraryRuntime::Run(
           if (t.FromProto(tensor_proto)) {
             rets->push_back(std::move(t));
           } else {
-            done(errors::Internal("Could not convert tensor proto: ",
-                                  tensor_proto.DebugString()));
+            done(absl::InternalError(
+                absl::StrCat("Could not convert tensor proto: ",
+                             tensor_proto.DebugString())));
             return;
           }
         }
@@ -292,7 +295,7 @@ void EagerClusterFunctionLibraryRuntime::CleanUp(
 
   EagerClient* eager_client = function_data->eager_client.get();
   if (eager_client == nullptr) {
-    done(errors::Internal("Could not find eager client"));
+    done(absl::InternalError("Could not find eager client"));
     return;
   }
 

@@ -47,22 +47,24 @@ class InTopK : public OpKernel {
     if (context->num_inputs() == 3) {
       const auto& k_in = context->input(2);
 
-      OP_REQUIRES(context, TensorShapeUtils::IsScalar(k_in.shape()),
-                  errors::InvalidArgument("k must be 0-D, got shape ",
-                                          k_in.shape().DebugString()));
+      OP_REQUIRES(
+          context, TensorShapeUtils::IsScalar(k_in.shape()),
+          absl::InvalidArgumentError(absl::StrCat("k must be 0-D, got shape ",
+                                                  k_in.shape().DebugString())));
 
       k_tensor = &k_in;
     }
 
-    OP_REQUIRES(context, predictions_in.dims() == 2,
-                errors::InvalidArgument("predictions must be 2-dimensional"));
+    OP_REQUIRES(
+        context, predictions_in.dims() == 2,
+        absl::InvalidArgumentError("predictions must be 2-dimensional"));
     OP_REQUIRES(context, targets_in.dims() == 1,
-                errors::InvalidArgument("targets must be 1-dimensional"));
-    OP_REQUIRES(context, predictions_in.dim_size(0) == targets_in.dim_size(0),
-                errors::InvalidArgument("First dimension of predictions ",
-                                        predictions_in.dim_size(0),
-                                        " must match length of targets ",
-                                        targets_in.dim_size(0)));
+                absl::InvalidArgumentError("targets must be 1-dimensional"));
+    OP_REQUIRES(
+        context, predictions_in.dim_size(0) == targets_in.dim_size(0),
+        absl::InvalidArgumentError(absl::StrCat(
+            "First dimension of predictions ", predictions_in.dim_size(0),
+            " must match length of targets ", targets_in.dim_size(0))));
 
     const auto predictions = predictions_in.matrix<T>();
     const auto targets = targets_in.vec<TARGET_T>();

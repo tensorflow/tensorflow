@@ -34,6 +34,8 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -77,18 +79,50 @@ absl::StatusOr<bool> AllReduceSimplifier::RunImpl(
     return participant_counts[0];
   };
 
+  // AllGather and ReduceScatter with the same input and output shape
   bool changed = false;
+  std::vector<HloComputation*> async_computations_to_remove;
   for (auto computation : module->computations(execution_threads)) {
-    for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
-      // AllGather and ReduceScatter with the same input and output shape
-      if ((inst->opcode() == HloOpcode::kAllGather ||
-           inst->opcode() == HloOpcode::kReduceScatter) &&
-          ShapeUtil::Compatible(inst->shape(), inst->operand(0)->shape())) {
-        changed = true;
-        TF_RETURN_IF_ERROR(
-            computation->ReplaceInstruction(inst, inst->mutable_operand(0)));
+    if (computation->IsAsyncComputation()) {
+      HloInstruction* root = computation->root_instruction();
+      if ((root->opcode() == HloOpcode::kAllGather ||
+           root->opcode() == HloOpcode::kReduceScatter) &&
+          ShapeUtil::Compatible(root->shape(), root->operand(0)->shape())) {
+        async_computations_to_remove.push_back(computation);
+      }
+    } else {
+      for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
+        if ((inst->opcode() == HloOpcode::kAllGather ||
+             inst->opcode() == HloOpcode::kReduceScatter) &&
+            ShapeUtil::Compatible(inst->shape(), inst->operand(0)->shape())) {
+          changed = true;
+          TF_RETURN_IF_ERROR(
+              computation->ReplaceInstruction(inst, inst->mutable_operand(0)));
+        }
       }
     }
+  }
+
+  for (HloComputation* computation : async_computations_to_remove) {
+    auto callers = computation->caller_instructions(HloOpcode::kAsyncStart);
+    TF_RET_CHECK(callers.size() == 1)
+        << "Expected exactly one caller for async computation "
+        << computation->name();
+    HloInstruction* async_start = callers[0];
+    HloInstruction* input = async_start->mutable_operand(0);
+    HloInstruction* async_done = nullptr;
+    for (HloInstruction* user : async_start->users()) {
+      if (user->opcode() == HloOpcode::kAsyncDone) {
+        async_done = user;
+        break;
+      }
+    }
+    TF_RET_CHECK(async_done != nullptr)
+        << "Expected async-done for async-start " << async_start->name();
+    TF_RETURN_IF_ERROR(
+        async_done->parent()->ReplaceInstruction(async_done, input));
+    TF_RETURN_IF_ERROR(module->RemoveEmbeddedComputation(computation));
+    changed = true;
   }
 
   for (auto computation : module->computations(execution_threads)) {
@@ -101,6 +135,11 @@ absl::StatusOr<bool> AllReduceSimplifier::RunImpl(
         continue;
       }
       if (!inst->IsCrossReplicaAllReduce() && !inst->IsCrossModuleAllReduce()) {
+        continue;
+      }
+      if (inst->opcode() == HloOpcode::kAllReduceStart ||
+          inst->opcode() == HloOpcode::kAllReduceDone) {
+        // TODO: b/501070020 - Support asynchronous all-reduce.
         continue;
       }
       TF_ASSIGN_OR_RETURN(int64_t group_size,

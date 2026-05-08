@@ -145,6 +145,9 @@ absl::Status DetermineArgumentLayoutsFromCompileOptions(
 // executable was compiled with.
 absl::StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
     const HloModule& hlo_module, bool tuple_inputs);
+absl::StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
+    const HloInputOutputAliasConfig& config, int num_parameters,
+    bool tuple_inputs);
 
 // Return max parallelism level.
 int DefaultThreadPoolSize();

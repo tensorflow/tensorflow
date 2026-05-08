@@ -202,8 +202,14 @@ XLA_CUB_DEFINE_SORT_PAIRS(uint16_t, uint64_t)
 #endif
 
 // Pairs with signed 32-bit key.
+#ifdef CUB_TYPE_S32_B16
+XLA_CUB_DEFINE_SORT_PAIRS(int32_t, uint16_t)
+#endif
 #ifdef CUB_TYPE_S32_B32
 XLA_CUB_DEFINE_SORT_PAIRS(int32_t, uint32_t)
+#endif
+#ifdef CUB_TYPE_S32_B64
+XLA_CUB_DEFINE_SORT_PAIRS(int32_t, uint64_t)
 #endif
 
 // Pairs with unsigned 32-bit key.

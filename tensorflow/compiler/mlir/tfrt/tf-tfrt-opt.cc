@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_async.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_sync.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/gpu_passes.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/pack_inputs_pass.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf_ifrt_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h"
@@ -47,6 +48,10 @@ int main(int argc, char **argv) {
 
   tensorflow::mlrt_compiler::RegisterMlrtPasses();
   tensorflow::ifrt_serving::RegisterTfIfrtPasses();
+
+  mlir::PassRegistration<tensorflow::ifrt_serving::PackInputsPass>([]() {
+    return std::make_unique<tensorflow::ifrt_serving::PackInputsPass>();
+  });
 
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);

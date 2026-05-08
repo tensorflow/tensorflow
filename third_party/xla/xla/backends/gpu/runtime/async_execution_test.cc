@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/service/platform_util.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 namespace {
@@ -65,7 +65,7 @@ TEST(AsyncExecutionTest, InitializeStartDone) {
   thunk_info.profile_annotation = "test-thunk";
   TestThunk thunk(thunk_info);
 
-  AsyncExecution async_execution(&thunk);
+  AsyncExecution async_execution(thunk_info);
   Thunk::ExecutionScopedState state;
 
   // Initialize creates an event in the execution scoped state.
@@ -90,27 +90,11 @@ TEST(AsyncExecutionTest, DoneWithoutStartFails) {
   thunk_info.profile_annotation = "test-thunk";
   TestThunk thunk(thunk_info);
 
-  AsyncExecution async_execution(&thunk);
+  AsyncExecution async_execution(thunk_info);
   Thunk::ExecutionScopedState state;
 
   // Done without Initialize should fail because event is not in state.
   EXPECT_THAT(async_execution.Done(&state, stream.get()),
-              absl_testing::StatusIs(absl::StatusCode::kInternal));
-}
-
-TEST(AsyncExecutionTest, DoubleInitializeFails) {
-  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, CreateExecutor());
-
-  Thunk::ThunkInfo thunk_info;
-  thunk_info.thunk_id = ThunkId(1);
-  thunk_info.profile_annotation = "test-thunk";
-  TestThunk thunk(thunk_info);
-
-  AsyncExecution async_execution(&thunk);
-  Thunk::ExecutionScopedState state;
-
-  ASSERT_OK(async_execution.Initialize(&state, executor));
-  EXPECT_THAT(async_execution.Initialize(&state, executor),
               absl_testing::StatusIs(absl::StatusCode::kInternal));
 }
 

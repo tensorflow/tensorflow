@@ -108,10 +108,21 @@ int main(int argc, char* argv[]) {
                 "The target triple."),
       tsl::Flag("use_shardy_partitioner", &options.use_shardy_partitioner,
                 "Whether to use the Shardy partitioner."),
+      tsl::Flag("force_auto_layout", &options.force_auto_layout,
+                "Whether to clear the layouts from the loaded module and "
+                "allow xla to choose them automatically."),
       tsl::Flag("num_partitions", &options.num_partitions,
                 "The number of partitions."),
       tsl::Flag("num_replicas", &options.num_replicas,
                 "The number of replicas."),
+      tsl::Flag(
+          "target_platform_version",
+          &options.gpu_options.target_platform_version,
+          "The name of the target platform version, e.g. 'oberon_b200'. If "
+          "present, the target config path will be ignored and deduced "
+          "automatically. This flag is expected to be used when "
+          "cross-compiling for GPU, to pipe through the correct host target "
+          "machine options."),
   };
 
   std::string usage = xla::xla_compile::kUsageHeader;

@@ -1137,6 +1137,10 @@ absl::StatusOr<CompileOptions> CreateCompileOptions(
   return compile_options;
 }
 
+// Dumps the output literals to the specified path.
+// Example:
+//  `dump_output_to` filepath: /tmp/output.pb
+//  Actual output filepath: /tmp/output_task_0.device_0.literal_0.pb
 absl::Status DumpOutput(
     const FunctionalHloRunner::PerDeviceLiteralVecType& output,
     absl::string_view dump_output_to, int task_id, OutputFormat output_format) {
@@ -1174,7 +1178,7 @@ absl::Status DumpOutput(
           break;
         }
         case OutputFormat::kProtoText: {
-          CHECK_EQ(suffix, std::string("pbtxt"));
+          CHECK(suffix == "pbtxt" || suffix == "textproto");
           TF_RETURN_IF_ERROR(
               tsl::WriteTextProto(tsl::Env::Default(), literal_path,
                                   literal_vec[literal_id].ToProto()));
@@ -1261,6 +1265,30 @@ absl::Status LoadAndRunAndDump(
              : FunctionalHloRunner::DumpOutput(output, dump_output_to, task_id);
 }
 
+absl::Status LoadAndCompileAndDump(
+    PjRtClient& client, const DebugOptions& debug_options,
+    const xla::FunctionalHloRunner::PreprocessingOptions& preproc_options,
+    const xla::FunctionalHloRunner::RawCompileOptions& raw_compile_options,
+    absl::string_view hlo_file, InputFormat input_format,
+    std::string dump_executable_to, int task_id, int num_nodes,
+    std::shared_ptr<xla::KeyValueStoreInterface> kv_store,
+    bool use_gpu_count_workaround) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                      FunctionalHloRunner::LoadAndCompile(
+                          client, debug_options, preproc_options,
+                          raw_compile_options, hlo_file, input_format, task_id,
+                          num_nodes, kv_store, use_gpu_count_workaround));
+
+  if (!dump_executable_to.empty()) {
+    absl::StrAppend(&dump_executable_to, ".task_", task_id);
+    TF_ASSIGN_OR_RETURN(std::string serialized,
+                        executable->SerializeExecutable());
+    return tsl::WriteStringToFile(tsl::Env::Default(), dump_executable_to,
+                                  serialized);
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> LoadAndRun(
     PjRtClient& client, const DebugOptions& debug_options,
     const PreprocessingOptions& preproc_options,
@@ -1322,7 +1350,7 @@ absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> LoadAndRun(
                        engine);
 }
 
-absl::Status LoadAndCompile(
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadAndCompile(
     PjRtClient& client, const DebugOptions& debug_options,
     const PreprocessingOptions& preproc_options,
     const RawCompileOptions& raw_compile_options, absl::string_view hlo_file,
@@ -1350,12 +1378,9 @@ absl::Status LoadAndCompile(
   TF_ASSIGN_OR_RETURN(HloModuleAndArguments hlo_module_and_arguments,
                       LoadHloModuleAndArguments(hlo_file, input_format));
 
-  TF_RETURN_IF_ERROR(FunctionalHloRunner::Compile(
-                         client, hlo_module_and_arguments.hlo_module.get(),
-                         debug_options, preproc_options, compile_options)
-                         .status());
-
-  return absl::OkStatus();
+  return FunctionalHloRunner::Compile(
+      client, hlo_module_and_arguments.hlo_module.get(), debug_options,
+      preproc_options, compile_options);
 }
 
 absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> CompileAndRun(
@@ -1367,6 +1392,19 @@ absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> CompileAndRun(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
                       Compile(client, hlo_module, debug_options,
                               preproc_options, compile_options));
+
+  return Run(client, executable.get(), arguments, running_options, engine);
+}
+
+absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> CompileAndRun(
+    PjRtClient& client, const DebugOptions& debug_options,
+    const PreprocessingOptions& preproc_options,
+    const CompileOptions& compile_options,
+    const RunningOptions& running_options, MaybeOwningMlirModule module,
+    const PerDeviceLiteralVecType& arguments, std::minstd_rand0* engine) {
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<PjRtLoadedExecutable> executable,
+      client.CompileAndLoad(std::move(module), compile_options));
 
   return Run(client, executable.get(), arguments, running_options, engine);
 }

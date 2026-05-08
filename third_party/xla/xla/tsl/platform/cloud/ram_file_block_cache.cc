@@ -93,7 +93,7 @@ absl::Status RamFileBlockCache::UpdateLRU(const Key& key,
     Key fmax = std::make_pair(key.first, std::numeric_limits<size_t>::max());
     auto fcmp = block_map_.upper_bound(fmax);
     if (fcmp != block_map_.begin() && key < (--fcmp)->first) {
-      return errors::Internal("Block cache contents are inconsistent.");
+      return absl::InternalError("Block cache contents are inconsistent.");
     }
   }
 
@@ -167,7 +167,7 @@ absl::Status RamFileBlockCache::MaybeFetch(
         return absl::OkStatus();
     }
   }
-  return errors::Internal(
+  return absl::InternalError(
       "Control flow should never reach the end of RamFileBlockCache::Fetch.");
 }
 

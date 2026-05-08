@@ -96,7 +96,7 @@ class RocmComputeCapability {
       "gfx1030",  // RX68xx / RX69xx
       "gfx1100",  // RX7900
       "gfx1101",  // RX7700 / RX7800
-      "gfx1103", "gfx1150", "gfx1151", "gfx1200", "gfx1201"};
+      "gfx1103", "gfx1150", "gfx1151", "gfx1200", "gfx1201", "gfx1250"};
 
   bool is_supported_gfx_version() const {
     return IsThisGfxInAnyList(kSupportedGfxVersions);
@@ -156,6 +156,8 @@ class RocmComputeCapability {
 
   bool gfx12_rx8900() const { return gfx12_discrete(); }
 
+  bool gfx1250() const { return gfx_version() == "gfx1250"; }
+
   bool has_nhwc_layout_support() const { return gfx9_mi100_or_later(); }
 
   bool has_bf16_dtype_support() const {
@@ -163,7 +165,8 @@ class RocmComputeCapability {
   }
 
   bool has_fast_fp16_support() const {
-    return gfx9_mi100_or_later() || gfx11() || gfx10_rx68xx() || gfx10_rx69xx();
+    return gfx9_mi100_or_later() || gfx11() || gfx10_rx68xx() ||
+           gfx10_rx69xx() || gfx1250();
   }
 
   bool has_mfma_instr_support() const { return gfx9_mi100_or_later(); }
@@ -172,9 +175,13 @@ class RocmComputeCapability {
     return gfx9_mi100_or_later() || gfx12() || gfx11();
   }
 
-  bool has_packed_fp16_atomics_support() const { return gfx9_mi100_or_later(); }
+  bool has_packed_fp16_atomics_support() const {
+    return gfx9_mi100_or_later() || gfx12();
+  }
 
-  bool has_packed_bf16_atomics_support() const { return gfx9_mi300_series(); }
+  bool has_packed_bf16_atomics_support() const {
+    return gfx9_mi300_series() || gfx12();
+  }
 
   bool fence_before_barrier() const {
     static constexpr absl::string_view kList[] = {"gfx900", "gfx906"};
@@ -183,18 +190,23 @@ class RocmComputeCapability {
 
   bool has_hipblaslt() const {
     return IsThisGfxInAnyList(kMI300Series, kMI200Series, kGfx12Discrete,
-                              kGfx11Discrete, kGfx11Apu);
+                              kGfx11Discrete, kGfx11Apu) ||
+           gfx1250();
   }
 
   bool has_fp8_support() const {
     return has_ocp_fp8_support() || has_nanoo_fp8_support();
   }
 
-  bool has_ocp_fp8_support() const { return gfx9_mi350() || gfx12_discrete(); }
+  bool has_ocp_fp8_support() const {
+    return gfx9_mi350() || gfx12_discrete() || gfx1250();
+  }
 
   bool has_nanoo_fp8_support() const { return gfx9_mi300(); }
 
-  bool has_mx_type_support() const { return gfx9_mi350(); }
+  bool has_mx_type_support() const { return gfx9_mi350() || gfx1250(); }
+
+  bool has_tdm_support() const { return gfx1250(); }
 
   int threads_per_warp() const { return gfx9_mi100_or_later() ? 64 : 32; }
 

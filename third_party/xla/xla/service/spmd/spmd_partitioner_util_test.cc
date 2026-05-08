@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/array.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/mesh_and_axis.h"
 #include "xla/hlo/ir/named_sharding.h"
@@ -30,6 +31,7 @@ limitations under the License.
 
 namespace xla {
 namespace spmd {
+
 namespace {
 
 TEST(SPMDPartitionerUtilTest, PartialReplicateReshardCompatibleSharding1) {
@@ -41,6 +43,7 @@ TEST(SPMDPartitionerUtilTest, PartialReplicateReshardCompatibleSharding1) {
   for (const auto& target_sharding : target_shardings) {
     auto result = PartialReplicateReshardCompatibleSharding(partial_sharding,
                                                             target_sharding);
+
     EXPECT_EQ(result, target_shardings[1]);
   }
 
@@ -49,7 +52,32 @@ TEST(SPMDPartitionerUtilTest, PartialReplicateReshardCompatibleSharding1) {
   for (const auto& target_sharding : target_shardings) {
     auto result = PartialReplicateReshardCompatibleSharding(partial_sharding,
                                                             target_sharding);
+
     EXPECT_EQ(result, target_shardings[0]);
+  }
+
+  {
+    Mesh mesh({2, 2}, {"a", "b"});
+    HloSharding partial_sharding(test_utils::FromAxisNames(mesh, {{}, {"a"}}));
+    const std::vector<HloSharding> target_shardings = {
+        HloSharding(test_utils::FromAxisNames(mesh, {{"a"}, {"b"}})),
+        HloSharding(test_utils::FromAxisNames(mesh, {{"b"}, {"a"}}))};
+
+    for (const auto& target_sharding : target_shardings) {
+      auto result = PartialReplicateReshardCompatibleSharding(partial_sharding,
+                                                              target_sharding);
+
+      EXPECT_EQ(result, target_shardings[1]);
+    }
+
+    partial_sharding =
+        HloSharding(test_utils::FromAxisNames(mesh, {{}, {"b"}}));
+    for (const auto& target_sharding : target_shardings) {
+      auto result = PartialReplicateReshardCompatibleSharding(partial_sharding,
+                                                              target_sharding);
+
+      EXPECT_EQ(result, target_shardings[0]);
+    }
   }
 }
 
@@ -69,11 +97,85 @@ TEST(SPMDPartitionerUtilTest, PartialReplicateReshardCompatibleSharding2) {
           TileAssignment({4, 4, 2}, {2, 2, 2, 2, 2}, {0, 4, 1, 2, 3})),
       HloSharding::PartialTile(
           TileAssignment({4, 4, 2}, {2, 2, 2, 2, 2}, {0, 4, 1, 3, 2}))};
+
   for (const auto& target_sharding : target_shardings) {
     auto result = PartialReplicateReshardCompatibleSharding(partial_sharding,
                                                             target_sharding);
+
     EXPECT_EQ(result, target_sharding);
   }
+
+  {
+    Mesh mesh({2, 2, 2, 2, 2}, {"a", "b", "c", "d", "e"});
+    HloSharding v3_partial_sharding(
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}}));
+    const std::vector<HloSharding> v3_target_shardings = {
+        HloSharding(test_utils::FromAxisNames(mesh, {{"a", "c"}, {"b", "d"}})),
+        HloSharding(test_utils::FromAxisNames(mesh, {{"a", "c"}, {"b", "e"}})),
+        HloSharding(test_utils::FromAxisNames(mesh, {{"a", "d"}, {"b", "c"}})),
+        HloSharding(test_utils::FromAxisNames(mesh, {{"a", "d"}, {"b", "e"}})),
+        HloSharding(test_utils::FromAxisNames(mesh, {{"a", "e"}, {"b", "c"}})),
+        HloSharding(test_utils::FromAxisNames(mesh, {{"a", "e"}, {"b", "d"}}))};
+
+    for (const auto& target_sharding : v3_target_shardings) {
+      auto result = PartialReplicateReshardCompatibleSharding(
+          v3_partial_sharding, target_sharding);
+
+      EXPECT_EQ(result, target_sharding);
+    }
+  }
+}
+
+TEST(SPMDPartitionerUtilTest, PartialReplicateReshardCompatibleShardingV3) {
+  // Perfect matching axis (no sub-axis splitting necessary).
+  Mesh mesh({2, 2}, {"a", "b"});
+
+  std::optional<HloSharding> result = PartialReplicateReshardCompatibleSharding(
+      HloSharding(test_utils::FromAxisNames(mesh, /*dim_shardings=*/{{"b"}})),
+      HloSharding(
+          test_utils::FromAxisNames(mesh, /*dim_shardings=*/{{"a", "b"}})));
+
+  ASSERT_TRUE(result.has_value());
+  // Expanding by 2 automatically absorbs the full "a" axis (size 2) from
+  // implicit replicated axes.
+  EXPECT_EQ(result->named_sharding(),
+            test_utils::FromAxisNames(mesh,
+                                      /*dim_shardings=*/{{"b", "a"}}));
+}
+
+TEST(SPMDPartitionerUtilTest,
+     PartialReplicateReshardIncompatibleShardingV3ExplicitReplicationConflict) {
+  Mesh mesh({4, 2}, {"x", "y"});
+
+  // Since partial sharding explicitly requires "y" to be a data dimension,
+  // these shardings are incompatible.
+  std::optional<HloSharding> result = PartialReplicateReshardCompatibleSharding(
+      HloSharding(test_utils::FromAxisNames(mesh, /*dim_shardings=*/{{"y"}})),
+      HloSharding(test_utils::FromAxisNames(mesh, /*dim_shardings=*/{{"x"}},
+                                            /*replicated_axes=*/{"y"})));
+
+  EXPECT_FALSE(result.has_value());
+}
+
+TEST(SPMDPartitionerUtilTest,
+     PartialReplicateReshardCompatibleShardingV3SubAxes) {
+  Mesh mesh({4, 2}, {"x", "y"});
+
+  // This means the reshard expands dim0 from size 2 to size 4.
+  // It needs 2 replication devices from the available implicit replicated axis
+  // "x" (which has size 4).
+  // Target does not explicitly request "y" to be replicated, so the sub-axis
+  // expansion is fully compatible.
+  std::optional<HloSharding> result = PartialReplicateReshardCompatibleSharding(
+      HloSharding(test_utils::FromAxisNames(mesh, /*dim_shardings=*/{{"y"}})),
+      HloSharding(test_utils::FromAxisNames(mesh, /*dim_shardings=*/{{"x"}})));
+
+  ASSERT_TRUE(result.has_value());
+  // The computed compatible sharding leaves the unneeded sub-axis of "x" as
+  // implicit and assigns a sub-axis chunk of "x" to the data-dimension.
+  EXPECT_EQ(result->named_sharding(),
+            test_utils::FromAxisNames(mesh,
+                                      /*dim_shardings=*/{{"y", "x:(1)2"}}));
 }
 
 TEST(SPMDPartitionerUtilTest, GetListOfListsPartitionGroupsForReplication) {
@@ -308,14 +410,41 @@ TEST(SPMDPartitionerUtilTest, GetMeshAxesPartitionGroupsForReplication) {
   EXPECT_EQ(v3_group_list->ToString(),
             "mesh['axis_0'=2,'axis_1'=2,'axis_2'=2] {'axis_1'}");
 
-  // V3 Sharding (Will correctly reflect the real mesh axis names)
-  NamedSharding named_sharding(Mesh({2, 2, 2}, {"Q", "K", "V"}));
-  HloSharding sharding_v3 = HloSharding(named_sharding);
+  // V3 Sharding
+  HloSharding sharding_v3(test_utils::FromAxisNames(
+      Mesh({2, 2, 2}, {"Q", "K", "V"}), {{"Q"}, {"K"}, {"V"}}));
   v3_group_list = GetMeshAxesPartitionGroupsForReplication(sharding_v3, {1});
   EXPECT_TRUE(v3_group_list.has_value());
   EXPECT_EQ(v3_group_list->num_replica_groups(), 4);
   EXPECT_EQ(v3_group_list->num_devices_per_group(), 2);
   EXPECT_EQ(v3_group_list->ToString(), "mesh['Q'=2,'K'=2,'V'=2] {'K'}");
+}
+
+TEST(SPMDPartitionerUtilTest,
+     GetMeshAxesPartitionGroupsForReplicationNamedShardingNonPositional) {
+  HloSharding sharding(
+      test_utils::FromAxisNames(Mesh({2, 2}, {"a", "b"}),
+                                /*dim_shardings=*/{{"b"}, {"a"}}));
+
+  // Dimension 0 is sharded on mesh axis "b" (index 1).
+  std::optional<MeshAxesReplicaGroupList> groups =
+      GetMeshAxesPartitionGroupsForReplication(sharding, {0});
+
+  EXPECT_TRUE(groups.has_value());
+  EXPECT_EQ(groups->ToString(), "mesh['a'=2,'b'=2] {'b'}");
+}
+
+TEST(SPMDPartitionerUtilTest,
+     GetMeshAxesPartitionGroupsForReplicationNamedShardingHigherTensorRank) {
+  HloSharding sharding(test_utils::FromAxisNames(
+      Mesh({2}, {"a"}), /*dim_shardings=*/{{}, {"a"}}));
+
+  // Replication is requested for dimension 1, which is sharded on axis "a".
+  std::optional<MeshAxesReplicaGroupList> groups =
+      GetMeshAxesPartitionGroupsForReplication(sharding, {1});
+
+  EXPECT_TRUE(groups.has_value());
+  EXPECT_EQ(groups->ToString(), "mesh['a'=2] {'a'}");
 }
 
 TEST(SPMDPartitionerUtilTest, ReturnNulloptForEmptyReplicationDims) {
@@ -532,6 +661,64 @@ TEST(SPMDPartitionerUtilTest,
     EXPECT_EQ(v3_group_list_1->flattened_replica_groups(),
               v3_group_list_2->flattened_replica_groups());
   }
+}
+
+TEST(SPMDPartitionerUtilTest, CanonicalizeShardingV2Transposed) {
+  // Sharding: [2,4]<=[4,2]T(1,0)
+  HloSharding sharding = HloSharding::IotaTile({2, 4}, {4, 2}, {1, 0});
+
+  // For a sharding like [2,4]<=[4,2]T(1,0), we expect translation to a
+  // canonical V3 representation with mesh=['axis_0'=4, 'axis_1'=2] and
+  // sharding=[{"axis_1"}, {"axis_0"}].
+  HloSharding canonicalized = xla::spmd::CanonicalizeSharding(sharding);
+
+  EXPECT_TRUE(canonicalized.UseNamedShardingLeaf());
+  EXPECT_EQ(canonicalized.named_sharding().ToString(),
+            "{mesh['axis_0'=4,'axis_1'=2], [{'axis_1'}, {'axis_0'}]}");
+}
+
+TEST(SPMDPartitionerUtilTest, CanonicalizeShardingV2Trivial) {
+  HloSharding sharding = HloSharding::IotaTile({2, 2});
+
+  // Trivial iota should now be translated by HloSharding::ToNamedSharding.
+  HloSharding canonicalized = xla::spmd::CanonicalizeSharding(sharding);
+
+  EXPECT_TRUE(canonicalized.UseNamedShardingLeaf());
+  EXPECT_EQ(canonicalized.named_sharding().ToString(),
+            "{mesh['axis_0'=2,'axis_1'=2], [{'axis_0'}, {'axis_1'}]}");
+}
+
+TEST(SPMDPartitionerUtilTest, CanonicalizeShardingV1Iota) {
+  // Create a V1 sharding with iota order.
+  Array<int64_t> device_assignment({2, 2});
+  device_assignment.FillIota(0);
+  HloSharding sharding = HloSharding::Tile(device_assignment);
+
+  // CanonicalizeSharding calls ToNamedSharding which will now translate
+  // the V1 sharding to a V3 sharding.
+  HloSharding canonicalized = xla::spmd::CanonicalizeSharding(sharding);
+
+  EXPECT_TRUE(canonicalized.UseNamedShardingLeaf());
+  EXPECT_EQ(canonicalized.named_sharding().ToString(),
+            "{mesh['axis_0'=2,'axis_1'=2], [{'axis_0'}, {'axis_1'}]}");
+}
+
+TEST(SPMDPartitionerUtilTest, CanonicalizeShardingV1NonIota) {
+  // Create a V1 sharding with non-iota order.
+  Array<int64_t> device_assignment({2, 2});
+  device_assignment(0, 0) = 0;
+  device_assignment(0, 1) = 2;
+  device_assignment(1, 0) = 1;
+  device_assignment(1, 1) = 3;
+  HloSharding sharding = HloSharding::Tile(device_assignment);
+
+  // Non-iota shardings are also translated using the physical device order.
+  HloSharding canonicalized = xla::spmd::CanonicalizeSharding(sharding);
+
+  EXPECT_TRUE(canonicalized.UseNamedShardingLeaf());
+  EXPECT_EQ(canonicalized.named_sharding().ToString(),
+            "{mesh['axis_0'=2,'axis_1'=2], device_ids=(0,2,1,3), [{'axis_0'}, "
+            "{'axis_1'}]}");
 }
 
 }  // namespace

@@ -71,9 +71,14 @@ absl::Status HloCostAnalysis::Preprocess(const HloInstruction* hlo) {
   current_properties_.set_output_bytes_accessed(bytes_accessed);
   for (int64_t i = 0; i < hlo->operand_count(); ++i) {
     const HloInstruction* operand = hlo->operand(i);
-    bytes_accessed += GetShapeSize(operand->shape());
+    auto [operand_shape_size_it, inserted] =
+        instruction_shape_size_cache_.insert({operand, 0});
+    if (inserted) {
+      operand_shape_size_it->second = GetShapeSize(operand->shape());
+    }
+    bytes_accessed += operand_shape_size_it->second;
     current_properties_.set_operand_bytes_accessed(
-        i, GetShapeSize(operand->shape()));
+        i, operand_shape_size_it->second);
     current_properties_.set_operand_utilization(i, 1.0);
   }
   current_properties_[kBytesAccessedKey] = bytes_accessed;

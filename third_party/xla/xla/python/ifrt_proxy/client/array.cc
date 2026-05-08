@@ -48,6 +48,7 @@
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/array_util.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
@@ -114,13 +115,20 @@ absl::StatusOr<uint64_t> MakeHostBuffer(
   // Asynchronously send data.
 
   if (semantics == HostBufferSemantics::kImmutableOnlyDuringCall) {
-    char* alloc = static_cast<char*>(malloc(mem_region.size()));
-    memcpy(alloc, mem_region.data(), mem_region.size());
-    mem_region = absl::string_view(alloc, mem_region.size());
-    if (on_done_with_host_buffer != nullptr) {
-      std::move(on_done_with_host_buffer)();
+    if (mem_region.size() > 0) {
+      char* alloc = static_cast<char*>(malloc(mem_region.size()));
+      memcpy(alloc, mem_region.data(), mem_region.size());
+      mem_region = absl::string_view(alloc, mem_region.size());
+      if (on_done_with_host_buffer != nullptr) {
+        std::move(on_done_with_host_buffer)();
+      }
+      on_done_with_host_buffer = [alloc]() { free(alloc); };
+    } else {
+      if (on_done_with_host_buffer != nullptr) {
+        std::move(on_done_with_host_buffer)();
+        on_done_with_host_buffer = nullptr;
+      }
     }
-    on_done_with_host_buffer = [alloc]() { free(alloc); };
   }
 
   // If the async-send results in an error, ignoring it may mean that the
@@ -336,6 +344,14 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::MakeErrorArrays(
 
 void Array::Destruct(RpcHelper* rpc_helper, ArrayHandle handle) {
   rpc_helper->Batch(RpcHelper::kDestructArray, handle);
+}
+
+absl::StatusOr<std::optional<int64_t>> Array::ByteSize() const {
+  // TODO(b/261991179): Retrieve this information from the server instead  of
+  // locally computing it. The server-side backend may have an optimization that
+  // computes the byte size efficiently, and it can be cheaper to bring the
+  // calculation result to the client than to compute it on the client.
+  return xla::ifrt::Layout::ByteSize(dtype_, shape_, sharding_, layout_);
 }
 
 tsl::Future<> Array::GetReadyFuture() const {
@@ -751,6 +767,11 @@ tsl::Future<> Array::CopyToHostBuffer(
     return CopyToStringHostBuffer(data, byte_strides, semantics);
   }
   tsl::profiler::TraceMe traceme("IfrtProxyEntrypointCopyToHostBuffer");
+
+  if (dtype_.kind() == DType::kToken) {
+    return GetReadyFuture();
+  }
+
   const auto mem_region = ArrayMemRegion::FromZerothElementPointer(
       /*zeroth_element=*/data, dtype_, shape_, byte_strides);
   if (!mem_region.ok()) {

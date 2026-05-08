@@ -80,7 +80,6 @@ std::unique_ptr<ConditionalThunk> CreateConditionalThunk(
 TEST(ConditionalThunkTest, BufferUses) {
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = "profile_annotation";
-  thunk_info.execution_stream_id = 123;
 
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
 
@@ -116,7 +115,6 @@ TEST(ConditionalThunkTest, BufferUses) {
 TEST(ConditionalThunkTest, ToProto) {
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = "profile_annotation";
-  thunk_info.execution_stream_id = 123;
 
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice(&alloc, /*offset=*/0, /*size=*/256);
@@ -139,10 +137,7 @@ TEST(ConditionalThunkTest, ToProto) {
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk->ToProto());
 
   std::string expected = R"pb(
-    thunk_info {
-      profile_annotation: "profile_annotation"
-      execution_stream_id: 123
-    }
+    thunk_info { profile_annotation: "profile_annotation" }
     conditional_thunk {
       branch_index_buffer {
         slice { size: 256 }
@@ -152,32 +147,12 @@ TEST(ConditionalThunkTest, ToProto) {
         }
       }
       branch_thunks {
-        thunks {
-          thunk_info {
-            profile_annotation: "profile_annotation"
-            execution_stream_id: 123
-          }
-        }
-        thunks {
-          thunk_info {
-            profile_annotation: "profile_annotation"
-            execution_stream_id: 123
-          }
-        }
+        thunks { thunk_info { profile_annotation: "profile_annotation" } }
+        thunks { thunk_info { profile_annotation: "profile_annotation" } }
       }
       branch_thunks {
-        thunks {
-          thunk_info {
-            profile_annotation: "profile_annotation"
-            execution_stream_id: 123
-          }
-        }
-        thunks {
-          thunk_info {
-            profile_annotation: "profile_annotation"
-            execution_stream_id: 123
-          }
-        }
+        thunks { thunk_info { profile_annotation: "profile_annotation" } }
+        thunks { thunk_info { profile_annotation: "profile_annotation" } }
       }
     }
   )pb";
@@ -188,10 +163,7 @@ TEST(ConditionalThunkTest, FromProto) {
   ThunkProto proto;
   CHECK(tsl::protobuf::TextFormat::ParseFromString(
       R"pb(
-        thunk_info {
-          profile_annotation: "profile_annotation"
-          execution_stream_id: 123
-        }
+        thunk_info { profile_annotation: "profile_annotation" }
         conditional_thunk {
           branch_index_buffer {
             slice { offset: 8 size: 256 buffer_allocation_index: 0 }
@@ -201,32 +173,12 @@ TEST(ConditionalThunkTest, FromProto) {
             }
           }
           branch_thunks {
-            thunks {
-              thunk_info {
-                profile_annotation: "profile_annotation"
-                execution_stream_id: 123
-              }
-            }
-            thunks {
-              thunk_info {
-                profile_annotation: "profile_annotation"
-                execution_stream_id: 123
-              }
-            }
+            thunks { thunk_info { profile_annotation: "profile_annotation" } }
+            thunks { thunk_info { profile_annotation: "profile_annotation" } }
           }
           branch_thunks {
-            thunks {
-              thunk_info {
-                profile_annotation: "profile_annotation"
-                execution_stream_id: 123
-              }
-            }
-            thunks {
-              thunk_info {
-                profile_annotation: "profile_annotation"
-                execution_stream_id: 123
-              }
-            }
+            thunks { thunk_info { profile_annotation: "profile_annotation" } }
+            thunks { thunk_info { profile_annotation: "profile_annotation" } }
           }
         }
       )pb",
@@ -234,7 +186,7 @@ TEST(ConditionalThunkTest, FromProto) {
 
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = "profile_annotation";
-  thunk_info.execution_stream_id = 123;
+
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0)};
 
@@ -279,10 +231,10 @@ TEST(ConditionalThunkTest, ToString) {
   EXPECT_EQ(thunk_sequence.ToString(/*indent=*/0),
             "000: kConditional [source | sink]   \n"
             "  false_branch:\n"
-            "    000: kGemm [source | sink] \n"
+            "    000: kGemm [source | sink] (no description)\n"
             "  true_branch:\n"
-            "    000: kGemm [source | sink] \n"
-            "    000: kGemm [source | sink] \n\n");
+            "    000: kGemm [source | sink] (no description)\n"
+            "    000: kGemm [source | sink] (no description)\n");
 
   std::unique_ptr<ConditionalThunk> thunk = CreateConditionalThunk(
       thunk_info, {slice, int_shape}, create_branch_thunk_sequences());
@@ -290,10 +242,10 @@ TEST(ConditionalThunkTest, ToString) {
   EXPECT_EQ(thunk->ToString(/*indent=*/0),
             "\n"
             "branch_0:\n"
-            "  000: kGemm [source | sink] \n"
+            "  000: kGemm [source | sink] (no description)\n"
             "branch_1:\n"
-            "  000: kGemm [source | sink] \n"
-            "  000: kGemm [source | sink] \n");
+            "  000: kGemm [source | sink] (no description)\n"
+            "  000: kGemm [source | sink] (no description)\n");
 }
 
 TEST(ConditionalThunkTest, TransformNested) {

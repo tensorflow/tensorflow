@@ -43,7 +43,8 @@ absl::Status GraphTopologyView::InitializeFromGraph(
     const absl::Span<const GraphView::Edge> ephemeral_edges,
     bool ignore_control_edges) {
   if (graph_ != nullptr) {
-    return errors::InvalidArgument("GraphTopologyView is already initialized.");
+    return absl::InvalidArgumentError(
+        "GraphTopologyView is already initialized.");
   }
 
   graph_ = &graph;
@@ -70,7 +71,7 @@ absl::Status GraphTopologyView::InitializeFromGraph(
       if (skip_invalid_edges_) {
         VLOG(0) << "Skip error: " << error_message;
       } else {
-        return errors::InvalidArgument(error_message);
+        return absl::InvalidArgumentError(error_message);
       }
     }
 
@@ -83,7 +84,7 @@ absl::Status GraphTopologyView::InitializeFromGraph(
       if (skip_invalid_edges_) {
         VLOG(0) << "Skip error: " << error_message;
       } else {
-        return errors::InvalidArgument(error_message);
+        return absl::InvalidArgumentError(error_message);
       }
     }
 
@@ -117,7 +118,7 @@ absl::Status GraphTopologyView::InitializeFromGraph(
         if (skip_invalid_edges_) {
           VLOG(3) << "Skip error: " << error_message;
         } else {
-          return errors::InvalidArgument(error_message);
+          return absl::InvalidArgumentError(error_message);
         }
       }
 

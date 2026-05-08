@@ -163,6 +163,24 @@ class MatmulBfloat16Support : public FloatSupport {
 
 }  // namespace
 
+void NVPTXCompiler::AddPaddingForGpublasGemms(
+    HloPassPipeline& pipeline, const DebugOptions& debug_options,
+    const se::GpuComputeCapability& gpu_version) {
+  if (!debug_options.xla_gpu_experimental_disable_binary_libraries()) {
+    for (const CublasPaddingRequirement& requirement :
+         CublasPaddingRequirements) {
+      if (gpu_version.cuda_compute_capability()->SupportsAllFeaturesOf(
+              requirement.min_compute_capability)) {
+        pipeline.AddPass<CublasPadForGemms>(gpu_version, requirement.data_type,
+                                            requirement.multiple_of);
+      }
+    }
+    // Padding a gemm operand that's a constant results in pad(constant).  Run
+    // constant-folding to simplify this into a new constant.
+    pipeline.AddPass<HloConstantFolding>();
+  }
+}
+
 absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     HloModule* hlo_module, const se::GpuComputeCapability& gpu_version,
     se::dnn::VersionInfo dnn_version,
@@ -285,22 +303,6 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
           : se::dnn::VersionInfo{});
   pre_pipeline.AddPass<DotDimensionMerger>();
 
-  if (!hlo_module->config()
-           .debug_options()
-           .xla_gpu_experimental_disable_binary_libraries()) {
-    for (const CublasPaddingRequirement& requirement :
-         CublasPaddingRequirements) {
-      if (cuda_compute_capability->SupportsAllFeaturesOf(
-              requirement.min_compute_capability)) {
-        pre_pipeline.AddPass<CublasPadForGemms>(
-            gpu_target_config.device_description.gpu_compute_capability(),
-            requirement.data_type, requirement.multiple_of);
-      }
-    }
-  }
-  // Padding a gemm operand that's a constant results in pad(constant).  Run
-  // constant-folding to simplify this into a new constant.
-  pre_pipeline.AddPass<HloConstantFolding>();
   TF_RETURN_IF_ERROR(
       pre_pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
           .status());
@@ -465,7 +467,8 @@ void WarnIfBadDriverJITVersion() {
 }
 
 absl::StatusOr<const se::cuda::CompilationProvider*>
-NVPTXCompiler::GetCompilationProvider(const DebugOptions& debug_options) {
+NVPTXCompiler::GetCompilationProvider(const DebugOptions& debug_options,
+                                      se::StreamExecutor* stream_exec) {
   absl::MutexLock lock(compilation_providers_mutex_);
   std::unique_ptr<se::cuda::CompilationProvider>& compilation_provider =
       compilation_providers_[se::cuda::CompilationProviderOptions::
@@ -475,7 +478,7 @@ NVPTXCompiler::GetCompilationProvider(const DebugOptions& debug_options) {
         compilation_provider,
         se::cuda::AssembleCompilationProvider(
             se::cuda::CompilationProviderOptions::FromDebugOptions(
-                debug_options)));
+                debug_options, stream_exec)));
   }
   return compilation_provider.get();
 }
@@ -494,7 +497,7 @@ NVPTXCompiler::CompileTargetBinary(
     const HloModuleConfig& module_config, llvm::Module* llvm_module,
     const stream_executor::DeviceDescription& device_description,
     bool relocatable, const HloModule* debug_module,
-    const CompileOptions& options, std::optional<int> shard_number) {
+    std::optional<int> shard_number) {
   std::unique_ptr<llvm::Module> loaded_module =
       MaybeLoadLLVMFromFile(debug_module, llvm_module);
   llvm::Module* selected_module = nullptr;
@@ -547,8 +550,9 @@ NVPTXCompiler::CompileTargetBinary(
     return BackendCompileResult{};
   }
 
-  TF_ASSIGN_OR_RETURN(const se::cuda::CompilationProvider* compilation_provider,
-                      GetCompilationProvider(module_config.debug_options()));
+  TF_ASSIGN_OR_RETURN(
+      const se::cuda::CompilationProvider* compilation_provider,
+      GetCompilationProvider(module_config.debug_options(), nullptr));
 
   se::cuda::CompilationOptions compilation_options =
       PtxCompileOptionsFromDebugOptions(module_config.debug_options());
@@ -600,10 +604,11 @@ NVPTXCompiler::CompileTargetBinary(
 
 absl::StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
     const HloModuleConfig& hlo_module_config,
-    const stream_executor::DeviceDescription& device_description) {
+    const stream_executor::DeviceDescription& device_description,
+    se::StreamExecutor* stream_exec) {
   TF_ASSIGN_OR_RETURN(
       const se::cuda::CompilationProvider* compilation_provider,
-      GetCompilationProvider(hlo_module_config.debug_options()));
+      GetCompilationProvider(hlo_module_config.debug_options(), stream_exec));
   return compilation_provider->SupportsCompileAndLink() &&
          compilation_provider->SupportsCompileToRelocatableModule();
 }
@@ -611,7 +616,7 @@ absl::StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
 absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
     const stream_executor::DeviceDescription& device_description,
     std::vector<std::vector<uint8_t>> modules,
-    const DebugOptions& debug_options) {
+    const DebugOptions& debug_options, se::StreamExecutor* stream_exec) {
   if (modules.empty()) {
     return std::vector<uint8_t>{};
   }
@@ -620,7 +625,7 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
       device_description.gpu_compute_capability().cuda_compute_capability();
 
   TF_ASSIGN_OR_RETURN(const se::cuda::CompilationProvider* compilation_provider,
-                      GetCompilationProvider(debug_options));
+                      GetCompilationProvider(debug_options, stream_exec));
 
   std::vector<se::cuda::CompilationProvider::RelocatableModuleOrPtx> inputs;
   inputs.reserve(modules.size());

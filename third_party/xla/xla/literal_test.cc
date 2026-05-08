@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <random>
 #include <string>
 #include <tuple>
@@ -509,6 +510,38 @@ TEST_F(LiteralUtilTest, NonScalarEquality) {
   EXPECT_EQ(nil, nil);
 }
 
+TEST_F(LiteralUtilTest, SubByteEqualityDifferentLengthsMod32) {
+  for (int len = 1; len <= 256; ++len) {
+    Shape shape = ShapeUtil::MakeShape(U4, {len});
+
+    Literal literal1(shape);
+    Literal literal2(shape);
+
+    for (int i = 0; i < len; ++i) {
+      literal1.Set<u4>({i}, u4(i % 16));
+      literal2.Set<u4>({i}, u4(i % 16));
+    }
+
+    // Make high bits different.
+    uint8_t* buffer1 = reinterpret_cast<uint8_t*>(literal1.untyped_data());
+    uint8_t* buffer2 = reinterpret_cast<uint8_t*>(literal2.untyped_data());
+    for (int i = 0; i < len; ++i) {
+      buffer1[i] |= 0xA0;
+      buffer2[i] |= 0x50;
+    }
+
+    EXPECT_EQ(literal1, literal2);
+
+    int mid = len / 2;
+    u4 val = literal2.Get<u4>({mid});
+    uint8_t next_val = (static_cast<uint8_t>(val) + 1) % 16;
+    literal2.Set<u4>({mid}, u4{next_val});
+    buffer2[mid] |= 0x50;
+
+    EXPECT_NE(literal1, literal2);
+  }
+}
+
 TEST_F(LiteralUtilTest, TokenEquality) {
   auto token0 = LiteralUtil::CreateToken();
   auto token1 = LiteralUtil::CreateToken();
@@ -609,6 +642,31 @@ TEST_F(LiteralUtilTest, LogicalInequalitySlowPath) {
   EXPECT_FALSE(b.Equal(a, true));
   EXPECT_FALSE(a.Equal(b, false));
   EXPECT_FALSE(b.Equal(a, false));
+}
+
+TEST_F(LiteralUtilTest, MakeReturnsErrorOnHugeAllocation) {
+  // Create a shape that is too large to allocate.
+  Shape huge_shape = ShapeUtil::MakeShape(F32, {1ULL << 50});
+  auto literal_or = Literal::Make(huge_shape, /*allocate_arrays=*/true);
+  EXPECT_FALSE(literal_or.ok());
+  EXPECT_EQ(literal_or.status().code(), absl::StatusCode::kResourceExhausted);
+}
+
+TEST_F(LiteralUtilTest, MakeUnique) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> literal,
+                          Literal::MakeUnique(shape));
+  ASSERT_NE(literal, nullptr);
+  EXPECT_EQ(literal->shape(), shape);
+  EXPECT_TRUE(literal->IsKnown());
+}
+
+TEST_F(LiteralUtilTest, MakeUniqueError) {
+  // Create a shape that is too large to allocate to trigger failure.
+  Shape shape = ShapeUtil::MakeShape(F32, {1ULL << 50});
+  absl::StatusOr<std::unique_ptr<Literal>> result = Literal::MakeUnique(shape);
+  EXPECT_FALSE(result.ok());
+  EXPECT_EQ(result.status().code(), absl::StatusCode::kResourceExhausted);
 }
 
 TEST_F(LiteralUtilTest, CreateWithoutLayout) {
@@ -3400,5 +3458,21 @@ BENCHMARK_POPULATE(PopulateParallel);
 BENCHMARK_POPULATE(PopulateLinear);
 BENCHMARK_POPULATE(PopulateLinearParallel);
 
+TEST(LiteralTest, SetShapeClearsCustomElementSizeInBitsOnTupleLeafArrays) {
+  Shape leaf = ShapeUtil::MakeShape(F32, {1024});
+  LayoutUtil::SetToDefaultLayout(&leaf);
+  leaf.mutable_layout()->set_element_size_in_bits(1);
+
+  Shape tuple = ShapeUtil::MakeTupleShape({leaf});
+
+  Literal literal(tuple);
+
+  ASSERT_TRUE(literal.shape().IsTuple());
+  ASSERT_EQ(literal.shape().tuple_shapes().size(), 1);
+  ASSERT_TRUE(literal.shape().tuple_shapes(0).has_layout());
+  EXPECT_EQ(literal.shape().tuple_shapes(0).layout().element_size_in_bits(), 0);
+}
+
 }  // namespace
+
 }  // namespace xla

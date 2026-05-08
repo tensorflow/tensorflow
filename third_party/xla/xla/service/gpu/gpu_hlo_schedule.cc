@@ -65,6 +65,7 @@ limitations under the License.
 #include "xla/service/gpu/model/analytical_latency_estimator.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/sol_latency_estimator.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/service/legalize_scheduling_annotations.h"
@@ -77,9 +78,11 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -90,6 +93,7 @@ namespace {
 
 bool ShouldScheduleAsEarlyAsPossible(const HloInstruction& instr) {
   switch (instr.opcode()) {
+    case HloOpcode::kAllGatherStart:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kCollectivePermuteStart:
       return !IsGPUSyncCollective(instr);
@@ -114,6 +118,7 @@ bool ShouldScheduleSuccessor(const HloInstruction& sussessor,
 
 bool ShouldScheduleAsLateAsPossible(const HloInstruction& instr) {
   switch (instr.opcode()) {
+    case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kCollectivePermuteDone:
       return ShouldScheduleAsEarlyAsPossible(*instr.operand(0));
@@ -479,9 +484,39 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
       ReadPGLEProfile(module.config(), fingerprint);
 
   if (profile.has_value()) {
+    std::unique_ptr<LatencyEstimator> base_estimator;
+    if (SolLatencyEstimator::IsSupportedForModule(module, gpu_device_info)) {
+      auto cost_analysis =
+          std::make_unique<GpuHloCostAnalysis>(GpuHloCostAnalysis::Options{
+              ShapeSizeBytesFunction(pointer_size),
+              /*per_second_rates=*/{},
+              /*min_latencies_seconds=*/{},
+              /*count_multiple_input_accesses=*/true,
+          });
+      if (absl::Status status =
+              module.entry_computation()->Accept(cost_analysis.get());
+          status.ok()) {
+        auto sol = SolLatencyEstimator::Create(
+            config, std::move(gpu_latency_estimator), gpu_device_info,
+            ShapeSizeBytesFunction(pointer_size), module.entry_computation(),
+            mlir_context, std::move(cost_analysis));
+        if (sol.ok()) {
+          base_estimator = std::move(*sol);
+          VLOG(1) << "PGLE fallback: using SolLatencyEstimator";
+        } else {
+          base_estimator = std::make_unique<GpuLatencyEstimator>(pointer_size);
+          VLOG(1) << "PGLE fallback: using GpuLatencyEstimator (T-shirt sizes),"
+                  << " SolLatencyEstimator creation failed: " << sol.status();
+        }
+      }
+    }
+    if (base_estimator == nullptr) {
+      base_estimator = std::move(gpu_latency_estimator);
+      VLOG(1) << "PGLE fallback: using GpuLatencyEstimator (T-shirt sizes)";
+    }
     auto aggregator = std::make_unique<GPUProfileStatisticsAggregator>();
     auto pg_latency_estimator = std::make_unique<ProfileGuidedLatencyEstimator>(
-        config, std::move(gpu_latency_estimator), profile.value(),
+        config, std::move(base_estimator), profile.value(),
         std::move(aggregator));
     LOG(INFO) << "Found profile for module " << module.name()
               << ", using profile guided latency estimator";
@@ -562,6 +597,57 @@ LegalizeSchedulingAnnotations::Config SchedulingAnnotationsConfig() {
   return annotation_config;
 }
 
+// Delays MoveToHostAsyncStart as late as possible
+// to achieve better overlapping with computation.
+// The only pattern we are seeing is async start of a fusion with a dynamic
+// update slice:
+// ```
+// %async_start = async_start(%fusion), async_wrapped={%fusion}
+// %dynamic_update_slice = dynamic_update_slice(%param, %update, %indices)
+// %wrapped_dynamic-update-slice_computation {
+//   %param_0.38286 = ... parameter(0)
+//   %param_1.38949 = ... parameter(1)
+//   %param_2.30408 = s32[] parameter(2)
+//   %param_3.25973 = s32[] parameter(3)
+//   %param_4.20600 = s32[] parameter(4)
+//   %param_5.16397 = s32[] parameter(5)
+//   %param_6.12209 = s32[] parameter(6)
+//   ROOT %dynamic-update-slice.1 = dynamic-update-slice()
+// }
+// ```
+// To add more patterns like non-fused when observed on real workloads.
+std::optional<DefaultSchedulerCore::CandidateResult>
+DelayMoveToHostAsyncStartCandidateCondition(
+    DefaultSchedulerCore::ScheduleCandidate& a,
+    DefaultSchedulerCore::ScheduleCandidate& b) {
+  auto is_send_host_dus_fn =
+      [=](DefaultSchedulerCore::ScheduleCandidate& a) -> bool {
+    bool is_send_host_dus = false;
+    if (a.node->GetOpcode() == HloOpcode::kAsyncStart) {
+      if (a.node->GetInstr().async_wrapped_instruction()->opcode() ==
+          HloOpcode::kFusion) {
+        auto fused_instrs = a.node->GetInstr()
+                                .async_wrapped_instruction()
+                                ->fused_instructions();
+        for (auto instr : fused_instrs) {
+          if (instr->opcode() == HloOpcode::kDynamicUpdateSlice) {
+            is_send_host_dus = true;
+            break;
+          }
+        }
+      }
+    }
+    return is_send_host_dus;
+  };
+
+  if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+          !is_send_host_dus_fn(a), a, !is_send_host_dus_fn(b), b,
+          "kDelayMoveToHostAsyncStart")) {
+    return value;
+  }
+  return std::nullopt;
+}
+
 // Adds necessary passes to perform latency hiding estimations for the
 // `pipeline`.
 absl::Status RunLatencyHidingSchedulerPasses(
@@ -576,7 +662,8 @@ absl::Status RunLatencyHidingSchedulerPasses(
 
   SchedulerConfig config = MakeGPUSchedulerConfig(
       memory_limit,
-      options.xla_gpu_experimental_parallel_collective_overlap_limit());
+      options.xla_gpu_experimental_parallel_collective_overlap_limit(),
+      options.xla_gpu_experimental_parallel_async_compute_limit());
 
   auto shape_size_in_bytes = ShapeSizeBytesFunction(pointer_size);
 
@@ -645,6 +732,12 @@ absl::Status RunLatencyHidingSchedulerPasses(
         }
       }
     }
+
+    if (!config.top_down_scheduling) {
+      // Only do this for bottom-up scheduling, as top-down scheduling is not
+      // supported yet.
+      return DelayMoveToHostAsyncStartCandidateCondition(a, b);
+    }
     return std::nullopt;
   };
 
@@ -652,7 +745,11 @@ absl::Status RunLatencyHidingSchedulerPasses(
       scheduling_context, config,
       /*target_scheduling_rule=*/nullptr,
       /*early_target_scheduling_rule=*/gpu_early_scheduling_rule,
-      /*post_processing_fn=*/nullptr);
+      /*post_processing_fn=*/nullptr,
+      /*scheduling_instruction_crosses_overlap_limit=*/
+      options.xla_gpu_experimental_enable_collective_multi_streaming()
+          ? GpuScheduleCrossesOverlapLimit
+          : nullptr);
 
   pipeline.AddPass<LatencyHidingScheduler>(scheduling_context,
                                            std::move(scheduler_core));
@@ -883,7 +980,8 @@ uint64_t GetSchedulerMemoryLimit(const HloModule& module,
 }
 
 SchedulerConfig MakeGPUSchedulerConfig(uint64_t memory_limit,
-                                       int64_t overlap_limit) {
+                                       int64_t overlap_limit,
+                                       int64_t async_compute_limit) {
   SchedulerConfig config;
   config.all_reduce_overlap_limit = 1;
   config.collective_broadcast_overlap_limit = 1;
@@ -893,6 +991,7 @@ SchedulerConfig MakeGPUSchedulerConfig(uint64_t memory_limit,
   config.schedule_send_recvs = true;
   config.memory_limit = memory_limit;
   config.parallel_collective_overlap_limit = overlap_limit;
+  config.parallel_async_compute_limit = async_compute_limit;
 
   CHECK(config.collective_broadcast_overlap_limit <=
         config.parallel_collective_overlap_limit);

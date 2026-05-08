@@ -270,7 +270,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
           }
         }
 
-        if (keys_index_ == keys_.size()) {
+        if (keys_index_ >= keys_.size()) {
           *end_of_sequence = true;
           return absl::OkStatus();
         }

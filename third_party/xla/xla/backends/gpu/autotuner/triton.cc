@@ -15,27 +15,32 @@ limitations under the License.
 
 #include "xla/backends/gpu/autotuner/triton.h"
 
-#include <algorithm>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/autotuner/triton/cost_model_config_optimization.h"
 #include "xla/backends/gpu/autotuner/triton/dot_search_space.h"
 #include "xla/backends/gpu/autotuner/triton/triton_configs.h"
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
 #include "xla/backends/gpu/transforms/fusion_wrapper.h"
-#include "xla/backends/gpu/transforms/hoist_fused_bitcasts.h"
 #include "xla/backends/gpu/transforms/priority_fusion.h"
+#include "xla/codegen/tiling/symbolic_tile_analysis.h"
+#include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -47,8 +52,9 @@ limitations under the License.
 #include "xla/service/gpu/gpu_float_support.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/split_k_gemm_rewriter.h"
+#include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/env.h"
@@ -56,7 +62,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace gpu {
@@ -72,8 +77,13 @@ std::vector<TritonGemmConfig> GetDefaultTritonConfigs(
   auto* cuda_compute_capability = compute_capability.cuda_compute_capability();
   std::vector<TritonGemmConfig> configs;
 
-  if (cuda_compute_capability->IsAtLeastBlackwell()) {
+  if (cuda_compute_capability->IsBlackwell()) {
+    // SM 10.0 (datacenter: B200, B100)
     configs = GetTritonConfigsForPlatform(TritonConfigsPlatform::kBlackwell);
+  } else if (cuda_compute_capability->IsAtLeastBlackwell()) {
+    // SM 11.0+ / 12.0+ (consumer: RTX 5090, etc.)
+    configs =
+        GetTritonConfigsForPlatform(TritonConfigsPlatform::kBlackwellConsumer);
   } else if (cuda_compute_capability->IsHopper()) {
     configs = GetTritonConfigsForPlatform(TritonConfigsPlatform::kHopper);
   } else if (cuda_compute_capability->IsAmpere()) {
@@ -114,13 +124,6 @@ TritonBackend::GetSupportedConfigs(const HloInstruction& instr) {
       hlo_query::GetFirstInstructionWithOpcode(
           *instr.fused_instructions_computation(), HloOpcode::kScaledDot);
   if (scaled_dot_instr != nullptr) {
-    // Triton scaled dot emitter is not supported on ROCm; skip to allow
-    // other backends (e.g. HipblasLtBackend) to handle kScaledDot.
-    const auto& gpu_cc =
-        target_config().device_description.gpu_compute_capability();
-    if (gpu_cc.IsRocm()) {
-      return std::vector<std::unique_ptr<BackendConfig>>();
-    }
     return GetSupportedConfigsForScaledDot(scaled_dot_instr);
   }
   return std::vector<std::unique_ptr<BackendConfig>>();
@@ -131,13 +134,6 @@ TritonBackend::GetSupportedConfigsForDot(const HloInstruction* instr) {
   const HloDotInstruction* dot = Cast<HloDotInstruction>(instr);
   TritonDotFusionSearchSpace search_space(target_config().device_description,
                                           dot);
-  bool supports_contracting_split =
-      HloBfsFindAll({dot}, [&](const HloInstruction* node) {
-        return node->opcode() == HloOpcode::kSlice;
-      }).empty();
-  bool autotune_contracting_split =
-      supports_contracting_split &&
-      debug_options().xla_gpu_enable_split_k_autotuning();
   bool autotune_warp_specialization =
       debug_options()
           .xla_gpu_experimental_enable_triton_warp_specialization() &&
@@ -150,16 +146,23 @@ TritonBackend::GetSupportedConfigsForDot(const HloInstruction* instr) {
   // We don't need to consider small_dot here. The new search space will
   // already generate a unique config for small problems.
   std::vector<TritonGemmConfig> gemm_configs = search_space.GenerateConfigs(
-      /*force_contracting_split=*/autotune_contracting_split
-          ? std::nullopt
-          : std::make_optional(1),
       /*autotune_warp_specialization=*/autotune_warp_specialization);
 
   if (!debug_options().xla_gpu_exhaustive_tiling_search()) {
     VLOG(1) << "Restricting configs to the default set.";
+    std::vector<TritonGemmConfig> all_configs = gemm_configs;
     gemm_configs = search_space.OptimizeConfigSet(
         gemm_configs, /*hints=*/GetDefaultTritonConfigs(
             target_config().device_description.gpu_compute_capability()));
+
+    if (!debug_options()
+             .xla_gpu_experimental_cost_model_gemm_tiling_options()
+             .empty()) {
+      TF_ASSIGN_OR_RETURN(gemm_configs, OptimizeConfigsWithCostModel(
+                                            dot, all_configs, gemm_configs,
+                                            target_config().device_description,
+                                            debug_options(), mlir_context_));
+    }
   }
   configs.reserve(gemm_configs.size());
   for (const auto& config : gemm_configs) {
@@ -174,13 +177,24 @@ absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
 TritonBackend::GetSupportedConfigsForScaledDot(const HloInstruction* instr) {
   std::vector<std::unique_ptr<BackendConfig>> configs;
 
-  // TODO(b/436988479): fine tune the search space.
+  const bool exhaustive_search =
+      debug_options().xla_gpu_exhaustive_tiling_search();
   for (int block_m = 128; block_m <= 256; block_m *= 2) {
-    for (int block_n = 32; block_n <= 256; block_n *= 2) {
+    for (int block_n = 16; block_n <= 256; block_n *= 2) {
       for (int block_k = 128; block_k <= 256; block_k *= 2) {
+        // TODO(b/436988479): fine tune the search space.
+        const int elements_per_thread = (block_m * block_n) / (4 * 32);
+        if (!exhaustive_search &&
+            (elements_per_thread > 64 ||
+             (block_k >= 256 && elements_per_thread >= 32))) {
+          VLOG(3) << "Ignoring spill over config: block_m=" << block_m
+                  << " block_n=" << block_n << " block_k=" << block_k;
+          continue;
+        }
+
         auto any = std::make_unique<google::protobuf::Any>();
         any->PackFrom(TritonGemmConfig(block_m, block_n,
-                                       /*block_k=*/block_k, /*split_k=*/1,
+                                       /*block_k=*/block_k,
                                        /*num_stages=*/1,
                                        /*num_warps=*/4,
                                        /*num_ctas=*/1,
@@ -230,15 +244,7 @@ absl::StatusOr<std::unique_ptr<BackendConfig>> TritonBackend::GetDefaultConfig(
     const HloInstruction& instr) {
   TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<BackendConfig>> configs,
                       GetSupportedConfigs(instr));
-  // Filter split_k>1 configs. Split_k>1 is not guaranteed to be supported.
-  configs.erase(
-      std::remove_if(configs.begin(), configs.end(),
-                     [](const std::unique_ptr<BackendConfig>& config) {
-                       AutotuneResult::TritonGemmKey triton_config_proto;
-                       config->UnpackTo(&triton_config_proto);
-                       return triton_config_proto.split_k() > 1;
-                     }),
-      configs.end());
+
   if (configs.empty()) {
     return absl::InvalidArgumentError(
         "TritonBackend does not support this instruction.");
@@ -267,11 +273,13 @@ absl::Status TritonBackend::ApplyConfig(HloInstruction& instr,
   *backend_config.mutable_triton_gemm_config() = triton_config_proto;
   TF_RETURN_IF_ERROR(instr.set_backend_config(gpu_config));
 
-  TF_ASSIGN_OR_RETURN(TritonGemmConfig triton_config,
-                      TritonGemmConfig::FromProto(triton_config_proto));
-  if (triton_config.split_k > 1) {
-    TF_RETURN_IF_ERROR(MakeDotSplitKBatch(&instr, triton_config));
+  // FromProto has validation checks, that's why we call it here.
+  TF_RETURN_IF_ERROR(TritonGemmConfig::FromProto(triton_config_proto).status());
+  if (triton_config_proto.split_k() > 1) {
+    return absl::InvalidArgumentError(
+        "TritonBackend no longer supports split-k (split_k > 1).");
   }
+
   return absl::OkStatus();
 }
 
@@ -298,9 +306,6 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonBackend::RunHloPasses(
   // into fusions.
   FusionWrapper fusion_wrapper(gpu_device_info);
   TF_RETURN_IF_ERROR(fusion_wrapper.Run(hlo_module.get()).status());
-  // TODO: b/487920266 - remove once microbenchmarks have been regenerated to
-  // include this pass (it now runs before the autotuner).
-  TF_RETURN_IF_ERROR(HoistFusedBitcasts().Run(hlo_module.get()).status());
   ConvertTritonGemmConfig convert_triton_gemm_config(gpu_device_info,
                                                      mlir_context_);
   RETURN_IF_ERROR(convert_triton_gemm_config.Run(hlo_module.get()).status());
@@ -317,8 +322,25 @@ bool TritonBackend::IsSupported(const HloInstruction& instr) {
   }
   const FusionBackendConfig& backend_config =
       gpu_config->fusion_backend_config();
-  return backend_config.kind() == kTritonGemmFusionKind ||
-         backend_config.kind() == kCuDnnFusionKind ||
+
+  // TODO: b/487920266 - sometimes we create fusions that can't be tiled.
+  // Bail out here if that's the case.
+  if (backend_config.kind() == kTritonGemmFusionKind) {
+    auto fusion = Cast<HloFusionInstruction>(&instr);
+    auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
+    auto device_info = target_config().device_description;
+    SymbolicTileAnalysisOrError analysis_or_error =
+        SymbolicTileAnalysis::AnalyzeFusion(
+            *fusion_adaptor, mlir_context_,
+            TritonEmitterConstraints::GetBuilder(device_info));
+    if (const auto* fusion_decision =
+            std::get_if<FusionDecision>(&analysis_or_error)) {
+      VLOG(1) << "Fusion not tileable: " << fusion_decision->Explain();
+      return false;
+    }
+    return true;
+  }
+  return backend_config.kind() == kCuDnnFusionKind ||
          backend_config.kind() == kCustomFusionKind;
 }
 

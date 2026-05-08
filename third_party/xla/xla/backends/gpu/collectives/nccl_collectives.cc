@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "third_party/nccl/nccl.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
@@ -64,7 +65,6 @@ limitations under the License.
 #include "tsl/platform/casts.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/profiler/lib/traceme.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 
@@ -113,8 +113,19 @@ class NcclIdStore {
                          : 1;
 
     // Create a KV store key for the given root process and captured clique key.
+    // We construct the key from the full (non-truncated) device list and
+    // exclude `num_local_participants` because it can differ across hosts for
+    // the same logical clique (e.g. P2P cliques from connected components).
     auto kv_key = [&](ProcessId root_process) {
-      return absl::StrFormat("root_process: %v; clique: %v", root_process, key);
+      return absl::StrFormat(
+          "root_process: %v; clique: devices=[%s]; communication_id=%v; "
+          "incarnations=[%s]",
+          root_process, absl::StrJoin(key.devices(), ","),
+          gpu_key->communication_id(),
+          absl::StrJoin(gpu_key->incarnations(), ",",
+                        [](std::string* out, IncarnationId id) {
+                          absl::StrAppend(out, id.value());
+                        }));
     };
 
     // Global devices that are responsible for generating clique ids.
@@ -235,10 +246,17 @@ bool NcclCollectives::SupportsDeviceComm() const {
   return NCCL_VERSION_CODE >= 22800;
 }
 
+bool NcclCollectives::SupportsOneSidedComm() const {
+  return NCCL_VERSION_CODE >= 22900;
+}
+
 size_t NcclCollectives::SymmetricMemoryAlignment() const {
-  // TODO(ezhulenev): Query memory alignment from CUDA executor for multicast
-  // memory (CU_MULTICAST_GRANULARITY_MINIMUM). Find how to query it for NCCL.
-  return 4096;
+  // Multicast memory requires buffers aligned to
+  // CU_MULTICAST_GRANULARITY_MINIMUM which is 2MB on Hopper. Since both
+  // symmetric and multicast buffers share the same kCollective memory space
+  // color, we use the larger alignment.
+  // TODO(ezhulenev): Query this from CUDA at runtime.
+  return 2 * 1024 * 1024;
 }
 
 static absl::StatusOr<ncclConfig_t> AsNcclConfig(
@@ -249,6 +267,18 @@ static absl::StatusOr<ncclConfig_t> AsNcclConfig(
   comm_config.splitShare = config.split_share;
   int nccl_version;
   XLA_NCCL_RETURN_IF_ERROR(ncclGetVersion(&nccl_version));
+
+  if (xla::GetDebugOptionsFromFlags()
+          .xla_gpu_experimental_enable_nccl_symmetric_buffers() &&
+      config.use_minimal_resource) {
+#if (NCCL_VERSION_CODE >= 22800)
+    VLOG(1) << "Setting CTAPolicy to NCCL_CTA_POLICY_ZERO";
+    comm_config.CTAPolicy = NCCL_CTA_POLICY_ZERO;
+#else
+    VLOG(1) << "Requires NCCL version >= 2.28 to use NCCL_CTA_POLICY_ZERO";
+#endif
+  }
+
   if (config.max_nchannels > 0) {
     VLOG(1) << "Maximum number of channels is set to: " << comm_config.maxCTAs;
     comm_config.maxCTAs = config.max_nchannels;
@@ -417,7 +447,7 @@ NcclCollectives::SplitCommunicatorsWithCancel(
   ASSIGN_OR_RETURN(auto stream_executors, GetStreamExecutors(ranks));
 
   const auto& gpu_config =
-      tsl::down_cast<const GpuCollectives::Config&>(config);
+      absl::down_cast<const GpuCollectives::Config&>(config);
 
   auto make_comm = [&](int i) -> absl::StatusOr<ncclComm_t> {
     int32_t device_ordinal = DeviceOrdinal(ranks[i]);
@@ -547,5 +577,5 @@ NcclCollectives::InitializeTopology(const Topology& topology) {
 
 }  // namespace xla::gpu
 
-XLA_COLLECTIVES_REGISTER("CUDA", "nccl", 1,
+XLA_COLLECTIVES_REGISTER("CUDA", "nccl", 100,
                          std::make_unique<xla::gpu::NcclCollectives>());

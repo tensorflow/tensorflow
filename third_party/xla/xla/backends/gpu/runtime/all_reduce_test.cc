@@ -37,14 +37,11 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/hlo_runner.h"
-#include "xla/service/platform_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
@@ -56,6 +53,7 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -67,6 +65,7 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
+using ::absl_testing::StatusIs;
 using ::stream_executor::gpu::AllReduceStrategy;
 using ::testing::HasSubstr;
 
@@ -155,13 +154,13 @@ class AllReduceKernelTest : public ::testing::Test,
           2 * aligned_input_size, aligned_input_size));
       TF_RET_CHECK(!output_buffers[i].is_null());
       TF_RETURN_IF_ERROR(
-          executor->SynchronousMemZero(&output_buffers[i], aligned_input_size));
+          streams[i]->MemZero(&output_buffers[i], aligned_input_size));
 
       signal_flags_buffers.emplace_back(allocated_buffers[i].GetByteSlice(
           3 * aligned_input_size, aligned_signal_size));
       TF_RET_CHECK(!signal_flags_buffers[i].is_null());
-      TF_RETURN_IF_ERROR(executor->SynchronousMemZero(&signal_flags_buffers[i],
-                                                      aligned_signal_size));
+      TF_RETURN_IF_ERROR(
+          streams[i]->MemZero(&signal_flags_buffers[i], aligned_signal_size));
       TF_RETURN_IF_ERROR(streams[i]->Memcpy(&input_buffers[i],
                                             input_data[i].data(), input_size));
       XLA_VLOG_DEVICE(1, i)
@@ -435,10 +434,9 @@ TEST_P(AllReduceKernelTest, KernelTestAddPred_Unsupported) {
   std::vector<Array<bool>> inputs(kNumRanks, Array<bool>({num_elements()}));
 
   auto results = RunKernel<bool>(executors, inputs, ReductionKind::SUM);
-  EXPECT_THAT(results.status(),
-              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(results.status(), StatusIs(absl::StatusCode::kUnimplemented));
   EXPECT_THAT(results.status().message(),
-              ::testing::HasSubstr("AllReduce kernel is not supported"));
+              HasSubstr("combination is not supported"));
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -456,11 +454,11 @@ INSTANTIATE_TEST_SUITE_P(
                              info.param.num_elements);
     });
 
-class AllReduceHloTest : public HloHardwareIndependentTestBase {};
+class AllReduceHloTest : public HloPjRtTestBase {};
 
-TEST_F(AllReduceHloTest, NullDeviceAssnWithHloRunner) {
-  // xla::HloRunner passes a null device assignment to the XLA executable.
-  // Test this returns an error gracefully.
+TEST_F(AllReduceHloTest, DefaultDeviceAssnWithHloRunner) {
+  // xla::HloRunnerPjRt passes a single device assignment. Test this returns an
+  // error gracefully.
   const char* const hlo_string = R"(
     HloModule module, replica_count=2
 
@@ -478,15 +476,12 @@ TEST_F(AllReduceHloTest, NullDeviceAssnWithHloRunner) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  HloRunner runner(PlatformUtil::GetDefaultPlatform().value());
   Literal input = LiteralUtil::CreateR1<float>(std::vector<float>(1, 2));
 
-  EXPECT_THAT(
-      runner.Execute(std::move(module), {std::move(input)}),
-      absl_testing::StatusIs(
-          absl::StatusCode::kInternal,
-          HasSubstr(
-              "Collective parameters and device assignment are required")));
+  EXPECT_THAT(test_runner().Execute(std::move(module), {std::move(input)}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Mismatched number of replicas for device "
+                                 "assignment and computation (1 vs 2).")));
 }
 
 }  // namespace

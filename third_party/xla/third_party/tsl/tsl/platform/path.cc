@@ -23,6 +23,8 @@ limitations under the License.
 
 #include <cstring>
 
+#include "absl/base/attributes.h"
+#include "absl/base/const_init.h"
 #include "absl/status/status.h"
 #if defined(PLATFORM_WINDOWS)
 #include <windows.h>
@@ -35,21 +37,24 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/logging.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/scanner.h"
-#include "tsl/platform/str_util.h"
-#include "tsl/platform/strcat.h"
-#include "tsl/platform/stringpiece.h"
 
 namespace tsl {
 namespace io {
 namespace internal {
 namespace {
 
-const char kPathSep[] = "/";
+static constexpr char kPathSep[2] = "/";
+static_assert(
+    sizeof(kPathSep) == 2 && kPathSep[1] == '\0',
+    "`kPathSep` must consist of a single character followed by a null "
+    "terminator. (If this ever changes, update dependent code accordingly.)");
+
 }  // namespace
 
 std::string JoinPathImpl(std::initializer_list<absl::string_view> paths) {
@@ -223,6 +228,13 @@ std::string CleanPath(absl::string_view unclean_path) {
   return path;
 }
 
+std::string EnsureTrailingSlash(absl::string_view path) {
+  if (!path.empty() && path.back() != internal::kPathSep[0]) {
+    return absl::StrCat(path, internal::kPathSep);
+  }
+  return std::string(path);
+}
+
 void ParseURI(absl::string_view uri, absl::string_view* scheme,
               absl::string_view* host, absl::string_view* path) {
   // 0. Parse scheme
@@ -265,9 +277,9 @@ std::string CreateURI(absl::string_view scheme, absl::string_view host,
 
 // Returns a unique number every time it is called.
 int64_t UniqueId() {
-  static mutex mu(LINKER_INITIALIZED);
+  ABSL_CONST_INIT static absl::Mutex mu(absl::kConstInit);
   static int64_t id = 0;
-  mutex_lock l(mu);
+  absl::MutexLock l(mu);
   return ++id;
 }
 

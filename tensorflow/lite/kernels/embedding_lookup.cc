@@ -239,16 +239,18 @@ TfLiteStatus EvalBlockwise(TfLiteContext* context, TfLiteNode* node,
                          idx, row_size - 1);
       return kTfLiteError;
     }
+    const size_t scale_offset = static_cast<size_t>(idx) * num_blocks;
+    const size_t value_offset = static_cast<size_t>(idx) * col_size;
     for (int j = 0; j < num_blocks; ++j) {
-      float scaling_factor = GetTensorData<half>(&scale)[j + idx * num_blocks];
+      float scaling_factor = GetTensorData<half>(&scale)[scale_offset + j];
 
       if (output_fp32_ptr) {
         Unpack4Bit(scaling_factor, blocksize,
-                   &value_ptr[(j * blocksize + idx * col_size) / 2],
+                   &value_ptr[(value_offset + j * blocksize) / 2],
                    &output_fp32_ptr[j * blocksize + i * col_size]);
       } else {
         Unpack4Bit(scaling_factor, blocksize,
-                   &value_ptr[(j * blocksize + idx * col_size) / 2],
+                   &value_ptr[(value_offset + j * blocksize) / 2],
                    &output_fp16_ptr[j * blocksize + i * col_size]);
       }
     }
@@ -269,16 +271,16 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
 
   auto copy_row = [&](float scaling_factor, auto output_ptr, auto value_ptr,
                       int idx, int i) {
+    const size_t offset = static_cast<size_t>(idx) * col_size;
     if (value->type == kTfLiteInt4) {
-      Unpack4Bit(scaling_factor, col_size, &value_ptr[idx * col_size / 2],
+      Unpack4Bit(scaling_factor, col_size, &value_ptr[offset >> 1],
                  &output_ptr[i * col_size]);
     } else if (value->type == kTfLiteInt2) {
-      Unpack2Bit(scaling_factor, col_size, &value_ptr[idx * col_size / 4],
+      Unpack2Bit(scaling_factor, col_size, &value_ptr[offset >> 2],
                  &output_ptr[i * col_size]);
     } else {
       for (int j = 0; j < col_size; j++) {
-        output_ptr[j + i * col_size] =
-            value_ptr[j + idx * col_size] * scaling_factor;
+        output_ptr[j + i * col_size] = value_ptr[offset + j] * scaling_factor;
       }
     }
   };

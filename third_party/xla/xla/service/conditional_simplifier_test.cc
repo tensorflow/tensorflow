@@ -121,6 +121,39 @@ TEST_F(ConditionalSimplifierTest, BranchGetsInlined) {
                  op::Add(op::Parameter(0), op::Constant())));
 }
 
+TEST_F(ConditionalSimplifierTest, RespectsUninlineableAttribute) {
+  absl::string_view hlo_string = R"(
+HloModule RespectsUninlineableAttribute
+
+on_false {
+  param = s32[] parameter(0)
+  ROOT constant = s32[] constant(42)
+}
+
+on_true {
+  param = s32[] parameter(0)
+  ROOT constant = s32[] constant(1)
+}
+
+ENTRY main {
+  p = pred[] constant(true)
+  param = s32[] constant(0)
+  ROOT conditional = s32[] conditional(p, param, param),
+    true_computation=on_true, false_computation=on_false,
+    frontend_attributes={inlineable="false"}
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, ConditionalSimplifier().Run(module.get()));
+  EXPECT_TRUE(changed);
+  HloVerifier v(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false);
+  TF_ASSERT_OK(v.Run(module.get()));
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kCall);
+  EXPECT_EQ(root->to_apply()->name(), "on_true");
+}
+
 TEST_F(ConditionalSimplifierTest, ConditionalWithControlDependency) {
   auto m = CreateNewVerifiedModule();
   HloComputation* computation = MakeConditional(m.get());

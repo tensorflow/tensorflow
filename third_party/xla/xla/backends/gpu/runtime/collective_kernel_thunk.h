@@ -70,7 +70,9 @@ class CollectiveKernelThunk : public Thunk {
       absl::string_view kernel_name = "",                                //
       std::optional<LaunchDimensions> launch_dimensions = std::nullopt,  //
       int32_t shmem_bytes = 0,                                           //
-      bool is_multimem_enabled = false)
+      bool is_multimem_enabled = false,
+      std::optional<std::vector<uint8_t>> cubin = std::nullopt,
+      bool use_pdl = false)
       : Thunk{Thunk::kCollectiveKernel, info},
         collective_kernel_enabled_(is_collective_kernel_enabled),
         is_async_(is_async),
@@ -78,9 +80,11 @@ class CollectiveKernelThunk : public Thunk {
         reduction_kind_(reduction_kind),
         launch_dimensions_(launch_dimensions),
         kernel_name_(kernel_name),
+        cubin_(std::move(cubin)),
         shmem_bytes_(shmem_bytes),
         buffers_(std::move(buffers)),
-        is_multimem_enabled_(is_multimem_enabled) {
+        is_multimem_enabled_(is_multimem_enabled),
+        use_pdl_(use_pdl) {
     per_stream_state_.reserve(kMaxNumExecutors);
   }
 
@@ -95,6 +99,9 @@ class CollectiveKernelThunk : public Thunk {
   std::optional<LaunchDimensions> launch_dimensions() const {
     return launch_dimensions_;
   }
+
+  bool use_pdl() const { return use_pdl_; }
+  const std::optional<std::vector<uint8_t>>& cubin() const { return cubin_; }
 
   // Returns true if the collective kernel is supported for the given clique.
   absl::StatusOr<bool> IsSupported(
@@ -188,6 +195,8 @@ class CollectiveKernelThunk : public Thunk {
   // Kernel name to execute. Required when Codegen/PTX kernel is used.
   // Must match the kernel name in the generated PTX kernel.
   const std::string kernel_name_;
+  std::optional<std::vector<uint8_t>> cubin_;
+
   // Number of bytes of shared memory used by the kernel.
   // Only useful when the codegen kernel is used.
   const int32_t shmem_bytes_;
@@ -202,6 +211,9 @@ class CollectiveKernelThunk : public Thunk {
   absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<StreamMemory>>
       per_stream_memory_ ABSL_GUARDED_BY(mutex_);
   const bool is_multimem_enabled_;
+
+  // Programmatic Dependent Launch.
+  const bool use_pdl_;
 };
 }  // namespace xla::gpu
 

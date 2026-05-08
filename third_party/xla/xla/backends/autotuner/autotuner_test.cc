@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/autotuner/autotuner.h"
 
+#include <atomic>
 #include <memory>
 #include <optional>
 #include <string>
@@ -28,6 +29,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "google/protobuf/text_format.h"
@@ -47,6 +49,7 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
@@ -54,12 +57,11 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/testing/temporary_directory.h"
+#include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
-#include "xla/tsl/util/proto/proto_utils.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"
 
@@ -68,6 +70,16 @@ namespace {
 
 // Use one of existing gpu backend config protos as a test config.
 using TestConfig = gpu::CustomFusionConfig;
+using absl_testing::IsOk;
+using absl_testing::StatusIs;
+using ::testing::_;
+using ::testing::AtMost;
+using ::testing::ByMove;
+using ::testing::MatchesRegex;
+using ::testing::Return;
+using ::testing::UnorderedElementsAre;
+using ::tsl::proto_testing::EqualsProto;
+using ::tsl::proto_testing::ParseTextProtoOrDie;
 
 MATCHER_P(ConfigMatcher, name, "") {
   TestConfig test_config;
@@ -120,7 +132,8 @@ class MockProfiler : public Profiler {
               (Executable * executable, const InputBuffers& buffers),
               (override));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<InputBuffers>>, CreateInputBuffers,
-              (const Executable* executable), (override));
+              (const Executable* executable, const HloInstruction* instr),
+              (override));
   MOCK_METHOD(absl::Status, CheckInputBuffers, (InputBuffers & buffers),
               (override));
   MOCK_METHOD(absl::Status, CheckOutputBuffer,
@@ -145,16 +158,6 @@ class MockAutotunerCache : public AutotunerCacheInterface {
   MOCK_METHOD(CacheStats, GetCacheStats, (), (const, override));
 };
 
-using absl_testing::IsOk;
-using absl_testing::StatusIs;
-using ::testing::_;
-using ::testing::AtMost;
-using ::testing::ByMove;
-using ::testing::MatchesRegex;
-using ::testing::Return;
-using ::testing::UnorderedElementsAre;
-using tsl::proto_utils::ToDurationProto;
-
 se::DeviceDescription CreateDummyDeviceDescription() {
   se::DeviceDescription desc;
   desc.set_name("test_device");
@@ -178,7 +181,7 @@ absl::StatusOr<std::unique_ptr<Autotuner>> SetupAutotunerWithExpectations(
                 GetSupportedConfigs(InstructionMatcher(instr_to_autotune)))
         .WillOnce(Return(std::move(configs)));
   }
-  EXPECT_CALL(*profiler, CreateInputBuffers(_))
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
       .Times(instrs_to_autotune.size())
       .WillRepeatedly([] { return std::make_unique<InputBuffers>(); });
   EXPECT_CALL(*backend, Compile(_, _))
@@ -321,7 +324,7 @@ TEST_F(AutotunerTest, AutotuneAppliesBestConfigAndSkipsNonCompilableConfig) {
 
   auto profiler = std::make_unique<MockProfiler>();
   auto device_description = CreateDummyDeviceDescription();
-  EXPECT_CALL(*profiler, CreateInputBuffers(_))
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
       .WillOnce(Return(std::make_unique<InputBuffers>()));
   EXPECT_CALL(*profiler, Profile(_, _))
       .WillOnce(Return(ProfileResult({absl::Seconds(2)})))
@@ -363,7 +366,7 @@ TEST_F(AutotunerTest, AutotuneAppliesBestConfigUsingThreadPool) {
 
   auto profiler = std::make_unique<MockProfiler>();
   auto device_description = CreateDummyDeviceDescription();
-  EXPECT_CALL(*profiler, CreateInputBuffers(_))
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
       .WillOnce(Return(std::make_unique<InputBuffers>()));
   EXPECT_CALL(*profiler, Profile(testing::Pointer(exec1), _))
       .WillOnce(Return(ProfileResult({absl::Seconds(2)})));
@@ -520,7 +523,7 @@ TEST_F(AutotunerTest, AutotuneWithBufferCheckFiltersWrongResults) {
   auto profiler = std::make_unique<MockProfiler>();
   ScopedShapedBuffer output_1(Shape(), nullptr, 0),
       output_2(Shape(), nullptr, 0), output_3(Shape(), nullptr, 0);
-  EXPECT_CALL(*profiler, CreateInputBuffers(_))
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
       .WillOnce(Return(std::make_unique<InputBuffers>()));
   EXPECT_CALL(*profiler, Profile(_, _))
       .WillOnce(Return(ProfileResult({absl::Seconds(2), std::move(output_1)})))
@@ -561,7 +564,7 @@ TEST_F(AutotunerTest, AutotuneSkipsBufferCheckWhenNoReferenceOutput) {
   auto profiler = std::make_unique<MockProfiler>();
   ScopedShapedBuffer output_1(Shape(), nullptr, 0),
       output_2(Shape(), nullptr, 0), output_3(Shape(), nullptr, 0);
-  EXPECT_CALL(*profiler, CreateInputBuffers(_))
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
       .WillOnce(Return(std::make_unique<InputBuffers>()));
   EXPECT_CALL(*profiler, Profile(_, _))
       .WillOnce(Return(ProfileResult({absl::Seconds(1), std::move(output_1)})))
@@ -599,7 +602,7 @@ TEST_F(AutotunerTest, AutotuneWithScratchBytesOptimization) {
       .WillRepeatedly(Return(absl::OkStatus()));
 
   auto profiler = std::make_unique<MockProfiler>();
-  EXPECT_CALL(*profiler, CreateInputBuffers(_))
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
       .WillOnce(Return(std::make_unique<InputBuffers>()));
   EXPECT_CALL(*profiler, Profile(_, _))
       .WillOnce(Return(ProfileResult({
@@ -663,6 +666,7 @@ TEST_F(AutotunerTest, DumpLogsToFile) {
 
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.push_back(GetTestConfig("test_config_1"));
+  configs.push_back(GetTestConfig("test_config_failure"));
   configs.push_back(GetTestConfig("test_config_2"));
 
   auto backend = std::make_unique<MockCodegenBackend>();
@@ -671,13 +675,14 @@ TEST_F(AutotunerTest, DumpLogsToFile) {
       .WillOnce(Return(std::move(configs)));
   EXPECT_CALL(*backend, Compile(_, _))
       .WillOnce(Return(std::unique_ptr<Executable>()))
+      .WillOnce(Return(absl::InternalError("failed to compile")))
       .WillOnce(Return(std::unique_ptr<Executable>()));
   EXPECT_CALL(*backend, ApplyConfig(_, ConfigMatcher("test_config_2")))
       .Times(1)
       .WillRepeatedly(Return(absl::OkStatus()));
 
   auto profiler = std::make_unique<MockProfiler>();
-  EXPECT_CALL(*profiler, CreateInputBuffers(_))
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
       .WillOnce(Return(std::make_unique<InputBuffers>()));
   EXPECT_CALL(*profiler, Profile(_, _))
       .WillOnce(Return(ProfileResult({absl::Seconds(2),
@@ -689,7 +694,8 @@ TEST_F(AutotunerTest, DumpLogsToFile) {
   ASSERT_OK_AND_ASSIGN(
       auto autotuner, Autotuner::Create(std::move(backends),
                                         std::move(profiler), config_, nullptr));
-  auto module = ParseAndReturnVerifiedModule(kHlo).value();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   auto dummy_instr = module->entry_computation()->root_instruction();
   EXPECT_THAT(autotuner->Autotune(dummy_instr), absl_testing::IsOk());
 
@@ -701,22 +707,52 @@ TEST_F(AutotunerTest, DumpLogsToFile) {
   EXPECT_TRUE(
       tsl::protobuf::TextFormat::ParseFromString(content, &actual_logs));
 
-  AutotuningLogs expected_logs;
-  AutotuningLog* log = expected_logs.add_logs();
-  log->mutable_instr()->PackFrom(dummy_instr->ToProto());
-  AutotuneResult* result_1 = log->add_results();
-  result_1->mutable_other()->set_name("mock_backend");
-  *result_1->mutable_other()->mutable_config() =
-      *GetTestConfig("test_config_1");
-  *result_1->mutable_run_time() = ToDurationProto(absl::Seconds(2));
-  result_1->set_scratch_bytes(100);
-  AutotuneResult* result_2 = log->add_results();
-  result_2->mutable_other()->set_name("mock_backend");
-  *result_2->mutable_other()->mutable_config() =
-      *GetTestConfig("test_config_2");
-  *result_2->mutable_run_time() = ToDurationProto(absl::Seconds(1));
+  auto expected_logs = ParseTextProtoOrDie<AutotuningLogs>(R"pb(
+    logs {
+      results {
+        other {
+          name: "mock_backend"
+          config {
+            [type.googleapis.com/xla.gpu.CustomFusionConfig] {
+              name: "test_config_failure"
+            }
+          }
+        }
+        run_time { seconds: 0 nanos: 0 }
+        failure {
+          kind: DISQUALIFIED
+          msg: "INTERNAL: Compilation failed: failed to compile"
+        }
+      }
+      results {
+        other {
+          name: "mock_backend"
+          config {
+            [type.googleapis.com/xla.gpu.CustomFusionConfig] {
+              name: "test_config_1"
+            }
+          }
+        }
+        run_time { seconds: 2 nanos: 0 }
+        scratch_bytes: 100
+      }
+      results {
+        other {
+          name: "mock_backend"
+          config {
+            [type.googleapis.com/xla.gpu.CustomFusionConfig] {
+              name: "test_config_2"
+            }
+          }
+        }
+        run_time { seconds: 1 nanos: 0 }
+      }
+    }
+  )pb");
+  expected_logs.mutable_logs(0)->mutable_instr()->PackFrom(
+      dummy_instr->ToProto());
 
-  EXPECT_THAT(actual_logs, tsl::proto_testing::EqualsProto(expected_logs));
+  EXPECT_THAT(actual_logs, EqualsProto(expected_logs));
 }
 
 class AutotunerTestWithBackendName
@@ -740,7 +776,8 @@ TEST_P(AutotunerTestWithBackendName, ExcludeCublasConfig) {
   ASSERT_OK_AND_ASSIGN(
       auto autotuner, Autotuner::Create(std::move(backends),
                                         std::move(profiler), config_, nullptr));
-  auto module = ParseAndReturnVerifiedModule(kHlo).value();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   auto dummy_instr = module->entry_computation()->root_instruction();
   EXPECT_THAT(autotuner->Autotune(dummy_instr),
               StatusIs(absl::StatusCode::kInternal));
@@ -774,7 +811,8 @@ TEST_F(AutotunerTest, SelectFirstConfig) {
   ASSERT_OK_AND_ASSIGN(
       auto autotuner, Autotuner::Create(std::move(backends),
                                         std::move(profiler), config_, nullptr));
-  auto module = ParseAndReturnVerifiedModule(kHlo).value();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   auto dummy_instr = module->entry_computation()->root_instruction();
   EXPECT_THAT(autotuner->Autotune(dummy_instr), absl_testing::IsOk());
 }
@@ -800,7 +838,7 @@ TEST_F(AutotunerTest, ConfigsWithRegisterSpillingAreAllowed) {
 
   // Expect both configs to be profiled, as we allow register spilling.
   auto profiler = std::make_unique<MockProfiler>();
-  EXPECT_CALL(*profiler, CreateInputBuffers(_))
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
       .WillOnce(Return(std::make_unique<InputBuffers>()));
   EXPECT_CALL(*profiler, Profile(_, _))
       .WillOnce(Return(ProfileResult({absl::Seconds(2)})))
@@ -809,7 +847,8 @@ TEST_F(AutotunerTest, ConfigsWithRegisterSpillingAreAllowed) {
   ASSERT_OK_AND_ASSIGN(
       auto autotuner, Autotuner::Create(std::move(backends),
                                         std::move(profiler), config_, nullptr));
-  auto module = ParseAndReturnVerifiedModule(kHlo).value();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   auto dummy_instr = module->entry_computation()->root_instruction();
   EXPECT_THAT(autotuner->Autotune(dummy_instr), absl_testing::IsOk());
 }
@@ -838,7 +877,7 @@ TEST_F(AutotunerTest, ConfigsWithRegisterSpillingAreFiltered) {
 
   // Out of 3 configs, expect only 2 to be profiled as one spilled registers.
   auto profiler = std::make_unique<MockProfiler>();
-  EXPECT_CALL(*profiler, CreateInputBuffers(_))
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
       .WillOnce(Return(std::make_unique<InputBuffers>()));
   EXPECT_CALL(*profiler, Profile(_, _))
       .WillOnce(Return(ProfileResult({absl::Seconds(2)})))
@@ -847,7 +886,8 @@ TEST_F(AutotunerTest, ConfigsWithRegisterSpillingAreFiltered) {
   ASSERT_OK_AND_ASSIGN(
       auto autotuner, Autotuner::Create(std::move(backends),
                                         std::move(profiler), config_, nullptr));
-  auto module = ParseAndReturnVerifiedModule(kHlo).value();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   auto dummy_instr = module->entry_computation()->root_instruction();
   EXPECT_THAT(autotuner->Autotune(dummy_instr), absl_testing::IsOk());
 }
@@ -879,7 +919,8 @@ TEST_F(AutotunerTest, SelectFirstConfigStopsAfterFirstSuccess) {
   ASSERT_OK_AND_ASSIGN(
       auto autotuner, Autotuner::Create(std::move(backends),
                                         std::move(profiler), config_, nullptr));
-  auto module = ParseAndReturnVerifiedModule(kHlo).value();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   auto dummy_instr = module->entry_computation()->root_instruction();
   EXPECT_THAT(autotuner->Autotune(dummy_instr), absl_testing::IsOk());
 }
@@ -910,7 +951,8 @@ TEST_F(AutotunerTest, SelectFirstConfigFirstConfigFails) {
   ASSERT_OK_AND_ASSIGN(
       auto autotuner, Autotuner::Create(std::move(backends),
                                         std::move(profiler), config_, nullptr));
-  auto module = ParseAndReturnVerifiedModule(kHlo).value();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   auto dummy_instr = module->entry_computation()->root_instruction();
   EXPECT_THAT(autotuner->Autotune(dummy_instr), absl_testing::IsOk());
 }
@@ -938,7 +980,8 @@ TEST_F(AutotunerTest, SelectFirstConfigAllConfigsFail) {
   ASSERT_OK_AND_ASSIGN(
       auto autotuner, Autotuner::Create(std::move(backends),
                                         std::move(profiler), config_, nullptr));
-  auto module = ParseAndReturnVerifiedModule(kHlo).value();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   auto dummy_instr = module->entry_computation()->root_instruction();
   EXPECT_THAT(autotuner->Autotune(dummy_instr),
               StatusIs(absl::StatusCode::kInternal));
@@ -961,7 +1004,8 @@ TEST_F(AutotunerTest, UseDefaultConfig) {
       auto autotuner,
       Autotuner::Create(std::move(backends), /*profiler=*/nullptr, config_,
                         /*cache=*/nullptr));
-  auto module = ParseAndReturnVerifiedModule(kHlo).value();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   auto dummy_instr = module->entry_computation()->root_instruction();
   EXPECT_THAT(autotuner->Autotune(dummy_instr), absl_testing::IsOk());
 }
@@ -983,7 +1027,8 @@ TEST_F(AutotunerTest, UseDefaultConfigUnimplemented) {
       auto autotuner,
       Autotuner::Create(std::move(backends), /*profiler=*/nullptr, config_,
                         /*cache=*/nullptr));
-  auto module = ParseAndReturnVerifiedModule(kHlo).value();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   auto dummy_instr = module->entry_computation()->root_instruction();
   EXPECT_DEATH(autotuner->Autotune(dummy_instr).IgnoreError(),
                "GetDefaultConfig is not implemented for mock_backend");
@@ -1063,7 +1108,8 @@ TEST_F(AutotunerTest, DumpHlos) {
   ASSERT_OK_AND_ASSIGN(
       tsl::testing::TemporaryDirectory dump_dir,
       tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
-  auto module = ParseAndReturnVerifiedModule(kHlo).value();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
   module->mutable_config().mutable_debug_options().set_xla_dump_to(
       dump_dir.path());
   auto should_autotune = [](const HloInstruction& instruction) {
@@ -1095,6 +1141,95 @@ TEST_F(AutotunerTest, DumpHlos) {
           MatchesRegex(".*\\.test_module\\.autotuner_1\\.copy\\.after\\.txt"),
           MatchesRegex(
               ".*\\.test_module\\.autotuner_1\\.copy\\.before\\.txt")));
+}
+
+class CountingDestructorExecutable : public Executable {
+ public:
+  explicit CountingDestructorExecutable(std::atomic<int>* destroy_count)
+      : Executable(nullptr), destroy_count_(destroy_count) {}
+  ~CountingDestructorExecutable() override {
+    absl::SleepFor(absl::Milliseconds(10));
+    ++(*destroy_count_);
+  }
+  absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
+      const ServiceExecutableRunOptions*,
+      std::vector<ExecutionInput>) override {
+    return absl::UnimplementedError("unused in test");
+  }
+
+ private:
+  std::atomic<int>* destroy_count_;
+};
+
+TEST_F(AutotunerTest, ProfileAllUnloadsCandidatesBeforeReleasingProfilerLock) {
+  std::atomic<int> executable_destroy_count{0};
+
+  auto backend = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*backend, name()).WillRepeatedly(Return("mock_backend"));
+  EXPECT_CALL(*backend, backend())
+      .WillRepeatedly(Return(autotuner::Backend::UNSPECIFIED_BACKEND));
+  EXPECT_CALL(*backend, GetSupportedConfigs(_)).WillRepeatedly([]() {
+    std::vector<std::unique_ptr<BackendConfig>> out;
+    out.push_back(GetTestConfig("config_1"));
+    out.push_back(GetTestConfig("config_2"));
+    return out;
+  });
+  EXPECT_CALL(*backend, Compile(_, _))
+      .WillRepeatedly([&executable_destroy_count]() {
+        return std::make_unique<CountingDestructorExecutable>(
+            &executable_destroy_count);
+      });
+  EXPECT_CALL(*backend, ApplyConfig(_, _))
+      .WillRepeatedly(Return(absl::OkStatus()));
+
+  std::atomic<int> create_input_buffers_call_count{0};
+  auto profiler = std::make_unique<MockProfiler>();
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
+      .WillRepeatedly([&executable_destroy_count,
+                       &create_input_buffers_call_count](
+                          const Executable*, const HloInstruction*) {
+        int call = ++create_input_buffers_call_count;
+        if (call == 2) {
+          EXPECT_EQ(executable_destroy_count.load(), 2)
+              << "First run's executables must be destroyed before second run "
+                 "acquires profiler lock (avoids delay kernel timeouts)";
+        }
+        return std::make_unique<InputBuffers>();
+      });
+  EXPECT_CALL(*profiler, Profile(_, _)).WillRepeatedly([] {
+    return ProfileResult({absl::Seconds(1)});
+  });
+
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend));
+  auto cache = std::make_unique<MockAutotunerCache>();
+  EXPECT_CALL(*cache, Lookup(_)).WillRepeatedly(Return(std::nullopt));
+  EXPECT_CALL(*cache, Insert(_, _)).WillRepeatedly(Return(absl::OkStatus()));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto autotuner,
+      Autotuner::Create(std::move(backends), std::move(profiler), config_,
+                        std::move(cache)));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  absl::Status status1;
+  absl::Status status2;
+  std::unique_ptr<tsl::Thread> t1(
+      tsl::Env::Default()->StartThread({}, "autotuner-test-t1", [&]() {
+        status1 = autotuner->Autotune(
+            module->entry_computation()->GetInstructionWithName("add"));
+      }));
+  std::unique_ptr<tsl::Thread> t2(
+      tsl::Env::Default()->StartThread({}, "autotuner-test-t2", [&]() {
+        status2 = autotuner->Autotune(
+            module->entry_computation()->GetInstructionWithName("copy"));
+      }));
+  t1.reset();
+  t2.reset();
+  ASSERT_OK(status1);
+  ASSERT_OK(status2);
 }
 
 TEST(AutotuneConfigTest, ToString) {

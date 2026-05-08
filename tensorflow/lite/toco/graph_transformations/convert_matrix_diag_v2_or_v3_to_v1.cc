@@ -37,8 +37,8 @@ absl::Status ConvertMatrixDiagV2OrV3ToV1::Run(Model* model,
   }
 
   if (op->inputs.size() != 5) {
-    return tensorflow::errors::InvalidArgument(
-        "The input size of op %s should be 5", LogName(*op));
+    return absl::InvalidArgumentError(
+        absl::StrCat("The input size of op %s should be 5", LogName(*op)));
   }
 
   const auto& input_k = model->GetArray(op->inputs[1]);
@@ -54,9 +54,9 @@ absl::Status ConvertMatrixDiagV2OrV3ToV1::Run(Model* model,
   if (input_k.GetBuffer<ArrayDataType::kInt32>().data.size() != 1 ||
       input_num_rows.GetBuffer<ArrayDataType::kInt32>().data.size() != 1 ||
       input_num_cols.GetBuffer<ArrayDataType::kInt32>().data.size() != 1) {
-    return tensorflow::errors::InvalidArgument(
-        "Array for argument k / num_rows / num_cols of op ", LogName(*op),
-        " should contains exact one element");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Array for argument k / num_rows / num_cols of op ",
+                     LogName(*op), " should contains exact one element"));
   }
 
   int k = input_k.GetBuffer<ArrayDataType::kInt32>().data[0];
@@ -66,27 +66,27 @@ absl::Status ConvertMatrixDiagV2OrV3ToV1::Run(Model* model,
       input_padding_value.GetBuffer<ArrayDataType::kUint8>().data;
 
   if (k != 0) {
-    return tensorflow::errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "parameter k of op ", LogName(*op),
-        " is expected to be 0, other values are not supported currently");
+        " is expected to be 0, other values are not supported currently"));
   }
 
   if (num_rows != -1) {
-    return tensorflow::errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "parameter num_rows of op ", LogName(*op),
-        " is expected to be -1, other values are not supported currently");
+        " is expected to be -1, other values are not supported currently"));
   }
 
   if (num_cols != -1) {
-    return tensorflow::errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "parameter num_cols of op ", LogName(*op),
-        " is expected to be -1, other values are not supported currently");
+        " is expected to be -1, other values are not supported currently"));
   }
   for (auto byte : padding_value_vector) {
     if (byte != 0) {
-      return tensorflow::errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "parameter padding_value of op ", LogName(*op),
-          " is expected to be 0, other values are not supported currently");
+          " is expected to be 0, other values are not supported currently"));
     }
   }
 

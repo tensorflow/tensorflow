@@ -154,7 +154,7 @@ ENTRY e {
                   ->fusion_backend_config()
                   .block_level_fusion_config());
       EXPECT_THAT(
-          TritonWrapper("test_fn", &ti.TritonFusion(), GetComputeCapability(),
+          TritonWrapper("test_fn", ti.TritonFusion(), GetComputeCapability(),
                         dev_info, block_level_parameters, target_triple_,
                         data_layout_, llvm_ctx_, mlir_context_),
           absl_testing::StatusIs(
@@ -448,17 +448,15 @@ ENTRY e {
                               kHloTest, /*data_type=*/{}, HloOpcode::kDot));
   const se::DeviceDescription dev_info =
       TestGpuDeviceInfo::RTXA6000DeviceInfo(GetComputeCapability());
-  EXPECT_THAT(legacy_triton::IsTritonSupportedInstruction(
-                  ti.Instruction(), GetComputeCapability())
-                  .Explain(),
-              ::testing::HasSubstr("Multiple batch dimensions"));
+  EXPECT_TRUE(legacy_triton::IsTritonSupportedInstruction(
+      ti.Instruction(), GetComputeCapability()));
   auto block_level_parameters =
       BlockLevelParameters::FromBlockLevelFusionConfig(
           ti.TritonFusion()
               .backend_config<GpuBackendConfig>()
               ->fusion_backend_config()
               .block_level_fusion_config());
-  TF_EXPECT_OK(TritonWrapper("test_fn", &ti.TritonFusion(),
+  TF_EXPECT_OK(TritonWrapper("test_fn", ti.TritonFusion(),
                              GetComputeCapability(), dev_info,
                              block_level_parameters, target_triple_,
                              data_layout_, llvm_ctx_, mlir_context_));

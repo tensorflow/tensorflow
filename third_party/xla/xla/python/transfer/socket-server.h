@@ -43,9 +43,14 @@ class SocketServer {
       std::shared_ptr<BulkTransportFactory> bulk_transport_factory);
 
   // Registers an entry for a particular uuid which is a list of buffers.
-  void AwaitPull(uint64_t uuid, tsl::RCReference<PullTable::Entry> handler) {
-    pull_table_->AwaitPull(uuid, std::move(handler));
+  void AwaitPull(uint64_t uuid, tsl::RCReference<PullTable::Entry> handler,
+                 std::optional<absl::Time> timeout = std::nullopt) {
+    DropExpiredPulls();
+    pull_table_->AwaitPull(uuid, std::move(handler), timeout);
   }
+
+  // Clears pull table entries with expired timeouts.
+  void DropExpiredPulls() { pull_table_->DropExpiredPulls(absl::Now()); }
 
   // Clears outstanding buffers and buffer requests.
   void Reset() { pull_table_->Reset(); }
@@ -60,11 +65,13 @@ class SocketServer {
 
     // Fetch a particular buffer from a remote server.
     void Pull(uint64_t uuid, int buffer_id,
-              tsl::RCReference<ChunkDestination> dest);
+              tsl::RCReference<ChunkDestination> dest,
+              std::optional<absl::Time> timeout = std::nullopt);
 
     // Fetch a list of buffers from a remote server.
     void Pull(uint64_t uuid, absl::Span<const int> buffer_ids,
-              std::vector<tsl::RCReference<ChunkDestination>> dests);
+              std::vector<tsl::RCReference<ChunkDestination>> dests,
+              std::optional<absl::Time> timeout = std::nullopt);
 
     enum FailureKind {
       kPoison,

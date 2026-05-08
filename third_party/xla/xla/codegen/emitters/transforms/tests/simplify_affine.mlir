@@ -147,3 +147,124 @@ func.func @order_summands(%arg1: index) {
 // CHECK: arith.addi
 // CHECK: arith.muli %[[ARG3]]
 // CHECK: arith.addi %5, %6 overflow<nsw> : index
+
+// -----
+
+func.func @simplify_max_to_const(%arg0: index) -> index {
+  %0 = xla.apply_indexing
+    #xla.indexing_map<
+      "()[s0] -> (max(s0, 5)),"
+      "domain: s0 in [0, 4]">[%arg0]
+  return %0 : index
+}
+// CHECK-LABEL: @simplify_max_to_const
+// CHECK-NEXT:  %[[C5:.*]] = arith.constant 5
+// CHECK-NEXT:  return %[[C5]]
+
+// -----
+
+func.func @simplify_max_canonical(%arg0: index) -> index {
+  %0 = xla.apply_indexing
+    #xla.indexing_map<
+      "()[s0] -> (max(s0, s0 + 5)),"
+      "domain: s0 in [0, 10]">[%arg0]
+  return %0 : index
+}
+// CHECK-LABEL: @simplify_max_canonical
+// CHECK-NEXT:  %[[C5:.*]] = arith.constant 5
+// CHECK-NEXT:  %[[RET:.*]] = arith.addi %{{.*}}, %[[C5]]
+// CHECK-NEXT:  return %[[RET]]
+
+// -----
+
+func.func @lower_max(%arg0: index) -> index {
+  %0 = xla.apply_indexing
+    #xla.indexing_map<
+      "()[s0] -> (max(s0, 5)),"
+      "domain: s0 in [0, 10]">[%arg0]
+  return %0 : index
+}
+// CHECK-LABEL: @lower_max
+// CHECK-DAG:   %[[C5:.*]] = arith.constant 5
+// CHECK:       %[[RET:.*]] = arith.maxui %{{.*}}, %[[C5]]
+// CHECK-NEXT:  return %[[RET]]
+
+// -----
+
+func.func @simplify_min_to_const(%arg0: index) -> index {
+  %0 = xla.apply_indexing
+    #xla.indexing_map<
+      "()[s0] -> (min(s0, 5)),"
+      "domain: s0 in [6, 10]">[%arg0]
+  return %0 : index
+}
+// CHECK-LABEL: @simplify_min_to_const
+// CHECK-NEXT:  %[[C5:.*]] = arith.constant 5
+// CHECK-NEXT:  return %[[C5]]
+
+// -----
+
+func.func @simplify_min_canonical(%arg0: index) -> index {
+  %0 = xla.apply_indexing
+    #xla.indexing_map<
+      "()[s0] -> (min(s0, s0 + 5)),"
+      "domain: s0 in [0, 10]">[%arg0]
+  return %0 : index
+}
+// CHECK-LABEL: @simplify_min_canonical
+// CHECK-NEXT:  return %{{.*}}
+
+// -----
+
+func.func @lower_min(%arg0: index) -> index {
+  %0 = xla.apply_indexing
+    #xla.indexing_map<
+      "()[s0] -> (min(s0, 5)),"
+      "domain: s0 in [0, 10]">[%arg0]
+  return %0 : index
+}
+// CHECK-LABEL: @lower_min
+// CHECK-DAG:   %[[C5:.*]] = arith.constant 5
+// CHECK:       %[[RET:.*]] = arith.minui %{{.*}}, %[[C5]]
+// CHECK-NEXT:  return %[[RET]]
+
+// -----
+
+func.func @lower_ceildiv_constant(%arg0: index) -> index {
+  %0 = xla.apply_indexing
+    #xla.indexing_map<
+      "()[s0] -> (s0 ceilDiv 5),"
+      "domain: s0 in [0, 10]">[%arg0]
+  return %0 : index
+}
+// CHECK-LABEL: @lower_ceildiv_constant
+// CHECK-DAG:   %[[C4:.*]] = arith.constant 4
+// CHECK-DAG:   %[[C5:.*]] = arith.constant 5
+// CHECK:       %[[ADD:.*]] = arith.addi %{{.*}}, %[[C4]]
+// CHECK:       %[[RET:.*]] = arith.divui %[[ADD]], %[[C5]]
+// CHECK:       return %[[RET]]
+
+// -----
+
+func.func @unsafe_max(%arg0: index {xla.range = [-10 : index, 10 : index]}, %arg1: index) -> index {
+  %0 = xla.apply_indexing
+    #xla.indexing_map<
+      "()[s0, s1] -> (max(s0, s1)),"
+      "domain: s0 in [-10, 10], s1 in [0, 5]">[%arg0, %arg1]
+  return %0 : index
+}
+// CHECK-LABEL: @unsafe_max
+// CHECK:       xla.apply_indexing
+
+// -----
+
+func.func @unsafe_div(%arg0: index) -> index {
+  %0 = xla.apply_indexing
+    #xla.indexing_map<
+      "()[s0] -> (s0 floorDiv -5),"
+      "domain: s0 in [0, 10]">[%arg0]
+  return %0 : index
+}
+// CHECK-LABEL: @unsafe_div
+// CHECK:       {{xla.apply_indexing|affine.apply}}
+

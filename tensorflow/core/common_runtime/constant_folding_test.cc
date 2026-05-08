@@ -20,6 +20,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/cc/ops/array_ops_internal.h"
 #include "tensorflow/cc/ops/nn_ops.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
@@ -100,7 +102,7 @@ class FakeDevice : public Device {
 
  public:
   absl::Status Sync() override {
-    return errors::Unimplemented("FakeDevice::Sync()");
+    return absl::UnimplementedError("FakeDevice::Sync()");
   }
 
   Allocator* GetAllocator(AllocatorAttributes attr) override { return nullptr; }
@@ -686,10 +688,10 @@ class TestTFFileSystem : public ::tensorflow::NullFileSystem {
   using ::tensorflow::NullFileSystem::NewReadOnlyMemoryRegionFromFile;
 
   absl::Status NewReadOnlyMemoryRegionFromFile(
-      const std::string& fname, ::tensorflow::TransactionToken* token,
+      const std::string& fname,
       std::unique_ptr<::tensorflow::ReadOnlyMemoryRegion>* result) override {
     if (fname != kTestMemRegionName) {
-      return ::tensorflow::errors::Unimplemented(
+      return absl::UnimplementedError(
           "NewReadOnlyMemoryRegionFromFile unimplemented");
     }
     const absl::string_view sp = data_tensor_.tensor_data();
@@ -708,7 +710,7 @@ class TestTFEnvironment : public ::tensorflow::EnvWrapper {
   using tf_base = ::tensorflow::EnvWrapper;
   TestTFEnvironment() : ::tensorflow::EnvWrapper(Default()) {}
   absl::Status GetFileSystemForFile(
-      const std::string& fname, ::tensorflow::FileSystem** result) override {
+      absl::string_view fname, ::tensorflow::FileSystem** result) override {
     was_used_ = true;
     if (fname == "test://test") {
       *result = &test_filesystem_;

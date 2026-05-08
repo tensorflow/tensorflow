@@ -81,6 +81,7 @@ cc_library(
         ":cpu_device_description",
         ":cpu_topology",
         "//xla:shape_util",
+        "//xla:util",
         "//xla/backends/cpu:target_machine_options",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
@@ -96,6 +97,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:fingerprint",
     ],
 )
 

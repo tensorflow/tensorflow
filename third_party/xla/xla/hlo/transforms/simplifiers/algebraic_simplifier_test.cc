@@ -62,6 +62,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
@@ -281,6 +282,122 @@ TEST_F(AlgebraicSimplifierTest, AddZero) {
   ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
+}
+
+TEST_F(AlgebraicSimplifierTest, AddSubSame) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    test {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      sub = f32[] subtract(y, x)
+      ROOT add = f32[] add(x, sub)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+
+  // By default enable_fast_math is false.
+  EXPECT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+
+  // Set enable_fast_math to true.
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_fast_math(true);
+  EXPECT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(1)));
+}
+
+TEST_F(AlgebraicSimplifierTest, AddSubSameCommutative) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    test {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      sub = f32[] subtract(y, x)
+      ROOT add = f32[] add(sub, x)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_fast_math(true);
+  EXPECT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(1)));
+}
+
+TEST_F(AlgebraicSimplifierTest, AddSubSameInt) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    test {
+      x = s32[] parameter(0)
+      y = s32[] parameter(1)
+      sub = s32[] subtract(y, x)
+      ROOT add = s32[] add(x, sub)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+
+  EXPECT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(1)));
+}
+
+TEST_F(AlgebraicSimplifierTest, SubSubSame) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    test {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      sub_inner = f32[] subtract(x, y)
+      ROOT sub = f32[] subtract(x, sub_inner)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_fast_math(true);
+  EXPECT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(1)));
+}
+
+TEST_F(AlgebraicSimplifierTest, SubAddSame) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    test {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      add = f32[] add(x, y)
+      ROOT sub = f32[] subtract(x, add)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_fast_math(true);
+  EXPECT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Negate(m::Parameter(1))));
+}
+
+TEST_F(AlgebraicSimplifierTest, AddSubSame2) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    test {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      add = f32[] add(x, y)
+      ROOT sub = f32[] subtract(add, x)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_fast_math(true);
+  EXPECT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(1)));
 }
 
 TEST_F(AlgebraicSimplifierTest, FactorIntegerAddition) {
@@ -9421,6 +9538,27 @@ TEST_F(AlgebraicSimplifierTest, RecipRsqrt) {
                                              m::Sqrt(m::Parameter(0)))));
 }
 
+// Test that A/broadcast(B) is simplified to A*broadcast(1/B).
+TEST_F(AlgebraicSimplifierTest, DivideByBroadcast) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[] parameter(0)
+      p1 = f32[8] parameter(1)
+      broadcast_p0 = f32[8] broadcast(p0)
+      ROOT div = f32[8] divide(p1, broadcast_p0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_executing_on_cpu(true);
+  ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::MultiplyAnyOrder(
+                  m::Parameter(1), m::Broadcast(m::Divide(m::ConstantScalar(1),
+                                                          m::Parameter(0))))));
+}
+
 TEST_F(AlgebraicSimplifierTest, CopyReshape) {
   constexpr absl::string_view kModuleStr = R"(
     HloModule m
@@ -13073,6 +13211,86 @@ TEST_F(AlgebraicSimplifierTest, AllGatherOfBroadcast) {
               GmockMatch(m::Broadcast(m::Constant())));
 }
 
+TEST_F(AlgebraicSimplifierTest, AllReduceSumOfBroadcastF32) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT a = f32[] add(p0, p1)
+    }
+    test {
+      z = f32[] constant(1.1)
+      b = f32[4,4] broadcast(z), dimensions={}
+      ROOT ar = f32[4,4] all-reduce(b), to_apply=add, replica_groups={{0, 1, 2, 3}}
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  XLA_VLOG_LINES(1, m->ToString());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::Constant())));
+}
+
+TEST_F(AlgebraicSimplifierTest, AllReduceSumOfBroadcastS32) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    add {
+      p0 = s32[] parameter(0)
+      p1 = s32[] parameter(1)
+      ROOT a = s32[] add(p0, p1)
+    }
+    test {
+      z = s32[] constant(2)
+      b = s32[4,4] broadcast(z), dimensions={}
+      ROOT ar = s32[4,4] all-reduce(b), to_apply=add, replica_groups={{0, 1, 2, 3}}
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  XLA_VLOG_LINES(1, m->ToString());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::Constant())));
+}
+
+TEST_F(AlgebraicSimplifierTest, ReduceScatterSumOfBroadcastF32) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT a = f32[] add(p0, p1)
+    }
+    test {
+      z = f32[] constant(1.1)
+      b = f32[8,4] broadcast(z), dimensions={}
+      ROOT rs = f32[2,4] reduce-scatter(b), dimensions={0}, to_apply=add, replica_groups={{0, 1, 2, 3}}
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  XLA_VLOG_LINES(1, m->ToString());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::Constant())));
+}
+
+TEST_F(AlgebraicSimplifierTest, ReduceScatterSumOfBroadcastS32) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    add {
+      p0 = s32[] parameter(0)
+      p1 = s32[] parameter(1)
+      ROOT a = s32[] add(p0, p1)
+    }
+    test {
+      z = s32[] constant(2)
+      b = s32[8,4] broadcast(z), dimensions={}
+      ROOT rs = s32[2,4] reduce-scatter(b), dimensions={0}, to_apply=add, replica_groups={{0, 1, 2, 3}}
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  XLA_VLOG_LINES(1, m->ToString());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::Constant())));
+}
+
 TEST_F(AlgebraicSimplifierTest, TrivialMin) {
   constexpr absl::string_view kModuleStr = R"(
     HloModule m
@@ -13616,6 +13834,56 @@ TEST_F(AlgebraicSimplifierTest, HoistTransposeOfReshapeLayoutSensitive) {
   options.set_enable_hoist_transpose_of_reshape(true);
   AlgebraicSimplifier simplifier(options);
   EXPECT_FALSE(simplifier.Run(m.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest, CommuteReduceAndBroadcast) {
+  constexpr absl::string_view kModuleStr = R"(
+  HloModule m
+
+  region_0.1 {
+    reduce_sum.4 = f32[] parameter(1)
+    reduce_sum.3 = f32[] parameter(0)
+    ROOT reduce_sum.5 = f32[] add(reduce_sum.3, reduce_sum.4)
+  }
+
+  ENTRY fused_computation {
+    param_0.4 = f32[512,1024] parameter(0)
+    broadcast_in_dim.0 = f32[16,8,512,1024] broadcast(param_0.4), dimensions={2,3}
+    constant.0 = f32[] constant(0)
+    ROOT reduce_sum.0 = f32[16,8] reduce(broadcast_in_dim.0, constant.0), dimensions={2,3}, to_apply=region_0.1
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_TRUE(
+      RunHloPass(AlgebraicSimplifier(default_options_), m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Broadcast(m::Reduce(m::Parameter(), m::Constant()))));
+}
+
+TEST_F(AlgebraicSimplifierTest, CommuteReduceAndBroadcastUnsorted) {
+  constexpr absl::string_view kModuleStr = R"(
+  HloModule m
+
+  region_0.1 {
+    reduce_sum.4 = f32[] parameter(1)
+    reduce_sum.3 = f32[] parameter(0)
+    ROOT reduce_sum.5 = f32[] add(reduce_sum.3, reduce_sum.4)
+  }
+
+  ENTRY fused_computation {
+    param_0.4 = f32[512,1024] parameter(0)
+    broadcast_in_dim.0 = f32[16,8,1024,512] broadcast(param_0.4), dimensions={3,2}
+    constant.0 = f32[] constant(0)
+    ROOT reduce_sum.0 = f32[16,8] reduce(broadcast_in_dim.0, constant.0), dimensions={3,2}, to_apply=region_0.1
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_TRUE(
+      RunHloPass(AlgebraicSimplifier(default_options_), m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Broadcast(m::Reduce(m::Parameter(), m::Constant()))));
 }
 
 }  // namespace

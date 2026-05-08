@@ -51,9 +51,11 @@ class ScaledDotRewriterTestFixture : public HloTestBase,
 TEST_P(ScaledDotRewriterTestFixture, ScaledDot) {
   const ScaledDotRewriterTestCase& test_case = GetParam();
 
-  // lhs_scale should have two dim
-  const std::string hlo_string = absl::Substitute(
-      R"(
+  for (auto output_type :
+       {PrimitiveType::F32, PrimitiveType::BF16, PrimitiveType::F16}) {
+    // lhs_scale should have two dim
+    const std::string hlo_string = absl::Substitute(
+        R"(
         HloModule module
 
         ENTRY main {
@@ -61,53 +63,62 @@ TEST_P(ScaledDotRewriterTestFixture, ScaledDot) {
           rhs = $0[64,512] parameter(1)
           lhs_scale = $1[32,2] parameter(2)
           rhs_scale = $1[64,2] parameter(3)
-          ROOT dot = f32[1024,64] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+          ROOT dot = $2[1024,64] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
             lhs_contracting_dims={1},
             rhs_contracting_dims={1}
         }
       )",
-      absl::AsciiStrToLower(PrimitiveType_Name(test_case.operand_type)),
-      absl::AsciiStrToLower(PrimitiveType_Name(test_case.scale_type)));
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+        absl::AsciiStrToLower(PrimitiveType_Name(test_case.operand_type)),
+        absl::AsciiStrToLower(PrimitiveType_Name(test_case.scale_type)),
+        absl::AsciiStrToLower(PrimitiveType_Name(output_type)));
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnUnverifiedModule(hlo_string));
 
-  ScaledDotRewriter rewriter;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
-  EXPECT_TRUE(changed);
+    ScaledDotRewriter rewriter;
+    TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+    EXPECT_TRUE(changed);
 
-  // Verify that the module is still valid after the rewrite.
-  auto status_or_module = ParseAndReturnVerifiedModule(module->ToString());
-  EXPECT_TRUE(status_or_module.status().ok()) << status_or_module.status();
+    // Verify that the module is still valid after the rewrite.
+    auto status_or_module = ParseAndReturnVerifiedModule(module->ToString());
+    EXPECT_TRUE(status_or_module.status().ok()) << status_or_module.status();
 
-  const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_EQ(root->opcode(), HloOpcode::kDot);
-  for (const HloInstruction* operand : root->operands()) {
-    std::vector<HloOpcode> actual_op_codes{};
-    while (operand->opcode() != HloOpcode::kParameter) {
-      actual_op_codes.push_back(operand->opcode());
-      if (operand->opcode() == HloOpcode::kMultiply) {
-        operand = operand->operand(1);
+    const HloInstruction* root =
+        module->entry_computation()->root_instruction();
+
+    if (output_type == PrimitiveType::F16) {
+      EXPECT_EQ(root->opcode(), HloOpcode::kConvert);
+      root = root->operand(0);
+    }
+
+    EXPECT_EQ(root->opcode(), HloOpcode::kDot);
+    for (const HloInstruction* operand : root->operands()) {
+      std::vector<HloOpcode> actual_op_codes{};
+      while (operand->opcode() != HloOpcode::kParameter) {
+        actual_op_codes.push_back(operand->opcode());
+        if (operand->opcode() == HloOpcode::kMultiply) {
+          operand = operand->operand(1);
+        } else {
+          operand = operand->operand(0);
+        }
+      }
+      actual_op_codes = std::vector<HloOpcode>(actual_op_codes.rbegin(),
+                                               actual_op_codes.rend());
+
+      if (test_case.scale_type == PrimitiveType::BF16) {
+        const std::vector<HloOpcode> expected_op_codes{
+            HloOpcode::kBroadcast, HloOpcode::kReshape, HloOpcode::kMultiply};
+        EXPECT_THAT(actual_op_codes, expected_op_codes);
       } else {
-        operand = operand->operand(0);
+        const std::vector<HloOpcode> expected_op_codes_with_convert{
+            HloOpcode::kConvert, HloOpcode::kBroadcast, HloOpcode::kReshape,
+            HloOpcode::kMultiply};
+        EXPECT_THAT(actual_op_codes, expected_op_codes_with_convert);
       }
     }
-    actual_op_codes = std::vector<HloOpcode>(actual_op_codes.rbegin(),
-                                             actual_op_codes.rend());
 
-    if (test_case.scale_type == PrimitiveType::BF16) {
-      const std::vector<HloOpcode> expected_op_codes{
-          HloOpcode::kBroadcast, HloOpcode::kReshape, HloOpcode::kMultiply};
-      EXPECT_THAT(actual_op_codes, expected_op_codes);
-    } else {
-      const std::vector<HloOpcode> expected_op_codes_with_convert{
-          HloOpcode::kConvert, HloOpcode::kBroadcast, HloOpcode::kReshape,
-          HloOpcode::kMultiply};
-      EXPECT_THAT(actual_op_codes, expected_op_codes_with_convert);
-    }
+    EXPECT_TRUE(RunAndCompare(std::move(module),
+                              ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
   }
-
-  EXPECT_TRUE(RunAndCompare(std::move(module),
-                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 INSTANTIATE_TEST_SUITE_P(

@@ -18,6 +18,7 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -182,7 +183,8 @@ absl::StatusOr<std::vector<InstructionAndShapeIndex>> GetSuccessors(
 }
 
 std::vector<InstructionAndShapeIndex> GetPredecessors(
-    const InstructionAndShapeIndex& instruction_and_shape_index) {
+    const InstructionAndShapeIndex& instruction_and_shape_index,
+    std::optional<int64_t> operand_index) {
   std::vector<InstructionAndShapeIndex> result;
   HloInstruction* instruction = instruction_and_shape_index.instruction;
   if (instruction->opcode() == HloOpcode::kGetTupleElement) {
@@ -208,16 +210,35 @@ std::vector<InstructionAndShapeIndex> GetPredecessors(
   } else if (instruction->opcode() == HloOpcode::kParameter) {
     std::unique_ptr<CallGraph> call_graph =
         CallGraph::Build(instruction->GetModule());
-    auto callers = call_graph->GetComputationCallers(instruction->parent());
-    for (HloInstruction* caller : callers) {
-      result.push_back(
-          {caller->mutable_operand(instruction->parameter_number()),
-           instruction_and_shape_index.shape_index});
+    const std::vector<HloInstruction*> callers =
+        call_graph->GetComputationCallers(instruction->parent());
+    absl::flat_hash_set<HloInstruction*> unique_callers(callers.begin(),
+                                                        callers.end());
+    for (HloInstruction* caller : unique_callers) {
+      if (caller->opcode() == HloOpcode::kConditional) {
+        bool found_computation = false;
+        for (int64_t i = 0; i < caller->branch_computations().size(); ++i) {
+          if (caller->branch_computation(i) == instruction->parent()) {
+            found_computation = true;
+            // Operand 0 is the predicate/index, so the input to the i-th branch
+            // computation is operand (i + 1).
+            result.push_back({caller->mutable_operand(i + 1),
+                              instruction_and_shape_index.shape_index});
+          }
+        }
+        CHECK(found_computation) << "Computation not found in conditional";
+      } else {
+        result.push_back(
+            {caller->mutable_operand(instruction->parameter_number()),
+             instruction_and_shape_index.shape_index});
+      }
     }
   } else if (instruction->opcode() == HloOpcode::kDynamicSlice) {
-    result.push_back({instruction->mutable_operand(0),
+    result.push_back({instruction->mutable_operand(operand_index.value_or(0)),
                       instruction_and_shape_index.shape_index});
   } else if (instruction->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    // Ensure that we are only following the base data operand (index 0).
+    CHECK(!operand_index.has_value() || *operand_index == 0);
     result.push_back({instruction->mutable_operand(0),
                       instruction_and_shape_index.shape_index});
   } else if (instruction->opcode() == HloOpcode::kWhile) {
@@ -232,11 +253,18 @@ std::vector<InstructionAndShapeIndex> GetPredecessors(
     // We follow the data path (operand 0).
     result.push_back({instruction->mutable_operand(0),
                       instruction_and_shape_index.shape_index});
+  } else if (instruction->opcode() == HloOpcode::kConditional) {
+    for (HloComputation* computation : instruction->called_computations()) {
+      result.push_back({computation->root_instruction(),
+                        instruction_and_shape_index.shape_index});
+    }
   } else {
-    CHECK(instruction->operand_count() == 1) << absl::StreamFormat(
-        "Expecting instruction %s to have 1 operand, but it has %d.",
-        instruction->name(), instruction->operand_count());
-    result.push_back({instruction->mutable_operand(0),
+    if (!operand_index.has_value()) {
+      CHECK_EQ(instruction->operands().size(), 1)
+          << "Expected instruction to have 1 operand. Found: "
+          << instruction->ToString();
+    }
+    result.push_back({instruction->mutable_operand(operand_index.value_or(0)),
                       instruction_and_shape_index.shape_index});
   }
   return result;

@@ -25,6 +25,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/runtime/command_state.h"
+#include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/memset_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
@@ -39,7 +42,6 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 namespace {
@@ -66,11 +68,11 @@ TEST(AsyncThunkTest, ConcurrentMemsets) {
 
   // Create 4 async streams, one per chunk.
   std::vector<std::unique_ptr<se::Stream>> async_streams;
-  Thunk::ExecutionStreamIdMap additional_streams;
+  std::vector<se::Stream*> additional_streams;
   for (int i = 0; i < kNumChunks; ++i) {
     ASSERT_OK_AND_ASSIGN(async_streams.emplace_back(),
                          executor->CreateStream());
-    additional_streams[ExecutionStreamId(i + 1)] = async_streams.back().get();
+    additional_streams.push_back(async_streams.back().get());
   }
 
   // Allocate device buffer and zero it.
@@ -97,12 +99,10 @@ TEST(AsyncThunkTest, ConcurrentMemsets) {
 
     Thunk::ThunkInfo start_info;
     start_info.profile_annotation = absl::StrCat("start#", i);
-    start_info.execution_stream_id = ExecutionStreamId(i + 1);
     start_info.thunk_id = ThunkId(i + 1);
 
     thunks.push_back(std::make_unique<AsyncStartThunk>(
-        std::move(start_info), AsyncStartThunk::AsyncKind::kCompute,
-        std::move(nested)));
+        std::move(start_info), ComputationStreamId(i), std::move(nested)));
   }
 
   for (int i = 0; i < kNumChunks; ++i) {
@@ -145,6 +145,49 @@ TEST(AsyncThunkTest, ConcurrentMemsets) {
           << "Mismatch at chunk " << i << " element " << j;
     }
   }
+}
+
+// Test that AsyncDoneThunk::Record() creates an empty command buffer node and
+// is a no-op on update.
+TEST(AsyncThunkTest, AsyncDoneRecordCommandBuffer) {
+  ASSERT_OK_AND_ASSIGN(auto executor, CreateExecutor());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  // Create a paired start/done to obtain a valid AsyncExecution.
+  AsyncStartThunk start(Thunk::ThunkInfo(), ComputationStreamId(0),
+                        ThunkSequence());
+  AsyncDoneThunk done(Thunk::ThunkInfo(), start.async_execution());
+
+  // Set up minimal execute params (not used by AsyncDoneThunk::Record()).
+  se::StreamExecutorAddressAllocator allocator(executor);
+  BufferAllocations allocations({}, 0, &allocator);
+  ServiceExecutableRunOptions run_options;
+  Thunk::ExecutionScopedState thunk_state;
+  Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
+      run_options, allocations, stream.get(), stream.get(),
+      /*collective_params=*/nullptr, /*collective_cliques=*/nullptr,
+      /*collective_memory=*/nullptr, /*additional_streams=*/{}, &thunk_state);
+
+  ASSERT_OK_AND_ASSIGN(
+      auto command_buffer,
+      executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
+
+  CommandStateManager cmd_state;
+  Command::RecordParams record_params = {cmd_state};
+
+  // RecordCreate: should produce a non-null empty command node.
+  ASSERT_OK_AND_ASSIGN(const se::CommandBuffer::Command* cmd,
+                       done.Record(execute_params, record_params,
+                                   Command::RecordCreate{/*.dependencies=*/{}},
+                                   command_buffer.get()));
+  ASSERT_NE(cmd, nullptr);
+
+  // RecordUpdate: empty command is not updatable; same pointer returned.
+  ASSERT_OK_AND_ASSIGN(const se::CommandBuffer::Command* updated_cmd,
+                       done.Record(execute_params, record_params,
+                                   Command::RecordUpdate{/*.command=*/cmd},
+                                   command_buffer.get()));
+  EXPECT_EQ(updated_cmd, cmd);
 }
 
 }  // namespace

@@ -195,9 +195,9 @@ TEST_F(TiledHloInstructionTest, ToString) {
       /*range_vars=*/{},
       /*rt_vars=*/{IndexingMap::Variable{0, 3}});
 
-  std::vector<std::unique_ptr<TiledHloInstruction>> region;
+  TiledHloRegion region;
   region.push_back(std::move(tiled_p2));
-  llvm::SmallVector<std::vector<std::unique_ptr<TiledHloInstruction>>> regions;
+  llvm::SmallVector<TiledHloRegion> regions;
   regions.push_back(std::move(region));
   std::unique_ptr<HloInstruction> p3_hlo = HloInstruction::CreateParameter(
       /*parameter_number=*/3, ShapeUtil::MakeShape(PrimitiveType::F32, {32}),
@@ -211,22 +211,19 @@ TEST_F(TiledHloInstructionTest, ToString) {
                                   std::move(regions)));
 
   EXPECT_EQ(tiled_p3->ToString(),
-            R"""(	hlo: %p3 = f32[32]{0} parameter(3)
-	tile_sizes: (16)
-	tile_strides: (1)
-	tile_offsets_indexing: (d0){rt0} -> (d0 * 16 + rt0), domain: d0 in [0, 1], rt0 in [0, 3]
-	operands:
-		%p0 = parameter()
-	runtime variables:
-			hlo: %p1 = f32[4]{0} parameter(1)
-	tile_sizes: (4)
-	tile_strides: (1)
-	tile_offsets_indexing: KNOWN EMPTY
+            R"(hlo: %p3 = f32[32]{0} parameter(3)
+tile_sizes: (16)
+tile_strides: (1)
+tile_offsets_indexing: (d0){rt0} -> (d0 * 16 + rt0), domain: d0 in [0, 1], rt0 in [0, 3]
+operands:
+  %p0 = parameter()
+runtime variables:
+  hlo: %p1 = f32[4]{0} parameter(1)
+  tile_sizes: (4)
+  tile_strides: (1)
+  tile_offsets_indexing: KNOWN EMPTY
 
-
-	regions: (
-		#0 size 1)
-)""");
+region sizes: (1))");
 }
 
 }  // namespace

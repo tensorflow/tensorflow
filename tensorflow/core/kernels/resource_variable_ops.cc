@@ -67,6 +67,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -153,7 +154,8 @@ absl::Status CopyVariable(int output_idx, OpKernelContext* ctx,
 
 void ReadVariableOp::Compute(OpKernelContext* ctx) {
   core::RefCountPtr<Var> variable;
-  const ResourceHandle& handle = HandleFromInput(ctx, 0);
+  ResourceHandle handle;
+  OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 0, &handle));
   const auto status = LookupResource(ctx, handle, &variable);
   OP_REQUIRES(ctx, status.ok(),
               absl::FailedPreconditionError(absl::StrCat(
@@ -192,9 +194,11 @@ ReadVariablesOp::ReadVariablesOp(OpKernelConstruction* c) : OpKernel(c) {
 
 void ReadVariablesOp::Compute(OpKernelContext* ctx) {
   std::vector<core::RefCountPtr<Var>> variables(dtypes_.size());
+  std::vector<ResourceHandle> handle_vals(dtypes_.size());
   std::vector<const ResourceHandle*> handles(dtypes_.size());
   for (size_t i = 0; i < dtypes_.size(); ++i) {
-    handles[i] = &HandleFromInput(ctx, i);
+    OP_REQUIRES_OK(ctx, HandleFromInput(ctx, i, &handle_vals[i]));
+    handles[i] = &handle_vals[i];
   }
 
   OP_REQUIRES_OK(ctx, LookupResources(ctx, handles, &variables));
@@ -369,7 +373,8 @@ DestroyResourceOp::DestroyResourceOp(OpKernelConstruction* ctx)
 }
 
 void DestroyResourceOp::Compute(OpKernelContext* ctx) {
-  const ResourceHandle& p = HandleFromInput(ctx, 0);
+  ResourceHandle p;
+  OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 0, &p));
   absl::Status status = DeleteResource(ctx, p);
   if (ignore_lookup_error_ && absl::IsNotFound(status)) {
     return;
@@ -385,7 +390,8 @@ REGISTER_KERNEL_BUILDER(
 
 void DisableCopyOnReadOp::Compute(OpKernelContext* ctx) {
   core::RefCountPtr<Var> variable;
-  const ResourceHandle& handle = HandleFromInput(ctx, 0);
+  ResourceHandle handle;
+  OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 0, &handle));
   const auto status = LookupResource(ctx, handle, &variable);
   OP_REQUIRES(ctx, status.ok(),
               absl::FailedPreconditionError(absl::StrCat(
@@ -439,14 +445,16 @@ class AssignVariableOp : public OpKernel {
     // esoteric cases where the same tensor is used to initialize multiple
     // variables or the tensor is a constant this is safe, as future writes will
     // trigger copies).
-    OP_REQUIRES_OK(context, LookupOrCreateResource<Var>(
-                                context, HandleFromInput(context, 0), &variable,
-                                [this, &value](Var** ptr) {
-                                  *ptr = new Var(dtype_);
-                                  *(*ptr)->tensor() = value;
-                                  (*ptr)->is_initialized = true;
-                                  return absl::OkStatus();
-                                }));
+    ResourceHandle handle;
+    OP_REQUIRES_OK(context, HandleFromInput(context, 0, &handle));
+    OP_REQUIRES_OK(context,
+                   LookupOrCreateResource<Var>(context, handle, &variable,
+                                               [this, &value](Var** ptr) {
+                                                 *ptr = new Var(dtype_);
+                                                 *(*ptr)->tensor() = value;
+                                                 (*ptr)->is_initialized = true;
+                                                 return absl::OkStatus();
+                                               }));
     mutex_lock ml(*variable->mu());
     // (variable->tensor()->dtype() == DT_INVALID && !variable->is_initialized)
     // check below is to allow an XLA specific situation wherein update can
@@ -510,9 +518,10 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& value = context->input(1);
     core::RefCountPtr<Var> variable;
+    ResourceHandle handle;
+    OP_REQUIRES_OK(context, HandleFromInput(context, 0, &handle));
     OP_REQUIRES_OK(context, LookupOrCreateResource<Var>(
-                                context, HandleFromInput(context, 0), &variable,
-                                [](Var** ptr) {
+                                context, handle, &variable, [](Var** ptr) {
                                   // Created on host.
                                   *ptr = new Var(DT_VARIANT);
                                   return absl::OkStatus();
@@ -629,8 +638,9 @@ class AssignUpdateVariableOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     core::RefCountPtr<Var> variable;
-    OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
-                                           &variable));
+    ResourceHandle handle;
+    OP_REQUIRES_OK(context, HandleFromInput(context, 0, &handle));
+    OP_REQUIRES_OK(context, LookupResource(context, handle, &variable));
 
     const Tensor& value = context->input(1);
     // TODO(apassos): We could possibly avoid the copy done by
@@ -710,8 +720,11 @@ class VarIsInitializedOp : public OpKernel {
                    context->allocate_output(0, TensorShape({}), &output));
     auto output_tensor = output->tensor<bool, 0>();
     core::RefCountPtr<Var> variable;
-    absl::Status s =
-        LookupResource(context, HandleFromInput(context, 0), &variable);
+    ResourceHandle handle;
+    absl::Status s = HandleFromInput(context, 0, &handle);
+    if (s.ok()) {
+      s = LookupResource(context, handle, &variable);
+    }
     if (!s.ok()) {
       output_tensor() = false;
       return;
@@ -742,7 +755,9 @@ class ResourceGatherOp : public OpKernel {
 
   void Compute(OpKernelContext* c) override {
     core::RefCountPtr<Var> v;
-    OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+    ResourceHandle handle;
+    OP_REQUIRES_OK(c, HandleFromInput(c, 0, &handle));
+    OP_REQUIRES_OK(c, LookupResource(c, handle, &v));
     OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v.get()));
     // NOTE: We hold the lock for the whole gather operation instead
     // of increasing the reference count of v->tensor() to avoid a
@@ -920,7 +935,9 @@ class ResourceGatherNdOp : public OpKernel {
 
   void Compute(OpKernelContext* c) override {
     core::RefCountPtr<Var> v;
-    OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+    ResourceHandle handle;
+    OP_REQUIRES_OK(c, HandleFromInput(c, 0, &handle));
+    OP_REQUIRES_OK(c, LookupResource(c, handle, &v));
     OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v.get()));
     // NOTE: We hold the lock for the whole gather operation instead
     // of increasing the reference count of v->tensor() to avoid a
@@ -1142,7 +1159,9 @@ class ResourceScatterUpdateOp : public OpKernel {
 
   void Compute(OpKernelContext* c) override {
     core::RefCountPtr<Var> v;
-    OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+    ResourceHandle handle;
+    OP_REQUIRES_OK(c, HandleFromInput(c, 0, &handle));
+    OP_REQUIRES_OK(c, LookupResource(c, handle, &v));
 
     // Check data type of update and resource to scatter.
     const DataType update_dtype = c->input(2).dtype();

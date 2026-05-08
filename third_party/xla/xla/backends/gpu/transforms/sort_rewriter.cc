@@ -292,13 +292,12 @@ bool AreOperandTypesSupportedByCub(
   switch (key_type) {
     case U8:
     case U16:
+    case S32:
     case U32:
     case U64:
     case F32:
       return value_bitwidth == 16 || value_bitwidth == 32 ||
              value_bitwidth == 64;
-    case S32:
-      return value_bitwidth == 32;
     default:
       return false;
   }

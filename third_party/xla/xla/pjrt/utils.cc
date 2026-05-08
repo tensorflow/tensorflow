@@ -767,7 +767,7 @@ absl::Status DetermineArgumentLayoutsFromCompileOptions(
 
 absl::StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
     const HloModule& module, bool tuple_inputs) {
-  HloComputation* computation = module.entry_computation();
+  const HloComputation* computation = module.entry_computation();
   int number_of_parameters = [&]() -> int {
     if (tuple_inputs) {
       CHECK_EQ(computation->num_parameters(), 1);
@@ -778,11 +778,17 @@ absl::StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
     }
     return computation->num_parameters();
   }();
+  return ComputeParametersThatMustBeDonated(module.input_output_alias_config(),
+                                            number_of_parameters, tuple_inputs);
+}
+
+absl::StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
+    const HloInputOutputAliasConfig& config, int num_parameters,
+    bool tuple_inputs) {
   // If any buffer in a parameter is aliased we will donate the entire input
   // parameter.
   std::vector<int> parameters_to_donate;
-  parameters_to_donate.reserve(computation->num_parameters());
-  const HloInputOutputAliasConfig& config = module.input_output_alias_config();
+  parameters_to_donate.reserve(num_parameters);
   TF_RETURN_IF_ERROR(config.ForEachAliasWithStatus(
       [&](const ShapeIndex& output_index,
           const HloInputOutputAliasConfig::Alias& alias) -> absl::Status {
@@ -796,21 +802,21 @@ absl::StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
           const ShapeIndex& index = alias.parameter_index;
           if (!index.empty()) {
             int this_parameter = index.data()[0];
-            if (this_parameter >= number_of_parameters) {
+            if (this_parameter >= num_parameters) {
               return InvalidArgument(
                   "Unexpected parameter index %s in alias config with tupled "
                   "inputs and %d parameters",
-                  index.ToString(), number_of_parameters);
+                  index.ToString(), num_parameters);
             }
             parameters_to_donate.push_back(this_parameter);
           }
         } else {
           int this_parameter = alias.parameter_number;
-          if (this_parameter >= number_of_parameters) {
+          if (this_parameter >= num_parameters) {
             return InvalidArgument(
                 "Unexpected parameter number %d in alias config without tupled "
                 "inputs and %d parameters",
-                this_parameter, number_of_parameters);
+                this_parameter, num_parameters);
           }
           parameters_to_donate.push_back(this_parameter);
         }
@@ -858,6 +864,10 @@ bool HasMajorToMinorLayout(PrimitiveType type, absl::Span<int64_t const> dims,
 absl::StatusOr<Shape> MakeShapeWithTrivialByteStrides(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
     absl::Span<const int64_t> byte_strides) {
+  if (!primitive_util::IsArrayType(element_type)) {
+    return InvalidArgument("Element type %s does not support layout",
+                           PrimitiveType_Name(element_type));
+  }
   TF_RET_CHECK(dimensions.size() == byte_strides.size());
   std::vector<int64_t> minor_to_major(dimensions.size());
   // Begin with a major-to-minor layout that is likey the most common.

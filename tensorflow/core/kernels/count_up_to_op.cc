@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_handle.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/kernels/variable_ops.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -67,8 +69,9 @@ class ResourceCountUpToOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     core::RefCountPtr<Var> variable;
-    OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
-                                           &variable));
+    ResourceHandle handle;
+    OP_REQUIRES_OK(context, HandleFromInput(context, 0, &handle));
+    OP_REQUIRES_OK(context, LookupResource(context, handle, &variable));
     mutex_lock l(*variable->mu());
     Tensor before_increment = *variable->tensor();
     OP_REQUIRES(

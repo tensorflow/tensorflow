@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/platform_util.h"
@@ -1276,12 +1277,12 @@ TEST_F(CustomCallHloTest, CustomCallConcurrentUpdateTwoBuffers) {
       frontend_attributes={_xla_stream_annotation="1"}
     b1_1 = b(s32[4]) async-done(b1_1_start),
       frontend_attributes={_xla_stream_annotation="1"},
-      backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
+      backend_config={"operation_queue_id":"0","force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
     b2_1_start = ((b(s32[4])), b(s32[4])) async-start(b2_0), calls=async_comp2,
       frontend_attributes={_xla_stream_annotation="2"}
     b2_1 = b(s32[4]) async-done(b2_1_start),
       frontend_attributes={_xla_stream_annotation="2"},
-      backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
+      backend_config={"operation_queue_id":"0","force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
 
     v_1 = s32[4] custom-call(b1_1), custom_call_target="Unpin",
       output_to_operand_aliasing={{}: (0, {})}

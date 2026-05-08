@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/message_lite.h"
 #include "google/protobuf/util/field_mask_util.h"
 #include "riegeli/bytes/writer.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "xla/util/split_proto/split_proto.pb.h"
 #include "xla/util/split_proto/split_proto_riegeli_options.h"
 #include "xla/util/split_proto/split_proto_write_record.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 

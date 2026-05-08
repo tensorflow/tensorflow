@@ -7060,8 +7060,11 @@ func.func @composite_c4(%arg0: !mhlo.token) {
 
 // -----
 
+// CHECK-LABEL: func @scan
 func.func @scan(%input: tensor<10xf32>, %init: tensor<f32>) -> tensor<10xf32> {
-  %0:2 = mhlo.scan (%input) inits (%init) dimension=0 {
+  %0:2 = mhlo.scan (%input) inits (%init) dimension=0 attributes {
+      scan_dim_size = 10 : i64, is_reverse = true, is_associative = true
+  } {
   ^bb0(%input0: tensor<f32>, %carry0: tensor<f32>):
     %1 = mhlo.add %input0, %carry0 : tensor<f32>
     mhlo.return %1, %1 : tensor<f32>, tensor<f32>

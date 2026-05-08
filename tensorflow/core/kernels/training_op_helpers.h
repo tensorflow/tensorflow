@@ -146,7 +146,9 @@ tsl::mutex* GetTrainingVariableMutex(OpKernelContext* ctx, int input,
                                      Var** maybe_resource) {
   *maybe_resource = nullptr;
   if (ctx->input_dtype(input) == DT_RESOURCE) {
-    if (LookupResource(ctx, HandleFromInput(ctx, input), maybe_resource).ok()) {
+    ResourceHandle handle;
+    if (HandleFromInput(ctx, input, &handle).ok() &&
+        LookupResource(ctx, handle, maybe_resource).ok()) {
       return (*maybe_resource)->mu();
     } else {
       ctx->CtxFailureWithWarning(

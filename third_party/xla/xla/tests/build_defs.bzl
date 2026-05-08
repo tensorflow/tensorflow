@@ -6,7 +6,7 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "is_rocm_configured",
 )
-load("//xla:xla.default.bzl", "xla_cc_test")
+load("//xla:xla.default.bzl", "xla_cc_test", "xla_py_strict_test")
 load("//xla/tests:plugin.bzl", "plugins")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 load("//xla/tsl:tsl.bzl", "if_google")
@@ -29,7 +29,7 @@ NVIDIA_GPU_BACKENDS = [
     "b200",
     "gb200",
     "gb300",
-]
+] + if_google([], ["rtx6000pro"])
 
 # The generic "gpu" backend includes the actual backends in this list.
 NVIDIA_GPU_DEFAULT_BACKENDS = [
@@ -39,7 +39,7 @@ NVIDIA_GPU_DEFAULT_BACKENDS = [
     "b200",
     "gb200",
     "gb300",
-]
+] + if_google([], ["rtx6000pro"])
 
 AMD_GPU_DEFAULT_BACKENDS = ["amdgpu_any"]
 
@@ -86,6 +86,7 @@ def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, b
         "b200": (10, 0),
         "gb200": (10, 0),
         "gb300": (10, 3),
+        "rtx6000pro": (12, 0),
     }
     for gpu_backend in NVIDIA_GPU_BACKENDS:
         all_tags = new_backend_tags[gpu_backend]
@@ -263,6 +264,7 @@ def xla_test(
         fail_if_no_test_linked = True,
         fail_if_no_test_selected = True,
         use_legacy_runtime = False,
+        test_cpu_fast_compile = False,
         **kwargs):
     """Generates strict_cc_test targets for the given XLA backends.
 
@@ -340,6 +342,8 @@ def xla_test(
       fail_if_no_test_selected: Whether to fail if no test case is executed.
       use_legacy_runtime: If true, adds the required dependencies for writing tests
         using the legacy runtime.
+      test_cpu_fast_compile: If true, generate a specialized test target for CPU
+        with FAST_COMPILE preset enabled.
       **kwargs: Additional keyword arguments to pass to strict_cc_test.
     """
 
@@ -368,7 +372,9 @@ def xla_test(
         this_backend_tags = ["xla_%s" % backend] + tags + backend_tags.get(backend, [])
         this_backend_copts = []
         this_backend_args = backend_args.get(backend, [])
-        this_backend_kwargs = dict(kwargs) | backend_kwargs.get(backend, {})
+        this_backend_kwargs = dict(kwargs)
+        for k, v in backend_kwargs.get(backend, {}).items():
+            this_backend_kwargs[k] = v
         this_backend_data = []
         backend_deps = []
         if backend == "cpu":
@@ -434,6 +440,14 @@ def xla_test(
         modifiers = backend.split("_")
         device = modifiers.pop(0)
 
+        this_backend_env = dict(env)
+        for k, v in {
+            "XLA_TEST_DEVICE": device,
+            "XLA_TEST_DEVICE_TYPE": device_type_for_env,
+            "XLA_TEST_MODIFIERS": ",".join(modifiers),
+        }.items():
+            this_backend_env[k] = v
+
         xla_cc_test(
             name = test_name,
             srcs = srcs,
@@ -442,16 +456,42 @@ def xla_test(
             args = args + this_backend_args,
             deps = deps + backend_deps,
             data = data + this_backend_data,
-            env = env | {
-                "XLA_TEST_DEVICE": device,
-                "XLA_TEST_DEVICE_TYPE": device_type_for_env,
-                "XLA_TEST_MODIFIERS": ",".join(modifiers),
-            },
+            env = this_backend_env,
             linkstatic = linkstatic,
             fail_if_no_test_linked = fail_if_no_test_linked,
             fail_if_no_test_selected = fail_if_no_test_selected,
             **this_backend_kwargs
         )
+
+        if backend == "cpu" and test_cpu_fast_compile:
+            fast_compile_test_name = test_name + "_fast_compile"
+            fast_compile_env = dict(env)
+            for k, v in {
+                "XLA_TEST_DEVICE": device,
+                "XLA_TEST_DEVICE_TYPE": device_type_for_env,
+                "XLA_TEST_MODIFIERS": ",".join(modifiers),
+            }.items():
+                fast_compile_env[k] = v
+            if "XLA_FLAGS" in fast_compile_env:
+                fast_compile_env["XLA_FLAGS"] += " --xla_cpu_opt_preset=FAST_COMPILE"
+            else:
+                fast_compile_env["XLA_FLAGS"] = "--xla_cpu_opt_preset=FAST_COMPILE"
+
+            xla_cc_test(
+                name = fast_compile_test_name,
+                srcs = srcs,
+                tags = this_backend_tags,
+                copts = copts + this_backend_copts,
+                args = args + this_backend_args,
+                deps = deps + backend_deps,
+                data = data + this_backend_data,
+                env = fast_compile_env,
+                linkstatic = linkstatic,
+                fail_if_no_test_linked = fail_if_no_test_linked,
+                fail_if_no_test_selected = fail_if_no_test_selected,
+                **this_backend_kwargs
+            )
+
         if ((backend in NVIDIA_GPU_BACKENDS and is_cuda_configured()) or
             (backend in AMD_GPU_DEFAULT_BACKENDS and is_rocm_configured())):
             test_names.append(test_name)
@@ -509,3 +549,5 @@ def generate_backend_suites(backends = []):  # buildifier: disable=unnamed-macro
             name = "%s_tests" % backend,
             tags = ["xla_%s" % backend, "-broken", "manual"],
         )
+
+xla_py_test = xla_py_strict_test

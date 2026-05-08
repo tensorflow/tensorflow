@@ -13,37 +13,52 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/log/check.h"
-#include "absl/status/status.h"
-#include "absl/synchronization/mutex.h"
-#include "absl/types/span.h"
-#include "xla/service/computation_placer.h"
-#include "xla/service/stream_pool.h"
-#include "xla/service/transfer_manager.h"
-#include "xla/stream_executor/platform.h"
-#include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/statusor.h"
-#define EIGEN_USE_THREADS
+#include "xla/service/backend.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <set>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "unsupported/Eigen/CXX11/Tensor"
-#include "xla/service/backend.h"
+#include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/service/compiler.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/platform_util.h"
+#include "xla/service/stream_pool.h"
+#include "xla/service/transfer_manager.h"
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/host/host_platform_id.h"
+#include "xla/stream_executor/integrations/device_mem_allocator.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
+#include "xla/stream_executor/memory_space.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/rocm/rocm_platform_id.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_memory_allocator.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
+#include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/framework/bfc_allocator.h"
+#include "xla/tsl/framework/device_id.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "tsl/platform/cpu_info.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/threadpool.h"
+
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla {
 namespace se = ::stream_executor;
@@ -87,6 +102,83 @@ struct Backend::IntraOpThreadPool {
   std::unique_ptr<tsl::thread::ThreadPool> pool;
   std::unique_ptr<Eigen::ThreadPoolDevice> device;
 };
+
+namespace {
+
+// Thin tsl::Allocator wrapper around StreamExecutor for a given memory space.
+// Used to plug non-default memory spaces (e.g. host pinned) into
+// MultiDeviceAdapter via TfAllocatorAdapter.
+class StreamExecutorAllocator : public tsl::Allocator {
+ public:
+  StreamExecutorAllocator(se::StreamExecutor* executor, int64_t memory_space)
+      : executor_(executor), memory_space_(memory_space) {}
+
+  std::string Name() override {
+    return absl::StrCat("SE_", executor_->device_ordinal(), "_space_",
+                        memory_space_);
+  }
+
+  void* AllocateRaw(size_t alignment, size_t num_bytes) override {
+    auto result = executor_->AllocateArray<char>(num_bytes, memory_space_);
+    return result.opaque();
+  }
+
+  void DeallocateRaw(void* ptr) override {
+    se::DeviceAddressBase mem(ptr);
+    executor_->Deallocate(&mem);
+  }
+
+ private:
+  se::StreamExecutor* executor_;
+  int64_t memory_space_;
+};
+
+// Creates a MultiDeviceAdapter with a BFC allocator for device memory (space 0)
+// and a passthrough StreamExecutor allocator for host pinned memory (space 5).
+std::pair<std::vector<std::unique_ptr<se::Stream>>,
+          std::shared_ptr<se::MultiDeviceAdapter>>
+CreateGpuAllocators(const se::Platform* platform,
+                    absl::Span<se::StreamExecutor* const> stream_executors) {
+  std::vector<se::MultiDeviceAdapter::AllocatorInfo> allocators;
+  std::vector<std::unique_ptr<se::Stream>> streams;
+  for (auto* executor : stream_executors) {
+    auto stream = executor->CreateStream();
+    CHECK_OK(stream) << "Failed to create stream for device "
+                     << executor->device_ordinal();
+    int32_t ordinal = executor->device_ordinal();
+    se::Stream* stream_ptr = (*stream).get();
+    streams.push_back(std::move(*stream));
+
+    int64_t free_memory;
+    int64_t total_memory;
+    CHECK(executor->DeviceMemoryUsage(&free_memory, &total_memory))
+        << "Failed to query available memory from device " << ordinal;
+
+    // BFC allocator for default device memory space.
+    auto sub = std::make_unique<se::DeviceMemAllocator>(
+        executor, tsl::PlatformDeviceId(ordinal));
+    tsl::BFCAllocator::Options opts;
+    opts.allow_growth = true;
+    auto bfc = std::make_shared<tsl::BFCAllocator>(
+        std::move(sub), total_memory,
+        absl::StrCat("XLA_backend_", ordinal, "_bfc"), opts);
+    allocators.push_back(
+        {std::move(bfc), stream_ptr, /*memory_space=*/0, ordinal});
+
+    // Passthrough allocator for host memory space.
+    auto host_alloc = std::make_shared<StreamExecutorAllocator>(
+        executor, static_cast<int64_t>(se::MemorySpace::kHost));
+    allocators.push_back(
+        {std::move(host_alloc), stream_ptr,
+         /*memory_space=*/static_cast<int64_t>(se::MemorySpace::kHost),
+         ordinal});
+  }
+
+  return {std::move(streams), std::make_shared<se::MultiDeviceAdapter>(
+                                  platform, std::move(allocators))};
+}
+
+}  // namespace
 
 /* static */ absl::StatusOr<std::unique_ptr<Backend>> Backend::CreateBackend(
     const BackendOptions& options) {
@@ -155,9 +247,16 @@ Backend::Backend(se::Platform* platform, std::unique_ptr<Compiler> compiler,
       transfer_manager_(transfer_manager),
       computation_placer_(computation_placer),
       stream_executors_(stream_executors.begin(), stream_executors.end()) {
-  // Create a memory allocator for the valid stream executors.
-  memory_allocator_ = std::make_shared<se::StreamExecutorMemoryAllocator>(
-      platform, stream_executors_);
+  if (platform->id() == se::cuda::kCudaPlatformId ||
+      platform->id() == se::rocm::kROCmPlatformId) {
+    std::tie(allocator_streams_, memory_allocator_) =
+        CreateGpuAllocators(platform, stream_executors_);
+  } else {
+    memory_allocator_ =
+        std::make_shared<stream_executor::StreamExecutorAddressAllocator>(
+            platform, stream_executors_);
+  }
+
   CHECK(!stream_executors_.empty())
       << "Service found no devices for backend " << platform_->Name() << '.';
 

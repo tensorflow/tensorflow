@@ -19,8 +19,10 @@ limitations under the License.
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/gather_nd_op.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/gpu_launch_config.h"
 
 namespace tensorflow {
 
@@ -34,8 +36,8 @@ __global__ void GatherSliceOpKernel(
     const int64 slice_size, const int64 out_size) {
   // TODO(ebrevdo): reduce inner loop into two loops:
   // one over the number of locs, and one over the offsets inside the locs.
-  GPU_1D_KERNEL_LOOP(i, out_size) {
-    const Index loc = i / slice_size;
+  for (int64_t i : GpuGridRangeX(out_size)) {
+    const int64_t loc = i / slice_size;
     const auto indices_i = indices + IXDIM * loc;
     bool out_of_bounds = false;
     Index offset = 0;
@@ -87,13 +89,13 @@ struct GatherNdSlice<GPUDevice, T, Index, IXDIM> {
       batch_indices[i - 1] = Tparams.dimension(i - 1);
       batch_strides[i - 1] = batch_strides[i] * Tparams.dimension(i);
     }
-    GpuLaunchConfig config = GetGpuLaunchConfig(out_size, d);
-
-    TF_CHECK_OK(GpuLaunchKernel(GatherSliceOpKernel<T, Index, IXDIM>,
-                                config.block_count, config.thread_per_block, 0,
-                                d.stream(), Tparams.data(), Tindices.data(),
-                                Tout.data(), batch_strides, batch_indices,
-                                indices_size, s_size, out_size));
+    StatusOr<GpuLaunchConfig64> config = GetGpuLaunchConfig64(out_size, d);
+    CHECK_OK(config.status());                                      // Crash OK
+    CHECK_OK(GpuLaunchKernel(GatherSliceOpKernel<T, Index, IXDIM>,  // Crash OK
+                             config->block_count, config->thread_per_block, 0,
+                             d.stream(), Tparams.data(), Tindices.data(),
+                             Tout.data(), batch_strides, batch_indices,
+                             indices_size, s_size, out_size));
 
     // TODO(ebrevdo): enable indices validation on GPU.
     // Right now checking for indices out of bound in the kernel would

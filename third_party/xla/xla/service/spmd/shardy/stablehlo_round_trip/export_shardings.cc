@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -61,7 +62,6 @@ limitations under the License.
 #include "xla/hlo/ir/named_sharding.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/service/spmd/shardy/constants.h"
-#include "xla/service/spmd/shardy/utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
@@ -125,23 +125,26 @@ void exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
     }
   }
 
+  SmallVector<mlir::DictionaryAttr> newResultAttrs;
+  newResultAttrs.reserve(funcOp.getNumResults());
   for (int64_t resNum = 0; resNum < funcOp.getNumResults(); ++resNum) {
-    if (auto sdySharding = funcOp.getResultAttrOfType<TensorShardingAttr>(
-            resNum, kShardingAttr)) {
+    mlir::NamedAttrList attrs(funcOp.getResultAttrDict(resNum));
+    if (auto sdySharding = mlir::dyn_cast_or_null<TensorShardingAttr>(
+            attrs.get(kShardingAttr))) {
       ArrayRef<StringAttr> manualAxes;
-      if (ManualAxesAttr manualAxesAttr =
-              funcOp.getResultAttrOfType<ManualAxesAttr>(resNum, kManualAxes)) {
+      if (auto manualAxesAttr =
+              mlir::dyn_cast_or_null<ManualAxesAttr>(attrs.get(kManualAxes))) {
         manualAxes = manualAxesAttr.getValue();
-        funcOp.removeResultAttr(resNum, kManualAxes);
+        attrs.erase(kManualAxes);
       }
-      funcOp.setResultAttr(
-          resNum, kXlaShardingAttr,
-          getStringAttr(convertToHloSharding(sdySharding, getMeshAttr,
-                                             manualAxes, enableHloShardingV3)));
-      funcOp.removeResultAttr(
-          resNum, StringAttr::get(funcOp.getContext(), kShardingAttr));
+      attrs.set(kXlaShardingAttr, getStringAttr(convertToHloSharding(
+                                      sdySharding, getMeshAttr, manualAxes,
+                                      enableHloShardingV3)));
+      attrs.erase(kShardingAttr);
     }
+    newResultAttrs.push_back(attrs.getDictionary(funcOp.getContext()));
   }
+  funcOp.setAllResultAttrs(newResultAttrs);
 
   funcOp.front().walk([&](Operation* op) {
     ArrayRef<StringAttr> manualAxes;
@@ -183,6 +186,20 @@ class ExportStablehloShardingsPass
       : addMissingShardingToControlFlow(addMissingShardingToControlFlow),
         enableHloShardingV3(enableHloShardingV3) {}
 
+  StringRef getArgument() const override {
+    return "xla-sdy-stablehlo-export-shardings";
+  }
+
+  StringRef getDescription() const override {
+    return "Converts the shardings from kShardingAttr to kXlaShardingAttr and "
+           "removes mesh symbols.";
+  }
+
+  void getDependentDialects(mlir::DialectRegistry& registry) const final {
+    registry.insert<SdyDialect>();
+  }
+
+ protected:
   void runOnOperation() final {
     ModuleOp moduleOp = getOperation();
 
@@ -219,24 +236,43 @@ class ExportStablehloShardingsPass
                             builder.getDictionaryAttr(newAttributes));
       }
     });
-    // Remove all mesh symbols
+    // Collect all used mesh names from StableHLO attributes
+    llvm::DenseSet<StringRef> usedMeshNames;
+    auto collectMeshesFromReplicaGroups = [&](auto op) {
+      if (auto attr = op->getAttr("replica_groups")) {
+        if (auto rgv3 =
+                mlir::dyn_cast<stablehlo::ReplicaGroupMeshAxesAttr>(attr)) {
+          mlir::Attribute meshAttr = rgv3.getMesh();
+          if (auto symbolRef = mlir::dyn_cast<mlir::SymbolRefAttr>(meshAttr)) {
+            usedMeshNames.insert(symbolRef.getLeafReference().getValue());
+          } else if (auto stringAttr =
+                         mlir::dyn_cast<mlir::StringAttr>(meshAttr)) {
+            usedMeshNames.insert(stringAttr.getValue());
+          }
+        }
+      }
+    };
+
+    moduleOp.walk(
+        [&](stablehlo::AllGatherOp op) { collectMeshesFromReplicaGroups(op); });
+    moduleOp.walk(
+        [&](stablehlo::AllReduceOp op) { collectMeshesFromReplicaGroups(op); });
+    moduleOp.walk([&](stablehlo::ReduceScatterOp op) {
+      collectMeshesFromReplicaGroups(op);
+    });
+    moduleOp.walk(
+        [&](stablehlo::AllToAllOp op) { collectMeshesFromReplicaGroups(op); });
+    moduleOp.walk([&](stablehlo::CollectiveBroadcastOp op) {
+      collectMeshesFromReplicaGroups(op);
+    });
+
+    // Remove all mesh symbols that are not used
     for (MeshOp meshOp :
          llvm::make_early_inc_range(moduleOp.getOps<MeshOp>())) {
-      symbolTable.erase(meshOp);
+      if (!usedMeshNames.contains(meshOp.getName())) {
+        symbolTable.erase(meshOp);
+      }
     }
-  }
-
-  StringRef getArgument() const override {
-    return "xla-sdy-stablehlo-export-shardings";
-  }
-
-  StringRef getDescription() const override {
-    return "Converts the shardings from kShardingAttr to kXlaShardingAttr and "
-           "removes mesh symbols.";
-  }
-
-  void getDependentDialects(mlir::DialectRegistry& registry) const final {
-    registry.insert<SdyDialect>();
   }
 
  private:

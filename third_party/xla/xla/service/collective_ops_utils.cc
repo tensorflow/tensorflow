@@ -152,71 +152,65 @@ std::optional<Literal> GetReductionIdentity(ReductionKind kind,
 absl::StatusOr<std::vector<int>> GetParticipatingIDs(
     CollectiveOpGroupMode group_mode, int current_id,
     std::optional<int> total_participant_count,
-    absl::Span<const ReplicaGroup> groups) {
-  // Empty replica_groups() means that all replicas participate.
-  if (groups.empty()) {
+    absl::Span<const ReplicaGroup> replica_groups) {
+  // Empty replica_groups means that all replicas participate.
+  if (replica_groups.empty()) {
     TF_RET_CHECK(total_participant_count.has_value());
     std::vector<int> all_participants(*total_participant_count);
     absl::c_iota(all_participants, 0);
     return all_participants;
   }
 
-  // Formatter for printing replica groups in StrJoin.
+  // Find the replica group containing current_id.
+  for (const ReplicaGroup& g : replica_groups) {
+    if (absl::c_linear_search(g.replica_ids(), current_id)) {
+      return std::vector<int>(g.replica_ids().begin(), g.replica_ids().end());
+    }
+  }
+
+  // Formatter for printing replica groups in error messages.
   auto group_formatter = [](std::string* out, const ReplicaGroup& group) {
     out->append("[");
     out->append(absl::StrJoin(group.replica_ids(), ", "));
     out->append("]");
   };
 
-  // Figure out the other replicas that go together with this one.
-  std::optional<ReplicaGroup> group;
-  for (const ReplicaGroup& g : groups) {
-    if (absl::c_linear_search(g.replica_ids(), current_id)) {
-      TF_RET_CHECK(!group.has_value())
-          << "Replica ID " << current_id << " appears twice in replica groups"
-          << "; group_mode=" << CollectiveOpGroupModeToString(group_mode)
-          << "; groups_size=" << groups.size()
-          << "; groups= " << absl::StrJoin(groups, ", ", group_formatter);
-      group = g;
-    }
-  }
-  TF_RET_CHECK(group.has_value())
-      << "Replica ID " << current_id << " doesn't appear in replica groups"
-      << "; group_mode=" << CollectiveOpGroupModeToString(group_mode)
-      << "; groups_size=" << groups.size()
-      << "; groups= " << absl::StrJoin(groups, ", ", group_formatter);
-  return std::vector<int>(group->replica_ids().begin(),
-                          group->replica_ids().end());
+  return Internal(
+      "Replica ID %d doesn't appear in replica groups; group_mode=%s; "
+      "groups_size=%d; groups= %s",
+      current_id, CollectiveOpGroupModeToString(group_mode),
+      replica_groups.size(),
+      absl::StrJoin(replica_groups, ", ", group_formatter));
 }
 
-absl::StatusOr<std::vector<std::vector<int64_t>>> GetAsyncReplicaGroups(
+absl::StatusOr<std::vector<int>> GetParticipatingIDs(
+    CollectiveOpGroupMode group_mode, int current_id,
+    std::optional<int> total_participant_count,
+    const CollectiveDeviceListBase& groups) {
+  return GetParticipatingIDs(group_mode, current_id, total_participant_count,
+                             groups.replica_groups());
+}
+
+absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>> GetAsyncReplicaGroups(
     const HloInstruction* instruction) {
-  std::vector<std::vector<int64_t>> replica_groups;
   if (instruction->opcode() == HloOpcode::kCollectivePermuteStart) {
-    absl::c_transform(instruction->source_target_pairs(),
-                      std::back_inserter(replica_groups),
-                      [](const std::pair<int64_t, int64_t>& pair) {
-                        std::vector<int64_t> ids({pair.first, pair.second});
-                        return ids;
-                      });
-  } else if (instruction->IsAsynchronous() ||
-             instruction->opcode() == HloOpcode::kAllGatherStart ||
-             instruction->opcode() == HloOpcode::kAllReduceStart) {
-    absl::c_transform(
-        instruction->replica_groups(), std::back_inserter(replica_groups),
-        [](const ReplicaGroup& group) {
-          std::vector<int64_t> ids;
-          absl::c_transform(group.replica_ids(), std::back_inserter(ids),
-                            [](auto id) { return id; });
-          return ids;
-        });
-  } else {
-    return InvalidArgument(
-        "Unexpected instruction type: %s is not an async collective "
-        "instruction",
-        instruction->ToString());
+    std::vector<ReplicaGroup> replica_groups;
+    for (const auto& pair : instruction->source_target_pairs()) {
+      ReplicaGroup& group = replica_groups.emplace_back();
+      group.add_replica_ids(pair.first);
+      group.add_replica_ids(pair.second);
+    }
+    return std::make_unique<CollectiveDeviceList>(replica_groups);
   }
-  return replica_groups;
+  if (instruction->IsAsynchronous() ||
+      instruction->opcode() == HloOpcode::kAllGatherStart ||
+      instruction->opcode() == HloOpcode::kAllReduceStart) {
+    return instruction->device_list()->Clone();
+  }
+  return InvalidArgument(
+      "Unexpected instruction type: %s is not an async collective "
+      "instruction",
+      instruction->ToString());
 }
 
 absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(

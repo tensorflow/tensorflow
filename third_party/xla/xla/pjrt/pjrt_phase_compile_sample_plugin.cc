@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_phase_compile_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_phase_compile_internal.h"
+#include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -95,6 +96,7 @@ constexpr absl::string_view kStablehloBytecodeFormat = "bytecode";
 constexpr absl::string_view kNextPhaseName = "some_next_phase";
 
 absl::Status PhaseValidator(
+    xla::CompileOptions compile_options,
     const std::vector<xla::PjRtPartialProgramProto>& input_programs) {
   if (input_programs.empty()) {
     return absl::InvalidArgumentError("Input partial programs cannot be empty");
@@ -201,7 +203,7 @@ PJRT_Error* PJRT_PhaseCompile_Get_Compiler(
   auto phase_compiler = std::make_unique<SamplePhaseCompiler>();
   auto status = phase_compiler->RegisterAllPhases();
   if (!status.ok()) {
-    return new PJRT_Error{status};
+    return StatusToPjRtError(status);
   }
 
   args->phase_compiler = new PJRT_PhaseCompiler{std::move(phase_compiler)};
@@ -235,8 +237,8 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
 
 PJRT_Error* PJRT_CpuDeviceTopology_Create(
     PJRT_TopologyDescription_Create_Args* args) {
-  return new PJRT_Error{
-      absl::UnimplementedError("Topology not supported for CPU compilation.")};
+  return StatusToPjRtError(
+      absl::UnimplementedError("Topology not supported for CPU compilation."));
 }
 
 const PJRT_Api* GetSamplePhaseCompilePjrtApi() {

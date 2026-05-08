@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/time/clock.h"
 #include "xla/megascale/addresses.pb.h"
 #include "xla/megascale/dcn_topology.pb.h"
 #include "xla/pjrt/plugin/xla_tpu/xla_tpu_pjrt_client.h"
@@ -32,6 +34,8 @@ using ::xla::megascale::c_api_client::CreateAoTMegascaleConfig;
 using ::xla::megascale::c_api_client::CreateDefaultMegaScaleClientContext;
 using ::xla::megascale::c_api_client::CreateMegascaleErrorAggregator;
 using ::xla::megascale::c_api_client::CreateMultiSliceMegascaleConfig;
+using ::xla::megascale::c_api_client::GetInterfaceAddressesHelper;
+using ::xla::megascale::c_api_client::GetOrCreateRuntimeError;
 using ::xla::megascale::c_api_client::MegaScaleClientContextFromClient;
 using ::xla::megascale::c_api_client::RegisterMegascaleErrorHandler;
 using ::xla::megascale::c_api_client::UnregisterMegascaleErrorHandler;
@@ -97,6 +101,30 @@ TEST(MegaScaleCApiClientTest, RegisterAndUnregisterMegascaleErrorHandler) {
   auto handler = [](const MegaScaleRuntimeErrorOverlay& error) {};
   EXPECT_OK(RegisterMegascaleErrorHandler("test_handler", handler));
   EXPECT_OK(UnregisterMegascaleErrorHandler("test_handler"));
+}
+
+TEST(MegaScaleCApiClientTest, GetInterfaceAddressesHelper) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto addresses,
+      GetInterfaceAddressesHelper("test_port", -1, {}, true, false));
+  // The exact addresses returned depend on the environment,
+  // but we can assert the C API plumbing works successfully.
+  EXPECT_GE(addresses.size(), 0);
+}
+
+TEST(MegaScaleCApiClientTest, GetOrCreateRuntimeError) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto result, GetOrCreateRuntimeError(
+                       MegaScaleRuntimeErrorOverlay::UNRECOVERABLE_ERROR,
+                       absl::Now(), absl::OkStatus(), /*launch_id=*/0,
+                       MegaScaleRuntimeErrorOverlay::HOST_TO_DEVICE_ERROR));
+
+  const auto& [error, is_new] = result;
+  EXPECT_EQ(error.error_type(),
+            MegaScaleRuntimeErrorOverlay::UNRECOVERABLE_ERROR);
+  EXPECT_EQ(error.unrecoverable_error_type(),
+            MegaScaleRuntimeErrorOverlay::HOST_TO_DEVICE_ERROR);
+  EXPECT_TRUE(is_new);
 }
 
 }  // namespace

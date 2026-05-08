@@ -35,6 +35,8 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/resource_handle.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/kernels/inplace_ops_functor.h"
@@ -328,8 +330,9 @@ class StridedSliceAssignOp : public OpKernel {
     } else {
       if (context->input_dtype(0) == DT_RESOURCE) {
         core::RefCountPtr<Var> v;
-        OP_REQUIRES_OK(
-            context, LookupResource(context, HandleFromInput(context, 0), &v));
+        ResourceHandle handle;
+        OP_REQUIRES_OK(context, HandleFromInput(context, 0, &handle));
+        OP_REQUIRES_OK(context, LookupResource(context, handle, &v));
         OP_REQUIRES_OK(context,
                        EnsureSparseVariableAccess<Device, T>(context, v.get()));
         mutex_lock ml(*v->mu());

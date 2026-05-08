@@ -478,7 +478,7 @@ absl::StatusOr<xla::ExecutionOutput> TPUExecute(
   SE_DeviceAddressBase* device_memory_addrs = nullptr;
   size_t device_memory_addrs_count;
   auto device_memory_cleanup =
-      absl::MakeCleanup([device_memory_addrs, device_ordinal]() {
+      absl::MakeCleanup([&device_memory_addrs, device_ordinal]() {
         if (device_memory_addrs != nullptr) {
           stream_executor::tpu::OpsApiFn()
               ->TpuExecute_FreeTpuEmbeddingMemoryAllocationsFn(

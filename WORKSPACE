@@ -15,34 +15,6 @@ tf_http_archive(
     ),
 )
 
-# Initialize toolchains for ML projects.
-#
-# A hermetic build system is designed to produce completely reproducible builds for C++.
-# Details: https://github.com/google-ml-infra/rules_ml_toolchain
-tf_http_archive(
-    name = "rules_ml_toolchain",
-    sha256 = "0b96db08ccca76f8232de2418498b9b54addf807b5990dd2c23029c8b9f77a65",
-    strip_prefix = "rules_ml_toolchain-cae0cbffdc37d6570c974f6c53f447eba60af2b3",
-    urls = tf_mirror_urls(
-        "https://github.com/google-ml-infra/rules_ml_toolchain/archive/cae0cbffdc37d6570c974f6c53f447eba60af2b3.tar.gz",
-    ),
-)
-
-load(
-    "@rules_ml_toolchain//cc/deps:cc_toolchain_deps.bzl",
-    "cc_toolchain_deps",
-)
-
-cc_toolchain_deps()
-
-register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")
-
-register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_cuda")
-
-register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64")
-
-register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64_cuda")
-
 # Initialize the TensorFlow repository and all dependencies.
 #
 # The cascade of load() statements and tf_workspace?() calls works around the
@@ -58,6 +30,22 @@ load("@rules_shell//shell:repositories.bzl", "rules_shell_dependencies", "rules_
 rules_shell_dependencies()
 
 rules_shell_toolchains()
+
+# Initialize hermetic C++
+load(
+    "@rules_ml_toolchain//cc/deps:cc_toolchain_deps.bzl",
+    "cc_toolchain_deps",
+)
+
+cc_toolchain_deps()
+
+register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_cuda")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64_cuda")
 
 # Initialize hermetic Python
 load("@xla//third_party/py:python_init_rules.bzl", "python_init_rules")
@@ -165,7 +153,7 @@ load(
     "nccl_redist_init_repository",
 )
 
-nccl_redist_init_repository()
+nccl_redist_init_repository(patches = ["//third_party/nccl:nccl_wheel.patch"])
 
 load(
     "@rules_ml_toolchain//gpu/nccl:nccl_configure.bzl",

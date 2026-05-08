@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -32,26 +31,19 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/OperationSupport.h"
-#include "mlir/IR/OwningOpRef.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
-#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
-#include "xla/hlo/translate/stablehlo.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
+#include "xla/python/ifrt/ir/utils.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -103,72 +95,13 @@ std::vector<int64_t> FindDonatableInputs(
   return donatable_input_indices;
 }
 
-// Converts an XLA computation to an `xla::ifrt::HloProgram`, and applies input
-// donation and memory kind attributes to the input and output. The generated
-// MLIR module will have flattened (non XLA tuple) parameters and results.
-absl::StatusOr<std::unique_ptr<xla::ifrt::HloProgram>> ConvertToHloProgram(
-    const xla::XlaComputation& xla_computation,
-    absl::Span<const int64_t> donated_input_indices,
-    absl::Span<const xla::ifrt::MemoryKind> arg_memory_kinds,
-    absl::Span<const xla::ifrt::MemoryKind> result_memory_kinds) {
-  const xla::HloModuleProto& hlo_module_proto = xla_computation.proto();
-  TF_ASSIGN_OR_RETURN(
-      auto host_program_shape,
-      xla::ProgramShape::FromProto(hlo_module_proto.host_program_shape()));
-  const xla::HloModuleConfig hlo_module_config(host_program_shape,
-                                               /*ignore_layouts=*/false);
-  TF_ASSIGN_OR_RETURN(
-      const auto hlo_module,
-      xla::HloModule::CreateFromProto(hlo_module_proto, hlo_module_config));
-
-  auto mlir_context = std::make_unique<mlir::MLIRContext>();
-  TF_ASSIGN_OR_RETURN(
-      mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-      xla::ConvertHloToStablehlo(*mlir_context, hlo_module.get()));
-  auto program = std::make_unique<xla::ifrt::HloProgram>(
-      std::move(mlir_context), std::move(mlir_module));
-
-  mlir::func::FuncOp main =
-      program->mlir_module().lookupSymbol<mlir::func::FuncOp>("main");
-  if (main == nullptr) {
-    return absl::InvalidArgumentError("module has no 'main' function");
-  }
-  // TODO(b/390732473): We should always donate inputs. If an input cannot be
-  // donated at runtime, the execution can use `non_donatable_input_indices` to
-  // create a copy of device buffers on the fly. However, several runtimes
-  // ignore `non_donatable_input_indices`, so we need to be conservative at
-  // input donation.
-  for (int64_t idx : donated_input_indices) {
-    main.setArgAttr(
-        idx, "jax.buffer_donor",
-        mlir::BoolAttr::get(program->mlir_module()->getContext(), true));
-  }
-  for (int64_t idx = 0; idx < arg_memory_kinds.size(); ++idx) {
-    if (arg_memory_kinds[idx].memory_kind().has_value()) {
-      main.setArgAttr(
-          idx, "mhlo.memory_kind",
-          mlir::StringAttr::get(program->mlir_module()->getContext(),
-                                *arg_memory_kinds[idx].memory_kind()));
-    }
-  }
-  for (int64_t idx = 0; idx < result_memory_kinds.size(); ++idx) {
-    if (result_memory_kinds[idx].memory_kind().has_value()) {
-      main.setResultAttr(
-          idx, "mhlo.memory_kind",
-          mlir::StringAttr::get(program->mlir_module()->getContext(),
-                                *result_memory_kinds[idx].memory_kind()));
-    }
-  }
-  return program;
-}
-
 // Specifies where the computation should be executed based on the memory kind.
 // This should be used only for computational XLA operations. If it is applied
 // incorrectly, it can make some XLA optimization passes (e.g., SPMD
 // propagation) to behave in an unexpected way (e.g., not finishing resharding
 // work by the time when the execution is considered complete).
 absl::Status SetComputeType(xla::XlaBuilder& builder, xla::XlaOp op,
-                            const xla::ifrt::MemoryKind& memory_kind) {
+                            const MemoryKind& memory_kind) {
   if (memory_kind.memory_kind().has_value()) {
     if (*memory_kind.memory_kind() == "device") {
       // No need to set the attribute.
@@ -185,11 +118,11 @@ absl::Status SetComputeType(xla::XlaBuilder& builder, xla::XlaOp op,
 
 }  // namespace
 
-absl::StatusOr<std::unique_ptr<xla::ifrt::HloProgram>>
+absl::StatusOr<std::unique_ptr<HloProgram>>
 XlaComputationBuilder::BuildXlaReshardComputation(
     const xla::Shape& xla_shape, const xla::HloSharding& old_hlo_sharding,
     const xla::HloSharding& new_hlo_sharding,
-    absl::Span<const xla::ifrt::MemoryKind> memory_kinds, bool pre_resharding) {
+    absl::Span<const MemoryKind> memory_kinds, bool pre_resharding) {
   TF_RET_CHECK(xla_shape.IsTuple());
   TF_RET_CHECK(old_hlo_sharding.IsTuple());
   TF_RET_CHECK(new_hlo_sharding.IsTuple());
@@ -236,15 +169,15 @@ XlaComputationBuilder::BuildXlaReshardComputation(
 
   std::vector<int64_t> donatable_input_indices = FindDonatableInputs(
       xla_shape, old_hlo_sharding, xla_shape, new_hlo_sharding);
-  return ConvertToHloProgram(hlo, donatable_input_indices,
-                             /*arg_memory_kinds=*/memory_kinds,
-                             /*result_memory_kinds=*/memory_kinds);
+  return XlaComputationToHloProgram(hlo, donatable_input_indices,
+                                    /*arg_memory_kinds=*/memory_kinds,
+                                    /*result_memory_kinds=*/memory_kinds);
 }
 
-absl::StatusOr<std::unique_ptr<xla::ifrt::HloProgram>>
+absl::StatusOr<std::unique_ptr<HloProgram>>
 XlaComputationBuilder::BuildXlaZerosComputation(
     const xla::Shape& xla_shape, const xla::HloSharding& new_hlo_sharding,
-    absl::Span<const xla::ifrt::MemoryKind> memory_kinds) {
+    absl::Span<const MemoryKind> memory_kinds) {
   TF_RET_CHECK(xla_shape.IsTuple());
   TF_RET_CHECK(new_hlo_sharding.IsTuple());
   TF_RET_CHECK(new_hlo_sharding.tuple_elements().size() ==
@@ -295,17 +228,17 @@ XlaComputationBuilder::BuildXlaZerosComputation(
                  new_buffer_shapes[idx]);
   }
 
-  return ConvertToHloProgram(hlo,
-                             /*donated_input_indices=*/{},
-                             /*arg_memory_kinds=*/{},
-                             /*result_memory_kinds=*/memory_kinds);
+  return XlaComputationToHloProgram(hlo,
+                                    /*donated_input_indices=*/{},
+                                    /*arg_memory_kinds=*/{},
+                                    /*result_memory_kinds=*/memory_kinds);
 }
 
-absl::StatusOr<std::unique_ptr<xla::ifrt::HloProgram>>
+absl::StatusOr<std::unique_ptr<HloProgram>>
 XlaComputationBuilder::BuildXlaReduceComputation(
     const xla::Shape& old_xla_shape, const xla::HloSharding& old_hlo_sharding,
     const xla::Shape& new_xla_shape, const xla::HloSharding& new_hlo_sharding,
-    absl::Span<const xla::ifrt::MemoryKind> memory_kinds) {
+    absl::Span<const MemoryKind> memory_kinds) {
   TF_RET_CHECK(old_xla_shape.IsTuple());
   TF_RET_CHECK(new_xla_shape.IsTuple());
   TF_RET_CHECK(old_xla_shape.tuple_shapes().size() ==
@@ -393,12 +326,12 @@ XlaComputationBuilder::BuildXlaReduceComputation(
 
   std::vector<int64_t> donatable_input_indices = FindDonatableInputs(
       old_xla_shape, old_hlo_sharding, new_xla_shape, new_hlo_sharding);
-  return ConvertToHloProgram(hlo, donatable_input_indices,
-                             /*arg_memory_kinds=*/memory_kinds,
-                             /*result_memory_kinds=*/memory_kinds);
+  return XlaComputationToHloProgram(hlo, donatable_input_indices,
+                                    /*arg_memory_kinds=*/memory_kinds,
+                                    /*result_memory_kinds=*/memory_kinds);
 }
 
-std::string DumpHloProgram(xla::ifrt::HloProgram& program) {
+std::string DumpHloProgram(HloProgram& program) {
   std::string s;
   llvm::raw_string_ostream os(s);
   program.mlir_module().print(os);

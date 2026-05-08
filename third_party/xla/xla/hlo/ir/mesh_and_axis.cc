@@ -222,15 +222,18 @@ Mesh Mesh::FromProto(const MeshProto& proto) {
 }
 
 bool Mesh::ContainsAllMeshAxesInOrder(absl::Span<const AxisRef> axes) const {
-  if (num_axes() != axes.size()) {
-    return false;
-  }
-  for (int i = 0; i < axes.size(); ++i) {
-    if (axes[i].sub_axis_info().has_value() || axes[i].mesh_axis_index() != i) {
+  int64_t axes_idx = 0;
+  for (int64_t i = 0; i < num_axes(); ++i) {
+    if (axes_idx < axes.size() && axes[axes_idx].mesh_axis_index() == i) {
+      if (axes[axes_idx].sub_axis_info().has_value()) {
+        return false;
+      }
+      axes_idx++;
+    } else if (axis_size(i) != 1) {
       return false;
     }
   }
-  return true;
+  return axes_idx == axes.size();
 }
 
 std::string AxisRef::ToString(const Mesh* mesh) const {

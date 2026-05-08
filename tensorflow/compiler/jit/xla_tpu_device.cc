@@ -79,12 +79,12 @@ absl::Status TpuPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
   const tensorflow::XlaTensor* xla_tensor =
       tensorflow::XlaTensor::FromTensor(&tensor);
   if (xla_tensor == nullptr) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Expected an XlaTensor when computing padded shape");
   }
 
   if (!xla_tensor->has_shaped_buffer()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "XlaTensor is expected to have device memory allocated when "
         "computing padded shape");
   }
@@ -109,7 +109,7 @@ absl::Status TpuPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
 absl::Status CheckIfTPUInitialized() {
   auto* tpu_platform = tpu::TpuPlatformInterface::GetRegisteredPlatform();
   if (!tpu_platform->Initialized()) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "The TPU system has not been initialized.");
   }
   return absl::OkStatus();

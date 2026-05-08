@@ -117,7 +117,6 @@ ENTRY e {
           block_m: 32
           block_n: 32
           block_k: 32
-          split_k: 1
           num_stages: 1
           num_warps: 4
           num_ctas: 1

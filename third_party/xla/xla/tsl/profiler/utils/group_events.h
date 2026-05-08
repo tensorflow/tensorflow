@@ -140,9 +140,14 @@ struct ContextGroup {
   std::vector<EventNode*> consumers;
 };
 
+struct PidContextGroup {
+  absl::flat_hash_map<int32_t /*pid*/, ContextGroup> pid_context_groups;
+  ContextGroup no_pid_context_group;
+};
+
 using ContextGroupMap = absl::flat_hash_map<
     int /*context_type*/,
-    absl::flat_hash_map<uint64_t /*context_id*/, ContextGroup>>;
+    absl::flat_hash_map<uint64_t /*context_id*/, PidContextGroup>>;
 
 // EventForest augments the input XSpace with the trace context. The trace
 // context is created by stitching XEvents (1) using the nesting relationship

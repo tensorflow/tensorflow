@@ -40,7 +40,7 @@ absl::Status WaitForNotification(CallOptions* call_options,
       // The call has borrowed pointers to the request and response
       // messages, so we must still wait for the call to complete.
       n->WaitForNotification();
-      return errors::DeadlineExceeded("Operation timed out.");
+      return absl::DeadlineExceededError("Operation timed out.");
     }
   } else {
     n->WaitForNotification();

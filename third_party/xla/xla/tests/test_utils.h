@@ -120,6 +120,34 @@ absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     bool generate_aligned_ds_indices = false,
     GetIndexKnownZeroesFn get_index_known_zeroes = nullptr);
 
+// Generates a vector of arguments containing fake data using reverse constraint
+// propagation. The constraint propagator seeds initial constraints based on HLO
+// op semantics (e.g., `sqrt(x)` implies `x >= 0`) and then propagates these
+// constraints backward through the graph. This allows generating test inputs
+// that are more likely to be valid for the graph.
+//
+// If `use_large_range` is false, the generated floating point numbers will be
+// sampled from a small range of possible values. If `use_large_range` is true,
+// the generated floating point numbers will be sampled from a uniform-log
+// distribution of most possible floats, with a small chance to instead be
+// sampled from a list of special floating point values (such as 0, inf, etc.).
+//
+// If `max_bits_of_precision` is set to a number, then floating point & integer
+// types will be constrained to be represented in that number of bits. Setting
+// it to 5 for integers would mean it only creates integers between -32 and 32.
+//
+// If `generate_aligned_ds_indices` is true, the generated indices will be
+// aligned to the given alignment.
+//
+// If `get_index_known_zeroes` is set, the generated indices will have the given
+// number of zeroes in the given dimension.
+absl::StatusOr<std::vector<Literal>> MakeDataflowConstrainedArguments(
+    const HloModule* module, std::minstd_rand0* engine = nullptr,
+    bool use_large_range = false,
+    std::optional<int64_t> max_bits_of_precision = std::nullopt,
+    bool generate_aligned_ds_indices = false,
+    GetIndexKnownZeroesFn get_index_known_zeroes = nullptr);
+
 // Check that a given module satisfies various constraints before trying to
 // execute it.
 absl::Status VerifyHloModule(HloModule* const module, bool layout_sensitive,

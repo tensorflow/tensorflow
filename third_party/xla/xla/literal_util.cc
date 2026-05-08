@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tests/constraint_state.h"
 #include "xla/tsl/lib/core/bitmap.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/types.h"
@@ -332,11 +333,31 @@ void PopulateWithRandomFullRangeFloatingPointData(Literal* literal,
 }
 
 template <typename FloatT, typename GeneratorT>
-void PopulateWithRandomFloatingPointData(Literal* literal,
-                                         std::minstd_rand0* engine) {
-  std::uniform_real_distribution<GeneratorT> generator(-0.1f, 0.2f);
+void PopulateWithRandomFloatingPointData(
+    Literal* literal, std::minstd_rand0* engine,
+    std::optional<ConstraintInterval> interval) {
+  GeneratorT min = -0.1f;
+  GeneratorT max = 0.2f;
+  if (interval.has_value() && !interval->IsUnconstrained()) {
+    min = interval->min == ConstraintInterval::kMin
+              ? std::numeric_limits<GeneratorT>::lowest()
+              : interval->min;
+    max = interval->max == ConstraintInterval::kMax
+              ? std::numeric_limits<GeneratorT>::max()
+              : interval->max;
+  }
+  if (min == max) {
+    for (FloatT& value : literal->data<FloatT>()) {
+      value = static_cast<FloatT>(min);
+    }
+    return;
+  }
+  std::uniform_real_distribution<GeneratorT> generator(min, max);
   for (FloatT& value : literal->data<FloatT>()) {
     value = static_cast<FloatT>(generator(*engine));
+    while (interval.has_value() && interval->exclude_zero && value == 0.0f) {
+      value = static_cast<FloatT>(generator(*engine));
+    }
   }
 }
 
@@ -344,7 +365,8 @@ template <typename FloatT>
 void PopulateWithFloatingPointData(
     Literal* literal, std::minstd_rand0* engine, bool no_duplicates,
     bool use_large_range, std::optional<int64_t> max_bits_of_precision,
-    std::function<double(std::minstd_rand0*)> generator = nullptr) {
+    std::function<double(std::minstd_rand0*)> generator = nullptr,
+    std::optional<ConstraintInterval> interval = std::nullopt) {
   using ComputeT =
       std::conditional_t<sizeof(FloatT) < sizeof(float), float, FloatT>;
   CHECK_NOTNULL(engine);
@@ -374,7 +396,8 @@ void PopulateWithFloatingPointData(
   } else if (use_large_range) {
     PopulateWithRandomFullRangeFloatingPointData<FloatT>(literal, engine);
   } else {
-    PopulateWithRandomFloatingPointData<FloatT, ComputeT>(literal, engine);
+    PopulateWithRandomFloatingPointData<FloatT, ComputeT>(literal, engine,
+                                                          interval);
   }
 }
 
@@ -756,7 +779,9 @@ absl::StatusOr<Literal> MakeFakeLiteral(const Shape& shape, bool pseudo_random,
                          /*no_duplicates=*/false, use_large_range,
                          /*max_bits_of_precision=*/std::nullopt,
                          /*index_alignment=*/std::nullopt,
-                         /*index_known_zeroes=*/std::nullopt);
+                         /*index_known_zeroes=*/std::nullopt,
+                         /*float_generator=*/nullptr,
+                         /*interval=*/std::nullopt);
 }
 
 absl::StatusOr<Literal> MakeFakeLiteral(
@@ -766,7 +791,8 @@ absl::StatusOr<Literal> MakeFakeLiteral(
     std::optional<int64_t> max_bits_of_precision,
     std::optional<int64_t> index_alignment,
     std::optional<uint64_t> index_known_zeroes,
-    std::function<double(std::minstd_rand0*)> float_generator) {
+    std::function<double(std::minstd_rand0*)> float_generator,
+    std::optional<ConstraintInterval> interval) {
   if (shape.IsTuple()) {
     std::vector<Literal> elements;
     const auto& shape_tuple_shapes = shape.tuple_shapes();
@@ -776,8 +802,8 @@ absl::StatusOr<Literal> MakeFakeLiteral(
           Literal element,
           MakeFakeLiteral(element_shape, engine, limit, is_sorted,
                           no_duplicates, use_large_range, max_bits_of_precision,
-                          index_alignment, index_known_zeroes,
-                          float_generator));
+                          index_alignment, index_known_zeroes, float_generator,
+                          interval));
       elements.push_back(std::move(element));
     }
     return LiteralUtil::MakeTupleOwned(std::move(elements));
@@ -801,7 +827,7 @@ absl::StatusOr<Literal> MakeFakeLiteral(
                             primitive_type_constant)) {
             PopulateWithFloatingPointData<NativeT>(
                 &literal, engine, no_duplicates, use_large_range,
-                max_bits_of_precision, float_generator);
+                max_bits_of_precision, float_generator, interval);
             return absl::OkStatus();
           }
           if constexpr (primitive_type_constant == PRED) {

@@ -204,8 +204,8 @@ absl::Status PluggableDevice::Init(const SessionOptions& options) {
   auto executor_status = DeviceIdUtil::ExecutorForTfDeviceId(
       DeviceType(device_type()), platform, tf_device_id_);
   if (!executor_status.status().ok()) {
-    return errors::Internal("Failed to get StreamExecutor for device",
-                            tf_device_id_.value());
+    return absl::InternalError(absl::StrCat(
+        "Failed to get StreamExecutor for device", tf_device_id_.value()));
   }
   executor_ = executor_status.value();
 
@@ -271,7 +271,7 @@ absl::Status PluggableDevice::Init(const SessionOptions& options) {
       std::string error_message =
           absl::StrCat("Invalid gpu_thread_mode: ", device_thread_mode);
       LOG(WARNING) << error_message;
-      return errors::InvalidArgument(error_message);
+      return absl::InvalidArgumentError(error_message);
     }
   }
 
@@ -366,9 +366,9 @@ absl::Status PluggableDevice::MaybeCopyTensorToPluggableDevice(
     return absl::OkStatus();
   } else {
     if (!DMAHelper::CanUseDMA(&from)) {
-      absl::Status err =
-          errors::Internal("PluggableDevice copy from non-DMA ",
-                           DataTypeString(from.dtype()), " tensor");
+      absl::Status err = absl::InternalError(
+          absl::StrCat("PluggableDevice copy from non-DMA ",
+                       DataTypeString(from.dtype()), " tensor"));
       done(err);
       return err;
     }
@@ -379,9 +379,9 @@ absl::Status PluggableDevice::MaybeCopyTensorToPluggableDevice(
     // If the tensor is not initialized, we likely ran out of memory.
     if (!copy->IsInitialized()) {
       delete copy;
-      absl::Status err = errors::ResourceExhausted(
+      absl::Status err = absl::ResourceExhaustedError(absl::StrCat(
           "OOM when allocating tensor of shape ", from.shape().DebugString(),
-          " and type ", DataTypeString(from.dtype()));
+          " and type ", DataTypeString(from.dtype())));
       done(err);
       return err;
     }
@@ -410,8 +410,8 @@ absl::Status PluggableDevice::MakeTensorFromProto(
   Allocator* host_alloc = GetAllocator(attr);
   Tensor parsed(tensor_proto.dtype());
   if (!parsed.FromProto(host_alloc, tensor_proto)) {
-    return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                   tensor_proto.DebugString());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Cannot parse tensor from proto: ", tensor_proto.DebugString()));
   }
 
   if (parsed.dtype() == DT_VARIANT) {

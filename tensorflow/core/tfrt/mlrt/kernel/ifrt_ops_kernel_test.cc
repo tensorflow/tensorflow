@@ -117,6 +117,14 @@ std::string EncodeTruncateInCast(int num_outputs) {
   return std::string(buffer.data(), buffer.size());
 }
 
+std::string EncodeReturnedTensorNames() {
+  mlrt::bc::Buffer buffer;
+  mlrt::bc::Allocator allocator(&buffer);
+
+  mlrt::bc::New<mlrt::bc::Vector<mlrt::bc::String>>(&allocator, 0);
+  return std::string(buffer.data(), buffer.size());
+}
+
 mlrt::bc::Buffer CreateExecutableForIfrtRestoreVariableOp(
     int num_variables = 1) {
   mlrt::bc::Buffer buffer;
@@ -134,7 +142,7 @@ mlrt::bc::Buffer CreateExecutableForIfrtRestoreVariableOp(
   kernels.Def(kernel_names);
 
   static constexpr int kNumAttributes =
-      5;  // Size of attributes when there are 1 variable.
+      6;  // Size of attributes when there are 1 variable.
   mlrt::testing::AttributeTable attributes(executable_ctor.construct_attributes(
       kNumAttributes + 2 * (num_variables - 1)));
 
@@ -142,6 +150,7 @@ mlrt::bc::Buffer CreateExecutableForIfrtRestoreVariableOp(
   attributes.Add("restore_dtypes", restore_dtypes);
   std::vector<bool> truncate_in_cast(num_variables, false);
   attributes.Add("truncate_in_cast", EncodeTruncateInCast(num_variables));
+  attributes.Add("returned_tensor_names", EncodeReturnedTensorNames());
 
   for (int i = 0; i < num_variables; ++i) {
     attributes.Add(
@@ -235,8 +244,9 @@ mlrt::bc::Buffer CreateExecutableForIfrtRestoreVariableOp(
       restore_ctor.set_code(kernels.Use("tf_mlrt.ifrt_restore_variable"));
       restore_ctor.construct_arguments(args.size()).Assign(regs.Use(args));
       restore_ctor.construct_results(0);
-      restore_ctor.construct_attributes(2).Assign(
+      restore_ctor.construct_attributes(3).Assign(
           {attributes.GetHandle("restore_dtypes"),
+           attributes.GetHandle("returned_tensor_names"),
            attributes.GetHandle("truncate_in_cast")});
       kernel_index++;
     }
@@ -643,6 +653,7 @@ TEST_P(KernelTest, IfrtRestoreVariableOp) {
 
   std::vector<uint8_t> last_uses = {true, true, true};
   std::vector<mlrt::Value> results;
+  std::vector<mlrt::Value> returned_tensor_names;
 
   absl::Notification notification;
   execution_context.set_exit_handler(

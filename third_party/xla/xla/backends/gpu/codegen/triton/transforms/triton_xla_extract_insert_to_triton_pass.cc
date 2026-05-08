@@ -296,9 +296,11 @@ class RewriteFuncOp : public mlir::OpRewritePattern<func::FuncOp> {
       SmallVector<int64_t> ordered_block_shape =
           GetMajorToMinorOrder(block_shape, layout);
 
-      operand_type = TensorDescType::get(
-          builder.getContext(),
-          RankedTensorType::get(ordered_block_shape, element_type));
+      auto result_type =
+          RankedTensorType::get(ordered_block_shape, element_type);
+      operand_type = TensorDescType::get(result_type.getShape(),
+                                         result_type.getElementType(),
+                                         result_type.getEncoding());
       // !tt.tensordesc<tensor<block_shape x element_type>> -> !tt.ptr<>
       auto cast_to_orig_type = mlir::UnrealizedConversionCastOp::create(
           builder, operand_type, func_arg);
@@ -401,7 +403,9 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
           tile_type.clone(GetMajorToMinorOrder(sizes, src_layout));
 
       // ptr -> !tt.tensordesc<tile_type>
-      auto desc_type = TensorDescType::get(builder.getContext(), ordered_type);
+      auto desc_type = TensorDescType::get(ordered_type.getShape(),
+                                           ordered_type.getElementType(),
+                                           ordered_type.getEncoding());
       auto cast_to_tensor_desc = mlir::UnrealizedConversionCastOp::create(
           builder, desc_type, op.getSrc());
 
@@ -503,9 +507,11 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
                        strides);
 
       // ptr -> !tt.tensordesc<tile_type>
-      auto desc_type = TensorDescType::get(
-          builder.getContext(),
-          tile_type.clone(GetMajorToMinorOrder(sizes, dst_layout)));
+      auto result_type =
+          tile_type.clone(GetMajorToMinorOrder(sizes, dst_layout));
+      auto desc_type = TensorDescType::get(result_type.getShape(),
+                                           result_type.getElementType(),
+                                           result_type.getEncoding());
       auto cast_to_tensor_desc = mlir::UnrealizedConversionCastOp::create(
           builder, desc_type, op.getDst());
 

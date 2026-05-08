@@ -274,8 +274,13 @@ class SocketServer::SocketNetworkState : public SocketFdPacketState {
       absl::MutexLock l(mu_);
       ++num_refs_;
     }
-    table_->Handle(tsl::MakeRef<SocketConnectionState>(this), req,
-                   req.req_id());
+    std::optional<absl::Time> timeout = std::nullopt;
+    if (req.has_timeout_us()) {
+      timeout = absl::FromUnixMicros(req.timeout_us());
+    }
+    table_->DropExpiredPulls(absl::Now());
+    table_->Handle(tsl::MakeRef<SocketConnectionState>(this), req, req.req_id(),
+                   timeout);
   }
 
   void HandlePacket(const SocketTransferRequest& req) {
@@ -398,8 +403,8 @@ class SocketServer::SocketNetworkState : public SocketFdPacketState {
     }
   }
 
-  void Pull(uint64_t uuid, int buf_id,
-            tsl::RCReference<ChunkDestination> dest) {
+  void Pull(uint64_t uuid, int buf_id, tsl::RCReference<ChunkDestination> dest,
+            std::optional<absl::Time> timeout = std::nullopt) {
     std::optional<size_t> req_id = InstallPull(std::move(dest));
     if (!req_id.has_value()) {
       return;
@@ -409,11 +414,15 @@ class SocketServer::SocketNetworkState : public SocketFdPacketState {
     req.set_uuid(uuid);
     req.add_buffer_ids(buf_id);
     req.set_req_id(*req_id);
+    if (timeout.has_value()) {
+      req.set_timeout_us(absl::ToUnixMicros(*timeout));
+    }
     SendFrame(msg);
   }
 
   void Pull(uint64_t uuid, absl::Span<const int> buffer_ids,
-            std::vector<tsl::RCReference<ChunkDestination>> dests) {
+            std::vector<tsl::RCReference<ChunkDestination>> dests,
+            std::optional<absl::Time> timeout = std::nullopt) {
     std::optional<size_t> req_id = InstallPullList(std::move(dests));
     if (!req_id.has_value()) {
       return;
@@ -423,6 +432,9 @@ class SocketServer::SocketNetworkState : public SocketFdPacketState {
     SocketTransferPullRequest& req = *msg.mutable_pull();
     req.set_uuid(uuid);
     req.set_req_id(*req_id);
+    if (timeout.has_value()) {
+      req.set_timeout_us(absl::ToUnixMicros(*timeout));
+    }
     for (int buf_id : buffer_ids) {
       req.add_buffer_ids(buf_id);
       if (req.buffer_ids_size() == kBufferIdChunkSize) {
@@ -509,14 +521,16 @@ class SocketServer::SocketNetworkState : public SocketFdPacketState {
 SocketServer::Connection::~Connection() { local_->NoMorePulls(); }
 
 void SocketServer::Connection::Pull(uint64_t uuid, int buffer_id,
-                                    tsl::RCReference<ChunkDestination> dest) {
-  local_->Pull(uuid, buffer_id, std::move(dest));
+                                    tsl::RCReference<ChunkDestination> dest,
+                                    std::optional<absl::Time> timeout) {
+  local_->Pull(uuid, buffer_id, std::move(dest), timeout);
 }
 
 void SocketServer::Connection::Pull(
     uint64_t uuid, absl::Span<const int> buffer_ids,
-    std::vector<tsl::RCReference<ChunkDestination>> dests) {
-  local_->Pull(uuid, buffer_ids, std::move(dests));
+    std::vector<tsl::RCReference<ChunkDestination>> dests,
+    std::optional<absl::Time> timeout) {
+  local_->Pull(uuid, buffer_ids, std::move(dests), timeout);
 }
 
 void SocketServer::Connection::InjectFailure(FailureKind kind) {

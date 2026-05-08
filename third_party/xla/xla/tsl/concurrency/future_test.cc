@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -45,6 +46,12 @@ using ::testing::Not;
 static_assert(internal::IsMoveOnly<std::unique_ptr<int32_t>>::value);
 static_assert(
     internal::IsMoveOnly<std::vector<std::unique_ptr<int32_t>>>::value);
+
+// IsMappable for Future types: only void can be produced from Future<void>.
+static_assert(internal::IsMappable<void, Future<>>::value);
+static_assert(!internal::IsMappable<int32_t, Future<>>::value);
+static_assert(internal::IsMappable<int32_t, Future<int32_t>>::value);
+static_assert(!internal::IsMappable<int32_t, Future<std::string>>::value);
 
 // Inline executor that counts the number of tasks executed.
 struct CountingExecutor : public Executor {
@@ -1181,10 +1188,11 @@ TEST(FutureTest, FlattenCopyable) {
 
   auto [promise, future] = MakePromise<int32_t>();
 
-  Future<Future<int32_t>> mapped = future.Map([&](int32_t value) {
-    return MakeFutureOn(*thread_pool.AsExecutor(),
-                        [value] { return value + 1; });
-  });
+  Future<Future<int32_t>> mapped =
+      future.Map<Future<int32_t>>([&](int32_t value) {
+        return MakeFutureOn(*thread_pool.AsExecutor(),
+                            [value] { return value + 1; });
+      });
 
   Future<int32_t> flatten = mapped.Flatten();
   EXPECT_FALSE(mapped.IsReady());
@@ -1202,10 +1210,11 @@ TEST(FutureTest, FlattenCopyableRvalue) {
 
   auto [promise, future] = MakePromise<int32_t>();
 
-  Future<Future<int32_t>> mapped = future.Map([&](int32_t value) {
-    return MakeFutureOn(*thread_pool.AsExecutor(),
-                        [value] { return value + 1; });
-  });
+  Future<Future<int32_t>> mapped =
+      future.Map<Future<int32_t>>([&](int32_t value) {
+        return MakeFutureOn(*thread_pool.AsExecutor(),
+                            [value] { return value + 1; });
+      });
 
   Future<int32_t> flatten = std::move(mapped).Flatten();
   EXPECT_FALSE(flatten.IsReady());
@@ -1222,7 +1231,7 @@ TEST(FutureTest, FlattenMoveOnly) {
   auto [promise, future] = MakePromise<int32_t>();
 
   Future<Future<std::unique_ptr<int32_t>>> mapped =
-      future.Map([&](int32_t value) {
+      future.Map<Future<std::unique_ptr<int32_t>>>([&](int32_t value) {
         return MakeFutureOn(*thread_pool.AsExecutor(), [value] {
           return std::make_unique<int32_t>(value + 1);
         });
@@ -1236,6 +1245,210 @@ TEST(FutureTest, FlattenMoveOnly) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<int32_t> result,
                        std::move(flatten).Await());
   EXPECT_EQ(*result, 43);
+}
+
+TEST(FutureTest, MapAutoFlattenCopyable) {
+  thread::ThreadPool thread_pool(Env::Default(), "test", 4);
+
+  auto [promise, future] = MakePromise<int32_t>();
+
+  Future<int32_t> mapped = future.Map([&](int32_t value) {
+    return MakeFutureOn(*thread_pool.AsExecutor(),
+                        [value] { return value + 1; });
+  });
+
+  EXPECT_FALSE(mapped.IsReady());
+
+  promise.Set(42);
+
+  ASSERT_OK_AND_ASSIGN(int32_t result, mapped.Await());
+  EXPECT_EQ(result, 43);
+}
+
+TEST(FutureTest, MapAutoFlattenCopyableRvalue) {
+  thread::ThreadPool thread_pool(Env::Default(), "test", 4);
+
+  auto [promise, future] = MakePromise<int32_t>();
+
+  Future<int32_t> mapped = std::move(future).Map([&](int32_t value) {
+    return MakeFutureOn(*thread_pool.AsExecutor(),
+                        [value] { return value + 1; });
+  });
+
+  EXPECT_FALSE(mapped.IsReady());
+
+  promise.Set(42);
+
+  ASSERT_OK_AND_ASSIGN(int32_t result, mapped.Await());
+  EXPECT_EQ(result, 43);
+}
+
+TEST(FutureTest, MapAutoFlattenMoveOnly) {
+  thread::ThreadPool thread_pool(Env::Default(), "test", 4);
+
+  auto [promise, future] = MakePromise<int32_t>();
+
+  Future<std::unique_ptr<int32_t>> mapped =
+      std::move(future).Map([&](int32_t value) {
+        return MakeFutureOn(*thread_pool.AsExecutor(), [value] {
+          return std::make_unique<int32_t>(value + 1);
+        });
+      });
+
+  EXPECT_FALSE(mapped.IsReady());
+
+  promise.Set(42);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<int32_t> result,
+                       std::move(mapped).Await());
+  EXPECT_EQ(*result, 43);
+}
+
+TEST(FutureTest, MapAutoFlattenStateless) {
+  thread::ThreadPool thread_pool(Env::Default(), "test", 4);
+
+  auto [promise, future] = MakePromise<>();
+
+  Future<int32_t> mapped = future.Map([&]() {
+    return MakeFutureOn(*thread_pool.AsExecutor(), [] { return 42; });
+  });
+
+  EXPECT_FALSE(mapped.IsReady());
+
+  promise.Set();
+
+  ASSERT_OK_AND_ASSIGN(int32_t result, mapped.Await());
+  EXPECT_EQ(result, 42);
+}
+
+TEST(FutureTest, MapAutoFlattenStatelessToStateless) {
+  thread::ThreadPool thread_pool(Env::Default(), "test", 4);
+
+  auto [promise, future] = MakePromise<>();
+
+  Future<> mapped = future.Map([&]() -> Future<> {
+    return MakeFutureOn<void>(*thread_pool.AsExecutor(),
+                              [] { return absl::OkStatus(); });
+  });
+
+  EXPECT_FALSE(mapped.IsReady());
+
+  promise.Set();
+
+  EXPECT_THAT(mapped.Await(), IsOk());
+}
+
+TEST(FutureTest, MapAutoFlattenToStateless) {
+  thread::ThreadPool thread_pool(Env::Default(), "test", 4);
+
+  auto [promise, future] = MakePromise<int32_t>();
+
+  Future<> mapped = future.Map([&](int32_t value) -> Future<> {
+    return MakeFutureOn<void>(*thread_pool.AsExecutor(),
+                              [] { return absl::OkStatus(); });
+  });
+
+  EXPECT_FALSE(mapped.IsReady());
+
+  promise.Set(42);
+
+  EXPECT_THAT(mapped.Await(), IsOk());
+}
+
+TEST(FutureTest, MapAutoFlattenToStatelessError) {
+  auto [promise, future] = MakePromise<int32_t>();
+
+  Future<> mapped = future.Map([&](int32_t value) -> Future<> {
+    return Future<>(absl::InternalError("inner"));
+  });
+
+  promise.Set(42);
+
+  EXPECT_TRUE(mapped.IsReady());
+  EXPECT_THAT(mapped.Await(), StatusIs(absl::StatusCode::kInternal));
+}
+
+TEST(FutureTest, MapAutoFlattenAlreadyReady) {
+  Future<int32_t> future(42);
+
+  Future<int32_t> mapped =
+      future.Map([](int32_t value) { return Future<int32_t>(value + 1); });
+
+  EXPECT_TRUE(mapped.IsReady());
+  ASSERT_OK_AND_ASSIGN(int32_t result, mapped.Await());
+  EXPECT_EQ(result, 43);
+}
+
+TEST(FutureTest, MapAutoFlattenError) {
+  auto [promise, future] = MakePromise<int32_t>();
+
+  bool called = false;
+  Future<int32_t> mapped = future.Map([&](int32_t value) {
+    called = true;
+    return Future<int32_t>(value + 1);
+  });
+
+  promise.Set(absl::InternalError("test"));
+
+  EXPECT_TRUE(mapped.IsReady());
+  EXPECT_FALSE(called);
+  EXPECT_EQ(mapped.Await().status().code(), absl::StatusCode::kInternal);
+}
+
+TEST(FutureTest, MapExplicitFlattenCopyable) {
+  thread::ThreadPool thread_pool(Env::Default(), "test", 4);
+
+  auto [promise, future] = MakePromise<int32_t>();
+
+  Future<int32_t> mapped = future.Map<int32_t>([&](int32_t value) {
+    return MakeFutureOn(*thread_pool.AsExecutor(),
+                        [value] { return value + 1; });
+  });
+
+  EXPECT_FALSE(mapped.IsReady());
+
+  promise.Set(42);
+
+  ASSERT_OK_AND_ASSIGN(int32_t result, mapped.Await());
+  EXPECT_EQ(result, 43);
+}
+
+TEST(FutureTest, MapExplicitFlattenMoveOnly) {
+  thread::ThreadPool thread_pool(Env::Default(), "test", 4);
+
+  auto [promise, future] = MakePromise<int32_t>();
+
+  Future<std::unique_ptr<int32_t>> mapped =
+      std::move(future).Map<std::unique_ptr<int32_t>>([&](int32_t value) {
+        return MakeFutureOn(*thread_pool.AsExecutor(), [value] {
+          return std::make_unique<int32_t>(value + 1);
+        });
+      });
+
+  EXPECT_FALSE(mapped.IsReady());
+
+  promise.Set(42);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<int32_t> result,
+                       std::move(mapped).Await());
+  EXPECT_EQ(*result, 43);
+}
+
+TEST(FutureTest, MapExplicitFlattenStateless) {
+  thread::ThreadPool thread_pool(Env::Default(), "test", 4);
+
+  auto [promise, future] = MakePromise<>();
+
+  Future<int32_t> mapped = future.Map<int32_t>([&]() {
+    return MakeFutureOn(*thread_pool.AsExecutor(), [] { return 42; });
+  });
+
+  EXPECT_FALSE(mapped.IsReady());
+
+  promise.Set();
+
+  ASSERT_OK_AND_ASSIGN(int32_t result, mapped.Await());
+  EXPECT_EQ(result, 42);
 }
 
 TEST(FutureTest, WithProfiling) {

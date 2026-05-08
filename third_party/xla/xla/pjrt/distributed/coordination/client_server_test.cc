@@ -20,11 +20,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/barrier.h"
 #include "absl/synchronization/mutex.h"
@@ -55,6 +58,7 @@ limitations under the License.
 namespace xla {
 namespace {
 using ::testing::AnyOf;
+using ::testing::Each;
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
@@ -69,60 +73,57 @@ MATCHER_P2(IsKvEntry, key, value, "") {
   return key == arg.key() && value == arg.value();
 }
 
+std::string DebugString(const CoordinationService::Config& config) {
+  return absl::StrFormat(
+      "CoordinationService::Config {\n"
+      "  cluster_register_timeout: %s\n"
+      "  cluster_register_with_barrier: %v\n"
+      "  heartbeat_timeout: %s\n"
+      "  num_tasks: %d\n"
+      "  shutdown_barrier_timeout: %s\n"
+      "  recoverable: %v\n"
+      "}",
+      absl::FormatDuration(config.cluster_register_timeout),
+      config.cluster_register_with_barrier,
+      absl::FormatDuration(config.heartbeat_timeout), config.num_tasks,
+      absl::FormatDuration(config.shutdown_barrier_timeout),
+      config.recoverable);
+}
+
+std::string DebugString(const CoordinationServiceAgent::Config& config) {
+  return absl::StrFormat(
+      "CoordinationServiceAgent::Config {\n"
+      "  cluster_register_timeout: %s\n"
+      "  heartbeat_timeout: %s\n"
+      "  shutdown_barrier_timeout: %s\n"
+      "  agent_destruction_without_shutdown: %v\n"
+      "  poll_for_error_from_service_at_startup: %v\n"
+      "}",
+      absl::FormatDuration(config.cluster_register_timeout),
+      absl::FormatDuration(config.heartbeat_timeout),
+      absl::FormatDuration(config.shutdown_barrier_timeout),
+      config.agent_destruction_without_shutdown,
+      config.poll_for_error_from_service_at_startup);
+}
+
 class ClientServerTest : public ::testing::Test {
  public:
-  CoordinationServiceAgent::Config GetConfig(
-      absl::Duration init_and_shutdown_timeout,
-      bool shutdown_on_destruction = true,
-      bool cluster_register_with_barrier = true,
-      bool cluster_shutdown_with_barrier = true) {
-    // Set config.
-    CoordinationServiceAgent::Config config;
-    config.cluster_register_timeout = init_and_shutdown_timeout;
-    config.heartbeat_timeout = kHeartbeatTimeout;
-    if (cluster_shutdown_with_barrier) {
-      config.shutdown_barrier_timeout = init_and_shutdown_timeout;
-    }
-    config.agent_destruction_without_shutdown = !shutdown_on_destruction;
-    // TODO(b/369222279): Add more test cases that exercise TF behaviour (no
-    // barrier).
-    config.poll_for_error_from_service_at_startup = true;
-    return config;
-  }
-
-  CoordinationService::Config GetServiceConfig(
-      int num_nodes, absl::Duration init_and_shutdown_timeout,
-      bool cluster_register_with_barrier, bool cluster_shutdown_with_barrier,
-      bool recoverable) {
-    CoordinationService::Config config;
-    config.cluster_register_timeout = init_and_shutdown_timeout;
-    config.heartbeat_timeout = kHeartbeatTimeout;
-    if (cluster_shutdown_with_barrier) {
-      config.shutdown_barrier_timeout = init_and_shutdown_timeout;
-    }
-    config.cluster_register_with_barrier = cluster_register_with_barrier;
-    config.num_tasks = num_nodes;
-    config.recoverable = recoverable;
-    auto service =
-        std::make_unique<CoordinationService>(tsl::Env::Default(), config);
-    return config;
-  }
-
   std::unique_ptr<CoordinationServiceAgent> GetClient(
-      int node_id, absl::Duration init_and_shutdown_timeout = absl::Seconds(3),
-      bool shutdown_on_destruction = true,
+      int node_id,
+      CoordinationServiceAgent::Config config = DefaultAgentConfig(),
       tsl::StatusCallback error_fn = [](const absl::Status& status) {
         LOG(ERROR) << "Agent hit an error: " << status;
       }) {
-    assert(server_ != nullptr);
+    VLOG(1) << "Getting client " << node_id << " with config:\n"
+            << DebugString(config);
+
+    CHECK(server_ != nullptr);
     std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
         service_address_, grpc::InsecureChannelCredentials());
 
     std::unique_ptr<CoordinationClient> leader_client;
     leader_client.reset(NewGrpcCoordinationClient(channel));
 
-    CoordinationServiceAgent::Config config =
-        GetConfig(init_and_shutdown_timeout, shutdown_on_destruction);
     auto coord_agent = CoordinationServiceAgent::Create(
         tsl::Env::Default(), node_id, config, std::move(leader_client),
         std::move(error_fn));
@@ -134,16 +135,13 @@ class ClientServerTest : public ::testing::Test {
     return *std::move(coord_agent);
   }
 
-  void StartService(int num_nodes,
-                    absl::Duration init_and_shutdown_timeout = absl::Seconds(2),
-                    bool cluster_register_with_barrier = true,
-                    bool cluster_shutdown_with_barrier = true,
-                    bool recoverable = false) {
-    auto config = GetServiceConfig(num_nodes, init_and_shutdown_timeout,
-                                   cluster_register_with_barrier,
-                                   cluster_shutdown_with_barrier, recoverable);
+  void StartService(CoordinationService::Config config = DefaultServiceConfig(),
+                    int port = -1) {
+    VLOG(1) << "Starting service with config:\n" << DebugString(config);
 
-    int port = tsl::testing::PickUnusedPortOrDie();
+    if (port == -1) {
+      port = tsl::testing::PickUnusedPortOrDie();
+    }
     grpc::ServerBuilder builder;
     service_address_ = absl::StrCat("[::]:", port);
     builder.AddListeningPort(service_address_,
@@ -195,6 +193,43 @@ class ClientServerTest : public ::testing::Test {
 
   void TearDown() override { StopService(); }
 
+ protected:
+  static CoordinationService::Config DefaultServiceConfig() {
+    CoordinationService::Config config;
+    config.cluster_register_timeout = absl::Seconds(2);
+    config.cluster_register_with_barrier = true;
+    config.heartbeat_timeout = kHeartbeatTimeout;
+    config.num_tasks = 1;
+    config.shutdown_barrier_timeout = absl::Seconds(2);
+    config.recoverable = false;
+    return config;
+  }
+
+  static CoordinationServiceAgent::Config DefaultAgentConfig() {
+    CoordinationServiceAgent::Config config;
+    config.cluster_register_timeout = absl::Seconds(3);
+    config.heartbeat_timeout = kHeartbeatTimeout;
+    config.shutdown_barrier_timeout = absl::Seconds(3);
+    config.agent_destruction_without_shutdown = false;
+    config.poll_for_error_from_service_at_startup = true;
+    return config;
+  }
+
+  // Runs f(0), f(1), ..., f(num_clients - 1) concurrently on separate threads
+  // and returns their statuses.
+  std::vector<absl::Status> RunClients(
+      int num_clients, absl::AnyInvocable<absl::Status(int node_id)> f) {
+    std::vector<absl::Status> statuses(num_clients);
+    {
+      tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                          num_clients);
+      for (int i = 0; i < num_clients; ++i) {
+        thread_pool.Schedule([&, i]() { statuses[i] = f(i); });
+      }
+    }
+    return statuses;
+  }
+
  private:
   std::string service_address_;
   std::unique_ptr<grpc::Server> server_;
@@ -204,27 +239,11 @@ class ClientServerTest : public ::testing::Test {
   std::unique_ptr<tsl::Thread> coord_rpc_thread_;
 };
 
-struct RecoverableTestParams {
-  // This determines if the restarted clients will invoke shutdown before going
-  // away. This checks if the service logic will not be corrupted even if the
-  // client does not gracefully disconnect (i.e. param set to false).
-  bool recoverable_node_shutdown_on_destruction;
-  // This inserts errors to transition the cluster into error states (from the
-  // service's POV), which may result in different code paths or error codes.
-  bool inject_heartbeat_errors;
-  // This exercises barrier counter validation logic. On the agent side, a
-  // restarted client will have its counter reset. Thus, the service needs to
-  // let the recoverable node join despite a mismatched counter.
-  bool pass_multiple_barriers_before_test;
-};
-
-class RecoverableTest
-    : public ClientServerTest,
-      public ::testing::WithParamInterface<RecoverableTestParams> {};
-
 TEST_F(ClientServerTest, ConnectAndShutdownAreBarriers) {
   int num_nodes = 3;
-  StartService(num_nodes);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.num_tasks = num_nodes;
+  StartService(config);
 
   absl::Mutex mu;
   int connect_count = 0;
@@ -278,27 +297,20 @@ TEST_F(ClientServerTest, ConnectAndShutdownAreBarriers) {
     return absl::OkStatus();
   };
 
-  std::vector<absl::Status> statuses(num_nodes);
-  {
-    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
-                                        num_nodes);
-    for (int i = 0; i < num_nodes; ++i) {
-      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
-    }
-  }
-  for (int i = 0; i < num_nodes; ++i) {
-    TF_EXPECT_OK(statuses[i]);
-  }
+  std::vector<absl::Status> statuses = RunClients(num_nodes, thread_fn);
+  EXPECT_THAT(statuses, Each(absl_testing::IsOk()));
 }
 
 TEST_F(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
   int num_nodes = 3;
-  StartService(num_nodes);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.num_tasks = num_nodes;
+  StartService(config);
 
   auto thread_fn = [&](int node_id) -> absl::Status {
-    auto client = GetClient(node_id,
-                            /*init_and_shutdown_timeout=*/absl::Seconds(3),
-                            /*shutdown_on_destruction=*/node_id != 0);
+    CoordinationServiceAgent::Config agent_config = DefaultAgentConfig();
+    agent_config.agent_destruction_without_shutdown = (node_id == 0);
+    auto client = GetClient(node_id, agent_config);
 
     TF_RETURN_IF_ERROR(client->Connect());
 
@@ -311,14 +323,7 @@ TEST_F(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
     return client->Shutdown();
   };
 
-  std::vector<absl::Status> statuses(num_nodes);
-  {
-    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
-                                        num_nodes);
-    for (int i = 0; i < num_nodes; ++i) {
-      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
-    }
-  }
+  std::vector<absl::Status> statuses = RunClients(num_nodes, thread_fn);
   TF_EXPECT_OK(statuses[0]);
   for (int i = 1; i < num_nodes; ++i) {
     EXPECT_THAT(
@@ -339,7 +344,9 @@ TEST_F(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
 
 TEST_F(ClientServerTest, ClientsShutdownSuccessfully) {
   int num_nodes = 3;
-  StartService(num_nodes);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.num_tasks = num_nodes;
+  StartService(config);
 
   auto thread_fn = [&](int node_id) -> absl::Status {
     auto client = GetClient(node_id);
@@ -350,29 +357,22 @@ TEST_F(ClientServerTest, ClientsShutdownSuccessfully) {
     // client is shutting down.
   };
 
-  std::vector<absl::Status> statuses(num_nodes);
-  {
-    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
-                                        num_nodes);
-    for (int i = 0; i < num_nodes; ++i) {
-      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
-    }
-  }
-  for (int i = 0; i < num_nodes; ++i) {
-    TF_EXPECT_OK(statuses[i]);
-  }
+  std::vector<absl::Status> statuses = RunClients(num_nodes, thread_fn);
+  EXPECT_THAT(statuses, Each(absl_testing::IsOk()));
 }
 
 TEST_F(ClientServerTest, MissedHeartbeatCallbackIsExecutedIfAnyClientGoesAway) {
   int num_nodes = 3;
-  StartService(num_nodes);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.num_tasks = num_nodes;
+  StartService(config);
 
   auto thread_fn = [&](int node_id) -> absl::Status {
     absl::Notification shutdown;
+    CoordinationServiceAgent::Config agent_config = DefaultAgentConfig();
+    agent_config.agent_destruction_without_shutdown = (node_id == 0);
     auto client =
-        GetClient(node_id,
-                  /*init_and_shutdown_timeout=*/absl::Seconds(3),
-                  /*shutdown_on_destruction=*/node_id != 0,
+        GetClient(node_id, agent_config,
                   /*error_fn=*/[&shutdown](const absl::Status& status) {
                     shutdown.Notify();
                   });
@@ -386,37 +386,31 @@ TEST_F(ClientServerTest, MissedHeartbeatCallbackIsExecutedIfAnyClientGoesAway) {
     return absl::OkStatus();
   };
 
-  std::vector<absl::Status> statuses(num_nodes);
-  {
-    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
-                                        num_nodes);
-    for (int i = 0; i < num_nodes; ++i) {
-      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
-    }
-  }
-  for (int i = 0; i < num_nodes; ++i) {
-    TF_EXPECT_OK(statuses[i]);
-  }
+  std::vector<absl::Status> statuses = RunClients(num_nodes, thread_fn);
+  EXPECT_THAT(statuses, Each(absl_testing::IsOk()));
 }
 
 TEST_F(ClientServerTest, ShutdownErrorIsPropagatedToClients) {
   int num_nodes = 2;
-  StartService(num_nodes);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.num_tasks = num_nodes;
+  StartService(config);
   std::vector<absl::Status> statuses = {
       absl::UnknownError("Uninitialized status."),
       absl::UnknownError("Uninitialized status.")};
   absl::Notification shutdown;
 
-  auto thread_fn = [&](int node_id) {
+  auto thread_fn = [&](int node_id) -> absl::Status {
+    CoordinationServiceAgent::Config agent_config = DefaultAgentConfig();
+    agent_config.cluster_register_timeout = absl::Seconds(2);
+    agent_config.shutdown_barrier_timeout = absl::Seconds(2);
     auto client = GetClient(
-        node_id,
-        /*init_and_shutdown_timeout=*/absl::Seconds(2),
-        /*shutdown_on_destruction=*/true,
+        node_id, agent_config,
         /*error_fn=*/[&statuses, node_id](const absl::Status& status) {
           statuses[node_id] = status;
         });
 
-    TF_ASSERT_OK(client->Connect());
+    TF_RETURN_IF_ERROR(client->Connect());
 
     if (node_id == 0) {
       // Shut down early.
@@ -426,15 +420,10 @@ TEST_F(ClientServerTest, ShutdownErrorIsPropagatedToClients) {
       // Block until shutdown barrier times out.
       shutdown.WaitForNotification();
     }
+    return absl::OkStatus();
   };
 
-  {
-    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
-                                        num_nodes);
-    for (int i = 0; i < num_nodes; ++i) {
-      thread_pool.Schedule([&, i]() { thread_fn(i); });
-    }
-  }
+  RunClients(num_nodes, thread_fn);
   EXPECT_THAT(statuses[0], absl_testing::StatusIs(absl::StatusCode::kInternal));
   EXPECT_THAT(statuses[1], absl_testing::StatusIs(absl::StatusCode::kInternal));
 }
@@ -446,16 +435,19 @@ TEST_F(ClientServerTest, ClientsTerminateIfServiceGoesAway) {
          "termination of the RPC server despite having pending connections.";
 #endif
   int num_nodes = 3;
-  StartService(num_nodes);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.num_tasks = num_nodes;
+  StartService(config);
 
   absl::Barrier barrier(num_nodes + 1);
 
   auto thread_fn = [&](int node_id) -> absl::Status {
     absl::Notification shutdown;
+    CoordinationServiceAgent::Config agent_config = DefaultAgentConfig();
+    agent_config.cluster_register_timeout = absl::Seconds(10);
+    agent_config.shutdown_barrier_timeout = absl::Seconds(10);
     auto client = GetClient(
-        /*node_id=*/node_id,
-        /*init_and_shutdown_timeout=*/absl::Seconds(10),
-        /*shutdown_on_destruction=*/true,
+        /*node_id=*/node_id, agent_config,
         /*error_fn=*/[&shutdown](const absl::Status& status) {
           shutdown.Notify();
         });
@@ -487,13 +479,17 @@ TEST_F(ClientServerTest, ClientsTerminateIfServiceGoesAway) {
 // We should eventually connect, even if some clients are late to show up.
 TEST_F(ClientServerTest, LateClientsAreOk) {
   int num_nodes = 3;
-  StartService(num_nodes);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.num_tasks = num_nodes;
+  StartService(config);
 
   absl::Barrier barrier(num_nodes);
 
   auto thread_fn = [&](int node_id) -> absl::Status {
-    auto client = GetClient(node_id,
-                            /*init_and_shutdown_timeout=*/absl::Seconds(20));
+    CoordinationServiceAgent::Config agent_config = DefaultAgentConfig();
+    agent_config.cluster_register_timeout = absl::Seconds(20);
+    agent_config.shutdown_barrier_timeout = absl::Seconds(20);
+    auto client = GetClient(node_id, agent_config);
 
     barrier.Block();
     absl::SleepFor(absl::Milliseconds(200) * node_id);
@@ -502,23 +498,16 @@ TEST_F(ClientServerTest, LateClientsAreOk) {
     return absl::OkStatus();
   };
 
-  std::vector<absl::Status> statuses(num_nodes);
-  {
-    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
-                                        num_nodes);
-    for (int i = 0; i < num_nodes; ++i) {
-      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
-    }
-  }
-  for (int i = 0; i < num_nodes; ++i) {
-    TF_EXPECT_OK(statuses[i]);
-  }
+  std::vector<absl::Status> statuses = RunClients(num_nodes, thread_fn);
+  EXPECT_THAT(statuses, Each(absl_testing::IsOk()));
 }
 
 // We should eventually time out if a client does not show up.
 TEST_F(ClientServerTest, ConnectEventuallyTimesOutIfAClientDoesNotShowUp) {
   int num_nodes = 3;
-  StartService(num_nodes);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.num_tasks = num_nodes;
+  StartService(config);
 
   auto thread_fn = [&](int node_id) -> absl::Status {
     auto client = GetClient(node_id);
@@ -547,21 +536,25 @@ TEST_F(ClientServerTest, ConnectEventuallyTimesOutIfAClientDoesNotShowUp) {
 // restart.
 TEST_F(ClientServerTest, ClientRestart_AfterConnect_Fails) {
   int num_nodes = 3;
-  StartService(num_nodes,
-               /*init_and_shutdown_timeout=*/absl::Seconds(5));
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.cluster_register_timeout = absl::Seconds(5);
+  config.shutdown_barrier_timeout = absl::Seconds(5);
+  config.num_tasks = num_nodes;
+  StartService(config);
   absl::Notification n;
 
   auto thread_fn = [&](int node_id) -> absl::Status {
-    auto client =
-        GetClient(node_id, /*init_and_shutdown_timeout=*/absl::Seconds(5));
+    CoordinationServiceAgent::Config agent_config = DefaultAgentConfig();
+    agent_config.cluster_register_timeout = absl::Seconds(5);
+    agent_config.shutdown_barrier_timeout = absl::Seconds(5);
+    auto client = GetClient(node_id, agent_config);
 
     TF_RETURN_IF_ERROR(client->Connect());
     // All clients have successfully connected at this point.
     // Simulate client restart by creating a new client.
     if (node_id == 2) {
       client = nullptr;
-      auto restarted_client =
-          GetClient(node_id, /*init_and_shutdown_timeout=*/absl::Seconds(5));
+      auto restarted_client = GetClient(node_id, agent_config);
       auto status = restarted_client->Connect();
       n.Notify();
       return status;
@@ -571,14 +564,7 @@ TEST_F(ClientServerTest, ClientRestart_AfterConnect_Fails) {
     return absl::OkStatus();
   };
 
-  std::vector<absl::Status> statuses(num_nodes);
-  {
-    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
-                                        num_nodes);
-    for (int i = 0; i < num_nodes; ++i) {
-      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
-    }
-  }
+  std::vector<absl::Status> statuses = RunClients(num_nodes, thread_fn);
   // Errors should have been propagated to the clients, and thus the shutdown
   // call will fail with `FailedPrecondition` since the tasks are already in
   // error.
@@ -594,8 +580,11 @@ TEST_F(ClientServerTest, ClientRestart_AfterConnect_Fails) {
 // stateful operations have run yet, so the program state is still valid.
 TEST_F(ClientServerTest, ClientRestart_DuringConnect_Succeeds) {
   int num_nodes = 3;
-  StartService(num_nodes,
-               /*init_and_shutdown_timeout=*/absl::Seconds(5));
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.cluster_register_timeout = absl::Seconds(5);
+  config.shutdown_barrier_timeout = absl::Seconds(5);
+  config.num_tasks = num_nodes;
+  StartService(config);
   absl::Notification previous_node_2_connecting, node_2_restarted;
 
   std::vector<absl::Status> statuses(num_nodes + 1);
@@ -605,8 +594,10 @@ TEST_F(ClientServerTest, ClientRestart_DuringConnect_Succeeds) {
       restarted_node_2 = true;
       node_id = 2;  // This is the restarted client.
     }
-    auto client =
-        GetClient(node_id, /*init_and_shutdown_timeout=*/absl::Seconds(5));
+    CoordinationServiceAgent::Config agent_config = DefaultAgentConfig();
+    agent_config.cluster_register_timeout = absl::Seconds(5);
+    agent_config.shutdown_barrier_timeout = absl::Seconds(5);
+    auto client = GetClient(node_id, agent_config);
 
     // Overall timeline:
     // 1. Node 0, 2 connects.
@@ -655,7 +646,9 @@ TEST_F(ClientServerTest, ClientRestart_DuringConnect_Succeeds) {
 
 TEST_F(ClientServerTest, WaitAtBarrier_Succeed) {
   int num_nodes = 2;
-  StartService(num_nodes);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.num_tasks = num_nodes;
+  StartService(config);
 
   auto thread_fn = [&](int node_id) -> absl::Status {
     auto client = GetClient(node_id);
@@ -668,22 +661,15 @@ TEST_F(ClientServerTest, WaitAtBarrier_Succeed) {
     return absl::OkStatus();
   };
 
-  std::vector<absl::Status> statuses(num_nodes);
-  {
-    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
-                                        num_nodes);
-    for (int i = 0; i < num_nodes; ++i) {
-      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
-    }
-  }
-  for (int i = 0; i < num_nodes; ++i) {
-    TF_EXPECT_OK(statuses[i]);
-  }
+  std::vector<absl::Status> statuses = RunClients(num_nodes, thread_fn);
+  EXPECT_THAT(statuses, Each(absl_testing::IsOk()));
 }
 
 TEST_F(ClientServerTest, WaitAtBarrier_Timeout) {
   int num_nodes = 2;
-  StartService(num_nodes);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.num_tasks = num_nodes;
+  StartService(config);
   absl::Notification n;
 
   auto thread_fn = [&](int node_id) -> absl::Status {
@@ -706,14 +692,7 @@ TEST_F(ClientServerTest, WaitAtBarrier_Timeout) {
     return absl::OkStatus();
   };
 
-  std::vector<absl::Status> statuses(num_nodes);
-  {
-    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
-                                        num_nodes);
-    for (int i = 0; i < num_nodes; ++i) {
-      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
-    }
-  }
+  std::vector<absl::Status> statuses = RunClients(num_nodes, thread_fn);
   for (int i = 0; i < num_nodes; ++i) {
     // Co-ordination service returns the status of the previous barrier
     // failure without waiting for the thread to time out.
@@ -724,7 +703,9 @@ TEST_F(ClientServerTest, WaitAtBarrier_Timeout) {
 
 TEST_F(ClientServerTest, WaitAtBarrier_TimeoutWithDifferentBarrierId) {
   int num_nodes = 2;
-  StartService(num_nodes);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.num_tasks = num_nodes;
+  StartService(config);
 
   auto thread_fn = [&](int node_id) -> absl::Status {
     auto client = GetClient(node_id);
@@ -742,14 +723,7 @@ TEST_F(ClientServerTest, WaitAtBarrier_TimeoutWithDifferentBarrierId) {
     return absl::OkStatus();
   };
 
-  std::vector<absl::Status> statuses(num_nodes);
-  {
-    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
-                                        num_nodes);
-    for (int i = 0; i < num_nodes; ++i) {
-      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
-    }
-  }
+  std::vector<absl::Status> statuses = RunClients(num_nodes, thread_fn);
   for (int i = 0; i < num_nodes; ++i) {
     EXPECT_EQ(statuses[i].code(), tsl::error::DEADLINE_EXCEEDED)
         << " node id: " << i;
@@ -758,7 +732,9 @@ TEST_F(ClientServerTest, WaitAtBarrier_TimeoutWithDifferentBarrierId) {
 
 TEST_F(ClientServerTest, WaitAtBarrier_ReuseSameId_Succeeds) {
   int num_nodes = 2;
-  StartService(num_nodes);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.num_tasks = num_nodes;
+  StartService(config);
 
   auto thread_fn = [&](int node_id) -> absl::Status {
     auto client = GetClient(node_id);
@@ -773,41 +749,35 @@ TEST_F(ClientServerTest, WaitAtBarrier_ReuseSameId_Succeeds) {
     return absl::OkStatus();
   };
 
-  std::vector<absl::Status> statuses(num_nodes);
-  {
-    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
-                                        num_nodes);
-    for (int i = 0; i < num_nodes; ++i) {
-      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
-    }
-  }
-  for (int i = 0; i < num_nodes; ++i) {
-    TF_EXPECT_OK(statuses[i]);
-  }
+  std::vector<absl::Status> statuses = RunClients(num_nodes, thread_fn);
+  EXPECT_THAT(statuses, Each(absl_testing::IsOk()));
 }
 
 TEST_F(ClientServerTest, WaitAtBarrier_RestartAndBarrierAgain_Fails) {
   int num_nodes = 2;
-  // Allow clients to connect by themselves so restarted client can connect and
-  // try barrier again.
-  StartService(num_nodes, /*init_and_shutdown_timeout=*/absl::Seconds(2),
-               /*cluster_register_with_barrier=*/false,
-               /*cluster_shutdown_with_barrier=*/false);
+  // Allow clients to connect by themselves so restarted client can connect
+  // and try barrier again.
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.cluster_register_with_barrier = false;
+  config.shutdown_barrier_timeout = absl::ZeroDuration();
+  config.num_tasks = num_nodes;
+  StartService(config);
   absl::Status barrier_status;
   absl::Notification n;
 
-  auto thread_fn = [&](int node_id) {
+  auto thread_fn = [&](int node_id) -> absl::Status {
     auto client = GetClient(node_id);
-    TF_ASSERT_OK(client->Connect());
+    TF_RETURN_IF_ERROR(client->Connect());
 
     // Complete barrier 3 times (simulate job progress).
     for (int i = 0; i < 3; ++i) {
-      TF_ASSERT_OK(client->WaitAtBarrier("barrier_1", kBarrierTimeout, {}));
+      TF_RETURN_IF_ERROR(
+          client->WaitAtBarrier("barrier_1", kBarrierTimeout, {}));
     }
     if (node_id == 1) {
       client = nullptr;  // Simulate client restart.
       auto restarted_client = GetClient(1);
-      TF_ASSERT_OK(restarted_client->Connect());
+      TF_RETURN_IF_ERROR(restarted_client->Connect());
       // This should fail! This variable is checked after the thread pool is
       // destroyed.
       barrier_status =
@@ -816,15 +786,10 @@ TEST_F(ClientServerTest, WaitAtBarrier_RestartAndBarrierAgain_Fails) {
     }
     // Client 0 should only be destroyed after we get the barrier result.
     n.WaitForNotification();
+    return absl::OkStatus();
   };
 
-  {
-    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
-                                        num_nodes);
-    for (int i = 0; i < num_nodes; ++i) {
-      thread_pool.Schedule([&, i]() { thread_fn(i); });
-    }
-  }
+  RunClients(num_nodes, thread_fn);
   EXPECT_THAT(barrier_status,
               absl_testing::StatusIs(absl::StatusCode::kInternal,
                                      HasSubstr("restarted")));
@@ -833,12 +798,14 @@ TEST_F(ClientServerTest, WaitAtBarrier_RestartAndBarrierAgain_Fails) {
 TEST_F(ClientServerTest,
        WaitAtBarrier_TimeoutThenOkay_StragglingTaskGetsSameError) {
   int num_nodes = 2;
-  StartService(num_nodes);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.num_tasks = num_nodes;
+  StartService(config);
   absl::Notification n, n_2;
   absl::Status status_0, status_0_new, status_1, status_1_new;
-  auto thread_fn = [&](int node_id) {
+  auto thread_fn = [&](int node_id) -> absl::Status {
     auto client = GetClient(node_id);
-    TF_ASSERT_OK(client->Connect());
+    TF_RETURN_IF_ERROR(client->Connect());
     if (node_id == 0) {
       status_0 = client->WaitAtBarrier("barrier_1", kBarrierTimeout, {});
       n.Notify();
@@ -850,15 +817,10 @@ TEST_F(ClientServerTest,
       n_2.Notify();
       status_1_new = client->WaitAtBarrier("barrier_1", kBarrierTimeout, {});
     }
+    return absl::OkStatus();
   };
 
-  {
-    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
-                                        num_nodes);
-    for (int i = 0; i < num_nodes; ++i) {
-      thread_pool.Schedule([&, i]() { thread_fn(i); });
-    }
-  }
+  RunClients(num_nodes, thread_fn);
   // Both nodes should get the same error.
   EXPECT_THAT(status_0,
               absl_testing::StatusIs(absl::StatusCode::kDeadlineExceeded));
@@ -872,14 +834,16 @@ TEST_F(ClientServerTest,
 TEST_F(ClientServerTest,
        WaitAtBarrier_QuickTaskStartBarrierTwice_LateTaskGetsSlowError) {
   int num_nodes = 2;
-  StartService(num_nodes);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.num_tasks = num_nodes;
+  StartService(config);
   absl::Notification n;
   absl::Status status_0, status_0_new, status_1;
-  auto thread_fn = [&](int node_id) {
+  auto thread_fn = [&](int node_id) -> absl::Status {
     auto client = GetClient(node_id);
-    TF_ASSERT_OK(client->Connect());
-    TF_ASSERT_OK(client->WaitAtBarrier("barrier_1", kBarrierTimeout, {}));
-    TF_ASSERT_OK(client->WaitAtBarrier("barrier_1", kBarrierTimeout, {}));
+    TF_RETURN_IF_ERROR(client->Connect());
+    TF_RETURN_IF_ERROR(client->WaitAtBarrier("barrier_1", kBarrierTimeout, {}));
+    TF_RETURN_IF_ERROR(client->WaitAtBarrier("barrier_1", kBarrierTimeout, {}));
     if (node_id == 0) {
       // Let each barrier time out.
       status_0 = client->WaitAtBarrier("barrier_1", kBarrierTimeout, {});
@@ -890,15 +854,10 @@ TEST_F(ClientServerTest,
       n.WaitForNotification();
       status_1 = client->WaitAtBarrier("barrier_1", kBarrierTimeout, {});
     }
+    return absl::OkStatus();
   };
 
-  {
-    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
-                                        num_nodes);
-    for (int i = 0; i < num_nodes; ++i) {
-      thread_pool.Schedule([&, i]() { thread_fn(i); });
-    }
-  }
+  RunClients(num_nodes, thread_fn);
   // Both barriers from node 0 should time out.
   EXPECT_THAT(status_0,
               absl_testing::StatusIs(absl::StatusCode::kDeadlineExceeded));
@@ -911,7 +870,9 @@ TEST_F(ClientServerTest,
 
 TEST_F(ClientServerTest, WaitAtBarrierSubset_Succeeds) {
   int num_nodes = 3;
-  StartService(num_nodes);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.num_tasks = num_nodes;
+  StartService(config);
   absl::Notification n0, n1;
 
   auto thread_fn = [&](int node_id) -> absl::Status {
@@ -927,28 +888,21 @@ TEST_F(ClientServerTest, WaitAtBarrierSubset_Succeeds) {
     return absl::OkStatus();
   };
 
-  std::vector<absl::Status> statuses(num_nodes);
-  {
-    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
-                                        num_nodes);
-    for (int i = 0; i < num_nodes; ++i) {
-      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
-    }
-    for (int i = 0; i < num_nodes; ++i) {
-      TF_EXPECT_OK(statuses[i]);
-    }
-  }
+  std::vector<absl::Status> statuses = RunClients(num_nodes, thread_fn);
+  EXPECT_THAT(statuses, Each(absl_testing::IsOk()));
 }
 
 TEST_F(ClientServerTest, WaitAtBarrier_DifferentSubset_Fails) {
   int num_nodes = 2;
-  StartService(num_nodes);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.num_tasks = num_nodes;
+  StartService(config);
   absl::Notification n;
   absl::Status status_0, status_1 = absl::UnknownError("Uninitialized error.");
 
-  auto thread_fn = [&](int node_id) {
+  auto thread_fn = [&](int node_id) -> absl::Status {
     auto client = GetClient(node_id);
-    TF_ASSERT_OK(client->Connect());
+    TF_RETURN_IF_ERROR(client->Connect());
     if (node_id == 0) {
       status_0 = client->WaitAtBarrier("barrier_1", kBarrierTimeout, {0});
       n.Notify();
@@ -957,15 +911,10 @@ TEST_F(ClientServerTest, WaitAtBarrier_DifferentSubset_Fails) {
       // Same barrier id, but specifies different tasks.
       status_1 = client->WaitAtBarrier("barrier_1", kBarrierTimeout, {1});
     }
+    return absl::OkStatus();
   };
 
-  {
-    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
-                                        num_nodes);
-    for (int i = 0; i < num_nodes; ++i) {
-      thread_pool.Schedule([&, i]() { thread_fn(i); });
-    }
-  }
+  RunClients(num_nodes, thread_fn);
   // First barrier call succeeds.
   TF_EXPECT_OK(status_0);
   // Second barrier call with different task args fails.
@@ -976,7 +925,9 @@ TEST_F(ClientServerTest, WaitAtBarrier_DifferentSubset_Fails) {
 
 TEST_F(ClientServerTest, CancelNonExistentBarrier_Fails) {
   int num_nodes = 1;
-  StartService(num_nodes);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.num_tasks = num_nodes;
+  StartService(config);
   auto client = GetClient(0);
   TF_ASSERT_OK(client->Connect());
 
@@ -987,7 +938,9 @@ TEST_F(ClientServerTest, CancelNonExistentBarrier_Fails) {
 TEST_F(ClientServerTest,
        WaitAtBarrierSubsetNonParticipatingProcessAttempts_Fails) {
   int num_nodes = 3;
-  StartService(num_nodes);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.num_tasks = num_nodes;
+  StartService(config);
   absl::Notification n;
   absl::Barrier barrier(num_nodes + 1);
 
@@ -1040,7 +993,9 @@ TEST_F(ClientServerTest,
 
 TEST_F(ClientServerTest, GetAliveTasks_Succeed) {
   const int num_nodes = 2;
-  StartService(num_nodes);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.num_tasks = num_nodes;
+  StartService(config);
 
   auto thread_fn = [&](int node_id) -> absl::Status {
     auto client = GetClient(node_id);
@@ -1054,21 +1009,14 @@ TEST_F(ClientServerTest, GetAliveTasks_Succeed) {
     return absl::OkStatus();
   };
 
-  std::vector<absl::Status> statuses(num_nodes);
-  {
-    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
-                                        num_nodes);
-    for (int i = 0; i < num_nodes; ++i) {
-      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
-    }
-  }
-  for (int i = 0; i < num_nodes; ++i) {
-    TF_EXPECT_OK(statuses[i]);
-  }
+  std::vector<absl::Status> statuses = RunClients(num_nodes, thread_fn);
+  EXPECT_THAT(statuses, Each(absl_testing::IsOk()));
 }
 
 TEST_F(ClientServerTest, GetKeyValueDir) {
-  StartService(/*num_nodes=*/1);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.num_tasks = 1;
+  StartService(config);
   auto client = GetClient(/*node_id=*/0);
   TF_ASSERT_OK(client->Connect());
   TF_ASSERT_OK(client->InsertKeyValue("test_dir/sub_dir/1", "1"));
@@ -1087,7 +1035,9 @@ TEST_F(ClientServerTest, GetKeyValueDir) {
 }
 
 TEST_F(ClientServerTest, InsertKeyValue_Duplicate_Fails) {
-  StartService(/*num_nodes=*/1);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.num_tasks = 1;
+  StartService(config);
   auto client = GetClient(/*node_id=*/0);
   TF_ASSERT_OK(client->Connect());
   TF_ASSERT_OK(client->InsertKeyValue("test_key", "original_value"));
@@ -1099,7 +1049,9 @@ TEST_F(ClientServerTest, InsertKeyValue_Duplicate_Fails) {
 }
 
 TEST_F(ClientServerTest, InsertKeyValue_Duplicate_Overwrites) {
-  StartService(/*num_nodes=*/1);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.num_tasks = 1;
+  StartService(config);
   auto client = GetClient(/*node_id=*/0);
   TF_ASSERT_OK(client->Connect());
   TF_ASSERT_OK(client->InsertKeyValue("test_key", "original_value"));
@@ -1111,7 +1063,9 @@ TEST_F(ClientServerTest, InsertKeyValue_Duplicate_Overwrites) {
 }
 
 TEST_F(ClientServerTest, DeleteKeyValue) {
-  StartService(/*num_nodes=*/1);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.num_tasks = 1;
+  StartService(config);
   auto client = GetClient(/*node_id=*/0);
   TF_ASSERT_OK(client->Connect());
   TF_ASSERT_OK(client->InsertKeyValue("to_be_deleted", "deleted"));
@@ -1131,7 +1085,9 @@ TEST_F(ClientServerTest, DeleteKeyValue) {
 }
 
 TEST_F(ClientServerTest, DeleteKeyValue_Directory) {
-  StartService(/*num_nodes=*/1);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.num_tasks = 1;
+  StartService(config);
   auto client = GetClient(/*node_id=*/0);
   TF_ASSERT_OK(client->Connect());
   TF_ASSERT_OK(client->InsertKeyValue("test_dir/sub_dir/1", "1"));
@@ -1146,12 +1102,15 @@ TEST_F(ClientServerTest, DeleteKeyValue_Directory) {
   EXPECT_THAT(kvs.value(), IsEmpty());
 }
 
-// This prevents a regression found in b/380359918 where original error messages
-// are hidden because the RPC layer cannot send long error messages.
+// This prevents a regression found in b/380359918 where original error
+// messages are hidden because the RPC layer cannot send long error messages.
 TEST_F(ClientServerTest, BarrierTimeout_ManyLateTasks_ReturnsCorrectError) {
-  StartService(/*num_nodes=*/100,
-               /*init_and_shutdown_timeout=*/absl::Seconds(1),
-               /*cluster_register_with_barrier=*/false);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.cluster_register_timeout = absl::Seconds(1);
+  config.shutdown_barrier_timeout = absl::Seconds(1);
+  config.cluster_register_with_barrier = false;
+  config.num_tasks = 100;
+  StartService(config);
   auto client = GetClient(/*node_id=*/0);
   TF_ASSERT_OK(client->Connect());
 
@@ -1164,12 +1123,15 @@ TEST_F(ClientServerTest, BarrierTimeout_ManyLateTasks_ReturnsCorrectError) {
 }
 
 TEST_F(ClientServerTest, Dtor_CancelsOngoingGetKeyValueAndBarrier) {
-  // Set 2 nodes with no register barrier to allowing pending barrier RPC.
-  StartService(/*num_nodes=*/2, /*init_and_shutdown_timeout=*/absl::Seconds(2),
-               /*cluster_register_with_barrier=*/false);
-  auto client = GetClient(/*node_id=*/0,
-                          /*init_and_shutdown_timeout=*/absl::Seconds(2),
-                          /*shutdown_on_destruction=*/false);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.cluster_register_with_barrier = false;
+  config.num_tasks = 2;
+  StartService(config);
+  CoordinationServiceAgent::Config agent_config = DefaultAgentConfig();
+  agent_config.cluster_register_timeout = absl::Seconds(2);
+  agent_config.shutdown_barrier_timeout = absl::Seconds(2);
+  agent_config.agent_destruction_without_shutdown = true;
+  auto client = GetClient(/*node_id=*/0, agent_config);
   TF_ASSERT_OK(client->Connect());
   absl::Status barrier_status, get_key_value_status;
   client->WaitAtBarrierAsync(
@@ -1194,19 +1156,19 @@ TEST_F(ClientServerTest, Dtor_CancelsOngoingGetKeyValueAndBarrier) {
 
 TEST_F(ClientServerTest, RecoverableClientNeverJoins_InitialConnectFails) {
   int num_nodes = 3;
-  StartService(num_nodes,
-               /*init_and_shutdown_timeout=*/absl::Seconds(2),
-               /*cluster_register_with_barrier=*/true,
-               /*cluster_shutdown_with_barrier=*/true,
-               /*recoverable=*/true);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.recoverable = true;
+  config.num_tasks = num_nodes;
+  StartService(config);
 
   absl::Notification node_2_joins_late;
   std::vector<absl::Status> statuses(num_nodes);
 
-  auto thread_fn = [&](int node_id) {
-    auto client = GetClient(node_id,
-                            /*init_and_shutdown_timeout=*/absl::Seconds(2),
-                            /*shutdown_on_destruction=*/true);
+  auto thread_fn = [&](int node_id) -> absl::Status {
+    CoordinationServiceAgent::Config agent_config = DefaultAgentConfig();
+    agent_config.cluster_register_timeout = absl::Seconds(2);
+    agent_config.shutdown_barrier_timeout = absl::Seconds(2);
+    auto client = GetClient(node_id, agent_config);
     if (node_id == 0) {
       statuses[0] = client->Connect();
     } else if (node_id == 1) {
@@ -1217,23 +1179,18 @@ TEST_F(ClientServerTest, RecoverableClientNeverJoins_InitialConnectFails) {
       node_2_joins_late.WaitForNotification();
       statuses[2] = client->Connect();
     }
+    return absl::OkStatus();
   };
 
-  {
-    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
-                                        num_nodes);
-    for (int i = 0; i < num_nodes; ++i) {
-      thread_pool.Schedule([&, i]() { thread_fn(i); });
-    }
-  }
+  RunClients(num_nodes, thread_fn);
   // Even though node 2 is recoverable, initial connect still fails if it is
   // late.
   for (int i = 0; i < num_nodes; ++i) {
     // 1) Connect() starts a barrier.
     // 2) Barrier times out, returning `DeadlineExceeded` error.
     // 3) The failed barrier sets the entire cluster to an error state.
-    // Subsequent connect attempts will return `Aborted` error due to this error
-    // state.
+    // Subsequent connect attempts will return `Aborted` error due to this
+    // error state.
     EXPECT_THAT(statuses[i], absl_testing::StatusIs(
                                  AnyOf(absl::StatusCode::kDeadlineExceeded,
                                        absl::StatusCode::kAborted)))
@@ -1243,35 +1200,34 @@ TEST_F(ClientServerTest, RecoverableClientNeverJoins_InitialConnectFails) {
 
 TEST_F(ClientServerTest, NonrecoverableClientDies_ErrorPropagated) {
   int num_nodes = 3;
-  StartService(num_nodes);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.num_tasks = num_nodes;
+  StartService(config);
   absl::Notification shutdown;
   std::vector<absl::Status> statuses(num_nodes);
 
-  auto thread_fn = [&](int node_id) {
-    auto client = GetClient(node_id,
-                            /*init_and_shutdown_timeout=*/absl::Seconds(2),
-                            /*shutdown_on_destruction=*/false,
+  auto thread_fn = [&](int node_id) -> absl::Status {
+    CoordinationServiceAgent::Config agent_config = DefaultAgentConfig();
+    agent_config.cluster_register_timeout = absl::Seconds(2);
+    agent_config.shutdown_barrier_timeout = absl::Seconds(2);
+    agent_config.agent_destruction_without_shutdown = true;
+    auto client = GetClient(node_id, agent_config,
                             // Nodes 1, 2 are recoverable.
                             /*error_fn=*/
                             [&statuses, node_id](const absl::Status& status) {
                               statuses[node_id] = status;
                             });
-    TF_ASSERT_OK(client->Connect());
+    TF_RETURN_IF_ERROR(client->Connect());
     if (node_id == 0) {
       // Non-recoverable node crashed unexpectedly.
-      return;
+      return absl::OkStatus();
     }
     // Other nodes will get heartbeat timeouts.
     absl::SleepFor(kHeartbeatTimeout * 2);
+    return absl::OkStatus();
   };
 
-  {
-    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
-                                        num_nodes);
-    for (int i = 0; i < num_nodes; ++i) {
-      thread_pool.Schedule([&, i]() { thread_fn(i); });
-    }
-  }
+  RunClients(num_nodes, thread_fn);
   EXPECT_THAT(statuses,
               ElementsAre(
                   // Node 0 died unexpectedly, so no error function invoked.
@@ -1283,39 +1239,35 @@ TEST_F(ClientServerTest, NonrecoverableClientDies_ErrorPropagated) {
 
 TEST_F(ClientServerTest, RecoverableClientDies_NoErrorPropagated) {
   int num_nodes = 3;
-  StartService(num_nodes,
-               /*init_and_shutdown_timeout=*/absl::Seconds(2),
-               /*cluster_register_with_barrier=*/true,
-               /*cluster_shutdown_with_barrier=*/true,
-               /*recoverable=*/true);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.recoverable = true;
+  config.num_tasks = num_nodes;
+  StartService(config);
   absl::Notification shutdown;
   std::vector<absl::Status> statuses(num_nodes);
 
-  auto thread_fn = [&](int node_id) {
-    auto client = GetClient(node_id,
-                            /*init_and_shutdown_timeout=*/absl::Seconds(2),
-                            /*shutdown_on_destruction=*/false,
+  auto thread_fn = [&](int node_id) -> absl::Status {
+    CoordinationServiceAgent::Config agent_config = DefaultAgentConfig();
+    agent_config.cluster_register_timeout = absl::Seconds(2);
+    agent_config.shutdown_barrier_timeout = absl::Seconds(2);
+    agent_config.agent_destruction_without_shutdown = true;
+    auto client = GetClient(node_id, agent_config,
                             // Nodes 1, 2 are recoverable.
                             /*error_fn=*/
                             [&statuses, node_id](const absl::Status& status) {
                               statuses[node_id] = status;
                             });
-    TF_ASSERT_OK(client->Connect());
+    TF_RETURN_IF_ERROR(client->Connect());
     if (node_id == 1) {
       // Recoverable node crashed unexpectedly.
-      return;
+      return absl::OkStatus();
     }
     // Other nodes will get heartbeat timeouts.
     absl::SleepFor(kHeartbeatTimeout * 2);
+    return absl::OkStatus();
   };
 
-  {
-    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
-                                        num_nodes);
-    for (int i = 0; i < num_nodes; ++i) {
-      thread_pool.Schedule([&, i]() { thread_fn(i); });
-    }
-  }
+  RunClients(num_nodes, thread_fn);
   // Nobody noticed that node 1 (recoverable) died.
   TF_EXPECT_OK(statuses[0]);
   TF_EXPECT_OK(statuses[1]);
@@ -1324,27 +1276,30 @@ TEST_F(ClientServerTest, RecoverableClientDies_NoErrorPropagated) {
 
 TEST_F(ClientServerTest, RecoverableClient_RestartsAndStartsBarrier) {
   int num_nodes = 2;
-  StartService(num_nodes,
-               /*init_and_shutdown_timeout=*/absl::Seconds(2),
-               /*cluster_register_with_barrier=*/true,
-               /*cluster_shutdown_with_barrier=*/true,
-               /*recoverable=*/true);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.recoverable = true;
+  config.num_tasks = num_nodes;
+  StartService(config);
   absl::Notification node_1_joins_barrier;
   absl::Status status_0, status_0_shutdown, status_1, status_1_shutdown;
   status_0 = status_0_shutdown = status_1 = status_1_shutdown =
       absl::UnknownError("Uninitialized error.");
 
-  auto thread_fn = [&](int node_id) {
-    auto client = GetClient(node_id,
-                            /*init_and_shutdown_timeout=*/absl::Seconds(2),
-                            /*shutdown_on_destruction=*/true);
-    TF_ASSERT_OK(client->Connect());
+  auto thread_fn = [&](int node_id) -> absl::Status {
+    CoordinationServiceAgent::Config agent_config = DefaultAgentConfig();
+    agent_config.cluster_register_timeout = absl::Seconds(2);
+    agent_config.shutdown_barrier_timeout = absl::Seconds(2);
+    auto client = GetClient(node_id, agent_config);
+    TF_RETURN_IF_ERROR(client->Connect());
     // This increments the internal barrier counter, and checks if the
     // recoverable node can start a new barrier later (despite having a reset
     // counter on the client-side)
-    TF_ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
-    TF_ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
-    TF_ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
+    TF_RETURN_IF_ERROR(
+        client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
+    TF_RETURN_IF_ERROR(
+        client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
+    TF_RETURN_IF_ERROR(
+        client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
     // Timeline:
     // 1. Node 0 restarts.
     // 2. Node 0 starts a new barrier.
@@ -1353,10 +1308,8 @@ TEST_F(ClientServerTest, RecoverableClient_RestartsAndStartsBarrier) {
     if (node_id == 0) {
       // Restart the client.
       client = nullptr;
-      auto restarted_client =
-          GetClient(/*node_id=*/0,
-                    /*init_and_shutdown_timeout=*/absl::Seconds(2),
-                    /*shutdown_on_destruction=*/true);
+      auto restarted_client = GetClient(/*node_id=*/0, agent_config);
+      TF_RETURN_IF_ERROR(restarted_client->Connect());
 
       restarted_client->WaitAtBarrierAsync(
           kBarrierId, absl::Seconds(10), {},
@@ -1376,40 +1329,142 @@ TEST_F(ClientServerTest, RecoverableClient_RestartsAndStartsBarrier) {
       status_1_shutdown =
           client->WaitAtBarrier("before_shutdown", absl::Seconds(10), {});
     }
+    return absl::OkStatus();
   };
 
-  {
-    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
-                                        num_nodes);
-    for (int i = 0; i < num_nodes; ++i) {
-      thread_pool.Schedule([&, i]() { thread_fn(i); });
-    }
-  }
+  RunClients(num_nodes, thread_fn);
   TF_EXPECT_OK(status_0);
   TF_EXPECT_OK(status_0_shutdown);
   TF_EXPECT_OK(status_1);
   TF_EXPECT_OK(status_1_shutdown);
 }
 
+TEST_F(ClientServerTest, ServiceIncarnationMismatch) {
+  const int port = tsl::testing::PickUnusedPortOrDie();
+  const int num_clients = 9;
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.num_tasks = num_clients + 1;
+  config.cluster_register_with_barrier = false;
+  // Set a long heartbeat timeout so that no heartbeat fires during the service
+  // restart and poisons the clients with UNAVAILABLE errors.
+  config.heartbeat_timeout = absl::Seconds(60);
+  StartService(config, port);
+
+  // Create a separate client for each RPC so that error_fn is triggered
+  // independently for each one.
+  std::vector<absl::Status> errors(num_clients);
+  std::vector<std::unique_ptr<CoordinationServiceAgent>> clients(num_clients);
+  CoordinationServiceAgent::Config agent_config = DefaultAgentConfig();
+  agent_config.agent_destruction_without_shutdown = true;
+  agent_config.heartbeat_timeout = absl::Seconds(60);
+  agent_config.poll_for_error_from_service_at_startup = false;
+  for (int i = 0; i < num_clients; ++i) {
+    clients[i] =
+        GetClient(i, agent_config,
+                  [&errors, i](const absl::Status& s) { errors[i] = s; });
+    TF_ASSERT_OK(clients[i]->Connect());
+  }
+
+  // Create a probe client to wait for the channel to reconnect.
+  auto probe = GetClient(num_clients, agent_config);
+  TF_ASSERT_OK(probe->Connect());
+
+  // Restart the service.
+  StopService();
+  StartService(config, port);
+
+  // Wait for the gRPC channel to reconnect by polling with a lightweight RPC.
+  // TryGetKeyValue is a good probe because it returns immediately.
+  while (true) {
+    auto status = probe->TryGetKeyValue("probe");
+    if (status.status().code() != absl::StatusCode::kUnavailable) {
+      break;
+    }
+    absl::SleepFor(absl::Milliseconds(100));
+  }
+
+  // All RPCs should fail because the clients have the old service incarnation.
+  auto has_wrong_service = absl_testing::StatusIs(
+      absl::StatusCode::kInternal, HasSubstr("wrong service incarnation"));
+
+  int i = 0;
+  EXPECT_THAT(clients[i]->GetKeyValue("key").status(), has_wrong_service);
+  EXPECT_THAT(errors[i], has_wrong_service);
+  ++i;
+
+  EXPECT_THAT(clients[i]->TryGetKeyValue("key").status(), has_wrong_service);
+  EXPECT_THAT(errors[i], has_wrong_service);
+  ++i;
+
+  EXPECT_THAT(clients[i]->InsertKeyValue("key", "value"), has_wrong_service);
+  EXPECT_THAT(errors[i], has_wrong_service);
+  ++i;
+
+  EXPECT_THAT(clients[i]->DeleteKeyValue("key"), has_wrong_service);
+  EXPECT_THAT(errors[i], has_wrong_service);
+  ++i;
+
+  EXPECT_THAT(clients[i]->IncrementKeyValue("key", 1).status(),
+              has_wrong_service);
+  EXPECT_THAT(errors[i], has_wrong_service);
+  ++i;
+
+  EXPECT_THAT(clients[i]->GetKeyValueDir("key").status(), has_wrong_service);
+  EXPECT_THAT(errors[i], has_wrong_service);
+  ++i;
+
+  EXPECT_THAT(clients[i]->WaitAtBarrier("barrier", absl::Seconds(1), {}),
+              has_wrong_service);
+  EXPECT_THAT(errors[i], has_wrong_service);
+  ++i;
+
+  EXPECT_THAT(clients[i]->GetAliveTasks({0}).status(), has_wrong_service);
+  EXPECT_THAT(errors[i], has_wrong_service);
+  ++i;
+
+  EXPECT_THAT(clients[i]->WatchTasks({}).status(), has_wrong_service);
+  EXPECT_THAT(errors[i], has_wrong_service);
+  ++i;
+}
+
+struct RecoverableTestParams {
+  // This determines if the restarted clients will invoke shutdown before going
+  // away. This checks if the service logic will not be corrupted even if the
+  // client does not gracefully disconnect (i.e. param set to false).
+  bool recoverable_node_shutdown_on_destruction;
+  // This inserts errors to transition the cluster into error states (from the
+  // service's POV), which may result in different code paths or error codes.
+  bool inject_heartbeat_errors;
+  // This exercises barrier counter validation logic. On the agent side, a
+  // restarted client will have its counter reset. Thus, the service needs to
+  // let the recoverable node join despite a mismatched counter.
+  bool pass_multiple_barriers_before_test;
+};
+
+class RecoverableTest
+    : public ClientServerTest,
+      public ::testing::WithParamInterface<RecoverableTestParams> {};
+
 TEST_P(RecoverableTest, RecoverableClient_RestartsAndJoinsBarrier) {
   const RecoverableTestParams params = GetParam();
   int num_nodes = 2;
-  StartService(num_nodes,
-               /*init_and_shutdown_timeout=*/absl::Seconds(2),
-               /*cluster_register_with_barrier=*/true,
-               /*cluster_shutdown_with_barrier=*/true,
-               /*recoverable=*/true);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.recoverable = true;
+  config.num_tasks = num_nodes;
+  StartService(config);
   absl::Notification restart_now;
   absl::Status status_0, status_0_shutdown, status_1, status_1_shutdown;
   status_0 = status_0_shutdown = status_1 = status_1_shutdown =
       absl::UnknownError("Uninitialized error.");
 
   auto thread_fn = [&](int node_id) {
-    auto client = GetClient(
-        node_id,
-        /*init_and_shutdown_timeout=*/absl::Seconds(2),
-        /*shutdown_on_destruction=*/
-        params.recoverable_node_shutdown_on_destruction ? true : node_id != 1);
+    CoordinationServiceAgent::Config agent_config = DefaultAgentConfig();
+    agent_config.cluster_register_timeout = absl::Seconds(2);
+    agent_config.shutdown_barrier_timeout = absl::Seconds(2);
+    agent_config.agent_destruction_without_shutdown =
+        params.recoverable_node_shutdown_on_destruction ? false
+                                                        : (node_id == 1);
+    auto client = GetClient(node_id, agent_config);
     TF_ASSERT_OK(client->Connect());
     if (params.pass_multiple_barriers_before_test) {
       // This increments the internal barrier counter, and checks if the
@@ -1426,8 +1481,8 @@ TEST_P(RecoverableTest, RecoverableClient_RestartsAndJoinsBarrier) {
     // 4. End-of-job barrier.
     if (node_id == 0) {
       // Usually, if a non-recoverable node goes away, the barrier will fail
-      // immediately. However, if the node is recoverable, the barrier will wait
-      // for the node to restart.
+      // immediately. However, if the node is recoverable, the barrier will
+      // wait for the node to restart.
       client->WaitAtBarrierAsync(
           kBarrierId, absl::Seconds(10), {},
           [&status_0](const absl::Status& status) { status_0 = status; });
@@ -1446,10 +1501,8 @@ TEST_P(RecoverableTest, RecoverableClient_RestartsAndJoinsBarrier) {
       if (params.inject_heartbeat_errors) {
         absl::SleepFor(2 * kHeartbeatTimeout);
       }
-      auto restarted_client =
-          GetClient(/*node_id=*/1,
-                    /*init_and_shutdown_timeout=*/absl::Seconds(2),
-                    /*shutdown_on_destruction=*/true);
+      agent_config.agent_destruction_without_shutdown = false;
+      auto restarted_client = GetClient(/*node_id=*/1, agent_config);
       TF_ASSERT_OK(restarted_client->Connect());
       status_1 =
           restarted_client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {});
@@ -1476,10 +1529,10 @@ TEST_P(RecoverableTest,
        RecoverableClient_JoinsBarrierThenRestartsAndJoinsBarrierAgain) {
   const RecoverableTestParams params = GetParam();
   int num_nodes = 3;
-  StartService(num_nodes,
-               /*init_and_shutdown_timeout=*/absl::Seconds(2),
-               /*cluster_register_with_barrier=*/true,
-               /*cluster_shutdown_with_barrier=*/true, /*recoverable=*/true);
+  CoordinationService::Config config = DefaultServiceConfig();
+  config.recoverable = true;
+  config.num_tasks = num_nodes;
+  StartService(config);
   absl::Notification node_0_restarts, node_2_joins_barrier_last;
   absl::Status status_0_before_restart, status_0_after_restart,
       status_0_shutdown, status_1, status_1_shutdown, status_2,
@@ -1489,11 +1542,13 @@ TEST_P(RecoverableTest,
           absl::UnknownError("Uninitialized error.");
 
   auto thread_fn = [&](int node_id) {
-    auto client = GetClient(
-        node_id,
-        /*init_and_shutdown_timeout=*/absl::Seconds(2),
-        /*shutdown_on_destruction=*/
-        params.recoverable_node_shutdown_on_destruction ? true : node_id != 0);
+    CoordinationServiceAgent::Config agent_config = DefaultAgentConfig();
+    agent_config.cluster_register_timeout = absl::Seconds(2);
+    agent_config.shutdown_barrier_timeout = absl::Seconds(2);
+    agent_config.agent_destruction_without_shutdown =
+        params.recoverable_node_shutdown_on_destruction ? false
+                                                        : (node_id == 0);
+    auto client = GetClient(node_id, agent_config);
     TF_ASSERT_OK(client->Connect());
     if (params.pass_multiple_barriers_before_test) {
       // This increments the internal barrier counter, and checks if the
@@ -1510,10 +1565,9 @@ TEST_P(RecoverableTest,
     // 4. Node 2 joins barrier.
     // 5. End-of-job barrier.
     if (node_id == 0) {
-      // This is the key difference: client invokes the barrier **first**, then
-      // restarts and joins barrier again.
-      // This means that service has to deal with the barrier state from a stale
-      // client.
+      // This is the key difference: client invokes the barrier **first**,
+      // then restarts and joins barrier again. This means that service has to
+      // deal with the barrier state from a stale client.
       client->WaitAtBarrierAsync(
           kBarrierId, absl::Seconds(10), {},
           [&status_0_before_restart](const absl::Status& status) {
@@ -1525,10 +1579,8 @@ TEST_P(RecoverableTest,
       if (params.inject_heartbeat_errors) {
         absl::SleepFor(2 * kHeartbeatTimeout);
       }
-      auto restarted_client =
-          GetClient(/*node_id=*/0,
-                    /*init_and_shutdown_timeout=*/absl::Seconds(2),
-                    /*shutdown_on_destruction=*/true);
+      agent_config.agent_destruction_without_shutdown = false;
+      auto restarted_client = GetClient(/*node_id=*/0, agent_config);
       TF_ASSERT_OK(restarted_client->Connect());
       restarted_client->WaitAtBarrierAsync(
           kBarrierId, absl::Seconds(10), {},
@@ -1588,8 +1640,8 @@ INSTANTIATE_TEST_SUITE_P(
         RecoverableTestParams{/*recoverable_node_shutdown_on_destruction=*/true,
                               /*inject_heartbeat_errors=*/false,
                               /*pass_multiple_barriers_before_test=*/false},
-        // Check if service can handle restarted clients that do not gracefully
-        // disconnect.
+        // Check if service can handle restarted clients that do not
+        // gracefully disconnect.
         RecoverableTestParams{
             /*recoverable_node_shutdown_on_destruction=*/false,
             /*inject_heartbeat_errors=*/true,

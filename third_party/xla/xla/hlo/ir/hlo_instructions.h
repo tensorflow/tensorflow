@@ -1038,7 +1038,9 @@ class HloCollectivePermuteInstruction : public HloChannelInstruction {
            hlo->opcode() == HloOpcode::kCollectivePermuteStart;
   }
 
-  bool inplace() const { return inplace_; }
+  // Whether this is an in-place collective permute (with dynamic slice
+  // operands). Derived from the presence of slice_sizes.
+  bool inplace() const { return !slice_sizes_.empty(); }
 
  private:
   void PrintExtraAttributesImpl(AttributePrinter& printer,
@@ -1055,7 +1057,6 @@ class HloCollectivePermuteInstruction : public HloChannelInstruction {
 
   const std::vector<std::pair<int64_t, int64_t>> source_target_pairs_;
   const std::vector<std::vector<int64_t>> slice_sizes_;
-  bool inplace_;
 };
 
 inline bool HloAllReduceInstructionBase::ClassOf(const HloInstruction* hlo) {
@@ -1221,6 +1222,7 @@ class HloSortInstruction : public HloDimensionsInstruction {
   // Returns the number of value operands.
   int64_t values_count() const { return operand_count() - 1; }
   bool is_stable() const { return is_stable_; }
+  void set_is_stable(bool is_stable) { is_stable_ = is_stable; }
 
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kSort;
@@ -1973,8 +1975,8 @@ class HloConvolutionInstruction : public HloInstruction {
       const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
       const PrecisionConfig& precision_config,
-      const SparsityConfig& sparsity_config);
-  enum class ConvKind { UNSET, FPROP, WGRAD, DGRAD };
+      const SparsityConfig& sparsity_config,
+      ConvolutionKind convolution_kind = CONVOLUTION_KIND_UNSET);
   const Window& window() const override { return window_; }
   void set_window(const Window& window) override { window_ = window; }
   const ConvolutionDimensionNumbers& convolution_dimension_numbers() const {
@@ -1996,8 +1998,10 @@ class HloConvolutionInstruction : public HloInstruction {
     batch_group_count_ = num_batch_groups;
   }
 
-  ConvKind conv_kind() const { return conv_kind_; }
-  void set_conv_kind(ConvKind conv_kind) { conv_kind_ = conv_kind; }
+  ConvolutionKind convolution_kind() const { return convolution_kind_; }
+  void set_convolution_kind(ConvolutionKind convolution_kind) {
+    convolution_kind_ = convolution_kind;
+  }
 
   // Returns the information used to tell the implementation information about
   // what sort of precision is requested. The meaning of the field is backend
@@ -2047,7 +2051,7 @@ class HloConvolutionInstruction : public HloInstruction {
   // The sparsity configuration used for the convolution.
   SparsityConfig sparsity_config_;
   // Conv type (fprop, dgrad, wgrad)
-  ConvKind conv_kind_ = ConvKind::UNSET;
+  ConvolutionKind convolution_kind_ = CONVOLUTION_KIND_UNSET;
 };
 
 class HloReduceWindowInstruction : public HloInstruction {

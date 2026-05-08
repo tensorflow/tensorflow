@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_abi_version_helpers.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/pjrt_ifrt/gpu_xla_executable_abi_version.h"
 #include "xla/python/pjrt_ifrt/xla_executable_abi_version.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 absl::StatusOr<std::string> GpuXlaExecutableAbiVersionSerDes::Serialize(

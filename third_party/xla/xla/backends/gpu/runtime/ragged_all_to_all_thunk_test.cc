@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -23,10 +24,11 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
-#include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
+#include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
@@ -45,7 +47,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_test_base_legacy.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
@@ -62,7 +64,7 @@ using ::testing::ElementsAre;
 using Kind = Thunk::Kind;
 using ::tsl::proto_testing::EqualsProto;
 
-using GpuRaggedAllToAllTest = HloTestBase;
+using GpuRaggedAllToAllTest = HloTestBaseLegacy;
 
 TEST_F(GpuRaggedAllToAllTest, TestConvertToCommands) {
   // Generate HLO text with parameters substituted.
@@ -91,7 +93,6 @@ TEST_F(GpuRaggedAllToAllTest, TestConvertToCommands) {
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
   debug_options.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(
       true);
-  debug_options.set_xla_gpu_experimental_ragged_all_to_all_use_barrier(true);
   config.set_debug_options(debug_options);
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -102,7 +103,7 @@ TEST_F(GpuRaggedAllToAllTest, TestConvertToCommands) {
       module->entry_computation()->root_instruction();
   ASSERT_EQ(root_instr->opcode(), HloOpcode::kRaggedAllToAll);
   const HloRaggedAllToAllInstruction* ra2a_instr =
-      tensorflow::down_cast<const HloRaggedAllToAllInstruction*>(root_instr);
+      absl::down_cast<const HloRaggedAllToAllInstruction*>(root_instr);
   ASSERT_NE(ra2a_instr, nullptr);
 
   // Buffer and Allocation Setup
@@ -128,32 +129,32 @@ TEST_F(GpuRaggedAllToAllTest, TestConvertToCommands) {
   }
 
   // ThunkSequence Creation
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events =
-      std::make_shared<CollectiveThunk::AsyncEvents>();
-
-  auto ra2a_start_thunk = std::make_unique<RaggedAllToAllStartThunk>(
+  auto ra2a_start_thunk = std::make_unique<RaggedAllToAllThunk>(
       Thunk::ThunkInfo{}, ra2a_instr, std::move(buffers),
       /*p2p_memcpy_enabled=*/false);
 
-  ra2a_start_thunk->set_async_events(async_events);
-
-  auto ra2a_done_thunk = std::make_unique<CollectiveDoneThunk>(
-      Kind::kRaggedAllToAllDone, Thunk::ThunkInfo{}, async_events);
+  ThunkSequence start_sequence;
+  start_sequence.push_back(std::move(ra2a_start_thunk));
+  auto async_start = std::make_unique<AsyncStartThunk>(
+      Thunk::ThunkInfo(), CommunicationStreamId(0), std::move(start_sequence));
+  auto async_done = std::make_unique<AsyncDoneThunk>(
+      Thunk::ThunkInfo(), async_start->async_execution());
 
   ThunkSequence thunk_sequence;
-  thunk_sequence.push_back(std::move(ra2a_start_thunk));
-  thunk_sequence.push_back(std::move(ra2a_done_thunk));
+  thunk_sequence.push_back(std::move(async_start));
+  thunk_sequence.push_back(std::move(async_done));
 
   // Convert to Commands and Verification
   ConvertToCommandsOptions conv_options;
   // Use LHS synchronization mode to append Done command
   conv_options.synchronization_mode =
-      CommandBufferCmdExecutor::SynchronizationMode::kLHS;
+      CommandExecutor::SynchronizationMode::kLHS;
   TF_ASSERT_OK_AND_ASSIGN(CommandExecutor cb_cmd_executor,
                           ConvertToCommands(thunk_sequence, conv_options));
 
-  // Check that we have two commands: start and done.
-  EXPECT_EQ(cb_cmd_executor.size(), 2);
+  // AsyncStart inlines its nested thunk as a command, and AsyncDone
+  // with no control predecessors is a no-op, so we get 1 command.
+  EXPECT_EQ(cb_cmd_executor.size(), 1);
 }
 
 TEST_F(GpuRaggedAllToAllTest, TestCommandBufferThunkContainsCorrectThunks) {
@@ -179,7 +180,6 @@ TEST_F(GpuRaggedAllToAllTest, TestCommandBufferThunkContainsCorrectThunks) {
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
   debug_options.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(
       true);
-  debug_options.set_xla_gpu_experimental_ragged_all_to_all_use_barrier(true);
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_text, config));
@@ -199,7 +199,7 @@ TEST_F(GpuRaggedAllToAllTest, TestCommandBufferThunkContainsCorrectThunks) {
 
   // Downcast to GPU executable
   xla::gpu::GpuExecutable* gpu_executable =
-      tensorflow::down_cast<xla::gpu::GpuExecutable*>(executable.get());
+      absl::down_cast<GpuExecutable*>(executable.get());
   ASSERT_NE(gpu_executable, nullptr);
 
   // Get the thunk sequence and check its size and type
@@ -210,7 +210,7 @@ TEST_F(GpuRaggedAllToAllTest, TestCommandBufferThunkContainsCorrectThunks) {
   ASSERT_EQ(thunk->kind(), Thunk::kCommandBuffer);
 
   CommandBufferThunk* cmd_buffer_thunk =
-      tensorflow::down_cast<CommandBufferThunk*>(thunk.get());
+      absl::down_cast<CommandBufferThunk*>(thunk.get());
   ASSERT_NE(cmd_buffer_thunk, nullptr);
 
   std::vector<Kind> kinds;
@@ -220,20 +220,17 @@ TEST_F(GpuRaggedAllToAllTest, TestCommandBufferThunkContainsCorrectThunks) {
     kinds.push_back(thunk->kind());
   }
 
-  EXPECT_THAT(kinds, ElementsAre(Kind::kKernel, Kind::kKernel, Kind::kKernel,
-                                 Kind::kKernel, Kind::kRaggedAllToAllStart,
-                                 Kind::kRaggedAllToAllDone));
+  // The collective is sync (single device), so no AsyncStart/Done wrapping.
+  EXPECT_THAT(kinds, ElementsAre(Kind::kCustomKernel, Kind::kCustomKernel,
+                                 Kind::kCustomKernel, Kind::kCustomKernel,
+                                 Kind::kRaggedAllToAll));
 }
 
 TEST(CollectiveThunkTest, ProtoRoundTrip) {
   ThunkProto proto = tsl::proto_testing::ParseTextProtoOrDie<ThunkProto>(
       R"pb(
-        thunk_info {
-          profile_annotation: "partition_id_profile_annotation"
-          execution_stream_id: 2
-        }
-        ragged_all_to_all_start_thunk {
-          async_events_unique_id: 3
+        thunk_info { profile_annotation: "partition_id_profile_annotation" }
+        ragged_all_to_all_thunk {
           collective_config {}
           num_total_updates: 10
           num_input_rows: 2
@@ -244,26 +241,23 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
 
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = proto.thunk_info().profile_annotation();
-  thunk_info.execution_stream_id = xla::gpu::ExecutionStreamId{
-      static_cast<xla::gpu::ExecutionStreamId::ValueType>(
-          proto.thunk_info().execution_stream_id())};
 
-  CollectiveThunk::AsyncEventsMap async_events_map;
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0)};
 
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<RaggedAllToAllStartThunk> thunk,
-                       RaggedAllToAllStartThunk::FromProto(
-                           thunk_info, proto.ragged_all_to_all_start_thunk(),
-                           buffer_allocations, async_events_map));
-  ASSERT_NE(thunk->async_events(), nullptr);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<RaggedAllToAllThunk> thunk,
+      RaggedAllToAllThunk::FromProto(
+          thunk_info, proto.ragged_all_to_all_thunk(), buffer_allocations));
+
+  // We're not setting the fast interconnect slice size override in the
+  // proto, so it should be nullopt in the thunk.
+  EXPECT_EQ(
+      thunk->ragged_all_to_all_config().fast_interconnect_slice_size_override,
+      std::nullopt);
 
   ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
 
-  // Ids are unique and expected to differ.
-  proto.mutable_ragged_all_to_all_start_thunk()->set_async_events_unique_id(
-      round_trip_proto.ragged_all_to_all_start_thunk()
-          .async_events_unique_id());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 

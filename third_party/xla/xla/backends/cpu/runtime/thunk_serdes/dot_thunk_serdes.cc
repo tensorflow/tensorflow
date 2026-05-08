@@ -27,6 +27,8 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/backends/cpu/runtime/thunk_proto_serdes.h"
 #include "xla/backends/cpu/runtime/thunk_proto_serdes_utils.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -35,8 +37,8 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-absl::Status ToProto(const Thunk& thunk, ThunkProto& proto) {
-  const auto& dot_thunk = tsl::down_cast<const DotThunk&>(thunk);
+absl::Status DotThunkToProto(const Thunk& thunk, ThunkProto& proto) {
+  const auto& dot_thunk = absl::down_cast<const DotThunk&>(thunk);
   DotThunkProto* dot_thunk_proto = proto.mutable_dot_thunk();
 
   *dot_thunk_proto->mutable_dot_dimensions() = dot_thunk.dot_dimensions();
@@ -53,9 +55,11 @@ absl::Status ToProto(const Thunk& thunk, ThunkProto& proto) {
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::unique_ptr<Thunk>> FromProto(
+absl::StatusOr<std::unique_ptr<Thunk>> DotThunkFromProto(
     const ThunkProto& proto,
-    const std::vector<BufferAllocation>& buffer_allocations) {
+    const std::vector<BufferAllocation>& buffer_allocations,
+    const HloModule* hlo_module,
+    const std::vector<std::shared_ptr<Resource>>* resources) {
   TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
 
   TF_ASSIGN_OR_RETURN(
@@ -84,8 +88,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> FromProto(
 }  // namespace
 
 void RegisterDotThunkSerDes() {
-  CHECK_OK(ThunkSerDesRegistry::Get().Register(Thunk::Kind::kDot, ToProto,
-                                               FromProto));
+  CHECK_OK(ThunkSerDesRegistry::Get().Register(
+      Thunk::Kind::kDot, DotThunkToProto, DotThunkFromProto));
 }
 
 // Statically register the DotThunk serialization/deserialization logic.

@@ -183,7 +183,7 @@ absl::Status RegisterCustomBuiltinOps(
     OpDef opdef;
     // NOLINTNEXTLINE: Use tsl::protobuf to be compatible with OSS.
     if (!tsl::protobuf::TextFormat::ParseFromString(tf_opdefs_string, &opdef)) {
-      return errors::InvalidArgument("fail to parse extra OpDef");
+      return absl::InvalidArgumentError("fail to parse extra OpDef");
     }
     // Make sure the op is not already registered. If registered continue.
     const OpRegistrationData* op_reg =
@@ -266,7 +266,7 @@ absl::Status PopulateQuantizationSpecs(
 
   if (mlir::TFL::GetInputNodeQuantSpecs(*node_names, *node_mins, *node_maxs,
                                         inference_type, quant_specs)) {
-    return errors::InvalidArgument("Failed to get input quant spec.");
+    return absl::InvalidArgumentError("Failed to get input quant spec.");
   }
 
   // Some extra flag related to post training quantization. If post-training

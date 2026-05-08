@@ -44,37 +44,27 @@ class SendThunk : public CollectiveThunk {
   SendThunk(ThunkInfo thunk_info, const HloSendInstruction* instr,
             int64_t replica_count, int64_t partition_count,
             const Buffer& buffer);
-  SendThunk(ThunkInfo thunk_info, const P2PConfig& config,
-            std::shared_ptr<AsyncEvents> async_events, const Buffer& buffer,
+  SendThunk(ThunkInfo thunk_info, const P2PConfig& config, const Buffer& buffer,
             absl::string_view instr_name);
 
   absl::Status Initialize(const InitializeParams& params) override;
 
   static absl::StatusOr<std::unique_ptr<SendThunk>> FromProto(
       ThunkInfo thunk_info, const SendThunkProto& thunk_proto,
-      absl::Span<const BufferAllocation> buffer_allocations,
-      CollectiveThunk::AsyncEventsMap& async_events_map);
+      absl::Span<const BufferAllocation> buffer_allocations);
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
   const CollectiveConfig& config() const override { return config_.config; }
 
-  const Buffer& buffer() const { return buffer_; }
+  const Buffer& buffer() const { return buffers()[0]; }
 
   const P2PConfig& p2p_config() const { return config_; }
 
-  BufferUses buffer_uses() const override {
-    BufferUses uses{
-        BufferUse::Read(buffer_.source_buffer.slice,
-                        buffer_.source_buffer.shape),
-        BufferUse::Write(buffer_.destination_buffer.slice,
-                         buffer_.destination_buffer.shape),
-    };
-    return uses;
-  }
-
  protected:
   bool RequiresRendezvous() const override { return false; }
+
+  bool CanUseSymmetricBuffer() const override { return true; }
 
   absl::Status RunCollective(const ExecuteParams& params,
                              const GpuCliqueKey& clique_key, se::Stream& stream,
@@ -82,7 +72,6 @@ class SendThunk : public CollectiveThunk {
 
  private:
   const P2PConfig config_;
-  const Buffer buffer_;
   std::string hlo_name_;
 };
 

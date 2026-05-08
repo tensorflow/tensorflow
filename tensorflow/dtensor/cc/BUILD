@@ -44,6 +44,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
+        "@xla//xla/tsl/platform:status",
         "@xla//xla/tsl/util:env_var",
     ],
 )

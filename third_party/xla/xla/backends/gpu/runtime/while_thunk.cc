@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/host_memory_pool.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/traceme.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 
@@ -86,6 +86,8 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
     XLA_VLOG_DEVICE(2, device_ordinal)
         << "Executing WhileThunk for " << *trip_count_ << " iterations";
     for (size_t i = 0; i < trip_count_; loop.IncLoopIteration(), ++i) {
+      TraceMe trace(
+          [&] { return absl::StrFormat("[iter=%d]", loop.loop_iteration()); });
       XLA_VLOG_DEVICE(3, device_ordinal)
           << "Executing iteration # " << i
           << " (Device: " << stream.parent()->device_ordinal() << ")";
@@ -106,9 +108,8 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
           condition_result_buffer_index_);
 
   for (;; loop.IncLoopIteration()) {
-    TraceMe trace([&] {
-      return TraceMeEncode("While", {{"iteration:", loop.loop_iteration()}});
-    });
+    TraceMe trace(
+        [&] { return absl::StrFormat("[iter=%d]", loop.loop_iteration()); });
 
     XLA_VLOG_DEVICE(3, device_ordinal)
         << "Executing WhileThunk condition computation; iter="
@@ -120,9 +121,9 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
         stream.Memcpy(condition_result, condition_result_data, sizeof(bool)));
 
     if (absl::Status blocked = stream.BlockHostUntilDone(); !blocked.ok()) {
-      return absl::InternalError(absl::StrFormat(
+      return Internal(
           "Failed to complete all kernels launched on stream %p: %s", &stream,
-          blocked.message()));
+          blocked.message());
     }
 
     XLA_VLOG_DEVICE(3, device_ordinal)

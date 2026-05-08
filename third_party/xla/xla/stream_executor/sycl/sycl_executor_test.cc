@@ -44,7 +44,6 @@ constexpr size_t kMemoryAllocationSize = 1024;
 
 class SyclExecutorTest : public xla::LlvmIrGenTestBase {};
 
-// TODO(intel-tf): Add unit tests for DeviceDescription once it is ready.
 TEST_F(SyclExecutorTest, GetSyclKernel) {
   TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
                           stream_executor::PlatformManager::PlatformWithId(
@@ -55,8 +54,8 @@ TEST_F(SyclExecutorTest, GetSyclKernel) {
   std::string hlo_text = R"(
     ENTRY e {
       p0 = u32[4] parameter(0)
-      p1 = u32[4] parameter(1)
-      ROOT res = u32[4] add(p0, p1)
+      c1 = u32[4] constant(1)
+      ROOT res = u32[4] add(p0, c1)
     })";
 
   xla::HloModuleConfig config;
@@ -73,10 +72,10 @@ TEST_F(SyclExecutorTest, GetSyclKernel) {
   auto* gpu_exec = static_cast<xla::gpu::GpuExecutable*>(exec.get());
   ASSERT_NE(gpu_exec, nullptr);
 
-  const xla::gpu::ThunkExecutor& seq_thunk = gpu_exec->thunk_executor();
-  EXPECT_EQ(seq_thunk.thunks().size(), 1);
+  const xla::gpu::ThunkExecutor& thunk_exec = gpu_exec->thunk_executor();
+  EXPECT_EQ(thunk_exec.thunks().size(), 1);
 
-  const xla::gpu::Thunk* thunk = seq_thunk.thunks().at(0).get();
+  const xla::gpu::Thunk* thunk = thunk_exec.thunks().at(0).get();
   ASSERT_NE(thunk, nullptr);
   EXPECT_EQ(thunk->kind(), xla::gpu::Thunk::Kind::kKernel);
 
@@ -86,6 +85,21 @@ TEST_F(SyclExecutorTest, GetSyclKernel) {
   std::string kernel_name = kernel_thunk->kernel_name();
 
   std::vector<uint8_t> spv_bin(gpu_exec->binary());
+
+  // Load the module and get the symbols for the constants to verify that they
+  // are correctly loaded.
+  MultiModuleLoaderSpec module_spec;
+  ModuleHandle module_handle;
+  module_spec.AddCudaCubinInMemory(spv_bin);
+  TF_ASSERT_OK_AND_ASSIGN(module_handle, executor->LoadModule(module_spec));
+  auto global_consts = gpu_exec->constants();
+  EXPECT_EQ(global_consts.size(), 1);
+  for (auto& const_info : global_consts) {
+    absl::StatusOr<DeviceAddressBase> global_status;
+    TF_ASSERT_OK_AND_ASSIGN(
+        global_status,
+        executor->GetSymbol(const_info.symbol_name, module_handle));
+  }
 
   KernelLoaderSpec spec =
       KernelLoaderSpec::CreateCudaCubinInMemorySpec(spv_bin, kernel_name, 3);

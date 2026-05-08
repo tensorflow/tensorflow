@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/core/host_offloading/host_compute_asyncifier.h"
 
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -78,7 +79,7 @@ absl::StatusOr<bool> HostComputeAsyncifier::RunImpl(
       HloComputation* parent_computation = call->parent();
       HloComputation* host_computation = call->called_computations().front();
       HloCallInstruction* call_instr =
-          tsl::down_cast<HloCallInstruction*>(call);
+          absl::down_cast<HloCallInstruction*>(call);
       CHECK_NE(call_instr, nullptr);
 
       TF_ASSIGN_OR_RETURN(

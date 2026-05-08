@@ -59,6 +59,21 @@ absl::flat_hash_map<std::string, double> RequestCost::GetMetrics() const {
   return metric_map_;
 }
 
+void RequestCost::RecordStructuredMetrics(
+    const std::vector<std::pair<std::string, StructuredMetric>>&
+        structured_metrics) {
+  absl::MutexLock lock(mutex_);
+  for (const auto& [name, metric] : structured_metrics) {
+    structured_metric_map_[name] = metric;
+  }
+}
+
+absl::flat_hash_map<std::string, RequestCost::StructuredMetric>
+RequestCost::GetStructuredMetrics() const {
+  absl::MutexLock lock(mutex_);
+  return structured_metric_map_;
+}
+
 void RequestCost::RecordBatchMetrics(const BatchMetrics& batch_metrics) {
   absl::MutexLock lock(mutex_);
   batch_metrics_.push_back(batch_metrics);

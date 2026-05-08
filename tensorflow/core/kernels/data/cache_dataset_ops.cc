@@ -97,6 +97,10 @@ class DatasetRandomAccessCache {
     if (index >= cache_.size()) {
       TF_RETURN_IF_ERROR(ExtendTempCacheToIndex(index, ctx));
     }
+    if (index < 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Expected index >= 0; Received index: ", index));
+    }
     *out_tensors = cache_.at(index);
     return absl::OkStatus();
   }
@@ -804,8 +808,9 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
     options.set_compute_level(CardinalityOptions::CARDINALITY_COMPUTE_LOW);
     int64_t cardinality = Cardinality(options);
 
-    if (cardinality != kUnknownCardinality &&
-        cardinality != kInfiniteCardinality && index >= cardinality) {
+    if (index < 0 ||
+        (cardinality != kUnknownCardinality &&
+         cardinality != kInfiniteCardinality && index >= cardinality)) {
       return errors::OutOfRange("Index out of range [0, ", cardinality,
                                 "):", index);
     }
@@ -818,6 +823,16 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
 
   absl::Status Get(AnyContext ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) const override {
+    CardinalityOptions options;
+    options.set_compute_level(CardinalityOptions::CARDINALITY_COMPUTE_LOW);
+    int64_t cardinality = Cardinality(options);
+
+    if (index < 0 ||
+        (cardinality != kUnknownCardinality &&
+         cardinality != kInfiniteCardinality && index >= cardinality)) {
+      return errors::OutOfRange("Index out of range [0, ", cardinality,
+                                "):", index);
+    }
     mutex_lock l(mu_);
     if (!iterator_random_access_cache_) {
       iterator_random_access_cache_ =
@@ -1189,7 +1204,8 @@ void CacheDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     if (op_version_ == 2) {
       bool owns_resource = false;
       MemoryCacheManager* manager = nullptr;
-      auto handle = HandleFromInput(ctx, 2);
+      ResourceHandle handle;
+      OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 2, &handle));
       absl::Status s = ctx->resource_manager()->Lookup<MemoryCacheManager>(
           handle.container(), handle.name(), &manager);
       if (absl::IsNotFound(s)) {

@@ -298,6 +298,10 @@ struct ExecuteOptions {
   // The latest known incarnation ids for all alive tasks, keyed by task id.
   absl::flat_hash_map<int, IncarnationId> incarnations;
 
+  // The PRNG seed to use for execution. A seed of 0 means that the seed is not
+  // set and that the default seed (usually random) should be used.
+  int64_t seed = 0;
+
   absl::StatusOr<ExecuteOptionsProto> ToProto() const;
   static absl::StatusOr<ExecuteOptions> FromProto(
       const ExecuteOptionsProto& proto);
@@ -356,6 +360,13 @@ class PjRtExecutable {
   // Returns the layout of each output.
   virtual absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
   GetOutputLayouts() const;
+
+  // Returns a list of lists of memory kind strings for parameter. The returned
+  // value is `[num_programs, num_parameters]`. The size of the outer list
+  // should be equal to `GetHloModules()`. Under SPMD, one can use
+  // `GetParameterMemoryKinds().front()`.
+  virtual absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const = 0;
 
   // Returns a list of lists of memory kind strings for output. The returned
   // value is `[num_programs, num_output]`. The size of the outer list should be

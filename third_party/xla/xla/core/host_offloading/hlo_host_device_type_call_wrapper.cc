@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -535,7 +536,7 @@ HloHostDeviceTypeCallWrapper::RemoveTupleParameters(HloCallInstruction* call) {
 
   TF_RETURN_IF_ERROR(call->ReplaceAllUsesWith(new_call));
   TF_RETURN_IF_ERROR(call->parent()->RemoveInstruction(call));
-  return tsl::down_cast<HloCallInstruction*>(new_call);
+  return absl::down_cast<HloCallInstruction*>(new_call);
 }
 
 /*static*/ absl::StatusOr<HloCallInstruction*>
@@ -599,7 +600,7 @@ HloHostDeviceTypeCallWrapper::MaterializeConstantsOnHostComputation(
 
   TF_RETURN_IF_ERROR(call->ReplaceAllUsesWith(new_call));
   TF_RETURN_IF_ERROR(call->parent()->RemoveInstruction(call));
-  return tsl::down_cast<HloCallInstruction*>(new_call);
+  return absl::down_cast<HloCallInstruction*>(new_call);
 }
 
 absl::StatusOr<bool> HloHostDeviceTypeCallWrapper::RunImpl(

@@ -39,12 +39,15 @@ namespace xla {
 namespace gpu {
 
 // Thunk to perform NVSHMEM send operations
+// DEPRECATED: Use NCCL 2.28+ API instead.
 class NvshmemSendThunk : public NvshmemCollectiveThunk {
  public:
+  [[deprecated("Use NCCL 2.28+ primitives instead.")]]
   NvshmemSendThunk(ThunkInfo thunk_info, const HloSendInstruction* inst,
                    int64_t replica_count, int64_t partition_count,
                    const CollectiveThunk::Buffer& buffer,
                    std::shared_ptr<NvshmemBufferAddresses> buffer_addresses);
+  [[deprecated("Use NCCL 2.28+ primitives instead.")]]
   absl::Status Initialize(const InitializeParams& params) override;
 
   absl::StatusOr<ThunkProto> ToProto() const override;
@@ -52,8 +55,7 @@ class NvshmemSendThunk : public NvshmemCollectiveThunk {
   static absl::StatusOr<std::unique_ptr<NvshmemSendThunk>> FromProto(
       ThunkInfo thunk_info, const NvshmemSendThunkProto& proto,
       absl::Span<const BufferAllocation> buffer_allocations,
-      std::shared_ptr<NvshmemBufferAddresses> absl_nonnull buffer_addresses,
-      CollectiveThunk::AsyncEventsMap& async_events_map);
+      std::shared_ptr<NvshmemBufferAddresses> absl_nonnull buffer_addresses);
 
  protected:
   const CollectiveConfig& config() const override { return config_.config; }
@@ -64,8 +66,7 @@ class NvshmemSendThunk : public NvshmemCollectiveThunk {
   NvshmemSendThunk(
       ThunkInfo thunk_info, const P2PConfig& config,
       const CollectiveThunk::Buffer& buffer, std::string hlo_name,
-      std::shared_ptr<NvshmemBufferAddresses> absl_nonnull buffer_addresses,
-      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
+      std::shared_ptr<NvshmemBufferAddresses> absl_nonnull buffer_addresses);
 
   const P2PConfig config_;
   const CollectiveThunk::Buffer buffer_;

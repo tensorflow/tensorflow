@@ -151,7 +151,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
               "Expected buffer assignment in HLO protobuf binary.");
         }
       }
-    } else if (format == "pbtxt") {
+    } else if (format == "pbtxt" || format == "textproto") {
       if (!tsl::protobuf::TextFormat::ParseFromString(data, &proto) &&
           !tsl::protobuf::TextFormat::ParseFromString(data,
                                                       proto.mutable_hlo()) &&
@@ -201,7 +201,7 @@ LoadInputFromData(absl::string_view data, absl::string_view format) {
         !proto.mutable_hlo()->mutable_hlo_module()->ParseFromString(data)) {
       return InvalidArgument("Failed to parse input as HLO protobuf binary");
     }
-  } else if (format == "pbtxt") {
+  } else if (format == "pbtxt" || format == "textproto") {
     if (!tsl::protobuf::TextFormat::ParseFromString(data, &proto) &&
         !tsl::protobuf::TextFormat::ParseFromString(data,
                                                     proto.mutable_hlo()) &&

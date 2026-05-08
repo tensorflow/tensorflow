@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/autotuner/triton/dot_search_space.h"
 
+#include <cstdint>
 #include <memory>
 #include <ostream>
 #include <vector>
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -45,6 +47,7 @@ void PrintTo(const TritonGemmConfig& config, std::ostream* os) {
 namespace {
 
 using ::testing::AllOf;
+using ::testing::AnyOf;
 using ::testing::Contains;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
@@ -76,10 +79,7 @@ template <typename MatcherType>
 auto BlockKIs(MatcherType matcher) {
   return Field("block_k", &TritonGemmConfig::block_k, matcher);
 }
-template <typename MatcherType>
-auto SplitKIs(MatcherType matcher) {
-  return Field("split_k", &TritonGemmConfig::split_k, matcher);
-}
+
 template <typename MatcherType>
 auto NumStagesIs(MatcherType matcher) {
   return Field("num_stages", &TritonGemmConfig::num_stages, matcher);
@@ -92,11 +92,14 @@ template <typename MatcherType>
 auto NumCtasIs(MatcherType matcher) {
   return Field("num_ctas", &TritonGemmConfig::num_ctas, matcher);
 }
+template <typename MatcherType>
+auto WavesPerEuIs(MatcherType matcher) {
+  return Field("waves_per_eu", &TritonGemmConfig::waves_per_eu, matcher);
+}
 
 auto IsValidConfig() {
   return AllOf(BlockMIs(Ge(1)), BlockNIs(Ge(1)), BlockKIs(Ge(1)),
-               SplitKIs(Ge(1)), NumStagesIs(Ge(1)), NumWarpsIs(Ge(1)),
-               NumCtasIs(Ge(1)));
+               NumStagesIs(Ge(1)), NumWarpsIs(Ge(1)), NumCtasIs(Ge(1)));
 };
 
 class DefaultDeviceDotSearchSpaceTest : public HloHardwareIndependentTestBase {
@@ -196,7 +199,7 @@ TEST_F(DotSearchSpaceTest, SerializesSearchSpace) {
 
   EXPECT_EQ(search_space.ToString(),
             "problem_size_BxMxNxKxE: 1x1024x1024x1024x(16->16) "
-            "tile_range_SxMxNxK: [1-64]x[16-256]x[8-512]x[16-?] "
+            "tile_range_MxNxK: [16-256]x[8-512]x[16-?] "
             "desired_total_warps: 2640 occupancy_optimization: 1 "
             "warps_per_cta: [2-?]");
 }
@@ -208,37 +211,6 @@ TEST_F(DotSearchSpaceTest, ReturnsValidConfigList) {
 
   EXPECT_THAT(search_space.GenerateConfigs(),
               AllOf(Not(IsEmpty()), Each(IsValidConfig())));
-}
-
-TEST_F(DotSearchSpaceTest, HonorsForcedContractingSplit) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          GetDefaultDotModule());
-  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
-
-  EXPECT_THAT(
-      search_space.GenerateConfigs(/*force_contracting_split=*/2),
-      AllOf(Not(IsEmpty()), Each(IsValidConfig()), Each(SplitKIs(Eq(2)))));
-}
-
-TEST_F(DotSearchSpaceTest, ConsidersContractingSplitForSmallOutputSize) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          GetDefaultDotModule(/*lhs_parallel_dim=*/16,
-                                              /*rhs_parallel_dim=*/16,
-                                              /*contracting_dim=*/1024));
-  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
-
-  EXPECT_THAT(search_space.GenerateConfigs(), Contains(SplitKIs(Ge(2))));
-}
-
-TEST_F(DotSearchSpaceTest, LimitsContractingSplitForSmallerContractingSize) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          GetDefaultDotModule(/*lhs_parallel_dim=*/16,
-                                              /*rhs_parallel_dim=*/16,
-                                              /*contracting_dim=*/32));
-  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
-
-  EXPECT_THAT(search_space.GenerateConfigs(),
-              AllOf(Not(IsEmpty()), Each(SplitKIs(Le(4)))));
 }
 
 TEST_F(DotSearchSpaceTest, FindsGoodDataReuseOutputTiles) {
@@ -296,39 +268,6 @@ ENTRY e {
               Contains(AllOf(BlockMIs(Ge(128)), BlockNIs(Eq(32)))));
 }
 
-TEST_F(DotSearchSpaceTest, FindsGoodDataReuseTilesForLowOccupancyProblem) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<VerifiedHloModule> module,
-      GetDefaultDotModule(/*lhs_parallel_dim=*/4096, /*rhs_parallel_dim=*/16,
-                          /*contracting_dim=*/4096));
-  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
-
-  EXPECT_THAT(search_space.GenerateConfigs(),
-              Contains(AllOf(BlockMIs(Ge(32)), SplitKIs(Ge(2)))));
-}
-
-TEST_F(DotSearchSpaceTest, FindsOccupancyMaximizingTilingForSmallProblem) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<VerifiedHloModule> module,
-      GetDefaultDotModule(/*lhs_parallel_dim=*/64, /*rhs_parallel_dim=*/64,
-                          /*contracting_dim=*/64));
-  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
-  EXPECT_THAT(
-      search_space.GenerateConfigs(),
-      Contains(AllOf(BlockMIs(Eq(16)), BlockNIs(Eq(8)), SplitKIs(Eq(4)))));
-}
-
-TEST_F(DotSearchSpaceTest, FindsGoodDataReuseTilesForForcedHugeSplit) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          GetDefaultDotModule(/*lhs_parallel_dim=*/1024,
-                                              /*rhs_parallel_dim=*/1024));
-  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
-
-  EXPECT_THAT(
-      search_space.GenerateConfigs(/*force_contracting_split=*/128),
-      Contains(AllOf(BlockMIs(Ge(32)), BlockNIs(Ge(32)), SplitKIs(Eq(128)))));
-}
-
 TEST_F(DotSearchSpaceTest, PadsTilesForSmallParallelDimension) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           GetDefaultDotModule(/*lhs_parallel_dim=*/1024,
@@ -349,23 +288,6 @@ TEST_F(DotSearchSpaceTest, HonorsMinimumOutputTileSizeForTinyProblem) {
   EXPECT_THAT(
       search_space.GenerateConfigs(),
       AllOf(Not(IsEmpty()), Each(BlockMIs(Ge(16))), Each(BlockNIs(Ge(8)))));
-}
-
-TEST_F(DotSearchSpaceTest, AssignsEnoughWarpsPerScheduler) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<VerifiedHloModule> module,
-      GetDefaultDotModule(/*lhs_parallel_dim=*/1024, /*rhs_parallel_dim=*/512,
-                          /*contracting_dim=*/1024));
-  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
-
-  // 1024x512 elements / 32x32 elements/CTA = 32x16 blocks = 512 CTAs.
-  // 512 CTAs * 4 warps/CTA = 2048 warps.
-  // 132 cores * 4 schedulers/core * 5 desired warps/scheduler = 2640 desired
-  // warps.
-  // ceil(2640 desired warps / 2048 warps) = ceil(1.3) = 2 desired split
-  EXPECT_THAT(search_space.GenerateConfigs(),
-              Contains(AllOf(BlockMIs(Eq(32)), BlockNIs(Eq(32)),
-                             NumWarpsIs(Eq(4)), SplitKIs(Eq(2)))));
 }
 
 TEST_F(DotSearchSpaceTest, DoesNotBreakCtaSizeLimits) {
@@ -428,20 +350,9 @@ TEST_F(DotSearchSpaceTest, HonorsSharedMemoryLimit) {
   // of the test.
   // 2B * (128 + 128) * block_k < 227 KB =>
   // block_k <= 227 KB / (2B * (128 + 128)) = 454
-  EXPECT_THAT(search_space.GenerateConfigs(/*force_contracting_split=*/1),
+  EXPECT_THAT(search_space.GenerateConfigs(),
               WhenFilteredBy(AllOf(BlockMIs(Eq(128)), BlockNIs(Eq(128))),
                              BlockKIs(Le(256))));
-}
-
-TEST_F(DotSearchSpaceTest, HonorsContractingSizeLimit) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<VerifiedHloModule> module,
-      GetDefaultDotModule(/*lhs_parallel_dim=*/1024, /*rhs_parallel_dim=*/1024,
-                          /*contracting_dim=*/256));
-  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
-
-  EXPECT_THAT(search_space.GenerateConfigs(/*force_contracting_split=*/4),
-              AllOf(Not(IsEmpty()), Each(BlockKIs(Le(64)))));
 }
 
 TEST_F(DotSearchSpaceTest, EnsuresContractingTileSizeFitsInstructonShape) {
@@ -463,23 +374,6 @@ TEST_F(DotSearchSpaceTest, FindReasonablePipeliningStageCount) {
   EXPECT_THAT(search_space.GenerateConfigs(),
               AllOf(Contains(NumStagesIs(Ge(2))).Times(Ge(2)),
                     Contains(NumStagesIs(Eq(1))), Each(NumStagesIs(Le(5)))));
-}
-
-TEST_F(DotSearchSpaceTest, LimitsStagesToAvailableTileSize) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<VerifiedHloModule> module,
-      GetDefaultDotModule(/*lhs_parallel_dim=*/1024, /*rhs_parallel_dim=*/1024,
-                          /*contracting_dim=*/128));
-  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
-
-  // We pick the 64x32x32 tiling and only verify that configs with these
-  // properties choose the right number of stages. This simplifies the test
-  // logic and makes the calculation easier to verify by hand, while not
-  // reducing the coverage of the test.
-  EXPECT_THAT(search_space.GenerateConfigs(/*force_contracting_split=*/2),
-              WhenFilteredBy(
-                  AllOf(BlockMIs(Eq(64)), BlockNIs(Eq(32)), BlockKIs(Eq(32))),
-                  NumStagesIs(Le(2))));
 }
 
 TEST_F(DotSearchSpaceTest, ConsidersFewWarpsPerCtaAndMmaForSmallProblem) {
@@ -522,7 +416,7 @@ TEST_F(DotSearchSpaceTest, OptimizesEmptyConfigSet) {
                           GetDefaultDotModule());
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
   TritonGemmConfig hint = {/*block_m=*/32,   /*block_n=*/32,
-                           /*block_k=*/32,   /*split_k=*/1,
+                           /*block_k=*/32,
                            /*num_stages=*/1, /*num_warps=*/4,
                            /*num_ctas=*/1};
 
@@ -534,43 +428,22 @@ TEST_F(DotSearchSpaceTest, RestrictsConfigsToHints) {
                           GetDefaultDotModule());
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
   TritonGemmConfig matching_hint = {
-      /*block_m=*/32, /*block_n=*/32,   /*block_k=*/32,
-      /*split_k=*/1,  /*num_stages=*/1, /*num_warps=*/4,
+      /*block_m=*/32,   /*block_n=*/32,  /*block_k=*/32,
+      /*num_stages=*/1, /*num_warps=*/4,
       /* num_ctas=*/1};
   TritonGemmConfig non_matching_hint = {
-      /*block_m=*/64, /*block_n=*/32,   /*block_k=*/32,
-      /*split_k=*/1,  /*num_stages=*/1, /*num_warps=*/4,
+      /*block_m=*/64,   /*block_n=*/32,  /*block_k=*/32,
+      /*num_stages=*/1, /*num_warps=*/4,
       /*num_ctas=*/1};
   TritonGemmConfig other_config = {
-      /*block_m=*/32, /*block_n=*/64,   /*block_k=*/32,
-      /*split_k=*/1,  /*num_stages=*/1, /*num_warps=*/4,
+      /*block_m=*/32,   /*block_n=*/64,  /*block_k=*/32,
+      /*num_stages=*/1, /*num_warps=*/4,
       /*num_ctas=*/1};
 
   EXPECT_THAT(
       search_space.OptimizeConfigSet({other_config, matching_hint},
                                      {matching_hint, non_matching_hint}),
       ElementsAre(matching_hint));
-}
-
-TEST_F(DotSearchSpaceTest, RestrictsConfigsWithPartialMatch) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<VerifiedHloModule> module,
-      GetDefaultDotModule(/*lhs_parallel_dim=*/4096, /*rhs_parallel_dim=*/16,
-                          /*contracting_dim=*/1024));
-  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
-  TritonGemmConfig hint = {/*block_m=*/32,   /*block_n=*/32,
-                           /*block_k=*/32,   /*split_k=*/1,
-                           /*num_stages=*/1, /*num_warps=*/4,
-                           /*num_ctas=*/1};
-  TritonGemmConfig expected = {/*block_m=*/32,   /*block_n=*/16,
-                               /*block_k=*/32,   /*split_k=*/2,
-                               /*num_stages=*/1, /*num_warps=*/4,
-                               /*num_ctas=*/1};
-
-  EXPECT_THAT(
-      search_space.OptimizeConfigSet(
-          search_space.GenerateConfigs(/*force_contracting_split=*/2), {hint}),
-      ElementsAre(expected));
 }
 
 TEST_F(DotSearchSpaceTest, ReturnsNonEmptySetForUnusualHints) {
@@ -580,7 +453,7 @@ TEST_F(DotSearchSpaceTest, ReturnsNonEmptySetForUnusualHints) {
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
 
   TritonGemmConfig hint = {/*block_m=*/1024, /*block_n=*/1024,
-                           /*block_k=*/32,   /*split_k=*/1,
+                           /*block_k=*/32,
                            /*num_stages=*/1, /*num_warps=*/4,
                            /*num_ctas=*/1};
 
@@ -589,75 +462,37 @@ TEST_F(DotSearchSpaceTest, ReturnsNonEmptySetForUnusualHints) {
       Not(IsEmpty()));
 }
 
-TEST_F(DotSearchSpaceTest, RestrictsSplitKPerNMTile) {
+TEST_F(DotSearchSpaceTest, CudaDoesNotGenerateWavesPerEuConfigs) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           GetDefaultDotModule());
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
 
-  auto make_config = [](int block_m, int block_n, int block_k, int split_k) {
-    return TritonGemmConfig{
-        /*block_m=*/block_m, /*block_n=*/block_n,
-        /*block_k=*/block_k, /*split_k=*/split_k,
-        /*num_stages=*/1,    /*num_warps=*/4,
-        /*num_ctas=*/1};
-  };
-
-  std::vector<TritonGemmConfig> configs = {
-      make_config(32, 32, 32, 4),
-      make_config(32, 32, 32, 8),
-      make_config(16, 16, 16, 2),
-      make_config(16, 16, 16, 4),
-  };
-
-  std::vector<TritonGemmConfig> hints = {
-      // Less than min split k for this tile size.
-      make_config(32, 32, 32, 1),
-      // Greater than max split K for this tile size.
-      make_config(32, 32, 32, 32),
-      // Less than min split k for this tile size.
-      make_config(16, 16, 16, 1),
-      // Greater than max split K for this tile size.
-      make_config(16, 16, 16, 8),
-      // Does not have a per-tile split K limit.
-      make_config(16, 32, 16, 1),
-      make_config(16, 32, 16, 32),
-  };
-
-  std::vector<TritonGemmConfig> expected = {
-      make_config(32, 32, 32, 4),
-      make_config(32, 32, 32, 8),
-      make_config(16, 16, 16, 2),
-      make_config(16, 16, 16, 4),
-  };
-
-  EXPECT_THAT(search_space.OptimizeConfigSet(configs, hints),
-              ElementsAreArray(expected));
+  EXPECT_THAT(search_space.GenerateConfigs(),
+              AllOf(Not(IsEmpty()), Each(WavesPerEuIs(Eq(0)))));
 }
 
-// Regression test: Ensures that split_k and block_k combinations are compatible
-// with the validation in MakeSplitKOperand. For a config to be valid:
-//   split_k <= ceil(contracting_size / block_k)
-// This test uses contracting_dim=290 which previously could generate invalid
-// configs like split_k=8, block_k=64 (since 8 > ceil(290/64) = 5).
-TEST_F(DotSearchSpaceTest, EnsuresSplitKAndBlockKAreCompatible) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<VerifiedHloModule> module,
-      GetDefaultDotModule(/*lhs_parallel_dim=*/130, /*rhs_parallel_dim=*/1,
-                          /*contracting_dim=*/290));
-  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
+class RocmDotSearchSpaceTest : public DefaultDeviceDotSearchSpaceTest {
+ protected:
+  RocmDotSearchSpaceTest() {
+    // MI300X-like parameters.
+    device_description_.set_registers_per_block_limit(64 * 1024);
+    device_description_.set_core_count(304);
+    device_description_.set_threads_per_block_limit(1024);
+    device_description_.set_threads_per_warp(64);
+    device_description_.set_shared_memory_per_block_optin(64 * 1024);
+    device_description_.set_gpu_compute_capability(
+        se::GpuComputeCapability(se::RocmComputeCapability("gfx942")));
+  }
+};
 
+TEST_F(RocmDotSearchSpaceTest, GeneratesWavesPerEuConfigs) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          GetDefaultDotModule());
+  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
   std::vector<TritonGemmConfig> configs = search_space.GenerateConfigs();
 
-  // Verify that for each config, split_k <= ceil(contracting_dim / block_k).
-  // This is the constraint enforced by MakeSplitKOperand.
-  for (const auto& config : configs) {
-    int64_t max_valid_split =
-        (290 + config.block_k - 1) / config.block_k;  // ceil division
-    EXPECT_LE(config.split_k, max_valid_split)
-        << "Invalid config: split_k=" << config.split_k
-        << ", block_k=" << config.block_k
-        << ", max_valid_split=" << max_valid_split;
-  }
+  EXPECT_THAT(configs, AllOf(Not(IsEmpty()), Contains(WavesPerEuIs(Ge(1))),
+                             Each(WavesPerEuIs(AnyOf(0, 1, 2, 4)))));
 }
 
 }  // namespace

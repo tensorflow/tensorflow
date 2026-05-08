@@ -110,6 +110,7 @@ cc_library(
         "//xla:sort_json",
         "//xla:xla_proto_cc",
         "//xla/service:hlo_proto_cc",
+        "//xla/service:hlo_proto_util",
         "//xla/service/gpu:gpu_executable_proto_cc",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/status",
@@ -174,4 +175,37 @@ cc_library(
         "//visibility:private",
     ],
     deps = ["@riegeli//riegeli/records:record_writer"],
+)
+
+cc_library(
+    name = "split_hlo_writer",
+    srcs = ["split_hlo_writer.cc"],
+    hdrs = ["split_hlo_writer.h"],
+    deps = [
+        ":split_proto_cc",
+        ":split_proto_riegeli_options",
+        ":split_proto_write_record",
+        "//xla/service:hlo_proto_cc",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status",
+        "@com_google_protobuf//:field_mask_util",
+        "@com_google_protobuf//:protobuf_lite",
+        "@riegeli//riegeli/bytes:writer",
+        "@riegeli//riegeli/records:record_writer",
+    ],
+)
+
+xla_cc_test(
+    name = "split_hlo_writer_test",
+    srcs = ["split_hlo_writer_test.cc"],
+    deps = [
+        ":split_hlo_writer",
+        ":split_proto_reader",
+        "//xla/service:hlo_proto_cc",
+        "//xla/tsl/util/proto:parse_text_proto",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_googletest//:gtest_main",
+        "@riegeli//riegeli/bytes:string_reader",
+        "@riegeli//riegeli/bytes:string_writer",
+    ],
 )

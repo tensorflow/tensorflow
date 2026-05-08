@@ -475,7 +475,7 @@ absl::Status BundleWriter::Add(absl::string_view key, const Tensor& val) {
 
   // Updates the data file.
   size_t data_bytes_written = 0;
-  uint32 crc32c = 0;
+  uint32_t crc32c = 0;
   out_->reset_crc32();
   if (val.dtype() == DT_STRING) {
     status_ = WriteStringTensor(val, out_.get(), &data_bytes_written, &crc32c);
@@ -1267,7 +1267,8 @@ absl::Status BundleCache::GetFile(const std::string& fname,
 
 namespace {
 inline char* AlignedMalloc(size_t size) {
-  char* buffer = static_cast<char*>(port::AlignedMalloc(size, 64));
+  char* buffer = static_cast<char*>(
+      tsl::port::AlignedMalloc(size, static_cast<std::align_val_t>(64)));
   DCHECK(buffer);
   return buffer;
 }

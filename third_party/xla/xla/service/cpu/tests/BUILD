@@ -342,12 +342,30 @@ xla_test(
     ],
 )
 
+xla_test(
+    name = "cpu_profiling_test",
+    srcs = ["cpu_profiling_test.cc"],
+    backends = ["cpu"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service:hlo_module_config",
+        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 onednn_cc_test(
     name = "onednn_matmul_test",
     srcs = ["onednn_matmul_test.cc"],
     copts = tsl_copts(),
     shard_count = 4,
     tags = [
+        "manual",
         "no_oss",
         "notap",
         "pjrt_migration_candidate",
@@ -369,6 +387,7 @@ onednn_cc_test(
     copts = tsl_copts(),
     tags = [
         # TODO: reenable once onednn is supported by the thunk runtime.
+        "manual",
         "no_oss",
         "notap",
         "pjrt_migration_candidate",
@@ -418,6 +437,7 @@ xla_cc_test(
     copts = tsl_copts(),
     tags = [
         # TODO: reenable once onednn is supported by the thunk runtime.
+        "manual",
         "no_oss",
         "notap",
         "pjrt_migration_candidate",
@@ -486,6 +506,42 @@ xla_test(
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_spec_test",
+    srcs = ["hlo_spec_test.cc"],
+    deps = [
+        ":cpu_pjrt_codegen_test",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/cpu:cpu_aot_compilation_result",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
+    ],
+)
+
+xla_test(
+    name = "cpu_tensordot_oom_test",
+    srcs = ["cpu_tensordot_oom_test.cc"],
+    backends = ["cpu"],
+    # TODO(b/504628271): Re-enable once OOM is fixed.
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:status_matchers",
+        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
 )

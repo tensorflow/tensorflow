@@ -42,7 +42,7 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
     }
     Graph* g = options.graph->get();
     if (g == nullptr) {
-      return errors::Internal(
+      return absl::InternalError(
           "Parallel concat removal should happen before partitioning and a "
           "graph should be available.");
     }

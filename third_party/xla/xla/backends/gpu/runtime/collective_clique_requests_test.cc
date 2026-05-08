@@ -87,21 +87,6 @@ TEST(CollectiveCliqueRequestsTest, RequestDevComms) {
   EXPECT_THAT(requests.GetDevicesRequiringBarrier(), UnorderedElementsAre());
 }
 
-TEST(CollectiveCliqueRequestsTest, DeviceGroupsNormalized) {
-  GlobalDeviceId d0 = GlobalDeviceId(0);
-  GlobalDeviceId d1 = GlobalDeviceId(1);
-
-  GpuCliqueKey k0({d0, d1}, 2);
-
-  // Check that the order of devices in replica groups doesn't matter.
-  std::vector<std::vector<GlobalDeviceId>> dg0a = {{d0, d1}};
-  std::vector<std::vector<GlobalDeviceId>> dg0b = {{d1, d0}};
-
-  CollectiveCliqueRequests requests;
-  TF_ASSERT_OK(requests.RequestClique(k0, dg0a));
-  TF_ASSERT_OK(requests.RequestClique(k0, dg0b));
-}
-
 TEST(CollectiveCliqueRequestsTest, DeviceGroupsMismatch) {
   GlobalDeviceId d0 = GlobalDeviceId(0);
   GlobalDeviceId d1 = GlobalDeviceId(1);
@@ -110,9 +95,9 @@ TEST(CollectiveCliqueRequestsTest, DeviceGroupsMismatch) {
 
   GpuCliqueKey k0({d0, d1}, 2);
 
-  // Check that the order of devices in replica groups doesn't matter.
+  // Callers must pass pre-sorted device groups.
   std::vector<std::vector<GlobalDeviceId>> dg0a = {{d0, d1}};
-  std::vector<std::vector<GlobalDeviceId>> dg0b = {{d1, d0}, {d2, d3}};
+  std::vector<std::vector<GlobalDeviceId>> dg0b = {{d0, d1}, {d2, d3}};
 
   CollectiveCliqueRequests requests;
   TF_ASSERT_OK(requests.RequestClique(k0, dg0a));
@@ -129,9 +114,9 @@ TEST(CollectiveCliqueRequestsTest, BarrierAfterModuleExecutionRequested) {
 
   GpuCliqueKey k0({d0, d1}, 2);
 
-  // Check that the order of devices in replica groups doesn't matter.
+  // Callers must pass pre-sorted device groups.
   std::vector<std::vector<GlobalDeviceId>> dg0a = {{d0, d1}};
-  std::vector<std::vector<GlobalDeviceId>> dg0b = {{d1, d0}};
+  std::vector<std::vector<GlobalDeviceId>> dg0b = {{d0, d1}};
 
   CollectiveCliqueRequests requests;
   CollectiveCliqueRequests::CliqueRequirements requirements{
@@ -163,6 +148,22 @@ TEST(CollectiveCliqueRequestsTest,
 
   EXPECT_THAT(requests.GetDevicesRequiringBarrier(),
               UnorderedElementsAre(d0, d1, d2));
+}
+
+TEST(CollectiveCliqueRequestsTest, DeviceGroupsLexicographicSort) {
+  GlobalDeviceId d0(0), d1(1), d2(2), d3(3), d4(4), d5(5);
+
+  // Just a sanity check for our DCHECKs in clique requests.S
+  std::vector<std::vector<GlobalDeviceId>> groups = {
+      {d4, d5},
+      {d0, d1},
+      {d2, d3},
+  };
+  absl::c_sort(groups);
+
+  EXPECT_EQ(groups[0], (std::vector{d0, d1}));
+  EXPECT_EQ(groups[1], (std::vector{d2, d3}));
+  EXPECT_EQ(groups[2], (std::vector{d4, d5}));
 }
 
 }  // namespace

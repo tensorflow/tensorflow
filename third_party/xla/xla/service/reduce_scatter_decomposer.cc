@@ -18,6 +18,7 @@ limitations under the License.
 #include <sys/types.h>
 
 #include <limits>
+#include <vector>
 
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -40,11 +41,15 @@ absl::StatusOr<bool> ReduceScatterDecomposer::RunImpl(
   bool changed = false;
   int64_t next_channel_id = hlo_query::NextChannelId(*module);
 
-  for (HloComputation *computation :
+  for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    for (HloInstruction *instruction :
+    if (computation->IsAsyncComputation()) {
+      // TODO: b/501070020 - Support async reduce-scatter.
+      continue;
+    }
+    for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
-      auto *rs = DynCast<HloReduceScatterInstruction>(instruction);
+      auto* rs = DynCast<HloReduceScatterInstruction>(instruction);
       if (!rs || !rs->shape().IsArray()) {
         continue;
       }
@@ -59,7 +64,7 @@ absl::StatusOr<bool> ReduceScatterDecomposer::RunImpl(
 
       VLOG(2) << "Decompose: " << rs->ToString();
       // Create an all-reduce
-      HloComputation *apply_clone = module->AddComputationAndUnifyNamesAndIds(
+      HloComputation* apply_clone = module->AddComputationAndUnifyNamesAndIds(
           rs->to_apply()->Clone(), /*is_entry=*/false);
       HloInstruction* ar =
           computation->AddInstruction(HloInstruction::CreateAllReduce(
@@ -75,12 +80,12 @@ absl::StatusOr<bool> ReduceScatterDecomposer::RunImpl(
           GetCollectiveOpGroupMode(rs->channel_id().has_value(),
                                    rs->use_global_device_ids()));
       TF_ASSIGN_OR_RETURN(
-          std::vector<HloInstruction *> start_indices,
+          std::vector<HloInstruction*> start_indices,
           CreateStartIndicesForCollectiveDecomposition(
               group_mode, rs->replica_groups(), rs->shape(),
               rs->scatter_dimension(), computation, update_layout_));
 
-      HloInstruction *ds =
+      HloInstruction* ds =
           computation->AddInstruction(HloInstruction::CreateDynamicSlice(
               rs->shape(), ar, start_indices, rs->shape().dimensions()));
 

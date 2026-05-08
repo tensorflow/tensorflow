@@ -33,9 +33,10 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/gpu_dot_fusion_cost_model.h"
+#include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
+#include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -43,7 +44,7 @@ namespace gpu {
 
 namespace {
 
-absl::StatusOr<absl::Duration> MaybeGetGemmCostModelForGemmTritonFusion(
+absl::StatusOr<EstimateRunTimeData> MaybeGetGemmCostModelForGemmTritonFusion(
     const se::DeviceDescription& device_info,
     const HloInstruction& instruction) {
   const HloFusionInstruction* fusion =
@@ -90,33 +91,58 @@ absl::StatusOr<absl::Duration> MaybeGetGemmCostModelForGemmTritonFusion(
 // using an analytical cost model and adds this as a reification cost.
 // This cost model focuses on the dot operation within the fusion. Fusions
 // with non-trivial operations on dot operands might not be fully accounted for.
-void RecordGemmCostModelEstimateIfApplicable(
+absl::Status RecordGemmCostModelEstimateIfApplicable(
     const se::DeviceDescription& device_info, HloInstruction& instruction) {
-  absl::StatusOr<absl::Duration> duration =
-      MaybeGetGemmCostModelForGemmTritonFusion(device_info, instruction);
-  if (!duration.ok()) {
-    VLOG(3) << "Skipping the GeMM fusion cost model: "
-            << duration.status().ToString(
-                   absl::StatusToStringMode::kWithNoExtraData)
-            << "\nInstruction: " << instruction.ToShortString();
-    return;
+  TF_ASSIGN_OR_RETURN(
+      EstimateRunTimeData runtime,
+      MaybeGetGemmCostModelForGemmTritonFusion(device_info, instruction));
+
+  ReificationCost cost =
+      GpuPerformanceModelBase::MakeReificationCostFromRuntime(
+          runtime, device_info, "experimental-gemm-cost-model");
+
+  VLOG(1) << "Adding GeMM fusion cost model estimate: " << cost.DebugString();
+
+  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                      instruction.backend_config<GpuBackendConfig>());
+  *gpu_config.add_reification_cost() = cost;
+  return instruction.set_backend_config(gpu_config);
+}
+
+absl::StatusOr<EstimateRunTimeData> MaybeGetIndexingCostModelForFusion(
+    GpuPerformanceModelWithIndexingAnalysis& perf_model,
+    const se::DeviceDescription& device_info, HloInstruction& instruction) {
+  const HloFusionInstruction* fusion =
+      DynCast<HloFusionInstruction>(&instruction);
+  if (fusion == nullptr ||
+      fusion->fusion_kind() != HloInstruction::FusionKind::kCustom) {
+    return absl::FailedPreconditionError("Not a custom fusion.");
   }
 
-  absl::StatusOr<GpuBackendConfig> gpu_config =
-      instruction.backend_config<GpuBackendConfig>();
+  TF_ASSIGN_OR_RETURN(EstimateRunTimeData runtime,
+                      perf_model.EstimateRunTimeForTriton(&instruction));
 
-  ReificationCost* gemm_reification_cost = gpu_config->add_reification_cost();
-  gemm_reification_cost->set_name("experimental-gemm-cost-model");
-  gemm_reification_cost->set_end_to_end_cycles(
-      absl::ToDoubleNanoseconds(*duration) * device_info.clock_rate_ghz());
-  gemm_reification_cost->set_exec_time_us(
-      absl::ToDoubleMicroseconds(*duration));
+  return runtime;
+}
 
-  VLOG(1) << "Adding GeMM fusion cost model estimate: "
-          << gemm_reification_cost->DebugString()
-          << "\nInstruction: " << instruction.ToString();
+absl::Status RecordIndexingPerformanceModelEstimateIfApplicable(
+    GpuPerformanceModelWithIndexingAnalysis& perf_model,
+    const se::DeviceDescription& device_info, HloInstruction& instruction) {
+  TF_ASSIGN_OR_RETURN(
+      EstimateRunTimeData runtime,
+      MaybeGetIndexingCostModelForFusion(perf_model, device_info, instruction));
 
-  CHECK_OK(instruction.set_backend_config(*gpu_config));
+  ReificationCost cost =
+      GpuPerformanceModelBase::MakeReificationCostFromRuntime(
+          runtime, device_info, "indexing-cost-model");
+
+  VLOG(1) << "Adding indexing performance model estimate: "
+          << cost.DebugString();
+
+  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                      instruction.backend_config<GpuBackendConfig>());
+  *gpu_config.add_reification_cost() = cost;
+  return instruction.set_backend_config(gpu_config);
 }
 
 }  // namespace
@@ -135,10 +161,31 @@ absl::StatusOr<bool> GpuCostModelStatsCollection::RunImpl(
         continue;
       }
 
+      VLOG(1) << "Collecting cost model stats on "
+              << fusion_instr->ToShortString();
+
       gpu_performance_model.Get().RecordEstimatedRunTime(fusion_instr,
                                                          &cost_analysis_);
 
-      RecordGemmCostModelEstimateIfApplicable(device_info_, *fusion_instr);
+      if (absl::Status status = RecordGemmCostModelEstimateIfApplicable(
+              device_info_, *fusion_instr);
+          !status.ok()) {
+        VLOG(1) << "Skipping GeMM fusion cost model estimate: "
+                << status.ToString(
+                       (VLOG_IS_ON(2))
+                           ? absl::StatusToStringMode::kWithEverything
+                           : absl::StatusToStringMode::kWithNoExtraData);
+      }
+      if (absl::Status status =
+              RecordIndexingPerformanceModelEstimateIfApplicable(
+                  indexing_cost_analysis_, device_info_, *fusion_instr);
+          !status.ok()) {
+        VLOG(1) << "Skipping indexing cost model estimate: "
+                << status.ToString(
+                       (VLOG_IS_ON(2))
+                           ? absl::StatusToStringMode::kWithEverything
+                           : absl::StatusToStringMode::kWithNoExtraData);
+      }
     }
   }
   return false;

@@ -1,0 +1,461 @@
+--- a/lib/Target/LLVMIR/LLVMDIUtils.cpp
++++ b/lib/Target/LLVMIR/LLVMDIUtils.cpp
+@@ -96,7 +96,8 @@
+       mlir::StringAttr::get(context, "struct"), fileAttr, /*line=*/line,
+       /*scope=*/fileAttr, /*baseType=*/nullptr, mlir::LLVM::DIFlags::Zero,
+       sizeInBits, /*alignInBits=*/0, /*dataLocation=*/nullptr, /*rank=*/nullptr,
+-      /*allocated=*/nullptr, /*associated=*/nullptr, elTypes);
++      /*allocated=*/nullptr, /*associated=*/nullptr, /*identifier=*/nullptr,
++      /*discriminator=*/nullptr, elTypes);
+ }
+ 
+ LLVM::DITypeAttr LLVMDIUtils::convertArrayType(MLIRContext *context,
+@@ -116,7 +117,8 @@
+       mlir::StringAttr::get(context, "array"), fileAttr, /*line=*/line,
+       /*scope=*/fileAttr, /*baseType=*/baseType, mlir::LLVM::DIFlags::Zero,
+       sizeInBits, /*alignInBits=*/0, /*dataLocation=*/nullptr, /*rank=*/nullptr,
+-      /*allocated=*/nullptr, /*associated=*/nullptr, elTypes);
++      /*allocated=*/nullptr, /*associated=*/nullptr, /*identifier=*/nullptr,
++      /*discriminator=*/nullptr, elTypes);
+ }
+ 
+ std::optional<unsigned> LLVMDIUtils::calcBitWidth(mlir::Type type) {
+
+--- a/test/Conversion/nvgpu_to_llvm.mlir
++++ b/test/Conversion/nvgpu_to_llvm.mlir
+@@ -81,9 +81,9 @@
+   //      CHECK:    %[[A:.+]] = llvm.inline_asm has_side_effects
+   // CHECK-SAME:    "@$0 tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [$1], 128;", "b,r" %[[PRED]], %[[SHMEM]] : (i1, !llvm.ptr<3>) -> !llvm.void
+   //      CHECK:    %[[AR:.+]] = llvm.load %[[SHMEM]] : !llvm.ptr<3> -> i32
+-  //      CHECK:    nvvm.barrier0
++  //      CHECK:    nvvm.barrier
+   //      CHECK:    "@$0 tcgen05.relinquish_alloc_permit.cta_group::1.sync.aligned;", "b" %[[PRED]]  : (i1) -> !llvm.void
+-  //      CHECK:    nvvm.barrier0
++  //      CHECK:    nvvm.barrier
+   //      CHECK:    llvm.inline_asm has_side_effects asm_dialect = att operand_attrs = [] "@$0 tcgen05.dealloc.cta_group::1.sync.aligned.b32 $1, 128;", "b,r" %[[PRED]], %{{.+}} : (i1, !llvm.ptr<6>) -> !llvm.void
+   llvm.mlir.global external @global_smem() {addr_space = 3 : i32, alignment = 16 : i64} : !llvm.array<0 x i8>
+   llvm.func @tensor_memory_base_lowering() -> i32 attributes {nvvm.kernel = 1 : ui1, nvvm.maxntid = array<i32: 128>} {
+
+--- a/test/Conversion/tritongpu_to_llvm.mlir
++++ b/test/Conversion/tritongpu_to_llvm.mlir
+@@ -848,7 +848,7 @@
+   tt.func @convert_layout_blocked_blocked(%arg0: tensor<32x32xf32, #blocked0>) {
+     // CHECK: llvm.mlir.addressof @global_smem
+     // CHECK-COUNT-8: llvm.store
+-    // CHECK-: nvvm.barrier0
++    // CHECK-: nvvm.barrier
+     // CHECK-COUNT-8: llvm.load
+     %0 = ttg.convert_layout %arg0 : tensor<32x32xf32, #blocked0> -> tensor<32x32xf32, #blocked1>
+     tt.return
+@@ -866,7 +866,7 @@
+     // CHECK: llvm.mlir.addressof @global_smem
+     // CHECK: llvm.store
+     // CHECK: llvm.store
+-    // CHECK: nvvm.barrier0
++    // CHECK: nvvm.barrier
+     // CHECK: llvm.load
+     // CHECK: llvm.load
+     %0 = ttg.convert_layout %arg0 : tensor<32x32xf32, #blocked0> -> tensor<32x32xf32, #blocked1>
+@@ -1062,7 +1062,7 @@
+   // CHECK-LABEL: convert_layout_transpose
+   tt.func @convert_layout_transpose(%arg0: tensor<128x128xf8E5M2, #blocked>) {
+     // CHECK-COUNT-128: llvm.store {{.*}} vector<1xi8>
+-    // CHECK: nvvm.barrier0
++    // CHECK: nvvm.barrier
+     // CHECK-COUNT-32: llvm.load {{.*}} vector<4xi8>
+     %0 = ttg.convert_layout %arg0 : tensor<128x128xf8E5M2, #blocked> -> tensor<128x128xf8E5M2, #blocked1>
+     tt.return
+@@ -1079,7 +1079,7 @@
+   tt.func @convert_layout_mmav2_blocked(%arg0: tensor<32x16xf32, #mma>) {
+     // CHECK: llvm.store
+     // CHECK: llvm.store
+-    // CHECK: nvvm.barrier0
++    // CHECK: nvvm.barrier
+     // CHECK: llvm.load
+     %0 = ttg.convert_layout %arg0 : tensor<32x16xf32, #mma> -> tensor<32x16xf32, #blocked0>
+     tt.return
+@@ -1273,7 +1273,7 @@
+   // CHECK-LABEL: convert_layout_mmav3_transpose
+   tt.func @convert_layout_mmav3_transpose(%arg0: tensor<128x256xf8E5M2, #mma>) {
+     // CHECK-COUNT-8: llvm.store {{.*}} : vector<4xi32>
+-    // CHECK: nvvm.barrier0
++    // CHECK: nvvm.barrier
+     %0 = ttg.convert_layout %arg0 : tensor<128x256xf8E5M2, #mma> -> tensor<128x256xf8E5M2, #blocked>
+     tt.return
+   }
+@@ -1370,7 +1370,7 @@
+   tt.func @linear_layout_with_multiple_iterations(%src: tensor<8x4xbf16, #linear>) {
+     %cvt = ttg.convert_layout %src : tensor<8x4xbf16, #linear> -> tensor<8x4xbf16, #linear1>
+     // CHECK-COUNT-1: llvm.store {{.*}} : vector<4xi16>
+-    // CHECK: nvvm.barrier0
++    // CHECK: nvvm.barrier
+     // CHECK-COUNT: llvm.load{{.*}}->vector<2xi16>
+     tt.return
+   }
+@@ -1540,7 +1540,7 @@
+   tt.func @atomic_add_use_result_broadcasting(%arg0 : tensor<16x!tt.ptr<f32>, #blocked0>, %arg1 : tensor<16xi1, #blocked0>, %arg2 : tensor<16xf32, #blocked0>) {
+     %0 = tt.atomic_rmw fadd, relaxed, sys, %arg0, %arg2, %arg1 : (tensor<16x!tt.ptr<f32>, #blocked0>, tensor<16xf32, #blocked0>, tensor<16xi1, #blocked0>) -> tensor<16xf32, #blocked0>
+     // CHECK: st.shared
+-    // CHECK: nvvm.barrier0
++    // CHECK: nvvm.barrier
+     // CHECK: llvm.load
+     tt.store %arg0, %0 : tensor<16x!tt.ptr<f32>, #blocked0>
+     tt.return
+@@ -1555,7 +1555,7 @@
+   tt.func @atomic_add_use_result_no_broadcasting(%arg0 : tensor<128x!tt.ptr<f32>, #blocked0>, %arg1 : tensor<128xi1, #blocked0>, %arg2 : tensor<128xf32, #blocked0>) {
+     %0 = tt.atomic_rmw fadd, relaxed, sys, %arg0, %arg2, %arg1 : (tensor<128x!tt.ptr<f32>, #blocked0>, tensor<128xf32, #blocked0>, tensor<128xi1, #blocked0>) -> tensor<128xf32, #blocked0>
+     // CHECK-NOT: st.shared
+-    // CHECK-NOT: nvvm.barrier0
++    // CHECK-NOT: nvvm.barrier
+     // CHECK-NOT: llvm.load
+     tt.store %arg0, %0 : tensor<128x!tt.ptr<f32>, #blocked0>
+     tt.return
+@@ -1842,7 +1842,7 @@
+ // CHECK-LABEL: sum_reduction
+ //       CHECK:  %[[M:.+]] = llvm.mlir.constant(-1 : i32) : i32
+ //       CHECK:   nvvm.redux.sync  add %{{.*}}, %[[M]]
+-//       CHECK:   nvvm.barrier0
++//       CHECK:   nvvm.barrier
+ //       CHECK:   nvvm.shfl.sync bfly
+ //       CHECK:   nvvm.shfl.sync bfly
+ #blocked = #ttg.blocked<{sizePerThread = [1, 4], threadsPerWarp = [1, 32], warpsPerCTA = [1, 4], order = [1, 0]}>
+@@ -2338,7 +2338,7 @@
+ // CHECK-DAG: llvm.mlir.global internal constant @assertFile_0("inner_call\00") {addr_space = 0 : i32}
+ // CHECK-DAG: llvm.mlir.global internal constant @assertMessage_0("assert text\00") {addr_space = 0 : i32}
+ // CHECK: llvm.call @__assertfail
+-// CHECK: nvvm.barrier0
++// CHECK: nvvm.barrier
+ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:90", "ttg.threads-per-warp" = 32 : i32} {
+   tt.func public @add_kernel(%arg0: tensor<1xi1, #blocked>) {
+     tt.assert %arg0, "assert text" : tensor<1xi1, #blocked> loc(#loc5)
+@@ -2394,7 +2394,7 @@
+   // CHECK: [[SMEM_BASE:%.*]] = llvm.mlir.addressof @global_smem
+   // CHECK-NEXT: [[SMEM:%.*]] = llvm.getelementptr [[SMEM_BASE]]
+   // CHECK: store
+-  // CHECK-NEXT: nvvm.barrier0
++  // CHECK-NEXT: nvvm.barrier
+ 
+   // CHECK: [[I0:%.*]] = llvm.extractvalue %arg0[0]
+ 
+@@ -2427,7 +2427,7 @@
+   // CHECK: [[SMEM_BASE:%.*]] = llvm.mlir.addressof @global_smem
+   // CHECK-NEXT: [[SMEM:%.*]] = llvm.getelementptr [[SMEM_BASE]]
+   // CHECK: insertelement [[S0]]
+-  // CHECK: nvvm.barrier0
++  // CHECK: nvvm.barrier
+ 
+   // CHECK: [[I0:%.*]] = llvm.extractvalue %arg0[0]
+ 
+
+--- a/test/Conversion/tritongpu_to_llvm_blackwell.mlir
++++ b/test/Conversion/tritongpu_to_llvm_blackwell.mlir
+@@ -11,7 +11,7 @@
+   // CHECK: %[[C0:.+]] = llvm.mlir.constant(0 : i32) : i32
+   // CHECK: %[[P0:.+]] = llvm.icmp "eq" %[[WID]], %[[C0]] : i32
+   // CHECK: %[[P1:.+]] = llvm.and %{{.*}}, %[[P0]]  : i1
+-  // CHECK: nvvm.barrier0
++  // CHECK: nvvm.barrier
+   // CHECK-NEXT: llvm.cond_br %[[P1]]
+   // CHECK: %[[E:.+]] = nvvm.elect.sync -> i1
+   // CHECK-COUNT-8: @$5 tcgen05.mma.cta_group::1.kind::f16 [ $0 + 0 ], $1, $2, $3, $4;", "r,l,l,r,b,b" %{{.+}}, %{{.+}}, %{{.+}}, %{{.+}}, %{{.+}}, %[[E]]
+@@ -189,7 +189,7 @@
+   // CHECK: %[[TMEM_SUBSLICE_BASE:.+]] = llvm.ptrtoint %[[TMEM_SUBSLICE_PTR]] : !llvm.ptr<3> to i32
+   // CHECK-COUNT-4: @$5 tcgen05.mma.cta_group::1.kind::f16 [ $0 + 0 ], $1, $2, $3, $4;", "r,l,l,r,b,b" %[[TMEM_SUBSLICE_BASE]]
+   // CHECK-COUNT-4: @$5 tcgen05.mma.cta_group::1.kind::f16 [ $0 + 128 ], $1, $2, $3, $4;", "r,l,l,r,b,b" %[[TMEM_SUBSLICE_BASE]]
+-  // CHECK-NOT: nvvm.barrier0
++  // CHECK-NOT: nvvm.barrier
+   tt.func @tc_gen5_mma_subslice_acc(%a: !ttg.memdesc<256x64xf16, #shared, #ttg.shared_memory>,
+                                     %b: !ttg.memdesc<64x64xf16, #shared1, #ttg.shared_memory>,
+                                     %c: !ttg.memdesc<256x128xf32, #tmem, #ttng.tensor_memory, mutable>) {
+@@ -790,7 +790,7 @@
+ module attributes {"ttg.num-warps" = 1 : i32} {
+ // CHECK-LABEL: @tc_gen5_commit
+ tt.func @tc_gen5_commit(%arg0: !ttg.memdesc<1xi64, #shared, #smem, mutable>, %pred: i1) {
+-  // CHECK-NEXT: nvvm.barrier0
++  // CHECK-NEXT: nvvm.barrier
+   // CHECK: [[ZERO:%.*]] = llvm.mlir.constant(0 : i32)
+   // CHECK: [[IS_WARP_0:%.*]] = llvm.icmp "eq" [[ZERO]], [[ZERO]]
+   // CHECK: [[ELECT:%.*]] = nvvm.elect.sync
+@@ -886,7 +886,7 @@
+ // CHECK-LABEL: max_reduction
+ //       CHECK:  %[[M:.+]] = llvm.mlir.constant(-1 : i32) : i32
+ //       CHECK:   nvvm.redux.sync  fmax %{{.*}}, %[[M]] {nan = true} : f32 -> f32
+-//       CHECK:   nvvm.barrier0
++//       CHECK:   nvvm.barrier
+ //       CHECK:   nvvm.shfl.sync bfly
+ //       CHECK:   nvvm.shfl.sync bfly
+ #blocked = #ttg.blocked<{sizePerThread = [1, 4], threadsPerWarp = [1, 32], warpsPerCTA = [1, 4], order = [1, 0]}>
+@@ -906,7 +906,7 @@
+ // CHECK-LABEL: maxnum_reduction
+ //       CHECK:  %[[M:.+]] = llvm.mlir.constant(-1 : i32) : i32
+ //       CHECK:   nvvm.redux.sync  fmax %{{.*}}, %[[M]] : f32 -> f32
+-//       CHECK:   nvvm.barrier0
++//       CHECK:   nvvm.barrier
+ //       CHECK:   nvvm.shfl.sync bfly
+ //       CHECK:   nvvm.shfl.sync bfly
+ #blocked = #ttg.blocked<{sizePerThread = [1, 4], threadsPerWarp = [1, 32], warpsPerCTA = [1, 4], order = [1, 0]}>
+
+--- a/test/Conversion/tritongpu_to_llvm_gsan.mlir
++++ b/test/Conversion/tritongpu_to_llvm_gsan.mlir
+@@ -4,7 +4,7 @@
+ module attributes {"ttg.instrumentation_mode" = "gsan", "ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
+   // CHECK-LABEL: llvm.func @load_store
+   // CHECK: llvm.call @__triton_gsan_init(%{{.*}}, %{{.*}}, %{{.*}}) : (!llvm.ptr, !llvm.ptr, i32) -> ()
+-  // CHECK: nvvm.barrier0
++  // CHECK: nvvm.barrier
+   // CHECK: llvm.store %{{.*}} : i64, !llvm.ptr
+   // CHECK: llvm.store %{{.*}} : i8, !llvm.ptr
+   // CHECK: llvm.call @__triton_gsan_load_tensor(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) : (!llvm.ptr, !llvm.ptr, i32, i32, !llvm.ptr, i32) -> ()
+
+--- a/test/Conversion/tritongpu_to_llvm_hopper.mlir
++++ b/test/Conversion/tritongpu_to_llvm_hopper.mlir
+@@ -259,11 +259,11 @@
+ module attributes {"ttg.target" = "cuda:90", "ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, "ttg.threads-per-warp" = 32 : i32} {
+   tt.func @convert_mma_to_blocked(%a: tensor<128x256xf16, #mma>) {
+     // CHECK-COUNT-8: llvm.store
+-    //          CHECK: nvvm.barrier0
++    //          CHECK: nvvm.barrier
+     // CHECK-COUNT-8: nvvm.ldmatrix
+-    //          CHECK: nvvm.barrier0
++    //          CHECK: nvvm.barrier
+     // CHECK-COUNT-8: llvm.store
+-    //          CHECK: nvvm.barrier0
++    //          CHECK: nvvm.barrier
+     // CHECK-COUNT-8: nvvm.ldmatrix
+     %c = ttg.convert_layout %a : tensor<128x256xf16, #mma> -> tensor<128x256xf16, #blocked>
+     tt.return
+@@ -277,19 +277,19 @@
+ module attributes {"ttg.target" = "cuda:90", "ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, "ttg.threads-per-warp" = 32 : i32} {
+   tt.func @convert_mma_to_blocked(%a: tensor<128x64xbf16, #linear>) {
+     // CHECK: llvm.store {{.*}} : vector<4xi32>
+-    // CHECK: nvvm.barrier0
++    // CHECK: nvvm.barrier
+     // CHECK: llvm.load {{.*}} -> vector<4xi32>
+-    // CHECK: nvvm.barrier0
++    // CHECK: nvvm.barrier
+     // CHECK: llvm.store {{.*}} : vector<4xi32>
+-    // CHECK: nvvm.barrier0
++    // CHECK: nvvm.barrier
+     // CHECK: llvm.load {{.*}} -> vector<4xi32>
+-    // CHECK: nvvm.barrier0
++    // CHECK: nvvm.barrier
+     // CHECK: llvm.store {{.*}} : vector<4xi32>
+-    // CHECK: nvvm.barrier0
++    // CHECK: nvvm.barrier
+     // CHECK: llvm.load {{.*}} -> vector<4xi32>
+-    // CHECK: nvvm.barrier0
++    // CHECK: nvvm.barrier
+     // CHECK: llvm.store {{.*}} : vector<4xi32>
+-    // CHECK: nvvm.barrier0
++    // CHECK: nvvm.barrier
+     // CHECK: llvm.load {{.*}} -> vector<4xi32>
+     // CHECK-NOT: llvm.store
+     // CHECK-NOT: llvm.load
+@@ -307,19 +307,19 @@
+   // CHECK-LABEL: convert_blocked_to_dot_rhs
+   tt.func @convert_blocked_to_dot_rhs(%a: tensor<64x64xf16, #blocked>) {
+     // CHECK-COUNT-1: llvm.store
+-    //          CHECK: nvvm.barrier0
++    //          CHECK: nvvm.barrier
+     // CHECK-COUNT-4: nvvm.ldmatrix
+-    //          CHECK: nvvm.barrier0
++    //          CHECK: nvvm.barrier
+     // CHECK-COUNT-1: llvm.store
+-    //          CHECK: nvvm.barrier0
++    //          CHECK: nvvm.barrier
+     // CHECK-COUNT-4: nvvm.ldmatrix
+-    //          CHECK: nvvm.barrier0
++    //          CHECK: nvvm.barrier
+     // CHECK-COUNT-1: llvm.store
+-    //          CHECK: nvvm.barrier0
++    //          CHECK: nvvm.barrier
+     // CHECK-COUNT-4: nvvm.ldmatrix
+-    //          CHECK: nvvm.barrier0
++    //          CHECK: nvvm.barrier
+     // CHECK-COUNT-1: llvm.store
+-    //          CHECK: nvvm.barrier0
++    //          CHECK: nvvm.barrier
+     // CHECK-COUNT-4: nvvm.ldmatrix
+     %b = ttg.convert_layout %a  : tensor<64x64xf16, #blocked> -> tensor<64x64xf16, #ttg.dot_op<{opIdx = 1, parent = #mma, kWidth = 2}>>
+     tt.return
+
+--- a/test/Conversion/tritoninstrument_to_llvm.mlir
++++ b/test/Conversion/tritoninstrument_to_llvm.mlir
+@@ -38,7 +38,7 @@
+ module attributes {"ttg.num-warps" = 4 : i32, ttg.target = "cuda:90"} {
+ // CHECK-LABEL: @experimental_lock_acquire
+ // CHECK: atom.global.acquire.gpu.cas.b32
+-// CHECK: nvvm.barrier0
++// CHECK: nvvm.barrier
+ tt.func private @experimental_lock_acquire(
+   %lock: !tt.ptr<i32>,
+   %pred: i1
+@@ -55,7 +55,7 @@
+ #smem = #ttg.shared_memory
+ module attributes {"ttg.num-warps" = 4 : i32, ttg.target = "cuda:90"} {
+ // CHECK-LABEL: @experimental_lock_release
+-// CHECK: nvvm.barrier0
++// CHECK: nvvm.barrier
+ // CHECK: atom.global.acq_rel.gpu.exch.b32
+ tt.func private @experimental_lock_release(
+   %lock: !tt.ptr<i32>,
+
+--- a/test/Conversion/tritonnvidiagpu_to_llvm.mlir
++++ b/test/Conversion/tritonnvidiagpu_to_llvm.mlir
+@@ -80,7 +80,7 @@
+   tt.func @arrive_barrier(%alloc: !ttg.memdesc<1xi64, #shared0, #smem>) {
+     // CHECK-NEXT: [[BASE:%.*]] = llvm.extractvalue %arg0[0] : !llvm.struct<(ptr<3>, i32)>
+     // CHECK-NEXT: llvm.extractvalue %arg0[1] : !llvm.struct<(ptr<3>, i32)>
+-    // CHECK-NEXT: nvvm.barrier0
++    // CHECK-NEXT: nvvm.barrier
+     // CHECK-NEXT: [[TID:%.*]] = nvvm.read.ptx.sreg.tid.x
+     // CHECK-NEXT: [[C127:%.*]] = llvm.mlir.constant(127 : i32)
+     // CHECK-NEXT: [[RTID:%.*]] = llvm.and [[TID]], [[C127]]
+@@ -95,7 +95,7 @@
+   tt.func @arrive_barrier_pred(%alloc: !ttg.memdesc<1xi64, #shared0, #smem>, %pred: i1) {
+     // CHECK-NEXT: [[BASE:%.*]] = llvm.extractvalue %arg0[0] : !llvm.struct<(ptr<3>, i32)>
+     // CHECK-NEXT: llvm.extractvalue %arg0[1] : !llvm.struct<(ptr<3>, i32)>
+-    // CHECK-NEXT: nvvm.barrier0
++    // CHECK-NEXT: nvvm.barrier
+     // CHECK-NEXT: [[TID:%.*]] = nvvm.read.ptx.sreg.tid.x
+     // CHECK-NEXT: [[C127:%.*]] = llvm.mlir.constant(127 : i32)
+     // CHECK-NEXT: [[RTID:%.*]] = llvm.and [[TID]], [[C127]]
+@@ -115,7 +115,7 @@
+ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32} {
+   // CHECK-LABEL: arrive_barrier_cluster_broadcast
+   tt.func @arrive_barrier_cluster_broadcast(%alloc: !ttg.memdesc<1xi64, #shared0, #smem>) {
+-    // CHECK: nvvm.barrier0
++    // CHECK: nvvm.barrier
+     // CHECK-NOT: nvg.cluster_id
+     // CHECK: llvm.ptrtoint
+     // CHECK: llvm.and
+@@ -356,7 +356,7 @@
+ #smem = #ttg.shared_memory
+ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
+   // CHECK-LABEL: expect_barrier
+-  // CHECK: nvvm.barrier0
++  // CHECK: nvvm.barrier
+   // CHECK: [[TID:%.*]] = nvvm.read.ptx.sreg.tid.x
+   // CHECK: [[C127:%.*]] = llvm.mlir.constant(127 : i32)
+   // CHECK: [[RTID:%.*]] = llvm.and [[TID]], [[C127]]
+@@ -376,7 +376,7 @@
+ #smem = #ttg.shared_memory
+ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32} {
+   // CHECK-LABEL: expect_barrier_cluster_broadcast
+-  // CHECK: nvvm.barrier0
++  // CHECK: nvvm.barrier
+   // CHECK-NOT: nvg.cluster_id
+   // CHECK: llvm.ptrtoint
+   // CHECK: llvm.and
+
+--- a/test/Conversion/warp_specialize_to_llvm.mlir
++++ b/test/Conversion/warp_specialize_to_llvm.mlir
+@@ -20,27 +20,27 @@
+ 
+   // CHECK: bb{{[0-9]+}}:
+   // CHECK-NEXT: nvvm.barrier id = [[C0]] number_of_threads = [[C128]]
+-  nvvm.barrier0
++  nvvm.barrier
+   ttg.warp_specialize() attributes {allocation.offset = 0 : i32, warpGroupStartIds = array<i32: 4, 8, 10>}
+   default {
+     // CHECK: nvvm.barrier id = [[C0]] number_of_threads = [[C128]]
+-    nvvm.barrier0
++    nvvm.barrier
+     ttg.warp_yield
+   }
+   partition0() num_warps(4) {
+-    nvvm.barrier0
++    nvvm.barrier
+     ttg.warp_return
+   }
+   partition1() num_warps(2) {
+-    nvvm.barrier0
++    nvvm.barrier
+     ttg.warp_return
+   }
+   partition2() num_warps(1) {
+-    nvvm.barrier0
++    nvvm.barrier
+     ttg.warp_return
+   } : () -> ()
+   // CHECK: nvvm.barrier id = [[C0]] number_of_threads = [[C128]]
+-  nvvm.barrier0
++  nvvm.barrier
+   llvm.return
+ }
+ 
+@@ -104,7 +104,7 @@
+   // CHECK: [[C128:%.*]] = llvm.mlir.constant(128 : i32)
+   // CHECK: nvvm.barrier id = %arg0 number_of_threads = [[C128]]
+   // CHECK: llvm.call @inner_func_nw4_ws(%arg0) : (i32) -> ()
+-  nvvm.barrier0
++  nvvm.barrier
+   llvm.call @inner_func_nw4() : () -> ()
+   llvm.return
+ }
+@@ -113,14 +113,14 @@
+ llvm.func internal @inner_func_nw2(%arg0: f32 {some.attr = "some_value"}) attributes {"ws_num_warps" = 2 : i32} {
+   // CHECK: [[C64:%.*]] = llvm.mlir.constant(64 : i32)
+   // CHECK: nvvm.barrier id = %arg1 number_of_threads = [[C64]]
+-  nvvm.barrier0
++  nvvm.barrier
+   llvm.return
+ }
+ 
+ // CHECK: llvm.func internal @inner_func_nw1_ws(%arg0: i32)
+ llvm.func internal @inner_func_nw1() attributes {"ws_num_warps" = 1 : i32} {
+   // CHECK: nvvm.bar.warp.sync
+-  nvvm.barrier0
++  nvvm.barrier
+   llvm.return
+ }
+ 
+
+--- a/test/TritonGPU/atomic-cas.mlir
++++ b/test/TritonGPU/atomic-cas.mlir
+@@ -2,7 +2,7 @@
+ 
+ // CHECK: llvm.inline_asm {{.*}} "mov.u64 $0, 0x0; @$4 atom.global.acq_rel.cta.cas.b64 $0, [ $1 + 0 ], $2, $3;", "=l,l,l,l,b"
+ // CHECK: st.shared
+-// CHECK: nvvm.barrier0
++// CHECK: nvvm.barrier
+ // CHECK: llvm.load
+ 
+ #blocked = #ttg.blocked<{sizePerThread = [1], threadsPerWarp = [32], warpsPerCTA = [4], order = [0]}>
+
+--- a/third_party/nvidia/lib/NVGPUToLLVM/NVGPUToLLVMPass.cpp
++++ b/third_party/nvidia/lib/NVGPUToLLVM/NVGPUToLLVMPass.cpp
+@@ -532,9 +532,9 @@
+       {ptxBuilder.newOperand(pred, "b"), ptxBuilder.newOperand(sharedMem, "r")},
+       /*onlyAttachMLIRArgs=*/true);
+   ptxBuilder.launch(rewriter, loc, void_ty(func->getContext()));
+-  NVVM::Barrier0Op::create(rewriter, loc);
++  NVVM::BarrierOp::create(rewriter, loc);
+   Value address = b.load(i32_ty, sharedMem);
+-  NVVM::Barrier0Op::create(rewriter, loc);
++  NVVM::BarrierOp::create(rewriter, loc);
+   address = b.inttoptr(ptr_ty(func.getContext(), 6), address);
+   return address;
+ }
+@@ -559,7 +559,7 @@
+       NVVM::ClusterArriveOp::create(b, loc, UnitAttr::get(ctx));
+       NVVM::ClusterWaitOp::create(b, loc, UnitAttr::get(ctx));
+     } else {
+-      NVVM::Barrier0Op::create(b, loc);
++      NVVM::BarrierOp::create(b, loc);
+     }
+     PTXBuilder ptxBuilder;
+     // Calculate the predicate in the inline asm to avoid creating long
+
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertWarpSpecializeToLLVM.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertWarpSpecializeToLLVM.cpp
+@@ -45,7 +45,7 @@
+       : numThreadsPerWarp(numThreadsPerWarp) {}
+ 
+   bool isBarrierOp(Operation *op) const override {
+-    return isa<NVVM::Barrier0Op>(op);
++    return isa<NVVM::BarrierOp>(op);
+   }
+ 
+   Type getBarrierHandleType(MLIRContext *ctx) const override {
+

@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -95,10 +96,13 @@ class PjRtExecutable final
     : public llvm::RTTIExtends<PjRtExecutable, PjRtCompatibleExecutable> {
  public:
   // Creates PjRtExecutable from an MLIR module. Internally, it compiles the
-  // provided MLIR module into an `xla::PjRtExecutable`.
+  // provided MLIR module into an `xla::PjRtExecutable`. When `compile_client`
+  // is non-null, it is passed to `xla::PjRtCompile` to request
+  // cross-compilation.
   static absl::StatusOr<ExecutableRef> Create(
       xla::MaybeOwningMlirModule module, xla::CompileOptions compile_options,
-      const xla::PjRtTopologyDescription& topology);
+      const xla::PjRtTopologyDescription& topology,
+      xla::PjRtClient* compile_client = nullptr);
 
   // PjRtCompatibleExecutable implementation.
 
@@ -308,10 +312,12 @@ class PjRtLoadedExecutable final
   absl::StatusOr<std::string> GetHumanReadableProgramText() const override {
     TF_ASSIGN_OR_RETURN(auto hlo_modules,
                         pjrt_loaded_executable_->GetHloModules());
-    return absl::StrJoin(hlo_modules, "\n\n",
-                         [](std::string* out, const auto& hlo_module) {
-                           absl::StrAppend(out, hlo_module->ToString());
-                         });
+    return absl::StrJoin(
+        hlo_modules, "\n\n", [](std::string* out, const auto& hlo_module) {
+          HloPrintOptions print_options = HloPrintOptions::Default();
+          print_options.set_sort_backend_config(true);
+          absl::StrAppend(out, hlo_module->ToString(print_options));
+        });
   }
 
   int num_devices() const override {

@@ -109,15 +109,15 @@ void PrintPrecisionConfig(HloInstruction::AttributePrinter& printer,
   }
 }
 
-std::string ConvKindToString(HloConvolutionInstruction::ConvKind kind) {
+std::string ConvolutionKindToString(ConvolutionKind kind) {
   switch (kind) {
-    case HloConvolutionInstruction::ConvKind::FPROP:
+    case CONVOLUTION_KIND_FPROP:
       return "fprop";
-    case HloConvolutionInstruction::ConvKind::WGRAD:
+    case CONVOLUTION_KIND_WGRAD:
       return "wgrad";
-    case HloConvolutionInstruction::ConvKind::DGRAD:
+    case CONVOLUTION_KIND_DGRAD:
       return "dgrad";
-    case HloConvolutionInstruction::ConvKind::UNSET:
+    case CONVOLUTION_KIND_UNSET:
       return "unset";
     default:
       return absl::StrCat("unknown(", static_cast<int>(kind), ")");
@@ -491,7 +491,10 @@ void HloAsyncStartInstruction::PrintExtraAttributesImpl(
   }
   if (options.syntax_sugar_async_ops() &&
       async_wrapped_computation()->CanExpandIntoSingleInstruction()) {
-    async_wrapped_instruction()->PrintExtraAttributes(printer, options);
+    HloPrintOptions nested_options = options;
+    nested_options.set_print_frontend_attributes(
+        frontend_attributes().map().empty());
+    async_wrapped_instruction()->PrintExtraAttributes(printer, nested_options);
   }
 
   if (!output_to_operand_aliasing().empty()) {
@@ -1390,7 +1393,6 @@ HloCollectivePermuteInstruction::HloCollectivePermuteInstruction(
     : HloChannelInstruction(opcode, shape, channel_id),
       source_target_pairs_(source_target_pairs) {
   AppendOperands(operands);
-  inplace_ = false;
 }
 
 HloCollectivePermuteInstruction::HloCollectivePermuteInstruction(
@@ -1408,7 +1410,6 @@ HloCollectivePermuteInstruction::HloCollectivePermuteInstruction(
   AppendOperand(output);
   AppendOperand(input_start_indices);
   AppendOperand(output_start_indices);
-  inplace_ = true;
 }
 
 void HloCollectivePermuteInstruction::ToProto(
@@ -3133,14 +3134,15 @@ HloConvolutionInstruction::HloConvolutionInstruction(
     int64_t feature_group_count, int64_t batch_group_count,
     const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config,
-    const SparsityConfig& sparsity_config)
+    const SparsityConfig& sparsity_config, ConvolutionKind convolution_kind)
     : HloInstruction(HloOpcode::kConvolution, shape),
       feature_group_count_(feature_group_count),
       batch_group_count_(batch_group_count),
       window_(window),
       convolution_dimension_numbers_(dimension_numbers),
       precision_config_(precision_config),
-      sparsity_config_(sparsity_config) {
+      sparsity_config_(sparsity_config),
+      convolution_kind_(convolution_kind) {
   if (window_util::HasBaseDilation(window)) {
     SetAndSanitizeName(StrCat(name(), "-base-dilated"));
   }
@@ -3170,23 +3172,8 @@ void HloConvolutionInstruction::ToProto(HloInstructionProto* proto) const {
   proto->set_feature_group_count(feature_group_count_);
   proto->set_batch_group_count(batch_group_count_);
   *proto->mutable_precision_config() = precision_config_;
-  ConvolutionKind kind = CONVOLUTION_KIND_UNSET;
-  switch (conv_kind_) {
-    case ConvKind::FPROP:
-      kind = CONVOLUTION_KIND_FPROP;
-      break;
-    case ConvKind::DGRAD:
-      kind = CONVOLUTION_KIND_DGRAD;
-      break;
-    case ConvKind::WGRAD:
-      kind = CONVOLUTION_KIND_WGRAD;
-      break;
-    default:
-      kind = CONVOLUTION_KIND_UNSET;
-      break;
-  }
-  if (kind != CONVOLUTION_KIND_UNSET) {
-    proto->set_conv_kind(kind);
+  if (convolution_kind_ != CONVOLUTION_KIND_UNSET) {
+    proto->set_conv_kind(convolution_kind_);
   }
   *proto->mutable_sparsity_config() = sparsity_config_;
 }
@@ -3214,6 +3201,13 @@ void HloConvolutionInstruction::PrintExtraAttributesImpl(
       AppendCat(printer, "batch_group_count=", batch_group_count_);
     });
   }
+
+  if (convolution_kind_ != CONVOLUTION_KIND_UNSET) {
+    printer.Next([this](Printer* printer) {
+      AppendCat(printer, "convolution_kind=",
+                ConvolutionKindToString(convolution_kind_));
+    });
+  }
   PrintPrecisionConfig(printer, precision_config_);
   if (sparsity_config_.has_lhs() || sparsity_config_.has_rhs()) {
     printer.Next([this](Printer* printer) {
@@ -3236,6 +3230,9 @@ bool HloConvolutionInstruction::IdenticalSlowPath(
   if (batch_group_count_ != other.batch_group_count()) {
     return false;
   }
+  if (convolution_kind_ != casted_other.convolution_kind_) {
+    return false;
+  }
   return protobuf_util::HaveSameSerialization(window(),
                                               casted_other.window()) &&
          protobuf_util::HaveSameSerialization(
@@ -3255,7 +3252,7 @@ HloConvolutionInstruction::CloneWithNewOperandsImpl(
   return std::make_unique<HloConvolutionInstruction>(
       shape, new_operands[0], new_operands[1], feature_group_count_,
       batch_group_count_, window(), convolution_dimension_numbers_,
-      precision_config_, sparsity_config_);
+      precision_config_, sparsity_config_, convolution_kind_);
 }
 
 HloReduceWindowInstruction::HloReduceWindowInstruction(

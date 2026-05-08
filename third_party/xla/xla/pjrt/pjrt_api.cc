@@ -29,9 +29,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
-#include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/tsl/platform/errors.h"
-#include "tsl/platform/platform.h"
 
 #if !defined(PLATFORM_WINDOWS)
 #include <dlfcn.h>

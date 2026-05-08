@@ -81,8 +81,8 @@ DeviceCompilationProfiler::GetCompileStats(const NameAttrList& function) const {
     return it->second;
   }
 
-  return errors::NotFound("Couldn't find compilation stats for cluster: ",
-                          function.name());
+  return absl::NotFoundError(absl::StrCat(
+      "Couldn't find compilation stats for cluster: ", function.name()));
 }
 
 void DeviceCompilationProfiler::RegisterExecution(

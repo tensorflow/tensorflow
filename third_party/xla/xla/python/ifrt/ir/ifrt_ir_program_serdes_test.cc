@@ -21,6 +21,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -29,12 +30,12 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"
 #include "stablehlo/dialect/Version.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
+#include "xla/python/ifrt/ir/support/module_parsing.h"
 #include "xla/python/ifrt/ir/version.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
-#include "xla/python/ifrt/support/module_parsing.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -319,7 +320,10 @@ module {
 
 INSTANTIATE_TEST_SUITE_P(
     SerDesVersion, IfrtIRProgramSerDesTest,
-    testing::ValuesIn(test_util::Week4OldOrLaterSerDesVersions()));
+    testing::ValuesIn(test_util::Week4OldOrLaterSerDesVersions()),
+    [](const testing::TestParamInfo<SerDesVersion>& info) {
+      return absl::StrCat(info.param.version_number().value());
+    });
 
 }  // namespace
 }  // namespace ifrt

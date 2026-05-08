@@ -60,10 +60,10 @@ StatusOr<T> GetNext(Iterator& iterator) {
   bool end_of_sequence = false;
   TF_RETURN_IF_ERROR(iterator.GetNext(&result, &end_of_sequence));
   if (end_of_sequence) {
-    return errors::OutOfRange("iterator has reached the end of sequence.");
+    return absl::OutOfRangeError("iterator has reached the end of sequence.");
   }
   if (result.size() != 1) {
-    return errors::Internal("GetNext result Tensor size should be 1.");
+    return absl::InternalError("GetNext result Tensor size should be 1.");
   }
   return result[0].unaligned_flat<T>().data()[0];
 }

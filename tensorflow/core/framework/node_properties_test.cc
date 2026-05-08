@@ -47,8 +47,8 @@ class MockOpRegistry : public OpRegistryInterface {
       return absl::OkStatus();
     } else {
       *op_reg_data = nullptr;
-      return errors::InvalidArgument("Op type named ", op_type_name,
-                                     " not found");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Op type named ", op_type_name, " not found"));
     }
   }
 

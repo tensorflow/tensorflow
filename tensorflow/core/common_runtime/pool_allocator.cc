@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 
 #include "absl/log/check.h"
@@ -104,14 +105,22 @@ ChunkPrefix* FindPrefix(void* user_ptr) {
 void* PoolAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
   if (num_bytes == 0) return nullptr;
 
+  size_t safe_num_bytes = num_bytes;
   // If alignment is larger than kPoolAlignment, increase num_bytes so that we
   // are guaranteed to be able to return an aligned ptr by advancing user_ptr
   // without overrunning the end of the chunk.
   if (alignment > kPoolAlignment) {
-    num_bytes += alignment;
+    if (alignment > std::numeric_limits<size_t>::max() - safe_num_bytes) {
+      return nullptr;
+    }
+    safe_num_bytes += alignment;
   }
-  num_bytes += sizeof(ChunkPrefix);
-  num_bytes = size_rounder_->RoundUp(num_bytes);
+  if (sizeof(ChunkPrefix) >
+      std::numeric_limits<size_t>::max() - safe_num_bytes) {
+    return nullptr;
+  }
+  safe_num_bytes += sizeof(ChunkPrefix);
+  num_bytes = size_rounder_->RoundUp(safe_num_bytes);
   PtrRecord* pr = nullptr;
   if (has_size_limit_) {
     {

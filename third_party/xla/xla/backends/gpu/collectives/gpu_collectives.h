@@ -117,6 +117,11 @@ class GpuCollectives : public Collectives {
     //
     // If blocking_communicators is false, then async_execution must be true.
     bool async_execution = false;
+
+    // Decides whether communicators will be created to minimize resource
+    // utilization (i.e SM) during runtime. This is mainly used for overlapping
+    // with compute to avoid taking up compute resources.
+    bool use_minimal_resource = false;
   };
 
   // A cancelable version of Collectives::CreateCommunicators.
@@ -147,6 +152,11 @@ class GpuCollectives : public Collectives {
   // Returns true if GPU collectives support device-initiated communication.
   virtual bool SupportsDeviceComm() const { return false; }
 
+  // Returns true iff the one-sided RMA API (PutSignal, Signal, WaitSignal) is
+  // available. This is a compile-time check; it does not guarantee that the
+  // communicator topology supports host RMA at runtime.
+  virtual bool SupportsOneSidedComm() const { return false; }
+
   // Returns minimum alignment requirement for symmetric memory.
   virtual size_t SymmetricMemoryAlignment() const { return 1; }
 
@@ -165,6 +175,18 @@ class GpuCollectives : public Collectives {
   virtual absl::StatusOr<std::unique_ptr<Communicator>>
   CreateCommunicator() = 0;
 };
+
+enum class FabricHomogeneity {
+  kUnknown = 0,       // Default: Unable to determine (e.g. legacy drivers)
+  kHomogeneous = 1,   // Confirmed: All devices share the same FabricInfo
+  kHeterogeneous = 2  // Confirmed: Devices belong to different clusters/cliques
+};
+
+// Checks whether the devices in clique_key have homogeneous NVML FabricInfo.
+// This is required as a safety check before launching one-shot kernels on
+// GB200/NVL72 racks.
+FabricHomogeneity CheckFabricHomogeneity(se::StreamExecutor* executor,
+                                         const CliqueKey& clique_key);
 
 }  // namespace xla::gpu
 

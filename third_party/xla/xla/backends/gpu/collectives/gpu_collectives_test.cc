@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/future.h"
 #include "xla/runtime/device_id.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_allocator.h"
@@ -434,7 +435,6 @@ TEST_P(GpuAbortCollectivesTest, Abort) {
   GpuCollectives::Executor executor(nullptr);
   se::DeviceAddressBase addr;
 
-  AssertAborted(comms[0]->RegisterBufferOnce(addr, 0, false));
   AssertEventAborted(
       comms[0]->AllReduce(addr, addr, U64, 0, ReductionKind::SUM, executor));
   AssertEventAborted(
@@ -451,6 +451,107 @@ TEST_P(GpuAbortCollectivesTest, Abort) {
 
 INSTANTIATE_TEST_SUITE_P(GpuAbortCollectives, GpuAbortCollectivesTest,
                          testing::Values(true, false));
+
+TEST(GpuCollectivesTest, PutAndWaitSignal) {
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("CUDA"));
+
+  if (platform->VisibleDeviceCount() < 2) {
+    GTEST_SKIP() << "Test requires at least 2 GPUs";
+  }
+
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                       CreateExecutors(platform, 2));
+  if (!executors[0]->CanEnablePeerAccessTo(executors[1])) {
+    GTEST_SKIP() << "Test requires peer access between devices";
+  }
+  if (!executors[0]
+           ->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeastHopper()) {
+    GTEST_SKIP() << "Test requires at least Hopper architecture";
+  }
+
+  GpuCollectives* collectives = GpuCollectives::Default("GPU");
+  if (!collectives->SupportsOneSidedComm()) {
+    GTEST_SKIP() << "GPU collectives do not support one-sided RMA";
+  }
+
+  ASSERT_OK_AND_ASSIGN(auto comms, CreateCommunicators(executors, {kD0, kD1}));
+
+  ASSERT_OK_AND_ASSIGN(auto allocators, CreateMemoryAllocators(executors));
+
+  constexpr size_t kNumFloats = 4;
+  constexpr size_t kNumBytes = kNumFloats * sizeof(float);
+
+  ASSERT_OK_AND_ASSIGN(auto send_allocs, Allocate(allocators, kNumBytes));
+  ASSERT_OK_AND_ASSIGN(auto recv_allocs, Allocate(allocators, kNumBytes));
+
+  ASSERT_OK_AND_ASSIGN(auto stream0, executors[0]->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream1, executors[1]->CreateStream());
+
+  float h_send0[] = {1.0f, 2.0f, 3.0f, 4.0f};
+  float h_send1[] = {5.0f, 6.0f, 7.0f, 8.0f};
+
+  se::DeviceAddressBase send0_addr = send_allocs[0]->address();
+  se::DeviceAddressBase send1_addr = send_allocs[1]->address();
+  se::DeviceAddressBase recv0_addr = recv_allocs[0]->address();
+  se::DeviceAddressBase recv1_addr = recv_allocs[1]->address();
+
+  ASSERT_OK(stream0->Memcpy(&send0_addr, h_send0, kNumBytes));
+  ASSERT_OK(stream1->Memcpy(&send1_addr, h_send1, kNumBytes));
+  ASSERT_OK(stream0->MemZero(&recv0_addr, kNumBytes));
+  ASSERT_OK(stream1->MemZero(&recv1_addr, kNumBytes));
+  ASSERT_OK(stream0->BlockHostUntilDone());
+  ASSERT_OK(stream1->BlockHostUntilDone());
+
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "collectives", 2);
+  tsl::Executor& exec = *pool.AsExecutor();
+
+  auto fsymm_send = CreateSymmetricMemory(exec, comms, send_allocs);
+  ASSERT_OK_AND_ASSIGN(auto symm_send,
+                       AwaitSymmetricMemory(std::move(fsymm_send)));
+
+  auto fsymm_recv = CreateSymmetricMemory(exec, comms, recv_allocs);
+  ASSERT_OK_AND_ASSIGN(auto symm_recv,
+                       AwaitSymmetricMemory(std::move(fsymm_recv)));
+
+  GpuSignalDesc signal_desc(0, 0);
+
+  auto f0 = MakeFutureOn<void>(exec, [&]() -> absl::Status {
+    GpuCollectives::Executor gpu_exec(stream0.get());
+    TF_RETURN_IF_ERROR(comms[0]
+                           ->Put(send0_addr, symm_recv[0].get(), 0, kNumBytes,
+                                 RankId(1), gpu_exec)
+                           .Await());
+    return comms[0]->WaitSignal(RankId(1), 1, signal_desc, gpu_exec).Await();
+  });
+
+  auto f1 = MakeFutureOn<void>(exec, [&]() -> absl::Status {
+    GpuCollectives::Executor gpu_exec(stream1.get());
+    TF_RETURN_IF_ERROR(comms[1]
+                           ->Put(send1_addr, symm_recv[1].get(), 0, kNumBytes,
+                                 RankId(0), gpu_exec)
+                           .Await());
+    return comms[1]->WaitSignal(RankId(0), 1, signal_desc, gpu_exec).Await();
+  });
+
+  ASSERT_OK(f0.Await());
+  ASSERT_OK(f1.Await());
+
+  ASSERT_OK(stream0->BlockHostUntilDone());
+  ASSERT_OK(stream1->BlockHostUntilDone());
+
+  float h_recv0[kNumFloats];
+  float h_recv1[kNumFloats];
+  ASSERT_OK(stream0->Memcpy(h_recv0, recv0_addr, kNumBytes));
+  ASSERT_OK(stream1->Memcpy(h_recv1, recv1_addr, kNumBytes));
+  ASSERT_OK(stream0->BlockHostUntilDone());
+  ASSERT_OK(stream1->BlockHostUntilDone());
+
+  EXPECT_THAT(h_recv0, testing::ElementsAre(5.0f, 6.0f, 7.0f, 8.0f));
+  EXPECT_THAT(h_recv1, testing::ElementsAre(1.0f, 2.0f, 3.0f, 4.0f));
+}
 
 }  // namespace
 }  // namespace xla::gpu

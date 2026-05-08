@@ -111,7 +111,8 @@ class Mesh {
     return device_assignment_.dim(axis_index);
   }
 
-  // Returns true if the given axes span contains all mesh axes in order.
+  // Returns true if the given axes span contains all mesh axes in order,
+  // ignoring axes of size 1.
   bool ContainsAllMeshAxesInOrder(absl::Span<const AxisRef> axes) const;
 
  private:

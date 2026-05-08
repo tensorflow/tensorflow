@@ -451,7 +451,7 @@ bool HloDataflowAnalysis::UpdateAsyncStartValueSet(
     const HloInstruction* operand = async_start->operand(i);
     ShapeUtil::ForEachSubshape(
         operand->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-          if (!subshape.IsArray()) {
+          if (!subshape.IsArray() && !subshape.IsToken()) {
             return;
           }
           const HloValueSet& operand_value_set = GetValueSet(operand, index);
@@ -477,7 +477,7 @@ bool HloDataflowAnalysis::UpdateAsyncStartValueSet(
       async_start->async_wrapped_computation()->root_instruction();
   ShapeUtil::ForEachSubshape(
       root->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-        if (!subshape.IsArray()) {
+        if (!subshape.IsArray() && !subshape.IsToken()) {
           return;
         }
         const HloValueSet& root_value_set = GetValueSet(root, index);
@@ -509,7 +509,7 @@ bool HloDataflowAnalysis::UpdateAsyncUpdateValueSet(
   ShapeUtil::ForEachSubshape(
       async_update->operand(0)->shape(),
       [&](const Shape& subshape, const ShapeIndex& index) {
-        if (!subshape.IsArray()) {
+        if (!subshape.IsArray() && !subshape.IsToken()) {
           return;
         }
         const HloValueSet& operand_value_set =
@@ -545,7 +545,8 @@ bool HloDataflowAnalysis::UpdateAsyncDoneValueSet(HloInstruction* async_done) {
   ShapeUtil::ForEachSubshape(
       async_done->operand(0)->shape(),
       [&](const Shape& subshape, const ShapeIndex& index) {
-        if (!subshape.IsArray() || index.front() != 1) {
+        if ((!subshape.IsArray() && !subshape.IsToken()) ||
+            index.front() != 1) {
           return;
         }
         const HloValueSet& operand_value_set =
@@ -808,14 +809,11 @@ bool HloDataflowAnalysis::UpdateParameterValueSet(HloInstruction* parameter) {
     } else if (opcode == HloOpcode::kAsyncStart) {
       inputs.push_back(&GetInstructionValueSet(
           callsite.instruction()->operand(parameter->parameter_number())));
-    } else if (opcode == HloOpcode::kAsyncUpdate ||
-               opcode == HloOpcode::kAsyncDone) {
-      return GetInstructionValueSet(parameter).AssignUnionOf(
-          GetInstructionValueSet(callsite.instruction()->operand(0)),
-          {0, parameter->parameter_number()});
     } else {
-      LOG(FATAL) << "CallContext::kSequential computations should only be "
-                    "called from call, while, or conditional instructions";
+      LOG(FATAL) << "CallContext::kControlFlow computations should only be "
+                    "called from call, while, conditional, or async-start "
+                    "instructions, but got: "
+                 << HloOpcodeString(opcode) << "(" << opcode << ")";
     }
   }
   if (ssa_form_ && need_phi) {
@@ -1440,9 +1438,10 @@ void HloDataflowAnalysis::OptimizePhiValues() {
       VLOG(1) << instruction_value_set.ToString();
       instruction_value_set.ForEachMutableElement(
           [&](const xla::ShapeIndex& index, HloValueSet* value_set) {
-            auto values = value_set->values();
+            const std::vector<const HloValue*>& values = value_set->values();
             bool changed = false;
             std::vector<const HloValue*> new_values;
+            new_values.reserve(values.size());
             for (const HloValue* value : values) {
               if (value->is_phi()) {
                 HloValue::Id phi_id = value->id();
@@ -1460,10 +1459,7 @@ void HloDataflowAnalysis::OptimizePhiValues() {
               new_values.push_back(value);
             }
             if (changed) {
-              value_set->Clear();
-              for (const HloValue* new_value : new_values) {
-                value_set->AddValue(new_value);
-              }
+              *value_set = HloValueSet(new_values);
             }
           });
     }

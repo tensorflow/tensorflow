@@ -1301,7 +1301,9 @@ class CollectiveReduceV3OpKernel : public CollectiveOpV3Kernel {
       col_params->Unref();
     };
     core::RefCountPtr<CollectiveGroupResource> resource;
-    OP_REQUIRES_OK_ASYNC(c, LookupResource(c, HandleFromInput(c, 1), &resource),
+    ResourceHandle handle;
+    OP_REQUIRES_OK_ASYNC(c, HandleFromInput(c, 1, &handle), done_with_cleanup);
+    OP_REQUIRES_OK_ASYNC(c, LookupResource(c, handle, &resource),
                          done_with_cleanup);
 
     Tensor group_assignment = c->input(2);
@@ -1399,7 +1401,9 @@ class CollectiveAllToAllV3OpKernel : public CollectiveOpV3Kernel {
       col_params->Unref();
     };
     core::RefCountPtr<CollectiveGroupResource> resource;
-    OP_REQUIRES_OK_ASYNC(c, LookupResource(c, HandleFromInput(c, 1), &resource),
+    ResourceHandle handle;
+    OP_REQUIRES_OK_ASYNC(c, HandleFromInput(c, 1, &handle), done_with_cleanup);
+    OP_REQUIRES_OK_ASYNC(c, LookupResource(c, handle, &resource),
                          done_with_cleanup);
 
     Tensor group_assignment = c->input(2);

@@ -157,6 +157,9 @@ class GPUProfileStatisticsAggregator : public ProfileStatisticsAggregator {
                                      const HloInstruction& to) override;
 };
 
+// Checks if the async instruction is a custom collective call.
+bool IsCustomCollectiveOp(const HloInstruction* instr);
+
 }  // namespace gpu
 }  // namespace xla
 

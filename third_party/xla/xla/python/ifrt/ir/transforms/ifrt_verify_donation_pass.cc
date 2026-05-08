@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Support/WalkResult.h"
 #include "xla/python/ifrt/ir/constants.h"
+#include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"  // IWYU pragma: keep
 
@@ -148,8 +149,7 @@ class IfrtVerifyDonationPass
 void IfrtVerifyDonationPass::runOnOperation() {
   mlir::func::FuncOp func_op = getOperation();
   // We only need to run this pass on IFRT functions.
-  if (!func_op->hasAttr(kIfrtFunctionAttrName) &&
-      !func_op->hasAttr(kIfrtReshardFunctionAttrName)) {
+  if (!IsIfrtFunction(func_op)) {
     return;
   }
   llvm::DenseMap<mlir::Value, mlir::Operation*> donated_value_to_op;

@@ -65,4 +65,5 @@ message CompilationResultProto {
   repeated SymbolProto compiled_symbols = 7;
   repeated ObjFileProto object_files = 8;
   TargetMachineOptionsProto target_machine_options = 9;
+  string data_layout = 10;
 }

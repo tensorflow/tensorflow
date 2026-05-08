@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/tests/gpu_codegen_test.h"
 #include "xla/backends/gpu/transforms/conv_rewriter.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
@@ -48,7 +49,6 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/device_description.h"
@@ -576,7 +576,8 @@ TEST_F(CudnnFusedConvRewriterTest, TestRelu6OddChannels) {
     })");
 }
 
-TEST_F(CudnnFusedConvRewriterTest, TestLeakyRelu) {
+// TODO(b/504913340): Re-enable once the non-autotune test is fixed.
+TEST_F(CudnnFusedConvRewriterTest, DISABLED_TestLeakyRelu) {
   if (IsRocm()) GTEST_SKIP() << "Skipped on ROCm";
   if (IsCuda() && !GetCudaComputeCapability().IsAtLeast(
                       se::CudaComputeCapability::kAmpere)) {

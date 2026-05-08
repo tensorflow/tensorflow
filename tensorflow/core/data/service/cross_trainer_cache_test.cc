@@ -94,7 +94,7 @@ class ElementOrErrorDataset : public CachableSequence<T> {
 
   StatusOr<T> GetNext() override {
     if (next_ >= elements_.size()) {
-      return errors::OutOfRange("Out of range.");
+      return absl::OutOfRangeError("Out of range.");
     }
 
     return elements_[next_++];
@@ -411,7 +411,7 @@ TEST(CrossTrainerCacheTest, Cancel) {
   }
 
   Env::Default()->SleepForMicroseconds(1000000);
-  cache.Cancel(errors::Cancelled("Cancelled"));
+  cache.Cancel(absl::CancelledError("Cancelled"));
   reader_threads.clear();
 
   mutex_lock l(mu);
@@ -425,11 +425,11 @@ TEST(CrossTrainerCacheTest, Errors) {
   auto elements = std::make_unique<ElementOrErrorDataset<std::string>>(
       std::vector<absl::StatusOr<std::string>>{
           std::string("First element"),
-          errors::Cancelled("Cancelled"),
+          absl::CancelledError("Cancelled"),
           std::string("Second element"),
-          errors::InvalidArgument("InvalidArgument"),
+          absl::InvalidArgumentError("InvalidArgument"),
           std::string("Third element"),
-          errors::Unavailable("Unavailable"),
+          absl::UnavailableError("Unavailable"),
       });
   CrossTrainerCache<std::string> cache(
       /*max_cache_size_bytes=*/1000, std::move(elements));

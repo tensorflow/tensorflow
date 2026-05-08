@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -715,6 +716,63 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
       }
     }
     return DefaultAction(hlo);
+  }
+
+  absl::Status HandleConvolution(HloInstruction* hlo) override {
+    std::vector<HloInstruction*> normalized_operands;
+    for (HloInstruction* operand : hlo->mutable_operands()) {
+      TF_ASSIGN_OR_RETURN(normalized_operands.emplace_back(),
+                          GetNormalizedInput(operand));
+    }
+
+    Shape normalized_shape = Normalize(hlo->shape());
+    if (absl::c_equal(normalized_operands, hlo->operands()) &&
+        normalized_shape == hlo->shape()) {
+      return absl::OkStatus();
+    }
+
+    const ConvolutionDimensionNumbers& dnums =
+        hlo->convolution_dimension_numbers();
+    ConvolutionDimensionNumbers new_dnums = dnums;
+
+    auto update_dnums =
+        [&](const Shape& shape, int64_t batch_dim, int64_t feature_dim,
+            tsl::protobuf::RepeatedField<int64_t>* spatial_dims) {
+          auto p = InversePermutation(ToTransposeDimensions(shape.layout()));
+          for (int64_t& dim : *spatial_dims) {
+            dim = p[dim];
+          }
+          return std::make_pair(p[batch_dim], p[feature_dim]);
+        };
+
+    auto [input_batch, input_feature] =
+        update_dnums(hlo->operand(0)->shape(), dnums.input_batch_dimension(),
+                     dnums.input_feature_dimension(),
+                     new_dnums.mutable_input_spatial_dimensions());
+    new_dnums.set_input_batch_dimension(input_batch);
+    new_dnums.set_input_feature_dimension(input_feature);
+
+    auto [kernel_input_feature, kernel_output_feature] = update_dnums(
+        hlo->operand(1)->shape(), dnums.kernel_input_feature_dimension(),
+        dnums.kernel_output_feature_dimension(),
+        new_dnums.mutable_kernel_spatial_dimensions());
+    new_dnums.set_kernel_input_feature_dimension(kernel_input_feature);
+    new_dnums.set_kernel_output_feature_dimension(kernel_output_feature);
+
+    auto [output_batch, output_feature] =
+        update_dnums(hlo->shape(), dnums.output_batch_dimension(),
+                     dnums.output_feature_dimension(),
+                     new_dnums.mutable_output_spatial_dimensions());
+    new_dnums.set_output_batch_dimension(output_batch);
+    new_dnums.set_output_feature_dimension(output_feature);
+
+    HloInstruction* normalized_hlo = hlo->parent()->AddInstruction(
+        hlo->CloneWithNewOperands(normalized_shape, normalized_operands));
+    normalized_hlo->set_convolution_dimension_numbers(new_dnums);
+
+    TF_RETURN_IF_ERROR(
+        ReplaceInstruction(hlo, MaybeBitcast(normalized_hlo, hlo->shape())));
+    return absl::OkStatus();
   }
 
   // Pushes down bitcast across the ternary select operation: same logic as

@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -38,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/transforms/propagate_call_metadata.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
@@ -899,6 +901,39 @@ ENTRY main {
   EXPECT_EQ(root->to_apply()->root_instruction()->metadata().op_name(), "");
 }
 
+TEST_F(CallInlinerTest, PropagateCallMetadataThenInlineDoesNotDuplicate) {
+  const char* hlo = R"(
+callee {
+  input = f32[128,32] parameter(0)
+  ROOT neg = f32[128,32] negate(input), metadata={op_name="neg"}
+}
+
+ENTRY main {
+  input = f32[128,32] parameter(0)
+  ROOT result = f32[128,32] call(input), to_apply=callee, metadata={op_name="x"}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  // First run the standalone pass — this propagates "x" into callee.
+  TF_ASSERT_OK_AND_ASSIGN(bool propagated,
+                          PropagateCallMetadata().Run(m.get()));
+  EXPECT_TRUE(propagated);
+
+  // Callee instruction should already have "x/neg".
+  HloComputation* callee = m->GetComputationWithName("callee");
+  EXPECT_EQ(callee->root_instruction()->metadata().op_name(), "x/neg");
+
+  // Now inline — the inliner also propagates metadata by default.
+  // Because "x/neg" already starts with "x", UpdateOpName should be a no-op.
+  ASSERT_THAT(CallInliner().Run(m.get()), absl_testing::IsOkAndHolds(true));
+
+  auto root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Negate());
+  EXPECT_EQ(root->metadata().op_name(), "x/neg");
+}
+
 TEST_F(CallInlinerTest, GetInlinedModule) {
   const char* hlo = R"(
 
@@ -1104,6 +1139,101 @@ TEST_F(CallInlinerTest, InlinedStackFrameRedundantPrefixSkipsConcatenation) {
   }
   ASSERT_NE(inlined_neg, nullptr);
   EXPECT_EQ(inlined_neg->metadata().stack_frame_id(), id2.value);
+}
+TEST_F(CallInlinerTest, ReproduceDanglingPointerWithSchedule) {
+  auto module = std::make_unique<HloModule>(TestName(), HloModuleConfig());
+
+  // Callee ignores parameter
+  HloComputation::Builder callee_builder("callee");
+  auto* p = callee_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p"));
+  auto* const_val = callee_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+  HloComputation* callee =
+      module->AddEmbeddedComputation(callee_builder.Build(const_val));
+
+  // Caller
+  HloComputation::Builder caller_builder("caller");
+  auto* p0 = caller_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0"));
+
+  auto* op = caller_builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {}), HloOpcode::kNegate, p0));
+
+  auto* call = caller_builder.AddInstruction(
+      HloInstruction::CreateCall(ShapeUtil::MakeShape(F32, {}), {op}, callee));
+
+  HloComputation* caller =
+      module->AddEntryComputation(caller_builder.Build(call));
+
+  // Set a VALID schedule first.
+  HloSchedule schedule(module.get());
+
+  std::vector<HloInstruction*> caller_seq_valid;
+  caller_seq_valid.push_back(p0);
+  caller_seq_valid.push_back(op);
+  caller_seq_valid.push_back(call);
+  schedule.set_sequence(caller, HloInstructionSequence(caller_seq_valid));
+
+  std::vector<HloInstruction*> callee_seq;
+  callee_seq.push_back(p);
+  callee_seq.push_back(const_val);
+  schedule.set_sequence(callee, HloInstructionSequence(callee_seq));
+
+  TF_ASSERT_OK(module->set_schedule(std::move(schedule)));
+
+  // Now modify the schedule to be INVALID (call before op).
+  std::vector<HloInstruction*> caller_seq_invalid;
+  caller_seq_invalid.push_back(p0);
+  caller_seq_invalid.push_back(call);
+  caller_seq_invalid.push_back(op);
+
+  module->schedule().set_sequence(caller,
+                                  HloInstructionSequence(caller_seq_invalid));
+
+  CallInliner call_inliner;
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  EXPECT_TRUE(mutated);
+}
+TEST_F(CallInlinerTest, InlinedOperandsAreCleanedUp) {
+  auto module = std::make_unique<HloModule>(TestName(), HloModuleConfig());
+
+  // Callee ignores parameter
+  HloComputation::Builder callee_builder("callee");
+  callee_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p"));
+  auto* const_val = callee_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+  HloComputation* callee =
+      module->AddEmbeddedComputation(callee_builder.Build(const_val));
+
+  // Caller
+  HloComputation::Builder caller_builder("caller");
+  auto* p0 = caller_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0"));
+
+  auto* op = caller_builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {}), HloOpcode::kNegate, p0));
+
+  auto* call = caller_builder.AddInstruction(
+      HloInstruction::CreateCall(ShapeUtil::MakeShape(F32, {}), {op}, callee));
+
+  HloComputation* caller =
+      module->AddEntryComputation(caller_builder.Build(call));
+
+  CallInliner call_inliner;
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  ASSERT_TRUE(mutated);
+
+  // Verify that `op` (Negate) is gone.
+  bool found_negate = false;
+  for (auto* inst : caller->instructions()) {
+    if (inst->opcode() == HloOpcode::kNegate) {
+      found_negate = true;
+      break;
+    }
+  }
+  EXPECT_FALSE(found_negate);
 }
 
 }  // namespace

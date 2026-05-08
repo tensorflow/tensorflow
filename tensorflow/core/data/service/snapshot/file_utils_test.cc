@@ -49,7 +49,7 @@ using tsl::testing::StatusIs;
 absl::StatusOr<std::string> CreateTestDirectory() {
   std::string directory;
   if (!tsl::Env::Default()->LocalTempFilename(&directory)) {
-    return tsl::errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Failed to create local test directory.");
   }
   TF_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(directory));

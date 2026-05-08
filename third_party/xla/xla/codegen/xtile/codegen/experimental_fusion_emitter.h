@@ -45,7 +45,7 @@ namespace xla::xtile {
 // gpu_cc: When set, used check for supported data types (e.g. FNUZ on ROCm),
 // Omit otherwise.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
-    absl::string_view fn_name, const HloFusionInstruction* fusion,
+    absl::string_view fn_name, const HloFusionInstruction& fusion,
     const ::xla::gpu::experimental::TiledHloComputation& tiled_computation,
     mlir::MLIRContext& mlir_context,
     absl::Span<mlir::Type> opaque_args_types = {},

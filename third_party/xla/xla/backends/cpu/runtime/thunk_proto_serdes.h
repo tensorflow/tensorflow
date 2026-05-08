@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 
 namespace xla::cpu {
@@ -67,7 +68,8 @@ class ThunkSerDesRegistry {
  public:
   using ToProtoFn = std::function<absl::Status(const Thunk&, ThunkProto&)>;
   using FromProtoFn = std::function<absl::StatusOr<std::unique_ptr<Thunk>>(
-      const ThunkProto&, const std::vector<BufferAllocation>&)>;
+      const ThunkProto&, const std::vector<BufferAllocation>&, const HloModule*,
+      const std::vector<std::shared_ptr<Resource>>*)>;
 
   static ThunkSerDesRegistry& Get();
 

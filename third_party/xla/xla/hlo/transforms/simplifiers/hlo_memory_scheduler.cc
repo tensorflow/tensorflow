@@ -142,7 +142,7 @@ class ListScheduler {
 
     // Create map containing the number of unscheduled uses (hlo instructions)
     // of each logical buffer.
-    unscheduled_use_count_.reserve(points_to_analysis.num_logical_buffers());
+    unscheduled_use_count_.reserve(computation->instruction_count());
     for (auto* instruction : computation->instructions()) {
       for (auto* buffer :
            points_to_analysis.GetBuffersDefinedByInstruction(instruction)) {

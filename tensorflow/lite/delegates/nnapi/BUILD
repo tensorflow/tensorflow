@@ -223,7 +223,7 @@ cc_test(
     visibility = ["//visibility:private"],
     deps = [
         ":nnapi_delegate",
-        "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:deprecated_backends",

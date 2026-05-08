@@ -166,6 +166,15 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
 }
 
 absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
+    PjRtCompatibleClient* client, DType dtype, Shape shape,
+    ShardingRef sharding, PjRtBuffers pjrt_buffers,
+    std::shared_ptr<const xla::ifrt::PjRtLayout> layout) {
+  return tsl::MakeRef<PjRtArray>(client, dtype, std::move(shape),
+                                 std::move(sharding), std::move(pjrt_buffers),
+                                 std::move(layout));
+}
+
+absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, DType dtype, DynamicShape dynamic_shape,
     ShardingRef sharding, PjRtBuffers pjrt_buffers,
     std::shared_ptr<const xla::PjRtLayout> layout) {
@@ -313,6 +322,17 @@ PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype, Shape shape,
                                 : nullptr),
       user_context_(UserContextScope::current()) {}
 
+PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype, Shape shape,
+                     ShardingRef sharding, PjRtBuffers pjrt_buffers,
+                     std::shared_ptr<const xla::ifrt::PjRtLayout> layout)
+    : client_(client),
+      dtype_(dtype),
+      shape_(std::move(shape)),
+      sharding_(std::move(sharding)),
+      pjrt_buffers_(std::move(pjrt_buffers)),
+      layout_(std::move(layout)),
+      user_context_(UserContextScope::current()) {}
+
 PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype,
                      DynamicShape dynamic_shape, ShardingRef sharding,
                      PjRtBuffers pjrt_buffers,
@@ -325,6 +345,14 @@ PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype,
       layout_(layout != nullptr ? PjRtLayout::Create(std::move(layout))
                                 : nullptr),
       user_context_(UserContextScope::current()) {}
+
+absl::StatusOr<std::optional<int64_t>> PjRtArray::ByteSize() const {
+  const auto* static_shape = std::get_if<Shape>(&shape_);
+  if (static_shape == nullptr) {
+    return std::nullopt;
+  }
+  return xla::ifrt::Layout::ByteSize(dtype_, *static_shape, sharding_, layout_);
+}
 
 absl::StatusOr<std::vector<ArrayRef>>
 PjRtArray::DisassembleIntoSingleDeviceArrays(
@@ -388,6 +416,10 @@ tsl::Future<> PjRtArray::CopyToHostBuffer(
   }
 
   PjRtBuffer* pjrt_buffer = pjrt_buffers_.front().get();
+  if (*dtype == xla::TOKEN) {
+    return pjrt_buffer->GetReadyFuture();
+  }
+
   absl::Span<const int64_t> dims;
   absl::StatusOr<std::vector<int64_t>> logical_dims;
   if (!pjrt_buffer->has_dynamic_dimensions()) {

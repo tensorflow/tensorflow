@@ -361,9 +361,9 @@ class SingleOpModel {
 
   // Set a delegate that is applied right after graph is prepared. This is
   // useful for testing other runtimes like NN API or GPU.
-  // Note: the caller still owns the memory of the passed-in `delegate`.
-  void SetDelegate(TfLiteDelegate* delegate) {
-    delegate_ = delegate;
+  // Takes ownership of the provided delegate.
+  void SetDelegate(Interpreter::TfLiteDelegatePtr&& delegate) {
+    delegate_ = std::move(delegate);
     // As this is a manually-set TF Lite delegate, we assume the intention of
     // the test is to test against the particular delegate, hence bypassing
     // applying TfLite default delegates (i.e. the XNNPACK delegate).
@@ -764,6 +764,38 @@ class SingleOpModel {
       scales_inv[i] = 1.0f / scale;
     }
 
+    if (t->type == kTfLiteInt16) {
+      constexpr int kPerChannelMaxDim = 4;
+      int indices[kPerChannelMaxDim];
+      RuntimeShape unextended_tensor_dims(shape.size(), shape.data());
+      RuntimeShape tensor_dims = RuntimeShape::ExtendedShape(
+          kPerChannelMaxDim, unextended_tensor_dims);
+      int adjusted_channel_index = channel_index + kPerChannelMaxDim -
+                                   unextended_tensor_dims.DimensionsCount();
+      std::vector<int16_t> quantized_output(num_inputs);
+      for (indices[0] = 0; indices[0] < tensor_dims.Dims(0); indices[0]++) {
+        for (indices[1] = 0; indices[1] < tensor_dims.Dims(1); indices[1]++) {
+          for (indices[2] = 0; indices[2] < tensor_dims.Dims(2); indices[2]++) {
+            for (indices[3] = 0; indices[3] < tensor_dims.Dims(3);
+                 indices[3]++) {
+              const int channel_idx = indices[adjusted_channel_index];
+              const int tensor_index = Offset(tensor_dims, indices);
+              const int32_t quantized_value = static_cast<int32_t>(std::round(
+                  input_data[tensor_index] * scales_inv[channel_idx]));
+              quantized_output[tensor_index] =
+                  static_cast<int16_t>(std::min<int32_t>(
+                      std::numeric_limits<int16_t>::max(),
+                      std::max<int32_t>(std::numeric_limits<int16_t>::min(),
+                                        quantized_value)));
+            }
+          }
+        }
+      }
+      PopulateTensor(index, /*offset=*/0, quantized_output.data(),
+                     quantized_output.data() + quantized_output.size());
+      return;
+    }
+
     optimize::utils::SymmetricPerChannelQuantizeValues(
         input_data.data(), scales_inv, shape, channel_index, &quantized_output,
         t->type);
@@ -992,6 +1024,9 @@ class SingleOpModel {
   void SetBypassDefaultDelegates() { bypass_default_delegates_ = true; }
 
   flatbuffers::FlatBufferBuilder builder_;
+  tflite::Interpreter::TfLiteDelegatePtr delegate_{nullptr,
+                                                   [](TfLiteDelegate*) {}};
+  TfLiteDelegate* last_applied_delegate_ = nullptr;
   std::unique_ptr<tflite::Interpreter> interpreter_;
   std::unique_ptr<OpResolver> resolver_;
 
@@ -1413,7 +1448,6 @@ class SingleOpModel {
   std::vector<int32_t> outputs_;
   std::vector<flatbuffers::Offset<Tensor>> tensors_;
   std::vector<flatbuffers::Offset<Buffer>> buffers_;
-  TfLiteDelegate* delegate_ = nullptr;  // not own the memory.
   std::optional<TfLiteStatus> delegate_application_status_ = std::nullopt;
   std::vector<std::vector<int>> input_shapes_;
   int num_applied_delegates_ = 0;

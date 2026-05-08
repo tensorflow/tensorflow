@@ -51,11 +51,11 @@ class StringToNumberOp : public OpKernel {
     auto output_flat = output_tensor->flat<OutputType>();
 
     for (int i = 0; i < input_flat.size(); ++i) {
-      OP_REQUIRES(
-          context,
-          strings::SafeStringToNumeric<OutputType>(input_flat(i),
-                                                   &output_flat(i)),
-          errors::InvalidArgument(kErrorMessage, input_flat(i).c_str()));
+      OP_REQUIRES(context,
+                  strings::SafeStringToNumeric<OutputType>(input_flat(i),
+                                                           &output_flat(i)),
+                  absl::InvalidArgumentError(
+                      absl::StrCat(kErrorMessage, input_flat(i).c_str())));
     }
   }
 };

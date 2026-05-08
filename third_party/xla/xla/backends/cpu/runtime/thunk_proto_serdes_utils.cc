@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/thunk_proto_serdes_utils.h"
 
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -22,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
+#include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/statusor.h"
@@ -61,6 +63,33 @@ absl::StatusOr<Thunk::Info> ThunkInfoFromProto(const InfoProto& proto) {
   info.module_name = proto.module_name();
   info.module_id = proto.module_id();
   return info;
+}
+
+absl::StatusOr<std::shared_ptr<Resource>> CreateResourceFromProto(
+    const ResourceProto& proto) {
+  switch (proto.kind()) {
+    case ResourceProto::TOKEN:
+      return Resource::Create(Resource::kToken);
+    case ResourceProto::COLLECTIVE_COMMUNICATOR:
+      return Resource::Create(Resource::kCollectiveCommunicator);
+    default:
+      return absl::UnimplementedError("Resource kind not supported.");
+  }
+}
+
+absl::StatusOr<ResourceProto> ToProto(const Resource& resource) {
+  ResourceProto proto;
+  switch (resource.kind()) {
+    case Resource::kToken:
+      proto.set_kind(ResourceProto::TOKEN);
+      break;
+    case Resource::kCollectiveCommunicator:
+      proto.set_kind(ResourceProto::COLLECTIVE_COMMUNICATOR);
+      break;
+    default:
+      return absl::UnimplementedError("Resource kind not supported.");
+  }
+  return proto;
 }
 
 }  // namespace xla::cpu

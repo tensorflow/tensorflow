@@ -215,6 +215,15 @@ class InstructionFusion : public HloModulePass {
       const AliasInfo* alias_info,
       std::optional<const InPlaceFusionOptions> in_place_fusion_options);
 
+  // Returns true if `computation` is called from an `CallContext::kEmbedded`
+  // context (e.g. as the body of a kScan, kSort, kMap, kReduce, kReduceWindow,
+  // kScatter, kSelectAndScatter, kAllReduce, kReduceScatter, kAllReduceStart,
+  // kCustomCall, kFusion). Such computations are typically scalar-in /
+  // scalar-out reducers/comparators/etc. that do not materialize tensors, and
+  // the InstructionFusion / MultiOutputFusion passes should not wrap their
+  // instructions in kFusion ops.
+  static bool IsEmbeddedComputation(const HloComputation* computation);
+
  protected:
   // Returns a list of computations that are not fusion computations. These
   // computations contain instructions which are candidates for fusions.

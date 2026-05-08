@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include <cstddef>
 #include <memory>
+#include <numeric>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -292,12 +294,14 @@ class SparseTensorSliceDatasetOp : public DatasetOpKernel {
       previous_batch_index = next_batch_index;
     }
     absl::InlinedVector<int64_t, 8UL> std_order(dense_shape->NumElements(), 0);
+    std::iota(std_order.begin(), std_order.end(), 0);
     TensorShape shape;
     OP_REQUIRES_OK(ctx, TensorShape::BuildTensorShape(
                             dense_shape->vec<int64_t>(), &shape));
     sparse::SparseTensor tensor;
     OP_REQUIRES_OK(ctx, sparse::SparseTensor::Create(*indices, *values, shape,
                                                      std_order, &tensor));
+    OP_REQUIRES_OK(ctx, tensor.IndicesValid());
     *output = new Dataset<T>(ctx, std::move(tensor));
   }
 

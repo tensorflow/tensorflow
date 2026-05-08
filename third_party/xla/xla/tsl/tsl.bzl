@@ -43,7 +43,7 @@ load(
     _transitive_parameters_library = "transitive_parameters_library",
 )
 load(
-    "@xla//third_party/py/rules_pywrap:pywrap.default.bzl",
+    "@rules_ml_toolchain//py/rules_pywrap:pywrap.default.bzl",
     "use_pywrap_rules",
 )
 load(

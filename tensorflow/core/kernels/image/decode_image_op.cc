@@ -711,11 +711,11 @@ class DecodeImageV2Op : public OpKernel {
                 abs_height, requested_channels, img_channels, top_down);
     } else {
       std::unique_ptr<uint8_t[]> buffer(
-          new uint8_t[height * width * requested_channels]);
+          new uint8_t[abs_height * width * requested_channels]);
       DecodeBMP(bmp_pixels, row_size, buffer.get(), width, abs_height,
                 requested_channels, img_channels, top_down);
-      TTypes<uint8_t, 3>::UnalignedConstTensor buf(buffer.get(), height, width,
-                                                   requested_channels);
+      TTypes<uint8_t, 3>::UnalignedConstTensor buf(buffer.get(), abs_height,
+                                                   width, requested_channels);
       // Convert the raw uint8 buffer to desired dtype.
       // Use eigen threadpooling to speed up the copy operation.
       const auto& device = context->eigen_device<Eigen::ThreadPoolDevice>();

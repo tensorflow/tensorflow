@@ -65,14 +65,14 @@ void OpRegistry::Register(const OpRegistrationDataFactory& op_data_factory) {
 namespace {
 // Helper function that returns Status message for failed LookUp.
 absl::Status OpNotFound(const std::string& op_type_name) {
-  absl::Status status = errors::NotFound(
+  absl::Status status = absl::NotFoundError(absl::StrCat(
       "Op type not registered '", op_type_name, "' in binary running on ",
       port::Hostname(), ". ",
       "Make sure the Op and Kernel are registered in the binary running in "
       "this process. Note that if you are loading a saved graph which used ops "
       "from tf.contrib (e.g. `tf.contrib.resampler`), accessing should be done "
       "before importing the graph, as contrib ops are lazily registered when "
-      "the module is first accessed.");
+      "the module is first accessed."));
   VLOG(1) << status.ToString();
   return status;
 }

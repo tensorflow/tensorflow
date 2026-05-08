@@ -166,130 +166,88 @@ TEST(MaybeBatchDownTest, BatchDownDoesNotSplitTasks) {
   EXPECT_EQ(batch.size(), 3);
 }
 
-TEST(MaybeBatchDownTest, BatchDownDoesNothingWhenTheBatchSizeIsAlreadyAllowed) {
-  Batch<FakeTask> batch;
-  batch.AddTask(std::make_unique<FakeTask>(1));
-  batch.AddTask(std::make_unique<FakeTask>(1));
-  batch.AddTask(std::make_unique<FakeTask>(1));
-  batch.AddTask(std::make_unique<FakeTask>(1));
-  batch.Close();
-
-  std::vector<std::unique_ptr<FakeTask>> out_trimmed_tasks;
-
-  MaybeBatchDown(
-      /* batch= */ batch, /* allowed_batch_sizes= */ {1, 2, 4, 8},
-      /* disable_padding= */ false,
-      /* batch_padding_policy= */ kBatchDownPolicy,
-      /* model_batch_stats= */ nullptr,
-      /* out_trimmed_tasks= */ out_trimmed_tasks);
-
-  // The batch should stay unchanged because it's already of an allowed size.
-  EXPECT_EQ(batch.size(), 4);
+TEST(ApplyBatchPaddingPolicyTest, ZeroCandidateSize) {
+  EXPECT_EQ(
+      ApplyBatchPaddingPolicy(0, {2, 4}, false, kBatchDownPolicy, nullptr), 0);
 }
 
-TEST(MaybeBatchDownTest, BatchDownDoesNothingWhenNoSmallerAllowedSize) {
-  Batch<FakeTask> batch;
-  batch.AddTask(std::make_unique<FakeTask>(1));
-  batch.AddTask(std::make_unique<FakeTask>(1));
-  batch.AddTask(std::make_unique<FakeTask>(1));
-  batch.Close();
-
-  std::vector<std::unique_ptr<FakeTask>> out_trimmed_tasks;
-
-  MaybeBatchDown(
-      /* batch= */ batch, /* allowed_batch_sizes= */ {4, 8},
-      /* disable_padding= */ false,
-      /* batch_padding_policy= */ kBatchDownPolicy,
-      /* model_batch_stats= */ nullptr,
-      /* out_trimmed_tasks= */ out_trimmed_tasks);
-
-  // Can't batch down because there is no smaller allowed size.
-  EXPECT_EQ(batch.size(), 3);
+TEST(ApplyBatchPaddingPolicyTest, PadUp) {
+  EXPECT_EQ(ApplyBatchPaddingPolicy(3, {2, 4}, false, kPadUpPolicy, nullptr),
+            3);
 }
 
-TEST(MaybeBatchDownTest, MinimizeTpuCostPerRequestPicksBatchDown) {
-  Batch<FakeTask> batch;
-  batch.AddTask(std::make_unique<FakeTask>(1));
-  batch.AddTask(std::make_unique<FakeTask>(1));
-  batch.AddTask(std::make_unique<FakeTask>(1));
-  batch.Close();
+TEST(ApplyBatchPaddingPolicyTest, BatchDown) {
+  EXPECT_EQ(
+      ApplyBatchPaddingPolicy(3, {2, 4}, false, kBatchDownPolicy, nullptr), 2);
+}
 
+TEST(ApplyBatchPaddingPolicyTest,
+     BatchDownDoesNothingWhenTheBatchSizeIsAlreadyAllowed) {
+  EXPECT_EQ(
+      ApplyBatchPaddingPolicy(2, {2, 4}, false, kBatchDownPolicy, nullptr), 2);
+}
+
+TEST(ApplyBatchPaddingPolicyTest,
+     BatchDownDoesNothingWhenNoSmallerAllowedSize) {
+  EXPECT_EQ(
+      ApplyBatchPaddingPolicy(1, {2, 4}, false, kBatchDownPolicy, nullptr), 1);
+}
+
+TEST(ApplyBatchPaddingPolicyTest,
+     BatchDownDoesNothingWhenCandidateExceedsAllAllowedSizes) {
+  // When candidate_size > max(allowed_batch_sizes), pad_up_size falls back to
+  // candidate_size and the early-return guard fires.
+  // This should not happen in practice since the candidate size is capped to
+  // the max execution batch size, which is equal to the max of the allowed
+  // batch sizes.
+  EXPECT_EQ(
+      ApplyBatchPaddingPolicy(10, {2, 4, 8}, false, kBatchDownPolicy, nullptr),
+      10);
+}
+
+TEST(ApplyBatchPaddingPolicyTest, MinimizeTpuCostPerRequestPicksBatchDown) {
   ModelBatchStats model_batch_stats;
   model_batch_stats.batch_size(2).tpu_cost().Register(absl::Seconds(2));
   model_batch_stats.batch_size(4).tpu_cost().Register(absl::Seconds(3.1));
 
-  std::vector<std::unique_ptr<FakeTask>> out_trimmed_tasks;
-  MaybeBatchDown(
-      /* batch= */ batch, /* allowed_batch_sizes= */ {2, 4},
-      /* disable_padding= */ false,
-      /* batch_padding_policy= */ kMinimizeTpuCostPerRequestPolicy,
-      /* model_batch_stats= */ &model_batch_stats,
-      /* out_trimmed_tasks= */ out_trimmed_tasks);
-
-  EXPECT_EQ(batch.size(), 2);
+  EXPECT_EQ(ApplyBatchPaddingPolicy(3, {2, 4}, false,
+                                    kMinimizeTpuCostPerRequestPolicy,
+                                    &model_batch_stats),
+            2);
 }
 
-TEST(MaybeBatchDownTest, MinimizeTpuCostPerRequestPicksPadUp) {
-  Batch<FakeTask> batch;
-  batch.AddTask(std::make_unique<FakeTask>(1));
-  batch.AddTask(std::make_unique<FakeTask>(1));
-  batch.AddTask(std::make_unique<FakeTask>(1));
-  batch.Close();
-
+TEST(ApplyBatchPaddingPolicyTest, MinimizeTpuCostPerRequestPicksPadUp) {
   ModelBatchStats model_batch_stats;
   model_batch_stats.batch_size(2).tpu_cost().Register(absl::Seconds(2));
   model_batch_stats.batch_size(4).tpu_cost().Register(absl::Seconds(2.9));
 
-  std::vector<std::unique_ptr<FakeTask>> out_trimmed_tasks;
-  MaybeBatchDown(
-      /* batch= */ batch, /* allowed_batch_sizes= */ {2, 4},
-      /* disable_padding= */ false,
-      /* batch_padding_policy= */ kMinimizeTpuCostPerRequestPolicy,
-      /* model_batch_stats= */ &model_batch_stats,
-      /* out_trimmed_tasks= */ out_trimmed_tasks);
-
-  EXPECT_EQ(batch.size(), 3);
+  EXPECT_EQ(ApplyBatchPaddingPolicy(3, {2, 4}, false,
+                                    kMinimizeTpuCostPerRequestPolicy,
+                                    &model_batch_stats),
+            3);
 }
 
-TEST(MaybeBatchDownTest, MinimizeTpuCostPerRequestIsOkWithMissingCosts) {
-  Batch<FakeTask> batch;
-  batch.AddTask(std::make_unique<FakeTask>(1));
-  batch.AddTask(std::make_unique<FakeTask>(1));
-  batch.AddTask(std::make_unique<FakeTask>(1));
-  batch.Close();
-
+TEST(ApplyBatchPaddingPolicyTest,
+     MinimizeTpuCostPerRequestMissingCostsReturnsCandidateSize) {
   ModelBatchStats model_batch_stats;
   model_batch_stats.batch_size(2).tpu_cost().Register(absl::Seconds(2));
-  // Not adding costs for batch 4.
 
-  std::vector<std::unique_ptr<FakeTask>> out_trimmed_tasks;
-  MaybeBatchDown(
-      /* batch= */ batch, /* allowed_batch_sizes= */ {2, 4},
-      /* disable_padding= */ false,
-      /* batch_padding_policy= */ kMinimizeTpuCostPerRequestPolicy,
-      /* model_batch_stats= */ &model_batch_stats,
-      /* out_trimmed_tasks= */ out_trimmed_tasks);
-
-  // No expectations as we do not expect a particular behavior. We just care
-  // that we don't crash.
+  EXPECT_EQ(ApplyBatchPaddingPolicy(3, {2, 4}, false,
+                                    kMinimizeTpuCostPerRequestPolicy,
+                                    &model_batch_stats),
+            3);
 }
 
-TEST(MaybeBatchDownTest, MinimizeTpuCostPerRequestDoesPadUpWhenNoModelStats) {
-  Batch<FakeTask> batch;
-  batch.AddTask(std::make_unique<FakeTask>(1));
-  batch.AddTask(std::make_unique<FakeTask>(1));
-  batch.AddTask(std::make_unique<FakeTask>(1));
-  batch.Close();
+TEST(ApplyBatchPaddingPolicyTest,
+     MinimizeTpuCostPerRequestNoModelStatsReturnsCandidateSize) {
+  EXPECT_EQ(ApplyBatchPaddingPolicy(3, {2, 4}, false,
+                                    kMinimizeTpuCostPerRequestPolicy, nullptr),
+            3);
+}
 
-  std::vector<std::unique_ptr<FakeTask>> out_trimmed_tasks;
-  MaybeBatchDown(
-      /* batch= */ batch, /* allowed_batch_sizes= */ {2, 4},
-      /* disable_padding= */ false,
-      /* batch_padding_policy= */ kMinimizeTpuCostPerRequestPolicy,
-      /* model_batch_stats= */ nullptr,
-      /* out_trimmed_tasks= */ out_trimmed_tasks);
-
-  EXPECT_EQ(batch.size(), 3);
+TEST(ApplyBatchPaddingPolicyTest, UnsupportedPolicy) {
+  EXPECT_EQ(ApplyBatchPaddingPolicy(3, {2, 4}, false, "UNSUPPORTED", nullptr),
+            3);
 }
 
 }  // namespace

@@ -19,6 +19,7 @@ limitations under the License.
 #include <type_traits>
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/map_stablehlo_to_hlo_op.h"
 #include "mhlo/transforms/rewriters.h"
@@ -251,6 +252,29 @@ Attribute convertAttr(Attribute hloAttr) {
   // Handle MHLO attributes.
   // The logic that handles attributes from other dialects (e.g. builtin
   // attributes) lives below.
+  if (auto rgv3 = mlir::dyn_cast<mhlo::ReplicaGroupMeshAxesAttr>(hloAttr)) {
+    SmallVector<Attribute> stablehloAxes;
+    for (Attribute axisAttr : rgv3.getAxes().getValue()) {
+      stablehloAxes.push_back(convertAttr(axisAttr));
+    }
+    return stablehlo::ReplicaGroupMeshAxesAttr::get(
+        rgv3.getContext(), rgv3.getMesh(),
+        ArrayAttr::get(rgv3.getContext(), stablehloAxes));
+  }
+  if (auto attr = mlir::dyn_cast<mhlo::AxisRefAttr>(hloAttr)) {
+    stablehlo::SubAxisInfoAttr stablehloSubAxis;
+    if (auto sub = attr.getSubAxisInfo()) {
+      stablehloSubAxis =
+          llvm::cast<stablehlo::SubAxisInfoAttr>(convertAttr(sub));
+    }
+    return stablehlo::AxisRefAttr::get(attr.getContext(), attr.getName(),
+                                       stablehloSubAxis);
+  }
+  if (auto attr = mlir::dyn_cast<mhlo::SubAxisInfoAttr>(hloAttr)) {
+    return stablehlo::SubAxisInfoAttr::get(attr.getContext(), attr.getPreSize(),
+                                           attr.getSize());
+  }
+
   if (auto attr = mlir::dyn_cast<mhlo::ChannelHandleAttr>(hloAttr)) {
     return stablehlo::ChannelHandleAttr::get(attr.getContext(),
                                              attr.getHandle(), attr.getType());
@@ -330,6 +354,19 @@ Attribute convertAttr(Attribute hloAttr) {
     return stablehlo::ResultAccuracyAttr::get(attr.getContext(), attr.getAtol(),
                                               attr.getRtol(), attr.getUlps(),
                                               modeAttr);
+  }
+  if (auto attr = mlir::dyn_cast<mhlo::SubAxisInfoAttr>(hloAttr)) {
+    return stablehlo::SubAxisInfoAttr::get(attr.getContext(), attr.getPreSize(),
+                                           attr.getSize());
+  }
+  if (auto attr = mlir::dyn_cast<mhlo::AxisRefAttr>(hloAttr)) {
+    stablehlo::SubAxisInfoAttr subAxisInfo;
+    if (auto hloSubAxisInfo = attr.getSubAxisInfo()) {
+      subAxisInfo =
+          llvm::cast<stablehlo::SubAxisInfoAttr>(convertAttr(hloSubAxisInfo));
+    }
+    return stablehlo::AxisRefAttr::get(attr.getContext(), attr.getName(),
+                                       subAxisInfo);
   }
   if (hloAttr.getDialect().getNamespace() ==
       mhlo::MhloDialect::getDialectNamespace()) {

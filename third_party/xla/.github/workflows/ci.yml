@@ -136,10 +136,13 @@ jobs:
         working-directory: ${{ matrix.job_info.repo }}
         timeout-minutes: 60
         run: |
-          if [[ "${{ matrix.job_info.pool }}" == *windows* ]]; then
-            python $GITHUB_WORKSPACE\\openxla\\xla\\build_tools\\ci\\build.py --build="${{ matrix.job_info.name }}_github_actions"
+          # Shellcheck doesn't understand GitHub Actions expressions and incorrectly
+          # thinks this comparison will always fail.
+          # shellcheck disable=SC2193
+          if [[ "${{ matrix.job_info.pool }}" == *"windows"* ]]; then
+            python "$GITHUB_WORKSPACE"\\openxla\\xla\\build_tools\\ci\\build.py --build="${{ matrix.job_info.name }}_github_actions"
           else
-            $GITHUB_WORKSPACE/openxla/xla/build_tools/ci/build.py --build="${{ matrix.job_info.name }}_github_actions"
+            "$GITHUB_WORKSPACE"/openxla/xla/build_tools/ci/build.py --build="${{ matrix.job_info.name }}_github_actions"
           fi
 
 

@@ -44,6 +44,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
 #include "xla/tsl/platform/criticality.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
@@ -104,6 +105,13 @@ class BatchTask {
   virtual bool is_warmup() const { return false; }
 
   virtual bool is_subtask() const { return false; }
+
+  // Returns true if the task's deadline has expired.
+  // `now` is passed by the caller to amortize absl::Now() across iterations.
+  virtual bool IsDeadlineExceeded(absl::Time now) const { return false; }
+
+  // Returns true if the RPC has been cancelled by the client.
+  virtual bool IsCancelled() const { return false; }
 
   // Called when the task is finished, either successfully or with an error.
   //

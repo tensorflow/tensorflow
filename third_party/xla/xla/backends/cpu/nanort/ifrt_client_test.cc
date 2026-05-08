@@ -91,7 +91,7 @@ TEST(NanoIfrtClientTest, BigResult) {
 
   auto a_array = client->MakeArrayFromHostBuffer(
       &a, dtype, shape, std::nullopt, client->default_sharding(),
-      ifrt::Client::HostBufferSemantics::kImmutableZeroCopy,
+      /*layout=*/nullptr, ifrt::Client::HostBufferSemantics::kImmutableZeroCopy,
       /*on_done_with_host_buffer=*/nullptr);
   CHECK_OK(a_array);
 
@@ -341,6 +341,8 @@ int main(int argc, char** argv) {
       // NanoRT does not handle CopyArrays with re-ordered devices correctly.
       "ArrayImplTest.CopyArraysWithPartialReuse:"
       "ArrayImplTest.CopyToDifferentDevice:"
+      // NanoRT does not support tokens.
+      "ArrayMemoryKindTest.HostBufferTokens:"
       // Executable returns a wrong number of devices.
       "*LoadedExecutableImplTest.Properties*:"
       // Incorrect deleted state of donated inputs.

@@ -64,14 +64,13 @@ TEST_F(SymbolicMapTest, GetSymbolAndDimExpressions) {
 }
 
 TEST_F(SymbolicMapTest, ToString) {
-  EXPECT_EQ(sample_map.ToString(),
-            "(d0, d1)[s0, s1] -> ((d0 + s0), (d1 * s1))");
+  EXPECT_EQ(sample_map.ToString(), "(d0, d1)[s0, s1] -> (d0 + s0, d1 * s1)");
 
   SymbolicMap empty_map = SymbolicMap::Get(&ctx, 0, 0, {});
-  EXPECT_EQ(empty_map.ToString(), "()[] -> ()");
+  EXPECT_EQ(empty_map.ToString(), "() -> ()");
 
   SymbolicMap dims_only = SymbolicMap::Get(&ctx, kSampleDims, 0, {d0, d1});
-  EXPECT_EQ(dims_only.ToString(), "(d0, d1)[] -> (d0, d1)");
+  EXPECT_EQ(dims_only.ToString(), "(d0, d1) -> (d0, d1)");
 
   SymbolicExpr s0_no_dims =
       CreateSymbolExpr(/*symbol_id=*/0, /*num_dims=*/0, &ctx);
@@ -115,6 +114,20 @@ TEST_F(SymbolicMapTest, IsIdentity) {
   EXPECT_FALSE(unordered_variable_id.IsIdentity());
 }
 
+TEST_F(SymbolicMapTest, GetMultiDimIdentityMap) {
+  SymbolicMap identity_0 = SymbolicMap::GetMultiDimIdentityMap(0, &ctx);
+  EXPECT_EQ(identity_0.GetNumDims(), 0);
+  EXPECT_EQ(identity_0.GetNumSymbols(), 0);
+  EXPECT_TRUE(identity_0.IsIdentity());
+  EXPECT_EQ(identity_0.ToString(), "() -> ()");
+
+  SymbolicMap identity_3 = SymbolicMap::GetMultiDimIdentityMap(3, &ctx);
+  EXPECT_EQ(identity_3.GetNumDims(), 3);
+  EXPECT_EQ(identity_3.GetNumSymbols(), 0);
+  EXPECT_TRUE(identity_3.IsIdentity());
+  EXPECT_EQ(identity_3.ToString(), "(d0, d1, d2) -> (d0, d1, d2)");
+}
+
 TEST_F(SymbolicMapTest, GetConstantResults) {
   SymbolicMap all_constants_map = SymbolicMap::Get(
       &ctx, 0, 0,
@@ -134,12 +147,39 @@ TEST_F(SymbolicMapTest, GetConstantResults) {
   EXPECT_THAT(no_results_map.GetConstantResults(), ElementsAre());
 }
 
+TEST_F(SymbolicMapTest, Evaluate) {
+  SymbolicMap map =
+      SymbolicMap::Get(&ctx, 2, 2, {d0 + d1.floorDiv(8), s0 + s1 % 16});
+  SymbolicMap map_ceil =
+      SymbolicMap::Get(&ctx, 2, 2, {d0 + d1.ceilDiv(8), s0 + s1 % 16});
+
+  auto res = map.Evaluate(/*dim_values=*/{1, 2}, /*symbol_values=*/{3, 4});
+  auto res_ceil = map_ceil.Evaluate(/*dim_values=*/{1, 2},
+                                    /*symbol_values=*/{3, 4});
+  EXPECT_THAT(res, ElementsAre(1, 7));
+  EXPECT_THAT(res_ceil, ElementsAre(2, 7));
+}
+
+TEST_F(SymbolicMapTest, GetSliceMap) {
+  SymbolicMap map = SymbolicMap::Get(&ctx, 2, 0, {d0, d1, d0 + d1, d0 - d1});
+  SymbolicMap slice = map.GetSliceMap(1, 2);
+  EXPECT_EQ(slice.GetNumResults(), 2);
+  EXPECT_THAT(slice.GetResults(), ElementsAre(d1, d0 + d1));
+
+  SymbolicMap empty_slice = map.GetSliceMap(2, 0);
+  EXPECT_TRUE(empty_slice.IsEmpty());
+
+  EXPECT_DEATH(map.GetSliceMap(3, 2), "Slice length out of bounds");
+}
+
 TEST_F(SymbolicMapTest, ReplaceDimsAndSymbols) {
-  SymbolicExpr c3 = CreateSymbolicConstant(30, &ctx);
+  SymbolicExpr c3 = CreateSymbolicConstant(3, &ctx);
 
   SymbolicMap replaced_basic = sample_map.ReplaceDimsAndSymbols(
-      {d1, c2}, {c3, d0}, sample_map.GetNumDims(), sample_map.GetNumSymbols());
-  EXPECT_THAT(replaced_basic.GetResults(), ElementsAre(d1 + c3, c2 * d0));
+      {d1, (d0 + c2)}, {c3, d0}, sample_map.GetNumDims(),
+      sample_map.GetNumSymbols());
+  EXPECT_THAT(replaced_basic.GetResults(),
+              ElementsAre(d1 + c3, (d0 + c2) * d0));
 
   SymbolicMap map_empty = SymbolicMap::Get(&ctx, 0, 0, {});
   SymbolicMap replaced_empty = map_empty.ReplaceDimsAndSymbols({}, {}, 0, 0);
@@ -160,9 +200,9 @@ TEST_F(SymbolicMapTest, ReplaceDimsAndSymbols) {
 
 TEST_F(SymbolicMapTest, ReplaceDimsAndSymbolsOnlyDims) {
   SymbolicMap replaced = sample_map.ReplaceDimsAndSymbols(
-      /*dim_replacements=*/{c10, c2}, /*sym_replacements=*/{},
+      /*dim_replacements=*/{s1, (d0 + c2)}, /*sym_replacements=*/{},
       sample_map.GetNumDims(), sample_map.GetNumSymbols());
-  EXPECT_THAT(replaced.GetResults(), ElementsAre(c10 + s0, c2 * s1));
+  EXPECT_THAT(replaced.GetResults(), ElementsAre(s1 + s0, (d0 + c2) * s1));
 }
 
 TEST_F(SymbolicMapTest, ReplaceDimsAndSymbolsOnlySymbols) {
@@ -177,13 +217,13 @@ TEST_F(SymbolicMapTest, ReplaceDimsAndSymbolsChangeNumDims) {
   SymbolicExpr new_s0 = CreateSymbolExpr(/*symbol_id=*/0, /*num_dims=*/1, &ctx);
   SymbolicExpr new_s1 = CreateSymbolExpr(/*symbol_id=*/1, /*num_dims=*/1, &ctx);
 
-  SymbolicMap replaced_change_dims =
-      sample_map.ReplaceDimsAndSymbols({c2, new_d0}, {}, /*num_result_dims=*/1,
-                                       /*num_result_symbols=*/2);
+  SymbolicMap replaced_change_dims = sample_map.ReplaceDimsAndSymbols(
+      {new_s1, new_d0}, {}, /*num_result_dims=*/1,
+      /*num_result_symbols=*/2);
   EXPECT_EQ(replaced_change_dims.GetNumDims(), 1);
   EXPECT_EQ(replaced_change_dims.GetNumSymbols(), 2);
   EXPECT_THAT(replaced_change_dims.GetResults(),
-              ElementsAre((c2 + new_s0), (new_d0 * new_s1)));
+              ElementsAre((new_s1 + new_s0), (new_d0 * new_s1)));
 }
 
 TEST_F(SymbolicMapTest, ReplaceDimsAndSymbolsChangeNumSymbols) {
@@ -273,14 +313,14 @@ TEST_F(SymbolicMapTest, Replace) {
 }
 
 TEST_F(SymbolicMapTest, ReplaceWithMap) {
-  SymbolicExpr expr = (d0 + 1) * (d1 + 2);
+  SymbolicExpr expr = (d1 + 2) * (d0 + 1);
   SymbolicMap map = SymbolicMap::Get(&ctx, 2, 0, {expr});
 
   llvm::DenseMap<SymbolicExpr, SymbolicExpr> replacements;
   replacements[d0 + 1] = c10;
   replacements[d1] = d0;
   SymbolicMap replaced1 = map.Replace(replacements);
-  EXPECT_THAT(replaced1.GetResults(), ElementsAre(c10 * (d0 + 2)));
+  EXPECT_THAT(replaced1.GetResults(), ElementsAre((d0 + 2) * c10));
   // Even thought d1 is unused, GetNumDims() should return the original number
   // of dimensions.
   EXPECT_EQ(replaced1.GetNumDims(), 2);
@@ -447,6 +487,18 @@ TEST_F(SymbolicMapTest, Hashing) {
   EXPECT_EQ(set.size(), 1);
   set.insert(map3);
   EXPECT_EQ(set.size(), 2);
+}
+
+TEST_F(SymbolicMapTest, GetResultsFromTemporaryIsSafe) {
+  // This is the specific scenario that was failing in b/497764702.
+  // GetSubMap returns a temporary SymbolicMap. Calling GetResults() on it
+  // must return a container by value so the loop remains safe.
+  int count = 0;
+  for (const auto& expr : sample_map.GetSubMap({0}).GetResults()) {
+    EXPECT_EQ(expr, d0 + s0);
+    count++;
+  }
+  EXPECT_EQ(count, 1);
 }
 
 }  // namespace

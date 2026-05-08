@@ -68,7 +68,7 @@ jobs:
       - name: Build generate_benchmark_matrices_main
         run: |
           echo "Building generator..."
-          bazel build \
+          if ! bazel build \
                 --build_tag_filters=-no_oss,-gpu,-requires-gpu-nvidia,-requires-gpu-amd \
                 --test_tag_filters=-no_oss,-gpu,-requires-gpu-nvidia,-requires-gpu-amd \
                 --config=warnings \
@@ -83,8 +83,7 @@ jobs:
                 --flaky_test_attempts=3 \
                 --jobs=150 \
                 --bes_upload_mode=fully_async \
-                //xla/tools/benchmarks/utils:generate_benchmark_matrices_main
-          if [ $? -ne 0 ]; then
+                //xla/tools/benchmarks/utils:generate_benchmark_matrices_main; then
              echo "::error::Failed to build generate_benchmark_matrices_main"
              exit 1
           fi
@@ -129,9 +128,11 @@ jobs:
           echo "Generated matrix JSON array string:"
           echo "$JSON_ARRAY_STRING"
 
-          echo "matrix_json<<EOF_MATRIX_JSON" >> $GITHUB_OUTPUT
-          echo "$JSON_ARRAY_STRING" >> $GITHUB_OUTPUT
-          echo "EOF_MATRIX_JSON" >> $GITHUB_OUTPUT
+          {
+            echo "matrix_json<<EOF_MATRIX_JSON"
+            echo "$JSON_ARRAY_STRING"
+            echo "EOF_MATRIX_JSON"
+          } >> "$GITHUB_OUTPUT"
         env:
           INPUTS_REGISTRY_FILE: ${{ inputs.registry_file }}
           INPUTS_WORKFLOW_TYPE: ${{ inputs.workflow_type }}

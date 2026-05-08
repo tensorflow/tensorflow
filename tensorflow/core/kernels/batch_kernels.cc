@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
+#include "xla/tsl/platform/criticality.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -157,6 +159,12 @@ class BatchResource : public serving::BatchResourceBase {
    protected:
     std::unique_ptr<serving::BatchResourceBase::BatchTask> CreateDerivedTask()
         override {
+#if defined(PLATFORM_GOOGLE)
+      // ScopedCriticality is needed to ensure that the criticality is set
+      // correctly for the derived task.
+      tsl::criticality::ScopedCriticality scoped_criticality(
+          this->criticality());
+#endif
       return std::make_unique<BatchTask>(fhandle);
     }
   };
@@ -181,7 +189,9 @@ class BatchResource : public serving::BatchResourceBase {
                       kLowPriorityPaddingWithMaxBatchSize,
                   enable_large_batch_splitting,
                   /*enable_priority_aware_batch_scheduler=*/false,
-                  /*batch_padding_policy=*/"PAD_UP", resource);
+                  /*enable_priority_aware_batch_scheduler_resplit=*/false,
+                  /*batch_padding_policy=*/"PAD_UP",
+                  /*num_warmup_batch_threads=*/0, resource);
   }
 
   static absl::Status Create(
@@ -196,10 +206,12 @@ class BatchResource : public serving::BatchResourceBase {
       serving::MixedPriorityBatchingPolicy mixed_priority_batching_policy,
       bool enable_large_batch_splitting,
       bool enable_priority_aware_batch_scheduler,
-      absl::string_view batch_padding_policy,
+      bool enable_priority_aware_batch_scheduler_resplit,
+      absl::string_view batch_padding_policy, int32_t num_warmup_batch_threads,
       std::unique_ptr<BatchResource>* resource) {
     BatcherT::Options batcher_options;
     batcher_options.num_batch_threads = num_batch_threads;
+    batcher_options.num_warmup_batch_threads = num_warmup_batch_threads;
     if (mixed_priority_batching_policy ==
         serving::MixedPriorityBatchingPolicy::kPriorityMerge) {
       batcher_options.use_global_scheduler = true;
@@ -211,6 +223,8 @@ class BatchResource : public serving::BatchResourceBase {
     }
     LOG(INFO) << "Batcher options: "
               << "num_batch_threads=" << batcher_options.num_batch_threads
+              << ", num_warmup_batch_threads="
+              << batcher_options.num_warmup_batch_threads
               << ", use_global_scheduler="
               << batcher_options.use_global_scheduler
               << ", rank_queues=" << batcher_options.rank_queues;
@@ -227,7 +241,8 @@ class BatchResource : public serving::BatchResourceBase {
             low_priority_max_batch_size, low_priority_batch_timeout_micros,
             low_priority_max_enqueued_batches, low_priority_allowed_batch_sizes,
             mixed_priority_batching_policy,
-            enable_priority_aware_batch_scheduler),
+            enable_priority_aware_batch_scheduler,
+            enable_priority_aware_batch_scheduler_resplit),
         allowed_batch_sizes));
     return absl::OkStatus();
   }
@@ -327,7 +342,6 @@ BatchFunctionKernel::BatchFunctionKernel(OpKernelConstruction* c)
   OP_REQUIRES_OK(c,
                  c->GetAttr("mixed_priority_policy", &mixed_priority_policy_));
   OP_REQUIRES_OK(c, c->GetAttr("batch_padding_policy", &batch_padding_policy_));
-
   OP_REQUIRES_OK(c, c->GetAttr("f", &func_));
 
   if (c->HasAttr("enable_large_batch_splitting")) {
@@ -339,6 +353,17 @@ BatchFunctionKernel::BatchFunctionKernel(OpKernelConstruction* c)
   if (c->HasAttr("enable_priority_aware_batch_scheduler")) {
     OP_REQUIRES_OK(c, c->GetAttr("enable_priority_aware_batch_scheduler",
                                  &enable_priority_aware_batch_scheduler_));
+  }
+
+  if (c->HasAttr("enable_priority_aware_batch_scheduler_resplit")) {
+    OP_REQUIRES_OK(c,
+                   c->GetAttr("enable_priority_aware_batch_scheduler_resplit",
+                              &enable_priority_aware_batch_scheduler_resplit_));
+  }
+
+  if (c->HasAttr("num_warmup_batch_threads")) {
+    OP_REQUIRES_OK(
+        c, c->GetAttr("num_warmup_batch_threads", &num_warmup_batch_threads_));
   }
 
   // Helper function `SetAdaptiveBatchSchedulerOptions` calls
@@ -465,8 +490,9 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
           low_priority_batch_timeout_micros_,
           low_priority_max_enqueued_batches_, low_priority_allowed_batch_sizes_,
           mixed_priority_batching_policy, enable_large_batch_splitting_,
-          enable_priority_aware_batch_scheduler_, batch_padding_policy_,
-          &new_resource));
+          enable_priority_aware_batch_scheduler_,
+          enable_priority_aware_batch_scheduler_resplit_, batch_padding_policy_,
+          num_warmup_batch_threads_, &new_resource));
       if (session_metadata) {
         new_resource->set_session_metadata(*session_metadata);
       }
@@ -1029,7 +1055,7 @@ class UnbatchGradResource : public ResourceBase {
     TF_RETURN_IF_ERROR(Concat<type>(context, tensors, &concatenated_tensor)); \
     context->set_output(0, concatenated_tensor);                              \
     break;
-      TF_CALL_ALL_TYPES(CASE);
+      TF_CALL_ALL_TYPES(CASE) TF_CALL_float8_e4m3fn(CASE);
 #undef CASE
       default:
         return errors::InvalidArgument("Unsupported data type: ", type);

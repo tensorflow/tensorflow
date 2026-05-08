@@ -83,9 +83,9 @@ class FakeCostAnalysis : public CostAnalysis {
     }
   }
 
-  float GetAsyncCopyElapsed(const Shape& shape) const override {
+  float GetAsyncCopyElapsed(int64_t size_in_bytes) const override {
     if (get_async_copy_elapsed_override_) {
-      return get_async_copy_elapsed_override_(shape);
+      return get_async_copy_elapsed_override_(size_in_bytes);
     }
     return 3.0;
   }
@@ -104,7 +104,7 @@ class FakeCostAnalysis : public CostAnalysis {
     get_instruction_elapsed_in_alternate_memory_override_ = function;
   }
   void SetOverrideForGetAsyncCopyElapsed(
-      std::function<float(const Shape&)> function) {
+      std::function<float(int64_t)> function) {
     get_async_copy_elapsed_override_ = function;
   }
 
@@ -126,7 +126,7 @@ class FakeCostAnalysis : public CostAnalysis {
                       absl::Span<const std::pair<int64_t, ShapeIndex>>,
                       absl::Span<const ShapeIndex>)>
       get_instruction_elapsed_in_alternate_memory_override_ = nullptr;
-  std::function<float(const Shape&)> get_async_copy_elapsed_override_ = nullptr;
+  std::function<float(int64_t)> get_async_copy_elapsed_override_ = nullptr;
   std::unique_ptr<AliasInfo> alias_info_;
 };
 

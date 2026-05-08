@@ -29,9 +29,9 @@ namespace functor {
 // Explicit instantiation of the GPU functor.
 typedef Eigen::GpuDevice GPUDevice;
 
-template class FillProjectiveTransform<GPUDevice, uint8>;
-template class FillProjectiveTransform<GPUDevice, int32>;
-template class FillProjectiveTransform<GPUDevice, int64>;
+template class FillProjectiveTransform<GPUDevice, uint8_t>;
+template class FillProjectiveTransform<GPUDevice, int32_t>;
+template class FillProjectiveTransform<GPUDevice, int64_t>;
 template class FillProjectiveTransform<GPUDevice, Eigen::half>;
 template class FillProjectiveTransform<GPUDevice, float>;
 template class FillProjectiveTransform<GPUDevice, double>;

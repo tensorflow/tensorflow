@@ -226,6 +226,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:fingerprint",
@@ -316,6 +317,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
+        "@tsl//tsl/profiler/lib:context_types_hdrs",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
@@ -546,6 +548,18 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
     ],
+)
+
+cc_library(
+    name = "traceme_global_flags",
+    srcs = ["traceme_global_flags.cc"],
+    hdrs = ["traceme_global_flags.h"],
+    copts = tf_profiler_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/tsl/platform:macros",
+    ],
+    alwayslink = True,
 )
 
 cc_library(

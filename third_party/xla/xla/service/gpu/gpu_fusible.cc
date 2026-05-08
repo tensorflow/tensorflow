@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <numeric>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -107,16 +108,6 @@ const Shape& GetElementShape(const HloFusionAnalysis& analysis) {
   return *shape;
 }
 
-// Computes the maximum valid unroll factor for a given instruction.
-int ComputeMaxUnrollFactor(int64_t num_elements, int64_t max_unroll) {
-  for (int i = max_unroll; i > 1; i /= 2) {
-    if (num_elements % i == 0) {
-      return i;
-    }
-  }
-  return 1;
-}
-
 }  // namespace
 
 int64_t MaxUnrollFactor(const HloFusionAnalysis* analysis) {
@@ -163,7 +154,9 @@ int64_t MaxUnrollFactor(const HloFusionAnalysis* analysis) {
       (analysis->emitter_fusion_kind() ==
            HloFusionAnalysis::EmitterFusionKind::kLoop ||
        analysis->emitter_fusion_kind() ==
-           HloFusionAnalysis::EmitterFusionKind::kTranspose) &&
+           HloFusionAnalysis::EmitterFusionKind::kTranspose ||
+       analysis->emitter_fusion_kind() ==
+           HloFusionAnalysis::EmitterFusionKind::kConcatenate) &&
       analysis->input_output_info().smallest_output_dtype_bits <
           max_bits_for_aggressive_unrolling &&
       analysis->fusion_root_count() <= kMaxNumOutputsForFullUnrolling &&
@@ -1062,13 +1055,12 @@ std::vector<HloComputation*> GetFusibleComputations(
   return result;
 }
 
-LaunchDimensionsConfig ComputeLoopFusionConfig(
-    const HloFusionAnalysis& analysis) {
+int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis) {
   return ComputeLoopFusionConfig(analysis, GetElementShape(analysis));
 }
 
-LaunchDimensionsConfig ComputeLoopFusionConfig(
-    const HloFusionAnalysis& analysis, const Shape& element_shape) {
+int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis,
+                            const Shape& element_shape) {
   int unroll_factor = 1;
   // Unrolling is good to read large inputs with small elements
   // due to vector loads, but increases the register pressure when one
@@ -1081,8 +1073,7 @@ LaunchDimensionsConfig ComputeLoopFusionConfig(
                           analysis.device_info().core_count();
   if (num_elements >= n_threads_max &&
       !MayCausePerformanceDropIfUnrolled(analysis.fusion())) {
-    unroll_factor =
-        ComputeMaxUnrollFactor(num_elements, MaxUnrollFactor(&analysis));
+    unroll_factor = std::gcd(num_elements, MaxUnrollFactor(&analysis));
   }
   // CHECK that unroll_factor is a power-of-2, as needed by the logic below.
   CHECK(absl::has_single_bit(static_cast<uint64_t>(unroll_factor)));
@@ -1100,8 +1091,7 @@ LaunchDimensionsConfig ComputeLoopFusionConfig(
   CHECK(absl::has_single_bit(static_cast<uint64_t>(unroll_factor)));
   VLOG(2) << "Unroll factor: " << unroll_factor;
 
-  LaunchDimensionsConfig launch_config{unroll_factor};
-  return launch_config;
+  return unroll_factor;
 }
 
 }  // namespace gpu

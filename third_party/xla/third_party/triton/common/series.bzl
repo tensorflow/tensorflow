@@ -28,8 +28,13 @@ common_patch_list = [
     "//third_party/triton:common/avoid-0fc-mid-ptwas-128.patch",
     "//third_party/triton:common/wgmma_pipeline_fix.patch",
     "//third_party/triton:common/nvdisasm_bin_path.patch",
-    "//third_party/triton:common/llvm_cl880654778.patch",
-    "//third_party/triton:common/llvm_cl881791206.patch",
-    "//third_party/triton:common/llvm_cl882584777.patch",
+    "//third_party/triton:common/stage_and_cluster_map.patch",
+    "//third_party/triton:common/assert_fail.patch",
+    "//third_party/triton:common/llvm_cl900404532.patch",
+    "//third_party/triton:common/llvm_cl902211192.patch",
+    "//third_party/triton:common/silence_matchAndRewrite_failures.patch",
+    "//third_party/triton:common/llvm_cl904544082.patch",
+    "//third_party/triton:common/check_null_encoding.patch",
+    "//third_party/triton:common/llvm_cl910324404.patch",
     # Add new patches just above this line
 ]

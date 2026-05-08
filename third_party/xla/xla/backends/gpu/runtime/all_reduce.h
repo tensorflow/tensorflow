@@ -18,21 +18,35 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
+#include <optional>
+#include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
+
+// Encapsulates the information needed to perform an all-reduce.
+struct AllReduceInfo {
+  ReductionKind reduction_kind;
+  int64_t num_devices;
+  int64_t num_elements;
+  PrimitiveType element_type;
+  se::gpu::AllReduceStrategy all_reduce_strategy;
+};
 
 constexpr auto kSupportedFloatingPointTypes = std::array{F32, BF16, F64};
 constexpr auto kSupportedIntegralTypes = std::array{S32, S64};
@@ -69,12 +83,29 @@ int64_t GetMaxSupportedAllReduceSizeBytes(se::gpu::AllReduceStrategy strategy);
 LaunchDimensions AllReduceLaunchDimensions(int64_t elements, int64_t num_ranks,
                                            se::gpu::AllReduceStrategy strategy);
 
-// Returns true if the all-reduce kernel is supported for the given number
-// of inputs, elements, element type and reduction kind.
-bool IsAllReduceKernelSupported(int64_t num_ranks, int64_t num_elements,
-                                PrimitiveType element_type,
-                                ReductionKind reduction_kind,
-                                se::gpu::AllReduceStrategy all_reduce_strategy);
+// Returns absl::OkStatus() if supported, or an error status detailing why
+// it is not supported.
+absl::Status IsAllReduceKernelSupported(
+    int64_t num_ranks, int64_t num_elements, PrimitiveType element_type,
+    ReductionKind reduction_kind,
+    se::gpu::AllReduceStrategy all_reduce_strategy);
+
+// A broader check overload for all-reduce kernel support.
+// Returns absl::OkStatus() if supported, or an error status detailing why
+// it is not supported.
+absl::Status IsAllReduceKernelSupported(
+    bool is_collective_kernel_enabled, const se::DeviceDescription& device_info,
+    int32_t num_operands, std::optional<ReductionKind> reduction_kind,
+    int64_t num_devices, int64_t num_elements, PrimitiveType element_type,
+    bool is_local, bool is_multimem_enabled,
+    const std::vector<ReplicaGroup>& replica_groups);
+
+// Constructs an AllReduceInfo object for the given all-reduce instruction.
+// Returns an error status if the all-reduce kernel is not supported.
+absl::StatusOr<AllReduceInfo> BuildAllReduceInfo(
+    bool is_collective_kernel_enabled, bool is_multimem_enabled,
+    const se::DeviceDescription& device_info,
+    const HloAllReduceInstruction* all_reduce);
 
 // Performs element-wise addition of all input buffers and stores the result in
 // the output buffer.
