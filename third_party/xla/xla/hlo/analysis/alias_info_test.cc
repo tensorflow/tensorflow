@@ -1,3 +1,4 @@
+
 /* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -86,13 +87,45 @@ ENTRY main {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   const HloInstruction* start = FindInstruction(module.get(), "start");
+  const HloInstruction* done = FindInstruction(module.get(), "done");
+  AliasInfo alias_info;
+  auto pairs_start = alias_info.GetInPlaceInputOutputPairs(start);
+  EXPECT_TRUE(pairs_start.empty());
+  auto pairs_done = alias_info.GetInPlaceInputOutputPairs(done);
+  EXPECT_THAT(pairs_done, ElementsAre(std::pair<HloOperandIndex, ShapeIndex>{
+                              HloOperandIndex{0, {0, 0}}, {}}));
+}
 
-  auto pairs = alias_info_.GetInPlaceInputOutputPairs(start);
-
-  // By default for forwarded operands: operand 0 maps to output {0, 0} for the
-  // parameter subshape
-  EXPECT_THAT(pairs, ElementsAre(std::pair<HloOperandIndex, ShapeIndex>{
-                         HloOperandIndex{0, {}}, {1}}));
+// Tests that the alias info is computed correctly when the output-to-operand
+// aliasing is late-bound.
+TEST_F(GetInPlaceInputOutputPairsTest, AsyncStart_LateBinding) {
+  const char* const kHlo = R"(
+HloModule test
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  ROOT abs = f32[2,3] abs(p0)
+}
+ENTRY main {
+  p0 = f32[2,3] parameter(0)
+  start = ((), (), s32[]) call-start(),
+    to_apply=async_computation,
+    output_to_operand_aliasing={{1}: (0, {})}
+  update = ((f32[2,3]), f32[2,3]) async-update(start, p0)
+  ROOT done = f32[2,3] call-done(update)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  const HloInstruction* start = FindInstruction(module.get(), "start");
+  AliasInfo alias_info;
+  auto pairs_start = alias_info.GetInPlaceInputOutputPairs(start);
+  EXPECT_TRUE(pairs_start.empty());
+  const HloInstruction* update = FindInstruction(module.get(), "update");
+  auto pairs_update = alias_info.GetInPlaceInputOutputPairs(update);
+  EXPECT_TRUE(pairs_update.empty());
+  const HloInstruction* done = FindInstruction(module.get(), "done");
+  auto pairs_done = alias_info.GetInPlaceInputOutputPairs(done);
+  EXPECT_THAT(pairs_done, ElementsAre(std::pair<HloOperandIndex, ShapeIndex>{
+                              HloOperandIndex{0, {0, 0}}, {}}));
 }
 
 // Verifies that a dynamic-update-slice instruction can compute in-place
