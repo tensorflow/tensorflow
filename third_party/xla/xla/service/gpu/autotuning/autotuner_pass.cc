@@ -20,22 +20,31 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/gpu/autotuner/gpu_profiler.h"
 #include "xla/backends/gpu/autotuner/legacy_cache.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/compiler.h"
+#include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -50,9 +59,7 @@ namespace xla {
 namespace gpu {
 
 AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options,
-                                 bool is_deviceless,
-                                 bool optimize_scratch_bytes,
-                                 bool allow_reg_spills) {
+                                 bool is_deviceless, bool allow_reg_spills) {
   AutotuneConfig autotune_config;
   autotune_config.check_buffers = debug_options.xla_gpu_autotune_level() >= 4;
   autotune_config.relative_tolerance =
@@ -71,7 +78,6 @@ AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options,
     // If we are running on a deviceless target, we want to use default configs.
     autotune_config.use_default_config = true;
   }
-  autotune_config.optimize_scratch_bytes = optimize_scratch_bytes;
 
   autotune_config.expect_all_instructions_in_cache =
       debug_options.xla_gpu_require_complete_aot_autotune_results();
@@ -104,19 +110,142 @@ ProfileOptions GetProfileOptions(const DebugOptions& debug_options,
   return profile_options;
 }
 
-
 absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
-    std::vector<std::unique_ptr<CodegenBackend>> backends,
+    AutotunerPass::GetBackendsFn get_backends_fn,
     const DebugOptions& debug_options,
-    stream_executor::StreamExecutor* stream_executor,
-    tsl::thread::ThreadPool* thread_pool, InstructionFilterFn should_autotune,
-    const Compiler::GpuTargetConfig* target_config,
-    se::DeviceAddressAllocator* allocator, bool optimize_scratch_bytes,
-    MultiProcessKeyValueStore key_value_store, bool allow_reg_spills) {
+    const se::GpuComputeCapability& gpu_version,
+    se::StreamExecutor* stream_executor, tsl::thread::ThreadPool* thread_pool,
+    const Compiler::GpuTargetConfig* target_config, const AliasInfo* alias_info,
+    mlir::MLIRContext* mlir_context,
+    HloCostAnalysis::ShapeSizeFunction shape_size_fn,
+    se::DeviceAddressAllocator* allocator,
+    MultiProcessKeyValueStore key_value_store) {
+  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<CodegenBackend>> backends,
+                      get_backends_fn());
+
+  // 1. Assessing whether to autotune custom calls.
+  bool do_not_autotune_cublas =
+      debug_options.xla_gpu_experimental_disable_binary_libraries() ||
+      debug_options.xla_gpu_autotune_level() == 0 ||
+      debug_options.xla_gpu_exclude_nondeterministic_ops();
+  bool do_not_autotune_cudnn =
+      debug_options.xla_gpu_experimental_disable_binary_libraries() ||
+      (do_not_autotune_cublas && !gpu_version.IsRocm());
+  auto check_custom_call = [do_not_autotune_cublas, do_not_autotune_cudnn](
+                               const HloInstruction& instruction) -> bool {
+    auto gpu_config = instruction.backend_config<GpuBackendConfig>();
+    if (!do_not_autotune_cublas && IsCublasGemm(instruction)) {
+      if (gpu_config.ok() &&
+          gpu_config->gemm_backend_config().has_selected_algorithm()) {
+        return false;
+      }
+      return true;
+    }
+    if (!do_not_autotune_cudnn && IsCustomCallToDnnConvolution(instruction)) {
+      if (gpu_config.ok() &&
+          gpu_config->cudnn_conv_backend_config().has_algorithm()) {
+        return false;
+      }
+      return true;
+    }
+    return false;
+  };
+
+  // 2. Assessing whether to autotune GEMM fusions.
+  auto check_gemm_fusion = [](const HloInstruction& instruction) -> bool {
+    auto gpu_config = instruction.backend_config<GpuBackendConfig>();
+    if (!gpu_config.ok()) {
+      return false;
+    }
+    const FusionBackendConfig& backend_config =
+        gpu_config->fusion_backend_config();
+    if (backend_config.kind() == kTritonGemmFusionKind) {
+      return !backend_config.has_triton_gemm_config();
+    }
+    if (backend_config.kind() == kCuDnnFusionKind) {
+      return !backend_config.has_cudnn_fusion_config();
+    }
+    if (backend_config.kind() == kCustomFusionKind) {
+      return !backend_config.has_custom_fusion_config();
+    }
+    return false;
+  };
+
+  // 3. Assessing whether to autotune generic fusions.
+  bool enable_fusion_autotuner =
+      debug_options.xla_gpu_autotune_level() != 0 &&
+      !debug_options.xla_gpu_exclude_nondeterministic_ops() &&
+      debug_options.xla_gpu_experimental_enable_fusion_autotuner();
+  bool all_fusions_with_triton =
+      debug_options.xla_gpu_experimental_all_fusions_with_triton();
+  auto check_generic_fusion =
+      [enable_fusion_autotuner,
+       all_fusions_with_triton](const HloInstruction& instruction) -> bool {
+    if (!enable_fusion_autotuner) {
+      return false;
+    }
+    auto fusion = Cast<const HloFusionInstruction>(&instruction);
+    if (fusion->fusion_kind() == HloInstruction::FusionKind::kCustom) {
+      return false;
+    }
+    if (absl::c_any_of(fusion->fused_instructions_computation()->instructions(),
+                       HloPredicateIsOp<HloOpcode::kScatter>)) {
+      return false;
+    }
+    if (all_fusions_with_triton) {
+      return true;
+    }
+    return absl::c_any_of(
+        fusion->fused_instructions_computation()->instructions(),
+        HloPredicateIsOp<HloOpcode::kReduce, HloOpcode::kTranspose>);
+  };
+
+  bool has_native_or_ble_backends = absl::c_any_of(backends, [](const auto& b) {
+    return b->name() == "NATIVE_EMITTER" || b->name() == "BLOCK_LEVEL_EMITTER";
+  });
+  bool autotune_post_fusion =
+      debug_options.xla_gpu_experimental_autotune_post_fusion();
+
+  auto should_autotune =
+      [check_custom_call, check_gemm_fusion, check_generic_fusion,
+       has_native_or_ble_backends,
+       autotune_post_fusion](const HloInstruction& instruction) -> bool {
+    // 1. Custom calls.
+    if (instruction.opcode() == HloOpcode::kCustomCall) {
+      return check_custom_call(instruction);
+    }
+    if (instruction.opcode() == HloOpcode::kFusion) {
+      // 2. GEMM fusions.
+      auto gpu_config = instruction.backend_config<GpuBackendConfig>();
+      if (!gpu_config.ok()) {
+        return false;
+      }
+      const FusionBackendConfig& backend_config =
+          gpu_config->fusion_backend_config();
+      if (backend_config.kind() == kTritonGemmFusionKind ||
+          backend_config.kind() == kCuDnnFusionKind ||
+          backend_config.kind() == kCustomFusionKind) {
+        return check_gemm_fusion(instruction);
+      }
+      // 3. Generic fusions.
+      // TODO(b/511979384): Remove this condition once
+      // xla_gpu_experimental_autotune_post_fusion is enabled by default.
+      // If we are running in the legacy GEMM/Conv autotune pass (which implies
+      // autotune_post_fusion is false AND there are no Native or BLE backends
+      // registered), we do not autotune generic fusions to avoid autotuner
+      // failure with no supported configs.
+      if (!autotune_post_fusion && !has_native_or_ble_backends) {
+        return false;
+      }
+      return check_generic_fusion(instruction);
+    }
+    return false;
+  };
+
   std::unique_ptr<Profiler> profiler = nullptr;
   bool is_deviceless = stream_executor == nullptr;
   AutotuneConfig autotune_config = GetAutotuneConfig(
-      debug_options, is_deviceless, optimize_scratch_bytes, allow_reg_spills);
+      debug_options, is_deviceless, /*allow_reg_spills=*/true);
   VLOG(1) << "Autotune config: " << autotune_config.ToString();
 
   if (!is_deviceless) {

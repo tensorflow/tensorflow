@@ -88,11 +88,25 @@ class FissionBackend : public GpuCodegenBackend {
 
   bool IsSupported(const HloInstruction& instr) override;
 
+  bool RequiresSubFusionTuning(const HloInstruction& instr) const override;
+
+  absl::StatusOr<std::vector<std::unique_ptr<HloModule>>> GenerateSubFusions(
+      const HloInstruction& instr, const BackendConfig& config) override;
+
+  absl::Status StoreSubFusionConfigs(
+      BackendConfig& config,
+      const absl::flat_hash_map<tsl::Fprint128, BackendConfig,
+                                tsl::Fprint128Hasher>& sub_fusion_configs)
+      override;
+
  private:
   absl::StatusOr<std::unique_ptr<HloModule>> GetFissionedAndRewrittenModule(
       const HloInstruction& fusion_instr);
   absl::StatusOr<HloInstruction*> FindFirstSupportedInstruction(
       const HloModule* module);
+  // Runs priority fusion to fuse prologues and epilogue after the fissioned
+  // module has been generated.
+  absl::Status RunPriorityFusion(HloModule* module);
 
   std::unique_ptr<HloPassPipeline> rewriter_pipeline_;
   std::unique_ptr<GpuCodegenBackend> codegen_backend_;

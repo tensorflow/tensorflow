@@ -762,6 +762,9 @@ message DebugOptions {
   // Specifies the behavior of per kernel autotuning cache.
   optional AutotuneCacheMode xla_gpu_experimental_autotune_cache_mode = 324;
 
+  // If true, all autotuning is consolidated after fusion passes.
+  optional bool xla_gpu_experimental_autotune_post_fusion = 478;
+
   // Specifies the directory to store per kernel autotuning cache.
   optional string xla_gpu_experimental_autotuner_cache_dir = 407;
 
@@ -861,9 +864,6 @@ message DebugOptions {
   // this flag can cause both performance improvements and performance
   // regressions.
   optional int32 xla_gpu_experimental_max_unroll_factor = 459;
-
-  // If true, move GEMM and Conv autotuning after fusion passes.
-  optional bool xla_gpu_experimental_move_gemm_conv_autotuner = 477;
 
   // For sub-byte dot operands, layout them along contracting dimensions.
   optional bool xla_gpu_experimental_pack_dot_operands_along_k_dimension = 362;
@@ -1532,7 +1532,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 478
+  // Next id: 479
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -1643,6 +1643,7 @@ message DebugOptions {
   reserved "xla_hlo_tfgraph_device_scopes";
   reserved "xla_ignore_channel_id";
   reserved "xla_use_shardy";
+  reserved "xla_gpu_experimental_move_gemm_conv_autotuner";
 
   reserved 5, 63, 80, 93, 94, 98, 117, 130, 133, 134, 139, 141, 143, 152, 156,
       158, 160, 161, 162, 167, 168, 169, 171, 172, 173, 176, 177, 178, 179, 180,
@@ -1651,7 +1652,7 @@ message DebugOptions {
       243, 249, 263, 264, 266, 270, 271, 275, 276, 278, 279, 281, 282, 286, 298,
       299, 302, 303, 309, 313, 314, 319, 320, 325, 326, 332, 346, 352, 354, 355,
       358, 361, 367, 369, 371, 385, 394, 396, 398, 402, 423, 430, 443, 446, 458,
-      464;
+      464, 477;
 }
 
 // Contains flags which affects the GPU compilation result.

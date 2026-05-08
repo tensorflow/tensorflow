@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/profiler.h"
@@ -31,17 +32,21 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/compiler.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/device_address_allocator.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
+class AliasInfo;
 namespace gpu {
+
+class GpuCompiler;
 
 AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options,
                                  bool is_deviceless = false,
-                                 bool optimize_scratch_bytes = true,
                                  bool allow_reg_spills = true);
 
 ProfileOptions GetProfileOptions(const DebugOptions& debug_options,
@@ -50,16 +55,19 @@ ProfileOptions GetProfileOptions(const DebugOptions& debug_options,
 // HloModulePass that runs the autotuner.
 class AutotunerPass : public HloModulePass {
  public:
+  using GetBackendsFn = std::function<
+      absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>()>;
+
   // Note: the target_config must outlive the pass.
   static absl::StatusOr<std::unique_ptr<AutotunerPass>> Create(
-      std::vector<std::unique_ptr<CodegenBackend>> backends,
-      const DebugOptions& debug_options, se::StreamExecutor* stream_executor,
-      tsl::thread::ThreadPool* thread_pool, InstructionFilterFn should_autotune,
+      GetBackendsFn get_backends_fn, const DebugOptions& debug_options,
+      const se::GpuComputeCapability& gpu_version,
+      se::StreamExecutor* stream_executor, tsl::thread::ThreadPool* thread_pool,
       const Compiler::GpuTargetConfig* target_config,
+      const AliasInfo* alias_info, mlir::MLIRContext* mlir_context,
+      HloCostAnalysis::ShapeSizeFunction shape_size_fn,
       se::DeviceAddressAllocator* allocator = nullptr,
-      bool optimize_scratch_bytes = true,
-      MultiProcessKeyValueStore key_value_store = MultiProcessKeyValueStore(),
-      bool allow_reg_spills = false);
+      MultiProcessKeyValueStore key_value_store = MultiProcessKeyValueStore());
 
   absl::string_view name() const override { return "autotuner"; }
 

@@ -54,12 +54,6 @@ struct AutotuneConfig {
   float relative_tolerance = 1e-6;
   // Whether to crash the process on check failure.
   bool crash_on_check_failure = false;
-  // If true, in addition to the duration, the best algorithm will be chosen
-  // based on the scratch bytes. This is only useful if backends use scratch
-  // space for temporary tensors. The best config will be the one with the
-  // smallest scratch space among top minimum duration configs in
-  // scratch_bytes_window_size_us window.
-  bool optimize_scratch_bytes = true;
   // Window size in microseconds to consider for scratch bytes optimization.
   int scratch_bytes_window_size_us = 2;
   // If true, the autotuner will return an error if the best config for a
@@ -196,7 +190,8 @@ class Autotuner {
   // Gets the best config for each given instruction and errors out if any of
   // them fails.
   absl::StatusOr<std::vector<Config>> GetConfigsForAll(
-      const std::vector<InstructionGroup>& instruction_groups);
+      const std::vector<InstructionGroup>& instruction_groups,
+      const InstructionFilterFn& should_autotune);
 
   // Gets the default config for the given instruction.
   absl::StatusOr<Config> GetDefaultConfig(const HloInstruction& instr);
@@ -205,10 +200,12 @@ class Autotuner {
   // cached config is returned. If not in cache and use_default_config is
   // true, default config is returned. Otherwise, tunes all supported configs
   // to find the best config, inserts it into cache and returns it.
-  tsl::Future<Config> GetConfig(HloInstruction* instr);
+  tsl::Future<Config> GetConfig(HloInstruction* instr,
+                                const InstructionFilterFn& should_autotune);
   // Gets the best config for the given instruction by compiling and profiling
   // all supported configs.
-  tsl::Future<Config> TuneBestConfig(HloInstruction* instr);
+  tsl::Future<Config> TuneBestConfig(
+      HloInstruction* instr, const InstructionFilterFn& should_autotune);
 
   // TODO: b/407494653 - Directly use cache api when the configs are unified.
   // Translates from Autotuner::Config to AutotunerCacheInterface::Config and
