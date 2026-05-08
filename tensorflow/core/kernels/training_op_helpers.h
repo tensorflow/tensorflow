@@ -281,7 +281,9 @@ absl::Status GetInputTensorFromVariable(OpKernelContext* ctx, int input,
   const DataType expected_dtype = DataTypeToEnum<T>::value;
   if (ctx->input_dtype(input) == DT_RESOURCE) {
     core::RefCountPtr<Var> var;
-    TF_RETURN_IF_ERROR(LookupResource(ctx, HandleFromInput(ctx, input), &var));
+    ResourceHandle handle;
+    TF_RETURN_IF_ERROR(HandleFromInput(ctx, input, &handle));
+    TF_RETURN_IF_ERROR(LookupResource(ctx, handle, &var));
     if (var->tensor()->dtype() != expected_dtype) {
       return errors::InvalidArgument(
           "Resource variable input at index ", input,
