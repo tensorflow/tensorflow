@@ -233,7 +233,7 @@ auto BlasLt::MatmulPlan::GetAlgorithmsForGroupedMatmul(
   std::vector<hipblasLtMatmulHeuristicResult_t> heuristicResult;
 
   auto blas_lt = static_cast<BlasLt*>(gpu::BlasLt::Get(stream));
-  absl::MutexLock lock(&blas_lt->mu_);
+  absl::MutexLock lock(blas_lt->mu_);
 
   std::unique_ptr<ActivateContext> activation = blas_lt->parent_->Activate();
 
@@ -917,7 +917,7 @@ absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetGroupedMatmulPlan(
 
   hipblasLtHandle_t blas_lt_handle;
   {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     blas_lt_handle = blas_lt_.get();
   }
 
@@ -937,7 +937,7 @@ absl::Status BlasLt::MatmulPlan::ExecuteGroupedMatmul(
 
   auto palgo = std::any_cast<hipblasLtMatmulAlgo_t>(&algorithm_->opaque_algo);
   auto blas_lt = static_cast<BlasLt*>(gpu::BlasLt::Get(stream));
-  absl::MutexLock lock(&blas_lt->mu_);
+  absl::MutexLock lock(blas_lt->mu_);
 
   // The first chunk of the workspace is reserved for userargs.
   if (algorithm_must_be_initialized_ ||
