@@ -91,6 +91,16 @@ class AddNoticeToDocstringTest(test.TestCase):
     # 2 space second line indent, first line blank
     self._check("\n  Brief\n  Docstring", expected)
 
+  def test_suffix_not_duplicated_when_already_present(self):
+    # Regression for https://github.com/tensorflow/tensorflow/issues/90927:
+    # stacking decorators that share the same suffix (e.g. several
+    # `@deprecated_args` on `tf.function`) should append the suffix once,
+    # not once per decorator.
+    expected = "Brief (suffix)\n\nWarning: Go away\nInstructions"
+    self._check("Brief (suffix)", expected)
+    # Trailing whitespace on the first line must still be tolerated.
+    self._check("Brief (suffix)   ", expected)
+
 
 class ValidateCallableTest(test.TestCase):
 
