@@ -2689,6 +2689,33 @@ class OpScopeTest(test_util.TensorFlowTestCase):
       self.assertEqual(ops.get_current_name_scope(), "aaa")
     self.assertEqual(ops.get_current_name_scope(), "")
 
+  def testNameScopeV2RejectsInvalidNameInEagerMode(self):
+    # Regression for https://github.com/tensorflow/tensorflow/issues/38754:
+    # graph mode rejects scope names with characters that are illegal for
+    # ops (e.g. spaces) via _VALID_SCOPE_NAME_REGEX, but eager mode used
+    # to silently accept them and only fail later — for example when the
+    # same code was wrapped in tf.function. The check should now mirror
+    # graph mode in both root and nested positions.
+    if not context.executing_eagerly():
+      self.skipTest("Eager-mode-only behaviour")
+    # Root scope: must satisfy the more restrictive _VALID_OP_NAME_REGEX.
+    with self.assertRaisesRegex(ValueError, "is not a valid root scope"):
+      with ops.name_scope_v2("scope with spaces"):
+        pass
+    # Nested scope: _VALID_SCOPE_NAME_REGEX (slightly more permissive
+    # initial chars). Spaces are still illegal.
+    with ops.name_scope_v2("outer"):
+      with self.assertRaisesRegex(ValueError, "is not a valid scope name"):
+        with ops.name_scope_v2("inner with space"):
+          pass
+    # Trailing-slash names retain their "fully-specified, do not
+    # validate" escape hatch — this is how callers reset scope state.
+    with ops.name_scope_v2("legit_root/") as scope:
+      self.assertEqual(scope, "legit_root/")
+    # Empty / falsy name still allowed (no-op).
+    with ops.name_scope_v2("") as scope:
+      self.assertEqual(scope, "")
+
   @test_util.run_deprecated_v1
   def testTensor(self):
     g0 = ops.Graph()
