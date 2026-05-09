@@ -222,7 +222,7 @@ absl::Status LocalDeviceState::ThenExecuteCallback(
     se::Stream* callback_exec_stream = nullptr;
     {
       // Prevent concurrent updates to the callback stream map.
-      absl::MutexLock lock(&callback_stream_map_mu_);
+      absl::MutexLock lock(callback_stream_map_mu_);
       auto it = callback_stream_map_->find(stream);
       if (it == callback_stream_map_->end()) {
         tsl::profiler::TraceMe traceme_create("CreateCallbackStream");
