@@ -1477,7 +1477,12 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
 
   Args:
     tensor:  N-D Tensor.
-    mask:  K-D boolean Tensor, K <= N and K must be known statically.
+    mask:  K-D boolean Tensor, K <= N and K must be known statically. For
+      backward-compatibility, non-boolean tensors are also accepted and
+      treated as boolean (zero entries are masked out, non-zero entries
+      are kept). Prefer passing a `bool`-dtype mask; passing an int /
+      float mask will issue no error but is not part of the documented
+      contract and may be tightened in a future release.
     name:  A name for this operation (optional).
     axis:  A 0-D int Tensor representing the axis in `tensor` to mask from. By
       default, axis is 0 which will mask from the first dimension. Otherwise K +
@@ -1571,7 +1576,12 @@ def boolean_mask_v2(tensor, mask, axis=None, name="boolean_mask"):
 
   Args:
     tensor:  N-D Tensor.
-    mask:  K-D boolean Tensor, K <= N and K must be known statically.
+    mask:  K-D boolean Tensor, K <= N and K must be known statically. For
+      backward-compatibility, non-boolean tensors are also accepted and
+      treated as boolean (zero entries are masked out, non-zero entries
+      are kept). Prefer passing a `bool`-dtype mask; passing an int /
+      float mask will issue no error but is not part of the documented
+      contract and may be tightened in a future release.
     axis:  A 0-D int Tensor representing the axis in `tensor` to mask from. By
       default, axis is 0 which will mask from the first dimension. Otherwise K +
       axis <= N.
