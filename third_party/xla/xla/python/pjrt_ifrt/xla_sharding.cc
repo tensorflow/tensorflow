@@ -124,28 +124,29 @@ HloSharding::HloSharding(DeviceListRef devices, MemoryKind memory_kind,
       xla_hlo_sharding_.IsReplicated() ||
       ((xla_hlo_sharding_.IsTiled() || xla_hlo_sharding_.IsSingleDevice()) &&
        devices_->size() == 1);
-  if (xla_hlo_sharding_.IsTiled()) {
-    CHECK_EQ(xla_hlo_sharding_.TotalNumTiles(), devices_->size())
-        << "sharding's tile count and device count does not match: "
-        << xla_hlo_sharding_.TotalNumTiles() << " vs. " << devices_->size()
-        << "; sharding=" << xla_hlo_sharding_.ToString();
-    tile_information_ =
-        TileInformation{/*tiled_data_rank=*/xla_hlo_sharding_.TiledDataRank(),
-                        /*dimensions=*/xla_hlo_sharding_.dimensions()};
-  }
 }
 
 absl::StatusOr<Shape> HloSharding::GetShardShape(const Shape& shape) const {
-  if (!tile_information_.has_value()) {
+  if (xla_hlo_sharding_.IsReplicatedOrSingleDevice() ||
+      xla_hlo_sharding_.IsManual() || xla_hlo_sharding_.IsUnreduced() ||
+      xla_hlo_sharding_.IsUnknown()) {
     return shape;
   }
-  if (shape.dims().size() != tile_information_->tiled_data_rank) {
+  if (xla_hlo_sharding_.TotalNumTiles() != devices_->size()) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("sharding's tile count and device count does not "
+                        "match: %d vs. %d; shape=%v, sharding=%s",
+                        xla_hlo_sharding_.TotalNumTiles(), devices_->size(),
+                        shape, xla_hlo_sharding_.ToString()));
+  }
+  if (shape.dims().size() != xla_hlo_sharding_.TiledDataRank()) {
     return InvalidArgument(
         "Numbers of dimensions don't match. From Shape %d vs from "
         "HloSharding %d",
-        shape.dims().size(), tile_information_->tiled_data_rank);
+        shape.dims().size(), xla_hlo_sharding_.TiledDataRank());
   }
-  const absl::Span<const int64_t> sharding_dims = tile_information_->dimensions;
+  const absl::Span<const int64_t> sharding_dims =
+      xla_hlo_sharding_.dimensions();
   Shape::Dimensions tile_shape;
   tile_shape.reserve(shape.dims().size());
   for (int64_t i = 0; i < shape.dims().size(); ++i) {

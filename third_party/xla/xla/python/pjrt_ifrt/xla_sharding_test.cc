@@ -62,23 +62,13 @@ class HloShardingTest
 };
 
 TEST_P(HloShardingTest, CreateWithBadDeviceList) {
-  // Nullptr or empty device lists are not allowed regardless of HloSharding.
-  auto replicated_xla_hlo_sharding = xla::HloSharding::Replicate();
-  EXPECT_DEATH(HloSharding::Create(DeviceListRef(), MemoryKind(),
-                                   replicated_xla_hlo_sharding),
-               "");
-  EXPECT_DEATH(HloSharding::Create(BasicDeviceList::Create({}), MemoryKind(),
-                                   replicated_xla_hlo_sharding),
-               "");
-
-  // Tiled HloSharding requires the number of devices to match the number of
-  // tiles.
-  auto tiled_xla_hlo_sharding =
-      xla::HloSharding::Tile(xla::TileAssignment({2, 1}));
+  auto xla_hlo_sharding = xla::HloSharding::Replicate();
   EXPECT_DEATH(
-      HloSharding::Create(GetDevices({0}), MemoryKind(),
-                          tiled_xla_hlo_sharding),
-      HasSubstr("sharding's tile count and device count does not match"));
+      HloSharding::Create(DeviceListRef(), MemoryKind(), xla_hlo_sharding), "");
+
+  EXPECT_DEATH(HloSharding::Create(BasicDeviceList::Create({}), MemoryKind(),
+                                   xla_hlo_sharding),
+               "");
 }
 
 TEST_P(HloShardingTest, IsFullyReplicated) {
@@ -794,6 +784,21 @@ TEST_P(HloShardingTest, DisassembleWithManual) {
                                device_list->devices()[i], MemoryKind()));
     }
   }
+}
+
+TEST_P(HloShardingTest, DisassembleFailsWithInvalidDeviceCount) {
+  auto device_list = GetDevices({0});
+  // 2-way sharded along axis 0, 1-way sharded along axis 1.
+  auto xla_hlo_sharding = xla::HloSharding::Tile(xla::TileAssignment({2, 1}));
+  std::shared_ptr<const HloSharding> sharding =
+      HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
+
+  Shape shape({10, 20});
+  EXPECT_THAT(
+      sharding->Disassemble(shape, SingleDeviceShardSemantics::kAllShards),
+      absl_testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr("sharding's tile count and device count does not match")));
 }
 
 TEST_P(HloShardingTest, DisassembleFailsWithMismatchingShapeDimsSize) {

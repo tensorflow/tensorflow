@@ -72,7 +72,7 @@ class SerDesVersion {
 
   // Returns a version that was introduced at least 4 weeks ago.
   static SerDesVersion week_4_old() {
-    return SerDesVersion(SerDesVersionNumber(2));
+    return SerDesVersion(SerDesVersionNumber(3));
   }
 
   // Visibility-controlled accessors that can use an old version.
