@@ -689,7 +689,7 @@ BatchDescriptor::BatchDescriptor(int ndims)
     : value_max_(0.0),
       value_min_(0.0),
       quantized_activation_mode_(QuantizedActivationMode::k8Bit) {
-  tensor_.mutable_dimensions()->Resize(ndims + 2, 0);
+  tensor_.mutable_dimensions()->resize(ndims + 2, 0);
   set_layout(DataLayout::kYXDepthBatch);
 }
 
@@ -812,7 +812,7 @@ TensorDescriptorProto BatchDescriptor::ToProto(DataType data_type) const {
 // -- FilterDescriptor
 
 FilterDescriptor::FilterDescriptor(int ndims) {
-  tensor_.mutable_dimensions()->Resize(ndims + 2, 0);
+  tensor_.mutable_dimensions()->resize(ndims + 2, 0);
   set_layout(FilterLayout::kOutputInputYX);
 }
 
@@ -884,9 +884,9 @@ TensorDescriptorProto FilterDescriptor::ToProto(DataType data_type) const {
 // -- ConvolutionDescriptor
 
 ConvolutionDescriptor::ConvolutionDescriptor(int ndims) {
-  proto_.mutable_paddings()->Resize(ndims, 0);
-  proto_.mutable_strides()->Resize(ndims, 1);
-  proto_.mutable_dilations()->Resize(ndims, 1);
+  proto_.mutable_paddings()->resize(ndims, 0);
+  proto_.mutable_strides()->resize(ndims, 1);
+  proto_.mutable_dilations()->resize(ndims, 1);
   proto_.set_group_count(1);
   proto_.set_convolution_mode(ConvolutionMode::CROSS_CORRELATION);
 }
