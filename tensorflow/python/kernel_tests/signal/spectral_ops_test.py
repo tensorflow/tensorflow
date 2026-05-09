@@ -366,5 +366,28 @@ class SpectralOpsTest(test.TestCase, parameterized.TestCase):
     # Check that the inverse and original signal are close.
     self.assertAllClose(inverse_mdct, signal, atol=tol, rtol=tol)
 
+  def test_inverse_stft_rejects_zero_frame_length(self):
+    # Regression for https://github.com/tensorflow/tensorflow/issues/117843:
+    # frame_length=0 (or stfts.shape[-1] == 1, which makes the inferred
+    # fft_length 0) used to slip through the Python validation and abort
+    # the process inside the DUCC FFT backend (`Assertion failure: no
+    # zero-sized FFTs`). The Python layer should now reject these cases
+    # with a clean ValueError before any kernel runs.
+    stfts = np.zeros((1, 2, 1), dtype=np.complex64)
+    with self.assertRaisesRegex(ValueError, "must be a positive integer"):
+      spectral_ops.inverse_stft(stfts, frame_length=0, frame_step=1,
+                                fft_length=None)
+    # Explicit zero fft_length is also rejected.
+    with self.assertRaisesRegex(ValueError, "must be a positive integer"):
+      spectral_ops.inverse_stft(stfts, frame_length=4, frame_step=1,
+                                fft_length=0)
+    # Same for stft, for symmetry.
+    signals = np.zeros((1, 4), dtype=np.float32)
+    with self.assertRaisesRegex(ValueError, "must be a positive integer"):
+      spectral_ops.stft(signals, frame_length=0, frame_step=1)
+    with self.assertRaisesRegex(ValueError, "must be a positive integer"):
+      spectral_ops.stft(signals, frame_length=4, frame_step=1, fft_length=0)
+
+
 if __name__ == "__main__":
   test.main()
