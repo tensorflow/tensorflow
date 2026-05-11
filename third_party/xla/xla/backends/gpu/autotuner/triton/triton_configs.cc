@@ -60,7 +60,9 @@ const std::vector<TritonGemmConfig>& GetTritonConfigsForPlatform(
             ParseConfig(configs::get_cuda())},
            {TritonConfigsPlatform::kDefaultRocm,
             ParseConfig(configs::get_rocm())},
-           {TritonConfigsPlatform::kHopper, ParseConfig(configs::get_h100())}});
+           {TritonConfigsPlatform::kHopper, ParseConfig(configs::get_h100())},
+           {TritonConfigsPlatform::kMI300, ParseConfig(configs::get_mi300())},
+           {TritonConfigsPlatform::kMI350, ParseConfig(configs::get_mi350())}});
   return kConfigs->at(platform);
 }
 
