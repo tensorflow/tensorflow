@@ -22,10 +22,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/match.h"
 #include "xla/hlo/analysis/hlo_operand_index.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape.h"
@@ -240,19 +242,181 @@ AliasInfo::GetInPlaceInputOutputPairs(const HloInstruction* user) const {
     return in_place_pairs;
   }
   if (user->opcode() == HloOpcode::kAsyncStart) {
-    // Custom Calls previously assumed that aliased operands were
-    // forwarded, but now supports modification semantics.
     const auto& aliasing_pairs =
         Cast<HloAsyncStartInstruction>(user)->output_to_operand_aliasing();
     std::vector<std::pair<HloOperandIndex, ShapeIndex>> in_place_pairs;
+
+    // No operands bound, exit early or no aliasing, exit early.
+    if (user->operands().empty() || aliasing_pairs.empty()) {
+      return in_place_pairs;
+    }
+
     in_place_pairs.reserve(aliasing_pairs.size());
+    const Shape& async_shape = user->shape();
+    CHECK(async_shape.IsTuple());
+    CHECK_GE(ShapeUtil::TupleElementCount(async_shape), 2);
+    const Shape& output_subshape = async_shape.tuple_shapes(1);
     for (const auto& pair : aliasing_pairs) {
       ShapeIndex output_shape_index = pair.first;
       int64_t operand_index = pair.second.first;
       ShapeIndex operand_shape_index = pair.second.second;
+
+      // TODO(phui): Move this to verifier.
+      CHECK(!output_shape_index.empty())
+          << "output_shape_index should not be empty, it should not alias with "
+             "the whole output tuple!";
+
+      // Aliasing is for output_subshape, but output_subshape is not bound yet.
+      if (output_shape_index[0] == 1 &&
+          (output_subshape.IsTuple() &&
+           output_subshape.tuple_shapes().empty())) {
+        VLOG(1) << "aliasing config for output_subshape, but it is not bound "
+                   "yet";
+        continue;
+      }
+
+      if (!ShapeUtil::IndexIsValid(async_shape, output_shape_index)) {
+        VLOG(1) << "output_shape_index (`" << output_shape_index.ToString()
+                << "`) in aliasing config for async operations invalid "
+                   "and ignored, reason:\n"
+                << "it may not be bound yet";
+        continue;
+      }
+
+      // This operand is not bound yet.
+      if (operand_index >= user->operands().size()) {
+        continue;
+      }
+
+      // TODO(phui): Move this to verifier.
+      CHECK(ShapeUtil::IndexIsValid(user->operand(operand_index)->shape(),
+                                    operand_shape_index));
+
       in_place_pairs.push_back(
           {HloOperandIndex{operand_index, {operand_shape_index}},
            output_shape_index});
+    }
+    return in_place_pairs;
+  }
+
+  if (user->opcode() == HloOpcode::kAsyncUpdate) {
+    std::vector<std::pair<HloOperandIndex, ShapeIndex>> in_place_pairs;
+    const Shape& async_shape = user->shape();
+    CHECK(async_shape.IsTuple());
+    CHECK_GE(ShapeUtil::TupleElementCount(async_shape), 2);
+    const Shape& input_subshape = async_shape.tuple_shapes(0);
+    CHECK(input_subshape.IsTuple());
+    const Shape& output_subshape = async_shape.tuple_shapes(1);
+
+    CHECK_GE(user->operand_count(), 1);
+
+    // Retrieve the aliasing pairs from the async-start.
+    const HloInstruction* start = user->async_chain_start();
+    CHECK_EQ(start->opcode(), HloOpcode::kAsyncStart);
+    const auto& aliasing_pairs =
+        Cast<HloAsyncStartInstruction>(start)->output_to_operand_aliasing();
+
+    if (user->operand_count() == 1 || aliasing_pairs.empty()) {
+      return in_place_pairs;
+    }
+
+    std::vector<const HloInstruction*> prev_bound_operands =
+        hlo_instruction_utils::async::GetAsyncBoundOperands(user->operand(0));
+
+    for (const auto& pair : aliasing_pairs) {
+      ShapeIndex output_shape_index = pair.first;
+      int64_t logical_operand_index = pair.second.first;
+      ShapeIndex operand_shape_index = pair.second.second;
+
+      // TODO(phui): Move this to verifier.
+      CHECK(!output_shape_index.empty())
+          << "output_shape_index should not be empty, it should not alias with "
+             "the whole output tuple!";
+
+      // Aliasing is for output_subshape, but output_subshape is not bound yet.
+      if (output_shape_index[0] == 1 &&
+          (output_subshape.IsTuple() &&
+           output_subshape.tuple_shapes().empty())) {
+        VLOG(1) << "aliasing config for output_subshape, but it is not bound "
+                   "yet";
+        continue;
+      }
+
+      if (!ShapeUtil::IndexIsValid(async_shape, output_shape_index)) {
+        VLOG(1) << "output_shape_index (`" << output_shape_index.ToString()
+                << "`) in aliasing config for async operations invalid "
+                   "and ignored, reason:\n"
+                << "it may not be bound yet";
+        continue;
+      }
+
+      // The operand index for this async-update instruction.
+      int64_t operand_index =
+          logical_operand_index - prev_bound_operands.size() + 1;
+
+      if (operand_index <= 0 || operand_index >= user->operand_count()) {
+        // This operand is already bound or not bound yet, having been handled
+        // in the previous ones or to be handled in the next ones.
+        continue;
+      }
+
+      // TODO(phui): Move this to verifier.
+      CHECK(ShapeUtil::IndexIsValid(user->operand(operand_index)->shape(),
+                                    operand_shape_index));
+
+      in_place_pairs.push_back(
+          {HloOperandIndex{operand_index, {operand_shape_index}},
+           output_shape_index});
+    }
+
+    return in_place_pairs;
+  }
+
+  if (user->opcode() == HloOpcode::kAsyncDone) {
+    std::vector<std::pair<HloOperandIndex, ShapeIndex>> in_place_pairs;
+    const Shape& prev_shape = user->operand(0)->shape();
+    CHECK(prev_shape.IsTuple());
+    CHECK_GE(ShapeUtil::TupleElementCount(prev_shape), 2);
+    const Shape& prev_input_subshape = prev_shape.tuple_shapes(0);
+    CHECK(prev_input_subshape.IsTuple());
+
+    // Additional logic for late-bound result-to-parameter aliasing:
+    const HloInstruction* start = user->async_chain_start();
+    CHECK_EQ(start->opcode(), HloOpcode::kAsyncStart);
+    const auto& aliasing_pairs =
+        Cast<HloAsyncStartInstruction>(start)->output_to_operand_aliasing();
+
+    for (const auto& pair : aliasing_pairs) {
+      const ShapeIndex& start_output_index = pair.first;
+      int64_t logical_param_number = pair.second.first;
+      const ShapeIndex& param_subindex = pair.second.second;
+
+      // We only care about result-to-parameter aliasing.
+      if (!start_output_index.empty() && start_output_index[0] == 1) {
+        if (!ShapeUtil::IndexIsValid(start->shape(), start_output_index)) {
+          continue;
+        }
+        ShapeIndex result_subindex(start_output_index.begin() + 1,
+                                   start_output_index.end());
+
+        // Alias async-done output at {result_subindex}
+        // with async-done operand 0 (the chain) at
+        // {0, logical_param, param_subindex}.
+        ShapeIndex chain_index = {0, logical_param_number};
+        chain_index.insert(chain_index.end(), param_subindex.begin(),
+                           param_subindex.end());
+
+        in_place_pairs.push_back(
+            {HloOperandIndex{0, chain_index}, result_subindex});
+      } else {
+        // TODO(phui): move this to verifier.
+        LOG(INFO)
+            << "output_index (`" << start_output_index.ToString()
+            << "`) in aliasing config for async operations invalid "
+               "and ignored, reason:\n"
+            << "it should be an non-empty index pointing to output subshape "
+               "({1,...})";
+      }
     }
     return in_place_pairs;
   }
