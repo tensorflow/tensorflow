@@ -158,7 +158,7 @@ bool UseMultiOutputFusion(const HloModuleConfig& config) {
   }
   const auto& extra_options_map =
       config.debug_options().xla_backend_extra_options();
-  return extra_options_map.count(kUseMultiOutputFusion) > 0;
+  return extra_options_map.count(kDisableMultiOutputFusion) == 0;
 }
 
 bool EnableTiledEmitter(const HloModuleConfig& config) {

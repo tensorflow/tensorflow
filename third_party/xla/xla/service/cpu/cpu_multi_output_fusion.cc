@@ -44,6 +44,11 @@ static bool CheckInsideFusion(const HloInstruction* instr) {
   return false;
 }
 
+static bool IsSupportedOp(HloOpcode opcode) {
+  return emitters::IsSupportedElementalOp(opcode) &&
+         opcode != HloOpcode::kDot && opcode != HloOpcode::kDynamicUpdateSlice;
+}
+
 bool CpuMultiOutputFusion::ShapesCompatibleForFusion(HloInstruction* instr1,
                                                      HloInstruction* instr2) {
   auto get_element_shape = [&](HloInstruction* instr) {
@@ -76,17 +81,11 @@ bool CpuMultiOutputFusion::IsFusible(HloInstruction* instr) {
     return false;
   }
 
-  if (instr->IsLoopFusion() &&
-      instr->fused_expression_root()->opcode() != HloOpcode::kDot) {
-    return true;
+  if (instr->IsLoopFusion()) {
+    return IsSupportedOp(instr->fused_expression_root()->opcode());
   }
 
-  HloOpcode opcode = instr->opcode();
-  if (emitters::IsSupportedElementalOp(opcode) && opcode != HloOpcode::kDot) {
-    return true;
-  }
-
-  return false;
+  return IsSupportedOp(instr->opcode());
 }
 
 bool CpuMultiOutputFusion::LegalToFuse(HloInstruction* instr1,
