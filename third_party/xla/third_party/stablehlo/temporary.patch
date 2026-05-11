@@ -623,6 +623,50 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/mesh_axes_replica_group_compat
 +    return %0 : tensor<4xf32>
 +  }
  }
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
+@@ -1469,3 +1469,40 @@
+   }
+   return %1 : tensor<i64>
+ }
++
++////////
++// XorOp
++
++// CHECK-LABEL: @xor_fold_splat_cst
++func.func @xor_fold_splat_cst() -> tensor<3x2xi32> {
++  // CHECK: stablehlo.constant dense<1> : tensor<3x2xi32>
++  // CHECK-NOT: stablehlo.xor
++  %operand_1 = stablehlo.constant dense<1> : tensor<3x2xi32>
++  %operand_2 = stablehlo.constant dense<0> : tensor<3x2xi32>
++  %result = stablehlo.xor %operand_1, %operand_2 : tensor<3x2xi32>
++  return %result : tensor<3x2xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @xor_fold_cst
++func.func @xor_fold_cst() -> tensor<3xi32> {
++  // CHECK: stablehlo.constant dense<[0, 0, 3]> : tensor<3xi32>
++  // CHECK-NOT: stablehlo.xor
++  %operand_1 = stablehlo.constant dense<[1, 2, 1]> : tensor<3xi32>
++  %operand_2 = stablehlo.constant dense<[1, 2, 2]> : tensor<3xi32>
++  %result = stablehlo.xor %operand_1, %operand_2 : tensor<3xi32>
++  return %result : tensor<3xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @xor_fold_boolean_cst
++func.func @xor_fold_boolean_cst() -> tensor<4xi1> {
++  // CHECK: stablehlo.constant dense<[true, false, true, false]> : tensor<4xi1>
++  // CHECK-NOT: stablehlo.xor
++  %operand_1 = stablehlo.constant dense<[true, true, false, false]> : tensor<4xi1>
++  %operand_2 = stablehlo.constant dense<[false, true, true, false]> : tensor<4xi1>
++  %result = stablehlo.xor %operand_1, %operand_2 : tensor<4xi1>
++  return %result : tensor<4xi1>
++}
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloCompatibilityExpander.cpp b/stablehlo/stablehlo/transforms/StablehloCompatibilityExpander.cpp
 --- stablehlo/stablehlo/transforms/StablehloCompatibilityExpander.cpp
 +++ stablehlo/stablehlo/transforms/StablehloCompatibilityExpander.cpp
@@ -695,4 +739,60 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
          auto complexZeroSplat =
              SplatElementsAttr::get(shapedType, complexZeroScalar);
          return LazyPlaceholderValue(
+@@ -2114,6 +2114,47 @@
+   }
+ };
+ 
++struct FoldXorOpPattern : public ShapeOpRewritePattern<XorOp> {
++  using ShapeOpRewritePattern::ShapeOpRewritePattern;
++
++  LogicalResult matchAndRewrite(XorOp op,
++                                PatternRewriter& rewriter) const override {
++    auto resultType = op.getType();
++    auto resultElementType = resultType.getElementType();
++    FailureOr<TypedAttr> result;
++
++    if (resultElementType.isInteger(/*width=*/1)) {
++      result = foldBinaryOpIntOrFloat(rewriter, op, FoldLogicalXor{});
++    } else if (resultElementType.isInteger()) {
++      result = foldBinaryOpIntOrFloat(rewriter, op, FoldBitwiseXor{});
++    } else {
++      return rewriter.notifyMatchFailure(op, "Expected integral element type.");
++    }
++
++    if (failed(result)) return failure();
++    rewriter.replaceOpWithNewOp<mlir::stablehlo::ConstantOp>(op,
++                                                             result.value());
++    return success();
++  }
++
++  struct FoldLogicalXor {
++    APInt operator()(APInt lhs, APInt rhs) const {
++      return APInt(lhs.getBitWidth(), !lhs.isZero() ^ !rhs.isZero());
++    }
++    std::optional<APFloat> operator()(APFloat lhs, APFloat rhs) const {
++      return std::nullopt;
++    }
++  };
++
++  struct FoldBitwiseXor {
++    APInt operator()(APInt lhs, APInt rhs) const { return lhs ^ rhs; }
++
++    std::optional<APFloat> operator()(APFloat lhs, APFloat rhs) const {
++      return std::nullopt;
++    }
++  };
++};
++
+ struct StablehloAggressiveFolderPass
+     : public impl::StablehloAggressiveFolderPassBase<
+           StablehloAggressiveFolderPass> {
+@@ -2178,6 +2219,7 @@
+                 FoldTransposeOpPattern,               //
+                 FoldWhileOpIfDeadAndPresumedPure,     //
+                 FoldWhileOpPattern,                   //
++                FoldXorOpPattern,                     //
+                 InlineCaseOpWithConstantBranchIndex,  //
+                 LowerBoolSplatConstantsIntoReduceOpRegion>(context, options,
+                                                            benefit);
 
