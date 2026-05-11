@@ -22,9 +22,8 @@ import re
 import sys
 import shlex
 
-# Template values set by rocm_configure.bzl.
-CPU_COMPILER = ('%{cpu_compiler}')
-HOST_COMPILER_PATH = ('%{host_compiler_path}')
+# Template values set by rocm_configure.bzl or environment
+CPU_COMPILER = os.environ.get('HOST_COMPILER', '/usr/bin/clang')
 
 HIPCC_PATH = '%{rocm_root}/bin/hipcc'
 HIPCC_ENV = '%{hipcc_env}'

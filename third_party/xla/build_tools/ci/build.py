@@ -110,6 +110,8 @@ class BuildType(enum.Enum):
   XLA_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_8X_H100_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_ONEAPI_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_GPU_ROCM_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_GPU_ROCM_LOCAL_SYSROOT_GITHUB_ACTIONS = enum.auto()
 
   # Presubmit builds for regression testing.
   XLA_LINUX_ARM64_CPU_48_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
@@ -516,6 +518,56 @@ Build(
     target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
     build_tag_filters=oneapi_build_tag_filter,
     test_tag_filters=oneapi_test_tag_filter,
+    options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
+    subcommand="build",
+)
+
+# ROCm builds - hermetic LLVM
+# Tag filters from build_tools/rocm/rocm_tag_filters.sh + gpu
+rocm_tag_filter = (
+    "-no_gpu",
+    "-requires-gpu-intel",
+    "-requires-gpu-nvidia",
+    "-cuda-only",
+    "-oneapi-only",
+    "-requires-gpu-sm60",
+    "-requires-gpu-sm60-only",
+    "-requires-gpu-sm70",
+    "-requires-gpu-sm70-only",
+    "-requires-gpu-sm80",
+    "-requires-gpu-sm80-only",
+    "-requires-gpu-sm86",
+    "-requires-gpu-sm86-only",
+    "-requires-gpu-sm89",
+    "-requires-gpu-sm89-only",
+    "-requires-gpu-sm90",
+    "-requires-gpu-sm90-only",
+    "-skip_rocprofiler_sdk",
+    "-no_oss",
+    "-oss_excluded",
+    "-oss_serial",
+    "gpu",
+)
+
+Build(
+    type_=BuildType.XLA_LINUX_X86_GPU_ROCM_GITHUB_ACTIONS,
+    repo="openxla/xla",
+    configs=("warnings", "rbe_linux_cpu", "rocm_clang_hermetic"),
+    target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
+    build_tag_filters=rocm_tag_filter,
+    test_tag_filters=rocm_tag_filter,
+    options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
+    subcommand="build",
+)
+
+# ROCm builds - hermetic LLVM with local sysroot
+Build(
+    type_=BuildType.XLA_LINUX_X86_GPU_ROCM_LOCAL_SYSROOT_GITHUB_ACTIONS,
+    repo="openxla/xla",
+    configs=("warnings", "rbe_linux_cpu", "rocm_clang_hermetic_local_sysroot"),
+    target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
+    build_tag_filters=rocm_tag_filter,
+    test_tag_filters=rocm_tag_filter,
     options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
     subcommand="build",
 )

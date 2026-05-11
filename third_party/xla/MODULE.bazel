@@ -242,6 +242,9 @@ use_repo(nccl_redist, "cuda_nccl")
 sycl_configure = use_extension("@rules_ml_toolchain//extensions:sycl_configure.bzl", "sycl_configure_ext")
 use_repo(sycl_configure, "level_zero", "local_config_sycl", "oneapi", "zero_loader")
 
+local_sysroot = use_extension("@rules_ml_toolchain//extensions:local_sysroot_configure.bzl", "local_sysroot_ext")
+use_repo(local_sysroot, "local_sysroot_config")
+
 cuda_redist_init_ext = use_extension("@rules_ml_toolchain//extensions:cuda_redist_init.bzl", "cuda_redist_init_ext")
 use_repo(
     cuda_redist_init_ext,
@@ -286,6 +289,9 @@ register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64")
 register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64_cuda")
 
 ### Other local config repos
+local_clang_configure = use_extension("@rules_ml_toolchain//extensions:local_clang_configure.bzl", "local_clang_configure_ext")
+use_repo(local_clang_configure, "local_config_clang")
+
 hipcc_configure = use_extension("@rules_ml_toolchain//extensions:hipcc_configure.bzl", "hipcc_configure_ext")
 use_repo(hipcc_configure, "config_rocm_hipcc")
 
