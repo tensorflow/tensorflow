@@ -127,7 +127,7 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
       std::function<void(absl::Status status, bool sends_were_enqueued)>;
   virtual absl::StatusOr<PjRtDeviceEventRef> CopyRawToRemoteDevice(
       Future<std::string> serialized_descriptor, RemoteSendCallback on_done,
-      std::vector<PjRtDeviceEventRef> transfer_dependency_avs) = 0;
+      PjRtDeviceEventRefVector transfer_dependency_avs) = 0;
 
   // A sliced buffer is a view into the offset and range of this buffer.
   //
@@ -164,7 +164,7 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
   // and src_usage_event_promise when done using this buffer.
   virtual void ScheduleCopyTo(
       AsyncWorkRunner* async_work_runner,
-      std::vector<PjRtDeviceEventRef> transfer_dependency_events,
+      PjRtDeviceEventRefVector transfer_dependency_events,
       PjRtRawBufferRef dst_raw_buffer,
       PjRtDeviceEventPromiseRef definition_event_promise,
       PjRtDeviceEventPromiseRef src_usage_event_promise,
@@ -177,7 +177,7 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
 
   // TODO(parkers): This should not be needed, but some backends
   // require deleting after all events.
-  virtual void DecrefAfter(std::vector<PjRtDeviceEventRef> avs);
+  virtual void DecrefAfter(PjRtDeviceEventRefVector avs);
 };
 
 tsl::AsyncValueRef<PjRtStagingBuffer> ToStagingBuffer(

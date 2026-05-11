@@ -23,6 +23,7 @@ cc_library(
         ":communicator",
         ":rank_id",
         "//xla:util",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/status",
