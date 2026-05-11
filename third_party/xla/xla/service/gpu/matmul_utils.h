@@ -89,7 +89,6 @@ struct MatrixLayout : public se::gpu::MatrixLayout {
 };
 
 struct GemmConfig : public se::gpu::GemmConfig {
-  GemmConfig() = default;
   explicit GemmConfig(const se::gpu::GemmConfig& base)
       : se::gpu::GemmConfig(base) {}
   explicit GemmConfig(se::gpu::GemmConfig&& base)

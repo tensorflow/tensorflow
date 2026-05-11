@@ -43,19 +43,6 @@ void IntelGpuCompiler::AddPaddingForGpublasGemms(
   // Stub for Intel GPUs
 }
 
-absl::Status IntelGpuCompiler::AddConvAndGemmAutotuningPass(
-    HloPassPipeline* pipeline, HloModule* hlo_module,
-    const se::GpuComputeCapability& gpu_version, const CompileOptions& options,
-    tsl::thread::ThreadPool* thread_pool, se::StreamExecutor* stream_exec,
-    const Compiler::GpuTargetConfig* target_config,
-    const MultiProcessKeyValueStore& key_value_store,
-    const se::SemanticVersion& toolkit_version, const AliasInfo* alias_info,
-    const DebugOptions& debug_options, mlir::MLIRContext* mlir_context,
-    HloCostAnalysis::ShapeSizeFunction shape_size_fn) {
-  // Return OkStatus as a stub.
-  return absl::OkStatus();
-}
-
 absl::Status IntelGpuCompiler::AddAutotunerPass(
     HloPassPipeline* pipeline, HloModule* hlo_module,
     const se::GpuComputeCapability& gpu_version, const CompileOptions& options,

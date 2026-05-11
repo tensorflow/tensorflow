@@ -651,6 +651,69 @@ Tiles PropagateTileToOutputForReduceOp(const HloReduceInstruction& reduce,
   return {input_tile.CloneWithNewDims(std::move(output_dim_tiles))};
 }
 
+Tiles PropagateTileToInputForScanOp(const HloInstruction& scan,
+                                    const Tile& output_tile,
+                                    int64_t output_index) {
+  const auto& scan_inst = *Cast<HloScanInstruction>(&scan);
+  int64_t num_carries = scan_inst.num_carries();
+  int64_t num_inputs = scan.operand_count() - num_carries;
+
+  Tile scalar_tile{output_tile.tiling_space(),
+                   {},
+                   llvm::to_vector(output_tile.replica_ids())};
+
+  if (output_index >= num_inputs) {
+    return Tiles(scan.operand_count(), scalar_tile);
+  }
+
+  Tiles operand_tiles;
+  operand_tiles.reserve(scan.operand_count());
+  for (int i = 0; i < num_inputs; ++i) {
+    operand_tiles.push_back(output_tile);
+  }
+  for (int i = 0; i < num_carries; ++i) {
+    operand_tiles.push_back(scalar_tile);
+  }
+  return operand_tiles;
+}
+
+absl::StatusOr<Tiles> PropagateTileToOutputForScanOp(const HloInstruction& scan,
+                                                     const Tile& input_tile,
+                                                     int64_t input_index) {
+  const auto& scan_inst = *Cast<HloScanInstruction>(&scan);
+  int64_t num_carries = scan_inst.num_carries();
+  int64_t num_inputs = scan.operand_count() - num_carries;
+
+  if (input_index >= num_inputs) {
+    return absl::InvalidArgumentError(
+        "Input to output tile propagation not implemented from scan carry "
+        "operands.");
+  }
+
+  Tile scalar_tile{
+      input_tile.tiling_space(), {}, llvm::to_vector(input_tile.replica_ids())};
+
+  Tiles output_tiles;
+  output_tiles.reserve(scan.operand_count());
+  for (int i = 0; i < num_inputs; ++i) {
+    output_tiles.push_back(input_tile);
+  }
+  for (int i = 0; i < num_carries; ++i) {
+    output_tiles.push_back(scalar_tile);
+  }
+  return output_tiles;
+}
+
+Tiles PropagateTileToInputForGetTupleElementOp(const HloInstruction& gte,
+                                               const Tile& output_tile) {
+  return Tiles{output_tile};
+}
+
+Tiles PropagateTileToOutputForGetTupleElementOp(const HloInstruction& gte,
+                                                const Tile& input_tile) {
+  return Tiles{input_tile};
+}
+
 absl::Status IsSupportedReshape(const std::vector<MinimalReshape>& reshapes) {
   for (const auto& minimal_reshape : reshapes) {
     if (minimal_reshape.category == MinimalReshapeCategory::kGeneric) {
@@ -1244,6 +1307,12 @@ absl::StatusOr<Tiles> PropagateTileToInput(TilingSpace& tiling_space,
   if (hlo.opcode() == HloOpcode::kReshape) {
     return PropagateTileToInputForReshapeOp(hlo, output_tile);
   }
+  if (hlo.opcode() == HloOpcode::kScan) {
+    return PropagateTileToInputForScanOp(hlo, output_tile, output_index);
+  }
+  if (hlo.opcode() == HloOpcode::kGetTupleElement) {
+    return PropagateTileToInputForGetTupleElementOp(hlo, output_tile);
+  }
   return absl::InvalidArgumentError(absl::StrCat(
       "Output to input tile propagation not implemented for ", hlo.opcode()));
 }
@@ -1286,6 +1355,12 @@ absl::StatusOr<Tiles> PropagateTileToOutput(const TilingSpace& tiling_space,
   }
   if (hlo.opcode() == HloOpcode::kReshape) {
     return PropagateTileToOutputForReshapeOp(hlo, input_tile);
+  }
+  if (hlo.opcode() == HloOpcode::kScan) {
+    return PropagateTileToOutputForScanOp(hlo, input_tile, input_index);
+  }
+  if (hlo.opcode() == HloOpcode::kGetTupleElement) {
+    return PropagateTileToOutputForGetTupleElementOp(hlo, input_tile);
   }
   return absl::InvalidArgumentError(absl::StrCat(
       "Input to output tile propagation not implemented for ", hlo.opcode()));
