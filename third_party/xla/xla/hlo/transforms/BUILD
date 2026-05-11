@@ -671,6 +671,37 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "debug_log_custom_call_processor",
+    srcs = ["debug_log_custom_call_processor.cc"],
+    hdrs = ["debug_log_custom_call_processor.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service:hlo_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "debug_log_custom_call_processor_test",
+    srcs = ["debug_log_custom_call_processor_test.cc"],
+    deps = [
+        ":debug_log_custom_call_processor",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 xla_cc_test(
     name = "call_splitter_test",
     srcs = ["call_splitter_test.cc"],
