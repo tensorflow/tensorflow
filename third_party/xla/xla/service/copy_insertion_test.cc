@@ -4818,5 +4818,31 @@ ENTRY main {
   EXPECT_EQ(pin_d0->operand(0)->opcode(), HloOpcode::kCopy);
 }
 
+TEST_F(CopyInsertionTest, AsyncNoCopyForChain) {
+  constexpr absl::string_view kModuleString = R"(
+HloModule Module, input_output_alias={ {0}: (0, {}, may-alias) }
+
+async_computation {
+  p0 = f32[10] parameter(0)
+  ROOT tuple = (f32[10]) tuple(p0)
+}
+
+ENTRY Entry {
+  p0 = f32[10] parameter(0)
+  async-start = ((), (f32[10]), s32[]) async-start(), calls=async_computation
+  async-update = ((f32[10]), (f32[10]), s32[]) async-update(async-start, p0)
+  ROOT async-done = (f32[10]) async-done(async-update)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+
+                          ParseAndReturnVerifiedModule(kModuleString));
+  CopyInsertion copy_insertion(&alias_info_);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  VLOG(2) << module->ToString();
+  // We should not insert any copies.
+  EXPECT_EQ(CountCopies(*module), 0);
+}
+
 }  // namespace
 }  // namespace xla
