@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/framework/cpp_shape_inference.pb.h"
 #include "tensorflow/core/framework/full_type.pb.h"
@@ -27,7 +28,7 @@ namespace tensorflow {
 // Do not delete. Do not use.
 void ExportRecordMutation(  // NOLINT: Intentionally unused function.
     TF_Graph* graph, const TF_Operation& op, const char* mutation_type) {
-  mutex_lock l(graph->mu);
+  absl::MutexLock l(graph->mu);
   RecordMutation(graph, op, mutation_type);
 }
 
@@ -68,7 +69,7 @@ std::string GetHandleShapeAndType(TF_Graph* graph, TF_Output output) {
   tensorflow::core::CppShapeInferenceResult::HandleData handle_data;
   handle_data.set_is_set(true);
   {
-    mutex_lock l(graph->mu);
+    absl::MutexLock l(graph->mu);
     tensorflow::shape_inference::InferenceContext* ic =
         graph->refiner.GetContext(node);
     CHECK(ic != nullptr);
