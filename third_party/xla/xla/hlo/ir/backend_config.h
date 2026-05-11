@@ -69,6 +69,7 @@ class BackendConfigWrapper {
  public:
   BackendConfigWrapper() = default;
   explicit BackendConfigWrapper(std::string raw_string);
+  explicit BackendConfigWrapper(std::shared_ptr<const std::string> raw_string);
   explicit BackendConfigWrapper(const tsl::protobuf::Message& proto)
       : proto_(CloneBackendConfigProto(&proto)) {}
   BackendConfigWrapper(const BackendConfigWrapper& other) {
@@ -119,23 +120,23 @@ class BackendConfigWrapper {
       const std::function<absl::Status(ConfigProto*)>& fn) {
     absl::WriterMutexLock lock{mutex_};
     if (proto_ == nullptr) {
-      if (raw_string_.empty()) {
+      if (raw_string_ == nullptr || raw_string_->empty()) {
         return absl::InvalidArgumentError(
             "Has no proto to apply the modifier function on.");
       }
       auto proto = std::make_unique<ConfigProto>();
       absl::Status status =
-          tsl::HumanReadableJsonToProto(raw_string_, proto.get());
+          tsl::HumanReadableJsonToProto(*raw_string_, proto.get());
       if (!status.ok()) {
         // If the proto is unparsable, move the raw string to the custom call
         // metadata field. This preserves the original string for lowering
         // emitters that might depend on it.
         if constexpr (has_mutable_custom_call_metadata<ConfigProto>::value) {
           auto* custom_call_metadata = proto->mutable_custom_call_metadata();
-          custom_call_metadata->set_metadata(raw_string_);
-          VLOG(1) << "Moving the unparsable backend config " << raw_string_
+          custom_call_metadata->set_metadata(*raw_string_);
+          VLOG(1) << "Moving the unparsable backend config " << *raw_string_
                   << " to custom call metadata.";
-          raw_string_.clear();
+          raw_string_.reset();
         } else {
           return status;
         }
@@ -144,13 +145,14 @@ class BackendConfigWrapper {
     }
     absl::Status status = fn(static_cast<ConfigProto*>(proto_.get()));
     // Invalidate string cache, as the proto might have been mutated.
-    raw_string_.clear();
+    raw_string_.reset();
     return status;
   }
 
   bool empty() const {
     absl::MutexLock lock{mutex_};
-    return proto_ == nullptr && raw_string_.empty();
+    return proto_ == nullptr &&
+           (raw_string_ == nullptr || raw_string_->empty());
   }
 
  private:
@@ -166,7 +168,8 @@ class BackendConfigWrapper {
   mutable absl::Mutex mutex_;
   mutable std::unique_ptr<tsl::protobuf::Message> proto_
       ABSL_GUARDED_BY(mutex_);
-  mutable std::string raw_string_ ABSL_GUARDED_BY(mutex_);
+  mutable std::shared_ptr<const std::string> raw_string_
+      ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace xla

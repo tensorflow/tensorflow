@@ -20,25 +20,17 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "google/protobuf/message.h"
 #include "re2/re2.h"
+#include "xla/hlo/ir/backend_config_pool.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "tsl/platform/human_readable_json.h"
 #include "tsl/platform/protobuf.h"
-
-// TODO(dasenov): Remove this after 2026-07-15.
-namespace {
-std::string RemoveWaitOnOperationQueues(std::string&& s) {
-  static constexpr LazyRE2 kReWaitOnOperationQueues = {
-      R"("wait_on_operation_queues"\s*:\s*\[\s*\]\s*,)"};
-  RE2::GlobalReplace(&s, *kReWaitOnOperationQueues, "");
-  return std::move(s);
-}
-}  // namespace
 
 namespace xla {
 
@@ -62,15 +54,23 @@ absl::StatusOr<std::string> BackendConfigToRawString(
 }
 
 BackendConfigWrapper::BackendConfigWrapper(std::string raw_string)
-    : raw_string_(RemoveWaitOnOperationQueues(std::move(raw_string))) {}
+    : raw_string_(BackendConfigPool::Get()->Intern(std::move(raw_string))) {}
+
+BackendConfigWrapper::BackendConfigWrapper(
+    std::shared_ptr<const std::string> raw_string)
+    : raw_string_(std::move(raw_string)) {}
 
 const std::string& BackendConfigWrapper::GetRawStringWithoutMutex() const {
-  if (proto_ && raw_string_.empty()) {
+  if (proto_ && (raw_string_ == nullptr || raw_string_->empty())) {
     // Cache the raw string.
-    raw_string_ = BackendConfigToRawString(*proto_).value();
+    auto status_or_string = BackendConfigToRawString(*proto_);
+    CHECK_OK(status_or_string.status());
+    raw_string_ =
+        BackendConfigPool::Get()->Intern(std::move(status_or_string).value());
   }
   static const std::string* const kEmptyString = new std::string();
-  return raw_string_.empty() ? *kEmptyString : raw_string_;
+  return (raw_string_ == nullptr || raw_string_->empty()) ? *kEmptyString
+                                                          : *raw_string_;
 }
 
 absl::Status BackendConfigWrapper::GetProto(
@@ -94,7 +94,7 @@ absl::Status BackendConfigWrapper::GetProto(
     }
     // Empty string does not parse as valid JSON, but it's a valid backend
     // config, corresponding to the empty proto.
-    if (raw_string_.empty()) {
+    if (raw_string_ == nullptr || raw_string_->empty()) {
       return absl::OkStatus();
     }
   }
@@ -106,7 +106,7 @@ absl::Status BackendConfigWrapper::GetProto(
     return copy_from_cache();
   }
 
-  TF_RETURN_IF_ERROR(tsl::HumanReadableJsonToProto(raw_string_, output_proto));
+  TF_RETURN_IF_ERROR(tsl::HumanReadableJsonToProto(*raw_string_, output_proto));
   // Cache the proto into the empty proto_.
   proto_ = CloneBackendConfigProto(output_proto);
   return absl::OkStatus();
@@ -115,7 +115,7 @@ absl::Status BackendConfigWrapper::GetProto(
 BackendConfigWrapper& BackendConfigWrapper::operator=(
     BackendConfigWrapper&& other) {
   std::unique_ptr<tsl::protobuf::Message> temp_proto;
-  std::string temp_string;
+  std::shared_ptr<const std::string> temp_string;
 
   // Do not hold two mutexes at the same time to avoid deadlocks.
   {

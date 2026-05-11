@@ -1928,12 +1928,13 @@ class HloInstruction {
     return static_cast<int32_t>(unique_id >> 32);
   }
 
-  bool has_backend_config() const { return !backend_config_.empty(); }
+  bool has_backend_config() const { return !backend_config_->empty(); }
 
-  void clear_backend_config() { backend_config_ = BackendConfigWrapper(); }
+  void clear_backend_config() { backend_config_ = DefaultBackendConfig(); }
 
   void CopyBackendConfigFrom(const HloInstruction* other) {
-    backend_config_ = BackendConfigWrapper(other->backend_config_);
+    backend_config_ =
+        std::make_shared<BackendConfigWrapper>(*other->backend_config_);
   }
 
   // Replaces the frontend attributes with the provided argument.
@@ -2063,10 +2064,11 @@ class HloInstruction {
   // general HLO optimization needs to interpret it.
   //
   // ConfigProto should be a protobuf Message type.
+
   template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
   absl::StatusOr<ConfigProto> backend_config() const {
     ConfigProto proto;
-    TF_RETURN_IF_ERROR(backend_config_.GetProto(&proto));
+    TF_RETURN_IF_ERROR(backend_config_->GetProto(&proto));
     return proto;
   }
 
@@ -2077,22 +2079,20 @@ class HloInstruction {
   template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
   absl::Status MutateBackendConfig(
       const std::function<absl::Status(ConfigProto*)>& fn) {
-    return backend_config_.ApplyFnOnProto(fn);
-  }
-
-  absl::Status set_backend_config(const tsl::protobuf::Message& proto) {
-    backend_config_ = BackendConfigWrapper(proto);
+    auto copy = std::make_shared<BackendConfigWrapper>(*backend_config_);
+    TF_RETURN_IF_ERROR(copy->ApplyFnOnProto<ConfigProto>(fn));
+    backend_config_ = std::move(copy);
     return absl::OkStatus();
   }
+
+  absl::Status set_backend_config(const tsl::protobuf::Message& proto);
 
   // Getter/setter for raw JSON-encoded backend config.  Prefer the
   // functions above that deal in proto Messages where possible.
   const std::string& raw_backend_config_string() const {
-    return backend_config_.GetRawString();
+    return backend_config_->GetRawString();
   }
-  void set_raw_backend_config_string(std::string config_str) {
-    backend_config_ = BackendConfigWrapper(std::move(config_str));
-  }
+  void set_raw_backend_config_string(std::string config_str);
 
   bool is_default_config() const { return is_default_config_; }
   void set_default_config() { is_default_config_ = true; }
@@ -2587,6 +2587,8 @@ class HloInstruction {
   // Set the computation containing this instruction.
   void set_parent(HloComputation* computation) { parent_ = computation; }
 
+  static std::shared_ptr<const BackendConfigWrapper> DefaultBackendConfig();
+
   // Implementation for non-common logic of PrintExtraAttributes.
   virtual void PrintExtraAttributesImpl(AttributePrinter& printer,
                                         const HloPrintOptions& options) const {}
@@ -2795,7 +2797,11 @@ class HloInstruction {
 
   // The backend-specific configuration for how a backend should compile this
   // HLO. See the documentation on backend_config().
-  BackendConfigWrapper backend_config_;
+  //
+  // NOTE: Concurrent mutation/read of the same instruction's backend config is
+  // not supported.
+  std::shared_ptr<const BackendConfigWrapper> backend_config_ =
+      DefaultBackendConfig();
 
   // String identifier for instruction.
   std::string name_;

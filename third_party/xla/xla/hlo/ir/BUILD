@@ -180,10 +180,12 @@ xla_cc_test(
     srcs = ["hlo_instruction_test.cc"],
     deps = [
         ":hlo",
+        "//xla:literal_util",
         "//xla:printer",
         "//xla:shape_util",
         "//xla:side_effect_util",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/service:hlo_proto_cc",
@@ -191,8 +193,11 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -316,17 +321,39 @@ xla_cc_test(
     ],
 )
 
+xla_cc_test(
+    name = "backend_config_pool_test",
+    srcs = ["backend_config_pool_test.cc"],
+    deps = [
+        ":backend_config",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/hash",
+    ],
+)
+
 cc_library(
     name = "backend_config",
-    srcs = ["backend_config.cc"],
-    hdrs = ["backend_config.h"],
+    srcs = [
+        "backend_config.cc",
+        "backend_config_pool.cc",
+    ],
+    hdrs = [
+        "backend_config.h",
+        "backend_config_pool.h",
+    ],
     deps = [
         "//xla:util",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_protobuf//:protobuf",
         "@com_googlesource_code_re2//:re2",

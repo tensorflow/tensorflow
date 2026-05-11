@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 
 #include <cstdint>
+#include <fstream>
 #include <memory>
 #include <optional>
 #include <string>
@@ -25,13 +26,17 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/stack_frames.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/literal_util.h"
 #include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
@@ -40,6 +45,7 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -581,5 +587,131 @@ TEST_F(HloInstructionTest, PrecisionConfigMethodConsistency) {
   EXPECT_TRUE(dot->SupportsPrecisionConfig());
 }
 
+TEST_F(HloInstructionTest, CloneSharesBackendConfig) {
+  std::string json = "{\"foo\": 5}";
+
+  HloConstantInstruction instr(ShapeUtil::MakeShape(U32, {3, 2}));
+  instr.set_raw_backend_config_string(json);
+
+  auto clone = instr.Clone();
+
+  EXPECT_EQ(&instr.raw_backend_config_string(),
+            &clone->raw_backend_config_string());
+}
+
+TEST_F(HloInstructionTest, MutateBackendConfigCOW) {
+  std::string json = "{}";
+
+  HloConstantInstruction instr(ShapeUtil::MakeShape(U32, {3, 2}));
+  instr.set_raw_backend_config_string(json);
+
+  auto clone = instr.Clone();
+
+  EXPECT_EQ(&instr.raw_backend_config_string(),
+            &clone->raw_backend_config_string());
+
+  auto status =
+      clone->MutateBackendConfig<OpMetadata>([](OpMetadata* metadata) {
+        metadata->set_op_name("mutated");
+        return absl::OkStatus();
+      });
+  ASSERT_TRUE(status.ok());
+
+  EXPECT_NE(&instr.raw_backend_config_string(),
+            &clone->raw_backend_config_string());
+  EXPECT_EQ(instr.raw_backend_config_string(), "{}");
+}
+
+TEST_F(HloInstructionTest, TextParserInternsBackendConfig) {
+  constexpr absl::string_view kHlo = R"(
+HloModule main
+
+ENTRY main {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT custom-call.1 = f32[] custom-call(p0),
+                       custom_call_target="target",
+                       backend_config="{\"foo\": 6}"
+  custom-call.2 = f32[] custom-call(p1),
+                       custom_call_target="target",
+                       backend_config="{\"foo\": 6}"
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+
+  HloInstruction* cc1 = nullptr;
+  HloInstruction* cc2 = nullptr;
+  for (auto* instr : module->entry_computation()->instructions()) {
+    if (instr->name() == "custom-call.1") {
+      cc1 = instr;
+    }
+    if (instr->name() == "custom-call.2") {
+      cc2 = instr;
+    }
+  }
+
+  ASSERT_NE(cc1, nullptr);
+  ASSERT_NE(cc2, nullptr);
+
+  EXPECT_EQ(&cc1->raw_backend_config_string(),
+            &cc2->raw_backend_config_string());
+}
+
+TEST_F(HloInstructionTest, DefaultBackendConfigIsShared) {
+  HloConstantInstruction instr1(ShapeUtil::MakeShape(U32, {3, 2}));
+  HloConstantInstruction instr2(ShapeUtil::MakeShape(U32, {3, 2}));
+
+  EXPECT_EQ(&instr1.raw_backend_config_string(),
+            &instr2.raw_backend_config_string());
+}
+
+TEST_F(HloInstructionTest, ProtoParserInternsBackendConfig) {
+  std::string proto_str = R"(
+    name: "custom-call.1"
+    opcode: "custom-call"
+    custom_call_target: "target"
+    backend_config: "{\"foo\": 7}"
+    shape {
+      element_type: F32
+    }
+  )";
+
+  HloInstructionProto proto1;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(proto_str, &proto1));
+
+  HloInstructionProto proto2 = proto1;
+
+  absl::flat_hash_map<int64_t, HloInstruction*> instruction_map;
+  absl::flat_hash_map<int64_t, HloComputation*> computation_map;
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto instr1, HloInstruction::CreateFromProto(proto1, instruction_map,
+                                                   computation_map));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto instr2, HloInstruction::CreateFromProto(proto2, instruction_map,
+                                                   computation_map));
+
+  EXPECT_EQ(&instr1->raw_backend_config_string(),
+            &instr2->raw_backend_config_string());
+}
+
+TEST_F(HloInstructionTest, ProtoRoundTripPreservesBackendConfig) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder("main");
+
+  auto* instr = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR2<uint32_t>({{1, 2}, {3, 4}})));
+
+  std::string json = "{\"foo\": 8}";
+  instr->set_raw_backend_config_string(json);
+
+  module->AddEntryComputation(builder.Build());
+
+  HloInstructionProto proto;
+  instr->ToProto(&proto);
+
+  EXPECT_EQ(proto.backend_config(), json);
+}
 }  // namespace
 }  // namespace xla
