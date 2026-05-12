@@ -29,12 +29,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
 #include "xla/array2d.h"
@@ -47,6 +49,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/service/dynamic_dimension_inference.h"
 #include "xla/shape.h"
@@ -274,6 +277,17 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
       const Array2D<uint8_t>& lhs, const Array2D<uint8_t>& rhs);
 
  protected:
+  // Contains the deferred chain of instructions, plus the source instruction
+  // feeding the chain (so we can check it can produce a Literal)
+  struct DeferredChainResult {
+    std::vector<const HloInstruction*> deferred_chain;
+    const HloInstruction* source = nullptr;
+  };
+
+  // Returns the deferred chain of instructions feeding into the given operand,
+  // plus the source instruction feeding the chain.
+  DeferredChainResult TraceDeferredChain(const HloInstruction* operand) const;
+
   // Evaluates the given instruction, and stores the evaluation result in the
   // evaluation state.
   //
@@ -323,6 +337,22 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   // the compilation of those instantiations across multiple cc files.
   template <typename ReturnT, typename ElementwiseT>
   friend class HloEvaluatorTypedVisitor;
+
+  // Trigger the evaluation of the given instruction, if it was deferred.
+  void MaterializeDeferredOp(const HloInstruction* instruction);
+
+  absl::Status MaterializeSlice(const HloInstruction* hlo);
+  absl::Status MaterializeBroadcast(const HloInstruction* broadcast);
+
+  // Returns true if the instruction is a deferrable operation that propagates
+  // indices to its operand (e.g., Slice or Broadcast).
+  // Note: This does not include Iota, which is also deferred but has no
+  // operands.
+  static bool IsDeferrableUnaryOp(const HloInstruction* instr) {
+    DCHECK(instr != nullptr);
+    return instr->opcode() == HloOpcode::kSlice ||
+           instr->opcode() == HloOpcode::kBroadcast;
+  }
 
   // Wraps around instruction handling to infer types before dispatching to
   // the corresponding typed Visitor.
@@ -384,6 +414,7 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   absl::Status HandleReal(const HloInstruction* real) override;
   absl::Status HandleImag(const HloInstruction* imag) override;
   absl::Status HandleComplex(const HloInstruction* complex) override;
+  absl::Status HandleIota(const HloInstruction* iota) override;
   absl::Status HandleReduce(const HloInstruction* hlo) override;
   absl::Status HandleReduceWindow(const HloInstruction* hlo) override;
   absl::Status HandleMap(const HloInstruction* map) override;
@@ -431,6 +462,10 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
       return *state_.arg(hlo->parameter_number());
     }
 
+    if (state_.TryInitiateMaterialization(hlo)) {
+      MaterializeDeferredOp(hlo);
+    }
+
     const Literal* literal = state_.find_evaluated(hlo);
     CHECK(literal != nullptr)
         << "could not find evaluated value for: " << hlo->ToString();
@@ -440,9 +475,6 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   // Returns the already-evaluated literal result for the instruction and
   // removes it from internal evaluate state.
   Literal ExtractEvaluatedLiteralFor(const HloInstruction* hlo) {
-    if (state_.has_evaluated(hlo)) {
-      return state_.extract_evaluated(hlo);
-    }
     if (hlo->IsConstant()) {
       return hlo->literal().Clone();
     }
@@ -450,7 +482,11 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
       return state_.arg(hlo->parameter_number())->Clone();
     }
 
-    LOG(FATAL) << "could not find evaluated value for: " << hlo->ToString();
+    if (state_.TryInitiateMaterialization(hlo)) {
+      MaterializeDeferredOp(hlo);
+    }
+
+    return state_.extract_evaluated(hlo);
   }
 
   // Returns true if the given hlo has been evaluated and cached.
@@ -460,6 +496,9 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
       return true;
     }
     if (hlo->opcode() == HloOpcode::kParameter && state_.has_args()) {
+      return true;
+    }
+    if (state_.has_deferred(hlo)) {
       return true;
     }
 
@@ -477,12 +516,11 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     return literal->IsDetermined(shape_index);
   }
 
-  // Sets the evaluated literal for the given instruction.
   void SetEvaluatedLiteralFor(const HloInstruction* hlo, Literal literal) {
     if (eval_literal_handler_) {
       eval_literal_handler_(hlo, literal);
     }
-    state_.set_evaluated(hlo, std::move(literal));
+    state_.ReleaseWithLiteral(hlo, std::move(literal));
   }
 
   // EvaluationState encapsulates the state of an in-progress evaluation. Once
@@ -496,44 +534,115 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
 
     // Resets the state of the evaluation and sets the argument literals.
     void Reset(absl::Span<const Literal* const> args) {
+      absl::MutexLock lock(mutex_);
       args_.clear();
       args_.insert(args_.end(), args.begin(), args.end());
-      evaluated_.erase(evaluated_.begin(), evaluated_.end());
+      status_map_.clear();
     }
 
     // Resets the state of the evaluation.
     void Reset() {
+      absl::MutexLock lock(mutex_);
       args_.clear();
-      evaluated_.erase(evaluated_.begin(), evaluated_.end());
+      status_map_.clear();
     }
 
     // Returns the argument literals set for the evaluation.
     absl::Span<const Literal* const> args() const { return args_; }
     const Literal* arg(int64_t index) const { return args_.at(index); }
     bool has_args() const { return !args_.empty(); }
+    enum class OpState { kDeferred, kInProgress, kEvaluated };
 
-    // Sets the evaluated literal for the given instruction.
-    void set_evaluated(const HloInstruction* hlo, Literal literal) {
-      evaluated_[hlo] = std::move(literal);
+    struct OpStatus {
+      OpState state;
+      std::optional<Literal> literal;
+    };
+
+    friend class HloEvaluator;
+
+    std::optional<OpState> GetOpState(const HloInstruction* hlo) const {
+      absl::MutexLock lock(mutex_);
+      auto it = status_map_.find(hlo);
+      if (it != status_map_.end()) {
+        return it->second.state;
+      }
+      return std::nullopt;
     }
 
-    // Returns the evaluated literal for the given instruction, or nullptr if
-    // the instruction has not been evaluated.
+    bool TryInitiateMaterialization(const HloInstruction* hlo) {
+      absl::MutexLock lock(mutex_);
+
+      auto cond = [&] {
+        auto it = status_map_.find(hlo);
+        return it == status_map_.end() ||
+               it->second.state != OpState::kInProgress;
+      };
+      mutex_.Await(absl::Condition(&cond));
+
+      auto it = status_map_.find(hlo);
+      if (it != status_map_.end() && it->second.state == OpState::kDeferred) {
+        it->second.state = OpState::kInProgress;
+        return true;
+      }
+      return false;
+    }
+
+    void ReleaseWithLiteral(const HloInstruction* hlo, Literal literal) {
+      absl::MutexLock lock(mutex_);
+      status_map_[hlo] = {OpState::kEvaluated, std::move(literal)};
+    }
+
+    bool has_deferred(const HloInstruction* hlo) const {
+      auto s = GetOpState(hlo);
+      return s.has_value() && s.value() == OpState::kDeferred;
+    }
+
+    bool is_in_progress(const HloInstruction* hlo) const {
+      auto s = GetOpState(hlo);
+      return s.has_value() && s.value() == OpState::kInProgress;
+    }
+
+    bool has_evaluated(const HloInstruction* hlo) const {
+      auto s = GetOpState(hlo);
+      return s.has_value() && s.value() == OpState::kEvaluated;
+    }
+
     Literal* find_evaluated(const HloInstruction* hlo) {
-      if (auto it = evaluated_.find(hlo); it != evaluated_.end()) {
-        return &it->second;
+      absl::MutexLock lock(mutex_);
+      auto it = status_map_.find(hlo);
+      if (it != status_map_.end() && it->second.state == OpState::kEvaluated) {
+        return &it->second.literal.value();
       }
       return nullptr;
     }
 
-    // Returns true if the given instruction has been evaluated.
-    bool has_evaluated(const HloInstruction* hlo) const {
-      return evaluated_.contains(hlo);
+    Literal extract_evaluated(const HloInstruction* hlo) {
+      absl::MutexLock lock(mutex_);
+      auto it = status_map_.find(hlo);
+      CHECK(it != status_map_.end() && it->second.state == OpState::kEvaluated);
+      Literal lit = std::move(it->second.literal.value());
+      status_map_.erase(it);
+      return lit;
     }
 
-    // Extracts the evaluated literal for the given instruction and returns it.
-    Literal extract_evaluated(const HloInstruction* hlo) {
-      return std::move(evaluated_.extract(hlo).mapped());
+    void set_deferred(const HloInstruction* hlo) {
+      absl::MutexLock lock(mutex_);
+      status_map_[hlo] = {OpState::kDeferred, std::nullopt};
+    }
+
+    void set_deferred_ops(
+        absl::Span<const HloInstruction* const> deferred_chain) {
+      for (const HloInstruction* deferred_op : deferred_chain) {
+        set_deferred(deferred_op);
+      }
+    }
+
+    void remove_deferred(const HloInstruction* hlo) {
+      absl::MutexLock lock(mutex_);
+      auto it = status_map_.find(hlo);
+      if (it != status_map_.end() && it->second.state == OpState::kDeferred) {
+        status_map_.erase(it);
+      }
     }
 
    private:
@@ -541,8 +650,7 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     // Literals are not owned by this class, and they must outlive the
     // lifetime of each invocation to the Evaluate* method.
     std::vector<const Literal*> args_;
-
-    // Tracks the HLO instruction and its evaluated literal result.
+    // Tracks the HLO instruction status and its evaluated literal result.
     //
     // Parameters and constants aren't stored here, for parameters we use
     // literals from `args_` array and for constants we use the literal from the
@@ -551,7 +659,10 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     // TODO(b/35950897): have better memory management here to free instructions
     // that are no longer a parent for any other subsequent instruction in
     // post-ordering.
-    absl::node_hash_map<const HloInstruction*, Literal> evaluated_;
+    absl::node_hash_map<const HloInstruction*, OpStatus> status_map_;
+
+    // Mutex to protect status_map_ (during eager materialization).
+    mutable absl::Mutex mutex_;
   };
 
   EvaluationState& state() { return state_; }
