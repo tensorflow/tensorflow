@@ -48,7 +48,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/debug_options_flags.h"
-#include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -72,7 +71,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -862,12 +860,6 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
       << ShapeUtil::HumanStringWithLayout(expected_program_shape.result())
       << ", actual: " << ShapeUtil::HumanStringWithLayout(result_shape);
 
-  std::vector<tsl::RCReference<BackendConfigWrapper>> backend_configs;
-  backend_configs.reserve(proto.payloads_size());
-  for (const std::string& payload : proto.payloads()) {
-    backend_configs.push_back(tsl::MakeRef<BackendConfigWrapper>(payload));
-  }
-
   absl::flat_hash_map<int64_t, HloComputation*> computation_map;
   absl::flat_hash_map<HloComputation*, int64_t> to_proto_id;
   std::vector<std::unique_ptr<HloComputation>> computations;
@@ -886,7 +878,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
             computation_proto, computation_map, prohibit_empty_literal,
             /*preserve_instruction_ids=*/preserve_instruction_ids,
             requires_remap_memorization ? &id_remap_map : nullptr,
-            backend_configs));
+            &proto.payloads()));
     CHECK_NE(computation.get(), nullptr);
     int64_t computation_id = computation_proto.id();
     TF_RET_CHECK(computation_id != -1);

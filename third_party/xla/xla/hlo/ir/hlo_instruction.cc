@@ -83,7 +83,6 @@ limitations under the License.
 #include "xla/side_effect_util.h"
 #include "xla/sort_json.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
@@ -314,7 +313,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     const absl::flat_hash_map<int64_t, HloInstruction*>& instruction_map,
     const absl::flat_hash_map<int64_t, HloComputation*>& computation_map,
     bool prohibit_empty_literal,
-    absl::Span<const tsl::RCReference<BackendConfigWrapper>> backend_configs) {
+    const tsl::protobuf::RepeatedPtrField<std::string>* payloads) {
   TF_RET_CHECK(!proto.opcode().empty());
   HloOpcode opcode;
   auto opcode_or = StringToHloOpcode(proto.opcode());
@@ -1428,20 +1427,13 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     instruction->mutable_metadata() = proto.metadata();
   }
   if (proto.has_backend_config_payload()) {
-    if (proto.backend_config_payload().has_id()) {
-      const int id = proto.backend_config_payload().id();
-      if (id < 0 || id >= backend_configs.size()) {
-        return Internal("Backend config id %d is out of range [0, %d)", id,
-                        backend_configs.size());
-      }
-      instruction->backend_config_ = backend_configs[id];
-    } else {
-      instruction->backend_config_ = tsl::MakeRef<BackendConfigWrapper>(
-          proto.backend_config_payload().value());
-    }
-  } else {
+    TF_ASSIGN_OR_RETURN(
+        std::string backend_config_string,
+        GetStringFromPayload(proto.backend_config_payload(), payloads));
     instruction->backend_config_ =
-        tsl::MakeRef<BackendConfigWrapper>(proto.backend_config());
+        BackendConfigWrapper(std::move(backend_config_string));
+  } else {
+    instruction->backend_config_ = BackendConfigWrapper(proto.backend_config());
   }
 
   TF_RET_CHECK(proto.id() >= 0)
@@ -2942,7 +2934,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   }
   // SetupDerivedInstruction will setup the precision_config_ field.
   SetupDerivedInstruction(clone.get());
-  clone->backend_config_ = backend_config_;
+  clone->backend_config_ = BackendConfigWrapper(backend_config_);
   clone->set_frontend_attributes(frontend_attributes());
   // The new instruction's name will be uniquified when it's added to a
   // computation.
@@ -3252,7 +3244,7 @@ bool HloInstruction::IdenticalInternal(
     }
   }
 
-  if (*backend_config_ != *other.backend_config_) {
+  if (backend_config_ != other.backend_config_) {
     return false;
   }
 
@@ -4185,8 +4177,8 @@ void HloInstruction::PrintWithCanonicalNameMap(
     }
     printer->Append("}");
   }
-  if (options.print_backend_config() && !backend_config_->empty()) {
-    absl::string_view config = backend_config_->GetRawString();
+  if (options.print_backend_config() && !backend_config_.empty()) {
+    absl::string_view config = backend_config_.GetRawString();
     std::string sorted_config;
     if (options.sort_backend_config()) {
       // Use `value_or` below, because the backend config string isn't
@@ -4590,7 +4582,7 @@ void HloInstruction::ToProto(HloInstructionProto* proto) const {
   }
 
   *proto->mutable_metadata() = metadata();
-  proto->set_backend_config(backend_config_->GetRawString());
+  proto->set_backend_config(backend_config_.GetRawString());
   if (opcode() != HloOpcode::kFusion) {
     for (const HloComputation* computation : called_computations()) {
       proto->add_called_computation_ids(computation->unique_id());

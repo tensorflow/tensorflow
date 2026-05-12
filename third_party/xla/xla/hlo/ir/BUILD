@@ -100,7 +100,6 @@ cc_library(
         "//xla/service:mapped_ptr_container_sorter",
         "//xla/service:metrics_proto_cc",
         "//xla/service:name_uniquer",
-        "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/lib/gtl:iterator_range",
         "//xla/tsl/lib/gtl:map_util",
         "//xla/tsl/platform:env",
@@ -114,7 +113,6 @@ cc_library(
         "@com_google_absl//absl/base:config",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
-        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -324,7 +322,6 @@ cc_library(
     hdrs = ["backend_config.h"],
     deps = [
         "//xla:util",
-        "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
