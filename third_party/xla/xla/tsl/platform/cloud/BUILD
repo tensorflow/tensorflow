@@ -527,13 +527,12 @@ tsl_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
-        "@tsl//tsl/platform:path",
-        "@tsl//tsl/platform:retrying_utils",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@jsoncpp_git//:jsoncpp",
-        # copybara:uncomment "@jsoncpp_git//:jsoncpp_compat",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:retrying_utils",
     ],
 )
 
