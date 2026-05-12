@@ -35,5 +35,6 @@ common_patch_list = [
     "//third_party/triton:common/llvm_cl904544082.patch",
     "//third_party/triton:common/check_null_encoding.patch",
     "//third_party/triton:common/llvm_cl910324404.patch",
+    "//third_party/triton:common/llvm_cl914438142.patch",
     # Add new patches just above this line
 ]
