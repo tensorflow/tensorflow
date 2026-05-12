@@ -94,11 +94,14 @@ class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
     // Allow mixed serialization for stablehlo dialects.
     if (version.version_number() >= SerDesVersionNumber(3)) {
       return xla::SerializeUsingVersionedStablehlo(
-          *module, xla::GetDefaultStablehloVersion(), /*inplace=*/false,
+          *module, xla::GetDefaultStablehloVersion(),
+          xla::GetDefaultSdyVersion(),
+          /*inplace=*/false,
           /*allow_mixed_serialization=*/true);
     }
     return xla::SerializeUsingVersionedStablehlo(
-        *module, xla::GetDefaultStablehloVersion());
+        *module, xla::GetDefaultStablehloVersion(),
+        xla::GetDefaultSdyVersion());
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(

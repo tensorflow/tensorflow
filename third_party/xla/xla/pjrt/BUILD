@@ -1013,6 +1013,7 @@ xla_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:stablehlo_portable_api",
     ],
 )
