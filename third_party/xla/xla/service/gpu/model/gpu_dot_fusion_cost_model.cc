@@ -210,15 +210,14 @@ absl::StatusOr<ComputeAndFlops> CalculateComputeTimeWithTileAndWaveQuantization(
 }
 
 absl::StatusOr<absl::Duration> CalculateL2Time(
-    const DotProblemInfo& dot, const DotTileSize& dot_tile,
-    const se::DeviceDescription& device_info, bool is_tma_allowed) {
+    int64_t dot_k, int64_t tile_k, const se::DeviceDescription& device_info,
+    int64_t l2_bytes_read, bool is_tma_allowed) {
   // TODO(maniananth): L2 bandwidth has been hardcoded for H100 based on
   // microbenchmarking L2 bandwidth within a partition, but we should add this
   // to the device info and extend for more GPUs.
 
-  int64_t threadblock_count = CalculateNumThreadblocks(dot, dot_tile);
   double device_l2_bandwidth = 6.65 * 1e12;  // Measured H100 L2 bandwidth.
-  int64_t num_k_iters = CeilOfRatio<int64_t>(dot.k, dot_tile.k);
+  int64_t num_k_iters = CeilOfRatio<int64_t>(dot_k, tile_k);
 
   // Empirical overheads per K-dimension iteration.
   // The overhead is dictated by the memory instruction pathway rather than
@@ -231,9 +230,7 @@ absl::StatusOr<absl::Duration> CalculateL2Time(
   double k_loop_overhead =
       is_tma_allowed ? kTmaLoopOverheadSeconds : kLegacyLoopOverheadSeconds;
 
-  double base_time_seconds =
-      1.0f * CalculateL2Bytes(dot, dot_tile, threadblock_count) /
-      device_l2_bandwidth;
+  double base_time_seconds = 1.0f * l2_bytes_read / device_l2_bandwidth;
   return absl::Seconds(base_time_seconds + num_k_iters * k_loop_overhead);
 }
 
@@ -439,10 +436,17 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   estimates.bytes_read = hbm_timing.bytes_read;
   estimates.bytes_written = hbm_timing.bytes_written;
 
+  int64_t threadblock_count =
+      detail::CalculateNumThreadblocks(dot_info, dot_tile);
+  estimates.l2_bytes_read =
+      detail::CalculateL2Bytes(dot_info, dot_tile, threadblock_count);
+
   // Calculate L2 time.
-  TF_ASSIGN_OR_RETURN(absl::Duration l2_time,
-                      detail::CalculateL2Time(dot_info, dot_tile, device_info,
-                                              block_params.is_tma_allowed));
+  TF_ASSIGN_OR_RETURN(
+      absl::Duration l2_time,
+      detail::CalculateL2Time(dot_info.k, dot_tile.k, device_info,
+                              estimates.l2_bytes_read,
+                              block_params.is_tma_allowed));
 
   // Assuming perfect overlap between compute and memory.
   estimates.exec_time = std::max(
