@@ -359,7 +359,7 @@ TEST_F(CopyFusionTest, BuildDescriptorWithDynamicVariable) {
           backend_config={"known_trip_count":{"n":"6"},
                           "known_init_step":{"init":"0","step":"1"},
                           "known_induction_variable":{"tuple_index":"0"},
-                          "dynamic_variable_tuple_indices":["2"]}
+                          "dynamic_variables":[{"tuple_index":"2"}]}
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(

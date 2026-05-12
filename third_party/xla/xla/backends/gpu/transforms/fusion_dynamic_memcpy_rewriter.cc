@@ -173,9 +173,21 @@ class DynamicOffsetEvaluator {
       const WhileLoopBackendConfig& loop_config, int64_t iteration) {
     // Set the value of the induction variable, if it's not known yet.
     if (!known_values_.contains(offset.induction_variable)) {
-      int64_t induction_variable =
-          loop_config.known_init_step().init() +
-          iteration * loop_config.known_init_step().step();
+      int64_t init = loop_config.known_init_step().init();
+      int64_t step = loop_config.known_init_step().step();
+
+      if (offset.induction_variable->opcode() == HloOpcode::kGetTupleElement) {
+        int64_t tuple_idx = offset.induction_variable->tuple_index();
+        for (const auto& dv : loop_config.dynamic_variables()) {
+          if (dv.tuple_index() == tuple_idx) {
+            if (dv.has_init()) init = dv.init();
+            if (dv.has_step()) step = dv.step();
+            break;
+          }
+        }
+      }
+
+      int64_t induction_variable = init + iteration * step;
 
       Literal induction_variable_literal(offset.induction_variable->shape());
       TF_RETURN_IF_ERROR(

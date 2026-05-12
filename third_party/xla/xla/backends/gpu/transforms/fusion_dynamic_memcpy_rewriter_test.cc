@@ -168,6 +168,68 @@ TEST_F(FusionDynamicMemcpyRewriterTest,
                           32 + 256 * 3, 32 + 256 * 3));
 }
 
+constexpr char kLoopDynamicVariableDifferentInitStep[] = R"(
+    dynamic_slice_comp {
+      p0 = s32[4,8,8] parameter(0)
+      p1 = s32[] parameter(1)
+      c0 = s32[] constant(0)
+      ROOT slice = s32[1,8,8] dynamic-slice(p0, p1, c0, c0),
+          dynamic_slice_sizes={1,8,8}
+    }
+
+    body {
+      p0 = (s32[], s32[4,8,8], s32[]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      input = s32[4,8,8] get-tuple-element(p0), index=1
+      counter = s32[] get-tuple-element(p0), index=2
+
+      sliced = s32[1,8,8] fusion(input, counter), kind=kLoop,
+          calls=dynamic_slice_comp
+
+      c1 = s32[] constant(1)
+      next_ivar = s32[] add(ivar, c1)
+      next_counter = s32[] add(counter, c1)
+
+      ROOT result = (s32[], s32[4,8,8], s32[])
+          tuple(next_ivar, input, next_counter)
+    }
+
+    condition {
+      p0 = (s32[], s32[4,8,8], s32[]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      c3 = s32[] constant(3)
+      ROOT cmp = pred[] compare(ivar, c3), direction=LT
+    }
+
+    ENTRY main {
+      input = s32[4,8,8] parameter(0)
+      c2 = s32[] constant(2)
+      c3 = s32[] constant(3)
+      tuple = (s32[], s32[4,8,8], s32[]) tuple(c2, input, c3)
+      ROOT while = (s32[], s32[4,8,8], s32[]) while(tuple),
+          condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"3"},
+                          "known_init_step":{"init":"2","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"},
+                          "dynamic_variables":[{"tuple_index":"2","init":"3","step":"1"}]}
+    })";
+
+TEST_F(FusionDynamicMemcpyRewriterTest,
+       DynamicVariableUsesPerVariableInitStep) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(kLoopDynamicVariableDifferentInitStep));
+  EXPECT_THAT(FusionDynamicMemcpyRewriter().Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+  auto config = GetMemcpyConfig(
+      module->GetComputationWithName("body")->GetInstructionWithName("sliced"));
+  ASSERT_TRUE(config.has_value()) << module->ToString();
+
+  EXPECT_TRUE(config->depends_on_loop());
+  EXPECT_THAT(config->src_offset_bytes(), ElementsAre(768, 768, 768));
+  EXPECT_THAT(config->dst_offset_bytes(), ElementsAre(0, 0, 0));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

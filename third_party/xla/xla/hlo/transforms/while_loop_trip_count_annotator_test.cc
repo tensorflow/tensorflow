@@ -19,14 +19,20 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
+
+using ::absl_testing::StatusIs;
+using ::tsl::proto_testing::EqualsProto;
 
 class TripCountAnnotatorTest : public HloHardwareIndependentTestBase {};
 
@@ -222,6 +228,107 @@ TEST_F(TripCountAnnotatorTest, Int64Overflow) {
   EXPECT_FALSE(config.has_known_init_step());
   EXPECT_TRUE(config.has_known_induction_variable());
   EXPECT_EQ(config.known_induction_variable().tuple_index(), 0);
+}
+
+TEST_F(TripCountAnnotatorTest, FillsDynamicVariableInitStep) {
+  const char* kModuleStr = R"(
+    HloModule test
+    Body {
+      param = (s32[], s32[], f32[20,8]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      counter = s32[] get-tuple-element(param), index=1
+      buf = f32[20,8] get-tuple-element(param), index=2
+      one = s32[] constant(1)
+      zero = s32[] constant(0)
+      i_plus = s32[] add(i, one)
+      c_plus = s32[] add(counter, one)
+      to_host = f32[20,8] custom-call(buf), custom_call_target="MoveToHost"
+      slice = f32[1,8] dynamic-slice(to_host, counter, zero), dynamic_slice_sizes={1,8}
+      to_dev = f32[1,8] custom-call(slice), custom_call_target="MoveToDevice"
+      next_buf = f32[20,8] dynamic-update-slice(buf, to_dev, counter, zero)
+      ROOT tuple = (s32[], s32[], f32[20,8]) tuple(i_plus, c_plus, next_buf)
+    }
+
+    Cond {
+      param = (s32[], s32[], f32[20,8]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      ten = s32[] constant(10)
+      ROOT done = pred[] compare(i, ten), direction=LT
+    }
+
+    ENTRY test {
+      i_start = s32[] constant(0)
+      c_start = s32[] constant(5)
+      buf_start = f32[20,8] parameter(0)
+      initial_tuple = (s32[], s32[], f32[20,8]) tuple(i_start, c_start, buf_start)
+      ROOT while = (s32[], s32[], f32[20,8]) while(initial_tuple), condition=Cond, body=Body
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  WhileLoopTripCountAnnotator pass;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, m.get()));
+  ASSERT_TRUE(changed);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto config,
+                          m->entry_computation()
+                              ->root_instruction()
+                              ->backend_config<WhileLoopBackendConfig>());
+  EXPECT_THAT(config, EqualsProto(R"pb(
+                known_trip_count { n: 10 }
+                known_induction_variable { tuple_index: 0 }
+                known_init_step { init: 0 step: 1 }
+                dynamic_variables { tuple_index: 1 init: 5 step: 1 }
+              )pb"));
+}
+
+TEST_F(TripCountAnnotatorTest, FillsDynamicVariableInitStepFromPrimaryCopy) {
+  const char* kModuleStr = R"(
+    HloModule test
+    Body {
+      param = (s32[], s32[], f32[20,8]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      shadow = s32[] get-tuple-element(param), index=1
+      buf = f32[20,8] get-tuple-element(param), index=2
+      one = s32[] constant(1)
+      zero = s32[] constant(0)
+      i_plus = s32[] add(i, one)
+      to_host = f32[20,8] custom-call(buf), custom_call_target="MoveToHost"
+      slice = f32[1,8] dynamic-slice(to_host, shadow, zero), dynamic_slice_sizes={1,8}
+      to_dev = f32[1,8] custom-call(slice), custom_call_target="MoveToDevice"
+      next_buf = f32[20,8] dynamic-update-slice(buf, to_dev, shadow, zero)
+      ROOT tuple = (s32[], s32[], f32[20,8]) tuple(i_plus, i, next_buf)
+    }
+
+    Cond {
+      param = (s32[], s32[], f32[20,8]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      ten = s32[] constant(10)
+      ROOT done = pred[] compare(i, ten), direction=LT
+    }
+
+    ENTRY test {
+      i_start = s32[] constant(1)
+      shadow_init = s32[] constant(0)
+      buf_start = f32[20,8] parameter(0)
+      initial_tuple = (s32[], s32[], f32[20,8]) tuple(i_start, shadow_init, buf_start)
+      ROOT while = (s32[], s32[], f32[20,8]) while(initial_tuple), condition=Cond, body=Body
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  WhileLoopTripCountAnnotator pass;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, m.get()));
+  ASSERT_TRUE(changed);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto config,
+                          m->entry_computation()
+                              ->root_instruction()
+                              ->backend_config<WhileLoopBackendConfig>());
+  EXPECT_THAT(config, EqualsProto(R"pb(
+                known_trip_count { n: 9 }
+                known_induction_variable { tuple_index: 0 }
+                known_init_step { init: 1 step: 1 }
+                dynamic_variables { tuple_index: 1 init: 0 step: 1 }
+              )pb"));
 }
 
 TEST_F(TripCountAnnotatorTest, NonZeroTupleIndex) {
@@ -515,6 +622,37 @@ TEST_F(TripCountAnnotatorTest, InductionVarNonZeroTupleIndexForwarded) {
     }
   }
   EXPECT_TRUE(found_constant_7);
+}
+
+TEST_F(TripCountAnnotatorTest, ErrorOnPrePopulatedBackendConfig) {
+  const char* kModuleStr = R"(
+    HloModule test
+    Body {
+      param = (s32[]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      one = s32[] constant(1)
+      i_plus_one = s32[] add(i, one)
+      ROOT tuple = (s32[]) tuple(i_plus_one)
+    }
+
+    Cond {
+      param = (s32[]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      trip_count = s32[] constant(10)
+      ROOT done = pred[] compare(i, trip_count), direction=LT
+    }
+
+    ENTRY test {
+      i_start = s32[] constant(0)
+      initial_tuple = (s32[]) tuple(i_start)
+      ROOT while_loop = (s32[]) while(initial_tuple), condition=Cond, body=Body,
+        backend_config={"known_trip_count":{"n":"99"}}
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  WhileLoopTripCountAnnotator pass;
+  EXPECT_THAT(RunHloPass(&pass, m.get()),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 }  // namespace
