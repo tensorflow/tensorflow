@@ -699,8 +699,8 @@ bool IsDynamicVariable(const HloInstruction* variable,
   }
 
   int64_t tuple_idx = variable->tuple_index();
-  for (int64_t dynamic_idx : config->dynamic_variable_tuple_indices()) {
-    if (dynamic_idx == tuple_idx) {
+  for (const auto& dv : config->dynamic_variables()) {
+    if (dv.tuple_index() == tuple_idx) {
       return true;
     }
   }

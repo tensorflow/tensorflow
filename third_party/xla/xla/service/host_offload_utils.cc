@@ -428,13 +428,11 @@ absl::flat_hash_set<int64_t> FindTupleIndicesInOperand(
 
 }  // namespace
 
-absl::Status MarkDynamicVariables(HloInstruction* while_loop) {
-  if (while_loop->opcode() != HloOpcode::kWhile) {
-    return absl::OkStatus();
-  }
-
-  if (!while_loop->while_body()) {
-    return absl::OkStatus();
+absl::flat_hash_set<int64_t> CollectDynamicVariableTupleIndices(
+    const HloInstruction* while_loop) {
+  absl::flat_hash_set<int64_t> tuple_indices;
+  if (while_loop->opcode() != HloOpcode::kWhile || !while_loop->while_body()) {
+    return tuple_indices;
   }
 
   bool has_host_offloading = false;
@@ -446,41 +444,26 @@ absl::Status MarkDynamicVariables(HloInstruction* while_loop) {
     }
   }
   if (!has_host_offloading) {
-    return absl::OkStatus();
+    return tuple_indices;
   }
 
-  WhileLoopBackendConfig config;
-  TF_ASSIGN_OR_RETURN(config,
-                      while_loop->backend_config<WhileLoopBackendConfig>());
-
-  config.clear_dynamic_variable_tuple_indices();
-
-  std::set<int64_t> dynamic_slice_indices;
-
-  for (auto* instr : while_loop->while_body()->instructions()) {
-    if (instr->opcode() == HloOpcode::kDynamicUpdateSlice ||
-        instr->opcode() == HloOpcode::kDynamicSlice) {
-      int first_index_operand =
-          (instr->opcode() == HloOpcode::kDynamicUpdateSlice)
-              ? Cast<HloDynamicUpdateSliceInstruction>(instr)
-                    ->first_index_operand_number()
-              : Cast<HloDynamicSliceInstruction>(instr)
-                    ->first_index_operand_number();
-
-      for (int i = first_index_operand; i < instr->operand_count(); ++i) {
-        auto* index_op = instr->operand(i);
-        auto op_indices = FindTupleIndicesInOperand(index_op);
-        dynamic_slice_indices.insert(op_indices.begin(), op_indices.end());
-      }
+  for (const HloInstruction* instr : while_loop->while_body()->instructions()) {
+    if (instr->opcode() != HloOpcode::kDynamicUpdateSlice &&
+        instr->opcode() != HloOpcode::kDynamicSlice) {
+      continue;
+    }
+    int first_index_operand =
+        (instr->opcode() == HloOpcode::kDynamicUpdateSlice)
+            ? Cast<HloDynamicUpdateSliceInstruction>(instr)
+                  ->first_index_operand_number()
+            : Cast<HloDynamicSliceInstruction>(instr)
+                  ->first_index_operand_number();
+    for (int i = first_index_operand; i < instr->operand_count(); ++i) {
+      auto op_indices = FindTupleIndicesInOperand(instr->operand(i));
+      tuple_indices.insert(op_indices.begin(), op_indices.end());
     }
   }
-
-  for (int64_t tuple_idx : dynamic_slice_indices) {
-    config.add_dynamic_variable_tuple_indices(tuple_idx);
-  }
-
-  TF_RETURN_IF_ERROR(while_loop->set_backend_config(config));
-  return absl::OkStatus();
+  return tuple_indices;
 }
 
 }  // namespace host_offload_utils
