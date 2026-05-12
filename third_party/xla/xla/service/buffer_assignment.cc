@@ -2100,27 +2100,27 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
 
     VLOG(1) << "Initial memory limit before subtracting allocations: "
             << memory_limit;
-    if (memory_limit > 0) {
+    // Apply a safety margin to the initial memory limit. Always
+    // subtract 1.5GiB.
+    constexpr int64_t kOnePointFiveGiB = int64_t{3} << 29;
+    int64_t adjusted_memory_limit =
+        std::max<int64_t>(0, memory_limit - kOnePointFiveGiB);
+    VLOG(1) << "Memory limit after safety margin applied: "
+            << adjusted_memory_limit;
+
+    if (adjusted_memory_limit > 0) {
       int64_t already_allocated_bytes = 0;
       for (const BufferAllocation& alloc : assignment->Allocations()) {
         if (alloc.color() == color) {
           already_allocated_bytes += alloc.size();
         }
       }
-      memory_limit -= already_allocated_bytes;
-      if (memory_limit < 0) {
-        memory_limit = 0;
+      adjusted_memory_limit -= already_allocated_bytes;
+      if (adjusted_memory_limit < 0) {
+        adjusted_memory_limit = 0;
       }
     }
-    VLOG(1) << "Memory limit after subtracting allocations: " << memory_limit;
-    // Apply a safety margin to the memory limit, reserving 1GiB or 5% of
-    // memory headroom, whichever is smaller.
-    constexpr double kMemoryLimitMultiplier = 0.95;
-    constexpr int64_t kMinHeadroomBytes = int64_t{1} << 30;
-    int64_t adjusted_memory_limit =
-        std::max(static_cast<int64_t>(memory_limit * kMemoryLimitMultiplier),
-                 memory_limit - kMinHeadroomBytes);
-    VLOG(1) << "Final memory limit after safety margin applied: "
+    VLOG(1) << "Final memory limit after subtracting allocations: "
             << adjusted_memory_limit;
     return adjusted_memory_limit;
   };
@@ -2182,6 +2182,11 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
         buffer_assignment::BufferAssignmentAlgorithmProto::
             FAST_MERGE_WITH_FALLBACK) {
       VLOG(1) << "Using FAST_MERGE_WITH_FALLBACK";
+      int64_t memory_limit = get_memory_limit(color);
+      if (memory_limit == 0) {
+        return build_algorithm(
+            buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT);
+      }
       auto primary = build_algorithm(
           buffer_assignment::BufferAssignmentAlgorithmProto::FAST_MERGE);
       auto fallback_factory = [build_algorithm,
@@ -2192,8 +2197,7 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
         return build_algorithm(fallback_algorithm);
       };
       return std::make_unique<HeapAlgorithmWithFallback<HloValue>>(
-          std::move(primary), std::move(fallback_factory),
-          get_memory_limit(color));
+          std::move(primary), std::move(fallback_factory), memory_limit);
     }
 
     return build_algorithm(buffer_assignment_algorithm);
@@ -2604,9 +2608,22 @@ BufferAssigner::CreateAssignment(
   VLOG(2) << "Multiheap per heap size limit: "
           << multiheap_size_constraint_per_heap;
   const PrivateStacks private_stacks;
+  auto algorithm_to_use = opts_.buffer_assignment_algorithm;
+  if (run_whole_module_heap_simulation &&
+      (algorithm_to_use ==
+           buffer_assignment::BufferAssignmentAlgorithmProto::FAST_MERGE ||
+       algorithm_to_use ==
+           buffer_assignment::BufferAssignmentAlgorithmProto::FAST_SPLIT ||
+       algorithm_to_use == buffer_assignment::BufferAssignmentAlgorithmProto::
+                               FAST_MERGE_WITH_FALLBACK)) {
+    VLOG(1)
+        << "Overriding algorithm to DEFAULT for whole-module heap simulation";
+    algorithm_to_use =
+        buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT;
+  }
   TF_RETURN_IF_ERROR(AssignBuffersWithSequentialOrdering(
       buffers_to_assign_sequentially, run_whole_module_heap_simulation,
-      assignment.get(), opts_.buffer_assignment_algorithm,
+      assignment.get(), algorithm_to_use,
       opts_.private_stacks ? *opts_.private_stacks : private_stacks,
       opts_.heap_buffer_interval_compare, opts_.isolation_options));
 
