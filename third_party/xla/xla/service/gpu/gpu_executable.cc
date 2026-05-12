@@ -750,6 +750,11 @@ absl::Status ExecuteThunksImpl(const DebugOptions* debug_options,
                      AcquireCollectiveCliques(collective_params,
                                               collective_clique_requests));
   }
+  ASSIGN_OR_RETURN(
+      bool skip_rendezvous_after_init,
+      AllFirstRendezvousCompleted(collective_cliques,
+                                  collective_clique_requests.RequestedCliques(),
+                                  module_name));
 
   ASSIGN_OR_RETURN(ScratchMemory scratch_memory,
                    AcquireScratchMemory(
@@ -784,7 +789,7 @@ absl::Status ExecuteThunksImpl(const DebugOptions* debug_options,
   // collective operations and clique initialization is famous for introducing
   // deadlocks if we try to execute it concurrently with other potentially
   // memory-allocating operations.
-  if (!collective_cliques.empty()) {
+  if (!skip_rendezvous_after_init) {
     RETURN_IF_ERROR(RendezvousAfterInitialization(*run_options, debug_options));
   }
 
@@ -793,7 +798,7 @@ absl::Status ExecuteThunksImpl(const DebugOptions* debug_options,
       *run_options, buffer_allocations, main_stream,
       command_buffer_trace_stream, &collective_params, &collective_cliques,
       &collective_memory, std::move(additional_compute_streams),
-      &execution_scoped_state);
+      &execution_scoped_state, module_name);
 
   XLA_VLOG_DEVICE(1, run_options->device_ordinal())
       << "Start GpuExecutable::ExecuteOnStream module: " << module_name;

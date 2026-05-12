@@ -70,13 +70,21 @@ DimTile GetDimTile(const TilingSpace::DimensionInfo& dim_info,
         << "Concrete tile size cannot be negative.";
   }
 
-  SymbolicExpr tile_size =
+  SymbolicExpr size =
       dim_info.tile_size.has_value()
           ? CreateSymbolicConstant(*dim_info.tile_size, ctx)
           : CreateSymbolExpr(dim_info.id.value(), num_dimensions, ctx);
 
-  return GetDefaultDimTile(dim_info.id.value(), tile_size,
-                           dim_info.dimension_size);
+  // If the tile size is greater than or equal to the dimension size, then
+  // the dimension is trivial and can be replaced with 0.
+  SymbolicExpr offset = dim_info.tile_size.has_value() &&
+                                *dim_info.tile_size >= dim_info.dimension_size
+                            ? CreateSymbolicConstant(0, ctx)
+                            : CreateDimExpr(dim_info.id.value(), ctx) * size;
+
+  return DimTile{
+      offset, size, /*stride=*/CreateSymbolicConstant(1, ctx),
+      /*upper_bound=*/CreateSymbolicConstant(dim_info.dimension_size, ctx)};
 }
 
 Tiles PropagateTileToInputForCwiseOp(const HloInstruction& hlo,

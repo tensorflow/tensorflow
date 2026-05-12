@@ -22,11 +22,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "xla/backends/gpu/collectives/gpu_clique.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
@@ -40,6 +42,7 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/service/rendezvous.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -124,6 +127,35 @@ absl::StatusOr<bool> CollectiveCliques::peer_access_enabled(
   }
 
   return (*clique->second)->peer_access_enabled();
+}
+
+absl::StatusOr<std::pair<RendezvousFlag*, RendezvousFlag*>>
+CollectiveCliques::GetCliqueFirstRendezvousFlags(
+    const GpuCliqueKey& clique_key, absl::string_view module_name) const {
+  // Check that we locked access to a clique for `clique_key`.
+  auto clique = cliques_map_.find(clique_key);
+  if (clique == cliques_map_.end()) {
+    return NotFound("No clique found for clique key: %s",
+                    clique_key.ToString());
+  }
+  return (*clique->second)->GetFirstRendezvousFlags(module_name);
+}
+
+absl::StatusOr<bool> AllFirstRendezvousCompleted(
+    const CollectiveCliques& collective_cliques,
+    const std::vector<GpuCliqueKey>& requested_clique_keys,
+    const absl::string_view module_name) {
+  return collective_cliques.empty() ||
+         (!module_name.empty() &&
+          absl::c_all_of(requested_clique_keys,
+                         [&](const GpuCliqueKey& clique_key) {
+                           auto rend_flags =
+                               collective_cliques.GetCliqueFirstRendezvousFlags(
+                                   clique_key, module_name);
+                           CHECK(rend_flags.ok());
+                           return rend_flags.value().first->IsCompleted() &&
+                                  rend_flags.value().second->IsCompleted();
+                         }));
 }
 
 absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(

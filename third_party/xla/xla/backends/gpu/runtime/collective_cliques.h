@@ -18,8 +18,10 @@ limitations under the License.
 
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_cliques.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
@@ -27,6 +29,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/runtime/device_id.h"
+#include "xla/service/rendezvous.h"
 #include "xla/tsl/util/tied_ref.h"
 #include "xla/util.h"
 
@@ -67,6 +70,10 @@ class CollectiveCliques {
 
   bool empty() const { return cliques_map_.empty(); }
 
+  absl::StatusOr<std::pair<RendezvousFlag*, RendezvousFlag*>>
+  GetCliqueFirstRendezvousFlags(const GpuCliqueKey& clique_key,
+                                absl::string_view module_name) const;
+
  private:
   AcquiredCliquesMap cliques_map_;
 };
@@ -90,6 +97,11 @@ absl::StatusOr<tsl::TiedRef<T>> CollectiveCliques::Tie(
 // deadlock.
 absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
     const CollectiveParams& params, const CollectiveCliqueRequests& cliques);
+
+absl::StatusOr<bool> AllFirstRendezvousCompleted(
+    const CollectiveCliques& collective_cliques,
+    const std::vector<GpuCliqueKey>& requested_clique_keys,
+    absl::string_view module_name);
 
 }  // namespace xla::gpu
 

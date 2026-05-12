@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/service/lockable.h"
+#include "xla/service/rendezvous.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 
@@ -124,6 +126,14 @@ bool GpuClique::IsCancelled() const { return cancel_->IsCancelled(); }
 
 std::string GpuClique::LockableName::ToString(const GpuClique& clique) {
   return absl::StrFormat("lockable clique %v", clique.key());
+}
+
+std::pair<RendezvousFlag*, RendezvousFlag*> GpuClique::GetFirstRendezvousFlags(
+    absl::string_view module_name) {
+  absl::MutexLock lock(mu_);
+  std::string module_name_str(module_name);
+  auto& flags = module_rendezvous_flags_[module_name_str];
+  return std::make_pair(&flags.first, &flags.second);
 }
 
 LockableGpuClique::LockableGpuClique(
