@@ -420,9 +420,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> CollectiveThunk::Record(
         return absl::OkStatus();
       }));
 
-  if (priority() != se::StreamPriority::Default) {
-    RETURN_IF_ERROR(nested_cmd->SetPriority(priority()));
-  }
+  RETURN_IF_ERROR(nested_cmd->SetPriority(se::StreamPriority::Highest));
 
   if (auto* create = std::get_if<RecordCreate>(&record_action)) {
     return command_buffer->CreateChildCommand(*nested_cmd,
