@@ -448,6 +448,10 @@ EIGEN_STRONG_INLINE Packet32q8i pmax<Packet32q8i>(const Packet32q8i& a,
 
 // Reductions.
 template <>
+EIGEN_STRONG_INLINE QInt32 predux<Packet8q32i>(const Packet8q32i& a) {
+  return QInt32(predux(Packet8i(a.m_val)));
+}
+template <>
 EIGEN_STRONG_INLINE QInt32 predux_min<Packet8q32i>(const Packet8q32i& a) {
   __m256i tmp = _mm256_min_epi32(a, _mm256_permute2f128_si256(a, a, 1));
   tmp =

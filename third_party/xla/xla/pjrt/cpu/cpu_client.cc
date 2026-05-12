@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#define EIGEN_USE_THREADS
 
 #include "xla/pjrt/cpu/cpu_client.h"
 
@@ -142,7 +143,6 @@ limitations under the License.
 #include "tsl/platform/setround.h"
 #include "tsl/profiler/lib/traceme.h"
 
-#define EIGEN_USE_THREADS
 #include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla {
