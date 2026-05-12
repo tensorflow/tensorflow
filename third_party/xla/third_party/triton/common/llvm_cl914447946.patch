@@ -1,0 +1,12 @@
+--- a/third_party/amd/lib/Analysis/RangeAnalysis.cpp
++++ b/third_party/amd/lib/Analysis/RangeAnalysis.cpp
+@@ -772,7 +772,7 @@
+       } else {
+         // Else, propagate pred operands.
+         auto operLat = *getLatticeElementFor(point, oper);
+-        changed = argLat->join(operLat);
++        changed = argLat->join(operLat.getValue());
+         LLVM_DEBUG({
+           if (changed == ChangeResult::Change) {
+             DBGS() << "Operand lattice ";
+
