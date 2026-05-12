@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/c/c_api_experimental.h"
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/c/c_api.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/blocking_counter.h"
@@ -492,7 +495,13 @@ TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType data_type,
                                                 void* data, size_t len,
                                                 TF_Status* status) {
   auto dtype = static_cast<tensorflow::DataType>(data_type);
-  DCHECK(tensorflow::DataTypeCanUseMemcpy(dtype));
+  if (!tensorflow::DataTypeCanUseMemcpy(dtype)) {
+    status->status = absl::InvalidArgumentError(
+        absl::StrCat("TFE_NewTensorHandleFromScalar: DataType ",
+                     tensorflow::DataTypeString(dtype),
+                     " does not support memcpy semantics."));
+    return nullptr;
+  }
 
   tensorflow::Tensor tensor(dtype, tensorflow::TensorShape({}));
   std::memcpy(tensorflow::TensorCApi::Buffer(tensor)->data(), data, len);
@@ -547,10 +556,20 @@ TF_ShapeAndTypeList* TF_NewShapeAndTypeList(int num_items) {
 
 void TF_ShapeAndTypeListSetShape(TF_ShapeAndTypeList* shape_list, int index,
                                  const int64_t* dims, int num_dims) {
-  DCHECK(index >= 0 && index < shape_list->num_items);
+  if (index < 0 || index >= shape_list->num_items) {
+    LOG(ERROR) << "index " << index << " is out of bounds [0, "
+               << shape_list->num_items << ")";
+    return;
+  }
   TF_ShapeAndType& shape = shape_list->items[index];
-  DCHECK(shape.dims == nullptr) << "Shape at " << index << " is already set!";
-  DCHECK(num_dims >= 0) << "Number of dimensions cannot be negative!";
+  if (shape.dims != nullptr) {
+    LOG(ERROR) << "Shape at " << index << " is already set!";
+    return;
+  }
+  if (num_dims < 0) {
+    LOG(ERROR) << "Number of dimensions cannot be negative!";
+    return;
+  }
   shape.num_dims = num_dims;
   shape.dims = new int64_t[num_dims];
   memcpy(shape.dims, dims, sizeof(int64_t) * num_dims);
@@ -558,16 +577,27 @@ void TF_ShapeAndTypeListSetShape(TF_ShapeAndTypeList* shape_list, int index,
 
 void TF_ShapeAndTypeListSetUnknownShape(TF_ShapeAndTypeList* shape_list,
                                         int index) {
-  DCHECK(index >= 0 && index < shape_list->num_items);
+  if (index < 0 || index >= shape_list->num_items) {
+    LOG(ERROR) << "index " << index << " is out of bounds [0, "
+               << shape_list->num_items << ")";
+    return;
+  }
   TF_ShapeAndType& shape = shape_list->items[index];
-  DCHECK(shape.dims == nullptr) << "Shape at " << index << " is already set!";
+  if (shape.dims != nullptr) {
+    LOG(ERROR) << "Shape at " << index << " is already set!";
+    return;
+  }
   shape.num_dims = -1;
   shape.dims = nullptr;
 }
 
 void TF_ShapeAndTypeListSetDtype(TF_ShapeAndTypeList* shape_list, int index,
                                  TF_DataType dtype) {
-  DCHECK(index >= 0 && index < shape_list->num_items);
+  if (index < 0 || index >= shape_list->num_items) {
+    LOG(ERROR) << "index " << index << " is out of bounds [0, "
+               << shape_list->num_items << ")";
+    return;
+  }
   TF_ShapeAndType& shape_and_type = shape_list->items[index];
   shape_and_type.dtype = dtype;
 }
