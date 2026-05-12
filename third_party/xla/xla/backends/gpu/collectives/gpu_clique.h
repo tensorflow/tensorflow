@@ -23,8 +23,10 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/btree_map.h"
+#include "absl/container/node_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
@@ -34,6 +36,7 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/service/lockable.h"
+#include "xla/service/rendezvous.h"
 #include "xla/tsl/util/tied_ref.h"
 
 namespace xla::gpu {
@@ -90,6 +93,9 @@ class GpuClique : public Clique {
   // Returns a parent clique iff *this one was created by clique splitting.
   const GpuClique* parent() const { return parent_; }
 
+  std::pair<RendezvousFlag*, RendezvousFlag*> GetFirstRendezvousFlags(
+      absl::string_view module_name);
+
  private:
   friend LockableGpuClique;
 
@@ -111,6 +117,15 @@ class GpuClique : public Clique {
   // A parent GPU clique iff *this clique was constructed by split operation.
   const GpuClique* parent_;
 
+  // Before and after a first call to this particular instance of a collective
+  // thunk we do a round of rendezvous to make sure that all participants are
+  // ready to execute the collective operation and that all of them successfully
+  // allocated on-device state required for it. This is required to avoid
+  // deadlocks when one device goes too far ahead and causes a deadlock in CUDA
+  // driver (root cause rumored to be fixed in 590 driver series).
+  RendezvousFlag pre_call_rendezvous_flag_;
+  RendezvousFlag post_call_rendezvous_flag_;
+
   // We keep device communicators in a sorted container to guarantee that they
   // are destroyed in deterministic order.
   mutable absl::Mutex mu_;
@@ -120,6 +135,10 @@ class GpuClique : public Clique {
 
   // Storage for tied objects.
   tsl::TiedAny tied_any_ ABSL_GUARDED_BY(mu_);
+
+  // Module-mapped rendezvous flags
+  absl::node_hash_map<std::string, std::pair<RendezvousFlag, RendezvousFlag>>
+      module_rendezvous_flags_ ABSL_GUARDED_BY(mu_);
 };
 
 template <typename T>

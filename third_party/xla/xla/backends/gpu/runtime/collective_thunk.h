@@ -220,14 +220,6 @@ class CollectiveThunk : public Command {
       absl::FunctionRef<absl::Status(const GpuCliqueKey&, Communicator&)> fn);
 
   const std::vector<Buffer> buffers_;
-  // Before and after a first call to this particular instance of a collective
-  // thunk we do a round of rendezvous to make sure that all participants are
-  // ready to execute the collective operation and that all of them successfully
-  // allocated on-device state required for it. This is required to avoid
-  // deadlocks when one device goes too far ahead and causes a deadlock in CUDA
-  // driver (root cause rumored to be fixed in 590 driver series).
-  RendezvousFlag pre_call_rendezvous_flag_;
-  RendezvousFlag post_call_rendezvous_flag_;
 
   CommunicationId communication_id_;
   CollectivesMode collectives_mode_;
