@@ -35,8 +35,6 @@ bool IsCollectiveCommand(CommandType type) {
     case CommandType::kAllToAllCmd:
     case CommandType::kCollectiveCmd:
     case CommandType::kCollectivePermuteCmd:
-    case CommandType::kRecvCmd:
-    case CommandType::kSendCmd:
       return true;
     default:
       return false;

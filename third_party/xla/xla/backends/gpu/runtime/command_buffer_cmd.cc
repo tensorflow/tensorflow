@@ -18,7 +18,6 @@ limitations under the License.
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -46,8 +45,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
-#include "xla/backends/gpu/runtime/recv_thunk.h"
-#include "xla/backends/gpu/runtime/send_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/while_loop.h"
 #include "xla/core/collectives/communicator.h"
@@ -543,187 +540,6 @@ Command::BufferUses AllGatherCmd::buffer_uses() const {
     buffer_usage.emplace_back(BufferUse::Write(
         buffer.destination_buffer.slice, buffer.destination_buffer.shape));
   }
-  return buffer_usage;
-}
-
-//===----------------------------------------------------------------------===//
-// RecvCmd
-//===----------------------------------------------------------------------===//
-
-RecvCmd::RecvCmd(CollectiveConfig config, P2PConfig p2p_config,
-                 const CollectiveThunk::Buffer& buffer)
-    : CollectiveCmd(CommandType::kRecvCmd, std::move(config),
-                    CommunicationId(1)),
-      p2p_config_(std::move(p2p_config)),
-      buffer_(buffer) {}
-
-absl::StatusOr<const se::CommandBuffer::Command*> RecvCmd::Record(
-    const Thunk::ExecuteParams& execute_params,
-    const RecordParams& record_params, RecordAction record_action,
-    se::CommandBuffer* command_buffer) {
-  DeviceBufferPair device_buffer_pair{
-      config().operand_element_type[0],
-      buffer_.element_count,
-      execute_params.buffer_allocations->GetDeviceAddress(
-          buffer_.source_buffer.slice),
-      execute_params.buffer_allocations->GetDeviceAddress(
-          buffer_.destination_buffer.slice),
-      buffer_.source_memory_space,
-      buffer_.destination_memory_space};
-
-  int device_ordinal = execute_params.stream->parent()->device_ordinal();
-  XLA_VLOG_DEVICE(5, device_ordinal) << "RecvCmd:";
-
-  XLA_VLOG_DEVICE(5, device_ordinal)
-      << "  Src: " << buffer_.source_buffer << " ("
-      << device_buffer_pair.source_buffer.opaque() << ")";
-  XLA_VLOG_DEVICE(5, device_ordinal)
-      << "  Dst: " << buffer_.destination_buffer << " ("
-      << device_buffer_pair.destination_buffer.opaque() << ")";
-
-  if (!execute_params.collective_params || !execute_params.collective_cliques) {
-    return absl::InvalidArgumentError(
-        "RecvCmd requires collective parameters and cliques");
-  }
-
-  TF_ASSIGN_OR_RETURN(GpuCliqueKey clique_key,
-                      GetGpuCliqueKey(*execute_params.collective_params,
-                                      config().replica_groups,
-                                      config().group_mode, communication_id()));
-
-  TF_ASSIGN_OR_RETURN(
-      Communicator * comm,
-      execute_params.collective_cliques->GetComm(
-          clique_key, execute_params.collective_params->global_device_id));
-
-  GlobalDeviceId global_device_id =
-      execute_params.collective_params->global_device_id;
-
-  TF_ASSIGN_OR_RETURN(
-      const DeviceAssignment::LogicalID current_logical_id,
-      execute_params.collective_params->device_assn->LogicalIdForDevice(
-          global_device_id));
-
-  const int64_t current_id =
-      config().group_mode ==
-              CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA
-          ? current_logical_id.replica_id
-          : current_logical_id.computation_id;
-  std::string device_string =
-      CollectiveThunk::GetDeviceString(*execute_params.collective_params);
-
-  P2PConfig::SourceTargetMapEntry source_target =
-      P2PConfig::GetSourceTarget(p2p_config_.id_to_source_target, current_id);
-
-  const std::optional<int64_t> source_id = source_target.source;
-  std::function<absl::Status(se::Stream*)> trace = [&](se::Stream* stream) {
-    return RunRecv(device_buffer_pair, *stream, *comm, current_id, source_id,
-                   device_string);
-  };
-
-  return RecordTracedCommand(execute_params, record_params,
-                             std::move(record_action), command_buffer, trace);
-}
-
-Command::BufferUses RecvCmd::buffer_uses() const {
-  BufferUses buffer_usage;
-  buffer_usage.emplace_back(BufferUse::Read(buffer_.source_buffer.slice,
-                                            buffer_.source_buffer.shape));
-  buffer_usage.emplace_back(BufferUse::Write(buffer_.destination_buffer.slice,
-                                             buffer_.destination_buffer.shape));
-  return buffer_usage;
-}
-
-//===----------------------------------------------------------------------===//
-// SendCmd
-//===----------------------------------------------------------------------===//
-
-SendCmd::SendCmd(CollectiveConfig config, P2PConfig p2p_config,
-                 const CollectiveThunk::Buffer& buffer)
-    : CollectiveCmd(CommandType::kSendCmd, std::move(config),
-                    CommunicationId(1)),
-      p2p_config_(std::move(p2p_config)),
-      buffer_(buffer) {}
-
-absl::StatusOr<const se::CommandBuffer::Command*> SendCmd::Record(
-    const Thunk::ExecuteParams& execute_params,
-    const RecordParams& record_params, RecordAction record_action,
-    se::CommandBuffer* command_buffer) {
-  DeviceBufferPair device_buffer_pair{
-      config().operand_element_type[0],
-      buffer_.element_count,
-      execute_params.buffer_allocations->GetDeviceAddress(
-          buffer_.source_buffer.slice),
-      execute_params.buffer_allocations->GetDeviceAddress(
-          buffer_.destination_buffer.slice),
-      buffer_.source_memory_space,
-      buffer_.destination_memory_space};
-
-  int device_ordinal = execute_params.stream->parent()->device_ordinal();
-  XLA_VLOG_DEVICE(5, device_ordinal) << "SendCmd:";
-
-  XLA_VLOG_DEVICE(5, device_ordinal)
-      << "  Src: " << buffer_.source_buffer << " ("
-      << device_buffer_pair.source_buffer.opaque() << ")";
-  XLA_VLOG_DEVICE(5, device_ordinal)
-      << "  Dst: " << buffer_.destination_buffer << " ("
-      << device_buffer_pair.destination_buffer.opaque() << ")";
-
-  if (!execute_params.collective_params || !execute_params.collective_cliques) {
-    return absl::InvalidArgumentError(
-        "SendCmd requires collective parameters and cliques");
-  }
-
-  TF_ASSIGN_OR_RETURN(GpuCliqueKey clique_key,
-                      GetGpuCliqueKey(*execute_params.collective_params,
-                                      config().replica_groups,
-                                      config().group_mode, communication_id()));
-
-  TF_ASSIGN_OR_RETURN(
-      Communicator * comm,
-      execute_params.collective_cliques->GetComm(
-          clique_key, execute_params.collective_params->global_device_id));
-
-  GlobalDeviceId global_device_id =
-      execute_params.collective_params->global_device_id;
-
-  TF_ASSIGN_OR_RETURN(
-      const DeviceAssignment::LogicalID current_logical_id,
-      execute_params.collective_params->device_assn->LogicalIdForDevice(
-          global_device_id));
-
-  const int64_t current_id =
-      config().group_mode ==
-              CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA
-          ? current_logical_id.replica_id
-          : current_logical_id.computation_id;
-  std::string device_string =
-      CollectiveThunk::GetDeviceString(*execute_params.collective_params);
-
-  P2PConfig::SourceTargetMapEntry source_target =
-      P2PConfig::GetSourceTarget(p2p_config_.id_to_source_target, current_id);
-
-  std::optional<int64_t> target_id = source_target.target;
-  if (!target_id) {
-    VLOG(3) << "[" << device_ordinal << "] Skipping Send";
-    return nullptr;
-  }
-
-  std::function<absl::Status(se::Stream*)> trace = [&](se::Stream* stream) {
-    return RunSend(device_buffer_pair, *stream, *comm, current_id, *target_id,
-                   device_string);
-  };
-
-  return RecordTracedCommand(execute_params, record_params,
-                             std::move(record_action), command_buffer, trace);
-}
-
-Command::BufferUses SendCmd::buffer_uses() const {
-  BufferUses buffer_usage;
-  buffer_usage.emplace_back(BufferUse::Read(buffer_.source_buffer.slice,
-                                            buffer_.source_buffer.shape));
-  buffer_usage.emplace_back(BufferUse::Write(buffer_.destination_buffer.slice,
-                                             buffer_.destination_buffer.shape));
   return buffer_usage;
 }
 

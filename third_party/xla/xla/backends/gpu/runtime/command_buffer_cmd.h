@@ -193,48 +193,6 @@ class CollectivePermuteCmd : public CollectiveCmd {
   std::vector<CollectiveThunk::Buffer> buffers_;
 };
 
-//===----------------------------------------------------------------------===//
-// RecvCmd
-//===----------------------------------------------------------------------===//
-
-class RecvCmd : public CollectiveCmd {
- public:
-  RecvCmd(CollectiveConfig config, P2PConfig p2p_config,
-          const CollectiveThunk::Buffer& buffer);
-
-  absl::StatusOr<const se::CommandBuffer::Command*> Record(
-      const Thunk::ExecuteParams& execute_params,
-      const RecordParams& record_params, RecordAction record_action,
-      se::CommandBuffer* command_buffer) override;
-
-  BufferUses buffer_uses() const override;
-
- private:
-  P2PConfig p2p_config_;
-  CollectiveThunk::Buffer buffer_;
-};
-
-//===----------------------------------------------------------------------===//
-// SendCmd
-//===----------------------------------------------------------------------===//
-
-class SendCmd : public CollectiveCmd {
- public:
-  SendCmd(CollectiveConfig config, P2PConfig p2p_config,
-          const CollectiveThunk::Buffer& buffer);
-
-  absl::StatusOr<const se::CommandBuffer::Command*> Record(
-      const Thunk::ExecuteParams& execute_params,
-      const RecordParams& record_params, RecordAction record_action,
-      se::CommandBuffer* command_buffer) override;
-
-  BufferUses buffer_uses() const override;
-
- private:
-  P2PConfig p2p_config_;
-  CollectiveThunk::Buffer buffer_;
-};
-
 }  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_COMMAND_BUFFER_CMD_H_
