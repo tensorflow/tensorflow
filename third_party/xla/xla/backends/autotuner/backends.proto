@@ -2,6 +2,8 @@ edition = "2023";
 
 package xla.autotuner;
 
+import "google/protobuf/any.proto";
+
 option java_multiple_files = true;
 option java_outer_classname = "Backends";
 
@@ -26,4 +28,11 @@ enum Backend {
   CUSTOM_KERNEL_FISSION = 14;
   ROCBLAS_FISSION = 15;
   HIPBLASLT_FISSION = 16;
+}
+
+// Configuration for fission backends, holding the hero config and a map
+// of stored sub-fusion configs keyed by fingerprint string.
+message FissionConfig {
+  google.protobuf.Any fissioned_hero_config = 1;
+  map<string, google.protobuf.Any> sub_fusion_configs = 2;
 }

@@ -20,12 +20,15 @@ limitations under the License.
 #include <vector>
 
 #include "google/protobuf/any.pb.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/executable.h"
+#include "tsl/platform/fingerprint.h"
 
 namespace xla {
 
@@ -66,6 +69,29 @@ class CodegenBackend {
 
   // Returns true if the backend can produce numerically wrong results.
   virtual bool CanProduceWrongResults() const = 0;
+
+  // Returns true if this instruction requires sub-fusion tuning before
+  // the config can be fully evaluated/applied.
+  virtual bool RequiresSubFusionTuning(const HloInstruction& instr) const {
+    return false;
+  }
+
+  // Generates temporary modules for sub-fusions that need to be autotuned or
+  // satisfied.
+  virtual absl::StatusOr<std::vector<std::unique_ptr<HloModule>>>
+  GenerateSubFusions(const HloInstruction& instr, const BackendConfig& config) {
+    return absl::UnimplementedError("GenerateSubFusions not implemented.");
+  }
+
+  // Stores the child configs of sub-fusions in the parent BackendConfig using
+  // a map keyed by instruction fingerprint. This materializes the search tree
+  // results and ensures the configurations are stored persistently.
+  virtual absl::Status StoreSubFusionConfigs(
+      BackendConfig& config,
+      const absl::flat_hash_map<tsl::Fprint128, BackendConfig,
+                                tsl::Fprint128Hasher>& sub_fusion_configs) {
+    return absl::UnimplementedError("StoreSubFusionConfigs not implemented.");
+  }
 };
 
 }  // namespace xla

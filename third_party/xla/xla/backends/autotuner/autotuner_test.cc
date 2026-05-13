@@ -923,7 +923,6 @@ TEST_F(AutotunerTest, AutotuneWithScratchBytesOptimization) {
 
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::move(backend_1));
-  config_.optimize_scratch_bytes = true;
   config_.scratch_bytes_window_size_us = 8;
   ASSERT_OK_AND_ASSIGN(
       auto autotuner,
@@ -1637,7 +1636,6 @@ TEST(AutotuneConfigTest, ToString) {
   config.check_buffers = true;
   config.relative_tolerance = 1e-4;
   config.crash_on_check_failure = false;
-  config.optimize_scratch_bytes = true;
   config.scratch_bytes_window_size_us = 10;
   config.expect_all_instructions_in_cache = false;
   config.dump_logs_to = "/tmp/log";
@@ -1652,7 +1650,6 @@ TEST(AutotuneConfigTest, ToString) {
       "  \"check_buffers\": true,\n"
       "  \"relative_tolerance\": 0.000100,\n"
       "  \"crash_on_check_failure\": false,\n"
-      "  \"optimize_scratch_bytes\": true,\n"
       "  \"scratch_bytes_window_size_us\": 10,\n"
       "  \"expect_all_instructions_in_cache\": false,\n"
       "  \"dump_logs_to\": \"/tmp/log\",\n"

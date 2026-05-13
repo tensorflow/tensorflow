@@ -1776,27 +1776,28 @@ absl::Status GpuCompiler::OptimizeHloModule(
   RETURN_IF_ERROR(RunAsyncDotPasses(hlo_module, compilation_stats));
   if (hlo_module->config()
           .debug_options()
-          .xla_gpu_experimental_move_gemm_conv_autotuner()) {
-    HloPassPipeline pipeline("autotune-conv-and-gemm", compilation_stats);
-    RETURN_IF_ERROR(AutotunerAndPostCleanup(
-        pipeline, hlo_module, gpu_version, hlo_module->config().debug_options(),
-        &mlir_context_, gpu_topology.gpu_target_config().device_description,
-        gpu_topology.gpu_target_config().platform_name, options,
-        thread_pool.get_mutable(), stream_exec,
-        &gpu_topology.gpu_target_config(), options.key_value_store,
-        device_description.runtime_version(), alias_info,
-        ShapeSizeBytesFunction()));
-    RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
-  }
-  {
-    HloPassPipeline pipeline("autotune-fusion-emitters", compilation_stats);
+          .xla_gpu_experimental_autotune_post_fusion()) {
+    HloPassPipeline pipeline("autotuner", compilation_stats);
     pipeline.AddPass<FusionWrapper>(
         gpu_topology.gpu_target_config().device_description);
-    RETURN_IF_ERROR(AddFusionAutotuningPass(
-        &pipeline, hlo_module, options, thread_pool.get_mutable(), stream_exec,
-        &gpu_topology.gpu_target_config(), ShapeSizeBytesFunction(),
-        options.key_value_store));
+    RETURN_IF_ERROR(AddAutotunerPass(
+        &pipeline, hlo_module, gpu_version, options, thread_pool.get_mutable(),
+        stream_exec, &gpu_topology.gpu_target_config(), alias_info,
+        &mlir_context_, ShapeSizeBytesFunction(), options.key_value_store));
+
     RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  } else {
+    // TODO(b/511979384): Remove once xla_gpu_experimental_autotune_post_fusion
+    // is enabled by default.
+    HloPassPipeline fusion_pipeline("autotune-fusion-emitters",
+                                    compilation_stats);
+    fusion_pipeline.AddPass<FusionWrapper>(
+        gpu_topology.gpu_target_config().device_description);
+    RETURN_IF_ERROR(AddFusionAutotuningPass(
+        &fusion_pipeline, hlo_module, options, thread_pool.get_mutable(),
+        stream_exec, &gpu_topology.gpu_target_config(),
+        ShapeSizeBytesFunction(), options.key_value_store));
+    RETURN_IF_ERROR(fusion_pipeline.Run(hlo_module).status());
   }
 
   {
@@ -2027,9 +2028,11 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<RaggedDotFusionRewriter>();
   }
 
+  // TODO(b/511979384): Remove once xla_gpu_experimental_autotune_post_fusion is
+  // enabled by default.
   if (!hlo_module->config()
            .debug_options()
-           .xla_gpu_experimental_move_gemm_conv_autotuner()) {
+           .xla_gpu_experimental_autotune_post_fusion()) {
     RETURN_IF_ERROR(AutotunerAndPostCleanup(
         pipeline, hlo_module, gpu_version, debug_options, &mlir_context_,
         gpu_target_config.device_description, gpu_target_config.platform_name,
@@ -3549,59 +3552,57 @@ absl::Status GpuCompiler::AddConvAndGemmAutotuningPass(
     const se::SemanticVersion& toolkit_version, const AliasInfo* alias_info,
     const DebugOptions& debug_options, mlir::MLIRContext* mlir_context,
     HloCostAnalysis::ShapeSizeFunction shape_size_fn) {
-  TF_ASSIGN_OR_RETURN(
-      std::vector<std::unique_ptr<CodegenBackend>> backends,
-      GetAutotunerBackends(stream_exec, options.device_allocator, target_config,
-                           alias_info, debug_options, mlir_context));
-
-  bool do_not_autotune_cublas =
-      debug_options.xla_gpu_experimental_disable_binary_libraries() ||
-      debug_options.xla_gpu_autotune_level() == 0 ||
-      debug_options.xla_gpu_exclude_nondeterministic_ops();
-  // We need to run miopen autotune to decompose unsuported fused convolutions
-  // TODO: Merge this with above once we are able to achieve the same with
-  // FissionBackend
-  bool do_not_autotune_cudnn =
-      debug_options.xla_gpu_experimental_disable_binary_libraries() ||
-      (do_not_autotune_cublas && !gpu_version.IsRocm());
-  auto should_autotune = [do_not_autotune_cublas, do_not_autotune_cudnn](
-                             const HloInstruction& instruction) -> bool {
-    if (!do_not_autotune_cublas &&
-        (instruction.opcode() == HloOpcode::kCustomCall &&
-         IsCublasGemm(instruction))) {
-      return true;
-    }
-    if (!do_not_autotune_cudnn &&
-        (instruction.opcode() == HloOpcode::kCustomCall &&
-         IsCustomCallToDnnConvolution(instruction))) {
-      return true;
-    }
-    if (instruction.opcode() != HloOpcode::kFusion) {
-      return false;
-    }
-    auto gpu_config = instruction.backend_config<GpuBackendConfig>();
-    const FusionBackendConfig& backend_config =
-        gpu_config->fusion_backend_config();
-    if (backend_config.kind() == kTritonGemmFusionKind) {
-      return !backend_config.has_triton_gemm_config();
-    }
-    if (backend_config.kind() == kCuDnnFusionKind) {
-      return !backend_config.has_cudnn_fusion_config();
-    }
-    if (backend_config.kind() == kCustomFusionKind) {
-      return !backend_config.has_custom_fusion_config();
-    }
-    return false;
+  auto get_backends_fn =
+      [&]() -> absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>> {
+    return GetAutotunerBackends(stream_exec, options.device_allocator,
+                                target_config, alias_info, debug_options,
+                                mlir_context, shape_size_fn);
   };
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<AutotunerPass> autotuner_pass,
-      AutotunerPass::Create(std::move(backends), debug_options, stream_exec,
-                            thread_pool, should_autotune, target_config,
-                            options.device_allocator,
-                            /*optimize_scratch_bytes=*/true, key_value_store));
+      AutotunerPass::Create(get_backends_fn, debug_options, gpu_version,
+                            stream_exec, thread_pool, target_config, alias_info,
+                            mlir_context, shape_size_fn,
+                            options.device_allocator, key_value_store));
   pipeline->AddPass(std::move(autotuner_pass));
 
+  return absl::OkStatus();
+}
+
+absl::Status GpuCompiler::AddAutotunerPass(
+    HloPassPipeline* pipeline, HloModule* hlo_module,
+    const se::GpuComputeCapability& gpu_version, const CompileOptions& options,
+    tsl::thread::ThreadPool* thread_pool, se::StreamExecutor* stream_exec,
+    const Compiler::GpuTargetConfig* target_config, const AliasInfo* alias_info,
+    mlir::MLIRContext* mlir_context,
+    HloCostAnalysis::ShapeSizeFunction shape_size_fn,
+    const MultiProcessKeyValueStore& key_value_store) {
+  const DebugOptions& debug_options = hlo_module->config().debug_options();
+  auto get_backends_fn =
+      [&]() -> absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>> {
+    return GetAutotunerBackends(stream_exec, options.device_allocator,
+                                target_config, alias_info, debug_options,
+                                mlir_context, shape_size_fn);
+  };
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<AutotunerPass> autotuner_pass,
+      AutotunerPass::Create(get_backends_fn, debug_options, gpu_version,
+                            stream_exec, thread_pool, target_config, alias_info,
+                            mlir_context, shape_size_fn,
+                            options.device_allocator, key_value_store));
+  pipeline->AddPass(std::move(autotuner_pass));
+  // Post autotuning transformations needed after autotuning happens.
+  pipeline->AddPass<ConvertTritonGemmConfig>(target_config->device_description,
+                                             mlir_context);
+  pipeline->AddPass<ReshapeDecomposer>();
+  pipeline->AddPass<LayoutNormalization>(&NormalizeLayoutForGpuCustomCalls);
+  auto simplifier_options = GetAlgebraicSimplifierOptions(
+      AlgebraicSimplifierMode::kLayoutNormalization, debug_options,
+      target_config->platform_name == "ROCM");
+  pipeline->AddPass<HloPassFix<GpuAlgebraicSimplifier>>(simplifier_options,
+                                                        gpu_version);
   return absl::OkStatus();
 }
 
@@ -3610,7 +3611,8 @@ GpuCompiler::GetAutotunerBackends(
     se::StreamExecutor* stream_exec,
     se::DeviceAddressAllocator* device_allocator,
     const Compiler::GpuTargetConfig* target_config, const AliasInfo* alias_info,
-    const DebugOptions& debug_options, mlir::MLIRContext* mlir_context) {
+    const DebugOptions& debug_options, mlir::MLIRContext* mlir_context,
+    HloCostAnalysis::ShapeSizeFunction shape_size_fn) {
   std::vector<autotuner::Backend> autotune_backends;
   if (!debug_options.xla_gpu_experimental_autotune_backends().empty()) {
     for (const auto& backend :
@@ -3652,6 +3654,15 @@ GpuCompiler::GetAutotunerBackends(
     disabled_autotune_backends.push_back(autotuner::Backend::ROCBLAS_FISSION);
   }
 
+  if (!debug_options.xla_gpu_experimental_autotune_post_fusion() ||
+      debug_options.xla_gpu_autotune_level() == 0 ||
+      debug_options.xla_gpu_exclude_nondeterministic_ops() ||
+      !debug_options.xla_gpu_experimental_enable_fusion_autotuner()) {
+    disabled_autotune_backends.push_back(autotuner::Backend::NATIVE_EMITTER);
+    disabled_autotune_backends.push_back(
+        autotuner::Backend::BLOCK_LEVEL_EMITTER);
+  }
+
   autotune_backends.erase(
       std::remove_if(autotune_backends.begin(), autotune_backends.end(),
                      [&](autotuner::Backend backend) {
@@ -3665,45 +3676,10 @@ GpuCompiler::GetAutotunerBackends(
                       registry.FindObject<GetCodegenBackends>(PlatformId()));
   std::vector<std::unique_ptr<CodegenBackend>> backends = get_codegen_backends(
       stream_exec, device_allocator, &debug_options, this, target_config,
-      alias_info, mlir_context, autotune_backends);
+      alias_info, mlir_context, shape_size_fn, autotune_backends);
+
   return backends;
 }
-
-namespace {
-
-bool ShouldAutotuneBetweenFusionEmittersAny(const HloInstruction& instruction) {
-  if (instruction.opcode() != HloOpcode::kFusion) {
-    return false;
-  }
-  auto fusion = Cast<const HloFusionInstruction>(&instruction);
-  // kCustom fusions have already been assigned to a backend and we don't want
-  // to override it.
-  if (fusion->fusion_kind() == HloInstruction::FusionKind::kCustom) {
-    return false;
-  }
-  // Scatter can't go through the block-level emitter and runs into comparator
-  // issues in the autotuner as different runs can produce different results.
-  if (absl::c_any_of(fusion->fused_instructions_computation()->instructions(),
-                     HloPredicateIsOp<HloOpcode::kScatter>)) {
-    return false;
-  }
-  return true;
-}
-
-// Returns true if the instruction is a fusion that would go through the native
-// emitter, but may benefit from going through the block-level emitter.
-// Currently, we only do this for reductions and transposes.
-bool ShouldAutotuneBetweenFusionEmitters(const HloInstruction& instruction) {
-  if (!ShouldAutotuneBetweenFusionEmittersAny(instruction)) {
-    return false;
-  }
-  auto fusion = Cast<const HloFusionInstruction>(&instruction);
-  return absl::c_any_of(
-      fusion->fused_instructions_computation()->instructions(),
-      HloPredicateIsOp<HloOpcode::kReduce, HloOpcode::kTranspose>);
-}
-
-}  // namespace
 
 absl::Status GpuCompiler::AddFusionAutotuningPass(
     HloPassPipeline* pipeline, HloModule* hlo_module,
@@ -3722,26 +3698,26 @@ absl::Status GpuCompiler::AddFusionAutotuningPass(
     return absl::OkStatus();
   }
 
-  std::vector<std::unique_ptr<CodegenBackend>> backends;
-  auto native_backend = std::make_unique<NativeEmitterBackend>(
-      &debug_options, this, target_config);
-  backends.push_back(std::move(native_backend));
-  auto ble_backend = std::make_unique<BlockLevelEmitterBackend>(
-      &debug_options, this, shape_size_fn, target_config);
-  backends.push_back(std::move(ble_backend));
-
-  auto should_autotune =
-      debug_options.xla_gpu_experimental_all_fusions_with_triton()
-          ? ShouldAutotuneBetweenFusionEmittersAny
-          : ShouldAutotuneBetweenFusionEmitters;
+  auto get_backends_fn = [this, &debug_options, target_config, shape_size_fn]()
+      -> absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>> {
+    std::vector<std::unique_ptr<CodegenBackend>> backends;
+    auto native_backend = std::make_unique<NativeEmitterBackend>(
+        &debug_options, this, target_config);
+    backends.push_back(std::move(native_backend));
+    auto ble_backend = std::make_unique<BlockLevelEmitterBackend>(
+        &debug_options, this, shape_size_fn, target_config);
+    backends.push_back(std::move(ble_backend));
+    return backends;
+  };
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<AutotunerPass> autotuner_pass,
-      AutotunerPass::Create(std::move(backends), debug_options, stream_executor,
-                            thread_pool, should_autotune, target_config,
-                            options.device_allocator,
-                            /*optimize_scratch_bytes=*/false, key_value_store,
-                            /*allow_reg_spills=*/true));
+      AutotunerPass::Create(
+          get_backends_fn, debug_options,
+          target_config->device_description.gpu_compute_capability(),
+          stream_executor, thread_pool, target_config, /*alias_info=*/nullptr,
+          /*mlir_context=*/nullptr, shape_size_fn, options.device_allocator,
+          key_value_store));
   pipeline->AddPass(std::move(autotuner_pass));
   return absl::OkStatus();
 }
