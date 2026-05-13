@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/MLProgram/IR/MLProgram.h"  // from @llvm-project
 #include "mlir/Dialect/MLProgram/IR/MLProgramAttributes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -43,6 +44,7 @@ inline void RegisterAllTensorFlowDialectsImpl(DialectRegistry &registry,
               mlir::ml_program::MLProgramDialect, mlir::TF::TensorFlowDialect,
               mlir::tf_type::TFTypeDialect, mlir::cf::ControlFlowDialect,
               mlir::tf_device::TensorFlowDeviceDialect,
+              mlir::stablehlo::StablehloDialect,
               mlir::tf_executor::TensorFlowExecutorDialect,
               mlir::tf_saved_model::TensorFlowSavedModelDialect,
               mlir::tfg::TFGraphDialect>();

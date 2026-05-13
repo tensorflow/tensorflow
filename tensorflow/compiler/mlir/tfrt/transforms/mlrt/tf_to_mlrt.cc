@@ -419,9 +419,16 @@ class AsyncIfrtCallOpConversion
     llvm::SmallVector<mlir::Type> future_types(
         op->getNumResults(), rewriter.getType<mlrt::compiler::FutureType>());
 
+    auto group_ids_attr =
+        op->getAttrOfType<mlir::ArrayAttr>("__ifrt_pack_group_ids");
+    auto offsets_attr =
+        op->getAttrOfType<mlir::ArrayAttr>("__ifrt_pack_offsets");
+
     auto call_op = tf_mlrt::AsyncIfrtCallOp::create(
-        rewriter, op.getLoc(), future_types, op.getProgramId(),
-        op.getVariableArgIndices(), adaptor.getOperands());
+        rewriter, op.getLoc(), future_types,
+        rewriter.getI64IntegerAttr(op.getProgramId()),
+        op.getVariableArgIndicesAttr(), group_ids_attr, offsets_attr,
+        adaptor.getOperands());
 
     rewriter.replaceOp(op, call_op.getResults());
     return mlir::success();

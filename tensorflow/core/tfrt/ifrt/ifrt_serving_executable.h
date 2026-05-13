@@ -111,13 +111,17 @@ class IfrtServingExecutable {
   // variable_arg_indices are in sorted order.
   absl::StatusOr<std::vector<tensorflow::Tensor>> Execute(
       absl::Span<const tensorflow::Tensor> inputs,
-      absl::Span<const int> variable_arg_indices);
+      absl::Span<const int> variable_arg_indices,
+      absl::Span<const int64_t> pack_group_ids = {},
+      absl::Span<const int64_t> pack_offsets = {});
 
   // Executes the computation asynchronously.
   // variable_arg_indices are in sorted order.
   absl::StatusOr<tsl::Future<std::vector<tensorflow::Tensor>>> ExecuteAsync(
       absl::Span<const tensorflow::Tensor> inputs,
-      absl::Span<const int> variable_arg_indices);
+      absl::Span<const int> variable_arg_indices,
+      absl::Span<const int64_t> pack_group_ids = {},
+      absl::Span<const int64_t> pack_offsets = {});
 
   // Freezes the model. After the Freeze(), JIT compile is not supported and
   // Execute() will return error if inputs contain uncompiled shapes.
@@ -133,6 +137,7 @@ class IfrtServingExecutable {
   // In memory cache key.
   struct Key {
     std::vector<tensorflow::TensorShape> input_shapes;
+    std::vector<int64_t> pack_group_ids;
     template <typename H>
     friend H AbslHashValue(H h, const Key& key) {
       for (const auto& shape : key.input_shapes) {
@@ -140,11 +145,15 @@ class IfrtServingExecutable {
           h = H::combine(std::move(h), size);
         }
       }
+      for (auto gid : key.pack_group_ids) {
+        h = H::combine(std::move(h), gid);
+      }
       return h;
     }
 
     friend bool operator==(const Key& x, const Key& y) {
-      return x.input_shapes == y.input_shapes;
+      return x.input_shapes == y.input_shapes &&
+             x.pack_group_ids == y.pack_group_ids;
     }
   };
 
@@ -152,6 +161,7 @@ class IfrtServingExecutable {
   // dtypes and shapes when looking up the cache.
   struct KeyView {
     absl::Span<const DtypeAndShape> dtypes_and_shapes;
+    absl::Span<const int64_t> pack_group_ids;
 
     template <typename H>
     friend H AbslHashValue(H h, const KeyView& key) {
@@ -159,6 +169,9 @@ class IfrtServingExecutable {
         for (auto size : dtype_and_shape.GetShapeForCompilation().dim_sizes()) {
           h = H::combine(std::move(h), size);
         }
+      }
+      for (auto gid : key.pack_group_ids) {
+        h = H::combine(std::move(h), gid);
       }
       return h;
     }
@@ -183,9 +196,17 @@ class IfrtServingExecutable {
       if (lhs.input_shapes.size() != rhs.dtypes_and_shapes.size()) {
         return false;
       }
+      if (lhs.pack_group_ids.size() != rhs.pack_group_ids.size()) {
+        return false;
+      }
       for (int i = 0; i < lhs.input_shapes.size(); ++i) {
         if (lhs.input_shapes[i] !=
             rhs.dtypes_and_shapes[i].GetShapeForCompilation()) {
+          return false;
+        }
+      }
+      for (int i = 0; i < lhs.pack_group_ids.size(); ++i) {
+        if (lhs.pack_group_ids[i] != rhs.pack_group_ids[i]) {
           return false;
         }
       }
@@ -365,12 +386,22 @@ class IfrtServingExecutable {
   LookUpOrCreateExecutable(absl::Span<const tensorflow::Tensor> inputs,
                            absl::Span<const DtypeAndShape> dtypes_and_shapes,
                            absl::Span<const int> variable_arg_indices,
+                           absl::Span<const int64_t> pack_group_ids,
                            const xla::ifrt::DeviceListRef& device_list);
 
-  // Core implementation for Execute and ExecuteAsync.
+  // Core implementation for Execute.
   absl::StatusOr<ExecutionInfo> ExecuteCore(
       absl::Span<const tensorflow::Tensor> inputs,
-      absl::Span<const int> variable_arg_indices);
+      absl::Span<const int> variable_arg_indices,
+      absl::Span<const int64_t> pack_group_ids = {},
+      absl::Span<const int64_t> pack_offsets = {});
+
+  // Core implementation for ExecuteAsync.
+  absl::StatusOr<tsl::Future<ExecutionInfo>> ExecuteCoreAsync(
+      absl::Span<const tensorflow::Tensor> inputs,
+      absl::Span<const int> variable_arg_indices,
+      absl::Span<const int64_t> pack_group_ids = {},
+      absl::Span<const int64_t> pack_offsets = {});
 
   // Creates an executable by calling tf2xla and xla compiler
   absl::StatusOr<IfrtServingExecutable::SharedCachedExecutableBundle>
@@ -378,12 +409,14 @@ class IfrtServingExecutable {
       mlir::OwningOpRef<mlir::ModuleOp> module_copy,
       const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
       absl::Span<const DtypeAndShape> dtypes_and_shapes,
-      absl::Span<const int> variable_arg_indices);
+      absl::Span<const int> variable_arg_indices,
+      absl::Span<const int64_t> pack_group_ids);
 
   absl::Status PopulateInvariantMetadata(
       const Tf2HloResult& tf2hlo_result,
       xla::ifrt::LoadedExecutableRef ifrt_executable,
       std::vector<std::unique_ptr<TfHostCallback>> host_callbacks,
+      absl::Span<const int64_t> pack_group_ids,
       CachedExecutableBundle& executable_bundle);
 
   absl::StatusOr<std::unique_ptr<xla::ifrt::Sharding>> CreateSharding(

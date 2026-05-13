@@ -69,6 +69,16 @@ CreateLowerToIfrtRestoreVariablePass();
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateTfDeviceCleanupPass();
 
+// Creates a pass that plans input tensor packing by stamping group ID
+// attributes.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateIfrtPackInputsPlannerPass(int size_threshold_bytes = 16384);
+
+// Creates a pass that orchestrates pack-inputs signature extraction and stamps
+// offset attributes.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateIfrtPackInputsOrchestratorPass();
+
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/passes.h.inc"  // IWYU pragma: keep
 

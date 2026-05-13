@@ -662,7 +662,12 @@ H2DTransferExecutor::ScheduledH2DTransfers(
     tsl::thread::ThreadPool& thread_pool) {
   std::vector<xla::ifrt::ArrayRef> arrays;
   arrays.reserve(handles.size());
+
+  // 1. Non-packed individual inputs (pack_group_id == -1)
   for (const auto& handle : handles) {
+    if (handle.pack_group_id != -1) {
+      continue;
+    }
     TF_ASSIGN_OR_RETURN(
         auto array,
         MakeArrayFromTensor(ifrt_client_, handle.tensor, handle.device_list,
@@ -670,6 +675,52 @@ H2DTransferExecutor::ScheduledH2DTransfers(
                             handle.xla_input_layout));
     arrays.push_back(std::move(array));
   }
+
+  // 2. Coalesced packed groups (pack_group_id >= 0)
+  absl::btree_map<int64_t, std::vector<const InputHandle*>> packed_groups;
+  for (const auto& handle : handles) {
+    if (handle.pack_group_id >= 0) {
+      packed_groups[handle.pack_group_id].push_back(&handle);
+    }
+  }
+
+  for (const auto& [gid, group_handles] : packed_groups) {
+    if (group_handles.empty()) continue;
+
+    // Calculate required allocation size
+    int64_t total_size = 0;
+    for (const auto* handle : group_handles) {
+      int64_t bitwidth =
+          handle->tensor.dtype() == tensorflow::DT_STRING
+              ? 8
+              : tensorflow::DataTypeSize(handle->tensor.dtype()) * 8;
+      int64_t byte_size = handle->tensor.NumElements() * (bitwidth / 8);
+      total_size = std::max(total_size, handle->pack_offset + byte_size);
+    }
+
+    // Allocate host scratch pinned allocation and copy logic
+    tensorflow::Tensor packed_tensor(tensorflow::DT_INT8,
+                                     tensorflow::TensorShape({total_size}));
+    char* dst = const_cast<char*>(packed_tensor.tensor_data().data());
+    std::memset(dst, 0, total_size);
+
+    for (const auto* handle : group_handles) {
+      auto src = handle->tensor.tensor_data();
+      std::memcpy(dst + handle->pack_offset, src.data(), src.size());
+    }
+
+    // Unified sharding parameters from first element in the group
+    const auto* template_handle = group_handles.front();
+    TF_ASSIGN_OR_RETURN(
+        auto packed_array,
+        MakeArrayFromTensor(ifrt_client_, packed_tensor,
+                            template_handle->device_list,
+                            template_handle->ifrt_sharding, thread_pool,
+                            template_handle->xla_input_layout));
+
+    arrays.push_back(std::move(packed_array));
+  }
+
   return tsl::Future<std::vector<xla::ifrt::ArrayRef>>(std::move(arrays));
 }
 

@@ -65,6 +65,8 @@ cc_library(
 cc_library(
     name = "tf_ifrt_passes",
     srcs = [
+        "ifrt_pack_inputs_orchestrator.cc",
+        "ifrt_pack_inputs_planner.cc",
         "lower_to_ifrt_restore_variable.cc",
         "propagate_static_shapes.cc",
         "rewrite_cluster_to_ifrt_call.cc",
@@ -82,6 +84,7 @@ cc_library(
     textual_hdrs = ["passes.h.inc"],
     deps = [
         ":ifrt_constants",
+        ":pack_inputs_pass",
         ":pass_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:bridge_logger",

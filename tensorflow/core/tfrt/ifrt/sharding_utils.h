@@ -66,6 +66,11 @@ struct InputHandle {
   xla::ifrt::LayoutRef xla_input_layout;
   // The byte strides of the input tensor.
   absl::Span<const int64_t> byte_strides;
+  // The logical group containing this packed operand (e.g. 0 or -1 for
+  // non-packed).
+  int64_t pack_group_id = -1;
+  // The relative offset inside the packed group host buffer in bytes.
+  int64_t pack_offset = 0;
 };
 
 // A per-request H2D transfer executor. The caller should call
@@ -130,6 +135,15 @@ absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
 tsl::Future<tensorflow::Tensor> MakeTensorFromArray(
     xla::ifrt::Client& ifrt_client, xla::ifrt::Array& input_array,
     const xla::HloSharding& hlo_sharding,
+    const xla::ifrt::DeviceListRef& device_list,
+    tsl::thread::ThreadPool& thread_pool);
+
+// Batch version of MakeTensorFromArray that efficiently fetches multiple
+// IFRT arrays from device to host using a single batched DMA transfer.
+tsl::Future<std::vector<tensorflow::Tensor>> BatchedMakeTensorsFromArrays(
+    xla::ifrt::Client& ifrt_client,
+    absl::Span<const xla::ifrt::ArrayRef> input_arrays,
+    absl::Span<const xla::HloSharding> hlo_shardings,
     const xla::ifrt::DeviceListRef& device_list,
     tsl::thread::ThreadPool& thread_pool);
 
