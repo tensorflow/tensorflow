@@ -21,14 +21,16 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/autotuner/backends.pb.h"
-#include "xla/backends/gpu/tests/gpu_codegen_test.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/backends/gpu/transforms/cudnn_fusion_compiler.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
@@ -47,7 +49,9 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -56,14 +60,23 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 namespace {
 
-class CuDnnFusionTest : public GpuCodegenTest {
+class CuDnnFusionTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  public:
+  se::StreamExecutor* stream_executor() const {
+    auto platform =
+        se::PlatformManager::PlatformWithId(stream_executor_platform_id());
+    CHECK_OK(platform);
+    auto executor = (*platform)->ExecutorForDevice(0);
+    CHECK_OK(executor);
+    return *executor;
+  }
+
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloPjRtGpuTestBase::GetDebugOptionsForTest();
     // Let this group of tests just use first available plan skipping
     // autotuning.
     debug_options.set_xla_gpu_autotune_level(0);
@@ -75,16 +88,15 @@ class CuDnnFusionTest : public GpuCodegenTest {
     return debug_options;
   }
   se::CudaComputeCapability get_cuda_cc() const {
-    se::StreamExecutor* executor = backend().default_stream_executor();
-    return executor->GetDeviceDescription().cuda_compute_capability();
+    return device_description().cuda_compute_capability();
   }
   bool IsAtLeastAmpereWithCuDnn9() {
-    se::StreamExecutor* executor = backend().default_stream_executor();
+    se::StreamExecutor* executor = stream_executor();
     return get_cuda_cc().IsAtLeastAmpere() &&
            GetDnnVersionInfoOrDefault(executor).major_version() >= 9;
   }
   bool IsAtLeastCuDnnVersion(int major_version, int minor_version) {
-    se::StreamExecutor* executor = backend().default_stream_executor();
+    se::StreamExecutor* executor = stream_executor();
     const se::dnn::VersionInfo version = GetDnnVersionInfoOrDefault(executor);
     return (version.major_version() == major_version &&
             version.minor_version() >= minor_version) ||
@@ -117,17 +129,17 @@ class CuDnnFusionFileCheckTest : public CuDnnFusionTest {
 
   absl::StatusOr<bool> RunCuDnnFileCheck(absl::string_view hlo,
                                          absl::string_view pattern) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
-                        ParseAndReturnVerifiedModule(hlo));
+    ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+                     ParseAndReturnVerifiedModule(hlo));
     const std::string root_name(
         module->entry_computation()->root_instruction()->name());
     BinaryMap dnn_compiled_graphs;
-    CuDnnFusionCompiler cudnn_compiler(
-        *backend().default_stream_executor()->AsDnn(), dnn_compiled_graphs);
+    CuDnnFusionCompiler cudnn_compiler(*stream_executor()->AsDnn(),
+                                       dnn_compiled_graphs);
     // Run filecheck even if CuDnnFusionCompiler failed.
     cudnn_compiler.Run(module.get()).IgnoreError();
     std::string dump;
-    TF_RETURN_IF_ERROR(tsl::ReadFileToString(
+    RETURN_IF_ERROR(tsl::ReadFileToString(
         tsl::Env::Default(),
         tsl::io::JoinPath(
             output_directory_,
@@ -221,12 +233,12 @@ ENTRY e {
     backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
   n = f32[32,64] fusion(f), kind=kLoop, calls=n, control-predecessors={f}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
   BinaryMap dnn_compiled_graphs;
-  CuDnnFusionCompiler cudnn_compiler(
-      *backend().default_stream_executor()->AsDnn(), dnn_compiled_graphs);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, cudnn_compiler.Run(module.get()));
+  CuDnnFusionCompiler cudnn_compiler(*stream_executor()->AsDnn(),
+                                     dnn_compiled_graphs);
+  ASSERT_OK_AND_ASSIGN(bool changed, cudnn_compiler.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Fusion(m::GetTupleElement(m::Fusion()))));
@@ -261,11 +273,11 @@ e {
     backend_config={"fusion_backend_config":{"kind":"__cudnn$fusion","cudnn_fusion_config":{"plan_id":"0"}}}
   g = f32[32,64] get-tuple-element(r), index=0
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
   BinaryMap dnn_compiled_graphs;
-  CuDnnFusionCompiler cudnn_compiler(
-      *backend().default_stream_executor()->AsDnn(), dnn_compiled_graphs);
+  CuDnnFusionCompiler cudnn_compiler(*stream_executor()->AsDnn(),
+                                     dnn_compiled_graphs);
   EXPECT_THAT(cudnn_compiler.Run(module.get()),
               absl_testing::IsOkAndHolds(false));
   // Single dot is not supported by cuDNN, so Triton should be used.
@@ -287,8 +299,8 @@ TEST_F(CuDnnFusionExecutionTest,
   if (!IsAtLeastCuDnn91()) {
     GTEST_SKIP() << "This test case requests a workspace only with cuDNN 9.1+.";
   }
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 c1 {
   p0 = f32[32,96] parameter(0)
   p1 = f32[96,64] parameter(1)
@@ -313,9 +325,9 @@ ENTRY e {
   ROOT r = tuple(f0, f1)
 })"));
   BinaryMap dnn_compiled_graphs;
-  CuDnnFusionCompiler cudnn_compiler(
-      *backend().default_stream_executor()->AsDnn(), dnn_compiled_graphs);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, cudnn_compiler.Run(module.get()));
+  CuDnnFusionCompiler cudnn_compiler(*stream_executor()->AsDnn(),
+                                     dnn_compiled_graphs);
+  ASSERT_OK_AND_ASSIGN(bool changed, cudnn_compiler.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Tuple(m::GetTupleElement(m::Fusion()),
@@ -1243,8 +1255,8 @@ TEST_F(CuDnnFusionRewriteTest,
        DoNotExecuteGemmFusionWithCuDnnWhenNotSupported) {
   // f64 is not a supported data type in cuDNN GEMM fusions yet.
   // With other backends disabled, compilation must fail.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 e {
   p0 = f64[20,40,64] parameter(0)
   p0n = f64[20,40,64] negate(p0)
@@ -1253,7 +1265,8 @@ e {
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2}, rhs_contracting_dims={2}
 })"));
-  auto status = CompileToExecutable(std::move(module)).status();
+  auto status =
+      CreateExecutable(std::move(module), /*run_hlo_passes=*/true).status();
   EXPECT_FALSE(status.ok());
   EXPECT_THAT(status.ToString(), ::testing::HasSubstr("No supported configs"));
 }
@@ -1404,5 +1417,4 @@ CHECK: }
 )"));
 }
 }  // namespace
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
