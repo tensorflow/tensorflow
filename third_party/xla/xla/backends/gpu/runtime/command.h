@@ -66,7 +66,6 @@ namespace xla::gpu {
   V(kBarrierCmd, "BarrierCmd")                               \
   V(kCollectiveCmd, "CollectiveCmd")                         \
   V(kAllToAllCmd, "AllToAllCmd")                             \
-  V(kAllGatherCmd, "AllGatherCmd")                           \
   V(kCollectiveBroadcastCmd, "CollectiveBroadcastCmd")       \
   V(kCollectivePermuteCmd, "CollectivePermuteCmd")           \
   V(kRaggedAllToAllCmd, "RaggedAllToAllCmd")                 \
