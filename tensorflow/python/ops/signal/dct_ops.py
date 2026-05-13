@@ -247,7 +247,7 @@ def idct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disab
     `input`.
 
   Raises:
-    ValueError: If `type` is not `1`, `2` or `3`, `axis` is not `-1`,
+    ValueError: If `type` is not `1`, `2`, `3` or `4`, `axis` is not `-1`,
       or `norm` is not `None` or `'ortho'`.
 
   [idct]:
