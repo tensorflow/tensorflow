@@ -119,6 +119,7 @@ class Thunk {
     kCustomCall,
     kCustomKernel,
     kDynamicSlice,
+    kDynamicSliceFusion,
     kFft,
     kGemm,
     kGroup,

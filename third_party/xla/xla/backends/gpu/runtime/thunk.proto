@@ -30,6 +30,7 @@ import "xla/core/host_offloading/host_offloading_executable.proto";
 import "xla/ffi/attribute_map.proto";
 import "xla/ffi/execution_state.proto";
 import "xla/service/buffer_assignment.proto";
+import "xla/service/gpu/backend_configs.proto";
 import "xla/service/gpu/gpu_conv_runner.proto";
 import "xla/service/gpu/gpu_norm_runner.proto";
 import "xla/service/gpu/launch_dimensions.proto";
@@ -184,6 +185,45 @@ message DynamicSliceThunkProto {
   optional OffsetAsFunctionOfIndvarModulesMetadataProto
       offset_as_function_of_indvar_modules_metadata = 7;
   repeated BufferAllocationProto fake_allocations = 8;
+}
+
+message DynamicSliceFusionThunkProto {
+  // Mirrors DynamicSliceFusion::Offset.
+  message OffsetProto {
+    int64 dimension_number = 1;
+    oneof value {
+      int64 constant_offset = 2;
+      int64 runtime_parameter_number = 3;
+    }
+  }
+
+  // Mirrors DynamicSliceFusion::Parameter.
+  message ParameterProto {
+    int64 parameter_number = 1;
+    xla.ShapeProto parameter_shape = 2;
+    xla.ShapeProto slice_shape = 3;
+    optional xla.gpu.DynamicSliceConfig slice_config = 4;
+    repeated OffsetProto slice_offsets = 5;
+  }
+
+  // Mirrors DynamicSliceFusion::Result.
+  message ResultProto {
+    optional int64 parameter_number = 1;
+    int64 result_number = 2;
+    xla.ShapeProto result_shape = 3;
+    xla.ShapeProto update_shape = 4;
+    optional xla.gpu.DynamicSliceConfig update_config = 5;
+    repeated OffsetProto update_offsets = 6;
+  }
+
+  repeated ParameterProto parameters = 1;
+  repeated ResultProto results = 2;
+  repeated xla.buffer_assignment.BufferAllocationSliceProto parameter_buffers =
+      3;
+  repeated xla.buffer_assignment.BufferAllocationSliceProto result_buffers = 4;
+  repeated BufferAllocationProto slice_allocations = 5;
+  ThunkSequenceProto embedded_thunks = 6;
+  bool verify_offsets = 7;
 }
 
 message MemzeroThunkProto {
@@ -449,6 +489,7 @@ message ThunkProto {
     AsyncStartThunkProto async_start_thunk = 57;
     AsyncDoneThunkProto async_done_thunk = 58;
     CollectiveKernelThunkProto collective_kernel_thunk = 59;
+    DynamicSliceFusionThunkProto dynamic_slice_fusion_thunk = 60;
   }
 
   reserved 10, 37, 49, 50, 51, 56;
