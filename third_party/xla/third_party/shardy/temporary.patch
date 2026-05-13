@@ -1,0 +1,388 @@
+diff --git a/shardy/dialect/mpmd/transforms/import/test/infer_mesh_pipeline_create_reductions.mlir b/shardy/dialect/mpmd/transforms/import/test/infer_mesh_pipeline_create_reductions.mlir
+index 3412522c..65f3334f 100644
+--- a/shardy/dialect/mpmd/transforms/import/test/infer_mesh_pipeline_create_reductions.mlir
++++ b/shardy/dialect/mpmd/transforms/import/test/infer_mesh_pipeline_create_reductions.mlir
+@@ -15,7 +15,7 @@
+ func.func @assign_outputs_with_empty_src_set(%arg0: !m3_4x8, %arg1: !m2_4x8)
+   -> (tensor<4x8xf32>) attributes {topology=#topology} {
+ // CHECK:       %[[T0:.*]] = mpmd.transfer %arg0 {{.*}}m3{{.*}} -> {{.*}}m2
+-// CHECK-NEXT:  %[[ADD:.*]] = mpmd.fragment<mesh="m2", origin=[]> (%[[T0]], %arg1)
++// CHECK-NEXT:  %[[ADD:.*]] = mpmd.fragment<mesh="m2", origin=[]> (%arg1, %[[T0]])
+ // CHECK:       return %[[ADD]]
+   %4 = mpmd.unassign %arg0 : (!m3_4x8) -> tensor<4x8xf32>
+   %5 = mpmd.unassign %arg1 : (!m2_4x8) -> tensor<4x8xf32>
+diff --git a/shardy/dialect/mpmd/transforms/import/test/infer_mesh_pipeline_create_transfers.mlir b/shardy/dialect/mpmd/transforms/import/test/infer_mesh_pipeline_create_transfers.mlir
+index 33953a32..50877eca 100644
+--- a/shardy/dialect/mpmd/transforms/import/test/infer_mesh_pipeline_create_transfers.mlir
++++ b/shardy/dialect/mpmd/transforms/import/test/infer_mesh_pipeline_create_transfers.mlir
+@@ -13,7 +13,7 @@ func.func @assign_outputs_with_empty_src_set(%arg0: !m3_8x16, %arg1: !m2_8x16)
+       <"m3": <["z"=2]>>
+     >} {
+ // CHECK:       %[[T0:.*]] = mpmd.transfer %arg0 {{.*}}m3{{.*}} -> {{.*}}m2
+-// CHECK-NEXT:  %[[ADD:.*]] = mpmd.fragment<mesh="m2", origin=[]> (%[[T0]], %arg1)
++// CHECK-NEXT:  %[[ADD:.*]] = mpmd.fragment<mesh="m2", origin=[]> (%arg1, %[[T0]])
+ // CHECK:       return %[[ADD]]
+   %4 = mpmd.unassign %arg0 : (!m3_8x16) -> tensor<8x16xf32>
+   %5 = mpmd.unassign %arg1 : (!m2_8x16) -> tensor<8x16xf32>
+diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
+index 509398da..3b3b500e 100644
+--- a/third_party/llvm/generated.patch
++++ b/third_party/llvm/generated.patch
+@@ -1 +1,342 @@
+ Auto generated patch. Do not edit or delete it, even if empty.
++diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/X86ISelLowering.cpp b/llvm/lib/Target/X86/X86ISelLowering.cpp
++--- a/llvm/lib/Target/X86/X86ISelLowering.cpp
+++++ b/llvm/lib/Target/X86/X86ISelLowering.cpp
++@@ -61204,8 +61204,8 @@
++ 
++     // See if were inserting into a zero vXi1 vector and the subvector was
++     // bitcast from a gpr that could be zero-extended directly.
++-    if (IsI1Vector && TLI.isTypeLegal(OpVT)) {
++-      SDValue SubInt = peekThroughBitcasts(SubVec);
+++    if (IsI1Vector && TLI.isTypeLegal(OpVT) && SubVec.hasOneUse()) {
+++      SDValue SubInt = peekThroughOneUseBitcasts(SubVec);
++       EVT IntVT = EVT::getIntegerVT(*DAG.getContext(), VecNumElts);
++       if (TLI.isTypeLegal(IntVT) && SubInt.getValueType().isScalarInteger()) {
++         SubInt = DAG.getNode(ISD::ZERO_EXTEND, dl, IntVT, SubInt);
++diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/avx512-skx-insert-subvec.ll b/llvm/test/CodeGen/X86/avx512-skx-insert-subvec.ll
++--- a/llvm/test/CodeGen/X86/avx512-skx-insert-subvec.ll
+++++ b/llvm/test/CodeGen/X86/avx512-skx-insert-subvec.ll
++@@ -209,3 +209,24 @@
++   %c = bitcast <8 x i1> %b to i8
++   ret i8 %c
++ }
+++
+++; Ensure multiple uses of mask source doesn't cause infinite loop
+++define <16 x i8> @test_insert_subvector_v8i1_v16i1(i8 %a0) {
+++; CHECK-LABEL: test_insert_subvector_v8i1_v16i1:
+++; CHECK:       # %bb.0:
+++; CHECK-NEXT:    xorb $1, %dil
+++; CHECK-NEXT:    kmovd %edi, %k1
+++; CHECK-NEXT:    kmovb %k1, %k2
+++; CHECK-NEXT:    vmovdqu8 0, %xmm0 {%k2} {z}
+++; CHECK-NEXT:    vpxor %xmm1, %xmm1, %xmm1
+++; CHECK-NEXT:    vmovdqu64 %zmm1, 0 {%k1}
+++; CHECK-NEXT:    vzeroupper
+++; CHECK-NEXT:    retq
+++  %xor = xor i8 %a0, 1
+++  %zext = zext i8 %xor to i16
+++  %mask16 = bitcast i16 %zext to <16 x i1>
+++  %load = call <16 x i8> @llvm.masked.load.v16i8.p0(ptr null, <16 x i1> %mask16, <16 x i8> zeroinitializer)
+++  %mask8 = bitcast i8 %xor to <8 x i1>
+++  call void @llvm.masked.store.v8i64.p0(<8 x i64> zeroinitializer, ptr null, <8 x i1> %mask8)
+++  ret <16 x i8> %load
+++}
++diff -ruN --strip-trailing-cr a/mlir/lib/Pass/IRPrinting.cpp b/mlir/lib/Pass/IRPrinting.cpp
++--- a/mlir/lib/Pass/IRPrinting.cpp
+++++ b/mlir/lib/Pass/IRPrinting.cpp
++@@ -48,11 +48,18 @@
++ 
++ static void printIR(Operation *op, bool printModuleScope, raw_ostream &out,
++                     OpPrintingFlags flags) {
++-  // Check to see if we are not printing at module scope.
+++  // Otherwise, check to see if we are not printing at module scope.
++   if (!printModuleScope)
++-    return op->print(out, op->getBlock() ? flags.useLocalScope() : flags);
+++    return op->print(out << " //----- //\n",
+++                     op->getBlock() ? flags.useLocalScope() : flags);
++ 
++   // Otherwise, we are printing at module scope.
+++  out << " ('" << op->getName() << "' operation";
+++  if (auto symbolName =
+++          op->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName()))
+++    out << ": @" << symbolName.getValue();
+++  out << ") //----- //\n";
+++
++   // Find the top-level operation.
++   auto *topLevelOp = op;
++   while (auto *parentOp = topLevelOp->getParentOp())
++@@ -60,24 +67,6 @@
++   topLevelOp->print(out, flags);
++ }
++ 
++-static void printIRHeader(raw_ostream &out, StringRef title, Pass *pass,
++-                          Operation *op, bool printModuleScope,
++-                          bool failed = false) {
++-  out << "// -----// IR Dump " << title << " " << pass->getName();
++-  if (failed)
++-    out << " Failed";
++-  out << ": ";
++-  pass->printAsTextualPipeline(out);
++-  if (printModuleScope) {
++-    out << " ('" << op->getName() << "' operation";
++-    if (auto symbolName =
++-            op->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName()))
++-      out << ": @" << symbolName.getValue();
++-    out << ")";
++-  }
++-  out << " //----- //\n";
++-}
++-
++ /// Instrumentation hooks.
++ void IRPrinterInstrumentation::runBeforePass(Pass *pass, Operation *op) {
++   if (isa<OpToOpPassAdaptor>(pass))
++@@ -87,7 +76,8 @@
++     beforePassFingerPrints.try_emplace(pass, op);
++ 
++   config->printBeforeIfEnabled(pass, op, [&](raw_ostream &out) {
++-    printIRHeader(out, "Before", pass, op, config->shouldPrintAtModuleScope());
+++    out << "// -----// IR Dump Before " << pass->getName() << " ("
+++        << pass->getArgument() << ")";
++     printIR(op, config->shouldPrintAtModuleScope(), out,
++             config->getOpPrintingFlags());
++     out << "\n\n";
++@@ -117,7 +107,8 @@
++   }
++ 
++   config->printAfterIfEnabled(pass, op, [&](raw_ostream &out) {
++-    printIRHeader(out, "After", pass, op, config->shouldPrintAtModuleScope());
+++    out << "// -----// IR Dump After " << pass->getName() << " ("
+++        << pass->getArgument() << ")";
++     printIR(op, config->shouldPrintAtModuleScope(), out,
++             config->getOpPrintingFlags());
++     out << "\n\n";
++@@ -131,8 +122,8 @@
++     beforePassFingerPrints.erase(pass);
++ 
++   config->printAfterIfEnabled(pass, op, [&](raw_ostream &out) {
++-    printIRHeader(out, "After", pass, op, config->shouldPrintAtModuleScope(),
++-                  /*failed=*/true);
+++    out << formatv("// -----// IR Dump After {0} Failed ({1})", pass->getName(),
+++                   pass->getArgument());
++     printIR(op, config->shouldPrintAtModuleScope(), out,
++             config->getOpPrintingFlags());
++     out << "\n\n";
++diff -ruN --strip-trailing-cr a/mlir/test/Pass/dynamic-pipeline.mlir b/mlir/test/Pass/dynamic-pipeline.mlir
++--- a/mlir/test/Pass/dynamic-pipeline.mlir
+++++ b/mlir/test/Pass/dynamic-pipeline.mlir
++@@ -10,20 +10,20 @@
++ 
++ // CHECK: IR Dump Before
++ // CHECK-SAME: TestDynamicPipelinePass
++-// CHECK: module @inner_mod1
+++// CHECK-NEXT: module @inner_mod1
++ // MOD2-ONLY: dynamic-pipeline skip op name: inner_mod1
++ module @inner_mod1 {
++ // MOD1: Dump Before CSE
++-// MOD1: @foo
+++// MOD1-NEXT: @foo
++ // MOD1: Dump Before Canonicalizer
++-// MOD1: @foo
+++// MOD1-NEXT: @foo
++   func.func @foo() {
++     return
++   }
++ // MOD1: Dump Before CSE
++-// MOD1: @baz
+++// MOD1-NEXT: @baz
++ // MOD1: Dump Before Canonicalizer
++-// MOD1: @baz
+++// MOD1-NEXT: @baz
++   func.func @baz() {
++     return
++   }
++@@ -31,13 +31,13 @@
++ 
++ // CHECK: IR Dump Before
++ // CHECK-SAME: TestDynamicPipelinePass
++-// CHECK: module @inner_mod2
+++// CHECK-NEXT: module @inner_mod2
++ // MOD1-ONLY: dynamic-pipeline skip op name: inner_mod2
++ module @inner_mod2 {
++ // MOD2: Dump Before CSE
++-// MOD2: @foo
+++// MOD2-NEXT: @foo
++ // MOD2: Dump Before Canonicalizer
++-// MOD2: @foo
+++// MOD2-NEXT: @foo
++   func.func @foo() {
++     return
++   }
++diff -ruN --strip-trailing-cr a/mlir/test/Pass/dynamic-pipeline-nested.mlir b/mlir/test/Pass/dynamic-pipeline-nested.mlir
++--- a/mlir/test/Pass/dynamic-pipeline-nested.mlir
+++++ b/mlir/test/Pass/dynamic-pipeline-nested.mlir
++@@ -10,7 +10,7 @@
++ 
++ // CHECK: IR Dump Before
++ // CHECK-SAME: TestDynamicPipelinePass
++-// CHECK: module @inner_mod1
+++// CHECK-NEXT: module @inner_mod1
++ module @inner_mod1 {
++ // We use the mlir-print-ir-after-all dumps to check the granularity of the
++ // scheduling: if we are nesting we expect to see to individual "Dump Before
++@@ -18,11 +18,11 @@
++ // the CSE pass to run on the `inner_mod1` module directly.
++ 
++ // CHECK: Dump Before CSE
++-// NOTNESTED: @inner_mod1
++-// NESTED: @foo
+++// NOTNESTED-NEXT: @inner_mod1
+++// NESTED-NEXT: @foo
++   module @foo {}
++ // Only in the nested case we have a second run of the pass here.
++ // NESTED: Dump Before CSE
++-// NESTED: @baz
+++// NESTED-NEXT: @baz
++   module @baz {}
++ }
++diff -ruN --strip-trailing-cr a/mlir/test/Pass/ir-printing.mlir b/mlir/test/Pass/ir-printing.mlir
++--- a/mlir/test/Pass/ir-printing.mlir
+++++ b/mlir/test/Pass/ir-printing.mlir
++@@ -5,7 +5,6 @@
++ // RUN: mlir-opt %s -mlir-disable-threading=true -pass-pipeline='builtin.module(func.func(cse,canonicalize))' -mlir-print-ir-before=cse -mlir-print-ir-module-scope -o /dev/null 2>&1 | FileCheck -check-prefix=BEFORE_MODULE %s
++ // RUN: mlir-opt %s -mlir-disable-threading=true -pass-pipeline='builtin.module(func.func(cse,cse))' -mlir-print-ir-after-all -mlir-print-ir-after-change -o /dev/null 2>&1 | FileCheck -check-prefix=AFTER_ALL_CHANGE %s
++ // RUN: not mlir-opt %s -mlir-disable-threading=true -pass-pipeline='builtin.module(func.func(cse,test-pass-failure))' -mlir-print-ir-after-failure -o /dev/null 2>&1 | FileCheck -check-prefix=AFTER_FAILURE %s
++-// RUN: mlir-opt %s -mlir-disable-threading=true -pass-pipeline='builtin.module(func.func(canonicalize{max-iterations=5}))' -mlir-print-ir-before=canonicalize -o /dev/null 2>&1 | FileCheck -check-prefix=OPTIONS %s
++ 
++ func.func @foo() {
++   %0 = arith.constant 0 : i32
++@@ -16,55 +15,53 @@
++   return
++ }
++ 
++-// BEFORE: // -----// IR Dump Before{{.*}}CSEPass: cse //----- //
++-// BEFORE: func @foo()
++-// BEFORE: // -----// IR Dump Before{{.*}}CSEPass: cse //----- //
++-// BEFORE: func @bar()
++-// BEFORE-NOT: // -----// IR Dump Before{{.*}}CanonicalizerPass: canonicalize //----- //
+++// BEFORE: // -----// IR Dump Before{{.*}}CSEPass (cse) //----- //
+++// BEFORE-NEXT: func @foo()
+++// BEFORE: // -----// IR Dump Before{{.*}}CSEPass (cse) //----- //
+++// BEFORE-NEXT: func @bar()
+++// BEFORE-NOT: // -----// IR Dump Before{{.*}}CanonicalizerPass (canonicalize) //----- //
++ // BEFORE-NOT: // -----// IR Dump After
++ 
++-// BEFORE_ALL: // -----// IR Dump Before{{.*}}CSEPass: cse //----- //
++-// BEFORE_ALL: func @foo()
++-// BEFORE_ALL: // -----// IR Dump Before{{.*}}CanonicalizerPass: canonicalize{{.*}} //----- //
++-// BEFORE_ALL: func @foo()
++-// BEFORE_ALL: // -----// IR Dump Before{{.*}}CSEPass: cse //----- //
++-// BEFORE_ALL: func @bar()
++-// BEFORE_ALL: // -----// IR Dump Before{{.*}}CanonicalizerPass: canonicalize{{.*}} //----- //
++-// BEFORE_ALL: func @bar()
+++// BEFORE_ALL: // -----// IR Dump Before{{.*}}CSEPass (cse) //----- //
+++// BEFORE_ALL-NEXT: func @foo()
+++// BEFORE_ALL: // -----// IR Dump Before{{.*}}CanonicalizerPass (canonicalize) //----- //
+++// BEFORE_ALL-NEXT: func @foo()
+++// BEFORE_ALL: // -----// IR Dump Before{{.*}}CSEPass (cse) //----- //
+++// BEFORE_ALL-NEXT: func @bar()
+++// BEFORE_ALL: // -----// IR Dump Before{{.*}}CanonicalizerPass (canonicalize) //----- //
+++// BEFORE_ALL-NEXT: func @bar()
++ // BEFORE_ALL-NOT: // -----// IR Dump After
++ 
++ // AFTER-NOT: // -----// IR Dump Before
++-// AFTER: // -----// IR Dump After{{.*}}CSEPass: cse //----- //
++-// AFTER: func @foo()
++-// AFTER: // -----// IR Dump After{{.*}}CSEPass: cse //----- //
++-// AFTER: func @bar()
++-// AFTER-NOT: // -----// IR Dump After{{.*}}CanonicalizerPass: canonicalize{{.*}} //----- //
+++// AFTER: // -----// IR Dump After{{.*}}CSEPass (cse) //----- //
+++// AFTER-NEXT: func @foo()
+++// AFTER: // -----// IR Dump After{{.*}}CSEPass (cse) //----- //
+++// AFTER-NEXT: func @bar()
+++// AFTER-NOT: // -----// IR Dump After{{.*}}CanonicalizerPass (canonicalize) //----- //
++ 
++ // AFTER_ALL-NOT: // -----// IR Dump Before
++-// AFTER_ALL: // -----// IR Dump After{{.*}}CSEPass: cse //----- //
++-// AFTER_ALL: func @foo()
++-// AFTER_ALL: // -----// IR Dump After{{.*}}CanonicalizerPass: canonicalize{{.*}} //----- //
++-// AFTER_ALL: func @foo()
++-// AFTER_ALL: // -----// IR Dump After{{.*}}CSEPass: cse //----- //
++-// AFTER_ALL: func @bar()
++-// AFTER_ALL: // -----// IR Dump After{{.*}}CanonicalizerPass: canonicalize{{.*}} //----- //
++-// AFTER_ALL: func @bar()
+++// AFTER_ALL: // -----// IR Dump After{{.*}}CSEPass (cse) //----- //
+++// AFTER_ALL-NEXT: func @foo()
+++// AFTER_ALL: // -----// IR Dump After{{.*}}CanonicalizerPass (canonicalize) //----- //
+++// AFTER_ALL-NEXT: func @foo()
+++// AFTER_ALL: // -----// IR Dump After{{.*}}CSEPass (cse) //----- //
+++// AFTER_ALL-NEXT: func @bar()
+++// AFTER_ALL: // -----// IR Dump After{{.*}}CanonicalizerPass (canonicalize) //----- //
+++// AFTER_ALL-NEXT: func @bar()
++ 
++-// BEFORE_MODULE: // -----// IR Dump Before{{.*}}CSEPass: cse ('func.func' operation: @foo) //----- //
+++// BEFORE_MODULE: // -----// IR Dump Before{{.*}}CSEPass (cse) ('func.func' operation: @foo) //----- //
++ // BEFORE_MODULE: func @foo()
++ // BEFORE_MODULE: func @bar()
++-// BEFORE_MODULE: // -----// IR Dump Before{{.*}}CSEPass: cse ('func.func' operation: @bar) //----- //
+++// BEFORE_MODULE: // -----// IR Dump Before{{.*}}CSEPass (cse) ('func.func' operation: @bar) //----- //
++ // BEFORE_MODULE: func @foo()
++ // BEFORE_MODULE: func @bar()
++ 
++-// AFTER_ALL_CHANGE: // -----// IR Dump After{{.*}}CSEPass: cse //----- //
++-// AFTER_ALL_CHANGE: func @foo()
++-// AFTER_ALL_CHANGE-NOT: // -----// IR Dump After{{.*}}CSEPass: cse //----- //
+++// AFTER_ALL_CHANGE: // -----// IR Dump After{{.*}}CSEPass (cse) //----- //
+++// AFTER_ALL_CHANGE-NEXT: func @foo()
+++// AFTER_ALL_CHANGE-NOT: // -----// IR Dump After{{.*}}CSEPass (cse) //----- //
++ // We expect that only 'foo' changed during CSE, and the second run of CSE did
++ // nothing.
++ 
++ // AFTER_FAILURE-NOT: // -----// IR Dump After{{.*}}CSE
++-// AFTER_FAILURE: // -----// IR Dump After{{.*}}TestFailurePass Failed: test-pass-failure{{.*}} //----- //
+++// AFTER_FAILURE: // -----// IR Dump After{{.*}}TestFailurePass Failed (test-pass-failure) //----- //
++ // AFTER_FAILURE: func @foo()
++-
++-// OPTIONS: // -----// IR Dump Before{{.*}}CanonicalizerPass: canonicalize{cse-between-iterations=false{{[[:space:]]*}}max-iterations=5 max-num-rewrites=-1 region-simplify=normal test-convergence=false top-down=true} //----- //
++diff -ruN --strip-trailing-cr a/mlir/test/Pass/run-reproducer.mlir b/mlir/test/Pass/run-reproducer.mlir
++--- a/mlir/test/Pass/run-reproducer.mlir
+++++ b/mlir/test/Pass/run-reproducer.mlir
++@@ -26,9 +26,9 @@
++   }
++ #-}
++ 
++-// BEFORE: // -----// IR Dump Before{{.*}}CSEPass: cse //----- //
++-// BEFORE: func @foo()
++-// BEFORE: // -----// IR Dump Before{{.*}}CSEPass: cse //----- //
++-// BEFORE: func @bar()
++-// BEFORE-NOT: // -----// IR Dump Before{{.*}}CanonicalizerPass: canonicalize //----- //
+++// BEFORE: // -----// IR Dump Before{{.*}}CSEPass (cse) //----- //
+++// BEFORE-NEXT: func @foo()
+++// BEFORE: // -----// IR Dump Before{{.*}}CSEPass (cse) //----- //
+++// BEFORE-NEXT: func @bar()
+++// BEFORE-NOT: // -----// IR Dump Before{{.*}}CanonicalizerPass (canonicalize) //----- //
++ // BEFORE-NOT: // -----// IR Dump After
++diff -ruN --strip-trailing-cr a/mlir/test/python/pass_manager.py b/mlir/test/python/pass_manager.py
++--- a/mlir/test/python/pass_manager.py
+++++ b/mlir/test/python/pass_manager.py
++@@ -275,7 +275,7 @@
++         pm = PassManager.parse("builtin.module(canonicalize)")
++         ctx.enable_multithreading(False)
++         pm.enable_ir_printing()
++-        # CHECK: // -----// IR Dump After CanonicalizerPass: canonicalize{{.*}} //----- //
+++        # CHECK: // -----// IR Dump After CanonicalizerPass (canonicalize) //----- //
++         # CHECK: module {
++         # CHECK:   func.func @main() {
++         # CHECK:     return
++@@ -301,14 +301,14 @@
++         pm = PassManager.parse("builtin.module(canonicalize)")
++         ctx.enable_multithreading(False)
++         pm.enable_ir_printing(print_before_all=True, print_after_all=True)
++-        # CHECK: // -----// IR Dump Before CanonicalizerPass: canonicalize{{.*}} //----- //
+++        # CHECK: // -----// IR Dump Before CanonicalizerPass (canonicalize) //----- //
++         # CHECK: module {
++         # CHECK:   func.func @main() {
++         # CHECK:     %[[C10:.*]] = arith.constant 10 : i64
++         # CHECK:     return
++         # CHECK:   }
++         # CHECK: }
++-        # CHECK: // -----// IR Dump After CanonicalizerPass: canonicalize{{.*}} //----- //
+++        # CHECK: // -----// IR Dump After CanonicalizerPass (canonicalize) //----- //
++         # CHECK: module {
++         # CHECK:   func.func @main() {
++         # CHECK:     return
+diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
+index de600e09..dc71501f 100644
+--- a/third_party/llvm/workspace.bzl
++++ b/third_party/llvm/workspace.bzl
+@@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
+ 
+ def repo(name):
+     """Imports LLVM."""
+-    LLVM_COMMIT = "87d42c13cd6b119240781f31e5869981d500a186"
+-    LLVM_SHA256 = "66b7f645a9a67d6692c5bea033a536972fcd2e80aa31408d579aae5811521869"
++    LLVM_COMMIT = "7ddee0b619f658cef905a69427ef9531fd1d229d"
++    LLVM_SHA256 = "0ebcba094207b7104182c5112e1c3b0f5623e7779b901c1d2007e4983c3582b1"
+ 
+     tf_http_archive(
+         name = name,
