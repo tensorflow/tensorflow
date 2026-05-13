@@ -19,8 +19,13 @@ symbols through this python script.
   * `VS140COMNTOOLS`
 """
 
-load("@bazel_tools//tools/cpp:lib_cc_configure.bzl", "auto_configure_fail")
-load("@bazel_tools//tools/cpp:windows_cc_configure.bzl", "find_msvc_tool", "find_vc_path")
+load("@rules_cc//cc/private/toolchain:windows_cc_configure.bzl", "find_msvc_tool", "find_vc_path")  # buildifier: disable=bzl-visibility
+
+def auto_configure_fail(msg):
+    """Output failure message when def file filter configuration fails."""
+    red = "\033[0;31m"
+    no_color = "\033[0m"
+    fail("\n%sDef File Filter Configuration Error:%s %s\n" % (red, no_color, msg))
 
 def _def_file_filter_configure_impl(repository_ctx):
     if repository_ctx.os.name.lower().find("windows") == -1:
