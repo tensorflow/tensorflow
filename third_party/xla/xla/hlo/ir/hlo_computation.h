@@ -405,7 +405,8 @@ class HloComputation {
 
   // Serializes this computation to a proto.
   void ToProto(HloComputationProto* proto,
-               HloPayloadDeduplicator* deduplicator = nullptr) const;
+               HloPayloadDeduplicator* deduplicator = nullptr,
+               HloProtoOptions options = HloProtoOptions()) const;
 
   // Creates a computation from the given proto. Arguments:
   //

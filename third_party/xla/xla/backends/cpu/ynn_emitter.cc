@@ -360,29 +360,45 @@ absl::StatusOr<uint32_t> DefineIotaOp(ynn_subgraph_t subgraph,
   PrimitiveType element_type = shape.element_type();
   ASSIGN_OR_RETURN(auto ynn_element_type, YnnType(element_type));
 
-  auto stride_shape = ShapeUtil::MakeShape(element_type, {rank});
+  auto stride_shape = ShapeUtil::MakeShape(element_type, {1});
   ASSIGN_OR_RETURN(auto stride_value, Literal::Make(stride_shape));
 
-  for (int64_t i = 0; i < rank; ++i) {
-    int value = (i == iota_dim) ? 1 : 0;
-    if (primitive_util::IsIntegralType(element_type)) {
-      RETURN_IF_ERROR(stride_value.SetIntegralAsS64({i}, value));
-    } else {
-      RETURN_IF_ERROR(stride_value.SetFromDouble({i}, value));
-    }
+  if (primitive_util::IsIntegralType(element_type)) {
+    RETURN_IF_ERROR(stride_value.SetIntegralAsS64({0}, 1));
+  } else {
+    RETURN_IF_ERROR(stride_value.SetFromDouble({0}, 1.0));
   }
 
   uint32_t stride_id = YNN_INVALID_VALUE_ID;
-  const size_t stride_dims[] = {static_cast<size_t>(rank)};
+  const size_t stride_dims[] = {1};
   YNN_RETURN_IF_ERROR(ynn_define_tensor(
       subgraph, ynn_element_type, 1, stride_dims, stride_value.untyped_data(),
       YNN_VALUE_FLAG_COPY_DATA, &stride_id));
 
-  auto out_ynn_dims = YnnDimensions(shape);
-  YNN_RETURN_IF_ERROR(ynn_define_iota(subgraph, ynn_element_type, rank,
-                                      out_ynn_dims.data(), YNN_INVALID_VALUE_ID,
-                                      stride_id, &out_id,
+  // Make a 1D iota
+  const size_t iota_dim_size = shape.dimensions(iota_dim);
+  uint32_t iota_id = rank > 1 ? YNN_INVALID_VALUE_ID : out_id;
+  YNN_RETURN_IF_ERROR(ynn_define_iota(subgraph, ynn_element_type, /*rank=*/1,
+                                      &iota_dim_size, YNN_INVALID_VALUE_ID,
+                                      stride_id, &iota_id,
                                       /*flags=*/0));
+
+  if (rank > 1) {
+    // Broadcast the 1D iota to the expected rank.
+    int32_t new_axes[YNN_MAX_TENSOR_RANK];
+    for (int i = 0; i < rank; ++i) {
+      new_axes[i] = i < iota_dim ? i : i + 1;
+    }
+    uint32_t full_rank_id = YNN_INVALID_VALUE_ID;
+    YNN_RETURN_IF_ERROR(ynn_define_static_expand_dims(
+        subgraph, rank - 1, new_axes, iota_id, &full_rank_id, /*flags=*/0));
+
+    auto out_ynn_dims = YnnDimensions(shape);
+    YNN_RETURN_IF_ERROR(
+        ynn_define_static_broadcast(subgraph, rank, out_ynn_dims.data(),
+                                    full_rank_id, &out_id, /*flags=*/0));
+  }
+
   return out_id;
 }
 

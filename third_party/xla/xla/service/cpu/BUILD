@@ -190,6 +190,7 @@ cc_library(
         "//xla/hlo/transforms:hlo_module_stitcher",
         "//xla/hlo/transforms:host_offloader",
         "//xla/hlo/transforms:literal_canonicalizer",
+        "//xla/hlo/transforms:metadata_interner",
         "//xla/hlo/transforms:operand_upcaster",
         "//xla/hlo/transforms:propagate_call_metadata",
         "//xla/hlo/transforms:shape_canonicalizer",

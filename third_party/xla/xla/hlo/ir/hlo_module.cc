@@ -548,8 +548,7 @@ uint64_t HloModule::ToFingerprint(
   return printer.ToFingerprint();
 }
 
-void HloModule::ToProto(HloModuleProto* proto,
-                        bool intern_backend_config) const {
+void HloModule::ToProto(HloModuleProto* proto, HloProtoOptions options) const {
   proto->set_id(unique_id_);
   proto->set_name(name_);
   if (entry_computation_) {
@@ -560,22 +559,21 @@ void HloModule::ToProto(HloModuleProto* proto,
         entry_computation_layout().ComputeProgramShape().ToProto();
   }
 
-  // Only create a deduplicator if needed.
-  int64_t base_offset = proto->payloads_size();
-  std::optional<HloPayloadDeduplicator> deduplicator;
-  if (intern_backend_config) {
-    deduplicator.emplace(base_offset);
+  // Instantiate one shared deduplicator when either option is enabled.
+  std::optional<HloPayloadDeduplicator> payload_deduplicator;
+  if (options.deduplicate_backend_config || options.deduplicate_metadata) {
+    payload_deduplicator.emplace(proto->payloads_size());
   }
   HloPayloadDeduplicator* deduplicator_ptr =
-      deduplicator ? &*deduplicator : nullptr;
+      payload_deduplicator ? &*payload_deduplicator : nullptr;
 
   for (const HloComputation* computation : MakeComputationPostOrder()) {
-    computation->ToProto(proto->add_computations(), deduplicator_ptr);
+    computation->ToProto(proto->add_computations(), deduplicator_ptr, options);
   }
 
-  if (deduplicator) {
-    DCHECK_EQ(proto->payloads_size(), base_offset);
-    for (std::string& payload : std::move(*deduplicator).TakePayloads()) {
+  if (payload_deduplicator) {
+    for (std::string& payload :
+         std::move(*payload_deduplicator).TakePayloads()) {
       proto->add_payloads(std::move(payload));
     }
   }
@@ -646,9 +644,9 @@ void HloModule::ToProto(HloModuleProto* proto,
 }
 
 void HloModule::ToProtoWithConfig(HloModuleProtoWithConfig* proto,
-                                  bool intern_backend_config) const {
+                                  HloProtoOptions options) const {
   *proto->mutable_config() = config().ToProto();
-  ToProto(proto->mutable_hlo_module(), intern_backend_config);
+  ToProto(proto->mutable_hlo_module(), options);
 }
 
 absl::Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions()
@@ -1022,6 +1020,25 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   }
 
   DeduplicateOriginalValues(module.get());
+
+  // Walk all instructions and inline metadata IDs to full raw string values.
+  for (HloComputation* comp : module->computations()) {
+    for (HloInstruction* inst : comp->instructions()) {
+      if (inst->metadata().has_interned_metadata_payload()) {
+        Payload* payload =
+            inst->mutable_metadata().mutable_interned_metadata_payload();
+        if (payload->has_id()) {
+          int64_t id = payload->id();
+          TF_RET_CHECK(id >= 0 && id < proto.payloads_size())
+              << "Invalid interned metadata payload id " << id
+              << " with payloads size " << proto.payloads_size();
+          payload->set_value(proto.payloads(id));
+          payload->clear_id();
+        }
+      }
+    }
+  }
+
   return module;
 }
 

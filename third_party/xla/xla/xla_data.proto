@@ -570,6 +570,11 @@ message OpMetadata {
   // Instruction name available upon scheduling.
   string scheduling_name = 16;
 
+  // Deduplicated metadata at module serialization level.
+  // In-memory HLO should generally use `value`; serialized protos may use `id`
+  // into HloModuleProto.payloads.
+  Payload interned_metadata_payload = 20;
+
   reserved 14;
 }
 

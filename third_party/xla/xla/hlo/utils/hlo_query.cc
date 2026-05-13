@@ -210,6 +210,15 @@ bool IsEffectiveParameter(const HloInstruction& instr) {
           IsEffectiveParameter(*instr.operand(0)));
 }
 
+const HloInstruction* StripCastLike(const HloInstruction* instr) {
+  while (instr->opcode() == HloOpcode::kCopy ||
+         instr->opcode() == HloOpcode::kConvert ||
+         instr->opcode() == HloOpcode::kBitcast) {
+    instr = instr->operand(0);
+  }
+  return instr;
+}
+
 HloInstruction* GetFirstInstructionWithOpcode(const HloComputation& computation,
                                               const HloOpcode opcode) {
   auto instructions = computation.instructions();

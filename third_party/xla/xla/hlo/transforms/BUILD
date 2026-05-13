@@ -731,6 +731,19 @@ xla_cc_test(
     ],
 )
 
+cc_library(
+    name = "metadata_interner",
+    srcs = ["metadata_interner.cc"],
+    hdrs = ["metadata_interner.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
 xla_cc_test(
     name = "hlo_module_stitcher_test",
     srcs = ["hlo_module_stitcher_test.cc"],
@@ -778,5 +791,20 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_cc_test(
+    name = "metadata_interner_test",
+    srcs = ["metadata_interner_test.cc"],
+    deps = [
+        ":metadata_interner",
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:hlo_module_config",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )
