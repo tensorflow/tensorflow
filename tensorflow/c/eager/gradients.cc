@@ -53,7 +53,8 @@ absl::Status ZerosLike(AbstractContext* ctx, AbstractTensorHandle* t,
 }  // namespace
 
 absl::Status GradientRegistry::Register(
-    const string& op_name, GradientFunctionFactory gradient_function_factory) {
+    const std::string& op_name,
+    GradientFunctionFactory gradient_function_factory) {
   auto iter = registry_.find(op_name);
   if (iter != registry_.end()) {
     return absl::AlreadyExistsError(
@@ -109,7 +110,7 @@ class TapeVSpace
   // Calls the passed-in backward function.
   // op_type is the op's name provided in RecordOperation.
   absl::Status CallBackwardFunction(
-      const string& op_type, GradientFunction* gradient_function,
+      const std::string& op_type, GradientFunction* gradient_function,
       const std::vector<int64_t>& unneeded_gradients,
       absl::Span<AbstractTensorHandle* const> output_gradients,
       absl::Span<AbstractTensorHandle*> result) const override;
@@ -173,7 +174,7 @@ AbstractTensorHandle* TapeVSpace::AggregateGradients(
 // Calls the passed-in backward function.
 // op_type is the op's name provided in RecordOperation.
 absl::Status TapeVSpace::CallBackwardFunction(
-    const string& op_type, GradientFunction* gradient_function,
+    const std::string& op_type, GradientFunction* gradient_function,
     const std::vector<int64_t>& unneeded_gradients,
     absl::Span<AbstractTensorHandle* const> output_gradients,
     absl::Span<AbstractTensorHandle*> result) const {
@@ -226,7 +227,7 @@ void Tape::Watch(const AbstractTensorHandle* t) {
 void Tape::RecordOperation(absl::Span<AbstractTensorHandle* const> inputs,
                            absl::Span<AbstractTensorHandle* const> outputs,
                            GradientFunction* gradient_function,
-                           const string& op_name) {
+                           const std::string& op_name) {
   std::vector<int64_t> input_ids(inputs.size());
   std::vector<tensorflow::DataType> input_dtypes(inputs.size());
   for (int i = 0; i < inputs.size(); i++) {
@@ -402,14 +403,14 @@ absl::Status SetAttrFloatList(AbstractOperation* op_, const char* attr_name,
                               const float* values, int num_values,
                               ForwardOperation* forward_op_) {
   forward_op_->attrs.Set(attr_name,
-                         gtl::ArraySlice<const float>(values, num_values));
+                         absl::Span<const const float>(values, num_values));
   return op_->SetAttrFloatList(attr_name, values, num_values);
 }
 absl::Status SetAttrIntList(AbstractOperation* op_, const char* attr_name,
                             const int64_t* values, int num_values,
                             ForwardOperation* forward_op_) {
   forward_op_->attrs.Set(
-      attr_name, gtl::ArraySlice<const int64_t>(
+      attr_name, absl::Span<const const int64_t>(
                      reinterpret_cast<const int64_t*>(values), num_values));
   return op_->SetAttrIntList(attr_name, values, num_values);
 }
@@ -417,7 +418,7 @@ absl::Status SetAttrTypeList(AbstractOperation* op_, const char* attr_name,
                              const DataType* values, int num_values,
                              ForwardOperation* forward_op_) {
   forward_op_->attrs.Set(attr_name,
-                         gtl::ArraySlice<const DataType>(values, num_values));
+                         absl::Span<const const DataType>(values, num_values));
   return op_->SetAttrTypeList(attr_name, values, num_values);
 }
 absl::Status SetAttrBoolList(AbstractOperation* op_, const char* attr_name,
@@ -428,7 +429,7 @@ absl::Status SetAttrBoolList(AbstractOperation* op_, const char* attr_name,
     b[i] = values[i];
   }
   forward_op_->attrs.Set(attr_name,
-                         gtl::ArraySlice<const bool>(b.get(), num_values));
+                         absl::Span<const const bool>(b.get(), num_values));
   return op_->SetAttrBoolList(attr_name, values, num_values);
 }
 absl::Status SetAttrShapeList(AbstractOperation* op_, const char* attr_name,
