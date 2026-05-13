@@ -103,7 +103,7 @@ class OneDnnThreadPool final
                                              [fn, n](size_t i) { fn(i, n); }));
   }
 
-  const void set_thread_pool(Eigen::ThreadPoolInterface* thread_pool) {
+  void set_thread_pool(Eigen::ThreadPoolInterface* thread_pool) {
     thread_pool_ = thread_pool;
   }
 

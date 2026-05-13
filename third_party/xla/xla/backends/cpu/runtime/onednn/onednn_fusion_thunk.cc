@@ -168,7 +168,9 @@ tsl::AsyncValueRef<OneDnnFusionThunk::ExecuteEvent> OneDnnFusionThunk::Execute(
                                 info().op_name, fusion_description());
 
   if (VLOG_IS_ON(3) && has_fusion_details()) {
-    for (auto& detail : fusion_details()) VLOG(3) << detail;
+    for (auto& detail : fusion_details()) {
+      VLOG(3) << detail;
+    }
   }
 
   // Resolve device memory for arguments.
