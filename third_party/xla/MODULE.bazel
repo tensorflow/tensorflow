@@ -275,6 +275,9 @@ override_repo(
 nvshmem_redist = use_extension("@rules_ml_toolchain//extensions:nvshmem_redist.bzl", "nvshmem_redist_ext")
 use_repo(nvshmem_redist, "nvidia_nvshmem")
 
+toolchain_ext = use_extension("@rules_ml_toolchain//extensions:toolchain.bzl", "toolchain_ext")
+use_repo(toolchain_ext, "llvm18_linux_x86_64", "llvm_linux_x86_64")
+
 register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")
 
 register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_cuda")

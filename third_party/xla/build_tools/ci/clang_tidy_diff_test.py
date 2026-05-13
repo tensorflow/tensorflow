@@ -13,6 +13,7 @@
 # limitations under the License.
 # ============================================================================
 
+from collections.abc import Sequence
 import io
 import json
 import pathlib
@@ -277,9 +278,9 @@ class TestClangTidyDiff(parameterized.TestCase):
           + "\n"
       )
     config = clang_tidy_diff.AppConfig(
-        patch=str(diff_path),
-        repo_root=str(tmpdir),
-        bep_file=str(bep_path),
+        patch=diff_path.as_posix(),
+        repo_root=tmpdir.full_path,
+        bep_file=bep_path.as_posix(),
         warnings_as_errors=True,
     )
     filterer = clang_tidy_diff.ClangTidyDiffFilter(config)
@@ -330,9 +331,9 @@ class TestClangTidyDiff(parameterized.TestCase):
         + "\n",
     )
     config = clang_tidy_diff.AppConfig(
-        patch=str(diff_path),
-        repo_root=str(tmpdir),
-        bep_file=str(bep_path),
+        patch=diff_path.as_posix(),
+        repo_root=tmpdir.full_path,
+        bep_file=bep_path.as_posix(),
         warnings_as_errors=False,
     )
     filterer = clang_tidy_diff.ClangTidyDiffFilter(config)
@@ -423,6 +424,7 @@ class TestClangTidyDiff(parameterized.TestCase):
         name="misc-unused",
         message="unused variable",
         yaml_file="test.clang-tidy.yaml",
+        has_replacements=False,
     )
     with tempfile.TemporaryDirectory() as tmpdir:
       src_file = pathlib.Path(tmpdir) / "file1.cc"
@@ -445,6 +447,202 @@ class TestClangTidyDiff(parameterized.TestCase):
         self.assertIn("  2 |", output)  # Snippet line
         self.assertIn("line2", output)
         self.assertIn("^", output)  # Caret
+
+  @parameterized.parameters(
+      dict(replacement_text="", expected=None),
+      dict(replacement_text="Replacements: []", expected=False),
+      dict(
+          replacement_text=textwrap.dedent("""\
+            Replacements:
+              - FilePath:        '/root/file1.cc'
+                Offset:          15
+                Length:          6
+                ReplacementText: 'blehblehbleh'
+            """),
+          expected=True,
+      ),
+  )
+  def test_parse_clang_tidy_yaml_with_replacements(
+      self, replacement_text: str, expected: bool | None
+  ):
+    tmpdir = self.create_tempdir().full_path
+    yaml_path = pathlib.Path(tmpdir) / "test.yaml"
+    self.create_tempfile(
+        yaml_path.as_posix(),
+        content=textwrap.dedent(f"""\
+            ---
+            MainSourceFile:  '/root/file1.cc'
+            Diagnostics:
+              - DiagnosticName:  misc-unused
+                DiagnosticMessage:
+                  Message:         'unused variable'
+                  FilePath:        '/root/file1.cc'
+                  FileOffset:      15
+                {replacement_text}
+            ...
+            """),
+    )
+    data = clang_tidy_diff.parse_clang_tidy_yaml(str(yaml_path))
+    diagnostics = data.get("Diagnostics", [])
+    self.assertLen(diagnostics, 1)
+    self.assertEqual(diagnostics[0].get("HasReplacements"), expected)
+
+  def _setup_temp_files(
+      self,
+  ) -> tuple[str, pathlib.Path, pathlib.Path, pathlib.Path]:
+    """Setup for a simple yaml, diff, and BEP file in a temporary directory.
+
+    Returns:
+      A tuple of (tmpdir, yaml_path, diff_path, bep_path).
+    """
+    tmpdir = self.create_tempdir().full_path
+    yaml_path = pathlib.Path(tmpdir) / "file1.cc.clang-tidy.yaml"
+    self.create_tempfile(
+        yaml_path.as_posix(),
+        content=textwrap.dedent(f"""\
+            ---
+            MainSourceFile:  '{tmpdir}/file1.cc'
+            Diagnostics:
+              - DiagnosticName:  misc-unused
+                DiagnosticMessage:
+                  Message:         'unused variable'
+                  FilePath:        '{tmpdir}/file1.cc'
+                  FileOffset:      15
+                Level:           Warning
+                Replacements:
+                  - FilePath:        '{tmpdir}/file1.cc'
+                    Offset:          15
+                    Length:          6
+                    ReplacementText: ''
+            ...
+            """),
+    )
+
+    diff_path = pathlib.Path(tmpdir) / "test.diff"
+    self.create_tempfile(
+        diff_path.as_posix(),
+        content=textwrap.dedent("""\
+            diff --git a/file1.cc b/file1.cc
+            index 123456..789012 100644
+            --- a/file1.cc
+            +++ b/file1.cc
+            @@ -1,2 +1,3 @@
+             line1
+            +line2
+             line3
+            """),
+    )
+
+    bep_path = pathlib.Path(tmpdir) / "test.bep"
+    self.create_tempfile(
+        bep_path.as_posix(),
+        content=json.dumps({
+            "namedSetOfFiles": {
+                "files": [{
+                    "name": "file1.cc.clang-tidy.yaml",
+                    "pathPrefix": [],
+                }]
+            }
+        })
+        + "\n",
+    )
+    return tmpdir, yaml_path, diff_path, bep_path
+
+  def test_process_file_detects_replacements(self):
+    tmpdir, yaml_path, diff_path, bep_path = self._setup_temp_files()
+    config = clang_tidy_diff.AppConfig(
+        patch=str(diff_path),
+        repo_root=tmpdir,
+        bep_file=str(bep_path),
+        warnings_as_errors=False,
+        fix=False,
+    )
+
+    def mock_offset_provider(_: str) -> Sequence[int]:
+      return [0, 10, 20, 30]
+
+    filterer = clang_tidy_diff.ClangTidyDiffFilter(
+        config, offset_provider=mock_offset_provider
+    )
+    diagnostics, _ = filterer.process_file(yaml_path.as_posix())
+
+    self.assertLen(diagnostics, 1)
+    self.assertTrue(diagnostics[0].has_replacements)
+
+  def test_run_collects_files_to_fix(self):
+    tmpdir, _, diff_path, bep_path = self._setup_temp_files()
+    config = clang_tidy_diff.AppConfig(
+        patch=str(diff_path),
+        repo_root=tmpdir,
+        bep_file=str(bep_path),
+        warnings_as_errors=False,
+        fix=True,
+    )
+    staged_dirs = []
+
+    def fake_apply_fixes(temp_dir: pathlib.Path):
+      staged_dirs.append(temp_dir)
+      copied_files = list(
+          pathlib.Path(temp_dir).glob("*_file1.cc.clang-tidy.yaml")
+      )
+      self.assertLen(copied_files, 1)
+      self.assertTrue(copied_files[0].exists())
+
+    def mock_offset_provider(_: str) -> Sequence[int]:
+      return [0, 10, 20, 30]
+
+    filterer = clang_tidy_diff.ClangTidyDiffFilter(
+        config,
+        offset_provider=mock_offset_provider,
+        apply_fixes_fn=fake_apply_fixes,
+    )
+    filterer.run()
+    self.assertLen(staged_dirs, 1)
+
+  def test_apply_fixes_stages_files_correctly(self):
+    staged_dirs = []
+
+    def fake_apply_fixes(temp_dir: pathlib.Path) -> None:
+      staged_dirs.append(temp_dir.as_posix())
+      copied_files = list(pathlib.Path(temp_dir).glob("*_file1.yaml"))
+      self.assertLen(copied_files, 1)
+      copied_file = copied_files[0]
+      self.assertTrue(copied_file.exists())
+      expected_normalized = textwrap.dedent(f"""\
+            MainSourceFile: {tmpdir}/xla/file1.cc
+            SomeOtherField: some_value
+            FilePath: {tmpdir}/third_party/file1.cc
+            """)
+      self.assertEqual(copied_file.read_text(), expected_normalized)
+
+    tmpdir = self.create_tempdir().full_path
+    src_yaml = pathlib.Path(tmpdir) / "file1.yaml"
+    src_yaml_content = textwrap.dedent("""\
+        MainSourceFile: /b/f/w/xla/file1.cc
+        SomeOtherField: some_value
+        FilePath: /somepath/_bazel_user/1234/execroot/xla/third_party/file1.cc
+        """)
+    self.create_tempfile(src_yaml.as_posix(), content=src_yaml_content)
+    diff_path = pathlib.Path(tmpdir) / "test.diff"
+    self.create_tempfile(diff_path.as_posix(), content="")
+    bep_path = pathlib.Path(tmpdir) / "test.bep"
+    self.create_tempfile(bep_path.as_posix(), content="")
+
+    config = clang_tidy_diff.AppConfig(
+        patch=str(diff_path),
+        repo_root=tmpdir,
+        bep_file=str(bep_path),
+        warnings_as_errors=False,
+        fix=True,
+    )
+    filterer = clang_tidy_diff.ClangTidyDiffFilter(
+        config,
+        apply_fixes_fn=fake_apply_fixes,
+    )
+
+    filterer.apply_fixes([src_yaml])
+
+    self.assertLen(staged_dirs, 1)
 
 
 if __name__ == "__main__":

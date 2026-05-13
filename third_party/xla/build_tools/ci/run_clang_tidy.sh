@@ -20,6 +20,21 @@ BUILD_WORKSPACE_DIRECTORY=${BUILD_WORKSPACE_DIRECTORY:-$(pwd)}
 cd "$BUILD_WORKSPACE_DIRECTORY"
 BAZEL_CMD=${BAZEL_CMD:-bazelisk}
 
+FIX=false
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --fix)
+      FIX=true
+      shift
+      ;;
+    *)
+      echo "Unknown option: $1"
+      exit 1
+      ;;
+  esac
+done
+
+
 if ! git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
   set +x
   echo "Error: This script must be run inside a Git repository."
@@ -76,7 +91,13 @@ git diff "$MERGE_BASE" > "$PATCH_FILE"
 
 $BAZEL_CMD build --config="$CONFIG" --build_event_json_file="$BEP_FILE" --keep_going \
   $TARGETS
+EXTRA_ARGS=()
+if [ "$FIX" = true ]; then
+  EXTRA_ARGS+=("--fix")
+fi
+
 $BAZEL_CMD run //build_tools/ci:clang_tidy_diff -- \
   --patch "$PATCH_FILE" \
   --repo-root "$BUILD_WORKSPACE_DIRECTORY" \
-  --bep-file "$BEP_FILE"
+  --bep-file "$BEP_FILE" \
+  "${EXTRA_ARGS[@]}"
