@@ -423,7 +423,10 @@ class HloComputation {
       bool prohibit_empty_literal = true, bool preserve_instruction_ids = true,
       absl::flat_hash_map<int64_t, int64_t>* id_remap_map = nullptr,
       absl::Span<const std::shared_ptr<BackendConfigWrapper>> backend_configs =
-          {});
+          {},
+      absl::flat_hash_map<absl::string_view,
+                          std::shared_ptr<BackendConfigWrapper>>*
+          deduplication_map = nullptr);
 
   // Generates a hash value of an HLO computation. Hash considers
   // information on opcode, shape, operands, and typically a root instruction.

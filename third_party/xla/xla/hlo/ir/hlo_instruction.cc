@@ -315,7 +315,10 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     const absl::flat_hash_map<int64_t, HloInstruction*>& instruction_map,
     const absl::flat_hash_map<int64_t, HloComputation*>& computation_map,
     bool prohibit_empty_literal,
-    absl::Span<const std::shared_ptr<BackendConfigWrapper>> backend_configs) {
+    absl::Span<const std::shared_ptr<BackendConfigWrapper>> backend_configs,
+    absl::flat_hash_map<absl::string_view,
+                        std::shared_ptr<BackendConfigWrapper>>*
+        deduplication_map) {
   TF_RET_CHECK(!proto.opcode().empty());
   HloOpcode opcode;
   auto opcode_or = StringToHloOpcode(proto.opcode());
@@ -1428,21 +1431,40 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                                        *kEmptyMetadata)) {
     instruction->mutable_metadata() = proto.metadata();
   }
+  absl::string_view config_sv;
+  bool use_id = false;
+  int config_id = 0;
   if (proto.has_backend_config_payload()) {
     if (proto.backend_config_payload().has_id()) {
-      const int id = proto.backend_config_payload().id();
-      if (id < 0 || id >= backend_configs.size()) {
-        return Internal("Backend config id %d is out of range [0, %d)", id,
-                        backend_configs.size());
-      }
-      instruction->backend_config_ = backend_configs[id];
+      config_id = proto.backend_config_payload().id();
+      use_id = true;
     } else {
-      instruction->backend_config_ = std::make_shared<BackendConfigWrapper>(
-          proto.backend_config_payload().value());
+      config_sv = proto.backend_config_payload().value();
     }
   } else {
+    config_sv = proto.backend_config();
+  }
+
+  if (use_id) {
+    if (config_id < 0 || config_id >= backend_configs.size()) {
+      return Internal("Backend config id %d is out of range [0, %d)", config_id,
+                      backend_configs.size());
+    }
+    instruction->backend_config_ = backend_configs[config_id];
+  } else if (deduplication_map != nullptr) {
+    // The map lives only during proto deserialization. Its string_view keys
+    // point either into `proto` or into BackendConfigWrapper values owned by
+    // the map.
+    std::shared_ptr<BackendConfigWrapper>& shared_wrapper =
+        (*deduplication_map)[config_sv];
+    if (shared_wrapper == nullptr) {
+      shared_wrapper =
+          std::make_shared<BackendConfigWrapper>(std::string(config_sv));
+    }
+    instruction->backend_config_ = shared_wrapper;
+  } else {
     instruction->backend_config_ =
-        std::make_shared<BackendConfigWrapper>(proto.backend_config());
+        std::make_shared<BackendConfigWrapper>(std::string(config_sv));
   }
 
   TF_RET_CHECK(proto.id() >= 0)

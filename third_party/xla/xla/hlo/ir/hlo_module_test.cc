@@ -1580,6 +1580,159 @@ TEST(HloModuleTest, CreateFromProto_DeduplicatedBackendConfig) {
   EXPECT_EQ(&i1->raw_backend_config_string(), &i2->raw_backend_config_string());
 }
 
+TEST(HloModuleTest, CreateFromProto_DeduplicatedInlineLegacyConfig) {
+  HloModuleProto proto;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        name: "test_module"
+        entry_computation_id: 1
+        computations {
+          name: "main"
+          id: 1
+          instructions {
+            name: "inst1"
+            opcode: "parameter"
+            shape { element_type: F32 }
+            id: 2
+            backend_config: "identical_large_config_string"
+          }
+          instructions {
+            name: "inst2"
+            opcode: "parameter"
+            shape { element_type: F32 }
+            parameter_number: 1
+            id: 3
+            backend_config: "identical_large_config_string"
+          }
+          instructions {
+            name: "root"
+            opcode: "add"
+            shape { element_type: F32 }
+            id: 4
+            operand_ids: 2
+            operand_ids: 3
+          }
+          root_id: 4
+        }
+        host_program_shape {
+          parameters { element_type: F32 }
+          parameters { element_type: F32 }
+          result { element_type: F32 }
+          parameter_names: "p0"
+          parameter_names: "p1"
+        }
+      )pb",
+      &proto));
+
+  TF_ASSERT_OK_AND_ASSIGN(HloModuleConfig config,
+                          HloModule::CreateModuleConfigFromProto(
+                              proto, GetDebugOptionsFromFlags()));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          HloModule::CreateFromProto(proto, config));
+
+  HloInstruction* i1 =
+      module->entry_computation()->GetInstructionWithName("inst1");
+  HloInstruction* i2 =
+      module->entry_computation()->GetInstructionWithName("inst2");
+
+  EXPECT_EQ(i1->raw_backend_config_string(), "identical_large_config_string");
+  EXPECT_EQ(i2->raw_backend_config_string(), "identical_large_config_string");
+
+  // Verify that the backend config strings are backed by the same object.
+  EXPECT_EQ(&i1->raw_backend_config_string(), &i2->raw_backend_config_string());
+}
+
+TEST(HloModuleTest, CreateFromProto_DeduplicatedMixedConfigs) {
+  HloModuleProto proto;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        name: "test_module"
+        entry_computation_id: 1
+        payloads: "identical_mixed_config_string"
+        computations {
+          name: "main"
+          id: 1
+          instructions {
+            name: "inst1"
+            opcode: "parameter"
+            shape { element_type: F32 }
+            id: 2
+            backend_config_payload { id: 0 }
+          }
+          instructions {
+            name: "inst2"
+            opcode: "parameter"
+            shape { element_type: F32 }
+            parameter_number: 1
+            id: 3
+            backend_config: "identical_mixed_config_string"
+          }
+          instructions {
+            name: "inst3"
+            opcode: "parameter"
+            shape { element_type: F32 }
+            parameter_number: 2
+            id: 4
+            backend_config_payload { value: "identical_mixed_config_string" }
+          }
+          instructions {
+            name: "root"
+            opcode: "tuple"
+            shape {
+              element_type: TUPLE
+              tuple_shapes { element_type: F32 }
+              tuple_shapes { element_type: F32 }
+              tuple_shapes { element_type: F32 }
+            }
+            id: 5
+            operand_ids: 2
+            operand_ids: 3
+            operand_ids: 4
+          }
+          root_id: 5
+        }
+        host_program_shape {
+          parameters { element_type: F32 }
+          parameters { element_type: F32 }
+          parameters { element_type: F32 }
+          result {
+            element_type: TUPLE
+            tuple_shapes { element_type: F32 }
+            tuple_shapes { element_type: F32 }
+            tuple_shapes { element_type: F32 }
+          }
+          parameter_names: "p0"
+          parameter_names: "p1"
+          parameter_names: "p2"
+        }
+      )pb",
+      &proto));
+
+  TF_ASSERT_OK_AND_ASSIGN(HloModuleConfig config,
+                          HloModule::CreateModuleConfigFromProto(
+                              proto, GetDebugOptionsFromFlags()));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          HloModule::CreateFromProto(proto, config));
+
+  HloInstruction* i1 =
+      module->entry_computation()->GetInstructionWithName("inst1");
+  HloInstruction* i2 =
+      module->entry_computation()->GetInstructionWithName("inst2");
+  HloInstruction* i3 =
+      module->entry_computation()->GetInstructionWithName("inst3");
+
+  EXPECT_EQ(i1->raw_backend_config_string(), "identical_mixed_config_string");
+  EXPECT_EQ(i2->raw_backend_config_string(), "identical_mixed_config_string");
+  EXPECT_EQ(i3->raw_backend_config_string(), "identical_mixed_config_string");
+
+  // Verify that the backend config strings are backed by the same object across
+  // payload id, legacy config, and inline payload value.
+  EXPECT_EQ(&i1->raw_backend_config_string(), &i2->raw_backend_config_string());
+  EXPECT_EQ(&i1->raw_backend_config_string(), &i3->raw_backend_config_string());
+}
+
 class TestCacheEntry : public HloModule::CacheEntry {
  public:
   explicit TestCacheEntry(tsl::Fprint128 key, int value)

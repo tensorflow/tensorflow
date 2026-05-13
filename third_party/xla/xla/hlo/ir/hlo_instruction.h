@@ -329,7 +329,10 @@ class HloInstruction {
       const absl::flat_hash_map<int64_t, HloComputation*>& computation_map = {},
       bool prohibit_empty_literal = true,
       absl::Span<const std::shared_ptr<BackendConfigWrapper>> backend_configs =
-          {});
+          {},
+      absl::flat_hash_map<absl::string_view,
+                          std::shared_ptr<BackendConfigWrapper>>*
+          deduplication_map = nullptr);
 
   // Creates a parameter-retrieving instruction.
   static std::unique_ptr<HloInstruction> CreateParameter(
