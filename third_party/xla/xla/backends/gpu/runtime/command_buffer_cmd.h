@@ -194,27 +194,6 @@ class CollectiveBroadcastCmd : public CollectiveCmd {
 };
 
 //===----------------------------------------------------------------------===//
-// CollectivePermuteCmd
-//===----------------------------------------------------------------------===//
-
-class CollectivePermuteCmd : public CollectiveCmd {
- public:
-  CollectivePermuteCmd(CollectiveConfig config, P2PConfig p2p_config,
-                       absl::Span<const CollectiveThunk::Buffer> buffers);
-
-  absl::StatusOr<const se::CommandBuffer::Command*> Record(
-      const Thunk::ExecuteParams& execute_params,
-      const RecordParams& record_params, RecordAction record_action,
-      se::CommandBuffer* command_buffer) override;
-
-  BufferUses buffer_uses() const override;
-
- private:
-  P2PConfig p2p_config_;
-  std::vector<CollectiveThunk::Buffer> buffers_;
-};
-
-//===----------------------------------------------------------------------===//
 // RecvCmd
 //===----------------------------------------------------------------------===//
 
