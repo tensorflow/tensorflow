@@ -1796,7 +1796,7 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
 
   auto launch_on_device =
       [device_state, gpu_run_options = client_->gpu_run_options(options),
-       launch_id = options.launch_id, run_id = run_id_,
+       launch_id = options.launch_id, run_id = run_id_, seed = options.seed,
        command_buffer_va_range_idx, context = options.context, client = client_,
        device = device_, device_assignment = device_assignment_,
        compute_reservation = std::move(compute_reservation),
@@ -1835,7 +1835,7 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
     run_options.set_device_assignment(device_assignment.get());
     run_options.set_run_id(run_id);
     run_options.set_command_buffer_va_range_idx(command_buffer_va_range_idx);
-    run_options.set_rng_seed(device_state->GetNewPrngSeed());
+    run_options.set_rng_seed(seed != 0 ? seed : device_state->GetNewPrngSeed());
     run_options.set_gpu_executable_run_options(std::move(gpu_run_options));
     run_options.set_launch_id(launch_id);
     run_options.set_send_device_memory_function(&send_device_memory);

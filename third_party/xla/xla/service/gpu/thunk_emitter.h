@@ -190,6 +190,8 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitReplicaOrPartitionId(
       const HloInstruction* hlo);
 
+  absl::StatusOr<ThunkSequence> EmitRngSeedThunk(const HloInstruction* instr);
+
   AsyncThunkSequence EmitRngGetAndUpdateState(
       const HloRngGetAndUpdateStateInstruction* instr);
 

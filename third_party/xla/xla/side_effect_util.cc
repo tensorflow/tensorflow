@@ -91,6 +91,8 @@ const char kFuseLimitAttr[] = "FUSE_LIMIT";
 
 const char kMaximalFuseAttr[] = "MAXIMAL_FUSE";
 
+const char kXlaCseSafeZeroOperandAttr[] = "_xla_cse_safe_zero_operand";
+
 const char kCollectivesGroupAttr[] = "_collectives_group";
 
 const char kNumSlotVariables[] = "_num_slot_variables";

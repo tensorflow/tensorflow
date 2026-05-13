@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/logical_id_thunk.h"
 #include "xla/backends/cpu/runtime/outfeed_thunk.h"
 #include "xla/backends/cpu/runtime/reduce_scatter_thunk.h"
+#include "xla/backends/cpu/runtime/rng_seed_thunk.h"
 #include "xla/backends/cpu/runtime/rng_state_thunk.h"
 #include "xla/backends/cpu/runtime/sort_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -891,6 +892,12 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRngGetAndUpdateStateThunk(
       ThunkInfo(instruction), state_buffer, rng_state->delta());
 }
 
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRngSeedThunk(
+    const HloInstruction* instruction) {
+  TF_ASSIGN_OR_RETURN(auto seed_buffer, GetAllocationSlice(instruction));
+  return ThunkSequence::Of<RngSeedThunk>(ThunkInfo(instruction), seed_buffer);
+}
+
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitStochasticConvertThunk(
     const HloInstruction* instruction) {
   return Unimplemented("StochasticConvert should be decomposed for CPU.");
@@ -1214,6 +1221,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
     return EmitTopKThunk(custom_call);
   } else if (custom_call_target == "SliceToDynamic") {
     return EmitSliceToDynamicThunk(instruction);
+  } else if (custom_call_target == "GetRngSeed") {
+    return EmitRngSeedThunk(instruction);
   } else if (absl::StartsWith(custom_call->custom_call_target(), "__onednn$")) {
 #ifdef XLA_ONEDNN
     return EmitOneDnnOpThunk(instruction);

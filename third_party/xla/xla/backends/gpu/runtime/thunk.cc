@@ -79,6 +79,7 @@ Thunk::ExecuteParams Thunk::ExecuteParams::Create(
                                  .gpu_executable_run_options()
                                  ->enable_mock_collectives()
                            : false,
+                       run_options.run_options().rng_seed(),
                        run_options.run_options().run_id().ToInt());
 }
 
@@ -91,7 +92,8 @@ Thunk::ExecuteParams Thunk::ExecuteParams::CloneWithNewAllocations(
       params.collective_memory, params.device_to_host_stream,
       params.host_to_device_stream, params.send_device_memory_function,
       params.recv_device_memory_function, params.ffi_execution_context,
-      params.additional_compute_streams);
+      params.additional_compute_streams, /*execution_scoped_state=*/nullptr,
+      params.mock_collectives, params.rng_seed);
 }
 
 Thunk::ExecuteParams Thunk::ExecuteParams::WithComputeStream(
@@ -101,7 +103,8 @@ Thunk::ExecuteParams Thunk::ExecuteParams::WithComputeStream(
                        device_to_host_stream, host_to_device_stream,
                        send_device_memory_function, recv_device_memory_function,
                        ffi_execution_context, additional_compute_streams,
-                       execution_scoped_state, mock_collectives, execution_id);
+                       execution_scoped_state, mock_collectives, rng_seed,
+                       execution_id);
 }
 
 Thunk::ExecuteParams::ExecuteParams(
@@ -115,7 +118,7 @@ Thunk::ExecuteParams::ExecuteParams(
     const ffi::ExecutionContext* ffi_execution_context,
     std::vector<se::Stream*> additional_compute_streams,
     ExecutionScopedState* execution_scoped_state, bool mock_collectives,
-    int64_t execution_id)
+    int rng_seed, int64_t execution_id)
     : buffer_allocations(buffer_allocations),
       stream(stream),
       command_buffer_trace_stream(command_buffer_trace_stream),
@@ -130,6 +133,7 @@ Thunk::ExecuteParams::ExecuteParams(
       additional_compute_streams(additional_compute_streams),
       execution_scoped_state(execution_scoped_state),
       mock_collectives(mock_collectives),
+      rng_seed(rng_seed),
       execution_id(execution_id) {}
 
 //===----------------------------------------------------------------------===//
@@ -230,6 +234,8 @@ ThunkKindProto Thunk::KindToProto(Kind kind) {
       return THUNK_KIND_REDUCE_SCATTER;
     case kReplicaId:
       return THUNK_KIND_REPLICA_ID;
+    case kRngSeed:
+      return THUNK_KIND_RNG_SEED;
     case kSelectK:
       return THUNK_KIND_SELECT_K;
     case kSend:
@@ -337,6 +343,8 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
       return kReduceScatter;
     case THUNK_KIND_REPLICA_ID:
       return kReplicaId;
+    case THUNK_KIND_RNG_SEED:
+      return kRngSeed;
     case THUNK_KIND_SELECT_K:
       return kSelectK;
     case THUNK_KIND_SEND:
@@ -405,6 +413,7 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
     CASE(kRecv);
     CASE(kReduceScatter);
     CASE(kReplicaId);
+    CASE(kRngSeed);
     CASE(kSelectK);
     CASE(kSend);
     CASE(kSequential);

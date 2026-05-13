@@ -3426,6 +3426,28 @@ cc_library(
 )
 
 cc_library(
+    name = "rng_seed_thunk",
+    srcs = ["rng_seed_thunk.cc"],
+    hdrs = ["rng_seed_thunk.h"],
+    deps = [
+        ":thunk",
+        ":thunk_proto_cc",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/runtime:buffer_use",
+        "//xla/service:buffer_assignment",
+        "//xla/stream_executor:device_address",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:random",
+    ],
+)
+
+cc_library(
     name = "collective_kernel_api",
     srcs = ["collective_kernel_api.cc"],
     hdrs = ["collective_kernel_api.h"],
@@ -4443,6 +4465,7 @@ cc_library(
         ":ragged_all_to_all_thunk",
         ":recv_thunk",
         ":replica_id_thunk",
+        ":rng_seed_thunk",
         ":select_k_thunk",
         ":send_thunk",
         ":sequential_thunk",
@@ -5441,6 +5464,31 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util/proto:parse_text_proto",
         "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
+    name = "rng_seed_thunk_test",
+    srcs = ["rng_seed_thunk_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        ":rng_seed_thunk",
+        ":thunk",
+        "//xla/runtime:buffer_use",
+        "//xla/service:buffer_assignment",
+        "//xla/service:platform_util",
+        "//xla/service:service_executable_run_options",
+        "//xla/service/gpu:buffer_allocations",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_address_allocator",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )

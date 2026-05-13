@@ -69,6 +69,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/recv_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
+#include "xla/backends/gpu/runtime/rng_seed_thunk.h"
 #include "xla/backends/gpu/runtime/select_k_thunk.h"
 #include "xla/backends/gpu/runtime/send_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
@@ -338,6 +339,10 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
       return AsyncDoneThunk::FromProto(std::move(thunk_info),
                                        thunk_proto.async_done_thunk(),
                                        async_execution_map);
+    case ThunkProto::kRngSeedThunk:
+      return RngSeedThunk::FromProto(std::move(thunk_info),
+                                     thunk_proto.rng_seed_thunk(),
+                                     buffer_allocations);
     default:
       std::optional<absl::string_view> unsupported_thunk_type =
           GetStoredThunkTypeName(thunk_proto);

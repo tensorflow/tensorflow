@@ -437,6 +437,10 @@ message SequentialThunkProto {
   repeated ThunkProto thunks = 1;
 }
 
+message RngSeedThunkProto {
+  xla.buffer_assignment.BufferAllocationSliceProto dest_buffer = 1;
+}
+
 message ThunkProto {
   ThunkInfoProto thunk_info = 1;
 
@@ -492,6 +496,7 @@ message ThunkProto {
     AsyncDoneThunkProto async_done_thunk = 58;
     CollectiveKernelThunkProto collective_kernel_thunk = 59;
     DynamicSliceFusionThunkProto dynamic_slice_fusion_thunk = 60;
+    RngSeedThunkProto rng_seed_thunk = 61;
   }
 
   reserved 10, 37, 49, 50, 51, 56;

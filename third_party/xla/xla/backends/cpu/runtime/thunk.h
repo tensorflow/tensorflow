@@ -83,6 +83,7 @@ class Thunk {
     kPartitionId,
     kReplicaId,
     kRngGetAndUpdateState,
+    kRngSeed,
     kSort,
     kTopK,
     kWhile,
@@ -281,6 +282,7 @@ class Thunk {
     int64_t device_ordinal = -1;  // -1 means no device ordinal is set.
     ExecuteSession session = ExecuteSession(ExecuteSession::kMaxWorkers,
                                             ExecuteSession::kSplitThreshold);
+    int rng_seed = 0;
   };
 
   // An execute event that becomes ready when all tasks are completed.
