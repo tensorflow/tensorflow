@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -45,6 +44,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -61,12 +61,25 @@ enum class RaggedAllToAllImplType {
 
 class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
  public:
-  RaggedAllToAllTestBase(bool enable_async, RaggedAllToAllImplType impl_type)
-      : CollectiveOpsWithFlagsBase(enable_async, /*enable_p2p_memcpy=*/false,
-                                   /*enable_symmetric_buffer=*/false,
-                                   /*memory_size=*/64 * kMB,
-                                   /*collectives_memory_size=*/0),
-        impl_type_(impl_type) {}
+  RaggedAllToAllTestBase(bool enable_async, RaggedAllToAllImplType impl_type,
+                         DebugOptions::CollectivesMode collectives_mode =
+                             DebugOptions::COLLECTIVES_PRIVATE_MEMORY)
+      : CollectiveOpsWithFlagsBase(
+            enable_async, /*enable_p2p_memcpy=*/false,
+            /*enable_symmetric_buffer=*/
+            collectives_mode == DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY,
+            /*memory_size=*/64 * kMB,
+            /*collectives_memory_size=*/
+            collectives_mode == DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY
+                ? 64 * kMB
+                : 0),
+        impl_type_(impl_type),
+        collectives_mode_(collectives_mode) {}
+
+  bool IsSymmetricNcclPath() const {
+    return impl_type_ == RaggedAllToAllImplType::kNccl &&
+           collectives_mode_ == DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY;
+  }
 
   // Creates random test data for a ragged-all-to-all.
   //
@@ -211,6 +224,7 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
   // ExecuteReplicated.
   std::vector<std::vector<Literal*>> GetInputLiteralPtrs() {
     std::vector<std::vector<Literal*>> input_literal_ptrs;
+    input_literal_ptrs.reserve(inputs_.size());
     for (int i = 0; i < inputs_.size(); ++i) {
       input_literal_ptrs.push_back({&inputs_[i], &output_init_,
                                     &input_offsets_[i], &input_sizes_[i],
@@ -224,12 +238,21 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
     if (device_count() < 2) {
       GTEST_SKIP() << "Test requires at least 2 devices.";
     }
+    if (IsSymmetricNcclPath() &&
+        !Capability().cuda_compute_capability()->IsAtLeastHopper()) {
+      GTEST_SKIP() << "NCCL backend is only supported on Hopper architecture "
+                      "and above.";
+    }
   }
 
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions opts = CollectiveOpsWithFlagsBase::GetDebugOptionsForTest();
     opts.set_xla_gpu_unsupported_enable_ragged_all_to_all_decomposer(
         impl_type_ == RaggedAllToAllImplType::kDecomposer);
+    opts.set_xla_gpu_ragged_all_to_all_mode(collectives_mode_);
+    if (IsSymmetricNcclPath()) {
+      opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(false);
+    }
     if (impl_type_ == RaggedAllToAllImplType::kOneShotWithMultiGpuBarrier) {
       opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(true);
       opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(
@@ -334,15 +357,17 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
   Literal output_init_;
 
   RaggedAllToAllImplType impl_type_;
+  DebugOptions::CollectivesMode collectives_mode_;
 };
 
-class RaggedAllToAllTest : public RaggedAllToAllTestBase,
-                           public ::testing::WithParamInterface<
-                               std::tuple<bool, RaggedAllToAllImplType>> {
+class RaggedAllToAllTest
+    : public RaggedAllToAllTestBase,
+      public ::testing::WithParamInterface<std::tuple<
+          bool, RaggedAllToAllImplType, DebugOptions::CollectivesMode>> {
  public:
   RaggedAllToAllTest()
-      : RaggedAllToAllTestBase(std::get<0>(GetParam()),
-                               std::get<1>(GetParam())) {}
+      : RaggedAllToAllTestBase(std::get<0>(GetParam()), std::get<1>(GetParam()),
+                               std::get<2>(GetParam())) {}
 };
 
 TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs) {
@@ -502,6 +527,10 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_CommandBuffer) {
 }
 
 TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_S4) {
+  if (IsSymmetricNcclPath()) {
+    GTEST_SKIP() << "S4 buffers do not meet NCCL symmetric window alignment "
+                    "requirements.";
+  }
   absl::string_view kModuleReplicatedStr = R"(
   HloModule module, num_partitions=1
 
@@ -752,6 +781,10 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_Degenerate) {
 }
 
 TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_NonDefaultLayout) {
+  if (IsSymmetricNcclPath()) {
+    GTEST_SKIP() << "Non-default layout buffers do not meet NCCL symmetric "
+                    "window alignment requirements.";
+  }
   absl::string_view kModuleReplicatedStr = R"(
   HloModule module
 
@@ -1043,18 +1076,55 @@ std::string RaggedAllToAllImplTypeName(
   }
 }
 
+std::string CollectivesModeName(DebugOptions::CollectivesMode mode) {
+  switch (mode) {
+    case DebugOptions::COLLECTIVES_PRIVATE_MEMORY:
+      return "private";
+    case DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY:
+      return "symmetric";
+    case DebugOptions::COLLECTIVES_PEER_MEMORY:
+      return "peer";
+    default:
+      return absl::StrCat("mode_", static_cast<int>(mode));
+  }
+}
+
+// Builds the test parameters: NCCL impl is exercised against all collectives
+// modes (private/symmetric/peer); other impls only need PRIVATE since they
+// don't dispatch on the mode.
+std::vector<
+    std::tuple<bool, RaggedAllToAllImplType, DebugOptions::CollectivesMode>>
+BuildRaggedAllToAllTestParams() {
+  std::vector<
+      std::tuple<bool, RaggedAllToAllImplType, DebugOptions::CollectivesMode>>
+      params;
+  for (bool enable_async : {false, true}) {
+    for (DebugOptions::CollectivesMode mode :
+         {DebugOptions::COLLECTIVES_PRIVATE_MEMORY,
+          DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY,
+          DebugOptions::COLLECTIVES_PEER_MEMORY}) {
+      params.emplace_back(enable_async, RaggedAllToAllImplType::kNccl, mode);
+    }
+    for (RaggedAllToAllImplType impl_type :
+         {RaggedAllToAllImplType::kDecomposer,
+          RaggedAllToAllImplType::kOneShotWithMultiGpuBarrier,
+          RaggedAllToAllImplType::kOneShotWithMultiGpuBarrierWithNccl}) {
+      params.emplace_back(enable_async, impl_type,
+                          DebugOptions::COLLECTIVES_PRIVATE_MEMORY);
+    }
+  }
+  return params;
+}
+
 INSTANTIATE_TEST_SUITE_P(
     RaggedAllToAllTest, RaggedAllToAllTest,
-    ::testing::Combine(
-        ::testing::Bool(),
-        ::testing::Values(
-            RaggedAllToAllImplType::kNccl, RaggedAllToAllImplType::kDecomposer,
-            RaggedAllToAllImplType::kOneShotWithMultiGpuBarrier,
-            RaggedAllToAllImplType::kOneShotWithMultiGpuBarrierWithNccl)),
-    [](const ::testing::TestParamInfo<std::tuple<bool, RaggedAllToAllImplType>>&
+    ::testing::ValuesIn(BuildRaggedAllToAllTestParams()),
+    [](const ::testing::TestParamInfo<std::tuple<
+           bool, RaggedAllToAllImplType, DebugOptions::CollectivesMode>>&
            info) {
       return absl::StrCat(std::get<0>(info.param) ? "async" : "sync", "_",
-                          RaggedAllToAllImplTypeName(std::get<1>(info.param)));
+                          RaggedAllToAllImplTypeName(std::get<1>(info.param)),
+                          "_", CollectivesModeName(std::get<2>(info.param)));
     });
 
 class RaggedAllToAllMultiHostDecomposerTest

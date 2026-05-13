@@ -26,9 +26,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "third_party/nccl/nccl.h"
 #include "xla/backends/gpu/collectives/nccl_symmetric_memory.h"
 #include "xla/core/collectives/symmetric_memory.h"
@@ -50,7 +50,6 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -261,6 +260,7 @@ TEST_F(RaggedAllToAllKernelTest, KernelWithOutputPtrsInDeviceMemory) {
       CreateDeviceBuffer(executor, output_offsets);
 
   std::vector<void*> output_buffers_span;
+  output_buffers_span.reserve(output_buffers.size());
   for (auto& output_buffer : output_buffers) {
     output_buffers_span.push_back(output_buffer.address().opaque());
   }
