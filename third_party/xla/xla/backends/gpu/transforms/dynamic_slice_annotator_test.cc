@@ -156,5 +156,122 @@ TEST_F(DynamicSliceAnnotatorTest, AnnotatesConstantOffsetOutsideWhileLoop) {
   EXPECT_EQ(config->byte_stride(), 0);
 }
 
+TEST_F(DynamicSliceAnnotatorTest, AnnotatesDusInAsyncComputation) {
+  constexpr absl::string_view kHlo = R"(
+    async_computation {
+      p0 = f32[4]{0} parameter(0)
+      p1 = f32[1]{0} parameter(1)
+      p2 = s32[] parameter(2)
+      ROOT dus = f32[4]{0} dynamic-update-slice(p0, p1, p2)
+    }
+
+    body {
+      p0 = (s32[], f32[4]{0}) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      buf = f32[4]{0} get-tuple-element(p0), index=1
+      val = f32[] constant(1)
+      reshape = f32[1]{0} reshape(val)
+      async-start = ((f32[4]{0}, f32[1]{0}, s32[]), f32[4]{0}, u32[])
+          async-start(buf, reshape, ivar), calls=async_computation
+      updated = f32[4]{0} async-done(async-start), calls=async_computation
+      c1 = s32[] constant(1)
+      next_ivar = s32[] add(ivar, c1)
+      ROOT result = (s32[], f32[4]{0}) tuple(next_ivar, updated)
+    }
+
+    condition {
+      p0 = (s32[], f32[4]{0}) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      c4 = s32[] constant(4)
+      ROOT cmp = pred[] compare(ivar, c4), direction=LT
+    }
+
+    ENTRY main {
+      buf = f32[4]{0} parameter(0)
+      c0 = s32[] constant(0)
+      tuple = (s32[], f32[4]{0}) tuple(c0, buf)
+      ROOT while = (s32[], f32[4]{0}) while(tuple),
+          condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"4"},
+                          "known_init_step":{"init":"0","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"}}
+    })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(DynamicSliceAnnotator().Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+
+  auto* dus = module->GetComputationWithName("async_computation")
+                  ->GetInstructionWithName("dus");
+  auto config = GetDynamicSliceConfig(dus);
+  ASSERT_TRUE(config.has_value());
+  EXPECT_EQ(config->loop_index(), 0);
+  EXPECT_EQ(config->byte_offset(), 0);
+  EXPECT_EQ(config->byte_stride(), 4);
+}
+
+TEST_F(DynamicSliceAnnotatorTest, AnnotatesDusInNestedCalls) {
+  constexpr absl::string_view kHlo = R"(
+    inner_computation {
+      p0 = f32[4]{0} parameter(0)
+      p1 = f32[1]{0} parameter(1)
+      p2 = s32[] parameter(2)
+      ROOT dus = f32[4]{0} dynamic-update-slice(p0, p1, p2)
+    }
+
+    async_computation {
+      p0 = f32[4]{0} parameter(0)
+      p1 = f32[1]{0} parameter(1)
+      p2 = s32[] parameter(2)
+      ROOT call = f32[4]{0} call(p0, p1, p2), to_apply=inner_computation
+    }
+
+    body {
+      p0 = (s32[], f32[4]{0}) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      buf = f32[4]{0} get-tuple-element(p0), index=1
+      val = f32[] constant(1)
+      reshape = f32[1]{0} reshape(val)
+      async-start = ((f32[4]{0}, f32[1]{0}, s32[]), f32[4]{0}, u32[])
+          async-start(buf, reshape, ivar), calls=async_computation
+      updated = f32[4]{0} async-done(async-start), calls=async_computation
+      c1 = s32[] constant(1)
+      next_ivar = s32[] add(ivar, c1)
+      ROOT result = (s32[], f32[4]{0}) tuple(next_ivar, updated)
+    }
+
+    condition {
+      p0 = (s32[], f32[4]{0}) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      c4 = s32[] constant(4)
+      ROOT cmp = pred[] compare(ivar, c4), direction=LT
+    }
+
+    ENTRY main {
+      buf = f32[4]{0} parameter(0)
+      c0 = s32[] constant(0)
+      tuple = (s32[], f32[4]{0}) tuple(c0, buf)
+      ROOT while = (s32[], f32[4]{0}) while(tuple),
+          condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"4"},
+                          "known_init_step":{"init":"0","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"}}
+    })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(DynamicSliceAnnotator().Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+
+  auto* dus = module->GetComputationWithName("inner_computation")
+                  ->GetInstructionWithName("dus");
+  auto config = GetDynamicSliceConfig(dus);
+  ASSERT_TRUE(config.has_value());
+  EXPECT_EQ(config->loop_index(), 0);
+  EXPECT_EQ(config->byte_offset(), 0);
+  EXPECT_EQ(config->byte_stride(), 4);
+}
+
 }  // namespace
 }  // namespace xla::gpu

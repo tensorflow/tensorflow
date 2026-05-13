@@ -27,10 +27,9 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/status_matchers.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 namespace {
 
 using ::testing::ElementsAre;
@@ -53,14 +52,13 @@ std::optional<DynamicMemcpyConfig> GetMemcpyConfig(
 }
 
 constexpr char kSliceMemcpyModule[] = R"(
-    // This fusion is technically not a dynamic memcpy. Tests for that are in
-    // the unit tests for DynamicMemcpyFusion::GetMemcpyDescriptorForFusion,
-    // in copy_test.cc. Here, we just test that the logic triggers as expected.
     dynamic_slice {
       p0 = s32[4] parameter(0)
       c1 = s32[] constant(1)
 
-      ROOT slice = s32[1] dynamic-slice(p0, c1), dynamic_slice_sizes={1}
+      ROOT slice = s32[1] dynamic-slice(p0, c1), dynamic_slice_sizes={1},
+          backend_config={"dynamic_slice_config":
+              {"byte_offset":"4","byte_stride":"0"}}
     }
 
     ENTRY main {
@@ -69,8 +67,8 @@ constexpr char kSliceMemcpyModule[] = R"(
     })";
 
 TEST_F(FusionDynamicMemcpyRewriterTest, AnnotatesMemcpyFusion) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kSliceMemcpyModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kSliceMemcpyModule));
   EXPECT_THAT(FusionDynamicMemcpyRewriter().Run(module.get()),
               absl_testing::IsOkAndHolds(true));
 
@@ -97,8 +95,8 @@ constexpr char kSliceCallModule[] = R"(
     })";
 
 TEST_F(FusionDynamicMemcpyRewriterTest, DoesNotAnnotateCall) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kSliceCallModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kSliceCallModule));
   EXPECT_THAT(FusionDynamicMemcpyRewriter().Run(module.get()),
               absl_testing::IsOkAndHolds(false))
       << module->ToString();
@@ -114,7 +112,9 @@ constexpr char kLoopUpdateSliceMemcpyModule[] = R"(
       p2 = s32[] parameter(2)
       c1 = s32[] constant(1)
 
-      ROOT update-slice = s32[4,8,8] dynamic-update-slice(p0, p1, p2, c1, c1)
+      ROOT update-slice = s32[4,8,8] dynamic-update-slice(p0, p1, p2, c1, c1),
+          backend_config={"dynamic_slice_config":
+              {"byte_offset":"32","byte_stride":"256","loop_index":"0"}}
     }
 
     body {
@@ -151,7 +151,7 @@ constexpr char kLoopUpdateSliceMemcpyModule[] = R"(
 
 TEST_F(FusionDynamicMemcpyRewriterTest,
        AnnotatesDusMemcpyFusionWithIterations) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(kLoopUpdateSliceMemcpyModule));
   EXPECT_THAT(FusionDynamicMemcpyRewriter().Run(module.get()),
@@ -164,10 +164,8 @@ TEST_F(FusionDynamicMemcpyRewriterTest,
   EXPECT_TRUE(config->depends_on_loop());
   EXPECT_THAT(config->src_offset_bytes(), ElementsAre(0, 0, 0, 0, 0, 0));
   EXPECT_THAT(config->dst_offset_bytes(),
-              ElementsAre(32, 32 + 256 * 1, 32 + 256 * 2, 32 + 256 * 3,
-                          32 + 256 * 3, 32 + 256 * 3));
+              ElementsAre(32, 32 + 256, 32 + 256 * 2, 32 + 256 * 3, 992, 992));
 }
 
 }  // namespace
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

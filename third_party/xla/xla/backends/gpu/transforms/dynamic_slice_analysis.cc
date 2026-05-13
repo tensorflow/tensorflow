@@ -301,11 +301,23 @@ absl::StatusOr<std::optional<DynamicSliceDescriptor>> AnalyzeDynamicSlice(
     auto functional_dependency =
         ResolveFunctionalDependencyOnInductionVariable(operand);
     if (functional_dependency) {
-      // ResolveFunctionalDependencyOnInductionVariable guarantees exactly one
-      // while loop in the chain (returns nullopt otherwise), so loop_index is
-      // 0.
-      resolved_offsets.push_back({functional_dependency->loop,
-                                  functional_dependency->induction_var,
+      // Use the induction variable from the while body by default. If the
+      // DUS is inside a called computation (async/fusion/call), find the
+      // local parameter that corresponds to the induction variable so that
+      // HloEvaluator can substitute it without crossing computation
+      // boundaries.
+      const HloInstruction* local_ivar = functional_dependency->induction_var;
+      const HloComputation* instr_comp = instr->parent();
+      auto it = functional_dependency->required_parameters.find(instr_comp);
+      if (it != functional_dependency->required_parameters.end()) {
+        auto param_it = absl::c_find(it->second, true);
+        if (param_it != it->second.end()) {
+          local_ivar =
+              instr_comp->parameter_instruction(param_it - it->second.begin());
+        }
+      }
+
+      resolved_offsets.push_back({functional_dependency->loop, local_ivar,
                                   /*is_staggered=*/false, /*staggered_init=*/0,
                                   /*loop_index=*/0});
       continue;
