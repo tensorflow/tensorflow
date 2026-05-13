@@ -1374,10 +1374,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
 
+    const DotDimensionNumbers& dot_dimension_numbers =
+        gemm_backend_config.dot_dimension_numbers();
     absl::Span<const int64_t> a_batch_dims =
-        gemm_backend_config.dot_dimension_numbers().lhs_batch_dimensions();
+        dot_dimension_numbers.lhs_batch_dimensions();
     absl::Span<const int64_t> b_batch_dims =
-        gemm_backend_config.dot_dimension_numbers().rhs_batch_dimensions();
+        dot_dimension_numbers.rhs_batch_dimensions();
     const size_t num_batch_dims = a_batch_dims.size();
 
     // cuBLASLt FP8 GEMM kernels require the scaling factors to be in F32
@@ -1472,11 +1474,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // Each operand must have exactly one contracting and one non-contracting
     // dimension.
     absl::Span<const int64_t> a_contracting_dims =
-        gemm_backend_config.dot_dimension_numbers()
-            .lhs_contracting_dimensions();
+        dot_dimension_numbers.lhs_contracting_dimensions();
     absl::Span<const int64_t> b_contracting_dims =
-        gemm_backend_config.dot_dimension_numbers()
-            .rhs_contracting_dimensions();
+        dot_dimension_numbers.rhs_contracting_dimensions();
     if (a_contracting_dims.size() != 1 || b_contracting_dims.size() != 1) {
       VLOG(1) << "Failed to rewrite " << instr->ToShortString()
               << " into FP8 Custom Call. A and B must have one contracting "
@@ -1541,6 +1541,22 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     shift_ops(b.fp8_input, b.commutative_ops);
 
     TF_ASSIGN_OR_RETURN(
+        std::vector<int64_t> a_non_contracting_dims,
+        GetNonContractingDims(a.fp8_input->shape(), a_batch_dims,
+                              a_contracting_dims));
+    TF_ASSIGN_OR_RETURN(
+        std::vector<int64_t> b_non_contracting_dims,
+        GetNonContractingDims(b.fp8_input->shape(), b_batch_dims,
+                              b_contracting_dims));
+    if (a_non_contracting_dims.size() != 1 ||
+        b_non_contracting_dims.size() != 1) {
+      VLOG(1) << "Failed to rewrite " << instr->ToShortString()
+              << " into FP8 Custom Call. A and B must have one "
+                 "non-contracting dimension.";
+      return false;
+    }
+
+    TF_ASSIGN_OR_RETURN(
         GemmConfig gemm_config,
         GemmConfig::For(instr, gemm_backend_config, gpu_version_));
 
@@ -1553,13 +1569,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // effectively make it column-major.
     if (!cuda_compute_capability.IsBlackwell()) {
       if (gemm_config.lhs_layout.order == MatrixLayout::Order::kColumnMajor) {
-        CHECK(a_contracting_dims[0] == num_batch_dims ||
-              a_contracting_dims[0] == num_batch_dims + 1);
-        if (a_contracting_dims[0] == num_batch_dims) {
-          dim_nums->set_lhs_contracting_dimensions(0, num_batch_dims + 1);
-        } else {
-          dim_nums->set_lhs_contracting_dimensions(0, num_batch_dims);
-        }
+        dim_nums->set_lhs_contracting_dimensions(0, a_non_contracting_dims[0]);
         a.fp8_input =
             TransposeMatrix(a.fp8_input, a_contracting_dims[0], a_batch_dims);
       }
@@ -1568,13 +1578,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       // non-Blackwell systems, so make it column-major if it is currently
       // row-major.
       if (gemm_config.rhs_layout.order == MatrixLayout::Order::kRowMajor) {
-        CHECK(b_contracting_dims[0] == num_batch_dims ||
-              b_contracting_dims[0] == num_batch_dims + 1);
-        if (b_contracting_dims[0] == num_batch_dims) {
-          dim_nums->set_rhs_contracting_dimensions(0, num_batch_dims + 1);
-        } else {
-          dim_nums->set_rhs_contracting_dimensions(0, num_batch_dims);
-        }
+        dim_nums->set_rhs_contracting_dimensions(0, b_non_contracting_dims[0]);
         b.fp8_input =
             TransposeMatrix(b.fp8_input, b_contracting_dims[0], b_batch_dims);
       }
