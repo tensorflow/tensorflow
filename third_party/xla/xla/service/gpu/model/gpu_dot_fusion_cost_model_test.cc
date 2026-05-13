@@ -44,8 +44,8 @@ class GpuDotFusionCostModelTest : public HloHardwareIndependentTestBase {
 };
 
 TEST_F(GpuDotFusionCostModelTest, GpuDotComputeBoundBf16) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 ENTRY e {
 p0 = bf16[8192,8192] parameter(0)
 p1 = bf16[8192,8192] parameter(1)
@@ -65,11 +65,11 @@ backend_config={"sizes":["32"]}
   auto* dot =
       Cast<HloDotInstruction>(module->entry_computation()->root_instruction());
   ASSERT_IS_OK(gpu_dot_fusion_cost_model::IsSupported(dot));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       EstimateRunTimeData runtime_h100,
       gpu_dot_fusion_cost_model::EstimateRunTimeForDotOpWithBlockParameters(
           dot, block_params, ddh100_));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto expected_compute_and_flops_h100,
       gpu_dot_fusion_cost_model::detail::
           CalculateComputeTimeWithTileAndWaveQuantization(
@@ -85,8 +85,8 @@ backend_config={"sizes":["32"]}
 TEST_F(GpuDotFusionCostModelTest, GpuDotMemoryBoundBf16) {
   // TODO: b/510666436 - Backend config tuned to minimize L2 loads replication
   // so the operation remains strictly HBM bounded.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 ENTRY e {
 p0 = bf16[4,4096] parameter(0)
 p1 = bf16[4096,4096] parameter(1)
@@ -119,8 +119,8 @@ backend_config={"sizes":["512"]}
 }
 
 TEST_F(GpuDotFusionCostModelTest, DifferentContractingDimsHaveSameRuntime) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module_1_0,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module_1_0,
+                       ParseAndReturnVerifiedModule(R"(
 ENTRY e {
 p0 = bf16[8192,1024] parameter(0)
 p1 = bf16[1024,4096] parameter(1)
@@ -129,8 +129,8 @@ lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16
 backend_config={"sizes":["32"]}
 })"));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module_0_1,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module_0_1,
+                       ParseAndReturnVerifiedModule(R"(
 ENTRY e {
 p0 = bf16[1024,8192] parameter(0)
 p1 = bf16[4096,1024] parameter(1)
@@ -148,7 +148,7 @@ backend_config={"sizes":["32"]}
   auto* dot_1_0 = Cast<HloDotInstruction>(
       module_1_0->entry_computation()->root_instruction());
   ASSERT_IS_OK(gpu_dot_fusion_cost_model::IsSupported(dot_1_0));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       EstimateRunTimeData runtime_h100_1_0,
       gpu_dot_fusion_cost_model::EstimateRunTimeForDotOpWithBlockParameters(
           dot_1_0, block_params, ddh100_));
@@ -156,7 +156,7 @@ backend_config={"sizes":["32"]}
   auto* dot_0_1 = Cast<HloDotInstruction>(
       module_0_1->entry_computation()->root_instruction());
   ASSERT_IS_OK(gpu_dot_fusion_cost_model::IsSupported(dot_0_1));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       EstimateRunTimeData runtime_h100_0_1,
       gpu_dot_fusion_cost_model::EstimateRunTimeForDotOpWithBlockParameters(
           dot_0_1, block_params, ddh100_));
@@ -166,8 +166,8 @@ backend_config={"sizes":["32"]}
 }
 
 TEST_F(GpuDotFusionCostModelTest, ExtractBlockKFromTileConfig) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 ENTRY e {
 p0 = bf16[1024,2048] parameter(0)
 p1 = bf16[2048,1024] parameter(1)
@@ -178,14 +178,14 @@ backend_config={"sizes":["32"]}
 
   auto* dot =
       Cast<HloDotInstruction>(module->entry_computation()->root_instruction());
-  TF_ASSERT_OK_AND_ASSIGN(int64_t block_k,
-                          gpu_dot_fusion_cost_model::ExtractBlockK(dot));
+  ASSERT_OK_AND_ASSIGN(int64_t block_k,
+                       gpu_dot_fusion_cost_model::ExtractBlockK(dot));
   EXPECT_EQ(block_k, 32);
 }
 
 TEST_F(GpuDotFusionCostModelTest, ExtractBlockKNoBackendConfig) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 ENTRY e {
 p0 = bf16[1024,2048] parameter(0)
 p1 = bf16[2048,1024] parameter(1)
@@ -200,8 +200,8 @@ lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16
 }
 
 TEST_F(GpuDotFusionCostModelTest, GpuDot3DGemmIsSupported) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 ENTRY e {
 p0 = bf16[16,1024,2048] parameter(0)
 p1 = bf16[16,2048,1024] parameter(1)
@@ -218,7 +218,7 @@ backend_config={"sizes":["32"]}
   auto* dot =
       Cast<HloDotInstruction>(module->entry_computation()->root_instruction());
   ASSERT_IS_OK(gpu_dot_fusion_cost_model::IsSupported(dot));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       EstimateRunTimeData runtime_h100,
       gpu_dot_fusion_cost_model::EstimateRunTimeForDotOpWithBlockParameters(
           dot, block_params, ddh100_));
@@ -229,8 +229,8 @@ backend_config={"sizes":["32"]}
 // (such as having independent head and batch dimensions in multi-head
 // attention workloads) without requiring explicit reshape or flattening ops.
 TEST_F(GpuDotFusionCostModelTest, GpuDot4DGemm) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 ENTRY e {
 p0 = bf16[2,8,1024,2048] parameter(0)
 p1 = bf16[2,8,2048,1024] parameter(1)
@@ -247,7 +247,7 @@ backend_config={"sizes":["32"]}
   auto* dot =
       Cast<HloDotInstruction>(module->entry_computation()->root_instruction());
   ASSERT_IS_OK(gpu_dot_fusion_cost_model::IsSupported(dot));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       EstimateRunTimeData runtime_h100,
       gpu_dot_fusion_cost_model::EstimateRunTimeForDotOpWithBlockParameters(
           dot, block_params, ddh100_));
@@ -257,8 +257,8 @@ backend_config={"sizes":["32"]}
 // TODO: b/501002656 - Remove this test once we support transposes in the dot
 // fusion cost model.
 TEST_F(GpuDotFusionCostModelTest, GpuDotWithDownstreamTransposeIsRejected) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 ENTRY e {
 p0 = bf16[1024,2048] parameter(0)
 p1 = bf16[2048,1024] parameter(1)

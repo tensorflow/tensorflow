@@ -63,6 +63,7 @@ cc_library(
     ],
     deps = [
         ":backend_config",
+        ":hlo_payload_deduplicator",
         ":hlo_sharding",
         ":mesh_and_axis",
         ":named_sharding",
@@ -352,6 +353,28 @@ xla_cc_test(
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
+    name = "hlo_payload_deduplicator",
+    srcs = ["hlo_payload_deduplicator.cc"],
+    hdrs = ["hlo_payload_deduplicator.h"],
+    deps = [
+        ":backend_config",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_payload_deduplicator_test",
+    srcs = ["hlo_payload_deduplicator_test.cc"],
+    deps = [
+        ":backend_config",
+        ":hlo_payload_deduplicator",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

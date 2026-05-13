@@ -33,7 +33,9 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
+#include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
+#include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
@@ -1086,7 +1088,7 @@ TEST(CommandBufferThunkTest, MultipleLaunchCmd) {
   ASSERT_EQ(dst, std::vector<int32_t>(4, 21 + 21));
 }
 
-TEST(CommandBufferThunkTest, CaseCmd) {
+TEST(CommandBufferThunkTest, ConditionalThunkCaseCommand) {
   se::StreamExecutor* stream_executor = GpuExecutor();
 
   if (!IsAtLeastCuda12300(stream_executor)) {
@@ -1122,8 +1124,8 @@ TEST(CommandBufferThunkTest, CaseCmd) {
   BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
   BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
 
-  // Prepare commands sequence for branches.
-  std::vector<CommandSequence> branches_sequence(2);
+  // Prepare thunk sequences for branches.
+  std::vector<ThunkSequence> branch_thunks(2);
 
   auto args_access = {MemoryAccess::kRead, MemoryAccess::kRead,
                       MemoryAccess::kWrite};
@@ -1131,7 +1133,7 @@ TEST(CommandBufferThunkTest, CaseCmd) {
   {  // Case 0: b = a + a
     std::vector<ShapedSlice> args{
         {slice_a, shape}, {slice_a, shape}, {slice_b, shape}};
-    branches_sequence[0].Append(KernelThunk::MakeKernelThunk(
+    branch_thunks[0].push_back(KernelThunk::MakeKernelThunk(
         "AddI32", args, args_access, LaunchDimensions(1, 4),
         /*shmem_bytes=*/0));
   }
@@ -1139,28 +1141,26 @@ TEST(CommandBufferThunkTest, CaseCmd) {
   {  // Case 1: b = b + b
     std::vector<ShapedSlice> args{
         {slice_b, shape}, {slice_b, shape}, {slice_b, shape}};
-    branches_sequence[1].Append(KernelThunk::MakeKernelThunk(
+    branch_thunks[1].push_back(KernelThunk::MakeKernelThunk(
         "AddI32", args, args_access, LaunchDimensions(1, 4),
         /*shmem_bytes=*/0));
   }
 
-  std::vector<CommandExecutor> branches(2);
-  TF_ASSERT_OK_AND_ASSIGN(
-      branches[0],
-      CommandExecutor::Create(std::move(branches_sequence[0]), serialize));
-  TF_ASSERT_OK_AND_ASSIGN(
-      branches[1],
-      CommandExecutor::Create(std::move(branches_sequence[1]), serialize));
+  // Prepare thunk sequence for command buffer conversion.
+  ThunkSequence thunks;
+  thunks.push_back(std::make_unique<ConditionalThunk>(
+      Thunk::ThunkInfo(), ShapedSlice{slice_i, i_shape},
+      std::move(branch_thunks)));
 
-  // Prepare commands sequence for thunk.
-  CommandSequence commands;
-  commands.Emplace<CaseCmd>(ShapedSlice{slice_i, i_shape}, std::move(branches));
-  TF_ASSERT_OK_AND_ASSIGN(
-      CommandExecutor executor,
-      CommandExecutor::Create(std::move(commands), serialize));
+  ConvertToCommandsOptions options;
+  options.synchronization_mode = serialize;
+  ASSERT_OK_AND_ASSIGN(CommandExecutor executor,
+                       ConvertToCommands(thunks, options));
 
-  // Construct a thunk with command sequence.
-  CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
+  // Construct a command buffer thunk with command sequence and fallback thunks.
+  CommandBufferThunk thunk(
+      std::move(executor), Thunk::ThunkInfo(),
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks)));
 
   ServiceExecutableRunOptions run_options;
   stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);

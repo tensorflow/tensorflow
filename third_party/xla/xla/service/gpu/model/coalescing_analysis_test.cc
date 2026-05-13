@@ -645,7 +645,7 @@ INSTANTIATE_TEST_SUITE_P(CoalescingForTiledHloTest, CoalescingForTiledHloTest,
 TEST_P(
     CoalescingForTiledHloTest,
     EffectiveBandwidthUtilizationRateIsComputedCorrectlyForTiledMemoryAccess) {  // NOLINT(whitespace/line_length)
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 ENTRY main {

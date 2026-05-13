@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace ops {
@@ -113,7 +114,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   const int num_rows = SizeOfDimension(value, 0);
   TF_LITE_ENSURE(context, num_rows != 0);
-  const int row_bytes = value->bytes / num_rows;
+  const size_t row_bytes = value->bytes / num_rows;
   void* pointer = nullptr;
   DynamicBuffer buf;
 
@@ -130,15 +131,31 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       if (output->type == kTfLiteString) {
         buf.AddString(nullptr, 0);
       } else {
-        memset(output->data.raw + i * row_bytes, 0, row_bytes);
+        size_t output_offset;
+        if (MultiplyAndCheckOverflow(static_cast<size_t>(i), row_bytes,
+                                     &output_offset) != kTfLiteOk) {
+          TF_LITE_KERNEL_LOG(context,
+                             "Hashtable Lookup: output offset overflowed.");
+          return kTfLiteError;
+        }
+        memset(output->data.raw + output_offset, 0, row_bytes);
       }
       hits->data.uint8[i] = 0;
     } else {
       if (output->type == kTfLiteString) {
         buf.AddString(GetString(value, idx));
       } else {
-        memcpy(output->data.raw + i * row_bytes,
-               value->data.raw + idx * row_bytes, row_bytes);
+        size_t output_offset;
+        size_t value_offset;
+        if (MultiplyAndCheckOverflow(static_cast<size_t>(i), row_bytes,
+                                     &output_offset) != kTfLiteOk ||
+            MultiplyAndCheckOverflow(static_cast<size_t>(idx), row_bytes,
+                                     &value_offset) != kTfLiteOk) {
+          TF_LITE_KERNEL_LOG(context, "Hashtable Lookup: offset overflowed.");
+          return kTfLiteError;
+        }
+        memcpy(output->data.raw + output_offset, value->data.raw + value_offset,
+               row_bytes);
       }
       hits->data.uint8[i] = 1;
     }

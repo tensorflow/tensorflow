@@ -173,14 +173,6 @@ class DeterminismTest : public HloPjRtGpuTestBase {
 };
 
 TEST_F(DeterminismTest, CublasLtDot) {
-  if (IsRocm()) {
-    if (!HasHipblasLt()) {
-      GTEST_SKIP() << "No hipblas-lt support on this architecture!";
-    }
-  }
-
-  // This test expects to use CublasLt. Disable other backends, including
-  // Triton.
   debug_options_.clear_xla_gpu_experimental_autotune_backends();
   debug_options_.add_xla_gpu_experimental_autotune_backends(
       autotuner::Backend::CUBLASLT);
@@ -195,7 +187,6 @@ ENTRY e {
     if (!HasHipblasLt()) {
       GTEST_SKIP() << "No hipblas-lt support on this architecture!";
     }
-    debug_options_.clear_xla_gpu_experimental_autotune_backends();
   }
   debug_options_.set_xla_gpu_enable_triton_gemm(false);
 

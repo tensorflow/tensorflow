@@ -118,7 +118,6 @@ class ReshardToCopyArraysOpPattern : public mlir::OpRewritePattern<ReshardOp> {
           /*control_output=*/op.getControlOutput().getType(),
           /*inputs=*/{op.getInputs()[array_idx]},
           /*donated=*/op.getDonated(),
-          /*reuse=*/false,
           /*control_inputs=*/op.getControlInputs());
       outputs[array_idx] = copy_arrays_op.getOutputs().front();
       if (reshard_inputs_left.empty()) {

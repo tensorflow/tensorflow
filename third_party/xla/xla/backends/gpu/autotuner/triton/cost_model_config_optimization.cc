@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
@@ -72,21 +73,20 @@ absl::StatusOr<absl::Duration> EstimateRunTimeWithConfig(
     const TritonGemmConfig& config,
     GpuPerformanceModelWithIndexingAnalysis& cost_model,
     mlir::MLIRContext* mlir_context) {
-  TF_ASSIGN_OR_RETURN(
-      BlockLevelParameters block_params,
-      FindBlockLevelParameters(context.dot, config, mlir_context,
-                               context.device_description));
+  ASSIGN_OR_RETURN(BlockLevelParameters block_params,
+                   FindBlockLevelParameters(context.dot, config, mlir_context,
+                                            context.device_description));
 
   Tile dot_tiling;
   dot_tiling.add_sizes(config.block_k);
 
-  TF_ASSIGN_OR_RETURN(Tiling tiling, TilingFromAnnotatedFusion(
-                                         analysis, block_params, &dot_tiling));
+  ASSIGN_OR_RETURN(Tiling tiling, TilingFromAnnotatedFusion(
+                                      analysis, block_params, &dot_tiling));
 
-  TF_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
-                      analysis.ComputeTiledComputation(tiling));
+  ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
+                   analysis.ComputeTiledComputation(tiling));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       EstimateRunTimeData estimate,
       cost_model.EstimateRunTimeForTiledHloComputation(
           fusion_adaptor, tiled_hlo_computation, block_params.num_warps));
@@ -305,7 +305,7 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
 
   detail::EstimationContext context{fusion, dot, device_description};
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       detail::CostModelGemmTilingOptions options,
       detail::ParseCostModelGemmTilingOptions(
           debug_options.xla_gpu_experimental_cost_model_gemm_tiling_options()));
@@ -335,7 +335,7 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
   // Create the base set by either picking the top configs or estimating the
   // existing set.
   if (options.top.has_value()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         detail::OrderedEstimatesAndConfigs base_config_set,
         options.top_from_default
             ? EstimateConfigs(context, optimized_configs, mlir_context)
@@ -351,9 +351,8 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
     must_keep_original_configs = false;
   } else {
     VLOG(1) << "Cost Model: Using default set";
-    TF_ASSIGN_OR_RETURN(
-        detail::OrderedEstimatesAndConfigs base_config_set,
-        EstimateConfigs(context, optimized_configs, mlir_context));
+    ASSIGN_OR_RETURN(detail::OrderedEstimatesAndConfigs base_config_set,
+                     EstimateConfigs(context, optimized_configs, mlir_context));
     current_set = std::move(base_config_set);
   }
 
@@ -361,8 +360,8 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
   if (options.mixin.has_value()) {
     VLOG(1) << "Cost Model: Mixing in top " << *options.mixin << " configs";
 
-    TF_ASSIGN_OR_RETURN(const detail::OrderedEstimatesAndConfigs& all,
-                        get_estimated_all_configs());
+    ASSIGN_OR_RETURN(const detail::OrderedEstimatesAndConfigs& all,
+                     get_estimated_all_configs());
 
     detail::OrderedEstimatesAndConfigs top_non_present =
         detail::GetTopEstimatedConfigs(all, *options.mixin, &current_set,

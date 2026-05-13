@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
 
@@ -119,7 +120,7 @@ auto ObjectPool<T, Args...>::CreateEntry(Args... args)
     -> absl::StatusOr<std::unique_ptr<Entry>> {
   DCHECK(builder_) << "ObjectPool builder is not initialized";
   auto entry = std::make_unique<Entry>();
-  TF_ASSIGN_OR_RETURN(entry->object, builder_(std::forward<Args>(args)...));
+  ASSIGN_OR_RETURN(entry->object, builder_(std::forward<Args>(args)...));
   num_created_.fetch_add(1, std::memory_order_relaxed);
   return entry;
 }
@@ -181,7 +182,7 @@ auto ObjectPool<T, Args...>::GetOrCreate(Args... args)
   if (std::unique_ptr<Entry> entry = PopEntry(); ABSL_PREDICT_TRUE(entry)) {
     return BorrowedObject(this, std::move(entry));
   }
-  TF_ASSIGN_OR_RETURN(auto entry, CreateEntry(std::forward<Args>(args)...));
+  ASSIGN_OR_RETURN(auto entry, CreateEntry(std::forward<Args>(args)...));
   return BorrowedObject(this, std::move(entry));
 }
 

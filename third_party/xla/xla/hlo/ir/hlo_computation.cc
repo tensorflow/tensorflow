@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_payload_deduplicator.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/ptrvec.h"
 #include "xla/literal.h"
@@ -1274,14 +1275,15 @@ absl::Cord HloComputation::ToCord(
   return std::move(printer).ToCord();
 }
 
-void HloComputation::ToProto(HloComputationProto* proto) const {
+void HloComputation::ToProto(HloComputationProto* proto,
+                             HloPayloadDeduplicator* deduplicator) const {
   CHECK(unique_id_ != -1)
       << "This computation does not have a valid id. Please make sure the "
          "computation is inside a module before dumping it.";
   proto->set_id(unique_id_);
   proto->set_name(name_);
   for (const HloInstruction* instruction : MakeInstructionPostOrder()) {
-    instruction->ToProto(proto->add_instructions());
+    instruction->ToProto(proto->add_instructions(), deduplicator);
   }
   proto->set_root_id(root_instruction()->unique_id());
   ComputeProgramShape().ToProto(*proto->mutable_program_shape());

@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/random/random.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
@@ -67,7 +68,7 @@ absl::StatusOr<SmallVector<InterpreterValue>> LoadArgs(
     const xla::HloSnapshot& snapshot, TypeRange types) {
   SmallVector<InterpreterValue> result;
   for (const auto& [arg, type] : llvm::zip(snapshot.arguments(), types)) {
-    TF_ASSIGN_OR_RETURN(auto converted, LiteralToValue(arg, type));
+    ASSIGN_OR_RETURN(auto converted, LiteralToValue(arg, type));
     result.push_back(std::move(converted));
   }
   return result;
@@ -213,8 +214,8 @@ absl::StatusOr<SmallVector<InterpreterValue>> Run(
   }
 
   auto args_to_buffers = ExtractXlaBufferAssignment(main);
-  TF_ASSIGN_OR_RETURN(auto args,
-                      LoadArgs(snapshot, main.getBody().getArgumentTypes()));
+  ASSIGN_OR_RETURN(auto args,
+                   LoadArgs(snapshot, main.getBody().getArgumentTypes()));
   auto out_args =
       main.getBody().getBlocks().front().getArguments().drop_front(args.size());
 
@@ -254,8 +255,7 @@ absl::StatusOr<SmallVector<InterpreterValue>> Run(
   if (trace) {
     options.listener = &tracer;
   }
-  TF_ASSIGN_OR_RETURN(auto results,
-                      RunInterpreter(symbols, main, args, options));
+  ASSIGN_OR_RETURN(auto results, RunInterpreter(symbols, main, args, options));
 
   if (results.empty()) {
     return out_buffers;
