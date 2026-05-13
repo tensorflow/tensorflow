@@ -106,6 +106,7 @@ HloModule::HloModule(const std::string& name,
       autofdo_fingerprint_(""),
       comp_envs_(std::move(comp_envs)) {
   metadata_.set_canonical_module_id(unique_id_);
+  metadata_deduplicator_.Deduplicate("");
 }
 
 // Private constructor.
@@ -119,6 +120,7 @@ HloModule::HloModule(const std::string& name, HloModuleConfig config,
       autofdo_fingerprint_(""),
       comp_envs_(std::move(comp_envs)) {
   metadata_.set_canonical_module_id(unique_id_);
+  metadata_deduplicator_.Deduplicate("");
 }
 
 HloModule::~HloModule() {
@@ -548,6 +550,14 @@ uint64_t HloModule::ToFingerprint(
   return printer.ToFingerprint();
 }
 
+int64_t HloModule::InternMetadataPayload(absl::string_view payload) {
+  return metadata_deduplicator_.Deduplicate(payload);
+}
+
+const std::string& HloModule::GetMetadataPayload(int64_t id) const {
+  return metadata_deduplicator_.GetPayload(id);
+}
+
 void HloModule::ToProto(HloModuleProto* proto,
                         bool intern_backend_config) const {
   proto->set_id(unique_id_);
@@ -642,6 +652,32 @@ void HloModule::ToProto(HloModuleProto* proto,
 
   if (!config().device_type().empty()) {
     proto->set_device_type(config().device_type());
+  }
+
+  // Append module-level string payloads to the target proto.
+  // Instruction payload IDs are shifted by base_offset to account for existing
+  // payload entries.
+  base_offset = proto->payloads_size();
+  for (int64_t i = 0; i < metadata_deduplicator_.size(); ++i) {
+    proto->add_payloads(metadata_deduplicator_.GetPayload(i));
+  }
+  for (HloComputationProto& computation_proto :
+       *proto->mutable_computations()) {
+    for (HloInstructionProto& instruction_proto :
+         *computation_proto.mutable_instructions()) {
+      if (instruction_proto.has_metadata() &&
+          instruction_proto.metadata().has_interned_metadata_payload()) {
+        if (instruction_proto.metadata().interned_metadata_payload().has_id() &&
+            instruction_proto.metadata().interned_metadata_payload().id() > 0) {
+          instruction_proto.mutable_metadata()
+              ->mutable_interned_metadata_payload()
+              ->set_id(instruction_proto.metadata()
+                           .interned_metadata_payload()
+                           .id() +
+                       base_offset);
+        }
+      }
+    }
   }
 }
 
@@ -932,6 +968,11 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
     module->mutable_config().set_device_type(proto.device_type());
   }
 
+  // Sort the computations in the proto id's order.
+  absl::c_sort(computations, [&](const std::unique_ptr<HloComputation>& a,
+                                 const std::unique_ptr<HloComputation>& b) {
+    return to_proto_id[a.get()] < to_proto_id[b.get()];
+  });
   // Add sorted computations to the module.
   for (auto& computation : computations) {
     bool is_entry = computation.get() == entry;
@@ -1022,6 +1063,25 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   }
 
   DeduplicateOriginalValues(module.get());
+
+  std::vector<int64_t> mapped_metadata_ids(proto.payloads_size(), -1);
+  for (HloComputation* comp : module->computations()) {
+    for (HloInstruction* inst : comp->instructions()) {
+      if (inst->metadata().has_interned_metadata_payload() &&
+          inst->metadata().interned_metadata_payload().has_id()) {
+        int64_t old_id = inst->metadata().interned_metadata_payload().id();
+        if (old_id >= 0 && old_id < proto.payloads_size()) {
+          if (mapped_metadata_ids[old_id] == -1) {
+            mapped_metadata_ids[old_id] =
+                module->InternMetadataPayload(proto.payloads(old_id));
+          }
+          inst->mutable_metadata().mutable_interned_metadata_payload()->set_id(
+              mapped_metadata_ids[old_id]);
+        }
+      }
+    }
+  }
+
   return module;
 }
 

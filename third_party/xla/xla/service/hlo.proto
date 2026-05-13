@@ -125,17 +125,6 @@ enum CustomCallApiVersion {
   API_VERSION_TYPED_FFI = 4;
 }
 
-// Represents a string payload that can be either stored inline (small)
-// or interned in the module's payloads list (large).
-message Payload {
-  oneof payload_source {
-    // Inlined value.
-    bytes value = 1;
-    // Reference to HloModuleProto.payloads.
-    int64 id = 2;
-  }
-}
-
 // Serialization of HloInstruction.
 // Next ID: 100
 message HloInstructionProto {

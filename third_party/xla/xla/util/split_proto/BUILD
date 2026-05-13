@@ -128,6 +128,7 @@ xla_cc_test(
     deps = [
         ":split_gpu_executable_writer",
         ":split_proto_reader",
+        "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/service:hlo_proto_cc",
         "//xla/service/gpu:gpu_executable_proto_cc",

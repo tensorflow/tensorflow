@@ -20,6 +20,7 @@ limitations under the License.
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -47,6 +48,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module_metadata.h"
 #include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/ir/hlo_payload_deduplicator.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -87,10 +89,6 @@ using NumericOrString = std::variant<std::string, int64_t, double>;
 // in a C program.  The result of running the module is the result of running
 // this computation.
 //
-// A module also contains some number of "nested computations".  Each nested
-// computation is attached to an HloInstruction within some other computation.
-// The meaning of the nested computation depends on the instruction it's
-// attached to.
 class HloModule {
  public:
   HloModule(const std::string& name, HloModuleConfig config);
@@ -823,6 +821,12 @@ class HloModule {
     return cross_program_prefetches_;
   }
 
+  // Interns a metadata payload string, returning a deduplicated ID.
+  int64_t InternMetadataPayload(absl::string_view payload);
+
+  // Retrieves a metadata payload string by ID.
+  const std::string& GetMetadataPayload(int64_t id) const;
+
   const HloModuleMetadata& metadata() const { return metadata_; }
   HloModuleMetadata* metadata() { return &metadata_; }
 
@@ -925,8 +929,6 @@ class HloModule {
       std::unique_ptr<HloComputation> computation, bool is_entry,
       bool uniquify_identifiers, bool preserve_entry_layouts);
 
-  // Performs a deep clone of current module to context->module, and populate
-  // the context with the cloned object mappings.
   void Clone(const std::string& suffix, HloCloneContext* context,
              std::optional<const HloModuleConfig> config) const;
 
@@ -1018,6 +1020,9 @@ class HloModule {
 
   // Metadata for this module, such as its canonical id and the HLO passes run.
   HloModuleMetadata metadata_;
+
+  // Metadata payloads deduplicator.
+  HloPayloadDeduplicator metadata_deduplicator_;
 
   // True if the module contains dynamic computation.
   bool is_dynamic_ = false;

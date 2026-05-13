@@ -2168,6 +2168,16 @@ class HloInstruction {
     return (m == nullptr) ? *kEmptyMetadata : *m;
   }
 
+  bool has_interned_metadata() const {
+    if (metadata_ == nullptr || !metadata().has_interned_metadata_payload()) {
+      return false;
+    }
+    const auto& payload = metadata().interned_metadata_payload();
+    return (payload.has_id() && payload.id() != 0) || payload.has_value();
+  }
+
+  std::string interned_metadata_string() const;
+
   // Reconstructs the full Python call stack from HloMetadata.
   std::vector<HloStackFrame> GetStackTraceFromMetadata() const;
 

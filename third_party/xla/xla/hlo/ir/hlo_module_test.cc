@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_module.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -1785,6 +1786,7 @@ TEST(HloModuleTest, BackendConfigDeduplicationAndRoundtrip) {
   using ::tsl::proto_testing::Partially;
   EXPECT_THAT(proto, Partially(EqualsProto(R"pb(
                 payloads: "tokamax:{\"data\": 1}"
+                payloads: ""
                 computations {
                   instructions {
                     name: "p0"
@@ -1824,8 +1826,10 @@ TEST(HloModuleTest, BackendConfigNoInternByDefault) {
   p0->set_raw_backend_config_string("tokamax:{\"data\": 1}");
 
   HloModuleProto proto = m->ToProto();
-  // Config is NOT interned in payloads.
-  EXPECT_EQ(proto.payloads_size(), 0);
+  // Config is NOT interned in payloads, but metadata interning pre-populates
+  // "".
+  EXPECT_EQ(proto.payloads_size(), 1);
+  EXPECT_EQ(proto.payloads(0), "");
 
   using ::tsl::proto_testing::EqualsProto;
   using ::tsl::proto_testing::Partially;
@@ -1868,6 +1872,7 @@ TEST(HloModuleTest, BackendConfigDeduplicationWithBaseOffset) {
   EXPECT_THAT(proto, Partially(EqualsProto(R"pb(
                 payloads: "pre_existing_metadata"
                 payloads: "tokamax:{\"data\": 1}"
+                payloads: ""
                 computations {
                   instructions {
                     name: "p0"
@@ -1875,6 +1880,96 @@ TEST(HloModuleTest, BackendConfigDeduplicationWithBaseOffset) {
                   }
                 }
               )pb")));
+}
+
+TEST(HloModuleTest, MetadataInterningDeduplicationAndRoundtrip) {
+  HloModule m("test_module", HloModuleConfig());
+  int64_t id1 = m.InternMetadataPayload("tokamax:{\"foo\": 1}");
+  int64_t id2 = m.InternMetadataPayload("tokamax:{\"foo\": 1}");
+  int64_t id3 = m.InternMetadataPayload("tokamax:{\"bar\": 2}");
+
+  EXPECT_EQ(id1, id2);
+  EXPECT_NE(id1, id3);
+  EXPECT_EQ(m.GetMetadataPayload(id1), "tokamax:{\"foo\": 1}");
+  EXPECT_EQ(m.GetMetadataPayload(id3), "tokamax:{\"bar\": 2}");
+
+  HloComputation::Builder builder("comp");
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  OpMetadata metadata;
+  metadata.mutable_interned_metadata_payload()->set_id(id1);
+  p0->set_metadata(metadata);
+
+  m.AddEntryComputation(builder.Build());
+
+  HloModuleProto proto = m.ToProto();
+  EXPECT_GT(proto.payloads_size(), std::max(id1, id3));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> loaded,
+                          HloModule::CreateFromProto(proto, m.config()));
+  const HloInstruction* loaded_p0 =
+      loaded->entry_computation()->root_instruction();
+  EXPECT_TRUE(loaded_p0->has_interned_metadata());
+  EXPECT_EQ(loaded->GetMetadataPayload(
+                loaded_p0->metadata().interned_metadata_payload().id()),
+            "tokamax:{\"foo\": 1}");
+}
+
+TEST(HloModuleTest, InternedMetadataShiftedProtoDeserialization) {
+  HloModule m("shifted_module", HloModuleConfig());
+  HloComputation::Builder builder("comp");
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "inst"));
+  m.AddEntryComputation(builder.Build());
+
+  HloModuleProto proto = m.ToProto();
+  // Clear standard payloads and deliberately inject a custom non-empty shift at
+  // index 0.
+  proto.clear_payloads();
+  proto.add_payloads("non_empty_index_0");
+  proto.add_payloads("target_metadata");
+
+  // Point the instruction metadata ID to the proto index 1.
+  proto.mutable_computations(0)
+      ->mutable_instructions(0)
+      ->mutable_metadata()
+      ->mutable_interned_metadata_payload()
+      ->set_id(1);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> loaded,
+                          HloModule::CreateFromProto(proto, m.config()));
+  const HloInstruction* loaded_inst =
+      loaded->entry_computation()->root_instruction();
+  EXPECT_TRUE(loaded_inst->has_interned_metadata());
+  // With lazy loading, the unreferenced "non_empty_index_0" is safely ignored,
+  // keeping the string table unpolluted. "target_metadata" receives the
+  // optimized id=1.
+  EXPECT_EQ(loaded_inst->metadata().interned_metadata_payload().id(), 1);
+  EXPECT_EQ(loaded->GetMetadataPayload(
+                loaded_inst->metadata().interned_metadata_payload().id()),
+            "target_metadata");
+}
+
+TEST(HloModuleTest, MetadataInterningPrinter) {
+  HloModule m("print_module", HloModuleConfig());
+  int64_t id = m.InternMetadataPayload("tokamax:{\"foo\": 1}");
+
+  HloComputation::Builder builder("comp");
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  OpMetadata metadata;
+  metadata.mutable_interned_metadata_payload()->set_id(id);
+  p0->set_metadata(metadata);
+
+  m.AddEntryComputation(builder.Build());
+
+  // Verify that HloInstruction::ToString() formats and prints
+  // `interned_metadata` correctly!
+  std::string printed = p0->ToString();
+  EXPECT_THAT(printed, ::testing::HasSubstr(
+                           "interned_metadata=\"tokamax:{\\\"foo\\\": 1}\""));
 }
 
 }  // namespace

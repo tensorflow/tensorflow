@@ -480,6 +480,17 @@ enum ProfileGenerationStrategy {
   PROFILE_GENERATION_STRATEGY_LCM_MOE = 6;
 }
 
+// Represents a string payload that can be either stored inline (small)
+// or interned in the module's payloads list (large).
+message Payload {
+  oneof payload_source {
+    // Inlined value.
+    bytes value = 1;
+    // Reference to HloModuleProto.payloads.
+    int64 id = 2;
+  }
+}
+
 // Symbolization metadata for HLO Instructions.
 //
 // This metadata is used for debugging XLA code generation, as well as
@@ -558,6 +569,10 @@ message OpMetadata {
 
   // Instruction name available upon scheduling.
   string scheduling_name = 16;
+
+  // Deduplicated metadata at the module level, propagated from JAX through
+  // the "xla_interned_metadata" frontend attribute.
+  Payload interned_metadata_payload = 20;
 
   reserved 14;
 }
