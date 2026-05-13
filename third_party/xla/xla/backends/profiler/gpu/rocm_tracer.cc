@@ -539,12 +539,18 @@ void RocmTracer::toolFinalize(void* tool_data) {
   rocprofiler_stop_context(obj.utility_context_);
   obj.utility_context_.handle = 0;
   rocprofiler_stop_context(obj.context_);
-  // flush buffer here or in disable?
   obj.context_.handle = 0;
 }
 
 void RocmTracer::Disable() {
-  rocprofiler_status_t status = rocprofiler_flush_buffer(buffer_);
+  // Stop first so no new records enter the rocprofiler buffer; this pairs
+  // with the rocprofiler_start_context() in Enable().
+  rocprofiler_status_t status = rocprofiler_stop_context(context_);
+  if (status != ROCPROFILER_STATUS_SUCCESS) {
+    LOG(WARNING) << "rocprofiler_stop_context failed with error " << status;
+  }
+
+  status = rocprofiler_flush_buffer(buffer_);
   if (status != ROCPROFILER_STATUS_SUCCESS) {
     LOG(WARNING) << "rocprofiler_flush_buffer failed with error " << status;
   }
