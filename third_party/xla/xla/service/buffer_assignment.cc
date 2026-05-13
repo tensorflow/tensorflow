@@ -2179,11 +2179,25 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
     };
 
     if (buffer_assignment_algorithm ==
-        buffer_assignment::BufferAssignmentAlgorithmProto::
-            FAST_MERGE_WITH_FALLBACK) {
-      VLOG(1) << "Using FAST_MERGE_WITH_FALLBACK";
-      auto primary = build_algorithm(
-          buffer_assignment::BufferAssignmentAlgorithmProto::FAST_MERGE);
+            buffer_assignment::BufferAssignmentAlgorithmProto::
+                FAST_MERGE_WITH_FALLBACK ||
+        buffer_assignment_algorithm ==
+            buffer_assignment::BufferAssignmentAlgorithmProto::
+                FAST_SPLIT_WITH_FALLBACK) {
+      buffer_assignment::BufferAssignmentAlgorithmProto::Value
+          primary_algorithm;
+      if (buffer_assignment_algorithm ==
+          buffer_assignment::BufferAssignmentAlgorithmProto::
+              FAST_MERGE_WITH_FALLBACK) {
+        VLOG(1) << "Using FAST_MERGE_WITH_FALLBACK";
+        primary_algorithm =
+            buffer_assignment::BufferAssignmentAlgorithmProto::FAST_MERGE;
+      } else {
+        VLOG(1) << "Using FAST_SPLIT_WITH_FALLBACK";
+        primary_algorithm =
+            buffer_assignment::BufferAssignmentAlgorithmProto::FAST_SPLIT;
+      }
+      auto primary = build_algorithm(primary_algorithm);
       auto fallback_factory = [build_algorithm,
                                fallback_algorithm = opts_.fallback_algorithm]()
           -> std::unique_ptr<HeapAlgorithm<HloValue>> {
