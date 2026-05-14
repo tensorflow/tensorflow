@@ -1,0 +1,22 @@
+name: Gemini PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  gemini-review:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Run Gemini Code Assist
+        uses: google-github-actions/gemini-code-assist@v1
+        with:
+          styleguide_path: '.gemini/styleguide.md'
