@@ -1846,6 +1846,10 @@ void Queue<TaskType>::CloseAndWaitUntilEmpty() {
     }
   }
   empty.WaitForNotification();
+  {
+    mutex_lock l(mu_);
+    empty_notification_ = nullptr;
+  }
 }
 
 template <typename TaskType>
