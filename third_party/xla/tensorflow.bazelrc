@@ -325,6 +325,7 @@ common:nonccl --define=no_nccl_support=true
 # Don't trigger --config=<host platform> when cross-compiling.
 common:linux --host_copt=-w
 common:macos --copt=-w
+common:macos --host_copt=-w
 common:windows --copt=/W0
 common:windows --host_copt=/W0
 
