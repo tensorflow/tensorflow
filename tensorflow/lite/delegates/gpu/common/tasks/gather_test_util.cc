@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/gather_test_util.h"
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"

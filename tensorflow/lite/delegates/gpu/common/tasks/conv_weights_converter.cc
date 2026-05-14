@@ -15,11 +15,15 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_weights_converter.h"
 
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "third_party/gloop/util/status/status_macros.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
 
 namespace tflite {

@@ -15,11 +15,15 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed_3x3.h"
 
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/types/span.h"
+#include "third_party/gloop/util/status/status_macros.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
 namespace tflite {

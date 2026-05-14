@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/cumsum_test_util.h"
 
+#include <map>
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
+#include "third_party/gloop/util/status/status_macros.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/cumsum.h"
 
 namespace tflite {

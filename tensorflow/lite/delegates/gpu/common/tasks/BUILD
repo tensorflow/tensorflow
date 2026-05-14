@@ -107,6 +107,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:buffer_desc",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -160,6 +161,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
         "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -186,6 +188,8 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/task:util",
         "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
+        "//third_party/gloop/util/status:status_macros",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -199,6 +203,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/task:testing_util",
         "//tensorflow/lite/delegates/gpu/common/task:weights_conversion",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -231,6 +236,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
         "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -264,6 +270,9 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:weights_conversion",
         "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
         "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
+        "//third_party/gloop/util/status:status_macros",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -297,6 +306,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:weights_conversion",
         "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -330,6 +340,8 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:weights_conversion",
         "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
         "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -361,6 +373,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
         "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -399,6 +412,7 @@ cc_library(
         ":cumsum",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+        "//third_party/gloop/util/status:status_macros",
         "@com_google_absl//absl/status",
     ],
 )
@@ -419,6 +433,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
         "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -451,6 +466,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
         "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -477,6 +493,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:buffer_desc",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -669,7 +686,10 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/selectors:subgraph",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
+        "//third_party/gloop/util/status:status_macros",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:any",
     ],
 )
 
@@ -709,6 +729,8 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+        "//third_party/gloop/util/status:status_macros",
+        "@com_google_absl//absl/status",
     ],
 )
 
