@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
+#include "xla/shape.h"
 
 namespace xla {
 
@@ -108,6 +109,10 @@ class CpuTopologyDescription : public PjRtTopologyDescription {
       PrimitiveType element_type,
       absl::Span<const int64_t> dims) const override;
 
+  absl::StatusOr<xla::Shape> MakeCanonicalShapeForMemorySpace(
+      int memory_space_kind, xla::Shape shape,
+      const xla::Layout* layout) const override;
+
   absl::StatusOr<xla::PjRtTopologyDescriptionProto> ToProto() const override;
 
   static absl::StatusOr<std::unique_ptr<CpuTopologyDescription>> FromProto(
@@ -120,6 +125,9 @@ class CpuTopologyDescription : public PjRtTopologyDescription {
   const CpuTopology cpu_topology_;
   absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
 };
+
+absl::StatusOr<xla::Shape> MakeDefaultCpuBufferShape(xla::Shape shape,
+                                                     const xla::Layout* layout);
 
 PjRtPlatformId CpuPlatformId();
 absl::string_view CpuPlatformName();
