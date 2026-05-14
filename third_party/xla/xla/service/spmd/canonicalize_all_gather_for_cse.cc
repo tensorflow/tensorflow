@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -98,7 +99,7 @@ absl::StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
     ag->SetupDerivedInstruction(new_ag);
     HloInstruction* new_formatting = comp->AddInstruction(
         HloInstruction::CreateReshape(ag->shape(), new_ag));
-    TF_RETURN_IF_ERROR(comp->ReplaceInstruction(ag, new_formatting));
+    RETURN_IF_ERROR(comp->ReplaceInstruction(ag, new_formatting));
     changed = true;
   }
   return changed;
@@ -110,7 +111,7 @@ absl::StatusOr<bool> CanonicalizeAllGatherForCSE::RunImpl(
   bool changed = false;
   next_channel_id_ = hlo_query::NextChannelId(*module);
   for (HloComputation* comp : module->computations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(bool comp_changed, RunOnComputation(comp));
+    ASSIGN_OR_RETURN(bool comp_changed, RunOnComputation(comp));
     changed |= comp_changed;
   }
   return changed;

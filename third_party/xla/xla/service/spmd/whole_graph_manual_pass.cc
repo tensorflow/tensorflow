@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -66,7 +67,7 @@ absl::StatusOr<bool> WholeGraphManualPass::RunImpl(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   for (auto* comp : module->computations()) {
-    TF_ASSIGN_OR_RETURN(bool comp_changed, RunOnComputation(comp));
+    ASSIGN_OR_RETURN(bool comp_changed, RunOnComputation(comp));
     changed |= comp_changed;
   }
   return changed;

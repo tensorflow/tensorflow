@@ -42,6 +42,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/backends/autotuner/backends.pb.h"
@@ -149,7 +150,7 @@ class GpuCompilerTest
 absl::StatusOr<std::string> ReadNonEmptyFile(absl::string_view file_path) {
   std::string str;
   tsl::Env* env = tsl::Env::Default();
-  TF_RETURN_IF_ERROR(tsl::ReadFileToString(env, std::string(file_path), &str));
+  RETURN_IF_ERROR(tsl::ReadFileToString(env, std::string(file_path), &str));
   if (str.empty()) {
     return absl::InvalidArgumentError(
         absl::StrCat("File is empty: ", file_path));

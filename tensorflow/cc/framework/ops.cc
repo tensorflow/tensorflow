@@ -73,13 +73,13 @@ Input::Initializer::Initializer(
   // type and same shape.
   for (auto const& e : v) {
     if (e.tensor.dtype() != first.tensor.dtype()) {
-      status = errors::InvalidArgument(
+      status = absl::InvalidArgumentError(
           "Initializer list components should all have the same type");
       return;
     }
     if (!TensorShape{e.tensor.shape()}.IsSameSize(
             TensorShape{first.tensor.shape()})) {
-      status = errors::InvalidArgument(
+      status = absl::InvalidArgumentError(
           "Initializer list components should all have the same shape");
       return;
     }

@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
@@ -270,7 +271,7 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   // CudnnConvPadForTensorCores may add instructions which can be simplified
   // by constant folding.
   pipeline.AddPass<HloConstantFolding>();
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
           .status());
 
@@ -304,11 +305,11 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
           : se::dnn::VersionInfo{});
   pre_pipeline.AddPass<DotDimensionMerger>();
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       pre_pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
           .status());
 
-  TF_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
+  RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
       hlo_module, stream_exec, options, gpu_target_config, alias_info,
       thread_pool, compilation_stats, mlir_context));
 
@@ -318,7 +319,7 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   // Transform TriangularSolve ops into custom-calls, so we can add temp
   // memory.
   post_pipeline.AddPass<TriangularSolveRewriter>();
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       post_pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
           .status());
 
@@ -338,7 +339,7 @@ absl::Status NVPTXCompiler::RunCudnnCompilerPasses(
                            module->name(), module->unique_id());
   });
   CuDnnFusionCompiler fusion_compiler(dnn_support, *dnn_compiled_graphs);
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       fusion_compiler.Run(module, {HloInstruction::kMainExecutionThread})
           .status());
   CuDnnCustomCallCompiler call_compiler(dnn_support, *dnn_compiled_graphs);
@@ -475,11 +476,10 @@ NVPTXCompiler::GetCompilationProvider(const DebugOptions& debug_options,
       compilation_providers_[se::cuda::CompilationProviderOptions::
                                  FromDebugOptions(debug_options)];
   if (compilation_provider == nullptr) {
-    TF_ASSIGN_OR_RETURN(
-        compilation_provider,
-        se::cuda::AssembleCompilationProvider(
-            se::cuda::CompilationProviderOptions::FromDebugOptions(
-                debug_options, stream_exec)));
+    ASSIGN_OR_RETURN(compilation_provider,
+                     se::cuda::AssembleCompilationProvider(
+                         se::cuda::CompilationProviderOptions::FromDebugOptions(
+                             debug_options, stream_exec)));
   }
   return compilation_provider.get();
 }
@@ -520,7 +520,7 @@ NVPTXCompiler::CompileTargetBinary(
         debug_options.xla_enable_scoped_logging_timers());
     uint64_t start_usecs = tsl::Env::Default()->NowMicros();
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         ptx, nvptx::CompileToPtx(selected_module,
                                  device_description.gpu_compute_capability(),
                                  debug_options));
@@ -551,7 +551,7 @@ NVPTXCompiler::CompileTargetBinary(
     return BackendCompileResult{};
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       const se::cuda::CompilationProvider* compilation_provider,
       GetCompilationProvider(module_config.debug_options(), nullptr));
 
@@ -585,18 +585,17 @@ NVPTXCompiler::CompileTargetBinary(
   };
 
   if (relocatable) {
-    TF_ASSIGN_OR_RETURN(se::cuda::RelocatableModule relocatable_module,
-                        compilation_provider->CompileToRelocatableModule(
-                            cc, ptx, compilation_options));
+    ASSIGN_OR_RETURN(se::cuda::RelocatableModule relocatable_module,
+                     compilation_provider->CompileToRelocatableModule(
+                         cc, ptx, compilation_options));
     record_ptx_to_cubin_metric();
     return BackendCompileResult{
         std::move(ptx), std::move(relocatable_module.cubin),
         /*dnn_compiled_graphs=*/{}, std::move(relocatable_module.module_stats)};
   }
 
-  TF_ASSIGN_OR_RETURN(
-      se::cuda::Assembly assembly,
-      compilation_provider->Compile(cc, ptx, compilation_options));
+  ASSIGN_OR_RETURN(se::cuda::Assembly assembly,
+                   compilation_provider->Compile(cc, ptx, compilation_options));
   record_ptx_to_cubin_metric();
   return BackendCompileResult{std::move(ptx), std::move(assembly.cubin),
                               /*dnn_compiled_graphs=*/{},
@@ -607,7 +606,7 @@ absl::StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
     const HloModuleConfig& hlo_module_config,
     const stream_executor::DeviceDescription& device_description,
     se::StreamExecutor* stream_exec) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       const se::cuda::CompilationProvider* compilation_provider,
       GetCompilationProvider(hlo_module_config.debug_options(), stream_exec));
   return compilation_provider->SupportsCompileAndLink() &&
@@ -625,8 +624,8 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
   auto cc =
       device_description.gpu_compute_capability().cuda_compute_capability();
 
-  TF_ASSIGN_OR_RETURN(const se::cuda::CompilationProvider* compilation_provider,
-                      GetCompilationProvider(debug_options, stream_exec));
+  ASSIGN_OR_RETURN(const se::cuda::CompilationProvider* compilation_provider,
+                   GetCompilationProvider(debug_options, stream_exec));
 
   std::vector<se::cuda::CompilationProvider::RelocatableModuleOrPtx> inputs;
   inputs.reserve(modules.size());
@@ -640,7 +639,7 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
   VLOG(1) << "Linking " << modules.size()
           << " modules with compilation provider "
           << compilation_provider->name();
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       se::cuda::Assembly assembly,
       compilation_provider->CompileAndLink(*cc, inputs, compilation_options));
 

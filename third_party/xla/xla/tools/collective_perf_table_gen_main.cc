@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/model/collective_interpolator_data.h"
@@ -257,16 +258,16 @@ absl::Status UpdateHeader(const DeviceHloInstructionProfiles& new_profiles,
   // 2. Save current profiles to temp file
   std::string temp_file_current =
       tsl::io::JoinPath("/tmp", "xla_gpu_perf_merge_current.pbtxt");
-  TF_RETURN_IF_ERROR(tsl::WriteStringToFile(
-      tsl::Env::Default(), temp_file_current, current_profiles_pbtxt));
+  RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(), temp_file_current,
+                                         current_profiles_pbtxt));
 
   // 3. Save new profiles to temp file
   std::string new_profiles_pbtxt;
   tsl::protobuf::TextFormat::PrintToString(new_profiles, &new_profiles_pbtxt);
   std::string temp_file_new =
       tsl::io::JoinPath("/tmp", "xla_gpu_perf_merge_new.pbtxt");
-  TF_RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(), temp_file_new,
-                                            new_profiles_pbtxt));
+  RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(), temp_file_new,
+                                         new_profiles_pbtxt));
 
   // 4. Merge
   std::vector<std::string> files_to_merge = {temp_file_current, temp_file_new};
@@ -285,12 +286,12 @@ absl::Status UpdateHeader(const DeviceHloInstructionProfiles& new_profiles,
 
   // 6. Update header
   std::string header_content;
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       tsl::ReadFileToString(tsl::Env::Default(), header_path, &header_content));
   std::string new_header_content =
       InjectProtoToString(header_content, merged_profiles_pbtxt);
-  TF_RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(), header_path,
-                                            new_header_content));
+  RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(), header_path,
+                                         new_header_content));
 
   LOG(INFO) << "Successfully merged profiles into " << header_path_flag;
   return absl::OkStatus();

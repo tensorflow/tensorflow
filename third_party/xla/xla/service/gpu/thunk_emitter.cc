@@ -327,8 +327,8 @@ ThunkEmitter::ThunkEmitter(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConstant(
     const HloConstantInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(DenseDataIntermediate content,
-                      LiteralToXlaFormat(instr->literal()));
+  ASSIGN_OR_RETURN(DenseDataIntermediate content,
+                   LiteralToXlaFormat(instr->literal()));
 
   int element_bytes =
       primitive_util::ByteWidth(instr->literal().shape().element_type());
@@ -337,8 +337,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConstant(
   int num_elements = content.span().size() / element_bytes;
 
   std::string global_name = llvm_ir::ConstantHloToGlobalName(*instr);
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                      GetAllocationSliceForHlo(instr, {}));
+  ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                   GetAllocationSliceForHlo(instr, {}));
 
   // LLVM and PTXAS don't deal well with large constants, so we only emit very
   // small constants directly in LLVM IR.  Larger constants are emitted with
@@ -462,14 +462,13 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConvolutionThunk(
     result_slices.push_back(result_slice);
   }
 
-  TF_ASSIGN_OR_RETURN(CudnnConvKind kind, GetCudnnConvKind(instr));
-  TF_ASSIGN_OR_RETURN(auto gpu_config,
-                      instr->backend_config<GpuBackendConfig>());
+  ASSIGN_OR_RETURN(CudnnConvKind kind, GetCudnnConvKind(instr));
+  ASSIGN_OR_RETURN(auto gpu_config, instr->backend_config<GpuBackendConfig>());
   const CudnnConvBackendConfig& backend_config =
       gpu_config.cudnn_conv_backend_config();
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch_slice,
-                      GetAllocationSliceForHlo(
-                          instr, {instr->shape().tuple_shapes_size() - 1}));
+  ASSIGN_OR_RETURN(BufferAllocation::Slice scratch_slice,
+                   GetAllocationSliceForHlo(
+                       instr, {instr->shape().tuple_shapes_size() - 1}));
   GpuConvDescriptor descriptor = {kind,
                                   backend_config,
                                   instr->operand(0)->shape(),
@@ -479,21 +478,21 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConvolutionThunk(
                                   instr->window(),
                                   instr->convolution_dimension_numbers(),
                                   instr->feature_group_count()};
-  TF_ASSIGN_OR_RETURN(auto thunk,
-                      ConvolutionThunk::Create(
-                          Thunk::ThunkInfo::WithProfileAnnotation(
-                              instr, ir_emitter_context_->GetNextThunkId()),
-                          std::move(descriptor), std::move(operand_slices),
-                          std::move(result_slices), scratch_slice));
+  ASSIGN_OR_RETURN(auto thunk,
+                   ConvolutionThunk::Create(
+                       Thunk::ThunkInfo::WithProfileAnnotation(
+                           instr, ir_emitter_context_->GetNextThunkId()),
+                       std::move(descriptor), std::move(operand_slices),
+                       std::move(result_slices), scratch_slice));
   return GetThunkSequence(std::move(thunk));
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitGemmThunk(
     const HloCustomCallInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice a,
-                      GetAllocationSliceForHlo(instr->operand(0), {}));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice b,
-                      GetAllocationSliceForHlo(instr->operand(1), {}));
+  ASSIGN_OR_RETURN(BufferAllocation::Slice a,
+                   GetAllocationSliceForHlo(instr->operand(0), {}));
+  ASSIGN_OR_RETURN(BufferAllocation::Slice b,
+                   GetAllocationSliceForHlo(instr->operand(1), {}));
 
   // Result of a legacy cuBLAS custom call can be a tuple if we
   // explicitly allocate workspace buffer in HLO. If result is an
@@ -503,13 +502,13 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitGemmThunk(
   std::optional<BufferAllocation::Slice> workspace;
 
   if (instr->shape().IsArray()) {
-    TF_ASSIGN_OR_RETURN(c, GetAllocationSliceForHlo(instr, {}));
+    ASSIGN_OR_RETURN(c, GetAllocationSliceForHlo(instr, {}));
   } else {
-    TF_ASSIGN_OR_RETURN(c, GetAllocationSliceForHlo(instr, {0}));
-    TF_ASSIGN_OR_RETURN(workspace, GetAllocationSliceForHlo(instr, {1}));
+    ASSIGN_OR_RETURN(c, GetAllocationSliceForHlo(instr, {0}));
+    ASSIGN_OR_RETURN(workspace, GetAllocationSliceForHlo(instr, {1}));
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       GemmConfig config,
       GemmConfig::For(instr, ir_emitter_context_->gpu_compute_capability()));
   auto thunk = std::make_unique<GemmThunk>(
@@ -522,26 +521,25 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitGemmThunk(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtMatmulThunk(
     const HloCustomCallInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(const auto gpu_config,
-                      instr->backend_config<xla::gpu::GpuBackendConfig>());
+  ASSIGN_OR_RETURN(const auto gpu_config,
+                   instr->backend_config<xla::gpu::GpuBackendConfig>());
   const xla::gpu::GemmBackendConfig& config = gpu_config.gemm_backend_config();
   xla::gpu::GemmBackendConfig_Epilogue epilogue = config.epilogue();
 
-  TF_ASSIGN_OR_RETURN(bool has_vector_bias,
-                      xla::gpu::gpublas_lt::EpilogueAddsVectorBias(epilogue));
+  ASSIGN_OR_RETURN(bool has_vector_bias,
+                   xla::gpu::gpublas_lt::EpilogueAddsVectorBias(epilogue));
   bool has_matrix_bias = config.beta() != 0;
 
   TF_RET_CHECK(instr->operand_count() ==
                2 + int{has_matrix_bias} + int{has_vector_bias});
 
-  TF_ASSIGN_OR_RETURN(
-      bool has_aux_output,
-      xla::gpu::gpublas_lt::EpilogueHasAuxiliaryOutput(epilogue));
+  ASSIGN_OR_RETURN(bool has_aux_output,
+                   xla::gpu::gpublas_lt::EpilogueHasAuxiliaryOutput(epilogue));
   xla::ShapeIndex output_index =
       instr->shape().IsTuple() ? xla::ShapeIndex{0} : xla::ShapeIndex{};
 
-  TF_ASSIGN_OR_RETURN(ShapedSlice a, GetShapedSliceForHlo(instr->operand(0)));
-  TF_ASSIGN_OR_RETURN(ShapedSlice b, GetShapedSliceForHlo(instr->operand(1)));
+  ASSIGN_OR_RETURN(ShapedSlice a, GetShapedSliceForHlo(instr->operand(0)));
+  ASSIGN_OR_RETURN(ShapedSlice b, GetShapedSliceForHlo(instr->operand(1)));
   ShapedSlice c;
   if (has_matrix_bias) {
     ASSIGN_OR_RETURN(c, GetShapedSliceForHlo(instr->operand(2)));
@@ -552,13 +550,13 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtMatmulThunk(
 
   std::optional<ShapedSlice> bias;
   if (has_vector_bias) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         bias, GetShapedSliceForHlo(instr->operand(has_matrix_bias ? 3 : 2)));
   }
 
   std::optional<ShapedSlice> aux;
   if (has_aux_output) {
-    TF_ASSIGN_OR_RETURN(aux, GetShapedSliceForHlo(instr, {1}));
+    ASSIGN_OR_RETURN(aux, GetShapedSliceForHlo(instr, {1}));
   }
 
   std::optional<ShapedSlice> workspace_buffer;
@@ -567,12 +565,12 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtMatmulThunk(
     TF_RET_CHECK(
         (has_aux_output && instr->shape().tuple_shapes().size() == 3) ||
         (!has_aux_output && instr->shape().tuple_shapes().size() == 2));
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         workspace_buffer,
         GetShapedSliceForHlo(instr, {instr->shape().tuple_shapes_size() - 1}));
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto gemm_config,
       GemmConfig::For(instr, ir_emitter_context_->gpu_compute_capability()));
 
@@ -583,8 +581,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtMatmulThunk(
           ? config.selected_algorithm()
           : 0;
 
-  TF_ASSIGN_OR_RETURN(se::gpu::BlasLt::Epilogue blas_lt_epilogue,
-                      gpublas_lt::AsBlasLtEpilogue(epilogue));
+  ASSIGN_OR_RETURN(se::gpu::BlasLt::Epilogue blas_lt_epilogue,
+                   gpublas_lt::AsBlasLtEpilogue(epilogue));
   Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
       instr, ir_emitter_context_->GetNextThunkId());
   std::string canonical_hlo = instr->ToString(
@@ -695,43 +693,43 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtGroupedMatmulThunk(
 
   // Matrix bias and vector bias add extra operands
   bool has_matrix_bias = config.beta() != 0;
-  TF_ASSIGN_OR_RETURN(bool has_vector_bias,
-                      xla::gpu::gpublas_lt::EpilogueAddsVectorBias(epilogue));
+  ASSIGN_OR_RETURN(bool has_vector_bias,
+                   xla::gpu::gpublas_lt::EpilogueAddsVectorBias(epilogue));
   TF_RET_CHECK(instr->operand_count() ==
                3 + int{has_matrix_bias} + int{has_vector_bias});
 
   xla::ShapeIndex output_index =
       instr->shape().IsTuple() ? xla::ShapeIndex{0} : xla::ShapeIndex{};
 
-  TF_ASSIGN_OR_RETURN(ShapedSlice a, GetShapedSliceForHlo(instr->operand(0)));
-  TF_ASSIGN_OR_RETURN(ShapedSlice b, GetShapedSliceForHlo(instr->operand(1)));
-  TF_ASSIGN_OR_RETURN(ShapedSlice group_sizes,
-                      GetShapedSliceForHlo(instr->operand(2)));
+  ASSIGN_OR_RETURN(ShapedSlice a, GetShapedSliceForHlo(instr->operand(0)));
+  ASSIGN_OR_RETURN(ShapedSlice b, GetShapedSliceForHlo(instr->operand(1)));
+  ASSIGN_OR_RETURN(ShapedSlice group_sizes,
+                   GetShapedSliceForHlo(instr->operand(2)));
 
   // Handle matrix bias if present
   ShapedSlice c;
   if (has_matrix_bias) {
-    TF_ASSIGN_OR_RETURN(c, GetShapedSliceForHlo(instr->operand(3)));
+    ASSIGN_OR_RETURN(c, GetShapedSliceForHlo(instr->operand(3)));
   } else {
-    TF_ASSIGN_OR_RETURN(c, GetShapedSliceForHlo(instr, output_index));
+    ASSIGN_OR_RETURN(c, GetShapedSliceForHlo(instr, output_index));
   }
-  TF_ASSIGN_OR_RETURN(ShapedSlice d, GetShapedSliceForHlo(instr, output_index));
+  ASSIGN_OR_RETURN(ShapedSlice d, GetShapedSliceForHlo(instr, output_index));
 
   // Handle vector bias if present
   std::optional<ShapedSlice> bias;
   if (has_vector_bias) {
     int bias_operand_index = has_matrix_bias ? 4 : 3;
-    TF_ASSIGN_OR_RETURN(
-        bias, GetShapedSliceForHlo(instr->operand(bias_operand_index)));
+    ASSIGN_OR_RETURN(bias,
+                     GetShapedSliceForHlo(instr->operand(bias_operand_index)));
   }
 
   std::optional<ShapedSlice> workspace_buffer;
   if (instr->shape().IsTuple() && (instr->shape().tuple_shapes().size() - 1)) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         workspace_buffer,
         GetShapedSliceForHlo(instr, {instr->shape().tuple_shapes_size() - 1}));
   }
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto gemm_config,
       GroupedGemmConfig::For(static_cast<const HloInstruction*>(instr),
                              ir_emitter_context_->gpu_compute_capability()));
@@ -744,8 +742,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtGroupedMatmulThunk(
           : 0;
 
   // Extract epilogue from backend config instead of hardcoding to kDefault
-  TF_ASSIGN_OR_RETURN(se::gpu::BlasLt::Epilogue blas_lt_epilogue,
-                      gpublas_lt::AsBlasLtEpilogue(epilogue));
+  ASSIGN_OR_RETURN(se::gpu::BlasLt::Epilogue blas_lt_epilogue,
+                   gpublas_lt::AsBlasLtEpilogue(epilogue));
 
   Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
       instr, ir_emitter_context_->GetNextThunkId());
@@ -763,8 +761,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtGroupedMatmulThunk(
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtMatmulThunkMx(
     const HloCustomCallInstruction* instr) {
   TF_RET_CHECK(instr->operand_count() == 4);
-  TF_ASSIGN_OR_RETURN(const auto gpu_config,
-                      instr->backend_config<xla::gpu::GpuBackendConfig>());
+  ASSIGN_OR_RETURN(const auto gpu_config,
+                   instr->backend_config<xla::gpu::GpuBackendConfig>());
   const xla::gpu::GemmBackendConfig& config = gpu_config.gemm_backend_config();
   xla::gpu::GemmBackendConfig_Epilogue epilogue = config.epilogue();
 
@@ -816,21 +814,20 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConvolutionReorderThunk(
     const HloCustomCallInstruction* instr) {
   bool has_bias = instr->operand_count() > 1;
 
-  TF_ASSIGN_OR_RETURN(ShapedSlice filter_input,
-                      GetShapedSliceForHlo(instr->operand(0)));
+  ASSIGN_OR_RETURN(ShapedSlice filter_input,
+                   GetShapedSliceForHlo(instr->operand(0)));
 
   ShapedSlice filter_output;
   std::optional<ConvolutionReorderThunk::BiasBuffers> biases;
   if (has_bias) {
-    TF_ASSIGN_OR_RETURN(filter_output, GetShapedSliceForHlo(instr, {0}));
+    ASSIGN_OR_RETURN(filter_output, GetShapedSliceForHlo(instr, {0}));
 
-    TF_ASSIGN_OR_RETURN(ShapedSlice bias_input,
-                        GetShapedSliceForHlo(instr->operand(1)));
-    TF_ASSIGN_OR_RETURN(ShapedSlice bias_output,
-                        GetShapedSliceForHlo(instr, {1}));
+    ASSIGN_OR_RETURN(ShapedSlice bias_input,
+                     GetShapedSliceForHlo(instr->operand(1)));
+    ASSIGN_OR_RETURN(ShapedSlice bias_output, GetShapedSliceForHlo(instr, {1}));
     biases = {{bias_input, bias_output}};
   } else {
-    TF_ASSIGN_OR_RETURN(filter_output, GetShapedSliceForHlo(instr));
+    ASSIGN_OR_RETURN(filter_output, GetShapedSliceForHlo(instr));
   }
 
   ASSIGN_OR_RETURN(auto thunk,
@@ -843,17 +840,17 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConvolutionReorderThunk(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitNormThunk(
     const HloCustomCallInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(auto const gpu_backend_config,
-                      instr->backend_config<xla::gpu::GpuBackendConfig>());
+  ASSIGN_OR_RETURN(auto const gpu_backend_config,
+                   instr->backend_config<xla::gpu::GpuBackendConfig>());
   const xla::gpu::CudnnNormBackendConfig& backend_config =
       gpu_backend_config.cudnn_norm_backend_config();
 
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice x_slice,
-                      GetAllocationSliceForHlo(instr->operand(0)));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scale_slice,
-                      GetAllocationSliceForHlo(instr->operand(1)));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice y_or_dx_slice,
-                      GetAllocationSliceForHlo(instr, {0}));
+  ASSIGN_OR_RETURN(BufferAllocation::Slice x_slice,
+                   GetAllocationSliceForHlo(instr->operand(0)));
+  ASSIGN_OR_RETURN(BufferAllocation::Slice scale_slice,
+                   GetAllocationSliceForHlo(instr->operand(1)));
+  ASSIGN_OR_RETURN(BufferAllocation::Slice y_or_dx_slice,
+                   GetAllocationSliceForHlo(instr, {0}));
 
   std::optional<BufferAllocation::Slice> bias_slice, expectation_slice,
       norm_factor_slice, dy_slice, dscale_slice, dbias_slice;
@@ -862,26 +859,23 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitNormThunk(
           xla::gpu::CudnnNormBackendConfig::LAYER_FWD_INFER ||
       backend_config.kind() ==
           xla::gpu::CudnnNormBackendConfig::LAYER_FWD_TRAIN) {
-    TF_ASSIGN_OR_RETURN(bias_slice,
-                        GetAllocationSliceForHlo(instr->operand(2)));
+    ASSIGN_OR_RETURN(bias_slice, GetAllocationSliceForHlo(instr->operand(2)));
   }
   if (backend_config.kind() ==
       xla::gpu::CudnnNormBackendConfig::LAYER_FWD_TRAIN) {
-    TF_ASSIGN_OR_RETURN(expectation_slice,
-                        GetAllocationSliceForHlo(instr, {1}));
-    TF_ASSIGN_OR_RETURN(norm_factor_slice,
-                        GetAllocationSliceForHlo(instr, {2}));
+    ASSIGN_OR_RETURN(expectation_slice, GetAllocationSliceForHlo(instr, {1}));
+    ASSIGN_OR_RETURN(norm_factor_slice, GetAllocationSliceForHlo(instr, {2}));
   }
   if (backend_config.kind() == xla::gpu::CudnnNormBackendConfig::LAYER_BWD) {
-    TF_ASSIGN_OR_RETURN(dy_slice, GetAllocationSliceForHlo(instr->operand(2)));
-    TF_ASSIGN_OR_RETURN(expectation_slice,
-                        GetAllocationSliceForHlo(instr->operand(3)));
-    TF_ASSIGN_OR_RETURN(norm_factor_slice,
-                        GetAllocationSliceForHlo(instr->operand(4)));
-    TF_ASSIGN_OR_RETURN(dscale_slice, GetAllocationSliceForHlo(instr, {1}));
-    TF_ASSIGN_OR_RETURN(dbias_slice, GetAllocationSliceForHlo(instr, {2}));
+    ASSIGN_OR_RETURN(dy_slice, GetAllocationSliceForHlo(instr->operand(2)));
+    ASSIGN_OR_RETURN(expectation_slice,
+                     GetAllocationSliceForHlo(instr->operand(3)));
+    ASSIGN_OR_RETURN(norm_factor_slice,
+                     GetAllocationSliceForHlo(instr->operand(4)));
+    ASSIGN_OR_RETURN(dscale_slice, GetAllocationSliceForHlo(instr, {1}));
+    ASSIGN_OR_RETURN(dbias_slice, GetAllocationSliceForHlo(instr, {2}));
   }
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       ShapedSlice scratch_slice,
       GetShapedSliceForHlo(instr, {instr->shape().tuple_shapes_size() - 1}));
 
@@ -912,7 +906,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitNormThunk(
     descriptor.dbias_shape = ShapeUtil::GetSubshape(instr->shape(), {2});
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<NormThunk> thunk,
       NormThunk::Create(Thunk::ThunkInfo::WithProfileAnnotation(
                             instr, ir_emitter_context_->GetNextThunkId()),
@@ -925,17 +919,17 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitNormThunk(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCuDnnThunk(
     const HloCustomCallInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(auto kernel_arguments,
-                      emitters::KernelArguments::Create(
-                          ir_emitter_context_->buffer_assignment(),
-                          GetDefaultBufferAlignment(), instr));
-  TF_ASSIGN_OR_RETURN(const std::string fingerprint,
-                      FingerprintWithBackendConfig<GpuBackendConfig>(*instr));
+  ASSIGN_OR_RETURN(auto kernel_arguments,
+                   emitters::KernelArguments::Create(
+                       ir_emitter_context_->buffer_assignment(),
+                       GetDefaultBufferAlignment(), instr));
+  ASSIGN_OR_RETURN(const std::string fingerprint,
+                   FingerprintWithBackendConfig<GpuBackendConfig>(*instr));
   // check if sdpa dropout is enabled
   std::optional<int64_t> dropout_seed = std::nullopt;
   if (MHACallHasDropout(instr->custom_call_target())) {
-    TF_ASSIGN_OR_RETURN(const auto gpu_config,
-                        instr->backend_config<xla::gpu::GpuBackendConfig>());
+    ASSIGN_OR_RETURN(const auto gpu_config,
+                     instr->backend_config<xla::gpu::GpuBackendConfig>());
     dropout_seed = gpu_config.cudnn_fmha_backend_config().seed();
   }
   return GetThunkSequence(std::make_unique<CuDnnThunk>(
@@ -948,8 +942,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCuDnnThunk(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitPtxCustomCall(
     const HloCustomCallInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(auto thunk,
-                      EmitPtxCustomKernelThunk(instr, ir_emitter_context_));
+  ASSIGN_OR_RETURN(auto thunk,
+                   EmitPtxCustomKernelThunk(instr, ir_emitter_context_));
   return GetThunkSequence(std::move(thunk));
 }
 
@@ -991,7 +985,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
 
   Slices operands;
   for (auto* operand : instr->operands()) {
-    TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+    RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
         operand->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
           if (subshape.IsToken()) {
             operands.push_back(std::nullopt);
@@ -1000,15 +994,15 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
           if (!subshape.IsArray()) {
             return absl::OkStatus();
           }
-          TF_ASSIGN_OR_RETURN(auto slice,
-                              GetAllocationSliceForHlo(operand, index));
+          ASSIGN_OR_RETURN(auto slice,
+                           GetAllocationSliceForHlo(operand, index));
           operands.push_back(ShapedSlice{slice, subshape});
           return absl::OkStatus();
         }));
   }
 
   Slices results;
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+  RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       instr->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
         if (subshape.IsToken()) {
           results.push_back(std::nullopt);
@@ -1017,7 +1011,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
         if (!subshape.IsArray()) {
           return absl::OkStatus();
         }
-        TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSliceForHlo(instr, index));
+        ASSIGN_OR_RETURN(auto slice, GetAllocationSliceForHlo(instr, index));
         results.push_back(ShapedSlice{slice, subshape});
         return absl::OkStatus();
       }));
@@ -1051,7 +1045,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
             "parsable into "
             "dictionary attribute");
       }
-      TF_ASSIGN_OR_RETURN(attributes, xla::ffi::BuildAttributesMap(dict));
+      ASSIGN_OR_RETURN(attributes, xla::ffi::BuildAttributesMap(dict));
     }
     auto released_lock_keeper = llvm_options_lock_->TemporarilyReleaseLock();
     return CustomCallThunk::Create(
@@ -1099,10 +1093,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFftThunk(
     const HloFftInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice arg_slice,
-                      GetAllocationSliceForHlo(instr->operand(0)));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dest_slice,
-                      GetAllocationSliceForHlo(instr));
+  ASSIGN_OR_RETURN(BufferAllocation::Slice arg_slice,
+                   GetAllocationSliceForHlo(instr->operand(0)));
+  ASSIGN_OR_RETURN(BufferAllocation::Slice dest_slice,
+                   GetAllocationSliceForHlo(instr));
   return GetThunkSequence(std::make_unique<FftThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           instr, ir_emitter_context_->GetNextThunkId()),
@@ -1141,7 +1135,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTriangularSolveCustomCall(
   TriangularSolveOptions backend_config;
   auto& backend_config_str = instr->raw_backend_config_string();
   if (!backend_config_str.empty()) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         tsl::HumanReadableJsonToProto(backend_config_str, &backend_config));
   }
 
@@ -1205,10 +1199,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTopKCustomCall(
                 1, data_shape.dimensions(0), top_elements_shape.dimensions(0)};
 
   // Prepare kernel arguments.
-  TF_ASSIGN_OR_RETURN(auto kernel_arguments,
-                      emitters::KernelArguments::Create(
-                          ir_emitter_context_->buffer_assignment(),
-                          GetDefaultBufferAlignment(), instr));
+  ASSIGN_OR_RETURN(auto kernel_arguments,
+                   emitters::KernelArguments::Create(
+                       ir_emitter_context_->buffer_assignment(),
+                       GetDefaultBufferAlignment(), instr));
 
   auto dtype = data_shape.element_type();
   bool is_cuda = ir_emitter_context_->gpu_compute_capability().IsCuda();
@@ -1244,10 +1238,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTopKCustomCall(
 
   TF_RET_CHECK(k <= 16) << "CustomCall TopK requires k <= 16";
   // Load TopK custom kernel.
-  TF_ASSIGN_OR_RETURN(
-      CustomKernel kernel,
-      kernel::topk::GetTopKKernel("topk", dtype, n, k, batch_size,
-                                  platform_name(), wavefront_size));
+  ASSIGN_OR_RETURN(CustomKernel kernel, kernel::topk::GetTopKKernel(
+                                            "topk", dtype, n, k, batch_size,
+                                            platform_name(), wavefront_size));
 
   Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
       instr, ir_emitter_context_->GetNextThunkId());
@@ -1527,10 +1520,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopy(
   TF_RET_CHECK(LayoutUtil::LayoutsInShapesEqual(
       instr->operand(0)->shape(), instr->shape(),
       Layout::Equal().MinorToMajorOnly()));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice src_buffer,
-                      GetAllocationSliceForHlo(instr->operand(0)));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dst_buffer,
-                      GetAllocationSliceForHlo(instr));
+  ASSIGN_OR_RETURN(BufferAllocation::Slice src_buffer,
+                   GetAllocationSliceForHlo(instr->operand(0)));
+  ASSIGN_OR_RETURN(BufferAllocation::Slice dst_buffer,
+                   GetAllocationSliceForHlo(instr));
   return GetThunkSequence(std::make_unique<DeviceToDeviceCopyThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           instr, ir_emitter_context_->GetNextThunkId()),
@@ -1700,8 +1693,8 @@ AsyncThunkSequence ThunkEmitter::EmitSort(const HloSortInstruction* sort) {
 template <typename ThunkType>
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReplicaOrPartitionId(
     const HloInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
-                      GetAllocationSliceForHlo(instr, {}));
+  ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
+                   GetAllocationSliceForHlo(instr, {}));
   return GetThunkSequence(std::make_unique<ThunkType>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           instr, ir_emitter_context_->GetNextThunkId()),
@@ -1739,10 +1732,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectivePermute(
     const ShapeIndex nested_shape_idx = {1, oprd_idx}, normal_shape_idx = {1};
     const Shape operand_shape = operand->shape();
     const Shape result_shape = instr->shape().tuple_shapes(1);
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
-                        GetAllocationSliceForHlo(
-                            instr, result_shape.IsTuple() ? nested_shape_idx
-                                                          : normal_shape_idx));
+    ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
+                     GetAllocationSliceForHlo(instr, result_shape.IsTuple()
+                                                         ? nested_shape_idx
+                                                         : normal_shape_idx));
 
     const int64_t src_memory_space = operand_shape.layout().memory_space();
     Shape result_buffer_shape = (result_shape.IsTuple())
@@ -1752,8 +1745,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectivePermute(
     const int64_t dst_memory_space =
         result_buffer_shape.layout().memory_space();
 
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice source_slice,
-                        GetAllocationSliceForHlo(operand));
+    ASSIGN_OR_RETURN(BufferAllocation::Slice source_slice,
+                     GetAllocationSliceForHlo(operand));
     if (CollectivePermuteThunk::IsDegenerate(instr, replica_count,
                                              partition_count)) {
       // For a degenerate collective permute, just generate a copy
@@ -1813,8 +1806,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectivePermute(
   // Wrap in AsyncStartThunk for asynchronous execution.
   const ExecutionStreamAssignment& stream_assignment =
       ir_emitter_context_->execution_stream_assignment();
-  TF_ASSIGN_OR_RETURN(ExecutionStreamId execution_stream_id,
-                      stream_assignment.GetExecutionStreamId(instr));
+  ASSIGN_OR_RETURN(ExecutionStreamId execution_stream_id,
+                   stream_assignment.GetExecutionStreamId(instr));
 
   auto start_thunk = std::make_unique<AsyncStartThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
@@ -1855,9 +1848,9 @@ AsyncThunkSequence ThunkEmitter::EmitCollectiveThunk(
     const Shape& src_shape = src->shape();
     const Shape& dst_shape =
         ShapeUtil::GetSubshape(dst->shape(), dst_shape_index);
-    TF_ASSIGN_OR_RETURN(auto src_slice, GetAllocationSliceForHlo(src));
-    TF_ASSIGN_OR_RETURN(auto dst_slice,
-                        GetAllocationSliceForHlo(dst, dst_shape_index));
+    ASSIGN_OR_RETURN(auto src_slice, GetAllocationSliceForHlo(src));
+    ASSIGN_OR_RETURN(auto dst_slice,
+                     GetAllocationSliceForHlo(dst, dst_shape_index));
 
     buffers.push_back(CollectiveThunk::Buffer{
         /*element_count=*/ShapeUtil::ElementsIn(src_shape),
@@ -1874,19 +1867,19 @@ AsyncThunkSequence ThunkEmitter::EmitCollectiveThunk(
     // multiple operands).
     for (int64_t i = 0; i < operand_count; i++) {
       ShapeIndex idx = operand_count > 1 ? ShapeIndex({1, i}) : ShapeIndex({1});
-      TF_RETURN_IF_ERROR(add_buffer(inst->operand(i), inst, idx));
+      RETURN_IF_ERROR(add_buffer(inst->operand(i), inst, idx));
     }
   } else if (kind == Thunk::Kind::kRaggedAllToAll) {
     // RaggedAllToAll operation has 6 operands: input, output,
     // input_offset, send_size, output_offset, recv_size. `output`
     // operand is aliased with the instruction result. All other
     // operands are not aliased.
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         add_buffer(inst->operand(0), inst->operand(0), ShapeIndex({})));
-    TF_RETURN_IF_ERROR(add_buffer(inst->operand(1), inst, ShapeIndex({})));
+    RETURN_IF_ERROR(add_buffer(inst->operand(1), inst, ShapeIndex({})));
 
     for (int64_t i = 2; i < operand_count; i++) {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           add_buffer(inst->operand(i), inst->operand(i), ShapeIndex({})));
     }
   } else {
@@ -1895,7 +1888,7 @@ AsyncThunkSequence ThunkEmitter::EmitCollectiveThunk(
       ShapeIndex idx =
           inst->shape().IsTuple() ? ShapeIndex({i}) : ShapeIndex({});
 
-      TF_RETURN_IF_ERROR(add_buffer(inst->operand(i), inst, idx));
+      RETURN_IF_ERROR(add_buffer(inst->operand(i), inst, idx));
     }
   }
 
@@ -1918,8 +1911,8 @@ AsyncThunkSequence ThunkEmitter::EmitCollectiveThunk(
     return EmitDegeneratedCollectiveThunk(buffers, async_start, inst);
   }
 
-  TF_RETURN_IF_ERROR(CollectiveThunkType::CheckImplementable(
-      inst, replica_count, partition_count));
+  RETURN_IF_ERROR(CollectiveThunkType::CheckImplementable(inst, replica_count,
+                                                          partition_count));
 
   auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
       inst, ir_emitter_context_->GetNextThunkId());
@@ -2157,8 +2150,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitNvshmemThunk(
     ShapeIndex idx = operand_count > 1 ? ShapeIndex({i}) : ShapeIndex({});
     const Shape& src_shape = inst->operand(i)->shape();
     const Shape& dst_shape = ShapeUtil::GetSubshape(inst->shape(), idx);
-    TF_ASSIGN_OR_RETURN(auto src, GetAllocationSliceForHlo(inst->operand(i)));
-    TF_ASSIGN_OR_RETURN(auto dst, GetAllocationSliceForHlo(inst, idx));
+    ASSIGN_OR_RETURN(auto src, GetAllocationSliceForHlo(inst->operand(i)));
+    ASSIGN_OR_RETURN(auto dst, GetAllocationSliceForHlo(inst, idx));
     add_buffer(ShapeUtil::ElementsIn(src_shape), {src, src_shape},
                src_shape.layout().memory_space(), {dst, dst_shape},
                dst_shape.layout().memory_space());
@@ -2184,8 +2177,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitNvshmemThunk(
     // Wrap in AsyncStartThunk for asynchronous execution.
     const ExecutionStreamAssignment& stream_assignment =
         ir_emitter_context_->execution_stream_assignment();
-    TF_ASSIGN_OR_RETURN(ExecutionStreamId execution_stream_id,
-                        stream_assignment.GetExecutionStreamId(async_start));
+    ASSIGN_OR_RETURN(ExecutionStreamId execution_stream_id,
+                     stream_assignment.GetExecutionStreamId(async_start));
 
     auto start_thunk = std::make_unique<AsyncStartThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(
@@ -2242,13 +2235,13 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitInfeed(
   // and a token. We only need the result data to construct the
   // infeed thunk.
   std::vector<ShapedSlice> shaped_slices;
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+  RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       instr->shape(),
       [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
         if (subshape.IsTuple() || subshape.IsToken()) return absl::OkStatus();
         if (subshape.IsArray()) {
-          TF_ASSIGN_OR_RETURN(BufferAllocation::Slice data,
-                              GetAllocationSliceForHlo(instr, index));
+          ASSIGN_OR_RETURN(BufferAllocation::Slice data,
+                           GetAllocationSliceForHlo(instr, index));
           ShapedSlice shaped_slice = {data, subshape};
           shaped_slices.push_back(shaped_slice);
           return absl::OkStatus();
@@ -2269,13 +2262,13 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitOutfeed(
   // and a single token output.
   const HloInstruction* source = instr->operand(0);
   std::vector<ShapedSlice> shaped_slices;
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+  RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       source->shape(),
       [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
         if (subshape.IsTuple()) return absl::OkStatus();
         if (subshape.IsArray()) {
-          TF_ASSIGN_OR_RETURN(BufferAllocation::Slice data,
-                              GetAllocationSliceForHlo(source, index));
+          ASSIGN_OR_RETURN(BufferAllocation::Slice data,
+                           GetAllocationSliceForHlo(source, index));
           ShapedSlice shaped_slice = {data, subshape};
           shaped_slices.push_back(shaped_slice);
           return absl::OkStatus();
@@ -2318,22 +2311,22 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyStartThunk(
   // copy-start has a tuple shape: {host, device, context},
   // or {device, host, context}.
   // Only the destination shape is needed to get the output buffer.
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dst_buffer,
-                      GetAllocationSliceForHlo(copy_start_instr,
-                                               /*index=*/{0}));
+  ASSIGN_OR_RETURN(BufferAllocation::Slice dst_buffer,
+                   GetAllocationSliceForHlo(copy_start_instr,
+                                            /*index=*/{0}));
 
   const HloInstruction* src = copy_start_instr->operand(0);
   const Shape& input_shape = src->shape();
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice src_buffer,
-                      GetAllocationSliceForHlo(src, {}));
+  ASSIGN_OR_RETURN(BufferAllocation::Slice src_buffer,
+                   GetAllocationSliceForHlo(src, {}));
   const Shape& shape = copy_start_instr->shape();
   CHECK(shape.IsTuple());
   auto host_memory_space =
       static_cast<int>(stream_executor::MemorySpace::kHost);
-  TF_ASSIGN_OR_RETURN(bool is_dst_host_memory,
-                      ShapeHasHostMemorySpace(shape, 0, host_memory_space));
-  TF_ASSIGN_OR_RETURN(bool is_src_host_memory,
-                      ShapeHasHostMemorySpace(shape, 1, host_memory_space));
+  ASSIGN_OR_RETURN(bool is_dst_host_memory,
+                   ShapeHasHostMemorySpace(shape, 0, host_memory_space));
+  ASSIGN_OR_RETURN(bool is_src_host_memory,
+                   ShapeHasHostMemorySpace(shape, 1, host_memory_space));
   if (is_dst_host_memory == is_src_host_memory) {
     return absl::InternalError(
         absl::StrFormat("Copy-start %s doesn't have correct host memory space "
@@ -2411,7 +2404,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyDoneThunk(
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSendThunk(
     const HloSendInstruction* instr, bool emit_group_thunks) {
   const HloInstruction* src = instr->operand(0);
-  TF_ASSIGN_OR_RETURN(ShapedSlice slice, GetShapedSliceForHlo(src, {}));
+  ASSIGN_OR_RETURN(ShapedSlice slice, GetShapedSliceForHlo(src, {}));
   if (!instr->is_host_transfer()) {
     const auto& hlo_config = ir_emitter_context_->hlo_module().config();
     const int64_t replica_count = hlo_config.replica_count();
@@ -2447,7 +2440,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSendThunk(
 
       const ExecutionStreamAssignment& stream_assignment =
           ir_emitter_context_->execution_stream_assignment();
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           ExecutionStreamId execution_stream_id,
           stream_assignment.GetExecutionStreamId(canonical_send_instr));
 
@@ -2512,7 +2505,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSendDoneThunk(
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRecvThunk(
     const HloRecvInstruction* instr, bool emit_group_thunks) {
   TF_RET_CHECK(instr->shape().IsTuple());
-  TF_ASSIGN_OR_RETURN(ShapedSlice slice, GetShapedSliceForHlo(instr, {0}));
+  ASSIGN_OR_RETURN(ShapedSlice slice, GetShapedSliceForHlo(instr, {0}));
 
   if (!instr->is_host_transfer()) {
     const auto& hlo_config = ir_emitter_context_->hlo_module().config();
@@ -2550,7 +2543,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRecvThunk(
 
       const ExecutionStreamAssignment& stream_assignment =
           ir_emitter_context_->execution_stream_assignment();
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           ExecutionStreamId execution_stream_id,
           stream_assignment.GetExecutionStreamId(canonical_recv_instr));
 
@@ -2753,7 +2746,7 @@ AsyncThunkSequence ThunkEmitter::EmitAsyncStart(const HloInstruction* instr) {
             operand_slices;
         for (HloInstruction* operand : wrapped->operands()) {
           for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
-            TF_ASSIGN_OR_RETURN(
+            ASSIGN_OR_RETURN(
                 auto slice,
                 ir_emitter_context_->buffer_assignment().GetUniqueSlice(
                     operand, indexed.index));
@@ -2765,7 +2758,7 @@ AsyncThunkSequence ThunkEmitter::EmitAsyncStart(const HloInstruction* instr) {
         absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4>
             result_slices;
         for (auto& indexed : ShapeUtil::GetLeafShapes(wrapped->shape())) {
-          TF_ASSIGN_OR_RETURN(
+          ASSIGN_OR_RETURN(
               auto slice,
               ir_emitter_context_->buffer_assignment().GetUniqueSlice(
                   wrapped, indexed.index));
@@ -2778,7 +2771,7 @@ AsyncThunkSequence ThunkEmitter::EmitAsyncStart(const HloInstruction* instr) {
         host_offloading_executable_proto.set_executable_type(
             HostOffloadingExecutableProto::EXECUTABLE_TYPE_NANORT);
 
-        TF_ASSIGN_OR_RETURN(
+        ASSIGN_OR_RETURN(
             auto thunk,
             HostExecuteStartThunk::Create(
                 Thunk::ThunkInfo::WithProfileAnnotation(

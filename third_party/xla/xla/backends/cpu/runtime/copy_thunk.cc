@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/copy_thunk.h"
 
+#include "xla/tsl/platform/status_macros.h"
+
 #define EIGEN_USE_THREADS
 
 #include <algorithm>
@@ -147,8 +149,8 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CopyThunk::Execute(
   se::DeviceAddressBase dst_data;
 
   if constexpr (ShouldCheckBufferSlices()) {
-    TF_ASSIGN_OR_RETURN(src_data, allocations->GetDeviceAddress(src_buffer_));
-    TF_ASSIGN_OR_RETURN(dst_data, allocations->GetDeviceAddress(dst_buffer_));
+    ASSIGN_OR_RETURN(src_data, allocations->GetDeviceAddress(src_buffer_));
+    ASSIGN_OR_RETURN(dst_data, allocations->GetDeviceAddress(dst_buffer_));
   } else {
     src_data = allocations->GetDeviceAddressUnchecked(src_buffer_);
     dst_data = allocations->GetDeviceAddressUnchecked(dst_buffer_);
