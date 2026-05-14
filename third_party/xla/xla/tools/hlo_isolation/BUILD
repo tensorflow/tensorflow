@@ -36,6 +36,7 @@ cc_library(
         "//xla:literal",
         "//xla:literal_comparison",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/hlo/transforms:defuser",
