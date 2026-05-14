@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -167,9 +168,13 @@ class GpuCollectives : public Collectives {
       size_t offset, size_t count);
 
   // TODO(b/410686553): Use smart wrapper instead of void*.
-  virtual absl::StatusOr<void*> Allocate(uint64_t bytes) = 0;
+  virtual absl::StatusOr<void*> Allocate(uint64_t bytes) {
+    return Unimplemented("Allocate is not implemented");
+  }
 
-  virtual absl::Status Deallocate(void* buffer) = 0;
+  virtual absl::Status Deallocate(void* buffer) {
+    return Unimplemented("Deallocate is not implemented");
+  }
 
   // Creates a single communicator.
   virtual absl::StatusOr<std::unique_ptr<Communicator>>
