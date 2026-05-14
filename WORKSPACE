@@ -25,6 +25,10 @@ load("@//tensorflow:workspace3.bzl", "tf_workspace3")
 
 tf_workspace3()
 
+load("@bazel_features//:deps.bzl", "bazel_features_deps")
+
+bazel_features_deps()
+
 load("@rules_shell//shell:repositories.bzl", "rules_shell_dependencies", "rules_shell_toolchains")
 
 rules_shell_dependencies()
@@ -51,6 +55,10 @@ register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64_cuda")
 load("@xla//third_party/py:python_init_rules.bzl", "python_init_rules")
 
 python_init_rules()
+
+load("@rules_cc//cc:extensions.bzl", "compatibility_proxy_repo")
+
+compatibility_proxy_repo()
 
 load("@xla//third_party/py:python_init_repositories.bzl", "python_init_repositories")
 
