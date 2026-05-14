@@ -33,90 +33,90 @@ class TestWorkerInterface : public WorkerInterface {
   void GetStatusAsync(CallOptions* opts, const GetStatusRequest* request,
                       GetStatusResponse* response, bool fail_fast,
                       StatusCallback done) override {
-    done(errors::Unimplemented("GetStatusAsync"));
+    done(absl::UnimplementedError("GetStatusAsync"));
   }
 
   void CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,
                                 CreateWorkerSessionResponse* response,
                                 StatusCallback done) override {
-    done(errors::Unimplemented("CreateWorkerSessionAsync"));
+    done(absl::UnimplementedError("CreateWorkerSessionAsync"));
   }
 
   void DeleteWorkerSessionAsync(CallOptions* opts,
                                 const DeleteWorkerSessionRequest* request,
                                 DeleteWorkerSessionResponse* response,
                                 StatusCallback done) override {
-    done(errors::Unimplemented("DeleteWorkerSessionAsync"));
+    done(absl::UnimplementedError("DeleteWorkerSessionAsync"));
   }
 
   void RegisterGraphAsync(const RegisterGraphRequest* request,
                           RegisterGraphResponse* response,
                           StatusCallback done) override {
-    done(errors::Unimplemented("RegisterGraphAsync"));
+    done(absl::UnimplementedError("RegisterGraphAsync"));
   }
 
   void DeregisterGraphAsync(const DeregisterGraphRequest* request,
                             DeregisterGraphResponse* response,
                             StatusCallback done) override {
-    done(errors::Unimplemented("DeregisterGraphAsync"));
+    done(absl::UnimplementedError("DeregisterGraphAsync"));
   }
 
   void RunGraphAsync(CallOptions* opts, RunGraphRequestWrapper* request,
                      MutableRunGraphResponseWrapper* response,
                      StatusCallback done) override {
-    done(errors::Unimplemented("RunGraphAsync"));
+    done(absl::UnimplementedError("RunGraphAsync"));
   }
 
   void CleanupGraphAsync(const CleanupGraphRequest* request,
                          CleanupGraphResponse* response,
                          StatusCallback done) override {
-    done(errors::Unimplemented("CleanupGraphAsync"));
+    done(absl::UnimplementedError("CleanupGraphAsync"));
   }
 
   void CleanupAllAsync(const CleanupAllRequest* request,
                        CleanupAllResponse* response,
                        StatusCallback done) override {
-    done(errors::Unimplemented("CleanupAllAsync"));
+    done(absl::UnimplementedError("CleanupAllAsync"));
   }
 
   void RecvTensorAsync(CallOptions* opts, const RecvTensorRequest* request,
                        TensorResponse* response, StatusCallback done) override {
-    done(errors::Unimplemented("RecvTensorAsync"));
+    done(absl::UnimplementedError("RecvTensorAsync"));
   }
 
   void LoggingAsync(const LoggingRequest* request, LoggingResponse* response,
                     StatusCallback done) override {
-    done(errors::Unimplemented("LoggingAsync"));
+    done(absl::UnimplementedError("LoggingAsync"));
   }
 
   void TracingAsync(const TracingRequest* request, TracingResponse* response,
                     StatusCallback done) override {
-    done(errors::Unimplemented("TracingAsync"));
+    done(absl::UnimplementedError("TracingAsync"));
   }
 
   void RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
                     RecvBufResponse* response, StatusCallback done) override {
-    done(errors::Unimplemented("RecvBufAsync"));
+    done(absl::UnimplementedError("RecvBufAsync"));
   }
 
   void CompleteGroupAsync(CallOptions* opts,
                           const CompleteGroupRequest* request,
                           CompleteGroupResponse* response,
                           StatusCallback done) override {
-    done(errors::Unimplemented("CompleteGroupAsync"));
+    done(absl::UnimplementedError("CompleteGroupAsync"));
   }
 
   void CompleteInstanceAsync(CallOptions* ops,
                              const CompleteInstanceRequest* request,
                              CompleteInstanceResponse* response,
                              StatusCallback done) override {
-    done(errors::Unimplemented("CompleteInstanceAsync"));
+    done(absl::UnimplementedError("CompleteInstanceAsync"));
   }
 
   void GetStepSequenceAsync(const GetStepSequenceRequest* request,
                             GetStepSequenceResponse* response,
                             StatusCallback done) override {
-    done(errors::Unimplemented("GetStepSequenceAsync"));
+    done(absl::UnimplementedError("GetStepSequenceAsync"));
   }
 };
 
@@ -166,12 +166,12 @@ class TestWorkerCache : public WorkerCacheInterface {
 
   absl::Status GetEagerClientCache(
       std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
-    return errors::Unimplemented("Unimplemented.");
+    return absl::UnimplementedError("Unimplemented.");
   }
 
   absl::Status GetCoordinationClientCache(
       std::unique_ptr<CoordinationClientCache>* coord_client_cache) override {
-    return errors::Unimplemented("Unimplemented.");
+    return absl::UnimplementedError("Unimplemented.");
   }
 
   bool GetDeviceLocalityNonBlocking(const std::string& device,
@@ -193,7 +193,7 @@ class TestWorkerCache : public WorkerCacheInterface {
       done(absl::OkStatus());
       return;
     }
-    done(errors::Internal("Device not found: ", device));
+    done(absl::InternalError(absl::StrCat("Device not found: ", device)));
   }
 
  protected:
