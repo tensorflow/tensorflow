@@ -871,6 +871,52 @@ ENTRY main {
   }
 }
 
+TEST_P(HloDataflowAnalysisTest, LateBoundAsyncUpdateTypeSafety) {
+  // Test that a late-bound async-update that expands an empty tuple slot
+  // into a physical array tensor leaf does not pollute its value set with
+  // the predecessor's dummy tuple value.
+  std::string hlo_str = R"(
+HloModule LateBoundAsyncUpdateTypeSafety, is_scheduled=true
+
+InnerComputation (p0: f32[16]{0}) -> f32[16]{0} {
+  p0 = f32[16]{0} parameter(0)
+  ROOT add = f32[16]{0} add(p0, p0)
+}
+
+AsyncWrappedComputation (p0: f32[16]{0}) -> f32[16]{0} {
+  p0 = f32[16]{0} parameter(0)
+  ROOT call = f32[16]{0} call(p0), to_apply=InnerComputation
+}
+
+ENTRY main () -> f32[16]{0} {
+  p = f32[16]{0} parameter(0)
+  async-start = ((f32[16]{0}), (), s32[]{:S(2)}) async-start(p), calls=AsyncWrappedComputation
+  async-update = ((f32[16]{0}), f32[16]{0}, s32[]{:S(2)}) async-update(async-start)
+  ROOT async-done = f32[16]{0} async-done(async-update)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+  HloInstruction* async_update = FindInstruction(module_.get(), "async-update");
+  HloComputation* inner_comp =
+      FindComputation(module_.get(), "InnerComputation");
+  HloInstruction* add = inner_comp->root_instruction();
+  SCOPED_TRACE(module_->ToString());
+
+  bool ssa_form = GetParam();
+  const HloDataflowAnalysis& analysis =
+      RunAnalysis(ssa_form, /*bitcast_defines_value=*/false, /*run_dce=*/false);
+
+  // The value set for the expanded leaf array output slot (index {1}) should
+  // contain exactly ONE type-safe HloValue pointer originating from the wrapped
+  // computation's root operation, and MUST NOT contain the predecessor's tuple
+  // value!
+  const HloValueSet& output_value_set = analysis.GetValueSet(async_update, {1});
+  EXPECT_EQ(output_value_set.values().size(), 1);
+  EXPECT_EQ(output_value_set.values().at(0)->defining_instruction(), add);
+}
+
 TEST_P(HloDataflowAnalysisTest, TupleCopy) {
   // Test that a tuple-shaped copy only copies (defines) the top-level value.
   std::string hlo_str = R"(
@@ -3385,6 +3431,58 @@ TEST_P(HloDataflowAnalysisTest, b409756077) {
     defining_instructions.push_back(value->defining_instruction());
   }
   EXPECT_THAT(defining_instructions, UnorderedElementsAre(param2, add0));
+}
+
+TEST_P(HloDataflowAnalysisTest, AsyncUpdateMismatchedContextShape) {
+  std::string hlo_str = R"(
+  HloModule module
+
+  ENTRY entry {
+    p0 = f32[2,3] parameter(0)
+    async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
+    async-update = ((f32[2,3]), f32[2,3]) custom-call-update(async-start)
+    ROOT async-done = f32[2,3] custom-call-done(async-update)
+  }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+
+  bool ssa_form = GetParam();
+  const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
+
+  const HloInstruction* async_start =
+      FindInstruction(module_.get(), "async-start");
+  const HloInstruction* async_update =
+      FindInstruction(module_.get(), "async-update");
+
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_start, /*index=*/{2}));
+  EXPECT_FALSE(ShapeUtil::IndexIsValid(async_update->shape(), {2}));
+}
+
+TEST_P(HloDataflowAnalysisTest, AsyncUpdateIncompatibleContextSubshape) {
+  std::string hlo_str = R"(
+  HloModule module
+
+  ENTRY entry {
+    p0 = f32[2,3] parameter(0)
+    async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
+    async-update = ((f32[2,3]), f32[2,3], f32[4]) custom-call-update(async-start)
+    ROOT async-done = f32[2,3] custom-call-done(async-update)
+  }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+
+  bool ssa_form = GetParam();
+  const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
+
+  const HloInstruction* async_start =
+      FindInstruction(module_.get(), "async-start");
+  const HloInstruction* async_update =
+      FindInstruction(module_.get(), "async-update");
+
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_start, /*index=*/{2}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(async_update, /*index=*/{2}));
 }
 
 }  // namespace
