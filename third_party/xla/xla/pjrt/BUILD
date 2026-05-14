@@ -157,6 +157,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/error:error_codes",
         "//xla/hlo/ir:hlo",
+        "//xla/runtime:device_id",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",
