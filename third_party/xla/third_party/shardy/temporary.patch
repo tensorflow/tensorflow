@@ -1,0 +1,41 @@
+diff --git a/shardy/dialect/mpmd/transforms/import/test/infer_mesh_pipeline_create_reductions.mlir b/shardy/dialect/mpmd/transforms/import/test/infer_mesh_pipeline_create_reductions.mlir
+index 3412522c..65f3334f 100644
+--- a/shardy/dialect/mpmd/transforms/import/test/infer_mesh_pipeline_create_reductions.mlir
++++ b/shardy/dialect/mpmd/transforms/import/test/infer_mesh_pipeline_create_reductions.mlir
+@@ -15,7 +15,7 @@
+ func.func @assign_outputs_with_empty_src_set(%arg0: !m3_4x8, %arg1: !m2_4x8)
+   -> (tensor<4x8xf32>) attributes {topology=#topology} {
+ // CHECK:       %[[T0:.*]] = mpmd.transfer %arg0 {{.*}}m3{{.*}} -> {{.*}}m2
+-// CHECK-NEXT:  %[[ADD:.*]] = mpmd.fragment<mesh="m2", origin=[]> (%[[T0]], %arg1)
++// CHECK-NEXT:  %[[ADD:.*]] = mpmd.fragment<mesh="m2", origin=[]> (%arg1, %[[T0]])
+ // CHECK:       return %[[ADD]]
+   %4 = mpmd.unassign %arg0 : (!m3_4x8) -> tensor<4x8xf32>
+   %5 = mpmd.unassign %arg1 : (!m2_4x8) -> tensor<4x8xf32>
+diff --git a/shardy/dialect/mpmd/transforms/import/test/infer_mesh_pipeline_create_transfers.mlir b/shardy/dialect/mpmd/transforms/import/test/infer_mesh_pipeline_create_transfers.mlir
+index 33953a32..50877eca 100644
+--- a/shardy/dialect/mpmd/transforms/import/test/infer_mesh_pipeline_create_transfers.mlir
++++ b/shardy/dialect/mpmd/transforms/import/test/infer_mesh_pipeline_create_transfers.mlir
+@@ -13,7 +13,7 @@ func.func @assign_outputs_with_empty_src_set(%arg0: !m3_8x16, %arg1: !m2_8x16)
+       <"m3": <["z"=2]>>
+     >} {
+ // CHECK:       %[[T0:.*]] = mpmd.transfer %arg0 {{.*}}m3{{.*}} -> {{.*}}m2
+-// CHECK-NEXT:  %[[ADD:.*]] = mpmd.fragment<mesh="m2", origin=[]> (%[[T0]], %arg1)
++// CHECK-NEXT:  %[[ADD:.*]] = mpmd.fragment<mesh="m2", origin=[]> (%arg1, %[[T0]])
+ // CHECK:       return %[[ADD]]
+   %4 = mpmd.unassign %arg0 : (!m3_8x16) -> tensor<8x16xf32>
+   %5 = mpmd.unassign %arg1 : (!m2_8x16) -> tensor<8x16xf32>
+diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
+index de600e09..8eb9edf1 100644
+--- a/third_party/llvm/workspace.bzl
++++ b/third_party/llvm/workspace.bzl
+@@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
+ 
+ def repo(name):
+     """Imports LLVM."""
+-    LLVM_COMMIT = "87d42c13cd6b119240781f31e5869981d500a186"
+-    LLVM_SHA256 = "66b7f645a9a67d6692c5bea033a536972fcd2e80aa31408d579aae5811521869"
++    LLVM_COMMIT = "c01ca986b3cc32186797c730ee7a91d0cc93d154"
++    LLVM_SHA256 = "4e4c891dced0537a32e948d130537d5e15ba60ebb5442c5fd431556bf1413382"
+ 
+     tf_http_archive(
+         name = name,
