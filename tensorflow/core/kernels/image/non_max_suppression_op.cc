@@ -477,8 +477,20 @@ void BatchedNonMaxSuppressionOp(
       const_cast<float*>(inp_scores.flat<float>().data());
   const float* boxes_data = const_cast<float*>(inp_boxes.flat<float>().data());
 
-  int boxes_per_batch = num_boxes * q * 4;
-  int scores_per_batch = num_boxes * num_classes;
+  const int64_t boxes_per_batch_64 =
+      MultiplyWithoutOverflow(MultiplyWithoutOverflow(num_boxes, q), 4);
+  OP_REQUIRES(context,
+              boxes_per_batch_64 >= 0 &&
+                  boxes_per_batch_64 <= std::numeric_limits<int>::max(),
+              absl::InvalidArgumentError("boxes_per_batch causes overflow"));
+  int boxes_per_batch = static_cast<int>(boxes_per_batch_64);
+  const int64_t scores_per_batch_64 =
+      MultiplyWithoutOverflow(num_boxes, num_classes);
+  OP_REQUIRES(context,
+              scores_per_batch_64 >= 0 &&
+                  scores_per_batch_64 <= std::numeric_limits<int>::max(),
+              absl::InvalidArgumentError("scores_per_batch causes overflow"));
+  int scores_per_batch = static_cast<int>(scores_per_batch_64);
   const int size_per_class = std::min(max_size_per_class, num_boxes);
   const int64_t result_candidate_vec_size = MultiplyWithoutOverflow(
       static_cast<int64_t>(size_per_class), static_cast<int64_t>(num_classes));
@@ -513,7 +525,12 @@ void BatchedNonMaxSuppressionOp(
     }
   };
 
-  int length = num_batches * num_classes;
+  const int64_t length_1_64 = MultiplyWithoutOverflow(num_batches, num_classes);
+  OP_REQUIRES(
+      context,
+      length_1_64 >= 0 && length_1_64 <= std::numeric_limits<int>::max(),
+      absl::InvalidArgumentError("length causes overflow"));
+  int length = static_cast<int>(length_1_64);
   // Input data boxes_data, scores_data
   int input_bytes = num_boxes * 10 * sizeof(float);
   int output_bytes = num_boxes * 10 * sizeof(float);
@@ -535,6 +552,12 @@ void BatchedNonMaxSuppressionOp(
   if (pad_per_class) {
     per_batch_size = std::min(total_size_per_batch, max_total_size);
   }
+  const int64_t per_batch_size_times_4 =
+      MultiplyWithoutOverflow(per_batch_size, 4);
+  OP_REQUIRES(context,
+              per_batch_size_times_4 >= 0 &&
+                  per_batch_size_times_4 <= std::numeric_limits<int>::max(),
+              absl::InvalidArgumentError("per_batch_size * 4 causes overflow"));
 
   Tensor* valid_detections_t = nullptr;
   TensorShape valid_detections_shape({num_batches});
@@ -594,7 +617,20 @@ void BatchedNonMaxSuppressionOp(
       }
     }
   };
-  length = num_batches * per_batch_size;
+  const int64_t length_2_64 =
+      MultiplyWithoutOverflow(num_batches, per_batch_size);
+  OP_REQUIRES(
+      context,
+      length_2_64 >= 0 && length_2_64 <= std::numeric_limits<int>::max(),
+      absl::InvalidArgumentError("length causes overflow"));
+
+  const int64_t length_2_times_4 = MultiplyWithoutOverflow(length_2_64, 4);
+  OP_REQUIRES(context,
+              length_2_times_4 >= 0 &&
+                  length_2_times_4 <= std::numeric_limits<int>::max(),
+              absl::InvalidArgumentError("length * 4 causes overflow"));
+
+  length = static_cast<int>(length_2_64);
   // Input data boxes_data, scores_data
   input_bytes = 6 * sizeof(float);
   output_bytes = 6 * sizeof(float);
