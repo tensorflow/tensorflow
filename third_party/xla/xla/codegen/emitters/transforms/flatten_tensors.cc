@@ -118,7 +118,9 @@ bool HasOnlyFlatTensorsFlatVectorsOrScalars(TypeRange types) {
 }
 
 Value Flatten(Value value, PatternRewriter& rewriter) {
-  if (IsScalarOrFlat(value.getType())) return value;
+  if (IsScalarOrFlat(value.getType())) {
+    return value;
+  }
   auto flat_type = GetFlattenedType(value.getType());
   return UnrealizedConversionCastOp::create(rewriter, value.getLoc(), flat_type,
                                             value)
@@ -157,7 +159,9 @@ struct RewriteFunctionSignatures : OpRewritePattern<FuncOp> {
     SmallVector<Type> new_operand_types(input_types);
     rewriter.setInsertionPointToStart(entry_block);
     for (auto&& [index, operand_type] : llvm::enumerate(new_operand_types)) {
-      if (IsScalarOrFlat(operand_type)) continue;
+      if (IsScalarOrFlat(operand_type)) {
+        continue;
+      }
       mlir::BlockArgument func_argument = op.getArgument(index);
       auto cast_to_orig_type = UnrealizedConversionCastOp::create(
           rewriter, loc, operand_type, func_argument);
@@ -532,7 +536,9 @@ struct RewriteFor : public OpRewritePattern<ForOp> {
                                              new_body->getArguments().end()};
     for (auto [index, arg] :
          llvm::enumerate(new_body->getArguments().drop_front())) {
-      if (!args_to_update.test(index)) continue;
+      if (!args_to_update.test(index)) {
+        continue;
+      }
       updated_block_args[index + 1] =
           UnrealizedConversionCastOp::create(
               rewriter, loc, old_body->getArgument(index + 1).getType(), arg)
@@ -548,7 +554,9 @@ struct RewriteFor : public OpRewritePattern<ForOp> {
     rewriter.setInsertionPoint(new_terminator);
     for (auto&& [index, yielded_value] :
          llvm::enumerate(new_terminator.getResultsMutable())) {
-      if (!args_to_update.test(index)) continue;
+      if (!args_to_update.test(index)) {
+        continue;
+      }
       yielded_value.assign(UnrealizedConversionCastOp::create(
                                rewriter, loc, new_init_args[index].getType(),
                                yielded_value.get())
@@ -559,7 +567,9 @@ struct RewriteFor : public OpRewritePattern<ForOp> {
     rewriter.setInsertionPointAfter(new_for_op);
     SmallVector<Value> new_results(new_for_op.getResults());
     for (auto&& [index, result] : llvm::enumerate(new_results)) {
-      if (!args_to_update.test(index)) continue;
+      if (!args_to_update.test(index)) {
+        continue;
+      }
       result = UnrealizedConversionCastOp::create(
                    rewriter, loc, op->getResult(index).getType(), result)
                    .getResult(0);
@@ -604,7 +614,9 @@ struct RewriteIf : public OpRewritePattern<IfOp> {
       rewriter.setInsertionPoint(else_yield);
       for (auto&& [result, type] :
            llvm::zip(else_yield->getOpOperands(), new_result_types)) {
-        if (result.get().getType() == type) continue;
+        if (result.get().getType() == type) {
+          continue;
+        }
         result.set(UnrealizedConversionCastOp::create(rewriter, loc, type,
                                                       result.get())
                        .getResult(0));
@@ -627,7 +639,9 @@ struct RewriteIf : public OpRewritePattern<IfOp> {
     SmallVector<Value> new_results(new_if_op.getResults());
     for (auto&& [index, result] : llvm::enumerate(new_results)) {
       Type old_type = op->getResult(index).getType();
-      if (result.getType() == old_type) continue;
+      if (result.getType() == old_type) {
+        continue;
+      }
       result =
           UnrealizedConversionCastOp::create(rewriter, loc, old_type, result)
               .getResult(0);
@@ -673,7 +687,9 @@ struct RewriteIndexSwitch : public OpRewritePattern<IndexSwitchOp> {
       rewriter.setInsertionPoint(yield);
       for (auto&& [result, type] :
            llvm::zip(yield->getOpOperands(), new_result_types)) {
-        if (result.get().getType() == type) continue;
+        if (result.get().getType() == type) {
+          continue;
+        }
         result.set(UnrealizedConversionCastOp::create(rewriter, loc, type,
                                                       result.get())
                        .getResult(0));
@@ -692,7 +708,9 @@ struct RewriteIndexSwitch : public OpRewritePattern<IndexSwitchOp> {
     SmallVector<Value> new_results(new_index_switch.getResults());
     for (auto&& [index, result] : llvm::enumerate(new_results)) {
       Type old_type = op->getResult(index).getType();
-      if (result.getType() == old_type) continue;
+      if (result.getType() == old_type) {
+        continue;
+      }
       result =
           UnrealizedConversionCastOp::create(rewriter, loc, old_type, result)
               .getResult(0);
@@ -719,7 +737,9 @@ struct RewriteSyncThreads : OpRewritePattern<gpu::SyncThreadsOp> {
     llvm::SmallBitVector results_to_update(op.getNumResults(), false);
     for (auto& operand : op->getOpOperands()) {
       auto tensor_type = mlir::cast<RankedTensorType>(operand.get().getType());
-      if (tensor_type.getRank() < 2) continue;
+      if (tensor_type.getRank() < 2) {
+        continue;
+      }
       results_to_update.set(operand.getOperandNumber());
       new_operands.push_back(
           UnrealizedConversionCastOp::create(

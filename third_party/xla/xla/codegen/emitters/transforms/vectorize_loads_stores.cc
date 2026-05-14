@@ -108,8 +108,12 @@ int64_t GetAlignmentOfRemainder(SymbolicExpr expr, SymbolicExpr dim_or_sym) {
 
     switch (expr.GetType()) {
       case SymbolicExprType::kAdd:
-        if (expr.GetLHS() == dim_or_sym) return rhs_align;
-        if (expr.GetRHS() == dim_or_sym) return lhs_align;
+        if (expr.GetLHS() == dim_or_sym) {
+          return rhs_align;
+        }
+        if (expr.GetRHS() == dim_or_sym) {
+          return lhs_align;
+        }
         return std::gcd(lhs_align, rhs_align);
       case SymbolicExprType::kMul:
         return lhs_align * rhs_align;
@@ -178,8 +182,10 @@ mlir::VectorType GetVectorTypeForAtomicRMW(mlir::RankedTensorType tensor_type,
     return nullptr;
   }
 
-  if (tensor_type.getElementType() != mlir::Float32Type::get(loop.getContext()))
+  if (tensor_type.getElementType() !=
+      mlir::Float32Type::get(loop.getContext())) {
     return nullptr;
+  }
 
   if (mlir::getConstantIntValue(loop.getStep()) != 1 ||
       mlir::getConstantIntValue(loop.getLowerBound()) != 0) {

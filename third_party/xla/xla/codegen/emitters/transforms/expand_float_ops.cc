@@ -150,7 +150,8 @@ Value IsInf(Value value, mlir::ImplicitLocOpBuilder& b) {
   if (llvm::isa<mlir::Float8E5M2Type>(ty)) {
     Val bits{ma::BitcastOp::create(b, b.getI8Type(), value), &b};
     return (bits & 0x7F) == 0x7C;
-  } else if (llvm::isa<mlir::Float8E4M3Type>(ty)) {
+  }
+  if (llvm::isa<mlir::Float8E4M3Type>(ty)) {
     Val bits{ma::BitcastOp::create(b, b.getI8Type(), value), &b};
     return (bits & 0x7F) == 0x78;
   } else if (llvm::isa<mlir::Float8E3M4Type>(ty)) {
@@ -174,7 +175,8 @@ Value IsNaN(Value value, mlir::ImplicitLocOpBuilder& b) {
   Val bits{ma::BitcastOp::create(b, b.getI8Type(), value), &b};
   if (llvm::isa<mlir::Float8E5M2Type>(ty)) {
     return (bits & 0b0111'1111).cmp(ma::CmpIPredicate::ugt, 0b0111'1100);
-  } else if (llvm::isa<mlir::Float8E4M3Type>(ty)) {
+  }
+  if (llvm::isa<mlir::Float8E4M3Type>(ty)) {
     return (bits & 0b0111'1111).cmp(ma::CmpIPredicate::ugt, 0b0111'1000);
   } else if (llvm::isa<mlir::Float8E4M3FNType>(ty)) {
     return (bits & 0b0111'1111) == 0b0111'1111;
