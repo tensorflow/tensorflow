@@ -704,11 +704,11 @@ class QuantizedResizeBilinearOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const auto& in_min_tensor = context->input(2);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(in_min_tensor.shape()),
-                errors::InvalidArgument("min must be a scalar"));
+                absl::InvalidArgumentError("min must be a scalar"));
     const float in_min = in_min_tensor.flat<float>()(0);
     const auto& in_max_tensor = context->input(3);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(in_max_tensor.shape()),
-                errors::InvalidArgument("max must be a scalar"));
+                absl::InvalidArgumentError("max must be a scalar"));
     const float in_max = in_max_tensor.flat<float>()(0);
 
     ImageResizerState st(align_corners_, false);

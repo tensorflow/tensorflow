@@ -107,7 +107,7 @@ absl::StatusOr<stream_executor::blas::ComputationType> GetBlasComputationType(
     case se::blas::DataType::kComplexDouble:
       return ComputationType::kF64;
     default:
-      return errors::Internal("Unsupported dtype for Blas Plans.");
+      return absl::InternalError("Unsupported dtype for Blas Plans.");
   }
 }
 
@@ -198,7 +198,7 @@ absl::Status PlanAndAlgorithms::ExecuteOnStream(
     const stream_executor::DeviceAddressBase& bias,
     se::blas::ProfileResult* profile_result) const {
   if (!plan || algorithm_idx >= algorithms.size()) {
-    return errors::Internal("MatmulPlan or algorithms are not initialized!");
+    return absl::InternalError("MatmulPlan or algorithms are not initialized!");
   }
   TF_RETURN_IF_ERROR(plan->SetAlgorithm(algorithms[algorithm_idx]));
   return plan->ExecuteOnStream(
