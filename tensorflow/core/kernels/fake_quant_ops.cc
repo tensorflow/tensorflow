@@ -354,6 +354,10 @@ class FakeQuantWithMinMaxVarsPerChannelOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     CHECK_EQ(3, context->num_inputs());
     const Tensor& input = context->input(0);
+    OP_REQUIRES(context, input.dims() >= 1,
+                InvalidArgument("`inputs` must be at least rank 1 but is "
+                                "rank ",
+                                input.dims()));
     const int depth = input.dim_size(input.dims() - 1);  // last dimension size.
     const Tensor& min = context->input(1);
     const Tensor& max = context->input(2);
@@ -418,6 +422,10 @@ class FakeQuantWithMinMaxVarsPerChannelGradientOp : public OpKernel {
     const Tensor& input = context->input(1);
     OP_REQUIRES(context, input.IsSameSize(gradient),
                 InvalidArgument("gradient and input must be the same size"));
+    OP_REQUIRES(context, input.dims() >= 1,
+                InvalidArgument("`inputs` must be at least rank 1 but is "
+                                "rank ",
+                                input.dims()));
     const int depth = input.dim_size(input.dims() - 1);  // last dimension size.
     const Tensor& min = context->input(2);
     OP_REQUIRES(
