@@ -29,16 +29,17 @@ limitations under the License.
 
 namespace tensorflow {
 
-bool ReadWaveFileToVector(const string& file_name, std::vector<double>* data) {
-  string wav_data;
+bool ReadWaveFileToVector(const std::string& file_name,
+                          std::vector<double>* data) {
+  std::string wav_data;
   if (!ReadFileToString(Env::Default(), file_name, &wav_data).ok()) {
     LOG(ERROR) << "Wave file read failed for " << file_name;
     return false;
   }
   std::vector<float> decoded_data;
-  uint32 decoded_sample_count;
-  uint16 decoded_channel_count;
-  uint32 decoded_sample_rate;
+  uint32_t decoded_sample_count;
+  uint16_t decoded_channel_count;
+  uint32_t decoded_sample_rate;
   if (!wav::DecodeLin16WaveAsFloatVector(
            wav_data, &decoded_data, &decoded_sample_count,
            &decoded_channel_count, &decoded_sample_rate)
@@ -54,10 +55,10 @@ bool ReadWaveFileToVector(const string& file_name, std::vector<double>* data) {
 }
 
 bool ReadRawFloatFileToComplexVector(
-    const string& file_name, int row_length,
+    const std::string& file_name, int row_length,
     std::vector<std::vector<std::complex<double> > >* data) {
   data->clear();
-  string data_string;
+  std::string data_string;
   if (!ReadFileToString(Env::Default(), file_name, &data_string).ok()) {
     LOG(ERROR) << "Failed to open file " << file_name;
     return false;
@@ -104,26 +105,26 @@ bool ReadRawFloatFileToComplexVector(
 }
 
 void ReadCSVFileToComplexVectorOrDie(
-    const string& file_name,
+    const std::string& file_name,
     std::vector<std::vector<std::complex<double> > >* data) {
   data->clear();
-  string data_string;
+  std::string data_string;
   if (!ReadFileToString(Env::Default(), file_name, &data_string).ok()) {
     LOG(FATAL) << "Failed to open file " << file_name;
     return;
   }
-  std::vector<string> lines = str_util::Split(data_string, '\n');
-  for (const string& line : lines) {
+  std::vector<std::string> lines = str_util::Split(data_string, '\n');
+  for (const std::string& line : lines) {
     if (line.empty()) {
       continue;
     }
     std::vector<std::complex<double> > data_line;
-    std::vector<string> values = str_util::Split(line, ',');
-    for (std::vector<string>::const_iterator i = values.begin();
+    std::vector<std::string> values = str_util::Split(line, ',');
+    for (std::vector<std::string>::const_iterator i = values.begin();
          i != values.end(); ++i) {
       // each element of values may be in the form:
       // 0.001+0.002i, 0.001, 0.001i, -1.2i, -1.2-3.2i, 1.5, 1.5e-03+21.0i
-      std::vector<string> parts;
+      std::vector<std::string> parts;
       // Find the first instance of + or - after the second character
       // in the string, that does not immediately follow an 'e'.
       size_t operator_index = i->find_first_of("+-", 2);
@@ -133,17 +134,17 @@ void ReadCSVFileToComplexVectorOrDie(
       }
       parts.push_back(i->substr(0, operator_index));
       if (operator_index < i->size()) {
-        parts.push_back(i->substr(operator_index, string::npos));
+        parts.push_back(i->substr(operator_index, std::string::npos));
       }
 
       double real_part = 0.0;
       double imaginary_part = 0.0;
-      for (std::vector<string>::const_iterator j = parts.begin();
+      for (std::vector<std::string>::const_iterator j = parts.begin();
            j != parts.end(); ++j) {
-        if (j->find_first_of("ij") != string::npos) {
-          strings::safe_strtod(*j, &imaginary_part);
+        if (j->find_first_of("ij") != std::string::npos) {
+          absl::SimpleAtod(*j, &imaginary_part);
         } else {
-          strings::safe_strtod(*j, &real_part);
+          absl::SimpleAtod(*j, &real_part);
         }
       }
       data_line.push_back(std::complex<double>(real_part, imaginary_part));
@@ -152,19 +153,19 @@ void ReadCSVFileToComplexVectorOrDie(
   }
 }
 
-void ReadCSVFileToArrayOrDie(const string& filename,
+void ReadCSVFileToArrayOrDie(const std::string& filename,
                              std::vector<std::vector<float> >* array) {
-  string contents;
+  std::string contents;
   TF_CHECK_OK(ReadFileToString(Env::Default(), filename, &contents));
-  std::vector<string> lines = str_util::Split(contents, '\n');
+  std::vector<std::string> lines = str_util::Split(contents, '\n');
   contents.clear();
 
   array->clear();
   std::vector<float> values;
   for (int l = 0; l < lines.size(); ++l) {
     values.clear();
-    std::vector<string> split_line = str_util::Split(lines[l], ",");
-    for (const string& token : split_line) {
+    std::vector<std::string> split_line = str_util::Split(lines[l], ",");
+    for (const std::string& token : split_line) {
       float tmp;
       CHECK(absl::SimpleAtof(token, &tmp));
       values.push_back(tmp);
@@ -173,7 +174,7 @@ void ReadCSVFileToArrayOrDie(const string& filename,
   }
 }
 
-bool WriteDoubleVectorToFile(const string& file_name,
+bool WriteDoubleVectorToFile(const std::string& file_name,
                              const std::vector<double>& data) {
   std::unique_ptr<WritableFile> file;
   if (!Env::Default()->NewWritableFile(file_name, &file).ok()) {
@@ -196,7 +197,7 @@ bool WriteDoubleVectorToFile(const string& file_name,
   return true;
 }
 
-bool WriteFloatVectorToFile(const string& file_name,
+bool WriteFloatVectorToFile(const std::string& file_name,
                             const std::vector<float>& data) {
   std::unique_ptr<WritableFile> file;
   if (!Env::Default()->NewWritableFile(file_name, &file).ok()) {
@@ -219,7 +220,7 @@ bool WriteFloatVectorToFile(const string& file_name,
   return true;
 }
 
-bool WriteDoubleArrayToFile(const string& file_name, int size,
+bool WriteDoubleArrayToFile(const std::string& file_name, int size,
                             const double* data) {
   std::unique_ptr<WritableFile> file;
   if (!Env::Default()->NewWritableFile(file_name, &file).ok()) {
@@ -242,7 +243,7 @@ bool WriteDoubleArrayToFile(const string& file_name, int size,
   return true;
 }
 
-bool WriteFloatArrayToFile(const string& file_name, int size,
+bool WriteFloatArrayToFile(const std::string& file_name, int size,
                            const float* data) {
   std::unique_ptr<WritableFile> file;
   if (!Env::Default()->NewWritableFile(file_name, &file).ok()) {
@@ -266,7 +267,7 @@ bool WriteFloatArrayToFile(const string& file_name, int size,
 }
 
 bool WriteComplexVectorToRawFloatFile(
-    const string& file_name,
+    const std::string& file_name,
     const std::vector<std::vector<std::complex<double> > >& data) {
   std::unique_ptr<WritableFile> file;
   if (!Env::Default()->NewWritableFile(file_name, &file).ok()) {
