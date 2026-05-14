@@ -298,27 +298,6 @@ absl::StatusOr<PjRtDeviceEventRef> CpuRawBuffer::CopyFromHostBuffer(
   return PjRtDeviceEventRef(tsl::MakeAvailableAsyncValueRef<CpuEvent>());
 }
 
-absl::StatusOr<xla::Shape> MakeDefaultCpuBufferShape(
-    xla::Shape shape, const xla::Layout* layout) {
-  if (layout) {
-    shape.mutable_layout()->mutable_minor_to_major()->assign(
-        layout->minor_to_major().begin(), layout->minor_to_major().end());
-  } else {
-    xla::LayoutUtil::SetToDefaultLayout(&shape);
-  }
-  auto element_type = shape.element_type();
-  if (primitive_util::IsSubByteNonPredType(element_type)) {
-    shape.mutable_layout()->set_element_size_in_bits(
-        primitive_util::BitWidth(element_type));
-  }
-  if (layout && *layout != shape.layout()) {
-    return absl::UnimplementedError(
-        absl::StrCat("PjRt CPU buffers only support default layout. ",
-                     shape.ToString(), " vs ", layout->ToString()));
-  }
-  return shape;
-}
-
 void CpuRawBuffer::ReadDynamicShape(tsl::AsyncValueRef<xla::Shape> output_shape,
                                     xla::Shape shape) {
   size_t offset = xla::ShapeUtil::ByteSizeOf(shape, sizeof(void*));

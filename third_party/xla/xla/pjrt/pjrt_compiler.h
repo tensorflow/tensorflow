@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/proto/pjrt_partial_program.pb.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
+#include "xla/shape.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/fingerprint.h"
@@ -374,6 +375,16 @@ class PjRtTopologyDescription {
   // "mhlo.layout_mode" attribute.
   virtual absl::StatusOr<Layout> GetDefaultLayout(
       PrimitiveType element_type, absl::Span<const int64_t> dims) const = 0;
+
+  // Returns the canonical shape for a memory_space with an optionally provided
+  // layout. This is useful for predicting the full shape + layout of a buffer
+  // after it is transferred to a particular memory space.
+  virtual absl::StatusOr<xla::Shape> MakeCanonicalShapeForMemorySpace(
+      int memory_space_kind, xla::Shape shape,
+      const xla::Layout* layout) const {
+    return absl::UnimplementedError(
+        "MakeCanonicalShapeForMemorySpace is unsupported.");
+  }
 
   virtual absl::StatusOr<PjRtTopologyDescriptionProto> ToProto() const {
     return absl::UnimplementedError("ToProto is unsupported.");

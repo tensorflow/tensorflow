@@ -69,6 +69,12 @@ absl::StatusOr<Layout> CpuTopologyDescription::GetDefaultLayout(
   return LayoutUtil::GetWithDefaultLayout(shape).layout();
 }
 
+absl::StatusOr<xla::Shape>
+CpuTopologyDescription::MakeCanonicalShapeForMemorySpace(
+    int memory_space_kind, xla::Shape shape, const xla::Layout* layout) const {
+  return MakeDefaultCpuBufferShape(std::move(shape), layout);
+}
+
 absl::StatusOr<uint64_t> CpuTopologyDescription::Fingerprint() const {
   std::string result;
   if (!tsl::SerializeToStringDeterministic(cpu_topology_.ToProto(), &result)) {
@@ -128,6 +134,27 @@ CpuTopologyDescription::FromProto(
   return std::make_unique<CpuTopologyDescription>(
       proto.platform_id(), proto.platform_name(), proto.platform_version(),
       *cpu_topology);
+}
+
+absl::StatusOr<xla::Shape> MakeDefaultCpuBufferShape(
+    xla::Shape shape, const xla::Layout* layout) {
+  if (layout) {
+    shape.mutable_layout()->mutable_minor_to_major()->assign(
+        layout->minor_to_major().begin(), layout->minor_to_major().end());
+  } else {
+    xla::LayoutUtil::SetToDefaultLayout(&shape);
+  }
+  auto element_type = shape.element_type();
+  if (primitive_util::IsSubByteNonPredType(element_type)) {
+    shape.mutable_layout()->set_element_size_in_bits(
+        primitive_util::BitWidth(element_type));
+  }
+  if (layout && *layout != shape.layout()) {
+    return absl::UnimplementedError(
+        absl::StrCat("PjRt CPU buffers only support default layout. ",
+                     shape.ToString(), " vs ", layout->ToString()));
+  }
+  return shape;
 }
 
 }  // namespace xla
