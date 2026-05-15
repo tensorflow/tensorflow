@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_instruction_utils.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -22,12 +23,18 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -84,6 +91,73 @@ int32_t NestingDepth(const HloInstruction* hlo) {
   }
   return level;
 }
+
+namespace async {
+
+absl::StatusOr<bool> AreOperandsAndOutputFullyBound(
+    const HloInstruction* async_op, const ShapeIndex& index) {
+  if (index.empty()) {
+    TF_ASSIGN_OR_RETURN(bool operands_bound,
+                        AreOperandsAndOutputFullyBound(async_op, {0}));
+    TF_ASSIGN_OR_RETURN(bool output_bound,
+                        AreOperandsAndOutputFullyBound(async_op, {1}));
+    return operands_bound && output_bound;
+  }
+
+  const Shape& async_tuple_shape = (async_op->opcode() == HloOpcode::kAsyncDone)
+                                       ? async_op->operand(0)->shape()
+                                       : async_op->shape();
+  CHECK(async_tuple_shape.IsTuple() &&
+        async_tuple_shape.tuple_shapes().size() >= 2);
+
+  const ProgramShape called_computation_shape =
+      async_op->async_wrapped_computation()->ComputeProgramShape();
+  const Shape expected_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeTupleShape(called_computation_shape.parameters()),
+       called_computation_shape.result()});
+
+  if (index.front() > 1 || !ShapeUtil::IndexIsValid(expected_shape, index)) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Invalid index: ", index.ToString(),
+        ", note that the index must start with 0 or 1, or be empty."));
+  }
+
+  if (!ShapeUtil::IndexIsValid(async_tuple_shape, index)) {
+    return false;
+  }
+
+  const Shape& expected_subshape =
+      ShapeUtil::GetSubshape(expected_shape, index);
+  const Shape& async_tuple_subshape =
+      ShapeUtil::GetSubshape(async_tuple_shape, index);
+
+  return ShapeUtil::Equal(expected_subshape, async_tuple_subshape);
+}
+
+std::vector<const HloInstruction*> GetAsyncBoundOperands(
+    const HloInstruction* async_op) {
+  CHECK(async_op->opcode() == HloOpcode::kAsyncStart ||
+        async_op->opcode() == HloOpcode::kAsyncUpdate ||
+        async_op->opcode() == HloOpcode::kAsyncDone);
+
+  std::vector<const HloInstruction*> bound_operands;
+  for (const HloInstruction* instr :
+       Cast<HloAsyncStartInstruction>(async_op->async_chain_start())
+           ->GetAsyncChain()) {
+    int start_idx = (instr->opcode() == HloOpcode::kAsyncStart) ? 0 : 1;
+
+    for (int i = start_idx; i < instr->operand_count(); ++i) {
+      bound_operands.push_back(instr->operand(i));
+    }
+    if (instr == async_op) {
+      break;
+    }
+  }
+
+  return bound_operands;
+}
+
+}  // namespace async
 
 }  // namespace hlo_instruction_utils
 }  // namespace xla
