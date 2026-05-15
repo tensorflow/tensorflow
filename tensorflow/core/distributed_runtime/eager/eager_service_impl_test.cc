@@ -1393,6 +1393,7 @@ TEST_F(EagerServiceImplTest, SendPackedHandleTest) {
   remote_handle->set_output_num(0);
   remote_handle->set_op_device(device0);
   remote_handle->set_device(device0);
+  remote_handle->set_dtype(tensorflow::DataType::DT_FLOAT);
 
   SendPackedHandleOp::LocalTensorHandle* lcoal_handle =
       send_packed_handle->add_handles()->mutable_local_handle();
@@ -1404,6 +1405,7 @@ TEST_F(EagerServiceImplTest, SendPackedHandleTest) {
   remote_handle->set_output_num(5);
   remote_handle->set_op_device(device2);
   remote_handle->set_device(device2);
+  remote_handle->set_dtype(tensorflow::DataType::DT_FLOAT);
 
   TF_ASSERT_OK(eager_service_impl.Enqueue(nullptr, &remote_enqueue_request,
                                           &remote_enqueue_response));
