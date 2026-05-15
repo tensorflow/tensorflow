@@ -39,7 +39,7 @@ class RendezvousCache : public tsl::core::WeakRefCounted {
     for (auto& p : table_) {
       auto rendez = p.second.GetNewRef();
       if (rendez) {
-        rendez->StartAbort(tsl::errors::Aborted("Shutdown"));
+        rendez->StartAbort(absl::AbortedError("Shutdown"));
       }
     }
   }
@@ -108,7 +108,7 @@ class RendezvousCache : public tsl::core::WeakRefCounted {
       }
     }
     if (rendez) {
-      rendez->StartAbort(tsl::errors::Aborted("Cleanup ", step_id));
+      rendez->StartAbort(absl::AbortedError(absl::StrCat("Cleanup ", step_id)));
     }
   }
 

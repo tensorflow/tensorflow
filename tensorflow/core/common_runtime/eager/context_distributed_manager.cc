@@ -532,8 +532,8 @@ absl::Status CreateRemoteContexts(
     const std::string& remote_worker = remote_workers[i];
     DeviceNameUtils::ParsedName parsed_name;
     if (!DeviceNameUtils::ParseFullName(remote_worker, &parsed_name)) {
-      statuses[i] = errors::InvalidArgument("Unable to parse ", remote_worker,
-                                            " as a device name");
+      statuses[i] = absl::InvalidArgumentError(
+          absl::StrCat("Unable to parse ", remote_worker, " as a device name"));
       counter.DecrementCount();
       continue;
     }
@@ -541,8 +541,8 @@ absl::Status CreateRemoteContexts(
     core::RefCountPtr<eager::EagerClient> eager_client;
     statuses[i] = remote_eager_workers->GetClient(remote_worker, &eager_client);
     if (eager_client == nullptr) {
-      statuses[i] = errors::Internal(
-          "Cannot find a client for the given target:", remote_worker);
+      statuses[i] = absl::InternalError(absl::StrCat(
+          "Cannot find a client for the given target:", remote_worker));
     }
     if (!statuses[i].ok()) {
       counter.DecrementCount();
@@ -630,8 +630,8 @@ absl::Status UpdateRemoteContexts(
     const std::string& remote_worker = remote_workers[i];
     DeviceNameUtils::ParsedName parsed_name;
     if (!DeviceNameUtils::ParseFullName(remote_worker, &parsed_name)) {
-      statuses[i] = errors::InvalidArgument("Unable to parse ", remote_worker,
-                                            " as a device name");
+      statuses[i] = absl::InvalidArgumentError(
+          absl::StrCat("Unable to parse ", remote_worker, " as a device name"));
       counter.DecrementCount();
       continue;
     }
@@ -639,8 +639,8 @@ absl::Status UpdateRemoteContexts(
     core::RefCountPtr<eager::EagerClient> eager_client;
     statuses[i] = remote_eager_workers->GetClient(remote_worker, &eager_client);
     if (eager_client == nullptr) {
-      statuses[i] = errors::Internal(
-          "Cannot find a client for the given target:", remote_worker);
+      statuses[i] = absl::InternalError(absl::StrCat(
+          "Cannot find a client for the given target:", remote_worker));
     }
     if (!statuses[i].ok()) {
       counter.DecrementCount();
@@ -793,7 +793,7 @@ absl::Status UpdateContextWithServerDef(EagerContext* context,
 
     remote_device_mgr = context->GetOwnedRemoteDeviceMgr();
     if (remote_device_mgr == nullptr) {
-      LOG_AND_RETURN_IF_ERROR(errors::InvalidArgument(
+      LOG_AND_RETURN_IF_ERROR(absl::InvalidArgumentError(
           "Updating context with an invalid set of remote devices."));
     }
     std::sort(curr_remote_workers.begin(), curr_remote_workers.end());
@@ -1064,7 +1064,7 @@ absl::Status EagerContextDistributedManager::EnableCollectiveOps(
     LOG_AND_RETURN_IF_ERROR(NewServer(server_def, &new_server));
     server = new_server.get();
     if (server == nullptr) {
-      LOG_AND_RETURN_IF_ERROR(errors::Internal(
+      LOG_AND_RETURN_IF_ERROR(absl::InternalError(
           "Currently, TF eager runtime only supports GrpcServer."));
     }
     const auto& config = server_def.default_session_config();
@@ -1183,9 +1183,9 @@ absl::Status EagerContextDistributedManager::CheckRemoteAlive(
       context_->GetServer()->master_env()->worker_cache->GetOrCreateWorker(
           remote_task_name);
   if (wi == nullptr) {
-    return errors::InvalidArgument(
-        "Unable to find worker interface corresponding to task ",
-        remote_task_name);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unable to find worker interface corresponding to task ",
+                     remote_task_name));
   }
 
   GetStatusRequest request;
