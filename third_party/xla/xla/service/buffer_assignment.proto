@@ -118,6 +118,10 @@ message BufferIsolationConfig {
 // If FAST_MERGE, a faster variant that merges the live range of colocations.
 // If FAST_SPLIT, a faster variant that splits the memory space for buffers with
 // colocations and buffers without colocations.
+// If FAST_MERGE_WITH_FALLBACK, uses FAST_MERGE and falls back to the
+// DEFAULT algorithm if it runs out of memory.
+// If FAST_SPLIT_WITH_FALLBACK, uses FAST_SPLIT and falls back to the
+// DEFAULT algorithm if it runs out of memory.
 message BufferAssignmentAlgorithmProto {
   enum Value {
     DEFAULT = 0;
@@ -127,6 +131,7 @@ message BufferAssignmentAlgorithmProto {
     FAST_MERGE = 4;
     FAST_SPLIT = 5;
     FAST_MERGE_WITH_FALLBACK = 6;
+    FAST_SPLIT_WITH_FALLBACK = 7;
   }
   optional Value fallback_algorithm = 1;
 }
