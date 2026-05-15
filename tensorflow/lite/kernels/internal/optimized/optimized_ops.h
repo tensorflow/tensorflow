@@ -5678,18 +5678,23 @@ inline void ResizeNearestNeighbor(
   // error factor and to avoid zero scales. For example, with input_height = 1,
   // output_height = 3, the float scaling factor would be non-zero at 1/3.
   // With fixed-point, this is zero.
-  int32_t height_scale = (input_height << 16) / output_height + 1;
-  int32_t width_scale = (input_width << 16) / output_width + 1;
+  int64_t height_scale =
+      (static_cast<int64_t>(input_height) << 16) / output_height + 1;
+  int64_t width_scale =
+      (static_cast<int64_t>(input_width) << 16) / output_width + 1;
 
-  const int col_offset = input_shape.Dims(3);
-  const int row_offset = input_shape.Dims(2) * col_offset;
-  const int batch_offset = input_shape.Dims(1) * row_offset;
+  const int64_t col_offset = input_shape.Dims(3);
+  const int64_t row_offset =
+      static_cast<int64_t>(input_shape.Dims(2)) * col_offset;
+  const int64_t batch_offset =
+      static_cast<int64_t>(input_shape.Dims(1)) * row_offset;
 
   const uint8_t* input_ptr = input_data;
   uint8_t* output_ptr = output_data;
   for (int b = 0; b < batches; ++b) {
-    for (int y = 0; y < output_height; ++y) {
-      int32_t in_y = std::min((y * height_scale) >> 16, input_height - 1);
+    for (int64_t y = 0; y < output_height; ++y) {
+      int64_t in_y = std::min((y * height_scale) >> 16,
+                              static_cast<int64_t>(input_height - 1));
       // Check offset calculation is the same as the reference version. See
       // function comment for details. We check using a non-float version of:
       // TFLITE_DCHECK_EQ(in_y, std::floor(y * (static_cast<float>(input_height)
@@ -5697,8 +5702,9 @@ inline void ResizeNearestNeighbor(
       TFLITE_DCHECK_LT(y * input_height, output_height + in_y * output_height);
       TFLITE_DCHECK_GE(y * input_height, in_y * output_height);
       const uint8_t* y_input_ptr = input_ptr + in_y * row_offset;
-      for (int x = 0; x < output_width; ++x) {
-        int32_t in_x = std::min((x * width_scale) >> 16, input_width - 1);
+      for (int64_t x = 0; x < output_width; ++x) {
+        int64_t in_x = std::min((x * width_scale) >> 16,
+                                static_cast<int64_t>(input_width - 1));
         // Check offset calculation is the same as the reference version. See
         // function comment for details. We check using a non-float version of:
         // TFLITE_DCHECK_EQ(in_y,
