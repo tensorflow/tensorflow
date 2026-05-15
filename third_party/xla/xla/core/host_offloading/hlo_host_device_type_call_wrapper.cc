@@ -633,7 +633,24 @@ absl::StatusOr<bool> HloHostDeviceTypeCallWrapper::RunImpl(
 
   TF_RETURN_IF_ERROR(
       AnnotateHostComputeOffload().Run(module, execution_threads).status());
-  TF_RETURN_IF_ERROR(CallInliner().Run(module, execution_threads).status());
+  TF_RETURN_IF_ERROR(
+      CallInliner(
+          /*single_call_site=*/false, /*update_domain=*/false,
+          /*composites_to_preserve=*/{},
+          [](const CallGraph&, const HloInstruction* call) {
+            if (host_offload_utils::ComputeTypeIsHost(call) ||
+                absl::c_any_of(call->to_apply()->instructions(),
+                               [](const HloInstruction* inst) {
+                                 return host_offload_utils::ComputeTypeIsHost(
+                                     inst);
+                               })) {
+              return CallInliner::InlineOverridePolicy::
+                  kAllowIgnoreFrontendAttributes;
+            }
+            return CallInliner::InlineOverridePolicy::kAllowInline;
+          })
+          .Run(module, execution_threads)
+          .status());
   TF_RETURN_IF_ERROR(TupleSimplifier().Run(module, execution_threads).status());
   TF_RETURN_IF_ERROR(HloDCE().Run(module, execution_threads).status());
 

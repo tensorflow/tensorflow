@@ -1360,6 +1360,7 @@ cc_library(
     deps = [
         ":hlo_dce",
         "//xla:shape_util",
+        "//xla:side_effect_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
@@ -1367,7 +1368,9 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@tsl//tsl/platform:logging",
         "@tsl//tsl/platform:statusor",
     ],
 )

@@ -16,22 +16,46 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/fusion_constant_sinking.h"
 
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/util.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
+
+std::pair<bool, int64_t> GetUserDirectedFuseInfo(
+    const HloInstruction* instruction) {
+  const FrontendAttributes& frontend_attributes =
+      instruction->frontend_attributes();
+  bool is_must_fuse = false;
+  int64_t fusion_id = -1;
+  if (frontend_attributes.IsInitialized()) {
+    if (frontend_attributes.map().contains(kMustFuseAttr)) {
+      is_must_fuse = true;
+    } else {
+      return {false, -1};
+    }
+    auto fusion_id_str = frontend_attributes.map().at(kMustFuseAttr);
+    if (!absl::SimpleAtoi(fusion_id_str, &(fusion_id))) {
+      return {false, -1};
+    }
+  }
+  return {is_must_fuse, fusion_id};
+}
 
 // Given the fusion instruction and the operand to the fusion, checks:
 //   1. the operand is scalar and constant
@@ -40,8 +64,23 @@ namespace xla {
 // if the checks hold, it returns the parameter instruction representing the
 // operand in the fusion computation, otherwise nullopt.
 bool CanSink(HloInstruction* fusion, const HloInstruction* operand) {
-  if (!fusion->IsLoopFusion() && !fusion->IsOutputFusion()) {
+  if (!fusion->IsLoopFusion() && !fusion->IsOutputFusion() &&
+      !fusion->IsCustomFusion()) {
     return false;
+  }
+
+  // For now, sink constant into custom fusions only if the operand is a
+  // must-fuse operand with the same id as the fusion.
+  if (fusion->IsCustomFusion()) {
+    auto fusion_fuse_info = GetUserDirectedFuseInfo(fusion);
+    if (!fusion_fuse_info.first) {
+      return false;
+    }
+    auto user_fuse_info = GetUserDirectedFuseInfo(operand);
+    if (!(user_fuse_info.first &&
+          user_fuse_info.second == fusion_fuse_info.second)) {
+      return false;
+    }
   }
 
   if (fusion->operand_count() == 1) {
