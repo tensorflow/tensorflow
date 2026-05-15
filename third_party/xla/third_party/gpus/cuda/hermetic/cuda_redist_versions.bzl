@@ -82,6 +82,10 @@ CUDA_REDIST_JSON_DICT = {
         "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.8.1.json",
         "249e28a83008d711d5f72880541c8be6253f6d61608461de4fcb715554a6cf17",
     ],
+    "13.0.0": [
+        "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_13.0.0.json",
+        "fe6a86b54450d03ae709123a52717870c49046d65d45303ce585c7aa8a83a217",
+    ],
 }
 
 MIRRORED_TARS_CUDA_REDIST_JSON_DICT = {
@@ -144,6 +148,10 @@ MIRRORED_TARS_CUDA_REDIST_JSON_DICT = {
     "12.8.1": [
         "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/redistrib_12.8.1_tar.json",
         "30a1b8ace0d38237f4ab3ab28d89dbc77ae2c4ebabe27ba08b3c0961cc6cc7fa",
+    ],
+    "13.0.0": [
+        "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/redistrib_13.0.0_tar.json",
+        "0beef25312491a2c5fff36470be82d68adc870a250f59a647389b7ebcf275722",
     ],
 }
 
