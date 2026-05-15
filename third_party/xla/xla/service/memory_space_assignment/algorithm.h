@@ -1515,6 +1515,9 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // results.
   std::vector<HloUse> uses_in_default_memory_;
 
+  // Dynamically created HloValues for window prefetching over the module.
+  std::list<HloValue> window_prefetch_hlo_values_;
+
   // We have released the chunks corresponding to the allocations in the list.
   // When we uncommit the current pending state following a
   // kFailRequiresUncommit, we need to re-reserve those chunks.
