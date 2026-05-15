@@ -143,7 +143,7 @@ class TensorListReserveOp : public XlaOpKernel {
     // Only non-nested TensorList is supported for now.
     OP_REQUIRES(
         ctx, dtype_ != DT_VARIANT,
-        errors::Unimplemented(
+        absl::UnimplementedError(
             "Only non-nested TensorList is supported for TensorListReserve."));
   }
 
@@ -157,7 +157,7 @@ class TensorListReserveOp : public XlaOpKernel {
         ctx, ctx->ResolveInputDynamismIntoPred(1, &num_element_is_dynamic));
     OP_REQUIRES(
         ctx, num_elements >= 0,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(
             "XLA compilation requires a fixed tensor list size. Set the number "
             "of elements. This could also happen if you're using a TensorArray "
             "in a while loop that does not have its maximum_iteration set, you "
@@ -229,7 +229,7 @@ class EmptyTensorListOp : public XlaOpKernel {
     OP_REQUIRES_OK(
         ctx, ctx->ResolveInputDynamismIntoPred(1, &num_element_is_dynamic));
     OP_REQUIRES(ctx, max_num_elements >= 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "XLA compilation requires a fixed tensor list size. Set "
                     "the max number of elements. This could also happen if "
                     "you're using a TensorArray in a while loop that does not "
@@ -303,14 +303,15 @@ class TensorListElementShapeOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx,
                    (IsTensorListInitialized(ctx->Input(0), &is_initialized)));
     OP_REQUIRES(ctx, is_initialized,
-                errors::InvalidArgument("TensorList is not initialized"));
+                absl::InvalidArgumentError("TensorList is not initialized"));
 
     // Only non-nested TensorList is supported for now.
     bool is_nested;
     OP_REQUIRES_OK(ctx, IsNestedTensorList(ctx->Input(0), &is_nested));
-    OP_REQUIRES(ctx, !is_nested,
-                errors::Unimplemented("Only non-nested TensorList is supported "
-                                      "for TensorListElementShape."));
+    OP_REQUIRES(
+        ctx, !is_nested,
+        absl::UnimplementedError("Only non-nested TensorList is supported "
+                                 "for TensorListElementShape."));
 
     // For non-nested TensorList, element shape is the buffer shape without
     // the first dimension.
@@ -335,7 +336,7 @@ class TensorListElementShapeOp : public XlaOpKernel {
       }
       default:
         ctx->CtxFailure(
-            errors::InvalidArgument("Unsupported shape type requested"));
+            absl::InvalidArgumentError("Unsupported shape type requested"));
         return;
     }
   }
@@ -362,14 +363,15 @@ class TensorListGetItemOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx,
                    (IsTensorListInitialized(ctx->Input(0), &is_initialized)));
     OP_REQUIRES(ctx, is_initialized,
-                errors::InvalidArgument("TensorList is not initialized"));
+                absl::InvalidArgumentError("TensorList is not initialized"));
 
     // Only non-nested TensorList is supported for now.
     bool is_nested;
     OP_REQUIRES_OK(ctx, IsNestedTensorList(ctx->Input(0), &is_nested));
-    OP_REQUIRES(ctx, !is_nested,
-                errors::Unimplemented("Only non-nested TensorList is supported "
-                                      "for TensorListGetItem."));
+    OP_REQUIRES(
+        ctx, !is_nested,
+        absl::UnimplementedError("Only non-nested TensorList is supported "
+                                 "for TensorListGetItem."));
 
     xla::XlaOp list = ctx->Input(0);
     xla::XlaOp index = ctx->Input(1);
@@ -401,20 +403,21 @@ class TensorListGatherOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx,
                    (IsTensorListInitialized(ctx->Input(0), &is_initialized)));
     OP_REQUIRES(ctx, is_initialized,
-                errors::InvalidArgument("TensorList is not initialized"));
+                absl::InvalidArgumentError("TensorList is not initialized"));
 
     // Only non-nested TensorList is supported for now.
     bool is_nested;
     OP_REQUIRES_OK(ctx, IsNestedTensorList(ctx->Input(0), &is_nested));
-    OP_REQUIRES(ctx, !is_nested,
-                errors::Unimplemented("Only non-nested TensorList is supported "
-                                      "for TensorListGather."));
+    OP_REQUIRES(
+        ctx, !is_nested,
+        absl::UnimplementedError("Only non-nested TensorList is supported "
+                                 "for TensorListGather."));
 
     DataType indices_type = ctx->input_type(1);
 
     const TensorShape indices_shape = ctx->InputShape(1);
     OP_REQUIRES(ctx, indices_shape.dims() == 1,
-                errors::InvalidArgument("indices must be rank 1"));
+                absl::InvalidArgumentError("indices must be rank 1"));
 
     xla::XlaOp list = ctx->Input(0);
     xla::XlaOp indices = ctx->Input(1);
@@ -453,14 +456,15 @@ class TensorListStackOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx,
                    (IsTensorListInitialized(ctx->Input(0), &is_initialized)));
     OP_REQUIRES(ctx, is_initialized,
-                errors::InvalidArgument("TensorList is not initialized"));
+                absl::InvalidArgumentError("TensorList is not initialized"));
 
     // Only non-nested TensorList is supported for now.
     bool is_nested;
     OP_REQUIRES_OK(ctx, IsNestedTensorList(ctx->Input(0), &is_nested));
-    OP_REQUIRES(ctx, !is_nested,
-                errors::Unimplemented("Only non-nested TensorList is supported "
-                                      "for TensorListGetItem."));
+    OP_REQUIRES(
+        ctx, !is_nested,
+        absl::UnimplementedError("Only non-nested TensorList is supported "
+                                 "for TensorListGetItem."));
 
     xla::XlaOp buffer;
     OP_REQUIRES_OK(ctx, GetTensorListBuffer(ctx->Input(0), &buffer));
@@ -485,14 +489,15 @@ class TensorListConcatOp : public XlaOpKernel {
     bool is_initialized;
     OP_REQUIRES_OK(ctx, (IsTensorListInitialized(input, &is_initialized)));
     OP_REQUIRES(ctx, is_initialized,
-                errors::InvalidArgument("TensorList is not initialized"));
+                absl::InvalidArgumentError("TensorList is not initialized"));
 
     // Only non-nested TensorList is supported for now.
     bool is_nested;
     OP_REQUIRES_OK(ctx, IsNestedTensorList(input, &is_nested));
-    OP_REQUIRES(ctx, !is_nested,
-                errors::Unimplemented("Only non-nested TensorList is supported "
-                                      "for TensorListConcat."));
+    OP_REQUIRES(
+        ctx, !is_nested,
+        absl::UnimplementedError("Only non-nested TensorList is supported "
+                                 "for TensorListConcat."));
 
     xla::XlaOp buffer;
     OP_REQUIRES_OK(ctx, GetTensorListBuffer(input, &buffer));
@@ -505,7 +510,7 @@ class TensorListConcatOp : public XlaOpKernel {
         xla::SpanToVector(element_shape.dimensions());
     OP_REQUIRES(
         ctx, element_dims.size() > 1,
-        errors::Unimplemented("TensorList of scalars is not supported"));
+        absl::UnimplementedError("TensorList of scalars is not supported"));
     int64_t num_elements = element_dims[0];
     int64_t tensor_lengths = element_dims[1];
 
@@ -537,7 +542,7 @@ class TensorListSplitOp : public XlaOpKernel {
     // Only non-nested TensorList is supported for now.
     OP_REQUIRES(
         ctx, dtype_ != DT_VARIANT,
-        errors::Unimplemented(
+        absl::UnimplementedError(
             "Only non-nested TensorList is supported for TensorListReserve."));
   }
 
@@ -552,22 +557,22 @@ class TensorListSplitOp : public XlaOpKernel {
         xla::SpanToVector(element_shape.dimensions());
     OP_REQUIRES(
         ctx, !element_dims.empty(),
-        errors::Unimplemented("Element dimensions have to be non-empty"));
+        absl::UnimplementedError("Element dimensions have to be non-empty"));
 
     std::vector<int64_t> lengths;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(2, &lengths));
     OP_REQUIRES(ctx, !lengths.empty(),
-                errors::Unimplemented("Length has to be non-empty"));
+                absl::UnimplementedError("Length has to be non-empty"));
     int64_t length = lengths[0];
     for (int64_t len : lengths) {
       OP_REQUIRES(ctx, len == length,
-                  errors::Unimplemented("All lengths have to be the same"));
+                  absl::UnimplementedError("All lengths have to be the same"));
     }
     OP_REQUIRES(ctx, length > 0,
-                errors::Unimplemented("All lengths must be positive"));
+                absl::UnimplementedError("All lengths must be positive"));
     OP_REQUIRES(
         ctx, element_dims[0] % length == 0,
-        errors::Unimplemented("Buffer size has to be a multiple of length"));
+        absl::UnimplementedError("Buffer size has to be a multiple of length"));
     std::vector<int64_t> new_dims = {element_dims[0] / length, length};
     for (int i = 1; i < element_dims.size(); i++) {
       new_dims.push_back(element_dims[i]);
@@ -633,9 +638,10 @@ class TensorListSetItemOp : public XlaOpKernel {
     // Only non-nested TensorList is supported for now.
     bool is_nested;
     OP_REQUIRES_OK(ctx, IsNestedTensorList(initialized_list, &is_nested));
-    OP_REQUIRES(ctx, !is_nested,
-                errors::Unimplemented("Only non-nested TensorList is supported "
-                                      "for TensorListSetItem."));
+    OP_REQUIRES(
+        ctx, !is_nested,
+        absl::UnimplementedError("Only non-nested TensorList is supported "
+                                 "for TensorListSetItem."));
 
     xla::XlaOp result;
     OP_REQUIRES_OK(ctx, ExecuteTensorListSetItem(initialized_list, index,
@@ -690,7 +696,7 @@ class TensorListPopBackOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx,
                    (IsTensorListInitialized(ctx->Input(0), &is_initialized)));
     OP_REQUIRES(ctx, is_initialized,
-                errors::InvalidArgument("TensorList is not initialized"));
+                absl::InvalidArgumentError("TensorList is not initialized"));
 
     xla::XlaOp list = ctx->Input(0);
     xla::XlaOp list_result, element_result;

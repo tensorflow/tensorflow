@@ -40,9 +40,9 @@ absl::Status ValidateUpdateShape(const TensorShape& buffer_shape,
                                  const TensorShape& updates_shape,
                                  bool broadcast_scalar_update) {
   if (indices_shape.dims() < 1) {
-    return errors::InvalidArgument(
-        "indices shape must have >= 1 dimension; got ",
-        indices_shape.DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("indices shape must have >= 1 dimension; got ",
+                     indices_shape.DebugString()));
   }
 
   const int64_t num_index_dims =
@@ -50,13 +50,13 @@ absl::Status ValidateUpdateShape(const TensorShape& buffer_shape,
   const int64_t batch_dim = indices_shape.dims() - 1;
 
   auto shape_err = [&]() {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Must have updates.shape = indices.shape[:batch_dim] + ",
         "buffer_shape[num_index_dims:], got updates.shape: ",
         updates_shape.DebugString(),
         ", indices.shape: ", indices_shape.DebugString(),
         ", buffer_shape: ", buffer_shape.DebugString(),
-        ", num_index_dims: ", num_index_dims, ", and batch_dim: ", batch_dim);
+        ", num_index_dims: ", num_index_dims, ", and batch_dim: ", batch_dim));
   };
 
   if (updates_shape.dims() == 0 && broadcast_scalar_update) {
@@ -99,18 +99,18 @@ class ScatterNdOp : public XlaOpKernel {
     TensorShape buffer_shape;
     OP_REQUIRES_OK(context, context->ConstantInputAsShape(2, &buffer_shape));
 
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsVectorOrHigher(buffer_shape),
-        errors::InvalidArgument("Output must be at least 1-D, ",
-                                "got shape: ", buffer_shape.DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsVectorOrHigher(buffer_shape),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Output must be at least 1-D, ",
+                                 "got shape: ", buffer_shape.DebugString())));
 
     OP_REQUIRES(
         context,
         buffer_shape.num_elements() > 0 || (indices_shape.num_elements() == 0 &&
                                             updates_shape.num_elements() == 0),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Indices and updates specified for empty output. indices shape: ",
-            indices_shape.DebugString()));
+            indices_shape.DebugString())));
 
     OP_REQUIRES_OK(
         context, ValidateUpdateShape(buffer_shape, indices_shape, updates_shape,
@@ -156,18 +156,18 @@ void CompileTensorScatter(
   TensorShape indices_shape = context->InputShape(1);
   TensorShape updates_shape = context->InputShape(2);
 
-  OP_REQUIRES(
-      context, TensorShapeUtils::IsVectorOrHigher(buffer_shape),
-      errors::InvalidArgument("Output must be at least 1-D, ",
-                              "got shape: ", buffer_shape.DebugString()));
+  OP_REQUIRES(context, TensorShapeUtils::IsVectorOrHigher(buffer_shape),
+              absl::InvalidArgumentError(
+                  absl::StrCat("Output must be at least 1-D, ",
+                               "got shape: ", buffer_shape.DebugString())));
 
   OP_REQUIRES(
       context,
       buffer_shape.num_elements() > 0 || (indices_shape.num_elements() == 0 &&
                                           updates_shape.num_elements() == 0),
-      errors::InvalidArgument(
+      absl::InvalidArgumentError(absl::StrCat(
           "Indices and updates specified for empty output. indices shape: ",
-          indices_shape.DebugString()));
+          indices_shape.DebugString())));
 
   OP_REQUIRES_OK(context,
                  ValidateUpdateShape(buffer_shape, indices_shape, updates_shape,

@@ -41,15 +41,15 @@ class PackOp : public XlaOpKernel {
     const int num = values.size();
 
     OP_REQUIRES(ctx, num >= 0,
-                errors::InvalidArgument("Pack requires >= 1 arguments"));
+                absl::InvalidArgumentError("Pack requires >= 1 arguments"));
 
     // Verify that all input shapes match
     for (int i = 1; i < num; i++) {
       OP_REQUIRES(ctx, shapes[0].IsSameSize(shapes[i]),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "Shapes of all inputs must match: values[0].shape = ",
-                      shapes[0].DebugString(), " != values[", i, "].shape = ",
-                      shapes[i].DebugString()));
+                      shapes[0].DebugString(), " != values[", i,
+                      "].shape = ", shapes[i].DebugString())));
     }
 
     int expanded_num_dims = shapes[0].dims() + 1;
@@ -57,9 +57,9 @@ class PackOp : public XlaOpKernel {
     if (axis < 0) axis += expanded_num_dims;
 
     OP_REQUIRES(ctx, 0 <= axis && axis < expanded_num_dims,
-                errors::InvalidArgument("axis = ", axis_, " not in [",
-                                        -expanded_num_dims, ", ",
-                                        expanded_num_dims, ")"));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "axis = ", axis_, " not in [", -expanded_num_dims, ", ",
+                    expanded_num_dims, ")")));
 
     std::vector<xla::XlaOp> reshaped_inputs(num);
 

@@ -46,10 +46,10 @@ void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp input,
       input_tensor_shape.dim_sizes();
   const int block_rank = block_shape.size();
 
-  OP_REQUIRES(
-      ctx, input_rank >= 1 + block_rank,
-      errors::InvalidArgument("input rank should be >= ", 1 + block_rank,
-                              " instead of ", input_rank));
+  OP_REQUIRES(ctx, input_rank >= 1 + block_rank,
+              absl::InvalidArgumentError(
+                  absl::StrCat("input rank should be >= ", 1 + block_rank,
+                               " instead of ", input_rank)));
   absl::Span<const int64_t> remainder_shape(input_shape);
   remainder_shape.remove_prefix(1 + block_rank);
 
@@ -58,9 +58,9 @@ void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp input,
       paddings.shape().dimensions().size() == 2 &&
           block_rank == xla::ShapeUtil::GetDimension(paddings.shape(), 0) &&
           2 == xla::ShapeUtil::GetDimension(paddings.shape(), 1),
-      errors::InvalidArgument("paddings should have shape [", block_rank,
-                              ", 2] instead of ",
-                              xla::ShapeUtil::HumanString(paddings.shape())));
+      absl::InvalidArgumentError(absl::StrCat(
+          "paddings should have shape [", block_rank, ", 2] instead of ",
+          xla::ShapeUtil::HumanString(paddings.shape()))));
 
   xla::XlaBuilder* b = ctx->builder();
 
@@ -75,11 +75,11 @@ void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp input,
     int64_t pad_start = paddings.Get<int64_t>({i, 0});
     int64_t pad_end = paddings.Get<int64_t>({i, 1});
     OP_REQUIRES(ctx, pad_start >= 0 && pad_end >= 0,
-                errors::InvalidArgument("Paddings must be non-negative"));
+                absl::InvalidArgumentError("Paddings must be non-negative"));
     OP_REQUIRES(ctx, block_shape[i] >= 1,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "All values in block_shape must be positive, got value, ",
-                    block_shape[i], " at index ", i, "."));
+                    block_shape[i], " at index ", i, ".")));
     dim->set_edge_padding_low(pad_start);
     dim->set_edge_padding_high(pad_end);
     padded_shape[1 + i] += pad_start + pad_end;
@@ -90,17 +90,17 @@ void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp input,
     padding_config.add_dimensions();
   }
   OP_REQUIRES(ctx, block_num_elems > 0,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(
                   "The product of the block dimensions must be positive"));
   const int64_t batch_size = input_shape[0];
   const int64_t output_dim =
       MultiplyWithoutOverflow(batch_size, block_num_elems);
   if (output_dim < 0) {
-    OP_REQUIRES(
-        ctx, output_dim >= 0,
-        errors::InvalidArgument("Negative output dimension size caused by "
-                                "overflow when multiplying ",
-                                batch_size, " and ", block_num_elems));
+    OP_REQUIRES(ctx, output_dim >= 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Negative output dimension size caused by "
+                                 "overflow when multiplying ",
+                                 batch_size, " and ", block_num_elems)));
   }
 
   xla::XlaOp padded =
@@ -118,11 +118,11 @@ void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp input,
   std::vector<int64_t> reshaped_padded_shape(input_rank + block_rank);
   reshaped_padded_shape[0] = batch_size;
   for (int i = 0; i < block_rank; ++i) {
-    OP_REQUIRES(ctx, padded_shape[1 + i] % block_shape[i] == 0,
-                errors::InvalidArgument("padded_shape[", 1 + i,
-                                        "]=", padded_shape[1 + i],
-                                        " is not divisible by block_shape[", i,
-                                        "]=", block_shape[i]));
+    OP_REQUIRES(
+        ctx, padded_shape[1 + i] % block_shape[i] == 0,
+        absl::InvalidArgumentError(absl::StrCat(
+            "padded_shape[", 1 + i, "]=", padded_shape[1 + i],
+            " is not divisible by block_shape[", i, "]=", block_shape[i])));
 
     reshaped_padded_shape[1 + i * 2] = padded_shape[1 + i] / block_shape[i];
     reshaped_padded_shape[1 + i * 2 + 1] = block_shape[i];
@@ -198,9 +198,9 @@ class SpaceToBatchOp : public XlaOpKernel {
  public:
   explicit SpaceToBatchOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("block_size", &block_size_));
-    OP_REQUIRES(
-        ctx, block_size_ > 1,
-        errors::InvalidArgument("Block size should be > 1: ", block_size_));
+    OP_REQUIRES(ctx, block_size_ > 1,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Block size should be > 1: ", block_size_)));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {

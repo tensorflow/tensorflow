@@ -37,9 +37,9 @@ absl::Status TensorShapeToConstant(const TensorShape& input_shape,
     for (int i = 0; i < dims; ++i) {
       int64_t dim_size = input_shape.dim_size(i);
       if (!FastBoundsCheck(dim_size, std::numeric_limits<int32_t>::max())) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Shape with out_type=int32 does not support tensors > int32max",
-            " but dim ", i, " is ", dim_size);
+            " but dim ", i, " is ", dim_size));
       }
       vec(i) = static_cast<int32_t>(dim_size);
     }
