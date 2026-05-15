@@ -3535,9 +3535,26 @@ TEST_F(DynamicSliceFusionTest, MultipleOffsetsAsFunctionOfInductionVariable) {
       ROOT while = (s32[], s32[16,32,32], s32[32,32]) while(tuple), body=body, condition=condition
     }
   )";
+  (void)hlo_fused;
+
+  HloModuleConfig config;
+  config.mutable_debug_options().set_xla_gpu_enable_dynamic_slice_fusion(true);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> unfused_module,
+                          ParseAndReturnVerifiedModule(hlo_unfused));
+  std::unique_ptr<HloModule> fused_module = unfused_module->Clone();
+  fused_module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_enable_dynamic_slice_fusion(true);
+  TF_ASSERT_OK_AND_ASSIGN(fused_module,
+                          GetOptimizedModule(std::move(fused_module)));
+  unfused_module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_enable_dynamic_slice_fusion(false);
+  TF_ASSERT_OK_AND_ASSIGN(unfused_module,
+                          GetOptimizedModule(std::move(unfused_module)));
 
   EXPECT_TRUE(RunAndCompareTwoModulesReplicated(
-      /*module_0_str=*/hlo_unfused, /*module_1_str=*/hlo_fused,
+      std::move(unfused_module), std::move(fused_module),
       /*run_hlo_passes=*/false, /*use_threads=*/true, std::nullopt));
 }
 
@@ -3671,6 +3688,97 @@ TEST_F(DynamicSliceFusionTest, WhileLoopSliceWithNoInductionVariable) {
                                                 /*run_hlo_passes=*/false,
                                                 /*use_threads=*/true,
                                                 error_spec));
+}
+TEST_F(DynamicSliceFusionTest, TriggerMemoryCorruption) {
+  std::string hlo = R"(
+    HloModule test
+
+    dynamic-slice-fusion {
+      p0 = s32[100] parameter(0)
+      p1 = s32[100] parameter(1)
+      p2 = s32[100] parameter(2)
+      p3 = s32[100] parameter(3)
+      p4 = s32[100] parameter(4)
+      p5 = s32[100] parameter(5)
+      p6 = s32[100] parameter(6)
+      p7 = s32[100] parameter(7)
+      p8 = s32[100] parameter(8)
+      p9 = s32[100] parameter(9)
+      o0 = s32[] parameter(10)
+      o1 = s32[] parameter(11)
+      o2 = s32[] parameter(12)
+      o3 = s32[] parameter(13)
+      o4 = s32[] parameter(14)
+      o5 = s32[] parameter(15)
+      o6 = s32[] parameter(16)
+      o7 = s32[] parameter(17)
+      o8 = s32[] parameter(18)
+      o9 = s32[] parameter(19)
+
+      ds0 = s32[1] dynamic-slice(p0, o0), dynamic_slice_sizes={1}
+      ds1 = s32[1] dynamic-slice(p1, o1), dynamic_slice_sizes={1}
+      ds2 = s32[1] dynamic-slice(p2, o2), dynamic_slice_sizes={1}
+      ds3 = s32[1] dynamic-slice(p3, o3), dynamic_slice_sizes={1}
+      ds4 = s32[1] dynamic-slice(p4, o4), dynamic_slice_sizes={1}
+      ds5 = s32[1] dynamic-slice(p5, o5), dynamic_slice_sizes={1}
+      ds6 = s32[1] dynamic-slice(p6, o6), dynamic_slice_sizes={1}
+      ds7 = s32[1] dynamic-slice(p7, o7), dynamic_slice_sizes={1}
+      ds8 = s32[1] dynamic-slice(p8, o8), dynamic_slice_sizes={1}
+      ds9 = s32[1] dynamic-slice(p9, o9), dynamic_slice_sizes={1}
+
+      add0 = s32[1] add(ds0, ds1)
+      add1 = s32[1] add(add0, ds2)
+      add2 = s32[1] add(add1, ds3)
+      add3 = s32[1] add(add2, ds4)
+      add4 = s32[1] add(add3, ds5)
+      add5 = s32[1] add(add4, ds6)
+      add6 = s32[1] add(add5, ds7)
+      add7 = s32[1] add(add6, ds8)
+      ROOT root = s32[1] add(add7, ds9)
+    }
+
+    ENTRY main {
+      p0 = s32[100] parameter(0)
+      p1 = s32[100] parameter(1)
+      p2 = s32[100] parameter(2)
+      p3 = s32[100] parameter(3)
+      p4 = s32[100] parameter(4)
+      p5 = s32[100] parameter(5)
+      p6 = s32[100] parameter(6)
+      p7 = s32[100] parameter(7)
+      p8 = s32[100] parameter(8)
+      p9 = s32[100] parameter(9)
+      o0 = s32[] constant(0)
+      o1 = s32[] constant(0)
+      o2 = s32[] constant(0)
+      o3 = s32[] constant(0)
+      o4 = s32[] constant(0)
+      o5 = s32[] constant(0)
+      o6 = s32[] constant(0)
+      o7 = s32[] constant(0)
+      o8 = s32[] constant(0)
+      o9 = s32[] constant(0)
+
+      ROOT fusion = s32[1] fusion(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, o0, o1, o2, o3, o4, o5, o6, o7, o8, o9), kind=kCustom, calls=dynamic-slice-fusion, backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"} }}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo));
+  std::unique_ptr<HloModule> m_fused = m->Clone();
+  m_fused->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_enable_dynamic_slice_fusion(true);
+  TF_ASSERT_OK_AND_ASSIGN(m_fused, GetOptimizedModule(std::move(m_fused)));
+
+  m->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_enable_dynamic_slice_fusion(false);
+  TF_ASSERT_OK_AND_ASSIGN(m, GetOptimizedModule(std::move(m)));
+
+  EXPECT_TRUE(RunAndCompareTwoModulesReplicated(
+      std::move(m), std::move(m_fused), /*run_hlo_passes=*/false,
+      /*use_threads=*/true, std::nullopt));
 }
 }  // namespace
 }  // namespace gpu

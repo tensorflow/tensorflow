@@ -536,6 +536,7 @@ cc_library(
         ":thunk",
         ":thunk_executor",
         ":thunk_proto_cc",
+        ":while_loop",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
