@@ -2,7 +2,11 @@ name: Gemini PR Review
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    # Step 2: Enable this on PR creation later (Commented out for now)
+    # types: [opened, synchronize]
+    
+    # Step 1: Trigger only when a label is added
+    types: [labeled]
 
 permissions:
   pull-requests: write
@@ -10,6 +14,8 @@ permissions:
 
 jobs:
   gemini-review:
+    # Only run this job if the exact label added is "Needs Review"
+    if: github.event.label.name == 'Needs Review'
     runs-on: ubuntu-latest
 
     steps:
