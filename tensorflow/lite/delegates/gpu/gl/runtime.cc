@@ -646,12 +646,18 @@ absl::Status Runtime::AssignInternalObjects(
 }
 
 absl::Status Runtime::Execute() {
+  int program_counter = 0;
   for (const auto& descriptor : programs_) {
     for (auto& b : descriptor.bindings) {
       RETURN_IF_ERROR(b());
     }
     RETURN_IF_ERROR(command_queue_->Dispatch(descriptor.program,
                                              descriptor.num_workgroups));
+#ifdef __EMSCRIPTEN__
+    if ((++program_counter % 15) == 0) {
+      glFlush();
+    }
+#endif
   }
   return absl::OkStatus();
 }
