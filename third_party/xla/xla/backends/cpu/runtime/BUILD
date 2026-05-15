@@ -1336,6 +1336,7 @@ xla_cc_test(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 
