@@ -545,7 +545,7 @@ class TensorShapeUtils {
 /// Manages the partially known dimensions of a Tensor and their sizes.
 class PartialTensorShape : public TensorShapeBase<PartialTensorShape> {
  public:
-  PartialTensorShape() {}
+  PartialTensorShape() = default;
   using TensorShapeBase<PartialTensorShape>::TensorShapeBase;
 
   // These factory methods should be used instead of the constructors that take

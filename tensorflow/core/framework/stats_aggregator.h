@@ -42,7 +42,7 @@ namespace data {
 // implementations that work well with other custom monitoring services.
 class StatsAggregator {
  public:
-  virtual ~StatsAggregator() {}
+  virtual ~StatsAggregator() = default;
 
   // Add the given `values` to the histogram with the given `name`. Each
   // element of `values` will be treated as a separate sample in the histogram.
