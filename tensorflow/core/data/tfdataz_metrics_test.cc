@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/tfdataz_metrics.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 
