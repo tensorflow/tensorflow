@@ -15,10 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/dynamic_shapes.h"
 
-#include <algorithm>
-#include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <utility>
 
 #include "absl/status/status.h"

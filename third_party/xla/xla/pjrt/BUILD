@@ -1315,6 +1315,7 @@ cc_library(
     ],
     visibility = internal_visibility([":friends"]),
     deps = [
+        "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen/triton:compilation_pipeline",
         "//xla/service/gpu/llvm_gpu_backend",
         "//xla/service/gpu/llvm_gpu_backend:nvptx_backend",
