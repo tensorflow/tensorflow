@@ -4192,11 +4192,11 @@ absl::StatusOr<bool> HloVerifier::RunImpl(
 
     std::unique_ptr<ShapeVerifier> shape_verifier =
         target_metadata_->GetVerifier();
-    InstructionVerifier instruction_verifier(
-        module, target_metadata_->GetVerifierOpts());
+    std::unique_ptr<DfsHloVisitorWithDefault> instruction_verifier =
+        target_metadata_->GetInstructionVerifier(module);
     for (auto* computation : module->computations(execution_threads)) {
       TF_RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
-      TF_RETURN_IF_ERROR(computation->Accept(&instruction_verifier));
+      TF_RETURN_IF_ERROR(computation->Accept(instruction_verifier.get()));
       // Verify that async computations contain a single instruction or a
       // collection of send/recv instructions. This is needed to represent NCCL
       // groups on GPU.

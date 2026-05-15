@@ -427,6 +427,11 @@ class TargetVerifierMetadata {
 
   virtual std::unique_ptr<ShapeVerifier> GetVerifier() const = 0;
 
+  virtual std::unique_ptr<DfsHloVisitorWithDefault> GetInstructionVerifier(
+      const HloModule* module) const {
+    return std::make_unique<InstructionVerifier>(module, GetVerifierOpts());
+  }
+
   TargetVerifierMetadata() = default;
   virtual ~TargetVerifierMetadata() = default;
 
