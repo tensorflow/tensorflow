@@ -15,13 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace {

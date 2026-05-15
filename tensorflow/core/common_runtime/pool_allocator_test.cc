@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/pool_allocator.h"
 
+#include <cstddef>
 #include <limits>
 
 #include "tensorflow/core/platform/test.h"
