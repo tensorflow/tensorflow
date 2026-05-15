@@ -464,7 +464,7 @@ inline bool IsOperandFusible(HloInstruction* operand, HloInstruction* instr) {
 }
 
 inline bool CanPrepackWeights(HloInstruction* custom_call) {
-  return (custom_call->operand(1)->shape().dimensions_size() == 2 &&
+  return (custom_call->operand(1)->shape().dimensions().size() == 2 &&
           IsOneDnnMatmulInstr(custom_call)) ||
          IsOneDnnConvolutionInstr(custom_call);
 }
