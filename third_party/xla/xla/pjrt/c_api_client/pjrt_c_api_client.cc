@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -2965,6 +2966,72 @@ PJRT_SendCallbackInfo CppSendCallbackToC(
       }};
 }
 
+PJRT_HloOutputCallbackInfo CppHloOutputCallbackToC(
+    const xla::HloOutputCallback& cpp_callback, size_t num_operands,
+    PjRtCApiLoadedExecutable::HloOutputCallbackState* state) {
+  state->callback = cpp_callback.callback;
+  state->num_operands = num_operands;
+  return PJRT_HloOutputCallbackInfo{
+      /*user_arg=*/state,
+      /*callback=*/
+      [](int64_t replica_id, int64_t partition_id, const void* data,
+         const int64_t* shape_dims, size_t shape_num_dims,
+         PJRT_Buffer_Type shape_element_type, int64_t operand_index,
+         void* user_arg) {
+        auto* callback_state =
+            reinterpret_cast<PjRtCApiLoadedExecutable::HloOutputCallbackState*>(
+                user_arg);
+
+        absl::MutexLock lock(&callback_state->mu);
+        auto& accumulated =
+            callback_state->accumulated_literals[{replica_id, partition_id}];
+        auto& received =
+            callback_state->received_operands[{replica_id, partition_id}];
+        if (accumulated.empty()) {
+          accumulated.resize(callback_state->num_operands);
+          received.resize(callback_state->num_operands, false);
+        }
+
+        if (data != nullptr) {
+          xla::PrimitiveType element_type =
+              pjrt::ConvertFromPjRtBufferType(shape_element_type);
+          absl::Span<const int64_t> dims(shape_dims, shape_num_dims);
+          xla::Shape shape(element_type, dims);
+          xla::Literal literal(shape);
+          std::memcpy(literal.untyped_data(), data, literal.size_bytes());
+          accumulated[operand_index] = std::move(literal);
+        } else {
+          accumulated[operand_index] = std::nullopt;
+        }
+        received[operand_index] = true;
+
+        bool all_received = true;
+        for (bool b : received) {
+          if (!b) {
+            all_received = false;
+            break;
+          }
+        }
+        if (all_received) {
+          std::vector<const xla::Literal*> literal_ptrs;
+          literal_ptrs.reserve(accumulated.size());
+          for (const auto& opt_lit : accumulated) {
+            literal_ptrs.push_back(opt_lit.has_value() ? &opt_lit.value()
+                                                       : nullptr);
+          }
+          callback_state->callback(
+              replica_id, partition_id,
+              absl::Span<xla::Literal const*>(literal_ptrs.data(),
+                                              literal_ptrs.size()));
+          callback_state->accumulated_literals.erase(
+              {replica_id, partition_id});
+          callback_state->received_operands.erase({replica_id, partition_id});
+        }
+      },
+      /*hlo_id=*/cpp_callback.hlo_id,
+      /*num_operands=*/num_operands};
+}
+
 CApiCopyToDeviceStream::CApiCopyToDeviceStream(
     PJRT_CopyToDeviceStream* c_stream, const PJRT_Api* c_api)
     : CopyToDeviceStream(/*total_bytes=*/0, /*granule_bytes=*/0),
@@ -3109,6 +3176,29 @@ static void CppRecvCallbackListsToC(
   }
 }
 
+static void CppHloOutputCallbacksToC(
+    absl::Span<const xla::HloOutputCallback> cpp_list,
+    std::vector<
+        std::unique_ptr<PjRtCApiLoadedExecutable::HloOutputCallbackState>>&
+        hlo_output_callback_states,
+    std::vector<PJRT_HloOutputCallbackInfo>& c_list) {
+  if (cpp_list.empty()) {
+    return;
+  }
+
+  hlo_output_callback_states.resize(cpp_list.size());
+  c_list.reserve(cpp_list.size());
+
+  for (int i = 0; i < cpp_list.size(); ++i) {
+    const auto& cpp_callback = cpp_list[i];
+    hlo_output_callback_states[i] =
+        std::make_unique<PjRtCApiLoadedExecutable::HloOutputCallbackState>();
+    c_list.emplace_back(
+        CppHloOutputCallbackToC(cpp_callback, cpp_callback.num_operands,
+                                hlo_output_callback_states[i].get()));
+  }
+}
+
 absl::StatusOr<size_t> PjRtCApiLoadedExecutable::GetNumOutputs() const {
   PJRT_Executable_NumOutputs_Args args;
   args.struct_size = PJRT_Executable_NumOutputs_Args_STRUCT_SIZE;
@@ -3229,6 +3319,15 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
     args.options->recv_callbacks = callback_data.c_recv_callback_lists.data();
     args.options->num_recv_ops = options.recv_callbacks[0].size();
   }
+  if (!options.hlo_output_callbacks.empty()) {
+    CppHloOutputCallbacksToC(options.hlo_output_callbacks,
+                             callback_data.hlo_output_callback_states,
+                             callback_data.c_hlo_output_callbacks);
+    args.options->hlo_output_callbacks =
+        callback_data.c_hlo_output_callbacks.data();
+    args.options->num_hlo_output_callbacks =
+        options.hlo_output_callbacks.size();
+  }
 
   return args;
 }
@@ -3340,7 +3439,8 @@ PjRtCApiLoadedExecutable::Execute(
       device_complete_futures.push_back(pjrt::ConvertCEventToCppFuture(
           args.device_complete_events[i], pjrt_c_api()));
       if (!callback_data->c_send_callbacks.empty() ||
-          !callback_data->c_recv_callbacks.empty()) {
+          !callback_data->c_recv_callbacks.empty() ||
+          !callback_data->hlo_output_callback_states.empty()) {
         device_complete_futures.back().OnReady(
             [callback_data](absl::Status status) {
               // Keeps C callbacks alive until execution completes on all
@@ -3417,6 +3517,11 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
   if (fill_future) {
     returned_future = pjrt::ConvertCEventToCppFuture(
         args.device_complete_events[0], pjrt_c_api());
+    if (!callback_data->hlo_output_callback_states.empty()) {
+      returned_future->OnReady([callback_data](absl::Status status) {
+        // Keeps C callbacks alive until execution completes.
+      });
+    }
   }
   return std::move(Convert2DCBuffersToCppBuffers(
       args.output_lists, args.num_devices, c_output_lists_storage[0].size(),

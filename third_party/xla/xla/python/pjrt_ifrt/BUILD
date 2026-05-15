@@ -3,7 +3,11 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/python/pjrt_ifrt:pjrt_ifrt.bzl", "pjrt_ifrt_package_groups")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
-load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load(
+    "//xla/tsl:tsl.default.bzl",
+    "get_compatible_with_portable",
+    "tsl_pybind_extension",
+)
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 # copybara:uncomment load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
@@ -253,10 +257,13 @@ cc_library(
     deps = [
         ":basic_string_array",
         ":executable_metadata_proto_cc",
+        ":pjrt_ifrt",
         ":pjrt_layout",
         ":pjrt_layout_serdes",
         ":xla_executable_version",
         ":xla_ifrt",
+        "//xla:literal",
+        "//xla:shape_util",
         "//xla/client:executable_build_options",
         "//xla/pjrt:compiled_memory_stats",
         "//xla/pjrt:mlir_to_hlo",
@@ -266,6 +273,7 @@ cc_library(
         "//xla/python/ifrt:user_context",
         "//xla/python/ifrt/hlo:hlo_program",
         "//xla/tsl/concurrency:future",
+        "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
@@ -466,7 +474,6 @@ cc_library(
         "//xla/tsl/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/base:config",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -912,5 +919,29 @@ xla_cc_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tsl_pybind_extension(
+    name = "pjrt_host_callback_nb",
+    srcs = ["pjrt_host_callback_nb.cc"],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        ":pjrt_ifrt",
+        "//third_party/py/jax/jaxlib:py_client",
+        "//xla:literal",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/python:types",
+        "//xla/python/ifrt",
+        "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/types:span",
+        "@nanobind",
+        "@rules_python//python/cc:current_py_cc_headers",
     ],
 )

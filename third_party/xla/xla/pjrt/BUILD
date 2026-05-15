@@ -496,6 +496,7 @@ cc_library(
         ":pjrt_device_dimensions",
         ":pjrt_layout",
         "//xla:debug_options_flags",
+        "//xla:literal",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",

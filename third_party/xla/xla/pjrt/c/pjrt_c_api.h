@@ -111,7 +111,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 110
+#define PJRT_API_MINOR 111
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1957,6 +1957,21 @@ struct PJRT_RecvCallbackInfo {
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_RecvCallbackInfo, recv_callback);
 
+typedef void (*PJRT_HloOutputCallback)(int64_t replica_id, int64_t partition_id,
+                                       const void* data,
+                                       const int64_t* shape_dims,
+                                       size_t shape_num_dims,
+                                       PJRT_Buffer_Type shape_element_type,
+                                       int64_t operand_index, void* user_arg);
+
+typedef struct PJRT_HloOutputCallbackInfo {
+  void* user_arg;
+  PJRT_HloOutputCallback callback;
+  int64_t hlo_id;
+  size_t num_operands;
+} PJRT_HloOutputCallbackInfo;
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_HloOutputCallbackInfo, num_operands);
+
 typedef struct PJRT_MultiSlice_Config PJRT_MultiSlice_Config;
 
 struct PJRT_ExecuteOptions {
@@ -1973,6 +1988,8 @@ struct PJRT_ExecuteOptions {
   PJRT_RecvCallbackInfo** recv_callbacks;
   size_t num_send_ops;
   size_t num_recv_ops;
+  PJRT_HloOutputCallbackInfo* hlo_output_callbacks;
+  size_t num_hlo_output_callbacks;
   // If non-zero, identifies this execution as part of a potentially
   // multi-device launch. This can be used to detect scheduling errors, e.g. if
   // multi-host programs are launched in different orders on different hosts,
