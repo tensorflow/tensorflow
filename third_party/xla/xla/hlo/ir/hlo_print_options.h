@@ -64,7 +64,7 @@ class HloPrintOptions {
         print_metadata_(true),
         print_metadata_only_op_name_(false),
         print_backend_config_(true),
-        sort_backend_config_(false),
+        sort_backend_config_(true),
         print_infeed_outfeed_config_(true),
         compact_operands_(false),
         include_layout_in_shapes_(true),

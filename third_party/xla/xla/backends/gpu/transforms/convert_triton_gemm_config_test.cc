@@ -91,12 +91,12 @@ ENTRY entry {
     CHECK: ENTRY
     CHECK: ROOT{{.*}}fusion(
     CHECK-SAME: kind=kCustom
-    CHECK-SAME: "kind":"__triton_nested_gemm_fusion"
     CHECK-SAME: "block_level_fusion_config"
     CHECK-SAME: "num_warps":"4"
     CHECK-SAME: "output_tiles":[{"sizes":["64","256"]}]
     CHECK-SAME: "num_ctas":3
     CHECK-SAME: "num_stages":5
+    CHECK-SAME: "kind":"__triton_nested_gemm_fusion"
 )"));
   const HloInstruction* fusion = nullptr;
   ASSERT_THAT(module->entry_computation()->root_instruction(),
@@ -148,8 +148,8 @@ ENTRY entry {
     CHECK: ROOT {{.*}} = bf16[4,4]{1,0} scaled-dot({{.*}}backend_config={"sizes":["64"]}
     CHECK: ENTRY
     CHECK: ROOT{{.*}}fusion(
-    CHECK-SAME: "kind":"__triton_nested_gemm_fusion"
     CHECK-SAME: "output_tiles":[{"sizes":["16","32"]}]
+    CHECK-SAME: "kind":"__triton_nested_gemm_fusion"
 )"));
 }
 

@@ -81,7 +81,6 @@ namespace {
 tsl::Fprint128 GetFingerprint(const HloInstruction* instr) {
   auto options = HloPrintOptions::Fingerprint();
   options.set_print_backend_config(true);
-  options.set_sort_backend_config(true);
   options.set_print_operand_shape(true);
 
   return tsl::Fingerprint128(instr->ToString(options));

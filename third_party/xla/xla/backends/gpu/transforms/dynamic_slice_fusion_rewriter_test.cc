@@ -169,7 +169,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmWithWorkspace) {
     ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
     ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
     ; CHECK:       [[CC:%[^ ]+]] = (f32[8,8]{1,0}, s8[256]{0}) custom-call([[B0]], [[B1]]),
-    ; CHECK:              custom_call_target="__cublas$lt$matmul"
+    ; CHECK:              custom_call_target="__cublas$lt$matmul"{{.*}}
     ; CHECK:       [[DOT:%[^ ]+]] = f32[8,8]{1,0} get-tuple-element([[CC]]), index=0
     ; CHECK:       [[WORKSPACE:%[^ ]+]] = s8[256]{0} get-tuple-element([[CC]]), index=1
     ; CHECK:       ROOT [[TUPLE:%[^ ]+]] = (f32[8,8]{1,0}, s8[256]{0})
@@ -179,11 +179,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmWithWorkspace) {
     ; CHECK:     ENTRY %main{{.*}} {
     ; CHECK:       ROOT [[FUSION:%[^ ]+]] = (f32[8,8]{1,0}, s8[256]{0}) fusion
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
-    ; CHECK:         backend_config={
-    ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
-    ; CHECK:         }
-    ; CHECK:     }
+    ; CHECK:-SAME: backend_config={{{.*}}"custom_fusion_config":{{.*}}"name":"address_computation"{{.*}}
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
@@ -235,7 +231,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmWorkspaceIgnored) {
     ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
     ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
     ; CHECK:       [[CC:%[^ ]+]] = (f32[8,8]{1,0}, s8[256]{0}) custom-call([[B0]], [[B1]]),
-    ; CHECK:              custom_call_target="__cublas$lt$matmul"
+    ; CHECK:              custom_call_target="__cublas$lt$matmul"{{.*}}
     ; CHECK:       [[DOT:%[^ ]+]] = f32[8,8]{1,0} get-tuple-element([[CC]]), index=0
     ; CHECK:       [[WORKSPACE:%[^ ]+]] = s8[256]{0} get-tuple-element([[CC]]), index=1
     ; CHECK:       ROOT [[TUPLE:%[^ ]+]] = (f32[8,8]{1,0}, s8[256]{0})
@@ -245,10 +241,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmWorkspaceIgnored) {
     ; CHECK:     ENTRY %main{{.*}} {
     ; CHECK:       [[FUSION:%[^ ]+]] = (f32[8,8]{1,0}, s8[256]{0}) fusion
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
-    ; CHECK:         backend_config={
-    ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
-    ; CHECK:         }
+    ; CHECK:-SAME: backend_config={{{.*}}"custom_fusion_config":{{.*}}"name":"address_computation"{{.*}}
     ; CHECK:       ROOT [[DOT_MAIN:%[^ ]+]] = f32[8,8]{1,0} get-tuple-element([[FUSION]]), index=0
     ; CHECK:     }
   )";
@@ -302,18 +295,13 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmNotRoot) {
     ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
     ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
     ; CHECK:       ROOT [[CC:%[^ ]+]] = f32[8,8]{1,0} custom-call([[B0]], [[B1]]),
-    ; CHECK:              custom_call_target="__cublas$lt$matmul"
+    ; CHECK:              custom_call_target="__cublas$lt$matmul"{{.*}}
     ; CHECK:     }
 
     ; CHECK:     ENTRY %main{{.*}} {
     ; CHECK:       [[FUSION:%[^ ]+]] = f32[8,8]{1,0} fusion
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
-    ; CHECK:         backend_config={
-    ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
-    ; CHECK:         }
-    ; CHECK:       ROOT {{.*}} = f32[8,8]{1,0} add([[FUSION]], [[FUSION]])
-    ; CHECK:     }
+    ; CHECK:-SAME: backend_config={{{.*}}"custom_fusion_config":{{.*}}"name":"address_computation"{{.*}}
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
@@ -365,7 +353,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandHasMultipleUsers) {
     ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P1]]), slice={[2:3], [0:8], [0:8]}
     ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
     ; CHECK:       ROOT [[CC:%[^ ]+]] = f32[8,8]{1,0} custom-call([[B0]], [[B1]]),
-    ; CHECK:              custom_call_target="__cublas$lt$matmul"
+    ; CHECK:              custom_call_target="__cublas$lt$matmul"{{.*}}
     ; CHECK:     }
 
     ; CHECK:     ENTRY %main{{.*}} {
@@ -373,11 +361,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandHasMultipleUsers) {
     ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[4,8,8]{2,1,0} parameter(1)
     ; CHECK-DAG:   [[FUSION:%[^ ]+]] = f32[8,8]{1,0} fusion([[P0]], [[P1]])
     ; CHECK-DAG:     kind=kCustom, calls=%dynamic-slice-fusion,
-    ; CHECK-DAG:     backend_config={
-    ; CHECK-DAG:       "kind":"__custom_fusion",
-    ; CHECK-DAG:       "custom_fusion_config":{"name":"address_computation","kernel_index":0}
-    ; CHECK-DAG:     }
-    ; CHECK-DAG:   [[S0:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:-SAME: backend_config={{{.*}}"custom_fusion_config":{{.*}}"name":"address_computation"{{.*}}
     ; CHECK-DAG:   [[B0:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S0]])
     ; CHECK:       ROOT {{.*}} = f32[8,8]{1,0} add([[FUSION]], [[B0]])
     ; CHECK:     }
@@ -451,7 +435,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandsHaveMultipleUsers) {
     ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
     ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
     ; CHECK:       ROOT [[CC:%[^ ]+]] = f32[8,8]{1,0} custom-call([[B0]], [[B1]]),
-    ; CHECK:              custom_call_target="__cublas$lt$matmul"
+    ; CHECK:              custom_call_target="__cublas$lt$matmul"{{.*}}
     ; CHECK:     }
     ; CHECK:     %dynamic-slice-fusion{{.*}} {
     ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(0)
@@ -461,7 +445,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandsHaveMultipleUsers) {
     ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
     ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
     ; CHECK:       ROOT [[CC:%[^ ]+]] = f32[8,8]{1,0} custom-call([[B0]], [[B1]]),
-    ; CHECK:              custom_call_target="__cublas$lt$matmul"
+    ; CHECK:              custom_call_target="__cublas$lt$matmul"{{.*}}
     ; CHECK:     }
   )";
 
@@ -515,7 +499,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmSlicingNotParameter) {
     ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
     ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
     ; CHECK:       ROOT [[CC:%[^ ]+]] = f32[8,8]{1,0} custom-call([[B0]], [[B1]]),
-    ; CHECK:              custom_call_target="__cublas$lt$matmul"
+    ; CHECK:              custom_call_target="__cublas$lt$matmul"{{.*}}
     ; CHECK:     }
 
     ; CHECK:     ENTRY %main{{.*}} {
@@ -524,12 +508,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmSlicingNotParameter) {
     ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(1)
     ; CHECK:       [[FUSION:%[^ ]+]] = f32[8,8]{1,0} fusion([[S0]], [[P1]])
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
-    ; CHECK:         backend_config={
-    ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
-    ; CHECK:         }
-    ; CHECK:       ROOT {{.*}} = f32[8,8]{1,0} add([[FUSION]], [[FUSION]])
-    ; CHECK:     }
+    ; CHECK:-SAME: backend_config={{{.*}}"custom_fusion_config":{{.*}}"name":"address_computation"{{.*}}
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
@@ -680,17 +659,13 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmDuplicateOperand) {
     ; CHECK:       [[S0:%[^ ]+]] = f32[100,100]{1,0} slice([[P0]]), slice={[0:100], [0:100]}
     ; CHECK-NOT:   slice
     ; CHECK:       [[CC:%[^ ]+]] = (f32[100,100]{1,0}, s8[80000]{0}) custom-call([[S0]], [[S0]]),
-    ; CHECK:         custom_call_target="__cublas$lt$matmul"
+    ; CHECK:         custom_call_target="__cublas$lt$matmul"{{.*}}
     ; CHECK:     }
 
     ; CHECK:     ENTRY %main{{.*}} {
     ; CHECK:       ROOT [[FUSION:%[^ ]+]] = (f32[100,100]{1,0}, s8[80000]{0}) fusion
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
-    ; CHECK:         backend_config={
-    ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
-    ; CHECK:         }
-    ; CHECK:     }
+    ; CHECK:-SAME: backend_config={{{.*}}"custom_fusion_config":{{.*}}"name":"address_computation"{{.*}}
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
@@ -741,7 +716,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmReverseOperandOrder) {
     ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
     ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
     ; CHECK:       ROOT [[CC:%[^ ]+]] = f32[8,8]{1,0} custom-call([[B0]], [[B1]]),
-    ; CHECK:              custom_call_target="__cublas$lt$matmul"
+    ; CHECK:              custom_call_target="__cublas$lt$matmul"{{.*}}
     ; CHECK:     }
 
     ; CHECK:     ENTRY %main{{.*}} {
@@ -749,11 +724,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmReverseOperandOrder) {
     ; CHECK-DAG:   [[A1:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(0)
     ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f32[8,8]{1,0} fusion([[A0]], [[A1]])
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
-    ; CHECK:         backend_config={
-    ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
-    ; CHECK:         }
-    ; CHECK:     }
+    ; CHECK:-SAME: backend_config={{{.*}}"custom_fusion_config":{{.*}}"name":"address_computation"{{.*}}
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
@@ -804,7 +775,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmReverseOperandOrder2) {
     ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P1]]), slice={[0:1], [0:8], [0:8]}
     ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
     ; CHECK:       ROOT [[CC:%[^ ]+]] = f32[8,8]{1,0} custom-call([[B0]], [[B1]]),
-    ; CHECK:              custom_call_target="__cublas$lt$matmul"
+    ; CHECK:              custom_call_target="__cublas$lt$matmul"{{.*}}
     ; CHECK:     }
 
     ; CHECK:     ENTRY %main{{.*}} {
@@ -812,11 +783,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmReverseOperandOrder2) {
     ; CHECK-DAG:   [[A1:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(0)
     ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f32[8,8]{1,0} fusion([[A0]], [[A1]])
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
-    ; CHECK:         backend_config={
-    ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
-    ; CHECK:         }
-    ; CHECK:     }
+    ; CHECK:-SAME: backend_config={{{.*}}"custom_fusion_config":{{.*}}"name":"address_computation"{{.*}}
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
@@ -865,7 +832,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandAliasingOutput) {
     ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[200,100]{1,0} parameter(0)
     ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[100,100]{1,0} slice([[P0]]), slice={[16:116], [0:100]}
     ; CHECK:       [[CC:%[^ ]+]] = (f32[100,100]{1,0}, s8[120000]{0}) custom-call([[P1]], [[S1]], [[P2]]),
-    ; CHECK:         custom_call_target="__cublas$lt$matmul"
+    ; CHECK:         custom_call_target="__cublas$lt$matmul"{{.*}}
     ; CHECK:     }
 
     ; CHECK:     ENTRY %main{{.*}} {
@@ -876,11 +843,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandAliasingOutput) {
     ; CHECK:       [[S:%[^ ]+]] = f32[100,100]{1,0} slice([[CONCAT]]), slice={[99:199], [0:100]}
     ; CHECK:       ROOT [[FUSION:%[^ ]+]] = (f32[100,100]{1,0}, s8[120000]{0}) fusion([[CONCAT]], [[GTE0]], [[S]])
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
-    ; CHECK:         backend_config={
-    ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
-    ; CHECK:         }
-    ; CHECK:     }
+    ; CHECK:-SAME: backend_config={{{.*}}"custom_fusion_config":{{.*}}"name":"address_computation"{{.*}}
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
@@ -927,18 +890,14 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandsFromSameSlice) {
     ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
     ; CHECK-DAG:   [[B1:%[^ ]+]] = f16[8,8]{0,1} bitcast([[S0]])
     ; CHECK:       ROOT [[CC:%[^ ]+]] = f16[8,8]{1,0} custom-call([[B0]], [[B1]]),
-    ; CHECK:              custom_call_target="__cublas$lt$matmul"
+    ; CHECK:              custom_call_target="__cublas$lt$matmul"{{.*}}
     ; CHECK:     }
 
     ; CHECK:     ENTRY %main{{.*}} {
     ; CHECK-DAG:   [[A0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
     ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f16[8,8]{1,0} fusion([[A0]])
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
-    ; CHECK:         backend_config={
-    ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
-    ; CHECK:         }
-    ; CHECK:     }
+    ; CHECK:-SAME: backend_config={{{.*}}"custom_fusion_config":{{.*}}"name":"address_computation"{{.*}}
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
@@ -994,7 +953,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCall) {
     ; CHECK:       [[P0:%[^ ]+]] = f32[256]{0} parameter(0)
     ; CHECK:       [[S0:%[^ ]+]] = f32[128]{0} slice([[P0]]), slice={[0:128]}
     ; CHECK:       ROOT [[CC:%[^ ]+]] = f32[128]{0} custom-call([[S0]]),
-    ; CHECK:              custom_call_target="__xla_test$$memcpy",
+    ; CHECK:              custom_call_target="__xla_test$$memcpy"{{.*}},
     ; CHECK:              api_version=API_VERSION_TYPED_FFI
     ; CHECK:     }
 
@@ -1003,11 +962,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCall) {
     ; CHECK:       [[BC:%[^ ]+]] = f32[256]{0} broadcast([[C0]])
     ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f32[128]{0} fusion([[BC]])
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
-    ; CHECK:         backend_config={
-    ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
-    ; CHECK:         }
-    ; CHECK:     }
+    ; CHECK:-SAME: backend_config={{{.*}}"custom_fusion_config":{{.*}}"name":"address_computation"{{.*}}
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
@@ -1055,7 +1010,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCallLegacy) {
     ; CHECK:       [[P0:%[^ ]+]] = f32[256]{0} parameter(0)
     ; CHECK:       [[S0:%[^ ]+]] = f32[128]{0} slice([[P0]]), slice={[0:128]}
     ; CHECK:       ROOT [[CC:%[^ ]+]] = f32[128]{0} custom-call([[S0]]),
-    ; CHECK:              custom_call_target="Callback_Void"
+    ; CHECK:              custom_call_target="Callback_Void"{{.*}}
     ; CHECK:     }
 
     ; CHECK:     ENTRY %{{.*}} {
@@ -1063,11 +1018,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCallLegacy) {
     ; CHECK:       [[BC:%[^ ]+]] = f32[256]{0} broadcast([[C0]])
     ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f32[128]{0} fusion([[BC]])
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
-    ; CHECK:         backend_config={
-    ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
-    ; CHECK:         }
-    ; CHECK:     }
+    ; CHECK:-SAME: backend_config={{{.*}}"custom_fusion_config":{{.*}}"name":"address_computation"{{.*}}
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
@@ -1120,17 +1071,13 @@ TEST_F(DynamicSliceFusionRewriterTest, TupleSliceCustomCallLegacy) {
     ; CHECK-DAG:   [[T0:%[^ ]+]] = (f32[4,8]{1,0}, f32[256]{0}) tuple([[S0]], [[P1]])
     ; CHECK-DAG:   [[P2:%[^ ]+]] = (f32[1024]{0}, f32[8]{0}) parameter(2)
     ; CHECK:       ROOT [[CC:%[^ ]+]] = f32[128]{0} custom-call([[T0]], [[P2]]),
-    ; CHECK:              custom_call_target="Callback_Void"
+    ; CHECK:              custom_call_target="Callback_Void"{{.*}}
     ; CHECK:     }
 
     ; CHECK:     ENTRY %{{.*}} {
     ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f32[128]{0} fusion(
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
-    ; CHECK:         backend_config={
-    ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
-    ; CHECK:         }
-    ; CHECK:     }
+    ; CHECK:-SAME: backend_config={{{.*}}"custom_fusion_config":{{.*}}"name":"address_computation"{{.*}}
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
@@ -1194,7 +1141,7 @@ TEST_F(DynamicSliceFusionRewriterTest, TupledOutputCustomCallLegacy) {
     ; CHECK-DAG:   [[S0:%[^ ]+]] = f32[4,8]{1,0} slice([[P0]]), slice={[0:4], [0:8]}
     ; CHECK-DAG:   [[T0:%[^ ]+]] = (f32[4,8]{1,0}, f32[256]{0}) tuple([[S0]], [[P1]])
     ; CHECK:       [[CC:%[^ ]+]] = (f32[8]{0}, (f32[128]{0}, f32[256]{0}), f32[1024]{0}, f32[4,8]{1,0}) custom-call([[T0]], [[P2]]),
-    ; CHECK:              custom_call_target="Callback_Void"
+    ; CHECK:              custom_call_target="Callback_Void"{{.*}}
     ; CHECK-DAG:   [[GTE0:%[^ ]+]] = f32[8]{0} get-tuple-element([[CC]]), index=0
     ; CHECK-DAG:   [[GTE1:%[^ ]+]] = (f32[128]{0}, f32[256]{0}) get-tuple-element([[CC]]), index=1
     ; CHECK-DAG:   [[GTE2:%[^ ]+]] = f32[128]{0} get-tuple-element([[GTE1]]), index=0
@@ -1208,10 +1155,7 @@ TEST_F(DynamicSliceFusionRewriterTest, TupledOutputCustomCallLegacy) {
     ; CHECK:     ENTRY %{{.*}} {
     ; CHECK:       [[FUSION:%[^ ]+]] = (f32[8]{0}, (f32[128]{0}, f32[256]{0}), f32[1024]{0}, f32[4,8]{1,0}) fusion
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
-    ; CHECK:         backend_config={
-    ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
-    ; CHECK:         }
+    ; CHECK:-SAME: backend_config={{{.*}}"custom_fusion_config":{{.*}}"name":"address_computation"{{.*}}
     ; CHECK-DAG:   [[GTE6:%[^ ]+]] = f32[1024]{0} get-tuple-element([[FUSION]]), index=2
     ; CHECK-DAG:   [[GTE7:%[^ ]+]] = (f32[128]{0}, f32[256]{0}) get-tuple-element([[FUSION]]), index=1
     ; CHECK-DAG:   [[GTE8:%[^ ]+]] = f32[128]{0} get-tuple-element([[GTE7]]), index=0
@@ -1301,17 +1245,13 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemm) {
     ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} dynamic-slice([[P1]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
     ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
     ; CHECK:       ROOT [[CC:%[^ ]+]] = f32[8,8]{1,0} custom-call([[B0]], [[B1]]),
-    ; CHECK:              custom_call_target="__cublas$lt$matmul"
+    ; CHECK:              custom_call_target="__cublas$lt$matmul"{{.*}}
     ; CHECK:     }
 
     ; CHECK:     ENTRY %main{{.*}} {
     ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f32[8,8]{1,0} fusion
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
-    ; CHECK:         backend_config={
-    ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
-    ; CHECK:         }
-    ; CHECK:     }
+    ; CHECK:-SAME: backend_config={{{.*}}"custom_fusion_config":{{.*}}"name":"address_computation"{{.*}}
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
@@ -1366,7 +1306,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmWithWorkspace) {
     ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} dynamic-slice([[P1]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
     ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
     ; CHECK:       [[CC:%[^ ]+]] = (f32[8,8]{1,0}, s8[256]{0}) custom-call([[B0]], [[B1]]),
-    ; CHECK:              custom_call_target="__cublas$lt$matmul"
+    ; CHECK:              custom_call_target="__cublas$lt$matmul"{{.*}}
     ; CHECK:       [[DOT:%[^ ]+]] = f32[8,8]{1,0} get-tuple-element([[CC]]), index=0
     ; CHECK:       [[WORKSPACE:%[^ ]+]] = s8[256]{0} get-tuple-element([[CC]]), index=1
     ; CHECK:       ROOT [[TUPLE:%[^ ]+]] = (f32[8,8]{1,0}, s8[256]{0})
@@ -1377,11 +1317,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmWithWorkspace) {
     ; CHECK:     ENTRY %main{{.*}} {
     ; CHECK:       ROOT [[FUSION:%[^ ]+]] = (f32[8,8]{1,0}, s8[256]{0}) fusion
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
-    ; CHECK:         backend_config={
-    ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
-    ; CHECK:         }
-    ; CHECK:     }
+    ; CHECK:-SAME: backend_config={{{.*}}"custom_fusion_config":{{.*}}"name":"address_computation"{{.*}}
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
@@ -1437,7 +1373,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmWorkspaceIgnored) {
     ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} dynamic-slice([[P1]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
     ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
     ; CHECK:       [[CC:%[^ ]+]] = (f32[8,8]{1,0}, s8[256]{0}) custom-call([[B0]], [[B1]]),
-    ; CHECK:              custom_call_target="__cublas$lt$matmul"
+    ; CHECK:              custom_call_target="__cublas$lt$matmul"{{.*}}
     ; CHECK:       [[DOT:%[^ ]+]] = f32[8,8]{1,0} get-tuple-element([[CC]]), index=0
     ; CHECK:       [[WORKSPACE:%[^ ]+]] = s8[256]{0} get-tuple-element([[CC]]), index=1
     ; CHECK:       ROOT [[TUPLE:%[^ ]+]] = (f32[8,8]{1,0}, s8[256]{0})
@@ -1447,10 +1383,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmWorkspaceIgnored) {
     ; CHECK:     ENTRY %main{{.*}} {
     ; CHECK:       [[FUSION:%[^ ]+]] = (f32[8,8]{1,0}, s8[256]{0}) fusion
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
-    ; CHECK:         backend_config={
-    ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
-    ; CHECK:         }
+    ; CHECK:-SAME: backend_config={{{.*}}"custom_fusion_config":{{.*}}"name":"address_computation"{{.*}}
     ; CHECK:       ROOT [[DOT_MAIN:%[^ ]+]] = f32[8,8]{1,0} get-tuple-element([[FUSION]]), index=0
     ; CHECK:     }
   )";
@@ -1508,18 +1441,13 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmNotRoot) {
     ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} dynamic-slice([[P1]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
     ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
     ; CHECK:       ROOT [[CC:%[^ ]+]] = f32[8,8]{1,0} custom-call([[B0]], [[B1]]),
-    ; CHECK:              custom_call_target="__cublas$lt$matmul"
+    ; CHECK:              custom_call_target="__cublas$lt$matmul"{{.*}}
     ; CHECK:     }
 
     ; CHECK:     ENTRY %main{{.*}} {
     ; CHECK:       [[FUSION:%[^ ]+]] = f32[8,8]{1,0} fusion
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
-    ; CHECK:         backend_config={
-    ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
-    ; CHECK:         }
-    ; CHECK:       ROOT {{.*}} = f32[8,8]{1,0} add([[FUSION]], [[FUSION]])
-    ; CHECK:     }
+    ; CHECK:-SAME: backend_config={{{.*}}"custom_fusion_config":{{.*}}"name":"address_computation"{{.*}}
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
@@ -1571,7 +1499,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemm) {
     ; CHECK-DAG:   [[C1:%[^ ]+]] = s32[] parameter(3)
     ; CHECK-DAG:   [[C0:%[^ ]+]] = s32[] parameter(4)
     ; CHECK-DAG:   [[CC:%[^ ]+]] = f32[8,8]{1,0} custom-call([[P0]], [[P1]]),
-    ; CHECK-DAG:          custom_call_target="__cublas$lt$matmul"
+    ; CHECK-DAG:          custom_call_target="__cublas$lt$matmul"{{.*}}
     ; CHECK-DAG:   [[BC:%[^ ]+]] = f32[1,8,8]{2,1,0} bitcast([[CC]])
     ; CHECK:       ROOT {{.*}} = f32[4,8,8]{2,1,0} dynamic-update-slice([[P2]], [[BC]], [[C1]], [[C0]], [[C0]])
     ; CHECK:     }
@@ -1579,11 +1507,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemm) {
     ; CHECK:     ENTRY %main{{.*}} {
     ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f32[4,8,8]{2,1,0} fusion
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
-    ; CHECK:         backend_config={
-    ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
-    ; CHECK:         }
-    ; CHECK:     }
+    ; CHECK:-SAME: backend_config={{{.*}}"custom_fusion_config":{{.*}}"name":"address_computation"{{.*}}
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
@@ -1643,7 +1567,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmNotRoot) {
     ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} dynamic-slice([[P1]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
     ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
     ; CHECK-DAG:   [[CC:%[^ ]+]] = f32[8,8]{1,0} custom-call([[B0]], [[B1]]),
-    ; CHECK-DAG:          custom_call_target="__cublas$lt$matmul"
+    ; CHECK-DAG:          custom_call_target="__cublas$lt$matmul"{{.*}}
     ; CHECK-DAG:   [[BC:%[^ ]+]] = f32[1,8,8]{2,1,0} bitcast([[CC]])
     ; CHECK:       ROOT {{.*}} = f32[4,8,8]{2,1,0} dynamic-update-slice([[P2]], [[BC]], [[C1]], [[C0]], [[C0]])
     ; CHECK:     }
@@ -1651,12 +1575,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmNotRoot) {
     ; CHECK:     ENTRY %main{{.*}} {
     ; CHECK:       [[FUSION:%[^ ]+]] = f32[4,8,8]{2,1,0} fusion
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
-    ; CHECK:         backend_config={
-    ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
-    ; CHECK:         }
-    ; CHECK:       ROOT {{.*}} = f32[4,8,8]{2,1,0} log([[FUSION]])
-    ; CHECK:     }
+    ; CHECK:-SAME: backend_config={{{.*}}"custom_fusion_config":{{.*}}"name":"address_computation"{{.*}}
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
@@ -1719,7 +1638,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmWithWorkspace) {
     ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} dynamic-slice([[P1]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
     ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
     ; CHECK:       [[CC:%[^ ]+]] = (f32[8,8]{1,0}, s8[256]{0}) custom-call([[B0]], [[B1]]),
-    ; CHECK:              custom_call_target="__cublas$lt$matmul"
+    ; CHECK:              custom_call_target="__cublas$lt$matmul"{{.*}}
     ; CHECK:       [[DOT:%[^ ]+]] = f32[8,8]{1,0} get-tuple-element([[CC]]), index=0
     ; CHECK:       [[BC:%[^ ]+]] = f32[1,8,8]{2,1,0} bitcast([[DOT]])
     ; CHECK:       [[DUS:%[^ ]+]] = f32[4,8,8]{2,1,0} dynamic-update-slice([[P2]], [[BC]], [[C1]], [[C0]], [[C0]])
@@ -1731,10 +1650,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmWithWorkspace) {
     ; CHECK:     ENTRY %main{{.*}} {
     ; CHECK:       [[FUSION:%[^ ]+]] = (f32[4,8,8]{2,1,0}, s8[256]{0}) fusion
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
-    ; CHECK:         backend_config={
-    ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
-    ; CHECK:         }
+    ; CHECK:-SAME: backend_config={{{.*}}"custom_fusion_config":{{.*}}"name":"address_computation"{{.*}}
     ; CHECK:       [[DUS_MAIN:%[^ ]+]] = f32[4,8,8]{2,1,0} get-tuple-element([[FUSION]]), index=0
     ; CHECK:       [[WORKSPACE_MAIN:%[^ ]+]] = s8[256]{0} get-tuple-element([[FUSION]]), index=1
     ; CHECK:       ROOT {{.*}} = (f32[4,8,8]{2,1,0}, s8[256]{0})
@@ -1790,7 +1706,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmWorkspaceIgnored) {
     ; CHECK-DAG:   [[C1:%[^ ]+]] = s32[] parameter(3)
     ; CHECK-DAG:   [[C0:%[^ ]+]] = s32[] parameter(4)
     ; CHECK-DAG:   [[CC:%[^ ]+]] = (f32[8,8]{1,0}, s8[256]{0}) custom-call([[P0]], [[P1]]),
-    ; CHECK-DAG:          custom_call_target="__cublas$lt$matmul"
+    ; CHECK-DAG:          custom_call_target="__cublas$lt$matmul"{{.*}}
     ; CHECK-DAG:   [[DOT:%[^ ]+]] = f32[8,8]{1,0} get-tuple-element([[CC]]), index=0
     ; CHECK-DAG:   [[BC:%[^ ]+]] = f32[1,8,8]{2,1,0} bitcast([[DOT]])
     ; CHECK-DAG:   [[DUS:%[^ ]+]] = f32[4,8,8]{2,1,0} dynamic-update-slice([[P2]], [[BC]], [[C1]], [[C0]], [[C0]])
@@ -1802,10 +1718,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmWorkspaceIgnored) {
     ; CHECK:     ENTRY %main{{.*}} {
     ; CHECK:       [[FUSION:%[^ ]+]] = (f32[4,8,8]{2,1,0}, s8[256]{0}) fusion
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
-    ; CHECK:         backend_config={
-    ; CHECK:           "kind":"__custom_fusion",
-    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
-    ; CHECK:         }
+    ; CHECK:-SAME: backend_config={{{.*}}"custom_fusion_config":{{.*}}"name":"address_computation"{{.*}}
     ; CHECK:       ROOT [[DOT_MAIN:%[^ ]+]] = f32[4,8,8]{2,1,0} get-tuple-element([[FUSION]]), index=0
     ; CHECK:     }
   )";

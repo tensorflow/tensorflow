@@ -55,9 +55,8 @@ ParseHloModuleAndFingerprint(const HloModuleProtoWithConfig& proto) {
   ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                    HloModule::CreateFromProtoWithConfig(proto));
   HighwayHashPrinter printer;
-  module->Print(&printer, HloPrintOptions::Canonical()
-                              .set_print_backend_config(true)
-                              .set_sort_backend_config(true));
+  module->Print(&printer,
+                HloPrintOptions::Canonical().set_print_backend_config(true));
   return std::make_pair(std::move(module), printer.ToFingerprint128());
 }
 

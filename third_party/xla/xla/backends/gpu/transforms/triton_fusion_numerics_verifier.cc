@@ -242,8 +242,7 @@ TritonFusionNumericsVerifier::FusionCacheKey CacheKeyForFusion(
   std::unique_ptr<HloModule> module = ExtractInstructionIntoNewModule(fusion);
   HloPrintOptions print_options = HloPrintOptions::ModuleFingerprint()
                                       .set_print_only_essential_constants(false)
-                                      .set_print_backend_config(true)
-                                      .set_sort_backend_config(true);
+                                      .set_print_backend_config(true);
   return module->ToString(print_options);
 }
 
