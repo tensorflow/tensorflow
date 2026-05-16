@@ -89,6 +89,9 @@ struct CompileOptions {
   // If true, the supplied computation expects its arguments to be wrapped in a
   // tuple and passed as a single parameter.
   bool parameter_is_tupled_arguments = false;
+  // If true, expect optimized HloModule to have tupled arguments and tuple
+  // CompileOptionsProto.argument_layouts to match.
+  bool tuple_argument_layouts = false;
 
   // XLA's compilation time options.
   ExecutableBuildOptions executable_build_options;
