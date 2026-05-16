@@ -14,7 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/hlo/transforms/simplifiers/computation_canonicalizers.h"
 
+#include <memory>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
