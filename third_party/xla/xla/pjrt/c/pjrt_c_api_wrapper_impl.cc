@@ -3225,20 +3225,6 @@ PJRT_Error* PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace(
   return nullptr;
 }
 
-PJRT_Error* PJRT_TopologyDescription_GetMemorySpaceKindIds(
-    PJRT_TopologyDescription_GetMemorySpaceKindIds_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
-      "PJRT_TopologyDescription_GetMemorySpaceKindIds_Args",
-      PJRT_TopologyDescription_GetMemorySpaceKindIds_Args_STRUCT_SIZE,
-      args->struct_size));
-
-  absl::Span<const int> kind_ids =
-      args->topology->topology->GetMemorySpaceKindIds();
-  args->memory_space_kind_ids = kind_ids.data();
-  args->num_memory_space_kind_ids = kind_ids.size();
-  return nullptr;
-}
-
 PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Compile_Args", PJRT_Compile_Args_STRUCT_SIZE, args->struct_size));
@@ -3915,8 +3901,6 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       pjrt::PJRT_Device_ClearMemoryStats,
       /*PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace=*/
       pjrt::PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace,
-      /*PJRT_TopologyDescription_GetMemorySpaceKindIds=*/
-      pjrt::PJRT_TopologyDescription_GetMemorySpaceKindIds,
   };
 }
 

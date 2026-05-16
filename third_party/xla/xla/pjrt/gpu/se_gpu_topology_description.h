@@ -125,8 +125,6 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
       int memory_space_kind_id, xla::Shape shape,
       const xla::Layout* layout) const override;
 
-  absl::Span<const int> GetMemorySpaceKindIds() const override;
-
   absl::StatusOr<PjRtDeviceDimensions> ChipBounds() const override;
 
   absl::StatusOr<xla::PjRtTopologyDescriptionProto> ToProto() const override;

@@ -111,7 +111,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 110
+#define PJRT_API_MINOR 109
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -2944,19 +2944,6 @@ PJRT_DEFINE_STRUCT_TRAITS(
 typedef PJRT_Error* PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace(
     PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace_Args* args);
 
-struct PJRT_TopologyDescription_GetMemorySpaceKindIds_Args {
-  size_t struct_size;
-  PJRT_Extension_Base* extension_start;
-  const PJRT_TopologyDescription* topology;
-  const int* memory_space_kind_ids;  // out
-  size_t num_memory_space_kind_ids;  // out
-};
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_GetMemorySpaceKindIds_Args,
-                          num_memory_space_kind_ids);
-
-typedef PJRT_Error* PJRT_TopologyDescription_GetMemorySpaceKindIds(
-    PJRT_TopologyDescription_GetMemorySpaceKindIds_Args* args);
-
 struct PJRT_Compile_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
@@ -3153,12 +3140,11 @@ typedef struct PJRT_Api {
   _PJRT_API_STRUCT_FIELD(PJRT_Device_ClearMemoryStats);
   _PJRT_API_STRUCT_FIELD(
       PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace);
-  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_GetMemorySpaceKindIds);
 } PJRT_Api;
 
 enum {
-  PJRT_Api_STRUCT_SIZE =
-      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_TopologyDescription_GetMemorySpaceKindIds)
+  PJRT_Api_STRUCT_SIZE = PJRT_STRUCT_SIZE(
+      PJRT_Api, PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace)
 };
 
 #undef _PJRT_API_STRUCT_FIELD

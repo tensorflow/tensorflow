@@ -488,8 +488,6 @@ PJRT_Error* PJRT_TopologyDescription_Attributes(
     PJRT_TopologyDescription_Attributes_Args* args);
 PJRT_Error* PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace(
     PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace_Args* args);
-PJRT_Error* PJRT_TopologyDescription_GetMemorySpaceKindIds(
-    PJRT_TopologyDescription_GetMemorySpaceKindIds_Args* args);
 
 PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args);
 PJRT_Error* PJRT_TopologyDescription_Deserialize(

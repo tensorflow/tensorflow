@@ -112,8 +112,6 @@ class CpuTopologyDescription : public PjRtTopologyDescription {
 
   absl::StatusOr<absl::string_view> KindIdToKind(int kind) const;
 
-  absl::Span<const int> GetMemorySpaceKindIds() const override;
-
   absl::StatusOr<Layout> GetDefaultLayout(
       PrimitiveType element_type,
       absl::Span<const int64_t> dims) const override;
