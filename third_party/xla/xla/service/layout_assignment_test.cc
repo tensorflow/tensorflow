@@ -526,8 +526,8 @@ class OperandsMustBeTheSameLayoutAssignment : public LayoutAssignment {
   absl::Status PropagateBufferConstraint(
       const BufferLayoutConstraint& buffer_constraint,
       LayoutConstraints* constraints) override {
-    const LogicalBuffer& buffer = buffer_constraint.buffer();
-    const HloInstruction* instruction = buffer.instruction();
+    const HloValue& value = buffer_constraint.value();
+    const HloInstruction* instruction = value.defining_instruction();
 
     // Force the operands' layout to the output layout.
     for (int64_t operand_no = 0; operand_no < instruction->operand_count();
@@ -1666,11 +1666,11 @@ ENTRY main {
       /* reverse_computation_order = */ true);
   EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
   const HloInstruction* call_1 = FindInstruction(m.get(), "reshape.8494");
-  ExpectLayoutIs(call_1->shape(), {0, 1, 2});
+  ExpectLayoutIs(call_1->shape(), {2, 1, 0});
   const HloInstruction* on_true = FindInstruction(m.get(), "reshape.8493");
-  ExpectLayoutIs(on_true->shape(), {0, 1, 2});
+  ExpectLayoutIs(on_true->shape(), {2, 1, 0});
   const HloInstruction* on_false = FindInstruction(m.get(), "reshape.9717");
-  ExpectLayoutIs(on_false->shape(), {0, 1, 2});
+  ExpectLayoutIs(on_false->shape(), {2, 1, 0});
 }
 
 // Test the ability to propagate operand constraints across multiple operations.

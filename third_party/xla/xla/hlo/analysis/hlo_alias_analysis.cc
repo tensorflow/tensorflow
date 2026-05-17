@@ -182,6 +182,9 @@ void ComputeInPlaceOperationAliasedValues(const HloValue& value,
                                           const HloDataflowAnalysis& dataflow,
                                           const AliasInfo* alias_info,
                                           FlatValueSet& aliased_values) {
+  if (alias_info == nullptr) {
+    return;
+  }
   VLOG(3) << "Compute aliases for in-place operations (e.g. "
              "kDynamicUpdateSlice and kScatter)";
   for (const HloPosition& position : value.positions()) {
