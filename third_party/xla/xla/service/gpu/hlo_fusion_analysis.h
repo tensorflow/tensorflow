@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -104,6 +105,9 @@ class HloFusionAnalysis {
   const FusionBackendConfig& fusion_backend_config() const {
     return fusion_backend_config_;
   }
+
+  // Returns the shape of the first result.
+  const Shape& first_result_shape() const;
 
   // Returns the tiled transpose description. Requires that emitter_fusion_kind_
   // is kTranspose.
