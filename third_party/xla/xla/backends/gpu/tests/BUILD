@@ -1659,6 +1659,32 @@ xla_cc_test(
     ],
 )
 
+xla_cc_test(
+    name = "command_buffer_profiling_test",
+    srcs = ["command_buffer_profiling_test.cc"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        "//xla/backends/gpu/runtime:command_buffer_thunk",
+        "//xla/backends/gpu/runtime:thunk",
+        "//xla/backends/gpu/target_config",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:compiled_module",
+        "//xla/service:compiler",
+        "//xla/service:executable",
+        "//xla/service:gpu_plugin",
+        "//xla/service:gpu_topology",
+        "//xla/service/gpu:gpu_executable",
+        "//xla/stream_executor:device_description_proto_cc",
+        "//xla/stream_executor/cuda:cuda_platform_id",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 xla_test(
     name = "p2p_ops_e2e_test",
     srcs = ["p2p_ops_e2e_test.cc"],

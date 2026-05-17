@@ -81,6 +81,13 @@ class CommandBufferThunk : public Thunk {
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
+  // Returns whether command buffers are enabled during profiling.
+  // When this is false, and there's an active profiler session, the thunks will
+  // be evaluated as a regular thunk sequence.
+  bool IsEnabledDuringProfiling() const {
+    return enable_command_buffers_during_profiling_;
+  }
+
  private:
   // Command buffer instantiated on a `se::StreamExecutor` instance, and
   // auxiliary state required for efficient command buffer updates.
