@@ -99,9 +99,9 @@ class QuantizedMatMulOp : public OpKernel {
     // If the difference between the min and max is negative or zero, it makes
     // it hard to do meaningful intermediate operations on the values.
     OP_REQUIRES(context, (max_a > min_a),
-                errors::InvalidArgument("max_a must be larger than min_a."));
+                absl::InvalidArgumentError("max_a must be larger than min_a."));
     OP_REQUIRES(context, (max_b > min_b),
-                errors::InvalidArgument("max_b must be larger than min_b."));
+                absl::InvalidArgumentError("max_b must be larger than min_b."));
     const int32_t offset_a = FloatToQuantizedUnclamped<T1>(0.0f, min_a, max_a);
     const int32_t offset_b = FloatToQuantizedUnclamped<T2>(0.0f, min_b, max_b);
     const int32_t offset_c = 0;
@@ -110,22 +110,23 @@ class QuantizedMatMulOp : public OpKernel {
 
     // Check that the dimensions of the two matrices are valid.
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(a.shape()),
-                errors::InvalidArgument("In[0] is not a matrix"));
+                absl::InvalidArgumentError("In[0] is not a matrix"));
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(b.shape()),
-                errors::InvalidArgument("In[1] is not a matrix"));
+                absl::InvalidArgumentError("In[1] is not a matrix"));
     Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
     dim_pair[0].first = transpose_a_ ? 0 : 1;
     dim_pair[0].second = transpose_b_ ? 1 : 0;
 
-    OP_REQUIRES(context,
-                a.dim_size(dim_pair[0].first) == b.dim_size(dim_pair[0].second),
-                errors::InvalidArgument("Matrix size-incompatible: In[0]: ",
-                                        a.shape().DebugString(),
-                                        ", In[1]: ", b.shape().DebugString()));
+    OP_REQUIRES(
+        context,
+        a.dim_size(dim_pair[0].first) == b.dim_size(dim_pair[0].second),
+        absl::InvalidArgumentError(absl::StrCat(
+            "Matrix size-incompatible: In[0]: ", a.shape().DebugString(),
+            ", In[1]: ", b.shape().DebugString())));
 
     OP_REQUIRES(context, ((shift_c >= 0) && (shift_c <= 31)),
-                errors::InvalidArgument("shift_c must be between 0 and 31, "
-                                        "inclusive."));
+                absl::InvalidArgumentError("shift_c must be between 0 and 31, "
+                                           "inclusive."));
 
     int a_dim_remaining = 1 - dim_pair[0].first;
     int b_dim_remaining = 1 - dim_pair[0].second;
