@@ -77,14 +77,14 @@ REGISTER_OP("RaggedCross")
 
       int num_ragged = ragged_values_types.size();
       if (num_ragged != ragged_splits_types.size()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "ragged values and splits must have the same length.");
       }
 
       int num_sparse;
       TF_RETURN_IF_ERROR(c->GetAttr("Nsparse", &num_sparse));
       if (num_sparse != sparse_values_types.size()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "sparse indices and values must have the same length");
       }
 
@@ -97,7 +97,7 @@ REGISTER_OP("RaggedCross")
       for (int i = 0; i < ragged_splits_types.size(); ++i) {
         ShapeHandle row_splits = c->input(i + ragged_splits_start);
         if (!c->Merge(out_splits, row_splits, &out_splits).ok()) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(
               "inputs must all have the same batch dimension size.");
         }
       }
@@ -110,14 +110,14 @@ REGISTER_OP("RaggedCross")
         if (rank == InferenceContext::kUnknownRank) {
           continue;
         } else if (rank != 2) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(
               "tf.ragged.cross only supports inputs with rank=2");
         }
         int64_t batch_size = c->Value(c->Dim(dense_input, 0));
         if (batch_size != InferenceContext::kUnknownDim) {
           ShapeHandle row_splits = c->Vector(batch_size + 1);
           if (!c->Merge(out_splits, row_splits, &out_splits).ok()) {
-            return errors::InvalidArgument(
+            return absl::InvalidArgumentError(
                 "inputs must all have the same batch dimension size.");
           }
         }
