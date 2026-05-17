@@ -77,7 +77,7 @@ std::optional<DynamicSliceConfig> ComputeStaticSliceConfig(
     return std::nullopt;
   }
   int64_t byte_offset = 0;
-  for (int64_t dim = 0; dim < slice->shape().dimensions_size(); ++dim) {
+  for (int64_t dim = 0; dim < slice->shape().dimensions().size(); ++dim) {
     byte_offset += slice->slice_starts(dim) * (*byte_strides)[dim];
   }
   DynamicSliceConfig config;
