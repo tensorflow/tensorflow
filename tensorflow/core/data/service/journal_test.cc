@@ -18,8 +18,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/memory/memory.h"
+#include <gmock/gmock.h>
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/journal.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
