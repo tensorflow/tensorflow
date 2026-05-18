@@ -129,11 +129,6 @@ static absl::StatusOr<std::unique_ptr<Command>> Convert(
 }
 
 static absl::StatusOr<std::unique_ptr<Command>> Convert(
-    const AllGatherThunk& thunk) {
-  return std::make_unique<AllGatherCmd>(thunk.config(), thunk.buffers());
-}
-
-static absl::StatusOr<std::unique_ptr<Command>> Convert(
     const CollectivePermuteThunk& thunk) {
   return std::make_unique<CollectivePermuteCmd>(
       thunk.config(), thunk.p2p_config(), thunk.buffers());
@@ -218,8 +213,11 @@ static absl::Status AppendCommands(ConversionContext& ctx,
     case Thunk::Kind::kMemzero:
       cmd_sequence.Append(static_cast<MemzeroThunk*>(&thunk));
       return absl::OkStatus();
+    // AllGatherThunk implements Command directly; append as borrowed pointer —
+    // the thunk outlives the command sequence.
     case Thunk::Kind::kAllGather:
-      return append(Convert<AllGatherThunk>(thunk));
+      cmd_sequence.Append(static_cast<AllGatherThunk*>(&thunk));
+      return absl::OkStatus();
     // AllReduceThunk implements Command directly; append as borrowed pointer —
     // the thunk outlives the command sequence.
     case Thunk::Kind::kAllReduce:

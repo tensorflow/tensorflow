@@ -36,7 +36,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/runtime/all_gather_thunk.h"
 #include "xla/backends/gpu/runtime/collective_execution.h"
 #include "xla/backends/gpu/runtime/collective_permute_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
@@ -409,70 +408,6 @@ CollectiveCmd::RecordTracedCommand(
       [&](const se::CommandBuffer::Command* command) {
         return command_buffer->UpdateChildCommand(command, *nested_cmd);
       });
-}
-
-//===----------------------------------------------------------------------===//
-// AllGatherCmd
-//===----------------------------------------------------------------------===//
-
-AllGatherCmd::AllGatherCmd(CollectiveConfig config,
-                           absl::Span<const CollectiveThunk::Buffer> buffers)
-    : CollectiveCmd(CommandType::kAllGatherCmd, std::move(config)),
-      buffers_(buffers.begin(), buffers.end()) {}
-
-absl::StatusOr<const se::CommandBuffer::Command*> AllGatherCmd::Record(
-    const Thunk::ExecuteParams& execute_params,
-    const RecordParams& record_params, RecordAction record_action,
-    se::CommandBuffer* command_buffer) {
-  TF_ASSIGN_OR_RETURN(
-      std::vector<DeviceBufferPair> device_buffers,
-      ConvertToDeviceBuffers(execute_params.buffer_allocations, buffers_,
-                             config().operand_element_type));
-
-  int device_ordinal = execute_params.stream->parent()->device_ordinal();
-  XLA_VLOG_DEVICE(5, device_ordinal) << "AllGatherCmd:";
-
-  for (size_t i = 0; i < device_buffers.size(); ++i) {
-    XLA_VLOG_DEVICE(5, device_ordinal)
-        << "  Src: " << buffers_[i].source_buffer << " ("
-        << device_buffers[i].source_buffer.opaque() << ")";
-    XLA_VLOG_DEVICE(5, device_ordinal)
-        << "  Dst: " << buffers_[i].destination_buffer << " ("
-        << device_buffers[i].destination_buffer.opaque() << ")";
-  }
-
-  if (!execute_params.collective_params || !execute_params.collective_cliques) {
-    return absl::InvalidArgumentError(
-        "AllGatherCmd requires collective parameters and cliques");
-  }
-
-  TF_ASSIGN_OR_RETURN(GpuCliqueKey clique_key,
-                      GetGpuCliqueKey(*execute_params.collective_params,
-                                      config().replica_groups,
-                                      config().group_mode, communication_id()));
-
-  TF_ASSIGN_OR_RETURN(
-      Communicator * comm,
-      execute_params.collective_cliques->GetComm(
-          clique_key, execute_params.collective_params->global_device_id));
-
-  return RecordTracedCommand(
-      execute_params, record_params, std::move(record_action), command_buffer,
-      [&](se::Stream* stream) {
-        return RunAllGather(device_buffers, *stream, *comm,
-                            config().use_symmetric_buffer);
-      });
-}
-
-Command::BufferUses AllGatherCmd::buffer_uses() const {
-  BufferUses buffer_usage;
-  for (auto& buffer : buffers_) {
-    buffer_usage.emplace_back(BufferUse::Read(buffer.source_buffer.slice,
-                                              buffer.source_buffer.shape));
-    buffer_usage.emplace_back(BufferUse::Write(
-        buffer.destination_buffer.slice, buffer.destination_buffer.shape));
-  }
-  return buffer_usage;
 }
 
 //===----------------------------------------------------------------------===//
