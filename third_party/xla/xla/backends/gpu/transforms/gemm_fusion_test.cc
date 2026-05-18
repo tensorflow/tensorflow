@@ -763,7 +763,7 @@ ENTRY e {
   EXPECT_THAT(GemmFusion(cc).Run(module.get()), IsOkAndHolds(false));
 }
 
-TEST_F(GemmFusionTest, ConcatenationDivisibleBy64IsFused) {
+TEST_P(GemmFusionTestVersioned, ConcatenationDivisibleBy64IsFused) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -1369,7 +1369,7 @@ ENTRY e {
                                     /*broadcast_multiplier=*/1)));
 }
 
-TEST_F(GemmFusionTest, FusedConcatenationIsAnalyzedCorrectly) {
+TEST_P(GemmFusionTestVersioned, FusedConcatenationIsAnalyzedCorrectly) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 e {
