@@ -1963,6 +1963,7 @@ cc_library(
         "//xla/stream_executor:stream_common",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/util:env_var",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:inlined_vector",
