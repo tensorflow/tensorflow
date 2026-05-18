@@ -64,10 +64,12 @@ class PluggableDeviceFactoryTest : public ::testing::Test {
   }
 
   // Returns a SessionOptions object with given virtual device settings. In
-  // `memory_limit_mb` the outer vector indexes physical devices, the inner
-  // vectors index the virtual devices to be created on each physical devices.
+  // `memory_limit_mb` and `priorities` the outer vector indexes physical
+  // devices, the inner vectors index the virtual devices to be created on each
+  // physical devices.
   SessionOptions MakeSessionOptions(
-      const std::vector<std::vector<float>>& memory_limit_mb) {
+      const std::vector<std::vector<float>>& memory_limit_mb,
+      const std::vector<std::vector<int>>& priorities) {
     SessionOptions options;
     ConfigProto* config = &options.config;
     GPUOptions* gpu_options = config->mutable_pluggable_device_options();
@@ -78,6 +80,9 @@ class PluggableDeviceFactoryTest : public ::testing::Test {
         for (float mb : memory_limit_mb[i]) {
           virtual_devices->add_memory_limit_mb(mb);
         }
+        for (int priority : priorities[i]) {
+          virtual_devices->add_priority(priority);
+        }
       }
     }
     return options;
@@ -86,7 +91,8 @@ class PluggableDeviceFactoryTest : public ::testing::Test {
 
 TEST_F(PluggableDeviceFactoryTest, VirtualDevicesMemoryLimitTest) {
   DeviceIdManager::TestOnlyReset();
-  SessionOptions opts = MakeSessionOptions({{123, 456}, {789}});
+  SessionOptions opts = MakeSessionOptions(
+      /*memory_limit_mb=*/{{123, 456}, {789}}, /*priorities=*/{{0, 1}, {2}});
   std::vector<std::unique_ptr<Device>> devices;
   PluggableDeviceFactory factory("MY_DEVICE", "MY_PLATFORM");
   TF_ASSERT_OK(
@@ -101,7 +107,8 @@ TEST_F(PluggableDeviceFactoryTest, VirtualDevicesMemoryLimitTest) {
 
 TEST_F(PluggableDeviceFactoryTest, VirtualDevicesMappingDefaultTest) {
   DeviceIdManager::TestOnlyReset();
-  SessionOptions opts = MakeSessionOptions({});  // no virtual devices
+  SessionOptions opts = MakeSessionOptions(
+      /*memory_limit_mb=*/{}, /*priorities=*/{});  // no virtual devices
   std::vector<std::unique_ptr<Device>> devices;
   PluggableDeviceFactory factory("MY_DEVICE", "MY_PLATFORM");
   TF_ASSERT_OK(
@@ -118,7 +125,8 @@ TEST_F(PluggableDeviceFactoryTest, VirtualDevicesMappingDefaultTest) {
 
 TEST_F(PluggableDeviceFactoryTest, VirtualDevicesMappingExplicitLimitTest) {
   DeviceIdManager::TestOnlyReset();
-  SessionOptions opts = MakeSessionOptions({{100, 200}, {300}});
+  SessionOptions opts = MakeSessionOptions(
+      /*memory_limit_mb=*/{{100, 200}, {300}}, /*priorities=*/{{0, 1}, {2}});
   std::vector<std::unique_ptr<Device>> devices;
   PluggableDeviceFactory factory("MY_DEVICE", "MY_PLATFORM");
   TF_ASSERT_OK(
@@ -144,7 +152,8 @@ TEST_F(PluggableDeviceFactoryTest, VirtualDevicesMappingExplicitLimitTest) {
 TEST_F(PluggableDeviceFactoryTest, VirtualDevicesMappingEmptyLimitTest) {
   DeviceIdManager::TestOnlyReset();
   // Empty inner vector means 1 virtual device taking all available memory.
-  SessionOptions opts = MakeSessionOptions({{100, 200}, {}});
+  SessionOptions opts = MakeSessionOptions(/*memory_limit_mb=*/{{100, 200}, {}},
+                                           /*priorities=*/{{0, 1}, {}});
   std::vector<std::unique_ptr<Device>> devices;
   PluggableDeviceFactory factory("MY_DEVICE", "MY_PLATFORM");
   TF_ASSERT_OK(
