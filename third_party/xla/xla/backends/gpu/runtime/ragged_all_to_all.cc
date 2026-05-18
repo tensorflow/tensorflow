@@ -185,6 +185,13 @@ absl::Status RunRaggedAllToAllKernel(
                                      num_input_rows, num_row_elements);
 }
 
+bool IsRaggedAllToAllWithSymmetricMemoryKernelSupported(
+    PrimitiveType element_type) {
+  // Currently, the kernel doesn't support data types that are smaller
+  // than 1 byte.
+  return primitive_util::BitWidth(element_type) % 8 == 0;
+}
+
 absl::Status RunRaggedAllToAllWithSymmetricMemoryKernel(
     se::Stream* stream, PrimitiveType element_type,
     se::DeviceAddressBase input_buffer,

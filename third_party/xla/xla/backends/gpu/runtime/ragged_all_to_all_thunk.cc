@@ -669,49 +669,53 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
   // FabricInfo queries are unavailable with old driver (e.g. 535.xx).
   bool fabric_safe = (homogeneity != FabricHomogeneity::kHeterogeneous);
 
-  bool should_use_one_shot_kernel =
-      is_one_shot_kernel_enabled() && IsOneShotKernelSupported() && fabric_safe;
+  if (is_one_shot_kernel_enabled() && fabric_safe) {
+    if (IsRaggedAllToAllWithSymmetricMemoryKernelSupported(
+            config_.config.operand_element_type[0]) &&
+        state->lsa_size.has_value() &&
+        state->lsa_size.value() == clique_key.num_devices()) {
+      SymmetricMemory* output_sym_mem = nullptr;
+      size_t output_sym_offset = 0;
+      bool is_zero_copy = zero_copy_in_one_shot_kernel();
+      if (is_zero_copy) {
+        const BufferAllocation::Slice& out_slice =
+            buffers()[1].destination_buffer.slice;
+        std::tie(output_sym_mem, output_sym_offset) =
+            params.collective_memory->FindSymmetricMemory(clique_key,
+                                                          out_slice);
 
-  if (should_use_one_shot_kernel && state->lsa_size.has_value() &&
-      state->lsa_size.value() == clique_key.num_devices()) {
-    SymmetricMemory* output_sym_mem = nullptr;
-    size_t output_sym_offset = 0;
-    bool is_zero_copy = zero_copy_in_one_shot_kernel();
-    if (is_zero_copy) {
-      const BufferAllocation::Slice& out_slice =
-          buffers()[1].destination_buffer.slice;
-      std::tie(output_sym_mem, output_sym_offset) =
-          params.collective_memory->FindSymmetricMemory(clique_key, out_slice);
-
-      if (output_sym_mem == nullptr) {
-        return Internal(
-            "Symmetric memory not found for destination buffer slice [%s] "
-            "in clique %v",
-            out_slice.ToString(), clique_key);
+        if (output_sym_mem == nullptr) {
+          return Internal(
+              "Symmetric memory not found for destination buffer slice [%s] "
+              "in clique %v",
+              out_slice.ToString(), clique_key);
+        }
+      } else {
+        // TODO: b/482045400 - Remove double-copy approach once testing is done.
+        output_sym_mem = state->output_temporary_symmetric_memory.get();
+        TF_RET_CHECK(output_sym_mem != nullptr)
+            << "Output buffer ptr storage symmetric memory is not supported in "
+               "one-shot NCCL kernel.";
       }
-    } else {
-      // TODO: b/482045400 - Remove double-copy approach once testing is done.
-      output_sym_mem = state->output_temporary_symmetric_memory.get();
-      TF_RET_CHECK(output_sym_mem != nullptr)
-          << "Output buffer ptr storage symmetric memory is not supported in "
-             "one-shot NCCL kernel.";
+      return RunOneShotRaggedAllToAllWithNccl(
+          clique_key, stream, state->rank,
+          state->barrier_signal_symmetric_memory.Lock(),
+          state->barrier_signal_value->address(), output_sym_mem,
+          output_sym_offset, is_zero_copy, config_.num_total_updates,
+          config_.num_input_rows, config_.num_row_elements, device_buffers);
     }
-    return RunOneShotRaggedAllToAllWithNccl(
-        clique_key, stream, state->rank,
-        state->barrier_signal_symmetric_memory.Lock(),
-        state->barrier_signal_value->address(), output_sym_mem,
-        output_sym_offset, is_zero_copy, config_.num_total_updates,
-        config_.num_input_rows, config_.num_row_elements, device_buffers);
-  }
 
-  if (should_use_one_shot_kernel && peer_access_enabled &&
-      is_local(params.collective_params->local_device_count)) {
-    return RunOneShotRaggedAllToAll(
-        clique_key, stream, state->rank,
-        state->barrier_signal_buffer->address(),  // Buff peers write signals to
-        state->barrier_signal_value->address(),  // Local monotonic step counter
-        config_.num_total_updates, config_.num_input_rows,
-        config_.num_row_elements, device_buffers, *state->participants);
+    if (IsOneShotKernelSupported() && peer_access_enabled &&
+        is_local(params.collective_params->local_device_count)) {
+      return RunOneShotRaggedAllToAll(
+          clique_key, stream, state->rank,
+          state->barrier_signal_buffer
+              ->address(),  // Buff peers write signals to
+          state->barrier_signal_value
+              ->address(),  // Local monotonic step counter
+          config_.num_total_updates, config_.num_input_rows,
+          config_.num_row_elements, device_buffers, *state->participants);
+    }
   }
 
   // Get buffer allocs to load sizes and offsets of ragged tensors from device
