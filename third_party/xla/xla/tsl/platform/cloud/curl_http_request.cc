@@ -32,7 +32,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/util/env_var.h"
 #include "tsl/platform/scanner.h"
 #include "tsl/platform/strcat.h"
@@ -272,6 +271,21 @@ absl::Status CurlHttpRequest::SetPutFromFile(const std::string& body_filepath,
   // Using the default CURLOPT_READFUNCTION, which is doing an fread() on the
   // FILE * userdata set with CURLOPT_READDATA.
   return absl::OkStatus();
+}
+
+void CurlHttpRequest::SetPutFromBuffer(const char* buffer, size_t size) {
+  CheckNotSent();
+  CheckMethodNotSet();
+  is_method_set_ = true;
+  method_ = RequestMethod::kPut;
+  curl_headers_ = libcurl_->curl_slist_append(
+      curl_headers_, absl::StrCat("Content-Length: ", size).c_str());
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1));
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
+                                           reinterpret_cast<void*>(this)));
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
+                                           &CurlHttpRequest::ReadCallback));
+  post_body_buffer_ = absl::string_view(buffer, size);
 }
 
 void CurlHttpRequest::SetPutEmptyBody() {

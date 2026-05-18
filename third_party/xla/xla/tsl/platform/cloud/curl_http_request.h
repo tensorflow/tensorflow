@@ -18,18 +18,18 @@ limitations under the License.
 
 #include <curl/curl.h>
 
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/cloud/http_request.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/types.h"
-#include "tsl/platform/protobuf.h"
-#include "tsl/platform/stringpiece.h"
 
 namespace tsl {
 
@@ -88,6 +88,11 @@ class CurlHttpRequest : public HttpRequest {
   /// the given offset.
   absl::Status SetPutFromFile(const std::string& body_filepath,
                               size_t offset) override;
+
+  /// Makes the request a PUT request.
+  ///
+  /// The request body will be taken from the specified buffer.
+  void SetPutFromBuffer(const char* buffer, size_t size) override;
 
   /// Makes the request a PUT request with an empty body.
   void SetPutEmptyBody() override;
