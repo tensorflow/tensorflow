@@ -396,6 +396,8 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   xla::sdy::StablehloExportPipelineOptions stablehloExportPipelineOptions;
   stablehloExportPipelineOptions.enableHloShardingV3 =
       debugOptions.xla_enable_hlo_sharding_v3();
+  stablehloExportPipelineOptions.exportAllReduceScatter =
+      debugOptions.xla_sdy_export_all_reduce_scatter();
   addStablehloExportPipeline(pm, stablehloExportPipelineOptions);
   pm.addPass(mlir::sdy::createSaveModuleOpPass(shardyDir, "output_module",
                                                dumpIndex++));

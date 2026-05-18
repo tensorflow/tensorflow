@@ -164,6 +164,7 @@ message DebugOptions {
   optional bool xla_hlo_pass_fix_detect_cycles = 370;
   // Keep shardings after SPMD.
   optional bool xla_keep_shardings_after_spmd = 419;
+  optional bool xla_sdy_export_all_reduce_scatter = 512;
   // Crash if HloPassFix can not converge after a fixed number of iterations.
   optional bool xla_unsupported_crash_on_hlo_pass_fix_max_iterations = 363;
   // Crash if a pass reports that it changes the HLO but in fact it did not.
