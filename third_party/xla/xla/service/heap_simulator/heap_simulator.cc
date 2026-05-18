@@ -47,6 +47,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "third_party/highway/hwy/contrib/sort/vqsort.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
@@ -2511,8 +2512,14 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunks(
   }
 
   // Sort used chunks by offset ascending.
-  std::sort(used_chunks_.begin(), used_chunks_.end(),
-            [](const Chunk& a, const Chunk& b) { return a.offset < b.offset; });
+  // Chunk is laid out as {size, offset} so that reinterpreting as
+  // hwy::uint128_t{lo=size, hi=offset} sorts by offset first.
+  static_assert(sizeof(Chunk) == sizeof(hwy::uint128_t),
+                "Chunk must be the same size as hwy::uint128_t");
+  static_assert(alignof(Chunk) == alignof(hwy::uint128_t),
+                "Chunk must have the same alignment as hwy::uint128_t");
+  hwy::VQSort(reinterpret_cast<hwy::uint128_t*>(used_chunks_.data()),
+              used_chunks_.size(), hwy::SortAscending());
 
   // Merge overlapping used chunks and build free chunks in a single pass.
   // Track the start of the current free space candidate.

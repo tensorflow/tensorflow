@@ -38,6 +38,7 @@ cc_library(
     deps = [
         ":allocation_block",
         ":free_chunks_manager",
+        "//third_party/highway/hwy/contrib/sort:vqsort",
         "//xla:comparison_util",
         "//xla:union_find",
         "//xla:util",
