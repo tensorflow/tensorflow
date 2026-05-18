@@ -18,13 +18,45 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/libraries/cub/scratch_space_lookup_table.pb.h"
 #include "xla/stream_executor/semantic_version.h"
 
 namespace xla::gpu {
+
+namespace internal {
+struct LookupKey {
+  stream_executor::SemanticVersion cub_version;
+  std::string device_name;
+  int32_t key_type_size;
+  int32_t value_type_size;
+  bool is_segmented;
+
+  template <typename H>
+  friend H AbslHashValue(H h, const LookupKey& key) {
+    return H::combine(std::move(h), key.cub_version, key.device_name,
+                      key.key_type_size, key.value_type_size, key.is_segmented);
+  }
+
+  friend bool operator==(const LookupKey& lhs, const LookupKey& rhs) {
+    return lhs.cub_version == rhs.cub_version &&
+           lhs.device_name == rhs.device_name &&
+           lhs.key_type_size == rhs.key_type_size &&
+           lhs.value_type_size == rhs.value_type_size &&
+           lhs.is_segmented == rhs.is_segmented;
+  }
+};
+
+struct ScratchSizeRecord {
+  int64_t num_items;
+  int64_t scratch_space_bytes;
+};
+}  // namespace internal
 
 // A lookup table for that returns an estimate of the scratch space required by
 // CUB sorts without requiring a GPU.
@@ -73,14 +105,14 @@ class CubScratchSizeDevicelessLookup {
                  int64_t batch_size = 1) const;
 
  private:
-  explicit CubScratchSizeDevicelessLookup(CubScratchSizeLookupTable proto);
+  explicit CubScratchSizeDevicelessLookup(
+      absl::flat_hash_map<internal::LookupKey,
+                          std::vector<internal::ScratchSizeRecord>>
+          lookup_table);
 
-  const CubScratchSizeEntry* FindEntry(
-      stream_executor::SemanticVersion cub_version,
-      absl::string_view device_name, int32_t key_type_size,
-      std::optional<int32_t> value_type_size, bool is_segmented) const;
-
-  CubScratchSizeLookupTable proto_;
+  absl::flat_hash_map<internal::LookupKey,
+                      std::vector<internal::ScratchSizeRecord>>
+      lookup_table_;
 };
 
 }  // namespace xla::gpu
