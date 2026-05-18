@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <utility>
@@ -640,11 +642,56 @@ Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
                   minor_to_major_layout, storage_type);
 }
 
-TensorValue EmitParameterExtract(mlir::ImplicitLocOpBuilder& b,
-                                 const TileInfo& tile_info, Value arg) {
+// Returns true if every dim of `original_shape` is statically divisible by
+// `padded_tile_sizes[i] * tile_strides[i]`. Under the standard loop-emitter
+// iteration pattern (step = padded_tile_sizes * tile_strides), this implies
+// every tile access stays in-range, so the bufferization-time boundary check
+// can be elided. Unit-size dims of `padded_tile_sizes` are skipped: such dims
+// are rank-reduced from the tile tensor (and trivially in-range).
+//
+// This assumes that the loop induction variables (tile offsets) are always
+// perfectly aligned with the loop tile grid (starting at 0 and stepping by
+// step size). If offsets were arbitrary or not aligned with this grid, simple
+// divisibility of the shape by the step size would not guarantee that all
+// tile accesses are fully in-bounds.
+bool TileInfoIsAlwaysFull(const TileInfo& tile_info) {
+  auto shape = tile_info.original_shape();
+  auto tile = tile_info.padded_tile_sizes();
+  auto strides = tile_info.tile_strides();
+  if (shape.size() != tile.size() || shape.size() != strides.size()) {
+    return false;
+  }
+  for (size_t i = 0; i < shape.size(); ++i) {
+    // Rank-reduced unit dim; trivially safe.
+    // Because this dimension has a tile size of 1, any offset within the
+    // original shape bound is in-bounds. We assume the loop induction
+    // variable starts at 0 and steps by 1 (which is <= strides[i] if strides[i]
+    // is >= 1), so the offset is always perfectly aligned with the tile grid.
+    if (tile[i] == 1) {
+      continue;
+    }
+    int64_t step = tile[i] * std::max<int64_t>(strides[i], 1);
+    if (step <= 0) {
+      return false;
+    }
+    if (shape[i] % step != 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
+absl::StatusOr<TensorValue> EmitParameterExtract(mlir::ImplicitLocOpBuilder& b,
+                                                 const TileInfo& tile_info,
+                                                 Value arg) {
   auto tensor_type = mlir::RankedTensorType::get(tile_info.padded_tile_sizes(),
                                                  tile_info.storage_type());
 
+  if (TileInfoIsAlwaysFull(tile_info)) {
+    return xla::xtile::ExtractAlignedTileOp::create(
+        b, tensor_type, arg, tile_info.offsets(), tile_info.padded_tile_sizes(),
+        tile_info.tile_strides());
+  }
   return xla::xtile::ExtractTileOp::create(
       b, tensor_type, arg, tile_info.offsets(), tile_info.padded_tile_sizes(),
       tile_info.tile_strides());

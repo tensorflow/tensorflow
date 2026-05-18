@@ -115,7 +115,7 @@ struct AllReduceEmitterContext {
   // The input tile to all reduce.
   xtile::TensorValue input_tile;
   // The extract tile op that produced the input tile.
-  xtile::ExtractTileOp input_extract;
+  xtile::TiledBufferInterface input_extract;
   // The entire shape of the input to all reduce.
   llvm::SmallVector<int64_t, 4> non_tiled_input_shape;
   PrimitiveType element_type;
@@ -171,15 +171,15 @@ absl::StatusOr<AllReduceEmitterContext> CreateAllReduceEmitterContext(
   ctx.input_tile = mlir::cast<xtile::TensorValue>(op->getOperand(0));
   // We assume the input to all reduce is an xtile::ExtractTileOp, or that the
   // parent of the input is an xtile::ExtractTileOp (edge case for booleans).
-  ctx.input_extract =
-      llvm::dyn_cast<xtile::ExtractTileOp>(ctx.input_tile.getDefiningOp());
+  ctx.input_extract = llvm::dyn_cast<xtile::TiledBufferInterface>(
+      ctx.input_tile.getDefiningOp());
   if (!ctx.input_extract &&
       ctx.input_tile.getDefiningOp()->getNumOperands() > 0) {
     // Workaround(i1_to_i8_workaround).
     // Go one place up this is an edge case for booleans
     // Booleans are stored as i8 and then casted to i1 so the tile we get is
     // after the cast. To get the extract tile we need to go one step up.
-    ctx.input_extract = llvm::dyn_cast<xtile::ExtractTileOp>(
+    ctx.input_extract = llvm::dyn_cast<xtile::TiledBufferInterface>(
         ctx.input_tile.getDefiningOp()->getOperand(0).getDefiningOp());
   }
   if (!ctx.input_extract) {
@@ -189,7 +189,7 @@ absl::StatusOr<AllReduceEmitterContext> CreateAllReduceEmitterContext(
   }
   // The source for the extract is the non-tiled input (memref).
   ctx.non_tiled_input_shape = llvm::SmallVector<int64_t, 4>(
-      ctx.input_extract.getSource().getType().getShape());
+      ctx.input_extract.getBuffer().getType().getShape());
   ctx.num_elements = Product(ctx.non_tiled_input_shape);
   int64_t input_byte_size =
       ctx.num_elements *
@@ -401,7 +401,7 @@ class AllReduceEmitter {
     ptr_to_elem_type_ =
         ttir::PointerType::get(elem_storage_type_, kGlobalAddressSpace);
     TF_ASSIGN_OR_RETURN(layout_, xtile::GetPermutationMinorToMajor(
-                                     ctx_.input_extract.getSource().getType()));
+                                     ctx_.input_extract.getBuffer().getType()));
 
     const llvm::ArrayRef<int64_t>& input_tile_shape_dims =
         ctx_.input_tile.getType().getShape();

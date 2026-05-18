@@ -362,4 +362,132 @@ llvm::LogicalResult InsertTileOp::bufferize(
   return mlir::success();
 }
 
+bool ExtractAlignedTileOp::bufferizesToMemoryRead(
+    mlir::OpOperand& operand, const mlir::bufferization::AnalysisState& state) {
+  return operand.getOperandNumber() == 0;
+}
+
+bool ExtractAlignedTileOp::bufferizesToMemoryWrite(
+    mlir::OpOperand& operand, const mlir::bufferization::AnalysisState& state) {
+  // Extract reads from `source`; it never writes to it.
+  return false;
+}
+
+bool ExtractAlignedTileOp::bufferizesToAllocation(mlir::Value value) {
+  // Depends on which bufferize path will fire. Identity-layout
+  // fast path returns a subview wrapped in to_tensor (no fresh alloc; aliases
+  // source). Layout-fixup path emits alloc + memref.copy (fresh memref).
+  return getWillAllocate();
+}
+
+mlir::bufferization::AliasingValueList ExtractAlignedTileOp::getAliasingValues(
+    mlir::OpOperand& operand, const mlir::bufferization::AnalysisState& state) {
+  // On the identity-layout fast path, the result is a subview of source and
+  // aliases it Equivalently. On the layout-fixup path, the result is fresh
+  // memory independent of source.
+  if (getWillAllocate()) {
+    return {};
+  }
+  mlir::bufferization::AliasingValue result(
+      getResult(), mlir::bufferization::BufferRelation::Equivalent,
+      /*isDefinite=*/true);
+  return {result};
+}
+
+mlir::bufferization::AliasingOpOperandList
+ExtractAlignedTileOp::getAliasingOpOperands(
+    mlir::Value value, const mlir::bufferization::AnalysisState& state) {
+  DCHECK_EQ(value, getResult());
+  if (getWillAllocate()) {
+    return {};
+  }
+  mlir::bufferization::AliasingOpOperand result(
+      &getSourceMutable(), mlir::bufferization::BufferRelation::Equivalent,
+      /*isDefinite=*/true);
+  return {result};
+}
+
+bool ExtractAlignedTileOp::isWritable(
+    mlir::Value value, const mlir::bufferization::AnalysisState& state) {
+  return false;
+}
+
+llvm::LogicalResult ExtractAlignedTileOp::bufferize(
+    mlir::RewriterBase& rewriter,
+    const mlir::bufferization::BufferizationOptions& options,
+    mlir::bufferization::BufferizationState& state) {
+  mlir::ImplicitLocOpBuilder builder(getLoc(), rewriter);
+  auto buffer = GetFullTileSubView(builder, *this);
+  if (!getWillAllocate()) {
+    auto to_tensor_op =
+        mlir::bufferization::ToTensorOp::create(builder, getType(), buffer);
+    rewriter.replaceOp(getOperation(), {to_tensor_op.getResult()});
+    return mlir::success();
+  }
+  // Non-identity layout or unaligned tile fixup: alloc+copy
+  mlir::MemRefType default_buffer_type =
+      mlir::MemRefType::Builder(buffer.getType()).setLayout(nullptr);
+  auto default_buffer =
+      mlir::memref::AllocOp::create(builder, default_buffer_type);
+  mlir::memref::CopyOp::create(builder, buffer, default_buffer);
+  auto to_tensor_op = mlir::bufferization::ToTensorOp::create(
+      builder, getType(), default_buffer);
+  to_tensor_op.setWritable(true);
+  to_tensor_op.setRestrict(true);
+  rewriter.replaceOp(getOperation(), {to_tensor_op.getResult()});
+  return mlir::success();
+}
+
+bool InsertAlignedTileOp::bufferizesToMemoryRead(
+    mlir::OpOperand& operand, const mlir::bufferization::AnalysisState& state) {
+  // The `source` tensor and `destination` memref are read from.
+  // The `offsets` are just index values.
+  return operand.getOperandNumber() < 2;
+}
+
+bool InsertAlignedTileOp::bufferizesToMemoryWrite(
+    mlir::OpOperand& operand, const mlir::bufferization::AnalysisState& state) {
+  // InsertAlignedTileOp writes to the destination buffer.
+  return operand.getOperandNumber() == 1;  // 1 is 'destination'
+}
+
+bool InsertAlignedTileOp::bufferizesToAllocation(mlir::Value value) {
+  // Insert materializes into an existing destination buffer; it never
+  // allocates a fresh memref of its own.
+  return false;
+}
+
+mlir::bufferization::AliasingValueList InsertAlignedTileOp::getAliasingValues(
+    mlir::OpOperand& operand, const mlir::bufferization::AnalysisState& state) {
+  return {};
+}
+
+mlir::bufferization::AliasingOpOperandList
+InsertAlignedTileOp::getAliasingOpOperands(
+    mlir::Value value, const mlir::bufferization::AnalysisState& state) {
+  return {};
+}
+
+bool InsertAlignedTileOp::isWritable(
+    mlir::Value value, const mlir::bufferization::AnalysisState& state) {
+  if (value == getDestination()) {
+    return true;
+  }
+
+  return false;
+}
+
+llvm::LogicalResult InsertAlignedTileOp::bufferize(
+    mlir::RewriterBase& rewriter,
+    const mlir::bufferization::BufferizationOptions& options,
+    mlir::bufferization::BufferizationState& state) {
+  mlir::ImplicitLocOpBuilder builder(getLoc(), rewriter);
+  auto target_buffer_subview = GetFullTileSubView(builder, *this);
+  auto materialize_op = mlir::bufferization::MaterializeInDestinationOp::create(
+      builder, getSource(), target_buffer_subview);
+  materialize_op.setWritable(true);
+  rewriter.eraseOp(getOperation());
+  return mlir::success();
+}
+
 }  // namespace xla::xtile

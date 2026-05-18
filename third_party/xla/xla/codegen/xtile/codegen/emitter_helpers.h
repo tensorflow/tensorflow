@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
@@ -142,23 +143,21 @@ class TileInfo {
       const gpu::experimental::TiledHloInstruction& tiled_hlo);
 
   // Tile offsets. Its size is equal to the rank of the output shape.
-  inline mlir::ValueRange offsets() const { return offsets_; }
+  mlir::ValueRange offsets() const { return offsets_; }
 
   // Tile strides. Its size is equal to the rank of the output shape.
-  inline mlir::ArrayRef<int64_t> tile_strides() const { return tile_strides_; }
+  mlir::ArrayRef<int64_t> tile_strides() const { return tile_strides_; }
 
   // The original shape of the tensor.
-  inline mlir::ArrayRef<int64_t> original_shape() const {
-    return original_shape_;
-  }
+  mlir::ArrayRef<int64_t> original_shape() const { return original_shape_; }
 
   // Tile sizes after padding to a power of 2 (Triton requirement).
-  inline mlir::ArrayRef<int64_t> padded_tile_sizes() const {
+  mlir::ArrayRef<int64_t> padded_tile_sizes() const {
     return padded_tile_sizes_;
   }
 
   // The layout of the tensor in minor-to-major order.
-  inline const llvm::SmallVector<int64_t>& minor_to_major_layout() const {
+  const llvm::SmallVector<int64_t>& minor_to_major_layout() const {
     return minor_to_major_layout_;
   }
 
@@ -174,12 +173,12 @@ class TileInfo {
   llvm::SmallVector<int64_t> minor_to_major_layout_;
   mlir::Type storage_type_;
 
-  inline TileInfo(llvm::SmallVector<mlir::Value> offsets,
-                  llvm::SmallVector<int64_t> tile_strides,
-                  llvm::SmallVector<int64_t> original_shape,
-                  llvm::SmallVector<int64_t> padded_tile_sizes,
-                  llvm::SmallVector<int64_t> minor_to_major_layout,
-                  mlir::Type storage_type)
+  TileInfo(llvm::SmallVector<mlir::Value> offsets,
+           llvm::SmallVector<int64_t> tile_strides,
+           llvm::SmallVector<int64_t> original_shape,
+           llvm::SmallVector<int64_t> padded_tile_sizes,
+           llvm::SmallVector<int64_t> minor_to_major_layout,
+           mlir::Type storage_type)
       : offsets_(std::move(offsets)),
         tile_strides_(std::move(tile_strides)),
         original_shape_(std::move(original_shape)),
@@ -289,9 +288,16 @@ absl::StatusOr<mlir::Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
 mlir::Value Bitcast(mlir::ImplicitLocOpBuilder& b, mlir::Value value,
                     mlir::Type type);
 
-// Emits an xtile::ExtractTileOp for the given tile info and argument.
-TensorValue EmitParameterExtract(mlir::ImplicitLocOpBuilder& b,
-                                 const TileInfo& tile_info, mlir::Value arg);
+// Returns true if every tile access described by `tile_info` is statically
+// guaranteed to fit inside the buffer (no boundary clamp needed). Used by the
+// emitter to choose between aligned and unconstrained Extract/Insert ops.
+bool TileInfoIsAlwaysFull(const TileInfo& tile_info);
+
+// Emits an xtile::ExtractTileOp (or ExtractAlignedTileOp when the tile is
+// provably always in-range) for the given tile info and argument.
+absl::StatusOr<TensorValue> EmitParameterExtract(mlir::ImplicitLocOpBuilder& b,
+                                                 const TileInfo& tile_info,
+                                                 mlir::Value arg);
 
 // Emits a sequence of HLO instructions within a specific scope.
 //

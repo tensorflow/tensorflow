@@ -90,28 +90,31 @@ struct ConstantOpConversionPattern final
   }
 };
 
-template <>
-LogicalResult
-GenericOpConversionPattern<::xla::xtile::ExtractTileOp>::matchAndRewrite(
-    ::xla::xtile::ExtractTileOp op,
-    ::xla::xtile::ExtractTileOp::Adaptor adaptor,
-    ConversionPatternRewriter& rewriter) const {
-  auto* ctx = op.getContext();
-  ::xla::xtile::ExtractTileOp replacement =
-      mlir::cast<::xla::xtile::ExtractTileOp>(rewriter.clone(*op));
-  if (op.getResult().getType().getElementType() == Float4E2M1FNType::get(ctx)) {
-    auto full_tile_shape = op.getFullTileShape().vec();
-    full_tile_shape[full_tile_shape.size() - 1] = full_tile_shape.back() / 2;
-    replacement.setFullTileShape(full_tile_shape);
+template <typename ExtractOpTy>
+struct ExtractTileOpConversionPattern final
+    : public OpConversionPattern<ExtractOpTy> {
+  using OpConversionPattern<ExtractOpTy>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      ExtractOpTy op, typename ExtractOpTy::Adaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    auto* ctx = op.getContext();
+    ExtractOpTy replacement = mlir::cast<ExtractOpTy>(rewriter.clone(*op));
+    if (op.getResult().getType().getElementType() ==
+        Float4E2M1FNType::get(ctx)) {
+      auto full_tile_shape = op.getFullTileShape().vec();
+      full_tile_shape[full_tile_shape.size() - 1] = full_tile_shape.back() / 2;
+      replacement.setFullTileShape(full_tile_shape);
+    }
+    replacement->setOperands(adaptor.getOperands());
+    const TypeConverter* converter = this->getTypeConverter();
+    for (auto result : replacement->getResults()) {
+      result.setType(converter->convertType(result.getType()));
+    }
+    rewriter.replaceOp(op, replacement);
+    return success();
   }
-  replacement->setOperands(adaptor.getOperands());
-  const TypeConverter* converter = this->getTypeConverter();
-  for (auto result : replacement->getResults()) {
-    result.setType(converter->convertType(result.getType()));
-  }
-  rewriter.replaceOp(op, replacement);
-  return success();
-}
+};
 
 class TritonXLAConvertUnsupportedTypesPass
     : public impl::TritonXLAConvertUnsupportedTypesPassBase<
@@ -165,7 +168,9 @@ class TritonXLAConvertUnsupportedTypesPass
     patterns.add<
         // go/keep-sorted start
         ConstantOpConversionPattern,
-        GenericOpConversionPattern<::xla::xtile::ExtractTileOp>,
+        ExtractTileOpConversionPattern<::xla::xtile::ExtractAlignedTileOp>,
+        ExtractTileOpConversionPattern<::xla::xtile::ExtractTileOp>,
+        GenericOpConversionPattern<::xla::xtile::InsertAlignedTileOp>,
         GenericOpConversionPattern<::xla::xtile::InsertTileOp>,
         GenericOpConversionPattern<BroadcastOp>,
         GenericOpConversionPattern<DotScaledOp>,

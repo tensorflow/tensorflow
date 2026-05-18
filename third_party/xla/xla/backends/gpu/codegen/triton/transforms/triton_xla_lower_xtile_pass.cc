@@ -200,14 +200,13 @@ class XTileSelectBufferToTriton
 };
 
 // Rewrite a xtile extract to a triton_xla extract.
-class XTileExtractToTriton
-    : public mlir::OpRewritePattern<xtile::ExtractTileOp> {
+template <typename ExtractOpTy>
+class XTileExtractToTriton : public mlir::OpRewritePattern<ExtractOpTy> {
  public:
-  using OpRewritePattern::OpRewritePattern;
+  using mlir::OpRewritePattern<ExtractOpTy>::OpRewritePattern;
 
   mlir::LogicalResult matchAndRewrite(
-      xtile::ExtractTileOp extract_op,
-      mlir::PatternRewriter& rewriter) const override {
+      ExtractOpTy extract_op, mlir::PatternRewriter& rewriter) const override {
     mlir::MemRefType source_type = extract_op.getSource().getType();
     mlir::RankedTensorType result_type = extract_op.getType();
 
@@ -244,13 +243,13 @@ class XTileExtractToTriton
 };
 
 // Rewrite a xtile insert to a triton_xla insert.
-class XTileInsertToTriton : public mlir::OpRewritePattern<xtile::InsertTileOp> {
+template <typename InsertOpTy>
+class XTileInsertToTriton : public mlir::OpRewritePattern<InsertOpTy> {
  public:
-  using OpRewritePattern::OpRewritePattern;
+  using mlir::OpRewritePattern<InsertOpTy>::OpRewritePattern;
 
   mlir::LogicalResult matchAndRewrite(
-      xtile::InsertTileOp insert_op,
-      mlir::PatternRewriter& rewriter) const override {
+      InsertOpTy insert_op, mlir::PatternRewriter& rewriter) const override {
     mlir::MemRefType destination_type = insert_op.getDestination().getType();
 
     mlir::Value memref_to_ptr =
@@ -358,8 +357,11 @@ class TritonXLALowerXTilePass
     mlir::RewritePatternSet patterns(context);
 
     patterns.add<XTileEntryToTriton, XTileSelectBufferToTriton,
-                 XTileExtractToTriton, XTileInsertToTriton, XTileMaskToTriton,
-                 FoldIntoMemrefToPtr>(context);
+                 XTileExtractToTriton<::xla::xtile::ExtractTileOp>,
+                 XTileExtractToTriton<::xla::xtile::ExtractAlignedTileOp>,
+                 XTileInsertToTriton<::xla::xtile::InsertTileOp>,
+                 XTileInsertToTriton<::xla::xtile::InsertAlignedTileOp>,
+                 XTileMaskToTriton, FoldIntoMemrefToPtr>(context);
     if (mlir::failed(
             mlir::applyPatternsGreedily(module, std::move(patterns)))) {
       signalPassFailure();

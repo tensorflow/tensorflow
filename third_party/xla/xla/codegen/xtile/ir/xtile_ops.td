@@ -241,6 +241,112 @@ def InsertTileOp : XTile_Op<"insert", [TiledBufferInterface]> {
   let hasVerifier = 1;
 }
 
+def ExtractAlignedTileOp : XTile_Op<"extract_aligned", [TiledBufferInterface]> {
+  let summary = "Extract a full tile from a memref, assuming offsets are in range.";
+  let description = [{
+    Identical semantics to xtile.extract, with an additional precondition:
+    the caller guarantees that for every dim i,
+      offsets[i] + (full_tile_shape[i] - 1) * strides[i] < source.shape[i].
+    Under this precondition the partial-tile case cannot occur, so
+    bufferization elides the runtime boundary check.
+  }];
+
+  let arguments = (ins
+    AnyMemRef:$source,
+    Variadic<Index>:$offsets,
+    DenseI64ArrayAttr:$full_tile_shape,
+    DenseI64ArrayAttr:$strides,
+    DefaultValuedAttr<BoolAttr, "true">:$will_allocate
+  );
+
+
+  let results = (outs AnyRankedTensor:$result);
+
+  let assemblyFormat = [{
+    $source `[` $offsets `]` $full_tile_shape $strides
+    `:` type($source) `->` type($result) attr-dict
+  }];
+
+  let builders = [
+    // Custom builder that computes will_allocate
+    OpBuilder<(ins "mlir::Type":$result, "mlir::Value":$source, "mlir::ValueRange":$offsets,
+                   "mlir::ArrayRef<int64_t>":$full_tile_shape, "mlir::ArrayRef<int64_t>":$strides),
+    [{
+      mlir::Operation* context_op = nullptr;
+      if (auto* block = $_builder.getInsertionBlock()) {
+        context_op = block->getParentOp();
+      }
+      bool will_allocate = WillAllocateForLayoutFixup(
+          mlir::cast<mlir::RankedTensorType>(result),
+          mlir::cast<mlir::MemRefType>(source.getType()),
+          offsets,
+          strides,
+          context_op);
+      build($_builder, $_state, result, source, offsets,
+            $_builder.getDenseI64ArrayAttr(full_tile_shape),
+            $_builder.getDenseI64ArrayAttr(strides),
+            $_builder.getBoolAttr(will_allocate));
+    }]>,
+    // Full builder called by parser / default paths
+    OpBuilder<(ins "mlir::Type":$result, "mlir::Value":$source, "mlir::ValueRange":$offsets,
+                   "mlir::DenseI64ArrayAttr":$full_tile_shape, "mlir::DenseI64ArrayAttr":$strides,
+                   "mlir::BoolAttr":$will_allocate),
+    [{
+      $_state.addOperands(source);
+      $_state.addOperands(offsets);
+      $_state.addAttribute(getFullTileShapeAttrName($_state.name), full_tile_shape);
+      $_state.addAttribute(getStridesAttrName($_state.name), strides);
+      if (will_allocate && !will_allocate.getValue()) {
+        $_state.addAttribute(getWillAllocateAttrName($_state.name), will_allocate);
+      }
+      $_state.addTypes(result);
+    }]>
+  ];
+
+  let skipDefaultBuilders = 1;
+
+  let extraClassDeclaration = [{
+    mlir::TypedValue<mlir::MemRefType> getBuffer();
+    mlir::TypedValue<mlir::RankedTensorType> getTile();
+  }];
+
+  let hasVerifier = 1;
+}
+
+def InsertAlignedTileOp : XTile_Op<"insert_aligned", [TiledBufferInterface]> {
+  let summary = "Insert a full tile into a memref, assuming offsets are in range.";
+  let description = [{
+    Identical semantics to xtile.insert, with an additional precondition:
+    the caller guarantees that for every dim i,
+      offsets[i] + (full_tile_shape[i] - 1) * strides[i] < destination.shape[i].
+    Under this precondition the partial-tile case cannot occur, so
+    bufferization elides the runtime boundary check.
+  }];
+
+  let arguments = (ins
+    AnyRankedTensor:$source,
+    AnyMemRef:$destination,
+    Variadic<Index>:$offsets,
+    DenseI64ArrayAttr:$full_tile_shape,
+    DenseI64ArrayAttr:$strides
+  );
+
+  let results = (outs);
+
+  let assemblyFormat = [{
+    $source `into` $destination `[` $offsets `]` $full_tile_shape $strides
+    `:` type($source) `->` type($destination) attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    mlir::TypedValue<mlir::MemRefType> getBuffer();
+    mlir::TypedValue<mlir::RankedTensorType> getTile();
+    bool getWillAllocate() { return false; }
+  }];
+
+  let hasVerifier = 1;
+}
+
 def MaskOp : XTile_Op<"mask",
                       [Pure,
                        AllTypesMatch<["source", "result"]>,
