@@ -354,6 +354,9 @@ struct BufferIntervalTreeNode {
   BufferIntervalTreeNode* right;
   // parent
   BufferIntervalTreeNode* parent;
+  // The buffer that this node belongs to. Used to ignore same-buffer conflicts
+  // during incremental allocation in memory space assignment.
+  const void* buffer;
 
   std::string ToString() const;
 };
@@ -364,7 +367,8 @@ class BufferIntervalTree {
   using Chunk = HeapSimulator::Chunk;
   // Adds a buffer to the interval tree, with the time interval and allocated
   // chunk specified.
-  void Add(int64_t start, int64_t end, const Chunk& chunk);
+  void Add(int64_t start, int64_t end, const Chunk& chunk,
+           const void* buffer = nullptr);
 
   // Remove the interval from the tree. Returns true if the chunk is removed.
   bool Remove(int64_t start, int64_t end, const Chunk& chunk);

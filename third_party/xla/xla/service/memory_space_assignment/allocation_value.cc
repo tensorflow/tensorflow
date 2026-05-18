@@ -19,8 +19,17 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace xla::memory_space_assignment {
+
+std::string UseToString(const HloUse& use) {
+  LOG(INFO) << "UseToString operand_number = " << use.operand_number;
+  if (use.operand_number == -1) {
+    return absl::StrCat("DummyUse at instruction: ", use.instruction->name());
+  }
+  return use.ToString();
+}
 
 std::string AllocationValue::ToString() const {
   std::string out = absl::StrCat("computation = ", computation()->name());
@@ -30,7 +39,7 @@ std::string AllocationValue::ToString() const {
   absl::StrAppend(&out, "  ", defining_position_.ToString(), "\n");
   absl::StrAppend(&out, " uses:\n");
   for (const Use& use : uses_) {
-    absl::StrAppend(&out, "  ", use.hlo_use.ToString(), "\n");
+    absl::StrAppend(&out, "  ", UseToString(use.hlo_use), "\n");
   }
   return out;
 }
@@ -72,7 +81,7 @@ std::string AllocationRequest::ToString() const {
                ? absl::StrCat(preferred_offset->offset, "; allocations: ",
                               preferred_offset->allocations.size())
                : "nullptr"),
-       absl::StrCat("use: ", use ? use->hlo_use.ToString() : "nullptr"),
+       absl::StrCat("use: ", use ? UseToString(use->hlo_use) : "nullptr"),
        absl::StrCat("allocation_value: ", allocation_value
                                               ? allocation_value->ToString()
                                               : "nullptr"),

@@ -31,6 +31,9 @@ limitations under the License.
 
 namespace xla {
 namespace memory_space_assignment {
+
+std::string UseToString(const HloUse& use);
+
 // AllocationValue is used to break up HloValues for each non-trivial position
 // (trivial positions are considered Tuple, GetTupleElement, and Bitcast). An
 // HloValue may include positions and uses that alias with each other across

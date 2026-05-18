@@ -3612,6 +3612,139 @@ ENTRY %main {
   EXPECT_EQ(CountCopies(*module), 1);
 }
 
+TEST_F(CopyInsertionTest, AsyncUpdateChainCrashReproducer) {
+  const char* const kModuleString = R"(
+HloModule Module
+
+async_wrapped_computation {
+  p0 = f32[16] parameter(0)
+  p1 = f32[16] parameter(1)
+  add = f32[16] add(p0, p1)
+  ROOT tuple = (f32[16]) tuple(add)
+}
+
+ENTRY main {
+  tc_operand0 = f32[16] parameter(0)
+  tc_operand1 = f32[16] parameter(1)
+  
+  // async-start only binds tc_operand0 (subset!). Aliases both logical parameters.
+  async_start = ((f32[16]), (), s32[]) async-start(tc_operand0), 
+    calls=async_wrapped_computation, async_execution_thread="sparsecore",
+    output_to_operand_aliasing={{1, 0}: (0, {})}
+
+  // async-update binds tc_operand1 (late binding!)
+  async_update = ((f32[16], f32[16]), (f32[16])) async-update(async_start, tc_operand1)
+
+  ROOT async_done = (f32[16]) async-done(async_update)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+
+  CopyInsertion copy_insertion(&alias_info_,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+}
+
+TEST_F(CopyInsertionTest, AsyncUpdateMultipleOperands) {
+  const char* const kModuleString = R"(
+HloModule Module
+
+async_wrapped_computation {
+  p0 = f32[16] parameter(0)
+  p1 = f32[16] parameter(1)
+  ROOT cc = f32[16] custom-call(p0, p1), custom_call_target="foo", output_to_operand_aliasing={{}: (1, {})}
+}
+
+ENTRY main {
+  constant = f32[16] constant(1.0)
+  tc_operand1 = f32[16] parameter(0)
+
+  async_start = ((), (), s32[]) async-start(), 
+    calls=async_wrapped_computation, async_execution_thread="sparsecore"
+
+  async_update = ((f32[16], f32[16]), f32[16]) async-update(async_start, constant, tc_operand1)
+
+  ROOT async_done = f32[16] async-done(async_update)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+
+  CopyInsertion copy_insertion(&alias_info_,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  EXPECT_GE(CountCopies(*module), 1);
+}
+
+TEST_F(CopyInsertionTest, AsyncUpdateIncrementalBinding) {
+  const char* const kModuleString = R"(
+HloModule Module
+
+async_wrapped_computation {
+  p0 = f32[16] parameter(0)
+  p1 = f32[16] parameter(1)
+  ROOT cc = f32[16] custom-call(p0, p1), custom_call_target="foo", output_to_operand_aliasing={{}: (1, {})}
+}
+
+ENTRY main {
+  constant = f32[16] constant(1.0)
+  tc_operand1 = f32[16] parameter(0)
+
+  async_start = ((), (), s32[]) async-start(), 
+    calls=async_wrapped_computation, async_execution_thread="sparsecore"
+
+  async_update.0 = ((f32[16]), (), s32[]) async-update(async_start, constant)
+  async_update.1 = ((f32[16], f32[16]), f32[16]) async-update(async_update.0, tc_operand1)
+
+  ROOT async_done = f32[16] async-done(async_update.1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+
+  CopyInsertion copy_insertion(&alias_info_,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  EXPECT_GE(CountCopies(*module), 1);
+}
+
+TEST_F(CopyInsertionTest, AsyncUpdateForwardedOperand) {
+  const char* const kModuleString = R"(
+HloModule Module
+
+async_wrapped_computation {
+  p0 = f32[16] parameter(0)
+  p1 = f32[16] parameter(1)
+  ROOT cc = f32[16] custom-call(p0, p1), custom_call_target="foo", output_to_operand_aliasing={{}: (0, {})}
+}
+
+ENTRY main {
+  tc_operand0 = f32[16] parameter(0)
+  constant = f32[16] constant(1.0)
+
+  async_start = ((), (), s32[]) async-start(),
+    calls=async_wrapped_computation, async_execution_thread="sparsecore"
+
+  async_update.0 = ((f32[16]), (), s32[]) async-update(async_start, tc_operand0)
+  async_update.1 = ((f32[16], f32[16]), f32[16]) async-update(async_update.0, constant)
+
+  ROOT async_done = f32[16] async-done(async_update.1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+
+  CopyInsertion copy_insertion(&alias_info_,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  EXPECT_GE(CountCopies(*module), 1);
+}
+
 TEST_F(CopyInsertionTest,
        RegionAnalysisDoesNotAddUnnecessaryCopyOfInputTupleElements) {
   const char* const kModuleString = R"(
