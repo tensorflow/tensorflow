@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/transforms/simplifiers/alias_anti_dependency_inserter.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_value.h"
@@ -660,9 +661,15 @@ absl::StatusOr<HloSchedule> ScheduleModule(
 absl::StatusOr<bool> HloMemoryScheduler::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  AliasAntiDependencyInserter inserter;
+  TF_ASSIGN_OR_RETURN(bool anti_dependency_changed,
+                      inserter.Run(module, execution_threads));
   TF_ASSIGN_OR_RETURN(HloSchedule schedule,
                       ScheduleModule(module, *algorithm_, execution_threads));
   TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
+  if (anti_dependency_changed) {
+    TF_RETURN_IF_ERROR(inserter.RemoveAddedControlDependencies());
+  }
   return true;
 }
 

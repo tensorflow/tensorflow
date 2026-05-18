@@ -350,11 +350,47 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "alias_anti_dependency_inserter",
+    srcs = ["alias_anti_dependency_inserter.cc"],
+    hdrs = ["alias_anti_dependency_inserter.h"],
+    deps = [
+        "//xla/hlo/analysis:alias_info",
+        "//xla/hlo/analysis:hlo_alias_analysis",
+        "//xla/hlo/analysis:hlo_reachability",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "alias_anti_dependency_inserter_test",
+    srcs = ["alias_anti_dependency_inserter_test.cc"],
+    deps = [
+        ":alias_anti_dependency_inserter",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:test",
+        "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "hlo_memory_scheduler",
     srcs = ["hlo_memory_scheduler.cc"],
     hdrs = ["hlo_memory_scheduler.h"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
+        ":alias_anti_dependency_inserter",
         "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/analysis:alias_info",
