@@ -399,6 +399,10 @@ absl::Status PluggableDeviceFactory::GetDeviceLocalities(
     // devices are virtualized in some environment, we can't just use the device
     // id. NUMA locales are indexed from 0, buses are indexed from 1.
     se::Platform* platform = PluggableDeviceMachineManager(platform_name_);
+    // Make sure executor for this platform device is created before getting
+    // device description.
+    TF_RETURN_IF_ERROR(
+        platform->ExecutorForDevice(platform_device_id.value()).status());
     auto desc_status =
         platform->DescriptionForDevice(platform_device_id.value());
     if (!desc_status.ok()) {
