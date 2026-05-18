@@ -52,20 +52,22 @@ DistributedSaveOp::DistributedSaveOp(OpKernelConstruction* ctx)
 void DistributedSaveOp::Compute(OpKernelContext* ctx) {
   DatasetBase* dataset;
   OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
-  OP_REQUIRES(
-      ctx, dataset->Cardinality() != kInfiniteCardinality,
-      errors::InvalidArgument("Saving an infinite dataset is not allowed: ",
-                              dataset->DebugString()));
+  OP_REQUIRES(ctx, dataset->Cardinality() != kInfiniteCardinality,
+              absl::InvalidArgumentError(
+                  absl::StrCat("Saving an infinite dataset is not allowed: ",
+                               dataset->DebugString())));
 
   tstring directory;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kDirectory, &directory));
   OP_REQUIRES(ctx, !directory.empty(),
-              errors::InvalidArgument(kDirectory, " must be nonempty"));
+              absl::InvalidArgumentError(
+                  absl::StrCat(kDirectory, " must be nonempty")));
 
   tstring address;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kAddress, &address));
-  OP_REQUIRES(ctx, !address.empty(),
-              errors::InvalidArgument(kAddress, " must be nonempty"));
+  OP_REQUIRES(
+      ctx, !address.empty(),
+      absl::InvalidArgumentError(absl::StrCat(kAddress, " must be nonempty")));
 
   bool has_atomic_move = false;
   OP_REQUIRES_OK(ctx, ctx->env()->HasAtomicMove(directory, &has_atomic_move));
@@ -83,20 +85,20 @@ void DistributedSaveOp::Compute(OpKernelContext* ctx) {
   if (!s.ok()) {
     OP_REQUIRES_OK(
         ctx,
-        errors::FailedPrecondition(
+        absl::FailedPreconditionError(absl::StrCat(
             "Serialization error while trying to save dataset with tf.data "
             "service. The dataset may depend on a resource located on a "
             "different device. To address this, call `distributed_save` from "
             "the device with the resource. Original error: ",
-            s));
+            s)));
   }
 
   experimental::DistributedSnapshotMetadata metadata;
   if (!serialized_metadata_.empty()) {
     OP_REQUIRES(ctx, metadata.ParseFromString(serialized_metadata_),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Failed to parse DistributedSnapshotMetadata from string: ",
-                    std::string(serialized_metadata_)));
+                    serialized_metadata_)));
   }
   if (metadata.compression() == "AUTO") {
     metadata.set_compression(tsl::io::compression::kSnappy);
