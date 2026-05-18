@@ -1123,6 +1123,13 @@ bzl_library(
     ],
 )
 
+bzl_library(
+    name = "workspace2_bzl",
+    srcs = ["workspace2.bzl"],
+    # copybara:uncomment parse_tests = False,
+    visibility = ["//visibility:private"],
+)
+
 # TODO(jakeharmon8): Remove these in favor of tsl:grpc
 # copybara:comment_begin(oss-only)
 cc_library(

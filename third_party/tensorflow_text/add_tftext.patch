@@ -1,0 +1,8 @@
+--- /dev/null
++++ b/tensorflow_text/tftext.bzl
+@@ -0,0 +8 @@
++load("//:tftext.bzl", _tf_cc_library = "tf_cc_library", _tflite_cc_library = "tflite_cc_library", _py_tf_text_library = "py_tf_text_library", _extra_py_deps = "extra_py_deps")
++tf_cc_library = _tf_cc_library
++tflite_cc_library = _tflite_cc_library
++py_tf_text_library = _py_tf_text_library
++extra_py_deps = _extra_py_deps
