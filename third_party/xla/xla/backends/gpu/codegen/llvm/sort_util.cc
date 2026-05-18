@@ -22,11 +22,11 @@ limitations under the License.
 
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
