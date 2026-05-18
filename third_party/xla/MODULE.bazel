@@ -29,7 +29,6 @@ bazel_dep(name = "rules_license", version = "1.0.0")
 bazel_dep(name = "rules_python", version = "1.8.5")
 bazel_dep(name = "rules_shell", version = "0.6.1")
 bazel_dep(name = "snappy", version = "1.2.1")
-bazel_dep(name = "xxd", version = "9.1.0917.bcr.1")
 bazel_dep(name = "zlib", version = "1.3.2")
 # go/keep-sorted end
 

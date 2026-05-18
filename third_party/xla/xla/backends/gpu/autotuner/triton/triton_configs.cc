@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "xla/backends/gpu/autotuner/triton/triton_configs.h"
 
+#include <cstddef>
 #include <initializer_list>
 #include <vector>
 
 #include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "google/protobuf/text_format.h"
 #include "xla/autotuning.pb.h"
@@ -44,23 +46,34 @@ std::vector<TritonGemmConfig> ParseConfig(absl::string_view config_str) {
   return configs;
 };
 
+absl::string_view GetDefaultConfigStr(absl::string_view filename) {
+  const struct FileToc* toc = configs::embed_default_configs_create();
+  for (size_t i = 0; i < configs::embed_default_configs_size(); ++i) {
+    if (toc[i].name == filename) {
+      return absl::string_view(toc[i].data, toc[i].size);
+    }
+  }
+  LOG(FATAL) << "Embedded file not found: " << filename;
+}
+
 }  // namespace
 
 const std::vector<TritonGemmConfig>& GetTritonConfigsForPlatform(
     TritonConfigsPlatform platform) {
   static const absl::NoDestructor<
       absl::flat_hash_map<TritonConfigsPlatform, std::vector<TritonGemmConfig>>>
-      kConfigs(
-          {{TritonConfigsPlatform::kAmpere, ParseConfig(configs::get_a100())},
-           {TritonConfigsPlatform::kBlackwell,
-            ParseConfig(configs::get_b200())},
-           {TritonConfigsPlatform::kBlackwellConsumer,
-            ParseConfig(configs::get_sm120())},
-           {TritonConfigsPlatform::kDefaultCuda,
-            ParseConfig(configs::get_cuda())},
-           {TritonConfigsPlatform::kDefaultRocm,
-            ParseConfig(configs::get_rocm())},
-           {TritonConfigsPlatform::kHopper, ParseConfig(configs::get_h100())}});
+      kConfigs({{TritonConfigsPlatform::kAmpere,
+                 ParseConfig(GetDefaultConfigStr("a100.txtpb"))},
+                {TritonConfigsPlatform::kBlackwell,
+                 ParseConfig(GetDefaultConfigStr("b200.txtpb"))},
+                {TritonConfigsPlatform::kBlackwellConsumer,
+                 ParseConfig(GetDefaultConfigStr("sm120.txtpb"))},
+                {TritonConfigsPlatform::kDefaultCuda,
+                 ParseConfig(GetDefaultConfigStr("cuda.txtpb"))},
+                {TritonConfigsPlatform::kDefaultRocm,
+                 ParseConfig(GetDefaultConfigStr("rocm.txtpb"))},
+                {TritonConfigsPlatform::kHopper,
+                 ParseConfig(GetDefaultConfigStr("h100.txtpb"))}});
   return kConfigs->at(platform);
 }
 

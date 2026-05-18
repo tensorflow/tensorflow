@@ -119,7 +119,6 @@ bzl_library(
     visibility = ["//visibility:private"],
     deps = [
         "//xla/tsl:package_groups_bzl",
-        "//xla/tsl/platform:rules_cc_bzl",
         "@bazel_skylib//lib:new_sets",
         "@com_google_protobuf//bazel/common:proto_info_bzl",
     ],
