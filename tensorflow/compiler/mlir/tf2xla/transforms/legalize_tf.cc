@@ -685,6 +685,69 @@ static Type ChangeTensorElementType(Builder *b, Type tensor_type,
   return UnrankedTensorType::get(element_type);
 }
 
+class ConvertFloatToUnsignedCastOp : public OpRewritePattern<TF::CastOp> {
+ public:
+  explicit ConvertFloatToUnsignedCastOp(MLIRContext *context)
+      : OpRewritePattern<TF::CastOp>(context, /*benefit=*/2) {}
+
+  LogicalResult matchAndRewrite(TF::CastOp op,
+                                PatternRewriter &rewriter) const override {
+    if (op.getTruncate()) return failure();
+
+    auto input_type = mlir::dyn_cast<RankedTensorType>(op.getX().getType());
+    auto result_type = mlir::dyn_cast<RankedTensorType>(op.getType());
+    if (!input_type || !result_type) return failure();
+
+    Type input_element_type = input_type.getElementType();
+    Type result_element_type = result_type.getElementType();
+    if (!mlir::isa<FloatType>(input_element_type) ||
+        !result_element_type.isUnsignedInteger()) {
+      return failure();
+    }
+
+    // XLA convert saturates negative floats to unsigned integers at zero, while
+    // TensorFlow Cast's CPU path wraps finite negative values in the destination
+    // unsigned type.
+    int result_width = result_element_type.getIntOrFloatBitWidth();
+    int wider_width = result_width == 64 ? 64 : result_width * 2;
+    Type signed_element_type = rewriter.getIntegerType(wider_width);
+    Type unsigned_element_type =
+        IntegerType::get(rewriter.getContext(), wider_width,
+                         IntegerType::SignednessSemantics::Unsigned);
+
+    Type signed_type =
+        ChangeTensorElementType(&rewriter, op.getType(), signed_element_type);
+    Type unsigned_type =
+        ChangeTensorElementType(&rewriter, op.getType(), unsigned_element_type);
+
+    Location loc = op.getLoc();
+    auto scalar_input_type =
+        tensorflow::GetTypeFromTFTensorShape({}, input_element_type);
+    Value zero = stablehlo::ConstantOp::create(
+        rewriter, loc,
+        DenseElementsAttr::get(
+            scalar_input_type,
+            rewriter.getFloatAttr(input_element_type, 0.0)));
+    Value broadcast_zero = stablehlo::BroadcastInDimOp::create(
+        rewriter, loc, input_type, zero, rewriter.getDenseI64ArrayAttr({}));
+    Value is_negative = stablehlo::CompareOp::create(
+        rewriter, loc, op.getX(), broadcast_zero,
+        stablehlo::ComparisonDirection::LT);
+
+    Value direct =
+        stablehlo::ConvertOp::create(rewriter, loc, op.getType(), op.getX());
+    Value signed_value =
+        stablehlo::ConvertOp::create(rewriter, loc, signed_type, op.getX());
+    Value unsigned_value =
+        stablehlo::ConvertOp::create(rewriter, loc, unsigned_type, signed_value);
+    Value wrapped_negative = stablehlo::ConvertOp::create(
+        rewriter, loc, op.getType(), unsigned_value);
+    rewriter.replaceOpWithNewOp<stablehlo::SelectOp>(
+        op, op.getType(), is_negative, wrapped_negative, direct);
+    return success();
+  }
+};
+
 //===----------------------------------------------------------------------===//
 // Softmax op utilities.
 //===----------------------------------------------------------------------===//
@@ -6952,6 +7015,7 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertBiasAddOp,
     ConvertBroadcastToOp,
     ConvertBF16FloorDivOp,
+    ConvertFloatToUnsignedCastOp,
     ConvertClipByValueOp,
     ConvertConstOp,
     ConvertConv2DOp,

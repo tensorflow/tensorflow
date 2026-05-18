@@ -1958,8 +1958,10 @@ tf_xla_py_strict_test(
     deps = [
         ":xla_test",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:image_ops",

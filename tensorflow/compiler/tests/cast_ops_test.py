@@ -16,8 +16,10 @@
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -51,6 +53,19 @@ class CastOpsTest(xla_test.XLATestCase):
 
   def testBitcastToSmaller(self):
     pass
+
+  def testBitcastAfterNegativeFloatToUInt64Cast(self):
+    def f(x):
+      return array_ops.bitcast(math_ops.cast(x, dtypes.uint64), dtypes.uint8)
+
+    compiled_f = def_function.function(
+        f,
+        jit_compile=True,
+        input_signature=[tensor_spec.TensorSpec([None], dtypes.float32)])
+
+    x = constant_op.constant([-2.0, -1.0, 0.0, 1.0, 2.0], dtypes.float32)
+    with ops.device(self.device):
+      self.assertAllEqual(f(x), compiled_f(x))
 
 
 if __name__ == '__main__':
