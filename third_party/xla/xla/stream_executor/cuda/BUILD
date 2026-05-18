@@ -2015,6 +2015,8 @@ xla_test(
     name = "cuda_stream_error_test",
     srcs = ["cuda_stream_error_test.cc"],
     backends = ["gpu"],
+    # TODO(b/512853069): Remove when fixed.
+    env = {"XLA_CUDA_HOST_CALLBACK_SPINWAIT": "1"},
     # Stream error tests poison the entire process, so we need to run them in a separate
     # process.
     shard_count = 2,
