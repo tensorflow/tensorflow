@@ -133,7 +133,10 @@ bool BufferLayoutConstraint::UpdateLayout(int64_t priority,
     if (!buffer_->instruction()->shape().IsArray()) {
       return false;
     }
-    if (priority <= priority_ &&
+    if (priority < priority_) {
+      return false;
+    }
+    if (priority == priority_ &&
         !assignment->NegotiateLayout(buffer_->instruction(), new_layout,
                                      layout(), user, from_user_)) {
       return false;
@@ -292,6 +295,14 @@ absl::Status LayoutAssignment::SetBufferLayout(const Layout& layout,
     buffer_constraint = std::make_unique<BufferLayoutConstraint>(
         layout, buffer, mandatory, dfs, priority);
   } else {
+    if (buffer.instruction()->opcode() == HloOpcode::kParameter &&
+        !Layout::Equal().MinorToMajorOnly()(buffer_constraint->layout(),
+                                            layout)) {
+      VLOG(3) << "Rejecting parameter layout update to " << layout.ToString()
+              << " because parameter layout is immutable: "
+              << buffer_constraint->layout().ToString();
+      return absl::OkStatus();
+    }
     if (buffer_constraint->UpdateLayout(priority, layout, mandatory, dfs, this,
                                         user)) {
       if (IsAtMostRank1(buffer.shape())) {
@@ -718,11 +729,12 @@ absl::Status LayoutAssignment::AddMandatoryConstraints(
           // Parameter layouts must match the respective layout in
           // ComputationLayout, if there is one.
           Shape param_shape = parameter_layout.shape();
-          TF_RETURN_IF_ERROR(SetInstructionLayout(param_shape, instruction));
-          if (reverse_computation_order_) {
-            TF_RETURN_IF_ERROR(PropagateParameterLayoutToUsers(
-                instruction, param_shape, this));
-          }
+          TF_RETURN_IF_ERROR(SetInstructionLayout(
+              param_shape, instruction, /*mandatory=*/true, /*dfs=*/true,
+              /*allow_alias=*/false,
+              constraints->computation_constraint().priority()));
+          // Removed PropagateParameterLayoutToUsers to avoid regressions in
+          // negotiation.
         }
       }
     } else if (IsLayoutConstrainedCollective(instruction)) {
@@ -1063,6 +1075,25 @@ Layout GetBroadcastLayoutFromOutput(const Layout& layout,
   return shape.layout();
 }
 
+Layout GetBroadcastLayoutFromOperand(const Layout& operand_layout,
+                                     const HloInstruction* broadcast) {
+  CHECK_EQ(broadcast->opcode(), HloOpcode::kBroadcast);
+  int64_t rank = broadcast->shape().dimensions().size();
+  std::vector<int64_t> new_minor_to_major;
+  new_minor_to_major.reserve(rank);
+  for (int64_t i = 0; i < operand_layout.minor_to_major().size(); ++i) {
+    int64_t operand_dim = operand_layout.minor_to_major(i);
+    int64_t broadcast_dim = broadcast->dimensions(operand_dim);
+    new_minor_to_major.push_back(broadcast_dim);
+  }
+  for (int64_t i = 0; i < rank; ++i) {
+    if (!absl::c_linear_search(broadcast->dimensions(), i)) {
+      new_minor_to_major.push_back(i);
+    }
+  }
+  return LayoutUtil::MakeLayout(new_minor_to_major);
+}
+
 absl::Status CheckBroadcastLayout(HloInstruction* broadcast) {
   CHECK_EQ(broadcast->opcode(), HloOpcode::kBroadcast);
   Shape shape = ShapeUtil::FilterDimensions(
@@ -1077,11 +1108,11 @@ absl::Status CheckBroadcastLayout(HloInstruction* broadcast) {
   }
   return absl::OkStatus();
 }
-
 }  // namespace
 
 absl::Status LayoutAssignment::CheckCallLayout(
     HloInstruction* call, const ComputationLayout& computation_layout) {
+  TF_RET_CHECK(call->opcode() == HloOpcode::kCall);
   HloComputation* computation = call->to_apply();
   TF_RET_CHECK(computation->num_parameters() == call->operand_count());
   for (int64_t i = 0; i < computation->num_parameters(); ++i) {
@@ -1514,6 +1545,18 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
   if (user->opcode() == HloOpcode::kReduce && user->shape().IsTuple()) {
     return std::make_unique<Layout>(
         GetReduceLayoutFromOperand(operand_layout, user));
+  }
+
+  if (user->opcode() == HloOpcode::kBroadcast) {
+    const HloInstruction* operand = user->operand(operand_no);
+    if (!InstructionCanChangeLayoutInstance(operand) &&
+        !Layout::Equal().MinorToMajorOnly()(
+            operand_layout,
+            LayoutUtil::GetDefaultLayoutForShape(operand->shape()))) {
+      return std::make_unique<Layout>(
+          GetBroadcastLayoutFromOperand(operand_layout, user));
+    }
+    return nullptr;
   }
 
   CHECK(user->shape().IsArray() && operand->shape().IsArray())
@@ -2014,9 +2057,16 @@ absl::Status LayoutAssignment::PropagateBufferConstraintToUses(
     // Only add an operand constraint if the user does not forward the buffer
     // because this case is not handled is SetOperandLayout.
     if (!AnyOperandBufferForwarded(user, operand_no)) {
-      TF_RETURN_IF_ERROR(SetArrayOperandLayout(
-          buffer_constraint.layout(), user, operand_no, /*mandatory=*/false,
-          /*dfs=*/true, buffer_constraint.priority()));
+      int64_t priority = buffer_constraint.priority();
+      if (buffer.instruction()->opcode() == HloOpcode::kParameter &&
+          !Layout::Equal().MinorToMajorOnly()(
+              buffer_constraint.layout(),
+              LayoutUtil::GetDefaultLayoutForShape(buffer.shape()))) {
+        priority += 1;
+      }
+      TF_RETURN_IF_ERROR(SetArrayOperandLayout(buffer_constraint.layout(), user,
+                                               operand_no, /*mandatory=*/false,
+                                               /*dfs=*/true, priority));
     }
   }
 
@@ -2310,7 +2360,7 @@ absl::Status LayoutAssignment::CalculateComputationLayout(
     ShapeUtil::ForEachSubshape(
         operand->shape(), [this, &change, operand, update](
                               const Shape& subshape, const ShapeIndex& index) {
-          if (subshape.IsTuple() || !subshape.has_layout()) {
+          if (subshape.IsTuple()) {
             return;
           }
           auto param_layout = InferArrayLayout(operand, index);
@@ -2318,6 +2368,10 @@ absl::Status LayoutAssignment::CalculateComputationLayout(
             VLOG(5) << index << ":" << param_layout.value().ToString() << "\n";
             update->ResetLayout(param_layout.value(), index);
             change = true;
+          } else {
+            LOG(ERROR) << "InferArrayLayout failed for " << operand->name()
+                       << " at index " << index.ToString()
+                       << " status = " << param_layout.status().ToString();
           }
         });
     return change;
@@ -2335,6 +2389,8 @@ absl::Status LayoutAssignment::CalculateComputationLayout(
     if (callee_constraint->priority() < priority ||
         conditional_mismatch_.count(callee->computation()) > 0) {
       if (conditional_mismatch_.count(callee->computation()) == 0 &&
+          ShapeUtil::Compatible(result->shape(),
+                                callee_layout.result_layout().shape()) &&
           UpdateLayout(result, callee_layout.mutable_result_layout())) {
         VLOG(2) << "Setting result layout from : " << result->ToString()
                 << "\n";
@@ -2372,7 +2428,7 @@ absl::Status LayoutAssignment::CalculateComputationLayout(
             SetCalleeLayout(
                 instruction, instruction->operands(),
                 mutable_computation_constraints(instruction->to_apply()),
-                current_priority_ + 1)
+                LayoutConstraint::kGivenPriority)
                 .ok()) {
           VLOG(2) << "Successfully propagated to callee layout\n";
         }
@@ -2412,12 +2468,12 @@ absl::Status LayoutAssignment::CalculateComputationLayout(
     }
   }
   // Reset the layout of the current computation from its body.
-  if (current_priority_ == 0 ||
+  if (current_priority_ == 0 || reverse_computation_order_ ||
       conditional_mismatch_.count(constraints->computation()) > 0) {
-    TF_RETURN_IF_ERROR(SetCalleeLayout(
-        constraints->computation()->root_instruction(),
-        constraints->computation()->parameter_instructions(), constraints,
-        current_priority_ + kNumberOfPropagationRounds));
+    TF_RETURN_IF_ERROR(
+        SetCalleeLayout(constraints->computation()->root_instruction(),
+                        constraints->computation()->parameter_instructions(),
+                        constraints, LayoutConstraint::kGivenPriority));
     if (constraints->computation()->IsEntryComputation()) {
       *entry_computation_layout_ = constraints->computation_layout();
     }
