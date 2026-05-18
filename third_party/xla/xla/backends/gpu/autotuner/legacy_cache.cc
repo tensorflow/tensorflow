@@ -106,7 +106,10 @@ AutotuneCacheKey LegacyCache::GetAutotuneCacheKey(const HloInstruction& instr) {
 std::optional<LegacyCache::Config> LegacyCache::GetConfig(
     const AutotuneResult& result, bool is_fusion_instruction) {
   Config config;
-  if (result.has_triton()) {
+  if (result.has_fission()) {
+    config.codegen_backend = result.fission().backend();
+    config.backend_config.PackFrom(result.fission());
+  } else if (result.has_triton()) {
     config.codegen_backend = Backend::TRITON;
     config.backend_config.PackFrom(result.triton());
   } else if (result.has_gemm()) {
@@ -138,6 +141,11 @@ std::optional<LegacyCache::Config> LegacyCache::GetConfig(
 AutotuneResult LegacyCache::GetAutotuneResult(
     const LegacyCache::Config& config) {
   AutotuneResult result;
+  if (config.backend_config.Is<AutotuneResult::FissionKey>()) {
+    config.backend_config.UnpackTo(result.mutable_fission());
+    return result;
+  }
+
   if (config.codegen_backend == Backend::TRITON) {
     config.backend_config.UnpackTo(result.mutable_triton());
   } else if (config.codegen_backend == Backend::CUBLASLT ||

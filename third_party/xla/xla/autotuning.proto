@@ -9,6 +9,7 @@ package xla;
 
 import "google/protobuf/any.proto";
 import "google/protobuf/duration.proto";
+import "xla/backends/autotuner/backends.proto";
 import "xla/tsl/protobuf/dnn.proto";
 
 message CudnnVersion {
@@ -102,6 +103,19 @@ message AutotuneResult {
     google.protobuf.Any config = 2;
   }
 
+  message FissionKey {
+    autotuner.Backend backend = 1;
+    oneof hero_key {
+      GemmKey gemm = 2;
+      CustomKernelFusionKey custom_kernel_fusion = 3;
+    }
+    // Ideally wanted to explicitly set the type to one of
+    // NativeEmitterBackendConfig or BlockLevelFusionConfig, but including
+    // backend_configs.proto would cause a dep loop. The only reason why
+    // backend_configs.proto depends on this file is because of TritonGemmKey.
+    map<string, google.protobuf.Any> sub_fusion_configs = 4;
+  }
+
   int64 scratch_bytes = 8;
   google.protobuf.Duration run_time = 9;
 
@@ -115,6 +129,7 @@ message AutotuneResult {
     CustomKernelFusionKey custom_kernel_fusion = 18;
     stream_executor.dnn.AlgorithmProto algorithm = 16;
     BackendConfigKey other = 19;
+    FissionKey fission = 20;
   }
 }
 

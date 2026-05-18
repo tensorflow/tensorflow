@@ -321,7 +321,10 @@ class FissionTest : public HloHardwareIndependentTestBase,
         fission_backend_(std::make_unique<FissionBackend>(
             &debug_options_, compiler_.get(), &target_config_,
             std::move(base_codegen_backend_), std::move(rewriter_pipeline_),
-            &alias_info_, &mlir_context_, stream_executor_)) {}
+            &alias_info_, &mlir_context_,
+            /*should_autotune=*/[](const HloInstruction&) { return true; },
+            /*fragment_backends=*/std::vector<GpuCodegenBackend*>(),
+            stream_executor_)) {}
 };
 
 TEST_P(FissionTest, CanCreateFissionBackend) {
@@ -478,7 +481,10 @@ class CublasFissionBackendTest : public HloHardwareIndependentTestBase {
             CreateCublasBackend(stream_executor_, &debug_options_,
                                 compiler_.get(), &target_config_),
             GetCublasRewriterPipeline(device_description_), &alias_info_,
-            &mlir_context_, stream_executor_)) {}
+            &mlir_context_,
+            /*should_autotune=*/[](const HloInstruction&) { return true; },
+            /*fragment_backends=*/std::vector<GpuCodegenBackend*>(),
+            stream_executor_)) {}
 };
 
 TEST_F(CublasFissionBackendTest, ApplyConfigRemovesComputation) {

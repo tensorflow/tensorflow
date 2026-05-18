@@ -40,8 +40,6 @@ limitations under the License.
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/threadpool.h"
 
-using InstructionFilterFn = std::function<bool(const xla::HloInstruction&)>;
-
 namespace xla {
 
 struct AutotuneConfig {

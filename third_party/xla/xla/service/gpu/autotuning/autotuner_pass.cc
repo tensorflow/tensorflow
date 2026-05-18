@@ -202,6 +202,39 @@ bool ShouldAutotuneInstruction(bool do_not_autotune_cublas,
   return false;
 }
 
+InstructionFilterFn CreateShouldAutotuneFn(
+    const DebugOptions& debug_options,
+    const se::GpuComputeCapability& gpu_version,
+    bool has_native_or_ble_backends) {
+  bool do_not_autotune_cublas =
+      debug_options.xla_gpu_experimental_disable_binary_libraries() ||
+      debug_options.xla_gpu_autotune_level() == 0 ||
+      debug_options.xla_gpu_exclude_nondeterministic_ops();
+  bool do_not_autotune_cudnn =
+      debug_options.xla_gpu_experimental_disable_binary_libraries() ||
+      (do_not_autotune_cublas && !gpu_version.IsRocm());
+
+  bool enable_fusion_autotuner =
+      debug_options.xla_gpu_autotune_level() != 0 &&
+      !debug_options.xla_gpu_exclude_nondeterministic_ops() &&
+      debug_options.xla_gpu_experimental_enable_fusion_autotuner();
+  bool all_fusions_with_triton =
+      debug_options.xla_gpu_experimental_all_fusions_with_triton();
+
+  bool autotune_post_fusion =
+      debug_options.xla_gpu_experimental_autotune_post_fusion();
+
+  return
+      [do_not_autotune_cublas, do_not_autotune_cudnn, enable_fusion_autotuner,
+       all_fusions_with_triton, has_native_or_ble_backends,
+       autotune_post_fusion](const HloInstruction& instruction) -> bool {
+        return ShouldAutotuneInstruction(
+            do_not_autotune_cublas, do_not_autotune_cudnn,
+            enable_fusion_autotuner, all_fusions_with_triton,
+            has_native_or_ble_backends, autotune_post_fusion, instruction);
+      };
+}
+
 }  // namespace
 
 AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options,
@@ -323,12 +356,25 @@ AutotunerPass::GetGpuAutotunerBackends(
                      }),
       autotune_backends.end());
 
+  bool has_native_or_ble_backends =
+      absl::c_linear_search(autotune_backends,
+                            autotuner::Backend::NATIVE_EMITTER) ||
+      absl::c_linear_search(autotune_backends,
+                            autotuner::Backend::BLOCK_LEVEL_EMITTER);
+
+  const auto& gpu_version =
+      target_config->device_description.gpu_compute_capability();
+
+  InstructionFilterFn should_autotune = CreateShouldAutotuneFn(
+      debug_options, gpu_version, has_native_or_ble_backends);
+
   auto& registry = stream_executor::PlatformObjectRegistry::GetGlobalRegistry();
   TF_ASSIGN_OR_RETURN(const GetCodegenBackends::Type& get_codegen_backends,
                       registry.FindObject<GetCodegenBackends>(platform_id));
-  std::vector<std::unique_ptr<CodegenBackend>> backends = get_codegen_backends(
-      stream_exec, device_allocator, &debug_options, compiler, target_config,
-      alias_info, mlir_context, shape_size_fn, autotune_backends);
+  std::vector<std::unique_ptr<CodegenBackend>> backends =
+      get_codegen_backends(stream_exec, device_allocator, &debug_options,
+                           compiler, target_config, alias_info, mlir_context,
+                           shape_size_fn, autotune_backends, should_autotune);
 
   return backends;
 }
@@ -346,38 +392,12 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
   TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<CodegenBackend>> backends,
                       get_backends_fn());
 
-  // 1. Assessing whether to autotune custom calls.
-  bool do_not_autotune_cublas =
-      debug_options.xla_gpu_experimental_disable_binary_libraries() ||
-      debug_options.xla_gpu_autotune_level() == 0 ||
-      debug_options.xla_gpu_exclude_nondeterministic_ops();
-  bool do_not_autotune_cudnn =
-      debug_options.xla_gpu_experimental_disable_binary_libraries() ||
-      (do_not_autotune_cublas && !gpu_version.IsRocm());
-
-  // 3. Assessing whether to autotune generic fusions.
-  bool enable_fusion_autotuner =
-      debug_options.xla_gpu_autotune_level() != 0 &&
-      !debug_options.xla_gpu_exclude_nondeterministic_ops() &&
-      debug_options.xla_gpu_experimental_enable_fusion_autotuner();
-  bool all_fusions_with_triton =
-      debug_options.xla_gpu_experimental_all_fusions_with_triton();
-
   bool has_native_or_ble_backends = absl::c_any_of(backends, [](const auto& b) {
     return b->name() == "NATIVE_EMITTER" || b->name() == "BLOCK_LEVEL_EMITTER";
   });
-  bool autotune_post_fusion =
-      debug_options.xla_gpu_experimental_autotune_post_fusion();
 
-  auto should_autotune =
-      [do_not_autotune_cublas, do_not_autotune_cudnn, enable_fusion_autotuner,
-       all_fusions_with_triton, has_native_or_ble_backends,
-       autotune_post_fusion](const HloInstruction& instruction) -> bool {
-    return ShouldAutotuneInstruction(
-        do_not_autotune_cublas, do_not_autotune_cudnn, enable_fusion_autotuner,
-        all_fusions_with_triton, has_native_or_ble_backends,
-        autotune_post_fusion, instruction);
-  };
+  InstructionFilterFn should_autotune = CreateShouldAutotuneFn(
+      debug_options, gpu_version, has_native_or_ble_backends);
 
   std::unique_ptr<Profiler> profiler = nullptr;
   bool is_deviceless = stream_executor == nullptr;

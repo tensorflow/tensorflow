@@ -44,7 +44,8 @@ struct GetCodegenBackends {
       const Compiler::GpuTargetConfig*, const AliasInfo* alias_info,
       mlir::MLIRContext* mlir_context,
       HloCostAnalysis::ShapeSizeFunction shape_size_fn,
-      absl::Span<const autotuner::Backend> backend_allowlist)>;
+      absl::Span<const autotuner::Backend> backend_allowlist,
+      InstructionFilterFn should_autotune)>;
 };
 
 }  // namespace gpu

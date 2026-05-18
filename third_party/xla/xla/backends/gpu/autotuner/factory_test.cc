@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
 #include "xla/service/platform_util.h"
@@ -89,7 +90,8 @@ TEST_P(FactoryTest, GetCodegenBackends) {
         get_codegen_backends(
             stream_executor_, &allocator_, &debug_options_, compiler_.get(),
             &target_config_, &alias_info, &mlir_context,
-            /*shape_size_fn=*/[](const Shape&) { return 0; }, GetParam().names);
+            /*shape_size_fn=*/[](const Shape&) { return 0; }, GetParam().names,
+            /*should_autotune=*/[](const HloInstruction&) { return true; });
     EXPECT_EQ(backends.size(), GetParam().expected_num_backends);
   } else {
     GTEST_SKIP() << "Skipping test for platform " << platform_->id();
