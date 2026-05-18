@@ -151,6 +151,9 @@ ScopedShapedBuffer::ScopedShapedBuffer(ScopedShapedBuffer&& s) noexcept
 
 ScopedShapedBuffer& ScopedShapedBuffer::operator=(
     ScopedShapedBuffer&& s) noexcept {
+  if (this == &s) {
+    return *this;
+  }
   Deallocate();
 
   *static_cast<ShapedBuffer*>(this) = std::move(static_cast<ShapedBuffer&>(s));
