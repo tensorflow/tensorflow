@@ -2026,6 +2026,219 @@ TEST_F(
       absl_testing::IsOkAndHolds(true));
 }
 
+struct OneShotRaggedAllToAllMemSpaceParams {
+  bool is_zero_copy;
+  bool use_input_output_alias;
+};
+
+class OneShotRaggedAllToAllMemSpaceTest
+    : public GpuCompilerTest,
+      public ::testing::WithParamInterface<
+          OneShotRaggedAllToAllMemSpaceParams> {};
+
+INSTANTIATE_TEST_SUITE_P(
+    CollectiveBufferAnalysis, OneShotRaggedAllToAllMemSpaceTest,
+    Values(OneShotRaggedAllToAllMemSpaceParams{false, false},
+           OneShotRaggedAllToAllMemSpaceParams{false, true},
+           OneShotRaggedAllToAllMemSpaceParams{true, false},
+           OneShotRaggedAllToAllMemSpaceParams{true, true}),
+    [](const TestParamInfo<OneShotRaggedAllToAllMemSpaceTest::ParamType>&
+           info) {
+      return absl::StrCat(
+          info.param.is_zero_copy ? "zero_copy" : "no_zero_copy", "_",
+          info.param.use_input_output_alias ? "with_alias" : "no_alias");
+    });
+
+TEST_P(OneShotRaggedAllToAllMemSpaceTest, DirectUsage) {
+  constexpr absl::string_view kHloTemplate = R"(
+    HloModule test$0
+
+    ENTRY test_computation {
+      input = f32[16] parameter(0)
+      output = f32[16] parameter(1)
+      input_offsets = s64[2] parameter(2)
+      send_sizes = s64[2] parameter(3)
+      output_offsets = s64[2] parameter(4)
+      recv_sizes = s64[2] parameter(5)
+      ROOT ra2a = f32[16] ragged-all-to-all(input, output, input_offsets,
+      send_sizes, output_offsets, recv_sizes), replica_groups={{0,1}}
+    }
+  )";
+  bool use_input_output_alias = GetParam().use_input_output_alias;
+  // Inject the alias layout configuration into the HLO
+  std::string hlo_text = absl::StrReplaceAll(
+      kHloTemplate,
+      {{"$0",
+        use_input_output_alias ? ", input_output_alias={ {}: (1, {}) }" : ""}});
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  DebugOptions& opts = config.mutable_debug_options();
+  opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(true);
+  if (GetParam().is_zero_copy) {
+    opts.set_xla_gpu_experimental_ragged_all_to_all_zero_copy(true);
+  }
+  std::pair<const HloModule*, std::unique_ptr<OpaqueExecutable>>
+      optimized_module_and_executable;
+  ASSERT_OK_AND_ASSIGN(optimized_module_and_executable,
+                       GetOptimizedModuleForExecutable(hlo_text, config));
+
+  const HloModule* optimized_module = optimized_module_and_executable.first;
+
+  constexpr absl::string_view kS0NoCopy = R"(
+    // CHECK:  %output = f32[16]{0} parameter(1)
+    // CHECK:  %ragged-all-to-all-start = ((f32[16]{0}, f32[16]{0}, s64[2]{0}, s64[2]{0}, s64[2]{0}, /*index=5*/s64[2]{0}), f32[16]{0}) ragged-all-to-all-start(%input, %output,
+    // CHECK:  ROOT %ragged-all-to-all-done = f32[16]{0} ragged-all-to-all-done(%ragged-all-to-all-start)
+  )";
+
+  constexpr absl::string_view kS0OneCopy = R"(
+    // CHECK:  %output = f32[16]{0} parameter(1)
+    // CHECK:  [[COPY1:%copy[0-9.]*]] = f32[16]{0} copy(%output)
+    // CHECK:  %ragged-all-to-all-start = ((f32[16]{0}, f32[16]{0}, s64[2]{0}, s64[2]{0}, s64[2]{0}, /*index=5*/s64[2]{0}), f32[16]{0}) ragged-all-to-all-start(%input, [[COPY1]],
+    // CHECK:  ROOT %ragged-all-to-all-done = f32[16]{0} ragged-all-to-all-done(%ragged-all-to-all-start)
+  )";
+
+  constexpr absl::string_view kS1TwoCopies = R"(
+    // CHECK:  %output = f32[16]{0} parameter(1)
+    // CHECK:  [[COPY1:%copy[0-9.]*]] = f32[16]{0:S(1)} copy(%output)
+    // CHECK:  %ragged-all-to-all-start = ((f32[16]{0}, f32[16]{0:S(1)}, s64[2]{0}, s64[2]{0}, s64[2]{0}, /*index=5*/s64[2]{0}), f32[16]{0:S(1)}) ragged-all-to-all-start(%input, [[COPY1]],
+    // CHECK:  %ragged-all-to-all-done = f32[16]{0:S(1)} ragged-all-to-all-done(%ragged-all-to-all-start)
+    // CHECK:  ROOT %copy.{{[0-9]+}} = f32[16]{0} copy(%ragged-all-to-all-done)
+  )";
+
+  const absl::string_view expected_check = [&]() {
+    if (GetParam().is_zero_copy) {
+      // Collective memory space should be empty after the module execution,
+      // otherwise symmetric memory in XLA will not work correctly during the
+      // next execution.
+      // Regardless of the input_output_alias, Entry output should be S0.
+      // Therefore, we need two copies - for Entry param(1) and for Entry result
+      return kS1TwoCopies;
+    }
+    if (use_input_output_alias) {
+      // Param(1) is in S0, and because of the input_output_alias, it is
+      // considered writeable. Therefore, no copy is needed.
+      return kS0NoCopy;
+    }
+    // Param(1) is in S0 and is read-only, so its HloBuffer size is 2.
+    // HLO needs one copy to safely mutate param(1).
+    // No copy is needed for the result.
+    return kS0OneCopy;
+  }();
+
+  EXPECT_THAT(RunFileCheck(
+                  optimized_module->ToString(HloPrintOptions{}
+                                                 .set_print_operand_shape(false)
+                                                 .set_print_metadata(false)),
+                  expected_check),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_P(OneShotRaggedAllToAllMemSpaceTest, LoopUsage) {
+  constexpr absl::string_view kHloTemplate = R"(
+    HloModule test$0
+
+    while_condition {
+      params = (s32[], f32[16], f32[16]) parameter(0)
+      loop_counter = s32[] get-tuple-element(params), index=0
+      limit = s32[] constant(4)
+      ROOT result = pred[] compare(loop_counter, limit), direction=LT
+    }
+
+    while_body {
+      params = (s32[], f32[16], f32[16]) parameter(0)
+      loop_counter = s32[] get-tuple-element(params), index=0
+      input = f32[16] get-tuple-element(params), index=1
+      output = f32[16] get-tuple-element(params), index=2
+      input_offsets = u64[2] constant({0, 1})
+      send_sizes = u64[2] constant({1, 1})
+      output_offsets = u64[2] constant({0, 1})
+      recv_sizes = u64[2] constant({1, 1})
+      ra2a = f32[16] ragged-all-to-all(input, output, input_offsets, send_sizes, output_offsets, recv_sizes), replica_groups={{0,1}}
+      new_loop_counter = s32[] add(loop_counter, s32[] constant(1))
+      ROOT result = tuple(new_loop_counter, input, ra2a)
+    }
+
+    ENTRY entry_computation {
+      init_loop_counter = s32[] constant(0)
+      input = f32[16] parameter(0)
+      output = f32[16] parameter(1)
+      while_init = tuple(init_loop_counter, input, output)
+      while = (s32[], f32[16], f32[16]) while(while_init), condition=while_condition, body=while_body
+      ROOT result = get-tuple-element(while), index=2
+    }
+  )";
+  bool use_input_output_alias = GetParam().use_input_output_alias;
+  // Inject the alias layout configuration into the HLO
+  std::string hlo_text = absl::StrReplaceAll(
+      kHloTemplate,
+      {{"$0",
+        use_input_output_alias ? ", input_output_alias={ {}: (1, {}) }" : ""}});
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  DebugOptions& opts = config.mutable_debug_options();
+  opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(true);
+  if (GetParam().is_zero_copy) {
+    opts.set_xla_gpu_experimental_ragged_all_to_all_zero_copy(true);
+  }
+  std::pair<const HloModule*, std::unique_ptr<OpaqueExecutable>>
+      optimized_module_and_executable;
+  ASSERT_OK_AND_ASSIGN(optimized_module_and_executable,
+                       GetOptimizedModuleForExecutable(hlo_text, config));
+
+  const HloModule* optimized_module = optimized_module_and_executable.first;
+
+  constexpr absl::string_view kS0NoCopy = R"(
+    // CHECK:  [[OUTPUT1:%output[0-9.]*]] = f32[16]{0} parameter(1)
+    // CHECK:  %tuple = (s32[], f32[16]{0}, f32[16]{0}) tuple(%copy{{.*}}, %input{{.*}}, [[OUTPUT1]])
+    // CHECK:  %while = (s32[], f32[16]{0}, f32[16]{0}) while(%tuple)
+    // CHECK:  ROOT %result{{.*}}= f32[16]{0} get-tuple-element(%while), index=2
+  )";
+
+  constexpr absl::string_view kS0OneCopy = R"(
+    // CHECK:  [[OUTPUT1:%output[0-9.]*]] = f32[16]{0} parameter(1)
+    // CHECK:  [[COPY1:%copy[0-9.]*]] = f32[16]{0} copy([[OUTPUT1]])
+    // CHECK:  %tuple = (s32[], f32[16]{0}, f32[16]{0}) tuple(%copy{{.*}}, %input{{.*}}, [[COPY1]])
+    // CHECK:  %while = (s32[], f32[16]{0}, f32[16]{0}) while(%tuple)
+    // CHECK:  ROOT %result{{.*}}= f32[16]{0} get-tuple-element(%while), index=2
+  )";
+
+  constexpr absl::string_view kS1TwoCopies = R"(
+    // CHECK:  [[OUTPUT1:%output[0-9.]*]] = f32[16]{0} parameter(1)
+    // CHECK:  [[COPY1:%copy[0-9.]*]] = f32[16]{0:S(1)} copy([[OUTPUT1]])
+    // CHECK:  %tuple = (s32[], f32[16]{0}, f32[16]{0:S(1)}) tuple(%copy{{.*}}, %input{{.*}}, [[COPY1]])
+    // CHECK:  %while = (s32[], f32[16]{0}, f32[16]{0:S(1)}) while(%tuple)
+    // CHECK:  [[RESULT:%result[0-9.]*]] = f32[16]{0:S(1)} get-tuple-element(%while), index=2
+    // CHECK:  ROOT %copy{{.*}} = f32[16]{0} copy([[RESULT]])
+  )";
+
+  const absl::string_view expected_check = [&]() {
+    if (GetParam().is_zero_copy) {
+      // Collective memory space should be empty after the module execution,
+      // otherwise symmetric memory in XLA will not work correctly during the
+      // next execution.
+      // Regardless of the input_output_alias, Entry output should be S0.
+      // Therefore, we need two copies - for Entry param(1) and for Entry result
+      return kS1TwoCopies;
+    }
+    if (use_input_output_alias) {
+      // Param(1) is in S0, and because of the input_output_alias, it is
+      // considered writeable. Therefore, no copy is needed.
+      return kS0NoCopy;
+    }
+    // Param(1) is in S0 and is read-only, so its HloBuffer size is 2.
+    // HLO needs one copy to safely mutate param(1).
+    // No copy is needed for the result.
+    return kS0OneCopy;
+  }();
+
+  EXPECT_THAT(RunFileCheck(
+                  optimized_module->ToString(HloPrintOptions{}
+                                                 .set_print_operand_shape(false)
+                                                 .set_print_metadata(false)),
+                  expected_check),
+              absl_testing::IsOkAndHolds(true));
+}
+
 struct RequiresCollectiveSymmetricMemorySpaceParams {
   bool is_sym_mem;
   bool use_input_output_alias;
