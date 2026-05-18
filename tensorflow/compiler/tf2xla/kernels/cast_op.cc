@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <cstdint>
 
+#include "absl/status/status.h"
 #include "tensorflow/compiler/tf2xla/lib/broadcast.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
