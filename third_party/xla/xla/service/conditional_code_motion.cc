@@ -652,8 +652,16 @@ absl::StatusOr<bool> ConvertSpecialMove(HloInstruction* conditional,
         conditional->ReplaceAllUsesWithDifferentShape(newconditional));
     CHECK_OK(conditional_parent->RemoveInstruction(conditional));
     conditional = newconditional;
+    // Sort the hoist set deterministically to avoid pointer-based
+    // non-determinism.
+    std::vector<HloInstruction*> to_hoist_list(to_hoist_set.begin(),
+                                               to_hoist_set.end());
+    absl::c_sort(to_hoist_list,
+                 [](const HloInstruction* a, const HloInstruction* b) {
+                   return a->unique_id() < b->unique_id();
+                 });
     // Add the hoisted instructions in the parent.
-    for (HloInstruction* hoist : to_hoist_set) {
+    for (HloInstruction* hoist : to_hoist_list) {
       VLOG(2) << "Hoisting instruction:" << hoist->ToString();
       int64_t hoist_index = map_inst_to_tuple_index[hoist];
       // Find out the gte that captured the hoisted instr result.
@@ -1897,8 +1905,17 @@ class GroupConnectedBoundaries {
         boundary_in.push_back(root_inst);
       }
       new_boundaries_.push_back(boundary_in);
+      // Sort the users deterministically before pushing them onto boundaries to
+      // maintain stable order.
+      std::vector<HloInstruction*> sorted_users(inst->users().begin(),
+                                                inst->users().end());
+      absl::c_sort(sorted_users,
+                   [](const HloInstruction* a, const HloInstruction* b) {
+                     return a->unique_id() < b->unique_id();
+                   });
+
       // Add conditional users as new boundaries to visit.
-      for (auto u : inst->users()) {
+      for (auto u : sorted_users) {
         Boundary boundary_in(Boundary::Position::kOutsideBranchUser);
         boundary_in.push_back(u);
         new_boundaries_.push_back(boundary_in);
