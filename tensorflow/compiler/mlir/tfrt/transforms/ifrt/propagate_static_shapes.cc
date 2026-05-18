@@ -217,10 +217,15 @@ mlir::LogicalResult ProcessIfrtCall(
     llvm::DenseSet<uint64_t>& processed_programs) {
   llvm::SmallDenseMap<size_t, SetStaticDimensionBoundsOp>
       arg_idx_to_static_shape_op = GetArgIdxToStaticShapeOpMap(ifrt_call);
-  if (arg_idx_to_static_shape_op.empty()) return mlir::success();
+  if (arg_idx_to_static_shape_op.empty()) {
+    LOG(INFO) << "<<<<<<<<<<< No static shaped args found. IfrtCallOp: "
+              << ifrt_call;
+    return mlir::success();
+  }
 
-  VLOG(2) << "Found `IfrtCallOp` with " << arg_idx_to_static_shape_op.size()
-          << " static shaped args. IfrtCallOp: " << ifrt_call;
+  LOG(INFO) << "<<<<<<<<<<< Found `IfrtCallOp` with "
+            << arg_idx_to_static_shape_op.size()
+            << " static shaped args. IfrtCallOp: " << ifrt_call;
 
   mlir::OperandRange old_args = ifrt_call.getArgs();
   llvm::SmallVector<mlir::Value, 4> updated_args;
