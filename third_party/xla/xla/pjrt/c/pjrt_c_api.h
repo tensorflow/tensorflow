@@ -77,6 +77,7 @@ typedef enum {
   PJRT_Extension_Type_Collectives,
   PJRT_Extension_Type_MultiSlice,
   PJRT_Extension_Type_HostMemoryAllocator,
+  PJRT_Extension_Type_XlaTransform,
 } PJRT_Extension_Type;
 
 // PJRT_Extension_Base contains a type and a pointer to next

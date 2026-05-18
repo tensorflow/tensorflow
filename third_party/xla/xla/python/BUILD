@@ -727,3 +727,24 @@ cc_library(
     compatible_with = [],
     visibility = internal_visibility([":friends"]),
 )
+
+tsl_pybind_extension(
+    name = "xla_transform",
+    srcs = ["xla_transform_py.cc"],
+    deps = [
+        "//xla/service:xla_transform",
+        "@nanobind",
+    ],
+)
+
+py_test(
+    name = "xla_transform_test",
+    srcs = ["xla_transform_test.py"],
+    tags = ["no_oss"],
+    deps = [
+        ":xla_extension",
+        ":xla_transform",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:absltest",
+    ] + xla_py_test_deps(),
+)

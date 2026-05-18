@@ -6768,3 +6768,48 @@ cc_library(
         "@com_google_protobuf//:protobuf",
     ],
 )
+
+cc_library(
+    name = "xla_transform",
+    srcs = ["xla_transform.cc"],
+    hdrs = ["xla_transform.h"],
+    deps = [
+        ":hlo_verifier",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+xla_cc_test(
+    name = "xla_transform_test",
+    srcs = ["xla_transform_test.cc"],
+    deps = [
+        ":hlo_cse",
+        ":hlo_proto_cc",
+        ":xla_transform",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/pass:hlo_pass_pipeline",
+        "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
+        "//xla/hlo/transforms/simplifiers:hlo_memory_scheduler",
+        "//xla/pjrt/c:pjrt_c_api_hdrs",
+        "//xla/pjrt/c:pjrt_c_api_xla_transform_extension_hdrs",
+        "//xla/pjrt/c:pjrt_c_api_xla_transform_internal",
+        "//xla/tsl/lib/strings:proto_serialization",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

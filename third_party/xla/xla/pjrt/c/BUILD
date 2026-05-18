@@ -354,6 +354,36 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_c_api_xla_transform_extension_hdrs",
+    hdrs = ["pjrt_c_api_xla_transform_extension.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+    ],
+)
+
+cc_library(
+    name = "pjrt_c_api_xla_transform_internal",
+    srcs = ["pjrt_c_api_xla_transform_internal.cc"],
+    hdrs = ["pjrt_c_api_xla_transform_internal.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_status_utils",
+        ":pjrt_c_api_xla_transform_extension_hdrs",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_proto_cc",
+        "//xla/service:xla_transform",
+        "//xla/tsl/lib/strings:proto_serialization",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "pjrt_c_api_layouts_extension_hdrs",
     hdrs = ["pjrt_c_api_layouts_extension.h"],
     visibility = ["//visibility:public"],
