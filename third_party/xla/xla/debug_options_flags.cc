@@ -516,6 +516,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_command_buffer_update_mode(DebugOptions::ALWAYS_UPDATE);
 
   opts.set_xla_gpu_experimental_aot_compiled_thunks(true);
+  opts.set_xla_gpu_deviceless_cub_mode(DebugOptions::DEVICELESS_CUB_DISABLED);
   return opts;
 }
 
@@ -643,6 +644,17 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           return false;
         }
         debug_options->set_xla_gpu_shape_checks(shape_checks);
+        return true;
+      };
+
+  // Custom "sub-parser" lambda for xla_gpu_deviceless_cub_mode.
+  auto setter_for_xla_gpu_deviceless_cub_mode =
+      [debug_options](const std::string& value) {
+        DebugOptions::DevicelessCubMode mode;
+        if (!DebugOptions::DevicelessCubMode_Parse(value, &mode)) {
+          return false;
+        }
+        debug_options->set_xla_gpu_deviceless_cub_mode(mode);
         return true;
       };
 
@@ -2370,6 +2382,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_cub_radix_sort),
       debug_options->xla_gpu_enable_cub_radix_sort(),
       "Enable radix sort using CUB for simple shapes"));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_deviceless_cub_mode", setter_for_xla_gpu_deviceless_cub_mode,
+      DebugOptions::DevicelessCubMode_Name(
+          debug_options->xla_gpu_deviceless_cub_mode()),
+      "Control CUB behavior during deviceless compilation. "
+      "Available options: DEVICELESS_CUB_DISABLED, "
+      "DEVICELESS_CUB_WITH_FALLBACK, DEVICELESS_CUB_NO_FALLBACK, "
+      "DEVICELESS_CUB_FORCE_ON_NO_FALLBACK."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_threshold_for_windowed_einsum_mib",
       int64_setter_for(

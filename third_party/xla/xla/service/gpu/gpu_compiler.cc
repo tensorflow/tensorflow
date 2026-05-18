@@ -99,6 +99,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/conv_rewriter.h"
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
 #include "xla/backends/gpu/transforms/cudnn_custom_call_converter.h"
+#include "xla/backends/gpu/transforms/deviceless_estimate_cub_sort_scratch_size.h"
 #include "xla/backends/gpu/transforms/dot_algorithm_rewriter.h"
 #include "xla/backends/gpu/transforms/dot_dimension_sorter.h"
 #include "xla/backends/gpu/transforms/dot_normalizer.h"
@@ -688,7 +689,8 @@ bool BackendConfigDeviceTypeIsHost(HloInstruction* instr) {
 absl::Status RunOptimizationPasses(
     HloModule* hlo_module, const GpuTargetConfig& gpu_target_config,
     const AlgebraicSimplifierOptions& layout_insensitive_algsimp_opts,
-    bool enable_sort_rewriter, CompilationStats* compilation_stats) {
+    bool is_deviceless, bool is_early_exit_with_layouts,
+    CompilationStats* compilation_stats) {
   const DebugOptions& debug_options = hlo_module->config().debug_options();
   se::GpuComputeCapability gpu_version =
       gpu_target_config.device_description.gpu_compute_capability();
@@ -745,8 +747,9 @@ absl::Status RunOptimizationPasses(
   // would do.
   pipeline.AddPass<PermutationSortExpander>();
 
-  if (enable_sort_rewriter) {
-    pipeline.AddPass<SortRewriter>(gpu_target_config.device_description);
+  if (debug_options.xla_gpu_enable_cub_radix_sort()) {
+    pipeline.AddPass<SortRewriter>(gpu_target_config.device_description,
+                                   is_deviceless, is_early_exit_with_layouts);
   }
   // Comparison total order expander
   pipeline.AddPass<ComparisonExpander>(std::array{std::make_pair(BF16, F32)});
@@ -839,8 +842,9 @@ absl::Status RunOptimizationPasses(
   // DynamicPadder creates a stable KeyValue sort for dynamic reshapes.
   pipeline.AddPass<DynamicPadder>(dynamic_padder_options);
   // SortRewriter needs to run before StableSortExpander.
-  if (enable_sort_rewriter) {
-    pipeline.AddPass<SortRewriter>(gpu_target_config.device_description);
+  if (debug_options.xla_gpu_enable_cub_radix_sort()) {
+    pipeline.AddPass<SortRewriter>(gpu_target_config.device_description,
+                                   is_deviceless, is_early_exit_with_layouts);
   }
   // Expand the sort op to support stable sorting if required.
   pipeline.AddPass<StableSortExpander>();
@@ -1697,20 +1701,11 @@ absl::Status GpuCompiler::OptimizeHloModule(
   // callbacks at this point.
   DumpHloModuleIfEnabled(*hlo_module, "after_spmd_partitioner");
 
-  // SortRewriter needs to ask the device how much scratch space is needed,
-  // which isn't feasible if we don't have a device.
-  bool enable_sort_rewriter =
-      hlo_module->config().debug_options().xla_gpu_enable_cub_radix_sort();
-  if (stream_exec == nullptr && !options.early_exit_with_layouts) {
-    LOG(WARNING) << "Using fallback sort algorithm rather than SortRewriter, "
-                    "which will be slower at runtime. To avoid this, "
-                    "compile with a GPU present.";
-    enable_sort_rewriter = false;
-  }
-  RETURN_IF_ERROR(
-      RunOptimizationPasses(hlo_module, gpu_topology.gpu_target_config(),
-                            layout_insensitive_algsimp_opts,
-                            enable_sort_rewriter, compilation_stats));
+  RETURN_IF_ERROR(RunOptimizationPasses(
+      hlo_module, gpu_topology.gpu_target_config(),
+      layout_insensitive_algsimp_opts,
+      /*is_deviceless=*/stream_exec == nullptr, options.early_exit_with_layouts,
+      compilation_stats));
   se::GpuComputeCapability gpu_version =
       device_description.gpu_compute_capability();
   RETURN_IF_ERROR(RunCollectiveOptimizationPasses(
@@ -2005,8 +2000,17 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // annotations, this pass will add the annotations.
     pipeline.AddPass<SubByteNormalization>(
         SubByteNormalization::SET_ELEMENT_SIZE);
-    pipeline.AddPass<EstimateCubSortScratchSize>(
-        gpu_target_config.platform_name);
+    if (stream_exec == nullptr ||
+        debug_options.xla_gpu_deviceless_cub_mode() ==
+            DebugOptions::DEVICELESS_CUB_FORCE_ON_NO_FALLBACK) {
+      pipeline.AddPass<DevicelessEstimateCubSortScratchSize>(
+          gpu_target_config.platform_name,
+          gpu_target_config.device_description.name(),
+          gpu_target_config.device_description.cub_version());
+    } else {
+      pipeline.AddPass<EstimateCubSortScratchSize>(
+          gpu_target_config.platform_name);
+    }
     pipeline.AddPass<EstimateCubScanScratchSize>(
         gpu_target_config.platform_name);
     RETURN_IF_ERROR(
