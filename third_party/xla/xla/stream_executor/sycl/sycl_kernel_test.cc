@@ -13,13 +13,15 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
-#include "xla/backends/gpu/runtime/kernel_thunk.h"
+#include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
@@ -62,20 +64,19 @@ TEST_F(SyclKernelTest, CheckKernelLoading) {
 
   const xla::gpu::Thunk* thunk = thunk_exec.thunks().at(0).get();
   ASSERT_NE(thunk, nullptr);
-  EXPECT_EQ(thunk->kind(), xla::gpu::Thunk::Kind::kKernel);
+  EXPECT_EQ(thunk->kind(), xla::gpu::Thunk::Kind::kCustomKernel);
 
-  const auto* kernel_thunk = dynamic_cast<const xla::gpu::KernelThunk*>(thunk);
+  const auto* kernel_thunk =
+      dynamic_cast<const xla::gpu::CustomKernelThunk*>(thunk);
   ASSERT_NE(kernel_thunk, nullptr);
-
-  std::string kernel_name = kernel_thunk->kernel_name();
 
   std::vector<uint8_t> spirv_binary(gpu_exec->binary());
 
-  KernelLoaderSpec spec = KernelLoaderSpec::CreateCudaCubinInMemorySpec(
-      spirv_binary, kernel_name, 3);
+  const KernelLoaderSpec& kernel_spec =
+      kernel_thunk->custom_kernel().kernel_spec();
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> sycl_kernel,
-                          executor->LoadKernel(spec));
+                          executor->LoadKernel(kernel_spec));
 
   EXPECT_EQ(sycl_kernel->Arity(), 3);
   // TODO(intel-tf): Add check for GetMaxOccupiedBlocksPerCore
