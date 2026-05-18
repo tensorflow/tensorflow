@@ -1519,6 +1519,10 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // When we uncommit the current pending state following a
   // kFailRequiresUncommit, we need to re-reserve those chunks.
   std::vector<ReservedAllocation*> pending_deallocated_reserved_allocations_;
+
+  // Owns dynamically created dummy HloValues (e.g. for window prefetching)
+  // to ensure stable, unique memory addresses during allocation.
+  std::vector<std::unique_ptr<HloValue>> dummy_hlo_values_;
 };
 
 }  // namespace memory_space_assignment
