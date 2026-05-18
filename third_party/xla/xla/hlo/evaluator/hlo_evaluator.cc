@@ -1319,6 +1319,10 @@ absl::Status HloEvaluator::EvaluateInternal(
       }
     } else {
       for (HloInstruction* operand : instruction->operands()) {
+        if (instruction->opcode() == HloOpcode::kReduce &&
+            operand->opcode() == HloOpcode::kIota) {
+          continue;
+        }
         TF_RETURN_IF_ERROR(EvaluateInternal(
             operand, precomputed_analyses, /*shape_index=*/{},
             /*recursively_evaluate_nonconstant_operands=*/true));
@@ -4560,6 +4564,320 @@ static absl::StatusOr<bool> GenerateReduceOutputElement(
   return true;
 }
 
+static bool IsVectorizableReduction(const HloComputation* function) {
+  for (const HloInstruction* inst : function->instructions()) {
+    switch (inst->opcode()) {
+      case HloOpcode::kParameter:
+        break;
+      case HloOpcode::kCompare:
+        if (inst->operand(0)->shape().element_type() == PRED) {
+          VLOG(1) << "Cannot vectorize due to PRED operands in Compare: "
+                  << inst->name();
+          return false;
+        }
+        break;
+      case HloOpcode::kSelect:
+      case HloOpcode::kTuple:
+      case HloOpcode::kAnd:
+      case HloOpcode::kOr:
+        break;
+      case HloOpcode::kAdd:
+        if (inst->operand(0)->shape().element_type() == PRED) {
+          VLOG(1) << "Cannot vectorize due to PRED operands in Add: "
+                  << inst->name();
+          return false;
+        }
+        break;
+      default:
+        VLOG(1) << "Cannot vectorize due to opcode: "
+                << HloOpcodeString(inst->opcode())
+                << " of inst: " << inst->name();
+        return false;
+    }
+    if (inst->opcode() == HloOpcode::kCompare) {
+      if (primitive_util::IsFloatingPointType(
+              inst->operand(0)->shape().element_type()) &&
+          inst->comparison_order() == Comparison::Order::kTotal) {
+        VLOG(1) << "Cannot vectorize due to FloatTotalOrder in inst: "
+                << inst->name();
+        return false;
+      }
+      if (inst->operand(0)->shape().element_type() == PRED) {
+        VLOG(1) << "Cannot vectorize due to PRED operands in Compare: "
+                << inst->name();
+        return false;
+      }
+    }
+    PrimitiveType type = inst->shape().element_type();
+
+    if (type != F32 && type != S32 && type != BF16 && type != PRED &&
+        !inst->shape().IsTuple()) {
+      VLOG(1) << "Cannot vectorize due to type: "
+              << primitive_util::LowercasePrimitiveTypeName(type)
+              << " of inst: " << inst->name();
+      return false;
+    }
+  }
+  return true;
+}
+
+static absl::StatusOr<bool> GenerateReduceOutputElementVectorized(
+    bool is_tuple, absl::Span<const int64_t> output_index,
+    absl::Span<const Literal* const> init_values,
+    absl::Span<const Literal* const> input_args, absl::Span<Literal> results,
+    HloComputation* function, HloEvaluator* embedded_evaluator,
+    absl::Span<const HloInstruction* const> schedule, int64_t reduced_dim,
+    int64_t reduced_dim_size, absl::Span<const int64_t> result_to_arg_index,
+    const HloReduceInstruction* reduce,
+    const absl::flat_hash_map<const HloInstruction*, int>& inst_to_index,
+    std::vector<StackLiteral>& values) {
+  int num_args = results.size();
+  std::vector<StackLiteral> accumulators;
+  accumulators.reserve(num_args);
+  for (int i = 0; i < num_args; ++i) {
+    accumulators.emplace_back(init_values[i]->shape().element_type());
+    PrimitiveType type = init_values[i]->shape().element_type();
+    if (type == F32) {
+      float val = init_values[i]->Get<float>({});
+      float* data = accumulators[i].data<float>();
+      for (int j = 0; j < 64; ++j) data[j] = val;
+    } else if (type == S32) {
+      int32_t val = init_values[i]->Get<int32_t>({});
+      int32_t* data = accumulators[i].data<int32_t>();
+      for (int j = 0; j < 64; ++j) data[j] = val;
+    } else if (type == BF16) {
+      bfloat16 val = init_values[i]->Get<bfloat16>({});
+      bfloat16* data = accumulators[i].data<bfloat16>();
+      for (int j = 0; j < 64; ++j) data[j] = val;
+    } else if (type == PRED) {
+      bool val = init_values[i]->Get<bool>({});
+      bool* data = accumulators[i].data<bool>();
+      for (int j = 0; j < 64; ++j) data[j] = val;
+    }
+  }
+
+  constexpr int kChunkSize = 64;
+  std::vector<StackLiteral> chunk_args(num_args * 2);
+
+  int rank = reduce->inputs()[0]->shape().dimensions().size();
+  std::vector<int64_t> base(rank, 0);
+  for (int64_t i = 0; i < output_index.size(); ++i) {
+    base[result_to_arg_index[i]] = output_index[i];
+  }
+
+  for (int64_t k = 0; k < reduced_dim_size; k += kChunkSize) {
+    int current_chunk_size = std::min<int>(kChunkSize, reduced_dim_size - k);
+
+    for (int i = 0; i < num_args; ++i) {
+      chunk_args[i] = accumulators[i];
+    }
+
+    for (int i = 0; i < num_args; ++i) {
+      const HloInstruction* input_hlo = reduce->inputs()[i];
+      PrimitiveType type = input_hlo->shape().element_type();
+      chunk_args[num_args + i] = StackLiteral(type);
+
+      if (input_hlo->opcode() == HloOpcode::kIota) {
+        auto* iota = Cast<HloIotaInstruction>(input_hlo);
+        int64_t iota_dim = iota->iota_dimension();
+
+        if (type == S32) {
+          int32_t* data = chunk_args[num_args + i].data<int32_t>();
+          for (int j = 0; j < kChunkSize; ++j) {
+            if (j < current_chunk_size) {
+              if (iota_dim == reduced_dim) {
+                data[j] = k + j;
+              } else {
+                int64_t out_dim = -1;
+                for (size_t m = 0; m < result_to_arg_index.size(); ++m) {
+                  if (result_to_arg_index[m] == iota_dim) {
+                    out_dim = m;
+                    break;
+                  }
+                }
+                if (out_dim != -1) {
+                  data[j] = output_index[out_dim];
+                } else {
+                  data[j] = 0;
+                }
+              }
+            } else {
+              data[j] = init_values[i]->Get<int32_t>({});
+            }
+          }
+        } else if (type == F32) {
+          float* data = chunk_args[num_args + i].data<float>();
+          for (int j = 0; j < kChunkSize; ++j) {
+            if (j < current_chunk_size) {
+              if (iota_dim == reduced_dim) {
+                data[j] = static_cast<float>(k + j);
+              } else {
+                int64_t out_dim = -1;
+                for (size_t m = 0; m < result_to_arg_index.size(); ++m) {
+                  if (result_to_arg_index[m] == iota_dim) {
+                    out_dim = m;
+                    break;
+                  }
+                }
+                if (out_dim != -1) {
+                  data[j] = static_cast<float>(output_index[out_dim]);
+                } else {
+                  data[j] = 0.0f;
+                }
+              }
+            } else {
+              data[j] = init_values[i]->Get<float>({});
+            }
+          }
+        } else if (type == BF16) {
+          bfloat16* data = chunk_args[num_args + i].data<bfloat16>();
+          for (int j = 0; j < kChunkSize; ++j) {
+            if (j < current_chunk_size) {
+              if (iota_dim == reduced_dim) {
+                data[j] = static_cast<bfloat16>(k + j);
+              } else {
+                int64_t out_dim = -1;
+                for (size_t m = 0; m < result_to_arg_index.size(); ++m) {
+                  if (result_to_arg_index[m] == iota_dim) {
+                    out_dim = m;
+                    break;
+                  }
+                }
+                if (out_dim != -1) {
+                  data[j] = static_cast<bfloat16>(output_index[out_dim]);
+                } else {
+                  data[j] = static_cast<bfloat16>(0.0f);
+                }
+              }
+            } else {
+              data[j] = init_values[i]->Get<bfloat16>({});
+            }
+          }
+        }
+      } else {
+        const Literal* input = input_args[i];
+        std::vector<int64_t> current_idx = base;
+
+        if (type == F32) {
+          float* data = chunk_args[num_args + i].data<float>();
+          for (int j = 0; j < kChunkSize; ++j) {
+            if (j < current_chunk_size) {
+              current_idx[reduced_dim] = k + j;
+              data[j] = input->Get<float>(current_idx);
+            } else {
+              data[j] = init_values[i]->Get<float>({});
+            }
+          }
+        } else if (type == S32) {
+          int32_t* data = chunk_args[num_args + i].data<int32_t>();
+          for (int j = 0; j < kChunkSize; ++j) {
+            if (j < current_chunk_size) {
+              current_idx[reduced_dim] = k + j;
+              data[j] = input->Get<int32_t>(current_idx);
+            } else {
+              data[j] = init_values[i]->Get<int32_t>({});
+            }
+          }
+        } else if (type == BF16) {
+          bfloat16* data = chunk_args[num_args + i].data<bfloat16>();
+          for (int j = 0; j < kChunkSize; ++j) {
+            if (j < current_chunk_size) {
+              current_idx[reduced_dim] = k + j;
+              data[j] = input->Get<bfloat16>(current_idx);
+            } else {
+              data[j] = init_values[i]->Get<bfloat16>({});
+            }
+          }
+        } else if (type == PRED) {
+          bool* data = chunk_args[num_args + i].data<bool>();
+          for (int j = 0; j < kChunkSize; ++j) {
+            if (j < current_chunk_size) {
+              current_idx[reduced_dim] = k + j;
+              data[j] = input->Get<bool>(current_idx);
+            } else {
+              data[j] = init_values[i]->Get<bool>({});
+            }
+          }
+        }
+      }
+    }
+
+    std::vector<const StackLiteral*> arg_ptrs;
+    for (const auto& arg : chunk_args) arg_ptrs.push_back(&arg);
+
+    TF_ASSIGN_OR_RETURN(
+        auto step_results,
+        embedded_evaluator->EvaluateScheduleVectorized(
+            schedule, arg_ptrs, current_chunk_size, inst_to_index, values));
+
+    for (int i = 0; i < num_args; ++i) {
+      PrimitiveType type = accumulators[i].element_type();
+      if (type == F32) {
+        float* p_acc = accumulators[i].data<float>();
+        const float* p_res = step_results[i].data<float>();
+        for (int j = 0; j < current_chunk_size; ++j) {
+          p_acc[j] = p_res[j];
+        }
+      } else if (type == S32) {
+        int32_t* p_acc = accumulators[i].data<int32_t>();
+        const int32_t* p_res = step_results[i].data<int32_t>();
+        for (int j = 0; j < current_chunk_size; ++j) {
+          p_acc[j] = p_res[j];
+        }
+      } else if (type == BF16) {
+        bfloat16* p_acc = accumulators[i].data<bfloat16>();
+        const bfloat16* p_res = step_results[i].data<bfloat16>();
+        for (int j = 0; j < current_chunk_size; ++j) {
+          p_acc[j] = p_res[j];
+        }
+      } else if (type == PRED) {
+        bool* p_acc = accumulators[i].data<bool>();
+        const bool* p_res = step_results[i].data<bool>();
+        for (int j = 0; j < current_chunk_size; ++j) {
+          p_acc[j] = p_res[j];
+        }
+      }
+    }
+  }
+
+  for (int i = 0; i < num_args; ++i) {
+    results[i].CopyElementFrom(*init_values[i], {}, output_index);
+  }
+
+  int num_valid_lanes = std::min<int64_t>(reduced_dim_size, kChunkSize);
+  for (int j = 0; j < num_valid_lanes; ++j) {
+    absl::InlinedVector<Literal, 2> chunk_elements;
+    chunk_elements.reserve(num_args);
+    for (int i = 0; i < num_args; ++i) {
+      PrimitiveType type = results[i].shape().element_type();
+      Literal elem(ShapeUtil::MakeShape(type, {}));
+      if (type == F32) {
+        elem.Set<float>({}, accumulators[i].data<float>()[j]);
+      } else if (type == S32) {
+        elem.Set<int32_t>({}, accumulators[i].data<int32_t>()[j]);
+      } else if (type == BF16) {
+        elem.Set<bfloat16>({}, accumulators[i].data<bfloat16>()[j]);
+      } else if (type == PRED) {
+        elem.Set<bool>({}, accumulators[i].data<bool>()[j]);
+      }
+
+      chunk_elements.push_back(std::move(elem));
+    }
+
+    absl::InlinedVector<const Literal*, 2> input_ptrs;
+    for (const auto& elem : chunk_elements) {
+      input_ptrs.push_back(&elem);
+    }
+
+    TF_RETURN_IF_ERROR(PerformReductionStep(is_tuple, /*input_index=*/{},
+                                            output_index, input_ptrs, results,
+                                            function, embedded_evaluator)
+                           .status());
+  }
+
+  return true;
+}
+
 absl::Status HloEvaluator::HandleReduce(const HloInstruction* hlo) {
   const HloReduceInstruction* reduce = Cast<HloReduceInstruction>(hlo);
   int64_t num_args = reduce->inputs().size();
@@ -4583,15 +4901,20 @@ absl::Status HloEvaluator::HandleReduce(const HloInstruction* hlo) {
   absl::InlinedVector<const Literal*, 1> input_args(num_args);
   absl::InlinedVector<const Literal*, 1> init_values(num_args);
   for (int64_t i = 0; i < num_args; ++i) {
-    input_args[i] = &GetEvaluatedLiteralFor(reduce->inputs()[i]);
-    VLOG(3) << "HandleReduce arg_literal: " << input_args[i]->ToString();
+    if (reduce->inputs()[i]->opcode() == HloOpcode::kIota) {
+      input_args[i] = nullptr;
+      VLOG(3) << "HandleReduce arg_literal: nullptr (Iota)";
+    } else {
+      input_args[i] = &GetEvaluatedLiteralFor(reduce->inputs()[i]);
+      VLOG(3) << "HandleReduce arg_literal: " << input_args[i]->ToString();
+    }
     init_values[i] = &GetEvaluatedLiteralFor(reduce->init_values()[i]);
     VLOG(3) << "HandleReduce init_literal: " << init_values[i]->ToString();
     TF_RET_CHECK(ShapeUtil::IsScalar(init_values[i]->shape()));
   }
 
   // All args and results have the same dimensions, so pick an arbitrary one.
-  const Shape& arg_shape = input_args[0]->shape();
+  const Shape& arg_shape = reduce->inputs()[0]->shape();
   const Shape& out_shape = inferred_return_shape;
   bool is_tuple = out_shape.IsTuple();
   const Shape& output_shape = inferred_return_shape.IsTuple()
@@ -4635,13 +4958,65 @@ absl::Status HloEvaluator::HandleReduce(const HloInstruction* hlo) {
     results[i] = Literal(is_tuple ? out_shape.tuple_shapes(i) : out_shape);
   }
 
+  bool can_vectorize = use_fast_path_reduce_ &&
+                       dimensions_to_reduce.size() == 1 &&
+                       IsVectorizableReduction(function);
+
+  int64_t reduced_dim = -1;
+  int64_t reduced_dim_size = -1;
+  if (can_vectorize) {
+    reduced_dim = dimensions_to_reduce[0];
+    reduced_dim_size = arg_dimensions[reduced_dim];
+    // Check if it is the minor dimension.
+    bool is_minor = (LayoutUtil::Minor(arg_shape.layout(), 0) == reduced_dim);
+    can_vectorize = is_minor;
+  }
+
+  // Fallback Iota evaluation if we cannot vectorize!
+  if (!can_vectorize) {
+    for (int64_t i = 0; i < num_args; ++i) {
+      const HloInstruction* input = reduce->inputs()[i];
+      if (input->opcode() == HloOpcode::kIota) {
+        TF_RETURN_IF_ERROR(EvaluateInternal(
+            input, {}, {}, /*recursively_evaluate_nonconstant_operands=*/true));
+        input_args[i] = &GetEvaluatedLiteralFor(input);
+      }
+    }
+  }
+
+  std::vector<const HloInstruction*> const_schedule;
+  absl::flat_hash_map<const HloInstruction*, int> inst_to_index;
+  std::vector<std::vector<StackLiteral>> thread_values;
+  if (can_vectorize) {
+    VLOG(1) << "can_vectorize: true";
+    auto schedule = function->MakeInstructionPostOrder();
+    const_schedule.assign(schedule.begin(), schedule.end());
+
+    for (int i = 0; i < const_schedule.size(); ++i) {
+      inst_to_index[const_schedule[i]] = i;
+    }
+    thread_values.resize(num_threads,
+                         std::vector<StackLiteral>(const_schedule.size()));
+  }
+
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexParallelWithStatus(
-      output_shape, [&](absl::Span<const int64_t> output_index, int thread_id) {
-        return GenerateReduceOutputElement(
-            is_tuple, use_fast_path_reduce_, output_index, init_values,
-            input_args, absl::Span<Literal>(results), function,
-            embedded_evaluators[thread_id + 1].get(), arg_dim_steps,
-            arg_dim_counts, result_to_arg_index);
+      output_shape,
+      [&](absl::Span<const int64_t> output_index,
+          int thread_id) -> absl::StatusOr<bool> {
+        if (can_vectorize) {
+          return GenerateReduceOutputElementVectorized(
+              is_tuple, output_index, init_values, input_args,
+              absl::Span<Literal>(results), function,
+              embedded_evaluators[thread_id + 1].get(), const_schedule,
+              reduced_dim, reduced_dim_size, result_to_arg_index, reduce,
+              inst_to_index, thread_values[thread_id + 1]);
+        } else {
+          return GenerateReduceOutputElement(
+              is_tuple, use_fast_path_reduce_, output_index, init_values,
+              input_args, absl::Span<Literal>(results), function,
+              embedded_evaluators[thread_id + 1].get(), arg_dim_steps,
+              arg_dim_counts, result_to_arg_index);
+        }
       }));
 
   if (is_tuple) {
@@ -4661,6 +5036,411 @@ absl::Status HloEvaluator::HandleReduce(const HloInstruction* hlo) {
     SetEvaluatedLiteralFor(reduce, std::move(converted));
   }
   return absl::OkStatus();
+}
+
+// Note: This implementation accumulates init_value multiple times if the window
+// size is not a multiple of chunk size, or across chunks. This is correct only
+// if init_value is the identity for the reduction operation. XLA technically
+// allows non-identity init_values for ReduceWindow, but in practice they are
+// almost always identities (e.g., 0 for Add, -inf for Max).
+static absl::StatusOr<bool>
+GenerateReduceWindowOutputElementVectorizedInsideWindow(
+    bool is_tuple, absl::Span<const int64_t> output_index,
+    absl::Span<const Literal* const> init_values,
+    absl::Span<const Literal* const> input_args, absl::Span<Literal> results,
+    HloComputation* function, HloEvaluator* embedded_evaluator,
+    absl::Span<const HloInstruction* const> schedule, int64_t minor_dim,
+    const Window& window, const HloReduceWindowInstruction* reduce_window,
+    const absl::flat_hash_map<const HloInstruction*, int>& inst_to_index,
+    std::vector<StackLiteral>& values) {
+  int num_args = results.size();
+  std::vector<StackLiteral> accumulators;
+  accumulators.reserve(num_args);
+  for (int i = 0; i < num_args; ++i) {
+    accumulators.emplace_back(init_values[i]->shape().element_type());
+    PrimitiveType type = init_values[i]->shape().element_type();
+    // Initialize with init_values
+    if (type == F32) {
+      float val = init_values[i]->Get<float>({});
+      float* data = accumulators[i].data<float>();
+      for (int j = 0; j < 64; ++j) data[j] = val;
+    } else if (type == S32) {
+      int32_t val = init_values[i]->Get<int32_t>({});
+      int32_t* data = accumulators[i].data<int32_t>();
+      for (int j = 0; j < 64; ++j) data[j] = val;
+    } else if (type == BF16) {
+      bfloat16 val = init_values[i]->Get<bfloat16>({});
+      bfloat16* data = accumulators[i].data<bfloat16>();
+      for (int j = 0; j < 64; ++j) data[j] = val;
+    } else if (type == PRED) {
+      bool val = init_values[i]->Get<bool>({});
+      bool* data = accumulators[i].data<bool>();
+      for (int j = 0; j < 64; ++j) data[j] = val;
+    }
+  }
+
+  constexpr int kChunkSize = 64;
+  std::vector<StackLiteral> chunk_args(num_args * 2);
+
+  const HloInstruction* input = reduce_window->inputs()[0];
+  const Shape& input_shape = input->shape();
+  int64_t window_size = window.dimensions(minor_dim).size();
+  int64_t stride = window.dimensions(minor_dim).stride();
+  int64_t padding_low = window.dimensions(minor_dim).padding_low();
+  int64_t base_dilation = window.dimensions(minor_dim).base_dilation();
+  int64_t window_dilation = window.dimensions(minor_dim).window_dilation();
+
+  int64_t start = output_index[minor_dim] * stride - padding_low;
+
+  for (int64_t k = 0; k < window_size; k += kChunkSize) {
+    int current_chunk_size = std::min<int64_t>(kChunkSize, window_size - k);
+
+    for (int i = 0; i < num_args; ++i) {
+      chunk_args[i] = accumulators[i];
+      PrimitiveType type = init_values[i]->shape().element_type();
+      chunk_args[num_args + i] = StackLiteral(type);
+
+      // Load inputs for chunk
+      const Literal* input_arg = input_args[i];
+      std::vector<int64_t> current_idx(output_index.begin(),
+                                       output_index.end());
+
+      if (type == F32) {
+        float* data = chunk_args[num_args + i].data<float>();
+        for (int j = 0; j < kChunkSize; ++j) {
+          if (j < current_chunk_size) {
+            int64_t idx = start + (k + j) * window_dilation;
+            bool out_of_bounds = false;
+            if (idx % base_dilation != 0) {
+              out_of_bounds = true;
+            } else {
+              idx /= base_dilation;
+              if (idx < 0 || idx >= input_shape.dimensions(minor_dim)) {
+                out_of_bounds = true;
+              }
+            }
+
+            if (out_of_bounds) {
+              data[j] = init_values[i]->Get<float>({});
+            } else {
+              current_idx[minor_dim] = idx;
+              data[j] = input_arg->Get<float>(current_idx);
+            }
+          } else {
+            data[j] = init_values[i]->Get<float>({});
+          }
+        }
+      } else if (type == S32) {
+        int32_t* data = chunk_args[num_args + i].data<int32_t>();
+        for (int j = 0; j < kChunkSize; ++j) {
+          if (j < current_chunk_size) {
+            int64_t idx = start + (k + j) * window_dilation;
+            bool out_of_bounds = false;
+            if (idx % base_dilation != 0) {
+              out_of_bounds = true;
+            } else {
+              idx /= base_dilation;
+              if (idx < 0 || idx >= input_shape.dimensions(minor_dim)) {
+                out_of_bounds = true;
+              }
+            }
+
+            if (out_of_bounds) {
+              data[j] = init_values[i]->Get<int32_t>({});
+            } else {
+              current_idx[minor_dim] = idx;
+              data[j] = input_arg->Get<int32_t>(current_idx);
+            }
+          } else {
+            data[j] = init_values[i]->Get<int32_t>({});
+          }
+        }
+      } else if (type == BF16) {
+        bfloat16* data = chunk_args[num_args + i].data<bfloat16>();
+        for (int j = 0; j < kChunkSize; ++j) {
+          if (j < current_chunk_size) {
+            int64_t idx = start + (k + j) * window_dilation;
+            bool out_of_bounds = false;
+            if (idx % base_dilation != 0) {
+              out_of_bounds = true;
+            } else {
+              idx /= base_dilation;
+              if (idx < 0 || idx >= input_shape.dimensions(minor_dim)) {
+                out_of_bounds = true;
+              }
+            }
+
+            if (out_of_bounds) {
+              data[j] = init_values[i]->Get<bfloat16>({});
+            } else {
+              current_idx[minor_dim] = idx;
+              data[j] = input_arg->Get<bfloat16>(current_idx);
+            }
+          } else {
+            data[j] = init_values[i]->Get<bfloat16>({});
+          }
+        }
+      } else if (type == PRED) {
+        bool* data = chunk_args[num_args + i].data<bool>();
+        for (int j = 0; j < kChunkSize; ++j) {
+          if (j < current_chunk_size) {
+            int64_t idx = start + (k + j) * window_dilation;
+            bool out_of_bounds = false;
+            if (idx % base_dilation != 0) {
+              out_of_bounds = true;
+            } else {
+              idx /= base_dilation;
+              if (idx < 0 || idx >= input_shape.dimensions(minor_dim)) {
+                out_of_bounds = true;
+              }
+            }
+
+            if (out_of_bounds) {
+              data[j] = init_values[i]->Get<bool>({});
+            } else {
+              current_idx[minor_dim] = idx;
+              data[j] = input_arg->Get<bool>(current_idx);
+            }
+          } else {
+            data[j] = init_values[i]->Get<bool>({});
+          }
+        }
+      }
+    }
+
+    std::vector<const StackLiteral*> arg_ptrs;
+    for (const auto& arg : chunk_args) arg_ptrs.push_back(&arg);
+
+    TF_ASSIGN_OR_RETURN(
+        auto step_results,
+        embedded_evaluator->EvaluateScheduleVectorized(
+            schedule, arg_ptrs, current_chunk_size, inst_to_index, values));
+
+    for (int i = 0; i < num_args; ++i) {
+      PrimitiveType type = accumulators[i].element_type();
+      if (type == F32) {
+        float* p_acc = accumulators[i].data<float>();
+        const float* p_res = step_results[i].data<float>();
+        for (int j = 0; j < current_chunk_size; ++j) {
+          p_acc[j] = p_res[j];
+        }
+      } else if (type == S32) {
+        int32_t* p_acc = accumulators[i].data<int32_t>();
+        const int32_t* p_res = step_results[i].data<int32_t>();
+        for (int j = 0; j < current_chunk_size; ++j) {
+          p_acc[j] = p_res[j];
+        }
+      } else if (type == BF16) {
+        bfloat16* p_acc = accumulators[i].data<bfloat16>();
+        const bfloat16* p_res = step_results[i].data<bfloat16>();
+        for (int j = 0; j < current_chunk_size; ++j) {
+          p_acc[j] = p_res[j];
+        }
+      } else if (type == PRED) {
+        bool* p_acc = accumulators[i].data<bool>();
+        const bool* p_res = step_results[i].data<bool>();
+        for (int j = 0; j < current_chunk_size; ++j) {
+          p_acc[j] = p_res[j];
+        }
+      }
+    }
+  }
+
+  // Final horizontal reduction
+  for (int i = 0; i < num_args; ++i) {
+    results[i].CopyElementFrom(*init_values[i], {}, output_index);
+  }
+
+  // Note: We unconditionally reduce over all 64 lanes. For the last chunk,
+  // current_chunk_size may be less than 64. In that case, the trailing
+  // elements in accumulators retain their values from previous iterations.
+  // Since init_value is an identity for the reduction, including these
+  // previously accumulated values again is safe and correct.
+  int num_valid_lanes = std::min<int64_t>(window_size, kChunkSize);
+  for (int j = 0; j < num_valid_lanes; ++j) {
+    absl::InlinedVector<Literal, 2> chunk_elements;
+    chunk_elements.reserve(num_args);
+    for (int i = 0; i < num_args; ++i) {
+      PrimitiveType type = results[i].shape().element_type();
+      Literal elem(ShapeUtil::MakeShape(type, {}));
+      if (type == F32) {
+        elem.Set<float>({}, accumulators[i].data<float>()[j]);
+      } else if (type == S32) {
+        elem.Set<int32_t>({}, accumulators[i].data<int32_t>()[j]);
+      } else if (type == BF16) {
+        elem.Set<bfloat16>({}, accumulators[i].data<bfloat16>()[j]);
+      } else if (type == PRED) {
+        elem.Set<bool>({}, accumulators[i].data<bool>()[j]);
+      }
+      chunk_elements.push_back(std::move(elem));
+    }
+
+    absl::InlinedVector<const Literal*, 2> input_ptrs;
+    for (const auto& elem : chunk_elements) {
+      input_ptrs.push_back(&elem);
+    }
+
+    auto status =
+        PerformReductionStep(is_tuple, /*input_index=*/{}, output_index,
+                             input_ptrs, results, function, embedded_evaluator);
+    if (!status.ok()) return status;
+  }
+
+  return true;
+}
+
+// Note: This implementation does not support Iota operands yet. If an Iota
+// operand is encountered, it will fall back to sequential execution or crash.
+static absl::StatusOr<bool>
+GenerateReduceWindowOutputElementsVectorizedAcrossMinorDim(
+    absl::Span<const int64_t> output_index_base, int current_chunk_size,
+    absl::Span<const Literal* const> init_values,
+    absl::Span<const Literal* const> input_args, absl::Span<Literal> results,
+    HloComputation* function, HloEvaluator* embedded_evaluator,
+    absl::Span<const HloInstruction* const> schedule, int64_t minor_dim,
+    const Window& window, const Shape& window_shape,
+    const absl::flat_hash_map<const HloInstruction*, int>& inst_to_index,
+    std::vector<StackLiteral>& values) {
+  int num_args = results.size();
+  std::vector<StackLiteral> accumulators;
+  accumulators.reserve(num_args);
+  for (int i = 0; i < num_args; ++i) {
+    accumulators.emplace_back(init_values[i]->shape().element_type());
+    PrimitiveType type = init_values[i]->shape().element_type();
+    // Initialize with init_values
+    if (type == F32) {
+      float val = init_values[i]->Get<float>({});
+      float* data = accumulators[i].data<float>();
+      for (int j = 0; j < 64; ++j) data[j] = val;
+    } else if (type == S32) {
+      int32_t val = init_values[i]->Get<int32_t>({});
+      int32_t* data = accumulators[i].data<int32_t>();
+      for (int j = 0; j < 64; ++j) data[j] = val;
+    } else if (type == BF16) {
+      bfloat16 val = init_values[i]->Get<bfloat16>({});
+      bfloat16* data = accumulators[i].data<bfloat16>();
+      for (int j = 0; j < 64; ++j) data[j] = val;
+    } else if (type == PRED) {
+      bool val = init_values[i]->Get<bool>({});
+      bool* data = accumulators[i].data<bool>();
+      for (int j = 0; j < 64; ++j) data[j] = val;
+    }
+  }
+
+  std::vector<StackLiteral> chunk_args(num_args * 2);
+
+  absl::Status status = absl::OkStatus();
+
+  IterateThroughWindow(
+      window_shape, window, input_args[0]->shape(), output_index_base,
+      [&](absl::Span<const int64_t> base_operand_index) {
+        if (!status.ok()) return;
+
+        for (int i = 0; i < num_args; ++i) {
+          chunk_args[i] = accumulators[i];
+          PrimitiveType type = init_values[i]->shape().element_type();
+          chunk_args[num_args + i] = StackLiteral(type);
+
+          const Literal* input_arg = input_args[i];
+          std::vector<int64_t> current_idx(base_operand_index.begin(),
+                                           base_operand_index.end());
+
+          if (type == F32) {
+            float* data = chunk_args[num_args + i].data<float>();
+            for (int j = 0; j < 64; ++j) {
+              if (j < current_chunk_size) {
+                current_idx[minor_dim] = output_index_base[minor_dim] + j;
+                data[j] = input_arg->Get<float>(current_idx);
+              } else {
+                data[j] = init_values[i]->Get<float>({});
+              }
+            }
+          } else if (type == S32) {
+            int32_t* data = chunk_args[num_args + i].data<int32_t>();
+            for (int j = 0; j < 64; ++j) {
+              if (j < current_chunk_size) {
+                current_idx[minor_dim] = output_index_base[minor_dim] + j;
+                data[j] = input_arg->Get<int32_t>(current_idx);
+              } else {
+                data[j] = init_values[i]->Get<int32_t>({});
+              }
+            }
+          } else if (type == BF16) {
+            bfloat16* data = chunk_args[num_args + i].data<bfloat16>();
+            for (int j = 0; j < 64; ++j) {
+              if (j < current_chunk_size) {
+                current_idx[minor_dim] = output_index_base[minor_dim] + j;
+                data[j] = input_arg->Get<bfloat16>(current_idx);
+              } else {
+                data[j] = init_values[i]->Get<bfloat16>({});
+              }
+            }
+          } else if (type == PRED) {
+            bool* data = chunk_args[num_args + i].data<bool>();
+            for (int j = 0; j < 64; ++j) {
+              if (j < current_chunk_size) {
+                current_idx[minor_dim] = output_index_base[minor_dim] + j;
+                data[j] = input_arg->Get<bool>(current_idx);
+              } else {
+                data[j] = init_values[i]->Get<bool>({});
+              }
+            }
+          }
+        }
+
+        std::vector<const StackLiteral*> arg_ptrs;
+        for (const auto& arg : chunk_args) arg_ptrs.push_back(&arg);
+
+        auto status_or = embedded_evaluator->EvaluateScheduleVectorized(
+            schedule, arg_ptrs, 64, inst_to_index, values);
+
+        if (!status_or.ok()) {
+          status = status_or.status();
+          return;
+        }
+        auto step_results = status_or.value();
+
+        for (int i = 0; i < num_args; ++i) {
+          accumulators[i] = step_results[i];
+        }
+      });
+
+  if (!status.ok()) return status;
+
+  // Write results back to output literals
+  for (int i = 0; i < num_args; ++i) {
+    PrimitiveType type = results[i].shape().element_type();
+    std::vector<int64_t> out_idx(output_index_base.begin(),
+                                 output_index_base.end());
+
+    if (type == F32) {
+      const float* data = accumulators[i].data<float>();
+      for (int j = 0; j < current_chunk_size; ++j) {
+        out_idx[minor_dim] = output_index_base[minor_dim] + j;
+        results[i].Set<float>(out_idx, data[j]);
+      }
+    } else if (type == S32) {
+      const int32_t* data = accumulators[i].data<int32_t>();
+      for (int j = 0; j < current_chunk_size; ++j) {
+        out_idx[minor_dim] = output_index_base[minor_dim] + j;
+        results[i].Set<int32_t>(out_idx, data[j]);
+      }
+    } else if (type == BF16) {
+      const bfloat16* data = accumulators[i].data<bfloat16>();
+      for (int j = 0; j < current_chunk_size; ++j) {
+        out_idx[minor_dim] = output_index_base[minor_dim] + j;
+        results[i].Set<bfloat16>(out_idx, data[j]);
+      }
+    } else if (type == PRED) {
+      const bool* data = accumulators[i].data<bool>();
+      for (int j = 0; j < current_chunk_size; ++j) {
+        out_idx[minor_dim] = output_index_base[minor_dim] + j;
+        results[i].Set<bool>(out_idx, data[j]);
+      }
+    }
+  }
+
+  return true;
 }
 
 absl::Status HloEvaluator::HandleReduceWindow(const HloInstruction* hlo) {
@@ -4699,6 +5479,74 @@ absl::Status HloEvaluator::HandleReduceWindow(const HloInstruction* hlo) {
   }
   const Shape window_shape = ShapeUtil::MakeShape(
       input_arrays[0]->shape().element_type(), window_dimension_sizes);
+
+  bool can_vectorize = use_fast_path_reduce_;
+  if (!can_vectorize) {
+    VLOG(1) << "ReduceWindow cannot vectorize: use_fast_path_reduce_ is false";
+  }
+
+  if (can_vectorize && input_arrays[0]->shape().dimensions_size() == 0) {
+    can_vectorize = false;
+    VLOG(1) << "ReduceWindow cannot vectorize: input is scalar";
+  }
+
+  if (can_vectorize && !IsVectorizableReduction(function)) {
+    can_vectorize = false;
+    VLOG(1) << "ReduceWindow cannot vectorize: region is not vectorizable";
+  }
+
+  int64_t minor_dim = 0;
+  bool vectorize_inside_window = false;
+  bool vectorize_across_minor_dim = false;
+  if (can_vectorize) {
+    minor_dim = LayoutUtil::Minor(input_arrays[0]->shape().layout(), 0);
+
+    vectorize_inside_window = true;
+    for (int i = 0; i < window.dimensions_size(); ++i) {
+      if (i != minor_dim) {
+        if (window.dimensions(i).size() > 1 ||
+            window.dimensions(i).stride() != 1 ||
+            window.dimensions(i).padding_low() != 0 ||
+            window.dimensions(i).padding_high() != 0 ||
+            window.dimensions(i).base_dilation() != 1) {
+          vectorize_inside_window = false;
+          break;
+        }
+      }
+    }
+
+    vectorize_across_minor_dim = true;
+    const auto& minor_window = window.dimensions(minor_dim);
+    if (minor_window.size() != 1 || minor_window.stride() != 1 ||
+        minor_window.padding_low() != 0 || minor_window.padding_high() != 0 ||
+        minor_window.base_dilation() != 1 ||
+        minor_window.window_dilation() != 1) {
+      vectorize_across_minor_dim = false;
+    }
+
+    can_vectorize = vectorize_inside_window || vectorize_across_minor_dim;
+
+    if (!can_vectorize) {
+      VLOG(1) << "ReduceWindow cannot vectorize: neither inside window nor "
+                 "across minor dim conditions met.";
+    }
+  }
+
+  std::vector<const HloInstruction*> const_schedule;
+  absl::flat_hash_map<const HloInstruction*, int> inst_to_index;
+  std::vector<std::vector<StackLiteral>> thread_values;
+  if (can_vectorize) {
+    VLOG(1) << "ReduceWindow can_vectorize: true";
+    auto schedule = function->MakeInstructionPostOrder();
+    const_schedule.assign(schedule.begin(), schedule.end());
+
+    for (int i = 0; i < const_schedule.size(); ++i) {
+      inst_to_index[const_schedule[i]] = i;
+    }
+    const int n_threads = ShapeUtil::GetForEachIndexParallelThreadCount() + 1;
+    thread_values.resize(n_threads,
+                         std::vector<StackLiteral>(const_schedule.size()));
+  }
 
   const int num_threads = ShapeUtil::GetForEachIndexParallelThreadCount() + 1;
   std::vector<std::unique_ptr<HloEvaluator>> embedded_evaluators;
@@ -4772,33 +5620,105 @@ absl::Status HloEvaluator::HandleReduceWindow(const HloInstruction* hlo) {
     for (int64_t i = 0; i < num_args; ++i) {
       results[i] = Literal(inferred_return_shape.tuple_shapes(i));
     }
-    ShapeUtil::ForEachIndexParallel(
-        inferred_return_shape.tuple_shapes(0),
-        [&results, &evaluate_impl](absl::Span<const int64_t> output_index,
-                                   int thread_id) -> bool {
-          absl::InlinedVector<Literal, 2> computed_result_vec =
-              evaluate_impl(output_index, thread_id);
-          for (int i = 0; i < computed_result_vec.size(); ++i) {
-            // We are reading from `computed_result_vec[i]` at the top-level
-            // literal index and writing to `results[i]` at `output_index`.
-            // This is thread-safe because:
-            //  - `results[i]` is not changing size.
-            //  - `computed_result_vec[i]` is thread-local.
-            //  - There is exactly one write to `results[i]` for each
-            //    `output_index`.
-            results[i].CopyElementFrom(computed_result_vec[i], {},
-                                       output_index);
-          }
-          return true;
-        });
+
+    if (vectorize_across_minor_dim) {
+      Shape chunked_shape = inferred_return_shape.tuple_shapes(0);
+      int64_t minor_dim_size = chunked_shape.dimensions(minor_dim);
+      chunked_shape.set_dimensions(minor_dim, (minor_dim_size + 63) / 64);
+
+      TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexParallelWithStatus(
+          chunked_shape,
+          [&](absl::Span<const int64_t> chunk_index,
+              int thread_id) -> absl::StatusOr<bool> {
+            std::vector<int64_t> output_index_base(chunk_index.begin(),
+                                                   chunk_index.end());
+            output_index_base[minor_dim] = chunk_index[minor_dim] * 64;
+            int current_chunk_size = std::min<int64_t>(
+                64, minor_dim_size - output_index_base[minor_dim]);
+
+            return GenerateReduceWindowOutputElementsVectorizedAcrossMinorDim(
+                output_index_base, current_chunk_size, init_literal_vec,
+                input_literal_vec, absl::MakeSpan(results), function,
+                embedded_evaluators[thread_id + 1].get(), const_schedule,
+                minor_dim, window, window_shape, inst_to_index,
+                thread_values[thread_id + 1]);
+          }));
+    } else if (vectorize_inside_window) {
+      TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexParallelWithStatus(
+          inferred_return_shape.tuple_shapes(0),
+          [&](absl::Span<const int64_t> output_index,
+              int thread_id) -> absl::StatusOr<bool> {
+            return GenerateReduceWindowOutputElementVectorizedInsideWindow(
+                true, output_index, init_literal_vec, input_literal_vec,
+                absl::MakeSpan(results), function,
+                embedded_evaluators[thread_id + 1].get(), const_schedule,
+                minor_dim, window, reduce_window, inst_to_index,
+                thread_values[thread_id + 1]);
+          }));
+    } else {
+      TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexParallelWithStatus(
+          inferred_return_shape.tuple_shapes(0),
+          [&results, &evaluate_impl](absl::Span<const int64_t> output_index,
+                                     int thread_id) -> absl::StatusOr<bool> {
+            absl::InlinedVector<Literal, 2> computed_result_vec =
+                evaluate_impl(output_index, thread_id);
+            for (int i = 0; i < computed_result_vec.size(); ++i) {
+              results[i].CopyElementFrom(computed_result_vec[i], {},
+                                         output_index);
+            }
+            return true;
+          }));
+    }
     result = Literal::MoveIntoTuple(absl::MakeSpan(results));
     VLOG(2) << "Final result is:" << result.ToString() << "\n";
   } else {
-    TF_RETURN_IF_ERROR(Apply<PopulateParallelImpl>(
-        result, [&evaluate_impl](absl::Span<const int64_t> output_index,
-                                 int thread_id) {
-          return std::move(evaluate_impl(output_index, thread_id)[0]);
-        }));
+    if (vectorize_across_minor_dim) {
+      std::vector<Literal> results;
+      results.push_back(Literal(result.shape()));
+      Shape chunked_shape = result.shape();
+      int64_t minor_dim_size = chunked_shape.dimensions(minor_dim);
+      chunked_shape.set_dimensions(minor_dim, (minor_dim_size + 63) / 64);
+
+      TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexParallelWithStatus(
+          chunked_shape,
+          [&](absl::Span<const int64_t> chunk_index,
+              int thread_id) -> absl::StatusOr<bool> {
+            std::vector<int64_t> output_index_base(chunk_index.begin(),
+                                                   chunk_index.end());
+            output_index_base[minor_dim] = chunk_index[minor_dim] * 64;
+            int current_chunk_size = std::min<int64_t>(
+                64, minor_dim_size - output_index_base[minor_dim]);
+
+            return GenerateReduceWindowOutputElementsVectorizedAcrossMinorDim(
+                output_index_base, current_chunk_size, init_literal_vec,
+                input_literal_vec, absl::MakeSpan(results), function,
+                embedded_evaluators[thread_id + 1].get(), const_schedule,
+                minor_dim, window, window_shape, inst_to_index,
+                thread_values[thread_id + 1]);
+          }));
+      result = std::move(results[0]);
+    } else if (vectorize_inside_window) {
+      std::vector<Literal> results;
+      results.push_back(Literal(result.shape()));
+      TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexParallelWithStatus(
+          result.shape(),
+          [&](absl::Span<const int64_t> output_index,
+              int thread_id) -> absl::StatusOr<bool> {
+            return GenerateReduceWindowOutputElementVectorizedInsideWindow(
+                false, output_index, init_literal_vec, input_literal_vec,
+                absl::MakeSpan(results), function,
+                embedded_evaluators[thread_id + 1].get(), const_schedule,
+                minor_dim, window, reduce_window, inst_to_index,
+                thread_values[thread_id + 1]);
+          }));
+      result = std::move(results[0]);
+    } else {
+      TF_RETURN_IF_ERROR(Apply<PopulateParallelImpl>(
+          result, [&evaluate_impl](absl::Span<const int64_t> output_index,
+                                   int thread_id) {
+            return std::move(evaluate_impl(output_index, thread_id)[0]);
+          }));
+    }
   }
   VLOG(2) << "Final result is:" << result.ToString() << "\n";
   SetEvaluatedLiteralFor(reduce_window, std::move(result));

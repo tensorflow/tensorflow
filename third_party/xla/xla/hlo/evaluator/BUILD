@@ -3,7 +3,7 @@
 
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "if_google")
-load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_binary", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -55,8 +55,12 @@ cc_library(
         "hlo_evaluator_typed_visitor_uint32.cc",
         "hlo_evaluator_typed_visitor_uint64.cc",
         "hlo_evaluator_typed_visitor_uint8.cc",
+        "hlo_evaluator_vectorized.cc",
     ],
-    hdrs = ["hlo_evaluator.h"],
+    hdrs = [
+        "hlo_evaluator.h",
+        "stack_literal.h",
+    ],
     tags = if_google([
         # This header is only conditionally included in hlo_evaluator.cc when a flag is set, which
         # build_cleaner doesn't understand, so we need to tell it to ignore it.
@@ -64,6 +68,7 @@ cc_library(
     ]),
     deps = [
         ":hlo_evaluator_interface",
+        "//third_party/highway:hwy",
         "//xla:array2d",
         "//xla:comparison_util",
         "//xla:literal",
@@ -246,5 +251,13 @@ xla_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:path",
+    ],
+)
+
+cc_binary(
+    name = "highway_bf16_repro",
+    srcs = ["highway_bf16_repro.cc"],
+    deps = [
+        "//third_party/highway:hwy",
     ],
 )

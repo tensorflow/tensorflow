@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/tuple_points_to_analysis.h"
 #include "xla/hlo/evaluator/hlo_evaluator_interface.h"
+#include "xla/hlo/evaluator/stack_literal.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -145,6 +146,12 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     }
     return Evaluate(computation, args_ptrs);
   }
+
+  absl::StatusOr<std::vector<StackLiteral>> EvaluateScheduleVectorized(
+      absl::Span<const HloInstruction* const> schedule,
+      absl::Span<const StackLiteral* const> args, int chunk_size,
+      const absl::flat_hash_map<const HloInstruction*, int>& inst_to_index,
+      std::vector<StackLiteral>& values);
 
   // Gets the value of running a single HLO instruction.
   //

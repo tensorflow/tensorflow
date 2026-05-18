@@ -22,6 +22,7 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <random>
 #include <string>
 #include <utility>
 #include <vector>
@@ -34,6 +35,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "absl/types/span.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
@@ -4031,6 +4033,562 @@ TEST_F(HloEvaluatorPreciseReduceTest, AddReductionPrecisionTest) {
   HloEvaluator hlo_eval;
   Literal result = hlo_eval.Evaluate(reduce_instruction).value();
   LiteralTestUtil::ExpectR0Equal<float>(kNumElements, result);
+}
+
+TEST_F(HloEvaluatorTest, ArgMaxLargeReduction) {
+  const char* hlo_text = R"(
+HloModule ArgMax
+
+%region_0.14 (reduce.4: f32[], reduce.5: s32[], reduce.6: f32[], reduce.7: s32[]) -> (f32[], s32[]) {
+  %reduce.4 = f32[] parameter(0)
+  %reduce.6 = f32[] parameter(2)
+  %gt.5 = pred[] compare(%reduce.4, %reduce.6), direction=GT
+  %ne.1 = pred[] compare(%reduce.4, %reduce.4), direction=NE
+  %or.122 = pred[] or(%gt.5, %ne.1)
+  %select_n.10 = f32[] select(%or.122, %reduce.4, %reduce.6)
+  %eq.29 = pred[] compare(%reduce.4, %reduce.6), direction=EQ
+  %reduce.5 = s32[] parameter(1)
+  %reduce.7 = s32[] parameter(3)
+  %lt.4 = pred[] compare(%reduce.5, %reduce.7), direction=LT
+  %and.5 = pred[] and(%eq.29, %lt.4)
+  %or.123 = pred[] or(%or.122, %and.5)
+  %select_n.11 = s32[] select(%or.123, %reduce.5, %reduce.7)
+  ROOT %tuple.7 = (f32[], s32[]) tuple(%select_n.10, %select_n.11)
+}
+
+ENTRY %argmax.15 (Top.1: f32[16,16,128]) -> (f32[16,16], s32[16,16]) {
+  %Top.1 = f32[16,16,128]{2,1,0} parameter(0)
+  %iota.10 = s32[128]{0} iota(), iota_dimension=0
+  %iota.11 = s32[16,16,128]{2,1,0} broadcast(%iota.10), dimensions={2}
+  %constant.198 = f32[] constant(-inf)
+  %constant.197 = s32[] constant(0)
+  ROOT %reduce.11 = (f32[16,16]{1,0}, s32[16,16]{1,0}) reduce(%Top.1, %iota.11, %constant.198, %constant.197), dimensions={2}, to_apply=%region_0.14
+}
+)";
+
+  auto m = ParseAndReturnVerifiedModule(hlo_text).value();
+
+  Literal input_literal(ShapeUtil::MakeShape(F32, {16, 16, 128}));
+  input_literal.PopulateWithValue<float>(0.0f);
+  input_literal.Set<float>({0, 0, 100}, 42.0f);
+
+  HloEvaluator hlo_eval;
+  Literal result = hlo_eval.Evaluate(*m, {&input_literal}).value();
+
+  auto result_pieces = result.DecomposeTuple();
+  EXPECT_FLOAT_EQ(result_pieces[0].Get<float>({0, 0}), 42.0f);
+  EXPECT_EQ(result_pieces[1].Get<int32_t>({0, 0}), 100);
+
+  for (int i = 0; i < 16; ++i) {
+    for (int j = 0; j < 16; ++j) {
+      if (i == 0 && j == 0) continue;
+      EXPECT_EQ(result_pieces[1].Get<int32_t>({i, j}), 0);
+    }
+  }
+}
+
+TEST_F(HloEvaluatorTest, ArgMaxBf16LargeReduction) {
+  const char* hlo_text = R"(
+HloModule ArgMax
+
+%region_0.14 (reduce.4: bf16[], reduce.5: s32[], reduce.6: bf16[], reduce.7: s32[]) -> (bf16[], s32[]) {
+  %reduce.4 = bf16[] parameter(0)
+  %reduce.6 = bf16[] parameter(2)
+  %gt.5 = pred[] compare(%reduce.4, %reduce.6), direction=GT
+  %ne.1 = pred[] compare(%reduce.4, %reduce.4), direction=NE
+  %or.122 = pred[] or(%gt.5, %ne.1)
+  %select_n.10 = bf16[] select(%or.122, %reduce.4, %reduce.6)
+  %eq.29 = pred[] compare(%reduce.4, %reduce.6), direction=EQ
+  %reduce.5 = s32[] parameter(1)
+  %reduce.7 = s32[] parameter(3)
+  %lt.4 = pred[] compare(%reduce.5, %reduce.7), direction=LT
+  %and.5 = pred[] and(%eq.29, %lt.4)
+  %or.123 = pred[] or(%or.122, %and.5)
+  %select_n.11 = s32[] select(%or.123, %reduce.5, %reduce.7)
+  ROOT %tuple.7 = (bf16[], s32[]) tuple(%select_n.10, %select_n.11)
+}
+
+ENTRY %argmax.15 (Top.1: bf16[16,256,1024]) -> s32[16,256] {
+  %Top.1 = bf16[16,256,1024]{2,1,0} parameter(0)
+  %iota.10 = s32[1024]{0} iota(), iota_dimension=0
+  %iota.11 = s32[16,256,1024]{2,1,0} broadcast(%iota.10), dimensions={2}
+  %constant.198 = bf16[] constant(-inf)
+  %constant.197 = s32[] constant(0)
+  %reduce.11 = (bf16[16,256]{1,0}, s32[16,256]{1,0}) reduce(%Top.1, %iota.11, %constant.198, %constant.197), dimensions={2}, to_apply=%region_0.14
+  %reduce.12 = bf16[16,256]{1,0} get-tuple-element(%reduce.11), index=0
+  ROOT %reduce.13 = s32[16,256]{1,0} get-tuple-element(%reduce.11), index=1
+}
+)";
+
+  auto m = ParseAndReturnVerifiedModule(hlo_text).value();
+
+  Literal input_literal(ShapeUtil::MakeShape(BF16, {16, 256, 1024}));
+  input_literal.PopulateWithValue<bfloat16>(bfloat16(0.0f));
+  input_literal.Set<bfloat16>({0, 0, 500}, bfloat16(42.0f));
+  input_literal.Set<bfloat16>({0, 0, 501}, bfloat16(42.0f));
+
+  HloEvaluator hlo_eval;
+  Literal result = hlo_eval.Evaluate(*m, {&input_literal}).value();
+
+  EXPECT_EQ(result.Get<int32_t>({0, 0}), 500);
+}
+
+class VectorizedEvaluatorSizeTest
+    : public HloEvaluatorTest,
+      public ::testing::WithParamInterface<int64_t> {};
+
+TEST_P(VectorizedEvaluatorSizeTest, ArgMaxDifferentSizes) {
+  int64_t size = GetParam();
+  std::string hlo_text = absl::Substitute(R"(
+HloModule ArgMax
+
+%region_0.14 (reduce.4: bf16[], reduce.5: s32[], reduce.6: bf16[], reduce.7: s32[]) -> (bf16[], s32[]) {
+  %reduce.4 = bf16[] parameter(0)
+  %reduce.6 = bf16[] parameter(2)
+  %gt.5 = pred[] compare(%reduce.4, %reduce.6), direction=GT
+  %ne.1 = pred[] compare(%reduce.4, %reduce.4), direction=NE
+  %or.122 = pred[] or(%gt.5, %ne.1)
+  %select_n.10 = bf16[] select(%or.122, %reduce.4, %reduce.6)
+  %eq.29 = pred[] compare(%reduce.4, %reduce.6), direction=EQ
+  %reduce.5 = s32[] parameter(1)
+  %reduce.7 = s32[] parameter(3)
+  %lt.4 = pred[] compare(%reduce.5, %reduce.7), direction=LT
+  %and.5 = pred[] and(%eq.29, %lt.4)
+  %or.123 = pred[] or(%or.122, %and.5)
+  %select_n.11 = s32[] select(%or.123, %reduce.5, %reduce.7)
+  ROOT %tuple.7 = (bf16[], s32[]) tuple(%select_n.10, %select_n.11)
+}
+
+ENTRY %argmax.15 (Top.1: bf16[1,1,$0]) -> s32[1,1] {
+  %Top.1 = bf16[1,1,$0]{2,1,0} parameter(0)
+  %iota.10 = s32[$0]{0} iota(), iota_dimension=0
+  %iota.11 = s32[1,1,$0]{2,1,0} broadcast(%iota.10), dimensions={2}
+  %constant.198 = bf16[] constant(-inf)
+  %constant.197 = s32[] constant(0)
+  %reduce.11 = (bf16[1,1]{1,0}, s32[1,1]{1,0}) reduce(%Top.1, %iota.11, %constant.198, %constant.197), dimensions={2}, to_apply=%region_0.14
+  %reduce.12 = bf16[1,1]{1,0} get-tuple-element(%reduce.11), index=0
+  ROOT %reduce.13 = s32[1,1]{1,0} get-tuple-element(%reduce.11), index=1
+}
+)",
+                                          size);
+
+  auto m = ParseAndReturnVerifiedModule(hlo_text).value();
+
+  Literal input_literal(ShapeUtil::MakeShape(BF16, {1, 1, size}));
+  input_literal.PopulateWithValue<bfloat16>(bfloat16(0.0f));
+  if (size > 500) {
+    input_literal.Set<bfloat16>({0, 0, 500}, bfloat16(42.0f));
+  }
+
+  HloEvaluator eval_fast;
+  eval_fast.set_reduce_use_fast_path(true);
+  Literal result_fast = eval_fast.Evaluate(*m, {&input_literal}).value();
+
+  HloEvaluator eval_slow;
+  eval_slow.set_reduce_use_fast_path(false);
+  Literal result_slow = eval_slow.Evaluate(*m, {&input_literal}).value();
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(result_fast, result_slow));
+}
+
+TEST_P(VectorizedEvaluatorSizeTest, ReduceWindowAddDifferentSizes) {
+  int64_t size = GetParam();
+  std::string hlo_text = absl::Substitute(R"(
+HloModule ReduceWindowAdd
+
+%region_add (lhs: s32[], rhs: s32[]) -> s32[] {
+  %lhs = s32[] parameter(0)
+  %rhs = s32[] parameter(1)
+  ROOT %add = s32[] add(%lhs, %rhs)
+}
+
+ENTRY %main (input: s32[1,1,$0]) -> s32[1,1,$0] {
+  %input = s32[1,1,$0]{2,1,0} parameter(0)
+  %constant = s32[] constant(0)
+  ROOT %reduce-window = s32[1,1,$0]{2,1,0} reduce-window(%input, %constant), window={size=1x1x64 pad=0_0x0_0x31_32}, to_apply=%region_add
+}
+)",
+                                          size);
+
+  auto m = ParseAndReturnVerifiedModule(hlo_text).value();
+
+  Literal input_literal(ShapeUtil::MakeShape(S32, {1, 1, size}));
+  input_literal.PopulateWithValue<int32_t>(1);
+
+  HloEvaluator eval_fast;
+  eval_fast.set_reduce_use_fast_path(true);
+  Literal result_fast = eval_fast.Evaluate(*m, {&input_literal}).value();
+
+  HloEvaluator eval_slow;
+  eval_slow.set_reduce_use_fast_path(false);
+  Literal result_slow = eval_slow.Evaluate(*m, {&input_literal}).value();
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(result_fast, result_slow));
+}
+
+INSTANTIATE_TEST_SUITE_P(VectorizedEvaluatorSizeTests,
+                         VectorizedEvaluatorSizeTest,
+                         ::testing::Values(1, 10, 63, 64, 65, 127, 128, 129,
+                                           500, 1000, 1024));
+
+TEST_F(HloEvaluatorTest, VectorizedRandomDataEquivalence) {
+  std::mt19937 gen(42);
+  std::uniform_int_distribution<int64_t> size_dist(1, 1000);
+
+  for (int i = 0; i < 10; ++i) {
+    int64_t size = size_dist(gen);
+
+    std::string hlo_text = absl::Substitute(R"(
+HloModule ArgMax
+
+%region_0.14 (reduce.4: bf16[], reduce.5: s32[], reduce.6: bf16[], reduce.7: s32[]) -> (bf16[], s32[]) {
+  %reduce.4 = bf16[] parameter(0)
+  %reduce.6 = bf16[] parameter(2)
+  %gt.5 = pred[] compare(%reduce.4, %reduce.6), direction=GT
+  %ne.1 = pred[] compare(%reduce.4, %reduce.4), direction=NE
+  %or.122 = pred[] or(%gt.5, %ne.1)
+  %select_n.10 = bf16[] select(%or.122, %reduce.4, %reduce.6)
+  %eq.29 = pred[] compare(%reduce.4, %reduce.6), direction=EQ
+  %reduce.5 = s32[] parameter(1)
+  %reduce.7 = s32[] parameter(3)
+  %lt.4 = pred[] compare(%reduce.5, %reduce.7), direction=LT
+  %and.5 = pred[] and(%eq.29, %lt.4)
+  %or.123 = pred[] or(%or.122, %and.5)
+  %select_n.11 = s32[] select(%or.123, %reduce.5, %reduce.7)
+  ROOT %tuple.7 = (bf16[], s32[]) tuple(%select_n.10, %select_n.11)
+}
+
+ENTRY %argmax.15 (Top.1: bf16[1,1,$0]) -> s32[1,1] {
+  %Top.1 = bf16[1,1,$0]{2,1,0} parameter(0)
+  %iota.10 = s32[$0]{0} iota(), iota_dimension=0
+  %iota.11 = s32[1,1,$0]{2,1,0} broadcast(%iota.10), dimensions={2}
+  %constant.198 = bf16[] constant(-inf)
+  %constant.197 = s32[] constant(0)
+  %reduce.11 = (bf16[1,1]{1,0}, s32[1,1]{1,0}) reduce(%Top.1, %iota.11, %constant.198, %constant.197), dimensions={2}, to_apply=%region_0.14
+  %reduce.12 = bf16[1,1]{1,0} get-tuple-element(%reduce.11), index=0
+  ROOT %reduce.13 = s32[1,1]{1,0} get-tuple-element(%reduce.11), index=1
+}
+)",
+                                            size);
+
+    auto m = ParseAndReturnVerifiedModule(hlo_text).value();
+
+    Literal input_literal(ShapeUtil::MakeShape(BF16, {1, 1, size}));
+    std::uniform_real_distribution<float> val_dist(-10.0f, 10.0f);
+    for (int64_t j = 0; j < size; ++j) {
+      input_literal.Set<bfloat16>({0, 0, j}, bfloat16(val_dist(gen)));
+    }
+
+    HloEvaluator eval_fast;
+    eval_fast.set_reduce_use_fast_path(true);
+    Literal result_fast = eval_fast.Evaluate(*m, {&input_literal}).value();
+
+    HloEvaluator eval_slow;
+    eval_slow.set_reduce_use_fast_path(false);
+    Literal result_slow = eval_slow.Evaluate(*m, {&input_literal}).value();
+
+    EXPECT_TRUE(LiteralTestUtil::Equal(result_fast, result_slow));
+  }
+}
+
+TEST_P(VectorizedEvaluatorSizeTest, LogicalAndPred) {
+  int64_t size = GetParam();
+  std::string hlo_text = absl::Substitute(R"(
+HloModule LogicalAnd
+
+%region_and (lhs: pred[], rhs: pred[]) -> pred[] {
+  %lhs = pred[] parameter(0)
+  %rhs = pred[] parameter(1)
+  ROOT %and = pred[] and(%lhs, %rhs)
+}
+
+ENTRY %main (input: pred[1,1,$0]) -> pred[1,1] {
+  %input = pred[1,1,$0]{2,1,0} parameter(0)
+  %constant = pred[] constant(true)
+  ROOT %reduce = pred[1,1]{1,0} reduce(%input, %constant), dimensions={2}, to_apply=%region_and
+}
+)",
+                                          size);
+
+  auto m = ParseAndReturnVerifiedModule(hlo_text).value();
+
+  Literal input_literal(ShapeUtil::MakeShape(PRED, {1, 1, size}));
+  input_literal.PopulateWithValue<bool>(true);
+  if (size > 5) {
+    input_literal.Set<bool>({0, 0, 5}, false);
+  }
+
+  HloEvaluator eval_fast;
+  eval_fast.set_reduce_use_fast_path(true);
+  Literal result_fast = eval_fast.Evaluate(*m, {&input_literal}).value();
+
+  HloEvaluator eval_slow;
+  eval_slow.set_reduce_use_fast_path(false);
+  Literal result_slow = eval_slow.Evaluate(*m, {&input_literal}).value();
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(result_fast, result_slow));
+}
+
+TEST_P(VectorizedEvaluatorSizeTest, LogicalOrPred) {
+  int64_t size = GetParam();
+  std::string hlo_text = absl::Substitute(R"(
+HloModule LogicalOr
+
+%region_or (lhs: pred[], rhs: pred[]) -> pred[] {
+  %lhs = pred[] parameter(0)
+  %rhs = pred[] parameter(1)
+  ROOT %or = pred[] or(%lhs, %rhs)
+}
+
+ENTRY %main (input: pred[1,1,$0]) -> pred[1,1] {
+  %input = pred[1,1,$0]{2,1,0} parameter(0)
+  %constant = pred[] constant(false)
+  ROOT %reduce = pred[1,1]{1,0} reduce(%input, %constant), dimensions={2}, to_apply=%region_or
+}
+)",
+                                          size);
+
+  auto m = ParseAndReturnVerifiedModule(hlo_text).value();
+
+  Literal input_literal(ShapeUtil::MakeShape(PRED, {1, 1, size}));
+  input_literal.PopulateWithValue<bool>(false);
+  if (size > 5) {
+    input_literal.Set<bool>({0, 0, 5}, true);
+  }
+
+  HloEvaluator eval_fast;
+  eval_fast.set_reduce_use_fast_path(true);
+  Literal result_fast = eval_fast.Evaluate(*m, {&input_literal}).value();
+
+  HloEvaluator eval_slow;
+  eval_slow.set_reduce_use_fast_path(false);
+  Literal result_slow = eval_slow.Evaluate(*m, {&input_literal}).value();
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(result_fast, result_slow));
+}
+
+TEST_P(VectorizedEvaluatorSizeTest, BitwiseAndS32) {
+  int64_t size = GetParam();
+  std::string hlo_text = absl::Substitute(R"(
+HloModule BitwiseAnd
+
+%region_and (lhs: s32[], rhs: s32[]) -> s32[] {
+  %lhs = s32[] parameter(0)
+  %rhs = s32[] parameter(1)
+  ROOT %and = s32[] and(%lhs, %rhs)
+}
+
+ENTRY %main (input: s32[1,1,$0]) -> s32[1,1] {
+  %input = s32[1,1,$0]{2,1,0} parameter(0)
+  %constant = s32[] constant(-1)
+  ROOT %reduce = s32[1,1]{1,0} reduce(%input, %constant), dimensions={2}, to_apply=%region_and
+}
+)",
+                                          size);
+
+  auto m = ParseAndReturnVerifiedModule(hlo_text).value();
+
+  Literal input_literal(ShapeUtil::MakeShape(S32, {1, 1, size}));
+  input_literal.PopulateWithValue<int32_t>(-1);
+  if (size > 5) {
+    input_literal.Set<int32_t>({0, 0, 5}, 0);
+  }
+
+  HloEvaluator eval_fast;
+  eval_fast.set_reduce_use_fast_path(true);
+  Literal result_fast = eval_fast.Evaluate(*m, {&input_literal}).value();
+
+  HloEvaluator eval_slow;
+  eval_slow.set_reduce_use_fast_path(false);
+  Literal result_slow = eval_slow.Evaluate(*m, {&input_literal}).value();
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(result_fast, result_slow));
+}
+
+TEST_P(VectorizedEvaluatorSizeTest, BitwiseOrS32) {
+  int64_t size = GetParam();
+  std::string hlo_text = absl::Substitute(R"(
+HloModule BitwiseOr
+
+%region_or (lhs: s32[], rhs: s32[]) -> s32[] {
+  %lhs = s32[] parameter(0)
+  %rhs = s32[] parameter(1)
+  ROOT %or = s32[] or(%lhs, %rhs)
+}
+
+ENTRY %main (input: s32[1,1,$0]) -> s32[1,1] {
+  %input = s32[1,1,$0]{2,1,0} parameter(0)
+  %constant = s32[] constant(0)
+  ROOT %reduce = s32[1,1]{1,0} reduce(%input, %constant), dimensions={2}, to_apply=%region_or
+}
+)",
+                                          size);
+
+  auto m = ParseAndReturnVerifiedModule(hlo_text).value();
+
+  Literal input_literal(ShapeUtil::MakeShape(S32, {1, 1, size}));
+  input_literal.PopulateWithValue<int32_t>(0);
+  if (size > 5) {
+    input_literal.Set<int32_t>({0, 0, 5}, 1);
+  }
+
+  HloEvaluator eval_fast;
+  eval_fast.set_reduce_use_fast_path(true);
+  Literal result_fast = eval_fast.Evaluate(*m, {&input_literal}).value();
+
+  HloEvaluator eval_slow;
+  eval_slow.set_reduce_use_fast_path(false);
+  Literal result_slow = eval_slow.Evaluate(*m, {&input_literal}).value();
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(result_fast, result_slow));
+}
+
+struct VectorizedReduceWindowConfig {
+  int window_size;
+  int pad_low;
+  int pad_high;
+  int stride;
+  bool reduce_minor_dim;
+  int tensor_size;
+};
+
+class VectorizedReduceWindowTest
+    : public HloEvaluatorTest,
+      public ::testing::WithParamInterface<VectorizedReduceWindowConfig> {};
+
+TEST_P(VectorizedReduceWindowTest, AddCombinations) {
+  auto config = GetParam();
+  int out_size = (config.tensor_size + config.pad_low + config.pad_high -
+                  config.window_size) /
+                     config.stride +
+                 1;
+  std::string layout = config.reduce_minor_dim ? "{0,1,2}" : "{2,1,0}";
+
+  std::string hlo_text =
+      absl::Substitute(R"(
+HloModule ReduceWindowAdd
+
+%region_add (lhs: f32[], rhs: f32[]) -> f32[] {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %add = f32[] add(%lhs, %rhs)
+}
+
+ENTRY %main (input: f32[1,1,$0]) -> f32[1,1,$1] {
+  %input = f32[1,1,$0]$2 parameter(0)
+  %constant = f32[] constant(0)
+  ROOT %reduce-window = f32[1,1,$1]$2 reduce-window(%input, %constant), window={size=1x1x$3 stride=1x1x$4 pad=0_0x0_0x$5_$6}, to_apply=%region_add
+}
+)",
+                       config.tensor_size, out_size, layout, config.window_size,
+                       config.stride, config.pad_low, config.pad_high);
+
+  auto m = ParseAndReturnVerifiedModule(hlo_text).value();
+
+  const Shape& input_shape =
+      m->entry_computation()->parameter_instruction(0)->shape();
+  Literal input_literal(input_shape);
+  input_literal.PopulateWithValue<float>(1.0f);
+
+  HloEvaluator eval_fast;
+  eval_fast.set_reduce_use_fast_path(true);
+  Literal result_fast = eval_fast.Evaluate(*m, {&input_literal}).value();
+
+  HloEvaluator eval_slow;
+  eval_slow.set_reduce_use_fast_path(false);
+  Literal result_slow = eval_slow.Evaluate(*m, {&input_literal}).value();
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(result_fast, result_slow));
+}
+
+std::vector<VectorizedReduceWindowConfig> GetReduceWindowConfigs() {
+  std::vector<VectorizedReduceWindowConfig> configs;
+  std::vector<int> window_sizes = {3, 64, 100};
+  std::vector<std::pair<int, int>> paddings = {{0, 0}, {2, 2}, {1, 2}};
+  std::vector<int> strides = {1, 2};
+  std::vector<bool> reduce_minor_dims = {true, false};
+
+  for (int window_size : window_sizes) {
+    for (auto padding : paddings) {
+      for (int stride : strides) {
+        for (bool reduce_minor_dim : reduce_minor_dims) {
+          configs.push_back({window_size, padding.first, padding.second, stride,
+                             reduce_minor_dim, 200});
+        }
+      }
+    }
+  }
+  return configs;
+}
+
+INSTANTIATE_TEST_SUITE_P(VectorizedReduceWindowTests,
+                         VectorizedReduceWindowTest,
+                         ::testing::ValuesIn(GetReduceWindowConfigs()));
+
+TEST_F(HloEvaluatorTest, ReduceWindowFallbackMultipleDims) {
+  std::string hlo_text = R"(
+HloModule ReduceWindowFallback
+
+%region_add (lhs: f32[], rhs: f32[]) -> f32[] {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %add = f32[] add(%lhs, %rhs)
+}
+
+ENTRY %main (input: f32[1,3,10]) -> f32[1,1,8] {
+  %input = f32[1,3,10]{2,1,0} parameter(0)
+  %constant = f32[] constant(0)
+  ROOT %reduce-window = f32[1,1,8]{2,1,0} reduce-window(%input, %constant), window={size=1x3x3 pad=0_0x0_0x0_0}, to_apply=%region_add
+}
+)";
+
+  auto m = ParseAndReturnVerifiedModule(hlo_text).value();
+
+  Literal input_literal(ShapeUtil::MakeShape(F32, {1, 3, 10}));
+  input_literal.PopulateWithValue<float>(1.0f);
+
+  HloEvaluator eval_fast;
+  eval_fast.set_reduce_use_fast_path(true);
+  Literal result_fast = eval_fast.Evaluate(*m, {&input_literal}).value();
+
+  HloEvaluator eval_slow;
+  eval_slow.set_reduce_use_fast_path(false);
+  Literal result_slow = eval_slow.Evaluate(*m, {&input_literal}).value();
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(result_fast, result_slow));
+}
+
+TEST_F(HloEvaluatorTest, ReduceWindowFallbackInvalidMinorDimAttr) {
+  std::string hlo_text = R"(
+HloModule ReduceWindowFallback
+
+%region_add (lhs: f32[], rhs: f32[]) -> f32[] {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %add = f32[] add(%lhs, %rhs)
+}
+
+ENTRY %main (input: f32[1,1,64]) -> f32[1,1,32] {
+  %input = f32[1,1,64]{2,1,0} parameter(0)
+  %constant = f32[] constant(0)
+  ROOT %reduce-window = f32[1,1,32]{2,1,0} reduce-window(%input, %constant), window={size=1x1x1 stride=1x1x2}, to_apply=%region_add
+}
+)";
+
+  auto m = ParseAndReturnVerifiedModule(hlo_text).value();
+
+  Literal input_literal(ShapeUtil::MakeShape(F32, {1, 1, 64}));
+  input_literal.PopulateWithValue<float>(1.0f);
+
+  HloEvaluator eval_fast;
+  eval_fast.set_reduce_use_fast_path(true);
+  Literal result_fast = eval_fast.Evaluate(*m, {&input_literal}).value();
+
+  HloEvaluator eval_slow;
+  eval_slow.set_reduce_use_fast_path(false);
+  Literal result_slow = eval_slow.Evaluate(*m, {&input_literal}).value();
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(result_fast, result_slow));
 }
 
 TEST_P(HloEvaluatorBf16Test, ReduceAdd) {
