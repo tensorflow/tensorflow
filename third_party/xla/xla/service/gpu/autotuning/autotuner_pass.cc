@@ -65,6 +65,11 @@ namespace gpu {
 
 namespace {
 
+bool RequireDeterminism(const DebugOptions& debug_options) {
+  return debug_options.xla_gpu_deterministic_ops() ||
+         debug_options.xla_gpu_exclude_nondeterministic_ops();
+}
+
 // Register spilling is currently not allowed for GEMM/Conv fusions, but allowed
 // for non-GEMM fusions. Register spilling configurations can be expensive to
 // run and might lead to increased memory usage and potential compile-time
@@ -216,8 +221,7 @@ AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options,
   autotune_config.exclude_cublas_config =
       !debug_options.xla_gpu_cublas_fallback();
   autotune_config.select_first_config =
-      debug_options.xla_gpu_deterministic_ops() ||
-      debug_options.xla_gpu_exclude_nondeterministic_ops() ||
+      RequireDeterminism(debug_options) ||
       debug_options.xla_gpu_autotune_level() == 0;
 
   if (is_deviceless) {
@@ -306,9 +310,13 @@ AutotunerPass::GetGpuAutotunerBackends(
     disabled_autotune_backends.push_back(autotuner::Backend::ROCBLAS_FISSION);
   }
 
+  if (RequireDeterminism(debug_options)) {
+    disabled_autotune_backends.push_back(autotuner::Backend::TRITON);
+  }
+
   if (!debug_options.xla_gpu_experimental_autotune_post_fusion() ||
       debug_options.xla_gpu_autotune_level() == 0 ||
-      debug_options.xla_gpu_exclude_nondeterministic_ops() ||
+      RequireDeterminism(debug_options) ||
       !debug_options.xla_gpu_experimental_enable_fusion_autotuner()) {
     disabled_autotune_backends.push_back(autotuner::Backend::NATIVE_EMITTER);
     disabled_autotune_backends.push_back(
@@ -350,7 +358,7 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
   bool do_not_autotune_cublas =
       debug_options.xla_gpu_experimental_disable_binary_libraries() ||
       debug_options.xla_gpu_autotune_level() == 0 ||
-      debug_options.xla_gpu_exclude_nondeterministic_ops();
+      RequireDeterminism(debug_options);
   bool do_not_autotune_cudnn =
       debug_options.xla_gpu_experimental_disable_binary_libraries() ||
       (do_not_autotune_cublas && !gpu_version.IsRocm());
@@ -358,7 +366,7 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
   // 3. Assessing whether to autotune generic fusions.
   bool enable_fusion_autotuner =
       debug_options.xla_gpu_autotune_level() != 0 &&
-      !debug_options.xla_gpu_exclude_nondeterministic_ops() &&
+      !RequireDeterminism(debug_options) &&
       debug_options.xla_gpu_experimental_enable_fusion_autotuner();
   bool all_fusions_with_triton =
       debug_options.xla_gpu_experimental_all_fusions_with_triton();

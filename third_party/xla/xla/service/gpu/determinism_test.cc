@@ -197,7 +197,7 @@ ENTRY e {
   AssertDeterminism(kHloText);
 }
 
-TEST_F(DeterminismTest, DeterministicTritonGemmUsesDefaultConfig) {
+TEST_F(DeterminismTest, DeterministicGemmUsesCublas) {
   if (!IsAmpereOrLater()) {
     GTEST_SKIP() << "Triton is not supported on non-NVIDIA and "
                     "pre-Ampere NVIDIA GPUs.";
@@ -225,42 +225,11 @@ ENTRY e {
   AutotunerCache::ClearAutotuneResults();
   MatchOptimizedHlo(kHloText, R"(
     CHECK: ENTRY
-    CHECK: __triton_nested_gemm_fusion
-    CHECK-SAME: "num_warps":"2","output_tiles":[{"sizes":["1","16","8"]}]
-    CHECK-SAME: "num_ctas":1,"num_stages":1,"is_tma_allowed":false
+    CHECK: custom-call
+    CHECK: custom_call_target="__cublas
   )",
                     TimerCreation::kForbidden);
   AssertDeterminism(kHloText, /*num_runs=*/3);
-}
-
-TEST_F(DeterminismTest, ExcludingNonDeterministicOpsDoesNotDisableAutotuning) {
-  if (!IsAmpereOrLater()) {
-    GTEST_SKIP() << "Triton is not supported on non-NVIDIA and "
-                    "pre-Ampere NVIDIA GPUs.";
-  }
-
-  debug_options_.set_xla_gpu_cublas_fallback(false);
-  debug_options_.set_xla_gpu_cudnn_gemm_fusion_level(0);
-  ASSERT_TRUE(debug_options_.xla_gpu_exclude_nondeterministic_ops());
-  ASSERT_FALSE(debug_options_.xla_gpu_deterministic_ops());
-  AutotunerCache::ClearAutotuneResults();
-  // The default config is not used when autotuning is on.
-  // TODO(b/431794189): it's not very clear why test considers (32, 32) tiling
-  // to be the default. It seems to pick (16, 16) and it does not change
-  // when changing the flags above.
-  MatchOptimizedHlo(R"(
-ENTRY e {
-  p0 = bf16[128,128] parameter(0)
-  p0_convert = f32[128,128] convert(p0)
-  p1 = f32[128,128] parameter(1)
-  ROOT d = f32[128,128] dot(p0_convert, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})",
-                    R"(
-    CHECK: ENTRY
-    CHECK: __triton_nested_gemm_fusion
-    CHECK-NOT: "output_tiles":[{"sizes":["32","32"]}]
-  )",
-                    TimerCreation::kAllowed);
 }
 
 TEST_F(DeterminismTest, Conv) {
