@@ -688,22 +688,21 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeAssociativeScan(
       parent->parent()->AddEmbeddedComputation(builder.Build());
 
   HloInstruction* result = nullptr;
+  HloInstruction* input = scan->inputs()[0];
   if (scan_length <= base_length_) {
     Window window = window_util::MakeWindow(std::vector<int64_t>(rank, 1));
     window.mutable_dimensions(scan_dim)->set_size(scan_length);
     window.mutable_dimensions(scan_dim)->set_padding_low(scan_length - 1);
 
-    HloInstruction* source = scan->inputs()[0];
     result = parent->AddInstruction(HloInstruction::CreateReduceWindow(
-        source->shape(), source, init, window, rw_to_apply));
+        input->shape(), input, init, window, rw_to_apply));
   } else {
     Shape outputs_shape = scan->shape().tuple_shapes(0);
-    TF_ASSIGN_OR_RETURN(
-        result, RewriteScanAsTreeReduction(
-                    parent, {scan->inputs()[0]}, scan->inits(), rw_to_apply,
-                    outputs_shape, rank, scan_dim, scan_length,
-                    /*forward_scan=*/true,
-                    /*is_exclusive=*/false));
+    TF_ASSIGN_OR_RETURN(result, RewriteScanAsTreeReduction(
+                                    parent, {input}, {init}, rw_to_apply,
+                                    outputs_shape, rank, scan_dim, scan_length,
+                                    /*forward_scan=*/true,
+                                    /*is_exclusive=*/false));
   }
 
   // Replace carry with init value, users are guaranteed to be dead.
