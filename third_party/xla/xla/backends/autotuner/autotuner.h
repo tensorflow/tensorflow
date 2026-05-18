@@ -54,12 +54,6 @@ struct AutotuneConfig {
   float relative_tolerance = 1e-6;
   // Whether to crash the process on check failure.
   bool crash_on_check_failure = false;
-  // If true, in addition to the duration, the best algorithm will be chosen
-  // based on the scratch bytes. This is only useful if backends use scratch
-  // space for temporary tensors. The best config will be the one with the
-  // smallest scratch space among top minimum duration configs in
-  // scratch_bytes_window_size_us window.
-  bool optimize_scratch_bytes = true;
   // Window size in microseconds to consider for scratch bytes optimization.
   int scratch_bytes_window_size_us = 2;
   // If true, the autotuner will return an error if the best config for a
@@ -89,7 +83,8 @@ struct AutotuneConfig {
   // to stdout if not set.
   bool dump_hlos = false;
   // Whether to allow or discard configs that ptxas warns will spill registers.
-  bool allow_reg_spills = false;
+  std::function<bool(const HloInstruction&)> allow_reg_spills_fn =
+      [](const HloInstruction&) { return false; };
 
   std::string ToString() const;
 };
@@ -265,7 +260,8 @@ class Autotuner {
       std::vector<ConfigResult>& results,
       const std::vector<OutputCluster>& clusters);
   absl::Status IsValidExecutable(
-      const absl::StatusOr<std::unique_ptr<Executable>>& executable) const;
+      const absl::StatusOr<std::unique_ptr<Executable>>& executable,
+      const HloInstruction* instr) const;
 
   void LogConfigResults(const HloInstruction& instr,
                         const std::vector<ConfigResult>& results);

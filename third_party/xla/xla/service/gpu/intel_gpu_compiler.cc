@@ -55,6 +55,19 @@ absl::Status IntelGpuCompiler::AddConvAndGemmAutotuningPass(
   return absl::OkStatus();
 }
 
+absl::Status IntelGpuCompiler::AddAutotunerPass(
+    HloPassPipeline* pipeline, HloModule* hlo_module,
+    const se::GpuComputeCapability& gpu_version, const CompileOptions& options,
+    tsl::thread::ThreadPool* thread_pool,
+    stream_executor::StreamExecutor* stream_executor,
+    const GpuTargetConfig* target_config, const AliasInfo* alias_info,
+    mlir::MLIRContext* mlir_context,
+    HloCostAnalysis::ShapeSizeFunction shape_size_fn,
+    const MultiProcessKeyValueStore& key_value_store) {
+  // Return OkStatus as a stub.
+  return absl::OkStatus();
+}
+
 absl::StatusOr<GpuCompiler::BackendCompileResult>
 IntelGpuCompiler::CompileTargetBinary(
     const HloModuleConfig& module_config, llvm::Module* llvm_module,

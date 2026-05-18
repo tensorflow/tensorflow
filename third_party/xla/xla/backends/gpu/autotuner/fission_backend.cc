@@ -113,6 +113,15 @@ absl::StatusOr<std::unique_ptr<BackendConfig>> FissionBackend::GetDefaultConfig(
   return codegen_backend_->GetDefaultConfig(*supported_instr);
 }
 
+absl::Status FissionBackend::RunPriorityFusion(HloModule* module) {
+  HloCostAnalysis::Options priority_fusion_options;
+  priority_fusion_options.count_multiple_input_accesses = true;
+  PriorityFusion priority_fusion(
+      /*thread_pool=*/nullptr, target_config().device_description, alias_info_,
+      priority_fusion_options, mlir_context_);
+  return priority_fusion.Run(module).status();
+}
+
 absl::StatusOr<std::unique_ptr<HloModule>> FissionBackend::RunHloPasses(
     std::unique_ptr<HloModule> hlo_module,
     const Compiler::CompileOptions& options) {
@@ -120,14 +129,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> FissionBackend::RunHloPasses(
       std::unique_ptr<HloModule> module,
       codegen_backend_->RunHloPasses(std::move(hlo_module), options));
 
-  // Run priority fusion to fuse the fissioned HLOs.
-  HloCostAnalysis::Options priority_fusion_options;
-  priority_fusion_options.count_multiple_input_accesses = true;
-  // TODO: b/407494653 - Get rid of PriorityFusion.
-  PriorityFusion priority_fusion(
-      /*thread_pool=*/nullptr, target_config().device_description, alias_info_,
-      priority_fusion_options, mlir_context_);
-  TF_RETURN_IF_ERROR(priority_fusion.Run(module.get()).status());
+  TF_RETURN_IF_ERROR(RunPriorityFusion(module.get()));
   return module;
 }
 
@@ -139,6 +141,13 @@ absl::Status FissionBackend::ApplyConfig(HloInstruction& instr,
   TF_ASSIGN_OR_RETURN(HloInstruction * supported_instr,
                       FindFirstSupportedInstruction(hlo_module.get()));
   TF_RETURN_IF_ERROR(codegen_backend_->ApplyConfig(*supported_instr, config));
+
+  // Given that the autotuner runs post fusion, we have to run priority fusion
+  // again to fuse the epilogue and prologues.
+  if (debug_options().xla_gpu_experimental_autotune_post_fusion()) {
+    TF_RETURN_IF_ERROR(RunPriorityFusion(hlo_module.get()));
+  }
+
   TF_RETURN_IF_ERROR(
       InlineFissionedComputation(&instr, hlo_module->entry_computation()));
   return module->RemoveUnusedComputations();

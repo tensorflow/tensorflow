@@ -25,11 +25,13 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/autotuner/block_level_emitter.h"
 #include "xla/backends/gpu/autotuner/cublas.h"
 #include "xla/backends/gpu/autotuner/cublaslt.h"
 #include "xla/backends/gpu/autotuner/cudnn.h"
 #include "xla/backends/gpu/autotuner/factory.h"
 #include "xla/backends/gpu/autotuner/fission_backend.h"
+#include "xla/backends/gpu/autotuner/native_emitter.h"
 #include "xla/backends/gpu/autotuner/triton.h"
 #include "xla/backends/gpu/transforms/dot_algorithm_rewriter.h"
 #include "xla/backends/gpu/transforms/gemm_rewriter.h"
@@ -37,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/compiler.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform/platform_object_registry.h"
@@ -75,7 +78,7 @@ std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForCuda(
     stream_executor::DeviceAddressAllocator* device_allocator,
     const DebugOptions* debug_options, Compiler* compiler,
     const Compiler::GpuTargetConfig* target_config, const AliasInfo* alias_info,
-    MLIRContext* mlir_context,
+    MLIRContext* mlir_context, HloCostAnalysis::ShapeSizeFunction shape_size_fn,
     absl::Span<const autotuner::Backend> backend_allowlist) {
   // Selecting the "first' config in the autotuner is backend order dependent.
   // To make all tests pass we need to keep the CuDnn backend first and the
@@ -104,6 +107,11 @@ std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForCuda(
       GetCublasRewriterPipeline(target_config->device_description,
                                 /*enable_cublaslt=*/true),
       alias_info, mlir_context));
+  backends.push_back(std::make_unique<NativeEmitterBackend>(
+      debug_options, compiler, target_config));
+  backends.push_back(std::make_unique<BlockLevelEmitterBackend>(
+      debug_options, compiler, shape_size_fn, target_config));
+
   if (!backend_allowlist.empty()) {
     backends.erase(
         std::remove_if(backends.begin(), backends.end(),

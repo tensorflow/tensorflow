@@ -28,11 +28,12 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
 #include "xla/service/platform_util.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_memory_allocator.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
@@ -85,9 +86,10 @@ TEST_P(FactoryTest, GetCodegenBackends) {
     AliasInfo alias_info;
     xla::RegisterSymbolicExprStorage(&mlir_context);
     std::vector<std::unique_ptr<CodegenBackend>> backends =
-        get_codegen_backends(stream_executor_, &allocator_, &debug_options_,
-                             compiler_.get(), &target_config_, &alias_info,
-                             &mlir_context, GetParam().names);
+        get_codegen_backends(
+            stream_executor_, &allocator_, &debug_options_, compiler_.get(),
+            &target_config_, &alias_info, &mlir_context,
+            /*shape_size_fn=*/[](const Shape&) { return 0; }, GetParam().names);
     EXPECT_EQ(backends.size(), GetParam().expected_num_backends);
   } else {
     GTEST_SKIP() << "Skipping test for platform " << platform_->id();
@@ -97,8 +99,8 @@ TEST_P(FactoryTest, GetCodegenBackends) {
 INSTANTIATE_TEST_SUITE_P(
     All, FactoryTest,
     ::testing::Values(
-        FactoryTestParams{{}, 6, /*run_on_cuda=*/true, /*run_on_rocm=*/false},
-        FactoryTestParams{{}, 6, /*run_on_cuda=*/false, /*run_on_rocm=*/true},
+        FactoryTestParams{{}, 8, /*run_on_cuda=*/true, /*run_on_rocm=*/false},
+        FactoryTestParams{{}, 8, /*run_on_cuda=*/false, /*run_on_rocm=*/true},
         FactoryTestParams{{Backend::TRITON}, 1},
         FactoryTestParams{{Backend::TRITON, Backend::CUBLAS},
                           2,

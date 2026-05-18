@@ -923,7 +923,6 @@ TEST_F(AutotunerTest, AutotuneWithScratchBytesOptimization) {
 
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::move(backend_1));
-  config_.optimize_scratch_bytes = true;
   config_.scratch_bytes_window_size_us = 8;
   ASSERT_OK_AND_ASSIGN(
       auto autotuner,
@@ -1113,7 +1112,7 @@ TEST_F(AutotunerTest, SelectFirstConfig) {
 }
 
 TEST_F(AutotunerTest, ConfigsWithRegisterSpillingAreAllowed) {
-  config_.allow_reg_spills = true;
+  config_.allow_reg_spills_fn = [](const HloInstruction&) { return true; };
 
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.push_back(GetTestConfig("test_config_1"));
@@ -1149,7 +1148,7 @@ TEST_F(AutotunerTest, ConfigsWithRegisterSpillingAreAllowed) {
 }
 
 TEST_F(AutotunerTest, ConfigsWithRegisterSpillingAreFiltered) {
-  config_.allow_reg_spills = false;
+  config_.allow_reg_spills_fn = [](const HloInstruction&) { return false; };
 
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.push_back(GetTestConfig("test_config_1"));
@@ -1637,7 +1636,6 @@ TEST(AutotuneConfigTest, ToString) {
   config.check_buffers = true;
   config.relative_tolerance = 1e-4;
   config.crash_on_check_failure = false;
-  config.optimize_scratch_bytes = true;
   config.scratch_bytes_window_size_us = 10;
   config.expect_all_instructions_in_cache = false;
   config.dump_logs_to = "/tmp/log";
@@ -1645,14 +1643,13 @@ TEST(AutotuneConfigTest, ToString) {
   config.select_first_config = false;
   config.use_default_config = true;
   config.dump_hlos = false;
-  config.allow_reg_spills = false;
+  config.allow_reg_spills_fn = [](const HloInstruction&) { return false; };
 
   std::string expected =
       "{\n"
       "  \"check_buffers\": true,\n"
       "  \"relative_tolerance\": 0.000100,\n"
       "  \"crash_on_check_failure\": false,\n"
-      "  \"optimize_scratch_bytes\": true,\n"
       "  \"scratch_bytes_window_size_us\": 10,\n"
       "  \"expect_all_instructions_in_cache\": false,\n"
       "  \"dump_logs_to\": \"/tmp/log\",\n"
@@ -1660,7 +1657,7 @@ TEST(AutotuneConfigTest, ToString) {
       "  \"select_first_config\": false,\n"
       "  \"use_default_config\": true,\n"
       "  \"dump_hlos\": false,\n"
-      "  \"allow_reg_spills\": false\n"
+      "  \"allow_reg_spills\": dynamic\n"
       "}";
   EXPECT_EQ(config.ToString(), expected);
 }
