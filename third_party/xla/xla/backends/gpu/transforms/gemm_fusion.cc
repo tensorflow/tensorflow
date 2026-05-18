@@ -18,7 +18,6 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <queue>
 #include <string>
@@ -36,9 +35,12 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/codegen/triton/support_legacy.h"
+#include "xla/backends/gpu/transforms/bitcast_utils.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -48,6 +50,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_fusible.h"
@@ -57,6 +60,7 @@ limitations under the License.
 #include "xla/service/gpu/triton_tiling_propagation.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/instruction_fusion.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/errors.h"
@@ -705,6 +709,31 @@ bool IncludeInSearchSpace(const HloInstruction& instr,
          IsTritonSupportedInstruction(instr, gpu_version);
 }
 
+// Returns a set of descendants from `ancestor`, not including ancestor.
+absl::flat_hash_set<const HloInstruction*> GetDescendants(
+    const HloInstruction* ancestor) {
+  absl::flat_hash_set<const HloInstruction*> descendants;
+  std::queue<const HloInstruction*> worklist;
+  worklist.push(ancestor);
+  while (!worklist.empty()) {
+    const HloInstruction* current = worklist.front();
+    worklist.pop();
+    for (const HloInstruction* user : current->users()) {
+      if (descendants.insert(user).second) {
+        worklist.push(user);
+      }
+    }
+  }
+  return descendants;
+}
+
+HloInstruction* CreateBitcastWithShape(Shape shape,
+                                       HloInstruction& new_operand) {
+  CopyElementType(new_operand.shape(), &shape);
+  return new_operand.parent()->AddInstruction(
+      HloInstruction::CreateBitcast(shape, &new_operand));
+}
+
 // Holds a module of the search space surrounding a dot instruction in order to
 // create an optimal fusion.
 class FusionSearchSpace {
@@ -741,7 +770,29 @@ class FusionSearchSpace {
     return fused_to_original_;
   }
 
+  // Moves bitcasts in the search space computation away from the dot
+  // instruction to make fusions more likely to tile.
+  absl::Status ShepherdBitcastsAwayFromDot(HloComputation* computation);
+
+  // Given a fusion operand + fusion parameter pair in the fusion search space,
+  // returns the corresponding instruction in the original HLO module. If there
+  // is a shape mismatch (due to bitcast shepherding) or it's a newly added
+  // bitcast without a corresponding original instruction, it will create a new
+  // instruction in the original module and return it.
+  absl::StatusOr<HloInstruction*> GetOrCreateOriginalInstruction(
+      HloInstruction* fusion_operand, HloInstruction* fusion_param);
+
  private:
+  // Swaps a bitcast with its operand, if possible. Returns true if mutated.
+  // If its operand is a parameter, it updates the parameter shape,
+  // removes the bitcast, and returns true.
+  absl::StatusOr<bool> HoistBitcast(HloInstruction* instr);
+
+  // Swaps a bitcast with its user, if possible. Returns true if mutated.
+  // If the bitcast is the root instruction, it removes the bitcast,
+  // updates the root, and returns true.
+  absl::StatusOr<bool> SinkBitcast(HloInstruction* instr);
+
   // Recursive DFS to create maximum possible fusion.
   HloInstruction* FuseOperandsRecursively(
       HloInstruction* instr, HloComputation::Builder& builder,
@@ -798,6 +849,204 @@ HloInstruction* FusionSearchSpace::FuseOperandsRecursively(
   original_to_fused_[instr] = param;
   fused_to_original_[param] = instr;
   return param;
+}
+
+// Shepherd bitcasts in the search space computation away from the dot
+// instruction to make it more likely to tile.
+absl::Status FusionSearchSpace::ShepherdBitcastsAwayFromDot(
+    HloComputation* computation) {
+  VLOG(5) << "Shepherding bitcasts away from dot in computation: "
+          << computation->ToString();
+  HloInstruction* dot =
+      hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
+  if (dot == nullptr) {
+    return absl::OkStatus();
+  }
+
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    absl::flat_hash_set<const HloInstruction*> descendants =
+        GetDescendants(dot);
+    for (HloInstruction* instr : computation->MakeInstructionPostOrder()) {
+      if (HloPredicateIsNotOp<HloOpcode::kBitcast, HloOpcode::kReshape>(
+              instr)) {
+        continue;
+      }
+      if (descendants.find(instr) == descendants.end()) {
+        ASSIGN_OR_RETURN(changed, HoistBitcast(instr));
+      } else {
+        ASSIGN_OR_RETURN(changed, SinkBitcast(instr));
+      }
+      if (changed) {
+        break;
+      }
+    }
+  }
+  VLOG(5) << "Computation after shepherding bitcasts: "
+          << computation->ToString();
+  return absl::OkStatus();
+}
+
+absl::StatusOr<bool> FusionSearchSpace::HoistBitcast(HloInstruction* instr) {
+  HloInstruction* operand = instr->mutable_operand(0);
+  HloInstruction* new_instr = nullptr;
+
+  switch (operand->opcode()) {
+    case HloOpcode::kParameter: {
+      // Just update parameter shape in the submodule.
+      // We will realize the bitcast in the original module later.
+      Shape new_shape = instr->shape();
+      CopyElementType(operand->shape(), &new_shape);
+
+      *operand->mutable_shape() = new_shape;
+      RETURN_IF_ERROR(instr->ReplaceAllUsesWith(operand));
+      RETURN_IF_ERROR(instr->parent()->RemoveInstruction(instr));
+      return true;
+    }
+    case HloOpcode::kBroadcast: {
+      absl::StatusOr<BitcastParams> params = CalculateBitcastOfBroadcast(
+          Cast<HloBroadcastInstruction>(operand), instr->shape());
+      if (!params.ok()) {
+        return false;
+      }
+      HloInstruction* arg = operand->mutable_operand(0);
+      HloInstruction* new_bitcast =
+          CreateBitcastWithShape(params->new_shape, *arg);
+      new_instr =
+          instr->parent()->AddInstruction(HloInstruction::CreateBroadcast(
+              instr->shape(), new_bitcast, params->new_dims));
+      break;
+    }
+    case HloOpcode::kTranspose: {
+      absl::StatusOr<BitcastParams> params = CalculateBitcastOfTranspose(
+          Cast<HloTransposeInstruction>(operand), instr->shape());
+      if (!params.ok()) {
+        return false;
+      }
+      HloInstruction* arg = operand->mutable_operand(0);
+      HloInstruction* new_bitcast =
+          CreateBitcastWithShape(params->new_shape, *arg);
+      new_instr =
+          instr->parent()->AddInstruction(HloInstruction::CreateTranspose(
+              instr->shape(), new_bitcast, params->new_dims));
+      break;
+    }
+    default: {
+      if (!operand->IsElementwise()) {
+        return false;
+      }
+      // bitcast(op(a, b)) -> op(bitcast(a), bitcast(b))
+      std::vector<HloInstruction*> new_operands;
+      for (HloInstruction* arg : operand->operands()) {
+        new_operands.push_back(CreateBitcastWithShape(instr->shape(), *arg));
+      }
+      new_instr = instr->parent()->AddInstruction(
+          operand->CloneWithNewOperands(instr->shape(), new_operands));
+      break;
+    }
+  }
+
+  if (new_instr == nullptr) {
+    return false;
+  }
+
+  // Preserve mapping to original HLO.
+  if (auto it = fused_to_original_.find(operand);
+      it != fused_to_original_.end()) {
+    HloInstruction* original_op = it->second;
+    fused_to_original_[new_instr] = original_op;
+    original_to_fused_[original_op] = new_instr;
+  }
+
+  RETURN_IF_ERROR(instr->ReplaceAllUsesWith(new_instr));
+  RETURN_IF_ERROR(instr->parent()->RemoveInstruction(instr));
+  return true;
+}
+
+absl::StatusOr<bool> FusionSearchSpace::SinkBitcast(HloInstruction* instr) {
+  HloInstruction* operand = instr->mutable_operand(0);
+
+  // If bitcast is root, strip it to push it out of the fusion.
+  if (instr->IsRoot()) {
+    instr->parent()->set_root_instruction(operand,
+                                          /*accept_different_shape=*/true);
+    RETURN_IF_ERROR(instr->parent()->RemoveInstruction(instr));
+    return true;
+  }
+  // We only build fusions where epilogues have single users. This could be
+  // extended to handle the general case, but isn't needed for now.
+  if (instr->user_count() != 1) {
+    return false;
+  }
+
+  HloInstruction* user = instr->users()[0];
+  HloInstruction* new_instr = nullptr;
+  switch (user->opcode()) {
+    case HloOpcode::kTranspose: {
+      absl::StatusOr<BitcastParams> params = CalculateTransposeOfBitcast(
+          Cast<HloTransposeInstruction>(user), operand->shape());
+      if (!params.ok()) {
+        return false;
+      }
+      Shape new_transpose_shape = params->new_shape;
+      CopyElementType(operand->shape(), &new_transpose_shape);
+      new_instr =
+          instr->parent()->AddInstruction(HloInstruction::CreateTranspose(
+              new_transpose_shape, operand, params->new_dims));
+      break;
+    }
+    case HloOpcode::kBroadcast: {
+      absl::StatusOr<BitcastParams> params = CalculateBroadcastOfBitcast(
+          Cast<HloBroadcastInstruction>(user), operand->shape());
+      if (!params.ok()) {
+        return false;
+      }
+      Shape new_broadcast_shape = params->new_shape;
+      CopyElementType(operand->shape(), &new_broadcast_shape);
+      new_instr =
+          instr->parent()->AddInstruction(HloInstruction::CreateBroadcast(
+              new_broadcast_shape, operand, params->new_dims));
+      break;
+    }
+    default: {
+      if (!user->IsElementwise()) {
+        return false;
+      }
+      // Sink past elementwise users.
+      // op(bitcast(a), b) -> bitcast(op(a, bitcast(b)))
+      std::vector<HloInstruction*> new_operands;
+      for (HloInstruction* arg : user->operands()) {
+        if (arg == instr) {
+          new_operands.push_back(operand);
+        } else {
+          new_operands.push_back(
+              CreateBitcastWithShape(operand->shape(), *arg));
+        }
+      }
+      Shape new_user_shape = operand->shape();
+      CopyElementType(user->shape(), &new_user_shape);
+      new_instr = instr->parent()->AddInstruction(
+          user->CloneWithNewOperands(new_user_shape, new_operands));
+      break;
+    }
+  }
+
+  if (new_instr == nullptr) {
+    return false;
+  }
+  HloInstruction* new_bitcast = instr->parent()->AddInstruction(
+      HloInstruction::CreateBitcast(user->shape(), new_instr));
+  // Preserve mapping to original HLO.
+  if (auto it = fused_to_original_.find(user); it != fused_to_original_.end()) {
+    HloInstruction* original_op = it->second;
+    fused_to_original_[new_instr] = original_op;
+    original_to_fused_[original_op] = new_instr;
+  }
+  RETURN_IF_ERROR(user->ReplaceAllUsesWith(new_bitcast));
+  RETURN_IF_ERROR(instr->parent()->RemoveInstruction(user));
+  RETURN_IF_ERROR(instr->parent()->RemoveInstruction(instr));
+  return true;
 }
 
 // Checks if the fusion can be tiled by SymbolicTileAnalysis.
@@ -873,11 +1122,43 @@ absl::StatusOr<HloInstruction*> FuseUserAndOperands(
   return new_fusion;
 }
 
+absl::StatusOr<HloInstruction*>
+FusionSearchSpace::GetOrCreateOriginalInstruction(
+    HloInstruction* fusion_operand, HloInstruction* fusion_param) {
+  if (auto it = fused_to_original_.find(fusion_operand);
+      it != fused_to_original_.end()) {
+    HloInstruction* original_instr = it->second;
+    if (original_instr->shape() == fusion_param->shape()) {
+      return original_instr;
+    }
+    // Shape mismatch due to bitcast hoisting past boundaries.
+    HloInstruction* instr = original_instr->parent()->AddInstruction(
+        HloInstruction::CreateBitcast(fusion_param->shape(), original_instr));
+    return instr;
+  }
+  // Some bitcasts were created in the search space and do not have a
+  // corresponding original instruction. Find their parent and add the bitcast
+  // to the original module.
+  if (fusion_operand->opcode() == HloOpcode::kBitcast) {
+    ASSIGN_OR_RETURN(HloInstruction * original_operand,
+                     GetOrCreateOriginalInstruction(
+                         fusion_operand->mutable_operand(0), fusion_param));
+    HloInstruction* bitcast = original_operand->parent()->AddInstruction(
+        HloInstruction::CreateBitcast(fusion_param->shape(), original_operand));
+    fused_to_original_[fusion_operand] = bitcast;
+    original_to_fused_[bitcast] = fusion_operand;
+    return bitcast;
+  }
+  return absl::InvalidArgumentError(
+      absl::StrCat("Non-bitcast instruction not mapped to original module: ",
+                   fusion_operand->ToString()));
+}
+
 // Creates a fusion from the search space. Starting from the dot instruction,
 // it fuses tileable operands using BFS. Then it fuses tileable users and their
 // operands until it reaches the root of the search space.
 absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateTileableFusion(
-    const FusionSearchSpace& fusion_search_space,
+    FusionSearchSpace& fusion_search_space,
     const se::GpuComputeCapability gpu_version, absl::string_view name) {
   HloInstruction* original_dot = fusion_search_space.original_dot();
   HloInstruction* dot =
@@ -916,15 +1197,24 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateTileableFusion(
     original_output = fusion_search_space.fused_to_original().at(user);
   }
 
-  // Find inputs to the fusion from the original module.
-  std::vector<HloInstruction*> fusion_inputs;
-  for (HloInstruction* operand : fusion->operands()) {
-    fusion_inputs.push_back(
-        fusion_search_space.fused_to_original().at(operand));
-  }
-
+  // Move bitcasts out of the fusion computation in case we have some on the
+  // boundary.
   auto fusion_computation =
       Cast<HloFusionInstruction>(fusion)->fused_instructions_computation();
+  RETURN_IF_ERROR(
+      fusion_search_space.ShepherdBitcastsAwayFromDot(fusion_computation));
+
+  // Find inputs to the fusion from the original module.
+  std::vector<HloInstruction*> fusion_inputs;
+  for (auto [index, operand] : llvm::enumerate(fusion->operands())) {
+    HloInstruction* fusion_param =
+        fusion_computation->parameter_instruction(index);
+    ASSIGN_OR_RETURN(HloInstruction * original_instruction,
+                     fusion_search_space.GetOrCreateOriginalInstruction(
+                         operand, fusion_param));
+    fusion_inputs.push_back(original_instruction);
+  }
+
   return Fusion{std::move(fusion_inputs),
                 fusion_computation->Clone(std::string(name)), original_output};
 }
@@ -936,6 +1226,10 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateDotFusionV2(
   FusionSearchSpace fusion_search_space(&dot, gpu_version);
   VLOG(3) << "Found fusion search space: \n"
           << fusion_search_space.entry()->ToString();
+
+  RETURN_IF_ERROR(fusion_search_space.ShepherdBitcastsAwayFromDot(
+      fusion_search_space.entry()));
+
   return CreateTileableFusion(fusion_search_space, gpu_version, name);
 }
 
@@ -1095,14 +1389,20 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
     backend_config.set_kind(kTritonGemmFusionKind);
     TF_RETURN_IF_ERROR(dot_fusion->set_backend_config(gpu_config));
 
+    HloInstruction* replacement = dot_fusion;
+    if (fusion.output->shape() != dot_fusion->shape()) {
+      replacement = dot->parent()->AddInstruction(
+          HloInstruction::CreateBitcast(fusion.output->shape(), dot_fusion));
+    }
+
     if (fusion.output->IsRoot()) {
-      fusion.output->parent()->set_root_instruction(dot_fusion);
+      fusion.output->parent()->set_root_instruction(replacement);
       TF_RETURN_IF_ERROR(
           fusion.output->parent()->RemoveInstructionAndUnusedOperands(
               fusion.output));
       MarkAsChanged();
     } else {
-      TF_RETURN_IF_ERROR(ReplaceInstruction(fusion.output, dot_fusion));
+      TF_RETURN_IF_ERROR(ReplaceInstruction(fusion.output, replacement));
     }
     XLA_VLOG_LINES(5, computation->ToString(HloPrintOptions::ShortParsable()));
     return absl::OkStatus();
