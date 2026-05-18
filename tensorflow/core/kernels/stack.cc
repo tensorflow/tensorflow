@@ -61,8 +61,9 @@ class Stack : public ResourceBase {
     TF_RETURN_IF_ERROR(CheckNotClosed());
     int stack_size = stack_.size();
     if (max_size_ >= 0 && stack_size >= max_size_) {
-      return errors::InvalidArgument("Stack[", stack_name_, "] overflowed ",
-                                     "its max_size (", max_size_, ")");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Stack[", stack_name_, "] overflowed ", "its max_size (",
+                       max_size_, ")"));
     }
     stack_.push_back(value);
     return absl::OkStatus();
@@ -72,8 +73,8 @@ class Stack : public ResourceBase {
     mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(CheckNotClosed());
     if (stack_.empty()) {
-      return errors::InvalidArgument("Stack[", stack_name_,
-                                     "] is empty when calling Pop().");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Stack[", stack_name_, "] is empty when calling Pop()."));
     }
     *value = stack_.back();
     stack_.pop_back();
@@ -120,8 +121,8 @@ class Stack : public ResourceBase {
 
   absl::Status CheckNotClosed() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (closed_) {
-      return errors::InvalidArgument("Stack[", stack_name_,
-                                     "] has already been closed.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Stack[", stack_name_, "] has already been closed."));
     }
     return absl::OkStatus();
   }
@@ -135,20 +136,20 @@ absl::Status GetStack(OpKernelContext* ctx, Stack** stack) {
   } else {
     Tensor Tstack_handle = ctx->mutable_input(0, false);
     if (Tstack_handle.NumElements() != 2) {
-      return errors::InvalidArgument(
-          "Stack handle must have two elements, but had shape: ",
-          Tstack_handle.shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Stack handle must have two elements, but had shape: ",
+                       Tstack_handle.shape().DebugString()));
     }
     const std::string& container = Tstack_handle.flat<tstring>()(0);
     const std::string& stack_name = Tstack_handle.flat<tstring>()(1);
     std::string key = absl::StrCat(container, stack_name);
     ResourceMgr* rm = ctx->resource_manager();
     if (rm == nullptr) {
-      return errors::Internal("No resource manager.");
+      return absl::InternalError("No resource manager.");
     }
     auto* step_container = ctx->step_container();
     if (step_container == nullptr) {
-      return errors::Internal("No step container.");
+      return absl::InternalError("No step container.");
     }
     TF_RETURN_IF_ERROR(step_container->Lookup(rm, key, stack));
     return absl::OkStatus();
@@ -171,10 +172,10 @@ void StackOp::Compute(OpKernelContext* ctx) {
     const Tensor* tensor_size;
     OP_REQUIRES_OK(ctx, ctx->input("max_size", &tensor_size));
 
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsScalar(tensor_size->shape()),
-        errors::InvalidArgument("Stack size must be a scalar, but had shape: ",
-                                tensor_size->shape().DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(tensor_size->shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Stack size must be a scalar, but had shape: ",
+                                 tensor_size->shape().DebugString())));
 
     int32_t size_value = tensor_size->scalar<int32_t>()();
     if (size_value >= 0) {
@@ -187,11 +188,11 @@ void StackOp::Compute(OpKernelContext* ctx) {
   std::string stack_name = absl::StrCat(stack_name_, "_", stack_id);
   // Store the handle in a per-step container.
   ResourceMgr* rm = ctx->resource_manager();
-  OP_REQUIRES(ctx, rm != nullptr, errors::Internal("No resource manager."));
+  OP_REQUIRES(ctx, rm != nullptr, absl::InternalError("No resource manager."));
   std::string key = absl::StrCat(kContainer, stack_name);
   auto* step_container = ctx->step_container();
   OP_REQUIRES(ctx, step_container != nullptr,
-              errors::Internal("No step container."));
+              absl::InternalError("No step container."));
   Stack* stack = new Stack(elem_type_, stack_name, size);
   OP_REQUIRES_OK(ctx, step_container->Create(rm, key, stack));
   if (IsRefType(ctx->expected_output_dtype(0))) {
@@ -229,9 +230,9 @@ void StackPushOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   core::ScopedUnref unref(stack);
 
   if (ctx->input_dtype(1) != stack->ElemType()) {
-    ctx->CtxFailure(errors::InvalidArgument("Must have type ",
-                                            stack->ElemType(), " but got ",
-                                            ctx->input_dtype(1)));
+    ctx->CtxFailure(absl::InvalidArgumentError(
+        absl::StrCat("Must have type ", stack->ElemType(), " but got ",
+                     ctx->input_dtype(1))));
     done();
     return;
   }
