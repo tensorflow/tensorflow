@@ -5686,7 +5686,6 @@ CudnnSupport::NormRunnerFromDesc(
     std::optional<dnn::TensorDescriptor> norm_factor_descriptor,
     std::optional<dnn::TensorDescriptor> dscale_descriptor,
     std::optional<dnn::TensorDescriptor> dbias_descriptor) {
-#if (CUDNN_VERSION >= 8905)
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
   std::vector<int64_t> uids;
@@ -5813,11 +5812,6 @@ CudnnSupport::NormRunnerFromDesc(
           /*need_side_input=*/false, scalar_uids, scalar_input_values));
   return {std::make_unique<CudnnExecutionPlanRunner<dnn::NormSignature>>(
       std::move(runner))};
-
-#else
-  return absl::UnimplementedError(
-      "Layer norm kernels require cuDNN 8.9.5 or higher.");
-#endif  // CUDNN_VERSION >= 8905
 }
 
 bool CudnnSupport::GetRnnAlgorithms(

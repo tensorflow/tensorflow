@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -38,13 +39,11 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/computation_placer.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -68,6 +67,30 @@ SendThunk::SendThunk(ThunkInfo thunk_info, const P2PConfig& config,
 absl::Status SendThunk::Initialize(const InitializeParams& params) {
   TF_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
   return absl::OkStatus();
+}
+
+absl::StatusOr<const se::CommandBuffer::Command*> SendThunk::Record(
+    const ExecuteParams& execute_params, const RecordParams& record_params,
+    RecordAction record_action, se::CommandBuffer* command_buffer) {
+  if (execute_params.collective_params == nullptr) {
+    return absl::InvalidArgumentError(
+        "SendThunk requires collective parameters");
+  }
+
+  ASSIGN_OR_RETURN(
+      const int64_t current_id,
+      GetCollectiveCurrentId(execute_params.collective_params, config_));
+  const P2PConfig::SourceTargetMapEntry source_target =
+      P2PConfig::GetSourceTarget(config_.id_to_source_target, current_id);
+
+  if (!source_target.target.has_value()) {
+    VLOG(3) << "[" << execute_params.stream->parent()->device_ordinal()
+            << "] Skipping Send";
+    return nullptr;
+  }
+
+  return CollectiveThunk::Record(execute_params, record_params,
+                                 std::move(record_action), command_buffer);
 }
 
 absl::StatusOr<std::unique_ptr<SendThunk>> SendThunk::FromProto(
@@ -154,16 +177,8 @@ absl::Status SendThunk::RunCollective(const ExecuteParams& params,
       send_buffer.source_memory_space,
       send_buffer.destination_memory_space};
 
-  GlobalDeviceId global_device_id = params.collective_params->global_device_id;
-
-  TF_ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID current_logical_id,
-                      params.collective_params->device_assn->LogicalIdForDevice(
-                          global_device_id));
-  const int64_t current_id =
-      config_.config.group_mode ==
-              CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA
-          ? current_logical_id.replica_id
-          : current_logical_id.computation_id;
+  ASSIGN_OR_RETURN(const int64_t current_id,
+                   GetCollectiveCurrentId(params.collective_params, config_));
   std::string device_string = GetDeviceString(*params.collective_params);
 
   const P2PConfig::SourceTargetMapEntry source_target =
