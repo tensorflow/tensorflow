@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/transforms/gemv_rewriter.h"
+#include "xla/hlo/transforms/simplifiers/gemv_rewriter.h"
 
 #include <memory>
 #include <optional>
@@ -25,7 +25,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 
-namespace xla::gpu {
+namespace xla {
 namespace {
 
 class GemvRewriterTest : public HloHardwareIndependentTestBase {};
@@ -148,4 +148,4 @@ TEST_F(GemvRewriterTest, DoNotRewriteDotsWithNonNormalizedLayout) {
 }
 
 }  // namespace
-}  // namespace xla::gpu
+}  // namespace xla
