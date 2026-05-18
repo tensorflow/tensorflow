@@ -302,7 +302,9 @@ cc_library(
         "include/hwloc/memattrs.h",
         "include/hwloc/rename.h",
     ],
-    copts = COMMON_INCLUDE_COPTS + DISABLE_WARNINGS_COPTS + VAR_SETTINGS_COPTS,
+    copts = COMMON_INCLUDE_COPTS + DISABLE_WARNINGS_COPTS + VAR_SETTINGS_COPTS + [
+        "-fvisibility=hidden",
+    ],
     features = [
         "-parse_headers",
         "-layering_check",
