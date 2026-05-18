@@ -46,6 +46,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cupti_headers",
         "@tsl//tsl/profiler/lib:profiler_factory",
         "@tsl//tsl/profiler/lib:profiler_interface",
         "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
@@ -93,6 +94,7 @@ cc_library(
     deps = [
         "//xla/tsl/cuda:cupti",
         "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cupti_headers",
         "@tsl//tsl/platform:macros",
         "@tsl//tsl/platform:types",
     ],
@@ -158,7 +160,9 @@ cc_library(
     deps = [
         ":cupti_interface",
         "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest_for_library",
         "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cupti_headers",
         "@tsl//tsl/platform:test",
     ],
 )
@@ -178,6 +182,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/synchronization",
         "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cupti_headers",
         "@tsl//tsl/platform:logging",
         "@tsl//tsl/platform:thread_annotations",
     ],
@@ -202,7 +207,9 @@ xla_test(
         ":cupti_wrapper",
         ":mock_cupti",
         "//xla/tsl/profiler/utils:time_utils",
+        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
+        "@local_config_cuda//cuda:cupti_headers",
     ],
 )
 
@@ -243,6 +250,7 @@ cc_library(
         ":cupti_interface",
         "//xla/tsl/cuda:cupti",
         "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cupti_headers",
     ],
 )
 
@@ -308,6 +316,7 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cupti_headers",
         "@tsl//tsl/platform:env",
         "@tsl//tsl/platform:errors",
         "@tsl//tsl/platform:logging",
@@ -333,15 +342,13 @@ cc_library(
     deps = [
         ":cupti_collector",
         ":cupti_interface",
+        ":cupti_pm_sampler_impl",
+        ":cupti_pm_sampler_stub",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/time",
         "@local_config_cuda//cuda:cupti_headers",
-    ] + if_cuda_newer_than(
-        "12_6",
-        [":cupti_pm_sampler_impl"],
-        [":cupti_pm_sampler_stub"],
-    ),
+    ],
 )
 
 cc_library(
@@ -379,36 +386,45 @@ cc_library(
 
 cc_library(
     name = "cupti_pm_sampler_impl",
-    srcs = ["cupti_pm_sampler_impl.cc"],
-    hdrs = [
-        "cupti_pm_sampler.h",
-        "cupti_pm_sampler_impl.h",
-    ],
+    srcs = if_cuda_newer_than(
+        "12_6",
+        ["cupti_pm_sampler_impl.cc"],
+    ),
+    hdrs = if_cuda_newer_than(
+        "12_6",
+        [
+            "cupti_pm_sampler.h",
+            "cupti_pm_sampler_impl.h",
+        ],
+    ),
     tags = [
         "cuda-only",
         "gpu",
         "manual",  # This target requires CUDA 12.6+, therefore we only built it if it was requested via a dependency.
     ],
-    deps = [
-        ":cupti_collector",
-        ":cupti_interface",
-        ":cupti_status",
-        ":cupti_utils",
-        "//xla/stream_executor/cuda:cuda_status",
-        "//xla/tsl/platform:errors",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/cleanup",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:vlog_is_on",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-        "@local_config_cuda//cuda:cupti_headers",
-        "@tsl//tsl/platform:errors",
-    ],
+    deps = if_cuda_newer_than(
+        "12_6",
+        [
+            ":cupti_collector",
+            ":cupti_interface",
+            ":cupti_status",
+            ":cupti_utils",
+            "//xla/stream_executor/cuda:cuda_status",
+            "//xla/tsl/platform:errors",
+            "@com_google_absl//absl/base",
+            "@com_google_absl//absl/base:core_headers",
+            "@com_google_absl//absl/cleanup",
+            "@com_google_absl//absl/log",
+            "@com_google_absl//absl/log:vlog_is_on",
+            "@com_google_absl//absl/status",
+            "@com_google_absl//absl/status:statusor",
+            "@com_google_absl//absl/strings",
+            "@com_google_absl//absl/synchronization",
+            "@com_google_absl//absl/time",
+            "@local_config_cuda//cuda:cupti_headers",
+            "@tsl//tsl/platform:errors",
+        ],
+    ),
 )
 
 cc_library(
@@ -724,8 +740,6 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings:string_view",
-        "@tsl//tsl/platform:logging",
-        "@tsl//tsl/platform:stringpiece",
     ],
     alwayslink = 1,
 )
@@ -804,7 +818,6 @@ xla_cc_test(
         ":cupti_utils",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/platform:test",
     ],
 )
 
