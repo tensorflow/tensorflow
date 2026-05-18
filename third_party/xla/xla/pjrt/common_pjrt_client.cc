@@ -661,6 +661,11 @@ absl::Status CommonPjRtClient::PrepareArguments(
     PjRtDevice* device, int replica, int partition,
     absl::Span<const Shape> parameter_device_shapes, bool& is_error,
     bool allow_fallback_for_donation) {
+  if (argument_handles.size() != parameter_device_shapes.size()) {
+    return InvalidArgument(
+        "Execution supplied %d arguments but compiled program expected %d",
+        argument_handles.size(), parameter_device_shapes.size());
+  }
   input_buffers.reserve(argument_handles.size());
   device_buffers.reserve(argument_handles.size());
   auto donate_it = donated_params.begin();
