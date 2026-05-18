@@ -565,7 +565,9 @@ absl::StatusOr<llvm::Value*> EmitIota(const HloInstruction* hlo,
         << component_element_type;
     llvm::Type* float_ir_type;
     if (component_element_type == F8E4M3FNUZ ||
-        component_element_type == F8E5M2FNUZ) {
+        component_element_type == F8E5M2FNUZ ||
+        component_element_type == F8E4M3FN ||
+        component_element_type == F8E5M2) {
       float_ir_type = llvm_ir::PrimitiveTypeToIrType(F16, module->getContext());
     } else {
       float_ir_type = llvm_ir::PrimitiveTypeToIrType(component_element_type,
@@ -573,7 +575,9 @@ absl::StatusOr<llvm::Value*> EmitIota(const HloInstruction* hlo,
     }
     llvm::Value* float_val = b->CreateUIToFP(elem_index_linear, float_ir_type);
     if (component_element_type == F8E4M3FNUZ ||
-        component_element_type == F8E5M2FNUZ) {
+        component_element_type == F8E5M2FNUZ ||
+        component_element_type == F8E4M3FN ||
+        component_element_type == F8E5M2) {
       iota_result =
           EmitFxToF8e(module, F16, component_element_type, float_val, b);
     } else {

@@ -148,10 +148,22 @@ bool IsFoldable(
     const HloInstruction* instruction, HloConstantFolding::Level level,
     absl::flat_hash_map<HloComputation*, bool>& is_foldable_computation) {
   // Broadcasts dramatically increase the size of constants, which is often
-  // detrimental to performance and memory capacity, so do not fold
-  // broadcasts.
-  if (instruction->opcode() == HloOpcode::kBroadcast ||
-      instruction->opcode() == HloOpcode::kIota) {
+  // detrimental to performance and memory capacity, so we only fold small
+  // broadcasts. We could increase or decrease the size in the future if we
+  // determine that the threshold is not optimal.
+  if (instruction->opcode() == HloOpcode::kBroadcast) {
+    if (instruction->shape().IsArray() &&
+        ShapeUtil::ElementsIn(instruction->shape()) <= 32) {
+      return true;
+    }
+    return false;
+  }
+
+  // Similar to broadcasts, large iotas dramatically increase the size of
+  // constants, so we only fold iotas smaller than 32.
+  if (instruction->opcode() == HloOpcode::kIota &&
+      (!instruction->shape().IsArray() ||
+       ShapeUtil::ElementsIn(instruction->shape()) > 32)) {
     return false;
   }
 
@@ -353,6 +365,8 @@ absl::StatusOr<bool> HloConstantFolding::RunImpl(
       //    broadcasts of constants, e.g. op(constant, broadcast(constant)).
       //
       if (level_ == HloConstantFolding::Level::kDefault &&
+          instruction->opcode() != HloOpcode::kIota &&
+          instruction->operand_count() > 0 &&
           !AnyOperandsConstant(instruction)) {
         continue;
       }
