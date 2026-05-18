@@ -707,7 +707,8 @@ class ConvertFloatToUnsignedCastOp : public OpRewritePattern<TF::CastOp> {
 
     // XLA convert saturates negative floats to unsigned integers at zero, while
     // TensorFlow Cast's CPU path wraps finite negative values in the destination
-    // unsigned type.
+    // unsigned type. NaN and Inf casts to integral types are documented as
+    // undefined, so keep them on the direct HLO convert path.
     int result_width = result_element_type.getIntOrFloatBitWidth();
     int wider_width = result_width == 64 ? 64 : result_width * 2;
     Type signed_element_type = rewriter.getIntegerType(wider_width);
@@ -733,6 +734,12 @@ class ConvertFloatToUnsignedCastOp : public OpRewritePattern<TF::CastOp> {
     Value is_negative = stablehlo::CompareOp::create(
         rewriter, loc, op.getX(), broadcast_zero,
         stablehlo::ComparisonDirection::LT);
+    Type predicate_type =
+        ChangeTensorElementType(&rewriter, input_type, rewriter.getI1Type());
+    Value is_finite =
+        stablehlo::IsFiniteOp::create(rewriter, loc, predicate_type, op.getX());
+    Value finite_negative =
+        stablehlo::AndOp::create(rewriter, loc, is_negative, is_finite);
 
     Value direct =
         stablehlo::ConvertOp::create(rewriter, loc, op.getType(), op.getX());
@@ -743,7 +750,7 @@ class ConvertFloatToUnsignedCastOp : public OpRewritePattern<TF::CastOp> {
     Value wrapped_negative = stablehlo::ConvertOp::create(
         rewriter, loc, op.getType(), unsigned_value);
     rewriter.replaceOpWithNewOp<stablehlo::SelectOp>(
-        op, op.getType(), is_negative, wrapped_negative, direct);
+        op, op.getType(), finite_negative, wrapped_negative, direct);
     return success();
   }
 };

@@ -45,7 +45,8 @@ xla::XlaOp ConvertFloatingToUnsigned(xla::XlaOp input,
 
   // XLA convert saturates negative floats to unsigned integers at zero, while
   // TensorFlow Cast's CPU path wraps finite negative values in the destination
-  // unsigned type.
+  // unsigned type. NaN and Inf casts to integral types are documented as
+  // undefined, so keep them on the direct HLO convert path.
   int dst_width = xla::primitive_util::BitWidth(dst_type);
   int wider_width = dst_width == 64 ? 64 : dst_width * 2;
   xla::PrimitiveType signed_type =
@@ -60,8 +61,9 @@ xla::XlaOp ConvertFloatingToUnsigned(xla::XlaOp input,
       xla::ConvertElementType(xla::ConvertElementType(input, signed_type),
                               unsigned_type),
       dst_type);
-  return xla::Select(xla::Lt(input, xla::ZerosLike(input)), wrapped_negative,
-                     direct);
+  xla::XlaOp finite_negative =
+      xla::And(xla::Lt(input, xla::ZerosLike(input)), xla::IsFinite(input));
+  return xla::Select(finite_negative, wrapped_negative, direct);
 }
 
 class CastOp : public XlaOpKernel {

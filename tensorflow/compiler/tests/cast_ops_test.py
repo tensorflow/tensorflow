@@ -64,8 +64,13 @@ class CastOpsTest(xla_test.XLATestCase):
         input_signature=[tensor_spec.TensorSpec([None], dtypes.float32)])
 
     x = constant_op.constant([-2.0, -1.0, 0.0, 1.0, 2.0], dtypes.float32)
+    expected_cast = constant_op.constant(
+        [2**64 - 2, 2**64 - 1, 0, 1, 2], dtypes.uint64)
+    expected = array_ops.bitcast(expected_cast, dtypes.uint8)
     with ops.device(self.device):
-      self.assertAllEqual(f(x), compiled_f(x))
+      self.assertAllEqual(expected_cast, math_ops.cast(x, dtypes.uint64))
+      self.assertAllEqual(expected, f(x))
+      self.assertAllEqual(expected, compiled_f(x))
 
 
 if __name__ == '__main__':
