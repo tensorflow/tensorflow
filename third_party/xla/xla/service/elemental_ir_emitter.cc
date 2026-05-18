@@ -639,26 +639,10 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
             primitive_util::IsSignedIntegralType(from_type));
       }
       if (primitive_util::IsFloatingPointType(to_type)) {
-        if (to_type == F8E5M2) {
+        if (primitive_util::IsF8Type(to_type) && to_type != F8E8M0FNU) {
           operand_value = EmitIntegralToFloating(operand_value, from_type, F16,
                                                  module_, b_);
-          return EmitFxToF8e(module_, F16, F8E5M2, operand_value, b_);
-        }
-        if (to_type == F8E4M3) {
-          return EmitFxToF8e(module_, F16, F8E4M3,
-                             EmitIntegralToFloating(operand_value, from_type,
-                                                    F16, module_, b_),
-                             b_);
-        }
-        if (to_type == F8E4M3FN) {
-          operand_value = EmitIntegralToFloating(operand_value, from_type, F16,
-                                                 module_, b_);
-          return EmitFxToF8e(module_, F16, F8E4M3FN, operand_value, b_);
-        }
-        if (to_type == F8E4M3B11FNUZ) {
-          operand_value = EmitIntegralToFloating(operand_value, from_type, F16,
-                                                 module_, b_);
-          return EmitFxToF8e(module_, F16, F8E4M3B11FNUZ, operand_value, b_);
+          return EmitFxToF8e(module_, F16, to_type, operand_value, b_);
         }
         if (to_type == F4E2M1FN) {
           return EmitF16ToF4e2m1fn(
@@ -671,17 +655,6 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
               EmitIntegralToFloating(operand_value, from_type, F32, module_,
                                      b_),
               b_);
-        }
-        if (to_type == F8E5M2FNUZ || to_type == F8E4M3FNUZ) {
-          operand_value = EmitIntegralToFloating(operand_value, from_type, F16,
-                                                 module_, b_);
-          return EmitFxToF8e(module_, F16, to_type, operand_value, b_);
-        }
-        if (to_type == F8E3M4) {
-          return EmitFxToF8e(module_, F16, F8E3M4,
-                             EmitIntegralToFloating(operand_value, from_type,
-                                                    F16, module_, b_),
-                             b_);
         }
         return EmitIntegralToFloating(operand_value, from_type, to_type,
                                       module_, b_);
@@ -926,54 +899,14 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
         }
         return FPCast(operand_value, b_->getBFloatTy());
       }
-      if (to_type == F8E5M2) {
-        // Cast to F16 first. Casts to F8E5M2 must be from F16.
-        if (from_type != F16) {
-          operand_value = b_->CreateFPCast(
-              operand_value,
-              llvm_ir::PrimitiveTypeToIrType(F16, module_->getContext()));
-        }
-        return EmitFxToF8e(module_, F16, F8E5M2, operand_value, b_);
-      }
-      if (to_type == F8E4M3) {
-        switch (from_type) {
-          case F16:
-            return EmitFxToF8e(module_, F16, F8E4M3, operand_value, b_);
-          case F32:
-            return EmitFxToF8e(module_, F32, F8E4M3, operand_value, b_);
-          case F64:
-            return EmitFxToF8e(module_, F64, F8E4M3, operand_value, b_);
-          case BF16:
-            operand_value = b_->CreateFPCast(
-                operand_value,
-                llvm_ir::PrimitiveTypeToIrType(F16, module_->getContext()));
-            return EmitFxToF8e(module_, F16, F8E4M3, operand_value, b_);
-          default:
-            return InvalidArgument("Unsupported conversion from %s to %s",
-                                   PrimitiveType_Name(from_type),
-                                   PrimitiveType_Name(to_type));
-        }
-      }
-      if (to_type == F8E4M3FN) {
-        // Cast to F16 first. Casts to F8E4M3FN must be from F16.
-        if (from_type != F16) {
-          operand_value = b_->CreateFPCast(
-              operand_value,
-              llvm_ir::PrimitiveTypeToIrType(F16, module_->getContext()));
-        }
-        llvm::Function* fptrunc = FpTrunc::GetOrInsertDeclaration(
-            module_, IntrinsicType::S(F16), IntrinsicType::S(F8E4M3FN));
-        return b_->CreateCall(fptrunc, {operand_value});
-      }
-      if (to_type == F8E4M3B11FNUZ) {
+      if (primitive_util::IsF8Type(to_type) && to_type != F8E8M0FNU) {
         if (from_type != F16 && from_type != F32 && from_type != F64) {
           operand_value = b_->CreateFPCast(
               operand_value,
               llvm_ir::PrimitiveTypeToIrType(F16, module_->getContext()));
           from_type = F16;
         }
-        return EmitFxToF8e(module_, from_type, F8E4M3B11FNUZ, operand_value,
-                           b_);
+        return EmitFxToF8e(module_, from_type, to_type, operand_value, b_);
       }
       if (to_type == F4E2M1FN) {
         // Cast to F16 first. Casts to F4E2M1FN must be from F16.
@@ -992,34 +925,6 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
               llvm_ir::PrimitiveTypeToIrType(F32, module_->getContext()));
         }
         return EmitF32ToF8e8m0fnu(operand_value, b_);
-      }
-      if (to_type == F8E5M2FNUZ || to_type == F8E4M3FNUZ) {
-        if (from_type != F16 && from_type != F32 && from_type != F64) {
-          operand_value = b_->CreateFPCast(
-              operand_value,
-              llvm_ir::PrimitiveTypeToIrType(F16, module_->getContext()));
-          from_type = F16;
-        }
-        return EmitFxToF8e(module_, from_type, to_type, operand_value, b_);
-      }
-      if (to_type == F8E3M4) {
-        switch (from_type) {
-          case F16:
-            return EmitFxToF8e(module_, F16, F8E3M4, operand_value, b_);
-          case F32:
-            return EmitFxToF8e(module_, F32, F8E3M4, operand_value, b_);
-          case F64:
-            return EmitFxToF8e(module_, F64, F8E3M4, operand_value, b_);
-          case BF16:
-            operand_value = b_->CreateFPCast(
-                operand_value,
-                llvm_ir::PrimitiveTypeToIrType(F16, module_->getContext()));
-            return EmitFxToF8e(module_, F16, F8E3M4, operand_value, b_);
-          default:
-            return InvalidArgument("Unsupported conversion from %s to %s",
-                                   PrimitiveType_Name(from_type),
-                                   PrimitiveType_Name(to_type));
-        }
       }
       if (to_type == PRED) {
         return b_->CreateZExt(
