@@ -1680,6 +1680,7 @@ cc_library(
         ":host_callback_registry",
         ":nvml_lock",
         ":tma_util",
+        "//xla:debug_options_flags",
         "//xla:util",
         "//xla/backends/gpu/collectives:gpu_collectives",
         "//xla/core/collectives",

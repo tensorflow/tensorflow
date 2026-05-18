@@ -158,7 +158,7 @@ TEST(CudaExecutorTest, CreateCollectiveMemoryAllocatorWorks) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
                           allocator->Allocate(1024));
   EXPECT_NE(allocation->address().opaque(), nullptr);
-  EXPECT_EQ(allocation->address().size(), 1024);
+  EXPECT_GE(allocation->address().size(), 1024);
 }
 
 // TODO: b/420735471 - Enable test once fixed.

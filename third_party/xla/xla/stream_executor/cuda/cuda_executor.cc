@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
+#include "xla/debug_options_flags.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -813,12 +814,19 @@ CudaExecutor::~CudaExecutor() {
   CHECK(gpu_binary_to_module_.empty()) << "CudaExecutor has loaded modules.";
 }
 
-absl::StatusOr<xla::gpu::GpuCollectives*> GetGpuCollectives(
-    StreamExecutor* executor) {
-  std::unique_ptr<ActivateContext> activation = executor->Activate();
+static bool IsNvshmemEnabled() {
+  return xla::GetDebugOptionsFromFlags().xla_gpu_experimental_enable_nvshmem();
+}
+
+static absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectives() {
   TF_ASSIGN_OR_RETURN(xla::Collectives * collectives,
-                      xla::CollectivesRegistry::Default("gpu"));
-  return absl::down_cast<xla::gpu::GpuCollectives*>(collectives);
+                      xla::CollectivesRegistry::Get("gpu", "nvshmem"));
+  auto* gpu_collectives =
+      absl::down_cast<xla::gpu::GpuCollectives*>(collectives);
+  if (gpu_collectives == nullptr) {
+    return absl::InternalError("Failed to get NVSHMEM collectives");
+  }
+  return gpu_collectives;
 }
 
 CudaExecutor::VmmMemoryHandle::~VmmMemoryHandle() { CHECK_OK(Release()); }
@@ -864,25 +872,21 @@ absl::StatusOr<size_t> CudaExecutor::GetVmmGranularity() const {
   return granularity;
 }
 
-absl::StatusOr<void*> CollectiveMemoryAllocate(StreamExecutor* executor,
-                                               uint64_t bytes) {
+static absl::StatusOr<void*> NvshmemCollectiveMemoryAllocate(
+    StreamExecutor* executor, uint64_t bytes) {
   if (bytes == 0) {
     return nullptr;
   }
-
   std::unique_ptr<ActivateContext> activation = executor->Activate();
-  TF_ASSIGN_OR_RETURN(xla::gpu::GpuCollectives * gpu_collectives,
-                      GetGpuCollectives(executor));
-  return gpu_collectives->Allocate(bytes);
+  TF_ASSIGN_OR_RETURN(auto* collectives, GetNvshmemCollectives());
+  return collectives->Allocate(bytes);
 }
 
-absl::Status CollectiveMemoryDeallocate(StreamExecutor* executor,
-                                        void* location) {
+static absl::Status NvshmemCollectiveMemoryDeallocate(StreamExecutor* executor,
+                                                      void* location) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
-
-  TF_ASSIGN_OR_RETURN(xla::gpu::GpuCollectives * gpu_collectives,
-                      GetGpuCollectives(executor));
-  return gpu_collectives->Deallocate(location);
+  TF_ASSIGN_OR_RETURN(auto* collectives, GetNvshmemCollectives());
+  return collectives->Deallocate(location);
 }
 
 absl::StatusOr<std::unique_ptr<MemoryAllocator>>
@@ -892,27 +896,25 @@ CudaExecutor::CreateMemoryAllocator(MemorySpace type) {
   }
 
   if (type == MemorySpace::kCollective) {
-    return std::make_unique<GenericMemoryAllocator>(
-        [this](uint64_t size)
-            -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
-          TF_ASSIGN_OR_RETURN(void* ptr, CollectiveMemoryAllocate(this, size));
-          XLA_VLOG_DEVICE(2, device_ordinal())
-              << "allocated " << ptr << " for context " << cuda_context_
-              << " of " << size << " bytes of collective memory";
-          return std::make_unique<GenericMemoryAllocation>(
-              ptr, size, [this](void* location, uint64_t size) {
-                auto status = CollectiveMemoryDeallocate(this, location);
-                if (!status.ok()) {
-                  XLA_LOG_DEVICE(ERROR, device_ordinal())
-                      << "failed to free collective memory at " << location
-                      << "; result: " << status;
-                } else {
-                  XLA_VLOG_DEVICE(2, device_ordinal())
-                      << "deallocated collective memory at " << location
-                      << " for context " << cuda_context_;
-                }
-              });
-        });
+    if (IsNvshmemEnabled()) {
+      return std::make_unique<GenericMemoryAllocator>(
+          [this](uint64_t size)
+              -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
+            TF_ASSIGN_OR_RETURN(void* ptr,
+                                NvshmemCollectiveMemoryAllocate(this, size));
+            return std::make_unique<GenericMemoryAllocation>(
+                ptr, size, [this](void* location, uint64_t size) {
+                  auto status =
+                      NvshmemCollectiveMemoryDeallocate(this, location);
+                  if (!status.ok()) {
+                    XLA_LOG_DEVICE(ERROR, device_ordinal())
+                        << "failed to free nvshmem collective memory at "
+                        << location << ": " << status;
+                  }
+                });
+          });
+    }
+    return std::make_unique<CudaVmmAllocator>(this, vmm_options_);
   }
 
   if (type == MemorySpace::kHost) {
@@ -1292,14 +1294,17 @@ DeviceAddressBase CudaExecutor::Allocate(uint64_t size, int64_t memory_space) {
       << " memory_space: " << memory_space;
 
   if (memory_space == static_cast<int64_t>(MemorySpace::kCollective)) {
-    auto result = CollectiveMemoryAllocate(this, size);
-    if (!result.ok()) {
-      XLA_LOG_DEVICE(ERROR, device_ordinal())
-          << "CudaExecutor::Allocate returns " << result.value();
+    if (IsNvshmemEnabled()) {
+      auto result = NvshmemCollectiveMemoryAllocate(this, size);
+      if (!result.ok()) {
+        XLA_LOG_DEVICE(ERROR, device_ordinal())
+            << "Failed to allocate nvshmem collective memory: "
+            << result.status();
+        return DeviceAddressBase();
+      }
+      return DeviceAddressBase(*result, size);
     }
-    XLA_VLOG_DEVICE(1, device_ordinal())
-        << "CudaExecutor::Allocate returns " << result.value();
-    return DeviceAddressBase(result.value(), size);
+    return AllocateAndTrack(*vmm_allocator_, size, "collective");
   }
 
   if (memory_space == static_cast<int64_t>(MemorySpace::kHost)) {
@@ -1336,12 +1341,11 @@ void CudaExecutor::Deallocate(DeviceAddressBase* mem) {
     return;
   }
 
-  // Allocation was not tracked (e.g. collective memory).
-  absl::Status status = CollectiveMemoryDeallocate(this, mem->opaque());
+  // Untracked allocations are nvshmem collective memory.
+  absl::Status status = NvshmemCollectiveMemoryDeallocate(this, mem->opaque());
   if (!status.ok()) {
     XLA_LOG_DEVICE(ERROR, device_ordinal())
-        << "Failed to deallocate collective memory at " << mem->opaque() << ": "
-        << status;
+        << "Failed to deallocate memory at " << mem->opaque() << ": " << status;
   }
 }
 
