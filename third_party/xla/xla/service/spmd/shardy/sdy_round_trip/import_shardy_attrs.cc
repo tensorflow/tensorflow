@@ -196,10 +196,10 @@ void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
   for (auto [argNum, argType] : llvm::enumerate(funcOp.getArgumentTypes())) {
     if (auto oldSharding =
             funcOp.getArgAttrOfType<StringAttr>(argNum, kXlaShardingAttr)) {
-      funcOp.setArgAttr(
-          argNum, kShardingAttr,
-          convertToSdyShardingAttr(parseShardingFromString(oldSharding),
-                                   funcOp.getContext()));
+      if (auto sdySharding = convertToSdyShardingAttr(
+              parseShardingFromString(oldSharding), funcOp.getContext())) {
+        funcOp.setArgAttr(argNum, kShardingAttr, sdySharding);
+      }
     }
     funcOp.removeArgAttr(argNum, kXlaShardingAttr);
   }
@@ -207,10 +207,10 @@ void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
   for (int64_t resNum = 0; resNum < funcOp.getNumResults(); ++resNum) {
     if (auto oldSharding =
             funcOp.getResultAttrOfType<StringAttr>(resNum, kXlaShardingAttr)) {
-      funcOp.setResultAttr(
-          resNum, kShardingAttr,
-          convertToSdyShardingAttr(parseShardingFromString(oldSharding),
-                                   funcOp.getContext()));
+      if (auto sdySharding = convertToSdyShardingAttr(
+              parseShardingFromString(oldSharding), funcOp.getContext())) {
+        funcOp.setResultAttr(resNum, kShardingAttr, sdySharding);
+      }
     }
     funcOp.removeResultAttr(resNum, kXlaShardingAttr);
   }
