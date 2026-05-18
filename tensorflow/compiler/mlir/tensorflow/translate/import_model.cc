@@ -68,6 +68,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "tensorflow/cc/saved_model/bundle_v2.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/loader.h"
@@ -147,6 +148,7 @@ void LoadImporterDialects(mlir::MLIRContext& context) {
   // Load dialects involved in the conversion
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialectsImpl(registry, false);
+  mlir::stablehlo::registerAllDialects(registry);
   context.appendDialectRegistry(registry);
   for (llvm::StringRef name : registry.getRegisteredDialectNames()) {
     context.getOrLoadDialect(name);

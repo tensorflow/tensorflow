@@ -130,6 +130,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tfrt:export",
         "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:extract_callback",
         "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:ifrt_types",
+        "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:pack_inputs_pass",
         "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:tf2hlo",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:host_compute_metadata_proto_cc",

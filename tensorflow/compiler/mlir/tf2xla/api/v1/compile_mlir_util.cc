@@ -903,6 +903,7 @@ absl::StatusOr<std::string> CompileSerializedMlirToXlaHlo(
   mlir::DialectRegistry mlir_registry;
   RegisterDialects(mlir_registry);
   mlir::MLIRContext mlir_context(mlir_registry);
+  mlir_context.loadAllAvailableDialects();
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module;
 
   TF_RETURN_IF_ERROR(

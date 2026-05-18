@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/extract_callback.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/pack_inputs_pass.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
 #include "tensorflow/compiler/mlir/tfrt/utils/export.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
@@ -556,6 +557,7 @@ absl::Status IfrtServingExecutable::PopulateInvariantMetadata(
     const Tf2HloResult& tf2hlo_result,
     xla::ifrt::LoadedExecutableRef ifrt_executable,
     std::vector<std::unique_ptr<TfHostCallback>> host_callbacks,
+    absl::Span<const int64_t> pack_group_ids,
     CachedExecutableBundle& executable_bundle) {
   executable_bundle.ifrt_input_dtypes.reserve(
       tf2hlo_result.compile_metadata.args().size());
@@ -572,6 +574,29 @@ absl::Status IfrtServingExecutable::PopulateInvariantMetadata(
 
   TF_ASSIGN_OR_RETURN(auto parameter_layouts,
                       ifrt_executable->GetParameterLayouts());
+
+  int64_t num_logical = tf2hlo_result.compile_metadata.args().size();
+  int64_t num_packed_before = 0;
+  std::vector<int64_t> logical_to_physical(num_logical, -1);
+  for (int64_t i = 0; i < num_logical; ++i) {
+    bool is_packed = (static_cast<size_t>(i) < pack_group_ids.size()) &&
+                     (pack_group_ids[i] >= 0);
+    if (is_packed) {
+      num_packed_before++;
+    } else {
+      logical_to_physical[i] = i - num_packed_before;
+    }
+  }
+
+  int64_t num_unpacked_physical = num_logical - num_packed_before;
+  std::vector<int64_t> unique_gids;
+  for (auto gid : pack_group_ids) {
+    if (gid >= 0 && std::find(unique_gids.begin(), unique_gids.end(), gid) ==
+                        unique_gids.end()) {
+      unique_gids.push_back(gid);
+    }
+  }
+  std::sort(unique_gids.begin(), unique_gids.end());
 
   for (int i = 0; i < tf2hlo_result.compile_metadata.args().size(); ++i) {
     const auto& arg = tf2hlo_result.compile_metadata.args(i);
@@ -601,8 +626,24 @@ absl::Status IfrtServingExecutable::PopulateInvariantMetadata(
     // Create device shape with backend-optimized layout. The layouts from
     // `GetParameterLayouts()` are the physical formats expected by the
     // compiled program, which may include hardware-specific tiling or padding.
-    executable_bundle.xla_input_layouts.push_back(
-        xla::ifrt::PjRtLayout::Create(parameter_layouts[i]));
+    int64_t physical_idx = i;
+    bool is_packed = (static_cast<size_t>(i) < pack_group_ids.size()) &&
+                     (pack_group_ids[i] >= 0);
+    if (is_packed) {
+      int64_t gid = pack_group_ids[i];
+      auto it = std::find(unique_gids.begin(), unique_gids.end(), gid);
+      int64_t g = std::distance(unique_gids.begin(), it);
+      physical_idx = num_unpacked_physical + g;
+    } else {
+      physical_idx = logical_to_physical[i];
+    }
+
+    if (physical_idx >= 0 && physical_idx < parameter_layouts.size()) {
+      executable_bundle.xla_input_layouts.push_back(
+          xla::ifrt::PjRtLayout::Create(parameter_layouts[physical_idx]));
+    } else {
+      executable_bundle.xla_input_layouts.push_back(nullptr);
+    }
   }
 
   executable_bundle.ifrt_executable = std::move(ifrt_executable);
@@ -650,7 +691,8 @@ IfrtServingExecutable::CreateExecutableSynchronously(
     mlir::OwningOpRef<mlir::ModuleOp> module_copy,
     const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
     absl::Span<const DtypeAndShape> dtypes_and_shapes,
-    absl::Span<const int> variable_arg_indices) {
+    absl::Span<const int> variable_arg_indices,
+    absl::Span<const int64_t> pack_group_ids) {
   TF_ASSIGN_OR_RETURN(auto host_callback_modules,
                       GetHostCallbackModulesAndRemoveHostFuncs(*module_copy));
   if (VLOG_IS_ON(1)) {
@@ -702,6 +744,45 @@ IfrtServingExecutable::CreateExecutableSynchronously(
 
   if (VLOG_IS_ON(1)) {
     tensorflow::DumpMlirOpToFile("ifrt_after_layout_encoding_layout_mode",
+                                 mlir_hlo_module.get());
+  }
+
+  // If packing is enabled, execute the PackInputsPass on the hlo module.
+  std::vector<SliceInfo> slices;
+  int64_t offset = 0;
+  for (size_t i = 0; i < dtypes_and_shapes.size(); ++i) {
+    if (static_cast<size_t>(i) >= pack_group_ids.size() ||
+        pack_group_ids[i] != 0) {
+      continue;
+    }
+
+    const auto& dtype_and_shape = dtypes_and_shapes[i];
+    const auto& shape = dtype_and_shape.GetShapeForCompilation();
+    int64_t num_elements = shape.num_elements();
+    int64_t bitwidth = tensorflow::DataTypeSize(dtype_and_shape.dtype) * 8;
+    int64_t byte_size = num_elements * (bitwidth / 8);
+
+    // Align offset to 16-byte boundary
+    offset = (offset + 15) & ~15;
+
+    slices.push_back({.arg_index = static_cast<unsigned>(i),
+                      .start = offset,
+                      .size = byte_size});
+
+    offset += byte_size;
+  }
+
+  if (!slices.empty()) {
+    mlir::PassManager pm(mlir_hlo_module->getContext());
+    pm.addPass(CreatePackInputsPass(slices));
+    if (mlir::failed(pm.run(mlir_hlo_module.get()))) {
+      return absl::InternalError(
+          "Failed to run PackInputsPass on stablehlo module");
+    }
+  }
+
+  if (VLOG_IS_ON(1) && !slices.empty()) {
+    tensorflow::DumpMlirOpToFile("ifrt_after_input_packing",
                                  mlir_hlo_module.get());
   }
 
@@ -801,7 +882,7 @@ IfrtServingExecutable::CreateExecutableSynchronously(
 
   TF_RETURN_IF_ERROR(PopulateInvariantMetadata(
       tf2hlo_result, std::move(ifrt_executable), std::move(tf_host_callbacks),
-      *executable_bundle));
+      pack_group_ids, *executable_bundle));
 
   return executable_bundle;
 }
@@ -848,8 +929,8 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
     absl::Span<const tensorflow::Tensor> inputs,
     absl::Span<const DtypeAndShape> dtypes_and_shapes,
     absl::Span<const int> variable_arg_indices,
+    absl::Span<const int64_t> pack_group_ids,
     const xla::ifrt::DeviceListRef& device_list) {
-
   tsl::Promise<SharedCachedExecutableBundle> promise;
   tsl::Future<SharedCachedExecutableBundle> future;
   mlir::OwningOpRef<mlir::ModuleOp> module_copy;
@@ -857,7 +938,8 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
   {
     absl::MutexLock lock(mutex_);
 
-    const auto it = executable_bundles_.find(KeyView{dtypes_and_shapes});
+    const auto it =
+        executable_bundles_.find(KeyView{dtypes_and_shapes, pack_group_ids});
     if (it != executable_bundles_.end()) {
       return it->second;
     }
@@ -882,7 +964,9 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
     for (const auto& dtype_and_shape : dtypes_and_shapes) {
       input_shapes.push_back(dtype_and_shape.GetShapeForCompilation());
     }
-    Key key = {.input_shapes = std::move(input_shapes)};
+    Key key = {.input_shapes = std::move(input_shapes),
+               .pack_group_ids = std::vector<int64_t>(pack_group_ids.begin(),
+                                                      pack_group_ids.end())};
 
     executable_bundles_.emplace(std::move(key), future);
     // Clone the module to avoid race condition between Freeze() and
@@ -907,7 +991,8 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
 
   absl::StatusOr<SharedCachedExecutableBundle> executable_bundle =
       CreateExecutableSynchronously(std::move(module_copy), compile_metadata,
-                                    dtypes_and_shapes, variable_arg_indices);
+                                    dtypes_and_shapes, variable_arg_indices,
+                                    pack_group_ids);
 
   if (!executable_bundle.ok()) {
     promise.Set(executable_bundle.status());
@@ -950,7 +1035,9 @@ bool IfrtServingExecutable::UsePortableExecution() {
 
 absl::StatusOr<IfrtServingExecutable::ExecutionInfo>
 IfrtServingExecutable::ExecuteCore(absl::Span<const tensorflow::Tensor> inputs,
-                                   absl::Span<const int> variable_arg_indices) {
+                                   absl::Span<const int> variable_arg_indices,
+                                   absl::Span<const int64_t> pack_group_ids,
+                                   absl::Span<const int64_t> pack_offsets) {
   tsl::profiler::TraceMe traceme("IfrtServingExecutable::Execute");
   for (int i = 1; i < variable_arg_indices.size(); i++) {
     if (variable_arg_indices[i] <= variable_arg_indices[i - 1]) {
@@ -1004,7 +1091,7 @@ IfrtServingExecutable::ExecuteCore(absl::Span<const tensorflow::Tensor> inputs,
   TF_ASSIGN_OR_RETURN(
       tsl::Future<SharedCachedExecutableBundle> executable_bundle_future,
       LookUpOrCreateExecutable(inputs, dtypes_and_shapes, variable_arg_indices,
-                               device_list));
+                               pack_group_ids, device_list));
   TF_ASSIGN_OR_RETURN(SharedCachedExecutableBundle executable_bundle,
                       executable_bundle_future.Await());
 
@@ -1054,9 +1141,6 @@ IfrtServingExecutable::ExecuteCore(absl::Span<const tensorflow::Tensor> inputs,
       variable_args.push_back((*it).second.array);
       variable_arg_index++;
     } else {
-      // If the input shape is not the same as the shape after Tf2Hlo
-      // compilation, reshape the input tensor to the expected shape. Note that
-      // the tensor assignment here won't create a copy.
       tensorflow::Tensor reshaped = inputs[i];
       const tensorflow::TensorShape& reshaped_shape =
           executable_bundle->reshaped_input_tensors[i];
@@ -1074,7 +1158,6 @@ IfrtServingExecutable::ExecuteCore(absl::Span<const tensorflow::Tensor> inputs,
       xla::ifrt::ShardingRef ifrt_sharding =
           executable_bundle->arg_ifrt_shardings[i];
       if (UsePortableExecution()) {
-        // Portable execution is only supported for single-device programs.
         auto sharding_it =
             executable_bundle->portable_single_device_shardings.find(
                 device_list->devices().front()->Id());
@@ -1086,6 +1169,11 @@ IfrtServingExecutable::ExecuteCore(absl::Span<const tensorflow::Tensor> inputs,
         }
         ifrt_sharding = sharding_it->second;
       }
+      int64_t p_group_id = (static_cast<size_t>(i) < pack_group_ids.size())
+                               ? pack_group_ids[i]
+                               : -1;
+      int64_t p_offset =
+          (static_cast<size_t>(i) < pack_offsets.size()) ? pack_offsets[i] : 0;
       input_handles.push_back(
           {.tensor = reshaped,
            .ifrt_dtype = executable_bundle->ifrt_input_dtypes[i],
@@ -1094,7 +1182,9 @@ IfrtServingExecutable::ExecuteCore(absl::Span<const tensorflow::Tensor> inputs,
            .device_list = device_list,
            .ifrt_sharding = std::move(ifrt_sharding),
            .xla_input_layout = std::move(layout_ref),
-           .byte_strides = executable_bundle->byte_strides[i]});
+           .byte_strides = executable_bundle->byte_strides[i],
+           .pack_group_id = p_group_id,
+           .pack_offset = p_offset});
       input_handle_result_indices.push_back(i);
     }
   }
@@ -1104,24 +1194,99 @@ IfrtServingExecutable::ExecuteCore(absl::Span<const tensorflow::Tensor> inputs,
                           absl::MakeSpan(input_handles), thread_pool_));
   TF_RETURN_IF_ERROR(user_inputs_h2d_transfer_executor->RunH2DTransfers());
 
+  // Map logical arguments to physical parameters
   std::vector<xla::ifrt::ArrayRef> transfer_result;
-  transfer_result.resize(inputs.size());
-
-  for (int i = 0; i < variable_args.size(); ++i) {
-    TF_ASSIGN_OR_RETURN(auto array_ref, variable_args[i].Await());
-    transfer_result[variable_arg_indices[i]] = std::move(array_ref);
+  bool is_packing_enabled = false;
+  for (auto gid : pack_group_ids) {
+    if (gid >= 0) {
+      is_packing_enabled = true;
+      break;
+    }
   }
 
-  TF_ASSIGN_OR_RETURN(auto input_arrays, input_futures.Await());
-  if (input_arrays.size() != input_handles.size()) {
-    return absl::InternalError(absl::StrCat("Expected ", input_handles.size(),
-                                            " input arrays but got ",
-                                            input_arrays.size()));
-  }
+  if (!is_packing_enabled) {
+    transfer_result.resize(inputs.size());
 
-  for (int i = 0; i < input_arrays.size(); ++i) {
-    transfer_result[input_handle_result_indices[i]] =
-        std::move(input_arrays[i]);
+    for (int i = 0; i < variable_args.size(); ++i) {
+      TF_ASSIGN_OR_RETURN(auto array_ref, variable_args[i].Await());
+      transfer_result[variable_arg_indices[i]] = std::move(array_ref);
+    }
+
+    TF_ASSIGN_OR_RETURN(auto input_arrays, input_futures.Await());
+    if (input_arrays.size() != input_handles.size()) {
+      return absl::InternalError(absl::StrCat("Expected ", input_handles.size(),
+                                              " input arrays but got ",
+                                              input_arrays.size()));
+    }
+    for (int i = 0; i < input_arrays.size(); ++i) {
+      transfer_result[input_handle_result_indices[i]] =
+          std::move(input_arrays[i]);
+    }
+  } else {
+    int64_t num_logical = inputs.size();
+    std::vector<int64_t> logical_to_physical(num_logical, -1);
+    int64_t num_packed_before = 0;
+
+    for (int64_t i = 0; i < num_logical; ++i) {
+      bool is_packed = (static_cast<size_t>(i) < pack_group_ids.size()) &&
+                       (pack_group_ids[i] >= 0);
+      if (is_packed) {
+        num_packed_before++;
+      } else {
+        logical_to_physical[i] = i - num_packed_before;
+      }
+    }
+
+    int64_t num_unpacked_physical = num_logical - num_packed_before;
+    std::vector<int64_t> unique_gids;
+    for (auto gid : pack_group_ids) {
+      if (gid >= 0 && std::find(unique_gids.begin(), unique_gids.end(), gid) ==
+                          unique_gids.end()) {
+        unique_gids.push_back(gid);
+      }
+    }
+    std::sort(unique_gids.begin(), unique_gids.end());
+    int64_t num_unique_groups = unique_gids.size();
+    int64_t total_physical = num_unpacked_physical + num_unique_groups;
+
+    transfer_result.resize(total_physical);
+
+    for (size_t i = 0; i < variable_args.size(); ++i) {
+      TF_ASSIGN_OR_RETURN(auto array_ref, variable_args[i].Await());
+      int64_t logical_idx = variable_arg_indices[i];
+      int64_t physical_idx = logical_to_physical[logical_idx];
+      if (physical_idx >= 0) {
+        transfer_result[physical_idx] = std::move(array_ref);
+      }
+    }
+
+    TF_ASSIGN_OR_RETURN(auto input_arrays, input_futures.Await());
+
+    int64_t next_input_array_idx = 0;
+
+    // Individual unpacked inputs:
+    for (size_t i = 0; i < input_handles.size(); ++i) {
+      const auto& handle = input_handles[i];
+      if (handle.pack_group_id == -1) {
+        int64_t logical_idx = input_handle_result_indices[i];
+        int64_t physical_idx = logical_to_physical[logical_idx];
+        if (physical_idx >= 0 &&
+            static_cast<size_t>(next_input_array_idx) < input_arrays.size()) {
+          transfer_result[physical_idx] =
+              std::move(input_arrays[next_input_array_idx++]);
+        }
+      }
+    }
+
+    // Packed group parameters (appended at the end):
+    for (size_t g = 0; g < unique_gids.size(); ++g) {
+      int64_t physical_idx = num_unpacked_physical + g;
+      if (physical_idx < total_physical &&
+          static_cast<size_t>(next_input_array_idx) < input_arrays.size()) {
+        transfer_result[physical_idx] =
+            std::move(input_arrays[next_input_array_idx++]);
+      }
+    }
   }
 
   VLOG(2) << "Start Execution";
@@ -1156,11 +1321,326 @@ IfrtServingExecutable::ExecuteCore(absl::Span<const tensorflow::Tensor> inputs,
   };
 }
 
+absl::StatusOr<tsl::Future<IfrtServingExecutable::ExecutionInfo>>
+IfrtServingExecutable::ExecuteCoreAsync(
+    absl::Span<const tensorflow::Tensor> inputs,
+    absl::Span<const int> variable_arg_indices,
+    absl::Span<const int64_t> pack_group_ids,
+    absl::Span<const int64_t> pack_offsets) {
+  tsl::profiler::TraceMe traceme("IfrtServingExecutable::ExecuteAsync");
+  for (int i = 1; i < variable_arg_indices.size(); i++) {
+    if (variable_arg_indices[i] <= variable_arg_indices[i - 1]) {
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Expected variable_arg_indices in ascending order. But subsequence "
+          "starting at ",
+          i - 1, ": (", variable_arg_indices[i - 1], ", ",
+          variable_arg_indices[i], ")", " is not in ascending order"));
+    }
+  }
+
+  if (!variable_arg_indices.empty() &&
+      inputs.size() <= variable_arg_indices.back()) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "Expected at most ", inputs.size(), " inputs, but got up to ",
+        variable_arg_indices.back(), " variables."));
+  }
+
+  // Ensure the variable tensor holds a valid key: a scalar string tensor.
+  for (const int i : variable_arg_indices) {
+    if (inputs[i].dtype() != tensorflow::DT_STRING ||
+        !tensorflow::TensorShapeUtils::IsScalar(inputs[i].shape())) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Expected a scalar tensor as loaded variable array key, "
+                       "but got type ",
+                       inputs[i].dtype(), " and shape ",
+                       inputs[i].shape().DebugString(), " at index ", i));
+    }
+  }
+
+  TF_ASSIGN_OR_RETURN(StaticShapeMap static_shapes_map,
+                      GetStaticShapesFromInputs(inputs, static_shape_arg_map_));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<DtypeAndShape> dtypes_and_shapes,
+      BuildDtypeAndShape(inputs, variable_arg_indices, static_shapes_map,
+                         ifrt_restore_tensor_registry_));
+
+  // `device_reservation` should be alive before the end of the execution.
+  tsl::DeviceReservation device_reservation(kNoCoreSelectedIndex, nullptr);
+  xla::ifrt::DeviceListRef device_list;
+  if (UsePortableExecution()) {
+    device_reservation =
+        ifrt_serving_core_selector_->ReserveDevice(program_id_);
+    TF_ASSIGN_OR_RETURN(xla::ifrt::Device * device,
+                        ifrt_client_->LookupDevice(xla::ifrt::DeviceId(
+                            device_reservation.device_index())));
+    TF_ASSIGN_OR_RETURN(device_list, ifrt_client_->MakeDeviceList({device}));
+  } else {
+    device_list = assigned_device_list_;
+  }
+  TF_ASSIGN_OR_RETURN(
+      tsl::Future<SharedCachedExecutableBundle> executable_bundle_future,
+      LookUpOrCreateExecutable(inputs, dtypes_and_shapes, variable_arg_indices,
+                               pack_group_ids, device_list));
+  TF_ASSIGN_OR_RETURN(SharedCachedExecutableBundle executable_bundle,
+                      executable_bundle_future.Await());
+
+  if (executable_bundle->compile_metadata.args().size() !=
+      dtypes_and_shapes.size()) {
+    return absl::InternalError(absl::StrCat(
+        "Expected ", executable_bundle->compile_metadata.args().size(),
+        " but got ", dtypes_and_shapes.size(), " arguments"));
+  }
+
+  // Determine the effective device IDs for this execution.
+  std::vector<int> portable_device_ids;
+  if (UsePortableExecution()) {
+    portable_device_ids.reserve(device_list->size());
+    for (xla::ifrt::Device* device : device_list->devices()) {
+      portable_device_ids.push_back(device->Id().value());
+    }
+  }
+  absl::Span<const int> effective_device_ids =
+      UsePortableExecution() ? portable_device_ids : assigned_device_ids_;
+  int variable_arg_index = 0;
+  std::vector<tsl::Future<xla::ifrt::ArrayRef>> variable_args;
+  variable_args.reserve(variable_arg_indices.size());
+
+  std::vector<InputHandle> input_handles;
+  std::vector<int> input_handle_result_indices;
+  input_handles.reserve(inputs.size() - variable_arg_indices.size());
+  input_handle_result_indices.reserve(inputs.size() -
+                                      variable_arg_indices.size());
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<H2DTransferExecutor> user_inputs_h2d_transfer_executor,
+      h2d_transfer_executor_factory_->CreateH2DTransferExecutor(*ifrt_client_));
+
+  for (int i = 0; i < inputs.size(); i++) {
+    if (variable_arg_index < variable_arg_indices.size() &&
+        i == variable_arg_indices[variable_arg_index]) {
+      IfrtLoadedVariableRegistry::KeyView key_view(
+          effective_device_ids, inputs[i].scalar<tsl::tstring>()(),
+          executable_bundle->arg_hlo_shardings[i],
+          executable_bundle->xla_input_shapes[i]);
+      auto it = executable_bundle->variable_arrays.find(key_view);
+      if (it == executable_bundle->variable_arrays.end()) {
+        return absl::InternalError(absl::StrCat(
+            "Variable array not found for key: ", key_view.input_name));
+      }
+      variable_args.push_back((*it).second.array);
+      variable_arg_index++;
+    } else {
+      tensorflow::Tensor reshaped = inputs[i];
+      const tensorflow::TensorShape& reshaped_shape =
+          executable_bundle->reshaped_input_tensors[i];
+      if (reshaped.shape() != reshaped_shape) {
+        if (dtypes_and_shapes[i].static_shape.has_value()) {
+          TF_ASSIGN_OR_RETURN(reshaped, MaybeReshapeInputForStaticShape(
+                                            reshaped, reshaped_shape));
+        } else {
+          if (!reshaped.CopyFrom(inputs[i], reshaped_shape)) {
+            return absl::InternalError("Failed to reshape tensor");
+          }
+        }
+      }
+      xla::ifrt::LayoutRef layout_ref = executable_bundle->xla_input_layouts[i];
+      xla::ifrt::ShardingRef ifrt_sharding =
+          executable_bundle->arg_ifrt_shardings[i];
+      if (UsePortableExecution()) {
+        auto sharding_it =
+            executable_bundle->portable_single_device_shardings.find(
+                device_list->devices().front()->Id());
+        if (sharding_it ==
+            executable_bundle->portable_single_device_shardings.end()) {
+          return absl::InternalError(absl::StrCat(
+              "Portable single device sharding not found for device id: ",
+              device_list->devices().front()->Id()));
+        }
+        ifrt_sharding = sharding_it->second;
+      }
+      int64_t p_group_id = (static_cast<size_t>(i) < pack_group_ids.size())
+                               ? pack_group_ids[i]
+                               : -1;
+      int64_t p_offset =
+          (static_cast<size_t>(i) < pack_offsets.size()) ? pack_offsets[i] : 0;
+      input_handles.push_back(
+          {.tensor = reshaped,
+           .ifrt_dtype = executable_bundle->ifrt_input_dtypes[i],
+           .ifrt_shape = executable_bundle->ifrt_input_shapes[i],
+           .input_xla_shape = executable_bundle->xla_input_shapes[i],
+           .device_list = device_list,
+           .ifrt_sharding = std::move(ifrt_sharding),
+           .xla_input_layout = std::move(layout_ref),
+           .byte_strides = executable_bundle->byte_strides[i],
+           .pack_group_id = p_group_id,
+           .pack_offset = p_offset});
+      input_handle_result_indices.push_back(i);
+    }
+  }
+
+  TF_ASSIGN_OR_RETURN(auto input_futures,
+                      user_inputs_h2d_transfer_executor->ScheduledH2DTransfers(
+                          absl::MakeSpan(input_handles), thread_pool_));
+  TF_RETURN_IF_ERROR(user_inputs_h2d_transfer_executor->RunH2DTransfers());
+
+  // We currently Await variable_args as they are typically already ready.
+  std::vector<xla::ifrt::ArrayRef> variable_arrays_ready;
+  variable_arrays_ready.resize(variable_args.size());
+  for (int i = 0; i < variable_args.size(); ++i) {
+    TF_ASSIGN_OR_RETURN(variable_arrays_ready[i], variable_args[i].Await());
+  }
+
+  // Map over the H2D input_futures to execute asynchronously.
+  return input_futures.Map(
+      [executable_bundle = std::move(executable_bundle),
+       device_list = std::move(device_list),
+       device_reservation = std::make_shared<tsl::DeviceReservation>(
+           std::move(device_reservation)),
+       variable_arrays_ready = std::move(variable_arrays_ready),
+       variable_arg_indices = std::vector<int>(variable_arg_indices.begin(),
+                                               variable_arg_indices.end()),
+       input_handle_result_indices = std::move(input_handle_result_indices),
+       input_handles = std::move(input_handles),
+       pack_group_ids =
+           std::vector<int64_t>(pack_group_ids.begin(), pack_group_ids.end()),
+       pack_offsets =
+           std::vector<int64_t>(pack_offsets.begin(), pack_offsets.end()),
+       num_inputs = inputs.size(), portable_execution = UsePortableExecution()](
+          std::vector<xla::ifrt::ArrayRef> input_arrays)
+          -> absl::StatusOr<ExecutionInfo> {
+        std::vector<xla::ifrt::ArrayRef> transfer_result;
+        bool is_packing_enabled = false;
+        for (auto gid : pack_group_ids) {
+          if (gid >= 0) {
+            is_packing_enabled = true;
+            break;
+          }
+        }
+
+        if (!is_packing_enabled) {
+          transfer_result.resize(num_inputs);
+
+          for (size_t i = 0; i < variable_arrays_ready.size(); ++i) {
+            transfer_result[variable_arg_indices[i]] =
+                std::move(variable_arrays_ready[i]);
+          }
+
+          if (input_arrays.size() != input_handle_result_indices.size()) {
+            return absl::InternalError(
+                absl::StrCat("Expected ", input_handle_result_indices.size(),
+                             " input arrays but got ", input_arrays.size()));
+          }
+
+          for (size_t i = 0; i < input_arrays.size(); ++i) {
+            transfer_result[input_handle_result_indices[i]] =
+                std::move(input_arrays[i]);
+          }
+        } else {
+          int64_t num_logical = num_inputs;
+          std::vector<int64_t> logical_to_physical(num_logical, -1);
+          int64_t num_packed_before = 0;
+
+          for (int64_t i = 0; i < num_logical; ++i) {
+            bool is_packed = (static_cast<size_t>(i) < pack_group_ids.size()) &&
+                             (pack_group_ids[i] >= 0);
+            if (is_packed) {
+              num_packed_before++;
+            } else {
+              logical_to_physical[i] = i - num_packed_before;
+            }
+          }
+
+          int64_t num_unpacked_physical = num_logical - num_packed_before;
+          std::vector<int64_t> unique_gids;
+          for (auto gid : pack_group_ids) {
+            if (gid >= 0 && std::find(unique_gids.begin(), unique_gids.end(),
+                                      gid) == unique_gids.end()) {
+              unique_gids.push_back(gid);
+            }
+          }
+          std::sort(unique_gids.begin(), unique_gids.end());
+          int64_t num_unique_groups = unique_gids.size();
+          int64_t total_physical = num_unpacked_physical + num_unique_groups;
+
+          transfer_result.resize(total_physical);
+
+          for (size_t i = 0; i < variable_arrays_ready.size(); ++i) {
+            int64_t logical_idx = variable_arg_indices[i];
+            int64_t physical_idx = logical_to_physical[logical_idx];
+            if (physical_idx >= 0) {
+              transfer_result[physical_idx] =
+                  std::move(variable_arrays_ready[i]);
+            }
+          }
+
+          int64_t next_input_array_idx = 0;
+
+          // Individual unpacked inputs:
+          for (size_t i = 0; i < input_handles.size(); ++i) {
+            const auto& handle = input_handles[i];
+            if (handle.pack_group_id == -1) {
+              int64_t logical_idx = input_handle_result_indices[i];
+              int64_t physical_idx = logical_to_physical[logical_idx];
+              if (physical_idx >= 0 &&
+                  static_cast<size_t>(next_input_array_idx) <
+                      input_arrays.size()) {
+                transfer_result[physical_idx] =
+                    std::move(input_arrays[next_input_array_idx++]);
+              }
+            }
+          }
+
+          // Packed group parameters (appended at the end):
+          for (size_t g = 0; g < unique_gids.size(); ++g) {
+            int64_t physical_idx = num_unpacked_physical + g;
+            if (physical_idx < total_physical &&
+                static_cast<size_t>(next_input_array_idx) <
+                    input_arrays.size()) {
+              transfer_result[physical_idx] =
+                  std::move(input_arrays[next_input_array_idx++]);
+            }
+          }
+        }
+
+        VLOG(2) << "Start Execution";
+
+        std::optional<xla::ifrt::DeviceListRef> execution_device_list;
+        if (portable_execution) {
+          execution_device_list = device_list;
+        }
+        tsl::profiler::TraceMe traceme("Execute");
+        TF_ASSIGN_OR_RETURN(
+            xla::ifrt::LoadedExecutable::ExecuteResult execution_result,
+            executable_bundle->ifrt_executable->Execute(
+                absl::MakeSpan(transfer_result),
+                /*options=*/{.fill_status = true},
+                std::move(execution_device_list)));
+
+        if (executable_bundle->compile_metadata.retvals().size() !=
+            execution_result.outputs.size()) {
+          return absl::InternalError(absl::StrCat(
+              "Expect ", executable_bundle->compile_metadata.retvals().size(),
+              " but got ", execution_result.outputs.size(), " outputs"));
+        }
+
+        return ExecutionInfo{
+            .execution_result = std::move(execution_result),
+            .executable_bundle = std::move(executable_bundle),
+            .device_list = std::move(device_list),
+            .transfer_result = std::move(transfer_result),
+            .device_reservation = std::move(device_reservation),
+        };
+      });
+}
+
 absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
     absl::Span<const tensorflow::Tensor> inputs,
-    absl::Span<const int> variable_arg_indices) {
-  TF_ASSIGN_OR_RETURN(ExecutionInfo exec_info,
-                      ExecuteCore(inputs, variable_arg_indices));
+    absl::Span<const int> variable_arg_indices,
+    absl::Span<const int64_t> pack_group_ids,
+    absl::Span<const int64_t> pack_offsets) {
+  TF_ASSIGN_OR_RETURN(
+      ExecutionInfo exec_info,
+      ExecuteCore(inputs, variable_arg_indices, pack_group_ids, pack_offsets));
 
   TF_RETURN_IF_ERROR(exec_info.execution_result.status.Await());
 
@@ -1186,11 +1666,13 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
 }
 
 absl::StatusOr<tsl::Future<std::vector<tensorflow::Tensor>>>
-IfrtServingExecutable::ExecuteAsync(
-    absl::Span<const tensorflow::Tensor> inputs,
-    absl::Span<const int> variable_arg_indices) {
-  TF_ASSIGN_OR_RETURN(ExecutionInfo exec_info,
-                      ExecuteCore(inputs, variable_arg_indices));
+IfrtServingExecutable::ExecuteAsync(absl::Span<const tensorflow::Tensor> inputs,
+                                    absl::Span<const int> variable_arg_indices,
+                                    absl::Span<const int64_t> pack_group_ids,
+                                    absl::Span<const int64_t> pack_offsets) {
+  TF_ASSIGN_OR_RETURN(
+      ExecutionInfo exec_info,
+      ExecuteCore(inputs, variable_arg_indices, pack_group_ids, pack_offsets));
 
   std::vector<tsl::Future<tensorflow::Tensor>> output_futures;
   output_futures.reserve(exec_info.execution_result.outputs.size());

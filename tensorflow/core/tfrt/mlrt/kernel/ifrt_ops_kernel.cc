@@ -401,8 +401,20 @@ void MlrtAsyncIfrtCallKernel::Invoke() {
   std::vector<int> var_indices(variable_arg_indices().begin(),
                                variable_arg_indices().end());
 
+  std::vector<int64_t> pack_group_ids;
+  std::vector<int64_t> pack_offsets;
+  if (attributes().size() > 2) {
+    auto gids = attributes().GetAs<mlrt::bc::Vector<int64_t>>(2);
+    pack_group_ids.assign(gids.begin(), gids.end());
+  }
+  if (attributes().size() > 3) {
+    auto offsets = attributes().GetAs<mlrt::bc::Vector<int64_t>>(3);
+    pack_offsets.assign(offsets.begin(), offsets.end());
+  }
+
   absl::StatusOr<tsl::Future<std::vector<tensorflow::Tensor>>> result_future =
-      executable_->ExecuteAsync(input_tensors, var_indices);
+      executable_->ExecuteAsync(input_tensors, var_indices, pack_group_ids,
+                                pack_offsets);
   if (!result_future.ok()) {
     execution_context().Fail(result_future.status());
     return;

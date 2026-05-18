@@ -70,6 +70,8 @@ void AddClusterToIfrtRuntimeOpsPassPipeline(
     pm.addPass(CreatePropagateStaticShapesPass());
   }
 
+  pm.addPass(CreateIfrtPackInputsPlannerPass(16384));
+
   // After device program is extracted, we can clean up device attributes from
   // all ops.
   pm.addNestedPass<mlir::func::FuncOp>(CreateTfDeviceCleanupPass());

@@ -156,3 +156,31 @@ def TfDeviceCleanupPass : Pass<"tf-device-cleanup", "mlir::func::FuncOp"> {
   let constructor = "CreateTfDeviceCleanupPass()";
 }
 
+def IfrtPackInputsPlannerPass : Pass<"ifrt-pack-inputs-planner", "mlir::ModuleOp"> {
+  let summary = "Plans input tensor packing for serving by stamping group ID attributes";
+
+  let description = [{
+    This pass walks tf.IfrtCall and tf.AsyncIfrtCall operations, identifies small, 
+    statically shaped host-to-device input tensors, and assigns them logical pack 
+    group IDs via the __ifrt_pack_group_ids attribute.
+  }];
+
+  let constructor = "CreateIfrtPackInputsPlannerPass()";
+  let options = [
+    Option<"size_threshold_bytes", "size-threshold-bytes", "int", "16384",
+           "The size threshold in bytes below which an input is candidates for packing.">
+  ];
+}
+
+def IfrtPackInputsOrchestratorPass : Pass<"ifrt-pack-inputs-orchestrator", "mlir::ModuleOp"> {
+  let summary = "Orchestrates IFRT pack-inputs signature rewriting & stamps offset attributes";
+
+  let description = [{
+    This pass reads __ifrt_pack_group_ids, computes physical byte layouts and offset 
+    alignments, invokes the leaf PackInputsPass to rewrite stablehlo callee signatures, 
+    and stamps __ifrt_pack_offsets attributes on callers.
+  }];
+
+  let constructor = "CreateIfrtPackInputsOrchestratorPass()";
+}
+

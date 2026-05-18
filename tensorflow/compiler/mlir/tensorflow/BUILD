@@ -532,6 +532,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -705,7 +706,6 @@ cc_library(
         "utils/export_utils.h",
     ],
     deps = [
-        ":attribute_utils",
         ":convert_tensor",
         ":convert_type",
         ":location_utils",
@@ -713,7 +713,6 @@ cc_library(
         ":tensorflow",
         ":tensorflow_attributes",
         ":tensorflow_types",
-        "//tensorflow/compiler/mlir/tensorflow:xla_sharding_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -727,10 +726,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@xla//xla:status_macros",
-        "@xla//xla:xla_data_proto_cc",
-        "@xla//xla/hlo/builder:sharding_builder",
-        "@xla//xla/hlo/ir:hlo",
-        "@xla//xla/hlo/parser:hlo_parser",
     ],
 )
 

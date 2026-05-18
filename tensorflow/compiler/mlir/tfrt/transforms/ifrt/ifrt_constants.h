@@ -34,6 +34,13 @@ inline constexpr absl::string_view kVariableArrayNameAttr =
 inline constexpr absl::string_view kVariableShardingConfigTextAttr =
     "__variable_sharding_config_text";
 
+// Attribute of pack group IDs.
+inline constexpr absl::string_view kIfrtPackGroupIdsAttr =
+    "__ifrt_pack_group_ids";
+
+// Attribute of pack offsets.
+inline constexpr absl::string_view kIfrtPackOffsetsAttr = "__ifrt_pack_offsets";
+
 }  // namespace ifrt_serving
 }  // namespace tensorflow
 
