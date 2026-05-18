@@ -934,29 +934,17 @@ xla_test(
     name = "cudnn_norm_rewriter_test",
     srcs = ["cudnn_norm_rewriter_test.cc"],
     backends = ["gpu"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    tags = ["cuda-only"],
     deps = [
-        ":cudnn_norm_rewriter",
         "//xla:error_spec",
         "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:filecheck",
-        "//xla/service:platform_util",
-        "//xla/service/gpu:cublas_cudnn",
         "//xla/stream_executor:device_description",
-        "//xla/stream_executor:platform",
-        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
-        "//xla/tsl/platform:status_macros",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-    ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_cuda//cuda:cudnn_header",
-    ]),
+    ],
 )
 
 cc_library(

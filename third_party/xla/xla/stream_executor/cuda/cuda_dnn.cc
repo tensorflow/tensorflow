@@ -80,19 +80,10 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/library_types.h"
 #include "third_party/gpus/cudnn/cudnn_version.h"
 
-#if CUDNN_VERSION >= 90000
 #include "third_party/gpus/cudnn/cudnn_adv.h"
 #include "third_party/gpus/cudnn/cudnn_cnn.h"
 #include "third_party/gpus/cudnn/cudnn_ops.h"
 #include "third_party/gpus/cudnn/cudnn_graph.h"
-#else
-#include "third_party/gpus/cudnn/cudnn_adv_infer.h"
-#include "third_party/gpus/cudnn/cudnn_adv_train.h"
-#include "third_party/gpus/cudnn/cudnn_cnn_infer.h"
-#include "third_party/gpus/cudnn/cudnn_cnn_train.h"
-#include "third_party/gpus/cudnn/cudnn_ops_infer.h"
-#include "third_party/gpus/cudnn/cudnn_ops_train.h"
-#endif
 
 #include "third_party/cudnn_frontend/include/cudnn_frontend.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend_utils.h"
@@ -122,7 +113,8 @@ namespace gpu {
 
 namespace {
 
-static_assert(CUDNN_VERSION >= 8900, "cuDNN needs to be version 8.9 or higher");
+static_assert(CUDNN_VERSION >= 90000,
+              "cuDNN needs to be version 9.0 or higher");
 
 // Exits the program if 'expr' doesn't return CUDNN_STATUS_SUCCESS.
 #define CHECK_CUDNN_OK(expr) CHECK_EQ(expr, CUDNN_STATUS_SUCCESS)
@@ -354,38 +346,20 @@ cudnnRNNAlgo_t ToCudnnRNNAlgo(std::optional<dnn::AlgorithmDesc> algorithm) {
 
 enum class PreloadCudnnType { ConvFwd, ConvBwdFilter, ConvBwdData, Rnn };
 
-// Preload sub libs for cudnn 8.0.4+ to make sure that the loading time isn't
+// Preload sub libs for cudnn to make sure that the loading time isn't
 // measured in the autotuning.
 void PreloadCudnnSubLibs(PreloadCudnnType type) {
   switch (type) {
     case PreloadCudnnType::ConvBwdFilter:
-    case PreloadCudnnType::ConvBwdData: {
-#if CUDNN_VERSION < 90000
-      cudnnOpsTrainVersionCheck();
-      cudnnCnnTrainVersionCheck();
-#endif  // CUDNN_VERSION < 90000
-      [[clang::fallthrough]];
-    }
+    case PreloadCudnnType::ConvBwdData:
     case PreloadCudnnType::ConvFwd: {
-#if CUDNN_VERSION >= 90000
       cudnnGraphVersionCheck();
       cudnnOpsVersionCheck();
-#else
-      cudnnOpsInferVersionCheck();
-      cudnnCnnInferVersionCheck();
-#endif  // CUDNN_VERSION >= 90000
       break;
     }
     case PreloadCudnnType::Rnn: {
-#if CUDNN_VERSION >= 90000
       cudnnOpsVersionCheck();
       cudnnAdvVersionCheck();
-#else
-      cudnnOpsInferVersionCheck();
-      cudnnAdvInferVersionCheck();
-      cudnnOpsTrainVersionCheck();
-      cudnnAdvTrainVersionCheck();
-#endif  // CUDNN_VERSION >= 90000
       break;
     }
   }
@@ -1861,25 +1835,8 @@ absl::Status CreateRnnTempSpace(
         /*workSpaceSize=*/&workspace_size_in_bytes,
         /*reserveSpaceSize=*/&reserve_space_size_in_bytes));
   } else {
-#if CUDNN_VERSION >= 90000
     return absl::InternalError(
         "Sequence lengths for RNN are required from CUDNN 9.0+");
-#else
-    RETURN_IF_CUDNN_ERROR(cudnnGetRNNWorkspaceSize(
-        /*handle=*/cudnn.handle(),
-        /*rnnDesc=*/rnn_desc.handle(),
-        /*seqLength=*/input_desc.max_seq_length(),
-        /*xDesc=*/input_desc.handles(),
-        /*sizeInBytes=*/&workspace_size_in_bytes));
-    if (is_fwd_training) {
-      RETURN_IF_CUDNN_ERROR(cudnnGetRNNTrainingReserveSize(
-          /*handle=*/cudnn.handle(),
-          /*rnnDesc=*/rnn_desc.handle(),
-          /*seqLength=*/model_dims.max_seq_length,
-          /*xDesc=*/input_desc.handles(),
-          /*sizeInBytes=*/&reserve_space_size_in_bytes));
-    }
-#endif  // CUDNN_VERSION >= 90000
   }
 
   if (workspace_size_in_bytes > 0) {

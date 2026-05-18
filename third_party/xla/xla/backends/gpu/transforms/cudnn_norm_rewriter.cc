@@ -854,12 +854,6 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
                 NormFactor(&norm_factor, &x, &variance, &expectation, &epsilon),
                 m::Broadcast(&broadcast_scale, m::Op(&scale)),
                 m::Broadcast(&broadcast_bias, m::Op(&bias))))) {
-#if CUDNN_VERSION < 8905
-      // Layer norm kernels are available with cuDNN 8.9.5 and above.
-      VLOG(1) << "Layer norm Custom Calls require cuDNN 8.9.5.";
-      return absl::OkStatus();
-#endif  // CUDNN_VERSION < 8905
-
       if (!instr->GetModule()
                ->config()
                .debug_options()
