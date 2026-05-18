@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/eager/eager_service_impl.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -79,7 +80,18 @@ absl::Status GetNumRetvals(
             absl::StrCat("Unable to find number_attr ",
                          output_arg.number_attr(), " for Op: ", op_name));
       }
-      *num_retvals += iter->second.i();
+      const int64_t increment = iter->second.i();
+      if (increment < 0) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Attr ", output_arg.number_attr(),
+                         " must be non-negative for Op: ", op_name));
+      }
+      if (*num_retvals > kint32max - increment) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Attr ", output_arg.number_attr(), " with value ", increment,
+            " causes overflow for number of return values for Op: ", op_name));
+      }
+      *num_retvals += increment;
     } else if (!output_arg.type_list_attr().empty()) {
       auto iter = attrs.find(output_arg.type_list_attr());
       if (iter == attrs.end()) {
