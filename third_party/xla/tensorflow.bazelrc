@@ -432,6 +432,9 @@ common:windows --verbose_failures
 # See: https://github.com/bazelbuild/bazel/issues/5163
 common:windows --features=compiler_param_file
 
+# Disable AVX512FP16 due to crashing the MSVC compiler.
+common:windows --define=xnn_enable_avx512fp16=false
+
 # Do not risk cache corruption. See:
 # https://github.com/bazelbuild/bazel/issues/3360
 common:linux --experimental_guard_against_concurrent_changes

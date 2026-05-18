@@ -105,10 +105,10 @@ common --action_env=PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=upb
 common --@rules_python//python/config_settings:precompile=force_disabled
 common --@rules_python//python/config_settings:bootstrap_impl=script --repo_env=RULES_PYTHON_ENABLE_PIPSTAR=0
 
-# Do not do this. If enabled protobuf's core internal target 
+# Do not do this. If enabled protobuf's core internal target
 # @com_google_protobuf//python:protobuf_python will start depending on a bunch
-# of cc_binary shared libraries artifacts, which will mess with how we link 
-# protobuf dependencies ourselves. By default this value is false, but some 
+# of cc_binary shared libraries artifacts, which will mess with how we link
+# protobuf dependencies ourselves. By default this value is false, but some
 # projects enable it, which we don't want here.
 # common --define=use_fast_cpp_protos=true
 
@@ -536,6 +536,9 @@ common:windows --features=compiler_param_file
 
 # Use old toolchains for Windows builds.
 common:windows --config=clang_local
+
+# Disable AVX512FP16 due to crashing the MSVC compiler.
+common:windows --define=xnn_enable_avx512fp16=false
 
 # Do not risk cache corruption. See:
 # https://github.com/bazelbuild/bazel/issues/3360
