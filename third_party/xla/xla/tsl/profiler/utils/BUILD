@@ -192,6 +192,20 @@ tsl_cc_test(
     ],
 )
 
+tsl_cc_test(
+    name = "xplane_visitor_test",
+    size = "small",
+    srcs = ["xplane_visitor_test.cc"],
+    deps = [
+        ":xplane_builder",
+        ":xplane_visitor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
 cc_library(
     name = "trace_utils",
     hdrs = ["trace_utils.h"],
