@@ -863,13 +863,43 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
     }
 
     if (is_frozen_ || tf_to_hlo_compiler_->IsXlaCompilationDisabled()) {
+      // Build a description of the requested (offending) input shapes.
+      std::string requested_shapes_str;
+      for (size_t i = 0; i < dtypes_and_shapes.size(); ++i) {
+        absl::StrAppend(
+            &requested_shapes_str, "[", i,
+            "]: ", dtypes_and_shapes[i].GetShapeForCompilation().DebugString());
+        if (i + 1 < dtypes_and_shapes.size()) {
+          absl::StrAppend(&requested_shapes_str, ", ");
+        }
+      }
+      // Build a description of all cached (already compiled) shape sets.
+      std::string cached_shapes_str;
+      int key_idx = 0;
+      for (const auto& [key, unused_future] : executable_bundles_) {
+        absl::StrAppend(&cached_shapes_str, "  compiled[", key_idx++, "]: {");
+        for (size_t i = 0; i < key.input_shapes.size(); ++i) {
+          absl::StrAppend(&cached_shapes_str,
+                          key.input_shapes[i].DebugString());
+          if (i + 1 < key.input_shapes.size()) {
+            absl::StrAppend(&cached_shapes_str, ", ");
+          }
+        }
+        absl::StrAppend(&cached_shapes_str, "}\n");
+      }
       tsl::Future<SharedCachedExecutableBundle> frozen_future(
           absl::FailedPreconditionError(absl::StrCat(
               "Cannot compile for new input shapes. Either the executable is "
               "already frozen: ",
               is_frozen_,
               " or XLA compilation disabled by ScopedTpuCompileDisabler: ",
-              tf_to_hlo_compiler_->IsXlaCompilationDisabled())));
+              tf_to_hlo_compiler_->IsXlaCompilationDisabled(),
+              ". Requested input shapes: {", requested_shapes_str,
+              "}. Number of already compiled shape sets: ",
+              executable_bundles_.size(),
+              cached_shapes_str.empty()
+                  ? ""
+                  : absl::StrCat(". Already compiled:\n", cached_shapes_str))));
       return frozen_future;
     }
 
