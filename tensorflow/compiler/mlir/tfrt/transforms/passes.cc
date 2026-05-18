@@ -50,8 +50,8 @@ namespace {
 // the default device blindly.
 // TODO(b/221297389): Figure out a more robust way to handle dropped device
 // assignment.
-void AddTfDeviceAssignmentPasses(mlir::OpPassManager &pm,
-                                 const TfrtPipelineOptions &options) {
+void AddTfDeviceAssignmentPasses(mlir::OpPassManager& pm,
+                                 const TfrtPipelineOptions& options) {
   pm.addPass(mlir::TF::CreateConstantOpDeviceAssignmentPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateTFDeviceAssignmentByFuncAttrPass());
@@ -62,7 +62,7 @@ void AddTfDeviceAssignmentPasses(mlir::OpPassManager &pm,
 }  // namespace
 
 void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
-    mlir::OpPassManager &pm, const TfrtPipelineOptions &options) {
+    mlir::OpPassManager& pm, const TfrtPipelineOptions& options) {
   // Due to b/191304670, functionalized while ops might not have the
   // shape_invariant attribute set correctly, which leads to failure in shape
   // inference. As a workaround, we conservatively (e.g., we place less
@@ -147,6 +147,8 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
           options.enable_priority_aware_batch_scheduler,
       .enable_priority_aware_batch_scheduler_resplit =
           options.enable_priority_aware_batch_scheduler_resplit,
+      .enable_batching_task_lazy_cancellation =
+          options.enable_batching_task_lazy_cancellation,
   }));
 
   // Deduplicate functions invoked by tf.BatchFunction with the same
@@ -246,7 +248,7 @@ void CreateTFInvariantOptimizationPipelineHelper(
       options.hoist_invariant_ops, options.fuse_get_resource_ops_in_hoisting));
 }
 
-absl::Status ValidateTfrtPipelineOptions(const TfrtPipelineOptions &options) {
+absl::Status ValidateTfrtPipelineOptions(const TfrtPipelineOptions& options) {
   if (options.target_tpurt && options.target_gpu) {
     return absl::InternalError(
         "Invalid pipeline options. Targeting both TPU and GPU is not "
@@ -256,7 +258,7 @@ absl::Status ValidateTfrtPipelineOptions(const TfrtPipelineOptions &options) {
 }
 
 absl::Status CreateTFExecutorToTFPreInvariantOptimizationPipeline(
-    mlir::PassManager &pm, const TfrtPipelineOptions &options) {
+    mlir::PassManager& pm, const TfrtPipelineOptions& options) {
   TF_RETURN_IF_ERROR(ValidateTfrtPipelineOptions(options));
   if (VLOG_IS_ON(1)) {
     // Print the whole module after each pass, which requires disabling

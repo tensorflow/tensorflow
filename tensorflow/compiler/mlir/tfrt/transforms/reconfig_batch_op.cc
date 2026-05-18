@@ -57,6 +57,8 @@ class ReconfigBatchOpPass
         options.enable_priority_aware_batch_scheduler;
     enable_priority_aware_batch_scheduler_resplit_ =
         options.enable_priority_aware_batch_scheduler_resplit;
+    enable_batching_task_lazy_cancellation_ =
+        options.enable_batching_task_lazy_cancellation;
   }
   ReconfigBatchOpPass()
       : mlir::PassWrapper<ReconfigBatchOpPass,
@@ -83,7 +85,8 @@ class ReconfigBatchOpPass
         max_batch_size_ == 0 && batch_timeout_micros_ == 0 &&
         allowed_batch_sizes_.empty() && max_enqueued_batches_ == 0 &&
         !enable_priority_aware_batch_scheduler_ &&
-        !enable_priority_aware_batch_scheduler_resplit_) {
+        !enable_priority_aware_batch_scheduler_resplit_ &&
+        !enable_batching_task_lazy_cancellation_) {
       return;
     }
     mlir::ModuleOp module = getOperation();
@@ -136,6 +139,9 @@ class ReconfigBatchOpPass
       }
       if (enable_priority_aware_batch_scheduler_resplit_) {
         batch_op.setEnablePriorityAwareBatchSchedulerResplit(true);
+      }
+      if (enable_batching_task_lazy_cancellation_) {
+        batch_op.setEnableBatchingTaskLazyCancellation(true);
       }
     });
   }
@@ -192,6 +198,11 @@ class ReconfigBatchOpPass
       llvm::cl::init(false),
       llvm::cl::desc("If true, the queue implementation will allow task "
                      "resplit for priority aware batch scheduler.")};
+  mlir::Pass::Option<bool> enable_batching_task_lazy_cancellation_{
+      *this, "tfrt-enable-batching-task-lazy-cancellation",
+      llvm::cl::init(false),
+      llvm::cl::desc("If true, enable lazy cancellation filtering in the "
+                     "priority-aware batch scheduler.")};
 };
 
 }  // namespace
