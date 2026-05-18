@@ -3702,8 +3702,8 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, RankQueuesPriority) {
     TF_EXPECT_OK(ScheduleTask(/*task_size=*/1, queue_high.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
 
-    // Sleep to trigger batch threads startup.
-    Env::Default()->SleepForMicroseconds(100);
+    // Wait for the batch thread to start and go to sleep for the startup delay.
+    env.BlockUntilThreadsAsleep(1);
 
     // Advance clock to trigger timeouts.
     env.AdvanceByMicroseconds(2000);
