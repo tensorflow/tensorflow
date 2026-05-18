@@ -89,6 +89,15 @@ cc_library(
     ]),
     defines = {"__HIP_DISABLE_CPP_FUNCTIONS__": "1"},
     strip_include_prefix = "%{rocm_root}/include",
+    deps = [":rocm_sysdeps_includes"],
+)
+
+cc_library(
+    name = "rocm_sysdeps_includes",
+    hdrs = glob([
+        "%{rocm_root}/lib/rocm_sysdeps/include/**",
+    ], allow_empty = True),
+    strip_include_prefix = "%{rocm_root}/lib/rocm_sysdeps/include",
 )
 
 cc_library(
