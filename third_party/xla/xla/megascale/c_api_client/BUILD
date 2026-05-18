@@ -89,7 +89,7 @@ cc_library(
     hdrs = ["megascale_types.h"],
     visibility = internal_visibility([
         ":internal",
-        "//third_party/pathways:__subpackages__",
+        "//pathways:__subpackages__",
         "//xla/pjrt/c_api_client:__subpackages__",
     ]),
     deps = [

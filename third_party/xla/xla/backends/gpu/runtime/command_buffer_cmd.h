@@ -132,27 +132,6 @@ class CollectiveCmd : public Command {
 };
 
 //===----------------------------------------------------------------------===//
-// AllToAllCmd
-//===----------------------------------------------------------------------===//
-
-class AllToAllCmd : public CollectiveCmd {
- public:
-  AllToAllCmd(CollectiveConfig config, bool has_split_dimension,
-              absl::Span<const CollectiveThunk::Buffer> buffers);
-
-  absl::StatusOr<const se::CommandBuffer::Command*> Record(
-      const Thunk::ExecuteParams& execute_params,
-      const RecordParams& record_params, RecordAction record_action,
-      se::CommandBuffer* command_buffer) override;
-
-  BufferUses buffer_uses() const override;
-
- private:
-  bool has_split_dimension_;
-  std::vector<CollectiveThunk::Buffer> buffers_;
-};
-
-//===----------------------------------------------------------------------===//
 // AllGatherCmd
 //===----------------------------------------------------------------------===//
 

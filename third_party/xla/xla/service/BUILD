@@ -6631,7 +6631,7 @@ cc_library(
     hdrs = ["gpu_topology.h"],
     visibility = internal_visibility([
         "//xla/pjrt:__subpackages__",
-        "//third_party/pathways:__subpackages__",
+        "//pathways:__subpackages__",
         "//learning/brain/research/pjrt:__subpackages__",
         "//learning/brain/research/jax:__subpackages__",
         "//learning/pathways/compilation_service:__subpackages__",
