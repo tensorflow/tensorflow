@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -25,10 +26,13 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/SymbolTable.h"
@@ -36,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Interfaces/CallInterfaces.h"
+#include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Interfaces/FunctionImplementation.h"
 #include "mlir/Support/LLVM.h"
 
@@ -177,6 +182,33 @@ mlir::LogicalResult EntryFuncOp::verify() {
   return mlir::success();
 }
 
+void ExtractTileOp::build(mlir::OpBuilder& builder, mlir::OperationState& state,
+                          mlir::Type result, mlir::Value source,
+                          mlir::ValueRange offsets,
+                          mlir::ArrayRef<int64_t> full_tile_shape,
+                          mlir::ArrayRef<int64_t> strides,
+                          std::optional<bool> should_allocate) {
+  mlir::Operation* context_op = nullptr;
+  if (auto* block = builder.getInsertionBlock()) {
+    context_op = block->getParentOp();
+  }
+  bool should_allocate_val =
+      should_allocate.value_or(ShouldAllocateForLayoutFixup(
+          mlir::cast<mlir::RankedTensorType>(result),
+          mlir::cast<mlir::MemRefType>(source.getType()), offsets, strides,
+          context_op));
+
+  state.addOperands(source);
+  state.addOperands(offsets);
+  state.getOrAddProperties<Properties>().full_tile_shape =
+      builder.getDenseI64ArrayAttr(full_tile_shape);
+  state.getOrAddProperties<Properties>().strides =
+      builder.getDenseI64ArrayAttr(strides);
+  state.getOrAddProperties<Properties>().should_allocate =
+      builder.getBoolAttr(should_allocate_val);
+  state.addTypes(result);
+}
+
 mlir::TypedValue<mlir::MemRefType> ExtractTileOp::getBuffer() {
   return getSource();
 }
@@ -186,7 +218,39 @@ mlir::TypedValue<mlir::RankedTensorType> ExtractTileOp::getTile() {
 }
 
 // This is the function ODS expects you to implement
-mlir::LogicalResult ExtractTileOp::verify() { return VerifyBufferOp(*this); }
+mlir::LogicalResult ExtractTileOp::verify() {
+  if (auto result = VerifyBufferOp(*this); result.failed()) {
+    return result;
+  }
+  return mlir::success();
+}
+
+void InsertTileOp::build(mlir::OpBuilder& builder, mlir::OperationState& state,
+                         mlir::Value source, mlir::Value destination,
+                         mlir::ValueRange offsets,
+                         mlir::ArrayRef<int64_t> full_tile_shape,
+                         mlir::ArrayRef<int64_t> strides,
+                         std::optional<bool> should_allocate) {
+  mlir::Operation* context_op = nullptr;
+  if (auto* block = builder.getInsertionBlock()) {
+    context_op = block->getParentOp();
+  }
+  bool should_allocate_val =
+      should_allocate.value_or(ShouldAllocateForLayoutFixup(
+          mlir::cast<mlir::RankedTensorType>(source.getType()),
+          mlir::cast<mlir::MemRefType>(destination.getType()), offsets, strides,
+          context_op));
+
+  state.addOperands(source);
+  state.addOperands(destination);
+  state.addOperands(offsets);
+  state.getOrAddProperties<Properties>().full_tile_shape =
+      builder.getDenseI64ArrayAttr(full_tile_shape);
+  state.getOrAddProperties<Properties>().strides =
+      builder.getDenseI64ArrayAttr(strides);
+  state.getOrAddProperties<Properties>().should_allocate =
+      builder.getBoolAttr(should_allocate_val);
+}
 
 mlir::TypedValue<mlir::MemRefType> InsertTileOp::getBuffer() {
   return getDestination();
@@ -197,6 +261,157 @@ mlir::TypedValue<mlir::RankedTensorType> InsertTileOp::getTile() {
 }
 
 mlir::LogicalResult InsertTileOp::verify() { return VerifyBufferOp(*this); }
+
+constexpr int64_t kXlaCpuDefaultCacheLineAlignment = 64;
+
+bool IsAlwaysFullSize(mlir::RankedTensorType tile_type,
+                      mlir::MemRefType buffer_type, mlir::ValueRange offsets,
+                      llvm::ArrayRef<int64_t> strides) {
+  if (tile_type.getRank() != buffer_type.getRank()) {
+    return false;
+  }
+  llvm::ArrayRef<int64_t> tile_shape = tile_type.getShape();
+  llvm::ArrayRef<int64_t> buffer_shape = buffer_type.getShape();
+  if (offsets.size() != tile_shape.size()) {
+    return false;
+  }
+  for (size_t i = 0; i < offsets.size(); ++i) {
+    mlir::Value offset = offsets[i];
+    int64_t offset_val = 0;
+    mlir::APInt const_offset;
+    if (mlir::matchPattern(offset, mlir::m_ConstantInt(&const_offset))) {
+      offset_val = const_offset.getSExtValue();
+    } else if (!mlir::matchPattern(offset, mlir::m_Zero())) {
+      return false;
+    }
+    int64_t tile_size = tile_shape[i];
+    int64_t stride = strides[i];
+    int64_t buffer_size = buffer_shape[i];
+    if (mlir::ShapedType::isDynamic(buffer_size) ||
+        mlir::ShapedType::isDynamic(tile_size)) {
+      return false;
+    }
+    if (offset_val < 0 ||
+        offset_val + (tile_size - 1) * stride >= buffer_size) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool CanBeFullSize(mlir::RankedTensorType tile_type,
+                   mlir::MemRefType buffer_type) {
+  if (tile_type.getRank() != buffer_type.getRank()) {
+    return false;
+  }
+  for (auto [tile_size, buffer_size] :
+       llvm::zip(tile_type.getShape(), buffer_type.getShape())) {
+    if (mlir::ShapedType::isDynamic(tile_size) ||
+        mlir::ShapedType::isDynamic(buffer_size)) {
+      continue;
+    }
+    if (tile_size > buffer_size) {
+      return false;
+    }
+  }
+  return true;
+}
+
+static bool IsContiguousSlice(llvm::ArrayRef<int64_t> tile_shape,
+                              llvm::ArrayRef<int64_t> buffer_shape) {
+  int rank = tile_shape.size();
+  int k = rank - 1;
+  while (k >= 0 && tile_shape[k] == buffer_shape[k]) {
+    k--;
+  }
+  if (k < 0) {
+    return true;
+  }
+
+  for (int i = 0; i < k; i++) {
+    if (tile_shape[i] != 1) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ShouldAllocateForLayoutFixup(mlir::RankedTensorType tile_type,
+                                  mlir::MemRefType buffer_type,
+                                  mlir::ValueRange offsets,
+                                  llvm::ArrayRef<int64_t> strides,
+                                  mlir::Operation* op) {
+  if (!IsAlwaysFullSize(tile_type, buffer_type, offsets, strides)) {
+    return true;
+  }
+
+  if (tile_type.getRank() != buffer_type.getRank()) {
+    return true;
+  }
+
+  if (!IsContiguousSlice(tile_type.getShape(), buffer_type.getShape())) {
+    return true;
+  }
+  if (!buffer_type.getLayout().isIdentity()) {
+    return true;
+  }
+
+  int64_t alignment = kXlaCpuDefaultCacheLineAlignment;
+  if (op && tile_type.getRank() > 0) {
+    int64_t minor_dim = tile_type.getRank() - 1;
+    int64_t minor_tile_size = tile_type.getDimSize(minor_dim);
+    if (!mlir::ShapedType::isDynamic(minor_tile_size)) {
+      auto element_type = tile_type.getElementType();
+      auto vector_type = mlir::VectorType::get({minor_tile_size}, element_type);
+      mlir::DataLayout layout = mlir::DataLayout::closest(op);
+      alignment = layout.getTypePreferredAlignment(vector_type);
+    }
+  } else if (tile_type.getRank() > 0) {
+    int64_t minor_dim = tile_type.getRank() - 1;
+    int64_t minor_tile_size = tile_type.getDimSize(minor_dim);
+
+    auto element_type = tile_type.getElementType();
+    int64_t element_alignment =
+        std::max<int64_t>(1, element_type.getIntOrFloatBitWidth() / 8);
+    alignment = llvm::PowerOf2Ceil(element_alignment * minor_tile_size);
+  }
+
+  if (tile_type.getRank() > 0) {
+    int64_t minor_dim = tile_type.getRank() - 1;
+    int64_t minor_tile_size = tile_type.getDimSize(minor_dim);
+    int64_t bit_width = tile_type.getElementType().getIntOrFloatBitWidth();
+    int64_t element_size = bit_width / 8;
+    if (element_size > 0 && (minor_tile_size * element_size) % alignment != 0) {
+      return true;
+    }
+  }
+
+  int64_t bit_width = tile_type.getElementType().getIntOrFloatBitWidth();
+  int64_t element_size = bit_width / 8;
+
+  for (mlir::Value offset : offsets) {
+    mlir::APInt const_offset;
+    if (mlir::matchPattern(offset, mlir::m_ConstantInt(&const_offset))) {
+      if (element_size > 0) {
+        int64_t offset_in_bytes = const_offset.getSExtValue() * element_size;
+        if (offset_in_bytes % alignment != 0) {
+          return true;
+        }
+      } else {
+        return true;
+      }
+    } else {
+      // If the offset is not a constant, we must assume allocation is needed.
+      return true;
+    }
+  }
+  for (int64_t stride : strides) {
+    if (stride != 1) {
+      return true;
+    }
+  }
+  return false;
+}
 
 llvm::SmallVector<int64_t> MaskOp::getMaskedDimensions() {
   llvm::SmallVector<int64_t> masked_dimensions;

@@ -46,6 +46,7 @@ class CpuFusionTest : public HloTestBase {
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.add_xla_disable_hlo_passes("layout-assignment");
+    debug_options.set_xla_dump_to("/tmp/xla_dump_fusion");
     return debug_options;
   }
 };
@@ -337,6 +338,35 @@ TEST_F(CpuFusionTest, DoNotDuplicateExpensiveOps) {
   // constant.
   EXPECT_EQ(3, fusion_inst->fused_instruction_count());
   EXPECT_EQ(0, fusion_inst->operand_count());
+}
+
+TEST_F(CpuFusionTest, CompileLayoutChangingCopyFusion) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape input_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {0, 1});
+  auto input_literal =
+      LiteralUtil::CreateR2<float>({{1.0f, 2.0f}, {3.0f, 4.0f}})
+          .Relayout(input_shape.layout());
+  auto input = builder.AddInstruction(
+      HloInstruction::CreateConstant(std::move(input_literal)));
+
+  Shape copy_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {1, 0});
+  auto copy = builder.AddInstruction(
+      HloInstruction::CreateUnary(copy_shape, HloOpcode::kCopy, input));
+
+  auto exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(copy_shape, HloOpcode::kExp, copy));
+
+  auto module = CreateNewVerifiedModule();
+  auto* entry_computation = module->AddEntryComputation(builder.Build());
+
+  entry_computation->CreateFusionInstruction({exp, copy},
+                                             HloInstruction::FusionKind::kLoop);
+
+  TF_ASSERT_OK_AND_ASSIGN(const Literal result, Execute(std::move(module), {}));
+  auto expected_literal = LiteralUtil::CreateR2<float>(
+      {{std::exp(1.0f), std::exp(2.0f)}, {std::exp(3.0f), std::exp(4.0f)}});
+  expected_literal = expected_literal.Relayout(copy_shape.layout());
+  EXPECT_TRUE(LiteralTestUtil::Near(expected_literal, result, error_spec_));
 }
 
 }  // namespace
