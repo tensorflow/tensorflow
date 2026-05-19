@@ -24,6 +24,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/logical_id_thunk.h"
 #include "xla/backends/cpu/runtime/outfeed_thunk.h"
 #include "xla/backends/cpu/runtime/reduce_scatter_thunk.h"
+#include "xla/backends/cpu/runtime/rng_seed_thunk.h"
 #include "xla/backends/cpu/runtime/rng_state_thunk.h"
 #include "xla/backends/cpu/runtime/serdes_base.h"
 #include "xla/backends/cpu/runtime/sort_thunk.h"
@@ -184,6 +186,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
     TF_ASSIGN_OR_RETURN(thunk_sequence.emplace_back(),
                         CreateConvolutionThunk());
     TF_ASSIGN_OR_RETURN(thunk_sequence.emplace_back(), CreateSortThunk());
+    TF_ASSIGN_OR_RETURN(thunk_sequence.emplace_back(), CreateRngSeedThunk());
     return thunk_sequence;
   }
 
@@ -681,6 +684,14 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
         /*direction=*/SortThunk::SortDirection::kAscending);
   }
 
+  absl::StatusOr<std::unique_ptr<Thunk>> CreateRngSeedThunk() {
+    TF_RETURN_IF_ERROR(AddBufferAllocations(1));
+    return RngSeedThunk::Create(
+        Thunk::Info(),
+        CreateBufferAllocationSlice(
+            buffer_allocations_[buffer_allocations_.size() - 1]));
+  }
+
   bool VerifySliceEquality(const BufferAllocation::Slice& slice_1,
                            const BufferAllocation::Slice& slice_2) {
     return slice_1.offset() == slice_2.offset() &&
@@ -983,6 +994,11 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
            thunk_1.delta() == thunk_2.delta();
   }
 
+  bool VerifyRngSeedThunkEquality(const RngSeedThunk& thunk_1,
+                                  const RngSeedThunk& thunk_2) {
+    return VerifySliceEquality(thunk_1.dest_buffer(), thunk_2.dest_buffer());
+  }
+
   bool VerifySortThunkEquality(const SortThunk& thunk_1,
                                const SortThunk& thunk_2) {
     return thunk_1.comparator_name() == thunk_2.comparator_name() &&
@@ -1218,6 +1234,10 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
         return VerifyRngGetAndUpdateStateThunkEquality(
             absl::down_cast<const RngGetAndUpdateStateThunk&>(thunk_1),
             absl::down_cast<const RngGetAndUpdateStateThunk&>(thunk_2));
+      case Thunk::Kind::kRngSeed:
+        return VerifyRngSeedThunkEquality(
+            absl::down_cast<const RngSeedThunk&>(thunk_1),
+            absl::down_cast<const RngSeedThunk&>(thunk_2));
       case Thunk::Kind::kSort:
         return VerifySortThunkEquality(
             absl::down_cast<const SortThunk&>(thunk_1),

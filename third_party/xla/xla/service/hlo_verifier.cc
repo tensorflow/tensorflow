@@ -4012,6 +4012,17 @@ absl::Status InstructionVerifier::HandleReshape(HloInstruction* hlo) {
 }
 
 absl::Status InstructionVerifier::HandleCustomCall(HloInstruction* hlo) {
+  if (hlo->custom_call_target() == "GetRngSeed") {
+    TF_RET_CHECK(hlo->operand_count() == 0)
+        << "GetRngSeed custom call must have 0 operands, but has "
+        << hlo->operand_count();
+    TF_RET_CHECK(hlo->shape().element_type() == U64)
+        << "GetRngSeed custom call must return U64 type, but got "
+        << ShapeUtil::HumanString(hlo->shape());
+    TF_RET_CHECK(ShapeUtil::IsScalar(hlo->shape()))
+        << "GetRngSeed custom call must return a scalar, but got "
+        << ShapeUtil::HumanString(hlo->shape());
+  }
   if (opts_.verify_call_nested_computation_thread_name) {
     // Allow kCustomCall to contain computations on separate thread.
     return CheckCallableInstructionThreadName(hlo);

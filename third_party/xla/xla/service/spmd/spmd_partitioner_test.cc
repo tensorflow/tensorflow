@@ -225,6 +225,20 @@ ENTRY entry {
                           op::Shape("s32[2,3]")));
 }
 
+TEST_P(SpmdPartitioningAllShardingTest, GetRngSeedCustomCall) {
+  absl::string_view hlo_string = R"(
+HloModule module
+ENTRY entry {
+  ROOT %cc = u64[] custom-call(), custom_call_target="GetRngSeed",
+    sharding={replicated}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::CustomCall(), op::Shape("u64[]")));
+}
+
 TEST_P(SpmdPartitioningAllShardingTest, SingleDeviceToSingleDevice) {
   absl::string_view hlo_string = R"(
 HloModule module

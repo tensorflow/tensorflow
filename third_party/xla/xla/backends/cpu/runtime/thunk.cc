@@ -80,6 +80,8 @@ absl::string_view Thunk::KindToString(Kind kind) {
       return "replica-id";
     case Kind::kRngGetAndUpdateState:
       return "rng-get-and-update-state";
+    case Kind::kRngSeed:
+      return "rng-seed";
     case Kind::kSort:
       return "sort";
     case Kind::kTopK:
