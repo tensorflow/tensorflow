@@ -1,6 +1,8 @@
 // RUN: hlo_to_xtileir %s | FileCheck %s
 // RUN: triton_test_correctness %s
 
+// RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
 HloModule m
 
 triton_softmax_computation (p0: f32[1024, 16], offset: s32[]) -> f32[8192] {
@@ -10,9 +12,9 @@ triton_softmax_computation (p0: f32[1024, 16], offset: s32[]) -> f32[8192] {
   ROOT bitcast = f32[8192]{0} bitcast(dynamic_slice)
 }
 
-// CHECK: #[[$ATTR_0:.+]] = #xla.indexing_map<"(pid_0, d1) -> (pid_0 floordiv 2 + d1), domain: pid_0 in [0, 1023], d1 in [0, 512]">
-// CHECK: #[[$ATTR_1:.+]] = #xla.indexing_map<"(pid_0) -> ((pid_0 mod 2) * 8), domain: pid_0 in [0, 1023]">
-// CHECK: #[[$ATTR_2:.+]] = #xla.indexing_map<"(pid_0) -> (pid_0 * 8), domain: pid_0 in [0, 1023]">
+// CHECK: #[[$ATTR_0:.+]] = #xla.indexing_map<"([[PID:pid(_0)?]], d1) -> ([[PID]] floordiv 2 + d1), domain: [[PID]] in [0, 1023], d1 in [0, 512]">
+// CHECK: #[[$ATTR_1:.+]] = #xla.indexing_map<"([[PID]]) -> (([[PID]] mod 2) * 8), domain: [[PID]] in [0, 1023]">
+// CHECK: #[[$ATTR_2:.+]] = #xla.indexing_map<"([[PID]]) -> ([[PID]] * 8), domain: [[PID]] in [0, 1023]">
 // CHECK-LABEL:   xtile.entry_func @triton_fn(
 // CHECK-SAME:      %[[ARG0:.*]]: memref<1024x16xf32>,
 // CHECK-SAME:      %[[ARG1:.*]]: memref<i32>,

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/codegen/tiling/experimental/tile.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -204,6 +205,22 @@ void Tile::Replace(const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& map) {
   }
   if (replica_id_.has_value()) {
     replica_id_ = replica_id_->Replace(map);
+  }
+}
+
+void DimTile::Simplify(const TilingSpace& space) {
+  offset = space.SimplifyExpression(offset);
+  size = space.SimplifyExpression(size);
+  stride = space.SimplifyExpression(stride);
+  upper_bound = space.SimplifyExpression(upper_bound);
+}
+
+void Tile::Simplify() {
+  for (DimTile& dim_tile : dim_tiles_) {
+    dim_tile.Simplify(*tiling_space_);
+  }
+  if (replica_id_.has_value()) {
+    replica_id_ = tiling_space_->SimplifyExpression(replica_id_.value());
   }
 }
 

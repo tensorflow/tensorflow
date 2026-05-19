@@ -377,8 +377,8 @@ Tiled HLO:
   region #0 {
     lhs.1.tile_0 = parameter(0)  offsets [tid_0 * 2, tid_2 * 8] sizes [2, 8] strides [1, 1] upper bounds [128, 64]
     rhs.1.tile_0 = parameter(1)  offsets [tid_2 * 8, tid_1 * 4] sizes [8, 4] strides [1, 1] upper bounds [64, 128]
-    lhs_scale.1.tile_0 = parameter(2)  offsets [tid_0 * 2, (tid_2 * 8) floordiv 32] sizes [2, (tid_2 * 8 + 7) floordiv 32 - tid_2 floordiv 4 + 1] strides [1, 1] upper bounds [128, 2]
-    rhs_scale.1.tile_0 = parameter(3)  offsets [(tid_2 * 8) floordiv 32, tid_1 * 4] sizes [(tid_2 * 8 + 7) floordiv 32 - tid_2 floordiv 4 + 1, 4] strides [1, 1] upper bounds [2, 128]
+    lhs_scale.1.tile_0 = parameter(2)  offsets [tid_0 * 2, tid_2 floordiv 4] sizes [2, 1] strides [1, 1] upper bounds [128, 2]
+    rhs_scale.1.tile_0 = parameter(3)  offsets [tid_2 floordiv 4, tid_1 * 4] sizes [1, 4] strides [1, 1] upper bounds [2, 128]
   }
   )"));
 
@@ -469,8 +469,8 @@ Tiled HLO:
   d1.tile_0 = dynamic-slice(c0.tile_1, off.tile_0)  offsets [1] sizes [1] strides [1] upper bounds [2]
   slice2.tile_0 = slice(d1.tile_0)  offsets [0] sizes [1] strides [1] upper bounds [1]
   off2.tile_0 = reshape(slice2.tile_0)  offsets [] sizes [] strides [] upper bounds []
-  p0.1.tile_2 = parameter(0)  offsets [rt_1 + rt_0] sizes [16] strides [1] upper bounds [rt_0 + 10 + rt_1]
-  c0.tile_2 = convert(p0.1.tile_2)  offsets [rt_1 + rt_0] sizes [16] strides [1] upper bounds [rt_0 + 10 + rt_1]
+  p0.1.tile_2 = parameter(0)  offsets [rt_0 + rt_1] sizes [16] strides [1] upper bounds [rt_0 + rt_1 + 10]
+  c0.tile_2 = convert(p0.1.tile_2)  offsets [rt_0 + rt_1] sizes [16] strides [1] upper bounds [rt_0 + rt_1 + 10]
   d1.tile_1 = dynamic-slice(c0.tile_2, off.tile_0)  offsets [rt_0] sizes [16] strides [1] upper bounds [rt_0 + 10]
   d2.tile_0 = dynamic-slice(d1.tile_1, off2.tile_0)  offsets [0] sizes [16] strides [1] upper bounds [10]
   )"));
@@ -504,7 +504,7 @@ TEST_F(TileAnalysisTest, CollectiveDotBasic) {
     Tiled HLO:
       dot.tile_0 = dot(ag.tile_0, p1.1.tile_0)  offsets [tid_0 * 16, tid_1 * 32] sizes [16, 32] strides [1, 1] upper bounds [128, 512]
       region #0 {
-        p0.1.tile_0 = parameter(0)  offsets [(tid_0 * 16) mod 64, tid_2 * 32] sizes [16, 32] strides [1, 1] upper bounds [64, 256] replica_id [(tid_0 * 16) floordiv 64]
+        p0.1.tile_0 = parameter(0)  offsets [(tid_0 mod 4) * 16, tid_2 * 32] sizes [16, 32] strides [1, 1] upper bounds [64, 256] replica_id [tid_0 floordiv 4]
         ag.tile_0 = all-gather(p0.1.tile_0)  offsets [tid_0 * 16, tid_2 * 32] sizes [16, 32] strides [1, 1] upper bounds [128, 256]
         p1.1.tile_0 = parameter(1)  offsets [tid_2 * 32, tid_1 * 32] sizes [32, 32] strides [1, 1] upper bounds [256, 512]
       }

@@ -87,6 +87,10 @@ struct DimTile {
   //                      strides [1]
   //                      upper bounds [17 * tid0]
   SymbolicExpr upper_bound;
+
+  // Simplify expressions inside the DimTile using the actual dimension and
+  // symbol bounds.
+  void Simplify(const TilingSpace& space);
 };
 
 template <typename H>
@@ -129,6 +133,10 @@ class Tile {
 
   // Replace tiling expressions with the given map.
   void Replace(const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& map);
+
+  // Simplify expressions inside the tile using actual dimension and symbol
+  // bounds.
+  void Simplify();
 
   // Clone the tile with new dim tiles.
   // When we are propagating a tile to an input, we need to adjust the offsets

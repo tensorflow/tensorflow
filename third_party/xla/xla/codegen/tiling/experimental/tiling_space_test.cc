@@ -25,6 +25,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
+#include "xla/hlo/analysis/symbolic_map_serialization.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
@@ -267,14 +269,71 @@ TEST_F(TilingSpaceTest, TwoOutputsParallelDims) {
         3 type: parallel size: 9 dim ID:1
           hlo: %mul = f32[11,9]{1,0} multiply(%p2, %p3)
     Root tiles:
-        0 root tile:
-             offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
-             strides [1, 1] upper bounds [10, 8]
-        1 root tile:
-             offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
-             strides [1, 1] upper bounds [11, 9]
+      0 root tile:
+           offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
+           strides [1, 1] upper bounds [10, 8]
+      1 root tile:
+           offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
+           strides [1, 1] upper bounds [11, 9]
   )"));
 }
 
+class TilingSpaceSimplifyExpressionTest : public TilingSpaceTest {
+ public:
+  void SetUp() override {
+    TilingSpaceTest::SetUp();
+    HloInstruction* root = ParseAndGetRoot(R"(
+        HloModule m
+        ENTRY e {
+          p0 = f32[100, 10] parameter(0)
+          ROOT a0 = f32[100, 10] exponential(p0)
+        }
+    )");
+
+    auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+    tiling_space_ = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+
+    // Assign concrete tile sizes of [16, 2].
+    // Dimension 0 (100) / 16 = 7 blocks (tid_0 in [0, 6]).
+    // Dimension 1 (10) / 2 = 5 blocks (tid_1 in [0, 4]).
+    CHECK_OK(tiling_space_->AssignTileSizes({16, 2}));
+  }
+
+  std::unique_ptr<TilingSpace> tiling_space_;
+};
+
+TEST_F(TilingSpaceSimplifyExpressionTest, ModRemovedIfLessThanDivisor) {
+  SymbolicExpr tid_0 = CreateDimExpr(0, &mlir_context_);
+  EXPECT_EQ(tiling_space_->SimplifyExpression((tid_0 * 8) % 96), tid_0 * 8);
+}
+
+TEST_F(TilingSpaceSimplifyExpressionTest, FloorDivFactorsDivisor) {
+  SymbolicExpr tid_1 = CreateDimExpr(1, &mlir_context_);
+  EXPECT_EQ(tiling_space_->SimplifyExpression((tid_1 * 2).floorDiv(10)),
+            tid_1.floorDiv(5));
+}
+
+TEST_F(TilingSpaceSimplifyExpressionTest,
+       ExpressionUnchangedIfNotAlgebraicallyFolds) {
+  SymbolicExpr tid_0 = CreateDimExpr(0, &mlir_context_);
+  EXPECT_EQ(tiling_space_->SimplifyExpression(tid_0 * 16 + 500),
+            tid_0 * 16 + 500);
+}
+
+TEST_F(TilingSpaceSimplifyExpressionTest, NestedFloorDivFactorsDivisor) {
+  auto expr = ParseSymbolicExpr("(d0 * 16 + d1 * 2) floordiv 200",
+                                &mlir_context_, /*num_dims=*/2);
+  EXPECT_EQ(tiling_space_->SimplifyExpression(expr),
+            ParseSymbolicExpr("(d0 * 8 + d1) floordiv 100", &mlir_context_,
+                              /*num_dims=*/2));
+}
+
+TEST_F(TilingSpaceSimplifyExpressionTest, NestedModRemovedIfLessThanDivisor) {
+  auto expr = ParseSymbolicExpr("(d0 * 16 + d1 * 2) mod 200", &mlir_context_,
+                                /*num_dims=*/2);
+  EXPECT_EQ(
+      tiling_space_->SimplifyExpression(expr),
+      ParseSymbolicExpr("d0 * 16 + d1 * 2", &mlir_context_, /*num_dims=*/2));
+}
 }  // namespace
 }  // namespace xla::gpu::experimental

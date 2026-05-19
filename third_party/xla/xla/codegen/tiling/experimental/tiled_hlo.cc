@@ -396,6 +396,21 @@ absl::InlinedVector<const HloInstruction*, 2> ToInstructions(
   SortTiledHloInstructionsInPostOrder(tiled_hlo_instructions,
                                       roots_with_no_users);
 
+  std::function<void(TiledHloInstruction*)> simplify_instruction;
+  simplify_instruction = [&](TiledHloInstruction* instruction) {
+    class Tile tile = instruction->tile();
+    tile.Simplify();
+    instruction->set_tile(std::move(tile));
+    for (const auto& region : instruction->hlo_regions()) {
+      for (const auto& nested : region) {
+        simplify_instruction(nested.get());
+      }
+    }
+  };
+  for (auto& instr : tiled_hlo_instructions) {
+    simplify_instruction(instr.get());
+  }
+
   return TiledHloComputation(std::move(tiling_space),
                              TiledHloRegion{std::move(tiled_hlo_instructions)},
                              std::move(roots),
