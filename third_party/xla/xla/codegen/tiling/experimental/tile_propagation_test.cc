@@ -521,7 +521,13 @@ TEST_F(TilePropagationTest, CanPropagateToInputsOfAllGatherOp) {
       -> offsets [(tid_0 * ts_0) mod 64, tid_1 * ts_1]
          sizes [ts_0, ts_1]
          strides [1, 2]
-         upper bounds [64, 256] replica_id [(tid_0 * ts_0) floordiv 64]
+         upper bounds [64, 256]
+         replica ids {
+           offsets [(tid_0 * ts_0) floordiv 64]
+           sizes [1]
+           strides [1]
+           upper bounds [2]
+         }
   )"));
 }
 
@@ -1090,7 +1096,13 @@ TEST_F(TilePropagationTest, CanPropagateReplicaIdThroughBroadcast) {
       -> offsets [tid_0 * ts_0, (tid_1 * ts_1) mod 32, tid_2 * ts_2]
          sizes [ts_0, ts_1, ts_2]
          strides [1, 2, 3]
-         upper bounds [10, 32, 5] replica_id [(tid_1 * ts_1) floordiv 32]
+         upper bounds [10, 32, 5]
+         replica ids {
+           offsets [(tid_1 * ts_1) floordiv 32]
+           sizes [1]
+           strides [1]
+           upper bounds [2]
+         }
   )"));
   // operand(0) is the broadcast, tile_ag_operands[0] is its output tile.
   // This should preserve the replica_id and drop dimension 2.
@@ -1102,7 +1114,13 @@ TEST_F(TilePropagationTest, CanPropagateReplicaIdThroughBroadcast) {
       -> offsets [tid_0 * ts_0, (tid_1 * ts_1) mod 32]
          sizes [ts_0, ts_1]
          strides [1, 2]
-         upper bounds [10, 32] replica_id [(tid_1 * ts_1) floordiv 32]
+         upper bounds [10, 32]
+         replica ids {
+           offsets [(tid_1 * ts_1) floordiv 32]
+           sizes [1]
+           strides [1]
+           upper bounds [2]
+         }
   )"));
 }
 
