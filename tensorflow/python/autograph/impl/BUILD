@@ -9,6 +9,7 @@ package(
 py_library(
     name = "api",
     srcs = ["api.py"],
+    lazy_imports = True,
     strict_deps = True,
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
