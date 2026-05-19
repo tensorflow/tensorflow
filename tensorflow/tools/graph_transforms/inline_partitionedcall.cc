@@ -33,7 +33,7 @@ constexpr char kPartitionedCallOpName[] = "PartitionedCall";
 constexpr char kFunctionAttrName[] = "f";
 
 namespace {
-absl::optional<FunctionDef> GetFunctionByNameFromLibrary(
+std::optional<FunctionDef> GetFunctionByNameFromLibrary(
     const GraphDef& graph, absl::string_view function_name) {
   for (const auto& fct : graph.library().function()) {
     if (fct.signature().name() == function_name) {
@@ -74,7 +74,7 @@ absl::Status InlinePartitionedCall(const GraphDef& input_graph_def,
       }
       const std::string function_name =
           node.attr().at(kFunctionAttrName).func().name();
-      absl::optional<FunctionDef> function =
+      std::optional<FunctionDef> function =
           GetFunctionByNameFromLibrary(input_graph_def, function_name);
       if (!function.has_value()) {
         return absl::Status(absl::StatusCode::kNotFound,
