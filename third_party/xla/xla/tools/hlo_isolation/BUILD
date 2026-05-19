@@ -1,8 +1,6 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load(
     "//xla:xla.default.bzl",
-    "xla_cc_binary",
     "xla_cc_test",
     "xla_py_proto_library",
 )
@@ -67,27 +65,6 @@ cc_library(
     ],
 )
 
-xla_cc_binary(
-    name = "hlo_isolation_test",
-    testonly = True,
-    srcs = ["hlo_isolation_cli.cc"],
-    deps = [
-        ":hlo_isolation_api",
-        "//xla/service:cpu_plugin",
-        "//xla/service:gpu_plugin",
-        "//xla/service:hlo_runner",
-        "//xla/service:hlo_runner_interface",
-        "//xla/service:interpreter_plugin",
-        "//xla/service:platform_util",
-        "//xla/stream_executor:platform",
-        "//xla/tsl/platform:statusor",
-        "//xla/tsl/util:command_line_flags",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@tsl//tsl/platform:platform_port",
-    ],
-)
-
 cc_library(
     name = "hlo_isolation_test_base",
     testonly = True,
@@ -121,25 +98,5 @@ xla_cc_test(
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
-    ],
-)
-
-filegroup(
-    name = "hlo_isolation_cli_test_data",
-    srcs = ["//xla/tools:data/hlo_isolation_cli_test.hlo"],
-)
-
-sh_test(
-    name = "hlo_isolation_cli_test",
-    srcs = ["hlo_isolation_cli_test.sh"],
-    args = [
-        "$(location :hlo_isolation_test)",
-        "$(location @llvm-project//llvm:FileCheck)",
-        "$(location :hlo_isolation_cli_test_data)",
-    ],
-    data = [
-        ":hlo_isolation_cli_test_data",
-        ":hlo_isolation_test",
-        "@llvm-project//llvm:FileCheck",
     ],
 )

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/restricted/hlo_test_base.h"
 
 namespace xla {
 namespace gpu {

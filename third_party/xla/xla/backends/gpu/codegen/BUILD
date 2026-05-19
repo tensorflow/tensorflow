@@ -250,7 +250,7 @@ xla_test(
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/tests:hlo_test_base_legacy",
+        "//xla/tests/restricted:hlo_test_base_legacy",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
