@@ -159,7 +159,7 @@ absl::StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
     return node->assigned_device_name();
   };
   bool has_multiple_devices = false;
-  absl::optional<std::string> location;
+  std::optional<std::string> location;
   for (const Node* node : graph->op_nodes()) {
     if (location) {
       if (*location != node_to_loc(node)) {

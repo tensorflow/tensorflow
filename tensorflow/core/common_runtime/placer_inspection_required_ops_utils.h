@@ -69,7 +69,7 @@ class PlacerInspectionRequiredOpChecker {
   // Indexed by the node id.
   // If cache_[node_id] is empty, the deepness of the node with id `node_id` has
   // not been computed yet. Else, it contains the value already computed.
-  std::vector<absl::optional<bool>> cache_;
+  std::vector<std::optional<bool>> cache_;
 };
 
 // Extracts `fdef` and `func` from `flib_def` for the function identified

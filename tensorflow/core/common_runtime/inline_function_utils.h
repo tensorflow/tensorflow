@@ -41,15 +41,14 @@ class InlinedFunctionBodyPlacer {
  public:
   virtual ~InlinedFunctionBodyPlacer() = default;
 
-  virtual absl::optional<std::string> InputNodeDevice(
-      int input_index) const = 0;
-  virtual absl::optional<std::string> OutputNodeDevice(
+  virtual std::optional<std::string> InputNodeDevice(int input_index) const = 0;
+  virtual std::optional<std::string> OutputNodeDevice(
       int output_index) const = 0;
   // Returns true if the added input/output identity nodes should be colocated
   // with the corresponding input/output from the function body.
   virtual bool ColocateInputOutputIdentities() const = 0;
-  virtual absl::optional<std::string> ControlNodeDevice() const = 0;
-  virtual absl::optional<std::string> BodyNodeDevice(
+  virtual std::optional<std::string> ControlNodeDevice() const = 0;
+  virtual std::optional<std::string> BodyNodeDevice(
       const NodeDef& ndef) const = 0;
 
   // LINT.IfChange
