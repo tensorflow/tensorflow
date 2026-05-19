@@ -36,7 +36,7 @@ absl::StatusOr<DeviceAddressBase> MemoryAllocator::AllocationTracker::Track(
   DeviceAddressBase addr = allocation->address();
   void* ptr = addr.opaque();
 
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   auto [it, inserted] = allocations_.emplace(ptr, std::move(allocation));
   if (!inserted) {
     return absl::AlreadyExistsError(
@@ -48,12 +48,12 @@ absl::StatusOr<DeviceAddressBase> MemoryAllocator::AllocationTracker::Track(
 
 bool MemoryAllocator::AllocationTracker::IsTracked(
     const DeviceAddressBase& addr) const {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   return allocations_.contains(addr.opaque());
 }
 
 absl::Status MemoryAllocator::AllocationTracker::Free(DeviceAddressBase addr) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   auto it = allocations_.find(addr.opaque());
   if (it == allocations_.end()) {
     return absl::NotFoundError(
