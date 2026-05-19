@@ -517,12 +517,17 @@ class PriorityTaskQueue {
         if (enable_lazy_cancellation_filtering_) {
           if (it->task->IsDeadlineExceeded(now)) {
             QueueEntry cancelled_entry = RemoveEntryInternal(it);
+            RecordLazyCancelledTaskMetrics(
+                cancelled_entry.task->size(),
+                kLazyCancellationReasonDeadlineExceeded);
             cancelled_entry.task->FinishTask(absl::DeadlineExceededError(
                 "Task cancelled: RPC deadline exceeded."));
             continue;
           }
           if (it->task->IsCancelled()) {
             QueueEntry cancelled_entry = RemoveEntryInternal(it);
+            RecordLazyCancelledTaskMetrics(cancelled_entry.task->size(),
+                                           kLazyCancellationReasonRpcCancelled);
             cancelled_entry.task->FinishTask(
                 absl::CancelledError("Task cancelled: RPC is cancelled."));
             continue;
