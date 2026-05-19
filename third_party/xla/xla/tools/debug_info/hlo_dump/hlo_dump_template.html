@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>{{DUMP_NAME}}</title>
+<style>
+{{HLO_DUMP_STYLE_CSS}}
+{{BACKGROUND_STYLES}}
+</style>
+<script>{{HLO_DUMP_UI_JS}}</script>
+</head>
+<body>
+<div id="graph-container">
+{{GRAPH_CONTENT}}
+</div>
+<div id="splitter-graph"></div>
+<div id="histogram-container">
+{{STATS_BOX}}
+</div>
+<div id="splitter-histogram"></div>
+<div id="hlo-container">
+<pre><code>{{HLO_CONTENT}}</code></pre>
+</div>
+<div id="stack-trace-dynamic-tooltip" class="stack-trace-tooltip"></div>
+<div id="general-dynamic-tooltip" class="tooltiptext"></div>
+
+<!-- Data Injections -->
+<script>
+{{DATA_INJECTION_SCRIPT}}
+</script>
+
+<!-- Initialization -->
+<script>
+  if (window.initHloDumpUI) {
+    window.initHloDumpUI();
+  }
+</script>
+</body>
+</html>

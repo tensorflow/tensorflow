@@ -5,6 +5,7 @@ load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
 # copybara:uncomment load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//xla:package_groups.bzl", "xla_package_groups")
 load("//xla:xla.default.bzl", "xla_bzl_library", "xla_cc_test", "xla_py_proto_library")
+load("//xla:xla_js.default.bzl", "xla_js_bzl_library")
 load("//xla/tsl:tsl.bzl", "if_google", "if_oss", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
@@ -1620,4 +1621,20 @@ bzl_library(
     deps = ["//xla/tsl:package_groups_bzl"],
 )
 
+bzl_library(
+    name = "xla_default_bzl",
+    srcs = ["xla.default.bzl"],
+    # parse_tests = False,
+    visibility = ["//visibility:private"],
+)
+
+bzl_library(
+    name = "xla_js_default_bzl",
+    srcs = ["xla_js.default.bzl"],
+    # parse_tests = False,
+    visibility = ["//visibility:private"],
+)
+
 xla_bzl_library()
+
+xla_js_bzl_library()
