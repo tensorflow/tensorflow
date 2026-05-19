@@ -122,7 +122,7 @@ class KernelAndDevice : public core::RefCounted {
   virtual absl::Status Init(
       bool log_device_placement, const NodeDef& ndef,
       GraphCollector* graph_collector,
-      const absl::optional<EagerFunctionParams>& eager_func_params) = 0;
+      const std::optional<EagerFunctionParams>& eager_func_params) = 0;
 
   // Non-multi-device functions are run using regular CallOp and look like
   // primitive operations from KernelAndDevice perspective.
@@ -151,8 +151,8 @@ class KernelAndDevice : public core::RefCounted {
       ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
       std::vector<EagerKernelRet>* outputs,
       CancellationManager* cancellation_manager,
-      const absl::optional<EagerFunctionParams>& eager_func_params,
-      const absl::optional<ManagedStackTrace>& stack_trace,
+      const std::optional<EagerFunctionParams>& eager_func_params,
+      const std::optional<ManagedStackTrace>& stack_trace,
       tsl::CoordinationServiceAgent* coordination_service_agent) = 0;
 
   // Execute kernel asynchronously when applicable. Different from `Run` which
@@ -167,7 +167,7 @@ class KernelAndDevice : public core::RefCounted {
       ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
       std::vector<EagerKernelRet>* outputs,
       CancellationManager* cancellation_manager,
-      const absl::optional<EagerFunctionParams>& eager_func_params,
+      const std::optional<EagerFunctionParams>& eager_func_params,
       tsl::CoordinationServiceAgent* coordination_service_agent,
       StatusCallback done) = 0;
 
@@ -226,21 +226,21 @@ class KernelAndDeviceOp final : public KernelAndDevice {
   absl::Status Init(
       bool log_device_placement, const NodeDef& ndef,
       GraphCollector* graph_collector,
-      const absl::optional<EagerFunctionParams>& eager_func_params) override;
+      const std::optional<EagerFunctionParams>& eager_func_params) override;
 
   absl::Status Run(
       ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
       std::vector<EagerKernelRet>* outputs,
       CancellationManager* cancellation_manager,
-      const absl::optional<EagerFunctionParams>& eager_func_params,
-      const absl::optional<ManagedStackTrace>& stack_trace,
+      const std::optional<EagerFunctionParams>& eager_func_params,
+      const std::optional<ManagedStackTrace>& stack_trace,
       tsl::CoordinationServiceAgent* coordination_service_agent) override;
 
   void RunAsync(ScopedStepContainer* step_container,
                 const EagerKernelArgs& inputs,
                 std::vector<EagerKernelRet>* outputs,
                 CancellationManager* cancellation_manager,
-                const absl::optional<EagerFunctionParams>& eager_func_params,
+                const std::optional<EagerFunctionParams>& eager_func_params,
                 tsl::CoordinationServiceAgent* coordination_service_agent,
                 StatusCallback done) override {
     // Trivial async implementation on top of the sync version
@@ -332,26 +332,26 @@ class KernelAndDeviceFunc : public KernelAndDevice {
   absl::Status InstantiateFunc(
       bool log_device_placement, const NodeDef& ndef,
       GraphCollector* graph_collector,
-      const absl::optional<EagerFunctionParams>& eager_func_params);
+      const std::optional<EagerFunctionParams>& eager_func_params);
 
   absl::Status Init(
       bool log_device_placement, const NodeDef& ndef,
       GraphCollector* graph_collector,
-      const absl::optional<EagerFunctionParams>& eager_func_params) override;
+      const std::optional<EagerFunctionParams>& eager_func_params) override;
 
   absl::Status Run(
       ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
       std::vector<EagerKernelRet>* outputs,
       CancellationManager* cancellation_manager,
-      const absl::optional<EagerFunctionParams>& eager_func_params,
-      const absl::optional<ManagedStackTrace>& stack_trace,
+      const std::optional<EagerFunctionParams>& eager_func_params,
+      const std::optional<ManagedStackTrace>& stack_trace,
       tsl::CoordinationServiceAgent* coordination_service_agent) override;
 
   void RunAsync(ScopedStepContainer* step_container,
                 const EagerKernelArgs& inputs,
                 std::vector<EagerKernelRet>* outputs,
                 CancellationManager* cancellation_manager,
-                const absl::optional<EagerFunctionParams>& eager_func_params,
+                const std::optional<EagerFunctionParams>& eager_func_params,
                 tsl::CoordinationServiceAgent* coordination_service_agent,
                 StatusCallback done) override;
 
@@ -373,8 +373,8 @@ class KernelAndDeviceFunc : public KernelAndDevice {
   std::shared_ptr<FunctionLibraryRuntime::Options> PrepareForRun(
       ScopedStepContainer* step_container, std::vector<EagerKernelRet>* outputs,
       CancellationManager* cancellation_manager,
-      const absl::optional<EagerFunctionParams>& eager_func_params,
-      const absl::optional<ManagedStackTrace>& stack_trace,
+      const std::optional<EagerFunctionParams>& eager_func_params,
+      const std::optional<ManagedStackTrace>& stack_trace,
       tsl::CoordinationServiceAgent* coordination_service_agent,
       tsl::core::RefCountPtr<Rendezvous>* rendezvous);
 
@@ -403,7 +403,7 @@ class KernelAndDeviceFunc : public KernelAndDevice {
 
   const bool function_runs_at_most_once_;
 
-  const absl::optional<std::string> xla_compile_device_type_;
+  const std::optional<std::string> xla_compile_device_type_;
 
   const bool allow_soft_placement_;
 
