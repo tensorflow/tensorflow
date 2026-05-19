@@ -588,6 +588,11 @@ class PartitionedHlo {
   std::optional<PartitionedHlo> ReshardPartialReplicateWithAllToAll(
       const HloSharding& target) const;
 
+  // Helper function to reshard when manual subgroup status differs between
+  // source and target.
+  std::optional<PartitionedHlo> TryReshardWithManualSubgroup(
+      const HloSharding& target) const;
+
   // SPMD instruction.
   HloInstruction* hlo_;
 
