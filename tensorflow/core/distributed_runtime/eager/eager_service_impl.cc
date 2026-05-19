@@ -44,7 +44,9 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/nccl/collective_communicator.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
@@ -93,6 +95,10 @@ absl::Status GetNumRetvals(
     }
   }
 
+  if (*num_retvals < 0) {
+    return absl::InvalidArgumentError("num_retvals cannot be negative.");
+  }
+
   return absl::OkStatus();
 }
 
@@ -129,16 +135,43 @@ absl::Status GetEagerOperationAndNumRetvals(const Operation& operation,
   TF_RETURN_IF_ERROR(eager_op->Reset(name, operation.device().c_str(), false,
                                      eager_executor, remote_func_params));
 
+  for (const auto& attr : operation.attrs()) {
+    eager_op->MutableAttrs()->Set(attr.first, attr.second);
+  }
+
+  eager_op->MutableAttrs()->NumInputs(operation.op_inputs_size());
+
+  const NodeDef& node_def = eager_op->MutableAttrs()->BuildNodeDef();
+  const OpDef* op_def;
+  auto status =
+      tensorflow::OpRegistry::Global()->LookUpOpDef(node_def.op(), &op_def);
+  if (absl::IsNotFound(status)) {
+    status = func_lib_def->LookUpOpDef(node_def.op(), &op_def);
+  }
+  TF_RETURN_IF_ERROR(status);
+  TF_RETURN_IF_ERROR(ValidateNodeDef(node_def, *op_def));
+
+  DataTypeVector input_types;
+  DataTypeVector output_types;
+  TF_RETURN_IF_ERROR(
+      InOutTypesForNode(node_def, *op_def, &input_types, &output_types));
+
+  if (operation.op_inputs_size() != input_types.size()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected ", input_types.size(), " inputs, but got ",
+                     operation.op_inputs_size()));
+  }
+
   {
     tsl::profiler::TraceMe activity("EagerService:RemoteTensorHandleInternal",
                                     tsl::profiler::TraceMeLevel::kVerbose);
-    for (const auto& input : operation.op_inputs()) {
+    for (int i = 0; i < operation.op_inputs_size(); i++) {
+      const auto& input = operation.op_inputs(i);
       tensorflow::TensorHandle* handle;
       if (input.has_remote_handle()) {
         TF_RETURN_IF_ERROR(
             eager_context->RemoteMgr()->DeserializeRemoteTensorHandle(
                 input.remote_handle(), &handle));
-        TF_RETURN_IF_ERROR(eager_op->AddInput(handle));
       } else {
         Tensor tensor;
         if (!ParseTensorProtoToTensor(input.tensor(), &tensor)) {
@@ -147,16 +180,19 @@ absl::Status GetEagerOperationAndNumRetvals(const Operation& operation,
         } else {
           handle = TensorHandle::CreateLocalHandle(std::move(tensor), nullptr,
                                                    nullptr, eager_context);
-          TF_RETURN_IF_ERROR(eager_op->AddInput(handle));
         }
       }
+      if (handle->dtype != input_types[i]) {
+        handle->Unref();
+        return absl::InvalidArgumentError(
+            absl::StrCat("Expected input ", i, " to be of type ",
+                         DataTypeString(input_types[i]), " but got ",
+                         DataTypeString(handle->dtype)));
+      }
+      TF_RETURN_IF_ERROR(eager_op->AddInput(handle));
       // Unref handle since it has a ref as an input now.
       handle->Unref();
     }
-  }
-
-  for (const auto& attr : operation.attrs()) {
-    eager_op->MutableAttrs()->Set(attr.first, attr.second);
   }
 
   // TODO(nareshmodi): Consider caching this.
@@ -716,8 +752,8 @@ absl::Status EagerServiceImpl::Enqueue(CallOptions* call_opts,
       s = ExecuteOp(call_opts, item.operation(), context->Context(), &executor,
                     queue_response);
     } else if (item.has_handle_to_decref()) {
-      auto handle_to_decref = std::make_unique<RemoteTensorHandleInternal>(
-          item.handle_to_decref());
+      auto handle_to_decref =
+          std::make_unique<RemoteTensorHandleInternal>(item.handle_to_decref());
       auto node = std::make_unique<ClientTensorHandleDeleteNode>(
           context, std::move(handle_to_decref));
       s = context->Context()->Executor().AddOrExecute(std::move(node));
@@ -882,11 +918,27 @@ absl::Status EagerServiceImpl::SendPackedHandle(
     }
   }
 
+  if (handles.empty()) {
+    return absl::InvalidArgumentError("handles cannot be empty.");
+  }
+  DataType first_dtype = handles.at(0)->dtype;
+  for (int i = 1; i < handles.size(); ++i) {
+    if (handles.at(i)->dtype != first_dtype) {
+      for (auto* h : handles) {
+        h->Unref();
+      }
+      return absl::InvalidArgumentError(
+          absl::StrCat("Packed handles must all have the same dtype. Found ",
+                       DataTypeString(first_dtype), " and ",
+                       DataTypeString(handles.at(i)->dtype)));
+    }
+  }
+
   tensorflow::TensorHandle* packed_handle = nullptr;
   std::vector<tensorflow::TensorHandle*> handles_to_pack = handles;
   // Create a unshaped packed TensorHandle.
   TF_RETURN_IF_ERROR(TensorHandle::CreatePackedHandle(
-      std::move(handles_to_pack), handles.at(0)->dtype, TensorShape(),
+      std::move(handles_to_pack), first_dtype, TensorShape(),
       send_packed_handle.device_name(), eager_context, &packed_handle));
 
   for (auto* h : handles) {
