@@ -59,6 +59,8 @@ absl::Status Merger::Merge(const std::vector<std::unique_ptr<Message>>& chunks,
 
   if (chunked_message.has_chunk_index()) {
     // Chunks referenced by fields should be merged into the parent chunk.
+    TF_RETURN_IF_ERROR(
+        ValidateChunkIndex(chunked_message.chunk_index(), chunks.size()));
     merged_message->MergeFrom(*chunks[chunked_message.chunk_index()].get());
   }
 
@@ -194,6 +196,8 @@ absl::Status Merger::ReadFields(const ChunkedMessage& chunked_message,
                                 tsl::protobuf::Message* merged_message) {
   if (chunked_message.has_chunk_index()) {
     // Chunks referenced by fields should be merged into the parent chunk.
+    TF_RETURN_IF_ERROR(
+        ValidateChunkIndex(chunked_message.chunk_index(), chunks_info.size()));
     TF_ASSIGN_OR_RETURN(
         std::string chunk,
         ReadChunk(reader, chunks_info[chunked_message.chunk_index()]));
@@ -261,12 +265,18 @@ absl::Status Merger::ProcessField(
   std::string chunk;
   switch (op) {
     case MergerOp::READ: {
+      TF_RETURN_IF_ERROR(
+          ValidateChunkIndex(chunked_field.message().chunk_index(),
+                             chunks_info.size()));
       TF_ASSIGN_OR_RETURN(
           chunk, ReadChunk(reader,
                            chunks_info[chunked_field.message().chunk_index()]));
       break;
     }
     case MergerOp::MERGE: {
+      TF_RETURN_IF_ERROR(
+          ValidateChunkIndex(chunked_field.message().chunk_index(),
+                             chunks.size()));
       chunk =
           chunks[chunked_field.message().chunk_index()]->SerializeAsString();
       break;
