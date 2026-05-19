@@ -24,9 +24,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
-#include "rocm/rocm_config.h"
-#if TF_HIPBLASLT
-
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -36,6 +33,7 @@ limitations under the License.
 #include "rocm/include/hipblas/hipblas.h"
 #include "rocm/include/hipblaslt/hipblaslt.h"
 #include "rocm/include/rocblas/internal/rocblas-types.h"
+#include "rocm/rocm_config.h"
 #include "xla/primitive_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/activate_context.h"
@@ -1067,5 +1065,3 @@ absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
 }  // namespace rocm
 
 }  // namespace stream_executor
-
-#endif  // TF_HIPBLASLT

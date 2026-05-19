@@ -21,10 +21,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "rocm/include/hipblas/hipblas.h"
 #include "rocm/include/hipblaslt/hipblaslt.h"
+#include "rocm/rocm_config.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/tsl/platform/errors.h"
-
-#if TF_HIPBLASLT
 
 #if TF_ROCM_VERSION < 60000
 #define hipDataType hipblasDatatype_t
@@ -56,7 +55,5 @@ hipblasOperation_t AsHipblasOperation(blas::Transpose trans);
 
 }  // namespace rocm
 }  // namespace stream_executor
-
-#endif  // TF_HIPBLASLT
 
 #endif  // XLA_STREAM_EXECUTOR_ROCM_HIP_BLAS_UTILS_H_

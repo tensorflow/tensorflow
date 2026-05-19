@@ -20,17 +20,14 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "rocm/include/hipblaslt/hipblaslt-ext.hpp"
 #include "rocm/rocm_config.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
+#include "xla/stream_executor/rocm/hip_blas_utils.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"
-
-#if TF_HIPBLASLT
-
-#include "rocm/include/hipblaslt/hipblaslt-ext.hpp"
-#include "xla/stream_executor/rocm/hip_blas_utils.h"
 
 namespace hipblaslt_ext {
 class GroupedGemm;
@@ -215,5 +212,4 @@ class BlasLt : public gpu::BlasLt {
 }  // namespace rocm
 }  // namespace stream_executor
 
-#endif  // TF_HIPBLASLT
 #endif  // XLA_STREAM_EXECUTOR_ROCM_HIP_BLAS_LT_H_

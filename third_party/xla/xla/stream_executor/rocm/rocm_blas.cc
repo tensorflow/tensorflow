@@ -183,12 +183,10 @@ bool ROCMBlas::Init() {
     return false;
   }
 
-#if TF_HIPBLASLT
   if (!blas_lt_.Init().ok()) {
     LOG(ERROR) << "Failed to initialize hipblasLt";
     return false;
   }
-#endif
 
   int dev = 0;
   hipError_t result = hipGetDevice(&dev);
@@ -203,15 +201,8 @@ bool ROCMBlas::Init() {
   return true;
 }
 
-ROCMBlas::ROCMBlas(StreamExecutor *parent)
-    : parent_(CHECK_NOTNULL(parent)),
-      blas_(nullptr)
-#if TF_HIPBLASLT
-      ,
-      blas_lt_(parent)
-#endif
-{
-}
+ROCMBlas::ROCMBlas(StreamExecutor* parent)
+    : parent_(CHECK_NOTNULL(parent)), blas_(nullptr), blas_lt_(parent) {}
 
 ROCMBlas::~ROCMBlas() {
   if (blas_ != nullptr) {
