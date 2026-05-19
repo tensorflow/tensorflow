@@ -330,12 +330,12 @@ TEST(DataServiceTest, RejectInvalidDatasetId) {
   EXPECT_THAT(dispatcher.RegisterDataset(
                   RangeDataset(10), DataServiceMetadata(),
                   /*requested_dataset_id=*/"nested/path", dataset_id),
-              ::tensorflow::testing::StatusIs(error::INVALID_ARGUMENT));
+              absl_testing::StatusIs(error::INVALID_ARGUMENT));
 
   EXPECT_THAT(dispatcher.RegisterDataset(
                   RangeDataset(10), DataServiceMetadata(),
                   /*requested_dataset_id=*/"some/nested/path", dataset_id),
-              ::tensorflow::testing::StatusIs(error::INVALID_ARGUMENT));
+              absl_testing::StatusIs(error::INVALID_ARGUMENT));
 
 #if defined(_WIN32)
   EXPECT_THAT(dispatcher.RegisterDataset(
@@ -351,7 +351,7 @@ TEST(DataServiceTest, RejectInvalidDatasetId) {
   EXPECT_THAT(
       dispatcher.RegisterDataset(RangeDataset(10), DataServiceMetadata(),
                                  /*requested_dataset_id=*/"..", dataset_id),
-      ::tensorflow::testing::StatusIs(error::INVALID_ARGUMENT));
+      absl_testing::StatusIs(error::INVALID_ARGUMENT));
 }
 
 }  // namespace
