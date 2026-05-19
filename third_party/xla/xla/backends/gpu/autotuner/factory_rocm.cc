@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/block_level_emitter.h"
 #include "xla/backends/gpu/autotuner/factory.h"
 #include "xla/backends/gpu/autotuner/fission_backend.h"
+#include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/backends/gpu/autotuner/hipblaslt.h"
 #include "xla/backends/gpu/autotuner/miopen.h"
 #include "xla/backends/gpu/autotuner/native_emitter.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/compiler.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
@@ -85,7 +87,8 @@ std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForROCm(
     const DebugOptions* debug_options, Compiler* compiler,
     const Compiler::GpuTargetConfig* target_config, const AliasInfo* alias_info,
     MLIRContext* mlir_context, HloCostAnalysis::ShapeSizeFunction shape_size_fn,
-    absl::Span<const autotuner::Backend> backend_allowlist) {
+    absl::Span<const autotuner::Backend> backend_allowlist,
+    InstructionFilterFn should_autotune) {
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::make_unique<TritonBackend>(
       debug_options, compiler, target_config, alias_info, mlir_context));
@@ -96,14 +99,40 @@ std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForROCm(
       stream_executor, debug_options, compiler, target_config));
   backends.push_back(std::make_unique<HipblasLtBackend>(
       stream_executor, debug_options, compiler, target_config));
+
+  auto native_emitter = std::make_unique<NativeEmitterBackend>(
+      debug_options, compiler, target_config);
+  auto ble_emitter = std::make_unique<BlockLevelEmitterBackend>(
+      debug_options, compiler, shape_size_fn, target_config);
+
+  // The fragment backends are used by the Fission backend to tune the fragments
+  // (i.e. epilogue and prologues products of fission). Check that they aren't
+  // going to be removed later in the filter to avoid dangling pointers.
+  std::vector<GpuCodegenBackend*> fragment_backends;
+  bool native_allowed =
+      backend_allowlist.empty() ||
+      absl::c_linear_search(backend_allowlist,
+                            autotuner::Backend::NATIVE_EMITTER);
+  bool ble_allowed =
+      backend_allowlist.empty() ||
+      absl::c_linear_search(backend_allowlist,
+                            autotuner::Backend::BLOCK_LEVEL_EMITTER);
+  if (native_allowed) {
+    fragment_backends.push_back(native_emitter.get());
+  }
+  if (ble_allowed) {
+    fragment_backends.push_back(ble_emitter.get());
+  }
   backends.push_back(std::make_unique<FissionBackend>(
       debug_options, compiler, target_config,
       std::make_unique<RocblasBackend>(stream_executor, debug_options, compiler,
                                        target_config),
       GetGemmRewriterPipeline(target_config->device_description,
                               /*enable_cublaslt=*/false, kAllDTypes),
-      alias_info, mlir_context));
+      alias_info, mlir_context, should_autotune, fragment_backends));
+
   bool enable_cublaslt = debug_options->xla_gpu_enable_cublaslt();
+
   backends.push_back(std::make_unique<FissionBackend>(
       debug_options, compiler, target_config,
       std::make_unique<HipblasLtBackend>(stream_executor, debug_options,
@@ -112,11 +141,10 @@ std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForROCm(
           target_config->device_description, /*enable_cublaslt=*/true,
           enable_cublaslt ? absl::Span<const DType>(kAllDTypes)
                           : kFp8OnlyDTypes),
-      alias_info, mlir_context));
-  backends.push_back(std::make_unique<NativeEmitterBackend>(
-      debug_options, compiler, target_config));
-  backends.push_back(std::make_unique<BlockLevelEmitterBackend>(
-      debug_options, compiler, shape_size_fn, target_config));
+      alias_info, mlir_context, should_autotune, fragment_backends));
+
+  backends.push_back(std::move(native_emitter));
+  backends.push_back(std::move(ble_emitter));
 
   if (!backend_allowlist.empty()) {
     backends.erase(

@@ -64,13 +64,17 @@ class FissionBackend : public GpuCodegenBackend {
                  std::unique_ptr<GpuCodegenBackend> backend,
                  std::unique_ptr<HloPassPipeline> rewriter_pipeline,
                  const AliasInfo* alias_info, mlir::MLIRContext* mlir_context,
+                 InstructionFilterFn should_autotune,
+                 std::vector<GpuCodegenBackend*> fragment_backends,
                  stream_executor::StreamExecutor* stream_executor = nullptr)
       : GpuCodegenBackend(GetFissionBackend(backend->backend()), debug_options,
                           compiler, target_config, stream_executor),
         rewriter_pipeline_(std::move(rewriter_pipeline)),
         codegen_backend_(std::move(backend)),
         alias_info_(alias_info),
-        mlir_context_(mlir_context) {}
+        mlir_context_(mlir_context),
+        should_autotune_(std::move(should_autotune)),
+        fragment_backends_(std::move(fragment_backends)) {}
   ~FissionBackend() override = default;
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
@@ -89,6 +93,18 @@ class FissionBackend : public GpuCodegenBackend {
   bool IsSupported(const HloInstruction& instr) override;
 
  private:
+  struct FragmentConfigs {
+    std::string fp_str;
+    std::vector<std::unique_ptr<BackendConfig>> configs;
+  };
+
+  absl::StatusOr<std::vector<FragmentConfigs>> CollectFragmentConfigs(
+      HloModule* hlo_module);
+
+  std::vector<std::unique_ptr<BackendConfig>> GenerateFissionKeyCombinations(
+      const std::vector<std::unique_ptr<BackendConfig>>& hero_configs,
+      const std::vector<FragmentConfigs>& fragments_to_process);
+
   absl::StatusOr<std::unique_ptr<HloModule>> GetFissionedAndRewrittenModule(
       const HloInstruction& fusion_instr);
   absl::StatusOr<HloInstruction*> FindFirstSupportedInstruction(
@@ -101,6 +117,8 @@ class FissionBackend : public GpuCodegenBackend {
   std::unique_ptr<GpuCodegenBackend> codegen_backend_;
   const AliasInfo* alias_info_;
   mlir::MLIRContext* mlir_context_;
+  InstructionFilterFn should_autotune_;
+  std::vector<GpuCodegenBackend*> fragment_backends_;
 };
 
 }  // namespace xla::gpu

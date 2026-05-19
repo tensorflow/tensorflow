@@ -1395,6 +1395,7 @@ tf_proto_library(
     srcs = ["autotuning.proto"],
     make_default_target_header_only = True,
     deps = [
+        "//xla/backends/autotuner:backends_proto",
         "//xla/tsl/protobuf:dnn_proto",
         "@com_google_protobuf//:any_proto",
         "@com_google_protobuf//:duration_proto",

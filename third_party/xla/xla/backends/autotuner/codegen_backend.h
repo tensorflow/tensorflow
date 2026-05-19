@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_AUTOTUNER_CODEGEN_BACKEND_H_
 #define XLA_BACKENDS_AUTOTUNER_CODEGEN_BACKEND_H_
 
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -28,6 +29,8 @@ limitations under the License.
 #include "xla/service/executable.h"
 
 namespace xla {
+
+using InstructionFilterFn = std::function<bool(const HloInstruction&)>;
 
 using BackendConfig = google::protobuf::Any;
 
