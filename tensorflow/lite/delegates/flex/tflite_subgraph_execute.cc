@@ -91,11 +91,11 @@ class TfLiteSubgraphExecute : public OpKernel {
     tflite::Subgraph& subgraph_selected = resource->GetSubgraphResource();
 
     OutputToInputMap(ctx, subgraph_selected);
-    OP_REQUIRES(ctx, ctx->num_inputs() == subgraph_selected.inputs().size() + 1,
-                errors::InvalidArgument("TF Lite subgraph expects ",
-                                        subgraph_selected.inputs().size(),
-                                        " inputs, but received ",
-                                        ctx->num_inputs() - 1, "."));
+    OP_REQUIRES(
+        ctx, ctx->num_inputs() == subgraph_selected.inputs().size() + 1,
+        absl::InvalidArgumentError(absl::StrCat(
+            "TF Lite subgraph expects ", subgraph_selected.inputs().size(),
+            " inputs, but received ", ctx->num_inputs() - 1, ".")));
 
     // Resize input tensors if necessary.
     ResizeInputTensor(ctx, subgraph_selected);
@@ -103,7 +103,7 @@ class TfLiteSubgraphExecute : public OpKernel {
 
     if (tfl_tensors_need_allocation_) {
       OP_REQUIRES(ctx, subgraph_selected.AllocateTensors() == kTfLiteOk,
-                  errors::Internal("Failed to call allocate tensors"));
+                  absl::InternalError("Failed to call allocate tensors"));
       tfl_tensors_need_allocation_ = false;
       // TODO(b/274934361): re-enable once allocation issue is solved.
       // output_tensors_can_be_shared_ =!subgraph_selected.HasDynamicTensors();
@@ -125,8 +125,8 @@ class TfLiteSubgraphExecute : public OpKernel {
         TfLiteStatus status = subgraph_selected.AllocateTensors();
         if (status != kTfLiteOk) {
           CleanUpCustomOutputs();
-          ctx->CtxFailure(errors::Internal("Failed to call allocate tensors",
-                                           subgraph_selected.GetName()));
+          ctx->CtxFailure(absl::InternalError(absl::StrCat(
+              "Failed to call allocate tensors", subgraph_selected.GetName())));
           return;
         }
         first_run_ = false;
@@ -138,8 +138,8 @@ class TfLiteSubgraphExecute : public OpKernel {
     TfLiteStatus status = subgraph_selected.Invoke();
     if (status != kTfLiteOk) {
       CleanUpCustomOutputs();
-      ctx->CtxFailure(errors::Internal("Failed to invoke tflite subgraph",
-                                       subgraph_selected.GetName()));
+      ctx->CtxFailure(absl::InternalError(absl::StrCat(
+          "Failed to invoke tflite subgraph", subgraph_selected.GetName())));
       return;
     }
 
@@ -214,9 +214,9 @@ class TfLiteSubgraphExecute : public OpKernel {
               // safe as the pointer comes from TensorFlow.
               // TODO(b/257964109): Remove this flag when fixed.
               kTfLiteCustomAllocationFlagsSkipAlignCheck) == kTfLiteOk,
-          errors::Internal(
+          absl::InternalError(absl::StrCat(
               "Failed to set custom allocation for output tensor %d, name: %s",
-              tensor_idx, subgraph_output->name));
+              tensor_idx, subgraph_output->name)));
     }
   }
 
@@ -241,9 +241,9 @@ class TfLiteSubgraphExecute : public OpKernel {
                       // safe as the pointer comes from TensorFlow.
                       // TODO(b/257964109): Remove this flag when fixed.
                       kTfLiteCustomAllocationFlagsSkipAlignCheck) == kTfLiteOk,
-                  errors::Internal(
+                  absl::InternalError(absl::StrCat(
                       "Failed to set custom allocation for input tensor %d",
-                      tensor_idx));
+                      tensor_idx)));
     }
   }
 
@@ -275,7 +275,7 @@ class TfLiteSubgraphExecute : public OpKernel {
         OP_REQUIRES(ctx,
                     subgraph_selected.ResizeInputTensor(
                         subgraph_selected.inputs()[i], new_shape) == kTfLiteOk,
-                    errors::Internal("Failed to resize tflite tensor"));
+                    absl::InternalError("Failed to resize tflite tensor"));
       }
     }
   }
@@ -311,8 +311,9 @@ class TfLiteSubgraphExecute : public OpKernel {
           subgraph_selected.tensor(subgraph_selected.inputs()[i]);
 
       if (subgraph_input->type == kTfLiteString) {
-        OP_REQUIRES(ctx, tf_tensor.dtype() == tensorflow::DT_STRING,
-                    errors::InvalidArgument("Tensor doesn't have string type"));
+        OP_REQUIRES(
+            ctx, tf_tensor.dtype() == tensorflow::DT_STRING,
+            absl::InvalidArgumentError("Tensor doesn't have string type"));
         tflite::DynamicBuffer dynamic_buffer;
         auto tf_data = tf_tensor.flat<tensorflow::tstring>();
         for (int i = 0; i < tf_tensor.NumElements(); ++i) {
@@ -335,7 +336,7 @@ class TfLiteSubgraphExecute : public OpKernel {
       } else if (!TensorCanBeShared(subgraph_input)) {
         absl::string_view tensor_data = tf_tensor.tensor_data();
         OP_REQUIRES(ctx, subgraph_input->bytes == tensor_data.size(),
-                    errors::Internal("tensor size doesn't match"));
+                    absl::InternalError("tensor size doesn't match"));
         // TODO(b/181352924): This could incur some overhead in memory copy.
         // Optimize this away in the future.
         std::memcpy(subgraph_input->data.raw, tensor_data.data(),
@@ -347,10 +348,11 @@ class TfLiteSubgraphExecute : public OpKernel {
   void CopyTFLiteSubgraphResult(OpKernelContext* ctx,
                                 tflite::Subgraph& subgraph_selected) const {
     for (int i = 0; i < subgraph_selected.outputs().size(); ++i) {
-      OP_REQUIRES(ctx,
-                  subgraph_selected.EnsureTensorDataIsReadable(
-                      subgraph_selected.outputs()[i]) == kTfLiteOk,
-                  errors::Internal("TF lite subgraph output is not readable"));
+      OP_REQUIRES(
+          ctx,
+          subgraph_selected.EnsureTensorDataIsReadable(
+              subgraph_selected.outputs()[i]) == kTfLiteOk,
+          absl::InternalError("TF lite subgraph output is not readable"));
       // Create an output tensor.
       TfLiteTensor* subgraph_output =
           subgraph_selected.tensor(subgraph_selected.outputs()[i]);
