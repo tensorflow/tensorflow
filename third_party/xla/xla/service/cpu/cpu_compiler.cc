@@ -572,11 +572,7 @@ auto LibrarySupportsDot(HloModule* module,
       module->config().debug_options().xla_cpu_experimental_ynn_fusion_type(),
       DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
   return [=](const HloInstruction& instr) {
-    if (ynnpack_dot_enabled &&
-        IsDotSupportedByYnn(instr.dot_dimension_numbers(),
-                            instr.operand(0)->shape(),
-                            instr.operand(1)->shape(), instr.shape())
-            .value_or(false)) {
+    if (ynnpack_dot_enabled && IsDotSupportedByYnn(&instr).value_or(false)) {
       return true;
     }
 
