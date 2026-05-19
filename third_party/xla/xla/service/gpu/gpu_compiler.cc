@@ -3677,7 +3677,7 @@ absl::Status GpuCompiler::AddFusionAutotuningPass(
   }
   const DebugOptions& debug_options = hlo_module->config().debug_options();
   if (debug_options.xla_gpu_autotune_level() == 0 ||
-      RequireDeterminism(hlo_module->config()) ||
+      debug_options.xla_gpu_exclude_nondeterministic_ops() ||
       !debug_options.xla_gpu_experimental_enable_fusion_autotuner()) {
     return absl::OkStatus();
   }
