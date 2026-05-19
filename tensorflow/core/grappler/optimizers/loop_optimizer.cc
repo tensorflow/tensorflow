@@ -474,7 +474,7 @@ std::vector<int> GetStackPushNodesToConvert(
                TraversalDirection::kFollowOutputs,
                DfsPredicates::Advance(is_op_to_traverse),
                DfsCallbacks::PreOrder([&](const NodeDef* node) {
-                 const absl::optional<int> idx = graph_view.GetNodeIndex(*node);
+                 const std::optional<int> idx = graph_view.GetNodeIndex(*node);
                  fanouts.push_back(idx.value());
                }));
 

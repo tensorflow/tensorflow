@@ -1371,7 +1371,7 @@ absl::Status FindAssignNodesToRelax(const GraphDef& graph,
           optimized_nodes.insert(assign_node_in_fanout);
 
           // Set an attribute telling AssignOp to ignore allocator constraints.
-          const absl::optional<int> assign_node_idx =
+          const std::optional<int> assign_node_idx =
               graph_view.GetNodeIndex(*assign_node_in_fanout);
           nodes_to_relax->insert(assign_node_idx.value());
         }
