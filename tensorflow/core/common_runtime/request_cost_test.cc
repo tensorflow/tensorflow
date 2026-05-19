@@ -53,13 +53,6 @@ TEST(RequestCostTest, RecordCost) {
                                    Pair("tpu_v2", absl::Milliseconds(22)),
                                    Pair("cpu_v1", absl::Milliseconds(33)),
                                    Pair("cpu_v2", absl::Milliseconds(44))));
-
-  request_cost.ScaleCosts(2);
-  EXPECT_THAT(request_cost.GetCosts(),
-              UnorderedElementsAre(Pair("tpu_v1", absl::Milliseconds(22)),
-                                   Pair("tpu_v2", absl::Milliseconds(44)),
-                                   Pair("cpu_v1", absl::Milliseconds(66)),
-                                   Pair("cpu_v2", absl::Milliseconds(88))));
 }
 
 TEST(RequestCostTest, RecordMetrics) {
@@ -138,6 +131,27 @@ TEST(RequestCostTest, RecordStructuredMetrics) {
       metrics["metric_v2"].values));
   EXPECT_THAT(std::get<std::vector<std::string>>(metrics["metric_v2"].values),
               ElementsAre("c"));
+}
+
+TEST(RequestCostTest, RecordStructuredCosts) {
+  RequestCost request_cost;
+
+  request_cost.RecordStructuredCosts(
+      {{"cost_a",
+        {{"dim1", absl::Milliseconds(10)}, {"dim2", absl::Milliseconds(5)}}}});
+  request_cost.RecordStructuredCosts(
+      {{"cost_a",
+        {{"dim1", absl::Milliseconds(20)}, {"dim2", absl::Milliseconds(10)}}},
+       {"cost_b", {{"dim1", absl::Milliseconds(3)}}}});
+
+  auto costs = request_cost.GetStructuredCosts();
+  ASSERT_EQ(costs.size(), 2);
+
+  // cost_a should be summed.
+  EXPECT_EQ(costs["cost_a"]["dim1"], absl::Milliseconds(30));
+  EXPECT_EQ(costs["cost_a"]["dim2"], absl::Milliseconds(15));
+
+  EXPECT_EQ(costs["cost_b"]["dim1"], absl::Milliseconds(3));
 }
 
 }  // namespace
