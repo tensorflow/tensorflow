@@ -50,7 +50,6 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/map_util.h"
 #include "xla/permutation_util.h"
-#include "xla/service/call_graph.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape.h"
@@ -2022,11 +2021,12 @@ absl::Status LayoutAssignment::PropagateBufferConstraintToUses(
   }
 
   // Propagate to backedges of kWhile.
-  CallGraphNode& node = call_graph_->GetNode(buffer.instruction()->parent());
-  if (node.caller_callsites().size() != 1) {
+  HloComputation* computation = buffer.instruction()->parent();
+  auto callers = computation->caller_instructions();
+  if (callers.size() != 1) {
     return absl::OkStatus();
   }
-  const HloInstruction* parent = node.caller_callsites()[0].instruction();
+  const HloInstruction* parent = callers[0];
   if (parent->opcode() != HloOpcode::kWhile) {
     return absl::OkStatus();
   }
@@ -2640,7 +2640,6 @@ absl::StatusOr<bool> LayoutAssignment::RunImpl(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "Running layout assignment on module " << module->name();
   TF_RETURN_IF_ERROR(Init(module));
-  call_graph_ = CallGraph::Build(module);
 
   std::vector<std::pair<HloInstruction*, int64_t>> operands_to_copy;
   for (HloComputation* computation : module->computations(execution_threads)) {
@@ -2683,43 +2682,46 @@ absl::StatusOr<bool> LayoutAssignment::RunImpl(
   }
 
   // Clone Conditional computations with multiple callsites.
-  struct ComputationsToClone {
+  struct CloneRequest {
     HloInstruction* caller;
-    int64_t branch_index;
     HloComputation* computation;
   };
-  std::vector<ComputationsToClone> computations_to_clone;
+  std::vector<CloneRequest> clone_requests;
   for (HloComputation* computation : module->computations(execution_threads)) {
-    CallGraphNode& node = call_graph_->GetNode(computation);
-    if (node.caller_callsites().size() == 1) {
+    auto caller_instructions = computation->caller_instructions();
+    if (caller_instructions.size() <= 1) {
       continue;
     }
-    if (absl::c_none_of(node.caller_callsites(), [](CallSite caller) {
-          return caller.instruction()->opcode() == HloOpcode::kConditional;
-        })) {
-      continue;
-    }
-    for (int64_t i = 0; i < node.caller_callsites().size() - 1; ++i) {
-      HloInstruction* caller = node.caller_callsites()[i].instruction();
+    std::vector<HloInstruction*> cond_callers;
+    for (HloInstruction* caller : caller_instructions) {
       if (caller->opcode() == HloOpcode::kConditional) {
-        for (int64_t k = 0; k < caller->branch_count(); ++k) {
-          if (computation == caller->branch_computation(k)) {
-            // Defer cloning + adding the computation since we are iterating
-            // over the list of computations.
-            computations_to_clone.push_back({caller, k, computation});
-            break;
-          }
-        }
+        cond_callers.push_back(caller);
+      }
+    }
+    if (cond_callers.empty()) {
+      continue;
+    }
+    int clones_needed = cond_callers.size();
+    // If all unique caller instructions are conditionals that we want to clone,
+    // we can leave one of them to use the original computation. This avoids
+    // redundant cloning and prevents the original computation from becoming
+    // dead.
+    if (caller_instructions.size() == cond_callers.size()) {
+      clones_needed--;
+    }
+    for (int i = 0; i < clones_needed; ++i) {
+      clone_requests.push_back({cond_callers[i], computation});
+    }
+  }
+  for (const auto& request : clone_requests) {
+    HloComputation* clone =
+        module->AddEmbeddedComputation(request.computation->Clone());
+    for (int64_t k = 0; k < request.caller->branch_count(); ++k) {
+      if (request.computation == request.caller->branch_computation(k)) {
+        request.caller->set_branch_computation(k, clone);
       }
     }
   }
-  for (auto [caller, branch_index, computation] : computations_to_clone) {
-    caller->set_branch_computation(
-        branch_index, module->AddEmbeddedComputation(computation->Clone()));
-  }
-  // Rebuild the call graph with the cloned computations included.
-  // Necessary for validity of the subsequent code.
-  call_graph_ = CallGraph::Build(module);
 
   // Verify computation layout is sane.
   HloComputation* entry = module->entry_computation();

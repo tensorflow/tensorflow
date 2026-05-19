@@ -3888,7 +3888,6 @@ cc_library(
         "layout_assignment.h",
     ],
     deps = [
-        ":call_graph",
         ":computation_layout",
         ":hlo_graph_dumper",
         ":logical_buffer",
