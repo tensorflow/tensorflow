@@ -70,6 +70,9 @@ namespace hlo_isolation {
 
 namespace {
 
+constexpr absl::string_view kResultsFilename =
+    "hlo_isolation_test_results.pbtxt";
+
 absl::Status InitIsolatorOptions(ModuleIsolationOptions& options) {
   if (!options.run_module_fn) {
     options.run_module_fn =
@@ -91,10 +94,10 @@ absl::Status InitIsolatorOptions(ModuleIsolationOptions& options) {
       std::string filename;
       if (tsl::io::GetTestUndeclaredOutputsDir(&outdir)) {
         filename = tsl::io::JoinPath(
-            outdir, absl::StrCat("failed-", module.name(), ".txt"));
+            outdir, absl::StrCat("failed-module-", module.name(), ".txt"));
       } else {
         filename = tsl::io::GetTempFilename(
-            absl::StrCat("failed-", module.name(), ".txt"));
+            absl::StrCat("failed-module-", module.name(), ".txt"));
       }
       CHECK_OK(tsl::WriteStringToFile(env, filename, module.ToString()));
       LOG(INFO) << "Wrote failed HLO module to " << filename;
@@ -140,27 +143,19 @@ void WriteLiteralToTempFile(const LiteralSlice& literal,
                             const std::string& module_name,
                             const std::string& name) {
   auto* env = tsl::Env::Default();
-  std::string binary_filename;
   std::string text_filename;
   std::string outdir;
   std::string prefix = absl::StrCat(module_name, "-", name);
   if (tsl::io::GetTestUndeclaredOutputsDir(&outdir)) {
     std::string filename =
         tsl::io::JoinPath(outdir, absl::StrCat("failed-", prefix));
-    binary_filename = absl::StrCat(filename, ".pb");
     text_filename = absl::StrCat(filename, ".txt");
   } else {
-    binary_filename = tsl::io::GetTempFilename(absl::StrCat(prefix, ".pb"));
     text_filename = tsl::io::GetTempFilename(absl::StrCat(prefix, ".txt"));
   }
-
-  CHECK_OK(tsl::WriteBinaryProto(env, binary_filename, literal.ToProto()));
   CHECK_OK(tsl::WriteStringToFile(env, text_filename, literal.ToString()));
-  LOG(INFO) << "Wrote Literal to " << prefix << " binary: " << binary_filename
-            << " text: " << text_filename;
+  LOG(INFO) << "Wrote Literal to " << prefix << " text: " << text_filename;
 }
-
-const absl::string_view kResultsFilename = "hlo_isolation_test_results.pbtxt";
 
 void WriteResults(const std::vector<HloIsolationTestResult>& pipeline_results) {
   auto* env = tsl::Env::Default();
