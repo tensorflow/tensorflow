@@ -94,7 +94,7 @@ ENTRY %main.1 (p_0: f32[2,2,2], p_1: f32[2,2,2], p_2: f32[2,2,2], p_3: f32[2,2,2
   // Ensure that compiling the module does not crash or run out of memory.
   EXPECT_THAT(
       CreateExecutable(std::move(module), /*run_hlo_passes=*/true).status(),
-      IsOk());
+      absl_testing::IsOk());
 }
 
 }  // namespace
