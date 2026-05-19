@@ -87,6 +87,9 @@ class Iterator {
   // indication of whether the end of the input pipeline has been reached.
   absl::Status GetNext(std::vector<Tensor>* outputs, bool* end_of_input);
 
+  // Cancels in-progress execution of this iterator.
+  void Cancel();
+
   // Saves a checkpoint of the iterator. Returns Tensors that can be called with
   // `Restore()`.
   absl::StatusOr<std::vector<Tensor>> Save();

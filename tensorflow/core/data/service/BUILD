@@ -730,13 +730,13 @@ cc_library(
         ":dispatcher_client",
         ":grpc_util",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core/data:standalone",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:thread_annotations",
+        "@com_google_absl//absl/status",
     ],
 )
 
