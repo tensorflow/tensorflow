@@ -596,7 +596,7 @@ static YnnUnaryOpTestParams unary_op_test_params[] = {
         ErrorSpec{/*aabs=*/0, /*arel=*/2e-7, /*relaxed_nans=*/true},
     },
     {HloOpcode::kLog1p, F32, F32, F32_ErrorSpec},
-    {HloOpcode::kLogistic, F32, F32, F32_ErrorSpec},
+    {HloOpcode::kLogistic, F32, F32, ErrorSpec{/*aabs=*/2e-7, /*arel=*/2e-7}},
     {HloOpcode::kNegate, F32, F32},
     {HloOpcode::kRoundNearestEven, F32, F32},
     {HloOpcode::kRsqrt, F32, F32, F32_ErrorSpec},
