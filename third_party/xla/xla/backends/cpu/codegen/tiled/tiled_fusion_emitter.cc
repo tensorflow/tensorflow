@@ -222,13 +222,13 @@ absl::StatusOr<SymbolicTileAnalysis> GetSymbolicTileAnalysis(
   // So limit to low-rank tensors to prevent excess memory usage and hangs
   constexpr int kMaxRank = 8;
   for (const xla::HloInstruction* instruction : fusion.fused_instructions()) {
-    if (instruction->shape().dimensions_size() > kMaxRank) {
+    if (instruction->shape().dimensions().size() > kMaxRank) {
       return Internal(
           "Unsupported fusion in EmitGeneric: tensor rank too large");
     }
 
     for (const xla::HloInstruction* operand : instruction->operands()) {
-      if (operand->shape().dimensions_size() > kMaxRank) {
+      if (operand->shape().dimensions().size() > kMaxRank) {
         return Internal(
             "Unsupported fusion in EmitGeneric: tensor rank too large");
       }
