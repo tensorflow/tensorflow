@@ -21,13 +21,17 @@ import github_api
 
 THRESHOLD_MESSAGES = {
     1000: (
-        "🔴 This PR has a large delta of over 1000. In order to enable an"
+        "🔴 This PR has a very large delta of over 1000. In order to enable an"
         " effective code reivew, please break the PR down into smaller and more"
-        " focused PRs."
+        " focused PRs.\nSee the [Small"
+        " CLs](https://google.github.io/eng-practices/review/developer/small-cls.html)"
+        " Google Eng practice for more details on how to write compact PRs."
     ),
     500: (
         "⚠️ This PR has a large delta of over 500. Consider breaking the PR"
-        " down into smaller PRs for a faster code review."
+        " down into smaller PRs for a faster code review.\nSee the [Small"
+        " CLs](https://google.github.io/eng-practices/review/developer/small-cls.html)"
+        " Google Eng practice for more details on how to write compact PRs."
     ),
 }
 
