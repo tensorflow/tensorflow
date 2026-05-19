@@ -13,18 +13,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cmath>
+#include <cstddef>
+#include <limits>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/base/no_destructor.h"
+#include "absl/log/log.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla::cpu {
@@ -473,6 +485,129 @@ INSTANTIATE_TEST_SUITE_P(YnnFusionReduceWindowTestInstantiation,
                          YnnFusionReduceWindowTest,
                          ::testing::Values(YnnFusionTestParams{"f32", "f32"}),
                          YnnFusionTest::Name);
+
+template <typename T>
+absl::Span<const T> GetUnaryOpTestInputs() {
+  static absl::NoDestructor<std::vector<T>> values{[]() {
+    constexpr size_t kN = 10000;
+    std::vector<T> values;
+    values.reserve(kN * 2 + 20);
+    values.push_back(0.0f);
+    values.push_back(-0.0f);
+    values.push_back(1.0f);
+    values.push_back(-1.0f);
+    values.push_back(std::numeric_limits<T>::max());
+    values.push_back(std::numeric_limits<T>::min());
+    values.push_back(-std::numeric_limits<T>::max());
+    values.push_back(-std::numeric_limits<T>::min());
+    values.push_back(std::numeric_limits<T>::infinity());
+    values.push_back(-std::numeric_limits<T>::infinity());
+    values.push_back(std::numeric_limits<T>::quiet_NaN());
+
+    double log_max = std::log2(std::numeric_limits<T>::max());
+    for (size_t i = 0; i < kN; ++i) {
+      values.push_back(std::exp2((log_max * i) / kN));
+      values.push_back(-std::exp2((log_max * i) / kN));
+    }
+
+    return values;
+  }()};
+  return *values;
+}
+
+Literal GetUnaryOpTestInputs(PrimitiveType type) {
+  switch (type) {
+    case F32:
+      return LiteralUtil::CreateR1(GetUnaryOpTestInputs<float>());
+    default:
+      LOG(FATAL) << "Unsupported type: " << PrimitiveType_Name(type);
+  }
+}
+
+struct YnnUnaryOpTestParams {
+  HloOpcode op;
+  PrimitiveType in_dtype;
+  PrimitiveType out_dtype;
+  ErrorSpec error_spec{0.0};
+};
+
+class YnnUnaryOpTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>,
+      public ::testing::WithParamInterface<YnnUnaryOpTestParams> {
+ public:
+  static std::string Name(
+      const ::testing::TestParamInfo<YnnUnaryOpTestParams>& info) {
+    return absl::StrCat(
+        absl::StrReplaceAll(xla::HloOpcodeString(info.param.op), {{"-", "_"}}),
+        "_", absl::AsciiStrToLower(PrimitiveType_Name(info.param.in_dtype)),
+        "_", absl::AsciiStrToLower(PrimitiveType_Name(info.param.out_dtype)));
+  }
+};
+
+TEST_P(YnnUnaryOpTest, Run) {
+  HloOpcode op = GetParam().op;
+  PrimitiveType in_type = GetParam().in_dtype;
+  PrimitiveType out_type = GetParam().out_dtype;
+  ErrorSpec error_spec = GetParam().error_spec;
+
+  absl::string_view hlo = R"(
+    HloModule convert_reduce
+
+    ynn_fusion {
+      %input = $in_dtype[$d0] parameter(0)
+      ROOT %output = $out_dtype[$d0] $op(%input)
+    }
+
+    ENTRY entry {
+      %p0 = $in_dtype[$d0] parameter(0)
+      ROOT %fusion = $out_dtype[$d0] fusion(%p0), kind=kCustom,
+        calls=ynn_fusion,
+        backend_config={"fusion_config": {kind: "__ynn_fusion"}}
+    })";
+
+  Literal p0 = GetUnaryOpTestInputs(in_type);
+
+  std::vector<const Literal*> args = {&p0};
+  std::string hlo_text = absl::StrReplaceAll(
+      hlo, {{"$in_dtype", absl::AsciiStrToLower(PrimitiveType_Name(in_type))},
+            {"$out_dtype", absl::AsciiStrToLower(PrimitiveType_Name(out_type))},
+            {"$op", xla::HloOpcodeString(op)},
+            {"$d0", absl::StrCat(p0.shape().dimensions(0))}});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), args, error_spec));
+}
+
+ErrorSpec F32_ErrorSpec{/*aabs=*/1e-7, /*arel=*/1e-7};
+
+static YnnUnaryOpTestParams unary_op_test_params[] = {
+    {HloOpcode::kConvert, F32, BF16},
+
+    {HloOpcode::kAbs, F32, F32},
+    {HloOpcode::kCeil, F32, F32},
+    {HloOpcode::kErf, F32, F32, ErrorSpec{/*aabs=*/2e-7, /*arel=*/3e-7}},
+    {HloOpcode::kExp, F32, F32, ErrorSpec{/*aabs=*/1e-38, /*arel=*/4e-6}},
+    {HloOpcode::kExpm1, F32, F32, F32_ErrorSpec},
+    {HloOpcode::kFloor, F32, F32},
+    {
+        HloOpcode::kLog,
+        F32,
+        F32,
+        // On ARM, XLA's log returns NaN when the input is close to infinity.
+        ErrorSpec{/*aabs=*/0, /*arel=*/2e-7, /*relaxed_nans=*/true},
+    },
+    {HloOpcode::kLog1p, F32, F32, F32_ErrorSpec},
+    {HloOpcode::kLogistic, F32, F32, F32_ErrorSpec},
+    {HloOpcode::kNegate, F32, F32},
+    {HloOpcode::kRoundNearestEven, F32, F32},
+    {HloOpcode::kRsqrt, F32, F32, F32_ErrorSpec},
+    {HloOpcode::kSign, F32, F32},
+    {HloOpcode::kSqrt, F32, F32, F32_ErrorSpec},
+    {HloOpcode::kTanh, F32, F32, ErrorSpec{/*aabs=*/2e-7, /*arel=*/4e-7}},
+};
+
+INSTANTIATE_TEST_SUITE_P(YnnUnaryOpTestInstantiation, YnnUnaryOpTest,
+                         ::testing::ValuesIn(unary_op_test_params),
+                         YnnUnaryOpTest::Name);
 
 }  // namespace
 }  // namespace xla::cpu
