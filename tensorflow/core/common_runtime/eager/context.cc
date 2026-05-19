@@ -693,21 +693,25 @@ EagerContext::~EagerContext() {
 }
 
 bool EagerContext::FindFunctionByName(const std::string& name) const {
+  tf_shared_lock l(cache_mu_);
   return func_lib_def_.Find(name) != nullptr;
 }
 
 absl::Status EagerContext::FindFunctionOpData(
     const std::string& name, const tensorflow::OpRegistrationData** op_data) {
+  tf_shared_lock l(cache_mu_);
   return func_lib_def_.LookUp(name, op_data);
 }
 
 const FunctionDef* EagerContext::FindFunctionDef(
     const std::string& name) const {
+  tf_shared_lock l(cache_mu_);
   return func_lib_def_.Find(name);
 }
 
 core::RefCountPtr<FunctionRecord> EagerContext::FindRecord(
     const std::string& name) const {
+  tf_shared_lock l(cache_mu_);
   return func_lib_def_.FindRecord(name);
 }
 
@@ -845,6 +849,24 @@ ScopedStepContainer* EagerContext::StepContainer() {
   return step_container_.get();
 }
 
+absl::Status EagerContext::ValidateDuplicateFunction(
+    const FunctionDef& fdef) const {
+  const FunctionDef* prev_fdef = func_lib_def_.Find(fdef.signature().name());
+  if (prev_fdef == nullptr) {
+    return absl::InternalError(
+        absl::StrCat("Function: ", fdef.signature().name(),
+                     " is in the cache but not in the library"));
+  }
+  if (!FunctionDefsEqual(fdef, *prev_fdef)) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Attempting to add a duplicate function with name: ",
+        fdef.signature().name(), " where the previous and current ",
+        "definitions differ. Previous definition: ", prev_fdef->DebugString(),
+        " and current definition: ", fdef.DebugString()));
+  }
+  return absl::OkStatus();
+}
+
 absl::Status EagerContext::MaybeRegisterFunctionRemotely(
     const FunctionDef& fdef) {
   // Only client context can register function on remote worker context.
@@ -925,7 +947,11 @@ absl::Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
 #if !defined(IS_MOBILE_PLATFORM)
   // Register multiple functions on selected remote workers.
   uint64_t context_id = GetContextId();
-  FunctionDefLibrary function_defs = func_lib_def_.ToProto();
+  FunctionDefLibrary function_defs;
+  {
+    tf_shared_lock l(cache_mu_);
+    function_defs = func_lib_def_.ToProto();
+  }
   std::vector<std::shared_ptr<eager::EnqueueRequest>> requests(
       function_defs.function_size());
   for (int i = 0; i < function_defs.function_size(); i++) {
@@ -990,16 +1016,53 @@ absl::Status EagerContext::AddFunctionRecord(
     const FunctionDefLibrary& library, bool add_to_local_only) {
   const FunctionDef& fdef = func_record->fdef();
   const StackTracesMap& stack_traces = func_record->stack_traces();
-  auto fdefs_to_add =
-      small_constants_optimizer::FoldInputTensors(fdef, func_lib_def_);
+
+  {
+    mutex_lock l(cache_mu_);
+    auto* registered_function =
+        gtl::FindPtrOrNull(registered_functions_, fdef.signature().name());
+    if (registered_function != nullptr) {
+      TF_RETURN_IF_ERROR(ValidateDuplicateFunction(fdef));
+
+      std::vector<std::string> worklist = {fdef.signature().name()};
+      for (size_t i = 0; i < worklist.size(); ++i) {
+        const std::string& name = worklist[i];
+        auto* rf = gtl::FindPtrOrNull(registered_functions_, name);
+        if (rf != nullptr) {
+          rf->Ref();
+          for (const auto& child : rf->child_functions) {
+            worklist.push_back(child);
+          }
+        }
+      }
+      return absl::OkStatus();
+    }
+  }
+
+  std::vector<std::string> child_funcs;
+
+  std::vector<FunctionDef> fdefs_to_add;
+  {
+    tf_shared_lock l(cache_mu_);
+    fdefs_to_add =
+        small_constants_optimizer::FoldInputTensors(fdef, func_lib_def_);
+  }
+  child_funcs.reserve(fdefs_to_add.size());
   for (const auto& fdef_to_add : fdefs_to_add) {
+    child_funcs.push_back(fdef_to_add.signature().name());
     TF_RETURN_IF_ERROR(
         AddFunctionDef(fdef_to_add, library, add_to_local_only, stack_traces));
   }
 
-  auto stripped_fdefs_to_add =
-      summary_optimizer::StripSummaries(fdef, func_lib_def_);
+  std::vector<FunctionDef> stripped_fdefs_to_add;
+  {
+    tf_shared_lock l(cache_mu_);
+    stripped_fdefs_to_add =
+        summary_optimizer::StripSummaries(fdef, func_lib_def_);
+  }
+  child_funcs.reserve(child_funcs.size() + stripped_fdefs_to_add.size());
   for (const auto& fdef_to_add : stripped_fdefs_to_add) {
+    child_funcs.push_back(fdef_to_add.signature().name());
     TF_RETURN_IF_ERROR(
         AddFunctionDef(fdef_to_add, library, add_to_local_only, stack_traces));
   }
@@ -1013,26 +1076,13 @@ absl::Status EagerContext::AddFunctionRecord(
       registered_function = new RegisteredFunction;
       registered_function->cached_kernel_keys =
           std::make_unique<std::vector<Fprint128>>();
+      registered_function->child_functions = std::move(child_funcs);
       gtl::InsertOrUpdate(&registered_functions_, fdef.signature().name(),
                           registered_function);
     } else {
       // The function has been registered before. If the function is the same,
       // then we take a Ref() otherwise we error out.
-      const FunctionDef* prev_fdef =
-          func_lib_def_.Find(fdef.signature().name());
-      if (prev_fdef == nullptr) {
-        return absl::InternalError(
-            absl::StrCat("Function: ", fdef.signature().name(),
-                         " is in the cache but not in the library"));
-      }
-      if (!FunctionDefsEqual(fdef, *prev_fdef)) {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "Attempting to add a duplicate function with name: ",
-            fdef.signature().name(), " where the previous and current ",
-            "definitions differ. Previous definition: ",
-            prev_fdef->DebugString(),
-            " and current definition: ", fdef.DebugString()));
-      }
+      TF_RETURN_IF_ERROR(ValidateDuplicateFunction(fdef));
       registered_function->Ref();
     }
     is_first_ref = registered_function->RefCountIsOne();
@@ -1086,10 +1136,12 @@ absl::Status EagerContext::AddComponentFunction(
 
 const FunctionDef* EagerContext::GetFunctionDef(
     const std::string& function_name) {
+  tf_shared_lock l(cache_mu_);
   return func_lib_def_.Find(function_name);
 }
 
 std::vector<std::string> EagerContext::ListFunctionNames() {
+  tf_shared_lock l(cache_mu_);
   return func_lib_def_.ListFunctionNames();
 }
 
@@ -1132,6 +1184,7 @@ absl::Status EagerContext::RemoveFunction(const std::string& func) {
   // TODO(mdan): The context owns these functions. Why check refcount then?
   std::vector<std::function<void()>> notifiers;
   bool is_last_ref = false;
+  std::vector<std::string> children_to_remove;
   {
     mutex_lock l(cache_mu_);
     auto* registered_function = gtl::FindPtrOrNull(registered_functions_, func);
@@ -1140,6 +1193,7 @@ absl::Status EagerContext::RemoveFunction(const std::string& func) {
           absl::StrCat("Tried to remove non-existent function '", func, "'."));
     }
     is_last_ref = registered_function->RefCountIsOne();
+    children_to_remove = registered_function->child_functions;
     if (is_last_ref) {
       for (auto& key : *registered_function->cached_kernel_keys) {
         kernel_cache_.erase(key);
@@ -1160,13 +1214,19 @@ absl::Status EagerContext::RemoveFunction(const std::string& func) {
   }
   // MaybeRemoveFunctionRemotely contains rpc calls. Including it to mutex lock
   // will cause error.
-  if (is_last_ref) {
-    for (const auto& notifier : notifiers) {
-      notifier();
-    }
-    return MaybeRemoveFunctionRemotely(func);
+  for (const auto& notifier : notifiers) {
+    notifier();
   }
-  return absl::OkStatus();
+  absl::Status status = absl::OkStatus();
+  if (is_last_ref) {
+    status = MaybeRemoveFunctionRemotely(func);
+  }
+  // Recursively decrement child function refcounts outside of the mutex lock
+  // to prevent deadlocks (since RemoveFunction locks cache_mu_ internally).
+  for (const auto& child : children_to_remove) {
+    status.Update(RemoveFunction(child));
+  }
+  return status;
 }
 
 absl::Status EagerContext::SyncExecutors() {
