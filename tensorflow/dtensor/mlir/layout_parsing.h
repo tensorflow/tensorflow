@@ -75,10 +75,10 @@ StatusOr<std::vector<Layout>> ExtractRequiredLayoutFromOperands(
 // Set `_layout` attribute for op. For layouts without value, an empty string is
 // used as place holder.
 void SetLayoutOnOp(mlir::Operation* op, mlir::OpBuilder builder,
-                   absl::Span<const absl::optional<Layout>> layouts);
+                   absl::Span<const std::optional<Layout>> layouts);
 
 void SetLayoutOnOp(mlir::Operation* op,
-                   absl::Span<const absl::optional<Layout>> layouts);
+                   absl::Span<const std::optional<Layout>> layouts);
 
 void SetSingleLayoutOnOp(mlir::Operation* op, const Layout& layout);
 
