@@ -29,7 +29,7 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-class HipblasLtMxExecutionTest : public HloPjRtGpuTestBase {
+class MxScaledDotExecutionTest : public HloPjRtGpuTestBase {
  protected:
   void SetUp() override {
     const auto& gpu_cc = device_description().gpu_compute_capability();
@@ -39,32 +39,10 @@ class HipblasLtMxExecutionTest : public HloPjRtGpuTestBase {
     }
   }
 
-  // Runs numerical correctness (hipBLASLt MX vs decomposed reference) and
-  // verifies that the optimized HLO uses the expected custom call target.
+  // Runs numerical correctness and verifies that the optimized HLO uses the
+  // expected custom call target.
   void RunMxCorrectnessTest(absl::string_view hlo_string,
                             const ErrorSpec& error_spec) {
-    TF_ASSERT_OK_AND_ASSIGN(auto reference_module,
-                            ParseAndReturnUnverifiedModule(hlo_string));
-    reference_module->mutable_config()
-        .mutable_debug_options()
-        .set_xla_gpu_experimental_scaled_dot_with_triton(false);
-    reference_module->mutable_config()
-        .mutable_debug_options()
-        .set_xla_gpu_enable_triton_gemm(false);
-
-    TF_ASSERT_OK_AND_ASSIGN(auto test_module,
-                            ParseAndReturnUnverifiedModule(hlo_string));
-    test_module->mutable_config()
-        .mutable_debug_options()
-        .set_xla_gpu_experimental_scaled_dot_with_triton(true);
-    test_module->mutable_config()
-        .mutable_debug_options()
-        .set_xla_gpu_enable_triton_gemm(true);
-
-    EXPECT_TRUE(RunAndCompareTwoModules(std::move(test_module),
-                                        std::move(reference_module), error_spec,
-                                        /*run_hlo_passes=*/true));
-
     HloModuleConfig ref_config = GetModuleConfigForTest();
     ref_config.mutable_debug_options()
         .set_xla_gpu_experimental_scaled_dot_with_triton(false);
@@ -73,7 +51,7 @@ class HipblasLtMxExecutionTest : public HloPjRtGpuTestBase {
                             GetOptimizedModule(hlo_string, ref_config));
     EXPECT_THAT(
         RunFileCheck(ref_optimized->ToString(),
-                     "CHECK-NOT: __cublas$lt$matmul$mx\nCHECK-NOT: scaled-dot"),
+                     R"(CHECK: {{__cublas\$lt\$matmul|__cublas\$gemm}})"),
         absl_testing::IsOkAndHolds(true));
 
     HloModuleConfig test_config = GetModuleConfigForTest();
@@ -82,9 +60,19 @@ class HipblasLtMxExecutionTest : public HloPjRtGpuTestBase {
     test_config.mutable_debug_options().set_xla_gpu_enable_triton_gemm(true);
     TF_ASSERT_OK_AND_ASSIGN(auto test_optimized,
                             GetOptimizedModule(hlo_string, test_config));
-    EXPECT_THAT(RunFileCheck(test_optimized->ToString(),
-                             "CHECK: __cublas$lt$matmul$mx"),
-                absl_testing::IsOkAndHolds(true));
+    // The autotuner may pick any of the MX-aware ROCm backends:
+    //   __triton_nested_gemm_fusion -> Triton
+    //   __cublas$lt$matmul$mx       -> hipBLASLt
+    //   __cublas$lt$matmul          -> HIPBLASLT_FISSION (should never win)
+    EXPECT_THAT(
+        RunFileCheck(
+            test_optimized->ToString(),
+            R"(CHECK: {{__triton_nested_gemm_fusion|__cublas\$lt\$matmul\$mx}})"),
+        absl_testing::IsOkAndHolds(true));
+
+    EXPECT_TRUE(RunAndCompareTwoModules(std::move(test_optimized),
+                                        std::move(ref_optimized), error_spec,
+                                        /*run_hlo_passes=*/false));
   }
 };
 
@@ -99,7 +87,7 @@ ENTRY main {
       lhs_contracting_dims={1}, rhs_contracting_dims={1}
 })";
 
-TEST_F(HipblasLtMxExecutionTest, MxFp8Correctness) {
+TEST_F(MxScaledDotExecutionTest, MxFp8Correctness) {
   RunMxCorrectnessTest(kMxFp8Hlo, ErrorSpec(/*aabs=*/1e-4, /*arel=*/1e-5));
 }
 
@@ -115,7 +103,7 @@ ENTRY main {
       lhs_contracting_dims={2}, rhs_contracting_dims={2}
 })";
 
-TEST_F(HipblasLtMxExecutionTest, MxFp8BatchedCorrectness) {
+TEST_F(MxScaledDotExecutionTest, MxFp8BatchedCorrectness) {
   RunMxCorrectnessTest(kMxFp8BatchedHlo,
                        ErrorSpec(/*aabs=*/1e-4, /*arel=*/1e-5));
 }
@@ -132,7 +120,7 @@ ENTRY main {
       lhs_contracting_dims={2}, rhs_contracting_dims={2}
 })";
 
-TEST_F(HipblasLtMxExecutionTest, MxFp8MixedTypesBatchedCorrectness) {
+TEST_F(MxScaledDotExecutionTest, MxFp8MixedTypesBatchedCorrectness) {
   RunMxCorrectnessTest(kMxFp8MixedTypesBatchedHlo,
                        ErrorSpec(/*aabs=*/1e-4, /*arel=*/1e-5));
 }
@@ -148,7 +136,7 @@ ENTRY main {
       lhs_contracting_dims={1}, rhs_contracting_dims={1}
 })";
 
-TEST_F(HipblasLtMxExecutionTest, MxFp4Correctness) {
+TEST_F(MxScaledDotExecutionTest, MxFp4Correctness) {
   RunMxCorrectnessTest(kMxFp4Hlo, ErrorSpec(/*aabs=*/1e-4, /*arel=*/1e-5));
 }
 
@@ -164,7 +152,7 @@ ENTRY main {
       lhs_contracting_dims={2}, rhs_contracting_dims={2}
 })";
 
-TEST_F(HipblasLtMxExecutionTest, MxFp4BatchedCorrectness) {
+TEST_F(MxScaledDotExecutionTest, MxFp4BatchedCorrectness) {
   RunMxCorrectnessTest(kMxFp4BatchedHlo,
                        ErrorSpec(/*aabs=*/1e-4, /*arel=*/1e-5));
 }
@@ -181,7 +169,7 @@ ENTRY main {
       lhs_contracting_dims={2}, rhs_contracting_dims={2}
 })";
 
-TEST_F(HipblasLtMxExecutionTest, MxFp4Fp8MixedBatchedCorrectness) {
+TEST_F(MxScaledDotExecutionTest, MxFp4Fp8MixedBatchedCorrectness) {
   RunMxCorrectnessTest(kMxFp4Fp8MixedBatchedHlo,
                        ErrorSpec(/*aabs=*/1e-4, /*arel=*/1e-5));
 }

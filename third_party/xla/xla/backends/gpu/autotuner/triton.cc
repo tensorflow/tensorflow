@@ -175,6 +175,20 @@ TritonBackend::GetSupportedConfigsForDot(const HloInstruction* instr) {
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
 TritonBackend::GetSupportedConfigsForScaledDot(const HloInstruction* instr) {
+  // The ROCm Triton backend does not support mixed FP4/FP8 scaled-dot inputs.
+  const auto& gpu_cc =
+      target_config().device_description.gpu_compute_capability();
+  if (gpu_cc.IsRocm()) {
+    PrimitiveType lhs_type = instr->operand(0)->shape().element_type();
+    PrimitiveType rhs_type = instr->operand(1)->shape().element_type();
+    auto is_fp4 = [](PrimitiveType t) { return t == F4E2M1FN; };
+    auto is_fp8 = [](PrimitiveType t) { return t == F8E4M3FN || t == F8E5M2; };
+    if ((is_fp4(lhs_type) && is_fp8(rhs_type)) ||
+        (is_fp8(lhs_type) && is_fp4(rhs_type))) {
+      return std::vector<std::unique_ptr<BackendConfig>>();
+    }
+  }
+
   std::vector<std::unique_ptr<BackendConfig>> configs;
 
   const bool exhaustive_search =

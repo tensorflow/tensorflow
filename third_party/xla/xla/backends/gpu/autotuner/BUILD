@@ -693,8 +693,8 @@ cc_library(
 )
 
 xla_test(
-    name = "hipblaslt_mx_execution_test",
-    srcs = ["hipblaslt_mx_execution_test.cc"],
+    name = "mx_scaled_dot_execution_test",
+    srcs = ["mx_scaled_dot_execution_test.cc"],
     backends = [
         "amdgpu_any",
     ],
