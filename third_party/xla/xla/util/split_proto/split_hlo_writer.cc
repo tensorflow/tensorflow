@@ -20,12 +20,14 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "google/protobuf/field_mask.pb.h"
 #include "absl/status/status.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "google/protobuf/message_lite.h"
 #include "google/protobuf/util/field_mask_util.h"
 #include "riegeli/bytes/writer.h"
 #include "riegeli/records/record_writer.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/util/split_proto/split_proto.pb.h"
 #include "xla/util/split_proto/split_proto_riegeli_options.h"
 #include "xla/util/split_proto/split_proto_write_record.h"
