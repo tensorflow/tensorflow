@@ -108,7 +108,8 @@ class GpuCompiler : public LLVMCompiler {
   absl::Status RunPostSchedulingPipelines(HloModule* module,
                                           int64_t scheduler_mem_limit,
                                           const GpuTopology& gpu_topology,
-                                          const GpuAliasInfo* alias_info);
+                                          const GpuAliasInfo* alias_info,
+                                          mlir::MLIRContext* mlir_context);
 
   std::string target_triple() const { return target_triple_; }
   std::string data_layout() const { return data_layout_; }
@@ -194,7 +195,7 @@ class GpuCompiler : public LLVMCompiler {
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
       const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool,
-      CompilationStats* compilation_stats);
+      CompilationStats* compilation_stats, mlir::MLIRContext* mlir_context);
 
   virtual absl::Status AddAutotunerPass(
       HloPassPipeline* pipeline, HloModule* hlo_module,
@@ -260,7 +261,8 @@ class GpuCompiler : public LLVMCompiler {
   absl::StatusOr<CompileResultWithMetadata> CompileToBackendResult(
       HloModule* module, llvm::LLVMContext* llvm_context,
       const GpuTopology& gpu_topology, const CompileOptions& options,
-      se::StreamExecutor* absl_nullable stream_exec);
+      se::StreamExecutor* absl_nullable stream_exec,
+      mlir::MLIRContext* mlir_context);
 
   absl::StatusOr<BackendCompileResult> CompileAndLink(
       const HloModuleConfig& module_config,
@@ -281,7 +283,7 @@ class GpuCompiler : public LLVMCompiler {
 
   absl::Status RunPreSchedulingPasses(
       HloModule* module, const se::DeviceDescription& gpu_device_info,
-      const GpuAliasInfo* alias_info);
+      const GpuAliasInfo* alias_info, mlir::MLIRContext* mlir_context);
   absl::Status RunCollectiveScheduleLinearizerPasses(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       CompilationStats* compilation_stats);

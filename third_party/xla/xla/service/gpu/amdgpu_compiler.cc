@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/transforms/algebraic_simplifier.h"
 #include "xla/backends/gpu/transforms/conv_padding_legalization.h"
@@ -196,7 +197,7 @@ absl::Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
     const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool,
-    CompilationStats* compilation_stats) {
+    CompilationStats* compilation_stats, mlir::MLIRContext* mlir_context) {
   HloPassPipeline pre_pipeline("AMDGPU post-layout_assignment part 1",
                                compilation_stats);
 
@@ -210,7 +211,7 @@ absl::Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
 
   TF_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
       hlo_module, stream_exec, options, gpu_target_config, alias_info,
-      thread_pool, compilation_stats));
+      thread_pool, compilation_stats, mlir_context));
 
   HloPassPipeline post_pipeline("AMDGPU post-layout_assignment part 2",
                                 compilation_stats);
