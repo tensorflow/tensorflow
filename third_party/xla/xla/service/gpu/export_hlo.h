@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_EXPORT_HLO_H_
-#define XLA_SERVICE_EXPORT_HLO_H_
+#ifndef XLA_SERVICE_GPU_EXPORT_HLO_H_
+#define XLA_SERVICE_GPU_EXPORT_HLO_H_
 
 #include <memory>
 #include <optional>
@@ -117,4 +117,4 @@ inline void MaybeWaitForUploads() {
 
 }  // namespace xla
 
-#endif  // XLA_SERVICE_EXPORT_HLO_H_
+#endif  // XLA_SERVICE_GPU_EXPORT_HLO_H_

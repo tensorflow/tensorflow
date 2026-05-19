@@ -6298,17 +6298,6 @@ tf_proto_library(
 )
 
 cc_library(
-    name = "export_hlo",
-    hdrs = ["export_hlo.h"],
-    deps = [
-        "//xla:autotune_results_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/stream_executor:device_description_proto_cc",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
     name = "gpu_compilation_environment",
     srcs = ["gpu_compilation_environment.cc"],
     hdrs = ["gpu_compilation_environment.h"],

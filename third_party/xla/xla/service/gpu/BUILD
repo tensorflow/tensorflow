@@ -1614,6 +1614,7 @@ cc_library(
         ":cublas_cudnn",
         ":early_exit_compilation_result",
         ":execution_stream_assignment",
+        ":export_hlo",
         ":flag_utils",
         ":fusion_dispatch_pipeline",
         ":fusion_pipeline",
@@ -1851,7 +1852,6 @@ cc_library(
         "//xla/service:dynamic_dimension_inference",
         "//xla/service:dynamic_padder",
         "//xla/service:executable",
-        "//xla/service:export_hlo",
         "//xla/service:float_support",
         "//xla/service:gather_expander",
         "//xla/service:gpu_topology",
@@ -1968,7 +1968,7 @@ cc_library(
         "@tsl//tsl/platform:statusor",
         "@tsl//tsl/profiler/lib:scoped_annotation",
         "@tsl//tsl/profiler/lib:traceme",
-    ] + xla_internal(["service:export_hlo"]),
+    ] + xla_internal(["//xla/service/gpu/google:export_hlo"]),
 )
 
 xla_test(
@@ -3774,5 +3774,17 @@ xla_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "export_hlo",
+    hdrs = ["export_hlo.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla:autotune_results_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/stream_executor:device_description_proto_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
