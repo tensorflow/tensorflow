@@ -511,6 +511,24 @@ TEST(MeshAndAxisTest, SortAndMergeAxesFull) {
   EXPECT_THAT(axes, testing::ElementsAre(AxisRef(0)));
 }
 
+TEST(MeshAndAxisTest, MergeAxesMergeContiguous) {
+  Mesh mesh({16, 16}, {"x", "y"});
+  std::vector<AxisRef> axes = {AxisRef(1, {1, 2}), AxisRef(1, {2, 2}),
+                               AxisRef(0, {1, 2}), AxisRef(0, {4, 2})};
+  MergeAxes(axes, mesh);
+
+  EXPECT_THAT(axes, testing::ElementsAre(AxisRef(1, {1, 4}), AxisRef(0, {1, 2}),
+                                         AxisRef(0, {4, 2})));
+}
+
+TEST(MeshAndAxisTest, MergeAxesDoesNotSort) {
+  Mesh mesh({4, 4}, {"x", "y"});
+  std::vector<AxisRef> axes = {AxisRef(1), AxisRef(0)};
+  MergeAxes(axes, mesh);
+
+  EXPECT_THAT(axes, testing::ElementsAre(AxisRef(1), AxisRef(0)));
+}
+
 TEST(MeshAndAxisTest, TruncateAxesByRemovingOverlaps_PartialOverlap) {
   std::vector<AxisRef> axes = {AxisRef(0, {1, 4})};
   std::vector<AxisRef> other = {AxisRef(0, {2, 2})};

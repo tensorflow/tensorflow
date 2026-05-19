@@ -485,12 +485,10 @@ absl::Status ValidateSpanOfAxes(absl::Span<const AxisRef> axes,
   return absl::OkStatus();
 }
 
-void SortAndMergeAxes(std::vector<AxisRef>& axes, const Mesh& mesh) {
+void MergeAxes(std::vector<AxisRef>& axes, const Mesh& mesh) {
   if (axes.empty()) {
     return;
   }
-
-  absl::c_sort(axes);
 
   auto current = axes.begin();
   for (auto next = current + 1; next != axes.end(); ++next) {
@@ -506,6 +504,15 @@ void SortAndMergeAxes(std::vector<AxisRef>& axes, const Mesh& mesh) {
     }
   }
   axes.erase(current + 1, axes.end());
+}
+
+void SortAndMergeAxes(std::vector<AxisRef>& axes, const Mesh& mesh) {
+  if (axes.empty()) {
+    return;
+  }
+
+  absl::c_sort(axes);
+  MergeAxes(axes, mesh);
 }
 
 bool TruncateAxesByRemovingOverlaps(std::vector<AxisRef>& axes,
