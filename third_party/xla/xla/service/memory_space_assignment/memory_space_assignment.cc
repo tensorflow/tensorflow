@@ -409,6 +409,9 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   ScheduleAsynchronousCopies();
   TF_RETURN_IF_ERROR(SimplifyGraph());
   TF_RETURN_IF_ERROR(SetSchedule());
+  // We need to refresh the alias analysis after schedule modification because
+  // new instructions are created during the Process step and we need to look up
+  // buffers for them in ExportAndColorBuffers.
   TF_ASSIGN_OR_RETURN(auto alias, HloAliasAnalysis::Run(module_, alias_info_));
   TF_RETURN_IF_ERROR(ExportAndColorBuffers(*alias));
   std::vector<int64_t> alt_mem_bytes_occupied;

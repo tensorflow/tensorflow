@@ -298,12 +298,12 @@ class MemoryBoundLoopOptimizerTest : public HloHardwareIndependentTestBase {
             "HloCostAnalysis",
             CreateHloCostAnalysisCalculator(*hlo_cost_analysis_wrapper_),
             /*enable_cache=*/false));
-    TF_ASSIGN_OR_RETURN(
-        cost_analysis_,
-        CostAnalysis::Create(*op_cost_manager_, cost_analysis_options_,
-                             &alias_info_, *module));
     TF_ASSIGN_OR_RETURN(alias_analysis_,
                         HloAliasAnalysis::Run(module, &alias_info_));
+    TF_ASSIGN_OR_RETURN(
+        cost_analysis_,
+        CostAnalysis::Create(*op_cost_manager_, cost_analysis_options_, *module,
+                             *alias_analysis_));
     TF_ASSIGN_OR_RETURN(live_range_,
                         HloLiveRange::Run(module->schedule(), *alias_analysis_,
                                           module->entry_computation()));

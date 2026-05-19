@@ -47,16 +47,14 @@ namespace memory_space_assignment {
 
 /*static*/ absl::StatusOr<std::unique_ptr<CostAnalysis>> CostAnalysis::Create(
     OpCostManager& op_cost_manager, const CostAnalysisOptions& options,
-    const AliasInfo* alias_info, const HloModule& module) {
-  TF_ASSIGN_OR_RETURN(auto alias_analysis,
-                      HloAliasAnalysis::Run(&module, alias_info));
+    const HloModule& module, const HloAliasAnalysis& alias_analysis) {
   TF_ASSIGN_OR_RETURN(auto hlo_live_range,
-                      HloLiveRange::Run(module.schedule(), *alias_analysis,
+                      HloLiveRange::Run(module.schedule(), alias_analysis,
                                         module.entry_computation()));
   auto call_graph = CallGraph::Build(&module);
   // Using `new` to access a non-public constructor.
   return absl::WrapUnique(
-      new CostAnalysis(op_cost_manager, options, std::move(alias_analysis),
+      new CostAnalysis(op_cost_manager, options, alias_analysis,
                        std::move(hlo_live_range), std::move(call_graph)));
 }
 
@@ -132,7 +130,7 @@ float CostAnalysis::GetMemoryBoundedness(
   float alternate_mem_benefit =
       GetAlternateMemoryBenefit(interval.buffer->defining_position(), cache);
 
-  for (const HloBuffer* buffer : alias_analysis_->ComputeBuffersAt(
+  for (const HloBuffer* buffer : alias_analysis_.ComputeBuffersAt(
            interval.buffer->defining_position().instruction,
            interval.buffer->defining_position().index)) {
     for (const HloValue* value : buffer->values()) {

@@ -102,13 +102,12 @@ class MemorySpaceAssignmentSimulatorTest
     cost_analysis_options.alternate_mem_write_bandwidth_bytes_per_second = 2;
     cost_analysis_options.default_mem_bandwidth_bytes_per_second = 1.0;
 
-    TF_ASSIGN_OR_RETURN(
-        cost_analysis_,
-        CostAnalysis::Create(*op_cost_manager_, cost_analysis_options,
-                             &alias_info_, *module_));
-
     TF_ASSIGN_OR_RETURN(alias_analysis_,
                         HloAliasAnalysis::Run(module_.get(), &alias_info_));
+    TF_ASSIGN_OR_RETURN(
+        cost_analysis_,
+        CostAnalysis::Create(*op_cost_manager_, cost_analysis_options, *module_,
+                             *alias_analysis_));
     TF_ASSIGN_OR_RETURN(hlo_live_range_,
                         HloLiveRange::Run(module_->schedule(), *alias_analysis_,
                                           module_->entry_computation()));

@@ -192,7 +192,9 @@ class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
     for (HloComputation* computation : module->MakeNonfusionComputations()) {
       CHECK_OK(computation->Accept(&hlo_cost_analysis));
     }
-    CHECK_OK(HloAliasAnalysis::Run(module, &alias_info_).status());
+    auto status_or_alias_analysis = HloAliasAnalysis::Run(module, &alias_info_);
+    CHECK_OK(status_or_alias_analysis.status());
+    auto alias_analysis = std::move(status_or_alias_analysis.value());
 
     Options memory_space_options = DefaultMemorySpaceOptions();
     if (memory_space_options_override) {
@@ -213,7 +215,7 @@ class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
             /*enable_cache=*/false));
 
     auto status_or_cost_analysis = CostAnalysis::Create(
-        op_cost_manager, cost_analysis_options, &alias_info_, *module);
+        op_cost_manager, cost_analysis_options, *module, *alias_analysis);
     CHECK_OK(status_or_cost_analysis.status());
     auto cost_analysis = std::move(status_or_cost_analysis.value());
 
@@ -230,13 +232,13 @@ class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
     }
     MemoryBoundednessBufferIntervalComparator comparator(
         *cost_analysis, &cache_, msa_sort_order_overrides);
-    return AssignMemorySpace(
-        module, std::move(memory_space_options),
-        [&comparator](const MsaBufferInterval& lhs,
-                      const MsaBufferInterval& rhs) {
-          return comparator.LessThan(lhs, rhs);
-        },
-        &prefetch_interval_picker);
+    return AssignMemorySpace(module, std::move(memory_space_options),
+                             std::optional<MsaBufferIntervalCompare>(
+                                 [&comparator](const MsaBufferInterval& lhs,
+                                               const MsaBufferInterval& rhs) {
+                                   return comparator.LessThan(lhs, rhs);
+                                 }),
+                             &prefetch_interval_picker);
   }
 
   std::unique_ptr<PresetAssignments> AssignMemorySpace(
