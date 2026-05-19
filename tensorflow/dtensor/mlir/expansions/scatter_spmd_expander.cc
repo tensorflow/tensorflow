@@ -45,9 +45,9 @@ namespace tensorflow {
 namespace dtensor {
 namespace {
 
-StatusOr<Layout> GetOutputLayout(const absl::optional<Layout>& tensor_layout,
+StatusOr<Layout> GetOutputLayout(const std::optional<Layout>& tensor_layout,
                                  int tensor_rank,
-                                 const absl::optional<Layout>& updates_layout,
+                                 const std::optional<Layout>& updates_layout,
                                  int updates_rank, const Mesh& mesh) {
   // The first tensor_rank - update_rank dimensions of the output should be set
   // to replicated. The remainder are set from tensor_layout and updates_layout
