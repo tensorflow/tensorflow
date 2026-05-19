@@ -382,6 +382,37 @@ ENTRY e {
                                               m::Bitcast(m::Parameter())))));
 }
 
+TEST_F(GemmFusionTestV2, BitcastIsHoistedAboveConstants) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[16,2,3] parameter(0)
+  constant2 = f32[1,1] constant({{1}})
+  broadcast2 = f32[1,1,16,2,3] broadcast(constant2), dimensions={1,0}
+  reshape2 = f32[16,2,3] reshape(broadcast2)
+  add2 = f32[16,2,3] add(p0, reshape2)
+  reshape1 = f32[32,3] reshape(add2)
+  p1 = s8[8,28] parameter(1)
+  constant = s8[] constant(5)
+  broadcast = s8[8,28] broadcast(constant), dimensions={}
+  add = s8[8,28] add(p1, broadcast)
+  c1 = f32[8,28] convert(add)
+  b1 = f32[32,7] bitcast(c1)
+  ROOT d = f32[3,7] dot(reshape1, b1),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0}
+})"));
+  ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(m::Bitcast(m::Parameter()),
+                                   m::Bitcast(m::Parameter()))));
+  MatchHloModule(*module, R"(
+; CHECK-NOT: bitcast
+; CHECK-NOT: reshape
+; CHECK: ENTRY
+)");
+}
+
 TEST_F(GemmFusionTest, UnsupportedTransposeIsNotFused) {
   auto module = ParseAndReturnVerifiedModule(R"(
 ENTRY e {
