@@ -803,6 +803,7 @@ cc_library(
     srcs = ["collective_perf_table_gen.cc"],
     hdrs = ["collective_perf_table_gen.h"],
     deps = [
+        "//xla:comparison_util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/target_config",
@@ -814,6 +815,7 @@ cc_library(
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/service:backend",
         "//xla/service:hlo_module_config",
+        "//xla/service:hlo_proto_cc",
         "//xla/service:pjrt_gpu_utils",
         "//xla/service/gpu/model:hlo_op_profile_proto_cc",
         "//xla/service/gpu/model:hlo_op_profiles",
@@ -844,6 +846,8 @@ cc_library(
     target_compatible_with = if_rocm(["@platforms//cpu:x86_64"]),
     deps = [
         ":collective_perf_table_gen",
+        "//xla:comparison_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/service/gpu/model:collective_interpolator_data",
