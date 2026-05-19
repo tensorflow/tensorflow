@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/gpu/common/tasks/cumsum.h"
 
+#include <map>
 #include <string>
 #include <utility>
 
