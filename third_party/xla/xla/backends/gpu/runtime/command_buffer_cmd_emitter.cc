@@ -128,12 +128,6 @@ static absl::StatusOr<std::unique_ptr<Command>> Convert(
                                    std::move(branch_cmds));
 }
 
-static absl::StatusOr<std::unique_ptr<Command>> Convert(
-    const CollectivePermuteThunk& thunk) {
-  return std::make_unique<CollectivePermuteCmd>(
-      thunk.config(), thunk.p2p_config(), thunk.buffers());
-}
-
 //===----------------------------------------------------------------------===//
 static absl::StatusOr<std::unique_ptr<Command>> CopyMetadata(
     absl::StatusOr<std::unique_ptr<Command>> cmd, const Thunk& thunk) {
@@ -235,8 +229,11 @@ static absl::Status AppendCommands(ConversionContext& ctx,
     case Thunk::Kind::kCollectiveBroadcast:
       cmd_sequence.Append(static_cast<CollectiveBroadcastThunk*>(&thunk));
       return absl::OkStatus();
+    // CollectivePermuteThunk implements Command directly; append as borrowed
+    // pointer — the thunk outlives the command sequence.
     case Thunk::Kind::kCollectivePermute:
-      return append(Convert<CollectivePermuteThunk>(thunk));
+      cmd_sequence.Append(static_cast<CollectivePermuteThunk*>(&thunk));
+      return absl::OkStatus();
     // RaggedAllToAllThunk implements Command directly; append borrowed pointer.
     case Thunk::Kind::kRaggedAllToAll:
       cmd_sequence.Append(static_cast<RaggedAllToAllThunk*>(&thunk));

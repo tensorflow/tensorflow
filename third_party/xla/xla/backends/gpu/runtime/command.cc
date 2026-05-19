@@ -32,7 +32,6 @@ std::string CommandTypeString(CommandType type) {
 bool IsCollectiveCommand(CommandType type) {
   switch (type) {
     case CommandType::kCollectiveCmd:
-    case CommandType::kCollectivePermuteCmd:
       return true;
     default:
       return false;
