@@ -1418,6 +1418,10 @@ sh_test(
 cc_binary(
     name = "zstd_compressor",
     srcs = ["zstd_compressor.cc"],
+    linkopts = select({
+        "//xla/tsl:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
     deps = [
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/status",

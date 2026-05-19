@@ -1326,7 +1326,8 @@ StreamExecutorGpuClient::MakeCrossHostReceiveBuffers(
       SetEventAsError(definition_event, s);
     }
   };
-  async_work_runner()->Schedule(recv);
+  absl::AnyInvocable<void() &&> work = recv;
+  async_work_runner()->Execute(std::move(work));
 
   std::vector<std::unique_ptr<PjRtBuffer>> buffers;
   buffers.push_back(std::move(receive_prep_result.buffer));
