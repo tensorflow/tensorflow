@@ -73,7 +73,11 @@ const std::vector<TritonGemmConfig>& GetTritonConfigsForPlatform(
                 {TritonConfigsPlatform::kDefaultRocm,
                  ParseConfig(GetDefaultConfigStr("rocm.txtpb"))},
                 {TritonConfigsPlatform::kHopper,
-                 ParseConfig(GetDefaultConfigStr("h100.txtpb"))}});
+                 ParseConfig(GetDefaultConfigStr("h100.txtpb"))},
+                {TritonConfigsPlatform::kMI300,
+                 ParseConfig(GetDefaultConfigStr("mi300.txtpb"))},
+                {TritonConfigsPlatform::kMI350,
+                 ParseConfig(GetDefaultConfigStr("mi350.txtpb"))}});
   return kConfigs->at(platform);
 }
 
