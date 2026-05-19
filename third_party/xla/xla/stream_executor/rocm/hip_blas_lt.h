@@ -13,11 +13,13 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_ROCM_HIP_BLAS_LT_H_
 #define XLA_STREAM_EXECUTOR_ROCM_HIP_BLAS_LT_H_
 
+#include <any>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
@@ -180,6 +182,38 @@ class BlasLt : public gpu::BlasLt {
     int32_t activation_type_ = 0;
     int8_t bias_type_ = 0;
   };  // class GroupedMatmulPlan
+
+  // Executes complex (C64/C128) matmuls via rocBLAS (rocblas_cgemm/zgemm),
+  // since hipBLASLt has no complex GEMM kernels in current ROCm releases.
+  class RocBlasGemmPlan : public gpu::BlasLt::MatmulPlan {
+   public:
+    friend class BlasLt;
+
+    RocBlasGemmPlan(const BlasLt& blas_lt, const gpu::GemmConfig& cfg)
+        : blas_lt_(blas_lt), cfg_(cfg) {}
+
+    ~RocBlasGemmPlan() override = default;
+
+    absl::Status ExecuteOnStream(
+        Stream* stream, const gpu::BlasLt::MemoryArgs& args,
+        blas::ProfileResult* profile_result) const override;
+
+    // Advertise a single no-workspace pseudo-algorithm so the autotuner /
+    // thunk machinery proceeds unchanged (hipBLASLt heuristics are unused).
+    absl::StatusOr<std::vector<MatmulAlgorithm>> GetAlgorithms(
+        size_t /*max_algorithm_count*/,
+        size_t /*max_workspace_size*/) const override {
+      return std::vector<MatmulAlgorithm>{MatmulAlgorithm{std::any{}, 0}};
+    }
+
+    absl::Status SetAlgorithm(const MatmulAlgorithm& /*algorithm*/) override {
+      return absl::OkStatus();
+    }
+
+   private:
+    const BlasLt& blas_lt_;
+    gpu::GemmConfig cfg_;
+  };  // class RocBlasGemmPlan
 
   explicit BlasLt(StreamExecutor* executor)
       : executor_(executor), handle_(nullptr, hipblasLtDestroy) {}
