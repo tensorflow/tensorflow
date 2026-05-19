@@ -116,6 +116,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/event_based_timer.h"
+#include "xla/stream_executor/gpu/symmetric_memory_resources.h"
 #include "xla/stream_executor/kernel_stats.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
@@ -1431,7 +1432,8 @@ absl::Status GpuExecutable::ExecuteThunksWithVaRemapping(
     const ServiceExecutableRunOptions* run_options,
     se::StreamExecutor* executor, int64_t unique_id,
     Thunk::ExecutableSource executable_source, bool block_host_until_done,
-    bool collective_use_minimal_resource) {
+    bool collective_use_minimal_resource,
+    CollectiveMemoryCache& collective_memory_cache) {
   // Get or create VaRanges for this executor and VA range index. We hold
   // va_ranges_mutex_ briefly just to access/create the VaRanges entry.
   // The VA range index allows multiplexing: with kNumVaReservationSets=2
@@ -1634,7 +1636,7 @@ absl::Status GpuExecutable::ExecuteThunksWithVaRemapping(
       has_module() ? &module_config().debug_options() : nullptr, module_name_,
       unique_id, *thunk_executor_, executable_source, run_options,
       remapped_buffer_allocations, block_host_until_done,
-      num_additional_compute_streams_, collective_memory_cache_,
+      num_additional_compute_streams_, collective_memory_cache,
       collective_use_minimal_resource, post_init_rendezvous_flag_));
 
   // Record event so VA range can be reclaimed after GPU finishes.
@@ -1741,16 +1743,23 @@ absl::Status GpuExecutable::ExecuteThunks(
     ASSIGN_OR_RETURN(collective_use_minimal_resource,
                      ShouldCollectiveUseMinimalResource(module()));
   }
+
+  auto* resources =
+      executor->GetOrConstructResource<se::gpu::SymmetricMemoryResources>();
+  xla::gpu::CollectiveMemoryCache& collective_memory_cache =
+      *resources->collective_memory_cache();
+
   if (use_command_buffer_va_remapping) {
     TF_RETURN_IF_ERROR(ExecuteThunksWithVaRemapping(
         buffer_allocations, run_options, executor, unique_id, executable_source,
-        block_host_until_done, collective_use_minimal_resource));
+        block_host_until_done, collective_use_minimal_resource,
+        collective_memory_cache));
   } else {
     TF_RETURN_IF_ERROR(ExecuteThunksImpl(
         has_module() ? &module_config().debug_options() : nullptr, module_name_,
         unique_id, *thunk_executor_, executable_source, run_options,
         buffer_allocations, block_host_until_done,
-        num_additional_compute_streams_, collective_memory_cache_,
+        num_additional_compute_streams_, collective_memory_cache,
         collective_use_minimal_resource, post_init_rendezvous_flag_));
   }
   return absl::OkStatus();

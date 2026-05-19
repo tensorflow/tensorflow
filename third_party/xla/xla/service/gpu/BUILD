@@ -780,6 +780,7 @@ cc_library(
         "//xla/stream_executor/abi:executable_abi_version",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/cuda:cuda_platform_id",
+        "//xla/stream_executor/gpu:symmetric_memory_resources",
         "//xla/stream_executor/rocm:rocm_platform_id",
         "//xla/stream_executor/sycl:sycl_platform_id",
         "//xla/tsl/platform:env",
