@@ -961,31 +961,13 @@ CommonPjRtClient::MakeCrossHostReceiveBuffers(
           "Tuple shape %s not supported in MakeCrossHostReceiveBuffers",
           ShapeUtil::HumanString(shape));
     }
-    xla::Shape dst_shape;
-    if (shape.has_layout()) {
-      dst_shape = shape;
-    } else {
-      // Use the default destination device layout.
-      ASSIGN_OR_RETURN(dst_shape,
-                       ShapeUtil::MakeValidatedShape(shape.element_type(),
-                                                     shape.dimensions()));
-      ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology_description,
-                       GetTopologyDescription());
-      ASSIGN_OR_RETURN(*dst_shape.mutable_layout(),
-                       topology_description->GetDefaultLayout(
-                           shape.element_type(), shape.dimensions()));
-      LOG_IF_EVERY_N_SEC(
-          WARNING, shape.has_layout() && shape.layout() != dst_shape.layout(),
-          0.1)
-          << "MakeCrossHostReceiveBuffers called with custom layout, "
-          << shape.layout()
-          << ", which will be ignored in favor of the default destination "
-             "device layout, "
-          << dst_shape.layout();
-    }
-    dst_shapes.push_back(dst_shape);
+    ASSIGN_OR_RETURN(xla::Shape dst_shape,
+                     MakeDefaultShapeForMemorySpace(
+                         memory_space, shape,
+                         shape.has_layout() ? &shape.layout() : nullptr));
     ASSIGN_OR_RETURN(int64_t on_device_bytes_count,
                      GetOnDeviceBytesCount(memory_space, dst_shape));
+    dst_shapes.push_back(std::move(dst_shape));
     ASSIGN_OR_RETURN(PjRtRawBufferRef raw_buffer,
                      AllocateRawBuffer(memory_space, on_device_bytes_count,
                                        /*retry_on_oom=*/true,
