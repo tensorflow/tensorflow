@@ -70,7 +70,8 @@ TEST(RocmComputeCapability, GfxVersion) {
 }
 
 TEST(RocmComputeCapability, IsSupportedGfxVersion) {
-  ASSERT_TRUE(RocmComputeCapability{"gfx900"}.is_supported_gfx_version());
+  ASSERT_FALSE(RocmComputeCapability{"gfx900"}.is_supported_gfx_version());
+  ASSERT_FALSE(RocmComputeCapability{"gfx906"}.is_supported_gfx_version());
   ASSERT_TRUE(RocmComputeCapability{"gfx1201"}.is_supported_gfx_version());
   ASSERT_TRUE(RocmComputeCapability{"gfx942"}.is_supported_gfx_version());
   ASSERT_TRUE(RocmComputeCapability{"gfx1250"}.is_supported_gfx_version());
@@ -117,12 +118,6 @@ TEST(RocmComputeCapability, Accessors) {
   EXPECT_TRUE(RocmComputeCapability{"gfx12xx"}.gfx12());
   EXPECT_TRUE(RocmComputeCapability{"gfx12xxblabla"}.gfx12());
 
-  EXPECT_TRUE(RocmComputeCapability{"gfx12"}.fence_before_barrier());
-  EXPECT_TRUE(RocmComputeCapability{"anything"}.fence_before_barrier());
-  EXPECT_FALSE(RocmComputeCapability{"gfx900"}.fence_before_barrier());
-  EXPECT_FALSE(RocmComputeCapability{"gfx906"}.fence_before_barrier());
-
-  EXPECT_FALSE(RocmComputeCapability{"gfx900"}.has_hipblaslt());
   EXPECT_TRUE(RocmComputeCapability{"gfx942"}.has_hipblaslt());
   EXPECT_TRUE(RocmComputeCapability{"gfx90a"}.has_hipblaslt());
   EXPECT_TRUE(RocmComputeCapability{"gfx1200"}.has_hipblaslt());
@@ -152,8 +147,8 @@ TEST(GpuComputeCapability, ProtoConversion) {
       IsOkAndHolds(GpuComputeCapability(CudaComputeCapability::Volta())));
   EXPECT_THAT(
       GpuComputeCapability::FromProto(
-          GpuComputeCapability(RocmComputeCapability("gfx900")).ToProto()),
-      IsOkAndHolds(GpuComputeCapability(RocmComputeCapability("gfx900"))));
+          GpuComputeCapability(RocmComputeCapability("gfx908")).ToProto()),
+      IsOkAndHolds(GpuComputeCapability(RocmComputeCapability("gfx908"))));
 }
 
 TEST(ExecutionUnitDescription, ProtoConversion) {

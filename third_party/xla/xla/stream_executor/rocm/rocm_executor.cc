@@ -121,16 +121,6 @@ absl::uint128 Fingerprint128(const absl::string_view s) {
   return absl::MakeUint128(fp.high64, fp.low64);
 }
 
-int fpus_per_core(std::string gcn_arch_name) {
-  // Source:
-  // https://www.amd.com/content/dam/amd/en/documents/instinct-business-docs/white-papers/amd-cdna2-white-paper.pdf
-  int n = 128;  // gfx90a and gfx908 -> 128
-  if (gcn_arch_name.substr(0, 6) == "gfx906") {
-    n = 64;
-  }
-  return n;
-}
-
 // ROCM driver routines may require a large amount of stack (particularly
 // hipModuleLoadDataEx, in our experience). To avoid stack overflow when using
 // stack-limited threads (such as those spawned by a default-argument
@@ -1240,7 +1230,10 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
       GetMaxSharedMemoryPerBlock(device).value());
   int core_count = GetMultiprocessorCount(device).value();
   desc.set_core_count(core_count);
-  desc.set_fpus_per_core(fpus_per_core(gcn_arch_name));
+  // TODO(ROCm): replace this hardcoded value with a per-arch lookup table and
+  // populate scalar_unit_description / matrix_unit_description so the perf
+  // model picks the right FP32 path (vector vs. matrix).
+  desc.set_fpus_per_core(128);
   desc.set_threads_per_core_limit(
       GetMaxThreadsPerMultiprocessor(device).value());
   desc.set_registers_per_block_limit(GetMaxRegistersPerBlock(device).value());
