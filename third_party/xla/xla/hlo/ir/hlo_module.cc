@@ -867,6 +867,13 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
     backend_configs.push_back(std::make_shared<BackendConfigWrapper>(payload));
   }
 
+  absl::flat_hash_map<absl::string_view, std::shared_ptr<BackendConfigWrapper>>
+      deduplication_map;
+  deduplication_map.reserve(backend_configs.size());
+  for (const auto& config : backend_configs) {
+    deduplication_map[config->GetRawString()] = config;
+  }
+
   absl::flat_hash_map<int64_t, HloComputation*> computation_map;
   absl::flat_hash_map<HloComputation*, int64_t> to_proto_id;
   std::vector<std::unique_ptr<HloComputation>> computations;
@@ -885,7 +892,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
             computation_proto, computation_map, prohibit_empty_literal,
             /*preserve_instruction_ids=*/preserve_instruction_ids,
             requires_remap_memorization ? &id_remap_map : nullptr,
-            backend_configs));
+            backend_configs, &deduplication_map));
     CHECK_NE(computation.get(), nullptr);
     int64_t computation_id = computation_proto.id();
     TF_RET_CHECK(computation_id != -1);
