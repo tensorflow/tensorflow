@@ -249,6 +249,7 @@ cc_library(
         "//xla/service:compiler",
         "//xla/service:conditional_simplifier",
         "//xla/service:conditional_to_select",
+        "//xla/service:control_dep_rewriter",
         "//xla/service:copy_insertion",
         "//xla/service:cpu_gpu_shape_verifier",
         "//xla/service:dump",

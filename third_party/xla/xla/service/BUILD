@@ -5678,6 +5678,34 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "control_dep_rewriter",
+    srcs = ["control_dep_rewriter.cc"],
+    hdrs = ["control_dep_rewriter.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "control_dep_rewriter_test",
+    srcs = ["control_dep_rewriter_test.cc"],
+    deps = [
+        ":control_dep_rewriter",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:test",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:statusor",
+    ],
+)
+
 xla_test(
     name = "topk_rewriter_test",
     srcs = ["topk_rewriter_test.cc"],

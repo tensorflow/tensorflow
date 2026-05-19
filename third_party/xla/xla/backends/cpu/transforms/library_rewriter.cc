@@ -79,8 +79,13 @@ absl::StatusOr<HloFusionInstruction*> CreateLibraryFusion(
   TF_RETURN_IF_ERROR(fusion->set_backend_config(backend_config));
 
   // Replace the instruction.
-  TF_RETURN_IF_ERROR(
-      computation->ReplaceInstructionWithDifferentShape(instr, fusion));
+  TF_ASSIGN_OR_RETURN(bool changed,
+                      computation->ReplaceInstructionWithDifferentShape(
+                          instr, fusion, /*preserve_sharding=*/false,
+                          /*relay_control_dependency=*/true));
+  if (!changed) {
+    return absl::InternalError("Failed to replace instruction with fusion");
+  }
 
   return fusion;
 }
@@ -133,8 +138,13 @@ absl::StatusOr<HloInstruction*> FuseConsumerInstruction(
     *fusion->mutable_shape() = new_root->shape();
   }
 
-  TF_RETURN_IF_ERROR(
-      fusion->parent()->ReplaceInstructionWithDifferentShape(to_fuse, fusion));
+  TF_ASSIGN_OR_RETURN(bool changed,
+                      fusion->parent()->ReplaceInstructionWithDifferentShape(
+                          to_fuse, fusion, /*preserve_sharding=*/false,
+                          /*relay_control_dependency=*/true));
+  if (!changed) {
+    return absl::InternalError("Failed to fuse consumer instruction");
+  }
   return new_root;
 }
 

@@ -110,6 +110,11 @@ ConvertAsyncCollectivesToSync::ReplaceWithSyncVariant(
   TF_RETURN_IF_ERROR(async_done->ReplaceAllUsesWith(sync_instruction));
 
   // Copy control dependencies.
+  //
+  // TODO(mwhittaker): Right now for simplicity, I'm throwing away all control
+  // successors of a start and all control predecessors of a done. However, the
+  // only control dependencies we cannot respect are those that schedule an
+  // operation to run between a start and done.
   for (HloInstruction* pred : async_start->control_predecessors()) {
     TF_RETURN_IF_ERROR(pred->AddControlDependencyTo(sync_instruction));
   }
