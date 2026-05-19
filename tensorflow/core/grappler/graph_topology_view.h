@@ -78,10 +78,10 @@ class GraphTopologyView {
 
   // Returns a node index for the given node name, if the name exists in the
   // underlying graph. Otherwise returns empty optional.
-  const absl::optional<int> GetNodeIndex(absl::string_view node_name) const;
+  const std::optional<int> GetNodeIndex(absl::string_view node_name) const;
   // Returns a node index for the given node, if the node belongs to the
   // underlying graph. Otherwise returns empty optional.
-  const absl::optional<int> GetNodeIndex(const NodeDef& node) const;
+  const std::optional<int> GetNodeIndex(const NodeDef& node) const;
 
   // Returns all the node indexes that are in the direct fanin of the given
   // node. If the `node_idx` is outside of [0, num_nodes_) returns empty vector.
