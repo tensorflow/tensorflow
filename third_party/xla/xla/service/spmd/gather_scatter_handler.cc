@@ -2007,7 +2007,8 @@ absl::Status SpmdPartitioningVisitor::HandleScatterWithoutConflicts(
                                                               call_graph());
 
   HloInstruction* select_operand = nullptr;
-  if (indices.sharding().NumTiles(index_passthrough_dims.indices_dims) != 1) {
+  if (indices.sharding().NumTiles(index_passthrough_dims.indices_dims) != 1 ||
+      updates[0].sharding().NumTiles(index_passthrough_dims.output_dims) != 1) {
     select_operand = SelectOperandForScatterIndexPassthroughDimensions(
         scatter, indices, operands[0], b);
     if (!select_operand) {
