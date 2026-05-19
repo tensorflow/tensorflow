@@ -153,3 +153,10 @@ git diff from feature branch against the upstream main.
 git fetch origin main
 bazel run //build_tools/ci:run_clang_tidy
 ```
+
+The helper script also allows to automagically fix clang-tidy errors where
+possible.
+
+```sh
+bazel run //build_tools/ci:run_clang_tidy -- --fix
+```
