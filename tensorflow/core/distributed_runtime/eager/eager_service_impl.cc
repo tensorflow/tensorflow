@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/eager/eager_service_impl.h"
 
+#include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
+#include <new>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -27,6 +30,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
+#include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/immediate_execution_distributed_manager.h"
 #include "xla/tsl/distributed_runtime/preemption/preemption_notifier.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
@@ -79,7 +83,17 @@ absl::Status GetNumRetvals(
             absl::StrCat("Unable to find number_attr ",
                          output_arg.number_attr(), " for Op: ", op_name));
       }
-      *num_retvals += iter->second.i();
+      int64_t repeats = iter->second.i();
+      if (repeats < 0) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Expected >= 0 number_attr for Op: ", op_name,
+                         ", but got ", repeats));
+      }
+      if (repeats > std::numeric_limits<int>::max() - *num_retvals) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Too many return values for Op: ", op_name));
+      }
+      *num_retvals += repeats;
     } else if (!output_arg.type_list_attr().empty()) {
       auto iter = attrs.find(output_arg.type_list_attr());
       if (iter == attrs.end()) {
@@ -87,8 +101,22 @@ absl::Status GetNumRetvals(
             absl::StrCat("Unable to find type_list_attr ",
                          output_arg.type_list_attr(), " for Op: ", op_name));
       }
-      *num_retvals += iter->second.list().type_size();
+      int64_t repeats = iter->second.list().type_size();
+      if (repeats < 0) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Expected >= 0 type_list_attr size for Op: ", op_name,
+                         ", but got ", repeats));
+      }
+      if (repeats > std::numeric_limits<int>::max() - *num_retvals) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Too many return values for Op: ", op_name));
+      }
+      *num_retvals += repeats;
     } else {
+      if (*num_retvals >= std::numeric_limits<int>::max()) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Too many return values for Op: ", op_name));
+      }
       *num_retvals += 1;
     }
   }
@@ -612,7 +640,16 @@ void EagerServiceImpl::RunComponentFunction(
     return;
   }
 
-  auto* retvals = new absl::FixedArray<TensorHandle*>(*num_retvals);
+  // The use of `()` zero-initializes the array of pointers, a good safety
+  // measure as these pointers are later passed to `AddOpRetvalsToResponse`.
+  auto* retvals = new (std::nothrow) tensorflow::TensorHandle*[*num_retvals]();
+  if (retvals == nullptr) {
+    delete num_retvals;
+    delete op;
+    done(absl::ResourceExhaustedError(absl::StrCat(
+        "Failed to allocate memory for retvals of size ", *num_retvals)));
+    return;
+  }
   VLOG(3) << "ServerContext: Calling EagerLocalExecuteAsync for op "
           << operation.id();
   std::vector<int32_t> output_nums;
@@ -626,7 +663,7 @@ void EagerServiceImpl::RunComponentFunction(
 
   context->Ref();
   EagerLocalExecuteAsync(
-      op, retvals->data(), num_retvals,
+      op, retvals, num_retvals,
       [op, op_id = operation.id(), num_retvals, retvals, output_nums, cm,
        call_opts, response, eager_context, context,
        done = std::move(done)](const absl::Status& status) {
@@ -636,7 +673,7 @@ void EagerServiceImpl::RunComponentFunction(
           done(status);
           delete op;
           delete num_retvals;
-          delete retvals;
+          delete[] retvals;
         };
         if (!status.ok()) {
           wrapped_done(status);
@@ -645,7 +682,7 @@ void EagerServiceImpl::RunComponentFunction(
         // The output device of a component function is the component device
         // which is known on the default device of it's parent function.
         wrapped_done(AddOpRetvalsToResponse(
-            eager_context, op_id, *num_retvals, output_nums, retvals->data(),
+            eager_context, op_id, *num_retvals, output_nums, retvals,
             [response] { return response->add_tensor(); },
             [response] { return response->add_shape(); }));
       });
@@ -667,11 +704,17 @@ absl::Status EagerServiceImpl::ExecuteOp(CallOptions* call_opts,
     call_opts->SetCancelCallback([cm] { cm->StartCancel(); });
   }
 
-  absl::FixedArray<tensorflow::TensorHandle*> retvals(num_retvals);
+  auto* retvals = new (std::nothrow) tensorflow::TensorHandle*[num_retvals]();
+  if (retvals == nullptr) {
+    return absl::ResourceExhaustedError(absl::StrCat(
+        "Failed to allocate memory for retvals of size ", num_retvals));
+  }
+  std::unique_ptr<tensorflow::TensorHandle*[]> retvals_ptr(retvals);
+
   VLOG(3) << "ServerContext: Calling EagerExecute for op " << operation.id();
   TF_RETURN_IF_ERROR(op.Execute(
       absl::MakeSpan(
-          reinterpret_cast<tensorflow::AbstractTensorHandle**>(retvals.data()),
+          reinterpret_cast<tensorflow::AbstractTensorHandle**>(retvals),
           num_retvals),
       &num_retvals));
 
@@ -684,8 +727,8 @@ absl::Status EagerServiceImpl::ExecuteOp(CallOptions* call_opts,
   }
 
   return AddOpRetvalsToResponse(
-      eager_context, operation.id(), num_retvals, /*output_nums=*/{},
-      retvals.data(), [queue_response] { return queue_response->add_tensor(); },
+      eager_context, operation.id(), num_retvals, /*output_nums=*/{}, retvals,
+      [queue_response] { return queue_response->add_tensor(); },
       [queue_response] { return queue_response->add_shape(); },
       std::move(add_device_fn));
 }
@@ -716,8 +759,8 @@ absl::Status EagerServiceImpl::Enqueue(CallOptions* call_opts,
       s = ExecuteOp(call_opts, item.operation(), context->Context(), &executor,
                     queue_response);
     } else if (item.has_handle_to_decref()) {
-      auto handle_to_decref = std::make_unique<RemoteTensorHandleInternal>(
-          item.handle_to_decref());
+      auto handle_to_decref =
+          std::make_unique<RemoteTensorHandleInternal>(item.handle_to_decref());
       auto node = std::make_unique<ClientTensorHandleDeleteNode>(
           context, std::move(handle_to_decref));
       s = context->Context()->Executor().AddOrExecute(std::move(node));
