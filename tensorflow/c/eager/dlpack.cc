@@ -145,8 +145,8 @@ DLDevice GetDlContext(TFE_TensorHandle* h, TF_Status* status) {
 }
 
 // Converts DLDevice to TF device name.
-absl::optional<std::string> DeviceNameFromDlContext(const DLDevice& ctx,
-                                                    TF_Status* status) {
+std::optional<std::string> DeviceNameFromDlContext(const DLDevice& ctx,
+                                                   TF_Status* status) {
   switch (ctx.device_type) {
     case DLDeviceType::kDLCPU:
       return "CPU:0";
@@ -352,7 +352,7 @@ TFE_TensorHandle* TFE_HandleFromDLPack(void* dlm, TF_Status* status,
                                        TFE_Context* ctx) {
   DLManagedTensor* dlmt = static_cast<DLManagedTensor*>(dlm);
   DLTensor* dl_tensor = &dlmt->dl_tensor;
-  absl::optional<std::string> device_name =
+  std::optional<std::string> device_name =
       DeviceNameFromDlContext(dl_tensor->device, status);
   if (!device_name.has_value()) {
     status->status = absl::InvalidArgumentError("Unsupported Device Type");

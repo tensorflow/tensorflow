@@ -70,7 +70,7 @@ class ImmediateExecutionOperation : public AbstractOperation {
       CancellationManager* cancellation_manager) = 0;
 
   // Returns the stack trace set by `SetStackTrace` if exists.
-  virtual absl::optional<ManagedStackTrace> GetStackTrace() = 0;
+  virtual std::optional<ManagedStackTrace> GetStackTrace() = 0;
 
   virtual void SetStepId(int64_t step_id) = 0;
 
