@@ -125,6 +125,7 @@ use_repo(
     "mpitrampoline",
     "nanobind",
     "nccl_archive",
+    "net_zstd",
     "nvshmem",
     "nvtx_archive",
     "onednn",
