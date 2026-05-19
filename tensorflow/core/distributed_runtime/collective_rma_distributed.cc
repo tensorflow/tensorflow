@@ -83,9 +83,12 @@ absl::Status PopulateTensorFromResponse(const RecvBufResponse& response,
                                         Tensor* cpu_tensor) {
   const bool has_transport_options = response.has_transport_options();
 
-  // If there are no transport options, then the tensor has already been
-  // copied into request.buf_ptr.
-  if (!has_transport_options) return absl::OkStatus();
+  if (!has_transport_options) {
+    // If transport_options is missing, it means the peer has already
+    // copied the tensor content into the buffer pointed to by
+    // RecvBufRequest::buf_ptr, so there is nothing to do here.
+    return absl::OkStatus();
+  }
 
   const int64_t total_bytes = cpu_tensor->TotalBytes();
   int64_t num_bytes = 0;
