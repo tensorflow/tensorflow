@@ -1027,6 +1027,40 @@ TEST(XlaBuilderTest, ReportError) {
   EXPECT_THAT(statusor.status().message(), HasSubstr("a test error"));
 }
 
+TEST(XlaBuilderTest, ReportErrorWithPythonLocation) {
+  XlaBuilder b(TestName());
+  OpMetadata metadata;
+  metadata.set_source_file("test_file.py");
+  metadata.set_source_line(42);
+  b.SetOpMetadata(metadata);
+
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}), "x");
+  Add(b.ReportError(InvalidArgument("a test error")), x);
+  auto statusor = b.Build();
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().message(), HasSubstr("a test error"));
+  EXPECT_THAT(statusor.status().message(), HasSubstr("Python Code Location:"));
+  EXPECT_THAT(statusor.status().message(), HasSubstr("File: test_file.py:42"));
+}
+
+TEST(XlaBuilderTest, ReportErrorWithOneShotPythonLocation) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}), "x");
+
+  OpMetadata metadata;
+  metadata.set_source_file("test_file_oneshot.py");
+  metadata.set_source_line(84);
+  b.SetOneShotOpMetadata(metadata);
+
+  Add(b.ReportError(InvalidArgument("a test error")), x);
+  auto statusor = b.Build();
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().message(), HasSubstr("a test error"));
+  EXPECT_THAT(statusor.status().message(), HasSubstr("Python Code Location:"));
+  EXPECT_THAT(statusor.status().message(),
+              HasSubstr("File: test_file_oneshot.py:84"));
+}
+
 TEST(XlaBuilderTest, ReportErrorOrReturnHandlesNonErrors) {
   XlaBuilder b(TestName());
   absl::StatusOr<XlaOp> op(ConstantR0<float>(&b, 1.0));
