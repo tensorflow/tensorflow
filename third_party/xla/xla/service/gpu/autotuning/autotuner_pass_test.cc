@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "xla/backends/autotuner/autotuner.h"
-#include "xla/backends/autotuner/autotuner_cache.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/gpu/autotuner/cublas.h"

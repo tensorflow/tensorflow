@@ -33,7 +33,6 @@ xla_test(
         "//xla:shape_util",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner",
-        "//xla/backends/autotuner:autotuner_cache_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/backends/autotuner:profiler",
         "//xla/backends/gpu/autotuner:cublas",

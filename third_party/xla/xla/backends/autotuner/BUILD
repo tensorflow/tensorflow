@@ -122,12 +122,6 @@ xla_cc_test(
     ],
 )
 
-tf_proto_library(
-    name = "autotuner_cache_proto",
-    srcs = ["autotuner_cache.proto"],
-    deps = ["@com_google_protobuf//:any_proto"],
-)
-
 cc_library(
     name = "profiler",
     hdrs = ["profiler.h"],
@@ -145,66 +139,12 @@ cc_library(
     name = "autotuner_cache_interface",
     hdrs = ["autotuner_cache_interface.h"],
     deps = [
-        ":autotuner_cache_proto_cc",
         ":backends_proto_cc",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
-    name = "file_based_autotuner_cache",
-    srcs = ["file_based_autotuner_cache.cc"],
-    hdrs = ["file_based_autotuner_cache.h"],
-    deps = [
-        ":autotuner_cache_interface",
-        ":autotuner_cache_proto_cc",
-        ":backends_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor/cuda:cuda_compute_capability",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_protobuf//:protobuf",
-        "@llvm-project//llvm:Support",
-        "@tsl//tsl/platform:base64",
-        "@tsl//tsl/platform:path",
-        "@tsl//tsl/platform:protobuf",
-    ],
-)
-
-xla_cc_test(
-    name = "file_based_autotuner_cache_test",
-    srcs = ["file_based_autotuner_cache_test.cc"],
-    deps = [
-        ":autotuner_cache_interface",
-        ":autotuner_cache_proto_cc",
-        ":backends_proto_cc",
-        ":file_based_autotuner_cache",
-        "//xla:literal_util",
-        "//xla/hlo/ir:hlo",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor/cuda:cuda_compute_capability",
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/status",
-        "@com_google_googletest//:gtest_main",
-        "@com_google_protobuf//:any_cc_proto",
-        "@tsl//tsl/platform:path",
     ],
 )
 
