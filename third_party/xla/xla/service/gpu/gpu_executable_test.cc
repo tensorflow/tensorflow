@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "riegeli/bytes/cfile_reader.h"
 #include "riegeli/bytes/string_reader.h"
 #include "xla/backends/cpu/target_machine_options.h"
@@ -271,10 +272,10 @@ MakeNonEmptyBufferAssignment() {
       b = f32[128] parameter(1)
       ROOT c = f32[128] add(a, b)
     })";
-  TF_ASSIGN_OR_RETURN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
+  ASSIGN_OR_RETURN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
 
   AliasInfo alias_info;
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto buffer_assignment,
       BufferAssigner::Run(
           hlo.get(), std::make_unique<DependencyHloOrdering>(hlo.get()),

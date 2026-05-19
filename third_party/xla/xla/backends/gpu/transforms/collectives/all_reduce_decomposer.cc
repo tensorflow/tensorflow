@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -98,8 +99,8 @@ static absl::StatusOr<bool> DecomposeAllReduce(HloInstruction* hlo,
     return false;
   }
 
-  TF_ASSIGN_OR_RETURN(auto replica_group_count_and_size,
-                      GetReplicaGroupCountAndSize(all_reduce));
+  ASSIGN_OR_RETURN(auto replica_group_count_and_size,
+                   GetReplicaGroupCountAndSize(all_reduce));
 
   if (!replica_group_count_and_size.has_value()) {
     // Could not determine the number of participating devices at compilation.
@@ -112,10 +113,10 @@ static absl::StatusOr<bool> DecomposeAllReduce(HloInstruction* hlo,
   // all-gather and reduction dimension.
   HloInstruction* reshape = PrependSize1MajorDimension(input, computation);
 
-  TF_ASSIGN_OR_RETURN(Shape all_gather_shape,
-                      ShapeInference::InferAllGatherShape(
-                          {&reshape->shape()}, /*all_gather_dimension=*/0,
-                          num_participating_devices));
+  ASSIGN_OR_RETURN(Shape all_gather_shape,
+                   ShapeInference::InferAllGatherShape(
+                       {&reshape->shape()}, /*all_gather_dimension=*/0,
+                       num_participating_devices));
 
   HloInstruction* all_gather =
       computation->AddInstruction(HloInstruction::CreateAllGather(
@@ -131,9 +132,8 @@ static absl::StatusOr<bool> DecomposeAllReduce(HloInstruction* hlo,
           input->shape(), all_gather, init,
           /*dimensions_to_reduce=*/{0}, all_reduce->to_apply()));
 
-  TF_RETURN_IF_ERROR(all_reduce->ReplaceAllUsesWith(reduce));
-  TF_RETURN_IF_ERROR(
-      computation->RemoveInstructionAndUnusedOperands(all_reduce));
+  RETURN_IF_ERROR(all_reduce->ReplaceAllUsesWith(reduce));
+  RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(all_reduce));
 
   return true;
 }
@@ -148,8 +148,8 @@ absl::StatusOr<bool> AllReduceDecomposer::RunImpl(
       if (!IsSmallAllReduce(hlo)) {
         continue;
       }
-      TF_ASSIGN_OR_RETURN(bool decomposed,
-                          DecomposeAllReduce(hlo, computation, module));
+      ASSIGN_OR_RETURN(bool decomposed,
+                       DecomposeAllReduce(hlo, computation, module));
       changed |= decomposed;
     }
   }

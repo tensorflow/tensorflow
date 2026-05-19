@@ -19,6 +19,7 @@ limitations under the License.
 #include <type_traits>
 
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
@@ -72,7 +73,7 @@ template <typename T>
 XlaOp ScalarLike(XlaOp prototype, T value) {
   XlaBuilder* builder = prototype.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(prototype));
+    ASSIGN_OR_RETURN(Shape shape, builder->GetShape(prototype));
     return ConstantR0WithType(builder, shape.element_type(), value);
   });
 }
@@ -86,7 +87,7 @@ template <typename T>
 XlaOp FullLike(XlaOp prototype, T value) {
   XlaBuilder* builder = prototype.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(prototype));
+    ASSIGN_OR_RETURN(Shape shape, builder->GetShape(prototype));
     if (ShapeUtil::IsScalar(shape) || shape.IsArray()) {
       return Broadcast(ScalarLike(prototype, value), shape.dimensions());
     } else {

@@ -15,6 +15,8 @@ limitations under the License.
 
 // Converts TF While to TFL While with single call in body and cond.
 
+#include <memory>
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project

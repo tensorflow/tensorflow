@@ -25,7 +25,6 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <iterator>
-#include <memory>
 #include <numeric>
 #include <optional>
 #include <utility>

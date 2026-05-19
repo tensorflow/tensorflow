@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -53,15 +54,15 @@ class CollectiveBackendAssignerTest : public HloHardwareIndependentTestBase {
 
   absl::StatusOr<CollectiveBackendConfig_CollectiveBackend>
   GetCollectiveBackendConfig(const HloInstruction* instr) {
-    TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                        instr->backend_config<GpuBackendConfig>());
+    ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                     instr->backend_config<GpuBackendConfig>());
     return gpu_config.collective_backend_config().backend();
   }
 
   absl::StatusOr<DebugOptions::CollectivesMode> GetCollectivesMode(
       const HloInstruction* instr) {
-    TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                        instr->backend_config<GpuBackendConfig>());
+    ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                     instr->backend_config<GpuBackendConfig>());
     return gpu_config.collective_backend_config().collectives_mode();
   }
 };

@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -52,8 +53,8 @@ class GpuSpmdPartitioningTest : public HloHardwareIndependentTestBase,
         /*replica_count=*/1, /*num_partitions=*/num_devices);
     config.set_num_partitions(num_devices);
     config.set_use_shardy_partitioner(UseShardy());
-    TF_ASSIGN_OR_RETURN(auto module,
-                        ParseAndReturnVerifiedModule(hlo_module, config));
+    ASSIGN_OR_RETURN(auto module,
+                     ParseAndReturnVerifiedModule(hlo_module, config));
     if (UseShardy()) {
       module->add_frontend_attribute(
           std::string(xla::sdy::kImportMhloShardings), "t");
@@ -66,7 +67,7 @@ class GpuSpmdPartitioningTest : public HloHardwareIndependentTestBase,
     // tensorflow/compiler/xla/backends/gpu/target_config/specs/.
     AddSPMDPasses(module.get(), alg_simplifier_options, ampere, spmd_pipeline,
                   std::nullopt);
-    TF_RETURN_IF_ERROR(spmd_pipeline.Run(module.get()).status());
+    RETURN_IF_ERROR(spmd_pipeline.Run(module.get()).status());
     XLA_VLOG_LINES(10, module->ToString());
     return module;
   }

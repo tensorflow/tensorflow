@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
@@ -71,13 +72,11 @@ absl::Status RunGpuConvUnfused(const GpuConvParams& params, se::Stream* stream,
                     params.config->conv_result_scale);
   }
 
-  TF_ASSIGN_OR_RETURN(
-      se::dnn::DataType input_type,
-      GetDNNDataTypeFromPrimitiveType(params.config->input_type));
+  ASSIGN_OR_RETURN(se::dnn::DataType input_type,
+                   GetDNNDataTypeFromPrimitiveType(params.config->input_type));
 
-  TF_ASSIGN_OR_RETURN(
-      se::dnn::DataType output_type,
-      GetDNNDataTypeFromPrimitiveType(params.config->output_type));
+  ASSIGN_OR_RETURN(se::dnn::DataType output_type,
+                   GetDNNDataTypeFromPrimitiveType(params.config->output_type));
 
   se::dnn::LazyOpRunner<se::dnn::ConvOp>* lazy_runner =
       options.runner_cache->AsConvRunner();
@@ -94,8 +93,8 @@ absl::Status RunGpuConvUnfused(const GpuConvParams& params, se::Stream* stream,
                                  params.config->filter_descriptor,
                                  params.config->output_descriptor,
                                  params.config->conv_desc};
-  TF_ASSIGN_OR_RETURN(auto* runner,
-                      lazy_runner->GetOrCreateRunner(config, stream));
+  ASSIGN_OR_RETURN(auto* runner,
+                   lazy_runner->GetOrCreateRunner(config, stream));
 
   return (*runner)(stream, options.profile_result, scratch_memory, input_buf,
                    filter_buf, output_buf);
@@ -113,13 +112,11 @@ absl::Status RunGpuConvGraph(const GpuConvParams& params, se::Stream* stream,
                     params.config->conv_result_scale);
   }
 
-  TF_ASSIGN_OR_RETURN(
-      se::dnn::DataType input_type,
-      GetDNNDataTypeFromPrimitiveType(params.config->input_type));
+  ASSIGN_OR_RETURN(se::dnn::DataType input_type,
+                   GetDNNDataTypeFromPrimitiveType(params.config->input_type));
 
-  TF_ASSIGN_OR_RETURN(
-      se::dnn::DataType output_type,
-      GetDNNDataTypeFromPrimitiveType(params.config->output_type));
+  ASSIGN_OR_RETURN(se::dnn::DataType output_type,
+                   GetDNNDataTypeFromPrimitiveType(params.config->output_type));
 
   se::dnn::LazyOpRunner<se::dnn::GraphConvOp>* lazy_runner =
       options.runner_cache->AsGraphConvRunner();
@@ -137,8 +134,8 @@ absl::Status RunGpuConvGraph(const GpuConvParams& params, se::Stream* stream,
                                       params.config->output_descriptor,
                                       params.config->conv_desc,
                                       params.config->serialized_graph};
-  TF_ASSIGN_OR_RETURN(auto* runner,
-                      lazy_runner->GetOrCreateRunner(config, stream));
+  ASSIGN_OR_RETURN(auto* runner,
+                   lazy_runner->GetOrCreateRunner(config, stream));
 
   std::vector<DeviceAddressBase> operands = {input_buf, filter_buf, output_buf};
   // Insert the optional operands ahead of the output.
@@ -182,13 +179,11 @@ absl::Status RunGpuConvForwardActivation(
     lazy_runner = &*local_runner;
   }
 
-  TF_ASSIGN_OR_RETURN(
-      se::dnn::DataType input_type,
-      GetDNNDataTypeFromPrimitiveType(params.config->input_type));
+  ASSIGN_OR_RETURN(se::dnn::DataType input_type,
+                   GetDNNDataTypeFromPrimitiveType(params.config->input_type));
 
-  TF_ASSIGN_OR_RETURN(
-      se::dnn::DataType output_type,
-      GetDNNDataTypeFromPrimitiveType(params.config->output_type));
+  ASSIGN_OR_RETURN(se::dnn::DataType output_type,
+                   GetDNNDataTypeFromPrimitiveType(params.config->output_type));
 
   se::dnn::FusedConvOp::Config config{se::dnn::ConvolutionKind::FORWARD,
                                       input_type,
@@ -203,8 +198,8 @@ absl::Status RunGpuConvForwardActivation(
                                       params.config->output_descriptor,
                                       params.config->conv_desc,
                                       params.config->fusion->mode};
-  TF_ASSIGN_OR_RETURN(auto* runner,
-                      lazy_runner->GetOrCreateRunner(config, stream));
+  ASSIGN_OR_RETURN(auto* runner,
+                   lazy_runner->GetOrCreateRunner(config, stream));
 
   return (*runner)(stream, options.profile_result, scratch_memory, input_buf,
                    filter_buf, side_input, params.fusion->bias_buf, output_buf);
@@ -435,9 +430,9 @@ absl::StatusOr<GpuConvConfig> GetGpuConvConfig(
   const Shape& filter_shape = config.filter_shape;
   const Shape& output_shape = config.output_shape;
 
-  TF_ASSIGN_OR_RETURN(std::tie(input_dl, filter_dl, output_dl),
-                      XlaConvShapesToStreamExecutorLayouts(
-                          dnums, input_shape, filter_shape, output_shape));
+  ASSIGN_OR_RETURN(std::tie(input_dl, filter_dl, output_dl),
+                   XlaConvShapesToStreamExecutorLayouts(
+                       dnums, input_shape, filter_shape, output_shape));
   if (backend_config.reordered_int8_nchw_vect()) {
     CHECK_EQ(filter_dl, FilterLayout::kOutputInputYX32);
     filter_dl = FilterLayout::kOutputInputYX32_CudnnReordered;
@@ -540,9 +535,9 @@ absl::StatusOr<GpuConvConfig> GetGpuConvConfig(
     const HloCustomCallInstruction* cudnn_call) {
   GpuConvDescriptor descriptor;
 
-  TF_ASSIGN_OR_RETURN(descriptor.kind, GetCudnnConvKind(cudnn_call));
-  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
-                      cudnn_call->backend_config<GpuBackendConfig>());
+  ASSIGN_OR_RETURN(descriptor.kind, GetCudnnConvKind(cudnn_call));
+  ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
+                   cudnn_call->backend_config<GpuBackendConfig>());
   descriptor.backend_config = gpu_backend_config.cudnn_conv_backend_config();
   descriptor.operand0_shape = cudnn_call->operand(0)->shape();
   descriptor.operand1_shape = cudnn_call->operand(1)->shape();
@@ -605,9 +600,8 @@ absl::Status RunGpuConv(const gpu::GpuConvConfig& config,
                         absl::Span<const se::DeviceAddressBase> result_buffers,
                         se::DeviceAddressBase scratch_memory,
                         se::Stream* stream, RunConvOptions options) {
-  TF_ASSIGN_OR_RETURN(
-      GpuConvParams params,
-      GetGpuConvParams(config, operand_buffers, result_buffers));
+  ASSIGN_OR_RETURN(GpuConvParams params,
+                   GetGpuConvParams(config, operand_buffers, result_buffers));
 
   PrimitiveType input_primitive_type = config.input_type;
   switch (input_primitive_type) {
@@ -658,14 +652,14 @@ absl::Status RunGpuConv(const gpu::GpuConvConfig& config,
 absl::StatusOr<GpuConvDescriptor> GpuConvDescriptor::FromProto(
     const GpuConvDescriptorProto& proto) {
   GpuConvDescriptor descriptor;
-  TF_ASSIGN_OR_RETURN(descriptor.kind, CudnnConvKindFromProto(proto.kind()));
+  ASSIGN_OR_RETURN(descriptor.kind, CudnnConvKindFromProto(proto.kind()));
   descriptor.backend_config = proto.backend_config();
-  TF_ASSIGN_OR_RETURN(descriptor.operand0_shape,
-                      Shape::FromProto(proto.operand0_shape()));
-  TF_ASSIGN_OR_RETURN(descriptor.operand1_shape,
-                      Shape::FromProto(proto.operand1_shape()));
-  TF_ASSIGN_OR_RETURN(descriptor.result_shape,
-                      Shape::FromProto(proto.result_shape()));
+  ASSIGN_OR_RETURN(descriptor.operand0_shape,
+                   Shape::FromProto(proto.operand0_shape()));
+  ASSIGN_OR_RETURN(descriptor.operand1_shape,
+                   Shape::FromProto(proto.operand1_shape()));
+  ASSIGN_OR_RETURN(descriptor.result_shape,
+                   Shape::FromProto(proto.result_shape()));
   descriptor.scratch_size = proto.scratch_size();
   descriptor.window = proto.window();
   descriptor.dnums = proto.dnums();

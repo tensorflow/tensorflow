@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/Target/TargetMachine.h"
@@ -111,7 +112,7 @@ absl::StatusOr<std::unique_ptr<FunctionLibrary>> LoadFunctionLibrary(
   for (auto& obj_file : obj_files) {
     llvm::StringRef data(obj_file.contents().data(),
                          obj_file.contents().size());
-    TF_RETURN_IF_ERROR(object_loader.AddObjFile(
+    RETURN_IF_ERROR(object_loader.AddObjFile(
         llvm::MemoryBuffer::getMemBuffer(data, obj_file.name())));
   }
 
@@ -129,8 +130,7 @@ absl::StatusOr<std::unique_ptr<Executable>> CpuAotLoader::LoadExecutable(
 
 absl::StatusOr<std::unique_ptr<Executable>> CpuAotLoader::LoadExecutable(
     const xla::cpu::CompilationResultProto& aot_result_proto) {
-  TF_ASSIGN_OR_RETURN(auto aot_result,
-                      LoadAotCompilationResult(aot_result_proto));
+  ASSIGN_OR_RETURN(auto aot_result, LoadAotCompilationResult(aot_result_proto));
   return LoadExecutable(std::move(*aot_result));
 }
 
@@ -155,13 +155,13 @@ CpuAotLoader::LoadAotCompilationResult(
   VLOG(3) << "AOT result target machine options: "
           << aot_result_proto.target_machine_options().DebugString();
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,
       HloModule::CreateFromProtoWithConfig(aot_result_proto.hlo_module()));
 
-  TF_ASSIGN_OR_RETURN(TargetMachineOptions target_machine_options,
-                      TargetMachineOptions::FromProto(
-                          aot_result_proto.target_machine_options()));
+  ASSIGN_OR_RETURN(TargetMachineOptions target_machine_options,
+                   TargetMachineOptions::FromProto(
+                       aot_result_proto.target_machine_options()));
   llvm::Triple host_triple(llvm::sys::getDefaultTargetTriple());
   llvm::Triple expected_triple(target_machine_options.triple());
   if (host_triple.getArchName() != expected_triple.getArchName()) {
@@ -209,19 +209,18 @@ CpuAotLoader::LoadAotCompilationResult(
     compiled_symbols_proto.push_back(symbol_proto);
   }
 
-  TF_ASSIGN_OR_RETURN(auto compiled_symbols,
-                      GetCompiledSymbolsFromProto(compiled_symbols_proto));
+  ASSIGN_OR_RETURN(auto compiled_symbols,
+                   GetCompiledSymbolsFromProto(compiled_symbols_proto));
 
   std::vector<ObjFileProto> obj_files;
   for (const auto& obj_file : aot_result_proto.object_files()) {
     obj_files.push_back(obj_file);
   }
 
-  TF_ASSIGN_OR_RETURN(
-      auto function_library,
-      LoadFunctionLibrary(compiled_symbols, obj_files, hlo_module.get(),
-                          target_machine_options,
-                          aot_result_proto.data_layout()));
+  ASSIGN_OR_RETURN(auto function_library,
+                   LoadFunctionLibrary(compiled_symbols, obj_files,
+                                       hlo_module.get(), target_machine_options,
+                                       aot_result_proto.data_layout()));
 
   return CpuAotCompilationResult::FromProto(aot_result_proto,
                                             std::move(function_library));

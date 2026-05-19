@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/transforms/collectives/async_collective_annotator.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
@@ -893,13 +894,12 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
   // Run the scheduler which minimizes peak memory usage.
   // We need to run it anyway because LHS relies on it.
   // See `xla::LatencyHidingScheduler::Run`.
-  TF_RETURN_IF_ERROR(RunP2PSchedulePreparation(module));
+  RETURN_IF_ERROR(RunP2PSchedulePreparation(module));
   int64_t peak_memory_bytes;
-  TF_ASSIGN_OR_RETURN(
-      HloSchedule schedule,
-      ScheduleGpuModuleWithMemoryScheduler(module, alias_info, pointer_size,
-                                           &peak_memory_bytes));
-  TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
+  ASSIGN_OR_RETURN(HloSchedule schedule,
+                   ScheduleGpuModuleWithMemoryScheduler(
+                       module, alias_info, pointer_size, &peak_memory_bytes));
+  RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
 
   bool enable_latency_hiding_scheduler =
       IsLHSEnabled(*module, fingerprint, gpu_device_info);
@@ -907,7 +907,7 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
   // Run Latency Hiding Scheduler (LHS). It maximizes the compute-communication
   // overlap, potentially at the cost of memory usage.
   if (enable_latency_hiding_scheduler) {
-    TF_RETURN_IF_ERROR(RunLatencyHidingSchedulerPasses(
+    RETURN_IF_ERROR(RunLatencyHidingSchedulerPasses(
         module, pointer_size, fingerprint, memory_limit, gpu_device_info,
         mlir_context, alias_info));
   }
