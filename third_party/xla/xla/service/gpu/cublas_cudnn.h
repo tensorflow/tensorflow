@@ -96,6 +96,10 @@ bool IsLegacyCublasMatmul(const HloInstruction& hlo);
 // Matrix multiplication that calls into cublasLt.
 bool IsCublasLtMatmul(const HloInstruction& hlo);
 
+// Returns true if hlo is a non-fused cublasLt matmul (default epilogue,
+// beta=0).
+bool IsNonFusedCublasLtMatmul(const HloInstruction& hlo);
+
 // Scaled matrix multiplication in FP8. Calls into cublasLt.
 bool IsCublasLtMatmulF8(const HloInstruction& hlo);
 

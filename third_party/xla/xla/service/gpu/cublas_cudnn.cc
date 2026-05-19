@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
@@ -43,6 +44,18 @@ bool IsLegacyCublasMatmul(const HloInstruction& hlo) {
 bool IsCublasLtMatmul(const HloInstruction& hlo) {
   return hlo.opcode() == HloOpcode::kCustomCall &&
          hlo.custom_call_target() == kCublasLtMatmulCallTarget;
+}
+
+bool IsNonFusedCublasLtMatmul(const HloInstruction& hlo) {
+  if (!IsCublasLtMatmul(hlo)) {
+    return false;
+  }
+  auto gpu_config = hlo.backend_config<GpuBackendConfig>();
+  if (!gpu_config.ok()) {
+    return false;
+  }
+  const auto& gemm_config = gpu_config->gemm_backend_config();
+  return gemm_config.epilogue() == GemmBackendConfig::DEFAULT;
 }
 
 bool IsCublasLtGroupedMatmul(const HloInstruction& hlo) {

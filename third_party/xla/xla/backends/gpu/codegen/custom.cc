@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
+#include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
 #include "xla/backends/gpu/runtime/legacy_custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
@@ -80,6 +81,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tools/hlo_extractor.h"
 #include "xla/tsl/platform/errors.h"
@@ -546,6 +548,53 @@ absl::StatusOr<BufferAllocation::Slice> GetResultSlice(
       ShapeIndex(reversed_shape_index.rbegin(), reversed_shape_index.rend()));
 }
 
+absl::StatusOr<std::unique_ptr<Thunk>> CreateMatmulThunk(
+    const HloCustomCallInstruction& custom_call, Thunk::ThunkInfo thunk_info,
+    GemmConfig config, BufferAllocation::Slice lhs_slice,
+    BufferAllocation::Slice rhs_slice, BufferAllocation::Slice output,
+    std::optional<BufferAllocation::Slice> workspace, bool deterministic_ops) {
+  if (IsLegacyCublasMatmul(custom_call)) {
+    return std::make_unique<GemmThunk>(thunk_info, std::move(config), lhs_slice,
+                                       rhs_slice, output, workspace,
+                                       deterministic_ops);
+  }
+  ASSIGN_OR_RETURN(auto gpu_config,
+                   custom_call.backend_config<GpuBackendConfig>());
+  const auto& gemm_backend_config = gpu_config.gemm_backend_config();
+
+  ShapedSlice a{lhs_slice, custom_call.operand(0)->shape()};
+  ShapedSlice b{rhs_slice, custom_call.operand(1)->shape()};
+
+  Shape output_shape = custom_call.shape().IsArray()
+                           ? custom_call.shape()
+                           : custom_call.shape().tuple_shapes(0);
+  ShapedSlice c{output, output_shape};
+  ShapedSlice d{output, output_shape};
+
+  std::optional<ShapedSlice> workspace_buffer;
+  if (workspace.has_value()) {
+    workspace_buffer = ShapedSlice{*workspace, custom_call.shape().tuple_shapes(
+                                                   kGEMMWorkspaceBufferIndex)};
+  }
+
+  int64_t algorithm = gemm_backend_config.algorithm_case() ==
+                              GemmBackendConfig::kSelectedAlgorithm
+                          ? gemm_backend_config.selected_algorithm()
+                          : 0;
+
+  std::string canonical_hlo = custom_call.ToString(
+      HloPrintOptions::Fingerprint().set_print_backend_config(true));
+
+  return std::make_unique<CublasLtMatmulThunk>(
+      thunk_info, std::move(canonical_hlo), std::move(config),
+      se::gpu::BlasLt::Epilogue::kDefault, algorithm,
+      gemm_backend_config.autotune_workspace_size(), a, b, c, d,
+      /*bias=*/std::nullopt, /*aux=*/std::nullopt,
+      /*a_scale=*/std::nullopt, /*b_scale=*/std::nullopt,
+      /*c_scale=*/std::nullopt, /*d_scale=*/std::nullopt,
+      /*d_amax=*/std::nullopt, workspace_buffer);
+}
+
 absl::StatusOr<FusionEmissionResult> EmitGemm(
     IrEmitterContext& ir_emitter_context, const HloFusionAdaptor& adaptor,
     const HloFusionInstruction& fusion,
@@ -704,9 +753,12 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
     BufferAllocation::Slice slice_out_fake(&fake_allocations[fake_arg_idx], 0,
                                            out_fake_byte_size);
     ThunkSequence seq;
-    seq.emplace_back(std::make_unique<GemmThunk>(
-        thunk_info, std::move(config), slice_lhs_fake, slice_rhs_fake,
-        slice_out_fake, slice_workspace_fake, deterministic_ops));
+    TF_ASSIGN_OR_RETURN(
+        auto matmul_thunk,
+        CreateMatmulThunk(custom_call, thunk_info, std::move(config),
+                          slice_lhs_fake, slice_rhs_fake, slice_out_fake,
+                          slice_workspace_fake, deterministic_ops));
+    seq.emplace_back(std::move(matmul_thunk));
 
     std::vector<std::optional<BufferAllocation::Slice>> arguments{
         lhs_slice, rhs_slice, output, workspace};
@@ -728,9 +780,10 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
         std::move(sliced_shapes), std::move(offset_primitive_types),
         std::move(offset_modules_metadata));
   } else {
-    thunk = std::make_unique<GemmThunk>(thunk_info, std::move(config),
-                                        lhs_slice, rhs_slice, output, workspace,
-                                        deterministic_ops);
+    TF_ASSIGN_OR_RETURN(
+        thunk,
+        CreateMatmulThunk(custom_call, thunk_info, std::move(config), lhs_slice,
+                          rhs_slice, output, workspace, deterministic_ops));
   }
 
   return FusionEmissionResult{ThunkSequence::Of(std::move(thunk))};
@@ -1371,7 +1424,8 @@ absl::StatusOr<FusionEmissionResult> DynamicSliceFusion::Emit(
 
   const auto& custom_call = *static_cast<const HloCustomCallInstruction*>(
       &maybe_custom_call_adaptor->instruction());
-  if (IsLegacyCublasMatmul(custom_call)) {
+  if (IsLegacyCublasMatmul(custom_call) ||
+      IsNonFusedCublasLtMatmul(custom_call)) {
     return EmitGemm(ir_emitter_context, adaptor, fusion, custom_call,
                     call_graph_);
   }

@@ -1004,6 +1004,7 @@ cc_library(
     hdrs = ["cublas_cudnn.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":backend_configs_cc",
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/status",
