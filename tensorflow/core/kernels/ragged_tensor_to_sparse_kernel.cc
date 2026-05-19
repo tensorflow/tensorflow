@@ -39,8 +39,9 @@ class RaggedTensorToSparseOp : public OpKernel {
     OP_REQUIRES_OK(
         context, context->input_list("rt_nested_splits", &rt_nested_splits_in));
     const int rt_nested_splits_len = rt_nested_splits_in.size();
-    OP_REQUIRES(context, rt_nested_splits_len > 0,
-                errors::InvalidArgument("rt_nested_splits must be non empty"));
+    OP_REQUIRES(
+        context, rt_nested_splits_len > 0,
+        absl::InvalidArgumentError("rt_nested_splits must be non empty"));
     std::vector<ConstFlatSplits> rt_nested_splits;
     rt_nested_splits.reserve(rt_nested_splits_len);
     for (int i = 0; i < rt_nested_splits_len; ++i) {
@@ -159,10 +160,11 @@ class RaggedTensorToSparseOp : public OpKernel {
       const Tensor& rt_dense_values_in) {
     for (int i = 0; i < rt_nested_splits.size(); ++i) {
       if (rt_nested_splits[i].size() == 0) {
-        return InvalidArgument("ragged splits may not be empty.");
+        return absl::InvalidArgumentError("ragged splits may not be empty.");
       }
       if (rt_nested_splits[i](0) != 0) {
-        return InvalidArgument("First value of ragged splits must be 0.");
+        return absl::InvalidArgumentError(
+            "First value of ragged splits must be 0.");
       }
       for (int j = 1; j < rt_nested_splits[i].size(); ++j) {
         if (rt_nested_splits[i](j) < rt_nested_splits[i](j - 1)) {
@@ -176,7 +178,7 @@ class RaggedTensorToSparseOp : public OpKernel {
         SPLITS_TYPE last_split =
             rt_nested_splits[i - 1](rt_nested_splits[i - 1].size() - 1);
         if (rt_nested_splits[i].size() != last_split + 1) {
-          return InvalidArgument(
+          return absl::InvalidArgumentError(
               "Final value of ragged splits must match the length "
               "the corresponding ragged values.");
         }
@@ -184,7 +186,7 @@ class RaggedTensorToSparseOp : public OpKernel {
     }
     if (rt_dense_values_in.dim_size(0) !=
         rt_nested_splits.back()(rt_nested_splits.back().size() - 1)) {
-      return InvalidArgument(
+      return absl::InvalidArgumentError(
           "Final value of ragged splits must match the length "
           "the corresponding ragged values.");
     }

@@ -558,7 +558,8 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
     auto blas_transpose_b = trans[adj_y ? 2 : (trans_y ? 1 : 0)];
 
     auto* stream = context->op_device_context()->stream();
-    OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
+    OP_REQUIRES(context, stream,
+                absl::InternalError("No GPU stream available."));
 
     typedef se::DeviceMemory<Scalar> DeviceMemoryType;
     std::vector<DeviceMemoryType> a_device_memory;
@@ -591,7 +592,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
 
     se::blas::CallContext call_context = se::blas::CallContext::kNone;
     OP_REQUIRES(context, grad_x == false || grad_y == false,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "At least 1 of grad_x and grad_y shall be false"));
     if (grad_x) {
       call_context = se::blas::CallContext::kBackpropInput1;
@@ -691,8 +692,9 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                                                      algorithm_config);
         }
         se::blas::AlgorithmType algorithm_idx = algorithm_config.algorithm();
-        OP_REQUIRES(context, 0 <= algorithm_idx && algorithm_idx < n_algorithms,
-                    errors::Internal("Missing/invalid BatchMatmul algorithm"));
+        OP_REQUIRES(
+            context, 0 <= algorithm_idx && algorithm_idx < n_algorithms,
+            absl::InternalError("Missing/invalid BatchMatmul algorithm"));
         BlasScratchAllocator scratch_allocator(context, max_scratch_size);
         VLOG(4) << "Calling BlasLtMatMul: a.shape=(" << bcast.x_batch_size()
                 << ", " << in_x.dim_size(1) << ", " << in_x.dim_size(2)
@@ -814,10 +816,11 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                 *(a_ptrs[0]), adj_x || trans_x ? m : k, *(b_ptrs[0]), 1,
                 static_cast<Coefficient>(0.0), c_ptrs[0], 1);
             if (!blas_launch_status) {
-              context->SetStatus(errors::Internal(
-                  "Blas xGEMV launch failed : a.shape=",
-                  in_x.shape().DebugString(), ", b.shape=",
-                  in_y.shape().DebugString(), ", m=", m, ", n=", n, ", k=", k));
+              context->SetStatus(absl::InternalError(
+                  absl::StrCat("Blas xGEMV launch failed : a.shape=",
+                               in_x.shape().DebugString(),
+                               ", b.shape=", in_y.shape().DebugString(),
+                               ", m=", m, ", n=", n, ", k=", k)));
             }
             return;
           }
@@ -927,9 +930,9 @@ class BaseBatchMatMulOp : public OpKernel {
     MatMulBCast bcast(in0.shape().dim_sizes(), in1.shape().dim_sizes());
     OP_REQUIRES(
         ctx, bcast.IsValid(),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "In[0] and In[1] must have compatible batch dimensions: ",
-            in0.shape().DebugString(), " vs. ", in1.shape().DebugString()));
+            in0.shape().DebugString(), " vs. ", in1.shape().DebugString())));
 
     TensorShape out_shape = bcast.output_batch_shape();
     auto batch_size = bcast.output_batch_size();
@@ -939,23 +942,23 @@ class BaseBatchMatMulOp : public OpKernel {
     OP_REQUIRES(
         ctx,
         in0_reshaped.CopyFrom(in0, TensorShape({bcast.x_batch_size(), d0, d1})),
-        errors::Internal("Failed to reshape In[0] from ",
-                         in0.shape().DebugString()));
+        absl::InternalError(absl::StrCat("Failed to reshape In[0] from ",
+                                         in0.shape().DebugString())));
     auto d2 = in1.dim_size(in1.dims() - 2);
     auto d3 = in1.dim_size(in1.dims() - 1);
     Tensor in1_reshaped;
     OP_REQUIRES(
         ctx,
         in1_reshaped.CopyFrom(in1, TensorShape({bcast.y_batch_size(), d2, d3})),
-        errors::Internal("Failed to reshape In[1] from ",
-                         in1.shape().DebugString()));
+        absl::InternalError(absl::StrCat("Failed to reshape In[1] from ",
+                                         in1.shape().DebugString())));
     if (adj_x_ || trans_x_) std::swap(d0, d1);
     if (adj_y_ || trans_y_) std::swap(d2, d3);
     OP_REQUIRES(
         ctx, d1 == d2,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Matrix size-incompatible: In[0]: ", in0.shape().DebugString(),
-            ", In[1]: ", in1.shape().DebugString()));
+            ", In[1]: ", in1.shape().DebugString())));
     OP_REQUIRES_OK(ctx, out_shape.AddDimWithStatus(d0));
     OP_REQUIRES_OK(ctx, out_shape.AddDimWithStatus(d3));
     Tensor* out = nullptr;
@@ -969,10 +972,10 @@ class BaseBatchMatMulOp : public OpKernel {
       return;
     }
     Tensor out_reshaped;
-    OP_REQUIRES(ctx,
-                out_reshaped.CopyFrom(*out, TensorShape({batch_size, d0, d3})),
-                errors::Internal("Failed to reshape output from ",
-                                 out->shape().DebugString()));
+    OP_REQUIRES(
+        ctx, out_reshaped.CopyFrom(*out, TensorShape({batch_size, d0, d3})),
+        absl::InternalError(absl::StrCat("Failed to reshape output from ",
+                                         out->shape().DebugString())));
 
     // b/307285203: There seems to be an overly aggressive compiler optimization
     // that optimizes away these data pointers unless we explicitly check them.
@@ -1060,27 +1063,26 @@ class BatchMatMulOp : public BaseBatchMatMulOp<Device, Ta, Tb, Tout> {
     // Disallow broadcasting support. Ensure that all batch dimensions of the
     // input tensors match.
     if (in0.dims() != in1.dims()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "In[0] and In[1] has different ndims: ", in0.shape().DebugString(),
-          " vs. ", in1.shape().DebugString());
+          " vs. ", in1.shape().DebugString()));
     }
     const int ndims = in0.dims();
     if (is_legacy_matmul) {
       if (ndims != 2) {
-        return errors::InvalidArgument("In[0] and In[1] ndims must be == 2: ",
-                                       ndims);
+        return absl::InvalidArgumentError(
+            absl::StrCat("In[0] and In[1] ndims must be == 2: ", ndims));
       }
     } else {
       if (ndims < 2) {
-        return errors::InvalidArgument("In[0] and In[1] ndims must be >= 2: ",
-                                       ndims);
+        return absl::InvalidArgumentError(
+            absl::StrCat("In[0] and In[1] ndims must be >= 2: ", ndims));
       }
       for (int i = 0; i < ndims - 2; ++i) {
         if (in0.dim_size(i) != in1.dim_size(i)) {
-          return errors::InvalidArgument(
-              "In[0].dim(", i, ") and In[1].dim(", i,
-              ") must be the same: ", in0.shape().DebugString(), " vs ",
-              in1.shape().DebugString());
+          return absl::InvalidArgumentError(absl::StrCat(
+              "In[0].dim(", i, ") and In[1].dim(", i, ") must be the same: ",
+              in0.shape().DebugString(), " vs ", in1.shape().DebugString()));
         }
       }
     }
@@ -1105,10 +1107,12 @@ class BatchMatMulV2Op : public BaseBatchMatMulOp<Device, Ta, Tb, Tout> {
     // Enable broadcasting support. Validity of broadcasting is checked in
     // BaseBatchMatMulOp.
     if (in0.dims() < 2) {
-      return errors::InvalidArgument("In[0] ndims must be >= 2: ", in0.dims());
+      return absl::InvalidArgumentError(
+          absl::StrCat("In[0] ndims must be >= 2: ", in0.dims()));
     }
     if (in1.dims() < 2) {
-      return errors::InvalidArgument("In[1] ndims must be >= 2: ", in1.dims());
+      return absl::InvalidArgumentError(
+          absl::StrCat("In[1] ndims must be >= 2: ", in1.dims()));
     }
     return absl::OkStatus();
   }

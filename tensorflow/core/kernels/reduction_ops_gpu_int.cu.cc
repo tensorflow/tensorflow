@@ -63,8 +63,8 @@ typedef TTypes<float>::Tensor::Index Index;
       T, SINGLE_ARG(Eigen::internal::MaxReducer<T, Eigen::PropagateNaN>)); \
   DEFINE_FOR_TYPE_AND_R(T, Eigen::internal::ProdReducer<T>)
 
-DEFINE_FOR_ALL_REDUCERS(int32);
-DEFINE_FOR_ALL_REDUCERS(int64);
+DEFINE_FOR_ALL_REDUCERS(int32_t);
+DEFINE_FOR_ALL_REDUCERS(int64_t);
 #undef SINGLE_ARG
 #undef DEFINE_FOR_ALL_REDUCERS
 #undef DEFINE_FOR_TYPE_AND_R

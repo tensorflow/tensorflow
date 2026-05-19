@@ -80,9 +80,10 @@ class PoissonLossUpdater : public DualLossUpdater {
 
   absl::Status ConvertLabel(float* const example_label) const final {
     if (*example_label < 0.0) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Only non-negative labels can be used with the Poisson log loss. "
-          "Found example with label: ", *example_label);
+          "Found example with label: ",
+          *example_label));
     }
     return absl::OkStatus();
   }

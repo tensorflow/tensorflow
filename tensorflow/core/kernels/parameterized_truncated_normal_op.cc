@@ -112,7 +112,7 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
                     stddev > T(0) && minval < maxval &&
                         (Eigen::numext::isfinite(minval) ||
                          Eigen::numext::isfinite(maxval)),
-                    errors::InvalidArgument("Invalid parameters"));
+                    absl::InvalidArgumentError("Invalid parameters"));
 
         int num_iterations = 0;
 
@@ -175,7 +175,7 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
                              << "exceeded maximum iterations for "
                              << "normMin=" << normMin << " normMax=" << normMax
                              << " kMaxIterations=" << kMaxIterations;
-                  ctx->SetStatus(errors::Internal(
+                  ctx->SetStatus(absl::InternalError(
                       "TruncatedNormal randn rejection sampler failed to accept"
                       " a sample."));
                   return;
@@ -215,7 +215,7 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
                   LOG(ERROR) << "TruncatedNormal uniform rejection sampler "
                              << "exceeded max iterations. Sample may contain "
                              << "outliers.";
-                  ctx->SetStatus(errors::Internal(
+                  ctx->SetStatus(absl::InternalError(
                       "TruncatedNormal uniform rejection sampler failed to "
                       " accept a sample."));
                   return;
@@ -255,7 +255,7 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
                   LOG(ERROR) << "TruncatedNormal exponential distribution "
                              << "rejection sampler exceeds max iterations. "
                              << "Sample may contain outliers.";
-                  ctx->SetStatus(errors::Internal(
+                  ctx->SetStatus(absl::InternalError(
                       "TruncatedNormal exponential distribution rejection"
                       " sampler failed to accept a sample."));
                   return;
@@ -395,7 +395,7 @@ struct TruncatedNormalFunctorV2<CPUDevice, T> {
                     stddev > T(0) && minval < maxval &&
                         (Eigen::numext::isfinite(minval) ||
                          Eigen::numext::isfinite(maxval)),
-                    errors::InvalidArgument("Invalid parameters"));
+                    absl::InvalidArgumentError("Invalid parameters"));
 
         int num_iterations = 0;
 
@@ -460,7 +460,7 @@ struct TruncatedNormalFunctorV2<CPUDevice, T> {
                              << "exceeded maximum iterations for "
                              << "normMin=" << normMin << " normMax=" << normMax
                              << " kMaxIterations=" << kMaxIterations;
-                  ctx->SetStatus(errors::Internal(
+                  ctx->SetStatus(absl::InternalError(
                       "TruncatedNormal randn rejection sampler failed to accept"
                       " a sample."));
                   return;
@@ -499,7 +499,7 @@ struct TruncatedNormalFunctorV2<CPUDevice, T> {
                   LOG(ERROR) << "TruncatedNormal uniform rejection sampler "
                              << "exceeded max iterations. Sample may contain "
                              << "outliers.";
-                  ctx->SetStatus(errors::Internal(
+                  ctx->SetStatus(absl::InternalError(
                       "TruncatedNormal uniform rejection sampler failed to "
                       " accept a sample."));
                   return;
@@ -543,7 +543,7 @@ struct TruncatedNormalFunctorV2<CPUDevice, T> {
                   LOG(ERROR) << "TruncatedNormal exponential distribution "
                              << "rejection sampler exceeds max iterations. "
                              << "Sample may contain outliers.";
-                  ctx->SetStatus(errors::Internal(
+                  ctx->SetStatus(absl::InternalError(
                       "TruncatedNormal exponential distribution rejection"
                       " sampler failed to accept a sample."));
                   return;
@@ -624,13 +624,14 @@ class ParameterizedTruncatedNormalOp : public OpKernel {
     const Tensor& minvals_tensor = ctx->input(3);
     const Tensor& maxvals_tensor = ctx->input(4);
 
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsVector(shape_tensor.shape()),
-        errors::InvalidArgument("Input shape should be a vector, got shape: ",
-                                shape_tensor.shape().DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(shape_tensor.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input shape should be a vector, got shape: ",
+                                 shape_tensor.shape().DebugString())));
     OP_REQUIRES(ctx, shape_tensor.NumElements() > 0,
-                errors::InvalidArgument("Shape tensor must not be empty, got ",
-                                        shape_tensor.DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Shape tensor must not be empty, got ",
+                                 shape_tensor.DebugString())));
     TensorShape tensor_shape;
     OP_REQUIRES_OK(ctx, tensor::MakeShape(shape_tensor, &tensor_shape));
 
@@ -648,21 +649,21 @@ class ParameterizedTruncatedNormalOp : public OpKernel {
 
     // Parameters must be 0-d or 1-d.
     OP_REQUIRES(ctx, means_tensor.dims() <= 1,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input means should be a scalar or vector, got shape: ",
-                    means_tensor.shape().DebugString()));
+                    means_tensor.shape().DebugString())));
     OP_REQUIRES(ctx, stddevs_tensor.dims() <= 1,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input stddevs should be a scalar or vector, got shape: ",
-                    stddevs_tensor.shape().DebugString()));
+                    stddevs_tensor.shape().DebugString())));
     OP_REQUIRES(ctx, minvals_tensor.dims() <= 1,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input minvals should be a scalar or vector, got shape: ",
-                    minvals_tensor.shape().DebugString()));
+                    minvals_tensor.shape().DebugString())));
     OP_REQUIRES(ctx, maxvals_tensor.dims() <= 1,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input maxvals should be a scalar or vector, got shape: ",
-                    maxvals_tensor.shape().DebugString()));
+                    maxvals_tensor.shape().DebugString())));
 
     if ((means_tensor.dims() == 0 || means_tensor.dim_size(0) == 1) &&
         (stddevs_tensor.dims() == 0 || stddevs_tensor.dim_size(0) == 1) &&
@@ -683,33 +684,33 @@ class ParameterizedTruncatedNormalOp : public OpKernel {
           TensorShapeUtils::IsScalar(means_tensor.shape()) ||
               means_tensor.dim_size(0) == 1 ||
               means_tensor.dim_size(0) == num_batches,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "Input means should have length 1 or shape[0], got shape: ",
-              means_tensor.shape().DebugString()));
+              means_tensor.shape().DebugString())));
       OP_REQUIRES(
           ctx,
           TensorShapeUtils::IsScalar(stddevs_tensor.shape()) ||
               stddevs_tensor.dim_size(0) == 1 ||
               stddevs_tensor.dim_size(0) == num_batches,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "Input stddevs should have length 1 or shape[0], got shape: ",
-              stddevs_tensor.shape().DebugString()));
+              stddevs_tensor.shape().DebugString())));
       OP_REQUIRES(
           ctx,
           TensorShapeUtils::IsScalar(minvals_tensor.shape()) ||
               minvals_tensor.dim_size(0) == 1 ||
               minvals_tensor.dim_size(0) == num_batches,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "Input minvals should have length 1 or shape[0], got shape: ",
-              minvals_tensor.shape().DebugString()));
+              minvals_tensor.shape().DebugString())));
       OP_REQUIRES(
           ctx,
           TensorShapeUtils::IsScalar(maxvals_tensor.shape()) ||
               maxvals_tensor.dim_size(0) == 1 ||
               maxvals_tensor.dim_size(0) == num_batches,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "Input maxvals should have length 1 or shape[0], got shape: ",
-              maxvals_tensor.shape().DebugString()));
+              maxvals_tensor.shape().DebugString())));
     }
 
     auto truncFunctor = functor::TruncatedNormalFunctor<Device, T>();
@@ -750,8 +751,9 @@ class StatelessParameterizedTruncatedNormal : public OpKernel {
     const Tensor& maxvals_tensor = ctx->input(5);
 
     OP_REQUIRES(ctx, seed_tensor.dims() == 1 && seed_tensor.dim_size(0) == 2,
-                errors::InvalidArgument("seed must have shape [2], not ",
-                                        seed_tensor.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("seed must have shape [2], not ",
+                                 seed_tensor.shape().DebugString())));
 
     tensorflow::BCastList<4> bcast(
         {means_tensor.shape().dim_sizes(), stddevs_tensor.shape().dim_sizes(),
@@ -761,20 +763,20 @@ class StatelessParameterizedTruncatedNormal : public OpKernel {
         /*return_flattened_batch_indices=*/true);
 
     OP_REQUIRES(ctx, bcast.IsValid(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "means, stddevs, minvals, maxvals must have compatible "
                     "batch dimensions: ",
                     means_tensor.shape().DebugString(), " vs. ",
                     stddevs_tensor.shape().DebugString(), " vs. ",
                     minvals_tensor.shape().DebugString(), " vs. ",
-                    maxvals_tensor.shape().DebugString()));
+                    maxvals_tensor.shape().DebugString())));
 
     // Let's check that the shape tensor dominates the broadcasted tensor.
     TensorShape bcast_shape = BCast::ToShape(bcast.output_shape());
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsVector(shape_tensor.shape()),
-        errors::InvalidArgument("Input shape should be a vector, got shape: ",
-                                shape_tensor.shape().DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(shape_tensor.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input shape should be a vector, got shape: ",
+                                 shape_tensor.shape().DebugString())));
     TensorShape output_shape;
     if (shape_tensor.dtype() == DataType::DT_INT32) {
       OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(
@@ -784,7 +786,7 @@ class StatelessParameterizedTruncatedNormal : public OpKernel {
                               shape_tensor.vec<int64_t>(), &output_shape));
     }
     OP_REQUIRES(ctx, TensorShapeUtils::EndsWith(output_shape, bcast_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Shape passed in must end with broadcasted shape."));
 
     int64_t samples_per_batch = 1;

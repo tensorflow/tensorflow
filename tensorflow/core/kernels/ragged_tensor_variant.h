@@ -83,19 +83,19 @@ absl::Status RaggedTensorVariantBinaryAdd(OpKernelContext* c,
                                           const RaggedTensorVariant& y,
                                           RaggedTensorVariant* out) {
   if (x.values().dtype() != y.values().dtype()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Can't add RaggedTensorVariants of different dtypes. One is ",
         DataTypeString(x.values().dtype()), " and the other is ",
-        DataTypeString(y.values().dtype()));
+        DataTypeString(y.values().dtype())));
   }
   if (x.ragged_rank() != y.ragged_rank()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Can't add RaggedTensorVariants of different ragged rank. ", "One is ",
-        x.ragged_rank(), " and the other is ", y.ragged_rank());
+        x.ragged_rank(), " and the other is ", y.ragged_rank()));
   }
   for (int i = 0; i < x.ragged_rank(); ++i) {
     if (TensorKey(x.splits(i)) != TensorKey(y.splits(i))) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Can't add RaggedTensorVariants with different row_splits.");
     }
   }

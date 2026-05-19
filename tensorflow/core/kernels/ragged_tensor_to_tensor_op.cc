@@ -234,7 +234,7 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
       }
     }
     if (row_split_size > 0 && result->size() != row_split(row_split_size - 1)) {
-      return errors::InvalidArgument("Invalid row split size.");
+      return absl::InvalidArgumentError("Invalid row split size.");
     }
 
     return absl::OkStatus();
@@ -310,7 +310,7 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
     }
 
     if (result->size() != value_rowids.size()) {
-      return errors::InvalidArgument("Invalid row ids.");
+      return absl::InvalidArgumentError("Invalid row ids.");
     }
 
     return absl::OkStatus();
@@ -351,7 +351,7 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
     const Tensor first_partition_tensor =
         context->input(kFirstPartitionInputIndex);
     if (row_partition_types_.empty()) {
-      return errors::InvalidArgument("No row_partition_types given.");
+      return absl::InvalidArgumentError("No row_partition_types given.");
     }
     const RowPartitionType first_partition_type = row_partition_types_[0];
     switch (first_partition_type) {
@@ -359,15 +359,15 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
         *result = first_partition_tensor.scalar<INDEX_TYPE>()();
         return absl::OkStatus();
       case RowPartitionType::VALUE_ROWIDS:
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Cannot handle VALUE_ROWIDS in first dimension.");
       case RowPartitionType::ROW_SPLITS:
         *result = first_partition_tensor.shape().dim_size(0) - 1;
         return absl::OkStatus();
       default:
-        return errors::InvalidArgument(
-            "Cannot handle type ",
-            RowPartitionTypeToString(first_partition_type));
+        return absl::InvalidArgumentError(
+            absl::StrCat("Cannot handle type ",
+                         RowPartitionTypeToString(first_partition_type)));
     }
   }
 
@@ -375,9 +375,10 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
     INDEX_TYPE first_dimension;
     const Tensor first_partition_tensor =
         context->input(kFirstPartitionInputIndex);
-    OP_REQUIRES(context, first_partition_tensor.NumElements() > 0,
-                errors::InvalidArgument("Invalid first partition input. Tensor "
-                                        "requires at least one element."));
+    OP_REQUIRES(
+        context, first_partition_tensor.NumElements() > 0,
+        absl::InvalidArgumentError("Invalid first partition input. Tensor "
+                                   "requires at least one element."));
     OP_REQUIRES_OK(context, GetFirstDimensionSize(context, &first_dimension));
     vector<INDEX_TYPE> output_size;
     OP_REQUIRES_OK(context,
@@ -503,8 +504,9 @@ class RaggedTensorToTensorOp : public RaggedTensorToTensorBaseOp<INDEX_TYPE> {
                   /*fewer_dims_optimization=*/true);
       // Note: bcast should always be valid, since we rejected any incompatible
       // shapes when we called ValidateDefaultValueShape().
-      OP_REQUIRES(context, bcast.IsValid(),
-                  errors::InvalidArgument("Error broadcasting default_value"));
+      OP_REQUIRES(
+          context, bcast.IsValid(),
+          absl::InvalidArgumentError("Error broadcasting default_value"));
       OP_REQUIRES_OK(context,
                      context->allocate_temp(default_value_tensor.dtype(),
                                             element_shape, &bcast_default));

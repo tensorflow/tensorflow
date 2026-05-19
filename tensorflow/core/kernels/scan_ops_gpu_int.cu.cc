@@ -23,13 +23,13 @@ limitations under the License.
 namespace tensorflow {
 using Eigen::GpuDevice;
 template struct functor::Scan<GpuDevice, Eigen::internal::SumReducer<int64_t>,
-                              int64>;
+                              int64_t>;
 template struct functor::Scan<GpuDevice, Eigen::internal::ProdReducer<int64_t>,
-                              int64>;
-template struct functor::Scan<GpuDevice, Eigen::internal::SumReducer<int32>,
-                              int32>;
-template struct functor::Scan<GpuDevice, Eigen::internal::ProdReducer<int32>,
-                              int32>;
+                              int64_t>;
+template struct functor::Scan<GpuDevice, Eigen::internal::SumReducer<int32_t>,
+                              int32_t>;
+template struct functor::Scan<GpuDevice, Eigen::internal::ProdReducer<int32_t>,
+                              int32_t>;
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
