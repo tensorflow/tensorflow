@@ -43,6 +43,7 @@ absl::StatusOr<bool> HloModuleStitcher::RunImpl(
   std::vector<HloComputation*> computations =
       module->MakeComputationPostOrder(execution_threads);
 
+  HloCloneContext context(module);
   for (HloComputation* comp : computations) {
     std::vector<HloInstruction*> instructions =
         comp->MakeInstructionPostOrder();
@@ -57,6 +58,9 @@ absl::StatusOr<bool> HloModuleStitcher::RunImpl(
         }
 
         const HloModule* sub_module = it->second;
+        if (sub_module == nullptr) {
+          return absl::InternalError("sub_module is null");
+        }
         HloComputation* sub_entry = sub_module->entry_computation();
 
         if (inst->operand_count() != sub_entry->num_parameters()) {
@@ -66,9 +70,10 @@ absl::StatusOr<bool> HloModuleStitcher::RunImpl(
               sub_entry->num_parameters()));
         }
 
-        HloCloneContext context(module);
-        HloComputation* cloned_sub_entry =
-            module->DeepCloneComputation(sub_entry, &context);
+        HloComputation* cloned_sub_entry = context.FindComputation(sub_entry);
+        if (cloned_sub_entry == nullptr) {
+          cloned_sub_entry = module->DeepCloneComputation(sub_entry, &context);
+        }
 
         std::vector<HloInstruction*> operands;
         operands.reserve(inst->operand_count());
