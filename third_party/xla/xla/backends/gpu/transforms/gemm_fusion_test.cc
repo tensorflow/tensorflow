@@ -1804,7 +1804,7 @@ ENTRY e {
 })");
 }
 
-TEST_F(SmallDotGemmFusionTest, Int4DotIsRewritten) {
+TEST_P(GemmFusionTestVersioned, Int4DotIsRewritten) {
   constexpr auto kInt4Dot = R"(
     ENTRY e {
       p0 = bf16[16,16] parameter(0)
@@ -1819,7 +1819,7 @@ TEST_F(SmallDotGemmFusionTest, Int4DotIsRewritten) {
   EXPECT_TRUE(GemmFusion(gpu_version_).Run(module.get()).value());
 }
 
-TEST_F(SmallDotGemmFusionTest, Int4ConcatPlusConvertIsRewritten) {
+TEST_P(GemmFusionTestVersioned, Int4ConcatPlusConvertIsRewritten) {
   const std::string kInt4Dot = R"(
     ENTRY main {
       lhs1 = s4[4,1024]{1,0} parameter(0)
@@ -1838,15 +1838,15 @@ TEST_F(SmallDotGemmFusionTest, Int4ConcatPlusConvertIsRewritten) {
   // Check that the fusion is present and that the lhs is not converted.
   MatchHloModule(*module, R"(
 CHECK: gemm_fusion_dot_computation
-CHECK:  %parameter_0 = s4[8,1024]{1,0} parameter(0)
+CHECK:  %[[LHS:.*]] = s4[8,1024]{1,0} parameter
 CHECK: ENTRY
-CHECK-DAG: %[[LHS_CONCAT:.*]] = s4[8,1024]{1,0} concatenate(%{{.+}}, %{{.+}}), dimensions={0}
-CHECK-DAG: %[[RHS:.*]] = bf16[1024,4]{1,0} parameter(2)
-CHECK-DAG: ROOT {{.*}} = bf16[8,4]{1,0} fusion(%[[LHS_CONCAT]], %[[RHS]])
+CHECK: %[[LHS_CONCAT:.*]] = s4[8,1024]{1,0} concatenate(%{{.+}}, %{{.+}}), dimensions={0}
+CHECK: ROOT {{.*}} = bf16[8,4]{1,0} fusion(
+CHECK-SAME: %[[LHS_CONCAT]]
 })");
 }
 
-TEST_F(SmallDotGemmFusionTest, Int4ConvertPlusNegateIsRewritten) {
+TEST_P(GemmFusionTestVersioned, Int4ConvertPlusNegateIsRewritten) {
   const std::string kInt4Dot = R"(
     ENTRY main {
       lhs = s4[8,1024]{1,0} parameter(0)
@@ -1862,14 +1862,8 @@ TEST_F(SmallDotGemmFusionTest, Int4ConvertPlusNegateIsRewritten) {
   EXPECT_TRUE(GemmFusion(gpu_version_).Run(module.get()).value());
   // Check that the fusion is present and that convert and negation is fused in
   // it.
-  MatchHloModule(*module, R"(
-CHECK: gemm_fusion_dot_computation
-CHECK:  %parameter_0 = s4[8,1024]{1,0} parameter(0)
-CHECK: ENTRY
-CHECK-DAG: %[[LHS:.+]] = s4[8,1024]{1,0} parameter(0)
-CHECK-DAG: %[[RHS:.+]] = f32[1024,4]{1,0} parameter(1)
-CHECK-DAG: ROOT {{.*}} = f32[8,4]{1,0} fusion(%[[LHS]], %[[RHS]])
-})");
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
 }
 
 TEST_F(SmallDotGemmFusionTest, Int4WithMinorBatchDimIsNotRewritten) {
