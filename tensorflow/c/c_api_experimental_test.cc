@@ -103,9 +103,9 @@ class ShapeInferenceTest : public ::testing::Test {
   // Checks the expected result of shape inference for the given `op`.
   void CheckOutputShapes(
       TFE_Op* op,
-      const std::vector<absl::optional<std::vector<int64_t>>>& input_shapes_vec,
+      const std::vector<std::optional<std::vector<int64_t>>>& input_shapes_vec,
       const std::vector<TF_Tensor*>& input_tensors,
-      const absl::optional<std::vector<int64_t>>& expected_shape) {
+      const std::optional<std::vector<int64_t>>& expected_shape) {
     // Create input_shapes.
     TF_ShapeAndTypeList* input_shapes =
         TF_NewShapeAndTypeList(input_shapes_vec.size());
@@ -146,12 +146,12 @@ class ShapeInferenceTest : public ::testing::Test {
     TF_DeleteShapeAndTypeList(output_shapes);
   }
 
-  absl::optional<std::vector<int64_t>> make_shape(
+  std::optional<std::vector<int64_t>> make_shape(
       std::vector<int64_t>&& dims) const {
-    return absl::make_optional(dims);
+    return std::make_optional(dims);
   }
 
-  absl::optional<std::vector<int64_t>> unknown_shape() const {
+  std::optional<std::vector<int64_t>> unknown_shape() const {
     return absl::nullopt;
   }
 
