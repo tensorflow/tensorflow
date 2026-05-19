@@ -62,6 +62,7 @@ cc_library(
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:vlog_is_on",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@tf_runtime//:hostcontext",
