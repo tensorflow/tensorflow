@@ -208,7 +208,7 @@ TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32) {
   auto cc = GetCudaComputeCapability();
   using CudaComputeCapabilities =
       stream_executor::CudaComputeCapability::CudaComputeCapabilities;
-  switch (cc.major) {
+  switch (cc.major_version) {
     case CudaComputeCapabilities::kBlackwell:
       EXPECT_THAT(kernel_names, ::testing::UnorderedElementsAre(
                                     ::testing::Eq("wrapped_convert"),
@@ -228,7 +228,7 @@ TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32) {
                       .Times(2));
       break;
     default:
-      GTEST_SKIP() << "Unsupported compute capability: " << cc.major
+      GTEST_SKIP() << "Unsupported compute capability: " << cc.major_version
                    << " has the kernel name: " << kernel_names[0];
   }
 }
@@ -304,7 +304,7 @@ TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32_X3) {
   auto cc = GetCudaComputeCapability();
   using CudaComputeCapabilities =
       stream_executor::CudaComputeCapability::CudaComputeCapabilities;
-  switch (cc.major) {
+  switch (cc.major_version) {
     case CudaComputeCapabilities::kBlackwell:
       EXPECT_THAT(kernel_names, ::testing::UnorderedElementsAre(
                                     ::testing::HasSubstr("loop_convert_fusion"),
@@ -328,7 +328,7 @@ TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32_X3) {
                   ::testing::Contains(::testing::Eq("loop_convert_fusion_1")));
       break;
     default:
-      GTEST_SKIP() << "Unsupported compute capability: " << cc.major
+      GTEST_SKIP() << "Unsupported compute capability: " << cc.major_version
                    << " has the kernel name: " << kernel_names[0];
   }
 }
@@ -370,7 +370,7 @@ TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32_X6) {
   auto cc = GetCudaComputeCapability();
   using CudaComputeCapabilities =
       stream_executor::CudaComputeCapability::CudaComputeCapabilities;
-  switch (cc.major) {
+  switch (cc.major_version) {
     case CudaComputeCapabilities::kBlackwell:
       EXPECT_THAT(
           kernel_names,
@@ -402,7 +402,7 @@ TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32_X6) {
           ::testing::Contains(::testing::HasSubstr("loop_convert_fusion")));
       break;
     default:
-      GTEST_SKIP() << "Unsupported compute capability: " << cc.major
+      GTEST_SKIP() << "Unsupported compute capability: " << cc.major_version
                    << " has the kernel name: " << kernel_names[0];
   }
 }
@@ -444,7 +444,7 @@ TEST_F(BlasAlgorithmTest, Algorithm_TF32_TF32_F32_X3) {
   auto cc = GetCudaComputeCapability();
   using CudaComputeCapabilities =
       stream_executor::CudaComputeCapability::CudaComputeCapabilities;
-  switch (cc.major) {
+  switch (cc.major_version) {
     case CudaComputeCapabilities::kBlackwell:
       EXPECT_THAT(kernel_names, ::testing::UnorderedElementsAre(
                                     ::testing::HasSubstr("loop_and_subtract"),
@@ -480,7 +480,7 @@ TEST_F(BlasAlgorithmTest, Algorithm_TF32_TF32_F32_X3) {
       break;
     }
     default:
-      GTEST_SKIP() << "Unsupported compute capability: " << cc.major
+      GTEST_SKIP() << "Unsupported compute capability: " << cc.major_version
                    << " has the kernel name: " << kernel_names[0];
   }
 }

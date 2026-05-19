@@ -49,8 +49,8 @@ namespace stream_executor {
 //   major version and a later or same minor version. For example, a sm_100f
 //   kernel can run on a sm_100 or sm_103 GPUs, but not on a sm_120 GPU.
 struct CudaComputeCapability {
-  int major = 0;
-  int minor = 0;
+  int major_version = 0;
+  int minor_version = 0;
 
   enum class FeatureExtension : uint8_t {
     kNone,  // No additional features - Generated PTX will run on all GPUs with
@@ -75,12 +75,15 @@ struct CudaComputeCapability {
   };
 
   constexpr CudaComputeCapability() = default;
-  constexpr CudaComputeCapability(int major, int minor)
-      : CudaComputeCapability(major, minor, FeatureExtension::kNone) {}
+  constexpr CudaComputeCapability(int major_version, int minor_version)
+      : CudaComputeCapability(major_version, minor_version,
+                              FeatureExtension::kNone) {}
 
-  constexpr CudaComputeCapability(int major, int minor,
+  constexpr CudaComputeCapability(int major_version, int minor_version,
                                   FeatureExtension feature_extension)
-      : major{major}, minor{minor}, feature_extension{feature_extension} {}
+      : major_version{major_version},
+        minor_version{minor_version},
+        feature_extension{feature_extension} {}
 
   static absl::StatusOr<CudaComputeCapability> FromProto(
       const CudaComputeCapabilityProto& proto);
@@ -149,49 +152,58 @@ struct CudaComputeCapability {
   }
 
   bool IsAtLeastPascal() const {
-    return major >= CudaComputeCapabilities::kPascal;
+    return major_version >= CudaComputeCapabilities::kPascal;
   }
 
   bool IsAtLeastVolta() const {
-    return major >= CudaComputeCapabilities::kVolta;
+    return major_version >= CudaComputeCapabilities::kVolta;
   }
 
   bool IsAtLeastAmpere() const {
-    return major >= CudaComputeCapabilities::kAmpere;
+    return major_version >= CudaComputeCapabilities::kAmpere;
   }
 
   bool IsAtLeastAda() const { return IsAtLeast(8, 9); }
 
   bool IsAtLeastHopper() const {
-    return major >= CudaComputeCapabilities::kHopper;
+    return major_version >= CudaComputeCapabilities::kHopper;
   }
 
   bool IsAtLeastBlackwell() const {
-    return major >= CudaComputeCapabilities::kBlackwell;
+    return major_version >= CudaComputeCapabilities::kBlackwell;
   }
 
-  bool IsPascal() const { return major == CudaComputeCapabilities::kPascal; }
+  bool IsPascal() const {
+    return major_version == CudaComputeCapabilities::kPascal;
+  }
 
-  bool IsVolta() const { return major == CudaComputeCapabilities::kVolta; }
+  bool IsVolta() const {
+    return major_version == CudaComputeCapabilities::kVolta;
+  }
 
-  bool IsAmpere() const { return major == CudaComputeCapabilities::kAmpere; }
+  bool IsAmpere() const {
+    return major_version == CudaComputeCapabilities::kAmpere;
+  }
 
   bool IsAda() const {
     constexpr int kAdaMinor = 9;
-    return major == CudaComputeCapabilities::kAmpere && minor == kAdaMinor;
+    return major_version == CudaComputeCapabilities::kAmpere &&
+           minor_version == kAdaMinor;
   }
 
-  bool IsHopper() const { return major == CudaComputeCapabilities::kHopper; }
+  bool IsHopper() const {
+    return major_version == CudaComputeCapabilities::kHopper;
+  }
 
   bool IsBlackwell() const {
-    return major == CudaComputeCapabilities::kBlackwell;
+    return major_version == CudaComputeCapabilities::kBlackwell;
   }
 
   // TensorCore 5th Generation Family Instructions (tcgen05)
   // are available on SM 10.0, 10.3, and 11.0 but not on SM 12.0.
   bool HasTcgen05() const {
-    return major == CudaComputeCapabilities::kBlackwell ||
-           major == CudaComputeCapabilities::kBlackwell_11;
+    return major_version == CudaComputeCapabilities::kBlackwell ||
+           major_version == CudaComputeCapabilities::kBlackwell_11;
   }
 
   // Returns true if a kernel compiled for compute capability `other` can be run
@@ -199,11 +211,14 @@ struct CudaComputeCapability {
   bool SupportsAllFeaturesOf(const CudaComputeCapability& other) const {
     switch (other.feature_extension) {
       case FeatureExtension::kNone:
-        return std::tie(major, minor) >= std::tie(other.major, other.minor);
+        return std::tie(major_version, minor_version) >=
+               std::tie(other.major_version, other.minor_version);
       case FeatureExtension::kAcceleratedFeatures:
-        return std::tie(major, minor) == std::tie(other.major, other.minor);
+        return std::tie(major_version, minor_version) ==
+               std::tie(other.major_version, other.minor_version);
       case FeatureExtension::kFamilyCompatibleFeatures:
-        return major == other.major && minor >= other.minor;
+        return major_version == other.major_version &&
+               minor_version >= other.minor_version;
     }
   }
 
@@ -216,7 +231,8 @@ struct CudaComputeCapability {
   // Returns a copy of this compute capability without any feature extension
   // set.
   CudaComputeCapability WithoutAnyFeatureExtension() const {
-    return CudaComputeCapability{major, minor, FeatureExtension::kNone};
+    return CudaComputeCapability{major_version, minor_version,
+                                 FeatureExtension::kNone};
   }
 
   // Returns a string representation of the compute capability. The format is
@@ -225,8 +241,10 @@ struct CudaComputeCapability {
 
   friend bool operator==(const CudaComputeCapability& lhs,
                          const CudaComputeCapability& rhs) {
-    return std::tie(lhs.major, lhs.minor, lhs.feature_extension) ==
-           std::tie(rhs.major, rhs.minor, rhs.feature_extension);
+    return std::tie(lhs.major_version, lhs.minor_version,
+                    lhs.feature_extension) == std::tie(rhs.major_version,
+                                                       rhs.minor_version,
+                                                       rhs.feature_extension);
   }
 
   friend bool operator!=(const CudaComputeCapability& lhs,
@@ -238,7 +256,7 @@ struct CudaComputeCapability {
 
   template <typename H>
   friend H AbslHashValue(H state, const CudaComputeCapability& cc) {
-    return H::combine(std::move(state), cc.major, cc.minor,
+    return H::combine(std::move(state), cc.major_version, cc.minor_version,
                       cc.feature_extension);
   }
 

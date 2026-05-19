@@ -152,7 +152,8 @@ void WarnIfBadPtxasVersion(absl::string_view method,
     // nvbug 4826023: Occurs on Hopper+ in CUDA versions 12.x up to and
     // including CUDA 12.6.2; the earliest ptxas release that corresponds to
     // CUDA 12.6.3 is 12.6.85.
-    if (cc.major >= 9 && compiler_version >= SemanticVersion{12, 0, 0} &&
+    if (cc.major_version >= 9 &&
+        compiler_version >= SemanticVersion{12, 0, 0} &&
         compiler_version < SemanticVersion{12, 6, 85}) {
       LOG(ERROR)
           << "*** WARNING *** Invoking " << method << " with version "
