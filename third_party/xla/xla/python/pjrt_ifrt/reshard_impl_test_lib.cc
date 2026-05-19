@@ -35,8 +35,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/primitive_util.h"
 #include "xla/python/ifrt/array.h"
@@ -389,15 +391,29 @@ TEST_F(ReshardTest, DifferentDestinationLayout) {
 
   TF_ASSERT_OK_AND_ASSIGN(const DeviceListRef dst_device_list,
                           client_->MakeDeviceList(client_->devices()));
+
+  xla::Layout layout = xla::LayoutUtil::MakeAscendingLayout(2);
+  if (auto ifrt_topology = client_->GetTopologyForDevices(dst_device_list);
+      ifrt_topology.ok()) {
+    const xla::PjRtTopologyDescription* topology =
+        (*ifrt_topology)->description().get();
+    TF_ASSERT_OK_AND_ASSIGN(
+        xla::Shape shape,
+        topology->MakeCanonicalShapeForMemorySpace(
+            topology->GetDefaultMemorySpaceKindId(),
+            xla::ShapeUtil::MakeShape(xla::PrimitiveType::S32,
+                                      src_array->shape().dims()),
+            &layout));
+    layout = shape.layout();
+  }
+
   ArraySpec dst_array_spec = {
       /*dtype=*/src_array->dtype(),
       /*shape=*/src_array->shape(),
       /*sharding=*/
       HloSharding::Create(dst_device_list, MemoryKind(),
                           xla::HloSharding::Replicate()),
-      /*layout=*/
-      std::make_shared<xla::PjRtLayout>(
-          xla::LayoutUtil::MakeAscendingLayout(2)),
+      /*layout=*/std::make_shared<const xla::PjRtLayout>(std::move(layout)),
   };
 
   // Make sure that the destination layout is actually different from the source
