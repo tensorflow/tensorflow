@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/base/macros.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
@@ -863,6 +864,10 @@ void PackIntN(absl::Span<const char> input, absl::Span<char> output) {
   static_assert(1 <= kBitsPerElement);
   static_assert(kBitsPerElement <= 7);
   constexpr auto kElementsPerByte = 8 / kBitsPerElement;
+  const size_t required_output_size = (input.size() * kBitsPerElement + 7) / 8;
+  ABSL_CHECK_GE(output.size(), required_output_size)
+      << "Output span too small for packed elements: " << output.size() << " < "
+      << required_output_size;
   const size_t aligned_inputs = input.size() / kElementsPerByte;
   for (size_t i = 0; i < aligned_inputs; ++i) {
     char byte = 0;
@@ -924,6 +929,10 @@ void UnpackIntN(absl::Span<const char> input, absl::Span<char> output) {
   static_assert(1 <= kBitsPerElement);
   static_assert(kBitsPerElement <= 7);
   constexpr auto kElementsPerByte = 8 / kBitsPerElement;
+  const size_t required_input_size = (output.size() * kBitsPerElement + 7) / 8;
+  ABSL_CHECK_GE(input.size(), required_input_size)
+      << "Input span too small for unpacked elements: " << input.size() << " < "
+      << required_input_size;
   const size_t aligned_outputs = output.size() / kElementsPerByte;
   for (size_t i = 0; i < aligned_outputs; ++i) {
     const char byte = input[i];
