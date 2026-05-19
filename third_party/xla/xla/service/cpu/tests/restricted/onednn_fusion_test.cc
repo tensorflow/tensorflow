@@ -16,14 +16,14 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
-#include "xla/tests/restricted/hlo_test_base.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/cpu_info.h"
 
 namespace xla::cpu {
 namespace {
 
-using OneDnnFusionTest = HloTestBase;
+using OneDnnFusionTest = HloTestBaseLegacy;
 
 inline constexpr bool IsOneDnnGraphEnabled() {
 #if defined(XLA_ONEDNN_USE_GRAPH_API)

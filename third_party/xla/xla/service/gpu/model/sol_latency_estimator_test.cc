@@ -43,7 +43,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/restricted/hlo_test_base.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -703,7 +703,7 @@ ENTRY main {
                   .ok());
 }
 
-class IsSolLatencyEstimatorEnabledTest : public HloTestBase {
+class IsSolLatencyEstimatorEnabledTest : public HloTestBaseLegacy {
  protected:
   IsSolLatencyEstimatorEnabledTest()
       : gpu_device_info_(TestGpuDeviceInfo::RTXA6000DeviceInfo()) {}

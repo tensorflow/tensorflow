@@ -25,17 +25,17 @@ limitations under the License.
 #include "xla/service/cpu/onednn_contraction_rewriter.h"
 #include "xla/service/cpu/onednn_util.h"
 #include "xla/shape_util.h"
-#include "xla/tests/restricted/hlo_test_base.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tsl/platform/cpu_info.h"
 
 namespace xla {
 namespace cpu {
 
-class ConvolutionTest : public HloTestBase,
+class ConvolutionTest : public HloTestBaseLegacy,
                         public ::testing::WithParamInterface<PrimitiveType> {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloTestBaseLegacy::GetDebugOptionsForTest();
     debug_options.set_xla_cpu_experimental_onednn_custom_call(true);
     return debug_options;
   }

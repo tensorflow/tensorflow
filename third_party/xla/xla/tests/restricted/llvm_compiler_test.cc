@@ -29,14 +29,14 @@ limitations under the License.
 #include "xla/service/backend.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tests/restricted/hlo_test_base.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-using LLVMCompilerTest = HloTestBase;
+using LLVMCompilerTest = HloTestBaseLegacy;
 
 const char* const kHloText = R"(
 HloModule Add

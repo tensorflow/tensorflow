@@ -35,11 +35,11 @@ limitations under the License.
 #include "xla/service/cpu/test_target_triple_helper.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_runner_interface.h"
-#include "xla/service/restricted/hlo_runner.h"
+#include "xla/service/restricted/hlo_runner_legacy.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/restricted/hlo_test_base.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/casts.h"
@@ -48,11 +48,11 @@ namespace xla {
 namespace cpu {
 namespace {
 
-using CpuAotCompilerTest = HloTestBase;
+using CpuAotCompilerTest = HloTestBaseLegacy;
 
-// Separate from cpu_compiler_test.cc because we have to use HloTestBase to
-// get the HloRunner since HloRunnerAgnosticTestBase doesn't support AOT
-// compilation.
+// Separate from cpu_compiler_test.cc because we have to use HloTestBaseLegacy
+// to get the HloRunnerLegacy since HloRunnerAgnosticTestBase doesn't support
+// AOT compilation.
 // TODO(basioli): Unify this test with the gpu_compiler one.
 TEST_F(CpuAotCompilerTest, AheadOfTimeCompilation) {
   constexpr absl::string_view kHloAdd1 = R"(

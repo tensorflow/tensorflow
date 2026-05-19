@@ -28,12 +28,12 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tests/restricted/hlo_test_base.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::cpu {
 
-class CpuAotCompilationTest : public HloTestBase {
+class CpuAotCompilationTest : public HloTestBaseLegacy {
  protected:
   void ExportAndLoad(absl::string_view hlo_string) {
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,

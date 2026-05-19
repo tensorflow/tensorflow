@@ -16,16 +16,6 @@ package_group(
 )
 
 cc_library(
-    name = "hlo_runner",
-    hdrs = ["hlo_runner.h"],
-    deps = [
-        ":hlo_runner_legacy",
-        "//xla/stream_executor:device_address_allocator",
-        "//xla/stream_executor:platform",
-    ],
-)
-
-cc_library(
     name = "hlo_runner_legacy",
     srcs = ["hlo_runner_legacy.cc"],
     hdrs = ["hlo_runner_legacy.h"],
@@ -74,6 +64,5 @@ cc_library(
 )
 
 xla_restricted_verify(allowed_targets = [
-    xla_restricted_allow("hlo_runner"),
     xla_restricted_allow("hlo_runner_legacy"),
 ])

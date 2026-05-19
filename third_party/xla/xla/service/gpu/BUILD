@@ -2494,7 +2494,7 @@ xla_test(
         "//xla/stream_executor/cuda:ptx_compiler_support",
         "//xla/stream_executor/cuda:ptx_linking_method",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tests/restricted:hlo_test_base",
+        "//xla/tests/restricted:hlo_test_base_legacy",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:btree",
@@ -2547,7 +2547,7 @@ xla_cc_test(
         "//xla/stream_executor:stream_executor_h",
         "//xla/tests:literal_test_util",
         "//xla/tests:xla_internal_test_main",  # build_cleaner: keep
-        "//xla/tests/restricted:hlo_test_base",
+        "//xla/tests/restricted:hlo_test_base_legacy",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -3739,7 +3739,7 @@ xla_test(
     use_legacy_runtime = True,
     deps = [
         ":intel_gpu_compiler",
-        "//xla/tests/restricted:hlo_test_base",
+        "//xla/tests/restricted:hlo_test_base_legacy",
         "@com_google_googletest//:gtest_main",
     ],
 )

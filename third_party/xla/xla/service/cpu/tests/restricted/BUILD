@@ -31,7 +31,7 @@ xla_cc_test(
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/tests/restricted:hlo_test_base",
+        "//xla/tests/restricted:hlo_test_base_legacy",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/strings",
@@ -50,7 +50,7 @@ xla_cc_test(
     deps = [
         "//xla:error_spec",
         "//xla/service:cpu_plugin",
-        "//xla/tests/restricted:hlo_test_base",
+        "//xla/tests/restricted:hlo_test_base_legacy",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
@@ -74,7 +74,7 @@ onednn_cc_test(
         "//xla/service:cpu_plugin",
         "//xla/service/cpu:onednn_util",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tests/restricted:hlo_test_base",
+        "//xla/tests/restricted:hlo_test_base_legacy",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -100,7 +100,7 @@ onednn_cc_test(
         "//xla/service/cpu:onednn_contraction_rewriter",
         "//xla/service/cpu:onednn_util",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tests/restricted:hlo_test_base",
+        "//xla/tests/restricted:hlo_test_base_legacy",
         "@com_google_absl//absl/strings",
         "@tsl//tsl/platform:platform_port",
     ],
@@ -122,7 +122,7 @@ onednn_cc_test(
         "//xla/service:cpu_plugin",
         "//xla/service/cpu:onednn_util",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tests/restricted:hlo_test_base",
+        "//xla/tests/restricted:hlo_test_base_legacy",
     ],
 )
 
@@ -149,7 +149,7 @@ onednn_cc_test(
         "//xla/service/cpu:onednn_ops_rewriter",
         "//xla/service/cpu:onednn_util",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tests/restricted:hlo_test_base",
+        "//xla/tests/restricted:hlo_test_base_legacy",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
     ],

@@ -16,15 +16,16 @@ limitations under the License.
 #include "xla/stream_executor/sycl/sycl_blas_lt.h"
 
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
-#include "xla/tests/restricted/hlo_test_base.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 
 namespace stream_executor::sycl {
 namespace {
 
-class SyclBlasLtTest : public xla::HloTestBase {
+class SyclBlasLtTest : public xla::HloTestBaseLegacy {
  public:
   xla::DebugOptions GetDebugOptionsForTest() const override {
-    xla::DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    xla::DebugOptions debug_options =
+        HloTestBaseLegacy::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cublaslt(true);
     debug_options.set_xla_gpu_enable_triton_gemm(false);
     return debug_options;

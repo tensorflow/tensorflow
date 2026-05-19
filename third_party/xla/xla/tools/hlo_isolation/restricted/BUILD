@@ -35,7 +35,7 @@ xla_cc_binary(
         "//xla/service:hlo_runner_interface",
         "//xla/service:interpreter_plugin",
         "//xla/service:platform_util",
-        "//xla/service/restricted:hlo_runner",
+        "//xla/service/restricted:hlo_runner_legacy",
         "//xla/stream_executor:platform",
         "//xla/tools/hlo_isolation:hlo_isolation_api",
         "//xla/tsl/platform:statusor",

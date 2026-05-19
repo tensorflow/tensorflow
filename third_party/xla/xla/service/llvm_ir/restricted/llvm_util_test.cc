@@ -36,7 +36,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/tests/restricted/hlo_test_base.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -49,7 +49,7 @@ struct EmitReducePrecisionIrTestCase {
   std::string expected_res;
 };
 
-class EmitReducePrecisionIrExecutionTest : public HloTestBase {
+class EmitReducePrecisionIrExecutionTest : public HloTestBaseLegacy {
  protected:
   void RunTest(const std::string& hlo_text, absl::Span<Literal* const> args) {
     HloModuleConfig config;
@@ -257,7 +257,7 @@ TEST_F(EmitReducePrecisionIrExecutionTest,
   }
 }
 
-using LLVMSPIRVTest = HloTestBase;
+using LLVMSPIRVTest = HloTestBaseLegacy;
 
 TEST_F(LLVMSPIRVTest, AddRangeMetadataTest) {
   llvm::LLVMContext llvm_context;

@@ -56,7 +56,7 @@ cc_library(
         "//xla/service:hlo_runner_interface",
         "//xla/service:hlo_verifier",
         "//xla/service:platform_util",
-        "//xla/service/restricted:hlo_runner",
+        "//xla/service/restricted:hlo_runner_legacy",
         "//xla/stream_executor:platform",
         "//xla/tests:literal_test_util",
         "//xla/tests:test_utils",

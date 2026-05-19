@@ -47,7 +47,7 @@ limitations under the License.
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/platform_util.h"
-#include "xla/service/restricted/hlo_runner.h"
+#include "xla/service/restricted/hlo_runner_legacy.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
@@ -206,14 +206,14 @@ MiscompareChecker::MiscompareChecker(HloModule* module,
       PlatformUtil::GetPlatform(std::string(reference_platform));
   CHECK(reference_platform_status.ok());
   reference_runner_ =
-      std::make_unique<HloRunner>(reference_platform_status.value());
+      std::make_unique<HloRunnerLegacy>(reference_platform_status.value());
 
   // Set up the test platform.
   absl::StatusOr<se::Platform*> test_platform_status =
       PlatformUtil::GetPlatform(std::string(test_platform));
   CHECK(test_platform_status.ok());
-  test_runner_ =
-      std::make_unique<HloRunner>(std::move(test_platform_status).value());
+  test_runner_ = std::make_unique<HloRunnerLegacy>(
+      std::move(test_platform_status).value());
 }
 
 // Executes the module with the test_runner and the reference_runner and
