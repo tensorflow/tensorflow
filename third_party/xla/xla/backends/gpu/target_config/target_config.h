@@ -38,6 +38,7 @@ enum class GpuModel {
   BMG_G21,
   H100_PCIE,
   H100_SXM,
+  H200,
   MI200,
   P100,
   PVC,

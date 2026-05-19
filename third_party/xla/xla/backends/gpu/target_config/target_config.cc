@@ -72,6 +72,9 @@ absl::StatusOr<absl::string_view> GetEmbeddedGpuTargetConfigData(
     case GpuModel::H100_SXM:
       filename = "h100_sxm.txtpb";
       break;
+    case GpuModel::H200:
+      filename = "h200.txtpb";
+      break;
     case GpuModel::MI200:
       filename = "mi200.txtpb";
       break;
