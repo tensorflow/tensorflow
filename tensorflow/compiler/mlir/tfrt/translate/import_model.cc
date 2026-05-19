@@ -363,6 +363,16 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
                            options.batch_options.allowed_batch_sizes().end()));
   pipeline_options->max_enqueued_batches =
       options.batch_options.max_enqueued_batches();
+  pipeline_options->low_priority_max_batch_size =
+      options.batch_options.low_priority_max_batch_size();
+  pipeline_options->low_priority_batch_timeout_micros =
+      options.batch_options.low_priority_batch_timeout_micros();
+  pipeline_options->low_priority_allowed_batch_sizes =
+      llvm::ArrayRef<int64_t>(std::vector<int64_t>(
+          options.batch_options.low_priority_allowed_batch_sizes().begin(),
+          options.batch_options.low_priority_allowed_batch_sizes().end()));
+  pipeline_options->low_priority_max_enqueued_batches =
+      options.batch_options.low_priority_max_enqueued_batches();
   pipeline_options->enable_large_batch_splitting =
       options.batch_options.enable_large_batch_splitting();
   pipeline_options->mixed_priority_batching_policy =

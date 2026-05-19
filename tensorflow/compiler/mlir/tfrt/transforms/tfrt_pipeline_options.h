@@ -198,6 +198,36 @@ struct TfrtPipelineOptions
                      "before requests are failed fast"),
       llvm::cl::init(0)};
 
+  /**experimental options to override legacy priority batching parameters**/
+
+  // The following options are for legacy priority batching, and are only for
+  // experimentation.
+  // TODO(b/488097129): Remove these options after the experiment is done.
+  Option<int64_t> low_priority_max_batch_size{
+      *this, "tfrt-low-priority-max-batch-size",
+      llvm::cl::desc("The maximum allowed batch size for low priority "
+                     "requests"),
+      llvm::cl::init(0)};
+
+  Option<int64_t> low_priority_batch_timeout_micros{
+      *this, "tfrt-low-priority-batch-timeout-micros",
+      llvm::cl::desc("The maximum number of microseconds before outputting an "
+                     "incomplete batch for low priority requests"),
+      llvm::cl::init(0)};
+
+  ListOption<int64_t> low_priority_allowed_batch_sizes{
+      *this, "tfrt-low-priority-allowed-batch-sizes",
+      llvm::cl::desc("Allowed sizes for padding (or splitting) batches for low "
+                     "priority requests")};
+
+  Option<int64_t> low_priority_max_enqueued_batches{
+      *this, "tfrt-low-priority-max-enqueued-batches",
+      llvm::cl::desc("The maximum number of batches enqueued for processing "
+                     "before low priority requests are failed fast"),
+      llvm::cl::init(0)};
+
+  /*experimental options end*/
+
   Option<bool> enable_large_batch_splitting{
       *this, "tfrt-enable-large-batch-splitting",
       llvm::cl::desc("If true, enables large batch splitting to reduce padding "

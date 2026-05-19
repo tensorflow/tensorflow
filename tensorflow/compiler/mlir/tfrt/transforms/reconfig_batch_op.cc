@@ -49,6 +49,13 @@ class ReconfigBatchOpPass
     batch_timeout_micros_ = options.batch_timeout_micros;
     allowed_batch_sizes_ = options.allowed_batch_sizes;
     max_enqueued_batches_ = options.max_enqueued_batches;
+    low_priority_max_batch_size_ = options.low_priority_max_batch_size;
+    low_priority_batch_timeout_micros_ =
+        options.low_priority_batch_timeout_micros;
+    low_priority_allowed_batch_sizes_ =
+        options.low_priority_allowed_batch_sizes;
+    low_priority_max_enqueued_batches_ =
+        options.low_priority_max_enqueued_batches;
     enable_large_batch_splitting_ = options.enable_large_batch_splitting;
     mixed_priority_batching_policy_ = options.mixed_priority_batching_policy;
     batch_queue_global_prioritization_num_threads_ =
@@ -82,6 +89,10 @@ class ReconfigBatchOpPass
         batch_padding_policy_.empty() && num_batch_threads_ == 0 &&
         max_batch_size_ == 0 && batch_timeout_micros_ == 0 &&
         allowed_batch_sizes_.empty() && max_enqueued_batches_ == 0 &&
+        low_priority_max_batch_size_ == 0 &&
+        low_priority_batch_timeout_micros_ == 0 &&
+        low_priority_allowed_batch_sizes_.empty() &&
+        low_priority_max_enqueued_batches_ == 0 &&
         !enable_priority_aware_batch_scheduler_ &&
         !enable_priority_aware_batch_scheduler_resplit_) {
       return;
@@ -117,6 +128,22 @@ class ReconfigBatchOpPass
       }
       if (max_enqueued_batches_ > 0) {
         batch_op.setMaxEnqueuedBatches(max_enqueued_batches_);
+      }
+      if (low_priority_max_batch_size_ > 0) {
+        batch_op.setLowPriorityMaxBatchSize(low_priority_max_batch_size_);
+      }
+      if (low_priority_batch_timeout_micros_ > 0) {
+        batch_op.setLowPriorityBatchTimeoutMicros(
+            low_priority_batch_timeout_micros_);
+      }
+      if (!low_priority_allowed_batch_sizes_.empty()) {
+        batch_op.setLowPriorityAllowedBatchSizesAttr(
+            mlir::Builder(module.getContext())
+                .getI64ArrayAttr(low_priority_allowed_batch_sizes_));
+      }
+      if (low_priority_max_enqueued_batches_ > 0) {
+        batch_op.setLowPriorityMaxEnqueuedBatches(
+            low_priority_max_enqueued_batches_);
       }
       if (enable_large_batch_splitting_) {
         batch_op.setEnableLargeBatchSplittingAttr(
@@ -169,6 +196,22 @@ class ReconfigBatchOpPass
       *this, "tfrt-max-enqueued-batches", llvm::cl::init(0),
       llvm::cl::desc("The maximum number of batches enqueued for processing "
                      "before requests are failed fast")};
+  mlir::Pass::Option<int64_t> low_priority_max_batch_size_{
+      *this, "tfrt-low-priority-max-batch-size", llvm::cl::init(0),
+      llvm::cl::desc(
+          "The maximum allowed batch size for low priority requests")};
+  mlir::Pass::Option<int64_t> low_priority_batch_timeout_micros_{
+      *this, "tfrt-low-priority-batch-timeout-micros", llvm::cl::init(0),
+      llvm::cl::desc("The maximum number of microseconds before outputting an "
+                     "incomplete batch for low priority requests")};
+  mlir::Pass::ListOption<int64_t> low_priority_allowed_batch_sizes_{
+      *this, "tfrt-low-priority-allowed-batch-sizes",
+      llvm::cl::desc("Allowed sizes for padding (or splitting) batches for low "
+                     "priority requests")};
+  mlir::Pass::Option<int64_t> low_priority_max_enqueued_batches_{
+      *this, "tfrt-low-priority-max-enqueued-batches", llvm::cl::init(0),
+      llvm::cl::desc("The maximum number of batches enqueued for processing "
+                     "before low priority requests are failed fast")};
   mlir::Pass::Option<bool> enable_large_batch_splitting_{
       *this, "tfrt-enable-large-batch-splitting", llvm::cl::init(false),
       llvm::cl::desc("If true, enables large batch splitting to reduce "
