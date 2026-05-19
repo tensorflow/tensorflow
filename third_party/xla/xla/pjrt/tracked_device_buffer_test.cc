@@ -148,5 +148,79 @@ TEST(TrackedDeviceBufferTest, AsShapedBuffer) {
   EXPECT_TRUE(expected_it == expected_buffer_sequence.end());
 }
 
+class MockRawSEDeviceMemory : public RawSEDeviceMemory {
+ public:
+  explicit MockRawSEDeviceMemory(se::DeviceAddressBase value)
+      : RawSEDeviceMemory(value) {}
+
+  void UnsafeReleaseMemory() override {}
+};
+
+TEST(TrackedDeviceBufferTest, AsyncSliceSuccess) {
+  // Create an unconstructed parent buffer holding MockRawSEDeviceMemory.
+  auto parent_ref =
+      tsl::MakeUnconstructedAsyncValueRef<MockRawSEDeviceMemory>();
+  tsl::AsyncValueRef<RawSEDeviceMemory> parent(parent_ref);
+
+  EXPECT_TRUE(parent.IsUnavailable());
+
+  // Create a slice immediately (parent is still unconstructed).
+  size_t offset = 16;
+  size_t size = 32;
+  tsl::AsyncValueRef<RawSEDeviceMemory> slice =
+      RawSEDeviceMemory::CreateSlice(parent, offset, size);
+
+  // The slice must be returned immediately in unconstructed (unavailable)
+  // state.
+  EXPECT_TRUE(slice.IsUnavailable());
+
+  // Construct the parent buffer (simulate computation completing successfully).
+  std::vector<char> dummy_data(128, 0xAB);
+  se::DeviceAddressBase parent_address(dummy_data.data(), dummy_data.size());
+  parent_ref.emplace(parent_address);
+
+  // The parent is now concrete.
+  EXPECT_TRUE(parent.IsConcrete());
+
+  // Block until slice is ready.
+  tsl::BlockUntilReady(slice);
+  EXPECT_TRUE(slice.IsConcrete());
+
+  // Verify slice address and size.
+  EXPECT_EQ(slice->mem().opaque(), dummy_data.data() + offset);
+  EXPECT_EQ(slice->mem().size(), size);
+}
+
+TEST(TrackedDeviceBufferTest, AsyncSliceFailure) {
+  // Create an unconstructed parent buffer holding MockRawSEDeviceMemory.
+  auto parent_ref =
+      tsl::MakeUnconstructedAsyncValueRef<MockRawSEDeviceMemory>();
+  tsl::AsyncValueRef<RawSEDeviceMemory> parent(parent_ref);
+
+  EXPECT_TRUE(parent.IsUnavailable());
+
+  // Create a slice immediately.
+  size_t offset = 16;
+  size_t size = 32;
+  tsl::AsyncValueRef<RawSEDeviceMemory> slice =
+      RawSEDeviceMemory::CreateSlice(parent, offset, size);
+
+  EXPECT_TRUE(slice.IsUnavailable());
+
+  // Transition the parent to an error state (simulating computation failure).
+  absl::Status failure_status =
+      absl::InternalError("Simulated GPU execution failure");
+  parent_ref.SetError(failure_status);
+
+  // Verify parent is in error state.
+  EXPECT_TRUE(parent.IsError());
+  EXPECT_EQ(parent.GetError(), failure_status);
+
+  // Verify that the slice also transitioned to the same error state gracefully.
+  tsl::BlockUntilReady(slice);
+  EXPECT_TRUE(slice.IsError());
+  EXPECT_EQ(slice.GetError(), failure_status);
+}
+
 }  // namespace
 }  // namespace xla
