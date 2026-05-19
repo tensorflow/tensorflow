@@ -7520,11 +7520,21 @@ inline int ArgMinVector(const float* input_data, int size) {
       // Increase indices by 4.
       index_s32x4 = vaddq_s32(index_s32x4, inc);
       float32x4_t v = vld1q_f32(&input_data[i]);
-      uint32x4_t mask = vcltq_f32(v, min_value_f32x4);
-      min_value_f32x4 = vminq_f32(min_value_f32x4, v);
+      // NaN-aware comparison: update if candidate is finite AND
+      // (current is NaN OR candidate < current).
+      uint32x4_t v_not_nan = vceqq_f32(v, v);
+      uint32x4_t min_is_nan =
+          vmvnq_u32(vceqq_f32(min_value_f32x4, min_value_f32x4));
+      uint32x4_t v_lt_min = vcltq_f32(v, min_value_f32x4);
+      uint32x4_t mask =
+          vandq_u32(v_not_nan, vorrq_u32(min_is_nan, v_lt_min));
+      min_value_f32x4 = vbslq_f32(mask, v, min_value_f32x4);
       min_index_s32x4 = vbslq_s32(mask, index_s32x4, min_index_s32x4);
     }
     // Find min element within float32x4_t.
+    // Note: on ARMv8, vminvq_f32 uses fminnm which correctly ignores NaN
+    // lanes. On ARMv7, vpmin_f32 may propagate NaN; this is a pre-existing
+    // limitation that does not affect non-NaN inputs.
 #ifdef __aarch64__
     min_value = vminvq_f32(min_value_f32x4);
 #else
@@ -7549,15 +7559,17 @@ inline int ArgMinVector(const float* input_data, int size) {
 #endif  // __aarch64__
   }
 #endif  // USE_NEON
-  // Leftover loop.
+  // Leftover loop (NaN-aware).
   for (; i < size; ++i) {
     const float curr_value = input_data[i];
-    if (curr_value < min_value) {
+    if (!std::isnan(curr_value) &&
+        (std::isnan(min_value) || curr_value < min_value)) {
       min_value = curr_value;
       min_index = i;
     }
   }
-  return min_index;
+  // All-NaN inputs: deterministically return first index.
+  return std::isnan(min_value) ? 0 : min_index;
 }
 
 template <>
@@ -7576,11 +7588,21 @@ inline int ArgMaxVector(const float* input_data, int size) {
       // Increase indices by 4.
       index_s32x4 = vaddq_s32(index_s32x4, inc);
       float32x4_t v = vld1q_f32(&input_data[i]);
-      uint32x4_t mask = vcgtq_f32(v, max_value_f32x4);
-      max_value_f32x4 = vmaxq_f32(max_value_f32x4, v);
+      // NaN-aware comparison: update if candidate is finite AND
+      // (current is NaN OR candidate > current).
+      uint32x4_t v_not_nan = vceqq_f32(v, v);
+      uint32x4_t max_is_nan =
+          vmvnq_u32(vceqq_f32(max_value_f32x4, max_value_f32x4));
+      uint32x4_t v_gt_max = vcgtq_f32(v, max_value_f32x4);
+      uint32x4_t mask =
+          vandq_u32(v_not_nan, vorrq_u32(max_is_nan, v_gt_max));
+      max_value_f32x4 = vbslq_f32(mask, v, max_value_f32x4);
       max_index_s32x4 = vbslq_s32(mask, index_s32x4, max_index_s32x4);
     }
     // Find max element within float32x4_t.
+    // Note: on ARMv8, vmaxvq_f32 uses fmaxnm which correctly ignores NaN
+    // lanes. On ARMv7, vpmax_f32 may propagate NaN; this is a pre-existing
+    // limitation that does not affect non-NaN inputs.
 #ifdef __aarch64__
     max_value = vmaxvq_f32(max_value_f32x4);
 #else
@@ -7605,15 +7627,17 @@ inline int ArgMaxVector(const float* input_data, int size) {
 #endif  // __aarch64__
   }
 #endif  // USE_NEON
-  // Leftover loop.
+  // Leftover loop (NaN-aware).
   for (; i < size; ++i) {
     const float curr_value = input_data[i];
-    if (curr_value > max_value) {
+    if (!std::isnan(curr_value) &&
+        (std::isnan(max_value) || curr_value > max_value)) {
       max_value = curr_value;
       max_index = i;
     }
   }
-  return max_index;
+  // All-NaN inputs: deterministically return first index.
+  return std::isnan(max_value) ? 0 : max_index;
 }
 
 template <>
