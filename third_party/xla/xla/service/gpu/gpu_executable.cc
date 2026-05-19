@@ -43,6 +43,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "third_party/gloop/util/status/ret_check.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "riegeli/bytes/string_writer.h"
 #include "riegeli/bytes/writer.h"
@@ -480,12 +481,12 @@ absl::Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
     std::string stream_arch = cc.gcn_arch_name();
     std::string gpu_exec_arch =
         gpu_version_.rocm_compute_capability()->gcn_arch_name();
-    TF_RET_CHECK(stream_arch == gpu_exec_arch)
+    RET_CHECK(stream_arch == gpu_exec_arch)
         << "AMDGPU GCN ISA version mismatch; expected {" << gpu_exec_arch
         << ", but was " << stream_arch;
   } else if (platform_id == stream_executor::cuda::kCudaPlatformId) {
     se::CudaComputeCapability cc = main_stream->GetCudaComputeCapability();
-    TF_RET_CHECK(cc == *gpu_version_.cuda_compute_capability())
+    RET_CHECK(cc == *gpu_version_.cuda_compute_capability())
         << "Compute capability mismatch; expected {" << gpu_version_.ToString()
         << "}, but was {" << cc.ToString() << "}";
   } else if (platform_id == stream_executor::sycl::kSyclPlatformId) {
@@ -567,7 +568,7 @@ absl::Status ExecuteThunksImpl(const DebugOptions* debug_options,
   absl::Duration watchdog_timeout = absl::InfiniteDuration();
   if (debug_options &&
       !debug_options->xla_gpu_execution_terminate_timeout().empty()) {
-    TF_RET_CHECK(absl::ParseDuration(
+    RET_CHECK(absl::ParseDuration(
         debug_options->xla_gpu_execution_terminate_timeout(),
         &watchdog_timeout))
         << "Failed to parse XLA execution terminate timeout";

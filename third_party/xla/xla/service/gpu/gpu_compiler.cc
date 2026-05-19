@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/mutex.h"
+#include "third_party/gloop/util/status/ret_check.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/AsmParser/Parser.h"
@@ -1663,7 +1664,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
     const CompileOptions& options, const GpuTopology& gpu_topology,
     const GpuAliasInfo* alias_info, CompilationStats* compilation_stats) {
   tsl::profiler::TraceMe traceme("OptimizeHloModule");
-  TF_RET_CHECK(gpu_topology.has_gpu_target_config());
+  RET_CHECK(gpu_topology.has_gpu_target_config());
   const se::DeviceDescription& device_description =
       gpu_topology.gpu_target_config().device_description;
 
@@ -2561,7 +2562,7 @@ GpuCompiler::CompileSingleModule(
     llvm::raw_string_ostream err_stream(err);
 
     // verifyModule() returns true if the module is broken.
-    TF_RET_CHECK(!llvm::verifyModule(*llvm_module, &err_stream))
+    RET_CHECK(!llvm::verifyModule(*llvm_module, &err_stream))
         << "Invalid LLVM IR before optimizations:\n"
         << err_stream.str()
         << "\nThis probably indicates a bug in the HLO -> LLVM IR "
@@ -2759,7 +2760,7 @@ absl::StatusOr<GpuCompiler::BackendCompileResult> GpuCompiler::CompileAndLink(
       for (const auto& [name, entry] : current_cache.entries()) {
         if (compiled_functions.contains(name)) {
           VLOG(5) << "Using the just compiled kernel for " << name;
-          TF_RET_CHECK(entry.binary().empty())
+          RET_CHECK(entry.binary().empty())
               << name
               << " is a just compiled kernel and is not expected to have a "
                  "binary yet.";
@@ -3011,7 +3012,7 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   BinaryMap dnn_compiled_graphs;
   if (stream_exec) {
     se::dnn::DnnSupport* dnn_support = stream_exec->AsDnn();
-    TF_RET_CHECK(dnn_support != nullptr);
+    RET_CHECK(dnn_support != nullptr);
     RETURN_IF_ERROR(RunCudnnCompilerPasses(module.get(), *dnn_support,
                                            &dnn_compiled_graphs));
   }

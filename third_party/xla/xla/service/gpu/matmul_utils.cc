@@ -28,8 +28,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "third_party/gloop/util/status/ret_check.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/transforms/dot_algorithm_rewriter.h"
@@ -62,7 +64,7 @@ namespace gpu {
 absl::StatusOr<Shape> GetBatchRowColumnShape(
     const Shape& shape, absl::Span<const int64_t> batch_dims,
     absl::Span<const int64_t> row_dims, absl::Span<const int64_t> col_dims) {
-  TF_RET_CHECK(shape.has_layout());
+  RET_CHECK(shape.has_layout());
 
   std::vector<int64_t> minor_to_major;
   for (size_t i = 0; i < shape.dimensions().size();) {
@@ -119,8 +121,8 @@ absl::StatusOr<Shape> GetBatchRowColumnShape(
 
 // Returns the matrix layout for a logical shape (batch, rows, columns).
 /*static*/ absl::StatusOr<MatrixLayout> MatrixLayout::For(const Shape& shape) {
-  TF_RET_CHECK(shape.dimensions().size() == 3);
-  TF_RET_CHECK(shape.has_layout());
+  RET_CHECK(shape.dimensions().size() == 3);
+  RET_CHECK(shape.has_layout());
 
   int64_t batch_size = shape.dimensions(0);
   int64_t num_rows = shape.dimensions(1);
@@ -182,8 +184,8 @@ absl::StatusOr<Shape> GetBatchRowColumnShape(
     size_t rhs_num_batch_dims, size_t rhs_num_col_dims) {
   size_t num_batch_dims = std::max(lhs_num_batch_dims, rhs_num_batch_dims);
 
-  TF_RET_CHECK(shape.dimensions().size() ==
-               num_batch_dims + lhs_num_row_dims + rhs_num_col_dims);
+  RET_CHECK(shape.dimensions().size() ==
+            num_batch_dims + lhs_num_row_dims + rhs_num_col_dims);
 
   std::vector<int64_t> dims(shape.dimensions().size());
   absl::c_iota(dims, 0);
@@ -213,11 +215,11 @@ std::vector<int64_t> NormalizedRelativeOrder(absl::Span<const int64_t> dims) {
 
 absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                                                     int64_t operand_idx) {
-  TF_RET_CHECK(dot.opcode() == HloOpcode::kDot);
-  TF_RET_CHECK(dot.operand_count() > operand_idx);
+  RET_CHECK(dot.opcode() == HloOpcode::kDot);
+  RET_CHECK(dot.operand_count() > operand_idx);
 
   const HloInstruction& transpose = *dot.operand(operand_idx);
-  TF_RET_CHECK(transpose.opcode() == HloOpcode::kTranspose);
+  RET_CHECK(transpose.opcode() == HloOpcode::kTranspose);
 
   const DotDimensionNumbers& dot_dims = dot.dot_dimension_numbers();
 
@@ -306,8 +308,8 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
   int64_t num_batch_dims =
       std::max(lhs_batch_dims.size(), rhs_batch_dims.size());
 
-  TF_RET_CHECK(output_shape.dimensions().size() ==
-               num_batch_dims + lhs_row_dims.size() + rhs_col_dims.size());
+  RET_CHECK(output_shape.dimensions().size() ==
+            num_batch_dims + lhs_row_dims.size() + rhs_col_dims.size());
 
   std::vector<int64_t> output_dims(output_shape.dimensions().size());
   absl::c_iota(output_dims, 0);
@@ -350,16 +352,16 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
   // cuBLASLt supports the NN configuration.
   if (lhs_shape.element_type() != F8E4M3FN &&
       lhs_shape.element_type() != F8E5M2) {
-    TF_RET_CHECK(lhs_layout.num_cols == rhs_layout.num_rows);
-    TF_RET_CHECK(output_layout.num_rows == lhs_layout.num_rows);
-    TF_RET_CHECK(output_layout.num_cols == rhs_layout.num_cols);
+    RET_CHECK(lhs_layout.num_cols == rhs_layout.num_rows);
+    RET_CHECK(output_layout.num_rows == lhs_layout.num_rows);
+    RET_CHECK(output_layout.num_cols == rhs_layout.num_cols);
   }
-  TF_RET_CHECK(c_layout.num_rows == output_layout.num_rows);
-  TF_RET_CHECK(c_layout.num_cols == output_layout.num_cols);
-  TF_RET_CHECK((lhs_layout.batch_size == output_layout.batch_size) ||
-               (lhs_layout.batch_size == 1));
-  TF_RET_CHECK((rhs_layout.batch_size == output_layout.batch_size) ||
-               (rhs_layout.batch_size == 1));
+  RET_CHECK(c_layout.num_rows == output_layout.num_rows);
+  RET_CHECK(c_layout.num_cols == output_layout.num_cols);
+  RET_CHECK((lhs_layout.batch_size == output_layout.batch_size) ||
+            (lhs_layout.batch_size == 1));
+  RET_CHECK((rhs_layout.batch_size == output_layout.batch_size) ||
+            (rhs_layout.batch_size == 1));
 
   switch (output_shape.element_type()) {
     case F8E4M3FN:
@@ -370,13 +372,13 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
     case BF16:
     case F32:
     case F64:
-      TF_RET_CHECK(alpha_imag == 0);
+      RET_CHECK(alpha_imag == 0);
       break;
     case C64:
     case C128:
       break;
     case S32:
-      TF_RET_CHECK(alpha_imag == 0);
+      RET_CHECK(alpha_imag == 0);
       if (lhs_layout.dtype != PrimitiveType::S8 ||
           rhs_layout.dtype != PrimitiveType::S8) {
         return Internal(
@@ -531,8 +533,8 @@ bool IsTf32Allowed(PrecisionConfig::Algorithm algorithm,
     num_batch_dims += 1;
   }
 
-  TF_RET_CHECK(output_shape.dimensions().size() ==
-               num_batch_dims + lhs_row_dims.size() + rhs_col_dims.size());
+  RET_CHECK(output_shape.dimensions().size() ==
+            num_batch_dims + lhs_row_dims.size() + rhs_col_dims.size());
 
   std::vector<int64_t> output_dims(output_shape.dimensions().size());
   absl::c_iota(output_dims, 0);
@@ -552,8 +554,8 @@ bool IsTf32Allowed(PrecisionConfig::Algorithm algorithm,
                    MatrixLayout::For(c_shape, output_batch_dims,
                                      output_row_dims, output_col_dims));
 
-  TF_RET_CHECK(output_shape.dimensions().size() ==
-               num_batch_dims + lhs_row_dims.size() + rhs_col_dims.size());
+  RET_CHECK(output_shape.dimensions().size() ==
+            num_batch_dims + lhs_row_dims.size() + rhs_col_dims.size());
 
   if (lhs_row_dims.size() != 1) {
     return Internal("A single non-contracting dimension is expected for lhs");
@@ -1127,13 +1129,13 @@ absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
 /*static*/ absl::StatusOr<TritonGemmConfig> TritonGemmConfig::FromProto(
     const AutotuneResult::TritonGemmKey& proto) {
   // Sanity check to avoid loading incomplete data.
-  TF_RET_CHECK(proto.block_m() > 0);
-  TF_RET_CHECK(proto.block_n() > 0);
-  TF_RET_CHECK(proto.block_k() > 0);
-  TF_RET_CHECK(proto.num_stages() > 0);
-  TF_RET_CHECK(proto.num_warps() > 0);
-  TF_RET_CHECK(proto.num_ctas() > 0);
-  TF_RET_CHECK(proto.waves_per_eu() >= 0);
+  RET_CHECK(proto.block_m() > 0);
+  RET_CHECK(proto.block_n() > 0);
+  RET_CHECK(proto.block_k() > 0);
+  RET_CHECK(proto.num_stages() > 0);
+  RET_CHECK(proto.num_warps() > 0);
+  RET_CHECK(proto.num_ctas() > 0);
+  RET_CHECK(proto.waves_per_eu() >= 0);
 
   return TritonGemmConfig(
       proto.block_m(), proto.block_n(), proto.block_k(), proto.num_stages(),
