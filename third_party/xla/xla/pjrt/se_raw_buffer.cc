@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -116,7 +117,7 @@ PjRtStreamExecutorRawBuffer::CopyRawHostToDeviceAndReturnEvent(
     }
     std::shared_ptr<void> staging_buffer;
     auto status = [&]() -> absl::Status {
-      TF_RETURN_IF_ERROR(client->WaitForAllocation(stream, *buf));
+      RETURN_IF_ERROR(client->WaitForAllocation(stream, *buf));
       if (transfer_size > 0) {
         if (client->ShouldStageHostToDeviceTransfers(src, transfer_size)) {
           if (client->GetHostMemoryAllocator() == nullptr) {
@@ -133,11 +134,11 @@ PjRtStreamExecutorRawBuffer::CopyRawHostToDeviceAndReturnEvent(
                                          staging_buffer]() mutable {
             std::memcpy(staging_buffer.get(), src, transfer_size);
           };
-          TF_RETURN_IF_ERROR(stream->DoHostCallback(copy_to_staging_buffer));
-          TF_RETURN_IF_ERROR(
+          RETURN_IF_ERROR(stream->DoHostCallback(copy_to_staging_buffer));
+          RETURN_IF_ERROR(
               stream->Memcpy(&sub_buffer, staging_buffer.get(), transfer_size));
         } else {
-          TF_RETURN_IF_ERROR(stream->Memcpy(&sub_buffer, src, transfer_size));
+          RETURN_IF_ERROR(stream->Memcpy(&sub_buffer, src, transfer_size));
         }
       }
       return absl::OkStatus();
@@ -173,7 +174,7 @@ PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
       sub_buffer = sub_buffer.GetByteSlice(offset, transfer_size);
     }
     auto status = [&]() -> absl::Status {
-      TF_RETURN_IF_ERROR(client->WaitForAllocation(stream, *buf));
+      RETURN_IF_ERROR(client->WaitForAllocation(stream, *buf));
       if (transfer_size > 0) {
         if (client->ShouldStageHostToDeviceTransfers(dst, transfer_size)) {
           if (client->GetHostMemoryAllocator() == nullptr) {
@@ -187,16 +188,16 @@ PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
           std::shared_ptr<void> staging_buffer =
               client->GetHostMemoryAllocator()->Allocate(transfer_size,
                                                          alloc_opts);
-          TF_RETURN_IF_ERROR(
+          RETURN_IF_ERROR(
               stream->Memcpy(staging_buffer.get(), sub_buffer, transfer_size));
           auto copy_from_staging_buffer = [dst, transfer_size,
                                            staging_buffer]() mutable {
             std::memcpy(dst, staging_buffer.get(), transfer_size);
           };
           // TODO(parkers): This failing maybe consitutes a race.
-          TF_RETURN_IF_ERROR(stream->DoHostCallback(copy_from_staging_buffer));
+          RETURN_IF_ERROR(stream->DoHostCallback(copy_from_staging_buffer));
         } else {
-          TF_RETURN_IF_ERROR(stream->Memcpy(dst, sub_buffer, transfer_size));
+          RETURN_IF_ERROR(stream->Memcpy(dst, sub_buffer, transfer_size));
         }
       }
       return absl::OkStatus();
@@ -243,7 +244,7 @@ absl::Status PjRtStreamExecutorRawBuffer::ValidateSlice(int64_t offset,
 
 absl::StatusOr<PjRtRawBufferRef> PjRtStreamExecutorRawBuffer::Slice(
     int64_t offset, int64_t size) {
-  TF_RETURN_IF_ERROR(ValidateSlice(offset, size));
+  RETURN_IF_ERROR(ValidateSlice(offset, size));
   return tsl::MakeRef<PjRtStreamExecutorRawBuffer>(
       client_, memory_space_, local_device_,
       RawSEDeviceMemory::CreateSlice(device_buffer_, offset, size), size);
@@ -394,8 +395,8 @@ absl::StatusOr<PjRtDeviceEventRef>
 PjRtStreamExecutorRawBuffer::MakeAllocationReadyEvent() {
   auto* client =
       tensorflow::down_cast<PjRtStreamExecutorClient*>(memory_space_->client());
-  TF_ASSIGN_OR_RETURN(
-      auto result, device_buffer_->GetDefinitionEvent(
+  ASSIGN_OR_RETURN(auto result,
+                   device_buffer_->GetDefinitionEvent(
                        client->async_work_runner(), /*nullptr_if_past=*/false));
   if (!result) {
     result = BufferSequencingEvent::Create(client->async_work_runner());
@@ -404,7 +405,7 @@ PjRtStreamExecutorRawBuffer::MakeAllocationReadyEvent() {
         result, local_device_, stream.get(),
         "PjRtStreamExecutorRawBuffer::MakeAllocationReadyEvent");
     local_device_->ReturnStreamToPool(std::move(stream));
-    TF_RETURN_IF_ERROR(status);
+    RETURN_IF_ERROR(status);
   }
   return PjRtDeviceEventRef(std::move(result));
 }
@@ -569,9 +570,9 @@ void PjRtStreamExecutorRawBuffer::IntraClientCopyToWithDependencies(
         }
       }
 
-      TF_ASSIGN_OR_RETURN(EventPool::Handle event,
-                          local_device->event_pool().AllocateEvent(
-                              client->async_work_runner(), stream->parent()));
+      ASSIGN_OR_RETURN(EventPool::Handle event,
+                       local_device->event_pool().AllocateEvent(
+                           client->async_work_runner(), stream->parent()));
 
       if (allocation_event) {
         allocation_set = true;
@@ -583,11 +584,11 @@ void PjRtStreamExecutorRawBuffer::IntraClientCopyToWithDependencies(
               dst_raw_buffer.get())
               ->device_buffer();
       auto dst_buffer_mem = dst_buffer->mem();
-      TF_RETURN_IF_ERROR(client->WaitForAllocation(stream, *src_raw_buffer));
-      TF_RETURN_IF_ERROR(client->WaitForAllocation(stream, *dst_raw_buffer));
+      RETURN_IF_ERROR(client->WaitForAllocation(stream, *src_raw_buffer));
+      RETURN_IF_ERROR(client->WaitForAllocation(stream, *dst_raw_buffer));
       if (dst_buffer_mem.size() > 0) {
-        TF_RETURN_IF_ERROR(stream->MemcpyD2D(&dst_buffer_mem, src_buffer->mem(),
-                                             dst_buffer_mem.size()));
+        RETURN_IF_ERROR(stream->MemcpyD2D(&dst_buffer_mem, src_buffer->mem(),
+                                          dst_buffer_mem.size()));
       }
       client->ThenRecordEvent(usage_event, local_device, std::move(event),
                               stream);

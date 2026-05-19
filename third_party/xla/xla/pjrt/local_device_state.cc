@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/client/local_client.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/buffer_sequencing_event.h"
@@ -226,7 +227,7 @@ absl::Status LocalDeviceState::ThenExecuteCallback(
       auto it = callback_stream_map_->find(stream);
       if (it == callback_stream_map_->end()) {
         tsl::profiler::TraceMe traceme_create("CreateCallbackStream");
-        TF_ASSIGN_OR_RETURN(auto new_stream, executor_->CreateStream());
+        ASSIGN_OR_RETURN(auto new_stream, executor_->CreateStream());
         new_stream->SetName(
             absl::StrFormat("Callback for %s", stream->GetName()));
         it =
@@ -235,7 +236,7 @@ absl::Status LocalDeviceState::ThenExecuteCallback(
       callback_exec_stream = it->second.get();
     }
     tsl::profiler::TraceMe traceme_create("LocalDeviceState::WaitFor");
-    TF_RETURN_IF_ERROR(callback_exec_stream->WaitFor(stream));
+    RETURN_IF_ERROR(callback_exec_stream->WaitFor(stream));
     stream = callback_exec_stream;
   }
   if (error_cb) {
@@ -358,7 +359,7 @@ absl::Status LocalDeviceState::AllocateAndRecordEvent(
     AsyncWorkRunner* async_work_runner, BufferSequencingEventRef event,
     se::Stream* stream, absl::string_view tag) {
   auto status = [&]() {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         EventPool::Handle device_event,
         event_pool().AllocateEvent(async_work_runner, stream->parent()));
     event_pool().ThenRecordEvent(stream, device_event);

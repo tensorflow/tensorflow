@@ -34,6 +34,8 @@ limitations under the License.
 
 #if !defined(PLATFORM_WINDOWS)
 #include <dlfcn.h>
+
+#include "xla/tsl/platform/status_macros.h"
 #endif
 
 namespace pjrt {
@@ -118,7 +120,7 @@ absl::StatusOr<const PJRT_Api*> LoadPjrtPlugin(absl::string_view device_type,
   LOG(INFO) << "GetPjrtApi was found for " << device_type << " at "
             << library_path;
   const PJRT_Api* api = init_fn();
-  TF_RETURN_IF_ERROR(SetPjrtApi(device_type, api));
+  RETURN_IF_ERROR(SetPjrtApi(device_type, api));
   return api;
 #endif
 }

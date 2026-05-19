@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -75,8 +76,8 @@ constexpr absl::string_view mlir_str = R"mlir(
 
 absl::StatusOr<xla::XlaComputation> GetXlaComputation(
     absl::string_view program) {
-  TF_ASSIGN_OR_RETURN(auto hlo_module,
-                      xla::ParseAndReturnUnverifiedModule(program, {}));
+  ASSIGN_OR_RETURN(auto hlo_module,
+                   xla::ParseAndReturnUnverifiedModule(program, {}));
 
   return XlaComputation(hlo_module->ToProto());
 }
