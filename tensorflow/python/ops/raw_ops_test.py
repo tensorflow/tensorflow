@@ -76,6 +76,24 @@ class RawOpsTest(test.TestCase, parameterized.TestCase):
               pad_width=0,
               preserve_short_sequences=False))
 
+  @parameterized.parameters(
+      ([[["aa"], ["bb"]]], [0, 2], "data must be a vector"),
+      (["aa", "bb"], [[0, 2]], "data_splits must be a vector"),
+  )
+  def testStringNGramsRejectsNonVectorInputs(
+      self, data, data_splits, expected_error):
+    with self.assertRaisesRegex(errors.InvalidArgumentError, expected_error):
+      self.evaluate(
+          gen_string_ops.string_n_grams(
+              data=data,
+              data_splits=data_splits,
+              separator="",
+              ngram_widths=[1],
+              left_pad="",
+              right_pad="",
+              pad_width=0,
+              preserve_short_sequences=False))
+
   def testStringSplit(self):
     data = ["123456"]
     data_splits = [0, 1]
