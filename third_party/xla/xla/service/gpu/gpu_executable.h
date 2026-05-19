@@ -332,7 +332,8 @@ class GpuExecutable : public Executable {
       const ServiceExecutableRunOptions* run_options,
       stream_executor::StreamExecutor* executor, int64_t unique_id,
       Thunk::ExecutableSource executable_source, bool block_host_until_done,
-      bool collective_use_minimal_resource);
+      bool collective_use_minimal_resource,
+      CollectiveMemoryCache& collective_memory_cache);
 
   // The LLVM IR, in string format, of the unoptimized module generated for
   // this GpuExecutable. We save a string instead of an llvm::Module* because
@@ -459,8 +460,6 @@ class GpuExecutable : public Executable {
   stream_executor::ExecutableAbiVersion executable_abi_version_;
 
   std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options_;
-
-  CollectiveMemoryCache collective_memory_cache_;
 };
 
 absl::StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>

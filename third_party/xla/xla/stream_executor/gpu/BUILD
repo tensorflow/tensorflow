@@ -126,6 +126,16 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "symmetric_memory_resources",
+    srcs = ["symmetric_memory_resources.cc"],
+    hdrs = ["symmetric_memory_resources.h"],
+    deps = [
+        "//xla/backends/gpu/runtime:collective_memory_cache",
+        "//xla/stream_executor:stream_executor_h",
+    ],
+)
+
+cc_library(
     name = "gpu_command_buffer",
     srcs = ["gpu_command_buffer.cc"],
     hdrs = ["gpu_command_buffer.h"],
