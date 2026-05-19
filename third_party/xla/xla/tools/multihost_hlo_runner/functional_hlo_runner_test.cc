@@ -744,8 +744,14 @@ absl::Status RunShardedHloWithClient(xla::PjRtClient& client) {
   // This method corresponds to:
   // --num_replicas=1 --num_partitions=16
   xla::DebugOptions debug_options;
+  debug_options.set_xla_gpu_autotune_level(0);
+  debug_options.set_xla_gpu_libnvjitlink_mode(
+      xla::DebugOptions::LIB_NV_JIT_LINK_MODE_DISABLED);
   FunctionalHloRunner::PreprocessingOptions preproc_options;
   FunctionalHloRunner::RawCompileOptions raw_compile_options;
+  ExecutionOptions execution_options;
+  *execution_options.mutable_debug_options() = debug_options;
+  raw_compile_options.execution_options = execution_options;
   raw_compile_options.num_replicas = 1;
   raw_compile_options.num_partitions = 16;
 
