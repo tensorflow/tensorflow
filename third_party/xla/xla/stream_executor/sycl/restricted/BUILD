@@ -1,3 +1,4 @@
+load("//xla:restricted_package.bzl", "xla_restricted_allow", "xla_restricted_verify")
 load(
     "//xla/stream_executor:build_defs.bzl",
     "stream_executor_friends",
@@ -143,3 +144,11 @@ xla_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+xla_restricted_verify(allowed_targets = [
+    xla_restricted_allow("sycl_blas_lt_test"),
+    xla_restricted_allow("sycl_executor_test"),
+    xla_restricted_allow("sycl_kernel_test"),
+    xla_restricted_allow("sycl_stream_test"),
+    xla_restricted_allow("sycl_timer_test"),
+])

@@ -1,3 +1,4 @@
+load("//xla:restricted_package.bzl", "xla_restricted_allow", "xla_restricted_verify")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "tsl_copts")
 load("//xla/tsl/mkl:build_defs.bzl", "if_graph_api")
@@ -153,3 +154,12 @@ onednn_cc_test(
         "@com_google_absl//absl/strings",
     ],
 )
+
+xla_restricted_verify(allowed_targets = [
+    xla_restricted_allow("cpu_aot_export_test"),
+    xla_restricted_allow("onednn_convolution_test"),
+    xla_restricted_allow("onednn_fusion_test"),
+    xla_restricted_allow("onednn_layer_norm_test"),
+    xla_restricted_allow("onednn_matmul_test"),
+    xla_restricted_allow("onednn_softmax_test"),
+])

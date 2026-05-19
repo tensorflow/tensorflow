@@ -1,3 +1,4 @@
+load("//xla:restricted_package.bzl", "xla_restricted_allow", "xla_restricted_verify")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 
@@ -36,3 +37,7 @@ xla_cc_test(
         "@llvm-project//llvm:ir_headers",
     ],
 )
+
+xla_restricted_verify(allowed_targets = [
+    xla_restricted_allow("llvm_util_test"),
+])

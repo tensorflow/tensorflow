@@ -1597,4 +1597,11 @@ bzl_library(
     ]),
 )
 
+bzl_library(
+    name = "restricted_package_bzl",
+    srcs = ["restricted_package.bzl"],
+    visibility = ["//visibility:private"],
+    deps = ["//xla/tsl:package_groups_bzl"],
+)
+
 xla_bzl_library()

@@ -1,4 +1,5 @@
 load("//xla:package_groups.bzl", "xla_test_friend_package_group")
+load("//xla:restricted_package.bzl", "xla_restricted_allow", "xla_restricted_verify")
 load("//xla/tests:build_defs.bzl", "generate_backend_suites", "xla_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
@@ -112,3 +113,10 @@ cc_library(
         "@tsl//tsl/platform:test",
     ],
 )
+
+xla_restricted_verify(allowed_targets = [
+    xla_restricted_allow("hlo_test_base"),
+    xla_restricted_allow("hlo_test_base_legacy"),
+    xla_restricted_allow("llvm_compiler_test"),
+    xla_restricted_allow("llvm_irgen_test_base"),
+])

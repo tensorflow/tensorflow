@@ -1,3 +1,4 @@
+load("//xla:restricted_package.bzl", "xla_restricted_allow", "xla_restricted_verify")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -71,3 +72,8 @@ cc_library(
         "@eigen_archive//:eigen3",
     ],
 )
+
+xla_restricted_verify(allowed_targets = [
+    xla_restricted_allow("hlo_runner"),
+    xla_restricted_allow("hlo_runner_legacy"),
+])

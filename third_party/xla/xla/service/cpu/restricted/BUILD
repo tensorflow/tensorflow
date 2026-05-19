@@ -1,3 +1,4 @@
+load("//xla:restricted_package.bzl", "xla_restricted_allow", "xla_restricted_verify")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 
@@ -50,3 +51,7 @@ xla_test(
         "@tsl//tsl/platform:casts",
     ],
 )
+
+xla_restricted_verify(allowed_targets = [
+    xla_restricted_allow("cpu_aot_compiler_test"),
+])
