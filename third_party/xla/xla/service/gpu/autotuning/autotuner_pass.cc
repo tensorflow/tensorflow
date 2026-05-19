@@ -140,7 +140,6 @@ bool ShouldAutotuneGemmFusion(const HloInstruction& instruction) {
 }
 
 bool ShouldAutotunGenericFusion(bool enable_fusion_autotuner,
-                                bool all_fusions_with_triton,
                                 const HloInstruction& instruction) {
   if (!enable_fusion_autotuner) {
     return false;
@@ -153,18 +152,12 @@ bool ShouldAutotunGenericFusion(bool enable_fusion_autotuner,
                      HloPredicateIsOp<HloOpcode::kScatter>)) {
     return false;
   }
-  if (all_fusions_with_triton) {
-    return true;
-  }
-  return absl::c_any_of(
-      fusion->fused_instructions_computation()->instructions(),
-      HloPredicateIsOp<HloOpcode::kReduce, HloOpcode::kTranspose>);
+  return true;
 }
 
 bool ShouldAutotuneInstruction(bool do_not_autotune_cublas,
                                bool do_not_autotune_cudnn,
                                bool enable_fusion_autotuner,
-                               bool all_fusions_with_triton,
                                bool has_native_or_ble_backends,
                                bool autotune_post_fusion,
                                const HloInstruction& instruction) {
@@ -196,8 +189,7 @@ bool ShouldAutotuneInstruction(bool do_not_autotune_cublas,
     if (!autotune_post_fusion && !has_native_or_ble_backends) {
       return false;
     }
-    return ShouldAutotunGenericFusion(enable_fusion_autotuner,
-                                      all_fusions_with_triton, instruction);
+    return ShouldAutotunGenericFusion(enable_fusion_autotuner, instruction);
   }
   return false;
 }
@@ -360,8 +352,6 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
       debug_options.xla_gpu_autotune_level() != 0 &&
       !debug_options.xla_gpu_exclude_nondeterministic_ops() &&
       debug_options.xla_gpu_experimental_enable_fusion_autotuner();
-  bool all_fusions_with_triton =
-      debug_options.xla_gpu_experimental_all_fusions_with_triton();
 
   bool has_native_or_ble_backends = absl::c_any_of(backends, [](const auto& b) {
     return b->name() == "NATIVE_EMITTER" || b->name() == "BLOCK_LEVEL_EMITTER";
@@ -371,12 +361,11 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
 
   auto should_autotune =
       [do_not_autotune_cublas, do_not_autotune_cudnn, enable_fusion_autotuner,
-       all_fusions_with_triton, has_native_or_ble_backends,
+       has_native_or_ble_backends,
        autotune_post_fusion](const HloInstruction& instruction) -> bool {
     return ShouldAutotuneInstruction(
         do_not_autotune_cublas, do_not_autotune_cudnn, enable_fusion_autotuner,
-        all_fusions_with_triton, has_native_or_ble_backends,
-        autotune_post_fusion, instruction);
+        has_native_or_ble_backends, autotune_post_fusion, instruction);
   };
 
   std::unique_ptr<Profiler> profiler = nullptr;
