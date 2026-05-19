@@ -129,18 +129,37 @@ bool NcclCommunicator::QuerySupportsOneSidedComm() const {
 absl::StatusOr<std::unique_ptr<GpuDeviceCommunicator>>
 NcclCommunicator::CreateDeviceComm(
     const GpuDeviceCommunicator::Requirements& requirements) {
+  return ExecuteAwait<std::unique_ptr<GpuDeviceCommunicator>>(
+      [this, requirements]()
+          -> absl::StatusOr<std::unique_ptr<GpuDeviceCommunicator>> {
+        VLOG(5) << "Creating device communicator with requirements: "
+                << requirements;
+        if (cancel_->IsCancelled()) {
+          return FailedPrecondition("NcclCommunicator aborted");
+        }
+
 #if NCCL_VERSION_CODE >= 22800
-  return NcclDeviceCommunicator::CreateFrom(*this, requirements);
+        return NcclDeviceCommunicator::CreateFrom(*this, requirements);
 #else
-  return Unimplemented(
-      "NCCL version %d does not support collective communication",
-      NCCL_VERSION_CODE);
+        return Unimplemented(
+            "NCCL version %d does not support collective communication",
+            NCCL_VERSION_CODE);
 #endif  // NCCL_VERSION_CODE >= 22800
+      });
 }
 
 absl::StatusOr<std::unique_ptr<SymmetricMemory>>
 NcclCommunicator::CreateSymmetricMemory(se::DeviceAddressBase addr) {
-  return NcclSymmetricMemory::Create(comm_, addr);
+  return ExecuteAwait<std::unique_ptr<SymmetricMemory>>(
+      [this, addr]() -> absl::StatusOr<std::unique_ptr<SymmetricMemory>> {
+        VLOG(5) << "Creating symmetric memory for device address: "
+                << addr.opaque();
+        if (cancel_->IsCancelled()) {
+          return FailedPrecondition("NcclCommunicator aborted");
+        }
+
+        return NcclSymmetricMemory::Create(comm_, addr);
+      });
 }
 
 absl::StatusOr<std::unique_ptr<NcclCommunicator>> NcclCommunicator::Create(
