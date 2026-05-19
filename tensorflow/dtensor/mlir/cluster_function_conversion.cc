@@ -107,7 +107,7 @@ mlir::LogicalResult AttachRetvalLayouts(
   // all we need is a placeholder layout so that no special case is needed in
   // dtensor_device.
   SetLayoutOnOp(sp_call_op,
-                absl::Span<const absl::optional<Layout>>(
+                absl::Span<const std::optional<Layout>>(
                     retvals_layouts.data(), retvals_layouts.size()));
 
   return mlir::success();
