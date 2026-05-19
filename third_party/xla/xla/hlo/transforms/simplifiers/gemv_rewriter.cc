@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/transforms/gemv_rewriter.h"
+#include "xla/hlo/transforms/simplifiers/gemv_rewriter.h"
 
 #include <cstdint>
 #include <vector>
@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
-namespace gpu {
 
 namespace {
 
@@ -169,5 +168,4 @@ absl::StatusOr<bool> GemvRewriter::RunImpl(
   return gemv_rewriter.changed();
 }
 
-}  // namespace gpu
 }  // namespace xla

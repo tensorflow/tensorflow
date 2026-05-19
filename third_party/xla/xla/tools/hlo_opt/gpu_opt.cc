@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/dot_operand_converter.h"
 #include "xla/backends/gpu/transforms/gemm_broadcast_folding_rewriter.h"
 #include "xla/backends/gpu/transforms/gemm_fusion.h"
-#include "xla/backends/gpu/transforms/gemv_rewriter.h"
 #include "xla/backends/gpu/transforms/reduce_scatter_creator.h"
 #include "xla/backends/gpu/transforms/reduction_degenerate_dim_remover.h"
 #include "xla/backends/gpu/transforms/reduction_dimension_grouper.h"
@@ -50,6 +49,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/tools/hlo_opt/opt_lib.h"
 #include "xla/hlo/transforms/host_offloader.h"
+#include "xla/hlo/transforms/simplifiers/gemv_rewriter.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/layout.h"
 #include "xla/service/buffer_value.h"
@@ -169,6 +169,7 @@ class GpuOptProvider : public CompiledOptProvider {
         });
     // go/keep-sorted start
     RegisterPass<CopyInsertion>(alias_info_.get());
+    RegisterPass<GemvRewriter>();
     RegisterPass<HloMemoryScheduler>(alias_info_.get(), kSizeFunction);
     RegisterPass<HostOffloader>(alias_info_.get());
     RegisterPass<gpu::AllGatherOptimizer>();
@@ -179,7 +180,6 @@ class GpuOptProvider : public CompiledOptProvider {
     RegisterPass<gpu::DotOperandConverter>();
     RegisterPass<gpu::GemmBroadcastFoldingRewriter>();
     RegisterPass<gpu::GemmFusion>(gpu_compute_capability);
-    RegisterPass<gpu::GemvRewriter>();
     RegisterPass<gpu::ReduceScatterCreator>();
     RegisterPass<gpu::ReductionDegenerateDimRemover>();
     RegisterPass<gpu::ReductionDimensionGrouper>();

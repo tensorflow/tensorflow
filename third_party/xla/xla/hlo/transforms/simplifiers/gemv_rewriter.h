@@ -12,8 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_BACKENDS_GPU_TRANSFORMS_GEMV_REWRITER_H_
-#define XLA_BACKENDS_GPU_TRANSFORMS_GEMV_REWRITER_H_
+
+#ifndef XLA_HLO_TRANSFORMS_SIMPLIFIERS_GEMV_REWRITER_H_
+#define XLA_HLO_TRANSFORMS_SIMPLIFIERS_GEMV_REWRITER_H_
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -22,7 +23,6 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
-namespace gpu {
 
 // Rewrite a matrix-vector or a vector-matrix multiplication into a
 // matrix-matrix multiplication with a trivial dimension. For example,
@@ -38,7 +38,6 @@ class GemvRewriter : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
 
-}  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_BACKENDS_GPU_TRANSFORMS_GEMV_REWRITER_H_
+#endif  // XLA_HLO_TRANSFORMS_SIMPLIFIERS_GEMV_REWRITER_H_
