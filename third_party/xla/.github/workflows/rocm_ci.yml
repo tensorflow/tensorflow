@@ -94,7 +94,7 @@ jobs:
             --//jax:build_jaxlib=wheel \
             --//jax:build_jax=true \
             --local_test_jobs=4 \
-            --action_env=JAX_ENABLE_X64=1 \
+            --action_env=JAX_ENABLE_X64=0 \
             --repo_env=HERMETIC_PYTHON_VERSION=3.14 \
             --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}"
 
