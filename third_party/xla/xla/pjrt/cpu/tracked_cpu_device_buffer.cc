@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/base/no_destructor.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -161,6 +162,14 @@ class CpuDeviceMemorySlice final : public CpuDeviceMemory {
       : base_(std::move(base)), offset_(offset), size_bytes_(size) {}
 
   void* untyped_data() const final {
+    if (base_.IsError()) {
+      LOG(FATAL)
+          << "Accessing untyped_data on a sliced buffer whose parent failed: "
+          << base_.GetError();
+    }
+    CHECK(base_.IsConcrete() || base_.IsConstructed())
+        << "Accessing untyped_data on a sliced buffer whose parent is not "
+           "resolved.";
     return static_cast<uint8_t*>(base_->untyped_data()) + offset_;
   }
   size_t size_bytes() const final { return size_bytes_; }
