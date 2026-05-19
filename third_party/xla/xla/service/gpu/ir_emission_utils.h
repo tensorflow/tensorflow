@@ -132,6 +132,10 @@ inline constexpr absl::string_view
     kDynamicSliceFusionWithDynamicAddressComputationConfigName =
         "dynamic_address_computation";
 
+// The name of the custom fusion config for dynamic slice fusion V2.
+inline constexpr absl::string_view kDynamicSliceFusionConfigName =
+    "dynamic_slice_fusion";
+
 // Returns the name of the custom fusion config if the given instruction is a
 // custom fusion and has a custom fusion name, otherwise returns std::nullopt.
 // The custom fusion name is basically the value of

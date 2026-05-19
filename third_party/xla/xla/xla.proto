@@ -810,6 +810,10 @@ message DebugOptions {
   // `serialized_executable` field.
   optional bool xla_gpu_experimental_dump_gpu_executable = 427;
 
+  // When true, DynamicSliceFusionV2Thunk verifies at runtime that annotated
+  // offsets match actual XLA-computed DS/DUS offsets. For debugging only.
+  optional bool xla_gpu_experimental_dynamic_slice_fusion_verify_offsets = 484;
+
   // Enable windowed einsum(collective matmul) rewrite for all-to-all + gemm
   // This feature is still experimental and effective only
   // xla_gpu_multi_streamed_windowed_einsum is set to true.
@@ -1568,7 +1572,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 484
+  // Next id: 485
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

@@ -27,7 +27,6 @@ limitations under the License.
 
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -89,6 +88,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_host_copy_thunk.h"
+#include "xla/backends/gpu/runtime/dynamic_slice_fusion_v2_thunk.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/fft_thunk.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
@@ -117,6 +117,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/triangular_solve_thunk.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
+#include "xla/backends/gpu/transforms/dynamic_slice_fusion.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
@@ -954,6 +955,15 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitPtxCustomCall(
 
 absl::StatusOr<BufferAllocation::Slice> ThunkEmitter::GetAllocationSliceForHlo(
     const HloInstruction* instr, const ShapeIndex& index) const {
+  if (!allocation_overrides_.empty()) {
+    auto it = allocation_overrides_.find(instr);
+    if (it != allocation_overrides_.end()) {
+      int64_t flat_idx = index.empty() ? 0 : index[0];
+      if (flat_idx < it->second.size()) {
+        return it->second[flat_idx];
+      }
+    }
+  }
   return ir_emitter_context_->buffer_assignment().GetUniqueSlice(instr, index);
 }
 
@@ -1388,6 +1398,18 @@ AsyncThunkSequence ThunkEmitter::EmitFusion(const HloFusionInstruction* instr) {
       ir_emitter_context_->gpu_device_info();
   const HloFusionAnalysis fusion_analysis =
       HloFusionAnalysis::Create(*instr, device_info);
+
+  // Intercept DynamicSliceFusionV2 custom fusions.
+  if (fusion_analysis.emitter_fusion_kind() ==
+      HloFusionAnalysis::EmitterFusionKind::kCustomFusion) {
+    auto custom_name = GetCustomFusionConfigName(instr);
+    if (custom_name.has_value() &&
+        *custom_name == kDynamicSliceFusionConfigName) {
+      ASSIGN_OR_RETURN(auto thunks, EmitDynamicSliceFusionV2(instr));
+      return AsyncThunkSequence(std::move(thunks));
+    }
+  }
+
   VLOG(3) << "ThunkEmitter::EmitFusion:start";
   std::unique_ptr<FusionInterface> emitter = GetFusionEmitter(
       /*fusion_info=*/HloFusionInfo(
@@ -1405,6 +1427,99 @@ AsyncThunkSequence ThunkEmitter::EmitFusion(const HloFusionInstruction* instr) {
 
   VLOG(3) << "ThunkEmitter::EmitFusion:complete";
   return std::move(result.thunks);
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDynamicSliceFusionV2(
+    const HloFusionInstruction* instr) {
+  const HloComputation* body = instr->fused_instructions_computation();
+
+  const HloInstruction* hero = DynamicSliceFusion::FindHero(body);
+  if (hero == nullptr) {
+    return Internal("DynamicSliceFusionV2: no hero operation found");
+  }
+
+  ASSIGN_OR_RETURN(std::vector<DynamicSliceFusion::Parameter> parameters,
+                   DynamicSliceFusion::ResolveParameters(hero));
+  ASSIGN_OR_RETURN(std::vector<DynamicSliceFusion::Result> results,
+                   DynamicSliceFusion::ResolveResults(hero));
+
+  // parameter_buffers: one slice per fusion operand, indexed by parameter
+  // number.
+  std::vector<BufferAllocation::Slice> parameter_buffers;
+  parameter_buffers.reserve(instr->operand_count());
+  for (const auto* operand : instr->operands()) {
+    TF_ASSIGN_OR_RETURN(parameter_buffers.emplace_back(),
+                        GetAllocationSliceForHlo(operand));
+  }
+
+  // result_buffers: one entry per fusion output leaf in DFS order.
+  std::vector<BufferAllocation::Slice> result_buffers;
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachLeafShapeWithStatus(
+      instr->shape(),
+      [&](const Shape&, const ShapeIndex& index) -> absl::Status {
+        TF_ASSIGN_OR_RETURN(result_buffers.emplace_back(),
+                            GetAllocationSliceForHlo(instr, index));
+        return absl::OkStatus();
+      }));
+
+  // embedded_allocations: synthetic allocations for the embedded thunk
+  // executor. First N entries are for hero operands (one per Parameter),
+  // then M entries for hero results (one per Result).
+  std::vector<BufferAllocation> embedded_allocations;
+  embedded_allocations.reserve(parameters.size() + results.size());
+
+  for (const auto& param : parameters) {
+    embedded_allocations.emplace_back(embedded_allocations.size(),
+                                      ShapeUtil::ByteSizeOf(param.slice_shape),
+                                      0);
+  }
+
+  for (const auto& res : results) {
+    embedded_allocations.emplace_back(embedded_allocations.size(),
+                                      ShapeUtil::ByteSizeOf(res.update_shape),
+                                      0);
+  }
+
+  // Map hero operands and results to embedded allocations so the embedded
+  // thunk emitter resolves the right buffers.
+  absl::flat_hash_map<const HloInstruction*,
+                      std::vector<BufferAllocation::Slice>>
+      overrides;
+
+  for (int64_t i = 0; i < parameters.size(); ++i) {
+    int64_t byte_size = ShapeUtil::ByteSizeOf(parameters[i].slice_shape);
+    overrides[hero->operand(i)] = {
+        BufferAllocation::Slice(&embedded_allocations[i], 0, byte_size)};
+  }
+
+  // One override slice per hero output leaf in DFS order.
+  ShapeUtil::ForEachLeafShape(
+      hero->shape(), [&](const Shape& subshape, const ShapeIndex&) {
+        int64_t leaf_idx = overrides[hero].size();
+        int64_t byte_size = ShapeUtil::ByteSizeOf(subshape);
+        overrides[hero].push_back(BufferAllocation::Slice(
+            &embedded_allocations[parameters.size() + leaf_idx], 0, byte_size));
+      });
+
+  auto overrides_cleanup = InstallAllocationOverrides(std::move(overrides));
+
+  ASSIGN_OR_RETURN(ThunkSequence embedded_thunks,
+                   std::move(EmitHloInstruction(hero)).Await());
+
+  auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
+      instr, ir_emitter_context_->GetNextThunkId());
+
+  bool verify_offsets =
+      ir_emitter_context_->debug_options()
+          .xla_gpu_experimental_dynamic_slice_fusion_verify_offsets();
+
+  auto dsf_thunk = std::make_unique<DynamicSliceFusionV2Thunk>(
+      thunk_info, std::move(parameters), std::move(results),
+      std::move(parameter_buffers), std::move(result_buffers),
+      std::move(embedded_allocations), std::move(embedded_thunks),
+      verify_offsets);
+
+  return ThunkSequence::Of(std::move(dsf_thunk));
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopy(
@@ -1836,6 +1951,7 @@ AsyncThunkSequence ThunkEmitter::EmitCollectiveThunk(
         thunk_info, inst, /*buffers=*/std::move(buffers),
         ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p()));
   }
+
   // For synchronous collectives, emit thunk directly without async wrapping.
   // However, if parallel collective overlap limit is > 1, multiple collectives
   // may be in-flight on different streams. Emitting them synchronously would be

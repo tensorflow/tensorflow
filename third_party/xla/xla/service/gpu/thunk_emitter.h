@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -216,6 +217,9 @@ class ThunkEmitter {
 
   absl::Status AssertNonDeterminismIsOkay(const std::string& op_name);
 
+  absl::StatusOr<ThunkSequence> EmitDynamicSliceFusionV2(
+      const HloFusionInstruction* instr);
+
   absl::StatusOr<BufferAllocation::Slice> GetAllocationSliceForHlo(
       const HloInstruction* instr, const ShapeIndex& index = {}) const;
   absl::StatusOr<ShapedSlice> GetShapedSliceForHlo(
@@ -260,6 +264,24 @@ class ThunkEmitter {
   // to avoid deadlocks when foreign code calls into LLVM with a different
   // set of options.
   llvm_ir::LLVMCommandLineOptionsReleasableLock* llvm_options_lock_;
+
+  // AllocationOverrides lets EmitDynamicSliceFusionV2 redirect buffer lookups
+  // for specific HLO instructions. When emitting embedded thunks for a
+  // dynamic-slice fusion, the hero's operands and results must map to
+  // synthetic BufferAllocation::Slices (the "embedded_allocations") rather
+  // than the real buffer assignment. InstallAllocationOverrides sets the map;
+  // GetAllocationSliceForHlo checks it before falling through to the normal
+  // buffer assignment. The returned cleanup object restores the empty state.
+  using AllocationOverrides =
+      absl::flat_hash_map<const HloInstruction*,
+                          std::vector<BufferAllocation::Slice>>;
+
+  auto InstallAllocationOverrides(AllocationOverrides overrides) {
+    allocation_overrides_ = std::move(overrides);
+    return absl::MakeCleanup([this] { allocation_overrides_.clear(); });
+  }
+
+  AllocationOverrides allocation_overrides_;
 };
 
 }  // namespace xla::gpu

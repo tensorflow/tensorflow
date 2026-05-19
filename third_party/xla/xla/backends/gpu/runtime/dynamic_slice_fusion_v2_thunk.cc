@@ -55,6 +55,8 @@ namespace xla::gpu {
 // Helpers
 //===----------------------------------------------------------------------===//
 
+// Computes the raw byte offset from the annotated DynamicSliceConfig:
+//   byte_offset + loop_iteration[loop_index] * byte_stride
 static int64_t ComputeSliceOffset(const DynamicSliceConfig& config,
                                   absl::Span<const WhileLoopState> loop_nest) {
   int64_t iteration = 0;
@@ -65,13 +67,11 @@ static int64_t ComputeSliceOffset(const DynamicSliceConfig& config,
   return config.byte_offset() + iteration * config.byte_stride();
 }
 
-// Computes the byte offset from actual offset scalars (D2H-copied from
-// device), using the same clamping logic as XLA:
-//   start_index = clamp(index, 0, src_dim - dst_dim)
-//   byte_offset = sum(start_index * byte_stride)
-static int64_t ComputeByteOffsetFromScalars(
+// Computes the raw byte offset from actual offset scalars (D2H-copied from
+// device). Each runtime offset contributes index * byte_stride for its
+// dimension. No clamping is applied here.
+static int64_t ComputeSliceOffsetFromScalars(
     absl::Span<const int32_t> indices, const Shape& src_shape,
-    const Shape& dst_shape,
     absl::Span<const DynamicSliceFusion::Offset> offsets) {
   auto byte_strides = ShapeUtil::ByteStrides(src_shape);
   int64_t byte_offset = 0;
@@ -83,11 +83,15 @@ static int64_t ComputeByteOffsetFromScalars(
     }
     int64_t dim = runtime->dimension_number;
     int64_t idx = indices[runtime_idx++];
-    int64_t max_valid = src_shape.dimensions(dim) - dst_shape.dimensions(dim);
-    int64_t clamped = std::min(std::max(idx, int64_t{0}), max_valid);
-    byte_offset += clamped * (*byte_strides)[dim];
+    byte_offset += idx * (*byte_strides)[dim];
   }
   return byte_offset;
+}
+
+// Clamps a byte offset to [0, buffer_size - slice_size] matching DUS semantics.
+static int64_t ClampSliceOffset(int64_t offset, int64_t buffer_size,
+                                int64_t slice_size) {
+  return std::clamp(offset, int64_t{0}, buffer_size - slice_size);
 }
 
 //===----------------------------------------------------------------------===//
@@ -99,19 +103,16 @@ DynamicSliceFusionV2Thunk::DynamicSliceFusionV2Thunk(
     std::vector<DynamicSliceFusion::Result> results,
     std::vector<BufferAllocation::Slice> parameter_buffers,
     std::vector<BufferAllocation::Slice> result_buffers,
-    std::vector<BufferAllocation> slice_allocations,
+    std::vector<BufferAllocation> embedded_allocations,
     ThunkSequence embedded_thunks, bool verify_offsets)
     : Thunk(Kind::kDynamicSliceFusion, std::move(thunk_info)),
       parameters_(std::move(parameters)),
       results_(std::move(results)),
       parameter_buffers_(std::move(parameter_buffers)),
       result_buffers_(std::move(result_buffers)),
-      slice_allocations_(std::move(slice_allocations)),
+      embedded_allocations_(std::move(embedded_allocations)),
       executor_(std::move(embedded_thunks)),
-      verify_offsets_(verify_offsets) {
-  DCHECK_EQ(parameter_buffers_.size(), parameters_.size());
-  DCHECK_EQ(result_buffers_.size(), results_.size());
-}
+      verify_offsets_(verify_offsets) {}
 
 std::string DynamicSliceFusionV2Thunk::ToString(int indent) const {
   std::string result;
@@ -150,29 +151,36 @@ static absl::Status VerifySliceOffset(
     }
   }
 
-  // Copy offsets to host (offset buffers must be scalars).
+  // If all offsets are static, we have nothing to verify.
+  if (runtime_offsets.empty()) {
+    return absl::OkStatus();
+  }
+
+  // Copy offsets to host. parameter_buffers is indexed by fusion parameter
+  // number, so we can index directly.
   std::vector<int32_t> indices(runtime_offsets.size());
   for (size_t d = 0; d < runtime_offsets.size(); ++d) {
-    int64_t param_num = runtime_offsets[d].parameter_number;
-    if (!ShapeUtil::IsScalarWithElementType(
-            parameters[param_num].parameter_shape, S32)) {
+    int64_t parameter_number = runtime_offsets[d].parameter_number;
+    if (parameter_buffers.at(parameter_number).size() != sizeof(int32_t)) {
       return Internal(
-          "Expected S32 scalar offset parameter at index %d, got %s", param_num,
-          ShapeUtil::HumanString(parameters[param_num].parameter_shape));
+          "Expected S32-sized (4 bytes) offset buffer at parameter %d, got %d",
+          parameter_number, parameter_buffers.at(parameter_number).size());
     }
-    auto src = orig.GetDeviceAddress(parameter_buffers[param_num]);
+    auto src = orig.GetDeviceAddress(parameter_buffers.at(parameter_number));
     RETURN_IF_ERROR(stream.Memcpy(&indices[d], src, sizeof(int32_t)));
   }
 
   // Wait for completion of all memory copies.
-  if (!indices.empty()) {
-    RETURN_IF_ERROR(stream.BlockHostUntilDone());
-  }
+  RETURN_IF_ERROR(stream.BlockHostUntilDone());
 
-  // Check that the value passed at run time matches statically computed offset.
-  int64_t actual_offset =
-      ComputeByteOffsetFromScalars(indices, src_shape, dst_shape, *offsets);
-  int64_t annotated_offset = ComputeSliceOffset(*config, loop_nest);
+  // Compare offsets after clamping both to [0, buffer_size - slice_size].
+  int64_t buffer_size = ShapeUtil::ByteSizeOf(src_shape);
+  int64_t slice_size = ShapeUtil::ByteSizeOf(dst_shape);
+  int64_t actual_offset = ClampSliceOffset(
+      ComputeSliceOffsetFromScalars(indices, src_shape, *offsets), buffer_size,
+      slice_size);
+  int64_t annotated_offset = ClampSliceOffset(
+      ComputeSliceOffset(*config, loop_nest), buffer_size, slice_size);
 
   if (actual_offset != annotated_offset) {
     return Internal(
@@ -226,10 +234,10 @@ absl::Status DynamicSliceFusionV2Thunk::ExecuteOnStream(
   std::vector<se::DeviceAddressBase> buffers =
       BuildDynamicSliceBuffers(orig, loop_nest);
 
-  BufferAllocations slice_allocations(buffers, orig.device_ordinal(),
-                                      orig.memory_allocator());
+  BufferAllocations embedded_allocs(buffers, orig.device_ordinal(),
+                                    orig.memory_allocator());
   ExecuteParams dynamic_slice_params =
-      ExecuteParams::CloneWithNewAllocations(params, slice_allocations);
+      ExecuteParams::CloneWithNewAllocations(params, embedded_allocs);
   return executor_.ExecuteOnStream(dynamic_slice_params);
 }
 
@@ -241,29 +249,37 @@ DynamicSliceFusionV2Thunk::BuildDynamicSliceBuffers(
   buffers.reserve(parameters_.size() + results_.size());
 
   for (size_t i = 0; i < parameters_.size(); ++i) {
-    se::DeviceAddressBase addr = orig.GetDeviceAddress(parameter_buffers_[i]);
-    int64_t sliced_size = slice_allocations_[i].size();
+    se::DeviceAddressBase addr = orig.GetDeviceAddress(
+        parameter_buffers_[parameters_[i].parameter_number]);
     if (parameters_[i].slice_config.has_value()) {
+      int64_t sliced_size = embedded_allocations_[i].size();
       int64_t offset =
           ComputeSliceOffset(*parameters_[i].slice_config, loop_nest);
+      int64_t clamped_offset =
+          ClampSliceOffset(offset, addr.size(), sliced_size);
       XLA_VLOG_DEVICE(3, orig.device_ordinal()) << absl::StrFormat(
-          "  param[%d]: base=%p size=%d -> offset=%d sliced_size=%d", i,
-          addr.opaque(), addr.size(), offset, sliced_size);
-      addr = addr.GetByteSlice(offset, sliced_size);
+          "  param[%d]: base=%p size=%d -> offset=%d clamped=%d sliced_size=%d",
+          i, addr.opaque(), addr.size(), offset, clamped_offset, sliced_size);
+      addr = addr.GetByteSlice(clamped_offset, sliced_size);
     }
     buffers.push_back(addr);
   }
 
   for (size_t j = 0; j < results_.size(); ++j) {
-    se::DeviceAddressBase addr = orig.GetDeviceAddress(result_buffers_[j]);
-    int64_t sliced_size = slice_allocations_[parameters_.size() + j].size();
+    se::DeviceAddressBase addr =
+        orig.GetDeviceAddress(result_buffers_[results_[j].result_number]);
     if (results_[j].update_config.has_value()) {
+      int64_t sliced_size =
+          embedded_allocations_[parameters_.size() + j].size();
       int64_t offset =
           ComputeSliceOffset(*results_[j].update_config, loop_nest);
+      int64_t clamped_offset =
+          ClampSliceOffset(offset, addr.size(), sliced_size);
       XLA_VLOG_DEVICE(3, orig.device_ordinal()) << absl::StrFormat(
-          "  result[%d]: base=%p size=%d -> offset=%d sliced_size=%d", j,
-          addr.opaque(), addr.size(), offset, sliced_size);
-      addr = addr.GetByteSlice(offset, sliced_size);
+          "  result[%d]: base=%p size=%d -> offset=%d clamped=%d "
+          "sliced_size=%d",
+          j, addr.opaque(), addr.size(), offset, clamped_offset, sliced_size);
+      addr = addr.GetByteSlice(clamped_offset, sliced_size);
     }
     buffers.push_back(addr);
   }
@@ -275,11 +291,12 @@ Thunk::BufferUses DynamicSliceFusionV2Thunk::buffer_uses() const {
   BufferUses uses;
   for (size_t i = 0; i < parameters_.size(); ++i) {
     uses.push_back(
-        BufferUse::Read(parameter_buffers_[i], parameters_[i].parameter_shape));
+        BufferUse::Read(parameter_buffers_[parameters_[i].parameter_number],
+                        parameters_[i].parameter_shape));
   }
   for (size_t j = 0; j < results_.size(); ++j) {
-    uses.push_back(
-        BufferUse::Write(result_buffers_[j], results_[j].result_shape));
+    uses.push_back(BufferUse::Write(result_buffers_[results_[j].result_number],
+                                    results_[j].result_shape));
   }
   return uses;
 }
@@ -367,7 +384,7 @@ absl::StatusOr<ThunkProto> DynamicSliceFusionV2Thunk::ToProto() const {
     ASSIGN_OR_RETURN(*dsf->add_result_buffers(), buf.ToProto());
   }
 
-  for (const auto& alloc : slice_allocations_) {
+  for (const auto& alloc : embedded_allocations_) {
     *dsf->add_slice_allocations() = alloc.ToProto();
   }
 
@@ -455,24 +472,24 @@ DynamicSliceFusionV2Thunk::FromProto(
     result_buffers.push_back(slice);
   }
 
-  std::vector<BufferAllocation> slice_allocations;
-  slice_allocations.reserve(proto.slice_allocations().size());
+  std::vector<BufferAllocation> embedded_allocations;
+  embedded_allocations.reserve(proto.slice_allocations().size());
   for (const auto& alloc_proto : proto.slice_allocations()) {
-    slice_allocations.push_back(BufferAllocation::FromProto(alloc_proto));
+    embedded_allocations.push_back(BufferAllocation::FromProto(alloc_proto));
   }
 
   ThunkSequence embedded_thunks;
   embedded_thunks.reserve(proto.embedded_thunks().thunks().size());
   for (const auto& thunk_proto : proto.embedded_thunks().thunks()) {
     ASSIGN_OR_RETURN(std::unique_ptr<Thunk> thunk,
-                     deserializer(thunk_proto, slice_allocations));
+                     deserializer(thunk_proto, embedded_allocations));
     embedded_thunks.push_back(std::move(thunk));
   }
 
   return std::make_unique<DynamicSliceFusionV2Thunk>(
       std::move(thunk_info), std::move(parameters), std::move(results),
       std::move(parameter_buffers), std::move(result_buffers),
-      std::move(slice_allocations), std::move(embedded_thunks),
+      std::move(embedded_allocations), std::move(embedded_thunks),
       proto.verify_offsets());
 }
 
