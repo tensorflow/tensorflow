@@ -1851,7 +1851,7 @@ absl::Status FunctionLibraryDefinition::GetAttr(const Node& node,
                                                      const string&, T*) const; \
   template Status FunctionLibraryDefinition::GetAttr(const NodeDef&,           \
                                                      const string&, T*) const;
-GET_ATTR(string)
+GET_ATTR(std::string)
 GET_ATTR(bool)
 #undef GET_ATTR
 
