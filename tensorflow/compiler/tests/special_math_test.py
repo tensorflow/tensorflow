@@ -87,7 +87,7 @@ class Log1pTest(xla_test.XLATestCase, parameterized.TestCase):
       return 1e-10, 0.0
     if self.device in ['XLA_GPU', 'GPU']:
       if dtype == np.float32:
-        return max(rtol, 2.5e-07), atol
+        return max(rtol, 2.4e-07), atol
     return rtol, atol
 
   def _test_range(self, low, high, dtype, rtol, atol, is_negative=False):
