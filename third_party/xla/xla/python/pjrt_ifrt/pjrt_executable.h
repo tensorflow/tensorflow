@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/ir/hlo_print_options.h"
@@ -171,7 +172,7 @@ class PjRtExecutable final
   }
 
   absl::StatusOr<xla::ifrt::AttributeMap> GetCostAnalysis() const override {
-    TF_ASSIGN_OR_RETURN(auto result, pjrt_executable_->GetCostAnalysis());
+    ASSIGN_OR_RETURN(auto result, pjrt_executable_->GetCostAnalysis());
     return xla::ifrt::FromPjRtAttributeMap(std::move(result));
   }
 
@@ -310,8 +311,8 @@ class PjRtLoadedExecutable final
   absl::StatusOr<std::string> Serialize() const override;
 
   absl::StatusOr<std::string> GetHumanReadableProgramText() const override {
-    TF_ASSIGN_OR_RETURN(auto hlo_modules,
-                        pjrt_loaded_executable_->GetHloModules());
+    ASSIGN_OR_RETURN(auto hlo_modules,
+                     pjrt_loaded_executable_->GetHloModules());
     return absl::StrJoin(
         hlo_modules, "\n\n", [](std::string* out, const auto& hlo_module) {
           HloPrintOptions print_options = HloPrintOptions::Default();
@@ -368,8 +369,7 @@ class PjRtLoadedExecutable final
   }
 
   absl::StatusOr<xla::ifrt::AttributeMap> GetCostAnalysis() const override {
-    TF_ASSIGN_OR_RETURN(auto result,
-                        pjrt_loaded_executable_->GetCostAnalysis());
+    ASSIGN_OR_RETURN(auto result, pjrt_loaded_executable_->GetCostAnalysis());
     return xla::ifrt::FromPjRtAttributeMap(std::move(result));
   }
 

@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "xla/future.h"
 #include "xla/python/ifrt/array.h"
@@ -113,10 +114,10 @@ CreateNonReadyTestArray(
   Shape shape({1});
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
-  TF_ASSIGN_OR_RETURN(auto array,
-                      BasicStringArray::Create(client, shape, sharding,
-                                               std::move(buffers_future),
-                                               std::move(on_done_with_buffer)));
+  ASSIGN_OR_RETURN(auto array,
+                   BasicStringArray::Create(client, shape, sharding,
+                                            std::move(buffers_future),
+                                            std::move(on_done_with_buffer)));
 
   return std::make_pair(std::move(array), std::move(buffers_promise));
 }
@@ -422,16 +423,15 @@ absl::StatusOr<ArrayRef> MakeShardedStringTestArray(
         "Test client has too few devices. Need 4, got:", devices.size()));
   }
 
-  TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
-                      client->MakeDeviceList(devices));
+  ASSIGN_OR_RETURN(DeviceListRef device_list, client->MakeDeviceList(devices));
   ShardingRef sharding = ConcreteEvenSharding::Create(
       std::move(device_list), MemoryKind(), Shape({2, 1}), Shape({1}),
       is_fully_replicated);
 
   std::vector<ArrayRef> arrays;
   for (int i = 0; i < 2; ++i) {
-    TF_ASSIGN_OR_RETURN(auto array, MakeSingleDeviceStringTestArray(
-                                        {data[i]}, client, devices[i]));
+    ASSIGN_OR_RETURN(auto array, MakeSingleDeviceStringTestArray(
+                                     {data[i]}, client, devices[i]));
     arrays.push_back(std::move(array));
   }
 

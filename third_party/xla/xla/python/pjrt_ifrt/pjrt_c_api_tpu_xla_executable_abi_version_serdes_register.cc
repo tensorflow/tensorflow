@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_abi_version_helpers.h"
 #include "xla/pjrt/pjrt_abi_version.h"
@@ -34,7 +35,7 @@ namespace {
 absl::StatusOr<std::unique_ptr<xla::PjRtExecutableAbiVersion>>
 CApiPjRtExecutableAbiVersionFromProto(
     const xla::PjRtExecutableAbiVersionProto& proto) {
-  TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kTpuPjrtName));
+  ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kTpuPjrtName));
   return pjrt::CApiExecutableAbiVersionFromProto(proto, c_api);
 }
 

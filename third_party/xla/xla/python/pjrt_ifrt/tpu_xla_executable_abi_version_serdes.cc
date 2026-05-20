@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_abi_version.h"
@@ -44,8 +45,8 @@ absl::StatusOr<std::string> TpuXlaExecutableAbiVersionSerDes::Serialize(
   const auto& version =
       llvm::cast<xla::ifrt::XlaExecutableAbiVersion>(serializable);
 
-  TF_ASSIGN_OR_RETURN(xla::PjRtExecutableAbiVersionProto proto,
-                      version.ExecutableAbiVersion().ToProto());
+  ASSIGN_OR_RETURN(xla::PjRtExecutableAbiVersionProto proto,
+                   version.ExecutableAbiVersion().ToProto());
   std::string executable_abi_version;
   if (!proto.SerializeToString(&executable_abi_version)) {
     return absl::InternalError(
@@ -63,7 +64,7 @@ TpuXlaExecutableAbiVersionSerDes::Deserialize(
     return absl::InvalidArgumentError(
         "Failed to parse PjRtExecutableAbiVersion from string.");
   }
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<xla::PjRtExecutableAbiVersion> runtime_abi_version,
       factory_function_(proto));
   return std::make_unique<TpuXlaExecutableAbiVersion>(
