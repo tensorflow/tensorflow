@@ -917,6 +917,7 @@ cc_library(
     hdrs = ["fission_backend.h"],
     deps = [
         ":gpu_codegen_backend",
+        "//xla:shape_util",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:backends_proto_cc",
         "//xla/backends/autotuner:codegen_backend",

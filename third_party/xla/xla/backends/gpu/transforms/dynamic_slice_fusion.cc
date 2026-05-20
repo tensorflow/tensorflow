@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -236,8 +237,8 @@ DynamicSliceFusion::ResolveResults(const HloInstruction* hero) {
       }
 
       for (const HloInstruction* user : leaf_gte->users()) {
-        TF_ASSIGN_OR_RETURN(auto rs,
-                            ResolveOneResultChain(user, leaves[i].shape, i));
+        ASSIGN_OR_RETURN(auto rs,
+                         ResolveOneResultChain(user, leaves[i].shape, i));
         if (rs.has_value()) {
           results[i] = *std::move(rs);
         }
@@ -248,7 +249,7 @@ DynamicSliceFusion::ResolveResults(const HloInstruction* hero) {
 
   // Non-tuple hero: single result.
   for (const HloInstruction* user : hero->users()) {
-    TF_ASSIGN_OR_RETURN(auto rs, ResolveOneResultChain(user, hero->shape(), 0));
+    ASSIGN_OR_RETURN(auto rs, ResolveOneResultChain(user, hero->shape(), 0));
     if (rs.has_value()) {
       return std::vector{*std::move(rs)};
     }
