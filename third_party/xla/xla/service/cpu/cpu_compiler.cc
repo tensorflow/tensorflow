@@ -142,6 +142,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
 #include "xla/hlo/transforms/simplifiers/float_normalization.h"
 #include "xla/hlo/transforms/simplifiers/gather_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/hlo_computation_deduplicator.h"
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
@@ -1267,6 +1268,10 @@ absl::StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
     const CompileOptions& options) {
   if (MultiModuleDriver::ShouldProcess(*module)) {
     VLOG(1) << "Triggering HLO module splitting for module: " << module->name();
+    {
+      HloComputationDeduplicator deduplicator;
+      TF_RETURN_IF_ERROR(deduplicator.Run(module.get()).status());
+    }
     MultiModuleDriver driver(
         [this, stream_exec](std::unique_ptr<HloModule> m,
                             const CompileOptions& opts) {
@@ -1348,7 +1353,6 @@ CreateOrcJITPostCompilationHook(const HloModule* hlo_module,
     }
   };
 }
-
 
 }  // namespace
 
