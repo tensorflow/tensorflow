@@ -2271,11 +2271,16 @@ class HloInstruction {
   HloInstruction* AddFusionOperand(HloInstruction* new_operand);
 
   // Delegates to HloFusionInstruction::MergeFusionInstruction.
-  void MergeFusionInstruction(HloInstruction* instruction_to_merge);
+  // remove_computation: when false, allows to defer the call to
+  // RemoveEmbeddedComputation to a later time.
+  void MergeFusionInstruction(HloInstruction* instruction_to_merge,
+                              bool remove_computation = true);
 
   // Delegates to HloFusionInstruction::MergeFusionInstructionIntoMultiOutput.
+  // remove_computation: when false, allows to defer the call to
+  // RemoveEmbeddedComputation to a later time.
   void MergeFusionInstructionIntoMultiOutput(
-      HloInstruction* instruction_to_merge);
+      HloInstruction* instruction_to_merge, bool remove_computation = true);
 
   // Delegates to HloFusionInstruction::FuseInstruction.
   HloInstruction* FuseInstruction(HloInstruction* instruction_to_fuse);

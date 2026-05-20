@@ -2501,7 +2501,7 @@ HloInstruction* HloFusionInstruction::AddFusionOperand(
 }
 
 void HloFusionInstruction::MergeFusionInstruction(
-    HloFusionInstruction* instruction_to_merge) {
+    HloFusionInstruction* instruction_to_merge, bool remove_computation) {
   CHECK(absl::c_linear_search(operands(), instruction_to_merge));
   // Clone the instruction from which to merge fused instructions.
   std::unique_ptr<HloInstruction> cloned = instruction_to_merge->Clone();
@@ -2561,12 +2561,14 @@ void HloFusionInstruction::MergeFusionInstruction(
     CHECK_OK(instruction->parent()->RemoveInstruction(instruction));
   }
   CHECK_EQ(0, cloned_fusion->user_count());
-  CHECK_OK(GetModule()->RemoveEmbeddedComputation(
-      cloned_fusion->fused_instructions_computation()));
+  if (remove_computation) {
+    CHECK_OK(GetModule()->RemoveEmbeddedComputation(
+        cloned_fusion->fused_instructions_computation()));
+  }
 }
 
 void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
-    HloFusionInstruction* instruction_to_merge) {
+    HloFusionInstruction* instruction_to_merge, bool remove_computation) {
   // Add all non-parameter fused instructions to 'unfused_instructions' to be
   // merged into 'this'. `old_to_new' maps the instructions in the fused node
   // to the disassembled fusion instructions.
@@ -2656,7 +2658,7 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
   }
   CHECK_OK(
       instruction_to_merge->parent()->RemoveInstruction(instruction_to_merge));
-  if (GetModule()) {
+  if (GetModule() && remove_computation) {
     CHECK_OK(GetModule()->RemoveEmbeddedComputation(computation_to_merge));
   }
   for (int64_t i = unfused_instructions.size() - 1; i >= 0; --i) {

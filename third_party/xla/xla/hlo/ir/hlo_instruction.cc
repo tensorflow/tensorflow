@@ -5885,17 +5885,17 @@ HloInstruction* HloInstruction::AddFusionOperand(HloInstruction* new_operand) {
 
 // Delegates to HloFusionInstruction::MergeFusionInstruction.
 void HloInstruction::MergeFusionInstruction(
-    HloInstruction* instruction_to_merge) {
+    HloInstruction* instruction_to_merge, bool remove_computation) {
   return Cast<HloFusionInstruction>(this)->MergeFusionInstruction(
-      Cast<HloFusionInstruction>(instruction_to_merge));
+      Cast<HloFusionInstruction>(instruction_to_merge), remove_computation);
 }
 
 // Delegates to HloFusionInstruction::MergeFusionInstructionIntoMultiOutput.
 void HloInstruction::MergeFusionInstructionIntoMultiOutput(
-    HloInstruction* instruction_to_merge) {
+    HloInstruction* instruction_to_merge, bool remove_computation) {
   return Cast<HloFusionInstruction>(this)
       ->MergeFusionInstructionIntoMultiOutput(
-          Cast<HloFusionInstruction>(instruction_to_merge));
+          Cast<HloFusionInstruction>(instruction_to_merge), remove_computation);
 }
 
 HloInstruction* HloInstruction::FuseInstruction(

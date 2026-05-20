@@ -84,6 +84,7 @@ absl::StatusOr<bool> MultiOutputFusion::RunImpl(
   candidates_index_.clear();
   all_fusion_candidates_.clear();
   reachability_.reset();
+  CHECK_OK(module->RemoveUnusedComputations());
   if (changed) {
     HloDCE dce;
     TF_RETURN_IF_ERROR(dce.Run(module, execution_threads).status());
@@ -104,7 +105,8 @@ HloInstruction* MultiOutputFusion::Fuse(HloInstruction* instr1,
     remaining = CreateFusion(remaining, fused);
   }
   if (fused->opcode() == HloOpcode::kFusion) {
-    remaining->MergeFusionInstructionIntoMultiOutput(fused);
+    remaining->MergeFusionInstructionIntoMultiOutput(
+        fused, /*remove_computation=*/false);
   } else {
     remaining->FuseInstructionIntoMultiOutput(fused);
   }

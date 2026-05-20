@@ -1627,8 +1627,11 @@ absl::Status HloModule::RemoveUnusedComputations() {
       }
     }
   }
-  for (auto computation : to_remove) {
-    TF_RETURN_IF_ERROR(RemoveEmbeddedComputation(computation));
+
+  for (auto it = computations_.begin(); it != computations_.end(); ++it) {
+    if (*it != nullptr && to_remove.contains(it->get())) {
+      TF_RETURN_IF_ERROR(RemoveEmbeddedComputation(it));
+    }
   }
   CleanupComputations();
   return absl::OkStatus();
