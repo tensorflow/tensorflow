@@ -57,7 +57,7 @@ limitations under the License.
 
 namespace xla {
 
-std::vector<Shape> GetParameterShapes(const ComputationLayout& layout) {
+static std::vector<Shape> GetParameterShapes(const ComputationLayout& layout) {
   // For now, XLA programs compiled with multiple arguments for PJRT cannot use
   // tuples for any of their arguments, so we can assume that a tuple can only
   // arise when there is a single argument.
@@ -75,7 +75,8 @@ std::vector<Shape> GetParameterShapes(const ComputationLayout& layout) {
   return shapes;
 }
 
-absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo> InferDispatchInfo(
+static absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo>
+InferDispatchInfo(
     CommonPjRtClient* client, std::vector<Shape> parameter_device_shapes,
     Shape output_device_shape, const HloInputOutputAliasConfig& alias_config,
     std::shared_ptr<DeviceAssignment> device_assignment,
@@ -125,6 +126,19 @@ absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo> InferDispatchInfo(
     result.input_buffer_sizes_in_bytes.push_back(size_in_bytes);
   }
   return result;
+}
+
+absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo> InferDispatchInfo(
+    CommonPjRtClient* client, const ComputationLayout& layout,
+    const HloInputOutputAliasConfig& alias_config,
+    std::shared_ptr<DeviceAssignment> device_assignment,
+    std::vector<CommonPjRtLoadedExecutable::LogicalDeviceIds>
+        addressable_device_logical_ids,
+    std::vector<PjRtDevice*> addressable_devices, bool tuple_inputs) {
+  return InferDispatchInfo(
+      client, GetParameterShapes(layout), layout.result_shape(), alias_config,
+      std::move(device_assignment), std::move(addressable_device_logical_ids),
+      std::move(addressable_devices), nullptr, tuple_inputs);
 }
 
 absl::StatusOr<std::vector<int64_t>> GetShardShape(
