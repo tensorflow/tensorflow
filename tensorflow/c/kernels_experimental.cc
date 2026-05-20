@@ -25,6 +25,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -63,6 +65,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
+#include "tsl/platform/mutex.h"
 
 using tensorflow::AllocatorAttributes;
 using tensorflow::mutex_lock;
@@ -319,7 +322,7 @@ void TF_AssignUpdateVariable(TF_OpKernelContext* ctx, int input_index,
 
 struct TmpVar : public ResourceBase {
   tensorflow::mutex mu;
-  Tensor val;
+  Tensor val ABSL_GUARDED_BY(mu);
   std::string name;
   std::string DebugString() const override { return name; }
   ~TmpVar() override { VLOG(3) << "TmpVar " << name << " deleted"; }
@@ -364,18 +367,24 @@ void TF_TemporaryVariable(TF_OpKernelContext* ctx, TF_DataType dtype,
 
   Status s;
   std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> tmp_var_tf(
-      tensorflow::TF_TensorFromTensor(tmp_var->val, &s), TF_DeleteTensor);
+      nullptr, TF_DeleteTensor);
+  {
+    mutex_lock l(tmp_var->mu);
+    tmp_var_tf.reset(tensorflow::TF_TensorFromTensor(tmp_var->val, &s));
+  }
   OP_REQUIRES_OK(context, s);
   allocFunc(ctx, tmp_var_tf.get(), dtype, dims, num_dims, tf_status);
   s = tensorflow::StatusFromTF_Status(tf_status);
   if (!s.ok()) tmp_var->Unref();
   OP_REQUIRES_OK(context, s);
 
-  OP_REQUIRES_OK(context, TF_TensorToTensor(tmp_var_tf.get(), &tmp_var->val));
+  {
+    mutex_lock l(tmp_var->mu);
+    OP_REQUIRES_OK(context, TF_TensorToTensor(tmp_var_tf.get(), &tmp_var->val));
+  }
   OP_REQUIRES_OK(context,
                  context->step_container()->Create(rm, unique_name, tmp_var));
   context->set_output_ref(0, &tmp_var->mu, &tmp_var->val);
-
   if (context->track_allocations()) {
     mutex_lock l(tmp_var->mu);
     context->record_persistent_memory_allocation(tmp_var->val.AllocatedBytes());
@@ -449,7 +458,7 @@ void TF_MaybeLockVariableInputMutexesInOrder(
     tensorflow::mutex* mutex = GetTrainingVariableMutex(ctx, input, &var);
     if (var) vars.push_back(var);
     // Only lock each mutex once if duplicates exist (n^2 but n is 2 or 3).
-    if (std::find(mutexes.begin(), mutexes.end(), mutex) == mutexes.end()) {
+    if (absl::c_find(mutexes, mutex) == mutexes.end()) {
       acquire_order.push_back(mutexes.size());
       mutexes.push_back(mutex);
     }
@@ -539,6 +548,7 @@ void TF_OpKernelContext_ForwardRefInputToRefOutput(TF_OpKernelContext* ctx,
 void TF_ReleaseVariableInputLockHolder(TF_VariableInputLockHolder* lockHolder) {
   if (lockHolder != nullptr) {
     lockHolder->locks.reset();
+    lockHolder->shared_locks.reset();
     for (tensorflow::Var* var : lockHolder->vars) {
       var->Unref();
     }
@@ -646,11 +656,15 @@ static Status CCBinaryAddFunc(
         cc_out->scalar<Variant>().data(), binary_add_func);
   } else {
     TF_Tensor* a = TF_TensorFromTensor(cc_a, &status);
-    TF_RETURN_IF_ERROR(status);
+    if (!status.ok()) {
+      TF_DeleteTensor(a);
+      return status;
+    }
 
     TF_Tensor* b = TF_TensorFromTensor(cc_b, &status);
     if (!status.ok()) {
       TF_DeleteTensor(a);
+      TF_DeleteTensor(b);
       return status;
     }
 
@@ -658,11 +672,16 @@ static Status CCBinaryAddFunc(
     if (!status.ok()) {
       TF_DeleteTensor(a);
       TF_DeleteTensor(b);
+      TF_DeleteTensor(out);
       return status;
     }
 
     auto* ctx = reinterpret_cast<TF_OpKernelContext*>(cc_ctx);
     binary_add_func(ctx, a, b, out);
+
+    TF_DeleteTensor(a);
+    TF_DeleteTensor(b);
+    TF_DeleteTensor(out);
     return cc_ctx->status();
   }
 }
@@ -766,16 +785,23 @@ static Status ZerosLikeVariant(::tensorflow::OpKernelContext* cc_ctx,
       default: {
         Status status;
         TF_Tensor* input = TF_TensorFromTensor(cc_input, &status);
-        TF_RETURN_IF_ERROR(status);
-
-        TF_Tensor* out = TF_TensorFromTensor(*cc_out, &status);
         if (!status.ok()) {
           TF_DeleteTensor(input);
           return status;
         }
 
+        TF_Tensor* out = TF_TensorFromTensor(*cc_out, &status);
+        if (!status.ok()) {
+          TF_DeleteTensor(input);
+          TF_DeleteTensor(out);
+          return status;
+        }
+
         auto* ctx = reinterpret_cast<TF_OpKernelContext*>(cc_ctx);
         zeros_like_func(ctx, input, out);
+
+        TF_DeleteTensor(input);
+        TF_DeleteTensor(out);
       }
     }
     return cc_ctx->status();

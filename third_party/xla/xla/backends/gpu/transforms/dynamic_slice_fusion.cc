@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -45,6 +46,35 @@ limitations under the License.
 namespace xla::gpu {
 
 using Offset = DynamicSliceFusion::Offset;
+
+static bool IsScalarInteger(const Shape& shape) {
+  return ShapeUtil::IsScalar(shape) &&
+         primitive_util::IsIntegralType(shape.element_type());
+}
+
+static bool IsScalarIntegerOrPred(const Shape& shape) {
+  return IsScalarInteger(shape) ||
+         ShapeUtil::IsScalarWithElementType(shape, PRED);
+}
+
+bool Offset::IsExpr(const HloInstruction* instr) {
+  switch (instr->opcode()) {
+    case HloOpcode::kParameter:
+    case HloOpcode::kConstant:
+      return IsScalarIntegerOrPred(instr->shape());
+    case HloOpcode::kAdd:
+    case HloOpcode::kSubtract:
+    case HloOpcode::kMultiply:
+      return IsScalarInteger(instr->shape());
+    case HloOpcode::kCompare:
+      return IsScalarInteger(instr->operand(0)->shape()) &&
+             IsScalarInteger(instr->operand(1)->shape());
+    case HloOpcode::kSelect:
+      return IsScalarIntegerOrPred(instr->shape());
+    default:
+      return false;
+  }
+}
 
 Offset::Expr Offset::Constant(int64_t value) {
   return {Offset::Expr::Constant{value}};
@@ -130,11 +160,11 @@ static absl::StatusOr<int64_t> GetScalarIntegerLiteral(
   switch (constant->shape().element_type()) {
     case PRED:
       return constant->literal().GetFirstElement<bool>() ? 1 : 0;
-    case S32:
-      return constant->literal().GetFirstElement<int32_t>();
-    case S64:
-      return constant->literal().GetFirstElement<int64_t>();
     default:
+      if (std::optional<int64_t> value = constant->literal().GetFirstInteger();
+          value.has_value()) {
+        return *value;
+      }
       return Internal(
           "DynamicSliceFusion: expected integer or pred offset constant, "
           "got %s",
@@ -145,6 +175,13 @@ static absl::StatusOr<int64_t> GetScalarIntegerLiteral(
 static absl::StatusOr<Offset::Expr> BuildOffsetExpr(
     const HloInstruction* instr) {
   instr = WalkThroughBitcasts(instr);
+
+  if (!Offset::IsExpr(instr)) {
+    return Internal(
+        "DynamicSliceFusion: expected DS/DUS offset to be a scalar "
+        "expression of fusion parameters and constants, got %s",
+        instr->ToString());
+  }
 
   if (auto* parameter = DynCast<HloParameterInstruction>(instr)) {
     return Offset::Parameter(parameter->parameter_number());
@@ -185,13 +222,9 @@ static absl::StatusOr<Offset::Expr> BuildOffsetExpr(
       return Offset::Select(std::move(pred), std::move(on_true),
                             std::move(on_false));
     }
-    case HloOpcode::kConvert:
-      return BuildOffsetExpr(instr->operand(0));
     default:
-      return Internal(
-          "DynamicSliceFusion: expected DS/DUS offset to be a scalar "
-          "expression of fusion parameters and constants, got %s",
-          instr->ToString());
+      return Internal("Unsupported offset expression opcode: %s",
+                      instr->ToString());
   }
 }
 
@@ -326,8 +359,7 @@ static absl::flat_hash_set<const HloInstruction*> CollectOffsetInstructions(
     if (!offsets.insert(instr).second) {
       return;
     }
-    if (instr->opcode() == HloOpcode::kParameter ||
-        instr->opcode() == HloOpcode::kConstant) {
+    if (HloPredicateIsOp<HloOpcode::kParameter, HloOpcode::kConstant>(instr)) {
       return;
     }
     for (const HloInstruction* operand : instr->operands()) {

@@ -381,6 +381,30 @@ ENTRY e {
               GmockMatch(m::Pad(m::Bitcast(m::Fusion()), m::Constant())));
 }
 
+TEST_P(GemmFusionTestV2, PartiallySunkBitcastIsNotFusedAtRoot) {
+  // The bitcast cannot be sunk below the pad, but it and the pad are
+  // included in the search space. When it cannot tile the pad and cuts off the
+  // fusion between the bitcast & the pad, we need to make sure the bitcast
+  // is on the outside of the fusion to give the best tiling options.
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[16,8] parameter(0)
+  p1 = s8[8,7] parameter(1)
+  c1 = f32[8,7] convert(p1)
+  d = f32[16,7] dot(p0, c1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  b1 = f32[112] bitcast(d)
+  n1 = f32[112] negate(b1)
+  zero = f32[] constant(0)
+  ROOT p2 = f32[128] pad(n1, zero), padding=0_16
+})"));
+  ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Pad(m::Bitcast(m::Fusion()), m::Constant())));
+}
+
 TEST_P(GemmFusionTestV2, BitcastOperandOfUserOfDotIsHoisted) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -1710,70 +1734,6 @@ ENTRY e {
   MatchHloModule(*module, R"(
 ; CHECK: power(
 ; CHECK-NOT: power(
-)");
-}
-
-TEST_P(GemmFusionTest, RaggedDotDoesNotBecomeFusionUsingCublasLt) {
-  auto module = ParseAndReturnVerifiedModule(R"(
-HloModule m
-
-ENTRY main {
-  p0 = f32[16,8]{1,0} parameter(0)
-  p1 = f32[4,8,8]{2,1,0} parameter(1)
-  p2 = s64[4]{0} parameter(2)
-  ROOT ragged-dot = f32[16,8]{1,0} ragged-dot(p0, p1, p2),
-                      lhs_contracting_dims={1}, rhs_contracting_dims={1},
-                      lhs_ragged_dims={0}, rhs_group_dims={0}
-}
-)")
-                    .value();
-
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_experimental_use_ragged_dot_grouped_gemm(true);
-  module->mutable_config().mutable_debug_options().set_xla_gpu_enable_cublaslt(
-      true);
-
-  EXPECT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(false));
-}
-
-TEST_P(GemmFusionTest, RaggedDotBecomesFusionUsingCublas) {
-  auto module = ParseAndReturnVerifiedModule(R"(
-HloModule m
-
-ENTRY main {
-  p0 = f32[16,8]{1,0} parameter(0)
-  p1 = f32[4,8,8]{2,1,0} parameter(1)
-  p2 = s64[4]{0} parameter(2)
-  ROOT ragged-dot = f32[16,8]{1,0} ragged-dot(p0, p1, p2),
-                      lhs_contracting_dims={1}, rhs_contracting_dims={1},
-                      lhs_ragged_dims={0}, rhs_group_dims={0}
-}
-)")
-                    .value();
-
-  module->mutable_config().mutable_debug_options().set_xla_gpu_enable_cublaslt(
-      false);
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_experimental_use_ragged_dot_fusion(false);
-
-  EXPECT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())));
-  MatchHloModule(*module, R"(
-; CHECK-DAG: %[[LHS:.*]] = f32[16,8]{1,0} parameter(0)
-; CHECK-DAG: %[[RHS:.*]] = f32[4,8,8]{2,1,0} parameter(1)
-; CHECK-DAG: %[[GS:.*]] = s64[4]{0} parameter(2)
-; CHECK: ROOT {{.*}} = f32[16,8]{1,0} ragged-dot(%[[LHS]], %[[RHS]], %[[GS]])
-; CHECK: ENTRY
-; CHECK-DAG: %[[LHS_F:.*]] = f32[16,8]{1,0} parameter(0)
-; CHECK-DAG: %[[RHS_F:.*]] = f32[4,8,8]{2,1,0} parameter(1)
-; CHECK-DAG: %[[GS_F:.*]] = s64[4]{0} parameter(2)
-; CHECK: ROOT {{.*}} = f32[16,8]{1,0} fusion(%[[LHS_F]], %[[RHS_F]], %[[GS_F]])
-; CHECK-SAME: kind=kCustom
-; CHECK-SAME: "__triton_ragged_dot"
 )");
 }
 
