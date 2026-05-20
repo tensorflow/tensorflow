@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -79,10 +80,9 @@ absl::StatusOr<DotContext> Dot(int b, int m, int n, int k,
        lhs_contracting_dims={2}, rhs_contracting_dims={1},
        lhs_batch_dims={0}, rhs_batch_dims={0}
     })";
-  TF_ASSIGN_OR_RETURN(
-      auto module,
-      ParseAndReturnUnverifiedModule(absl::Substitute(
-          kTemplate, b, m, k, n, lhs_type, rhs_type, result_type)));
+  ASSIGN_OR_RETURN(auto module, ParseAndReturnUnverifiedModule(absl::Substitute(
+                                    kTemplate, b, m, k, n, lhs_type, rhs_type,
+                                    result_type)));
   return DotContext{
       /*dot=*/module->entry_computation()->root_instruction(),
       /*module=*/std::move(module),
@@ -138,9 +138,9 @@ class MatmulInterpolatorParamTest : public TestWithParam<ParametrizedTestCase> {
       absl::Span<const DotSpec> specs) {
     HloInstructionProfileList list;
     for (DotSpec spec : specs) {
-      TF_ASSIGN_OR_RETURN(DotContext dot_context,
-                          Dot(spec.b, spec.m, spec.n, spec.k, spec.lhs_type,
-                              spec.rhs_type, spec.result_type));
+      ASSIGN_OR_RETURN(DotContext dot_context,
+                       Dot(spec.b, spec.m, spec.n, spec.k, spec.lhs_type,
+                           spec.rhs_type, spec.result_type));
       AddProfileEntry(std::move(dot_context), spec.clock_cycles, list);
     }
     return list;

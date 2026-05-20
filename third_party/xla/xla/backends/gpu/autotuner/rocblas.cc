@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -63,9 +64,8 @@ RocblasBackend::GetSupportedConfigs(const HloInstruction& instr) {
   std::unique_ptr<se::DeviceAddressAllocator> allocator =
       std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
           stream_executor());
-  TF_ASSIGN_OR_RETURN(
-      se::Stream * stream,
-      allocator->GetStream(stream_executor()->device_ordinal()));
+  ASSIGN_OR_RETURN(se::Stream * stream,
+                   allocator->GetStream(stream_executor()->device_ordinal()));
 
   // We use GemmConfig::For with GemmBackendConfig as a fallback because
   // Matmul_utils.cc relies on backend config to determine gemm contracting
@@ -73,7 +73,7 @@ RocblasBackend::GetSupportedConfigs(const HloInstruction& instr) {
   GemmBackendConfig backend_config;
   backend_config =
       instr.backend_config<GpuBackendConfig>()->gemm_backend_config();
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       GemmConfig gemm_config,
       GemmConfig::For(
           &instr, backend_config,
@@ -81,8 +81,8 @@ RocblasBackend::GetSupportedConfigs(const HloInstruction& instr) {
 
   auto create_matrix_desc = [](const se::gpu::MatrixLayout& layout)
       -> absl::StatusOr<se::gpu::MatrixDescriptor> {
-    TF_ASSIGN_OR_RETURN(se::blas::DataType type,
-                        se::gpu::AsBlasDataType(layout.dtype));
+    ASSIGN_OR_RETURN(se::blas::DataType type,
+                     se::gpu::AsBlasDataType(layout.dtype));
     return se::gpu::MatrixDescriptor{
         /*data=*/se::DeviceAddressBase(), layout.leading_dim_stride,
         layout.batch_stride, type,
@@ -92,19 +92,19 @@ RocblasBackend::GetSupportedConfigs(const HloInstruction& instr) {
              : se::blas::Transpose::kTranspose)};
   };
 
-  TF_ASSIGN_OR_RETURN(se::gpu::MatrixDescriptor lhs_desc,
-                      create_matrix_desc(gemm_config.lhs_layout));
-  TF_ASSIGN_OR_RETURN(se::gpu::MatrixDescriptor rhs_desc,
-                      create_matrix_desc(gemm_config.rhs_layout));
-  TF_ASSIGN_OR_RETURN(se::gpu::MatrixDescriptor output_desc_base,
-                      create_matrix_desc(gemm_config.output_layout));
+  ASSIGN_OR_RETURN(se::gpu::MatrixDescriptor lhs_desc,
+                   create_matrix_desc(gemm_config.lhs_layout));
+  ASSIGN_OR_RETURN(se::gpu::MatrixDescriptor rhs_desc,
+                   create_matrix_desc(gemm_config.rhs_layout));
+  ASSIGN_OR_RETURN(se::gpu::MatrixDescriptor output_desc_base,
+                   create_matrix_desc(gemm_config.output_layout));
 
   se::gpu::OutputMatrixDescriptor out_desc(std::move(output_desc_base));
   out_desc.batch_size = gemm_config.output_layout.batch_size;
   out_desc.m = gemm_config.output_layout.num_rows;
   out_desc.n = gemm_config.output_layout.num_cols;
   out_desc.k = gemm_config.lhs_layout.num_cols;
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       out_desc.compute_type,
       se::gpu::GetBlasComputationType(
           gemm_config.precision_algorithm, gemm_config.lhs_layout.dtype,
@@ -159,13 +159,13 @@ absl::Status RocblasBackend::ApplyConfig(HloInstruction& instr,
   if (ShouldUseHipblasLt(instr) && gemm_key.algorithm() == -1) {
     gemm_key.set_algorithm(0);
   }
-  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                      instr.backend_config<GpuBackendConfig>());
+  ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                   instr.backend_config<GpuBackendConfig>());
   GemmBackendConfig& backend_config = *gpu_config.mutable_gemm_backend_config();
   backend_config.set_selected_algorithm(gemm_key.algorithm());
   backend_config.set_autotune_workspace_size(
       gemm_key.autotune_workspace_size());
-  TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
+  RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
 
   if (instr.shape().IsTuple() && !instr.shape().tuple_shapes().empty()) {
     Shape* workspace_shape = instr.mutable_shape()->mutable_tuple_shapes(

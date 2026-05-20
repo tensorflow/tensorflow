@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/array.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
@@ -607,7 +608,7 @@ template <PrimitiveType type, typename T>
   using NativeT = primitive_util::NativeTypeOf<type>;
   TF_RET_CHECK(shape.element_type() == type);
   Literal literal(shape);
-  TF_RETURN_IF_ERROR(literal.Populate<NativeT>(
+  RETURN_IF_ERROR(literal.Populate<NativeT>(
       [=](absl::Span<const int64_t> indexes) { return generator(indexes); }));
   return std::move(literal);
 }

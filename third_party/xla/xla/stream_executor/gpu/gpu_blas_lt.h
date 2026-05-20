@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_address.h"
@@ -245,8 +246,7 @@ struct BlasLt {
         ScratchAllocator& scratch_allocator,
         blas::ProfileResult* profile_result = nullptr) const {
       // Temporary hack until Tensorflow side is fixed
-      TF_RETURN_IF_ERROR(
-          const_cast<MatmulPlan*>(this)->SetAlgorithm(algorithm));
+      RETURN_IF_ERROR(const_cast<MatmulPlan*>(this)->SetAlgorithm(algorithm));
       return ExecuteOnStream(stream,
                              MemoryArgs{a,
                                         b,

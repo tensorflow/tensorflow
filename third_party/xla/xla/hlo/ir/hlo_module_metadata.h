@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/env.h"
@@ -139,8 +140,8 @@ class HloModuleMetadata {
   absl::Status set_key_value_metric(const std::string& key, int64_t value);
 
   absl::StatusOr<int64_t> current_pass_id() {
-    TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
-                        GetCurrentHloPassMetadata());
+    ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
+                     GetCurrentHloPassMetadata());
     return pass_metadata->pass_id();
   }
 

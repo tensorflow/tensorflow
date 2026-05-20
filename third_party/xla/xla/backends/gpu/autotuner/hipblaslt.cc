@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -212,23 +213,23 @@ HipblasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
   if (!IsSupported(instr)) {
     return std::vector<std::unique_ptr<BackendConfig>>();
   } else if (IsCublasLtMatmul(instr) || IsCublasLtMatmulF8(instr)) {
-    TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                        instr.backend_config<GpuBackendConfig>());
+    ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                     instr.backend_config<GpuBackendConfig>());
     const GemmBackendConfig& backend_config = gpu_config.gemm_backend_config();
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         GemmConfig gemm_config,
         GemmConfig::For(
             &instr,
             target_config().device_description.gpu_compute_capability()));
 
-    TF_ASSIGN_OR_RETURN(BlasLt::Epilogue epilogue,
-                        AsBlasLtEpilogue(backend_config.epilogue()));
+    ASSIGN_OR_RETURN(BlasLt::Epilogue epilogue,
+                     AsBlasLtEpilogue(backend_config.epilogue()));
 
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
-                        stream_executor()->CreateStream());
+    ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
+                     stream_executor()->CreateStream());
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         std::unique_ptr<BlasLt::MatmulPlan> plan,
         se::gpu::BlasLt::GetMatmulPlan(stream.get(), gemm_config, epilogue));
 
@@ -241,7 +242,7 @@ HipblasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
     const int64_t workspace_size =
         ShapeUtil::ByteSizeOf(output_shape.tuple_shapes().back());
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         std::vector<BlasLt::MatmulAlgorithm> algorithms,
         plan->GetAlgorithms(stream.get(), GemmConfig::kNumAlgorithms,
                             workspace_size));
@@ -287,8 +288,8 @@ HipblasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
       return std::vector<std::unique_ptr<BackendConfig>>();
     }
 
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
-                        stream_executor()->CreateStream());
+    ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
+                     stream_executor()->CreateStream());
     auto plan_or = se::gpu::BlasLt::GetMatmulPlan(stream.get(), *gemm_config_or,
                                                   BlasLt::Epilogue::kDefault);
     if (!plan_or.ok()) {
@@ -297,7 +298,7 @@ HipblasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
     }
 
     int64_t workspace_size = GemmConfig::kGFX950Workspace;
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         std::vector<BlasLt::MatmulAlgorithm> algorithms,
         (*plan_or)->GetAlgorithms(stream.get(), GemmConfig::kNumAlgorithms,
                                   workspace_size));
@@ -318,11 +319,11 @@ HipblasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
     }
     return configs;
   } else if (IsCublasLtGroupedMatmul(instr)) {
-    TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                        instr.backend_config<GpuBackendConfig>());
+    ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                     instr.backend_config<GpuBackendConfig>());
 
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
-                        stream_executor()->CreateStream());
+    ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
+                     stream_executor()->CreateStream());
 
     std::unique_ptr<BlasLt::MatmulPlan> plan;
     int64_t workspace_size;
@@ -331,17 +332,17 @@ HipblasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
     const GemmBackendConfig& backend_config =
         grouped_config.gemm_backend_config();
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         GroupedGemmConfig grouped_gemm_config,
         GroupedGemmConfig::For(
             &instr,
             target_config().device_description.gpu_compute_capability()));
 
-    TF_ASSIGN_OR_RETURN(BlasLt::Epilogue epilogue,
-                        AsBlasLtEpilogue(backend_config.epilogue()));
+    ASSIGN_OR_RETURN(BlasLt::Epilogue epilogue,
+                     AsBlasLtEpilogue(backend_config.epilogue()));
 
-    TF_ASSIGN_OR_RETURN(plan, se::gpu::BlasLt::GetGroupedMatmulPlan(
-                                  stream.get(), grouped_gemm_config, epilogue));
+    ASSIGN_OR_RETURN(plan, se::gpu::BlasLt::GetGroupedMatmulPlan(
+                               stream.get(), grouped_gemm_config, epilogue));
 
     const Shape& output_shape = instr.shape();
     if (!output_shape.IsTuple() || output_shape.tuple_shapes().empty()) {
@@ -351,7 +352,7 @@ HipblasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
     }
     workspace_size = ShapeUtil::ByteSizeOf(output_shape.tuple_shapes().back());
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         std::vector<BlasLt::MatmulAlgorithm> algorithms,
         plan->GetAlgorithms(stream.get(), GemmConfig::kNumAlgorithms,
                             workspace_size));
@@ -395,14 +396,14 @@ absl::Status HipblasLtBackend::ApplyConfig(HloInstruction& instr,
   }
 
   if (IsCublasLtMatmul(instr) || IsCublasLtMatmulF8(instr)) {
-    TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                        instr.backend_config<GpuBackendConfig>());
+    ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                     instr.backend_config<GpuBackendConfig>());
     GemmBackendConfig& backend_config =
         *gpu_config.mutable_gemm_backend_config();
     backend_config.set_selected_algorithm(gemm_key.algorithm());
     backend_config.set_autotune_workspace_size(
         gemm_key.autotune_workspace_size());
-    TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
+    RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
 
     if (instr.shape().IsTuple() && !instr.shape().tuple_shapes().empty()) {
       Shape* workspace_shape = instr.mutable_shape()->mutable_tuple_shapes(
@@ -455,13 +456,13 @@ absl::Status HipblasLtBackend::ApplyConfig(HloInstruction& instr,
         parent->AddInstruction(HloInstruction::CreateCustomCall(
             output_shape, {lhs, rhs, lhs_scale, rhs_scale},
             kCublasLtMatmulMxCallTarget));
-    TF_RETURN_IF_ERROR(custom_call->set_backend_config(gpu_backend_config));
+    RETURN_IF_ERROR(custom_call->set_backend_config(gpu_backend_config));
     HloInstruction* gte = parent->AddInstruction(
         HloInstruction::CreateGetTupleElement(result_shape, custom_call, 0));
     return parent->ReplaceInstruction(&instr, gte);
   } else if (IsCublasLtGroupedMatmul(instr)) {
-    TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                        instr.backend_config<GpuBackendConfig>());
+    ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                     instr.backend_config<GpuBackendConfig>());
     GemmBackendConfig* backend_config =
         gpu_config.mutable_grouped_gemm_backend_config()
             ->mutable_gemm_backend_config();
@@ -469,7 +470,7 @@ absl::Status HipblasLtBackend::ApplyConfig(HloInstruction& instr,
     backend_config->set_selected_algorithm(gemm_key.algorithm());
     backend_config->set_autotune_workspace_size(
         gemm_key.autotune_workspace_size());
-    TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
+    RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
     return absl::OkStatus();
   }
 

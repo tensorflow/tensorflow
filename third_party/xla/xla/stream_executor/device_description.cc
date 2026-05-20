@@ -102,7 +102,7 @@ absl::StatusOr<DeviceDescription> DeviceDescription::FromProto(
   device_description.clock_rate_ghz_ = proto.clock_rate_ghz();
 
   if (proto.has_cuda_compute_capability()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         device_description.gpu_compute_capability_,
         CudaComputeCapability::FromProto(proto.cuda_compute_capability()));
   }
@@ -118,12 +118,12 @@ absl::StatusOr<DeviceDescription> DeviceDescription::FromProto(
   device_description.fpus_per_core_ = proto.fpus_per_core();
 
   if (proto.has_scalar_unit_description()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         device_description.scalar_unit_description_,
         ExecutionUnitDescription::FromProto(proto.scalar_unit_description()));
   }
   if (proto.has_matrix_unit_description()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         device_description.matrix_unit_description_,
         ExecutionUnitDescription::FromProto(proto.matrix_unit_description()));
   }
@@ -395,7 +395,7 @@ GpuComputeCapabilityProto GpuComputeCapability::ToProto() const {
 absl::StatusOr<GpuComputeCapability> GpuComputeCapability::FromProto(
     const GpuComputeCapabilityProto& proto) {
   if (proto.has_cuda_compute_capability()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         CudaComputeCapability cuda_compute_capability,
         CudaComputeCapability::FromProto(proto.cuda_compute_capability()));
     return GpuComputeCapability(cuda_compute_capability);

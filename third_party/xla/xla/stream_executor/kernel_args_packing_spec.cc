@@ -102,8 +102,8 @@ KernelArgsPackingSpec::BuildArguments(
   std::vector<std::vector<char>> result;
   result.reserve(kernel_arguments_.size());
   for (const KernelArgPackingSpec& kernel_argument : kernel_arguments_) {
-    TF_ASSIGN_OR_RETURN(result.emplace_back(),
-                        kernel_argument.BuildArgument(args));
+    ASSIGN_OR_RETURN(result.emplace_back(),
+                     kernel_argument.BuildArgument(args));
   }
   return std::make_unique<KernelArgsPackedVector>(std::move(result),
                                                   shared_memory_bytes);
@@ -151,8 +151,8 @@ KernelArgPackingRelocation::ToProto() const {
 absl::StatusOr<KernelArgPackingRelocation>
 KernelArgPackingRelocation::FromProto(
     const KernelArgPackingRelocationProto& proto) {
-  TF_ASSIGN_OR_RETURN(KernelArgPackingRelocation::Kind kind,
-                      FromProtoKind(proto.kind()));
+  ASSIGN_OR_RETURN(KernelArgPackingRelocation::Kind kind,
+                   FromProtoKind(proto.kind()));
   return KernelArgPackingRelocation(kind, proto.argument_index());
 }
 
@@ -160,8 +160,7 @@ absl::StatusOr<KernelArgsPackingSpecProto> KernelArgsPackingSpec::ToProto()
     const {
   KernelArgsPackingSpecProto proto;
   for (const KernelArgPackingSpec& kernel_argument : kernel_arguments_) {
-    TF_ASSIGN_OR_RETURN(*proto.add_kernel_arguments(),
-                        kernel_argument.ToProto());
+    ASSIGN_OR_RETURN(*proto.add_kernel_arguments(), kernel_argument.ToProto());
   }
   return proto;
 }
@@ -171,8 +170,8 @@ absl::StatusOr<KernelArgsPackingSpec> KernelArgsPackingSpec::FromProto(
   std::vector<KernelArgPackingSpec> kernel_arguments;
   for (const KernelArgPackingSpecProto& kernel_argument_proto :
        proto.kernel_arguments()) {
-    TF_ASSIGN_OR_RETURN(KernelArgPackingSpec kernel_argument,
-                        KernelArgPackingSpec::FromProto(kernel_argument_proto));
+    ASSIGN_OR_RETURN(KernelArgPackingSpec kernel_argument,
+                     KernelArgPackingSpec::FromProto(kernel_argument_proto));
     kernel_arguments.push_back(std::move(kernel_argument));
   }
   return KernelArgsPackingSpec(std::move(kernel_arguments));

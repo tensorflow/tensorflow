@@ -17,6 +17,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -37,7 +38,7 @@ absl::StatusOr<bool> StripMemoryPlacementAnnotations::RunImpl(
            instruction->custom_call_target() == "MoveToHost" ||
            instruction->custom_call_target() == "MoveToDevice")) {
         // Drop control dependencies if any exist (not expected but safe).
-        TF_RETURN_IF_ERROR(instruction->DropAllControlDeps());
+        RETURN_IF_ERROR(instruction->DropAllControlDeps());
         // Ensure the instruction has exactly one operand.
         TF_RET_CHECK(instruction->operand_count() == 1)
             << "Memory placement custom call should have exactly one operand: "
@@ -46,13 +47,13 @@ absl::StatusOr<bool> StripMemoryPlacementAnnotations::RunImpl(
         if (instruction->has_sharding() && !operand->has_sharding()) {
           operand->set_sharding(instruction->sharding());
         }
-        TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(operand));
+        RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(operand));
         // If the instruction is the root, update the computation's root.
         if (computation->root_instruction() == instruction) {
           computation->set_root_instruction(operand);
         }
         // Remove the custom call instruction.
-        TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
+        RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
         changed = true;
       }
     }

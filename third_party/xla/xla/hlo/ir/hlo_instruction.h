@@ -49,6 +49,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
@@ -2070,7 +2071,7 @@ class HloInstruction {
   template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
   absl::StatusOr<ConfigProto> backend_config() const {
     ConfigProto proto;
-    TF_RETURN_IF_ERROR(backend_config_->GetProto(&proto));
+    RETURN_IF_ERROR(backend_config_->GetProto(&proto));
     return proto;
   }
 

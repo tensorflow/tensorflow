@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
@@ -71,7 +72,7 @@ static bool IsAtLeastCuda12300(
 
 absl::StatusOr<std::vector<const CommandBuffer::Command*>> Wrap(
     absl::StatusOr<const CommandBuffer::Command*> command) {
-  TF_RETURN_IF_ERROR(command.status());
+  RETURN_IF_ERROR(command.status());
   return std::vector<const CommandBuffer::Command*>{*command};
 }
 

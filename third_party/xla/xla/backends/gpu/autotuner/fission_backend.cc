@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/transforms/priority_fusion.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -88,8 +89,8 @@ FissionBackend::GetSupportedConfigs(const HloInstruction& instr) {
             << instr.ToString();
     return std::vector<std::unique_ptr<BackendConfig>>();
   }
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
-                      GetFissionedAndRewrittenModule(instr));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+                   GetFissionedAndRewrittenModule(instr));
   absl::StatusOr<HloInstruction*> supported_instr =
       FindFirstSupportedInstruction(hlo_module.get());
   if (supported_instr.status().code() == absl::StatusCode::kNotFound) {
@@ -97,7 +98,7 @@ FissionBackend::GetSupportedConfigs(const HloInstruction& instr) {
             << instr.ToString();
     return std::vector<std::unique_ptr<BackendConfig>>();
   }
-  TF_RETURN_IF_ERROR(supported_instr.status());
+  RETURN_IF_ERROR(supported_instr.status());
   return codegen_backend_->GetSupportedConfigs(**supported_instr);
 }
 
@@ -106,10 +107,10 @@ absl::StatusOr<std::unique_ptr<BackendConfig>> FissionBackend::GetDefaultConfig(
   if (!IsSupported(instr)) {
     return absl::InvalidArgumentError("Not a fusion instruction.");
   }
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
-                      GetFissionedAndRewrittenModule(instr));
-  TF_ASSIGN_OR_RETURN(HloInstruction * supported_instr,
-                      FindFirstSupportedInstruction(hlo_module.get()));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+                   GetFissionedAndRewrittenModule(instr));
+  ASSIGN_OR_RETURN(HloInstruction * supported_instr,
+                   FindFirstSupportedInstruction(hlo_module.get()));
   return codegen_backend_->GetDefaultConfig(*supported_instr);
 }
 
@@ -125,30 +126,30 @@ absl::Status FissionBackend::RunPriorityFusion(HloModule* module) {
 absl::StatusOr<std::unique_ptr<HloModule>> FissionBackend::RunHloPasses(
     std::unique_ptr<HloModule> hlo_module,
     const Compiler::CompileOptions& options) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       codegen_backend_->RunHloPasses(std::move(hlo_module), options));
 
-  TF_RETURN_IF_ERROR(RunPriorityFusion(module.get()));
+  RETURN_IF_ERROR(RunPriorityFusion(module.get()));
   return module;
 }
 
 absl::Status FissionBackend::ApplyConfig(HloInstruction& instr,
                                          const BackendConfig& config) {
   HloModule* module = instr.GetModule();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
-                      GetFissionedAndRewrittenModule(instr));
-  TF_ASSIGN_OR_RETURN(HloInstruction * supported_instr,
-                      FindFirstSupportedInstruction(hlo_module.get()));
-  TF_RETURN_IF_ERROR(codegen_backend_->ApplyConfig(*supported_instr, config));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+                   GetFissionedAndRewrittenModule(instr));
+  ASSIGN_OR_RETURN(HloInstruction * supported_instr,
+                   FindFirstSupportedInstruction(hlo_module.get()));
+  RETURN_IF_ERROR(codegen_backend_->ApplyConfig(*supported_instr, config));
 
   // Given that the autotuner runs post fusion, we have to run priority fusion
   // again to fuse the epilogue and prologues.
   if (debug_options().xla_gpu_experimental_autotune_post_fusion()) {
-    TF_RETURN_IF_ERROR(RunPriorityFusion(hlo_module.get()));
+    RETURN_IF_ERROR(RunPriorityFusion(hlo_module.get()));
   }
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       InlineFissionedComputation(&instr, hlo_module->entry_computation()));
   return module->RemoveUnusedComputations();
 }
@@ -163,7 +164,7 @@ FissionBackend::GetFissionedAndRewrittenModule(
   const auto* fusion = Cast<HloFusionInstruction>(&fusion_instr);
   std::unique_ptr<HloModule> hlo_module =
       ExtractComputationIntoNewModule(*fusion->called_computation());
-  TF_RETURN_IF_ERROR(rewriter_pipeline_->Run(hlo_module.get()).status());
+  RETURN_IF_ERROR(rewriter_pipeline_->Run(hlo_module.get()).status());
   return hlo_module;
 }
 

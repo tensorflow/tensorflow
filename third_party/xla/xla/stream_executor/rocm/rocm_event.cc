@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/event.h"
@@ -37,9 +38,8 @@ namespace {
 absl::Status WaitStreamOnEvent(StreamExecutor *executor, hipStream_t stream,
                                hipEvent_t event) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
-  TF_RETURN_IF_ERROR(
-      ToStatus(hipStreamWaitEvent(stream, event, 0 /* = flags */),
-               "could not wait stream on event"));
+  RETURN_IF_ERROR(ToStatus(hipStreamWaitEvent(stream, event, 0 /* = flags */),
+                           "could not wait stream on event"));
   return absl::OkStatus();
 }
 
@@ -110,7 +110,7 @@ absl::Status RocmEvent::WaitForEventOnExternalStream(std::intptr_t stream) {
 
 absl::StatusOr<RocmEvent> RocmEvent::Create(StreamExecutor *executor,
                                             bool allow_timing) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       hipEvent_t event_handle,
       InitEvent(executor, allow_timing ? EventFlags::kDefault
                                        : EventFlags::kDisableTiming));

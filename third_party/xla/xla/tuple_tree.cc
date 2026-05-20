@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -104,7 +105,7 @@ absl::Status IndexTable::IsSubtreeCompatible(const IndexTable& other_table,
     const Entry* other_child =
         &other_entries[other_entry->children_start_id + i];
     const Entry* this_child = &this_entries[this_entry->children_start_id + i];
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         IsSubtreeCompatible(other_table, other_child, this_table, this_child));
   }
   return absl::OkStatus();
@@ -193,7 +194,7 @@ absl::StatusOr<const IndexTable::Entry*> IndexTable::GetEntry(
 
 absl::StatusOr<IndexTable> IndexTable::CreateFromSubtree(
     const IndexTable& original_table, const ShapeIndex& index) {
-  TF_ASSIGN_OR_RETURN(const Entry* root_entry, original_table.GetEntry(index));
+  ASSIGN_OR_RETURN(const Entry* root_entry, original_table.GetEntry(index));
 
   size_t num_nodes = CountSubtreeNodes(original_table, root_entry);
   if (num_nodes == 0) {

@@ -115,8 +115,8 @@ absl::StatusOr<absl::string_view> GetEmbeddedGpuTargetConfigData(
 
 absl::StatusOr<stream_executor::GpuTargetConfigProto> GetGpuTargetConfig(
     GpuModel gpu_model) {
-  TF_ASSIGN_OR_RETURN(absl::string_view gpu_spec,
-                      GetEmbeddedGpuTargetConfigData(gpu_model));
+  ASSIGN_OR_RETURN(absl::string_view gpu_spec,
+                   GetEmbeddedGpuTargetConfigData(gpu_model));
 
   stream_executor::GpuTargetConfigProto config;
   if (!google::protobuf::TextFormat::ParseFromString(gpu_spec, &config)) {
@@ -151,9 +151,8 @@ bool GpuTargetConfig::operator==(const GpuTargetConfig& other) const {
 absl::StatusOr<GpuTargetConfig> GpuTargetConfig::FromProto(
     const se::GpuTargetConfigProto& proto) {
   GpuTargetConfig target_config;
-  TF_ASSIGN_OR_RETURN(
-      target_config.device_description,
-      se::DeviceDescription::FromProto(proto.gpu_device_info()));
+  ASSIGN_OR_RETURN(target_config.device_description,
+                   se::DeviceDescription::FromProto(proto.gpu_device_info()));
   target_config.platform_name = proto.platform_name();
   target_config.dnn_version_info =
       se::dnn::VersionInfo(proto.dnn_version_info());

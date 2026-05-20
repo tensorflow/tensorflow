@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -129,13 +130,13 @@ absl::StatusOr<InterpolationSpecification> Spec(
         "Expected dot, got: ", profile.instruction().DebugString()));
   }
 
-  TF_ASSIGN_OR_RETURN(Shape lhs_shape,
-                      Shape::FromProto(profile.operands(0).shape()));
-  TF_ASSIGN_OR_RETURN(Shape rhs_shape,
-                      Shape::FromProto(profile.operands(1).shape()));
+  ASSIGN_OR_RETURN(Shape lhs_shape,
+                   Shape::FromProto(profile.operands(0).shape()));
+  ASSIGN_OR_RETURN(Shape rhs_shape,
+                   Shape::FromProto(profile.operands(1).shape()));
   DotDimensionNumbers dot_dims = profile.instruction().dot_dimension_numbers();
-  TF_ASSIGN_OR_RETURN(Shape out_shape,
-                      Shape::FromProto(profile.instruction().shape()));
+  ASSIGN_OR_RETURN(Shape out_shape,
+                   Shape::FromProto(profile.instruction().shape()));
   return ExtractDotSpec(dot_dims, lhs_shape, rhs_shape, out_shape);
 }
 
@@ -231,8 +232,8 @@ MatmulInterpolator::Create(const HloInstructionProfileList& profiles,
                            const se::DeviceDescription& device_info) {
   auto interpolator = std::make_unique<EuclideanNNInterpolator<int64_t, 4>>();
   for (auto& profile : profiles.entries()) {
-    TF_ASSIGN_OR_RETURN(InterpolationSpecification spec,
-                        Spec(profile, device_info));
+    ASSIGN_OR_RETURN(InterpolationSpecification spec,
+                     Spec(profile, device_info));
     std::array<int64_t, 4> point = {
         spec.b,
         spec.m,
@@ -250,8 +251,8 @@ MatmulInterpolator::Create(const HloInstructionProfileList& profiles,
 
 /*static*/ absl::StatusOr<std::unique_ptr<MatmulInterpolator>>
 MatmulInterpolator::Create(const se::DeviceDescription& device_info) {
-  TF_ASSIGN_OR_RETURN(GemmPerfTableEntryValues table,
-                      ReadDefaultProfile(device_info));
+  ASSIGN_OR_RETURN(GemmPerfTableEntryValues table,
+                   ReadDefaultProfile(device_info));
   absl::flat_hash_map<MatmulDTypeKey,
                       std::vector<InterpolationSpecificationFlops>>
       spec_map;

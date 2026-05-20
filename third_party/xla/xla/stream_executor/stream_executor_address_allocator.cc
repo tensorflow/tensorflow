@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
@@ -51,8 +52,8 @@ absl::StatusOr<ScopedDeviceAddress<uint8_t>>
 StreamExecutorAddressAllocator::Allocate(int device_ordinal, uint64_t size,
                                          bool retry_on_failure,
                                          int64_t memory_space) {
-  TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
-                      GetStreamExecutor(device_ordinal));
+  ASSIGN_OR_RETURN(StreamExecutor * executor,
+                   GetStreamExecutor(device_ordinal));
   DeviceAddressBase result =
       executor->AllocateArray<uint8_t>(size, memory_space);
   if (size > 0 && result == nullptr) {
@@ -69,8 +70,8 @@ StreamExecutorAddressAllocator::Allocate(int device_ordinal, uint64_t size,
 absl::Status StreamExecutorAddressAllocator::Deallocate(int device_ordinal,
                                                         DeviceAddressBase mem) {
   if (!mem.is_null()) {
-    TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
-                        GetStreamExecutor(device_ordinal));
+    ASSIGN_OR_RETURN(StreamExecutor * executor,
+                     GetStreamExecutor(device_ordinal));
     VLOG(3) << absl::StreamFormat("Freeing %p on device ordinal %d",
                                   mem.opaque(), device_ordinal);
     executor->Deallocate(&mem);
@@ -102,11 +103,11 @@ absl::StatusOr<Stream*> StreamExecutorAddressAllocator::GetStream(
     int device_ordinal) {
   CHECK(!AllowsAsynchronousDeallocation())
       << "The logic below only works for synchronous allocators";
-  TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
-                      GetStreamExecutor(device_ordinal));
+  ASSIGN_OR_RETURN(StreamExecutor * executor,
+                   GetStreamExecutor(device_ordinal));
   absl::MutexLock lock(mutex_);
   if (!streams_.count(device_ordinal)) {
-    TF_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
+    ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
     auto stream_ptr = stream.get();
     stream_ptr->SetName("StreamExecutorAddressAllocator");
     streams_.emplace(device_ordinal, std::move(stream));

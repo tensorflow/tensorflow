@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -81,7 +82,7 @@ absl::Status DeviceAddressVmmAllocator::PopulateDevices(
     state->stream = cfg.stream;
     state->pa_budget = cfg.pa_budget;
 
-    TF_RETURN_IF_ERROR(allocator->InitializeDeviceState(*state));
+    RETURN_IF_ERROR(allocator->InitializeDeviceState(*state));
 
     VLOG(3) << "DeviceAddressVmmAllocator: registering device " << ordinal
             << " with pa_budget " << cfg.pa_budget;
@@ -230,15 +231,14 @@ absl::StatusOr<DeviceAddressBase> DeviceAddressVmmAllocator::AllocateWithBudget(
   }
 
   // Create physical memory allocation (e.g. cuMemCreate).
-  TF_ASSIGN_OR_RETURN(auto raw_alloc, CreateAllocation(state.executor, size));
+  ASSIGN_OR_RETURN(auto raw_alloc, CreateAllocation(state.executor, size));
   const uint64_t padded_size = raw_alloc->address().size();
 
   // Reserve virtual address range (e.g. cuMemAddressReserve).
-  TF_ASSIGN_OR_RETURN(auto reservation,
-                      CreateReservation(state.executor, size));
+  ASSIGN_OR_RETURN(auto reservation, CreateReservation(state.executor, size));
 
   // Map physical memory into the virtual address range and enable access.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto scoped_mapping,
       reservation->MapTo(/*reservation_offset=*/0, /*allocation_offset=*/0,
                          padded_size, *raw_alloc));
@@ -369,7 +369,7 @@ absl::Status DeviceAddressVmmAllocator::Deallocate(int device_ordinal,
   // timeline when the stream reaches this point. The CPU polls the timeline
   // value to know when it is safe to free the memory.
   uint64_t seqno = state->next_seqno++;
-  TF_RETURN_IF_ERROR(EnqueueDeferredDeallocation(*state, seqno));
+  RETURN_IF_ERROR(EnqueueDeferredDeallocation(*state, seqno));
 
   state->pending_deallocations.push_back({mem, seqno});
 

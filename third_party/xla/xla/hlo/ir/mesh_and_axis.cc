@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/tile_assignment.h"
@@ -467,7 +468,7 @@ absl::Status ValidateSpanOfAxes(absl::Span<const AxisRef> axes,
     return absl::OkStatus();
   }
   for (const AxisRef& axis : axes) {
-    TF_RETURN_IF_ERROR(axis.Validate(mesh));
+    RETURN_IF_ERROR(axis.Validate(mesh));
   }
   if (!AxesCanCoexistWithoutOverlap(axes)) {
     return absl::InvalidArgumentError("Axes cannot coexist or axes overlap.");

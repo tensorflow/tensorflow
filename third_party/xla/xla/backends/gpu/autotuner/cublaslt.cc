@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -93,18 +94,18 @@ CublasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
       instr.backend_config<GpuBackendConfig>().value();
   const GemmBackendConfig& backend_config = gpu_config.gemm_backend_config();
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       GemmConfig gemm_config,
       GemmConfig::For(
           &instr, target_config().device_description.gpu_compute_capability()));
 
-  TF_ASSIGN_OR_RETURN(BlasLt::Epilogue epilogue,
-                      AsBlasLtEpilogue(backend_config.epilogue()));
+  ASSIGN_OR_RETURN(BlasLt::Epilogue epilogue,
+                   AsBlasLtEpilogue(backend_config.epilogue()));
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
-                      stream_executor()->CreateStream());
+  ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
+                   stream_executor()->CreateStream());
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<BlasLt::MatmulPlan> plan,
       se::gpu::BlasLt::GetMatmulPlan(stream.get(), gemm_config, epilogue));
 
@@ -117,10 +118,9 @@ CublasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
   const int64_t workspace_size =
       ShapeUtil::ByteSizeOf(output_shape.tuple_shapes().back());
 
-  TF_ASSIGN_OR_RETURN(
-      std::vector<BlasLt::MatmulAlgorithm> algorithms,
-      plan->GetAlgorithms(stream.get(), GemmConfig::kNumAlgorithms,
-                          workspace_size));
+  ASSIGN_OR_RETURN(std::vector<BlasLt::MatmulAlgorithm> algorithms,
+                   plan->GetAlgorithms(stream.get(), GemmConfig::kNumAlgorithms,
+                                       workspace_size));
   int num_algorithms = algorithms.size();
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.reserve(num_algorithms);
@@ -160,13 +160,13 @@ absl::Status CublasLtBackend::ApplyConfig(HloInstruction& instr,
     return absl::InvalidArgumentError(
         "Failed to unpack CublasLtBackendConfig from Any.");
   }
-  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                      instr.backend_config<GpuBackendConfig>());
+  ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                   instr.backend_config<GpuBackendConfig>());
   GemmBackendConfig& backend_config = *gpu_config.mutable_gemm_backend_config();
   backend_config.set_selected_algorithm(gemm_key.algorithm());
   backend_config.set_autotune_workspace_size(
       gemm_key.autotune_workspace_size());
-  TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
+  RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
 
   if (instr.shape().IsTuple() && !instr.shape().tuple_shapes().empty()) {
     Shape* workspace_shape = instr.mutable_shape()->mutable_tuple_shapes(
