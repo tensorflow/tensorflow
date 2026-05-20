@@ -644,7 +644,7 @@ message DebugOptions {
   optional bool xla_gpu_enable_cub_radix_sort = 259;
 
   // Whether to use cuBLASLt for GEMMs on GPUs.
-  optional bool xla_gpu_enable_cublaslt = 166;
+  optional bool xla_gpu_enable_cublaslt = 166 [deprecated = true];
 
   optional bool xla_gpu_enable_cudnn_int8x32_convolution_reordering = 189;
 
