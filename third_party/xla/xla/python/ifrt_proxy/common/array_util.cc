@@ -27,6 +27,7 @@
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt_proxy/common/array_util.pb.h"
@@ -139,7 +140,7 @@ absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromMinimalMemRegion(
   // FromZerothElementPointer() currently returns an error for any situation
   // where the zeroth_element will is not equal to the place where the minimal
   // memory region starts.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto result,
       FromZerothElementPointer(mem_region.data(), dtype, shape, byte_strides));
 

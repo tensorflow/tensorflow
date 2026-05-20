@@ -35,6 +35,7 @@
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_device_description.h"
@@ -115,8 +116,7 @@ absl::StatusOr<std::unique_ptr<Client>> Client::Create(
   for (const auto& d : init_response.all_devices()) {
     absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>
         pjrt_device_attributes;
-    TF_ASSIGN_OR_RETURN(auto attributes,
-                        AttributeMap::FromProto(d.attributes()));
+    ASSIGN_OR_RETURN(auto attributes, AttributeMap::FromProto(d.attributes()));
     pjrt_device_attributes = ToPjRtAttributeMap(std::move(attributes));
 
     DeviceDescription desc(d.id(), init_response.process_index(),
@@ -176,9 +176,8 @@ absl::StatusOr<std::unique_ptr<Client>> Client::Create(
 
   AttributeMap client_attributes({});
   if (init_response.has_client_attributes()) {
-    TF_ASSIGN_OR_RETURN(
-        client_attributes,
-        AttributeMap::FromProto(init_response.client_attributes()));
+    ASSIGN_OR_RETURN(client_attributes, AttributeMap::FromProto(
+                                            init_response.client_attributes()));
   }
 
   auto client = absl::WrapUnique(new Client(
@@ -308,8 +307,8 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
   }
 
   auto req = std::make_unique<CopyArraysRequest>();
-  TF_ASSIGN_OR_RETURN(*req->mutable_array_handles(),
-                      Array::GetHandles(arrays, semantics));
+  ASSIGN_OR_RETURN(*req->mutable_array_handles(),
+                   Array::GetHandles(arrays, semantics));
   if (devices.has_value()) {
     for (auto* const device : (*devices)->devices()) {
       req->add_device_ids(device->Id().value());
@@ -326,7 +325,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
   std::vector<xla::ifrt::ArrayRef> new_arrays;
   new_arrays.reserve(arrays.size());
   for (int i = 0; i < arrays.size(); ++i) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         auto new_sharding,
         arrays[i]->sharding().WithDeviceAssignment(devices, memory_kind));
     auto* proxy_array = llvm::cast<xla::ifrt::proxy::Array>(arrays[i].get());
@@ -335,7 +334,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
     // "Unpinned_host" memory only supports the default layout.
     if (!memory_kind.has_value() ||
         memory_kind->memory_kind() != xla::UnpinnedHostMemorySpace::kKind) {
-      TF_ASSIGN_OR_RETURN(layout, proxy_array->pjrt_layout());
+      ASSIGN_OR_RETURN(layout, proxy_array->pjrt_layout());
     }
     uint64_t result_handle = rpc_helper_->NextHandle();
     new_arrays.push_back(
@@ -373,11 +372,11 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::ReshardArrays(
   }
 
   auto req = std::make_unique<ReshardArraysRequest>();
-  TF_ASSIGN_OR_RETURN(*req->mutable_array_handles(),
-                      Array::GetHandles(arrays, semantics));
+  ASSIGN_OR_RETURN(*req->mutable_array_handles(),
+                   Array::GetHandles(arrays, semantics));
   for (const auto& spec : specs) {
-    TF_RETURN_IF_ERROR(spec.ToProto(*req->add_array_specs(),
-                                    rpc_helper_->ifrt_serdes_version()));
+    RETURN_IF_ERROR(spec.ToProto(*req->add_array_specs(),
+                                 rpc_helper_->ifrt_serdes_version()));
   }
   req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
 
@@ -445,9 +444,9 @@ absl::StatusOr<DeviceAssignment> Client::GetDefaultDeviceAssignment(
   req->set_num_partitions(num_partitions);
 
   auto future = rpc_helper_->GetDefaultDeviceAssignment(std::move(req));
-  TF_ASSIGN_OR_RETURN(auto response, future.Await());
+  ASSIGN_OR_RETURN(auto response, future.Await());
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto assignment_to_return,
       DeviceAssignment::Deserialize(response->device_assignment()));
 
@@ -492,10 +491,10 @@ Client::GetDefaultPjRtLayout(xla::ifrt::DType dtype,
   req->set_memory_kind(std::string(memory_kind.memory_kind().value_or("")));
 
   auto future = rpc_helper_->GetDefaultLayout(std::move(req));
-  TF_ASSIGN_OR_RETURN(auto response, future.Await());
+  ASSIGN_OR_RETURN(auto response, future.Await());
 
-  TF_ASSIGN_OR_RETURN(auto layout, xla::PjRtLayout::Deserialize(
-                                       response->serialized_pjrt_layout()));
+  ASSIGN_OR_RETURN(auto layout, xla::PjRtLayout::Deserialize(
+                                    response->serialized_pjrt_layout()));
   {
     absl::MutexLock l(mu_);
     layout_cache_.insert({key, layout});
@@ -506,13 +505,12 @@ Client::GetDefaultPjRtLayout(xla::ifrt::DType dtype,
 absl::StatusOr<xla::ifrt::CustomLayoutRef> Client::GetDefaultLayout(
     xla::ifrt::DType dtype, const xla::ifrt::Shape& shape,
     const xla::ifrt::ShardingRef& sharding) const {
-  TF_ASSIGN_OR_RETURN(xla::ifrt::Shape shard_shape,
-                      sharding->GetShardShape(shape));
-  TF_ASSIGN_OR_RETURN(
-      std::shared_ptr<const xla::PjRtLayout> pjrt_layout,
-      GetDefaultPjRtLayout(dtype, shard_shape.dims(),
-                           sharding->devices()->devices().front(),
-                           sharding->memory_kind()));
+  ASSIGN_OR_RETURN(xla::ifrt::Shape shard_shape,
+                   sharding->GetShardShape(shape));
+  ASSIGN_OR_RETURN(std::shared_ptr<const xla::PjRtLayout> pjrt_layout,
+                   GetDefaultPjRtLayout(dtype, shard_shape.dims(),
+                                        sharding->devices()->devices().front(),
+                                        sharding->memory_kind()));
   return xla::ifrt::PjRtLayout::Create(std::move(pjrt_layout));
 }
 
