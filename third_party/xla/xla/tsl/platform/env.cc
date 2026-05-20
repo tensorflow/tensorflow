@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -122,7 +123,7 @@ absl::Status FileSystemRegistryImpl::GetRegisteredFileSystemSchemes(
 
 Env::Env() : file_system_registry_(new FileSystemRegistryImpl) {}
 
-absl::Status Env::GetFileSystemForFile(const std::string& fname,
+absl::Status Env::GetFileSystemForFile(absl::string_view fname,
                                        FileSystem** result) {
   absl::string_view scheme, host, path;
   io::ParseURI(fname, &scheme, &host, &path);
@@ -235,7 +236,7 @@ absl::Status Env::NewAppendableFile(const std::string& fname,
   return fs->NewAppendableFile(fname, result);
 }
 
-absl::Status Env::FileExists(const std::string& fname) {
+absl::Status Env::FileExists(absl::string_view fname) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->FileExists(fname);
@@ -313,10 +314,23 @@ absl::Status Env::RecursivelyCreateDir(const std::string& dirname) {
   return fs->RecursivelyCreateDir(dirname);
 }
 
+absl::Status Env::RecursivelyCreateDir(absl::string_view dirname,
+                                       uint32_t mode) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
+  return fs->RecursivelyCreateDir(dirname, mode);
+}
+
 absl::Status Env::CreateDir(const std::string& dirname) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
   return fs->CreateDir(dirname);
+}
+
+absl::Status Env::CreateDir(absl::string_view dirname, uint32_t mode) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
+  return fs->CreateDir(std::string(dirname), mode);
 }
 
 absl::Status Env::DeleteDir(const std::string& dirname) {
@@ -371,6 +385,13 @@ absl::Status Env::RenameFile(const std::string& src,
   return src_fs->RenameFile(src, target);
 }
 
+absl::Status Env::RenameFile(const std::string& src, const std::string& target,
+                             bool overwrite) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(src, &fs));
+  return fs->RenameFile(src, target, overwrite);
+}
+
 absl::Status Env::CopyFile(const std::string& src, const std::string& target) {
   FileSystem* src_fs;
   FileSystem* target_fs;
@@ -409,7 +430,8 @@ std::string Env::GetExecutablePath() {
   int path_length = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
   CHECK_NE(-1, path_length);
 
-  if (strstr(buf, "python") != nullptr) {
+  absl::string_view basename = tsl::io::Basename(buf);
+  if (absl::StartsWith(basename, "python")) {
     // Discard the path of the python binary, and any flags.
     int fd = open("/proc/self/cmdline", O_RDONLY);
     CHECK_NE(-1, fd);
@@ -487,46 +509,51 @@ EnvWrapper::~EnvWrapper() {}
 absl::Status ReadFileToString(Env* env, const std::string& fname,
                               std::string* data) {
   uint64_t file_size;
-  absl::Status s = env->GetFileSize(fname, &file_size);
-  if (!s.ok()) {
-    return s;
-  }
+  TF_RETURN_IF_ERROR(env->GetFileSize(fname, &file_size));
   std::unique_ptr<RandomAccessFile> file;
-  s = env->NewRandomAccessFile(fname, &file);
-  if (!s.ok()) {
+  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file));
+
+  // Note: This implementation assumes `file_size > 0`. It correctly handles
+  // files whose actual content is shorter than reported (like sysfs
+  // attributes), but does not support files whose content is longer than
+  // expected (/proc/cpuinfo, concurrently appended files).
+  data->resize(file_size);
+  char* p = data->data();
+  absl::string_view result;
+  absl::Status s = file->Read(0, result, absl::MakeSpan(p, file_size));
+
+  // RandomAccessFile returns kOutOfRange if EOF happens before the requested
+  // amount of data is read. We swallow this error and accept whatever was read.
+  if (!s.ok() && !absl::IsOutOfRange(s)) {
+    data->clear();
     return s;
   }
-  data->resize(file_size);
-  char* p = &*data->begin();
-  absl::string_view result;
-  s = file->Read(0, result, absl::MakeSpan(p, file_size));
-  if (!s.ok()) {
-    data->clear();
-  } else if (result.size() != file_size) {
-    s = absl::AbortedError(absl::StrCat("File ", fname,
-                                        " changed while reading: ", file_size,
-                                        " vs. ", result.size()));
-    data->clear();
-  } else if (result.data() == p) {
-    // Data is already in the correct location
+
+  // RandomAccessFile::Read takes in a string_view by ref or pointer and sets it
+  // to the result of the read, and that pointer may or may not point to the
+  // scratch space that we passed in. If it doesn't, rectify that now.
+  if (result.data() != p) {
+    data->assign(result.data(), result.size());
   } else {
-    memmove(p, result.data(), result.size());
+    data->resize(result.size());
   }
-  return s;
+  return absl::OkStatus();
 }
 
 absl::Status WriteStringToFile(Env* env, const std::string& fname,
                                absl::string_view data) {
   std::unique_ptr<WritableFile> file;
-  absl::Status s = env->NewWritableFile(fname, &file);
-  if (!s.ok()) {
-    return s;
-  }
-  s = file->Append(data);
-  if (s.ok()) {
-    s = file->Close();
-  }
-  return s;
+  TF_RETURN_IF_ERROR(env->NewWritableFile(fname, &file));
+  TF_RETURN_IF_ERROR(file->Append(data));
+  return file->Close();
+}
+
+absl::Status AppendStringToFile(Env* env, const std::string& fname,
+                                absl::string_view data) {
+  std::unique_ptr<WritableFile> file;
+  TF_RETURN_IF_ERROR(env->NewAppendableFile(fname, &file));
+  TF_RETURN_IF_ERROR(file->Append(data));
+  return file->Close();
 }
 
 absl::Status FileSystemCopyFile(FileSystem* src_fs, const std::string& src,
@@ -628,15 +655,17 @@ absl::Status WriteTextProto(Env* env, const std::string& fname,
                             const protobuf::Message& proto) {
   std::string serialized;
   if (!protobuf::TextFormat::PrintToString(proto, &serialized)) {
-    return errors::FailedPrecondition("Unable to convert proto to text.");
+    return absl::FailedPreconditionError("Unable to convert proto to text.");
   }
   return WriteStringToFile(env, fname, serialized);
 }
 
-absl::Status ReadTextProto(Env* env, const std::string& fname,
+absl::Status ReadTextProto(Env* env, absl::string_view fname,
                            protobuf::Message* proto) {
   std::unique_ptr<RandomAccessFile> file;
-  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file));
+  // TODO(b/485502789): Create an absl::string_view version of
+  // NewRandomAccessFile and eliminate this string copy.
+  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(std::string(fname), &file));
   std::unique_ptr<FileStream> stream(new FileStream(file.get()));
 
   if (!protobuf::TextFormat::Parse(stream.get(), proto)) {

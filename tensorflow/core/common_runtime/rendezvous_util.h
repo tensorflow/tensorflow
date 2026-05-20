@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <map>
 
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/lib/core/status.h"
 

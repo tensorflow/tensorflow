@@ -117,6 +117,8 @@ class LowerToLLVMGPUPass
           });
         }
         populateGpuToLLVMSPVConversionPatterns(converter, patterns);
+        spirv::populateMathToLLVMSPVConversionPatterns(spirv::getSPIRVMathOps(),
+                                                       converter, patterns);
         populateGpuMemorySpaceAttributeConversions(converter);
       } else {
         mlir::populateGpuToNVVMConversionPatterns(converter, patterns);
@@ -125,12 +127,7 @@ class LowerToLLVMGPUPass
       return mlir::success();
     };
 
-    // NVVM and ROCDL lower math.log1p directly via their GPU pattern sets, but
-    // the SPIR-V pipeline does not. For Intel GPUs we therefore fall back to
-    // the generic MathToLLVM conversion, hence enabling approximate log1p.
-    bool lower_math_log1p = device_spec_.IsIntelGpu();
-    if (mlir::failed(
-            LowerToLLVM(getOperation(), populate_patterns, lower_math_log1p))) {
+    if (mlir::failed(LowerToLLVM(getOperation(), populate_patterns))) {
       signalPassFailure();
       return;
     }

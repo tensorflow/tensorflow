@@ -62,7 +62,7 @@ TEST(SubprocessCompilationTest, BundleGpuAsmUsingFatbinWorks) {
 )";
 
   GpuAsmOpts opts;
-  tensorflow::se::CudaComputeCapability cc{9, 0};
+  CudaComputeCapability cc{9, 0};
   std::vector<CubinOrPTXImage> images;
 
   std::vector<uint8_t> bytes(ptx.begin(), ptx.end());

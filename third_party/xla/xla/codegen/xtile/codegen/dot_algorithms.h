@@ -52,6 +52,7 @@ struct ScaledDotOperands {
   ::mlir::Value lhs_scale;
   ::mlir::Value rhs_scale;
   ::mlir::Value accumulator;
+  mlir::stablehlo::DotDimensionNumbersAttr dot_dimension_numbers;
 };
 
 // Returns the type to use for accumulation for the given `dot` instruction.

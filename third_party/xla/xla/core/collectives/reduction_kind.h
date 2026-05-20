@@ -19,11 +19,17 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/core/collectives/reduction_kind.pb.h"
 #include "xla/util.h"
 
 namespace xla {
 
 enum class ReductionKind { SUM, PRODUCT, MIN, MAX };
+
+ReductionKindProto ToReductionKindProto(ReductionKind kind);
+
+absl::StatusOr<ReductionKind> FromReductionKindProto(
+    const ReductionKindProto& proto);
 
 template <typename Sink>
 void AbslStringify(Sink& sink, ReductionKind reduction_kind) {

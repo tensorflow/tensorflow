@@ -38,8 +38,8 @@ limitations under the License.
 #include "xla/stream_executor/engine_options.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
-#include "tsl/platform/errors.h"
 
 namespace Eigen {
 struct half;

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/utility/utility.h"
 #include "xla/stream_executor/sycl/oneapi_compute_capability.pb.h"
 
 namespace stream_executor {

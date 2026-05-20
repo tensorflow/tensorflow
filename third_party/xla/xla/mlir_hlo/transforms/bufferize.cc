@@ -13,7 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <optional>
+#include <cstddef>
+#include <cstdint>
 
 // This file implements logic for translating mixed IR to buffer form.
 #include "mhlo/IR/hlo_ops.h"

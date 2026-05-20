@@ -1857,7 +1857,7 @@ LogicalResult rewriteNonMatchInitValue(mhlo::ReduceOp reduce_op, Value input,
   Value reduce_result =
       TfReduceOp::create(rewriter, reduce_op.getLoc(), reduce_op.getType(0),
                          input, reduction_indices,
-                         /*keep_dim=*/rewriter.getBoolAttr(false));
+                         /*keep_dims=*/rewriter.getBoolAttr(false));
   rewriter.replaceOpWithNewOp<TfBinOp>(reduce_op, reduce_op.getType(0),
                                        reduce_result,
                                        reduce_op.getInitValues()[0]);

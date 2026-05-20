@@ -52,15 +52,15 @@ class DeserializeSparseOp : public OpKernel {
     const Tensor& serialized_sparse = context->input(0);
     const int ndims = serialized_sparse.shape().dims();
 
-    OP_REQUIRES(
-        context, ndims > 0,
-        errors::InvalidArgument("Serialized sparse should have non-zero rank ",
-                                serialized_sparse.shape().DebugString()));
+    OP_REQUIRES(context, ndims > 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Serialized sparse should have non-zero rank ",
+                                 serialized_sparse.shape().DebugString())));
 
     OP_REQUIRES(context, serialized_sparse.shape().dim_size(ndims - 1) == 3,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Serialized sparse should have 3 as the last dimension ",
-                    serialized_sparse.shape().DebugString()));
+                    serialized_sparse.shape().DebugString())));
 
     int num_sparse_tensors = 1;
     for (int i = 0; i < ndims - 1; ++i) {
@@ -69,10 +69,10 @@ class DeserializeSparseOp : public OpKernel {
 
     OP_REQUIRES(
         context, num_sparse_tensors > 0,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Serialized sparse should have at least 1 serialized tensor, "
             "but has a zero dimension ",
-            serialized_sparse.shape().DebugString()));
+            serialized_sparse.shape().DebugString())));
 
     if (num_sparse_tensors == 1 && ndims == 1) {
       // Special case with a single sparse tensor. We can avoid data
@@ -140,11 +140,11 @@ class DeserializeSparseOp : public OpKernel {
       } else {
         OP_REQUIRES(
             context, shape.dims() == expanded_tensor_shape.dims(),
-            errors::InvalidArgument(
+            absl::InvalidArgumentError(absl::StrCat(
                 "Inconsistent shape across SparseTensors: rank prior to "
                 "SparseTensor[",
                 i, "] was: ", shape.dims() - 1, " but rank of SparseTensor[", i,
-                "] is: ", expanded_tensor_shape.dims() - 1));
+                "] is: ", expanded_tensor_shape.dims() - 1)));
         for (int j = 1; j < shape.dims(); ++j) {
           // NOTE(mrry): For compatibility with the implementations of
           // DeserializeManySparse, and many ops that generate
@@ -186,8 +186,8 @@ class DeserializeSparseOp : public OpKernel {
 #undef HANDLE_TYPE
       default:
         OP_REQUIRES(context, false,
-                    errors::Unimplemented(
-                        "DeserializeSparse Unhandled data type: ", dtype_));
+                    absl::UnimplementedError(absl::StrCat(
+                        "DeserializeSparse Unhandled data type: ", dtype_)));
     }
     DCHECK(maybe_output);
     SparseTensor& output = maybe_output.value();
@@ -216,11 +216,12 @@ class DeserializeSparseOp : public OpKernel {
   absl::Status Deserialize(const tstring& serialized, Tensor* result) {
     TensorProto proto;
     if (!ParseProtoUnlimited(&proto, serialized)) {
-      return errors::InvalidArgument("Could not parse serialized proto");
+      return absl::InvalidArgumentError("Could not parse serialized proto");
     }
     Tensor tensor;
     if (!tensor.FromProto(proto)) {
-      return errors::InvalidArgument("Could not construct tensor from proto");
+      return absl::InvalidArgumentError(
+          "Could not construct tensor from proto");
     }
     *result = tensor;
     return absl::OkStatus();
@@ -233,10 +234,10 @@ class DeserializeSparseOp : public OpKernel {
     // Deserialize and validate the indices.
     TF_RETURN_IF_ERROR(this->Deserialize(serialized_indices, output_indices));
     if (!TensorShapeUtils::IsMatrix(output_indices->shape())) {
-      return errors::InvalidArgument(
-          "Expected serialized_sparse[", index,
-          ", 0] to represent an index matrix but received shape ",
-          output_indices->shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Expected serialized_sparse[", index,
+                       ", 0] to represent an index matrix but received shape ",
+                       output_indices->shape().DebugString()));
     }
     int64_t num_entries = output_indices->dim_size(0);
     int rank = output_indices->dim_size(1);
@@ -244,39 +245,39 @@ class DeserializeSparseOp : public OpKernel {
     // Deserialize and validate the values.
     TF_RETURN_IF_ERROR(this->Deserialize(serialized_values, output_values));
     if (!TensorShapeUtils::IsVector(output_values->shape())) {
-      return errors::InvalidArgument(
-          "Expected serialized_sparse[", index,
-          ", 1] to represent a values vector but received shape ",
-          output_values->shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Expected serialized_sparse[", index,
+                       ", 1] to represent a values vector but received shape ",
+                       output_values->shape().DebugString()));
     }
     if (values_dtype != output_values->dtype()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Requested SparseTensor of type ", DataTypeString(values_dtype),
           " but SparseTensor[", index,
-          "].values.dtype() == ", DataTypeString(output_values->dtype()));
+          "].values.dtype() == ", DataTypeString(output_values->dtype())));
     }
     if (num_entries != output_values->dim_size(0)) {
-      return errors::InvalidArgument(
-          "Expected row counts of SparseTensor[", index,
-          "].indices and SparseTensor[", index,
-          "].values to match but they do not: ", num_entries, " vs. ",
-          output_values->dim_size(0));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Expected row counts of SparseTensor[", index,
+                       "].indices and SparseTensor[", index,
+                       "].values to match but they do not: ", num_entries,
+                       " vs. ", output_values->dim_size(0)));
     }
 
     // Deserialize and validate the shape.
     TF_RETURN_IF_ERROR(this->Deserialize(serialized_shape, output_shape));
     if (!TensorShapeUtils::IsVector(output_shape->shape())) {
-      return errors::InvalidArgument(
-          "Expected serialized_sparse[", index,
-          ", 1] to be a shape vector but its shape is ",
-          output_shape->shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Expected serialized_sparse[", index,
+                       ", 1] to be a shape vector but its shape is ",
+                       output_shape->shape().DebugString()));
     }
     if (rank != output_shape->dim_size(0)) {
-      return errors::InvalidArgument("Expected column counts of SparseTensor[",
-                                     index,
-                                     "].indices to match size of SparseTensor[",
-                                     index, "].shape but they do not: ", rank,
-                                     " vs. ", output_shape->dim_size(0));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Expected column counts of SparseTensor[", index,
+                       "].indices to match size of SparseTensor[", index,
+                       "].shape but they do not: ", rank, " vs. ",
+                       output_shape->dim_size(0)));
     }
     return absl::OkStatus();
   }

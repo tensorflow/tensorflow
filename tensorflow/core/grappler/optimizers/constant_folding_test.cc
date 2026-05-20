@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 
+#include <memory>
 #include <string>
 
 #include "tensorflow/cc/ops/array_ops.h"
@@ -4155,9 +4156,9 @@ TEST_F(ConstantFoldingTest, SimplifySelect) {
       tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
       std::unique_ptr<Tensor> if_t;
       if (scalar_pred) {
-        if_t.reset(new Tensor(DT_BOOL, TensorShape()));
+        if_t = std::make_unique<Tensor>(DT_BOOL, TensorShape());
       } else {
-        if_t.reset(new Tensor(DT_BOOL, TensorShape({2, 2})));
+        if_t = std::make_unique<Tensor>(DT_BOOL, TensorShape({2, 2}));
       }
       for (int i = 0; i < (scalar_pred ? 1 : 4); ++i) {
         if_t->flat<bool>()(i) = pred_val;
@@ -4220,7 +4221,7 @@ TEST_F(ConstantFoldingTest, SimplifySelect_BroadcastTo) {
     for (bool pred_val : {true, false}) {
       tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
       std::unique_ptr<Tensor> if_t;
-      if_t.reset(new Tensor(DT_BOOL, pred_shape));
+      if_t = std::make_unique<Tensor>(DT_BOOL, pred_shape);
       for (int i = 0; i < pred_shape.num_elements(); ++i) {
         if_t->flat<bool>()(i) = pred_val;
       }

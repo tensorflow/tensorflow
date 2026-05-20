@@ -245,7 +245,7 @@ DeviceExecutablePersistor<ExecutableType, ClientType>::VerifyLoadedCacheEntry(
             << "got:\n"
             << entry.key().DebugString() << "\nexpected:\n"
             << key.DebugString() << "\n";
-    return errors::InvalidArgument("Serialized cache key does not match.");
+    return absl::InvalidArgumentError("Serialized cache key does not match.");
   }
 
   // Perform a stricter (slower) check of the snapshot to verify that they
@@ -256,12 +256,12 @@ DeviceExecutablePersistor<ExecutableType, ClientType>::VerifyLoadedCacheEntry(
               << "got:\n"
               << hlo_module.DebugString() << "\nexpected:\n"
               << entry.hlo_module().DebugString() << "\n";
-      return errors::InvalidArgument("Serialized HLO does not match.");
+      return absl::InvalidArgumentError("Serialized HLO does not match.");
     }
   }
 
   if (entry.executable().empty()) {
-    return errors::InvalidArgument("No binary found in serialized entry.");
+    return absl::InvalidArgumentError("No binary found in serialized entry.");
   }
   return absl::OkStatus();
 }

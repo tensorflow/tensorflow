@@ -45,10 +45,10 @@ class OpDeleter {
 using OpPtr = std::unique_ptr<TFE_Op, OpDeleter>;
 
 using MaybeParallelTensorOwned =
-    absl::variant<std::unique_ptr<ParallelTensor>, TensorHandlePtr>;
+    std::variant<std::unique_ptr<ParallelTensor>, TensorHandlePtr>;
 
 using MaybeParallelTensorUnowned =
-    absl::variant<ParallelTensor*, TFE_TensorHandle*>;
+    std::variant<ParallelTensor*, TFE_TensorHandle*>;
 
 // A ParallelDevice on its own is not registered with a TFE_Context, and so has
 // no device name (e.g. for `tf.device`). `NamedParallelDevice` associates a

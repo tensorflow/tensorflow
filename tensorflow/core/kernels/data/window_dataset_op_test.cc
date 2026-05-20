@@ -582,6 +582,46 @@ TEST_F(WindowDatasetOpTest, InvalidArguments) {
   }
 }
 
+TEST_F(WindowDatasetOpTest, MalformedCheckpoint_TriggersOutOfBoundsRead) {
+  auto dataset_params = WindowDatasetParams1();
+  TF_ASSERT_OK(Initialize(dataset_params));
+
+  VariantTensorDataWriter writer;
+  std::string prefix = "Iterator::Range::Window";
+
+  TF_ASSERT_OK(writer.WriteScalar(prefix, "input_impl_empty", ""));
+  TF_ASSERT_OK(writer.WriteScalar(prefix, "buffer_size", 2));
+  TF_ASSERT_OK(writer.WriteScalar(prefix, "buffer[0].code", 0));
+  TF_ASSERT_OK(writer.WriteScalar(prefix, "buffer[0].size", 2));
+  TF_ASSERT_OK(writer.WriteTensor(prefix, "buffer[0][0]",
+                                  CreateTensor<int64_t>(TensorShape({}), {0})));
+  TF_ASSERT_OK(writer.WriteTensor(prefix, "buffer[0][1]",
+                                  CreateTensor<int64_t>(TensorShape({}), {0})));
+  TF_ASSERT_OK(writer.WriteScalar(prefix, "buffer[1].code", 0));
+  TF_ASSERT_OK(writer.WriteScalar(prefix, "buffer[1].size", 1));
+  TF_ASSERT_OK(writer.WriteTensor(prefix, "buffer[1][0]",
+                                  CreateTensor<int64_t>(TensorShape({}), {0})));
+
+  std::vector<const VariantTensorData*> data;
+  writer.GetData(&data);
+
+  VariantTensorDataReader reader(data);
+  TF_ASSERT_OK(RestoreIterator(iterator_ctx_.get(), &reader,
+                               dataset_params.iterator_prefix(), *dataset_,
+                               &iterator_));
+
+  bool end_of_sequence = false;
+  std::vector<Tensor> out_tensors;
+  absl::Status status =
+      iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence);
+  EXPECT_EQ(absl::StatusCode::kInternal, status.code());
+  EXPECT_TRUE(absl::StrContains(
+      status.message(),
+      "Malformed checkpoint: window elements have inconsistent number of "
+      "components"))
+      << status.message();
+}
+
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

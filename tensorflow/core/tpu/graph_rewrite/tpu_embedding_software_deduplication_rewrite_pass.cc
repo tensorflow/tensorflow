@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/graph_rewrite/tpu_embedding_software_deduplication_rewrite_pass.h"
 
+#include <cstdint>
 #include <iterator>
 #include <string>
 #include <vector>

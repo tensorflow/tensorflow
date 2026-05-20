@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -332,7 +333,7 @@ auto* tf_data_autotune_stopping_criteria_counter =
 
 auto* tf_data_debug = tsl::monitoring::Counter<1>::New(
     "/tensorflow/data/debug",
-    "The number of times this event occured, for debugging.", "event");
+    "The number of times this event occurred, for debugging.", "event");
 
 auto* tf_data_error = tsl::monitoring::Counter<2>::New(
     "/tensorflow/data/error",
@@ -995,7 +996,7 @@ void IncrementTfMlirBridgeSecondPhaseCounter(
       };
 
   mlir_second_phase_count
-      ->GetCell(std::string(mlir_bridge_second_phase_metric_names->at(metric)))
+      ->GetCell(mlir_bridge_second_phase_metric_names->at(metric))
       ->IncrementBy(1);
 }
 
@@ -1020,8 +1021,7 @@ void IncrementPhase2XlaCompilerCounter(Phase2XlaCompilerMetric metric) {
            "kCompileFunctionMlirFailure"},
       };
 
-  phase_2_xla_compiler_count->GetCell(std::string(metric_names->at(metric)))
-      ->IncrementBy(1);
+  phase_2_xla_compiler_count->GetCell(metric_names->at(metric))->IncrementBy(1);
 }
 
 void UpdateTpuErrorCounter(const std::string& op,

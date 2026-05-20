@@ -17,13 +17,11 @@ limitations under the License.
 
 #include <atomic>
 #include <cstdint>
-#include <string>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/attributes.h"
-#include "absl/base/const_init.h"
 #include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -33,21 +31,9 @@ limitations under the License.
 #include "xla/util.h"
 
 namespace xla::ffi {
-namespace {
 
-struct TypeRegistration {
-  TypeRegistry::TypeId type_id;
-  TypeRegistry::TypeInfo type_info;
-};
-
-using TypeRegistryMap = absl::flat_hash_map<std::string, TypeRegistration>;
-
-}  // namespace
-
-ABSL_CONST_INIT absl::Mutex type_registry_mutex(absl::kConstInit);
-
-static TypeRegistryMap& StaticTypeRegistryMap() {
-  static absl::NoDestructor<TypeRegistryMap> registry;
+internal::TypeRegistrationMap& internal::StaticTypeRegistrationMap() {
+  static absl::NoDestructor<internal::TypeRegistrationMap> registry;
   return *registry;
 }
 
@@ -56,17 +42,18 @@ TypeRegistry::TypeId TypeRegistry::GetNextTypeId() {
   return TypeId(counter->fetch_add(1));
 }
 
-absl::StatusOr<TypeRegistry::TypeId> TypeRegistry::AssignExternalTypeId(
+absl::StatusOr<TypeRegistry::TypeId> TypeRegistry::AssignTypeId(
     absl::string_view name, TypeInfo type_info) {
-  VLOG(3) << absl::StrFormat("Assign external type id: name=%s", name);
+  auto& registry = internal::StaticTypeRegistrationMap();
+  absl::MutexLock lock(registry.mu);
 
-  absl::MutexLock lock(type_registry_mutex);
-  auto& registry = StaticTypeRegistryMap();
+  VLOG(3) << absl::StreamFormat("Assign external type id: name=%s registry=%p",
+                                name, &registry);
 
-  // Try to emplace with unknow type id and fill it with real type id only if we
-  // successfully acquired an entry for a given name.
+  // Try to emplace with unknown type id and fill it with real type id only if
+  // we successfully acquired an entry for a given name.
   auto emplaced =
-      registry.emplace(name, TypeRegistration{kUnknownTypeId, type_info});
+      registry.map.emplace(name, TypeRegistration{kUnknownTypeId, type_info});
   if (!emplaced.second) {
     return Internal("Type name %s already registered with type id %d", name,
                     emplaced.first->second.type_id.value());
@@ -74,8 +61,9 @@ absl::StatusOr<TypeRegistry::TypeId> TypeRegistry::AssignExternalTypeId(
 
   // Returns true if the registry contains an entry with a given type id.
   auto type_id_is_in_use = [&registry](TypeId type_id) {
-    return absl::c_any_of(
-        registry, [&](const auto& e) { return e.second.type_id == type_id; });
+    return absl::c_any_of(registry.map, [&](const auto& e) {
+      return e.second.type_id == type_id;
+    });
   };
 
   // Create a new type id that is not already in use.
@@ -84,21 +72,23 @@ absl::StatusOr<TypeRegistry::TypeId> TypeRegistry::AssignExternalTypeId(
     type_id = GetNextTypeId();
   }
 
-  VLOG(3) << absl::StrFormat("Assigned external type id: name=%s type_id=%d",
-                             name, type_id.value());
+  VLOG(3) << absl::StreamFormat(
+      "Assigned external type id: name=%s type_id=%v registry=%p", name,
+      type_id, &registry);
   return emplaced.first->second.type_id = type_id;
 }
 
-absl::Status TypeRegistry::RegisterExternalTypeId(absl::string_view name,
-                                                  TypeId type_id,
-                                                  TypeInfo type_info) {
-  VLOG(3) << absl::StrFormat("Register external type id: name=%s type_id=%d",
-                             name, type_id.value());
+absl::Status TypeRegistry::RegisterTypeId(absl::string_view name,
+                                          TypeId type_id, TypeInfo type_info) {
+  auto& registry = internal::StaticTypeRegistrationMap();
+  absl::MutexLock lock(registry.mu);
 
-  absl::MutexLock lock(type_registry_mutex);
-  auto& registry = StaticTypeRegistryMap();
+  VLOG(3) << absl::StreamFormat(
+      "Register external type id: name=%s type_id=%v registry=%p", name,
+      type_id, &registry);
 
-  auto emplaced = registry.emplace(name, TypeRegistration{type_id, type_info});
+  auto emplaced =
+      registry.map.emplace(name, TypeRegistration{type_id, type_info});
   if (!emplaced.second && emplaced.first->second.type_id != type_id) {
     return Internal("Type name %s already registered with type id %d vs %d)",
                     name, emplaced.first->second.type_id.value(),
@@ -109,13 +99,14 @@ absl::Status TypeRegistry::RegisterExternalTypeId(absl::string_view name,
 }
 
 absl::StatusOr<absl::string_view> TypeRegistry::GetTypeName(TypeId type_id) {
-  absl::MutexLock lock(type_registry_mutex);
-  auto& registry = StaticTypeRegistryMap();
+  auto& registry = internal::StaticTypeRegistrationMap();
+  absl::MutexLock lock(registry.mu);
 
-  auto it = absl::c_find_if(
-      registry, [&](const auto& kv) { return kv.second.type_id == type_id; });
+  auto it = absl::c_find_if(registry.map, [&](const auto& kv) {
+    return kv.second.type_id == type_id;
+  });
 
-  if (it == registry.end()) {
+  if (it == registry.map.end()) {
     return Internal("Type id %d is not registered with a static registry",
                     type_id.value());
   }
@@ -125,11 +116,11 @@ absl::StatusOr<absl::string_view> TypeRegistry::GetTypeName(TypeId type_id) {
 
 absl::StatusOr<TypeRegistry::TypeId> TypeRegistry::GetTypeId(
     absl::string_view name) {
-  absl::MutexLock lock(type_registry_mutex);
-  auto& registry = StaticTypeRegistryMap();
+  auto& registry = internal::StaticTypeRegistrationMap();
+  absl::MutexLock lock(registry.mu);
 
-  auto it = registry.find(name);
-  if (it == registry.end()) {
+  auto it = registry.map.find(name);
+  if (it == registry.map.end()) {
     return Internal("Type name %s is not registered", name);
   }
   return it->second.type_id;
@@ -137,20 +128,62 @@ absl::StatusOr<TypeRegistry::TypeId> TypeRegistry::GetTypeId(
 
 absl::StatusOr<TypeRegistry::TypeInfo> TypeRegistry::GetTypeInfo(
     TypeId type_id) {
-  absl::MutexLock lock(type_registry_mutex);
-  auto& registry = StaticTypeRegistryMap();
+  auto& registry = internal::StaticTypeRegistrationMap();
+  absl::MutexLock lock(registry.mu);
 
-  auto it = absl::c_find_if(registry, [&](const auto& kv) {
+  auto it = absl::c_find_if(registry.map, [&](const auto& kv) {
     auto& [name, registration] = kv;
     return registration.type_id == type_id;
   });
 
-  if (it == registry.end()) {
+  if (it == registry.map.end()) {
     return Internal("Type id %d is not registered with a static registry",
                     type_id.value());
   }
 
   return it->second.type_info;
+}
+
+absl::StatusOr<TypeRegistry::TypeId> TypeRegistry::GetOrAssignTypeId(
+    internal::TypeRegistrationMap& registry, absl::string_view name,
+    TypeInfo type_info) {
+  absl::MutexLock lock(registry.mu);
+
+  VLOG(3) << absl::StreamFormat(
+      "Get or assign external type id: name=%s registry=%p", name, &registry);
+
+  // Check if the type name already has an assigned type id.
+  if (auto assigned = registry.map.find(name); assigned != registry.map.end()) {
+    if (assigned->second.type_info != type_info) {
+      return Internal(
+          "Type name %s already registered with type id %v, but it has a "
+          "different `TypeInfo`",
+          name, assigned->second.type_id);
+    }
+    return assigned->second.type_id;
+  }
+
+  // Returns true if the registry contains an entry with a given type id.
+  auto type_id_is_in_use = [&registry](TypeId type_id) {
+    return absl::c_any_of(registry.map, [&](const auto& e) {
+      return e.second.type_id == type_id;
+    });
+  };
+
+  // Create a new type id that is not already in use.
+  TypeId type_id = GetNextTypeId();
+  while (type_id_is_in_use(type_id)) {
+    type_id = GetNextTypeId();
+  }
+
+  auto emplaced =
+      registry.map.emplace(name, TypeRegistration{type_id, type_info});
+  CHECK(emplaced.second) << "Type name already registered";
+
+  VLOG(3) << absl::StreamFormat(
+      "Assigned external type id: name=%s type_id=%v registry=%p", name,
+      type_id, &registry);
+  return type_id;
 }
 
 }  // namespace xla::ffi

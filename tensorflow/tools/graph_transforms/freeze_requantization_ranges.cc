@@ -22,28 +22,28 @@ namespace tensorflow {
 namespace graph_transforms {
 
 struct MinMaxRecord {
-  string name;
+  std::string name;
   float min;
   float max;
 };
 
 // Try to parse a log file containing loosely-structured lines, some of which
 // are the min/max logs we want.
-absl::Status ExtractMinMaxRecords(const string& log_file_name,
+absl::Status ExtractMinMaxRecords(const std::string& log_file_name,
                                   std::vector<MinMaxRecord>* records) {
-  string file_data;
+  std::string file_data;
   TF_RETURN_IF_ERROR(
       ReadFileToString(Env::Default(), log_file_name, &file_data));
-  const string print_suffix("__print__");
-  const string requant_prefix("__requant_min_max:");
-  std::vector<string> file_lines = str_util::Split(file_data, '\n');
-  for (const string& file_line : file_lines) {
+  const std::string print_suffix("__print__");
+  const std::string requant_prefix("__requant_min_max:");
+  std::vector<std::string> file_lines = str_util::Split(file_data, '\n');
+  for (const std::string& file_line : file_lines) {
     // We expect to find a line with components separated by semicolons, so to
     // start make sure that the basic structure is in place/
     if (!absl::StrContains(file_line, print_suffix + ";" + requant_prefix)) {
       continue;
     }
-    std::vector<string> line_parts = str_util::Split(file_line, ';');
+    std::vector<std::string> line_parts = str_util::Split(file_line, ';');
     if (line_parts.size() < 2) {
       continue;
     }
@@ -62,27 +62,30 @@ absl::Status ExtractMinMaxRecords(const string& log_file_name,
     }
     // Finally we need to break out the values from the strings, and parse them
     // into a form we can use.
-    string min_max_string = line_parts[min_max_index];
-    std::vector<string> min_max_parts = str_util::Split(min_max_string, '[');
+    std::string min_max_string = line_parts[min_max_index];
+    std::vector<std::string> min_max_parts =
+        str_util::Split(min_max_string, '[');
     if ((min_max_parts.size() != 3) || (min_max_parts[0] != requant_prefix)) {
       continue;
     }
-    string min_string = min_max_parts[1];
-    std::vector<string> min_string_parts = str_util::Split(min_string, ']');
+    std::string min_string = min_max_parts[1];
+    std::vector<std::string> min_string_parts =
+        str_util::Split(min_string, ']');
     if (min_string_parts.size() != 2) {
       continue;
     }
-    string min_number_string = min_string_parts[0];
+    std::string min_number_string = min_string_parts[0];
     float min;
     if (!absl::SimpleAtof(min_number_string.c_str(), &min)) {
       continue;
     }
-    string max_string = min_max_parts[2];
-    std::vector<string> max_string_parts = str_util::Split(max_string, ']');
+    std::string max_string = min_max_parts[2];
+    std::vector<std::string> max_string_parts =
+        str_util::Split(max_string, ']');
     if (max_string_parts.size() != 2) {
       continue;
     }
-    string max_number_string = max_string_parts[0];
+    std::string max_number_string = max_string_parts[0];
     float max;
     if (!absl::SimpleAtof(max_number_string.c_str(), &max)) {
       continue;
@@ -91,7 +94,7 @@ absl::Status ExtractMinMaxRecords(const string& log_file_name,
     if (!absl::EndsWith(name_string, print_suffix)) {
       continue;
     }
-    string name(
+    std::string name(
         name_string.substr(0, name_string.size() - print_suffix.size()));
     records->push_back({name, min, max});
   }
@@ -103,7 +106,7 @@ absl::Status ExtractMinMaxRecords(const string& log_file_name,
 absl::Status FreezeRequantizationRanges(const GraphDef& input_graph_def,
                                         const TransformFuncContext& context,
                                         GraphDef* output_graph_def) {
-  string min_max_log_file;
+  std::string min_max_log_file;
   TF_RETURN_IF_ERROR(
       context.GetOneStringParameter("min_max_log_file", "", &min_max_log_file));
   if (min_max_log_file.empty()) {
@@ -124,10 +127,10 @@ absl::Status FreezeRequantizationRanges(const GraphDef& input_graph_def,
         "No min/max range logs were found in the log file");
   }
 
-  std::map<string, const NodeDef*> node_map;
+  std::map<std::string, const NodeDef*> node_map;
   MapNamesToNodes(input_graph_def, &node_map);
   bool any_missing_nodes = false;
-  std::map<string, std::vector<MinMaxRecord>> records_by_node;
+  std::map<std::string, std::vector<MinMaxRecord>> records_by_node;
   for (const MinMaxRecord& record : records) {
     records_by_node[record.name].push_back(record);
     if (!node_map.count(record.name)) {
@@ -141,9 +144,9 @@ absl::Status FreezeRequantizationRanges(const GraphDef& input_graph_def,
   }
 
   // Now find out the largest and smallest min/max values for the node.
-  std::map<string, std::pair<float, float>> range_for_nodes;
+  std::map<std::string, std::pair<float, float>> range_for_nodes;
   for (const auto& record_info : records_by_node) {
-    const string& name = record_info.first;
+    const std::string& name = record_info.first;
     const std::vector<MinMaxRecord> records = record_info.second;
     std::vector<float> mins;
     std::vector<float> maxs;
@@ -166,7 +169,7 @@ absl::Status FreezeRequantizationRanges(const GraphDef& input_graph_def,
     const float max = maxs[max_index];
     range_for_nodes[name] = {min, max};
   }
-  std::map<string, string> inputs_to_rename;
+  std::map<std::string, std::string> inputs_to_rename;
   GraphDef frozen_graph_def;
   for (const NodeDef& node : input_graph_def.node()) {
     if (range_for_nodes.count(node.name())) {
@@ -200,7 +203,7 @@ absl::Status FreezeRequantizationRanges(const GraphDef& input_graph_def,
     }
   }
   return RenameNodeInputs(frozen_graph_def, inputs_to_rename,
-                          std::unordered_set<string>(), output_graph_def);
+                          std::unordered_set<std::string>(), output_graph_def);
 }
 
 REGISTER_GRAPH_TRANSFORM("freeze_requantization_ranges",

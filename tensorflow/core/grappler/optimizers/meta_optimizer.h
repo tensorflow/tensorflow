@@ -37,7 +37,7 @@ class MetaOptimizer : public GraphOptimizer {
   MetaOptimizer(DeviceBase* cpu_device, const ConfigProto& cfg);
   ~MetaOptimizer() override = default;
 
-  string name() const override { return "meta_optimizer"; };
+  std::string name() const override { return "meta_optimizer"; };
 
   bool UsesFunctionLibrary() const override { return true; }
 
@@ -50,36 +50,37 @@ class MetaOptimizer : public GraphOptimizer {
   absl::Status OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
                                    GraphDef* optimized_graph);
 
-  string GetResultString() const;
+  std::string GetResultString() const;
 
   void PrintResult();
 
  private:
   std::unique_ptr<GraphOptimizer> MakeNewOptimizer(
-      const string& optimizer, const std::set<string>& device_types) const;
+      const std::string& optimizer,
+      const std::set<std::string>& device_types) const;
 
   // When grappler should lower control flow to V1 switch/merge style nodes.
   bool LowerControlFlow() const;
 
   // Initialize active optimizers from RewriterConfig toggles.
   absl::Status InitializeOptimizers(
-      const std::set<string>& device_types,
+      const std::set<std::string>& device_types,
       std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const;
   // Initialize active optimizers from RewriterConfig optimizer names.
   absl::Status InitializeOptimizersByName(
-      const std::set<string>& device_types,
+      const std::set<std::string>& device_types,
       std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const;
   // Initialize active optimizers from RewriterConfig.custom_optimizers.
   absl::Status InitializeCustomGraphOptimizers(
-      const std::set<string>& device_types,
-      const std::set<string>& pre_initialized_optimizers,
+      const std::set<std::string>& device_types,
+      const std::set<std::string>& pre_initialized_optimizers,
       std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const;
   absl::Status InitializePluginGraphOptimizers(
-      const std::set<string>& device_types,
+      const std::set<std::string>& device_types,
       std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const;
   // Returns the config for a custom graph optimizer. Null if none was found.
   const RewriterConfig::CustomGraphOptimizer* GetCustomGraphOptimizerConfig(
-      const string& name) const;
+      const std::string& name) const;
 
   // Initialize active verifiers from the RewriterConfig toggles.
   void InitializeVerifiers(
@@ -87,7 +88,8 @@ class MetaOptimizer : public GraphOptimizer {
       std::vector<std::unique_ptr<GraphVerifier>>* post_optimization_verifiers)
       const;
 
-  void PrintUserAndPluginConfigs(const std::set<string>& device_types) const;
+  void PrintUserAndPluginConfigs(
+      const std::set<std::string>& device_types) const;
 
   // Run optimization pass over a single GrapplerItem. Meta optimizer might run
   // multiple such passes: 1) for the main graph 2) for the function library
@@ -103,14 +105,14 @@ class MetaOptimizer : public GraphOptimizer {
   bool xla_auto_clustering_on_;
 
   struct OptimizerResult {
-    string optimizer_name;
-    string message;
+    std::string optimizer_name;
+    std::string message;
     absl::Status status;
   };
 
   struct GraphOptimizationResult {
-    explicit GraphOptimizationResult(const string& id) : id(id) {}
-    string id;
+    explicit GraphOptimizationResult(const std::string& id) : id(id) {}
+    std::string id;
     std::vector<OptimizerResult> results;
   };
 
@@ -153,10 +155,10 @@ absl::Status RunMetaOptimizer(GrapplerItem&& item, const ConfigProto& cfg,
 // complete copy. Therefore, the caller should not keep any references
 // to nodes *g.
 absl::Status OptimizeGraph(
-    std::vector<string> ret_node_names, std::vector<string> keep_node_names,
-    FunctionLibraryDefinition* lib, const DeviceSet& device_set,
-    Device* cpu_device, const ConfigProto& config_proto,
-    const string& grappler_item_id,
+    std::vector<std::string> ret_node_names,
+    std::vector<std::string> keep_node_names, FunctionLibraryDefinition* lib,
+    const DeviceSet& device_set, Device* cpu_device,
+    const ConfigProto& config_proto, const std::string& grappler_item_id,
     const GrapplerItem::OptimizationOptions& optimization_options,
     std::unique_ptr<tensorflow::Graph>* g);
 

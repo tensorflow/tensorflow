@@ -31,12 +31,18 @@ toc:
     path: /xla/effort_levels
   - title: Emitters
     path: /xla/emitters
+  - title: GPU architecture
+    path: /xla/gpu_architecture
   - title: Hermetic CUDA overview
     path: /xla/hermetic_cuda
+  - title: HLO Passes
+    path: /xla/hlo_passes
   - title: Indexing Analysis
     path: /xla/indexing
   - title: LHS Cost Model
     path: /xla/lhs_cost_model
+  - title: Megascale
+    path: /xla/megascale/overview
   - title: Multi-host HLO runner
     path: /xla/tools_multihost_hlo_runner
   - title: Persisted autotuning
@@ -45,6 +51,8 @@ toc:
     path: /xla/shapes
   - title: SparseCore
     path: /xla/sparsecore
+  - title: Symbolic expressions and maps
+    path: /xla/symbolic_expression
   - title: Testing HLO passes
     path: /xla/test_hlo_passes
   - title: Tiled layout
@@ -68,6 +76,8 @@ toc:
     path: /xla/error_codes
   - title: Debug OOM errors with XProf
     path: /xla/oom_debugging
+  - title: Debug Megascale
+    path: /xla/megascale/debugging_workflow
 - title: Contributing
   # These should be in alphabetical order unless otherwise noted.
   section:

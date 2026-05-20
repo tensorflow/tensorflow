@@ -6,7 +6,7 @@ load("//tensorflow/lite/tools/benchmark/experimental/delegate_performance/androi
 load("//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android:proto.bzl", "proto_data")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android:__subpackages__"],
     licenses = ["notice"],
 )

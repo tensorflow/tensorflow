@@ -91,7 +91,8 @@ std::vector<XlaCompiler::Argument> SampleArgsForAddXY() {
   return args;
 }
 
-StatusOr<NameAttrList> GetFunctionAndSetupDevice(DeviceSetup& device_setup) {
+absl::StatusOr<NameAttrList> GetFunctionAndSetupDevice(
+    DeviceSetup& device_setup) {
   TF_ASSIGN_OR_RETURN(auto fdef, SampleFunctionAddXY("foo"));
   device_setup.AddDevicesAndSetUp({DEVICE_GPU}, fdef);
 

@@ -900,6 +900,86 @@ TEST_F(IrEmissionUtilsTest, ResolveWhileLoopDependencySideEffect) {
   ASSERT_FALSE(result.has_value());
 }
 
+TEST_F(IrEmissionUtilsTest, ResolveWhileLoopDependencyPartitionId) {
+  constexpr absl::string_view kHlo = R"(
+      while_body {
+        p0 = (s32[], s32[]) parameter(0)
+        ivar = s32[] get-tuple-element(p0), index=0
+        partition_id = u32[] partition-id()
+        partition_id_s32 = s32[] convert(partition_id)
+        offset = s32[] add(ivar, partition_id_s32)
+
+        c1 = s32[] constant(1)
+        next_ivar = s32[] add(ivar, c1)
+
+        ROOT result = (s32[], s32[]) tuple(next_ivar, offset)
+      }
+
+      condition {
+        p0 = (s32[], s32[]) parameter(0)
+        ivar = s32[] get-tuple-element(p0), index=0
+        c5 = s32[] constant(5)
+        ROOT cmp = pred[] compare(ivar, c5), direction=LT
+      }
+
+      ENTRY main {
+        c0 = s32[] constant(0)
+        tuple = (s32[], s32[]) tuple(c0, c0)
+        ROOT while = (s32[], s32[]) while(tuple),
+            condition=condition, body=while_body,
+            backend_config={"known_induction_variable":{"tuple_index":"0"}}
+      }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  HloComputation* while_body = module->GetComputationWithName("while_body");
+
+  ASSERT_FALSE(ResolveFunctionalDependencyOnInductionVariable(
+                   while_body->GetInstructionWithName("offset"))
+                   .has_value());
+}
+
+TEST_F(IrEmissionUtilsTest, ResolveWhileLoopDependencyReplicaId) {
+  constexpr absl::string_view kHlo = R"(
+      while_body {
+        p0 = (s32[], s32[]) parameter(0)
+        ivar = s32[] get-tuple-element(p0), index=0
+        replica_id = u32[] replica-id()
+        replica_id_s32 = s32[] convert(replica_id)
+        offset = s32[] add(ivar, replica_id_s32)
+
+        c1 = s32[] constant(1)
+        next_ivar = s32[] add(ivar, c1)
+
+        ROOT result = (s32[], s32[]) tuple(next_ivar, offset)
+      }
+
+      condition {
+        p0 = (s32[], s32[]) parameter(0)
+        ivar = s32[] get-tuple-element(p0), index=0
+        c5 = s32[] constant(5)
+        ROOT cmp = pred[] compare(ivar, c5), direction=LT
+      }
+
+      ENTRY main {
+        c0 = s32[] constant(0)
+        tuple = (s32[], s32[]) tuple(c0, c0)
+        ROOT while = (s32[], s32[]) while(tuple),
+            condition=condition, body=while_body,
+            backend_config={"known_induction_variable":{"tuple_index":"0"}}
+      }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  HloComputation* while_body = module->GetComputationWithName("while_body");
+
+  ASSERT_FALSE(ResolveFunctionalDependencyOnInductionVariable(
+                   while_body->GetInstructionWithName("offset"))
+                   .has_value());
+}
+
 TEST_F(IrEmissionUtilsTest, InternalTuple) {
   // Verifies that we can resolve dependencies that involve internal tuples.
   constexpr absl::string_view kHlo = R"(
@@ -1076,11 +1156,11 @@ TEST_F(IrEmissionUtilsTest, DynamicVariableWithIrrelevantGTE) {
 
         c1 = s32[] constant(1)
         next_ivar = s32[] add(ivar, c1)
-        
+
         dynamic_computation = s32[] add(ivar, c1)
-        
+
         irrelevant_computation = s32[] add(irrelevant_var, c1)
-        
+
         next_other = s32[] add(other_var, c1)
 
         ROOT result = (s32[], s32[], s32[], s32[]) tuple(next_ivar, dynamic_computation, irrelevant_computation, next_other)
@@ -1134,7 +1214,7 @@ TEST_F(IrEmissionUtilsTest, MultipleDynamicVariables) {
 
         c1 = s32[] constant(1)
         next_ivar = s32[] add(ivar, c1)
-        
+
         compute1 = s32[] add(dynamic_var1, c1)
         compute2 = s32[] add(dynamic_var2, c1)
         compute_regular = s32[] add(regular_var, c1)

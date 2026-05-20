@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -74,7 +75,7 @@ absl::StatusOr<std::unique_ptr<HostOffloadingExecutable>> CompileFromString(
                           client.Export(executable.get()));
 
       xla::cpu::CpuAotCompilationResult* cpu_aot_compilation_result =
-          tsl::down_cast<xla::cpu::CpuAotCompilationResult*>(
+          absl::down_cast<cpu::CpuAotCompilationResult*>(
               aot_compilation_result.get());
 
       *executable_proto.mutable_aot_compilation_result() =
@@ -417,7 +418,7 @@ TEST_P(HostOffloadingRuntimeExecutableTest, FfiWithThreadpool) {
       auto computation,
       CompileFromString(hlo, host_offloading_executable_type));
 
-  Shape shape = ShapeUtil::MakeShape(xla::PrimitiveType::F32, {1});
+  Shape shape = ShapeUtil::MakeShape(xla::PrimitiveType::S32, {});
   auto result_literal = LiteralUtil::CreateR0<int32_t>(0);
 
   ShapeTree<HostOffloadingBuffer> result(
@@ -511,7 +512,7 @@ TEST(HostOffloadingNanortTest, DeviceAssignment) {
                         HostOffloadingExecutableProto::EXECUTABLE_TYPE_NANORT));
 
   auto host_offloading_nanort_executable =
-      tsl::down_cast<HostOffloadingNanoRtExecutable*>(computation.get());
+      absl::down_cast<HostOffloadingNanoRtExecutable*>(computation.get());
   ASSERT_NE(host_offloading_nanort_executable, nullptr);
   ASSERT_NE(host_offloading_nanort_executable->device_assignment(), nullptr);
 

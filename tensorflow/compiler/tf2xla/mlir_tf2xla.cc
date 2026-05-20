@@ -68,7 +68,7 @@ class FakeDevice : public Device {
       : Device(nullptr, device_attributes) {}
 
   absl::Status Sync() override {
-    return errors::Unimplemented("FakeDevice::Sync()");
+    return absl::UnimplementedError("FakeDevice::Sync()");
   }
 };
 

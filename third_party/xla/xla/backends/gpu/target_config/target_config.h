@@ -19,10 +19,12 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 
@@ -33,11 +35,17 @@ enum class GpuModel {
   A6000,
   B200,
   B300,
+  BMG_G21,
   H100_PCIE,
   H100_SXM,
+  H200,
   MI200,
   P100,
+  PVC,
   V100,
+  GB200,
+  GB300,
+  RTX6000PRO
 };
 
 // Description of a target device for compilation.
@@ -65,6 +73,10 @@ struct GpuTargetConfig {
 // Returns the GpuTargetConfigProto for the given GPU model.
 absl::StatusOr<stream_executor::GpuTargetConfigProto> GetGpuTargetConfig(
     GpuModel gpu_model);
+
+// Reads a `GpuTargetConfigProto` textproto from the specified `filename`.
+absl::StatusOr<GpuTargetConfig> GetTargetConfigFromFile(
+    absl::string_view filename);
 
 }  // namespace xla::gpu
 

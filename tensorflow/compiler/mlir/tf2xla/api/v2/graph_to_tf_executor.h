@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V2_GRAPH_TO_TF_EXECUTOR_H_
 #define TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V2_GRAPH_TO_TF_EXECUTOR_H_
 
+#include <optional>
 #include <string>
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -43,7 +44,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphToTfExecutor(
         nullptr,
     const ConfigProto& config_proto = {},
     tensorflow::TF2XLABridgeVersion bridge_version =
-        tensorflow::TF2XLABridgeVersion::kNotBridgeUseCase);
+        tensorflow::TF2XLABridgeVersion::kNotBridgeUseCase,
+    std::optional<absl::string_view> module_name = std::nullopt);
 
 }  // namespace v2
 }  // namespace tf2xla

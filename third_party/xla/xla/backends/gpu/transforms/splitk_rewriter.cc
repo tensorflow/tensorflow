@@ -1,0 +1,426 @@
+/* Copyright 2025 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "xla/backends/gpu/transforms/splitk_rewriter.h"
+
+#include <algorithm>
+#include <array>
+#include <climits>
+#include <cstddef>
+#include <cstdint>
+#include <iterator>
+#include <optional>
+#include <vector>
+
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal_util.h"
+#include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/hlo_creation_utils.h"
+#include "xla/service/matmul_indexing_utils.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
+
+namespace xla {
+namespace gpu {
+namespace {
+
+struct DotDimensions {
+  int64_t b;  // batch dimensions
+  int64_t m;  // lhs non-contracting dimensions
+  int64_t n;  // rhs non-contracting dimensions
+  int64_t k;  // contracting dimensions
+  // LHS and RHS element sizes, after going up the chain of elementwise
+  // operations. That approximates what will be fused.
+  int64_t lhs_element_bits;
+  int64_t rhs_element_bits;
+  int64_t acc_element_bits;
+  int64_t out_element_bits;
+  int64_t flops_per_element;
+};
+
+int64_t GetAlgoritmFlopsPerElement(const HloDotInstruction* dot) {
+  switch (dot->precision_config().algorithm()) {
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
+    case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
+      return 12;
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
+      return 20;
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
+      return 28;
+    default:
+      return 2;  // Multiplication and addition.
+  }
+}
+
+DotDimensions GetDotDimensions(const HloInstruction* instr) {
+  const HloDotInstruction* dot = Cast<HloDotInstruction>(instr);
+  const Shape& lhs_shape = dot->operand(0)->shape();
+  const Shape& rhs_shape = dot->operand(1)->shape();
+  DotDimensionNumbers dnums = dot->dot_dimension_numbers();
+
+  auto product_dimensions = [](const Shape& shape,
+                               absl::Span<const int64_t> dimensions) {
+    return absl::c_accumulate(dimensions, static_cast<int64_t>(1),
+                              [&](int64_t product, int64_t dimension) {
+                                return product * shape.dimensions(dimension);
+                              });
+  };
+
+  auto get_side_size = [](const HloInstruction* instr) {
+    while (instr->IsElementwise() && instr->operand_count() == 1) {
+      instr = instr->operand(0);
+    }
+    return ShapeUtil::ElementSizeInBits(instr->shape());
+  };
+
+  return DotDimensions{
+      /*.b = */ product_dimensions(lhs_shape, dnums.lhs_batch_dimensions()),
+      /*.m = */
+      product_dimensions(
+          lhs_shape, GetNonContractingDims(lhs_shape.dimensions().size(),
+                                           dnums.lhs_contracting_dimensions(),
+                                           dnums.lhs_batch_dimensions())),
+      /*.n = */
+      product_dimensions(
+          rhs_shape, GetNonContractingDims(rhs_shape.dimensions().size(),
+                                           dnums.rhs_contracting_dimensions(),
+                                           dnums.rhs_batch_dimensions())),
+      /*.k = */
+      product_dimensions(lhs_shape, dnums.lhs_contracting_dimensions()),
+      /* .lhs_el_size_in_bits = */ get_side_size(dot->operand(0)),
+      /* .rhs_el_size_in_bits = */ get_side_size(dot->operand(1)),
+      /* .acc_el_size_in_bits = */
+      ShapeUtil::ByteSizeOfPrimitiveType(GetGemmAccumulatorType(dot)) *
+          CHAR_BIT,
+      /* .result_el_size_in_bits = */
+      ShapeUtil::ElementSizeInBits(dot->shape()),
+      /* .flops_per_element = */ GetAlgoritmFlopsPerElement(dot),
+  };
+}
+
+namespace {
+
+constexpr int64_t kMTileSize = 128;
+constexpr int64_t kNTileSize = 128;
+
+struct SplitKCostWeights {
+  double compute_cost_weight;
+  double memory_cost_weight;
+  double reduction_memory_cost_weight;
+  double reduction_launch_overhead;
+};
+
+SplitKCostWeights GetCostWeights(const se::DeviceDescription& device) {
+  auto compute_capability = device.cuda_compute_capability();
+  if (compute_capability.IsAtLeastBlackwell()) {
+    return {100.0, 0.0848863, 189.711, 1.21563e+08};
+  }
+  if (compute_capability.IsAtLeastHopper()) {
+    return {100.0, 0.194136, 193.1384, 4.36e+07};
+  }
+  return {100.0, 0.0666955, 467.815, 5.65307e+07};
+}
+
+}  // namespace
+
+double EstimateGemmCostAfterSplitK(const DotDimensions& gemm, int64_t splitk,
+                                   int num_cores,
+                                   const SplitKCostWeights& weights) {
+  // Effective dimensions after split
+  int64_t effective_k = CeilOfRatio(gemm.k, splitk);
+  int64_t effective_batch = gemm.b * splitk;
+
+  // Number of tiles in each dimension
+  int64_t m_tile_size = std::min(gemm.m, kMTileSize);
+  int64_t n_tile_size = std::min(gemm.n, kNTileSize);
+  int64_t m_tiles = CeilOfRatio(gemm.m, kMTileSize);
+  int64_t n_tiles = CeilOfRatio(gemm.n, kNTileSize);
+
+  double total_tiles = static_cast<double>(effective_batch * m_tiles * n_tiles);
+  double concurrent_tiles_per_sm =
+      static_cast<double>(kMTileSize * kNTileSize) /
+      static_cast<double>(m_tile_size * n_tile_size);
+  double wave_slots = static_cast<double>(num_cores) * concurrent_tiles_per_sm;
+  double num_waves = std::max(1.0, total_tiles / wave_slots);
+  double flops_per_tile = static_cast<double>(gemm.flops_per_element) *
+                          m_tile_size * n_tile_size * effective_k;
+  double total_compute_cost =
+      flops_per_tile * num_waves * weights.compute_cost_weight;
+
+  double base_lhs_bytes = static_cast<double>(gemm.m) * gemm.k * gemm.b *
+                          gemm.lhs_element_bits / 8.0;
+  double base_rhs_bytes = static_cast<double>(gemm.n) * gemm.k * gemm.b *
+                          gemm.rhs_element_bits / 8.0;
+
+  double actual_read_bytes = base_lhs_bytes + base_rhs_bytes;
+
+  const int64_t dot_output_element_size =
+      splitk > 1 ? gemm.acc_element_bits : gemm.out_element_bits;
+  double write_bytes = static_cast<double>(gemm.m) * gemm.n * effective_batch *
+                       dot_output_element_size / 8.0;
+
+  double total_memory_cost =
+      (actual_read_bytes + write_bytes) * weights.memory_cost_weight;
+
+  double total_dot_cost = std::max(total_compute_cost, total_memory_cost);
+
+  // Reduction cost.
+  if (splitk == 1) {
+    return total_dot_cost;
+  }
+
+  double reduction_read_bytes = static_cast<double>(effective_batch) * gemm.m *
+                                gemm.n * gemm.acc_element_bits / 8.0;
+  double reduction_write_bytes = static_cast<double>(gemm.b) * gemm.m * gemm.n *
+                                 gemm.out_element_bits / 8.0;
+
+  double reduction_cost = (reduction_read_bytes + reduction_write_bytes) *
+                          weights.reduction_memory_cost_weight;
+
+  return total_dot_cost + weights.reduction_launch_overhead + reduction_cost;
+}
+
+size_t ChooseSplitK(const DotDimensions& dims,
+                    const se::DeviceDescription& device_description) {
+  std::vector<int64_t> candidates = {1,  2,   4,   8,   16,   32,
+                                     64, 128, 256, 512, 1024, 2048};
+  std::vector<double> costs;
+  costs.reserve(candidates.size());
+
+  SplitKCostWeights weights = GetCostWeights(device_description);
+
+  absl::c_transform(candidates, std::back_inserter(costs), [&](int64_t splitk) {
+    return EstimateGemmCostAfterSplitK(
+        dims, splitk, device_description.core_count(), weights);
+  });
+  return candidates[absl::c_min_element(costs) - costs.begin()];
+}
+
+// Pads the given instruction with zeros along the given dimension to the given
+// size.
+HloInstruction* PadInstruction(HloInstruction* instr, int64_t dimension_idx,
+                               int64_t new_dimension_size) {
+  HloComputation* computation = instr->parent();
+  const PrimitiveType element_type = instr->shape().element_type();
+  HloInstruction* zero = computation->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::Zero(element_type)));
+  PaddingConfig padding_config =
+      MakeNoPaddingConfig(instr->shape().dimensions().size());
+  padding_config.mutable_dimensions(dimension_idx)
+      ->set_edge_padding_high(new_dimension_size -
+                              instr->shape().dimensions(dimension_idx));
+  Shape new_shape = instr->shape();
+  new_shape.set_dimensions(dimension_idx, new_dimension_size);
+  return computation->AddInstruction(
+      HloInstruction::CreatePad(new_shape, instr, zero, padding_config));
+}
+
+// Returns the padded K dimension so that it is a multiple of split_k and 16B.
+int64_t GetPaddedK(HloInstruction& dot, int64_t split_k) {
+  DotDimensions dims = GetDotDimensions(&dot);
+  const int64_t alignment_in_bits = 16 * 8;
+  int64_t min_element_size_in_bits = std::min(
+      {alignment_in_bits, dims.lhs_element_bits, dims.rhs_element_bits});
+  return RoundUpTo(dims.k,
+                   split_k * alignment_in_bits / min_element_size_in_bits);
+}
+
+// The contracting dimension index becomes new batch (split) dimension, and all
+// dimensions after it are shifted by 1.
+HloInstruction* SplitKOperand(HloInstruction* operand,
+                              int64_t contracting_dimension_idx,
+                              int64_t split_k, int64_t padded_k) {
+  // if the K dimension is not divisible by split_k, we need to pad it.
+  const int64_t src_k = operand->shape().dimensions(contracting_dimension_idx);
+  if (padded_k != src_k) {
+    operand = PadInstruction(operand, contracting_dimension_idx, padded_k);
+  }
+  const Shape& old_shape = operand->shape();
+
+  // Copy the existing shape to keep all the non-dimension/non-layout fields of
+  // the shape (element size in bits etc).
+  Shape new_shape = old_shape;
+  new_shape.clear_dimensions();
+  for (int64_t i = 0; i < old_shape.dimensions().size(); ++i) {
+    const int64_t old_dim = old_shape.dimensions(i);
+    if (i == contracting_dimension_idx) {
+      new_shape.add_dimensions(split_k);
+      new_shape.add_dimensions(old_dim / split_k);
+    } else {
+      new_shape.add_dimensions(old_dim);
+    }
+  }
+
+  // Update the physical layout so the the physical layout is preserved (i.e.
+  // the splitK dimension goes right before the contracting dimension, and all
+  // remaining dimensions are kept).
+  if (new_shape.layout().minor_to_major().size() > 0) {
+    new_shape.mutable_layout()->clear_minor_to_major();
+    for (int64_t dim_idx : old_shape.layout().minor_to_major()) {
+      if (dim_idx >= contracting_dimension_idx) {
+        new_shape.mutable_layout()->add_minor_to_major(dim_idx + 1);
+      }
+      if (dim_idx <= contracting_dimension_idx) {
+        new_shape.mutable_layout()->add_minor_to_major(dim_idx);
+      }
+    }
+  }
+
+  // Now reshape into the "new_shape".
+  return operand->parent()->AddInstruction(
+      HloInstruction::CreateReshape(new_shape, operand));
+}
+
+// Sums/reduces the tensor along the given dimension.
+absl::StatusOr<HloInstruction*> ReduceDimension(HloInstruction* instr,
+                                                int64_t dimension_idx) {
+  HloComputation* computation = instr->parent();
+  const PrimitiveType element_type = instr->shape().element_type();
+  HloInstruction* zero = computation->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::Zero(element_type)));
+  return MakeReduceHlo(instr, zero, {dimension_idx}, HloOpcode::kAdd,
+                       &instr->metadata());
+}
+
+absl::StatusOr<HloInstruction*> SplitKDimensionOfDot(HloDotInstruction* src_dot,
+                                                     size_t split_k) {
+  PrimitiveType output_type = src_dot->shape().element_type();
+  PrimitiveType accumulator_type = GetGemmAccumulatorType(src_dot);
+
+  // "split_k" is the number on chunks the K dimension is split into.
+  std::array<int64_t, 2> k_incices = {
+      src_dot->dot_dimension_numbers().lhs_contracting_dimensions(0),
+      src_dot->dot_dimension_numbers().rhs_contracting_dimensions(0)};
+  const int64_t padded_k = GetPaddedK(*src_dot, split_k);
+  // The operands' K dimension are split into [split_k, K/split_k] (shifting
+  // right all the dimensions after it).
+  std::array<HloInstruction*, 2> operands = {
+      SplitKOperand(src_dot->mutable_operand(0), k_incices[0], split_k,
+                    padded_k),
+      SplitKOperand(src_dot->mutable_operand(1), k_incices[1], split_k,
+                    padded_k)};
+
+  // Update the dot's dimension numbers accordingly (shifting right all the
+  // dimensions starting from the K dimension and inserting new batch dims).
+  TF_ASSIGN_OR_RETURN(auto dims, DotOperandDims::FromDot(src_dot));
+  // We need to insert the dimension at the same index in both operands.
+  // InsertDimension inserts at "natural" location by default which may be
+  // different for lhs and rhs. Therefore, we take the index from the lhs and
+  // insert at the same index in the rhs.
+  std::optional<int64_t> insertion_idx = std::nullopt;
+  for (size_t i : {0, 1}) {
+    TF_ASSIGN_OR_RETURN(insertion_idx, dims[i].InsertDimension(
+                                           DotOperandDims::kBatch, k_incices[i],
+                                           split_k, insertion_idx));
+    TF_RETURN_IF_ERROR(dims[i].UpdateShape(operands[i]->shape()));
+  }
+
+  TF_ASSIGN_OR_RETURN(DotDimensionNumbers new_dnums,
+                      DotOperandDims::CreateDotDimensionNumbers(dims));
+  TF_ASSIGN_OR_RETURN(HloInstruction * new_dot,
+                      MakeDotHlo(operands[0], operands[1], new_dnums,
+                                 src_dot->precision_config(), accumulator_type,
+                                 &src_dot->metadata()));
+
+  // Reduce along the new batch dimension. Batch dimensions are first in the dot
+  // result, so we use index within the batch category to get it.
+  TF_ASSIGN_OR_RETURN(
+      int64_t splitk_dim_idx,
+      dims[0].IndexWithinCategory(DotOperandDims::kBatch, k_incices[0]));
+
+  TF_ASSIGN_OR_RETURN(HloInstruction * splitk_root,
+                      ReduceDimension(new_dot, splitk_dim_idx));
+  *splitk_root->mutable_shape()->mutable_layout() = src_dot->shape().layout();
+  if (output_type != accumulator_type) {
+    splitk_root = MakeConvertToHlo(splitk_root, output_type);
+  }
+  return splitk_root;
+}
+
+class SplitkRewriterVisitor : public DfsHloRewriteVisitor {
+ public:
+  explicit SplitkRewriterVisitor(se::DeviceDescription device_description)
+      : device_description_(device_description) {}
+
+ private:
+  absl::Status HandleDot(HloInstruction* instr) override {
+    HloDotInstruction* dot = DynCast<HloDotInstruction>(instr);
+    if (dot->dot_dimension_numbers().lhs_contracting_dimensions_size() != 1 ||
+        dot->dot_dimension_numbers().rhs_contracting_dimensions_size() != 1) {
+      // In theory we could support it, but it's rare and adds complexity.
+      return absl::OkStatus();
+    }
+    if (absl::c_any_of(dot->operands(), [](const HloInstruction* operand) {
+          return operand->shape().element_type() == S32;
+        })) {
+      // Neither cuBLAS nor Triton support s32, so we don't benefit from
+      // splitting K.
+      return absl::OkStatus();
+    }
+    size_t split_k = dot->parent()
+                         ->parent()
+                         ->config()
+                         .debug_options()
+                         .xla_gpu_experimental_force_split_k();
+    if (split_k == 0) {
+      split_k = ChooseSplitK(GetDotDimensions(dot), device_description_);
+    }
+    if (split_k == 1) {
+      return absl::OkStatus();
+    }
+    TF_ASSIGN_OR_RETURN(HloInstruction * new_dot,
+                        SplitKDimensionOfDot(dot, split_k));
+    TF_RETURN_IF_ERROR(ReplaceInstruction(instr, new_dot));
+    return absl::OkStatus();
+  }
+
+  se::DeviceDescription device_description_;
+};
+
+}  // namespace
+
+absl::StatusOr<bool> SplitkRewriter::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  bool changed = false;
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
+    SplitkRewriterVisitor visitor(device_description_);
+    TF_RETURN_IF_ERROR(computation->Accept(&visitor));
+    changed |= visitor.changed();
+  }
+  return changed;
+}
+
+}  // namespace gpu
+}  // namespace xla

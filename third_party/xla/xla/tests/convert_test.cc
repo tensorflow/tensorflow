@@ -560,10 +560,6 @@ TEST_F(ConvertTest, ConvertR1S4ToR1S8) {
 }
 
 TEST_F(ConvertTest, ConvertR1S4ParameterToR1S8) {
-  if (test::DeviceTypeIs(test::kGpu) && !test::UsingStreamExecutorGpuClient()) {
-    // TODO: b/443805514 - Enable this test for the TFRT GPU client.
-    GTEST_SKIP() << "The TFRT GPU client does not support packed formats.";
-  }
   XlaBuilder builder(TestName());
   Literal arg_literal =
       LiteralUtil::CreateR1<s4>({s4(0), s4(1), s4(2), s4(-8)});
@@ -585,10 +581,6 @@ TEST_F(ConvertTest, ConvertR1U4ToR1U8) {
 }
 
 TEST_F(ConvertTest, ConvertR1U4ParameterToR1U8) {
-  if (test::DeviceTypeIs(test::kGpu) && !test::UsingStreamExecutorGpuClient()) {
-    // TODO: b/443805514 - Enable this test for the TFRT GPU client.
-    GTEST_SKIP() << "The TFRT GPU client does not support packed formats.";
-  }
   XlaBuilder builder(TestName());
   Literal arg_literal =
       LiteralUtil::CreateR1<u4>({u4(0), u4(1), u4(2), u4(15)});

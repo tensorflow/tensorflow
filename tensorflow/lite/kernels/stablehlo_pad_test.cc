@@ -155,8 +155,7 @@ class StablehloPadModel : public SingleOpModel {
         /*input_shapes=*/{std::vector<int>(input_.shape.begin(),
                                            input_.shape.end())},
         /*num_threads=*/-1, /*allow_fp32_relax_to_fp16=*/false,
-        /*apply_delegate=*/true, /*allocate_and_delegate=*/false,
-        /*use_simple_allocator=*/false);
+        /*apply_delegate=*/true, /*allocate_and_delegate=*/false);
     AllocateAndDelegate(/*apply_delegate=*/true);
     PopulateTensor(input_tensor_id_, input_.data);
     return absl::OkStatus();

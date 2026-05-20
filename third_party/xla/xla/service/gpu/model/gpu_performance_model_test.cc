@@ -77,10 +77,6 @@ class GpuPerformanceModelTest : public HloHardwareIndependentTestBase {
   GpuPerformanceModel gpu_performance_model_{
       device_info_, fusion_analysis_cache_, gpu_performance_model_cache_,
       &mlir_context_};
-
-  GpuPerformanceModelWithIndexingAnalysis indexing_cost_model_{
-      &device_info_, &fusion_analysis_cache_, HloCostAnalysis::DefaultShapeSize,
-      &mlir_context_};
 };
 
 TEST_F(GpuPerformanceModelTest, LargeWrite) {
@@ -104,9 +100,6 @@ ENTRY e {
   auto t = EstimateRunTimes(root);
   // Dominated by the DRAM bandwidth.
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 53, 10);
-
-  auto indexing_t = indexing_cost_model_.EstimateRunTimes(root);
-  EXPECT_NEAR(absl::ToInt64Microseconds(indexing_t.time_unfused), 53, 10);
 }
 
 TEST_F(GpuPerformanceModelTest, SmallReadWrite) {
@@ -139,9 +132,6 @@ ENTRY e {
       root->backend_config<GpuBackendConfig>()->reification_cost()[0];
   EXPECT_NEAR(reification_cost.end_to_end_cycles(), 38.4, 0.1);
   EXPECT_NEAR(reification_cost.exec_time_us(), 0, 1);
-
-  auto indexing_t = indexing_cost_model_.EstimateRunTimes(root);
-  EXPECT_NEAR(absl::ToInt64Microseconds(indexing_t.time_unfused), 1, 1);
 }
 
 TEST_F(GpuPerformanceModelTest, LargeReadWrite) {

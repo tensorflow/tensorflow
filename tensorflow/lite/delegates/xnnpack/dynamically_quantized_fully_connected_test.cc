@@ -54,13 +54,16 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, 1D) {
   const auto input_channels = GenInputChannels(channels_rng, weights_type);
   const auto output_channels = channels_rng();
 
-  DynamicallyQuantizedFullyConnectedTester()
-      .InputShape({input_channels})
+  DynamicallyQuantizedFullyConnectedTester tester;
+  tester.InputShape({input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .KeepDims(true)
       .WeightsType(weights_type)
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_P(DynamicallyQuantizedFullyConnectedTest, 2D) {
@@ -75,12 +78,15 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, 2D) {
   const auto input_channels = GenInputChannels(channels_rng, weights_type);
   const auto output_channels = channels_rng();
 
-  DynamicallyQuantizedFullyConnectedTester()
-      .InputShape({batch, input_channels})
+  DynamicallyQuantizedFullyConnectedTester tester;
+  tester.InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .WeightsType(weights_type)
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_P(DynamicallyQuantizedFullyConnectedTest, 2DKeepDims) {
@@ -95,13 +101,16 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, 2DKeepDims) {
   const auto input_channels = GenInputChannels(channels_rng, weights_type);
   const auto output_channels = channels_rng();
 
-  DynamicallyQuantizedFullyConnectedTester()
-      .InputShape({batch, input_channels})
+  DynamicallyQuantizedFullyConnectedTester tester;
+  tester.InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .KeepDims(true)
       .WeightsType(weights_type)
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_P(DynamicallyQuantizedFullyConnectedTest, 3D) {
@@ -117,12 +126,15 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, 3D) {
   const auto input_channels = GenInputChannels(channels_rng, weights_type);
   const auto output_channels = channels_rng();
 
-  DynamicallyQuantizedFullyConnectedTester()
-      .InputShape({batch, width, input_channels})
+  DynamicallyQuantizedFullyConnectedTester tester;
+  tester.InputShape({batch, width, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .WeightsType(weights_type)
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_P(DynamicallyQuantizedFullyConnectedTest, 3DReshape) {
@@ -137,12 +149,15 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, 3DReshape) {
   const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
 
-  DynamicallyQuantizedFullyConnectedTester()
-      .InputShape({batch, width, input_channels})
+  DynamicallyQuantizedFullyConnectedTester tester;
+  tester.InputShape({batch, width, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .WeightsType(GetParam())
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_P(DynamicallyQuantizedFullyConnectedTest, 3DKeepDims) {
@@ -158,13 +173,16 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, 3DKeepDims) {
   const auto input_channels = GenInputChannels(channels_rng, weights_type);
   const auto output_channels = channels_rng();
 
-  DynamicallyQuantizedFullyConnectedTester()
-      .InputShape({batch, width, input_channels})
+  DynamicallyQuantizedFullyConnectedTester tester;
+  tester.InputShape({batch, width, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .KeepDims(true)
       .WeightsType(weights_type)
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_P(DynamicallyQuantizedFullyConnectedTest, 4D) {
@@ -181,12 +199,15 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, 4D) {
   const auto input_channels = GenInputChannels(channels_rng, weights_type);
   const auto output_channels = channels_rng();
 
-  DynamicallyQuantizedFullyConnectedTester()
-      .InputShape({batch, height, width, input_channels})
+  DynamicallyQuantizedFullyConnectedTester tester;
+  tester.InputShape({batch, height, width, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .WeightsType(weights_type)
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_P(DynamicallyQuantizedFullyConnectedTest, 4DKeepDims) {
@@ -203,13 +224,16 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, 4DKeepDims) {
   const auto input_channels = GenInputChannels(channels_rng, weights_type);
   const auto output_channels = channels_rng();
 
-  DynamicallyQuantizedFullyConnectedTester()
-      .InputShape({batch, height, width, input_channels})
+  DynamicallyQuantizedFullyConnectedTester tester;
+  tester.InputShape({batch, height, width, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .KeepDims(true)
       .WeightsType(weights_type)
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_P(DynamicallyQuantizedFullyConnectedTest, NoBias) {
@@ -224,13 +248,16 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, NoBias) {
   const auto input_channels = GenInputChannels(channels_rng, weights_type);
   const auto output_channels = channels_rng();
 
-  DynamicallyQuantizedFullyConnectedTester()
-      .InputShape({batch, input_channels})
+  DynamicallyQuantizedFullyConnectedTester tester;
+  tester.InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .NoBias()
       .WeightsType(weights_type)
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_P(DynamicallyQuantizedFullyConnectedTest, ReluActivation) {
@@ -245,13 +272,16 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, ReluActivation) {
   const auto input_channels = GenInputChannels(channels_rng, weights_type);
   const auto output_channels = channels_rng();
 
-  DynamicallyQuantizedFullyConnectedTester()
-      .InputShape({batch, input_channels})
+  DynamicallyQuantizedFullyConnectedTester tester;
+  tester.InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .ReluActivation()
       .WeightsType(weights_type)
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_P(DynamicallyQuantizedFullyConnectedTest, Relu6Activation) {
@@ -266,13 +296,16 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, Relu6Activation) {
   const auto input_channels = GenInputChannels(channels_rng, weights_type);
   const auto output_channels = channels_rng();
 
-  DynamicallyQuantizedFullyConnectedTester()
-      .InputShape({batch, input_channels})
+  DynamicallyQuantizedFullyConnectedTester tester;
+  tester.InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .Relu6Activation()
       .WeightsType(weights_type)
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_P(DynamicallyQuantizedFullyConnectedTest, ReluMinus1To1Activation) {
@@ -287,13 +320,16 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, ReluMinus1To1Activation) {
   const auto input_channels = GenInputChannels(channels_rng, weights_type);
   const auto output_channels = channels_rng();
 
-  DynamicallyQuantizedFullyConnectedTester()
-      .InputShape({batch, input_channels})
+  DynamicallyQuantizedFullyConnectedTester tester;
+  tester.InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .ReluMinus1To1Activation()
       .WeightsType(weights_type)
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_P(DynamicallyQuantizedFullyConnectedTest, MultiThreading) {
@@ -312,12 +348,15 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, MultiThreading) {
   const auto input_channels = GenInputChannels(channels_rng, weights_type);
   const auto output_channels = channels_rng();
 
-  DynamicallyQuantizedFullyConnectedTester()
-      .InputShape({batch, input_channels})
+  DynamicallyQuantizedFullyConnectedTester tester;
+  tester.InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .WeightsType(weights_type)
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_P(DynamicallyQuantizedFullyConnectedTest, WeightsCache) {
@@ -342,13 +381,16 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, WeightsCache) {
   const auto input_channels = GenInputChannels(channels_rng, weights_type);
   const auto output_channels = channels_rng();
 
-  DynamicallyQuantizedFullyConnectedTester()
-      .InputShape({batch, input_channels})
+  DynamicallyQuantizedFullyConnectedTester tester;
+  tester.InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .WeightsCache(weights_cache.get())
       .WeightsType(weights_type)
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 // Returns a human readable string representation of the test parameter.

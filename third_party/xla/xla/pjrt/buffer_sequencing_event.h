@@ -17,16 +17,19 @@ limitations under the License.
 #define XLA_PJRT_BUFFER_SEQUENCING_EVENT_H_
 
 #include <cstdint>
-#include <functional>
 #include <string>
+#include <utility>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/pjrt/async_work_runner.h"
+#include "xla/pjrt/device_event.h"
 #include "xla/pjrt/event_pool.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/async_value.h"
@@ -98,6 +101,16 @@ class BufferSequencingEvent : tsl::AsyncPayload::KeepOnError {
   // called, blocks the calling thread until the event has been recorded.
   void WaitForEventOnStream(se::Stream* stream);
 
+  // Adds a key-value pair to add additional information on error.
+  // Error contexts should be added before the events are started to avoid race
+  // conditions. The key must be a compile time constant string. Multiple error
+  // contexts with the same key will be concatenated with semicolons.
+  void AddErrorContext(absl::string_view key, std::string error_context);
+
+  // Appends the error context to the error status if a context is set.
+  // This should only be called when the underlying event is already complete.
+  absl::Status AppendErrorContext(absl::Status status) const;
+
   // Same as WaitForEventOnStream, but takes a raw platform-specific
   // stream. Currently on implemented for CUDA and ROCM GPU, where stream is a
   // GpuStreamHandle (e.g. a cudaStream_t).
@@ -122,12 +135,6 @@ class BufferSequencingEvent : tsl::AsyncPayload::KeepOnError {
   inline bool operator>=(const BufferSequencingEvent& rhs) const {
     return !(*this < rhs);
   }
-
-  // Executes the `task` if the event is ready; otherwise adds the `task`
-  // callback to `event_` async value, to be executed when it becomes
-  // available.
-  void ExecuteOrAddToFutureTasks(const std::string& task_name,
-                                 std::function<void()> task);
 
   bool IsDefined() { return event_.IsAvailable(); }
 
@@ -156,9 +163,9 @@ class BufferSequencingEvent : tsl::AsyncPayload::KeepOnError {
 
   const tsl::AsyncValueRef<EventState>& event() { return event_; }
 
- private:
   uint64_t sequence_number() const;
 
+ private:
   mutable absl::Mutex mu_;
   // A list of all streams for which the buffer's content is known to be defined
   // at the tail of the queue, i.e., for any newly enqueued command.
@@ -169,9 +176,17 @@ class BufferSequencingEvent : tsl::AsyncPayload::KeepOnError {
   // Indicates if the buffer is in an error status. And error status is used to
   // propagate the error to the buffer consumers.
   tsl::AsyncValueRef<EventState> event_;
+  absl::InlinedVector<std::pair<absl::string_view, std::string>, 4>
+      error_context_ ABSL_GUARDED_BY(mu_);
 };
 
 using BufferSequencingEventRef = tsl::AsyncValueRef<BufferSequencingEvent>;
+
+namespace internal {
+template <>
+const PJRT_DeviceEvent_FunctionTable*
+GetBuiltinDeviceEventCApiFunctionTable<BufferSequencingEvent>();
+}  // namespace internal
 
 }  // namespace xla
 

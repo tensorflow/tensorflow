@@ -20,10 +20,12 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/gather_functor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/gpu_launch_config.h"
 
 namespace tensorflow {
 
@@ -35,7 +37,7 @@ __global__ void GatherOpKernel(const ValueOrVec* __restrict__ params,
                                ValueOrVec* __restrict__ out,
                                int64 gather_dim_size, int64 indices_size,
                                int64 slice_size, int64 out_size) {
-  GPU_1D_KERNEL_LOOP(i, out_size) {
+  for (int64_t i : GpuGridRangeX(out_size)) {
     Index batch_i = 0;
     Index indices_i = 0;
     Index slice_i = 0;
@@ -91,9 +93,12 @@ struct LaunchGatherKernelVectorized {
       const Tvec* params_vec = reinterpret_cast<const Tvec*>(params);
       Tvec* out_vec = reinterpret_cast<Tvec*>(out);
 
-      GpuLaunchConfig config = GetGpuLaunchConfig(
-          out_size_vec, d, &GatherOpKernel<Tvec, Index, is_axis_zero>,
-          /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
+      TF_ASSIGN_OR_RETURN(
+          GpuLaunchConfig64 config,
+          GetGpuLaunchConfig64(out_size_vec, d,
+                               &GatherOpKernel<Tvec, Index, is_axis_zero>,
+                               /*dynamic_shared_memory_size=*/0,
+                               /*block_size_limit=*/0));
       return GpuLaunchKernel(
           GatherOpKernel<Tvec, Index, is_axis_zero>, config.block_count,
           config.thread_per_block, 0, d.stream(), params_vec, indices, out_vec,
@@ -142,13 +147,21 @@ struct GatherFunctor<GPUDevice, T, Index> {
     const int64 slice_size = params.dimension(2);
 
     if (is_axis_zero) {
-      TF_CHECK_OK(LaunchGatherKernel<true>(d, params.data(), indices.data(),
-                                           out.data(), gather_dim_size,
-                                           indices_size, slice_size, out_size));
-    } else {
-      TF_CHECK_OK(LaunchGatherKernel<false>(
+      absl::Status status = LaunchGatherKernel<true>(
           d, params.data(), indices.data(), out.data(), gather_dim_size,
-          indices_size, slice_size, out_size));
+          indices_size, slice_size, out_size);
+      if (!status.ok()) {
+        ctx->CtxFailure(__FILE__, __LINE__, status);
+        return -1;
+      }
+    } else {
+      absl::Status status = LaunchGatherKernel<false>(
+          d, params.data(), indices.data(), out.data(), gather_dim_size,
+          indices_size, slice_size, out_size);
+      if (!status.ok()) {
+        ctx->CtxFailure(__FILE__, __LINE__, status);
+        return -1;
+      }
     }
     // TODO(fpmc): enable indices validation on GPU.
     // Right now checking for indices out of bound in the kernel would

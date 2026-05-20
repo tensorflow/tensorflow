@@ -155,9 +155,9 @@ OriginalValueProto OriginalValue::ToProto() const {
   if (is_synthetic_call()) {
     original_value_proto.set_is_synthetic_call(true);
   } else {
-    tree().ForEachElement([&original_value_proto](
-                              const ShapeIndex& index,
-                              const std::optional<OriginalArray>& value) {
+    for (const auto& leaf_it : original_arrays()) {
+      const ShapeIndex& index = leaf_it.first;
+      const std::optional<OriginalArray>& value = leaf_it.second;
       OriginalValueElementProto* original_value_node_proto =
           original_value_proto.add_elements();
       for (const auto& i : index) {
@@ -166,7 +166,7 @@ OriginalValueProto OriginalValue::ToProto() const {
       if (value.has_value()) {
         *original_value_node_proto->mutable_original_array() = value->ToProto();
       }
-    });
+    }
   }
   return original_value_proto;
 }

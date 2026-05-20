@@ -59,7 +59,7 @@ class FakeDevice : public Device {
 };
 
 absl::Status FakeDevice::Sync() {
-  return errors::Unimplemented("FakeDevice::Sync()");
+  return absl::UnimplementedError("FakeDevice::Sync()");
 }
 
 std::unique_ptr<Device> FakeDevice::Make(const std::string& name,
@@ -80,8 +80,8 @@ absl::Status FindPassWithName(absl::string_view name,
       for (const auto& pass : phase_and_passes.second) {
         if (pass->name() == name) {
           if (*result) {
-            return errors::Internal("Found more than one pass with name ",
-                                    name);
+            return absl::InternalError(
+                absl::StrCat("Found more than one pass with name ", name));
           }
           *result = pass.get();
         }
@@ -89,9 +89,9 @@ absl::Status FindPassWithName(absl::string_view name,
     }
   }
 
-  return *result == nullptr
-             ? errors::Internal("Could not find pass with name ", name)
-             : absl::OkStatus();
+  return *result == nullptr ? absl::InternalError(absl::StrCat(
+                                  "Could not find pass with name ", name))
+                            : absl::OkStatus();
 }
 }  // namespace
 

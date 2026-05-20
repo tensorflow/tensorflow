@@ -21,6 +21,7 @@ cc_library(
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/c:pjrt_c_api_helpers",
+        "//xla/pjrt/c:pjrt_c_api_status_utils",
         "//xla/pjrt/c:pjrt_c_api_wrapper_impl",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -33,13 +34,21 @@ cc_library(
 xla_test(
     name = "pjrt_c_api_cross_host_transfers_extension_gpu_test",
     srcs = ["pjrt_c_api_cross_host_transfers_extension_gpu_test.cc"],
+    backend_tags = {
+        "h100": [
+            "full",
+            "multi_gpu",
+            "no_oss",
+        ],
+        "gpu": [
+            "multi_gpu",
+            "no_oss",
+        ],
+    },
     backends = ["gpu"],
     tags = if_google([
         "config-cuda-only",
-    ]) + [
-        "multi_gpu",
-        "no_oss",
-    ],
+    ]),
     deps = [
         ":pjrt_c_api_cross_host_transfer_extension",
         "//xla:debug_options_flags",
@@ -48,6 +57,7 @@ xla_test(
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:status_macros",
+        "//xla:xla_data_proto_cc",
         "//xla/client:client_library",
         "//xla/ffi/api:ffi",
         "//xla/pjrt:pjrt_client",
@@ -55,14 +65,15 @@ xla_test(
         "//xla/pjrt/c:pjrt_c_api_gpu",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/c:pjrt_c_api_helpers",
+        "//xla/pjrt/c:pjrt_c_api_status_utils",
         "//xla/pjrt/c:pjrt_c_api_wrapper_impl",
         "//xla/pjrt/distributed",
         "//xla/pjrt/distributed:client",
-        "//xla/pjrt/distributed:in_memory_key_value_store",
         "//xla/pjrt/distributed:service",
         "//xla/tests:literal_test_util",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:subprocess",
         "//xla/tsl/util:command_line_flags",

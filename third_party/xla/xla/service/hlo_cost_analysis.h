@@ -727,6 +727,9 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // function and per-second rates.
   Options options_;
 
+  absl::flat_hash_map<const HloInstruction*, int64_t>
+      instruction_shape_size_cache_;
+
   // Determines which properties propagate from subcomputations to parents.
   virtual bool KeyToCopyFromSubcomputation(absl::string_view key) const;
 

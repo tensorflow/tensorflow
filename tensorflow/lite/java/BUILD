@@ -11,7 +11,7 @@ load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_android_libr
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni", "aar_without_jni")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )

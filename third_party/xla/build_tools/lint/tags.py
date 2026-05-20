@@ -70,6 +70,10 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "requires-gpu-sm80-only": "Requires exactly sm80.",
     "requires-gpu-sm90-only": "Requires exactly sm90.",
     "requires-gpu-sm100-only": "Requires exactly sm100.",
+    "requires-gpu-sm103-only": "Requires exactly sm103.",
+    "requires-gpu-sm120-only": "Requires exactly sm120.",
+    "full": "Test requires a full GPU, not a partitioned one. No effect in"
+            " OSS.",
     "gpu": "Catch-all tag for targets that should be built/tested on GPU CI",
     "cpu": "Catch-all tag for targets that should be built/tested on CPU CI.",
     "cuda-only": "Targets that require the CUDA backend to be enabled.",
@@ -91,6 +95,17 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "xla_a100": "Runs on an a100.",
     "xla_h100": "Runs on an h100.",
     "xla_b200": "Runs on a b200.",
+    "xla_gb200": "Runs on a gb200.",
+    "xla_gb300": "Runs on a gb300.",
+    "xla_rtx6000pro": "Runs on an rtx6000pro.",
+    "xla_device_p100": "Runs on a p100.",
+    "xla_device_v100": "Runs on a v100.",
+    "xla_device_a100": "Runs on an a100.",
+    "xla_device_h100": "Runs on an h100.",
+    "xla_device_b200": "Runs on a b200.",
+    "xla_device_gb200": "Runs on a gb200.",
+    "xla_device_gb300": "Runs on a gb300.",
+    "xla_device_rtx6000pro": "Runs on an rtx6000pro.",
     # Below tags are consumed by `xla_test`.
     "test_migrated_to_hlo_runner_pjrt": (
         "Adds the appropriate `xla/tests:pjrt_$BACKEND_client_registry` to the"

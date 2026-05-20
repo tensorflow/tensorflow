@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
@@ -53,7 +54,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -485,6 +485,9 @@ absl::Status EmitSortInPlace(
           std::max(tile_size, static_cast<int64_t>(64)));
       param_shmem_buffers[i] = llvm_ir::AllocateSharedMemoryTile(
           module, tile_type, absl::StrCat(name, "_tile_param_", i));
+      param_shmem_buffers[i]->setAlignment(
+          llvm::Align(ShapeUtil::ByteSizeOfPrimitiveType(
+              values_arrays[i].GetShape().element_type())));
     }
   }
 

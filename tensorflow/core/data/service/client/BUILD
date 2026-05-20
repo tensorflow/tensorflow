@@ -151,6 +151,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 

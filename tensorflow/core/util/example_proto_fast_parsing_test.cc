@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/util/example_proto_fast_parsing.h"
 
+#include <cstdint>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
@@ -428,6 +430,172 @@ TEST(TestFastParseExample, Empty) {
       FastParseExample(config, absl::Span<const tstring>(),
                        absl::Span<const tstring>(), nullptr, &result);
   EXPECT_TRUE(status.ok()) << status;
+}
+
+TEST(FastParse, OOB_Write_Vulnerability_NonPacked_FloatList) {
+  FastParseExampleConfig config;
+  AddDenseFeature("f", DT_FLOAT, {1}, false, 1, &config);
+
+  auto encode_varint = [](uint32_t v, std::string* out) {
+    while (v >= 0x80) {
+      out->push_back((v & 0x7f) | 0x80);
+      v >>= 7;
+    }
+    out->push_back(v);
+  };
+
+  std::string float_list_data;
+  int num_elements = 10000;  // Large number to force crash
+  for (int i = 0; i < num_elements; ++i) {
+    float_list_data.push_back(13);  // kFixed32Tag(1)
+    float v = 1.0f;
+    const char* p = reinterpret_cast<const char*>(&v);
+    float_list_data.append(p, 4);
+  }
+
+  std::string serialized_feature;
+  serialized_feature.push_back(18);  // kDelimitedTag(2) for float_list
+  encode_varint(float_list_data.size(), &serialized_feature);
+  serialized_feature.append(float_list_data);
+
+  std::string map_entry;
+  map_entry.push_back(10);  // kDelimitedTag(1) for key
+  map_entry.push_back(1);
+  map_entry.push_back('f');
+  map_entry.push_back(18);  // kDelimitedTag(2) for value
+  encode_varint(serialized_feature.size(), &map_entry);
+  map_entry.append(serialized_feature);
+
+  std::string features_msg;
+  features_msg.push_back(10);  // kDelimitedTag(1) for map entry
+  encode_varint(map_entry.size(), &features_msg);
+  features_msg.append(map_entry);
+
+  std::string serialized_example;
+  serialized_example.push_back(10);  // kDelimitedTag(1) for features
+  encode_varint(features_msg.size(), &serialized_example);
+  serialized_example.append(features_msg);
+
+  Result result;
+  std::vector<tstring> serialized_vec = {tstring(serialized_example)};
+  absl::Status parse_status =
+      FastParseExample(config, serialized_vec, {}, nullptr, &result);
+
+  // We expect this to fail with INVALID_ARGUMENT due to size mismatch,
+  // but WITHOUT crashing.
+  EXPECT_FALSE(parse_status.ok());
+  EXPECT_TRUE(absl::IsInvalidArgument(parse_status));
+}
+
+TEST(FastParse, DenseFloat_TooManyElements_ReportsError) {
+  FastParseExampleConfig config;
+  AddDenseFeature("f", DT_FLOAT, {1}, false, 1, &config);
+
+  auto encode_varint = [](uint32_t v, std::string* out) {
+    while (v >= 0x80) {
+      out->push_back((v & 0x7f) | 0x80);
+      v >>= 7;
+    }
+    out->push_back(v);
+  };
+
+  std::string float_list_data;
+  int num_elements = 5;  // Expecting 1, but providing 5
+  for (int i = 0; i < num_elements; ++i) {
+    float_list_data.push_back(13);  // kFixed32Tag(1)
+    float v = 1.0f;
+    const char* p = reinterpret_cast<const char*>(&v);
+    float_list_data.append(p, 4);
+  }
+
+  std::string serialized_feature;
+  serialized_feature.push_back(18);  // kDelimitedTag(2) for float_list
+  encode_varint(float_list_data.size(), &serialized_feature);
+  serialized_feature.append(float_list_data);
+
+  std::string map_entry;
+  map_entry.push_back(10);  // kDelimitedTag(1) for key
+  map_entry.push_back(1);
+  map_entry.push_back('f');
+  map_entry.push_back(18);  // kDelimitedTag(2) for value
+  encode_varint(serialized_feature.size(), &map_entry);
+  map_entry.append(serialized_feature);
+
+  std::string features_msg;
+  features_msg.push_back(10);  // kDelimitedTag(1) for map entry
+  encode_varint(map_entry.size(), &features_msg);
+  features_msg.append(map_entry);
+
+  std::string serialized_example;
+  serialized_example.push_back(10);  // kDelimitedTag(1) for features
+  encode_varint(features_msg.size(), &serialized_example);
+  serialized_example.append(features_msg);
+
+  Result result;
+  std::vector<tstring> serialized_vec = {tstring(serialized_example)};
+  absl::Status parse_status =
+      FastParseExample(config, serialized_vec, {}, nullptr, &result);
+
+  EXPECT_FALSE(parse_status.ok());
+  EXPECT_TRUE(absl::IsInvalidArgument(parse_status));
+  EXPECT_NE(parse_status.ToString().find("Number of float values != expected"),
+            std::string::npos);
+}
+
+TEST(FastParse, DenseFloat_TooFewElements_ReportsError) {
+  FastParseExampleConfig config;
+  // Expecting 3 elements per stride
+  AddDenseFeature("f", DT_FLOAT, {3}, false, 3, &config);
+
+  auto encode_varint = [](uint32_t v, std::string* out) {
+    while (v >= 0x80) {
+      out->push_back((v & 0x7f) | 0x80);
+      v >>= 7;
+    }
+    out->push_back(v);
+  };
+
+  std::string float_list_data;
+  int num_elements = 1;  // Providing only 1
+  for (int i = 0; i < num_elements; ++i) {
+    float_list_data.push_back(13);  // kFixed32Tag(1)
+    float v = 1.0f;
+    const char* p = reinterpret_cast<const char*>(&v);
+    float_list_data.append(p, 4);
+  }
+
+  std::string serialized_feature;
+  serialized_feature.push_back(18);  // kDelimitedTag(2) for float_list
+  encode_varint(float_list_data.size(), &serialized_feature);
+  serialized_feature.append(float_list_data);
+
+  std::string map_entry;
+  map_entry.push_back(10);  // kDelimitedTag(1) for key
+  map_entry.push_back(1);
+  map_entry.push_back('f');
+  map_entry.push_back(18);  // kDelimitedTag(2) for value
+  encode_varint(serialized_feature.size(), &map_entry);
+  map_entry.append(serialized_feature);
+
+  std::string features_msg;
+  features_msg.push_back(10);  // kDelimitedTag(1) for map entry
+  encode_varint(map_entry.size(), &features_msg);
+  features_msg.append(map_entry);
+
+  std::string serialized_example;
+  serialized_example.push_back(10);  // kDelimitedTag(1) for features
+  encode_varint(features_msg.size(), &serialized_example);
+  serialized_example.append(features_msg);
+
+  Result result;
+  std::vector<tstring> serialized_vec = {tstring(serialized_example)};
+  absl::Status parse_status =
+      FastParseExample(config, serialized_vec, {}, nullptr, &result);
+
+  EXPECT_FALSE(parse_status.ok());
+  EXPECT_TRUE(absl::IsInvalidArgument(parse_status));
+  EXPECT_NE(parse_status.ToString().find("Number of float values != expected"),
+            std::string::npos);
 }
 
 }  // namespace

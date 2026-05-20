@@ -28,13 +28,13 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 namespace {
-void SetArg(const string& name, const string& type_name,
+void SetArg(const std::string& name, const std::string& type_name,
             OpDef::ArgDef* arg_def) {
   arg_def->set_name(name);
   arg_def->set_type_attr(type_name);
 }
 
-typedef std::pair<string, string> ArgSpec;  // name, type.
+typedef std::pair<std::string, std::string> ArgSpec;  // name, type.
 
 void SetArgs(const std::vector<ArgSpec>& input_args_spec,
              const std::vector<ArgSpec>& output_args_spec, OpDef* sig) {
@@ -44,12 +44,13 @@ void SetArgs(const std::vector<ArgSpec>& input_args_spec,
     SetArg(arg_spec.first, arg_spec.second, sig->add_output_arg());
 }
 
-void PopulateFunction(const string& name, const string& api_interface_name,
-                      const string& preferred_device,
+void PopulateFunction(const std::string& name,
+                      const std::string& api_interface_name,
+                      const std::string& preferred_device,
                       const std::vector<ArgSpec>& input_args,
                       const std::vector<ArgSpec>& output_args,
-                      const string& forward_function_name,
-                      const string& backward_function_name,
+                      const std::string& forward_function_name,
+                      const std::string& backward_function_name,
                       FunctionDef* func_def) {
   OpDef* sig = func_def->mutable_signature();
   sig->set_name(name);
@@ -104,27 +105,28 @@ void PopulateComplexLibrary(FunctionDefLibrary* func_lib) {
 }
 
 bool CheckEquivImpl(const FunctionLibraryApiInfo& lib_api_info,
-                    const string& func_name,
-                    const std::vector<string>& expected_other) {
-  std::vector<string> other_impl;
+                    const std::string& func_name,
+                    const std::vector<std::string>& expected_other) {
+  std::vector<std::string> other_impl;
   absl::Status status =
       lib_api_info.GetEquivalentImplementations(func_name, &other_impl);
   EXPECT_EQ(status, absl::OkStatus());
-  const std::unordered_set<string> actual(other_impl.begin(), other_impl.end());
-  const std::unordered_set<string> expected(expected_other.begin(),
-                                            expected_other.end());
+  const std::unordered_set<std::string> actual(other_impl.begin(),
+                                               other_impl.end());
+  const std::unordered_set<std::string> expected(expected_other.begin(),
+                                                 expected_other.end());
   return actual == expected;
 }
 
-string GetInterfaceName(const FunctionLibraryApiInfo& lib_api_info,
-                        const string& func_name) {
+std::string GetInterfaceName(const FunctionLibraryApiInfo& lib_api_info,
+                             const std::string& func_name) {
   auto* info = lib_api_info.GetApiInfo(func_name);
   CHECK_NOTNULL(info);
   return info->interface_name();
 }
 
-string GetPreferredDevice(const FunctionLibraryApiInfo& lib_api_info,
-                          const string& func_name) {
+std::string GetPreferredDevice(const FunctionLibraryApiInfo& lib_api_info,
+                               const std::string& func_name) {
   auto* info = lib_api_info.GetApiInfo(func_name);
   CHECK_NOTNULL(info);
   return info->preferred_device();

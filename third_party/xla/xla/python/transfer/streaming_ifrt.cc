@@ -103,7 +103,7 @@ DmaCopyChunk::DivideBufferCopiesEvenly(std::shared_ptr<xla::PjRtBuffer> buffer,
                               int64_t transfer_size) -> tsl::Future<> {
                        return buffer->CopyRawToHost(dst, offset, transfer_size);
                      },
-                     buffer_id, i* xfer_size,
+                     buffer_id, i * xfer_size,
                      std::min(copy_size - i * xfer_size, xfer_size)});
   }
   return work_units;
@@ -465,9 +465,8 @@ bool PjRtBufferEntry::Handle(tsl::RCReference<ConnectionState> state,
           }
           for (size_t i = 0; i * xfer_size < buf_size; ++i) {
             DmaCopyChunk blob;
-            blob.copy_fn = [buffer = std::move(buffer)](
-                               void* dst, int64_t offset,
-                               int64_t transfer_size) -> tsl::Future<> {
+            blob.copy_fn = [buffer](void* dst, int64_t offset,
+                                    int64_t transfer_size) -> tsl::Future<> {
               return buffer->CopyRawToHost(dst, offset, transfer_size);
             };
             blob.buffer_id = bid;

@@ -48,21 +48,23 @@ class BatchNormOp : public OpKernel {
     const Tensor& beta = context->input(3);
     const Tensor& gamma = context->input(4);
 
-    OP_REQUIRES(context, input.dims() == 4,
-                errors::InvalidArgument("input must be 4-dimensional",
-                                        input.shape().DebugString()));
+    OP_REQUIRES(
+        context, input.dims() == 4,
+        absl::InvalidArgumentError(absl::StrCat("input must be 4-dimensional",
+                                                input.shape().DebugString())));
     OP_REQUIRES(context, mean.dims() == 1,
-                errors::InvalidArgument("mean must be 1-dimensional",
-                                        mean.shape().DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "mean must be 1-dimensional", mean.shape().DebugString())));
     OP_REQUIRES(context, var.dims() == 1,
-                errors::InvalidArgument("var must be 1-dimensional",
-                                        var.shape().DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "var must be 1-dimensional", var.shape().DebugString())));
     OP_REQUIRES(context, beta.dims() == 1,
-                errors::InvalidArgument("beta must be 1-dimensional",
-                                        beta.shape().DebugString()));
-    OP_REQUIRES(context, gamma.dims() == 1,
-                errors::InvalidArgument("gamma must be 1-dimensional",
-                                        gamma.shape().DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "beta must be 1-dimensional", beta.shape().DebugString())));
+    OP_REQUIRES(
+        context, gamma.dims() == 1,
+        absl::InvalidArgumentError(absl::StrCat("gamma must be 1-dimensional",
+                                                gamma.shape().DebugString())));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
@@ -98,21 +100,24 @@ class BatchNormGradOp : public OpKernel {
     const Tensor& gamma = context->input(3);
     const Tensor& out_backprop = context->input(4);
 
-    OP_REQUIRES(context, input.dims() == 4,
-                errors::InvalidArgument("input must be 4-dimensional",
-                                        input.shape().DebugString()));
+    OP_REQUIRES(
+        context, input.dims() == 4,
+        absl::InvalidArgumentError(absl::StrCat("input must be 4-dimensional",
+                                                input.shape().DebugString())));
     OP_REQUIRES(context, mean.dims() == 1,
-                errors::InvalidArgument("mean must be 1-dimensional",
-                                        mean.shape().DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "mean must be 1-dimensional", mean.shape().DebugString())));
     OP_REQUIRES(context, var.dims() == 1,
-                errors::InvalidArgument("var must be 1-dimensional",
-                                        var.shape().DebugString()));
-    OP_REQUIRES(context, gamma.dims() == 1,
-                errors::InvalidArgument("gamma must be 1-dimensional",
-                                        gamma.shape().DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "var must be 1-dimensional", var.shape().DebugString())));
+    OP_REQUIRES(
+        context, gamma.dims() == 1,
+        absl::InvalidArgumentError(absl::StrCat("gamma must be 1-dimensional",
+                                                gamma.shape().DebugString())));
     OP_REQUIRES(context, out_backprop.dims() == 4,
-                errors::InvalidArgument("out_backprop must be 4-dimensional",
-                                        out_backprop.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("out_backprop must be 4-dimensional",
+                                 out_backprop.shape().DebugString())));
 
     Tensor* dx = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(

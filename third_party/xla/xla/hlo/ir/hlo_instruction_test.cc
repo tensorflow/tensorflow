@@ -15,19 +15,20 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_instruction.h"
 
-#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/hlo/ir/stack_frames.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/printer.h"
@@ -42,11 +43,90 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::testing::Not;
 
 using HloInstructionTest = HloHardwareIndependentTestBase;
+
+TEST_F(HloInstructionTest, SparsityConfigToString_RHSOnly) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder("main");
+  // Add a dummy convolution to test sparsity config.
+  // convolution(256x256, 256x256), dim_labels=bf_io->bf
+  HloInstruction* lhs = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(BF16, {256, 256}), "lhs"));
+  HloInstruction* rhs = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(BF16, {64, 256}), "rhs"));
+  SparsityConfig sparsity_config;
+  sparsity_config.mutable_rhs()->set_block_size(4);
+  sparsity_config.mutable_rhs()->set_num_non_zero(1);
+  sparsity_config.mutable_rhs()->set_dimension(0);
+  sparsity_config.mutable_rhs()->set_stride(1);
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_input_batch_dimension(0);
+  dnums.set_input_feature_dimension(1);
+  dnums.set_kernel_input_feature_dimension(0);
+  dnums.set_kernel_output_feature_dimension(1);
+  dnums.set_output_batch_dimension(0);
+  dnums.set_output_feature_dimension(1);
+  HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
+      /*shape=*/ShapeUtil::MakeShape(BF16, {256, 256}),
+      /*lhs=*/lhs,
+      /*rhs=*/rhs,
+      /*feature_group_count=*/1,
+      /*batch_group_count=*/1,
+      /*window=*/Window(),
+      /*dimension_numbers=*/dnums,
+      /*precision_config=*/PrecisionConfig(),
+      /*sparsity_config=*/sparsity_config));
+  module->AddEntryComputation(builder.Build());
+
+  EXPECT_EQ(
+      conv->ToString(),
+      R"(%convolution = bf16[256,256]{1,0} convolution(%lhs, %rhs), dim_labels=bf_io->bf, sparsity_config={rhs={sparsity=1x4 dimension=0 stride=1}})");
+}
+
+TEST_F(HloInstructionTest, SparsityConfigToString_LHSAndRHS) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder("main");
+  // Add a dummy convolution to test sparsity config.
+  // convolution(256x256, 256x256), dim_labels=bf_io->bf
+  HloInstruction* lhs = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(BF16, {256, 256}), "lhs"));
+  HloInstruction* rhs = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(BF16, {64, 256}), "rhs"));
+  SparsityConfig sparsity_config;
+  sparsity_config.mutable_rhs()->set_block_size(4);
+  sparsity_config.mutable_rhs()->set_num_non_zero(1);
+  sparsity_config.mutable_rhs()->set_dimension(0);
+  sparsity_config.mutable_rhs()->set_stride(1);
+  sparsity_config.mutable_lhs()->set_block_size(4);
+  sparsity_config.mutable_lhs()->set_num_non_zero(1);
+  sparsity_config.mutable_lhs()->set_dimension(0);
+  sparsity_config.mutable_lhs()->set_stride(1);
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_input_batch_dimension(0);
+  dnums.set_input_feature_dimension(1);
+  dnums.set_kernel_input_feature_dimension(0);
+  dnums.set_kernel_output_feature_dimension(1);
+  dnums.set_output_batch_dimension(0);
+  dnums.set_output_feature_dimension(1);
+  HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
+      /*shape=*/ShapeUtil::MakeShape(BF16, {256, 256}),
+      /*lhs=*/lhs,
+      /*rhs=*/rhs,
+      /*feature_group_count=*/1,
+      /*batch_group_count=*/1,
+      /*window=*/Window(),
+      /*dimension_numbers=*/dnums,
+      /*precision_config=*/PrecisionConfig(),
+      /*sparsity_config=*/sparsity_config));
+  module->AddEntryComputation(builder.Build());
+
+  EXPECT_EQ(
+      conv->ToString(),
+      R"(%convolution = bf16[256,256]{1,0} convolution(%lhs, %rhs), dim_labels=bf_io->bf, sparsity_config={lhs={sparsity=1x4 dimension=0 stride=1} rhs={sparsity=1x4 dimension=0 stride=1}})");
+}
 
 TEST_F(HloInstructionTest, GetStackTraceStringFromStackFrameId) {
   auto module = CreateNewVerifiedModule();
@@ -84,7 +164,7 @@ TEST_F(HloInstructionTest, GetStackTraceStringFromStackFrameId) {
   frame2->set_file_location_id(2);
   frame2->set_parent_frame_id(1);
 
-  module->set_stack_frame_index(index);
+  module->set_stack_frames(StackFrames::FromProto(index).value());
 
   // Set metadata on the instruction
   OpMetadata metadata;
@@ -120,7 +200,7 @@ TEST_F(HloInstructionTest, GetStackTraceString1BasedIndexing) {
   frame->set_file_location_id(1);  // 1-based
   frame->set_parent_frame_id(0);   // 0 means no parent
 
-  module->set_stack_frame_index(index);
+  module->set_stack_frames(StackFrames::FromProto(index).value());
 
   // Set metadata on the instruction
   OpMetadata metadata;
@@ -183,7 +263,7 @@ TEST_F(HloInstructionTest, GetStackTraceStringCombined) {
   auto frame = index.add_stack_frames();
   frame->set_file_location_id(1);
   frame->set_parent_frame_id(0);
-  module->set_stack_frame_index(index);
+  module->set_stack_frames(StackFrames::FromProto(index).value());
 
   // Set both stack_frame_id and source_info
   OpMetadata metadata;
@@ -211,6 +291,53 @@ TEST_F(HloInstructionTest, GetStackTraceStringNoSourceInfo) {
   std::string stack_trace = sqrt->GetStackTraceStringFromMetadata(4);
 
   EXPECT_THAT(stack_trace, HasSubstr("    <no source information>"));
+}
+
+TEST_F(HloInstructionTest, PostOrderDFSDataflowErrorLocation) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder("main");
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {1}), "p"));
+  auto sqrt = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {1}), HloOpcode::kSqrt, param));
+  module->AddEntryComputation(builder.Build());
+
+  // Add stack frames to the module
+  StackFrameIndexProto index;
+  index.add_file_names("file.py");
+  index.add_function_names("func");
+  auto loc = index.add_file_locations();
+  loc->set_file_name_id(1);
+  loc->set_function_name_id(1);
+  loc->set_line(100);
+  auto frame = index.add_stack_frames();
+  frame->set_file_location_id(1);
+  frame->set_parent_frame_id(0);
+  ASSERT_OK_AND_ASSIGN(auto stack_frames, StackFrames::FromProto(index));
+  module->set_stack_frames(std::move(stack_frames));
+
+  // Set metadata on the instruction
+  OpMetadata metadata;
+  metadata.set_stack_frame_id(1);
+  sqrt->set_metadata(metadata);
+
+  class FailingVisitor : public DfsHloVisitorWithDefault {
+   public:
+    absl::Status DefaultAction(HloInstruction* hlo) override {
+      if (hlo->opcode() == HloOpcode::kSqrt) {
+        return absl::Status(absl::StatusCode::kInvalidArgument,
+                            "Injected error");
+      }
+      return absl::OkStatus();
+    }
+  };
+
+  FailingVisitor visitor;
+  absl::Status status = sqrt->Accept(&visitor);
+
+  EXPECT_THAT(status.message(), HasSubstr("Injected error"));
+  EXPECT_THAT(status.message(), HasSubstr("Python Code Location:"));
+  EXPECT_THAT(status.message(), HasSubstr("file.py:100 [func]"));
 }
 
 TEST_F(HloInstructionTest, SetFrontendAttribute) {
@@ -404,6 +531,99 @@ TEST_F(HloInstructionTest, CanonicalPrintingSupportsInt64) {
   EXPECT_EQ(param3_to_string,
             "tmp_2 = pred[] compare(f32[] tmp_0, f32[] tmp_1), direction=GT, "
             "type=TOTALORDER");
+}
+
+TEST_F(HloInstructionTest, MapUnaryOutputDimToOperandDimConvert) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 20});
+  auto param = HloInstruction::CreateParameter(0, shape, "p");
+  auto convert = HloInstruction::CreateConvert(shape, param.get());
+  EXPECT_EQ(convert->MapUnaryOutputDimToOperandDim(0), 0);
+  EXPECT_EQ(convert->MapUnaryOutputDimToOperandDim(1), 1);
+}
+
+TEST_F(HloInstructionTest, MapUnaryOutputDimToOperandDimBroadcastScalar) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 20});
+  Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+  auto scalar_param = HloInstruction::CreateParameter(0, scalar_shape, "p");
+  auto broadcast =
+      HloInstruction::CreateBroadcast(shape, scalar_param.get(), {});
+  EXPECT_EQ(broadcast->MapUnaryOutputDimToOperandDim(0), std::nullopt);
+  EXPECT_EQ(broadcast->MapUnaryOutputDimToOperandDim(1), std::nullopt);
+}
+
+TEST_F(HloInstructionTest, MapUnaryOutputDimToOperandDimBroadcastVector) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 20});
+  Shape vector_shape = ShapeUtil::MakeShape(F32, {10});
+  auto vector_param = HloInstruction::CreateParameter(0, vector_shape, "p");
+  auto broadcast_vector =
+      HloInstruction::CreateBroadcast(shape, vector_param.get(), {0});
+  EXPECT_EQ(broadcast_vector->MapUnaryOutputDimToOperandDim(0), 0);
+  EXPECT_EQ(broadcast_vector->MapUnaryOutputDimToOperandDim(1), std::nullopt);
+}
+
+TEST_F(HloInstructionTest,
+       MapUnaryOutputDimToOperandDimReshapeInsertDimensions) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 20});
+  auto param = HloInstruction::CreateParameter(0, shape, "p");
+  Shape shape_1_10_1_20 = ShapeUtil::MakeShape(F32, {1, 10, 1, 20});
+  auto reshape_insert =
+      HloInstruction::CreateReshape(shape_1_10_1_20, param.get());
+  EXPECT_EQ(reshape_insert->MapUnaryOutputDimToOperandDim(0), std::nullopt);
+  EXPECT_EQ(reshape_insert->MapUnaryOutputDimToOperandDim(1), 0);
+  EXPECT_EQ(reshape_insert->MapUnaryOutputDimToOperandDim(2), std::nullopt);
+  EXPECT_EQ(reshape_insert->MapUnaryOutputDimToOperandDim(3), 1);
+}
+
+TEST_F(HloInstructionTest,
+       MapUnaryOutputDimToOperandDimReshapeDeleteDimensions) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 20});
+  Shape shape_1_10_1_20 = ShapeUtil::MakeShape(F32, {1, 10, 1, 20});
+  auto param = HloInstruction::CreateParameter(0, shape_1_10_1_20, "p");
+  auto reshape_delete = HloInstruction::CreateReshape(shape, param.get());
+  EXPECT_EQ(reshape_delete->MapUnaryOutputDimToOperandDim(0), 1);
+  EXPECT_EQ(reshape_delete->MapUnaryOutputDimToOperandDim(1), 3);
+}
+
+TEST_F(HloInstructionTest, MapUnaryOutputDimToOperandDimReshapeNonTrivial) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 20});
+  auto param = HloInstruction::CreateParameter(0, shape, "p");
+  Shape shape_200 = ShapeUtil::MakeShape(F32, {200});
+  auto reshape_non_trivial =
+      HloInstruction::CreateReshape(shape_200, param.get());
+  EXPECT_EQ(reshape_non_trivial->MapUnaryOutputDimToOperandDim(0),
+            std::nullopt);
+}
+
+TEST_F(HloInstructionTest, MapUnaryOutputDimToOperandDimReshapeMixed) {
+  Shape input_shape = ShapeUtil::MakeShape(F32, {1, 10, 20});
+  auto param = HloInstruction::CreateParameter(0, input_shape, "p");
+  Shape output_shape = ShapeUtil::MakeShape(F32, {10, 1, 20});
+
+  auto reshape = HloInstruction::CreateReshape(output_shape, param.get());
+
+  EXPECT_EQ(reshape->MapUnaryOutputDimToOperandDim(0), 1);
+  EXPECT_EQ(reshape->MapUnaryOutputDimToOperandDim(1), std::nullopt);
+  EXPECT_EQ(reshape->MapUnaryOutputDimToOperandDim(2), 2);
+}
+
+TEST_F(HloInstructionTest, PrecisionConfigMethodConsistency) {
+  // 1. Test a valid opcode (kParameter) that does not have PrecisionConfig.
+  std::unique_ptr<HloInstruction> param = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {}), "param");
+  EXPECT_FALSE(param->SupportsPrecisionConfig());
+  EXPECT_DEATH(param->precision_config(), "");
+  EXPECT_DEATH(param->mutable_precision_config(), "");
+
+  // 2. Test an opcode (kDot) that does have PrecisionConfig.
+  std::unique_ptr<HloInstruction> lhs = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {2, 2}), "lhs");
+  std::unique_ptr<HloInstruction> rhs = HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(F32, {2, 2}), "rhs");
+  DotDimensionNumbers dnums;
+  std::unique_ptr<HloInstruction> dot =
+      HloInstruction::CreateDot(ShapeUtil::MakeShape(F32, {2, 2}), lhs.get(),
+                                rhs.get(), dnums, PrecisionConfig());
+  EXPECT_TRUE(dot->SupportsPrecisionConfig());
 }
 
 }  // namespace

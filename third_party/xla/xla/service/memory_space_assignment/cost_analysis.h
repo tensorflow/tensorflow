@@ -218,7 +218,7 @@ class CostAnalysis {
 
   // Returns the elapsed time it would take to asynchronously copy the shape
   // from default to alternate memory space (or vice versa).
-  virtual float GetAsyncCopyElapsed(const Shape& shape) const;
+  virtual float GetAsyncCopyElapsed(int64_t size_in_bytes) const;
 
   int64_t GetScheduleEndTime() const;
 

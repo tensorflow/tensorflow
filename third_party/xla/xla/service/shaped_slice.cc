@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
@@ -34,6 +35,9 @@ absl::StatusOr<ShapedSlice> ShapedSlice::FromProto(
   TF_ASSIGN_OR_RETURN(
       shaped_slice.slice,
       BufferAllocation::Slice::FromProto(proto.slice(), buffer_allocations));
+  if (!proto.has_shape()) {
+    return absl::InvalidArgumentError("ShapedSlice proto has no shape");
+  }
   TF_ASSIGN_OR_RETURN(shaped_slice.shape, Shape::FromProto(proto.shape()));
   return shaped_slice;
 }

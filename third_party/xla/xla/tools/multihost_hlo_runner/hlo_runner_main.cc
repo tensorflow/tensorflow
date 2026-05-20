@@ -56,7 +56,7 @@ Usage:
 
 The tool can be used to just compile the HLO and not run it:
 
-  bazel run hlo_runner_main -- /path/to/module1.hlo --run=false
+  bazel run hlo_runner_main -- /path/to/module1.hlo --compile_only=true
 
 Note that multiple HLOs can also be launched:
 
@@ -81,6 +81,7 @@ struct HloRunnerConfig {
   xla::InputFormat input_format;
   std::string output_mode_str = "return_outputs";
   bool should_run = true;
+  bool compile_only = false;
   bool enable_mock_nccl = false;
   std::string dump_output_literal_to = "";
   int task_id = 0;
@@ -138,12 +139,15 @@ ArgumentModeFromString(absl::string_view text) {
     return FunctionalHloRunner::ModuleArgumentMode::kUseZerosAsInput;
   } else if (text == "uninitialized") {
     return FunctionalHloRunner::ModuleArgumentMode::kUninitialized;
+  } else if (text == "use_random_normal_inputs") {
+    return FunctionalHloRunner::ModuleArgumentMode::kUseRandomNormalInputs;
   }
   return absl::InvalidArgumentError(
       absl::StrCat(R"(Invalid --hlo_argument_mode specified. Expected one of: )"
                    R"("use_device_id_as_input", "use_random_inputs", )"
-                   R"("use_shared_random_inputs", "use_zeros_as_input", or )",
-                   R"("uninitialized". Got: )", text));
+                   R"("use_shared_random_inputs", "use_zeros_as_input", )"
+                   R"("uninitialized", or "use_random_normal_inputs". Got: )",
+                   text));
 }
 
 static absl::StatusOr<FunctionalHloRunner::PreprocessingOptions>
@@ -297,7 +301,7 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
   for (int c = 1; c < argc; c++) {
     const char* hlo_file = argv[c];
     execution_profiles.clear();
-    if (opts.should_run) {
+    if (opts.should_run && !opts.compile_only) {
       std::cout << "\n** Running " << hlo_file << " **\n";
       TF_RETURN_IF_ERROR(xla::FunctionalHloRunner::LoadAndRunAndDump(
           *env.client, GetDebugOptionsFromFlags(), preproc_options,
@@ -307,8 +311,10 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
     } else {
       std::cout << "\n** Compiling " << hlo_file << " **\n";
       TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
-          *env.client, GetDebugOptionsFromFlags(), preproc_options,
-          raw_compile_options, argv[c], opts.input_format, opts.task_id));
+                             *env.client, GetDebugOptionsFromFlags(),
+                             preproc_options, raw_compile_options, argv[c],
+                             opts.input_format, opts.task_id)
+                             .status());
     }
     for (int i = 0; i < execution_profiles.size(); ++i) {
       std::cout << "## Execution time, file=" << hlo_file << " repeat=" << i
@@ -353,7 +359,11 @@ int main(int argc, char** argv) {
                 "HLO input mode: text, proto_text, proto_binary, "
                 "snapshot_proto_binary, unoptimized_snapshot_proto_binary, or "
                 "unoptimized_snapshot_proto_text"),
-      tsl::Flag("run", &opts.should_run, "Should we run the compiled HLO?"),
+      // --run and --compile_only does the same thing, remove --run when it is
+      // safe to do so to avoid breaking 3P workflows.
+      tsl::Flag("compile_only", &opts.compile_only,
+                "Compiles a module without running it"),
+      tsl::Flag("run", &opts.should_run, "Compiles and runs a module"),
       tsl::Flag("dump_output_literal_to", &opts.dump_output_literal_to,
                 "A path to which the HLO output will be dumped. "
                 "Example: /a/b/literal.txt."),
@@ -399,8 +409,8 @@ int main(int argc, char** argv) {
                 "Specify how arguments to the HLO module are generated. "
                 "Accepted values: "
                 "use_device_id_as_input, use_random_inputs, "
-                "use_shared_random_inputs, "
-                "use_zeros_as_input or uninitialized."),
+                "use_shared_random_inputs, use_zeros_as_input, "
+                "uninitialized, or use_random_normal_inputs."),
       tsl::Flag("random_seed", &opts.random_seed,
                 "Seed to be used for generating random inputs when "
                 "`hlo_argument_mode` is set to use_random_inputs or "

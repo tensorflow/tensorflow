@@ -92,12 +92,6 @@ void HostExecutor::Deallocate(DeviceAddressBase* mem) {
   tsl::port::AlignedFree(mem->opaque());
 }
 
-absl::Status HostExecutor::SynchronousMemZero(DeviceAddressBase* location,
-                                              uint64_t size) {
-  memset(location->opaque(), 0, size);
-  return absl::OkStatus();
-}
-
 absl::Status HostExecutor::SynchronousMemcpy(DeviceAddressBase* gpu_dst,
                                              const void* host_src,
                                              uint64_t size) {

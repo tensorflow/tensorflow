@@ -83,17 +83,6 @@ struct InterpolationSpecificationFlops {
   int64_t flops;
 };
 
-bool IsTritonGemm(const HloInstruction& instr) {
-  if (instr.called_computations().size() != 1) {
-    return false;
-  }
-  if (!IsTritonFusedComputation(*instr.called_computations()[0])) {
-    return false;
-  }
-  auto fused_range = instr.fused_instructions();
-  return absl::c_count_if(fused_range, HloPredicateIsOp<HloOpcode::kDot>) == 1;
-}
-
 InterpolationSpecification ExtractDotSpec(const DotDimensionNumbers& dot_dims,
                                           const Shape& lhs, const Shape& rhs,
                                           const Shape& out) {
@@ -186,7 +175,7 @@ InterpolationSpecification Spec(const HloFusionInstruction& dot_fusion,
 
 absl::StatusOr<GemmPerfTableEntryValues> ReadDefaultProfile(
     const se::DeviceDescription& device_info) {
-  std::string key = HloOpProfiles::GetProfileName(device_info);
+  std::string key = HloOpProfiles::GetDeviceSpecificProfileName(device_info);
 
   if (!Profile().entries().contains(key)) {
     return absl::NotFoundError(absl::StrCat("Cannot find key: ", key));

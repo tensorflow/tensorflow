@@ -15,24 +15,56 @@ limitations under the License.
 
 #include "xla/service/spmd/shardy/sdy_round_trip/test_utils/testing_pipeline.h"
 
+#include "llvm/Support/CommandLine.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Pass/PassOptions.h"
 #include "mlir/Pass/PassRegistry.h"
+#include "shardy/dialect/sdy/transforms/import/passes.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/test_utils/stablehlo_to_hlo_to_stablehlo.h"
+#include "xla/service/spmd/shardy/utils.h"
 
 namespace xla {
 namespace sdy {
 
+namespace {
+
+struct SdyRoundTripTestingPipelineOptions
+    : public mlir::PassPipelineOptions<SdyRoundTripTestingPipelineOptions> {
+  Option<bool> enableHloShardingV3{
+      *this, "enable-hlo-sharding-v3",
+      llvm::cl::desc("Whether to enable HloShardingV3 which is mesh and axis "
+                     "based sharding representation."),
+      llvm::cl::init(false)};
+};
+
+void sdyRoundTripTestingPipeline(
+    mlir::OpPassManager& pm,
+    const SdyRoundTripTestingPipelineOptions& options) {
+  addSdyRoundTripExportPipeline(pm, /*keepMeshesInlined=*/false,
+                                options.enableHloShardingV3);
+  pm.addPass(createSdyRoundTripStablehloToHloToStablehloPass());
+  addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/true,
+                                /*liftAndDedupMeshes=*/false,
+                                options.enableHloShardingV3);
+}
+
+}  // namespace
+
 void registerSdyRoundTripTestingPipeline() {
-  mlir::PassPipelineRegistration<>(
+  mlir::PassPipelineRegistration<SdyRoundTripTestingPipelineOptions>(
       "xla-sdy-round-trip-testing-pipeline",
       "Run Shardy export pipeline, then convert to HLO, then convert to "
       "StableHLO, then import back to Shardy",
+      sdyRoundTripTestingPipeline);
+}
+
+void registerTestFlattenCallGraphPipeline() {
+  mlir::PassPipelineRegistration<>(
+      "xla-sdy-test-flatten-call-graph",
+      "Run FlattenCallGraphPass with isManualComputation predicate for testing",
       [](mlir::OpPassManager& pm) {
-        addSdyRoundTripExportPipeline(pm);
-        pm.addPass(createSdyRoundTripStablehloToHloToStablehloPass());
-        addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/true,
-                                      /*importFuncCalls=*/true);
+        pm.addPass(mlir::sdy::createFlattenCallGraphPass(isManualComputation));
       });
 }
 

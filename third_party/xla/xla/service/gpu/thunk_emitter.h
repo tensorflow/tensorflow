@@ -23,13 +23,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/cleanup/cleanup.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
 #include "xla/autotuning.pb.h"
+#include "xla/backends/gpu/runtime/async_execution.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
-#include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/host_send_recv_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
@@ -39,6 +41,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/gpu/gpu_hlo_ordering.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/shaped_slice.h"
@@ -79,42 +82,38 @@ class ThunkEmitter {
   // the generated code and so must be initialized by XLA. The value of these
   // constants will be stored in 'content'. Constants with initializers in the
   // generated code will have empty 'content'.
-  absl::StatusOr<ThunkSequence> EmitHloComputation(
-      const HloComputation* computation);
+  AsyncThunkSequence EmitHloComputation(const HloComputation* computation);
 
-  absl::StatusOr<ThunkSequence> EmitHloInstruction(
-      const HloInstruction* hlo, bool emit_group_thunks = false);
+  AsyncThunkSequence EmitHloInstruction(const HloInstruction* hlo,
+                                        bool emit_group_thunks = false);
 
-  absl::StatusOr<ThunkSequence> EmitAsyncStart(const HloInstruction* hlo);
+  // Calls the right function to emit the custom call thunk for `hlo`.
+  AsyncThunkSequence EmitCustomCallSwitch(const HloInstruction* hlo);
 
-  absl::StatusOr<ThunkSequence> EmitAsyncComputation(const HloInstruction* hlo);
+  AsyncThunkSequence EmitAsyncStart(const HloInstruction* instr);
 
-  absl::StatusOr<ThunkSequence> EmitAsyncCustomCallStart(
-      const HloInstruction* hlo);
+  AsyncThunkSequence EmitCallComputation(const HloInstruction* hlo);
+
+  AsyncThunkSequence EmitAsyncComputation(const HloInstruction* instr);
+
+  AsyncThunkSequence EmitAsyncCustomCallStart(const HloInstruction* instr);
 
   absl::StatusOr<ThunkSequence> EmitAsyncDone(const HloInstruction* hlo);
 
-  absl::StatusOr<ThunkSequence> EmitCommandBufferThunk(
-      const HloInstruction* hlo);
-
   absl::StatusOr<ThunkSequence> EmitCollectiveAsyncDone(
-      Thunk::Kind kind, const HloInstruction* hlo);
-
-  absl::StatusOr<ThunkSequence> EmitCollectiveGroupStartThunk(
       const HloInstruction* hlo);
 
-  absl::StatusOr<ThunkSequence> EmitCollectiveMetadata(
-      const HloInstruction* hlo);
+  AsyncThunkSequence EmitCollectiveGroupStartThunk(const HloInstruction* instr);
 
   absl::StatusOr<ThunkSequence> EmitCollectivePermute(
       const HloCollectivePermuteInstruction* hlo);
 
   template <typename CollectiveThunkType, typename HloInstType>
-  absl::StatusOr<ThunkSequence> EmitCollectiveThunk(
+  AsyncThunkSequence EmitCollectiveThunk(
       Thunk::Kind kind, const HloInstruction* async_start,
       const HloInstType* inst, std::optional<bool> use_global_device_ids);
 
-  absl::StatusOr<ThunkSequence> EmitConditional(const HloInstruction* hlo);
+  AsyncThunkSequence EmitConditional(const HloInstruction* instr);
 
   absl::StatusOr<ThunkSequence> EmitConstant(const HloConstantInstruction* hlo);
 
@@ -134,13 +133,16 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitCuDnnThunk(
       const HloCustomCallInstruction* hlo);
 
-  absl::StatusOr<ThunkSequence> EmitCubDeviceRadixSort(
-      const HloCustomCallInstruction* hlo);
-
   absl::StatusOr<ThunkSequence> EmitCublasLtMatmulThunk(
       const HloCustomCallInstruction* hlo);
 
   absl::StatusOr<ThunkSequence> EmitCublasLtMatmulThunkF8(
+      const HloCustomCallInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitCublasLtGroupedMatmulThunk(
+      const HloCustomCallInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitCublasLtMatmulThunkMx(
       const HloCustomCallInstruction* hlo);
 
   absl::StatusOr<ThunkSequence> EmitCustomCallThunk(
@@ -151,7 +153,7 @@ class ThunkEmitter {
       std::vector<CollectiveThunk::Buffer>& buffers,
       const HloInstruction* async_start, const HloInstType* inst);
 
-  absl::StatusOr<ThunkSequence> EmitFusion(const HloFusionInstruction* hlo);
+  AsyncThunkSequence EmitFusion(const HloFusionInstruction* instr);
 
   absl::StatusOr<ThunkSequence> EmitFftThunk(const HloFftInstruction* hlo);
 
@@ -167,16 +169,14 @@ class ThunkEmitter {
       const HloAllReduceInstruction* inst,
       std::optional<bool> use_global_device_ids);
 
-  absl::StatusOr<ThunkSequence> EmitNvshmemAsyncDone(Thunk::Kind kind,
-                                                     const HloInstruction* hlo);
+  absl::StatusOr<ThunkSequence> EmitNvshmemAsyncDone(const HloInstruction* hlo);
 
   absl::StatusOr<ThunkSequence> EmitNormThunk(
       const HloCustomCallInstruction* hlo);
 
   absl::StatusOr<ThunkSequence> EmitOutfeed(const HloOutfeedInstruction* hlo);
 
-  absl::StatusOr<ThunkSequence> EmitPadToStatic(
-      const HloCustomCallInstruction* hlo);
+  AsyncThunkSequence EmitPadToStatic(const HloCustomCallInstruction* instr);
 
   absl::StatusOr<ThunkSequence> EmitPtxCustomCall(
       const HloCustomCallInstruction* hlo);
@@ -191,11 +191,10 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitReplicaOrPartitionId(
       const HloInstruction* hlo);
 
-  absl::StatusOr<ThunkSequence> EmitRngGetAndUpdateState(
-      const HloRngGetAndUpdateStateInstruction* hlo);
+  AsyncThunkSequence EmitRngGetAndUpdateState(
+      const HloRngGetAndUpdateStateInstruction* instr);
 
-  absl::StatusOr<ThunkSequence> EmitSliceToDynamic(
-      const HloCustomCallInstruction* hlo);
+  AsyncThunkSequence EmitSliceToDynamic(const HloCustomCallInstruction* instr);
 
   absl::StatusOr<ThunkSequence> EmitSendDoneThunk(
       const HloSendDoneInstruction* hlo);
@@ -203,7 +202,7 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitSendThunk(const HloSendInstruction* hlo,
                                               bool emit_group_thunks);
 
-  absl::StatusOr<ThunkSequence> EmitSort(const HloSortInstruction* sort);
+  AsyncThunkSequence EmitSort(const HloSortInstruction* sort);
 
   absl::StatusOr<ThunkSequence> EmitTopKCustomCall(
       const HloCustomCallInstruction* hlo);
@@ -211,21 +210,20 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitTriangularSolveCustomCall(
       const HloInstruction* hlo);
 
-  absl::StatusOr<ThunkSequence> EmitTritonCustomCall(
-      const HloCustomCallInstruction* hlo);
+  AsyncThunkSequence EmitTritonCustomCall(
+      const HloCustomCallInstruction* instr);
 
-  absl::StatusOr<ThunkSequence> EmitWhile(const HloInstruction* hlo);
+  AsyncThunkSequence EmitWhile(const HloInstruction* instr);
 
   absl::Status AssertNonDeterminismIsOkay(const std::string& op_name);
+
+  absl::StatusOr<ThunkSequence> EmitDynamicSliceFusionV2(
+      const HloFusionInstruction* instr);
 
   absl::StatusOr<BufferAllocation::Slice> GetAllocationSliceForHlo(
       const HloInstruction* instr, const ShapeIndex& index = {}) const;
   absl::StatusOr<ShapedSlice> GetShapedSliceForHlo(
       const HloInstruction* instr, const ShapeIndex& index = {}) const;
-
-  CollectivesAsyncEvents& GetCollectivesAsyncEvents() {
-    return ir_emitter_context_->collectives_async_events();
-  }
 
   InstructionToHostExecuteAsyncEvents&
   GetInstructionToHostExecuteAsyncEvents() {
@@ -236,11 +234,15 @@ class ThunkEmitter {
   // Container for async host send/recv events shared by host send/recv thunks.
   std::shared_ptr<HostSendRecvAsyncEvents> send_recv_events_;
 
-  // Container for async copy-start/copy-done events.
-  std::shared_ptr<CopyThunk::AsyncEvents> copy_events_;
-
   // Shared buffer addresses registry for NVSHMEM put/get operations.
+  [[deprecated("Use NCCL 2.28+ primitives instead.")]]
   std::shared_ptr<NvshmemBufferAddresses> nvshmem_buffer_addresses_;
+
+  // Maps async-start instructions to their AsyncExecution so that the
+  // corresponding async-done can emit an AsyncDoneThunk sharing the same
+  // AsyncExecution.
+  absl::flat_hash_map<const HloInstruction*, std::shared_ptr<AsyncExecution>>
+      hlo_async_executions_;
 
   // Cache to store the call_graph.
   std::unique_ptr<CallGraph> call_graph_;
@@ -251,11 +253,35 @@ class ThunkEmitter {
   // Modules for each emitted kernel.
   std::vector<std::unique_ptr<llvm::Module>> kernel_modules_;
 
+  // TODO(tjoerg): Attach the HloOrdering to the HloSchedule instead of
+  // re-creating it here.
+  absl::flat_hash_map<const HloModule*,
+                      std::unique_ptr<ConcurrentRegionsHloOrdering>>
+      concurrent_regions_ordering_;
+
   // Releasable lock for LLVM options. Most of the thunks are emitted under the
   // lock, however some thunks (e.g. custom calls) temporarily release the lock
   // to avoid deadlocks when foreign code calls into LLVM with a different
   // set of options.
   llvm_ir::LLVMCommandLineOptionsReleasableLock* llvm_options_lock_;
+
+  // AllocationOverrides lets EmitDynamicSliceFusionV2 redirect buffer lookups
+  // for specific HLO instructions. When emitting embedded thunks for a
+  // dynamic-slice fusion, the hero's operands and results must map to
+  // synthetic BufferAllocation::Slices (the "embedded_allocations") rather
+  // than the real buffer assignment. InstallAllocationOverrides sets the map;
+  // GetAllocationSliceForHlo checks it before falling through to the normal
+  // buffer assignment. The returned cleanup object restores the empty state.
+  using AllocationOverrides =
+      absl::flat_hash_map<const HloInstruction*,
+                          std::vector<BufferAllocation::Slice>>;
+
+  auto InstallAllocationOverrides(AllocationOverrides overrides) {
+    allocation_overrides_ = std::move(overrides);
+    return absl::MakeCleanup([this] { allocation_overrides_.clear(); });
+  }
+
+  AllocationOverrides allocation_overrides_;
 };
 
 }  // namespace xla::gpu

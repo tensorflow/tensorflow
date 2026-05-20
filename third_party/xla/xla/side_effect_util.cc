@@ -67,6 +67,8 @@ const char kXlaBufferPlacementParam[] = "arg";
 
 const char kXlaStreamAnnotationAttr[] = "_xla_stream_annotation";
 
+const char kXlaCollectiveStreamAnnotation[] = "collective";
+
 const char kXlaCollectiveMatmulAttr[] = "_xla_collective_matmul";
 
 const char kXlaCollectiveMatmulLhsAg[] = "lhs_ag";
@@ -89,6 +91,8 @@ const char kFuseLimitAttr[] = "FUSE_LIMIT";
 
 const char kMaximalFuseAttr[] = "MAXIMAL_FUSE";
 
+const char kXlaCseSafeZeroOperandAttr[] = "_xla_cse_safe_zero_operand";
+
 const char kCollectivesGroupAttr[] = "_collectives_group";
 
 const char kNumSlotVariables[] = "_num_slot_variables";
@@ -98,4 +102,7 @@ const char kNumHyperparameters[] = "_num_hyperparameters";
 const char kLogTag[] = "_xla_log_tag";
 
 const char kXlaTableNameAttr[] = "_xla_table_name";
+
+const char kCombinerKeyAttr[] = "combiner_key";
+
 }  // namespace xla

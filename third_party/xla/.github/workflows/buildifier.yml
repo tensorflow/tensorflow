@@ -35,6 +35,8 @@ jobs:
     steps:
       - name: "Checking out repository"
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
       - name: "Install buildifier"
         run: parallel --ungroup --retries 3 --delay 15 --nonall -- go install github.com/bazelbuild/buildtools/buildifier@433ea85 # 6.4.0
       - name: "Run buildifier"

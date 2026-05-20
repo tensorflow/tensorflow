@@ -62,15 +62,15 @@ DeviceHloInstructionProfiles TestProfiles(
   instr.set_channel_id(1);
   IotaReplicaGroupList iota(/*num_replica_groups=*/1,
                             /*num_devices_per_group=*/8);
-  CollectiveDeviceList collective_device_list(iota);
-  *instr.mutable_collective_device_list() = collective_device_list.ToProto();
+  *instr.mutable_iota_collective_device_list() = iota.ToProto();
 
   *profile_entry.mutable_instruction() = std::move(instr);
   profile_entry.set_network_throughput_bytes_per_sec(4 * 1024);
 
   *profile_list.add_entries() = std::move(profile_entry);
   profiles.mutable_entries()->insert(
-      {HloOpProfiles::GetProfileName(device_info), std::move(profile_list)});
+      {HloOpProfiles::GetDeviceSpecificProfileName(device_info),
+       std::move(profile_list)});
 
   return profiles;
 }

@@ -66,8 +66,8 @@ class StubResourceOpKernel : public ResourceOpKernel<StubResource> {
     int code;
     TF_RETURN_IF_ERROR(GetNodeAttr(def(), "code", &code));
     if (code != resource->code) {
-      return errors::InvalidArgument("stub has code ", resource->code,
-                                     " but requested code ", code);
+      return absl::InvalidArgumentError(absl::StrCat(
+          "stub has code ", resource->code, " but requested code ", code));
     }
     return absl::OkStatus();
   }

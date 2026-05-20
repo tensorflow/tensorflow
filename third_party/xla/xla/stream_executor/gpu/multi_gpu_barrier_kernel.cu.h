@@ -23,7 +23,41 @@ limitations under the License.
 #include "xla/stream_executor/gpu/collective_signal.cu.h"
 #include "xla/stream_executor/gpu/multi_gpu_barrier_kernel.h"
 
+#if NCCL_VERSION_CODE >= 22800
+// Device initiated collective operations were added in NCCL 2.28.0.
+#include "third_party/nccl/nccl_device.h"
+#endif  // NCCL_VERSION_CODE >= 22800
+
 namespace stream_executor::gpu {
+
+template <PlatformType PlatformT>
+__device__ __forceinline__ void SyncRemoteBlocksAndUpdateCounter(
+    int64_t rank, int64_t num_ranks,
+    const std::array<uint32_t* __restrict__, MultiGpuBarrierKernel::kMaxPeers>&
+        signal_buffers,
+    uint32_t* sync_counter) {
+  // 2. Read State & Pre-Increment
+  // Pre-increment allows to initialize the counter to 0. We sync on 1.
+  // Every rank maintains its own counter, so this read is local and fast.
+  // Since we launch 1 block, a standard load is sufficient, as all threads see
+  // the same value.
+  uint32_t signal_value = *sync_counter + 1;
+
+  // 3. Barrier
+  SyncRemoteBlocks<PlatformT, MultiGpuBarrierKernel::kMaxPeers>(
+      signal_buffers, rank, num_ranks, signal_value);
+
+  // Explicit synchronization.
+  // Adding __syncthreads() ensures that all threads have finished accessing
+  // global memory/peers before we update the state for the next iteration.
+  __syncthreads();
+
+  // 4. Update State
+  // Only the first thread needs to update the counter for the NEXT execution.
+  if (threadIdx.x == 0 && blockIdx.x == 0) {
+    *sync_counter = signal_value;
+  }
+}
 
 template <PlatformType PlatformT>
 __global__ void MultiGpuBarrierKernelImpl(
@@ -39,20 +73,38 @@ __global__ void MultiGpuBarrierKernelImpl(
     signal_buffers[i] = reinterpret_cast<uint32_t*>(signal_buffers_void[i]);
   }
 
-  // 2. Read State
-  // Every rank maintains its own counter, so this read is local and fast.
-  // Since we launch 1 block, a standard load is sufficient, as all threads see
-  // the same value.
-  uint32_t signal_value = *sync_counter;
+  SyncRemoteBlocksAndUpdateCounter<PlatformT>(rank, num_ranks, signal_buffers,
+                                              sync_counter);
+}
 
-  // 3. Barrier
-  SyncRemoteBlocks<PlatformT, MultiGpuBarrierKernel::kMaxPeers>(
-      signal_buffers, rank, num_ranks, signal_value);
+template <PlatformType PlatformT>
+__global__ void MultiGpuBarrierWithNcclKernelImpl(
+    int64_t rank, int64_t num_ranks, void* signal_buffers_handle,
+    uint32_t* sync_counter, void* ptr_to_store, void* ptr_storage_handle) {
+  if constexpr (PlatformT == PlatformType::kCuda) {
+#if NCCL_VERSION_CODE >= 22800
+    if (ptr_to_store && threadIdx.x < num_ranks) {
+      void** ptr_storage = (void**)ncclGetLsaPointer(
+          (ncclWindow_t)ptr_storage_handle, 0, threadIdx.x);
 
-  // 4. Update State
-  // Only the first thread needs to update the counter for the NEXT execution.
-  if (threadIdx.x == 0 && blockIdx.x == 0) {
-    *sync_counter = signal_value + 1;
+      ptr_storage[rank] = ptr_to_store;
+    }
+
+    // 1. Get individual signal buffers pointers.
+    std::array<uint32_t* __restrict__, MultiGpuBarrierWithNcclKernel::kMaxPeers>
+        signal_buffers;
+
+#pragma unroll
+    for (int64_t i = 0; i < MultiGpuBarrierWithNcclKernel::kMaxPeers; ++i) {
+      if (i < num_ranks) {
+        signal_buffers[i] = reinterpret_cast<uint32_t*>(
+            ncclGetLsaPointer((ncclWindow_t)signal_buffers_handle, 0, i));
+      }
+    }
+
+    SyncRemoteBlocksAndUpdateCounter<PlatformT>(rank, num_ranks, signal_buffers,
+                                                sync_counter);
+#endif  // NCCL_VERSION_CODE >= 22800
   }
 }
 

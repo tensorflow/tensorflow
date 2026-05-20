@@ -16,6 +16,7 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/cc/framework/scope_internal.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -362,8 +363,8 @@ std::string Scope::Impl::GetUniqueName(const std::string& prefix,
                                        bool check_single_use) const {
   if (check_single_use && single_use_scope()) {
     if (*scope_used_) {
-      *status_ =
-          errors::AlreadyExists(prefix, " already exists in the current scope");
+      *status_ = absl::AlreadyExistsError(
+          absl::StrCat(prefix, " already exists in the current scope"));
       return "";
     }
     *scope_used_ = true;
@@ -394,7 +395,7 @@ std::string Scope::GetUniqueNameForOp(const std::string& default_name) const {
   if (impl()->single_use_scope()) {
     if (impl()->op_name_.empty() || *impl()->scope_used_) {
       *impl()->status_ =
-          errors::InvalidArgument("Cannot get a unique name in this scope");
+          absl::InvalidArgumentError("Cannot get a unique name in this scope");
       return "";
     }
     *impl()->scope_used_ = true;
@@ -420,8 +421,8 @@ Scope Scope::NewSubScope(const std::string& child_scope_name) const {
 
 Scope Scope::WithOpNameImpl(const std::string& op_name) const {
   if (impl()->single_use_scope()) {
-    UpdateStatus(errors::InvalidArgument("Cannot set op name ", op_name,
-                                         " on this scope"));
+    UpdateStatus(absl::InvalidArgumentError(
+        absl::StrCat("Cannot set op name ", op_name, " on this scope")));
     return *this;
   }
   return Scope(new Impl(*this, Impl::Tags::OpName(), impl()->name_, op_name));
@@ -480,7 +481,7 @@ Scope Scope::WithKernelLabel(const std::string& kernel_label) const {
 CompositeOpScopes Scope::GetCompositeOpScopes(
     const std::string& composite_op_name) const {
   if (impl()->op_name_.empty() && composite_op_name.empty()) {
-    UpdateStatus(errors::InvalidArgument(
+    UpdateStatus(absl::InvalidArgumentError(
         "Cannot create composite op scopes with empty name"));
     return {*this, *this};
   }

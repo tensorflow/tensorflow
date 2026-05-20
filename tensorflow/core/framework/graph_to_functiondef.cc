@@ -140,9 +140,9 @@ std::string NodeNameMapping::Uniquify(const std::string& name) {
 absl::Status NodeNameMapping::UseOutputName(const std::string& name) {
   const auto& iter = used_names_.find(name);
   if (iter != used_names_.end()) {
-    return errors::InvalidArgument(
-        "Cannot have duplicate output names. Name '", name,
-        "' appears more than once in 'output_names' array.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Cannot have duplicate output names. Name '", name,
+                     "' appears more than once in 'output_names' array."));
   }
   used_names_.emplace(name, 0);
   return absl::OkStatus();
@@ -237,9 +237,9 @@ absl::Status FillFunctionBody(
         // A backedge might not appear as a regular Edge, but be only present
         // in the node_def. Such edges are referred to as requested_inputs().
         if (i >= node->requested_inputs().size()) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Graph to be converted to function appears to be malformed. ",
-              "Node ", node->name(), " is missing input edge ", i);
+              "Node ", node->name(), " is missing input edge ", i));
         }
         original_input_name =
             ParseTensorName(node->requested_inputs()[i]).ToString();
@@ -250,11 +250,11 @@ absl::Status FillFunctionBody(
 
       const auto iter = tensor_renaming.find(original_input_name);
       if (iter == tensor_renaming.end()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Input ", i, ", '", original_input_name, "', of node '",
             node->name(), "' in function '", fn_name,
             "' is not available. You might need to include it in inputs "
-            "or include its source node in the body");
+            "or include its source node in the body"));
       }
       node_def->add_input(iter->second);
     }
@@ -267,10 +267,10 @@ absl::Status FillFunctionBody(
       // If we did not find a name for the source of control edge, this
       // source must be outside of the body, and not an input. Raise an error.
       if (normalized.empty()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "The source of control edge ", edge->DebugString(),
             " is not in the body. Encountered while creating function '",
-            fn_name, "'");
+            fn_name, "'"));
       }
       node_def->add_input(absl::StrCat("^", normalized));
     }
@@ -306,10 +306,10 @@ absl::Status FillFunctionBody(
         }
       }
       if (!node_attr_def) {
-        return errors::Unimplemented(
+        return absl::UnimplementedError(absl::StrCat(
             "Placeholder value is not supported for attributes not in OpDef. "
             "Attribute: ",
-            node_attr_name, ", OpDef: ", node->op_def().DebugString());
+            node_attr_name, ", OpDef: ", node->op_def().DebugString()));
       }
       OpDef::AttrDef* attr_def = fdef->mutable_signature()->add_attr();
       attr_def->set_name(func_attr_name);
@@ -476,10 +476,10 @@ absl::Status GraphToFunctionDefHelper(
     }
     const auto iter = tensor_renaming.find(return_value);
     if (iter == tensor_renaming.end()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "TF_Output ", return_value, " is neither in the function body ",
           "nor among function inputs. Encountered while creating function '",
-          fn_name, "'");
+          fn_name, "'"));
     }
     (*fdef->mutable_ret())[ret_name] = iter->second;
   }
@@ -504,10 +504,10 @@ absl::Status GraphToFunctionDefHelper(
 
   if (!control_output_names.empty() &&
       (control_outputs.size() != control_output_names.size())) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Expected number of control outputs (", control_outputs.size(),
         ") and the number of control output names (",
-        control_output_names.size(), ") to match but they do not.");
+        control_output_names.size(), ") to match but they do not."));
   }
   std::set<std::string> control_output_names_set;
   for (int i = 0; i < control_outputs.size(); ++i) {
@@ -518,16 +518,17 @@ absl::Status GraphToFunctionDefHelper(
       signature_name = control_outputs[i]->name();
     }
     if (signature_name.empty()) {
-      return errors::InvalidArgument("Control output name must be not empty");
+      return absl::InvalidArgumentError(
+          "Control output name must be not empty");
     }
     if (!control_output_names_set.insert(signature_name).second) {
-      return errors::InvalidArgument("Repeated control output name: ",
-                                     signature_name);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Repeated control output name: ", signature_name));
     }
     const std::string control_output_node =
         node_names.Lookup(control_outputs[i]->name());
     if (control_output_node.empty()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Control output node name must be not empty");
     }
     (*fdef->mutable_control_ret())[signature_name] = control_output_node;
@@ -554,11 +555,11 @@ absl::Status GraphToFunctionDefHelper(
     if ((*args_or_retvals)[index].node == nullptr) {
       (*args_or_retvals)[index].node = node;
     } else {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Multiple '", node->type_string(), "' nodes found with index ", index,
           "; originally we already have:\n",
           (*args_or_retvals)[index].node->DebugString(), "\nNow we have:\n",
-          node->DebugString());
+          node->DebugString()));
     }
     return absl::OkStatus();
   };
@@ -595,8 +596,8 @@ absl::Status GraphToFunctionDefHelper(
          const std::string& op_type) {
         for (int i = 0, e = args_or_retvals.size(); i < e; ++i) {
           if (args_or_retvals[i].node == nullptr) {
-            return errors::InvalidArgument("Missing '", op_type,
-                                           "' node at index ", i);
+            return absl::InvalidArgumentError(
+                absl::StrCat("Missing '", op_type, "' node at index ", i));
           }
         }
         return absl::OkStatus();

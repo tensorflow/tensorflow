@@ -1,5 +1,6 @@
 # Description: OSS only cluster resolvers
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -14,9 +15,10 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "tpu_cluster_resolver_py",
     srcs = ["tpu_cluster_resolver.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/core/protobuf/tpu:topology_proto_py",
         "//tensorflow/python/distribute/cluster_resolver:base_cluster_resolver_py",

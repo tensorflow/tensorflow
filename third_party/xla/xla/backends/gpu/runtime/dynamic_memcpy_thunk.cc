@@ -27,9 +27,10 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/copy_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
-#include "xla/backends/gpu/runtime/while_thunk.h"
+#include "xla/backends/gpu/runtime/while_loop.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/shaped_slice.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/statusor.h"
@@ -56,7 +57,9 @@ absl::Status DynamicMemcpyThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   int64_t iteration_index = 0;
   if (offsets_.depends_on_loop) {
-    TF_ASSIGN_OR_RETURN(iteration_index, WhileThunk::CurrentLoopIteration());
+    const WhileLoopState* state = IsInsideWhileLoop();
+    TF_RET_CHECK(state) << "DynamicMemcpyThunk depends on loop";
+    iteration_index = state->loop_iteration;
   }
 
   int64_t src_offset = offsets_.src_offsets[iteration_index];
@@ -67,10 +70,7 @@ absl::Status DynamicMemcpyThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Memcpy of size " << mem_size_ << " from "
           << src_with_offset.opaque() << " (offset " << src_offset << ") to "
           << dst_with_offset.opaque() << " (offset " << dst_offset << ")";
-  TF_ASSIGN_OR_RETURN(
-      se::Stream * stream,
-      GetStreamForExecution(Thunk::execution_stream_id(), params));
-  return stream->Memcpy(&dst_with_offset, src_with_offset, mem_size_);
+  return params.stream->Memcpy(&dst_with_offset, src_with_offset, mem_size_);
 }
 
 DynamicMemcpyThunkProto::Offsets DynamicMemcpyThunk::Offsets::ToProto() const {

@@ -99,8 +99,8 @@ LogicalResult ApplyPatternsLocallyUntilConverged(
           GreedyRewriteConfig config;
           config.setStrictness(mlir::GreedyRewriteStrictness::ExistingOps);
           bool op_erased;
-          if (failed(applyOpPatternsAndFold(operation, patterns, config,
-                                            &op_erased)))
+          if (failed(applyOpPatternsGreedily(operation, patterns, config,
+                                             &op_erased)))
             return WalkResult::interrupt();
           changed |= op_erased;
           return WalkResult::advance();

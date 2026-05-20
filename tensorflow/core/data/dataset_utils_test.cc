@@ -65,7 +65,7 @@ TEST(DatasetUtilsTest, MatchesAnyVersion) {
 }
 
 TEST(DatasetUtilsTest, AddToFunctionLibrary) {
-  auto make_fn_a = [](const string& fn_name) {
+  auto make_fn_a = [](const std::string& fn_name) {
     return FunctionDefHelper::Create(
         /*function_name=*/fn_name,
         /*in_def=*/{"arg: int64"},
@@ -75,7 +75,7 @@ TEST(DatasetUtilsTest, AddToFunctionLibrary) {
         /*ret_def=*/{{"ret", "node:output:0"}});
   };
 
-  auto make_fn_b = [](const string& fn_name) {
+  auto make_fn_b = [](const std::string& fn_name) {
     return FunctionDefHelper::Create(
         /*function_name=*/fn_name,
         /*in_def=*/{"arg: int64"},
@@ -253,9 +253,9 @@ REGISTER_DATASET_EXPERIMENT("test_only_task_experiment_100",
                             IndependentHostTasks);
 
 struct GetExperimentsHashTestCase {
-  uint64 hash;
-  std::vector<string> expected_in;
-  std::vector<string> expected_out;
+  uint64_t hash;
+  std::vector<std::string> expected_in;
+  std::vector<std::string> expected_out;
 };
 
 class GetExperimentsHashTest
@@ -263,14 +263,16 @@ class GetExperimentsHashTest
 
 TEST_P(GetExperimentsHashTest, DatasetUtils) {
   const GetExperimentsHashTestCase test_case = GetParam();
-  uint64 hash_result = test_case.hash;
+  uint64_t hash_result = test_case.hash;
   const std::string job_name = "job";
   const int64_t task_id = 0;
-  auto hash_func = [hash_result](const string& str) { return hash_result; };
+  auto hash_func = [hash_result](const std::string& str) {
+    return hash_result;
+  };
   auto experiments = GetExperiments(job_name, task_id, hash_func);
 
-  absl::flat_hash_set<string> experiment_set(experiments.begin(),
-                                             experiments.end());
+  absl::flat_hash_set<std::string> experiment_set(experiments.begin(),
+                                                  experiments.end());
   for (const auto& experiment : test_case.expected_in) {
     EXPECT_TRUE(experiment_set.find(experiment) != experiment_set.end())
         << "experiment=" << experiment << " hash=" << hash_result;
@@ -352,10 +354,10 @@ INSTANTIATE_TEST_SUITE_P(
         }));
 
 struct GetExperimentsOptTestCase {
-  std::vector<string> opt_ins;
-  std::vector<string> opt_outs;
-  std::vector<string> expected_in;
-  std::vector<string> expected_out;
+  std::vector<std::string> opt_ins;
+  std::vector<std::string> opt_outs;
+  std::vector<std::string> expected_in;
+  std::vector<std::string> expected_out;
 };
 
 class GetExperimentsOptTest
@@ -374,11 +376,11 @@ TEST_P(GetExperimentsOptTest, DatasetUtils) {
   }
   const std::string job_name = "job";
   const int64_t task_id = 0;
-  auto hash_func = [](const string& str) { return 0; };
+  auto hash_func = [](const std::string& str) { return 0; };
   auto experiments = GetExperiments(job_name, task_id, hash_func);
 
-  absl::flat_hash_set<string> experiment_set(experiments.begin(),
-                                             experiments.end());
+  absl::flat_hash_set<std::string> experiment_set(experiments.begin(),
+                                                  experiments.end());
   for (const auto& experiment : test_case.expected_in) {
     EXPECT_TRUE(experiment_set.find(experiment) != experiment_set.end())
         << "experiment=" << experiment << " opt_ins={"
@@ -495,10 +497,10 @@ INSTANTIATE_TEST_SUITE_P(
 
 struct GetExperimentsJobNameTestCase {
   uint64_t hash;
-  string job_name;
+  std::string job_name;
   int64_t task_id;
-  std::vector<string> expected_in;
-  std::vector<string> expected_out;
+  std::vector<std::string> expected_in;
+  std::vector<std::string> expected_out;
 };
 
 class GetExperimentsJobNameTest
@@ -508,12 +510,14 @@ TEST_P(GetExperimentsJobNameTest, DatasetUtils) {
   const GetExperimentsJobNameTestCase test_case = GetParam();
   auto job_name = test_case.job_name;
   auto task_id = test_case.task_id;
-  uint64 hash_result = test_case.hash;
-  auto hash_func = [hash_result](const string& str) { return hash_result; };
+  uint64_t hash_result = test_case.hash;
+  auto hash_func = [hash_result](const std::string& str) {
+    return hash_result;
+  };
   auto experiments = GetExperiments(job_name, task_id, hash_func);
 
-  absl::flat_hash_set<string> experiment_set(experiments.begin(),
-                                             experiments.end());
+  absl::flat_hash_set<std::string> experiment_set(experiments.begin(),
+                                                  experiments.end());
   for (const auto& experiment : test_case.expected_in) {
     EXPECT_TRUE(experiment_set.find(experiment) != experiment_set.end())
         << "experiment=" << experiment << " job_name=" << job_name;
@@ -625,9 +629,9 @@ INSTANTIATE_TEST_SUITE_P(
 
 struct GetOptimizationsTestCase {
   Options options;
-  std::vector<string> expected_enabled;
-  std::vector<string> expected_disabled;
-  std::vector<string> expected_default;
+  std::vector<std::string> expected_enabled;
+  std::vector<std::string> expected_disabled;
+  std::vector<std::string> expected_default;
 };
 
 // Tests the default.
@@ -702,13 +706,15 @@ TEST_P(GetOptimizationsTest, DatasetUtils) {
   absl::flat_hash_set<tstring> actual_enabled, actual_disabled, actual_default;
   GetOptimizations(options, &actual_enabled, &actual_disabled, &actual_default);
 
-  EXPECT_THAT(std::vector<string>(actual_enabled.begin(), actual_enabled.end()),
-              ::testing::UnorderedElementsAreArray(test_case.expected_enabled));
   EXPECT_THAT(
-      std::vector<string>(actual_disabled.begin(), actual_disabled.end()),
+      std::vector<std::string>(actual_enabled.begin(), actual_enabled.end()),
+      ::testing::UnorderedElementsAreArray(test_case.expected_enabled));
+  EXPECT_THAT(
+      std::vector<std::string>(actual_disabled.begin(), actual_disabled.end()),
       ::testing::UnorderedElementsAreArray(test_case.expected_disabled));
-  EXPECT_THAT(std::vector<string>(actual_default.begin(), actual_default.end()),
-              ::testing::UnorderedElementsAreArray(test_case.expected_default));
+  EXPECT_THAT(
+      std::vector<std::string>(actual_default.begin(), actual_default.end()),
+      ::testing::UnorderedElementsAreArray(test_case.expected_default));
 }
 
 INSTANTIATE_TEST_SUITE_P(Test, GetOptimizationsTest,
@@ -724,8 +730,9 @@ TEST(DeterministicOpsTest, GetOptimizations) {
   options.set_deterministic(false);
   absl::flat_hash_set<tstring> actual_enabled, actual_disabled, actual_default;
   GetOptimizations(options, &actual_enabled, &actual_disabled, &actual_default);
-  EXPECT_THAT(std::vector<string>(actual_enabled.begin(), actual_enabled.end()),
-              ::testing::UnorderedElementsAreArray({"make_deterministic"}));
+  EXPECT_THAT(
+      std::vector<std::string>(actual_enabled.begin(), actual_enabled.end()),
+      ::testing::UnorderedElementsAreArray({"make_deterministic"}));
   EXPECT_EQ(actual_disabled.size(), 0);
 }
 

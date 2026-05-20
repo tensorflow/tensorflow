@@ -472,8 +472,7 @@ float CostAnalysis::GetInstructionElapsedInAlternateMemory(
       GetInstructionElapsedDueToMemory(instruction, is_in_alternate_mem));
 }
 
-float CostAnalysis::GetAsyncCopyElapsed(const Shape& shape) const {
-  int64_t size_in_bytes = GetShapeSizeBytes(shape);
+float CostAnalysis::GetAsyncCopyElapsed(int64_t size_in_bytes) const {
   return static_cast<float>(size_in_bytes) /
          DefaultMemBandwidthBytesPerSecond(/*use_scaling_factor=*/true);
 }

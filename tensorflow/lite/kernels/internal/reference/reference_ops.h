@@ -395,56 +395,6 @@ void Unpack(const UnpackParams& params, const RuntimeShape& input_shape,
 }
 
 template <typename Scalar>
-void PackWithScaling(const PackParams& params,
-                     const RuntimeShape* const* input_shapes,
-                     const uint8_t* const* input_data,
-                     const RuntimeShape& output_shape, uint8_t* output_data) {
-  ruy::profiler::ScopeLabel label("PackWithScaling");
-  const int dimensions = output_shape.DimensionsCount();
-  int axis = params.axis;
-  const int32_t* input_zeropoint = params.input_zeropoint;
-  const float* input_scale = params.input_scale;
-  int inputs_count = params.inputs_count;
-  const int32_t output_zeropoint = params.output_zeropoint;
-  const float output_scale = params.output_scale;
-
-  int outer_size = 1;
-  for (int i = 0; i < axis; i++) {
-    outer_size *= output_shape.Dims(i);
-  }
-  int copy_size = 1;
-  for (int i = axis + 1; i < dimensions; i++) {
-    copy_size *= output_shape.Dims(i);
-  }
-  TFLITE_DCHECK_EQ((**input_shapes).FlatSize(), copy_size * outer_size);
-
-  Scalar* output_ptr = output_data;
-  const float inverse_output_scale = 1.f / output_scale;
-  for (int k = 0; k < outer_size; k++) {
-    for (int i = 0; i < inputs_count; ++i) {
-      if (input_zeropoint[i] == output_zeropoint &&
-          input_scale[i] == output_scale) {
-        memcpy(output_ptr, input_data[i] + k * copy_size,
-               copy_size * sizeof(Scalar));
-      } else {
-        assert(false);
-        const float scale = input_scale[i] * inverse_output_scale;
-        const float bias = -input_zeropoint[i] * scale;
-        auto input_ptr = input_data[i];
-        for (int j = 0; j < copy_size; ++j) {
-          const int32_t value =
-              static_cast<int32_t>(std::round(input_ptr[j] * scale + bias)) +
-              output_zeropoint;
-          output_ptr[j] =
-              static_cast<uint8_t>(std::max(std::min(255, value), 0));
-        }
-      }
-      output_ptr += copy_size;
-    }
-  }
-}
-
-template <typename Scalar>
 void DepthConcatenation(const ConcatenationParams& params,
                         const RuntimeShape* const* input_shapes,
                         const Scalar* const* input_data,

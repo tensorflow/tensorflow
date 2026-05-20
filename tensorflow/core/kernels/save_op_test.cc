@@ -58,8 +58,8 @@ class SaveOpTest : public OpsTestBase {
 };
 
 TEST_F(SaveOpTest, Simple) {
-  const string filename = io::JoinPath(testing::TmpDir(), "tensor_simple");
-  const string tensornames[] = {
+  const std::string filename = io::JoinPath(testing::TmpDir(), "tensor_simple");
+  const std::string tensornames[] = {
       "tensor_bool",       "tensor_int",    "tensor_float",  "tensor_double",
       "tensor_qint8",      "tensor_qint32", "tensor_uint8",  "tensor_int8",
       "tensor_int16",      "tensor_int64",  "tensor_string", "tensor_complex64",
@@ -79,7 +79,7 @@ TEST_F(SaveOpTest, Simple) {
   AddInput<bool>(TensorShape({2}), [](int x) -> bool { return x != 0; });
 
   // Add a 1-d integer tensor
-  AddInput<int32>(TensorShape({10}), [](int x) -> int32 { return x + 1; });
+  AddInput<int32_t>(TensorShape({10}), [](int x) -> int32_t { return x + 1; });
 
   // Add a 2-d float tensor
   AddInput<float>(TensorShape({2, 4}),
@@ -99,16 +99,16 @@ TEST_F(SaveOpTest, Simple) {
   });
 
   // Add a 1-d uint8 tensor
-  AddInput<uint8>(TensorShape({11}), [](int x) -> uint8 { return x + 1; });
+  AddInput<uint8_t>(TensorShape({11}), [](int x) -> uint8_t { return x + 1; });
 
   // Add a 1-d int8 tensor
-  AddInput<int8>(TensorShape({7}), [](int x) -> int8 { return x - 7; });
+  AddInput<int8_t>(TensorShape({7}), [](int x) -> int8_t { return x - 7; });
 
   // Add a 1-d int16 tensor
-  AddInput<int16>(TensorShape({7}), [](int x) -> int16 { return x - 8; });
+  AddInput<int16_t>(TensorShape({7}), [](int x) -> int16_t { return x - 8; });
 
   // Add a 1-d int64 tensor
-  AddInput<int64_t>(TensorShape({9}), [](int x) -> int64 { return x - 9; });
+  AddInput<int64_t>(TensorShape({9}), [](int x) -> int64_t { return x - 9; });
 
   // Add a 1-d string tensor
   AddInput<tstring>(TensorShape({2}),
@@ -259,7 +259,7 @@ TEST_F(SaveOpTest, Simple) {
 
     // We expect the tensor value to be correct.
     TensorSlice s = TensorSlice::ParseOrDie("-");
-    uint8 data[11];
+    uint8_t data[11];
     EXPECT_TRUE(reader.CopySliceData("tensor_uint8", s, data));
     for (int i = 0; i < 11; ++i) {
       EXPECT_EQ(i + 1, data[i]);
@@ -277,7 +277,7 @@ TEST_F(SaveOpTest, Simple) {
 
     // We expect the tensor value to be correct.
     TensorSlice s = TensorSlice::ParseOrDie("-");
-    int8 data[7];
+    int8_t data[7];
     EXPECT_TRUE(reader.CopySliceData("tensor_int8", s, data));
     for (int i = 0; i < 7; ++i) {
       EXPECT_EQ(i - 7, data[i]);
@@ -295,7 +295,7 @@ TEST_F(SaveOpTest, Simple) {
 
     // We expect the tensor value to be correct.
     TensorSlice s = TensorSlice::ParseOrDie("-");
-    int16 data[7];
+    int16_t data[7];
     EXPECT_TRUE(reader.CopySliceData("tensor_int16", s, data));
     for (int i = 0; i < 7; ++i) {
       EXPECT_EQ(i - 8, data[i]);
@@ -413,12 +413,13 @@ class SaveSlicesOpTest : public OpsTestBase {
 // right slices are actually restored so instead we just check that
 // CopySliceData() return true/false depending on the slice we ask for.
 TEST_F(SaveSlicesOpTest, Slices) {
-  const string filename = io::JoinPath(testing::TmpDir(), "tensor_slices");
-  const string tensornames[] = {"tensor_int", "tensor_float", "tensor_double",
-                                "tensor_qint8", "tensor_qint32"};
+  const std::string filename = io::JoinPath(testing::TmpDir(), "tensor_slices");
+  const std::string tensornames[] = {"tensor_int", "tensor_float",
+                                     "tensor_double", "tensor_qint8",
+                                     "tensor_qint32"};
   // Specifies that the data we save are slices of larger tensors.
   // See core/framework/tensor_slice.h for the slice syntax.
-  const string tensorshapes[] = {
+  const std::string tensorshapes[] = {
       "10 -",         // Full contents of a 10 element vector.
       "2 4 -:0,2",    // A 2x2 slice of a 2x4 tensor.
       "2 4 0,1:2,2",  // A 1x2 slice of a 2x4 tensor.
@@ -442,7 +443,7 @@ TEST_F(SaveSlicesOpTest, Slices) {
   });
 
   // Add a 1-d integer tensor
-  AddInput<int32>(TensorShape({10}), [](int x) -> int32 { return x + 1; });
+  AddInput<int32_t>(TensorShape({10}), [](int x) -> int32_t { return x + 1; });
 
   // Add a 2-d float tensor
   AddInput<float>(TensorShape({2, 2}),
@@ -568,11 +569,12 @@ class SaveOpSlices2Test : public OpsTestBase {
 };
 
 TEST_F(SaveOpSlices2Test, TwoSlices) {
-  const string filename = io::JoinPath(testing::TmpDir(), "three_slices");
+  const std::string filename = io::JoinPath(testing::TmpDir(), "three_slices");
   // We will save 2 slices of the tensor named "four_by_sixteen" which is 4x16,
   // and one slice of the "small" tensor.
-  const string tensornames[] = {"four_by_sixteen", "four_by_sixteen", "small"};
-  const string tensorshapes[] = {
+  const std::string tensornames[] = {"four_by_sixteen", "four_by_sixteen",
+                                     "small"};
+  const std::string tensorshapes[] = {
       // Slice specifications for the 2 slices of "four_by_sixteen"
       "4 16 0,2:-",  // 1st slice covers indices 0 and 1 in the first dim.
       "4 16 2,2:-",  // 2nd slice covers indices 2 and 3 in the first dim.
@@ -595,11 +597,12 @@ TEST_F(SaveOpSlices2Test, TwoSlices) {
   });
 
   // Add an integer tensor for slice 0,2:- of a 4x16 tensor: It is 2x16.
-  AddInput<int32>(TensorShape({2, 16}), [](int x) -> int32 { return x + 1; });
+  AddInput<int32_t>(TensorShape({2, 16}),
+                    [](int x) -> int32_t { return x + 1; });
 
   // Add an integer tensor for slice 2,2:- of a 4x16 tensor: It is 2x16.
-  AddInput<int32>(TensorShape({2, 16}),
-                  [](int x) -> int32 { return 10 * (x + 1); });
+  AddInput<int32_t>(TensorShape({2, 16}),
+                    [](int x) -> int32_t { return 10 * (x + 1); });
 
   // Add a float tensor for "small"
   AddInput<float>(TensorShape({2, 4}),

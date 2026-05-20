@@ -70,6 +70,7 @@ cc_library(
         "//xla/tsl/profiler:internal",
         "//xla/tsl/profiler/rpc/client:__pkg__",
         "//third_party/xprof/pywrap:__pkg__",
+        "//xla/tsl/profiler:friends",
     ]),
     deps = [
         ":profiler_service_impl",

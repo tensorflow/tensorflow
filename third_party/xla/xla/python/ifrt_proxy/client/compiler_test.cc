@@ -46,7 +46,7 @@
 #include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace ifrt {
@@ -178,7 +178,6 @@ TEST_F(CompilerTest, Compile) {
              num_devices: 2
              addressable_device_ids: [ 0, 1 ]
              fingerprint_value: "fingerprint"
-             ready_future_handle: 5678
            })pb",
       &response));
   EXPECT_CALL(*session_,
@@ -188,15 +187,11 @@ TEST_F(CompilerTest, Compile) {
   ASSERT_TRUE(TextFormat::ParseFromString(R"pb(
                                             response_metadata {
                                               status {
-                                                code: 2  # UNKNOWN
-                                                message: "injected error"
+                                                code: 0  # OK
                                               }
                                             }
                                           )pb",
                                           &response));
-  EXPECT_CALL(*session_,
-              Enqueue(IfrtRequestOfType(IfrtRequest::kCheckFutureRequest)))
-      .WillOnce(MockClientCaptureAndReturn(&requests_queue, response));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto executable,
@@ -214,11 +209,6 @@ TEST_F(CompilerTest, Compile) {
               ElementsAre(&devices[0], &devices[1]));
   EXPECT_THAT(executable->Fingerprint(),
               absl_testing::IsOkAndHolds(Optional(std::string("fingerprint"))));
-  EXPECT_THAT(
-      executable->GetReadyFuture().Await(),
-      absl_testing::StatusIs(absl::StatusCode::kUnknown, "injected error"));
-
-  EXPECT_EQ(requests_queue.Pop().check_future_request().future_handle(), 5678);
 }
 
 }  // namespace

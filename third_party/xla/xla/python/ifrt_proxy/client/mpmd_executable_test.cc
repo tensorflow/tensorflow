@@ -42,7 +42,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
-#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
+#include "tsl/platform/protobuf.h"
 
 using ::testing::_;
 using ::testing::ElementsAre;
@@ -164,7 +164,6 @@ TEST_F(MpmdLoadedExecutableTest, GetMpmdAddressableDevicesSuccess) {
       /*num_devices=*/2, /*devices=*/{},
       /*addressable_devices=*/{}, /*mpmd_addressable_devices=*/devices_map,
       /*fingerprint=*/"fingerprint",
-      /*ready_future=*/tsl::Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
   TF_ASSERT_OK_AND_ASSIGN(auto result, executable.GetMpmdAddressableDevices());
@@ -182,7 +181,6 @@ TEST_F(MpmdLoadedExecutableTest, GetMpmdAddressableDevicesError) {
       /*addressable_devices=*/{},
       /*mpmd_addressable_devices=*/absl::InternalError("injected error"),
       /*fingerprint=*/"fingerprint",
-      /*ready_future=*/tsl::Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
   EXPECT_THAT(
@@ -201,7 +199,6 @@ TEST_F(MpmdLoadedExecutableTest, GetMpmdAddressableDevicesVersionCheck) {
       /*addressable_devices=*/{},
       /*mpmd_addressable_devices=*/absl::InternalError("injected error"),
       /*fingerprint=*/"fingerprint",
-      /*ready_future=*/tsl::Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
   EXPECT_THAT(executable.GetMpmdAddressableDevices(),
@@ -231,7 +228,6 @@ TEST_F(MpmdLoadedExecutableTest, GetMpmdCompiledMemoryStatsSuccess) {
       /*addressable_devices=*/{}, /*mpmd_addressable_devices=*/
       absl::flat_hash_map<std::string, std::vector<xla::ifrt::Device*>>(),
       /*fingerprint=*/"fingerprint",
-      /*ready_future=*/tsl::Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
   TF_ASSERT_OK_AND_ASSIGN(auto stats, executable.GetMpmdCompiledMemoryStats());
@@ -255,7 +251,6 @@ TEST_F(MpmdLoadedExecutableTest, GetMpmdCompiledMemoryStatsRpcError) {
       /*addressable_devices=*/{}, /*mpmd_addressable_devices=*/
       absl::flat_hash_map<std::string, std::vector<xla::ifrt::Device*>>(),
       /*fingerprint=*/"fingerprint",
-      /*ready_future=*/tsl::Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
   EXPECT_THAT(executable.GetMpmdCompiledMemoryStats(),
@@ -281,7 +276,6 @@ TEST_F(MpmdLoadedExecutableTest, GetMpmdCompiledMemoryStatsVersionCheck) {
       /*addressable_devices=*/{}, /*mpmd_addressable_devices=*/
       absl::flat_hash_map<std::string, std::vector<xla::ifrt::Device*>>(),
       /*fingerprint=*/"fingerprint",
-      /*ready_future=*/tsl::Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
   EXPECT_THAT(executable.GetMpmdCompiledMemoryStats(),
@@ -298,7 +292,6 @@ TEST_F(MpmdLoadedExecutableTest, GetMpmdHloModules) {
       /*addressable_devices=*/{}, /*mpmd_addressable_devices=*/
       absl::flat_hash_map<std::string, std::vector<xla::ifrt::Device*>>(),
       /*fingerprint=*/"fingerprint",
-      /*ready_future=*/tsl::Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
   EXPECT_THAT(executable.GetMpmdHloModules(),
@@ -338,7 +331,6 @@ TEST_F(MpmdLoadedExecutableTest, GetMpmdCostAnalysisSuccess) {
       /*addressable_devices=*/{}, /*mpmd_addressable_devices=*/
       absl::flat_hash_map<std::string, std::vector<xla::ifrt::Device*>>(),
       /*fingerprint=*/"fingerprint",
-      /*ready_future=*/tsl::Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
   TF_ASSERT_OK_AND_ASSIGN(auto result, executable.GetMpmdCostAnalysis());
@@ -366,7 +358,6 @@ TEST_F(MpmdLoadedExecutableTest, GetMpmdCostAnalysisRpcError) {
       /*addressable_devices=*/{}, /*mpmd_addressable_devices=*/
       absl::flat_hash_map<std::string, std::vector<xla::ifrt::Device*>>(),
       /*fingerprint=*/"fingerprint",
-      /*ready_future=*/tsl::Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
   EXPECT_THAT(executable.GetMpmdCostAnalysis(),
@@ -391,7 +382,6 @@ TEST_F(MpmdLoadedExecutableTest, GetMpmdCostAnalysisVersionCheck) {
       /*addressable_devices=*/{}, /*mpmd_addressable_devices=*/
       absl::flat_hash_map<std::string, std::vector<xla::ifrt::Device*>>(),
       /*fingerprint=*/"fingerprint",
-      /*ready_future=*/tsl::Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
   EXPECT_THAT(executable.GetMpmdCostAnalysis(),

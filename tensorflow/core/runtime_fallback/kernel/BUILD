@@ -420,6 +420,7 @@ cc_library(
         "//tensorflow/core/tfrt/graph_executor:config",
         "//tensorflow/core/tfrt/graph_executor:config_proto_cc",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
+        "@com_google_absl//absl/time",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
         "@tf_runtime//:tensor_alwayslink",

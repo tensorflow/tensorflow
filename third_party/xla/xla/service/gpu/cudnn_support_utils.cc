@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -218,10 +219,14 @@ CudnnInferTransposeForBiasReordering(const Shape& shape) {
 
 bool IsWorkspaceAllocationRoot(const HloInstruction& root) {
   return root.IsRoot() && root.opcode() == HloOpcode::kTuple &&
-         root.operand_count() == 2 &&
-         root.operand(1)->IsCustomCall(kWorkspaceAllocationCustomCallTarget) &&
-         root.operand(1)->operand_count() == 0;
+         root.operand(root.operand_count() - 1)
+             ->IsCustomCall(kWorkspaceAllocationCustomCallTarget) &&
+         root.operand(root.operand_count() - 1)->operand_count() == 0;
 }
 
+bool IsAmaxRoot(const HloInstruction& root) {
+  return root.IsRoot() && root.opcode() == HloOpcode::kTuple &&
+         root.operand(1)->opcode() == HloOpcode::kReduce;
+}
 }  // namespace gpu
 }  // namespace xla

@@ -23,9 +23,11 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/future.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/device_event.h"
+#include "xla/pjrt/device_event_utils.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value.h"
@@ -40,77 +42,59 @@ std::vector<RegisterRawBufferFactory::FactoryFuncT>& GetFactoryFuncs() {
   return *funcs;
 }
 
-Future<> CommonPjRtRawBuffer::CopyRawHostToDevice(const void* src,
-                                                  int64_t offset,
-                                                  int64_t transfer_size) {
-  auto event = CopyRawHostToDeviceAndReturnEvent(src, offset, transfer_size);
-  if (!event.ok()) {
-    return Future<>(event.status());
-  }
-  return (*event)->GetReadyFuture();
-}
-
-absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
+absl::StatusOr<PjRtRawBufferRef>
 CommonPjRtRawBuffer::RemoveDynamicShapeMetadataIfPresent(
-    const xla::Shape& logical_shape) {
+    const xla::Shape& device_shape, const xla::Shape& logical_shape) {
   return absl::InvalidArgumentError(absl::StrCat(
       "Dynamic shapes are not supported for ", memory_space()->DebugString()));
 }
 
-absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
-CommonPjRtRawBuffer::Slice(int64_t offset, int64_t size) {
-  TF_ASSIGN_OR_RETURN(auto results, MultiSlice({{offset, size}}));
-  return results[0];
-}
-
-absl::StatusOr<std::vector<tsl::RCReference<CommonPjRtRawBuffer>>>
-CommonPjRtRawBuffer::MultiSlice(absl::Span<const SliceInfo> slices) {
-  return absl::UnimplementedError(absl::StrCat("Slicing is not supported for ",
-                                               memory_space()->DebugString()));
-}
-
-Future<> CommonPjRtRawBuffer::CopyRawDeviceToHost(void* dst, int64_t offset,
-                                                  int64_t transfer_size) {
-  auto event = CopyRawDeviceToHostAndReturnEvent(dst, offset, transfer_size);
-  if (!event.ok()) {
-    return Future<>(event.status());
+absl::StatusOr<std::vector<PjRtRawBufferRef>> CommonPjRtRawBuffer::MultiSlice(
+    absl::Span<const SliceInfo> slices) {
+  std::vector<PjRtRawBufferRef> results;
+  results.reserve(slices.size());
+  for (const auto& slice : slices) {
+    ASSIGN_OR_RETURN(auto sub_slice, Slice(slice.offset, slice.size));
+    results.push_back(std::move(sub_slice));
   }
-  return (*event)->GetReadyFuture();
+  return results;
 }
 
 void CommonPjRtRawBuffer::ScheduleCopyTo(
     AsyncWorkRunner* async_work_runner,
-    std::vector<tsl::RCReference<tsl::AsyncValue>> transfer_dependency_avs,
-    tsl::RCReference<CommonPjRtRawBuffer> dst_raw_buffer,
+    std::vector<PjRtDeviceEventRef> transfer_dependency_events,
+    PjRtRawBufferRef dst_raw_buffer,
     tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise,
     tsl::RCReference<PjRtDeviceEventPromise> src_usage_event_promise,
-    ::tsl::AsyncValueRef<bool> allocation_event) {
-  absl::Span<const tsl::RCReference<tsl::AsyncValue>> definition_events_span =
-      transfer_dependency_avs;
-  async_work_runner->ScheduleWhenReady(
-      definition_events_span,
+    tsl::AsyncValueRef<bool> allocation_event) {
+  absl::Span<const PjRtDeviceEventRef> events_span = transfer_dependency_events;
+  xla::ExecuteWhenReady(
+      events_span, async_work_runner,
       [src_raw_buffer = tsl::FormRef(this),
        dst_raw_buffer = std::move(dst_raw_buffer),
-       transfer_dependency_avs = std::move(transfer_dependency_avs),
        definition_event_promise = std::move(definition_event_promise),
        src_usage_event_promise = std::move(src_usage_event_promise),
-       allocation_event = std::move(allocation_event)]() {
-        for (const auto& av : transfer_dependency_avs) {
-          if (auto* error = av->GetErrorIfPresent()) {
-            auto status = *error;
-            if (allocation_event) {
-              allocation_event.SetError(status);
-            }
-            definition_event_promise->SetError(status);
-            src_usage_event_promise->SetError(status);
-            return;
+       allocation_event = std::move(allocation_event),
+       transfer_dependency_events =
+           std::move(transfer_dependency_events)]() mutable {
+        absl::Status status = xla::GetErrors(transfer_dependency_events);
+        if (!status.ok()) {
+          if (allocation_event) {
+            allocation_event.SetError(status);
           }
+          definition_event_promise->SetError(status);
+          src_usage_event_promise->SetError(status);
+          return;
         }
 
         src_raw_buffer->CopyTo(
             std::move(dst_raw_buffer), std::move(definition_event_promise),
             std::move(src_usage_event_promise), std::move(allocation_event));
       });
+}
+
+void CommonPjRtRawBuffer::DecrefAfter(std::vector<PjRtDeviceEventRef> events) {
+  xla::RunWhenReady(events, [this]() { DropRef(); });
 }
 
 absl::StatusOr<tsl::RCReference<PjRtRawBuffer>>

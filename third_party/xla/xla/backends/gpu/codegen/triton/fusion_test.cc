@@ -119,7 +119,7 @@ ENTRY entry_computation {
   std::string data_layout = nvptx::DataLayout();
   EXPECT_THAT(triton_fusion_emitter->GenerateTritonKernelAndWrapper(
                   *::xla::Cast<HloFusionInstruction>(root), "random_name",
-                  device_info, triple, data_layout, &llvm_ctx, &mlir_context),
+                  device_info, triple, data_layout, &mlir_context),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 

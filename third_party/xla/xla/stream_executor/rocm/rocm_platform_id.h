@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_ROCM_ROCM_PLATFORM_ID_H_
 #define XLA_STREAM_EXECUTOR_ROCM_ROCM_PLATFORM_ID_H_
 
-#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_id.h"
 
 namespace stream_executor {
 namespace rocm {
@@ -26,7 +26,7 @@ namespace rocm {
 // instantiating a ROCmPlatform object.
 // This is broken out here to avoid a circular dependency between ROCmPlatform
 // and ROCmExecutor.
-extern const Platform::Id kROCmPlatformId;
+extern const PlatformId kROCmPlatformId;
 
 }  // namespace rocm
 }  // namespace stream_executor

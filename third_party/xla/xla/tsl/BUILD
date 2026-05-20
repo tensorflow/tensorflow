@@ -34,6 +34,17 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "stacktrace_lineinfo",
+    flag_values = {":lineinfo": "True"},
+    visibility = ["//visibility:public"],
+)
+
+bool_flag(
+    name = "lineinfo",
+    build_setting_default = False,
+)
+
 # Non-configurable setting to indicate open source build.
 bool_setting(
     name = "oss_setting",
@@ -472,25 +483,10 @@ selects.config_setting_group(
     visibility = ["//visibility:public"],
 )
 
-selects.config_setting_group(
-    name = "linux_any",
-    match_any = [
-        ":linux_aarch64",
-        ":linux_armhf",
-        ":linux_ppc64le",
-        ":linux_riscv64",
-        ":linux_s390x",
-        ":linux_x86_64",
-    ],
-    visibility = ["//visibility:public"],
-)
-
 # Enable NUMA on Linux platforms; hwloc does not work on Android
-selects.config_setting_group(
+alias(
     name = "with_numa_support",
-    match_any = [
-        ":linux_any",
-    ],
+    actual = if_google("//tools/cc_target_os:linux-google", "@platforms//os:linux"),
 )
 
 # TODO(jakeharmon): Remove equivalent from tensorflow/BUILD
@@ -540,6 +536,11 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+bool_flag(
+    name = "no_nccl_support_flag",
+    build_setting_default = False,
+)
+
 config_setting(
     name = "using_no_nccl_support_define",
     define_values = dict(
@@ -548,10 +549,25 @@ config_setting(
     visibility = internal_visibility(["//visibility:private"]),
 )
 
+config_setting(
+    name = "using_no_nccl_support_flag",
+    flag_values = {":no_nccl_support_flag": "True"},
+    visibility = internal_visibility(["//visibility:private"]),
+)
+
+selects.config_setting_group(
+    name = "using_no_nccl_support",
+    match_any = [
+        ":using_no_nccl_support_define",
+        ":using_no_nccl_support_flag",
+    ],
+    visibility = internal_visibility(["//visibility:private"]),
+)
+
 selects.config_setting_group(
     name = "no_nccl_support",
     match_all = [
-        ":using_no_nccl_support_define",
+        ":using_no_nccl_support",
     ] + if_google([
         "@local_config_cuda//cuda:using_config_cuda",
     ]),
@@ -601,17 +617,28 @@ bzl_library(
     visibility = ["//visibility:public"],
     deps = [
         ":package_groups_bzl",
+        ":transitive_dependencies_bzl",
         # copybara:uncomment "//devtools/build_cleaner/skylark:build_defs_lib",
-        "@rules_cc//cc/common",
         "@rules_python//python:py_library_bzl",
         "@bazel_skylib//lib:new_sets",
         "@local_config_cuda//cuda:build_defs_bzl",
         "//xla/tsl/mkl:build_defs_bzl",
         "//xla/tsl/platform:rules_cc_bzl",
         "@local_config_tensorrt//:build_defs_bzl",
-        "@xla//third_party/py/rules_pywrap:pywrap_bzl",
+        "@rules_ml_toolchain//py/rules_pywrap:pywrap_bzl",
         "@local_config_rocm//rocm:build_defs_bzl",
+        "@local_config_sycl//sycl:build_defs_bzl",
         "//third_party/compute_library:build_defs_bzl",
+    ],
+)
+
+bzl_library(
+    name = "transitive_dependencies_bzl",
+    srcs = ["transitive_dependencies.bzl"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":package_groups_bzl",
+        "@rules_cc//cc/common",
     ],
 )
 

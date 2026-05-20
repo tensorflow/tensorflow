@@ -43,13 +43,14 @@ class BCastArgsOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     OP_REQUIRES(
         ctx, ctx->num_inputs() == 2,
-        errors::Unimplemented("Broadcast for n-ary operations (n > 2)"));
+        absl::UnimplementedError("Broadcast for n-ary operations (n > 2)"));
     absl::InlinedVector<BCast::Vec, 2> shapes;
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       const TensorShape in_shape = ctx->InputShape(i);
-      OP_REQUIRES(ctx, TensorShapeUtils::IsVector(in_shape),
-                  errors::InvalidArgument("In[", i, "] must be a vector.",
-                                          in_shape.DebugString()));
+      OP_REQUIRES(
+          ctx, TensorShapeUtils::IsVector(in_shape),
+          absl::InvalidArgumentError(absl::StrCat(
+              "In[", i, "] must be a vector.", in_shape.DebugString())));
       std::vector<int64_t> shape;
       OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(
                               i, &shape, xla::ValueInferenceMode::kUpperBound));
@@ -57,9 +58,9 @@ class BCastArgsOp : public XlaOpKernel {
     }
     BCast bcast(shapes[0], shapes[1]);
     OP_REQUIRES(ctx, bcast.IsValid(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Incompatible shapes: [", absl::StrJoin(shapes[0], ","),
-                    "] vs. [", absl::StrJoin(shapes[1], ","), "]"));
+                    "] vs. [", absl::StrJoin(shapes[1], ","), "]")));
 
     DataType val_type = ctx->expected_output_dtype(0);
     const int64_t len = bcast.output_shape().size();
@@ -98,14 +99,15 @@ class BCastGradArgsOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     OP_REQUIRES(
         ctx, ctx->num_inputs() == 2,
-        errors::Unimplemented("Broadcast for n-ary operations (n > 2)"));
+        absl::UnimplementedError("Broadcast for n-ary operations (n > 2)"));
 
     absl::InlinedVector<BCast::Vec, 4> shapes;
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       const TensorShape in_shape = ctx->InputShape(i);
-      OP_REQUIRES(ctx, TensorShapeUtils::IsVector(in_shape),
-                  errors::InvalidArgument("In[", i, "] must be a vector.",
-                                          in_shape.DebugString()));
+      OP_REQUIRES(
+          ctx, TensorShapeUtils::IsVector(in_shape),
+          absl::InvalidArgumentError(absl::StrCat(
+              "In[", i, "] must be a vector.", in_shape.DebugString())));
       std::vector<int64_t> vec;
       // Technically we don't need to infer the upper-bound here. However the
       // forward path uses the upperbound as bounded shape so we need backward
@@ -117,9 +119,9 @@ class BCastGradArgsOp : public XlaOpKernel {
     }
     BCast bcast(shapes[0], shapes[1]);
     OP_REQUIRES(ctx, bcast.IsValid(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Incompatible shapes: [", absl::StrJoin(shapes[0], ","),
-                    "] vs. [", absl::StrJoin(shapes[1], ","), "]"));
+                    "] vs. [", absl::StrJoin(shapes[1], ","), "]")));
     Output(ctx, 0, bcast.grad_x_reduce_idx());
     Output(ctx, 1, bcast.grad_y_reduce_idx());
   }

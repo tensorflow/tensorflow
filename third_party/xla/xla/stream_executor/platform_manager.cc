@@ -33,8 +33,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/platform.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace {

@@ -348,6 +348,10 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
   pipeline_options->min_max_enqueued_batches = options.min_max_enqueued_batches;
   pipeline_options->batch_queue_global_prioritization_num_threads =
       options.batch_queue_global_prioritization_num_threads;
+  pipeline_options->enable_priority_aware_batch_scheduler =
+      options.enable_priority_aware_batch_scheduler;
+  pipeline_options->enable_priority_aware_batch_scheduler_resplit =
+      options.enable_priority_aware_batch_scheduler_resplit;
   pipeline_options->batch_padding_policy = options.batch_padding_policy;
   pipeline_options->num_batch_threads =
       options.batch_options.num_batch_threads();
@@ -359,6 +363,20 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
                            options.batch_options.allowed_batch_sizes().end()));
   pipeline_options->max_enqueued_batches =
       options.batch_options.max_enqueued_batches();
+  pipeline_options->low_priority_max_batch_size =
+      options.batch_options.low_priority_max_batch_size();
+  pipeline_options->low_priority_batch_timeout_micros =
+      options.batch_options.low_priority_batch_timeout_micros();
+  pipeline_options->low_priority_allowed_batch_sizes =
+      llvm::ArrayRef<int64_t>(std::vector<int64_t>(
+          options.batch_options.low_priority_allowed_batch_sizes().begin(),
+          options.batch_options.low_priority_allowed_batch_sizes().end()));
+  pipeline_options->low_priority_max_enqueued_batches =
+      options.batch_options.low_priority_max_enqueued_batches();
+  pipeline_options->enable_large_batch_splitting =
+      options.batch_options.enable_large_batch_splitting();
+  pipeline_options->mixed_priority_batching_policy =
+      options.batch_options.mixed_priority_batching_policy();
   pipeline_options->merge_inter_dependent_streams =
       options.merge_inter_dependent_streams;
   pipeline_options->allow_xla_cpu = options.allow_xla_cpu;

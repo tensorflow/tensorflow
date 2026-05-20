@@ -139,7 +139,7 @@ absl::Status RunOptimizationPasses(
   mlir::PassManager pm(context);
   mlir::registerPassManagerCLOptions();
   if (failed(mlir::applyPassManagerCLOptions(pm))) {
-    return tensorflow::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Could not initialize MLIR pass manager CL options");
   }
 
@@ -148,14 +148,13 @@ absl::Status RunOptimizationPasses(
     return mlir::failure();
   };
   if (failed(passPipeline.addToPipeline(pm, error_handler))) {
-    return tensorflow::errors::InvalidArgument(
-        "Pipeline initialization failed");
+    return absl::InvalidArgumentError("Pipeline initialization failed");
   }
 
   mlir::StatusScopedDiagnosticHandler diagnostics_handler(context);
   if (failed(pm.run(module))) {
     return diagnostics_handler.Combine(
-        tensorflow::errors::InvalidArgument("MLIR Pass Manager failure: "));
+        absl::InvalidArgumentError("MLIR Pass Manager failure: "));
   }
 
   return diagnostics_handler.ConsumeStatus();

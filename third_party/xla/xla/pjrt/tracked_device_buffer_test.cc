@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
 #include "xla/hlo/testlib/test.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/runtime/chip_id.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -50,9 +52,7 @@ class TestDevice : public PjRtDevice {
  public:
   TestDevice() = default;
 
-  PjRtLocalHardwareId local_hardware_id() const override {
-    return PjRtLocalHardwareId(0);
-  }
+  LocalChipId local_hardware_id() const override { return LocalChipId(0); }
 
   PjRtClient* client() const override {
     LOG(FATAL) << "Unimplemented for TestDevice.";
@@ -87,10 +87,10 @@ class TestDevice : public PjRtDevice {
 absl::StatusOr<tsl::AsyncValueRef<RawSEDeviceMemory>> MakeArray(
     const Shape& shape, LocalClient* client) {
   std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> device_buffers;
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+  RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       client->backend().transfer_manager()->HostShapeToDeviceShape(shape),
       [&](const Shape& subshape, const ShapeIndex&) -> absl::Status {
-        TF_ASSIGN_OR_RETURN(
+        ASSIGN_OR_RETURN(
             se::ScopedDeviceAddress<uint8_t> device_memory,
             client->backend().memory_allocator()->Allocate(
                 /*device_ordinal=*/0,

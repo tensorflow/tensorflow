@@ -31,8 +31,8 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/cpu/cpu_compiler.h"
+#include "xla/service/cpu/cpu_options.h"
 #include "xla/service/llvm_compiler.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -164,6 +164,34 @@ TEST_F(CpuCompilerInternalsTest, JustOneDylibWithThunks) {
   EXPECT_EQ(max_seen, 0) << "max dylib_index(" << max_seen
                          << ") != 0, but only "
                          << "one dylib is allowed.";
+}
+
+TEST_F(CpuCompilerInternalsTest, DisablePlatformDependentMathUnified) {
+  HloModuleConfig config;
+  // Test default: platform dependent math should be enabled.
+  EXPECT_FALSE(options::DisablePlatformDependentMath(config));
+
+  // Test old flag: disable platform dependent math.
+  config.mutable_debug_options().mutable_xla_backend_extra_options()->insert(
+      {std::string(options::kDisablePlatformDependentMath), ""});
+  EXPECT_TRUE(options::DisablePlatformDependentMath(config));
+
+  // Test new flag: disable platform dependent math.
+  config.mutable_debug_options().mutable_xla_backend_extra_options()->clear();
+  config.mutable_debug_options().set_xla_cpu_enable_platform_dependent_math(
+      false);
+  EXPECT_TRUE(options::DisablePlatformDependentMath(config));
+
+  // Test both flags: disable platform dependent math.
+  config.mutable_debug_options().mutable_xla_backend_extra_options()->insert(
+      {std::string(options::kDisablePlatformDependentMath), ""});
+  EXPECT_TRUE(options::DisablePlatformDependentMath(config));
+
+  // Test neither flag: platform dependent math should be enabled.
+  config.mutable_debug_options().mutable_xla_backend_extra_options()->clear();
+  config.mutable_debug_options().set_xla_cpu_enable_platform_dependent_math(
+      true);
+  EXPECT_FALSE(options::DisablePlatformDependentMath(config));
 }
 
 }  // namespace

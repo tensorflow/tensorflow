@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 
 namespace stream_executor::gpu {
 
@@ -141,9 +142,6 @@ GpuCommandBuffer::CreateLaunchWithPackedArgs(
     absl::Span<const Command* const> dependencies, StreamPriority priority) {
   TF_RETURN_IF_ERROR(CheckInState(State::kCreate));
 
-  CHECK_EQ(kernel.Arity() + (packed_args.number_of_shared_bytes() > 0),
-           packed_args.number_of_arguments());
-
   // Adds a new kernel node to the graph under construction.
   TF_ASSIGN_OR_RETURN(
       GraphNodeHandle handle,
@@ -157,7 +155,7 @@ absl::Status GpuCommandBuffer::UpdateLaunchWithPackedArgs(
     const Command* command, const ThreadDim& threads, const BlockDim& blocks,
     const Kernel& kernel, const KernelArgsPackedArrayBase& packed_args) {
   TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
-  auto* gpu_command = tsl::down_cast<const GpuCommand*>(command);
+  auto* gpu_command = absl::down_cast<const GpuCommand*>(command);
   return UpdateKernelNode(gpu_command->handle, threads, blocks, kernel,
                           packed_args);
 }
@@ -235,7 +233,7 @@ GpuCommandBuffer::CreateChildCommand(
 absl::Status GpuCommandBuffer::UpdateChildCommand(const Command* command,
                                                   const CommandBuffer& nested) {
   TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
-  auto* gpu_command = tsl::down_cast<const GpuCommand*>(command);
+  auto* gpu_command = absl::down_cast<const GpuCommand*>(command);
   VLOG(5) << "UpdateChildCommand: " << reinterpret_cast<const void*>(command);
   return UpdateClonedChildNode(gpu_command->handle, nested);
 }
@@ -286,7 +284,7 @@ absl::Status GpuCommandBuffer::UpdateMemcpyD2D(const Command* command,
                                                const DeviceAddressBase& src,
                                                uint64_t size) {
   TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
-  auto* gpu_command = tsl::down_cast<const GpuCommand*>(command);
+  auto* gpu_command = absl::down_cast<const GpuCommand*>(command);
   return UpdateMemcpyD2DNode(gpu_command->handle, *dst, src, size);
 }
 
@@ -307,7 +305,7 @@ absl::Status GpuCommandBuffer::UpdateMemset(const Command* command,
                                             const BitPattern& bit_pattern,
                                             size_t num_elements) {
   TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
-  auto* gpu_command = tsl::down_cast<const GpuCommand*>(command);
+  auto* gpu_command = absl::down_cast<const GpuCommand*>(command);
   return UpdateMemsetNode(gpu_command->handle, *dst, bit_pattern, num_elements);
 }
 
@@ -324,8 +322,7 @@ GpuCommandBuffer::CreateDnnGraphCommand(
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<CommandBuffer> nested,
                       stream.parent()->CreateCommandBuffer(Mode::kNested));
-  GpuCommandBuffer& nested_gpu =
-      tensorflow::down_cast<GpuCommandBuffer&>(*nested);
+  GpuCommandBuffer& nested_gpu = absl::down_cast<GpuCommandBuffer&>(*nested);
   TF_RETURN_IF_ERROR(
       nested_gpu.PopulateDnnGraphNode(dnn_graph, stream, operands));
 
@@ -340,8 +337,9 @@ absl::Status GpuCommandBuffer::UpdateDnnGraphCommand(
     const Command* command, dnn::DnnGraph& dnn_graph, Stream& stream,
     absl::Span<DeviceAddressBase> operands) {
   TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
-  return UpdateDnnGraphNode(dnn_graph, stream, operands,
-                            tsl::down_cast<const GpuCommand*>(command)->handle);
+  return UpdateDnnGraphNode(
+      dnn_graph, stream, operands,
+      absl::down_cast<const GpuCommand*>(command)->handle);
 }
 
 //----------------------------------------------------------------------------//
@@ -435,7 +433,7 @@ absl::Status GpuCommandBuffer::UpdateCase(
 
   constexpr size_t kBranchBatchSize = 8;
 
-  auto* gpu_command = tsl::down_cast<const GpuCaseCommand*>(command);
+  auto* gpu_command = absl::down_cast<const GpuCaseCommand*>(command);
 
   // Update branch conditionals.
   size_t batch_index = 0;
@@ -546,7 +544,7 @@ absl::Status GpuCommandBuffer::UpdateWhile(const Command* command,
                                            UpdateCommands update_body) {
   TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
 
-  auto* gpu_command = tsl::down_cast<const GpuWhileCommand*>(command);
+  auto* gpu_command = absl::down_cast<const GpuWhileCommand*>(command);
 
   TF_RETURN_IF_ERROR(update_cond(this));
 

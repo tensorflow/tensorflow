@@ -342,7 +342,7 @@ class WrapEntryWithCallFrame
     op.setPrivate();
     op->setAttr("llvm.linkage", mlir::LLVM::LinkageAttr::get(
                                     context, mlir::LLVM::Linkage::Internal));
-    op->setAttr("always_inline", builder.getUnitAttr());
+    op->setAttr("llvm.always_inline", builder.getUnitAttr());
 
     return mlir::success();
   }
@@ -383,13 +383,13 @@ class WrapEntryWithCallFrame
 
     mlir::ArrayAttr prefer_vector_width_attr = builder.getStrArrayAttr(
         {"prefer-vector-width", absl::StrCat(vector_width)});
-    func->setAttr("passthrough",
+    func->setAttr("llvm.passthrough",
                   builder.getArrayAttr({prefer_vector_width_attr}));
     func->setAttr(
-        "frame_pointer",
+        "llvm.frame_pointer",
         mlir::LLVM::FramePointerKindAttr::get(
             context, mlir::LLVM::framePointerKind::FramePointerKind::All));
-    func->setAttr("uwtable_kind",
+    func->setAttr("llvm.uwtable_kind",
                   mlir::LLVM::UWTableKindAttr::get(
                       context, mlir::LLVM::uwtable::UWTableKind::Async));
   }

@@ -216,7 +216,7 @@ absl::Status GetErrorOptions(OpKernelConstruction* ctx, ErrorOptions* out) {
   } else if (error_policy == "strict") {
     out->error_on_malformatting = true;
   } else {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "errors policy must be one of 'strict', 'replace', or 'ignore'");
   }
 
@@ -227,7 +227,7 @@ absl::Status GetErrorOptions(OpKernelConstruction* ctx, ErrorOptions* out) {
       replacement_char <= UCHAR_MAX_VALUE) {
     out->subst = replacement_char;
   } else {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "replacement_char out of unicode codepoint range");
   }
 
@@ -263,7 +263,7 @@ class UnicodeTranscodeOp : public OpKernel {
     WrappedConverter input_encoder;
     input_encoder.init(input_encoding_);
     OP_REQUIRES(ctx, input_encoder.converter_,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Could not create converter for input encoding: " +
                     input_encoding_));
   }
@@ -275,7 +275,7 @@ class UnicodeTranscodeOp : public OpKernel {
     static thread_local WrappedConverter input_encoder;
     input_encoder.init(input_encoding_);
     OP_REQUIRES(ctx, input_encoder.converter_,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Could not create converter for input encoding: " +
                     input_encoding_));
 
@@ -302,7 +302,7 @@ class UnicodeTranscodeOp : public OpKernel {
     }
     if (error_options_.error_on_malformatting && found_any_format_error) {
       ctx->CtxFailure(
-          errors::InvalidArgument("Invalid formatting on input string"));
+          absl::InvalidArgumentError("Invalid formatting on input string"));
     }
   }
 
@@ -359,7 +359,7 @@ class UnicodeDecodeBaseOp : public OpKernel {
     WrappedConverter input_encoder;
     input_encoder.init(input_encoding_);
     OP_REQUIRES(ctx, input_encoder.converter_,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Could not create converter for input encoding: " +
                     input_encoding_));
   }
@@ -370,7 +370,7 @@ class UnicodeDecodeBaseOp : public OpKernel {
               bool found_any_format_error) {
     if (error_options_.error_on_malformatting && found_any_format_error) {
       ctx->CtxFailure(
-          errors::InvalidArgument("Invalid formatting on input string"));
+          absl::InvalidArgumentError("Invalid formatting on input string"));
     }
     UChar32 decoded_value = char_value;
     if (ShouldHandleFormatError(error_options_, char_value,
@@ -404,7 +404,7 @@ class UnicodeDecodeBaseOp : public OpKernel {
     WrappedConverter input_encoder;
     input_encoder.init(input_encoding_);
     OP_REQUIRES(ctx, input_encoder.converter_,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Could not create converter for input encoding: " +
                     input_encoding_));
 
@@ -531,19 +531,19 @@ class UnicodeEncodeOp : public OpKernel {
             "Both the input_tensor and input_splits should be of rank 1. "));
     OP_REQUIRES(
         context, input_splits.NumElements() > 0,
-        errors::InvalidArgument("Input_splits should contain elements, but "
-                                "given input_values has 0 elements"));
+        absl::InvalidArgumentError("Input_splits should contain elements, but "
+                                   "given input_values has 0 elements"));
     // Operation will treat first argument in input_splits as if it were zero
     // regardless of its actual value since splits should begin with zero and
     // end with the length of the input values vector.
-    OP_REQUIRES(
-        context, input_splits_flat(0) == 0,
-        errors::InvalidArgument("First value in input_splits must be zero."));
+    OP_REQUIRES(context, input_splits_flat(0) == 0,
+                absl::InvalidArgumentError(
+                    "First value in input_splits must be zero."));
     OP_REQUIRES(context,
                 input_splits_flat(input_splits_flat.size() - 1) ==
                     input_tensor_flat.size(),
-                errors::InvalidArgument("Last value in input_splits must be "
-                                        "equal to length of input_tensor."));
+                absl::InvalidArgumentError("Last value in input_splits must be "
+                                           "equal to length of input_tensor."));
     // Since we limit to a 2-D input (flat_values of rank 1 and a single splits
     // tensor), our output dimension will be 1 with it's size equal to the
     // number of splits (outer dimension or ragged tensor).
@@ -560,12 +560,12 @@ class UnicodeEncodeOp : public OpKernel {
       icu::UnicodeString unicode_string;
       OP_REQUIRES(
           context, input_splits_flat(i - 1) <= input_splits_flat(i),
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(
               "Values in input_splits must be equal or in ascending order."));
-      OP_REQUIRES(
-          context, input_splits_flat(i) <= input_tensor_flat.size(),
-          errors::InvalidArgument("Values in input_splits must be less than or "
-                                  "equal to input_tensor length."));
+      OP_REQUIRES(context, input_splits_flat(i) <= input_tensor_flat.size(),
+                  absl::InvalidArgumentError(
+                      "Values in input_splits must be less than or "
+                      "equal to input_tensor length."));
       for (; idx < input_splits_flat(i); ++idx) {
         const int32_t code_point = input_tensor_flat(idx);
         // Check for https://www.unicode.org/glossary/#unicode_scalar_value.
@@ -578,7 +578,7 @@ class UnicodeEncodeOp : public OpKernel {
           unicode_string.append(code_point);
         } else {
           if (error_options_.error_on_malformatting) {
-            context->CtxFailure(errors::InvalidArgument(
+            context->CtxFailure(absl::InvalidArgumentError(
                 "Code point is out of range for Unicode, or is a surrogate."));
             return;
           } else if (!error_options_.elide_replacement) {

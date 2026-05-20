@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/layout_util.h"
 #include "xla/runtime/work_cluster.h"
 #include "xla/runtime/work_dimensions.h"
@@ -57,21 +58,24 @@ TEST(DefaultWorkItemIndexingMap, MultiDimensionTile) {
   // 6 dimensions: 3 work groups + 3 work items.
   EXPECT_EQ(indexing_map.GetDimensionCount(), 6);
 
-  mlir::AffineMap affine_map = indexing_map.GetAffineMap();
+  SymbolicMap symbolic_map = indexing_map.GetSymbolicMap();
 
-  mlir::AffineExpr work_item_sym = mlir::getAffineDimExpr(0, &mlir_context);
-  mlir::AffineExpr work_group_sym = mlir::getAffineDimExpr(3, &mlir_context);
+  SymbolicExpr work_item_sym = CreateDimExpr(0, &mlir_context);
+  SymbolicExpr work_group_sym = CreateDimExpr(3, &mlir_context);
 
-  EXPECT_EQ(affine_map.getResult(0), 3 * work_group_sym + work_item_sym);
+  EXPECT_EQ(symbolic_map.GetResult(0), work_group_sym * 3 + work_item_sym);
 
-  mlir::AffineExpr tile_sym_x = mlir::getAffineSymbolExpr(0, &mlir_context);
-  EXPECT_EQ(affine_map.getResult(1), tile_sym_x);
+  SymbolicExpr tile_sym_x =
+      CreateSymbolExpr(0, indexing_map.GetDimensionCount(), &mlir_context);
+  EXPECT_EQ(symbolic_map.GetResult(1), tile_sym_x);
 
-  mlir::AffineExpr tile_sym_y = mlir::getAffineSymbolExpr(1, &mlir_context);
-  EXPECT_EQ(affine_map.getResult(2), tile_sym_y);
+  SymbolicExpr tile_sym_y =
+      CreateSymbolExpr(1, indexing_map.GetDimensionCount(), &mlir_context);
+  EXPECT_EQ(symbolic_map.GetResult(2), tile_sym_y);
 
-  mlir::AffineExpr tile_sym_z = mlir::getAffineSymbolExpr(2, &mlir_context);
-  EXPECT_EQ(affine_map.getResult(3), tile_sym_z);
+  SymbolicExpr tile_sym_z =
+      CreateSymbolExpr(2, indexing_map.GetDimensionCount(), &mlir_context);
+  EXPECT_EQ(symbolic_map.GetResult(3), tile_sym_z);
 }
 
 }  // namespace

@@ -228,7 +228,7 @@ TEST(SnapshotManagerTest, SnapshotStreamError) {
   SnapshotTaskProgress snapshot_task_progress;
   *snapshot_task_progress.mutable_snapshot_task() = task;
   *snapshot_task_progress.mutable_status() =
-      tsl::StatusToProto(errors::NotFound("Not found"));
+      tsl::StatusToProto(absl::NotFoundError("Not found"));
   (*heartbeat_request.mutable_snapshot_task_progress())[snapshot_path] =
       snapshot_task_progress;
   TF_EXPECT_OK(
@@ -274,7 +274,7 @@ TEST(SnapshotManagerTest, ResumeFromError) {
   SnapshotTaskProgress snapshot_task_progress;
   *snapshot_task_progress.mutable_snapshot_task() = task;
   *snapshot_task_progress.mutable_status() =
-      tsl::StatusToProto(errors::NotFound("Not found"));
+      tsl::StatusToProto(absl::NotFoundError("Not found"));
   (*heartbeat_request.mutable_snapshot_task_progress())[snapshot_path] =
       snapshot_task_progress;
   TF_EXPECT_OK(

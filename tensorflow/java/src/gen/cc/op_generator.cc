@@ -76,7 +76,7 @@ constexpr const char kLicense[] =
 //
 enum RenderMode { DEFAULT, OPERAND, LIST_OPERAND };
 
-void AddArgument(const Variable& var, const string& description,
+void AddArgument(const Variable& var, const std::string& description,
                  Method* method_out, Javadoc* javadoc_out) {
   method_out->add_argument(var);
   javadoc_out->add_param_tag(var.name(), description);
@@ -121,9 +121,10 @@ void CollectOpDependencies(const OpSpec& op, RenderMode mode,
 
 void WriteSetAttrDirective(const AttributeSpec& attr, bool optional,
                            SourceWriter* writer) {
-  string var_name = optional ? "opts." + attr.var().name() : attr.var().name();
+  std::string var_name =
+      optional ? "opts." + attr.var().name() : attr.var().name();
   if (attr.iterable()) {
-    string array_name = attr.var().name() + "Array";
+    std::string array_name = attr.var().name() + "Array";
     writer->AppendType(attr.jni_type())
         .Append("[] " + array_name + " = new ")
         .AppendType(attr.jni_type())
@@ -153,7 +154,7 @@ void WriteSetAttrDirective(const AttributeSpec& attr, bool optional,
 }
 
 void RenderSecondaryFactoryMethod(const OpSpec& op, const Type& op_class,
-                                  std::map<string, Type> default_types,
+                                  std::map<std::string, Type> default_types,
                                   SourceWriter* writer) {
   // Build the return type for the secondary factory, replacing generic
   // parameters with their default value if any
@@ -217,7 +218,7 @@ void RenderFactoryMethods(const OpSpec& op, const Type& op_class,
   for (const ArgumentSpec& input : op.inputs()) {
     AddArgument(input.var(), input.description(), &factory, &factory_doc);
   }
-  std::map<string, Type> default_types;
+  std::map<std::string, Type> default_types;
   for (const AttributeSpec& attr : op.attributes()) {
     AddArgument(attr.var(), attr.description(), &factory, &factory_doc);
     // If this attribute is a type with a default value, save its value
@@ -300,7 +301,7 @@ void RenderConstructor(const OpSpec& op, const Type& op_class,
     writer->Append("int outputIdx = 0;").EndLine();
     for (const ArgumentSpec& output : op.outputs()) {
       if (output.iterable()) {
-        string var_length = output.var().name() + "Length";
+        std::string var_length = output.var().name() + "Length";
         writer->Append("int " + var_length)
             .Append(" = operation.outputListLength(\"" + output.op_def_name() +
                     "\");")
@@ -418,14 +419,15 @@ void RenderOptionsClass(const OpSpec& op, const Type& op_class,
   writer->EndType();
 }
 
-inline Type ClassOf(const EndpointSpec& endpoint, const string& base_package) {
+inline Type ClassOf(const EndpointSpec& endpoint,
+                    const std::string& base_package) {
   return Type::Class(
       endpoint.name(),
       base_package + "." + absl::AsciiStrToLower(endpoint.package()));
 }
 
 void GenerateOp(const OpSpec& op, const EndpointSpec& endpoint,
-                const string& base_package, const string& output_dir,
+                const std::string& base_package, const std::string& output_dir,
                 Env* env) {
   Type op_class(
       ClassOf(endpoint, base_package)
@@ -449,7 +451,7 @@ void GenerateOp(const OpSpec& op, const EndpointSpec& endpoint,
     }
   }
   // op generic parameters
-  std::set<string> generics;
+  std::set<std::string> generics;
   for (const ArgumentSpec& output : op.outputs()) {
     if (output.type().kind() == Type::GENERIC && !output.type().wildcard() &&
         generics.find(output.type().name()) == generics.end()) {
@@ -463,7 +465,7 @@ void GenerateOp(const OpSpec& op, const EndpointSpec& endpoint,
   // op annotations
   if (endpoint.deprecated()) {
     op_class.add_annotation(Annotation::Create("Deprecated"));
-    string explanation;
+    std::string explanation;
     if (!op.endpoints().front().deprecated()) {
       explanation =
           "use {@link " +
@@ -484,13 +486,13 @@ void GenerateOp(const OpSpec& op, const EndpointSpec& endpoint,
     op_class.add_annotation(oper_annot);
   }
   // create op class file
-  const string op_dir_name = io::JoinPath(
+  const std::string op_dir_name = io::JoinPath(
       output_dir, str_util::StringReplace(op_class.package(), ".", "/", true));
   if (!env->FileExists(op_dir_name).ok()) {
     TF_CHECK_OK(Env::Default()->RecursivelyCreateDir(op_dir_name))
         << op_dir_name;
   }
-  const string op_file_name = op_class.name() + ".java";
+  const std::string op_file_name = op_class.name() + ".java";
   std::unique_ptr<tensorflow::WritableFile> op_file;
   TF_CHECK_OK(
       env->NewWritableFile(io::JoinPath(op_dir_name, op_file_name), &op_file))
@@ -536,8 +538,9 @@ bool CanGenerateOp(const OpDef& op_def, const ApiDef& api_def) {
 
 }  // namespace
 
-absl::Status OpGenerator::Run(const OpList& op_list, const string& base_package,
-                              const string& output_dir) {
+absl::Status OpGenerator::Run(const OpList& op_list,
+                              const std::string& base_package,
+                              const std::string& output_dir) {
   ApiDefMap api_map(op_list);
   if (!api_dirs_.empty()) {
     // Only load api files that correspond to the requested "op_list"

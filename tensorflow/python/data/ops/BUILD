@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -6,9 +6,10 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "structured_function",
     srcs = ["structured_function.py"],
+    strict_deps = True,
     deps = [
         ":debug_mode",
         "//tensorflow/python/autograph/core:ag_ctx",
@@ -26,21 +27,23 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "debug_mode",
     srcs = ["debug_mode.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/eager:context",
         "//tensorflow/python/util:tf_export",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "test_mode",
     srcs = ["test_mode.py"],
+    strict_deps = True,
 )
 
-py_strict_library(
+py_library(
     name = "dataset_ops",
     # Grouped together due to mutual dependencies, to avoid dependency cycles.
     srcs = [
@@ -85,6 +88,7 @@ py_strict_library(
         "window_op.py",
         "zip_op.py",
     ],
+    strict_deps = True,
     deps = [
         ":debug_mode",
         ":iterator_ops",
@@ -159,13 +163,14 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "iterator_ops",
     # Grouped together due to mutual dependencies, to avoid dependency cycles.
     srcs = [
         "iterator_autograph.py",
         "iterator_ops.py",
     ],
+    strict_deps = True,
     deps = [
         ":optional_ops",
         ":options",
@@ -205,9 +210,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "multi_device_iterator_ops",
     srcs = ["multi_device_iterator_ops.py"],
+    strict_deps = True,
     deps = [
         ":dataset_ops",
         ":iterator_ops",
@@ -230,9 +236,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "optional_ops",
     srcs = ["optional_ops.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/util:structure",
@@ -248,9 +255,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "options",
     srcs = ["options.py"],
+    strict_deps = True,
     deps = [
         ":test_mode",
         "//tensorflow/core:protos_all_py",
@@ -261,9 +269,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "readers",
     srcs = ["readers.py"],
+    strict_deps = True,
     deps = [
         ":dataset_ops",
         ":structured_function",

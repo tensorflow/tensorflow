@@ -71,6 +71,7 @@ sh_binary(
     name = "sanitizer_wrapper",
     srcs = [":san_wrapper_script"],
     data = [":sanitizer_ignore_lists"],
+    tags = ["manual"],
     visibility = ["//visibility:public"],
 )
 
@@ -81,5 +82,6 @@ sh_binary(
         ":sanitizer_ignore_lists",
         "@local_config_rocm//rocm:rocminfo",
     ],
+    tags = ["manual"],
     visibility = ["//visibility:public"],
 )

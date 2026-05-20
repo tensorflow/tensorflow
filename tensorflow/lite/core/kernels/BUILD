@@ -5,7 +5,7 @@ load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_self_contained_l
 load("//tensorflow/lite/core:special_rules.bzl", "builtin_ops_visibility_allowlist")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     licenses = ["notice"],
 )
 

@@ -34,7 +34,6 @@ class SingleOpModelWithCoreMlDelegate : public tflite::SingleOpModel {
   using SingleOpModel::builder_;
 
  private:
-  tflite::Interpreter::TfLiteDelegatePtr delegate_;
   TfLiteCoreMlDelegateOptions params_ = {
       .enabled_devices = TfLiteCoreMlDelegateAllDevices,
       .min_nodes_per_partition = 1,

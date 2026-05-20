@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/tsl/platform/statusor.h"
@@ -143,8 +144,7 @@ absl::StatusOr<TmaDescriptor> CreateTmaDescriptor(
 // data. It might make sense to re-evaluate this recommendation later if we
 // believe there are missed opportunities.
 bool IsTmaRecommended(const TritonGemmConfig& config) {
-  return (config.split_k == 1 || config.split_k == 16) &&
-         config.num_warps <= 8 &&
+  return config.num_warps <= 8 &&
          (config.num_stages == 1 || config.num_stages == 3 ||
           config.num_stages == 4) &&
          config.block_m <= 256 && config.block_n <= 256 &&

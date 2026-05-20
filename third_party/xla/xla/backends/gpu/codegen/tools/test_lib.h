@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/backends/gpu/codegen/emitters/emitter_base.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -36,7 +36,7 @@ struct EmitterData {
   HloFusionInstruction* fusion;
   std::optional<se::DeviceDescription> device;
   std::optional<HloFusionAnalysis> analysis;
-  std::unique_ptr<EmitterBase> emitter;
+  std::unique_ptr<MlirKernelFusion> emitter;
 };
 absl::StatusOr<std::unique_ptr<EmitterData>> GetEmitter(
     const HloModule& module, mlir::MLIRContext& mlir_context);

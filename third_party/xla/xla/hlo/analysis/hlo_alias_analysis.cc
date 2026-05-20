@@ -315,6 +315,11 @@ const HloBuffer& HloAliasAnalysis::GetUniqueBufferAt(
   return *buffers[0];
 }
 
+const HloBuffer& HloAliasAnalysis::GetUniqueBufferAt(
+    const HloPosition& position) const {
+  return GetUniqueBufferAt(position.instruction, position.index);
+}
+
 std::vector<const HloBuffer*> HloAliasAnalysis::ComputeBuffersAt(
     const HloInstruction* instruction, const ShapeIndex& index) const {
   const HloValueSet& value_set =

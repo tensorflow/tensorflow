@@ -37,6 +37,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
 #include "absl/synchronization/mutex.h"
 #include "json/json.h"
 #include "xla/tsl/platform/env.h"
@@ -62,6 +63,13 @@ constexpr char kCloudSdkConfig[] = "CLOUDSDK_CONFIG";
 // setting this to 'true' (case insensitive) will skip attempting to contact
 // the GCE metadata service.
 constexpr char kNoGceCheck[] = "NO_GCE_CHECK";
+
+// The environment variable to set the maximum number of requests for GCE auth.
+constexpr char kGcsAuthMaxRequests[] = "TF_GCS_AUTH_MAX_REQUESTS";
+
+// The environment variable to set the delay in seconds between GCE auth
+// retries.
+constexpr char kGcsAuthRetryDelaySec[] = "TF_GCS_AUTH_RETRY_DELAY_SEC";
 
 // The default path to the gcloud config folder, relative to the home folder.
 constexpr char kGCloudConfigFolder[] = ".config/gcloud/";
@@ -133,6 +141,24 @@ absl::Status GetWellKnownFileName(std::string* filename) {
   return absl::OkStatus();
 }
 
+absl::Status ParseNonNegativeIntEnvVar(const char* env_var_name,
+                                       int default_value, int* result) {
+  if (!result) {
+    return absl::FailedPreconditionError("'result' cannot be nullptr.");
+  }
+  const char* env_value = std::getenv(env_var_name);
+  if (!env_value) {
+    *result = default_value;
+    return absl::OkStatus();
+  }
+  if (!absl::SimpleAtoi(env_value, result) || *result < 0) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Failed to parse $", env_var_name,
+                     " as a non-negative integer: ", env_value));
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 GoogleAuthProvider::GoogleAuthProvider(
@@ -180,7 +206,26 @@ absl::Status GoogleAuthProvider::GetToken(std::string* t) {
                      absl::StrCat("GCE check skipped due to presence of $",
                                   kNoGceCheck, " environment variable."));
   } else {
-    token_from_gce_status = GetTokenFromGce();
+    int max_requests;
+    TF_RETURN_IF_ERROR(
+        ParseNonNegativeIntEnvVar(kGcsAuthMaxRequests, 1, &max_requests));
+    int retry_delay_sec;
+    TF_RETURN_IF_ERROR(
+        ParseNonNegativeIntEnvVar(kGcsAuthRetryDelaySec, 5, &retry_delay_sec));
+
+    for (int i = 0; i < max_requests; ++i) {
+      token_from_gce_status = GetTokenFromGce();
+      if (token_from_gce_status.ok()) {
+        break;
+      }
+      if (i < max_requests - 1) {
+        LOG(INFO) << "GCE auth failed with status: " << token_from_gce_status
+                  << ". Retrying in " << retry_delay_sec
+                  << " seconds... (Request " << i + 2 << " of " << max_requests
+                  << ")";
+        env_->SleepForMicroseconds(retry_delay_sec * 1000000);
+      }
+    }
   }
 
   if (token_from_gce_status.ok()) {

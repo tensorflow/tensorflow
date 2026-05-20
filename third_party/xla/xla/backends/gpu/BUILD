@@ -20,8 +20,10 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
+        "//xla/backends/cpu:target_machine_options",
         "//xla/backends/gpu/runtime:collective_clique_requests",
         "//xla/backends/gpu/runtime:collective_cliques",
+        "//xla/backends/gpu/runtime:collective_memory",
         "//xla/backends/gpu/runtime:collective_memory_requests",
         "//xla/backends/gpu/runtime:collective_params",
         "//xla/ffi",

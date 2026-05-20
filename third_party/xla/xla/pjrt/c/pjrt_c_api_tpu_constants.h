@@ -35,6 +35,7 @@ constexpr char kPremappedBufferSize[] = "premapped_buffer_size";
 constexpr char kMaximumPremappedBufferSizeForTransfersInBytes[] =
     "maximum_premapped_buffer_size_for_transfers_in_bytes";
 constexpr char kNumPremappedPartitions[] = "num_premapped_partitions";
+constexpr char kSkipMegascalePjrtClient[] = "skip_megascale_pjrt_client";
 
 }  // namespace tpu_configs
 

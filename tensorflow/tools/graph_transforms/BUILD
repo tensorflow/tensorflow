@@ -2,7 +2,7 @@
 #   Utilities that perform useful transformations on graphs
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_not_windows",
@@ -326,9 +326,10 @@ tf_cc_binary(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "transform_graph_py",
     srcs = ["__init__.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/util:_pywrap_transform_graph",

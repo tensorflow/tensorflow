@@ -178,18 +178,19 @@ class StringSplitOp : public OpKernel {
     const Tensor* input_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("input", &input_tensor));
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(input_tensor->shape()),
-                errors::InvalidArgument("input must be a vector, got shape: ",
-                                        input_tensor->shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("input must be a vector, got shape: ",
+                                 input_tensor->shape().DebugString())));
 
     const auto input_vec = input_tensor->vec<tstring>();
     const int64_t batch_size = input_vec.dimension(0);
 
     const Tensor* delimiter_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("delimiter", &delimiter_tensor));
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsScalar(delimiter_tensor->shape()),
-        errors::InvalidArgument("delimiter must be a scalar, got shape: ",
-                                delimiter_tensor->shape().DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(delimiter_tensor->shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("delimiter must be a scalar, got shape: ",
+                                 delimiter_tensor->shape().DebugString())));
     const auto delimiter_vec = delimiter_tensor->flat<tstring>();
     const tstring& delimiter = delimiter_vec(0);
     // Empty delimiter means split the input character by character.
@@ -253,8 +254,9 @@ class StringSplitV2Op : public OpKernel {
     const Tensor* input_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("input", &input_tensor));
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(input_tensor->shape()),
-                errors::InvalidArgument("input must be a vector, got shape: ",
-                                        input_tensor->shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("input must be a vector, got shape: ",
+                                 input_tensor->shape().DebugString())));
 
     const auto input_vec = input_tensor->vec<tstring>();
     const int64_t batch_size = input_vec.dimension(0);
@@ -262,8 +264,9 @@ class StringSplitV2Op : public OpKernel {
     const Tensor* sep_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("sep", &sep_tensor));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(sep_tensor->shape()),
-                errors::InvalidArgument("sep must be a scalar, got shape: ",
-                                        sep_tensor->shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("sep must be a scalar, got shape: ",
+                                 sep_tensor->shape().DebugString())));
     const auto sep_vec = sep_tensor->flat<tstring>();
     absl::string_view sep(sep_vec(0));
     std::vector<absl::string_view> tokens;

@@ -74,12 +74,12 @@ class HloShardingSpec final
   absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape) const override;
 
-  std::string DebugString() const override;
-
   static char ID;  // NOLINT
 
  private:
   HloShardingSpec(int num_shards, xla::HloSharding xla_hlo_sharding);
+
+  std::string DebugString() const override;
 
   void Hash(absl::HashState state) const override;
 

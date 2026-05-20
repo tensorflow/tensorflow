@@ -88,13 +88,13 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
     std::unique_ptr<BufferAssignment> assignment,
     std::unique_ptr<HloModule> hlo_module, ThunkSequence thunks,
     std::vector<ConstantAllocation> constants,
-    TargetMachineOptions target_machine_options) {
+    TargetMachineOptions target_machine_options, std::string data_layout) {
   VLOG(2) << "Create CpuExecutable from a thunk sequence; module="
           << hlo_module->name() << ", constants=" << constants.size();
 
-  std::unique_ptr<CpuExecutable> executable(
-      new CpuExecutable(std::move(hlo_module), std::move(assignment),
-                        std::move(target_machine_options)));
+  std::unique_ptr<CpuExecutable> executable(new CpuExecutable(
+      std::move(hlo_module), std::move(assignment),
+      std::move(target_machine_options), std::move(data_layout)));
   executable->function_library_ = std::move(function_library);
 
   ThunkExecutor::Options thunk_executor_options;
@@ -122,10 +122,12 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
 
 CpuExecutable::CpuExecutable(std::unique_ptr<HloModule> hlo_module,
                              std::unique_ptr<BufferAssignment> assignment,
-                             TargetMachineOptions target_machine_options)
+                             TargetMachineOptions target_machine_options,
+                             std::string data_layout)
     : Executable(std::move(hlo_module)),
       assignment_(std::move(assignment)),
-      target_machine_options_(std::move(target_machine_options)) {
+      target_machine_options_(std::move(target_machine_options)),
+      data_layout_(std::move(data_layout)) {
   if (assignment_ && has_module()) {
     XlaDebugInfoManager::Get()->RegisterModule(shared_module(), assignment_);
   }

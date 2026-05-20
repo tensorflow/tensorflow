@@ -38,8 +38,8 @@ TEST_F(DynamicallyQuantizedConv2D, 3x3) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -47,7 +47,10 @@ TEST_F(DynamicallyQuantizedConv2D, 3x3) {
       .KernelHeight(3)
       .KernelWidth(3)
       .SamePadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(DynamicallyQuantizedConv2D, 3x3Stride2) {
@@ -60,8 +63,8 @@ TEST_F(DynamicallyQuantizedConv2D, 3x3Stride2) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -71,7 +74,10 @@ TEST_F(DynamicallyQuantizedConv2D, 3x3Stride2) {
       .StrideHeight(2)
       .StrideWidth(2)
       .SamePadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(DynamicallyQuantizedConv2D, Grouped) {
@@ -87,8 +93,8 @@ TEST_F(DynamicallyQuantizedConv2D, Grouped) {
       std::bind(std::uniform_int_distribution<int32_t>(2, 8), std::ref(rng));
 
   auto groups = groups_rng();
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(groups * channel_per_group_rng())
@@ -97,7 +103,10 @@ TEST_F(DynamicallyQuantizedConv2D, Grouped) {
       .KernelHeight(3)
       .KernelWidth(3)
       .SamePadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(DynamicallyQuantizedConv2D, SmallKernelWithSamePadding) {
@@ -112,8 +121,8 @@ TEST_F(DynamicallyQuantizedConv2D, SmallKernelWithSamePadding) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -121,7 +130,10 @@ TEST_F(DynamicallyQuantizedConv2D, SmallKernelWithSamePadding) {
       .KernelHeight(kernel_rng())
       .KernelWidth(kernel_rng())
       .SamePadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(DynamicallyQuantizedConv2D, SmallKernelWithValidPadding) {
@@ -136,8 +148,8 @@ TEST_F(DynamicallyQuantizedConv2D, SmallKernelWithValidPadding) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -145,7 +157,10 @@ TEST_F(DynamicallyQuantizedConv2D, SmallKernelWithValidPadding) {
       .KernelHeight(kernel_rng())
       .KernelWidth(kernel_rng())
       .ValidPadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(DynamicallyQuantizedConv2D, StrideWithSamePadding) {
@@ -162,8 +177,8 @@ TEST_F(DynamicallyQuantizedConv2D, StrideWithSamePadding) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -173,7 +188,10 @@ TEST_F(DynamicallyQuantizedConv2D, StrideWithSamePadding) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .SamePadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(DynamicallyQuantizedConv2D, StrideWithValidPadding) {
@@ -190,8 +208,8 @@ TEST_F(DynamicallyQuantizedConv2D, StrideWithValidPadding) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -201,7 +219,10 @@ TEST_F(DynamicallyQuantizedConv2D, StrideWithValidPadding) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .ValidPadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(DynamicallyQuantizedConv2D, DilationWithSamePadding) {
@@ -218,8 +239,8 @@ TEST_F(DynamicallyQuantizedConv2D, DilationWithSamePadding) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -229,7 +250,10 @@ TEST_F(DynamicallyQuantizedConv2D, DilationWithSamePadding) {
       .DilationHeight(dilation_rng())
       .DilationWidth(dilation_rng())
       .SamePadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(DynamicallyQuantizedConv2D, DilationWithValidPadding) {
@@ -246,8 +270,8 @@ TEST_F(DynamicallyQuantizedConv2D, DilationWithValidPadding) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -257,7 +281,10 @@ TEST_F(DynamicallyQuantizedConv2D, DilationWithValidPadding) {
       .DilationHeight(dilation_rng())
       .DilationWidth(dilation_rng())
       .ValidPadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(DynamicallyQuantizedConv2D, TensorWiseQuantizedInt8Weights) {
@@ -274,8 +301,8 @@ TEST_F(DynamicallyQuantizedConv2D, TensorWiseQuantizedInt8Weights) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -284,7 +311,10 @@ TEST_F(DynamicallyQuantizedConv2D, TensorWiseQuantizedInt8Weights) {
       .KernelWidth(kernel_rng())
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(DynamicallyQuantizedConv2D, ChannelWiseQuantizedInt8Weights) {
@@ -301,8 +331,8 @@ TEST_F(DynamicallyQuantizedConv2D, ChannelWiseQuantizedInt8Weights) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -311,7 +341,10 @@ TEST_F(DynamicallyQuantizedConv2D, ChannelWiseQuantizedInt8Weights) {
       .KernelWidth(kernel_rng())
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(DynamicallyQuantizedConv2D, ReluActivation) {
@@ -328,8 +361,8 @@ TEST_F(DynamicallyQuantizedConv2D, ReluActivation) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -339,7 +372,10 @@ TEST_F(DynamicallyQuantizedConv2D, ReluActivation) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .ReluActivation()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(DynamicallyQuantizedConv2D, Relu6Activation) {
@@ -356,8 +392,8 @@ TEST_F(DynamicallyQuantizedConv2D, Relu6Activation) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -367,7 +403,10 @@ TEST_F(DynamicallyQuantizedConv2D, Relu6Activation) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .Relu6Activation()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(DynamicallyQuantizedConv2D, ReluMinus1To1Activation) {
@@ -384,8 +423,8 @@ TEST_F(DynamicallyQuantizedConv2D, ReluMinus1To1Activation) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -395,7 +434,10 @@ TEST_F(DynamicallyQuantizedConv2D, ReluMinus1To1Activation) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .ReluMinus1To1Activation()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(DynamicallyQuantizedConv2D, TanhActivation) {
@@ -412,8 +454,8 @@ TEST_F(DynamicallyQuantizedConv2D, TanhActivation) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -423,7 +465,10 @@ TEST_F(DynamicallyQuantizedConv2D, TanhActivation) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .TanhActivation()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(DynamicallyQuantizedConv2D, SignBitActivation) {
@@ -440,8 +485,8 @@ TEST_F(DynamicallyQuantizedConv2D, SignBitActivation) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -451,7 +496,10 @@ TEST_F(DynamicallyQuantizedConv2D, SignBitActivation) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .SignBitActivation()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(DynamicallyQuantizedConv2D, MultiThreading) {
@@ -475,8 +523,8 @@ TEST_F(DynamicallyQuantizedConv2D, MultiThreading) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -485,7 +533,10 @@ TEST_F(DynamicallyQuantizedConv2D, MultiThreading) {
       .KernelWidth(kernel_rng())
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(DynamicallyQuantizedConv2D, WeightsCache) {
@@ -513,8 +564,8 @@ TEST_F(DynamicallyQuantizedConv2D, WeightsCache) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -524,7 +575,10 @@ TEST_F(DynamicallyQuantizedConv2D, WeightsCache) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .WeightsCache(weights_cache.get())
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(DynamicallyQuantizedConv2D, TransientIndirectionBuffer) {
@@ -549,8 +603,8 @@ TEST_F(DynamicallyQuantizedConv2D, TransientIndirectionBuffer) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
 
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedConv2DTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -559,7 +613,10 @@ TEST_F(DynamicallyQuantizedConv2D, TransientIndirectionBuffer) {
       .KernelWidth(kernel_rng())
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 }  // namespace xnnpack

@@ -49,6 +49,10 @@ class HloOpProfiles {
   // Returns "<unknown>" for unknown devices.
   static std::string GetProfileName(const se::DeviceDescription& device_info);
 
+  // Returns profile name for performance tables that need device-specific data.
+  static std::string GetDeviceSpecificProfileName(
+      const se::DeviceDescription& device_info);
+
   // Loads profiles from the given text proto data.
   static std::unique_ptr<HloOpProfiles> Load(
       absl::string_view profiles_text_proto,

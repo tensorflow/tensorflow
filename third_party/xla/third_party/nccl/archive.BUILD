@@ -15,6 +15,7 @@ load(
     "@local_config_nccl//:generated_names.bzl",
     "GENERATED_SOURCES",
 )
+load("@rules_python//python:defs.bzl", "py_binary")
 
 licenses(["notice"])
 
@@ -22,7 +23,7 @@ exports_files(["LICENSE.txt"])
 
 NCCL_MAJOR = 2
 
-NCCL_MINOR = 27
+NCCL_MINOR = 29
 
 NCCL_PATCH = 7
 

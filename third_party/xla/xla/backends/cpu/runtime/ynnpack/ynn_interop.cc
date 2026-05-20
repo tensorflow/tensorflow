@@ -61,6 +61,8 @@ absl::StatusOr<ynn_type> YnnType(const PrimitiveType& type) {
       return ynn_type_fp16;
     case F32:
       return ynn_type_fp32;
+    case F64:
+      return ynn_type_fp64;
     case S32:
       return ynn_type_int32;
     default:

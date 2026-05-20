@@ -41,6 +41,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "shardy/dialect/sdy/transforms/common/sharding_walker.h"
+#include "stablehlo/dialect/StablehloOps.h"
 
 namespace xla {
 namespace sdy {
@@ -249,17 +250,23 @@ void addOrMergeNewAxisRefAttr(AxisRefAttr oldAxisRef,
   }
 }
 
+int64_t countNonSizeOneAxes(MeshOp mesh) {
+  return llvm::count_if(mesh.getMesh().getAxes(),
+                        [](MeshAxisAttr axis) { return axis.getSize() > 1; });
+}
+
 // Builds a map of meshes to the main mesh name that will be used (which has the
 // same total number of devices and device_ids) and a map of old axis name to
 // the axis names in the main mesh.
 //
-// NOTE: the main mesh will not be saved as a key in the map, since it won't
-// need to be replaced.
+// The main mesh will not be saved as a key in the map, since it won't need to
+// be replaced.
 MeshToAxisMap buildDuplicateMeshesToAxisMap(ModuleOp moduleOp) {
   MeshIdentifierToMainMeshesMap meshIdentifierToMainMeshesMap;
-  MeshToAxisMap duplicateMeshesToAxisMap;
-  // Use the first mesh with real axes as the main mesh. Use the first mesh if
-  // all meshes have fake axes.
+  // Select the main mesh based on the following criteria:
+  // 1. The mesh contains real axes.
+  // 2. The mesh has the most non-size-one axes.
+  // 3. The mesh appears first.
   for (MeshOp meshOp : moduleOp.getOps<MeshOp>()) {
     auto [entries, inserted] = meshIdentifierToMainMeshesMap.try_emplace(
         MeshDeviceIdentifier{meshOp.getMesh()}, meshOp);
@@ -267,12 +274,19 @@ MeshToAxisMap buildDuplicateMeshesToAxisMap(ModuleOp moduleOp) {
       continue;
     }
     MeshOp& mainMesh = entries->getSecond();
-    // Update the main mesh if current mesh is real and main mesh is fake.
-    if (hasFakeAxis(meshOp) || !hasFakeAxis(mainMesh)) {
+    bool currentIsFake = hasFakeAxis(meshOp);
+    bool mainIsFake = hasFakeAxis(mainMesh);
+    if (currentIsFake && !mainIsFake) {
+      continue;
+    }
+    if (currentIsFake == mainIsFake &&
+        countNonSizeOneAxes(meshOp) <= countNonSizeOneAxes(mainMesh)) {
       continue;
     }
     mainMesh = meshOp;
   }
+
+  MeshToAxisMap duplicateMeshesToAxisMap;
   for (MeshOp targetMesh : moduleOp.getOps<MeshOp>()) {
     MeshOp mainMesh = meshIdentifierToMainMeshesMap.lookup(
         MeshDeviceIdentifier{targetMesh.getMesh()});
@@ -288,6 +302,103 @@ MeshToAxisMap buildDuplicateMeshesToAxisMap(ModuleOp moduleOp) {
     }
   }
   return duplicateMeshesToAxisMap;
+}
+
+// Recursively rewrites mesh symbol references inside custom StableHLO
+// attributes (like ReplicaGroupMeshAxesAttr) to point to the main deduplicated
+// mesh.
+//
+// Since custom attributes don't implement MLIR's `SymbolUserAttrInterface`,
+// generic symbol renaming utilities skip them. This leaves dangling references
+// to deleted duplicate meshes, which crashes the HLO verifier and breaks the
+// core StablehloCompatibilityExpander pass when trying to resolve named meshes
+// to downgrade RGV3 to a List of Lists for older StableHLO versions (e.g.,
+// v<1.16.0).
+mlir::Attribute updateAttribute(mlir::Attribute attr,
+                                const MeshToAxisMap& duplicateMeshesToAxisMap) {
+  if (!attr) return attr;
+
+  // Handle core ReplicaGroupMeshAxesAttr symbol references.
+  if (auto rgv3 =
+          mlir::dyn_cast<mlir::stablehlo::ReplicaGroupMeshAxesAttr>(attr)) {
+    if (auto symbolRef =
+            mlir::dyn_cast<mlir::FlatSymbolRefAttr>(rgv3.getMesh())) {
+      auto it = duplicateMeshesToAxisMap.find(symbolRef.getValue());
+      if (it != duplicateMeshesToAxisMap.end()) {
+        mlir::StringRef mainMeshName = it->getSecond().first;
+        auto newSymbolRef =
+            mlir::FlatSymbolRefAttr::get(attr.getContext(), mainMeshName);
+        return mlir::stablehlo::ReplicaGroupMeshAxesAttr::get(
+            attr.getContext(), newSymbolRef, rgv3.getAxes());
+      }
+    }
+    return rgv3;
+  }
+
+  // Reconstruct ArrayAttr containers bottom-up if any nested attribute changes
+  // (e.g., inside an array of replica groups).
+  if (auto arrayAttr = mlir::dyn_cast<mlir::ArrayAttr>(attr)) {
+    mlir::SmallVector<mlir::Attribute> newAttrs;
+    bool changed = false;
+    for (mlir::Attribute subAttr : arrayAttr.getValue()) {
+      mlir::Attribute newSubAttr =
+          updateAttribute(subAttr, duplicateMeshesToAxisMap);
+      newAttrs.push_back(newSubAttr);
+      if (newSubAttr != subAttr) {
+        changed = true;
+      }
+    }
+    // Reconstruct the array container only if elements changed.
+    if (changed) {
+      return mlir::ArrayAttr::get(attr.getContext(), newAttrs);
+    }
+    return arrayAttr;
+  }
+
+  // Reconstruct DictionaryAttr containers bottom-up if any nested attribute
+  // changes (e.g., the operation's top-level attribute dictionary).
+  if (auto dictAttr = mlir::dyn_cast<mlir::DictionaryAttr>(attr)) {
+    mlir::SmallVector<mlir::NamedAttribute> newNamedAttrs;
+    bool changed = false;
+    for (mlir::NamedAttribute namedAttr : dictAttr.getValue()) {
+      mlir::Attribute newSubAttr =
+          updateAttribute(namedAttr.getValue(), duplicateMeshesToAxisMap);
+      newNamedAttrs.push_back(
+          mlir::NamedAttribute(namedAttr.getName(), newSubAttr));
+      if (newSubAttr != namedAttr.getValue()) {
+        changed = true;
+      }
+    }
+    // Reconstruct the dictionary container only if elements changed.
+    if (changed) {
+      return mlir::DictionaryAttr::get(attr.getContext(), newNamedAttrs);
+    }
+    return dictAttr;
+  }
+
+  return attr;
+}
+
+// Walks all operations in the module to find and update any custom StableHLO
+// replica group attributes referencing duplicate mesh symbols that are being
+// deleted.
+void dedupStablehloReplicaGroups(
+    ModuleOp moduleOp, const MeshToAxisMap& duplicateMeshesToAxisMap) {
+  moduleOp->walk([&](mlir::Operation* op) {
+    mlir::SmallVector<mlir::NamedAttribute> newAttrs;
+    bool changed = false;
+    for (mlir::NamedAttribute namedAttr : op->getAttrs()) {
+      mlir::Attribute newAttr =
+          updateAttribute(namedAttr.getValue(), duplicateMeshesToAxisMap);
+      newAttrs.push_back(mlir::NamedAttribute(namedAttr.getName(), newAttr));
+      if (newAttr != namedAttr.getValue()) {
+        changed = true;
+      }
+    }
+    if (changed) {
+      op->setAttrs(newAttrs);
+    }
+  });
 }
 
 // Replaces `oldSharding`, if it refers to some mesh that isn't the main
@@ -412,6 +523,7 @@ void dedupMeshes(ModuleOp moduleOp, const SymbolTable& symbolTable,
                             duplicateMeshesToAxisMap);
         }
       });
+  dedupStablehloReplicaGroups(moduleOp, duplicateMeshesToAxisMap);
 }
 
 void eraseMeshes(SymbolTable& symbolTable,

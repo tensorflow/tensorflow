@@ -36,6 +36,8 @@ class LlvmKernelSource final : public KernelSource {
   LlvmKernelSource(llvm::orc::ThreadSafeContext context,
                    std::unique_ptr<llvm::Module> module)
       : module_(std::move(module), std::move(context)) {}
+  explicit LlvmKernelSource(llvm::orc::ThreadSafeModule module)
+      : module_(std::move(module)) {}
 
   LlvmKernelSource(LlvmKernelSource&& other) = default;
   LlvmKernelSource& operator=(LlvmKernelSource&& other) noexcept = default;

@@ -206,8 +206,9 @@ absl::Status BufferedInputStream::ReadAll(T* result) {
   return status;
 }
 
-template Status BufferedInputStream::ReadAll<std::string>(std::string* result);
-template Status BufferedInputStream::ReadAll<tstring>(tstring* result);
+template absl::Status BufferedInputStream::ReadAll<std::string>(
+    std::string* result);
+template absl::Status BufferedInputStream::ReadAll<tstring>(tstring* result);
 
 absl::Status BufferedInputStream::Reset() {
   TF_RETURN_IF_ERROR(input_stream_->Reset());

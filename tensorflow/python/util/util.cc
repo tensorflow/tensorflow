@@ -19,14 +19,13 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <unordered_map>
-#include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/macros.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 #include "tsl/platform/thread_annotations.h"
 
@@ -221,20 +220,52 @@ class CachedTypeCheck {
       TF_GUARDED_BY(type_to_sequence_map_mu_);
 };
 
+// Imports a type from a module and caches it.
+// This function is thread-safe and returns a borrowed reference.
+// Caching avoids repeated imports and prevents leaking references,
+// as callers assume the returned object is borrowed and do not DECREF it.
 PyObject* ImportTypeFromModule(const char* module_name, const char* type_name) {
-  static PyObject* given_type;
-  given_type = [module_name, type_name]() {
-    PyObject* module = PyImport_ImportModule(module_name);
-    PyObject* attr =
-        module ? PyObject_GetAttrString(module, type_name) : nullptr;
-    if (attr == nullptr) {
-      PyErr_WriteUnraisable(nullptr);
-      PyErr_Clear();
+  static absl::Mutex* mu = new absl::Mutex();
+  static auto* cache = new std::unordered_map<std::string, PyObject*>();
+
+  std::string key = absl::StrCat(module_name, ".", type_name);
+
+  {
+    absl::MutexLock l(*mu);
+    auto it = cache->find(key);
+    if (it != cache->end()) {
+      return it->second;
     }
-    if (module) Py_DECREF(module);
+  }
+
+  PyObject* module = PyImport_ImportModule(module_name);
+  PyObject* attr = module ? PyObject_GetAttrString(module, type_name) : nullptr;
+  if (attr == nullptr) {
+    PyErr_WriteUnraisable(nullptr);
+    PyErr_Clear();
+  }
+  if (module) Py_DECREF(module);
+
+  if (attr) {
+    PyObject* to_decref = nullptr;
+    {
+      // Double-check cache in case another thread inserted it while we were
+      // not holding the lock during the expensive import operation.
+      absl::MutexLock l(*mu);
+      auto it = cache->find(key);
+      if (it != cache->end()) {
+        to_decref = attr;
+        attr = it->second;
+      } else {
+        (*cache)[key] = attr;
+      }
+    }
+    if (to_decref) {
+      Py_DECREF(to_decref);
+    }
     return attr;
-  }();
-  return given_type;
+  }
+  return nullptr;
 }
 
 // Returns true if 'obj' is an instance of 'type_name'

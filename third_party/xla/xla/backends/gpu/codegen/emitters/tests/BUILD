@@ -1,4 +1,5 @@
 load("//xla:lit.bzl", "lit_test_suite")
+load("//xla/backends/gpu/tests:helper.bzl", "get_canonical_repo_name")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
@@ -16,7 +17,7 @@ lit_test_suite(
     cfg = "//xla:lit.cfg.py",
     default_tags = tf_cuda_tests_tags(),
     exec_properties = tf_exec_properties({"tags": tf_cuda_tests_tags()}),
-    hermetic_cuda_data_dir = "%S/../../../../../../../../cuda_nvcc",
+    hermetic_cuda_data_dir = "%S/../../../../../../" + get_canonical_repo_name("cuda_nvcc"),
     tools = [
         "//xla/backends/gpu/codegen/tools:fusion_to_mlir",
         "//xla/backends/gpu/codegen/tools:gpu_test_correctness",

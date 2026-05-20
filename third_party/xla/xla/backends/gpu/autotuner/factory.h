@@ -20,28 +20,31 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/service/compiler.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 
 namespace gpu {
 
+// A factory function for getting the codegen backends for a given platform.
+// The backend allowlist is a list of backend names (from BackendName enum)
+// that are allowed to be returned. If the list is empty, all backends are
+// returned.
 struct GetCodegenBackends {
   using Type = std::function<std::vector<std::unique_ptr<CodegenBackend>>(
-      stream_executor::StreamExecutor*, const DebugOptions*, Compiler*,
+      stream_executor::StreamExecutor*,
+      stream_executor::DeviceAddressAllocator*, const DebugOptions*, Compiler*,
       const Compiler::GpuTargetConfig*, const AliasInfo* alias_info,
-      mlir::MLIRContext* mlir_context)>;
-};
-
-struct GetFissionBackends {
-  using Type = std::function<std::vector<std::unique_ptr<CodegenBackend>>(
-      stream_executor::StreamExecutor*, const DebugOptions*, Compiler*,
-      const Compiler::GpuTargetConfig*, const AliasInfo* alias_info,
-      mlir::MLIRContext* mlir_context)>;
+      mlir::MLIRContext* mlir_context,
+      HloCostAnalysis::ShapeSizeFunction shape_size_fn,
+      absl::Span<const autotuner::Backend> backend_allowlist)>;
 };
 
 }  // namespace gpu

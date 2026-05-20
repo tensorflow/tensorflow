@@ -377,10 +377,13 @@ def _stack_tables_with_same_table_dim_and_optimizer(
   s = TableStacking()
   s.table_name_to_table = {table.name: table for table in table_config}
   table_to_num_samples = {table.name: 0 for table in table_config}
+  table_to_num_features = {table.name: 0 for table in table_config}
   for _, feature in flat_features:
     table_to_num_samples[feature.table.name] += functools.reduce(
         operator.mul, feature.output_shape
     )
+    table_to_num_features[feature.table.name] += 1
+
     # First generate stacking for any tables our caller didn't stack for us.
     # Note that we process the tables sorted by name so the ordering is
     # deterministic.
@@ -414,6 +417,7 @@ def _stack_tables_with_same_table_dim_and_optimizer(
             table_width=table.dim,
             group=key,
             output_samples=table_to_num_samples[table.name],
+            num_features=table_to_num_features[table.name],
         )
     # First generate stacking for any tables our caller didn't stack for us.
     # Note that we process the tables sorted by name so the ordering is

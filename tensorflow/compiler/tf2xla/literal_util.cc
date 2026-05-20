@@ -109,10 +109,10 @@ absl::Status CopyLiteralToHostTensor(const xla::LiteralSlice& literal,
   TF_RETURN_IF_ERROR(
       DataTypeToPrimitiveType(host_tensor->dtype(), &primitive_type));
   if (literal.shape().element_type() != primitive_type) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Cannot convert literal of type ",
         xla::PrimitiveType_Name(literal.shape().element_type()),
-        " to tensor of type ", DataTypeString(host_tensor->dtype()));
+        " to tensor of type ", DataTypeString(host_tensor->dtype())));
   }
   size_t total_bytes = host_tensor->TotalBytes();
   if (total_bytes > 0) {

@@ -54,7 +54,7 @@ absl::StatusOr<HloInstructionProfileList> CollectProfiles(
   TF_RETURN_IF_ERROR(tsl::Env::Default()->FileExists(perf_table_path));
   TF_RETURN_IF_ERROR(tsl::ReadTextOrBinaryProto(tsl::Env::Default(),
                                                 perf_table_path, &profile));
-  std::string key = HloOpProfiles::GetProfileName(device_info);
+  std::string key = HloOpProfiles::GetDeviceSpecificProfileName(device_info);
 
   if (!profile.entries().contains(key)) {
     return absl::NotFoundError(absl::StrCat("Cannot find key: ", key));

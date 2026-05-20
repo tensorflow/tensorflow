@@ -49,8 +49,9 @@ class HloLiveRange {
   struct TimeBound {
     LogicalTime start;
     LogicalTime end;
+
     // The buffer can hold multiple instructions during its life time (each
-    // tenant exclusively owns the buffer at any given time). `end_instruction`
+    // tenant exclusively owns the buffer at any given time). `end_position`
     // represents the last instruction that the buffer holds.
     HloPosition end_position;
 

@@ -124,6 +124,7 @@ xla_cc_test(
         "//xla/backends/cpu/runtime:thunk",
         "//xla/backends/cpu/runtime:thunk_testlib",
         "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",

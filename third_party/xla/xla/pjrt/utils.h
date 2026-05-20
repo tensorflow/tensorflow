@@ -40,6 +40,14 @@ limitations under the License.
 namespace xla {
 
 using MemorySpaceColor = int;
+// Make sure to choose a delimiter that will never show up in the attribute
+// strings (e.g., Layout or Memory Space strings).
+inline constexpr absl::string_view kAttrValueDelimiter = ";";
+
+inline constexpr absl::string_view kArgLayoutModesAttr = "arg_layout_modes";
+inline constexpr absl::string_view kOutLayoutModesAttr = "out_layout_modes";
+inline constexpr absl::string_view kArgMemorySpacesAttr = "arg_memory_spaces";
+inline constexpr absl::string_view kOutMemorySpacesAttr = "out_memory_spaces";
 
 // Returns the num_replicas, num_partitions and device assignment given a
 // ExecutableBuildOptions and whether we want a portable executable.
@@ -90,6 +98,15 @@ absl::StatusOr<std::vector<MemorySpaceColor>> GetArgMemoryKinds(
 absl::StatusOr<std::vector<MemorySpaceColor>> GetOutputMemoryKinds(
     const XlaComputation& computation);
 
+// Populates the frontend attributes map with serialized layout modes and
+// memory spaces.
+void PopulateFrontendAttributesMap(
+    google::protobuf::Map<std::string, std::string>& frontend_attrs_map,
+    const std::vector<LayoutMode>& arg_layout_modes,
+    const std::vector<LayoutMode>& out_layout_modes,
+    const std::vector<MemorySpaceColor>& arg_memory_spaces,
+    const std::vector<MemorySpaceColor>& out_memory_spaces);
+
 // Returns xla shape with layout set to reflect the given layout mode.
 absl::StatusOr<Shape> LayoutModeToXlaShape(
     const LayoutMode& layout_mode, const Shape& unsharded_shape,
@@ -137,6 +154,9 @@ absl::Status DetermineArgumentLayoutsFromCompileOptions(
 // executable was compiled with.
 absl::StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
     const HloModule& hlo_module, bool tuple_inputs);
+absl::StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
+    const HloInputOutputAliasConfig& config, int num_parameters,
+    bool tuple_inputs);
 
 // Return max parallelism level.
 int DefaultThreadPoolSize();

@@ -36,8 +36,8 @@ TEST_F(TransposeConvTest, 2x2Stride2) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .OutputHeight(output_rng())
+  TransposeConvTester tester;
+  tester.OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
@@ -46,7 +46,10 @@ TEST_F(TransposeConvTest, 2x2Stride2) {
       .StrideHeight(2)
       .StrideWidth(2)
       .ValidPadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, 2x2Stride2NoBias) {
@@ -57,8 +60,8 @@ TEST_F(TransposeConvTest, 2x2Stride2NoBias) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .OutputHeight(output_rng())
+  TransposeConvTester tester;
+  tester.OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
@@ -68,7 +71,10 @@ TEST_F(TransposeConvTest, 2x2Stride2NoBias) {
       .StrideWidth(2)
       .ValidPadding()
       .NoBias()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, 3x3Stride2) {
@@ -79,8 +85,8 @@ TEST_F(TransposeConvTest, 3x3Stride2) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .OutputHeight(output_rng())
+  TransposeConvTester tester;
+  tester.OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
@@ -89,7 +95,10 @@ TEST_F(TransposeConvTest, 3x3Stride2) {
       .StrideHeight(2)
       .StrideWidth(2)
       .SamePadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, 3x3Stride2NoBias) {
@@ -100,8 +109,8 @@ TEST_F(TransposeConvTest, 3x3Stride2NoBias) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .OutputHeight(output_rng())
+  TransposeConvTester tester;
+  tester.OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
@@ -111,7 +120,10 @@ TEST_F(TransposeConvTest, 3x3Stride2NoBias) {
       .StrideWidth(2)
       .SamePadding()
       .NoBias()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, 4x4Stride2) {
@@ -122,8 +134,8 @@ TEST_F(TransposeConvTest, 4x4Stride2) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .OutputHeight(output_rng())
+  TransposeConvTester tester;
+  tester.OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
@@ -132,7 +144,10 @@ TEST_F(TransposeConvTest, 4x4Stride2) {
       .StrideHeight(2)
       .StrideWidth(2)
       .ValidPadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, 4x4Stride2NoBias) {
@@ -143,8 +158,8 @@ TEST_F(TransposeConvTest, 4x4Stride2NoBias) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .OutputHeight(output_rng())
+  TransposeConvTester tester;
+  tester.OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
@@ -154,7 +169,10 @@ TEST_F(TransposeConvTest, 4x4Stride2NoBias) {
       .StrideWidth(2)
       .ValidPadding()
       .NoBias()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, 4x4Stride4) {
@@ -165,8 +183,8 @@ TEST_F(TransposeConvTest, 4x4Stride4) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .OutputHeight(output_rng())
+  TransposeConvTester tester;
+  tester.OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
@@ -175,7 +193,10 @@ TEST_F(TransposeConvTest, 4x4Stride4) {
       .StrideHeight(4)
       .StrideWidth(4)
       .ValidPadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, 4x4Stride4NoBias) {
@@ -186,8 +207,8 @@ TEST_F(TransposeConvTest, 4x4Stride4NoBias) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .OutputHeight(output_rng())
+  TransposeConvTester tester;
+  tester.OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
@@ -197,7 +218,10 @@ TEST_F(TransposeConvTest, 4x4Stride4NoBias) {
       .StrideWidth(4)
       .ValidPadding()
       .NoBias()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, SmallKernelWithSamePadding) {
@@ -212,8 +236,8 @@ TEST_F(TransposeConvTest, SmallKernelWithSamePadding) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .BatchSize(batch_rng())
+  TransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -221,7 +245,10 @@ TEST_F(TransposeConvTest, SmallKernelWithSamePadding) {
       .KernelHeight(kernel_rng())
       .KernelWidth(kernel_rng())
       .SamePadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, SmallKernelWithSamePaddingNoBias) {
@@ -236,8 +263,8 @@ TEST_F(TransposeConvTest, SmallKernelWithSamePaddingNoBias) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .BatchSize(batch_rng())
+  TransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -246,7 +273,10 @@ TEST_F(TransposeConvTest, SmallKernelWithSamePaddingNoBias) {
       .KernelWidth(kernel_rng())
       .SamePadding()
       .NoBias()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, SmallKernelWithValidPadding) {
@@ -261,8 +291,8 @@ TEST_F(TransposeConvTest, SmallKernelWithValidPadding) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .BatchSize(batch_rng())
+  TransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -270,7 +300,10 @@ TEST_F(TransposeConvTest, SmallKernelWithValidPadding) {
       .KernelHeight(kernel_rng())
       .KernelWidth(kernel_rng())
       .ValidPadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, SmallKernelWithValidPaddingNoBias) {
@@ -285,8 +318,8 @@ TEST_F(TransposeConvTest, SmallKernelWithValidPaddingNoBias) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .BatchSize(batch_rng())
+  TransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -295,7 +328,10 @@ TEST_F(TransposeConvTest, SmallKernelWithValidPaddingNoBias) {
       .KernelWidth(kernel_rng())
       .ValidPadding()
       .NoBias()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, StrideWithSamePadding) {
@@ -312,8 +348,8 @@ TEST_F(TransposeConvTest, StrideWithSamePadding) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .BatchSize(batch_rng())
+  TransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -323,7 +359,10 @@ TEST_F(TransposeConvTest, StrideWithSamePadding) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .SamePadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, StrideWithSamePaddingNoBias) {
@@ -340,8 +379,8 @@ TEST_F(TransposeConvTest, StrideWithSamePaddingNoBias) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .BatchSize(batch_rng())
+  TransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -352,7 +391,10 @@ TEST_F(TransposeConvTest, StrideWithSamePaddingNoBias) {
       .StrideWidth(stride_rng())
       .SamePadding()
       .NoBias()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, StrideWithValidPadding) {
@@ -369,8 +411,8 @@ TEST_F(TransposeConvTest, StrideWithValidPadding) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .BatchSize(batch_rng())
+  TransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -380,7 +422,10 @@ TEST_F(TransposeConvTest, StrideWithValidPadding) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .ValidPadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, StrideWithValidPaddingNoBias) {
@@ -397,8 +442,8 @@ TEST_F(TransposeConvTest, StrideWithValidPaddingNoBias) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .BatchSize(batch_rng())
+  TransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -409,7 +454,10 @@ TEST_F(TransposeConvTest, StrideWithValidPaddingNoBias) {
       .StrideWidth(stride_rng())
       .ValidPadding()
       .NoBias()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, FP16Weights) {
@@ -426,8 +474,8 @@ TEST_F(TransposeConvTest, FP16Weights) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .BatchSize(batch_rng())
+  TransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -438,7 +486,10 @@ TEST_F(TransposeConvTest, FP16Weights) {
       .StrideWidth(stride_rng())
       .SamePadding()
       .FP16Weights()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, FP16WeightsNoBias) {
@@ -455,8 +506,8 @@ TEST_F(TransposeConvTest, FP16WeightsNoBias) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .BatchSize(batch_rng())
+  TransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -468,7 +519,10 @@ TEST_F(TransposeConvTest, FP16WeightsNoBias) {
       .SamePadding()
       .FP16Weights()
       .NoBias()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, TensorWiseQuantizedInt8Weights) {
@@ -485,8 +539,8 @@ TEST_F(TransposeConvTest, TensorWiseQuantizedInt8Weights) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .BatchSize(batch_rng())
+  TransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -497,7 +551,10 @@ TEST_F(TransposeConvTest, TensorWiseQuantizedInt8Weights) {
       .StrideWidth(stride_rng())
       .SamePadding()
       .TensorWiseQuantizedInt8Weights()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, TensorWiseQuantizedInt8WeightsNoBias) {
@@ -514,8 +571,8 @@ TEST_F(TransposeConvTest, TensorWiseQuantizedInt8WeightsNoBias) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .BatchSize(batch_rng())
+  TransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -527,7 +584,10 @@ TEST_F(TransposeConvTest, TensorWiseQuantizedInt8WeightsNoBias) {
       .SamePadding()
       .TensorWiseQuantizedInt8Weights()
       .NoBias()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, ChannelWiseQuantizedInt8Weights) {
@@ -544,8 +604,8 @@ TEST_F(TransposeConvTest, ChannelWiseQuantizedInt8Weights) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .BatchSize(batch_rng())
+  TransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -556,7 +616,10 @@ TEST_F(TransposeConvTest, ChannelWiseQuantizedInt8Weights) {
       .StrideWidth(stride_rng())
       .SamePadding()
       .ChannelWiseQuantizedInt8Weights()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, ChannelWiseQuantizedInt8WeightsNoBias) {
@@ -573,8 +636,8 @@ TEST_F(TransposeConvTest, ChannelWiseQuantizedInt8WeightsNoBias) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .BatchSize(batch_rng())
+  TransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -586,7 +649,10 @@ TEST_F(TransposeConvTest, ChannelWiseQuantizedInt8WeightsNoBias) {
       .SamePadding()
       .ChannelWiseQuantizedInt8Weights()
       .NoBias()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, SparseWeights) {
@@ -603,8 +669,8 @@ TEST_F(TransposeConvTest, SparseWeights) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .BatchSize(batch_rng())
+  TransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -615,7 +681,10 @@ TEST_F(TransposeConvTest, SparseWeights) {
       .StrideWidth(stride_rng())
       .SamePadding()
       .SparseWeights()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, SparseWeightsNoBias) {
@@ -632,8 +701,8 @@ TEST_F(TransposeConvTest, SparseWeightsNoBias) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .BatchSize(batch_rng())
+  TransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -645,7 +714,10 @@ TEST_F(TransposeConvTest, SparseWeightsNoBias) {
       .SamePadding()
       .SparseWeights()
       .NoBias()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, SparseFP16Weights) {
@@ -662,8 +734,8 @@ TEST_F(TransposeConvTest, SparseFP16Weights) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .BatchSize(batch_rng())
+  TransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -675,7 +747,10 @@ TEST_F(TransposeConvTest, SparseFP16Weights) {
       .SamePadding()
       .SparseWeights()
       .FP16Weights()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, SparseFP16WeightsNoBias) {
@@ -692,8 +767,8 @@ TEST_F(TransposeConvTest, SparseFP16WeightsNoBias) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .BatchSize(batch_rng())
+  TransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -706,7 +781,10 @@ TEST_F(TransposeConvTest, SparseFP16WeightsNoBias) {
       .SparseWeights()
       .FP16Weights()
       .NoBias()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, SparseTensorWiseQuantizedInt8Weights) {
@@ -723,8 +801,8 @@ TEST_F(TransposeConvTest, SparseTensorWiseQuantizedInt8Weights) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .BatchSize(batch_rng())
+  TransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -736,7 +814,10 @@ TEST_F(TransposeConvTest, SparseTensorWiseQuantizedInt8Weights) {
       .SamePadding()
       .SparseWeights()
       .TensorWiseQuantizedInt8Weights()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, SparseTensorWiseQuantizedInt8WeightsNoBias) {
@@ -753,8 +834,8 @@ TEST_F(TransposeConvTest, SparseTensorWiseQuantizedInt8WeightsNoBias) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .BatchSize(batch_rng())
+  TransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -767,7 +848,10 @@ TEST_F(TransposeConvTest, SparseTensorWiseQuantizedInt8WeightsNoBias) {
       .SparseWeights()
       .TensorWiseQuantizedInt8Weights()
       .NoBias()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, SparseChannelWiseQuantizedInt8Weights) {
@@ -784,8 +868,8 @@ TEST_F(TransposeConvTest, SparseChannelWiseQuantizedInt8Weights) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .BatchSize(batch_rng())
+  TransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -797,7 +881,10 @@ TEST_F(TransposeConvTest, SparseChannelWiseQuantizedInt8Weights) {
       .SamePadding()
       .SparseWeights()
       .ChannelWiseQuantizedInt8Weights()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, SparseChannelWiseQuantizedInt8WeightsNoBias) {
@@ -814,8 +901,8 @@ TEST_F(TransposeConvTest, SparseChannelWiseQuantizedInt8WeightsNoBias) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .BatchSize(batch_rng())
+  TransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -828,7 +915,10 @@ TEST_F(TransposeConvTest, SparseChannelWiseQuantizedInt8WeightsNoBias) {
       .SparseWeights()
       .ChannelWiseQuantizedInt8Weights()
       .NoBias()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, MultiThreading) {
@@ -850,8 +940,8 @@ TEST_F(TransposeConvTest, MultiThreading) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .BatchSize(batch_rng())
+  TransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -861,7 +951,10 @@ TEST_F(TransposeConvTest, MultiThreading) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .SamePadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, MultiThreadingNoBias) {
@@ -883,8 +976,8 @@ TEST_F(TransposeConvTest, MultiThreadingNoBias) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .BatchSize(batch_rng())
+  TransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -895,7 +988,10 @@ TEST_F(TransposeConvTest, MultiThreadingNoBias) {
       .StrideWidth(stride_rng())
       .SamePadding()
       .NoBias()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(TransposeConvTest, WeightsCache) {
@@ -921,8 +1017,8 @@ TEST_F(TransposeConvTest, WeightsCache) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  TransposeConvTester()
-      .BatchSize(batch_rng())
+  TransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -933,7 +1029,10 @@ TEST_F(TransposeConvTest, WeightsCache) {
       .StrideWidth(stride_rng())
       .SamePadding()
       .WeightsCache(weights_cache.get())
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 }  // namespace xnnpack

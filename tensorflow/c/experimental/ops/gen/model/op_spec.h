@@ -34,9 +34,9 @@ class OpSpec {
  public:
   static OpSpec Create(const OpDef& op_def, const ApiDef& api_def);
 
-  const string& name() const { return name_; }
-  const string& summary() const { return summary_; }
-  const string& description() const { return description_; }
+  const std::string& name() const { return name_; }
+  const std::string& summary() const { return summary_; }
+  const std::string& description() const { return description_; }
   const std::vector<ArgSpec>& Inputs() const { return input_args_; }
   const std::vector<ArgSpec>& Outputs() const { return output_args_; }
   const std::vector<AttrSpec>& Attributes() const { return argument_attrs_; }
@@ -45,13 +45,13 @@ class OpSpec {
   explicit OpSpec(const OpDef& op_def, const ApiDef& api_def);
 
  private:
-  string name_;
-  string summary_;
-  string description_;
+  std::string name_;
+  std::string summary_;
+  std::string description_;
   std::vector<ArgSpec> input_args_;
   std::vector<ArgSpec> output_args_;
   std::vector<AttrSpec> argument_attrs_;
-  std::map<string, AttrSpec> type_attrs_;
+  std::map<std::string, AttrSpec> type_attrs_;
 };
 
 }  // namespace generator

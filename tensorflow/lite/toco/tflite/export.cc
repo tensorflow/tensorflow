@@ -500,10 +500,10 @@ absl::Status Export(
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type) {
   for (const std::string& input_array : model.GetInvalidInputArrays()) {
     if (model.HasArray(input_array)) {
-      return tensorflow::errors::InvalidArgument(
-          absl::StrCat("Placeholder ", input_array,
-                       " should be specified by "
-                       "input_arrays."));
+      return absl::InvalidArgumentError(absl::StrCat("Placeholder ",
+                                                     input_array,
+                                                     " should be specified by "
+                                                     "input_arrays."));
     }
   }
 
@@ -618,14 +618,14 @@ absl::Status Export(
         }
       }
       if (!error_msgs.empty()) {
-        return tensorflow::errors::InvalidArgument(absl::StrCat(
+        return absl::InvalidArgumentError(absl::StrCat(
             please_report_bug_message(), absl::StrJoin(error_msgs, " ")));
       }
     }
   }
 
   if (!unsupported_flex_ops.empty()) {
-    return tensorflow::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         absl::StrCat("Some of the operators in the model are not supported by "
                      "TensorFlow Flex runtime: ",
                      absl::StrJoin(unsupported_flex_ops, ", "), "."));
@@ -647,7 +647,7 @@ absl::Status Export(
 
   // TODO(wangtz): offline memory planning for activation Tensors.
   if (!params.allow_dynamic_tensors) {
-    return tensorflow::errors::Unimplemented(
+    return absl::UnimplementedError(
         "Unsupported flag: allow_dynamic_tensors. Offline memory planning is "
         "not implemented yet.");
   }
@@ -682,15 +682,14 @@ absl::Status Export(
     } else if (params.quantize_weights == QuantizedBufferType::FLOAT16) {
       quantized_type = ::mlir::lite::toco_legacy::BufferType::QUANTIZED_FLOAT16;
     } else {
-      return tensorflow::errors::InvalidArgument(
-          "Quantized type not recognized");
+      return absl::InvalidArgumentError("Quantized type not recognized");
     }
     if (!::mlir::lite::toco_legacy::QuantizeWeights(
              &q_builder, input_model, quantized_type,
              !params.disable_per_channel,
              ::mlir::lite::toco_legacy::QuantizerType::OLD_QUANTIZER)
              .ok()) {
-      return tensorflow::errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Quantize weights transformation failed.");
     }
     WriteModelToString(q_builder, output_file_contents);

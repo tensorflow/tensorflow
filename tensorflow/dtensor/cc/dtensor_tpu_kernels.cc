@@ -147,7 +147,7 @@ class ConfigureAndInitializeGlobalTPUOpKernel : public OpKernel {
     // Initialize global tpu and set `TPUHostConfiguration` with TPU topology.
     auto* tpu_platform = tpu::TpuPlatformInterface::GetRegisteredPlatform();
     if (tpu_platform == nullptr) {
-      return errors::Internal("Could not find registered TPU system.");
+      return absl::InternalError("Could not find registered TPU system.");
     }
 
     auto start = absl::Now();
@@ -161,7 +161,7 @@ class ConfigureAndInitializeGlobalTPUOpKernel : public OpKernel {
       init_status = tpu_platform->Initialize();
     }
     if (!tpu_platform->Initialized()) {
-      return errors::Unavailable("Unable to initialize TPU system.");
+      return absl::UnavailableError("Unable to initialize TPU system.");
     }
 
     std::string host_config_serialized;
@@ -209,7 +209,7 @@ class ConfigureAndInitializeGlobalTPUOpKernel : public OpKernel {
     auto delete_status = rmgr->Delete<tpu::TpuMeshStateInterface>(
         rmgr->default_container(), tpu::kTpuMeshStateInterfaceResourceName);
     if (!delete_status.ok() && delete_status.code() != error::NOT_FOUND) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Failed to delete mesh interface. Please try initializing "
           "again once all TPU devices are allocated.");
     }
@@ -261,7 +261,7 @@ class ShutdownTPUSystemOpKernel : public OpKernel {
       // down the tpu::System.
       auto* tpu_platform = tpu::TpuPlatformInterface::GetRegisteredPlatform();
       OP_REQUIRES(ctx, tpu_platform != nullptr,
-                  errors::Internal("Could not find registered TPU system."));
+                  absl::InternalError("Could not find registered TPU system."));
 
       status = tpu_platform->Reset(/*only_tear_down=*/true,
                                    /*reason=*/"ShutdownSystem");
@@ -288,10 +288,10 @@ class SetGlobalTPUArrayOpKernel : public OpKernel {
       : OpKernel(ctx) {}
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "SetGlobalTPUArrayOpKernel op";
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsScalar(ctx->input(0).shape()),
-        errors::InvalidArgument("Expected argument 0 to be a scalar. Received",
-                                ctx->input(0).DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ctx->input(0).shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Expected argument 0 to be a scalar. Received",
+                                 ctx->input(0).DebugString())));
     auto tpu_topology = ctx->input(0).scalar<tstring>()();
 
     StatusHelper status;

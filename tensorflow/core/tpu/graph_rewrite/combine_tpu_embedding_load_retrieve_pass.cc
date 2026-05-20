@@ -89,7 +89,7 @@ absl::Status GetTPUEmbeddingConfiguration(
         if (load_retrieve_nodes.contains(node_name)) {
           continue;
         } else if (node_name == "ConfigureTPUEmbedding") {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(
               "ConfigureTPUEmbedding used but no configuration provided");
         }
       }
@@ -105,7 +105,7 @@ absl::Status GetTPUEmbeddingConfiguration(
     }
   }
   if (!have_config) {
-    return errors::InvalidArgument("No TPU embedding config provided");
+    return absl::InvalidArgumentError("No TPU embedding config provided");
   }
   return absl::OkStatus();
 }
@@ -120,12 +120,12 @@ absl::Status ValidateEmbeddingTableNames(
     const auto& table = tpu_embedding_config.table_descriptor(table_id);
     const std::string& name = table.name();
     if (name.empty()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           absl::StrFormat("Table %d has empty name string.", table_id));
     }
     bool inserted = gtl::InsertIfNotPresent(&table_name_map, name, table_id);
     if (!inserted) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           absl::StrFormat("Tables %d and %d have the same name '%s'.",
                           table_name_map[name], table_id, name.c_str()));
     }
@@ -216,30 +216,30 @@ absl::Status GetLoadOrRetrieveNodesByTable(
     std::string table_name;
     TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "table_name", &table_name));
     if (table_id < 0 && table_name.empty()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Neither table_id nor table_name attribute specified in node " +
           n->name());
     }
     if (table_id >= 0 && !table_name.empty()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Both table_id and table_name attributes specified in node " +
           n->name());
     }
     if (!table_name.empty()) {
       if (!table_name_to_id_map.contains(table_name)) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Table name attribute refers to non-existent table '" + table_name +
             "' in node " + n->name());
       }
       table_id = table_name_to_id_map.at(table_name);
     }
     if (table_id < 0 || table_id >= num_tables) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "table_id attribute out of range in node " + n->name());
     }
     if ((*nodes_per_table)[table_id] != nullptr) {
-      return errors::AlreadyExists("Found duplicate table_id caused by op " +
-                                   n->name());
+      return absl::AlreadyExistsError("Found duplicate table_id caused by op " +
+                                      n->name());
     }
     const auto alg = tpu_embedding_config.table_descriptor(table_id)
                          .optimization_parameters()
@@ -251,7 +251,7 @@ absl::Status GetLoadOrRetrieveNodesByTable(
         absl::StrCat(expected_op_name, "GradAccumDebug");
     if (n->op_def().name() != expected_op_name &&
         n->op_def().name() != expected_op_name_debug) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           absl::StrFormat("Node %s has op type %s instead of the name %s or %s "
                           "expected from the embedding layer configuration",
                           n->name(), n->op_def().name(), expected_op_name,
@@ -263,7 +263,7 @@ absl::Status GetLoadOrRetrieveNodesByTable(
   }
   for (int table_id = 0; table_id < num_tables; ++table_id) {
     if ((*nodes_per_table)[table_id] == nullptr) {
-      return errors::NotFound(absl::StrFormat(
+      return absl::NotFoundError(absl::StrFormat(
           "Did not find per-table load or retrieve op for table '%s' ID(%d)",
           tpu_embedding_config.table_descriptor(table_id).name(), table_id));
     }
@@ -339,13 +339,13 @@ absl::Status CombinePerTableParametersForLoad(
           (state_variable_specs[parameter_num].has_user_defined() ||
            (*is_debug_load_retrieve_node)[table_id])) {
         if (node == nullptr) {
-          return errors::InvalidArgument(absl::StrFormat(
+          return absl::InvalidArgumentError(absl::StrFormat(
               "Found missing parameter in slot %d of table %s.", parameter_num,
               tpu_embedding_config.table_descriptor(table_id).name()));
         }
       } else {
         if (node != nullptr) {
-          return errors::InvalidArgument(absl::StrFormat(
+          return absl::InvalidArgumentError(absl::StrFormat(
               "Found extra parameter in slot %d of table %s.", parameter_num,
               tpu_embedding_config.table_descriptor(table_id).name()));
         }
@@ -425,7 +425,7 @@ absl::Status CombineTPUEmbeddingLoadRetrievePass::Run(
     auto it = load_devices.find(shard_id);
     if (it != load_devices.end()) {
       if (n->def().device() != it->second) {
-        return errors::InvalidArgument(absl::StrFormat(
+        return absl::InvalidArgumentError(absl::StrFormat(
             "Mismatched device name in load parameter op for shard %d: found "
             "%s and conflicting %s in node %s",
             shard_id, it->second, n->def().device(), n->name()));
@@ -441,7 +441,7 @@ absl::Status CombineTPUEmbeddingLoadRetrievePass::Run(
     auto it = retrieve_devices.find(shard_id);
     if (it != retrieve_devices.end()) {
       if (n->def().device() != it->second) {
-        return errors::InvalidArgument(absl::StrFormat(
+        return absl::InvalidArgumentError(absl::StrFormat(
             "Mismatched device name in retrieve parameter op for shard %d: "
             "found %s and conflicting %s in node %s",
             shard_id, it->second, n->def().device(), n->name()));

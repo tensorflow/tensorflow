@@ -1,4 +1,4 @@
-/* Copyright 2024 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -37,8 +38,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 class TritonFusion : public FusionInterface {
  public:
@@ -58,8 +58,8 @@ class TritonFusion : public FusionInterface {
   // This is a more concrete version of FusionEmissionResult that can be used in
   // places where we know we are dealing with Triton fusions.
   struct EmitResult {
-    std::unique_ptr<KernelThunk> kernel_thunk;
-    std::unique_ptr<llvm::Module> llvm_module;
+    KernelReuseCache::Entry entry;
+    emitters::KernelArguments kernel_arguments;
   };
   // Overload of [Emit] that allows passing overrides for instructions
   // and unmanaged arguments.
@@ -77,7 +77,7 @@ class TritonFusion : public FusionInterface {
   // based fusions earlier in the compiler pipeline.
   // Returns a pair of the kernel thunk and an llvm module. The local module
   // is only returned if the kernel was not cached.
-  absl::StatusOr<EmitResult> Emit(
+  xla::Future<EmitResult> Emit(
       IrEmitterContext& ir_emitter_context, const HloFusionInstruction& fusion,
       const HloInstruction* instr_override,
       absl::Span<const Shape> unmanaged_arguments) const;
@@ -102,13 +102,12 @@ class TritonFusion : public FusionInterface {
       const HloFusionInstruction& fusion, absl::string_view impl_fn_name,
       const se::DeviceDescription& device_info,
       const llvm::Triple& target_triple, const std::string& data_layout,
-      llvm::LLVMContext* llvm_context, mlir::MLIRContext* mlir_context) const;
+      mlir::MLIRContext* mlir_context) const;
 
  private:
   const HloFusionAnalysis& analysis_;
 };
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_FUSION_H_

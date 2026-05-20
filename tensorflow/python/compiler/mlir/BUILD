@@ -1,4 +1,5 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -6,21 +7,23 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "mlir",
     srcs = ["mlir.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python:pywrap_mlir",
         "//tensorflow/python/util:tf_export",
     ],
 )
 
-py_strict_test(
+py_test(
     name = "mlir_test",
     srcs = ["mlir_test.py"],
     data = [
         "multi_add.tflite",
     ],
+    strict_deps = True,
     tags = [
         "no_mac",  # TODO(b/291995580): Reenable.
         "no_pip",

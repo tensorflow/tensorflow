@@ -129,7 +129,7 @@ void GenericTransferManager::TransferLiteralFromDevice(
   // declares, via the metadata, that their callback is safe to call from a host
   // callback, we enqueue it and return immediately.
   if ((transfer_metadata != nullptr) &&
-      tensorflow::down_cast<const LiteralFromDeviceMetadata*>(transfer_metadata)
+      absl::down_cast<const LiteralFromDeviceMetadata*>(transfer_metadata)
           ->callback_is_host_callback_safe) {
     auto status = stream->DoHostCallback([done = std::move(done), stream] {
       done(stream->ok() ? absl::OkStatus()
@@ -182,7 +182,7 @@ absl::Status GenericTransferManager::TransferLiteralToDeviceAsync(
                   /*destination=*/&device_memory);
             } else {
               int64_t size = GetByteSizeRequirement(device_subshape);
-              TF_RET_CHECK(size == device_memory.size());
+              TF_RET_CHECK(size <= device_memory.size());
               return TransferBufferToDevice(stream, /*size=*/size,
                                             /*source=*/source,
                                             /*destination=*/&device_memory);

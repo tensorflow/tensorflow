@@ -32,19 +32,19 @@ UnsupportedOpSPMDExpander::UnsupportedOpSPMDExpander(
 
 StatusOr<mlir::Operation*> UnsupportedOpSPMDExpander::ExpandOp(
     mlir::Operation* op) {
-  return errors::Unimplemented(error_message_);
+  return absl::UnimplementedError(error_message_);
 }
 
 StatusOr<llvm::DenseMap<int, Layout>>
 UnsupportedOpSPMDExpander::ComputeLayoutForward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts) {
-  return errors::Unimplemented(error_message_);
+  return absl::UnimplementedError(error_message_);
 }
 
 StatusOr<llvm::DenseMap<int, Layout>>
 UnsupportedOpSPMDExpander::ComputeLayoutBackward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& output_layouts) {
-  return errors::Unimplemented(error_message_);
+  return absl::UnimplementedError(error_message_);
 }
 
 }  // namespace dtensor

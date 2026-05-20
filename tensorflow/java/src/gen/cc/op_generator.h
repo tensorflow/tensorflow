@@ -38,7 +38,7 @@ namespace java {
 // ops definitions.
 class OpGenerator {
  public:
-  explicit OpGenerator(const std::vector<string>& api_dirs,
+  explicit OpGenerator(const std::vector<std::string>& api_dirs,
                        Env* env = Env::Default())
       : api_dirs_(api_dirs), env_(env) {}
 
@@ -46,11 +46,11 @@ class OpGenerator {
   //
   // Output files are generated in <output_dir>/<base_package>/<op_package>,
   // where 'op_package' is derived from ops endpoints.
-  absl::Status Run(const OpList& op_list, const string& base_package,
-                   const string& output_dir);
+  absl::Status Run(const OpList& op_list, const std::string& base_package,
+                   const std::string& output_dir);
 
  private:
-  const std::vector<string> api_dirs_;
+  const std::vector<std::string> api_dirs_;
   Env* env_;
 };
 

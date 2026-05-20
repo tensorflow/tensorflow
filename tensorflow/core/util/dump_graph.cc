@@ -142,7 +142,7 @@ class StderrWritableFile : public WritableFile {
   absl::Status Sync() override { return absl::OkStatus(); }
 
   absl::Status Tell(int64_t* position) override {
-    return errors::Unimplemented("Stream not seekable");
+    return absl::UnimplementedError("Stream not seekable");
   }
 };
 
@@ -163,7 +163,7 @@ absl::Status CreateWritableFile(Env* env, const std::string& dirname,
         << "Failed to dump " << name << " because dump location is not "
         << " specified through either TF_DUMP_GRAPH_PREFIX environment "
         << "variable or function argument.";
-    return errors::InvalidArgument("TF_DUMP_GRAPH_PREFIX not specified");
+    return absl::InvalidArgumentError("TF_DUMP_GRAPH_PREFIX not specified");
   }
 
   if (absl::EqualsIgnoreCase(dir, "sponge") ||
@@ -213,7 +213,7 @@ absl::Status WriteProtoToUniqueFile(
     const tensorflow::protobuf::MessageLite& proto, WritableFile* file) {
   std::string s;
   if (!SerializeToStringDeterministic(proto, &s)) {
-    return errors::Internal("Failed to serialize proto to string.");
+    return absl::InternalError("Failed to serialize proto to string.");
   }
   absl::string_view name;
   TF_RETURN_IF_ERROR(file->Name(&name));

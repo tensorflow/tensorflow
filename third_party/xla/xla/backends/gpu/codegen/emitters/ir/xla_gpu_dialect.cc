@@ -18,6 +18,7 @@ limitations under the License.
 #include "mlir/IR/OpImplementation.h"  // IWYU pragma: keep
 #include "mlir/Transforms/InliningUtils.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 
 // The order of these includes is important.
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_enums.cc.inc"
@@ -46,6 +47,7 @@ struct XlaGpuOpAsmDialectInterface : public mlir::OpAsmDialectInterface {
 }  // namespace
 
 void XlaGpuDialect::initialize() {
+  RegisterSymbolicExprStorage(getContext());
   addOperations<
 #define GET_OP_LIST
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.cc.inc"

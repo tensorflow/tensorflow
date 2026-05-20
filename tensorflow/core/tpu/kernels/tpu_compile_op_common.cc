@@ -154,7 +154,7 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
   // If the RPC was cancelled before we registered the cancellation callback,
   // don't compile the TPU program.
   OP_REQUIRES(ctx, !already_cancelled,
-              errors::Cancelled("RPC cancelled, not compiling TPU program"));
+              absl::CancelledError("RPC cancelled, not compiling TPU program"));
 
   // We only want to abort the process if a cancellation actually occurs during
   // compilation; we must deregister the callback in the success case. It
@@ -304,7 +304,7 @@ absl::Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
   // with devices when deleting resources at step boundaries.
   CompilationRefHolder* ref_holder;
   if (ctx->step_container() == nullptr) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "TPUCompileOp requires a step container.");
   }
   TF_RETURN_IF_ERROR(

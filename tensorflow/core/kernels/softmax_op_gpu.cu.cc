@@ -182,8 +182,9 @@ class SoftmaxOpGPU : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& logits_in_ = context->input(0);
     OP_REQUIRES(context, TensorShapeUtils::IsVectorOrHigher(logits_in_.shape()),
-                errors::InvalidArgument("logits must have >= 1 dimension, got ",
-                                        logits_in_.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("logits must have >= 1 dimension, got ",
+                                 logits_in_.shape().DebugString())));
     auto logits_in = logits_in_.flat_inner_dims<T>();
     const int rows = logits_in.dimension(0);
     const int cols = logits_in.dimension(1);

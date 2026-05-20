@@ -68,10 +68,6 @@ std::string TensorFlowSrcRoot();
 // dependencies.
 std::string XlaSrcRoot();
 
-// Returns the path to TSL in the directory containing data
-// dependencies.
-std::string TslSrcRoot();
-
 // Return a random number generator seed to use in randomized tests.
 // Returns the same value for the lifetime of the process.
 int RandomSeed();

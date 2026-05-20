@@ -29,7 +29,11 @@ class SyclEvent : public Event {
  public:
   Event::Status PollForStatus() override;
 
-  // Waits for the event to complete on the specified stream.
+  // Submits a dependency on event to stream_handle so subsequent work
+  // on that stream waits for event to complete. If event is already
+  // complete at call time, returns immediately without submitting any work
+  // to stream_handle.
+  // TODO(intel-tf): Remove unused executor parameter.
   static absl::Status WaitStreamOnEvent(StreamExecutor* executor,
                                         ::sycl::queue* stream_handle,
                                         const ::sycl::event& event);

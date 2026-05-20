@@ -141,6 +141,7 @@ void HloValue::SetPositions(absl::Span<const HloPosition> positions) {
 
   // The positions must be unique and should not contain the defining position
   // as this is added at construction time.
+#ifndef NDEBUG
   for (const HloPosition& position_a : positions) {
     DCHECK_NE(position_a, defining_position());
     for (const HloPosition& position_b : positions) {
@@ -149,6 +150,7 @@ void HloValue::SetPositions(absl::Span<const HloPosition> positions) {
       }
     }
   }
+#endif  // NDEBUG
 
   positions_.insert(positions_.end(), positions.begin(), positions.end());
   // Update liveout status of this HloValue.
@@ -210,9 +212,10 @@ HloValue::Uses HloValue::ComputeUses() const {
 }
 
 bool HloValue::IsRootOf(const HloComputation* computation) const {
-  return absl::c_any_of(positions_, [&](const HloPosition& position) {
-    return position.instruction->IsRoot() &&
-           position.instruction->parent() == computation;
+  const HloInstruction* root = computation->root_instruction();
+
+  return absl::c_any_of(positions_, [root](const HloPosition& position) {
+    return position.instruction == root;
   });
 }
 

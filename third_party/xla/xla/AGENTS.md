@@ -15,9 +15,9 @@ suggesting, or modifying code within the
 1.  **Error Handling (`absl::Status`, `absl::StatusOr`)**:
     *   **Always** use `absl::Status` or `absl::StatusOr<T>` for functions that can encounter recoverable errors.
     *   **Macros**:
-        *   Use `TF_RETURN_IF_ERROR` (from `tsl/platform/errors.h` or `tsl/platform/status_macros.h`) for error propagation.
-        *   Use `TF_ASSIGN_OR_RETURN` (if available) or `ASSIGN_OR_RETURN` (from `tsl/platform/status_macros.h`) for `StatusOr` assignments.
-        *   Ensure the corresponding headers are included.
+        *   Use header `tsl/platform/status_macros.h`.
+        *   Use `RETURN_IF_ERROR` for error propagation.
+        *   Use `ASSIGN_OR_RETURN` for `StatusOr` assignments.
     *   **Safely access `StatusOr<T>` values**: Check `.ok()` before accessing.
 
 2.  **Assertions & Invariant Checks (`TF_RET_CHECK`)**:
@@ -42,6 +42,14 @@ suggesting, or modifying code within the
 
 4.  **Testing**:
     *   Write unit tests using `EXPECT_EQ`, `EXPECT_TRUE`, etc.
+    *   Use macros in `tsl/platform/status_matchers.h` instead of their TF_*
+        counterparts. For example:
+        *   Use `ASSERT_OK_AND_ASSIGN`, `ASSERT_OK`, and `EXPECT_OK`.
+        *   DO NOT USE `TF_ASSERT_OK_AND_ASSIGN`, `TF_ASSERT_OK`, and
+            `TF_EXPECT_OK`.
+        *   When you refactor code that uses the TF_* macros., replace them, but
+            do not touch unrelated code.
+    *   Put tests into an anonymous namespace
     *   Use `HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>` or
         `HloHardwareIndependentTestBase` for compiler pass tests locally where
         possible.
@@ -61,3 +69,6 @@ suggesting, or modifying code within the
     *   **Invariants**: Respect the invariants of the current phase.
         *   *Example*: Do not generate `kCustomCall` instructions before the relevant expansion pass if they are not supported by the HLO verifier at that stage.
         *   *Example*: Do not rely on layout information before Layout Assignment.
+
+8.  **Namespaces**:
+    *   Prefer xla::gpu over nested namespaces.

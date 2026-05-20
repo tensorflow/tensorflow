@@ -15,20 +15,20 @@ limitations under the License.
 
 #include "tsl/platform/base64.h"
 
+#include <cstdint>
 #include <cstring>
 #include <memory>
 
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/types.h"
-#include "tsl/platform/stringpiece.h"
 
 namespace tsl {
 namespace {
 // This array must have signed type.
 // clang-format off
-constexpr int8 kBase64Bytes[128] = {
+constexpr int8_t kBase64Bytes[128] = {
      -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,
      -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,
      -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,
@@ -50,7 +50,7 @@ constexpr char kPadChar = '=';
 // Converts a char (8 bits) into a 6-bit value for decoding. If the input char
 // is invalid for base64 encoding, the return value has at least its upper 25
 // bits set.
-inline uint32 Convert(char x) {
+inline uint32_t Convert(char x) {
   // If x < 128, then we look up x in the table. If x is valid, then the table
   // will have a value <= 0x3F, otherwise the table will have -1. If x >= 128,
   // we still do some table lookup, but the value is ignored since we explicitly
@@ -59,17 +59,18 @@ inline uint32 Convert(char x) {
   const int8_t y = kBase64Bytes[x & 0x7F] | (x & 0x80);
   // Casting from int8 to int32 preserves sign by sign extension. If y was
   // negative, at least its 25 high bits of the return value are set.
-  const int32_t z = static_cast<int32>(y);
-  return static_cast<uint32>(z);
+  const int32_t z = static_cast<int32_t>(y);
+  return static_cast<uint32_t>(z);
 }
 
 absl::Status DecodeThreeChars(const char* codes, char* result) {
-  const uint32 packed = (Convert(codes[0]) << 18) | (Convert(codes[1]) << 12) |
-                        (Convert(codes[2]) << 6) | (Convert(codes[3]));
+  const uint32_t packed = (Convert(codes[0]) << 18) |
+                          (Convert(codes[1]) << 12) | (Convert(codes[2]) << 6) |
+                          (Convert(codes[3]));
   // Convert() return value has upper 25 bits set if input is invalid.
   // Therefore `packed` has high bits set iff at least one of code is invalid.
   if (TF_PREDICT_FALSE((packed & 0xFF000000) != 0)) {
-    return errors::InvalidArgument("Invalid character found in base64.");
+    return absl::InvalidArgumentError("Invalid character found in base64.");
   }
   result[0] = static_cast<char>(packed >> 16);
   result[1] = static_cast<char>(packed >> 8);
@@ -81,7 +82,7 @@ absl::Status DecodeThreeChars(const char* codes, char* result) {
 template <typename T>
 absl::Status Base64Decode(absl::string_view data, T* decoded) {
   if (decoded == nullptr) {
-    return errors::Internal("'decoded' cannot be nullptr.");
+    return absl::InternalError("'decoded' cannot be nullptr.");
   }
 
   if (data.empty()) {
@@ -97,7 +98,7 @@ absl::Status Base64Decode(absl::string_view data, T* decoded) {
   std::unique_ptr<char[]> buffer(new char[max_decoded_size]);
   char* current = buffer.get();
   if (current == nullptr) {
-    return errors::ResourceExhausted(
+    return absl::ResourceExhaustedError(
         "Failed to allocate buffer for decoded string.");
   }
 
@@ -124,7 +125,7 @@ absl::Status Base64Decode(absl::string_view data, T* decoded) {
   const int remain = static_cast<int>(end - b64);
   if (TF_PREDICT_FALSE(remain == 1)) {
     // We may check this condition early by checking data.size() % 4 == 1.
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Base64 string length cannot be 1 modulo 4.");
   }
 
@@ -151,7 +152,7 @@ absl::Status Base64Encode(absl::string_view source, bool with_padding,
                           T* encoded) {
   const char* const base64_chars = kBase64UrlSafeChars;
   if (encoded == nullptr) {
-    return errors::Internal("'encoded' cannot be nullptr.");
+    return absl::InternalError("'encoded' cannot be nullptr.");
   }
 
   // max_encoded_size may overestimate by up to 4 bytes.
@@ -159,7 +160,7 @@ absl::Status Base64Encode(absl::string_view source, bool with_padding,
   std::unique_ptr<char[]> buffer(new char[max_encoded_size]);
   char* current = buffer.get();
   if (current == nullptr) {
-    return errors::ResourceExhausted(
+    return absl::ResourceExhaustedError(
         "Failed to allocate buffer for encoded string.");
   }
 
@@ -200,16 +201,20 @@ absl::Status Base64Encode(absl::string_view source, bool with_padding,
   return absl::OkStatus();
 }
 
-template Status Base64Decode<std::string>(StringPiece data,
-                                          std::string* decoded);
-template Status Base64Encode<std::string>(StringPiece source,
-                                          std::string* encoded);
-template Status Base64Encode<std::string>(StringPiece source, bool with_padding,
-                                          std::string* encoded);
+template absl::Status Base64Decode<std::string>(absl::string_view data,
+                                                std::string* decoded);
+template absl::Status Base64Encode<std::string>(absl::string_view source,
+                                                std::string* encoded);
+template absl::Status Base64Encode<std::string>(absl::string_view source,
+                                                bool with_padding,
+                                                std::string* encoded);
 
-template Status Base64Decode<tstring>(StringPiece data, tstring* decoded);
-template Status Base64Encode<tstring>(StringPiece source, tstring* encoded);
-template Status Base64Encode<tstring>(StringPiece source, bool with_padding,
-                                      tstring* encoded);
+template absl::Status Base64Decode<tstring>(absl::string_view data,
+                                            tstring* decoded);
+template absl::Status Base64Encode<tstring>(absl::string_view source,
+                                            tstring* encoded);
+template absl::Status Base64Encode<tstring>(absl::string_view source,
+                                            bool with_padding,
+                                            tstring* encoded);
 
 }  // namespace tsl

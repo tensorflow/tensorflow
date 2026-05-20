@@ -24,9 +24,9 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/service/custom_call_sharding_helper.h"
 #include "xla/service/spmd/spmd_partitioner.h"
-#include "xla/service/spmd/spmd_partitioner_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace jax {
@@ -56,8 +56,14 @@ std::optional<xla::HloSharding> InspectShardingReadArgs(
   auto result = xla::HloSharding::FromProto(std::move(proto));
   if (!result.ok()) {
     InspectShardingSetError(args, std::string(result.status().message()));
+    return std::nullopt;
   }
-  return std::move(*result);
+
+  xla::HloSharding sharding = std::move(*result);
+  if (sharding.UseNamedShardingLeaf()) {
+    sharding = xla::HloSharding::V3ToV2Sharding(sharding.named_sharding());
+  }
+  return sharding;
 }
 
 class InspectShardingCallPartitioner : public xla::CustomCallPartitioner {

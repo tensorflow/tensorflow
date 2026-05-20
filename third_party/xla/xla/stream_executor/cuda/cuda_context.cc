@@ -182,7 +182,12 @@ absl::StatusOr<CudaContext*> CudaContext::Create(int device_ordinal,
 }
 
 void CudaContext::SetActive() {
-  CHECK_OK(cuda::ToStatus(cuCtxSetCurrent(context_), "Failed setting context"));
+  CUresult result = cuCtxSetCurrent(context_);
+  if (result == CUDA_ERROR_DEINITIALIZED) {
+    VLOG(1) << "Ignoring errors from cuCtxSetCurrent due to driver shutdown";
+  } else {
+    CHECK_OK(cuda::ToStatus(result, "Failed setting context"));
+  }
 }
 
 bool CudaContext::IsActive() const { return CurrentContext() == context_; }

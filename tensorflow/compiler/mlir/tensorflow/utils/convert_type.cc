@@ -104,6 +104,13 @@ absl::Status ConvertDataType(DataType dtype, Builder builder, Type* type) {
     case DT_UINT4:
       *type = builder.getIntegerType(4, /*isSigned=*/false);
       return absl::OkStatus();
+    case DT_INT2:
+      // build a **signless** integer type.
+      *type = builder.getIntegerType(2);
+      return absl::OkStatus();
+    case DT_UINT2:
+      *type = builder.getIntegerType(2, /*isSigned=*/false);
+      return absl::OkStatus();
 #define HANDLE_TF_TYPE(tftype, enumerant, name)             \
   case DT_##enumerant:                                      \
     *type = builder.getType<mlir::tf_type::tftype##Type>(); \
@@ -148,6 +155,9 @@ absl::Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
     switch (itype.getWidth()) {
       case 1:
         *dtype = DT_BOOL;
+        return absl::OkStatus();
+      case 2:
+        *dtype = itype.isUnsigned() ? DT_UINT2 : DT_INT2;
         return absl::OkStatus();
       case 4:
         *dtype = itype.isUnsigned() ? DT_UINT4 : DT_INT4;

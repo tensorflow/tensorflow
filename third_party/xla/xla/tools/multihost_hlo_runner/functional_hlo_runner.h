@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -153,6 +154,8 @@ enum class ModuleArgumentMode {
   // constraints on the range). This drastically reduces
   // the host memory usage and the startup time.
   kUninitialized,
+  // Use random values from a normal distribution as arguments.
+  kUseRandomNormalInputs,
 };
 
 bool AbslParseFlag(absl::string_view text, ModuleArgumentMode* argument_mode,
@@ -266,9 +269,6 @@ struct RunningOptions {
   LogOutputMode log_input_output_mode = LogOutputMode::kNotLogOutput;
   const MultiSliceConfig* multi_slice_config = nullptr;
   ProfilerInterface* profiler = nullptr;
-  // Whether to untuple the result of running HLO module into a vector of
-  // arrays. If unprovided, use the default in ExecuteOptions.
-  std::optional<bool> untuple_result = std::nullopt;
   // If not null, profiles will be stored for this run, one per repeat.
   // Note that the first repeat is a warmup run, and uses less precise
   // profiling method.
@@ -333,11 +333,23 @@ absl::StatusOr<PerDeviceLiteralVecType> LoadAndRun(
     InputFormat input_format, const PerDeviceLiteralVecType& arguments = {},
     std::minstd_rand0* engine = nullptr);
 
+// Loads an HLO module from hlo_file according to input_format and compiles it.
+// The compiled executable is dumped to the specified path if the path is not
+// empty.
+absl::Status LoadAndCompileAndDump(
+    PjRtClient& client, const DebugOptions& debug_options,
+    const xla::FunctionalHloRunner::PreprocessingOptions& preproc_options,
+    const xla::FunctionalHloRunner::RawCompileOptions& raw_compile_options,
+    absl::string_view hlo_file, InputFormat input_format,
+    std::string dump_executable_to = "", int task_id = 0, int num_nodes = 1,
+    std::shared_ptr<xla::KeyValueStoreInterface> kv_store = nullptr,
+    bool use_gpu_count_workaround = true);
+
 // Loads and compiles an HLO for debugging purposes.
 //
 // This function allows compiling multi-device HLOs on machines with fewer
 // devices.
-absl::Status LoadAndCompile(
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadAndCompile(
     PjRtClient& client, const DebugOptions& debug_options,
     const PreprocessingOptions& preproc_options,
     const RawCompileOptions& raw_compile_options, absl::string_view hlo_file,
@@ -353,6 +365,14 @@ absl::StatusOr<PerDeviceLiteralVecType> CompileAndRun(
     const PreprocessingOptions& preproc_options,
     const CompileOptions& compile_options,
     const RunningOptions& running_options, HloModule* hlo_module,
+    const PerDeviceLiteralVecType& arguments = {},
+    std::minstd_rand0* engine = nullptr);
+
+absl::StatusOr<PerDeviceLiteralVecType> CompileAndRun(
+    PjRtClient& client, const DebugOptions& debug_options,
+    const PreprocessingOptions& preproc_options,
+    const CompileOptions& compile_options,
+    const RunningOptions& running_options, MaybeOwningMlirModule module,
     const PerDeviceLiteralVecType& arguments = {},
     std::minstd_rand0* engine = nullptr);
 

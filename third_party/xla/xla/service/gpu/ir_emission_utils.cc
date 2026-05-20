@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <optional>
 #include <queue>
 #include <string>
@@ -58,6 +57,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/ir_emission_utils.pb.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -70,9 +70,27 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/platform/regexp.h"
 
 namespace xla {
 namespace gpu {
+
+bool IsGpublasLtSupportedGroupedMatMul(const HloInstruction& instr) {
+  if (instr.opcode() == HloOpcode::kRaggedDot) {
+    switch (instr.shape().element_type()) {
+      // Only float 16 and bf 16 are supported by HipBlasLt GroupGemm
+      case F16:
+      case BF16:
+        return (((instr.operand(0)->shape().element_type() == F16) ||
+                 (instr.operand(0)->shape().element_type() == BF16)) &&
+                ((instr.operand(1)->shape().element_type() == F16) ||
+                 (instr.operand(1)->shape().element_type() == BF16)));
+      default:
+        return false;
+    }
+  }
+  return false;
+}
 
 absl::StatusOr<bool> IsCublasSupportedMatMul(
     const HloInstruction& dot, bool allow_matrix_vector_multiplication) {
@@ -86,18 +104,17 @@ absl::StatusOr<bool> IsCublasSupportedMatMul(
     TF_ASSIGN_OR_RETURN(DotOperandDims dims,
                         DotOperandDims::FromDotOperand(&dot, operand));
     // cuBLAS only supports single contracting dimension.
-    if (dims.DimensionCount(DotOperandDims::kContracting) != 1) {
+    if (dims.Rank(DotOperandDims::kContracting) != 1) {
       return false;
     }
     // cuBLAS doesn't support minor batch dimension.
-    if (absl::c_any_of(dims.DimensionIndices(DotOperandDims::kBatch),
-                       [&](int64_t dim) {
-                         return dim == dims.shape().dimensions().size() - 1;
-                       })) {
+    if (absl::c_any_of(dims.Indices(DotOperandDims::kBatch), [&](int64_t dim) {
+          return dim == dims.shape().dimensions().size() - 1;
+        })) {
       return false;
     }
     // cuBLAS supports up to one non-contracting dimension.
-    const auto& nc_dims = dims.DimensionSizes(DotOperandDims::kNonContracting);
+    const auto& nc_dims = dims.Sizes(DotOperandDims::kNonContracting);
     if (nc_dims.size() > 1) {
       return false;
     }
@@ -146,11 +163,31 @@ bool IsCustomCallToPtxKernel(const HloInstruction& hlo) {
          hlo.custom_call_target() == "__gpu$xla.gpu.ptx";
 }
 
-bool IsCollectiveMosaicGpuInstruction(const HloInstruction& hlo) {
+bool IsCustomCallToMosaicGpu(const HloInstruction& hlo) {
   return hlo.opcode() == HloOpcode::kCustomCall &&
          (hlo.custom_call_target() == "mosaic_gpu" ||
-          hlo.custom_call_target() == "mosaic_gpu_v2") &&
+          hlo.custom_call_target() == "mosaic_gpu_v2");
+}
+
+bool IsMosaicWithNvshmem(const HloInstruction& hlo) {
+  return IsCustomCallToMosaicGpu(hlo) &&
          absl::StrContains(hlo.raw_backend_config_string(), "nvshmem");
+}
+
+bool IsMosaicWithMultimem(const HloInstruction& hlo) {
+  return IsCustomCallToMosaicGpu(hlo) &&
+         absl::StrContains(hlo.raw_backend_config_string(),
+                           "multimem_parameters");
+}
+
+bool IsMosaicWithCollectiveMetadata(const HloInstruction& hlo) {
+  return IsCustomCallToMosaicGpu(hlo) &&
+         RE2::PartialMatch(hlo.raw_backend_config_string(),
+                           "uses_xla_collective_metadata\\s*=\\s*[tT]rue");
+}
+
+bool IsCollectiveMosaicGpuInstruction(const HloInstruction& hlo) {
+  return IsMosaicWithNvshmem(hlo) || IsMosaicWithMultimem(hlo);
 }
 
 static bool IsContiguousSlice(
@@ -204,13 +241,18 @@ bool IsContiguousSlice(const HloInstruction& instr) {
 }
 
 llvm::Value* IsBlock0Thread0(llvm::IRBuilderBase* b) {
-  llvm::Value* is_thread0 = b->CreateICmpEQ(
-      b->getInt32(0),
-      EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b));
+  // On Intel GPUs, intrinsics may return a non-i32 integer type, so we first
+  // emit the intrinsic call to get the correct type for the compare
+  // instruction.
+  llvm::Value* tid =
+      EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b);
+  llvm::Value* is_thread0 =
+      b->CreateICmpEQ(llvm::ConstantInt::get(tid->getType(), 0), tid);
 
-  llvm::Value* is_block0 = b->CreateICmpEQ(
-      b->getInt32(0),
-      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b));
+  llvm::Value* bid =
+      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b);
+  llvm::Value* is_block0 =
+      b->CreateICmpEQ(llvm::ConstantInt::get(bid->getType(), 0), bid);
   return b->CreateAnd(is_thread0, is_block0);
 }
 
@@ -578,6 +620,8 @@ std::optional<Dependencies> GetLeafDependencies(const HloInstruction* root) {
     queue.pop();
 
     if (instruction->opcode() == HloOpcode::kCustomCall ||
+        instruction->opcode() == HloOpcode::kPartitionId ||
+        instruction->opcode() == HloOpcode::kReplicaId ||
         instruction->HasSideEffect()) {
       VLOG(5) << "Found an unsafe operation.";
       return std::nullopt;

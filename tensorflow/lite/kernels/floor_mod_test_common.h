@@ -22,13 +22,16 @@ template <typename T>
 class FloorModModel : public SingleOpModel {
  public:
   FloorModModel(const TensorData& input1, const TensorData& input2,
-                const TensorData& output) {
+                const TensorData& output, bool allocate = true) {
     input1_ = AddInput(input1);
     input2_ = AddInput(input2);
     output_ = AddOutput(output);
     SetBuiltinOp(BuiltinOperator_FLOOR_MOD, BuiltinOptions_FloorModOptions,
                  CreateFloorModOptions(builder_).Union());
-    BuildInterpreter({GetShape(input1_), GetShape(input2_)});
+    BuildInterpreter({GetShape(input1_), GetShape(input2_)},
+                     /*num_threads=*/-1, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/true,
+                     /*allocate_and_delegate=*/allocate);
   }
 
   int input1() { return input1_; }

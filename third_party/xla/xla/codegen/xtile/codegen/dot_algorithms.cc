@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/translate/hlo_to_mhlo/attribute_importer.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -84,8 +86,17 @@ absl::StatusOr<Value> ScaledDot(mlir::ImplicitLocOpBuilder& b,
   Value rhs_scale;
   if (rhs_dot_elem_type != b.getBF16Type()) {
     rhs_scale = Bitcast(b, operands.rhs_scale, b.getI8Type());
+    auto rhs_scale_type = mlir::cast<mlir::ShapedType>(rhs_scale.getType());
+    int64_t rank = rhs_scale_type.getRank();
+    CHECK_GE(rank, 2) << "RHS scale must be at least rank 2 for scaled dot.";
+
+    std::vector<int64_t> permutation(rank);
+    for (int64_t i = 0; i < rank; ++i) {
+      permutation[i] = i;
+    }
+    std::swap(permutation[rank - 2], permutation[rank - 1]);
     rhs_scale = mlir::stablehlo::TransposeOp::create(
-        b, rhs_scale, b.getDenseI64ArrayAttr({1, 0}));
+        b, rhs_scale, b.getDenseI64ArrayAttr(permutation));
   }
 
   // When operand type is subbyte size then it is packed along minor dim and for
@@ -96,7 +107,8 @@ absl::StatusOr<Value> ScaledDot(mlir::ImplicitLocOpBuilder& b,
                           mlir::Float4E2M1FNType::get(b.getContext());
   auto dot_scaled_op = xtile::DotScaledOp::create(
       b, operands.accumulator.getType(), operands.lhs, operands.rhs, lhs_scale,
-      rhs_scale, /*fastMath=*/true, /*lhs_k_pack=*/true, rhs_k_pack);
+      rhs_scale, /*fastMath=*/true, /*lhs_k_pack=*/true, rhs_k_pack,
+      operands.dot_dimension_numbers);
 
   auto add_result =
       mlir::isa<mlir::IntegerType>(
@@ -109,29 +121,13 @@ absl::StatusOr<Value> ScaledDot(mlir::ImplicitLocOpBuilder& b,
 namespace {
 
 Value EmitStableHloDotAndAdd(mlir::ImplicitLocOpBuilder& b, Value lhs,
-                             Value rhs, Value acc,
-                             PrecisionSpec precision_spec) {
-  auto lhs_type = mlir::cast<ShapedType>(lhs.getType());
-  auto rhs_type = mlir::cast<ShapedType>(rhs.getType());
-
-  CHECK(lhs_type.getRank() <= 2 && rhs_type.getRank() <= 2)
-      << "Unsupported ranks. LHS rank: " << lhs_type.getRank()
-      << " RHS rank: " << rhs_type.getRank();
-
-  llvm::SmallVector<int64_t> array_attr{0};
-  auto dot_dimension_numbers = mlir::stablehlo::DotDimensionNumbersAttr::get(
-      b.getContext(), /*lhsBatchingDimensions=*/{},
-      /*rhsBatchingDimensions=*/{},
-      /*lhsContractingDimensions=*/
-      {lhs_type.getRank() - 1},
-      /*rhsContractingDimensions=*/
-      {0});
-
+                             Value rhs, Value acc, PrecisionSpec precision_spec,
+                             mlir::stablehlo::DotDimensionNumbersAttr dims) {
   auto precision_config = mlir::stablehlo::PrecisionConfigAttr::get(
       b.getContext(), {precision_spec.lhs_operand_precision,
                        precision_spec.rhs_operand_precision});
   auto dot = mlir::stablehlo::DotGeneralOp::create(
-      b, acc.getType(), lhs, rhs, dot_dimension_numbers,
+      b, acc.getType(), lhs, rhs, dims,
       /*precision_config=*/precision_config,
       /*algorithm=*/
       stablehlo::ConvertDotAlgorithm(precision_spec.algorithm, &b));
@@ -174,6 +170,28 @@ absl::StatusOr<Type> GetAlgUnsetAccumulatorType(mlir::ImplicitLocOpBuilder& b,
                                                         : b.getF32Type();
 }
 
+absl::StatusOr<std::optional<Type>> DotDefaultOperandsType(
+    mlir::ImplicitLocOpBuilder& b, const HloDotInstruction& dot) {
+  TF_ASSIGN_OR_RETURN(
+      Type lhs_type,
+      PrimitiveTypeToMlirType(b, dot.operand(0)->shape().element_type()));
+  TF_ASSIGN_OR_RETURN(
+      Type rhs_type,
+      PrimitiveTypeToMlirType(b, dot.operand(1)->shape().element_type()));
+
+  if (lhs_type != rhs_type) {
+    return std::nullopt;
+  }
+  if (!lhs_type.isFloat(32)) {
+    return std::nullopt;
+  }
+  auto debug_options = dot.GetModule()->config().debug_options();
+  if (debug_options.xla_gpu_default_to_alg_dot_bf16_bf16_f32()) {
+    return b.getBF16Type();
+  }
+  return lhs_type;
+}
+
 // Returns the `Type` that the dot operands should be casted to if there is a
 // clear candidate. Raises an error if there are multiple allowed choices but
 // the operands do not already conform to any of them. Returns `std::nullopt` if
@@ -183,7 +201,7 @@ absl::StatusOr<std::optional<Type>> GetForceOperandsType(
     const DotOperands& dot_operands) {
   PrecisionConfig::Algorithm algorithm = dot.precision_config().algorithm();
   if (algorithm == PrecisionConfig::ALG_UNSET) {
-    return std::nullopt;
+    return DotDefaultOperandsType(b, dot);
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -204,7 +222,9 @@ absl::StatusOr<std::optional<Type>> GetForceOperandsType(
     // If there is a single allowed operand type, we force the operands to use
     // this type.
     return allowed_operands_types.front();
-  }  // If there are several allowed operand types, we just check that the
+  }
+
+  // If there are several allowed operand types, we just check that the
   // operands have the same type, and that this type is one of the allowed
   // ones. Raise an error otherwise.
   if (lhs_type != rhs_type ||
@@ -271,9 +291,13 @@ absl::StatusOr<Value> EmitSingleTileDot(mlir::ImplicitLocOpBuilder& b,
         Cast(b, dot_operands.accumulator, force_accumulator_type);
   }
 
-  Value result =
-      EmitStableHloDotAndAdd(b, dot_operands.lhs, dot_operands.rhs,
-                             dot_operands.accumulator, precision_spec);
+  mlir::stablehlo::DotDimensionNumbersAttr dot_dimension_numbers =
+      xla::stablehlo::ConvertDotDimensionNumbers(dot.dot_dimension_numbers(),
+                                                 &b);
+
+  Value result = EmitStableHloDotAndAdd(b, dot_operands.lhs, dot_operands.rhs,
+                                        dot_operands.accumulator,
+                                        precision_spec, dot_dimension_numbers);
 
   // TODO(b/393299275): once we've moved on from the legacy emitter, we should
   // make sure that this accumulator type is equal to the one derived here.
@@ -288,6 +312,9 @@ absl::StatusOr<Value> EmitSingleTileDot(mlir::ImplicitLocOpBuilder& b,
 absl::StatusOr<Value> EmitSingleTileScaledDot(
     mlir::ImplicitLocOpBuilder& b, const HloScaledDotInstruction& scaled_dot,
     ScaledDotOperands dot_operands) {
+  dot_operands.dot_dimension_numbers =
+      ::xla::stablehlo::ConvertDotDimensionNumbers(
+          scaled_dot.dot_dimension_numbers(), &b);
   return ScaledDot(b, dot_operands);
 }
 

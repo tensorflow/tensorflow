@@ -131,6 +131,7 @@ cc_library(
     hdrs = ["gpu_command_buffer.h"],
     deps = [
         "//xla:debug_options_flags",
+        "//xla:xla_proto_cc",
         "//xla/service:dump",
         "//xla/stream_executor:bit_pattern",
         "//xla/stream_executor:command_buffer",
@@ -335,6 +336,8 @@ xla_test(
     name = "redzone_allocator_test",
     srcs = ["redzone_allocator_test.cc"],
     backends = ["gpu"],
+    # TODO(intel-tf): Implement redzone allocator for oneAPI and enable this test.
+    tags = ["no-oneapi"],
     deps = [
         ":gpu_init",
         ":redzone_allocator",
@@ -417,6 +420,7 @@ cc_library(
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:platform",
+        "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/cuda:cuda_platform_id",
@@ -484,6 +488,7 @@ cc_library(
     linkstatic = True,
     tags = [
         "gpu",
+        # TODO(intel-tf): Implement gpu test kernels for oneAPI and enable this library.
         "no-oneapi",
     ],
     deps = [
@@ -528,7 +533,11 @@ cc_library(
 xla_cc_test(
     name = "gpu_test_kernels_fatbin_test",
     srcs = ["gpu_test_kernels_fatbin_test.cc"],
-    tags = ["gpu"],
+    tags = [
+        "gpu",
+        # TODO(intel-tf): Enable this test once oneAPI fatbin is supported for :gpu_test_kernels.
+        "no-oneapi",
+    ],
     deps = [
         ":gpu_test_kernels_fatbin",
         "//xla/stream_executor:platform",
@@ -543,6 +552,8 @@ xla_test(
     name = "gpu_kernel_test",
     srcs = ["gpu_kernel_test.cc"],
     backends = ["gpu"],
+    # TODO(intel-tf): Enable this test once oneAPI fatbin is supported for :gpu_test_kernels.
+    tags = ["no-oneapi"],
     deps = [
         ":gpu_test_kernels",
         ":gpu_test_kernels_fatbin",
@@ -578,6 +589,8 @@ xla_test(
     name = "gpu_command_buffer_test",
     srcs = ["gpu_command_buffer_test.cc"],
     backends = ["gpu"],
+    # TODO(intel-tf): Implement gpu command buffer for oneAPI and enable this test.
+    tags = ["no-oneapi"],
     deps = [
         ":gpu_test_kernels",
         "//xla/service:platform_util",
@@ -662,32 +675,6 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:platform_port",
-    ],
-)
-
-xla_test(
-    name = "gpu_device_info_test",
-    srcs = ["gpu_device_info_test.cc"],
-    backends = ["gpu"],
-    data = ["//xla/backends/gpu/target_config:all_gpu_specs"],
-    deps = [
-        "//xla/service:platform_util",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:device_description_proto_cc",
-        "//xla/stream_executor:platform",
-        "//xla/stream_executor:platform_manager",
-        "//xla/stream_executor:stream_executor_h",
-        "//xla/tsl/lib/core:status_test_util",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/platform:env",
-        "@tsl//tsl/platform:path",
-        "@tsl//tsl/platform:protobuf",
-        "@tsl//tsl/platform:statusor",
-        "@tsl//tsl/platform:test",
     ],
 )
 
@@ -805,6 +792,7 @@ cc_library(
     name = "ragged_all_to_all_kernel",
     hdrs = ["ragged_all_to_all_kernel.h"],
     deps = [
+        "//xla/core/collectives:symmetric_memory",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:kernel",
     ],
@@ -814,6 +802,7 @@ cc_library(
     name = "multi_gpu_barrier_kernel",
     hdrs = ["multi_gpu_barrier_kernel.h"],
     deps = [
+        "//xla/core/collectives:symmetric_memory",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:kernel",
     ],
@@ -832,6 +821,10 @@ cc_library(
 cc_library(
     name = "collective_kernel_metadata",
     hdrs = ["collective_kernel_metadata.h"],
+    visibility = internal_visibility([
+        "//third_party/py/jax:__subpackages__",
+        ":friends",
+    ]),
 )
 
 cc_library(
@@ -857,6 +850,8 @@ xla_test(
     srcs = ["repeat_buffer_kernel_test.cc"],
     backends = ["gpu"],
     disabled_backends = [],
+    # TODO(intel-tf): Implement repeat buffer kernel for oneAPI and enable this test.
+    tags = ["no-oneapi"],
     deps = [
         ":gpu_kernel_registry",
         ":repeat_buffer_kernel",
@@ -924,6 +919,8 @@ xla_test(
     name = "buffer_debug_log_test",
     srcs = ["buffer_debug_log_test.cc"],
     backends = ["gpu"],
+    # TODO(intel-tf): Implement buffer debug log for oneAPI and enable this test.
+    tags = ["no-oneapi"],
     deps = [
         ":buffer_debug_log",
         "//xla/backends/gpu/runtime:buffer_debug_log_proto_cc",
@@ -982,6 +979,7 @@ cc_library(
     hdrs = ["kernel_serialization_check.h"],
     deps = [
         "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor:kernel_spec_proto_cc",
         "//xla/stream_executor:kernel_symbol_registry",
         "//xla/stream_executor:platform",
         "//xla/tsl/platform:statusor",

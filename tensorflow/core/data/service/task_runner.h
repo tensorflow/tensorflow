@@ -52,19 +52,22 @@ class TaskIterator {
   // Saves a checkpoint of the iterator. Returns Tensors that can be called with
   // `Restore()`.
   virtual absl::StatusOr<std::vector<Tensor>> Save() {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "Serializing a tf.data service task iterator is unsupported.");
   }
 
   // Restores the iterator from a checkpoint. `saved_iterator` is the serialized
   // iterator saved by calling `Save()`.
   virtual absl::Status Restore(const std::vector<Tensor>& saved_iterator) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "Restoring from a tf.data service task iterator is unsupported.");
   }
 
   // Returns the dataset model for performance analysis.
   virtual std::shared_ptr<model::Model> model() const { return nullptr; }
+
+  // Cancels the task iterator.
+  virtual void Cancel() {}
 };
 
 // Implementation of TaskIterator wrapping a standalone iterator.
@@ -81,6 +84,7 @@ class StandaloneTaskIterator : public TaskIterator {
   absl::StatusOr<std::vector<Tensor>> Save() override;
   absl::Status Restore(const std::vector<Tensor>& saved_iterator) override;
   std::shared_ptr<model::Model> model() const override;
+  void Cancel() override;
 
  private:
   std::unique_ptr<standalone::Dataset> dataset_;

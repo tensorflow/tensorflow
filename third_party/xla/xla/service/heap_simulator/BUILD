@@ -37,7 +37,9 @@ cc_library(
     hdrs = ["heap_simulator.h"],
     deps = [
         ":allocation_block",
+        ":free_chunks_manager",
         "//xla:comparison_util",
+        "//xla:union_find",
         "//xla:util",
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_alias_analysis",
@@ -58,6 +60,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
@@ -117,11 +120,11 @@ cc_library(
 
 xla_cc_test(
     name = "free_chunks_manager_test",
-    size = "large",
     srcs = ["free_chunks_manager_test.cc"],
     deps = [
         ":free_chunks_manager",
         "//xla/tsl/platform:test_benchmark",
-        "@com_google_googletest//:gtest_main",
+        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest",
     ],
 )

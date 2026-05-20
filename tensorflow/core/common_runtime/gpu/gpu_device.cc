@@ -1356,7 +1356,7 @@ Status BaseGPUDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
   TF_RETURN_IF_ERROR(CacheDeviceIds());
   for (tsl::PlatformDeviceId platform_device_id : cached_device_ids_) {
     const string device_name =
-        strings::StrCat("/physical_device:GPU:", platform_device_id.value());
+        absl::StrCat("/physical_device:GPU:", platform_device_id.value());
     devices->push_back(device_name);
   }
 
@@ -1742,8 +1742,8 @@ Status BaseGPUDeviceFactory::CreateDevices(
   xla::StreamExecutorGpuClient* pjrt_se_client = nullptr;
   auto obtained_pjrt_client = GetPjRtClient(DeviceType(DEVICE_GPU));
   if (obtained_pjrt_client.ok()) {
-    pjrt_se_client = tensorflow::down_cast<xla::StreamExecutorGpuClient*>(
-        *obtained_pjrt_client);
+    pjrt_se_client =
+        absl::down_cast<xla::StreamExecutorGpuClient*>(*obtained_pjrt_client);
     // TODO(b/291943099): This check may not be enough because the virtual
     // device options can change while the device count remains the same.
     // However, it's most likely that in real use cases, CreateDevices() won't
@@ -1845,8 +1845,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
               << should_create_new_pjrt_client << " for device ordinal " << di
               << ". Re-using local_device_state";
       auto* pjrt_se_client =
-          tensorflow::down_cast<xla::StreamExecutorGpuClient*>(
-              *obtained_pjrt_client);
+          absl::down_cast<xla::StreamExecutorGpuClient*>(*obtained_pjrt_client);
       local_device_state = &(pjrt_se_client->device_state(di));
     }
 

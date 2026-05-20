@@ -1,6 +1,7 @@
 # Tools and utilities that aid in XLA development and usage.
 
-load("//xla:py_strict.bzl", "py_strict_binary", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load(
     "//xla:xla.default.bzl",
     "xla_cc_binary",
@@ -152,12 +153,14 @@ xla_cc_binary(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "generate_hlo_test_checks_lib",
     srcs = ["generate_hlo_test_checks.py"],
+    strict_deps = True,
 )
 
-py_strict_binary(
+py_binary(
     name = "generate_hlo_test_checks",
     srcs = ["generate_hlo_test_checks.py"],
+    strict_deps = True,
 )

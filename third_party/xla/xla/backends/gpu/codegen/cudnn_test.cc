@@ -21,12 +21,17 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/autotuner/backends.pb.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
+#include "xla/backends/gpu/transforms/cudnn_fusion_compiler.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
 #include "xla/error_spec.h"
@@ -39,14 +44,14 @@ limitations under the License.
 #include "xla/service/gpu/cudnn_support_utils.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
-#include "xla/service/gpu/transforms/cudnn_fusion_compiler.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -55,14 +60,23 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 namespace {
 
-class CuDnnFusionTest : public GpuCodegenTest {
+class CuDnnFusionTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  public:
+  se::StreamExecutor* stream_executor() const {
+    auto platform =
+        se::PlatformManager::PlatformWithId(stream_executor_platform_id());
+    CHECK_OK(platform);
+    auto executor = (*platform)->ExecutorForDevice(0);
+    CHECK_OK(executor);
+    return *executor;
+  }
+
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloPjRtGpuTestBase::GetDebugOptionsForTest();
     // Let this group of tests just use first available plan skipping
     // autotuning.
     debug_options.set_xla_gpu_autotune_level(0);
@@ -70,24 +84,23 @@ class CuDnnFusionTest : public GpuCodegenTest {
     // Only run the CuDNN backend.
     debug_options.clear_xla_gpu_experimental_autotune_backends();
     debug_options.add_xla_gpu_experimental_autotune_backends(
-        DebugOptions::AUTOTUNE_BACKEND_CUDNN);
+        autotuner::Backend::CUDNN);
     return debug_options;
   }
   se::CudaComputeCapability get_cuda_cc() const {
-    se::StreamExecutor* executor = backend().default_stream_executor();
-    return executor->GetDeviceDescription().cuda_compute_capability();
+    return device_description().cuda_compute_capability();
   }
   bool IsAtLeastAmpereWithCuDnn9() {
-    se::StreamExecutor* executor = backend().default_stream_executor();
+    se::StreamExecutor* executor = stream_executor();
     return get_cuda_cc().IsAtLeastAmpere() &&
            GetDnnVersionInfoOrDefault(executor).major_version() >= 9;
   }
-  bool IsAtLeastCuDnnVersion(int major, int minor) {
-    se::StreamExecutor* executor = backend().default_stream_executor();
+  bool IsAtLeastCuDnnVersion(int major_version, int minor_version) {
+    se::StreamExecutor* executor = stream_executor();
     const se::dnn::VersionInfo version = GetDnnVersionInfoOrDefault(executor);
-    return (version.major_version() == major &&
-            version.minor_version() >= minor) ||
-           version.major_version() > major;
+    return (version.major_version() == major_version &&
+            version.minor_version() >= minor_version) ||
+           version.major_version() > major_version;
   }
   bool IsAtLeastCuDnn91() { return IsAtLeastCuDnnVersion(9, 1); }
 
@@ -116,17 +129,17 @@ class CuDnnFusionFileCheckTest : public CuDnnFusionTest {
 
   absl::StatusOr<bool> RunCuDnnFileCheck(absl::string_view hlo,
                                          absl::string_view pattern) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
-                        ParseAndReturnVerifiedModule(hlo));
+    ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+                     ParseAndReturnVerifiedModule(hlo));
     const std::string root_name(
         module->entry_computation()->root_instruction()->name());
     BinaryMap dnn_compiled_graphs;
-    CuDnnFusionCompiler cudnn_compiler(*backend().default_stream_executor(),
+    CuDnnFusionCompiler cudnn_compiler(*stream_executor()->AsDnn(),
                                        dnn_compiled_graphs);
     // Run filecheck even if CuDnnFusionCompiler failed.
     cudnn_compiler.Run(module.get()).IgnoreError();
     std::string dump;
-    TF_RETURN_IF_ERROR(tsl::ReadFileToString(
+    RETURN_IF_ERROR(tsl::ReadFileToString(
         tsl::Env::Default(),
         tsl::io::JoinPath(
             output_directory_,
@@ -220,12 +233,12 @@ ENTRY e {
     backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
   n = f32[32,64] fusion(f), kind=kLoop, calls=n, control-predecessors={f}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
   BinaryMap dnn_compiled_graphs;
-  CuDnnFusionCompiler cudnn_compiler(*backend().default_stream_executor(),
+  CuDnnFusionCompiler cudnn_compiler(*stream_executor()->AsDnn(),
                                      dnn_compiled_graphs);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, cudnn_compiler.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, cudnn_compiler.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Fusion(m::GetTupleElement(m::Fusion()))));
@@ -238,11 +251,6 @@ ENTRY e {
 }
 
 TEST_F(CuDnnFusionExecutionTest, CompilerSupportsFusionsWithWorkspace) {
-  if (get_cuda_cc().IsAtLeastBlackwell()) {
-    // TODO(b/445172709): Re-enable once fixed.
-    GTEST_SKIP();
-  }
-
   const std::string kHloText = R"(
 f {
   a = f32[32,96] parameter(0)
@@ -259,17 +267,17 @@ e {
     backend_config={"fusion_backend_config":{"kind":"__cudnn$fusion","cudnn_fusion_config":{"plan_id":"0"}}}
   g = f32[32,64] get-tuple-element(r), index=0
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
   BinaryMap dnn_compiled_graphs;
-  CuDnnFusionCompiler cudnn_compiler(*backend().default_stream_executor(),
+  CuDnnFusionCompiler cudnn_compiler(*stream_executor()->AsDnn(),
                                      dnn_compiled_graphs);
   EXPECT_THAT(cudnn_compiler.Run(module.get()),
               absl_testing::IsOkAndHolds(false));
   // Single dot is not supported by cuDNN, so Triton should be used.
   HloModuleConfig config = GetModuleConfigForTest();
   config.mutable_debug_options().add_xla_gpu_experimental_autotune_backends(
-      DebugOptions::AUTOTUNE_BACKEND_TRITON);
+      autotuner::Backend::TRITON);
   EXPECT_TRUE(RunAndCompareTwoModules(kHloText, R"(e {
     a = f32[32,96] parameter(0)
     b = f32[96,64] parameter(1)
@@ -285,8 +293,8 @@ TEST_F(CuDnnFusionExecutionTest,
   if (!IsAtLeastCuDnn91()) {
     GTEST_SKIP() << "This test case requests a workspace only with cuDNN 9.1+.";
   }
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 c1 {
   p0 = f32[32,96] parameter(0)
   p1 = f32[96,64] parameter(1)
@@ -311,9 +319,9 @@ ENTRY e {
   ROOT r = tuple(f0, f1)
 })"));
   BinaryMap dnn_compiled_graphs;
-  CuDnnFusionCompiler cudnn_compiler(*backend().default_stream_executor(),
+  CuDnnFusionCompiler cudnn_compiler(*stream_executor()->AsDnn(),
                                      dnn_compiled_graphs);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, cudnn_compiler.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, cudnn_compiler.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Tuple(m::GetTupleElement(m::Fusion()),
@@ -834,6 +842,10 @@ ENTRY e {
 }
 
 TEST_F(CuDnnFusionExecutionTest, DotF8ExecutesCorrectly) {
+  // TODO(b/505078018): Re-enable once fixed.
+  if (get_cuda_cc().IsAmpere()) {
+    GTEST_SKIP();
+  }
   EXPECT_TRUE(RunAndCompare(R"(
 
 fusion1 {
@@ -932,7 +944,7 @@ fusion {
   zeros = f32[2,9,9,32] broadcast(zero), dimensions={}
   input = f32[2,9,9,17] parameter(0)
   filter = f32[32,3,3,17] parameter(1)
-  conv = f32[2,9,9,32] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, feature_group_count=1
+  conv = f32[2,9,9,32] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, feature_group_count=1, convolution_kind=fprop
   ROOT relu = f32[2,9,9,32] maximum(zeros, conv)
 }
 
@@ -940,7 +952,7 @@ fusion {
 ENTRY Test {
   input = f32[2,9,9,17] parameter(0)
   filter = f32[32,3,3,17] parameter(1)
-  ROOT conv = f32[2,9,9,32] fusion(input, filter), kind=kCustom, calls=fusion, backend_config={"fusion_backend_config": {kind: "__cudnn$fusion", cudnn_fusion_config: {"kind":"CONV_FPROP"}}}
+  ROOT conv = f32[2,9,9,32] fusion(input, filter), kind=kCustom, calls=fusion, backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
 })",
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-5}));
 }
@@ -956,7 +968,7 @@ fusion {
   zeros = f32[32,3,3,17] broadcast(zero), dimensions={}
   input = f32[2,9,9,17] parameter(0)
   dout = f32[2,9,9,32] parameter(1)
-  conv = f32[32,3,3,17] convolution(input, dout), window={size=9x9 pad=1_1x1_1}, dim_labels=f01b_i01o->f01b, feature_group_count=1
+  conv = f32[32,3,3,17] convolution(input, dout), window={size=9x9 pad=1_1x1_1}, dim_labels=f01b_i01o->f01b, feature_group_count=1, convolution_kind=wgrad
   ROOT relu = f32[32,3,3,17] maximum(zeros, conv)
 }
 
@@ -964,7 +976,7 @@ fusion {
 ENTRY Test {
   input = f32[2,9,9,17] parameter(0)
   dout = f32[2,9,9,32] parameter(1)
-  ROOT conv = f32[32,3,3,17] fusion(input, dout), kind=kCustom, calls=fusion, backend_config={"fusion_backend_config": {kind: "__cudnn$fusion", cudnn_fusion_config: {"kind":"CONV_WGRAD"}}}
+  ROOT conv = f32[32,3,3,17] fusion(input, dout), kind=kCustom, calls=fusion, backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
 })",
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-5}));
 }
@@ -977,7 +989,7 @@ ENTRY main {
   dout = f32[2,9,9,32] parameter(0)
   filter = f32[32,3,3,17] parameter(1)
   reverse = f32[32,3,3,17] reverse(filter), dimensions={1,2}
-  conv = f32[2,9,9,17] convolution(dout, reverse), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_i01o->b01f, feature_group_count=1
+  conv = f32[2,9,9,17] convolution(dout, reverse), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_i01o->b01f, feature_group_count=1, convolution_kind=dgrad
   ROOT relu = f32[2,9,9,17] maximum(zeros, conv)
 })";
 
@@ -987,7 +999,7 @@ fusion {
   zeros = f32[2,9,9,17] broadcast(zero), dimensions={}
   dout = f32[2,9,9,32] parameter(0)
   filter = f32[32,3,3,17] parameter(1)
-  conv = f32[2,9,9,17] convolution(dout, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_i01o->b01f, feature_group_count=1
+  conv = f32[2,9,9,17] convolution(dout, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_i01o->b01f, feature_group_count=1, convolution_kind=dgrad
   ROOT relu = f32[2,9,9,17] maximum(zeros, conv)
 }
 
@@ -995,7 +1007,7 @@ fusion {
 ENTRY Test {
   dout = f32[2,9,9,32] parameter(0)
   filter = f32[32,3,3,17] parameter(1)
-  ROOT conv = f32[2,9,9,17] fusion(dout, filter), kind=kCustom, calls=fusion, backend_config={"fusion_backend_config": {kind: "__cudnn$fusion", cudnn_fusion_config: {"kind":"CONV_DGRAD"}}}
+  ROOT conv = f32[2,9,9,17] fusion(dout, filter), kind=kCustom, calls=fusion, backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
 })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(kHlo, kHloReference,
@@ -1214,36 +1226,50 @@ class CuDnnFusionRewriteTest : public CuDnnFusionTest {
   }
 };
 
-TEST_F(CuDnnFusionRewriteTest,
-       DoNotExecuteGemmFusionWithCuDnnWhenNotSupported) {
-  // Dimension size 61 does not satisfy the requirement on alignment
-  // (multiple of 2).
-  const std::string hlo = R"(
-ENTRY e {
+TEST_F(CuDnnFusionRewriteTest, OddDimensionsAreSupported) {
+  if (!IsAtLeastCuDnnVersion(9, 15)) {
+    GTEST_SKIP() << "Requires cuDNN 9.15+.";
+  }
+  // Other backends are disabled, so cuDNN must be picked.
+  MatchOptimizedHlo(R"(
+e {
   p0 = f16[20,40,61] parameter(0)
   p0n = f16[20,40,61] negate(p0)
   p1 = f16[20,80,61] parameter(1)
-  ROOT r = f16[20,40,80] dot(p0n, p1),
+  r = f16[20,40,80] dot(p0n, p1),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2}, rhs_contracting_dims={2}
-})";
+})",
+                    R"(
+; CHECK: __cudnn$fusion
+)");
+}
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
-  // Triton backend is disabled meaning that the compilation should fail.
-  auto status = CompileToExecutable(std::move(module)).status();
-
+TEST_F(CuDnnFusionRewriteTest,
+       DoNotExecuteGemmFusionWithCuDnnWhenNotSupported) {
+  // f64 is not a supported data type in cuDNN GEMM fusions yet.
+  // With other backends disabled, compilation must fail.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+e {
+  p0 = f64[20,40,64] parameter(0)
+  p0n = f64[20,40,64] negate(p0)
+  p1 = f64[20,80,64] parameter(1)
+  r = f64[20,40,80] dot(p0n, p1),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={2}
+})"));
+  auto status =
+      CreateExecutable(std::move(module), /*run_hlo_passes=*/true).status();
   EXPECT_FALSE(status.ok());
-  EXPECT_THAT(
-      status.ToString(),
-      ::testing::HasSubstr("Autotuner could not find any supported configs"));
+  EXPECT_THAT(status.ToString(), ::testing::HasSubstr("No supported configs"));
 }
 
 TEST_F(CuDnnFusionRewriteTest, AutotuningPicksCuDnnForS8BF16OnHopper) {
   // The test case relies on measurements by the autotuner and current
   // performance comparison of the backends. May need to be updated if
   // the situation changes.
-  if (get_cuda_cc() != se::CudaComputeCapability::Hopper()) {
+  if (get_cuda_cc() != se::CudaComputeCapability::H100Accelerated()) {
     GTEST_SKIP() << "The test is for Hopper.";
   }
   MatchOptimizedHlo(R"(
@@ -1251,7 +1277,7 @@ e {
   p0 = bf16[720,720,720] parameter(0)
   p1 = s8[720,720,720] parameter(1)
   c = bf16[720,720,720] convert(p1)
-  ROOT d = bf16[720,720,720] dot(p0, c),
+  d = bf16[720,720,720] dot(p0, c),
     lhs_batch_dims={0}, lhs_contracting_dims={2},
     rhs_batch_dims={0}, rhs_contracting_dims={1}
 })",
@@ -1332,14 +1358,14 @@ TEST_F(CuDnnFusionFileCheckTest, ConvFpropGraphConvertedCorrectly) {
 fusion {
   input = f32[2,9,9,17] parameter(0)
   filter = f32[32,3,3,17] parameter(1)
-  ROOT conv = f32[2,9,9,32] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, feature_group_count=1
+  ROOT conv = f32[2,9,9,32] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, feature_group_count=1, convolution_kind=fprop
 }
 
 
 ENTRY Test {
   input = f32[2,9,9,17] parameter(0)
   filter = f32[32,3,3,17] parameter(1)
-  ROOT conv = f32[2,9,9,32] fusion(input, filter), kind=kCustom, calls=fusion, backend_config={"fusion_backend_config": {kind: "__cudnn$fusion", cudnn_fusion_config: {"kind":"CONV_FPROP"}}}
+  ROOT conv = f32[2,9,9,32] fusion(input, filter), kind=kCustom, calls=fusion, backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
 })";
 
   EXPECT_TRUE(*RunCuDnnFileCheck(kHloText, R"(
@@ -1385,5 +1411,4 @@ CHECK: }
 )"));
 }
 }  // namespace
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

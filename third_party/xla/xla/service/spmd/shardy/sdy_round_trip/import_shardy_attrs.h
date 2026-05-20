@@ -32,7 +32,8 @@ namespace sdy {
 //   `kShardingRuleAttr`
 // - Replaces `kFuncResultShardingTargetName` custom-calls with the
 //   corresponding func result sharding.
-std::unique_ptr<mlir::Pass> createSdyRoundTripImportShardyAttrsPass();
+std::unique_ptr<mlir::Pass> createSdyRoundTripImportShardyAttrsPass(
+    bool enableHloShardingV3 = false);
 
 // Registers the xla-sdy-round-trip-import-shardy-attrs pass.
 void registerSdyRoundTripImportShardyAttrsPass();

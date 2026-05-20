@@ -35,8 +35,11 @@ cc_library(
     hdrs = ["lowering_utils.h"],
     deps = [
         "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/strings:str_format",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMCommonConversion",
         "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:MathDialect",
     ],
 )
 
@@ -169,6 +172,7 @@ cc_library(
         "expand_float_ops.cc",
         "expand_integer_power.cc",
         "flatten_tensors.cc",
+        "lower_pdl_ops.cc",
         "lower_tensors.cc",
         "lower_xla_intrinsic_lib.cc",
         "lower_xla_to_scf.cc",
@@ -202,7 +206,7 @@ cc_library(
         "//xla/codegen/intrinsic:tanh",
         "//xla/codegen/intrinsic:type",
         "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/analysis:symbolic_expr",
+        "//xla/hlo/analysis:symbolic_map",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:map_mhlo_to_scalar_op",
         "//xla/service/gpu:ir_emission_utils",
@@ -273,7 +277,8 @@ cc_library(
         ":passes_inc_gen",
         "//xla/codegen/emitters/ir:xla",
         "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/analysis:symbolic_expr",
+        "//xla/hlo/analysis:symbolic_map",
+        "//xla/hlo/analysis:symbolic_map_converter",
         "@com_google_absl//absl/base:core_headers",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",

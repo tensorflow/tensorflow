@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow/core/platform:distribute.bzl", "distribute_py_strict_test")
 
 package(
@@ -12,9 +12,10 @@ exports_files(
     visibility = ["//tensorflow/python:__pkg__"],
 )
 
-py_strict_library(
+py_library(
     name = "parallel_device",
     srcs = ["parallel_device.py"],
+    strict_deps = True,
     visibility = [
         "//tensorflow:internal",
         "//third_party/py/tensorflow_numerics/extensions:__pkg__",

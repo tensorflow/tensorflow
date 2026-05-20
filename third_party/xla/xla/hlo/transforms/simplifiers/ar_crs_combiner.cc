@@ -196,12 +196,18 @@ std::optional<ArCrsCombiner::ArCrsPair> ArCrsCombiner::MatchesArCrsPattern(
   // belongs to its own group, since the later cross-replica all-reduce combines
   // along the replica dimension.
   if (instruction->IsCrossModuleAllReduce() &&
+      // TODO: b/501070020 - Support async all-reduce.
+      instruction->opcode() != HloOpcode::kAllReduceStart &&
+      instruction->opcode() != HloOpcode::kAllReduceDone &&
       HasCombinableReplicaGroup(instruction, num_spatial_partitions_) &&
       computation_is_addition(instruction->called_computations()[0]) &&
       instruction->user_count() == 1) {
     auto next = instruction->users()[0];
     int64_t distance = 1;
-    while (!next->IsCrossReplicaAllReduce()) {
+    // TODO: b/501070020 - Support async all-reduce.
+    while (!next->IsCrossReplicaAllReduce() &&
+           next->opcode() != HloOpcode::kAllReduceStart &&
+           next->opcode() != HloOpcode::kAllReduceDone) {
       if (can_ar_move_past_instruction(next)) {
         next = next->users()[0];
       } else {

@@ -59,7 +59,7 @@ absl::Status ReadProtoFile(Env* env, const std::string& fname, T* proto,
       return absl::Status();
     }
   }
-  return errors::InvalidArgument("Cannot parse proto file.");
+  return absl::InvalidArgumentError("Cannot parse proto file.");
 }
 
 void PrintHelp();

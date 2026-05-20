@@ -49,6 +49,7 @@ absl::StatusOr<xla::ifrt::ArrayRef> CopyTestPatternToDevice(
       xla::ifrt::Shape({static_cast<int64_t>(pattern.size())}), std::nullopt,
       xla::ifrt::SingleDeviceSharding::Create(dest_device,
                                               xla::ifrt::MemoryKind()),
+      /*layout=*/nullptr,
       xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall, [] {});
 }
 

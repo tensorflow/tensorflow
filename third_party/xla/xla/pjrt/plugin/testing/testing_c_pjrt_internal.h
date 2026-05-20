@@ -20,9 +20,12 @@ limitations under the License.
 
 namespace testing {
 
+// Installs an extension into GetTestingPjrtApi().
+void SetTestingPjRtExtension(PJRT_Extension_Base* extension_base);
+
 // Basic fake C API PJRT_Api for testing extensions.
 // Does not pass ownership of returned PJRT_Api* to caller.
-const PJRT_Api* GetTestingPjrtApi(PJRT_Extension_Base* extension_base);
+const PJRT_Api* GetTestingPjrtApi();
 
 }  // namespace testing
 

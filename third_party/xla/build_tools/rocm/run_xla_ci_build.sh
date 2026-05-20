@@ -19,7 +19,7 @@ set -e
 set -x
 
 SCRIPT_DIR=$(realpath $(dirname $0))
-TAG_FILTERS=$($SCRIPT_DIR/rocm_tag_filters.sh),-skip_rocprofiler_sdk,-no_oss,-oss_excluded,-oss_serial
+TAG_FILTERS=$($SCRIPT_DIR/rocm_tag_filters.sh)
 
 mkdir -p /tf/pkg
 
@@ -37,7 +37,7 @@ bazel --bazelrc="$SCRIPT_DIR/rocm_xla_ci.bazelrc" test \
     --build_tag_filters=$TAG_FILTERS \
     --test_tag_filters=$TAG_FILTERS \
     --profile=/tf/pkg/profile.json.gz \
-    --keep_going \
+    --nokeep_going \
     --test_env=TF_TESTS_PER_GPU=1 \
     --action_env=XLA_FLAGS="--xla_gpu_enable_llvm_module_compilation_parallelism=true --xla_gpu_force_compilation_parallelism=16" \
     --test_output=errors \

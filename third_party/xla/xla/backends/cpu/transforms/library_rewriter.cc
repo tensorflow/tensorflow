@@ -79,8 +79,13 @@ absl::StatusOr<HloFusionInstruction*> CreateLibraryFusion(
   TF_RETURN_IF_ERROR(fusion->set_backend_config(backend_config));
 
   // Replace the instruction.
-  TF_RETURN_IF_ERROR(
-      computation->ReplaceInstructionWithDifferentShape(instr, fusion));
+  TF_ASSIGN_OR_RETURN(bool changed,
+                      computation->ReplaceInstructionWithDifferentShape(
+                          instr, fusion, /*preserve_sharding=*/false,
+                          /*relay_control_dependency=*/true));
+  if (!changed) {
+    return absl::InternalError("Failed to replace instruction with fusion");
+  }
 
   return fusion;
 }
@@ -133,8 +138,13 @@ absl::StatusOr<HloInstruction*> FuseConsumerInstruction(
     *fusion->mutable_shape() = new_root->shape();
   }
 
-  TF_RETURN_IF_ERROR(
-      fusion->parent()->ReplaceInstructionWithDifferentShape(to_fuse, fusion));
+  TF_ASSIGN_OR_RETURN(bool changed,
+                      fusion->parent()->ReplaceInstructionWithDifferentShape(
+                          to_fuse, fusion, /*preserve_sharding=*/false,
+                          /*relay_control_dependency=*/true));
+  if (!changed) {
+    return absl::InternalError("Failed to fuse consumer instruction");
+  }
   return new_root;
 }
 
@@ -300,7 +310,10 @@ absl::StatusOr<bool> LibraryRewriter::ProcessComputation(
   for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
     if (fuse_dot_ && (*it)->opcode() == HloOpcode::kDot) {
       fusion_starters.push_back(*it);
-    } else if (fuse_reduce_ && (*it)->opcode() == HloOpcode::kReduce) {
+    } else if (fuse_conv_ && (*it)->opcode() == HloOpcode::kConvolution) {
+      fusion_starters.push_back(*it);
+    } else if (fuse_reduce_ && ((*it)->opcode() == HloOpcode::kReduce ||
+                                (*it)->opcode() == HloOpcode::kReduceWindow)) {
       fusion_starters.push_back(*it);
     } else if (fuse_eltwise_ && IsElementwiseAndNotConstant(*it)) {
       eltwise_ops.push_back(*it);
@@ -333,7 +346,9 @@ absl::StatusOr<bool> LibraryRewriter::ProcessComputation(
         fusion->fused_expression_root(), lib->LibraryOpOutputType(centroid)));
 
     // Fuse as many neighbors as as we can.
-    TF_RETURN_IF_ERROR(FuseNeighbors(fusion, lib));
+    if (lib->ShouldGrowFusion(centroid)) {
+      TF_RETURN_IF_ERROR(FuseNeighbors(fusion, lib));
+    }
   }
   return !fused_.empty();
 }

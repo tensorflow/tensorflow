@@ -85,13 +85,14 @@ class DiagOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     OP_REQUIRES(ctx, ctx->num_inputs() >= 1,
-                errors::InvalidArgument("Diag op must have at an input"));
+                absl::InvalidArgumentError("Diag op must have at an input"));
     const TensorShape input_shape = ctx->InputShape(0);
 
     auto dims = input_shape.dim_sizes();
-    OP_REQUIRES(ctx, !dims.empty(),
-                errors::InvalidArgument("Expected 1 <= dims, got shape ",
-                                        input_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, !dims.empty(),
+        absl::InvalidArgumentError(absl::StrCat(
+            "Expected 1 <= dims, got shape ", input_shape.DebugString())));
 
     xla::XlaOp input = ctx->Input(0);
 

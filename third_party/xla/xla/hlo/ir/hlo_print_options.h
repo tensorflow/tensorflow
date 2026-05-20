@@ -80,10 +80,12 @@ class HloPrintOptions {
         canonicalize_computations_(false),
         print_extra_attributes_(true),
         syntax_sugar_async_ops_(true),
+        print_frontend_attributes_(true),
         print_name_after_closing_brace_(false),
         print_full_replica_group_list_(false),
         print_parameter_number_(true),
-        print_channel_id_(true) {}
+        print_channel_id_(true),
+        print_inline_stack_frames_(false) {}
   // Static reference to a default construction HloPrintOptions, to avoid
   // constructing a new one each time default is needed.
   static const HloPrintOptions& Default() {
@@ -324,6 +326,11 @@ class HloPrintOptions {
     return *this;
   }
 
+  HloPrintOptions& set_print_frontend_attributes(bool value) {
+    print_frontend_attributes_ = value;
+    return *this;
+  }
+
   // If true, only a part of operands will be printed out (note that in this
   // case the text will not be parsable).
   HloPrintOptions& set_compact_operands(bool value) {
@@ -382,6 +389,12 @@ class HloPrintOptions {
     return *this;
   }
 
+  // If true, the HLO dumper will print the stack frame inline.
+  HloPrintOptions& set_print_inline_stack_frames(bool value) {
+    print_inline_stack_frames_ = value;
+    return *this;
+  }
+
   bool print_large_constants() const { return print_large_constants_; }
   bool print_only_essential_constants() const {
     return print_only_essential_constants_;
@@ -418,6 +431,7 @@ class HloPrintOptions {
   }
   bool print_extra_attributes() const { return print_extra_attributes_; }
   bool syntax_sugar_async_ops() const { return syntax_sugar_async_ops_; }
+  bool print_frontend_attributes() const { return print_frontend_attributes_; }
   bool canonicalize_instruction_names() const {
     return canonicalize_instruction_names_;
   }
@@ -432,6 +446,7 @@ class HloPrintOptions {
   }
   bool print_parameter_number() const { return print_parameter_number_; }
   bool print_channel_id() const { return print_channel_id_; }
+  bool print_inline_stack_frames() const { return print_inline_stack_frames_; }
 
  private:
   // The interval between the /*index=*/ annotated operands. 0 means never print
@@ -462,10 +477,12 @@ class HloPrintOptions {
   bool canonicalize_computations_;
   bool print_extra_attributes_;
   bool syntax_sugar_async_ops_;
+  bool print_frontend_attributes_;
   bool print_name_after_closing_brace_;
   bool print_full_replica_group_list_;
   bool print_parameter_number_;
   bool print_channel_id_;
+  bool print_inline_stack_frames_;
 };
 
 // For canonical string output, we need to have a canonical way to rename

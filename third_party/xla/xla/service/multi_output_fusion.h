@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -41,7 +42,8 @@ namespace xla {
 //      fuse to.
 //  (2) candidates_index_: maps instruction to id.
 //  (3) reachability_: reachability map in this computation.
-//  (4) all_fusion_candidates_: the vector of candidate instructions.
+//  (4) all_fusion_candidates_: the set of candidate instructions to be
+//      considered for fusion.
 //  (5) worklist_: a priority queue that contains pairs of instructions to be
 //      fused and their fusion profit scores.
 //
@@ -235,10 +237,9 @@ class MultiOutputFusion : public HloModulePass {
   // The reachability map of current computation.
   std::unique_ptr<HloReachabilityMap> reachability_;
 
-  // This stores all the candidate instructions and their indices within
-  // reachability_ in current computation.
-  std::vector<std::pair<HloInstruction*, HloReachabilityMap::Index>>
-      all_fusion_candidates_;
+  // The set of all candidate instructions considered for multi-output fusion.
+  // Used for fast O(1) lookups during reachability updates.
+  absl::flat_hash_set<const HloInstruction*> all_fusion_candidates_;
 
   // Computation for the pass.
   HloComputation* computation_ = nullptr;

@@ -31,17 +31,18 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/ffi.h"
+#include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
-#include "xla/backends/gpu/runtime/collective_multimem_registry.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.pb.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
-#include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/scratch_memory_requests.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_proto_deserialization.h"
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/ffi.h"
-#include "xla/ffi/ffi_api.h"
+#include "xla/ffi/ffi_registry.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -58,6 +59,7 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
+#include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
@@ -80,10 +82,12 @@ class DummyThunk : public Thunk {
   absl::Status ExecuteOnStream(const ExecuteParams& params) override {
     return absl::OkStatus();
   }
+  absl::StatusOr<ThunkProto> ToProto() const override {
+    return absl::UnimplementedError("DummyThunk::ToProto is not implemented");
+  }
 };
 
 using DynamicSliceThunkTest = HloHardwareIndependentTestBase;
-using ::testing::NotNull;
 using ::testing::SizeIs;
 using ::tsl::proto_testing::EqualsProto;
 
@@ -118,10 +122,15 @@ void CheckProtoRoundTrip(const DynamicSliceThunk& thunk,
       [](const ThunkProto& thunk_proto,
          absl::Span<const BufferAllocation> fake_allocations_span)
       -> absl::StatusOr<std::unique_ptr<Thunk>> {
-    return DeserializeThunkProto(thunk_proto, fake_allocations_span,
-                                 /*hlo_module*/ nullptr,
-                                 /*platform_name=*/"TEST_PLATFORM",
-                                 /*gpu_compute_capability=*/{});
+    ThunkSequenceProto thunk_sequence_proto;
+    *thunk_sequence_proto.add_thunks() = thunk_proto;
+    TF_ASSIGN_OR_RETURN(ThunkSequence sequence,
+                        DeserializeThunkSequenceProto(
+                            thunk_sequence_proto, fake_allocations_span,
+                            /*hlo_module=*/nullptr,
+                            /*platform_name=*/"TEST_PLATFORM",
+                            /*gpu_compute_capability=*/{}));
+    return std::move(sequence.front());
   };
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -219,6 +228,7 @@ absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> CreateSlicedGemmThunk(
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1}), 1.0, 0.0, 0.0,
           PrecisionConfig::ALG_UNSET, std::nullopt,
           se::blas::kDefaultComputePrecision, false, false,
+          /*scale_mode=*/se::gpu::ScaleMode::kNone,
           executor->GetDeviceDescription().gpu_compute_capability()));
   // Creating embedded GEMM thunk.
   ThunkSequence seq;
@@ -308,8 +318,9 @@ TEST_F(DynamicSliceThunkTest, SlicedGemm) {
   BufferAllocations allocations(
       {lhs, rhs, out, workspace, lhs_offset_0, lhs_offset_1}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
   TF_ASSERT_OK(thunk->Initialize(
@@ -387,6 +398,7 @@ CreateMultipleSlicedOperandsGemmThunk(
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1}), 1.0, 0.0, 0.0,
           PrecisionConfig::ALG_UNSET, std::nullopt,
           se::blas::kDefaultComputePrecision, false, false,
+          /*scale_mode=*/se::gpu::ScaleMode::kNone,
           executor->GetDeviceDescription().gpu_compute_capability()));
 
   // Creating embedded GEMM thunk.
@@ -495,8 +507,9 @@ TEST_F(DynamicSliceThunkTest, MultipleSlicedOperandsGemm) {
                                  lhs_offset_1, rhs_offset_0, rhs_offset_1},
                                 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
   TF_ASSERT_OK(thunk->Initialize(
@@ -643,8 +656,9 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpy) {
   BufferAllocations allocations(
       {src, dst, offset_0, offset_1, offset_2, offset_3}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
   TF_ASSERT_OK(thunk.Initialize(
@@ -835,8 +849,9 @@ TEST_F(DynamicSliceThunkTest, SlicedOutputMemcpy) {
        dst_offset_0, dst_offset_1, dst_offset_2, dst_offset_3},
       0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
   TF_ASSERT_OK(thunk.Initialize(
@@ -927,6 +942,7 @@ CreateSlicedGemmArbitraryArgumentOrderThunk(
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1}), 1.0, 0.0, 0.0,
           PrecisionConfig::ALG_UNSET, std::nullopt,
           se::blas::kDefaultComputePrecision, false, false,
+          /*scale_mode=*/se::gpu::ScaleMode::kNone,
           executor->GetDeviceDescription().gpu_compute_capability()));
 
   // Creating embedded GEMM thunk.
@@ -1019,8 +1035,9 @@ TEST_F(DynamicSliceThunkTest, SlicedGemmArbitraryArgumentOrder) {
   BufferAllocations allocations(
       {workspace, lhs, out, rhs, lhs_offset_0, lhs_offset_1}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
   TF_ASSERT_OK(thunk->Initialize(
@@ -1100,6 +1117,7 @@ CreateSlicedGemmArbitraryNumberOfArgumentsThunk(
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1}), 1.0, 0.0, 0.0,
           PrecisionConfig::ALG_UNSET, std::nullopt,
           se::blas::kDefaultComputePrecision, false, false,
+          /*scale_mode=*/se::gpu::ScaleMode::kNone,
           executor->GetDeviceDescription().gpu_compute_capability()));
 
   // Creating embedded GEMM thunk.
@@ -1193,8 +1211,9 @@ TEST_F(DynamicSliceThunkTest, SlicedGemmArbitraryNumberOfArguments) {
        lhs_offset_0, lhs_offset_1, /*garbage, to be ignored*/ rhs, lhs},
       0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
   TF_ASSERT_OK(thunk->Initialize(
@@ -1264,6 +1283,7 @@ CreateSlicedTupledOperandGemmThunk(
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1}), 1.0, 0.0, 0.0,
           PrecisionConfig::ALG_UNSET, std::nullopt,
           se::blas::kDefaultComputePrecision, false, false,
+          /*scale_mode=*/se::gpu::ScaleMode::kNone,
           executor->GetDeviceDescription().gpu_compute_capability()));
 
   // Creating embedded GEMM thunk.
@@ -1359,8 +1379,9 @@ TEST_F(DynamicSliceThunkTest, SlicedTupledOperandGemm) {
       {lhs_whole_buffer, rhs, out, workspace, lhs_offset_0, lhs_offset_1}, 0,
       &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
   TF_ASSERT_OK(thunk->Initialize(
@@ -1546,8 +1567,9 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpyOOB) {
        dst_offset_0, dst_offset_1, dst_offset_2, dst_offset_3},
       0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
   TF_ASSERT_OK(thunk.Initialize(
@@ -1641,6 +1663,7 @@ CreateSlicedOperandsSameBufferGemmThunk(
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1}), 1.0, 0.0, 0.0,
           PrecisionConfig::ALG_UNSET, std::nullopt,
           se::blas::kDefaultComputePrecision, false, false,
+          /*scale_mode=*/se::gpu::ScaleMode::kNone,
           executor->GetDeviceDescription().gpu_compute_capability()));
 
   // Creating embedded GEMM thunk.
@@ -1735,8 +1758,9 @@ TEST_F(DynamicSliceThunkTest, SlicedOperandsSameBufferGemm) {
   BufferAllocations allocations({buffer, workspace, lhs_offset_0, lhs_offset_1},
                                 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
   TF_ASSERT_OK(thunk->Initialize(
@@ -1847,6 +1871,7 @@ CreateHostInductionVariableAndOffsetEvaluationThunk(
           /*algorithm=*/std::nullopt,
           /*compute_precision=*/se::blas::kDefaultComputePrecision,
           /*grad_x=*/false, /*grad_y=*/false,
+          /*scale_mode=*/se::gpu::ScaleMode::kNone,
           /*gpu_version=*/
           executor->GetDeviceDescription().gpu_compute_capability()));
 
@@ -1960,17 +1985,17 @@ TEST_F(DynamicSliceThunkTest,
 
   CollectiveCliqueRequests clique_requests;
   CollectiveMemoryRequests memory_requests(allocations);
-  CollectiveMultimemRegistry multimem_registry(
-      executor, collective_params.global_device_id);
+  ScratchMemoryRequests scratch_memory_requests;
 
-  Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
-                                      &memory_requests,   &multimem_registry,
-                                      executor,           &allocations};
+  Thunk::PrepareParams prepare_params{
+      &collective_params,       &clique_requests, &memory_requests,
+      &scratch_memory_requests, executor,         &allocations};
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       run_options, /*buffer_allocations=*/allocations, stream.get(),
       /*command_buffer_trace_stream=*/stream.get(),
-      /*collective_params=*/nullptr, /*collective_cliques=*/nullptr);
+      /*collective_params=*/nullptr, /*collective_cliques=*/nullptr,
+      /*collective_memory=*/nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
   TF_ASSERT_OK(thunk->Initialize(
@@ -2116,7 +2141,7 @@ TEST_F(DynamicSliceThunkTest,
   EXPECT_EQ(proto.offsets().offsets(0).hlo_module_offset_idx(), 0);
 }
 
-TEST_F(DynamicSliceThunkTest, TransformAllNestedThunks) {
+TEST_F(DynamicSliceThunkTest, TransformNested) {
   auto seq = std::make_unique<ThunkSequence>();
   seq->emplace_back(
       std::make_unique<DummyThunk>(Thunk::Kind::kGemm, Thunk::ThunkInfo()));
@@ -2129,14 +2154,13 @@ TEST_F(DynamicSliceThunkTest, TransformAllNestedThunks) {
                           /*sliced_shapes=*/{},
                           /*offset_byte_sizes=*/{});
 
-  TF_EXPECT_OK(thunk.TransformAllNestedThunks([](auto) {
+  TF_EXPECT_OK(thunk.TransformNested([](auto) {
     return std::make_unique<DummyThunk>(Thunk::Kind::kCustomCall,
                                         Thunk::ThunkInfo());
   }));
 
-  EXPECT_THAT(thunk.get_embedded_thunk(), NotNull());
-  EXPECT_THAT(thunk.get_embedded_thunk()->thunks(), SizeIs(1));
-  EXPECT_THAT(thunk.get_embedded_thunk()->thunks()[0]->kind(),
+  EXPECT_THAT(thunk.get_embedded_executor().thunks(), SizeIs(1));
+  EXPECT_THAT(thunk.get_embedded_executor().thunks()[0]->kind(),
               Thunk::Kind::kCustomCall);
 }
 

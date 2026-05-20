@@ -44,8 +44,9 @@ class XlaBinaryOp : public XlaOpKernel {
   explicit XlaBinaryOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     const DataType lhs = BaseType(input_type(0));
     const DataType rhs = BaseType(input_type(1));
-    OP_REQUIRES(ctx, lhs == rhs,
-                errors::InvalidArgument("Input types of binary op must match"));
+    OP_REQUIRES(
+        ctx, lhs == rhs,
+        absl::InvalidArgumentError("Input types of binary op must match"));
   }
   ~XlaBinaryOp() override = default;
 

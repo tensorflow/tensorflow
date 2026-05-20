@@ -37,7 +37,7 @@ absl::Status FuncToGraph(GraphFuncOp func) {
   MLIRContext *context = func->getContext();
   auto version = func->getAttrOfType<VersionAttr>("tfg.lifted_graph_version");
   if (!version) {
-    return tensorflow::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "lifted graph func is missing version attribute");
   }
 
@@ -75,27 +75,27 @@ absl::Status FuncToGraph(GraphFuncOp func) {
     auto lifted_value_attr =
         func.getArgAttrOfType<ArrayAttr>(it.index(), lifted_value_attr_name);
     if (!lifted_value_attr) {
-      return tensorflow::errors::InvalidArgument(
-          "arg #", it.index(),
-          " is missing tfg.lifted_value_attr, can't be lowered");
+      return absl::InvalidArgumentError(
+          absl::StrCat("arg #", it.index(),
+                       " is missing tfg.lifted_value_attr, can't be lowered"));
     }
 
     StringRef value_defining_op_name =
         mlir::cast<StringAttr>(lifted_value_attr[0]).getValue();
     Operation *op = referred_ops[value_defining_op_name];
     if (!op) {
-      return tensorflow::errors::InvalidArgument(
-          "lifted arg can't find the associated operation: ",
-          value_defining_op_name.data());
+      return absl::InvalidArgumentError(
+          absl::StrCat("lifted arg can't find the associated operation: ",
+                       value_defining_op_name.data()));
     }
 
     uint64_t result_index =
         mlir::cast<IntegerAttr>(lifted_value_attr[1]).getValue().getZExtValue();
     if (result_index >= op->getNumResults()) {
-      return tensorflow::errors::InvalidArgument(
-          "result index out of bound: seeing index ", result_index,
-          " from lifted_value_attr of arg #", it.index(), ", but op only has ",
-          op->getNumResults(), " results");
+      return absl::InvalidArgumentError(
+          absl::StrCat("result index out of bound: seeing index ", result_index,
+                       " from lifted_value_attr of arg #", it.index(),
+                       ", but op only has ", op->getNumResults(), " results"));
     }
 
     it.value().replaceAllUsesWith(op->getResult(result_index));

@@ -39,10 +39,10 @@ limitations under the License.
 namespace xla::cpu {
 
 static bool InstructionIsUnavailable(const HloInstruction* instr) {
-  // The following instructions are not currently supported by the call thunk
-  // emitter due to how the legacy & thunk emitters interact; specifically,
-  // how the run options are passed.
   switch (instr->opcode()) {
+    // The following instructions are not currently supported by the call thunk
+    // emitter due to how the legacy & thunk emitters interact; specifically,
+    // how the run options are passed.
     case HloOpcode::kCustomCall:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
@@ -52,6 +52,11 @@ static bool InstructionIsUnavailable(const HloInstruction* instr) {
     case HloOpcode::kPartitionId:
     case HloOpcode::kReplicaId:
       return true;
+
+    // Legacy call emitter does not support custom fusions.
+    case HloOpcode::kFusion:
+      return instr->fusion_kind() == HloInstruction::FusionKind::kCustom;
+
     default:
       return IsCollective(instr);
   }

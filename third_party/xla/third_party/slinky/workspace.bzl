@@ -5,7 +5,7 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 def repo():
     tf_http_archive(
         name = "slinky",
-        sha256 = "4c0b19e58706c44336c573a0ba9fdf0e412b23670cac6a3df95525a0909a0360",
-        strip_prefix = "slinky-2afe84b39f0d097ecd70fc44a9e0e39782cee6a3",
-        urls = tf_mirror_urls("https://github.com/dsharlet/slinky/archive/2afe84b39f0d097ecd70fc44a9e0e39782cee6a3.zip"),
+        sha256 = "cd84dd2ff1956480fac6e50f477441d74e0ad08e34e863ffad2a1d3adf043dc2",
+        strip_prefix = "slinky-eb004cb32169f87a4d95ee73af4eb9cf3df42868",
+        urls = tf_mirror_urls("https://github.com/dsharlet/slinky/archive/eb004cb32169f87a4d95ee73af4eb9cf3df42868.zip"),
     )

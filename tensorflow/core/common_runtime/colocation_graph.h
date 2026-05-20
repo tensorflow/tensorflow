@@ -45,7 +45,7 @@ class Member {
     return requested_device_name_;
   }
 
-  absl::Status SetAssignedDeviceName(const string& device_name);
+  absl::Status SetAssignedDeviceName(const std::string& device_name);
   absl::Status SetResourceDeviceName(const Node& node);
   absl::Status SetRequestedDeviceName(const Node& node);
 
@@ -111,7 +111,7 @@ class Member {
   // cleared if resource device has them set.
   DeviceNameUtils::ParsedName GetPreferredSoftDeviceName() const;
 
-  string DebugString() const;
+  std::string DebugString() const;
 
   bool has_assigned_device_name() const { return assigned_device_name_.has_id; }
 
@@ -256,9 +256,9 @@ class ColocationGraph {
                                  const std::vector<Device*>** possible_devices);
 
   // Returns debugging info for the node referred to by 'node_root'.
-  string DebugInfo(const int node_root) const;
+  std::string DebugInfo(const int node_root) const;
 
-  string DebugString() const;
+  std::string DebugString() const;
 
   // Returns a list of devices having type in supported_device_types.  The
   // returned list is sorted by preferred type (higher numeric type is
@@ -358,7 +358,7 @@ class ColocationGraph {
   absl::Status InitializeMembers();
 
   absl::Status InitializeMemberWithAssignedDevice(
-      const string& assigned_device_name, const string& node_type,
+      const std::string& assigned_device_name, const std::string& node_type,
       Member* member);
 
   absl::Status InitializeMember(const Node& node, Member* member);

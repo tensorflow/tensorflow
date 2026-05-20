@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tf2xla/internal/graph_to_tf_executor_util.h"
 
+#include <cstdint>
 #include <initializer_list>
 #include <string>
 #include <vector>
@@ -54,7 +55,7 @@ namespace {
 REGISTER_OP("OneRefOutput").Output("y: Ref(float)");
 
 FunctionDef XTimesTwo() {
-  const Tensor kTwo = test::AsScalar<int64>(2);
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
   return FunctionDefHelper::Define(
       // Name
       "XTimesTwo",
@@ -73,7 +74,7 @@ FunctionDef XTimesTwo() {
 }
 
 FunctionDef XTimesTwoFloat() {
-  const Tensor kTwo = test::AsScalar<int64>(2);
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
   return FunctionDefHelper::Define(
       // Name
       "XTimesTwoFloat",
@@ -95,7 +96,7 @@ FunctionDef XTimesTwoFloat() {
 }
 
 FunctionDef XTimesTwoFloatRef() {
-  const Tensor kTwo = test::AsScalar<int64>(2);
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
   return FunctionDefHelper::Define(
       // Name
       "XTimesTwoFloatRef",
@@ -188,7 +189,7 @@ TEST(RefVarTest, RefVariablesReturnsTrue) {
 
   // Output value = ops::Placeholder(root.WithOpName("value"), DT_FLOAT);
   tensorflow::set_tf2_execution(true);
-  const std::vector<int32> shape_array{2, 2};
+  const std::vector<int32_t> shape_array{2, 2};
   auto shape = TensorShape();
   TF_ASSERT_OK(TensorShapeUtils::MakeShape(shape_array, &shape));
   Output value = Output(
@@ -717,7 +718,7 @@ TEST(InferenceTest, V1CompatBridgeVariableRefReturnTrue) {
   Output cond_b = ops::Placeholder(root.WithOpName("cond_b"), DT_BOOL);
 
   tensorflow::set_tf2_execution(true);
-  const std::vector<int32> shape_array{2, 2};
+  const std::vector<int32_t> shape_array{2, 2};
   auto shape = TensorShape();
   TF_ASSERT_OK(TensorShapeUtils::MakeShape(shape_array, &shape));
   Output value = Output(

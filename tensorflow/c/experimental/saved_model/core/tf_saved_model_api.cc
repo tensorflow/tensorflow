@@ -138,7 +138,7 @@ absl::Status RestoreCheckpoint(SavedModelV2Bundle* bundle,
             attribute =
                 FindSerializedTensorInTrackable(trackable, "VARIABLE_VALUE");
         if (attribute == nullptr) {
-          return errors::FailedPrecondition(
+          return absl::FailedPreconditionError(
               "Could not find SerializedTensor with name VARIABLE_VALUE for "
               "saved variable");
         }
@@ -180,12 +180,14 @@ absl::Status TFSavedModelAPI::GetFunction(const std::string& function_path,
   absl::optional<int> node =
       internal::FindNodeAtPath(function_path, bundle_.saved_object_graph());
   if (!node.has_value()) {
-    return errors::NotFound("No saved object found at path ", function_path);
+    return absl::NotFoundError(
+        absl::StrCat("No saved object found at path ", function_path));
   }
 
   *function = revived_objects_.concrete_functions.Find(*node);
   if (*function == nullptr) {
-    return errors::NotFound("No function found at path ", function_path);
+    return absl::NotFoundError(
+        absl::StrCat("No function found at path ", function_path));
   }
 
   return absl::Status();
@@ -196,9 +198,9 @@ absl::Status TFSavedModelAPI::GetFunctions(
     absl::flat_hash_map<std::string, ConcreteFunction*>* functions) {
   const auto& nodes = bundle_.saved_object_graph().nodes();
   if (node_id >= nodes.size()) {
-    return errors::OutOfRange(
-        "node_id ", node_id,
-        " not found.  Maximum node ID: ", nodes.size() - 1);
+    return absl::OutOfRangeError(
+        absl::StrCat("node_id ", node_id,
+                     " not found.  Maximum node ID: ", nodes.size() - 1));
   }
   const SavedObject* current_node = &nodes.Get(node_id);
   for (const auto& child : current_node->children()) {
@@ -216,16 +218,16 @@ absl::Status TFSavedModelAPI::GetSignatureDefFunction(
   auto signatures_iter =
       revived_objects_.signatures_map.find(signature_def_key);
   if (signatures_iter == revived_objects_.signatures_map.end()) {
-    return errors::NotFound("No signature with key ", signature_def_key,
-                            " was found");
+    return absl::NotFoundError(absl::StrCat("No signature with key ",
+                                            signature_def_key, " was found"));
   }
   int node = signatures_iter->second;
 
   auto function_iter = revived_objects_.signature_def_functions.find(node);
   if (function_iter == revived_objects_.signature_def_functions.end()) {
-    return errors::Internal(
-        "Unable to find SignatureDefFunction associated with key ",
-        signature_def_key, " despite key being valid.");
+    return absl::InternalError(
+        absl::StrCat("Unable to find SignatureDefFunction associated with key ",
+                     signature_def_key, " despite key being valid."));
   }
 
   *function = function_iter->second.get();
@@ -237,12 +239,14 @@ absl::Status TFSavedModelAPI::GetVariable(const std::string& variable_path,
   absl::optional<int> node =
       internal::FindNodeAtPath(variable_path, bundle_.saved_object_graph());
   if (!node.has_value()) {
-    return errors::NotFound("No saved object found at path ", variable_path);
+    return absl::NotFoundError(
+        absl::StrCat("No saved object found at path ", variable_path));
   }
 
   auto variables_iter = revived_objects_.variables.find(*node);
   if (variables_iter == revived_objects_.variables.end()) {
-    return errors::NotFound("No variable found at path ", variable_path);
+    return absl::NotFoundError(
+        absl::StrCat("No variable found at path ", variable_path));
   }
 
   *variable = variables_iter->second.get();
@@ -264,7 +268,7 @@ absl::Status TFSavedModelAPI::Load(
     ImmediateExecutionContext* context, std::unique_ptr<TFSavedModelAPI>* out) {
   // TODO(bmzhao): Add support for loading a TF1 SavedModel.
   if (tags) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "Loading saved models with explicit tags will be supported in the "
         "future");
   }

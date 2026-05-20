@@ -1027,6 +1027,40 @@ TEST(XlaBuilderTest, ReportError) {
   EXPECT_THAT(statusor.status().message(), HasSubstr("a test error"));
 }
 
+TEST(XlaBuilderTest, ReportErrorWithPythonLocation) {
+  XlaBuilder b(TestName());
+  OpMetadata metadata;
+  metadata.set_source_file("test_file.py");
+  metadata.set_source_line(42);
+  b.SetOpMetadata(metadata);
+
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}), "x");
+  Add(b.ReportError(InvalidArgument("a test error")), x);
+  auto statusor = b.Build();
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().message(), HasSubstr("a test error"));
+  EXPECT_THAT(statusor.status().message(), HasSubstr("Python Code Location:"));
+  EXPECT_THAT(statusor.status().message(), HasSubstr("File: test_file.py:42"));
+}
+
+TEST(XlaBuilderTest, ReportErrorWithOneShotPythonLocation) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}), "x");
+
+  OpMetadata metadata;
+  metadata.set_source_file("test_file_oneshot.py");
+  metadata.set_source_line(84);
+  b.SetOneShotOpMetadata(metadata);
+
+  Add(b.ReportError(InvalidArgument("a test error")), x);
+  auto statusor = b.Build();
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().message(), HasSubstr("a test error"));
+  EXPECT_THAT(statusor.status().message(), HasSubstr("Python Code Location:"));
+  EXPECT_THAT(statusor.status().message(),
+              HasSubstr("File: test_file_oneshot.py:84"));
+}
+
 TEST(XlaBuilderTest, ReportErrorOrReturnHandlesNonErrors) {
   XlaBuilder b(TestName());
   absl::StatusOr<XlaOp> op(ConstantR0<float>(&b, 1.0));
@@ -2174,9 +2208,9 @@ TEST(XlaBuilderTest, OutfeedTokenSharding) {
   EXPECT_EQ(outfeed->sharding().tuple_elements().size(), 2);
   EXPECT_TRUE(outfeed->operand(1)->has_sharding());
   EXPECT_EQ(outfeed->sharding().tuple_elements().back(),
-            HloSharding::FromProto(sharding_builder::AssignDevice(0)).value());
+            HloSharding::FromProto(sharding_builder::SingleDevice(0)).value());
   EXPECT_EQ(outfeed->operand(1)->sharding(),
-            HloSharding::FromProto(sharding_builder::AssignDevice(0)).value());
+            HloSharding::FromProto(sharding_builder::SingleDevice(0)).value());
 }
 
 TEST(XlaBuilderTest, NormalizeTupleSharding) {
@@ -3996,7 +4030,7 @@ TEST(XlaBuilderTest, InfeedTokenSharding) {
   TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
   TF_ASSERT_OK_AND_ASSIGN(
       const auto token_sharding,
-      HloSharding::FromProto(sharding_builder::AssignDevice(0)));
+      HloSharding::FromProto(sharding_builder::SingleDevice(0)));
   for (const HloInstruction* instruction :
        module->entry_computation()->instructions()) {
     if (instruction->shape().IsToken()) {

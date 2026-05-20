@@ -5401,6 +5401,11 @@ def gather_nd(params, indices, name=None, batch_dims=0, bad_indices_policy=""):
   """
   batch_dims_ = tensor_util.constant_value(batch_dims)
   if batch_dims_ is not None:
+    batch_dims_ = (
+        batch_dims_.item()
+        if isinstance(batch_dims_, np.ndarray)
+        else batch_dims_
+    )
     batch_dims = int(batch_dims_)
   if batch_dims == 0 and bad_indices_policy not in ("", "DEFAULT"):
     # TODO(cylai): also support `bad_indices_policy` for resource variables.

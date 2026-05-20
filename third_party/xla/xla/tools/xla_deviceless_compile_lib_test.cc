@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/compiler.h"
+#include "xla/service/platform_util.h"
 #include "xla/service/symbol_repository.h"
 #include "xla/service/xla_compile_result.pb.h"
 #include "xla/stream_executor/device_description.pb.h"
@@ -45,9 +46,13 @@ using ::testing::IsEmpty;
 using ::testing::Not;
 
 absl::StatusOr<Compiler::GpuTargetConfig> GetGpuTargetConfig() {
+  const std::string spec_file =
+      PlatformUtil::CanonicalPlatformName("gpu").value_or("") == "rocm"
+          ? "mi200.txtpb"
+          : "h100_sxm.txtpb";
   const std::string target_config_path =
       tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
-                        "backends/gpu/target_config/specs", "h100_sxm.txtpb");
+                        "backends/gpu/target_config/specs", spec_file);
   stream_executor::GpuTargetConfigProto target_config_proto;
   TF_RETURN_IF_ERROR(tsl::ReadTextProto(tsl::Env::Default(), target_config_path,
                                         &target_config_proto));
@@ -56,7 +61,7 @@ absl::StatusOr<Compiler::GpuTargetConfig> GetGpuTargetConfig() {
 
 class XlaDevicelessCompileLibTest : public testing::TestWithParam<bool> {};
 
-TEST_P(XlaDevicelessCompileLibTest, CompilesForGpuWithoutDevice) {
+TEST_F(XlaDevicelessCompileLibTest, CompilesForGpuWithoutDevice) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule(R"hlo(
     HloModule module
@@ -66,25 +71,18 @@ TEST_P(XlaDevicelessCompileLibTest, CompilesForGpuWithoutDevice) {
       b_f32 = f32[10,2] convert(b)
       ROOT dot = f32[2,2] dot(a, b_f32), lhs_contracting_dims={1}, rhs_contracting_dims={0}
     })hlo"));
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_experimental_aot_compiled_thunks(GetParam());
 
   TF_ASSERT_OK_AND_ASSIGN(gpu::GpuTargetConfig target_config,
                           GetGpuTargetConfig());
 
   CompilationResult result;
-  ASSERT_THAT(CompileExecutable(std::move(module), BackendType::kGpu,
-                                target_config, std::nullopt, result),
-              absl_testing::IsOkAndHolds(Not(IsEmpty())));
+  ASSERT_THAT(
+      CompileExecutable(std::move(module), BackendType::kGpu, target_config,
+                        /*cpu_target_config=*/std::nullopt,
+                        /*num_partitions=*/1, /*num_replicas=*/1, result),
+      absl_testing::IsOkAndHolds(Not(IsEmpty())));
   EXPECT_TRUE(result.has_hlo_module()) << result.DebugString();
 }
-
-INSTANTIATE_TEST_SUITE_P(XlaDevicelessCompileLibTest,
-                         XlaDevicelessCompileLibTest, testing::Bool(),
-                         [](const testing::TestParamInfo<bool>& info) {
-                           return info.param ? "NewAotFlow" : "LegacyAotFlow";
-                         });
 
 }  // namespace
 }  // namespace xla

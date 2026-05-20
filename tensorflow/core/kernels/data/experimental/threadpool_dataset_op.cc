@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
@@ -310,7 +311,7 @@ class MaxIntraOpParallelismDatasetOp::Dataset : public DatasetBase {
         max_intra_op_parallelism_(max_intra_op_parallelism),
         traceme_metadata_(
             {{"parallelism",
-              strings::Printf("%lld", static_cast<long long>(
+              absl::StrFormat("%lld", static_cast<long long>(
                                           max_intra_op_parallelism_))}}) {
     input_->Ref();
   }
@@ -453,7 +454,7 @@ class PrivateThreadPoolDatasetOp::Dataset : public DatasetBase {
         num_threads_(num_threads == 0 ? port::MaxParallelism() : num_threads),
         traceme_metadata_(
             {{"num_threads",
-              strings::Printf("%lld", static_cast<long long>(num_threads_))}}) {
+              absl::StrFormat("%lld", static_cast<long long>(num_threads_))}}) {
     thread_pool_ = std::make_unique<thread::ThreadPool>(
         ctx->env(), ThreadOptions{}, "data_private_threadpool", num_threads_);
     input_->Ref();

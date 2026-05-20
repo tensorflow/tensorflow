@@ -18,7 +18,11 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "grpcpp/client_context.h"
+#include "grpcpp/support/async_unary_call.h"
+#include "grpcpp/support/status.h"
 #include "xla/backends/profiler/subprocess/subprocess_registry.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
@@ -29,12 +33,36 @@ namespace xla {
 namespace profiler {
 namespace subprocess {
 
-// Creates a profiler for the specified subprocess. The subprocess must have a
-// ProfilerService gRPC server listening on the address specified in
-// `subprocess_info`.
-absl::StatusOr<std::unique_ptr<tsl::profiler::ProfilerInterface>>
-CreateSubprocessProfilingSession(const SubprocessInfo& subprocess_info,
-                                 const tensorflow::ProfileOptions& options);
+class SubprocessProfilingSession : public tsl::profiler::ProfilerInterface {
+ public:
+  // Creates a profiler for the specified subprocess. The subprocess must have a
+  // ProfilerService gRPC server listening on the address specified in
+  // `subprocess_info`.
+  static absl::StatusOr<std::unique_ptr<SubprocessProfilingSession>> Create(
+      const SubprocessInfo& subprocess_info,
+      const tensorflow::ProfileOptions& options);
+  // Not copyable or movable
+  SubprocessProfilingSession(const SubprocessProfilingSession&) = delete;
+  SubprocessProfilingSession& operator=(const SubprocessProfilingSession&) =
+      delete;
+
+  absl::Status Start() override;
+  absl::Status Stop() override;
+  absl::Status CollectData(tensorflow::profiler::XSpace* space) override;
+
+ private:
+  SubprocessProfilingSession(const SubprocessInfo& subprocess_info,
+                             const tensorflow::ProfileRequest& request);
+
+  SubprocessInfo subprocess_info_;
+  tensorflow::ProfileRequest request_;
+  tensorflow::ProfileResponse response_;
+  grpc::ClientContext context_;
+  grpc::CompletionQueue completion_queue_;
+  grpc::Status grpc_status_;
+  std::unique_ptr<grpc::ClientAsyncResponseReader<tensorflow::ProfileResponse>>
+      rpc_;
+};
 
 }  // namespace subprocess
 }  // namespace profiler

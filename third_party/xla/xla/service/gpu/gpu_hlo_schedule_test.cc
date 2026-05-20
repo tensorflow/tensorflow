@@ -50,15 +50,18 @@ limitations under the License.
 #include "xla/service/backend.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_compiler.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 
 namespace xla {
@@ -68,7 +71,7 @@ using ::testing::_;
 using ::testing::ElementsAre;
 using ::testing::EndsWith;
 
-class GpuHloScheduleTest : public HloTestBase {
+class GpuHloScheduleTest : public HloTestBaseLegacy {
  protected:
   using HloVec = std::vector<HloInstruction*>;
 
@@ -1604,8 +1607,8 @@ TEST_P(GpuHloScheduleParameterizedTest, AsyncAllReduce) {
   HloInstruction* all_reduce_start =
       builder.AddInstruction(HloInstruction::CreateAllReduceStart(
           all_reduce_start_shape, {add0}, reduction_computation,
-          /*device_list=*/
-          CollectiveDeviceList(IotaReplicaGroupList(8, 1024)),
+
+          std::make_shared<IotaReplicaGroupList>(8, 1024),
           /*constrain_layout=*/false,
           /*channel_id=*/std::nullopt, /*use_global_device_ids=*/true));
   // In addition, add control_dependency: add1->nonblocking_call.
@@ -1702,7 +1705,7 @@ TEST_P(GpuHloScheduleParameterizedTest, LHSResourceModel) {
   EXPECT_TRUE(HasValidFingerprint(module.get()));
 }
 
-using GpuHloSchedulePostProcessTest = HloTestBase;
+using GpuHloSchedulePostProcessTest = HloTestBaseLegacy;
 
 TEST_F(GpuHloSchedulePostProcessTest, PostProcessAsyncCollectives) {
   const char* hlo_text = R"(

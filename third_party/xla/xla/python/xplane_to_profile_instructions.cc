@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "xla/tsl/profiler/utils/xplane_visitor.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -68,12 +69,12 @@ void GetXPlaneLatencyInfo(
     absl::flat_hash_map<std::string, HloLatencyInfo>* hlo_latency_info) {
   // Iterate events.
   xplane.ForEachLine([hlo_latency_info,
-                      hlo_module_info](const XLineVisitor& xline) {
+                      &hlo_module_info](const XLineVisitor& xline) {
     if (xline.DisplayName() == tsl::profiler::kXlaAsyncOpLineName) {
       return;
     }
     xline.ForEachEvent([hlo_latency_info,
-                        hlo_module_info](const XEventVisitor& xevent) {
+                        &hlo_module_info](const XEventVisitor& xevent) {
       int64_t event_type =
           xevent.Type().value_or(HostEventType::kUnknownHostEventType);
       if (IsInternalEvent(event_type)) return;
@@ -197,7 +198,7 @@ absl::Status ConvertXplaneUnderLogdirToProfiledInstructionsProto(
     }
   }
 
-  return ConvertXplaneToProfiledInstructionsProto(xspaces,
+  return ConvertXplaneToProfiledInstructionsProto(std::move(xspaces),
                                                   profiled_instructions_proto);
 }
 

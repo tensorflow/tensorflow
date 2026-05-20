@@ -82,11 +82,7 @@ class Array : public llvm::RTTIExtends<Array, Value> {
   // `Client::GetDefaultPjRtLayout()`.
   virtual absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> pjrt_layout()
       const = 0;
-  virtual CustomLayoutRef layout() const {
-    // TODO(hyeontaek): Change to a pure virtual method once all implementations
-    // override this method.
-    CHECK(false) << "Placeholder; do not use yet";
-  }
+  virtual LayoutRef layout() const = 0;
 
   // Breaks an array up into per-device arrays. This is the elimination
   // counterpart of `Client::AssembleArrayFromSingleDeviceArrays()`.

@@ -375,7 +375,7 @@ TEST_F(ReduceScatterCombinerTest, PreservesMetadata) {
                           RunPass(hlo_string, /*expect_change=*/true));
   OpMetadata metadata;
   metadata.set_op_type("test_type0");
-  metadata.set_op_name("test_name0");
+  metadata.set_op_name("(test_name0:test_name1)");
   auto combined_reduce_scatter = op::Metadata(metadata);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::GetTupleElement(combined_reduce_scatter, 0),

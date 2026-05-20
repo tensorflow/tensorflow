@@ -19,6 +19,10 @@ def llvm_setup(name):
     # Build @llvm-project from @llvm-raw using overlays.
     llvm_configure(
         name = name,
-        repo_mapping = {"@python_runtime": "@local_config_python"},
+        repo_mapping = {
+            "@python_runtime": "@local_config_python",
+            "@llvm_zlib": "@zlib",
+            "@llvm_zstd": "@net_zstd",
+        },
         targets = _LLVM_TARGETS,
     )

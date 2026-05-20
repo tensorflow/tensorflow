@@ -81,10 +81,23 @@ std::vector<const XPlane*> FindPlanesWithPrefix(const XSpace& space,
 std::vector<XPlane*> FindMutablePlanesWithPrefix(XSpace* space,
                                                  absl::string_view prefix);
 
+// Sets the given pid on all planes in the given space that do not have a pid
+// set.
+void SetXSpacePidIfNotSet(XSpace& space, int32_t pid);
+// Sets the given pid on the given plane if not already set.
+void SetXPlanePidIfNotSet(XPlane& plane, int32_t pid);
+
+// Merges the src XSpace into the dst XSpace. Must have set the kProcessId stat
+// on all planes in src XSpace.
+void MergeSubprocessXSpace(XSpace& dst, const XSpace& src);
+
 // Returns the plane with the given id/name or nullptr if not found.
 const XLine* FindLineWithId(const XPlane& plane, int64_t id);
 std::vector<const XLine*> FindLinesWithId(const XPlane& plane, int64_t id);
 const XLine* FindLineWithName(const XPlane& plane, absl::string_view name);
+
+// Returns the mutable line with the given name or nullptr if not found.
+XLine* FindMutableLineWithName(XPlane& plane, absl::string_view name);
 
 XStat* FindOrAddMutableStat(const XStatMetadata& stat_metadata, XEvent* event);
 
@@ -113,8 +126,10 @@ class XLinesComparatorByName {
   }
 };
 
-// Sorts each XLine's XEvents by offset_ps (ascending) and duration_ps
+// Sorts the XLine's XEvents by offset_ps (ascending) and duration_ps
 // (descending) so nested events are sorted from outer to innermost.
+void SortXLine(XLine* line);
+// Sorts each line of the XPlane.
 void SortXPlane(XPlane* plane);
 // Sorts each plane of the XSpace.
 void SortXSpace(XSpace* space);

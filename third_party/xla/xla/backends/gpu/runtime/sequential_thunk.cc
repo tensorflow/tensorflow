@@ -15,139 +15,51 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 
-#include <cstddef>
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/functional/function_ref.h"
-#include "absl/log/log.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
-#include "absl/strings/string_view.h"
+#include "absl/status/statusor.h"
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/util.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
-#include "tsl/profiler/lib/traceme.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 SequentialThunk::SequentialThunk(ThunkInfo thunk_info, ThunkSequence thunks)
-    : Thunk(Kind::kSequential, thunk_info), thunks_(std::move(thunks)) {}
+    : Thunk(Kind::kSequential, thunk_info), executor_(std::move(thunks)) {}
 
 std::string SequentialThunk::ToString(int indent) const {
-  const std::string indent_str(indent * 2, ' ');
-  if (thunks_.empty()) {
-    return indent_str + "No thunks.";
-  }
-
-  auto thunk_with_longest_kind = absl::c_max_element(
-      thunks_,
-      [](const std::unique_ptr<Thunk>& a, const std::unique_ptr<Thunk>& b) {
-        return Thunk::KindToString(a->kind()).length() <
-               Thunk::KindToString(b->kind()).length();
-      });
-  int64_t max_thunk_kind_len =
-      Thunk::KindToString(thunk_with_longest_kind->get()->kind()).length();
-  std::string result;
-  for (const std::unique_ptr<Thunk>& thunk : thunks_) {
-    absl::StrAppend(&result, indent_str);
-    absl::StrAppendFormat(&result,
-                          "%03d: ", thunk->thunk_info().thunk_id.value());
-    // Write out the thunk kind, padded out to max_thunk_kind_len.
-    absl::string_view kind_str = Thunk::KindToString(thunk->kind());
-    absl::StrAppend(&result, kind_str,
-                    std::string(max_thunk_kind_len - kind_str.length(), ' '),
-                    "\t");
-    absl::StrAppend(&result, thunk->ToString(indent + 1));
-    absl::StrAppend(&result, "\n");
-  }
-  return result;
+  return executor_.thunks().ToString(indent);
 }
 
 absl::Status SequentialThunk::Prepare(const PrepareParams& params) {
-  for (auto& thunk : thunks_) {
-    TF_RETURN_IF_ERROR(thunk->Prepare(params));
-  }
-  return absl::OkStatus();
+  return executor_.Prepare(params);
 }
 
 absl::Status SequentialThunk::Initialize(const InitializeParams& params) {
-  for (auto& thunk : thunks_) {
-    TF_RETURN_IF_ERROR(thunk->Initialize(params));
-  }
-  return absl::OkStatus();
+  return executor_.Initialize(params);
 }
 
 absl::Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
   std::optional<tsl::profiler::ScopedAnnotation> seq_annotation =
       GetKernelAnnotation(profile_annotation());
-
-  for (size_t i = 0; i < thunks_.size(); ++i) {
-    const std::unique_ptr<Thunk>& thunk = thunks_[i];
-
-    tsl::profiler::TraceMe trace(thunk->profile_annotation());
-
-    std::optional<tsl::profiler::ScopedAnnotation> annotation =
-        GetKernelAnnotation(thunk->profile_annotation());
-
-    if (params.mock_collectives && thunk->IsCollective()) {
-      XLA_VLOG_DEVICE(1, params.stream->parent()->device_ordinal())
-          << absl::StreamFormat(
-                 "[thunk=%d/%d] Skip SequentialThunk::ExecuteOnStream: %s", i,
-                 thunks_.size(), thunk->profile_annotation());
-      continue;
-    }
-
-    XLA_VLOG_DEVICE(1, params.stream->parent()->device_ordinal())
-        << absl::StreamFormat(
-               "[thunk=%d/%d] Start SequentialThunk::ExecuteOnStream: %s", i,
-               thunks_.size(), thunk->profile_annotation());
-
-    TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
-
-    XLA_VLOG_DEVICE(1, params.stream->parent()->device_ordinal())
-        << absl::StreamFormat(
-               "[thunk=%d/%d] End SequentialThunk::ExecuteOnStream: %s", i,
-               thunks_.size(), thunk->profile_annotation());
-  }
-  return absl::OkStatus();
+  return executor_.ExecuteOnStream(params);
 }
 
-void SequentialThunk::ForAllThunks(
-    absl::FunctionRef<void(const Thunk*)> fn) const {
-  fn(this);
-  for (const std::unique_ptr<Thunk>& thunk : thunks_) {
-    thunk->ForAllThunks(fn);
-  }
+absl::Status SequentialThunk::WalkNested(Walker callback) {
+  return executor_.thunks().WalkNested(callback);
 }
 
-void SequentialThunk::ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) {
-  fn(this);
-  for (const std::unique_ptr<Thunk>& thunk : thunks_) {
-    thunk->ForAllThunksMutable(fn);
-  }
-}
-
-absl::Status SequentialThunk::TransformAllNestedThunks(
-    absl::FunctionRef<
-        absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
-        fn) {
-  for (std::unique_ptr<Thunk>& thunk : thunks_) {
-    TF_RETURN_IF_ERROR(thunk->TransformAllNestedThunks(fn));
-    TF_ASSIGN_OR_RETURN(thunk, fn(std::move(thunk)));
-  }
-  return absl::OkStatus();
+absl::Status SequentialThunk::TransformNested(Transformer callback) {
+  return executor_.thunks().TransformNested(callback);
 }
 
 absl::StatusOr<ThunkProto> SequentialThunk::ToProto() const {
@@ -157,7 +69,7 @@ absl::StatusOr<ThunkProto> SequentialThunk::ToProto() const {
   // This sets the oneof-type to the sequential thunk, even if the thunk list is
   // empty.
   proto.mutable_sequential_thunk();
-  for (const auto& thunk : thunks_) {
+  for (const auto& thunk : executor_.thunks()) {
     TF_ASSIGN_OR_RETURN(*proto.mutable_sequential_thunk()->add_thunks(),
                         thunk->ToProto());
   }
@@ -185,11 +97,10 @@ std::unique_ptr<SequentialThunk> SequentialThunk::FromThunk(
         static_cast<SequentialThunk*>(thunk.release()));
   }
 
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  ThunkSequence thunks;
   thunks.push_back(std::move(thunk));
   return std::make_unique<SequentialThunk>(Thunk::ThunkInfo(),
                                            std::move(thunks));
 }
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

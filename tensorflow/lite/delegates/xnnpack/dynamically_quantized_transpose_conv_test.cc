@@ -36,8 +36,8 @@ TEST_F(DynamicallyQuantizedTransposeConvTest, 2x2Stride2) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  DynamicallyQuantizedTransposeConvTester()
-      .OutputHeight(output_rng())
+  DynamicallyQuantizedTransposeConvTester tester;
+  tester.OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
@@ -46,7 +46,10 @@ TEST_F(DynamicallyQuantizedTransposeConvTest, 2x2Stride2) {
       .StrideHeight(2)
       .StrideWidth(2)
       .ValidPadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(DynamicallyQuantizedTransposeConvTest, 3x3Stride2) {
@@ -57,8 +60,8 @@ TEST_F(DynamicallyQuantizedTransposeConvTest, 3x3Stride2) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  DynamicallyQuantizedTransposeConvTester()
-      .OutputHeight(output_rng())
+  DynamicallyQuantizedTransposeConvTester tester;
+  tester.OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
@@ -67,7 +70,10 @@ TEST_F(DynamicallyQuantizedTransposeConvTest, 3x3Stride2) {
       .StrideHeight(2)
       .StrideWidth(2)
       .SamePadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(DynamicallyQuantizedTransposeConvTest, 4x4Stride2) {
@@ -78,8 +84,8 @@ TEST_F(DynamicallyQuantizedTransposeConvTest, 4x4Stride2) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  DynamicallyQuantizedTransposeConvTester()
-      .OutputHeight(output_rng())
+  DynamicallyQuantizedTransposeConvTester tester;
+  tester.OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
@@ -88,7 +94,10 @@ TEST_F(DynamicallyQuantizedTransposeConvTest, 4x4Stride2) {
       .StrideHeight(2)
       .StrideWidth(2)
       .ValidPadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(DynamicallyQuantizedTransposeConvTest, 4x4Stride4) {
@@ -99,8 +108,8 @@ TEST_F(DynamicallyQuantizedTransposeConvTest, 4x4Stride4) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  DynamicallyQuantizedTransposeConvTester()
-      .OutputHeight(output_rng())
+  DynamicallyQuantizedTransposeConvTester tester;
+  tester.OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
       .OutputChannels(channel_rng())
@@ -109,7 +118,10 @@ TEST_F(DynamicallyQuantizedTransposeConvTest, 4x4Stride4) {
       .StrideHeight(4)
       .StrideWidth(4)
       .ValidPadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(DynamicallyQuantizedTransposeConvTest, SmallKernelWithSamePadding) {
@@ -124,8 +136,8 @@ TEST_F(DynamicallyQuantizedTransposeConvTest, SmallKernelWithSamePadding) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  DynamicallyQuantizedTransposeConvTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedTransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -133,7 +145,10 @@ TEST_F(DynamicallyQuantizedTransposeConvTest, SmallKernelWithSamePadding) {
       .KernelHeight(kernel_rng())
       .KernelWidth(kernel_rng())
       .SamePadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(DynamicallyQuantizedTransposeConvTest, SmallKernelWithValidPadding) {
@@ -148,8 +163,8 @@ TEST_F(DynamicallyQuantizedTransposeConvTest, SmallKernelWithValidPadding) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  DynamicallyQuantizedTransposeConvTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedTransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -157,7 +172,10 @@ TEST_F(DynamicallyQuantizedTransposeConvTest, SmallKernelWithValidPadding) {
       .KernelHeight(kernel_rng())
       .KernelWidth(kernel_rng())
       .ValidPadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(DynamicallyQuantizedTransposeConvTest, StrideWithSamePadding) {
@@ -174,8 +192,8 @@ TEST_F(DynamicallyQuantizedTransposeConvTest, StrideWithSamePadding) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  DynamicallyQuantizedTransposeConvTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedTransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -185,7 +203,10 @@ TEST_F(DynamicallyQuantizedTransposeConvTest, StrideWithSamePadding) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .SamePadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(DynamicallyQuantizedTransposeConvTest, StrideWithValidPadding) {
@@ -202,8 +223,8 @@ TEST_F(DynamicallyQuantizedTransposeConvTest, StrideWithValidPadding) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  DynamicallyQuantizedTransposeConvTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedTransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -213,7 +234,10 @@ TEST_F(DynamicallyQuantizedTransposeConvTest, StrideWithValidPadding) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .ValidPadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(DynamicallyQuantizedTransposeConvTest, MultiThreading) {
@@ -235,8 +259,8 @@ TEST_F(DynamicallyQuantizedTransposeConvTest, MultiThreading) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  DynamicallyQuantizedTransposeConvTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedTransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -246,7 +270,10 @@ TEST_F(DynamicallyQuantizedTransposeConvTest, MultiThreading) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .SamePadding()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(DynamicallyQuantizedTransposeConvTest, WeightsCache) {
@@ -272,8 +299,8 @@ TEST_F(DynamicallyQuantizedTransposeConvTest, WeightsCache) {
   auto channel_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
-  DynamicallyQuantizedTransposeConvTester()
-      .BatchSize(batch_rng())
+  DynamicallyQuantizedTransposeConvTester tester;
+  tester.BatchSize(batch_rng())
       .OutputHeight(output_rng())
       .OutputWidth(output_rng())
       .InputChannels(channel_rng())
@@ -284,7 +311,10 @@ TEST_F(DynamicallyQuantizedTransposeConvTest, WeightsCache) {
       .StrideWidth(stride_rng())
       .SamePadding()
       .WeightsCache(weights_cache.get())
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 }  // namespace xnnpack

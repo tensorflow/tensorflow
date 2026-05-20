@@ -13,17 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "tensorflow/core/platform/test.h"
 
 #if GOOGLE_CUDA
 
-#include "tensorflow/core/common_runtime/gpu/gpu_device.h"
-
-#include <algorithm>
-#include <iostream>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/public/session_options.h"

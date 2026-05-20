@@ -15,14 +15,14 @@ limitations under the License.
 
 #include "xla/stream_executor/tpu/tpu_platform_id.h"
 
-#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_id.h"
 
 namespace tensorflow {
 namespace tpu {
 
 PLATFORM_DEFINE_ID(kTpuPlatformId, TPU);
 
-::stream_executor::Platform::Id GetTpuPlatformId() { return kTpuPlatformId; }
+::stream_executor::PlatformId GetTpuPlatformId() { return kTpuPlatformId; }
 
 }  // namespace tpu
 }  // namespace tensorflow

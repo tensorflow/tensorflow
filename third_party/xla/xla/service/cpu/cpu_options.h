@@ -50,6 +50,8 @@ inline constexpr absl::string_view kFlattenAfterFusion =
     "xla_cpu_flatten_after_fusion";
 inline constexpr absl::string_view kUseMultiOutputFusion =
     "xla_cpu_use_multi_output_fusion";
+[[deprecated(
+    "Use DebugOptions::xla_cpu_enable_platform_dependent_math instead.")]]
 inline constexpr absl::string_view kDisablePlatformDependentMath =
     "xla_cpu_disable_platform_dependent_math";
 inline constexpr absl::string_view kDisableTiledEmitter =

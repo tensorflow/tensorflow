@@ -61,6 +61,7 @@ cc_library(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/c_api_client:pjrt_c_api_client",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -91,6 +92,7 @@ xla_cc_test(
     tags = ["no_oss"],
     deps = [
         ":plugin_test_fixture",
+        "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",

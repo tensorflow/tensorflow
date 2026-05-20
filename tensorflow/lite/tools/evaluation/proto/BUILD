@@ -23,7 +23,7 @@ load(
 # copybara:uncomment load("//tools/build_defs/proto/cpp:cc_proto_library.bzl", "cc_proto_library")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )

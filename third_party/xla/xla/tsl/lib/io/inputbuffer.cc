@@ -87,8 +87,8 @@ absl::Status InputBuffer::ReadLine(T* result) {
   return s;
 }
 
-template Status InputBuffer::ReadLine<std::string>(std::string* result);
-template Status InputBuffer::ReadLine<tstring>(tstring* result);
+template absl::Status InputBuffer::ReadLine<std::string>(std::string* result);
+template absl::Status InputBuffer::ReadLine<tstring>(tstring* result);
 
 absl::Status InputBuffer::ReadNBytes(int64_t bytes_to_read,
                                      std::string* result) {

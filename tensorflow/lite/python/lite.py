@@ -686,6 +686,7 @@ class TFLiteConverterBase:
     self.canonicalizing_inf_as_min_max_float = True
     self._experimental_strict_qdq = False
     self._experimental_unsafe_fuse_dynamic_shaped_broadcast = False
+    self._experimental_unsafe_single_batch_rank_reduction = False
 
     # Debug parameters
     self.ir_dump_dir = None
@@ -857,6 +858,9 @@ class TFLiteConverterBase:
         "serialize_debug_metadata": self.serialize_debug_metadata,
         "unsafe_fuse_dynamic_shaped_broadcast": (
             self._experimental_unsafe_fuse_dynamic_shaped_broadcast
+        ),
+        "unsafe_single_batch_rank_reduction": (
+            self._experimental_unsafe_single_batch_rank_reduction
         ),
     }
 

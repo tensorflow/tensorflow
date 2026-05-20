@@ -57,9 +57,9 @@ absl::Status ReductionOp(const std::string& merge_op,
     *reduction_op = ncclMin;
     return absl::OkStatus();
   } else {
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "Expected merge_op to be in [Add, Mul, Maximum, Minimum], found ",
-        merge_op);
+        merge_op));
   }
 }
 
@@ -101,11 +101,11 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
     CancellationToken cancel_token = cancel_mgr->get_cancellation_token();
     bool already_cancelled =
         !cancel_mgr->RegisterCallback(cancel_token, [this]() {
-          nccl_manager_.StartAbort(errors::Cancelled("op cancelled"));
+          nccl_manager_.StartAbort(absl::CancelledError("op cancelled"));
           nccl_manager_.Reset();
         });
     if (already_cancelled) {
-      done(errors::Cancelled("op cancelled"));
+      done(absl::CancelledError("op cancelled"));
       return;
     }
     participant->done_callback = [cancel_mgr, cancel_token,
@@ -179,8 +179,8 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
       break;
     }
     default: {
-      participant->done_callback(errors::Internal("Unexpected CollectiveType ",
-                                                  col_params->instance.type));
+      participant->done_callback(absl::InternalError(absl::StrCat(
+          "Unexpected CollectiveType ", col_params->instance.type)));
       return;
     }
   }

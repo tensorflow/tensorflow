@@ -37,7 +37,8 @@ void registerSdyRoundTripExportShardyAttrsPass();
 // NOTE: The `kShardingAttr`s are not removed from the ops. They are kept around
 // because part of the `SdyRoundTripExportPipeline` also converts the
 // `kShardingAttr`s to `kXlaShardingAttr`s.
-std::unique_ptr<mlir::Pass> createSdyRoundTripExportShardyAttrsPass();
+std::unique_ptr<mlir::Pass> createSdyRoundTripExportShardyAttrsPass(
+    bool enableHloShardingV3 = false);
 
 }  // namespace sdy
 }  // namespace xla

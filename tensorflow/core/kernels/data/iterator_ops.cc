@@ -40,6 +40,8 @@ limitations under the License.
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_handle.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
@@ -619,8 +621,9 @@ absl::Status MakeIteratorOp::DoCompute(OpKernelContext* ctx) {
   DatasetBase* dataset;
   TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(ctx->input(0), &dataset));
   IteratorResource* iterator_resource;
-  TF_RETURN_IF_ERROR(
-      LookupResource(ctx, HandleFromInput(ctx, 1), &iterator_resource));
+  ResourceHandle handle;
+  TF_RETURN_IF_ERROR(HandleFromInput(ctx, 1, &handle));
+  TF_RETURN_IF_ERROR(LookupResource(ctx, handle, &iterator_resource));
   core::ScopedUnref unref_iterator(iterator_resource);
   return iterator_resource->SetIteratorFromDataset(ctx, dataset);
 }
@@ -936,7 +939,9 @@ absl::Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
                                  ctx->op_kernel().type_string());
   metrics::RecordTFDataFetchOp("IteratorGetNextOp");
   IteratorResource* iterator;
-  TF_RETURN_IF_ERROR(LookupResource(ctx, HandleFromInput(ctx, 0), &iterator));
+  ResourceHandle handle;
+  TF_RETURN_IF_ERROR(HandleFromInput(ctx, 0, &handle));
+  TF_RETURN_IF_ERROR(LookupResource(ctx, handle, &iterator));
   core::ScopedUnref unref_iterator(iterator);
   std::vector<Tensor> components;
   bool end_of_sequence = false;
@@ -956,7 +961,9 @@ absl::Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
 
 absl::Status IteratorGetModelProtoOp::DoCompute(OpKernelContext* ctx) {
   IteratorResource* iterator = nullptr;
-  TF_RETURN_IF_ERROR(LookupResource(ctx, HandleFromInput(ctx, 0), &iterator));
+  ResourceHandle handle;
+  TF_RETURN_IF_ERROR(HandleFromInput(ctx, 0, &handle));
+  TF_RETURN_IF_ERROR(LookupResource(ctx, handle, &iterator));
   core::ScopedUnref unref_iterator(iterator);
 
   std::string model_proto;
@@ -991,7 +998,9 @@ absl::Status IteratorGetNextAsOptionalOp::DoCompute(OpKernelContext* ctx) {
                                  ctx->op_kernel().type_string());
   metrics::RecordTFDataFetchOp("IteratorGetNextAsOptionalOp");
   IteratorResource* iterator;
-  TF_RETURN_IF_ERROR(LookupResource(ctx, HandleFromInput(ctx, 0), &iterator));
+  ResourceHandle handle;
+  TF_RETURN_IF_ERROR(HandleFromInput(ctx, 0, &handle));
+  TF_RETURN_IF_ERROR(LookupResource(ctx, handle, &iterator));
   core::ScopedUnref unref_iterator(iterator);
   std::vector<Tensor> components;
   bool end_of_sequence = false;
@@ -1030,8 +1039,9 @@ void IteratorToStringHandleOp::Compute(OpKernelContext* ctx) {
   // Validate that the handle corresponds to a real resource, and
   // that it is an IteratorResource.
   IteratorResource* iterator_resource;
-  OP_REQUIRES_OK(
-      ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
+  ResourceHandle handle;
+  OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 0, &handle));
+  OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &iterator_resource));
   iterator_resource->Unref();
 
   Tensor* string_handle_t;
@@ -1112,8 +1122,9 @@ void SerializeIteratorOp::Compute(OpKernelContext* ctx) {
   // Validate that the handle corresponds to a real resource, and
   // that it is an IteratorResource.
   IteratorResource* iterator_resource;
-  OP_REQUIRES_OK(
-      ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
+  ResourceHandle handle;
+  OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 0, &handle));
+  OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &iterator_resource));
   core::ScopedUnref unref_iterator(iterator_resource);
   IteratorVariantSerializer serializer;
   OP_REQUIRES_OK(ctx, serializer.InitializeFromIterator(
@@ -1131,8 +1142,9 @@ void DeserializeIteratorOp::Compute(OpKernelContext* ctx) {
   // Validate that the handle corresponds to a real resource, and
   // that it is an IteratorResource.
   IteratorResource* iterator_resource;
-  OP_REQUIRES_OK(
-      ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
+  ResourceHandle handle;
+  OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 0, &handle));
+  OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &iterator_resource));
   core::ScopedUnref unref_iterator(iterator_resource);
   const Tensor* serialized_t;
   OP_REQUIRES_OK(ctx, ctx->input("serialized", &serialized_t));

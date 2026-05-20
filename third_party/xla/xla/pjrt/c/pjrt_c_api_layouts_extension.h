@@ -37,7 +37,7 @@ extern "C" {
 // https://github.com/openxla/xla/blob/main/xla/pjrt/layout_mode.h for more
 // details.
 
-#define PJRT_API_LAYOUTS_EXTENSION_VERSION 3
+#define PJRT_API_LAYOUTS_EXTENSION_VERSION 4
 
 // -------------------------------- Data types ---------------------------------
 
@@ -142,6 +142,24 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Layouts_PJRT_Executable_GetOutputLayouts_Args,
 typedef PJRT_Error* PJRT_Layouts_PJRT_Executable_GetOutputLayouts(
     PJRT_Layouts_PJRT_Executable_GetOutputLayouts_Args* args);
 
+// Returns parameter layouts for an executable.
+struct PJRT_Layouts_PJRT_Executable_GetParameterLayouts_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Executable* executable;
+  size_t num_parameters;  // out
+  // Layout data is owned by and has the lifetime of `executable`.
+  // Has length `num_parameters`.
+  PJRT_Layouts_MemoryLayout** layouts;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Layouts_PJRT_Executable_GetParameterLayouts_Args,
+                          layouts);
+
+// Returns a list of layouts for executable parameters. Each parameter has a
+// layout.
+typedef PJRT_Error* PJRT_Layouts_PJRT_Executable_GetParameterLayouts(
+    PJRT_Layouts_PJRT_Executable_GetParameterLayouts_Args* args);
+
 // --------------------------- Extension entrypoint ----------------------------
 
 typedef struct PJRT_Layouts_Extension {
@@ -156,9 +174,11 @@ typedef struct PJRT_Layouts_Extension {
       PJRT_Layouts_PJRT_Topology_GetDefaultLayout;
   PJRT_Layouts_PJRT_Executable_GetOutputLayouts*
       PJRT_Layouts_PJRT_Executable_GetOutputLayouts;
+  PJRT_Layouts_PJRT_Executable_GetParameterLayouts*
+      PJRT_Layouts_PJRT_Executable_GetParameterLayouts;
 } PJRT_Layouts_Extension;
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Layouts_Extension,
-                          PJRT_Layouts_PJRT_Executable_GetOutputLayouts);
+                          PJRT_Layouts_PJRT_Executable_GetParameterLayouts);
 
 #ifdef __cplusplus
 }

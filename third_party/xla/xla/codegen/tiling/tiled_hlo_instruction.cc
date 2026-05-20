@@ -21,6 +21,7 @@ limitations under the License.
 #include <sstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -69,7 +71,7 @@ absl::Status VerifyTiledHloInstructionConstructorPreconditions(
   }
 
   // - The number of results must match the rank of the HLO.
-  if (tile_offsets_indexing->GetAffineMap().getNumResults() != rank) {
+  if (tile_offsets_indexing->GetSymbolicMap().GetNumResults() != rank) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "tile_offsets_indexing must have the same number of results as the "
         "rank of the hlo shape. tile_offsets_indexing = %s, hlo = %s",
@@ -111,37 +113,50 @@ TiledHloInstruction::Create(
     llvm::SmallVector<const TiledHloInstruction*> runtime_variables,
     llvm::SmallVector<int64_t> tile_sizes,
     llvm::SmallVector<int64_t> tile_strides,
-    std::optional<IndexingMap> tile_offsets_indexing) {
+    std::optional<IndexingMap> tile_offsets_indexing,
+    llvm::SmallVector<TiledHloRegion> regions) {
   TF_RETURN_IF_ERROR(VerifyTiledHloInstructionConstructorPreconditions(
       hlo, tile_sizes, tile_strides, tile_offsets_indexing, runtime_variables));
 
   return absl::WrapUnique(new TiledHloInstruction(
       hlo, std::move(operands), std::move(runtime_variables),
       std::move(tile_sizes), std::move(tile_strides),
-      std::move(tile_offsets_indexing)));
+      std::move(tile_offsets_indexing), std::move(regions)));
 }
 
-std::string TiledHloInstruction::ToString() const {
+std::string TiledHloInstruction::ToString(int64_t indent) const {
+  std::string indentation(indent, ' ');
   std::stringstream ss;
-  ss << "\thlo: " << hlo_->ToString() << "\n";
-  ss << "\ttile_sizes: (" << absl::StrJoin(tile_sizes_, ", ") << ")\n";
-  ss << "\ttile_strides: (" << absl::StrJoin(tile_strides_, ", ") << ")\n";
-  ss << "\ttile_offsets_indexing: "
+  ss << indentation << "hlo: " << hlo_->ToString() << "\n";
+  ss << indentation << "tile_sizes: (" << absl::StrJoin(tile_sizes_, ", ")
+     << ")\n";
+  ss << indentation << "tile_strides: (" << absl::StrJoin(tile_strides_, ", ")
+     << ")\n";
+  ss << indentation << "tile_offsets_indexing: "
      << (tile_offsets_indexing_.has_value()
              ? ::xla::ToString(*tile_offsets_indexing_)
-             : "nullopt")
-     << "\n";
+             : "nullopt");
   if (!operands_.empty()) {
-    ss << "\toperands:\n";
+    ss << "\n" << indentation << "operands:";
     for (const auto* x : operands_) {
-      ss << "\t\t" << x->hlo()->ToShortString() << "\n";
+      ss << "\n" << indentation << "  " << x->hlo()->ToShortString();
     }
   }
   if (!runtime_variables_.empty()) {
-    ss << "\truntime variables:\n";
+    ss << "\n" << indentation << "runtime variables:";
     for (const auto* x : runtime_variables_) {
-      ss << x->ToString() << "\n";
+      ss << "\n" << x->ToString(indent + 2);
     }
+  }
+  if (!regions_.empty()) {
+    ss << "\n"
+       << indentation << "region sizes: ("
+       << absl::StrJoin(
+              regions_, ", ",
+              [](std::string* out,
+                 const std::vector<std::unique_ptr<TiledHloInstruction>>&
+                     region) { absl::StrAppend(out, region.size()); })
+       << ")";
   }
   return ss.str();
 }

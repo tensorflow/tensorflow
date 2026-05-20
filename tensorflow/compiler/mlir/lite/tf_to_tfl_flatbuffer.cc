@@ -380,6 +380,62 @@ absl::Status ConvertTFExecutorToStablehloFlatbuffer(
   return absl::OkStatus();
 }
 
+absl::Status RunConvertTFExecutorToTFLPasses(
+    mlir::ModuleOp module, tflite::ConverterFlags& converter_flags,
+    const mlir::TFL::PassConfig& pass_config, mlir::PassManager& pass_manager,
+    const std::unordered_set<std::string>& saved_model_tags,
+    absl::string_view saved_model_dir) {
+  auto context = module.getContext();
+  auto status_handler =
+      std::make_unique<mlir::StatusScopedDiagnosticHandler>(context,
+                                                            /*propagate=*/true);
+
+  if (pass_config.enable_hlo_to_tf_conversion) {
+    // TODO: b/194747383 - We need to valid that indeed the "main" func is
+    // presented.
+    AddPreQuantizationStableHloToTfPasses(/*entry_function_name=*/"main",
+                                          pass_config, pass_manager);
+    if (failed(pass_manager.run(module))) {
+      return status_handler->ConsumeStatus();
+    }
+    pass_manager.clear();
+
+    AddPostQuantizationStableHloToTfPasses(pass_config, pass_manager);
+    if (failed(pass_manager.run(module))) {
+      return status_handler->ConsumeStatus();
+    }
+    pass_manager.clear();
+  }
+
+  AddPreVariableFreezingTFToTFLConversionPasses(pass_config, &pass_manager);
+  if (failed(pass_manager.run(module))) {
+    return status_handler->ConsumeStatus();
+  }
+
+  pass_manager.clear();
+
+  AddVariableFreezingFromGlobalTensorsPasses(converter_flags, pass_config,
+                                             &pass_manager);
+  if (failed(pass_manager.run(module))) {
+    return status_handler->ConsumeStatus();
+  }
+
+  pass_manager.clear();
+
+  AddPostVariableFreezingTFToTFLConversionPasses(
+      saved_model_dir, converter_flags, pass_config, &pass_manager);
+  if (failed(pass_manager.run(module))) {
+    return status_handler->ConsumeStatus();
+  }
+
+  if (failed(GraphContainsStatefulPartitionedOp(module))) {
+    return status_handler->ConsumeStatus();
+  }
+
+  pass_manager.clear();
+  return absl::OkStatus();
+}
+
 absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
     std::unique_ptr<mlir::MLIRContext>&& context,
     mlir::OwningOpRef<mlir::ModuleOp> module,
@@ -399,11 +455,10 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
   mlir::func::registerAllExtensions(registry);
   context->appendDialectRegistry(registry);
 
+  auto pass_manager = std::make_unique<mlir::PassManager>(context.get());
   auto status_handler =
       std::make_unique<mlir::StatusScopedDiagnosticHandler>(context.get(),
                                                             /*propagate=*/true);
-
-  auto pass_manager = std::make_unique<mlir::PassManager>(context.get());
 
   mlir::registerPassManagerCLOptions();
   if (mlir::failed(mlir::applyPassManagerCLOptions(*pass_manager))) {
@@ -422,49 +477,18 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
         *pass_manager, module.get(), export_to_mlir, *status_handler,
         converter_flags, pass_config, result, saved_model_tags);
   }
-  if (pass_config.enable_hlo_to_tf_conversion) {
-    // TODO: b/194747383 - We need to valid that indeed the "main" func is
-    // presented.
-    AddPreQuantizationStableHloToTfPasses(/*entry_function_name=*/"main",
-                                          pass_config, *pass_manager);
-    if (failed(pass_manager->run(module.get()))) {
-      return status_handler->ConsumeStatus();
-    }
-    pass_manager->clear();
 
-    AddPostQuantizationStableHloToTfPasses(pass_config, *pass_manager);
-    if (failed(pass_manager->run(module.get()))) {
-      return status_handler->ConsumeStatus();
-    }
-    pass_manager->clear();
+  // Run TF Executor to TFL passes (main conversion pass pipeline).
+  if (auto status = RunConvertTFExecutorToTFLPasses(
+          module.get(), converter_flags, pass_config, *pass_manager,
+          saved_model_tags, saved_model_dir);
+      !status.ok()) {
+    return status_handler->Combine(status);
   }
 
-  AddPreVariableFreezingTFToTFLConversionPasses(pass_config,
-                                                pass_manager.get());
-  if (failed(pass_manager->run(module.get()))) {
-    return status_handler->ConsumeStatus();
-  }
-
-  pass_manager->clear();
-
-  AddVariableFreezingFromGlobalTensorsPasses(converter_flags, pass_config,
-                                             pass_manager.get());
-  if (failed(pass_manager->run(module.get()))) {
-    return status_handler->ConsumeStatus();
-  }
-
-  pass_manager->clear();
-
-  AddPostVariableFreezingTFToTFLConversionPasses(
-      saved_model_dir, converter_flags, pass_config, pass_manager.get());
-  if (failed(pass_manager->run(module.get()))) {
-    return status_handler->ConsumeStatus();
-  }
-
-  if (failed(GraphContainsStatefulPartitionedOp(module.get()))) {
-    return status_handler->ConsumeStatus();
-  }
-
+  // Run StableHLO to VHLO passes for serialization. Flatbuffer exporter runs
+  // these passes anyway. Temporarily keep this to support debugging dumps of
+  // the module in MLIR format.
   pass_manager->clear();
   pass_manager->addPass(mlir::odml::createLegalizeStablehloToVhloPass());
   pass_manager->addPass(mlir::createReconcileUnrealizedCastsPass());
@@ -484,15 +508,14 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
   // DenseResourceElementAttr.
   mlir::DialectRegistry new_registry;
   mlir::func::registerAllExtensions(new_registry);
-  new_registry
-      .insert<mlir::TFL::TensorFlowLiteDialect, mlir::TF::TensorFlowDialect,
-              mlir::stablehlo::StablehloDialect, mlir::vhlo::VhloDialect,
-              mlir::arith::ArithDialect, mlir::func::FuncDialect,
-              mlir::quant::QuantDialect,
-              mlir::quantfork::QuantizationForkDialect,
-              mlir::tf_saved_model::TensorFlowSavedModelDialect,
-              mlir::tf_type::TFTypeDialect,
-              mlir::tf_executor::TensorFlowExecutorDialect>();
+  new_registry.insert<
+      mlir::TFL::TensorFlowLiteDialect, mlir::TF::TensorFlowDialect,
+      mlir::stablehlo::StablehloDialect, mlir::vhlo::VhloDialect,
+      mlir::arith::ArithDialect, mlir::func::FuncDialect,
+      mlir::quant::QuantDialect, mlir::quantfork::QuantizationForkDialect,
+      mlir::tf_saved_model::TensorFlowSavedModelDialect,
+      mlir::tf_type::TFTypeDialect,
+      mlir::tf_executor::TensorFlowExecutorDialect>();
 
   auto new_context = std::make_unique<mlir::MLIRContext>(
       new_registry, mlir::MLIRContext::Threading::DISABLED);

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -105,8 +106,8 @@ class BlasLt : public gpu::BlasLt {
         blas::ProfileResult* profile_result) const override;
 
     absl::StatusOr<std::vector<MatmulAlgorithm>> GetAlgorithms(
-        const Stream* stream, size_t max_algorithm_count,
-        size_t max_workspace_size) const override;
+        const Stream* stream, size_t max_algorithm_count = 128,
+        size_t max_workspace_size = 1ll << 32) const override;
 
     absl::Status SetAlgorithm(const MatmulAlgorithm& algorithm) override {
       algorithm_ = algorithm;
@@ -137,6 +138,9 @@ class BlasLt : public gpu::BlasLt {
 
   absl::StatusOr<MatmulPlanPtr> GetMatmulPlan(const gpu::GemmConfig& cfg,
                                               Epilogue epilogue) const override;
+
+  absl::StatusOr<MatmulPlanPtr> GetGroupedMatmulPlan(
+      gpu::GroupedGemmConfig& config, Epilogue epilogue) const override;
 
   ~BlasLt() override = default;
 

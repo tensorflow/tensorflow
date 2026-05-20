@@ -382,22 +382,77 @@ TEST_F(CopyFusionTest, BuildDescriptorWithDynamicVariable) {
   EXPECT_EQ(offset.byte_stride, 8 * 8 * sizeof(float));
 }
 
-TEST_F(CopyFusionTest, PackedSubByteTypesAreNotSupported) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+TEST_F(CopyFusionTest, PackedSubByteSliceNonByteAlignedStride) {
+  auto module = ParseAndReturnVerifiedModule(R"(
     dynamic_slice {
-      a = s4[20]{0:E(4)} parameter(0)
-      c = s32[] constant(10)
-      s = s4[10] dynamic-slice(a, c), dynamic_slice_sizes={10}
+      p0 = s4[32,4,2,8]{3,2,1,0:E(4)} parameter(0)
+      c0 = s32[] constant(0)
+      c4 = s32[] constant(4)
+      ROOT slice = s4[32,4,2,4]{3,2,1,0:E(4)} dynamic-slice(p0, c0, c0, c0, c4), dynamic_slice_sizes={32,4,2,4}
     }
 
-    entry {
-      a = s4[20]{0:E(4)} parameter(0)
-      f = s4[10] fusion(a), kind=kLoop, calls=dynamic_slice
+    ENTRY main {
+      p0 = s4[32,4,2,8]{3,2,1,0:E(4)} parameter(0)
+      ROOT fusion = s4[32,4,2,4]{3,2,1,0:E(4)} fusion(p0), kind=kLoop, calls=dynamic_slice
     }
-  )"));
+  )")
+                    .value();
+
   EXPECT_FALSE(
       DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(GetFusion(module.get()))
           .has_value());
+}
+
+TEST_F(CopyFusionTest, PackedSubByteUpdateSliceByteAlignedStride) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    dynamic_slice {
+      p0 = s4[32,4,2,8]{3,2,1,0:E(4)} parameter(0)
+      p1 = s4[1,4,2,8]{3,2,1,0:E(4)} parameter(1)
+      c5 = s32[] constant(5)
+      c0 = s32[] constant(0)
+      ROOT update = s4[32,4,2,8]{3,2,1,0:E(4)} dynamic-update-slice(p0, p1, c5, c0, c0, c0)
+    }
+
+    ENTRY main {
+      p0 = s4[32,4,2,8]{3,2,1,0:E(4)} parameter(0)
+      p1 = s4[1,4,2,8]{3,2,1,0:E(4)} parameter(1)
+      ROOT fusion = s4[32,4,2,8]{3,2,1,0:E(4)} fusion(p0, p1), kind=kLoop, calls=dynamic_slice
+    }
+  )")
+                    .value();
+
+  EXPECT_TRUE(DynamicMemcpyFusion::IsCandidateFusion(GetFusion(module.get())));
+
+  auto descriptor = DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(
+      GetFusion(module.get()));
+  ASSERT_TRUE(descriptor.has_value());
+  EXPECT_THAT(descriptor->dst_dynamic_offsets, IsEmpty());
+  EXPECT_EQ(descriptor->dst_byte_static_offset, 5 * 32);
+}
+
+TEST_F(CopyFusionTest, PackedSubByteSliceByteAlignedStride) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    dynamic_slice {
+      p0 = s4[32,4,2,8]{3,2,1,0:E(4)} parameter(0)
+      c10 = s32[] constant(10)
+      c0 = s32[] constant(0)
+      ROOT slice = s4[1,4,2,8]{3,2,1,0:E(4)} dynamic-slice(p0, c10, c0, c0, c0), dynamic_slice_sizes={1,4,2,8}
+    }
+
+    ENTRY main {
+      p0 = s4[32,4,2,8]{3,2,1,0:E(4)} parameter(0)
+      ROOT fusion = s4[1,4,2,8]{3,2,1,0:E(4)} fusion(p0), kind=kLoop, calls=dynamic_slice
+    }
+  )")
+                    .value();
+
+  EXPECT_TRUE(DynamicMemcpyFusion::IsCandidateFusion(GetFusion(module.get())));
+
+  auto descriptor = DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(
+      GetFusion(module.get()));
+  ASSERT_TRUE(descriptor.has_value());
+  EXPECT_THAT(descriptor->src_dynamic_offsets, IsEmpty());
+  EXPECT_EQ(descriptor->src_byte_static_offset, 10 * 32);
 }
 
 }  // namespace

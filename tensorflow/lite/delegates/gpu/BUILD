@@ -14,7 +14,7 @@ load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps", "tflite_po
 load("//tensorflow/lite/delegates/gpu:build_defs.bzl", "gpu_delegate_linkopts")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -81,8 +81,8 @@ config_setting(
 config_setting(
     name = "tflite_gpu_extra_gles_deps",
     constraint_values = [
-        "//third_party/bazel_platforms/cpu:x86_64",
-        "//third_party/bazel_platforms/os:linux",
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
     ],
     values = {
         "copt": "-DTFLITE_GPU_EXTRA_GLES_DEPS",

@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdlib>
 #include <vector>
 
+#include "absl/base/no_destructor.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/numbers.h"
@@ -47,12 +48,12 @@ struct CudaBandwidthSettings {
 
   const std::vector<double>& GetIntraNodeBandwidths() const {
     // Different tiers for intra-node bandwidth.
-    static const std::vector<double>* kIntraNodeSpeeds =
-        new std::vector<double>{3.0,  4.0,  5.0,  6.0,  7.0,  9.0, 10.0,
-                                12.0, 15.0, 18.0, 20.0, 30.0, 40.0};
+    static const absl::NoDestructor<std::vector<double>> kIntraNodeSpeeds(
+        {3.0, 4.0, 5.0, 6.0, 7.0, 9.0, 10.0, 12.0, 15.0, 18.0, 20.0, 30.0,
+         40.0});
     // SM90 has different bandwidths.
-    static std::vector<double>* kIntraNodeSpeedsSm90 = new std::vector<double>{
-        3.0, 6.0, 12.0, 15.0, 20.0, 24.0, 30.0, 40.0, 60.0};
+    static const absl::NoDestructor<std::vector<double>> kIntraNodeSpeedsSm90(
+        {3.0, 6.0, 12.0, 15.0, 20.0, 24.0, 30.0, 40.0, 60.0});
     return compute_capability.major >= se::CudaComputeCapability::kHopper
                ? *kIntraNodeSpeedsSm90
                : *kIntraNodeSpeeds;
@@ -136,19 +137,16 @@ struct RocmBandwidthSettings {
     // capabilities Values in GB/s
 
     // MI300 series (Instinct MI300) - up to 896GB/s (8x112GB/s)
-    static const std::vector<double>* intraNodeSpeedsMi300 =
-        new std::vector<double>{32.0,  56.0,  112.0, 224.0, 336.0,
-                                448.0, 560.0, 672.0, 784.0, 896.0};
+    static const absl::NoDestructor<std::vector<double>> intraNodeSpeedsMi300(
+        {32.0, 56.0, 112.0, 224.0, 336.0, 448.0, 560.0, 672.0, 784.0, 896.0});
 
     // MI200 series (Instinct MI200/MI250) - up to 600GB/s (8x75GB/s)
-    static const std::vector<double>* intraNodeSpeedsMi200 =
-        new std::vector<double>{32.0,  75.0,  150.0, 225.0, 300.0,
-                                375.0, 450.0, 525.0, 600.0};
+    static const absl::NoDestructor<std::vector<double>> intraNodeSpeedsMi200(
+        {32.0, 75.0, 150.0, 225.0, 300.0, 375.0, 450.0, 525.0, 600.0});
 
     // MI100 (Instinct MI100) - up to 300GB/s (8x37.5GB/s)
-    static const std::vector<double>* intraNodeSpeedsMi100 =
-        new std::vector<double>{32.0,  37.5,  75.0,  112.5, 150.0,
-                                187.5, 225.0, 262.5, 300.0};
+    static const absl::NoDestructor<std::vector<double>> intraNodeSpeedsMi100(
+        {32.0, 37.5, 75.0, 112.5, 150.0, 187.5, 225.0, 262.5, 300.0});
 
     if (compute_capability.gfx9_mi300_series()) {
       return *intraNodeSpeedsMi300;

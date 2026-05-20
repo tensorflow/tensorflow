@@ -47,8 +47,7 @@ class CastOpModel : public SingleOpModel {
                  CreateCastOptions(builder_).Union());
     BuildInterpreter({GetShape(input_)}, /*num_threads=*/-1,
                      /*allow_fp32_relax_to_fp16=*/false,
-                     /*apply_delegate=*/true, /*allocate_and_delegate=*/false,
-                     /*use_simple_allocator=*/false);
+                     /*apply_delegate=*/true, /*allocate_and_delegate=*/false);
     InterpreterOptions options;
     options.SetCacheConstantCastOp(true);
     interpreter_->ApplyOptions(&options);

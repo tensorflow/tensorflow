@@ -18,4 +18,6 @@ message ExecuteOptionsProto {
   bool use_major_to_minor_data_layout_for_callbacks = 8;
   ExecutionModeProto execution_mode = 6;
   repeated int32 non_donatable_input_indices = 7;
+  int64 seed = 9;
+  // NEXT ID: 10
 }

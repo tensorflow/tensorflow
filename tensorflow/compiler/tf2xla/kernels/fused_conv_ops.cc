@@ -90,8 +90,8 @@ class FusedConv2DInt8Op : public XlaOpKernel {
         is_gpu_(ctx->device_type().type_string() == "XLA_GPU_JIT") {
     OP_REQUIRES(
         ctx, ctx->num_inputs() == 6,
-        errors::InvalidArgument("_FusedConv2D must have 6 inputs but has ",
-                                ctx->num_inputs()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "_FusedConv2D must have 6 inputs but has ", ctx->num_inputs())));
     absl::StatusOr<ConvOpAttrs> conv_attrs =
         ConvOpAttrs::Create(/*num_spatial_dims=*/2, /*depthwise=*/false, ctx);
     OP_REQUIRES_OK(ctx, conv_attrs.status());
@@ -99,23 +99,23 @@ class FusedConv2DInt8Op : public XlaOpKernel {
 
     std::string filter_format;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("filter_format", &filter_format));
-    OP_REQUIRES(
-        ctx, FilterFormatFromString(filter_format, &filter_format_),
-        errors::InvalidArgument("Invalid filter format: ", filter_format));
+    OP_REQUIRES(ctx, FilterFormatFromString(filter_format, &filter_format_),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Invalid filter format: ", filter_format)));
 
     std::vector<std::string> fused_ops;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("fused_ops", &fused_ops));
     OP_REQUIRES(ctx, !fused_ops.empty(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "FusedConv2DInt8Op must have at least one fused op."));
     std::string activation_mode = "None";
     if (fused_ops.size() > 1) {
       activation_mode = fused_ops[1];
     }
     OP_REQUIRES(ctx, activation_mode == "None" || activation_mode == "Relu",
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Unknown activation_mode, must be 'None' or 'Relu': ",
-                    activation_mode));
+                    activation_mode)));
     activation_mode_ = activation_mode == "None" ? ActivationMode::kNone
                                                  : ActivationMode::kRelu;
   }
@@ -137,20 +137,20 @@ class FusedConv2DInt8Op : public XlaOpKernel {
                         builder->GetShape(side_input_scale));
 
     if (conv_input_shape.element_type() != xla::S8) {
-      return errors::InvalidArgument(
-          "_FusedConv2D is implemented only for int8: but ",
-          conv_input_shape.element_type(), " is passed");
+      return absl::InvalidArgumentError(
+          absl::StrCat("_FusedConv2D is implemented only for int8: but ",
+                       conv_input_shape.element_type(), " is passed"));
     }
 
     if (!ShapeUtil::IsScalar(conv_scale_shape)) {
-      return errors::InvalidArgument(
-          "conv input scale must be a scalar, but was ",
-          ShapeUtil::HumanString(conv_scale_shape));
+      return absl::InvalidArgumentError(
+          absl::StrCat("conv input scale must be a scalar, but was ",
+                       ShapeUtil::HumanString(conv_scale_shape)));
     }
     if (!ShapeUtil::IsScalar(side_input_scale_shape)) {
-      return errors::InvalidArgument(
-          "side input scale must be a scalar, but was ",
-          ShapeUtil::HumanString(side_input_scale_shape));
+      return absl::InvalidArgumentError(
+          absl::StrCat("side input scale must be a scalar, but was ",
+                       ShapeUtil::HumanString(side_input_scale_shape)));
     }
 
     // Un-vectorize NCHW_VECT_C to NCHW.
@@ -167,7 +167,7 @@ class FusedConv2DInt8Op : public XlaOpKernel {
         }
         break;
       case FORMAT_NHWC_VECT_W:
-        return errors::Unimplemented("NHWC_VECT_W layout is unsupported.");
+        return absl::UnimplementedError("NHWC_VECT_W layout is unsupported.");
       default:
         break;
     }
@@ -240,10 +240,10 @@ class FusedConv2DInt8Op : public XlaOpKernel {
       side_input = xla::ConvertElementType(side_input, xla::F32);
       TF_ASSIGN_OR_RETURN(side_input_shape, builder->GetShape(side_input));
       if (!ShapeUtil::Compatible(side_input_shape, result_shape)) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Side-input shape ", ShapeUtil::HumanString(side_input_shape),
             " must be equal to convolution output shape ",
-            ShapeUtil::HumanString(result_shape));
+            ShapeUtil::HumanString(result_shape)));
       }
       result = result + side_input * side_input_scale;
     }

@@ -49,7 +49,8 @@ std::unique_ptr<mlir::Pass> CreateLowerXlaLoopsToScfPass();
 std::unique_ptr<mlir::Pass> CreateMergePointersToSameSlicePass();
 std::unique_ptr<mlir::Pass> CreatePropagateSliceIndicesPass();
 std::unique_ptr<mlir::Pass> CreateSimplifyAffinePass();
-std::unique_ptr<mlir::Pass> CreateSimplifyArithPass(bool fast_min_max = false);
+std::unique_ptr<mlir::Pass> CreateSimplifyArithPass(
+    bool fast_min_max = false, bool explicit_nan_propagation = false);
 std::unique_ptr<mlir::Pass> CreateUnswitchLoopsPass();
 std::unique_ptr<mlir::Pass> CreateVectorizeLoadsAndStoresPass(
     const std::string& target_type = "gpu",
@@ -58,6 +59,7 @@ std::unique_ptr<mlir::Pass> CreateVectorizeLoadsAndStoresPass(
     const stream_executor::DeviceDescription& device_description);
 std::unique_ptr<mlir::Pass> CreateSafeIntegerArithmeticPass();
 std::unique_ptr<mlir::Pass> CreateExpandIntegerPowerPass();
+std::unique_ptr<mlir::Pass> CreateLowerPdlWaitPass();
 
 #define GEN_PASS_REGISTRATION
 #include "xla/codegen/emitters/transforms/passes.h.inc"

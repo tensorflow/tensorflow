@@ -33,20 +33,31 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/evaluator/hlo_evaluator.h"
+#include "xla/hlo/evaluator/hlo_evaluator_interface.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/literal_comparison.h"
+#include "xla/pjrt/interpreter/interpreter_client.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_pjrt_client.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
+#include "xla/service/hlo_runner_pjrt.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -550,6 +561,34 @@ absl::Status RunAndCompare(
                                                : nullptr,
       test_runner, reference_runner, engine, options, iteration_literals_proto,
       reference_module_modifier_hook, config_modifier_hook);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjRtClientForPlatform(
+    absl::string_view platform_name) {
+  std::string name = absl::AsciiStrToLower(platform_name);
+  if (name == "interpreter") {
+    return std::make_unique<InterpreterClient>(
+        []() -> std::unique_ptr<HloEvaluatorInterface> {
+          return std::make_unique<HloEvaluator>();
+        });
+  }
+  if (name == "gpu" || name == "cuda" || name == "rocm" || name == "sycl") {
+    GpuAllocatorConfig gpu_config;
+    gpu_config.kind = GpuAllocatorConfig::Kind::kDefault;
+    gpu_config.preallocate = false;
+    gpu_config.collective_memory_size = 0;
+    GpuClientOptions options;
+    options.allocator_config = std::move(gpu_config);
+    options.use_tfrt_gpu_client = false;
+    return GetXlaPjrtGpuClient(options);
+  }
+  if (name == "host" || name == "cpu") {
+    CpuClientOptions options;
+    options.cpu_device_count = 4;
+    return GetXlaPjrtCpuClient(std::move(options));
+  }
+  return absl::InvalidArgumentError(
+      absl::StrCat("Unknown platform name ", platform_name));
 }
 
 void ReadInputLiteralsFromFile(const std::string& file_path,

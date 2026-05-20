@@ -30,21 +30,23 @@ namespace data {
 //
 // NOTE: There is currently no guarantee that the hash of a subgraph will stay
 // the same between TensorFlow builds.
-absl::Status HashNode(const GraphDef& graph, const NodeDef& node, uint64* hash);
 absl::Status HashNode(const GraphDef& graph, const NodeDef& node,
-                      const FunctionLibraryDefinition& flib_def, uint64* hash);
+                      uint64_t* hash);
+absl::Status HashNode(const GraphDef& graph, const NodeDef& node,
+                      const FunctionLibraryDefinition& flib_def,
+                      uint64_t* hash);
 
 // Returns a stable hash of the given tensor.
 //
 // NOTE: There is currently no guarantee that the hash of a subgraph will stay
 // the same between TensorFlow builds.
-absl::Status HashTensor(const Tensor& tensor, uint64* hash);
+absl::Status HashTensor(const Tensor& tensor, uint64_t* hash);
 
 // Returns a stable hash of the given graph.
 //
 // NOTE: There is currently no guarantee that the hash of a subgraph will stay
 // the same between TensorFlow builds.
-absl::Status HashGraph(const GraphDef& graph, uint64* hash);
+absl::Status HashGraph(const GraphDef& graph, uint64_t* hash);
 
 // Determines whether the given graphs are equal, following the same logic used
 // for HashGraph. Returns OK if the graphs can be determined to be equal,

@@ -47,8 +47,8 @@ absl::Status FlattenAtrousConv(const GraphDef& input_graph_def,
               {"*"}                           // crops
           }
       },  // clang-format on
-      [](const NodeMatch& match, const std::set<string>& input_nodes,
-         const std::set<string>& output_nodes,
+      [](const NodeMatch& match, const std::set<std::string>& input_nodes,
+         const std::set<std::string>& output_nodes,
          std::vector<NodeDef>* new_nodes) {
         // Find all the nodes we expect in the subgraph.
         const NodeDef& batch_to_space_node = match.node;
@@ -61,8 +61,8 @@ absl::Status FlattenAtrousConv(const GraphDef& input_graph_def,
         // The atrous rate value is inferred from the block shape.
         Tensor block_shape =
             GetNodeTensorAttr(space_to_batch_block_shape_node, "value");
-        const int32_t block_height = block_shape.flat<int32>()(0);
-        const int32_t block_width = block_shape.flat<int32>()(1);
+        const int32_t block_height = block_shape.flat<int32_t>()(0);
+        const int32_t block_width = block_shape.flat<int32_t>()(1);
 
         // Compute the upsampled filter.
         const Tensor& filter = GetNodeTensorAttr(filter_node, "value");

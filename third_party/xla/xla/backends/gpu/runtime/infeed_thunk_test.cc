@@ -37,10 +37,7 @@ TEST(InfeedThunkTest, ProtoRoundTrip) {
   ThunkProto proto;
   CHECK(tsl::protobuf::TextFormat::ParseFromString(
       R"pb(
-        thunk_info {
-          profile_annotation: "partition_id_profile_annotation"
-          execution_stream_id: 2
-        }
+        thunk_info { profile_annotation: "partition_id_profile_annotation" }
         infeed_thunk {
           dest_slices {
             slice { offset: 0 size: 4 buffer_allocation_index: 0 }
@@ -58,9 +55,6 @@ TEST(InfeedThunkTest, ProtoRoundTrip) {
 
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = proto.thunk_info().profile_annotation();
-  thunk_info.execution_stream_id = xla::gpu::ExecutionStreamId{
-      static_cast<xla::gpu::ExecutionStreamId::ValueType>(
-          proto.thunk_info().execution_stream_id())};
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<InfeedThunk> thunk,
       InfeedThunk::FromProto(thunk_info, proto.infeed_thunk(),

@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/execute_options.pb.h"
 #include "xla/python/ifrt/serdes_version.h"
@@ -70,8 +71,8 @@ absl::StatusOr<ExecuteOptions> ExecuteOptions::FromProto(
   options.fill_status = proto.fill_status();
   options.execution_stream_id = proto.execution_stream_id();
   if (proto.has_custom_options()) {
-    TF_ASSIGN_OR_RETURN(options.custom_options,
-                        AttributeMap::FromProto(proto.custom_options()));
+    ASSIGN_OR_RETURN(options.custom_options,
+                     AttributeMap::FromProto(proto.custom_options()));
   }
   return options;
 }

@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -263,7 +264,8 @@ absl::StatusOr<xla::Shape> TpuTransferManager::ChooseCompactLayoutForShape(
 bool TpuTransferManager::CanShapedBufferBeAccessedNow(
     stream_executor::StreamExecutor* executor,
     const xla::ShapedBuffer& device_buffer) const {
-  auto* tpu_executor = down_cast<stream_executor::tpu::TpuExecutor*>(executor);
+  auto* tpu_executor =
+      absl::down_cast<stream_executor::tpu::TpuExecutor*>(executor);
   XLA_ShapedBuffer c_device_buffer;
   ApiConverter::ToC(device_buffer, &c_device_buffer);
   absl::Cleanup cleanup = [&c_device_buffer]() {
@@ -277,7 +279,8 @@ bool TpuTransferManager::CanShapedBufferBeAccessedNow(
 bool TpuTransferManager::CanBufferBeAccessedNow(
     se::StreamExecutor* executor,
     const se::DeviceAddressBase& device_buffer) const {
-  auto* tpu_executor = down_cast<stream_executor::tpu::TpuExecutor*>(executor);
+  auto* tpu_executor =
+      absl::down_cast<stream_executor::tpu::TpuExecutor*>(executor);
   SE_DeviceAddressBase c_device_buffer{
       const_cast<void*>(device_buffer.opaque()), device_buffer.size(),
       device_buffer.payload()};

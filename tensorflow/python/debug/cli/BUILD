@@ -1,4 +1,6 @@
-load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test")
 
 package(
@@ -7,9 +9,10 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "profile_analyzer_cli",
     srcs = ["profile_analyzer_cli.py"],
+    strict_deps = True,
     deps = [
         ":cli_shared",
         ":command_parser",
@@ -21,9 +24,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "base_ui",
     srcs = ["base_ui.py"],
+    strict_deps = True,
     deps = [
         ":cli_config",
         ":command_parser",
@@ -31,31 +35,35 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "readline_ui",
     srcs = ["readline_ui.py"],
+    strict_deps = True,
     deps = [
         ":base_ui",
         ":debugger_cli_common",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ui_factory",
     srcs = ["ui_factory.py"],
+    strict_deps = True,
     deps = [
         ":readline_ui",  # build_cleaner keep.
     ],
 )
 
-py_strict_library(
+py_library(
     name = "command_parser",
     srcs = ["command_parser.py"],
+    strict_deps = True,
 )
 
-py_strict_library(
+py_library(
     name = "tensor_format",
     srcs = ["tensor_format.py"],
+    strict_deps = True,
     deps = [
         ":debugger_cli_common",
         "//tensorflow/python/debug/lib:debug_data",
@@ -63,9 +71,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "cli_shared",
     srcs = ["cli_shared.py"],
+    strict_deps = True,
     deps = [
         ":command_parser",
         ":debugger_cli_common",
@@ -79,18 +88,20 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "evaluator",
     srcs = ["evaluator.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/debug/lib:debug_data",
         "//third_party/py/numpy",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "analyzer_cli",
     srcs = ["analyzer_cli.py"],
+    strict_deps = True,
     deps = [
         ":cli_config",
         ":cli_shared",
@@ -103,18 +114,20 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "cli_config",
     srcs = ["cli_config.py"],
+    strict_deps = True,
     deps = [
         ":debugger_cli_common",
         "//tensorflow/python/platform:gfile",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "debugger_cli_common",
     srcs = ["debugger_cli_common.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/client:pywrap_tf_session",
         "//tensorflow/python/platform:gfile",
@@ -122,15 +135,17 @@ py_strict_library(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "offline_analyzer",
     srcs = ["offline_analyzer.py"],
+    strict_deps = True,
     deps = [":offline_analyzer_lib"],
 )
 
-py_strict_library(
+py_library(
     name = "offline_analyzer_lib",
     srcs = ["offline_analyzer.py"],
+    strict_deps = True,
     deps = [
         ":analyzer_cli",
         "//tensorflow/python/debug/lib:debug_data",
@@ -138,10 +153,11 @@ py_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "readline_ui_test",
     size = "small",
     srcs = ["readline_ui_test.py"],
+    strict_deps = True,
     tags = ["no_windows"],  # TODO(b/214427155)
     deps = [
         ":cli_config",
@@ -155,10 +171,11 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "debugger_cli_common_test",
     size = "small",
     srcs = ["debugger_cli_common_test.py"],
+    strict_deps = True,
     deps = [
         ":debugger_cli_common",
         "//tensorflow/python/client:pywrap_tf_session",
@@ -169,10 +186,11 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "cli_config_test",
     size = "small",
     srcs = ["cli_config_test.py"],
+    strict_deps = True,
     deps = [
         ":cli_config",
         "//tensorflow/python/framework:test_lib",
@@ -182,10 +200,11 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "command_parser_test",
     size = "small",
     srcs = ["command_parser_test.py"],
+    strict_deps = True,
     deps = [
         ":command_parser",
         "//tensorflow/python/framework:test_lib",
@@ -193,10 +212,11 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "tensor_format_test",
     size = "small",
     srcs = ["tensor_format_test.py"],
+    strict_deps = True,
     deps = [
         ":cli_test_utils",
         ":tensor_format",
@@ -208,10 +228,11 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "cli_shared_test",
     size = "small",
     srcs = ["cli_shared_test.py"],
+    strict_deps = True,
     deps = [
         ":cli_shared",
         ":debugger_cli_common",
@@ -225,12 +246,13 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "evaluator_test",
     size = "small",
     srcs = [
         "evaluator_test.py",
     ],
+    strict_deps = True,
     tags = ["no_windows"],  # TODO(b/184424727): Enable this test on Windows.
     deps = [
         ":evaluator",
@@ -241,9 +263,10 @@ py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "cli_test_utils",
     srcs = ["cli_test_utils.py"],
+    strict_deps = True,
     deps = ["//third_party/py/numpy"],
 )
 
@@ -281,10 +304,11 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "profile_analyzer_cli_test",
     size = "small",
     srcs = ["profile_analyzer_cli_test.py"],
+    strict_deps = True,
     deps = [
         ":debugger_cli_common",
         ":profile_analyzer_cli",

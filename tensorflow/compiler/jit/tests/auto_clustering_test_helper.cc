@@ -89,7 +89,7 @@ absl::Status AssertGraphDefIsUnclustered(const GraphDef& graphdef) {
   for (const NodeDef& node : graphdef.node()) {
     if (node.attr().count(kXlaClusterAttr) ||
         node.attr().count(kXlaAlreadyClusteredAttr)) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Input files are already clustered, you probably copied in "
           "mark_for_compilation_<n>.pbtxt when you should have copied in "
           "before_mark_for_compilation_<n>.pbtxt");
@@ -102,7 +102,7 @@ absl::Status AssertGraphDefIsUnclustered(const GraphDef& graphdef) {
 absl::Status ReadTextProtoFromString(Env* env, const std::string& data,
                                      ::tensorflow::protobuf::Message* proto) {
   if (!::tensorflow::protobuf::TextFormat::ParseFromString(data, proto)) {
-    return errors::DataLoss("Can't parse input data as text proto");
+    return absl::DataLossError("Can't parse input data as text proto");
   }
   return absl::OkStatus();
 }

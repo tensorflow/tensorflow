@@ -90,7 +90,7 @@ absl::Status PrepareSubgraphForFunctionConversion(
     int position = -1;
     std::string node_name = grappler::ParseNodeName(input, &position);
     if (position != 0) {
-      return errors::Unimplemented(
+      return absl::UnimplementedError(
           "Support for input node with multiple output tensors is not "
           "implemented.");
     }
@@ -135,7 +135,7 @@ absl::Status PrepareSubgraphForFunctionConversion(
     int position = -1;
     std::string node_name = grappler::ParseNodeName(output, &position);
     if (position != 0) {
-      return errors::Unimplemented(
+      return absl::UnimplementedError(
           "Support for output node with multiple output tensors is not "
           "implemented.");
     }

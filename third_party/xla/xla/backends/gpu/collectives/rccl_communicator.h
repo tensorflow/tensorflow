@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_RCCL_COMMUNICATOR_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_RCCL_COMMUNICATOR_H_
 
-#include <atomic>
 #include <cstddef>
 #include <memory>
 #include <optional>
@@ -81,13 +80,6 @@ class RcclCommunicator : public GpuCommunicator {
   absl::Status HealthCheck() const final;
   absl::StatusOr<size_t> NumRanks() const final;
 
-  // Since each XLA buffer is a slice into a larger BFCAllocator chunk, first
-  // get the base address of buffer. We will use the base address to keep track
-  // of which chunks we have registered.
-  absl::Status RegisterBufferOnce(se::DeviceAddressBase buffer_range,
-                                  int device_ordinal,
-                                  bool use_symmetric_buffer) final;
-
   Future<> GroupExecute(
       absl::AnyInvocable<absl::Status(GpuCommunicator*)> f) final;
 
@@ -132,10 +124,6 @@ class RcclCommunicator : public GpuCommunicator {
   ncclComm_t comm() const { return comm_; }
 
  private:
-  absl::StatusOr<std::unique_ptr<RegisteredBufferHandle>> RegisterBuffer(
-      se::DeviceAddressBase buffer, int device_ordinal,
-      bool use_symmetric_buffer);
-
   class RcclRegisteredBufferHandle;
 
   RcclCommunicator(ncclComm_t comm, std::unique_ptr<tsl::Executor> executor,
@@ -227,7 +215,7 @@ class RcclCommunicator : public GpuCommunicator {
   //
   // Concretely, the lack of thread safety comes from the fact that the RCCL
   // code uses thread-local variables that do not work properly when a
-  // ncclComm_t is accessed from multiple threads. Emperically, the lack of
+  // ncclComm_t is accessed from multiple threads. Empirically, the lack of
   // thread safety only manifests as buggy behavior when using non-blocking
   // communicators.
   std::unique_ptr<tsl::Executor> executor_;
@@ -240,17 +228,6 @@ class RcclCommunicator : public GpuCommunicator {
 
   // Nesting level of current RCCL group
   int group_nesting_level_ = 0;
-
-  // Keep track of which communicators we have registered for already.
-  // Each ncclMemAlloc'd buffer needs to be registered once per comm.
-  struct RegisteredBuffers {
-    absl::Mutex mu;
-    // Buffer range to the registered buffer handle.
-    absl::flat_hash_map<void*,
-                        std::unique_ptr<Communicator::RegisteredBufferHandle>>
-        range_to_handle ABSL_GUARDED_BY(mu);
-  };
-  RegisteredBuffers registered_buffers_;
 };
 
 }  // namespace xla::gpu

@@ -50,7 +50,7 @@ void GeneratedCodeAnnotator::FillSourceOffsets(
   }
 }
 
-string GeneratedCodeAnnotator::BuildKytheMetadata() {
+std::string GeneratedCodeAnnotator::BuildKytheMetadata() {
   GeneratedCodeInfo generated_code_info;
   generated_code_info.set_type(GeneratedCodeInfo::KYTHE0);
   for (const auto& [name, offsets] : byte_offsets_map_) {

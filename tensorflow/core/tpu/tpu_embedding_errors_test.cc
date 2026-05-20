@@ -62,7 +62,7 @@ TEST(TpuEmbeddingErrors, StatusOk) {
 TEST(TpuEmbeddingErrors, StatusFailed) {
   {
     const Status status =
-        AppendTpuEmbeddingErrorPayload(errors::InvalidArgument(""));
+        AppendTpuEmbeddingErrorPayload(absl::InvalidArgumentError(""));
     EXPECT_EQ(status.code(), error::Code::INVALID_ARGUMENT);
     EXPECT_TRUE(HasTpuEmbeddingErrorPayload(status));
     EXPECT_TRUE(HasTpuEmbeddingErrorMessage(status));

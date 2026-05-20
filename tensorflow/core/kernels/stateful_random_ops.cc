@@ -16,6 +16,8 @@ limitations under the License.
 #include "tsl/platform/thread_annotations.h"
 #define EIGEN_USE_THREADS
 
+#include "tensorflow/core/framework/resource_handle.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/rng_alg.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/kernels/fill_functor.h"
@@ -120,8 +122,9 @@ absl::Status UpdateVariableAndFill(
     bool read_alg_from_state, ConcreteRngAlgorithm alg, int64_t output_size,
     typename Distribution::ResultElementType* output_data) {
   Var* var = nullptr;
-  TF_RETURN_IF_ERROR(
-      LookupResource(ctx, HandleFromInput(ctx, state_input_idx), &var));
+  ResourceHandle handle;
+  TF_RETURN_IF_ERROR(HandleFromInput(ctx, state_input_idx, &handle));
+  TF_RETURN_IF_ERROR(LookupResource(ctx, handle, &var));
   // Use `ScopedUnlockUnrefVar` here instead of `mutex_lock` and `ScopedUnref`
   // because the former supports early releasing which is needed by
   // `UpdateVariableAndFill_Philox<CPU>` to avoid holding the lock while
@@ -304,8 +307,9 @@ class RngSkipOp : public OpKernel {
         ctx, GetScalar(ctx->input(delta_input_idx), delta_input_idx, &delta_));
     uint64_t delta = static_cast<uint64_t>(delta_);
     Var* var = nullptr;
-    OP_REQUIRES_OK(
-        ctx, LookupResource(ctx, HandleFromInput(ctx, state_input_idx), &var));
+    ResourceHandle handle;
+    OP_REQUIRES_OK(ctx, HandleFromInput(ctx, state_input_idx, &handle));
+    OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &var));
     ScopedUnlockUnrefVar state_var_guard(var);
     Tensor* var_tensor = var->tensor();
     OP_REQUIRES_OK(ctx, CheckState(*var_tensor));

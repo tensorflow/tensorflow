@@ -37,6 +37,7 @@
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/future.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
@@ -111,13 +112,13 @@ class ProxyWithMockBackend {
     xla::ifrt::Device* device = client_->addressable_devices().at(0);
     ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
-    TF_ASSIGN_OR_RETURN(
-        auto client_arr,
-        client_->MakeArrayFromHostBuffer(
-            data->data(), dtype, shape,
-            /*byte_strides=*/std::nullopt, sharding,
-            Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-            /*on_done_with_host_buffer=*/nullptr));
+    ASSIGN_OR_RETURN(auto client_arr,
+                     client_->MakeArrayFromHostBuffer(
+                         data->data(), dtype, shape,
+                         /*byte_strides=*/std::nullopt, sharding,
+                         /*layout=*/nullptr,
+                         Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+                         /*on_done_with_host_buffer=*/nullptr));
 
     return client_arr;
   }
@@ -148,10 +149,10 @@ class ProxyWithMockBackend {
       Client::HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer) {
     ArrayId array_id = *reinterpret_cast<const uint64_t*>(data);
-    TF_ASSIGN_OR_RETURN(auto delegated,
-                        mock_backend_->delegated()->MakeArrayFromHostBuffer(
-                            data, dtype, shape, byte_strides, sharding, layout,
-                            semantics, on_done_with_host_buffer));
+    ASSIGN_OR_RETURN(auto delegated,
+                     mock_backend_->delegated()->MakeArrayFromHostBuffer(
+                         data, dtype, shape, byte_strides, sharding, layout,
+                         semantics, on_done_with_host_buffer));
     auto result = tsl::MakeRef<NiceMock<MockArray>>(delegated);
     testing::Mock::AllowLeak(result.get());
 
@@ -178,8 +179,8 @@ class ProxyWithMockBackend {
     xla::CpuClientOptions options;
     options.asynchronous = true;
     options.cpu_device_count = 2;
-    TF_ASSIGN_OR_RETURN(auto pjrt_cpu_client,
-                        xla::GetXlaPjrtCpuClient(std::move(options)));
+    ASSIGN_OR_RETURN(auto pjrt_cpu_client,
+                     xla::GetXlaPjrtCpuClient(std::move(options)));
 
     mock_backend_ = std::make_unique<NiceMock<MockClient>>(
         /*delegate=*/xla::ifrt::PjRtClient::Create(std::move(pjrt_cpu_client)));
@@ -201,13 +202,12 @@ class ProxyWithMockBackend {
 
     std::string address =
         absl::StrCat("localhost:", tsl::testing::PickUnusedPortOrDie());
-    TF_ASSIGN_OR_RETURN(server_,
-                        GrpcServer::CreateFromIfrtClientFactory(
-                            address, [this](AttributeMap initialization_data) {
-                              return this->mock_backend_;
-                            }));
-    TF_ASSIGN_OR_RETURN(client_,
-                        CreateClient(absl::StrCat("grpc://", address)));
+    ASSIGN_OR_RETURN(server_,
+                     GrpcServer::CreateFromIfrtClientFactory(
+                         address, [this](AttributeMap initialization_data) {
+                           return this->mock_backend_;
+                         }));
+    ASSIGN_OR_RETURN(client_, CreateClient(absl::StrCat("grpc://", address)));
     return absl::OkStatus();
   }
 

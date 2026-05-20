@@ -18,15 +18,20 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/kernel_args_packed_vector.h"
+#include "xla/stream_executor/kernel_args_packing_spec.pb.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
 
@@ -54,49 +59,46 @@ absl::StatusOr<KernelArgPackingRelocation::Kind> FromProtoKind(
 }  // namespace
 
 absl::StatusOr<std::vector<char>> KernelArgPackingSpec::BuildArgument(
-    absl::Span<const DeviceAddressBase> args) const {
-  auto argument = storage_;
-
-  for (const KernelArgPackingRelocation& relocation : relocations_) {
-    switch (relocation.kind()) {
+    absl::Span<const std::unique_ptr<PackedArgBase>> args) const {
+  if (relocation_.has_value()) {
+    CHECK(constant_.empty());
+    switch (relocation_->kind()) {
       case KernelArgPackingRelocation::Kind::kBits64Absolute: {
-        if (args.size() <= relocation.argument_index()) {
+        if (args.size() <= relocation_->argument_index()) {
           return absl::InvalidArgumentError(
               absl::StrFormat("Not enough arguments for relocation (expected "
                               "at least %d, but got %d)",
-                              relocation.argument_index(), args.size()));
+                              relocation_->argument_index(), args.size()));
         }
-        if (relocation.offset() + sizeof(uint64_t) > argument.size()) {
-          return absl::InvalidArgumentError(
-              absl::StrFormat("Not enough storage for relocation (expected "
-                              "at least %d, but got %d)",
-                              sizeof(void*), argument.size()));
-        }
-        uint64_t ptr =
-            static_cast<uint64_t>(tsl::safe_reinterpret_cast<uintptr_t>(
-                args.at(relocation.argument_index()).opaque()));
-        std::memcpy(argument.data() + relocation.offset(), &ptr, sizeof(ptr));
+        return std::vector<char>(
+            static_cast<char*>(
+                args.at(relocation_->argument_index())->argument_address()),
+            static_cast<char*>(
+                args.at(relocation_->argument_index())->argument_address()) +
+                args.at(relocation_->argument_index())->size());
         break;
       }
       default:
         return absl::InvalidArgumentError(
             absl::StrFormat("Unsupported relocation kind: %d",
-                            static_cast<int>(relocation.kind())));
+                            static_cast<int>(relocation_->kind())));
     }
   }
-  return argument;
+  return constant_;
 }
 
-void KernelArgPackingSpec::WriteArgumentAddress(int argument_index) {
-  relocations_.push_back(KernelArgPackingRelocation(
-      KernelArgPackingRelocation::Kind::kBits64Absolute, argument_index,
-      /*offset=*/storage_.size()));
-  storage_.insert(storage_.end(), sizeof(uint64_t), 0);
+KernelArgPackingSpec KernelArgPackingSpec::BuildArgRelocation(
+    int argument_index) {
+  return KernelArgPackingSpec(
+      {},
+      {KernelArgPackingRelocation(
+          KernelArgPackingRelocation::Kind::kBits64Absolute, argument_index)});
 }
 
 absl::StatusOr<std::unique_ptr<KernelArgsPackedVector>>
-KernelArgsPackingSpec::BuildArguments(absl::Span<const DeviceAddressBase> args,
-                                      size_t shared_memory_bytes) const {
+KernelArgsPackingSpec::BuildArguments(
+    absl::Span<const std::unique_ptr<PackedArgBase>> args,
+    size_t shared_memory_bytes) const {
   std::vector<std::vector<char>> result;
   result.reserve(kernel_arguments_.size());
   for (const KernelArgPackingSpec& kernel_argument : kernel_arguments_) {
@@ -109,25 +111,33 @@ KernelArgsPackingSpec::BuildArguments(absl::Span<const DeviceAddressBase> args,
 absl::StatusOr<KernelArgPackingSpecProto> KernelArgPackingSpec::ToProto()
     const {
   KernelArgPackingSpecProto proto;
-  for (const KernelArgPackingRelocation& relocation : relocations_) {
-    TF_ASSIGN_OR_RETURN(*proto.add_relocations(), relocation.ToProto());
+  if (relocation_.has_value()) {
+    ASSIGN_OR_RETURN(*proto.add_relocations(), relocation_->ToProto());
   }
-  proto.set_data(storage_.data(), storage_.size());
+  proto.set_data(constant_.data(), constant_.size());
   return proto;
 }
 
 absl::StatusOr<KernelArgPackingSpec> KernelArgPackingSpec::FromProto(
     const KernelArgPackingSpecProto& proto) {
   std::vector<char> storage(proto.data().begin(), proto.data().end());
-  std::vector<KernelArgPackingRelocation> relocations;
-  for (const KernelArgPackingRelocationProto& relocation_proto :
-       proto.relocations()) {
-    TF_ASSIGN_OR_RETURN(
-        KernelArgPackingRelocation relocation,
-        KernelArgPackingRelocation::FromProto(relocation_proto));
-    relocations.push_back(std::move(relocation));
+
+  if (proto.relocations().size() > 1) {
+    return absl::InvalidArgumentError(
+        "Multiple relocations not supported for single arg.");
   }
-  return KernelArgPackingSpec(std::move(storage), std::move(relocations));
+  if (proto.relocations().size() == 1) {
+    ASSIGN_OR_RETURN(
+        KernelArgPackingRelocation relocation,
+        KernelArgPackingRelocation::FromProto(proto.relocations()[0]));
+    return KernelArgPackingSpec({}, std::move(relocation));
+  }
+  if (storage.empty()) {
+    return absl::InvalidArgumentError(
+        "Either relocation or constant has to be provided.");
+  }
+
+  return KernelArgPackingSpec(std::move(storage), std::nullopt);
 }
 
 absl::StatusOr<KernelArgPackingRelocationProto>
@@ -135,7 +145,6 @@ KernelArgPackingRelocation::ToProto() const {
   KernelArgPackingRelocationProto proto;
   proto.set_kind(ToProtoKind(kind_));
   proto.set_argument_index(argument_index_);
-  proto.set_offset(offset_);
   return proto;
 }
 
@@ -144,8 +153,7 @@ KernelArgPackingRelocation::FromProto(
     const KernelArgPackingRelocationProto& proto) {
   TF_ASSIGN_OR_RETURN(KernelArgPackingRelocation::Kind kind,
                       FromProtoKind(proto.kind()));
-  return KernelArgPackingRelocation(kind, proto.argument_index(),
-                                    proto.offset());
+  return KernelArgPackingRelocation(kind, proto.argument_index());
 }
 
 absl::StatusOr<KernelArgsPackingSpecProto> KernelArgsPackingSpec::ToProto()

@@ -48,7 +48,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/cuda/ptx_linking_method.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
@@ -81,25 +81,14 @@ ENTRY main {
 )";
 
 constexpr absl::string_view kSM90AHlo = R"(
-lhs {
-  ROOT p0 = f16[64,1024]{1,0} parameter(0)
-}
-rhs {
-  p0 = f16[1024,32,32]{2,1,0} parameter(0)
-  ROOT bitcast = f16[1024,1024]{0,1} bitcast(p0)
-}
 gemm_fusion_dot {
   p0 = f16[64,1024]{1,0} parameter(0)
   p1 = f16[1024,32,32]{2,1,0} parameter(1)
-  lhs = f16[64,1024]{1,0} fusion(p0), kind=kCustom, calls=lhs,
-    backend_config={fusion_backend_config:{kind:"__triton_nested_gemm_fusion",
-      block_level_fusion_config:{output_tiles:[{sizes:[64,32]}]}}}
-  rhs = f16[1024,1024]{0,1} fusion(p1), kind=kCustom, calls=rhs,
-    backend_config={fusion_backend_config:{kind:"__triton_nested_gemm_fusion",
-      block_level_fusion_config:{output_tiles:[{sizes:[32,32]}]}}}
-  ROOT dot = f16[64,1024]{1,0} dot(lhs, rhs),
+  rhs = f16[1024,1024]{0,1} bitcast(p1)
+  ROOT dot = f16[64,1024]{1,0} dot(p0, rhs),
     lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    frontend_attributes={grad_x="false",grad_y="false"}
+    frontend_attributes={grad_x="false",grad_y="false"},
+    backend_config={sizes:[32]}
 }
 
 ENTRY e {
@@ -152,7 +141,7 @@ std::string GenerateParametrizedTestname(
 }
 
 class NVPTXCompilationTests
-    : public HloTestBase,
+    : public HloTestBaseLegacy,
       public ::testing::WithParamInterface<std::tuple<
           absl::string_view, PtxCompilationMethod, PtxLinkingMethod>> {
  public:
@@ -218,10 +207,10 @@ class NVPTXCompilationTests
     debug_options->set_xla_gpu_force_compilation_parallelism(12);
 
     if (linking_method == PtxLinkingMethod::kDriver) {
-      debug_options->set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(
-          true);
       debug_options->set_xla_gpu_cuda_data_dir("/does/not/exist");
     }
+    debug_options->set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(
+        linking_method == PtxLinkingMethod::kDriver);
 
     tsl::setenv("TF_USE_NVLINK_FOR_PARALLEL_COMPILATION",
                 linking_method == PtxLinkingMethod::kNvLink ? "true" : "false",
@@ -232,13 +221,13 @@ class NVPTXCompilationTests
   }
 
   DebugOptions GetDebugOptionsForTest() const override {
-    auto debug_options = HloTestBase::GetDebugOptionsForTest();
+    auto debug_options = HloTestBaseLegacy::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_autotune_level(0);
     return debug_options;
   }
 
   void SetUp() override {
-    HloTestBase::SetUp();
+    HloTestBaseLegacy::SetUp();
     absl::string_view name = std::get<0>(GetParam());
     PtxCompilationMethod compilation_method = std::get<1>(GetParam());
     PtxLinkingMethod linking_method = std::get<2>(GetParam());

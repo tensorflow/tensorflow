@@ -128,8 +128,8 @@ absl::Status ThreadPoolDevice::MakeTensorFromProto(
       return absl::OkStatus();
     }
   }
-  return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                 tensor_proto.DebugString());
+  return absl::InvalidArgumentError(absl::StrCat(
+      "Cannot parse tensor from proto: ", tensor_proto.DebugString()));
 }
 
 void ThreadPoolDevice::CopyTensorInSameDevice(

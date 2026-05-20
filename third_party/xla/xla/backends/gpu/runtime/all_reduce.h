@@ -16,19 +16,56 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_ALL_REDUCE_H_
 #define XLA_BACKENDS_GPU_RUNTIME_ALL_REDUCE_H_
 
+#include <array>
 #include <cstdint>
+#include <optional>
+#include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
 #include "xla/core/collectives/rank_id.h"
-#include "xla/service/collective_ops_utils.h"
+#include "xla/core/collectives/reduction_kind.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
+
+// Encapsulates the information needed to perform an all-reduce.
+struct AllReduceInfo {
+  ReductionKind reduction_kind;
+  int64_t num_devices;
+  int64_t num_elements;
+  PrimitiveType element_type;
+  se::gpu::AllReduceStrategy all_reduce_strategy;
+};
+
+constexpr auto kSupportedFloatingPointTypes = std::array{F32, BF16, F64};
+constexpr auto kSupportedIntegralTypes = std::array{S32, S64};
+constexpr auto kSupportedPredicateTypes = std::array{PRED};
+constexpr auto kSupportedNumericReductionOps =
+    std::array{HloOpcode::kAdd, HloOpcode::kMultiply, HloOpcode::kMaximum,
+               HloOpcode::kMinimum};
+constexpr auto kSupportedLogicalReductionOps =
+    std::array{HloOpcode::kOr, HloOpcode::kAnd};
+
+// Returns the supported element types for all-reduce.
+inline auto SupportedTypes() {
+  return llvm::concat<const PrimitiveType>(gpu::kSupportedFloatingPointTypes,
+                                           gpu::kSupportedIntegralTypes,
+                                           gpu::kSupportedPredicateTypes);
+}
+
+// Returns the supported reduction ops for the given element type as a span.
+absl::Span<const HloOpcode> SupportedReductionOps(PrimitiveType element_type);
 
 // Returns the all-reduce strategy for the given input size.
 // If `is_multimem_enabled` is true, then multimem strategies are also
@@ -46,12 +83,29 @@ int64_t GetMaxSupportedAllReduceSizeBytes(se::gpu::AllReduceStrategy strategy);
 LaunchDimensions AllReduceLaunchDimensions(int64_t elements, int64_t num_ranks,
                                            se::gpu::AllReduceStrategy strategy);
 
-// Returns true if the all-reduce kernel is supported for the given number
-// of inputs, elements, element type and reduction kind.
-bool IsAllReduceKernelSupported(int64_t num_ranks, int64_t num_elements,
-                                PrimitiveType element_type,
-                                ReductionKind reduction_kind,
-                                se::gpu::AllReduceStrategy all_reduce_strategy);
+// Returns absl::OkStatus() if supported, or an error status detailing why
+// it is not supported.
+absl::Status IsAllReduceKernelSupported(
+    int64_t num_ranks, int64_t num_elements, PrimitiveType element_type,
+    ReductionKind reduction_kind,
+    se::gpu::AllReduceStrategy all_reduce_strategy);
+
+// A broader check overload for all-reduce kernel support.
+// Returns absl::OkStatus() if supported, or an error status detailing why
+// it is not supported.
+absl::Status IsAllReduceKernelSupported(
+    bool is_collective_kernel_enabled, const se::DeviceDescription& device_info,
+    int32_t num_operands, std::optional<ReductionKind> reduction_kind,
+    int64_t num_devices, int64_t num_elements, PrimitiveType element_type,
+    bool is_local, bool is_multimem_enabled,
+    const std::vector<ReplicaGroup>& replica_groups);
+
+// Constructs an AllReduceInfo object for the given all-reduce instruction.
+// Returns an error status if the all-reduce kernel is not supported.
+absl::StatusOr<AllReduceInfo> BuildAllReduceInfo(
+    bool is_collective_kernel_enabled, bool is_multimem_enabled,
+    const se::DeviceDescription& device_info,
+    const HloAllReduceInstruction* all_reduce);
 
 // Performs element-wise addition of all input buffers and stores the result in
 // the output buffer.

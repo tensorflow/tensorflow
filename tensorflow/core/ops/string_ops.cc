@@ -154,7 +154,7 @@ REGISTER_OP("StringFormat")
       split_template = absl::StrSplit(template_, placeholder);
       int64_t num_placeholders = split_template.size() - 1;
       if (c->num_inputs() != num_placeholders) {
-        return errors::InvalidArgument(absl::StrCat(
+        return absl::InvalidArgumentError(absl::StrCat(
             "num placeholders in template and num inputs must match: ",
             num_placeholders, " vs. ", c->num_inputs()));
       }
@@ -283,9 +283,9 @@ REGISTER_OP("Substr")
         DimensionHandle pos_dim = c->Dim(pos_shape, i);
         DimensionHandle len_dim = c->Dim(len_shape, i);
         if (c->Value(pos_dim) != c->Value(len_dim)) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "pos and len shapes must match: ", c->DebugString(pos_shape),
-              " vs. ", c->DebugString(len_shape));
+              " vs. ", c->DebugString(len_shape)));
         }
       }
       // c->input(0) is the ShapeHandle to input strings

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/core/host_offloading/host_compute_asyncifier.h"
 
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -78,7 +79,7 @@ absl::StatusOr<bool> HostComputeAsyncifier::RunImpl(
       HloComputation* parent_computation = call->parent();
       HloComputation* host_computation = call->called_computations().front();
       HloCallInstruction* call_instr =
-          tsl::down_cast<HloCallInstruction*>(call);
+          absl::down_cast<HloCallInstruction*>(call);
       CHECK_NE(call_instr, nullptr);
 
       TF_ASSIGN_OR_RETURN(
@@ -111,6 +112,13 @@ absl::StatusOr<bool> HostComputeAsyncifier::RunImpl(
               call_instr_no_constants, {ShapeUtil::MakeScalarShape(U32)},
               HloInstruction::kHostThread,
               /*replace=*/true, /*override_names=*/true));
+      if (call_instr_no_constants->has_frontend_attributes()) {
+        HloInstruction* async_start = async_done->async_chain_start();
+        async_start->set_frontend_attributes(
+            call_instr_no_constants->frontend_attributes());
+        async_done->set_frontend_attributes(
+            call_instr_no_constants->frontend_attributes());
+      }
       VLOG(1) << "Turning " << call_instr_no_constants->name()
               << " into an async instruction " << async_done->name();
 

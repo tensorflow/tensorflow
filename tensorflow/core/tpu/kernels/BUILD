@@ -503,7 +503,6 @@ cc_library(
     hdrs = ["tpu_embedding_engine_state_interface.h"],
     deps = [
         "//tensorflow/core:framework",
-        "@xla//xla/service",
         "@xla//xla/stream_executor/tpu:tpu_api",
         "@xla//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
     ],
@@ -516,7 +515,6 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
-        "@xla//xla/service",
         "@xla//xla/stream_executor/tpu:tpu_api",
         "@xla//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
     ],
@@ -622,7 +620,6 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/base:core_headers",
-        "@xla//xla/service",
         "@xla//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
     ],
 )
@@ -948,6 +945,7 @@ cc_library(
         "//tensorflow/core/tpu:tpu_configuration",
         "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/core/tpu:tpu_execute",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

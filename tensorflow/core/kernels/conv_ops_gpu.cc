@@ -65,7 +65,8 @@ bool ComputeInNhwcEnabled(DataType data_type, se::Stream* stream,
 // convolution on the stream) and parameters, by running all possible
 // algorithms and measuring execution time.
 template <typename T>
-StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
+absl::StatusOr<AutotuneEntry<stream_executor::dnn::FusedConvOp>>
+AutotuneFusedConv(
     bool cudnn_use_autotune,
     AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::FusedConvOp>>*
         autotune_map,
@@ -109,7 +110,7 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
     auto launch_func =
         [&](se::ScratchAllocator* allocator_used,
             const std::unique_ptr<const se::dnn::FusedConvRunner>& runner,
-            se::dnn::ProfileResult* profile_result) -> Status {
+            se::dnn::ProfileResult* profile_result) -> absl::Status {
       TF_ASSIGN_OR_RETURN(auto scratch, allocator_used->AllocateBytes(
                                             runner->GetWorkspaceSize()));
       return (*runner)(stream, profile_result, scratch, input_ptr, filter_ptr,
@@ -235,7 +236,7 @@ AutotuneFusedConv<Eigen::half>(
     se::DeviceMemory<Eigen::half> side_input_ptr, int64_t scratch_size_limit);
 
 template <typename T>
-StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
+absl::StatusOr<AutotuneEntry<stream_executor::dnn::ConvOp>> AutotuneUnfusedConv(
     bool cudnn_use_autotune,
     AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::ConvOp>>* autotune_map,
     const ConvParameters& conv_parameters, OpKernelContext* ctx,
@@ -293,7 +294,7 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
     auto launch_func =
         [&](se::ScratchAllocator* allocator_used,
             const std::unique_ptr<const se::dnn::ConvRunner>& runner,
-            se::dnn::ProfileResult* profile_result) -> Status {
+            se::dnn::ProfileResult* profile_result) -> absl::Status {
       TF_ASSIGN_OR_RETURN(auto scratch, allocator_used->AllocateBytes(
                                             runner->GetWorkspaceSize()));
       return (*runner)(stream, profile_result, scratch, input_ptr, filter_ptr,

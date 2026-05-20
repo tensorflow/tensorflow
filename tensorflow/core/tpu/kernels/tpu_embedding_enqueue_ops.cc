@@ -55,8 +55,8 @@ absl::Status GetValidatedModeOverride(
   } else if (mode_override == "unspecified") {
     *mode = tpu::TPUEmbeddingConfiguration::UNSPECIFIED;
   } else {
-    return errors::InvalidArgument("Unsupported value ", mode_override,
-                                   " specified for mode_override.");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Unsupported value ", mode_override, " specified for mode_override."));
   }
   return absl::OkStatus();
 }

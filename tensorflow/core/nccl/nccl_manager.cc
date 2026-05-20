@@ -106,12 +106,12 @@ struct NcclManager::CommunicatorMember {
 struct NcclManager::Communicator {
  public:
   explicit Communicator(std::vector<CommunicatorMember> members,
-                        const string& key)
+                        const std::string& key)
       : num_devices(members.size()), members(std::move(members)), key(key) {}
 
   const int num_devices;
   std::vector<CommunicatorMember> members;
-  const string key;
+  const std::string key;
 };
 
 namespace {
@@ -137,7 +137,7 @@ ncclDataType_t ToNcclType(DataType t) {
   }
 }
 
-void StringToNcclUniqueId(const string& str_id, ncclUniqueId* nccl_id) {
+void StringToNcclUniqueId(const std::string& str_id, ncclUniqueId* nccl_id) {
   if (str_id.size() == NCCL_UNIQUE_ID_BYTES) {
     memcpy(nccl_id->internal, str_id.data(), NCCL_UNIQUE_ID_BYTES);
   }
@@ -155,10 +155,10 @@ void StringToNcclUniqueId(const string& str_id, ncclUniqueId* nccl_id) {
 // 3 nodes with 4 GPUs each would have a `Collective` per node, each of which is
 // tracking the 4 GPUs local to that node.
 struct NcclManager::Collective : public core::RefCounted {
-  Collective(const string& collective_key_in, DataType data_type_in,
+  Collective(const std::string& collective_key_in, DataType data_type_in,
              CollectiveType type_in, ncclRedOp_t reduction_op_in,
              int num_local_devices_in, int num_global_devices_in,
-             const string& communicator_key_in)
+             const std::string& communicator_key_in)
       : collective_key(collective_key_in),
         data_type(data_type_in),
         type(type_in),
@@ -180,14 +180,14 @@ struct NcclManager::Collective : public core::RefCounted {
 #endif
   }
 
-  const string collective_key;  // A unique key for debugging.
+  const std::string collective_key;  // A unique key for debugging.
   const DataType data_type;
   const CollectiveType type;
   const ncclRedOp_t reduction_op;  // applies when <type> is a reduction.
   const int num_local_devices;     // devices local to this node
   const int num_global_devices;    // devices across all nodes
   const bool single_node;          // true if all devices are at one node
-  const string communicator_key;
+  const std::string communicator_key;
 
   Communicator* communicator = nullptr;
 
@@ -215,9 +215,9 @@ struct NcclManager::Collective : public core::RefCounted {
   // trace_context is used by tracing system to associate collective
   // scheduling and execution (cooperative kernel launch), which happen
   // on different threads.
-  uint64 trace_context = 0;
+  uint64_t trace_context = 0;
 
-  Status status;
+  absl::Status status;
 };
 
 NcclManager::NcclManager() {
@@ -253,14 +253,15 @@ NcclManager* NcclManager::instance() {
   return instance;
 }
 
-string NcclManager::GenerateCommunicatorKey() {
+std::string NcclManager::GenerateCommunicatorKey() {
   ncclUniqueId nccl_id;
   ncclGetUniqueId(&nccl_id);
-  return string(nccl_id.internal, NCCL_UNIQUE_ID_BYTES);
+  return std::string(nccl_id.internal, NCCL_UNIQUE_ID_BYTES);
 }
 
-Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
-                                    NcclManager::Communicator** communicator) {
+absl::Status NcclManager::GetCommunicator(
+    NcclManager::Collective* collective,
+    NcclManager::Communicator** communicator) {
   // Sort by device ID, executor, and global rank to make ordering of
   // participants deterministic.
   std::sort(collective->participants.begin(), collective->participants.end(),
@@ -313,7 +314,7 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
         }
         if (i == collective->num_local_devices) {
           *communicator = comm.get();
-          return OkStatus();
+          return absl::OkStatus();
         }
       }
     }
@@ -323,9 +324,9 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
         "Cannot use multi-node NCCL collectives with NCCL 1.x");
 #endif
     if (collective->communicator_key.size() != NCCL_UNIQUE_ID_BYTES) {
-      return errors::Internal("Expected communicator_key of size ",
-                              NCCL_UNIQUE_ID_BYTES, " but found size ",
-                              collective->communicator_key.size());
+      return absl::InternalError(absl::StrCat(
+          "Expected communicator_key of size ", NCCL_UNIQUE_ID_BYTES,
+          " but found size ", collective->communicator_key.size()));
     }
     // This is an instance of multi-node collective.  We have previously
     // created a NCCL unique id and shared with all workers.  Now we find the
@@ -333,7 +334,7 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
     for (auto& comm : communicators_) {
       if (comm->key == collective->communicator_key) {
         *communicator = comm.get();
-        return OkStatus();
+        return absl::OkStatus();
       }
     }
   }
@@ -429,7 +430,7 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
   communicators_.emplace_back(
       new Communicator(std::move(members), collective->communicator_key));
   *communicator = communicators_.back().get();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void NcclManager::AddToAllReduce(std::unique_ptr<Participant> participant,
@@ -482,7 +483,7 @@ void NcclManager::AddReduceRecv(std::unique_ptr<Participant> participant,
   AddParticipant(std::move(participant), context, kReduce, reduction_op);
 }
 
-void NcclManager::SignalMultiNodeReady(const string& collective_key) {
+void NcclManager::SignalMultiNodeReady(const std::string& collective_key) {
   Collective* to_run = nullptr;
   {
     mutex_lock l(mu_);
@@ -507,7 +508,7 @@ void NcclManager::AddParticipant(std::unique_ptr<Participant> participant,
                                  ncclRedOp_t reduction_op) {
   Collective* to_run = nullptr;
   DataType data_type;
-  Status nccl_manager_status;
+  absl::Status nccl_manager_status;
   if (participant->input != nullptr) {
     data_type = participant->input->dtype();
   } else {
@@ -532,65 +533,65 @@ void NcclManager::AddParticipant(std::unique_ptr<Participant> participant,
       // Check `collective` is correct and consistent.
       if (collective->status.ok() && !collective->single_node &&
           collective->communicator_key.empty()) {
-        collective->status = errors::Internal(
+        collective->status = absl::InternalError(absl::StrCat(
             "Collective ", reduction_op,
             " is multi node with num_local_devices=",
             collective->num_local_devices,
             " and num_global_devices=", collective->num_global_devices,
-            " but has an empty communicator_key");
+            " but has an empty communicator_key"));
       }
       if (collective->status.ok() && collective->communicator_key.size() !=
                                          context.communicator_key.size()) {
-        collective->status =
-            errors::Internal("Collective ", reduction_op,
-                             " mismatch in member communicator_key with size ",
-                             collective->communicator_key.size(),
-                             " and arg communicator_key with size ",
-                             context.communicator_key.size());
+        collective->status = absl::InternalError(
+            absl::StrCat("Collective ", reduction_op,
+                         " mismatch in member communicator_key with size ",
+                         collective->communicator_key.size(),
+                         " and arg communicator_key with size ",
+                         context.communicator_key.size()));
       }
       if (collective->status.ok() && collective->type != collective_type) {
-        collective->status = errors::Internal(
+        collective->status = absl::InternalError(absl::StrCat(
             "Collective ", reduction_op, " previously initialized with type ",
-            collective->type, " but now got type ", collective_type);
+            collective->type, " but now got type ", collective_type));
       }
       if (collective->status.ok() &&
           collective->num_global_devices != context.num_global_devices) {
-        collective->status =
-            errors::Internal("Collective ", reduction_op,
-                             " previously initialized with num_global_devices ",
-                             collective->num_global_devices, " but now got ",
-                             context.num_global_devices);
+        collective->status = absl::InternalError(
+            absl::StrCat("Collective ", reduction_op,
+                         " previously initialized with num_global_devices ",
+                         collective->num_global_devices, " but now got ",
+                         context.num_global_devices));
       }
       if (collective->status.ok() &&
           collective->num_local_devices != context.num_local_devices) {
-        collective->status =
-            errors::Internal("Collective ", reduction_op,
-                             "previously initialized with num_local_devices ",
-                             collective->num_local_devices, " but now got ",
-                             context.num_local_devices);
+        collective->status = absl::InternalError(
+            absl::StrCat("Collective ", reduction_op,
+                         "previously initialized with num_local_devices ",
+                         collective->num_local_devices, " but now got ",
+                         context.num_local_devices));
       }
       if (collective->status.ok() &&
           collective->participants.size() >= collective->num_local_devices) {
-        collective->status = errors::Internal(
+        collective->status = absl::InternalError(absl::StrCat(
             "Collective ", reduction_op, " expected ",
             collective->num_local_devices, " participants but now has ",
             collective->participants.size(),
-            " with one more participant being added");
+            " with one more participant being added"));
       }
       if (collective->status.ok() && collective->root_rank >= 0 &&
           context.source_rank >= 0 &&
           collective->root_rank != context.source_rank) {
-        collective->status = errors::Internal(
+        collective->status = absl::InternalError(absl::StrCat(
             "Collective ", collective->collective_key,
             " already has root_rank ", collective->root_rank,
-            " but new participant has root_rank ", context.source_rank);
+            " but new participant has root_rank ", context.source_rank));
       }
       if (collective->status.ok() &&
           !kValidDataTypes.Contains(collective->data_type)) {
-        collective->status = errors::Internal(
+        collective->status = absl::InternalError(absl::StrCat(
             "Collective ", collective->collective_key,
             " expected data types compatible with NCCL but instead got ",
-            DataTypeString(collective->data_type));
+            DataTypeString(collective->data_type)));
       }
 
       if (context.source_rank >= 0) {
@@ -598,6 +599,22 @@ void NcclManager::AddParticipant(std::unique_ptr<Participant> participant,
       }
 
       collective->participants.emplace_back(std::move(participant));
+      Participant* p = collective->participants.back().get();
+      if (collective->status.ok()) {
+        if (collective_type == kAllGather &&
+            p->output->NumElements() <
+                p->input->NumElements() * collective->num_global_devices) {
+          collective->status = absl::InternalError(absl::StrCat(
+              "Output tensor must be able to hold ",
+              p->input->NumElements() * collective->num_global_devices,
+              " elements for AllGather, but got ", p->output->NumElements()));
+        } else if (collective_type == kAllToAll &&
+                   p->output->NumElements() < p->input->NumElements()) {
+          collective->status = absl::InternalError(absl::StrCat(
+              "Output tensor must be able to hold ", p->input->NumElements(),
+              " elements for AllToAll, but got ", p->output->NumElements()));
+        }
+      }
       ++collective->available_participants;
 
       if (CheckReady(context.collective_key, collective)) {
@@ -612,7 +629,7 @@ void NcclManager::AddParticipant(std::unique_ptr<Participant> participant,
   if (to_run != nullptr) RunCollective(to_run);
 }
 
-bool NcclManager::CheckReady(const string& collective_key,
+bool NcclManager::CheckReady(const std::string& collective_key,
                              Collective* collective) {
   if (collective->available_participants == collective->num_local_devices) {
     if (collective->num_global_devices == collective->num_local_devices ||
@@ -632,7 +649,7 @@ void NcclManager::RunCollective(Collective* collective) {
 
   static mutex collective_mu(LINKER_INITIALIZED);
 
-  Status status = collective->status;
+  absl::Status status = collective->status;
   if (status.ok()) {
     status = GetCommunicator(collective, &collective->communicator);
   }
@@ -653,9 +670,9 @@ void NcclManager::RunCollective(Collective* collective) {
       if (collective->root_rank == -1) {
         collective->root_rank = rank;
       } else if (collective->root_rank != rank) {
-        status = errors::Internal(
+        status = absl::InternalError(absl::StrCat(
             "Inconsistent root rank ", collective->root_rank, " and GPU id ",
-            p->gpu_device_id, " rank ", rank, " also marked as root.");
+            p->gpu_device_id, " rank ", rank, " also marked as root."));
       }
     }
     VLOG(2) << "RunCollective rank " << rank << " global_rank "
@@ -664,8 +681,8 @@ void NcclManager::RunCollective(Collective* collective) {
 
   if (status.ok() && collective->type == kBroadcast &&
       collective->root_rank < 0) {
-    status = errors::Internal("Root rank not indicated for collective ",
-                              collective->collective_key);
+    status = absl::InternalError(absl::StrCat(
+        "Root rank not indicated for collective ", collective->collective_key));
   }
 
   if (!status.ok()) {
@@ -786,7 +803,7 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
           recvbuff = const_cast<void*>(sendbuff);
         }
         if (num_elements < 0) {
-          p->done_callback(errors::Internal(
+          p->done_callback(absl::InternalError(
               "Both input and output are null in ncclBroadcast"));
           collective->Unref();
           continue;
@@ -905,12 +922,13 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
               << collective->collective_key << " participant " << p_idx
               << " ncclResult " << nccl_result;
       if (nccl_result == ncclSuccess) {
-        collective->participants[p_idx]->done_callback(OkStatus());
+        collective->participants[p_idx]->done_callback(absl::OkStatus());
       } else {
         // Propagate the error, but note that if other members of the collective
         // did launch their kernels, then they are hanging.
-        collective->participants[p_idx]->done_callback(errors::Unknown(
-            "Error invoking NCCL: ", ncclGetErrorString(nccl_result)));
+        collective->participants[p_idx]->done_callback(
+            absl::UnknownError(absl::StrCat("Error invoking NCCL: ",
+                                            ncclGetErrorString(nccl_result))));
       }
       collective->Unref();
     };
@@ -918,8 +936,8 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
   }
 }
 
-void NcclManager::StartAbort(const Status& s) {
-  absl::flat_hash_map<string, Collective*> collectives;
+void NcclManager::StartAbort(const absl::Status& s) {
+  absl::flat_hash_map<std::string, Collective*> collectives;
   std::vector<std::unique_ptr<Communicator>> communicators;
   {
     mutex_lock l(mu_);
@@ -970,7 +988,7 @@ void NcclManager::StartAbort(const Status& s) {
 
 void NcclManager::Reset() {
   mutex_lock l(mu_);
-  status_ = Status();
+  status_ = absl::Status();
   VLOG(2) << "Reset NcclManager " << this;
 }
 

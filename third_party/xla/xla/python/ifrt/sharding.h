@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -169,12 +170,9 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
   absl::StatusOr<ShardingProto> ToProto(
       SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
     ShardingProto proto;
-    TF_RETURN_IF_ERROR(ToProto(proto, version));
+    RETURN_IF_ERROR(ToProto(proto, version));
     return proto;
   }
-
-  // TODO(hyeontaek): Remove this method in favor of AbslStringify.
-  virtual std::string DebugString() const = 0;
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const Sharding& sharding) {
@@ -187,7 +185,7 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
   // definition.
   template <class Sink>
   friend void AbslStringify(Sink& sink,
-                            std::shared_ptr<const Sharding>& sharding) {
+                            const std::shared_ptr<const Sharding>& sharding) {
     if (sharding == nullptr) {
       sink.Append("<nullptr>");
     } else {
@@ -200,6 +198,8 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
  protected:
   Sharding(DeviceListRef devices, MemoryKind memory_kind,
            bool is_fully_replicated);
+
+  virtual std::string DebugString() const = 0;
 
   virtual void Hash(absl::HashState state) const = 0;
 
@@ -251,13 +251,13 @@ class SingleDeviceSharding final
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
-  std::string DebugString() const override;
-
   static char ID;  // NOLINT
 
  private:
   explicit SingleDeviceSharding(DeviceListRef device_list,
                                 MemoryKind memory_kind);
+
+  std::string DebugString() const override;
 
   void Hash(absl::HashState state) const override;
 };
@@ -297,12 +297,12 @@ class OpaqueSharding : public llvm::RTTIExtends<OpaqueSharding, Sharding> {
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
-  std::string DebugString() const override;
-
   static char ID;  // NOLINT
 
  private:
   explicit OpaqueSharding(DeviceListRef devices, MemoryKind memory_kind);
+
+  std::string DebugString() const override;
 
   void Hash(absl::HashState state) const override;
 };
@@ -390,8 +390,6 @@ class ConcreteSharding : public llvm::RTTIExtends<ConcreteSharding, Sharding> {
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
-  std::string DebugString() const override;
-
   static char ID;  // NOLINT
 
  private:
@@ -403,6 +401,8 @@ class ConcreteSharding : public llvm::RTTIExtends<ConcreteSharding, Sharding> {
   ConcreteSharding(DeviceListRef devices, MemoryKind memory_kind,
                    DynamicShape dynamic_shape,
                    std::vector<DynamicShape> shard_dynamic_shapes);
+
+  std::string DebugString() const override;
 
   void Hash(absl::HashState state) const override;
 
@@ -461,14 +461,14 @@ class ConcreteEvenSharding
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
-  std::string DebugString() const override;
-
   static char ID;  // NOLINT
 
  private:
   ConcreteEvenSharding(DeviceListRef devices, MemoryKind memory_kind,
                        Shape shape, Shape shard_shape,
                        bool is_fully_replicated);
+
+  std::string DebugString() const override;
 
   void Hash(absl::HashState state) const override;
 
@@ -509,13 +509,13 @@ class ShardingParamSharding
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
-  std::string DebugString() const override;
-
   static char ID;  // NOLINT
 
  private:
   ShardingParamSharding(ShardingParam sharding_param, DeviceListRef devices,
                         MemoryKind memory_kind);
+
+  std::string DebugString() const override;
 
   void Hash(absl::HashState state) const override;
 

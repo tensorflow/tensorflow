@@ -101,13 +101,13 @@ xla::XlaOp XlaExpression::AsXlaOp(xla::XlaBuilder* builder) const {
         TF_FALLTHROUGH_INTENDED;
       case Kind::kXlaOp:
         if (builder != handle_.builder()) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(
               "Mismatched builders in XlaExpression::AsXlaOp");
         }
         return handle_;
       default:
-        return errors::InvalidArgument("AsXlaOp called on XlaExpression: ",
-                                       HumanString());
+        return absl::InvalidArgumentError(
+            absl::StrCat("AsXlaOp called on XlaExpression: ", HumanString()));
     }
   });
 }
@@ -128,9 +128,9 @@ absl::StatusOr<Tensor> XlaExpression::ResolveDynamism() const {
     case Kind::kResource:
       TF_FALLTHROUGH_INTENDED;
     case Kind::kInvalid:
-      return errors::InvalidArgument(
-          "ResolveDynamism called on unsupported XlaExpression: ",
-          HumanString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("ResolveDynamism called on unsupported XlaExpression: ",
+                       HumanString()));
   }
 
   TF_ASSIGN_OR_RETURN(TensorShape shape, GetShape());
@@ -159,8 +159,8 @@ absl::StatusOr<std::optional<Tensor>> XlaExpression::ResolveConstant(
     case Kind::kTensorList:
       TF_FALLTHROUGH_INTENDED;
     case Kind::kInvalid:
-      return errors::InvalidArgument(
-          "ResolveConstant called on XlaExpression: ", HumanString());
+      return absl::InvalidArgumentError(absl::StrCat(
+          "ResolveConstant called on XlaExpression: ", HumanString()));
   }
   TF_ASSIGN_OR_RETURN(TensorShape shape, GetShape());
   // The XLA layout is specified minor to major, and TensorFlow uses a major to
@@ -192,7 +192,7 @@ absl::StatusOr<std::optional<Tensor>> XlaExpression::ResolveConstant(
   }
 
   if (!client)
-    return errors::InvalidArgument("client is required to resolve constant");
+    return absl::InvalidArgumentError("client is required to resolve constant");
 
   TF_ASSIGN_OR_RETURN(xla::XlaComputation constant_graph,
                       handle().builder()->BuildConstantSubGraph(
@@ -224,7 +224,7 @@ absl::StatusOr<TensorShape> XlaExpression::GetShape() const {
     case Kind::kTensorList:
       return TensorShape({});
     case Kind::kInvalid:
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "GetShape() called on invalid XlaExpression");
   }
 }

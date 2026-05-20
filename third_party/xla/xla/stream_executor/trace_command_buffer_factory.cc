@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
 

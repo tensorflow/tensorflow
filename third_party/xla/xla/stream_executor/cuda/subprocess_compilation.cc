@@ -106,9 +106,9 @@ static absl::StatusOr<SemanticVersion> GetToolVersionImpl(
   absl::string_view vmaj_str, vmin_str, vdot_str;
   if (!RE2::PartialMatch(tool_version.value(), *kVersionRegex, &vmaj_str,
                          &vmin_str, &vdot_str) ||
-      !absl::SimpleAtoi(vmaj_str, &version.major()) ||
-      !absl::SimpleAtoi(vmin_str, &version.minor()) ||
-      !absl::SimpleAtoi(vdot_str, &version.patch())) {
+      !absl::SimpleAtoi(vmaj_str, &version.major_version()) ||
+      !absl::SimpleAtoi(vmin_str, &version.minor_version()) ||
+      !absl::SimpleAtoi(vdot_str, &version.patch_version())) {
     return absl::FailedPreconditionError(
         absl::StrCat("Couldn't parse ptxas/nvlink version in output of ",
                      tool_path, " --version:\n", tool_version.value()));

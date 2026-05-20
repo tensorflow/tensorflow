@@ -70,7 +70,7 @@ class RepeatedStringSplitter : public ComposableSplitter {
 
   absl::Status BuildChunks() override {
     RepeatedString* repeated_string =
-        tsl::protobuf::DynamicCastToGenerated<RepeatedString>(message());
+        google::protobuf::DynamicCastMessage<RepeatedString>(message());
     auto strings = repeated_string->strings();
 
     if (strings.empty()) {
@@ -170,8 +170,8 @@ TEST(RepeatedStringSplitterTest, TestWrite) {
   RepeatedStringSplitter splitter = RepeatedStringSplitter(&message);
 
   std::string output_prefix = tensorflow::io::GetTempFilename("");
-  TF_ASSERT_OK(splitter.Write(output_prefix));
-  std::string expected_file = absl::StrCat(output_prefix, ".cpb");
+  TF_ASSERT_OK_AND_ASSIGN(std::string expected_file,
+                          splitter.Write(output_prefix));
 
   TF_ASSERT_OK_AND_ASSIGN(auto exists,
                           internal::FileExists(Env::Default(), expected_file));
@@ -241,8 +241,7 @@ class RepeatedRepeatedStringSplitter : public ComposableSplitter {
   absl::Status BuildChunks() override {
     TF_RETURN_IF_ERROR(SetMessageAsBaseChunk());
     RepeatedRepeatedString* msg =
-        tsl::protobuf::DynamicCastToGenerated<RepeatedRepeatedString>(
-            message());
+        google::protobuf::DynamicCastMessage<RepeatedRepeatedString>(message());
     auto repeated_strings = msg->rs();
     for (int i = 0; i < repeated_strings.size(); i++) {
       std::vector<FieldType> fields = {"rs"s, i};
@@ -343,8 +342,8 @@ TEST(NoOpSplitterTest, TestWrite) {
   NoOpSplitter splitter(&message);
 
   std::string output_prefix = tensorflow::io::GetTempFilename("");
-  TF_ASSERT_OK(splitter.Write(output_prefix));
-  std::string expected_file = absl::StrCat(output_prefix, ".pb");
+  TF_ASSERT_OK_AND_ASSIGN(std::string expected_file,
+                          splitter.Write(output_prefix));
 
   TF_ASSERT_OK_AND_ASSIGN(auto exists,
                           internal::FileExists(Env::Default(), expected_file));

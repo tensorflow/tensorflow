@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_value.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 
@@ -81,6 +82,12 @@ class CopyInsertion : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads = {},
       bool insert_post_scheduling_control_dependencies = false);
 
+  // A callback that allows backends to perform analysis on the HloAliasAnalysis
+  // and suggest additional copies.
+  using CustomBufferAnalysisFn = std::function<void(
+      HloModule* module, const HloAliasAnalysis& alias_analysis,
+      std::function<void(HloInstruction*, const ShapeIndex&)> add_copy_fn)>;
+
   // Add copies to address special constraints on the roots of computations not
   // related to live range interference:
   //
@@ -95,7 +102,8 @@ class CopyInsertion : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads = {},
       std::function<bool(const HloValue* value)>
-          should_add_target_specific_copies = nullptr);
+          should_add_target_specific_copies = nullptr,
+      CustomBufferAnalysisFn custom_buffer_analysis = nullptr);
 
  protected:
   // Override which requires the caller to pass in a call graph.
@@ -104,7 +112,8 @@ class CopyInsertion : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads,
       HloModule* module,
       std::function<bool(const HloValue* value)>
-          should_add_target_specific_copies);
+          should_add_target_specific_copies,
+      CustomBufferAnalysisFn custom_buffer_analysis);
 
   // Add copies for conditional instructions.
   virtual absl::Status AddCopiesForConditional(

@@ -1,5 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "if_not_tflite_converter", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
@@ -18,16 +18,6 @@ gentbl_cc_library(
     td_file = "canonicalize.td",
     deps = [
         ":rewrite_util_td_files",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
-    ],
-)
-
-gentbl_cc_library(
-    name = "tensorflow_reduce_patterns_inc_gen",
-    tbl_outs = {"reducer/tf_reduce_patterns.inc": ["-gen-rewriters"]},
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "reducer/tf_mlir_reduce_patterns.td",
-    deps = [
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
     ],
 )
@@ -937,7 +927,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
-        "//tensorflow/core:all_kernels",
         "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -945,7 +934,9 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-    ],
+    ] + if_not_tflite_converter([
+        "//tensorflow/core:all_kernels",
+    ]),
     alwayslink = 1,
 )
 

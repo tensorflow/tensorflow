@@ -14,7 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/rendezvous_util.h"
 
+#include <string>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/notification.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"

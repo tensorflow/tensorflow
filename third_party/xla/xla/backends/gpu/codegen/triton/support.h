@@ -66,6 +66,11 @@ CodegenDecision IsTritonSupportedComputation(
 // `kTritonGemmFusionKind`.
 bool IsTritonFusedComputation(const HloComputation& computation);
 
+// Returns `true` if `instr` is a kFusion containing exactly one kDot and
+// whose backend config kind is one of the Triton GEMM fusion kinds
+// (`kTritonGemmFusionKind` or `kTritonNestedGemmFusionKind`).
+bool IsTritonGemm(const HloInstruction& instr);
+
 namespace internal {
 // TODO(b/363981282): Remove the function below once all ops are tested via
 // HLOs. This is exposed for testing purposes only and will be removed in the

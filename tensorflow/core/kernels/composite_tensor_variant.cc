@@ -58,8 +58,8 @@ bool CompositeTensorVariant::Decode(const VariantTensorData& data) {
   return true;
 }
 
-string CompositeTensorVariant::DebugString() const {
-  string result("<CompositeTensorVariant type=");
+std::string CompositeTensorVariant::DebugString() const {
+  std::string result("<CompositeTensorVariant type=");
   result.append(TypeSpecProto::TypeSpecClass_Name(
       metadata_->type_spec_proto().type_spec_class()));
   result.append(", components=[");

@@ -65,7 +65,6 @@ class MpmdLoadedExecutable final
           absl::flat_hash_map<std::string, std::vector<xla::ifrt::Device*>>>
           mpmd_addressable_devices,
       absl::StatusOr<std::optional<std::string>> fingerprint,
-      tsl::Future<> ready_future,
       std::vector<tsl::RCReference<xla::ifrt::LoadedHostCallback>>
           loaded_host_callbacks,
       std::vector<uint64_t> loaded_host_callback_handles);
@@ -79,7 +78,7 @@ class MpmdLoadedExecutable final
   absl::StatusOr<std::optional<std::string>> Fingerprint() const override {
     return loaded_executable_->Fingerprint();
   }
-  absl::StatusOr<std::unique_ptr<xla::ifrt::ExecutableVersion>>
+  absl::StatusOr<std::shared_ptr<const xla::ifrt::ExecutableVersion>>
   executable_version() const override {
     return loaded_executable_->executable_version();
   }
@@ -91,9 +90,6 @@ class MpmdLoadedExecutable final
   }
   xla::ifrt::UserContextRef user_context() const override {
     return loaded_executable_->user_context();
-  }
-  tsl::Future<> GetReadyFuture() const override {
-    return loaded_executable_->GetReadyFuture();
   }
 
   int num_devices() const override { return loaded_executable_->num_devices(); }
@@ -159,6 +155,8 @@ class MpmdLoadedExecutable final
   GetMpmdHloModules() const override;
   absl::StatusOr<absl::flat_hash_map<std::string, xla::ifrt::AttributeMap>>
   GetMpmdCostAnalysis() const override;
+
+  void SetDeleteOptions(const DeleteOptions& options) override {}
 
   static char ID;  // NOLINT
 

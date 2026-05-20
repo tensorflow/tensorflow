@@ -72,25 +72,25 @@ class MatMulOp : public XlaOpKernel {
 
     // Check that the dimensions of the two matrices are valid.
     OP_REQUIRES(ctx, a_shape.dims() == b_shape.dims(),
-                errors::InvalidArgument("In[0] and In[1] has different ndims: ",
-                                        a_shape.DebugString(), " vs. ",
-                                        b_shape.DebugString()));
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsMatrix(a_shape),
-        errors::InvalidArgument("In[0] is not a matrix. Instead it has shape ",
-                                a_shape.DebugString()));
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsMatrix(b_shape),
-        errors::InvalidArgument("In[1] is not a matrix. Instead it has shape ",
-                                b_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "In[0] and In[1] has different ndims: ",
+                    a_shape.DebugString(), " vs. ", b_shape.DebugString())));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(a_shape),
+                absl::InvalidArgumentError(
+                    absl::StrCat("In[0] is not a matrix. Instead it has shape ",
+                                 a_shape.DebugString())));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(b_shape),
+                absl::InvalidArgumentError(
+                    absl::StrCat("In[1] is not a matrix. Instead it has shape ",
+                                 b_shape.DebugString())));
     int first_index = transpose_a_ ? 0 : 1;
     int second_index = transpose_b_ ? 1 : 0;
 
     OP_REQUIRES(ctx,
                 a_shape.dim_size(first_index) == b_shape.dim_size(second_index),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Matrix size-incompatible: In[0]: ", a_shape.DebugString(),
-                    ", In[1]: ", b_shape.DebugString()));
+                    ", In[1]: ", b_shape.DebugString())));
 
     xla::XlaOp a = ctx->Input(0);
     xla::XlaOp b = ctx->Input(1);

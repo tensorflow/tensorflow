@@ -38,7 +38,7 @@ StatusOr<mlir::Operation*> TensorListSetItemSPMDExpander::ExpandOp(
   // handles have differing layouts since this means we are changing the shapes
   // and have to relayout all the items that this points to.
   if (operand_layouts[0] != output_layout) {
-    return errors::Internal(
+    return absl::InternalError(
         "Differing layouts for variant tensor input and variant tensor output "
         "is not yet allowed.");
   }

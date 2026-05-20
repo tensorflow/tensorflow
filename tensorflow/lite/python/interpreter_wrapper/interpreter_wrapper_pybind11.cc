@@ -57,13 +57,15 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
          const std::vector<std::string>& registerers_by_name,
          const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
          bool preserve_all_tensors, bool disable_delegate_clustering,
-         int num_threads, bool default_delegate_latest_features) {
+         int num_threads, bool default_delegate_latest_features,
+         bool compress_quantization_zero_points) {
         std::string error;
         auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromFile(
             model_path.c_str(), op_resolver_id, registerers_by_name,
             registerers_by_func, &error, preserve_all_tensors,
             disable_delegate_clustering, num_threads,
-            default_delegate_latest_features);
+            default_delegate_latest_features,
+            compress_quantization_zero_points);
         if (!wrapper) {
           throw std::invalid_argument(error);
         }
@@ -88,13 +90,15 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
          const std::vector<std::string>& registerers_by_name,
          const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
          bool preserve_all_tensors, bool disable_delegate_clustering,
-         int num_threads, bool default_delegate_latest_features) {
+         int num_threads, bool default_delegate_latest_features,
+         bool compress_quantization_zero_points) {
         std::string error;
         auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromBuffer(
             data.ptr(), op_resolver_id, registerers_by_name,
             registerers_by_func, &error, preserve_all_tensors,
             disable_delegate_clustering, num_threads,
-            default_delegate_latest_features);
+            default_delegate_latest_features,
+            compress_quantization_zero_points);
         if (!wrapper) {
           throw std::invalid_argument(error);
         }

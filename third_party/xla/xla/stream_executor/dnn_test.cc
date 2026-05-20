@@ -19,7 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace stream_executor {
 namespace {

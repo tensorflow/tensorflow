@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -156,7 +157,7 @@ struct ExecuteOptions {
   absl::StatusOr<ExecuteOptionsProto> ToProto(
       SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
     ExecuteOptionsProto proto;
-    TF_RETURN_IF_ERROR(ToProto(proto, version));
+    RETURN_IF_ERROR(ToProto(proto, version));
     return proto;
   }
 
@@ -182,7 +183,7 @@ class LoadedExecutable
 
   // Returns the executable version that can be used for verifying the
   // compatibility with a runtime.
-  virtual absl::StatusOr<std::unique_ptr<ExecutableVersion>>
+  virtual absl::StatusOr<std::shared_ptr<const ExecutableVersion>>
   executable_version() const = 0;
 
   // Serializes this executable into a string. The compatibility of the
@@ -198,16 +199,6 @@ class LoadedExecutable
   // May be `nullptr` if the user context is unset or the runtime does not
   // support it.
   virtual UserContextRef user_context() const = 0;
-
-  // Returns a future that becomes ready when the executable is ready to be
-  // used for execution.
-  //
-  // This can be used by implementations that support async compilation, where
-  // `Compiler::Compile()` returns an executable ~immediately and does heavy
-  // compilation work in the background. Implementations must still ensure that
-  // all other methods can be used even without explicitly waiting for the ready
-  // future (e.g., via blocking).
-  virtual tsl::Future<> GetReadyFuture() const = 0;
 
   // The following APIs are taken from `xla::PjRtExecutable` for fast
   // prototyping.
@@ -321,6 +312,15 @@ class LoadedExecutable
   // pjrt_executable.h and put it in an `XlaCompatibleExecutable`.
 
   virtual absl::Span<Device* const> addressable_devices() const = 0;
+
+  struct DeleteOptions {
+    // Analogous to `ExecuteOptions::execution_stream_id` for any side-effects
+    // of deleting the executable.
+    int64_t deletion_stream_id = 0;
+  };
+
+  // Sets options that will be used when the executable is deleted/destroyed.
+  virtual void SetDeleteOptions(const DeleteOptions& options) = 0;
 
   static char ID;  // NOLINT
 };

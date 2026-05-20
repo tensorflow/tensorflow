@@ -121,6 +121,11 @@ typedef struct {
   // the weight cache will only be loaded from this if `weights_cache` is
   // undefined.
   void* weight_cache_provider;
+
+  // Whether to memory lock the weight cache. This is only supported on systems
+  // that support memory locking and will only work if the weight cache is
+  // memory mapped. This flag only if `weights_cache` is undefined.
+  bool weight_cache_lock_memory;
 } TfLiteXNNPackDelegateOptions;
 
 // Returns true on systems that support running the in-memory weight cache

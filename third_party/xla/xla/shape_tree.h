@@ -99,14 +99,14 @@ class ShapeTree {
       : ShapeTree(std::make_shared<Shape>(std::move(shape))) {}
 
   explicit ShapeTree(const Shape* shape)
-      : ShapeTree(absl::in_place_t{}, shape) {}
+      : ShapeTree(std::in_place_t{}, shape) {}
 
   // Create ShapeTree with the given shape, and init_value for all nodes.
   ShapeTree(Shape shape, const T& init_value)
       : ShapeTree(std::make_shared<Shape>(std::move(shape)), init_value) {}
 
   ShapeTree(const Shape* shape, const T& init_value)
-      : ShapeTree(absl::in_place_t{}, shape, init_value) {}
+      : ShapeTree(std::in_place_t{}, shape, init_value) {}
 
   // Returns the data element associated with the subshape at the
   // given index. This works for any valid index, including internal tuple
@@ -315,7 +315,7 @@ class ShapeTree {
   }
 
   template <typename... Args>
-  ShapeTree(absl::in_place_t, const Shape* shape, Args&&... args)
+  ShapeTree(std::in_place_t, const Shape* shape, Args&&... args)
       : tuple_tree_(*shape, args...), shape_(shape) {}
 
   TupleTree<T> tuple_tree_;

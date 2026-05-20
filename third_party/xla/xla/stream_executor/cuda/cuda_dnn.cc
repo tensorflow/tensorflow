@@ -80,19 +80,10 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/library_types.h"
 #include "third_party/gpus/cudnn/cudnn_version.h"
 
-#if CUDNN_VERSION >= 90000
 #include "third_party/gpus/cudnn/cudnn_adv.h"
 #include "third_party/gpus/cudnn/cudnn_cnn.h"
 #include "third_party/gpus/cudnn/cudnn_ops.h"
 #include "third_party/gpus/cudnn/cudnn_graph.h"
-#else
-#include "third_party/gpus/cudnn/cudnn_adv_infer.h"
-#include "third_party/gpus/cudnn/cudnn_adv_train.h"
-#include "third_party/gpus/cudnn/cudnn_cnn_infer.h"
-#include "third_party/gpus/cudnn/cudnn_cnn_train.h"
-#include "third_party/gpus/cudnn/cudnn_ops_infer.h"
-#include "third_party/gpus/cudnn/cudnn_ops_train.h"
-#endif
 
 #include "third_party/cudnn_frontend/include/cudnn_frontend.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend_utils.h"
@@ -122,7 +113,8 @@ namespace gpu {
 
 namespace {
 
-static_assert(CUDNN_VERSION >= 8900, "cuDNN needs to be version 8.9 or higher");
+static_assert(CUDNN_VERSION >= 90000,
+              "cuDNN needs to be version 9.0 or higher");
 
 // Exits the program if 'expr' doesn't return CUDNN_STATUS_SUCCESS.
 #define CHECK_CUDNN_OK(expr) CHECK_EQ(expr, CUDNN_STATUS_SUCCESS)
@@ -236,8 +228,8 @@ class CudnnHandle {
 // need not match.
 bool IsSourceCompatibleWithCudnnLibrary(const SemanticVersion& source_version,
                                         const SemanticVersion& loaded_version) {
-  return loaded_version.major() == source_version.major() &&
-         loaded_version.minor() >= source_version.minor();
+  return loaded_version.major_version() == source_version.major_version() &&
+         loaded_version.minor_version() >= source_version.minor_version();
 }
 
 }  // namespace
@@ -354,38 +346,20 @@ cudnnRNNAlgo_t ToCudnnRNNAlgo(std::optional<dnn::AlgorithmDesc> algorithm) {
 
 enum class PreloadCudnnType { ConvFwd, ConvBwdFilter, ConvBwdData, Rnn };
 
-// Preload sub libs for cudnn 8.0.4+ to make sure that the loading time isn't
+// Preload sub libs for cudnn to make sure that the loading time isn't
 // measured in the autotuning.
 void PreloadCudnnSubLibs(PreloadCudnnType type) {
   switch (type) {
     case PreloadCudnnType::ConvBwdFilter:
-    case PreloadCudnnType::ConvBwdData: {
-#if CUDNN_VERSION < 90000
-      cudnnOpsTrainVersionCheck();
-      cudnnCnnTrainVersionCheck();
-#endif  // CUDNN_VERSION < 90000
-      [[clang::fallthrough]];
-    }
+    case PreloadCudnnType::ConvBwdData:
     case PreloadCudnnType::ConvFwd: {
-#if CUDNN_VERSION >= 90000
       cudnnGraphVersionCheck();
       cudnnOpsVersionCheck();
-#else
-      cudnnOpsInferVersionCheck();
-      cudnnCnnInferVersionCheck();
-#endif  // CUDNN_VERSION >= 90000
       break;
     }
     case PreloadCudnnType::Rnn: {
-#if CUDNN_VERSION >= 90000
       cudnnOpsVersionCheck();
       cudnnAdvVersionCheck();
-#else
-      cudnnOpsInferVersionCheck();
-      cudnnAdvInferVersionCheck();
-      cudnnOpsTrainVersionCheck();
-      cudnnAdvTrainVersionCheck();
-#endif  // CUDNN_VERSION >= 90000
       break;
     }
   }
@@ -494,8 +468,9 @@ void CudnnSupport::NotifyStreamDestroyed(Stream* stream) /* override */ {
 absl::StatusOr<stream_executor::dnn::VersionInfo> CudnnSupport::GetVersion() {
   TF_ASSIGN_OR_RETURN(SemanticVersion version,
                       stream_executor::cuda::GetLoadedCudnnVersion());
-  return stream_executor::dnn::VersionInfo(version.major(), version.minor(),
-                                           version.patch());
+  return stream_executor::dnn::VersionInfo(version.major_version(),
+                                           version.minor_version(),
+                                           version.patch_version());
 }
 
 namespace {
@@ -1860,25 +1835,8 @@ absl::Status CreateRnnTempSpace(
         /*workSpaceSize=*/&workspace_size_in_bytes,
         /*reserveSpaceSize=*/&reserve_space_size_in_bytes));
   } else {
-#if CUDNN_VERSION >= 90000
     return absl::InternalError(
         "Sequence lengths for RNN are required from CUDNN 9.0+");
-#else
-    RETURN_IF_CUDNN_ERROR(cudnnGetRNNWorkspaceSize(
-        /*handle=*/cudnn.handle(),
-        /*rnnDesc=*/rnn_desc.handle(),
-        /*seqLength=*/input_desc.max_seq_length(),
-        /*xDesc=*/input_desc.handles(),
-        /*sizeInBytes=*/&workspace_size_in_bytes));
-    if (is_fwd_training) {
-      RETURN_IF_CUDNN_ERROR(cudnnGetRNNTrainingReserveSize(
-          /*handle=*/cudnn.handle(),
-          /*rnnDesc=*/rnn_desc.handle(),
-          /*seqLength=*/model_dims.max_seq_length,
-          /*xDesc=*/input_desc.handles(),
-          /*sizeInBytes=*/&reserve_space_size_in_bytes));
-    }
-#endif  // CUDNN_VERSION >= 90000
   }
 
   if (workspace_size_in_bytes > 0) {
@@ -5728,7 +5686,6 @@ CudnnSupport::NormRunnerFromDesc(
     std::optional<dnn::TensorDescriptor> norm_factor_descriptor,
     std::optional<dnn::TensorDescriptor> dscale_descriptor,
     std::optional<dnn::TensorDescriptor> dbias_descriptor) {
-#if (CUDNN_VERSION >= 8905)
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
   std::vector<int64_t> uids;
@@ -5855,11 +5812,6 @@ CudnnSupport::NormRunnerFromDesc(
           /*need_side_input=*/false, scalar_uids, scalar_input_values));
   return {std::make_unique<CudnnExecutionPlanRunner<dnn::NormSignature>>(
       std::move(runner))};
-
-#else
-  return absl::UnimplementedError(
-      "Layer norm kernels require cuDNN 8.9.5 or higher.");
-#endif  // CUDNN_VERSION >= 8905
 }
 
 bool CudnnSupport::GetRnnAlgorithms(
@@ -6372,6 +6324,19 @@ absl::Status CudnnSupport::CudnnReorderConvolutionFilterAndBias(
   bool has_bias = bias_input.has_value();
   CHECK(!has_bias || bias_output.has_value());
 
+  if (has_bias && filter_descriptor.output_feature_map_count() !=
+                      bias_input->ElementCount()) {
+    // cuDNN derives the bias size from the filter descriptor. This mismatch
+    // means the input HLO is wrong, and would result in cuDNN either filling in
+    // a part of bias_output, or writing past its end.
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Invalid input to CudnnReorderConvolutionFilterAndBias: filter output "
+        "feature map count (",
+        filter_descriptor.output_feature_map_count(),
+        ") does not match match bias input element count (",
+        bias_input->ElementCount(), ")"));
+  }
+
   auto cudnn = cudnn_->GetHandle(parent_, stream);
   CudnnFilterDescriptor filter_nd(filter_descriptor, CUDNN_DATA_INT8x32);
 
@@ -6873,7 +6838,7 @@ CudnnGraph::VariantPack CudnnGraph::PackOperands(
   absl::Span<DeviceAddressBase> operands_without_workspace = operands;
   if (graph_.get_workspace_size() > 0) {
     workspace = operands.back();
-    CHECK_EQ(graph_.get_workspace_size(), workspace.size());
+    CHECK_GE(workspace.size(), graph_.get_workspace_size());
   }
   if (graph_.get_workspace_size() > 0 || operands.back().size() == 0) {
     operands_without_workspace = operands.first(operands.size() - 1);
@@ -6947,6 +6912,16 @@ absl::Status CudnnGraph::PopulateOrUpdateRawCommandBuffer(
 }  // namespace gpu
 
 void initialize_cudnn() {
+  // Check if already registered before attempting - prevents duplicate
+  // registration error messages (can happen with multiple library loads)
+  auto already_registered = PluginRegistry::Instance()->HasFactory(
+      cuda::kCudaPlatformId, PluginKind::kDnn);
+
+  if (already_registered) {
+    // Already registered, skip silently (mimics ROCm behavior)
+    return;
+  }
+
   absl::Status status =
       PluginRegistry::Instance()->RegisterFactory<PluginRegistry::DnnFactory>(
           cuda::kCudaPlatformId, "cuDNN",

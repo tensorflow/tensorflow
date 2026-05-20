@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -24,6 +25,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
@@ -856,6 +858,83 @@ TEST_F(HloConstantFoldingTest, InterproceduralDeadParameter) {
   HloConstantFolding constant_folding;
   TF_ASSERT_OK_AND_ASSIGN(bool result,
                           RunHloPass(&constant_folding, module.get()));
+  EXPECT_FALSE(result);
+}
+
+TEST_F(HloConstantFoldingTest,
+       InterproceduralMultipleCallsitesDeterministicResults) {
+  const char* const kModuleStr = R"(
+    HloModule test
+
+    Fn {
+      param0 = f32[8] parameter(0)
+      param1 = f32[8] parameter(1)
+      param2 = f32[8] parameter(2)
+      ROOT add.1 = f32[8] add(param0, param1)
+    }
+
+    ENTRY entry {
+      entry.param0 = f32[8] parameter(0)
+      entry.param1 = f32[8] parameter(1)
+      entry.param2 = f32[8] parameter(2)
+      constant.0.0 = f32[8] constant({1, -1, 1, -1, 1, -1, 1, -1})
+      constant.0.1 = f32[8] constant({1, -1, 1, -1, 1, -1, 1, -1})
+      constant.0.2 = f32[8] constant({1, -1, 1, -1, 1, -1, 1, -1})
+      constant.1 = f32[8] constant({1, -1, 1, -1, 1, -1, 1, -2})
+      constant.2 = f32[8] constant({1, -1, 1, -1, 1, -1, 1, -3})
+      constant.3 = f32[8] constant({1, -1, 1, -1, 1, -1, 1, -4})
+      call.0 = f32[8] call(constant.0.0, constant.1, entry.param0), to_apply=Fn
+      call.1 = f32[8] call(constant.0.1, constant.2, entry.param1), to_apply=Fn
+      call.3 = f32[8] call(constant.0.2, constant.3, entry.param2), to_apply=Fn
+      add = f32[8] add(call.0, call.1)
+      ROOT add.2 = f32[8] add(add, call.3)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
+  EXPECT_TRUE(result);
+  HloComputation* fn = module->GetComputationWithName("Fn");
+  std::string constant_name;
+  for (HloInstruction* inst : fn->instructions()) {
+    if (inst->opcode() == HloOpcode::kConstant) {
+      constant_name = inst->name();
+      break;
+    }
+  }
+  EXPECT_GT(constant_name.size(), 0);
+  // Run the pass repeatedly and check the result is deterministic.
+  for (int i = 0; i < 10; ++i) {
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(kModuleStr));
+    HloConstantFolding constant_folding;
+    TF_ASSERT_OK_AND_ASSIGN(bool result,
+                            RunHloPass(&constant_folding, module.get()));
+    EXPECT_TRUE(result);
+    HloComputation* fn = module->GetComputationWithName("Fn");
+    std::string new_constant_name;
+    for (HloInstruction* inst : fn->instructions()) {
+      if (inst->opcode() == HloOpcode::kConstant) {
+        new_constant_name = inst->name();
+        break;
+      }
+    }
+    EXPECT_EQ(constant_name, new_constant_name);
+  }
+}
+
+TEST_F(HloConstantFoldingTest, DontFoldGetRngSeed) {
+  const char* const kModuleStr = R"(
+    HloModule test
+    ENTRY entry {
+      ROOT call = u64[] custom-call(), custom_call_target="GetRngSeed"
+    })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunHloPass(&constant_folding, module.get()));
   EXPECT_FALSE(result);
 }
 

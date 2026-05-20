@@ -67,11 +67,11 @@ class AsStringOp : public OpKernel {
                                                   "for datatype ",
                                                   DataTypeString(dtype))));
     }
-    OP_REQUIRES(
-        ctx, fill_string.size() <= 1,
-        errors::InvalidArgument("Fill string must be one or fewer characters"));
+    OP_REQUIRES(ctx, fill_string.size() <= 1,
+                absl::InvalidArgumentError(
+                    "Fill string must be one or fewer characters"));
     OP_REQUIRES(ctx, !(scientific && shortest),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Cannot select both scientific and shortest notation"));
 
     if (!fill_string.empty()) {
@@ -84,9 +84,10 @@ class AsStringOp : public OpKernel {
           break;
         default:
           bool fill_not_supported = true;
-          OP_REQUIRES(ctx, !fill_not_supported,
-                      errors::InvalidArgument("Fill argument not supported: \"",
-                                              fill_string, "\""));
+          OP_REQUIRES(
+              ctx, !fill_not_supported,
+              absl::InvalidArgumentError(absl::StrCat(
+                  "Fill argument not supported: \"", fill_string, "\"")));
       }
     }
     if (width_ <= -1) {
@@ -247,9 +248,10 @@ class AsStringOp : public OpKernel {
       } break;
       default:
         bool can_encode_type = false;
-        OP_REQUIRES(context, can_encode_type,
-                    errors::InvalidArgument("Cannot encode input of type ",
-                                            DataTypeString(dtype)));
+        OP_REQUIRES(
+            context, can_encode_type,
+            absl::InvalidArgumentError(absl::StrCat(
+                "Cannot encode input of type ", DataTypeString(dtype))));
     }
 
 #undef ENCODE_TYPE

@@ -158,7 +158,7 @@ const std::vector<DTypeCoreInfo>* FindCoreInfoForDType(CudaComputeCapability cc,
            }}});
 
   for (const auto& config : *kTable) {
-    if (config.cc == cc.WithoutAnyFeatureExtension()) {
+    if (config.cc.major == cc.major) {
       return is_tensor ? &config.tensor_core_infos : &config.cuda_core_infos;
     }
   }

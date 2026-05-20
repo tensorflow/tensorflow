@@ -1,5 +1,6 @@
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
-load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -8,11 +9,12 @@ package(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "free_vars_detect",
     srcs = [
         "free_vars_detect.py",
     ],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/autograph/pyct:inspect_utils",
@@ -24,9 +26,10 @@ py_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "free_vars_detect_test",
     srcs = ["free_vars_detect_test.py"],
+    strict_deps = True,
     tags = [
         "no_oss",  # TODO(b/247102978)
     ],
@@ -39,9 +42,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "by_ref_capture_test",
     srcs = ["by_ref_capture_test.py"],
+    strict_deps = True,
     deps = [
         "@absl_py//absl/testing:parameterized",
         #internal proto upb dep
@@ -68,9 +72,10 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "capture_container_test",
     srcs = ["capture_container_test.py"],
+    strict_deps = True,
     deps = [
         ":capture_container",
         "@absl_py//absl/testing:parameterized",
@@ -80,9 +85,10 @@ py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "restore_captures",
     srcs = ["restore_captures.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core/function/polymorphism:function_type",

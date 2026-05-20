@@ -16,20 +16,20 @@ limitations under the License.
 #ifndef XLA_HLO_ANALYSIS_HLO_REACHABILITY_H_
 #define XLA_HLO_ANALYSIS_HLO_REACHABILITY_H_
 
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <memory>
-#include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/types.h"
 
 namespace xla {
 
@@ -42,7 +42,7 @@ namespace xla {
 // sense.
 class HloReachabilityMap {
  public:
-  using Index = size_t;
+  using Index = uint32_t;
 
   // Sets up a graph with no edges and where the nodes correspond to the given
   // instructions.
@@ -114,20 +114,39 @@ class HloReachabilityMap {
   // (operands and control predecessors) of 'instruction' has changed.
   void UpdateReachabilityThroughInstruction(const HloInstruction* instruction);
 
+  // Bulk update reachabilities for multiple instructions. All works if new
+  // predecessors are added to the instructions, but not removed. to_update is a
+  // map from instruction to new predecessors.
+  void UpdateMultipleInstructions(
+      absl::flat_hash_map<const HloInstruction*,
+                          absl::flat_hash_set<const HloInstruction*>>
+          to_update);
+
   // Returns true if "b" is reachable from "a"
   //
   // Note that this function only correctly answers queries about reachability
   // if the set of edges that have been provided to this class are transitive.
   bool IsReachable(const HloInstruction* a, const HloInstruction* b) const {
+    if (a == b) {
+      return true;
+    }
     return IsReachable(GetIndex(a), GetIndex(b));
   }
-  bool IsReachable(Index a, Index b) const { return BitSetFromIndex(b).Get(a); }
+  bool IsReachable(Index a, Index b) const {
+    if (a == b) {
+      return true;
+    }
+    return BitSetFromIndex(b).Get(a);
+  }
 
   // Returns true if "b" is reachable from "a" or "a" is reachable from "b"
   //
   // Note that this function only correctly answers queries about reachability
   // if the set of edges that have been provided to this class are transitive.
   bool IsConnected(const HloInstruction* a, const HloInstruction* b) const {
+    if (a == b) {
+      return true;
+    }
     return IsConnected(GetIndex(a), GetIndex(b));
   }
   bool IsConnected(Index a, Index b) const {
@@ -136,13 +155,21 @@ class HloReachabilityMap {
 
   // Checks if an instruction is in the Reachability map.
   bool IsPresent(const HloInstruction* instruction) const {
-    // If we cannot construct the key, then the instruction is not in the
-    // reachability map.
-    return (instruction == nullptr
-                ? false
-                : (instruction->GetModule() != nullptr
-                       ? indices_.contains(GetKey(instruction))
-                       : false));
+    if (instruction == nullptr) {
+      return false;
+    }
+    const HloComputation* parent = instruction->parent();
+    return (parent != nullptr) && (parent->unique_id() == computation_id_) &&
+           GetKey(instruction) < indices_.size() &&
+           indices_[GetKey(instruction)] != kValueAbsent;
+  }
+
+  // Checks if an instruction is in the Reachability map.
+  bool IsPresent(const HloInstruction& instruction) const {
+    const HloComputation* parent = instruction.parent();
+    return (parent != nullptr) && (parent->unique_id() == computation_id_) &&
+           GetKey(instruction) < indices_.size() &&
+           indices_[GetKey(instruction)] != kValueAbsent;
   }
 
   // Replace the instruction "original" with "replacement" in the reachability
@@ -156,7 +183,7 @@ class HloReachabilityMap {
   class BitSet {
    public:
     using Word = uint64_t;
-    static constexpr size_t kBits = 64;
+    static constexpr uint64_t kBits = sizeof(Word) * 8;
 
     BitSet() : ptr_(nullptr), bits_(0) {}
     // Create a BitSet view of "num_bits" starting at "ptr".  The memory backing
@@ -175,6 +202,28 @@ class HloReachabilityMap {
     void Set(Index index) {
       DCHECK(index >= 0 && index < bits_);
       ptr_[index / kBits] |= 1ull << (index % kBits);
+    }
+
+    // Same as operator|=, but returns whether the bitset changed.
+    bool OrUpdate(const BitSet& other) {
+      DCHECK(bits_ == other.bits_);
+      if (ptr_ == other.ptr_) {
+        return false;
+      }
+
+      // Ease the work of the auto-vectorizer.
+      Word* __restrict a = ptr_;
+      const Word* __restrict b = other.ptr_;
+      size_t num_words = NumWords();
+      Word changed_accumulator = 0;
+      for (size_t i = 0; i < num_words; ++i) {
+        Word ai = a[i];
+        Word bi = b[i];
+
+        a[i] = ai | bi;
+        changed_accumulator |= (~ai & bi);
+      }
+      return changed_accumulator;
     }
 
     // Sets this bit-set to union of this bit-set and `other`.
@@ -199,14 +248,7 @@ class HloReachabilityMap {
       if (ptr_ == other.ptr_) {
         return;
       }
-
-      // Ease the work of the auto-vectorizer.
-      const Word* b = other.ptr_;
-      Word* __restrict out = ptr_;
-      size_t num_words = NumWords();
-      for (size_t i = 0; i < num_words; ++i) {
-        out[i] = b[i];
-      }
+      memcpy(ptr_, other.ptr_, NumBytes());
     }
 
     size_t NumWords() const { return (bits_ + kBits - 1) / kBits; }
@@ -233,8 +275,8 @@ class HloReachabilityMap {
   };
 
   BitSet BitSetFromIndex(Index i) const {
-    const int block = i / kRowsPerAllocation;
-    const int row_within_block = i % kRowsPerAllocation;
+    const uint64_t block = i >> kRowsPerAllocationPowerLog2;
+    const uint64_t row_within_block = i & (kRowsPerAllocation - 1);
     return BitSet(
         bit_storage_[block].get() + row_within_block * words_per_bitset_,
         bits_per_bitset_);
@@ -242,9 +284,13 @@ class HloReachabilityMap {
 
   friend class HloReachabilityMapBitSetBenchmark;
 
-  using Key = std::pair<int64_t, int64_t>;  // module ID, instruction ID.
+  using Key = HloInstruction::LocalId;
   static Key GetKey(const HloInstruction* instruction) {
-    return {instruction->GetModule()->unique_id(), instruction->unique_id()};
+    return instruction->local_id();
+  }
+
+  static Key GetKey(const HloInstruction& instruction) {
+    return instruction.local_id();
   }
 
   // Helper for SetReachabilityToUnion/FastSetReachabilityToUnion.
@@ -255,7 +301,7 @@ class HloReachabilityMap {
 
   // Map from instruction to index. The index is used for bit_set_ and the bits
   // within a BitSet.
-  absl::flat_hash_map<Key, Index> indices_;
+  std::vector<Index> indices_;
 
   // We allocate an (instructions.size() + 1) * (roundup(instructions.size(),
   // 64) bit matrix to hold the adjacency information.  We round up one
@@ -269,7 +315,11 @@ class HloReachabilityMap {
   //
   // BitSetFromIndex(i) abstracts away this representation to give the proper
   // pointer to the "i"th row.
-  static constexpr int kRowsPerAllocation = 1024;
+  static constexpr int kRowsPerAllocationPowerLog2 = 10;
+  static constexpr uint64_t kRowsPerAllocation = static_cast<uint64_t>(1)
+                                                 << kRowsPerAllocationPowerLog2;
+  static constexpr Index kValueAbsent = static_cast<Index>(-1);
+  static constexpr int64_t kComputationIdAbsent = -1;
 
   size_t bits_per_bitset_;
   size_t words_per_bitset_;
@@ -279,6 +329,7 @@ class HloReachabilityMap {
   // A temporary used by SetReachabilityToUnion to avoid an allocation with each
   // call to the method.
   BitSet tmp_bit_set_;
+  int64_t computation_id_;
 };
 
 }  // namespace xla

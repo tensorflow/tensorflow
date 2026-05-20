@@ -95,9 +95,9 @@ absl::Status ResolveTensorFlowMatMul::Run(Model* model, std::size_t op_index,
 
     int dimensions_count = lhs_array.shape().dimensions_count();
     if (dimensions_count < 2) {
-      return ::tensorflow::errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Inputs of MatMul should have dimension >= 2. Got %d dimensions",
-          dimensions_count);
+          dimensions_count));
     }
 
     // Create a permutation vector to exchange the last 2 dimensions.

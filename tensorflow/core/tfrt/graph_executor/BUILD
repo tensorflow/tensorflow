@@ -12,18 +12,10 @@ package(
 
 package_group(
     name = "friends",
+    # TODO(b/476497239): Remove the old JSV codebase once the migration is done.
     packages = [
-        # copybara:uncomment "//cloud/ai/platform/prediction/...",
-        # copybara:uncomment "//learning/brain/experimental/tfrt/native_lowering/...",
-        # copybara:uncomment "//learning/brain/tfrt/...",
-        # copybara:uncomment "//learning/infra/mira/experimental/orbax_model/...",
-        # copybara:uncomment "//learning/serving/servables/tfrt/...",
-        # copybara:uncomment "//smartass/brain/inference/...",
-        # copybara:uncomment "//tensorflow/compiler/mlir/tfrt/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/tfrt/graph_executor/python/...",
-        # copybara:uncomment "//tensorflow_serving/servables/tensorflow/...",
-        # copybara:uncomment "//tensorflow_serving/servables/tensorflow/google/...",
     ],
 )
 
@@ -180,7 +172,9 @@ tf_cc_test(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_compat_request_state",
         "//tensorflow/core/tfrt/fallback:fallback_state",
+        "//tensorflow/core/tfrt/fallback:op_kernel_runner",
         "//tensorflow/core/tfrt/mlrt/interpreter:context",
         "//tensorflow/core/tfrt/mlrt/interpreter:value",
         "//tensorflow/core/tfrt/mlrt/kernel",

@@ -21,16 +21,7 @@ limitations under the License.
 #define TF_ROCM_VERSION %{rocm_version_number}
 #define TF_MIOPEN_VERSION %{miopen_version_number}
 #define TF_HIPRUNTIME_VERSION %{hipruntime_version_number}
-#define TF_HIPBLASLT %{hipblaslt_flag}
-#define TF_HIPRUNTIME_SOVERSION "%{hip_soversion_number}"
-#define TF_ROCBLAS_SOVERSION "%{rocblas_soversion_number}"
-#define TF_HIPBLASLT_SOVERSION "%{hipblaslt_soversion_number}"
-#define TF_MIOPEN_SOVERSION "%{miopen_soversion_number}"
-#define TF_HIPFFT_SOVERSION "%{hipfft_soversion_number}"
-#define TF_ROCSOLVER_SOVERSION "%{rocsolver_soversion_number}"
-#define TF_HIPSPARSE_SOVERSION "%{hipsparse_soversion_number}"
-#define TF_ROCTRACER_SOVERSION "%{roctracer_soversion_number}"
-#define TF_HIPSOLVER_SOVERSION "%{hipsolver_soversion_number}"
-#define TF_ROCRAND_SOVERSION "%{rocrand_soversion_number}"
+// NOTE: HipBlasLt is now always available, this flag is deprecated !
+#define TF_HIPBLASLT 1
 
 #endif  // ROCM_ROCM_CONFIG_H_

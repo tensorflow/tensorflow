@@ -73,7 +73,7 @@ class CustomCallPartitioner : public CustomCallShardingHelper {
 
 // Fetch partitioning overrides on a per-custom_call_target basis.
 const CustomCallPartitioner* GetCustomCallPartitioner(
-    const std::string& custom_call_target);
+    absl::string_view custom_call_target);
 // Register partitioning overrides on a per-custom_call_target basis.
 void RegisterCustomCallPartitioner(
     absl::string_view custom_call_target,

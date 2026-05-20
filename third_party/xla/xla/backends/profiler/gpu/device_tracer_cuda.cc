@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
@@ -51,7 +52,7 @@ class GpuTracer : public tsl::profiler::ProfilerInterface {
       : cupti_tracer_(cupti_tracer), profile_options_(profile_options) {
     VLOG(1) << "GpuTracer created.";
   }
-  ~GpuTracer() override {}
+  ~GpuTracer() override = default;
 
   // GpuTracer interface:
   absl::Status Start() override;
@@ -102,7 +103,7 @@ absl::Status GpuTracer::DoStart() {
                      &options_.enable_activity_hardware_tracing)
       .IgnoreError();
 
-// CUDA/CUPTI 10 have issues (leaks and crashes) with CuptiFinalize.
+// CUDA/CUPTI 10 have issues (leaks and crashes) with cuptiFinalize.
 #if CUDA_VERSION >= 11000
   options_.cupti_finalize = true;
 #endif
@@ -139,6 +140,7 @@ absl::Status GpuTracer::DoStart() {
   }
   TF_RETURN_IF_ERROR(
       cupti_tracer_->Enable(options_, cupti_collector_.get(), xplanes_));
+  AddGpuMetadata();
   return absl::OkStatus();
 }
 
@@ -202,7 +204,6 @@ absl::Status GpuTracer::CollectData(XSpace* space) {
         uint64_t end_gpu_ns = cupti_collector_->GetTracingEndTimeNs();
         cupti_collector_->Export(space, end_gpu_ns);
       }
-      AddGpuMetadata(space);
       return absl::OkStatus();
     }
   }

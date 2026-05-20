@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -60,6 +61,12 @@ class ReduceWindowRewriter : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
+  // If true, decompose an associative HloScanInstruction into the tree-style
+  // reduce-window pipeline (the legacy path). Default: true.
+  // Backends with a native scan emitter should override to return false so
+  // long scans flow through to lowering as a single HLO.
+  virtual bool DecomposeAssociativeScan() const { return true; }
+
  private:
   // Helper methods to optimize ReduceWindow ops.
 
@@ -71,9 +78,11 @@ class ReduceWindowRewriter : public HloModulePass {
                                            int64_t last_dim);
 
   // Adds padding (if necessary) to enable further rewrites working properly.
-  int64_t PreparePaddingForRewrite(HloReduceWindowInstruction* reduce_window,
-                                   std::vector<HloInstruction*>& inputs,
-                                   int64_t scan_length, int64_t last_dim);
+  int64_t PreparePaddingForRewrite(
+      HloComputation* hlo_computation,
+      absl::Span<HloInstruction* const> init_values,
+      std::vector<HloInstruction*>& inputs, int64_t scan_length,
+      int64_t last_dim);
 
   // [x, y] -> [x, y/base, base]
   int64_t ExpandToNewMajorDimension(HloComputation* hlo_computation,
@@ -84,9 +93,11 @@ class ReduceWindowRewriter : public HloModulePass {
 
   // reduce_window ( [x, y/base, base] window [1, 1, base] )
   HloInstruction* GenerateNewReduceWindowWithTiledInputs(
-      HloReduceWindowInstruction* reduce_window,
+      HloComputation* hlo_computation,
       std::vector<HloInstruction*>& tiled_inputs,
-      std::vector<Shape>& tiled_shapes, bool forward_scan);
+      absl::Span<HloInstruction* const> init_values, HloComputation* to_apply,
+      std::vector<Shape>& tiled_shapes, bool forward_scan,
+      bool is_tuple_result);
 
   // Slice out the last (first if reverse scan) column.
   // slices [x, y/base, base] -> [x, y/base, 1] slice {x, y/base}
@@ -100,6 +111,14 @@ class ReduceWindowRewriter : public HloModulePass {
 
   absl::StatusOr<bool> TryOptimizeCumSumOrProd(
       HloReduceWindowInstruction* reduce_window);
+
+  absl::StatusOr<bool> TryOptimizeAssociativeScan(HloScanInstruction* scan);
+
+  absl::StatusOr<HloInstruction*> RewriteScanAsTreeReduction(
+      HloComputation* parent, std::vector<HloInstruction*> sources,
+      absl::Span<HloInstruction* const> init_values, HloComputation* to_apply,
+      const Shape& result_shape, int64_t rank, int64_t scan_dim,
+      int64_t scan_length, bool forward_scan, bool is_exclusive);
 
   int64_t base_length_;
 };

@@ -93,7 +93,7 @@ constexpr int kDepthOut = 16;
 
 template <typename T = float>
 Output SimpleConv2D(tensorflow::Scope* s, int input_size, int filter_size,
-                    const string& padding, const string& device) {
+                    const std::string& padding, const std::string& device) {
   int batch_size = 8;
   int input_height = input_size;
   int input_width = input_size;
@@ -121,7 +121,7 @@ Output SimpleConv2D(tensorflow::Scope* s, int input_size, int filter_size,
 }
 
 Output SimpleConv2DBackpropInput(tensorflow::Scope* s, int input_size,
-                                 int filter_size, const string& padding,
+                                 int filter_size, const std::string& padding,
                                  bool dilated, const int input_sizes_length) {
   int batch_size = 128;
   int input_height = input_size;
@@ -171,7 +171,7 @@ Output SimpleConv2DBackpropInput(tensorflow::Scope* s, int input_size,
 
 template <typename T = float>
 Output SimpleConv3D(tensorflow::Scope* s, int input_size, int filter_size,
-                    const string& padding, const string& device) {
+                    const std::string& padding, const std::string& device) {
   int batch_size = 8;
   int input_height = input_size;
   int input_width = input_size;
@@ -387,7 +387,7 @@ TEST_F(GenericLayoutOptimizerTest, CPUDevice) {
 
 TEST_F(GenericLayoutOptimizerTest, NoOptimizeIntegerConvolution) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D<int32>(&s, 4, 2, "VALID", "");
+  auto conv = SimpleConv2D<int32_t>(&s, 4, 2, "VALID", "");
   Output fetch = ops::Identity(s.WithOpName("Fetch"), {conv});
   GrapplerItem item;
   TF_ASSERT_OK(s.ToGraphDef(&item.graph));
@@ -630,9 +630,9 @@ TEST_F(GenericLayoutOptimizerTest, CancelTransposeAroundPad) {
       RewriterConfig::AGGRESSIVE,
       RewriterConfig::NCHW_TO_NHWC /* CPU settings*/);
 
-  const Tensor kPermuteNhwcToNchw = test::AsTensor<int32>({0, 3, 1, 2});
-  const Tensor kPermuteNchwToNhwc = test::AsTensor<int32>({0, 2, 3, 1});
-  const Tensor kPad = test::AsTensor<int32>({1, 2, 3, 4, 5, 6, 7, 8}, {4, 2});
+  const Tensor kPermuteNhwcToNchw = test::AsTensor<int32_t>({0, 3, 1, 2});
+  const Tensor kPermuteNchwToNhwc = test::AsTensor<int32_t>({0, 2, 3, 1});
+  const Tensor kPad = test::AsTensor<int32_t>({1, 2, 3, 4, 5, 6, 7, 8}, {4, 2});
 
   GrapplerItem item;
   item.graph = test::function::GDef({
@@ -658,7 +658,7 @@ TEST_F(GenericLayoutOptimizerTest, CancelTransposeAroundPad) {
   TF_EXPECT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
   const Tensor kPermutedPaddings =
-      test::AsTensor<int32>({1, 2, 5, 6, 7, 8, 3, 4}, {4, 2});
+      test::AsTensor<int32_t>({1, 2, 5, 6, 7, 8, 3, 4}, {4, 2});
 
   GraphDef expected = test::function::GDef({
       NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}}),

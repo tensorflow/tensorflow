@@ -18,11 +18,9 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/AsmParser/AsmParser.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -31,25 +29,14 @@ limitations under the License.
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
+#include "xla/hlo/analysis/symbolic_map_serialization.h"
 
 namespace xla {
 namespace {
 
+using ::mlir::AffineExpr;
 using ::mlir::AffineMap;
 using ::mlir::MLIRContext;
-
-// TODO: b/433693782 - This code is duplicated from indexing_test_utils. Remove
-// this function as soon as symbolic_map_converter is not needed anymore. If
-// not, we should refactor it to a common test library.
-// Helper function to parse an AffineMap from a string.
-AffineMap ParseAffineMap(absl::string_view serialized_affine_map,
-                         MLIRContext* context) {
-  std::string full_affine_map_string =
-      absl::StrCat("affine_map<", serialized_affine_map, ">");
-  return mlir::cast<mlir::AffineMapAttr>(
-             mlir::parseAttribute(full_affine_map_string, context))
-      .getValue();
-}
 
 class SymbolicMapConverterTest : public ::testing::Test {
  public:
@@ -58,16 +45,40 @@ class SymbolicMapConverterTest : public ::testing::Test {
 };
 
 TEST_F(SymbolicMapConverterTest, AffineToSymbolicRoundTrip) {
-  AffineMap affine_map = ParseAffineMap(
+  SymbolicMap symbolic_map = ParseSymbolicMap(
       "(d0, d1)[s0, s1] -> (d0 + s1 * 2, d1 - s0, d0 floordiv 3, d1 mod 4)",
       &context_);
 
+  AffineMap affine_map = SymbolicMapToAffineMap(symbolic_map);
+
+  EXPECT_EQ(affine_map.getNumResults(), 4);
+
+  SymbolicMap round_trip_map = AffineMapToSymbolicMap(affine_map);
+  EXPECT_EQ(symbolic_map, round_trip_map);
+}
+
+TEST_F(SymbolicMapConverterTest, SymbolicToAffineEmpty) {
+  SymbolicMap symbolic_map = SymbolicMap::Get(&context_, 0, 0, {});
+
+  AffineMap affine_map = SymbolicMapToAffineMap(symbolic_map);
+  EXPECT_TRUE(affine_map.isEmpty());
+
+  SymbolicMap round_trip_map = AffineMapToSymbolicMap(affine_map);
+  EXPECT_EQ(symbolic_map, round_trip_map);
+}
+
+TEST_F(SymbolicMapConverterTest, AffineToSymbolicNull) {
+  AffineMap affine_map;
   SymbolicMap symbolic_map = AffineMapToSymbolicMap(affine_map);
-
-  EXPECT_EQ(symbolic_map.GetNumResults(), 4);
-
-  AffineMap round_trip_map = SymbolicMapToAffineMap(symbolic_map, &context_);
+  AffineMap round_trip_map = SymbolicMapToAffineMap(symbolic_map);
   EXPECT_EQ(affine_map, round_trip_map);
+
+  AffineExpr empty_affine_expr;
+  SymbolicExpr empty_symbolic_expr =
+      AffineExprToSymbolicExpr(empty_affine_expr, 0);
+  AffineExpr round_trip_affine_expr =
+      SymbolicExprToAffineExpr(empty_symbolic_expr, 0);
+  EXPECT_EQ(empty_affine_expr, round_trip_affine_expr);
 }
 
 TEST_F(SymbolicMapConverterTest, SymbolicToAffineFailure) {
@@ -76,8 +87,8 @@ TEST_F(SymbolicMapConverterTest, SymbolicToAffineFailure) {
   // kMax is not representable in AffineExpr.
   SymbolicExpr max_expr = d0.max(c1);
 
-  AffineMap affine_map = SymbolicMapToAffineMap(
-      SymbolicMap::Get(&context_, 1, 0, {max_expr}), &context_);
+  AffineMap affine_map =
+      SymbolicMapToAffineMap(SymbolicMap::Get(&context_, 1, 0, {max_expr}));
   EXPECT_FALSE(affine_map);
 }
 
@@ -91,7 +102,7 @@ TEST_F(SymbolicMapConverterTest, SymbolicToAffineNestedFailure) {
 
   // This should not crash and should return a null AffineMap.
   AffineMap affine_map = SymbolicMapToAffineMap(
-      SymbolicMap::Get(&context_, 1, 0, {nested_max_expr}), &context_);
+      SymbolicMap::Get(&context_, 1, 0, {nested_max_expr}));
   EXPECT_FALSE(affine_map);
 }
 

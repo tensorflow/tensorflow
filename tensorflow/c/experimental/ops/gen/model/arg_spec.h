@@ -32,8 +32,8 @@ class ArgSpec {
   static ArgSpec CreateInput(const OpDef::ArgDef& arg_def, int position);
   static ArgSpec CreateOutput(const OpDef::ArgDef& arg_def, int position);
 
-  const string& name() const { return name_; }
-  const string& description() const { return description_; }
+  const std::string& name() const { return name_; }
+  const std::string& description() const { return description_; }
   const ArgType arg_type() const { return arg_type_; }
   const int position() const { return position_; }
 
@@ -41,8 +41,8 @@ class ArgSpec {
   explicit ArgSpec(const OpDef::ArgDef& arg_def, ArgType arg_type,
                    int position);
 
-  string name_;
-  string description_;
+  std::string name_;
+  std::string description_;
   ArgType arg_type_;
   int position_;
 };

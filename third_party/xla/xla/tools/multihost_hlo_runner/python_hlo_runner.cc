@@ -22,6 +22,7 @@ limitations under the License.
 #include "nanobind/stl/string.h"  // IWYU pragma: keep
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
+#include "xla/debug_options_flags.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
@@ -207,8 +208,10 @@ absl::Status RunHloFiles(const std::vector<std::string>& hlo_files,
           opts.dump_output_literal_to, opts.task_id));
     } else {
       TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
-          *env.client, GetDebugOptionsFromFlags(), preproc_options,
-          raw_compile_options, hlo_file, opts.input_format, opts.task_id));
+                             *env.client, GetDebugOptionsFromFlags(),
+                             preproc_options, raw_compile_options, hlo_file,
+                             opts.input_format, opts.task_id)
+                             .status());
     }
     for (int i = 0; i < execution_profiles.size(); ++i) {
       LOG(INFO) << "## Execution time, file=" << hlo_file << " repeat=" << i

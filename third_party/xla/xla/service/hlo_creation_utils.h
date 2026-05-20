@@ -85,7 +85,7 @@ absl::StatusOr<HloInstruction*> MakeConvolveHlo(
     const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config,
     std::optional<PrimitiveType> preferred_element_type,
-    const OpMetadata* metadata = nullptr,
+    const SparsityConfig& sparsity_config, const OpMetadata* metadata = nullptr,
     const FrontendAttributes* frontend_attributes = nullptr);
 
 // Creates a transpose HLO instruction and adds it to the computation containing

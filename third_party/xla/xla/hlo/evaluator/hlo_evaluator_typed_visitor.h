@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
@@ -1071,8 +1072,37 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     auto rhs = conv->operand(1);
     const auto& window = conv->window();
     Shape result_shape = GetShapeWithLayout(conv->shape());
-    Shape lhs_shape = GetShapeWithLayout(lhs->shape());
-    Shape rhs_shape = GetShapeWithLayout(rhs->shape());
+    Shape lhs_shape;
+    Shape rhs_shape;
+
+    std::optional<Literal> decompressed_lhs;
+    const Literal* lhs_literal_ptr = &parent_->GetEvaluatedLiteralFor(lhs);
+    std::optional<Literal> decompressed_rhs;
+    const Literal* rhs_literal_ptr = &parent_->GetEvaluatedLiteralFor(rhs);
+
+    if (conv->sparsity_config().has_lhs() && lhs->shape().IsTuple()) {
+      TF_ASSIGN_OR_RETURN(
+          decompressed_lhs,
+          xla::MaterializeSparseOperand(LiteralSlice(*lhs_literal_ptr, {0}),
+                                        LiteralSlice(*lhs_literal_ptr, {1}),
+                                        conv->sparsity_config().lhs()));
+      lhs_literal_ptr = &decompressed_lhs.value();
+      lhs_shape = lhs_literal_ptr->shape();
+    } else {
+      lhs_shape = GetShapeWithLayout(lhs->shape());
+    }
+
+    if (conv->sparsity_config().has_rhs() && rhs->shape().IsTuple()) {
+      TF_ASSIGN_OR_RETURN(
+          decompressed_rhs,
+          xla::MaterializeSparseOperand(LiteralSlice(*rhs_literal_ptr, {0}),
+                                        LiteralSlice(*rhs_literal_ptr, {1}),
+                                        conv->sparsity_config().rhs()));
+      rhs_literal_ptr = &decompressed_rhs.value();
+      rhs_shape = rhs_literal_ptr->shape();
+    } else {
+      rhs_shape = GetShapeWithLayout(rhs->shape());
+    }
 
     CHECK_OK(ShapeUtil::ValidateShape(lhs_shape));
     CHECK_OK(ShapeUtil::ValidateShape(rhs_shape));
@@ -1096,15 +1126,15 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
         auto inferred_return_shape,
         ShapeInference::InferConvolveShape(
             lhs_shape, rhs_shape, conv->feature_group_count(),
-            conv->batch_group_count(), window, dnums,
+            conv->batch_group_count(), window, dnums, SparsityConfig(),
             /*preferred_element_type=*/conv->shape().element_type()));
     CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
         << "return shape set to: " << ShapeUtil::HumanString(result_shape)
         << " but is inferred to be: "
         << ShapeUtil::HumanString(inferred_return_shape);
 
-    const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
-    const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
+    const Literal& lhs_literal = *lhs_literal_ptr;
+    const Literal& rhs_literal = *rhs_literal_ptr;
     const bool lhs_same = ShapeUtil::SameElementType(lhs_shape, result_shape);
     const bool rhs_same = ShapeUtil::SameElementType(rhs_shape, result_shape);
     if (rhs_same && lhs_same) {
@@ -1126,10 +1156,13 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   }
 
   absl::Status HandleDot(const HloInstruction* dot) override {
+    const PrimitiveType accumulation_type =
+        primitive_util::NativeToPrimitiveType<ElementwiseT>();
     if (dot->dot_dimension_numbers().rhs_contracting_dimensions_size() == 1 &&
         parent_->use_fast_path_ &&
-        ShapeUtil::SameElementType(dot->operand(0)->shape(), dot->shape()) &&
-        ShapeUtil::SameElementType(dot->operand(1)->shape(), dot->shape())) {
+        ((ShapeUtil::SameElementType(dot->operand(0)->shape(), dot->shape()) &&
+          ShapeUtil::SameElementType(dot->operand(1)->shape(), dot->shape())) ||
+         dot->shape().element_type() == accumulation_type)) {
       return HandleDot<ElementwiseT>(dot);
     }
     return HandleDotSlowPath(dot);
@@ -1148,9 +1181,6 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
 
     const int64_t lhs_rank = lhs->shape().dimensions().size();
     const int64_t rhs_rank = rhs->shape().dimensions().size();
-
-    CHECK(ShapeUtil::SameElementType(lhs->shape(), rhs->shape()));
-    CHECK(ShapeUtil::SameElementType(lhs->shape(), dot->shape()));
 
     // There must be 1 and only 1 Contracting dimension for lhs and rhs.
     const int64_t lhs_contracting_dimension =
@@ -1178,12 +1208,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
       return HandleDotSlowPath(dot);
     }
 
-    const PrimitiveType native_ty =
+    const PrimitiveType accumulation_ty =
         primitive_util::NativeToPrimitiveType<NativeT>();
     Literal lhs_literal =
-        parent_->GetEvaluatedLiteralFor(lhs).Convert(native_ty).value();
+        parent_->GetEvaluatedLiteralFor(lhs).Convert(accumulation_ty).value();
     Literal rhs_literal =
-        parent_->GetEvaluatedLiteralFor(rhs).Convert(native_ty).value();
+        parent_->GetEvaluatedLiteralFor(rhs).Convert(accumulation_ty).value();
     const int64_t contracted_dimension_size =
         lhs->shape().dimensions(lhs_contracting_dimension);
     Array2D<NativeT> lhs_array(lhs->shape().dimensions(0),
@@ -1194,7 +1224,8 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     rhs_array.SetValues(rhs_literal.data<NativeT>());
     std::unique_ptr<Array2D<NativeT>> result_array =
         HloEvaluator::MatmulArray2D(lhs_array, rhs_array);
-    Literal result(ShapeUtil::MakeShape(native_ty, dot->shape().dimensions()));
+    Literal result(
+        ShapeUtil::MakeShape(accumulation_ty, dot->shape().dimensions()));
     result.PopulateR2FromArray2D(*result_array);
     parent_->SetEvaluatedLiteralFor(
         dot, std::move(result).Convert(dot->shape().element_type()).value());

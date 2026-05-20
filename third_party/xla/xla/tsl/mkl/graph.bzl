@@ -10,7 +10,7 @@ TODO(penporn): Rename this file to build_rules.bzl since it's not just about gra
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
-load("//xla/tsl/mkl:build_defs.bzl", "if_graph_api", "if_onednn")
+load("//xla/tsl/mkl:build_defs.bzl", "if_graph_api", "if_onednn", "if_onednn_async")
 
 visibility(DEFAULT_LOAD_VISIBILITY)
 
@@ -30,7 +30,7 @@ def onednn_graph_cc_test(
     """xla_cc_test rule that has empty src and deps if not building with Graph API."""
     xla_cc_test(
         srcs = if_graph_api(srcs),
-        deps = if_graph_api(if_true = deps, if_false = ["@com_google_googletest//:gtest_main"]),
+        deps = if_graph_api(if_true = deps, if_false = ["//xla/tsl/platform:test_main"]),
         # If not building with Graph API, we don't have any tests linked.
         fail_if_no_test_linked = False,
         # If not building with Graph API, we don't have any tests defined either.
@@ -52,11 +52,11 @@ def onednn_cc_test(
         srcs = [],
         deps = [],
         **kwargs):
-    """xla_cc_test rule with empty src and deps if not building with Graph API."""
+    """xla_cc_test rule with empty src and deps if not building with oneDNN."""
     xla_cc_test(
         # CC_TEST_OK=This rule is used in XLA.
-        srcs = if_onednn(srcs),
-        deps = if_onednn(if_true = deps, if_false = ["@com_google_googletest//:gtest_main"]),
+        srcs = if_onednn_async(srcs),
+        deps = if_onednn_async(if_true = deps, if_false = ["//xla/tsl/platform:test_main"]),
         # If not building with Graph API, we don't have any tests linked.
         fail_if_no_test_linked = False,
         # If not building with Graph API, we don't have any tests defined either.

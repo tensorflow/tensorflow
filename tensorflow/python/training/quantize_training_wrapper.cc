@@ -37,7 +37,7 @@ static PyObject* DoQuantizeTrainingOnGraphDefHelper(
 
   PyObject* py_str = PyBytes_FromStringAndSize(result.data(), result.size());
   if (!py_str) {
-    tensorflow::MaybeRaiseFromStatus(tensorflow::errors::Internal(
+    tensorflow::MaybeRaiseFromStatus(absl::InternalError(
         "Failed to generate serialized string of the rewritten graph."));
   }
   return py_str;

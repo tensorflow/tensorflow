@@ -18,18 +18,21 @@ limitations under the License.
 #include <limits>
 
 #include <gtest/gtest.h>
-#include "xla/array.h"
+#include "absl/types/span.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 
 namespace {
 
-using LogDetTest = xla::ClientLibraryTestBase;
+using LogDetTest = xla::ClientLibraryTestRunnerMixin<
+    xla::HloPjRtInterpreterReferenceMixin<xla::HloPjRtTestBase>>;
 
 TEST_F(LogDetTest, Simple) {
   xla::XlaBuilder builder(TestName());
@@ -50,8 +53,7 @@ TEST_F(LogDetTest, Simple) {
       xla::LiteralUtil::CreateR0<float>(1.f),
       xla::LiteralUtil::CreateR0<float>(14.1601f),
       xla::LiteralUtil::CreateR0<float>(14.1601f));
-  ComputeAndCompareLiteral(&builder, expected, {a_data.get()},
-                           xla::ErrorSpec(1e-4));
+  ComputeAndCompareLiteral(&builder, expected, {&a_data}, xla::ErrorSpec(1e-4));
 }
 
 TEST_F(LogDetTest, SimpleTriangle) {
@@ -74,8 +76,7 @@ TEST_F(LogDetTest, SimpleTriangle) {
       xla::LiteralUtil::CreateR0<float>(15.9131355f),
       xla::LiteralUtil::CreateR0<float>(15.9131355f));
 
-  ComputeAndCompareLiteral(&builder, expected, {a_data.get()},
-                           xla::ErrorSpec(1e-4));
+  ComputeAndCompareLiteral(&builder, expected, {&a_data}, xla::ErrorSpec(1e-4));
 }
 
 TEST_F(LogDetTest, SimpleBatched) {
@@ -112,14 +113,13 @@ TEST_F(LogDetTest, SimpleBatched) {
           {14.1601f, 14.3092f, std::numeric_limits<float>::quiet_NaN(),
            -std::numeric_limits<float>::infinity()}));
 
-  ComputeAndCompareLiteral(&builder, expected, {a_data.get()},
-                           xla::ErrorSpec(1e-4));
+  ComputeAndCompareLiteral(&builder, expected, {&a_data}, xla::ErrorSpec(1e-4));
 }
 
 TEST_F(LogDetTest, LogdetOfLargerMatricesBatched) {
   xla::XlaBuilder builder(TestName());
 
-  xla::Array<float> a_vals = {
+  xla::Array3D<float> a_vals = {
       {{7.2393, 1.1413, 4.1883, -4.8272, 3.2831, -0.0568, -2.4776},
        {0.4347, 3.4095, 1.6259, -4.7100, 1.5942, 1.4217, -2.8009},
        {3.6964, 0.4882, 6.5276, -1.2128, 1.3851, 0.7417, -3.8515},
@@ -145,7 +145,7 @@ TEST_F(LogDetTest, LogdetOfLargerMatricesBatched) {
        {-1.1187, 0.9150, -1.8253, 0.0390, -2.5684, -4.0778, 4.1447}}};
 
   xla::XlaOp a;
-  auto a_data = CreateParameter<float>(a_vals, 0, "a", &builder, &a);
+  auto a_data = CreateR3Parameter<float>(a_vals, 0, "a", &builder, &a);
   xla::SignAndLogDet slogdet = xla::SLogDet(a);
   xla::XlaOp logdet = xla::LogDet(a);
   xla::Tuple(&builder, {slogdet.sign, slogdet.logdet, logdet});
@@ -154,8 +154,7 @@ TEST_F(LogDetTest, LogdetOfLargerMatricesBatched) {
       xla::LiteralUtil::CreateR1<float>({8.93788053, 6.77846303, 7.4852403}),
       xla::LiteralUtil::CreateR1<float>({8.93788053, 6.77846303, 7.4852403}));
 
-  ComputeAndCompareLiteral(&builder, expected, {a_data.get()},
-                           xla::ErrorSpec(1e-4));
+  ComputeAndCompareLiteral(&builder, expected, {&a_data}, xla::ErrorSpec(1e-4));
 }
 
 }  // namespace

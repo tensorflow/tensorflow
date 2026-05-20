@@ -56,7 +56,9 @@ class Int8UniformQuantizedType<int zero_pt, int smantissa, int sexp>
 
 // General uniform quantized types. The definitions can be used to specify
 // operand's tensor types.
+def QI2 : QuantizedType<"Uniform", [2], 1>;
 def QI4 : QuantizedType<"Uniform", [4], 1>;
+def QUI4 : QuantizedType<"Uniform", [4], 0>;
 def QUI8 : QuantizedType<"Uniform", [8], 0>;
 def QI8 : QuantizedType<"Uniform", [8], 1>;
 def QUI16 : QuantizedType<"Uniform", [16], 0>;

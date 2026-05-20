@@ -94,8 +94,8 @@ reuse XLA's [indexing_analysis](https://openxla.org/xla/indexing), which has
 functions to produce the output to input mapping for an instruction.
 
 For example, for a `transpose` from `[20,40]` to `[40,20]`, it will produce the
-following indexing map (one affine expression per input dimension; d0 and d1 are
-the output dimensions):
+following indexing map (one symbolic expression per input dimension; d0 and d1
+are the output dimensions):
 
 ```
   (d0, d1) -> d1
@@ -490,10 +490,10 @@ coalesced writes to the output.
 ### Reproducer
 
 In order to see the IR after every pass of the compilation pipeline, one can
-launch `run_hlo_module` with the `--xla_dump_hlo_pass_re=fusion-emitter` flag.
+launch `run_hlo_module` with the `--xla_dump_emitter_re=mlir-fusion` flag.
 
 ```
-run_hlo_module --platform=CUDA --xla_disable_all_hlo_passes --reference_platform="" /tmp/gelu.hlo --xla_dump_hlo_pass_re=fusion-emitter --xla_dump_to=<some_directory>
+run_hlo_module --platform=CUDA --xla_disable_all_hlo_passes --reference_platform="" /tmp/gelu.hlo --xla_dump_emitter_re=mlir-fusion --xla_dump_to=<some_directory>
 ```
 
 where `/tmp/gelu.hlo` contains

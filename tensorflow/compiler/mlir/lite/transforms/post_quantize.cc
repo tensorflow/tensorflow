@@ -187,6 +187,36 @@ std::optional<mlir::Value> GetConstTensor(PatternRewriter& rewriter,
   return const_op.getResult();
 }
 
+template <>
+std::optional<mlir::Value> GetConstTensor(PatternRewriter& rewriter,
+                                          Location loc,
+                                          llvm::ArrayRef<double> vec,
+                                          llvm::ArrayRef<int64_t> shape) {
+  int64_t num_total_elements = 1;
+  for (int64_t a : shape) {
+    num_total_elements *= a;
+  }
+
+  if (vec.size() != num_total_elements) {
+    return std::nullopt;
+  }
+
+  llvm::SmallVector<float, 4> float_vec;
+  float_vec.reserve(vec.size());
+  for (double d : vec) {
+    float_vec.push_back(static_cast<float>(d));
+  }
+
+  auto const_type =
+      tensorflow::GetTypeFromTFTensorShape(shape, rewriter.getF32Type());
+  auto const_attr =
+      DenseElementsAttr::get(const_type, llvm::ArrayRef<float>(float_vec));
+
+  auto const_op =
+      arith::ConstantOp::create(rewriter, loc, const_type, const_attr);
+  return const_op.getResult();
+}
+
 // Converts a dequantize op to a (scale * (input - zeropoint)). The expectation
 // is that the qconst value will be constant folded to retain the original
 // constant value. This is essentially a constant fold of the dequantize op,

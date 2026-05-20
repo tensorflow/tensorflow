@@ -34,10 +34,10 @@ TensorSliceSet::TensorSliceSet(const TensorShape& shape, DataType type)
 TensorSliceSet::~TensorSliceSet() = default;
 
 absl::Status TensorSliceSet::Register(const TensorSlice& slice,
-                                      const string& tag) {
+                                      const std::string& tag) {
   TensorShape result_shape;
   TF_RETURN_IF_ERROR(slice.SliceTensorShape(shape_, &result_shape));
-  string str = slice.DebugString();
+  std::string str = slice.DebugString();
 
   if (slices_.empty()) {
     slices_hull_ = slice;
@@ -47,8 +47,9 @@ absl::Status TensorSliceSet::Register(const TensorSlice& slice,
     if (slices_hull_.Overlaps(slice)) {
       for (const auto& x : slices_) {
         if (slice.Overlaps(x.second.slice)) {
-          return errors::Internal("Overlapping slices: existing slice = ",
-                                  x.first, ", new slice = ", str);
+          return absl::InternalError(
+              absl::StrCat("Overlapping slices: existing slice = ", x.first,
+                           ", new slice = ", str));
         }
       }
     }
@@ -63,10 +64,10 @@ absl::Status TensorSliceSet::Register(const TensorSlice& slice,
 
 bool TensorSliceSet::QueryMeta(
     const TensorSlice& slice,
-    std::vector<std::pair<TensorSlice, string>>* results) const {
+    std::vector<std::pair<TensorSlice, std::string>>* results) const {
   results->clear();
   absl::Status s;
-  string str = slice.DebugString();
+  std::string str = slice.DebugString();
   // First we check if there is an exactly match (this is the dominant case).
   const TensorSliceSet::SliceInfo* info = gtl::FindOrNull(slices_, str);
   if (info) {
@@ -114,9 +115,9 @@ bool TensorSliceSet::QueryMeta(
 }
 
 absl::Status RegisterTensorSlice(
-    const string& name, const TensorShape& shape, DataType type,
-    const string& tag, const TensorSlice& slice,
-    std::unordered_map<string, TensorSliceSet*>* tensor_slices) {
+    const std::string& name, const TensorShape& shape, DataType type,
+    const std::string& tag, const TensorSlice& slice,
+    std::unordered_map<std::string, TensorSliceSet*>* tensor_slices) {
   DCHECK_NE(tensor_slices, nullptr);
   TensorSliceSet* tss = gtl::FindPtrOrNull(*tensor_slices, name);
   // Create a tensor slice set if needed
@@ -127,15 +128,16 @@ absl::Status RegisterTensorSlice(
     // Check if the shapes match
     const TensorShape& tss_shape(tss->shape());
     if (!shape.IsSameSize(tss_shape)) {
-      return errors::Internal("Incompatible tensor shapes detected for tensor ",
-                              name, ": existing = ", tss_shape.DebugString(),
-                              ", new = ", shape.DebugString());
+      return absl::InternalError(
+          absl::StrCat("Incompatible tensor shapes detected for tensor ", name,
+                       ": existing = ", tss_shape.DebugString(),
+                       ", new = ", shape.DebugString()));
     }
     if (type != tss->type()) {
-      return errors::Internal("Incompatible tensor types detected for tensor ",
-                              name,
-                              ": existing = ", DataTypeString(tss->type()),
-                              ", new = ", DataTypeString(type));
+      return absl::InternalError(
+          absl::StrCat("Incompatible tensor types detected for tensor ", name,
+                       ": existing = ", DataTypeString(tss->type()),
+                       ", new = ", DataTypeString(type)));
     }
   }
   // Register the tensor slices without the actual data.

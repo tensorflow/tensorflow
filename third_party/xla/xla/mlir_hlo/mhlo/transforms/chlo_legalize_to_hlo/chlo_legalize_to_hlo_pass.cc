@@ -195,7 +195,8 @@ LogicalResult convertScanChloToMhlo(chlo::ScanOp op,
   auto mhloOp = mhlo::ScanOp::create(
       rewriter, op.getLoc(), op.getOutputs().getTypes(),
       op.getInits().getTypes(), op.getInputs(), op.getInits(),
-      op.getDimensionAttr(), op.getIsReverseAttr(), op.getIsAssociativeAttr());
+      op.getDimensionAttr(), op.getScanDimSizeAttr(), op.getIsReverseAttr(),
+      op.getIsAssociativeAttr());
 
   rewriter.inlineRegionBefore(op.getBody(), mhloOp.getBody(),
                               mhloOp.getBody().end());

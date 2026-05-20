@@ -1,9 +1,8 @@
-
 diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-index 38970d9929b9..2690c97aa3e0 100644
+index 9affa75801b7..2f681c82c298 100644
 --- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-@@ -34,6 +34,36 @@ exports_files([
+@@ -42,6 +42,36 @@ exports_files([
      "utils/lldbDataFormatters.py",
  ])
  
@@ -37,22 +36,22 @@ index 38970d9929b9..2690c97aa3e0 100644
 +    },
 +)
 +
- # It may be tempting to add compiler flags here, but that should be avoided.
- # The necessary warnings and other compile flags should be provided by the
- # toolchain or the `.bazelrc` file. This is just a workaround until we have a
+ config_setting(
+     name = "darwin_arm64",
+     constraint_values = [
 diff --git a/utils/bazel/llvm-project-overlay/llvm/config.bzl b/utils/bazel/llvm-project-overlay/llvm/config.bzl
-index 2e3bff53ead9..8d01617effdc 100644
+index d592f9e5bfcc..7b87dad91e1b 100644
 --- a/utils/bazel/llvm-project-overlay/llvm/config.bzl
 +++ b/utils/bazel/llvm-project-overlay/llvm/config.bzl
-@@ -98,8 +98,9 @@ builtin_thread_pointer = select({
+@@ -100,8 +100,9 @@ builtin_thread_pointer = select({
+ 
  # TODO: We should split out host vs. target here.
  llvm_config_defines = os_defines + builtin_thread_pointer + select({
-     "@bazel_tools//src/conditions:windows": native_arch_defines("X86", "x86_64-pc-win32"),
--    "@bazel_tools//src/conditions:darwin_arm64": native_arch_defines("AArch64", "arm64-apple-darwin"),
--    "@bazel_tools//src/conditions:darwin_x86_64": native_arch_defines("X86", "x86_64-unknown-darwin"),
-+    "//llvm:macos_arm64": native_arch_defines("AArch64", "arm64-apple-darwin"),
-+    "//llvm:macos_x86_64": native_arch_defines("X86", "x86_64-unknown-darwin"),
-+    "//llvm:macos_x86_64_default": native_arch_defines("X86", "x86_64-unknown-darwin"),
-     "@bazel_tools//src/conditions:linux_aarch64": native_arch_defines("AArch64", "aarch64-unknown-linux-gnu"),
-     "@bazel_tools//src/conditions:linux_ppc64le": native_arch_defines("PowerPC", "powerpc64le-unknown-linux-gnu"),
-     "@bazel_tools//src/conditions:linux_riscv64": native_arch_defines("RISCV", "riscv64-unknown-linux-gnu"),
+-    Label("//llvm:darwin_arm64"): native_arch_defines("AArch64", "arm64-apple-darwin"),
+-    Label("//llvm:darwin_x86_64"): native_arch_defines("X86", "x86_64-unknown-darwin"),
++    Label("//llvm:macos_arm64"): native_arch_defines("AArch64", "arm64-apple-darwin"),
++    Label("//llvm:macos_x86_64"): native_arch_defines("X86", "x86_64-unknown-darwin"),
++    Label("//llvm:macos_x86_64_default"): native_arch_defines("X86", "x86_64-unknown-darwin"),
+     Label("//llvm:linux_aarch64"): native_arch_defines("AArch64", "aarch64-unknown-linux-gnu"),
+     Label("//llvm:linux_ppc64le"): native_arch_defines("PowerPC", "powerpc64le-unknown-linux-gnu"),
+     Label("//llvm:linux_riscv64"): native_arch_defines("RISCV", "riscv64-unknown-linux-gnu"),

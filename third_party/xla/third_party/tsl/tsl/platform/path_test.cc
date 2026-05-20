@@ -24,6 +24,9 @@ limitations under the License.
 namespace tsl {
 namespace io {
 
+using ::testing::EndsWith;
+using ::testing::StartsWith;
+
 TEST(PathTest, JoinPath) {
   EXPECT_EQ("/foo/bar", JoinPath("/foo", "bar"));
   EXPECT_EQ("foo/bar", JoinPath("foo", "bar"));
@@ -314,6 +317,20 @@ TEST(PathTest, ResolveTestPrefixesCannotResolveTestUndeclaredOutputsDir) {
   EXPECT_FALSE(
       ResolveTestPrefixes("TEST_UNDECLARED_OUTPUTS_DIR", resolved_path));
   EXPECT_EQ(resolved_path, kOriginalValue);
+}
+
+TEST(PathTest, GetTempFilenameWithDirectory) {
+  std::string tmp_dir = tsl::testing::TmpDir();
+  auto r = GetTempFilename(tmp_dir, "");
+  EXPECT_OK(r);
+  EXPECT_THAT(*r, StartsWith(tmp_dir));
+  r = GetTempFilename(tmp_dir, ".txt");
+  EXPECT_OK(r);
+  EXPECT_THAT(*r, EndsWith(".txt"));
+}
+
+TEST(PathTest, GetTempFilename) {
+  EXPECT_THAT(GetTempFilename(".txt"), EndsWith(".txt"));
 }
 
 }  // namespace io

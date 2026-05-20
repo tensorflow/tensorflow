@@ -752,7 +752,7 @@ TEST_F(LocalClientExecuteTest, CompilePartitionedExecutable) {
   auto y = ConstantR1<float>(&builder, {2.0f, 3.0f, 4.0f});
   auto z = ConstantR1<float>(&builder, {5.0f, 6.0f, 7.0f});
   auto r = Add(x, y);
-  builder.SetSharding(sharding_builder::AssignDevice(1));
+  builder.SetSharding(sharding_builder::SingleDevice(1));
   Add(r, z);
   builder.ClearSharding();
 

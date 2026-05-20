@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_executor.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
@@ -41,7 +40,7 @@ namespace {
 // Actually performs the work of ROCM initialization. Wrapped up in one-time
 // execution guard.
 static absl::Status InternalInitialize() {
-  hipError_t res = wrap::hipInit(0 /* = flags */);
+  hipError_t res = hipInit(0 /* = flags */);
 
   if (res == hipSuccess) {
     return absl::OkStatus();
@@ -75,7 +74,7 @@ int ROCmPlatform::VisibleDeviceCount() const {
   }
 
   int device_count = 0;
-  hipError_t res = wrap::hipGetDeviceCount(&device_count);
+  hipError_t res = hipGetDeviceCount(&device_count);
   if (res != hipSuccess) {
     LOG(ERROR) << "could not retrieve ROCM device count: " << ToString(res);
     return 0;

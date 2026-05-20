@@ -38,8 +38,7 @@ class CpuGpuShapeVerifierTest : public HloHardwareIndependentTestBase {
   CpuGpuShapeVerifierTest() {
     // Create HloVerifier which uses CpuGpuShapeVerifier
     HloVerifierOpts opts;
-    std::unique_ptr<TargetVerifierMetadata> metadata =
-        std::make_unique<CpuGpuVerifierMetadata>(std::move(opts));
+    auto metadata = std::make_unique<CpuGpuVerifierMetadata>(std::move(opts));
     set_hlo_verifier(std::make_unique<HloVerifier>(std::move(metadata)));
   }
 };

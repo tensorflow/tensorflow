@@ -652,8 +652,16 @@ absl::StatusOr<bool> ConvertSpecialMove(HloInstruction* conditional,
         conditional->ReplaceAllUsesWithDifferentShape(newconditional));
     CHECK_OK(conditional_parent->RemoveInstruction(conditional));
     conditional = newconditional;
+    // Sort the hoist set deterministically to avoid pointer-based
+    // non-determinism.
+    std::vector<HloInstruction*> to_hoist_list(to_hoist_set.begin(),
+                                               to_hoist_set.end());
+    absl::c_sort(to_hoist_list,
+                 [](const HloInstruction* a, const HloInstruction* b) {
+                   return a->unique_id() < b->unique_id();
+                 });
     // Add the hoisted instructions in the parent.
-    for (HloInstruction* hoist : to_hoist_set) {
+    for (HloInstruction* hoist : to_hoist_list) {
       VLOG(2) << "Hoisting instruction:" << hoist->ToString();
       int64_t hoist_index = map_inst_to_tuple_index[hoist];
       // Find out the gte that captured the hoisted instr result.
@@ -1436,13 +1444,37 @@ class GroupConnectedBoundaries {
     }
   }
   // Returns true if `instruction` is worth hoisting.
-  bool WorthHoisting(HloInstruction* instruction, Boundary::Position pos,
-                     int64_t index) {
+  bool WorthHoisting(const Boundary& b, int64_t index) {
+    HloInstruction* instruction = b[0];
+    Boundary::Position pos = b.GetPosition();
     // This is needed for the "moving-in" transformation, to prevent the root
     // of the parent computation (which contains the conditional) to be moved
     // inside the conditional.
     VLOG(1) << "Check Worth hoisting\n";
     HloOpcode opcode = instruction->opcode();
+    if (pos == Boundary::Position::kInsideBranch &&
+        opcode == HloOpcode::kBroadcast) {
+      Boundary next_boundary = GetNextBoundary(b, 0);
+      HloOpcode op0 = next_boundary[0]->opcode();
+      bool all_same_opcode = absl::c_all_of(
+          next_boundary,
+          [&](HloInstruction* inst) { return inst->opcode() == op0; });
+      if (!all_same_opcode) {
+        VLOG(1) << "Not moving broadcast out b/c its operands have different "
+                   "opcodes.";
+        return false;
+      }
+      if (!InstructionWithinBranchIdentical(next_boundary,
+                                            is_layout_sensitive_)) {
+        VLOG(1) << "Not moving broadcast out b/c its operand is not identical.";
+        return false;
+      }
+    }
+    if (pos == Boundary::Position::kOutsideBranchUser &&
+        opcode == HloOpcode::kBroadcast) {
+      VLOG(1) << "Do not move broadcast into branches as a user.";
+      return false;
+    }
     if (opcode == HloOpcode::kTuple &&
         instruction == conditional_parent_->root_instruction()) {
       VLOG(1) << "Do not move conditional parent.";
@@ -1809,8 +1841,7 @@ class GroupConnectedBoundaries {
       VLOG(1) << "boundary index=" << boundary_index << "\n";
       if ((b.IsOutsideBranchUser() || b.IsOutsideBranchOperand() ||
            InstructionWithinBranchIdentical(b, is_layout_sensitive_)) &&
-          IsSafeToMoveBoundary(b) &&
-          WorthHoisting(b[0], b.GetPosition(), boundary_index)) {
+          IsSafeToMoveBoundary(b) && WorthHoisting(b, boundary_index)) {
         connected_boundaries_.push_back(b);
         boundary_index++;
         auto output_size = CalculateMemorySize(b[0]);
@@ -1874,8 +1905,17 @@ class GroupConnectedBoundaries {
         boundary_in.push_back(root_inst);
       }
       new_boundaries_.push_back(boundary_in);
+      // Sort the users deterministically before pushing them onto boundaries to
+      // maintain stable order.
+      std::vector<HloInstruction*> sorted_users(inst->users().begin(),
+                                                inst->users().end());
+      absl::c_sort(sorted_users,
+                   [](const HloInstruction* a, const HloInstruction* b) {
+                     return a->unique_id() < b->unique_id();
+                   });
+
       // Add conditional users as new boundaries to visit.
-      for (auto u : inst->users()) {
+      for (auto u : sorted_users) {
         Boundary boundary_in(Boundary::Position::kOutsideBranchUser);
         boundary_in.push_back(u);
         new_boundaries_.push_back(boundary_in);

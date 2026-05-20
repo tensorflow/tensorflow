@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service_impl.h"
 
+#include <cstdint>
 #include <memory>
 
 #include "absl/status/status.h"

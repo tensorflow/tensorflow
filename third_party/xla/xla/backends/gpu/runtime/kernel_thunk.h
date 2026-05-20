@@ -24,18 +24,25 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"  // IWYU pragma: keep
@@ -47,15 +54,16 @@ namespace gpu {
 // similar. XLA:GPU should use more of kernel loading APIs provided by
 // StreamExecutor out of the box and less custom kernel loading solutions.
 //
-// Today KernelThunk is required for lowering to XLA runtime, and
-// CustomKernelThunk is only supported for thunk execution.
+// Both KernelThunk and CustomKernelThunk support thunk execution and command
+// buffer recording (they implement Command directly).
 //
 // This class stores everything that StreamExecutor needs for launching a
 // kernel. It implements the ExecuteOnStream interface for GpuExecutable to
 // invoke the corresponding kernel.
 //
 // This is thread-compatible.
-class KernelThunk : public Thunk {
+// Also implements Command so it can be recorded directly into command buffers.
+class KernelThunk : public Command {
  public:
   // Constructs a thunk for the given kernel.
   //
@@ -68,7 +76,9 @@ class KernelThunk : public Thunk {
               const emitters::KernelArguments& kernel_arguments,
               LaunchDimensions launch_dimensions,
               std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes,
-              stream_executor::gpu::TmaMetadata tma_metadata);
+              stream_executor::gpu::TmaMetadata tma_metadata,
+              std::vector<int64_t> zeroed_output_buffer_indices = {},
+              bool use_pdl = false);
   KernelThunk(const KernelThunk&) = delete;
   KernelThunk& operator=(const KernelThunk&) = delete;
   ~KernelThunk() override = default;
@@ -80,12 +90,22 @@ class KernelThunk : public Thunk {
       ThunkInfo thunk_info, const KernelThunkProto& proto,
       absl::Span<const BufferAllocation> buffer_allocations);
 
+  // Creates a KernelThunk from ShapedSlice + MemoryAccess pairs.
+  static std::unique_ptr<KernelThunk> MakeKernelThunk(
+      std::string kernel_name, absl::Span<const ShapedSlice> args,
+      absl::Span<const BufferUse::MemoryAccess> args_access,
+      LaunchDimensions dims, int64_t shmem_bytes,
+      stream_executor::gpu::TmaMetadata tma_metadata = {});
+
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  const std::vector<BufferAllocation::Slice>& arguments() const {
-    return args_;
-  }
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer) override;
+
+  const std::vector<ShapedSlice>& arguments() const { return args_; }
   const std::vector<bool>& written() const { return written_; }
 
   const std::string& kernel_name() const { return kernel_name_; }
@@ -102,14 +122,32 @@ class KernelThunk : public Thunk {
     return tma_metadata_;
   }
 
+  bool use_pdl() const { return use_pdl_; }
+
   BufferUses buffer_uses() const override;
 
  private:
+  // Holds the loaded kernel and its packed arguments, returned by
+  // GetKernelAndArgs.
+  struct KernelWithArgs {
+    se::Kernel* kernel;
+    absl::InlinedVector<se::KernelArg, 4> args;
+  };
+
+  // Looks up the loaded kernel for the given executor and builds the kernel
+  // argument vector (handling TMA descriptors). Returns InternalError if
+  // Initialize() was not called for this executor.
+  absl::StatusOr<KernelWithArgs> GetKernelAndArgs(
+      const BufferAllocations& buffer_allocations,
+      se::StreamExecutor* executor) const;
+
   // Buffer slices passed to the kernel as arguments.
-  std::vector<BufferAllocation::Slice> args_;
-  std::vector<Shape> args_shape_;
+  std::vector<ShapedSlice> args_;
   // args_[i] is written iff (written_[i] == true).
   std::vector<bool> written_;
+
+  // Buffer indices that should be zeroed before the kernel is launched.
+  std::vector<int64_t> zeroed_output_buffer_indices_;
 
   // Entry kernel name for the computation.
   const std::string kernel_name_;
@@ -125,6 +163,9 @@ class KernelThunk : public Thunk {
   // Map of argument index to TmaDescriptor used to create arguments to the
   // kernel.
   stream_executor::gpu::TmaMetadata tma_metadata_;
+
+  // Programmatic Dependent Launch.
+  bool use_pdl_;
 
   // Loaded kernels for each `StreamExecutor`.
   mutable absl::Mutex mutex_;

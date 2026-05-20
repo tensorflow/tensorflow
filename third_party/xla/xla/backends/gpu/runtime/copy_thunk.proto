@@ -29,10 +29,12 @@ message CopyThunkProto {
 
 message DeviceToHostCopyThunkProto {
   CopyThunkProto copy_thunk = 1;
+  reserved 2, 3;
 }
 
 message HostToDeviceCopyThunkProto {
   CopyThunkProto copy_thunk = 1;
+  reserved 2, 3;
 }
 
 message DeviceToDeviceCopyThunkProto {

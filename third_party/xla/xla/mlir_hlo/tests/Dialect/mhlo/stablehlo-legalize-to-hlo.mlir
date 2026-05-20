@@ -179,6 +179,19 @@ func.func @attr_custom_call_api_version_status_returning_unified(%arg0: tensor<f
 
 // -----
 
+// CHECK-LABEL: "attr_replica_groups_mesh_axes"
+func.func @attr_replica_groups_mesh_axes(%arg0: tensor<f32>) -> tensor<f32> {
+  // CHECK: "mhlo.custom_call"([[ARG0:%arg[0-9]+]])
+  // CHECK-SAME: replica_groups = #mhlo.replica_group_mesh_axes<mesh = @mesh, axes = [#mhlo.axis_ref<name = "foo">, #mhlo.axis_ref<name = "bar", sub_axis_info = (1)2>]>
+  %0 = "stablehlo.custom_call"(%arg0) {
+    call_target_name = "test",
+    replica_groups = #stablehlo.replica_group_mesh_axes<mesh = @mesh, axes = [#stablehlo.axis_ref<name = "foo">, #stablehlo.axis_ref<name = "bar", sub_axis_info = (1)2>]>
+  } : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+
+// -----
+
 // CHECK-LABEL: "attr_fft_type_fft"
 func.func @attr_fft_type_fft(%arg0: tensor<16xcomplex<f32>>) -> tensor<16xcomplex<f32>> {
   %0 = "stablehlo.fft"(%arg0) {
@@ -800,6 +813,34 @@ func.func @op_complex(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<complex<
 func.func @op_composite(%arg0 : tensor<i64>) -> tensor<i64> {
   // CHECK: "mhlo.composite"([[ARG0:%arg[0-9]+]]) <{composite_attributes = {n = 2 : i64}, decomposition = @add_n.impl, name = "stablehlo.add_n"}> : (tensor<i64>) -> tensor<i64>
   %0 = stablehlo.composite "stablehlo.add_n" %arg0 {
+    composite_attributes = { n = 2 : i64 },
+    decomposition = @add_n.impl
+  } : (tensor<i64>) -> tensor<i64>
+  func.return %0 : tensor<i64>
+}
+
+func.func @add_n.impl(%arg0: tensor<i64>) -> tensor<i64> {
+  %0 = stablehlo.constant dense<2> : tensor<i64>
+  %1 = stablehlo.add %arg0, %0 : tensor<i64>
+  func.return %1 : tensor<i64>
+}
+
+// -----
+
+// CHECK-LABEL: "op_composite_regions"
+func.func @op_composite_regions(%arg0: tensor<i64>) -> tensor<i64> {
+  // CHECK:      "mhlo.composite"([[ARG0:%arg[0-9]+]]) <{
+  // CHECK-SAME:   composite_attributes = {n = 2 : i64},
+  // CHECK-SAME:   decomposition = @add_n.impl,
+  // CHECK-SAME:   name = "stablehlo.add_n"
+  // CHECK-SAME: }> ({
+  // CHECK-NEXT: ^bb0(%[[ARG1:.*]]: tensor<i64>):
+  // CHECK-NEXT:   "mhlo.return"(%[[ARG1]]) : (tensor<i64>) -> ()
+  // CHECK-NEXT: }) : (tensor<i64>) -> tensor<i64>
+  %0 = stablehlo.composite "stablehlo.add_n" %arg0 ({
+    ^bb0(%arg1: tensor<i64>):
+      stablehlo.return %arg1 : tensor<i64>
+  }) {
     composite_attributes = { n = 2 : i64 },
     decomposition = @add_n.impl
   } : (tensor<i64>) -> tensor<i64>

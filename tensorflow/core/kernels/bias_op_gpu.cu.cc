@@ -300,7 +300,7 @@ void BiasGradGPU<T>::DoColReduction(OpKernelContext* context, T* output,
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
 
 // No BiasGrad kernel for int32.
-template struct BiasGPU<int32>;
+template struct BiasGPU<int32_t>;
 
 }  // end namespace tensorflow
 

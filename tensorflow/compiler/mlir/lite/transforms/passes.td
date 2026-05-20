@@ -440,3 +440,14 @@ def ReduceTypePrecisionPass : Pass<"tfl-reduce-type-precision", "mlir::ModuleOp"
   let dependentDialects = ["TFL::TensorFlowLiteDialect"];
 }
 
+def RankReductionPass : Pass<"tfl-rank-reduction", "mlir::func::FuncOp"> {
+  let summary = "Reduce the rank of tensors to be compatible with TFLite GPU delegate.";
+  let constructor = "CreateRankReductionPass()";
+  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
+}
+
+def GpuCompatibilityPass : Pass<"tfl-gpu-compatibility", "mlir::func::FuncOp"> {
+  let summary = "Make TFLite model compatible with TFLite GPU delegate.";
+  let constructor = "CreateGpuCompatibilityPass()";
+  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
+}

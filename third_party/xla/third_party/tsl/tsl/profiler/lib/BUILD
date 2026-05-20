@@ -78,6 +78,8 @@ cc_library(
         "@xla//xla/tsl/profiler:xla_profiler_backends",
         "@xla//xla/python:__pkg__",
         "//learning/brain/tfrc/executor/stream_executor:__pkg__",
+        "//net/grpc/internal/src/core/ext/xprof_profiler:__pkg__",
+        "//third_party/py/torch_tpu/pjrt:__pkg__",
     ]),
     deps = [
         ":profiler_interface",
@@ -133,6 +135,8 @@ cc_library(
         "@xla//xla/tsl:internal",
         "@xla//xla/tsl/profiler:internal",
         "@xla//xla/tsl/profiler:xla_profiler_backends",
+        "//net/grpc/internal/src/core/ext/xprof_profiler:__pkg__",
+        "//third_party/py/torch_tpu/pjrt:__pkg__",
     ]),
     deps = [
         "//tsl/profiler/protobuf:xplane_proto_cc",
@@ -150,6 +154,7 @@ cc_library(
         "@xla//xla/tsl/profiler:xla_internal",
     ]),
     deps = [
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@xla//xla/tsl/platform:errors",
@@ -176,6 +181,7 @@ cc_library(
     visibility = internal_visibility([
         "@xla//xla/tsl:internal",
         "//third_party/py/jax:__subpackages__",
+        "@xla//xla/tsl/profiler:friends",
     ]),
     deps = [
         "//tsl/platform",
@@ -213,6 +219,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
+        "@xla//xla/tsl/platform:env",
         "@xla//xla/tsl/platform:errors",
         "@xla//xla/tsl/platform:logging",
         "@xla//xla/tsl/platform:types",
@@ -238,10 +245,13 @@ cc_library(
     hdrs = ["traceme_encode.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tsl/platform",
+        "@com_google_absl//absl/base:config",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@xla//xla/tsl/platform:logging",
         "@xla//xla/tsl/platform:macros",
+        "@xla//xla/tsl/profiler/utils:traceme_global_flags",
     ],
 )
 
@@ -353,8 +363,6 @@ cc_library(
         ":context_types_hdrs",
         ":traceme",
         ":traceme_encode",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
         "@xla//xla/tsl/platform:types",
     ],
 )

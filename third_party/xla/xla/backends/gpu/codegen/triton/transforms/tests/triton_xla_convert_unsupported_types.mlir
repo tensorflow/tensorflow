@@ -27,6 +27,20 @@ module {
     %17 = arith.bitcast %extracted_tile_2 : tensor<1x16xf8E8M0FNU> to tensor<1x16xi8>
     %18 = tt.trans %17 {order = array<i32: 1, 0>} : tensor<1x16xi8> -> tensor<16x1xi8>
     %19 = tt.dot_scaled %extracted_tile scale %16, %extracted_tile_1 scale %18, %cst lhs = e4m3 rhs = e4m3 {fastMath = true} : tensor<16x32xf8E4M3FN>, tensor<16x1xi8> * tensor<32x16xf8E4M3FN>, tensor<16x1xi8> -> tensor<16x16xf32>
+    // arith.constant with f8E8M0FNU dense → i8
+    %cst_scale = arith.constant dense<5.877470e-39> : tensor<16x1xf8E8M0FNU>
+    // CHECK-DAG: %[[CST_SCALE:.*]] = arith.constant dense<0> : tensor<16x1xi8>
+    // tensor.extract from 0-d f8E8M0FNU tensor → i8
+    %cst_scalar = arith.constant dense<5.877470e-39> : tensor<f8E8M0FNU>
+    // CHECK-DAG: %[[CST_SCALAR:.*]] = arith.constant dense<0> : tensor<i8>
+    %extracted_scalar = tensor.extract %cst_scalar[] : tensor<f8E8M0FNU>
+    // CHECK: %[[EXTRACTED:.*]] = tensor.extract %[[CST_SCALAR]][] : tensor<i8>
+    // arith.select with f8E8M0FNU operands → i8 (mask derived from
+    // non-constant values to prevent constant folding)
+    %mask = arith.cmpi sge, %16, %18 : tensor<16x1xi8>
+    // CHECK: %[[MASK:.*]] = arith.cmpi sge, {{.*}} : tensor<16x1xi8>
+    %selected = arith.select %mask, %extracted_tile_0, %cst_scale : tensor<16x1xi1>, tensor<16x1xf8E8M0FNU>
+    // CHECK: %[[SELECTED:.*]] = arith.select %[[MASK]], %[[arg_1]], %[[CST_SCALE]] : tensor<16x1xi1>, tensor<16x1xi8>
     xtile.return
   }
 }

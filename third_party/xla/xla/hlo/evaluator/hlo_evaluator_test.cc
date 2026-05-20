@@ -5118,6 +5118,42 @@ ENTRY %module {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_result, result));
 }
 
+TEST_F(HloEvaluatorTest, EvaluateGather_ExplicitBatchDimsWithOffsetDims) {
+  const std::string hlo_text = R"(
+HloModule gather
+
+ENTRY main {
+  operand = s32[2,3,2,4] parameter(0)
+  indices = s32[2,3] parameter(1)
+  ROOT gather = s32[2,3,2,4] gather(operand, indices),
+      offset_dims={1,2,3},
+      collapsed_slice_dims={},
+      start_index_map={1,2,3},
+      operand_batching_dims={0},
+      start_indices_batching_dims={0},
+      index_vector_dim=1,
+      slice_sizes={1,3,2,4}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+
+  // operand shape: [2,3,2,4]
+  // batch 0:
+  // [[[0,1,2,3],[4,5,6,7]],[[8,9,10,11],[12,13,14,15]],[[16,17,18,19],[20,21,22,23]]]
+  // batch 1:
+  // [[[24,25,26,27],[28,29,30,31]],[[32,33,34,35],[36,37,38,39]],[[40,41,42,43],[44,45,46,47]]]
+  Array4D<int32_t> operand_array(2, 3, 2, 4);
+  int32_t val = 0;
+  operand_array.Each(
+      [&](absl::Span<const int64_t> /*indices*/, int32_t* v) { *v = val++; });
+  Literal operand = LiteralUtil::CreateR4FromArray4D(operand_array);
+
+  Literal start_indices =
+      LiteralUtil::CreateR2<int32_t>({{0, 0, 0}, {0, 0, 0}});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate({&operand, &start_indices}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(operand, result));
+}
+
 TEST_F(HloEvaluatorTest, EvaluateScatter_TensorFlowScatterV1_Update) {
   const char* hlo_text = R"(
 HloModule TensorFlowScatterV1
@@ -6004,9 +6040,11 @@ ENTRY main {
 
   absl::StatusOr<Literal> actual = Evaluate({&arg});
   EXPECT_FALSE(actual.ok());
-  EXPECT_EQ(actual.status().message(),
-            "Evaluator cannot evaluate bitcast for non-scalar operand without "
-            "assigned layout.");
+  EXPECT_THAT(
+      actual.status().message(),
+      ::testing::HasSubstr(
+          "Evaluator cannot evaluate bitcast for non-scalar operand without "
+          "assigned layout."));
 }
 
 TEST_P(HloEvaluatorBf16Test, EffectiveScalarBitcastWithoutLayout) {
@@ -7788,6 +7826,190 @@ TEST_F(HloEvaluatorTest, Simple4x4Conv2DWith2x2KernelNoOutputLayout) {
   // clang-format on
   auto expected = LiteralUtil::CreateR4FromArray4D<float>(expected_array);
 
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, Scan1D) {
+  const char* const hlo_string = R"(
+  HloModule scan_module
+
+  scan_add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    add = f32[] add(x, y)
+    ROOT t = (f32[], f32[]) tuple(add, add)
+  }
+
+  ENTRY entry {
+    input = f32[4] constant({1, 2, 3, 4})
+    init = f32[] constant(0)
+    ROOT scan = (f32[4], f32[]) scan(input, init), dimensions={0}, num_carries=1, to_apply=scan_add
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
+
+  auto result =
+      evaluator_.Evaluate(m_->entry_computation()->root_instruction()).value();
+
+  auto expected = LiteralUtil::MakeTupleOwned(
+      LiteralUtil::CreateR1<float>({1.0f, 3.0f, 6.0f, 10.0f}),
+      LiteralUtil::CreateR0<float>(10.0f));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, Scan1DReverse) {
+  const char* const hlo_string = R"(
+  HloModule scan_module
+
+  scan_add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    add = f32[] add(x, y)
+    ROOT t = (f32[], f32[]) tuple(add, add)
+  }
+
+  ENTRY entry {
+    input = f32[4] constant({1, 2, 3, 4})
+    init = f32[] constant(0)
+    ROOT scan = (f32[4], f32[]) scan(input, init), dimensions={0}, is_reverse=true, num_carries=1, to_apply=scan_add
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
+
+  auto result =
+      evaluator_.Evaluate(m_->entry_computation()->root_instruction()).value();
+
+  auto expected = LiteralUtil::MakeTupleOwned(
+      LiteralUtil::CreateR1<float>({10.0f, 9.0f, 7.0f, 4.0f}),
+      LiteralUtil::CreateR0<float>(10.0f));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, Scan2D) {
+  const char* const hlo_string = R"(
+  HloModule scan_module
+
+  scan_add {
+    x = f32[2] parameter(0)
+    y = f32[2] parameter(1)
+    add = f32[2] add(x, y)
+    ROOT t = (f32[2], f32[2]) tuple(add, add)
+  }
+
+  ENTRY entry {
+    input = f32[2,2] constant({{1, 2}, {3, 4}})
+    init = f32[2] constant({0, 0})
+    ROOT scan = (f32[2,2], f32[2]) scan(input, init), dimensions={0}, num_carries=1, to_apply=scan_add
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
+
+  auto result =
+      evaluator_.Evaluate(m_->entry_computation()->root_instruction()).value();
+
+  auto expected = LiteralUtil::MakeTupleOwned(
+      LiteralUtil::CreateR2<float>({{1.0f, 2.0f}, {4.0f, 6.0f}}),
+      LiteralUtil::CreateR1<float>({4.0f, 6.0f}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, Scan3D) {
+  const char* const hlo_string = R"(
+  HloModule scan_module
+
+  scan_add {
+    x = f32[2,2] parameter(0)
+    y = f32[2,2] parameter(1)
+    add = f32[2,2] add(x, y)
+    ROOT t = (f32[2,2], f32[2,2]) tuple(add, add)
+  }
+
+  ENTRY entry {
+    input = f32[2,2,2] constant({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}})
+    init = f32[2,2] constant({{0, 0}, {0, 0}})
+    ROOT scan = (f32[2,2,2], f32[2,2]) scan(input, init), dimensions={1}, num_carries=1, to_apply=scan_add
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
+
+  auto result =
+      evaluator_.Evaluate(m_->entry_computation()->root_instruction()).value();
+
+  auto expected = LiteralUtil::MakeTupleOwned(
+      LiteralUtil::CreateR3<float>(
+          {{{1.0f, 2.0f}, {4.0f, 6.0f}}, {{5.0f, 6.0f}, {12.0f, 14.0f}}}),
+      LiteralUtil::CreateR2<float>({{4.0f, 6.0f}, {12.0f, 14.0f}}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, ScanVariadic) {
+  const char* const hlo_string = R"(
+  HloModule scan_module
+
+  scan_add_mul {
+    x1 = f32[] parameter(0)
+    x2 = f32[] parameter(1)
+    y1 = f32[] parameter(2)
+    y2 = f32[] parameter(3)
+    add = f32[] add(x1, y1)
+    mul = f32[] multiply(x2, y2)
+    ROOT t = (f32[], f32[], f32[], f32[]) tuple(add, mul, add, mul)
+  }
+
+  ENTRY entry {
+    input1 = f32[3] constant({1, 2, 3})
+    input2 = f32[3] constant({1, 2, 3})
+    init1 = f32[] constant(0)
+    init2 = f32[] constant(1)
+    ROOT scan = (f32[3], f32[3], f32[], f32[]) scan(input1, input2, init1, init2), dimensions={0}, num_carries=2, to_apply=scan_add_mul
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
+
+  auto result =
+      evaluator_.Evaluate(m_->entry_computation()->root_instruction()).value();
+
+  auto expected = LiteralUtil::MakeTupleOwned(
+      LiteralUtil::CreateR1<float>({1.0f, 3.0f, 6.0f}),
+      LiteralUtil::CreateR1<float>({1.0f, 2.0f, 6.0f}),
+      LiteralUtil::CreateR0<float>(6.0f), LiteralUtil::CreateR0<float>(6.0f));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, ScanDisagreeingCarry) {
+  const char* const hlo_string = R"(
+  HloModule scan_module
+
+  reduce_add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  scan_add_disagreeing {
+    x = f32[2] parameter(0)
+    y = f32[2,2] parameter(1)
+    broadcast_x = f32[2,2] broadcast(x), dimensions={1}
+    add = f32[2,2] add(broadcast_x, y)
+    reduce_init = f32[] constant(0)
+    reduce_out = f32[2] reduce(add, reduce_init), dimensions={0}, to_apply=reduce_add
+    ROOT t = (f32[2], f32[2,2]) tuple(reduce_out, add)
+  }
+
+  ENTRY entry {
+    input = f32[2,2] constant({{1, 2}, {3, 4}})
+    init = f32[2,2] constant({{0, 0}, {0, 0}})
+    ROOT scan = (f32[2,2], f32[2,2]) scan(input, init), dimensions={0}, num_carries=1, to_apply=scan_add_disagreeing
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
+
+  auto result =
+      evaluator_.Evaluate(m_->entry_computation()->root_instruction()).value();
+
+  auto expected = LiteralUtil::MakeTupleOwned(
+      LiteralUtil::CreateR2<float>({{2.0f, 4.0f}, {8.0f, 12.0f}}),
+      LiteralUtil::CreateR2<float>({{4.0f, 6.0f}, {4.0f, 6.0f}}));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 

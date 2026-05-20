@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/protobuf/coordination_service.pb.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 
 namespace xla {
 
@@ -69,7 +69,8 @@ class KeyValueStore {
   //
   // The empty string "" is a prefix of every key, so GetPrefix("") can be used
   // to retrieve every element in the store.
-  std::vector<tensorflow::KeyValueEntry> GetPrefix(absl::string_view prefix);
+  std::vector<xla::coordination::KeyValueEntry> GetPrefix(
+      absl::string_view prefix);
 
   // Adds a callback that is called when the provided key exists in the map.
   void AddCallbackForKey(absl::string_view key, Callback callback);

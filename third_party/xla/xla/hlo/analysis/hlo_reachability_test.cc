@@ -21,6 +21,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/random/random.h"
 #include "absl/strings/string_view.h"
@@ -254,6 +256,66 @@ TEST_F(HloReachabilityTest, ReplaceInstructions) {
   reachability->Replace(add, fusion);
   EXPECT_FALSE(reachability->IsPresent(add));
   EXPECT_TRUE(reachability->IsReachable(p0, fusion));
+}
+
+TEST_F(HloReachabilityTest, UpdateMultipleInstructions) {
+  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  auto builder = HloComputation::Builder(TestName());
+  auto a = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
+  auto b = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0f)));
+  auto c = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32, HloOpcode::kNegate, a));
+  auto d = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32, HloOpcode::kExp, b));
+  auto e = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32, HloOpcode::kCopy, c));
+  auto f = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32, HloOpcode::kCopy, d));
+
+  auto module = CreateNewVerifiedModule();
+  auto computation =
+      module->AddEntryComputation(builder.Build(/*root_instruction=*/f));
+
+  auto reachability = HloReachabilityMap::Build(computation);
+
+  EXPECT_TRUE(reachability->IsReachable(a, c));
+  EXPECT_TRUE(reachability->IsReachable(c, e));
+  EXPECT_TRUE(reachability->IsReachable(a, e));
+
+  EXPECT_FALSE(reachability->IsReachable(b, c));
+  EXPECT_FALSE(reachability->IsReachable(b, e));
+  EXPECT_FALSE(reachability->IsReachable(d, e));
+  EXPECT_FALSE(reachability->IsReachable(a, d));
+  EXPECT_FALSE(reachability->IsReachable(a, f));
+
+  // Add a control dependency from b to c, and d to e.
+  ASSERT_IS_OK(b->AddControlDependencyTo(c));
+  ASSERT_IS_OK(d->AddControlDependencyTo(e));
+
+  absl::flat_hash_map<const HloInstruction*,
+                      absl::flat_hash_set<const HloInstruction*>>
+      to_update;
+  to_update[c].insert(b);
+  to_update[e].insert(d);
+
+  reachability->UpdateMultipleInstructions(to_update);
+
+  // Now b should be reachable to c, e
+  EXPECT_TRUE(reachability->IsReachable(b, c));
+  EXPECT_TRUE(reachability->IsReachable(b, e));
+
+  // d should be reachable to e
+  EXPECT_TRUE(reachability->IsReachable(d, e));
+
+  // a is still reachable to c, e
+  EXPECT_TRUE(reachability->IsReachable(a, c));
+  EXPECT_TRUE(reachability->IsReachable(a, e));
+
+  // a is still not reachable to d, f
+  EXPECT_FALSE(reachability->IsReachable(a, d));
+  EXPECT_FALSE(reachability->IsReachable(a, f));
 }
 
 }  // namespace

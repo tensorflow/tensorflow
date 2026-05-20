@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/service/gpu/kernels/custom_kernel.h"
+#include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu::kernel::topk {

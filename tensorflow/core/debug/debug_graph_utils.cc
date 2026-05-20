@@ -280,15 +280,15 @@ void DebugNodeInserter::DeparallelizeWhileLoops(Graph* graph, Device* device) {
 }
 
 // static
-const std::string DebugNodeInserter::GetCopyNodeName(
-    const std::string& node_name, const int output_slot) {
+std::string DebugNodeInserter::GetCopyNodeName(const std::string& node_name,
+                                               const int output_slot) {
   // For example, if the watched node is named "node1" and the output slot
   // is 0, the debug node will be called: __copy_node1_0
   return absl::StrCat("__copy_", node_name, "_", output_slot);
 }
 
 // static
-const std::string DebugNodeInserter::GetDebugNodeName(
+std::string DebugNodeInserter::GetDebugNodeName(
     const std::string& tensor_name, const int debug_op_num,
     const std::string& debug_op_name) {
   // For example, if the watched node is named "node1" and the debug op that

@@ -54,8 +54,8 @@ class TridiagonalSolveOp : public LinearAlgebraOp<Scalar> {
                      context->GetAttr("perturb_singular", &perturb_singular_));
     }
     OP_REQUIRES(context, pivoting_ || !perturb_singular_,
-                errors::InvalidArgument("Setting perturb_singular requires "
-                                        "also setting partial_pivoting."));
+                absl::InvalidArgumentError("Setting perturb_singular requires "
+                                           "also setting partial_pivoting."));
   }
 
   void ValidateInputMatrixShapes(

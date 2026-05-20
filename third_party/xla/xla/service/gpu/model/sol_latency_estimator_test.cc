@@ -43,7 +43,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -74,7 +74,7 @@ class DummyLatencyEstimator : public LatencyEstimator {
     return 0;
   }
   TimeCost NodeCost(const HloInstruction* instr) const override { return 0; }
-  int CyclesPerMicrosecond() const override { return 0; }
+  int CyclesPerMicrosecond() const override { return 1; }
 };
 
 class SolLatencyEstimatorTest : public HloHardwareIndependentTestBase,
@@ -331,7 +331,6 @@ ENTRY e {
           "block_m":"128",
           "block_n":"128",
           "block_k":"64",
-          "split_k":"1",
           "num_stages":"1",
           "num_warps":"8",
           "num_ctas":"1"
@@ -353,7 +352,7 @@ ENTRY e {
   p0 = bf16[1024,1024] parameter(0)
   p1 = bf16[1024,1024] parameter(1)
   ROOT _ =  (bf16[1024,1024], s8[2097152]) custom-call(p0,p1),
-    custom_call_target="__cublas$gemm",
+    custom_call_target="__cublas$lt$matmul",
     backend_config={
       "gemm_backend_config":{
         "alpha_real":1,
@@ -657,7 +656,7 @@ INSTANTIATE_TEST_SUITE_P(SolLatencyEstimatorTests, SolLatencyEstimatorTest,
 
 TEST_F(HloHardwareIndependentTestBase, CollectiveCostModelDispatching) {
   const auto shape_size_fn = HloCostAnalysis::DefaultShapeSize;
-  const auto gpu_info = TestGpuDeviceInfo::RTXH100SXMDeviceInfo();
+  const auto gpu_info = TestGpuDeviceInfo::H100SXMDeviceInfo();
   const SolGPUCostModel::Config sol_flags = {
       absl::Microseconds(100), 100, absl::Microseconds(100),
       absl::Microseconds(100), 8,   4 * 1024 * 1024};
@@ -704,7 +703,7 @@ ENTRY main {
                   .ok());
 }
 
-class IsSolLatencyEstimatorEnabledTest : public HloTestBase {
+class IsSolLatencyEstimatorEnabledTest : public HloTestBaseLegacy {
  protected:
   IsSolLatencyEstimatorEnabledTest()
       : gpu_device_info_(TestGpuDeviceInfo::RTXA6000DeviceInfo()) {}
@@ -739,7 +738,8 @@ class IsSolLatencyEstimatorEnabledTest : public HloTestBase {
         module->AddEmbeddedComputation(wrapped_computation.Build());
     entry->AddInstruction(HloInstruction::CreateAllReduce(
         shape, {dummy_operand}, subcomp,
-        /*device_list=*/CollectiveDeviceList(), /*constrain_layout=*/false,
+        std::make_shared<CollectiveDeviceList>(),
+        /*constrain_layout=*/false,
         /*channel_id=*/std::nullopt, /*use_global_device_ids=*/false));
   }
 
@@ -750,8 +750,7 @@ class IsSolLatencyEstimatorEnabledTest : public HloTestBase {
     auto dummy_operand = entry->AddInstruction(HloInstruction::CreateConstant(
         LiteralUtil::CreateR2<float>({{1, 2}, {3, 4}})));
     entry->AddInstruction(HloInstruction::CreateAllToAll(
-        shape, {dummy_operand},
-        /*device_list=*/CollectiveDeviceList(),
+        shape, {dummy_operand}, std::make_shared<CollectiveDeviceList>(),
         /*constrain_layout=*/false, /*channel_id=*/false,
         /*split_dimension=*/std::nullopt));
   }
@@ -762,8 +761,7 @@ class IsSolLatencyEstimatorEnabledTest : public HloTestBase {
     auto dummy_operand = entry->AddInstruction(HloInstruction::CreateConstant(
         LiteralUtil::CreateR2<float>({{1, 2}, {3, 4}})));
     entry->AddInstruction(HloInstruction::CreateCollectiveBroadcast(
-        shape, {dummy_operand},
-        /*device_list=*/CollectiveDeviceList(),
+        shape, {dummy_operand}, std::make_shared<CollectiveDeviceList>(),
         /*constrain_layout=*/false, /*channel_id=*/std::nullopt));
   }
 

@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <sstream>
+#include <string>
 #include <utility>
 
 #include "llvm/ADT/StringRef.h"
@@ -31,7 +32,10 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
+#include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
+#include "xla/hlo/analysis/symbolic_map_serialization.h"
 
 namespace xla {
 
@@ -43,6 +47,41 @@ using mlir::AsmParser;
 using mlir::AsmPrinter;
 using mlir::failure;
 using mlir::success;
+
+//===----------------------------------------------------------------------===//
+// SymbolicMapAttr
+//===----------------------------------------------------------------------===//
+
+void SymbolicMapAttr::print(mlir::AsmPrinter& printer) const {
+  printer << "<\"" << getMap().ToString() << "\">";
+}
+
+mlir::Attribute SymbolicMapAttr::parse(mlir::AsmParser& parser, mlir::Type) {
+  if (parser.parseLess()) {
+    return {};
+  }
+  RegisterSymbolicExprStorage(parser.getContext());
+  std::string serialized_map;
+  if (parser.parseString(&serialized_map)) {
+    return {};
+  }
+  if (parser.parseGreater()) {
+    return {};
+  }
+
+  xla::SymbolicMap map = ParseSymbolicMap(serialized_map, parser.getContext());
+  if (!map) {
+    parser.emitError(parser.getNameLoc(),
+                     "failed to parse SymbolicMap from string: ")
+        << serialized_map;
+    return {};
+  }
+  return get(parser.getContext(), map);
+}
+
+//===----------------------------------------------------------------------===//
+// IndexingMapAttr
+//===----------------------------------------------------------------------===//
 
 mlir::Attribute IndexingMapAttr::parse(mlir::AsmParser& parser, mlir::Type) {
   if (parser.parseLess()) {
@@ -62,19 +101,19 @@ void IndexingMapAttr::print(mlir::AsmPrinter& printer) const {
 
 IndexingMapAttr IndexingMapAttr::get(mlir::MLIRContext* context,
                                      const IndexingMap& indexing_map) {
-  llvm::SmallVector<std::pair<AffineExpr, Interval>> constraints;
-  for (auto& constraint : indexing_map.GetConstraints()) {
+  llvm::SmallVector<std::pair<SymbolicExpr, Interval>> constraints;
+  for (auto& constraint : indexing_map.GetSymbolicConstraints()) {
     constraints.push_back({constraint.first, constraint.second});
   }
-  return get(context, indexing_map.GetAffineMap(), indexing_map.GetDimVars(),
+  return get(context, indexing_map.GetSymbolicMap(), indexing_map.GetDimVars(),
              indexing_map.GetRangeVars(), constraints);
 }
 
 mlir::LogicalResult IndexingMapAttr::verify(
-    mlir::function_ref<mlir::InFlightDiagnostic()> emitError,
-    mlir::AffineMap map, ArrayRef<IndexingMap::Variable> dim_vars,
+    mlir::function_ref<mlir::InFlightDiagnostic()> emitError, SymbolicMap map,
+    ArrayRef<IndexingMap::Variable> dim_vars,
     ArrayRef<IndexingMap::Variable> range_vars,
-    ArrayRef<std::pair<AffineExpr, Interval>> constraints) {
+    ArrayRef<std::pair<SymbolicExpr, Interval>> constraints) {
   auto indexing_map =
       IndexingMap(map, dim_vars, range_vars, /*rt_vars=*/{}, constraints);
   std::stringstream ss;
@@ -90,7 +129,7 @@ IndexingMap IndexingMapAttr::getIndexingMap() const {
 }
 
 int64_t IndexingMapAttr::getNumResults() const {
-  return getMap().getNumResults();
+  return getMap().GetNumResults();
 }
 
 }  // namespace xla

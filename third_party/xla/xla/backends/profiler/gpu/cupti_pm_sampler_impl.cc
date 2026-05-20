@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"

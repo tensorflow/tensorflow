@@ -59,10 +59,10 @@ cc_library(
     srcs = ["hlo_reachability.cc"],
     hdrs = ["hlo_reachability.h"],
     deps = [
-        "//xla:types",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log:check",
@@ -85,6 +85,8 @@ xla_cc_test(
         "//xla/service:computation_placer",
         "//xla/service:hlo_module_config",
         "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/strings:string_view",
@@ -126,7 +128,6 @@ xla_cc_test(
         ":hlo_ordering",
         "//xla:literal_util",
         "//xla:shape_util",
-        "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -134,7 +135,6 @@ xla_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/platform:statusor",
     ],
 )
 
@@ -211,6 +211,20 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "alias_info_test",
+    srcs = ["alias_info_test.cc"],
+    deps = [
+        ":alias_info",
+        ":hlo_operand_index",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "hlo_dataflow_analysis",
     srcs = ["hlo_dataflow_analysis.cc"],
@@ -253,7 +267,6 @@ xla_cc_test(
         ":hlo_dataflow_analysis",
         ":hlo_operand_index",
         ":hlo_ordering",
-        "//xla:comparison_util",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
@@ -262,7 +275,6 @@ xla_cc_test(
         "//xla/hlo/testlib:test",
         "//xla/hlo/transforms/simplifiers:flatten_call_graph",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
-        "//xla/service:hlo_creation_utils",
         "//xla/service:hlo_value",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
@@ -479,7 +491,6 @@ xla_cc_test(
         ":alias_info",
         ":hlo_alias_analysis",
         ":hlo_ordering",
-        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -490,13 +501,11 @@ xla_cc_test(
         "//xla/service:hlo_buffer",
         "//xla/service:hlo_value",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/platform:logging",
-        "@tsl//tsl/platform:statusor",
-        "@tsl//tsl/platform:test",
     ],
 )
 
@@ -608,6 +617,7 @@ cc_library(
     ],
     deps = [
         ":interval",
+        ":symbolic_map",
         "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:util",
@@ -617,6 +627,7 @@ cc_library(
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:matmul_indexing_utils",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
@@ -626,7 +637,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@stablehlo//:stablehlo_ops",
@@ -641,7 +651,7 @@ xla_cc_test(
         ":indexing_analysis",
         ":indexing_test_utils",
         ":interval",
-        ":symbolic_expr",
+        ":symbolic_map",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",
@@ -659,7 +669,7 @@ xla_cc_test(
     deps = [
         ":indexing_analysis",
         ":indexing_test_utils",
-        ":symbolic_expr",
+        ":symbolic_map",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings:string_view",
@@ -676,7 +686,8 @@ cc_library(
     hdrs = ["indexing_test_utils.h"],
     deps = [
         ":indexing_analysis",
-        ":symbolic_expr",
+        ":interval",
+        ":symbolic_map",
         "//xla:status_macros",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -691,10 +702,8 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_for_library",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@tsl//tsl/platform:errors",
     ],
 )
 
@@ -719,26 +728,10 @@ xla_cc_test(
     ],
 )
 
-cc_library(
-    name = "symbolic_map",
-    srcs = ["symbolic_map.cc"],
-    hdrs = ["symbolic_map.h"],
-    deps = [
-        ":symbolic_expr",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
 xla_cc_test(
     name = "symbolic_map_test",
     srcs = ["symbolic_map_test.cc"],
     deps = [
-        ":symbolic_expr",
         ":symbolic_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest_main",
@@ -747,16 +740,41 @@ xla_cc_test(
     ],
 )
 
+xla_cc_test(
+    name = "symbolic_map_serialization_test",
+    srcs = ["symbolic_map_serialization_test.cc"],
+    deps = [
+        ":indexing_test_utils",
+        ":symbolic_map",
+        "@com_google_absl//absl/base:log_severity",
+        "@com_google_absl//absl/log:scoped_mock_log",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
 cc_library(
-    name = "symbolic_expr",
-    srcs = ["symbolic_expr.cc"],
-    hdrs = ["symbolic_expr.h"],
+    name = "symbolic_map",
+    srcs = [
+        "symbolic_expr.cc",
+        "symbolic_map.cc",
+        "symbolic_map_serialization.cc",
+    ],
+    hdrs = [
+        "symbolic_expr.h",
+        "symbolic_map.h",
+        "symbolic_map_serialization.h",
+    ],
     deps = [
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
@@ -770,10 +788,8 @@ xla_cc_test(
     srcs = ["symbolic_expr_test.cc"],
     deps = [
         ":indexing_test_utils",
-        ":symbolic_expr",
-        "@com_google_absl//absl/base:log_severity",
+        ":symbolic_map",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log:scoped_mock_log",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
@@ -786,9 +802,9 @@ cc_library(
     srcs = ["symbolic_map_converter.cc"],
     hdrs = ["symbolic_map_converter.h"],
     deps = [
-        ":symbolic_expr",
+        ":interval",
         ":symbolic_map",
-        "//xla/hlo/analysis:interval",
+        "@com_google_absl//absl/base:core_headers",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -799,14 +815,12 @@ xla_cc_test(
     name = "symbolic_map_converter_test",
     srcs = ["symbolic_map_converter_test.cc"],
     deps = [
-        ":symbolic_expr",
+        ":interval",
         ":symbolic_map",
         ":symbolic_map_converter",
-        "//xla/hlo/analysis:interval",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
@@ -819,6 +833,7 @@ cc_library(
     deps = [
         ":indexing_analysis",
         ":interval",
+        ":symbolic_map",
         "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",

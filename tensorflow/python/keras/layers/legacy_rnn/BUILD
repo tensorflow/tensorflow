@@ -1,7 +1,7 @@
 # Description:
 #   Contains the legacy TF RNN APIs (internal TensorFlow version).
 
-load("//tensorflow:py.default.bzl", "py_library")
+load("@xla//third_party/rules_python/python:defs.bzl", "py_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -22,6 +22,7 @@ py_library(
     name = "rnn_cell_impl",
     srcs = ["rnn_cell_impl.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         ":rnn_cell_wrapper_impl",
         "//tensorflow/python/eager:context",
@@ -58,6 +59,7 @@ py_library(
     name = "rnn_cell_wrapper_impl",
     srcs = ["rnn_cell_wrapper_impl.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_conversion",

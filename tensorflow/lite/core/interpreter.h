@@ -1104,9 +1104,7 @@ class Interpreter {
   // Stores control edges that are encoded in the metadata of the model. Updated
   // in SetMetadata; model_control_dependencies_.empty() means that there were
   // no control dependencies encoded in the metadata, or that we were unable to
-  // parse them. We assume that, if we were able to parse them, they are
-  // consistent with the model and no further consistency check (e.g., bounds
-  // checks when dereferencing by subgraph and operator index) will take place.
+  // parse or validate them.
   ModelControlDependencies model_control_dependencies_;
 
   // Flag indicating whether to continue or cancel in flight invocation.

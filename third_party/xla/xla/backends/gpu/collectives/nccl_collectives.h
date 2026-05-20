@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_COLLECTIVES_NCCL_COLLECTIVES_H_
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -41,6 +42,9 @@ class NcclCollectives : public GpuCollectives {
   bool IsImplemented() const final { return true; }
 
   bool SupportsDeviceComm() const final;
+  bool SupportsOneSidedComm() const final;
+
+  size_t SymmetricMemoryAlignment() const final;
 
   absl::StatusOr<CliqueId> CreateUniqueCliqueId() const final;
 
@@ -77,10 +81,6 @@ class NcclCollectives : public GpuCollectives {
   absl::StatusOr<std::unique_ptr<Communicator>> CreateCommunicator() final {
     return absl::UnimplementedError("Not implemented.");
   }
-
-  absl::StatusOr<void*> Allocate(uint64_t bytes) final;
-
-  absl::Status Deallocate(void* location) final;
 
   absl::StatusOr<CliqueIdCallback> InitializeTopology(
       const Topology& topology) final;

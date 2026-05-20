@@ -103,10 +103,10 @@ void DnnPooling3dImpl(OpKernelContext* context,
                      transformed_output.template flat<T>().size());
 
   auto* stream = context->op_device_context()->stream();
-  OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
+  OP_REQUIRES(context, stream, absl::InternalError("No GPU stream available."));
   auto* dnn = stream->parent()->AsDnn();
   OP_REQUIRES(context, dnn != nullptr,
-              errors::Internal("No DNN support for stream."));
+              absl::InternalError("No DNN support for stream."));
 #if TENSORFLOW_USE_ROCM
   static int64 PoolingScratchSize = GetDnnWorkspaceLimit(
       // default value is in bytes despite the name of the environment variable
@@ -296,10 +296,10 @@ void DnnPooling3dGradImpl(
                      transformed_input_backprop.template flat<T>().size());
 
   auto* stream = context->op_device_context()->stream();
-  OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
+  OP_REQUIRES(context, stream, absl::InternalError("No GPU stream available."));
   auto* dnn = stream->parent()->AsDnn();
   OP_REQUIRES(context, dnn != nullptr,
-              errors::Internal("No DNN support for stream."));
+              absl::InternalError("No DNN support for stream."));
 
 #if TENSORFLOW_USE_ROCM
   static int64 PoolingScratchSize = GetDnnWorkspaceLimit(

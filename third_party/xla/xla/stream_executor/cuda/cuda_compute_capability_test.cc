@@ -197,6 +197,23 @@ TEST(CudaComputeCapabilityTest, IsAtLeastMethods) {
   EXPECT_TRUE(CudaComputeCapability(10, 1).IsAtLeastBlackwell());
 }
 
+TEST(CudaComputeCapabilityTest, HasTcgen05) {
+  // Hopper and earlier: no tcgen05.
+  EXPECT_FALSE(CudaComputeCapability(9, 0).HasTcgen05());
+
+  // SM 10.0 (B200): tcgen05 supported.
+  EXPECT_TRUE(CudaComputeCapability(10, 0).HasTcgen05());
+  // SM 10.3 (B300): tcgen05 supported.
+  EXPECT_TRUE(CudaComputeCapability(10, 3).HasTcgen05());
+
+  // SM 11.0: tcgen05 supported.
+  EXPECT_TRUE(CudaComputeCapability(11, 0).HasTcgen05());
+
+  // SM 12.0 (consumer Blackwell) and 12.1 (DGX Spark): no tcgen05.
+  EXPECT_FALSE(CudaComputeCapability(12, 0).HasTcgen05());
+  EXPECT_FALSE(CudaComputeCapability(12, 1).HasTcgen05());
+}
+
 TEST(CudaComputeCapabilityTest, FromProtoWithFeatureExtensionSpecified) {
   using FeatureExtension = CudaComputeCapability::FeatureExtension;
 

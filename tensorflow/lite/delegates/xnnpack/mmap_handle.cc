@@ -22,6 +22,10 @@ limitations under the License.
 #include <unistd.h>
 #endif
 
+#if defined(__linux__) && !defined(MADV_PAGEOUT)
+#define MADV_PAGEOUT 21
+#endif
+
 #include <fcntl.h>
 #include <sys/stat.h>
 
@@ -30,12 +34,25 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 
 #include "tensorflow/lite/delegates/xnnpack/file_util.h"
 #include "tensorflow/lite/delegates/xnnpack/macros.h"
 #include "tensorflow/lite/delegates/xnnpack/windows_util.h"
 
 namespace tflite::xnnpack {
+
+// NOLINTBEGIN(whitespace/line_length)
+#ifdef XNNPACK_CACHE_NO_MMAP_FOR_TEST
+#pragma message( \
+    "XNNPACK_CACHE_NO_MMAP_FOR_TEST has been deprecated and doesn't do anything anymore. If you were using it, consider whether filing a bug to get your usecase fixed wouldn't be a better solution. If you really need that, the new define is XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG.")
+#endif
+
+#ifdef XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG
+#pragma message( \
+    "XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG is defined. This can lead to highly degraded performance.")
+#endif
+// NOLINTEND(whitespace/line_length)
 
 #ifdef _WIN32
 // Helper to split a value in high/low parts to pass to Windows APIs.
@@ -98,7 +115,7 @@ bool MMapHandle::Map(const FileDescriptorView& fd, const size_t offset,
   ScopeGuard unmap_on_error([this] { UnMap(); });
   size_ = file_stats.st_size - offset;
   offset_ = offset;
-#if defined(XNNPACK_CACHE_NO_MMAP_FOR_TEST)
+#if defined(XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG)
   // This allocation is freed in UnMap and in the destructor.
   data_ = new uint8_t[size_];
   fd.SetPos(offset);
@@ -148,7 +165,7 @@ bool MMapHandle::Map(const FileDescriptorView& fd, const size_t offset,
 
 bool MMapHandle::Resize(size_t new_size) {
 #if (defined(__linux__) || defined(__ANDROID__)) && \
-    !defined(XNNPACK_CACHE_NO_MMAP_FOR_TEST)
+    !defined(XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG)
   void* const remapped_data =
       mremap(data_, size_ + offset_page_adjustment_,
              new_size + offset_page_adjustment_, /*flags=*/0);
@@ -168,7 +185,7 @@ bool MMapHandle::Resize(size_t new_size) {
 
 void MMapHandle::UnMap() {
   if (data_) {
-#if defined(XNNPACK_CACHE_NO_MMAP_FOR_TEST)
+#if defined(XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG)
     delete[] data_;
 #elif defined(_WIN32)
     UnmapViewOfFile(data_);
@@ -181,6 +198,59 @@ void MMapHandle::UnMap() {
   offset_ = 0;
   offset_page_adjustment_ = 0;
   size_ = 0;
+}
+
+bool MMapHandle::LockMemory() {
+#if defined(XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG)
+  return true;
+#elif defined(_WIN32)
+  return VirtualLock(data_, size_) != 0;
+#else
+  return mlock(data_, size_ + offset_page_adjustment_) == 0;
+#endif
+}
+
+bool MMapHandle::UnlockMemory() {
+#if defined(XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG)
+  return true;
+#elif defined(_WIN32)
+  return VirtualUnlock(data_, size_) != 0;
+#else
+  return munlock(data_, size_ + offset_page_adjustment_) == 0;
+#endif
+}
+
+bool MarkMemoryNotNeeded(void* data, size_t size) {
+#if defined(_WIN32)
+  SYSTEM_INFO sysInfo;
+  GetSystemInfo(&sysInfo);
+  DWORD page_size = sysInfo.dwPageSize;
+  // We don't mark memory chunks that are too small.
+  // TODO: b/510899567 - This threshold should be re-evaluated on Windows.
+  constexpr const size_t size_threshold = 1024 * 1024;
+  if (size <= size_threshold) {
+    return true;
+  }
+#else
+  size_t page_size = getpagesize();
+#endif
+
+  // We align the data buffer to the next page boundary and the size to be a
+  // multiple of the page size.
+  //
+  // - Windows will unlock all pages that contain at least a byte of the given
+  // range, which we want to avoid.
+  // - Linux requires the address to be on a page boundary.
+  void* aligned_data = std::align(page_size, page_size, data, size);
+  size -= size % page_size;
+  if (aligned_data) {
+#if defined(_WIN32)
+    return VirtualUnlock(aligned_data, size);
+#elif defined(__ANDROID__) || defined(__linux__)
+    return madvise(aligned_data, size, MADV_PAGEOUT) == 0;
+#endif
+  }
+  return true;
 }
 
 }  // namespace tflite::xnnpack

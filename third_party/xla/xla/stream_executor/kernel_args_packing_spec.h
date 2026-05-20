@@ -31,20 +31,15 @@ limitations under the License.
 
 namespace stream_executor {
 
-// Represents a relocation of an argument to a specific location in the
-// packed argument buffer. Imagine an arbitrary buffer of bytes with a
-// placeholder that later on will be replaced by the runtime with a
-// pointer to the actual argument. Currently only supports 64 bit absolute
-// pointers to device memory.
+// Represents a relocation of an argument.
 class KernelArgPackingRelocation {
  public:
   enum class Kind { kBits64Absolute };
 
-  KernelArgPackingRelocation(Kind kind, int argument_index, size_t offset)
-      : kind_(kind), argument_index_(argument_index), offset_(offset) {}
+  KernelArgPackingRelocation(Kind kind, int argument_index)
+      : kind_(kind), argument_index_(argument_index) {}
   Kind kind() const { return kind_; }
   int argument_index() const { return argument_index_; }
-  size_t offset() const { return offset_; }
 
   absl::StatusOr<KernelArgPackingRelocationProto> ToProto() const;
 
@@ -54,44 +49,35 @@ class KernelArgPackingRelocation {
  private:
   Kind kind_;
   int argument_index_;
-  size_t offset_;
 };
 
-// Represents the packing spec for a single argument of a kernel. So this is a
-// buffer of bytes and a list of relocations (placeholders) that describe
-// where later on argument buffer addresses will be written to.
+// Represents the packing spec for a single argument of a kernel.
 class KernelArgPackingSpec {
  public:
   KernelArgPackingSpec() = default;
-  KernelArgPackingSpec(std::vector<char> storage,
-                       std::vector<KernelArgPackingRelocation> relocations)
-      : storage_(std::move(storage)), relocations_(std::move(relocations)) {}
 
   // Materializes the argument buffer for this packing spec. The `args` span
   // must contain at least the number of arguments referenced in the packing
   // spec, otherwise an error will be returned.
   absl::StatusOr<std::vector<char>> BuildArgument(
-      absl::Span<const DeviceAddressBase> args) const;
+      absl::Span<const std::unique_ptr<PackedArgBase>> args) const;
 
-  // Writes a placeholder to the argument packing spec that will be replaced
-  // by the runtime with the address of the argument `argument_index`th
-  // argument. Currently this is always a 64bits absolute pointer to device
-  // memory. Other types of relocations will be added in the future if needed.
-  void WriteArgumentAddress(int argument_index);
+  // Build KernelArgPackingSpec that refer to given arg number.
+  static KernelArgPackingSpec BuildArgRelocation(int argument_index);
 
-  // Writes a constant value to the argument packing spec. The value must be
+  // Build KernelArgPackingSpec that refer to the constant. The value must be
   // trivially copyable.
   template <typename T>
-  void WriteConstant(T value) {
+  static KernelArgPackingSpec BuildFor(T value) {
     using Packed = typename KernelArgPacking<T>::Type;
 
     static_assert(std::is_trivially_copyable_v<Packed>,
                   "The given value must be trivially copyable");
-    Packed packed = KernelArgPacking<T>::Pack(value);
+    internal::PackedArg packed(KernelArgPacking<T>::Pack(value));
 
-    std::array<char, sizeof(Packed)> temp_storage;
-    std::memcpy(temp_storage.data(), &packed, sizeof(Packed));
-    storage_.insert(storage_.end(), temp_storage.begin(), temp_storage.end());
+    std::vector<char> temp_storage(sizeof(Packed));
+    std::memcpy(temp_storage.data(), packed.argument_address(), sizeof(Packed));
+    return KernelArgPackingSpec(std::move(temp_storage), {});
   }
 
   absl::StatusOr<KernelArgPackingSpecProto> ToProto() const;
@@ -100,8 +86,12 @@ class KernelArgPackingSpec {
       const KernelArgPackingSpecProto& proto);
 
  private:
-  std::vector<char> storage_;
-  std::vector<KernelArgPackingRelocation> relocations_;
+  KernelArgPackingSpec(std::vector<char> constant,
+                       std::optional<KernelArgPackingRelocation> relocation)
+      : constant_(std::move(constant)), relocation_(std::move(relocation)) {}
+
+  std::vector<char> constant_;
+  std::optional<KernelArgPackingRelocation> relocation_;
 };
 
 // `KernelArgsPackingSpec` defines how to convert a list of device buffer
@@ -163,21 +153,20 @@ class KernelArgsPackingSpec {
   // Adds a an argument that only contains a pointer to the `argument_index`th
   // argument.
   void AddAddressArgument(int argument_index) {
-    kernel_arguments_.push_back(KernelArgPackingSpec());
-    kernel_arguments_.back().WriteArgumentAddress(argument_index);
+    kernel_arguments_.push_back(
+        KernelArgPackingSpec::BuildArgRelocation(argument_index));
   }
 
   template <typename T>
   void AddConstantArgument(T value) {
-    kernel_arguments_.push_back(KernelArgPackingSpec());
-    kernel_arguments_.back().WriteConstant(value);
+    kernel_arguments_.push_back(KernelArgPackingSpec::BuildFor(value));
   }
 
   // Materializes the argument buffers for this packing spec. The `args` span
   // must contain at least the number of arguments referenced in the packing
   // spec, otherwise an error will be returned.
   absl::StatusOr<std::unique_ptr<KernelArgsPackedVector>> BuildArguments(
-      absl::Span<const DeviceAddressBase> args,
+      absl::Span<const std::unique_ptr<PackedArgBase>> args,
       size_t shared_memory_bytes) const;
 
   absl::StatusOr<KernelArgsPackingSpecProto> ToProto() const;

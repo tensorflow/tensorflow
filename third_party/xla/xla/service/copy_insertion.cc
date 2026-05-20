@@ -1226,10 +1226,12 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     std::function<bool(const HloValue* value)>
-        should_add_target_specific_copies) {
+        should_add_target_specific_copies,
+    CustomBufferAnalysisFn custom_buffer_analysis) {
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   return AddSpecialCaseCopies(*call_graph, execution_threads, module,
-                              should_add_target_specific_copies);
+                              should_add_target_specific_copies,
+                              custom_buffer_analysis);
 }
 
 absl::Status CopyInsertion::AddSpecialCaseCopies(
@@ -1237,7 +1239,8 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     HloModule* module,
     std::function<bool(const HloValue* value)>
-        should_add_target_specific_copies) {
+        should_add_target_specific_copies,
+    CustomBufferAnalysisFn custom_buffer_analysis) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module, alias_info_));
 
@@ -1320,6 +1323,11 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
         }
       }
     }
+  }
+
+  if (custom_buffer_analysis) {
+    VLOG(2) << "Running custom buffer analysis";
+    custom_buffer_analysis(module, *alias_analysis, add_index_to_copy);
   }
 
   // Identify copies which must be added at root instructions
@@ -1552,8 +1560,9 @@ absl::StatusOr<bool> CopyInsertion::RunImpl(
   TF_RETURN_IF_ERROR(RemoveUnnecessaryCopies(module, execution_threads));
   DumpHloModuleDuringPassIfEnabled(name(), "after removing unnecessary copies",
                                    *module);
-  TF_RETURN_IF_ERROR(
-      AddSpecialCaseCopies(*call_graph, execution_threads, module, nullptr));
+  TF_RETURN_IF_ERROR(AddSpecialCaseCopies(*call_graph, execution_threads,
+                                          module, nullptr,
+                                          /*custom_buffer_analysis=*/nullptr));
   DumpHloModuleDuringPassIfEnabled(name(), "after adding special-case copies",
                                    *module);
 

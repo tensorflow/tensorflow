@@ -131,9 +131,9 @@ static absl::StatusOr<Signature> AppendArguments(
             TensorTypeAndShape(arg.type, arg.DimensionSizesAsInlinedVector()));
         break;
       default:
-        return errors::InvalidArgument(
-            "Unhandled argument kind in XlaCompilationCache: ",
-            arg.HumanString());
+        return absl::InvalidArgumentError(
+            absl::StrCat("Unhandled argument kind in XlaCompilationCache: ",
+                         arg.HumanString()));
     }
   }
   return signature;

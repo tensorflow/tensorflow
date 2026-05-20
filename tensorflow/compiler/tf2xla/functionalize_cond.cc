@@ -422,10 +422,10 @@ absl::Status Conditional::AddSwitch(Node* s) {
   TF_RETURN_IF_ERROR(GetSwitchPredicate(*s, &predicate));
   if (switch_predicate_.node == nullptr) switch_predicate_ = predicate;
   if (!(switch_predicate_ == predicate)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Merge nodes ", NodesToString(merges_),
         " directly dominated by switch nodes with different predicates (",
-        DebugString(switch_predicate_), " vs ", DebugString(predicate), ").");
+        DebugString(switch_predicate_), " vs ", DebugString(predicate), ")."));
   }
   switches_.insert(s);
   parent_->AddSwitchId(s->id());
@@ -503,10 +503,10 @@ absl::Status Conditional::BuildArgumentNodes() {
         }
       }
       if (!has_input) {
-        return errors::Internal(
-            "Failed to functionalize control flow with merge ",
-            FormatNodeForError(*m), " that doesn't have input on ",
-            Branch_Name(branch), " branch.");
+        return absl::InternalError(
+            absl::StrCat("Failed to functionalize control flow with merge ",
+                         FormatNodeForError(*m), " that doesn't have input on ",
+                         Branch_Name(branch), " branch."));
       }
     }
   }
@@ -617,12 +617,12 @@ absl::Status Conditional::ExtractBodies(Graph* graph) {
               // CondState is not necessarily an error so log a warning for now
               // but revisit to improve the testing to enable making this an
               // error.
-              LOG(WARNING) << errors::InvalidArgument(
+              LOG(WARNING) << absl::InvalidArgumentError(absl::StrCat(
                   "Graph contains node ", FormatNodeForError(*src),
                   " that feeds into node ", FormatNodeForError(*dst),
                   " but these nodes are in different control contexts (",
                   DebugString(src_id), " vs ", DebugString(dst_id),
-                  " (detected during out edge testing)");
+                  " (detected during out edge testing)"));
             }
           }
         }
@@ -707,12 +707,12 @@ absl::Status Conditional::ExtractBodies(Graph* graph) {
               TF_RETURN_IF_ERROR(AddSwitchNodeAlongEdge(e, branch, graph));
               continue;
             } else {
-              return errors::InvalidArgument(
+              return absl::InvalidArgumentError(absl::StrCat(
                   "Graph contains node ", FormatNodeForError(*src),
                   " that feeds into node ", FormatNodeForError(*dst),
                   " but these nodes are in different control contexts (",
                   DebugString(src_id), " vs ", DebugString(dst_id),
-                  " (detected during in edge testing)");
+                  " (detected during in edge testing)"));
             }
           }
         }
@@ -873,8 +873,8 @@ absl::Status Conditional::AddInputEdges(
     // Conditional's If node will be removed.
     auto iter = merge_to_replacement.find(predicate_.node);
     if (iter == merge_to_replacement.end()) {
-      return errors::Internal("Cannot find replacement for Merge node ",
-                              predicate_.node->name());
+      return absl::InternalError(absl::StrCat(
+          "Cannot find replacement for Merge node ", predicate_.node->name()));
     }
     graph->AddEdge(iter->second.node, iter->second.index, if_node_, index++);
   } else {
@@ -908,9 +908,9 @@ absl::Status Conditional::AddOutputEdges(
       Node* dst = edge->dst();
       int dst_input = edge->dst_input();
       if (edge->src_output() > 0) {
-        return errors::Unimplemented("Output of index (", edge->src_output(),
-                                     ") of merge node ",
-                                     FormatNodeForError(*node));
+        return absl::UnimplementedError(
+            absl::StrCat("Output of index (", edge->src_output(),
+                         ") of merge node ", FormatNodeForError(*node)));
       }
 
       bool control_edge = edge->IsControlEdge();
@@ -1085,10 +1085,10 @@ absl::StatusOr<StateMap::CondId> FunctionalizeCond::JoinCondStatesNonMerge(
           // BranchType for 'dst' is kNeither. Use the BranchType in 'src'.
           // No need to change it->second.
         } else {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Graph contains node with inputs predicated on incompatible "
               "predicates: ",
-              DebugString(src), " and ", DebugString(dst));
+              DebugString(src), " and ", DebugString(dst)));
         }
       }
     }
@@ -1110,8 +1110,9 @@ absl::StatusOr<StateMap::CondId> FunctionalizeCond::JoinCondStatesMerge(
           << DebugString(dst);
   if (state_map_.IsEmpty(dst)) return src;
   if (state_map_.IsEmpty(src)) {
-    return errors::Internal("Merge node ", merge->name(),
-                            " has input that's not in any CondContext.");
+    return absl::InternalError(
+        absl::StrCat("Merge node ", merge->name(),
+                     " has input that's not in any CondContext."));
   }
 
   if (state_map_.IsDead(src)) return src;
@@ -1134,13 +1135,13 @@ absl::StatusOr<StateMap::CondId> FunctionalizeCond::JoinCondStatesMerge(
                               (diff[1].second == BranchType::kThenBranch ||
                                diff[1].second == BranchType::kElseBranch);
     if (!(pred == diff[1].first) || !different_branches)
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Unable to determine predicate for merge node");
     merge_to_predicate_[merge] = pred;
   } else {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Merge of two inputs that differ on more than one predicate ",
-        DebugString(src), " and ", DebugString(dst));
+        DebugString(src), " and ", DebugString(dst)));
   }
 
   return state_map_.GetCondId(merged);
@@ -1199,9 +1200,9 @@ absl::Status FunctionalizeCond::DetermineCondStateMerge(Node* dst) {
 
   // Incomplete Merge nodes are not supported.
   if (data_inputs != 2) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(absl::StrCat(
         dst->name(), " only has ", data_inputs,
-        " inputs, while only merge nodes with two inputs supported.");
+        " inputs, while only merge nodes with two inputs supported."));
   }
   return absl::OkStatus();
 }
@@ -1244,8 +1245,8 @@ absl::Status FunctionalizeCond::RemoveRedundantMerge(Node* node) {
   }
 
   if (non_dead_edge == nullptr) {
-    return errors::InvalidArgument("Merge node ", FormatNodeForError(*node),
-                                   " has no non-dead inputs.");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Merge node ", FormatNodeForError(*node), " has no non-dead inputs."));
   }
   state_map_.MarkDead(node);
   VLOG(5) << "removing redundant merge: " << node->name();
@@ -1564,8 +1565,8 @@ absl::Status FunctionalizeCond::FunctionalizeInternal() {
 
     auto predicate = merge_to_predicate_.find(merge);
     if (predicate == merge_to_predicate_.end()) {
-      return errors::Internal("Cannot find predicate for Merge node ",
-                              merge->name());
+      return absl::InternalError(
+          absl::StrCat("Cannot find predicate for Merge node ", merge->name()));
     }
 
     ClusterTuple key = std::make_tuple(

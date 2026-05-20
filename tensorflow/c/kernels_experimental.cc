@@ -167,7 +167,7 @@ tensorflow::mutex* GetTrainingVariableMutex(TF_OpKernelContext* ctx,
       return (*maybe_resource)->mu();
     } else {
       cc_ctx->CtxFailureWithWarning(
-          tensorflow::errors::Internal("Invalid variable reference."));
+          absl::InternalError("Invalid variable reference."));
       return nullptr;
     }
   }
@@ -196,11 +196,11 @@ void TF_AssignVariable(TF_OpKernelContext* ctx, int input_index,
     OP_REQUIRES(cc_ctx,
                 (!variable->is_initialized ||
                  variable->tensor()->shape().IsSameSize(value.shape())),
-                InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Trying to assign to variable with tensor with wrong shape."
                     " Expected ",
                     variable->tensor()->shape().DebugString(), " got ",
-                    value.shape().DebugString()));
+                    value.shape().DebugString())));
   }
 
   if (variable->copy_on_read_mode.load()) {
@@ -275,10 +275,10 @@ void TF_AssignUpdateVariable(TF_OpKernelContext* ctx, int input_index,
   Tensor* var_tensor = variable->tensor();
   OP_REQUIRES(
       context, var_tensor->shape().IsSameSize(value.shape()),
-      InvalidArgument("Cannot update variable with shape ",
-                      var_tensor->shape().DebugString(),
-                      " using a Tensor with shape ",
-                      value.shape().DebugString(), ", shapes must be equal."));
+      absl::InvalidArgumentError(absl::StrCat(
+          "Cannot update variable with shape ",
+          var_tensor->shape().DebugString(), " using a Tensor with shape ",
+          value.shape().DebugString(), ", shapes must be equal.")));
   OP_REQUIRES_OK(context,
                  PrepareToUpdateVariable(ctx, var_tensor,
                                          variable->copy_on_read_mode.load(),
@@ -357,8 +357,8 @@ void TF_DestroyTemporaryVariable(TF_OpKernelContext* ctx, const int index,
                                  TF_Status* tf_status) {
   auto* context = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
   if (!IsRefType(context->input_dtype(0))) {
-    tf_status->status =
-        InvalidArgument("TF_DestroyTemporaryVariable requires input is ref");
+    tf_status->status = absl::InvalidArgumentError(
+        "TF_DestroyTemporaryVariable requires input is ref");
     return;
   }
   Tensor tmpvar = context->mutable_input(0, false);
@@ -535,8 +535,8 @@ void TF_OpKernelConstruction_GetAttrTensorShape(TF_OpKernelConstruction* ctx,
   if (!status->status.ok()) return;
 
   if (num_dims != rank) {
-    status->status = InvalidArgument("Expected rank is ", num_dims,
-                                     " but actual rank is ", rank);
+    status->status = absl::InvalidArgumentError(absl::StrCat(
+        "Expected rank is ", num_dims, " but actual rank is ", rank));
     return;
   }
 
@@ -562,9 +562,9 @@ static Status ValidateVariantType(const Variant& variant) {
     const std::string type_index_name =
         ::tensorflow::port::MaybeAbiDemangle(variant.TypeId().name());
 
-    return ::tensorflow::errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "VariantBinaryOpFn: Could not access object 'a', type_index: ",
-        type_index_name);
+        type_index_name));
   }
 
   return absl::OkStatus();
@@ -642,15 +642,14 @@ static Status VariantBinaryAddFunc(
   };
 
   if (out == nullptr) {
-    return ::tensorflow::errors::Internal(
-        "The output variant hasn't been initialized");
+    return absl::InternalError("The output variant hasn't been initialized");
   }
 
   if (a.TypeId() != b.TypeId()) {
-    return ::tensorflow::errors::Internal(
-        "BinaryOpVariants: Variants a and b have different "
-        "type ids.  Type names: '",
-        a.TypeName(), "' vs. '", b.TypeName(), "'");
+    return absl::InternalError(
+        absl::StrCat("BinaryOpVariants: Variants a and b have different "
+                     "type ids.  Type names: '",
+                     a.TypeName(), "' vs. '", b.TypeName(), "'"));
   }
 
   if (a.TypeId() == tensorflow::TypeIndex::Make<::tensorflow::TensorList>()) {
@@ -676,10 +675,10 @@ static Status VariantBinaryAddFunc(
   const std::string type_index_name =
       ::tensorflow::port::MaybeAbiDemangle(a.TypeId().name());
 
-  return ::tensorflow::errors::Internal(
+  return absl::InternalError(absl::StrCat(
       "No unary variant binary_op function found for op ADD Variant "
       "type_name: ",
-      type_index_name, " for device type: ", cc_ctx->device()->name());
+      type_index_name, " for device type: ", cc_ctx->device()->name()));
 }
 
 void TF_AddNVariant(TF_OpKernelContext* ctx,
@@ -746,8 +745,7 @@ static Status ZerosLikeVariant(::tensorflow::OpKernelContext* cc_ctx,
   };
 
   if (out == nullptr) {
-    return ::tensorflow::errors::Internal(
-        "The output variant hasn't been initialized");
+    return absl::InternalError("The output variant hasn't been initialized");
   }
 
   if (input.TypeId() ==
@@ -772,10 +770,10 @@ static Status ZerosLikeVariant(::tensorflow::OpKernelContext* cc_ctx,
   const std::string type_index_name =
       ::tensorflow::port::MaybeAbiDemangle(input.TypeId().name());
 
-  return ::tensorflow::errors::Internal(
+  return absl::InternalError(absl::StrCat(
       "No unary variant unary_op function found for op ZEROS_LIKE Variant "
       "type_name: ",
-      type_index_name, " for device type: ", cc_ctx->device()->name());
+      type_index_name, " for device type: ", cc_ctx->device()->name()));
 }
 
 void TF_ZerosLikeVariant(TF_OpKernelContext* ctx,
@@ -787,7 +785,7 @@ void TF_ZerosLikeVariant(TF_OpKernelContext* ctx,
 
   const Tensor& input = cc_ctx->input(0);
   OP_REQUIRES(cc_ctx, input.dims() == 0,
-              InvalidArgument(
+              absl::InvalidArgumentError(
                   "ZerosLike non-scalar Tensor with dtype=DT_VARIANT is not "
                   "supported."));
   const Variant& v = input.scalar<Variant>()();

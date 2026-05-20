@@ -1150,10 +1150,10 @@ absl::Status CumsumGrad(const Scope& scope, const Operation& op,
                         const std::vector<Output>& grad_inputs,
                         std::vector<Output>* grad_outputs) {
   if (op.num_inputs() != 2) {
-    return errors::InvalidArgument("Cumsum requires 2 arguments");
+    return absl::InvalidArgumentError("Cumsum requires 2 arguments");
   }
   if (grad_inputs.size() != 1) {
-    return errors::InvalidArgument("Cumsum grad requires 1 grad input");
+    return absl::InvalidArgumentError("Cumsum grad requires 1 grad input");
   }
 
   Cumsum::Attrs attrs;
@@ -1182,10 +1182,10 @@ absl::Status CastGrad(const Scope& scope, const Operation& op,
                       const std::vector<Output>& grad_inputs,
                       std::vector<Output>* grad_outputs) {
   if (op.num_inputs() != 1) {
-    return errors::InvalidArgument("Cast requires 2 arguments");
+    return absl::InvalidArgumentError("Cast requires 2 arguments");
   }
   if (grad_inputs.size() != 1) {
-    return errors::InvalidArgument("Cast grad requires 1 grad input");
+    return absl::InvalidArgumentError("Cast grad requires 1 grad input");
   }
 
   auto src_type = op.input_type(0);
@@ -1203,10 +1203,10 @@ absl::Status SelectGrad(const Scope& scope, const Operation& op,
                         const std::vector<Output>& grad_inputs,
                         std::vector<Output>* grad_outputs) {
   if (op.num_inputs() != 3) {
-    return errors::InvalidArgument("Select requires 3 arguments");
+    return absl::InvalidArgumentError("Select requires 3 arguments");
   }
   if (grad_inputs.size() != 1) {
-    return errors::InvalidArgument("Select grad requires 1 grad input");
+    return absl::InvalidArgumentError("Select grad requires 1 grad input");
   }
 
   auto c = op.input(0);
@@ -1222,11 +1222,11 @@ absl::Status SelectV2Grad(const Scope& scope, const Operation& op,
                           const std::vector<Output>& grad_inputs,
                           std::vector<Output>* grad_outputs) {
   if (op.num_inputs() != 3) {
-    return errors::InvalidArgument("Select requires 3 arguments");
+    return absl::InvalidArgumentError("Select requires 3 arguments");
   }
 
   if (grad_inputs.size() != 1) {
-    return errors::InvalidArgument("Select grad requires 1 grad input");
+    return absl::InvalidArgumentError("Select grad requires 1 grad input");
   }
 
   auto c = op.input(0);
@@ -1301,11 +1301,12 @@ absl::Status UnsortedSegmentMinOrMaxGrad(const Scope& scope,
                                          const std::vector<Output>& grad_inputs,
                                          std::vector<Output>* grad_outputs) {
   if (op.num_inputs() != 3) {
-    return errors::InvalidArgument("UnsortedSegmentMax requires 3 arguments");
+    return absl::InvalidArgumentError(
+        "UnsortedSegmentMax requires 3 arguments");
   }
 
   if (grad_inputs.size() != 1) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "UnsortedSegmentMax grad requires 1 grad input");
   }
 
@@ -1338,11 +1339,12 @@ absl::Status UnsortedSegmentSumGrad(const Scope& scope, const Operation& op,
                                     const std::vector<Output>& grad_inputs,
                                     std::vector<Output>* grad_outputs) {
   if (op.num_inputs() != 3) {
-    return errors::InvalidArgument("UnsortedSegmentSum requires 3 arguments");
+    return absl::InvalidArgumentError(
+        "UnsortedSegmentSum requires 3 arguments");
   }
 
   if (grad_inputs.size() != 1) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "UnsortedSegmentSum grad requires 1 grad input");
   }
 

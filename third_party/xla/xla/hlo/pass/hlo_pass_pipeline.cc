@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/dump.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -135,6 +136,10 @@ template <typename HloT>
 absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
     HloT hlo, const DebugOptions& debug_options,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  auto* env = tsl::Env::Default();
+  std::unique_ptr<tsl::ThreadNote> thread_note;
+  thread_note = env->AddThreadNote(absl::StrCat(
+      "Running HLO pass pipeline on module ", hlo->name(), ": ", name()));
   auto passes = GetEnabledPasses(debug_options);
   // Copy string by value since debug options could get clobbered in an hlo
   // module group pass.
