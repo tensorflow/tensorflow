@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/hlo/analysis/hlo_reachability.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -324,9 +326,9 @@ class HloReachabilityMapBitSetBenchmark {
  public:
   explicit HloReachabilityMapBitSetBenchmark(int size) {
     size_t nwords = (size + 63) / 64;
-    std::vector<uint64_t> space(2 * nwords);
-    a_ = HloReachabilityMap::BitSet(&space[0], size);
-    b_ = HloReachabilityMap::BitSet(&space[nwords], size);
+    space_.resize(2 * nwords);
+    a_ = HloReachabilityMap::BitSet(&space_[0], nwords);
+    b_ = HloReachabilityMap::BitSet(&space_[nwords], nwords);
     // Initialize the bit sets to random inputs. Done out of caution -- note
     // that a sufficiently smart optimizer might realize that the bit sets
     // are otherwise initialized to 0.
@@ -338,7 +340,42 @@ class HloReachabilityMapBitSetBenchmark {
   }
   void Union() { a_ |= b_; }
 
+  void OrUpdatePartial(
+      const std::vector<std::pair<size_t, HloReachabilityMap::BitSet::Word>>&
+          diff) {
+    a_.OrUpdatePartial(diff);
+  }
+
+  std::vector<std::pair<size_t, HloReachabilityMap::BitSet::Word>> GenerateDiff(
+      int num_elements) {
+    std::vector<std::pair<size_t, HloReachabilityMap::BitSet::Word>> diff;
+    size_t nwords = a_.NumWords();
+    if (nwords == 0) {
+      return diff;
+    }
+    absl::BitGen gen;
+    if (num_elements >= nwords) {
+      for (size_t i = 0; i < nwords; ++i) {
+        diff.push_back(
+            {i, absl::Uniform<HloReachabilityMap::BitSet::Word>(gen)});
+      }
+    } else {
+      absl::flat_hash_set<uint64_t> indices;
+      while (indices.size() < num_elements) {
+        indices.insert(absl::Uniform<size_t>(gen, 0, nwords));
+      }
+      std::vector<uint64_t> sorted_indices(indices.begin(), indices.end());
+      std::sort(sorted_indices.begin(), sorted_indices.end());
+      for (uint64_t idx : sorted_indices) {
+        diff.push_back(
+            {idx, absl::Uniform<HloReachabilityMap::BitSet::Word>(gen)});
+      }
+    }
+    return diff;
+  }
+
  private:
+  std::vector<uint64_t> space_;
   HloReachabilityMap::BitSet a_;
   HloReachabilityMap::BitSet b_;
 };
@@ -353,6 +390,91 @@ void BM_HloReachabilityBitSetUnion(benchmark::State& state) {
 }
 #define BM_ARGS Arg(1)->Arg(64)->Arg(128)->Arg(256)->Range(512, 256 * 1024)
 BENCHMARK(BM_HloReachabilityBitSetUnion)->BM_ARGS;
+
+void BM_HloReachabilityBitSetUnion_OrUpdatePartialRandom2Diff(
+    benchmark::State& state) {
+  HloReachabilityMapBitSetBenchmark bm(state.range(0));
+  auto diff = bm.GenerateDiff(2);
+  for (auto s : state) {
+    bm.OrUpdatePartial(diff);
+  }
+}
+BENCHMARK(BM_HloReachabilityBitSetUnion_OrUpdatePartialRandom2Diff)->BM_ARGS;
+
+void BM_HloReachabilityBitSetUnion_OrUpdatePartialRandom10Diff(
+    benchmark::State& state) {
+  HloReachabilityMapBitSetBenchmark bm(state.range(0));
+  auto diff = bm.GenerateDiff(10);
+  for (auto s : state) {
+    bm.OrUpdatePartial(diff);
+  }
+}
+BENCHMARK(BM_HloReachabilityBitSetUnion_OrUpdatePartialRandom10Diff)->BM_ARGS;
+
+void BM_HloReachabilityBitSetUnion_OrUpdatePartial1Percent(
+    benchmark::State& state) {
+  HloReachabilityMapBitSetBenchmark bm(state.range(0));
+  int nwords = (state.range(0) + 63) / 64;
+  auto diff = bm.GenerateDiff(std::max<int>(1, nwords / 100));
+  for (auto s : state) {
+    bm.OrUpdatePartial(diff);
+  }
+}
+BENCHMARK(BM_HloReachabilityBitSetUnion_OrUpdatePartial1Percent)->BM_ARGS;
+
+void BM_HloReachabilityBitSetUnion_OrUpdatePartial10Percent(
+    benchmark::State& state) {
+  HloReachabilityMapBitSetBenchmark bm(state.range(0));
+  int nwords = (state.range(0) + 63) / 64;
+  auto diff = bm.GenerateDiff(std::max<int>(1, nwords / 10));
+  for (auto s : state) {
+    bm.OrUpdatePartial(diff);
+  }
+}
+BENCHMARK(BM_HloReachabilityBitSetUnion_OrUpdatePartial10Percent)->BM_ARGS;
+
+void BM_HloReachabilityBitSetUnion_OrUpdatePartial25Percent(
+    benchmark::State& state) {
+  HloReachabilityMapBitSetBenchmark bm(state.range(0));
+  int nwords = (state.range(0) + 63) / 64;
+  auto diff = bm.GenerateDiff(std::max<int>(1, nwords / 4));
+  for (auto s : state) {
+    bm.OrUpdatePartial(diff);
+  }
+}
+BENCHMARK(BM_HloReachabilityBitSetUnion_OrUpdatePartial25Percent)->BM_ARGS;
+
+void BM_HloReachabilityBitSetUnion_OrUpdatePartial50Percent(
+    benchmark::State& state) {
+  HloReachabilityMapBitSetBenchmark bm(state.range(0));
+  int nwords = (state.range(0) + 63) / 64;
+  auto diff = bm.GenerateDiff(std::max<int>(1, nwords / 2));
+  for (auto s : state) {
+    bm.OrUpdatePartial(diff);
+  }
+}
+BENCHMARK(BM_HloReachabilityBitSetUnion_OrUpdatePartial50Percent)->BM_ARGS;
+
+void BM_HloReachabilityBitSetUnion_OrUpdatePartial75Percent(
+    benchmark::State& state) {
+  HloReachabilityMapBitSetBenchmark bm(state.range(0));
+  int nwords = (state.range(0) + 63) / 64;
+  auto diff = bm.GenerateDiff(std::max<int>(1, nwords * 3 / 4));
+  for (auto s : state) {
+    bm.OrUpdatePartial(diff);
+  }
+}
+BENCHMARK(BM_HloReachabilityBitSetUnion_OrUpdatePartial75Percent)->BM_ARGS;
+
+void BM_HloReachabilityBitSetUnion_OrUpdatePartialDenseRandom(
+    benchmark::State& state) {
+  HloReachabilityMapBitSetBenchmark bm(state.range(0));
+  auto diff = bm.GenerateDiff((state.range(0) + 63) / 64);
+  for (auto s : state) {
+    bm.OrUpdatePartial(diff);
+  }
+}
+BENCHMARK(BM_HloReachabilityBitSetUnion_OrUpdatePartialDenseRandom)->BM_ARGS;
 
 class HloReachabilityBenchmark {
  public:

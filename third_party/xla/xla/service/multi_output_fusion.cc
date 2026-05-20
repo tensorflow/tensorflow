@@ -148,11 +148,6 @@ MultiOutputFusion::GetNewFusibles(HloInstruction* instr1,
                                   HloInstruction* instr2) {
   HloInstruction* fusion = instr1;
   HloInstruction* fused = instr2;
-  if (is_fused(instr1)) {
-    fusion = instr2;
-    fused = instr1;
-  }
-
   FusionCandidate& fusion_node = candidates_[get_candidate_id(fusion)];
   FusionCandidate& fused_node = candidates_[get_candidate_id(fused)];
 
@@ -191,60 +186,15 @@ MultiOutputFusion::GetNewFusibles(HloInstruction* instr1,
   return new_fusibles;
 }
 
-void MultiOutputFusion::UpdateBeforeFuse(HloInstruction* instr1,
-                                         HloInstruction* instr2) {
-  HloInstruction* fusion = instr1;
-  HloInstruction* fused = instr2;
-  if (is_fused(instr1)) {
-    fusion = instr2;
-    fused = instr1;
-  }
-
+void MultiOutputFusion::UpdateBeforeFuse(HloInstruction* fusion,
+                                         HloInstruction* fused) {
   // Insert the newly created instruction (if any), to candidates_.
-  for (auto use : fusion->users()) {
-    if (candidates_index_.find(use) == candidates_index_.end()) {
-      int64_t index = candidates_.size();
+  for (HloInstruction* use : fusion->users()) {
+    if (candidates_index_.insert({use, candidates_.size()}).second) {
       candidates_.emplace_back(use);
-      InsertOrDie(&candidates_index_, use, index++);
     }
   }
-
-  // Update the reachability graph.
-  std::vector<std::pair<HloInstruction*, HloReachabilityMap::Index>>
-      instrs_to_update;
-  absl::flat_hash_set<const HloInstruction*> visited;
-  std::vector<HloInstruction*> stack;
-
-  auto add_candidate = [&](HloInstruction* instr) {
-    if (visited.insert(instr).second) {
-      // We are checking if the instruction is in all_fusion_candidates_
-      // because we only need to update the reachability for those instructions
-      // that could potentially be fused in this pass.
-      if (all_fusion_candidates_.contains(instr)) {
-        instrs_to_update.emplace_back(instr, reachability_->GetIndex(instr));
-      }
-      stack.push_back(instr);
-    }
-  };
-  // Update the reachability of fusion candidates that are successors of the
-  // new fusion
-  add_candidate(fusion);
-  add_candidate(fused);
-
-  while (!stack.empty()) {
-    HloInstruction* curr = stack.back();
-    stack.pop_back();
-
-    for (HloInstruction* user : curr->users()) {
-      add_candidate(user);
-    }
-    for (HloInstruction* succ : curr->control_successors()) {
-      add_candidate(succ);
-    }
-  }
-
-  UpdateReachability(fusion, fused, instrs_to_update,
-                     [this](HloInstruction* instr) { return is_fused(instr); });
+  reachability_->UpdateReachabilityForMerge(fused, fusion);
 }
 
 void MultiOutputFusion::UpdateAfterFuse(
