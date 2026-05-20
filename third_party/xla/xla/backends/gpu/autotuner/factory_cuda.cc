@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/block_level_emitter.h"
-#include "xla/backends/gpu/autotuner/cublas.h"
 #include "xla/backends/gpu/autotuner/cublaslt.h"
 #include "xla/backends/gpu/autotuner/cudnn.h"
 #include "xla/backends/gpu/autotuner/factory.h"
@@ -52,17 +51,16 @@ namespace {
 
 using ::mlir::MLIRContext;
 
-std::unique_ptr<HloPassPipeline> GetCublasRewriterPipeline(
-    const stream_executor::DeviceDescription& device_description,
-    bool enable_cublaslt) {
-  auto pipeline = std::make_unique<HloPassPipeline>("cublas_rewriter_pipeline");
+std::unique_ptr<HloPassPipeline> GetCublasLtRewriterPipeline(
+    const stream_executor::DeviceDescription& device_description) {
+  auto pipeline =
+      std::make_unique<HloPassPipeline>("cublaslt_rewriter_pipeline");
   pipeline->AddPass(std::make_unique<DotAlgorithmRewriter>());
   pipeline->AddPass(std::make_unique<ScaledDotRewriter>());
   for (GemmRewriterOptions::DType dtype :
        {GemmRewriterOptions::DType::kFp8Only,
         GemmRewriterOptions::DType::kNonFp8Only}) {
     GemmRewriterOptions options{dtype};
-    options.enable_cublaslt = enable_cublaslt;
     auto gemm_rewriter = std::make_unique<GemmRewriter>(
         device_description.gpu_compute_capability(),
         device_description.runtime_version(), options);
@@ -88,24 +86,13 @@ std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForCuda(
       stream_executor, debug_options, compiler, target_config));
   backends.push_back(std::make_unique<TritonBackend>(
       debug_options, compiler, target_config, alias_info, mlir_context));
-  backends.push_back(std::make_unique<CublasBackend>(
-      stream_executor, debug_options, compiler, target_config,
-      /*fp8_lt_fallback=*/true));
   backends.push_back(std::make_unique<CublasLtBackend>(
       stream_executor, debug_options, compiler, target_config));
   backends.push_back(std::make_unique<FissionBackend>(
       debug_options, compiler, target_config,
-      std::make_unique<CublasBackend>(stream_executor, debug_options, compiler,
-                                      target_config, /*fp8_lt_fallback=*/true),
-      GetCublasRewriterPipeline(target_config->device_description,
-                                /*enable_cublaslt=*/false),
-      alias_info, mlir_context));
-  backends.push_back(std::make_unique<FissionBackend>(
-      debug_options, compiler, target_config,
       std::make_unique<CublasLtBackend>(stream_executor, debug_options,
                                         compiler, target_config),
-      GetCublasRewriterPipeline(target_config->device_description,
-                                /*enable_cublaslt=*/true),
+      GetCublasLtRewriterPipeline(target_config->device_description),
       alias_info, mlir_context));
   backends.push_back(std::make_unique<NativeEmitterBackend>(
       debug_options, compiler, target_config));

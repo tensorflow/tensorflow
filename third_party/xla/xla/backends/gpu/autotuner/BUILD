@@ -589,7 +589,6 @@ cc_library(
     ],
     deps = [
         ":block_level_emitter",
-        ":cublas",
         ":cublaslt",
         ":cudnn",
         ":factory",
@@ -799,7 +798,6 @@ cc_library(
         ":hipblaslt",
         ":miopen",
         ":native_emitter",
-        ":rocblas",
         ":triton",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:backends_proto_cc",

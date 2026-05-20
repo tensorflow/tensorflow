@@ -201,7 +201,6 @@ void GpuBlasLtMatmulThunkTest::CreateExecuteThunksFromHLO(
                           this->ParseAndReturnVerifiedModule(hlo_string));
 
   GemmRewriterOptions options;
-  options.enable_cublaslt = GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
       RunHloPass(GemmRewriter(gpu_comp(executor),
