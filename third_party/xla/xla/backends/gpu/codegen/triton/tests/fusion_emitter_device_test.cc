@@ -439,9 +439,9 @@ ENTRY main {
       CreateXTileIrAndFileCheck(std::move(module), "triton_softmax_computation",
                                 R"(
 CHECK:        xtile.entry_func @xtile_dialect_fn(%[[P0:.*]]: {{.*}}, %[[P1:.*]]: {{.*}}, %[[PID:.*]]: index)
-CHECK-DAG:        %[[EXTRACT_IDX_0:.*]] = xla.apply_indexing #indexing_map(%[[PID]])
+CHECK-DAG:        %[[C_0:.*]] = arith.constant 0 : index
 CHECK-NEXT:       xtile.extract %[[P0]]
-CHECK-SAME:       [%[[PID]], %[[EXTRACT_IDX_0]]] [1, 128] [1, 1]
+CHECK-SAME:       [%[[PID]], %[[C_0]]] [1, 128] [1, 1]
 CHECK:            stablehlo.reduce{{.*}} applies stablehlo.add
 CHECK:            stablehlo.multiply
 CHECK-SAME:       tensor<1x128xf32>
@@ -518,10 +518,10 @@ CHECK-SAME:                      %[[P0:[A-Za-z0-9_]*]]: memref<125x127xf32>
 CHECK-SAME:                      %[[P1:[A-Za-z0-9_]*]]: memref<127xf32>
 CHECK-SAME:                      %[[P2:[A-Za-z0-9_]*]]: memref<125x127xf32>
 CHECK-SAME:                      %[[TID:[A-Za-z0-9_]*]]: index)
-CHECK-DAG:        %[[EXTRACT_IDX_0:.*]] = xla.apply_indexing #indexing_map(%[[TID]])
-CHECK-DAG:        xtile.extract %[[P0]][%[[TID]], %[[EXTRACT_IDX_0]]] [1, 128] [1, 1] : {{.*}} -> tensor<1x128xf32>
-CHECK-DAG:        %[[EXTRACT_IDX_1:.*]] = xla.apply_indexing #indexing_map(%[[TID]])
-CHECK-DAG:        xtile.extract %[[P1]][%[[EXTRACT_IDX_1]]] [128] [1] : {{.*}} -> tensor<128xf32>
+CHECK-DAG:        %[[C_0:.*]] = arith.constant 0 : index
+CHECK-DAG:        xtile.extract %[[P0]][%[[TID]], %[[C_0]]] [1, 128] [1, 1] : {{.*}} -> tensor<1x128xf32>
+CHECK-DAG:        %[[C_0_0:.*]] = arith.constant 0 : index
+CHECK-DAG:        xtile.extract %[[P1]][%[[C_0_0]]] [128] [1] : {{.*}} -> tensor<128xf32>
 CHECK:            stablehlo.reduce{{.*}} applies stablehlo.add
 CHECK:            stablehlo.multiply
 CHECK-DAG:        xtile.insert {{.*}} into %[[P2]]

@@ -19,10 +19,13 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/DialectImplementation.h"  // IWYU pragma: keep
+#include "mlir/IR/Location.h"
 #include "mlir/IR/OpImplementation.h"  // IWYU pragma: keep
+#include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/InliningUtils.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
@@ -145,6 +148,13 @@ void XlaDialect::initialize() {
 #include "xla/codegen/emitters/ir/xla_attrs.cc.inc"
       >();
   addInterfaces<XlaInlinerInterface, XlaOpAsmDialectInterface>();
+}
+
+mlir::Operation* XlaDialect::materializeConstant(mlir::OpBuilder& builder,
+                                                 mlir::Attribute value,
+                                                 mlir::Type type,
+                                                 mlir::Location loc) {
+  return mlir::arith::ConstantOp::materialize(builder, value, type, loc);
 }
 
 }  // namespace xla
