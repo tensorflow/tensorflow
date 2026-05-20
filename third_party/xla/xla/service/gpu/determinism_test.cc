@@ -188,6 +188,9 @@ ENTRY e {
     if (!HasHipblasLt()) {
       GTEST_SKIP() << "No hipblas-lt support on this architecture!";
     }
+    debug_options_.clear_xla_gpu_experimental_autotune_backends();
+    debug_options_.add_xla_gpu_experimental_autotune_backends(
+        autotuner::Backend::ROCBLAS);
   }
   debug_options_.set_xla_gpu_enable_triton_gemm(false);
 
