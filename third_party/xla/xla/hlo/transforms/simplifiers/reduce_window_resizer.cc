@@ -31,8 +31,17 @@ namespace xla {
 absl::StatusOr<bool> ReduceWindowResizer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  auto computations = module->computations(execution_threads);
+  if (computations.begin() == computations.end()) {
+    return false;
+  }
   bool changed = false;
-  for (const auto& computation : module->computations(execution_threads)) {
+  absl::flat_hash_set<const HloComputation*> sparse_core_comps =
+      reduce_window_util::GetSparseCoreComputations(*module);
+  for (const auto& computation : computations) {
+    if (sparse_core_comps.contains(computation)) {
+      continue;
+    }
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       HloReduceWindowInstruction* reduce_window =

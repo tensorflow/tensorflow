@@ -16,14 +16,21 @@ limitations under the License.
 #ifndef XLA_HLO_TRANSFORMS_SIMPLIFIERS_REDUCE_WINDOW_UTIL_H_
 #define XLA_HLO_TRANSFORMS_SIMPLIFIERS_REDUCE_WINDOW_UTIL_H_
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 
 namespace xla {
 namespace reduce_window_util {
+
+// Pre-calculates and returns the set of all SparseCore computations within the
+// given HLO module. Useful for batch filtering across computations.
+absl::flat_hash_set<const HloComputation*> GetSparseCoreComputations(
+    const HloModule& module);
 
 // Transform reduce-win(x) ->
 //   if rank(x) == 1:
