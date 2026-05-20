@@ -29,14 +29,19 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
+#include "xla/service/gpu/autotuning/autotuner_pass.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla.pb.h"
@@ -164,6 +169,49 @@ class CudnnBackendTest : public HloHardwareIndependentTestBase {
 
 TEST_F(CudnnBackendTest, CanCreateCublasBackend) {
   ASSERT_NE(nullptr, backend_);
+}
+
+TEST_F(CudnnBackendTest, CudnnConvIsAutotunedWithAutotuningDisabled) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kCudnnCustomCallHlo));
+  module->mutable_config().mutable_debug_options().set_xla_gpu_autotune_level(
+      0);
+
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
+                                      /*num_threads=*/4);
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  Compiler::GpuTargetConfig target_config(stream_executor_);
+  backends.push_back(std::make_unique<CudnnBackend>(
+      stream_executor_, &module->config().debug_options(), &compiler_,
+      &target_config));
+
+  auto get_backends_fn =
+      [backends =
+           std::make_shared<std::vector<std::unique_ptr<CodegenBackend>>>(
+               std::move(backends))]() mutable { return std::move(*backends); };
+  auto allocator =
+      std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+          stream_executor_);
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<AutotunerPass> pass,
+      AutotunerPass::Create(
+          std::move(get_backends_fn), module->config().debug_options(),
+          target_config.device_description.gpu_compute_capability(),
+          stream_executor_, &thread_pool, &target_config,
+          /*alias_info=*/nullptr, /*mlir_context=*/nullptr,
+          /*shape_size_fn=*/[](const Shape& shape) { return 0; },
+          allocator.get()));
+  LOG(INFO) << "module before run: " << module->ToString();
+  EXPECT_THAT(pass->Run(module.get(), /*execution_threads=*/{}),
+              absl_testing::IsOkAndHolds(true));
+  LOG(INFO) << "module after run: " << module->ToString();
+  // Verify that the backend config has been updated in the HLO even though
+  // autotuning is disabled.
+  auto conv = module->entry_computation()->GetInstructionWithName("cudnn-conv");
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_backend_config_after_first_run,
+                          conv->backend_config<GpuBackendConfig>());
+  EXPECT_TRUE(gpu_backend_config_after_first_run.cudnn_conv_backend_config()
+                  .has_algorithm());
 }
 
 TEST_F(CudnnBackendTest, GetSupportedConfigsFromCudnnFusion) {

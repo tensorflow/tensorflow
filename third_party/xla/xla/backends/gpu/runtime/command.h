@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/casts.h"
 
 namespace xla::gpu {
 
@@ -238,8 +237,15 @@ class Command : public Thunk {
   std::invoke_result_t<F, const Command*> Walk(F&& callback) const;
 
  protected:
-  // WalkNested uses Thunk::Walker = absl::FunctionRef<absl::Status(Thunk*)>.
-  // Subclasses that have nested commands must override this.
+  // Walks all nested commands and calls `callback` for them. This is separate
+  // from Thunk::WalkNested because a Thunk/Command hybrid can own non-command
+  // thunks for direct execution and command executors for command-buffer
+  // recording.
+  using CommandWalker = absl::FunctionRef<absl::Status(Command*)>;
+  virtual absl::Status WalkNestedCommands(CommandWalker /*callback*/) {
+    return absl::OkStatus();
+  }
+
   absl::Status WalkNested(Walker callback) override { return absl::OkStatus(); }
 
  private:
@@ -272,11 +278,8 @@ std::invoke_result_t<F, Command*> Command::Walk(F&& callback) {
     }).IgnoreError();  // Error can never happen here.
   } else {
     RETURN_IF_ERROR(callback(this));
-    // Adapt Command*-typed callback to Thunk::Walker (Thunk*-typed) for
-    // WalkNested. The down_cast is safe because WalkNested only visits
-    // Commands in a Command context.
-    return WalkNested([&callback](Thunk* thunk) -> absl::Status {
-      return callback(tsl::down_cast<Command*>(thunk));
+    return WalkNestedCommands([&callback](Command* command) -> absl::Status {
+      return callback(command);
     });
   }
 }

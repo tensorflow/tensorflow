@@ -128,6 +128,7 @@ cc_library(
     deps = [
         "//xla/service:executable",
         "//xla/service:shaped_buffer",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
@@ -151,4 +152,14 @@ cc_library(
 tf_proto_library(
     name = "backends_proto",
     srcs = ["backends.proto"],
+)
+
+tf_proto_library(
+    name = "autotuning_proto",
+    srcs = ["autotuning.proto"],
+    deps = [
+        ":backends_proto",
+        "@com_google_protobuf//:any_proto",
+        "@com_google_protobuf//:duration_proto",
+    ],
 )

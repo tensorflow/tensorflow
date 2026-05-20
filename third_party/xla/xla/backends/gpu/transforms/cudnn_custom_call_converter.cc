@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -47,8 +48,8 @@ class CustomCallVisitor : public DfsHloRewriteVisitor {
     FusionBackendConfig &backend_config =
         *gpu_config.mutable_fusion_backend_config();
     backend_config.set_kind(hlo->custom_call_target());
-    TF_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
-    TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, fusion));
+    RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
+    RETURN_IF_ERROR(ReplaceInstruction(hlo, fusion));
     return absl::OkStatus();
   }
 };

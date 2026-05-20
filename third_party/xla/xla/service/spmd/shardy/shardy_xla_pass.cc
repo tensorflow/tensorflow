@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -100,7 +101,7 @@ absl::Status createFromProtoAndReplaceComputations(
 
   // Create HLO computations from proto.
   for (const HloComputationProto& computationProto : proto.computations()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         std::unique_ptr<HloComputation> computation,
         HloComputation::CreateFromProto(computationProto, idToComputation));
     CHECK_NE(computation.get(), nullptr);
@@ -136,8 +137,8 @@ absl::Status createFromProtoAndReplaceComputations(
   // Remove the old computations, which are currently dead.
   CHECK_OK(HloDCE().Run(module));
 
-  TF_ASSIGN_OR_RETURN(StackFrames stack_frames,
-                      StackFrames::FromProto(proto.stack_frame_index()));
+  ASSIGN_OR_RETURN(StackFrames stack_frames,
+                   StackFrames::FromProto(proto.stack_frame_index()));
   module->set_stack_frames(std::move(stack_frames));
   return absl::OkStatus();
 }
@@ -348,7 +349,7 @@ absl::Status runShardingPropagation(HloModule* hloModule,
         tsl::io::JoinPath(shardyDir, "shardy", uniqueModuleName(*hloModule));
     LOG(INFO) << "Using Shardy output directory: " << shardyDir;
   }
-  TF_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(shardyDir));
+  RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(shardyDir));
   // MLIR pipeline: (1) import, (2) Shardy, and (3) export.
 
   bool enableVerifier = false;
@@ -458,9 +459,8 @@ absl::StatusOr<bool> ShardyXLA::RunImpl(
   // HLO -> StableHLO
   auto mlirContext = std::make_unique<mlir::MLIRContext>();
   loadAllRequiredDialects(mlirContext.get());
-  TF_ASSIGN_OR_RETURN(
-      mlir::OwningOpRef<mlir::ModuleOp> mlirModule,
-      xla::ConvertHloToStablehlo(*mlirContext.get(), hloModule));
+  ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> mlirModule,
+                   xla::ConvertHloToStablehlo(*mlirContext.get(), hloModule));
 
   // Store the entry computation layout, input-output alias config, and buffer
   // donors, which will be restored in the end, since MLIR does not preserve
@@ -480,7 +480,7 @@ absl::StatusOr<bool> ShardyXLA::RunImpl(
                                      useTupleArgs);
 
   if (runSdyShardingPropagation) {
-    TF_RETURN_IF_ERROR(runShardingPropagation(
+    RETURN_IF_ERROR(runShardingPropagation(
         hloModule, mlirModule.get(), importMhloShardings, propagationOptions,
         enableNativeNonFlatSupport, name()));
   }
@@ -494,9 +494,9 @@ absl::StatusOr<bool> ShardyXLA::RunImpl(
 
   // StableHlo -> HLO
   HloProto hloProto;
-  TF_RETURN_IF_ERROR(ConvertStablehloWithManyArgsToHloProto(
-      *mlirModule, &hloProto, useTupleArgs));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(ConvertStablehloWithManyArgsToHloProto(*mlirModule, &hloProto,
+                                                         useTupleArgs));
+  RETURN_IF_ERROR(
       createFromProtoAndReplaceComputations(hloModule, hloProto.hlo_module()));
 
   // If the module returns a single tensor as result with sharding,
@@ -511,11 +511,10 @@ absl::StatusOr<bool> ShardyXLA::RunImpl(
       std::move(flattenedInputOutputAliasConfig));
   hloModule->set_buffer_donor_config(std::move(flattenedBufferDonorsConfig));
 
-  TF_RETURN_IF_ERROR(
-      hlo_sharding_util::CanonicalizeLayoutAfterShardingPropagation(
-          hloModule,
-          hloModule->config().allow_spmd_sharding_propagation_to_output(),
-          hloModule->config().allow_spmd_sharding_propagation_to_parameters()));
+  RETURN_IF_ERROR(hlo_sharding_util::CanonicalizeLayoutAfterShardingPropagation(
+      hloModule,
+      hloModule->config().allow_spmd_sharding_propagation_to_output(),
+      hloModule->config().allow_spmd_sharding_propagation_to_parameters()));
 
   // We don't fully replace the HLO module, so it will continue to have the
   // temporary frontend attributes. So clean them up as XLA won't need them.

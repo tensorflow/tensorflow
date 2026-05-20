@@ -66,6 +66,7 @@ cc_library(
         "//xla/backends/cpu:alignment",
         "//xla/service/llvm_ir:llvm_type_conversion_util",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",

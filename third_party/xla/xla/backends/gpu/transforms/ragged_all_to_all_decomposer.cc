@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -345,8 +346,8 @@ absl::StatusOr<bool> DecomposeRaggedAllToAll(HloInstruction* hlo,
   HloRaggedAllToAllInstruction* all_to_all =
       Cast<HloRaggedAllToAllInstruction>(hlo);
 
-  TF_ASSIGN_OR_RETURN(auto replica_group_count_and_size,
-                      GetReplicaGroupCountAndSize(all_to_all));
+  ASSIGN_OR_RETURN(auto replica_group_count_and_size,
+                   GetReplicaGroupCountAndSize(all_to_all));
   if (!replica_group_count_and_size.has_value()) {
     return false;
   }
@@ -394,9 +395,8 @@ absl::StatusOr<bool> DecomposeRaggedAllToAll(HloInstruction* hlo,
       DenseToRagged(computation, dense_output, output_operand, output_offsets,
                     recv_sizes, num_updates_per_replica, max_update_size);
 
-  TF_RETURN_IF_ERROR(all_to_all->ReplaceAllUsesWith(ragged_output));
-  TF_RETURN_IF_ERROR(
-      computation->RemoveInstructionAndUnusedOperands(all_to_all));
+  RETURN_IF_ERROR(all_to_all->ReplaceAllUsesWith(ragged_output));
+  RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(all_to_all));
 
   return true;
 }
@@ -418,8 +418,8 @@ absl::StatusOr<bool> RaggedAllToAllDecomposer::RunImpl(
             "`ragged-all-to-all-canonicalizer` pass executed?");
       }
 
-      TF_ASSIGN_OR_RETURN(bool result,
-                          DecomposeRaggedAllToAll(hlo, computation, module));
+      ASSIGN_OR_RETURN(bool result,
+                       DecomposeRaggedAllToAll(hlo, computation, module));
       changed |= result;
     }
   }

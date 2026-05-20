@@ -1715,6 +1715,9 @@ ENTRY main {
 
   module->mutable_config().mutable_debug_options().set_xla_gpu_enable_cublaslt(
       false);
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_use_ragged_dot_fusion(false);
 
   EXPECT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(
