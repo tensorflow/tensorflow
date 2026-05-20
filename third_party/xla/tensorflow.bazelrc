@@ -312,7 +312,7 @@ common:rocm_ci --config=rocm
 common:rocm_ci --@local_config_rocm//rocm:rocm_path_type=hermetic
 
 common:rocm_ci_hermetic --dynamic_mode=off
-common:rocm_ci_hermetic --config=rocm_clang_official
+common:rocm_ci_hermetic --config=rocm_clang_hermetic_local_sysroot
 common:rocm_ci_hermetic --repo_env="ROCM_DISTRO_VERSION=rocm_7.10.0_gfx90X"
 common:rocm_ci_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
 
