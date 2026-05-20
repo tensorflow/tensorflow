@@ -640,8 +640,9 @@ Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
                   minor_to_major_layout, storage_type);
 }
 
-TensorValue EmitParameterExtract(mlir::ImplicitLocOpBuilder& b,
-                                 const TileInfo& tile_info, Value arg) {
+absl::StatusOr<TensorValue> EmitParameterExtract(mlir::ImplicitLocOpBuilder& b,
+                                                 const TileInfo& tile_info,
+                                                 Value arg) {
   auto tensor_type = mlir::RankedTensorType::get(tile_info.padded_tile_sizes(),
                                                  tile_info.storage_type());
 

@@ -139,6 +139,7 @@ cc_library(
         "//xla/service/gpu/model:tiling_from_block_parameters",
         "//xla/service/gpu/model:triton_emitter_constraints",
         "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:sorted_range",
         "@com_google_absl//absl/container:flat_hash_map",

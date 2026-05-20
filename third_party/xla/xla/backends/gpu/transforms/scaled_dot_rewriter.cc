@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -152,7 +153,7 @@ absl::StatusOr<HloInstruction*> Dequantize(HloInstruction* dot,
     return operand;
   }
   std::tie(operand, scale) = UpscaleBoth(operand, scale);
-  TF_RETURN_IF_ERROR(CheckOperandAndScaleShapes(side, operand, scale));
+  RETURN_IF_ERROR(CheckOperandAndScaleShapes(side, operand, scale));
   HloInstruction* broadcasted_scale =
       BroadcastAndReshape(scale, operand->shape(), computation);
   HloInstruction* dequantized =
@@ -171,8 +172,8 @@ absl::StatusOr<bool> ScaledDotRewriter::RewriteComputation(
     }
     changed = true;
     HloScaledDotInstruction* dot = Cast<HloScaledDotInstruction>(instruction);
-    TF_ASSIGN_OR_RETURN(HloInstruction * lhs, Dequantize(dot, 0, 2, "LHS"));
-    TF_ASSIGN_OR_RETURN(HloInstruction * rhs, Dequantize(dot, 1, 3, "RHS"));
+    ASSIGN_OR_RETURN(HloInstruction * lhs, Dequantize(dot, 0, 2, "LHS"));
+    ASSIGN_OR_RETURN(HloInstruction * rhs, Dequantize(dot, 1, 3, "RHS"));
 
     std::tie(lhs, rhs) = UpscaleBoth(lhs, rhs);
 
@@ -180,12 +181,12 @@ absl::StatusOr<bool> ScaledDotRewriter::RewriteComputation(
     dot_shape.set_element_type(GetTargetType(lhs->shape().element_type(),
                                              dot->shape().element_type()));
 
-    TF_RETURN_IF_ERROR(dot->ReplaceAllUsesWith(
+    RETURN_IF_ERROR(dot->ReplaceAllUsesWith(
         Convert(computation->AddInstruction(HloInstruction::CreateDot(
                     dot_shape, lhs, rhs, dot->dot_dimension_numbers(),
                     dot->precision_config())),
                 dot->shape().element_type())));
-    TF_RETURN_IF_ERROR(computation->RemoveInstruction(dot));
+    RETURN_IF_ERROR(computation->RemoveInstruction(dot));
   }
   return changed;
 }
@@ -194,7 +195,7 @@ absl::StatusOr<bool> ScaledDotRewriter::RunImpl(
     HloModule* module, const absl::flat_hash_set<absl::string_view>&) {
   bool changed = false;
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
-    TF_ASSIGN_OR_RETURN(bool result, RewriteComputation(computation));
+    ASSIGN_OR_RETURN(bool result, RewriteComputation(computation));
     changed |= result;
   }
   return changed;

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/lib/math.h"
 #include "xla/hlo/builder/lib/matrix.h"
@@ -51,7 +52,7 @@ namespace {
 XlaOp DiagonalBlocks(XlaOp a, int64_t block_size) {
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(a));
+    ASSIGN_OR_RETURN(Shape shape, builder->GetShape(a));
     int ndims = shape.dimensions().size();
     int64_t n = ShapeUtil::GetDimension(shape, -1);
     int64_t num_blocks = n / block_size;
@@ -116,7 +117,7 @@ XlaOp DiagonalBlocks(XlaOp a, int64_t block_size) {
 
       // Add a singleton dimension
       // i.e. [..., block_size, block_size] -> [..., 1, block_size, block_size]
-      TF_ASSIGN_OR_RETURN(Shape blocks_shape, builder->GetShape(last_blocks));
+      ASSIGN_OR_RETURN(Shape blocks_shape, builder->GetShape(last_blocks));
       auto shape_dims = blocks_shape.dimensions();
       auto last_blocks_dims = std::vector<int64_t>(ndims);
       absl::c_copy(shape_dims, last_blocks_dims.begin());
@@ -142,11 +143,11 @@ XlaOp SolveWithInvertedDiagonalBlocks(XlaOp a, XlaOp b, XlaOp inv_diag_blocks,
                                       PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape blocks_shape, builder->GetShape(inv_diag_blocks));
-    TF_ASSIGN_OR_RETURN(Shape b_shape, builder->GetShape(b));
+    ASSIGN_OR_RETURN(Shape blocks_shape, builder->GetShape(inv_diag_blocks));
+    ASSIGN_OR_RETURN(Shape b_shape, builder->GetShape(b));
     int64_t block_size = ShapeUtil::GetDimension(blocks_shape, -1);
 
-    TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+    ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
     int64_t ndims = a_shape.dimensions().size();
     int64_t n = ShapeUtil::GetDimension(a_shape, -1);
     int64_t num_blocks = n / block_size + (n % block_size != 0);
@@ -253,7 +254,7 @@ XlaOp TriangularSolveExpander::InvertDiagonalBlocks(
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     // Input is a batch of square lower triangular square matrices. Its shape is
     // (..., size, size). We resize this to (num_blocks, size, size).
-    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(diag_blocks));
+    ASSIGN_OR_RETURN(Shape shape, builder->GetShape(diag_blocks));
     int64_t block_size = ShapeUtil::GetDimension(shape, -1);
     int64_t num_blocks = ShapeUtil::ElementsIn(shape) / IPow(block_size, 2);
     diag_blocks = Reshape(diag_blocks, {num_blocks, block_size, block_size});
@@ -321,7 +322,7 @@ XlaOp TriangularSolveExpander::InvertDiagonalBlocks(
           Parameter(condb.get(), 0, tuple_shape, "InvertDiagCondTuple"), 0);
       Lt(i, ConstantR0<int32_t>(condb.get(), block_size));
     }
-    TF_ASSIGN_OR_RETURN(auto cond, condb->Build());
+    ASSIGN_OR_RETURN(auto cond, condb->Build());
 
     // Construct the loop body function.
     std::unique_ptr<XlaBuilder> bodyb =
@@ -356,7 +357,7 @@ XlaOp TriangularSolveExpander::InvertDiagonalBlocks(
       auto next_i = i + ScalarLike(i, 1);
       Tuple(bodyb.get(), {next_i, body_out, body_input});
     }
-    TF_ASSIGN_OR_RETURN(auto body, bodyb->Build());
+    ASSIGN_OR_RETURN(auto body, bodyb->Build());
 
     // Construct the While loop and return the result,
     // return while_loop(cond_fun, body_fun, init)[1]
@@ -377,7 +378,7 @@ XlaOp TriangularSolveExpander::SolveByInvertingDiagonalBlocks(
     PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+    ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
     const int64_t ndims = a_shape.dimensions().size();
     int64_t k = ShapeUtil::GetDimension(a_shape, -1);
 
@@ -421,8 +422,8 @@ XlaOp TriangularSolveExpander::SolveDirectly(
     PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-    TF_ASSIGN_OR_RETURN(Shape b_shape, builder->GetShape(b));
+    ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+    ASSIGN_OR_RETURN(Shape b_shape, builder->GetShape(b));
     int64_t m = ShapeUtil::GetDimension(b_shape, -2);
     int64_t n = ShapeUtil::GetDimension(b_shape, -1);
     const int64_t a_size = ShapeUtil::GetDimension(a_shape, -1);
@@ -478,8 +479,8 @@ XlaOp TriangularSolveExpander::BuildTriangularSolve(
     PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-    TF_ASSIGN_OR_RETURN(Shape b_shape, builder->GetShape(b));
+    ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+    ASSIGN_OR_RETURN(Shape b_shape, builder->GetShape(b));
     if (a_shape.dimensions().size() != b_shape.dimensions().size()) {
       return InvalidArgument(
           "Arguments to TriangularSolve have shapes with different ranks: "
@@ -600,9 +601,9 @@ absl::StatusOr<HloInstruction*> TriangularSolveExpander::ExpandInstruction(
                          transpose_a, conjugate_a, options.unit_diagonal(),
                          /*block_size=*/block_size_,
                          /*precision=*/PrecisionConfig::HIGHEST);
-    TF_ASSIGN_OR_RETURN(XlaComputation xla_computation, builder.Build());
-    TF_ASSIGN_OR_RETURN(
-        computation, XlaComputationToHloComputation(xla_computation, module));
+    ASSIGN_OR_RETURN(XlaComputation xla_computation, builder.Build());
+    ASSIGN_OR_RETURN(computation,
+                     XlaComputationToHloComputation(xla_computation, module));
   }
 
   return instruction->parent()->AddInstruction(HloInstruction::CreateCall(
