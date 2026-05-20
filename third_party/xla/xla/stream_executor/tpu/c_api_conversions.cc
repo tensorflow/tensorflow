@@ -380,6 +380,12 @@ void Destroy(XLA_Layout* c_layout) {
   if (c_layout->minor_to_major.size > TPU_C_API_MAX_INLINED) {
     delete[] c_layout->minor_to_major.heap;
   }
+  XLA_Tile* c_tiles = c_layout->tiles.size > TPU_C_API_MAX_INLINED
+                          ? c_layout->tiles.heap
+                          : c_layout->tiles.inlined;
+  for (int i = 0; i < c_layout->tiles.size; ++i) {
+    Destroy(&c_tiles[i]);
+  }
   if (c_layout->tiles.size > TPU_C_API_MAX_INLINED) {
     delete[] c_layout->tiles.heap;
   }
@@ -506,7 +512,7 @@ static xla::HloModuleConfig ConfigWithLayout(
 }
 
 XLA_HloModuleConfig ToC(const xla::HloModuleConfig& config) {
-  XLA_HloModuleConfig hlo_config;
+  XLA_HloModuleConfig hlo_config = {};
 
   hlo_config.seed = config.seed();
   hlo_config.launch_id = config.launch_id();
@@ -590,18 +596,35 @@ xla::HloModuleConfig FromC(const XLA_HloModuleConfig& c_config) {
 }
 
 void Destroy(XLA_HloModuleConfig* c_config) {
-  for (auto i = 0; i < c_config->entry_computation_layout.parameter_count;
-       ++i) {
-    ApiConverter::Destroy(
-        &c_config->entry_computation_layout.parameter_layouts[i]);
+  if (c_config->has_entry_computation_layout) {
+    for (auto i = 0; i < c_config->entry_computation_layout.parameter_count;
+         ++i) {
+      ApiConverter::Destroy(
+          &c_config->entry_computation_layout.parameter_layouts[i]);
+    }
+    delete[] c_config->entry_computation_layout.parameter_layouts;
+    ApiConverter::Destroy(&c_config->entry_computation_layout.result_layout);
   }
-  delete[] c_config->entry_computation_layout.parameter_layouts;
-  ApiConverter::Destroy(&c_config->entry_computation_layout.result_layout);
   if (c_config->has_static_device_assignment) {
     stream_executor::tpu::SerializedProto_Free(
         c_config->static_device_assignment);
   }
   stream_executor::tpu::SerializedProto_Free(c_config->debug_options);
+  if (c_config->auto_spmd_partitioning_mesh_shape.size >
+      TPU_C_API_MAX_INLINED) {
+    delete[] c_config->auto_spmd_partitioning_mesh_shape.heap;
+  }
+  if (c_config->auto_spmd_partitioning_mesh_ids.size > TPU_C_API_MAX_INLINED) {
+    delete[] c_config->auto_spmd_partitioning_mesh_ids.heap;
+  }
+  if (c_config->allow_spmd_sharding_propagation_to_parameters.size >
+      TPU_C_API_MAX_INLINED) {
+    delete[] c_config->allow_spmd_sharding_propagation_to_parameters.heap;
+  }
+  if (c_config->allow_spmd_sharding_propagation_to_output.size >
+      TPU_C_API_MAX_INLINED) {
+    delete[] c_config->allow_spmd_sharding_propagation_to_output.heap;
+  }
 }
 
 void Destroy(FloatList* float_list) {
