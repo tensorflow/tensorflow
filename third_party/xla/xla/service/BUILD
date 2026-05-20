@@ -446,7 +446,7 @@ xla_cc_test(
 cc_library(
     name = "collective_pipeliner_utils",
     hdrs = ["collective_pipeliner_utils.h"],
-    deps = [],
+    deps = ["//xla/hlo/ir:hlo"],
 )
 
 cc_library(

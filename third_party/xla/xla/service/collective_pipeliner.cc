@@ -370,18 +370,8 @@ CheckStoreIntoSliceIsCompatible(
         return sliced_dim.has_value() && *sliced_dim != 0;
       }
     }
-    return HloPredicateIsOp<HloOpcode::kSlice, HloOpcode::kDynamicSlice,
-                            HloOpcode::kPad, HloOpcode::kCollectivePermute,
-                            HloOpcode::kConvert, HloOpcode::kReshape,
-                            HloOpcode::kAllReduce, HloOpcode::kTranspose,
-                            HloOpcode::kBroadcast, HloOpcode::kAllGather,
-                            HloOpcode::kReduce, HloOpcode::kGetTupleElement,
-                            HloOpcode::kConcatenate, HloOpcode::kReduceScatter,
-                            HloOpcode::kBitcast>(i) ||
+    return collective_pipeliner_utils::IsBaseAcceptableFormattingOp(i) ||
            (multi_uses_pipelining && i->IsElementwise()) ||
-           (i->opcode() == HloOpcode::kCustomCall &&
-            !Cast<HloCustomCallInstruction>(i)
-                 ->custom_call_has_side_effect()) ||
            i->IsCustomCall(CollectivePipeliner::kInsertedByPreviousStep) ||
            i->IsCustomCall(CollectivePipeliner::kSunkByPreviousStep);
   };
