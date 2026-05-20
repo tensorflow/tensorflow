@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_AUTOTUNER_BLOCK_LEVEL_EMITTER_H_
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -82,6 +83,8 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
   // We don't want to use the Triton emitter as a reference because it can
   // produce wrong results.
   bool CanProduceWrongResults() const override { return true; }
+  // TODO(b/514330710): use valid version
+  std::string version() const override { return "unknown"; }
 
  private:
   absl::StatusOr<BlockLevelFusionConfig> GetCostModelConfig(

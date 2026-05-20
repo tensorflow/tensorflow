@@ -87,6 +87,7 @@ class FissionBackend : public GpuCodegenBackend {
                            const BackendConfig& config) override;
 
   bool IsSupported(const HloInstruction& instr) override;
+  std::string version() const override { return codegen_backend_->version(); }
 
  private:
   absl::StatusOr<std::unique_ptr<HloModule>> GetFissionedAndRewrittenModule(

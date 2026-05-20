@@ -49,6 +49,8 @@ class CpuCodegenBackend : public CodegenBackend {
 
   absl::string_view name() const override { return name_; }
 
+  std::string version() const override { return "unknown"; }
+
   absl::StatusOr<std::unique_ptr<Executable>> Compile(
       const HloInstruction& hlo_instruction,
       const xla::BackendConfig& config) override {

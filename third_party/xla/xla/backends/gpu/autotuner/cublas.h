@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_AUTOTUNER_CUBLAS_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -69,6 +70,8 @@ class CublasBackend : public GpuCodegenBackend {
   bool ShouldUseCublasLt(const HloInstruction& instr);
 
   bool IsSupported(const HloInstruction& instr) override;
+  // TODO(b/514330710): use valid version
+  std::string version() const override { return "unknown"; }
   bool fp8_lt_fallback_;
 };
 

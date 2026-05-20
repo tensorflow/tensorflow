@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_AUTOTUNER_TRITON_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -55,6 +56,8 @@ class TritonBackend : public GpuCodegenBackend {
                            const BackendConfig& config) override;
 
   bool CanProduceWrongResults() const override { return true; }
+  // TODO(b/514330710): use valid version
+  std::string version() const override { return "unknown"; }
 
  private:
   bool IsSupported(const HloInstruction& instr) override;
