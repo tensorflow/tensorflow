@@ -22,6 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -54,8 +55,8 @@ absl::StatusOr<Compiler::GpuTargetConfig> GetGpuTargetConfig() {
       tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
                         "backends/gpu/target_config/specs", spec_file);
   stream_executor::GpuTargetConfigProto target_config_proto;
-  TF_RETURN_IF_ERROR(tsl::ReadTextProto(tsl::Env::Default(), target_config_path,
-                                        &target_config_proto));
+  RETURN_IF_ERROR(tsl::ReadTextProto(tsl::Env::Default(), target_config_path,
+                                     &target_config_proto));
   return Compiler::GpuTargetConfig::FromProto(target_config_proto);
 }
 

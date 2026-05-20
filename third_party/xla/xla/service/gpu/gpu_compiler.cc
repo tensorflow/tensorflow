@@ -1642,7 +1642,7 @@ absl::Status GpuCompiler::AutotunerAndPostCleanup(
     const MultiProcessKeyValueStore& key_value_store,
     const se::SemanticVersion& toolkit_version, const AliasInfo* alias_info,
     HloCostAnalysis::ShapeSizeFunction shape_size_fn) {
-  TF_RETURN_IF_ERROR(AddConvAndGemmAutotuningPass(
+  RETURN_IF_ERROR(AddConvAndGemmAutotuningPass(
       &pipeline, hlo_module, gpu_version, options, thread_pool, stream_exec,
       target_config, key_value_store, toolkit_version, alias_info,
       debug_options, mlir_context, shape_size_fn));
@@ -2808,10 +2808,10 @@ absl::StatusOr<xla::cpu::CompilationResultProto> GetCpuCompilationResult(
   cpu_compile_options.cpu_target_config.emplace(
       std::move(cpu_target_machine_options));
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::cpu::NanoRtExecutable> executable,
-                      client.Compile(computation));
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<CompiledModule> result,
-                      client.Export(executable.get()));
+  ASSIGN_OR_RETURN(std::unique_ptr<xla::cpu::NanoRtExecutable> executable,
+                   client.Compile(computation));
+  ASSIGN_OR_RETURN(std::unique_ptr<CompiledModule> result,
+                   client.Export(executable.get()));
   xla::cpu::CpuAotCompilationResult* cpu_aot_compilation_result =
       tsl::down_cast<xla::cpu::CpuAotCompilationResult*>(result.get());
   return cpu_aot_compilation_result->proto();
@@ -3205,7 +3205,7 @@ GpuCompiler::NewCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
       RunBackend(std::move(hlo_module), executor, compile_options));
 
   std::vector<std::unique_ptr<CompiledModule>> results;
-  TF_ASSIGN_OR_RETURN(results.emplace_back(), Export(executable.get()));
+  ASSIGN_OR_RETURN(results.emplace_back(), Export(executable.get()));
   return results;
 }
 
@@ -3661,7 +3661,7 @@ absl::Status GpuCompiler::AddConvAndGemmAutotuningPass(
         debug_options, mlir_context, shape_size_fn, this, PlatformId());
   };
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<AutotunerPass> autotuner_pass,
       AutotunerPass::Create(get_backends_fn, debug_options, gpu_version,
                             stream_exec, thread_pool, target_config, alias_info,
@@ -3688,7 +3688,7 @@ absl::Status GpuCompiler::AddAutotunerPass(
         debug_options, mlir_context, shape_size_fn, this, PlatformId());
   };
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<AutotunerPass> autotuner_pass,
       AutotunerPass::Create(get_backends_fn, debug_options, gpu_version,
                             stream_exec, thread_pool, target_config, alias_info,
@@ -3737,7 +3737,7 @@ absl::Status GpuCompiler::AddFusionAutotuningPass(
     return backends;
   };
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<AutotunerPass> autotuner_pass,
       AutotunerPass::Create(
           get_backends_fn, debug_options,

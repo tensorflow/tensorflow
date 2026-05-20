@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/convolution_dims.h"
 #include "xla/backends/cpu/runtime/convolution_lib.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -57,7 +58,7 @@ absl::StatusOr<std::unique_ptr<ConvolutionThunk>> ConvolutionThunk::Create(
   ConvolutionSlices slices = {input_buffer, input_shape,   kernel_buffer,
                               kernel_shape, output_buffer, output_shape};
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       ConvolutionCanonicalDims canonical_dims,
       GetConvolutionCanonicalDims(slices, dnums, window, feature_group_count));
 
@@ -78,15 +79,15 @@ ConvolutionThunk::ConvolutionThunk(
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> ConvolutionThunk::Execute(
     const ExecuteParams& params) {
-  TF_ASSIGN_OR_RETURN(se::DeviceAddressBase input_data,
-                      params.buffer_allocations->GetDeviceAddress(
-                          convolution_slices_.input_buffer));
-  TF_ASSIGN_OR_RETURN(se::DeviceAddressBase kernel_data,
-                      params.buffer_allocations->GetDeviceAddress(
-                          convolution_slices_.kernel_buffer));
-  TF_ASSIGN_OR_RETURN(se::DeviceAddressBase output_data,
-                      params.buffer_allocations->GetDeviceAddress(
-                          convolution_slices_.output_buffer));
+  ASSIGN_OR_RETURN(se::DeviceAddressBase input_data,
+                   params.buffer_allocations->GetDeviceAddress(
+                       convolution_slices_.input_buffer));
+  ASSIGN_OR_RETURN(se::DeviceAddressBase kernel_data,
+                   params.buffer_allocations->GetDeviceAddress(
+                       convolution_slices_.kernel_buffer));
+  ASSIGN_OR_RETURN(se::DeviceAddressBase output_data,
+                   params.buffer_allocations->GetDeviceAddress(
+                       convolution_slices_.output_buffer));
 
   VLOG(3) << absl::StreamFormat("Convolution: %v", convolution_canonical_dims_);
 

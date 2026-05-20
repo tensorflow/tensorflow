@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
@@ -145,11 +146,10 @@ absl::StatusOr<KernelSpec> ParallelFusionEmitter::AddFusion(
   // returned immediately, we have to do it in the main thread. This can be
   // fixed but will require a rework of the ThunkEmitter.
   auto compiler_instance = fusion_compiler_pool_->GetInstance();
-  TF_ASSIGN_OR_RETURN(
-      KernelDefinition mlir_kernel_definition,
-      EmitFusionKernel(*compiler_instance->mlir_context, *fusion,
-                       buffer_assignment_, use_unique_c_name_,
-                       enable_tiled_emitter_));
+  ASSIGN_OR_RETURN(KernelDefinition mlir_kernel_definition,
+                   EmitFusionKernel(*compiler_instance->mlir_context, *fusion,
+                                    buffer_assignment_, use_unique_c_name_,
+                                    enable_tiled_emitter_));
 
   {
     absl::MutexLock lock(kernels_mutex_);

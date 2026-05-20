@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/primitive_util.h"
@@ -505,9 +506,8 @@ XlaOp ConvertRandomBitsToUniformFloatingPoint(XlaOp bits, XlaOp minval,
                                               XlaOp maxval) {
   XlaBuilder* builder = bits.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(const Shape* minval_shape,
-                        builder->GetShapePtr(minval));
-    TF_ASSIGN_OR_RETURN(const Shape* bits_shape, builder->GetShapePtr(bits));
+    ASSIGN_OR_RETURN(const Shape* minval_shape, builder->GetShapePtr(minval));
+    ASSIGN_OR_RETURN(const Shape* bits_shape, builder->GetShapePtr(bits));
     PrimitiveType value_type = minval_shape->element_type();
     PrimitiveType bit_type = bits_shape->element_type();
     if (!primitive_util::IsFloatingPointType(value_type) ||
@@ -572,7 +572,7 @@ XlaOp ConvertRandomBitsToUniformFloatingPoint(XlaOp bits, XlaOp minval,
       values = values * ScalarLike(values, std::ldexp(1., -num_mantissa_bits));
     }
 
-      // Multiply and add to shift to the range [minval, maxval).
+    // Multiply and add to shift to the range [minval, maxval).
     return values * (maxval - minval) + minval;
   });
 }

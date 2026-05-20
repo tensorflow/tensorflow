@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
@@ -363,9 +364,8 @@ absl::StatusOr<std::string> GetProtoFingerprint(
 template <typename ConfigType>
 absl::StatusOr<std::string> FingerprintWithBackendConfig(
     const HloInstruction& hlo) {
-  TF_ASSIGN_OR_RETURN(const auto config, hlo.backend_config<ConfigType>());
-  TF_ASSIGN_OR_RETURN(const std::string fingerprint,
-                      GetProtoFingerprint(config));
+  ASSIGN_OR_RETURN(const auto config, hlo.backend_config<ConfigType>());
+  ASSIGN_OR_RETURN(const std::string fingerprint, GetProtoFingerprint(config));
   return absl::StrCat(hlo.ToString(HloPrintOptions::Fingerprint()),
                       ", backend_config_fingerprint=", fingerprint);
 }

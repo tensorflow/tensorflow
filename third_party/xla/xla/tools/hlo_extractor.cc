@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -324,21 +325,21 @@ absl::Status Inline(HloModule* module) {
                 /*operands=*/instruction->operands(),
                 /*computation=*/
                 instruction->fused_instructions_computation()));
-        TF_RETURN_IF_ERROR(computation
-                               ->ReplaceInstruction(
-                                   /*old_instruction=*/instruction,
-                                   /*new_instruction=*/new_instruction,
-                                   /*preserve_sharding=*/false,
-                                   /*relay_control_dependency=*/true,
-                                   /*remove_unused_operands=*/true)
-                               .status());
+        RETURN_IF_ERROR(computation
+                            ->ReplaceInstruction(
+                                /*old_instruction=*/instruction,
+                                /*new_instruction=*/new_instruction,
+                                /*preserve_sharding=*/false,
+                                /*relay_control_dependency=*/true,
+                                /*remove_unused_operands=*/true)
+                            .status());
       }
     }
   }
-  TF_RETURN_IF_ERROR(CallInliner().Run(module).status());
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(CallInliner().Run(module).status());
+  RETURN_IF_ERROR(
       AlgebraicSimplifier(AlgebraicSimplifierOptions{}).Run(module).status());
-  TF_RETURN_IF_ERROR(HloDCE(true).Run(module).status());
+  RETURN_IF_ERROR(HloDCE(true).Run(module).status());
   return absl::OkStatus();
 }
 

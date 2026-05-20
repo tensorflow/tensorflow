@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -290,8 +291,8 @@ absl::StatusOr<std::string> GetFMHAInstructionPrefix(
 
 // Give fmha instruction a more useful name than "custom-call.42".
 absl::Status SetFMHAInstructionName(HloModule* module, HloInstruction* fmha) {
-  TF_ASSIGN_OR_RETURN(std::string fmha_prefix,
-                      GetFMHAInstructionPrefix(fmha->custom_call_target()));
+  ASSIGN_OR_RETURN(std::string fmha_prefix,
+                   GetFMHAInstructionPrefix(fmha->custom_call_target()));
   module->SetAndUniquifyInstrName(fmha, fmha_prefix);
   return absl::OkStatus();
 }
