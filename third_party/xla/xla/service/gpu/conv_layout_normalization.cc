@@ -29,10 +29,10 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -116,6 +116,7 @@ absl::StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
            "Call is expected to be an "
            "allocator of rank one";
     std::vector<Shape> new_tuple_shape;
+    new_tuple_shape.reserve(hlo->shape().tuple_shapes().size());
     for (const Shape& tuple_shape : hlo->shape().tuple_shapes()) {
       new_tuple_shape.emplace_back(
           ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
@@ -131,6 +132,7 @@ absl::StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
   // We need to restore degenerate dimensions, since those might be used in
   // either batch dimension, or contracting dimensions.
   std::vector<HloInstruction*> normalized_operands;
+  normalized_operands.reserve(hlo->operand_count());
   bool performed_normalization = false;
   for (int idx = 0; idx < hlo->operand_count(); idx++) {
     HloInstruction* op = hlo->mutable_operand(idx);
@@ -143,8 +145,8 @@ absl::StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
   // Avoid replacing the Custom Call with an identical copy.
   if (!performed_normalization &&
       ShapeUtil::Equal(normalized_shape, hlo->shape()) &&
-      ConvolutionDimensionNumbersToString(new_dim_numbers) ==
-          ConvolutionDimensionNumbersToString(dim_numbers)) {
+      tsl::protobuf::util::MessageDifferencer::Equals(new_dim_numbers,
+                                                      dim_numbers)) {
     return std::nullopt;
   }
 
@@ -166,14 +168,14 @@ absl::StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
   // tuples built this way.
   HloInstruction* bc_to_orig;
   if (normalized_conv->shape().IsTuple()) {
-    std::vector<HloInstruction*> tuple_elements(
-        normalized_conv->shape().tuple_shapes().size());
+    const std::vector<Shape>& tuple_shapes =
+        normalized_conv->shape().tuple_shapes();
+    std::vector<HloInstruction*> tuple_elements(tuple_shapes.size());
 
-    for (int i = 0; i < normalized_conv->shape().tuple_shapes().size(); ++i) {
+    for (int i = 0; i < tuple_shapes.size(); ++i) {
       TF_ASSIGN_OR_RETURN(HloInstruction * normalized_out,
                           MakeGetTupleElementHlo(normalized_conv, i));
-      tuple_elements[i] =
-          MakeBitcastHlo(normalized_out, hlo->shape().tuple_shapes(i));
+      tuple_elements[i] = MakeBitcastHlo(normalized_out, tuple_shapes[i]);
     }
     bc_to_orig = MaybeMakeTuple(tuple_elements);
   } else {
