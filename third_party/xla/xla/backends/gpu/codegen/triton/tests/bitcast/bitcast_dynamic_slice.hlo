@@ -5,7 +5,7 @@
 // RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
 HloModule m
 
-triton_softmax_computation (p0: f32[1024, 16], offset: s32[]) -> f32[8192] {
+fusion (p0: f32[1024, 16], offset: s32[]) -> f32[8192] {
   p0 = f32[1024, 16]{1,0} parameter(0)
   offset = s32[] parameter(1)
   dynamic_slice = f32[512,16]{1,0} dynamic-slice(p0, offset, offset), dynamic_slice_sizes={512, 16}
@@ -40,7 +40,7 @@ triton_softmax_computation (p0: f32[1024, 16], offset: s32[]) -> f32[8192] {
 ENTRY main {
   p0 = f32[1024, 16]{1,0} parameter(0)
   offset = s32[] parameter(1)
-  ROOT triton_softmax = f32[8192]{0} fusion(p0, offset), kind=kCustom, calls=triton_softmax_computation,
+  ROOT triton_fusion = f32[8192]{0} fusion(p0, offset), kind=kCustom, calls=fusion,
     backend_config={
     "fusion_backend_config":{
       "kind":"__triton",
