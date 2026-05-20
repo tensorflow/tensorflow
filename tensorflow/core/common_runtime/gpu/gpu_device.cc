@@ -633,7 +633,7 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
       // TODO(zhengxq): pin the thread to the same socket of the target GPU.
       thread_pool_.reset(new thread::ThreadPool(
           options.env, ThreadOptions(),
-          strings::StrCat("gpu_private_", tf_device_id_.value()),
+          absl::StrCat("gpu_private_", tf_device_id_.value()),
           static_cast<int32>(gpu_thread_count),
           !options.config.experimental().disable_thread_spinning(),
           /*allocator=*/nullptr));
@@ -647,7 +647,7 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
       set_tensorflow_device_thread_pool(thread_pool);
     } else {
       string error_message =
-          strings::StrCat("Invalid gpu_thread_mode: ", gpu_thread_mode);
+          absl::StrCat("Invalid gpu_thread_mode: ", gpu_thread_mode);
       LOG(WARNING) << error_message;
       return errors::InvalidArgument(error_message);
     }
@@ -1267,7 +1267,7 @@ Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
   if (force_device_reserved_bytes != nullptr &&
       strcmp(force_device_reserved_bytes, "") != 0) {
     int64_t reserved_mb;
-    if (!strings::safe_strto64(force_device_reserved_bytes, &reserved_mb) ||
+    if (!absl::SimpleAtoi(force_device_reserved_bytes, &reserved_mb) ||
         reserved_mb < 0) {
       LOG(WARNING) << "The requested reserved device memory "
                    << force_device_reserved_bytes
@@ -1594,11 +1594,11 @@ Status BaseGPUDeviceFactory::CreateDevices(
             << im.strength << " edge matrix:";
     string line_buf = "     ";
     for (int i = 0; i < visible_gpu_order.size(); ++i) {
-      strings::StrAppend(&line_buf, visible_gpu_order[i].value(), " ");
+      absl::StrAppend(&line_buf, visible_gpu_order[i].value(), " ");
     }
     VLOG(1) << line_buf;
     for (int i = 0; i < visible_gpu_order.size(); ++i) {
-      line_buf = strings::StrCat(visible_gpu_order[i].value(), ":   ");
+      line_buf = absl::StrCat(visible_gpu_order[i].value(), ":   ");
       tsl::PlatformDeviceId gpu_id_i = visible_gpu_order[i];
       for (int j = 0; j < visible_gpu_order.size(); ++j) {
         tsl::PlatformDeviceId gpu_id_j = visible_gpu_order[j];
@@ -2008,7 +2008,7 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
 #endif  // TF_GPU_USE_PJRT
   CHECK_GE(tf_device_id.value(), 0);
   const string device_name =
-      strings::StrCat(name_prefix, "/device:GPU:", tf_device_id.value());
+      absl::StrCat(name_prefix, "/device:GPU:", tf_device_id.value());
   tsl::CheckValidTfDeviceId(
       DEVICE_GPU, se::GPUMachineManager()->VisibleDeviceCount(), tf_device_id);
   tsl::PlatformDeviceId platform_device_id;
@@ -2218,7 +2218,7 @@ static int GetMinGPUMultiprocessorCount(
   }
 
   int min_gpu_core_count = -1;
-  if (strings::safe_strto32(tf_min_gpu_core_count, &min_gpu_core_count)) {
+  if (absl::SimpleAtoi(tf_min_gpu_core_count, &min_gpu_core_count)) {
     if (min_gpu_core_count >= 0) {
       return min_gpu_core_count;
     }
@@ -2243,10 +2243,10 @@ se::CudaComputeCapability ComputeCapabilityFromString(
   CHECK(dot_pos != string::npos)
       << "Illegal version name: [" << version_name << "]";
   string major_str = version_name.substr(0, dot_pos);
-  CHECK(strings::safe_strto32(major_str, &major_part))
+  CHECK(absl::SimpleAtoi(major_str, &major_part))
       << "Illegal version name: [" << version_name << "]";
   string minor_str = version_name.substr(dot_pos + 1);
-  CHECK(strings::safe_strto32(minor_str, &minor_part))
+  CHECK(absl::SimpleAtoi(minor_str, &minor_part))
       << "Illegal version name: [" << version_name << "]";
   return se::CudaComputeCapability{major_part, minor_part};
 }
