@@ -88,9 +88,13 @@ struct IfrtIrProgramMemoryStats {
 // running the program, and can be generated as part of cross compilation.
 class ProgramMemoryTracer {
  public:
-  static absl::StatusOr<std::unique_ptr<ProgramMemoryTracer>> Create(
-      std::shared_ptr<CompiledIfrtIrProgram> program, Client* client,
-      DeviceListRef devices);
+  ProgramMemoryTracer(std::shared_ptr<CompiledIfrtIrProgram> program,
+                      Client* client, DeviceListRef devices,
+                      std::string dump_dir)
+      : program_(std::move(program)),
+        client_(client),
+        devices_(std::move(devices)),
+        dump_dir_(std::move(dump_dir)) {}
 
   // Gets the predicted memory states of the given IFRT IR program.
   absl::StatusOr<IfrtIrProgramMemoryStats> GetMemoryStats();
@@ -106,21 +110,14 @@ class ProgramMemoryTracer {
   absl::StatusOr<std::string> GetXprofUrl();
 
  private:
-  ProgramMemoryTracer(std::shared_ptr<CompiledIfrtIrProgram> program,
-                      Client* client, DeviceListRef devices,
-                      std::string dump_dir, mlir::Liveness liveness)
-      : program_(std::move(program)),
-        client_(client),
-        devices_(std::move(devices)),
-        dump_dir_(std::move(dump_dir)),
-        liveness_(std::move(liveness)) {}
-
   absl::Status GenerateEvents();
   absl::Status GenerateEvents(CallLoadedExecutableOp call_loaded_op);
   absl::Status GenerateEvents(RemapArraysOp remap_op);
   absl::Status GenerateEvents(BitcastArraysOp bitcast_op);
   absl::Status GenerateEvents(CopyArraysOp copy_arrays_op);
   absl::Status GenerateEvents(mlir::func::ReturnOp return_op);
+
+  mlir::Liveness& GetLiveness();
 
   // Gets the per-device size of the array in bytes.
   // This function assumes that the size per device does not differ. This is a
@@ -141,7 +138,7 @@ class ProgramMemoryTracer {
   std::string dump_dir_;
 
   // Cached liveness analysis of the IFRT IR program.
-  mlir::Liveness liveness_;
+  std::optional<mlir::Liveness> liveness_;
 
   // Proto message to which the memory trace events will be added to. Lazily,
   // populate when `GetMemoryStats` or `GetXprofUrl` is first called.
