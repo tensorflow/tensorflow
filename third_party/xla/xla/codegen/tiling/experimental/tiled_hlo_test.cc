@@ -504,7 +504,8 @@ TEST_F(TileAnalysisTest, CollectiveDotBasic) {
     Tiled HLO:
       dot.tile_0 = dot(ag.tile_0, p1.1.tile_0)  offsets [tid_0 * 16, tid_1 * 32] sizes [16, 32] strides [1, 1] upper bounds [128, 512]
       region #0 {
-        p0.1.tile_0 = parameter(0)  offsets [(tid_0 mod 4) * 16, tid_2 * 32] sizes [16, 32] strides [1, 1] upper bounds [64, 256] replica_id [tid_0 floordiv 4]
+        p0.1.tile_0 = parameter(0)  offsets [(tid_0 mod 4) * 16, tid_2 * 32] sizes [16, 32] strides [1, 1] upper bounds [64, 256]
+                                    replica ids { offsets [tid_0 floordiv 4] sizes [1] strides [1] upper bounds [2] }
         ag.tile_0 = all-gather(p0.1.tile_0)  offsets [tid_0 * 16, tid_2 * 32] sizes [16, 32] strides [1, 1] upper bounds [128, 256]
         p1.1.tile_0 = parameter(1)  offsets [tid_2 * 32, tid_1 * 32] sizes [32, 32] strides [1, 1] upper bounds [256, 512]
       }
