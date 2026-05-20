@@ -430,10 +430,7 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
 absl::Status CollectiveKernelThunk::ExecuteOnStream(
     const ExecuteParams& params) {
   se::Stream* stream = params.stream;
-  if (is_async_) {
-    stream = params.collective_params->async_streams.at(
-        static_cast<int64_t>(AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));
-  }
+  TF_RET_CHECK(stream != nullptr);
   const int device_ordinal = stream->parent()->device_ordinal();
 
   TF_ASSIGN_OR_RETURN(

@@ -188,11 +188,12 @@ absl::Status AllReduceThunk::RunCollective(const ExecuteParams& params,
 
   TF_ASSIGN_OR_RETURN(
       bool use_collective_kernel,
-      collective_kernel_thunk_->IsSupported(
-          clique_key, *params.stream->parent(), *params.collective_params));
+      collective_kernel_thunk_->IsSupported(clique_key, *stream.parent(),
+                                            *params.collective_params));
 
   if (use_collective_kernel) {
-    return collective_kernel_thunk_->ExecuteOnStream(params);
+    return collective_kernel_thunk_->ExecuteOnStream(
+        params.WithComputeStream(&stream));
   }
 
   return RunAllReduce(config_.reduction_kind, device_buffers, stream, comm,
