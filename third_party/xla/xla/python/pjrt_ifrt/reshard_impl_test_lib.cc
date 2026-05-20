@@ -594,6 +594,14 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Combine(     //
         testing::Values(  //
             ReshardTestParam{
+                /*name=*/"Scalar",
+                /*shape=*/Shape({}),
+                /*src_sharding=*/xla::HloSharding::Replicate(),
+                /*src_device_indices=*/{0, 1, 2, 3, 4, 5, 6, 7},
+                /*dst_sharding=*/xla::HloSharding::Replicate(),
+                /*dst_device_indices=*/{0, 1, 2, 3, 4, 5, 6, 7},
+            },
+            ReshardTestParam{
                 /*name=*/"ReplicateToReplicate",
                 /*shape=*/Shape({4, 8}),
                 /*src_sharding=*/xla::HloSharding::Replicate(),
@@ -654,6 +662,14 @@ INSTANTIATE_TEST_SUITE_P(
     DifferentDeviceCount, ReshardParameterizedTest,
     testing::Combine(     //
         testing::Values(  //
+            ReshardTestParam{
+                /*name=*/"Scalar",
+                /*shape=*/Shape({}),
+                /*src_sharding=*/xla::HloSharding::Replicate(),
+                /*src_device_indices=*/{0, 1},
+                /*dst_sharding=*/xla::HloSharding::Replicate(),
+                /*dst_device_indices=*/{0, 1, 2, 3, 4, 5, 6, 7},
+            },
             ReshardTestParam{
                 /*name=*/"ReplicateToReplicate",
                 /*shape=*/Shape({4, 8}),
