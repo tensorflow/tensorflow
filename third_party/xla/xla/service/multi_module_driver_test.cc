@@ -119,5 +119,73 @@ ENTRY entry {
   EXPECT_GT(MultiModuleDriver::GetCompileCount(), 0);
 }
 
+TEST_F(MultiModuleDriverTest, CompileAndRunNested) {
+  const char* hlo_string = R"(
+HloModule module
+inner_callee {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+outer_callee {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT call = f32[] call(p0, p1), to_apply=inner_callee, frontend_attributes={compilation_unit="inner", inlineable="false"}
+}
+ENTRY entry {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT call = f32[] call(p0, p1), to_apply=outer_callee, frontend_attributes={compilation_unit="outer", inlineable="false"}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/true));
+}
+
+TEST_F(MultiModuleDriverTest, VerifyNestedSplittingHappens) {
+  const char* hlo_string = R"(
+HloModule module
+inner_callee {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+outer_callee {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT call = f32[] call(p0, p1), to_apply=inner_callee, frontend_attributes={compilation_unit="inner", inlineable="false"}
+}
+ENTRY entry {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT call = f32[] call(p0, p1), to_apply=outer_callee, frontend_attributes={compilation_unit="outer", inlineable="false"}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  cpu::CpuCompiler compiler;
+  auto options = Compiler::CompileOptions();
+  ASSERT_OK_AND_ASSIGN(auto executables,
+                       compiler.Compile(std::move(module), {nullptr}, options));
+
+  EXPECT_EQ(executables.size(), 1);
+  const HloModule& optimized_module = executables[0]->module();
+
+  absl::StatusOr<bool> filecheck_result =
+      RunFileCheck(optimized_module.ToString(), R"(
+// CHECK-NOT: custom-call
+// CHECK-NOT: _xla_multi_module_call
+// CHECK: call(
+// CHECK: call(
+)");
+  ASSERT_OK(filecheck_result.status());
+  EXPECT_TRUE(filecheck_result.value());
+}
+
 }  // namespace
 }  // namespace xla
