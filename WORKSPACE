@@ -25,11 +25,20 @@ load("@//tensorflow:workspace3.bzl", "tf_workspace3")
 
 tf_workspace3()
 
+load("@bazel_features//:deps.bzl", "bazel_features_deps")
+
+bazel_features_deps()
+
 load("@rules_shell//shell:repositories.bzl", "rules_shell_dependencies", "rules_shell_toolchains")
 
 rules_shell_dependencies()
 
 rules_shell_toolchains()
+
+# Initialize hermetic Python
+load("@xla//third_party/py:python_init_rules.bzl", "python_init_rules")
+
+python_init_rules()
 
 # Initialize hermetic C++
 load(
@@ -47,10 +56,9 @@ register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64")
 
 register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64_cuda")
 
-# Initialize hermetic Python
-load("@xla//third_party/py:python_init_rules.bzl", "python_init_rules")
+register_toolchains("//tensorflow/tools/toolchains/cross_compile/cc:linux_x86_toolchain")
 
-python_init_rules()
+register_toolchains("//tensorflow/tools/toolchains/cross_compile/cc:linux_aarch64_toolchain")
 
 load("@xla//third_party/py:python_init_repositories.bzl", "python_init_repositories")
 

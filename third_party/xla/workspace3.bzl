@@ -1,5 +1,6 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 
 # buildifier: disable=function-docstring
@@ -15,12 +16,12 @@ def workspace():
     )
 
     # https://github.com/bazelbuild/bazel-skylib/releases
-    tf_http_archive(
+    http_archive(
         name = "bazel_skylib",
-        sha256 = "bc283cdfcd526a52c3201279cda4bc298652efa898b10b4db0837dc51652756f",
-        urls = tf_mirror_urls(
-            "https://github.com/bazelbuild/bazel-skylib/releases/download/1.7.1/bazel-skylib-1.7.1.tar.gz",
-        ),
+        sha256 = "6e78f0e57de26801f6f564fa7c4a48dc8b36873e416257a92bbb0937eeac8446",
+        urls = [
+            "https://github.com/bazelbuild/bazel-skylib/releases/download/1.8.2/bazel-skylib-1.8.2.tar.gz",
+        ],
     )
 
     tf_http_archive(
