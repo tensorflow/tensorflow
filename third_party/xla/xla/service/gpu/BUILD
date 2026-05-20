@@ -3372,9 +3372,9 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_creation_utils",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
         "@tsl//tsl/platform:protobuf",
-        "@tsl//tsl/platform:statusor",
     ],
 )
 
