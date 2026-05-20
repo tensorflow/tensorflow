@@ -163,6 +163,16 @@ bool ShouldAutotuneInstruction(bool do_not_autotune_cublas,
                                const HloInstruction& instruction) {
   // 1. Custom calls.
   if (instruction.opcode() == HloOpcode::kCustomCall) {
+    // TODO(b/511979384): Remove this condition once
+    // xla_gpu_experimental_autotune_post_fusion is enabled by default.
+    // This guard-rail is necessary in the legacy 2-autotuner-pass system
+    // because in cases where we have ALG_DOT_BF16_BF16_F32_X3 or _X6,
+    // GetCublasRewriterPipeline will split these into mutliple dots. When the
+    // fission backend tries to find the dot, it finds multiple ones. It only
+    // picks the first one and returns the rest to the graph, untuned.
+    if (!autotune_post_fusion && has_native_or_ble_backends) {
+      return false;  // Skip custom calls in generic fusion tuning pass.
+    }
     return ShouldAutotuneCustomCall(do_not_autotune_cublas,
                                     do_not_autotune_cudnn, instruction);
   }
@@ -177,6 +187,11 @@ bool ShouldAutotuneInstruction(bool do_not_autotune_cublas,
     if (backend_config.kind() == kTritonGemmFusionKind ||
         backend_config.kind() == kCuDnnFusionKind ||
         backend_config.kind() == kCustomFusionKind) {
+      // TODO(b/511979384): Remove this condition once
+      // xla_gpu_experimental_autotune_post_fusion is enabled by default.
+      if (!autotune_post_fusion && has_native_or_ble_backends) {
+        return false;  // Skip GEMM fusions in generic fusion tuning pass.
+      }
       return ShouldAutotuneGemmFusion(instruction);
     }
     // 3. Generic fusions.
