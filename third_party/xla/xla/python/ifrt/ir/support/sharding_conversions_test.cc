@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
@@ -59,8 +60,7 @@ using ::xla::HloSharding;
 
 absl::StatusOr<HloSharding> ToHloShardingViaOpSharding(
     const ShardingParam& sharding_param) {
-  TF_ASSIGN_OR_RETURN(xla::OpSharding op_sharding,
-                      ToOpSharding(sharding_param));
+  ASSIGN_OR_RETURN(xla::OpSharding op_sharding, ToOpSharding(sharding_param));
   return HloSharding::FromProto(op_sharding);
 }
 

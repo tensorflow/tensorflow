@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -109,7 +110,7 @@ IfrtIrLoadedExecutableTestBase::SerDeRoundTrip(
 
   // Serialize IFRT IR program with the given compatibility requirement, and the
   // atom programs at the current VHLO version.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto serialized,
       Serialize(
           *program,
@@ -119,8 +120,8 @@ IfrtIrLoadedExecutableTestBase::SerDeRoundTrip(
               mlir::vhlo::Version::getCurrentVersion().toString())));
 
   // Deserialize the versioned IFRT IR program.
-  TF_ASSIGN_OR_RETURN(
-      program, Deserialize<IfrtIRProgram>(serialized, /*options=*/nullptr));
+  ASSIGN_OR_RETURN(program,
+                   Deserialize<IfrtIRProgram>(serialized, /*options=*/nullptr));
   return program;
 }
 
@@ -134,7 +135,7 @@ absl::StatusOr<ArrayRef> IfrtIrLoadedExecutableTestBase::CreateArray(
   ShardingRef sharding = ConcreteEvenSharding::Create(
       device_list, memory_kind.value_or(MemoryKind()), shape, shard_shape,
       /*is_fully_replicated=*/shape == shard_shape);
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto per_shard,
       sharding->Disassemble(shape, SingleDeviceShardSemantics::kAllShards));
   // All shards have the same shape. Just pick 0.
@@ -142,7 +143,7 @@ absl::StatusOr<ArrayRef> IfrtIrLoadedExecutableTestBase::CreateArray(
   std::vector<ArrayRef> per_shard_arrays;
   per_shard_arrays.reserve(per_shard_data.size());
   for (int i = 0; i < per_shard_data.size(); ++i) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         ArrayRef per_shard_array,
         client_->MakeArrayFromHostBuffer(
             per_shard_data[i], dtype, per_shard_shape,

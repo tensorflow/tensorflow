@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
@@ -106,7 +107,7 @@ absl::Status SetComputeType(xla::XlaBuilder& builder, xla::XlaOp op,
     if (*memory_kind.memory_kind() == "device") {
       // No need to set the attribute.
     } else if (*memory_kind.memory_kind() == "pinned_host") {
-      TF_RETURN_IF_ERROR(builder.SetInstructionFrontendAttribute(
+      RETURN_IF_ERROR(builder.SetInstructionFrontendAttribute(
           op, "_xla_compute_type", "host"));
     } else {
       return absl::UnimplementedError(
@@ -151,7 +152,7 @@ XlaComputationBuilder::BuildXlaReshardComputation(
                               xla_shape.tuple_shapes(idx),
                               /*opaque=*/"",
                               /*has_side_effect=*/true);
-      TF_RETURN_IF_ERROR(builder.SetInstructionFrontendAttribute(
+      RETURN_IF_ERROR(builder.SetInstructionFrontendAttribute(
           param, "_xla_buffer_placement",
           std::string(*memory_kinds[idx].memory_kind())));
     }
@@ -162,9 +163,9 @@ XlaComputationBuilder::BuildXlaReshardComputation(
     xla::XlaScopedShardingAssignment sa(&builder, new_hlo_sharding.ToProto());
     root = xla::Tuple(&builder, params);
   }
-  TF_ASSIGN_OR_RETURN(auto hlo, builder.Build(root));
+  ASSIGN_OR_RETURN(auto hlo, builder.Build(root));
 
-  TF_ASSIGN_OR_RETURN(auto program_shape, hlo.GetProgramShape());
+  ASSIGN_OR_RETURN(auto program_shape, hlo.GetProgramShape());
   TF_RET_CHECK(program_shape.result() == xla_shape);
 
   std::vector<int64_t> donatable_input_indices = FindDonatableInputs(
@@ -201,7 +202,7 @@ XlaComputationBuilder::BuildXlaZerosComputation(
     xla::XlaOp zeros =
         xla::Broadcast(zero, new_buffer_shapes[idx].dimensions());
     if (device_kind_ != "cpu") {
-      TF_RETURN_IF_ERROR(SetComputeType(builder, zeros, memory_kinds[idx]));
+      RETURN_IF_ERROR(SetComputeType(builder, zeros, memory_kinds[idx]));
       // TODO(b/391701945): Remove this custom call. In principle, we should not
       // need this extra annotation because we already set `mhlo.memory_kind`
       // attribute for the output in `ConvertToHloProgram()`.
@@ -210,7 +211,7 @@ XlaComputationBuilder::BuildXlaZerosComputation(
                                 new_buffer_shapes[idx],
                                 /*opaque=*/"",
                                 /*has_side_effect=*/true);
-        TF_RETURN_IF_ERROR(builder.SetInstructionFrontendAttribute(
+        RETURN_IF_ERROR(builder.SetInstructionFrontendAttribute(
             zeros, "_xla_buffer_placement",
             std::string(*memory_kinds[idx].memory_kind())));
       }
@@ -218,9 +219,9 @@ XlaComputationBuilder::BuildXlaZerosComputation(
     elems.push_back(zeros);
   }
   xla::XlaOp root = xla::Tuple(&builder, elems);
-  TF_ASSIGN_OR_RETURN(auto hlo, builder.Build(root));
+  ASSIGN_OR_RETURN(auto hlo, builder.Build(root));
 
-  TF_ASSIGN_OR_RETURN(auto program_shape, hlo.GetProgramShape());
+  ASSIGN_OR_RETURN(auto program_shape, hlo.GetProgramShape());
   TF_RET_CHECK(program_shape.result().IsTuple());
   TF_RET_CHECK(program_shape.result().tuple_shapes().size() == num_arrays);
   for (int64_t idx = 0; idx < num_arrays; ++idx) {
@@ -288,7 +289,7 @@ XlaComputationBuilder::BuildXlaReduceComputation(
     xla::LayoutUtil::SetToDefaultLayout(&reshaped_shape);
     xla::XlaOp reshaped = xla::Reshape(reshaped_shape, params[idx]);
     if (device_kind_ != "cpu") {
-      TF_RETURN_IF_ERROR(SetComputeType(builder, reshaped, memory_kinds[idx]));
+      RETURN_IF_ERROR(SetComputeType(builder, reshaped, memory_kinds[idx]));
     }
 
     // Reduce-sum over the first dimension.
@@ -298,7 +299,7 @@ XlaComputationBuilder::BuildXlaReduceComputation(
                                         &builder),
         {0});
     if (device_kind_ != "cpu") {
-      TF_RETURN_IF_ERROR(SetComputeType(builder, reduced, memory_kinds[idx]));
+      RETURN_IF_ERROR(SetComputeType(builder, reduced, memory_kinds[idx]));
       // TODO(b/391701945): Remove this custom call. In principle, we should not
       // need this extra annotation because we already set `mhlo.memory_kind`
       // attribute for the output in `ConvertToHloProgram()`.
@@ -307,7 +308,7 @@ XlaComputationBuilder::BuildXlaReduceComputation(
                                   {reduced}, new_xla_shape.tuple_shapes(idx),
                                   /*opaque=*/"",
                                   /*has_side_effect=*/true);
-        TF_RETURN_IF_ERROR(builder.SetInstructionFrontendAttribute(
+        RETURN_IF_ERROR(builder.SetInstructionFrontendAttribute(
             reduced, "_xla_buffer_placement",
             std::string(*memory_kinds[idx].memory_kind())));
       }
@@ -319,9 +320,9 @@ XlaComputationBuilder::BuildXlaReduceComputation(
     xla::XlaScopedShardingAssignment sa(&builder, new_hlo_sharding.ToProto());
     root = xla::Tuple(&builder, elems);
   }
-  TF_ASSIGN_OR_RETURN(auto hlo, builder.Build(root));
+  ASSIGN_OR_RETURN(auto hlo, builder.Build(root));
 
-  TF_ASSIGN_OR_RETURN(auto program_shape, hlo.GetProgramShape());
+  ASSIGN_OR_RETURN(auto program_shape, hlo.GetProgramShape());
   TF_RET_CHECK(program_shape.result() == new_xla_shape);
 
   std::vector<int64_t> donatable_input_indices = FindDonatableInputs(

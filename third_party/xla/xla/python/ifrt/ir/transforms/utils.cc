@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -381,13 +382,13 @@ absl::StatusOr<ShardingRef> ShardingFromIfrtArrayType(
       TF_RET_CHECK(devices[logical_id] != nullptr);
       array_devices.push_back(devices[logical_id]);
     }
-    TF_ASSIGN_OR_RETURN(array_device_list,
-                        client->MakeDeviceList(std::move(array_devices)));
+    ASSIGN_OR_RETURN(array_device_list,
+                     client->MakeDeviceList(std::move(array_devices)));
   }
 
   IfrtShardingParamAttr sharding_attr = GetShardingParamAttr(array_type);
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       xla::HloSharding hlo_sharding,
       xla::ifrt::support::ToHloSharding(sharding_attr.getSharding()));
   return xla::ifrt::HloSharding::Create(std::move(array_device_list),
@@ -399,10 +400,10 @@ absl::StatusOr<ArraySpec> ArraySpecFromMlirType(
     mlir::Type array_type, Client* client, const DeviceListRef& device_list) {
   IfrtArrayType ifrt_array_type = GetArrayType(array_type);
 
-  TF_ASSIGN_OR_RETURN(DType dtype,
-                      ToIfrtDType(ifrt_array_type.getShape().getElementType()));
+  ASSIGN_OR_RETURN(DType dtype,
+                   ToIfrtDType(ifrt_array_type.getShape().getElementType()));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       ShardingRef sharding,
       ShardingFromIfrtArrayType(ifrt_array_type, client, device_list));
   return ArraySpec{

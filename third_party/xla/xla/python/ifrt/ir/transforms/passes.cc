@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/PassManager.h"
@@ -125,7 +126,7 @@ absl::Status createOutlinedAtomProgramsToCompiledPipeline(
       std::move(bound_executable_map)));
 
   if (!ifrt_to_dot_pass_options.dot_graph_dump_to.empty()) {
-    TF_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(
+    RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(
         ifrt_to_dot_pass_options.dot_graph_dump_to));
     pm.addPass(createIfrtToDotPass(std::move(ifrt_to_dot_pass_options),
                                    atom_executable_future_map));
