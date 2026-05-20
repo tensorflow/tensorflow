@@ -46,10 +46,16 @@ using ::testing::IsEmpty;
 using ::testing::Not;
 
 absl::StatusOr<Compiler::GpuTargetConfig> GetGpuTargetConfig() {
-  const std::string spec_file =
-      PlatformUtil::CanonicalPlatformName("gpu").value_or("") == "rocm"
-          ? "mi200.txtpb"
-          : "h100_sxm.txtpb";
+  const std::string spec_file = [&] {
+    const std::string platform_name =
+        PlatformUtil::CanonicalPlatformName("gpu").value_or("");
+    if (platform_name == "rocm") {
+      return "mi200.txtpb";
+    } else if (platform_name == "sycl") {
+      return "bmg_g21.txtpb";
+    }
+    return "h100_sxm.txtpb";
+  }();
   const std::string target_config_path =
       tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
                         "backends/gpu/target_config/specs", spec_file);
