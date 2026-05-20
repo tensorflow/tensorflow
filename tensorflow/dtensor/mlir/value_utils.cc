@@ -120,7 +120,7 @@ mlir::Value IntConst(mlir::OpBuilder& builder, mlir::Location loc,
 StatusOr<llvm::SmallVector<int64_t>> GetTFShapeFromType(mlir::Type type) {
   auto ranked_type = llvm::dyn_cast<mlir::RankedTensorType>(type);
   if (!ranked_type) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         llvm::formatv("Type {0} is not a RankedTensorType.", type).str());
   }
 
@@ -180,16 +180,16 @@ mlir::Value IntConstWithMatchingType(mlir::OpBuilder& builder,
 StatusOr<int64_t> ExtractConstIntFromValue(mlir::Value value) {
   value = GetForwardedInput(value);
   if (mlir::isa<mlir::BlockArgument>(value))
-    return errors::Internal("unable get constant value from block argument");
+    return absl::InternalError("unable get constant value from block argument");
   mlir::DenseIntElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) {
-    return errors::Internal(absl::StrCat("required constant value for ",
-                                         OpName(value.getDefiningOp())));
+    return absl::InternalError(absl::StrCat("required constant value for ",
+                                            OpName(value.getDefiningOp())));
   }
   if (attr.size() != 1) {
-    return errors::Internal(absl::StrCat("expected 1 element, got ",
-                                         attr.size(), " for ",
-                                         OpName(value.getDefiningOp())));
+    return absl::InternalError(absl::StrCat("expected 1 element, got ",
+                                            attr.size(), " for ",
+                                            OpName(value.getDefiningOp())));
   }
   auto a = *attr.value_begin<llvm::APInt>();
   return a.getSExtValue();
@@ -199,10 +199,10 @@ absl::Status ExtractConstVectorFromValue(
     mlir::Value value, llvm::SmallVector<int64_t, 4>* out_vector) {
   value = GetForwardedInput(value);
   if (mlir::isa<mlir::BlockArgument>(value))
-    return errors::Internal("unable get constant value from block argument");
+    return absl::InternalError("unable get constant value from block argument");
   mlir::DenseIntElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) {
-    return errors::Internal(
+    return absl::InternalError(
         absl::StrCat("failed to extract constant value from ",
                      value.getDefiningOp()->getName().getStringRef().str()));
   }
@@ -259,7 +259,7 @@ StatusOr<mlir::Value> CreateZeroScalarConst(mlir::OpBuilder& builder,
                    static_cast<int64_t>(0)))
         .getResult();
   } else {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Unsupported element type. Please file a bug to the DTensor team.");
   }
 }
@@ -270,7 +270,7 @@ StatusOr<mlir::Value> SelectScalarValueFromArray(mlir::OpBuilder& builder,
                                                  mlir::Value array) {
   mlir::TensorType arrayType = llvm::cast<mlir::TensorType>(array.getType());
   if (arrayType.getRank() != 2 || arrayType.getDimSize(0) != 1) {
-    return errors::InvalidArgument("Input array must have shape [1, N].");
+    return absl::InvalidArgumentError("Input array must have shape [1, N].");
   }
 
   mlir::TF::SliceOp sliced_value = mlir::TF::SliceOp::create(
