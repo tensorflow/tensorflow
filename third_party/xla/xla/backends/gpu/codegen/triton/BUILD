@@ -317,6 +317,7 @@ xla_test(
         "b200",
         "amdgpu_any",
     ],
+    shard_count = 30,
     tags = ["no_mac"],
     deps = [
         ":test_utils",
