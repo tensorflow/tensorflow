@@ -409,7 +409,7 @@ NcclCollectives::CreateCommunicatorsWithCancel(
     futures[i] = MakeFutureOn(*pool.AsExecutor(), [&, i] {
       absl::StatusOr<std::unique_ptr<NcclCommunicator>> comm =
           NcclCommunicator::Create(stream_executors[i], std::bind(make_comm, i),
-                                   cancel, gpu_config.async_execution);
+                                   cancel);
       if (!comm.ok()) {
         LOG(ERROR) << absl::StreamFormat(
             "[%d] [rank=%v] Failed to create NCCL communicator: %s",
@@ -493,7 +493,7 @@ NcclCollectives::SplitCommunicatorsWithCancel(
     futures[i] = MakeFutureOn(*pool.AsExecutor(), [&, i] {
       absl::StatusOr<std::unique_ptr<NcclCommunicator>> comm =
           NcclCommunicator::Create(stream_executors[i], std::bind(make_comm, i),
-                                   cancel, gpu_config.async_execution);
+                                   cancel);
       if (!comm.ok()) {
         LOG(ERROR) << absl::StreamFormat(
             "[%d] [rank=%v] Failed to split NCCL communicator: %s",
