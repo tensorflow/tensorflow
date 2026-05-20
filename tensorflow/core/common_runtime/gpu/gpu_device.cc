@@ -1598,7 +1598,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
     }
     VLOG(1) << line_buf;
     for (int i = 0; i < visible_gpu_order.size(); ++i) {
-      line_buf = strings::StrCat(visible_gpu_order[i].value(), ":   ");
+      line_buf = absl::StrCat(visible_gpu_order[i].value(), ":   ");
       tsl::PlatformDeviceId gpu_id_i = visible_gpu_order[i];
       for (int j = 0; j < visible_gpu_order.size(); ++j) {
         tsl::PlatformDeviceId gpu_id_j = visible_gpu_order[j];
