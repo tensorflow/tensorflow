@@ -361,7 +361,8 @@ IfrtServingExecutable::Create(
         compilation_env_or_overrides,
     TfToHloCompiler* tf_to_hlo_compiler,
     IfrtPersistentCompilationCache* persistent_compilation_cache,
-    H2DTransferExecutorFactory* h2d_transfer_executor_factory) {
+    H2DTransferExecutorFactory* h2d_transfer_executor_factory,
+    tensorflow::Allocator* host_allocator) {
   if (h2d_transfer_executor_factory == nullptr) {
     return absl::InvalidArgumentError("H2DTransferExecutorFactory is null.");
   }
@@ -387,7 +388,8 @@ IfrtServingExecutable::Create(
       ifrt_serving_core_selector, std::move(original_compile_metadata),
       std::move(device_list), std::move(static_shape_arg_map),
       compilation_env_or_overrides, tf_to_hlo_compiler,
-      persistent_compilation_cache, h2d_transfer_executor_factory));
+      persistent_compilation_cache, h2d_transfer_executor_factory,
+      host_allocator));
 
   return executable;
 }
@@ -1200,7 +1202,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
     output_futures.push_back(MakeTensorFromArray(
         *ifrt_client_, *exec_info.execution_result.outputs[i],
         exec_info.executable_bundle->retval_hlo_shardings[i],
-        exec_info.device_list, thread_pool_));
+        exec_info.device_list, thread_pool_, host_allocator_));
   }
 
   tsl::Future<std::vector<tensorflow::Tensor>> joined_outputs =
@@ -1228,7 +1230,7 @@ IfrtServingExecutable::ExecuteAsync(
     output_futures.push_back(MakeTensorFromArray(
         *ifrt_client_, *exec_info.execution_result.outputs[i],
         exec_info.executable_bundle->retval_hlo_shardings[i],
-        exec_info.device_list, thread_pool_));
+        exec_info.device_list, thread_pool_, host_allocator_));
   }
 
   if (output_futures.empty()) {

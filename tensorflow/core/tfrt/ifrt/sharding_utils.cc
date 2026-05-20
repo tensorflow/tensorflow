@@ -471,7 +471,7 @@ absl::StatusOr<tsl::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
     xla::ifrt::Client& ifrt_client, xla::ifrt::Array& input_array,
     const xla::HloSharding& hlo_sharding,
     const xla::ifrt::DeviceListRef& device_list,
-    tsl::thread::ThreadPool& thread_pool) {
+    tsl::thread::ThreadPool& thread_pool, tensorflow::Allocator* allocator) {
   TF_ASSIGN_OR_RETURN(tensorflow::DataType data_type,
                       ToTensorDataType(input_array.dtype()));
   tensorflow::TensorShape tensor_shape = ToTensorShape(input_array.shape());
@@ -494,7 +494,10 @@ absl::StatusOr<tsl::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
           " but got ", fully_replicated_array->shape()));
     }
 
-    tensorflow::Tensor output_tensor(data_type, tensor_shape);
+    tensorflow::Tensor output_tensor =
+        allocator != nullptr
+            ? tensorflow::Tensor(allocator, data_type, tensor_shape)
+            : tensorflow::Tensor(data_type, tensor_shape);
     fully_replicated_array
         ->CopyToHostBuffer(output_tensor.data(),
                            GetByteStrides(data_type, tensor_shape),
@@ -519,7 +522,10 @@ absl::StatusOr<tsl::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
 
     int64_t device_id = hlo_sharding.GetUniqueDevice();
 
-    tensorflow::Tensor output_tensor(data_type, tensor_shape);
+    tensorflow::Tensor output_tensor =
+        allocator != nullptr
+            ? tensorflow::Tensor(allocator, data_type, tensor_shape)
+            : tensorflow::Tensor(data_type, tensor_shape);
     disassembled_array[device_id]
         ->CopyToHostBuffer(output_tensor.data(),
                            GetByteStrides(data_type, tensor_shape),
@@ -609,7 +615,10 @@ absl::StatusOr<tsl::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
     tensorflow::TensorShape tensor_shape = ToTensorShape(index_domain.shape());
     TF_ASSIGN_OR_RETURN(tensorflow::DataType dtype,
                         ToTensorDataType(array->dtype()));
-    tensorflow::Tensor tensor(dtype, tensor_shape);
+    tensorflow::Tensor tensor =
+        allocator != nullptr
+            ? tensorflow::Tensor(allocator, dtype, tensor_shape)
+            : tensorflow::Tensor(dtype, tensor_shape);
     input_tensors.push_back(tensor);
     tsl::Future<> copy_status = array->CopyToHostBuffer(
         tensor.data(), GetByteStrides(dtype, tensor_shape),
@@ -679,10 +688,10 @@ tsl::Future<tensorflow::Tensor> MakeTensorFromArray(
     xla::ifrt::Client& ifrt_client, xla::ifrt::Array& input_array,
     const xla::HloSharding& hlo_sharding,
     const xla::ifrt::DeviceListRef& device_list,
-    tsl::thread::ThreadPool& thread_pool) {
+    tsl::thread::ThreadPool& thread_pool, tensorflow::Allocator* allocator) {
   absl::StatusOr<tsl::Future<tensorflow::Tensor>> output_tensor_future =
       MakeTensorFromArrayHelper(ifrt_client, input_array, hlo_sharding,
-                                device_list, thread_pool);
+                                device_list, thread_pool, allocator);
   if (!output_tensor_future.ok()) {
     return tsl::Future<tensorflow::Tensor>(
         std::move(output_tensor_future).status());

@@ -206,6 +206,14 @@ class IfrtModelContext {
   // leads to an error.
   absl::Status Freeze();
 
+  tensorflow::Allocator* GetHostAllocator() const {
+    return custom_host_allocator_.get();
+  }
+  void SetCustomHostAllocator(
+      std::unique_ptr<tensorflow::Allocator> custom_host_allocator) {
+    custom_host_allocator_ = std::move(custom_host_allocator);
+  }
+
   bool IsFrozen() const { return frozen_; }
 
  private:
@@ -236,6 +244,7 @@ class IfrtModelContext {
   TfToHloCompiler* tf_to_hlo_compiler_ = nullptr;
   H2DTransferExecutorFactory* h2d_transfer_executor_factory_ = nullptr;
   IfrtPersistentCompilationCache* persistent_compilation_cache_ = nullptr;
+  std::unique_ptr<tensorflow::Allocator> custom_host_allocator_;
   bool frozen_ = false;
   bool enable_propagate_static_shapes_pass_ = true;
 };

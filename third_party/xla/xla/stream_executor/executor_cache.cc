@@ -44,10 +44,9 @@ absl::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
 
   VLOG(2) << "building executor";
   ASSIGN_OR_RETURN(std::unique_ptr<StreamExecutor> result, factory());
-  auto returned_executor = result.get();
   absl::MutexLock lock(mutex_);
-  cache_.emplace(ordinal, std::move(result));
-  return returned_executor;
+  auto [it, inserted] = cache_.emplace(ordinal, std::move(result));
+  return it->second.get();
 }
 
 absl::StatusOr<StreamExecutor*> ExecutorCache::Get(int ordinal) const {
