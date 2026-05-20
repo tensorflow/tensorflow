@@ -61,6 +61,26 @@ absl::StatusOr<HloInstruction*> CreateBoundaryCopy(HloComputation* comp,
   return comp->DeepCopyInstruction(inst, &indices_to_copy);
 }
 
+void FindTopLevelCompilationUnitsHelper(
+    HloComputation* comp, absl::flat_hash_set<HloComputation*>& visited,
+    std::vector<HloInstruction*>& result) {
+  if (!visited.insert(comp).second) {
+    return;
+  }
+
+  for (HloInstruction* inst : comp->instructions()) {
+    if (inst->opcode() == HloOpcode::kCall &&
+        inst->frontend_attributes().map().contains("compilation_unit")) {
+      result.push_back(inst);
+      continue;
+    }
+
+    for (HloComputation* callee : inst->called_computations()) {
+      FindTopLevelCompilationUnitsHelper(callee, visited, result);
+    }
+  }
+}
+
 }  // namespace
 
 absl::StatusOr<bool> HloModuleSplitter::RunImpl(
@@ -71,6 +91,13 @@ absl::StatusOr<bool> HloModuleSplitter::RunImpl(
   absl::flat_hash_map<HloComputation*, HloModule*> extracted_modules;
   NameUniquer name_uniquer(".");
 
+  std::vector<HloInstruction*> top_level_calls_vec;
+  absl::flat_hash_set<HloComputation*> visited;
+  FindTopLevelCompilationUnitsHelper(module->entry_computation(), visited,
+                                     top_level_calls_vec);
+  absl::flat_hash_set<HloInstruction*> top_level_calls(
+      top_level_calls_vec.begin(), top_level_calls_vec.end());
+
   // We use post-order to process callees before callers.
   std::vector<HloComputation*> computations =
       module->MakeComputationPostOrder(execution_threads);
@@ -79,7 +106,8 @@ absl::StatusOr<bool> HloModuleSplitter::RunImpl(
     std::vector<HloInstruction*> instructions =
         comp->MakeInstructionPostOrder();
     for (HloInstruction* inst : instructions) {
-      if (inst->opcode() == HloOpcode::kCall) {
+      if (inst->opcode() == HloOpcode::kCall &&
+          top_level_calls.contains(inst)) {
         auto it = inst->frontend_attributes().map().find("compilation_unit");
         if (it != inst->frontend_attributes().map().end()) {
           HloComputation* callee = inst->to_apply();
