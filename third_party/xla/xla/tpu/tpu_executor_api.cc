@@ -15,18 +15,33 @@ limitations under the License.
 
 #include "xla/tpu/tpu_executor_api.h"
 
+#include <atomic>
+
 #include "xla/tpu/tpu_executor_c_api.h"
 
 namespace stream_executor {
 namespace tpu {
 
-TfTpu_ExecutorApiFn* ExecutorApiFn() {
-  static TfTpu_ExecutorApiFn executor_api_fn;
-  return &executor_api_fn;
+namespace {
+const TfTpu_ExecutorApiFn kEmptyExecutorApiFn{};
+std::atomic<const TfTpu_ExecutorApiFn*> g_executor_api_fn_ptr{
+    &kEmptyExecutorApiFn};
+}  // namespace
+
+const TfTpu_ExecutorApiFn* ExecutorApiFn() {
+  return g_executor_api_fn_ptr.load(std::memory_order_acquire);
 }
 
-bool IsStreamExecutorEnabled(TfTpu_ExecutorApiFn* executor_api_fn) {
-  if (!IsInitialized(executor_api_fn)) {
+void SetExecutorApiFn(const TfTpu_ExecutorApiFn* fn) {
+  g_executor_api_fn_ptr.store(fn, std::memory_order_release);
+}
+
+bool IsStreamExecutorEnabled() {
+  auto* executor_api_fn = ExecutorApiFn();
+  // Check if an arbitrary function pointer is initialized. We could check more
+  // functions or add an explicit 'initialized' field to TfTpu_ExecutorApiFn,
+  // but this works well enough.
+  if (executor_api_fn->TpuPlatform_NewFn == nullptr) {
     return false;
   }
   bool is_se_enabled = false;
@@ -38,10 +53,11 @@ bool IsStreamExecutorEnabled(TfTpu_ExecutorApiFn* executor_api_fn) {
   return is_se_enabled;
 }
 
-bool IsInitialized(TfTpu_ExecutorApiFn* executor_api_fn) {
+bool IsInitialized() {
   // Check if an arbitrary function pointer is initialized. We could check more
   // functions or add an explicit 'initialized' field to TfTpu_ExecutorApiFn,
   // but this works well enough.
+  auto* executor_api_fn = ExecutorApiFn();
   return executor_api_fn->TpuPlatform_NewFn != nullptr;
 }
 

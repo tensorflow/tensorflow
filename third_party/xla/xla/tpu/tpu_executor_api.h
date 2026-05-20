@@ -22,15 +22,16 @@ limitations under the License.
 namespace stream_executor {
 namespace tpu {
 
-TfTpu_ExecutorApiFn* ExecutorApiFn();
+const TfTpu_ExecutorApiFn* ExecutorApiFn();
+void SetExecutorApiFn(const TfTpu_ExecutorApiFn* fn);
 
 // Returns whether function pointers in `executor_api_fn` have been set and
 // stream_executor is enabled.
-bool IsStreamExecutorEnabled(TfTpu_ExecutorApiFn* executor_api_fn);
+bool IsStreamExecutorEnabled();
 
 // Returns whether function pointers in `executor_api_fn` have been set.  If
 // false, it probably means an appropriate initializer needs to be linked in.
-bool IsInitialized(TfTpu_ExecutorApiFn* executor_api_fn);
+bool IsInitialized();
 
 }  // namespace tpu
 }  // namespace stream_executor
