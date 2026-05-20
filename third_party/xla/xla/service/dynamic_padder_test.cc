@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -118,14 +119,14 @@ class DynamicPadderTest : public HloPjRtTestBase {
         std::move(op_supports_dynamism_handler);
     options.custom_call_handler = std::move(custom_call_handler);
     DynamicPadder padder(std::move(options));
-    TF_ASSIGN_OR_RETURN(bool changed, RunHloPass(&padder, module_.get()));
+    ASSIGN_OR_RETURN(bool changed, RunHloPass(&padder, module_.get()));
     if (!changed) return false;
     // Dynamic padder can add redundant tuple/get-tuple-element and copy
     // instructions.
     TupleSimplifier tuple_simplifier;
-    TF_RETURN_IF_ERROR(RunHloPass(&tuple_simplifier, module_.get()).status());
+    RETURN_IF_ERROR(RunHloPass(&tuple_simplifier, module_.get()).status());
     AlgebraicSimplifier alg_simplifier(AlgebraicSimplifierOptions{});
-    TF_RETURN_IF_ERROR(RunHloPass(&alg_simplifier, module_.get()).status());
+    RETURN_IF_ERROR(RunHloPass(&alg_simplifier, module_.get()).status());
     return true;
   }
 

@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module_metadata.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value_util.h"
+#include "xla/hlo/ir/hlo_payload_deduplicator.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -547,7 +548,8 @@ uint64_t HloModule::ToFingerprint(
   return printer.ToFingerprint();
 }
 
-void HloModule::ToProto(HloModuleProto* proto) const {
+void HloModule::ToProto(HloModuleProto* proto,
+                        bool intern_backend_config) const {
   proto->set_id(unique_id_);
   proto->set_name(name_);
   if (entry_computation_) {
@@ -557,8 +559,25 @@ void HloModule::ToProto(HloModuleProto* proto) const {
     *proto->mutable_host_program_shape() =
         entry_computation_layout().ComputeProgramShape().ToProto();
   }
+
+  // Only create a deduplicator if needed.
+  int64_t base_offset = proto->payloads_size();
+  std::optional<HloPayloadDeduplicator> deduplicator;
+  if (intern_backend_config) {
+    deduplicator.emplace(base_offset);
+  }
+  HloPayloadDeduplicator* deduplicator_ptr =
+      deduplicator ? &*deduplicator : nullptr;
+
   for (const HloComputation* computation : MakeComputationPostOrder()) {
-    computation->ToProto(proto->add_computations());
+    computation->ToProto(proto->add_computations(), deduplicator_ptr);
+  }
+
+  if (deduplicator) {
+    DCHECK_EQ(proto->payloads_size(), base_offset);
+    for (std::string& payload : std::move(*deduplicator).TakePayloads()) {
+      proto->add_payloads(std::move(payload));
+    }
   }
 
   if (has_schedule()) {
@@ -626,9 +645,10 @@ void HloModule::ToProto(HloModuleProto* proto) const {
   }
 }
 
-void HloModule::ToProtoWithConfig(HloModuleProtoWithConfig* proto) const {
+void HloModule::ToProtoWithConfig(HloModuleProtoWithConfig* proto,
+                                  bool intern_backend_config) const {
   *proto->mutable_config() = config().ToProto();
-  ToProto(proto->mutable_hlo_module());
+  ToProto(proto->mutable_hlo_module(), intern_backend_config);
 }
 
 absl::Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions()

@@ -33,6 +33,7 @@ cc_library(
         "//xla/service:computation_placer_hdr",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

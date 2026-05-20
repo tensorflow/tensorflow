@@ -2799,5 +2799,151 @@ ENTRY entry {
 
   EXPECT_GT(MultiModuleDriver::GetCompileCount(), 0);
 }
+
+static absl::Status MockCustomCallExecuteF32(
+    ffi::BufferR1<F32> src, ffi::Result<ffi::BufferR1<F32>> dst) {
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(
+    kMockCustomCallExecuteF32, MockCustomCallExecuteF32,
+    ffi::Ffi::Bind().Arg<ffi::BufferR1<F32>>().Ret<ffi::BufferR1<F32>>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test_mock_custom_call_f32",
+                         "gpu",
+                         XLA_FFI_Handler_Bundle{
+                             /*instantiate=*/nullptr,
+                             /*prepare=*/nullptr,
+                             /*initialize=*/nullptr,
+                             /*execute=*/kMockCustomCallExecuteF32,
+                         });
+
+class FrontendAttributesMemorySpaceTest
+    : public GpuCompilerTest,
+      public ::testing::WithParamInterface<bool> {};
+
+TEST_P(FrontendAttributesMemorySpaceTest, DirectUsage) {
+  constexpr absl::string_view kHloTemplate = R"(
+    HloModule test$0
+
+    ENTRY test_computation {
+      p = f32[16] parameter(0)
+      ROOT cc = f32[16] custom-call(p),
+        custom_call_target="__xla_test_mock_custom_call_f32",
+        api_version=API_VERSION_TYPED_FFI,
+        frontend_attributes={
+          operands_memory_spaces="{0:1}",
+          results_memory_spaces="{0:1}"
+        }
+    }
+  )";
+
+  bool use_input_output_alias = GetParam();
+  // Inject the alias layout configuration into the HLO
+  std::string hlo_text = absl::StrReplaceAll(
+      kHloTemplate,
+      {{"$0",
+        use_input_output_alias ? ", input_output_alias={ {}: (0, {}) }" : ""}});
+
+  HloModuleConfig config = GetModuleConfigForTest();
+
+  std::pair<const HloModule*, std::unique_ptr<OpaqueExecutable>>
+      optimized_module_and_executable;
+  ASSERT_OK_AND_ASSIGN(optimized_module_and_executable,
+                       GetOptimizedModuleForExecutable(hlo_text, config));
+
+  const HloModule* optimized_module = optimized_module_and_executable.first;
+
+  // Regardless of the input_output_alias it should be two copies
+  constexpr absl::string_view expected_check = R"(
+    // CHECK: %p = f32[16]{0} parameter(0)
+    // CHECK: [[COPY0:%copy[0-9.]*]] = f32[16]{0:S(1)} copy(%p)
+    // CHECK: %cc = f32[16]{0:S(1)} custom-call([[COPY0]])
+    // CHECK: ROOT %copy{{.*}} = f32[16]{0} copy(%cc)
+  )";
+
+  EXPECT_THAT(RunFileCheck(
+                  optimized_module->ToString(HloPrintOptions{}
+                                                 .set_print_operand_shape(false)
+                                                 .set_print_metadata(false)),
+                  expected_check),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_P(FrontendAttributesMemorySpaceTest, LoopUsage) {
+  constexpr absl::string_view kHloTemplate = R"(
+    HloModule test$0
+
+    while_condition {
+      params = (s32[], f32[16]) parameter(0)
+      loop_counter = s32[] get-tuple-element(params), index=0
+      limit = s32[] constant(3)
+      ROOT result = pred[] compare(loop_counter, limit), direction=LT
+    }
+
+    while_body {
+      params = (s32[], f32[16]) parameter(0)
+      loop_counter = s32[] get-tuple-element(params), index=0
+      cc_input = f32[16] get-tuple-element(params), index=1
+      cc = f32[16] custom-call(cc_input),
+        custom_call_target="__xla_test_mock_custom_call_f32",
+        api_version=API_VERSION_TYPED_FFI,
+        frontend_attributes={
+          operands_memory_spaces="{0:1}",
+          results_memory_spaces="{0:1}"
+        }
+      new_loop_counter = s32[] add(loop_counter, s32[] constant(1))
+      ROOT result = (s32[], f32[16]) tuple(new_loop_counter, cc)
+    }
+
+    ENTRY entry_computation {
+      init_loop_counter = s32[] constant(0)
+      input = f32[16] parameter(0)
+      while_init = tuple(init_loop_counter, input)
+      while = (s32[], f32[16]) while(while_init), condition=while_condition, body=while_body
+      ROOT result = get-tuple-element(while), index=1
+    }
+  )";
+
+  bool use_input_output_alias = GetParam();
+  // Inject the alias layout configuration into the HLO
+  std::string hlo_text = absl::StrReplaceAll(
+      kHloTemplate,
+      {{"$0",
+        use_input_output_alias ? ", input_output_alias={ {}: (0, {}) }" : ""}});
+
+  HloModuleConfig config = GetModuleConfigForTest();
+
+  std::pair<const HloModule*, std::unique_ptr<OpaqueExecutable>>
+      optimized_module_and_executable;
+  ASSERT_OK_AND_ASSIGN(optimized_module_and_executable,
+                       GetOptimizedModuleForExecutable(hlo_text, config));
+
+  const HloModule* optimized_module = optimized_module_and_executable.first;
+
+  // Regardless of the input_output_alias it should be two copies
+  constexpr absl::string_view expected_check = R"(
+    // CHECK: %input = f32[16]{0} parameter(0)
+    // CHECK: [[COPY0:%copy[0-9.]*]] = f32[16]{0:S(1)} copy(%input)
+    // CHECK: %tuple = (s32[], f32[16]{0:S(1)}) tuple(%copy{{.*}}, [[COPY0]])
+    // CHECK: %while = (s32[], f32[16]{0:S(1)}) while(%tuple)
+    // CHECK: [[RESULT:%result[0-9.]*]] = f32[16]{0:S(1)} get-tuple-element(%while), index=1
+    // CHECK: ROOT %copy{{.*}} = f32[16]{0} copy([[RESULT]])
+  )";
+
+  EXPECT_THAT(RunFileCheck(
+                  optimized_module->ToString(HloPrintOptions{}
+                                                 .set_print_operand_shape(false)
+                                                 .set_print_metadata(false)),
+                  expected_check),
+              absl_testing::IsOkAndHolds(true));
+}
+
+INSTANTIATE_TEST_SUITE_P(FrontendAttributesMemorySpace,
+                         FrontendAttributesMemorySpaceTest, ::testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           return info.param ? "with_alias" : "no_alias";
+                         });
+
 }  // namespace gpu
 }  // namespace xla

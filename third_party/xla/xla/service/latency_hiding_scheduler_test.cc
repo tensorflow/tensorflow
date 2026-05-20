@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -220,14 +221,14 @@ absl::StatusOr<bool> RunScheduler(
       /*convert_collective_permute=*/HloPredicateTrue};
   bool value = false;
   if (!skip_async_collective_creator) {
-    TF_ASSIGN_OR_RETURN(value,
-                        AsyncCollectiveCreator(std::move(config)).Run(module));
+    ASSIGN_OR_RETURN(value,
+                     AsyncCollectiveCreator(std::move(config)).Run(module));
   }
   if (!legalizer_config) {
     legalizer_config =
         std::make_unique<LegalizeSchedulingAnnotations::Config>();
   }
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       value,
       LegalizeSchedulingAnnotations(std::move(*legalizer_config)).Run(module));
   HloCostAnalysis::ShapeSizeFunction shape_size_bytes =
@@ -254,9 +255,9 @@ absl::StatusOr<bool> RunScheduler(
           &alias_info, shape_size_bytes);
   auto scheduler_core =
       std::make_unique<DefaultSchedulerCore>(scheduling_context, sched_config);
-  TF_ASSIGN_OR_RETURN(value, LatencyHidingScheduler(scheduling_context,
-                                                    std::move(scheduler_core))
-                                 .Run(module));
+  ASSIGN_OR_RETURN(value, LatencyHidingScheduler(scheduling_context,
+                                                 std::move(scheduler_core))
+                              .Run(module));
 
   return value;
 }
@@ -295,11 +296,11 @@ class LatencyHidingSchedulerTest : public HloHardwareIndependentTestBase {
         /*convert_all_gather=*/HloPredicateTrue,
         /*convert_collective_broadcast=*/HloPredicateTrue,
         /*convert_collective_permute=*/HloPredicateTrue};
-    TF_ASSIGN_OR_RETURN(bool value,
-                        AsyncCollectiveCreator(std::move(config)).Run(module));
-    TF_ASSIGN_OR_RETURN(value, LegalizeSchedulingAnnotations(
-                                   LegalizeSchedulingAnnotations::Config())
-                                   .Run(module));
+    ASSIGN_OR_RETURN(bool value,
+                     AsyncCollectiveCreator(std::move(config)).Run(module));
+    ASSIGN_OR_RETURN(value, LegalizeSchedulingAnnotations(
+                                LegalizeSchedulingAnnotations::Config())
+                                .Run(module));
 
     if (!async_tracker) {
       async_tracker = std::make_unique<AsyncTracker>(sched_config);

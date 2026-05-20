@@ -221,6 +221,28 @@ cc_library(
 )
 
 cc_library(
+    name = "mock_command_buffer",
+    testonly = True,
+    hdrs = ["mock_command_buffer.h"],
+    deps = [
+        ":bit_pattern",
+        ":command_buffer",
+        ":device_address",
+        ":dnn",
+        ":kernel",
+        ":kernel_args",
+        ":launch_dim",
+        ":platform",
+        ":stream",
+        "//xla/hlo/testlib:test",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "mock_platform",
     testonly = True,
     hdrs = ["mock_platform.h"],
