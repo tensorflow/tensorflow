@@ -568,12 +568,12 @@ absl::Status CommandExecutor::RecordUpdate(
     Command* command = commands_[id];
 
     // For CAPTURE_CMD_NEVER_UPDATE mode, always skip updates for commands
-    // implemented via tracing (TracedCommand subclasses) or collective
-    // operations (CollectiveCmd subclasses). Their buffer allocations are
-    // VA-remapped to fixed offsets within the reserved VA range, so their
-    // recorded addresses remain valid across executions — no update is needed.
+    // implemented via tracing. This includes CollectiveThunk command/thunk
+    // hybrids: their buffer allocations are VA-remapped to fixed offsets within
+    // the reserved VA range, so their recorded addresses remain valid across
+    // executions and no update is needed.
     //
-    // Note: CollectiveCmd satisfies both IsTracedCommand() and
+    // Note: CollectiveThunk satisfies both IsTracedCommand() and
     // requires_initialization(), but the requires_initialization() check below
     // is intentionally unreachable for traced commands in this mode. Because
     // their buffer addresses are stable (VA-mapped), re-initialization is
