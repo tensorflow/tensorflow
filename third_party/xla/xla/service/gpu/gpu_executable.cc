@@ -424,8 +424,7 @@ GpuExecutable::GpuExecutable(
   //   NEVER_UPDATE - collect all allocations from all command buffer
   //     commands
   //   CAPTURE_CMD_NEVER_UPDATE - collect only allocations from traced
-  //     commands (TracedCommandBufferCmd subclasses) and collective commands
-  //     (CollectiveCmd subclasses)
+  //     commands, including collective commands recorded by CollectiveThunk
   if (thunk_executor_) {
     DebugOptions::CommandBufferUpdateMode update_mode =
         has_module() ? module_config()

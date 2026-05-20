@@ -18,14 +18,12 @@ limitations under the License.
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <variant>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -35,30 +33,19 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/runtime/collective_execution.h"
-#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
-#include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/while_loop.h"
 #include "xla/executable_run_options.h"
 #include "xla/runtime/buffer_use.h"
-#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/collective_ops_utils.h"
-#include "xla/service/computation_placer.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/trace_command_buffer_factory.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"  // IWYU pragma: keep
@@ -347,63 +334,6 @@ absl::Status WhileCmd::WalkNested(
       [&](Command* cmd) -> absl::Status { return callback(cmd); }));
   return body_commands_.Walk(
       [&](Command* cmd) -> absl::Status { return callback(cmd); });
-}
-
-//===----------------------------------------------------------------------===//
-// CollectiveCmd
-//===----------------------------------------------------------------------===//
-
-CollectiveCmd::CollectiveCmd(CommandType cmd_type, CollectiveConfig config,
-                             CommunicationId communication_id)
-    : Command(cmd_type, se::StreamPriority::Highest),
-      config_(std::move(config)),
-      communication_id_(communication_id) {}
-
-absl::Status CollectiveCmd::Prepare(const Thunk::PrepareParams& params) {
-  TF_RET_CHECK(params.collective_params &&
-               params.collective_params->device_assn);
-
-  TF_ASSIGN_OR_RETURN(
-      GpuCliqueKey clique_key,
-      GetGpuCliqueKey(*params.collective_params, config().replica_groups,
-                      config().group_mode, communication_id_));
-
-  TF_ASSIGN_OR_RETURN(std::vector<std::vector<GlobalDeviceId>> device_groups,
-                      GetParticipatingDevicesGroups(
-                          *params.collective_params->device_assn,
-                          config().replica_groups, config().group_mode));
-
-  // Sort device groups: RequestClique expects pre-sorted groups.
-  absl::c_for_each(device_groups, [](auto& group) { absl::c_sort(group); });
-  absl::c_sort(device_groups);
-
-  return params.collective_clique_requests->RequestClique(clique_key,
-                                                          device_groups);
-}
-
-absl::StatusOr<const se::CommandBuffer::Command*>
-CollectiveCmd::RecordTracedCommand(
-    const Thunk::ExecuteParams& execute_params,
-    const RecordParams& record_params, RecordAction record_action,
-    se::CommandBuffer* command_buffer,
-    absl::FunctionRef<absl::Status(se::Stream*)> trace) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<se::CommandBuffer> nested_cmd,
-                      se::TraceCommandBufferFactory::Create(
-                          execute_params.stream->parent(),
-                          execute_params.command_buffer_trace_stream, trace));
-
-  if (priority() != se::StreamPriority::Default) {
-    TF_RETURN_IF_ERROR(nested_cmd->SetPriority(priority()));
-  }
-
-  return Handle(
-      std::move(record_action),
-      [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
-        return command_buffer->CreateChildCommand(*nested_cmd, dependencies);
-      },
-      [&](const se::CommandBuffer::Command* command) {
-        return command_buffer->UpdateChildCommand(command, *nested_cmd);
-      });
 }
 
 }  // namespace xla::gpu
