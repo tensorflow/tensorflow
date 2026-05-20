@@ -456,6 +456,9 @@ class VarianceScaling(Initializer):
       raise ValueError('`scale` must be positive float.')
     if mode not in {'fan_in', 'fan_out', 'fan_avg'}:
       raise ValueError('Invalid `mode` argument:', mode)
+    if not isinstance(distribution, str):
+      raise ValueError(
+          '`distribution` must be a string. Received: %s' % distribution)
     distribution = distribution.lower()
     # Compatibility with keras-team/keras.
     if distribution == 'normal':
