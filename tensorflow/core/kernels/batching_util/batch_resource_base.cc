@@ -983,7 +983,6 @@ absl::Status BatchResourceBase::ConcatInputTensors(
         absl::Status final_status = absl::OkStatus();
         const int num_output = context->num_outputs();
 
-        LOG(INFO) << "Concatenating split task output";
         for (int i = 0; i < num_output; ++i) {
           Tensor output_tensor;
           if (absl::Status status = ConcatSplitTaskOutput(
@@ -995,13 +994,10 @@ absl::Status BatchResourceBase::ConcatInputTensors(
           }
 
           if (input_task->forced_warmup_batch_size == 0) {
-            LOG(INFO) << "Setting output tensor";
             if (input_subtask_info.has_value()) {
-              LOG(INFO) << "Setting output tensor for subtask";
               (*input_subtask_info->output)[input_subtask_info->split_index]
                                            [i] = std::move(output_tensor);
             } else {
-              LOG(INFO) << "Setting output tensor for context";
               input_task->context->set_output(i, std::move(output_tensor));
             }
           }
