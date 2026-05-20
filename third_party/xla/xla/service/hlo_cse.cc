@@ -233,16 +233,19 @@ struct CseKey {
 
 /*static*/
 bool HloCSE::ShouldEliminateInstruction(const HloInstruction* instruction) {
+  const FrontendAttributes& frontend_attributes =
+      instruction->frontend_attributes();
+
   // If the instruction has zero operands (constants, parameters, etc.) skip
   // over it.
   if (instruction->operand_count() == 0 &&
       instruction->opcode() != HloOpcode::kPartitionId &&
-      instruction->opcode() != HloOpcode::kReplicaId) {
+      instruction->opcode() != HloOpcode::kReplicaId &&
+      (!frontend_attributes.IsInitialized() ||
+       !frontend_attributes.map().contains(kXlaCseSafeZeroOperandAttr))) {
     return false;
   }
 
-  const FrontendAttributes& frontend_attributes =
-      instruction->frontend_attributes();
   if (frontend_attributes.IsInitialized()) {
     if (frontend_attributes.map().contains(kMustFuseAttr)) {
       return false;
