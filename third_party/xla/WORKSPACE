@@ -16,6 +16,10 @@ load(":workspace3.bzl", "xla_workspace3")
 
 xla_workspace3()
 
+load("@bazel_features//:deps.bzl", "bazel_features_deps")
+
+bazel_features_deps()
+
 # Initialize hermetic C++
 load("@rules_ml_toolchain//cc/deps:cc_toolchain_deps.bzl", "cc_toolchain_deps")
 
