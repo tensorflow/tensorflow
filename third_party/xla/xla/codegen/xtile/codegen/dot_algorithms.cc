@@ -230,14 +230,12 @@ absl::StatusOr<std::optional<Type>> GetForceOperandsType(
   if (lhs_type != rhs_type ||
       !absl::c_linear_search(allowed_operands_types, lhs_type)) {
     std::string allowed_operands_types_str = absl::StrJoin(
-        allowed_operands_types, ", ", [&](std::string* out, Type type) {
-          absl::StrAppend(out, MlirToString(type));
-        });
+        allowed_operands_types, ", ",
+        [&](std::string* out, Type type) { absl::StrAppend(out, type); });
     return absl::FailedPreconditionError(absl::StrCat(
         "Expected dot operands to both have the same type, and for this type "
         "to be one of the following types: ",
-        allowed_operands_types_str, " but got ", MlirToString(lhs_type),
-        " and ", MlirToString(rhs_type)));
+        allowed_operands_types_str, " but got ", lhs_type, " and ", rhs_type));
   }
 
   return std::nullopt;

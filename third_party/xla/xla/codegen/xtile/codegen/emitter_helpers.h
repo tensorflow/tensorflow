@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
-#include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -27,7 +26,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -38,6 +36,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/codegen/ir_emission_utils.h"  // IWYU pragma:  export
 #include "xla/codegen/tiling/experimental/scheduling.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
@@ -128,15 +127,6 @@ class EmitterContext {
                       std::pair<mlir::Value, Interval>>
       sequential_dim_id_to_value_;
 };
-
-// Returns a string representation of the given MLIR entity.
-template <typename T>
-std::string MlirToString(T&& value) {
-  std::string result;
-  llvm::raw_string_ostream os(result);
-  value.print(os);
-  return result;
-}
 
 // Constructs and holds information needed to construct a tile. This information
 // is propagated to Extract/Insert ops to use them to load and store the correct
@@ -362,7 +352,6 @@ absl::StatusOr<llvm::SmallVector<mlir::Type>> GetFnArgTypes(
 // Function to check if the operands of a concatenation are valid for tiling.
 absl::Status CheckConcatenateOperands(
     const HloConcatenateInstruction& hlo_concat, int64_t concat_dim_tile_size);
-
 
 absl::StatusOr<TensorValue> EmitTiledReshape(mlir::ImplicitLocOpBuilder& b,
                                              llvm::ArrayRef<int64_t> tile_sizes,

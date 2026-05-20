@@ -59,7 +59,6 @@ limitations under the License.
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
@@ -71,10 +70,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/layout_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "xla/mlir_hlo/mhlo/transforms/transformation_helpers.h"
 #include "xla/primitive_util.h"
-#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
@@ -737,8 +734,7 @@ TensorValue Splat(mlir::ImplicitLocOpBuilder& b, Value value,
 
 Value UnsignedIntegerToSignlessInteger(mlir::OpBuilder& builder, Value value) {
   CHECK(getElementTypeOrSelf(value.getType()).isUnsignedInteger())
-      << "Expected unsigned integer element type, got: "
-      << ::xla::xtile::MlirToString(value.getType());
+      << "Expected unsigned integer element type, got: " << value.getType();
   Type signless_integer_type_type = mlir::IntegerType::get(
       builder.getContext(),
       getElementTypeOrSelf(value.getType()).getIntOrFloatBitWidth(),
@@ -882,7 +878,6 @@ absl::Status CheckConcatenateOperands(
   }
   return absl::OkStatus();
 }
-
 
 absl::StatusOr<TensorValue> EmitTiledReshape(mlir::ImplicitLocOpBuilder& b,
                                              ArrayRef<int64_t> tile_sizes,
