@@ -720,7 +720,7 @@ ENTRY e {
 )");
 }
 
-TEST_F(GemmFusionTest, MultipleUsesAreHandled) {
+TEST_P(GemmFusionTestVersioned, MultipleUsesAreHandled) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -1327,26 +1327,31 @@ ENTRY e {
               IsOkAndHolds(false));
 }
 
-TEST_F(GemmFusionTest, NarrowingConversionIsAlwaysBetterToFuse) {
+TEST_P(GemmFusionTestVersioned, NarrowingConversionIsAlwaysBetterToFuse) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
   p0 = s8[512,512] parameter(0)
   c0 = f16[512,512] convert(p0)
-  p1 = f16[512,512] parameter(1)
-  dot0 = f16[512,512] dot(c0, p1),
+  p1 = f16[512,500] parameter(1)
+  dot0 = f16[512,500] dot(c0, p1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
-
+  zero = f16[] constant(0)
+  pad1 = f16[512,512] pad(dot0, zero), padding=0_0x0_12
   n = f16[512,512] negate(c0)
-  ROOT a = f16[512,512] add(dot0, n)
+  ROOT a = f16[512,512] add(pad1, n)
 })"));
   EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
                              se::CudaComputeCapability::kAmpere, 0})
                   .Run(module.get())
                   .value());
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch((m::Add(m::Fusion(m::Parameter(), m::Parameter()),
-                                 m::Negate()))));
+  // Check that even when a convert is used twice and cannot be fully fused,
+  // we still duplicate & fuse.
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch((m::Add(
+          m::Pad(m::Fusion(m::Parameter(), m::Parameter()), m::Constant()),
+          m::Negate()))));
 }
 
 TEST_P(GemmFusionTestVersioned, NestedSlicingIsAnalyzedCorrectly) {

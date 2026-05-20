@@ -1086,13 +1086,10 @@ bool CanFuse(mlir::MLIRContext& mlir_context, HloInstruction* producer,
 // Attempts to fuse all candidates and their operands into the fusion.
 void FuseOperandsBFS(mlir::MLIRContext& mlir_context,
                      const HloInstruction::InstructionVector& candidates,
-                     absl::flat_hash_set<HloInstruction*>& visited,
                      HloInstruction* fusion) {
   std::queue<HloInstruction*> queue;
   for (HloInstruction* operand : candidates) {
-    if (visited.insert(operand).second) {
-      queue.push(operand);
-    }
+    queue.push(operand);
   }
   while (!queue.empty()) {
     HloInstruction* candidate = queue.front();
@@ -1105,9 +1102,7 @@ void FuseOperandsBFS(mlir::MLIRContext& mlir_context,
     VLOG(5) << "Fusing operand: " << candidate->ToString();
     fusion->FuseInstruction(candidate);
     for (HloInstruction* operand : candidate->operands()) {
-      if (visited.insert(operand).second) {
-        queue.push(operand);
-      }
+      queue.push(operand);
     }
   }
 }
@@ -1117,7 +1112,7 @@ void FuseOperandsBFS(mlir::MLIRContext& mlir_context,
 // only way to fuse a user is to create a new fusion.
 absl::StatusOr<HloInstruction*> FuseUserAndOperands(
     mlir::MLIRContext& mlir_context, HloInstruction* fusion,
-    HloInstruction* user, absl::flat_hash_set<HloInstruction*>& visited) {
+    HloInstruction* user) {
   int64_t operand_count = fusion->operand_count();
   HloInstruction* new_fusion =
       fusion->parent()->AddInstruction(HloInstruction::CreateFusion(
@@ -1127,7 +1122,7 @@ absl::StatusOr<HloInstruction*> FuseUserAndOperands(
   CHECK_EQ(0, fusion->users().size());
   RETURN_IF_ERROR(fusion->parent()->RemoveInstruction(fusion));
   if (new_fusion->operand_count() > operand_count) {
-    FuseOperandsBFS(mlir_context, new_fusion->operands(), visited, new_fusion);
+    FuseOperandsBFS(mlir_context, new_fusion->operands(), new_fusion);
   }
   return new_fusion;
 }
@@ -1189,8 +1184,7 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateTileableFusion(
   HloInstruction* original_output = original_dot;
 
   // BFS of operands until we cannot tile.
-  absl::flat_hash_set<HloInstruction*> visited;
-  FuseOperandsBFS(mlir_context, fusion->operands(), visited, fusion);
+  FuseOperandsBFS(mlir_context, fusion->operands(), fusion);
 
   // Fuse in users until we cannot tile or reach the root.
   while (!fusion->IsRoot()) {
@@ -1202,8 +1196,7 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateTileableFusion(
       break;
     }
     VLOG(5) << "Fusing user into epilogue: " << user->ToString();
-    ASSIGN_OR_RETURN(fusion,
-                     FuseUserAndOperands(mlir_context, fusion, user, visited));
+    ASSIGN_OR_RETURN(fusion, FuseUserAndOperands(mlir_context, fusion, user));
     original_output = fusion_search_space.fused_to_original().at(user);
   }
 
