@@ -1498,7 +1498,7 @@ diff --git b/python/test/BUILD b/python/test/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/python/test/BUILD
-@@ -0,0 +1,385 @@
+@@ -0,0 +1,386 @@
 +load("//third_party/py/pytest:pytest_defs.bzl", "pytest_multi_tests", "pytest_test")
 +
 +package(
@@ -1562,6 +1562,7 @@ new file mode 100644
 +    "gluon/test_consan.py",
 +    "gluon/test_core.py",  # Disabled because of b/486813140, could be PTXAS bug.
 +    "gluon/test_frontend.py",
++    "gluon/test_lowerings.py",
 +
 +    # valueless internally
 +    "backend/test_device_backend.py",  # we run backends differently in g3
