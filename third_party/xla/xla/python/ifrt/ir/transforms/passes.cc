@@ -28,15 +28,11 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Transforms/Passes.h"
-#include "shardy/dialect/sdy/ir/dialect.h"
-#include "stablehlo/dialect/StablehloOps.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.pb.h"
 #include "xla/python/ifrt/ir/version.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "tsl/platform/path.h"
 
 namespace xla {
@@ -83,6 +79,9 @@ void createIfrtToOutlinedAtomProgramsPipeline(mlir::OpPassManager& pm) {
   // IfrtMergeCopiesAndReshardsPass after this pass because it introduces
   // non-merged CopyArrays ops.
   pm.addPass(createIfrtReshardToCopyArraysPass());
+  // Run insert CopyArrays pass before merging copies and reshards so that
+  // the inserted CopyArrays ops can be merged.
+  pm.addNestedPass<mlir::func::FuncOp>(createIfrtInsertCopyArraysReusePass());
   // IfrtMergeCopiesAndReshardsPass doesn't handle control dependencies, so we
   // need to run it before adding the control dependencies.
   pm.addNestedPass<mlir::func::FuncOp>(createIfrtMergeCopiesAndReshardsPass());

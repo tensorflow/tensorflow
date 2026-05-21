@@ -956,7 +956,7 @@ struct ReturnOpState {
       auto array_it = env.handle_to_array.find(output_handles[idx]);
       TF_RET_CHECK(array_it != env.handle_to_array.end())
           << "Input array #" << idx << " not found. " << pretty_print;
-      env.outputs.push_back(array_it->second.array);
+      env.outputs.push_back(std::move(array_it->second.array));
     }
     env.handle_to_array.clear();
     return absl::OkStatus();
