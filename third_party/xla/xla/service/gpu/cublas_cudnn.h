@@ -88,7 +88,7 @@ std::string CudnnConvKindToString(CudnnConvKind kind);
 // Matrix multiplication rewritten into a GEMM custom call.
 // All matrix multiplications should be rewritten as such custom calls
 // after a GemmRewriter lowering pass.
-bool IsCublasGemm(const HloInstruction& hlo);
+bool IsCublasLtGemm(const HloInstruction& hlo);
 
 // Matrix multiplication that calls into legacy cublas.
 bool IsLegacyCublasMatmul(const HloInstruction& hlo);

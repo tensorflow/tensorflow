@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -90,7 +91,7 @@ absl::StatusOr<bool> ChangeOpDataType::RunImpl(
       if (new_instr->shape().element_type() != instr->shape().element_type()) {
         new_instr = MakeConvertToHlo(new_instr, instr->shape().element_type());
       }
-      TF_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, new_instr));
+      RETURN_IF_ERROR(comp->ReplaceInstruction(instr, new_instr));
       changed = true;
     }
   }

@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "json/json.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -207,10 +208,10 @@ absl::Status GoogleAuthProvider::GetToken(std::string* t) {
                                   kNoGceCheck, " environment variable."));
   } else {
     int max_requests;
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         ParseNonNegativeIntEnvVar(kGcsAuthMaxRequests, 1, &max_requests));
     int retry_delay_sec;
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         ParseNonNegativeIntEnvVar(kGcsAuthRetryDelaySec, 5, &retry_delay_sec));
 
     for (int i = 0; i < max_requests; ++i) {
@@ -278,10 +279,10 @@ absl::Status GoogleAuthProvider::GetTokenFromFiles() {
         "Couldn't parse the JSON credentials file.");
   }
   if (json.isMember("refresh_token")) {
-    TF_RETURN_IF_ERROR(oauth_client_->GetTokenFromRefreshTokenJson(
+    RETURN_IF_ERROR(oauth_client_->GetTokenFromRefreshTokenJson(
         json, kOAuthV3Url, &current_token_, &expiration_timestamp_sec_));
   } else if (json.isMember("private_key")) {
-    TF_RETURN_IF_ERROR(oauth_client_->GetTokenFromServiceAccountJson(
+    RETURN_IF_ERROR(oauth_client_->GetTokenFromServiceAccountJson(
         json, kOAuthV4Url, kOAuthScope, &current_token_,
         &expiration_timestamp_sec_));
   } else {
@@ -295,12 +296,12 @@ absl::Status GoogleAuthProvider::GetTokenFromGce() {
   std::vector<char> response_buffer;
   const uint64_t request_timestamp_sec = env_->NowSeconds();
 
-  TF_RETURN_IF_ERROR(compute_engine_metadata_client_->GetMetadata(
+  RETURN_IF_ERROR(compute_engine_metadata_client_->GetMetadata(
       kGceTokenPath, &response_buffer));
   absl::string_view response =
       absl::string_view(&response_buffer[0], response_buffer.size());
 
-  TF_RETURN_IF_ERROR(oauth_client_->ParseOAuthResponse(
+  RETURN_IF_ERROR(oauth_client_->ParseOAuthResponse(
       response, request_timestamp_sec, &current_token_,
       &expiration_timestamp_sec_));
 

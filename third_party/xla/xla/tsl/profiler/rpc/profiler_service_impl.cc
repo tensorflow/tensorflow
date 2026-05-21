@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/status.h"
 #include "xla/tsl/platform/env.h"
@@ -73,7 +74,7 @@ absl::Status CollectData(const ProfileRequest& request,
   tensorflow::profiler::XSpace xspace;
   tensorflow::profiler::XSpace* xspace_ptr =
       request.emit_xspace() ? response->mutable_xspace() : &xspace;
-  TF_RETURN_IF_ERROR(profiler->CollectData(xspace_ptr));
+  RETURN_IF_ERROR(profiler->CollectData(xspace_ptr));
   VLOG(3) << "Collected XSpace to "
           << (request.emit_xspace() ? "response" : "repository") << ".";
   response->set_empty_trace(IsEmpty(*xspace_ptr));

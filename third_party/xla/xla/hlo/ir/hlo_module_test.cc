@@ -1625,5 +1625,122 @@ TEST(HloModuleTest, ModuleLevelCacheAPIs) {
   EXPECT_EQ(module.GetCacheEntry<TestCacheEntry>(key1)->value(), 100);
 }
 
+TEST(HloModuleTest, BackendConfigDeduplicationAndRoundtrip) {
+  const char* hlo_text = R"(
+    HloModule test_module
+    ENTRY comp {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnUnverifiedModule(hlo_text));
+  HloInstruction* p0 = m->entry_computation()->GetInstructionWithName("p0");
+  HloInstruction* p1 = m->entry_computation()->GetInstructionWithName("p1");
+
+  p0->set_raw_backend_config_string("tokamax:{\"data\": 1}");
+  p1->CopyBackendConfigFrom(p0);  // Force in-memory sharing to test fast path.
+
+  // Verify in-memory deduplication is active.
+  EXPECT_EQ(&p0->raw_backend_config_string(), &p1->raw_backend_config_string());
+
+  HloModuleProto proto = m->ToProto(/*intern_backend_config=*/true);
+
+  // Verify the serialized proto structure partially using proto matchers.
+  using ::tsl::proto_testing::EqualsProto;
+  using ::tsl::proto_testing::Partially;
+  EXPECT_THAT(proto, Partially(EqualsProto(R"pb(
+                payloads: "tokamax:{\"data\": 1}"
+                computations {
+                  instructions {
+                    name: "p0"
+                    backend_config_payload { id: 0 }
+                    backend_config: ""
+                  }
+                  instructions {
+                    name: "p1"
+                    backend_config_payload { id: 0 }
+                    backend_config: ""
+                  }
+                  instructions { name: "add" }
+                }
+              )pb")));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> loaded,
+                          HloModule::CreateFromProto(proto, m->config()));
+  const HloInstruction* loaded_p0 =
+      loaded->entry_computation()->GetInstructionWithName("p0");
+  const HloInstruction* loaded_p1 =
+      loaded->entry_computation()->GetInstructionWithName("p1");
+
+  // Verify identical string object in memory is shared post-deserialization.
+  EXPECT_EQ(loaded_p0->raw_backend_config_string(), "tokamax:{\"data\": 1}");
+  EXPECT_EQ(&loaded_p0->raw_backend_config_string(),
+            &loaded_p1->raw_backend_config_string());
+}
+
+TEST(HloModuleTest, BackendConfigNoInternByDefault) {
+  const char* hlo_text = R"(
+    HloModule test_module
+    ENTRY comp {
+      ROOT p0 = f32[] parameter(0)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnUnverifiedModule(hlo_text));
+  HloInstruction* p0 = m->entry_computation()->root_instruction();
+  p0->set_raw_backend_config_string("tokamax:{\"data\": 1}");
+
+  HloModuleProto proto = m->ToProto();
+  // Config is NOT interned in payloads.
+  EXPECT_EQ(proto.payloads_size(), 0);
+
+  using ::tsl::proto_testing::EqualsProto;
+  using ::tsl::proto_testing::Partially;
+  EXPECT_THAT(
+      proto, Partially(EqualsProto(R"pb(
+        computations {
+          instructions { name: "p0" backend_config: "tokamax:{\"data\": 1}" }
+        }
+      )pb")));
+  EXPECT_FALSE(
+      proto.computations(0).instructions(0).has_backend_config_payload());
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> loaded,
+                          HloModule::CreateFromProto(proto, m->config()));
+  const HloInstruction* loaded_p0 =
+      loaded->entry_computation()->root_instruction();
+  EXPECT_EQ(loaded_p0->raw_backend_config_string(), "tokamax:{\"data\": 1}");
+}
+
+TEST(HloModuleTest, BackendConfigDeduplicationWithBaseOffset) {
+  const char* hlo_text = R"(
+    HloModule test_module
+    ENTRY comp {
+      ROOT p0 = f32[] parameter(0)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnUnverifiedModule(hlo_text));
+  HloInstruction* p0 = m->entry_computation()->root_instruction();
+  p0->set_raw_backend_config_string("tokamax:{\"data\": 1}");
+
+  // 1. Create a proto and pre-fill its payloads with an existing string!
+  HloModuleProto proto;
+  proto.add_payloads("pre_existing_metadata");
+
+  // 2. Serialize to this pre-filled proto with interning!
+  m->ToProto(&proto, /*intern_backend_config=*/true);
+
+  // Verify shifted ID and combined payloads.
+  using ::tsl::proto_testing::EqualsProto;
+  using ::tsl::proto_testing::Partially;
+  EXPECT_THAT(proto, Partially(EqualsProto(R"pb(
+                payloads: "pre_existing_metadata"
+                payloads: "tokamax:{\"data\": 1}"
+                computations {
+                  instructions {
+                    name: "p0"
+                    backend_config_payload { id: 1 }
+                  }
+                }
+              )pb")));
+}
+
 }  // namespace
 }  // namespace xla

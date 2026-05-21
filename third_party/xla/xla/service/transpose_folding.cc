@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -214,8 +215,8 @@ absl::StatusOr<bool> TransposeFolding::RunImpl(
           continue;
         }
 
-        TF_ASSIGN_OR_RETURN(bool can_fold_operand,
-                            dot_can_fold_transpose_operand_(*instruction, i));
+        ASSIGN_OR_RETURN(bool can_fold_operand,
+                         dot_can_fold_transpose_operand_(*instruction, i));
 
         if (can_fold_operand) {
           operand_indices.push_back(i);
@@ -238,12 +239,12 @@ absl::StatusOr<bool> TransposeFolding::RunImpl(
   });
 
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
-    TF_RETURN_IF_ERROR(comp->Accept(&visit_fn));
+    RETURN_IF_ERROR(comp->Accept(&visit_fn));
   }
 
   bool changed = false;
   for (InstructionOperandsPair& pair : foldable_dots) {
-    TF_RETURN_IF_ERROR(FoldTransposeIntoDot(pair));
+    RETURN_IF_ERROR(FoldTransposeIntoDot(pair));
     changed = true;
   }
   for (InstructionOperandsPair& pair : foldable_convolutions) {
