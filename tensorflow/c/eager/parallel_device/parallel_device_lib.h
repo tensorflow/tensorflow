@@ -98,7 +98,7 @@ class ParallelDevice {
   // The returned optional has a value if and only if `status` evaluates to
   // TF_OK. Bad statuses are forwarded from underlying `TFE_Execute` calls, or
   // if sanity checks on dtypes/metadata fail.
-  absl::optional<std::vector<std::unique_ptr<ParallelTensor>>> Execute(
+  std::optional<std::vector<std::unique_ptr<ParallelTensor>>> Execute(
       TFE_Context* context, const std::vector<ParallelTensor*>& inputs,
       const char* operation_name, const TFE_OpAttrs* attributes,
       int expected_max_outputs, TF_Status* status) const;
@@ -143,7 +143,7 @@ class ParallelDevice {
   // computation to continue without blocking.
   //
   // The return status and value is the same as `Execute`.
-  absl::optional<std::vector<std::unique_ptr<ParallelTensor>>> Join(
+  std::optional<std::vector<std::unique_ptr<ParallelTensor>>> Join(
       const std::vector<PartialTensorShape>& expected_output_shapes,
       TF_Status* status) const;
 
@@ -241,7 +241,7 @@ class ParallelTensor {
   // Parallel tensors are immutable but compute their shape lazily unless it is
   // provided on construction. The optional has a value if the lazy computation
   // has been completed or the shape was provided on construction.
-  mutable absl::optional<std::vector<int64_t>> shape_;
+  mutable std::optional<std::vector<int64_t>> shape_;
   const TF_DataType dtype_;
 };
 
