@@ -51,15 +51,6 @@ using ConstantsTest = ClientLibraryTestRunnerMixin<
 
 template <typename T>
 class ConstantsFloatTest : public ConstantsTest {
- protected:
-  void SetUp() override {
-    if ((std::is_same_v<T, tsl::float4_e2m1fn> ||
-         std::is_same_v<T, tsl::float8_e8m0fnu>) &&
-        test::DeviceTypeIs(test::kTpu)) {
-      // TODO(b/385004399): Run tests on these types on TPU.
-      GTEST_SKIP();
-    }
-  }
 };
 
 using FloatTypes =
