@@ -358,7 +358,7 @@ class MMapWeightCacheProvider {
   bool StopBuildStep();
 
   // Creates the tensor map.
-  void MapTensorIdentifiers(
+  bool MapTensorIdentifiers(
       const TfLiteTensor* tensors, size_t size,
       const std::unordered_map<size_t, size_t>& tensor_index_to_identifier);
 

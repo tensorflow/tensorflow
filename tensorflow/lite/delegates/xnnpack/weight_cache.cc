@@ -672,16 +672,17 @@ bool MMapWeightCacheProvider::StopBuildStep() {
   return LoadLastBuildStep();
 }
 
-void MMapWeightCacheProvider::MapTensorIdentifiers(
+bool MMapWeightCacheProvider::MapTensorIdentifiers(
     const TfLiteTensor* tensors, const size_t size,
     const std::unordered_map<size_t, size_t>& tensor_index_to_identifier) {
   for (const auto [index, identifier] : tensor_index_to_identifier) {
-    XNNPACK_ABORT_CHECK(index < size,
-                        "Tensor index corresponds to a non existing tensor.");
+    XNNPACK_RETURN_CHECK(index < size,
+                         "Tensor index corresponds to a non existing tensor.");
     const TfLiteTensor& t = tensors[index];
     buffer_address_to_identifier_.emplace(
         t.data.data, OriginalBufferMetadata{identifier, t.bytes});
   }
+  return true;
 }
 
 void MMapWeightCacheProvider::RemapDataBuffer(const void* const buffer,

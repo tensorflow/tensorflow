@@ -955,10 +955,12 @@ class Subgraph {
     }
     // Map tensors identifiers before packing anything.
     if (delegate.weight_cache_provider_->IsActive()) {
-      delegate.weight_cache_provider_->MapTensorIdentifiers(
-          context->tensors, context->tensors_size,
-          reinterpret_cast<tflite::Subgraph*>(context->impl_)
-              ->GetTensorBufferIdentifiers());
+      if (!delegate.weight_cache_provider_->MapTensorIdentifiers(
+              context->tensors, context->tensors_size,
+              reinterpret_cast<tflite::Subgraph*>(context->impl_)
+                  ->GetTensorBufferIdentifiers())) {
+        return nullptr;
+      }
     }
 
     // Convert subgraph inputs and outputs to hash sets for faster lookup.
