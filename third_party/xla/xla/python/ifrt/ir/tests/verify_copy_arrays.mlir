@@ -30,6 +30,17 @@ func.func @copy_donated_array(%arg0: !array0)
 
 // -----
 
+!array = !ifrt.array<tensor<2x4xi32>,
+                      #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
+func.func @copy_donated_array(%arg0: !array)
+    attributes {ifrt.function} {
+  %0, %ctrl = ifrt.CopyArrays(%arg0) {reuse=true} : (!array) -> (!array)
+  return
+}
+
+
+// -----
+
 !array0 = !ifrt.array<tensor<2x4xi32>, #ifrt.sharding_unspecified, [0,1]>
 !array1 = !ifrt.array<tensor<2x4xi32>,
                       #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
@@ -192,6 +203,20 @@ func.func @no_auto_layout(%arg0: !array0)
     attributes {ifrt.function} {
   // expected-error@+1 {{'ifrt.CopyArrays' op does not allow input arrays with `auto` layout}}
   %0, %ctrl = ifrt.CopyArrays(%arg0) {donated=true}
+    : (!array0) -> (!array1)
+  return
+}
+
+// -----
+
+!array0 = !ifrt.array<tensor<2x4xi32>,
+                      #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
+!array1 = !ifrt.array<tensor<2x4xi32>,
+                      #ifrt.sharding_param<1x2 to [0] on 2>, [2,3]>
+func.func @array_cannot_be_donated_and_reused(%arg0: !array0)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.CopyArrays' op requires at most one of `donated` or `reuse` to be set to true}}
+  %0, %ctrl = ifrt.CopyArrays(%arg0) {donated=true, reuse=true}
     : (!array0) -> (!array1)
   return
 }
