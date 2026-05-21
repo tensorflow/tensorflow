@@ -15,6 +15,9 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
