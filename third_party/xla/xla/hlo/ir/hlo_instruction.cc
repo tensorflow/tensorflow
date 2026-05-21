@@ -293,23 +293,6 @@ HloInstruction* HloInstruction::AddInstruction(
   return derived;
 }
 
-namespace {
-absl::StatusOr<std::string> GetStringFromPayload(
-    const Payload& payload,
-    const tsl::protobuf::RepeatedPtrField<std::string>* payloads) {
-  if (payload.has_id()) {
-    if (payloads != nullptr && payload.id() >= 0 &&
-        payload.id() < payloads->size()) {
-      return payloads->at(payload.id());
-    }
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "Payload requested ID %d but payloads array has size %d", payload.id(),
-        payloads ? payloads->size() : 0));
-  }
-  return payload.value();
-}
-}  // namespace
-
 /* static */
 absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     const HloInstructionProto& proto,
