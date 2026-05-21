@@ -49,22 +49,22 @@ class DepthToSpaceOp : public OpKernel {
     std::string data_format_str;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format_str));
     OP_REQUIRES(context, FormatFromString(data_format_str, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
+                absl::InvalidArgumentError("Invalid data format"));
 
     OP_REQUIRES_OK(context, context->GetAttr("block_size", &block_size_));
     // This upper bound is needed to avoid an overflow when the block size value
     // is squared in the output computation.
     int block_size_limit = sqrt(std::numeric_limits<int>::max());
     OP_REQUIRES(context, block_size_ > 1 && block_size_ <= block_size_limit,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Block size should be > 1 and <= ", block_size_limit,
-                    " but was: ", block_size_));
+                    " but was: ", block_size_)));
 
     if (std::is_same<Device, CPUDevice>::value) {
-      OP_REQUIRES(
-          context, data_format_ == FORMAT_NHWC,
-          errors::InvalidArgument(
-              "Only NHWC data_format supported on CPU. Got ", data_format_str));
+      OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Only NHWC data_format supported on CPU. Got ",
+                      data_format_str)));
     }
   }
 
@@ -75,14 +75,14 @@ class DepthToSpaceOp : public OpKernel {
     // Assuming qint8 <--> NCHW_VECT_C, OIHW_VECT_I (int8x4) here.
     constexpr bool is_int8x4 = std::is_same<T, qint8>::value;
     OP_REQUIRES(context, (is_int8x4 == (data_format_ == FORMAT_NCHW_VECT_C)),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "qint8 should be used with data_format NCHW_VECT_C."));
 
     constexpr int kVect = is_int8x4 ? 4 : 1;
     constexpr int kDims = is_int8x4 ? 5 : 4;
     OP_REQUIRES(context, kDims == dims,
-                errors::InvalidArgument("Input rank should be: ", kDims,
-                                        " instead of: ", dims));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Input rank should be: ", kDims, " instead of: ", dims)));
 
     constexpr int kNumSpatialDims = 2;
     const int batch_size =
@@ -98,10 +98,10 @@ class DepthToSpaceOp : public OpKernel {
     const int block_size_sq = block_size_ * block_size_;
 
     // The depth must be divisible by block_size_ * block_size_
-    OP_REQUIRES(
-        context, input_depth % block_size_sq == 0,
-        errors::InvalidArgument("Input depth dimension ", input_depth,
-                                " should be divisible by: ", block_size_sq));
+    OP_REQUIRES(context, input_depth % block_size_sq == 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input depth dimension ", input_depth,
+                                 " should be divisible by: ", block_size_sq)));
 
     const int output_depth = input_depth / block_size_sq;
     const int output_width = input_width * block_size_;

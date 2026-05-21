@@ -174,7 +174,7 @@ struct LaunchDepthwiseConvOp<CPUDevice, T> {
                   TensorFormat data_format) {
     OP_REQUIRES(
         ctx, data_format == FORMAT_NHWC,
-        errors::Unimplemented(
+        absl::UnimplementedError(
             "Depthwise convolution on CPU is only supported for NHWC format"));
     static const int64_t kPacketSize = (sizeof(Packet) / sizeof(T));
 
@@ -287,24 +287,24 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
+                absl::InvalidArgumentError("Invalid data format"));
 
     OP_REQUIRES(context, strides_.size() == 4,
-                errors::InvalidArgument("Sliding window strides field must "
-                                        "specify 4 dimensions"));
+                absl::InvalidArgumentError("Sliding window strides field must "
+                                           "specify 4 dimensions"));
     stride_ = GetTensorDim(strides_, data_format_, 'H');
     const int64_t stride_w = GetTensorDim(strides_, data_format_, 'W');
     const int64_t stride_n = GetTensorDim(strides_, data_format_, 'N');
     const int64_t stride_c = GetTensorDim(strides_, data_format_, 'C');
 
     OP_REQUIRES(context, stride_ == stride_w,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Current implementation only supports equal length "
                     "strides in the row and column dimensions."));
-    OP_REQUIRES(
-        context, (stride_n == 1 && stride_c == 1),
-        errors::InvalidArgument("Current implementation does not yet support "
-                                "strides in the batch and depth dimensions."));
+    OP_REQUIRES(context, (stride_n == 1 && stride_c == 1),
+                absl::InvalidArgumentError(
+                    "Current implementation does not yet support "
+                    "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     OP_REQUIRES_OK(context,
                    context->GetAttr("explicit_paddings", &explicit_paddings_));
@@ -362,19 +362,21 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     const Tensor& filter = context->input(1);
 
     // For 2D convolution, there should be 4 dimensions.
-    OP_REQUIRES(context, input.dims() == 4,
-                errors::InvalidArgument("input must be 4-dimensional",
-                                        input.shape().DebugString()));
-    OP_REQUIRES(context, filter.dims() == 4,
-                errors::InvalidArgument("filter must be 4-dimensional: ",
-                                        filter.shape().DebugString()));
+    OP_REQUIRES(
+        context, input.dims() == 4,
+        absl::InvalidArgumentError(absl::StrCat("input must be 4-dimensional",
+                                                input.shape().DebugString())));
+    OP_REQUIRES(
+        context, filter.dims() == 4,
+        absl::InvalidArgumentError(absl::StrCat(
+            "filter must be 4-dimensional: ", filter.shape().DebugString())));
 
     // in_depth for input and filter must match.
     const int64_t in_depth = GetTensorDim(input, data_format_, 'C');
     OP_REQUIRES(context, in_depth == filter.dim_size(2),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "input and filter must have the same depth: ", in_depth,
-                    " vs ", filter.dim_size(2)));
+                    " vs ", filter.dim_size(2))));
 
     // The last dimension for filter is depth multiplier.
     const int32_t depth_multiplier = filter.dim_size(3);
@@ -386,7 +388,7 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     OP_REQUIRES(
         context,
         FastBoundsCheck(input_rows_raw, std::numeric_limits<int32_t>::max()),
-        errors::InvalidArgument("Input rows too large"));
+        absl::InvalidArgumentError("Input rows too large"));
     const int32_t input_rows = static_cast<int32_t>(input_rows_raw);
     const int32_t filter_rows = filter.dim_size(0);
 
@@ -394,7 +396,7 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     OP_REQUIRES(
         context,
         FastBoundsCheck(input_cols_raw, std::numeric_limits<int32_t>::max()),
-        errors::InvalidArgument("Input cols too large"));
+        absl::InvalidArgumentError("Input cols too large"));
     const int32_t input_cols = static_cast<int32_t>(input_cols_raw);
     const int32_t filter_cols = filter.dim_size(1);
 
@@ -426,7 +428,7 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
         (!std::is_same<Device, GPUDevice>::value ||
          FastBoundsCheck(out_shape.num_elements(),
                          std::numeric_limits<int32_t>::max())),
-        errors::InvalidArgument("Output elements too large for GPU kernel"));
+        absl::InvalidArgumentError("Output elements too large for GPU kernel"));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
@@ -470,7 +472,7 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
       Tensor reshaped_filter(/*type=*/dtype_);
       OP_REQUIRES(
           context, reshaped_filter.CopyFrom(filter, shape),
-          errors::Internal(
+          absl::InternalError(
               "Failed to reshape filter tensor for grouped convolution."));
       // TODO(yangzihao): Send in arbitrary dilation rates after the dilated
       // conv is supported.
