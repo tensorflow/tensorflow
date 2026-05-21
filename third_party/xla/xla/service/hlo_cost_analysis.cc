@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -306,7 +307,9 @@ absl::Status HloCostAnalysis::FusionCalculateUtilizations(
   // instruction.
   for (const HloInstruction* instr :
        fusion->fused_instructions_computation()->instructions()) {
-    if (ShouldFilterFusionInstruction(fusion, instr)) {
+    absl::StatusOr<bool> should_filter =
+        ShouldFilterFusionInstruction(fusion, instr);
+    if (should_filter.ok() && *should_filter) {
       hlo_properties_[instr][kUtilizationKey] = 0.f;
     } else {
       hlo_properties_[instr][kUtilizationKey] = 1.f;
@@ -1184,12 +1187,15 @@ absl::Status HloCostAnalysis::FusionProcessOutputBytesAccessed(
 
         auto further_examine_index =
             shape_index.size() == 1 && root->opcode() == HloOpcode::kTuple;
-        if (further_examine_index &&
-            ShouldFilterFusionOutputIndex(fusion, shape_index)) {
-          current_properties_.set_output_bytes_accessed(shape_index, 0);
-          hlo_properties_[root->operand(shape_index[0])]
-                         [GetOperandUtilizationKey(0)] = 0;
-          return;
+        if (further_examine_index) {
+          auto status_or_filter =
+              ShouldFilterFusionOutputIndex(fusion, shape_index);
+          if (status_or_filter.ok() && *status_or_filter) {
+            current_properties_.set_output_bytes_accessed(shape_index, 0);
+            hlo_properties_[root->operand(shape_index[0])]
+                           [GetOperandUtilizationKey(0)] = 0;
+            return;
+          }
         }
         if (further_examine_index) {
           root = root->operand(shape_index[0]);
@@ -1213,10 +1219,11 @@ absl::Status HloCostAnalysis::FusionProcessOutputBytesAccessed(
     // This ensures we have the correct output bytes accessed for the shape
     // index
     // {}.
-    std::function<float(const Shape&, const ShapeIndex&)>
+    std::function<absl::StatusOr<float>(const Shape&, const ShapeIndex&)>
         propagate_output_size_to_parent;
-    propagate_output_size_to_parent = [&](const Shape& shape,
-                                          const ShapeIndex& shape_index) {
+    propagate_output_size_to_parent =
+        [&](const Shape& shape,
+            const ShapeIndex& shape_index) -> absl::StatusOr<float> {
       float& bytes_accessed =
           current_properties_[GetOutputBytesAccessedKey(shape_index)];
       if (bytes_accessed != 0) {
@@ -1227,18 +1234,24 @@ absl::Status HloCostAnalysis::FusionProcessOutputBytesAccessed(
       }
       for (int i = 0; i < shape.tuple_shapes().size(); ++i) {
         const Shape& subshape = shape.tuple_shapes(i);
-        if (!subshape.IsTuple() && ShouldFilterFusionOutputIndex(fusion, {i})) {
-          continue;
+        if (!subshape.IsTuple()) {
+          absl::StatusOr<bool> should_filter =
+              ShouldFilterFusionOutputIndex(fusion, {i});
+          if (should_filter.ok() && *should_filter) {
+            continue;
+          }
         }
         ShapeIndex subshape_index(shape_index);
         subshape_index.push_back(i);
-        bytes_accessed +=
-            propagate_output_size_to_parent(subshape, subshape_index);
+        TF_ASSIGN_OR_RETURN(float sub_bytes, propagate_output_size_to_parent(
+                                                 subshape, subshape_index));
+        bytes_accessed += sub_bytes;
       }
       return bytes_accessed;
     };
     current_properties_[GetOutputBytesAccessedKey()] = 0;
-    propagate_output_size_to_parent(fusion->shape(), {});
+    TF_RETURN_IF_ERROR(
+        propagate_output_size_to_parent(fusion->shape(), {}).status());
   }
   return absl::OkStatus();
 }
@@ -1248,11 +1261,14 @@ absl::Status HloCostAnalysis::FusionProcessOperandBytesRead(
   for (int64_t i = 0; i < fusion->fused_parameters().size(); ++i) {
     const HloInstruction* operand = fusion->fused_parameter(i);
     int64_t operand_size = 0;
-    if (ShouldFilterFusionInput(fusion, i)) {
-      current_properties_.set_operand_bytes_accessed(i, operand_size);
-      current_properties_.set_operand_utilization(
-          i, hlo_properties_[operand][kUtilizationKey]);
-      continue;
+    if (!operand->shape().IsTuple()) {
+      absl::StatusOr<bool> should_filter = ShouldFilterFusionInput(fusion, i);
+      if (should_filter.ok() && *should_filter) {
+        current_properties_.set_operand_bytes_accessed(i, operand_size);
+        current_properties_.set_operand_utilization(
+            i, hlo_properties_[operand][kUtilizationKey]);
+        continue;
+      }
     }
     if (!operand->shape().IsTuple()) {
       operand_size = FusionParameterReadBytes(operand);
