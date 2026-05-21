@@ -1269,8 +1269,17 @@ PJRT_Error* PJRT_Client_DefaultDeviceAssignment(
       "PJRT_Client_DefaultAssignment_Args",
       PJRT_Client_DefaultDeviceAssignment_Args_STRUCT_SIZE, args->struct_size));
 
-  const int replicas = args->num_replicas;
-  const int partitions = args->num_partitions;
+  if (args->num_replicas <= 0 || args->num_partitions <= 0) {
+    absl::Status status = absl::InvalidArgumentError(
+        absl::StrCat(__func__,
+                     ": `num_replicas` and `num_partitions` must be "
+                     "positive, got ",
+                     args->num_replicas, " and ", args->num_partitions));
+    return StatusToPjRtError(status);
+  }
+
+  const size_t replicas = args->num_replicas;
+  const size_t partitions = args->num_partitions;
   const size_t buffer_size = args->default_assignment_size;
   if (buffer_size < replicas * partitions) {
     absl::Status status = absl::FailedPreconditionError(
