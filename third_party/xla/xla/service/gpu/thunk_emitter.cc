@@ -1398,8 +1398,7 @@ AsyncThunkSequence ThunkEmitter::EmitFusion(const HloFusionInstruction* instr) {
     auto custom_name = GetCustomFusionConfigName(instr);
     if (custom_name.has_value() &&
         *custom_name == kDynamicSliceFusionConfigName) {
-      ASSIGN_OR_RETURN(auto thunks, EmitDynamicSliceFusionV2(instr));
-      return AsyncThunkSequence(std::move(thunks));
+      return EmitDynamicSliceFusionV2(instr);
     }
   }
 
@@ -1422,7 +1421,7 @@ AsyncThunkSequence ThunkEmitter::EmitFusion(const HloFusionInstruction* instr) {
   return std::move(result.thunks);
 }
 
-absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDynamicSliceFusionV2(
+AsyncThunkSequence ThunkEmitter::EmitDynamicSliceFusionV2(
     const HloFusionInstruction* instr) {
   const HloComputation* body = instr->fused_instructions_computation();
 
@@ -1496,23 +1495,25 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDynamicSliceFusionV2(
 
   auto overrides_cleanup = InstallAllocationOverrides(std::move(overrides));
 
-  ASSIGN_OR_RETURN(ThunkSequence embedded_thunks,
-                   std::move(EmitHloInstruction(hero)).Await());
-
-  auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
+  Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
       instr, ir_emitter_context_->GetNextThunkId());
-
   bool verify_offsets =
       ir_emitter_context_->debug_options()
           .xla_gpu_experimental_dynamic_slice_fusion_verify_offsets();
 
-  auto dsf_thunk = std::make_unique<DynamicSliceFusionV2Thunk>(
-      thunk_info, std::move(parameters), std::move(results),
-      std::move(parameter_buffers), std::move(result_buffers),
-      std::move(embedded_allocations), std::move(embedded_thunks),
-      verify_offsets);
-
-  return ThunkSequence::Of(std::move(dsf_thunk));
+  return EmitHloInstruction(hero).Map(
+      [thunk_info = std::move(thunk_info), results = std::move(results),
+       result_buffers = std::move(result_buffers),
+       parameters = std::move(parameters),
+       parameter_buffers = std::move(parameter_buffers),
+       embedded_allocations = std::move(embedded_allocations),
+       verify_offsets](ThunkSequence embedded_thunks) mutable {
+        return ThunkSequence::Of(std::make_unique<DynamicSliceFusionV2Thunk>(
+            std::move(thunk_info), std::move(parameters), std::move(results),
+            std::move(parameter_buffers), std::move(result_buffers),
+            std::move(embedded_allocations), std::move(embedded_thunks),
+            verify_offsets));
+      });
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopy(

@@ -217,7 +217,7 @@ class ThunkEmitter {
 
   absl::Status AssertNonDeterminismIsOkay(const std::string& op_name);
 
-  absl::StatusOr<ThunkSequence> EmitDynamicSliceFusionV2(
+  AsyncThunkSequence EmitDynamicSliceFusionV2(
       const HloFusionInstruction* instr);
 
   absl::StatusOr<BufferAllocation::Slice> GetAllocationSliceForHlo(
