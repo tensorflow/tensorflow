@@ -1662,16 +1662,6 @@ cc_library(
 )
 
 cc_library(
-    name = "nvml_lock",
-    srcs = ["nvml_lock.cc"],
-    hdrs = ["nvml_lock.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "@com_google_absl//absl/synchronization",
-    ],
-)
-
-cc_library(
     name = "cuda_executor_lib",
     srcs = ["cuda_executor.cc"],
     hdrs = [":cuda_executor"],
@@ -1698,7 +1688,6 @@ cc_library(
         ":cuda_vmm_allocator",
         ":cudnn_api_wrappers",
         ":host_callback_registry",
-        ":nvml_lock",
         ":tma_util",
         "//xla:debug_options_flags",
         "//xla:util",
