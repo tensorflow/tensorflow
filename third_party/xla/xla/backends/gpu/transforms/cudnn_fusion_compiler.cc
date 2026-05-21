@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cudnn/cudnn_version.h"
 #include "xla/backends/gpu/transforms/block_scaling_rewriter.h"
 #include "xla/codegen/emitters/computation_fingerprint.h"
@@ -307,8 +308,7 @@ class GemmDimensionAdapter {
       VLOG(3) << "Non-default algorithm is not supported.";
       return std::nullopt;
     }
-    TF_ASSIGN_OR_RETURN(auto analysis,
-                        TritonFusionAnalysis::Execute(computation));
+    ASSIGN_OR_RETURN(auto analysis, TritonFusionAnalysis::Execute(computation));
     return GemmDimensionAdapter{*dot, std::move(analysis)};
   }
 
@@ -646,13 +646,12 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
   absl::flat_hash_map<const HloInstruction*,
                       std::shared_ptr<graph::Tensor_attributes>>
       hlo_to_cudnn;
-  TF_ASSIGN_OR_RETURN(std::optional<GemmDimensionAdapter> gemm_adapter,
-                      GemmDimensionAdapter::Create(computation));
-  TF_ASSIGN_OR_RETURN(std::optional<ConvDimensionAdapter> conv_adapter,
-                      ConvDimensionAdapter::Create(fusion, computation));
-  TF_ASSIGN_OR_RETURN(
-      std::optional<RaggedDotDimensionAdapter> ragged_dot_adapter,
-      RaggedDotDimensionAdapter::Create(fusion, computation));
+  ASSIGN_OR_RETURN(std::optional<GemmDimensionAdapter> gemm_adapter,
+                   GemmDimensionAdapter::Create(computation));
+  ASSIGN_OR_RETURN(std::optional<ConvDimensionAdapter> conv_adapter,
+                   ConvDimensionAdapter::Create(fusion, computation));
+  ASSIGN_OR_RETURN(std::optional<RaggedDotDimensionAdapter> ragged_dot_adapter,
+                   RaggedDotDimensionAdapter::Create(fusion, computation));
   if (!gemm_adapter.has_value() && !conv_adapter.has_value() &&
       !ragged_dot_adapter.has_value()) {
     VLOG(3) << "No dot or conv or ragged_dot found inside cudnn fusion.";
@@ -1028,12 +1027,12 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
 // Creates a cuDNN graph, queries cuDNN whether it is supported.
 absl::StatusOr<se::gpu::CudnnGraph> PrepareGraph(
     se::dnn::DnnSupport& dnn_support, const HloFusionInstruction& hlo) {
-  TF_ASSIGN_OR_RETURN(std::optional<se::gpu::CudnnGraph> graph,
-                      HloFusionToCuDnnGraph(hlo));
+  ASSIGN_OR_RETURN(std::optional<se::gpu::CudnnGraph> graph,
+                   HloFusionToCuDnnGraph(hlo));
   if (!graph.has_value()) {
     return absl::InternalError("Construction of cuDNN graph failed.");
   }
-  TF_RETURN_IF_ERROR(graph->Prepare(
+  RETURN_IF_ERROR(graph->Prepare(
       dnn_support, se::EngineOptions{
                        RequireDeterminism(hlo.GetModule()->config()),
                        /*allow_tf32=*/true, /*require_command_buffer=*/false}));
@@ -1058,7 +1057,7 @@ absl::StatusOr<HloInstruction*> AddWorkspace(HloInstruction& fusion,
     operands.push_back(custom_call);
     output_tuple =
         computation->AddInstruction(HloInstruction::CreateTuple(operands));
-    TF_RETURN_IF_ERROR(computation->ReplaceInstructionWithDifferentShape(
+    RETURN_IF_ERROR(computation->ReplaceInstructionWithDifferentShape(
         computation->root_instruction(), output_tuple));
   } else {
     output_tuple = computation->AddInstruction(HloInstruction::CreateTuple(
@@ -1067,16 +1066,15 @@ absl::StatusOr<HloInstruction*> AddWorkspace(HloInstruction& fusion,
   computation->set_root_instruction(output_tuple, true);
   HloInstruction* new_fusion = fusion.parent()->AddInstruction(
       fusion.CloneWithNewShape(output_tuple->shape()));
-  TF_RETURN_IF_ERROR(new_fusion->CopyAllControlDepsFrom(&fusion));
-  TF_RETURN_IF_ERROR(fusion.DropAllControlDeps());
+  RETURN_IF_ERROR(new_fusion->CopyAllControlDepsFrom(&fusion));
+  RETURN_IF_ERROR(fusion.DropAllControlDeps());
   if (is_tuple_output) {
-    TF_RETURN_IF_ERROR(fusion.parent()->ReplaceInstructionWithDifferentShape(
+    RETURN_IF_ERROR(fusion.parent()->ReplaceInstructionWithDifferentShape(
         &fusion, new_fusion));
   } else {
-    TF_RETURN_IF_ERROR(
-        fusion.ReplaceAllUsesWith(fusion.parent()->AddInstruction(
-            HloInstruction::CreateGetTupleElement(new_fusion, 0))));
-    TF_RETURN_IF_ERROR(fusion.parent()->RemoveInstruction(&fusion));
+    RETURN_IF_ERROR(fusion.ReplaceAllUsesWith(fusion.parent()->AddInstruction(
+        HloInstruction::CreateGetTupleElement(new_fusion, 0))));
+    RETURN_IF_ERROR(fusion.parent()->RemoveInstruction(&fusion));
   }
   return new_fusion;
 }
@@ -1088,8 +1086,7 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
       : dnn_support_(dnn_support), compilation_results_(compilation_results) {}
 
   absl::Status HandleFusion(HloInstruction* hlo) override {
-    TF_ASSIGN_OR_RETURN(auto gpu_config,
-                        hlo->backend_config<GpuBackendConfig>());
+    ASSIGN_OR_RETURN(auto gpu_config, hlo->backend_config<GpuBackendConfig>());
     const FusionBackendConfig& fusion_backend_config =
         gpu_config.fusion_backend_config();
     if (fusion_backend_config.kind() != kCuDnnFusionKind) {
@@ -1114,7 +1111,7 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
         gpu_config.fusion_backend_config();
 
     auto compile_graph = [&]() -> absl::StatusOr<se::gpu::CudnnGraph> {
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           se::gpu::CudnnGraph graph,
           PrepareGraph(dnn_support_, *DynCast<HloFusionInstruction>(hlo)));
 
@@ -1127,7 +1124,7 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
         if (plan_id >= graph.Graph().get_execution_plan_count()) {
           return absl::InternalError("cuDNN graph plan does not exist.");
         }
-        TF_RETURN_IF_ERROR(graph.Build(dnn_support_, plan_id));
+        RETURN_IF_ERROR(graph.Build(dnn_support_, plan_id));
       } else {
         // Build plans one by one till first successful when no plan_id was
         // provided.
@@ -1146,7 +1143,7 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
             gpu_config.mutable_fusion_backend_config()
                 ->mutable_cudnn_fusion_config();
         cudnn_config->set_plan_id(plan_id);
-        TF_RETURN_IF_ERROR(hlo->set_backend_config(gpu_config));
+        RETURN_IF_ERROR(hlo->set_backend_config(gpu_config));
       }
       return graph;
     };
@@ -1165,9 +1162,8 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
           hlo->fused_instructions_computation(), {});
       if (auto it = compilation_results_.find(fingerprint);
           it == compilation_results_.cend()) {
-        TF_ASSIGN_OR_RETURN(const se::gpu::CudnnGraph graph, compile_graph());
-        TF_ASSIGN_OR_RETURN(const std::string serialized,
-                            serialize_graph(graph));
+        ASSIGN_OR_RETURN(const se::gpu::CudnnGraph graph, compile_graph());
+        ASSIGN_OR_RETURN(const std::string serialized, serialize_graph(graph));
         compilation_results_.insert(it, {fingerprint, serialized});
       }
       return absl::OkStatus();
@@ -1175,7 +1171,7 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
 
     auto add_workspace = [&](const int64_t workspace_size) {
       if (workspace_size > 0) {
-        TF_ASSIGN_OR_RETURN(hlo, AddWorkspace(*hlo, workspace_size));
+        ASSIGN_OR_RETURN(hlo, AddWorkspace(*hlo, workspace_size));
         SetVisited(*hlo);
       }
       return absl::OkStatus();
@@ -1188,17 +1184,17 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
     auto workspace_size_it =
         workspace_sizes_.find(fingerprint_without_workspace);
     if (workspace_size_it == workspace_sizes_.cend()) {
-      TF_ASSIGN_OR_RETURN(const se::gpu::CudnnGraph graph, compile_graph());
+      ASSIGN_OR_RETURN(const se::gpu::CudnnGraph graph, compile_graph());
       const int64_t workspace_size = graph.Graph().get_workspace_size();
       workspace_sizes_.insert(workspace_size_it,
                               {fingerprint_without_workspace, workspace_size});
-      TF_RETURN_IF_ERROR(add_workspace(workspace_size));
-      TF_ASSIGN_OR_RETURN(const std::string serialized, serialize_graph(graph));
+      RETURN_IF_ERROR(add_workspace(workspace_size));
+      ASSIGN_OR_RETURN(const std::string serialized, serialize_graph(graph));
       compilation_results_[emitters::GetComputationFingerprint(
           hlo->fused_instructions_computation(), {})] = serialized;
     } else {
       VLOG(4) << "Cache hit.";
-      TF_RETURN_IF_ERROR(add_workspace(workspace_size_it->second));
+      RETURN_IF_ERROR(add_workspace(workspace_size_it->second));
     }
 
     MarkAsChanged();

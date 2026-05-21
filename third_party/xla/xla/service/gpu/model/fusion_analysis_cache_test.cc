@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -47,8 +48,7 @@ TEST_F(FusionAnalysisCacheTest, CachesAndInvalidates) {
     ENTRY e {
       ROOT r.1 = f32[1000] fusion(), kind=kLoop, calls=f
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto* computation = module->GetComputationWithName("f");
   auto* broadcast = computation->GetInstructionWithName("b0");
@@ -87,8 +87,7 @@ TEST_F(FusionAnalysisCacheTest, CachesAndInvalidatesProducerConsumerFusions) {
       f0 = f32[] fusion(), kind=kInput, calls=f
       ROOT n0 = f32[] negate(f0)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto* fusion = module->entry_computation()->GetInstructionWithName("f0");
   auto* neg = module->entry_computation()->GetInstructionWithName("n0");

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -39,7 +40,7 @@ namespace {
 
 absl::StatusOr<HloComputation*> BuildConditionComputation(
     HloScanInstruction* scan, const Shape& loop_state_shape) {
-  TF_ASSIGN_OR_RETURN(int64_t scan_dim_size, scan->GetScanDimSize());
+  ASSIGN_OR_RETURN(int64_t scan_dim_size, scan->GetScanDimSize());
 
   HloComputation::Builder builder(absl::StrCat(scan->name(), "_condition"));
   auto* param = builder.AddInstruction(
@@ -147,7 +148,7 @@ absl::StatusOr<HloComputation*> BuildBodyComputation(
   } else {
     num_outputs = 1 - num_carries;
   }
-  TF_ASSIGN_OR_RETURN(int64_t scan_dim_size, scan->GetScanDimSize());
+  ASSIGN_OR_RETURN(int64_t scan_dim_size, scan->GetScanDimSize());
   Shape scalar_shape = ShapeUtil::MakeShape(S64, {});
 
   HloComputation::Builder builder(absl::StrCat(scan->name(), "_body"));
@@ -230,7 +231,7 @@ absl::StatusOr<HloComputation*> BuildBodyComputation(
       scan->parent()->parent()->AddEmbeddedComputation(builder.Build());
 
   // Inline the call instruction within body_computation
-  TF_RETURN_IF_ERROR(CallInliner::Inline(call).status());
+  RETURN_IF_ERROR(CallInliner::Inline(call).status());
   return body_computation;
 }
 
@@ -285,11 +286,11 @@ absl::StatusOr<HloInstruction*> ScanExpander::ExpandInstruction(
   }
   Shape loop_state_shape = ShapeUtil::MakeTupleShape(loop_state_shapes);
 
-  TF_ASSIGN_OR_RETURN(HloComputation * condition_computation,
-                      BuildConditionComputation(scan, loop_state_shape));
+  ASSIGN_OR_RETURN(HloComputation * condition_computation,
+                   BuildConditionComputation(scan, loop_state_shape));
 
-  TF_ASSIGN_OR_RETURN(HloComputation * body_computation,
-                      BuildBodyComputation(scan, loop_state_shape));
+  ASSIGN_OR_RETURN(HloComputation * body_computation,
+                   BuildBodyComputation(scan, loop_state_shape));
 
   // 3. Build Init Loop State
   std::vector<HloInstruction*> init_values;

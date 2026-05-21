@@ -103,7 +103,6 @@ class BuildType(enum.Enum):
   XLA_LINUX_X86_GPU_8X_H100_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_ONEAPI_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_ROCM_GITHUB_ACTIONS = enum.auto()
-  XLA_LINUX_X86_GPU_ROCM_LOCAL_SYSROOT_GITHUB_ACTIONS = enum.auto()
 
   # Presubmit builds for regression testing.
   XLA_LINUX_ARM64_CPU_48_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
@@ -545,18 +544,6 @@ Build(
     type_=BuildType.XLA_LINUX_X86_GPU_ROCM_GITHUB_ACTIONS,
     repo="openxla/xla",
     configs=("warnings", "rbe_linux_cpu", "rocm_clang_hermetic"),
-    target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
-    build_tag_filters=rocm_tag_filter,
-    test_tag_filters=rocm_tag_filter,
-    options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
-    subcommand="build",
-)
-
-# ROCm builds - hermetic LLVM with local sysroot
-Build(
-    type_=BuildType.XLA_LINUX_X86_GPU_ROCM_LOCAL_SYSROOT_GITHUB_ACTIONS,
-    repo="openxla/xla",
-    configs=("warnings", "rbe_linux_cpu", "rocm_clang_hermetic_local_sysroot"),
     target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
     build_tag_filters=rocm_tag_filter,
     test_tag_filters=rocm_tag_filter,

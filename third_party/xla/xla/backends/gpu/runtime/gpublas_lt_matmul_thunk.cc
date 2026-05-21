@@ -20,6 +20,8 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
+#include <vector>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -168,24 +170,45 @@ absl::Status CublasLtMatmulThunk::ExecuteOnStreamInternal(
     // Grouped matmul execution
     TF_ASSIGN_OR_RETURN(auto* plan, GetCachedGroupedMatmulPlan(params));
     return plan->ExecuteOnStream(
-        stream, allocs.GetDeviceAddress(a_.slice),
-        allocs.GetDeviceAddress(b_.slice), allocs.GetDeviceAddress(c_.slice),
-        allocs.GetDeviceAddress(d_.slice),
-        allocs.GetDeviceAddress(group_sizes_->slice), bias, aux, a_scale,
-        b_scale, c_scale, d_scale, d_amax, workspace);
+        stream,
+        se::gpu::BlasLt::MemoryArgs{
+            allocs.GetDeviceAddress(a_.slice),
+            allocs.GetDeviceAddress(b_.slice),
+            allocs.GetDeviceAddress(c_.slice),
+            allocs.GetDeviceAddress(d_.slice),
+            bias,
+            aux,
+            a_scale,
+            b_scale,
+            c_scale,
+            d_scale,
+            {allocs.GetDeviceAddress(group_sizes_->slice)},
+            workspace},
+        /* profile_result */ nullptr);
   }
   // Regular matmul execution
   TF_ASSIGN_OR_RETURN(auto* plan, GetCachedMatmulPlan(params));
   return plan->ExecuteOnStream(
-      stream, allocs.GetDeviceAddress(a_.slice),
-      allocs.GetDeviceAddress(b_.slice), allocs.GetDeviceAddress(c_.slice),
-      allocs.GetDeviceAddress(d_.slice), bias, aux, a_scale, b_scale, c_scale,
-      d_scale, d_amax, workspace);
+      stream,
+      se::gpu::BlasLt::MemoryArgs{allocs.GetDeviceAddress(a_.slice),
+                                  allocs.GetDeviceAddress(b_.slice),
+                                  allocs.GetDeviceAddress(c_.slice),
+                                  allocs.GetDeviceAddress(d_.slice),
+                                  bias,
+                                  aux,
+                                  a_scale,
+                                  b_scale,
+                                  c_scale,
+                                  d_scale,
+                                  {d_amax},
+                                  workspace},
+      /* profile_result */ nullptr);
 }
 
 absl::StatusOr<se::gpu::BlasLt::MatmulPlan*>
 CublasLtMatmulThunk::GetCachedMatmulPlan(const ExecuteParams& params) {
-  auto* blas_lt = se::gpu::BlasLt::Get(params.stream);
+  TF_ASSIGN_OR_RETURN(auto* blas_lt,
+                      se::gpu::BlasLt::Get(params.stream->parent()));
   auto create = [&]() -> absl::StatusOr<se::gpu::BlasLt::MatmulPlanPtr> {
     VLOG(2) << this << ": Adding new MatmulPlan for stream: " << params.stream
             << " instr: " << canonical_hlo_;
@@ -207,9 +230,8 @@ CublasLtMatmulThunk::GetCachedMatmulPlan(const ExecuteParams& params) {
     // algorithms, it's enough to get the default one only.
     int64_t num_algorithms =
         algorithm_idx_ == 0 ? 1 : GemmConfig::kNumAlgorithms;
-    TF_ASSIGN_OR_RETURN(
-        auto algorithms,
-        plan->GetAlgorithms(params.stream, num_algorithms, max_workspace));
+    TF_ASSIGN_OR_RETURN(auto algorithms,
+                        plan->GetAlgorithms(num_algorithms, max_workspace));
 
     if (algorithms.empty()) {
       return absl::InternalError(
@@ -223,7 +245,8 @@ CublasLtMatmulThunk::GetCachedMatmulPlan(const ExecuteParams& params) {
 
 absl::StatusOr<se::gpu::BlasLt::MatmulPlan*>
 CublasLtMatmulThunk::GetCachedGroupedMatmulPlan(const ExecuteParams& params) {
-  auto* blas_lt = se::gpu::BlasLt::Get(params.stream);
+  TF_ASSIGN_OR_RETURN(auto* blas_lt,
+                      se::gpu::BlasLt::Get(params.stream->parent()));
   auto create = [&]() -> absl::StatusOr<se::gpu::BlasLt::MatmulPlanPtr> {
     VLOG(2) << this
             << ": Adding new Grouped MatmulPlan for stream: " << params.stream
@@ -246,9 +269,8 @@ CublasLtMatmulThunk::GetCachedGroupedMatmulPlan(const ExecuteParams& params) {
     // algorithms, it's enough to get the default one only.
     int64_t num_algorithms =
         algorithm_idx_ == 0 ? 1 : GemmConfig::kNumAlgorithms;
-    TF_ASSIGN_OR_RETURN(
-        auto algorithms,
-        plan->GetAlgorithms(params.stream, num_algorithms, max_workspace));
+    TF_ASSIGN_OR_RETURN(auto algorithms,
+                        plan->GetAlgorithms(num_algorithms, max_workspace));
 
     if (algorithms.empty()) {
       return absl::InternalError(

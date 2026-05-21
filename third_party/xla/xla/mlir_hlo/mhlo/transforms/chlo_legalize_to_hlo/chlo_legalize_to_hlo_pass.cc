@@ -153,7 +153,7 @@ struct ChloLegalizeToHighLevelMhloPass
           });
     }
     conversionTarget.addIllegalOp<chlo::TopKOp, chlo::ErfOp, chlo::RaggedDotOp,
-                                  chlo::ScanOp>();
+                                  chlo::ScanOp, chlo::MulhiOp>();
 
     if (failed(applyPartialConversion(getOperation(), conversionTarget,
                                       std::move(conversionPatterns)))) {
@@ -334,6 +334,11 @@ LogicalResult convertAsinhChloToMhlo(chlo::AsinhOp op,
   rewriter.replaceOpWithNewOp<mhlo::AsinhOp>(op, op->getOperands());
   return success();
 }
+LogicalResult convertMulhiChloToMhlo(chlo::MulhiOp op,
+                                     PatternRewriter& rewriter) {
+  rewriter.replaceOpWithNewOp<mhlo::MulhiOp>(op, op->getOperands());
+  return success();
+}
 
 }  // namespace
 
@@ -387,6 +392,7 @@ void populateChloToHighLevelMhloOpPatterns(
   }
   patterns->add(mhlo::convertRaggedDotChloToMhlo, kBenefit);
   patterns->add(mhlo::convertScanChloToMhlo, kBenefit);
+  patterns->add(mhlo::convertMulhiChloToMhlo, kBenefit);
   populateWithGenerated(*patterns);
 }
 

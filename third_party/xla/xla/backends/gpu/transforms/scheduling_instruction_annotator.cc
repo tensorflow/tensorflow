@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -63,8 +64,8 @@ absl::StatusOr<bool> SchedulingInstructionAnnotator::RunImpl(
   // propagated from calles to callers.
   for (HloComputation* computation :
        module->MakeComputationPostOrder(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(bool result,
-                        AnnotateSchedulingInstructionNames(*computation));
+    ASSIGN_OR_RETURN(bool result,
+                     AnnotateSchedulingInstructionNames(*computation));
     changed |= result;
   }
 

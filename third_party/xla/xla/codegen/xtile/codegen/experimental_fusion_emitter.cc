@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -60,6 +61,7 @@ limitations under the License.
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"  // IWYU pragma: keep
 #include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -198,8 +200,7 @@ absl::StatusOr<TensorValue> EmitConcatenate(
 
   ASSIGN_OR_RETURN(TileInfo tile_info,
                    TileInfo::Construct(emitter_ctx, tiled_concat));
-  TF_RETURN_IF_ERROR(
-      CheckConcatenateOperands(*hlo_concat, concat_dim_tile_size));
+  RETURN_IF_ERROR(CheckConcatenateOperands(*hlo_concat, concat_dim_tile_size));
   Type result_type =
       mlir::RankedTensorType::get(tile_sizes, tile_info.storage_type());
 
@@ -825,8 +826,10 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
     }
     ASSIGN_OR_RETURN(TileInfo tile_info,
                      TileInfo::Construct(emitter_ctx, tiled_hlo));
-    TensorValue parameter = EmitParameterExtract(
-        b, tile_info, emitter_ctx.entry_func().getArgument(arg_index));
+    ASSIGN_OR_RETURN(
+        TensorValue parameter,
+        EmitParameterExtract(b, tile_info,
+                             emitter_ctx.entry_func().getArgument(arg_index)));
 
     // Workaround(i1_to_i8_workaround)
     // Some types are stored using different types, e.g. i1 is stored in memory
@@ -867,6 +870,13 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
   }
   // Please keep the cases in alphabetical order.
   switch (hlo->opcode()) {
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kAllGatherDone: {
+      // AllGatherStart and AllGatherDone are no-ops.
+      // Tile extraction handles the data movement.
+      return emitter_ctx.TiledHloToTensorValue(*tiled_hlo.operand(0));
+    }
     case (HloOpcode::kAllReduceStart): {
       const HloComputation* computation =
           fusion.fused_instructions_computation();
@@ -1042,6 +1052,68 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
   return absl::OkStatus();
 }
 
+// Implementation for the experimental tiling space.
+class TileRequirementsVisitor : public DefaultTileRequirementsVisitor {
+ public:
+  explicit TileRequirementsVisitor(const ge::TiledHloComputation& computation) {
+    for (const auto& tiled_hlo : computation.tiled_hlo_instructions()) {
+      PopulateMap(tiled_hlo.get());
+    }
+  }
+
+  absl::StatusOr<llvm::SmallVector<int64_t>> RequiredReplicaIdBounds(
+      const HloInstruction& instr) const override {
+    ASSIGN_OR_RETURN(auto tiled_hlo, LookupTiledHlo(&instr));
+    llvm::SmallVector<int64_t> bounds;
+    bounds.reserve(tiled_hlo->tile().replica_ids().size());
+    for (const auto& replica_id : tiled_hlo->tile().replica_ids()) {
+      SymbolicExpr upper_bound = replica_id.upper_bound.Canonicalize();
+      if (upper_bound.GetType() != SymbolicExprType::kConstant) {
+        return absl::InternalError(
+            absl::StrCat("Replica ID bound expression is not a constant: ",
+                         upper_bound.ToString()));
+      }
+      bounds.push_back(upper_bound.GetValue());
+    }
+    return bounds;
+  }
+
+ private:
+  // Look up the instruction in the tiled HLO map.
+  // For parameters to nested fusions, we walk up the parameter chain to find
+  // the outermost operand index.
+  absl::StatusOr<const ge::TiledHloInstruction*> LookupTiledHlo(
+      const HloInstruction* original_instr) const {
+    auto it = hlo_to_tiled_.find(original_instr);
+    if (it != hlo_to_tiled_.end()) {
+      return it->second;
+    }
+    if (original_instr->opcode() == HloOpcode::kParameter) {
+      if (auto* fusion = original_instr->parent()->FusionInstruction()) {
+        const HloInstruction* resolved_instr =
+            fusion->operand(original_instr->parameter_number());
+        return LookupTiledHlo(resolved_instr);
+      }
+    }
+    return absl::InternalError(absl::StrCat(
+        "InternalError: HLO instruction not found in tiled HLO map: ",
+        original_instr->ToString()));
+  }
+
+  void PopulateMap(const ge::TiledHloInstruction* tiled_hlo) {
+    hlo_to_tiled_[tiled_hlo->hlo()] = tiled_hlo;
+    for (const auto& region : tiled_hlo->hlo_regions()) {
+      for (const auto& region_instruction : region) {
+        PopulateMap(region_instruction.get());
+      }
+    }
+  }
+
+  absl::flat_hash_map<const HloInstruction*,
+                      const xla::gpu::experimental::TiledHloInstruction*>
+      hlo_to_tiled_;
+};
+
 }  // namespace
 
 // TODO(b/447133106): Contrary to the name, this function still does a lot of
@@ -1065,7 +1137,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
 
   // Compute function argument types.
   ASSIGN_OR_RETURN(SmallVector<Type> fn_arg_types,
-                   GetFnArgTypes(b, fusion, opaque_args_types, gpu_cc));
+                   GetFnArgTypes(b, fusion, opaque_args_types, gpu_cc,
+                                 TileRequirementsVisitor(tiled_computation)));
   // Metadata arguments are opaque to the tiling infra.
   llvm::SmallVector<mlir::NamedAttribute> named_attributes{b.getNamedAttr(
       "num_opaque_args", b.getI32IntegerAttr(opaque_args_types.size()))};
@@ -1076,7 +1149,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
   b.setInsertionPointToStart(&fn.front());
 
   ASSIGN_OR_RETURN(auto schedule, GetSchedule(tiled_computation));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       EmitGeneric(b, fusion, tiled_computation, schedule, fn, &mlir_context));
 
   b.create<xtile::EntryFuncReturnOp>();
@@ -1093,7 +1166,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     mlir::PassManager pm(&mlir_context);
     pm.addPass(xtile::createVerifyLegalXTileOpsPass());
     tsl::StatusScopedDiagnosticHandler diagnostic_handler(&mlir_context);
-    TF_RETURN_IF_ERROR(diagnostic_handler.consumeStatus(pm.run(*xtile_module)));
+    RETURN_IF_ERROR(diagnostic_handler.consumeStatus(pm.run(*xtile_module)));
   }
   return xtile_module;
 }
