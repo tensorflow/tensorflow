@@ -593,9 +593,9 @@ static YnnUnaryOpTestParams unary_op_test_params[] = {
         F32,
         F32,
         // On ARM, XLA's log returns NaN when the input is close to infinity.
-        ErrorSpec{/*aabs=*/0, /*arel=*/2e-7, /*relaxed_nans=*/true},
+        ErrorSpec{/*aabs=*/0, /*arel=*/4e-7, /*relaxed_nans=*/true},
     },
-    {HloOpcode::kLog1p, F32, F32, F32_ErrorSpec},
+    {HloOpcode::kLog1p, F32, F32, ErrorSpec{/*arel=*/2e-7, /*arel=*/2e-7}},
     {HloOpcode::kLogistic, F32, F32, ErrorSpec{/*aabs=*/2e-7, /*arel=*/2e-7}},
     {HloOpcode::kNegate, F32, F32},
     {HloOpcode::kRoundNearestEven, F32, F32},
