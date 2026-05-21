@@ -29,9 +29,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
+#include "third_party/gloop/util/status/ret_check.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/IR/DataLayout.h"
 #include "xla/literal.h"
@@ -228,8 +230,8 @@ absl::Status GpuTransferManager::ReadDynamicShapes(
   }
 
   device_shape->clear_dynamic_dimensions();
-  TF_RET_CHECK(ShapeUtil::DynamicShapeIsCompatible(*device_shape,
-                                                   original_device_shape));
+  RET_CHECK(ShapeUtil::DynamicShapeIsCompatible(*device_shape,
+                                                original_device_shape));
   return absl::OkStatus();
 }
 

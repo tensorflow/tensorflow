@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/log/scoped_mock_log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
@@ -426,7 +427,7 @@ TEST_F(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
 
   HloModuleConfig config = GetModuleConfigForTest();
   // Check that it writes the results on the first compilation.
-  TF_EXPECT_OK(GetOptimizedModuleForExecutable(kHloText, config).status());
+  EXPECT_OK(GetOptimizedModuleForExecutable(kHloText, config).status());
   {
     ASSERT_OK_AND_ASSIGN(std::string autotune_results_str,
                          ReadNonEmptyFile(xla_gpu_dump_autotune_results_to_));
@@ -437,11 +438,11 @@ TEST_F(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
 
   // Overwrite results with an invalid textproto.
   tsl::Env* env = tsl::Env::Default();
-  TF_EXPECT_OK(tsl::WriteStringToFile(env, xla_gpu_dump_autotune_results_to_,
-                                      kInvalidTextProto));
+  EXPECT_OK(tsl::WriteStringToFile(env, xla_gpu_dump_autotune_results_to_,
+                                   kInvalidTextProto));
 
   // Check that it writes the results on the second compilation.
-  TF_EXPECT_OK(GetOptimizedModuleForExecutable(kHloText, config).status());
+  EXPECT_OK(GetOptimizedModuleForExecutable(kHloText, config).status());
   {
     ASSERT_OK_AND_ASSIGN(std::string autotune_results_str,
                          ReadNonEmptyFile(xla_gpu_dump_autotune_results_to_));
@@ -452,13 +453,13 @@ TEST_F(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
 }
 
 TEST_F(PersistedAutotuningTest, SingleOperationGetsAutotuned) {
-  TF_EXPECT_OK(GetOptimizedModuleForExecutable(R"(
+  EXPECT_OK(GetOptimizedModuleForExecutable(R"(
 e {
   a = f32[64,128] parameter(0)
   t = f32[128,64] transpose(a), dimensions={1,0}
 })",
-                                               GetModuleConfigForTest())
-                   .status());
+                                            GetModuleConfigForTest())
+                .status());
 
   ASSERT_OK_AND_ASSIGN(std::string autotune_results_str,
                        ReadNonEmptyFile(xla_gpu_dump_autotune_results_to_));
@@ -1664,8 +1665,8 @@ ENTRY %main {
 
   std::string target_file;
   ASSERT_TRUE(tsl::Env::Default()->LocalTempFilename(&target_file));
-  TF_ASSERT_OK(tsl::WriteTextProto(tsl::Env::Default(), target_file,
-                                   gpu_target_config().ToProto()));
+  ASSERT_OK(tsl::WriteTextProto(tsl::Env::Default(), target_file,
+                                gpu_target_config().ToProto()));
   debug_options.set_xla_gpu_target_config_filename(target_file);
   config.set_debug_options(debug_options);
 
@@ -1681,7 +1682,7 @@ ENTRY %main {
   // StartCapturingLogs has to be called even if we expect not to capture any
   // logs.
   mock_log.StartCapturingLogs();
-  TF_ASSERT_OK(compiler()->RunHloPasses(std::move(module), nullptr, nullptr));
+  ASSERT_OK(compiler()->RunHloPasses(std::move(module), nullptr, nullptr));
 }
 
 TEST_F(GpuCompilerTest, CompilingAndCollectingMetadata) {
@@ -1699,8 +1700,8 @@ TEST_F(GpuCompilerTest, CompilingAndCollectingMetadata) {
 
   std::string target_file;
   ASSERT_TRUE(tsl::Env::Default()->LocalTempFilename(&target_file));
-  TF_ASSERT_OK(tsl::WriteTextProto(tsl::Env::Default(), target_file,
-                                   gpu_target_config().ToProto()));
+  ASSERT_OK(tsl::WriteTextProto(tsl::Env::Default(), target_file,
+                                gpu_target_config().ToProto()));
   debug_options.set_xla_gpu_target_config_filename(target_file);
   config.set_debug_options(debug_options);
   ASSERT_OK_AND_ASSIGN(auto exe_module_and_executable,

@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "third_party/gloop/util/status/ret_check.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/StringRef.h"
@@ -207,8 +208,8 @@ absl::StatusOr<TritonKernelSource> EmitTritonFrom(
   }
 
   auto triton_fn = triton_module->lookupSymbol<mlir::triton::FuncOp>(call.name);
-  TF_RET_CHECK(triton_fn) << "Call name not found in the Triton module: "
-                          << call.name;
+  RET_CHECK(triton_fn) << "Call name not found in the Triton module: "
+                       << call.name;
   triton_fn.setName(kernel_name);
 
   return TritonKernelSource(std::move(triton_module));
@@ -332,7 +333,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConstant(
 
   int element_bytes =
       primitive_util::ByteWidth(instr->literal().shape().element_type());
-  TF_RET_CHECK(content.span().size() % element_bytes == 0);
+  RET_CHECK(content.span().size() % element_bytes == 0);
   // Treat packed constants as a byte constant.
   int num_elements = content.span().size() / element_bytes;
 
@@ -530,8 +531,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtMatmulThunk(
                    xla::gpu::gpublas_lt::EpilogueAddsVectorBias(epilogue));
   bool has_matrix_bias = config.beta() != 0;
 
-  TF_RET_CHECK(instr->operand_count() ==
-               2 + int{has_matrix_bias} + int{has_vector_bias});
+  RET_CHECK(instr->operand_count() ==
+            2 + int{has_matrix_bias} + int{has_vector_bias});
 
   ASSIGN_OR_RETURN(bool has_aux_output,
                    xla::gpu::gpublas_lt::EpilogueHasAuxiliaryOutput(epilogue));
@@ -562,9 +563,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtMatmulThunk(
   std::optional<ShapedSlice> workspace_buffer;
   if (instr->shape().IsTuple() &&
       (instr->shape().tuple_shapes().size() - has_aux_output - 1)) {
-    TF_RET_CHECK(
-        (has_aux_output && instr->shape().tuple_shapes().size() == 3) ||
-        (!has_aux_output && instr->shape().tuple_shapes().size() == 2));
+    RET_CHECK((has_aux_output && instr->shape().tuple_shapes().size() == 3) ||
+              (!has_aux_output && instr->shape().tuple_shapes().size() == 2));
     ASSIGN_OR_RETURN(
         workspace_buffer,
         GetShapedSliceForHlo(instr, {instr->shape().tuple_shapes_size() - 1}));
@@ -597,7 +597,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtMatmulThunk(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtMatmulThunkF8(
     const HloCustomCallInstruction* instr) {
-  TF_RET_CHECK(instr->operand_count() > 3 && instr->operand_count() < 8);
+  RET_CHECK(instr->operand_count() > 3 && instr->operand_count() < 8);
   ASSIGN_OR_RETURN(const auto gpu_config,
                    instr->backend_config<xla::gpu::GpuBackendConfig>());
   const xla::gpu::GemmBackendConfig& config = gpu_config.gemm_backend_config();
@@ -606,7 +606,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtMatmulThunkF8(
   ASSIGN_OR_RETURN(bool has_vector_bias,
                    xla::gpu::gpublas_lt::EpilogueAddsVectorBias(epilogue));
 
-  TF_RET_CHECK(instr->shape().IsTuple());
+  RET_CHECK(instr->shape().IsTuple());
   xla::ShapeIndex output_index = xla::ShapeIndex{0};
 
   ASSIGN_OR_RETURN(bool has_aux_output,
@@ -661,7 +661,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtMatmulThunkF8(
           ? config.selected_algorithm()
           : 0;
 
-  TF_RET_CHECK(!has_aux_output);
+  RET_CHECK(!has_aux_output);
   std::optional<ShapedSlice> workspace_buffer;
   if (instr->shape().tuple_shapes().size() - config.damax_output() == 2) {
     ASSIGN_OR_RETURN(
@@ -695,8 +695,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtGroupedMatmulThunk(
   bool has_matrix_bias = config.beta() != 0;
   ASSIGN_OR_RETURN(bool has_vector_bias,
                    xla::gpu::gpublas_lt::EpilogueAddsVectorBias(epilogue));
-  TF_RET_CHECK(instr->operand_count() ==
-               3 + int{has_matrix_bias} + int{has_vector_bias});
+  RET_CHECK(instr->operand_count() ==
+            3 + int{has_matrix_bias} + int{has_vector_bias});
 
   xla::ShapeIndex output_index =
       instr->shape().IsTuple() ? xla::ShapeIndex{0} : xla::ShapeIndex{};
@@ -760,13 +760,13 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtGroupedMatmulThunk(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtMatmulThunkMx(
     const HloCustomCallInstruction* instr) {
-  TF_RET_CHECK(instr->operand_count() == 4);
+  RET_CHECK(instr->operand_count() == 4);
   ASSIGN_OR_RETURN(const auto gpu_config,
                    instr->backend_config<xla::gpu::GpuBackendConfig>());
   const xla::gpu::GemmBackendConfig& config = gpu_config.gemm_backend_config();
   xla::gpu::GemmBackendConfig_Epilogue epilogue = config.epilogue();
 
-  TF_RET_CHECK(instr->shape().IsTuple());
+  RET_CHECK(instr->shape().IsTuple());
   xla::ShapeIndex output_index = xla::ShapeIndex{0};
 
   ASSIGN_OR_RETURN(ShapedSlice a, GetShapedSliceForHlo(instr->operand(0)));
@@ -1109,10 +1109,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFftThunk(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTriangularSolveCustomCall(
     const HloInstruction* instr) {
-  TF_RET_CHECK(instr->operand_count() == 2);
+  RET_CHECK(instr->operand_count() == 2);
   auto operands = instr->operands();
-  TF_RET_CHECK(instr->shape().IsTuple() &&
-               instr->shape().tuple_shapes().size() == 2);
+  RET_CHECK(instr->shape().IsTuple() &&
+            instr->shape().tuple_shapes().size() == 2);
 
   // We expect Fortran layout for everything other than the temp
   // buffer (the last operand).  Fortran layout is not XLA default
@@ -1123,9 +1123,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTriangularSolveCustomCall(
     return layout.minor_to_major(0) == n - 2 &&
            layout.minor_to_major(1) == n - 1;
   };
-  TF_RET_CHECK(has_fortran_layout(operands[0]->shape().layout()));
-  TF_RET_CHECK(has_fortran_layout(operands[1]->shape().layout()));
-  TF_RET_CHECK(has_fortran_layout(instr->shape().tuple_shapes(0).layout()));
+  RET_CHECK(has_fortran_layout(operands[0]->shape().layout()));
+  RET_CHECK(has_fortran_layout(operands[1]->shape().layout()));
+  RET_CHECK(has_fortran_layout(instr->shape().tuple_shapes(0).layout()));
 
   ASSIGN_OR_RETURN(ShapedSlice a_slice, GetShapedSliceForHlo(operands[0]));
   ASSIGN_OR_RETURN(ShapedSlice b_slice, GetShapedSliceForHlo(operands[1]));
@@ -1173,11 +1173,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTopKCustomCall(
     const HloCustomCallInstruction* instr) {
   auto operands = instr->operands();
   const auto& shape = instr->shape();
-  TF_RET_CHECK(operands.size() == 1)
+  RET_CHECK(operands.size() == 1)
       << "Expect only 1 operand for TopK custom call.";
-  TF_RET_CHECK(shape.IsTuple())
-      << "Expect TopK custom call to have tuple shape.";
-  TF_RET_CHECK(shape.tuple_shapes().size() == 2)
+  RET_CHECK(shape.IsTuple()) << "Expect TopK custom call to have tuple shape.";
+  RET_CHECK(shape.tuple_shapes().size() == 2)
       << "Expect TopK custom call shape to have exactly 2 "
          "sub-shapes.";
 
@@ -1185,8 +1184,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTopKCustomCall(
   auto top_elements_shape = shape.tuple_shapes()[0];
   auto indices_shape = shape.tuple_shapes()[1];
 
-  TF_RET_CHECK(data_shape.dimensions().size() <= 2) << "Invalid input shape.";
-  TF_RET_CHECK(indices_shape.element_type() == PrimitiveType::S32)
+  RET_CHECK(data_shape.dimensions().size() <= 2) << "Invalid input shape.";
+  RET_CHECK(indices_shape.element_type() == PrimitiveType::S32)
       << "Indices should be S32.";
 
   bool has_batch = data_shape.dimensions().size() == 2;
@@ -1236,7 +1235,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTopKCustomCall(
   auto wavefront_size =
       ir_emitter_context_->gpu_device_info().threads_per_warp();
 
-  TF_RET_CHECK(k <= 16) << "CustomCall TopK requires k <= 16";
+  RET_CHECK(k <= 16) << "CustomCall TopK requires k <= 16";
   // Load TopK custom kernel.
   ASSIGN_OR_RETURN(CustomKernel kernel, kernel::topk::GetTopKKernel(
                                             "topk", dtype, n, k, batch_size,
@@ -1354,7 +1353,7 @@ AsyncThunkSequence ThunkEmitter::EmitTritonCustomCall(
 AsyncThunkSequence ThunkEmitter::EmitAsyncComputation(
     const HloInstruction* instr) {
   const HloInstruction* wrapped = instr->async_wrapped_instruction();
-  TF_RET_CHECK(wrapped->called_computations().size() == 1);
+  RET_CHECK(wrapped->called_computations().size() == 1);
   HloComputation* computation = wrapped->called_computations().front();
 
   auto* async_start = Cast<HloAsyncInstruction>(instr);
@@ -1441,17 +1440,17 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDynamicSliceFusionV2(
   std::vector<BufferAllocation::Slice> parameter_buffers;
   parameter_buffers.reserve(instr->operand_count());
   for (const auto* operand : instr->operands()) {
-    TF_ASSIGN_OR_RETURN(parameter_buffers.emplace_back(),
-                        GetAllocationSliceForHlo(operand));
+    ASSIGN_OR_RETURN(parameter_buffers.emplace_back(),
+                     GetAllocationSliceForHlo(operand));
   }
 
   // result_buffers: one entry per fusion output leaf in DFS order.
   std::vector<BufferAllocation::Slice> result_buffers;
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachLeafShapeWithStatus(
+  RETURN_IF_ERROR(ShapeUtil::ForEachLeafShapeWithStatus(
       instr->shape(),
       [&](const Shape&, const ShapeIndex& index) -> absl::Status {
-        TF_ASSIGN_OR_RETURN(result_buffers.emplace_back(),
-                            GetAllocationSliceForHlo(instr, index));
+        ASSIGN_OR_RETURN(result_buffers.emplace_back(),
+                         GetAllocationSliceForHlo(instr, index));
         return absl::OkStatus();
       }));
 
@@ -1517,7 +1516,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDynamicSliceFusionV2(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopy(
     const HloInstruction* instr) {
-  TF_RET_CHECK(LayoutUtil::LayoutsInShapesEqual(
+  RET_CHECK(LayoutUtil::LayoutsInShapesEqual(
       instr->operand(0)->shape(), instr->shape(),
       Layout::Equal().MinorToMajorOnly()));
   ASSIGN_OR_RETURN(BufferAllocation::Slice src_buffer,
@@ -1650,10 +1649,10 @@ AsyncThunkSequence ThunkEmitter::EmitSort(const HloSortInstruction* sort) {
         sort->operand_count() > 1 ? ShapeIndex({i}) : ShapeIndex({});
     // We assume that the layout of all involved operands and
     // outputs is the same.
-    TF_RET_CHECK(LayoutUtil::LayoutsInShapesEqual(
+    RET_CHECK(LayoutUtil::LayoutsInShapesEqual(
         keys_shape, sort->operand(i)->shape(),
         Layout::Equal().IgnoreMemorySpace().IgnoreElementSize()));
-    TF_RET_CHECK(LayoutUtil::LayoutsInShapesEqual(
+    RET_CHECK(LayoutUtil::LayoutsInShapesEqual(
         keys_shape, ShapeUtil::GetSubshape(sort->shape(), shape_index),
         Layout::Equal().IgnoreMemorySpace().IgnoreElementSize()));
 
@@ -1715,7 +1714,7 @@ bool IsNvshmemCollective(const HloInstruction* instr) {
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectivePermute(
     const HloCollectivePermuteInstruction* instr) {
   // First output is aliased.
-  TF_RET_CHECK(
+  RET_CHECK(
       instr->shape().IsTuple() && instr->shape().tuple_shapes().size() == 2 &&
       Shape::Equal().IgnoreMemorySpaceInLayout()(
           instr->shape().tuple_shapes(0), instr->shape().tuple_shapes(1)));
@@ -2057,7 +2056,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectiveAsyncDone(
 
   // Find the async execution for the start operation.
   auto it = hlo_async_executions_.find(start);
-  TF_RET_CHECK(it != hlo_async_executions_.end())
+  RET_CHECK(it != hlo_async_executions_.end())
       << "couldn't find async execution for start operation";
 
   // Can be null if no start thunk was created (e.g. if the start op
@@ -2086,7 +2085,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitNvshmemAsyncDone(
 
   // Find the async execution for the start operation.
   auto it = hlo_async_executions_.find(start);
-  TF_RET_CHECK(it != hlo_async_executions_.end())
+  RET_CHECK(it != hlo_async_executions_.end())
       << "couldn't find async execution for start operation";
 
   // Can be null if no start thunk was created (e.g. if the start op is
@@ -2504,7 +2503,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSendDoneThunk(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRecvThunk(
     const HloRecvInstruction* instr, bool emit_group_thunks) {
-  TF_RET_CHECK(instr->shape().IsTuple());
+  RET_CHECK(instr->shape().IsTuple());
   ASSIGN_OR_RETURN(ShapedSlice slice, GetShapedSliceForHlo(instr, {0}));
 
   if (!instr->is_host_transfer()) {
