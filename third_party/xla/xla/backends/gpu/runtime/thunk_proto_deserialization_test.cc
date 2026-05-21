@@ -47,7 +47,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/ffi/ffi.h"
-#include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -309,6 +308,98 @@ TEST(ThunkProtoDeserializationTest, DeviceToDeviceCopyThunk) {
   ASSERT_NE(copy_thunk, nullptr);  // Check the cast succeeded
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, copy_thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
+}
+
+TEST(ThunkProtoDeserializationTest, DynamicSliceFusionThunk) {
+  constexpr int64_t kBufferSize = 1024;
+  ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
+      R"pb(
+        thunk_info { profile_annotation: "profile_annotation" }
+        dynamic_slice_fusion_thunk {
+          parameters {
+            parameter_number: 0
+            parameter_shape {
+              dimensions: 256
+              element_type: F32
+              is_dynamic_dimension: false
+              layout { minor_to_major: 0 tail_padding_alignment_in_elements: 1 }
+            }
+            slice_shape {
+              dimensions: 256
+              element_type: F32
+              is_dynamic_dimension: false
+              layout { minor_to_major: 0 tail_padding_alignment_in_elements: 1 }
+            }
+          }
+          results {
+            result_number: 0
+            result_shape {
+              dimensions: 256
+              element_type: F32
+              is_dynamic_dimension: false
+              layout { minor_to_major: 0 tail_padding_alignment_in_elements: 1 }
+            }
+            update_shape {
+              dimensions: 256
+              element_type: F32
+              is_dynamic_dimension: false
+              layout { minor_to_major: 0 tail_padding_alignment_in_elements: 1 }
+            }
+          }
+          parameter_buffers {
+            buffer_allocation_index: 0
+            size: 1024
+            element_type: F32
+          }
+          result_buffers {
+            buffer_allocation_index: 1
+            size: 1024
+            element_type: F32
+          }
+          slice_allocations { index: 0 size: 1024 color: 0 }
+          embedded_thunks {
+            thunks {
+              thunk_info { profile_annotation: "embedded" }
+              memzero_thunk {
+                dest_buffer {
+                  slice {
+                    buffer_allocation_index: 0
+                    size: 1024
+                    element_type: F32
+                  }
+                  shape {
+                    dimensions: 256
+                    element_type: F32
+                    is_dynamic_dimension: false
+                    layout {
+                      minor_to_major: 0
+                      tail_padding_alignment_in_elements: 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      )pb");
+
+  std::vector<BufferAllocation> buffer_allocations = {
+      BufferAllocation(/*index=*/0, /*size=*/kBufferSize, /*color=*/0),
+      BufferAllocation(/*index=*/1, /*size=*/kBufferSize, /*color=*/0)};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Thunk> thunk,
+      DeserializeThunkProto(proto, buffer_allocations, /*hlo_module=*/nullptr,
+                            kTestPlatformName, se::GpuComputeCapability()));
+
+  EXPECT_EQ(thunk->kind(), Kind::kDynamicSliceFusion);
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  EXPECT_TRUE(round_trip_proto.has_dynamic_slice_fusion_thunk());
+  EXPECT_EQ(round_trip_proto.dynamic_slice_fusion_thunk()
+                .embedded_thunks()
+                .thunks()
+                .size(),
+            1);
 }
 
 TEST(ThunkProtoDeserializationTest, WhileThunk) {

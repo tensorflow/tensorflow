@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/while_loop_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -97,12 +98,12 @@ static absl::StatusOr<bool> TryRemoveTrivialCompare(HloInstruction* while_op) {
               if (constant_value.value() <= init_value.value()) {
                 if (body_instr->comparison_direction() ==
                     ComparisonDirection::kLt) {
-                  TF_RETURN_IF_ERROR(while_op->while_body()->ReplaceInstruction(
+                  RETURN_IF_ERROR(while_op->while_body()->ReplaceInstruction(
                       body_instr, MakeScalarLike(body_instr, false)));
                   return true;
                 } else if (body_instr->comparison_direction() ==
                            ComparisonDirection::kGt) {
-                  TF_RETURN_IF_ERROR(while_op->while_body()->ReplaceInstruction(
+                  RETURN_IF_ERROR(while_op->while_body()->ReplaceInstruction(
                       body_instr, MakeScalarLike(body_instr, true)));
                   return true;
                 }
@@ -112,12 +113,12 @@ static absl::StatusOr<bool> TryRemoveTrivialCompare(HloInstruction* while_op) {
                   init_value.value() + trip_count.value()) {
                 if (body_instr->comparison_direction() ==
                     ComparisonDirection::kLt) {
-                  TF_RETURN_IF_ERROR(while_op->while_body()->ReplaceInstruction(
+                  RETURN_IF_ERROR(while_op->while_body()->ReplaceInstruction(
                       body_instr, MakeScalarLike(body_instr, true)));
                   return true;
                 } else if (body_instr->comparison_direction() ==
                            ComparisonDirection::kGt) {
-                  TF_RETURN_IF_ERROR(while_op->while_body()->ReplaceInstruction(
+                  RETURN_IF_ERROR(while_op->while_body()->ReplaceInstruction(
                       body_instr, MakeScalarLike(body_instr, false)));
                   return true;
                 }
@@ -320,7 +321,7 @@ static absl::StatusOr<HloInstruction*> RemoveDeadTupleIndices(
   }
   HloInstruction* new_tuple =
       computation->AddInstruction(HloInstruction::CreateTuple(new_tuple_elems));
-  TF_RETURN_IF_ERROR(computation->ReplaceInstruction(while_op, new_tuple));
+  RETURN_IF_ERROR(computation->ReplaceInstruction(while_op, new_tuple));
 
   return new_while_op;
 }
@@ -575,8 +576,8 @@ absl::StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
           << " elements from tuple of "
           << while_op->ToString(print_no_metadata);
 
-  TF_ASSIGN_OR_RETURN(while_op,
-                      RemoveDeadTupleIndices(while_op, used_tuple_indices));
+  ASSIGN_OR_RETURN(while_op,
+                   RemoveDeadTupleIndices(while_op, used_tuple_indices));
 
   return true;
 }
@@ -648,7 +649,7 @@ absl::StatusOr<HloInstruction*> RemoveRepeatedWhileTupleIndices(
         } else {
           surviving_gte = it->second;
         }
-        TF_RETURN_IF_ERROR(comp->ReplaceInstruction(gte, surviving_gte));
+        RETURN_IF_ERROR(comp->ReplaceInstruction(gte, surviving_gte));
       }
     }
   }
@@ -663,7 +664,7 @@ absl::StatusOr<HloInstruction*> RemoveRepeatedWhileTupleIndices(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       while_op,
       RemoveDeadTupleIndices(
           while_op, used_tuple_indices,
@@ -756,9 +757,9 @@ static absl::StatusOr<bool> TryRemoveRepeatedWhileTupleIndices(
 
   // Only keep one index for each equivalence set.
   HloInstruction* original_while_op = while_op;
-  TF_ASSIGN_OR_RETURN(
-      while_op, RemoveRepeatedWhileTupleIndices(while_op, init_to_indices,
-                                                /*replace_with_init=*/true));
+  ASSIGN_OR_RETURN(while_op,
+                   RemoveRepeatedWhileTupleIndices(while_op, init_to_indices,
+                                                   /*replace_with_init=*/true));
 
   // In theory, we could handle the "simple" case and the "dynamic-update-slice"
   // case in one go, but it's probably not worth the added complexity, so do it
@@ -782,7 +783,7 @@ static absl::StatusOr<bool> TryRemoveRepeatedWhileTupleIndices(
           .push_back(index);
     }
   }
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       while_op, RemoveRepeatedWhileTupleIndices(while_op, dus_key_to_indices,
                                                 /*replace_with_init=*/false));
 
@@ -903,7 +904,7 @@ static absl::StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
   // CloneWithReplacementPairs will *leave the parameter out entirely*, creating
   // invalid HLO.
   if (ShapeUtil::IsEmptyTuple(new_while_shape)) {
-    TF_RETURN_IF_ERROR(computation->ReplaceInstruction(while_op, while_init));
+    RETURN_IF_ERROR(computation->ReplaceInstruction(while_op, while_init));
     return true;
   }
 
@@ -951,7 +952,7 @@ static absl::StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
   new_while_op->CopyBackendConfigFrom(while_op);
   CopyFrontendAttributes(while_op, new_while_op);
   CopyMetadata(while_op, new_while_op);
-  TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
+  RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
       while_op, add_constant_elems(new_while_op)));
   for (auto& instr : new_instrs) {
     computation->AddInstruction(std::move(instr));
@@ -998,7 +999,7 @@ static absl::StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
     // Remove while_op (i.e., call ReplaceInstruction rather than
     // ReplaceUsesWithInstruction) so that if the algebraic simplifier is run in
     // a loop without an intervening DCE, we don't try to re-remove the loop.
-    TF_RETURN_IF_ERROR(computation->ReplaceInstruction(
+    RETURN_IF_ERROR(computation->ReplaceInstruction(
         while_op, while_op->mutable_operand(0)));
     return true;
   }
@@ -1039,10 +1040,10 @@ static absl::StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
       auto call_op = computation->AddInstruction(HloInstruction::CreateCall(
           while_op->shape(), while_op->operands(), while_op->while_body()));
       call_op->set_original_value(while_op->original_value());
-      TF_RETURN_IF_ERROR(computation->ReplaceInstruction(while_op, call_op));
+      RETURN_IF_ERROR(computation->ReplaceInstruction(while_op, call_op));
       call_op->set_metadata_op_name("");
-      TF_ASSIGN_OR_RETURN(auto inlined_instructions_map,
-                          CallInliner::Inline(call_op));
+      ASSIGN_OR_RETURN(auto inlined_instructions_map,
+                       CallInliner::Inline(call_op));
       (void)inlined_instructions_map;
       return true;
     } else {
@@ -1109,7 +1110,7 @@ static absl::StatusOr<bool> TryPropagateConstant(HloInstruction* while_op) {
           const HloInstruction* hlo_constant = (*iter).second;
           VLOG(3) << "Replace use of " << instr->ToString() << " with "
                   << hlo_constant->ToString();
-          TF_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(
+          RETURN_IF_ERROR(instr->ReplaceAllUsesWith(
               computation->AddInstruction(hlo_constant->Clone())));
           changed = true;
         }
@@ -1118,9 +1119,9 @@ static absl::StatusOr<bool> TryPropagateConstant(HloInstruction* while_op) {
     return changed;
   };
 
-  TF_ASSIGN_OR_RETURN(bool changed_cond,
-                      propagate_constant(while_op->while_condition()));
-  TF_ASSIGN_OR_RETURN(bool changed_body, propagate_constant(while_body));
+  ASSIGN_OR_RETURN(bool changed_cond,
+                   propagate_constant(while_op->while_condition()));
+  ASSIGN_OR_RETURN(bool changed_body, propagate_constant(while_body));
 
   return changed_cond || changed_body;
 }
@@ -1302,7 +1303,7 @@ static absl::StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
   new_while_op->CopyBackendConfigFrom(while_op);
   CopyFrontendAttributes(while_op, new_while_op);
   CopyMetadata(while_op, new_while_op);
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       computation->ReplaceWithNewInstruction(while_op, nested(new_while_op)));
   for (auto& instr : new_instrs) {
     computation->AddInstruction(std::move(instr));
@@ -1536,7 +1537,7 @@ static absl::StatusOr<HloInstruction*> TryMergeInductionVariables(
               Cast<HloParameterInstruction>(
                   temp_new_while_body->parameter_instruction(0))),
       });
-  TF_RETURN_IF_ERROR(module->RemoveEmbeddedComputation(temp_new_while_body));
+  RETURN_IF_ERROR(module->RemoveEmbeddedComputation(temp_new_while_body));
 
   // Create the final while loop, and add any new instructions created to
   // `computation`.
@@ -1558,7 +1559,7 @@ static absl::StatusOr<HloInstruction*> TryMergeInductionVariables(
   }
   CopyFrontendAttributes(while_op, new_while);
   CopyMetadata(while_op, new_while);
-  TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
+  RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
       while_op, convert_to_old_form(new_while)));
   for (auto& instr : new_instrs) {
     computation->AddInstruction(std::move(instr));
@@ -1601,33 +1602,32 @@ absl::StatusOr<bool> WhileLoopSimplifier::RunImpl(
     // These optimizations should be fine even with send/recv nodes within the
     // loop.
 
-    TF_ASSIGN_OR_RETURN(bool result,
-                        TryRemoveRepeatedWhileTupleIndices(while_op));
+    ASSIGN_OR_RETURN(bool result, TryRemoveRepeatedWhileTupleIndices(while_op));
     changed |= result;
     if (result) {
       continue;
     }
 
-    TF_ASSIGN_OR_RETURN(result, TryFlattenNestedTuples(while_op));
+    ASSIGN_OR_RETURN(result, TryFlattenNestedTuples(while_op));
     changed |= result;
     if (result) {
       continue;
     }
 
-    TF_ASSIGN_OR_RETURN(result, TryRemoveDeadWhileParams(while_op));
+    ASSIGN_OR_RETURN(result, TryRemoveDeadWhileParams(while_op));
     changed |= result;
     if (result) {
       continue;
     }
 
-    TF_ASSIGN_OR_RETURN(result, TryRemoveConstantParams(while_op));
+    ASSIGN_OR_RETURN(result, TryRemoveConstantParams(while_op));
     changed |= result;
     if (result) {
       continue;
     }
 
     if (simplify_compare_instrs_) {
-      TF_ASSIGN_OR_RETURN(result, TryRemoveTrivialCompare(while_op));
+      ASSIGN_OR_RETURN(result, TryRemoveTrivialCompare(while_op));
       changed |= result;
       if (result) {
         continue;
@@ -1650,10 +1650,10 @@ absl::StatusOr<bool> WhileLoopSimplifier::RunImpl(
       continue;
     }
 
-    TF_ASSIGN_OR_RETURN(result, TryPropagateConstant(while_op));
+    ASSIGN_OR_RETURN(result, TryPropagateConstant(while_op));
     changed |= result;
 
-    TF_ASSIGN_OR_RETURN(result, TryRemoveWhileLoop(while_op));
+    ASSIGN_OR_RETURN(result, TryRemoveWhileLoop(while_op));
     changed |= result;
 
     if (result) {
@@ -1675,8 +1675,8 @@ absl::StatusOr<bool> WhileLoopSimplifier::RunImpl(
     // Notably missing from this list are S16 and U16.  These don't currently
     // work because S/U16 literals are not implemented.
     for (auto elem_ty : {S8, U8, S32, U32, S64, U64}) {
-      TF_ASSIGN_OR_RETURN(auto* new_while_op,
-                          TryMergeInductionVariables(while_op, elem_ty));
+      ASSIGN_OR_RETURN(auto* new_while_op,
+                       TryMergeInductionVariables(while_op, elem_ty));
       if (new_while_op) {
         while_op = new_while_op;
         changed = true;
@@ -1689,7 +1689,7 @@ absl::StatusOr<bool> WhileLoopSimplifier::RunImpl(
   }
   if (changed) {
     HloDCE dce;
-    TF_RETURN_IF_ERROR(dce.Run(module).status());
+    RETURN_IF_ERROR(dce.Run(module).status());
   }
   XLA_VLOG_LINES(
       3, "WhileLoopSimplifier::RunImpl(), after:\n" + module->ToString());

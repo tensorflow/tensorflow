@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -148,9 +149,9 @@ absl::Status HandleControlDependencies(
         new_control_pred.push_back(old_to_new_map.at(pred));
       }
 
-      TF_RETURN_IF_ERROR(new_instr->DropAllControlDeps());
+      RETURN_IF_ERROR(new_instr->DropAllControlDeps());
       for (HloInstruction* new_pred : new_control_pred) {
-        TF_RETURN_IF_ERROR(new_pred->AddControlDependencyTo(new_instr));
+        RETURN_IF_ERROR(new_pred->AddControlDependencyTo(new_instr));
         VLOG(2) << "Adding " << new_pred->ToString()
                 << " to control dependency of " << new_instr->ToString();
       }
@@ -164,7 +165,7 @@ absl::Status HandleControlDependencies(
                 skip_control_dep_injection.end() &&
             !IsCollective(old_input)) {
           for (HloInstruction* old_root : *old_loop_roots) {
-            TF_RETURN_IF_ERROR(old_root->AddControlDependencyTo(new_input));
+            RETURN_IF_ERROR(old_root->AddControlDependencyTo(new_input));
           }
         }
       }
@@ -188,8 +189,8 @@ absl::StatusOr<bool> FullyUnroll(HloInstruction* while_instr,
   absl::flat_hash_set<HloInstruction*> skip_control_dep_injection;
   std::string clone_suffix = "full_unroll_clone";
 
-  TF_ASSIGN_OR_RETURN(WhileLoopBackendConfig config,
-                      while_instr->backend_config<WhileLoopBackendConfig>());
+  ASSIGN_OR_RETURN(WhileLoopBackendConfig config,
+                   while_instr->backend_config<WhileLoopBackendConfig>());
   std::vector<HloInstruction*> ops_to_clone;
   ops_to_clone.reserve(while_body->MakeInstructionPostOrder().size());
 
@@ -239,9 +240,9 @@ absl::StatusOr<bool> FullyUnroll(HloInstruction* while_instr,
     VLOG(2) << "Replaced with new root "
             << while_body->root_instruction()->ToString();
 
-    TF_RETURN_IF_ERROR(HandleControlDependencies(
-        while_body, old_to_new_map, &loop_roots, old_input_parameter,
-        skip_control_dep_injection));
+    RETURN_IF_ERROR(HandleControlDependencies(while_body, old_to_new_map,
+                                              &loop_roots, old_input_parameter,
+                                              skip_control_dep_injection));
 
     // Inductive step update, clean/update necessary buffers to prepare them for
     // the next unrolling iteration.
@@ -255,13 +256,13 @@ absl::StatusOr<bool> FullyUnroll(HloInstruction* while_instr,
   }
 
   WhileLoopBackendConfig old_config;
-  TF_ASSIGN_OR_RETURN(old_config,
-                      while_instr->backend_config<WhileLoopBackendConfig>());
+  ASSIGN_OR_RETURN(old_config,
+                   while_instr->backend_config<WhileLoopBackendConfig>());
 
   WhileLoopBackendConfig new_config = old_config;
   new_config.mutable_known_trip_count()->set_n(1);
 
-  TF_RETURN_IF_ERROR(while_instr->set_backend_config(new_config));
+  RETURN_IF_ERROR(while_instr->set_backend_config(new_config));
 
   return changed;
 }
@@ -301,7 +302,7 @@ absl::Status PeelInstructionsForOddTripCount(HloModule* module,
   for (HloInstruction* instr : old_loop_roots) {
     new_roots.push_back(old_to_new_map[instr]);
   }
-  TF_RETURN_IF_ERROR(while_instr->ReplaceOperandWith(
+  RETURN_IF_ERROR(while_instr->ReplaceOperandWith(
       0, old_to_new_map[while_body->root_instruction()]));
   VLOG(2) << "Replaced with new input tuple "
           << while_instr->operand(0)->ToString();
@@ -318,9 +319,9 @@ absl::Status PeelInstructionsForOddTripCount(HloModule* module,
         new_control_pred.push_back(old_to_new_map[pred]);
       }
 
-      TF_RETURN_IF_ERROR(new_instr->DropAllControlDeps());
+      RETURN_IF_ERROR(new_instr->DropAllControlDeps());
       for (HloInstruction* new_pred : new_control_pred) {
-        TF_RETURN_IF_ERROR(new_pred->AddControlDependencyTo(new_instr));
+        RETURN_IF_ERROR(new_pred->AddControlDependencyTo(new_instr));
         VLOG(2) << "Adding " << new_pred->ToString()
                 << " to control dependency of peeled instruction: "
                 << new_instr->ToString();
@@ -334,8 +335,8 @@ absl::Status PeelInstructionsForOddTripCount(HloModule* module,
 // a separate function.
 absl::StatusOr<bool> DoubleBufferingUnroll(HloInstruction* while_instr,
                                            HloModule* module) {
-  TF_ASSIGN_OR_RETURN(auto config,
-                      while_instr->backend_config<WhileLoopBackendConfig>());
+  ASSIGN_OR_RETURN(auto config,
+                   while_instr->backend_config<WhileLoopBackendConfig>());
 
   CHECK(config.has_known_trip_count())
       << "Only loops with known trip count are supported.";
@@ -357,7 +358,7 @@ absl::StatusOr<bool> DoubleBufferingUnroll(HloInstruction* while_instr,
   if (peel_one_iteration) {
     VLOG(2) << "Found loops with odd trip count, 1 iteration will be peeled "
                "outside of the main body.";
-    TF_RETURN_IF_ERROR(PeelInstructionsForOddTripCount(module, while_instr));
+    RETURN_IF_ERROR(PeelInstructionsForOddTripCount(module, while_instr));
     exact_trip_count -= 1;
   }
 
@@ -393,9 +394,9 @@ absl::StatusOr<bool> DoubleBufferingUnroll(HloInstruction* while_instr,
           << while_body->root_instruction()->ToString();
 
   // Handle existing control dependencies.
-  TF_RETURN_IF_ERROR(HandleControlDependencies(while_body, old_to_new_map,
-                                               &old_loop_roots, input_parameter,
-                                               skip_control_dep_injection));
+  RETURN_IF_ERROR(HandleControlDependencies(while_body, old_to_new_map,
+                                            &old_loop_roots, input_parameter,
+                                            skip_control_dep_injection));
 
   WhileLoopBackendConfig new_config = config;
   new_config.mutable_known_trip_count()->set_n(exact_trip_count / 2);
@@ -408,7 +409,7 @@ absl::StatusOr<bool> DoubleBufferingUnroll(HloInstruction* while_instr,
         config.known_init_step().init() + (peel_one_iteration ? step : 0));
   }
 
-  TF_RETURN_IF_ERROR(while_instr->set_backend_config(new_config));
+  RETURN_IF_ERROR(while_instr->set_backend_config(new_config));
   return true;  // changed
 }
 
@@ -443,8 +444,8 @@ absl::StatusOr<bool> DoubleBufferLoopUnrolling::RunImpl(
   VLOG(2) << "Processing " << while_instrs.size() << " while loops.";
 
   for (HloInstruction* while_instr : while_instrs) {
-    TF_ASSIGN_OR_RETURN(WhileLoopBackendConfig config,
-                        while_instr->backend_config<WhileLoopBackendConfig>());
+    ASSIGN_OR_RETURN(WhileLoopBackendConfig config,
+                     while_instr->backend_config<WhileLoopBackendConfig>());
     if (!config.has_known_trip_count()) {
       VLOG(2) << while_instr->ToString()
               << " doesn't have exact trip count, skipping loop unrolling.";
@@ -458,11 +459,11 @@ absl::StatusOr<bool> DoubleBufferLoopUnrolling::RunImpl(
     }
 
     if (unroll_strategy_ == UnrollStrategy::kFullUnroll) {
-      TF_ASSIGN_OR_RETURN(changed, FullyUnroll(while_instr, module));
+      ASSIGN_OR_RETURN(changed, FullyUnroll(while_instr, module));
     } else if (unroll_strategy_ == UnrollStrategy::kDoubleBuffer) {
-      TF_ASSIGN_OR_RETURN(changed, DoubleBufferingUnroll(while_instr, module));
+      ASSIGN_OR_RETURN(changed, DoubleBufferingUnroll(while_instr, module));
     } else if (unroll_strategy_ == UnrollStrategy::kAuto) {
-      TF_ASSIGN_OR_RETURN(changed, AutoUnroll(while_instr, module));
+      ASSIGN_OR_RETURN(changed, AutoUnroll(while_instr, module));
     } else {
       LOG(FATAL) << absl::StrCat("Unhandled unrolling strategy: ",
                                  unroll_strategy_);
@@ -477,8 +478,7 @@ absl::StatusOr<bool> DoubleBufferLoopUnrolling::RunImpl(
     // The call graph will not be flat if one of the loops that was unrolled
     // contains any kind of call to another computation---since the call will
     // be duplicated, thereby adding a second callsite for that computation.
-    TF_RETURN_IF_ERROR(
-        FlattenCallGraph().Run(module, execution_threads).status());
+    RETURN_IF_ERROR(FlattenCallGraph().Run(module, execution_threads).status());
   }
 
   return changed;
