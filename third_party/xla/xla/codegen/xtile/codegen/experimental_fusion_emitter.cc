@@ -825,8 +825,10 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
     }
     ASSIGN_OR_RETURN(TileInfo tile_info,
                      TileInfo::Construct(emitter_ctx, tiled_hlo));
-    TensorValue parameter = EmitParameterExtract(
-        b, tile_info, emitter_ctx.entry_func().getArgument(arg_index));
+    ASSIGN_OR_RETURN(
+        TensorValue parameter,
+        EmitParameterExtract(b, tile_info,
+                             emitter_ctx.entry_func().getArgument(arg_index)));
 
     // Workaround(i1_to_i8_workaround)
     // Some types are stored using different types, e.g. i1 is stored in memory

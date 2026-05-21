@@ -166,6 +166,9 @@ absl::StatusOr<std::unique_ptr<NcclCommunicator>> NcclCommunicator::Create(
     se::StreamExecutor* stream_executor,
     absl::AnyInvocable<absl::StatusOr<ncclComm_t>()> make_comm,
     std::shared_ptr<CancellationToken> cancel, bool is_async, tsl::Env& env) {
+  if (cancel == nullptr) {
+    cancel = std::make_shared<CancellationToken>();
+  }
   auto f = [cancel, &make_comm]() -> absl::StatusOr<ncclComm_t> {
     TF_ASSIGN_OR_RETURN(ncclComm_t comm, make_comm());
     if (cancel) {

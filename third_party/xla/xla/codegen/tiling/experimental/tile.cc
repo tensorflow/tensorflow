@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/codegen/tiling/experimental/tile.h"
 
 #include <cstdint>
-#include <optional>
 #include <string>
 #include <utility>
 
