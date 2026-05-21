@@ -126,8 +126,8 @@ ENTRY entry {
   auto module = std::move(split_result.module);
   auto submodules = std::move(split_result.submodules);
 
-  // We should have 2 submodules: inner and outer.
-  EXPECT_EQ(submodules.size(), 2);
+  // We should have 1 submodule: outer (because we only split top-level).
+  EXPECT_EQ(submodules.size(), 1);
 
   const char* expected_hlo = R"(
 CHECK: ENTRY %entry
@@ -138,17 +138,14 @@ CHECK:   ROOT {{.*}} custom-call({{.*}}), custom_call_target="_xla_multi_module_
                        RunFileCheck(module->ToString(), expected_hlo));
   EXPECT_TRUE(filecheck_ok);
 
-  HloModule* outer_mod = nullptr;
-  for (const auto& m : submodules) {
-    if (m->name() == "my_outer") {
-      outer_mod = m.get();
-    }
-  }
-  ASSERT_NE(outer_mod, nullptr);
+  HloModule* outer_mod = submodules[0].get();
+  EXPECT_EQ(outer_mod->name(), "my_outer");
 
+  // The outer submodule should still have a regular kCall to inner (not
+  // custom-call).
   const char* expected_outer_hlo = R"(
 CHECK: ENTRY %outer
-CHECK:   ROOT {{.*}} custom-call({{.*}}), custom_call_target="_xla_multi_module_call",{{.*}}backend_config="my_inner"
+CHECK:   ROOT {{.*}} call({{.*}}), to_apply=%inner
 )";
 
   ASSERT_OK_AND_ASSIGN(bool outer_filecheck_ok,
