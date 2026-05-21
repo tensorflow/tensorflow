@@ -15,6 +15,10 @@
 name: CI
 
 on:
+  push:
+    branches:
+      - master
+      - r2.**
   pull_request:
     branches:
       - master
