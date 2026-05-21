@@ -4427,6 +4427,7 @@ cc_library(
         ":device_to_device_copy_thunk",
         ":device_to_host_copy_thunk",
         ":dynamic_memcpy_thunk",
+        ":dynamic_slice_fusion_v2_thunk",
         ":dynamic_slice_thunk",
         ":fft_thunk",
         ":gemm_thunk",
@@ -4440,7 +4441,6 @@ cc_library(
         ":memset_thunk",
         ":norm_thunk",
         ":nvshmem_all_reduce_thunk",
-        ":nvshmem_collective_permute_thunk",
         ":nvshmem_collective_thunk",
         ":nvshmem_recv_thunk",
         ":nvshmem_send_thunk",
@@ -4500,7 +4500,6 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/ffi",
-        "//xla/ffi:ffi_api",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service:hlo_module_config",
@@ -4516,7 +4515,7 @@ xla_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main",  # fixdeps: keep
     ],
 )
 

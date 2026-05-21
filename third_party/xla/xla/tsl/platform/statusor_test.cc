@@ -26,11 +26,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
 
 namespace tsl {
 namespace {
+using ::testing::HasSubstr;
 
 class Base1 {
  public:
@@ -739,6 +741,22 @@ TEST(Status, StackTracePropagation) {
 }
 
 #endif
+
+TEST(StatusOr, ReturnIfErrorWithContext) {
+  auto get_error = []() -> absl::Status {
+    return absl::InvalidArgumentError("An invalid argument error");
+  };
+  auto propagate_error = [&]() -> absl::Status {
+    RETURN_IF_ERROR(get_error()) << "Added context";
+    return absl::OkStatus();
+  };
+
+  absl::Status status = propagate_error();
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(status.message(), HasSubstr("An invalid argument error"));
+  EXPECT_THAT(status.message(), HasSubstr("Added context"));
+}
 
 }  // namespace
 }  // namespace tsl

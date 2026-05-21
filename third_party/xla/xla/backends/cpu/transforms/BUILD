@@ -35,6 +35,7 @@ cc_library(
         "//xla/hlo/pass:hlo_pass",
         "//xla/service/cpu:backend_config_proto_cc",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",

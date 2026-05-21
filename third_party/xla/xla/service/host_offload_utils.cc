@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -450,8 +451,8 @@ absl::Status MarkDynamicVariables(HloInstruction* while_loop) {
   }
 
   WhileLoopBackendConfig config;
-  TF_ASSIGN_OR_RETURN(config,
-                      while_loop->backend_config<WhileLoopBackendConfig>());
+  ASSIGN_OR_RETURN(config,
+                   while_loop->backend_config<WhileLoopBackendConfig>());
 
   config.clear_dynamic_variable_tuple_indices();
 
@@ -479,7 +480,7 @@ absl::Status MarkDynamicVariables(HloInstruction* while_loop) {
     config.add_dynamic_variable_tuple_indices(tuple_idx);
   }
 
-  TF_RETURN_IF_ERROR(while_loop->set_backend_config(config));
+  RETURN_IF_ERROR(while_loop->set_backend_config(config));
   return absl::OkStatus();
 }
 

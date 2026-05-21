@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/executable.h"
 #include "xla/service/service_executable_run_options.h"
@@ -222,8 +223,8 @@ absl::StatusOr<std::unique_ptr<TpuExecutable>> TpuExecutable::Deserialize(
   absl::Cleanup cleanup_c_module = [&c_module]() {
     ApiConverter::Destroy(&c_module);
   };
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
-                      ApiConverter::FromC(c_module));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+                   ApiConverter::FromC(c_module));
   return std::make_unique<TpuExecutable>(se_executable, std::move(hlo_module));
 }
 

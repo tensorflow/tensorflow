@@ -1605,6 +1605,12 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
         absl::MakeConstSpan(leaf_buffers),
         [buffers = leaf_buffers, tuple_index_table,
          allocator = client->allocator()]() mutable {
+          for (int i = 0; i < buffers.size(); ++i) {
+            if (buffers[i].IsError()) {
+              tuple_index_table.SetError(buffers[i].GetError());
+              return;
+            }
+          }
           size_t index_table_byte_size = buffers.size() * sizeof(void*);
           // We assume tuple table allocations will not fail.
           CHECK_OK(CpuDeviceMemory::AllocateInto(

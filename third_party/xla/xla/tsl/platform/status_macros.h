@@ -16,7 +16,79 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_STATUS_MACROS_H_
 #define XLA_TSL_PLATFORM_STATUS_MACROS_H_
 
+#include <memory>
+#include <sstream>
+
+#include "absl/status/status.h"
 #include "xla/tsl/platform/statusor.h"
+
+namespace tsl {
+class StatusBuilder {
+ public:
+  explicit StatusBuilder(absl::Status status) : status_(std::move(status)) {}
+
+  StatusBuilder(const StatusBuilder& other) : status_(other.status_) {
+    if (other.stream_) {
+      stream_ = std::make_unique<std::ostringstream>();
+      stream_->str(other.stream_->str());
+    }
+  }
+
+  StatusBuilder(StatusBuilder&&) = default;
+  StatusBuilder& operator=(const StatusBuilder& other) {
+    if (this != &other) {
+      status_ = other.status_;
+      if (other.stream_) {
+        stream_ = std::make_unique<std::ostringstream>();
+        stream_->str(other.stream_->str());
+      } else {
+        stream_.reset();
+      }
+    }
+    return *this;
+  }
+  StatusBuilder& operator=(StatusBuilder&&) = default;
+
+  template <typename T>
+  StatusBuilder& operator<<(const T& value) & {
+    if (status_.ok()) return *this;
+    if (stream_ == nullptr) {
+      stream_ = std::make_unique<std::ostringstream>();
+      if (!status_.message().empty()) {
+        *stream_ << status_.message() << "; ";
+      }
+    }
+    *stream_ << value;
+    return *this;
+  }
+
+  template <typename T>
+  StatusBuilder&& operator<<(const T& value) && {
+    *this << value;
+    return std::move(*this);
+  }
+
+  operator absl::Status() const& { return GetStatus(); }
+
+  operator absl::Status() && { return GetStatus(); }
+
+ private:
+  absl::Status GetStatus() const {
+    if (status_.ok() || stream_ == nullptr) {
+      return status_;
+    }
+    absl::Status new_status(status_.code(), stream_->str());
+    status_.ForEachPayload(
+        [&new_status](absl::string_view key, const absl::Cord& value) {
+          new_status.SetPayload(key, value);
+        });
+    return new_status;
+  }
+
+  absl::Status status_;
+  std::unique_ptr<std::ostringstream> stream_;
+};
+}  // namespace tsl
 
 #ifndef ASSIGN_OR_RETURN
 #define ASSIGN_OR_RETURN(lhs, rexpr) \
@@ -31,16 +103,18 @@ limitations under the License.
   lhs = std::move(statusor).value()
 #endif  // ASSIGN_OR_RETURN
 
+// TF_STATUS_MACROS_IMPL_ELSE_BLOCKER is used to prevent the "dangling else"
+// problem.
+#define TF_STATUS_MACROS_IMPL_ELSE_BLOCKER \
+  switch (0)                               \
+  case 0:                                  \
+  default:
+
 #ifndef RETURN_IF_ERROR
-// For propagating errors when calling a function.
-#define RETURN_IF_ERROR(...)                 \
-  do {                                       \
-    absl::Status _status = (__VA_ARGS__);    \
-    if (ABSL_PREDICT_FALSE(!_status.ok())) { \
-      MAYBE_ADD_SOURCE_LOCATION(_status)     \
-      return _status;                        \
-    }                                        \
-  } while (0)
+#define RETURN_IF_ERROR(expr)                                   \
+  TF_STATUS_MACROS_IMPL_ELSE_BLOCKER                            \
+  if (auto _status = (expr); ABSL_PREDICT_FALSE(!_status.ok())) \
+  return tsl::StatusBuilder(std::move(_status))
 #endif  // RETURN_IF_ERROR
 
 #endif  // XLA_TSL_PLATFORM_STATUS_MACROS_H_
