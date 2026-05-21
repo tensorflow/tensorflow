@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
@@ -86,9 +87,9 @@ mlir::LogicalResult MlirHloToHloTranslateFunction(mlir::ModuleOp module,
 absl::StatusOr<std::unique_ptr<HloModule>> HloModuleFromProto(
     const HloProto& hlo_proto) {
   const HloModuleProto& module_proto = hlo_proto.hlo_module();
-  TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
-                      HloModule::CreateModuleConfigFromProto(
-                          module_proto, GetDebugOptionsFromFlags()));
+  ASSIGN_OR_RETURN(const HloModuleConfig module_config,
+                   HloModule::CreateModuleConfigFromProto(
+                       module_proto, GetDebugOptionsFromFlags()));
   return HloModule::CreateFromProto(module_proto, module_config);
 }
 
@@ -121,7 +122,7 @@ absl::Status ConvertMlirHloToHloViaBuilder(
   }
 
   std::vector<xla::XlaOp> returns(1);
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       mlir::BuildHloFromMlirHlo(module, builder, xla_params, returns, options));
 
   xla::XlaOp return_value;
@@ -130,7 +131,7 @@ absl::Status ConvertMlirHloToHloViaBuilder(
   else if (returns.size() > 1)
     return_value = xla::Tuple(&builder, returns);
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       xla::XlaComputation computation,
       return_value.valid() ? builder.Build(return_value) : builder.Build());
 

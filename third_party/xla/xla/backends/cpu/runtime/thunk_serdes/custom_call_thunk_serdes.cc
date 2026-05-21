@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/custom_call_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
@@ -50,7 +51,7 @@ absl::Status CustomCallThunkToProto(const Thunk& thunk, ThunkProto& proto) {
 
   for (size_t i = 0;
        i < custom_call_thunk.op_buffers().arguments_buffers.size(); ++i) {
-    TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
+    RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
         custom_call_thunk.op_buffers().arguments_buffers[i],
         custom_call_thunk.op_buffers().arguments_shapes[i],
         custom_call_proto->mutable_op_buffers()->add_arguments_shapes()));
@@ -58,7 +59,7 @@ absl::Status CustomCallThunkToProto(const Thunk& thunk, ThunkProto& proto) {
 
   for (size_t i = 0; i < custom_call_thunk.op_buffers().results_buffers.size();
        ++i) {
-    TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
+    RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
         custom_call_thunk.op_buffers().results_buffers[i],
         custom_call_thunk.op_buffers().results_shapes[i],
         custom_call_proto->mutable_op_buffers()->add_results_shapes()));
@@ -72,12 +73,12 @@ absl::StatusOr<std::unique_ptr<Thunk>> CustomCallThunkFromProto(
     const std::vector<BufferAllocation>& buffer_allocations,
     const HloModule* hlo_module,
     const std::vector<std::shared_ptr<Resource>>* resources) {
-  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+  ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
 
   CustomCallThunk::OpBuffers op_buffers;
   for (const ShapeBufferAllocationSliceProto& arg_buff_shape :
        proto.custom_call_thunk().op_buffers().arguments_shapes()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         auto args_slice_shape,
         DeserializeSliceShapeFromProto(arg_buff_shape, buffer_allocations));
 
@@ -88,7 +89,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> CustomCallThunkFromProto(
 
   for (const ShapeBufferAllocationSliceProto& res_buff_shape :
        proto.custom_call_thunk().op_buffers().results_shapes()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         auto res_slice_shape,
         DeserializeSliceShapeFromProto(res_buff_shape, buffer_allocations));
 

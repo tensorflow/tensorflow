@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
@@ -1107,8 +1108,8 @@ class ConvertToHloModule {
     // This is an invariant check as Run returns failure if there is no main
     // function and so the main proto shouldn't be consumed in that case.
     TF_RET_CHECK(main) << "requires module to have main function";
-    TF_ASSIGN_OR_RETURN(xla::XlaComputation computation,
-                        module_builder_.Build(lowered_computation_[main]));
+    ASSIGN_OR_RETURN(xla::XlaComputation computation,
+                     module_builder_.Build(lowered_computation_[main]));
     return std::move(*computation.mutable_proto());
   }
 
@@ -5561,14 +5562,14 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
     return absl::InternalError("Unable to convert MHLO to StableHLO");
   }
 
-  TF_RETURN_IF_ERROR(PrepareForExport(module));
+  RETURN_IF_ERROR(PrepareForExport(module));
 
   mlir::BaseScopedDiagnosticHandler diag_handler(module.getContext());
   xla::XlaBuilder module_builder(kMain);
   ConvertToHloModule converter(module, module_builder, options);
   if (failed(converter.Run())) return diag_handler.ConsumeStatus();
-  TF_ASSIGN_OR_RETURN(xla::HloModuleProto hlo_module,
-                      converter.ConsumeMainProto());
+  ASSIGN_OR_RETURN(xla::HloModuleProto hlo_module,
+                   converter.ConsumeMainProto());
   StringRef module_name = module.getName() ? *module.getName() : kMain;
   hlo_module.set_name(module_name.str());
   if (auto cross_program_prefetches = module->getAttrOfType<mlir::ArrayAttr>(
@@ -5650,13 +5651,13 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
 absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertMlirHloToHloModule(
     mlir::ModuleOp module, MlirToHloConversionOptions options) {
   xla::HloProto hlo_proto;
-  TF_RETURN_IF_ERROR(ConvertMlirHloToHlo(module, &hlo_proto, options));
+  RETURN_IF_ERROR(ConvertMlirHloToHlo(module, &hlo_proto, options));
 
   // Create default config.
   const xla::HloModuleProto& module_proto = hlo_proto.hlo_module();
-  TF_ASSIGN_OR_RETURN(xla::HloModuleConfig config,
-                      xla::HloModule::CreateModuleConfigFromProto(
-                          module_proto, xla::GetDebugOptionsFromFlags()));
+  ASSIGN_OR_RETURN(xla::HloModuleConfig config,
+                   xla::HloModule::CreateModuleConfigFromProto(
+                       module_proto, xla::GetDebugOptionsFromFlags()));
 
   // Modify config with values stored in MLIR module attributes
   mhlo::ExportHloModuleConfig(config, module);
@@ -5669,7 +5670,7 @@ absl::Status BuildHloFromMlirHlo(mlir::ModuleOp& module,
                                  llvm::ArrayRef<xla::XlaOp> xla_params,
                                  std::vector<xla::XlaOp>& returns,
                                  MlirToHloConversionOptions options) {
-  TF_RETURN_IF_ERROR(PrepareForExport(module));
+  RETURN_IF_ERROR(PrepareForExport(module));
   mlir::func::FuncOp main = module.lookupSymbol<mlir::func::FuncOp>("main");
   mlir::Block& block = main.getRegion().front();
   // No tuple support in Builder converter API.

@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/builder/padding.h"
@@ -80,24 +81,22 @@ HloInstruction* GetRoot(HloModule& module) {
 
 // TODO(b/74197823): Move the tests to service/.
 absl::StatusOr<std::unique_ptr<HloModule>> BuildHloModule(XlaBuilder& b) {
-  TF_ASSIGN_OR_RETURN(XlaComputation computation,
-                      b.Build(/*remove_dynamic_dimensions=*/false));
+  ASSIGN_OR_RETURN(XlaComputation computation,
+                   b.Build(/*remove_dynamic_dimensions=*/false));
   const HloModuleProto& proto = computation.proto();
-  TF_ASSIGN_OR_RETURN(const auto& config,
-                      HloModule::CreateModuleConfigFromProto(
-                          proto, GetDebugOptionsFromFlags()));
+  ASSIGN_OR_RETURN(const auto& config, HloModule::CreateModuleConfigFromProto(
+                                           proto, GetDebugOptionsFromFlags()));
   return HloModule::CreateFromProto(proto, config);
 }
 
 // Overload which explicitly specifies the root instruction.
 absl::StatusOr<std::unique_ptr<HloModule>> BuildHloModule(XlaBuilder& b,
                                                           XlaOp root) {
-  TF_ASSIGN_OR_RETURN(XlaComputation computation,
-                      b.Build(root, /*remove_dynamic_dimensions=*/false));
+  ASSIGN_OR_RETURN(XlaComputation computation,
+                   b.Build(root, /*remove_dynamic_dimensions=*/false));
   const HloModuleProto& proto = computation.proto();
-  TF_ASSIGN_OR_RETURN(const auto& config,
-                      HloModule::CreateModuleConfigFromProto(
-                          proto, GetDebugOptionsFromFlags()));
+  ASSIGN_OR_RETURN(const auto& config, HloModule::CreateModuleConfigFromProto(
+                                           proto, GetDebugOptionsFromFlags()));
   return HloModule::CreateFromProto(proto, config);
 }
 

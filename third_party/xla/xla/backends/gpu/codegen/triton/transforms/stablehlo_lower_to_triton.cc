@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -461,9 +462,9 @@ absl::StatusOr<Value> EmitBF16x9Matmul(
   constexpr int kLow = 2;
 
   Type f32 = b.getF32Type();
-  TF_RETURN_IF_ERROR(ExpectType(dot_operands.lhs, f32));
-  TF_RETURN_IF_ERROR(ExpectType(dot_operands.rhs, f32));
-  TF_RETURN_IF_ERROR(ExpectType(dot_operands.accumulator, f32));
+  RETURN_IF_ERROR(ExpectType(dot_operands.lhs, f32));
+  RETURN_IF_ERROR(ExpectType(dot_operands.rhs, f32));
+  RETURN_IF_ERROR(ExpectType(dot_operands.accumulator, f32));
 
   std::vector<Value> lhs_parts = SplitF32(b, dot_operands.lhs, kNumParts);
   std::vector<Value> rhs_parts = SplitF32(b, dot_operands.rhs, kNumParts);
@@ -500,9 +501,9 @@ absl::StatusOr<Value> EmitBF16x6Matmul(
   constexpr int kLow = 2;
 
   Type f32 = b.getF32Type();
-  TF_RETURN_IF_ERROR(ExpectType(dot_operands.lhs, f32));
-  TF_RETURN_IF_ERROR(ExpectType(dot_operands.rhs, f32));
-  TF_RETURN_IF_ERROR(ExpectType(dot_operands.accumulator, f32));
+  RETURN_IF_ERROR(ExpectType(dot_operands.lhs, f32));
+  RETURN_IF_ERROR(ExpectType(dot_operands.rhs, f32));
+  RETURN_IF_ERROR(ExpectType(dot_operands.accumulator, f32));
 
   std::vector<Value> lhs_parts = SplitF32(b, dot_operands.lhs, kNumParts);
   std::vector<Value> rhs_parts = SplitF32(b, dot_operands.rhs, kNumParts);
@@ -534,9 +535,9 @@ absl::StatusOr<Value> EmitBF16x3Matmul(
   constexpr int kLow = 1;
 
   Type f32 = b.getF32Type();
-  TF_RETURN_IF_ERROR(ExpectType(dot_operands.lhs, f32));
-  TF_RETURN_IF_ERROR(ExpectType(dot_operands.rhs, f32));
-  TF_RETURN_IF_ERROR(ExpectType(dot_operands.accumulator, f32));
+  RETURN_IF_ERROR(ExpectType(dot_operands.lhs, f32));
+  RETURN_IF_ERROR(ExpectType(dot_operands.rhs, f32));
+  RETURN_IF_ERROR(ExpectType(dot_operands.accumulator, f32));
 
   std::vector<Value> lhs_bf16 = SplitF32(b, dot_operands.lhs, kNumParts);
   std::vector<Value> rhs_bf16 = SplitF32(b, dot_operands.rhs, kNumParts);

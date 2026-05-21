@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/lib/prng.h"
@@ -51,17 +52,17 @@ class DynamismInferenceTest : public ValueInferenceTest {
  public:
   absl::StatusOr<Literal> ComputeDynamismLiteral(
       XlaOp operand, XlaBuilder* builder, Layout* output_layout = nullptr) {
-    TF_RETURN_IF_ERROR(builder->first_error());
+    RETURN_IF_ERROR(builder->first_error());
     ValueInference value_inference(builder);
-    TF_ASSIGN_OR_RETURN(auto literal_slice,
-                        value_inference.AnalyzeIsDynamic(operand));
+    ASSIGN_OR_RETURN(auto literal_slice,
+                     value_inference.AnalyzeIsDynamic(operand));
     return literal_slice.Clone();
   }
 
   absl::StatusOr<bool> ComputeDynamismScalar(XlaOp operand, XlaBuilder* builder,
                                              ShapeIndex index = {}) {
-    TF_ASSIGN_OR_RETURN(auto literal,
-                        ComputeDynamismLiteral(operand, builder, nullptr));
+    ASSIGN_OR_RETURN(auto literal,
+                     ComputeDynamismLiteral(operand, builder, nullptr));
     return literal.Get<bool>({}, index);
   }
 };
@@ -549,9 +550,9 @@ class UpperBoundInferenceTest : public ValueInferenceTest {
   absl::StatusOr<OptionalLiteral> ComputeUpperBoundLiteral(
       XlaOp operand, XlaBuilder* builder, Layout* output_layout = nullptr) {
     ValueInference value_inference(builder);
-    TF_ASSIGN_OR_RETURN(auto literal,
-                        value_inference.AnalyzeConstant(
-                            operand, ValueInferenceMode::kUpperBound));
+    ASSIGN_OR_RETURN(auto literal,
+                     value_inference.AnalyzeConstant(
+                         operand, ValueInferenceMode::kUpperBound));
     return literal;
   }
 };
@@ -701,8 +702,8 @@ class ConstValueInferenceTest : public ValueInferenceTest {
   absl::StatusOr<OptionalLiteral> ComputeConstantValueLiteral(
       XlaOp operand, XlaBuilder* builder, Layout* output_layout = nullptr) {
     ValueInference value_inference(builder);
-    TF_ASSIGN_OR_RETURN(auto literal, value_inference.AnalyzeConstant(
-                                          operand, ValueInferenceMode::kValue));
+    ASSIGN_OR_RETURN(auto literal, value_inference.AnalyzeConstant(
+                                       operand, ValueInferenceMode::kValue));
     return literal;
   }
 };

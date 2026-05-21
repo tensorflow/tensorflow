@@ -121,7 +121,7 @@ absl::Status SyclKernel::Launch(const ThreadDim& thread_dims,
           "memory arguments array");
     }
 
-    TF_ASSIGN_OR_RETURN(auto packed, pack(*this, *device_mem));
+    ASSIGN_OR_RETURN(auto packed, pack(*this, *device_mem));
     return launch(*packed);
   }
 

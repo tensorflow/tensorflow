@@ -98,7 +98,7 @@ absl::StatusOr<FusionEmissionResult> MemcpyFusion::Emit(
     const HloInstruction* root = &root_adaptor.instruction();
     const HloInstruction* src_instr =
         fusion.operand(root->operand(0)->parameter_number());
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         BufferAllocation::Slice slice,
         ir_emitter_context.buffer_assignment().GetUniqueSlice(src_instr, {}));
     src_buffers.push_back(slice);
@@ -106,15 +106,14 @@ absl::StatusOr<FusionEmissionResult> MemcpyFusion::Emit(
   }
 
   std::vector<BufferAllocation::Slice> dst_buffers;
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+  RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       fusion.shape(), [&](const Shape& subshape, const ShapeIndex& index) {
         if (!subshape.IsArray()) {
           return absl::OkStatus();
         }
-        TF_ASSIGN_OR_RETURN(
-            BufferAllocation::Slice slice,
-            ir_emitter_context.buffer_assignment().GetUniqueSlice(&fusion,
-                                                                  index));
+        ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                         ir_emitter_context.buffer_assignment().GetUniqueSlice(
+                             &fusion, index));
         dst_buffers.push_back(slice);
         return absl::OkStatus();
       }));
@@ -151,11 +150,11 @@ absl::StatusOr<FusionEmissionResult> DynamicMemcpyFusion::Emit(
     // prefix, one for the updated slice, one for the unchanged suffix). The
     // first option is inefficient, the second option is currently not
     // implemented: we only support dynamic offsets, no dynamic sizes.
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         BufferAllocation::Slice input_slice,
         ir_emitter_context.buffer_assignment().GetUniqueSlice(
             &SkipOptionalBitcast(root.GetOperand(0)).instruction(), {}));
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         BufferAllocation::Slice dst_slice,
         ir_emitter_context.buffer_assignment().GetUniqueSlice(&fusion, {}));
     CHECK_EQ(input_slice, dst_slice);

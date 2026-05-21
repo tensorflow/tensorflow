@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/ffi/execution_state.pb.h"
 #include "xla/ffi/type_registry.h"
 #include "xla/tsl/platform/statusor.h"
@@ -103,7 +104,7 @@ absl::Status ExecutionState::Set(std::unique_ptr<T> state) {
 
 template <typename T>
 absl::StatusOr<T*> ExecutionState::Get() const {
-  TF_ASSIGN_OR_RETURN(void* state, Get(TypeRegistry::GetTypeId<T>()));
+  ASSIGN_OR_RETURN(void* state, Get(TypeRegistry::GetTypeId<T>()));
   return tsl::safe_reinterpret_cast<T*>(state);
 }
 

@@ -72,10 +72,9 @@ XTileTestBase::CreateXTileIrAndFileCheck(std::unique_ptr<HloModule> hlo_module,
   BlockLevelParameters block_level_parameters =
       BlockLevelParameters::FromBlockLevelFusionConfig(
           fusion_backend_config.block_level_fusion_config());
-  ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> xtile_dialect_module,
-                   CreateXTileIrAndFileCheck(*comp, block_level_parameters,
-                                             filecheck_pattern,
-                                             use_experimental_fusion_emitter));
+  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> xtile_dialect_module,
+                      CreateXTileIrAndFileCheck(*comp, block_level_parameters,
+                                                filecheck_pattern));
   return std::make_pair(std::move(xtile_dialect_module), std::move(hlo_module));
 }
 
@@ -160,7 +159,7 @@ absl::Status XTileTestBase::LowerXTileIrToTritonAndFileCheck(
   BlockLevelParameters block_level_parameters =
       BlockLevelParameters::FromBlockLevelFusionConfig(
           fusion_backend_config.block_level_fusion_config());
-  TF_RETURN_IF_ERROR(ir_emitter_triton_internal::LowerXTileToTriton(
+  RETURN_IF_ERROR(ir_emitter_triton_internal::LowerXTileToTriton(
       xtile_dialect_module, *mlir_context(), fusion,
       TestGpuDeviceInfo::H100SXMDeviceInfo(), block_level_parameters));
 

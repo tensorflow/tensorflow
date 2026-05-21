@@ -40,6 +40,7 @@ cc_library(
         ":cupti_tracer_options_utils",
         ":gpu_metadata",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/profiler/utils:time_utils",
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/log",
@@ -71,6 +72,7 @@ cc_library(
         "//xla/stream_executor/rocm:roctracer_wrapper",
         "//xla/tsl/platform:env_time",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/profiler/backends/cpu:annotation_stack",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -266,6 +268,7 @@ cc_library(
         ":cupti_collector",
         ":cupti_tracer",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/profiler/utils:profiler_options_util",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
@@ -295,6 +298,7 @@ cc_library(
         ":cupti_utils",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/profiler/backends/cpu:annotation_stack",
         "//xla/tsl/profiler/utils:lock_free_queue",
@@ -424,7 +428,7 @@ cc_library(
             "@local_config_cuda//cuda:cupti_headers",
             "@tsl//tsl/platform:errors",
         ],
-    ),
+    ) + ["//xla/tsl/platform:status_macros"],
 )
 
 cc_library(
@@ -531,6 +535,7 @@ cc_library(
         ":rocm_tracer_utils",
         "//xla/stream_executor/rocm:roctracer_wrapper",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/profiler/backends/cpu:annotation_stack",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",

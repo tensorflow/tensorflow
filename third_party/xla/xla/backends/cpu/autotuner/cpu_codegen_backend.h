@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -57,7 +58,7 @@ class CpuCodegenBackend : public CodegenBackend {
     std::unique_ptr<HloModule> hlo_module =
         ExtractInstructionIntoNewModule(hlo_instruction);
 
-    TF_RETURN_IF_ERROR(ApplyConfig(
+    RETURN_IF_ERROR(ApplyConfig(
         *hlo_module->entry_computation()->root_instruction(), config));
 
     return compiler_->RunBackend(std::move(hlo_module),

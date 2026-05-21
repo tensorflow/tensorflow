@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
@@ -1068,23 +1069,23 @@ static absl::Status SubBuffers(
   se::DeviceAddressBase dst5_mem = dst5->device_memory();
   se::DeviceAddressBase dst6_mem = dst6->device_memory();
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       stream->MemcpyD2D(&dst0_mem, src3.device_memory(), 8 * sizeof(float)));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       stream->MemcpyD2D(&dst1_mem, src0.device_memory(), 128 * sizeof(float)));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       stream->MemcpyD2D(&dst2_mem, src1.device_memory(), 256 * sizeof(float)));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       stream->MemcpyD2D(&dst3_mem, src2.device_memory(), 1024 * sizeof(float)));
-  TF_RETURN_IF_ERROR(stream->MemcpyD2D(&dst4_mem, src4.device_memory(),
-                                       4 * 8 * sizeof(float)));
-  TF_RETURN_IF_ERROR(stream->MemcpyD2D(&dst5_mem, src7.device_memory(),
-                                       3 * 128 * sizeof(float)));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(stream->MemcpyD2D(&dst4_mem, src4.device_memory(),
+                                    4 * 8 * sizeof(float)));
+  RETURN_IF_ERROR(stream->MemcpyD2D(&dst5_mem, src7.device_memory(),
+                                    3 * 128 * sizeof(float)));
+  RETURN_IF_ERROR(
       stream->MemcpyD2D(&dst6_mem, src6.device_memory(), 64 * sizeof(float)));
   stream_executor::DeviceAddressBase slice =
       dst6_mem.GetByteSlice(64 * sizeof(float), 32 * sizeof(float));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       stream->MemcpyD2D(&slice, src6.device_memory(), 32 * sizeof(float)));
   return absl::OkStatus();
 }
@@ -2668,20 +2669,20 @@ static absl::Status SubBuffers2(
   se::DeviceAddressBase dst5_mem = dst5->device_memory();
   se::DeviceAddressBase dst6_mem = dst6->device_memory();
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       stream->MemcpyD2D(&dst0_mem, src3.device_memory(), 8 * sizeof(float)));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       stream->MemcpyD2D(&dst1_mem, src0.device_memory(), 128 * sizeof(float)));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       stream->MemcpyD2D(&dst2_mem, src1.device_memory(), 256 * sizeof(float)));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       stream->MemcpyD2D(&dst3_mem, src2.device_memory(), 1024 * sizeof(float)));
-  TF_RETURN_IF_ERROR(stream->MemcpyD2D(&dst4_mem, src4.device_memory(),
-                                       4 * 8 * sizeof(float)));
-  TF_RETURN_IF_ERROR(stream->MemcpyD2D(&dst5_mem, src6.device_memory(),
-                                       5 * 128 * sizeof(float)));
-  TF_RETURN_IF_ERROR(stream->MemcpyD2D(&dst6_mem, src5.device_memory(),
-                                       3 * 128 * sizeof(float)));
+  RETURN_IF_ERROR(stream->MemcpyD2D(&dst4_mem, src4.device_memory(),
+                                    4 * 8 * sizeof(float)));
+  RETURN_IF_ERROR(stream->MemcpyD2D(&dst5_mem, src6.device_memory(),
+                                    5 * 128 * sizeof(float)));
+  RETURN_IF_ERROR(stream->MemcpyD2D(&dst6_mem, src5.device_memory(),
+                                    3 * 128 * sizeof(float)));
   return absl::OkStatus();
 }
 

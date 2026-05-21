@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/MLIRContext.h"
@@ -96,8 +97,8 @@ class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
 
   absl::StatusOr<ModuleWithFusion> BuildModuleWithFusion(
       std::string module_str) const {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                        ParseAndReturnVerifiedModule(module_str));
+    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     ParseAndReturnVerifiedModule(module_str));
     const HloInstruction* instr = hlo_query::GetFirstInstructionWithOpcode(
         *module->entry_computation(), HloOpcode::kAllReduceStart);
     std::unique_ptr<HloModule> module_with_fusion =
@@ -142,9 +143,9 @@ class CollectiveEmitterTest : public CollectiveBlockLevelConfigTest {
  public:
   absl::StatusOr<std::unique_ptr<ModuleWithEmitter>> BuildModuleWithEmitter(
       std::string module_str, const se::DeviceDescription& device_info) const {
-    TF_ASSIGN_OR_RETURN(ModuleWithFusion module_with_fusion,
-                        BuildModuleWithFusion(std::move(module_str)));
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(ModuleWithFusion module_with_fusion,
+                     BuildModuleWithFusion(std::move(module_str)));
+    ASSIGN_OR_RETURN(
         bool collective_fusion_config_set,
         TrySetGpuBackendConfigForCollective(
             device_info_, module_with_fusion.MutableFusionInstr()));

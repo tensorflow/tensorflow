@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
@@ -115,7 +116,7 @@ absl::Status GpuTracer::DoStart() {
   // TODO: Add a test to verify that the options are set correctly and
   // collectors are generating correct data once ProfileData is
   // available(b/399675726).
-  TF_RETURN_IF_ERROR(UpdateCuptiTracerOptionsFromProfilerOptions(
+  RETURN_IF_ERROR(UpdateCuptiTracerOptionsFromProfilerOptions(
       profile_options_, options_, collector_options));
 
   if (collector_options.num_gpus <= 0 ||
@@ -138,7 +139,7 @@ absl::Status GpuTracer::DoStart() {
   for (int i = 0; i < collector_options.num_gpus; ++i) {
     xplanes_.push_back(std::make_unique<tensorflow::profiler::XPlane>());
   }
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       cupti_tracer_->Enable(options_, cupti_collector_.get(), xplanes_));
   AddGpuMetadata();
   return absl::OkStatus();
