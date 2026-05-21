@@ -26,18 +26,21 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
+#include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/runtime/execution_graph.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla::gpu {
 
+using ::testing::ElementsAre;
 using ::testing::UnorderedElementsAre;
 
 MATCHER_P(HasEdgeTo, node_id, "") { return arg.id == node_id; }
@@ -403,6 +406,148 @@ TEST_F(CommandBufferCmdEmitterTest, ConcurrentRegionsScheduleHasLaneAffinity) {
   EXPECT_EQ(
       commands.execution_graph()->nodes_defs()[node_id["a"]].out_edges[0].id,
       node_id["e"]);
+}
+
+TEST_F(CommandBufferCmdEmitterTest, ConvertsConditionalThunkToCommand) {
+  BufferAllocation branch_index_alloc(/*index=*/0, /*size=*/sizeof(int32_t),
+                                      /*color=*/0);
+  BufferAllocation data_alloc(/*index=*/1, /*size=*/2 * 1024, /*color=*/0);
+
+  BufferAllocation::Slice branch_index_slice(&branch_index_alloc, /*offset=*/0,
+                                             /*size=*/sizeof(int32_t));
+  BufferAllocation::Slice branch0_slice(&data_alloc, /*offset=*/0,
+                                        /*size=*/1024);
+  BufferAllocation::Slice branch1_slice(&data_alloc, /*offset=*/1024,
+                                        /*size=*/1024);
+
+  ThunkSequence branch0;
+  branch0.push_back(std::make_unique<FakeKernelThunk>(NextThunkInfo("branch0"),
+                                                      branch0_slice));
+
+  ThunkSequence branch1;
+  branch1.push_back(std::make_unique<FakeKernelThunk>(NextThunkInfo("branch1"),
+                                                      branch1_slice));
+
+  std::vector<ThunkSequence> branches;
+  branches.push_back(std::move(branch0));
+  branches.push_back(std::move(branch1));
+
+  auto conditional = std::make_unique<ConditionalThunk>(
+      NextThunkInfo("conditional"),
+      ShapedSlice{branch_index_slice, ShapeUtil::MakeShape(S32, {})},
+      std::move(branches));
+  ConditionalThunk* conditional_ptr = conditional.get();
+
+  ThunkSequence thunks;
+  thunks.push_back(std::move(conditional));
+
+  ASSERT_OK_AND_ASSIGN(CommandExecutor commands,
+                       ConvertToCommands(thunks, ConvertToCommandsOptions()));
+
+  EXPECT_EQ(conditional_ptr->command_type(), CommandType::kCaseCmd);
+
+  std::vector<std::string> command_names;
+  CHECK_OK(commands.Walk([&](Command* command) {
+    command_names.push_back(std::string(command->profile_annotation()));
+    return absl::OkStatus();
+  }));
+  EXPECT_THAT(command_names, ElementsAre("conditional", "branch0", "branch1"));
+}
+
+TEST_F(CommandBufferCmdEmitterTest, ConvertsConditionalThunkRepeatedly) {
+  BufferAllocation branch_index_alloc(/*index=*/0, /*size=*/sizeof(int32_t),
+                                      /*color=*/0);
+  BufferAllocation data_alloc(/*index=*/1, /*size=*/2 * 1024, /*color=*/0);
+
+  BufferAllocation::Slice branch_index_slice(&branch_index_alloc, /*offset=*/0,
+                                             /*size=*/sizeof(int32_t));
+  BufferAllocation::Slice branch0_slice(&data_alloc, /*offset=*/0,
+                                        /*size=*/1024);
+  BufferAllocation::Slice branch1_slice(&data_alloc, /*offset=*/1024,
+                                        /*size=*/1024);
+
+  ThunkSequence branch0;
+  branch0.push_back(std::make_unique<FakeKernelThunk>(NextThunkInfo("branch0"),
+                                                      branch0_slice));
+
+  ThunkSequence branch1;
+  branch1.push_back(std::make_unique<FakeKernelThunk>(NextThunkInfo("branch1"),
+                                                      branch1_slice));
+
+  std::vector<ThunkSequence> branches;
+  branches.push_back(std::move(branch0));
+  branches.push_back(std::move(branch1));
+
+  ThunkSequence thunks;
+  thunks.push_back(std::make_unique<ConditionalThunk>(
+      NextThunkInfo("conditional"),
+      ShapedSlice{branch_index_slice, ShapeUtil::MakeShape(S32, {})},
+      std::move(branches)));
+
+  auto collect_command_names = [](CommandExecutor& commands) {
+    std::vector<std::string> command_names;
+    CHECK_OK(commands.Walk([&](Command* command) {
+      command_names.push_back(std::string(command->profile_annotation()));
+      return absl::OkStatus();
+    }));
+    return command_names;
+  };
+
+  ASSERT_OK_AND_ASSIGN(CommandExecutor first_commands,
+                       ConvertToCommands(thunks, ConvertToCommandsOptions()));
+  EXPECT_THAT(collect_command_names(first_commands),
+              ElementsAre("conditional", "branch0", "branch1"));
+
+  ConvertToCommandsOptions concurrent_options;
+  concurrent_options.synchronization_mode =
+      CommandExecutor::SynchronizationMode::kConcurrent;
+  ASSERT_OK_AND_ASSIGN(CommandExecutor second_commands,
+                       ConvertToCommands(thunks, concurrent_options));
+  ASSERT_TRUE(second_commands.execution_graph().has_value());
+  EXPECT_THAT(collect_command_names(second_commands),
+              ElementsAre("conditional", "branch0", "branch1"));
+}
+
+TEST_F(CommandBufferCmdEmitterTest,
+       ConvertsBoolConditionalBranchesInCaseOrder) {
+  BufferAllocation branch_index_alloc(/*index=*/0, /*size=*/sizeof(bool),
+                                      /*color=*/0);
+  BufferAllocation data_alloc(/*index=*/1, /*size=*/2 * 1024, /*color=*/0);
+
+  BufferAllocation::Slice branch_index_slice(&branch_index_alloc, /*offset=*/0,
+                                             /*size=*/sizeof(bool));
+  BufferAllocation::Slice false_slice(&data_alloc, /*offset=*/0, /*size=*/1024);
+  BufferAllocation::Slice true_slice(&data_alloc, /*offset=*/1024,
+                                     /*size=*/1024);
+
+  ThunkSequence false_branch;
+  false_branch.push_back(std::make_unique<FakeKernelThunk>(
+      NextThunkInfo("false_branch"), false_slice));
+
+  ThunkSequence true_branch;
+  true_branch.push_back(std::make_unique<FakeKernelThunk>(
+      NextThunkInfo("true_branch"), true_slice));
+
+  std::vector<ThunkSequence> branches;
+  branches.push_back(std::move(false_branch));
+  branches.push_back(std::move(true_branch));
+
+  ThunkSequence thunks;
+  thunks.push_back(std::make_unique<ConditionalThunk>(
+      NextThunkInfo("conditional"),
+      ShapedSlice{branch_index_slice, ShapeUtil::MakeShape(PRED, {})},
+      std::move(branches)));
+
+  ASSERT_OK_AND_ASSIGN(CommandExecutor commands,
+                       ConvertToCommands(thunks, ConvertToCommandsOptions()));
+
+  std::vector<std::string> command_names;
+  CHECK_OK(commands.Walk([&](Command* command) {
+    command_names.push_back(std::string(command->profile_annotation()));
+    return absl::OkStatus();
+  }));
+  EXPECT_THAT(command_names,
+              ElementsAre("conditional", "true_branch", "false_branch"));
 }
 
 }  // namespace xla::gpu

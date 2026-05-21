@@ -139,6 +139,7 @@ cc_library(
     name = "object_pool",
     hdrs = ["object_pool.h"],
     deps = [
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/base:core_headers",

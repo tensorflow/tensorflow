@@ -60,9 +60,10 @@ namespace {
 
 // Push the transpose up through the extract tile, this will then be folded into
 // MemrefToPtr at the lowering stage.
+template <typename ExtractOpTy>
 LogicalResult PushTransposeThroughExtractTile(TransOp op,
                                               PatternRewriter& rewriter) {
-  auto extract = op.getSrc().getDefiningOp<::xla::xtile::ExtractTileOp>();
+  auto extract = op.getSrc().getDefiningOp<ExtractOpTy>();
   if (!extract) {
     return rewriter.notifyMatchFailure(op, "Transpose source is not extract.");
   }
@@ -114,7 +115,7 @@ LogicalResult PushTransposeThroughExtractTile(TransOp op,
   auto pushed_transpose = mlir::memref::TransposeOp::create(
       rewriter, extract.getLoc(), extract.getSource(), permutation_map);
 
-  rewriter.replaceOpWithNewOp<::xla::xtile::ExtractTileOp>(
+  rewriter.replaceOpWithNewOp<ExtractOpTy>(
       op, op.getType(), pushed_transpose, permute(extract.getOffsets()),
       permute(extract.getFullTileShape()), permute(extract.getStrides()));
 
@@ -346,7 +347,9 @@ class TritonXLAFoldTransposePass
  private:
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
-    patterns.add(PushTransposeThroughExtractTile);
+    patterns.add(PushTransposeThroughExtractTile<::xla::xtile::ExtractTileOp>);
+    patterns.add(
+        PushTransposeThroughExtractTile<::xla::xtile::ExtractAlignedTileOp>);
     patterns.add(PushTransposeUpIntoIf);
     patterns.add(HoistTransposeUpFromIf, /*benefit=*/2);
     patterns.add(PushTransposeUpThroughBroadcast);

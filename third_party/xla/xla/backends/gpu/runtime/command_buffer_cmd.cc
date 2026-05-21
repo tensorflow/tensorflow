@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/shaped_slice.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -65,19 +64,6 @@ static se::CommandBuffer::CreateCommands CreateCommands(
   };
 }
 
-// Create callbacks to create a command buffer from command sequences.
-static std::vector<se::CommandBuffer::CreateCommands> CreateCommands(
-    absl::Span<const CommandExecutor> commands,
-    const Thunk::ExecuteParams* execute_params,
-    const Command::RecordParams* record_params) {
-  std::vector<se::CommandBuffer::CreateCommands> create_commands;
-  for (const CommandExecutor& cmd : commands) {
-    create_commands.push_back(
-        CreateCommands(&cmd, execute_params, record_params));
-  }
-  return create_commands;
-}
-
 // Create a callback to update a command buffer with command sequence.
 static se::CommandBuffer::UpdateCommands UpdateCommands(
     const CommandExecutor* commands, const Thunk::ExecuteParams* execute_params,
@@ -86,19 +72,6 @@ static se::CommandBuffer::UpdateCommands UpdateCommands(
     return commands->RecordUpdate(*execute_params, *record_params,
                                   command_buffer);
   };
-}
-
-// Create callbacks to update a command buffer with command sequence.
-static std::vector<se::CommandBuffer::UpdateCommands> UpdateCommands(
-    absl::Span<const CommandExecutor> commands,
-    const Thunk::ExecuteParams* execute_params,
-    const Command::RecordParams* record_params) {
-  std::vector<se::CommandBuffer::UpdateCommands> update_commands;
-  for (const CommandExecutor& cmd : commands) {
-    update_commands.push_back(
-        UpdateCommands(&cmd, execute_params, record_params));
-  }
-  return update_commands;
 }
 
 //===----------------------------------------------------------------------===//
@@ -126,72 +99,6 @@ static absl::StatusOr<const se::CommandBuffer::Command*> Handle(
   }
 
   return Internal("Invalid record action");
-}
-
-//===----------------------------------------------------------------------===//
-// CaseCmd
-//===----------------------------------------------------------------------===//
-
-CaseCmd::CaseCmd(ShapedSlice index, std::vector<CommandExecutor> branches)
-    : Command(CommandType::kCaseCmd),
-      index_(index),
-      index_is_bool_(index.shape.element_type() == PRED),
-      branches_(std::move(branches)) {}
-
-absl::Status CaseCmd::Initialize(const Thunk::InitializeParams& params) {
-  for (auto& branch : branches_) {
-    TF_RETURN_IF_ERROR(branch.Initialize(params));
-  }
-  return absl::OkStatus();
-}
-
-absl::StatusOr<const se::CommandBuffer::Command*> CaseCmd::Record(
-    const Thunk::ExecuteParams& execute_params,
-    const RecordParams& record_params, RecordAction record_action,
-    se::CommandBuffer* command_buffer) {
-  se::DeviceAddressBase index =
-      execute_params.buffer_allocations->GetDeviceAddress(index_.slice);
-
-  VLOG(5) << "CaseCmd:";
-  VLOG(5) << "  index: " << index_ << " (" << index.opaque() << ")";
-
-  return Handle(
-      std::move(record_action),
-      [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
-        if (index_is_bool_) {
-          return command_buffer->CreateCase(
-              se::DeviceAddress<bool>(index),
-              CreateCommands(branches_, &execute_params, &record_params),
-              dependencies);
-        }
-        return command_buffer->CreateCase(
-            se::DeviceAddress<int32_t>(index),
-            CreateCommands(branches_, &execute_params, &record_params),
-            dependencies);
-      },
-      [&](const se::CommandBuffer::Command* command) {
-        if (index_is_bool_) {
-          return command_buffer->UpdateCase(
-              command, se::DeviceAddress<bool>(index),
-              UpdateCommands(branches_, &execute_params, &record_params));
-        }
-        return command_buffer->UpdateCase(
-            command, se::DeviceAddress<int32_t>(index),
-            UpdateCommands(branches_, &execute_params, &record_params));
-      });
-}
-
-Command::BufferUses CaseCmd::buffer_uses() const {
-  return {BufferUse::Read(index_.slice, index_.shape)};
-}
-
-absl::Status CaseCmd::WalkNested(
-    absl::FunctionRef<absl::Status(Thunk*)> callback) {
-  for (auto& branch : branches_) {
-    RETURN_IF_ERROR(branch.Walk(
-        [&](Command* cmd) -> absl::Status { return callback(cmd); }));
-  }
-  return absl::OkStatus();
 }
 
 //===----------------------------------------------------------------------===//
@@ -334,6 +241,11 @@ absl::Status WhileCmd::WalkNested(
       [&](Command* cmd) -> absl::Status { return callback(cmd); }));
   return body_commands_.Walk(
       [&](Command* cmd) -> absl::Status { return callback(cmd); });
+}
+
+absl::Status WhileCmd::WalkNestedCommands(CommandWalker callback) {
+  RETURN_IF_ERROR(cond_commands_.Walk(callback));
+  return body_commands_.Walk(callback);
 }
 
 }  // namespace xla::gpu

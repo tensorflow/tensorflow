@@ -25,10 +25,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/SymbolTable.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Interfaces/CallInterfaces.h"
+#include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Interfaces/FunctionImplementation.h"
 #include "mlir/Support/LLVM.h"
 
@@ -197,6 +200,104 @@ mlir::TypedValue<mlir::RankedTensorType> InsertTileOp::getTile() {
 }
 
 mlir::LogicalResult InsertTileOp::verify() { return VerifyBufferOp(*this); }
+
+constexpr int64_t kXlaCpuDefaultCacheLineAlignment = 64;
+
+bool WillAllocateForLayoutFixup(mlir::RankedTensorType tile_type,
+                                mlir::MemRefType buffer_type,
+                                mlir::ValueRange offsets,
+                                llvm::ArrayRef<int64_t> strides,
+                                mlir::Operation* op) {
+  if (tile_type.getRank() != buffer_type.getRank()) {
+    return true;
+  }
+  if (!buffer_type.getLayout().isIdentity()) {
+    return true;
+  }
+
+  int64_t alignment = kXlaCpuDefaultCacheLineAlignment;
+  if (op && op->getBlock() && op->getParentOfType<mlir::ModuleOp>() &&
+      tile_type.getRank() > 0) {
+    int64_t minor_dim = tile_type.getRank() - 1;
+    int64_t minor_tile_size = tile_type.getDimSize(minor_dim);
+
+    mlir::DataLayout data_layout = mlir::DataLayout::closest(op);
+    auto element_type = tile_type.getElementType();
+    int64_t element_alignment = data_layout.getTypeABIAlignment(element_type);
+    alignment = llvm::PowerOf2Ceil(element_alignment * minor_tile_size);
+  }
+
+  if (tile_type.getRank() > 0) {
+    int64_t minor_dim = tile_type.getRank() - 1;
+    int64_t minor_tile_size = tile_type.getDimSize(minor_dim);
+    int64_t bit_width = tile_type.getElementType().getIntOrFloatBitWidth();
+    int64_t element_size = bit_width / 8;
+    if (element_size > 0 && (minor_tile_size * element_size) % alignment != 0) {
+      return true;
+    }
+  }
+
+  int64_t bit_width = tile_type.getElementType().getIntOrFloatBitWidth();
+  int64_t element_size = bit_width / 8;
+
+  for (mlir::Value offset : offsets) {
+    mlir::APInt const_offset;
+    if (mlir::matchPattern(offset, mlir::m_ConstantInt(&const_offset))) {
+      if (element_size > 0) {
+        int64_t offset_in_bytes = const_offset.getSExtValue() * element_size;
+        if (offset_in_bytes % alignment != 0) {
+          return true;
+        }
+      } else {
+        return true;
+      }
+    } else {
+      // If the offset is not a constant, we must assume allocation is needed.
+      return true;
+    }
+  }
+  for (int64_t stride : strides) {
+    if (stride != 1) {
+      return true;
+    }
+  }
+  return false;
+}
+
+mlir::TypedValue<mlir::MemRefType> ExtractAlignedTileOp::getBuffer() {
+  return getSource();
+}
+
+mlir::TypedValue<mlir::RankedTensorType> ExtractAlignedTileOp::getTile() {
+  return getResult();
+}
+
+mlir::LogicalResult ExtractAlignedTileOp::verify() {
+  if (auto result = VerifyBufferOp(*this); result.failed()) {
+    return result;
+  }
+  bool expected_will_allocate =
+      WillAllocateForLayoutFixup(getTile().getType(), getBuffer().getType(),
+                                 getOffsets(), getStrides(), *this);
+  if (!getWillAllocate() && expected_will_allocate) {
+    return emitOpError()
+           << "will_allocate attribute is false, but layout/alignment requires "
+              "allocation";
+  }
+  return mlir::success();
+}
+
+mlir::TypedValue<mlir::MemRefType> InsertAlignedTileOp::getBuffer() {
+  return getDestination();
+}
+
+mlir::TypedValue<mlir::RankedTensorType> InsertAlignedTileOp::getTile() {
+  return getSource();
+}
+
+mlir::LogicalResult InsertAlignedTileOp::verify() {
+  return VerifyBufferOp(*this);
+}
 
 llvm::SmallVector<int64_t> MaskOp::getMaskedDimensions() {
   llvm::SmallVector<int64_t> masked_dimensions;

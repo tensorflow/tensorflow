@@ -152,8 +152,8 @@ Value SqueezeTensorValue(PatternRewriter& rewriter, Value value,
   return value;
 }
 
-LogicalResult FoldSqueezeDimsOfExtractTile(::xla::xtile::ExtractTileOp op,
-                                           PatternRewriter& rewriter) {
+template <typename OpTy>
+LogicalResult FoldSqueezeDimsOfExtractTile(OpTy op, PatternRewriter& rewriter) {
   std::optional<uint32_t> axis = GetSqueezeDimsUserAxis(op);
   if (!axis) {
     return rewriter.notifyMatchFailure(op, "No squeeze_dims users.");
@@ -161,16 +161,16 @@ LogicalResult FoldSqueezeDimsOfExtractTile(::xla::xtile::ExtractTileOp op,
 
   auto squeezed_type = SqueezeTensorType(op.getType(), *axis);
 
-  Value new_op = ::xla::xtile::ExtractTileOp::create(
-      rewriter, op.getLoc(), squeezed_type, op.getSource(), op.getOffsets(),
-      op.getFullTileShape(), op.getStrides());
+  Value new_op =
+      OpTy::create(rewriter, op.getLoc(), squeezed_type, op.getSource(),
+                   op.getOffsets(), op.getFullTileShape(), op.getStrides());
   ReplaceOpWithExpandDimsOf(rewriter, op, new_op, *axis);
   rewriter.eraseOp(op);
   return success();
 }
 
-LogicalResult SqueezeInsertTile(::xla::xtile::InsertTileOp op,
-                                PatternRewriter& rewriter) {
+template <typename OpTy>
+LogicalResult SqueezeInsertTile(OpTy op, PatternRewriter& rewriter) {
   if (op.getSource().getType().getRank() == 0) {
     return rewriter.notifyMatchFailure(op, "Expected non-scalar source.");
   }
@@ -181,9 +181,9 @@ LogicalResult SqueezeInsertTile(::xla::xtile::InsertTileOp op,
   }
 
   Value src = SqueezeTensorValue(rewriter, op.getSource(), squeeze_dims);
-  rewriter.replaceOpWithNewOp<::xla::xtile::InsertTileOp>(
-      op, src, op.getDestination(), op.getOffsets(), op.getFullTileShape(),
-      op.getStrides());
+  rewriter.replaceOpWithNewOp<OpTy>(op, src, op.getDestination(),
+                                    op.getOffsets(), op.getFullTileShape(),
+                                    op.getStrides());
   return success();
 }
 
@@ -534,8 +534,11 @@ class TritonXLASqueezeDimsPass
  private:
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
-    patterns.add(FoldSqueezeDimsOfExtractTile);
-    patterns.add(SqueezeInsertTile);
+    patterns.add(FoldSqueezeDimsOfExtractTile<::xla::xtile::ExtractTileOp>);
+    patterns.add(
+        FoldSqueezeDimsOfExtractTile<::xla::xtile::ExtractAlignedTileOp>);
+    patterns.add(SqueezeInsertTile<::xla::xtile::InsertTileOp>);
+    patterns.add(SqueezeInsertTile<::xla::xtile::InsertAlignedTileOp>);
     patterns.add(SqueezeReshapeOperand);
     patterns.add(ExpandReshapeResult);
     patterns.add<PushSqueezeDimsUpThroughElementwise>(&getContext());
