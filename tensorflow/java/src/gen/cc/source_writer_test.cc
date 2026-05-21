@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/java/src/gen/cc/source_writer.h"
 
 #include <list>
+#include <string>
 
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
