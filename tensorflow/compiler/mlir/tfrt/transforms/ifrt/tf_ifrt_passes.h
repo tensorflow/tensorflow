@@ -69,6 +69,18 @@ CreateLowerToIfrtRestoreVariablePass();
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateTfDeviceCleanupPass();
 
+// Creates a pass that annotates `tf.IfrtCall` and `tf.AsyncIfrtCallOp`
+// operands with H2D pack-group ids so the runtime H2D transfer path can fuse
+// small per-operand transfers into one batched DMA. See passes.td.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateIfrtPackInputsPlannerPass();
+
+// Creates a pass that copies the planner's pack-inputs annotations from each
+// `tf.IfrtCall` onto its callee atom func (matched by program_id) as
+// func-level attributes. Also computes and stamps `ifrt_pack_offsets`.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateIfrtPackInputsPropagatorPass();
+
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/passes.h.inc"  // IWYU pragma: keep
 

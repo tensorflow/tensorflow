@@ -65,6 +65,8 @@ cc_library(
 cc_library(
     name = "tf_ifrt_passes",
     srcs = [
+        "ifrt_pack_inputs_planner.cc",
+        "ifrt_pack_inputs_propagator.cc",
         "lower_to_ifrt_restore_variable.cc",
         "propagate_static_shapes.cc",
         "rewrite_cluster_to_ifrt_call.cc",
@@ -237,6 +239,10 @@ cc_library(
     name = "ifrt_backend_compiler",
     srcs = ["ifrt_backend_compiler.cc"],
     hdrs = ["ifrt_backend_compiler.h"],
+    visibility = [
+        ":friends",
+        "//tensorflow_serving:__subpackages__",
+    ],
     deps = [
         ":tf_ifrt_passes",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
@@ -325,6 +331,7 @@ cc_library(
     srcs = ["pack_inputs_pass.cc"],
     hdrs = ["pack_inputs_pass.h"],
     deps = [
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
@@ -332,5 +339,39 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+cc_library(
+    name = "ifrt_pack_inputs_propagator",
+    srcs = ["ifrt_pack_inputs_propagator.cc"],
+    deps = [
+        ":ifrt_constants",
+        ":pass_inc_gen",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tensorflow/ir/host_runtime:tensorflow_tfrt_ops",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "ifrt_pack_inputs_planner",
+    srcs = ["ifrt_pack_inputs_planner.cc"],
+    deps = [
+        ":ifrt_constants",
+        ":pass_inc_gen",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tensorflow/ir/host_runtime:tensorflow_tfrt_ops",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )

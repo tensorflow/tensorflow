@@ -66,6 +66,21 @@ struct InputHandle {
   xla::ifrt::LayoutRef xla_input_layout;
   // The byte strides of the input tensor.
   absl::Span<const int64_t> byte_strides;
+
+  // IFRT pack-inputs H2D fusion metadata.
+  // -1  : transfer this operand individually (default).
+  // >=0 : pack into the named transfer group.
+  int64_t pack_group_id = -1;
+  // Byte offset within the group's coalesced host scratch buffer. Meaningful
+  // only when pack_group_id >= 0.
+  int64_t pack_offset = 0;
+  // If true, the resulting ifrt::Array for this handle represents the entire
+  // coalesced group (used for the rewritten executable parameter). Exactly one
+  // handle per group must have this set.
+  bool is_pack_group_representative = false;
+  // The expected shape of the packed buffer for representative handles.
+  // Meaningful only when is_pack_group_representative is true.
+  std::shared_ptr<const xla::Shape> expected_packed_xla_shape = nullptr;
 };
 
 // A per-request H2D transfer executor. The caller should call
@@ -137,6 +152,46 @@ tsl::Future<tensorflow::Tensor> MakeTensorFromArray(
 // TensorFlow tensor.
 std::optional<absl::InlinedVector<int64_t, 4>> GetByteStrides(
     tensorflow::DataType dtype, const tensorflow::TensorShape& shape);
+
+// Description of a single H2D-transfer input together with its pack-plan
+// metadata, used by MakeArraysFromTensorsPacked.
+struct PackedTensorInput {
+  // Source host tensor.
+  tensorflow::Tensor tensor;
+  // Sharding to apply to this operand's typed ifrt::Array (used only when
+  // pack_group_id == -1, i.e., this operand is transferred individually).
+  xla::HloSharding hlo_sharding;
+  // -1 = transfer individually; >= 0 = fuse into the named pack group.
+  int64_t pack_group_id = -1;
+  // Byte offset within the pack group's host scratch buffer. Meaningful only
+  // when pack_group_id >= 0.
+  int64_t pack_offset = 0;
+};
+
+// Builds the list of ifrt::Array operands that LoadedExecutable::Execute()
+// expects when its callee was rewritten by PackInputsPass.
+//
+// Output ordering, matching the post-rewrite signature
+// `[kept individuals, in original order] ++ [packed buffer]`:
+//   1. For each input with pack_group_id == -1, in the order they appear in
+//      `inputs`: one ifrt::Array built from its native tensor.
+//   2. For each unique pack_group_id >= 0 in ascending order: one ifrt::Array
+//      built from a packed tensor<Nxi8> host buffer assembled by memcpying
+//      each member's bytes at its pack_offset.
+//
+// Lifetime: the packed Tensor is held alive by the returned ifrt::Array via
+// MakeArrayFromHostBuffer's `on_done_with_host_buffer` capture, so the caller
+// need not extend it. (Defends against the async-execution case where the
+// packed bytes would otherwise be freed before the H2D completes.)
+//
+// `packed_sharding` is the HloSharding from the executable's compile metadata
+// for the packed parameter — derived from the executable, NOT from any input's
+// sharding (which would be wrong for the rank-1 INT8 packed buffer).
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> MakeArraysFromTensorsPacked(
+    xla::ifrt::Client& ifrt_client, absl::Span<const PackedTensorInput> inputs,
+    const xla::ifrt::DeviceListRef& device_list,
+    const xla::HloSharding& packed_sharding,
+    const tsl::thread::ThreadPool& thread_pool);
 
 // Converts `hlo_sharding` to `xla::ifrt::Sharding`.
 //
