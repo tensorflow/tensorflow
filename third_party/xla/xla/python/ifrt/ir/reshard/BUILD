@@ -42,5 +42,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@tsl//tsl/platform:fingerprint",
     ],
 )

@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/fingerprint.h"
 
 namespace xla {
 namespace ifrt {
@@ -117,6 +118,16 @@ absl::Status SetComputeType(xla::XlaBuilder& builder, xla::XlaOp op,
   return absl::OkStatus();
 }
 
+// Returns a string representation of a span of `MemoryKind`s. This is used to
+// include memory kinds in the fingerprint of an XLA computation.
+std::string MemoryKindsToString(absl::Span<const MemoryKind> memory_kinds) {
+  std::string s;
+  for (const MemoryKind& memory_kind : memory_kinds) {
+    absl::StrAppend(&s, memory_kind.memory_kind().value_or(""), ";");
+  }
+  return s;
+}
+
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<HloProgram>>
@@ -133,7 +144,15 @@ XlaComputationBuilder::BuildXlaReshardComputation(
                xla_shape.tuple_shapes().size());
   const int64_t num_arrays = xla_shape.tuple_shapes().size();
 
-  xla::XlaBuilder builder(pre_resharding ? "pre_reshard" : "post_reshard");
+  std::string base_name = pre_resharding ? "pre_reshard" : "post_reshard";
+  std::string full_name =
+      absl::StrCat(base_name, "_",
+                   tsl::Fingerprint64(absl::StrCat(
+                       xla_shape.ToProto().SerializeAsString(), ";",
+                       old_hlo_sharding.ToProto().SerializeAsString(), ";",
+                       new_hlo_sharding.ToProto().SerializeAsString(), ";",
+                       MemoryKindsToString(memory_kinds))));
+  xla::XlaBuilder builder(full_name);
   std::vector<xla::XlaOp> params;
   params.reserve(num_arrays);
   for (int64_t idx = 0; idx < num_arrays; ++idx) {
@@ -193,7 +212,12 @@ XlaComputationBuilder::BuildXlaZerosComputation(
             xla_shape.tuple_shapes(idx)));
   }
 
-  xla::XlaBuilder builder("zeros");
+  std::string full_name =
+      absl::StrCat("zeros_", tsl::Fingerprint64(absl::StrCat(
+                                 xla_shape.ToProto().SerializeAsString(), ";",
+                                 new_hlo_sharding.ToProto().SerializeAsString(),
+                                 ";", MemoryKindsToString(memory_kinds))));
+  xla::XlaBuilder builder(full_name);
   std::vector<xla::XlaOp> elems;
   elems.reserve(num_arrays);
   for (int64_t idx = 0; idx < num_arrays; ++idx) {
@@ -252,7 +276,14 @@ XlaComputationBuilder::BuildXlaReduceComputation(
                new_xla_shape.tuple_shapes().size());
   const int64_t num_arrays = old_xla_shape.tuple_shapes().size();
 
-  xla::XlaBuilder builder("reduce");
+  std::string full_name = absl::StrCat(
+      "reduce_", tsl::Fingerprint64(absl::StrCat(
+                     old_xla_shape.ToProto().SerializeAsString(), ";",
+                     old_hlo_sharding.ToProto().SerializeAsString(), ";",
+                     new_xla_shape.ToProto().SerializeAsString(), ";",
+                     new_hlo_sharding.ToProto().SerializeAsString(), ";",
+                     MemoryKindsToString(memory_kinds))));
+  xla::XlaBuilder builder(full_name);
   std::vector<xla::XlaOp> params;
   params.reserve(num_arrays);
   for (int64_t idx = 0; idx < num_arrays; ++idx) {
