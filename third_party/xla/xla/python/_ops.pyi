@@ -17,8 +17,7 @@ import enum
 from typing import Any
 from typing import overload
 
-from jax.jaxlib._jax import Literal, PrimitiveType, Shape, XlaComputation
-
+from ._hlo import Literal, PrimitiveType, Shape, XlaComputation
 from ._xla_builder import XlaBuilder, XlaOp
 
 ChannelHandle = Any
