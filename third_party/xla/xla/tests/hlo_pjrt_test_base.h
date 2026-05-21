@@ -16,19 +16,6 @@ limitations under the License.
 #ifndef XLA_TESTS_HLO_PJRT_TEST_BASE_H_
 #define XLA_TESTS_HLO_PJRT_TEST_BASE_H_
 
-// Inclusion of this header indicates that the test has been migrated to use
-// HloRunnerPjRt. Since this requires tagging the build target, the whole target
-// must be migrated at once. HloPjRtTestBase cannot be used in conjunction with
-// HloTestBase and vice versa. This macro helps to ensure that migration test
-// base classes are not used in conjunction with HloTestBase.
-// TODO: b/408276009 - Remove these macros once all tests have been migrated.
-#define XLA_TEST_MIGRATED_TO_HLO_RUNNER_PJRT
-#ifdef XLA_TEST_NOT_MIGRATED_TO_HLO_RUNNER_PJRT
-static_assert(false,
-              "HloPjRtTestBase cannot be used in the same target as a test "
-              "that uses HloTestBase.");
-#endif  // XLA_TEST_NOT_MIGRATED_TO_HLO_RUNNER_PJRT
-
 #include <memory>
 
 #include "xla/pjrt/pjrt_client.h"
