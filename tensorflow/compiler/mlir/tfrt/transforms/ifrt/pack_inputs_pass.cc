@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/BitVector.h"
@@ -52,6 +53,7 @@ void PackInputsPass::runOnOperation() {
   mlir::ModuleOp module = getOperation();
   auto main_func = module.lookupSymbol<mlir::func::FuncOp>("main");
   if (!main_func || main_func.isPrivate() || main_func.isExternal()) {
+    LOG(INFO) << "IFRT Pack-Inputs: Expected a public function 'main'.";
     module.emitError("Expected a public function 'main'.");
     signalPassFailure();
     return;
@@ -60,6 +62,9 @@ void PackInputsPass::runOnOperation() {
   // If command line option is provided, use it to populate slices_
   if (!slices_flat_list_.empty()) {
     if (slices_flat_list_.size() % 3 != 0) {
+      LOG(INFO)
+          << "IFRT Pack-Inputs: Slices flat list option has invalid size: "
+          << slices_flat_list_.size();
       module.emitError(
           "The 'slices' option must be a flat list of integers "
           "with a length multiple of 3.");
@@ -82,12 +87,16 @@ void PackInputsPass::runOnOperation() {
 
   for (const auto& slice : slices_) {
     if (slice.arg_index >= main_func.getNumArguments()) {
+      LOG(INFO) << "IFRT Pack-Inputs: Slice arg_index " << slice.arg_index
+                << " is out of range.";
       module->emitError(absl::StrCat("Slice arg_index ", slice.arg_index,
                                      " is out of range."));
       return signalPassFailure();
     }
 
     if (llvm::is_contained(small_arg_indices, slice.arg_index)) {
+      LOG(INFO) << "IFRT Pack-Inputs: Duplicate slice arg_index: "
+                << slice.arg_index;
       module->emitError(
           absl::StrCat("Duplicate slice arg_index: ", slice.arg_index));
       return signalPassFailure();
@@ -96,11 +105,15 @@ void PackInputsPass::runOnOperation() {
     mlir::BlockArgument arg = main_func.getArgument(slice.arg_index);
     auto tensor_type = llvm::dyn_cast<mlir::RankedTensorType>(arg.getType());
     if (!tensor_type) {
+      LOG(INFO) << "IFRT Pack-Inputs: Argument " << slice.arg_index
+                << " is not a ranked tensor type.";
       module->emitError(absl::StrCat("Argument ", slice.arg_index,
                                      " is not a ranked tensor type."));
       return signalPassFailure();
     }
     if (!tensor_type.hasStaticShape()) {
+      LOG(INFO) << "IFRT Pack-Inputs: Argument " << slice.arg_index
+                << " does not have static shape.";
       module->emitError(absl::StrCat("Argument ", slice.arg_index,
                                      " does not have static shape."));
       return signalPassFailure();
@@ -108,6 +121,8 @@ void PackInputsPass::runOnOperation() {
 
     int64_t bitwidth = tensor_type.getElementType().getIntOrFloatBitWidth();
     if (bitwidth < 8 || bitwidth % 8 != 0) {
+      LOG(INFO) << "IFRT Pack-Inputs: Argument " << slice.arg_index
+                << " has invalid element bit width: " << bitwidth;
       module->emitError(
           absl::StrCat("Argument ", slice.arg_index,
                        " has invalid element bit width: ", bitwidth));
@@ -116,6 +131,9 @@ void PackInputsPass::runOnOperation() {
 
     int64_t expected_size = tensor_type.getNumElements() * (bitwidth / 8);
     if (slice.size != expected_size) {
+      LOG(INFO) << "IFRT Pack-Inputs: Slice size " << slice.size
+                << " for argument " << slice.arg_index
+                << " does not match expected byte size " << expected_size;
       module->emitError(absl::StrCat(
           "Slice size ", slice.size, " for argument ", slice.arg_index,
           " does not match expected byte size ", expected_size));
@@ -134,6 +152,9 @@ void PackInputsPass::runOnOperation() {
       int64_t start_j = slices_[j].start;
       int64_t end_j = start_j + slices_[j].size;
       if (std::max(start_i, start_j) < std::min(end_i, end_j)) {
+        LOG(INFO) << "IFRT Pack-Inputs: Slices for argument "
+                  << slices_[i].arg_index << " and " << slices_[j].arg_index
+                  << " overlap.";
         module->emitError(absl::StrCat("Slices for argument ",
                                        slices_[i].arg_index, " and ",
                                        slices_[j].arg_index, " overlap."));
@@ -165,19 +186,21 @@ void PackInputsPass::runOnOperation() {
     int64_t targetEltBitWidth =
         tensor_type.getElementType().getIntOrFloatBitWidth();
 
-    // If the original type is one byte, we can just do a reshape. If it is
-    // larger than one byte, we need to do a reshape and a bitcast to convert
-    // to the original type. For example, if the original type is F32 of shape
-    // (x, y), we need to reshape to {x, y, 4} as F32 is 4 bytes, and then
-    // bitcast to F32 with shape (x, y).
-    if (targetEltBitWidth == 8) {
+    // If the original type is one byte and has the exact signless i8 element
+    // type, we can do a direct reshape. If it is a signed/unsigned byte type,
+    // or larger than one byte, we need to reshape to the signless i8 equivalent
+    // format first and then bitcast cast to preserve the original type.
+    if (targetEltBitWidth == 8 &&
+        tensor_type.getElementType() == builder.getI8Type()) {
       auto reshape_op = builder.create<mlir::stablehlo::ReshapeOp>(
           arg.getLoc(), arg.getType(), slice_op.getResult());
       arg.replaceAllUsesWith(reshape_op.getResult());
     } else {
       llvm::SmallVector<int64_t> intermediate_shape(
           tensor_type.getShape().begin(), tensor_type.getShape().end());
-      intermediate_shape.push_back(targetEltBitWidth / 8);
+      if (targetEltBitWidth > 8) {
+        intermediate_shape.push_back(targetEltBitWidth / 8);
+      }
       auto intermediate_type =
           mlir::RankedTensorType::get(intermediate_shape, builder.getI8Type());
 
@@ -209,7 +232,10 @@ void PackInputsPass::runOnOperation() {
     }
   }
   new_input_types.push_back(combined_arg_type);
-  new_arg_attrs.push_back(nullptr);
+  mlir::NamedAttrList combined_arg_attrs;
+  combined_arg_attrs.set("mhlo.layout_mode", builder.getStringAttr("{0}"));
+  new_arg_attrs.push_back(
+      combined_arg_attrs.getDictionary(builder.getContext()));
 
   auto new_func_type = mlir::FunctionType::get(&getContext(), new_input_types,
                                                old_func_type.getResults());
