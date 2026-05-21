@@ -148,7 +148,7 @@ PlanHoistBitcastUpwardsToCallers(const HloInstruction* bitcast) {
   // It is possible to support more cases by sinking the bitcast from such
   // producers downward.
   HloInstructionSetVector producers = GetProducerSet(bitcast);
-  TF_RETURN_IF_ERROR(VerifyIsClosedProducerSet(producers, bitcast));
+  RETURN_IF_ERROR(VerifyIsClosedProducerSet(producers, bitcast));
   if (bitcast->shape().element_type() !=
       bitcast->operand(0)->shape().element_type()) {
     return absl::UnimplementedError(
@@ -185,7 +185,7 @@ PlanHoistBitcastUpwardsToCallers(const HloInstruction* bitcast) {
     }
     return absl::OkStatus();
   };
-  TF_RETURN_IF_ERROR(set_result_shape(bitcast->operands(), bitcast->shape()));
+  RETURN_IF_ERROR(set_result_shape(bitcast->operands(), bitcast->shape()));
 
   std::vector<std::pair<HloInstruction*, Shape>> result;
   // We want to visit instructions in order from consumers to producers: we
@@ -219,20 +219,20 @@ PlanHoistBitcastUpwardsToCallers(const HloInstruction* bitcast) {
         // update its operand.
         break;
       case HloOpcode::kBroadcast: {
-        TF_ASSIGN_OR_RETURN(
+        ASSIGN_OR_RETURN(
             BitcastParams params,
             CalculateBitcastOfBroadcast(
                 Cast<HloBroadcastInstruction>(instruction), result_shape));
-        TF_RETURN_IF_ERROR(
+        RETURN_IF_ERROR(
             set_result_shape(instruction->operands(), params.new_shape));
         break;
       }
       case HloOpcode::kTranspose: {
-        TF_ASSIGN_OR_RETURN(
+        ASSIGN_OR_RETURN(
             BitcastParams params,
             CalculateBitcastOfTranspose(
                 Cast<HloTransposeInstruction>(instruction), result_shape));
-        TF_RETURN_IF_ERROR(
+        RETURN_IF_ERROR(
             set_result_shape(instruction->operands(), params.new_shape));
         break;
       }
@@ -241,7 +241,7 @@ PlanHoistBitcastUpwardsToCallers(const HloInstruction* bitcast) {
           return absl::FailedPreconditionError(absl::StrCat(
               "Cannot hoist bitcast past ", instruction->ToString()));
         }
-        TF_RETURN_IF_ERROR(
+        RETURN_IF_ERROR(
             set_result_shape(instruction->operands(), result_shape));
         break;
     }
@@ -302,7 +302,7 @@ absl::StatusOr<Shape> ComputeRootShapeAfterHoistingBitcasts(
     }
     return absl::OkStatus();
   };
-  TF_RETURN_IF_ERROR(set_operand_shape(dot->users(), dot->shape()));
+  RETURN_IF_ERROR(set_operand_shape(dot->users(), dot->shape()));
 
   for (HloInstruction* instruction : GetConsumerSet(dot)) {
     auto it = operand_shapes.find(instruction);
@@ -310,7 +310,7 @@ absl::StatusOr<Shape> ComputeRootShapeAfterHoistingBitcasts(
       continue;  // Not affected.
     }
     Shape& operand_shape = it->second;
-    TF_ASSIGN_OR_RETURN(Shape result_shape, [&]() -> absl::StatusOr<Shape> {
+    ASSIGN_OR_RETURN(Shape result_shape, [&]() -> absl::StatusOr<Shape> {
       switch (instruction->opcode()) {
         case HloOpcode::kBroadcast: {
           auto paramsOr = CalculateBroadcastOfBitcast(
@@ -348,7 +348,7 @@ absl::StatusOr<Shape> ComputeRootShapeAfterHoistingBitcasts(
       CopyElementType(instruction->shape(), &result_shape);
       return result_shape;
     }
-    TF_RETURN_IF_ERROR(set_operand_shape(instruction->users(), result_shape));
+    RETURN_IF_ERROR(set_operand_shape(instruction->users(), result_shape));
   }
   return absl::InternalError("No root found");
 }
@@ -357,8 +357,8 @@ absl::StatusOr<Shape> ComputeRootShapeAfterHoistingBitcasts(
 // each caller.
 absl::Status HoistBitcastUpwardsToCallers(HloInstruction* bitcast,
                                           absl::Span<HloInstruction*> callers) {
-  TF_ASSIGN_OR_RETURN(auto rewrite_plan,
-                      PlanHoistBitcastUpwardsToCallers(bitcast));
+  ASSIGN_OR_RETURN(auto rewrite_plan,
+                   PlanHoistBitcastUpwardsToCallers(bitcast));
   for (auto [instruction, result_shape] : rewrite_plan) {
     VLOG(2) << absl::StrCat("rewriting result shape of ",
                             instruction->ToString(), " to ",
@@ -373,7 +373,7 @@ absl::Status HoistBitcastUpwardsToCallers(HloInstruction* bitcast,
           HloInstruction* new_bitcast =
               caller->AddInstruction(HloInstruction::CreateBitcast(
                   result_shape, caller->mutable_operand(number)));
-          TF_RETURN_IF_ERROR(
+          RETURN_IF_ERROR(
               caller->ReplaceOperandWithDifferentShape(number, new_bitcast));
         }
         break;
@@ -404,8 +404,8 @@ absl::Status HoistBitcastUpwardsToCallers(HloInstruction* bitcast,
     // HloVerifier error.
     instruction->clear_sharding();
   }
-  TF_RETURN_IF_ERROR(bitcast->ReplaceAllUsesWith(bitcast->mutable_operand(0)));
-  TF_RETURN_IF_ERROR(bitcast->parent()->RemoveInstruction(bitcast));
+  RETURN_IF_ERROR(bitcast->ReplaceAllUsesWith(bitcast->mutable_operand(0)));
+  RETURN_IF_ERROR(bitcast->parent()->RemoveInstruction(bitcast));
   return absl::OkStatus();
 }
 
@@ -415,8 +415,8 @@ absl::Status HoistBitcastUpwardsToCallers(HloInstruction* bitcast,
 // root shape.
 absl::StatusOr<bool> MaybeInsertRootBitcast(
     HloInstruction* dot, absl::Span<HloInstruction*> callers) {
-  TF_ASSIGN_OR_RETURN(Shape root_shape,
-                      ComputeRootShapeAfterHoistingBitcasts(dot));
+  ASSIGN_OR_RETURN(Shape root_shape,
+                   ComputeRootShapeAfterHoistingBitcasts(dot));
 
   HloComputation* computation = dot->parent();
   HloInstruction* root = computation->root_instruction();
@@ -432,7 +432,7 @@ absl::StatusOr<bool> MaybeInsertRootBitcast(
   for (HloInstruction* caller : callers) {
     HloInstruction* new_bitcast = caller->AddInstruction(
         HloInstruction::CreateBitcast(caller->shape(), caller));
-    TF_RETURN_IF_ERROR(caller->ReplaceAllUsesWith(new_bitcast));
+    RETURN_IF_ERROR(caller->ReplaceAllUsesWith(new_bitcast));
     *caller->mutable_shape() = root_shape;
   }
 
@@ -547,7 +547,7 @@ absl::StatusOr<bool> HoistFusedBitcasts::RunOnModule(
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     HoistFusedBitcastsVisitor visitor(call_graph.get());
-    TF_RETURN_IF_ERROR(computation->Accept(&visitor));
+    RETURN_IF_ERROR(computation->Accept(&visitor));
     changed |= visitor.changed();
   }
   return changed;

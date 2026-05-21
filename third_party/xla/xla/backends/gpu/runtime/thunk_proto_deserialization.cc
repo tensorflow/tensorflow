@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_host_copy_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_memcpy_thunk.h"
+#include "xla/backends/gpu/runtime/dynamic_slice_fusion_v2_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/fft_thunk.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
@@ -61,7 +62,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/memset_thunk.h"
 #include "xla/backends/gpu/runtime/norm_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_all_reduce_thunk.h"
-#include "xla/backends/gpu/runtime/nvshmem_collective_permute_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_recv_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_send_thunk.h"
@@ -224,6 +224,21 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
       return DynamicSliceThunk::FromProto(std::move(thunk_info),
                                           thunk_proto.dynamic_slice_thunk(),
                                           buffer_allocations, deserializer);
+    }
+    case ThunkProto::kDynamicSliceFusionThunk: {
+      auto deserializer =
+          [&](const ThunkProto& thunk_proto,
+              absl::Span<const BufferAllocation> custom_allocations) {
+            return DeserializeThunkProtoImpl(
+                thunk_proto, custom_allocations, hlo_module, platform_name,
+                host_executable_async_events_map,
+                host_send_recv_async_events_map, async_execution_map,
+                gpu_compute_capability, symbol_resolver,
+                nvshmem_buffer_addresses, cpu_target_machine_options);
+          };
+      return DynamicSliceFusionV2Thunk::FromProto(
+          std::move(thunk_info), thunk_proto.dynamic_slice_fusion_thunk(),
+          buffer_allocations, deserializer);
     }
     case ThunkProto::kCustomCallThunk: {
       const auto& cc_proto = thunk_proto.custom_call_thunk();

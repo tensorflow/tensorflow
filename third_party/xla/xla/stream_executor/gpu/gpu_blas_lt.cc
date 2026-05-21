@@ -286,18 +286,13 @@ bool MakeOutputColumnMajor(MatrixLayout& lhs, MatrixLayout& rhs,
   return swap_operands;
 }
 
-/*static*/ absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetMatmulPlan(
-    const Stream* stream, const GemmConfig& cfg, Epilogue epilogue) {
-  auto blas = Get(stream);
-  if (blas == nullptr) {
-    return xla::Internal("BlasLt is unavailable");
+/*static*/ absl::StatusOr<BlasLt*> BlasLt::Get(StreamExecutor* executor) {
+  auto blas = executor->AsBlas();
+  auto blas_lt = blas != nullptr ? blas->GetBlasLt() : nullptr;
+  if (blas_lt == nullptr) {
+    return absl::InternalError("BlasLt is unavailable");
   }
-  return blas->GetMatmulPlan(cfg, epilogue);
-}
-
-/*static*/ BlasLt* BlasLt::Get(const Stream* stream) {
-  auto blas = stream->parent()->AsBlas();
-  return (blas != nullptr ? blas->GetBlasLt() : nullptr);
+  return blas_lt;
 }
 
 DataType GetScaleType(DataType c_type, ComputationType computation_type) {
@@ -309,7 +304,7 @@ DataType GetScaleType(DataType c_type, ComputationType computation_type) {
 
 absl::StatusOr<BlasLt::MatmulPlan*> BlasLt::GetOrCreateMatmulPlan(
     const std::string& key, PlanCreateFunc create) {
-  absl::MutexLock lock(plan_cache_mu_);  // double mutex ???
+  absl::MutexLock lock(plan_cache_mu_);
   auto res = plan_cache_.emplace(key, MatmulPlanPtr{});
   // New entry inserted: always create a new matmul plan if key is empty,
   // this is used by command_buffer_thunk test.
@@ -331,21 +326,10 @@ size_t BlasLt::GetMatmulPlanCacheSize() const {
   return plan_cache_.size();
 }
 
-/*static*/ absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetGroupedMatmulPlan(
-    const Stream* stream, GroupedGemmConfig& cfg, Epilogue epilogue) {
-  BlasLt* blas = BlasLt::Get(stream);
-  if (blas == nullptr) {
-    return xla::Internal("BlasLt is unavailable");
-  }
-  return blas->GetGroupedMatmulPlan(cfg, epilogue);
-}
-
 absl::StatusOr<BlasLt::MatmulPlan*> BlasLt::GetOrCreateGroupedMatmulPlan(
     const std::string& key, PlanCreateFunc create) {
   absl::MutexLock lock(plan_cache_mu_);
   auto res = grouped_plan_cache_.emplace(key, MatmulPlanPtr{});
-  // New entry inserted: always create a new matmul plan if key is empty,
-  // this is used by command_buffer_thunk test.
   if (res.second || key.empty()) {
     VLOG(2) << "Creating a grouped plan for: " << key;
     ASSIGN_OR_RETURN(res.first->second, create());

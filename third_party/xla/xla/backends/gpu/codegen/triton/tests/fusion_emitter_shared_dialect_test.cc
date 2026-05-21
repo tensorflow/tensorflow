@@ -41,7 +41,19 @@ namespace {
 class XTileDialectTest : public HloHardwareIndependentTestBase,
                          public XTileTestBase {};
 
-TEST_F(XTileDialectTest, HloTransposeIsLoweredToStableHloTranspose) {
+class XTileDialectTestParameterized
+    : public XTileDialectTest,
+      public ::testing::WithParamInterface<bool> {};
+
+INSTANTIATE_TEST_SUITE_P(XTileDialectTestParameterized,
+                         XTileDialectTestParameterized, testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           return info.param ? "ExperimentalEmitter"
+                                             : "LegacyEmitter";
+                         });
+
+TEST_P(XTileDialectTestParameterized,
+       HloTransposeIsLoweredToStableHloTranspose) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -67,10 +79,11 @@ ENTRY e {
       block_level_parameters,
       R"(
 CHECK: %[[RES:.*]] = stablehlo.transpose %[[ARG:.*]], dims = [1, 0] : (tensor<32x16xf32>) -> tensor<16x32xf32>
-)"));
+)",
+      GetParam()));
 }
 
-TEST_F(XTileDialectTest, HloBitcastIsLoweredToTensorBitcast) {
+TEST_P(XTileDialectTestParameterized, HloBitcastIsLoweredToTensorBitcast) {
   constexpr absl::string_view kHloText = R"(
 HloModule t, is_scheduled=true
 
@@ -95,10 +108,11 @@ ENTRY e {
       *module->GetComputationWithName("bitcast_fusion"), block_level_parameters,
       R"(
 CHECK: %[[RES:.*]] = tensor.bitcast %[[ARG:.*]] : tensor<16x32xf32> to tensor<16x32xi32>
-)"));
+)",
+      GetParam()));
 }
 
-TEST_F(XTileDialectTest, HloIotaIsLoweredToStableHloIota) {
+TEST_P(XTileDialectTestParameterized, HloIotaIsLoweredToStableHloIota) {
   constexpr absl::string_view kHloText = R"(
 HloModule t, is_scheduled=true
 
@@ -121,10 +135,12 @@ ENTRY e {
       *module->GetComputationWithName("iota_fusion"), block_level_parameters,
       R"(
 CHECK: %[[RES:.*]] = stablehlo.iota dim = 0 : tensor<16xi32>
-)"));
+)",
+      GetParam()));
 }
 
-TEST_F(XTileDialectTest, HloBroadcastInDimIsLoweredToStableHloBroadcastInDim) {
+TEST_P(XTileDialectTestParameterized,
+       HloBroadcastInDimIsLoweredToStableHloBroadcastInDim) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -150,10 +166,11 @@ ENTRY e {
       block_level_parameters,
       R"(
 CHECK: %[[RES:.*]] = stablehlo.broadcast_in_dim %[[ARG:.*]], dims = [0, 1] : (tensor<16x32xf32>) -> tensor<16x32x8xf32>
-)"));
+)",
+      GetParam()));
 }
 
-TEST_F(XTileDialectTest,
+TEST_P(XTileDialectTestParameterized,
        HloZeroDimensionalBroadcastIsLoweredToStableHloBroadcastInDim) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
@@ -180,10 +197,11 @@ ENTRY e {
       block_level_parameters,
       R"(
 CHECK: %[[RES:.*]] = stablehlo.broadcast_in_dim %[[ARG:.*]], dims = [] : (tensor<f32>) -> tensor<16x32x8xf32>
-)"));
+)",
+      GetParam()));
 }
 
-TEST_F(XTileDialectTest, HloReduceIsLoweredToStableHloReduce) {
+TEST_P(XTileDialectTestParameterized, HloReduceIsLoweredToStableHloReduce) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -217,10 +235,11 @@ ENTRY e {
 CHECK: %[[INIT:.*]] = arith.constant dense<0.000000e+00> : tensor<f32>
 CHECK: %[[MASKED_INPUT:.*]] = xtile.mask {{.*}}
 CHECK: %[[RES:.*]] = stablehlo.reduce(%[[MASKED_INPUT]] init: %[[INIT]]) applies stablehlo.add across dimensions = [0] : (tensor<256x16xf32>, tensor<f32>) -> tensor<16xf32>
-)"));
+)",
+      GetParam()));
 }
 
-TEST_F(XTileDialectTest, HloReshapeIsLoweredToStableHloReshape) {
+TEST_P(XTileDialectTestParameterized, HloReshapeIsLoweredToStableHloReshape) {
   constexpr absl::string_view kHloText = R"(
 HloModule t, is_scheduled=true
 
@@ -245,10 +264,11 @@ ENTRY e {
       *module->GetComputationWithName("reshape_fusion"), block_level_parameters,
       R"(
 CHECK: %[[RES:.*]] = stablehlo.reshape %[[ARG:.*]] : (tensor<16xi32>) -> tensor<1x16xi32>
-)"));
+)",
+      GetParam()));
 }
 
-TEST_F(XTileDialectTest, HloDotIsLoweredToStableHloDot) {
+TEST_P(XTileDialectTestParameterized, HloDotIsLoweredToStableHloDot) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -278,10 +298,11 @@ ENTRY e {
       R"(
 CHECK: %[[RES:.*]] = stablehlo.dot_general %[[ARG0:.*]], %[[ARG1:.*]], contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT] : (tensor<32x8xf32>, tensor<8x8xf32>) -> tensor<32x8xf32>
 CHECK: %[[ADD_RES:.*]] = arith.addf %[[ARG2:.*]], %[[RES]] : tensor<32x8xf32>
-)"));
+)",
+      GetParam()));
 }
 
-TEST_F(XTileDialectTest, HloScaledDotIsLoweredToXTileDotScaled) {
+TEST_P(XTileDialectTestParameterized, HloScaledDotIsLoweredToXTileDotScaled) {
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -332,10 +353,12 @@ ENTRY e {
       R"(
       CHECK: %[[DOT:.*]] = xtile.dot_scaled %[[LHS:.*]] scale %[[LHS_SCALE:.*]], %[[RHS:.*]] scale %[[RHS_SCALE:.*]] {dot_dimension_numbers = #stablehlo.dot<lhs_contracting_dimensions = [1], rhs_contracting_dimensions = [0]>, fastMath = true} : tensor<128x128xf8E5M2>, tensor<128x4xi8> * tensor<128x256xf8E5M2>, tensor<256x4xi8> -> tensor<128x256xf32>
       CHECK: %[[RES:.*]] = arith.addf %{{.*}}, %[[DOT]] : tensor<128x256xf32>
-      )"));
+      )",
+      GetParam()));
 }
 
-TEST_F(XTileDialectTest, HloAllReduceIsLoweredToStableHloAllReduce) {
+TEST_P(XTileDialectTestParameterized,
+       HloAllReduceIsLoweredToStableHloAllReduce) {
   constexpr absl::string_view kHloText =
       R"(
       HloModule wrapped_module_all-reduce-start
@@ -371,10 +394,12 @@ TEST_F(XTileDialectTest, HloAllReduceIsLoweredToStableHloAllReduce) {
       R"(
 CHECK: stablehlo.all_reduce
 CHECK: stablehlo.add
-)"));
+)",
+      GetParam()));
 }
 
-TEST_F(XTileDialectTest, HloUnsignedIntIsLoweredToStableHloUnsignedInt) {
+TEST_P(XTileDialectTestParameterized,
+       HloUnsignedIntIsLoweredToStableHloUnsignedInt) {
   constexpr absl::string_view kHloText = R"(
 HloModule t, is_scheduled=true
 
@@ -399,7 +424,8 @@ ENTRY e {
       *module->GetComputationWithName("add_fusion"), block_level_parameters,
       R"(
 CHECK: stablehlo.add{{.*}}: tensor<16xui32>
-)"));
+)",
+      GetParam()));
 }
 
 }  // namespace
