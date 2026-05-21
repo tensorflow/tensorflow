@@ -103,8 +103,8 @@ static absl::StatusOr<std::unique_ptr<Command>> Convert(
       std::move(body_cmds), thunk.trip_count(), options.enable_loop_unroll);
 }
 
-static absl::StatusOr<std::unique_ptr<Command>> Convert(
-    const ConditionalThunk& thunk, const ConvertToCommandsOptions& options) {
+static absl::Status SetOrUpdateCommandBufferBranchExecutors(
+    ConditionalThunk& thunk, const ConvertToCommandsOptions& options) {
   std::vector<CommandExecutor> branch_cmds;
   branch_cmds.reserve(thunk.branch_executors().size());
   if (thunk.branch_index_is_bool()) {
@@ -118,14 +118,13 @@ static absl::StatusOr<std::unique_ptr<Command>> Convert(
         branch_cmds.emplace_back(),
         ConvertToCommands(thunk.branch_executors()[0].thunks(), options));
   } else {
-    for (auto& branch_thunk : thunk.branch_executors()) {
+    for (const ThunkExecutor& branch_thunk : thunk.branch_executors()) {
       ASSIGN_OR_RETURN(CommandExecutor cmds,
                        ConvertToCommands(branch_thunk.thunks(), options));
       branch_cmds.emplace_back(std::move(cmds));
     }
   }
-  return std::make_unique<CaseCmd>(thunk.branch_index_buffer(),
-                                   std::move(branch_cmds));
+  return thunk.SetOrUpdateCommandBufferBranchExecutors(std::move(branch_cmds));
 }
 
 //===----------------------------------------------------------------------===//
@@ -164,8 +163,13 @@ static absl::Status AppendCommands(ConversionContext& ctx,
   };
 
   switch (thunk.kind()) {
-    case Thunk::Kind::kConditional:
-      return append(Convert<ConditionalThunk>(thunk, options));
+    case Thunk::Kind::kConditional: {
+      auto& conditional_thunk = static_cast<ConditionalThunk&>(thunk);
+      TF_RETURN_IF_ERROR(
+          SetOrUpdateCommandBufferBranchExecutors(conditional_thunk, options));
+      cmd_sequence.Append(&conditional_thunk);
+      return absl::OkStatus();
+    }
     case Thunk::Kind::kCopy:
       cmd_sequence.Append(static_cast<DeviceToDeviceCopyThunk*>(&thunk));
       return absl::OkStatus();

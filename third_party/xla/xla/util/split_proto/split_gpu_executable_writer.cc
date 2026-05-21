@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/message.h"
 #include "riegeli/bytes/writer.h"
 #include "riegeli/records/record_writer.h"
@@ -77,7 +78,7 @@ absl::Status NormalizeBackendConfig(gpu::GpuExecutableProto& executable) {
             ->mutable_computations()) {
     for (HloInstructionProto& instruction :
          *computation.mutable_instructions()) {
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           std::string backend_config_str,
           GetBackendConfigString(
               instruction, &executable.hlo_module_with_config().hlo_module()));
@@ -119,33 +120,33 @@ absl::Status WriteSplitGpuExecutable(gpu::GpuExecutableProto executable,
   riegeli::RecordWriter record_writer(std::move(writer),
                                       GetSplitProtoRiegeliOptions());
   SplitProtoManifest manifest = BuildManifest(executable.constants_size());
-  TF_RETURN_IF_ERROR(WriteRecord(record_writer, manifest));
+  RETURN_IF_ERROR(WriteRecord(record_writer, manifest));
 
-  TF_RETURN_IF_ERROR(WriteRecord(record_writer, executable.asm_text()));
+  RETURN_IF_ERROR(WriteRecord(record_writer, executable.asm_text()));
   executable.clear_asm_text();
-  TF_RETURN_IF_ERROR(WriteRecord(record_writer, executable.binary()));
+  RETURN_IF_ERROR(WriteRecord(record_writer, executable.binary()));
   executable.clear_binary();
 
   gpu::GpuExecutableProto dnn_graphs_wrapper;
   *dnn_graphs_wrapper.mutable_dnn_compiled_graphs() =
       std::move(executable.dnn_compiled_graphs());
   executable.clear_dnn_compiled_graphs();
-  TF_RETURN_IF_ERROR(WriteRecord(record_writer, dnn_graphs_wrapper));
+  RETURN_IF_ERROR(WriteRecord(record_writer, dnn_graphs_wrapper));
 
   for (gpu::GpuExecutableProto::ConstantInfoProto& constant :
        *executable.mutable_constants()) {
     gpu::GpuExecutableProto constant_wrapper;
     *constant_wrapper.add_constants() = std::move(constant);
-    TF_RETURN_IF_ERROR(WriteRecord(record_writer, constant_wrapper));
+    RETURN_IF_ERROR(WriteRecord(record_writer, constant_wrapper));
   }
   executable.clear_constants();
 
   // The rest of the fields (i.e. the non-offloaded fields)
-  TF_RETURN_IF_ERROR(NormalizeBackendConfig(executable));
+  RETURN_IF_ERROR(NormalizeBackendConfig(executable));
   // Module IDs are created via a static counter when deserializing, and they
   // can cause non-determinism, so we don't preserve them.
   executable.mutable_hlo_module_with_config()->mutable_hlo_module()->clear_id();
-  TF_RETURN_IF_ERROR(WriteRecord(record_writer, executable));
+  RETURN_IF_ERROR(WriteRecord(record_writer, executable));
 
   if (!record_writer.Close()) {
     return record_writer.status();

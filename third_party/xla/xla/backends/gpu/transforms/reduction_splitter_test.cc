@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -39,9 +40,9 @@ namespace {
 namespace m = ::xla::match;
 
 absl::StatusOr<stream_executor::DeviceDescription> MakeDeviceDescription() {
-  TF_ASSIGN_OR_RETURN(stream_executor::DeviceDescription device_description,
-                      stream_executor::DeviceDescription::FromProto(
-                          stream_executor::GpuDeviceInfoProto{}));
+  ASSIGN_OR_RETURN(stream_executor::DeviceDescription device_description,
+                   stream_executor::DeviceDescription::FromProto(
+                       stream_executor::GpuDeviceInfoProto{}));
   device_description.set_threads_per_warp(32);
   return device_description;
 }
