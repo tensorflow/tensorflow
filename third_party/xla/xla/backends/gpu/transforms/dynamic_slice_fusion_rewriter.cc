@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -153,7 +154,7 @@ absl::Status CreateRootTuple(
         HloInstruction::CreateGetTupleElement(instr_mapping[hero], i));
     if (hero->shape().tuple_shapes(i).IsTuple()) {
       instr_mapping[gte] = gte;
-      TF_RETURN_IF_ERROR(CreateRootTuple(gte, builder, {}, instr_mapping));
+      RETURN_IF_ERROR(CreateRootTuple(gte, builder, {}, instr_mapping));
       elements.push_back(builder.last_added_instruction());
     } else {
       elements.push_back(gte);
@@ -210,7 +211,7 @@ absl::StatusOr<HloComputation*> CreateFusionBody(
   // Create a tuple if the hero is a tuple to make sure there's a buffer
   // assigned for each of the elements. Make sure the tuple is not nil first.
   if (hero->shape().IsTuple() && hero->shape().tuple_shapes().size() > 0) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         CreateRootTuple(hero, builder, sliced_user_paths, instr_mapping));
   }
 
@@ -241,7 +242,7 @@ absl::StatusOr<HloInstruction*> CreateFusionInstruction(
       dynamic ? kDynamicSliceFusionWithDynamicAddressComputationConfigName
               : kDynamicSliceFusionWithStaticAddressComputationConfigName);
   *backend_config.mutable_custom_fusion_config() = config;
-  TF_RETURN_IF_ERROR(fusion->set_backend_config(std::move(gpu_config)));
+  RETURN_IF_ERROR(fusion->set_backend_config(std::move(gpu_config)));
 
   return fusion;
 }
@@ -312,7 +313,7 @@ absl::StatusOr<bool> DynamicSliceFusionRewriter::RunImpl(
 
     auto captures = GetPatternCaptures(matched_instrs);
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         HloComputation * fusion_body,
         CreateFusionBody(module, sliced_operand_paths,
                          DataflowPathsView(sliced_user_paths_view), captures));
@@ -320,14 +321,13 @@ absl::StatusOr<bool> DynamicSliceFusionRewriter::RunImpl(
     bool has_dynamic_slices = absl::c_any_of(matched_instrs, [&](auto* instr) {
       return DynCast<HloDynamicIndexInstruction>(instr) != nullptr;
     });
-    TF_ASSIGN_OR_RETURN(
-        HloInstruction * fusion,
-        CreateFusionInstruction(module, hero, captures, fusion_body,
-                                has_dynamic_slices));
+    ASSIGN_OR_RETURN(HloInstruction * fusion,
+                     CreateFusionInstruction(module, hero, captures,
+                                             fusion_body, has_dynamic_slices));
 
     HloComputation* parent = hero->parent();
     if (fusion->shape().IsTuple()) {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           parent->ReplaceInstructionWithDifferentShape(hero, fusion));
       for (auto& sliced_user_path : sliced_user_paths) {
         auto old_gte =
@@ -335,7 +335,7 @@ absl::StatusOr<bool> DynamicSliceFusionRewriter::RunImpl(
         HloInstruction* gte =
             parent->AddInstruction(HloInstruction::CreateGetTupleElement(
                 fusion, old_gte->tuple_index()));
-        TF_RETURN_IF_ERROR(
+        RETURN_IF_ERROR(
             parent->ReplaceInstruction(sliced_user_path.back(), gte));
       }
     } else {
@@ -359,11 +359,10 @@ absl::StatusOr<bool> DynamicSliceFusionRewriter::RunImpl(
       } else {
         instr_to_be_replaced = sliced_user_paths.front().back();
       }
-      TF_RETURN_IF_ERROR(
-          parent->ReplaceInstruction(instr_to_be_replaced, fusion));
+      RETURN_IF_ERROR(parent->ReplaceInstruction(instr_to_be_replaced, fusion));
       // This is required for collective operations which will not be removed.
       if (hero->parent()) {
-        TF_RETURN_IF_ERROR(hero->parent()->RemoveInstruction(hero));
+        RETURN_IF_ERROR(hero->parent()->RemoveInstruction(hero));
       }
     }
   }
