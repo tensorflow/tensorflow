@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <string>
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
