@@ -167,6 +167,12 @@ struct TfrtPipelineOptions
                      "resplit for priority aware batch scheduler."),
       llvm::cl::init(false)};
 
+  Option<bool> enable_batching_task_lazy_cancellation{
+      *this, "tfrt-enable-batching-task-lazy-cancellation",
+      llvm::cl::desc("If true, enable lazy cancellation filtering in the "
+                     "priority-aware batch scheduler."),
+      llvm::cl::init(false)};
+
   Option<std::string> batch_padding_policy{
       *this, "tfrt-batch-padding-policy",
       llvm::cl::desc("The policy used when padding (or splitting) batches."),
