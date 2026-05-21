@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
@@ -67,8 +68,8 @@ struct DummyThunk : public Thunk {
   }
   static absl::StatusOr<std::unique_ptr<DummyThunk>> FromProto(
       const ThunkProto& thunk_proto, Thunk::Kind kind) {
-    TF_ASSIGN_OR_RETURN(Thunk::ThunkInfo thunk_info,
-                        Thunk::ThunkInfo::FromProto(thunk_proto.thunk_info()));
+    ASSIGN_OR_RETURN(Thunk::ThunkInfo thunk_info,
+                     Thunk::ThunkInfo::FromProto(thunk_proto.thunk_info()));
     return std::make_unique<DummyThunk>(kind, std::move(thunk_info));
   }
 
@@ -120,12 +121,12 @@ class IterationLoggerThunk : public Thunk {
 class KnownTripCountWhileThunkTest : public HloPjRtTestBase {
  protected:
   absl::Status ExecuteThunk(Thunk& thunk) {
-    TF_ASSIGN_OR_RETURN(auto name, PlatformUtil::CanonicalPlatformName("gpu"));
-    TF_ASSIGN_OR_RETURN(auto* platform,
-                        se::PlatformManager::PlatformWithName(name));
-    TF_ASSIGN_OR_RETURN(auto* executor, platform->ExecutorForDevice(0));
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
-                        executor->CreateStream());
+    ASSIGN_OR_RETURN(auto name, PlatformUtil::CanonicalPlatformName("gpu"));
+    ASSIGN_OR_RETURN(auto* platform,
+                     se::PlatformManager::PlatformWithName(name));
+    ASSIGN_OR_RETURN(auto* executor, platform->ExecutorForDevice(0));
+    ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
+                     executor->CreateStream());
     stream_executor::StreamExecutorAddressAllocator allocator(executor);
     Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
         ServiceExecutableRunOptions(), BufferAllocations({}, 0, &allocator),

@@ -549,6 +549,12 @@ cc_library(
 cc_library(
     name = "pooling_ops_gpu_hdrs",
     hdrs = ["maxpooling_op_gpu.h"],
+    deps = [
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/framework:tensor_types",
+        "//tensorflow/core/util:tensor_format",
+        "@com_google_absl//absl/status",
+    ],
 )
 
 # We keep this target only because some contrib/ targets depend on it. The
@@ -4350,6 +4356,8 @@ tf_kernel_library(
         ":redux_functor",
         "//tensorflow/core/profiler/lib:scoped_annotation",
         "//tensorflow/core/util:determinism_for_kernels",
+        "//tensorflow/core/util:overflow",
+        "@com_google_absl//absl/status",
     ] + if_cuda_or_rocm([
         ":reduction_ops",
         "@xla//xla/stream_executor:event_based_timer",
@@ -4642,8 +4650,13 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/core/util:overflow",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
+        "@local_config_cuda//cuda:cudnn_header",
+        "@xla//xla/tsl/framework/fixedpoint",
     ],
 )
 
@@ -4675,7 +4688,19 @@ cc_library(
     deps = [
         ":eigen_helpers",
         ":ops_util_hdrs",
+        ":pooling_ops_gpu_hdrs",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/framework:numeric_types",
+        "//tensorflow/core/framework:tensor_shape",
+        "//tensorflow/core/framework:tensor_types",
+        "//tensorflow/core/util:padding",
+        "//tensorflow/core/util:tensor_format",
+        "@com_google_absl//absl/status",
         "@eigen_archive//:eigen3",
+        "@xla//xla/tsl/framework/fixedpoint",
     ],
 )
 
@@ -4753,6 +4778,8 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/util:overflow",
+        "@com_google_absl//absl/status",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -6661,7 +6688,6 @@ filegroup(
         "transpose_op.h",
         "where_op.h",
         "xent_op.h",
-    ] + [
         "//tensorflow/core/kernels/data:portable_all_op_kernels_headers",
         "//tensorflow/core/kernels/image:adjust_contrast_op.h",
         "//tensorflow/core/kernels/image:adjust_hue_op.h",
@@ -6810,9 +6836,6 @@ filegroup(
         "population_count_op.h",
         "winograd_transform.h",
         ":portable_extended_ops_headers",
-        "@xla//xla/tsl/framework/contraction:eigen_contraction_kernel.cc",
-        "@xla//xla/tsl/framework/contraction:eigen_contraction_kernel.h",
-    ] + [
         "//tensorflow/core/kernels/image:colorspace_op.cc",
         "//tensorflow/core/kernels/image:crop_and_resize_op.cc",
         "//tensorflow/core/kernels/image:crop_and_resize_op.h",
@@ -6830,6 +6853,8 @@ filegroup(
         "//tensorflow/core/kernels/linalg:einsum_op_impl_int32.cc",
         "//tensorflow/core/kernels/linalg:einsum_op_impl_int64.cc",
         "//tensorflow/core/kernels/uniform_quant_ops:portable_all_op_kernels",
+        "@xla//xla/tsl/framework/contraction:eigen_contraction_kernel.cc",
+        "@xla//xla/tsl/framework/contraction:eigen_contraction_kernel.h",
     ],
 )
 
@@ -7201,6 +7226,7 @@ cc_library(
     linkopts = if_android(["-ldl"]),
     tags = [
         "manual",
+        "nofixdeps",
         "notap",
     ],
     # These headers are not self-contained, so should be included in textual_hdrs only.
@@ -8023,8 +8049,8 @@ cc_library(
 )
 
 # For a more maintainable build this target should not exist and the headers
-# should  be split into the existing cc_library targets, but this change was
-# automatically  done so that we can remove long standing issues and complexity
+# should be split into the existing cc_library targets, but this change was
+# automatically done so that we can remove long standing issues and complexity
 # in the build system. It's up to the OWNERS of this package to get rid of it or
 # not. The use of the textual_hdrs attribute is discouraged, use hdrs instead.
 # Here it is used to avoid header parsing errors in packages where the feature
@@ -8035,15 +8061,13 @@ cc_library(
     tags = ["avoid_dep"],
     textual_hdrs = glob(["*.h"]),
     visibility = [
-        "//visibility:public",
-    ],
-    deps = [
-        "//tensorflow/core/framework:graph_proto_cc",
-        "//tensorflow/core/framework:node_def_proto_cc",
-        "//tensorflow/core/framework:types_proto_cc",
-        "@com_google_absl//absl/synchronization",
+        "//smartass/brain:__subpackages__",
+        "//tensorflow:__subpackages__",
     ],
 )
+
+# Deleted deps
+# [
 
 tf_kernel_library(
     name = "stochastic_cast_op",

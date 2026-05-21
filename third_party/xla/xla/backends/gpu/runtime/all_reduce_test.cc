@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/array.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
@@ -101,18 +102,18 @@ class AllReduceKernelTest : public ::testing::Test,
 
     int64_t num_elements = input_data[0].num_elements();
 
-    TF_RETURN_IF_ERROR(executors[0]->EnablePeerAccessTo(executors[1]));
-    TF_RETURN_IF_ERROR(executors[1]->EnablePeerAccessTo(executors[0]));
+    RETURN_IF_ERROR(executors[0]->EnablePeerAccessTo(executors[1]));
+    RETURN_IF_ERROR(executors[1]->EnablePeerAccessTo(executors[0]));
 
     std::unique_ptr<se::gpu::MulticastMemory> multicast_memory;
     if (params_.all_reduce_strategy == AllReduceStrategy::kMultimem) {
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           multicast_memory,
           dynamic_cast<se::gpu::GpuExecutor*>(executors[0])
               ->CreateMulticastMemory(num_elements * sizeof(T), num_ranks));
 
       for (int i = 0; i < num_ranks; ++i) {
-        TF_RETURN_IF_ERROR(multicast_memory->SubscribeDevice(i));
+        RETURN_IF_ERROR(multicast_memory->SubscribeDevice(i));
       }
     }
 
@@ -153,16 +154,16 @@ class AllReduceKernelTest : public ::testing::Test,
       output_buffers.emplace_back(allocated_buffers[i].GetByteSlice(
           2 * aligned_input_size, aligned_input_size));
       TF_RET_CHECK(!output_buffers[i].is_null());
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           streams[i]->MemZero(&output_buffers[i], aligned_input_size));
 
       signal_flags_buffers.emplace_back(allocated_buffers[i].GetByteSlice(
           3 * aligned_input_size, aligned_signal_size));
       TF_RET_CHECK(!signal_flags_buffers[i].is_null());
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           streams[i]->MemZero(&signal_flags_buffers[i], aligned_signal_size));
-      TF_RETURN_IF_ERROR(streams[i]->Memcpy(&input_buffers[i],
-                                            input_data[i].data(), input_size));
+      RETURN_IF_ERROR(streams[i]->Memcpy(&input_buffers[i],
+                                         input_data[i].data(), input_size));
       XLA_VLOG_DEVICE(1, i)
           << "Allocated buffer: " << allocated_buffers[i].opaque()
           << ", Input buffer: " << input_buffers[i].opaque()
@@ -192,7 +193,7 @@ class AllReduceKernelTest : public ::testing::Test,
         se::gpu::GpuExecutor* gpu_executor =
             dynamic_cast<se::gpu::GpuExecutor*>(executors[i]);
         TF_RET_CHECK(gpu_executor != nullptr);
-        TF_ASSIGN_OR_RETURN(
+        ASSIGN_OR_RETURN(
             void* mapped_memory,
             multicast_memory->MapMemory(allocated_buffers[i], gpu_executor));
         std::vector<void*> param_to_multimem_addresses =
@@ -213,7 +214,7 @@ class AllReduceKernelTest : public ::testing::Test,
                 param_to_multimem_addresses_byte_size);
         metadata.param_to_multimem_addresses = reinterpret_cast<void**>(
             param_to_multimem_addresses_buffer.opaque());
-        TF_RETURN_IF_ERROR(
+        RETURN_IF_ERROR(
             streams[i]->Memcpy(&param_to_multimem_addresses_buffer,
                                param_to_multimem_addresses.data(),
                                param_to_multimem_addresses_byte_size));
@@ -249,20 +250,20 @@ class AllReduceKernelTest : public ::testing::Test,
                                            param_to_peers_size_bytes);
       metadata.param_to_peers =
           reinterpret_cast<void**>(param_to_peers_ptrs_buffer.opaque());
-      TF_RETURN_IF_ERROR(streams[i]->Memcpy(&param_to_peers_ptrs_buffer,
-                                            param_to_peers_ptrs.data(),
-                                            param_to_peers_size_bytes));
-      TF_RETURN_IF_ERROR(streams[i]->Memcpy(&metadata_buffers[i], &metadata,
-                                            sizeof(CollectiveKernelMetadata)));
+      RETURN_IF_ERROR(streams[i]->Memcpy(&param_to_peers_ptrs_buffer,
+                                         param_to_peers_ptrs.data(),
+                                         param_to_peers_size_bytes));
+      RETURN_IF_ERROR(streams[i]->Memcpy(&metadata_buffers[i], &metadata,
+                                         sizeof(CollectiveKernelMetadata)));
     }
 
     for (int i = 0; i < num_ranks; ++i) {
-      TF_RETURN_IF_ERROR(streams[i]->BlockHostUntilDone());
+      RETURN_IF_ERROR(streams[i]->BlockHostUntilDone());
     }
 
     for (int i = 0; i < num_ranks; ++i) {
       auto active_context = executors[i]->Activate();
-      TF_RETURN_IF_ERROR(RunAllReduceKernel(
+      RETURN_IF_ERROR(RunAllReduceKernel(
           streams[i].get(), launch_dimensions,
           primitive_util::NativeToPrimitiveType<T>(),
           /*reduction_kind=*/reduction_kind,
@@ -280,13 +281,13 @@ class AllReduceKernelTest : public ::testing::Test,
     }
 
     for (int i = 0; i < num_ranks; ++i) {
-      TF_RETURN_IF_ERROR(streams[i]->BlockHostUntilDone());
+      RETURN_IF_ERROR(streams[i]->BlockHostUntilDone());
     }
 
     std::vector<Array<T>> results;
     for (int i = 0; i < num_ranks; ++i) {
       Array<T> output_results({num_elements});
-      TF_RETURN_IF_ERROR(streams[i]->Memcpy(
+      RETURN_IF_ERROR(streams[i]->Memcpy(
           output_results.data(), output_buffers[i], num_elements * sizeof(T)));
 
       results.push_back(std::move(output_results));

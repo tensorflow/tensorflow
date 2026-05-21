@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/command_state.h"
@@ -420,7 +421,7 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
     // buffer empty.
     int64_t num_calls = 0;
     auto trace = [&](se::Stream* stream) -> absl::Status {
-      TF_RETURN_IF_ERROR(stream->Memset32(&mem, 42, 16));
+      RETURN_IF_ERROR(stream->Memset32(&mem, 42, 16));
       num_calls++;
       return absl::OkStatus();
     };

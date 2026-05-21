@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_state.h"
@@ -264,11 +265,11 @@ absl::StatusOr<CommandExecutor> CommandExecutor::Create(
   // sequence of commands and derive the structure of command dependencies
   // from the buffer use conflicts.
   if (synchronization_mode != SynchronizationMode::kSerialize) {
-    TF_ASSIGN_OR_RETURN(auto operations,
-                        CreateCommandOperations(commands, synchronization_mode,
-                                                extra_resources));
-    TF_ASSIGN_OR_RETURN(execution_graph,
-                        ExecutionGraph::Create<CommandOperation>(operations));
+    ASSIGN_OR_RETURN(auto operations,
+                     CreateCommandOperations(commands, synchronization_mode,
+                                             extra_resources));
+    ASSIGN_OR_RETURN(execution_graph,
+                     ExecutionGraph::Create<CommandOperation>(operations));
     VLOG(3) << "Execution graph: " << execution_graph->ToString();
   }
 
@@ -316,7 +317,7 @@ CommandExecutor::CommandExecutor(
 
 absl::Status CommandExecutor::Prepare(const Thunk::PrepareParams& params) {
   for (auto& command : commands_) {
-    TF_RETURN_IF_ERROR(command->Prepare(params));
+    RETURN_IF_ERROR(command->Prepare(params));
   }
   return absl::OkStatus();
 }
@@ -324,7 +325,7 @@ absl::Status CommandExecutor::Prepare(const Thunk::PrepareParams& params) {
 absl::Status CommandExecutor::Initialize(
     const Thunk::InitializeParams& params) {
   for (auto& command : commands_) {
-    TF_RETURN_IF_ERROR(command->Initialize(params));
+    RETURN_IF_ERROR(command->Initialize(params));
   }
   return absl::OkStatus();
 }
@@ -434,17 +435,16 @@ absl::Status CommandExecutor::Record(const Thunk::ExecuteParams& execute_params,
                                      se::CommandBuffer* command_buffer,
                                      RecordId record_id) {
   if (command_buffer->state() == se::CommandBuffer::State::kFinalized) {
-    TF_RETURN_IF_ERROR(command_buffer->Update());
+    RETURN_IF_ERROR(command_buffer->Update());
   }
 
   if (command_buffer->state() == se::CommandBuffer::State::kUpdate) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         RecordUpdate(execute_params, record_params, command_buffer, record_id));
   } else {
-    TF_RETURN_IF_ERROR(RecordCreate(execute_params, record_params,
-                                    command_buffer, /*dependencies=*/{},
-                                    record_id)
-                           .status());
+    RETURN_IF_ERROR(RecordCreate(execute_params, record_params, command_buffer,
+                                 /*dependencies=*/{}, record_id)
+                        .status());
   }
 
   return command_buffer->Finalize();
@@ -458,8 +458,8 @@ CommandExecutor::RecordCreate(
     absl::Span<const se::CommandBuffer::Command* const> dependencies,
     RecordId record_id) const {
   // Command buffer must be in create state.
-  TF_RETURN_IF_ERROR(CheckCommandBufferState(
-      command_buffer, se::CommandBuffer::State::kCreate));
+  RETURN_IF_ERROR(CheckCommandBufferState(command_buffer,
+                                          se::CommandBuffer::State::kCreate));
 
   VLOG(1) << absl::StreamFormat(
       "Record create %d commands into command buffer %p: dependencies=%d, "
@@ -509,10 +509,9 @@ CommandExecutor::RecordCreate(
                              ? Command::RecordCreate{dependencies}
                              : Command::RecordCreate{command_dependencies};
 
-    TF_ASSIGN_OR_RETURN(
-        const se::CommandBuffer::Command* recorded_command,
-        command->Record(execute_params, record_params, std::move(record_action),
-                        command_buffer));
+    ASSIGN_OR_RETURN(const se::CommandBuffer::Command* recorded_command,
+                     command->Record(execute_params, record_params,
+                                     std::move(record_action), command_buffer));
 
     // Collect sink commands as external dependencies for the next command
     // sequence recorded into the same command buffer.
@@ -546,8 +545,8 @@ absl::Status CommandExecutor::RecordUpdate(
   uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
   // Command buffer must be already prepared for recording updates.
-  TF_RETURN_IF_ERROR(CheckCommandBufferState(
-      command_buffer, se::CommandBuffer::State::kUpdate));
+  RETURN_IF_ERROR(CheckCommandBufferState(command_buffer,
+                                          se::CommandBuffer::State::kUpdate));
 
   // Short-circuit if there are no commands to update.
   if (commands_.empty()) {
@@ -640,10 +639,9 @@ absl::Status CommandExecutor::RecordUpdate(
     }
 
     Command::RecordUpdate record_action{recorded_commands[id]};
-    TF_ASSIGN_OR_RETURN(
-        recorded_commands[id],
-        command->Record(execute_params, record_params, std::move(record_action),
-                        command_buffer));
+    ASSIGN_OR_RETURN(recorded_commands[id],
+                     command->Record(execute_params, record_params,
+                                     std::move(record_action), command_buffer));
   }
 
   uint64_t end_micros = tsl::Env::Default()->NowMicros();
@@ -740,9 +738,9 @@ absl::StatusOr<std::string> CommandExecutor::RenderExecutionGraph() const {
         "concurrent/LHS synchronization mode");
   }
 
-  TF_ASSIGN_OR_RETURN(auto operations,
-                      CreateCommandOperations(commands_, synchronization_mode_,
-                                              extra_resources_));
+  ASSIGN_OR_RETURN(auto operations,
+                   CreateCommandOperations(commands_, synchronization_mode_,
+                                           extra_resources_));
   absl::InlinedVector<const ExecutionGraph::Operation*, 32> operations_ptrs;
   operations_ptrs.reserve(operations.size());
   for (const auto& operation : operations) {

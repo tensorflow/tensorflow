@@ -86,11 +86,12 @@ class BlasLt : public gpu::BlasLt {
 
   class MatmulPlan : public gpu::BlasLt::MatmulPlan {
    public:
-    MatmulPlan(MatmulDesc&& op_desc, MatrixLayout&& a_desc,
-               MatrixLayout&& b_desc, MatrixLayout&& c_desc,
-               MatrixLayout&& d_desc, xla::complex128 alpha, double beta,
-               bool must_swap_operands)
-        : op_desc_(std::move(op_desc)),
+    MatmulPlan(const BlasLt& blas_lt, MatmulDesc&& op_desc,
+               MatrixLayout&& a_desc, MatrixLayout&& b_desc,
+               MatrixLayout&& c_desc, MatrixLayout&& d_desc,
+               xla::complex128 alpha, double beta, bool must_swap_operands)
+        : blas_lt_(blas_lt),
+          op_desc_(std::move(op_desc)),
           a_desc_(std::move(a_desc)),
           b_desc_(std::move(b_desc)),
           c_desc_(std::move(c_desc)),
@@ -106,8 +107,7 @@ class BlasLt : public gpu::BlasLt {
         blas::ProfileResult* profile_result) const override;
 
     absl::StatusOr<std::vector<MatmulAlgorithm>> GetAlgorithms(
-        const Stream* stream, size_t max_algorithm_count = 128,
-        size_t max_workspace_size = 1ll << 32) const override;
+        size_t max_algorithm_count, size_t max_workspace_size) const override;
 
     absl::Status SetAlgorithm(const MatmulAlgorithm& algorithm) override {
       algorithm_ = algorithm;
@@ -119,7 +119,7 @@ class BlasLt : public gpu::BlasLt {
                           const gpu::BlasLt::MemoryArgs& args,
                           blas::ProfileResult* profile_result) const;
 
-    // TODO(cjfj): Add consistency checks for types, shapes, etc.?
+    const BlasLt& blas_lt_;
     MatmulDesc op_desc_;
     MatrixLayout a_desc_;
     MatrixLayout b_desc_;
@@ -131,8 +131,8 @@ class BlasLt : public gpu::BlasLt {
     std::optional<MatmulAlgorithm> algorithm_;  // selected algorithm
   };  // class MatmulPlan
 
-  explicit BlasLt(StreamExecutor* parent)
-      : parent_(parent), blas_lt_(nullptr, cublasLtDestroy) {}
+  explicit BlasLt(StreamExecutor* executor)
+      : executor_(executor), handle_(nullptr, cublasLtDestroy) {}
 
   absl::Status Init() override;
 
@@ -140,14 +140,17 @@ class BlasLt : public gpu::BlasLt {
                                               Epilogue epilogue) const override;
 
   absl::StatusOr<MatmulPlanPtr> GetGroupedMatmulPlan(
-      gpu::GroupedGemmConfig& config, Epilogue epilogue) const override;
+      const gpu::GroupedGemmConfig& config, Epilogue epilogue) const override {
+    return absl::UnimplementedError(
+        "Grouped GEMM is not supported for CUDA BlasLt");
+  };
 
   ~BlasLt() override = default;
 
  private:
-  StreamExecutor* parent_;
+  StreamExecutor* executor_;
   mutable absl::Mutex mu_;
-  Owned<cublasLtHandle_t> blas_lt_ ABSL_GUARDED_BY(mu_);
+  Owned<cublasLtHandle_t> handle_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace cuda

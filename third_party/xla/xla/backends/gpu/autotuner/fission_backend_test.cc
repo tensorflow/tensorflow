@@ -313,7 +313,7 @@ TEST_P(FissionTest, ApplyConfig) {
 INSTANTIATE_TEST_SUITE_P(
     FissionTests, FissionTest,
     ::testing::ValuesIn<FissionTestParams>({
-        {"TritonFusion_Cublas", kTritonFusionHlo, &GetCublasRewriterPipeline,
+        {"TritonFusion_CublasLt", kTritonFusionHlo, &GetCublasRewriterPipeline,
          &CreateCublasLtBackend,
          /*expected_module_substrings_fn=*/
          [](const se::DeviceDescription& device_description) {

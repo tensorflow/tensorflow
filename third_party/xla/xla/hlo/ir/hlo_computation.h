@@ -66,6 +66,7 @@ limitations under the License.
 namespace xla {
 
 class HloModule;
+class HloPayloadDeduplicator;
 
 // Describes a computation at the HLO level.
 //
@@ -403,7 +404,8 @@ class HloComputation {
       absl::Span<const HloInstruction* const> instruction_order) const;
 
   // Serializes this computation to a proto.
-  void ToProto(HloComputationProto* proto) const;
+  void ToProto(HloComputationProto* proto,
+               HloPayloadDeduplicator* deduplicator = nullptr) const;
 
   // Creates a computation from the given proto. Arguments:
   //

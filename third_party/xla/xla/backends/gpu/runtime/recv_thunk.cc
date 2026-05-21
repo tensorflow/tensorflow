@@ -67,7 +67,7 @@ RecvThunk::RecvThunk(ThunkInfo thunk_info, const P2PConfig& config,
       hlo_name_(instr_name) {}
 
 absl::Status RecvThunk::Initialize(const InitializeParams& params) {
-  TF_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
+  RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
   return absl::OkStatus();
 }
 
@@ -141,13 +141,13 @@ absl::Status RunRecv(DeviceBufferPair& buffer, se::Stream& stream,
     auto future =
         comm.Recv(dest_addr, buffer.element_type, buffer.element_count,
                   RankId(*source_id), GpuCollectives::On(stream));
-    TF_RETURN_IF_ERROR(future.Await());
+    RETURN_IF_ERROR(future.Await());
   } else {
     // If there is no source peer, i.e. no sender to this instance, zero out
     // the destination buffer.
     XLA_VLOG_DEVICE(3, device_ordinal)
         << absl::StreamFormat("%s : Recv: Issuing MemZero", device_string);
-    TF_RETURN_IF_ERROR(stream.MemZero(&dest_addr, dest_addr.size()));
+    RETURN_IF_ERROR(stream.MemZero(&dest_addr, dest_addr.size()));
   }
 
   return absl::OkStatus();
@@ -169,9 +169,9 @@ absl::Status RecvThunk::RunCollective(const ExecuteParams& params,
 
   GlobalDeviceId global_device_id = params.collective_params->global_device_id;
 
-  TF_ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID current_logical_id,
-                      params.collective_params->device_assn->LogicalIdForDevice(
-                          global_device_id));
+  ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID current_logical_id,
+                   params.collective_params->device_assn->LogicalIdForDevice(
+                       global_device_id));
   const int64_t current_id =
       config_.config.group_mode ==
               CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA

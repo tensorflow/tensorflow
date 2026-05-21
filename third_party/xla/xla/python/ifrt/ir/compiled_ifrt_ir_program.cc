@@ -311,9 +311,22 @@ CompiledIfrtIrProgram::Create(
     }
   }
 
+  // If `ifrt_ir_program` exclusively owns the MLIR context, create a new
+  // context and clone the compiled IFRT IR program into it. This reduces the
+  // host memory usage since the new context does not need to store the interned
+  // attributes from the deserialized StableHLO programs.
+  if (ifrt_ir_program->OwnsMlirContext()) {
+    auto context = std::make_unique<mlir::MLIRContext>(
+        mlir::MLIRContext::Threading::DISABLED);
+    ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> cloned_module,
+                     CloneModuleIntoContext(mlir_module, *context));
+    ifrt_ir_program = std::make_unique<xla::ifrt::IfrtIRProgram>(
+        std::move(context), std::move(cloned_module));
+  }
+
   // Extract input and output specs from the modified `mlir_module`, which has
   // all array shardings specified.
-  mlir::func::FuncOp main_func = GetMainFunction(mlir_module);
+  mlir::func::FuncOp main_func = GetMainFunction(ifrt_ir_program->mlir_module);
   std::vector<ArraySpec> in_specs;
   in_specs.reserve(main_func.getNumArguments());
   for (const mlir::Type arg_type : main_func.getArgumentTypes()) {
@@ -345,8 +358,7 @@ CompiledIfrtIrProgram::Create(
   auto create_program =
       [program_name = std::move(program_name),
        atom_executable_future_map = std::move(atom_executable_future_map),
-       mlir_module, client, in_specs = std::move(in_specs),
-       out_specs = std::move(out_specs),
+       client, in_specs = std::move(in_specs), out_specs = std::move(out_specs),
        donatable_input_indices = std::move(donatable_input_indices),
        device_list = std::move(device_list),
        ifrt_ir_program = std::move(ifrt_ir_program),
@@ -359,9 +371,9 @@ CompiledIfrtIrProgram::Create(
       atom_executable_map->insert({key, std::move(executable)});
     }
 
-    absl::Status layout_status =
-        PopulateLayouts(mlir_module, client, *atom_executable_map,
-                        absl::MakeSpan(in_specs), absl::MakeSpan(out_specs));
+    absl::Status layout_status = PopulateLayouts(
+        ifrt_ir_program->mlir_module, client, *atom_executable_map,
+        absl::MakeSpan(in_specs), absl::MakeSpan(out_specs));
     if (!layout_status.ok()) {
       for (auto& spec : in_specs) {
         spec.layout = nullptr;
@@ -371,9 +383,10 @@ CompiledIfrtIrProgram::Create(
       }
     }
 
-    ASSIGN_OR_RETURN(auto interpreter, ProgramInterpreter::Create(
-                                           client, program_name, mlir_module,
-                                           atom_executable_map, device_list));
+    ASSIGN_OR_RETURN(auto interpreter,
+                     ProgramInterpreter::Create(
+                         client, program_name, ifrt_ir_program->mlir_module,
+                         atom_executable_map, device_list));
     ASSIGN_OR_RETURN(auto execute_fn, interpreter->BuildExecuteFn());
 
     return std::make_shared<CompiledIfrtIrProgram>(CompiledIfrtIrProgram{

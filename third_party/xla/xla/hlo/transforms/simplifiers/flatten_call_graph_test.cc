@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -95,7 +96,7 @@ class FlattenCallGraphTest : public HloHardwareIndependentTestBase {
 
   absl::StatusOr<bool> RunFlattenCallGraph(HloModule* module) {
     FlattenCallGraph flatten;
-    TF_ASSIGN_OR_RETURN(bool result, flatten.Run(module));
+    ASSIGN_OR_RETURN(bool result, flatten.Run(module));
     return result;
   }
 

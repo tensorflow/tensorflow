@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/LLVMContext.h"
@@ -255,8 +256,8 @@ IndexingMap GetScatterIndexingMap(
 absl::StatusOr<CpuScatterFusion::KernelDefinition>
 CpuScatterFusion::EmitKernelDefinition() {
   mlir::OpBuilder builder(mlir_context_);
-  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                      CreateNamedMlirModuleOp(*fusion_, builder));
+  ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                   CreateNamedMlirModuleOp(*fusion_, builder));
 
   absl::string_view module_name(mlir_module->getName().value());
   emitters::SetIndexDataLayout(mlir_module.get(), *fusion_);
@@ -272,7 +273,7 @@ CpuScatterFusion::EmitKernelDefinition() {
       xla::CpuMemoryRegionNameAttr::name,
       builder.getStringAttr(BuildModuleMemoryRegionName(name(), fusion_)));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       mlir::func::FuncOp entry_func,
       EmitEntryFunctionApi(mlir_module.get(), *fusion_,
                            std::string(module_name), buffer_assignment_));
@@ -281,11 +282,11 @@ CpuScatterFusion::EmitKernelDefinition() {
       GetEpilogues(*fusion_, mlir_context_);
   emitters::PartitionedComputations computations(
       fusion_->fused_instructions_computation(), mlir_context_, epilogues);
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       emitters::CallTargetProvider call_targets,
       EmitCallTargets(mlir_module.get(), *fusion_, computations, epilogues));
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       EmitEntryFunction(computations, call_targets, entry_func, *fusion_));
 
   // Convert kernel arguments to fake allocations and buffer uses.
@@ -293,9 +294,8 @@ CpuScatterFusion::EmitKernelDefinition() {
   KernelSpec::Buffers result_buffers;
 
   for (auto& indexed : ShapeUtil::GetLeafShapes(fusion_->shape())) {
-    TF_ASSIGN_OR_RETURN(
-        BufferAllocation::Slice slice,
-        buffer_assignment_.GetUniqueSlice(fusion_, indexed.index));
+    ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                     buffer_assignment_.GetUniqueSlice(fusion_, indexed.index));
     result_buffers.push_back({slice, indexed.shape});
   }
 
@@ -305,7 +305,7 @@ CpuScatterFusion::EmitKernelDefinition() {
   int64_t operand_index = 0;
   for (HloInstruction* operand : fusion_->operands()) {
     for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           BufferAllocation::Slice slice,
           buffer_assignment_.GetUniqueSlice(operand, indexed.index));
 

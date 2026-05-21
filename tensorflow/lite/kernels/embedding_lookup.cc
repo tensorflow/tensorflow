@@ -32,6 +32,8 @@ limitations under the License.
 #include <cinttypes>
 #include <cstdint>
 #include <cstring>
+#include <functional>
+#include <utility>
 
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -189,10 +191,16 @@ void Unpack2Bit(float scaling_factor, int col_size, const int8_t* value_ptr,
 TfLiteStatus EvalBlockwise(TfLiteContext* context, TfLiteNode* node,
                            const TfLiteTensor* lookup,
                            const TfLiteTensor* value, TfLiteTensor* output) {
-  if (value->type != kTfLiteInt4) {
-    TF_LITE_KERNEL_LOG(
-        context,
-        "Embedding Lookup: Blockwise embedding lookup only supports Int4 data");
+  if (value->type != kTfLiteInt4 && value->type != kTfLiteInt2) {
+    TF_LITE_KERNEL_LOG(context,
+                       "Embedding Lookup: Blockwise embedding lookup only "
+                       "supports Int4 and Int2 data");
+    return kTfLiteError;
+  }
+  if (output->type != kTfLiteFloat32 && output->type != kTfLiteFloat16) {
+    TF_LITE_KERNEL_LOG(context,
+                       "Embedding Lookup: Blockwise embedding lookup only "
+                       "supports Float32 and Float16 outputs");
     return kTfLiteError;
   }
   if (value->dims->size != 2) {
@@ -209,19 +217,44 @@ TfLiteStatus EvalBlockwise(TfLiteContext* context, TfLiteNode* node,
     col_size *= SizeOfDimension(value, i);
   }
 
-  float* output_fp32_ptr =
-      output->type == kTfLiteFloat32 ? GetTensorData<float>(output) : nullptr;
-  half* output_fp16_ptr =
-      output->type == kTfLiteFloat16 ? GetTensorData<half>(output) : nullptr;
-  const int8_t* value_ptr = GetTensorData<int8_t>(value);
-  const int32_t* lookup_data = GetTensorData<int32_t>(lookup);
-
   const auto quantization_params =
       reinterpret_cast<const TfLiteBlockwiseQuantization*>(
           value->quantization.params);
   const TfLiteTensor& scale = context->tensors[quantization_params->scale];
   const int blocksize = quantization_params->blocksize;
   const int dimension_size = SizeOfDimension(lookup, 0);
+
+  float* output_fp32_ptr = GetTensorData<float>(output);
+  half* output_fp16_ptr = GetTensorData<half>(output);
+
+  const int8_t* value_ptr = GetTensorData<int8_t>(value);
+  const int32_t* lookup_data = GetTensorData<int32_t>(lookup);
+
+  // Wrap the correct 2/4-bit float32/float16 unpacking function.
+  auto [unpack_to_fp32, unpack_to_fp16] =
+      value->type == kTfLiteInt2
+          ? std::make_pair(Unpack2Bit<float>, Unpack2Bit<half>)
+          : std::make_pair(Unpack4Bit<float>, Unpack4Bit<half>);
+  const int values_per_byte = value->type == kTfLiteInt2 ? 4 : 2;
+  std::function<void(float, size_t, size_t)> unpack;
+  if (output->type == kTfLiteFloat32) {
+    unpack = [&, unpack = unpack_to_fp32](float scaling_factor,
+                                          size_t value_offset,
+                                          size_t output_offset) {
+      unpack(scaling_factor, blocksize,
+             &value_ptr[value_offset / values_per_byte],
+             &output_fp32_ptr[output_offset]);
+    };
+  } else {
+    unpack = [&, unpack = unpack_to_fp16](float scaling_factor,
+                                          size_t value_offset,
+                                          size_t output_offset) {
+      unpack(scaling_factor, blocksize,
+             &value_ptr[value_offset / values_per_byte],
+             &output_fp16_ptr[output_offset]);
+    };
+  }
+
   if (col_size % blocksize != 0) {
     TF_LITE_KERNEL_LOG(context,
                        "Embedding Lookup: lookup dimension %d must be "
@@ -243,16 +276,8 @@ TfLiteStatus EvalBlockwise(TfLiteContext* context, TfLiteNode* node,
     const size_t value_offset = static_cast<size_t>(idx) * col_size;
     for (int j = 0; j < num_blocks; ++j) {
       float scaling_factor = GetTensorData<half>(&scale)[scale_offset + j];
-
-      if (output_fp32_ptr) {
-        Unpack4Bit(scaling_factor, blocksize,
-                   &value_ptr[(value_offset + j * blocksize) / 2],
-                   &output_fp32_ptr[j * blocksize + i * col_size]);
-      } else {
-        Unpack4Bit(scaling_factor, blocksize,
-                   &value_ptr[(value_offset + j * blocksize) / 2],
-                   &output_fp16_ptr[j * blocksize + i * col_size]);
-      }
+      unpack(scaling_factor, (value_offset + j * blocksize),
+             j * blocksize + i * col_size);
     }
   }
   return kTfLiteOk;

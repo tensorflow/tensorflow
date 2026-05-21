@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_context.h"
@@ -84,10 +85,10 @@ absl::StatusOr<CUstream> CreateStream(StreamExecutor* executor, int priority) {
   // the default priority for backward compatibility. Probably there is no
   // difference in using the new api call but leaving it as is for now.
   if (priority == 0) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         cuda::ToStatus(cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING)));
   } else {
-    TF_RETURN_IF_ERROR(cuda::ToStatus(
+    RETURN_IF_ERROR(cuda::ToStatus(
         cuStreamCreateWithPriority(&stream, CU_STREAM_NON_BLOCKING, priority)));
   }
 
@@ -100,8 +101,8 @@ absl::StatusOr<bool> StreamIsCapturing(CUstream stream) {
   VLOG(2) << "Checking if stream " << stream << " is capturing";
 
   CUstreamCaptureStatus status;
-  TF_RETURN_IF_ERROR(cuda::ToStatus(cuStreamIsCapturing(stream, &status),
-                                    "Failed to check stream capturing status"));
+  RETURN_IF_ERROR(cuda::ToStatus(cuStreamIsCapturing(stream, &status),
+                                 "Failed to check stream capturing status"));
 
   return status == CU_STREAM_CAPTURE_STATUS_ACTIVE;
 }
@@ -111,7 +112,7 @@ absl::Status AsynchronousMemcpyD2H(StreamExecutor* executor, void* host_dst,
                                    CUstream stream) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       cuda::ToStatus(cuMemcpyDtoHAsync(host_dst, gpu_src, size, stream)));
 
   VLOG(2) << "successfully enqueued async memcpy d2h of " << size
@@ -124,7 +125,7 @@ absl::Status AsynchronousMemcpyH2D(StreamExecutor* executor,
                                    CUdeviceptr gpu_dst, const void* host_src,
                                    uint64_t size, CUstream stream) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       cuda::ToStatus(cuMemcpyHtoDAsync(gpu_dst, host_src, size, stream)));
 
   VLOG(2) << "successfully enqueued async memcpy h2d of " << size << " bytes"
@@ -140,12 +141,12 @@ absl::Status AsynchronousMemcpyD2D(StreamExecutor* executor,
 
   // In graph capture mode we never have operations that access peer memory, so
   // we can always make a call to cuMemcpyDtoDAsync.
-  TF_ASSIGN_OR_RETURN(bool is_capturing, StreamIsCapturing(stream));
+  ASSIGN_OR_RETURN(bool is_capturing, StreamIsCapturing(stream));
 
   if ((gpu_dst == 0 || gpu_src == 0) || is_capturing) {
     // GetContextMap()->GetAnyContext() doesn't work when ptr == 0.
     // This happens when the size is 0.
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         cuda::ToStatus(cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream)));
   } else {
     // Any context work here.
@@ -157,10 +158,10 @@ absl::Status AsynchronousMemcpyD2D(StreamExecutor* executor,
     if (dst_context == src_context) {
       // Since the CUDA context is the same, the src and dst are within the same
       // GPU. So we can use cuMemcpyDtoD.
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           cuda::ToStatus(cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream)));
     } else {
-      TF_RETURN_IF_ERROR(cuda::ToStatus(cuMemcpyPeerAsync(
+      RETURN_IF_ERROR(cuda::ToStatus(cuMemcpyPeerAsync(
           gpu_dst, dst_context, gpu_src, src_context, size, stream)));
     }
   }
@@ -208,12 +209,11 @@ absl::StatusOr<std::unique_ptr<CudaStream>> CudaStream::Create(
     return executor->GetGpuStreamPriority(
         std::get<StreamPriority>(priority.value_or(StreamPriority::Default)));
   }();
-  TF_ASSIGN_OR_RETURN(auto stream_handle,
-                      CreateStream(executor, stream_priority));
+  ASSIGN_OR_RETURN(auto stream_handle, CreateStream(executor, stream_priority));
 
-  TF_ASSIGN_OR_RETURN(auto completed_event,
-                      CudaEvent::Create(executor,
-                                        /*allow_timing=*/false));
+  ASSIGN_OR_RETURN(auto completed_event,
+                   CudaEvent::Create(executor,
+                                     /*allow_timing=*/false));
 
   return std::unique_ptr<CudaStream>(new CudaStream(
       executor, std::move(completed_event), priority, stream_handle));
@@ -222,7 +222,7 @@ absl::StatusOr<std::unique_ptr<CudaStream>> CudaStream::Create(
 absl::Status CudaStream::WaitFor(Stream* other) {
   CudaStream* other_stream = static_cast<CudaStream*>(other);
 
-  TF_RETURN_IF_ERROR(other_stream->RecordCompletedEvent());
+  RETURN_IF_ERROR(other_stream->RecordCompletedEvent());
   return WaitStreamOnEvent(executor_, stream_handle_,
                            other_stream->completed_event_.GetHandle());
 }

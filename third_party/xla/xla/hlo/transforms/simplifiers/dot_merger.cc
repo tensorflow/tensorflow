@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -181,10 +182,9 @@ absl::StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
     ++outer_dim;
   }
 
-  TF_ASSIGN_OR_RETURN(
-      Shape concat_shape,
-      ShapeInference::InferConcatOpShape(
-          {&diff_op_a->shape(), &diff_op_b->shape()}, outer_dim));
+  ASSIGN_OR_RETURN(Shape concat_shape,
+                   ShapeInference::InferConcatOpShape(
+                       {&diff_op_a->shape(), &diff_op_b->shape()}, outer_dim));
   *concat_shape.mutable_layout() = diff_op_a->shape().layout();
   HloInstruction* concat_op =
       diff_op_a->AddInstruction(HloInstruction::CreateConcatenate(
@@ -192,11 +192,10 @@ absl::StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
 
   HloInstruction* dot_lhs = lhs_same ? shared_op : concat_op;
   HloInstruction* dot_rhs = lhs_same ? concat_op : shared_op;
-  TF_ASSIGN_OR_RETURN(
-      Shape new_dot_shape,
-      ShapeInference::InferDotOpShape(
-          dot_lhs->shape(), dot_rhs->shape(), dnums,
-          /*preferred_element_type=*/a->shape().element_type()));
+  ASSIGN_OR_RETURN(Shape new_dot_shape,
+                   ShapeInference::InferDotOpShape(
+                       dot_lhs->shape(), dot_rhs->shape(), dnums,
+                       /*preferred_element_type=*/a->shape().element_type()));
   *new_dot_shape.mutable_layout() = a->shape().layout();
   HloInstruction* new_dot = a->AddInstruction(HloInstruction::CreateDot(
       new_dot_shape, dot_lhs, dot_rhs, dnums, a->precision_config()));
@@ -221,13 +220,13 @@ absl::StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
   // must live until the end of the pass.
   HloInstruction* new_a = a->AddInstruction(HloInstruction::CreateSlice(
       a->shape(), new_dot, start_indices, limit_indices, strides));
-  TF_RETURN_IF_ERROR(a->ReplaceAllUsesWith(new_a));
+  RETURN_IF_ERROR(a->ReplaceAllUsesWith(new_a));
 
   start_indices[slice_dim] = limit_indices[slice_dim];
   limit_indices[slice_dim] = new_dot_shape.dimensions(slice_dim);
   HloInstruction* new_b = b->AddInstruction(HloInstruction::CreateSlice(
       b->shape(), new_dot, start_indices, limit_indices, strides));
-  TF_RETURN_IF_ERROR(b->ReplaceAllUsesWith(new_b));
+  RETURN_IF_ERROR(b->ReplaceAllUsesWith(new_b));
 
   return new_dot;
 }
@@ -341,18 +340,17 @@ absl::StatusOr<HloInstruction*> TryMergeLHSWithRHSOperand(HloInstruction* a,
   HloInstruction* b_lhs_transposed =
       b_lhs->AddInstruction(HloInstruction::CreateTranspose(
           ShapeUtil::PermuteDimensions({1, 0}, b_lhs->shape()), b_lhs, {1, 0}));
-  TF_ASSIGN_OR_RETURN(Shape concat_shape,
-                      ShapeInference::InferConcatOpShape(
-                          {&a_rhs->shape(), &b_lhs_transposed->shape()}, 1));
+  ASSIGN_OR_RETURN(Shape concat_shape,
+                   ShapeInference::InferConcatOpShape(
+                       {&a_rhs->shape(), &b_lhs_transposed->shape()}, 1));
   HloInstruction* new_rhs =
       a_rhs->AddInstruction(HloInstruction::CreateConcatenate(
           concat_shape, {a_rhs, b_lhs_transposed}, 1));
-  TF_ASSIGN_OR_RETURN(
-      Shape new_dot_shape,
-      ShapeInference::InferDotOpShape(
-          a_lhs->shape(),  // The new LHS is the LHS of a.
-          new_rhs->shape(), dnums_a,
-          /*preferred_element_type=*/a->shape().element_type()));
+  ASSIGN_OR_RETURN(Shape new_dot_shape,
+                   ShapeInference::InferDotOpShape(
+                       a_lhs->shape(),  // The new LHS is the LHS of a.
+                       new_rhs->shape(), dnums_a,
+                       /*preferred_element_type=*/a->shape().element_type()));
   *new_dot_shape.mutable_layout() = a->shape().layout();
   HloInstruction* new_dot = a->AddInstruction(HloInstruction::CreateDot(
       new_dot_shape, a_lhs, new_rhs, dnums_a, a->precision_config()));
@@ -380,8 +378,8 @@ absl::StatusOr<HloInstruction*> TryMergeLHSWithRHSOperand(HloInstruction* a,
       HloInstruction::CreateTranspose(b->shape(), new_b_slice, {1, 0}));
   // Important: We do RAUW, not ReplaceInstruction, because the old
   // instruction must live until the end of the pass.
-  TF_RETURN_IF_ERROR(a->ReplaceAllUsesWith(new_a));
-  TF_RETURN_IF_ERROR(b->ReplaceAllUsesWith(new_b));
+  RETURN_IF_ERROR(a->ReplaceAllUsesWith(new_a));
+  RETURN_IF_ERROR(b->ReplaceAllUsesWith(new_b));
 
   return new_dot;
 }
@@ -559,7 +557,7 @@ absl::StatusOr<bool> MergeDots(
           continue;
         }
 
-        TF_ASSIGN_OR_RETURN(HloInstruction * merged, TryMergeOperand(a, b));
+        ASSIGN_OR_RETURN(HloInstruction * merged, TryMergeOperand(a, b));
         if (merged != nullptr) {
           int32_t merged_id = graph_id(merged);
           graph.InsertEdge(a_id, merged_id);
@@ -592,7 +590,7 @@ absl::StatusOr<bool> MergeDots(
                  return a->unique_id() < b->unique_id();
                });
   for (HloInstruction* instr : sorted_dead_instrs) {
-    TF_RETURN_IF_ERROR(comp->RemoveInstruction(instr));
+    RETURN_IF_ERROR(comp->RemoveInstruction(instr));
   }
 
   return !dead_instrs.empty();
@@ -606,8 +604,8 @@ absl::StatusOr<bool> DotMerger::RunImpl(
   bool changed = false;
   for (HloComputation* comp :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(bool changed_computation,
-                        MergeDots(comp, max_size_to_merge_, queue_id_));
+    ASSIGN_OR_RETURN(bool changed_computation,
+                     MergeDots(comp, max_size_to_merge_, queue_id_));
     changed |= changed_computation;
   }
   return changed;

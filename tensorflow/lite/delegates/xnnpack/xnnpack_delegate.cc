@@ -311,6 +311,12 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
                   return xnn_datatype_invalid;
                 }
                 return xnn_datatype_qint4;
+              case kTfLiteInt2:
+                if (!CheckZeroPointForPerTensorQuantization(
+                        context, tensor, t, -2, 1, *quantization_zero_point)) {
+                  return xnn_datatype_invalid;
+                }
+                return xnn_datatype_qint2;
               default:
                 TF_LITE_KERNEL_LOG(
                     context,
@@ -537,6 +543,7 @@ TfLiteStatus DefineXNNPACKValue(TfLiteContext* context, xnn_subgraph_t subgraph,
 
   xnn_status status = xnn_status_success;
   switch (datatype) {
+    case xnn_datatype_qint2:
     case xnn_datatype_qint4:
     case xnn_datatype_qint8:
     case xnn_datatype_quint8:
@@ -2916,6 +2923,7 @@ class Subgraph {
       case kTfLiteBuiltinHardSwish:
       case kTfLiteBuiltinLeakyRelu:
       case kTfLiteBuiltinLogistic:
+      case kTfLiteBuiltinLog:
       case kTfLiteBuiltinNeg:
       case kTfLiteBuiltinQuantize:
       case kTfLiteBuiltinRelu:
@@ -4263,6 +4271,7 @@ class Subgraph {
       case BuiltinOperator_FLOOR:
       case BuiltinOperator_GELU:
       case BuiltinOperator_HARD_SWISH:
+      case BuiltinOperator_LOG:
       case BuiltinOperator_NEG:
       case BuiltinOperator_RELU_N1_TO_1:
       case BuiltinOperator_RELU:
@@ -4441,6 +4450,9 @@ class Subgraph {
           unary_op_type = xnn_unary_leaky_relu;
           break;
         }
+        case BuiltinOperator_LOG:
+          unary_op_type = xnn_unary_log;
+          break;
         case BuiltinOperator_LOGISTIC:
           unary_op_type = xnn_unary_sigmoid;
           break;
@@ -4732,10 +4744,12 @@ class Subgraph {
         xnn_datatype filter_datatype = GetXNNPackDatatype(
             logging_context, filter_tensor, filter_tensor_id);
         if (filter_datatype == xnn_datatype_qint8 ||
-            filter_datatype == xnn_datatype_qint4) {
-          filter_datatype = filter_datatype == xnn_datatype_qint8
-                                ? xnn_datatype_qcint8
-                                : xnn_datatype_qcint4;
+            filter_datatype == xnn_datatype_qint4 ||
+            filter_datatype == xnn_datatype_qint2) {
+          filter_datatype =
+              filter_datatype == xnn_datatype_qint8   ? xnn_datatype_qcint8
+              : filter_datatype == xnn_datatype_qint4 ? xnn_datatype_qcint4
+                                                      : xnn_datatype_qcint2;
           // Check whether we have to re-allocated the scale..
           if (output_channels > 1) {
             TfLiteFloatArrayFree(filter_quant_params->scale);

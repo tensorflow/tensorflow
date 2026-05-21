@@ -1000,8 +1000,8 @@ absl::Status RunOneShotRaggedAllToAllWithNccl(
     // by incoming P2P writes from peers is preserved.
     se::DeviceAddressBase output_temporary_symmetric_memory_addr =
         output_sym_mem->addr();
-    TF_RETURN_IF_ERROR(stream.MemcpyD2D(&output_temporary_symmetric_memory_addr,
-                                        output_buffer, output_buffer.size()));
+    RETURN_IF_ERROR(stream.MemcpyD2D(&output_temporary_symmetric_memory_addr,
+                                     output_buffer, output_buffer.size()));
   }
   // 1. Barrier (Pre-Kernel)
   // Global synchronization before P2P writes.
@@ -1009,14 +1009,14 @@ absl::Status RunOneShotRaggedAllToAllWithNccl(
   // are ready to receive data. This prevents the kernel from attempting to
   // write to a peer's memory before that peer has completed the rendezvous
   // setup.
-  TF_RETURN_IF_ERROR(xla::gpu::LaunchMultiGpuBarrierWithNccl(
+  RETURN_IF_ERROR(xla::gpu::LaunchMultiGpuBarrierWithNccl(
       &stream, num_ranks, rank, barrier_signal_symmetric_memory.get(),
       barrier_signal_value));
 
   // 2. Execution of RunRaggedAllToAllKernel
   const int64_t num_updates_per_replica = num_total_updates / num_ranks;
 
-  TF_RETURN_IF_ERROR(RunRaggedAllToAllWithSymmetricMemoryKernel(
+  RETURN_IF_ERROR(RunRaggedAllToAllWithSymmetricMemoryKernel(
       &stream, element_type, input_buffer, output_sym_mem, output_sym_offset,
       buffers[2].source_buffer, buffers[3].source_buffer,
       buffers[4].source_buffer, num_ranks, num_updates_per_replica,
@@ -1027,24 +1027,24 @@ absl::Status RunOneShotRaggedAllToAllWithNccl(
   // We wait for all peers to signal completion.
   // This guarantees that all P2P writes to our output buffer are complete and
   // safe to consume.
-  TF_RETURN_IF_ERROR(xla::gpu::LaunchMultiGpuBarrierWithNccl(
+  RETURN_IF_ERROR(xla::gpu::LaunchMultiGpuBarrierWithNccl(
       &stream, num_ranks, rank, barrier_signal_symmetric_memory.get(),
       barrier_signal_value));
 
   if (!is_zero_copy) {
     // TODO: b/482045400 - Remove double-copy approach once testing is done.
     // 4. Copy from temporary symmetric memory to actual output buffer.
-    TF_RETURN_IF_ERROR(stream.MemcpyD2D(&output_buffer, output_sym_mem->addr(),
-                                        output_buffer.size()));
+    RETURN_IF_ERROR(stream.MemcpyD2D(&output_buffer, output_sym_mem->addr(),
+                                     output_buffer.size()));
   }
 
   if (VLOG_IS_ON(6)) {
-    TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
+    RETURN_IF_ERROR(stream.BlockHostUntilDone());
 
     se::StreamExecutor* stream_executor = stream.parent();
     std::vector<char> input_buffer_host;
     input_buffer_host.resize(output_buffer.size());
-    TF_RETURN_IF_ERROR(stream_executor->SynchronousMemcpyD2H(
+    RETURN_IF_ERROR(stream_executor->SynchronousMemcpyD2H(
         input_buffer, input_buffer.size(), input_buffer_host.data()));
     XLA_VLOG_DEVICE(6, device_ordinal)
         << "Ragged-all-to-all with NCCL input buffer: "
@@ -1052,7 +1052,7 @@ absl::Status RunOneShotRaggedAllToAllWithNccl(
 
     std::vector<char> output_buffer_host;
     output_buffer_host.resize(output_buffer.size());
-    TF_RETURN_IF_ERROR(stream_executor->SynchronousMemcpyD2H(
+    RETURN_IF_ERROR(stream_executor->SynchronousMemcpyD2H(
         output_buffer, output_buffer.size(), output_buffer_host.data()));
     XLA_VLOG_DEVICE(6, device_ordinal)
         << "Ragged-all-to-all with NCCL output before kernel: "
@@ -1091,8 +1091,8 @@ absl::Status RunOneShotRaggedAllToAll(
   // Ensures that all peers have reached this point and their output buffers are
   // ready to receive data. This prevents the kernel from attempting to write
   // to a peer's memory before that peer has completed the rendezvous setup.
-  TF_RETURN_IF_ERROR(LaunchMultiGpuBarrier(&stream, rank, num_ranks,
-                                           participants, barrier_signal_value));
+  RETURN_IF_ERROR(LaunchMultiGpuBarrier(&stream, rank, num_ranks, participants,
+                                        barrier_signal_value));
 
   // 2. Execution of RunRaggedAllToAllKernel
   const int64_t num_updates_per_replica = num_total_updates / num_ranks;
@@ -1102,7 +1102,7 @@ absl::Status RunOneShotRaggedAllToAll(
     output_ptrs[i] = participants[i].output_buffer.opaque();
   }
 
-  TF_RETURN_IF_ERROR(RunRaggedAllToAllKernel(
+  RETURN_IF_ERROR(RunRaggedAllToAllKernel(
       &stream, element_type, input_buffer, output_ptrs,
       buffers[2].source_buffer, buffers[3].source_buffer,
       buffers[4].source_buffer, num_ranks, num_updates_per_replica,
@@ -1113,8 +1113,8 @@ absl::Status RunOneShotRaggedAllToAll(
   // We wait for all peers to signal completion.
   // This guarantees that all P2P writes to our output buffer are complete and
   // safe to consume.
-  TF_RETURN_IF_ERROR(LaunchMultiGpuBarrier(&stream, rank, num_ranks,
-                                           participants, barrier_signal_value));
+  RETURN_IF_ERROR(LaunchMultiGpuBarrier(&stream, rank, num_ranks, participants,
+                                        barrier_signal_value));
 
   return absl::OkStatus();
 }

@@ -430,17 +430,17 @@ absl::StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
   FusionBackendConfig* fusion_config =
       gpu_backend_config.mutable_fusion_backend_config();
   fusion_config->set_kind(kCuDnnFusionKind);
-  TF_RETURN_IF_ERROR(conv_fusion->set_backend_config(gpu_backend_config));
+  RETURN_IF_ERROR(conv_fusion->set_backend_config(gpu_backend_config));
 
   VLOG(1) << "Replacing convolution " << conv->ToString() << " with "
           << conv_fusion->ToString();
   if (fusion_outputs.size() == 1) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         conv->parent()->ReplaceInstruction(fusion_outputs[0], conv_fusion));
   } else {
     for (int idx = 0; idx < fusion_outputs.size(); ++idx) {
       HloInstruction* output = fusion_outputs[idx];
-      TF_RETURN_IF_ERROR(conv->parent()->ReplaceInstruction(
+      RETURN_IF_ERROR(conv->parent()->ReplaceInstruction(
           output,
           conv->parent()->AddInstruction(
               HloInstruction::CreateGetTupleElement(conv_fusion, idx))));

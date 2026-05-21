@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_permute_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
@@ -116,7 +117,7 @@ NvshmemCollectivePermuteThunk::NvshmemCollectivePermuteThunk(
 
 absl::Status NvshmemCollectivePermuteThunk::Initialize(
     const InitializeParams& params) {
-  TF_RETURN_IF_ERROR(NvshmemCollectiveThunk::Initialize(params));
+  RETURN_IF_ERROR(NvshmemCollectiveThunk::Initialize(params));
 
   if (p2p_memcpy_enabled_) {
     return absl::InvalidArgumentError(
@@ -144,7 +145,7 @@ absl::StatusOr<ThunkProto> NvshmemCollectivePermuteThunk::ToProto() const {
   *thunk_proto->mutable_p2p_config() = P2PConfigToProto(config_);
 
   for (const CollectiveThunk::Buffer& buffer : buffers_) {
-    TF_ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
+    ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
   }
 
   thunk_proto->set_p2p_memcpy_enabled(p2p_memcpy_enabled_);
@@ -159,13 +160,13 @@ NvshmemCollectivePermuteThunk::FromProto(
   std::vector<CollectiveThunk::Buffer> buffers;
   buffers.reserve(thunk_proto.buffers_size());
   for (const CollectiveBufferProto& buffer_proto : thunk_proto.buffers()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         buffers.emplace_back(),
         CollectiveThunk::Buffer::FromProto(buffer_proto, buffer_allocations));
   }
 
-  TF_ASSIGN_OR_RETURN(P2PConfig config,
-                      P2PConfigFromProto(thunk_proto.p2p_config()));
+  ASSIGN_OR_RETURN(P2PConfig config,
+                   P2PConfigFromProto(thunk_proto.p2p_config()));
 
   return absl::WrapUnique<NvshmemCollectivePermuteThunk>(
       new NvshmemCollectivePermuteThunk(std::move(thunk_info),
@@ -175,14 +176,13 @@ NvshmemCollectivePermuteThunk::FromProto(
 
 absl::Status NvshmemCollectivePermuteThunk::RunNvshmemCollective(
     const ExecuteParams& params, se::Stream& stream) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params.buffer_allocations,
                              std::vector<CollectiveThunk::Buffer>(buffers_),
                              config_.config.operand_element_type));
-  TF_ASSIGN_OR_RETURN(
-      const int64_t current_id,
-      GetCollectiveCurrentId(params.collective_params, config_));
+  ASSIGN_OR_RETURN(const int64_t current_id,
+                   GetCollectiveCurrentId(params.collective_params, config_));
   std::string device_string =
       CollectiveThunk::GetDeviceString(*params.collective_params);
 
@@ -198,9 +198,9 @@ absl::Status RunCollectivePermute(P2PConfig::SourceTargetMapEntry source_target,
                                   se::Stream& stream,
                                   absl::string_view device_string,
                                   int64_t current_id) {
-  TF_ASSIGN_OR_RETURN(auto* collectives, GetNvshmemCollectivesFromRegistry());
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Communicator> nvshmem_comm,
-                      collectives->CreateCommunicator());
+  ASSIGN_OR_RETURN(auto* collectives, GetNvshmemCollectivesFromRegistry());
+  ASSIGN_OR_RETURN(std::unique_ptr<Communicator> nvshmem_comm,
+                   collectives->CreateCommunicator());
 
   int device_ordinal = stream.parent()->device_ordinal();
 
@@ -234,7 +234,7 @@ absl::Status RunCollectivePermute(P2PConfig::SourceTargetMapEntry source_target,
       auto send_future = nvshmem_comm->Send(
           dest_addr, src_addr, buffer.element_type, buffer.element_count,
           RankId(*target_id), GpuCollectives::On(stream));
-      TF_RETURN_IF_ERROR(send_future.Await());
+      RETURN_IF_ERROR(send_future.Await());
     }
   }
   if (source_id) {
@@ -244,7 +244,7 @@ absl::Status RunCollectivePermute(P2PConfig::SourceTargetMapEntry source_target,
     VLOG(1) << "CollectivePermute: rank " << device_ordinal
             << " receiving data from source " << *source_id;
 
-    TF_RETURN_IF_ERROR(nvshmem_comm->Barrier(GpuCollectives::On(stream)));
+    RETURN_IF_ERROR(nvshmem_comm->Barrier(GpuCollectives::On(stream)));
   }
 
   if (!source_id) {
@@ -252,8 +252,8 @@ absl::Status RunCollectivePermute(P2PConfig::SourceTargetMapEntry source_target,
     VLOG(3) << absl::StreamFormat("%s : collective-Permute: Issuing MemZero",
                                   device_string);
     for (DeviceBufferPair& buffer : buffers) {
-      TF_RETURN_IF_ERROR(stream.MemZero(&buffer.destination_buffer,
-                                        buffer.destination_buffer.size()));
+      RETURN_IF_ERROR(stream.MemZero(&buffer.destination_buffer,
+                                     buffer.destination_buffer.size()));
     }
   }
 
@@ -271,8 +271,8 @@ absl::Status RunCollectivePermute(P2PConfig::SourceTargetMapEntry source_target,
 
   // Check if the operation is implementable with NVSHMEM
   for (const auto& operand : inst->operands()) {
-    TF_RETURN_IF_ERROR(IsValidNvshmemOperand(operand->shape(),
-                                             Thunk::kNvshmemCollectivePermute));
+    RETURN_IF_ERROR(IsValidNvshmemOperand(operand->shape(),
+                                          Thunk::kNvshmemCollectivePermute));
   }
 
   // Check if all source-target pairs are valid

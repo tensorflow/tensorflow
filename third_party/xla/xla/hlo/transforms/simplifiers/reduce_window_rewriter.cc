@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -104,7 +105,7 @@ static absl::StatusOr<HloComputation*> ScalarizeComputation(
     HloInstruction* new_inst = nullptr;
     switch (inst->opcode()) {
       case HloOpcode::kParameter: {
-        TF_ASSIGN_OR_RETURN(Shape shape, get_scalar_shape(inst->shape()));
+        ASSIGN_OR_RETURN(Shape shape, get_scalar_shape(inst->shape()));
         new_inst = builder.AddInstruction(HloInstruction::CreateParameter(
             inst->parameter_number(), shape, inst->name()));
         break;
@@ -114,7 +115,7 @@ static absl::StatusOr<HloComputation*> ScalarizeComputation(
             HloInstruction::CreateTuple(get_mapped_operands(inst)));
         break;
       case HloOpcode::kGetTupleElement: {
-        TF_ASSIGN_OR_RETURN(Shape shape, get_scalar_shape(inst->shape()));
+        ASSIGN_OR_RETURN(Shape shape, get_scalar_shape(inst->shape()));
         new_inst = builder.AddInstruction(HloInstruction::CreateGetTupleElement(
             shape, replacements[inst->operand(0)], inst->tuple_index()));
         break;
@@ -156,7 +157,7 @@ static absl::StatusOr<HloComputation*> ScalarizeComputation(
               absl::StrCat("Instruction is not elementwise: ",
                            HloOpcodeString(inst->opcode())));
         }
-        TF_ASSIGN_OR_RETURN(Shape shape, get_scalar_shape(inst->shape()));
+        ASSIGN_OR_RETURN(Shape shape, get_scalar_shape(inst->shape()));
         new_inst = builder.AddInstruction(
             inst->CloneWithNewOperands(shape, get_mapped_operands(inst)));
         break;
@@ -571,7 +572,7 @@ ReduceWindowRewriter::RewriteScanAsTreeReduction(
         scans.push_back(scan);
         return absl::OkStatus();
       });
-  TF_RETURN_IF_ERROR(status);
+  RETURN_IF_ERROR(status);
 
   HloInstruction* scan;
   if (result_shape.IsTuple()) {
@@ -642,14 +643,13 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
   // We don't actually need to match the computation - this transformation will
   // work for a commutative/associative reducer, which is what we assume for
   // ReduceWindow anyway.
-  TF_ASSIGN_OR_RETURN(
-      HloInstruction * scan,
-      RewriteScanAsTreeReduction(parent, sources, reduce_window->init_values(),
-                                 reduce_window->to_apply(),
-                                 reduce_window->shape(), rank, scan_dim,
-                                 scan_length, forward_scan, is_exclusive));
-  TF_RETURN_IF_ERROR(reduce_window->ReplaceAllUsesWith(scan));
-  TF_RETURN_IF_ERROR(parent->RemoveInstruction(reduce_window));
+  ASSIGN_OR_RETURN(HloInstruction * scan,
+                   RewriteScanAsTreeReduction(
+                       parent, sources, reduce_window->init_values(),
+                       reduce_window->to_apply(), reduce_window->shape(), rank,
+                       scan_dim, scan_length, forward_scan, is_exclusive));
+  RETURN_IF_ERROR(reduce_window->ReplaceAllUsesWith(scan));
+  RETURN_IF_ERROR(parent->RemoveInstruction(reduce_window));
   return true;
 }
 
@@ -667,10 +667,10 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeAssociativeScan(
   VLOG(2) << "Rewriting associative scan: " << scan->ToString();
   HloComputation* parent = scan->parent();
 
-  TF_ASSIGN_OR_RETURN(HloInstruction * init,
-                      GetScalarInitValue(scan->inits()[0], parent));
-  TF_ASSIGN_OR_RETURN(HloComputation * scan_to_apply,
-                      ScalarizeComputation(scan->to_apply(), parent));
+  ASSIGN_OR_RETURN(HloInstruction * init,
+                   GetScalarInitValue(scan->inits()[0], parent));
+  ASSIGN_OR_RETURN(HloComputation * scan_to_apply,
+                   ScalarizeComputation(scan->to_apply(), parent));
   HloComputation::Builder builder(
       absl::StrCat(scan_to_apply->name(), "_rw_wrapper"));
 
@@ -698,17 +698,17 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeAssociativeScan(
         input->shape(), input, init, window, rw_to_apply));
   } else {
     Shape outputs_shape = scan->shape().tuple_shapes(0);
-    TF_ASSIGN_OR_RETURN(result, RewriteScanAsTreeReduction(
-                                    parent, {input}, {init}, rw_to_apply,
-                                    outputs_shape, rank, scan_dim, scan_length,
-                                    /*forward_scan=*/true,
-                                    /*is_exclusive=*/false));
+    ASSIGN_OR_RETURN(result, RewriteScanAsTreeReduction(
+                                 parent, {input}, {init}, rw_to_apply,
+                                 outputs_shape, rank, scan_dim, scan_length,
+                                 /*forward_scan=*/true,
+                                 /*is_exclusive=*/false));
   }
 
   // Replace carry with init value, users are guaranteed to be dead.
   HloInstruction* tuple = parent->AddInstruction(
       HloInstruction::CreateTuple({result, scan->inits()[0]}));
-  TF_RETURN_IF_ERROR(parent->ReplaceInstruction(scan, tuple));
+  RETURN_IF_ERROR(parent->ReplaceInstruction(scan, tuple));
 
   return true;
 }
@@ -723,7 +723,7 @@ absl::StatusOr<bool> ReduceWindowRewriter::RunImpl(
          computation->MakeInstructionPostOrder()) {
       if (auto* scan = DynCast<HloScanInstruction>(instruction)) {
         if (decompose_assoc_scan) {
-          TF_ASSIGN_OR_RETURN(bool result, TryOptimizeAssociativeScan(scan));
+          ASSIGN_OR_RETURN(bool result, TryOptimizeAssociativeScan(scan));
           changed |= result;
         }
         continue;
@@ -732,15 +732,14 @@ absl::StatusOr<bool> ReduceWindowRewriter::RunImpl(
       if (auto* reduce_window =
               DynCast<HloReduceWindowInstruction>(instruction)) {
         auto result = TryOptimizeCumSumOrProd(reduce_window);
-        TF_RETURN_IF_ERROR(result.status());
+        RETURN_IF_ERROR(result.status());
         if (*result) {
           changed = true;
           continue;
         }
         if (reduce_window->inputs().front()->shape().dimensions().size() == 1) {
-          TF_RETURN_IF_ERROR(
-              reduce_window_util::Replace1DReduceWindowWithReshape(
-                  reduce_window));
+          RETURN_IF_ERROR(reduce_window_util::Replace1DReduceWindowWithReshape(
+              reduce_window));
           changed = true;
         }
         continue;

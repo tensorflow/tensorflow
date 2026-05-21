@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -114,8 +115,7 @@ absl::StatusOr<int> CompositeCompilationProvider::GetLatestPtxIsaVersion()
     const {
   std::optional<int> latest_supported_version;
   for (const auto& provider : providers_) {
-    TF_ASSIGN_OR_RETURN(int provider_version,
-                        provider->GetLatestPtxIsaVersion());
+    ASSIGN_OR_RETURN(int provider_version, provider->GetLatestPtxIsaVersion());
     if (!latest_supported_version.has_value()) {
       latest_supported_version = provider_version;
       continue;

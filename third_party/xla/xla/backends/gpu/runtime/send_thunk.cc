@@ -65,7 +65,7 @@ SendThunk::SendThunk(ThunkInfo thunk_info, const P2PConfig& config,
       hlo_name_(instr_name) {}
 
 absl::Status SendThunk::Initialize(const InitializeParams& params) {
-  TF_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
+  RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
   return absl::OkStatus();
 }
 
@@ -159,7 +159,7 @@ absl::Status RunSend(DeviceBufferPair& buffer, se::Stream& stream,
       << absl::StreamFormat("target_id = %d, call comm.Send()", target_id);
   auto future = comm.Send(src_addr, buffer.element_type, buffer.element_count,
                           RankId(target_id), GpuCollectives::On(stream));
-  TF_RETURN_IF_ERROR(future.Await());
+  RETURN_IF_ERROR(future.Await());
   return absl::OkStatus();
 }
 

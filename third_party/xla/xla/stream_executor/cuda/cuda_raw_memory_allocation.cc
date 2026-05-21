@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
@@ -50,20 +51,19 @@ CudaRawMemoryAllocation::Create(StreamExecutor* executor, uint64_t size) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
 
   CUdevice device;
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       cuda::ToStatus(cuDeviceGet(&device, executor->device_ordinal())));
 
   CUmemAllocationProp props = BuildAllocationProperties(device);
 
   size_t granularity = 0;
-  TF_RETURN_IF_ERROR(cuda::ToStatus(cuMemGetAllocationGranularity(
+  RETURN_IF_ERROR(cuda::ToStatus(cuMemGetAllocationGranularity(
       &granularity, &props, CU_MEM_ALLOC_GRANULARITY_RECOMMENDED)));
 
   uint64_t padded_size = xla::RoundUpTo<uint64_t>(size, granularity);
 
   CUmemGenericAllocationHandle handle;
-  TF_RETURN_IF_ERROR(
-      cuda::ToStatus(cuMemCreate(&handle, padded_size, &props, 0)));
+  RETURN_IF_ERROR(cuda::ToStatus(cuMemCreate(&handle, padded_size, &props, 0)));
 
   return std::unique_ptr<CudaRawMemoryAllocation>(
       new CudaRawMemoryAllocation(executor, handle, padded_size));

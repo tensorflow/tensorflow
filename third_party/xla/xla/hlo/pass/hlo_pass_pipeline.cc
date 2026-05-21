@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/lib/traceme_encode.h"
 
 namespace xla {
 
@@ -301,7 +302,9 @@ absl::StatusOr<bool> HloPassPipeline::RunImpl(
   VLOG(1) << "Running HLO pass pipeline on module " << module->name() << ": "
           << name();
 
-  tsl::profiler::TraceMe traceme(name());
+  tsl::profiler::TraceMe traceme([&] {
+    return tsl::profiler::TraceMeEncode(name(), {{"module", module->name()}});
+  });
   // Copy debug options by value as passes may modify module config.
   DebugOptions debug_options = module->config().debug_options();
   return RunPassesInternal(module, debug_options, execution_threads);
@@ -315,7 +318,9 @@ absl::StatusOr<bool> HloPassPipeline::RunImpl(
   VLOG(1) << "Running HLO pass pipeline on module " << module->name() << ": "
           << name();
 
-  tsl::profiler::TraceMe traceme(name());
+  tsl::profiler::TraceMe traceme([&] {
+    return tsl::profiler::TraceMeEncode(name(), {{"module", module->name()}});
+  });
   // Copy debug options by value as passes may modify module config.
   DebugOptions debug_options = module->config().debug_options();
   return RunPassesInternal<std::unique_ptr<HloModule>&>(module, debug_options,

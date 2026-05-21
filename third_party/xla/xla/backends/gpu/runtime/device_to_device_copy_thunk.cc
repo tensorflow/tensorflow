@@ -109,10 +109,10 @@ absl::StatusOr<ThunkProto> DeviceToDeviceCopyThunk::ToProto() const {
   DeviceToDeviceCopyThunkProto* d2d_copy_thunk_proto =
       proto.mutable_device_to_device_copy_thunk();
   CopyThunkProto* copy_thunk_proto = d2d_copy_thunk_proto->mutable_copy_thunk();
-  TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_source_buffer(),
-                      source_buffer_.ToProto());
-  TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_destination_buffer(),
-                      destination_buffer_.ToProto());
+  ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_source_buffer(),
+                   source_buffer_.ToProto());
+  ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_destination_buffer(),
+                   destination_buffer_.ToProto());
   copy_thunk_proto->set_mem_size(size_bytes());
   return proto;
 }
@@ -121,11 +121,11 @@ absl::StatusOr<std::unique_ptr<DeviceToDeviceCopyThunk>>
 DeviceToDeviceCopyThunk::FromProto(
     ThunkInfo thunk_info, const DeviceToDeviceCopyThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       ShapedSlice src_slice,
       ShapedSlice::FromProto(thunk_proto.copy_thunk().source_buffer(),
                              buffer_allocations));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       ShapedSlice dst_slice,
       ShapedSlice::FromProto(thunk_proto.copy_thunk().destination_buffer(),
                              buffer_allocations));

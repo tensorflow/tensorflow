@@ -104,6 +104,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@tsl//tsl/profiler/lib:scoped_annotation",
         "@tsl//tsl/profiler/lib:traceme",
+        "@tsl//tsl/profiler/lib:traceme_encode",
     ],
 )
 

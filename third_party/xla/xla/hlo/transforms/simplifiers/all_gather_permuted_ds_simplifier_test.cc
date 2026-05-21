@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -49,8 +50,8 @@ class AllGatherPermutedDsSimplifierTest
     HloModuleConfig config =
         GetModuleConfigForTest(num_replicas, num_partitions);
     config.set_use_spmd_partitioning(num_partitions > 1);
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
-                        ParseAndReturnVerifiedModule(hlo_module, config));
+    ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+                     ParseAndReturnVerifiedModule(hlo_module, config));
     absl::StatusOr<bool> changed =
         AllGatherDynamicSlicePermutedOffsetSimplifier().Run(module.get(), {});
     if (!changed.ok()) {

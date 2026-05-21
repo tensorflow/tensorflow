@@ -245,6 +245,7 @@ void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
     } else if (auto customCallOp = mlir::dyn_cast<CustomCallOp>(op)) {
       StringRef targetName = customCallOp.getCallTargetName();
       if (targetName == kShardingCustomCallTargetName ||
+          targetName == "X64Combine" ||
           isPythonCallbackCustomCall(customCallOp)) {
         customCallOp->setAttr(
             kShardingAttr,

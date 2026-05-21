@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -89,7 +90,7 @@ class BuildAllReduceInfoTest : public HloHardwareIndependentTestBase {
 
     SCOPED_TRACE(testing::Message() << "module_str: " << module_str);
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         std::unique_ptr<HloModule> module,
         ParseAndReturnVerifiedModule(
             module_str, replica_groups.empty() ? 1 : replica_groups.size()));
