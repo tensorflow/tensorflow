@@ -407,7 +407,9 @@ const StatTypeMap& GetStatTypeMap() {
        {"vdd_core_energy_nj", kVddCoreEnergy},
        {"vdd_core_power_events", kVddCorePowerEvents},
        {"hbm_energy_nj", kHbmEnergy},
-       {"hbm_power_events", kHbmPowerEvents}});
+       {"hbm_power_events", kHbmPowerEvents},
+       {"transaction_with_chip_core_id", kTransactionWithChipCoreId},
+       {"program_counter", kProgramCounter}});
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
 }
