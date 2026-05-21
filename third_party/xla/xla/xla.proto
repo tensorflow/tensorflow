@@ -1096,6 +1096,9 @@ message DebugOptions {
   // was run, and how long it took.
   optional bool xla_gpu_print_compilation_stats = 454;
 
+  // Extra flags to pass to the ptxas compiler, e.g. "--maxregcount=32".
+  repeated string xla_gpu_ptx_compiler_extra_flags = 491;
+
   // Paths to files with ptx code.
   repeated string xla_gpu_ptx_file = 127;
 
@@ -1603,7 +1606,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 491
+  // Next id: 492
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

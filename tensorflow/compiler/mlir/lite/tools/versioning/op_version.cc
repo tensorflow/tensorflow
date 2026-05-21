@@ -379,6 +379,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_TRANSPOSE:
+      if (!op_sig.inputs.empty() &&
+          op_sig.inputs.at(0).type == kTfLiteFloat16) {
+        return 9;
+      }
       if (op_sig.inputs.at(0).dims.size() > 6 ||
           op_sig.inputs.at(0).type == kTfLiteBFloat16) {
         return 8;

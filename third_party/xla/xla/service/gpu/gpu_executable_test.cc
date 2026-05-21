@@ -268,8 +268,17 @@ TEST_F(GpuExecutableTest, GetMlirAllocations) {
               ElementsAre(expected_ptr0, expected_ptr1));
 }
 
-absl::StatusOr<std::unique_ptr<BufferAssignment>>
-MakeNonEmptyBufferAssignment() {
+// A struct that owns a BufferAssignment and the HLO module it came from.
+// Keeping the HLO module alive is necessary to keep the BufferAssignment
+// valid.
+struct ScopedBufferAssignment {
+  std::unique_ptr<BufferAssignment> buffer_assignment;
+  std::unique_ptr<HloModule> hlo_module;
+};
+
+absl::StatusOr<ScopedBufferAssignment> MakeNonEmptyBufferAssignment() {
+  ScopedBufferAssignment holder;
+
   const char* hlo_text = R"(
     HloModule m
     ENTRY main {
@@ -277,25 +286,28 @@ MakeNonEmptyBufferAssignment() {
       b = f32[128] parameter(1)
       ROOT c = f32[128] add(a, b)
     })";
-  ASSIGN_OR_RETURN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
+  ASSIGN_OR_RETURN(holder.hlo_module, ParseAndReturnUnverifiedModule(hlo_text));
 
   AliasInfo alias_info;
   ASSIGN_OR_RETURN(
-      auto buffer_assignment,
+      holder.buffer_assignment,
       BufferAssigner::Run(
-          hlo.get(), std::make_unique<DependencyHloOrdering>(hlo.get()),
+          holder.hlo_module.get(),
+          std::make_unique<DependencyHloOrdering>(holder.hlo_module.get()),
           [](const BufferValue& buffer) {
             return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
           },
           &alias_info, [](LogicalBuffer::Color) { return /*alignment=*/1; },
           BufferAssigner::Options{}));
-  EXPECT_FALSE(buffer_assignment->Allocations().empty());
-  return buffer_assignment;
+  EXPECT_FALSE(holder.buffer_assignment->Allocations().empty());
+  return holder;
 }
 
 TEST_F(GpuExecutableTest, GetBufferAssignmentAllocations) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<BufferAssignment> buffer_assignment,
+  TF_ASSERT_OK_AND_ASSIGN(ScopedBufferAssignment holder,
                           MakeNonEmptyBufferAssignment());
+  std::unique_ptr<BufferAssignment>& buffer_assignment =
+      holder.buffer_assignment;
 
   GpuExecutable::Params params;
   params.module_name = "test_module";
@@ -318,8 +330,10 @@ TEST_F(GpuExecutableTest, GetBufferAssignmentAllocations) {
 }
 
 TEST_F(GpuExecutableTest, MlirAllocationsArePreferred) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<BufferAssignment> buffer_assignment,
+  TF_ASSERT_OK_AND_ASSIGN(ScopedBufferAssignment holder,
                           MakeNonEmptyBufferAssignment());
+  std::unique_ptr<BufferAssignment>& buffer_assignment =
+      holder.buffer_assignment;
 
   GpuExecutable::Params params;
   params.module_name = "test_module";

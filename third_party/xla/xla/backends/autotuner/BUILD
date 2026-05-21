@@ -37,6 +37,7 @@ cc_library(
         ":autotuner_cache_interface",
         ":backends_proto_cc",
         ":codegen_backend",
+        ":codegen_orchestrator",
         ":hlo_extractor",
         ":profiler",
         "//xla:autotune_results_proto_cc",
@@ -48,7 +49,6 @@ cc_library(
         "//xla/service:executable",
         "//xla/service:shaped_buffer",
         "//xla/service/gpu/autotuning:autotuner_status_key",
-        "//xla/stream_executor:kernel_stats",
         "//xla/tools:hlo_decomposer_lib",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/platform:env",
@@ -84,6 +84,31 @@ cc_library(
         "//xla/tsl/util:sorted_range",
         "@com_google_absl//absl/container:flat_hash_map",
         "@tsl//tsl/platform:fingerprint",
+    ],
+)
+
+cc_library(
+    name = "codegen_orchestrator",
+    srcs = ["codegen_orchestrator.cc"],
+    hdrs = ["codegen_orchestrator.h"],
+    deps = [
+        ":codegen_backend",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:executable",
+        "//xla/stream_executor:kernel_stats",
+        "//xla/tsl/concurrency:executor",
+        "//xla/tsl/concurrency:future",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

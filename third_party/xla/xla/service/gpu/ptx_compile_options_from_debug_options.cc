@@ -31,6 +31,9 @@ stream_executor::cuda::CompilationOptions PtxCompileOptionsFromDebugOptions(
       debug_options.xla_gpu_generate_debug_info();
   compilation_options.generate_line_info =
       debug_options.xla_gpu_generate_line_info();
+  compilation_options.additional_ptxas_flags = {
+      debug_options.xla_gpu_ptx_compiler_extra_flags().begin(),
+      debug_options.xla_gpu_ptx_compiler_extra_flags().end()};
   return compilation_options;
 }
 }  // namespace xla::gpu

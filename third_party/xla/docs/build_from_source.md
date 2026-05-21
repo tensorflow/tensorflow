@@ -132,6 +132,7 @@ reproduce workload results using XLA tools that were originally created in JAX.
 #### Build XLA Targets in the JAX CI Container
 
 1. Clone the JAX repository and navigate to the 'jax' directory
+
 ```bash
 git clone https://github.com/jax-ml/jax.git
 
@@ -139,12 +140,14 @@ cd jax
 ```
 
 2. Start JAX CI/Release Docker container by running:
+
 ```bash
 ./ci/utilities/run_docker_container.sh
 ```
 This will start a Docker container named 'jax'.
 
 3. Build the jax-cuda-plugin target inside the container using:
+
 ```bash
 docker exec jax ./ci/build_artifacts.sh jax-cuda-plugin
 ```
@@ -152,12 +155,14 @@ This will create the .jax_configure.bazelrc file with the required build
 configuration, including CUDA/cuDNN support
 
 4. Access an interactive shell inside the container:
+
 ```bash
 docker exec -ti jax /bin/bash
 ```
 You should now be in the `/jax` directory within the container
 
 5. Build the XLA target with the following command, e.g.:
+
 ```bash
 /usr/local/bin/bazel build \
   --config=cuda_libraries_from_stubs \
@@ -166,18 +171,21 @@ You should now be in the `/jax` directory within the container
 ```
 
 Optionally, you can overwrite `HERMETIC` envs, e.g.:
+
 ```bash
 --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_90"
 ```
 
 6. Copy the resulting artifacts to `/jax/dist` to access them from the host OS
 if needed
+
 ```bash
 cp bazel-bin/external/xla/xla/tools/multihost_hlo_runner/hlo_runner_main \
   ./dist/
 ```
 
 7. Exit the interactive shell:
+
 ```bash
 exit
 ```
