@@ -1266,6 +1266,8 @@ absl::Status CreateHloProfilingArtifacts(
 absl::StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
+  XLA_SCOPED_LOGGING_TIMER(
+      absl::StrFormat("Running HLO passes on [%s] for CPU", module->name()));
   if (MultiModuleDriver::ShouldProcess(*module)) {
     VLOG(1) << "Triggering HLO module splitting for module: " << module->name();
     {

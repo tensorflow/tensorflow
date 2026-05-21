@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
@@ -397,7 +398,7 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
       cache_dir, debug_options.xla_gpu_experimental_autotune_cache_mode(),
       target_config->device_description);
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<Autotuner> autotuner,
       Autotuner::Create(std::move(backends), std::move(profiler),
                         autotune_config, std::move(cache), thread_pool));
@@ -415,10 +416,10 @@ absl::StatusOr<bool> AutotunerPass::RunImpl(
   bool shard_autotuning =
       enable_sharding_ && key_value_store_.process_count > 1;
   if (shard_autotuning) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         autotuner_->Autotune(module, should_autotune_, key_value_store_));
   } else {
-    TF_RETURN_IF_ERROR(autotuner_->Autotune(module, should_autotune_));
+    RETURN_IF_ERROR(autotuner_->Autotune(module, should_autotune_));
   }
   VLOG(1) << "Autotuner cache stats: hits=" << autotuner_->GetCacheStats().hits
           << ", misses=" << autotuner_->GetCacheStats().misses;

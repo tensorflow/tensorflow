@@ -60,6 +60,7 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/protobuf:coordination_config_proto_cc",
         "//xla/tsl/protobuf:coordination_service_proto_cc",
         "//xla/tsl/util:device_name_utils",
@@ -289,6 +290,7 @@ tsl_cc_test(
         "//xla/tsl/platform:env_impl",  # buildcleaner: keep
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:test",
         "//xla/tsl/protobuf:coordination_config_proto_cc_impl",
         "//xla/tsl/protobuf:coordination_service_proto_cc_impl",

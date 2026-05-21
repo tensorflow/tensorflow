@@ -857,7 +857,7 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
   // MLIR dictionary attributes when rewriting to the final FFI target.
   SortOptions sort_options;
   sort_options.set_descending(sort_analysis.descending);
-  TF_RETURN_IF_ERROR(custom_call->set_backend_config(sort_options));
+  RETURN_IF_ERROR(custom_call->set_backend_config(sort_options));
 
   // Build the replacement instruction.
   HloInstruction* replacement;
@@ -880,8 +880,7 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
   }
 
   // Replace sort operation with custom call followed by GTE.
-  TF_RETURN_IF_ERROR(
-      sort_op->parent()->ReplaceInstruction(sort_op, replacement));
+  RETURN_IF_ERROR(sort_op->parent()->ReplaceInstruction(sort_op, replacement));
   return true;
 }
 
@@ -906,7 +905,7 @@ absl::StatusOr<bool> SortRewriter::RunOnComputation(
 
   bool changed = false;
   for (auto* sort : sort_ops) {
-    TF_ASSIGN_OR_RETURN(bool result, RunOnInstruction(sort));
+    ASSIGN_OR_RETURN(bool result, RunOnInstruction(sort));
     changed |= result;
   }
   return changed;
@@ -928,8 +927,8 @@ absl::StatusOr<bool> SortRewriter::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(bool result,
-                        RunOnComputation(computation, deviceless_cub_mode));
+    ASSIGN_OR_RETURN(bool result,
+                     RunOnComputation(computation, deviceless_cub_mode));
     changed |= result;
   }
   XLA_VLOG_LINES(3, "SortRewriter::RunImpl(), after:\n" + module->ToString());
