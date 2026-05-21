@@ -143,6 +143,11 @@ BatchFunctionFallbackKernelBase::BatchFunctionFallbackKernelBase(
                               &enable_priority_aware_batch_scheduler_resplit_));
   }
 
+  if (c->HasAttr("enable_batching_task_lazy_cancellation")) {
+    OP_REQUIRES_OK(c, c->GetAttr("enable_batching_task_lazy_cancellation",
+                                 &enable_batching_task_lazy_cancellation_));
+  }
+
   if (c->HasAttr("num_warmup_batch_threads")) {
     OP_REQUIRES_OK(
         c, c->GetAttr("num_warmup_batch_threads", &num_warmup_batch_threads_));
