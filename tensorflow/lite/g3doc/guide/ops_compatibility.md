@@ -64,11 +64,16 @@ they can increase the size of the overall model by incurring dependencies
 outside of the built-in TensorFlow Lite library. Custom ops, if not specifically
 created for mobile or device deployment, can result in worse performance when
 deployed to resource constrained devices compared to a server environment.
-Finally, just like including select TensorFlow core operators, custom operators
-requires you to
+Finally, just like including select TensorFlow core operators, using
+custom operators requires you to
 [modify the model runtime environment](ops_custom.md#create-and-register-the-operator)
-which limits you from taking advantage of standard runtime services such as the
+which can limit you from taking advantage of standard runtime services such as
+the
 [Google Play services](../android/play_services.md).
+LiteRT in Play services supports custom ops with the
+[LiteRT C and C++ Interpreter APIs](https://ai.google.dev/edge/litert/android/native),
+but not with the
+[LiteRT Java Interpreter API](https://ai.google.dev/edge/litert/android/java).
 
 ## Supported types
 

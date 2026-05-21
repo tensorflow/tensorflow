@@ -20,6 +20,7 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -75,11 +76,10 @@ absl::StatusOr<bool> ReduceScatterDecomposer::RunImpl(
 
       // Create start indices for a dynamic slice to decompose the all-reduce
       // results.
-      TF_ASSIGN_OR_RETURN(
-          CollectiveOpGroupMode group_mode,
-          GetCollectiveOpGroupMode(rs->channel_id().has_value(),
-                                   rs->use_global_device_ids()));
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                       GetCollectiveOpGroupMode(rs->channel_id().has_value(),
+                                                rs->use_global_device_ids()));
+      ASSIGN_OR_RETURN(
           std::vector<HloInstruction*> start_indices,
           CreateStartIndicesForCollectiveDecomposition(
               group_mode, rs->replica_groups(), rs->shape(),
@@ -89,8 +89,8 @@ absl::StatusOr<bool> ReduceScatterDecomposer::RunImpl(
           computation->AddInstruction(HloInstruction::CreateDynamicSlice(
               rs->shape(), ar, start_indices, rs->shape().dimensions()));
 
-      TF_RETURN_IF_ERROR(rs->ReplaceAllUsesWith(ds));
-      TF_RETURN_IF_ERROR(computation->RemoveInstruction(rs));
+      RETURN_IF_ERROR(rs->ReplaceAllUsesWith(ds));
+      RETURN_IF_ERROR(computation->RemoveInstruction(rs));
       changed = true;
     }
   }

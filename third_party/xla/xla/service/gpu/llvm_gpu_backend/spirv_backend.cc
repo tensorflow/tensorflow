@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/no_destructor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/IR/Constants.h"
@@ -191,7 +192,7 @@ absl::StatusOr<std::string> CompileToSPIRV(
   const_cast<llvm::SPIRVSubtarget*>(sub_target->getSubtargetImpl())
       ->initAvailableExtensions(common_spirv_extensions);
 
-  TF_RETURN_IF_ERROR(LinkAndOptimizeModule(
+  RETURN_IF_ERROR(LinkAndOptimizeModule(
       module, gpu_version, debug_options, "", SPIRVTargetModuleLinker,
       default_target_triple, target_machine.get(), kDefaultInlineThreshold));
 
