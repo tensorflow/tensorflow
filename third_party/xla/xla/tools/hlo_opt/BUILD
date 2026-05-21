@@ -211,6 +211,7 @@ cc_library(
         "//xla/stream_executor/host:host_platform",
         "//xla/stream_executor/platform:initialize",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",

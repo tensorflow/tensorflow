@@ -65,6 +65,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_original_value_util.h"
+#include "xla/hlo/ir/hlo_payload_deduplicator.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
@@ -4592,6 +4593,8 @@ void HloInstruction::ToProto(HloInstructionProto* proto) const {
 
   *proto->mutable_metadata() = metadata();
   proto->set_backend_config(backend_config_->GetRawString());
+  proto->clear_backend_config_payload();
+
   if (opcode() != HloOpcode::kFusion) {
     for (const HloComputation* computation : called_computations()) {
       proto->add_called_computation_ids(computation->unique_id());
@@ -4613,6 +4616,16 @@ void HloInstruction::ToProto(HloInstructionProto* proto) const {
 
   if (has_result_accuracy()) {
     *proto->mutable_result_accuracy() = result_accuracy();
+  }
+}
+
+void HloInstruction::ToProto(HloInstructionProto* proto,
+                             HloPayloadDeduplicator* deduplicator) const {
+  ToProto(proto);
+  if (deduplicator && !backend_config_->empty()) {
+    proto->mutable_backend_config_payload()->set_id(
+        deduplicator->Deduplicate(backend_config_.get()));
+    proto->clear_backend_config();
   }
 }
 

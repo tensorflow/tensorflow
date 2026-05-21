@@ -2916,6 +2916,7 @@ class Subgraph {
       case kTfLiteBuiltinHardSwish:
       case kTfLiteBuiltinLeakyRelu:
       case kTfLiteBuiltinLogistic:
+      case kTfLiteBuiltinLog:
       case kTfLiteBuiltinNeg:
       case kTfLiteBuiltinQuantize:
       case kTfLiteBuiltinRelu:
@@ -4263,6 +4264,7 @@ class Subgraph {
       case BuiltinOperator_FLOOR:
       case BuiltinOperator_GELU:
       case BuiltinOperator_HARD_SWISH:
+      case BuiltinOperator_LOG:
       case BuiltinOperator_NEG:
       case BuiltinOperator_RELU_N1_TO_1:
       case BuiltinOperator_RELU:
@@ -4441,6 +4443,9 @@ class Subgraph {
           unary_op_type = xnn_unary_leaky_relu;
           break;
         }
+        case BuiltinOperator_LOG:
+          unary_op_type = xnn_unary_log;
+          break;
         case BuiltinOperator_LOGISTIC:
           unary_op_type = xnn_unary_sigmoid;
           break;

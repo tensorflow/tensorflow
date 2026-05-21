@@ -16,6 +16,7 @@ name: PR Size Check
 permissions:
   pull-requests: write
 on:
+  # zizmor: ignore[dangerous-triggers]
   pull_request_target:
     branches:
       - main

@@ -82,6 +82,8 @@ namespace xla {
 class HloComputation;
 class HloModule;
 class HloInstruction;
+class BackendConfigWrapper;
+class HloPayloadDeduplicator;
 
 // A small holder that is used to keep some immutable info alongside an
 // instruction pointer in an HloComputation's list of instructions
@@ -1679,6 +1681,10 @@ class HloInstruction {
   }
 
   virtual void ToProto(HloInstructionProto* proto) const;
+
+  // Non-virtual overload that handles interning.
+  void ToProto(HloInstructionProto* proto,
+               HloPayloadDeduplicator* deduplicator) const;
 
   // Returns a category for the HLO. This could be something like "convolution"
   // or "elementwise".

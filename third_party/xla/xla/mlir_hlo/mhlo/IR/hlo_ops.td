@@ -1029,6 +1029,16 @@ def MHLO_MulOp : MHLO_BinaryElementwiseOp<"multiply",
   let hasFolder = 1;
 }
 
+def MHLO_MulhiOp : MHLO_BinaryElementwiseOp<"mulhi",
+      [Commutative, Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntTensor> {
+  let summary = "Mulhi operation";
+  let description = [{
+    Performs element-wise multiplication of two integer tensors `lhs` and `rhs`,
+    returning the most significant bits of the product.
+  }];
+  let hasCustomHLOConverter = 1;
+}
+
 def MHLO_PowOp : MHLO_BinaryElementwiseOp<"power",
       [Pure, HLO_CompatibleOperandsAndResultType], MHLO_IntFpOrComplexOrQuantizedIntTensor> {
   let summary = "Pow operation";

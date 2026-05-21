@@ -81,6 +81,12 @@ namespace builtin {
 
 namespace {
 
+inline TfLiteStatus AddAndCheckOverflow(size_t a, size_t b, size_t* sum) {
+  *sum = a + b;
+  if (*sum < a) return kTfLiteError;
+  return kTfLiteOk;
+}
+
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 5);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
@@ -125,7 +131,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
 void FinalizeAggregation(TfLiteCombinerType combiner, int num_elements,
                          float current_total_weight,
-                         float current_squares_weight, int embedding_size,
+                         float current_squares_weight, size_t embedding_size,
                          float* output) {
   if (combiner != kTfLiteCombinerTypeSum && num_elements > 0) {
     float multiplier = 1.0;
@@ -139,7 +145,7 @@ void FinalizeAggregation(TfLiteCombinerType combiner, int num_elements,
       default:
         break;
     }
-    for (int k = 0; k < embedding_size; k++) {
+    for (size_t k = 0; k < embedding_size; k++) {
       output[k] /= multiplier;
     }
   }
@@ -212,7 +218,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   std::fill_n(output_ptr, output_size.Value(), 0.0f);
 
   // Keep track of the current bucket for aggregation/combination.
-  int current_output_offset = 0;
+  size_t current_output_offset = 0;
   float current_total_weight = 0.0;
   float current_squares_weight = 0.0;
   int num_elements = 0;
@@ -228,14 +234,66 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     }
 
     // Check where we need to aggregate.
-    const int example_indices_offset = i * lookup_rank;
-    int output_bucket = 0;
-    int stride = 1;
-    for (int k = (lookup_rank - 1) - 1; k >= 0; k--) {
-      output_bucket += indices->data.i32[example_indices_offset + k] * stride;
-      stride *= dense_shape->data.i32[k];
+    size_t example_indices_offset;
+    if (MultiplyAndCheckOverflow(static_cast<size_t>(i), lookup_rank,
+                                 &example_indices_offset) != kTfLiteOk) {
+      TF_LITE_KERNEL_LOG(context,
+                         "Embedding Lookup Sparse: indices offset overflowed.");
+      return kTfLiteError;
     }
-    const int output_offset = output_bucket * embedding_size.Value();
+    size_t output_bucket = 0;
+    size_t stride = 1;
+    for (int k = lookup_rank - 2; k >= 0; k--) {
+      int32_t index_val = indices->data.i32[example_indices_offset + k];
+      int32_t dense_dim = dense_shape->data.i32[k];
+
+      // Validate index_val against dense_dim.
+      if (index_val < 0 || index_val >= dense_dim) {
+        TF_LITE_KERNEL_LOG(
+            context,
+            "Embedding Lookup Sparse: index at dimension %d (%d) "
+            "is out of bounds [0, %d).",
+            k, index_val, dense_dim);
+        return kTfLiteError;
+      }
+
+      // Calculate term to add to output_bucket using checked multiplication.
+      size_t term;
+      if (MultiplyAndCheckOverflow(static_cast<size_t>(index_val), stride,
+                                   &term) != kTfLiteOk) {
+        TF_LITE_KERNEL_LOG(context,
+                           "Embedding Lookup Sparse: overflow during "
+                           "output_bucket term calculation.");
+        return kTfLiteError;
+      }
+      // Add term to output_bucket using checked addition.
+      if (AddAndCheckOverflow(output_bucket, term, &output_bucket) !=
+          kTfLiteOk) {
+        TF_LITE_KERNEL_LOG(context,
+                           "Embedding Lookup Sparse: overflow during "
+                           "output_bucket addition.");
+        return kTfLiteError;
+      }
+
+      // Update stride for the next iteration.
+      if (k > 0) {  // Only update stride if there's a next iteration (k-1 >= 0)
+        if (MultiplyAndCheckOverflow(stride, static_cast<size_t>(dense_dim),
+                                     &stride) != kTfLiteOk) {
+          TF_LITE_KERNEL_LOG(context,
+                             "Embedding Lookup Sparse: overflow during "
+                             "stride calculation.");
+          return kTfLiteError;
+        }
+      }
+    }
+    size_t output_offset;
+    if (MultiplyAndCheckOverflow(output_bucket, embedding_size.Value(),
+                                 &output_offset) != kTfLiteOk) {
+      TF_LITE_KERNEL_LOG(context,
+                         "Embedding Lookup Sparse: final output_offset "
+                         "calculation overflowed.");
+      return kTfLiteError;
+    }
 
     // If we are in a new aggregation bucket and the combiner is not the sum,
     // go back and finalize the result of the previous bucket.
@@ -253,18 +311,48 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
     // Add element to aggregation.
     ++num_elements;
-    const int example_embedding_offset = idx * embedding_size.Value();
+    size_t example_embedding_offset;
+    if (MultiplyAndCheckOverflow(static_cast<size_t>(idx),
+                                 embedding_size.Value(),
+                                 &example_embedding_offset) != kTfLiteOk) {
+      TF_LITE_KERNEL_LOG(
+          context, "Embedding Lookup Sparse: embedding offset overflowed.");
+      return kTfLiteError;
+    }
     const float w = weights_ptr[i];
     current_squares_weight += w * w;
     current_total_weight += w;
-    for (int k = 0; k < embedding_size; k++) {
-      // only index if indices are valid
-      if (current_output_offset + k < 0) continue;
-      if (current_output_offset + k >= output_size) continue;
-      if (example_embedding_offset + k < 0) continue;
-      if (example_embedding_offset + k >= values_size) continue;
-      output_ptr[current_output_offset + k] +=
-          value_ptr[example_embedding_offset + k] * w;
+    for (size_t k = 0; k < embedding_size.Value(); k++) {
+      size_t output_idx;
+      if (AddAndCheckOverflow(current_output_offset, k, &output_idx) !=
+          kTfLiteOk) {
+        TF_LITE_KERNEL_LOG(context,
+                           "ELS: output_idx overflow in aggregation loop.");
+        return kTfLiteError;
+      }
+      if (output_idx >= output_size.Value()) {
+        TF_LITE_KERNEL_LOG(
+            context,
+            "ELS: output_idx (%zu) out of bounds [0, %zu) in aggregation loop.",
+            output_idx, output_size.Value());
+        return kTfLiteError;
+      }
+
+      size_t value_idx;
+      if (AddAndCheckOverflow(example_embedding_offset, k, &value_idx) !=
+          kTfLiteOk) {
+        TF_LITE_KERNEL_LOG(context,
+                           "ELS: value_idx overflow in aggregation loop.");
+        return kTfLiteError;
+      }
+      if (value_idx >= values_size) {
+        TF_LITE_KERNEL_LOG(
+            context,
+            "ELS: value_idx (%zu) out of bounds [0, %zu) in aggregation loop.",
+            value_idx, values_size);
+        return kTfLiteError;
+      }
+      output_ptr[output_idx] += value_ptr[value_idx] * w;
     }
   }
 

@@ -524,11 +524,12 @@ TEST(ParseRepeatedEnumFlagsTest, AutotuneBackend) {
                                             autotuner::Backend::TRITON));
 
   // Adding / removing options from the existing setting.
-  SetXlaFlagsEnvVar("--xla_gpu_experimental_autotune_backends=+cublas,-triton");
+  SetXlaFlagsEnvVar(
+      "--xla_gpu_experimental_autotune_backends=+cublaslt,-triton");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
   EXPECT_EQ(enabled_backends.size(), 2);
   EXPECT_THAT(enabled_backends, ElementsAre(autotuner::Backend::CUDNN,
-                                            autotuner::Backend::CUBLAS));
+                                            autotuner::Backend::CUBLASLT));
 }
 
 TEST(CollectivesModeParsingTest, CaseInsensitive) {

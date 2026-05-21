@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -337,17 +338,17 @@ class CompileOnlyIfRtClient final
       return std::make_shared<PjRtLayout>(
           LayoutUtil::MakeDescendingLayout(dims.size()));
     }
-    TF_ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
-    TF_ASSIGN_OR_RETURN(xla::Layout layout,
-                        topology_->GetDefaultLayout(element_type, dims));
+    ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
+    ASSIGN_OR_RETURN(xla::Layout layout,
+                     topology_->GetDefaultLayout(element_type, dims));
     return std::make_shared<PjRtLayout>(std::move(layout));
   }
   absl::StatusOr<ifrt::CustomLayoutRef> GetDefaultLayout(
       ifrt::DType dtype, const ifrt::Shape& shape,
       const ifrt::ShardingRef& sharding) const override {
-    TF_ASSIGN_OR_RETURN(const ifrt::Shape shard_shape,
-                        sharding->GetShardShape(shape));
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(const ifrt::Shape shard_shape,
+                     sharding->GetShardShape(shape));
+    ASSIGN_OR_RETURN(
         std::shared_ptr<const xla::PjRtLayout> layout,
         GetDefaultPjRtLayout(dtype, shard_shape.dims(),
                              sharding->devices()->devices().front(),
