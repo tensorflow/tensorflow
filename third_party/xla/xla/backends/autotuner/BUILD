@@ -152,3 +152,13 @@ tf_proto_library(
     name = "backends_proto",
     srcs = ["backends.proto"],
 )
+
+tf_proto_library(
+    name = "autotuning_proto",
+    srcs = ["autotuning.proto"],
+    deps = [
+        ":backends_proto",
+        "@com_google_protobuf//:any_proto",
+        "@com_google_protobuf//:duration_proto",
+    ],
+)
