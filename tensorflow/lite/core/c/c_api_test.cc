@@ -596,6 +596,56 @@ TEST(CApiSimple, OpaqueDelegate_TransferOperatorOwnershipWithoutNodeToReplace) {
   g_opaque_delegate_struct = nullptr;
 }
 
+TEST(CApiRobustness, ReplaceNodeSubsetsWithDelegateKernelsRejectsMalformedArray) {
+  // This test verifies that a delegate calling the public API with a
+  // malformed (negative-sized) TfLiteIntArray is rejected safely and does
+  // not lead to UB/crash.
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+
+  struct DelegateState {
+    bool delegate_prepared = false;
+  } delegate_state;
+
+  TfLiteOpaqueDelegateBuilder opaque_delegate_builder{};
+  opaque_delegate_builder.data = &delegate_state;
+  opaque_delegate_builder.Prepare = [](TfLiteOpaqueContext* opaque_context,
+                                       TfLiteOpaqueDelegate* opaque_delegate,
+                                       void* data) {
+    auto* state = static_cast<DelegateState*>(data);
+    state->delegate_prepared = true;
+
+    // Create a valid zero-sized array then flip its size to negative to
+    // simulate a malicious/corrupted external input.
+    TfLiteIntArray* malformed = TfLiteIntArrayCreate(0);
+    malformed->size = -1;
+
+    // Call the public API. Expect it to return an error rather than crash.
+    TfLiteStatus status = TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
+        opaque_context, CreateDelegateKernelExternalRegistration(), malformed,
+        opaque_delegate);
+    EXPECT_EQ(status, kTfLiteError);
+
+    TfLiteIntArrayFree(malformed);
+    return kTfLiteOk;
+  };
+
+  TfLiteOpaqueDelegate* opaque_delegate =
+      TfLiteOpaqueDelegateCreate(&opaque_delegate_builder);
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddDelegate(options, opaque_delegate);
+  TfLiteInterpreter* interpreter =
+      TfLiteInterpreterCreate(model, options);
+
+  // Prepare should have run and not crashed.
+  EXPECT_TRUE(delegate_state.delegate_prepared);
+
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteOpaqueDelegateDelete(opaque_delegate);
+  TfLiteModelDelete(model);
+}
+
 using ::tflite::delegates::test_utils::TestFP16Delegation;
 
 TEST_F(TestFP16Delegation,
