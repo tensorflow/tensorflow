@@ -37,7 +37,6 @@ def Vifrt_Dialect : Dialect {
       0.1.0: Initial IFRT IR stability guarantees.
       0.2.0: Added unreduced to sharding parameter attribute.
       0.3.0: Added token type.
-      0.4.0: Added CopyArrays with reuse semantics.
   }];
 
   let useDefaultAttributePrinterParser = 0;
