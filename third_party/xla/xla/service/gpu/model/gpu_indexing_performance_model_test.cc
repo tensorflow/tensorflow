@@ -18,16 +18,21 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <utility>
 #include <variant>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/codegen/tiling/experimental/tiled_hlo.h"
+#include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -61,6 +66,8 @@ class GpuIndexingPerformanceModelTest
     RegisterSymbolicExprStorage(&mlir_context_);
   }
 
+  bool use_experimental_tiling() const { return GetParam(); }
+
   mlir::MLIRContext mlir_context_;
   // The reference times in the test cases below are measured
   // on A6000 by profiling the execution of the HLOs.
@@ -68,7 +75,7 @@ class GpuIndexingPerformanceModelTest
   HloFusionAnalysisCache fusion_analysis_cache_{device_info_};
   GpuPerformanceModelWithIndexingAnalysis indexing_cost_model_{
       &device_info_, &fusion_analysis_cache_, HloCostAnalysis::DefaultShapeSize,
-      &mlir_context_, /*use_experimental_tiling=*/GetParam()};
+      &mlir_context_, use_experimental_tiling()};
 
   size_t WarpSize() const { return ::xla::gpu::WarpSize(device_info_); }
 };
@@ -754,19 +761,40 @@ ENTRY main {
   const HloInstruction* fusion_root =
       &fusion_adaptor->GetRoots().front().instruction();
 
-  SymbolicTileAnalysisOrError analysis_or_error =
-      SymbolicTileAnalysis::AnalyzeFusion(
-          *fusion_adaptor, &mlir_context_,
-          /*emitter_specific_constraints_builder=*/nullptr);
-  ASSERT_TRUE(std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error));
+  absl::InlinedVector<int64_t, 4> output_tile_sizes = {9, 9, 9};
 
-  ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_hlo_computation,
-                       std::get<SymbolicTileAnalysis>(analysis_or_error)
-                           .ComputeTiledComputation(
-                               Tiling({{fusion_root, FlatTiling({9, 9, 9})}})));
+  int64_t num_warps = 0;
+  if (use_experimental_tiling()) {
+    std::unique_ptr<experimental::TilingSpace> tiling_space =
+        experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_);
 
-  int64_t num_warps = GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
-      tiled_hlo_computation);
+    ASSERT_OK(tiling_space->AssignTileSizes(
+        xla::xtile::GetPaddedTileSizes(output_tile_sizes)));
+
+    ASSERT_OK_AND_ASSIGN(
+        experimental::TiledHloComputation tiled_hlo_computation,
+        experimental::TiledHloComputation::Tile(*fusion_adaptor,
+                                                std::move(tiling_space)));
+
+    num_warps = GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
+        tiled_hlo_computation);
+  } else {
+    SymbolicTileAnalysisOrError analysis_or_error =
+        SymbolicTileAnalysis::AnalyzeFusion(
+            *fusion_adaptor, &mlir_context_,
+            /*emitter_specific_constraints_builder=*/nullptr);
+    ASSERT_TRUE(
+        std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error));
+
+    ASSERT_OK_AND_ASSIGN(
+        TiledHloComputation tiled_hlo_computation,
+        std::get<SymbolicTileAnalysis>(analysis_or_error)
+            .ComputeTiledComputation(
+                Tiling({{fusion_root, FlatTiling(output_tile_sizes)}})));
+
+    num_warps = GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
+        tiled_hlo_computation);
+  }
 
   // Tile size is 9 * 9 * 9 = 729 that corresponds to 2 warps. But we estimate
   // the number of warps for padded tile that has size of 16 * 16 * 16 = 4096
@@ -803,19 +831,43 @@ ENTRY main {
   const HloInstruction* fusion_root =
       &fusion_adaptor->GetRoots().front().instruction();
 
-  SymbolicTileAnalysisOrError analysis_or_error =
-      SymbolicTileAnalysis::AnalyzeFusion(
-          *fusion_adaptor, &mlir_context_,
-          /*emitter_specific_constraints_builder=*/nullptr);
-  ASSERT_TRUE(std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error));
+  absl::InlinedVector<int64_t, 4> output_tile_sizes = {1};
 
-  ASSERT_OK_AND_ASSIGN(
-      TiledHloComputation tiled_hlo_computation,
-      std::get<SymbolicTileAnalysis>(analysis_or_error)
-          .ComputeTiledComputation(Tiling({{fusion_root, FlatTiling({1})}})));
+  int64_t num_warps = 0;
+  if (use_experimental_tiling()) {
+    std::unique_ptr<experimental::TilingSpace> tiling_space =
+        experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_);
 
-  int64_t num_warps = GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
-      tiled_hlo_computation);
+    absl::InlinedVector<int64_t, 4> tile_sizes = output_tile_sizes;
+    tile_sizes.push_back(4096);
+
+    ASSERT_OK(tiling_space->AssignTileSizes(
+        xla::xtile::GetPaddedTileSizes(tile_sizes)));
+
+    ASSERT_OK_AND_ASSIGN(
+        experimental::TiledHloComputation tiled_hlo_computation,
+        experimental::TiledHloComputation::Tile(*fusion_adaptor,
+                                                std::move(tiling_space)));
+
+    num_warps = GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
+        tiled_hlo_computation);
+
+  } else {
+    SymbolicTileAnalysisOrError analysis_or_error =
+        SymbolicTileAnalysis::AnalyzeFusion(
+            *fusion_adaptor, &mlir_context_,
+            /*emitter_specific_constraints_builder=*/nullptr);
+    ASSERT_TRUE(
+        std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error));
+
+    ASSERT_OK_AND_ASSIGN(
+        TiledHloComputation tiled_hlo_computation,
+        std::get<SymbolicTileAnalysis>(analysis_or_error)
+            .ComputeTiledComputation(Tiling({{fusion_root, FlatTiling({1})}})));
+
+    num_warps = GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
+        tiled_hlo_computation);
+  }
 
   // The largest tile size is 1 * 4096, for which our implementation recommends
   // using 4 warps.
