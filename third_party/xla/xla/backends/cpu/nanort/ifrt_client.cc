@@ -56,7 +56,6 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_compiler.h"
-#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/utils.h"
 #include "xla/python/ifrt/array.h"
@@ -1483,6 +1482,11 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> NanoIfrtClient::BitcastArrays(
     absl::Span<const xla::ifrt::ArraySpec> specs,
     xla::ifrt::ArrayCopySemantics semantics) {
   return absl::UnimplementedError("BitcastArrays is not implemented.");
+}
+
+tsl::Future<std::vector<uint64_t>> NanoIfrtClient::HashValues(
+    absl::Span<const ifrt::ValueRef> values, ifrt::Client::HashMode mode) {
+  return absl::UnimplementedError("HashValues is not implemented.");
 }
 
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> NanoIfrtClient::ReshardArrays(

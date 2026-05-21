@@ -159,7 +159,6 @@ cc_library(
         "//xla/hlo/ir:hlo_sharding",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_compiler",
-        "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_layout",
         "//xla/pjrt:utils",
         "//xla/python/ifrt",

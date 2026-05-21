@@ -103,7 +103,6 @@ limitations under the License.
 #include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/casts.h"
 
 namespace xla {
 namespace ifrt {
@@ -1808,6 +1807,12 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::BitcastArrays(
     array->Delete();
   }
   return new_arrays;
+}
+
+tsl::Future<std::vector<uint64_t>> PjRtClient::HashValues(
+    absl::Span<const ValueRef> values, HashMode mode) {
+  return absl::UnimplementedError(
+      "HashValues is not implemented in PjRtClient.");
 }
 
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::ReshardArrays(

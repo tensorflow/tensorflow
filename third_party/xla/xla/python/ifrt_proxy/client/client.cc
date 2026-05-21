@@ -362,6 +362,12 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::BitcastArrays(
   return Array::BitcastArrays(this, rpc_helper_, arrays, specs, semantics);
 }
 
+tsl::Future<std::vector<uint64_t>> Client::HashValues(
+    absl::Span<const ValueRef> values, HashMode mode) {
+  return absl::UnimplementedError(
+      "HashValues is not implemented in IFRT Proxy.");
+}
+
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::ReshardArrays(
     absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
     ArrayCopySemantics semantics) {

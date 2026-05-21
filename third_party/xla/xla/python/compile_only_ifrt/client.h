@@ -250,6 +250,12 @@ class CompileOnlyIfRtClient final
         "BitcastArrays not available with compile-only client.");
   }
 
+  tsl::Future<std::vector<uint64_t>> HashValues(
+      absl::Span<const ifrt::ValueRef> values, HashMode mode) override {
+    return absl::UnimplementedError(
+        "HashValues is not available with compile-only client.");
+  }
+
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> ReshardArrays(
       absl::Span<xla::ifrt::ArrayRef> arrays,
       absl::Span<const xla::ifrt::ArraySpec> specs,
