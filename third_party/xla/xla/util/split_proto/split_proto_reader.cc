@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/message.h"
 #include "google/protobuf/reflection.h"
@@ -52,7 +53,7 @@ template <typename Src>
 absl::Status HandleProtoMergeRecord(riegeli::RecordReader<Src>& record_reader,
                                     google::protobuf::Message& proto) {
   absl::string_view record_data;
-  TF_RETURN_IF_ERROR(ReadRecord(record_reader, record_data));
+  RETURN_IF_ERROR(ReadRecord(record_reader, record_data));
 
   if (!proto.MergeFromString(record_data)) {
     return absl::InternalError("Failed to parse proto merge record");
@@ -106,9 +107,9 @@ absl::Status HandleFieldOverrideRecord(
     riegeli::RecordReader<Src>& record_reader, google::protobuf::Message& proto,
     const Record& record) {
   std::string record_data;
-  TF_RETURN_IF_ERROR(ReadRecord(record_reader, record_data));
+  RETURN_IF_ERROR(ReadRecord(record_reader, record_data));
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       ReadOverrideFieldRecord(proto, std::move(record_data), record));
   return absl::OkStatus();
 }
@@ -139,11 +140,11 @@ absl::Status ReadSplitProto(std::unique_ptr<riegeli::Reader> reader,
   for (const Record& record : manifest.records()) {
     switch (record.record_type_case()) {
       case Record::kProtoMergeRecord: {
-        TF_RETURN_IF_ERROR(HandleProtoMergeRecord<>(record_reader, proto));
+        RETURN_IF_ERROR(HandleProtoMergeRecord<>(record_reader, proto));
         break;
       }
       case Record::kFieldOverrideRecord: {
-        TF_RETURN_IF_ERROR(
+        RETURN_IF_ERROR(
             HandleFieldOverrideRecord<>(record_reader, proto, record));
         break;
       }

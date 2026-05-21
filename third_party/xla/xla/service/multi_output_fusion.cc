@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -87,7 +88,7 @@ absl::StatusOr<bool> MultiOutputFusion::RunImpl(
   CHECK_OK(module->RemoveUnusedComputations());
   if (changed) {
     HloDCE dce;
-    TF_RETURN_IF_ERROR(dce.Run(module, execution_threads).status());
+    RETURN_IF_ERROR(dce.Run(module, execution_threads).status());
   }
   return changed;
 }

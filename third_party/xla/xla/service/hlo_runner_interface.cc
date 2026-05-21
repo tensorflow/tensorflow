@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/tsl/platform/statusor.h"
@@ -73,7 +74,7 @@ absl::StatusOr<Literal> HloRunnerInterface::ExecuteWithExecutable(
 
 absl::StatusOr<Literal> HloRunnerInterface::ExecuteWithExecutable(
     OpaqueExecutable* executable, absl::Span<const Literal* const> arguments) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<absl::StatusOr<Literal>> results,
       ExecuteWithExecutable(executable, arguments, /*num_repeats=*/1));
   CHECK_EQ(results.size(), 1);

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
@@ -91,7 +92,7 @@ absl::StatusOr<std::unique_ptr<Event>> TpuExecutor::CreateEvent() {
   StatusHelper status;
   ExecutorApiFn()->TpuExecutor_AllocateEventFn(executor_, se_event,
                                                status.c_status);
-  TF_RETURN_IF_ERROR(status.status());
+  RETURN_IF_ERROR(status.status());
 
   return std::move(tpu_event);
 }

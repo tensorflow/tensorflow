@@ -309,3 +309,8 @@ use_repo(pjrt_nightly_timestamp, "nightly_timestamp")
 
 pjrt_rc_number = use_extension("//build_tools/pjrt_wheels:release_candidate.bzl", "rc_number_repo_bzlmod")
 use_repo(pjrt_rc_number, "rc_number")
+
+### libdrm (dedicated extension to avoid Bzlmod merging issues)
+libdrm_ext = use_extension("//third_party/libdrm:extension.bzl", "libdrm_ext")
+use_repo(libdrm_ext, "libdrm")
+
