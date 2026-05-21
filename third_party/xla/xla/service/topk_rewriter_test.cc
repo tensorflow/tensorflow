@@ -428,6 +428,7 @@ ENTRY cluster {
   TF_ASSERT_OK_AND_ASSIGN(bool decomposer_changed,
                           TopkDecomposer().Run(module.get()));
   EXPECT_TRUE(decomposer_changed);
+  TF_ASSERT_OK(TupleSimplifier().Run(module.get()).status());
   TF_ASSERT_OK(HloDCE().Run(module.get()).status());
   auto root = module->entry_computation()->root_instruction();
   HloInstruction* sort;
