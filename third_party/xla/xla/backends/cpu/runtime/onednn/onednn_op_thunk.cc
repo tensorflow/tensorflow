@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "Eigen/ThreadPool"
+#include "xla/tsl/platform/status_macros.h"
 #include "oneapi/dnnl/dnnl_common.hpp"
 #include "oneapi/dnnl/dnnl_threadpool.hpp"
 #include "xla/backends/cpu/runtime/onednn/onednn_threadpool.h"
@@ -179,9 +180,9 @@ tsl::AsyncValueRef<OneDnnOpThunk::ExecuteEvent> OneDnnOpThunk::Execute(
   base_resources.arg_memrefs.reserve(num_operands);
   for (size_t i = 0; i < num_operands; ++i) {
     const auto& shape = op_buffers_.arguments_shapes[i];
-    TF_ASSIGN_OR_RETURN(se::DeviceAddressBase arg,
-                        params.buffer_allocations->GetDeviceAddress(
-                            op_buffers_.arguments_buffers[i]));
+    ASSIGN_OR_RETURN(se::DeviceAddressBase arg,
+                     params.buffer_allocations->GetDeviceAddress(
+                         op_buffers_.arguments_buffers[i]));
 
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(arg.opaque(), arg.size());
     VLOG(3) << absl::StreamFormat(
@@ -197,9 +198,9 @@ tsl::AsyncValueRef<OneDnnOpThunk::ExecuteEvent> OneDnnOpThunk::Execute(
   base_resources.result_memrefs.reserve(num_results);
   for (size_t i = 0; i < num_results; ++i) {
     const auto& shape = op_buffers_.results_shapes[i];
-    TF_ASSIGN_OR_RETURN(se::DeviceAddressBase res,
-                        params.buffer_allocations->GetDeviceAddress(
-                            op_buffers_.results_buffers[i]));
+    ASSIGN_OR_RETURN(se::DeviceAddressBase res,
+                     params.buffer_allocations->GetDeviceAddress(
+                         op_buffers_.results_buffers[i]));
 
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(res.opaque(), res.size());
     VLOG(3) << absl::StreamFormat("  res: %s (%p)",

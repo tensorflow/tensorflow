@@ -157,6 +157,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/translate/hlo_to_mhlo:attribute_importer",
         "//xla/service:algorithm_util",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",

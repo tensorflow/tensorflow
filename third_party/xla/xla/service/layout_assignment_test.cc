@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -537,9 +538,9 @@ class OperandsMustBeTheSameLayoutAssignment : public LayoutAssignment {
           operand->shape().dimensions().size()) {
         continue;
       }
-      TF_RETURN_IF_ERROR(SetArrayOperandLayout(buffer_constraint.layout(),
-                                               instruction, operand_no,
-                                               /*mandatory=*/true));
+      RETURN_IF_ERROR(SetArrayOperandLayout(buffer_constraint.layout(),
+                                            instruction, operand_no,
+                                            /*mandatory=*/true));
     }
     return PropagateBufferConstraintToUses(buffer_constraint, constraints);
   }

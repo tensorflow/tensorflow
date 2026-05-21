@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -88,7 +89,7 @@ ConcatenateFusion::CreateMLIRModule(
       GetDefaultBufferAlignment(), GetWorkDimensions(), entry_function_name,
       BackendKind::kGpu);
 
-  TF_ASSIGN_OR_RETURN(auto kernel_definition, emitter.EmitKernelDefinition());
+  ASSIGN_OR_RETURN(auto kernel_definition, emitter.EmitKernelDefinition());
   return std::move(kernel_definition).TakeSource().TakeModule();
 }
 

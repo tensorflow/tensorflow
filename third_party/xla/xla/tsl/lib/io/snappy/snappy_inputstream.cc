@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/lib/io/inputstream_interface.h"
 #include "xla/tsl/platform/errors.h"
 #include "tsl/platform/snappy.h"
@@ -69,7 +70,7 @@ absl::Status SnappyInputStream::ReadNBytes(int64_t bytes_to_read,
     DCHECK_EQ(avail_out_, 0);
 
     // Fill the cache with more data.
-    TF_RETURN_IF_ERROR(Inflate());
+    RETURN_IF_ERROR(Inflate());
 
     size_t bytes_read = ReadBytesFromCache(bytes_to_read, result_ptr);
     bytes_to_read -= bytes_read;
@@ -84,7 +85,7 @@ absl::Status SnappyInputStream::ReadNBytes(int64_t bytes_to_read,
                                            absl::Cord* result) {
   // TODO(frankchn): Optimize this instead of bouncing through the buffer.
   tstring buf;
-  TF_RETURN_IF_ERROR(ReadNBytes(bytes_to_read, &buf));
+  RETURN_IF_ERROR(ReadNBytes(bytes_to_read, &buf));
   result->Clear();
   result->Append(buf.data());
   return absl::OkStatus();
@@ -95,7 +96,7 @@ absl::Status SnappyInputStream::Inflate() {
   tstring compressed_block_length_ts;
   uint32_t compressed_block_length;
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       input_stream_->ReadNBytes(sizeof(uint32_t), &compressed_block_length_ts));
   for (int i = 0; i < sizeof(uint32_t); ++i) {
     compressed_block_length =
@@ -113,7 +114,7 @@ absl::Status SnappyInputStream::Inflate() {
         absl::StrCat("Failed to read ", compressed_block_length,
                      " bytes from file. Possible data corruption."));
   }
-  TF_RETURN_IF_ERROR(s);
+  RETURN_IF_ERROR(s);
 
   size_t uncompressed_length;
   if (!port::Snappy_GetUncompressedLength(compressed_block.data(),
@@ -155,7 +156,7 @@ size_t SnappyInputStream::ReadBytesFromCache(size_t bytes_to_read,
 int64_t SnappyInputStream::Tell() const { return bytes_read_; }
 
 absl::Status SnappyInputStream::Reset() {
-  TF_RETURN_IF_ERROR(input_stream_->Reset());
+  RETURN_IF_ERROR(input_stream_->Reset());
   avail_out_ = 0;
   bytes_read_ = 0;
   return absl::OkStatus();

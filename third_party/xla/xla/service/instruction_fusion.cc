@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/types/source_location.h"
 #endif  // PLATFORM_GOOGLE
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_operand_index.h"
@@ -733,8 +734,8 @@ absl::StatusOr<bool> InstructionFusion::RunImpl(
           // Operand is now dead. Remove from queue.
           fusion_queue->RemoveInstruction(operand);
           // Remove from computation.
-          TF_RETURN_IF_ERROR(operand->SafelyDropAllControlDependencies());
-          TF_RETURN_IF_ERROR(computation->RemoveInstruction(operand));
+          RETURN_IF_ERROR(operand->SafelyDropAllControlDependencies());
+          RETURN_IF_ERROR(computation->RemoveInstruction(operand));
         }
 
         if (dump_fusion) {

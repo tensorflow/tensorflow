@@ -35,6 +35,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/profiler/rpc/client:save_profile",
         "//xla/tsl/profiler/utils:math_utils",
         "//xla/tsl/profiler/utils:time_utils",

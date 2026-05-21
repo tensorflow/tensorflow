@@ -198,8 +198,7 @@ absl::StatusOr<TensorValue> EmitConcatenate(
 
   ASSIGN_OR_RETURN(TileInfo tile_info,
                    TileInfo::Construct(emitter_ctx, tiled_concat));
-  TF_RETURN_IF_ERROR(
-      CheckConcatenateOperands(*hlo_concat, concat_dim_tile_size));
+  RETURN_IF_ERROR(CheckConcatenateOperands(*hlo_concat, concat_dim_tile_size));
   Type result_type =
       mlir::RankedTensorType::get(tile_sizes, tile_info.storage_type());
 
@@ -825,8 +824,10 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
     }
     ASSIGN_OR_RETURN(TileInfo tile_info,
                      TileInfo::Construct(emitter_ctx, tiled_hlo));
-    TensorValue parameter = EmitParameterExtract(
-        b, tile_info, emitter_ctx.entry_func().getArgument(arg_index));
+    ASSIGN_OR_RETURN(
+        TensorValue parameter,
+        EmitParameterExtract(b, tile_info,
+                             emitter_ctx.entry_func().getArgument(arg_index)));
 
     // Workaround(i1_to_i8_workaround)
     // Some types are stored using different types, e.g. i1 is stored in memory
@@ -1076,7 +1077,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
   b.setInsertionPointToStart(&fn.front());
 
   ASSIGN_OR_RETURN(auto schedule, GetSchedule(tiled_computation));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       EmitGeneric(b, fusion, tiled_computation, schedule, fn, &mlir_context));
 
   b.create<xtile::EntryFuncReturnOp>();
@@ -1093,7 +1094,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     mlir::PassManager pm(&mlir_context);
     pm.addPass(xtile::createVerifyLegalXTileOpsPass());
     tsl::StatusScopedDiagnosticHandler diagnostic_handler(&mlir_context);
-    TF_RETURN_IF_ERROR(diagnostic_handler.consumeStatus(pm.run(*xtile_module)));
+    RETURN_IF_ERROR(diagnostic_handler.consumeStatus(pm.run(*xtile_module)));
   }
   return xtile_module;
 }
