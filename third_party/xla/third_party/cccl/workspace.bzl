@@ -36,6 +36,9 @@ CCCL_GITHUB_VERSIONS_TO_BUILD_TEMPLATES = {
         "version_to_template": {
             "any": "@rules_ml_toolchain//gpu/cuda/build_templates:cuda_cccl_github.BUILD.tpl",
         },
+        "version_to_patch": {
+            "3.2.0": "@rules_ml_toolchain//gpu/cuda/patches:string_view.patch",
+        },
         "local": {
             "local_path_env_var": "LOCAL_CCCL_PATH",
             "source_dirs": ["thrust", "libcudacxx", "cub"],
