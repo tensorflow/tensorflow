@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/gpu/autotuner/cublas.h"
+#include "xla/backends/gpu/autotuner/cudnn.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -124,6 +125,45 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotuned) {
   EXPECT_THAT(pass->Run(module.get(), /*execution_threads=*/{}),
               absl_testing::IsOkAndHolds(true));
   // Verify that the backend config has been updated in the HLO.
+  auto gemm =
+      module->entry_computation()->GetInstructionWithName("custom-call.1");
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_backend_config_after_first_run,
+                          gemm->backend_config<GpuBackendConfig>());
+  ASSERT_TRUE(gpu_backend_config_after_first_run.gemm_backend_config()
+                  .has_selected_algorithm());
+}
+
+TEST_F(AutotunerPassTest, CublasGemmIsAutotunedWithAutotuningDisabled) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
+  module->mutable_config().mutable_debug_options().set_xla_gpu_autotune_level(
+      0);
+
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
+                                      /*num_threads=*/4);
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  GpuCompiler::GpuTargetConfig target_config(stream_executor_);
+  backends.push_back(std::make_unique<CublasBackend>(
+      stream_executor_, &module->config().debug_options(), &compiler_,
+      &target_config));
+
+  auto get_backends_fn =
+      [backends =
+           std::make_shared<std::vector<std::unique_ptr<CodegenBackend>>>(
+               std::move(backends))]() mutable { return std::move(*backends); };
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<AutotunerPass> pass,
+      AutotunerPass::Create(
+          std::move(get_backends_fn), module->config().debug_options(),
+          target_config.device_description.gpu_compute_capability(),
+          stream_executor_, &thread_pool, &target_config,
+          /*alias_info=*/nullptr, /*mlir_context=*/nullptr,
+          /*shape_size_fn=*/[](const Shape& shape) { return 0; },
+          allocator_.get()));
+  EXPECT_THAT(pass->Run(module.get(), /*execution_threads=*/{}),
+              absl_testing::IsOkAndHolds(true));
+  // Verify that the backend config has been updated in the HLO even though
+  // autotuning is disabled.
   auto gemm =
       module->entry_computation()->GetInstructionWithName("custom-call.1");
   TF_ASSERT_OK_AND_ASSIGN(auto gpu_backend_config_after_first_run,

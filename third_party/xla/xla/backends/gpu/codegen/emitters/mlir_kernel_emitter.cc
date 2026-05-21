@@ -464,13 +464,13 @@ MlirKernelEmitter::CreateMLIRModule(
   auto loc = mlir::NameLoc::get(builder.getStringAttr(fusion.name()));
   mlir::OwningOpRef<mlir::ModuleOp> module = llvm_ir::CreateMlirModuleOp(loc);
 
-  TF_ASSIGN_OR_RETURN(mlir::func::FuncOp entry_func,
-                      emitters::EmitKernelApi(
-                          *module, fusion, buffer_assignment,
-                          GetDefaultBufferAlignment(), entry_function_name));
+  ASSIGN_OR_RETURN(mlir::func::FuncOp entry_func,
+                   emitters::EmitKernelApi(*module, fusion, buffer_assignment,
+                                           GetDefaultBufferAlignment(),
+                                           entry_function_name));
   SetBackendKind(&mlir_context, entry_func, BackendKind::kGpu);
 
-  TF_RETURN_IF_ERROR(EmitMlir(module.get(), entry_func, fusion, mlir_context));
+  RETURN_IF_ERROR(EmitMlir(module.get(), entry_func, fusion, mlir_context));
   return module;
 }
 
@@ -544,8 +544,8 @@ absl::Status MlirKernelEmitter::EmitMlir(mlir::ModuleOp module,
   emitters::PartitionedComputations computations(
       fusion.fused_instructions_computation(), &mlir_context, epilogues);
 
-  TF_ASSIGN_OR_RETURN(auto call_targets, emitters::EmitPartitionedComputations(
-                                             module, computations));
+  ASSIGN_OR_RETURN(auto call_targets,
+                   emitters::EmitPartitionedComputations(module, computations));
 
   emitters::SetIndexDataLayout(module, fusion);
 

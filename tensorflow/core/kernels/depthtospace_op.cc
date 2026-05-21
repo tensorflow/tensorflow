@@ -25,6 +25,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -126,12 +127,13 @@ class DepthToSpaceOp : public OpKernel {
         auto Toutput_v =
             outputs_tensor->reinterpret_last_dimension<int32_t, 4>();
         functor::DepthToSpaceOpFunctor<Device, int32_t, FORMAT_NCHW> functor;
-        functor(context->eigen_device<Device>(), Tinput_v, block_size_,
-                Toutput_v);
+        OP_REQUIRES_OK(context, functor(context->eigen_device<Device>(),
+                                        Tinput_v, block_size_, Toutput_v));
         return;
       } else if (data_format_ == FORMAT_NCHW) {
         functor::DepthToSpaceOpFunctor<Device, T, FORMAT_NCHW> functor;
-        functor(context->eigen_device<Device>(), Tinput, block_size_, Toutput);
+        OP_REQUIRES_OK(context, functor(context->eigen_device<Device>(), Tinput,
+                                        block_size_, Toutput));
         return;
       }
     }
@@ -141,7 +143,8 @@ class DepthToSpaceOp : public OpKernel {
 
     if (!is_int8x4) {
       functor::DepthToSpaceOpFunctor<Device, T, FORMAT_NHWC> functor;
-      functor(context->eigen_device<Device>(), Tinput, block_size_, Toutput);
+      OP_REQUIRES_OK(context, functor(context->eigen_device<Device>(), Tinput,
+                                      block_size_, Toutput));
     }
   };
 
@@ -155,8 +158,10 @@ class DepthToSpaceOp : public OpKernel {
 namespace functor {
 template <typename T>
 struct DepthToSpaceOpFunctor<CPUDevice, T, FORMAT_NHWC> {
-  void operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
-                  int block_size, typename TTypes<T, 4>::Tensor output) {
+  absl::Status operator()(const CPUDevice& d,
+                          typename TTypes<T, 4>::ConstTensor input,
+                          int block_size,
+                          typename TTypes<T, 4>::Tensor output) {
     const int batch_size = output.dimension(0);
     const int output_height = output.dimension(1);
     const int output_width = output.dimension(2);
@@ -178,6 +183,7 @@ struct DepthToSpaceOpFunctor<CPUDevice, T, FORMAT_NHWC> {
         }
       }
     }
+    return absl::OkStatus();
   }
 };
 }  // namespace functor

@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
@@ -276,7 +277,7 @@ absl::Status ValidateRemoteProfilerSessionManagerOptions(
   }
 
   for (absl::string_view host_port : options.service_addresses()) {
-    TF_RETURN_IF_ERROR(ValidateHostPortPair(host_port));
+    RETURN_IF_ERROR(ValidateHostPortPair(host_port));
   }
 
   if (options.max_session_duration_ms() <

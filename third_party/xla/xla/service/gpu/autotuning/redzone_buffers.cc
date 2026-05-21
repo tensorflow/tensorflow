@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -84,14 +85,14 @@ absl::StatusOr<RedzoneBuffers> RedzoneBuffers::FromProgramShape(
 
   int64_t rng_state = 0;
 
-  TF_RETURN_IF_ERROR(buffers.CreateInputs(program_shape.parameters(),
-                                          should_init_buffers, rng_state));
+  RETURN_IF_ERROR(buffers.CreateInputs(program_shape.parameters(),
+                                       should_init_buffers, rng_state));
 
   if (buffers_to_create == BuffersToCreate::kAllInputsAllOutputs ||
       buffers_to_create == BuffersToCreate::kAllInputsOutputsNoScratch) {
-    TF_RETURN_IF_ERROR(buffers.CreateOutputs(program_shape.result(),
-                                             buffers_to_create,
-                                             should_init_buffers, rng_state));
+    RETURN_IF_ERROR(buffers.CreateOutputs(program_shape.result(),
+                                          buffers_to_create,
+                                          should_init_buffers, rng_state));
   }
   return buffers;
 }
@@ -101,9 +102,9 @@ absl::Status RedzoneBuffers::CreateInputs(absl::Span<const Shape> input_shapes,
                                           int64_t& rng_state) {
   tsl::profiler::TraceMe traceme("create inputs");
   for (const auto& input_shape : input_shapes) {
-    TF_ASSIGN_OR_RETURN(se::DeviceAddressBase buf,
-                        redzone_allocator_->CreateBuffer(
-                            input_shape, should_init_buffers, rng_state));
+    ASSIGN_OR_RETURN(se::DeviceAddressBase buf,
+                     redzone_allocator_->CreateBuffer(
+                         input_shape, should_init_buffers, rng_state));
     input_buffers_.push_back(buf);
     input_shapes_.push_back(input_shape);
   }
@@ -116,9 +117,9 @@ absl::Status RedzoneBuffers::CreateOutputs(const Shape& output_shape,
                                            int64_t& rng_state) {
   tsl::profiler::TraceMe traceme("create outputs");
   if (!output_shape.IsTuple()) {
-    TF_ASSIGN_OR_RETURN(se::DeviceAddressBase buf,
-                        redzone_allocator_->CreateBuffer(
-                            output_shape, should_init_buffers, rng_state));
+    ASSIGN_OR_RETURN(se::DeviceAddressBase buf,
+                     redzone_allocator_->CreateBuffer(
+                         output_shape, should_init_buffers, rng_state));
     output_buffers_.push_back(buf);
     output_shape_ = output_shape;
     return absl::OkStatus();
@@ -139,9 +140,9 @@ absl::Status RedzoneBuffers::CreateOutputs(const Shape& output_shape,
     if (current_shape_it->IsTuple()) {
       return Unimplemented("Nested tuples are unsupported by RedzoneBuffers.");
     }
-    TF_ASSIGN_OR_RETURN(se::DeviceAddressBase buf,
-                        redzone_allocator_->CreateBuffer(
-                            *current_shape_it, should_init_buffers, rng_state));
+    ASSIGN_OR_RETURN(se::DeviceAddressBase buf,
+                     redzone_allocator_->CreateBuffer(
+                         *current_shape_it, should_init_buffers, rng_state));
     output_buffers_.push_back(buf);
   }
   return absl::OkStatus();
