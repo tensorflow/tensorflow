@@ -271,12 +271,8 @@ static absl::StatusOr<ncclConfig_t> AsNcclConfig(
   if (xla::GetDebugOptionsFromFlags()
           .xla_gpu_experimental_enable_nccl_symmetric_buffers() &&
       config.use_minimal_resource) {
-#if (NCCL_VERSION_CODE >= 22800)
     VLOG(1) << "Setting CTAPolicy to NCCL_CTA_POLICY_ZERO";
     comm_config.CTAPolicy = NCCL_CTA_POLICY_ZERO;
-#else
-    VLOG(1) << "Requires NCCL version >= 2.28 to use NCCL_CTA_POLICY_ZERO";
-#endif
   }
 
   if (config.max_nchannels > 0) {
