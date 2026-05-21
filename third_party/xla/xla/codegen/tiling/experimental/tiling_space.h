@@ -89,6 +89,11 @@ class TilingSpace {
  public:
   TilingSpace() : constraints_(ConstraintExpression::GetAlwaysSatisfied()) {}
 
+  // Disable copy constructor and assignment to prevent dangling pointers
+  // inside hlo_to_dimension_.
+  TilingSpace(const TilingSpace&) = delete;
+  TilingSpace& operator=(const TilingSpace&) = delete;
+
   // Unique ID for the dimension or runtime variable.
   using ID = int64_t;
 

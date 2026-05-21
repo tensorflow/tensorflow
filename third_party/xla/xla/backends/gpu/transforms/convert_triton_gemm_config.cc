@@ -73,7 +73,7 @@ absl::StatusOr<TritonGemmConfig> GetTritonGemmConfig(
   const FusionBackendConfig& backend_config =
       gpu_config.fusion_backend_config();
   if (!backend_config.has_triton_gemm_config()) {
-    return absl::InternalError(
+    return absl::NotFoundError(
         "The fusion's backend config doesn't have a triton_gemm_config.");
   }
   return TritonGemmConfig::FromProto(backend_config.triton_gemm_config());
@@ -104,10 +104,11 @@ class ConvertTritonGemmConfigVisitor : public DfsHloRewriteVisitor {
     HloFusionInstruction* fusion = Cast<HloFusionInstruction>(instruction);
     // Check if we target this fusion.
     absl::StatusOr<TritonGemmConfig> config = GetTritonGemmConfig(*fusion);
-    if (!config.ok()) {
+    if (absl::IsNotFound(config.status())) {
       VLOG(2) << "Skipping fusion as it does not have a TritonGemmConfig";
       return absl::OkStatus();
     }
+    RETURN_IF_ERROR(config.status());
     return RewriteFusion(fusion, *config);
   }
 
@@ -129,12 +130,12 @@ class ConvertTritonGemmConfigVisitor : public DfsHloRewriteVisitor {
     }
 
     // Annotate the dot with the contraction tile size.
-    ASSIGN_OR_RETURN(auto tile_sizes, dot->backend_config<Tile>());
+    ASSIGN_OR_RETURN(Tile tile_sizes, dot->backend_config<Tile>());
     tile_sizes.add_sizes(config.block_k);
     RETURN_IF_ERROR(dot->set_backend_config(tile_sizes));
 
     // Annotate the fusion itself with the block-level parameters.
-    ASSIGN_OR_RETURN(auto gpu_config,
+    ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                      fusion->backend_config<GpuBackendConfig>());
     FusionBackendConfig& backend_config =
         *gpu_config.mutable_fusion_backend_config();
