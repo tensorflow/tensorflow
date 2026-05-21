@@ -4,6 +4,7 @@ load(
 )
 load(
     "//xla/tsl:tsl.bzl",
+    "if_google",
     "if_not_fuchsia",
     "if_oss",
     "internal_visibility",
@@ -672,16 +673,22 @@ cc_library(
 tsl_cc_test(
     name = "statusor_test",
     size = "small",
-    srcs = ["statusor_test.cc"],
+    srcs = [
+        "status_macros.h",
+        "statusor_test.cc",
+    ],
     deps = [
         ":macros",
         ":statusor",
         ":test",
         ":test_benchmark",
         ":test_main",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-    ],
+    ] + if_google([
+        "@com_google_absl//absl/types:source_location",
+    ]),
 )
 
 cc_library(
@@ -779,7 +786,10 @@ cc_library(
     hdrs = ["status_macros.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([]),  # The header should be used only in OSS.
-    deps = [":statusor"],
+    deps = [
+        ":statusor",
+        "@com_google_absl//absl/status",
+    ],
 )
 # copybara:comment_end
 

@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/embedded_filesystem.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -55,7 +56,7 @@ absl::Status RegisterBuiltInFiles(const char* absl_nonnull name,
     // conditionally. We're running at global-init time, before flags have been
     // parsed, so VLOG is out, and any standard log level will result in RAW_LOG
     // on stderr.
-    TF_RETURN_IF_ERROR(global_file_system().EmbedFile(path, contents));
+    RETURN_IF_ERROR(global_file_system().EmbedFile(path, contents));
   }
 
   return absl::OkStatus();

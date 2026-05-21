@@ -36,6 +36,7 @@ cc_library(
         ":initialize",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",

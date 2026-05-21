@@ -285,6 +285,7 @@ cc_library(
         ":device_type",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:device_name_utils",
         "@com_google_absl//absl/algorithm:container",
