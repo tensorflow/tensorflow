@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 
@@ -49,6 +50,10 @@ class HloModuleStitcher final : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
+  absl::Status StitchOneCall(HloModule* module, HloComputation* comp,
+                             HloInstruction* inst,
+                             HloCloneContext& context) const;
+
   const absl::flat_hash_map<std::string, const HloModule*>& optimized_modules_;
 };
 
