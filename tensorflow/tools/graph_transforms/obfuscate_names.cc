@@ -81,8 +81,8 @@ absl::Status ObfuscateNames(const GraphDef& input_graph_def,
       std::string suffix;
       NodeNamePartsFromInput(input_name, &prefix, &input_node_name, &suffix);
       if (new_names.count(input_node_name) == 0) {
-        return errors::InvalidArgument("No node named ", input_node_name,
-                                       " for input to ", old_name);
+        return absl::InvalidArgumentError(absl::StrCat(
+            "No node named ", input_node_name, " for input to ", old_name));
       }
       std::string new_input_name = prefix + new_names[input_node_name] + suffix;
       *(node->mutable_input()->Add()) = new_input_name;

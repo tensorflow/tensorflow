@@ -175,8 +175,9 @@ absl::Status ExtractRangeFromParams(const TransformFuncContext& context,
     return absl::OkStatus();
   }
   if (!has_min || !has_max) {
-    return errors::InvalidArgument("You must pass both ", min_name, " and ",
-                                   max_name, " into quantize_nodes");
+    return absl::InvalidArgumentError(absl::StrCat("You must pass both ",
+                                                   min_name, " and ", max_name,
+                                                   " into quantize_nodes"));
   }
   TF_RETURN_IF_ERROR(context.GetOneFloatParameter(min_name, 0.0f, min_value));
   TF_RETURN_IF_ERROR(context.GetOneFloatParameter(max_name, 0.0f, max_value));
