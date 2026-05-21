@@ -20,6 +20,7 @@ limitations under the License.
 #endif  // TF_LITE_STATIC_MEMORY
 
 #include <cstring>
+#include <limits>
 #include <new>
 #include <type_traits>
 #include <utility>
@@ -33,8 +34,17 @@ namespace {
 
 template <class T>
 size_t TfLiteVarArrayGetSizeInBytes(const int size) {
+  if (size < 0) {
+    return 0;
+  }
   constexpr size_t data_size = sizeof(std::declval<T>().data[0]);
-  size_t computed_size = sizeof(T) + data_size * size;
+  constexpr size_t fixed_size = sizeof(T);
+  const size_t array_size = static_cast<size_t>(size);
+  if (array_size >
+      (std::numeric_limits<size_t>::max() - fixed_size) / data_size) {
+    return 0;
+  }
+  size_t computed_size = fixed_size + data_size * array_size;
 #if defined(_MSC_VER)
   // Context for why this is needed is in http://b/189926408#comment21
   computed_size -= data_size;

@@ -51,6 +51,11 @@ TEST(IntArray, TestIntArrayCreate) {
   TfLiteIntArrayFree(b);
 }
 
+TEST(IntArray, GetSizeInBytesRejectsNegativeSize) {
+  EXPECT_EQ(TfLiteIntArrayGetSizeInBytes(-1), 0);
+  EXPECT_EQ(TfLiteIntArrayCreate(-1), nullptr);
+}
+
 TEST(IntArray, TestIntArrayCopy) {
   TfLiteIntArray* a = TfLiteIntArrayCreate(2);
   a->data[0] = 22;

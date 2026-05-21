@@ -23,6 +23,7 @@ limitations under the License.
 #include <cstdlib>
 #include <cstring>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <string>
@@ -396,23 +397,48 @@ template <typename Params>
 Params* CreateDelegateParamsImpl(TfLiteDelegate* delegate,
                                  const NodeSubset& node_subset) {
   // Step 1: Calculate the allocation size.
-  int allocation_size = sizeof(Params);
+  size_t allocation_size = sizeof(Params);
+  auto add_to_allocation_size = [&allocation_size](size_t size) {
+    if (size > std::numeric_limits<size_t>::max() - allocation_size) {
+      return false;
+    }
+    allocation_size += size;
+    return true;
+  };
+  auto int_array_size_in_bytes = [](size_t elements) {
+    if (elements > static_cast<size_t>(std::numeric_limits<int>::max())) {
+      return size_t{0};
+    }
+    return TfLiteIntArrayGetSizeInBytes(static_cast<int>(elements));
+  };
 
-  int nodes_to_replace_size =
-      TfLiteIntArrayGetSizeInBytes(node_subset.nodes.size());
-  allocation_size += nodes_to_replace_size;
+  size_t nodes_to_replace_size =
+      int_array_size_in_bytes(node_subset.nodes.size());
+  if (nodes_to_replace_size == 0 ||
+      !add_to_allocation_size(nodes_to_replace_size)) {
+    return nullptr;
+  }
 
-  int input_tensors_size =
-      TfLiteIntArrayGetSizeInBytes(node_subset.input_tensors.size());
-  allocation_size += input_tensors_size;
+  size_t input_tensors_size =
+      int_array_size_in_bytes(node_subset.input_tensors.size());
+  if (input_tensors_size == 0 ||
+      !add_to_allocation_size(input_tensors_size)) {
+    return nullptr;
+  }
 
-  int output_tensors_size =
-      TfLiteIntArrayGetSizeInBytes(node_subset.output_tensors.size());
-  allocation_size += output_tensors_size;
+  size_t output_tensors_size =
+      int_array_size_in_bytes(node_subset.output_tensors.size());
+  if (output_tensors_size == 0 ||
+      !add_to_allocation_size(output_tensors_size)) {
+    return nullptr;
+  }
 
   // Step 2: Allocate the memory.
   // Use `char*` for conveniently step through the allocated space by bytes.
   char* allocation = static_cast<char*>(malloc(allocation_size));
+  if (allocation == nullptr) {
+    return nullptr;
+  }
 
   // Step 3: Fill all data structures.
   Params* params = reinterpret_cast<Params*>(allocation);
@@ -560,6 +586,13 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
     }
   }
 
+  // Defensive validation: ensure externally-supplied arrays are sane. This
+  // prevents constructing a TfLiteIntArrayView from a negative size which
+  // results in invalid pointer arithmetic and undefined behavior.
+  TF_LITE_ENSURE(&context_, nodes_to_replace != nullptr);
+  TF_LITE_ENSURE_MSG(&context_, nodes_to_replace->size >= 0,
+                     "Invalid nodes_to_replace array (negative size).");
+
   // Ignore empty node replacement sets.
   if (!nodes_to_replace->size) {
     return kTfLiteOk;
@@ -609,6 +642,7 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
               CreateDelegateParams(delegate, node_subset);
           delegate_params = params;
         }
+        TF_LITE_ENSURE(&context_, delegate_params != nullptr);
         TF_LITE_ENSURE_STATUS(AddNodeWithParameters(
             node_subset.input_tensors, node_subset.output_tensors, {}, nullptr,
             0, delegate_params, &registration, &node_index));
