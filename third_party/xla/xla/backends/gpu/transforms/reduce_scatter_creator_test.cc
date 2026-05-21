@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/transforms/algebraic_simplifier.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -55,8 +56,8 @@ class GpuReduceScatterCreatorTest : public HloHardwareIndependentTestBase {
     HloModuleConfig config = GetModuleConfigForTest(
         /*replica_count=*/num_replicas, /*num_partitions=*/num_partitions);
     config.set_use_spmd_partitioning(use_spmd_partitioning);
-    TF_ASSIGN_OR_RETURN(auto module,
-                        ParseAndReturnVerifiedModule(hlo_module, config));
+    ASSIGN_OR_RETURN(auto module,
+                     ParseAndReturnVerifiedModule(hlo_module, config));
     auto changed = ReduceScatterCreator().Run(module.get());
     if (!changed.ok()) {
       return changed.status();

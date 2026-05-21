@@ -623,21 +623,23 @@ class AvgPoolingGradOpCustomGPUKernel : public OpKernel {
                                   in_cols, window_cols, /*dilation_rate=*/1,
                                   col_stride, padding_, &out_width, &pad_cols));
 
-      RunAvePoolBackwardNHWC<T>(out_backprop.flat<T>().data(),  // top_diff
-                                out_backprop_batch,             // num
-                                in_rows,                        // height
-                                in_cols,                        // width
-                                out_backprop_depth,             // channels
-                                out_backprop_rows,              // pooled_height
-                                out_backprop_cols,              // pooled_width
-                                window_rows,                    // kernel_h
-                                window_cols,                    // kernel_w
-                                row_stride,                     // stride_h
-                                col_stride,                     // stride_w
-                                pad_rows,                       // pad_t
-                                pad_cols,                       // pad_l
-                                output->flat<T>().data(),       // bottom_diff
-                                context->eigen_gpu_device());   // d
+      OP_REQUIRES_OK(
+          context,
+          RunAvePoolBackwardNHWC<T>(out_backprop.flat<T>().data(),  // top_diff
+                                    out_backprop_batch,             // num
+                                    in_rows,                        // height
+                                    in_cols,                        // width
+                                    out_backprop_depth,             // channels
+                                    out_backprop_rows,         // pooled_height
+                                    out_backprop_cols,         // pooled_width
+                                    window_rows,               // kernel_h
+                                    window_cols,               // kernel_w
+                                    row_stride,                // stride_h
+                                    col_stride,                // stride_w
+                                    pad_rows,                  // pad_t
+                                    pad_cols,                  // pad_l
+                                    output->flat<T>().data(),  // bottom_diff
+                                    context->eigen_gpu_device()));  // d
     } else {
       DnnPoolingGradOp<T>::Compute(context, se::dnn::PoolingMode::kAverage,
                                    ksize_, stride_, padding_,

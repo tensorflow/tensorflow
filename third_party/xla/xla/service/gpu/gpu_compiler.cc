@@ -698,7 +698,8 @@ absl::Status RunOptimizationPasses(
       DebugOptions::DETECTION_MODE_NONE) {
     pipeline.AddPass<UnstableReductionDetector>();
   }
-  pipeline.AddPass<RaggedDotRewriter>(gpu_version);
+  pipeline.AddPass<RaggedDotRewriter>(gpu_version,
+                                      gpu_target_config.dnn_version_info);
   if (!debug_options.xla_gpu_experimental_scaled_dot_with_triton()) {
     pipeline.AddPass<ScaledDotRewriter>();
   }
@@ -2251,6 +2252,43 @@ bool UsesCollectiveMemorySpaceFrontendAttr(const HloUse& use) {
   return false;
 }
 
+bool DefinesCollectiveMemorySpaceFrontendAttr(const HloValue* value) {
+  const HloInstruction* def = value->defining_instruction();
+  if (def->opcode() != HloOpcode::kCustomCall) {
+    return false;
+  }
+
+  auto attr = def->get_frontend_attribute(kResultsMemorySpacesAttr);
+  if (!attr.has_value()) {
+    return false;
+  }
+
+  auto pairs = ParseIndexMemorySpacePairs(*attr);
+  if (!pairs.ok()) {
+    return false;
+  }
+
+  // Determine the logical result index. If the custom call returns a tuple,
+  // we look at the top-level index (e.g., element 0 or 1 of the tuple).
+  int64_t result_index = 0;
+  if (def->shape().IsTuple()) {
+    if (value->defining_index().empty()) {
+      // The buffer for the tuple pointer array itself is not S1.
+      return false;
+    }
+    result_index = value->defining_index()[0];
+  }
+
+  for (auto [index, memory_space] : *pairs) {
+    if (index == result_index &&
+        memory_space == MemorySpaceColor::kCollective) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 bool ShouldAddCopyForCollectiveMemorySpace(const HloValue* value,
                                            const GpuTopology& gpu_topology) {
   const HloInstruction* inst = value->defining_instruction();
@@ -2265,8 +2303,7 @@ bool ShouldAddCopyForCollectiveMemorySpace(const HloValue* value,
       if (IsCollectiveMosaicGpuInstruction(*use.instruction) ||
           (gpu_topology.num_partitions() >
                gpu_topology.num_devices_per_host() &&
-           IsMosaicWithCollectiveMetadata(*use.instruction)) ||
-          UsesCollectiveMemorySpaceFrontendAttr(use)) {
+           IsMosaicWithCollectiveMetadata(*use.instruction))) {
         return true;
       }
     }
@@ -2300,11 +2337,16 @@ bool RequiresCollectiveInput(const HloUse& use, const DebugOptions& opts) {
     return true;
   }
 
+  // Check custom calls with operands_memory_spaces attribute
+  if (UsesCollectiveMemorySpaceFrontendAttr(use)) {
+    return true;
+  }
+
   return false;
 }
 
-bool RequiresCollectiveOutput(const HloInstruction* def,
-                              const DebugOptions& opts) {
+bool RequiresCollectiveOutput(const HloValue* value, const DebugOptions& opts) {
+  HloInstruction* def = value->defining_instruction();
   const bool is_nccl_buffers_used =
       opts.xla_gpu_enable_nccl_user_buffers() ||
       opts.xla_gpu_experimental_enable_nccl_symmetric_buffers();
@@ -2327,12 +2369,17 @@ bool RequiresCollectiveOutput(const HloInstruction* def,
     return true;
   }
 
+  // Check custom calls with results_memory_spaces attribute
+  if (DefinesCollectiveMemorySpaceFrontendAttr(value)) {
+    return true;
+  }
+
   return false;
 }
 
 // TODO: b/482045400: Migrate remaining cases from
 // ShouldAddCopyForCollectiveMemorySpace
-// (IsCollectiveMosaicGpuInstruction, UsesCollectiveMemorySpaceFrontendAttr)
+// (IsCollectiveMosaicGpuInstruction)
 // to this function from ShouldAddCopyForCollectiveMemorySpace
 void GpuCollectiveBufferAnalysis(
     HloModule* module, const HloAliasAnalysis& alias_analysis,
@@ -2374,7 +2421,7 @@ void GpuCollectiveBufferAnalysis(
         live_out_values.push_back(value);
       }
 
-      if (RequiresCollectiveOutput(def, opts)) {
+      if (RequiresCollectiveOutput(value, opts)) {
         defined_by_collective = true;
       }
     }
