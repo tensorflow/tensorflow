@@ -396,16 +396,20 @@ bool MMapWeightCacheProvider::WriteCacheMissFlag() {
   if (cache_miss_handler_.HasCacheMisses()) {
     TFLITE_LOG_PROD(tflite::TFLITE_LOG_WARNING,
                     "Cache file is stale. Setting stale flag.");
-    if (file_descriptor_.IsValid()) {
-      const decltype(XNNPackCacheHeader::stale) stale = 1;
-      const size_t stale_offset = offsetof(XNNPackCacheHeader, stale);
-      XNNPACK_RETURN_CHECK(
-          file_descriptor_.SetPos(stale_offset) == stale_offset,
-          "Could not move cursor to update stale flag.");
-      XNNPACK_RETURN_CHECK(
-          file_descriptor_.Write(&stale, sizeof(XNNPackCacheHeader::stale)),
-          "Cannot write stale flag to cache file.");
-    }
+    return WriteStaleFlag();
+  }
+  return true;
+}
+
+bool MMapWeightCacheProvider::WriteStaleFlag() {
+  if (file_descriptor_.IsValid()) {
+    constexpr decltype(XNNPackCacheHeader::stale) stale = 1;
+    constexpr size_t stale_offset = offsetof(XNNPackCacheHeader, stale);
+    XNNPACK_RETURN_CHECK(file_descriptor_.SetPos(stale_offset) == stale_offset,
+                         "Could not move file cursor to write stale flag.");
+    XNNPACK_RETURN_CHECK(
+        file_descriptor_.Write(&stale, sizeof(XNNPackCacheHeader::stale)),
+        "Cannot write stale flag to cache file.");
   }
   return true;
 }

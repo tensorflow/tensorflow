@@ -443,6 +443,9 @@ class MMapWeightCacheProvider {
   // flag.
   bool WriteCacheMissFlag();
 
+  // Marks the cache file as stale.
+  bool WriteStaleFlag();
+
  private:
   struct OriginalBufferMetadata {
     uint64_t identifier;
