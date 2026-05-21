@@ -142,6 +142,7 @@ void createIfrtToVersionedPipeline(mlir::OpPassManager& pm,
   pm.addPass(createIfrtAtomProgramsToVhloPass(
       ifrt_ir_program.mutable_atom_programs(), std::move(vhlo_target_version)));
   pm.addPass(createIfrtLegalizeToVifrtPass());
+  pm.addPass(createVifrtToVersionPass({std::move(ifrt_target_version)}));
   // Run symbol DCE to remove atom programs that have been legalized to VHLO.
   pm.addPass(mlir::createSymbolDCEPass());
 }
