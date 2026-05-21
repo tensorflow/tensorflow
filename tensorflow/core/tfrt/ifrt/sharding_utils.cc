@@ -777,6 +777,92 @@ std::optional<absl::InlinedVector<int64_t, 4>> GetByteStrides(
   return xla::ShapeUtil::ByteStrides(xla_shape);
 }
 
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> MakeArraysFromTensorsPacked(
+    xla::ifrt::Client& ifrt_client, absl::Span<const PackedTensorInput> inputs,
+    const xla::ifrt::DeviceListRef& device_list,
+    const xla::HloSharding& packed_sharding,
+    const tsl::thread::ThreadPool& thread_pool) {
+  std::vector<xla::ifrt::ArrayRef> result;
+  result.reserve(inputs.size());
+
+  // Pass 1: non-packed (group_id == -1) inputs, in their original order.
+  for (const PackedTensorInput& in : inputs) {
+    if (in.pack_group_id != -1) continue;
+    TF_ASSIGN_OR_RETURN(
+        xla::ifrt::ShardingRef ifrt_sharding,
+        ToIfrtSharding(ifrt_client, in.hlo_sharding, device_list));
+    TF_ASSIGN_OR_RETURN(
+        xla::ifrt::ArrayRef array,
+        MakeArrayFromTensor(ifrt_client, in.tensor, device_list,
+                            std::move(ifrt_sharding), thread_pool,
+                            /*xla_input_layout=*/{}));
+    result.push_back(std::move(array));
+  }
+
+  // Pass 2: collect members per group, in ascending group_id order.
+  //
+  // absl::btree_map gives deterministic ascending iteration over group ids,
+  // which is the order the executable's appended packed parameters appear in.
+  absl::btree_map<int64_t, std::vector<const PackedTensorInput*>> groups;
+  for (const PackedTensorInput& in : inputs) {
+    if (in.pack_group_id < 0) continue;
+    groups[in.pack_group_id].push_back(&in);
+  }
+
+  LOG_EVERY_N_SEC(INFO, 20)
+      << "IFRT Pack-Inputs: MakeArraysFromTensorsPacked found " << groups.size()
+      << " packed groups.";
+  for (const auto& [gid, members] : groups) {
+    VLOG(2) << "  Group " << gid << " has " << members.size() << " members.";
+  }
+
+  for (auto& [gid, members] : groups) {
+    if (members.empty()) continue;
+
+    // Compute group's host scratch size as max(offset + tensor byte size).
+    // Using max (rather than sum) lets the planner reserve aligned padding
+    // between slices without us having to know about it here.
+    int64_t total_size = 0;
+    for (const PackedTensorInput* in : members) {
+      const int64_t size =
+          static_cast<int64_t>(in->tensor.tensor_data().size());
+      total_size = std::max(total_size, in->pack_offset + size);
+    }
+
+    VLOG(1) << "Packing " << members.size() << " inputs into group " << gid
+            << " with total size " << total_size << " bytes";
+
+    // Allocate the packed buffer as a regular host Tensor. The TF allocator
+    // will zero-fill INT8 by default — explicit memset would be redundant.
+    tensorflow::Tensor packed(tensorflow::DT_INT8,
+                              tensorflow::TensorShape({total_size}));
+    char* dst = const_cast<char*>(packed.tensor_data().data());
+
+    for (const PackedTensorInput* in : members) {
+      absl::string_view src = in->tensor.tensor_data();
+      DCHECK_LE(in->pack_offset + static_cast<int64_t>(src.size()), total_size)
+          << "Pack member overflows group buffer; planner produced an "
+             "inconsistent layout.";
+      std::memcpy(dst + in->pack_offset, src.data(), src.size());
+    }
+
+    // The packed buffer is rank-1 INT8; use the executable-derived sharding
+    // for the packed parameter (NOT a copy of any member's sharding, which
+    // would be defined for the member's original typed shape).
+    TF_ASSIGN_OR_RETURN(
+        xla::ifrt::ShardingRef ifrt_packed_sharding,
+        ToIfrtSharding(ifrt_client, packed_sharding, device_list));
+    TF_ASSIGN_OR_RETURN(
+        xla::ifrt::ArrayRef packed_array,
+        MakeArrayFromTensor(ifrt_client, packed, device_list,
+                            std::move(ifrt_packed_sharding), thread_pool,
+                            /*xla_input_layout=*/{}));
+    result.push_back(std::move(packed_array));
+  }
+
+  return result;
+}
+
 absl::StatusOr<xla::ifrt::ShardingRef> ToIfrtSharding(
     xla::ifrt::Client& ifrt_client, const xla::HloSharding& hlo_sharding,
     const xla::ifrt::DeviceListRef& device_list) {

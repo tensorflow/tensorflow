@@ -45,6 +45,12 @@ class IfrtCallOp : public tensorflow::OpKernel {
   std::vector<std::string> variable_names_;
   std::vector<int> variable_arg_indices_;
 
+  // Pack-inputs plan from IfrtPackInputsPlannerPass + Propagator. Both are
+  // empty unless the planner+propagator ran in the compile pipeline.
+  // Lengths, when set, equal the op's operand count.
+  std::vector<int64_t> ifrt_pack_group_ids_;
+  std::vector<int64_t> ifrt_pack_offsets_;
+
   // Ifrt program to be called. Cached after the first call.
   absl::once_flag init_once_;
   tensorflow::ifrt_serving::IfrtServingExecutable* executable_;  // Not owned.

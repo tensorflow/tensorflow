@@ -151,7 +151,15 @@ def TF_IfrtCallOp : TF_Op<"IfrtCall", [AttrSizedOperandSegments]> {
     Variadic<TF_Tensor> : $args,
     Variadic<TF_Tensor> : $static_shapes,
     I64Attr : $program_id,
-    I32ArrayAttr : $variable_arg_indices
+    I32ArrayAttr : $variable_arg_indices,
+    // Parallel-to-$args i64 array set by IfrtPackInputsPlannerPass.
+    //   -1  : transfer this operand individually (default).
+    //   >=0 : pack into the named transfer group at runtime.
+    OptionalAttr<I64ArrayAttr> : $ifrt_pack_group_ids,
+    // Parallel-to-$args i64 array of host-buffer byte offsets, set by
+    // IfrtPackInputsPropagatorPass. Meaningful only where
+    // $ifrt_pack_group_ids >= 0.
+    OptionalAttr<I64ArrayAttr> : $ifrt_pack_offsets
   );
 
   let results = (outs Variadic<TF_Tensor> : $results);
@@ -176,7 +184,15 @@ def TF_AsyncIfrtCallOp : TF_Op<"AsyncIfrtCall", [AttrSizedOperandSegments]> {
     Variadic<TF_Tensor> : $args,
     Variadic<TF_Tensor> : $static_shapes,
     I64Attr : $program_id,
-    I32ArrayAttr : $variable_arg_indices
+    I32ArrayAttr : $variable_arg_indices,
+    // Parallel-to-$args i64 array set by IfrtPackInputsPlannerPass.
+    //   -1  : transfer this operand individually (default).
+    //   >=0 : pack into the named transfer group at runtime.
+    OptionalAttr<I64ArrayAttr> : $ifrt_pack_group_ids,
+    // Parallel-to-$args i64 array of host-buffer byte offsets, set by
+    // IfrtPackInputsPropagatorPass. Meaningful only where
+    // $ifrt_pack_group_ids >= 0.
+    OptionalAttr<I64ArrayAttr> : $ifrt_pack_offsets
   );
 
   let results = (outs Variadic<TF_Tensor> : $results);

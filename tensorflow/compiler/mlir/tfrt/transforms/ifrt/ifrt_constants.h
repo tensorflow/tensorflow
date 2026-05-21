@@ -34,6 +34,21 @@ inline constexpr absl::string_view kVariableArrayNameAttr =
 inline constexpr absl::string_view kVariableShardingConfigTextAttr =
     "__variable_sharding_config_text";
 
+// Parallel-to-operands i64 array on tf.IfrtCall / tf.AsyncIfrtCallOp (and the
+// MLRT-lowered tf_mlrt.ifrt_call / tf_mlrt.async_ifrt_call). Values:
+//   -1 : transfer this operand individually (default; the un-packed path).
+//   >= 0 : pack into the named transfer group at runtime.
+// Set by IfrtPackInputsPlannerPass; consumed by the H2D transfer code in
+// IfrtServingExecutable.
+inline constexpr absl::string_view kIfrtPackGroupIdsAttr =
+    "ifrt_pack_group_ids";
+
+// Parallel-to-operands i64 array carrying the byte offset of each operand
+// inside its pack group's host scratch buffer. Only meaningful where the
+// corresponding kIfrtPackGroupIdsAttr value is >= 0. Set inside
+// IfrtServingExecutable after PackInputsPass computes the SliceInfo layout.
+inline constexpr absl::string_view kIfrtPackOffsetsAttr = "ifrt_pack_offsets";
+
 }  // namespace ifrt_serving
 }  // namespace tensorflow
 

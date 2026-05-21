@@ -145,6 +145,62 @@ def TfIdentityPropagationPass
   let constructor = "CreateTfIdentityPropagationPass()";
 }
 
+def IfrtPackInputsPlannerPass : Pass<"ifrt-pack-inputs-planner", "mlir::ModuleOp"> {
+  let summary = "Annotates tf.IfrtCall operands with H2D pack-group ids";
+
+  let description = [{
+    Walks every tf.IfrtCall (and tf.AsyncIfrtCallOp) in the module and attaches
+    a parallel i64 array attribute (`ifrt_pack_group_ids`) — one entry per
+    operand — telling the runtime which operands the H2D transfer path may
+    fuse into a single host-to-device transfer.
+
+    An entry's value is:
+       -1  : transfer this operand individually (default).
+        0  : pack into the call's primary fused group.
+      >= 1 : reserved for future multi-group policies.
+
+    Filters applied to each operand (any failure ⇒ -1):
+      1. Mechanical: ranked tensor type, static shape, element bit-width >= 8
+         and a multiple of 8.
+      2. Economic: byte size <= `size-threshold-bytes` (default 4 KiB).
+      3. Named array: operand index not in `variable_arg_indices` (already
+         resolved as an on-device IFRT array; nothing to transfer).
+
+    The planner only sets an attribute. The atom-program signature stays
+    intact — PackInputsPass invocation happens later, inside
+    IfrtServingExecutable, on the cloned post-tf2hlo submodule.
+  }];
+
+  let options = [
+    Option<"size_threshold_bytes_", "size-threshold-bytes", "int64_t",
+           /*default=*/"131072",
+           "Operand byte size at or below which an input is eligible for "
+           "H2D pack-group fusion.">,
+  ];
+
+  let constructor = "CreateIfrtPackInputsPlannerPass()";
+}
+
+def IfrtPackInputsPropagatorPass : Pass<"ifrt-pack-inputs-propagator", "mlir::ModuleOp"> {
+  let summary = "Copies pack-inputs annotations from tf.IfrtCall onto atom @main funcs";
+
+  let description = [{
+    For each tf.IfrtCall in the outer module that carries an
+    `ifrt_pack_group_ids` attribute (planner output), this pass looks up the
+    callee atom func (matched by `tfrt_ifrt_serving.program_id` attribute)
+    and copies both `ifrt_pack_group_ids` and `ifrt_pack_offsets` onto the
+    callee as func-level attributes. Also computes `ifrt_pack_offsets` here
+    (a parallel i64 array of byte offsets, aligned to 16 bytes) since the
+    planner only set the group ids.
+
+    Why on the callee: the orchestrator inside IfrtServingExecutable runs
+    post-tf2hlo on a CLONED submodule that no longer has the parent
+    tf.IfrtCall. The plan must travel with the func.
+  }];
+
+  let constructor = "CreateIfrtPackInputsPropagatorPass()";
+}
+
 def TfDeviceCleanupPass : Pass<"tf-device-cleanup", "mlir::func::FuncOp"> {
   let summary = "Cleans up device attributes from all ops";
 

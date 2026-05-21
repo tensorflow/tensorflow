@@ -92,6 +92,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@tsl//tsl/platform:tstring",
+        "@tsl//tsl/profiler/lib:traceme",
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/tsl/concurrency:future",
         "@xla//xla/tsl/platform:errors",

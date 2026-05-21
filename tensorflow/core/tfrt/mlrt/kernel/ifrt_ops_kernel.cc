@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tsl/platform/tstring.h"
+#include "tsl/profiler/lib/traceme.h"
 
 using tensorflow::ifrt_serving::IfrtModelContext;
 
@@ -366,9 +367,30 @@ class MlrtAsyncIfrtCallKernel : public mlrt::KernelFrame {
     return arguments()[i].Get<tensorflow::tfrt_stub::FallbackTensor>().tensor();
   }
 
-  int64_t program_id() const { return attributes().GetAs<int64_t>(0); }
+  int64_t program_id() const {
+    if (attributes().size() == 5) {
+      return attributes().GetAs<int64_t>(3);
+    } else if (attributes().size() == 4) {
+      return attributes().GetAs<int64_t>(2);
+    }
+    return attributes().GetAs<int64_t>(1);
+  }
   mlrt::bc::Vector<int32_t> variable_arg_indices() const {
-    return attributes().GetAs<mlrt::bc::Vector<int32_t>>(1);
+    if (attributes().size() == 5) {
+      return attributes().GetAs<mlrt::bc::Vector<int32_t>>(4);
+    } else if (attributes().size() == 4) {
+      return attributes().GetAs<mlrt::bc::Vector<int32_t>>(3);
+    }
+    return attributes().GetAs<mlrt::bc::Vector<int32_t>>(2);
+  }
+  bool has_pack_annotations() const { return attributes().size() >= 4; }
+  mlrt::bc::Vector<int64_t> ifrt_pack_group_ids() const {
+    DCHECK_GE(attributes().size(), 4);
+    return attributes().GetAs<mlrt::bc::Vector<int64_t>>(0);
+  }
+  mlrt::bc::Vector<int64_t> ifrt_pack_offsets() const {
+    DCHECK_GE(attributes().size(), 4);
+    return attributes().GetAs<mlrt::bc::Vector<int64_t>>(1);
   }
 
   Context& context() { return execution_context().GetUserContext<Context>(); }
@@ -380,6 +402,10 @@ class MlrtAsyncIfrtCallKernel : public mlrt::KernelFrame {
 };
 
 void MlrtAsyncIfrtCallKernel::Invoke() {
+  LOG_EVERY_N_SEC(INFO, 20)
+      << "MlrtAsyncIfrtCallKernel::Invoke - program_id: " << program_id()
+      << " attributes().size(): " << attributes().size()
+      << " has_pack_annotations(): " << has_pack_annotations();
   absl::call_once(init_once_, [&]() {
     executable_ = tensorflow::ifrt_serving::ServingExecutableRegistry::Lookup(
         program_id());
@@ -401,8 +427,17 @@ void MlrtAsyncIfrtCallKernel::Invoke() {
   std::vector<int> var_indices(variable_arg_indices().begin(),
                                variable_arg_indices().end());
 
+  std::vector<int64_t> pack_group_ids;
+  std::vector<int64_t> pack_offsets;
+  if (has_pack_annotations()) {
+    pack_group_ids.assign(ifrt_pack_group_ids().begin(),
+                          ifrt_pack_group_ids().end());
+    pack_offsets.assign(ifrt_pack_offsets().begin(), ifrt_pack_offsets().end());
+  }
+
   absl::StatusOr<tsl::Future<std::vector<tensorflow::Tensor>>> result_future =
-      executable_->ExecuteAsync(input_tensors, var_indices);
+      executable_->ExecuteAsync(input_tensors, var_indices, pack_group_ids,
+                                pack_offsets);
   if (!result_future.ok()) {
     execution_context().Fail(result_future.status());
     return;
@@ -417,7 +452,7 @@ void MlrtAsyncIfrtCallKernel::Invoke() {
     results()[i].Set(promise.GetFuture());
     promises.push_back(std::move(promise));
   }
-
+  tsl::profiler::TraceMe trace_me("MlrtAsyncIfrtCallKernel::Invoke - OnReady");
   result_future->OnReady(
       [promises = std::move(promises)](
           absl::StatusOr<std::vector<tensorflow::Tensor>> results) mutable {
