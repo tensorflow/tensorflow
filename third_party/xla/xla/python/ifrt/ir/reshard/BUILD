@@ -28,6 +28,7 @@ cc_library(
         "//xla/python/ifrt/hlo:hlo_program",
         "//xla/python/ifrt/ir:utils",
         "//xla/service:hlo_proto_cc",
+        "//xla/tsl/lib/strings:proto_serialization",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status_macros",

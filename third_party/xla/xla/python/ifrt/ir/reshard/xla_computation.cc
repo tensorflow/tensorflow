@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -145,12 +146,20 @@ XlaComputationBuilder::BuildXlaReshardComputation(
   const int64_t num_arrays = xla_shape.tuple_shapes().size();
 
   std::string base_name = pre_resharding ? "pre_reshard" : "post_reshard";
+  std::string serialized_xla_shape;
+  CHECK(tsl::SerializeToStringDeterministic(xla_shape.ToProto(),
+                                            &serialized_xla_shape));
+  std::string serialized_old_hlo_sharding;
+  CHECK(tsl::SerializeToStringDeterministic(old_hlo_sharding.ToProto(),
+                                            &serialized_old_hlo_sharding));
+  std::string serialized_new_hlo_sharding;
+  CHECK(tsl::SerializeToStringDeterministic(new_hlo_sharding.ToProto(),
+                                            &serialized_new_hlo_sharding));
   std::string full_name =
       absl::StrCat(base_name, "_",
                    tsl::Fingerprint64(absl::StrCat(
-                       xla_shape.ToProto().SerializeAsString(), ";",
-                       old_hlo_sharding.ToProto().SerializeAsString(), ";",
-                       new_hlo_sharding.ToProto().SerializeAsString(), ";",
+                       serialized_xla_shape, ";", serialized_old_hlo_sharding,
+                       ";", serialized_new_hlo_sharding, ";",
                        MemoryKindsToString(memory_kinds))));
   xla::XlaBuilder builder(full_name);
   std::vector<xla::XlaOp> params;
@@ -212,11 +221,16 @@ XlaComputationBuilder::BuildXlaZerosComputation(
             xla_shape.tuple_shapes(idx)));
   }
 
-  std::string full_name =
-      absl::StrCat("zeros_", tsl::Fingerprint64(absl::StrCat(
-                                 xla_shape.ToProto().SerializeAsString(), ";",
-                                 new_hlo_sharding.ToProto().SerializeAsString(),
-                                 ";", MemoryKindsToString(memory_kinds))));
+  std::string serialized_xla_shape;
+  CHECK(tsl::SerializeToStringDeterministic(xla_shape.ToProto(),
+                                            &serialized_xla_shape));
+  std::string serialized_new_hlo_sharding;
+  CHECK(tsl::SerializeToStringDeterministic(new_hlo_sharding.ToProto(),
+                                            &serialized_new_hlo_sharding));
+  std::string full_name = absl::StrCat(
+      "zeros_", tsl::Fingerprint64(absl::StrCat(
+                    serialized_xla_shape, ";", serialized_new_hlo_sharding, ";",
+                    MemoryKindsToString(memory_kinds))));
   xla::XlaBuilder builder(full_name);
   std::vector<xla::XlaOp> elems;
   elems.reserve(num_arrays);
@@ -276,13 +290,24 @@ XlaComputationBuilder::BuildXlaReduceComputation(
                new_xla_shape.tuple_shapes().size());
   const int64_t num_arrays = old_xla_shape.tuple_shapes().size();
 
+  std::string serialized_old_xla_shape;
+  CHECK(tsl::SerializeToStringDeterministic(old_xla_shape.ToProto(),
+                                            &serialized_old_xla_shape));
+  std::string serialized_old_hlo_sharding;
+  CHECK(tsl::SerializeToStringDeterministic(old_hlo_sharding.ToProto(),
+                                            &serialized_old_hlo_sharding));
+  std::string serialized_new_xla_shape;
+  CHECK(tsl::SerializeToStringDeterministic(new_xla_shape.ToProto(),
+                                            &serialized_new_xla_shape));
+  std::string serialized_new_hlo_sharding;
+  CHECK(tsl::SerializeToStringDeterministic(new_hlo_sharding.ToProto(),
+                                            &serialized_new_hlo_sharding));
   std::string full_name = absl::StrCat(
-      "reduce_", tsl::Fingerprint64(absl::StrCat(
-                     old_xla_shape.ToProto().SerializeAsString(), ";",
-                     old_hlo_sharding.ToProto().SerializeAsString(), ";",
-                     new_xla_shape.ToProto().SerializeAsString(), ";",
-                     new_hlo_sharding.ToProto().SerializeAsString(), ";",
-                     MemoryKindsToString(memory_kinds))));
+      "reduce_",
+      tsl::Fingerprint64(absl::StrCat(
+          serialized_old_xla_shape, ";", serialized_old_hlo_sharding, ";",
+          serialized_new_xla_shape, ";", serialized_new_hlo_sharding, ";",
+          MemoryKindsToString(memory_kinds))));
   xla::XlaBuilder builder(full_name);
   std::vector<xla::XlaOp> params;
   params.reserve(num_arrays);
