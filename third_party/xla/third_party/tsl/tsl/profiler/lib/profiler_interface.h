@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tsl {
@@ -61,6 +62,36 @@ class ProfilerInterface {
                                  tensorflow::profiler::XSpace* space) {
     return absl::UnimplementedError("Serialize not implemented");
   }
+};
+
+// MultiPassProfilerInterface manages multi-pass profiling plugins.
+// Implementations plan the passes (e.g. counter partitioning), configure the
+// underlying hardware tracer for each pass, and aggregate results into XSpace.
+//
+// Unlike single-pass ProfilerInterface which is driven by Start()/Stop(),
+// MultiPassProfilerInterface is driven by ProfilerPasses via NeedMorePasses(),
+// StartPass(), and StopPass(), optionally with PushRange() / PopRange() to
+// delimit profiling scopes within a pass.
+class MultiPassProfilerInterface : public ProfilerInterface {
+ public:
+  // Returns true if there are more passes to profile.
+  virtual bool NeedMorePasses() = 0;
+
+  // Starts a new profiling pass.
+  virtual absl::Status StartPass() = 0;
+
+  // Pushes a named range to delimit profiling regions within the active pass.
+  virtual absl::Status PushRange(absl::string_view name) = 0;
+
+  // Pops the innermost named range within the active pass.
+  virtual absl::Status PopRange() = 0;
+
+  // Stops the current profiling pass.
+  virtual absl::Status StopPass() = 0;
+
+  absl::Status Start() override { return absl::OkStatus(); }
+
+  absl::Status Stop() override { return absl::OkStatus(); }
 };
 
 }  // namespace profiler

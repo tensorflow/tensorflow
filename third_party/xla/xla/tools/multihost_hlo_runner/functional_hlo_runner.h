@@ -74,10 +74,11 @@ class HLORunnerProfiler : public XSpaceProfilerInterface {
   // by GetXSpace() after UploadSession() is called, which can be used by
   // caller to get a programmatic handler of the profile data and create XProf.
   static absl::StatusOr<std::unique_ptr<HLORunnerProfiler>> Create(
-      absl::string_view dump_path, bool keep_xspace = false);
-
-  // Default ctor.
-  explicit HLORunnerProfiler(absl::string_view dump_path, bool keep_xspace);
+      absl::string_view dump_path, bool keep_xspace = false,
+      bool enable_multipass_profiling = false,
+      std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr,
+      int task_id = 0, int num_nodes = 1);
+  ~HLORunnerProfiler() override;
 
   // Start a new profiling session.
   void CreateSession() override;
@@ -88,15 +89,21 @@ class HLORunnerProfiler : public XSpaceProfilerInterface {
   // Returns the XSpace proto.
   const tensorflow::profiler::XSpace* GetXSpace() override;
 
- private:
+ protected:
+  explicit HLORunnerProfiler(absl::string_view dump_path, bool keep_xspace);
+
+  void SaveXSpace(std::unique_ptr<tensorflow::profiler::XSpace> xspace);
+
   // The file path to dump the profiling result.
   std::string dump_path_;
   // Whether to keep the XSpace proto after UploadSession() is called.
   bool keep_xspace_;
-  // The profiler session.
-  std::unique_ptr<tsl::ProfilerSession> session_;
   // The XSpace proto to be returned by GetXSpace().
   std::unique_ptr<tensorflow::profiler::XSpace> xspace_;
+
+ private:
+  // The profiler session.
+  std::unique_ptr<tsl::ProfilerSession> session_;
   // Session counter to uniquely name dump paths when multiple sessions are
   // uploaded.
   int session_index_ = 0;
@@ -295,6 +302,7 @@ struct RunningOptions {
   // This indicates whether we log the inputs and outputs to stderr.
   LogOutputMode log_input_output_mode = LogOutputMode::kNotLogOutput;
   const MultiSliceConfig* multi_slice_config = nullptr;
+  bool enable_multipass_profiling = false;
   ProfilerInterface* profiler = nullptr;
   // If not null, profiles will be stored for this run, one per repeat.
   // Note that the first repeat is a warmup run, and uses less precise
