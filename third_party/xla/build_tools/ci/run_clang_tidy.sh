@@ -55,7 +55,8 @@ if [ -z "$MERGE_BASE" ]; then
   echo "Example: git pull --rebase $REMOTE main" >&2
   exit 1
 fi
-CHANGED_FILES=$(git diff --name-only "$MERGE_BASE" | grep -E '\.(cc|h)$' || true)
+CHANGED_FILES=$(git diff --name-only --diff-filter=d "$MERGE_BASE" |
+  grep -E '\.(cc|h)$' || true)
 # Always exit with 0 if no C++ files are changed.
 if [ -z "$CHANGED_FILES" ]; then
   set +x
