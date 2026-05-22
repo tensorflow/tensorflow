@@ -523,7 +523,7 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
           Cast<HloCustomCallInstruction>(instruction), constraints));
     }
 
-    CHECK(!IsCublasLtGemm(*instruction))
+    CHECK(!IsCublasGemm(*instruction))
         << "Gemm rewriting should run after layout assignment";
 
     const DebugOptions& debug_options =

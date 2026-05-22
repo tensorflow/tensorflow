@@ -147,7 +147,7 @@ absl::Status Autotune(HloModule& module) {
                              const HloInstruction& instruction) -> bool {
     if (!do_not_autotune_cublas_and_cudnn &&
         (instruction.opcode() == HloOpcode::kCustomCall &&
-         (IsCublasLtGemm(instruction) ||
+         (IsCublasGemm(instruction) ||
           IsCustomCallToDnnConvolution(instruction)))) {
       return true;
     }

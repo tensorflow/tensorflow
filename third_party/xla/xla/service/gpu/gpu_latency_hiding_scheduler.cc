@@ -622,7 +622,7 @@ ApproximateLatencyEstimator::TimeCost GpuLatencyEstimator::NodeCost(
             GetLatencyFromMetadata(*instr)) {
       return *latency;
     }
-    if (IsCublasLtGemm(*instr) || IsCustomCallToDnnConvolution(*instr)) {
+    if (IsCublasGemm(*instr) || IsCustomCallToDnnConvolution(*instr)) {
       return ApproximateLatencyEstimator::kMediumCost;
     }
     // consider other custom calls as medium cost for now. Keeping the case

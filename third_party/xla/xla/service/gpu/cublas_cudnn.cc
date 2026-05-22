@@ -31,13 +31,10 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-bool IsCublasLtGemm(const HloInstruction& hlo) {
-  return IsCublasLtMatmul(hlo) || IsCublasLtMatmulF8(hlo) ||
-         IsCublasLtMatmulMx(hlo) || IsCublasLtGroupedMatmul(hlo);
-}
-
 bool IsCublasGemm(const HloInstruction& hlo) {
-  return IsLegacyCublasMatmul(hlo) || IsCublasLtGemm(hlo);
+  return IsLegacyCublasMatmul(hlo) || IsCublasLtMatmul(hlo) ||
+         IsCublasLtMatmulF8(hlo) || IsCublasLtMatmulMx(hlo) ||
+         IsCublasLtGroupedMatmul(hlo);
 }
 
 bool IsLegacyCublasMatmul(const HloInstruction& hlo) {
