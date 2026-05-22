@@ -1,9 +1,41 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls", "tf_vendored")
 load("//third_party/tf_runtime:workspace.bzl", tf_runtime = "repo")
 
+def _cc_compatibility_proxy_impl(repository_ctx):
+    repository_ctx.file("BUILD", "exports_files(['proxy.bzl', 'symbols.bzl'])")
+    repository_ctx.file("proxy.bzl", """
+cc_binary = native.cc_binary
+cc_library = native.cc_library
+cc_import = native.cc_import
+cc_test = native.cc_test
+cc_proto_library = native.cc_proto_library
+cc_shared_library = native.cc_shared_library
+objc_import = native.objc_import
+objc_library = native.objc_library
+""")
+    repository_ctx.file("symbols.bzl", """
+cc_common = native.cc_common
+""")
+
+cc_compatibility_proxy = repository_rule(
+    implementation = _cc_compatibility_proxy_impl,
+)
+
 def workspace():
+    # Define rules_cc 0.2.11
+    http_archive(
+        name = "rules_cc",
+        urls = ["https://github.com/bazelbuild/rules_cc/releases/download/0.2.11/rules_cc-0.2.11.tar.gz"],
+        strip_prefix = "rules_cc-0.2.11",
+        sha256 = "5287821524d1c1d20f1c0ffa90bd2c2d776473dd8c84dafa9eb783150286d825",
+    )
+
+    # Initialize custom compatibility proxy early
+    cc_compatibility_proxy(name = "cc_compatibility_proxy")
+
     tf_vendored(name = "xla", path = "third_party/xla")
     tf_vendored(name = "tsl", path = "third_party/xla/third_party/tsl")
 
@@ -19,12 +51,12 @@ def workspace():
     tf_runtime()
 
     # https://github.com/bazelbuild/bazel-skylib/releases
-    tf_http_archive(
+    http_archive(
         name = "bazel_skylib",
-        sha256 = "bc283cdfcd526a52c3201279cda4bc298652efa898b10b4db0837dc51652756f",
-        urls = tf_mirror_urls(
-            "https://github.com/bazelbuild/bazel-skylib/releases/download/1.7.1/bazel-skylib-1.7.1.tar.gz",
-        ),
+        sha256 = "6e78f0e57de26801f6f564fa7c4a48dc8b36873e416257a92bbb0937eeac8446",
+        urls = [
+            "https://github.com/bazelbuild/bazel-skylib/releases/download/1.8.2/bazel-skylib-1.8.2.tar.gz",
+        ],
     )
 
     tf_http_archive(
