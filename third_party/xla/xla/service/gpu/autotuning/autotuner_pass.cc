@@ -73,7 +73,7 @@ namespace {
 // are the only viable configurations to try.
 bool AllowRegSpillsForGpuInstruction(const HloInstruction& instruction) {
   if (instruction.opcode() == HloOpcode::kCustomCall) {
-    if (IsCublasGemm(instruction) ||
+    if (IsCublasLtGemm(instruction) ||
         IsCustomCallToDnnConvolution(instruction)) {
       return false;
     }
@@ -97,7 +97,7 @@ bool ShouldAutotuneCustomCall(bool do_not_autotune_cublas,
                               bool do_not_autotune_cudnn,
                               const HloInstruction& instruction) {
   auto gpu_config = instruction.backend_config<GpuBackendConfig>();
-  if (!do_not_autotune_cublas && IsCublasGemm(instruction)) {
+  if (!do_not_autotune_cublas && IsCublasLtGemm(instruction)) {
     if (gpu_config.ok()) {
       // Grouped matmul stores the selected algorithm in the nested
       // grouped_gemm_backend_config, not the top-level gemm_backend_config.
