@@ -207,8 +207,12 @@ void* WeightCacheBuilder::Reserve(size_t size) {
 BufferLocation WeightCacheBuilder::Append(PackIdentifier pack_id,
                                           const void* data, uint64_t size,
                                           int32_t fingerprint_id) {
-  XNNPACK_ABORT_CHECK(is_build_step_,
-                      "cannot append data to an unstarted builder.");
+  if (!is_build_step_) {
+    TFLITE_LOG_PROD(
+        tflite::TFLITE_LOG_ERROR,
+        "XNNPack weight cache: cannot append data to an unstarted builder.");
+    return BufferLocation::Invalid();
+  }
   // Add some padding so that the cache file can be mmaped and the buffer
   // stays aligned correctly.
   const size_t offset = Align(fd_.GetPos(), kMinAlignment);
@@ -234,17 +238,20 @@ BufferLocation WeightCacheBuilder::Append(PackIdentifier pack_id,
   // in future runs that reuse the cache, to crashes that are impossible to
   // debug or outputs that are nonsensical without any chance of linking this
   // back to this error.
-  //
-  // We abort because we have no way of making that failure bubble up to the
-  // calling code to handle it gracefully...
-  XNNPACK_ABORT_CHECK(fingerprint_id != 0,
-                      "XNNPack weight cache: no fingerprint identifier was set "
-                      "when appending a buffer to the cache file.");
+  if (fingerprint_id == 0) {
+    TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
+                    "XNNPack weight cache: no fingerprint identifier was set "
+                    "when appending a buffer to the cache file.");
+    return BufferLocation::Invalid();
+  }
   const xnn_fingerprint* fingerprint = xnn_get_fingerprint(fingerprint_id);
-  XNNPACK_ABORT_CHECK(fingerprint,
-                      "XNNPack weight cache: could not find a fingerprint with "
-                      "id %s when appending a buffer to the cache file.",
-                      xnn_fingerprint_id_to_string_u32(fingerprint_id));
+  if (!fingerprint) {
+    TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
+                    "XNNPack weight cache: could not find a fingerprint with "
+                    "id %s when appending a buffer to the cache file.",
+                    xnn_fingerprint_id_to_string_u32(fingerprint_id));
+    return BufferLocation::Invalid();
+  }
   uint64_t fingerprint_value;
   static_assert(sizeof(fingerprint_value) == sizeof(*fingerprint));
   std::memcpy(&fingerprint_value, fingerprint, sizeof(*fingerprint));
