@@ -77,7 +77,7 @@ using AutotuneDecision = Decision;
 AutotuneDecision AllowRegSpillsForGpuInstruction(
     const HloInstruction& instruction) {
   if (instruction.opcode() == HloOpcode::kCustomCall) {
-    if (IsCublasGemm(instruction) ||
+    if (IsCublasLtGemm(instruction) ||
         IsCustomCallToDnnConvolution(instruction)) {
       return AutotuneDecision::Forbid(
           "Register spilling is not allowed for GEMM/Conv custom calls");
@@ -103,7 +103,7 @@ AutotuneDecision ShouldAutotuneCustomCall(bool do_not_autotune_cublas,
                                           bool do_not_autotune_cudnn,
                                           const HloInstruction& instruction) {
   auto gpu_config = instruction.backend_config<GpuBackendConfig>();
-  if (IsCublasGemm(instruction)) {
+  if (IsCublasLtGemm(instruction)) {
     if (do_not_autotune_cublas) {
       return AutotuneDecision::Forbid("Autotuning cuBLAS is disabled");
     }

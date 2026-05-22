@@ -117,7 +117,7 @@ absl::StatusOr<bool> SolGpuCostModelStatsCollection::RunImpl(
     for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
       if (instr->opcode() != HloOpcode::kFusion &&
           !hlo_query::IsAsyncCollectiveStartOp(instr) &&
-          !IsCublasGemm(*instr) && !IsTritonGemm(*instr)) {
+          !IsCublasLtGemm(*instr) && !IsTritonGemm(*instr)) {
         continue;
       }
       if (!RecordReificationCost(*instr, *estimator)) {
