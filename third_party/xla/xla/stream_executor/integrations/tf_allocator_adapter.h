@@ -149,6 +149,9 @@ class MultiDeviceAdapter : public DeviceAddressAllocator {
   absl::StatusOr<tsl::Allocator*> GetAllocator(int device_ordinal);
 
  private:
+  absl::StatusOr<std::shared_ptr<TfAllocatorAdapter>> GetDefaultAllocator(
+      int device_ordinal);
+
   absl::flat_hash_map<int64_t, std::vector<std::shared_ptr<TfAllocatorAdapter>>>
       memory_space_to_per_device_allocators_;
   // Map of device ordinal, buffer to which memory space it resides in.
