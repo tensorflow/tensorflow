@@ -141,6 +141,9 @@ TEST_P(ReshapeTilePropagationTest, PropagateReshape) {
 INSTANTIATE_TEST_SUITE_P(
     ReshapeTilePropagationTests, ReshapeTilePropagationTest,
     ::testing::ValuesIn<ReshapeTestCase>({
+        // =====================================================================
+        // General / Other Reshapes
+        // =====================================================================
         {"Identity",
          /*input_shape=*/{10, 20},
          /*input_tile_sizes=*/{},
@@ -207,11 +210,15 @@ INSTANTIATE_TEST_SUITE_P(
          /*input_tile_offsets=*/{},
          /*output_shape=*/{1, 12, 7, 5, 2},
          /*expected_output=*/""},
+
+        // =====================================================================
+        // CollapseShapeContiguous
+        // =====================================================================
         // Example (tid_0, tid_1) -> (offset, upper bound):
         // (0, 0) -> (0,  3), (0, 1) -> ( 3,  4)
         // (1, 0) -> (4,  7), (1, 1) -> ( 7,  8)
         // (2, 0) -> (8, 11), (2, 1) -> (11, 12)
-        {"CollapseShapeCase1_Stride1_LastDimPartialTiled",
+        {"CollapseShapeContiguous_Stride1_LastDimPartialTiled",
          /*input_shape=*/{3, 4},
          /*input_tile_sizes=*/{1, 3},
          /*input_tile_strides=*/{1, 1},
@@ -224,7 +231,7 @@ INSTANTIATE_TEST_SUITE_P(
          strides [1]
          upper bounds [min(tid_0, 2) * 4 + min(tid_1 * 3 + 2, 3) + 1]
   )"},
-        {"CollapseShapeCase2_Stride1_LastDimFullTiled",
+        {"CollapseShapeContiguous_Stride1_LastDimFullTiled",
          /*input_shape=*/{3, 4},
          /*input_tile_sizes=*/{2, 4},
          /*input_tile_strides=*/{1, 1},
@@ -241,7 +248,7 @@ INSTANTIATE_TEST_SUITE_P(
         // (0, 0) -> (0,  4), (0, 1) -> ( 3,  4)
         // (1, 0) -> (4,  8), (1, 1) -> ( 7,  8)
         // (2, 0) -> (8, 12), (2, 1) -> (11, 12)
-        {"CollapseShapeCase3_StrideNot1_LastDimPartialTiled",
+        {"CollapseShapeContiguous_StrideNot1_LastDimPartialTiled",
          /*input_shape=*/{3, 4},
          /*input_tile_sizes=*/{1, 3},
          /*input_tile_strides=*/{1, 2},
@@ -254,7 +261,7 @@ INSTANTIATE_TEST_SUITE_P(
          strides [2]
          upper bounds [min(tid_0, 2) * 4 + min(tid_1 * 3 + 4, 3) + 1]
   )"},
-        {"CollapseShape_WithLeadingOneInOutput",
+        {"CollapseShapeContiguous_WithLeadingOneInOutput",
          /*input_shape=*/{3, 4},
          /*input_tile_sizes=*/{1, 3},
          /*input_tile_strides=*/{1, 1},
@@ -267,7 +274,7 @@ INSTANTIATE_TEST_SUITE_P(
          strides [1, 1]
          upper bounds [1, min(tid_0, 2) * 4 + min(tid_1 * 3 + 2, 3) + 1]
   )"},
-        {"CollapseShape_WithTrailingOneInOutput",
+        {"CollapseShapeContiguous_WithTrailingOneInOutput",
          /*input_shape=*/{3, 4},
          /*input_tile_sizes=*/{1, 3},
          /*input_tile_strides=*/{1, 1},
@@ -280,7 +287,7 @@ INSTANTIATE_TEST_SUITE_P(
          strides [1, 1]
          upper bounds [min(tid_0, 2) * 4 + min(tid_1 * 3 + 2, 3) + 1, 1]
   )"},
-        {"CollapseShape_WithMiddleOneInInput",
+        {"CollapseShapeContiguous_WithMiddleOneInInput",
          /*input_shape=*/{3, 1, 4},
          /*input_tile_sizes=*/{1, 1, 3},
          /*input_tile_strides=*/{1, 1, 1},
@@ -293,20 +300,117 @@ INSTANTIATE_TEST_SUITE_P(
          strides [1]
          upper bounds [min(tid_0, 2) * 4 + min(tid_2 * 3 + 2, 3) + 1]
   )"},
-        {"CollapseShape_3DCollapseWithTrivialInnerDim",
+        {"CollapseShapeContiguous_3DCollapseWithTrivialInnerDim",
          /*input_shape=*/{2, 32, 128},
          /*input_tile_sizes=*/{1, 16, 1},
          /*input_tile_strides=*/{1, 1, 1},
          /*input_tile_offsets=*/{},
          /*output_shape=*/{8192},
          /*expected_output=*/R"(
-     0) (tid_0, tid_1, tid_2)
-       -> offsets [tid_0 * 4096 + tid_1 * 2048 + tid_2]
-          sizes [16]
-          strides [128]
-          upper bounds [min(tid_1 * 16 + 15, 31) * 128 + min(tid_0, 1) * 4096 + min(tid_2, 127) + 1]
-   )"},
-        {"ExpandShape_FullTargetInnerDim",
+      0) (tid_0, tid_1, tid_2)
+        -> offsets [tid_0 * 4096 + tid_1 * 2048 + tid_2]
+           sizes [16]
+           strides [128]
+           upper bounds [min(tid_1 * 16 + 15, 31) * 128 + min(tid_0, 1) * 4096 + min(tid_2, 127) + 1]
+    )"},
+        {"CollapseShapeContiguous_FullySpannedInnermost",
+         /*input_shape=*/{3, 4},
+         /*input_tile_sizes=*/{3, 2},
+         /*input_tile_strides=*/{1, 2},
+         /*input_tile_offsets=*/{0, 0},
+         /*output_shape=*/{12},
+         /*expected_output=*/R"(
+    0) (tid_0, tid_1)
+      -> offsets [0]
+         sizes [6]
+         strides [2]
+         upper bounds [11]
+  )"},
+        {"CollapseShapeContiguous_PreserveInnermostStride",
+         /*input_shape=*/{3, 4},
+         /*input_tile_sizes=*/{1, 2},
+         /*input_tile_strides=*/{1, 2},
+         /*input_tile_offsets=*/{1, 0},
+         /*output_shape=*/{12},
+         /*expected_output=*/R"(
+    0) (tid_0, tid_1)
+      -> offsets [4]
+         sizes [2]
+         strides [2]
+         upper bounds [7]
+  )"},
+
+        // =====================================================================
+        // CollapseShapeNonContiguous
+        // =====================================================================
+        {"CollapseShapeNonContiguous_SteppedOuterDimension",
+         /*input_shape=*/{3, 4},
+         /*input_tile_sizes=*/{2, 1},
+         /*input_tile_strides=*/{2, 1},
+         /*input_tile_offsets=*/{0, 0},
+         /*output_shape=*/{12},
+         /*expected_output=*/R"(
+    0) (tid_0, tid_1)
+      -> offsets [0]
+         sizes [2]
+         strides [8]
+         upper bounds [9]
+  )"},
+        {"CollapseShapeNonContiguous_MultipleSteppedOuterDimensions",
+         /*input_shape=*/{3, 4, 5},
+         /*input_tile_sizes=*/{2, 2, 1},
+         /*input_tile_strides=*/{2, 2, 1},
+         /*input_tile_offsets=*/{0, 0, 0},
+         /*output_shape=*/{60},
+         /*expected_output=*/""},
+        {"CollapseShapeNonContiguous_SteppedOuterDimensionAndAnotherTiled",
+         /*input_shape=*/{3, 4},
+         /*input_tile_sizes=*/{2, 2},
+         /*input_tile_strides=*/{2, 1},
+         /*input_tile_offsets=*/{0, 0},
+         /*output_shape=*/{12},
+         /*expected_output=*/""},
+        {"CollapseShapeNonContiguous_SteppedOuterAndInnermostStrideNot1_"
+         "InnermostSize1",
+         /*input_shape=*/{3, 4},
+         /*input_tile_sizes=*/{2, 1},
+         /*input_tile_strides=*/{2, 2},
+         /*input_tile_offsets=*/{0, 0},
+         /*output_shape=*/{12},
+         /*expected_output=*/R"(
+    0) (tid_0, tid_1)
+      -> offsets [0]
+         sizes [2]
+         strides [8]
+         upper bounds [9]
+  )"},
+        {"CollapseShapeNonContiguous_SteppedOuterAndInnermostStrideNot1_"
+         "BothTiled",
+         /*input_shape=*/{3, 4},
+         /*input_tile_sizes=*/{2, 2},
+         /*input_tile_strides=*/{2, 2},
+         /*input_tile_offsets=*/{0, 0},
+         /*output_shape=*/{12},
+         /*expected_output=*/""},
+        {"CollapseShapeNonContiguous_ZeroStride",
+         /*input_shape=*/{3, 4},
+         /*input_tile_sizes=*/{1, 3},
+         /*input_tile_strides=*/{0, 1},
+         /*input_tile_offsets=*/{},
+         /*output_shape=*/{12},
+         /*expected_output=*/""},
+        {"CollapseShapeNonContiguous_NegativeStride",
+         /*input_shape=*/{3, 4},
+         /*input_tile_sizes=*/{1, 3},
+         /*input_tile_strides=*/{-1, 1},
+         /*input_tile_offsets=*/{},
+         /*output_shape=*/{12},
+         /*expected_output=*/""},
+
+        // =====================================================================
+        // ExpandShapeContiguous
+        // =====================================================================
+        {"ExpandShapeContiguous_FullTargetInnerDim",
          /*input_shape=*/{12},
          /*input_tile_sizes=*/{4},
          /*input_tile_strides=*/{1},
@@ -319,7 +423,7 @@ INSTANTIATE_TEST_SUITE_P(
          strides [1, 1]
          upper bounds [tid_0 + 1, 4]
   )"},
-        {"ExpandShape_PartialTargetInnerDim",
+        {"ExpandShapeContiguous_PartialTargetInnerDim",
          /*input_shape=*/{12},
          /*input_tile_sizes=*/{2},
          /*input_tile_strides=*/{1},
@@ -332,7 +436,7 @@ INSTANTIATE_TEST_SUITE_P(
          strides [1, 1]
          upper bounds [1, 3]
   )"},
-        {"ExpandShape_MultipleTargetInnerDims",
+        {"ExpandShapeContiguous_MultipleTargetInnerDims",
          /*input_shape=*/{12},
          /*input_tile_sizes=*/{8},
          /*input_tile_strides=*/{1},
@@ -345,14 +449,14 @@ INSTANTIATE_TEST_SUITE_P(
          strides [1, 1]
          upper bounds [3, 4]
   )"},
-        {"ExpandShape_Unsupported_NonBox",
+        {"ExpandShapeContiguous_Unsupported_NonBox",
          /*input_shape=*/{12},
          /*input_tile_sizes=*/{5},
          /*input_tile_strides=*/{1},
          /*input_tile_offsets=*/{0},
          /*output_shape=*/{3, 4},
          /*expected_output=*/""},
-        {"ExpandShape_WithUnitDim",
+        {"ExpandShapeContiguous_WithUnitDim",
          /*input_shape=*/{12},
          /*input_tile_sizes=*/{4},
          /*input_tile_strides=*/{1},
@@ -365,7 +469,7 @@ INSTANTIATE_TEST_SUITE_P(
          strides [1, 1, 1]
          upper bounds [tid_0 + 1, 1, 4]
   )"},
-        {"ExpandShape_To1DIdentity",
+        {"ExpandShapeContiguous_To1DIdentity",
          /*input_shape=*/{12},
          /*input_tile_sizes=*/{4},
          /*input_tile_strides=*/{1},
@@ -378,18 +482,22 @@ INSTANTIATE_TEST_SUITE_P(
          strides [1, 1]
          upper bounds [1, 12]
   )"},
-        {"CollapseShape_PreserveInnermostStride",
-         /*input_shape=*/{3, 4},
-         /*input_tile_sizes=*/{1, 2},
-         /*input_tile_strides=*/{1, 2},
-         /*input_tile_offsets=*/{1, 0},
-         /*output_shape=*/{12},
+
+        // =====================================================================
+        // ExpandShapeNonContiguous
+        // =====================================================================
+        {"ExpandShapeNonContiguous_SteppedSource",
+         /*input_shape=*/{128},
+         /*input_tile_sizes=*/{2},
+         /*input_tile_strides=*/{64},
+         /*input_tile_offsets=*/{0},
+         /*output_shape=*/{1, 2, 64},
          /*expected_output=*/R"(
-    0) (tid_0, tid_1)
-      -> offsets [4]
-         sizes [2]
-         strides [2]
-         upper bounds [7]
+    0) (tid_0)
+      -> offsets [0, 0, 0]
+         sizes [1, 2, 1]
+         strides [1, 1, 1]
+         upper bounds [1, 2, 1]
   )"},
     }),
     [](const ::testing::TestParamInfo<ReshapeTilePropagationTest::ParamType>&
