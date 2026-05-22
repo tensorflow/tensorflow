@@ -716,6 +716,12 @@ class HloComputation {
   std::unique_ptr<HloComputation> Clone(const std::string& suffix = "clone",
                                         HloCloneContext* context = nullptr);
 
+  // Like Clone(), but also returns a schedule for the cloned computation which
+  // matches the original. The original computation must be scheduled.
+  std::pair<std::unique_ptr<HloComputation>, std::vector<HloInstruction*>>
+  CloneWithSchedule(const std::string& suffix = "clone",
+                    HloCloneContext* context = nullptr);
+
   // Like Clone(), but if an instruction is present in replacement_map, we use
   // the map's value to replace that instruction in the cloned computation.
   //
@@ -744,8 +750,23 @@ class HloComputation {
                    const absl::Span<HloInstruction* const>>
           new_root = nullptr);
 
+  // Like CloneWithReplacements(), but also returns a schedule for the cloned
+  // computation which
+  // matches the original. The original computation must be scheduled.
+  std::pair<std::unique_ptr<HloComputation>, std::vector<HloInstruction*>>
+  CloneWithScheduleAndReplacements(
+      const absl::flat_hash_map<const HloInstruction*,
+                                std::unique_ptr<HloInstruction>>* replacements,
+      absl::Span<const HloInstruction* const> extra_parameters = {},
+      HloCloneContext* context = nullptr, const std::string& suffix = "clone",
+      std::variant<const HloInstruction*,
+                   const absl::Span<HloInstruction* const>>
+          new_root = nullptr);
+
   // Like CloneWithReplacements(), but this is a const method and `context` must
   // be specified.
+  // If `clone_sequence` is not nullptr, the module must be have a schedule for
+  // this computation.
   std::unique_ptr<HloComputation> CloneInContext(
       HloCloneContext& context,
       const absl::flat_hash_map<const HloInstruction*,
@@ -755,7 +776,8 @@ class HloComputation {
       const std::string& suffix = "clone",
       std::variant<const HloInstruction*,
                    const absl::Span<HloInstruction* const>>
-          new_root = nullptr) const;
+          new_root = nullptr,
+      std::vector<HloInstruction*>* clone_sequence = nullptr) const;
 
   // Convenience overloads for CloneWithReplacements.  You want to do
   //

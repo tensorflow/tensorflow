@@ -1893,6 +1893,14 @@ std::unique_ptr<HloComputation> HloComputation::Clone(
       /*extra_parameters=*/{}, context, suffix);
 }
 
+std::pair<std::unique_ptr<HloComputation>, std::vector<HloInstruction*>>
+HloComputation::CloneWithSchedule(const std::string& suffix,
+                                  HloCloneContext* context) {
+  return CloneWithScheduleAndReplacements(
+      /*replacements=*/nullptr,
+      /*extra_parameters=*/{}, context, suffix);
+}
+
 std::unique_ptr<HloComputation> HloComputation::CloneWithReplacementPairs(
     std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r1,
     HloCloneContext* context, const std::string& suffix) {
@@ -1937,24 +1945,31 @@ namespace {
 // unordered_instructions. Unmapped parameter instructions are placed just after
 // the last parameter instruction in the sorted mapped instruction order. All
 // other mapped instructions are placed at the end.
+template <typename OrderedInstructionPtr, typename UnorderedInstructionPtr>
 void SortClonedInstructions(
     const HloCloneContext& context,
     absl::FunctionRef<const HloInstruction*(const HloInstruction*)> replace,
     const HloComputation& computation,
-    const HloComputation::InstructionList& ordered_instructions,
-    std::vector<std::unique_ptr<HloInstruction>>& unordered_instructions) {
+    const std::vector<OrderedInstructionPtr>& ordered_instructions,
+    std::vector<UnorderedInstructionPtr>& unordered_instructions) {
   using InstructionSorter = MappedPtrContainerSorter<HloInstruction>;
   auto instruction_mapper = [&context, replace](const HloInstruction* i) {
     return context.FindInstruction(replace(i));
   };
   size_t num_mapped_instructions = 0;
   size_t mapped_index_of_last_parameter_plus_one = 0;
-  for (const auto& instruction : ordered_instructions) {
-    if (!instruction_mapper(instruction.get())) {
+  for (const auto& instruction_ptr : ordered_instructions) {
+    const HloInstruction* instruction;
+    if constexpr (std::is_same_v<OrderedInstructionPtr, HloInstruction*>) {
+      instruction = instruction_ptr;
+    } else {
+      instruction = instruction_ptr.get();
+    }
+    if (!instruction_mapper(instruction)) {
       continue;
     }
     ++num_mapped_instructions;
-    if (!HloParameterInstruction::ClassOf(instruction.get())) {
+    if (!HloParameterInstruction::ClassOf(instruction)) {
       continue;
     }
     mapped_index_of_last_parameter_plus_one = num_mapped_instructions;
@@ -2021,6 +2036,26 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
                         new_root);
 }
 
+std::pair<std::unique_ptr<HloComputation>, std::vector<HloInstruction*>>
+HloComputation::CloneWithScheduleAndReplacements(
+    const absl::flat_hash_map<const HloInstruction*,
+                              std::unique_ptr<HloInstruction>>* replacements,
+    absl::Span<const HloInstruction* const> extra_parameters,
+    HloCloneContext* context, const std::string& suffix,
+    std::variant<const HloInstruction*, const absl::Span<HloInstruction* const>>
+        new_root) {
+  std::unique_ptr<HloCloneContext> context_ptr;
+  if (context == nullptr) {
+    context_ptr = std::make_unique<HloCloneContext>(parent(), suffix);
+    context = context_ptr.get();
+  }
+  std::vector<HloInstruction*> clone_sequence;
+  std::unique_ptr<HloComputation> cloned_computation =
+      CloneInContext(*context, replacements, extra_parameters, suffix, new_root,
+                     &clone_sequence);
+  return {std::move(cloned_computation), std::move(clone_sequence)};
+}
+
 std::unique_ptr<HloComputation> HloComputation::CloneInContext(
     HloCloneContext& context,
     const absl::flat_hash_map<const HloInstruction*,
@@ -2028,7 +2063,8 @@ std::unique_ptr<HloComputation> HloComputation::CloneInContext(
     absl::Span<const HloInstruction* const> extra_parameters,
     const std::string& suffix,
     std::variant<const HloInstruction*, const absl::Span<HloInstruction* const>>
-        new_root) const {
+        new_root,
+    std::vector<HloInstruction*>* clone_sequence) const {
   // Look up instr in the replacements map, and return either the replacement,
   // or instr, if the replacement isn't present.
   //
@@ -2115,6 +2151,19 @@ std::unique_ptr<HloComputation> HloComputation::CloneInContext(
   // To make clone behavior match uncloned behavior, we reorder instructions to
   // match the order in instructions_.
   SortClonedInstructions(context, replace, *this, instructions_, instructions);
+
+  if (clone_sequence != nullptr) {
+    clone_sequence->reserve(instructions.size());
+    absl::c_transform(instructions, std::back_inserter(*clone_sequence),
+                      [](const std::unique_ptr<HloInstruction>& instruction) {
+                        return instruction.get();
+                      });
+
+    SortClonedInstructions(
+        context, replace, *this,
+        context.module()->schedule().sequence(this).instructions(),
+        *clone_sequence);
+  }
 
   Builder builder(suffix.empty() ? std::string(name())
                                  : absl::StrCat(name(), ".", suffix));
