@@ -29,10 +29,7 @@ limitations under the License.
 
 // Include NCCL after XLA headers.
 #include "third_party/nccl/nccl.h"
-
-#if NCCL_VERSION_CODE >= 22900
 #include "third_party/nccl/nccl_device.h"
-#endif  // NCCL_VERSION_CODE >= 22800
 
 namespace xla::gpu {
 
