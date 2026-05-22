@@ -1125,8 +1125,8 @@ class SingleOpModel {
       qmin = -7;
       qmax = 7;
     } else if (type == kTfLiteInt2) {
-      qmin = -2;
-      qmax = 2;
+      qmin = -1;
+      qmax = 1;
     } else {
       qmin = std::numeric_limits<T>::min();
       qmax = std::numeric_limits<T>::max();
