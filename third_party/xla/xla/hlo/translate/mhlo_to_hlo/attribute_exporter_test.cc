@@ -287,6 +287,7 @@ TEST_F(AttributeExporterTest, ConvertReplicaGroups_MeshAxesFromFrontendAttrs) {
         xla.sdy.meshes = "{mesh = #sdy.mesh<[\"data\"=2, \"seq\"=2]>}"
       }
     } {
+      func.func private @mesh()
       func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
         %0 = "stablehlo.all_reduce"(%arg0) <{
           channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>,
