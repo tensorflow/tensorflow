@@ -225,10 +225,6 @@ TEST_F(MultiGpuBarrierTest, BarrierSynchronization) {
 }
 
 TEST_F(MultiGpuBarrierTest, BarrierSynchronizationWithNccl) {
-#if NCCL_VERSION_CODE < 22800
-  GTEST_SKIP() << "Test requires NCCL 2.28.0 or later.";
-#endif  // NCCL_VERSION_CODE < 22800
-
   std::vector<std::unique_ptr<MemoryAllocator>> collective_allocators;
   for (int i = 0; i < num_devices_; ++i) {
     ASSERT_OK_AND_ASSIGN(
