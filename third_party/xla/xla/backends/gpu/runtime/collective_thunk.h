@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/runtime/buffer_use.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -136,15 +135,15 @@ class CollectiveThunk : public Command {
       const ExecuteParams& execute_params, const RecordParams& record_params,
       RecordAction record_action, se::CommandBuffer* command_buffer) override;
 
-  absl::StatusOr<std::vector<Communicator*>> GetCommunicators(
-      const ExecuteParams& params) const override;
-
   const std::vector<Buffer>& buffers() const { return buffers_; }
 
   BufferUses buffer_uses() const override;
 
   CommunicationId communication_id() const { return communication_id_; }
   CollectivesMode collectives_mode() const { return collectives_mode_; }
+
+  // Returns the clique key used by this collective thunk at run time.
+  absl::StatusOr<GpuCliqueKey> GetCliqueKey(const ExecuteParams& params) const;
 
   // Shorthands for checking the collectives memory mode of this thunk.
   bool use_private_memory() const;
