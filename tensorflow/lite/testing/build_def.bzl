@@ -312,7 +312,7 @@ def max_number_of_test_models_in_merged_zip():
     Returns:
       Maximum number of merged test models in a zip file.
     """
-    return 15
+    return 5
 
 def number_of_merged_zip_file(conversion_mode, delegate):
     """Returns the number of merged zip file targets.
