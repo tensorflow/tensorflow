@@ -1099,15 +1099,16 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
            VerifySliceShapeEquality(thunk_1.convolution_slices().input_buffer,
                                     thunk_1.convolution_slices().input_shape,
                                     thunk_2.convolution_slices().input_buffer,
-                                    thunk_2.convolution_slices().input_shape);
-    VerifySliceShapeEquality(thunk_1.convolution_slices().kernel_buffer,
-                             thunk_1.convolution_slices().kernel_shape,
-                             thunk_2.convolution_slices().kernel_buffer,
-                             thunk_2.convolution_slices().kernel_shape);
-    VerifySliceShapeEquality(thunk_1.convolution_slices().output_buffer,
-                             thunk_1.convolution_slices().output_shape,
-                             thunk_2.convolution_slices().output_buffer,
-                             thunk_2.convolution_slices().output_shape);
+                                    thunk_2.convolution_slices().input_shape) &&
+           VerifySliceShapeEquality(
+               thunk_1.convolution_slices().kernel_buffer,
+               thunk_1.convolution_slices().kernel_shape,
+               thunk_2.convolution_slices().kernel_buffer,
+               thunk_2.convolution_slices().kernel_shape) &&
+           VerifySliceShapeEquality(thunk_1.convolution_slices().output_buffer,
+                                    thunk_1.convolution_slices().output_shape,
+                                    thunk_2.convolution_slices().output_buffer,
+                                    thunk_2.convolution_slices().output_shape);
   }
 
   bool VerifyReduceScatterThunkEquality(const ReduceScatterThunk& thunk_1,
