@@ -388,10 +388,9 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "snappy",
-        build_file = "//third_party:snappy.BUILD",
-        sha256 = "736aeb64d86566d2236ddffa2865ee5d7a82d26c9016b36218fcc27ea4f09f86",
-        strip_prefix = "snappy-1.2.1",
-        urls = tf_mirror_urls("https://github.com/google/snappy/archive/refs/tags/1.2.1.tar.gz"),
+        sha256 = "90f74bc1fbf78a6c56b3c4a082a05103b3a56bb17bca1a27e052ea11723292dc",
+        strip_prefix = "snappy-1.2.2",
+        urls = tf_mirror_urls("https://github.com/google/snappy/archive/refs/tags/1.2.2.tar.gz"),
     )
 
     tf_http_archive(
