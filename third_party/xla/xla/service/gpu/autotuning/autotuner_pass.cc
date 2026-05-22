@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/MLIRContext.h"
@@ -49,13 +50,13 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
@@ -66,16 +67,20 @@ namespace gpu {
 
 namespace {
 
+using AutotuneDecision = FusionDecision;
+
 // Register spilling is currently not allowed for GEMM/Conv fusions, but allowed
 // for non-GEMM fusions. Register spilling configurations can be expensive to
 // run and might lead to increased memory usage and potential compile-time
 // regressions. These are allowed on non-GEMM fusions because sometimes these
 // are the only viable configurations to try.
-bool AllowRegSpillsForGpuInstruction(const HloInstruction& instruction) {
+AutotuneDecision AllowRegSpillsForGpuInstruction(
+    const HloInstruction& instruction) {
   if (instruction.opcode() == HloOpcode::kCustomCall) {
     if (IsCublasGemm(instruction) ||
         IsCustomCallToDnnConvolution(instruction)) {
-      return false;
+      return AutotuneDecision::Forbid(
+          "Register spilling is not allowed for GEMM/Conv custom calls");
     }
   }
   if (instruction.opcode() == HloOpcode::kFusion) {
@@ -86,18 +91,22 @@ bool AllowRegSpillsForGpuInstruction(const HloInstruction& instruction) {
       if (backend_config.kind() == kTritonGemmFusionKind ||
           backend_config.kind() == kCuDnnFusionKind ||
           backend_config.kind() == kCustomFusionKind) {
-        return false;
+        return AutotuneDecision::Forbid(
+            "Register spilling is not allowed for GEMM/Conv fusions");
       }
     }
   }
-  return true;
+  return AutotuneDecision::Allow();
 }
 
-bool ShouldAutotuneCustomCall(bool do_not_autotune_cublas,
-                              bool do_not_autotune_cudnn,
-                              const HloInstruction& instruction) {
+AutotuneDecision ShouldAutotuneCustomCall(bool do_not_autotune_cublas,
+                                          bool do_not_autotune_cudnn,
+                                          const HloInstruction& instruction) {
   auto gpu_config = instruction.backend_config<GpuBackendConfig>();
-  if (!do_not_autotune_cublas && IsCublasGemm(instruction)) {
+  if (IsCublasGemm(instruction)) {
+    if (do_not_autotune_cublas) {
+      return AutotuneDecision::Forbid("Autotuning cuBLAS is disabled");
+    }
     if (gpu_config.ok()) {
       // Grouped matmul stores the selected algorithm in the nested
       // grouped_gemm_backend_config, not the top-level gemm_backend_config.
@@ -106,62 +115,81 @@ bool ShouldAutotuneCustomCall(bool do_not_autotune_cublas,
               ? gpu_config->grouped_gemm_backend_config().gemm_backend_config()
               : gpu_config->gemm_backend_config();
       if (gemm_config.has_selected_algorithm()) {
-        return false;
+        return AutotuneDecision::Forbid(
+            "cuBLAS GEMM already has a selected algorithm");
       }
     }
-    return true;
+    return AutotuneDecision::Allow();
   }
-  if (!do_not_autotune_cudnn && IsCustomCallToDnnConvolution(instruction)) {
+  if (IsCustomCallToDnnConvolution(instruction)) {
+    if (do_not_autotune_cudnn) {
+      return AutotuneDecision::Forbid("Autotuning cuDNN is disabled");
+    }
     if (gpu_config.ok() &&
         gpu_config->cudnn_conv_backend_config().has_algorithm()) {
-      return false;
+      return AutotuneDecision::Forbid(
+          "cuDNN convolution already has a selected algorithm");
     }
-    return true;
+    return AutotuneDecision::Allow();
   }
-  return false;
+  return AutotuneDecision::Forbid(
+      "Instruction is not a supported custom call (GEMM or Conv)");
 }
 
-bool ShouldAutotuneGemmFusion(const HloInstruction& instruction) {
+AutotuneDecision ShouldAutotuneGemmFusion(const HloInstruction& instruction) {
   auto gpu_config = instruction.backend_config<GpuBackendConfig>();
   if (!gpu_config.ok()) {
-    return false;
+    return AutotuneDecision::Forbid(absl::StrCat(
+        "Failed to get GPU backend config: ", gpu_config.status().message()));
   }
   const FusionBackendConfig& backend_config =
       gpu_config->fusion_backend_config();
   if (backend_config.kind() == kTritonGemmFusionKind) {
-    return !backend_config.has_triton_gemm_config();
+    if (backend_config.has_triton_gemm_config()) {
+      return AutotuneDecision::Forbid(
+          "Triton GEMM fusion already has a config");
+    }
+    return AutotuneDecision::Allow();
   }
   if (backend_config.kind() == kCuDnnFusionKind) {
-    return !backend_config.has_cudnn_fusion_config();
+    if (backend_config.has_cudnn_fusion_config()) {
+      return AutotuneDecision::Forbid("cuDNN fusion already has a config");
+    }
+    return AutotuneDecision::Allow();
   }
   if (backend_config.kind() == kCustomFusionKind) {
-    return !backend_config.has_custom_fusion_config();
+    if (backend_config.has_custom_fusion_config()) {
+      return AutotuneDecision::Forbid("Custom fusion already has a config");
+    }
+    return AutotuneDecision::Allow();
   }
-  return false;
+  return AutotuneDecision::Forbid(
+      "Fusion kind is not supported for GEMM autotuning");
 }
 
-bool ShouldAutotunGenericFusion(bool enable_fusion_autotuner,
-                                const HloInstruction& instruction) {
+AutotuneDecision ShouldAutotunGenericFusion(bool enable_fusion_autotuner,
+                                            const HloInstruction& instruction) {
   if (!enable_fusion_autotuner) {
-    return false;
+    return AutotuneDecision::Forbid("Fusion autotuner is disabled");
   }
   auto fusion = Cast<const HloFusionInstruction>(&instruction);
   if (fusion->fusion_kind() == HloInstruction::FusionKind::kCustom) {
-    return false;
+    return AutotuneDecision::Forbid(
+        "Custom fusions are not supported for generic fusion autotuning");
   }
   if (absl::c_any_of(fusion->fused_instructions_computation()->instructions(),
                      HloPredicateIsOp<HloOpcode::kScatter>)) {
-    return false;
+    return AutotuneDecision::Forbid("Fusions with Scatter are not supported");
   }
-  return true;
+  return AutotuneDecision::Allow();
 }
 
-bool ShouldAutotuneInstruction(bool do_not_autotune_cublas,
-                               bool do_not_autotune_cudnn,
-                               bool enable_fusion_autotuner,
-                               bool has_native_or_ble_backends,
-                               bool autotune_post_fusion,
-                               const HloInstruction& instruction) {
+AutotuneDecision ShouldAutotuneInstruction(bool do_not_autotune_cublas,
+                                           bool do_not_autotune_cudnn,
+                                           bool enable_fusion_autotuner,
+                                           bool has_native_or_ble_backends,
+                                           bool autotune_post_fusion,
+                                           const HloInstruction& instruction) {
   // 1. Custom calls.
   if (instruction.opcode() == HloOpcode::kCustomCall) {
     // TODO(b/511979384): Remove this condition once
@@ -172,7 +200,8 @@ bool ShouldAutotuneInstruction(bool do_not_autotune_cublas,
     // fission backend tries to find the dot, it finds multiple ones. It only
     // picks the first one and returns the rest to the graph, untuned.
     if (!autotune_post_fusion && has_native_or_ble_backends) {
-      return false;  // Skip custom calls in generic fusion tuning pass.
+      return AutotuneDecision::Forbid(
+          "Skip custom calls in generic fusion tuning pass (legacy)");
     }
     return ShouldAutotuneCustomCall(do_not_autotune_cublas,
                                     do_not_autotune_cudnn, instruction);
@@ -181,7 +210,8 @@ bool ShouldAutotuneInstruction(bool do_not_autotune_cublas,
     // 2. GEMM fusions.
     auto gpu_config = instruction.backend_config<GpuBackendConfig>();
     if (!gpu_config.ok()) {
-      return false;
+      return AutotuneDecision::Forbid(absl::StrCat(
+          "Failed to get GPU backend config: ", gpu_config.status().message()));
     }
     const FusionBackendConfig& backend_config =
         gpu_config->fusion_backend_config();
@@ -191,7 +221,8 @@ bool ShouldAutotuneInstruction(bool do_not_autotune_cublas,
       // TODO(b/511979384): Remove this condition once
       // xla_gpu_experimental_autotune_post_fusion is enabled by default.
       if (!autotune_post_fusion && has_native_or_ble_backends) {
-        return false;  // Skip GEMM fusions in generic fusion tuning pass.
+        return AutotuneDecision::Forbid(
+            "Skip GEMM fusions in generic fusion tuning pass (legacy)");
       }
       return ShouldAutotuneGemmFusion(instruction);
     }
@@ -203,11 +234,13 @@ bool ShouldAutotuneInstruction(bool do_not_autotune_cublas,
     // registered), we do not autotune generic fusions to avoid autotuner
     // failure with no supported configs.
     if (!autotune_post_fusion && !has_native_or_ble_backends) {
-      return false;
+      return AutotuneDecision::Forbid(
+          "Skip generic fusions in GEMM/Conv autotuning pass (legacy)");
     }
     return ShouldAutotunGenericFusion(enable_fusion_autotuner, instruction);
   }
-  return false;
+  return AutotuneDecision::Forbid(
+      "Instruction is neither custom call nor fusion");
 }
 
 }  // namespace
@@ -239,7 +272,9 @@ AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options,
       debug_options.xla_gpu_dump_autotuned_gemm_fusions() ||
       debug_options.xla_gpu_dump_autotuned_instructions();
   if (!debug_options.xla_gpu_fail_ptx_compilation_on_register_spilling()) {
-    autotune_config.allow_reg_spills_fn = AllowRegSpillsForGpuInstruction;
+    autotune_config.allow_reg_spills_fn = [](const HloInstruction& instr) {
+      return static_cast<bool>(AllowRegSpillsForGpuInstruction(instr));
+    };
   }
   // xla_gpu_filter_kernels_spilling_registers_on_autotuning is true by default,
   // but some autotuner passes need to set it to false explicitly as there
@@ -363,9 +398,14 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
       [do_not_autotune_cublas, do_not_autotune_cudnn, enable_fusion_autotuner,
        has_native_or_ble_backends,
        autotune_post_fusion](const HloInstruction& instruction) -> bool {
-    return ShouldAutotuneInstruction(
+    AutotuneDecision decision = ShouldAutotuneInstruction(
         do_not_autotune_cublas, do_not_autotune_cudnn, enable_fusion_autotuner,
         has_native_or_ble_backends, autotune_post_fusion, instruction);
+    if (!decision) {
+      VLOG(3) << "Not autotuning " << instruction.name() << ": "
+              << decision.Explain();
+    }
+    return decision.CanFuse();
   };
 
   std::unique_ptr<Profiler> profiler = nullptr;
