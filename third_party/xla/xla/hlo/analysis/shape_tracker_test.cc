@@ -713,4 +713,228 @@ TEST(ShapeTrackerTest, AppendBitcastSixToOneSix) {
   EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{1, 6}));
 }
 
+TEST(ShapeTrackerTest, SplitDimensionsBasic) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4, 5});
+  ShapeTracker tracker(shape);
+
+  auto split_or = tracker.SplitDimensions(2);
+  ASSERT_TRUE(split_or.ok());
+  auto [lhs, rhs] = std::move(split_or).value();
+
+  EXPECT_EQ(lhs.input_shape().dimensions(), (std::vector<int64_t>{2, 3}));
+  EXPECT_EQ(lhs.output_shape().dimensions(), (std::vector<int64_t>{2, 3}));
+  EXPECT_TRUE(lhs.GetSteps().empty());
+
+  EXPECT_EQ(rhs.input_shape().dimensions(), (std::vector<int64_t>{4, 5}));
+  EXPECT_EQ(rhs.output_shape().dimensions(), (std::vector<int64_t>{4, 5}));
+  EXPECT_TRUE(rhs.GetSteps().empty());
+}
+
+TEST(ShapeTrackerTest, SplitDimensionsWithTransposeValid) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4, 5});
+  ShapeTracker tracker(shape);
+
+  // Transpose LHS: {1, 0, 2, 3} -> shape becomes {3, 2, 4, 5}
+  ASSERT_TRUE(tracker.AppendTranspose({1, 0, 2, 3}).ok());
+
+  auto split_or = tracker.SplitDimensions(2);
+  ASSERT_TRUE(split_or.ok());
+  auto [lhs, rhs] = std::move(split_or).value();
+
+  EXPECT_EQ(lhs.input_shape().dimensions(), (std::vector<int64_t>{2, 3}));
+  EXPECT_EQ(lhs.output_shape().dimensions(), (std::vector<int64_t>{3, 2}));
+  std::vector<ShapeTracker::Step> lhs_steps = lhs.GetSteps();
+  ASSERT_EQ(lhs_steps.size(), 1);
+  EXPECT_EQ(lhs_steps[0].type, ShapeTracker::Step::Type::kTranspose);
+  EXPECT_EQ(lhs_steps[0].dimensions, (std::vector<int64_t>{1, 0}));
+
+  EXPECT_EQ(rhs.input_shape().dimensions(), (std::vector<int64_t>{4, 5}));
+  EXPECT_EQ(rhs.output_shape().dimensions(), (std::vector<int64_t>{4, 5}));
+  EXPECT_TRUE(rhs.GetSteps().empty());
+}
+
+TEST(ShapeTrackerTest, SplitDimensionsWithTransposeInvalid) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4, 5});
+  ShapeTracker tracker(shape);
+
+  // Transpose across split point: {0, 2, 1, 3} (swaps 1 and 2)
+  ASSERT_TRUE(tracker.AppendTranspose({0, 2, 1, 3}).ok());
+
+  auto split_or = tracker.SplitDimensions(2);
+  EXPECT_FALSE(split_or.ok());
+}
+
+TEST(ShapeTrackerTest, SplitDimensionsWithReshapeValid) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4, 5});
+  ShapeTracker tracker(shape);
+
+  // Reshape LHS: {2, 3} -> {6}. Total shape becomes {6, 4, 5}
+  ASSERT_TRUE(tracker.AppendReshape({6, 4, 5}).ok());
+
+  auto split_or = tracker.SplitDimensions(2);
+  ASSERT_TRUE(split_or.ok());
+  auto [lhs, rhs] = std::move(split_or).value();
+
+  EXPECT_EQ(lhs.input_shape().dimensions(), (std::vector<int64_t>{2, 3}));
+  EXPECT_EQ(lhs.output_shape().dimensions(), (std::vector<int64_t>{6}));
+  std::vector<ShapeTracker::Step> lhs_steps = lhs.GetSteps();
+  ASSERT_EQ(lhs_steps.size(), 1);
+  EXPECT_EQ(lhs_steps[0].type, ShapeTracker::Step::Type::kReshape);
+  EXPECT_EQ(lhs_steps[0].dimensions, (std::vector<int64_t>{6}));
+
+  EXPECT_EQ(rhs.input_shape().dimensions(), (std::vector<int64_t>{4, 5}));
+  EXPECT_EQ(rhs.output_shape().dimensions(), (std::vector<int64_t>{4, 5}));
+  EXPECT_TRUE(rhs.GetSteps().empty());
+}
+
+TEST(ShapeTrackerTest, SplitDimensionsWithReshapeInvalid) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4, 5});
+  ShapeTracker tracker(shape);
+
+  // Reshape across split point: combines 3 and 4 into 12.
+  // {2, 3, 4, 5} -> {2, 12, 5}
+  ASSERT_TRUE(tracker.AppendReshape({2, 12, 5}).ok());
+
+  auto split_or = tracker.SplitDimensions(2);
+  EXPECT_FALSE(split_or.ok());
+}
+
+TEST(ShapeTrackerTest, SplitDimensionsWithDegenerate) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 1, 3, 4});
+  ShapeTracker tracker(shape);
+
+  auto split_or = tracker.SplitDimensions(2);
+  ASSERT_TRUE(split_or.ok());
+  auto [lhs, rhs] = std::move(split_or).value();
+
+  EXPECT_EQ(lhs.input_shape().dimensions(), (std::vector<int64_t>{2, 1}));
+  EXPECT_EQ(lhs.output_shape().dimensions(), (std::vector<int64_t>{2}));
+  EXPECT_EQ(rhs.input_shape().dimensions(), (std::vector<int64_t>{3, 4}));
+  EXPECT_EQ(rhs.output_shape().dimensions(), (std::vector<int64_t>{1, 3, 4}));
+}
+
+namespace {
+
+void VerifyRoundTrip(const ShapeTracker& original, int64_t split_dimension) {
+  auto split_or = original.SplitDimensions(split_dimension);
+  ASSERT_TRUE(split_or.ok());
+  auto [lhs, rhs] = std::move(split_or).value();
+
+  auto combined_or = ConcatenateDimensions(lhs, rhs);
+  ASSERT_TRUE(combined_or.ok());
+  ShapeTracker combined = std::move(combined_or).value();
+
+  EXPECT_EQ(combined.input_shape(), original.input_shape());
+  EXPECT_EQ(combined.output_shape(), original.output_shape());
+  EXPECT_EQ(combined.DebugString(), original.DebugString());
+  ExpectStepsEqual(combined.GetSteps(), original.GetSteps());
+}
+
+}  // namespace
+
+TEST(ShapeTrackerTest, ConcatenateDimensionsBasic) {
+  Shape shape_lhs = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape shape_rhs = ShapeUtil::MakeShape(F32, {4, 5});
+  ShapeTracker tracker_lhs(shape_lhs);
+  ShapeTracker tracker_rhs(shape_rhs);
+
+  auto combined_or = ConcatenateDimensions(tracker_lhs, tracker_rhs);
+  ASSERT_TRUE(combined_or.ok());
+  ShapeTracker combined = std::move(combined_or).value();
+
+  EXPECT_EQ(combined.input_shape().dimensions(),
+            (std::vector<int64_t>{2, 3, 4, 5}));
+  EXPECT_EQ(combined.output_shape().dimensions(),
+            (std::vector<int64_t>{2, 3, 4, 5}));
+  EXPECT_TRUE(combined.GetSteps().empty());
+}
+
+TEST(ShapeTrackerTest, ConcatenateDimensionsRoundTrip) {
+  // 1. Basic (no-op steps)
+  {
+    Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4, 5});
+    ShapeTracker tracker(shape);
+    VerifyRoundTrip(tracker, 2);
+  }
+
+  // 2. Valid Transpose (transpose LHS: {1, 0, 2, 3} -> {3, 2, 4, 5})
+  {
+    Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4, 5});
+    ShapeTracker tracker(shape);
+    ASSERT_TRUE(tracker.AppendTranspose({1, 0, 2, 3}).ok());
+    VerifyRoundTrip(tracker, 2);
+  }
+
+  // 3. Valid Reshape (reshape LHS: {2, 3} -> {6} -> total {6, 4, 5})
+  {
+    Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4, 5});
+    ShapeTracker tracker(shape);
+    ASSERT_TRUE(tracker.AppendReshape({6, 4, 5}).ok());
+    VerifyRoundTrip(tracker, 2);
+  }
+
+  // 4. Degenerate Dimensions (shape with size-1 dimension: {2, 1, 3, 4})
+  {
+    Shape shape = ShapeUtil::MakeShape(F32, {2, 1, 3, 4});
+    ShapeTracker tracker(shape);
+    VerifyRoundTrip(tracker, 2);
+  }
+}
+
+TEST(ShapeTrackerTest, ConcatenateDimensionsWithIdentityPadding) {
+  Shape shape_lhs = ShapeUtil::MakeShape(F32, {5});
+  ShapeTracker tracker_lhs(shape_lhs);
+
+  Shape shape_rhs = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker_rhs(shape_rhs);
+  ASSERT_TRUE(tracker_rhs.AppendTranspose({2, 0, 1}).ok());
+  ASSERT_TRUE(tracker_rhs.AppendReshape({3, 8})
+                  .ok());  // Forces copy, projections count = 2
+
+  auto combined_or = ConcatenateDimensions(tracker_lhs, tracker_rhs);
+  ASSERT_TRUE(combined_or.ok());
+  ShapeTracker combined = std::move(combined_or).value();
+
+  std::vector<ShapeTracker::Step> expected_steps = {
+      {ShapeTracker::Step::Type::kTranspose, {0, 3, 1, 2}},
+      {ShapeTracker::Step::Type::kReshape, {5, 3, 8}}};
+  ExpectStepsEqual(combined.GetSteps(), expected_steps);
+}
+
+TEST(ShapeTrackerTest, ConcatenateDimensionsWithIdentityPaddingRhsShorter) {
+  Shape shape_lhs = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker_lhs(shape_lhs);
+  ASSERT_TRUE(tracker_lhs.AppendTranspose({2, 0, 1}).ok());
+  ASSERT_TRUE(tracker_lhs.AppendReshape({3, 8})
+                  .ok());  // Forces copy, projections count = 2
+
+  Shape shape_rhs = ShapeUtil::MakeShape(F32, {5});
+  ShapeTracker tracker_rhs(shape_rhs);
+
+  auto combined_or = ConcatenateDimensions(tracker_lhs, tracker_rhs);
+  ASSERT_TRUE(combined_or.ok());
+  ShapeTracker combined = std::move(combined_or).value();
+
+  EXPECT_EQ(combined.input_shape().dimensions(),
+            (std::vector<int64_t>{2, 3, 4, 5}));
+  EXPECT_EQ(combined.output_shape().dimensions(),
+            (std::vector<int64_t>{3, 8, 5}));
+
+  std::vector<ShapeTracker::Step> expected_steps = {
+      {ShapeTracker::Step::Type::kTranspose, {2, 0, 1, 3}},
+      {ShapeTracker::Step::Type::kReshape, {3, 8, 5}}};
+  ExpectStepsEqual(combined.GetSteps(), expected_steps);
+}
+
+TEST(ShapeTrackerTest, ConcatenateDimensionsMismatchedElementType) {
+  Shape shape_lhs = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape shape_rhs = ShapeUtil::MakeShape(S32, {4, 5});
+  ShapeTracker tracker_lhs(shape_lhs);
+  ShapeTracker tracker_rhs(shape_rhs);
+
+  auto combined_or = ConcatenateDimensions(tracker_lhs, tracker_rhs);
+  EXPECT_FALSE(combined_or.ok());
+  EXPECT_EQ(combined_or.status().code(), absl::StatusCode::kInvalidArgument);
+}
+
 }  // namespace xla
