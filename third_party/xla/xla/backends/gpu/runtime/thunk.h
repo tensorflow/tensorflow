@@ -179,6 +179,9 @@ class Thunk {
     std::string profile_annotation;
 
     ThunkId thunk_id = ThunkId{0};
+    // Only used in kConcurrentRegions mode to determine dependencies between
+    // thunks. See Thunk::concurrent_region_id() for more details.
+    std::optional<int64_t> concurrent_region_id;
 
     // Serializes a ThunkInfo to a ThunkInfoProto.
     ThunkInfoProto ToProto() const;
@@ -471,11 +474,12 @@ class Thunk {
   // In scheduling mode kConcurrentRegions, thunks sequences are divided into
   // regions. Thunks can be executed concurrently within the same region, but
   // regions will be executed sequentially.
+  // See ConcurrentRegionsHloOrdering::Initialize for how these are assigned.
   std::optional<uint64_t> concurrent_region_id() const {
-    return concurrent_region_id_;
+    return thunk_info_.concurrent_region_id;
   }
   void set_concurrent_region_id(uint64_t concurrent_region_id) {
-    concurrent_region_id_ = concurrent_region_id;
+    thunk_info_.concurrent_region_id = concurrent_region_id;
   }
 
   void set_profile_annotation(absl::string_view profile_annotation) {
@@ -492,10 +496,6 @@ class Thunk {
  private:
   Kind kind_;
   ThunkInfo thunk_info_;
-
-  // Used in scheduling mode kConcurrentRegions only. More details in the
-  // comments on the getter method above.
-  std::optional<uint64_t> concurrent_region_id_;
 };
 
 // A sequence of thunks.

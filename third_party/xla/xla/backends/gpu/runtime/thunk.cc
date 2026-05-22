@@ -425,6 +425,9 @@ absl::StatusOr<Thunk::ThunkInfo> Thunk::ThunkInfo::FromProto(
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = proto.profile_annotation();
   thunk_info.thunk_id = ThunkId(proto.thunk_id());
+  if (proto.has_concurrent_region_id()) {
+    thunk_info.concurrent_region_id = proto.concurrent_region_id();
+  }
   return thunk_info;
 }
 
@@ -479,6 +482,9 @@ ThunkInfoProto Thunk::ThunkInfo::ToProto() const {
   ThunkInfoProto proto;
   proto.set_profile_annotation(profile_annotation);
   proto.set_thunk_id(thunk_id.value());
+  if (concurrent_region_id.has_value()) {
+    proto.set_concurrent_region_id(*concurrent_region_id);
+  }
   return proto;
 }
 

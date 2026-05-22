@@ -1523,6 +1523,28 @@ TEST(ThunkProtoDeserializationTest, CollectiveKernelThunk) {
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
+TEST(ThunkProtoDeserializationTest, ConcurrentRegionIdPreserved) {
+  Thunk::ThunkInfo thunk_info{};
+  thunk_info.profile_annotation = "profile_annotation";
+  thunk_info.concurrent_region_id = 42;
+
+  SequentialThunk thunk(thunk_info, ThunkSequence{});
+  EXPECT_EQ(thunk.concurrent_region_id(), 42);
+
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
+  EXPECT_TRUE(proto.thunk_info().has_concurrent_region_id());
+  EXPECT_EQ(proto.thunk_info().concurrent_region_id(), 42);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Thunk> deserialized,
+      DeserializeThunkProto(proto, /*buffer_allocations=*/{},
+                            /*hlo_module=*/nullptr, kTestPlatformName,
+                            /*gpu_compute_capability=*/{}));
+
+  EXPECT_TRUE(deserialized->concurrent_region_id().has_value());
+  EXPECT_EQ(*deserialized->concurrent_region_id(), 42);
+}
+
 }  // namespace
 
 }  // namespace xla::gpu

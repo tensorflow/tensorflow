@@ -46,6 +46,9 @@ import "xla/xla_data.proto";
 message ThunkInfoProto {
   string profile_annotation = 1;
   int64 thunk_id = 3;
+  // Only used in kConcurrentRegions mode to determine dependencies between
+  // thunks. See Thunk::concurrent_region_id() for more details.
+  optional int64 concurrent_region_id = 4;
 }
 
 // A lightweight version of ThunkProto which only stores the thunk kind and
