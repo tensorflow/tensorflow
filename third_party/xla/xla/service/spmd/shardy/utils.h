@@ -203,6 +203,9 @@ bool isManualComputation(mlir::func::CallOp callOp);
 // the func is an 'inlineable' manual computation if `isInlineable` is true.
 bool isManualComputationOnName(mlir::StringRef funcName,
                                bool isInlineable = false);
+// Returns whether the `funcName` is any Shardy manual computation related
+// function name (either the body, inlineable body, or outlined callee).
+bool isAnyManualComputationOnName(mlir::StringRef funcName);
 
 }  // namespace sdy
 }  // namespace xla

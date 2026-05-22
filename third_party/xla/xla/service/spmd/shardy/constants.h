@@ -143,6 +143,11 @@ inline constexpr llvm::StringRef kManualComputationFuncName =
 inline constexpr llvm::StringRef kInlineableManualComputationFuncName =
     "xla.sdy.inlinable_manual_computation_body";
 
+// The function name of the body of a `ManualComputationOp` that should
+// be outlined after stablehlo-round-trip-export as a regular function.
+inline constexpr llvm::StringRef kInlineableCalleeFuncName =
+    "xla.sdy.inlineable_callee";
+
 // The target name of the custom call that changes operands from global to local
 // shape during Shardy round tripping.
 inline constexpr llvm::StringRef kGlobalToLocalShapeCallTargetName =

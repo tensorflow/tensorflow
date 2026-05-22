@@ -49,6 +49,11 @@ struct StablehloExportPipelineOptions
                      "stablehlo.reduce_scatter. If false, only ops with "
                      "unreduced axes are exported this way."),
       llvm::cl::init(false)};
+  Option<bool> eraseManualComputations{
+      *this, "erase-manual-computations",
+      llvm::cl::desc("Whether to drop manual computations and convert them "
+                     "into regular func/calls."),
+      llvm::cl::init(false)};
 };
 
 // Register the xla-sdy-stablehlo-export-pipeline.

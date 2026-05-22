@@ -301,7 +301,8 @@ Operation* createShardingConstraint(mlir::IRRewriter& rewriter,
 void convertManualComputationOp(
     ManualComputationOp op,
     const ManualComputationToParentManualAxes& parentManualCompAxes,
-    mlir::SymbolTable& symbolTable, bool createHloShardingConstraints) {
+    mlir::SymbolTable& symbolTable, bool createHloShardingConstraints,
+    bool eraseManualComputations) {
   MLIRContext* context = op.getContext();
   mlir::IRRewriter rewriter(op);
   TensorShardingAttr sharding = getFirstSharding(op);
@@ -343,23 +344,32 @@ void convertManualComputationOp(
     sdy::setShardings(shardingConstraint, inSharding);
     setNonEmptyManualAxes(shardingConstraint, parentManualAxesAttr);
 
-    auto fullToShard = CustomCallOp::create(rewriter, loc, localArgumentType,
-                                            shardingConstraint->getResult(0));
-    fullToShard.setCallTargetName(kSPMDFullToShardShapeCallTargetName);
-    sdy::setShardings(fullToShard,
-                      eraseManualAxes(inSharding, manualAxes.region));
-    setNonEmptyManualAxes(fullToShard, regionManualAxesAttr);
+    if (eraseManualComputations) {
+      CHECK_EQ(globalOperand.getType(), localArgumentType)
+          << "Global and local argument types must be compatible when erasing "
+             "manual computations.";
+      fullToShardResults.push_back(shardingConstraint->getResult(0));
+    } else {
+      auto fullToShard = CustomCallOp::create(rewriter, loc, localArgumentType,
+                                              shardingConstraint->getResult(0));
+      fullToShard.setCallTargetName(kSPMDFullToShardShapeCallTargetName);
+      sdy::setShardings(fullToShard,
+                        eraseManualAxes(inSharding, manualAxes.region));
+      setNonEmptyManualAxes(fullToShard, regionManualAxesAttr);
 
-    fullToShardResults.push_back(fullToShard.getResult(0));
+      fullToShardResults.push_back(fullToShard.getResult(0));
+    }
   }
 
   rewriter.setInsertionPointToEnd(
       &op->getParentOfType<ModuleOp>().getRegion().front());
   Operation* terminator = sdy::getBodyTerminator(op);
-  auto funcOp =
-      FuncOp::create(rewriter, loc, kInlineableManualComputationFuncName,
-                     rewriter.getFunctionType(op.getBody().getArgumentTypes(),
-                                              terminator->getOperandTypes()));
+  auto funcOp = FuncOp::create(
+      rewriter, loc,
+      eraseManualComputations ? kInlineableCalleeFuncName
+                              : kInlineableManualComputationFuncName,
+      rewriter.getFunctionType(op.getBody().getArgumentTypes(),
+                               terminator->getOperandTypes()));
   funcOp.setVisibility(mlir::SymbolTable::Visibility::Private);
   mlir::StringAttr funcName = symbolTable.insert(funcOp);
 
@@ -367,6 +377,15 @@ void convertManualComputationOp(
   auto callOp = CallOp::create(rewriter, loc, terminator->getOperandTypes(),
                                funcName, fullToShardResults);
   setNonEmptyManualAxes(callOp, regionManualAxesAttr);
+  if (eraseManualComputations) {
+    for (auto [terminatorOperand, globalResultType] :
+         llvm::zip_equal(terminator->getOperands(), op.getResultTypes())) {
+      CHECK_EQ(terminatorOperand.getType(), globalResultType)
+          << "Local and global return types must be compatible when erasing "
+             "manual computations.";
+    }
+  }
+
   sdy::inlineRegionAndConvertTerminatorOp<mlir::func::ReturnOp>(
       op.getBody(), funcOp.getBody());
   // TODO(b/5107145930): Use a shardy utility to batch set argument attributes.
@@ -424,13 +443,17 @@ void convertManualComputationOp(
     sdy::setShardings(shardingConstraint, erasedManualAxisOutShardings.back());
     setNonEmptyManualAxes(shardingConstraint, regionManualAxesAttr);
 
-    auto shardToFull = CustomCallOp::create(rewriter, loc, oldResult.getType(),
-                                            shardingConstraint->getResult(0));
-    shardToFull.setCallTargetName(kSPMDShardToFullShapeCallTargetName);
-    sdy::setShardings(shardToFull, outSharding);
-    setNonEmptyManualAxes(shardToFull, parentManualAxesAttr);
+    if (eraseManualComputations) {
+      oldResult.replaceAllUsesWith(shardingConstraint->getResult(0));
+    } else {
+      auto shardToFull = CustomCallOp::create(
+          rewriter, loc, oldResult.getType(), shardingConstraint->getResult(0));
+      shardToFull.setCallTargetName(kSPMDShardToFullShapeCallTargetName);
+      sdy::setShardings(shardToFull, outSharding);
+      setNonEmptyManualAxes(shardToFull, parentManualAxesAttr);
 
-    oldResult.replaceAllUsesWith(shardToFull.getResult(0));
+      oldResult.replaceAllUsesWith(shardToFull.getResult(0));
+    }
   }
 
   setShardings(callOp, erasedManualAxisOutShardings);
@@ -442,14 +465,18 @@ class ShardMapExportPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ShardMapExportPass)
 
-  explicit ShardMapExportPass(bool createHloShardingConstraints) {
+  explicit ShardMapExportPass(bool createHloShardingConstraints,
+                              bool eraseManualComputations) {
     this->createHloShardingConstraints = createHloShardingConstraints;
+    this->eraseManualComputations = eraseManualComputations;
   }
 
   ShardMapExportPass() = default;
 
-  explicit ShardMapExportPass(const ShardMapExportPass& other) {
+  explicit ShardMapExportPass(const ShardMapExportPass& other)
+      : PassWrapper(other) {
     this->createHloShardingConstraints = other.createHloShardingConstraints;
+    this->eraseManualComputations = other.eraseManualComputations;
   }
 
  private:
@@ -476,7 +503,8 @@ class ShardMapExportPass
     // above.
     module->walk([&](ManualComputationOp op) {
       convertManualComputationOp(op, parentManualCompAxes, symbolTable,
-                                 createHloShardingConstraints);
+                                 createHloShardingConstraints,
+                                 eraseManualComputations);
     });
   }
 
@@ -499,13 +527,20 @@ class ShardMapExportPass
       llvm::cl::desc(
           "Whether to create @Sharding custom calls or MHLO copy ops."),
       llvm::cl::init(false)};
+
+  Option<bool> eraseManualComputations{
+      *this, "erase-manual-computations",
+      llvm::cl::desc("Whether to drop manual computations and convert them "
+                     "into regular func/calls."),
+      llvm::cl::init(false)};
 };
 
 }  // namespace
 
 std::unique_ptr<mlir::Pass> createStablehloRoundTripShardMapExportPass(
-    bool createHloShardingConstraints) {
-  return std::make_unique<ShardMapExportPass>(createHloShardingConstraints);
+    bool createHloShardingConstraints, bool eraseManualComputations) {
+  return std::make_unique<ShardMapExportPass>(createHloShardingConstraints,
+                                              eraseManualComputations);
 }
 
 void registerStablehloRoundTripShardMapExportPass() {
