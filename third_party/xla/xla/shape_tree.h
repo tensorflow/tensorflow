@@ -128,6 +128,9 @@ class ShapeTree {
   // caller, whom must ensure the object remain valid for the whole lifetime of
   // this ShapeTree object, and also that the Shape is consistent with it.
   void replace_shape_ptr(const Shape& shape) {
+    if (&shape == shape_) {
+      return;
+    }
     if (shape_storage_ != nullptr) {
       DCHECK_EQ(shape, *shape_storage_);
       shape_storage_ = nullptr;
