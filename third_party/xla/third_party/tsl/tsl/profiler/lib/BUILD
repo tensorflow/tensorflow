@@ -109,10 +109,12 @@ cc_library(
         "//learning/brain/tfrc/executor/api:__pkg__",
     ]),
     deps = [
+        ":multi_pass_profiler_controller",
         ":profiler_controller",
         ":profiler_interface",
         "//tsl/profiler/protobuf:profiler_options_proto_cc",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/synchronization",
     ],
     alwayslink = True,
@@ -125,10 +127,12 @@ tsl_cc_test(
         ":profiler_factory",
         ":profiler_factory_impl",
         ":profiler_interface",
+        ":profiler_lock",
+        ":profiler_passes",
         "//tsl/profiler/protobuf:profiler_options_proto_cc",
         "//tsl/profiler/protobuf:xplane_proto_cc",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@xla//xla/tsl/platform:macros",
         "@xla//xla/tsl/platform:test",
@@ -150,6 +154,7 @@ cc_library(
         "//tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -197,6 +202,53 @@ tsl_cc_test(
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
         "@xla//xla/tsl/platform:test",
+    ],
+)
+
+cc_library(
+    name = "multi_pass_profiler_controller",
+    srcs = ["multi_pass_profiler_controller.cc"],
+    hdrs = ["multi_pass_profiler_controller.h"],
+    visibility = internal_visibility([
+        "@xla//xla/tsl/profiler:internal",
+    ]),
+    deps = [
+        ":profiler_interface",
+        "//tsl/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@xla//xla/tsl/platform:logging",
+    ],
+)
+
+cc_library(
+    name = "profiler_passes",
+    srcs = ["profiler_passes.cc"],
+    hdrs = ["profiler_passes.h"],
+    visibility = internal_visibility([
+        "@xla//xla/tsl/profiler:internal",
+        "@xla//xla/tsl/profiler:friends",
+    ]),
+    deps = [
+        ":profiler_factory",
+        ":profiler_interface",
+        ":profiler_lock",
+        "//tsl/platform:platform_port",
+        "//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "//tsl/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:logging",
+        "@xla//xla/tsl/profiler/convert:post_process_single_host_xplane",
+        "@xla//xla/tsl/profiler/utils:time_utils",
+        "@xla//xla/tsl/profiler/utils:xplane_builder",
+        "@xla//xla/tsl/profiler/utils:xplane_schema",
+        "@xla//xla/tsl/profiler/utils:xplane_utils",
     ],
 )
 
@@ -399,10 +451,13 @@ cc_library(
     srcs = ["profiler_collection.cc"],
     hdrs = ["profiler_collection.h"],
     visibility = internal_visibility([
+        "@xla//xla/backends/profiler:__pkg__",
         "@xla//xla/backends/profiler/plugin:__pkg__",
         "//learning/brain/tfrc/executor/api:__pkg__",
         "@xla//xla/backends/profiler/cpu:__pkg__",
         "@xla//xla/backends/profiler/subprocess:__pkg__",
+        "@xla//xla/backends/profiler/tpu:__pkg__",
+        "@xla//xla/tsl/profiler:internal",
     ]),
     deps = [
         ":profiler_interface",
