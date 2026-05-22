@@ -25,7 +25,6 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     features = tf_features_nolayering_check_if_ios(),
     deps = [
-        "//tensorflow/core/platform:hash",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:common",
@@ -54,6 +53,7 @@ cc_library(
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core/platform:hash",
         ],
     }),
 )
