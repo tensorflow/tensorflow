@@ -302,14 +302,15 @@ class TmpDirFileSystem : public NullFileSystem {
   absl::Status FileExists(absl::string_view dir) override {
     absl::string_view scheme, host, path;
     io::ParseURI(dir, &scheme, &host, &path);
-    if (path.empty()) return errors::NotFound(dir, " not found");
+    if (path.empty())
+      return absl::NotFoundError(absl::StrCat(dir, " not found"));
     // The special "flushed" file exists only if the filesystem's caches have
     // been flushed.
     if (path == "/flushed") {
       if (flushed_) {
         return absl::OkStatus();
       } else {
-        return errors::NotFound("FlushCaches() not called yet");
+        return absl::NotFoundError("FlushCaches() not called yet");
       }
     }
     return Env::Default()->FileExists(io::JoinPath(BaseDir(), path));
@@ -319,10 +320,10 @@ class TmpDirFileSystem : public NullFileSystem {
     absl::string_view scheme, host, path;
     io::ParseURI(dir, &scheme, &host, &path);
     if (scheme != "tmpdirfs") {
-      return errors::FailedPrecondition("scheme must be tmpdirfs");
+      return absl::FailedPreconditionError("scheme must be tmpdirfs");
     }
     if (host != "testhost") {
-      return errors::FailedPrecondition("host must be testhost");
+      return absl::FailedPreconditionError("host must be testhost");
     }
     absl::Status status =
         Env::Default()->CreateDir(io::JoinPath(BaseDir(), path));
@@ -338,7 +339,7 @@ class TmpDirFileSystem : public NullFileSystem {
     io::ParseURI(dir, &scheme, &host, &path);
     for (const auto& existing_dir : created_directories_)
       if (existing_dir == path) return absl::OkStatus();
-    return errors::NotFound(dir, " not found");
+    return absl::NotFoundError(absl::StrCat(dir, " not found"));
   }
 
   void FlushCaches() override { flushed_ = true; }
