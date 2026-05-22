@@ -466,6 +466,10 @@ message DebugOptions {
   // Size threshold (in bytes) for the GPU all-gather combiner.
   optional int64 xla_gpu_all_gather_combine_threshold_bytes = 212;
 
+  // Memory mode for the all-gather operation. Determines which memory
+  // space all-gather buffers are allocated in. See CollectivesMode for details.
+  optional CollectivesMode xla_gpu_all_gather_mode = 485;
+
   // Number of devices per host for first stage of BlueConnect decomposition
   // pass. The pass will attempt to decompose all-reduces ops into a
   // ReduceScatter-AllReduce-AllGather sequence, with the initial ReduceScatter
@@ -1579,7 +1583,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 489
+  // Next id: 488
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

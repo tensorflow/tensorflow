@@ -136,7 +136,7 @@ std::unique_ptr<AllGatherThunk> CreateAllGatherThunk(
   return std::make_unique<AllGatherThunk>(
       Thunk::ThunkInfo(),
       static_cast<const HloAllGatherInstruction*>(all_gather_start),
-      std::vector<CollectiveThunk::Buffer>({buffer}), false);
+      std::vector<CollectiveThunk::Buffer>({buffer}));
 }
 
 std::unique_ptr<DeviceToDeviceCopyThunk> CreateCopyThunk(

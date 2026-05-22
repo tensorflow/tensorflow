@@ -1940,6 +1940,12 @@ AsyncThunkSequence ThunkEmitter::EmitCollectiveThunk(
                   thunk_info, inst, /*buffers=*/std::move(buffers),
                   std::move(collective_kernel_thunk), use_memcpy_local_p2p));
             });
+  } else if constexpr (std::is_constructible_v<
+                           CollectiveThunkType, Thunk::ThunkInfo,
+                           decltype(inst),
+                           std::vector<CollectiveThunk::Buffer>>) {
+    thunks = ThunkSequence::Of(std::make_unique<CollectiveThunkType>(
+        thunk_info, inst, /*buffers=*/std::move(buffers)));
   } else {
     thunks = ThunkSequence::Of(std::make_unique<CollectiveThunkType>(
         thunk_info, inst, /*buffers=*/std::move(buffers),

@@ -354,6 +354,57 @@ TEST_F(CollectiveBackendAssignerTest,
       absl_testing::IsOkAndHolds(DebugOptions::COLLECTIVES_MODE_INVALID));
 }
 
+TEST_F(CollectiveBackendAssignerTest, AllGatherSymmetricMemorySetsMode) {
+  absl::string_view kHloText = R"(
+    HloModule m
+
+    ENTRY main {
+      p0 = u32[4,8] parameter(0)
+      ROOT result = u32[8,8] all-gather(p0), dimensions={0},
+        replica_groups={{0,1}}, channel_id=20
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  module->mutable_config().mutable_debug_options().set_xla_gpu_all_gather_mode(
+      DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY);
+
+  EXPECT_THAT(RunCollectiveBackendAssigner(
+                  module.get(), /*num_devices_per_host=*/1, /*slice_size=*/0),
+              absl_testing::IsOkAndHolds(true));
+
+  const HloInstruction* all_gather =
+      module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      GetCollectivesMode(all_gather),
+      absl_testing::IsOkAndHolds(DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY));
+}
+
+TEST_F(CollectiveBackendAssignerTest, AllGatherPrivateMemoryLeavesDefault) {
+  absl::string_view kHloText = R"(
+    HloModule m
+
+    ENTRY main {
+      p0 = u32[4,8] parameter(0)
+      ROOT result = u32[8,8] all-gather(p0), dimensions={0},
+        replica_groups={{0,1}}, channel_id=21
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+
+  ASSERT_THAT(RunCollectiveBackendAssigner(module.get(),
+                                           /*num_devices_per_host=*/1,
+                                           /*slice_size=*/0),
+              absl_testing::IsOk());
+
+  const HloInstruction* all_gather =
+      module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      GetCollectivesMode(all_gather),
+      absl_testing::IsOkAndHolds(DebugOptions::COLLECTIVES_MODE_INVALID));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

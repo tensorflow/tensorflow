@@ -120,7 +120,10 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
   ThunkProto proto = tsl::proto_testing::ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info { profile_annotation: "partition_id_profile_annotation" }
-        all_gather_thunk { collective_config {} }
+        all_gather_thunk {
+          collective_config {}
+          collectives_mode: COLLECTIVES_SYMMETRIC_MEMORY
+        }
       )pb");
 
   Thunk::ThunkInfo thunk_info;

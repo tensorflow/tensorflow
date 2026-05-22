@@ -231,10 +231,13 @@ class CollectivesModeOps
     if (!enable_async_) {
       debug_options.add_xla_gpu_disable_async_collectives(
           DebugOptions::COLLECTIVEPERMUTE);
+      debug_options.add_xla_gpu_disable_async_collectives(
+          DebugOptions::ALLGATHER);
     }
     debug_options.add_xla_disable_hlo_passes(
         "gpu-convert-async-collectives-to-sync");
     debug_options.set_xla_gpu_collective_permute_mode(collectives_mode_);
+    debug_options.set_xla_gpu_all_gather_mode(collectives_mode_);
     return debug_options;
   }
 
@@ -318,97 +321,6 @@ TEST_P(AsyncCollectiveOps, AsyncAllReduce) {
   }
 }
 
-TEST_P(AsyncCollectiveOps, AsyncAllGather) {
-  const absl::string_view kModuleStr = R"(
-  HloModule test
-  ENTRY test_computation {
-    id = u32[] replica-id()
-    id2 = u32[1, 2] broadcast(id), dimensions={}
-    a0 = u32[1, 2] constant({{10, 15}})
-    a1 = u32[1, 2] add(id2, a0)
-    allgather = u32[2, 2] all-gather(a1), dimensions={0}
-    ROOT out = u32[4] reshape(allgather)
-  }
-  )";
-  const int64_t kNumReplicas = 2;
-  ASSERT_GE(device_count(), kNumReplicas)
-      << "Test requires at least " << kNumReplicas << " devices ("
-      << device_count() << " available)";
-
-  const bool enable_async_all_gather = enable_async_;
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
-
-  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
-                          ExecuteReplicated(std::move(module)));
-
-  const HloModule* hlo_module = execution_result.optimized_module;
-  HloInstruction* all_gather_start =
-      FindInstruction(hlo_module, HloOpcode::kAllGatherStart);
-  HloInstruction* all_gather_done =
-      FindInstruction(hlo_module, HloOpcode::kAllGatherDone);
-  EXPECT_THAT(all_gather_start, NotNull());
-  EXPECT_THAT(all_gather_done, NotNull());
-  EXPECT_EQ(IsAsync(all_gather_start), enable_async_all_gather);
-
-  const std::vector<Literal>& results = execution_result.results;
-  ASSERT_EQ(results.size(), kNumReplicas);
-  for (const Literal& result : results) {
-    LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, result);
-  }
-}
-
-TEST_P(AsyncCollectiveOps, AsyncAllGatherMixedTypes) {
-  const absl::string_view kModuleStr = R"(
-  HloModule test
-  ENTRY test_computation {
-    id = u32[] replica-id()
-    id2 = u32[1, 2] broadcast(id), dimensions={}
-    a0 = u32[1, 2] constant({{10, 15}})
-    a1 = u32[1, 2] add(id2, a0)
-    a2 = f32[1, 2] convert(a1)
-    allgather = (u32[2, 2], f32[2,2]) all-gather(a1, a2), dimensions={0}
-    gte0 = u32[2,2] get-tuple-element(allgather), index=0
-    gte1 = f32[2,2] get-tuple-element(allgather), index=1
-    out0 = u32[4] reshape(gte0)
-    out1 = f32[4] reshape(gte1)
-    ROOT out = (u32[4], f32[4]) tuple(out0, out1)
-  }
-  )";
-  const int64_t kNumReplicas = 2;
-  ASSERT_GE(device_count(), kNumReplicas)
-      << "Test requires at least " << kNumReplicas << " devices ("
-      << device_count() << " available)";
-
-  const bool enable_async_all_gather = enable_async_;
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
-
-  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
-                          ExecuteReplicated(std::move(module)));
-
-  const HloModule* hlo_module = execution_result.optimized_module;
-  HloInstruction* all_gather_start =
-      FindInstruction(hlo_module, HloOpcode::kAllGatherStart);
-  HloInstruction* all_gather_done =
-      FindInstruction(hlo_module, HloOpcode::kAllGatherDone);
-  EXPECT_THAT(all_gather_start, NotNull());
-  EXPECT_THAT(all_gather_done, NotNull());
-  EXPECT_EQ(IsAsync(all_gather_start), enable_async_all_gather);
-
-  std::vector<Literal>& results = execution_result.results;
-  ASSERT_EQ(results.size(), kNumReplicas);
-  for (Literal& result : results) {
-    std::vector<Literal> tuple_results = result.DecomposeTuple();
-    LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16},
-                                             tuple_results[0]);
-    LiteralTestUtil::ExpectR1Equal<float>({10.0, 15.0, 11.0, 16.0},
-                                          tuple_results[1]);
-  }
-}
-
 TEST_P(AsyncCollectiveOps, AsyncCollectiveBroadcast) {
   const absl::string_view kModuleStr = R"(
   HloModule test
@@ -445,6 +357,93 @@ TEST_P(AsyncCollectiveOps, AsyncCollectiveBroadcast) {
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 11}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 11}, results[1]);
+}
+
+TEST_P(CollectivesModeOps, AllGather) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    id2 = u32[1, 2] broadcast(id), dimensions={}
+    a0 = u32[1, 2] constant({{10, 15}})
+    a1 = u32[1, 2] add(id2, a0)
+    allgather = u32[2, 2] all-gather(a1), dimensions={0}
+    ROOT out = u32[4] reshape(allgather)
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
+  HloInstruction* all_gather_start =
+      FindInstruction(hlo_module, HloOpcode::kAllGatherStart);
+  HloInstruction* all_gather_done =
+      FindInstruction(hlo_module, HloOpcode::kAllGatherDone);
+  EXPECT_THAT(all_gather_start, NotNull());
+  EXPECT_THAT(all_gather_done, NotNull());
+  EXPECT_EQ(IsAsync(all_gather_start), enable_async());
+
+  const std::vector<Literal>& results = execution_result.results;
+  ASSERT_EQ(results.size(), kNumReplicas);
+  for (const Literal& result : results) {
+    LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, result);
+  }
+}
+
+TEST_P(CollectivesModeOps, AllGatherMixedTypes) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    id2 = u32[1, 2] broadcast(id), dimensions={}
+    a0 = u32[1, 2] constant({{10, 15}})
+    a1 = u32[1, 2] add(id2, a0)
+    a2 = f32[1, 2] convert(a1)
+    allgather = (u32[2, 2], f32[2,2]) all-gather(a1, a2), dimensions={0}
+    gte0 = u32[2,2] get-tuple-element(allgather), index=0
+    gte1 = f32[2,2] get-tuple-element(allgather), index=1
+    out0 = u32[4] reshape(gte0)
+    out1 = f32[4] reshape(gte1)
+    ROOT out = (u32[4], f32[4]) tuple(out0, out1)
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
+  HloInstruction* all_gather_start =
+      FindInstruction(hlo_module, HloOpcode::kAllGatherStart);
+  HloInstruction* all_gather_done =
+      FindInstruction(hlo_module, HloOpcode::kAllGatherDone);
+  EXPECT_THAT(all_gather_start, NotNull());
+  EXPECT_THAT(all_gather_done, NotNull());
+  EXPECT_EQ(IsAsync(all_gather_start), enable_async());
+
+  std::vector<Literal>& results = execution_result.results;
+  ASSERT_EQ(results.size(), kNumReplicas);
+  for (Literal& result : results) {
+    std::vector<Literal> tuple_results = result.DecomposeTuple();
+    LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16},
+                                             tuple_results[0]);
+    LiteralTestUtil::ExpectR1Equal<float>({10.0, 15.0, 11.0, 16.0},
+                                          tuple_results[1]);
+  }
 }
 
 TEST_P(CollectivesModeOps, CollectivePermute) {

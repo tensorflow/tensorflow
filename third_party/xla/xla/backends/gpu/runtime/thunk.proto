@@ -338,6 +338,7 @@ message AllGatherThunkProto {
   reserved 1;  // Was async_events_unique_id.
   CollectiveConfigProto collective_config = 2;
   repeated CollectiveBufferProto buffers = 3;
+  xla.DebugOptions.CollectivesMode collectives_mode = 4;
 }
 
 message AllReduceThunkProto {
