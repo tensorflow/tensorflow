@@ -165,6 +165,7 @@ Learn more about the
 ## Courses
 
 * [Coursera](https://www.coursera.org/search?query=TensorFlow)
+* [TutorialSearch](https://tutorialsearch.io/) - Free cross-platform search engine indexing 50,000+ tutorials from Udemy, Skillshare, Pluralsight, and other major learning platforms across 45+ categories.
 * [Udacity](https://www.udacity.com/courses/all?search=TensorFlow)
 * [Edx](https://www.edx.org/search?q=TensorFlow)
 
