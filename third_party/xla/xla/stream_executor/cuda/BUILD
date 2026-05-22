@@ -1352,20 +1352,49 @@ xla_test(
     backends = ["gpu"],
     tags = ["cuda-only"],
     deps = [
-        ":cuda_compute_capability",
-        ":cuda_executor",
         ":cuda_platform",
         ":cuda_vmm_allocator",
         "//xla/stream_executor:device_address",
-        "//xla/stream_executor:device_description",
         "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
+    name = "cuda_vmm_allocator_multigpu_test",
+    srcs = ["cuda_vmm_allocator_multigpu_test.cc"],
+    backend_tags = {
+        "h100": [
+            "full",
+            "multi_gpu",
+        ],
+        "gpu": [
+            "multi_gpu",
+        ],
+        "gb200": ["broken"],  # TODO(b/505963304): re-enable when fixed.
+        "gb300": ["broken"],  # TODO(b/505963304): re-enable when fixed.
+    },
+    backends = ["gpu"],
+    tags = ["cuda-only"],
+    deps = [
+        ":cuda_compute_capability",
+        ":cuda_executor",
+        ":cuda_platform",
+        ":cuda_vmm_allocator",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:memory_allocation",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/gpu:gpu_init",
         "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/log:scoped_mock_log",
-        "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )

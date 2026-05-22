@@ -21,13 +21,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/base/log_severity.h"
-#include "absl/log/scoped_mock_log.h"
 #include "absl/types/span.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
-#include "xla/stream_executor/cuda/cuda_executor.h"
 #include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -123,38 +118,6 @@ TEST_P(CudaVmmAllocatorTest, PeerAccessEnabled) {
   ASSERT_NE(allocation, nullptr);
   EXPECT_NE(allocation->address().opaque(), nullptr);
   EXPECT_GE(allocation->address().size(), 4096);
-}
-
-TEST_P(CudaVmmAllocatorTest, HopperNoWarningCheck) {
-  ASSERT_OK_AND_ASSIGN(Platform * platform,
-                       PlatformManager::PlatformWithName("CUDA"));
-  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                       platform->ExecutorForDevice(0));
-
-  CudaComputeCapability cc =
-      executor->GetDeviceDescription().cuda_compute_capability();
-  if (!cc.IsAtLeastHopper()) {
-    GTEST_SKIP() << "Test only runs on H100+";
-  }
-
-  auto* cuda_executor = static_cast<CudaExecutor*>(executor);
-
-  CudaVmmAllocator::Options options = MakeTestOptions(GetParam());
-  options.enable_fabric_handle = cuda_executor->is_fabric_supported();
-  options.enable_posix_fd_handle = true;
-
-  absl::ScopedMockLog log(absl::MockLogDefault::kIgnoreUnexpected);
-  EXPECT_CALL(log, Log(absl::LogSeverity::kWarning, ::testing::_,
-                       ::testing::HasSubstr("FABRIC+POSIX_FD")))
-      .Times(0);
-  log.StartCapturingLogs();
-
-  CudaVmmAllocator allocator(executor, options);
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
-                       allocator.Allocate(1024));
-  EXPECT_NE(allocation, nullptr);
-
-  log.StopCapturingLogs();
 }
 
 INSTANTIATE_TEST_SUITE_P(RdmaSupport, CudaVmmAllocatorTest, ::testing::Bool(),

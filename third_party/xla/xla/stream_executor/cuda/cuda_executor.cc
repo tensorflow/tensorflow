@@ -963,9 +963,9 @@ absl::Status CudaExecutor::Init() {
   // Disable fabric handle if there are no active P2P NVLinks — using
   // FABRIC+POSIX_FD without a cluster causes allocation failures.
   if (vmm_options_.enable_fabric_handle &&
-      GetDeviceDescription().device_interconnect_info().active_links == 0) {
+      !GetDeviceDescription().device_interconnect_info().is_in_cluster()) {
     XLA_VLOG_DEVICE(2, device_ordinal())
-        << "Disabling fabric handle: no active P2P NVLinks detected.";
+        << "Disable fabric handle on non-cluster machine.";
     vmm_options_.enable_fabric_handle = false;
   }
 
