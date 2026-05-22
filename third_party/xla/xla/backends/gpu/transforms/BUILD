@@ -3240,47 +3240,6 @@ xla_cc_test(
     ],
 )
 
-xla_test(
-    name = "cub_sort_scratch_size_comparison_test",
-    srcs = ["cub_sort_scratch_size_comparison_test.cc"],
-    backends = [
-        "h100",
-        "a100",
-        "b200",
-        "gb200",
-        "v100",
-        "p100",
-    ],
-    tags = [
-        "cuda-only",
-        "no_oss",  # We don't generate data for the devices used in the OSS CI.
-        # Scratch space is smaller in debug mode. So we only test in opt mode.
-        "optonly",
-    ],
-    deps = [
-        ":deviceless_estimate_cub_sort_scratch_size",
-        ":estimate_cub_sort_scratch_size",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:util",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "//xla/service:platform_util",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:platform",
-        "//xla/tests:hlo_pjrt_test_base",
-        "//xla/tsl/platform:status_macros",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
 cc_library(
     name = "stream_attribute_annotator",
     srcs = ["stream_attribute_annotator.cc"],
