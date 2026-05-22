@@ -5,7 +5,7 @@ diff --git b/BUILD b/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/BUILD
-@@ -0,0 +1,1279 @@
+@@ -0,0 +1,1280 @@
 +# This package imports OpenAI's Triton (https://github.com/triton-lang/triton).
 +
 +# copybara:uncomment load("@rules:copybara.bzl", "copybara_config_test")
@@ -968,6 +968,7 @@ new file mode 100644
 +        ":TritonGPUTransforms",
 +        ":TritonToTritonGPUPasses",
 +        ":TritonTools",
++        ":TritonTransforms",
 +        ":triton_conversion_triton_to_triton_gpu_passes_inc_gen",
 +        "@llvm-project//mlir:ArithDialect",
 +        "@llvm-project//mlir:ControlFlowDialect",
@@ -2601,7 +2602,7 @@ diff --git b/third_party/amd/backend/BUILD b/third_party/amd/backend/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/amd/backend/BUILD
-@@ -0,0 +1,43 @@
+@@ -0,0 +1,46 @@
 +# load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +
 +package(
@@ -2639,7 +2640,10 @@ new file mode 100644
 +    includes = [
 +        "include",
 +    ],
-+    textual_hdrs = glob(["include/**/*.h"]),
++    textual_hdrs = glob([
++        "include/**/*.h",
++        "include/**/*.hpp",
++    ]),
 +)
 +
 +exports_files([
