@@ -269,6 +269,11 @@ bool DFS(HloInstruction* hlo, HloReachabilityMap* reachability,
 std::vector<HloInstruction*> GetAllReachableAndFusible(
     HloInstruction* convolution, std::vector<HloInstruction*>& fusion_outputs) {
   std::vector<HloInstruction*> fusible_users;
+  // cuDNN frontend fusions do not support grouped convolutions with epilogues.
+  if (convolution->feature_group_count() > 1) {
+    fusion_outputs.push_back(convolution);
+    return fusible_users;
+  }
   absl::flat_hash_map<HloInstruction*, bool> fusible_cache;
   std::unique_ptr<HloReachabilityMap> reachability =
       HloReachabilityMap::Build(convolution->parent());
