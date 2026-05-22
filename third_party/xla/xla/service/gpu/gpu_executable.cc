@@ -537,8 +537,7 @@ absl::Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
 
 absl::Status RendezvousAfterInitialization(
     const ServiceExecutableRunOptions& run_options,
-    const DebugOptions* absl_nullable debug_options,
-    RendezvousFlag& post_init_rendezvous_flag);
+    const DebugOptions* absl_nullable debug_options);
 
 absl::Status BarrierAfterExecutable(
     const ServiceExecutableRunOptions& run_options,
@@ -553,8 +552,7 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
     const BufferAllocations& buffer_allocations, bool block_host_until_done,
     GpuExecutable::NumAdditionalStreams num_additional_streams,
     CollectiveMemoryCache& collective_memory_cache,
-    bool collective_use_minimal_resource,
-    RendezvousFlag& post_init_rendezvous_flag) {
+    bool collective_use_minimal_resource) {
   bool mock_collectives =
       run_options->run_options().gpu_executable_run_options()
           ? run_options->run_options()
@@ -801,9 +799,8 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
   // collective operations and clique initialization is famous for introducing
   // deadlocks if we try to execute it concurrently with other potentially
   // memory-allocating operations.
-  if (!collective_cliques.empty() && !post_init_rendezvous_flag.IsCompleted()) {
-    RETURN_IF_ERROR(RendezvousAfterInitialization(*run_options, debug_options,
-                                                  post_init_rendezvous_flag));
+  if (!collective_cliques.empty()) {
+    RETURN_IF_ERROR(RendezvousAfterInitialization(*run_options, debug_options));
   }
 
   // Prepare parameters for thunks execution.
@@ -861,8 +858,7 @@ bool operator==(const InitializationKey& a, const InitializationKey& b) {
 
 absl::Status RendezvousAfterInitialization(
     const ServiceExecutableRunOptions& run_options,
-    const DebugOptions* absl_nullable debug_options,
-    RendezvousFlag& post_init_rendezvous_flag) {
+    const DebugOptions* absl_nullable debug_options) {
   // Thunk initialization can allocate new control data structures on device
   // that can lead to deadlocks if other replicas are executing concurrently
   // (i.e. this happens if we try to instantiate CUDA graph when other replica
@@ -916,7 +912,7 @@ absl::Status RendezvousAfterInitialization(
       run_options.device_ordinal(), run_options.run_options().run_id().ToInt());
 
   return Rendezvous(
-      post_init_rendezvous_flag, rendezvous_name, rendezvous_key,
+      rendezvous_name, rendezvous_key,
       num_local_participants,
       absl::Seconds(
           debug_options
@@ -1648,7 +1644,7 @@ absl::Status GpuExecutable::ExecuteThunksWithVaRemapping(
       unique_id, *thunk_executor_, executable_source, run_options,
       remapped_buffer_allocations, block_host_until_done,
       num_additional_streams_, collective_memory_cache_,
-      collective_use_minimal_resource, post_init_rendezvous_flag_));
+      collective_use_minimal_resource));
 
   // Record event so VA range can be reclaimed after GPU finishes.
   RETURN_IF_ERROR(
@@ -1763,8 +1759,7 @@ absl::Status GpuExecutable::ExecuteThunks(
         has_module() ? &module_config().debug_options() : nullptr, module_name_,
         unique_id, *thunk_executor_, executable_source, run_options,
         buffer_allocations, block_host_until_done, num_additional_streams_,
-        collective_memory_cache_, collective_use_minimal_resource,
-        post_init_rendezvous_flag_));
+        collective_memory_cache_, collective_use_minimal_resource));
   }
   return absl::OkStatus();
 }

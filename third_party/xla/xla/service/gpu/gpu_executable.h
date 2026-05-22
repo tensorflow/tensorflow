@@ -54,7 +54,6 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/logical_buffer.h"
-#include "xla/service/rendezvous.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/stream_pool.h"
@@ -365,8 +364,7 @@ class GpuExecutable : public Executable {
       const BufferAllocations& buffer_allocations, bool block_host_until_done,
       NumAdditionalStreams num_additional_streams,
       CollectiveMemoryCache& collective_memory_cache,
-      bool collective_use_minimal_resource,
-      RendezvousFlag& post_init_rendezvous_flag);
+      bool collective_use_minimal_resource);
 
   // The LLVM IR, in string format, of the unoptimized module generated for
   // this GpuExecutable. We save a string instead of an llvm::Module* because
@@ -480,7 +478,7 @@ class GpuExecutable : public Executable {
   absl::Mutex va_ranges_mutex_;
   absl::node_hash_map<std::pair<se::StreamExecutor*, int>, VaRanges>
       module_va_ranges_ ABSL_GUARDED_BY(va_ranges_mutex_);
-  RendezvousFlag post_init_rendezvous_flag_;
+
   GpuExecutable(const GpuExecutable&) = delete;
   GpuExecutable& operator=(const GpuExecutable&) = delete;
 
