@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
@@ -219,7 +220,14 @@ class NcclCommunicator : public GpuCommunicator {
                                 const Executor& executor) final;
 
   // Queries NCCL for one-sided comm support. Called once at construction.
-  bool QuerySupportsOneSidedComm() const;
+  // Returns an empty string if one-sided comm is supported, or a
+  // human-readable reason explaining why it is not.
+  std::string QueryOneSidedCommUnsupportedReason() const;
+
+  // Returns an Unimplemented status describing why the one-sided operation
+  // `op` is not supported. Must only be called when SupportsOneSidedComm() is
+  // false.
+  absl::Status OneSidedCommUnsupportedError(absl::string_view op) const;
 
   // Polls the communicator until any pending non-blocking operations are "done"
   // or aborted.
@@ -273,8 +281,9 @@ class NcclCommunicator : public GpuCommunicator {
   // Has comm_ been aborted?
   bool aborted_ = false;
 
-  // Cached result of querying NCCL for one-sided comm support.
-  bool supports_one_sided_comm_ = false;
+  // Reason one-sided comm is not supported, cached at construction. Empty
+  // if one-sided comm is supported.
+  std::string one_sided_comm_unsupported_reason_;
 
   // Nesting level of current NCCL group
   int group_nesting_level_ = 0;
