@@ -289,10 +289,10 @@ cc_library(
 )
 
 cc_library(
-    name = "hlo_pjrt_test_base",
+    name = "hlo_test_base",
     testonly = True,
-    srcs = ["hlo_pjrt_test_base.cc"],
-    hdrs = ["hlo_pjrt_test_base.h"],
+    srcs = ["hlo_test_base.cc"],
+    hdrs = ["hlo_test_base.h"],
     deps = [
         ":aot_utils",
         ":hlo_runner_agnostic_test_base",
@@ -303,6 +303,16 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
+    name = "hlo_pjrt_test_base",
+    testonly = True,
+    hdrs = ["hlo_pjrt_test_base.h"],
+    deps = [
+        ":hlo_test_base",
+        "@com_google_absl//absl/base:core_headers",
     ],
 )
 

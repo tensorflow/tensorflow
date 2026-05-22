@@ -16,34 +16,19 @@ limitations under the License.
 #ifndef XLA_TESTS_HLO_PJRT_TEST_BASE_H_
 #define XLA_TESTS_HLO_PJRT_TEST_BASE_H_
 
-#include <memory>
-
-#include "xla/pjrt/pjrt_client.h"
-#include "xla/tests/hlo_runner_agnostic_test_base.h"
-#include "xla/util.h"
-#include "xla/xla_data.pb.h"
+#include "absl/base/macros.h"
+#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 
-struct HloPjRtTestBaseOptions {
-  bool verifier_layout_sensitive = false;
-  bool allow_mixed_precision_in_hlo_verifier = true;
-  HloPredicate instruction_can_change_layout_func;
-};
+using HloPjRtTestBaseOptions
+    [[deprecated("HloPjRtTestBaseOptions is a deprecated alias for "
+                 "HloTestBaseOptions.")]] ABSL_REFACTOR_INLINE =
+        HloTestBaseOptions;
 
-class HloPjRtTestBase : public HloRunnerAgnosticTestBase {
- protected:
-  // This uses the PjRt interpreter backend for the reference backend and
-  // automatically finds a PjRt backend for the test backend.
-  explicit HloPjRtTestBase(HloPjRtTestBaseOptions options = {});
-
- private:
-  HloPjRtTestBase(PjRtClient* client, HloPjRtTestBaseOptions options);
-  HloPjRtTestBase(DeviceShapeRepresentationFn device_shape_representation_fn,
-                  DeviceShapeSizeFn device_shape_size_fn,
-                  std::unique_ptr<PjRtClient> client,
-                  HloPjRtTestBaseOptions options);
-};
+using HloPjRtTestBase
+    [[deprecated("HloPjRtTestBase is a deprecated alias for "
+                 "HloTestBase.")]] ABSL_REFACTOR_INLINE = HloTestBase;
 
 }  // namespace xla
 

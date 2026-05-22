@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tests/hlo_test_base.h"
 
 #include <functional>
 #include <memory>
@@ -30,8 +30,7 @@ limitations under the License.
 namespace xla {
 namespace {
 std::unique_ptr<PjRtClient> GetPjRtClientForTest() {
-  CHECK(ShouldUsePjRt())
-      << "PjRt is required for tests extending HloPjRtTestBase.";
+  CHECK(ShouldUsePjRt()) << "PjRt is required for tests extending HloTestBase.";
   absl::StatusOr<std::unique_ptr<PjRtClient>> client =
       GetGlobalPjRtClientTestFactory().Get()();
   CHECK_OK(client.status())
@@ -39,7 +38,7 @@ std::unique_ptr<PjRtClient> GetPjRtClientForTest() {
   return *std::move(client);
 }
 
-HloRunnerAgnosticTestBaseOptions BuildOptions(HloPjRtTestBaseOptions options) {
+HloRunnerAgnosticTestBaseOptions BuildOptions(HloTestBaseOptions options) {
   HloRunnerAgnosticTestBaseOptions new_options;
   new_options.verifier_layout_sensitive = options.verifier_layout_sensitive;
   new_options.allow_mixed_precision_in_hlo_verifier =
@@ -52,21 +51,20 @@ HloRunnerAgnosticTestBaseOptions BuildOptions(HloPjRtTestBaseOptions options) {
 }
 }  // namespace
 
-HloPjRtTestBase::HloPjRtTestBase(HloPjRtTestBaseOptions options)
-    : HloPjRtTestBase(GetPjRtClientForTest().release(), std::move(options)) {}
+HloTestBase::HloTestBase(HloTestBaseOptions options)
+    : HloTestBase(GetPjRtClientForTest().release(), std::move(options)) {}
 
-HloPjRtTestBase::HloPjRtTestBase(PjRtClient* client,
-                                 HloPjRtTestBaseOptions options)
-    : HloPjRtTestBase(
+HloTestBase::HloTestBase(PjRtClient* client, HloTestBaseOptions options)
+    : HloTestBase(
           GetGlobalPjRtClientTestFactory().GetDeviceShapeRepresentationFn(
               client),
           GetGlobalPjRtClientTestFactory().GetDeviceShapeSizeFn(client),
           absl::WrapUnique(client), std::move(options)) {}
 
-HloPjRtTestBase::HloPjRtTestBase(
+HloTestBase::HloTestBase(
     DeviceShapeRepresentationFn device_shape_representation_fn,
     DeviceShapeSizeFn device_shape_size_fn, std::unique_ptr<PjRtClient> client,
-    HloPjRtTestBaseOptions options)
+    HloTestBaseOptions options)
     : HloRunnerAgnosticTestBase(MakeHloRunnerPjRtAotAware(std::move(client)),
                                 std::move(device_shape_representation_fn),
                                 std::move(device_shape_size_fn),
