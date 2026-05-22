@@ -327,9 +327,8 @@ class AsyncDoneCommand : public Command {
 // A sequence of commands (corresponds to a ThunkSequence from the Thunk API).
 //
 // Commands are stored as raw pointers in append order. Ownership is split:
-// - Commands created during conversion (i.e. Command subclasses in
-//   command_buffer_cmd.h that are not yet migrated to their corresponding
-//   Thunk) are owned by this sequence's internal `owned_` vector.
+// - Commands created during conversion are owned by this sequence's internal
+//   `owned_` vector.
 // - Commands that live in a Thunk which itself implements Command (e.g.
 //   ReplicaOrPartitionIdThunk) are borrowed: only a raw pointer is stored here,
 //   and the ThunkSequence in CommandBufferThunk retains ownership.

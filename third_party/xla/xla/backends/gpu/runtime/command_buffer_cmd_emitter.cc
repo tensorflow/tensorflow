@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_broadcast_thunk.h"
 #include "xla/backends/gpu/runtime/collective_permute_thunk.h"
 #include "xla/backends/gpu/runtime/command.h"
-#include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
@@ -89,8 +88,8 @@ static absl::Status AppendCommands(ConversionContext& ctx,
 // Conversions from Thunk to Command
 //===----------------------------------------------------------------------===//
 
-static absl::StatusOr<std::unique_ptr<Command>> Convert(
-    const WhileThunk& thunk, const ConvertToCommandsOptions& options) {
+static absl::Status SetOrUpdateCommandBufferExecutors(
+    WhileThunk& thunk, const ConvertToCommandsOptions& options) {
   VLOG(1) << "WhileThunk: " << thunk.profile_annotation();
   ASSIGN_OR_RETURN(
       CommandExecutor cond_cmds,
@@ -98,9 +97,8 @@ static absl::StatusOr<std::unique_ptr<Command>> Convert(
   ASSIGN_OR_RETURN(CommandExecutor body_cmds,
                    ConvertToCommands(thunk.body_executor().thunks(), options));
 
-  return std::make_unique<WhileCmd>(
-      thunk.condition_result_buffer(), std::move(cond_cmds),
-      std::move(body_cmds), thunk.trip_count(), options.enable_loop_unroll);
+  return thunk.SetOrUpdateCommandBufferExecutors(
+      std::move(cond_cmds), std::move(body_cmds), options.enable_loop_unroll);
 }
 
 static absl::Status SetOrUpdateCommandBufferBranchExecutors(
@@ -127,41 +125,9 @@ static absl::Status SetOrUpdateCommandBufferBranchExecutors(
   return thunk.SetOrUpdateCommandBufferBranchExecutors(std::move(branch_cmds));
 }
 
-//===----------------------------------------------------------------------===//
-static absl::StatusOr<std::unique_ptr<Command>> CopyMetadata(
-    absl::StatusOr<std::unique_ptr<Command>> cmd, const Thunk& thunk) {
-  if (cmd.ok()) {
-    (*cmd)->set_profile_annotation(thunk.profile_annotation());
-    return cmd;
-  }
-  return cmd;
-}
-
-// Takes Thunk& (non-const) rather than const Thunk& so that thunks which
-// also implement Command can be appended as borrowed Command* without
-// const_cast (which is banned). The thunks in ThunkSequence are non-const
-// (unique_ptr<Thunk>), so callers always have a non-const reference available.
-template <typename ThunkType, typename... Args>
-static absl::StatusOr<std::unique_ptr<Command>> Convert(Thunk& thunk,
-                                                        Args&&... args) {
-  return CopyMetadata(
-      Convert(static_cast<ThunkType&>(thunk), std::forward<Args>(args)...),
-      thunk);
-}
-
 static absl::Status AppendCommands(ConversionContext& ctx,
                                    CommandSequence& cmd_sequence, Thunk& thunk,
                                    const ConvertToCommandsOptions& options) {
-  auto append =
-      [&](absl::StatusOr<std::unique_ptr<Command>> command) -> absl::Status {
-    if (!command.ok()) {
-      return command.status();
-    }
-
-    cmd_sequence.Append(std::move(*command));
-    return absl::OkStatus();
-  };
-
   switch (thunk.kind()) {
     case Thunk::Kind::kConditional: {
       auto& conditional_thunk = static_cast<ConditionalThunk&>(thunk);
@@ -264,8 +230,13 @@ static absl::Status AppendCommands(ConversionContext& ctx,
     case Thunk::Kind::kAsyncDone:
       // Async done thunks are no-ops in command buffers.
       return absl::OkStatus();
-    case Thunk::Kind::kWhile:
-      return append(Convert<WhileThunk>(thunk, options));
+    case Thunk::Kind::kWhile: {
+      auto& while_thunk = static_cast<WhileThunk&>(thunk);
+      TF_RETURN_IF_ERROR(
+          SetOrUpdateCommandBufferExecutors(while_thunk, options));
+      cmd_sequence.Append(&while_thunk);
+      return absl::OkStatus();
+    }
     // CuDnnThunk implements Command (via TracedCommand) directly; append
     // borrowed pointer.
     case Thunk::Kind::kCuDnn:

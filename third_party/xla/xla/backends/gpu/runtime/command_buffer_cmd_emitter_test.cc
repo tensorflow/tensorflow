@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
+#include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/runtime/execution_graph.h"
 #include "xla/service/buffer_assignment.h"
@@ -452,6 +453,94 @@ TEST_F(CommandBufferCmdEmitterTest, ConvertsConditionalThunkToCommand) {
     return absl::OkStatus();
   }));
   EXPECT_THAT(command_names, ElementsAre("conditional", "branch0", "branch1"));
+}
+
+TEST_F(CommandBufferCmdEmitterTest, ConvertsWhileThunkToCommand) {
+  BufferAllocation pred_alloc(/*index=*/0, /*size=*/sizeof(bool), /*color=*/0);
+  BufferAllocation data_alloc(/*index=*/1, /*size=*/2 * 1024, /*color=*/0);
+
+  BufferAllocation::Slice pred_slice(&pred_alloc, /*offset=*/0,
+                                     /*size=*/sizeof(bool));
+  BufferAllocation::Slice cond_slice(&data_alloc, /*offset=*/0,
+                                     /*size=*/1024);
+  BufferAllocation::Slice body_slice(&data_alloc, /*offset=*/1024,
+                                     /*size=*/1024);
+
+  ThunkSequence cond_thunks;
+  cond_thunks.push_back(
+      std::make_unique<FakeKernelThunk>(NextThunkInfo("cond"), cond_slice));
+
+  ThunkSequence body_thunks;
+  body_thunks.push_back(
+      std::make_unique<FakeKernelThunk>(NextThunkInfo("body"), body_slice));
+
+  auto while_thunk = std::make_unique<WhileThunk>(
+      NextThunkInfo("while"), pred_slice, std::move(cond_thunks),
+      std::move(body_thunks));
+  WhileThunk* while_ptr = while_thunk.get();
+
+  ThunkSequence thunks;
+  thunks.push_back(std::move(while_thunk));
+
+  ASSERT_OK_AND_ASSIGN(CommandExecutor commands,
+                       ConvertToCommands(thunks, ConvertToCommandsOptions()));
+
+  EXPECT_EQ(while_ptr->command_type(), CommandType::kWhileCmd);
+
+  std::vector<std::string> command_names;
+  CHECK_OK(commands.Walk([&](Command* command) {
+    command_names.push_back(std::string(command->profile_annotation()));
+    return absl::OkStatus();
+  }));
+  EXPECT_THAT(command_names, ElementsAre("while", "cond", "body"));
+}
+
+TEST_F(CommandBufferCmdEmitterTest, ConvertsWhileThunkRepeatedly) {
+  BufferAllocation pred_alloc(/*index=*/0, /*size=*/sizeof(bool), /*color=*/0);
+  BufferAllocation data_alloc(/*index=*/1, /*size=*/2 * 1024, /*color=*/0);
+
+  BufferAllocation::Slice pred_slice(&pred_alloc, /*offset=*/0,
+                                     /*size=*/sizeof(bool));
+  BufferAllocation::Slice cond_slice(&data_alloc, /*offset=*/0,
+                                     /*size=*/1024);
+  BufferAllocation::Slice body_slice(&data_alloc, /*offset=*/1024,
+                                     /*size=*/1024);
+
+  ThunkSequence cond_thunks;
+  cond_thunks.push_back(
+      std::make_unique<FakeKernelThunk>(NextThunkInfo("cond"), cond_slice));
+
+  ThunkSequence body_thunks;
+  body_thunks.push_back(
+      std::make_unique<FakeKernelThunk>(NextThunkInfo("body"), body_slice));
+
+  ThunkSequence thunks;
+  thunks.push_back(std::make_unique<WhileThunk>(
+      NextThunkInfo("while"), pred_slice, std::move(cond_thunks),
+      std::move(body_thunks)));
+
+  auto collect_command_names = [](CommandExecutor& commands) {
+    std::vector<std::string> command_names;
+    CHECK_OK(commands.Walk([&](Command* command) {
+      command_names.push_back(std::string(command->profile_annotation()));
+      return absl::OkStatus();
+    }));
+    return command_names;
+  };
+
+  ASSERT_OK_AND_ASSIGN(CommandExecutor first_commands,
+                       ConvertToCommands(thunks, ConvertToCommandsOptions()));
+  EXPECT_THAT(collect_command_names(first_commands),
+              ElementsAre("while", "cond", "body"));
+
+  ConvertToCommandsOptions concurrent_options;
+  concurrent_options.synchronization_mode =
+      CommandExecutor::SynchronizationMode::kConcurrent;
+  ASSERT_OK_AND_ASSIGN(CommandExecutor second_commands,
+                       ConvertToCommands(thunks, concurrent_options));
+  ASSERT_TRUE(second_commands.execution_graph().has_value());
+  EXPECT_THAT(collect_command_names(second_commands),
+              ElementsAre("while", "cond", "body"));
 }
 
 TEST_F(CommandBufferCmdEmitterTest, ConvertsConditionalThunkRepeatedly) {
