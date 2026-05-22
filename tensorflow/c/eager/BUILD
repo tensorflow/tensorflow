@@ -1145,24 +1145,37 @@ filegroup(
     srcs = glob(
         [
             "*.cc",
-            "*.h",
         ],
         exclude = [
             "c_api_experimental.cc",
             "c_api_experimental_reader.cc",
-            "c_api_experimental_reader.h",
-            "tfe_monitoring_reader_internal.h",
             "c_api_unified_experimental.cc",
             "c_api_unified_experimental_eager.cc",
             "c_api_unified_experimental_graph.cc",
-            "c_api_unified_experimental_internal.h",
-            "graph_function.h",
             "graph_function.cc",
             "gradient_checker.cc",
-            "gradient_checker.h",
             "gradients.cc",  # Uses RTTI.
-            "tracing_utils.h",
             "tracing_utils.cc",
+            "*test*",
+            "*dlpack*",
+        ],
+    ),
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "hdrs",
+    srcs = glob(
+        [
+            "*.h",
+        ],
+        exclude = [
+            "c_api_experimental_reader.h",
+            "tfe_monitoring_reader_internal.h",
+            "c_api_unified_experimental_internal.h",
+            "graph_function.h",
+            "gradient_checker.h",
+            "tracing_utils.h",
             "*test*",
             "*dlpack*",
         ],

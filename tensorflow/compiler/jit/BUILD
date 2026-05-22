@@ -55,6 +55,13 @@ filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "defs.cc",
+    ],
+    visibility = [":friends"],
+)
+
+filegroup(
+    name = "mobile_hdrs_no_runtime",
+    srcs = [
         "defs.h",
     ],
     visibility = [":friends"],

@@ -19,7 +19,7 @@ package(
 )
 
 filegroup(
-    name = "srcs_no_runtime",
+    name = "hdrs_no_runtime",
     srcs = [
         "framework/gradients.h",
         "framework/ops.h",
