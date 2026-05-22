@@ -219,7 +219,7 @@ bool BlockLevelEmitterBackend::IsSupported(const HloInstruction& instr) {
   return IsTritonSupportedComputation(
              *fusion_computation,
              target_config().device_description.gpu_compute_capability())
-      .CanFuse();
+      .IsAllowed();
 }
 
 }  // namespace xla::gpu

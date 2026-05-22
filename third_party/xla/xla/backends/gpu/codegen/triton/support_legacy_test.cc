@@ -292,11 +292,11 @@ ENTRY e {
   const bool is_supported_instruction =
       legacy_triton::IsTritonSupportedInstruction(*dynamic_slice,
                                                   GetComputeCapability())
-          .CanFuse();
+          .IsAllowed();
   const bool is_supported_dynamic_slice =
       legacy_triton::IsTritonSupportedDynamicSlice(
           *Cast<HloDynamicSliceInstruction>(dynamic_slice))
-          .CanFuse();
+          .IsAllowed();
   EXPECT_EQ(is_supported_instruction, is_supported_dynamic_slice);
 
   if (is_supported_instruction) {

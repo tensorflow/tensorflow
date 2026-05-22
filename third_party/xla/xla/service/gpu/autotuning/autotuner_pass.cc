@@ -46,11 +46,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/compiler.h"
+#include "xla/service/decision.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform/platform_object_registry.h"
@@ -67,7 +67,7 @@ namespace gpu {
 
 namespace {
 
-using AutotuneDecision = FusionDecision;
+using AutotuneDecision = Decision;
 
 // Register spilling is currently not allowed for GEMM/Conv fusions, but allowed
 // for non-GEMM fusions. Register spilling configurations can be expensive to
@@ -405,7 +405,7 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
       VLOG(3) << "Not autotuning " << instruction.name() << ": "
               << decision.Explain();
     }
-    return decision.CanFuse();
+    return decision.IsAllowed();
   };
 
   std::unique_ptr<Profiler> profiler = nullptr;

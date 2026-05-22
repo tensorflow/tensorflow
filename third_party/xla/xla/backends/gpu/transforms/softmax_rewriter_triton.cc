@@ -421,7 +421,7 @@ absl::StatusOr<bool> MaybeFuseDiamondImpl(
                        device_info, shape_size, alias_info, mlir_context,
                        use_cost_model_to_evaluate_fusions));
 
-  if (!fusion_decision.CanFuse()) {
+  if (fusion_decision.IsForbidden()) {
     VLOG(2) << "Not fusing: " << fusion_decision.Explain();
     normalization_fusion->DetachFromOperandsAndUsers();
     RETURN_IF_ERROR(normalization_fusion->parent()->RemoveInstruction(

@@ -326,7 +326,8 @@ CodegenDecision CanTritonHandleReduce(
 
   bool is_triton_supported_reduction_computation = absl::c_all_of(
       reduce.to_apply()->instructions(), [&](const HloInstruction* instr) {
-        return IsTritonSupportedInstructionImpl(*instr, gpu_version).CanFuse();
+        return IsTritonSupportedInstructionImpl(*instr, gpu_version)
+            .IsAllowed();
       });
   if (!is_triton_supported_reduction_computation) {
     return CodegenDecision::Forbid(
@@ -355,7 +356,8 @@ CodegenDecision IsTritonSupportedAllReduce(
 
   bool is_triton_supported_all_reduce_computation = absl::c_all_of(
       all_reduce.to_apply()->instructions(), [&](const HloInstruction* instr) {
-        return IsTritonSupportedInstructionImpl(*instr, gpu_version).CanFuse();
+        return IsTritonSupportedInstructionImpl(*instr, gpu_version)
+            .IsAllowed();
       });
   if (!is_triton_supported_all_reduce_computation) {
     return CodegenDecision::Forbid(
@@ -632,11 +634,11 @@ CodegenDecision IsTritonSupportedInstructionImpl(
         "Unsupported output data type: ", output_type_is_supported.Explain()));
   }
 
-  CodegenDecision input_types_are_supported =
+  CodegenDecision input_types_are_supported = CodegenDecision(
       absl::c_all_of(instr.operands(), [&](const HloInstruction* operand) {
         return IsTritonSupportedDataType(operand->shape().element_type(),
                                          gpu_version);
-      });
+      }));
 
   if (!input_types_are_supported) {
     return CodegenDecision::Forbid(absl::StrCat(
@@ -810,7 +812,7 @@ CodegenDecision IsTritonSupportedInstruction(
       IsTritonSupportedInstructionImpl(instr, gpu_version);
   VLOG(2) << absl::StrCat("IsTritonSupportedInstruction: ", instr.ToString(),
                           " ",
-                          (decision.CanFuse() ? "yes" : decision.Explain()));
+                          (decision.IsAllowed() ? "yes" : decision.Explain()));
   return decision;
 }
 

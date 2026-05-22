@@ -2309,7 +2309,7 @@ ENTRY entry {
       ParseTemplateAndGetInstruction(hlo_text, F32, HloOpcode::kFusion));
   se::GpuComputeCapability cc = DefaultDeviceForTesting();
   CodegenDecision decision = IsTritonSupportedInstruction(ti.Instruction(), cc);
-  ASSERT_FALSE(decision.CanFuse());
+  ASSERT_TRUE(decision.IsForbidden());
   EXPECT_THAT(decision.Explain(),
               HasSubstr("Nested fusions are not supported"));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{64, 32}, cc);
