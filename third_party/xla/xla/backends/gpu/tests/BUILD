@@ -223,7 +223,6 @@ xla_test(
         "//xla/backends/gpu/runtime:collective_memory",
         "//xla/backends/gpu/runtime:collective_params",
         "//xla/ffi",
-        "//xla/ffi:ffi_api",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_runner_interface",
