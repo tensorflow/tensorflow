@@ -79,9 +79,9 @@ class OwningScratchAllocator : public ScratchAllocator {
       return absl::InvalidArgumentError(
           absl::StrCat("byte_size must be non-negative, but got ", byte_size));
     }
-    TF_ASSIGN_OR_RETURN(ScopedDeviceAddress<uint8_t> buffer,
-                        allocator_->Allocate(device_ordinal_, byte_size,
-                                             /*retry_on_failure=*/false));
+    ASSIGN_OR_RETURN(ScopedDeviceAddress<uint8_t> buffer,
+                     allocator_->Allocate(device_ordinal_, byte_size,
+                                          /*retry_on_failure=*/false));
     buffers_.push_back(std::move(buffer));
     return *buffers_.back();
   }

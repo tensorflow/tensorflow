@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/array2d.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -611,8 +612,8 @@ ENTRY main.1 {
       [](std::unique_ptr<HloModule> m, HloRunnerInterface* runner,
          absl::Span<const Literal> input_data) -> absl::StatusOr<Literal> {
     const bool should_inject = (m->name() == "sine_abs_fusion");
-    TF_ASSIGN_OR_RETURN(Literal output,
-                        RunModule(std::move(m), runner, input_data));
+    ASSIGN_OR_RETURN(Literal output,
+                     RunModule(std::move(m), runner, input_data));
     if (should_inject) {
       // Flip an exponent bit in the first element to guarantee a mismatch.
       // Using untyped_data handles all primitive types without crashing.

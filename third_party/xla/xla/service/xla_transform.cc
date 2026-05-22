@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/tsl/platform/logging.h"
@@ -96,7 +97,7 @@ absl::StatusOr<bool> ApplyXlaTransforms::RunImpl(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "ApplyXlaTransforms ENTRY";
   XLA_VLOG_LINES(1, module->ToString());
-  TF_ASSIGN_OR_RETURN(bool changed, ApplyXlaTransformsToModule(stage_, module));
+  ASSIGN_OR_RETURN(bool changed, ApplyXlaTransformsToModule(stage_, module));
   if (changed) {
     HloVerifier verifier(/*layout_sensitive=*/false,
                          /*allow_mixed_precision=*/false);

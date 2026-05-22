@@ -2323,9 +2323,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (!absl::c_linear_search(supported_type, output_type)) {
       return false;
     }
-    TF_ASSIGN_OR_RETURN(const se::blas::DataType output_dtype,
-                        se::gpu::AsBlasDataType(output_type));
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(const se::blas::DataType output_dtype,
+                     se::gpu::AsBlasDataType(output_type));
+    ASSIGN_OR_RETURN(
         const se::blas::ComputationType compute_type,
         se::gpu::GetBlasComputationType(
             instr.precision_config().algorithm(), a_dtype, output_type,

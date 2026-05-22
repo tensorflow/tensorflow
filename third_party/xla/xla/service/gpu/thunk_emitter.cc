@@ -1440,17 +1440,17 @@ AsyncThunkSequence ThunkEmitter::EmitDynamicSliceFusionV2(
   std::vector<BufferAllocation::Slice> parameter_buffers;
   parameter_buffers.reserve(instr->operand_count());
   for (const auto* operand : instr->operands()) {
-    TF_ASSIGN_OR_RETURN(parameter_buffers.emplace_back(),
-                        GetAllocationSliceForHlo(operand));
+    ASSIGN_OR_RETURN(parameter_buffers.emplace_back(),
+                     GetAllocationSliceForHlo(operand));
   }
 
   // result_buffers: one entry per fusion output leaf in DFS order.
   std::vector<BufferAllocation::Slice> result_buffers;
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachLeafShapeWithStatus(
+  RETURN_IF_ERROR(ShapeUtil::ForEachLeafShapeWithStatus(
       instr->shape(),
       [&](const Shape&, const ShapeIndex& index) -> absl::Status {
-        TF_ASSIGN_OR_RETURN(result_buffers.emplace_back(),
-                            GetAllocationSliceForHlo(instr, index));
+        ASSIGN_OR_RETURN(result_buffers.emplace_back(),
+                         GetAllocationSliceForHlo(instr, index));
         return absl::OkStatus();
       }));
 

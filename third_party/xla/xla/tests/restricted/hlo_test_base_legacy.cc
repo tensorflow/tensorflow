@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_print_options.h"
@@ -187,9 +188,8 @@ void HloTestBaseLegacy::MatchOptimizedHlo(absl::string_view hlo,
 
 absl::StatusOr<std::unique_ptr<HloModule>>
 HloTestBaseLegacy::GetOptimizedModule(absl::string_view hlo) {
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> module,
-      ParseAndReturnVerifiedModule(hlo, GetModuleConfigForTest()));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                   ParseAndReturnVerifiedModule(hlo, GetModuleConfigForTest()));
   // TODO - b/391868033: Remove calls to UpdateEntryComputationLayout.
   UpdateEntryComputationLayout(module.get());
   return backend().compiler()->RunHloPasses(

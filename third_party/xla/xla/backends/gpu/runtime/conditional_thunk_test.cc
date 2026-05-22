@@ -315,10 +315,10 @@ TEST(ConditionalThunkTest, RecordCreatesAndUpdatesCommandBufferCase) {
                  create_branches) {
               auto branch = std::make_unique<BranchCommandBuffer>();
               ConfigureNestedCommandBuffer(branch.get());
-              TF_RETURN_IF_ERROR(create_branch(branch->command_buffer.get(),
-                                               /*dependencies=*/{})
-                                     .status());
-              TF_RETURN_IF_ERROR(branch->command_buffer->Finalize());
+              RETURN_IF_ERROR(create_branch(branch->command_buffer.get(),
+                                            /*dependencies=*/{})
+                                  .status());
+              RETURN_IF_ERROR(branch->command_buffer->Finalize());
               branch_command_buffers.push_back(std::move(branch));
             }
             return &case_se_command;
@@ -355,11 +355,11 @@ TEST(ConditionalThunkTest, RecordCreatesAndUpdatesCommandBufferCase) {
               return absl::InternalError("unexpected branch count");
             }
             for (size_t i = 0; i < update_branches.size(); ++i) {
-              TF_RETURN_IF_ERROR(
+              RETURN_IF_ERROR(
                   branch_command_buffers[i]->command_buffer->Update());
-              TF_RETURN_IF_ERROR(update_branches[i](
+              RETURN_IF_ERROR(update_branches[i](
                   branch_command_buffers[i]->command_buffer.get()));
-              TF_RETURN_IF_ERROR(
+              RETURN_IF_ERROR(
                   branch_command_buffers[i]->command_buffer->Finalize());
             }
             return absl::OkStatus();

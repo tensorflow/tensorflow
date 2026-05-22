@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/restricted/hlo_runner_legacy.h"
@@ -58,15 +59,15 @@ absl::Status RunMain(
   }
 
   // 1. Create Runners
-  TF_ASSIGN_OR_RETURN(se::Platform * test_platform,
-                      PlatformUtil::GetPlatform(test_platform_name));
+  ASSIGN_OR_RETURN(se::Platform * test_platform,
+                   PlatformUtil::GetPlatform(test_platform_name));
   HloRunnerLegacy test_runner(test_platform);
 
   std::unique_ptr<HloRunnerLegacy> reference_runner_ptr;
   HloRunnerInterface* reference_runner_ptr_raw = nullptr;
   if (!reference_platform_name.empty()) {
-    TF_ASSIGN_OR_RETURN(se::Platform * ref_platform,
-                        PlatformUtil::GetPlatform(reference_platform_name));
+    ASSIGN_OR_RETURN(se::Platform * ref_platform,
+                     PlatformUtil::GetPlatform(reference_platform_name));
     reference_runner_ptr = std::make_unique<HloRunnerLegacy>(ref_platform);
     reference_runner_ptr_raw = reference_runner_ptr.get();
   }
@@ -83,9 +84,9 @@ absl::Status RunMain(
   options.filter_by_opcode = std::string(filter_by_opcode);
   options.skip_by_opcode = std::string(skip_by_opcode);
 
-  TF_ASSIGN_OR_RETURN(std::vector<HloIsolationTestResult> results,
-                      RunIsolationPipeline(std::string(hlo_path), &test_runner,
-                                           reference_runner_ptr_raw, options));
+  ASSIGN_OR_RETURN(std::vector<HloIsolationTestResult> results,
+                   RunIsolationPipeline(std::string(hlo_path), &test_runner,
+                                        reference_runner_ptr_raw, options));
 
   int run_count = 0;
   int success_count = 0;

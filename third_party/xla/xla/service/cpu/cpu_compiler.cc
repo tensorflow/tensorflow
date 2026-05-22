@@ -1272,7 +1272,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
     VLOG(1) << "Triggering HLO module splitting for module: " << module->name();
     {
       HloComputationDeduplicator deduplicator;
-      TF_RETURN_IF_ERROR(deduplicator.Run(module.get()).status());
+      RETURN_IF_ERROR(deduplicator.Run(module.get()).status());
     }
     MultiModuleDriver driver(
         [this, stream_exec](std::unique_ptr<HloModule> m,

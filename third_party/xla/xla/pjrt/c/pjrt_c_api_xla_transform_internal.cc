@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
@@ -76,7 +77,7 @@ class CApiXlaTransformAdapter : public HloXlaTransform {
       }
 
       // We need a HloModuleConfig. We can use the existing module's config.
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           auto temp_module,
           HloModule::CreateFromProto(transformed_proto, module->config()));
       // Capture the entry computation pointer before calling
@@ -87,7 +88,7 @@ class CApiXlaTransformAdapter : public HloXlaTransform {
 
       module->ReplaceEntryComputation(new_entry);
 
-      TF_RETURN_IF_ERROR(module->RemoveUnusedComputations());
+      RETURN_IF_ERROR(module->RemoveUnusedComputations());
 
       return true;
     }

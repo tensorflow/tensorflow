@@ -308,7 +308,7 @@ struct BlasLt {
   static absl::StatusOr<MatmulPlanPtr> GetMatmulPlan(Stream* stream,
                                                      const GemmConfig& cfg,
                                                      Epilogue epilogue) {
-    TF_ASSIGN_OR_RETURN(auto* blas_lt, Get(stream->parent()));
+    ASSIGN_OR_RETURN(auto* blas_lt, Get(stream->parent()));
     return blas_lt->GetMatmulPlan(cfg, epilogue);
   }
 

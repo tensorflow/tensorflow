@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/file_statistics.h"
 #include "xla/tsl/platform/logging.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #endif  // defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM) || \
         // defined(PLATFORM_GOOGLE)
 
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "tsl/platform/platform.h"
@@ -60,11 +62,9 @@ bool FileSystem::Match(absl::string_view filename, absl::string_view pattern) {
   return fnmatch(std::string(pattern).c_str(), std::string(filename).c_str(),
                  FNM_PATHNAME) == 0;
 #else
-  string regexp(pattern);
-  regexp = str_util::StringReplace(regexp, "*", "[^/]*", true);
-  regexp = str_util::StringReplace(regexp, "?", ".", true);
-  regexp = str_util::StringReplace(regexp, "(", "\\(", true);
-  regexp = str_util::StringReplace(regexp, ")", "\\)", true);
+  std::string regexp(pattern);
+  absl::StrReplaceAll({{"*", "[^/]*"}, {"?", "."}, {"(", "\\("}, {")", "\\)"}},
+                      &regexp);
   return RE2::FullMatch(filename, regexp);
 #endif  // defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM) || \
         // defined(PLATFORM_GOOGLE)
@@ -89,9 +89,9 @@ std::string FileSystem::TranslateName(absl::string_view name) const {
 
 absl::Status FileSystem::IsDirectory(const std::string& name) {
   // Check if path exists.
-  TF_RETURN_IF_ERROR(FileExists(name));
+  RETURN_IF_ERROR(FileExists(name));
   FileStatistics stat;
-  TF_RETURN_IF_ERROR(Stat(name, &stat));
+  RETURN_IF_ERROR(Stat(name, &stat));
   if (stat.is_directory) {
     return absl::OkStatus();
   }

@@ -907,7 +907,7 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
         TileInfo tile_info,
         TileInfo::Construct(b, pid, GetRuntimeValues(tiled_hlo, values),
                             tiled_hlo));
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         TensorValue parameter,
         EmitParameterExtract(b, tile_info, fn.getArgument(arg_index)));
 

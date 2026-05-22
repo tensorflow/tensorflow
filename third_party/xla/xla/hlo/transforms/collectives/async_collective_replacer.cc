@@ -130,7 +130,7 @@ absl::StatusOr<bool> AsyncCollectiveReplacer::RunImpl(
     absl::flat_hash_set<HloInstruction*> removed;
     for (HloInstruction* control_dep : control_deps_to_remove) {
       if (!removed.contains(control_dep)) {
-        TF_RETURN_IF_ERROR(computation->RemoveInstruction(control_dep));
+        RETURN_IF_ERROR(computation->RemoveInstruction(control_dep));
         removed.insert(control_dep);
       }
     }

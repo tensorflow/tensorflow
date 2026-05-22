@@ -377,6 +377,7 @@ cc_library(
         "//xla/service:xla_transform",
         "//xla/tsl/lib/strings:proto_serialization",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

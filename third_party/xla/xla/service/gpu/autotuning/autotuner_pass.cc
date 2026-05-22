@@ -351,8 +351,8 @@ AutotunerPass::GetGpuAutotunerBackends(
       autotune_backends.end());
 
   auto& registry = stream_executor::PlatformObjectRegistry::GetGlobalRegistry();
-  TF_ASSIGN_OR_RETURN(const GetCodegenBackends::Type& get_codegen_backends,
-                      registry.FindObject<GetCodegenBackends>(platform_id));
+  ASSIGN_OR_RETURN(const GetCodegenBackends::Type& get_codegen_backends,
+                   registry.FindObject<GetCodegenBackends>(platform_id));
   std::vector<std::unique_ptr<CodegenBackend>> backends = get_codegen_backends(
       stream_exec, device_allocator, &debug_options, compiler, target_config,
       alias_info, mlir_context, shape_size_fn, autotune_backends);
@@ -370,8 +370,8 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
     HloCostAnalysis::ShapeSizeFunction shape_size_fn,
     se::DeviceAddressAllocator* allocator,
     MultiProcessKeyValueStore key_value_store) {
-  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<CodegenBackend>> backends,
-                      get_backends_fn());
+  ASSIGN_OR_RETURN(std::vector<std::unique_ptr<CodegenBackend>> backends,
+                   get_backends_fn());
 
   // 1. Assessing whether to autotune custom calls.
   bool do_not_autotune_cublas =

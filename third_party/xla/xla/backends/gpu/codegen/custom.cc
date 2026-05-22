@@ -750,7 +750,7 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
     BufferAllocation::Slice slice_out_fake(&fake_allocations[fake_arg_idx], 0,
                                            out_fake_byte_size);
     ThunkSequence seq;
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         auto matmul_thunk,
         CreateMatmulThunk(custom_call, thunk_info, std::move(config),
                           slice_lhs_fake, slice_rhs_fake, slice_out_fake,
@@ -777,7 +777,7 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
         std::move(sliced_shapes), std::move(offset_primitive_types),
         std::move(offset_modules_metadata));
   } else {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         thunk,
         CreateMatmulThunk(custom_call, thunk_info, std::move(config), lhs_slice,
                           rhs_slice, output, workspace, deterministic_ops));

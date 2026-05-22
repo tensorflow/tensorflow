@@ -207,8 +207,8 @@ absl::Status CublasLtMatmulThunk::ExecuteOnStreamInternal(
 
 absl::StatusOr<se::gpu::BlasLt::MatmulPlan*>
 CublasLtMatmulThunk::GetCachedMatmulPlan(const ExecuteParams& params) {
-  TF_ASSIGN_OR_RETURN(auto* blas_lt,
-                      se::gpu::BlasLt::Get(params.stream->parent()));
+  ASSIGN_OR_RETURN(auto* blas_lt,
+                   se::gpu::BlasLt::Get(params.stream->parent()));
   auto create = [&]() -> absl::StatusOr<se::gpu::BlasLt::MatmulPlanPtr> {
     VLOG(2) << this << ": Adding new MatmulPlan for stream: " << params.stream
             << " instr: " << canonical_hlo_;
@@ -245,8 +245,8 @@ CublasLtMatmulThunk::GetCachedMatmulPlan(const ExecuteParams& params) {
 
 absl::StatusOr<se::gpu::BlasLt::MatmulPlan*>
 CublasLtMatmulThunk::GetCachedGroupedMatmulPlan(const ExecuteParams& params) {
-  TF_ASSIGN_OR_RETURN(auto* blas_lt,
-                      se::gpu::BlasLt::Get(params.stream->parent()));
+  ASSIGN_OR_RETURN(auto* blas_lt,
+                   se::gpu::BlasLt::Get(params.stream->parent()));
   auto create = [&]() -> absl::StatusOr<se::gpu::BlasLt::MatmulPlanPtr> {
     VLOG(2) << this
             << ": Adding new Grouped MatmulPlan for stream: " << params.stream

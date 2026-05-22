@@ -112,7 +112,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> HandleRecordAction(
   }
 
   if (auto* update = std::get_if<Command::RecordUpdate>(&action)) {
-    TF_RETURN_IF_ERROR(update_command(update->command));
+    RETURN_IF_ERROR(update_command(update->command));
     return update->command;
   }
 

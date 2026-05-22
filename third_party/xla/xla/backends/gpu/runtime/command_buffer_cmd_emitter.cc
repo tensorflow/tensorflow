@@ -131,7 +131,7 @@ static absl::Status AppendCommands(ConversionContext& ctx,
   switch (thunk.kind()) {
     case Thunk::Kind::kConditional: {
       auto& conditional_thunk = static_cast<ConditionalThunk&>(thunk);
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           SetOrUpdateCommandBufferBranchExecutors(conditional_thunk, options));
       cmd_sequence.Append(&conditional_thunk);
       return absl::OkStatus();

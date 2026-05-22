@@ -1243,14 +1243,14 @@ absl::Status HloCostAnalysis::FusionProcessOutputBytesAccessed(
         }
         ShapeIndex subshape_index(shape_index);
         subshape_index.push_back(i);
-        TF_ASSIGN_OR_RETURN(float sub_bytes, propagate_output_size_to_parent(
-                                                 subshape, subshape_index));
+        ASSIGN_OR_RETURN(float sub_bytes, propagate_output_size_to_parent(
+                                              subshape, subshape_index));
         bytes_accessed += sub_bytes;
       }
       return bytes_accessed;
     };
     current_properties_[GetOutputBytesAccessedKey()] = 0;
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         propagate_output_size_to_parent(fusion->shape(), {}).status());
   }
   return absl::OkStatus();

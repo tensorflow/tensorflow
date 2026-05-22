@@ -64,6 +64,7 @@ cc_library(
         "//xla/tools/hlo_bisect:hlo_bisect_state",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:subprocess",
         "@com_google_absl//absl/cleanup",
