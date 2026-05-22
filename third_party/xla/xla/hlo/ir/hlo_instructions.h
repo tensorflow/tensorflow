@@ -297,12 +297,12 @@ class HloAsyncInstruction : public HloInstruction {
 
   void UpdateAsyncChain();
 
- protected:
   // Helper to constructs async-{start,update,done}.
   HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
                       absl::Span<HloInstruction* const> operands,
                       HloOpcode async_wrapped_opcode);
 
+ protected:
   // Updates all future instructions in the async chain to match the shape of
   // the current instruction.
   void UpdateChainShapes();
