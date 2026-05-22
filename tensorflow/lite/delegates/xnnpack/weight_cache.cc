@@ -724,7 +724,7 @@ size_t MMapWeightCacheProvider::LookUpOrInsert(
   XNNPACK_ABORT_CHECK(cache_key, "A null cache key was provided.");
 
   const PackIdentifier pack_id = BuildPackIdentifier(*cache_key);
-  XNNPACK_ABORT_CHECK(pack_id.IsValid(),
+  XNNPACK_ABORT_CHECK(pack_id.HasValidBufferIds(),
                       "An invalid pack identifier was created.");
   if (auto offset_it = cache_key_to_offset_.find(pack_id);
       offset_it != cache_key_to_offset_.end()) {

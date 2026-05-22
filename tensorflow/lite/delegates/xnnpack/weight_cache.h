@@ -83,9 +83,8 @@ struct PackIdentifier {
   uint64_t weights_id = kNoId;
   uint64_t bias_id = kNoId;
 
-  constexpr bool IsValid() const {
-    return pack_algorithm_id != kInvalidId && weights_id != kInvalidId &&
-           bias_id != kInvalidId;
+  constexpr bool HasValidBufferIds() const {
+    return weights_id != kInvalidId && bias_id != kInvalidId;
   }
 
   friend bool operator==(const PackIdentifier& a, const PackIdentifier& b) {
