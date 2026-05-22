@@ -13,8 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <vector>
+
 #include <gtest/gtest.h>
 #include "absl/synchronization/mutex.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
@@ -44,4 +48,25 @@ TEST(HostStream, EnforcesFIFOOrder) {
   TF_ASSERT_OK(stream->BlockHostUntilDone());
   absl::MutexLock lock(mu);
   EXPECT_TRUE(ok);
+}
+
+TEST(HostStream, Memset32) {
+  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                          se::PlatformManager::PlatformWithName("Host"));
+  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor,
+                          platform->ExecutorForDevice(0));
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  uint32_t pattern = 0x12345678;
+  std::vector<uint32_t> buffer(4, 0);
+  se::DeviceAddressBase location(buffer.data(),
+                                 buffer.size() * sizeof(uint32_t));
+
+  TF_ASSERT_OK(
+      stream->Memset32(&location, pattern, buffer.size() * sizeof(uint32_t)));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_EQ(buffer[i], pattern);
+  }
 }

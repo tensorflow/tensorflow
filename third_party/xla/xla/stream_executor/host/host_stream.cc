@@ -66,8 +66,14 @@ absl::Status HostStream::Memcpy(DeviceAddressBase* gpu_dst,
 
 absl::Status HostStream::Memset32(DeviceAddressBase* location, uint32_t pattern,
                                   uint64_t size) {
-  void* gpu_mem = location->opaque();
-  memset(gpu_mem, pattern, size);
+  if (size % sizeof(uint32_t) != 0) {
+    return absl::InvalidArgumentError(
+        "Memset32 requires size to be a multiple of 4 bytes.");
+  }
+  char* dst = static_cast<char*>(location->opaque());
+  for (uint64_t i = 0; i < size; i += sizeof(uint32_t)) {
+    memcpy(dst + i, &pattern, sizeof(uint32_t));
+  }
   return absl::OkStatus();
 }
 
