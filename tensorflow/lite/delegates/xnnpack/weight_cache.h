@@ -78,10 +78,15 @@ bool IsCompatibleCacheFile(const char* path);
 bool IsCompatibleCacheFile(FileDescriptorView fd);
 
 struct PackIdentifier {
-  enum { kNoId = SIZE_MAX };
+  enum { kNoId = SIZE_MAX, kInvalidId = SIZE_MAX - 1 };
   uint64_t pack_algorithm_id = kNoId;
   uint64_t weights_id = kNoId;
   uint64_t bias_id = kNoId;
+
+  constexpr bool IsValid() const {
+    return pack_algorithm_id != kInvalidId && weights_id != kInvalidId &&
+           bias_id != kInvalidId;
+  }
 
   friend bool operator==(const PackIdentifier& a, const PackIdentifier& b) {
     return a.pack_algorithm_id == b.pack_algorithm_id &&

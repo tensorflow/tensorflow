@@ -698,6 +698,8 @@ size_t MMapWeightCacheProvider::LookUp(
     return SIZE_MAX;
   }
   const PackIdentifier pack_id = BuildPackIdentifier(*cache_key);
+  // Note: we don't check if pack_id is valid here, the lookup in the map will
+  // fail in any case.
   if (auto offset_it = cache_key_to_offset_.find(pack_id);
       offset_it != cache_key_to_offset_.end()) {
     return offset_it->second.offset;
@@ -715,6 +717,8 @@ size_t MMapWeightCacheProvider::LookUpOrInsert(
   XNNPACK_ABORT_CHECK(cache_key, "A null cache key was provided.");
 
   const PackIdentifier pack_id = BuildPackIdentifier(*cache_key);
+  XNNPACK_ABORT_CHECK(pack_id.IsValid(),
+                      "An invalid pack identifier was created.");
   if (auto offset_it = cache_key_to_offset_.find(pack_id);
       offset_it != cache_key_to_offset_.end()) {
     return offset_it->second.offset;
@@ -805,28 +809,29 @@ enum xnn_status MMapWeightCacheProvider::alias_data(void* context, void* alias,
 PackIdentifier MMapWeightCacheProvider::BuildPackIdentifier(
     const xnn_weights_cache_look_up_key& key) {
   const auto get_buffer_id = [&](const void* buffer) -> size_t {
-    if (buffer) {
-      const auto identifier_it = buffer_address_to_identifier_.find(buffer);
-      if (identifier_it != buffer_address_to_identifier_.end()) {
-        return identifier_it->second.identifier;
-      }
-      // We could have several layers of remapping. We look through
-      // buffer_remaps_ until we find a valid identifier or nothing is mapped to
-      // the current buffer pointer.
-      auto remapped_it = buffer_remaps_.find(buffer);
-      while (remapped_it != buffer_remaps_.end()) {
-        const auto remapped_identifier_it =
-            buffer_address_to_identifier_.find(remapped_it->second);
-        if (remapped_identifier_it != buffer_address_to_identifier_.end()) {
-          return remapped_identifier_it->second.identifier;
-        }
-        remapped_it = buffer_remaps_.find(remapped_it->second);
-      }
-      XNNPACK_ABORT_CHECK(
-          remapped_it != buffer_remaps_.end(),
-          "Unknown constant buffer passed to BuildPackIdentifier.");
+    if (!buffer) {
+      return PackIdentifier::kNoId;
     }
-    return PackIdentifier::kNoId;
+    // Look the buffer up in the primary map.
+    const auto identifier_it = buffer_address_to_identifier_.find(buffer);
+    if (identifier_it != buffer_address_to_identifier_.end()) {
+      return identifier_it->second.identifier;
+    }
+    // We could have several layers of remapping. We look through
+    // buffer_remaps_ until we find a valid identifier or nothing is mapped to
+    // the current buffer pointer.
+    for (auto remapped_it = buffer_remaps_.find(buffer);
+         remapped_it != buffer_remaps_.end();
+         remapped_it = buffer_remaps_.find(remapped_it->second)) {
+      const auto remapped_identifier_it =
+          buffer_address_to_identifier_.find(remapped_it->second);
+      if (remapped_identifier_it != buffer_address_to_identifier_.end()) {
+        return remapped_identifier_it->second.identifier;
+      }
+    }
+    TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
+                    "Unknown constant buffer passed to BuildPackIdentifier.");
+    return PackIdentifier::kInvalidId;
   };
   return PackIdentifier{/*pack_algorithm_id=*/key.seed,
                         /*weights_id=*/get_buffer_id(key.kernel),
