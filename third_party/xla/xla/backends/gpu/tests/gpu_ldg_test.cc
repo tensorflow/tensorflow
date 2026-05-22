@@ -21,14 +21,15 @@ limitations under the License.
 #include <utility>
 
 #include <gtest/gtest.h>
+#include "absl/strings/substitute.h"
 #include "xla/backends/gpu/tests/gpu_pjrt_codegen_test.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test.h"
 
 namespace xla::gpu {
 namespace {
@@ -151,6 +152,46 @@ TEST_F(GpuLdgTest, NoLdgWhenSharingBuffer) {
     CHECK: ld.global.b32
     CHECK: }
   )");
+}
+
+class NonInvariantLdgTest : public GpuLdgTest {
+ protected:
+  std::unique_ptr<VerifiedHloModule> CreateTestModule(bool add_non_invariant) {
+    return ParseAndReturnVerifiedModule(absl::Substitute(R"(
+add {
+  a = f16[3] parameter(0)
+  b = f16[3] parameter(1)
+  c = f16[3] add(a, b)
+}
+
+e {
+  a = f16[3] parameter(0)
+  b = f16[3] parameter(1)
+  c = f16[3] fusion(a, b), kind=kLoop, calls=add, frontend_attributes={$0}
+})",
+                                                         add_non_invariant
+                                                             ? R"(
+xla.no_invariant_operands="0")"
+                                                             : ""))
+        .value();
+  }
+};
+
+TEST_F(NonInvariantLdgTest, DoNonCoherentLoadsByDefault) {
+  CompileAndOptionallyVerifyPtx(CreateTestModule(/*add_non_invariant=*/false),
+                                R"(
+     CHECK-NOT: ld.global.b16
+     CHECK: ld.global.nc.b16
+     CHECK: ld.global.nc.b16
+   )");
+}
+
+TEST_F(NonInvariantLdgTest, DoSelectiveCoherentLoadWithNoInvariantAnnotation) {
+  CompileAndOptionallyVerifyPtx(CreateTestModule(/*add_non_invariant=*/true),
+                                R"(
+     CHECK: ld.global.b16
+     CHECK: ld.global.nc.b16
+   )");
 }
 
 }  // namespace
