@@ -708,7 +708,7 @@ class Delegate {
 
         options_.weights_cache =
             reinterpret_cast<TfLiteXNNPackDelegateWeightsCache*>(
-                weight_cache_provider_->GetCacheProvider().context);
+                &weight_cache_provider_->GetCacheProvider());
         options_.weight_cache_file_path =
             weight_cache_provider_->GetFilePath().data();
       } else {
