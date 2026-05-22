@@ -65,6 +65,9 @@ absl::Status CustomCallThunkToProto(const Thunk& thunk, ThunkProto& proto) {
         custom_call_proto->mutable_op_buffers()->add_results_shapes()));
   }
 
+  custom_call_proto->mutable_op_buffers()->set_is_tuple_result(
+      custom_call_thunk.op_buffers().is_tuple_result);
+
   return absl::OkStatus();
 }
 
@@ -96,6 +99,26 @@ absl::StatusOr<std::unique_ptr<Thunk>> CustomCallThunkFromProto(
     const auto& [res_buffer, res_shape] = res_slice_shape;
     op_buffers.results_buffers.push_back(res_buffer);
     op_buffers.results_shapes.push_back(res_shape);
+  }
+
+  op_buffers.is_tuple_result =
+      proto.custom_call_thunk().op_buffers().is_tuple_result();
+
+  // The check below is for backward-compatibility: if `is_tuple_result` is
+  // false (e.g. reading an old proto where it defaults to false) but
+  // results_shapes_size() != 1, we know it must be a tuple and set
+  // `is_tuple_result` to true. If results_shapes_size() == 1, we have to
+  // inspect the element type of the single result shape to determine if it's
+  // a tuple.
+  if (!op_buffers.is_tuple_result) {
+    const auto& results_shapes =
+        proto.custom_call_thunk().op_buffers().results_shapes();
+    if (results_shapes.size() != 1) {
+      op_buffers.is_tuple_result = true;
+    } else if (results_shapes.size() == 1 &&
+               results_shapes[0].shape().element_type() == TUPLE) {
+      op_buffers.is_tuple_result = true;
+    }
   }
 
   return CustomCallThunk::Create(

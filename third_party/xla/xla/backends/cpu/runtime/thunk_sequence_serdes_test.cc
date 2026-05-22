@@ -442,7 +442,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
                 buffer_allocations_[buffer_allocations_.size() - 1])},
             /*results_shapes=*/
             {literals_[buffer_allocations_.size() - 1].shape()},
-            /*is_tuple_result=*/false,
+            /*is_tuple_result=*/true,
         },
         /*backend_config=*/"", CustomCallApiVersion::API_VERSION_TYPED_FFI);
   }
@@ -865,6 +865,10 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
                       [](const Shape& shape_1, const Shape& shape_2) {
                         return ShapeUtil::Equal(shape_1, shape_2);
                       });
+
+    are_op_buffers_equal &= (thunk_1.op_buffers().is_tuple_result ==
+                             thunk_2.op_buffers().is_tuple_result);
+
     return thunk_1.target_name() == thunk_2.target_name() &&
            thunk_1.api_version() == thunk_2.api_version() &&
            thunk_1.backend_config() == thunk_2.backend_config() &&

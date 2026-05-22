@@ -53,7 +53,11 @@ class CustomCallThunk final : public Thunk {
 
     std::vector<BufferAllocation::Slice> results_buffers;
     std::vector<Shape> results_shapes;
-    bool is_tuple_result;
+    // `is_tuple_result` is used to distinguish between a custom call returning
+    // a single non-tuple result (e.g., shape F32[10]) and one returning a tuple
+    // with a single element (e.g., shape (F32[10])), as both result in
+    // results_shapes_size() == 1.
+    bool is_tuple_result = false;
   };
 
   static absl::StatusOr<std::unique_ptr<CustomCallThunk>> Create(
