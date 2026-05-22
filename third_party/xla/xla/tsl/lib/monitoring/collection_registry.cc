@@ -18,7 +18,9 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/base/no_destructor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/lib/monitoring/collected_metrics.h"
@@ -68,6 +70,56 @@ void Collector::CollectMetricDescriptor(
 }
 
 }  // namespace internal
+
+namespace exporter_registration {
+
+// static
+ExporterRegistration* ExporterRegistration::Get() {
+  static absl::NoDestructor<ExporterRegistration> instance;
+  return instance.get();
+}
+
+void ExporterRegistration::Register(Exporter* exporter) {
+  DCHECK(exporter != nullptr);
+  if (exporter == nullptr) {
+    return;
+  }
+
+  bool call_init = false;
+  {
+    absl::MutexLock l(exporters_mu_);
+    if (periodically_export_metrics_called_) {
+      LOG(WARNING)
+          << "ExporterRegistration registered after "
+             "PeriodicallyExportMetrics() "
+             "was called. The newly added exporter will be initialized late.";
+      call_init = true;
+    }
+    exporters_.push_back(exporter);
+  }
+  if (call_init) {
+    exporter->PeriodicallyExportMetrics();
+  }
+}
+
+// static
+void ExporterRegistration::PeriodicallyExportMetrics() {
+  Get()->PeriodicallyExportMetricsImpl();
+}
+
+void ExporterRegistration::PeriodicallyExportMetricsImpl() {
+  std::vector<Exporter*> exporters_copy;
+  {
+    absl::MutexLock l(exporters_mu_);
+    periodically_export_metrics_called_ = true;
+    exporters_copy = exporters_;
+  }
+  for (Exporter* exporter : exporters_copy) {
+    exporter->PeriodicallyExportMetrics();
+  }
+}
+
+}  // namespace exporter_registration
 
 // static
 CollectionRegistry* CollectionRegistry::Default() {
