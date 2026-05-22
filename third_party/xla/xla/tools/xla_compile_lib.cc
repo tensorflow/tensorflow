@@ -96,6 +96,17 @@ static absl::StatusOr<std::string> AotCompileCpuExecutable(
   return aot_result->SerializeAsString();
 }
 
+static absl::StatusOr<stream_executor::StreamExecutor*> GetStreamExecutor(
+    stream_executor::Platform* platform, int ordinal) {
+  auto executor_or = platform->ExecutorForDevice(ordinal);
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      executor_or.status(),
+      "Failed to initialize attached GPU. If you want to compile devicelessly, "
+      "make sure to specify a target device (e.g., "
+      "--target_platform_version=nvidia_h100).");
+  return executor_or;
+}
+
 static absl::StatusOr<std::string> CompileGpuExecutable(
     std::unique_ptr<HloModule> hlo_module,
     std::optional<Compiler::GpuTargetConfig> target_config,
@@ -166,7 +177,7 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
           auto platform,
           stream_executor::PlatformManager::PlatformWithName(platform_name));
       ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
-                       platform->ExecutorForDevice(0));
+                       GetStreamExecutor(platform, 0));
 
       aot_options.set_executor(stream_executor);
     }
@@ -210,7 +221,7 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
       stream_executor::PlatformManager::PlatformWithName(platform_name));
   Compiler::CompileOptions compile_options;
   ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
-                   platform->ExecutorForDevice(0));
+                   GetStreamExecutor(platform, 0));
   auto allocator =
       std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
           stream_executor);
