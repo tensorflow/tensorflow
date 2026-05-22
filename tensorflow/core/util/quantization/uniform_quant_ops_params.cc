@@ -29,9 +29,9 @@ using tensorflow::errors::InvalidArgument;
 
 absl::Status ValidDim(int64_t dims, int64_t dim) {
   if (dim < 0 || dim >= dims) {
-    return InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Each dimension number must be in region [0, rank). Given rank ", dims,
-        " and dimension number value ", dim);
+        " and dimension number value ", dim));
   }
   return absl::OkStatus();
 }
@@ -39,9 +39,9 @@ absl::Status ValidDim(int64_t dims, int64_t dim) {
 absl::Status ValidSpatialDimensions(
     int64_t dims, const protobuf::RepeatedField<int64_t>& spatial_dimensions) {
   if (spatial_dimensions.size() != dims - 2) {
-    return InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Spatial dimensions size must be rank - 2. Given rank ", dims,
-        " and spatial dimensions size ", spatial_dimensions.size());
+        " and spatial dimensions size ", spatial_dimensions.size()));
   }
   for (int i = 0; i < spatial_dimensions.size(); ++i) {
     TF_RETURN_IF_ERROR(ValidDim(dims, spatial_dimensions.Get(i)));
@@ -65,14 +65,14 @@ absl::Status
 UniformQuantizedConvolutionParams::ValidateOrFillParamsAndValidateShape(
     const TensorShape& lhs_shape, const TensorShape& rhs_shape) {
   if (lhs_shape.dims() != rhs_shape.dims()) {
-    return InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "lhs and rhs must have same dims. Given lhs and rhs of shapes: ",
-        lhs_shape.DebugString(), rhs_shape.DebugString());
+        lhs_shape.DebugString(), rhs_shape.DebugString()));
   }
   const int64_t dims = lhs_shape.dims();
   if (dims <= 2) {
-    return InvalidArgument("lhs and rhs shape dims must be at least 3. Given: ",
-                           dims);
+    return absl::InvalidArgumentError(absl::StrCat(
+        "lhs and rhs shape dims must be at least 3. Given: ", dims));
   }
 
   const int64_t num_spatial_dims = dims - 2;
@@ -80,34 +80,39 @@ UniformQuantizedConvolutionParams::ValidateOrFillParamsAndValidateShape(
   if (window_strides_.empty()) {
     window_strides_.resize(num_spatial_dims, 1);
   } else if (window_strides_.size() != num_spatial_dims) {
-    return InvalidArgument("Size of window_strides Attr must be dims - 2.");
+    return absl::InvalidArgumentError(
+        "Size of window_strides Attr must be dims - 2.");
   } else if (!absl::c_all_of(window_strides_,
                              [](int stride) { return stride >= 1; })) {
-    return InvalidArgument(
-        "All elements of window_strides must be >= 1. Given ",
-        absl::StrJoin(window_strides_, ", "));
+    return absl::InvalidArgumentError(
+        absl::StrCat("All elements of window_strides must be >= 1. Given ",
+                     absl::StrJoin(window_strides_, ", ")));
   }
 
   if (lhs_dilation_.empty()) {
     lhs_dilation_.resize(num_spatial_dims, 1);
   } else if (lhs_dilation_.size() != num_spatial_dims) {
-    return InvalidArgument("Size of lhs_dilation Attr must be dims - 2.");
+    return absl::InvalidArgumentError(
+        "Size of lhs_dilation Attr must be dims - 2.");
   } else if (!absl::c_all_of(lhs_dilation_, [](const int dilation) {
                return dilation >= 1;
              })) {
-    return InvalidArgument("All elements of lhs_dilation must be >= 1. Given ",
-                           absl::StrJoin(lhs_dilation_, ", "));
+    return absl::InvalidArgumentError(
+        absl::StrCat("All elements of lhs_dilation must be >= 1. Given ",
+                     absl::StrJoin(lhs_dilation_, ", ")));
   }
 
   if (rhs_dilation_.empty()) {
     rhs_dilation_.resize(num_spatial_dims, 1);
   } else if (rhs_dilation_.size() != num_spatial_dims) {
-    return InvalidArgument("Size of rhs_dilation Attr must be dims - 2.");
+    return absl::InvalidArgumentError(
+        "Size of rhs_dilation Attr must be dims - 2.");
   } else if (!absl::c_all_of(rhs_dilation_, [](const int dilation) {
                return dilation >= 1;
              })) {
-    return InvalidArgument("All elements of rhs_dilation must be >= 1. Given ",
-                           absl::StrJoin(rhs_dilation_, ", "));
+    return absl::InvalidArgumentError(
+        absl::StrCat("All elements of rhs_dilation must be >= 1. Given ",
+                     absl::StrJoin(rhs_dilation_, ", ")));
   }
 
   if (dimension_numbers_.input_spatial_dimensions_size() == 0) {
@@ -154,59 +159,60 @@ UniformQuantizedConvolutionParams::ValidateOrFillParamsAndValidateShape(
 
   // Validate lhs_shape, rhs_shape, feature_group_count, and batch_group_count.
   if (feature_group_count_ <= 0) {
-    return InvalidArgument(
-        "feature_group_count must be a positive integer, given: ",
-        feature_group_count_);
+    return absl::InvalidArgumentError(
+        absl::StrCat("feature_group_count must be a positive integer, given: ",
+                     feature_group_count_));
   }
   const int64_t lhs_feature_count =
       lhs_shape.dim_size(dimension_numbers_.input_feature_dimension());
   if (lhs_feature_count % feature_group_count_) {
-    return InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "feature_group_count must divide lhs feature dimension size, but ",
-        feature_group_count_, " does not divide ", lhs_feature_count);
+        feature_group_count_, " does not divide ", lhs_feature_count));
   }
   const int64_t rhs_input_feature_count =
       rhs_shape.dim_size(dimension_numbers_.kernel_input_feature_dimension());
   if (lhs_feature_count % rhs_input_feature_count) {
-    return InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "rhs input feature dimension must divide lhs feature dimension "
         "size, but ",
-        rhs_input_feature_count, " does not divide ", lhs_feature_count);
+        rhs_input_feature_count, " does not divide ", lhs_feature_count));
   }
   if (lhs_feature_count / feature_group_count_ != rhs_input_feature_count) {
-    return InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "lhs feature dimension size divided by feature_group_count must equal "
         "the rhs input feature dimension size, but ",
         lhs_feature_count, " / ", feature_group_count_,
-        " != ", rhs_input_feature_count);
+        " != ", rhs_input_feature_count));
   }
   const int64_t rhs_output_feature_count =
       rhs_shape.dim_size(dimension_numbers_.kernel_output_feature_dimension());
   if (rhs_output_feature_count % feature_group_count_) {
-    return InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "rhs output dimension size must be a multiple of feature_group_count, "
         "but ",
         rhs_output_feature_count, " is not a multiple of ",
-        feature_group_count_);
+        feature_group_count_));
   }
 
   if (batch_group_count_ <= 0) {
-    return InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "batch_group_count Attr must be a positive integer. Given: ",
-        batch_group_count_);
+        batch_group_count_));
   }
   const int64_t lhs_batch_count =
       lhs_shape.dim_size(dimension_numbers_.input_batch_dimension());
   if (lhs_batch_count % batch_group_count_) {
-    return InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "batch_group_count must divide lhs batch dimension size, but ",
-        batch_group_count_, " does not divide ", lhs_batch_count);
+        batch_group_count_, " does not divide ", lhs_batch_count));
   }
   if (rhs_output_feature_count % batch_group_count_) {
-    return InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "rhs output dimension size must be a multiple of batch_group_count, "
         "but ",
-        rhs_output_feature_count, " is not a multiple of ", batch_group_count_);
+        rhs_output_feature_count, " is not a multiple of ",
+        batch_group_count_));
   }
 
   return ValidateOrFillPaddingList(lhs_shape, rhs_shape);
@@ -262,14 +268,14 @@ absl::Status UniformQuantizedConvolutionParams::LoadFromAttrsInternal(
   TF_RETURN_IF_ERROR(context.GetAttr("padding", &padding_));
   TF_RETURN_IF_ERROR(context.GetAttr("explicit_padding", &padding_list_));
   if (padding_ != "EXPLICIT" && padding_ != "SAME" && padding_ != "VALID") {
-    return InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "padding Attr must be one of [EXPLICIT | SAME | VALID], but given: ",
-        padding_);
+        padding_));
   } else if (padding_ != "EXPLICIT" && !padding_list_.empty()) {
-    return InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "If padding Attr is not 'EXPLICIT', explicit_padding Attr must be "
         "empty. Given padding ",
-        padding_, " and explicit_padding of size ", padding_list_.size());
+        padding_, " and explicit_padding of size ", padding_list_.size()));
   }
 
   std::string dimension_numbers_str;
@@ -278,7 +284,8 @@ absl::Status UniformQuantizedConvolutionParams::LoadFromAttrsInternal(
   if (dimension_numbers_str.empty()) {
     dimension_numbers_.Clear();
   } else if (!dimension_numbers_.ParseFromString(dimension_numbers_str)) {
-    return InvalidArgument("Error parsing convolution dimension numbers.");
+    return absl::InvalidArgumentError(
+        "Error parsing convolution dimension numbers.");
   }
   return absl::OkStatus();
 }
@@ -290,13 +297,14 @@ absl::Status UniformQuantizedConvolutionParams::ValidateOrFillPaddingList(
 
   if (padding_ == "EXPLICIT") {
     if (padding_list_.size() != padding_list_size) {
-      return InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Size of explicit_padding Attr must be 2 * (rank - 2). Given rank ",
-          dims, " and explicit_padding of size ", padding_list_.size());
+          dims, " and explicit_padding of size ", padding_list_.size()));
     } else if (!absl::c_all_of(padding_list_,
                                [](int elem) { return elem >= 0; })) {
-      return InvalidArgument("All explicit_padding elems must be >= 0, Given ",
-                             absl::StrJoin(padding_list_, ", "));
+      return absl::InvalidArgumentError(
+          absl::StrCat("All explicit_padding elems must be >= 0, Given ",
+                       absl::StrJoin(padding_list_, ", ")));
     }
   } else if (padding_ == "VALID") {
     padding_list_.resize(padding_list_size, 0);
