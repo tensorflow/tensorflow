@@ -93,12 +93,15 @@ using ReplaceTypeSelector = std::function<ReplaceType(const HloInstruction*)>;
 //
 // If the `run_verifier` flag is on, then the extracted module will be verified
 // for correctness.
+//
+// If the `inherit_module_config` flag is on, then the extracted module will
+// share its HloModuleConfig with the original module.
 std::unique_ptr<HloModule> ExtractModule(
     const HloInstruction* instruction, int64_t height = -1,
     ExtractSelector extract_selector = nullptr,
     ReplaceTypeSelector replace_type_selector = nullptr,
     bool cross_computation = false, bool inline_calls_and_fusions = false,
-    bool run_verifier = true);
+    bool run_verifier = true, bool inherit_module_config = false);
 
 }  // namespace xla
 

@@ -71,17 +71,23 @@ namespace {
 // the newly-built computation (in the extracted HLO module).
 class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
  public:
-  explicit ExtractionVisitor(
-      const HloInstruction* root_instruction,
-      absl::flat_hash_set<const HloInstruction*>* boundary,
-      ExtractSelector extract_selector,
-      ReplaceTypeSelector replace_type_selector)
+  ExtractionVisitor(const HloInstruction* root_instruction,
+                    absl::flat_hash_set<const HloInstruction*>* boundary,
+                    ExtractSelector extract_selector,
+                    ReplaceTypeSelector replace_type_selector,
+                    bool inherit_hlo_module_config)
       : root_instruction_(root_instruction),
         old_module_(root_instruction->GetModule()),
-        module_(std::make_unique<HloModule>(
-            "extracted", config_,
-            std::make_unique<CompilationEnvironments>(
-                old_module_->comp_envs()))),
+        module_(inherit_hlo_module_config
+                    ? std::make_unique<HloModule>(
+                          "extracted",
+                          root_instruction->GetModule()->shared_config(),
+                          std::make_unique<CompilationEnvironments>(
+                              old_module_->comp_envs()))
+                    : std::make_unique<HloModule>(
+                          "extracted", HloModuleConfig(),
+                          std::make_unique<CompilationEnvironments>(
+                              old_module_->comp_envs()))),
         clone_context_(module_.get()),
         boundary_(boundary),
         extract_selector_(extract_selector),
@@ -274,7 +280,6 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
 
   const HloInstruction* root_instruction_;
   HloModule* old_module_;
-  HloModuleConfig config_;
   std::unique_ptr<HloModule> module_;
   HloCloneContext clone_context_;
   // Map from the old (i.e., original) computations to the builders (that build
@@ -348,7 +353,8 @@ absl::Status Inline(HloModule* module) {
 std::unique_ptr<HloModule> ExtractModule(
     const HloInstruction* instruction, int64_t height,
     ExtractSelector extract_selector, ReplaceTypeSelector replace_type_selector,
-    bool cross_computation, bool inline_calls_and_fusions, bool run_verifier) {
+    bool cross_computation, bool inline_calls_and_fusions, bool run_verifier,
+    bool inherit_module_config) {
   QCHECK(height == -1 || !cross_computation)
       << "Boundary cannnot be calculated across the computations.";
 
@@ -357,7 +363,7 @@ std::unique_ptr<HloModule> ExtractModule(
     ComputeBoundary(instruction, height, &boundary);
   }
   ExtractionVisitor visitor(instruction, &boundary, extract_selector,
-                            replace_type_selector);
+                            replace_type_selector, inherit_module_config);
 
   CHECK_OK(instruction->Accept(&visitor, /*call_finish_visit=*/true,
                                /*ignore_control_predecessors=*/false,
@@ -377,7 +383,8 @@ std::unique_ptr<HloModule> ExtractModule(
       visitor.module()->entry_computation()->root_instruction(),
       /*boundary=*/nullptr,
       /*extract_selector=*/nullptr,
-      /*replace_type_selector=*/nullptr);
+      /*replace_type_selector=*/nullptr,
+      /*inherit_hlo_module_config=*/inherit_module_config);
 
   CHECK_OK(visitor.module()->entry_computation()->root_instruction()->Accept(
       &cleanup_visitor, /*call_finish_visit=*/true,
