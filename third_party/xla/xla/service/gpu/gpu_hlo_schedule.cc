@@ -676,13 +676,11 @@ absl::Status RunLatencyHidingSchedulerPasses(
     pipeline.AddPass<PGLEAccuracyChecker>(
         dynamic_cast<ProfileGuidedLatencyEstimator&>(*estimator));
   }
-  // If overlap limit is set to be greater than 1 and the default t-short size
-  // estimator is used we will tell LHS to extend async-done intervals as much
-  // as possible to start collectives as early as possible.
-  bool prioritize_compute_over_async_start = false;
-  if (config.parallel_collective_overlap_limit > 1) {
-    prioritize_compute_over_async_start = true;
-  }
+  // It's more beneficial to prioritize compute over async start when we have
+  // more async ops in parallel.
+  bool prioritize_compute_over_async_start =
+      config.parallel_collective_overlap_limit > 1 &&
+      options.xla_gpu_experimental_collective_start_as_early_as_possible();
   auto async_tracker = std::make_unique<GpuAsyncTracker>(config);
 
   std::shared_ptr<const SchedulingContext> scheduling_context =

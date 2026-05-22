@@ -72,13 +72,16 @@ class GpuLatencyHidingSchedulerBaseTest
   absl::StatusOr<HloModule*> ScheduleModule(
       HloModule* module, int64_t num_parallel_resources = 1,
       DebugOptions::PGLEStrictnessLevel strictness =
-          DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR) {
+          DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR,
+      bool enable_early_collective_start = false) {
     stream_executor::DeviceDescription gpu_device_info =
         TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
     GpuAliasInfo alias_info(gpu_device_info);
     DebugOptions& options = module->mutable_config().mutable_debug_options();
     options.set_xla_gpu_experimental_parallel_collective_overlap_limit(
         num_parallel_resources);
+    options.set_xla_gpu_experimental_collective_start_as_early_as_possible(
+        enable_early_collective_start);
     options.set_xla_gpu_pgle_accuracy_checker(strictness);
 
     RETURN_IF_ERROR(ScheduleGpuModule(module, /*pointer_size=*/8,
@@ -1129,7 +1132,8 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/16));
+  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/16,
+                              DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR, true));
   const HloSchedule& schedule = module->schedule();
   std::vector<HloInstruction*> instruction_sequence =
       schedule.sequence(module->entry_computation()).instructions();

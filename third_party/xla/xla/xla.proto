@@ -806,6 +806,17 @@ message DebugOptions {
   // Path to experimental collective perf tables.
   optional string xla_gpu_experimental_collective_perf_table_path = 377;
 
+  // Enabling this with larger overlap limit for compute bound graphs is
+  // beneficial, as it maximizes the async-start and done interval. However, in
+  // some extreme communication bound scenarios, even though the scheduling
+  // looks good, some compute kernel launches are pushed back during runtime
+  // since the collectives are bundled too closely which consume a lot of the
+  // resources on GPU. The resource utilization is being addressed in comms
+  // library so for now we will need a flag to toggle this scheduling behavior
+  // for different scenarios.
+  optional bool xla_gpu_experimental_collective_start_as_early_as_possible =
+      488;
+
   // Experimentally disables binary libraries in GPU compiler passes.
   optional bool xla_gpu_experimental_disable_binary_libraries = 329;
 
@@ -1583,7 +1594,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 488
+  // Next id: 489
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
