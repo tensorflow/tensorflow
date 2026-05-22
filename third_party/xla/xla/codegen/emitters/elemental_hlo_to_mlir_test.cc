@@ -496,7 +496,7 @@ TEST_F(ElementalHloToMlirTest, Pad) {
     // CHECK-DAG:    %[[C4:.*]] = arith.constant 4
     // CHECK-DAG:    %[[C7:.*]] = arith.constant 7
     // CHECK:        %[[CONSTRAINT_VAL:.*]] = xla.apply_indexing
-    // CHECK-SAME:     <"(d0) -> ((d0 - 1) mod 2), domain: d0 in [1, 7]">(%[[X]])
+    // CHECK-SAME:     <"(d0) -> ((d0 + 1) mod 2), domain: d0 in [1, 7]">(%[[X]])
     // CHECK:        %[[CONSTRAINT:.*]] = arith.cmpi eq, %[[CONSTRAINT_VAL]], %[[C0]]
     // CHECK:        %[[X_L:.*]] = arith.cmpi sge, %[[X]], %[[C1]]
     // CHECK:        %[[X_H:.*]] = arith.cmpi sle, %[[X]], %[[C7]]
@@ -538,7 +538,7 @@ TEST_F(ElementalHloToMlirTest, PadUnsigned) {
     // CHECK-DAG:    %[[C4:.*]] = arith.constant 4
     // CHECK-DAG:    %[[C7:.*]] = arith.constant 7
     // CHECK:        %[[CONSTRAINT_VAL:.*]] = xla.apply_indexing
-    // CHECK-SAME:     <"(d0) -> ((d0 - 1) mod 2), domain: d0 in [1, 7]">(%[[X]])
+    // CHECK-SAME:     <"(d0) -> ((d0 + 1) mod 2), domain: d0 in [1, 7]">(%[[X]])
     // CHECK:        %[[CONSTRAINT:.*]] = arith.cmpi eq, %[[CONSTRAINT_VAL]], %[[C0]]
     // CHECK:        %[[X_L:.*]] = arith.cmpi sge, %[[X]], %[[C1]]
     // CHECK:        %[[X_H:.*]] = arith.cmpi sle, %[[X]], %[[C7]]

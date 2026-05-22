@@ -1143,7 +1143,12 @@ TEST_F(IndexingMapTest,
     domain:
     s0 in [0, 10000]
   )");
-  EXPECT_FALSE(indexing_map.Simplify());
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+      ()[s0] -> (1),
+      domain:
+      s0 in [0, 10000]
+    )"));
 }
 
 TEST_F(IndexingMapTest,
@@ -1153,7 +1158,12 @@ TEST_F(IndexingMapTest,
     domain:
     s0 in [0, 10000]
   )");
-  EXPECT_FALSE(indexing_map.Simplify());
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+      ()[s0] -> (1),
+      domain:
+      s0 in [0, 10000]
+    )"));
 }
 
 TEST_F(IndexingMapTest, AffineMapSimplification_DivsInSequence) {
