@@ -90,9 +90,8 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
-#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
@@ -129,10 +128,6 @@ using ::testing::IsEmpty;
 using ::testing::IsSupersetOf;
 using ::testing::Matches;
 using ::testing::Not;
-using ::testing::NotNull;
-using ::testing::Pointee;
-using ::testing::Property;
-using ::testing::SizeIs;
 using ::testing::StartsWith;
 using ::testing::TempDir;
 using ::testing::TestParamInfo;
@@ -1748,6 +1743,13 @@ ENTRY main {
 }
 
 TEST_F(GpuCompilerTest, NoCudnnVectorizationOnHopperAndBeyond) {
+  if (gpu_target_config().dnn_version_info <
+          stream_executor::dnn::VersionInfo(9, 12, 0) &&
+      absl::StrContains(device_description().name(), "GB200")) {
+    GTEST_SKIP()
+        << "Skipping test as it requires cuDNN >= 9.12. on GB200. Otherwise, "
+           "test will crash.";
+  }
   bool is_hopper_or_beyond = get_cuda_cc().IsAtLeastHopper();
 
   constexpr absl::string_view kHlo = R"(
