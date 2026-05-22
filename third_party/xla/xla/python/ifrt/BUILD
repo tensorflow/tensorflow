@@ -193,6 +193,46 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "buffer_hash_util",
+    srcs = ["buffer_hash_util.cc"],
+    hdrs = ["buffer_hash_util.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+    ]),
+    deps = [
+        ":ifrt",
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:xla_data_proto_cc",
+        "//xla/tsl/lib/strings:proto_serialization",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:fingerprint",
+    ],
+)
+
+xla_cc_test(
+    name = "buffer_hash_util_test",
+    srcs = ["buffer_hash_util_test.cc"],
+    deps = [
+        ":buffer_hash_util",
+        ":ifrt",
+        "//xla:shape_util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "client_impl_util",
     srcs = ["client_impl_util.cc"],
     hdrs = ["client_impl_util.h"],
