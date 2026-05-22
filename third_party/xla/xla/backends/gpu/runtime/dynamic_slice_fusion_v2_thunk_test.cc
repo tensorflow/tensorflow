@@ -54,6 +54,7 @@ namespace {
 
 using Parameter = DynamicSliceFusion::Parameter;
 using Result = DynamicSliceFusion::Result;
+using Offset = DynamicSliceFusion::Offset;
 using ::tsl::proto_testing::EqualsProto;
 
 static absl::StatusOr<se::StreamExecutor*> CreateExecutor() {
@@ -575,12 +576,14 @@ TEST(DynamicSliceFusionV2ThunkTest, SerializeDeserializeRoundTrip) {
   Shape res_shape = ShapeUtil::MakeShape(F32, {128});
 
   std::vector<Parameter> parameters = {
-      {0, arg_shape, arg_shape, MakeConfig(0, 0, 1024)},
+      {0, arg_shape, arg_shape, MakeConfig(0, 0, 1024),
+       std::vector<Offset>{{0, Offset::Constant(0)}}},
       {1, arg2_shape, arg2_shape},
   };
 
   std::vector<Result> results = {
-      {1, 0, res_shape, res_shape, MakeConfig(0, 256, 512)},
+      {1, 0, res_shape, res_shape, MakeConfig(0, 256, 512),
+       std::vector<Offset>{{0, Offset::Parameter(1)}}},
   };
 
   ShapedSlice memzero_dest = {

@@ -50,6 +50,34 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
+namespace {
+
+struct ConstantOffset {
+  int64_t offset;
+  int64_t dimension_number;
+};
+
+struct RuntimeOffset {
+  int64_t parameter_number;
+  int64_t dimension_number;
+};
+
+// Thunk does not fully support dynamic-slice offset expressions and can only
+// verify offsets that come from a known constant or a parameter.
+using Offset = std::variant<ConstantOffset, RuntimeOffset>;
+
+absl::StatusOr<Offset> ConvertOffset(const DynamicSliceFusion::Offset& offset) {
+  using Expr = DynamicSliceFusion::Offset::Expr;
+  if (auto* constant = std::get_if<Expr::Constant>(&offset.expr.value)) {
+    return ConstantOffset{constant->value, offset.dimension_number};
+  }
+  if (auto* parameter = std::get_if<Expr::Parameter>(&offset.expr.value)) {
+    return RuntimeOffset{parameter->parameter_number, offset.dimension_number};
+  }
+  return InvalidArgument("Unsupported offset expression: %v", offset.expr);
+}
+
+}  // namespace
 
 //===----------------------------------------------------------------------===//
 // Helpers
@@ -70,19 +98,23 @@ static int64_t ComputeSliceOffset(const DynamicSliceConfig& config,
 // Computes the raw byte offset from actual offset scalars (D2H-copied from
 // device). Each runtime offset contributes index * byte_stride for its
 // dimension. No clamping is applied here.
-static int64_t ComputeSliceOffsetFromScalars(
-    absl::Span<const int32_t> indices, const Shape& src_shape,
-    absl::Span<const DynamicSliceFusion::Offset> offsets) {
+static int64_t ComputeSliceOffsetFromScalars(absl::Span<const int32_t> indices,
+                                             const Shape& src_shape,
+                                             absl::Span<const Offset> offsets) {
   auto byte_strides = ShapeUtil::ByteStrides(src_shape);
   int64_t byte_offset = 0;
   size_t runtime_idx = 0;
   for (const auto& offset : offsets) {
-    auto* runtime = std::get_if<DynamicSliceFusion::RuntimeOffset>(&offset);
-    if (runtime == nullptr) {
-      continue;
+    int64_t idx = 0;
+    int64_t dim = 0;
+    if (auto* constant = std::get_if<ConstantOffset>(&offset)) {
+      idx = constant->offset;
+      dim = constant->dimension_number;
+    } else {
+      auto& runtime = std::get<RuntimeOffset>(offset);
+      idx = indices[runtime_idx++];
+      dim = runtime.dimension_number;
     }
-    int64_t dim = runtime->dimension_number;
-    int64_t idx = indices[runtime_idx++];
     byte_offset += idx * (*byte_strides)[dim];
   }
   return byte_offset;
@@ -143,11 +175,17 @@ static absl::Status VerifySliceOffset(
     return absl::OkStatus();
   }
 
+  std::vector<Offset> leaf_offsets;
+  leaf_offsets.reserve(offsets->size());
+  for (const DynamicSliceFusion::Offset& offset : *offsets) {
+    ASSIGN_OR_RETURN(leaf_offsets.emplace_back(), ConvertOffset(offset));
+  }
+
   // Collect offsets that depend on runtime values.
-  std::vector<DynamicSliceFusion::RuntimeOffset> runtime_offsets;
-  for (const auto& offset : *offsets) {
-    if (auto* rt = std::get_if<DynamicSliceFusion::RuntimeOffset>(&offset)) {
-      runtime_offsets.push_back(*rt);
+  std::vector<RuntimeOffset> runtime_offsets;
+  for (const auto& offset : leaf_offsets) {
+    if (auto* runtime = std::get_if<RuntimeOffset>(&offset)) {
+      runtime_offsets.push_back(*runtime);
     }
   }
 
@@ -177,8 +215,8 @@ static absl::Status VerifySliceOffset(
   int64_t buffer_size = ShapeUtil::ByteSizeOf(src_shape);
   int64_t slice_size = ShapeUtil::ByteSizeOf(dst_shape);
   int64_t actual_offset = ClampSliceOffset(
-      ComputeSliceOffsetFromScalars(indices, src_shape, *offsets), buffer_size,
-      slice_size);
+      ComputeSliceOffsetFromScalars(indices, src_shape, leaf_offsets),
+      buffer_size, slice_size);
   int64_t annotated_offset = ClampSliceOffset(
       ComputeSliceOffset(*config, loop_nest), buffer_size, slice_size);
 
@@ -313,28 +351,37 @@ absl::Status DynamicSliceFusionV2Thunk::TransformNested(Transformer callback) {
 // Serialization
 //===----------------------------------------------------------------------===//
 
-static DynamicSliceFusionThunkProto::OffsetProto OffsetToProto(
+static absl::StatusOr<DynamicSliceFusionThunkProto::OffsetProto> OffsetToProto(
     const DynamicSliceFusion::Offset& offset) {
+  ASSIGN_OR_RETURN(Offset leaf_offset, ConvertOffset(offset));
+
   DynamicSliceFusionThunkProto::OffsetProto proto;
-  if (auto* c = std::get_if<DynamicSliceFusion::ConstantOffset>(&offset)) {
-    proto.set_dimension_number(c->dimension_number);
-    proto.set_constant_offset(c->offset);
-  } else {
-    auto& r = std::get<DynamicSliceFusion::RuntimeOffset>(offset);
-    proto.set_dimension_number(r.dimension_number);
-    proto.set_runtime_parameter_number(r.parameter_number);
+  if (auto* constant = std::get_if<ConstantOffset>(&leaf_offset)) {
+    proto.set_dimension_number(constant->dimension_number);
+    proto.set_constant_offset(constant->offset);
+    return proto;
   }
-  return proto;
+  if (auto* runtime = std::get_if<RuntimeOffset>(&leaf_offset)) {
+    proto.set_dimension_number(runtime->dimension_number);
+    proto.set_runtime_parameter_number(runtime->parameter_number);
+    return proto;
+  }
+  return InvalidArgument("Unknown dynamic slice fusion offset kind");
 }
 
-static DynamicSliceFusion::Offset OffsetFromProto(
+static absl::StatusOr<DynamicSliceFusion::Offset> OffsetFromProto(
     const DynamicSliceFusionThunkProto::OffsetProto& proto) {
   if (proto.has_constant_offset()) {
-    return DynamicSliceFusion::ConstantOffset{proto.constant_offset(),
-                                              proto.dimension_number()};
+    return DynamicSliceFusion::Offset{
+        proto.dimension_number(),
+        DynamicSliceFusion::Offset::Constant(proto.constant_offset())};
   }
-  return DynamicSliceFusion::RuntimeOffset{proto.runtime_parameter_number(),
-                                           proto.dimension_number()};
+  if (proto.has_runtime_parameter_number()) {
+    return DynamicSliceFusion::Offset{proto.dimension_number(),
+                                      DynamicSliceFusion::Offset::Parameter(
+                                          proto.runtime_parameter_number())};
+  }
+  return InvalidArgument("Offset proto has no value");
 }
 
 absl::StatusOr<ThunkProto> DynamicSliceFusionV2Thunk::ToProto() const {
@@ -353,7 +400,7 @@ absl::StatusOr<ThunkProto> DynamicSliceFusionV2Thunk::ToProto() const {
     }
     if (param.slice_offsets.has_value()) {
       for (const auto& offset : *param.slice_offsets) {
-        *p->add_slice_offsets() = OffsetToProto(offset);
+        ASSIGN_OR_RETURN(*p->add_slice_offsets(), OffsetToProto(offset));
       }
     }
   }
@@ -371,7 +418,7 @@ absl::StatusOr<ThunkProto> DynamicSliceFusionV2Thunk::ToProto() const {
     }
     if (result.update_offsets.has_value()) {
       for (const auto& offset : *result.update_offsets) {
-        *r->add_update_offsets() = OffsetToProto(offset);
+        ASSIGN_OR_RETURN(*r->add_update_offsets(), OffsetToProto(offset));
       }
     }
   }
@@ -417,7 +464,7 @@ DynamicSliceFusionV2Thunk::FromProto(
     if (!p.slice_offsets().empty()) {
       slice_offsets.emplace();
       for (const auto& o : p.slice_offsets()) {
-        slice_offsets->push_back(OffsetFromProto(o));
+        ASSIGN_OR_RETURN(slice_offsets->emplace_back(), OffsetFromProto(o));
       }
     }
     parameters.push_back(DynamicSliceFusion::Parameter{
@@ -442,7 +489,7 @@ DynamicSliceFusionV2Thunk::FromProto(
     if (!r.update_offsets().empty()) {
       update_offsets.emplace();
       for (const auto& o : r.update_offsets()) {
-        update_offsets->push_back(OffsetFromProto(o));
+        ASSIGN_OR_RETURN(update_offsets->emplace_back(), OffsetFromProto(o));
       }
     }
     results.push_back(DynamicSliceFusion::Result{

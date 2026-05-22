@@ -46,8 +46,7 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::IsEmpty;
 
-using CstOff = DynamicSliceFusion::ConstantOffset;
-using RtOff = DynamicSliceFusion::RuntimeOffset;
+using Offset = DynamicSliceFusion::Offset;
 using Param = DynamicSliceFusion::Parameter;
 using Result = DynamicSliceFusion::Result;
 
@@ -309,8 +308,9 @@ TEST_F(DynamicSliceFusionRewriterV2Test, DSWithConstantOffset) {
 
     ASSERT_OK_AND_ASSIGN(auto params,
                          DynamicSliceFusion::ResolveParameters(hero));
-    std::vector<DynamicSliceFusion::Offset> offsets = {
-        CstOff{0, 0}, CstOff{0, 1}, CstOff{0, 2}};
+    std::vector<Offset> offsets = {{0, Offset::Constant(1)},
+                                   {1, Offset::Constant(0)},
+                                   {2, Offset::Constant(0)}};
     EXPECT_THAT(params, ElementsAre(Param{0, f32_488, f32_188,
                                           MakeStaticConfig(256), offsets}));
 
@@ -443,8 +443,9 @@ TEST_F(DynamicSliceFusionRewriterV2Test, DynamicSlicedOperands) {
   auto f32_488 = ShapeUtil::MakeShape(F32, {4, 8, 8});
   auto f32_188 = ShapeUtil::MakeShape(F32, {1, 8, 8});
   auto f32_88 = ShapeUtil::MakeShape(F32, {8, 8});
-  std::vector<DynamicSliceFusion::Offset> offsets = {RtOff{1, 0}, CstOff{0, 1},
-                                                     CstOff{0, 2}};
+  std::vector<Offset> offsets = {{0, Offset::Parameter(1)},
+                                 {1, Offset::Constant(0)},
+                                 {2, Offset::Constant(0)}};
 
   auto fusion_checks = [&](HloModule* module) {
     auto* hero = DynamicSliceFusion::FindHero(FindDsfBody(module));
@@ -526,8 +527,9 @@ TEST_F(DynamicSliceFusionRewriterV2Test, DynamicUpdateSliceResult) {
   auto f32_488 = ShapeUtil::MakeShape(F32, {4, 8, 8});
   auto f32_88 = ShapeUtil::MakeShape(F32, {8, 8});
   auto f32_188 = ShapeUtil::MakeShape(F32, {1, 8, 8});
-  std::vector<DynamicSliceFusion::Offset> offsets = {RtOff{1, 0}, CstOff{0, 1},
-                                                     CstOff{0, 2}};
+  std::vector<Offset> offsets = {{0, Offset::Parameter(1)},
+                                 {1, Offset::Constant(0)},
+                                 {2, Offset::Constant(0)}};
 
   auto fusion_checks = [&](HloModule* module) {
     auto* hero = DynamicSliceFusion::FindHero(FindDsfBody(module));
@@ -606,8 +608,9 @@ TEST_F(DynamicSliceFusionRewriterV2Test, DUSOnlyNoSlicedInput) {
   auto f32_488 = ShapeUtil::MakeShape(F32, {4, 8, 8});
   auto f32_188 = ShapeUtil::MakeShape(F32, {1, 8, 8});
   auto f32_88 = ShapeUtil::MakeShape(F32, {8, 8});
-  std::vector<DynamicSliceFusion::Offset> offsets = {RtOff{2, 0}, CstOff{0, 1},
-                                                     CstOff{0, 2}};
+  std::vector<Offset> offsets = {{0, Offset::Parameter(2)},
+                                 {1, Offset::Constant(0)},
+                                 {2, Offset::Constant(0)}};
 
   auto fusion_checks = [&](HloModule* module) {
     auto* hero = DynamicSliceFusion::FindHero(FindDsfBody(module));
@@ -670,8 +673,9 @@ TEST_F(DynamicSliceFusionRewriterV2Test, DUSWithConstantOffset) {
 
     ASSERT_OK_AND_ASSIGN(auto results,
                          DynamicSliceFusion::ResolveResults(hero));
-    std::vector<DynamicSliceFusion::Offset> offsets = {
-        CstOff{0, 0}, CstOff{0, 1}, CstOff{0, 2}};
+    std::vector<Offset> offsets = {{0, Offset::Constant(0)},
+                                   {1, Offset::Constant(0)},
+                                   {2, Offset::Constant(0)}};
     EXPECT_THAT(results, ElementsAre(Result{1, 0, f32_488, f32_188,
                                             MakeStaticConfig(0), offsets}));
   };
@@ -741,8 +745,9 @@ TEST_F(DynamicSliceFusionRewriterV2Test, DUSNotRootNotFused) {
   auto f32_488 = ShapeUtil::MakeShape(F32, {4, 8, 8});
   auto f32_188 = ShapeUtil::MakeShape(F32, {1, 8, 8});
   auto f32_88 = ShapeUtil::MakeShape(F32, {8, 8});
-  std::vector<DynamicSliceFusion::Offset> offsets = {RtOff{1, 0}, CstOff{0, 1},
-                                                     CstOff{0, 2}};
+  std::vector<Offset> offsets = {{0, Offset::Parameter(1)},
+                                 {1, Offset::Constant(0)},
+                                 {2, Offset::Constant(0)}};
 
   auto fusion_checks = [&](HloModule* module) {
     auto* hero = DynamicSliceFusion::FindHero(FindDsfBody(module));
@@ -912,8 +917,9 @@ TEST_F(DynamicSliceFusionRewriterV2Test, CanCaptureSlicedInputsOnly) {
   auto f32_488 = ShapeUtil::MakeShape(F32, {4, 8, 8});
   auto f32_188 = ShapeUtil::MakeShape(F32, {1, 8, 8});
   auto f32_88 = ShapeUtil::MakeShape(F32, {8, 8});
-  std::vector<DynamicSliceFusion::Offset> offsets = {RtOff{1, 0}, CstOff{0, 1},
-                                                     CstOff{0, 2}};
+  std::vector<Offset> offsets = {{0, Offset::Parameter(1)},
+                                 {1, Offset::Constant(0)},
+                                 {2, Offset::Constant(0)}};
 
   auto fusion_checks = [&](HloModule* module) {
     auto* hero = DynamicSliceFusion::FindHero(FindDsfBody(module));
@@ -958,8 +964,9 @@ TEST_F(DynamicSliceFusionRewriterV2Test, CanCaptureSlicedOutputsOnly) {
   auto f32_488 = ShapeUtil::MakeShape(F32, {4, 8, 8});
   auto f32_188 = ShapeUtil::MakeShape(F32, {1, 8, 8});
   auto f32_88 = ShapeUtil::MakeShape(F32, {8, 8});
-  std::vector<DynamicSliceFusion::Offset> offsets = {RtOff{2, 0}, CstOff{0, 1},
-                                                     CstOff{0, 2}};
+  std::vector<Offset> offsets = {{0, Offset::Parameter(2)},
+                                 {1, Offset::Constant(0)},
+                                 {2, Offset::Constant(0)}};
 
   auto fusion_checks = [&](HloModule* module) {
     auto* hero = DynamicSliceFusion::FindHero(FindDsfBody(module));
@@ -1042,8 +1049,9 @@ TEST_F(DynamicSliceFusionRewriterV2Test, OffsetAsLinearFunctionOfInductionVar) {
   auto f32_888 = ShapeUtil::MakeShape(F32, {8, 8, 8});
   auto f32_188 = ShapeUtil::MakeShape(F32, {1, 8, 8});
   auto f32_88 = ShapeUtil::MakeShape(F32, {8, 8});
-  std::vector<DynamicSliceFusion::Offset> offsets = {RtOff{1, 0}, CstOff{0, 1},
-                                                     CstOff{0, 2}};
+  std::vector<Offset> offsets = {{0, Offset::Parameter(1)},
+                                 {1, Offset::Constant(0)},
+                                 {2, Offset::Constant(0)}};
 
   auto fusion_checks = [&](HloModule* module) {
     auto* hero = DynamicSliceFusion::FindHero(FindDsfBody(module));
@@ -1302,8 +1310,9 @@ TEST_F(DynamicSliceFusionRewriterV2Test, DynamicSliceNonStandardLayoutWithDUS) {
   auto f32_488 = ShapeUtil::MakeShapeWithDenseLayout(F32, {4, 8, 8}, {1, 2, 0});
   auto f32_188 = ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 8, 8}, {1, 2, 0});
   auto f32_88 = ShapeUtil::MakeShapeWithDenseLayout(F32, {8, 8}, {0, 1});
-  std::vector<DynamicSliceFusion::Offset> offsets = {RtOff{1, 0}, CstOff{0, 1},
-                                                     CstOff{0, 2}};
+  std::vector<Offset> offsets = {{0, Offset::Parameter(1)},
+                                 {1, Offset::Constant(0)},
+                                 {2, Offset::Constant(0)}};
 
   auto fusion_checks = [&](HloModule* module) {
     auto* hero = DynamicSliceFusion::FindHero(FindDsfBody(module));
@@ -1410,8 +1419,9 @@ TEST_F(DynamicSliceFusionRewriterV2Test, TupleOutputOneDUS) {
   auto f32_488 = ShapeUtil::MakeShape(F32, {4, 8, 8});
   auto f32_188 = ShapeUtil::MakeShape(F32, {1, 8, 8});
   auto f32_88 = ShapeUtil::MakeShape(F32, {8, 8});
-  std::vector<DynamicSliceFusion::Offset> offsets = {RtOff{1, 0}, CstOff{0, 1},
-                                                     CstOff{0, 2}};
+  std::vector<Offset> offsets = {{0, Offset::Parameter(1)},
+                                 {1, Offset::Constant(0)},
+                                 {2, Offset::Constant(0)}};
 
   auto fusion_checks = [&](HloModule* module) {
     auto* body = FindDsfBody(module);
@@ -1502,8 +1512,9 @@ TEST_F(DynamicSliceFusionRewriterV2Test, TupleOutputNoDUS) {
   auto f32_488 = ShapeUtil::MakeShape(F32, {4, 8, 8});
   auto f32_188 = ShapeUtil::MakeShape(F32, {1, 8, 8});
   auto f32_88 = ShapeUtil::MakeShape(F32, {8, 8});
-  std::vector<DynamicSliceFusion::Offset> offsets = {RtOff{1, 0}, CstOff{0, 1},
-                                                     CstOff{0, 2}};
+  std::vector<Offset> offsets = {{0, Offset::Parameter(1)},
+                                 {1, Offset::Constant(0)},
+                                 {2, Offset::Constant(0)}};
 
   auto fusion_checks = [&](HloModule* module) {
     auto* body = FindDsfBody(module);
@@ -1589,8 +1600,9 @@ TEST_F(DynamicSliceFusionRewriterV2Test, TupleOutputOneDUSOneDeadOutput) {
   auto f32_488 = ShapeUtil::MakeShape(F32, {4, 8, 8});
   auto f32_188 = ShapeUtil::MakeShape(F32, {1, 8, 8});
   auto f32_88 = ShapeUtil::MakeShape(F32, {8, 8});
-  std::vector<DynamicSliceFusion::Offset> offsets = {RtOff{1, 0}, CstOff{0, 1},
-                                                     CstOff{0, 2}};
+  std::vector<Offset> offsets = {{0, Offset::Parameter(1)},
+                                 {1, Offset::Constant(0)},
+                                 {2, Offset::Constant(0)}};
 
   auto fusion_checks = [&](HloModule* module) {
     auto* body = FindDsfBody(module);
@@ -1665,8 +1677,9 @@ TEST_F(DynamicSliceFusionRewriterV2Test, DynamicSliceOnlyNoResult) {
   auto f32_488 = ShapeUtil::MakeShape(F32, {4, 8, 8});
   auto f32_188 = ShapeUtil::MakeShape(F32, {1, 8, 8});
   auto f32_88 = ShapeUtil::MakeShape(F32, {8, 8});
-  std::vector<DynamicSliceFusion::Offset> offsets = {RtOff{1, 0}, CstOff{0, 1},
-                                                     CstOff{0, 2}};
+  std::vector<Offset> offsets = {{0, Offset::Parameter(1)},
+                                 {1, Offset::Constant(0)},
+                                 {2, Offset::Constant(0)}};
 
   auto fusion_checks = [&](HloModule* module) {
     auto* hero = DynamicSliceFusion::FindHero(FindDsfBody(module));
@@ -1821,8 +1834,9 @@ TEST_F(DynamicSliceFusionRewriterV2Test, O2DynamicSliceThroughTupleGte) {
   auto f32_488 = ShapeUtil::MakeShape(F32, {4, 8, 8});
   auto f32_188 = ShapeUtil::MakeShape(F32, {1, 8, 8});
   auto f32_88 = ShapeUtil::MakeShape(F32, {8, 8});
-  std::vector<DynamicSliceFusion::Offset> offsets = {RtOff{1, 0}, CstOff{0, 1},
-                                                     CstOff{0, 2}};
+  std::vector<Offset> offsets = {{0, Offset::Parameter(1)},
+                                 {1, Offset::Constant(0)},
+                                 {2, Offset::Constant(0)}};
 
   auto fusion_checks = [&](HloModule* module) {
     auto* hero = DynamicSliceFusion::FindHero(FindDsfBody(module));
