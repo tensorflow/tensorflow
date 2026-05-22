@@ -493,8 +493,8 @@ bool MMapWeightCacheProvider::Load() {
     XNNPACK_RETURN_CHECK(
         mmap_handle.Map(file_descriptor_, /*offset=*/0, file_path_.c_str()));
   } else {
-    XNNPACK_ABORT_CHECK(!file_path_.empty(),
-                        "Path wasn't provided to weight cache provider.");
+    XNNPACK_RETURN_CHECK(!file_path_.empty(),
+                         "Path wasn't provided to weight cache provider.");
     if (!FileExists(file_path_.c_str())) {
       TFLITE_LOG(tflite::TFLITE_LOG_WARNING,
                  "XNNPack weight cache: could not load '%s': %s.",
