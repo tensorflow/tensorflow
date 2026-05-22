@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/map_util.h"
 #include "xla/service/float_support.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
