@@ -57,10 +57,12 @@ absl::StatusOr<bool> HloModuleStitcher::RunImpl(
               absl::StrCat("Sub-module ", sub_module_name, " not found"));
         }
 
-        const HloModule* sub_module = it->second;
+        HloModule* sub_module = it->second;
         if (sub_module == nullptr) {
           return absl::InternalError("sub_module is null");
         }
+        // Resolve all nested custom calls in the submodule first recursively.
+        RETURN_IF_ERROR(Run(sub_module).status());
         HloComputation* sub_entry = sub_module->entry_computation();
 
         if (inst->operand_count() != sub_entry->num_parameters()) {

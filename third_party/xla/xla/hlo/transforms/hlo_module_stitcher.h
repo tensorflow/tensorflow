@@ -36,8 +36,7 @@ inline constexpr absl::string_view kMultiModuleCustomCallTarget =
 class HloModuleStitcher final : public HloModulePass {
  public:
   explicit HloModuleStitcher(
-      const absl::flat_hash_map<std::string, const HloModule*>&
-          optimized_modules)
+      const absl::flat_hash_map<std::string, HloModule*>& optimized_modules)
       : optimized_modules_(optimized_modules) {}
   ~HloModuleStitcher() override = default;
 
@@ -49,7 +48,7 @@ class HloModuleStitcher final : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  const absl::flat_hash_map<std::string, const HloModule*>& optimized_modules_;
+  const absl::flat_hash_map<std::string, HloModule*>& optimized_modules_;
 };
 
 }  // namespace xla
