@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/hlo/translate/register.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/utils/unregistered_attributes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
@@ -109,10 +110,10 @@ absl::Status ConvertMlirHloToHloViaBuilder(
     xla::Shape shape = xla::TypeToShape(arg.getType());
 
     std::optional<OriginalValueProto> original_value_proto;
-    if (auto original_value_attr = main.getArgAttrOfType<mlir::StringAttr>(
-            num, xla::kMhloOriginalValueAttr)) {
-      original_value_proto =
-          xla::ConvertOriginalValue(original_value_attr.getValue());
+    if (auto original_value_attr =
+            main.getArgAttrOfType<mlir::mhlo::OriginalValueAttr>(
+                num, xla::kMhloOriginalValueAttr)) {
+      original_value_proto = xla::ConvertOriginalValue(original_value_attr);
     }
     xla::XlaScopedOriginalValueAssignment original_value_assignment(
         &builder, original_value_proto);

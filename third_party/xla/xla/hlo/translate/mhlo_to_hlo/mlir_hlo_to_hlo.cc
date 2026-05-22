@@ -922,10 +922,11 @@ static void ExtractOriginalValuesFromFunction(
         original_value_protos) {
   original_value_protos->resize(function.getNumArguments(), std::nullopt);
   for (int i = 0, end = function.getNumArguments(); i < end; ++i) {
-    if (auto original_value_attr = function.getArgAttrOfType<mlir::StringAttr>(
-            i, xla::kMhloOriginalValueAttr)) {
+    if (auto original_value_attr =
+            function.getArgAttrOfType<mlir::mhlo::OriginalValueAttr>(
+                i, xla::kMhloOriginalValueAttr)) {
       (*original_value_protos)[i] =
-          xla::ConvertOriginalValue(original_value_attr.getValue());
+          xla::ConvertOriginalValue(original_value_attr);
     }
   }
 }
@@ -5725,12 +5726,12 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
 
 std::optional<xla::OriginalValueProto> CreateOriginalValueFromOp(
     mlir::Operation* op) {
-  auto original_value_attr =
-      op->getAttrOfType<mlir::StringAttr>(xla::kMhloOriginalValueAttr);
+  auto original_value_attr = op->getAttrOfType<mlir::mhlo::OriginalValueAttr>(
+      xla::kMhloOriginalValueAttr);
   if (!original_value_attr) {
     return std::nullopt;
   }
-  return xla::ConvertOriginalValue(original_value_attr.getValue());
+  return xla::ConvertOriginalValue(original_value_attr);
 }
 
 }  // namespace mlir

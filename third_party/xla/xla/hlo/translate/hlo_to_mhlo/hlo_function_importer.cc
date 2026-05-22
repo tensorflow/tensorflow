@@ -601,8 +601,7 @@ absl::StatusOr<Value> HloFunctionImporter::ImportInstructionsImpl(
     if (hlo_parameter->original_value() && func) {
       func.setArgAttr(
           i, kMhloOriginalValueAttr,
-          builder_->getStringAttr(
-              "{" + hlo_parameter->original_value()->ToString() + "}"));
+          ConvertOriginalValue(*hlo_parameter->original_value(), builder_));
     }
   }
 
@@ -751,11 +750,11 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         ConvertSharding(instruction->sharding(), builder_)));
   }
 
-  if (instruction->original_value()) {
+  if (instruction->opcode() != HloOpcode::kParameter &&
+      instruction->original_value()) {
     attributes.push_back(builder_->getNamedAttr(
         kMhloOriginalValueAttr,
-        builder_->getStringAttr(
-            "{" + instruction->original_value()->ToString() + "}")));
+        ConvertOriginalValue(*instruction->original_value(), builder_)));
   }
 
   llvm::SmallVector<NamedAttribute, 4> frontend_attributes;

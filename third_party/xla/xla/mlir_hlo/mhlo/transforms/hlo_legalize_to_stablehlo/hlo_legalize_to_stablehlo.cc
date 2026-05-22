@@ -373,6 +373,9 @@ Attribute convertAttr(Attribute hloAttr) {
     return stablehlo::AxisRefAttr::get(attr.getContext(), attr.getName(),
                                        subAxisInfo);
   }
+  if (auto attr = mlir::dyn_cast<mhlo::OriginalValueAttr>(hloAttr)) {
+    return attr;
+  }
   if (hloAttr.getDialect().getNamespace() ==
       mhlo::MhloDialect::getDialectNamespace()) {
     // Our guiding principle is to support all StableHLO functionality in MHLO.
