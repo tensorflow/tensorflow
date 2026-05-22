@@ -247,7 +247,6 @@ bool TryReshape(BufferView& view, absl::Span<const int64_t> new_dims) {
 // Represents a mapping between an input buffer view and an output buffer
 // view. This is used to track how data is projected or reshaped.
 struct ShapeTracker::ViewMapping {
-  llvm::SmallVector<int64_t, 6> input_dims;
   BufferView output;
 
   struct Transformation {
@@ -260,7 +259,7 @@ struct ShapeTracker::ViewMapping {
   Transformation output_transformation() const;
 
   bool operator==(const ViewMapping& other) const {
-    return input_dims == other.input_dims && output == other.output;
+    return output == other.output;
   }
 };
 
@@ -272,10 +271,6 @@ ShapeTracker& ShapeTracker::operator=(ShapeTracker&&) noexcept = default;
 
 ShapeTracker::ViewMapping::ViewMapping(const xla::Shape& shape) {
   output = ShapeToBufferView(shape);
-
-  const auto& dimensions = shape.dimensions();
-  absl::c_copy_if(dimensions, std::back_inserter(input_dims),
-                  [](int64_t dim) { return dim != 1; });
 }
 
 ShapeTracker::ShapeTracker(xla::Shape shape)
@@ -526,17 +521,9 @@ ShapeTracker::ViewMapping::output_transformation() const {
     return a.stride > b.stride;
   });
 
-  bool can_use_input_dims =
-      absl::c_equal(sorted_atoms, input_dims,
-                    [](const Atom& a, int64_t dim) { return a.extent == dim; });
-
-  if (can_use_input_dims) {
-    result.input_reshape = input_dims;
-  } else {
-    result.input_reshape.reserve(sorted_atoms.size());
-    for (const auto& atom : sorted_atoms) {
-      result.input_reshape.push_back(atom.extent);
-    }
+  result.input_reshape.reserve(sorted_atoms.size());
+  for (const auto& atom : sorted_atoms) {
+    result.input_reshape.push_back(atom.extent);
   }
 
   result.transpose.resize(atoms.size());
