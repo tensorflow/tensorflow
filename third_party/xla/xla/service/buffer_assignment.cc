@@ -1020,7 +1020,8 @@ std::string BufferAssignment::ValuesToString() const {
 }
 
 std::string BufferAssignment::MemoryUsageReport(float percentile,
-                                                int64_t more_than_k) const {
+                                                int64_t more_than_k,
+                                                bool print_shape_layout) const {
   MemoryUsageReportProto proto =
       GetMemoryUsageReportProto(percentile, more_than_k);
   std::string report;
@@ -1043,7 +1044,8 @@ std::string BufferAssignment::MemoryUsageReport(float percentile,
 
 std::string BufferAllocation::MemoryUsageReport(const std::string& prefix,
                                                 float percentile,
-                                                int64_t more_than_k) const {
+                                                int64_t more_than_k,
+                                                bool print_shape_layout) const {
   std::string output;
 
   struct OffsetInfo {
@@ -1107,7 +1109,8 @@ std::string BufferAllocation::MemoryUsageReport(const std::string& prefix,
     // Count the number of values with the same shape and append them at the end
     // of the line.
     absl::flat_hash_map<std::string, int64_t> shapes;
-    for (auto& value : offset_info.values) shapes[value->shape().ToString()]++;
+    for (auto& value : offset_info.values)
+      shapes[value->shape().ToString(print_shape_layout)]++;
     std::vector<std::pair<int64_t, std::string>> sorted_shapes;
     sorted_shapes.reserve(shapes.size());
     for (const auto& entry : shapes) {
