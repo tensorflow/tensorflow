@@ -46,7 +46,11 @@ HloModule main
 
 ENTRY main {
   param0 = f32[100] parameter(0)
-  ROOT custom-call = f32[100] custom-call(param0), custom_call_target="_xla_multi_module_call", backend_config="optimized_sub_module", api_version=API_VERSION_TYPED_FFI, frontend_attributes={inlineable="false"}
+  ROOT custom-call = f32[100] custom-call(param0),
+    custom_call_target="_xla_multi_module_call",
+    backend_config="optimized_sub_module",
+    api_version=API_VERSION_TYPED_FFI,
+    frontend_attributes={inlineable="false"}
 }
 )";
 
@@ -64,7 +68,7 @@ ENTRY sub_entry {
   ASSERT_OK_AND_ASSIGN(auto sub_module,
                        ParseAndReturnVerifiedModule(sub_hlo_string));
 
-  absl::flat_hash_map<std::string, const HloModule*> optimized_modules;
+  absl::flat_hash_map<std::string, HloModule*> optimized_modules;
   optimized_modules["optimized_sub_module"] = sub_module.get();
 
   HloModuleStitcher stitcher(optimized_modules);
@@ -78,7 +82,8 @@ CHECK:   ROOT %[[ADD:.*]] = f32[100]{{.*}} add(%[[PARAM_SUB]], %[[PARAM_SUB]])
 
 CHECK: ENTRY %main
 CHECK:   %[[PARAM0:.*]] = f32[100]{{.*}} parameter(0)
-CHECK:   ROOT %[[CALL:.*]] = f32[100]{{.*}} call(%[[PARAM0]]), to_apply=%sub_entry, frontend_attributes={inlineable="false"}
+CHECK:   ROOT %[[CALL:.*]] = f32[100]{{.*}} call(%[[PARAM0]]),
+CHECK-SAME: to_apply=%sub_entry, frontend_attributes={inlineable="false"}
 )";
 
   ASSERT_OK_AND_ASSIGN(bool filecheck_ok,
@@ -96,14 +101,17 @@ HloModule main
 
 ENTRY main {
   param0 = f32[100] parameter(0)
-  ROOT custom-call = f32[100] custom-call(param0), custom_call_target="_xla_multi_module_call", backend_config="missing_sub_module", api_version=API_VERSION_TYPED_FFI
+  ROOT custom-call = f32[100] custom-call(param0),
+    custom_call_target="_xla_multi_module_call",
+    backend_config="missing_sub_module",
+    api_version=API_VERSION_TYPED_FFI
 }
 )";
 
   ASSERT_OK_AND_ASSIGN(auto main_module,
                        ParseAndReturnVerifiedModule(main_hlo_string));
 
-  absl::flat_hash_map<std::string, const HloModule*> optimized_modules;
+  absl::flat_hash_map<std::string, HloModule*> optimized_modules;
 
   HloModuleStitcher stitcher(optimized_modules);
   EXPECT_THAT(stitcher.Run(main_module.get()),
@@ -119,7 +127,10 @@ HloModule main
 ENTRY main {
   param0 = f32[100] parameter(0)
   param1 = f32[100] parameter(1)
-  ROOT custom-call = f32[100] custom-call(param0, param1), custom_call_target="_xla_multi_module_call", backend_config="optimized_sub_module", api_version=API_VERSION_TYPED_FFI
+  ROOT custom-call = f32[100] custom-call(param0, param1),
+    custom_call_target="_xla_multi_module_call",
+    backend_config="optimized_sub_module",
+    api_version=API_VERSION_TYPED_FFI
 }
 )";
 
@@ -137,7 +148,7 @@ ENTRY sub_entry {
   ASSERT_OK_AND_ASSIGN(auto sub_module,
                        ParseAndReturnVerifiedModule(sub_hlo_string));
 
-  absl::flat_hash_map<std::string, const HloModule*> optimized_modules;
+  absl::flat_hash_map<std::string, HloModule*> optimized_modules;
   optimized_modules["optimized_sub_module"] = sub_module.get();
 
   HloModuleStitcher stitcher(optimized_modules);
@@ -152,14 +163,17 @@ HloModule main
 
 ENTRY main {
   param0 = f32[100] parameter(0)
-  ROOT custom-call = f32[100] custom-call(param0), custom_call_target="_xla_multi_module_call", backend_config="null_sub_module", api_version=API_VERSION_TYPED_FFI
+  ROOT custom-call = f32[100] custom-call(param0),
+    custom_call_target="_xla_multi_module_call",
+    backend_config="null_sub_module",
+    api_version=API_VERSION_TYPED_FFI
 }
 )";
 
   ASSERT_OK_AND_ASSIGN(auto main_module,
                        ParseAndReturnVerifiedModule(main_hlo_string));
 
-  absl::flat_hash_map<std::string, const HloModule*> optimized_modules;
+  absl::flat_hash_map<std::string, HloModule*> optimized_modules;
   optimized_modules["null_sub_module"] = nullptr;
 
   HloModuleStitcher stitcher(optimized_modules);
@@ -173,8 +187,14 @@ HloModule main
 
 ENTRY main {
   param0 = f32[100] parameter(0)
-  call1 = f32[100] custom-call(param0), custom_call_target="_xla_multi_module_call", backend_config="optimized_sub_module", api_version=API_VERSION_TYPED_FFI
-  ROOT call2 = f32[100] custom-call(call1), custom_call_target="_xla_multi_module_call", backend_config="optimized_sub_module", api_version=API_VERSION_TYPED_FFI
+  call1 = f32[100] custom-call(param0),
+    custom_call_target="_xla_multi_module_call",
+    backend_config="optimized_sub_module",
+    api_version=API_VERSION_TYPED_FFI
+  ROOT call2 = f32[100] custom-call(call1),
+    custom_call_target="_xla_multi_module_call",
+    backend_config="optimized_sub_module",
+    api_version=API_VERSION_TYPED_FFI
 }
 )";
 
@@ -192,7 +212,7 @@ ENTRY sub_entry {
   ASSERT_OK_AND_ASSIGN(auto sub_module,
                        ParseAndReturnVerifiedModule(sub_hlo_string));
 
-  absl::flat_hash_map<std::string, const HloModule*> optimized_modules;
+  absl::flat_hash_map<std::string, HloModule*> optimized_modules;
   optimized_modules["optimized_sub_module"] = sub_module.get();
 
   HloModuleStitcher stitcher(optimized_modules);
@@ -215,7 +235,11 @@ HloModule main
 
 ENTRY main {
   param0 = f32[10,20]{1,0} parameter(0)
-  ROOT custom-call = f32[10,20]{1,0} custom-call(param0), custom_call_target="_xla_multi_module_call", backend_config="optimized_sub_module", api_version=API_VERSION_TYPED_FFI, frontend_attributes={inlineable="false"}
+  ROOT custom-call = f32[10,20]{1,0} custom-call(param0),
+    custom_call_target="_xla_multi_module_call",
+    backend_config="optimized_sub_module",
+    api_version=API_VERSION_TYPED_FFI,
+    frontend_attributes={inlineable="false"}
 }
 )";
 
@@ -233,7 +257,7 @@ ENTRY sub_entry {
   ASSERT_OK_AND_ASSIGN(auto sub_module,
                        ParseAndReturnVerifiedModule(sub_hlo_string));
 
-  absl::flat_hash_map<std::string, const HloModule*> optimized_modules;
+  absl::flat_hash_map<std::string, HloModule*> optimized_modules;
   optimized_modules["optimized_sub_module"] = sub_module.get();
 
   HloModuleStitcher stitcher(optimized_modules);
@@ -256,5 +280,79 @@ CHECK:   ROOT %[[ROOT_COPY:.*]] = f32[10,20]{1,0} copy(%[[CALL]])
                        /*allow_mixed_precision=*/false);
   EXPECT_TRUE(verifier.Run(main_module.get()).status().ok());
 }
+
+TEST_F(HloModuleStitcherTest, SuccessfullyStitchesNestedSubmodules) {
+  const char* main_hlo_string = R"(
+HloModule main
+
+ENTRY main {
+  param0 = f32[100] parameter(0)
+  ROOT custom-call = f32[100] custom-call(param0),
+    custom_call_target="_xla_multi_module_call",
+    backend_config="outer_sub_module",
+    api_version=API_VERSION_TYPED_FFI
+}
+)";
+
+  const char* outer_sub_hlo_string = R"(
+HloModule outer_sub_module
+
+ENTRY outer_entry {
+  param0 = f32[100] parameter(0)
+  ROOT custom-call = f32[100] custom-call(param0),
+    custom_call_target="_xla_multi_module_call",
+    backend_config="inner_sub_module",
+    api_version=API_VERSION_TYPED_FFI
+}
+)";
+
+  const char* inner_sub_hlo_string = R"(
+HloModule inner_sub_module
+
+ENTRY inner_entry {
+  param0 = f32[100] parameter(0)
+  ROOT add = f32[100] add(param0, param0)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto main_module,
+                       ParseAndReturnVerifiedModule(main_hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto outer_module,
+                       ParseAndReturnVerifiedModule(outer_sub_hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto inner_module,
+                       ParseAndReturnVerifiedModule(inner_sub_hlo_string));
+
+  absl::flat_hash_map<std::string, HloModule*> optimized_modules;
+  optimized_modules["outer_sub_module"] = outer_module.get();
+  optimized_modules["inner_sub_module"] = inner_module.get();
+
+  HloModuleStitcher stitcher(optimized_modules);
+  EXPECT_THAT(stitcher.Run(main_module.get()), IsOkAndHolds(true));
+
+  const char* expected_hlo = R"(
+CHECK: %inner_entry
+CHECK:   %[[PARAM_INNER:.*]] = f32[100]{{.*}} parameter(0)
+CHECK:   ROOT %[[ADD:.*]] = f32[100]{{.*}} add(%[[PARAM_INNER]], %[[PARAM_INNER]])
+
+CHECK: %outer_entry
+CHECK:   %[[PARAM_OUTER:.*]] = f32[100]{{.*}} parameter(0)
+CHECK:   ROOT %[[CALL_INNER:.*]] = f32[100]{{.*}} call(%[[PARAM_OUTER]]),
+CHECK-SAME: to_apply=%inner_entry
+
+CHECK: ENTRY %main
+CHECK:   %[[PARAM0:.*]] = f32[100]{{.*}} parameter(0)
+CHECK:   ROOT %[[CALL_OUTER:.*]] = f32[100]{{.*}} call(%[[PARAM0]]),
+CHECK-SAME: to_apply=%outer_entry
+)";
+
+  ASSERT_OK_AND_ASSIGN(bool filecheck_ok,
+                       RunFileCheck(main_module->ToString(), expected_hlo));
+  EXPECT_TRUE(filecheck_ok);
+
+  HloVerifier verifier(/*layout_sensitive=*/false,
+                       /*allow_mixed_precision=*/false);
+  EXPECT_TRUE(verifier.Run(main_module.get()).status().ok());
+}
+
 }  // namespace
 }  // namespace xla
