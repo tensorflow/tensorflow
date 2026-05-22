@@ -1147,6 +1147,20 @@ xla_cc_test(
 )
 
 xla_cc_test(
+    name = "memory_allocator_test",
+    srcs = ["memory_allocator_test.cc"],
+    deps = [
+        ":device_address",
+        ":memory_allocation",
+        ":memory_allocator",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest",
+        "@tsl//tsl/platform:test_main",
+    ],
+)
+
+xla_cc_test(
     name = "semantic_version_test",
     srcs = ["semantic_version_test.cc"],
     deps = [
