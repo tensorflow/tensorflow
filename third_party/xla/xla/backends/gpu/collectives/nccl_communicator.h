@@ -55,6 +55,17 @@ namespace xla::gpu {
 
 using NcclSignalDesc = GpuSignalDesc;
 
+struct NcclCapabilities {
+  bool supports_device_comm;
+  bool supports_one_sided_comm;
+
+  // Reason one-sided comm is not supported, cached at construction. Empty
+  // if one-sided comm is supported.
+  std::string one_sided_comm_unsupported_reason;
+
+  absl::Status GetOneSidedCommUnsupportedError(absl::string_view op) const;
+};
+
 // XLA collectives communicator wrapping an NCCL communicator.
 class NcclCommunicator : public GpuCommunicator {
  public:
@@ -90,7 +101,6 @@ class NcclCommunicator : public GpuCommunicator {
   }
 
   bool SupportsDeviceComm() const final;
-  bool SupportsOneSidedComm() const final;
 
   absl::StatusOr<std::unique_ptr<GpuDeviceCommunicator>> CreateDeviceComm(
       const GpuDeviceCommunicator::Requirements& requirements) final;
@@ -215,16 +225,6 @@ class NcclCommunicator : public GpuCommunicator {
                                 const SignalDesc& signal_desc,
                                 const Executor& executor) final;
 
-  // Queries NCCL for one-sided comm support. Called once at construction.
-  // Returns an empty string if one-sided comm is supported, or a
-  // human-readable reason explaining why it is not.
-  std::string QueryOneSidedCommUnsupportedReason() const;
-
-  // Returns an Unimplemented status describing why the one-sided operation
-  // `op` is not supported. Must only be called when SupportsOneSidedComm() is
-  // false.
-  absl::Status OneSidedCommUnsupportedError(absl::string_view op) const;
-
   // Polls the communicator until any pending non-blocking operations are "done"
   // or aborted.
   absl::Status PollUntilDone() const;
@@ -277,12 +277,10 @@ class NcclCommunicator : public GpuCommunicator {
   // Has comm_ been aborted?
   bool aborted_ = false;
 
-  // Reason one-sided comm is not supported, cached at construction. Empty
-  // if one-sided comm is supported.
-  std::string one_sided_comm_unsupported_reason_;
-
   // Nesting level of current NCCL group
   int group_nesting_level_ = 0;
+
+  NcclCapabilities capabilities_;
 };
 
 //===----------------------------------------------------------------------===//

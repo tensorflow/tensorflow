@@ -131,11 +131,6 @@ class GpuCommunicator : public Communicator {
   // Returns true iff communicator supports device-initiated communication.
   virtual bool SupportsDeviceComm() const { return false; }
 
-  // Returns true iff one-sided RMA operations (PutSignal, Signal, WaitSignal)
-  // are supported by this communicator. Implementations may query the
-  // underlying communicator properties to determine topology-dependent support.
-  virtual bool SupportsOneSidedComm() const { return false; }
-
   // Creates a new device communicator linked to *this GPU communicator object.
   virtual absl::StatusOr<std::unique_ptr<GpuDeviceCommunicator>>
   CreateDeviceComm(const GpuDeviceCommunicator::Requirements& requirements) {

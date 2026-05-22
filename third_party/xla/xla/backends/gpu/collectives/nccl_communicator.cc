@@ -77,7 +77,79 @@ se::Stream* ToStream(const Communicator::Executor& executor) {
   return absl::down_cast<const GpuCollectives::Executor&>(executor).stream();
 }
 
+NcclCapabilities GetCapabilities(ncclComm_t comm) {
+  bool support_device_comm = false;
+  bool support_one_sided_comm = false;
+  std::string one_sided_comm_unsupported_reason = "";
+
+#if NCCL_VERSION_CODE >= 22907
+  ncclCommProperties_t props = NCCL_COMM_PROPERTIES_INITIALIZER;
+  ncclResult_t status = ncclCommQueryProperties(comm, &props);
+  if (status != ncclSuccess) {
+    return {
+        /*supports_device_comm=*/false,
+        /*supports_one_sided_comm=*/false,
+        /*one_sided_comm_unsupported_reason=*/
+        absl::StrFormat("NCCL failed to query communicator properties: %s",
+                        ncclGetErrorString(status)),
+    };
+  }
+
+  if (props.hostRmaSupport) {
+    support_one_sided_comm = true;
+  } else {
+    one_sided_comm_unsupported_reason = absl::StrFormat(
+        "NCCL reports this communicator does not support host "
+        "RMA (hostRmaSupport=false). This is typically caused "
+        "by the hardware, network fabric, or NCCL runtime "
+        "configuration not supporting one-sided communication "
+        "(NCCL version: %d)",
+        NCCL_VERSION_CODE);
+  }
+
+  if (props.deviceApiSupport) {
+    support_device_comm = true;
+  }
+
+  return {
+      /*supports_device_comm=*/support_device_comm,
+      /*supports_one_sided_comm=*/support_one_sided_comm,
+      /*one_sided_comm_unsupported_reason=*/one_sided_comm_unsupported_reason,
+  };
+#elif NCCL_VERSION_CODE >= 22900
+  return {
+      /*supports_device_comm=*/true,
+      /*supports_one_sided_comm=*/false,
+      /*one_sided_comm_unsupported_reason=*/
+      absl::StrFormat("NCCL >= 2.29.7 is required (current: %d)",
+                      NCCL_VERSION_CODE),
+  };
+#elif NCCL_VERSION_CODE >= 22800
+  return {
+      /*supports_device_comm=*/true,
+      /*supports_one_sided_comm=*/false,
+      /*one_sided_comm_unsupported_reason=*/
+      absl::StrFormat("NCCL >= 2.29.0 is required (current: %d)",
+                      NCCL_VERSION_CODE),
+  };
+#else
+  return {
+      /*supports_device_comm=*/false,
+      /*supports_one_sided_comm=*/false,
+      /*one_sided_comm_unsupported_reason=*/
+      absl::StrFormat("NCCL >= 2.29.0 is required (current: %d)",
+                      NCCL_VERSION_CODE),
+  };
+#endif
+}
+
 }  // namespace
+
+absl::Status NcclCapabilities::GetOneSidedCommUnsupportedError(
+    absl::string_view op) const {
+  return Unimplemented("%s is not supported: %s", op,
+                       one_sided_comm_unsupported_reason);
+}
 
 //==-----------------------------------------------------------------------===//
 // NCCL Communicator
@@ -91,55 +163,14 @@ NcclCommunicator::NcclCommunicator(se::StreamExecutor* stream_executor,
       comm_(comm),
       executor_(std::move(executor)),
       cancel_(std::move(cancel)),
-      one_sided_comm_unsupported_reason_(QueryOneSidedCommUnsupportedReason()) {
+      capabilities_(GetCapabilities(comm_)) {
   VLOG(1) << absl::StreamFormat("[%d] Created NCCL communicator %s",
                                 stream_executor_->device_ordinal(),
                                 this->ToString());
 }
 
 bool NcclCommunicator::SupportsDeviceComm() const {
-#if NCCL_VERSION_CODE >= 22800
-  return true;
-#else
-  return false;
-#endif  // NCCL_VERSION_CODE >= 22800
-}
-
-bool NcclCommunicator::SupportsOneSidedComm() const {
-  return one_sided_comm_unsupported_reason_.empty();
-}
-
-std::string NcclCommunicator::QueryOneSidedCommUnsupportedReason() const {
-#if NCCL_VERSION_CODE >= 22907
-  ncclCommProperties_t props = NCCL_COMM_PROPERTIES_INITIALIZER;
-  ncclResult_t status = ncclCommQueryProperties(comm_, &props);
-  if (status != ncclSuccess) {
-    return absl::StrFormat(
-        "ncclCommQueryProperties failed: %s (NCCL version: %d)",
-        ncclGetErrorString(status), NCCL_VERSION_CODE);
-  }
-
-  if (!props.hostRmaSupport) {
-    return absl::StrFormat(
-        "NCCL reports this communicator does not support host RMA "
-        "(hostRmaSupport=false). This is typically caused by the hardware, "
-        "network fabric, or NCCL runtime configuration not supporting "
-        "one-sided communication (NCCL version: %d)",
-        NCCL_VERSION_CODE);
-  }
-  return "";
-#elif NCCL_VERSION_CODE >= 22900
-  return "";
-#else
-  return absl::StrFormat("NCCL >= 2.29.0 is required (current: %d)",
-                         NCCL_VERSION_CODE);
-#endif
-}
-
-absl::Status NcclCommunicator::OneSidedCommUnsupportedError(
-    absl::string_view op) const {
-  return Unimplemented("%s is not supported: %s", op,
-                       one_sided_comm_unsupported_reason_);
+  return capabilities_.supports_device_comm;
 }
 
 absl::StatusOr<std::unique_ptr<GpuDeviceCommunicator>>
@@ -771,8 +802,8 @@ absl::Status NcclCommunicator::LaunchPut(se::DeviceAddressBase send_buffer,
                                          size_t offset, size_t count,
                                          RankId peer,
                                          const Executor& executor) {
-  if (!SupportsOneSidedComm()) {
-    return OneSidedCommUnsupportedError("Put");
+  if (!capabilities_.supports_one_sided_comm) {
+    return capabilities_.GetOneSidedCommUnsupportedError("Put");
   }
   if (cancel_->IsCancelled()) {
     return FailedPrecondition("NcclCommunicator aborted");
@@ -803,8 +834,8 @@ absl::Status NcclCommunicator::LaunchPut(se::DeviceAddressBase send_buffer,
 absl::Status NcclCommunicator::LaunchSignal(RankId peer,
                                             const SignalDesc& signal_desc,
                                             const Executor& executor) {
-  if (!SupportsOneSidedComm()) {
-    return OneSidedCommUnsupportedError("Signal");
+  if (!capabilities_.supports_one_sided_comm) {
+    return capabilities_.GetOneSidedCommUnsupportedError("Signal");
   }
   if (cancel_->IsCancelled()) {
     return FailedPrecondition("NcclCommunicator aborted");
@@ -835,8 +866,8 @@ absl::Status NcclCommunicator::LaunchSignal(RankId peer,
 absl::Status NcclCommunicator::LaunchWaitSignal(RankId peer, int op_cnt,
                                                 const SignalDesc& signal_desc,
                                                 const Executor& executor) {
-  if (!SupportsOneSidedComm()) {
-    return OneSidedCommUnsupportedError("WaitSignal");
+  if (!capabilities_.supports_one_sided_comm) {
+    return capabilities_.GetOneSidedCommUnsupportedError("WaitSignal");
   }
   if (cancel_->IsCancelled()) {
     return FailedPrecondition("NcclCommunicator aborted");
