@@ -855,3 +855,36 @@ cc_library(
         "@stablehlo//:stablehlo_ops",
     ],
 )
+
+cc_library(
+    name = "shape_tracker",
+    srcs = ["shape_tracker.cc"],
+    hdrs = ["shape_tracker.h"],
+    deps = [
+        "//xla:permutation_util",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "shape_tracker_test",
+    srcs = ["shape_tracker_test.cc"],
+    deps = [
+        ":shape_tracker",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest",
+    ],
+)
