@@ -212,12 +212,6 @@ class CollectivesModeOps
  protected:
   void SetUp() override {
     CollectiveOpsE2ETestBase::SetUp();
-    if (collectives_mode_ == DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY) {
-      auto* collectives = gpu::GpuCollectives::Default("GPU");
-      if (!collectives || !collectives->SupportsOneSidedComm()) {
-        GTEST_SKIP() << "GPU collectives do not support one-sided RMA";
-      }
-    }
     if (!IsHopperAndHigher() &&
         (collectives_mode_ == DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY ||
          collectives_mode_ == DebugOptions::COLLECTIVES_PEER_MEMORY)) {

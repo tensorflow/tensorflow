@@ -242,14 +242,6 @@ absl::StatusOr<CliqueId> NcclCollectives::CreateUniqueCliqueId() const {
   return CliqueId(absl::string_view(id.internal, NCCL_UNIQUE_ID_BYTES));
 }
 
-bool NcclCollectives::SupportsDeviceComm() const {
-  return NCCL_VERSION_CODE >= 22800;
-}
-
-bool NcclCollectives::SupportsOneSidedComm() const {
-  return NCCL_VERSION_CODE >= 22900;
-}
-
 size_t NcclCollectives::SymmetricMemoryAlignment() const {
   // Multicast memory requires buffers aligned to
   // CU_MULTICAST_GRANULARITY_MINIMUM which is 2MB on Hopper. Since both

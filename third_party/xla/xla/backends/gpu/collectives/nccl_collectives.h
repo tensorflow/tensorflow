@@ -41,9 +41,6 @@ class NcclCollectives : public GpuCollectives {
  public:
   bool IsImplemented() const final { return true; }
 
-  bool SupportsDeviceComm() const final;
-  bool SupportsOneSidedComm() const final;
-
   size_t SymmetricMemoryAlignment() const final;
 
   absl::StatusOr<CliqueId> CreateUniqueCliqueId() const final;

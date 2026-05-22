@@ -1007,11 +1007,6 @@ TEST_P(AllReduceTest, DeviceAllReduce) {
     GTEST_SKIP() << "NCCL symmetric memory requires Hopper+";
   }
 
-  GpuCollectives* collectives = GpuCollectives::Default("CUDA");
-  if (!collectives || !collectives->SupportsDeviceComm()) {
-    GTEST_SKIP() << "GPU collectives do not support device communication";
-  }
-
   std::string hlo_string = absl::Substitute(R"(
       HloModule m, replica_count=2
 
@@ -1145,11 +1140,6 @@ TEST_P(AllReduceTest, SymMulticastAllReduce) {
     GTEST_SKIP() << "Test requires Hopper+";
   }
 
-  GpuCollectives* collectives = GpuCollectives::Default("CUDA");
-  if (!collectives || !collectives->SupportsOneSidedComm()) {
-    GTEST_SKIP() << "GPU collectives do not support one sided comm";
-  }
-
   std::string hlo_string = absl::Substitute(R"(
       HloModule m, replica_count=2
 
@@ -1193,11 +1183,6 @@ TEST_P(AllReduceTest, SymPeerAllReduce) {
   if (!IsHopperAndHigher()) {
     GTEST_SKIP() << "Test requires Hopper+ since on a previous platforms there "
                     "are no guarantees that GPUs have direct peer access";
-  }
-
-  GpuCollectives* collectives = GpuCollectives::Default("CUDA");
-  if (!collectives || !collectives->SupportsOneSidedComm()) {
-    GTEST_SKIP() << "GPU collectives do not support one sided comm";
   }
 
   std::string hlo_string = absl::Substitute(R"(
@@ -1251,11 +1236,6 @@ TEST_F(CollectiveOpsTestFFI, DeviceAllReduceWithFrontendAttributes) {
 
   if (!IsHopperAndHigher()) {
     GTEST_SKIP() << "NCCL symmetric memory requires Hopper+";
-  }
-
-  GpuCollectives* collectives = GpuCollectives::Default("CUDA");
-  if (!collectives || !collectives->SupportsDeviceComm()) {
-    GTEST_SKIP() << "GPU collectives do not support device communication";
   }
 
   constexpr absl::string_view hlo_string = R"(
