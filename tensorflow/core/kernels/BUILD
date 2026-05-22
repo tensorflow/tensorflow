@@ -47,6 +47,12 @@ load(
 )
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
+# copybara:uncomment_begin(reason: google-internal)
+# load("//tensorflow:third_party/tensorflow/google/internal_visibility.bzl", "LOOSE_HEADER_VISIBILITY")
+# copybara:uncomment_end_and_comment_begin
+LOOSE_HEADER_VISIBILITY = []
+# copybara:comment_end
+
 # Description:
 # Op kernel implementations for TensorFlow.
 #
@@ -8056,14 +8062,14 @@ cc_library(
 # Here it is used to avoid header parsing errors in packages where the feature
 # parse_headers was enabled since loose headers were not being parsed. See
 # go/loose-lsc-one-target-approach for more details.
+
 cc_library(
     name = "loose_headers",
     tags = ["avoid_dep"],
     textual_hdrs = glob(["*.h"]),
     visibility = [
-        "//smartass/brain:__subpackages__",
         "//tensorflow:__subpackages__",
-    ],
+    ] + LOOSE_HEADER_VISIBILITY,
 )
 
 # Deleted deps
