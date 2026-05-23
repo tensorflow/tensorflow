@@ -89,7 +89,7 @@ std::optional<absl::InlinedVector<int64_t, 4>> ComputeByteStrides(
 
 }  // namespace
 
-absl::StatusOr<FusionEmissionResult> MemcpyFusion::Emit(
+AsyncThunkSequence MemcpyFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   std::vector<BufferAllocation::Slice> src_buffers;
@@ -129,10 +129,10 @@ absl::StatusOr<FusionEmissionResult> MemcpyFusion::Emit(
           /*mem_size=*/src_buffers[i].size()));
     }
   }
-  return FusionEmissionResult{std::move(thunks)};
+  return std::move(thunks);
 }
 
-absl::StatusOr<FusionEmissionResult> DynamicMemcpyFusion::Emit(
+AsyncThunkSequence DynamicMemcpyFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   CHECK_EQ(analysis_.fusion_roots().size(), 1);
@@ -194,14 +194,12 @@ absl::StatusOr<FusionEmissionResult> DynamicMemcpyFusion::Emit(
   absl::c_copy(memcpy_config.dst_offset_bytes(),
                std::back_inserter(offsets.dst_offsets));
 
-  FusionEmissionResult result;
-  result.thunks = ThunkSequence::Of(std::make_unique<DynamicMemcpyThunk>(
+  return ThunkSequence::Of(std::make_unique<DynamicMemcpyThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           &fusion, ir_emitter_context.GetNextThunkId()),
       /*source_buffer=*/ShapedSlice{src_buffer, src_shape},
       /*destination_buffer=*/ShapedSlice{dst_buffer, dst_shape},
       /*mem_size=*/ShapeUtil::ByteSizeOfElements(*copy_shape), offsets));
-  return result;
 }
 
 namespace {

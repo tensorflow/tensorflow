@@ -70,9 +70,6 @@ class ThunkEmitter {
   std::unique_ptr<llvm::Module> ConsumeConstantsModule() {
     return std::move(constants_module_);
   }
-  std::vector<std::unique_ptr<llvm::Module>> ConsumeKernelModules() {
-    return std::move(kernel_modules_);
-  }
 
  private:
   // Emits code for the given HLO computation.
@@ -249,9 +246,6 @@ class ThunkEmitter {
 
   // Module with constants.
   std::unique_ptr<llvm::Module> constants_module_;
-
-  // Modules for each emitted kernel.
-  std::vector<std::unique_ptr<llvm::Module>> kernel_modules_;
 
   // TODO(tjoerg): Attach the HloOrdering to the HloSchedule instead of
   // re-creating it here.

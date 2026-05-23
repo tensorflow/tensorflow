@@ -595,10 +595,11 @@ absl::StatusOr<std::unique_ptr<Thunk>> CreateMatmulThunk(
       /*d_amax=*/std::nullopt, workspace_buffer);
 }
 
-absl::StatusOr<FusionEmissionResult> EmitGemm(
-    IrEmitterContext& ir_emitter_context, const HloFusionAdaptor& adaptor,
-    const HloFusionInstruction& fusion,
-    const HloCustomCallInstruction& custom_call, const CallGraph& call_graph) {
+AsyncThunkSequence EmitGemm(IrEmitterContext& ir_emitter_context,
+                            const HloFusionAdaptor& adaptor,
+                            const HloFusionInstruction& fusion,
+                            const HloCustomCallInstruction& custom_call,
+                            const CallGraph& call_graph) {
   const BufferAssignment& buffer_assignment =
       ir_emitter_context.buffer_assignment();
 
@@ -783,13 +784,14 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
                           rhs_slice, output, workspace, deterministic_ops));
   }
 
-  return FusionEmissionResult{ThunkSequence::Of(std::move(thunk))};
+  return ThunkSequence::Of(std::move(thunk));
 }
 
-absl::StatusOr<FusionEmissionResult> EmitCustomCall(
-    IrEmitterContext& ir_emitter_context, const HloFusionAdaptor& adaptor,
-    const HloFusionInstruction& fusion,
-    const HloCustomCallInstruction& custom_call, const CallGraph& call_graph) {
+AsyncThunkSequence EmitCustomCall(IrEmitterContext& ir_emitter_context,
+                                  const HloFusionAdaptor& adaptor,
+                                  const HloFusionInstruction& fusion,
+                                  const HloCustomCallInstruction& custom_call,
+                                  const CallGraph& call_graph) {
   const BufferAssignment& buffer_assignment =
       ir_emitter_context.buffer_assignment();
 
@@ -1098,7 +1100,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
                    : legacy_thunk(std::move(operands), std::move(results)));
   }
 
-  return FusionEmissionResult{ThunkSequence::Of(std::move(thunk))};
+  return ThunkSequence::Of(std::move(thunk));
 }
 
 using Slice = std::optional<BufferAllocation::Slice>;
@@ -1278,10 +1280,12 @@ CollectSliceArgumentMetadataForCollectives(
 }
 
 template <typename NcclThunkType, typename HloInstType>
-absl::StatusOr<FusionEmissionResult> EmitCollective(
-    IrEmitterContext& ir_emitter_context, const HloFusionAdaptor& adaptor,
-    const HloFusionInstruction& fusion_instr, const HloInstType* instr,
-    bool use_global_device_ids, const CallGraph& call_graph) {
+AsyncThunkSequence EmitCollective(IrEmitterContext& ir_emitter_context,
+                                  const HloFusionAdaptor& adaptor,
+                                  const HloFusionInstruction& fusion_instr,
+                                  const HloInstType* instr,
+                                  bool use_global_device_ids,
+                                  const CallGraph& call_graph) {
   const BufferAssignment& buffer_assignment =
       ir_emitter_context.buffer_assignment();
 
@@ -1355,44 +1359,41 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
     return implementable_status;
   }
 
-  FusionEmissionResult result;
   // Depending on whether this is a dynamic fusion or not, we wrap the
   // thunk(s) within a dynamic-slice thunk.
-  if (slice_data.isDynamic) {
-    std::optional<DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata>
-        offset_modules_metadata = std::nullopt;
-    if (slice_data.can_compute_indvar_on_host) {
-      offset_modules_metadata =
-          DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata(
-              /*indvar_init=*/std::move(slice_data.init_module),
-              /*indvar_update=*/std::move(slice_data.update_module),
-              /*extracted_offset_modules=*/
-              std::move(slice_data.extracted_offset_modules));
-    }
-    std::unique_ptr<Thunk> thunk = std::make_unique<DynamicSliceThunk>(
-        thunk_info,
-        /*embedded_thunk=*/std::make_unique<ThunkSequence>(std::move(seq)),
-        std::move(slice_data.arguments), std::move(slice_data.fake_allocations),
-        std::move(slice_data.offset_buffer_indices),
-        std::move(slice_data.orig_shapes), std::move(slice_data.sliced_shapes),
-        std::move(slice_data.offset_primitive_types),
-        std::move(offset_modules_metadata));
-    result.thunks = ThunkSequence::Of(std::move(thunk));
-  } else {
-    result.thunks = std::move(seq);
+  if (!slice_data.isDynamic) {
+    return std::move(seq);
   }
-  return result;
+  std::optional<DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata>
+      offset_modules_metadata = std::nullopt;
+  if (slice_data.can_compute_indvar_on_host) {
+    offset_modules_metadata =
+        DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata(
+            /*indvar_init=*/std::move(slice_data.init_module),
+            /*indvar_update=*/std::move(slice_data.update_module),
+            /*extracted_offset_modules=*/
+            std::move(slice_data.extracted_offset_modules));
+  }
+  std::unique_ptr<Thunk> thunk = std::make_unique<DynamicSliceThunk>(
+      thunk_info,
+      /*embedded_thunk=*/std::make_unique<ThunkSequence>(std::move(seq)),
+      std::move(slice_data.arguments), std::move(slice_data.fake_allocations),
+      std::move(slice_data.offset_buffer_indices),
+      std::move(slice_data.orig_shapes), std::move(slice_data.sliced_shapes),
+      std::move(slice_data.offset_primitive_types),
+      std::move(offset_modules_metadata));
+  return ThunkSequence::Of(std::move(thunk));
 }
 
 }  // namespace
 
-absl::StatusOr<FusionEmissionResult> CustomFusion::Emit(
+AsyncThunkSequence CustomFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   return absl::UnimplementedError("Custom kernel fusion is not supported.");
 }
 
-absl::StatusOr<FusionEmissionResult> DynamicSliceFusion::Emit(
+AsyncThunkSequence DynamicSliceFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   const HloFusionAdaptor& adaptor = analysis_.fusion();

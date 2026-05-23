@@ -29,9 +29,8 @@ namespace gpu {
 // details.
 class CustomFusion : public FusionInterface {
  public:
-  absl::StatusOr<FusionEmissionResult> Emit(
-      IrEmitterContext& ir_emitter_context,
-      const HloFusionInstruction& fusion) const final;
+  AsyncThunkSequence Emit(IrEmitterContext& ir_emitter_context,
+                          const HloFusionInstruction& fusion) const final;
 };
 
 // Emitter for custom fusions implementing address computation. An address
@@ -66,9 +65,8 @@ class DynamicSliceFusion : public FusionInterface {
                               const CallGraph& call_graph)
       : analysis_(analysis), call_graph_(call_graph) {}
 
-  absl::StatusOr<FusionEmissionResult> Emit(
-      IrEmitterContext& ir_emitter_context,
-      const HloFusionInstruction& fusion) const final;
+  AsyncThunkSequence Emit(IrEmitterContext& ir_emitter_context,
+                          const HloFusionInstruction& fusion) const final;
 
  private:
   const HloFusionAnalysis& analysis_;

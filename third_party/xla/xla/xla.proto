@@ -677,7 +677,8 @@ message DebugOptions {
   // Indicates whether to do LLVM module compilation in a parallelised way. When
   // set, the number of threads depends on
   // `xla_gpu_force_compilation_parallelism`.
-  optional bool xla_gpu_enable_llvm_module_compilation_parallelism = 268;
+  optional bool xla_gpu_enable_llvm_module_compilation_parallelism = 268
+      [deprecated = true];
 
   // DEPRECATED: This flag is a no-op.
   optional bool xla_gpu_enable_nccl_clique_optimization = 244

@@ -44,7 +44,7 @@ limitations under the License.
 
 namespace xla::gpu {
 
-constexpr int kCacheCompatibilityVersion = 1;
+constexpr int kCacheCompatibilityVersion = 2;
 
 absl::Status KernelReuseCache::Load(const CompilationCacheProto& proto) {
   if (proto.compatibility_version() != kCacheCompatibilityVersion) {
@@ -62,9 +62,6 @@ absl::Status KernelReuseCache::Load(const CompilationCacheProto& proto) {
     }
     std::vector<uint8_t> binary(entry.binary().data(),
                                 entry.binary().data() + entry.binary().size());
-    if (entry.link_binary()) {
-      binary.clear();
-    }
     TF_RET_CHECK(
         cache_
             .insert(
@@ -118,15 +115,12 @@ CompilationCacheProto KernelReuseCache::Export() const {
     proto_entry.set_binary(absl::string_view(
         reinterpret_cast<const char*>(cache_entry->binary.data()),
         cache_entry->binary.size()));
-    proto_entry.set_link_binary(cache_entry->binary.empty());
   }
   return proto;
 }
 
-absl::Status UpdateDiskKernelCache(
-    absl::string_view path, const bool do_append,
-    const CompilationCacheProto& current_cache,
-    absl::Span<const KernelReuseCache::NamedBinary> binaries_to_cache) {
+absl::Status UpdateDiskKernelCache(absl::string_view path, const bool do_append,
+                                   const CompilationCacheProto& current_cache) {
   CompilationCacheProto disk_cache;
   if (do_append) {
     std::string serialized;
@@ -145,33 +139,17 @@ absl::Status UpdateDiskKernelCache(
 
   int stored_kernel_count = 0;
   for (const auto& [name, entry] : current_cache.entries()) {
-    if (entry.link_binary()) {
-      continue;
-    }
     (*disk_cache.mutable_entries())[name] = entry;
     stored_kernel_count++;
   }
 
-  auto* entries = disk_cache.mutable_entries();
-  for (const auto& [name, binary] : binaries_to_cache) {
-    auto it_current = current_cache.entries().find(name);
-    TF_RET_CHECK(it_current != current_cache.entries().end());
-    auto [it_disk, inserted] = entries->insert({name, it_current->second});
-    TF_RET_CHECK(inserted);
-    TF_RET_CHECK(!binary.empty());
-    it_disk->second.set_binary(reinterpret_cast<const char*>(binary.data()),
-                               binary.size());
-    VLOG(5) << "Cached kernel: " << name << ": " << binary.size();
-    ++stored_kernel_count;
-  }
   disk_cache.set_compatibility_version(kCacheCompatibilityVersion);
-
   if (stored_kernel_count) {
     RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(),
                                            std::string(path),
                                            disk_cache.SerializeAsString()));
-    VLOG(2) << "Stored " << stored_kernel_count << " / "
-            << binaries_to_cache.size() << " kernels in the cache file.";
+    VLOG(2) << "Stored " << stored_kernel_count
+            << " kernels in the cache file.";
   }
   return absl::OkStatus();
 }

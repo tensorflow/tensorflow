@@ -1404,21 +1404,10 @@ AsyncThunkSequence ThunkEmitter::EmitFusion(const HloFusionInstruction* instr) {
 
   VLOG(3) << "ThunkEmitter::EmitFusion:start";
   std::unique_ptr<FusionInterface> emitter = GetFusionEmitter(
-      /*fusion_info=*/HloFusionInfo(
-          /*analysis=*/fusion_analysis, instr,
-          /*buffer_assignment=*/
-          &ir_emitter_context_->buffer_assignment(),
-          /*call_graph=*/*call_graph_),
+      HloFusionInfo(fusion_analysis, instr,
+                    &ir_emitter_context_->buffer_assignment(), *call_graph_),
       ir_emitter_context_->mlir_context());
-  ASSIGN_OR_RETURN(auto result, emitter->Emit(*ir_emitter_context_, *instr));
-
-  // Use override flag because libdevice functions can be present in both.
-  if (result.module) {
-    kernel_modules_.push_back(std::move(result.module));
-  }
-
-  VLOG(3) << "ThunkEmitter::EmitFusion:complete";
-  return std::move(result.thunks);
+  return emitter->Emit(*ir_emitter_context_, *instr);
 }
 
 AsyncThunkSequence ThunkEmitter::EmitDynamicSliceFusionV2(

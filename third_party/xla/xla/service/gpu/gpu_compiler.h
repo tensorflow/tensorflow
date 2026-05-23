@@ -260,13 +260,6 @@ class GpuCompiler : public LLVMCompiler {
       se::StreamExecutor* absl_nullable stream_exec,
       mlir::MLIRContext* mlir_context);
 
-  absl::StatusOr<BackendCompileResult> CompileAndLink(
-      const HloModuleConfig& module_config,
-      CompileModuleResults& compile_module_results,
-      const stream_executor::DeviceDescription& device_description,
-      const CompileOptions& options, const HloModule* debug_module,
-      se::StreamExecutor* absl_nullable stream_exec);
-
   absl::StatusOr<BackendCompileResult> CompileSingleModule(
       const HloModuleConfig& module_config,
       const stream_executor::DeviceDescription& device_description,

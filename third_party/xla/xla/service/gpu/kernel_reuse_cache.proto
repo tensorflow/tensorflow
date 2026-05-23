@@ -37,9 +37,7 @@ message CompilationCacheEntryProto {
   optional ClusterDimProto cluster_dim = 3;
   int64 shmem_bytes = 4;
   bytes binary = 5;
-  // Binary can contain cubin for CustomKernelThunk or relocatable binary
-  // for KernelThunk. All binaries for KernelThunks will be linked into one.
-  bool link_binary = 6;
+  reserved 6;
 }
 
 message CompilationCacheProto {

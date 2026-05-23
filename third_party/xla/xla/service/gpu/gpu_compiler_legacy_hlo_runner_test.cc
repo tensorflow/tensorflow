@@ -407,11 +407,6 @@ class NoKernelCacheTest : public KernelCacheTest {
   }
 };
 
-TEST_F(NoKernelCacheTest, NoCacheWithoutCompilationParallelism) {
-  EXPECT_TRUE(Run(kHloText, /*run_hlo_passes=*/false));
-  EXPECT_FALSE(CacheFileExists());
-}
-
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

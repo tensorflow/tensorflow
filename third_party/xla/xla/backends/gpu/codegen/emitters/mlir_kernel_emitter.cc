@@ -369,7 +369,7 @@ MlirKernelFusion::EmitLlvmModule(const HloFusionInstruction& fusion,
       });
 }
 
-absl::StatusOr<FusionEmissionResult> MlirKernelFusion::Emit(
+AsyncThunkSequence MlirKernelFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   VLOG(4) << "Fusion: " << fusion.fused_instructions_computation()->ToString();
@@ -408,15 +408,13 @@ absl::StatusOr<FusionEmissionResult> MlirKernelFusion::Emit(
                   });
             });
       });
-  FusionEmissionResult result;
-
   Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
       &fusion, ir_emitter_context.GetNextThunkId());
   bool kernel_cached = cached;
-  result.thunks = future_entry.Map([&fusion, thunk_info = std::move(thunk_info),
-                                    args = std::move(args), kernel_cached](
-                                       const KernelReuseCache::Entry* entry)
-                                       -> absl::StatusOr<ThunkSequence> {
+  return future_entry.Map([&fusion, thunk_info = std::move(thunk_info),
+                           args = std::move(args),
+                           kernel_cached](const KernelReuseCache::Entry* entry)
+                              -> absl::StatusOr<ThunkSequence> {
     if (kernel_cached) {
       VLOG(3) << "Reuse: " << fusion.name() << " -> " << entry->kernel_name;
     }
@@ -430,8 +428,6 @@ absl::StatusOr<FusionEmissionResult> MlirKernelFusion::Emit(
     return ThunkSequence::Of(std::make_unique<CustomKernelThunk>(
         thunk_info, std::move(custom_kernel), args, entry->use_pdl));
   });
-
-  return result;
 }
 
 xla::Future<LlvmKernelSource> MlirKernelFusion::CreateLLVMModule(

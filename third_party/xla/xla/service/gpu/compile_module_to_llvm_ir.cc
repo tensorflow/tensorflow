@@ -126,8 +126,7 @@ std::string Phase(absl::string_view phase_name, const HloModule* module) {
 }
 
 bool UseCache(const DebugOptions& options) {
-  return options.xla_gpu_enable_llvm_module_compilation_parallelism() &&
-         !options.xla_gpu_kernel_cache_file().empty();
+  return !options.xla_gpu_kernel_cache_file().empty();
 }
 
 }  // namespace
@@ -264,12 +263,6 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   ASSIGN_OR_RETURN(auto sequential_thunk,
                    thunk_emitter.EmitHloEntryComputation(hlo_module));
   results.executable = std::move(sequential_thunk);
-
-  results.llvm_modules = thunk_emitter.ConsumeKernelModules();
-  if (results.llvm_modules.empty()) {
-    results.llvm_modules.push_back(
-        ir_emitter_context.CreateLLVMModule(hlo_module->name()));
-  }
 
   results.llvm_module_constants = thunk_emitter.ConsumeConstantsModule();
 

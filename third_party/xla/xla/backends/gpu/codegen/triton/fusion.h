@@ -50,12 +50,10 @@ class TritonFusion : public FusionInterface {
   explicit TritonFusion(const HloFusionAnalysis& analysis)
       : analysis_(analysis) {}
 
-  absl::StatusOr<FusionEmissionResult> Emit(
-      IrEmitterContext& ir_emitter_context,
-      const HloFusionInstruction& fusion) const final;
+  AsyncThunkSequence Emit(IrEmitterContext& ir_emitter_context,
+                          const HloFusionInstruction& fusion) const final;
 
-  // A kernel thunk and the corresponding LLVM module if it was not cached.
-  // This is a more concrete version of FusionEmissionResult that can be used in
+  // This is a more concrete emission result that can be used in
   // places where we know we are dealing with Triton fusions.
   struct EmitResult {
     KernelReuseCache::Entry entry;

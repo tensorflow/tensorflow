@@ -114,16 +114,15 @@ TritonFusion::GenerateTritonKernelAndWrapper(
                              /*is_xla_fusion=*/true);
 };
 
-absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
+AsyncThunkSequence TritonFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
-  FusionEmissionResult res;
   Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
       &fusion, ir_emitter_context.GetNextThunkId());
-  res.thunks =
-      Emit(ir_emitter_context, fusion, nullptr, {})
-          .Map([thunk_info = std::move(thunk_info)](
-                   EmitResult result) -> absl::StatusOr<ThunkSequence> {
+  return Emit(ir_emitter_context, fusion, nullptr, {})
+      .Map(
+          [thunk_info = std::move(thunk_info)](
+              EmitResult result) -> absl::StatusOr<ThunkSequence> {
             ASSIGN_OR_RETURN(
                 CustomKernel custom_kernel,
                 kernel::CreateOwnedCubinCustomKernel(
@@ -137,7 +136,6 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
                 result.entry.use_pdl, std::vector<int64_t>{},
                 result.entry.tma_metadata));
           });
-  return res;
 }
 
 xla::Future<TritonFusion::EmitResult> TritonFusion::Emit(

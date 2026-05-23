@@ -44,18 +44,12 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-struct FusionEmissionResult {
-  AsyncThunkSequence thunks;
-  std::unique_ptr<llvm::Module> module;
-};
-
 class FusionInterface {
  public:
   virtual ~FusionInterface() = default;
 
-  virtual absl::StatusOr<FusionEmissionResult> Emit(
-      IrEmitterContext& ir_emitter_context,
-      const HloFusionInstruction& fusion) const = 0;
+  virtual AsyncThunkSequence Emit(IrEmitterContext& ir_emitter_context,
+                                  const HloFusionInstruction& fusion) const = 0;
 };
 
 // Interface for fusions that are implemented using cuda kernels.
