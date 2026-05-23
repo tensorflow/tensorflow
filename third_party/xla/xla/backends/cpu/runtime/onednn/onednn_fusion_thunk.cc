@@ -18,7 +18,9 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <utility>
+#include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
