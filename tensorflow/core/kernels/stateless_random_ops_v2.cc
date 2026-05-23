@@ -97,12 +97,14 @@ class StatelessRandomUniformIntOp : public StatelessRandomOpBaseWithKeyCounter {
             const Tensor& counter, Tensor* output) override {
     const Tensor& minval = ctx->input(4);
     const Tensor& maxval = ctx->input(5);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(minval.shape()),
-                errors::InvalidArgument("minval must be 0-D, got shape ",
-                                        minval.shape().DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(maxval.shape()),
-                errors::InvalidArgument("maxval must be 0-D, got shape ",
-                                        maxval.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(minval.shape()),
+        absl::InvalidArgumentError(absl::StrCat(
+            "minval must be 0-D, got shape ", minval.shape().DebugString())));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(maxval.shape()),
+        absl::InvalidArgumentError(absl::StrCat(
+            "maxval must be 0-D, got shape ", maxval.shape().DebugString())));
 
     // Verify that minval < maxval.  Note that we'll never reach this point for
     // empty output.  Zero impossible things are fine.
@@ -144,9 +146,10 @@ class GetKeyCounterAlgOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& seed_t = ctx->input(0);
-    OP_REQUIRES(ctx, seed_t.dims() == 1 && seed_t.dim_size(0) == 2,
-                errors::InvalidArgument("seed must have shape [2], not ",
-                                        seed_t.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, seed_t.dims() == 1 && seed_t.dim_size(0) == 2,
+        absl::InvalidArgumentError(absl::StrCat(
+            "seed must have shape [2], not ", seed_t.shape().DebugString())));
     // Allocate outputs
     Tensor* key_output;
     OP_REQUIRES_OK(
@@ -173,9 +176,10 @@ class GetKeyCounterOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& seed_t = ctx->input(0);
-    OP_REQUIRES(ctx, seed_t.dims() == 1 && seed_t.dim_size(0) == 2,
-                errors::InvalidArgument("seed must have shape [2], not ",
-                                        seed_t.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, seed_t.dims() == 1 && seed_t.dim_size(0) == 2,
+        absl::InvalidArgumentError(absl::StrCat(
+            "seed must have shape [2], not ", seed_t.shape().DebugString())));
     // Allocate outputs
     Tensor* key_output;
     OP_REQUIRES_OK(

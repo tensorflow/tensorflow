@@ -63,19 +63,19 @@ class SerializeSparseOp : public OpKernel {
     OP_REQUIRES_OK(context, context->input("sparse_values", &input_values));
     OP_REQUIRES_OK(context, context->input("sparse_shape", &input_shape));
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(input_indices->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input indices should be a matrix but received shape ",
-                    input_indices->shape().DebugString()));
+                    input_indices->shape().DebugString())));
 
     OP_REQUIRES(context, TensorShapeUtils::IsVector(input_values->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input values should be a vector but received shape ",
-                    input_values->shape().DebugString()));
+                    input_values->shape().DebugString())));
 
     OP_REQUIRES(context, TensorShapeUtils::IsVector(input_shape->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input shape should be a vector but received shape ",
-                    input_shape->shape().DebugString()));
+                    input_shape->shape().DebugString())));
 
     Tensor serialized_sparse;
     OP_REQUIRES_OK(context, Initialize(&serialized_sparse));
@@ -173,9 +173,9 @@ struct SerializeGroups<T, tstring> {
     for (const auto& subset : *minibatch) {
       const int64_t b = subset.group_at(0);
       if (b < 0 || b >= N) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Received unexpected column 0 value in input SparseTensor: ", b,
-            " < 0 or >= N (= ", N, ")");
+            " < 0 or >= N (= ", N, ")"));
       }
 
       // GroupIterable generates only the non-empty groups of rows, so we must
@@ -274,9 +274,9 @@ struct SerializeGroups<T, Variant> {
     for (const auto& subset : *minibatch) {
       const int64_t b = subset.group_at(0);
       if (b < 0 || b >= N) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Received unexpected column 0 value in input SparseTensor: ", b,
-            " < 0 or >= N (= ", N, ")");
+            " < 0 or >= N (= ", N, ")"));
       }
 
       // GroupIterable generates only the non-empty groups of rows, so we must
@@ -346,26 +346,26 @@ class SerializeManySparseOp : public OpKernel {
     OP_REQUIRES_OK(context, context->input("sparse_values", &input_values));
     OP_REQUIRES_OK(context, context->input("sparse_shape", &input_shape));
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(input_indices->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input indices should be a matrix but received shape ",
-                    input_indices->shape().DebugString()));
+                    input_indices->shape().DebugString())));
 
     OP_REQUIRES(context, TensorShapeUtils::IsVector(input_values->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input values should be a vector but received shape ",
-                    input_values->shape().DebugString()));
+                    input_values->shape().DebugString())));
 
     OP_REQUIRES(context, TensorShapeUtils::IsVector(input_shape->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input shape should be a vector but received shape ",
-                    input_shape->shape().DebugString()));
+                    input_shape->shape().DebugString())));
 
     int rank = input_shape->NumElements();
 
     OP_REQUIRES(
         context, rank > 1,
-        errors::InvalidArgument(
-            "Rank of input SparseTensor should be > 1, but saw rank: ", rank));
+        absl::InvalidArgumentError(absl::StrCat(
+            "Rank of input SparseTensor should be > 1, but saw rank: ", rank)));
 
     TensorShape tensor_input_shape;
     OP_REQUIRES_OK(context,
