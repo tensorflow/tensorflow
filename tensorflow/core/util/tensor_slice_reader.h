@@ -117,7 +117,7 @@ class TensorSliceReader {
   VarToDataTypeMap GetVariableToDataTypeMap() const;
 
   // Returns a string containing names and shapes of all the tensors.
-  const std::string DebugString() const;
+  std::string DebugString() const;
 
  private:
   friend class TensorSliceWriteTestHelper;

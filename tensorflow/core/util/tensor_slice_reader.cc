@@ -323,7 +323,7 @@ TensorSliceReader::GetVariableToDataTypeMap() const {
   return name_to_dtype;
 }
 
-const std::string TensorSliceReader::DebugString() const {
+std::string TensorSliceReader::DebugString() const {
   std::string shape_str;
   if (status().ok()) {
     for (const auto& e : Tensors()) {
