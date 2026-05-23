@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -62,6 +63,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -380,8 +382,13 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
         << "TODO(b/167392593): Support split shapes for window "
            "prefetches.";
   }
+  // Step 1: Run the simulation pass using the MsaAlgorithm to populate the
+  // alternate memory allocations sequence in allocations_.
   RETURN_IF_ERROR(FindAllocationSequence(hlo_live_range, alias_analysis));
 
+  // Step 2: Set up a runtime simulator to track pre-allocation baseline
+  // execution times (without asynchronous copy overlaps) if cost analysis
+  // is enabled.
   std::optional<RuntimeSimulator> runtime_simulator = std::nullopt;
   if (options_.cost_analysis) {
     runtime_simulator.emplace(options_.cost_analysis,
@@ -395,6 +402,8 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
     }
   }
 
+  // Step 3: Finalize allocations and verify alternate memory placements
+  // are free of overlapping allocations in time and space.
   RETURN_IF_ERROR(Process(hlo_live_range, alias_analysis));
   if (options_.verify) {
     RETURN_IF_ERROR(VerifyAllocations());
@@ -407,9 +416,19 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   //
   // AllocationSequenceDebugging::LogAltMemAllocationsAt(
   //     allocations_, /*time*/1);
+
+  // Step 4: Schedule the asynchronous copies (prefetching/evictions)
+  // globally, ensuring copy events follow consistent DMA orderings.
   ScheduleAsynchronousCopies();
+
+  // Step 5: Mutate the HLO computation schedule graph by inserting copy
+  // start/done operations, and run DCE graph simplifications.
   RETURN_IF_ERROR(SimplifyGraph());
   RETURN_IF_ERROR(SetSchedule());
+
+  // Step 6: Update HLO buffer layout metadata to reflect finalized memory
+  // spaces, run final trace verifications, and export offset chunk
+  // assignments.
   ASSIGN_OR_RETURN(auto alias, HloAliasAnalysis::Run(module_, alias_info_));
   RETURN_IF_ERROR(ExportAndColorBuffers(*alias));
   std::vector<int64_t> alt_mem_bytes_occupied;
@@ -419,6 +438,9 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   RETURN_IF_ERROR(VerifyAndExportHeapSimulatorTrace(
       *alias,
       runtime_simulator.has_value() ? &alt_mem_bytes_occupied : nullptr));
+
+  // Step 7: Simulate post-allocation runtime execution metrics to profile
+  // expected TPU performance enhancements.
   if (VLOG_IS_ON(2) && runtime_simulator.has_value()) {
     float estimated_time = runtime_simulator->SimulateElapsedTime(
         module_, *alias, allocations_, &alt_mem_bytes_occupied);
@@ -450,6 +472,8 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
 absl::Status MemorySpaceAssignment::FindAllocationSequence(
     const HloLiveRange& hlo_live_range,
     const HloAliasAnalysis& alias_analysis) {
+  // MsaAlgorithm is initialized with a pointer to allocations_ (which is
+  // populated in-place during the simulation run).
   auto algorithm = std::make_unique<MsaAlgorithm>(module_, &allocations_,
                                                   options_, alias_analysis,
                                                   alias_info_, hlo_live_range);
