@@ -16,9 +16,13 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value_util.h"
 
 #include <numeric>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"

@@ -15,6 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/framework/log_memory.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <string>
+
+#include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "tensorflow/core/framework/log_memory.pb.h"
 
 namespace tensorflow {

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 
