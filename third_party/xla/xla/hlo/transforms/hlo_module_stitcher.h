@@ -49,6 +49,12 @@ class HloModuleStitcher final : public HloModulePass {
 
  private:
   const absl::flat_hash_map<std::string, HloModule*>& optimized_modules_;
+  // Tracks modules currently on the recursion stack to detect circular
+  // dependencies.
+  absl::flat_hash_set<const HloModule*> visiting_modules_;
+  // Tracks modules that have already been fully processed to avoid redundant
+  // visits.
+  absl::flat_hash_set<const HloModule*> visited_modules_;
 };
 
 }  // namespace xla

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/hlo_verifier.h"
@@ -348,6 +349,136 @@ CHECK-SAME: to_apply=%outer_entry
   ASSERT_OK_AND_ASSIGN(bool filecheck_ok,
                        RunFileCheck(main_module->ToString(), expected_hlo));
   EXPECT_TRUE(filecheck_ok);
+
+  HloVerifier verifier(/*layout_sensitive=*/false,
+                       /*allow_mixed_precision=*/false);
+  EXPECT_TRUE(verifier.Run(main_module.get()).status().ok());
+}
+
+TEST_F(HloModuleStitcherTest, StitcherDetectsCircularDependency) {
+  const char* main_hlo = R"(
+HloModule main
+ENTRY main {
+  param0 = f32[100] parameter(0)
+  ROOT custom-call = f32[100] custom-call(param0),
+    custom_call_target="_xla_multi_module_call",
+    backend_config="sub1",
+    api_version=API_VERSION_TYPED_FFI
+}
+)";
+
+  const char* sub1_hlo = R"(
+HloModule sub1
+ENTRY sub1_entry {
+  param0 = f32[100] parameter(0)
+  ROOT custom-call = f32[100] custom-call(param0),
+    custom_call_target="_xla_multi_module_call",
+    backend_config="sub2",
+    api_version=API_VERSION_TYPED_FFI
+}
+)";
+
+  const char* sub2_hlo = R"(
+HloModule sub2
+ENTRY sub2_entry {
+  param0 = f32[100] parameter(0)
+  ROOT custom-call = f32[100] custom-call(param0),
+    custom_call_target="_xla_multi_module_call",
+    backend_config="sub1",
+    api_version=API_VERSION_TYPED_FFI
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto main_module,
+                       ParseAndReturnVerifiedModule(main_hlo));
+  ASSERT_OK_AND_ASSIGN(auto sub1_module,
+                       ParseAndReturnVerifiedModule(sub1_hlo));
+  ASSERT_OK_AND_ASSIGN(auto sub2_module,
+                       ParseAndReturnVerifiedModule(sub2_hlo));
+
+  absl::flat_hash_map<std::string, HloModule*> optimized_modules;
+  optimized_modules["sub1"] = sub1_module.get();
+  optimized_modules["sub2"] = sub2_module.get();
+
+  HloModuleStitcher stitcher(optimized_modules);
+  absl::Status status = stitcher.Run(main_module.get()).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_THAT(status.message(),
+              ::testing::HasSubstr("Circular dependency detected"));
+}
+
+TEST_F(HloModuleStitcherTest, StitcherHandlesDiamondDependency) {
+  const char* main_hlo = R"(
+HloModule main
+ENTRY main {
+  param0 = f32[100] parameter(0)
+  c1 = f32[100] custom-call(param0),
+    custom_call_target="_xla_multi_module_call",
+    backend_config="sub1",
+    api_version=API_VERSION_TYPED_FFI
+  c2 = f32[100] custom-call(param0),
+    custom_call_target="_xla_multi_module_call",
+    backend_config="sub2",
+    api_version=API_VERSION_TYPED_FFI
+  ROOT add = f32[100] add(c1, c2)
+}
+)";
+
+  const char* sub1_hlo = R"(
+HloModule sub1
+ENTRY sub1_entry {
+  param0 = f32[100] parameter(0)
+  ROOT custom-call = f32[100] custom-call(param0),
+    custom_call_target="_xla_multi_module_call",
+    backend_config="shared_sub",
+    api_version=API_VERSION_TYPED_FFI
+}
+)";
+
+  const char* sub2_hlo = R"(
+HloModule sub2
+ENTRY sub2_entry {
+  param0 = f32[100] parameter(0)
+  ROOT custom-call = f32[100] custom-call(param0),
+    custom_call_target="_xla_multi_module_call",
+    backend_config="shared_sub",
+    api_version=API_VERSION_TYPED_FFI
+}
+)";
+
+  const char* shared_sub_hlo = R"(
+HloModule shared_sub
+ENTRY shared_entry {
+  param0 = f32[100] parameter(0)
+  ROOT add = f32[100] add(param0, param0)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto main_module,
+                       ParseAndReturnVerifiedModule(main_hlo));
+  ASSERT_OK_AND_ASSIGN(auto sub1_module,
+                       ParseAndReturnVerifiedModule(sub1_hlo));
+  ASSERT_OK_AND_ASSIGN(auto sub2_module,
+                       ParseAndReturnVerifiedModule(sub2_hlo));
+  ASSERT_OK_AND_ASSIGN(auto shared_sub_module,
+                       ParseAndReturnVerifiedModule(shared_sub_hlo));
+
+  absl::flat_hash_map<std::string, HloModule*> optimized_modules;
+  optimized_modules["sub1"] = sub1_module.get();
+  optimized_modules["sub2"] = sub2_module.get();
+  optimized_modules["shared_sub"] = shared_sub_module.get();
+
+  HloModuleStitcher stitcher(optimized_modules);
+  EXPECT_THAT(stitcher.Run(main_module.get()), IsOkAndHolds(true));
+
+  // Verify it is fully stitched (no custom calls left)
+  for (const auto* comp : main_module->computations()) {
+    for (const auto* inst : comp->instructions()) {
+      EXPECT_NE(inst->opcode(), HloOpcode::kCustomCall)
+          << "Found remaining custom call: " << inst->ToString();
+    }
+  }
 
   HloVerifier verifier(/*layout_sensitive=*/false,
                        /*allow_mixed_precision=*/false);
