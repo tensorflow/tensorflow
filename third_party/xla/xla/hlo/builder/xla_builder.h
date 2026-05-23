@@ -1680,6 +1680,8 @@ class XlaBuilder {
                    absl::Span<const int64_t> broadcast_dimensions);
   friend XlaOp Mul(XlaOp lhs, XlaOp rhs,
                    absl::Span<const int64_t> broadcast_dimensions);
+  friend XlaOp Mulhi(XlaOp lhs, XlaOp rhs,
+                     absl::Span<const int64_t> broadcast_dimensions);
   friend XlaOp Div(XlaOp lhs, XlaOp rhs,
                    absl::Span<const int64_t> broadcast_dimensions);
   friend XlaOp Rem(XlaOp lhs, XlaOp rhs,
@@ -2858,6 +2860,10 @@ XlaOp Sub(XlaOp lhs, XlaOp rhs,
 // Enqueues a multiply instruction onto the computation.
 XlaOp Mul(XlaOp lhs, XlaOp rhs,
           absl::Span<const int64_t> broadcast_dimensions = {});
+
+// Enqueues a multiply-high instruction onto the computation.
+XlaOp Mulhi(XlaOp lhs, XlaOp rhs,
+            absl::Span<const int64_t> broadcast_dimensions = {});
 
 // Enqueues a divide instruction onto the computation.
 XlaOp Div(XlaOp lhs, XlaOp rhs,

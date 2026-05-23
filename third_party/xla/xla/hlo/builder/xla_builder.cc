@@ -6060,6 +6060,12 @@ XlaOp Mul(const XlaOp lhs, const XlaOp rhs,
                                  broadcast_dimensions);
 }
 
+XlaOp Mulhi(const XlaOp lhs, const XlaOp rhs,
+            absl::Span<const int64_t> broadcast_dimensions) {
+  return lhs.builder()->BinaryOp(HloOpcode::kMulhi, lhs, rhs,
+                                 broadcast_dimensions);
+}
+
 XlaOp Div(const XlaOp lhs, const XlaOp rhs,
           absl::Span<const int64_t> broadcast_dimensions) {
   return lhs.builder()->BinaryOp(HloOpcode::kDivide, lhs, rhs,

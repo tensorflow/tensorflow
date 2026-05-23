@@ -4366,7 +4366,17 @@ LogicalResult ExportXlaOp(AsinhOp op, OpLoweringContext ctx) {
   return success();
 }
 LogicalResult ExportXlaOp(MulhiOp op, OpLoweringContext ctx) {
-  return failure();
+  auto& value_map = *ctx.values;
+  xla::XlaOp lhs;
+  if (failed(GetXlaOp(op.getLhs(), value_map, &lhs, op))) {
+    return failure();
+  }
+  xla::XlaOp rhs;
+  if (failed(GetXlaOp(op.getRhs(), value_map, &rhs, op))) {
+    return failure();
+  }
+  value_map[op] = xla::Mulhi(lhs, rhs);
+  return success();
 }
 
 LogicalResult ExportXlaOp(AcosOp op, OpLoweringContext ctx) {
@@ -4959,11 +4969,6 @@ LogicalResult ConvertToHloModule::Lower(
       builder, CreateOriginalValueFromOp(inst));
 
   *return_value = xla::XlaOp();
-
-  if (auto mulhi_op = dyn_cast<mlir::mhlo::MulhiOp>(inst)) {
-    // Add lowering support once HLO op exists.
-    return failure();
-  }
 
   if (succeeded(ExportXlaOperator(inst, {value_lowering, this, builder,
                                          &stack_frame_indexes_builder_}))) {

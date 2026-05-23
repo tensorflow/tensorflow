@@ -518,6 +518,28 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     return absl::OkStatus();
   }
 
+  absl::Status HandleMulhi(const HloInstruction* mulhi) override {
+    if constexpr (std::is_integral_v<ReturnT> &&
+                  !std::is_same_v<ReturnT, bool>) {
+      TF_ASSIGN_OR_RETURN(
+          Literal literal,
+          ElementWiseBinaryOp(mulhi, [](ElementwiseT lhs_elem,
+                                        ElementwiseT rhs_elem) {
+            constexpr int kBits = sizeof(ReturnT) * 8;
+            using WideT = std::conditional_t<
+                std::is_signed_v<ReturnT>,
+                SignedIntegerTypeForSizeType<sizeof(ReturnT) * 2>,
+                UnsignedIntegerTypeForSizeType<sizeof(ReturnT) * 2>>;
+            return static_cast<ElementwiseT>(
+                (static_cast<WideT>(lhs_elem) * static_cast<WideT>(rhs_elem)) >>
+                kBits);
+          }));
+      parent_->SetEvaluatedLiteralFor(mulhi, std::move(literal));
+      return absl::OkStatus();
+    }
+    return UnsupportedTypeError(mulhi);
+  }
+
   absl::Status HandleSubtract(const HloInstruction* subtract) override {
     ASSIGN_OR_RETURN(
         Literal literal,

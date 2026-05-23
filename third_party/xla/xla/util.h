@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/numeric/bits.h"
+#include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -642,13 +643,18 @@ struct UnsignedIntegerTypeForSize<8> {
   using type = uint64_t;
 };
 
+template <>
+struct UnsignedIntegerTypeForSize<16> {
+  using type = absl::uint128;
+};
+
 template <size_t kBytes>
 using UnsignedIntegerTypeForSizeType =
     typename UnsignedIntegerTypeForSize<kBytes>::type;
 
 template <size_t kBytes>
 using SignedIntegerTypeForSizeType =
-    std::make_signed_t<UnsignedIntegerTypeForSizeType<kBytes>>;
+    make_specialized_signed_t<UnsignedIntegerTypeForSizeType<kBytes>>;
 
 template <typename T>
 auto SignAndMagnitude(T x) {

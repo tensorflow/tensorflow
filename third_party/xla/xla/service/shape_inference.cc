@@ -1482,6 +1482,7 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
+    case HloOpcode::kMulhi:
       return InferElementwiseBinaryOpShape(opcode, lhs, rhs,
                                            broadcast_dimensions);
 

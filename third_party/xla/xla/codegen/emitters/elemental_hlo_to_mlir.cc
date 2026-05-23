@@ -1132,6 +1132,40 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
         return MapElementwiseOp<mhlo::AndOp>(arg_types, operands, builder);
       }
       return MapElementwiseOp<mhlo::MulOp>(arg_types, operands, builder);
+    case HloOpcode::kMulhi: {
+      auto type = operands[0].getType();
+      auto int_type = mlir::dyn_cast<mlir::IntegerType>(type);
+      if (!int_type) {
+        return absl::InvalidArgumentError("Mulhi requires integer inputs");
+      }
+
+      unsigned width = int_type.getWidth();
+      bool is_unsigned = primitive_util::IsUnsignedIntegralType(element_type);
+      auto wide_type = builder.getIntegerType(width * 2);
+
+      Value lhs_ext, rhs_ext;
+      if (is_unsigned) {
+        lhs_ext = mlir::arith::ExtUIOp::create(builder, wide_type, operands[0]);
+        rhs_ext = mlir::arith::ExtUIOp::create(builder, wide_type, operands[1]);
+      } else {
+        lhs_ext = mlir::arith::ExtSIOp::create(builder, wide_type, operands[0]);
+        rhs_ext = mlir::arith::ExtSIOp::create(builder, wide_type, operands[1]);
+      }
+
+      Value mul = mlir::arith::MulIOp::create(builder, lhs_ext, rhs_ext);
+
+      Value shift_amount =
+          mlir::arith::ConstantIntOp::create(builder, wide_type, width);
+      Value shifted;
+      if (is_unsigned) {
+        shifted = mlir::arith::ShRUIOp::create(builder, mul, shift_amount);
+      } else {
+        shifted = mlir::arith::ShRSIOp::create(builder, mul, shift_amount);
+      }
+
+      Value result = mlir::arith::TruncIOp::create(builder, type, shifted);
+      return {{result}};
+    }
     case HloOpcode::kNegate:
       return MapElementwiseOp<mhlo::NegOp>(arg_types, operands, builder);
     case HloOpcode::kNot: {

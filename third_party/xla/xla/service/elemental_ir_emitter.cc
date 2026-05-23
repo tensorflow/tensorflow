@@ -2430,6 +2430,24 @@ llvm::Value* ElementalIrEmitter::EmitIntegerPow(llvm::Value* base,
       b_->CreateSelect(b_->CreateICmpEQ(original_base, one), one, zero));
 }
 
+llvm::Value* ElementalIrEmitter::EmitIntegerMulhi(llvm::Value* lhs,
+                                                  llvm::Value* rhs,
+                                                  bool is_signed) {
+  llvm::Type* type = lhs->getType();
+  unsigned bit_width = type->getIntegerBitWidth();
+  llvm::Type* wide_type =
+      llvm::Type::getIntNTy(type->getContext(), bit_width * 2);
+
+  llvm::Value* wide_lhs = is_signed ? b_->CreateSExt(lhs, wide_type)
+                                    : b_->CreateZExt(lhs, wide_type);
+  llvm::Value* wide_rhs = is_signed ? b_->CreateSExt(rhs, wide_type)
+                                    : b_->CreateZExt(rhs, wide_type);
+
+  llvm::Value* wide_prod = b_->CreateMul(wide_lhs, wide_rhs);
+  llvm::Value* shifted = b_->CreateLShr(wide_prod, bit_width);
+  return b_->CreateTrunc(shifted, type);
+}
+
 absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitPredBinaryOp(
     const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value) {
   // Per the reference interpreter, pred arithmetic should behave like
@@ -2492,6 +2510,8 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerBinaryOp(
       return Sub(lhs_value, rhs_value);
     case HloOpcode::kMultiply:
       return Mul(lhs_value, rhs_value);
+    case HloOpcode::kMulhi:
+      return EmitIntegerMulhi(lhs_value, rhs_value, is_signed);
     case HloOpcode::kDivide:
       return EmitIntegerDivide(lhs_value, rhs_value, is_signed);
     case HloOpcode::kRemainder:
@@ -3271,6 +3291,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
+    case HloOpcode::kMulhi:
     case HloOpcode::kOr:
     case HloOpcode::kXor:
     case HloOpcode::kPower:
