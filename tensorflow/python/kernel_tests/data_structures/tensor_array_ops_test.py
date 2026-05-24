@@ -1068,6 +1068,27 @@ class TensorArrayTest(test.TestCase):
     self._testWhileLoopWritePackGradients(
         dynamic_size=True, dtype=dtypes.float32)
 
+  def testWhileLoopDynamicSizeZeroXla(self):
+    # Regression test for b/119375: dynamic_size=True with size=0 under XLA.
+    def build_and_run():
+      ta = tensor_array_ops.TensorArray(
+          dtypes.int32, size=0, dynamic_size=True)
+      i = constant_op.constant(0)
+
+      def cond_fn(i, ta):
+        return i < 5
+
+      def body_fn(i, ta):
+        return i + 1, ta.write(i, math_ops.square(i) + 1)
+
+      _, ta = while_loop.while_loop(cond_fn, body_fn, [i, ta])
+      return ta.stack()
+
+    eager_out = build_and_run()
+    xla_out = def_function.function(build_and_run, jit_compile=True)()
+    self.assertAllEqual(eager_out, xla_out)
+    self.assertAllEqual(xla_out, [1, 2, 5, 10, 17])
+
   def testGradSerialTwoLoops(self):
     with self.session():
 
