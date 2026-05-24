@@ -145,7 +145,7 @@ PjRtCApiPhaseCompiler::RunPhases(
   RETURN_IF_ERROR(ValidatePhases(partial_programs_in, phases_to_run));
 
   PJRT_TopologyDescription* topology_description =
-      tensorflow::down_cast<const xla::PjRtCApiTopologyDescription*>(&topology)
+      absl::down_cast<const PjRtCApiTopologyDescription*>(&topology)
           ->c_topology();
 
   const size_t* programs_in_buffer_sizes;
