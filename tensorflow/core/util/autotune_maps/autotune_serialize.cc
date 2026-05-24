@@ -129,9 +129,9 @@ absl::Status PopulateConvMap(
 
     const AlgorithmConfigProto &algorithm_config_proto = kv.value();
     const AlgorithmDesc primary(algorithm_config_proto.algorithm());
-    const absl::optional<AlgorithmDesc> fallback =
+    const std::optional<AlgorithmDesc> fallback =
         algorithm_config_proto.has_algorithm_no_scratch()
-            ? absl::optional<AlgorithmDesc>(
+            ? std::optional<AlgorithmDesc>(
                   AlgorithmDesc(algorithm_config_proto.algorithm_no_scratch()))
             : absl::nullopt;
 

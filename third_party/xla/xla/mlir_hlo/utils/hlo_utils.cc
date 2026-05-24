@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cassert>
-#include <complex>
 #include <cstddef>
 #include <cstdint>
 #include <numeric>
