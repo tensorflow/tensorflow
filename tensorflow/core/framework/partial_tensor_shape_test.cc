@@ -15,9 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 
+#include <cstdint>
 #include <limits>
+#include <vector>
 
+#include <gmock/gmock.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
