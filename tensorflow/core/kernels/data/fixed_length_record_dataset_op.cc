@@ -185,11 +185,11 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
             dataset()->filenames_[current_file_index_];
         TF_RETURN_IF_ERROR(ctx->env()->GetFileSize(next_filename, &file_size));
         if (file_size < dataset()->header_bytes_ + dataset()->footer_bytes_) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Input file \"", next_filename, "\" has length ", file_size,
               " bytes, which is smaller than the sum of the header (",
               dataset()->header_bytes_, " bytes) and footer (",
-              dataset()->footer_bytes_, " bytes).");
+              dataset()->footer_bytes_, " bytes)."));
         }
         file_pos_limit_ = file_size - dataset()->footer_bytes_;
 
@@ -197,13 +197,13 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
             file_size - (dataset()->header_bytes_ + dataset()->footer_bytes_);
 
         if (body_size % dataset()->record_bytes_ != 0) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Excluding the header (", dataset()->header_bytes_,
               " bytes) and footer (", dataset()->footer_bytes_,
               " bytes), input file \"", next_filename, "\" has body length ",
               body_size,
               " bytes, which is not an exact multiple of the record length (",
-              dataset()->record_bytes_, " bytes).");
+              dataset()->record_bytes_, " bytes)."));
         }
         TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
             TranslateFileName(next_filename), &file_));
@@ -330,7 +330,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
               uint64_t body_size =
                   current_pos + record.size() -
                   (dataset()->header_bytes_ + dataset()->footer_bytes_);
-              return errors::DataLoss(
+              return absl::DataLossError(absl::StrCat(
                   "Excluding the header (", dataset()->header_bytes_,
                   " bytes) and footer (", dataset()->footer_bytes_,
                   " bytes), input file \"",
@@ -338,7 +338,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
                   "\" has body length ", body_size,
                   " bytes, which is not an exact multiple of the record "
                   "length (",
-                  dataset()->record_bytes_, " bytes).");
+                  dataset()->record_bytes_, " bytes)."));
             }
           }
 
@@ -361,12 +361,12 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
           TF_RETURN_IF_ERROR(ctx->env()->GetFileSize(
               dataset()->filenames_[current_file_index_], &file_size));
           if (file_size < dataset()->header_bytes_ + dataset()->footer_bytes_) {
-            return errors::InvalidArgument(
+            return absl::InvalidArgumentError(absl::StrCat(
                 "Input file \"", dataset()->filenames_[current_file_index_],
                 "\" has length ", file_size,
                 " bytes, which is smaller than the sum of the header (",
                 dataset()->header_bytes_, " bytes) and footer (",
-                dataset()->footer_bytes_, " bytes).");
+                dataset()->footer_bytes_, " bytes)."));
           }
           file_pos_limit_ = file_size - dataset()->footer_bytes_;
 
@@ -374,7 +374,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
               file_size - (dataset()->header_bytes_ + dataset()->footer_bytes_);
 
           if (body_size % dataset()->record_bytes_ != 0) {
-            return errors::InvalidArgument(
+            return absl::InvalidArgumentError(absl::StrCat(
                 "Excluding the header (", dataset()->header_bytes_,
                 " bytes) and footer (", dataset()->footer_bytes_,
                 " bytes), input file \"",
@@ -382,7 +382,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
                 "\" has body length ", body_size,
                 " bytes, which is not an exact multiple of the record length "
                 "(",
-                dataset()->record_bytes_, " bytes).");
+                dataset()->record_bytes_, " bytes)."));
           }
         }
         TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
@@ -504,7 +504,7 @@ void FixedLengthRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES_OK(ctx, ctx->input(kFileNames, &filenames_tensor));
   OP_REQUIRES(
       ctx, filenames_tensor->dims() <= 1,
-      errors::InvalidArgument("`filenames` must be a scalar or a vector."));
+      absl::InvalidArgumentError("`filenames` must be a scalar or a vector."));
 
   std::vector<std::string> filenames;
   filenames.reserve(filenames_tensor->NumElements());
@@ -517,25 +517,25 @@ void FixedLengthRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES_OK(
       ctx, ParseScalarArgument<int64_t>(ctx, kHeaderBytes, &header_bytes));
   OP_REQUIRES(ctx, header_bytes >= 0,
-              errors::InvalidArgument("`header_bytes` must be >= 0"));
+              absl::InvalidArgumentError("`header_bytes` must be >= 0"));
 
   int64_t record_bytes = -1;
   OP_REQUIRES_OK(
       ctx, ParseScalarArgument<int64_t>(ctx, kRecordBytes, &record_bytes));
   OP_REQUIRES(ctx, record_bytes > 0,
-              errors::InvalidArgument("`record_bytes` must be > 0"));
+              absl::InvalidArgumentError("`record_bytes` must be > 0"));
 
   int64_t footer_bytes = -1;
   OP_REQUIRES_OK(
       ctx, ParseScalarArgument<int64_t>(ctx, kFooterBytes, &footer_bytes));
   OP_REQUIRES(ctx, footer_bytes >= 0,
-              errors::InvalidArgument("`footer_bytes` must be >= 0"));
+              absl::InvalidArgumentError("`footer_bytes` must be >= 0"));
 
   int64_t buffer_size = -1;
   OP_REQUIRES_OK(ctx,
                  ParseScalarArgument<int64_t>(ctx, kBufferSize, &buffer_size));
   OP_REQUIRES(ctx, buffer_size >= 0,
-              errors::InvalidArgument("`buffer_size` must be >= 0"));
+              absl::InvalidArgumentError("`buffer_size` must be >= 0"));
   if (buffer_size == 0) {
     buffer_size = 256 << 10;  // 256 kB as default.
   }
@@ -546,7 +546,7 @@ void FixedLengthRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
     OP_REQUIRES(ctx,
                 compression_type.empty() || compression_type == kZLIB ||
                     compression_type == kGZIP,
-                errors::InvalidArgument("Unsupported compression_type."));
+                absl::InvalidArgumentError("Unsupported compression_type."));
   }
   *output =
       new Dataset(ctx, std::move(filenames), header_bytes, record_bytes,
