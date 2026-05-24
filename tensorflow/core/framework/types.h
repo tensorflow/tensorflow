@@ -492,13 +492,13 @@ int DataTypeSize(DataType dt);
 
 // Returns HOST_MEMORY if `dtype` is always on host or is a DT_INT32,
 // DEVICE_MEMORY otherwise.
-MemoryType MTypeFromDType(const DataType dtype);
+MemoryType MTypeFromDType(DataType dtype);
 
 // Returns HOST_MEMORY if `dtype` is always on host, DEVICE_MEMORY otherwise.
 // The reason we have MTypeFromDType() and MTypeFromDTypeIntsOnDevice(): for
 // GPUs, we would like to keep int operations on host for performance concerns.
 // But for TPUs (and other devices), int operations are placed on device.
-MemoryType MTypeFromDTypeIntsOnDevice(const DataType dtype);
+MemoryType MTypeFromDTypeIntsOnDevice(DataType dtype);
 
 // Types that always sit on host: DT_STRING, DT_STRING_REF, DT_RESOURCE.
 // For DT_RESOURCE, the handle always sits on host (even if the underlying
