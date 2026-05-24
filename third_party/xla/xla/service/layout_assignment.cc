@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <ostream>
@@ -2305,13 +2306,17 @@ absl::Status LayoutAssignment::CalculateComputationLayout(
   // Process instructions that contain nested computations and may require
   // additional layouts to be assigned on the instructions nested inside.
 
-  auto UpdateLayout = [this](const HloInstruction* operand,
-                             ShapeLayout* update) -> bool {
+  auto UpdateLayout = [this](const HloInstruction* operand, ShapeLayout* update,
+                             std::function<bool(const ShapeIndex&)> filter =
+                                 nullptr) -> bool {
     bool change = false;
     ShapeUtil::ForEachSubshape(
-        operand->shape(), [this, &change, operand, update](
+        operand->shape(), [this, &change, operand, update, &filter](
                               const Shape& subshape, const ShapeIndex& index) {
           if (subshape.IsTuple() || !subshape.has_layout()) {
+            return;
+          }
+          if (filter && !filter(index)) {
             return;
           }
           auto param_layout = InferArrayLayout(operand, index);
@@ -2334,16 +2339,56 @@ absl::Status LayoutAssignment::CalculateComputationLayout(
         callee->mutable_computation_constraint();
     ComputationLayout callee_layout = callee_constraint->computation_layout();
     if (callee_constraint->priority() < priority ||
+        (callee->computation()->IsEntryComputation() &&
+         !callee->computation()->root_instruction()->shape().IsTuple()) ||
         conditional_mismatch_.count(callee->computation()) > 0) {
+      std::function<bool(const ShapeIndex&)> result_filter = nullptr;
+      if (callee->computation()->IsEntryComputation()) {
+        result_filter = [&](const ShapeIndex& index) {
+          const auto& result_layout =
+              saved_entry_computation_layout().result_layout();
+          const Shape& subshape =
+              ShapeUtil::GetSubshape(result_layout.shape(), index);
+          if (!subshape.has_layout()) {
+            return true;
+          }
+          ShapeLayout subshape_layout(subshape);
+          Shape default_subshape = subshape;
+          default_subshape.clear_layout();
+          LayoutUtil::SetToDefaultLayout(&default_subshape);
+          return subshape_layout.MatchesLayoutInShape(
+              default_subshape, /*minor_to_major_only=*/false);
+        };
+      }
       if (conditional_mismatch_.count(callee->computation()) == 0 &&
-          UpdateLayout(result, callee_layout.mutable_result_layout())) {
+          UpdateLayout(result, callee_layout.mutable_result_layout(),
+                       result_filter)) {
         VLOG(2) << "Setting result layout from : " << result->ToString()
                 << "\n";
       }
       int64_t operand_no = 0;
       for (auto* operand : operands) {
+        std::function<bool(const ShapeIndex&)> param_filter = nullptr;
+        if (callee->computation()->IsEntryComputation()) {
+          param_filter = [operand_no, this](const ShapeIndex& index) {
+            const auto& param_layout =
+                saved_entry_computation_layout().parameter_layout(operand_no);
+            const Shape& subshape =
+                ShapeUtil::GetSubshape(param_layout.shape(), index);
+            if (!subshape.has_layout()) {
+              return true;
+            }
+            ShapeLayout subshape_layout(subshape);
+            Shape default_subshape = subshape;
+            default_subshape.clear_layout();
+            LayoutUtil::SetToDefaultLayout(&default_subshape);
+            return subshape_layout.MatchesLayoutInShape(
+                default_subshape, /*minor_to_major_only=*/false);
+          };
+        }
         if (UpdateLayout(operand,
-                         callee_layout.mutable_parameter_layout(operand_no))) {
+                         callee_layout.mutable_parameter_layout(operand_no),
+                         param_filter)) {
           VLOG(2) << "Setting callee parameter: " << operand->ToString()
                   << "\n";
         }
@@ -2415,10 +2460,17 @@ absl::Status LayoutAssignment::CalculateComputationLayout(
   // Reset the layout of the current computation from its body.
   if (current_priority_ == 0 ||
       conditional_mismatch_.count(constraints->computation()) > 0) {
-    RETURN_IF_ERROR(SetCalleeLayout(
-        constraints->computation()->root_instruction(),
-        constraints->computation()->parameter_instructions(), constraints,
-        current_priority_ + kNumberOfPropagationRounds));
+    int64_t priority = current_priority_ + kNumberOfPropagationRounds;
+    const HloComputation* computation = constraints->computation();
+    if (!computation->IsEntryComputation()) {
+      if (!computation->caller_instructions(HloOpcode::kCall).empty()) {
+        priority = current_priority_;
+      }
+    }
+    RETURN_IF_ERROR(
+        SetCalleeLayout(constraints->computation()->root_instruction(),
+                        constraints->computation()->parameter_instructions(),
+                        constraints, priority));
     if (constraints->computation()->IsEntryComputation()) {
       *entry_computation_layout_ = constraints->computation_layout();
     }
