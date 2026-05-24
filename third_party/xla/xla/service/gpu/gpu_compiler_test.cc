@@ -1869,7 +1869,7 @@ ENTRY main {
 
   // Downcast to GPU executable
   xla::gpu::GpuExecutable* gpu_executable =
-      tensorflow::down_cast<xla::gpu::GpuExecutable*>(executable.get());
+      absl::down_cast<GpuExecutable*>(executable.get());
   ASSERT_NE(gpu_executable, nullptr);
 
   // Get the thunk sequence and check its size and type
@@ -2100,7 +2100,7 @@ TEST_F(GpuCompilerTest, MosaicCollectiveMetadataRequiresSymmetricMemoryCopies) {
                        compiler()->RunBackend(std::move(optimized_module),
                                               nullptr, compile_options));
   const HloModule& final_module =
-      tensorflow::down_cast<GpuExecutable*>(executable.get())->module();
+      absl::down_cast<GpuExecutable*>(executable.get())->module();
 
   constexpr absl::string_view kExpected = R"(
     // CHECK: [[P:%[^ ]+]] = s32[1]{0} parameter(0)
