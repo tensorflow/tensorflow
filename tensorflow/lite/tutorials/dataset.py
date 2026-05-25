@@ -36,7 +36,7 @@ def read32(bytestream):
 
 def check_image_file_header(filename):
   """Validate that filename corresponds to images for the MNIST dataset."""
-  with tf.io.gfile.Gfile(filename, 'rb') as f:
+  with tf.io.gfile.GFile(filename, 'rb') as f:
     magic = read32(f)
     read32(f)  # num_images, unused
     rows = read32(f)
@@ -52,7 +52,7 @@ def check_image_file_header(filename):
 
 def check_labels_file_header(filename):
   """Validate that filename corresponds to labels for the MNIST dataset."""
-  with tf.gfile.Open(filename, 'rb') as f:
+  with tf.io.gfile.GFile(filename, 'rb') as f:
     magic = read32(f)
     read32(f)  # num_items, unused
     if magic != 2049:
@@ -72,7 +72,7 @@ def download(directory, filename):
   _, zipped_filepath = tempfile.mkstemp(suffix='.gz')
   print('Downloading %s to %s' % (url, zipped_filepath))
   urllib.request.urlretrieve(url, zipped_filepath)
-  with gzip.open(zipped_filepath, 'rb') as f_in, tf.io.gfile.Gfile(
+  with gzip.open(zipped_filepath, 'rb') as f_in, tf.io.gfile.GFile(
       filepath, 'wb'
   ) as f_out:
     shutil.copyfileobj(f_in, f_out)
