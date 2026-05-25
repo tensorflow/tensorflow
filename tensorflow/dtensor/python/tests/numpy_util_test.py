@@ -15,6 +15,7 @@
 """Tests for the buffer and DTensor conversion helpers."""
 
 import numpy as np
+from unittest import mock
 
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.dtensor.python import layout
@@ -121,6 +122,18 @@ class NumpyUtilTest(test_util.DTensorBaseTest):
     self.assertAllClose(
         numpy_util.unpacked_to_numpy(tensors, sharded_on_y_x),
         np.arange(16).reshape(4, 4))
+
+  def test_to_numpy_remote_mesh_raises(self):
+    mock_mesh = mock.Mock()
+    mock_mesh.is_remote.return_value = True
+
+    mock_layout = mock.Mock()
+    mock_layout.mesh = mock_mesh
+
+    with mock.patch.object(
+        numpy_util.api, 'fetch_layout', return_value=mock_layout):
+      with self.assertRaises(NotImplementedError):
+        numpy_util.to_numpy(mock.Mock())
 
 
 if __name__ == '__main__':
