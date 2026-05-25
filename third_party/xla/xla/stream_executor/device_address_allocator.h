@@ -28,6 +28,10 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/tsl/platform/errors.h"
 
+namespace ApiConverter {
+class CWrapperDeviceMemoryAllocator;
+}
+
 namespace stream_executor {
 
 class Stream;
@@ -53,6 +57,11 @@ class DeviceAddressAllocator {
   explicit DeviceAddressAllocator(const Platform* platform)
       : platform_(platform) {}
   virtual ~DeviceAddressAllocator() = default;
+
+  virtual const ::ApiConverter::CWrapperDeviceMemoryAllocator*
+  AsCWrapperAllocator() const {
+    return nullptr;
+  }
 
   // Allocates addressable memory on the device.
   //
