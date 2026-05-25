@@ -66,7 +66,7 @@ MATCHER_P(MatchToString, test_string, "") {
 
 class TilePropagationTest : public HloHardwareIndependentTestBase {
  public:
-  TilePropagationTest() { RegisterSymbolicExprStorage(&mlir_context_); }
+  TilePropagationTest() = default;
 
   HloInstruction* ParseAndGetRoot(absl::string_view hlo_string) {
     auto module_or = ParseAndReturnVerifiedModule(hlo_string);

@@ -1,5 +1,6 @@
 # Description: StreamExecutor Interface for TPUs
 
+load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -324,6 +325,23 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_initialize_util",
+    srcs = ["tpu_initialize_util.cc"],
+    hdrs = [
+        "tpu_initialize_util.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
     name = "tpu_on_demand_compiler",
     srcs = ["tpu_on_demand_compiler.cc"],
     visibility = ["//visibility:public"],
@@ -433,5 +451,17 @@ cc_library(
     name = "tpu_executor_api",
     deps = [
         "//xla/tpu:tpu_executor_api",
+    ],
+)
+
+xla_cc_test(
+    name = "tpu_initialize_util_test",
+    srcs = ["tpu_initialize_util_test.cc"],
+    deps = [
+        ":tpu_initialize_util",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
