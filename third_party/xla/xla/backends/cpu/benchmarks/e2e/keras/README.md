@@ -1,6 +1,6 @@
-# Gemma Keras model
+# KerasHub models
 
-Scripts to run Gemma Keras model on CPU.
+Scripts to run KerasHub models on CPU. Gemma2 is the default model.
 
 Instructions:
 
@@ -26,6 +26,12 @@ $ KERAS_BACKEND=jax bash run.sh --model_name=gemma2_2b_en
 ```
 
 Replace `gemma2_2b_en` with other preset names, e.g.,
-`gemma3_1b`, `gemma4_2b`, etc. See the full preset list
-[here](https://keras.io/keras_hub/presets/).
+ `gemma3_1b`, `gemma4_2b`, `gpt_oss_20b_en`, `qwen3_14b_en`, `qwen2_1.5b_en`,
+ `mixtral_8_7b_en`
+
+ NOTE: Only presets from the list above were tested. The full preset list is
+ [here](https://keras.io/keras_hub/presets/).
+
+ NOTE: For some model presets, you must pass `--use_greedy_sampler`
+ because the default Top-K one makes the assertion in `run()` fail.
 

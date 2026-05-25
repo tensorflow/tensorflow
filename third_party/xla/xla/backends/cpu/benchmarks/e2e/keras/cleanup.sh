@@ -19,7 +19,4 @@ set -e
 
 source config.sh
 
-mkdir -p ${VENV_BASE}
-python3 -m venv ${GEMMA2_VENV}
-source ${GEMMA2_VENV}/bin/activate
-pip install -r requirements.txt
+rm -rf ${KERAS_LM_VENV}

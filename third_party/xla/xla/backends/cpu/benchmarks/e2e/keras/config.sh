@@ -18,4 +18,4 @@ set -x
 set -e
 
 export VENV_BASE=~/venv
-export GEMMA2_VENV=${VENV_BASE}/gemma2-keras
+export KERAS_LM_VENV=${VENV_BASE}/keras-lm
