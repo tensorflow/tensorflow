@@ -143,6 +143,8 @@ absl::Status SetExecutorStructFn(
   TFTPU_SET_FN(executor_fn, TpuAsyncCollectiveOffloadHelper_Init);
   TFTPU_SET_FN(executor_fn, TpuAsyncCollectiveOffloadHelper_Shutdown);
 
+  TFTPU_SET_FN(executor_fn, TpuExecutor_DequeueOutfeedV2);
+
   return absl::OkStatus();
 }
 
