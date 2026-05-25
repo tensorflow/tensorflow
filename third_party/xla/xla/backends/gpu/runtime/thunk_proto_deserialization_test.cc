@@ -1329,17 +1329,11 @@ TEST(ThunkProtoDeserializationTest, AsyncStartAndDoneThunk) {
   EXPECT_EQ(deserialized_start->async_execution().get(),
             deserialized_done->async_execution().get());
 
-  // Verify the round-trip by re-serializing and comparing protos. The
-  // async_execution_id is derived from the shared_ptr address, so it changes
-  // across serialization boundaries. Overwrite it to match the original.
+  // Verify the round-trip by re-serializing and comparing protos.
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_start,
                           deserialized_start->ToProto());
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_done,
                           deserialized_done->ToProto());
-
-  uint64_t new_id = round_trip_start.async_start_thunk().async_execution_id();
-  start_proto.mutable_async_start_thunk()->set_async_execution_id(new_id);
-  done_proto.mutable_async_done_thunk()->set_async_execution_id(new_id);
 
   EXPECT_THAT(round_trip_start, EqualsProto(start_proto));
   EXPECT_THAT(round_trip_done, EqualsProto(done_proto));

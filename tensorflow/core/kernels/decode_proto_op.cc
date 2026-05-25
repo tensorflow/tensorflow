@@ -65,16 +65,16 @@ const bool kFailOnDecodeError = true;
 // type of the output tensor.
 struct DefaultValue {
   DataType dtype = DataType::DT_INVALID;
-  absl::variant<bool,      // DT_BOOL
-                double,    // DT_DOUBLE
-                float,     // DT_FLOAT
-                int8_t,    // DT_INT8
-                int32_t,   // DT_INT32
-                int64_t,   // DT_INT64
-                tstring,   // DT_STRING
-                uint8_t,   // DT_UINT8
-                uint32_t,  // DT_UINT32
-                uint64_t>  // DT_UINT64
+  std::variant<bool,      // DT_BOOL
+               double,    // DT_DOUBLE
+               float,     // DT_FLOAT
+               int8_t,    // DT_INT8
+               int32_t,   // DT_INT32
+               int64_t,   // DT_INT64
+               tstring,   // DT_STRING
+               uint8_t,   // DT_UINT8
+               uint32_t,  // DT_UINT32
+               uint64_t>  // DT_UINT64
       value;
 };
 
