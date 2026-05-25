@@ -86,6 +86,14 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "library_fusion_kinds",
+    hdrs = ["library_fusion_kinds.h"],
+    deps = [
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
 onednn_graph_cc_library(
     name = "onednn_matcher",
     hdrs = ["onednn_matcher.h"],
@@ -94,6 +102,7 @@ onednn_graph_cc_library(
         ":library_matcher",
         "//xla/backends/cpu:onednn_support",
         "//xla/backends/cpu/codegen:target_machine_features",
+        "//xla/backends/cpu/transforms:library_fusion_kinds",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status:statusor",
@@ -110,6 +119,7 @@ cc_library(
         "//xla:shape_util",
         "//xla/backends/cpu:ynn_support",
         "//xla/backends/cpu/codegen:target_machine_features",
+        "//xla/backends/cpu/transforms:library_fusion_kinds",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_set",

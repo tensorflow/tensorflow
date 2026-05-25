@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/core/data/metric_utils.h"
 #include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/cross_trainer_cache.h"
@@ -54,11 +55,19 @@ constexpr size_t kDefaultCrossTrainerCacheSizeBytes =
 StandaloneTaskIterator::StandaloneTaskIterator(
     std::unique_ptr<standalone::Dataset> dataset,
     std::unique_ptr<standalone::Iterator> iterator)
-    : dataset_(std::move(dataset)), iterator_(std::move(iterator)) {}
+    : dataset_(std::move(dataset)),
+      iterator_(std::move(iterator)),
+      metrics_collector_(std::make_unique<IteratorMetricsCollector>(
+          "DEVICE_CPU", *Env::Default())) {}
+
+StandaloneTaskIterator::~StandaloneTaskIterator() = default;
 
 absl::Status StandaloneTaskIterator::GetNext(std::vector<Tensor>& element,
                                              bool& end_of_sequence) {
-  return iterator_->GetNext(&element, &end_of_sequence);
+  const absl::Time start_time = metrics_collector_->RecordStart();
+  absl::Status s = iterator_->GetNext(&element, &end_of_sequence);
+  metrics_collector_->RecordStop(start_time, element);
+  return s;
 }
 
 int64_t StandaloneTaskIterator::Cardinality() const {
