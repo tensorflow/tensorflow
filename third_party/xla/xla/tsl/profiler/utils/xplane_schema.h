@@ -441,7 +441,8 @@ enum MegaScaleStatType : uint8_t {
   kMegaScaleDelayBudgetUs,
   kMegaScaleHloModule,
   kMegaScaleMultiSliceTopology,
-  kLastMegaScaleStatType = kMegaScaleMultiSliceTopology,
+  kMegaScaleActivationToNetworkReceiveDurationUs,
+  kLastMegaScaleStatType = kMegaScaleActivationToNetworkReceiveDurationUs,
 };
 
 enum TaskEnvStatType {
