@@ -144,7 +144,7 @@ struct SplitKCostWeights {
 SplitKCostWeights GetCostWeights(const se::DeviceDescription& device) {
   auto compute_capability = device.cuda_compute_capability();
   if (compute_capability.IsAtLeastBlackwell()) {
-    return {100.0, 0.0848863, 189.711, 1.21563e+08};
+    return {100.0, 0.0848863, 189.711, 2.0e+07};
   }
   if (compute_capability.IsAtLeastHopper()) {
     return {100.0, 0.194136, 193.1384, 4.36e+07};

@@ -344,6 +344,16 @@ CodegenDecision CanTritonHandleReduce(
 CodegenDecision IsTritonSupportedAllReduce(
     const HloAllReduceInstruction& all_reduce,
     const se::GpuComputeCapability& gpu_version) {
+  if (gpu_version.IsCuda() &&
+      !gpu_version.cuda_compute_capability()->IsAtLeastHopper()) {
+    return CodegenDecision::Forbid(
+        "Triton collectives only supported on CUDA compute capability >= 9.0 "
+        "(Hopper or newer).");
+  }
+  if (!gpu_version.IsCuda() && !gpu_version.IsRocm()) {
+    return CodegenDecision::Forbid(
+        "Triton collectives only supported on CUDA or ROCm.");
+  }
   if (all_reduce.replica_groups().empty()) {
     return CodegenDecision::Forbid("All-reduce does not have replica groups.");
   }
