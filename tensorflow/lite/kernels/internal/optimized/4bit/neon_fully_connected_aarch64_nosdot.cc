@@ -150,13 +150,13 @@ void NeonRunKernelNoSDot<4, 1, 32>(const uint8_t* lhs, const int8_t* rhs,
           addp v6.4s, v4.4s, v5.4s
           st1 {v6.4s}, [x0], #16
           )asm"
-          : [lhs_ptr] "+r"(lhs_ptr), [rhs_ptr] "+r"(rhs_ptr),
-            [element_ptr] "+r"(element_ptr)
-          : [run_depth] "r"(run_depth)
-          : "cc", "memory", "x0", "x1", "w2", "w3", "x4", "w5", "x6", "v0",
-            "v1", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12",
-            "v13", "v14", "v15", "v16", "v17", "v18", "v19", "v20", "v21",
-            "v22", "v23", "v24");
+          :
+          : [lhs_ptr] "r"(lhs_ptr), [rhs_ptr] "r"(rhs_ptr),
+            [element_ptr] "r"(element_ptr), [run_depth] "r"(run_depth)
+          : "cc", "memory", "x0", "x1", "w3", "x4", "x6", "v0", "v1", "v4",
+            "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14",
+            "v15", "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23",
+            "v24");
       element_ptr += 4;
     }
   }
@@ -331,13 +331,14 @@ void NeonRunKernelNoSDot<4, 2, 32>(const uint8_t* lhs, const int8_t* rhs,
           addp v7.4s, v8.4s, v9.4s
           st1 {v6.4s, v7.4s}, [x0], #32
           )asm"
-          : [lhs_ptr] "+r"(lhs_ptr), [rhs_ptr] "+r"(rhs_ptr),
-            [element_ptr] "+r"(element_ptr)
-          : [run_depth] "r"(run_depth)
-          : "cc", "memory", "x0", "x1", "w2", "w3", "x4", "w5", "x6", "v0",
-            "v1", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12",
+          :
+          : [lhs_ptr] "r"(lhs_ptr), [rhs_ptr] "r"(rhs_ptr),
+            [element_ptr] "r"(element_ptr), [run_depth] "r"(run_depth)
+          : "cc", "memory", "x0", "x1", "w3", "x4", "x6", "v0", "v1", "v2",
+            "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12",
             "v13", "v14", "v15", "v16", "v17", "v18", "v19", "v20", "v21",
-            "v22", "v23", "v24");
+            "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30",
+            "v31");
       element_ptr += 8;
     }
   }
@@ -614,13 +615,14 @@ void NeonRunKernelNoSDot<4, 4, 32>(const uint8_t* lhs, const int8_t* rhs,
           addp v7.4s, v8.4s, v9.4s
           st1 {v4.4s, v5.4s, v6.4s, v7.4s}, [x0], #64
           )asm"
-          : [lhs_ptr] "+r"(lhs_ptr), [rhs_ptr] "+r"(rhs_ptr),
-            [element_ptr] "+r"(element_ptr)
-          : [run_depth] "r"(run_depth)
-          : "cc", "memory", "x0", "x1", "w2", "w3", "x4", "w5", "x6", "v0",
-            "v1", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12",
+          :
+          : [lhs_ptr] "r"(lhs_ptr), [rhs_ptr] "r"(rhs_ptr),
+            [element_ptr] "r"(element_ptr), [run_depth] "r"(run_depth)
+          : "cc", "memory", "x0", "x1", "w3", "x4", "x6", "v0", "v1", "v2",
+            "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12",
             "v13", "v14", "v15", "v16", "v17", "v18", "v19", "v20", "v21",
-            "v22", "v23", "v24");
+            "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30",
+            "v31");
       element_ptr += 16;
     }
   }
