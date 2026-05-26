@@ -26,7 +26,7 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-TEST_F(HloPjRtTestBase, SubByteCopy) {
+TEST_F(HloTestBase, SubByteCopy) {
   const std::string hlo_text = R"hlo(
 HloModule module
 

@@ -32,7 +32,7 @@ namespace xla {
 namespace cpu {
 namespace {
 
-class CpuWhileTest : public HloPjRtTestBase {};
+class CpuWhileTest : public HloTestBase {};
 
 // Verifies fix for b/233647273.
 TEST_F(CpuWhileTest, While) {
