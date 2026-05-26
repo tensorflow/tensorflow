@@ -1076,7 +1076,8 @@ absl::StatusOr<Tile> PropagateTileForBitcastOp(const Tile& tile,
   if (!src.dimensions().empty()) {
     if (std::optional<std::vector<int64_t>> transpose_dims =
             ShapeUtil::DeduceTransposeDimensionsForBitcast(src, dst)) {
-      return PropagateTileThroughTransposeOp(tile, *transpose_dims);
+      return PropagateTileThroughTransposeOp(
+          tile, InversePermutation(*transpose_dims));
     }
   }
   // Bitcast is reshape.
@@ -1089,12 +1090,13 @@ absl::StatusOr<Tile> PropagateTileForBitcastOp(const Tile& tile,
     return absl::InvalidArgumentError("Bitcast is not decomposable to TRT.");
   }
   const ShapeUtil::BitcastDecompositionTrt& trt = maybe_trt.value();
-  Tile transpose1_tile =
-      PropagateTileThroughTransposeOp(tile, trt.transpose1_dims);
+  Tile transpose1_tile = PropagateTileThroughTransposeOp(
+      tile, InversePermutation(trt.transpose1_dims));
   ASSIGN_OR_RETURN(auto reshape_tile, PropagateTileThroughReshape(
                                           transpose1_tile, trt.transpose1_shape,
                                           trt.reshape_shape));
-  return PropagateTileThroughTransposeOp(reshape_tile, trt.transpose2_dims);
+  return PropagateTileThroughTransposeOp(
+      reshape_tile, InversePermutation(trt.transpose2_dims));
 }
 
 absl::StatusOr<Tiles> PropagateTileToInputForBitcastOp(

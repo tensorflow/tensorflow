@@ -705,22 +705,23 @@ TEST_F(TilePropagationTest, CanPropagateThroughBitcastTransposeOp) {
           GetTestTile(*tiling_space, root->shape().dimensions()), 0));
   EXPECT_THAT(input_tiled_operands, MatchToString(R"(
     0) (tid_0, tid_1, tid_2, tid_3)
-      -> offsets [tid_0 * ts_0, tid_2 * ts_2, tid_3 * ts_3, tid_1 * ts_1]
-         sizes [ts_0, ts_2, ts_3, ts_1]
-         strides [1, 3, 4, 2]
-         upper bounds [3, 128, 12288, 6]
+      -> offsets [tid_0 * ts_0, tid_3 * ts_3, tid_1 * ts_1, tid_2 * ts_2]
+         sizes [ts_0, ts_3, ts_1, ts_2]
+         strides [1, 4, 2, 3]
+         upper bounds [3, 12288, 6, 128]
   )"));
   ASSERT_OK_AND_ASSIGN(
       auto output_tiled_operands,
       PropagateTileToOutput(
           *tiling_space, *root,
-          GetTestTile(*tiling_space, root->shape().dimensions()), 0));
+          GetTestTile(*tiling_space, root->operand(0)->shape().dimensions()),
+          0));
   EXPECT_THAT(output_tiled_operands, MatchToString(R"(
     0) (tid_0, tid_1, tid_2, tid_3)
-      -> offsets [tid_0 * ts_0, tid_3 * ts_3, tid_1 * ts_1, tid_2 * ts_2]
-         sizes [ts_0, ts_3, ts_1, ts_2]
-         strides [1, 4, 2, 3]
-         upper bounds [3, 12288, 6, 128]
+      -> offsets [tid_0 * ts_0, tid_2 * ts_2, tid_3 * ts_3, tid_1 * ts_1]
+         sizes [ts_0, ts_2, ts_3, ts_1]
+         strides [1, 3, 4, 2]
+         upper bounds [3, 6, 128, 12288]
   )"));
 }
 
