@@ -1375,6 +1375,22 @@ OpSharding HloSharding::ToProto() const {
   return HloSharding::Subgroup(tile_assignment, types, metadata);
 }
 
+/*static*/ HloSharding HloSharding::V3ToV2Sharding(
+    const HloSharding& sharding) {
+  if (sharding.IsTuple()) {
+    std::vector<HloSharding> elements;
+    elements.reserve(sharding.tuple_elements().size());
+    for (const HloSharding& element : sharding.tuple_elements()) {
+      elements.push_back(V3ToV2Sharding(element));
+    }
+    return HloSharding::FlatTuple(std::move(elements));
+  }
+  if (sharding.UseNamedShardingLeaf()) {
+    return V3ToV2Sharding(sharding.named_sharding());
+  }
+  return sharding;
+}
+
 Shape HloSharding::TileShape(const Shape& shape) const {
   if (!IsTiled()) {
     return shape;

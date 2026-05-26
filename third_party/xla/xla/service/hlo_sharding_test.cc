@@ -1387,25 +1387,30 @@ TEST_F(HloShardingTest, ToNamedShardingSubgroups) {
 
 class HloShardingV2ToV3ToV2RoundTripTest
     : public HloShardingTest,
-      public ::testing::WithParamInterface<HloSharding> {
- public:
-  HloSharding V3ToV2Deep(const HloSharding& s) {
-    if (s.IsTuple()) {
-      std::vector<HloSharding> elements;
-      for (const auto& e : s.tuple_elements()) {
-        elements.push_back(V3ToV2Deep(e));
-      }
-      return HloSharding::FlatTuple(elements);
-    }
-    return HloSharding::V3ToV2Sharding(s.named_sharding());
-  }
-};
+      public ::testing::WithParamInterface<HloSharding> {};
 
 TEST_P(HloShardingV2ToV3ToV2RoundTripTest, RoundTrip) {
   const HloSharding& hlo_sharding = GetParam();
   HloSharding named_sharding = HloSharding::ToV3Sharding(hlo_sharding);
-  HloSharding hlo_sharding_restored = V3ToV2Deep(named_sharding);
+  HloSharding hlo_sharding_restored =
+      HloSharding::V3ToV2Sharding(named_sharding);
   EXPECT_EQ(hlo_sharding, hlo_sharding_restored);
+}
+
+TEST_F(HloShardingTest, MixedV3V2TupleConversion) {
+  Mesh mesh({2, 3}, {"axis_0", "axis_1"});
+  HloSharding v3_sharding(
+      test_utils::FromAxisNames(mesh, {{"axis_0"}, {"axis_1"}}));
+  HloSharding v2_sharding = HloSharding::IotaTile({2, 3});
+  HloSharding mixed_tuple = HloSharding::Tuple(
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {2, 3}),
+                                 ShapeUtil::MakeShape(F32, {2, 3})}),
+      {v3_sharding, v2_sharding});
+
+  HloSharding converted = HloSharding::V3ToV2Sharding(mixed_tuple);
+  EXPECT_TRUE(converted.IsTuple());
+  EXPECT_THAT(converted.tuple_elements(),
+              ::testing::ElementsAre(v2_sharding, v2_sharding));
 }
 
 INSTANTIATE_TEST_SUITE_P(
