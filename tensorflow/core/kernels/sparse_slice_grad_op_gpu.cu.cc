@@ -96,13 +96,13 @@ __global__ void SparseSliceGradKernel(int64_t input_nnz, int64_t output_nnz,
                                       MultiIndexSearchIterator input_indices,
                                       MultiIndexSearchIterator output_indices,
                                       const T* backprop_val_grad, T* val_grad) {
-  for (int64 input_nz : GpuGridRangeX<int64>(input_nnz)) {
+  for (int64_t input_nz : GpuGridRangeX<int64_t>(input_nnz)) {
     // Search for the input index in the output indices.
     // Note: It would be faster to first directly test if the input index is
     // within the slice volume (and also to use flattened indexes), but
     // unfortunately we don't have the dense shapes so we can't do that.
-    const int64 output_nz = gpu_helper::lower_bound(output_indices, output_nnz,
-                                                    input_indices[input_nz]);
+    const int64_t output_nz = gpu_helper::lower_bound(
+        output_indices, output_nnz, input_indices[input_nz]);
     if (output_nz < output_nnz &&
         output_indices[output_nz] == input_indices[input_nz]) {
       // Found the input index in the output, so copy its gradient value.
