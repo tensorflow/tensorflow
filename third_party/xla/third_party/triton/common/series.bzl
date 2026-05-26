@@ -36,5 +36,6 @@ common_patch_list = [
     "//third_party/triton:common/llvm_cl910324404.patch",
     "//third_party/triton:common/llvm_cl914652433.patch",
     "//third_party/triton:common/revert3de9d04.patch",
+    "//third_party/triton:common/llvm_cl921066454.patch",
     # Add new patches just above this line
 ]

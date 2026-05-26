@@ -1,3 +1,19 @@
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir b/stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir
+--- stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir
++++ stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir
+@@ -1521,10 +1521,10 @@
+ // CHECK: %[[V1:.*]] = arith.addi %[[V0]], %[[C3]] : i32
+ // CHECK: %[[V2:.*]] = arith.addi %[[X_AS_INT]], %[[V1]] : i32
+ // CHECK: %[[V3:.*]] = arith.andi %[[V2]], %[[C4]] : i32
+-// CHECK: %[[V4:.*]] = arith.andi %[[V3]], %[[C5]] : i32
++// CHECK: %[[V4:.*]] = arith.andi %[[V2]], %[[C5]] : i32
+ // CHECK: %[[V5:.*]] = arith.cmpi ugt, %[[V4]], %[[C6]] : i32
+ // CHECK: %[[V6:.*]] = arith.cmpi ule, %[[V4]], %[[C7]] : i32
+-// CHECK: %[[V7:.*]] = arith.andi %[[V3]], %[[C8]] : i32
++// CHECK: %[[V7:.*]] = arith.andi %[[V2]], %[[C8]] : i32
+ // CHECK: %[[V8:.*]] = arith.ori %[[V7]], %[[C5]] : i32
+ // CHECK: %[[V9:.*]] = arith.select %[[V5]], %[[V8]], %[[V3]] : i32
+ // CHECK: %[[V10:.*]] = arith.select %[[V6]], %[[V7]], %[[V9]] : i32
 diff --ruN a/stablehlo/stablehlo/dialect/Base.td b/stablehlo/stablehlo/dialect/Base.td
 --- stablehlo/stablehlo/dialect/Base.td
 +++ stablehlo/stablehlo/dialect/Base.td
