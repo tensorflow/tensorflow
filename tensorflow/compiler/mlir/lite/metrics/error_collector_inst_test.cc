@@ -104,7 +104,7 @@ absl::StatusOr<OwningOpRef<mlir::ModuleOp>> LoadModule(
   std::string error_message;
   auto file = openInputFile(file_name, &error_message);
   if (!file) {
-    return tensorflow::errors::InvalidArgument("fail to open input file");
+    return absl::InvalidArgumentError("fail to open input file");
   }
 
   llvm::SourceMgr source_mgr;
