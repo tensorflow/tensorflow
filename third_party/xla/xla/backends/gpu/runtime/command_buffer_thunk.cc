@@ -207,9 +207,8 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
       GetOrCreateCommandBuffer(params.executor, *params.buffer_allocations));
   absl::MutexLock lock(cmd_buffer->mutex);
 
-  // If there are no thunks, or command buffer does not require initialization,
-  // we can mark warm up as done immediately.
-  if (!thunks_ || !commands_.requires_initialization()) {
+  // If there are no thunks, there is no fallback path to use for warmup.
+  if (!thunks_) {
     cmd_buffer->warmup_done = true;
   }
 
@@ -231,10 +230,10 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   }
 
   // If command buffer is in `kCreate` state it means that command buffer
-  // sequence was never recorded into it. We initialize all command buffers
-  // before execution, because command buffers when instantiated will allocate
-  // memory on device and this might lead to deadlocks when we have concurrent
-  // NCCL operations in flight.
+  // sequence was never recorded into it. When there is no pending warmup
+  // iteration, we initialize command buffers before execution, because command
+  // buffers when instantiated will allocate memory on device and this might
+  // lead to deadlocks when we have concurrent NCCL operations in flight.
 
   // If commands require initialization (and VA remapping is not enabled), we
   // also record them into the command buffer before execution. This is required

@@ -31,6 +31,7 @@ limitations under the License.
 #include "third_party/cudnn_frontend/include/cudnn_frontend/graph_properties.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend_utils.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/platform_util.h"
@@ -85,7 +87,7 @@ static constexpr auto serialize =
 
 TEST(CommandBufferThunkTest, CuDnnCmd) {
   se::StreamExecutor* stream_executor = GpuExecutor();
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
   se::dnn::DnnSupport& dnn_support = *stream_executor->AsDnn();
 
   if (dnn_support.GetVersion().value_or(se::dnn::VersionInfo{0, 0, 0}) <
@@ -168,9 +170,8 @@ TEST(CommandBufferThunkTest, CuDnnCmd) {
 
   CommandSequence commands;
   commands.Append(cudnn_thunk.get());
-  TF_ASSERT_OK_AND_ASSIGN(
-      CommandExecutor executor,
-      CommandExecutor::Create(std::move(commands), serialize));
+  ASSERT_OK_AND_ASSIGN(CommandExecutor executor,
+                       CommandExecutor::Create(std::move(commands), serialize));
 
   // Construct a thunk with command sequence. A SequentialThunk owns the
   // CuDnnThunk so it outlives the borrowed pointer in CommandSequence.
@@ -202,23 +203,39 @@ TEST(CommandBufferThunkTest, CuDnnCmd) {
   }
 
   ServiceExecutableRunOptions run_options;
+  run_options.mutable_run_options()->set_stream(stream.get());
+  ASSERT_OK_AND_ASSIGN(CollectiveParams collective_params,
+                       CollectiveParams::Create(
+                           run_options, /*async_streams=*/{},
+                           LocalDeviceId(stream_executor->device_ordinal())));
   stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations(operands, 0, &allocator);
 
-  Thunk::ExecuteParams params =
-      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
-                                   stream.get(), nullptr, nullptr, nullptr);
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, stream.get(), stream.get(), &collective_params,
+      nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
   TF_ASSERT_OK(thunk.Initialize(
       {stream_executor, source, &allocations, stream.get(), stream.get()}));
 
-  // Execute command buffer thunk and verify that it executed a GEMM.
+  // First run warms up by executing the fallback thunk sequence.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
   TF_ASSERT_OK(stream->BlockHostUntilDone());
 
-  // Copy output0 data back to host.
   std::vector<int32_t> dst(kTotalElements, 1);
+  TF_ASSERT_OK(
+      stream->Memcpy(dst.data(), output0, kTotalElements * sizeof(int32_t)));
+
+  ASSERT_EQ(dst, std::vector<int32_t>(kTotalElements, 0));
+
+  TF_ASSERT_OK(stream->Memset32(&output0, 123, output0.size()));
+
+  // Second run records the command buffer and executes it.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  std::fill(dst.begin(), dst.end(), 1);
   TF_ASSERT_OK(
       stream->Memcpy(dst.data(), output0, kTotalElements * sizeof(int32_t)));
 
@@ -232,8 +249,12 @@ TEST(CommandBufferThunkTest, CuDnnCmd) {
   // Update buffer allocation
   operands[1] = output1;
   allocations = BufferAllocations(operands, 0, &allocator);
-  // Thunk execution should automatically update underlying command
-  // buffer.
+  params = Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                        stream.get(), &collective_params,
+                                        nullptr, nullptr);
+
+  // Third run updates the command buffer for the new allocation and executes
+  // it.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
   TF_ASSERT_OK(stream->BlockHostUntilDone());
 
