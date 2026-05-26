@@ -507,17 +507,17 @@ absl::Status BatchResourceBase::RegisterInput(
   batch_components->inputs.reserve(tensors.size());
   for (const Tensor& tensor : tensors) {
     if (tensor.shape().dims() == 0) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Batching input tensors must have at least one dimension.\nBelow are "
           "the input tensors: \n",
-          GetTensorNamesAndShapesString(context, tensors));
+          GetTensorNamesAndShapesString(context, tensors)));
     }
     if (tensors.size() >= 2 &&
         tensor.shape().dim_size(0) != tensors[0].shape().dim_size(0)) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Batching input tensors supplied in a given op invocation must "
           "have equal 0th-dimension size.\nBelow are the input tensors: \n",
-          GetTensorNamesAndShapesString(context, tensors));
+          GetTensorNamesAndShapesString(context, tensors)));
     }
     batch_components->inputs.push_back(tensor);
   }
@@ -554,7 +554,7 @@ absl::Status BatchResourceBase::RegisterInput(
         adaptive_batcher_queue_options_.max_enqueued_batches,
         GetModelName(context), context->op_kernel().name());
   } else {
-    return errors::Internal("No batcher defined.");
+    return absl::InternalError("No batcher defined.");
   }
   RecordBatchParamAllowedBatchSizes(allowed_batch_sizes_str_,
                                     GetModelName(context),
@@ -809,7 +809,7 @@ BatchResourceBase::GetAdaptiveBatcherQueueOptions(
     const BatchResourceBase::BatchTask& task = batch.task(task_idx);
 
     if (task.inputs.size() != batch.task(0).inputs.size()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Batching inputs must have equal number of edges");
     }
   }
@@ -848,7 +848,7 @@ absl::Status BatchResourceBase::ConcatInputTensors(
     const std::vector<std::unique_ptr<BatchTask>>& unbatched_tasks,
     OpKernelContext* context, std::vector<Tensor>* concatenated_tensors) const {
   if (batch.num_tasks() == 0) {
-    return errors::InvalidArgument("Empty batch.");
+    return absl::InvalidArgumentError("Empty batch.");
   }
 
   int unbatched_tasks_size = GetTotalTaskSize(unbatched_tasks);
@@ -916,10 +916,10 @@ absl::Status BatchResourceBase::ConcatInputTensors(
       const Tensor& padding_source = batch.task(0).inputs.at(i);
       Tensor padding;
       if (padding_source.shape().dim_size(0) == 0) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Cannot use an empty tensor with zero rows as padding when "
             "batching. (Input ",
-            i, " got shape ", padding_source.shape().DebugString(), ".)");
+            i, " got shape ", padding_source.shape().DebugString(), ".)"));
       }
       if (padding_source.shape().dim_size(0) == 1) {
         padding = padding_source;
@@ -1041,15 +1041,16 @@ absl::Status BatchResourceBase::ConcatInputTensors(
     const absl::Status split_status = Split(input_task->context, input_tensor,
                                             output_task_sizes, &split_tensors);
     if (!split_status.ok()) {
-      return errors::Internal(
-          "When splitting input, Tensor split operation failed: ",
-          split_status.message());
+      return absl::InternalError(
+          absl::StrCat("When splitting input, Tensor split operation failed: ",
+                       split_status.message()));
     }
     if (split_tensors.size() != output_task_sizes.size()) {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "When splitting input, tensor split operation did not work as "
           "expected; got ",
-          split_tensors.size(), " splits; expected ", output_task_sizes.size());
+          split_tensors.size(), " splits; expected ",
+          output_task_sizes.size()));
     }
     for (int j = 0; j < output_tasks->size(); ++j) {
       BatchTask& output_task = *((*output_tasks)[j]);
@@ -1066,8 +1067,8 @@ absl::Status BatchResourceBase::SplitOutputTensors(
     std::vector<std::unique_ptr<BatchTask>>& unbatched_tasks) const {
   DCHECK_GE(batch->num_tasks(), 1);
   if (batch->num_tasks() < 1) {
-    return errors::Internal("Batch size expected to be positive; was ",
-                            batch->num_tasks());
+    return absl::InternalError(absl::StrCat(
+        "Batch size expected to be positive; was ", batch->num_tasks()));
   }
 
   std::vector<int64_t> task_sizes_plus_optional_padding;
@@ -1093,7 +1094,7 @@ absl::Status BatchResourceBase::SplitOutputTensors(
   DCHECK_EQ(batch->task(0).context->num_outputs(), combined_outputs.size());
   int combined_outputs_size = combined_outputs.size();
   if (combined_outputs_size != batch->task(0).context->num_outputs()) {
-    return errors::Internal("Wrong number of batched output tensors");
+    return absl::InternalError("Wrong number of batched output tensors");
   }
 
   // Split each element of `combined_outputs` according to task sizes
@@ -1101,20 +1102,20 @@ absl::Status BatchResourceBase::SplitOutputTensors(
   for (int i = 0, iter_limit = combined_outputs.size(); i < iter_limit; ++i) {
     const Tensor& output_tensor = combined_outputs[i];
     if (output_tensor.shape().dims() == 0) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           "Batched output tensor has 0 dimensions");
     }
     int64_t zeroth_dim_output_tensor_size = output_tensor.shape().dim_size(0);
     if (zeroth_dim_output_tensor_size !=
         static_cast<int64_t>(batch->size() + unbatched_tasks_size +
                              padding_size)) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(absl::StrCat(
           "Batched output tensor's 0th dimension does not equal the sum of "
           "the 0th dimension sizes of the input tensors. "
           "0th dimension size: ",
           zeroth_dim_output_tensor_size, "; batch size: ", batch->size(),
           "; unbatched tasks size: ", unbatched_tasks_size,
-          "; padding size: ", padding_size);
+          "; padding size: ", padding_size));
     }
 
     std::vector<Tensor> split_tensor;
@@ -1122,15 +1123,15 @@ absl::Status BatchResourceBase::SplitOutputTensors(
         output_tensor, task_sizes_plus_optional_padding, &split_tensor);
     DCHECK(split_status.ok()) << split_status;
     if (!split_status.ok()) {
-      return errors::Internal("Tensor split operation failed: ",
-                              split_status.message());
+      return absl::InternalError(absl::StrCat("Tensor split operation failed: ",
+                                              split_status.message()));
     }
     DCHECK_EQ(split_tensor.size(), task_sizes_plus_optional_padding.size());
     if (split_tensor.size() != task_sizes_plus_optional_padding.size()) {
-      return errors::Internal(
-          "Tensor split operation did not work as expected; got ",
-          split_tensor.size(), " splits; expected ",
-          task_sizes_plus_optional_padding.size());
+      return absl::InternalError(
+          absl::StrCat("Tensor split operation did not work as expected; got ",
+                       split_tensor.size(), " splits; expected ",
+                       task_sizes_plus_optional_padding.size()));
     }
 
     // Ignore a possible final split_tensors entry containing the padding.
@@ -1439,7 +1440,7 @@ absl::Status BatchResourceBase::LookupOrCreateBatcherQueue(
         adaptive_batcher_queue_options_, reduced_process_batch_callback,
         &new_queue));
   } else {
-    return errors::Internal("No batcher defined.");
+    return absl::InternalError("No batcher defined.");
   }
   *queue = new_queue.get();
   batcher_queues_[queue_name] = std::move(new_queue);

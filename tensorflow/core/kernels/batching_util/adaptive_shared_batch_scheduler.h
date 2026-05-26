@@ -751,7 +751,7 @@ absl::Status ASBSQueue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
   {
     mutex_lock l(mu_);
     if (size > SchedulingCapacityLocked()) {
-      return errors::Unavailable("The batch scheduling queue is full");
+      return absl::UnavailableError("The batch scheduling queue is full");
     }
 
     int remaining_batch_size =
