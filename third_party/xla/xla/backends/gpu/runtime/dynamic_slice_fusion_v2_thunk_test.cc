@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/while_loop.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion.h"
+#include "xla/comparison_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -55,6 +56,7 @@ namespace {
 using Parameter = DynamicSliceFusion::Parameter;
 using Result = DynamicSliceFusion::Result;
 using Offset = DynamicSliceFusion::Offset;
+using Expr = Offset::Expr;
 using ::tsl::proto_testing::EqualsProto;
 
 static absl::StatusOr<se::StreamExecutor*> CreateExecutor() {
@@ -290,6 +292,51 @@ TEST(DynamicSliceFusionV2ThunkTest, LoopDependentWithBaseOffset) {
   ASSERT_EQ(recording_ptr->recorded_buffers().size(), 1);
   EXPECT_EQ(recording_ptr->recorded_buffers()[0].opaque(), buf.data() + 2304);
   EXPECT_EQ(recording_ptr->recorded_buffers()[0].size(), 1024);
+}
+
+TEST(DynamicSliceFusionV2ThunkTest, VerifiesComputedOffsetExpression) {
+  ASSERT_OK_AND_ASSIGN(auto* executor, CreateExecutor());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  std::array<char, 64> buf;
+  se::DeviceAddress<int32_t> offset = executor->AllocateArray<int32_t>(1, 0);
+  int32_t offset_value = 1;
+  ASSERT_TRUE(stream->Memcpy(&offset, &offset_value, sizeof(int32_t)).ok());
+  ASSERT_TRUE(stream->BlockHostUntilDone().ok());
+
+  std::vector<se::DeviceAddressBase> addrs = {
+      se::DeviceAddressBase(buf.data(), buf.size()), offset};
+  BufferAllocations allocs(addrs, 0, nullptr);
+
+  BufferAllocation buffer(0, buf.size(), 0);
+  BufferAllocation offset_buffer(1, sizeof(int32_t), 0);
+  std::vector<BufferAllocation> slice_allocs = {BufferAllocation(0, 16, 0)};
+
+  Shape param_shape = ShapeUtil::MakeShape(S32, {4, 4});
+  Shape slice_shape = ShapeUtil::MakeShape(S32, {1, 4});
+  std::vector<Parameter> parameters = {
+      {0, param_shape, slice_shape, MakeConfig(0, 32, 0),
+       std::vector<Offset>{
+           Offset{0, Offset::Add(Offset::Parameter(1), Offset::Constant(1))},
+           Offset{1, Offset::Constant(0)}}}};
+
+  auto recording = std::make_unique<BufferOffsetRecordingThunk>(1);
+  BufferOffsetRecordingThunk* recording_ptr = recording.get();
+
+  DynamicSliceFusionV2Thunk thunk(
+      Thunk::ThunkInfo(), parameters, /*results=*/{},
+      /*parameter_buffers=*/
+      {BufferAllocation::Slice(&buffer, 0, buf.size()),
+       BufferAllocation::Slice(&offset_buffer, 0, sizeof(int32_t))},
+      /*result_buffers=*/{}, slice_allocs,
+      ThunkSequence::Of(std::move(recording)), /*verify_offsets=*/true);
+
+  auto params = MakeExecuteParams(allocs, stream.get());
+  ASSERT_TRUE(thunk.ExecuteOnStream(params).ok());
+
+  ASSERT_EQ(recording_ptr->recorded_buffers().size(), 1);
+  EXPECT_EQ(recording_ptr->recorded_buffers()[0].opaque(), buf.data() + 32);
+  EXPECT_EQ(recording_ptr->recorded_buffers()[0].size(), 16);
 }
 
 //===----------------------------------------------------------------------===//
@@ -577,13 +624,18 @@ TEST(DynamicSliceFusionV2ThunkTest, SerializeDeserializeRoundTrip) {
 
   std::vector<Parameter> parameters = {
       {0, arg_shape, arg_shape, MakeConfig(0, 0, 1024),
-       std::vector<Offset>{{0, Offset::Constant(0)}}},
+       std::vector<Offset>{
+           Offset{0, Offset::Add(Offset::Constant(1), Offset::Constant(2))}}},
       {1, arg2_shape, arg2_shape},
   };
 
   std::vector<Result> results = {
       {1, 0, res_shape, res_shape, MakeConfig(0, 256, 512),
-       std::vector<Offset>{{0, Offset::Parameter(1)}}},
+       std::vector<Offset>{Offset{
+           0, Offset::Select(
+                  Offset::Compare(ComparisonDirection::kLt,
+                                  Offset::Parameter(0), Offset::Constant(4)),
+                  Offset::Parameter(0), Offset::Constant(4))}}},
   };
 
   ShapedSlice memzero_dest = {

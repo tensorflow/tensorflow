@@ -67,7 +67,8 @@ class DynamicSliceFusionV2Thunk : public Thunk {
   //                     offset-adjusted pointers into the real buffers.
   //   embedded_thunks - Thunk sequence emitted for the hero instruction.
   //   verify_offsets  - When true, D2H-copies offset scalars each iteration to
-  //                     verify annotated DynamicSliceConfig matches actual.
+  //                     verify annotated DynamicSliceConfig matches actual
+  //                     offset expressions.
   DynamicSliceFusionV2Thunk(
       ThunkInfo thunk_info,
       std::vector<DynamicSliceFusion::Parameter> parameters,

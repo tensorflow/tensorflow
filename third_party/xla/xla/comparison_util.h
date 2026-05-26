@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -25,6 +26,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/primitive_util.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
@@ -236,6 +238,11 @@ inline std::ostream& operator<<(std::ostream& os, const Comparison& cmp) {
 std::string ComparisonDirectionToString(Comparison::Direction direction);
 std::string ComparisonTypeToString(Comparison::Type type);
 absl::string_view ComparisonPrimitiveTypeToString(PrimitiveType type);
+
+template <typename Sink>
+void AbslStringify(Sink& sink, const ComparisonDirection& direction) {
+  absl::Format(&sink, "%s", ComparisonDirectionToString(direction));
+}
 
 absl::StatusOr<Comparison::Direction> StringToComparisonDirection(
     absl::string_view direction);

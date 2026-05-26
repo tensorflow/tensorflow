@@ -183,6 +183,71 @@ TEST_F(DynamicSliceFusionV2Test, SingleOutputOneDUS) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
+TEST_F(DynamicSliceFusionV2Test, SingleOutputOneDUSWithOffsetExpression) {
+  const char* hlo = R"(
+    HloModule test, is_scheduled=true
+
+    %dsf_computation {
+      %p0 = f32[4,4] parameter(0)
+      %p1 = s32[] parameter(1)
+      %p2 = s32[] parameter(2)
+      %fill = f32[4] custom-call(%p0),
+        custom_call_target="__xla_test$$memset_scale1",
+        api_version=API_VERSION_TYPED_FFI,
+        backend_config="{scale0 = 1.0 : f32}"
+      %fill_2d = f32[1,4] bitcast(%fill)
+      %one = s32[] constant(1)
+      %offset = s32[] add(%p1, %one)
+      ROOT %dus = f32[4,4]
+        dynamic-update-slice(%p0, %fill_2d, %offset, %p2),
+        backend_config={"dynamic_slice_config":
+          {"loop_index":0,"byte_offset":16,"byte_stride":16}}
+    }
+
+    body {
+      param = (s32[], f32[4,4]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      buf = f32[4,4] get-tuple-element(param), index=1
+      zero = s32[] constant(0)
+      updated = f32[4,4] fusion(buf, i, zero),
+        kind=kCustom, calls=%dsf_computation,
+        backend_config={"fusion_backend_config":{
+          "kind":"__custom_fusion",
+          "custom_fusion_config":
+            {"name":"dynamic_slice_fusion"}}}
+      one = s32[] constant(1)
+      next_i = s32[] add(i, one)
+      ROOT tuple = (s32[], f32[4,4]) tuple(next_i, updated)
+    }
+
+    cond {
+      param = (s32[], f32[4,4]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      limit = s32[] constant(3)
+      ROOT cmp = pred[] compare(i, limit), direction=LT
+    }
+
+    ENTRY main {
+      zero = s32[] constant(0)
+      init_buf = f32[4,4] broadcast(f32[] constant(-1)), dimensions={}
+      init = (s32[], f32[4,4]) tuple(zero, init_buf)
+      while = (s32[], f32[4,4])
+        while(init), condition=cond, body=body
+      ROOT result = f32[4,4] get-tuple-element(while), index=1
+    }
+  )";
+
+  Literal expected = LiteralUtil::CreateR2<float>({{-1.0f, -1.0f, -1.0f, -1.0f},
+                                                   {0.0f, 0.0f, 0.0f, 0.0f},
+                                                   {1.0f, 1.0f, 1.0f, 1.0f},
+                                                   {2.0f, 2.0f, 2.0f, 2.0f}});
+
+  ASSERT_OK_AND_ASSIGN(
+      Literal result, Execute(std::move(*ParseAndReturnVerifiedModule(hlo)), {},
+                              /*run_hlo_passes=*/false));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
 TEST_F(DynamicSliceFusionV2Test, TupleOutputTwoDUS) {
   const char* hlo = R"(
     HloModule test, is_scheduled=true

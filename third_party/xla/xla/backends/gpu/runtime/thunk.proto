@@ -191,13 +191,44 @@ message DynamicSliceThunkProto {
 }
 
 message DynamicSliceFusionThunkProto {
+  // Mirrors DynamicSliceFusion::OffsetExpr.
+  message OffsetExprProto {
+    enum Kind {
+      KIND_UNKNOWN = 0;
+      CONSTANT = 1;
+      PARAMETER = 2;
+      ADD = 3;
+      SUBTRACT = 4;
+      MULTIPLY = 5;
+      COMPARE = 6;
+      SELECT = 7;
+    }
+
+    enum CompareDirection {
+      COMPARE_DIRECTION_UNKNOWN = 0;
+      EQ = 1;
+      NE = 2;
+      GE = 3;
+      GT = 4;
+      LE = 5;
+      LT = 6;
+    }
+
+    Kind kind = 1;
+    // Constant value for CONSTANT, fusion parameter number for PARAMETER.
+    int64 value = 2;
+    CompareDirection compare_direction = 3;
+    repeated OffsetExprProto operands = 4;
+  }
+
   // Mirrors DynamicSliceFusion::Offset.
   message OffsetProto {
     int64 dimension_number = 1;
-    oneof value {
-      int64 constant_offset = 2;
-      int64 runtime_parameter_number = 3;
-    }
+    OffsetExprProto offset = 4;
+
+    reserved 2, 3;
+    reserved "constant_offset";
+    reserved "runtime_parameter_number";
   }
 
   // Mirrors DynamicSliceFusion::Parameter.

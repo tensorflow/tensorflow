@@ -21,10 +21,12 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "absl/container/btree_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -38,6 +40,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/backends/gpu/runtime/while_loop.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion.h"
+#include "xla/comparison_util.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -50,34 +53,8 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
-namespace {
 
-struct ConstantOffset {
-  int64_t offset;
-  int64_t dimension_number;
-};
-
-struct RuntimeOffset {
-  int64_t parameter_number;
-  int64_t dimension_number;
-};
-
-// Thunk does not fully support dynamic-slice offset expressions and can only
-// verify offsets that come from a known constant or a parameter.
-using Offset = std::variant<ConstantOffset, RuntimeOffset>;
-
-absl::StatusOr<Offset> ConvertOffset(const DynamicSliceFusion::Offset& offset) {
-  using Expr = DynamicSliceFusion::Offset::Expr;
-  if (auto* constant = std::get_if<Expr::Constant>(&offset.expr.value)) {
-    return ConstantOffset{constant->value, offset.dimension_number};
-  }
-  if (auto* parameter = std::get_if<Expr::Parameter>(&offset.expr.value)) {
-    return RuntimeOffset{parameter->parameter_number, offset.dimension_number};
-  }
-  return InvalidArgument("Unsupported offset expression: %v", offset.expr);
-}
-
-}  // namespace
+using Offset = DynamicSliceFusion::Offset;
 
 //===----------------------------------------------------------------------===//
 // Helpers
@@ -95,26 +72,22 @@ static int64_t ComputeSliceOffset(const DynamicSliceConfig& config,
   return config.byte_offset() + iteration * config.byte_stride();
 }
 
-// Computes the raw byte offset from actual offset scalars (D2H-copied from
-// device). Each runtime offset contributes index * byte_stride for its
-// dimension. No clamping is applied here.
-static int64_t ComputeSliceOffsetFromScalars(absl::Span<const int32_t> indices,
-                                             const Shape& src_shape,
-                                             absl::Span<const Offset> offsets) {
+// Computes the raw byte offset from actual offset expressions. Runtime scalar
+// parameters are D2H-copied from device before evaluation.
+static absl::StatusOr<int64_t> ComputeSliceOffset(
+    const Shape& src_shape, absl::Span<const Offset> offsets,
+    absl::Span<const std::pair<int64_t, int64_t>> parameters) {
   auto byte_strides = ShapeUtil::ByteStrides(src_shape);
+  if (!byte_strides.has_value()) {
+    return InvalidArgument("Failed to compute byte strides for shape %s",
+                           ShapeUtil::HumanString(src_shape));
+  }
+
   int64_t byte_offset = 0;
-  size_t runtime_idx = 0;
   for (const auto& offset : offsets) {
-    int64_t idx = 0;
-    int64_t dim = 0;
-    if (auto* constant = std::get_if<ConstantOffset>(&offset)) {
-      idx = constant->offset;
-      dim = constant->dimension_number;
-    } else {
-      auto& runtime = std::get<RuntimeOffset>(offset);
-      idx = indices[runtime_idx++];
-      dim = runtime.dimension_number;
-    }
+    int64_t dim = offset.dimension_number;
+    ASSIGN_OR_RETURN(int64_t idx,
+                     DynamicSliceFusion::Evaluate(offset.expr, parameters));
     byte_offset += idx * (*byte_strides)[dim];
   }
   return byte_offset;
@@ -166,57 +139,65 @@ absl::Status DynamicSliceFusionV2Thunk::Initialize(
 static absl::Status VerifySliceOffset(
     se::Stream& stream, const BufferAllocations& orig, absl::string_view kind,
     size_t idx, const std::optional<DynamicSliceConfig>& config,
-    const std::optional<std::vector<DynamicSliceFusion::Offset>>& offsets,
-    const Shape& src_shape, const Shape& dst_shape,
-    absl::Span<const WhileLoopState> loop_nest,
-    absl::Span<const DynamicSliceFusion::Parameter> parameters,
+    const std::optional<std::vector<Offset>>& offsets, const Shape& src_shape,
+    const Shape& dst_shape, absl::Span<const WhileLoopState> loop_nest,
     absl::Span<const BufferAllocation::Slice> parameter_buffers) {
   if (!config.has_value() || !offsets.has_value()) {
     return absl::OkStatus();
   }
 
-  std::vector<Offset> leaf_offsets;
-  leaf_offsets.reserve(offsets->size());
-  for (const DynamicSliceFusion::Offset& offset : *offsets) {
-    ASSIGN_OR_RETURN(leaf_offsets.emplace_back(), ConvertOffset(offset));
-  }
-
-  // Collect offsets that depend on runtime values.
-  std::vector<RuntimeOffset> runtime_offsets;
-  for (const auto& offset : leaf_offsets) {
-    if (auto* runtime = std::get_if<RuntimeOffset>(&offset)) {
-      runtime_offsets.push_back(*runtime);
+  // Collect offset expression leaves that depend on runtime values.
+  absl::btree_set<int64_t> runtime_parameters;
+  for (const auto& offset : *offsets) {
+    for (int64_t parameter_number :
+         DynamicSliceFusion::CollectOffsetParameters(offset.expr)) {
+      runtime_parameters.insert(parameter_number);
     }
   }
 
   // If all offsets are static, we have nothing to verify.
-  if (runtime_offsets.empty()) {
+  if (runtime_parameters.empty()) {
     return absl::OkStatus();
   }
 
-  // Copy offsets to host. parameter_buffers is indexed by fusion parameter
-  // number, so we can index directly.
-  std::vector<int32_t> indices(runtime_offsets.size());
-  for (size_t d = 0; d < runtime_offsets.size(); ++d) {
-    int64_t parameter_number = runtime_offsets[d].parameter_number;
-    if (parameter_buffers.at(parameter_number).size() != sizeof(int32_t)) {
-      return Internal(
-          "Expected S32-sized (4 bytes) offset buffer at parameter %d, got %d",
-          parameter_number, parameter_buffers.at(parameter_number).size());
+  // Copy offset values to host. parameter_buffers is indexed by fusion
+  // parameter number, so we can index directly.
+  std::vector<std::pair<int64_t, int64_t>> parameters;
+  parameters.reserve(runtime_parameters.size());
+  for (int64_t parameter_number : runtime_parameters) {
+    if (parameter_number < 0 || parameter_number >= parameter_buffers.size()) {
+      return Internal("Missing offset buffer at parameter %d",
+                      parameter_number);
     }
-    auto src = orig.GetDeviceAddress(parameter_buffers.at(parameter_number));
-    RETURN_IF_ERROR(stream.Memcpy(&indices[d], src, sizeof(int32_t)));
-  }
 
-  // Wait for completion of all memory copies.
-  RETURN_IF_ERROR(stream.BlockHostUntilDone());
+    const BufferAllocation::Slice& parameter_buffer =
+        parameter_buffers[parameter_number];
+    auto src = orig.GetDeviceAddress(parameter_buffer);
+    if (parameter_buffer.size() == sizeof(int32_t)) {
+      int32_t value = 0;
+      RETURN_IF_ERROR(stream.Memcpy(&value, src, sizeof(int32_t)));
+      RETURN_IF_ERROR(stream.BlockHostUntilDone());
+      parameters.emplace_back(parameter_number, value);
+    } else if (parameter_buffer.size() == sizeof(int64_t)) {
+      int64_t value = 0;
+      RETURN_IF_ERROR(stream.Memcpy(&value, src, sizeof(int64_t)));
+      RETURN_IF_ERROR(stream.BlockHostUntilDone());
+      parameters.emplace_back(parameter_number, value);
+    } else {
+      return Internal(
+          "Expected S32- or S64-sized offset buffer at parameter %d, got %d "
+          "bytes",
+          parameter_number, parameter_buffer.size());
+    }
+  }
 
   // Compare offsets after clamping both to [0, buffer_size - slice_size].
   int64_t buffer_size = ShapeUtil::ByteSizeOf(src_shape);
   int64_t slice_size = ShapeUtil::ByteSizeOf(dst_shape);
-  int64_t actual_offset = ClampSliceOffset(
-      ComputeSliceOffsetFromScalars(indices, src_shape, leaf_offsets),
-      buffer_size, slice_size);
+  ASSIGN_OR_RETURN(int64_t offset_from_exprs,
+                   ComputeSliceOffset(src_shape, *offsets, parameters));
+  int64_t actual_offset =
+      ClampSliceOffset(offset_from_exprs, buffer_size, slice_size);
   int64_t annotated_offset = ClampSliceOffset(
       ComputeSliceOffset(*config, loop_nest), buffer_size, slice_size);
 
@@ -242,14 +223,14 @@ static absl::Status VerifyOffsets(
     RETURN_IF_ERROR(VerifySliceOffset(
         stream, orig, "param", i, parameters[i].slice_config,
         parameters[i].slice_offsets, parameters[i].parameter_shape,
-        parameters[i].slice_shape, loop_nest, parameters, parameter_buffers));
+        parameters[i].slice_shape, loop_nest, parameter_buffers));
   }
 
   for (size_t j = 0; j < results.size(); ++j) {
     RETURN_IF_ERROR(VerifySliceOffset(
         stream, orig, "result", j, results[j].update_config,
         results[j].update_offsets, results[j].result_shape,
-        results[j].update_shape, loop_nest, parameters, parameter_buffers));
+        results[j].update_shape, loop_nest, parameter_buffers));
   }
 
   return absl::OkStatus();
@@ -351,37 +332,165 @@ absl::Status DynamicSliceFusionV2Thunk::TransformNested(Transformer callback) {
 // Serialization
 //===----------------------------------------------------------------------===//
 
-static absl::StatusOr<DynamicSliceFusionThunkProto::OffsetProto> OffsetToProto(
-    const DynamicSliceFusion::Offset& offset) {
-  ASSIGN_OR_RETURN(Offset leaf_offset, ConvertOffset(offset));
+using OffsetExprProto = DynamicSliceFusionThunkProto::OffsetExprProto;
 
-  DynamicSliceFusionThunkProto::OffsetProto proto;
-  if (auto* constant = std::get_if<ConstantOffset>(&leaf_offset)) {
-    proto.set_dimension_number(constant->dimension_number);
-    proto.set_constant_offset(constant->offset);
-    return proto;
-  }
-  if (auto* runtime = std::get_if<RuntimeOffset>(&leaf_offset)) {
-    proto.set_dimension_number(runtime->dimension_number);
-    proto.set_runtime_parameter_number(runtime->parameter_number);
-    return proto;
-  }
-  return InvalidArgument("Unknown dynamic slice fusion offset kind");
+static OffsetExprProto::Kind OffsetExprKindToProto(const Offset::Expr& expr) {
+  return std::visit(
+      [](const auto& e) -> OffsetExprProto::Kind {
+        using T = std::decay_t<decltype(e)>;
+        if constexpr (std::is_same_v<T, Offset::Expr::Constant>) {
+          return OffsetExprProto::CONSTANT;
+        } else if constexpr (std::is_same_v<T, Offset::Expr::Parameter>) {
+          return OffsetExprProto::PARAMETER;
+        } else if constexpr (std::is_same_v<T, Offset::Expr::Add>) {
+          return OffsetExprProto::ADD;
+        } else if constexpr (std::is_same_v<T, Offset::Expr::Subtract>) {
+          return OffsetExprProto::SUBTRACT;
+        } else if constexpr (std::is_same_v<T, Offset::Expr::Multiply>) {
+          return OffsetExprProto::MULTIPLY;
+        } else if constexpr (std::is_same_v<T, Offset::Expr::Compare>) {
+          return OffsetExprProto::COMPARE;
+        } else if constexpr (std::is_same_v<T, Offset::Expr::Select>) {
+          return OffsetExprProto::SELECT;
+        } else {
+          return OffsetExprProto::KIND_UNKNOWN;
+        }
+      },
+      expr.value);
 }
 
-static absl::StatusOr<DynamicSliceFusion::Offset> OffsetFromProto(
+static OffsetExprProto::CompareDirection CompareDirectionToProto(
+    ComparisonDirection direction) {
+  switch (direction) {
+    case ComparisonDirection::kEq:
+      return OffsetExprProto::EQ;
+    case ComparisonDirection::kNe:
+      return OffsetExprProto::NE;
+    case ComparisonDirection::kGe:
+      return OffsetExprProto::GE;
+    case ComparisonDirection::kGt:
+      return OffsetExprProto::GT;
+    case ComparisonDirection::kLe:
+      return OffsetExprProto::LE;
+    case ComparisonDirection::kLt:
+      return OffsetExprProto::LT;
+  }
+  return OffsetExprProto::COMPARE_DIRECTION_UNKNOWN;
+}
+
+static absl::StatusOr<ComparisonDirection> CompareDirectionFromProto(
+    OffsetExprProto::CompareDirection direction) {
+  switch (direction) {
+    case OffsetExprProto::EQ:
+      return ComparisonDirection::kEq;
+    case OffsetExprProto::NE:
+      return ComparisonDirection::kNe;
+    case OffsetExprProto::GE:
+      return ComparisonDirection::kGe;
+    case OffsetExprProto::GT:
+      return ComparisonDirection::kGt;
+    case OffsetExprProto::LE:
+      return ComparisonDirection::kLe;
+    case OffsetExprProto::LT:
+      return ComparisonDirection::kLt;
+    case OffsetExprProto::COMPARE_DIRECTION_UNKNOWN:
+      return InvalidArgument("Unknown offset expression comparison direction");
+    default:
+      return InvalidArgument("Unknown offset expression comparison direction");
+  }
+}
+
+static OffsetExprProto OffsetExprToProto(const Offset::Expr& expr) {
+  OffsetExprProto proto;
+  proto.set_kind(OffsetExprKindToProto(expr));
+  std::visit(
+      [&](const auto& e) {
+        using T = std::decay_t<decltype(e)>;
+        if constexpr (std::is_same_v<T, Offset::Expr::Constant>) {
+          proto.set_value(e.value);
+        } else if constexpr (std::is_same_v<T, Offset::Expr::Parameter>) {
+          proto.set_value(e.parameter_number);
+        } else {
+          if constexpr (std::is_same_v<T, Offset::Expr::Compare>) {
+            proto.set_compare_direction(CompareDirectionToProto(e.direction));
+          }
+          for (const Offset::Expr& arg : e.args) {
+            *proto.add_operands() = OffsetExprToProto(arg);
+          }
+        }
+      },
+      expr.value);
+  return proto;
+}
+
+static absl::Status VerifyOperandCount(const OffsetExprProto& proto,
+                                       size_t expected) {
+  if (proto.operands().size() != expected) {
+    return InvalidArgument(
+        "Expected offset expression proto to have %d "
+        "operands, got %d",
+        expected, proto.operands().size());
+  }
+  return absl::OkStatus();
+}
+
+static absl::StatusOr<Offset::Expr> OffsetExprFromProto(
+    const OffsetExprProto& proto) {
+  std::vector<Offset::Expr> args;
+  args.reserve(proto.operands().size());
+  for (const OffsetExprProto& operand_proto : proto.operands()) {
+    ASSIGN_OR_RETURN(Offset::Expr operand, OffsetExprFromProto(operand_proto));
+    args.push_back(std::move(operand));
+  }
+
+  switch (proto.kind()) {
+    case OffsetExprProto::CONSTANT:
+      RETURN_IF_ERROR(VerifyOperandCount(proto, 0));
+      return Offset::Constant(proto.value());
+    case OffsetExprProto::PARAMETER:
+      RETURN_IF_ERROR(VerifyOperandCount(proto, 0));
+      return Offset::Parameter(proto.value());
+    case OffsetExprProto::ADD:
+      RETURN_IF_ERROR(VerifyOperandCount(proto, 2));
+      return Offset::Add(std::move(args[0]), std::move(args[1]));
+    case OffsetExprProto::SUBTRACT:
+      RETURN_IF_ERROR(VerifyOperandCount(proto, 2));
+      return Offset::Subtract(std::move(args[0]), std::move(args[1]));
+    case OffsetExprProto::MULTIPLY:
+      RETURN_IF_ERROR(VerifyOperandCount(proto, 2));
+      return Offset::Multiply(std::move(args[0]), std::move(args[1]));
+    case OffsetExprProto::COMPARE: {
+      RETURN_IF_ERROR(VerifyOperandCount(proto, 2));
+      ASSIGN_OR_RETURN(ComparisonDirection direction,
+                       CompareDirectionFromProto(proto.compare_direction()));
+      return Offset::Compare(direction, std::move(args[0]), std::move(args[1]));
+    }
+    case OffsetExprProto::SELECT:
+      RETURN_IF_ERROR(VerifyOperandCount(proto, 3));
+      return Offset::Select(std::move(args[0]), std::move(args[1]),
+                            std::move(args[2]));
+    case OffsetExprProto::KIND_UNKNOWN:
+      return InvalidArgument("Unknown offset expression kind");
+    default:
+      return InvalidArgument("Unknown offset expression kind");
+  }
+}
+
+static DynamicSliceFusionThunkProto::OffsetProto OffsetToProto(
+    const Offset& offset) {
+  DynamicSliceFusionThunkProto::OffsetProto proto;
+  proto.set_dimension_number(offset.dimension_number);
+  *proto.mutable_offset() = OffsetExprToProto(offset.expr);
+  return proto;
+}
+
+static absl::StatusOr<Offset> OffsetFromProto(
     const DynamicSliceFusionThunkProto::OffsetProto& proto) {
-  if (proto.has_constant_offset()) {
-    return DynamicSliceFusion::Offset{
-        proto.dimension_number(),
-        DynamicSliceFusion::Offset::Constant(proto.constant_offset())};
+  if (!proto.has_offset()) {
+    return InvalidArgument("Offset proto has no value");
   }
-  if (proto.has_runtime_parameter_number()) {
-    return DynamicSliceFusion::Offset{proto.dimension_number(),
-                                      DynamicSliceFusion::Offset::Parameter(
-                                          proto.runtime_parameter_number())};
-  }
-  return InvalidArgument("Offset proto has no value");
+  ASSIGN_OR_RETURN(Offset::Expr expr, OffsetExprFromProto(proto.offset()));
+  return Offset{proto.dimension_number(), std::move(expr)};
 }
 
 absl::StatusOr<ThunkProto> DynamicSliceFusionV2Thunk::ToProto() const {
@@ -400,7 +509,7 @@ absl::StatusOr<ThunkProto> DynamicSliceFusionV2Thunk::ToProto() const {
     }
     if (param.slice_offsets.has_value()) {
       for (const auto& offset : *param.slice_offsets) {
-        ASSIGN_OR_RETURN(*p->add_slice_offsets(), OffsetToProto(offset));
+        *p->add_slice_offsets() = OffsetToProto(offset);
       }
     }
   }
@@ -418,7 +527,7 @@ absl::StatusOr<ThunkProto> DynamicSliceFusionV2Thunk::ToProto() const {
     }
     if (result.update_offsets.has_value()) {
       for (const auto& offset : *result.update_offsets) {
-        ASSIGN_OR_RETURN(*r->add_update_offsets(), OffsetToProto(offset));
+        *r->add_update_offsets() = OffsetToProto(offset);
       }
     }
   }
@@ -460,11 +569,12 @@ DynamicSliceFusionV2Thunk::FromProto(
     ASSIGN_OR_RETURN(Shape parameter_shape,
                      Shape::FromProto(p.parameter_shape()));
     ASSIGN_OR_RETURN(Shape slice_shape, Shape::FromProto(p.slice_shape()));
-    std::optional<std::vector<DynamicSliceFusion::Offset>> slice_offsets;
+    std::optional<std::vector<Offset>> slice_offsets;
     if (!p.slice_offsets().empty()) {
       slice_offsets.emplace();
       for (const auto& o : p.slice_offsets()) {
-        ASSIGN_OR_RETURN(slice_offsets->emplace_back(), OffsetFromProto(o));
+        ASSIGN_OR_RETURN(Offset offset, OffsetFromProto(o));
+        slice_offsets->push_back(std::move(offset));
       }
     }
     parameters.push_back(DynamicSliceFusion::Parameter{
@@ -485,11 +595,12 @@ DynamicSliceFusionV2Thunk::FromProto(
     }
     ASSIGN_OR_RETURN(Shape result_shape, Shape::FromProto(r.result_shape()));
     ASSIGN_OR_RETURN(Shape update_shape, Shape::FromProto(r.update_shape()));
-    std::optional<std::vector<DynamicSliceFusion::Offset>> update_offsets;
+    std::optional<std::vector<Offset>> update_offsets;
     if (!r.update_offsets().empty()) {
       update_offsets.emplace();
       for (const auto& o : r.update_offsets()) {
-        ASSIGN_OR_RETURN(update_offsets->emplace_back(), OffsetFromProto(o));
+        ASSIGN_OR_RETURN(Offset offset, OffsetFromProto(o));
+        update_offsets->push_back(std::move(offset));
       }
     }
     results.push_back(DynamicSliceFusion::Result{
