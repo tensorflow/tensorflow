@@ -106,6 +106,7 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
           -> absl::Status {
         if (alias && alias->must_alias()) {
           VLOG(1) << alias->ToString();
+          TF_RET_CHECK(alias->parameter_number < arguments->size());
           const MaybeOwningDeviceAddress& original_input =
               (*arguments)[alias->parameter_number].Buffers().element(
                   alias->parameter_index);
@@ -233,7 +234,7 @@ absl::StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
   if (has_module()) {
     for (const auto& [parameter, index, offset] :
          module().CrossProgramPrefetches()) {
-      CHECK_LT(parameter, arguments.size());
+      TF_RET_CHECK(parameter < arguments.size());
       // Ensure the cross program prefetched buffer doesn't alias with any
       // program outputs. If the input and output aliased, the buffer could be
       // invalidated during program execution and the program could read stale
