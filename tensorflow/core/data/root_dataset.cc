@@ -454,7 +454,8 @@ absl::Status RootDataset::CheckExternalState() const {
 absl::Status RootDataset::AsGraphDefInternal(SerializationContext* ctx,
                                              DatasetGraphDefBuilder* b,
                                              Node** output) const {
-  return errors::Unimplemented("RootDataset does not support serialization.");
+  return absl::UnimplementedError(
+      "RootDataset does not support serialization.");
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
