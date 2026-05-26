@@ -21,6 +21,7 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_ROCM_ROCM_BLAS_H_
 
 #include "absl/base/thread_annotations.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "rocm/rocm_config.h"
