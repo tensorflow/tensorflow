@@ -97,7 +97,7 @@ bool CustomCallDynamicDimensionInference(
   return false;
 }
 
-class DynamicPadderTest : public HloPjRtTestBase {
+class DynamicPadderTest : public HloTestBase {
  protected:
   DynamicPadderTest() { module_ = CreateNewVerifiedModule(); }
 
@@ -152,7 +152,7 @@ class DynamicPadderTest : public HloPjRtTestBase {
 };
 
 class MemoryAlignmentTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {};
+    : public HloPjRtInterpreterReferenceMixin<HloTestBase> {};
 
 // Test that dynamic padder will not cause memory misalignment in CUDA
 // when the read or write address is not aligned with 32 bits.
@@ -746,7 +746,7 @@ ENTRY main {
 }
 
 // Test that dynamic padder has the same result as if not padded.
-class ExecutionTest : public HloPjRtTestBase {
+class ExecutionTest : public HloTestBase {
  protected:
   std::unique_ptr<HloModule> GetHloModule(const std::string& hlo_text) {
     std::unique_ptr<HloModule> module =
@@ -2304,7 +2304,7 @@ ENTRY main {
 
 namespace op = xla::testing::opcode_matchers;
 
-class HloDimensionSizeLegalizerTest : public HloPjRtTestBase {
+class HloDimensionSizeLegalizerTest : public HloTestBase {
  protected:
   HloDimensionSizeLegalizerTest() {}
 };
@@ -2367,7 +2367,7 @@ ENTRY gds {
   EXPECT_FALSE(pass.Run(module.get()).ok());
 }
 
-class SizeCheckTest : public HloPjRtTestBase {
+class SizeCheckTest : public HloTestBase {
  protected:
   SizeCheckTest() {}
 };
