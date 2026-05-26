@@ -31,7 +31,7 @@ namespace xla {
 namespace {
 
 class ScatterDeterminismExpanderTest
-    : public HloPjRtTestBase,
+    : public HloTestBase,
       public ::testing::WithParamInterface<PrimitiveType> {};
 
 TEST_F(ScatterDeterminismExpanderTest,
