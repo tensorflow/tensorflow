@@ -28,7 +28,7 @@ namespace {
 // Test FP8 floating-point types
 template <typename T>
 class Float8Test : public ClientLibraryTestRunnerMixin<
-                       HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {};
+                       HloPjRtInterpreterReferenceMixin<HloTestBase>> {};
 
 using DataTypes = ::testing::Types<tsl::float8_e5m2, tsl::float8_e4m3,
                                    tsl::float8_e4m3fn, tsl::float8_e3m4>;

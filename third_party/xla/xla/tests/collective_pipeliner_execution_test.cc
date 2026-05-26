@@ -41,7 +41,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using CollectivePipelinerExecutionTest = HloPjRtTestBase;
+using CollectivePipelinerExecutionTest = HloTestBase;
 
 absl::StatusOr<bool> RunOptimizer(
     HloModule* module, bool last_run, int64_t level_to_operate_on = 0,

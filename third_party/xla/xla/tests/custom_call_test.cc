@@ -154,7 +154,7 @@ std::ostream& operator<<(std::ostream& os, InitMethod op) {
 
 using ::testing::HasSubstr;
 
-class CustomCallTest : public HloPjRtTestBase {
+class CustomCallTest : public HloTestBase {
  protected:
   Shape r0f32_ = ShapeUtil::MakeShape(F32, {});
   Shape r2f32_ = ShapeUtil::MakeShape(F32, {2, 2});
@@ -219,7 +219,7 @@ TEST_F(CustomCallTest, CustomCallR2F32Reduce) {
 
 class CustomCallClientAPITest
     : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {};
+          HloPjRtInterpreterReferenceMixin<HloTestBase>> {};
 
 // When using the client API, CustomCall targets can't begin with '$' -- these
 // are reserved for internal use.

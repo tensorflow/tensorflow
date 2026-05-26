@@ -42,8 +42,8 @@ using UnaryBuildFuncTy = std::function<void(const xla::XlaOp& src)>;
 constexpr int kNumElements = 4;
 constexpr ErrorSpec kErrorSpec{0.001, 0.001};
 
-using HalfTestBase = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using HalfTestBase =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
 
 struct UnaryOpTestParam {
   std::function<half(half)> compute_func;

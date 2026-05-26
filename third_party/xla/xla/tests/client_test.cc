@@ -37,7 +37,7 @@ namespace xla {
 namespace {
 
 class ClientTest : public ClientLibraryTestRunnerMixin<
-                       HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {};
+                       HloPjRtInterpreterReferenceMixin<HloTestBase>> {};
 
 TEST_F(ClientTest, ExecuteWithLayout) {
   XlaBuilder b(TestName());

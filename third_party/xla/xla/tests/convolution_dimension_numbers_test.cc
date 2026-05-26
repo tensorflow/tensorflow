@@ -61,7 +61,7 @@ absl::StatusOr<ConvolutionDimensionNumbers> CreateConvDimensionNumbers(
 
 class ConvolutionDimensionNumbersTest
     : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {};
+          HloPjRtInterpreterReferenceMixin<HloTestBase>> {};
 
 // Tests the convolution operation with invalid input dimension numbers.
 TEST_F(ConvolutionDimensionNumbersTest, InvalidInputDimensionNumbers) {

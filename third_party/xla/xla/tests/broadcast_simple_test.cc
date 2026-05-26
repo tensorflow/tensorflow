@@ -102,8 +102,8 @@ float ApplyOpToFloats(HloOpcode op, float lhs, float rhs) {
   }
 }
 
-using BroadcastSimpleTest = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using BroadcastSimpleTest =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(BroadcastSimpleTest, ScalarNoOpBroadcast) {
   XlaBuilder b(TestName());

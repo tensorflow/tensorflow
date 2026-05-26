@@ -37,8 +37,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using CholeskyTest = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using CholeskyTest =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(CholeskyTest, NonPSDInput) {
   XlaBuilder builder(TestName());
@@ -220,7 +220,7 @@ using CholeskyTestCase = std::tuple<int64_t, int64_t, bool>;
 
 class RandomCholeskyTest
     : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
+          HloPjRtInterpreterReferenceMixin<HloTestBase>>,
       public ::testing::WithParamInterface<CholeskyTestCase> {};
 
 TEST_P(RandomCholeskyTest, Real) {
