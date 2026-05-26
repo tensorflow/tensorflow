@@ -212,7 +212,7 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
         }
       }
       if (!new_schedule.empty()) {
-        TF_RETURN_IF_ERROR(module_->set_schedule(std::move(new_schedule)));
+        RETURN_IF_ERROR(module_->set_schedule(std::move(new_schedule)));
       }
     }
 

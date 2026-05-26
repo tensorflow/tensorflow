@@ -521,7 +521,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   absl::Status HandleMulhi(const HloInstruction* mulhi) override {
     if constexpr (std::is_integral_v<ReturnT> &&
                   !std::is_same_v<ReturnT, bool>) {
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           Literal literal,
           ElementWiseBinaryOp(mulhi, [](ElementwiseT lhs_elem,
                                         ElementwiseT rhs_elem) {
