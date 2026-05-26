@@ -1,6 +1,6 @@
 load("//xla:package_groups.bzl", "xla_test_friend_package_group")
 load("//xla:restricted_package.bzl", "xla_restricted_allow", "xla_restricted_verify")
-load("//xla/tests:build_defs.bzl", "generate_backend_suites", "xla_test")
+load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -11,8 +11,6 @@ package(
 )
 
 xla_test_friend_package_group(name = "friends")
-
-generate_backend_suites()
 
 cc_library(
     name = "hlo_test_base_legacy",

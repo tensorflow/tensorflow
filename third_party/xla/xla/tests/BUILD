@@ -8,7 +8,7 @@ load(
 )
 load("//xla:package_groups.bzl", "xla_test_friend_package_group")
 load("//xla:xla.default.bzl", "tests_build_defs_bzl_deps", "xla_cc_test", "xla_internal")
-load("//xla/tests:build_defs.bzl", "generate_backend_suites", "xla_test")
+load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google", "if_oss", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
@@ -29,9 +29,6 @@ filegroup(
 )
 
 xla_test_friend_package_group(name = "friends")
-
-# Generate test_suites for all backends, named "${backend}_tests".
-generate_backend_suites()
 
 # Target to add main for tests. Do not link this target and
 # @com_google_googletest//:gtest_main into the same target.
@@ -289,10 +286,10 @@ cc_library(
 )
 
 cc_library(
-    name = "hlo_test_base",
+    name = "hlo_pjrt_test_base",
     testonly = True,
-    srcs = ["hlo_test_base.cc"],
-    hdrs = ["hlo_test_base.h"],
+    srcs = ["hlo_pjrt_test_base.cc"],
+    hdrs = ["hlo_pjrt_test_base.h"],
     deps = [
         ":aot_utils",
         ":hlo_runner_agnostic_test_base",
@@ -303,16 +300,6 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:statusor",
-    ],
-)
-
-cc_library(
-    name = "hlo_pjrt_test_base",
-    testonly = True,
-    hdrs = ["hlo_pjrt_test_base.h"],
-    deps = [
-        ":hlo_test_base",
-        "@com_google_absl//absl/base:core_headers",
     ],
 )
 

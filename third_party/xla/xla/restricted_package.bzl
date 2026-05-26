@@ -60,12 +60,6 @@ def xla_restricted_verify(allowed_targets, test_suite_generator_functions = ["xl
         ):
             continue
 
-        if (
-            details.get("generator_function", "") == "generate_backend_suites" and
-            details.get("kind", "") == "test_suite"
-        ):
-            continue
-
         actual_targets.append(name)
 
     allowed_names = sorted(allowed_names)
