@@ -822,7 +822,6 @@ xla_test(
     ] + if_cuda_is_configured([
         ":cublaslt",
     ]) + if_rocm_is_configured([
-        ":rocblas",
         ":hipblaslt",
     ]),
 )
