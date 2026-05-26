@@ -1610,26 +1610,31 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
   else
     data_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
 
-  auto get_sharding = [](const xla::OpSharding& sharding) {
-    xla::OpSharding ret;
-    if (sharding.type() != xla::OpSharding::TUPLE) {
-      ret = sharding;
+  std::optional<xla::OpSharding> orig_sharding = ctx.builder->sharding();
+  std::optional<xla::OpSharding> data_sharding = std::nullopt;
+  std::optional<xla::OpSharding> token_sharding = std::nullopt;
+  if (orig_sharding.has_value()) {
+    if (orig_sharding->type() == xla::OpSharding::TUPLE) {
+      CHECK_GE(orig_sharding->tuple_shardings_size(), 2);
+      data_sharding = orig_sharding->tuple_shardings(0);
+      token_sharding = orig_sharding->tuple_shardings(
+          orig_sharding->tuple_shardings_size() - 1);
     } else {
-      ret = sharding.tuple_shardings(0);
+      data_sharding = *orig_sharding;
+      token_sharding = *orig_sharding;
     }
-    return ret;
-  };
-  if (ctx.builder->sharding().has_value()) {
-    // HLO Recv needs a 3-tuple sharding. Get the sharding from the builder and
-    // make it a 3-tuple sharding.
-    std::optional<xla::OpSharding> sharding = *ctx.builder->sharding();
-    xla::OpSharding single_sharding = get_sharding(*sharding);
-    auto* tuple_shardings = sharding->mutable_tuple_shardings();
+  }
+
+  if (orig_sharding.has_value()) {
+    // HLO Recv needs a 3-tuple sharding.
+    xla::OpSharding recv_sharding = *orig_sharding;
+    recv_sharding.set_type(xla::OpSharding::TUPLE);
+    auto* tuple_shardings = recv_sharding.mutable_tuple_shardings();
     tuple_shardings->Clear();
-    for (int i = 0; i < 3; ++i) {
-      tuple_shardings->Add(xla::OpSharding(single_sharding));
-    }
-    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, sharding);
+    tuple_shardings->Add(xla::OpSharding(*data_sharding));
+    tuple_shardings->Add(xla::OpSharding(*data_sharding));
+    tuple_shardings->Add(xla::OpSharding(*token_sharding));
+    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, recv_sharding);
     SetSourceTargetPairsAttributes(ctx.builder, source_target_pairs_string);
     token = xla::internal::XlaBuilderFriend::BuildRecv(
         ctx.builder, token, data_shape,
@@ -1643,20 +1648,15 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
 
   xla::XlaOp xla_result;
   {
-    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder,
-                                                    ctx.builder->sharding());
+    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, orig_sharding);
     xla_result = xla::internal::XlaBuilderFriend::BuildRecvDone(
         ctx.builder, token, data_shape,
         Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
   }
 
   xla::XlaOp data_tuple_element;
-  if (ctx.builder->sharding().has_value()) {
-    // HLO GetTupleElement needs a single sharding,
-    xla::XlaScopedShardingAssignment sharding_scope(
-        ctx.builder, get_sharding(*ctx.builder->sharding()));
-    data_tuple_element = xla::GetTupleElement(xla_result, 0);
-  } else {
+  {
+    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, data_sharding);
     data_tuple_element = xla::GetTupleElement(xla_result, 0);
   }
 
@@ -1670,13 +1670,7 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
     }
   }
 
-  // HLO GetTupleElement needs a single sharding,
-  std::optional<xla::OpSharding> sharding = ctx.builder->sharding();
-  if (sharding.has_value() && sharding->type() == xla::OpSharding::TUPLE) {
-    CHECK_GE(ctx.builder->sharding()->tuple_shardings_size(), 2);
-    sharding = ctx.builder->sharding()->tuple_shardings(1);
-  }
-  xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, sharding);
+  xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, token_sharding);
   value_map[op.getResult(num_results - 1)] =
       xla::GetTupleElement(xla_result, 1);
 
