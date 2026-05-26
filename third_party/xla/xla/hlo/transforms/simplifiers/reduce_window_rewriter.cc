@@ -689,7 +689,7 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeAssociativeScan(
 
   HloInstruction* result = nullptr;
   HloInstruction* input = scan->inputs()[0];
-  if (scan_length <= base_length_) {
+  if (base_length_ == 0 || scan_length <= base_length_) {
     Window window = window_util::MakeWindow(std::vector<int64_t>(rank, 1));
     window.mutable_dimensions(scan_dim)->set_size(scan_length);
     window.mutable_dimensions(scan_dim)->set_padding_low(scan_length - 1);
@@ -726,6 +726,10 @@ absl::StatusOr<bool> ReduceWindowRewriter::RunImpl(
           ASSIGN_OR_RETURN(bool result, TryOptimizeAssociativeScan(scan));
           changed |= result;
         }
+        continue;
+      }
+
+      if (base_length_ == 0) {
         continue;
       }
 
