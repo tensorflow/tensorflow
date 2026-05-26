@@ -367,6 +367,8 @@ filegroup(
         "variant_encode_decode.h",
         "variant_op_registry.h",
         "variant_tensor_data.h",
+        ":tensor_proto_cc",
+        ":tensor_shape_proto_cc",
         "@xla//xla/tsl/framework:device_type.h",
     ],
 )
