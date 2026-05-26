@@ -865,7 +865,9 @@ CUgraphExec CudaCommandBuffer::graph_exec() const {
 }
 
 CudaCommandBuffer::~CudaCommandBuffer() {
+  std::unique_ptr<ActivateContext> activation;
   if (graph_exec_ != nullptr) {
+    activation = stream_exec_->Activate();
     auto exec_num = NotifyExecDestroyed();
     VLOG(5) << "Destroy GPU command buffer executable graph " << graph_exec_
             << " "
@@ -877,6 +879,7 @@ CudaCommandBuffer::~CudaCommandBuffer() {
     }
   }
   if (graph_ != nullptr && is_owned_graph_) {
+    activation = stream_exec_->Activate();
     if (auto status = cuda::ToStatus(cuGraphDestroy(graph_),
                                      "Failed to destroy CUDA graph");
         !status.ok()) {
