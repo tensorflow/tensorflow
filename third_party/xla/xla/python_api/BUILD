@@ -1,16 +1,12 @@
-load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
-load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
-
 # Description:
 #   Python API for XLA.
-load("//xla/tests:build_defs.bzl", "generate_backend_suites")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
-
-generate_backend_suites()
 
 py_library(
     name = "types",

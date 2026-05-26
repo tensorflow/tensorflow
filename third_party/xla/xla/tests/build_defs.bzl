@@ -532,22 +532,4 @@ def xla_test(
             fail_if_no_test_selected = False,
         )
 
-def generate_backend_suites(backends = []):  # buildifier: disable=unnamed-macro
-    """Generates test_suites containing all tests for each backend.
-
-    Generates test_suites of the form "${backend}_tests" containing all tests
-    matching that backend for all tests in the package the macro is called in.
-
-    Args:
-      backends: The list of backends to generate test_suites for.
-    """
-
-    if not backends:
-        backends = _ALL_BACKENDS
-    for backend in backends:
-        native.test_suite(
-            name = "%s_tests" % backend,
-            tags = ["xla_%s" % backend, "-broken", "manual"],
-        )
-
 xla_py_test = xla_py_strict_test

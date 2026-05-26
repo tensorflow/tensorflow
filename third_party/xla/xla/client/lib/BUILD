@@ -1,6 +1,5 @@
 # Common computation builders for XLA.
 
-load("//xla/tests:build_defs.bzl", "generate_backend_suites")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
@@ -19,9 +18,6 @@ filegroup(
         "**/*.h",
     ]),
 )
-
-# Generate test_suites for all backends, named "${backend}_tests".
-generate_backend_suites()
 
 cc_library(
     name = "testing",

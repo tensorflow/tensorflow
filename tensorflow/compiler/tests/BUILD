@@ -5,7 +5,6 @@ load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow/compiler/tests:build_combined_defs.bzl", "tf_xla_combined_py_test")
 load(
     "//tensorflow/compiler/tests:build_defs.bzl",
-    "generate_backend_suites",
     "tf_xla_py_strict_test",
     # copybara:uncomment_begin(google-only)
     # "tpu_backends",
@@ -41,8 +40,6 @@ package_group(
         "//platforms/xla/tests/neural_nets",
     ],
 )
-
-generate_backend_suites()
 
 py_strict_library(
     name = "xla_test",
