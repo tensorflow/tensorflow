@@ -804,8 +804,13 @@ std::unique_ptr<NNMemory> NNMemory::Create(const NnApi* nnapi, const char* name,
     ANeuralNetworksMemory* nn_memory_handle = nullptr;
     nnapi->ANeuralNetworksMemory_createFromFd(size, PROT_READ | PROT_WRITE, fd,
                                               0, &nn_memory_handle);
-    return std::unique_ptr<NNMemory>(
-        new NNMemory(nnapi, fd, size, data_ptr, nn_memory_handle));
+    return std::unique_ptr<NNMemory>(new NNMemory(nnapi, fd, size, data_ptr,
+                                                  nn_memory_handle
+#ifndef __ANDROID__
+                                                  ,
+                                                  shm_region_name
+#endif
+                                                  ));
   }
   return nullptr;
 }
@@ -825,9 +830,8 @@ NNMemory::~NNMemory() {
   if (nn_memory_handle_) {
     nnapi_->ANeuralNetworksMemory_free(nn_memory_handle_);
   }
-#ifdef __ANDROID__
   if (fd_ >= 0) close(fd_);
-#else
+#ifndef __ANDROID__
   if (!shm_region_name_.empty()) shm_unlink(shm_region_name_.c_str());
 #endif
 #endif
