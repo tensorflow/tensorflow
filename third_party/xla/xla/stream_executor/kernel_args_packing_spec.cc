@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/stream_executor/kernel_args_packing_spec.h"
 
-#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <optional>
@@ -24,10 +23,10 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/kernel_args_packed_vector.h"
