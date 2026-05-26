@@ -129,6 +129,7 @@ template <typename T, typename... Args>
 auto ObjectPool<T, Args...>::PopEntry() -> std::unique_ptr<Entry> {
   Entry* head = head_.load(std::memory_order_relaxed);
 
+  int i = 0;
   // Try to mark the entry at head for deletion with a CAS operation.
   while (head &&
          (IsMarked(head) || !head_.compare_exchange_weak(
@@ -136,6 +137,10 @@ auto ObjectPool<T, Args...>::PopEntry() -> std::unique_ptr<Entry> {
                                 std::memory_order_relaxed))) {
     if (ABSL_PREDICT_FALSE(IsMarked(head))) {
       head = head_.load(std::memory_order_relaxed);
+    }
+    i++;
+    if (i % 100 == 0) {
+      absl::SleepFor(absl::Nanoseconds(1));
     }
   }
 
@@ -154,12 +159,17 @@ template <typename T, typename... Args>
 void ObjectPool<T, Args...>::PushEntry(std::unique_ptr<Entry> entry) {
   Entry* new_head = entry.release();
   new_head->next = head_.load(std::memory_order_relaxed);
+  int i = 0;
   while (IsMarked(new_head->next) ||
          !head_.compare_exchange_weak(new_head->next, new_head,
                                       std::memory_order_release,
                                       std::memory_order_relaxed)) {
     if (ABSL_PREDICT_FALSE(IsMarked(new_head->next))) {
       new_head->next = head_.load(std::memory_order_relaxed);
+    }
+    i++;
+    if (i % 10 == 0) {
+      absl::SleepFor(absl::Nanoseconds(1));
     }
   }
 }
