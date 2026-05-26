@@ -54,10 +54,6 @@ class HloRunnerPjRt : public HloRunnerInterface {
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   TransferLiteralsToDefaultDevice(absl::Span<const ShapeLayout> layouts,
                                   absl::Span<const Literal* const> literals);
-  // Transfers data between the host and device, using the layout of each
-  // literal itself.
-  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-  TransferLiteralsToDefaultDevice(absl::Span<const Literal* const> literals);
   absl::StatusOr<Literal> TransferLiteralsFromDevice(
       absl::Span<const std::unique_ptr<PjRtBuffer>> output_buffers,
       bool untuple_result);
