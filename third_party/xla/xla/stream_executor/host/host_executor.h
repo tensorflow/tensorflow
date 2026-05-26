@@ -16,13 +16,16 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_HOST_HOST_EXECUTOR_H_
 #define XLA_STREAM_EXECUTOR_HOST_HOST_EXECUTOR_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <new>
 #include <optional>
 #include <variant>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/event.h"
@@ -35,7 +38,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_common.h"
-#include "xla/tsl/platform/threadpool.h"
+#include "tsl/platform/mem.h"
 
 namespace stream_executor {
 namespace host {
@@ -48,7 +51,9 @@ namespace host {
 // routines executed under the context of a GPU executor.
 class HostExecutor : public StreamExecutorCommon {
  public:
-  HostExecutor(Platform* platform, int device_ordinal)
+  static constexpr size_t kHostAlignment = 64;
+
+  HostExecutor(const Platform* platform, int device_ordinal)
       : StreamExecutorCommon(platform), device_ordinal_(device_ordinal) {}
 
   absl::Status Init() override;
@@ -56,23 +61,19 @@ class HostExecutor : public StreamExecutorCommon {
   absl::StatusOr<std::unique_ptr<Kernel>> LoadKernel(
       const KernelLoaderSpec& spec) override;
 
+  using StreamExecutor::Allocate;
   DeviceAddressBase Allocate(uint64_t size, int64_t memory_space) override;
   void Deallocate(DeviceAddressBase* mem) override;
 
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
-      uint64_t size) override {
-    void* ptr = new char[size];
-    return std::make_unique<GenericMemoryAllocation>(
-        ptr, size,
-        [](void* ptr, uint64_t size) { delete[] static_cast<char*>(ptr); });
-  }
+      uint64_t size) override;
 
   bool SynchronizeAllActivity() override { return true; }
 
-  absl::Status SynchronousMemcpy(DeviceAddressBase* gpu_dst,
+  absl::Status SynchronousMemcpy(DeviceAddressBase* device_dst,
                                  const void* host_src, uint64_t size) override;
   absl::Status SynchronousMemcpy(void* host_dst,
-                                 const DeviceAddressBase& gpu_src,
+                                 const DeviceAddressBase& device_src,
                                  uint64_t size) override;
 
   void DeallocateStream(Stream* stream) override;
@@ -81,21 +82,25 @@ class HostExecutor : public StreamExecutorCommon {
 
   absl::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
       const override {
-    return CreateDeviceDescription(0);
+    return CreateDeviceDescription(device_ordinal_);
   }
 
   static absl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription(int device_ordinal);
   int device_ordinal() const override { return device_ordinal_; }
 
-  absl::Status EnablePeerAccessTo(StreamExecutor* other) override {
+  absl::Status EnablePeerAccessTo(StreamExecutor* /*other*/) override {
     return absl::OkStatus();
   }
 
-  bool CanEnablePeerAccessTo(StreamExecutor* other) override { return true; }
+  using StreamExecutor::CanEnablePeerAccessTo;
+  bool CanEnablePeerAccessTo(StreamExecutor* /*other*/) override {
+    return true;
+  }
 
   absl::StatusOr<std::unique_ptr<Event>> CreateEvent() override;
 
+  using StreamExecutor::CreateStream;
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
       std::optional<std::variant<StreamPriority, int>> priority) override;
   absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
@@ -103,7 +108,6 @@ class HostExecutor : public StreamExecutorCommon {
 
  private:
   int device_ordinal_;
-  std::shared_ptr<tsl::thread::ThreadPool> thread_pool_;
 };
 
 }  // namespace host
