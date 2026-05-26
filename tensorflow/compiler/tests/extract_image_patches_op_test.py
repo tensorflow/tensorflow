@@ -20,6 +20,7 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -140,6 +141,32 @@ class ExtractImagePatches(xla_test.XLATestCase):
         rates=[1, 1],
         padding="VALID",
         patches=patches)
+
+  def testSamePaddingNaNDoesNotSpuriouslyPropagate(self):
+    """Regression for #119356: NaN must not poison unrelated patch elements."""
+    image = np.array(
+        [[[[0.0], [-0.0], [np.nan]],
+          [[1.0], [-1.0], [2.0]],
+          [[3.0], [4.0], [-5.0]]]],
+        dtype=np.float32)
+    ksizes = [1, 2, 2, 1]
+    strides = [1, 1, 1, 1]
+    rates = [1, 1, 1, 1]
+
+    with self.session():
+      image_placeholder = array_ops.placeholder(dtypes.float32)
+      with self.test_scope():
+        patches = array_ops.extract_image_patches(
+            image_placeholder,
+            ksizes=ksizes,
+            strides=strides,
+            rates=rates,
+            padding="SAME")
+        sum_finite = math_ops.reduce_sum(
+            array_ops.where(math_ops.is_nan(patches),
+                            array_ops.zeros_like(patches), patches))
+      feed_dict = {image_placeholder: image}
+      self.assertAllClose(8.0, sum_finite.eval(feed_dict=feed_dict))
 
   def testInvalidKernelSize(self):
     """Test that zero kernel size raises an error in XLA mode."""
