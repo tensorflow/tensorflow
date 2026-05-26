@@ -61,7 +61,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_blas_lt.h"
 #endif  // GOOGLE_CUDA
 #if TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
 #include "xla/stream_executor/rocm/hip_blas_lt.h"
 #endif
 
