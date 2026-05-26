@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -313,6 +314,14 @@ inline bool IsOpLineName(absl::string_view line_name) {
 // Returns the timespan of the event from the device offset and duration stats.
 // If the stats are not present, returns the event's timespan.
 Timespan GetDeviceEventTimespan(const XEventVisitor& event);
+
+// Merges `from` XSpace into `to` XSpace.
+// This function performs a zero-copy merge by transferring ownership of planes,
+// lines, and events out of `from` to avoid memory duplication. It dynamically
+// maps and builds new metadata IDs to prevent collisions on duplicate names.
+// After the merge, `from` will be left as an empty shell and safely
+// deallocated.
+void MergeXSpace(std::unique_ptr<XSpace> from, XSpace* to);
 
 }  // namespace profiler
 }  // namespace tsl
