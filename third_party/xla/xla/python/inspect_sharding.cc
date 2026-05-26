@@ -60,9 +60,7 @@ std::optional<xla::HloSharding> InspectShardingReadArgs(
   }
 
   xla::HloSharding sharding = std::move(*result);
-  if (sharding.UseNamedShardingLeaf()) {
-    sharding = xla::HloSharding::V3ToV2Sharding(sharding.named_sharding());
-  }
+  sharding = xla::HloSharding::V3ToV2Sharding(sharding);
   return sharding;
 }
 

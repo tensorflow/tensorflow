@@ -242,9 +242,7 @@ absl::StatusOr<xla::HloSharding> ReadHloSharding(
   }
   ASSIGN_OR_RETURN(xla::HloSharding sharding,
                    xla::HloSharding::FromProto(std::move(proto)));
-  if (sharding.UseNamedShardingLeaf()) {
-    sharding = xla::HloSharding::V3ToV2Sharding(sharding.named_sharding());
-  }
+  sharding = xla::HloSharding::V3ToV2Sharding(sharding);
   return sharding;
 }
 
