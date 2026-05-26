@@ -19,6 +19,12 @@ package(
     licenses = ["notice"],
 )
 
+filegroup(
+    name = "hdrs",
+    srcs = ["gif_io.h"],
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "gif_internal",
     srcs = [

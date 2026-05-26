@@ -12,6 +12,12 @@ package(
     licenses = ["notice"],
 )
 
+filegroup(
+    name = "hdrs",
+    srcs = ["webp_io.h"],
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "webp_io",
     srcs = ["webp_io.cc"],

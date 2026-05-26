@@ -41,6 +41,12 @@ filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "byte_swap_array.cc",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs_no_runtime",
+    srcs = [
         "byte_swap_array.h",
     ],
 )
@@ -49,14 +55,20 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "command_line_flags.cc",
-        "command_line_flags.h",
         "determinism.cc",
-        "determinism.h",
         "device_name_utils.cc",
-        "device_name_utils.h",
         "env_var.cc",
-        "env_var.h",
         "use_cudnn.cc",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
+        "command_line_flags.h",
+        "determinism.h",
+        "device_name_utils.h",
+        "env_var.h",
         "use_cudnn.h",
     ],
 )

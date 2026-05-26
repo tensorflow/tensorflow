@@ -48,7 +48,7 @@ cc_library(
 )
 
 filegroup(
-    name = "mobile_srcs_only_runtime",
+    name = "mobile_hdrs_only_runtime",
     srcs = [
         "bitmap.h",
         "bits.h",

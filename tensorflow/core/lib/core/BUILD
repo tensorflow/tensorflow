@@ -183,7 +183,7 @@ tf_proto_library(
 
 # Export source files needed for mobile builds, which do not use granular targets.
 filegroup(
-    name = "mobile_srcs_no_runtime",
+    name = "mobile_hdrs_no_runtime",
     srcs = [
         "coding.h",
         "errors.h",
@@ -198,6 +198,13 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "arena.cc",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
         "arena.h",
         "bitmap.h",
         "bits.h",

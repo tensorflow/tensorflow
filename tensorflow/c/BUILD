@@ -81,22 +81,36 @@ filegroup(
     srcs = glob(
         [
             "*.cc",
-            "*.h",
         ],
         exclude = [
             "c_api_experimental.cc",
-            "c_api_experimental.h",
             "python_api.cc",
+            "*test*",
+        ],
+    ) + [
+        "@xla//xla/tsl/c:srcs",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = glob(
+        [
+            "*.h",
+        ],
+        exclude = [
+            "c_api_experimental.h",
             "python_api.h",
             "*test*",
         ],
     ) + [
-        "//tensorflow/cc:srcs_no_runtime",
+        "//tensorflow/cc:hdrs_no_runtime",
         "//tensorflow/core/distributed_runtime:server_lib.h",
-        "@tsl//tsl/platform:ctstring",
-        "@xla//xla/tsl/c:srcs",
+        "//tensorflow/core/platform:ctstring",
+        "@xla//xla/tsl/c:headers",
     ],
-    visibility = ["//visibility:public"],
+    visibility = ["//tensorflow:__subpackages__"],
 )
 
 cc_library(

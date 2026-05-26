@@ -989,10 +989,21 @@ filegroup(
     srcs = glob(
         [
             "*.cc",
-            "*.h",
         ],
         exclude = [
             "*_test.cc",
+            "remote_*",
+        ],
+    ),
+)
+
+filegroup(
+    name = "hdrs",
+    srcs = glob(
+        [
+            "*.h",
+        ],
+        exclude = [
             "remote_*",
         ],
     ),

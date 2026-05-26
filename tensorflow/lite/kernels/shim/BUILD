@@ -2,7 +2,7 @@
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
-load("//tensorflow:tensorflow.bzl", "if_android", "if_mobile", "if_not_mobile", "tf_cc_test", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "if_mobile", "if_not_mobile", "tf_cc_test", "tf_copts")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
@@ -76,7 +76,6 @@ cc_library(
     srcs = ["tf_tensor_view.cc"],
     hdrs = ["tf_tensor_view.h"],
     copts = tf_copts(),
-    features = if_android(["-layering_check"]),
     deps = [
         ":tensor_view",
         "@com_google_absl//absl/status",
@@ -156,7 +155,6 @@ cc_library(
     srcs = ["tf_op_shim.cc"],
     hdrs = ["tf_op_shim.h"],
     copts = tf_copts(),
-    features = if_android(["-layering_check"]),
     visibility = ["//visibility:public"],
     deps = [
         ":op_kernel",

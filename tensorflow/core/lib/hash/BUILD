@@ -40,7 +40,7 @@ cc_library(
 
 # Export source files needed for mobile builds, which do not use granular targets.
 filegroup(
-    name = "mobile_srcs_no_runtime",
+    name = "mobile_hdrs_no_runtime",
     srcs = [
         "hash.h",
     ],
@@ -50,8 +50,16 @@ filegroup(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
-        "crc32c.h",
         "@xla//xla/tsl/lib/hash:mobile_srcs_only_runtime",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
+        "crc32c.h",
+        "@xla//xla/tsl/lib/hash:mobile_hdrs_only_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
