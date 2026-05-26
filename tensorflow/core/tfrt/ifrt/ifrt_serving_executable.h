@@ -111,13 +111,17 @@ class IfrtServingExecutable {
   // variable_arg_indices are in sorted order.
   absl::StatusOr<std::vector<tensorflow::Tensor>> Execute(
       absl::Span<const tensorflow::Tensor> inputs,
-      absl::Span<const int> variable_arg_indices);
+      absl::Span<const int> variable_arg_indices,
+      absl::Span<const int64_t> pack_group_ids = {},
+      absl::Span<const int64_t> pack_offsets = {});
 
   // Executes the computation asynchronously.
   // variable_arg_indices are in sorted order.
   absl::StatusOr<tsl::Future<std::vector<tensorflow::Tensor>>> ExecuteAsync(
       absl::Span<const tensorflow::Tensor> inputs,
-      absl::Span<const int> variable_arg_indices);
+      absl::Span<const int> variable_arg_indices,
+      absl::Span<const int64_t> pack_group_ids = {},
+      absl::Span<const int64_t> pack_offsets = {});
 
   // Freezes the model. After the Freeze(), JIT compile is not supported and
   // Execute() will return error if inputs contain uncompiled shapes.
@@ -207,9 +211,24 @@ class IfrtServingExecutable {
     std::vector<absl::InlinedVector<int64_t, 4>> byte_strides;
     std::vector<std::shared_ptr<const xla::ifrt::Shape>> ifrt_input_shapes;
     std::vector<xla::ifrt::LayoutRef> xla_input_layouts;
+    std::vector<std::shared_ptr<const xla::Shape>> compiled_xla_input_shapes;
+    std::vector<xla::ifrt::LayoutRef> compiled_xla_input_layouts;
+    std::vector<xla::ifrt::DType> compiled_ifrt_input_dtypes;
+    std::vector<std::shared_ptr<const xla::ifrt::Shape>>
+        compiled_ifrt_input_shapes;
     xla::ifrt::LoadedExecutableRef ifrt_executable;
     tensorflow::tpu::TPUCompileMetadataProto compile_metadata;
     std::vector<std::unique_ptr<TfHostCallback>> host_callbacks;
+
+    // Compile-time pack-inputs plan, parallel to the per-request `inputs`
+    // vector (and to compile_metadata.args()). Populated by
+    // CreateExecutableSynchronously when the executable was compiled with
+    // PackInputsPass active; empty otherwise. Execute/ExecuteAsync use this
+    // when the caller did not supply a plan via their `pack_group_ids` /
+    // `pack_offsets` parameters.
+    std::vector<int64_t> pack_group_ids;
+    std::vector<int64_t> pack_offsets;
+
     absl::flat_hash_map<IfrtLoadedVariableRegistry::Key,
                         IfrtLoadedVariableRegistry::LoadedVariable,
                         IfrtLoadedVariableRegistry::KeyHash,
@@ -370,7 +389,9 @@ class IfrtServingExecutable {
   // Core implementation for Execute and ExecuteAsync.
   absl::StatusOr<ExecutionInfo> ExecuteCore(
       absl::Span<const tensorflow::Tensor> inputs,
-      absl::Span<const int> variable_arg_indices);
+      absl::Span<const int> variable_arg_indices,
+      absl::Span<const int64_t> pack_group_ids = {},
+      absl::Span<const int64_t> pack_offsets = {});
 
   // Creates an executable by calling tf2xla and xla compiler
   absl::StatusOr<IfrtServingExecutable::SharedCachedExecutableBundle>

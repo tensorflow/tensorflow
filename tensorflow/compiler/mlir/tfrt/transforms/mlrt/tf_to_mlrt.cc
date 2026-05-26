@@ -421,7 +421,8 @@ class AsyncIfrtCallOpConversion
 
     auto call_op = tf_mlrt::AsyncIfrtCallOp::create(
         rewriter, op.getLoc(), future_types, op.getProgramId(),
-        op.getVariableArgIndices(), adaptor.getOperands());
+        op.getVariableArgIndices(), op.getIfrtPackGroupIdsAttr(),
+        op.getIfrtPackOffsetsAttr(), adaptor.getOperands());
 
     rewriter.replaceOp(op, call_op.getResults());
     return mlir::success();

@@ -39,6 +39,7 @@ struct SliceInfo {
   unsigned arg_index;
   int64_t start;
   int64_t size;
+  int64_t group_id;
 };
 
 // This pass packs specified tensor inputs of main function into a single i8
@@ -66,7 +67,7 @@ class PackInputsPass
   ListOption<int64_t> slices_flat_list_{
       *this, "slices",
       llvm::cl::desc(
-          "Flat list of integers specifying {arg_index, start, size} "
+          "Flat list of integers specifying {arg_index, start, size, group_id} "
           "for each slice to be packed.")};
 };
 
