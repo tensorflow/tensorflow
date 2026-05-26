@@ -47,13 +47,12 @@ limitations under the License.
 
 namespace xla {
 
-class SelfAdjointEigTest
-    : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+class SelfAdjointEigTest : public ClientLibraryTestRunnerMixin<
+                               HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  protected:
   void SetUp() override {
     ClientLibraryTestRunnerMixin<
-        HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>::SetUp();
+        HloPjRtInterpreterReferenceMixin<HloTestBase>>::SetUp();
     batch_3d_4x4_ = Array3D<float>{
         {
             {4, 6, 8, 10},
@@ -285,7 +284,7 @@ Array2D<float> GenerateRandomSymmetricMatrix(int size) {
 
 using EighTestCase = int64_t;
 class RandomEighTest : public ClientLibraryTestRunnerMixin<
-                           HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
+                           HloPjRtInterpreterReferenceMixin<HloTestBase>>,
                        public ::testing::WithParamInterface<EighTestCase> {};
 
 TEST_P(RandomEighTest, Random) {

@@ -49,8 +49,8 @@ namespace {
 
 constexpr ErrorSpec kErrorSpec{0.0001};
 
-using MathTest = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using MathTest =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
 
 // Write TYPED_TESTs within the class definition so that we don't have to litter
 // "this->" everywhere.

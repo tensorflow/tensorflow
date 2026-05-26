@@ -30,8 +30,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ConstantsTest = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using ConstantsTest =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
 
 using ::testing::HasSubstr;
 
