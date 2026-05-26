@@ -154,6 +154,11 @@ absl::Status GrowTensorArrayToFit(xla::XlaBuilder* builder,
 
   xla::XlaOp one = xla::ConstantR0<int32_t>(builder, 1);
   xla::XlaOp required_size = xla::Add(index, one);
+  if (resource->initialized()) {
+    xla::XlaOp current_size =
+        xla::GetDimensionSize(resource->value(), 0);
+    required_size = xla::Max(current_size, required_size);
+  }
   xla::XlaOp new_buf =
       CreateDynamicTensorArrayBuffer(builder, dtype, elem_shape, required_size);
 
