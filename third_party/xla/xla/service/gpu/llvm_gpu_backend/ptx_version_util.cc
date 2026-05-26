@@ -38,14 +38,15 @@ DetermineHighestSupportedPtxVersionFromCudaVersion(
     // Examples:
     // CUDA 12.6 -> PTX 8.5
     // CUDA 12.9 -> PTX 8.8
-    return {cuda_version.major() - 4, cuda_version.minor() - 1, 0};
+    return {cuda_version.major_version() - 4, cuda_version.minor_version() - 1,
+            0};
   }
   if (cuda_version < stream_executor::SemanticVersion{13, 1, 0}) {
     // Examples:
     // CUDA 11.0 -> PTX 7.0
     // CUDA 12.4 -> PTX 8.4
     // CUDA 13.0 -> PTX 9.0
-    return {cuda_version.major() - 4, cuda_version.minor(), 0};
+    return {cuda_version.major_version() - 4, cuda_version.minor_version(), 0};
   }
 
   // Return maximum known PTX version.

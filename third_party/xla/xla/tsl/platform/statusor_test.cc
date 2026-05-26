@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
@@ -717,12 +718,12 @@ absl::StatusOr<int> GetError() {
 }
 
 absl::StatusOr<int> PropagateError() {
-  TF_ASSIGN_OR_RETURN(int a, GetError());
+  ASSIGN_OR_RETURN(int a, GetError());
   return a;
 }
 
 absl::StatusOr<int> PropagateError2() {
-  TF_ASSIGN_OR_RETURN(int a, PropagateError());
+  ASSIGN_OR_RETURN(int a, PropagateError());
   return a;
 }
 

@@ -65,6 +65,9 @@ class TaskIterator {
 
   // Returns the dataset model for performance analysis.
   virtual std::shared_ptr<model::Model> model() const { return nullptr; }
+
+  // Cancels the task iterator.
+  virtual void Cancel() {}
 };
 
 // Implementation of TaskIterator wrapping a standalone iterator.
@@ -81,6 +84,7 @@ class StandaloneTaskIterator : public TaskIterator {
   absl::StatusOr<std::vector<Tensor>> Save() override;
   absl::Status Restore(const std::vector<Tensor>& saved_iterator) override;
   std::shared_ptr<model::Model> model() const override;
+  void Cancel() override;
 
  private:
   std::unique_ptr<standalone::Dataset> dataset_;

@@ -20,8 +20,11 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/optimization.h"
+#include "absl/log/check.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
@@ -29,20 +32,19 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/codegen/triton/support_legacy.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
-#include "xla/backends/gpu/tests/gpu_codegen_test.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/comparison_util.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 namespace {
 
 constexpr ErrorSpec kExactMatch{/*aabs=*/0, /*arel=*/0};
@@ -62,8 +64,9 @@ std::string TritonSupportTestTypeToString(
   return primitive_util::LowercasePrimitiveTypeName(data.param);
 }
 
-class MixedTypeTest : public GpuCodegenTest,
-                      public ::testing::WithParamInterface<MixTypeParams> {};
+class MixedTypeTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase>,
+      public ::testing::WithParamInterface<MixTypeParams> {};
 
 // TODO(b/393299275): there is a significant amount of overlap between this test
 // and tests for ALG_UNSET in `fusion_emitter_device_test.cc`. We should
@@ -138,10 +141,10 @@ INSTANTIATE_TEST_SUITE_P(RewriteTestSuite, MixedTypeTest,
                          }),
                          DotTestParamsToString);
 
-class TritonTest : public GpuCodegenTest {
+class TritonTest : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloPjRtGpuTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_cublas_fallback(false);
     // Always rewrite Gemms with Triton regardless of size.
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
@@ -149,10 +152,7 @@ class TritonTest : public GpuCodegenTest {
   }
 
   se::CudaComputeCapability GetCudaComputeCapability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .cuda_compute_capability();
+    return device_description().cuda_compute_capability();
   }
 };
 
@@ -565,8 +565,8 @@ ENTRY e {
       kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
       ComparisonDirectionToString(direction));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_test));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_test));
 
   HloInstruction* compare =
       module->entry_computation()->root_instruction()->fused_expression_root();
@@ -828,12 +828,18 @@ ENTRY e {
   p0 = $0[2,2] parameter(0)
   p1 = f32[2,2] parameter(1)
   ROOT r = f32[2,2] fusion(p0, p1), kind=kCustom, calls=t,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion"}}
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["1","2"]}],
+        "num_warps":"1",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
 })",
       primitive_util::LowercasePrimitiveTypeName(data_type1),
       primitive_util::LowercasePrimitiveTypeName(data_type2));
 
-  TF_ASSERT_OK(GetOptimizedModule(hlo_text).status());
+  ASSERT_OK(GetOptimizedModule(hlo_text).status());
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -845,11 +851,11 @@ INSTANTIATE_TEST_SUITE_P(
 // TODO(b/412651198): lots of tests in TritonNormalizationTest are no longer
 // relevant. Clean this up.
 class TritonNormalizationTest
-    : public GpuCodegenTest,
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase>,
       public ::testing::WithParamInterface<PrimitiveType> {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloPjRtGpuTestBase::GetDebugOptionsForTest();
     // TODO(b/38354253): Remove once HloTestBase does not remove constant
     // folding.
     debug_options.clear_xla_disable_hlo_passes();
@@ -2371,5 +2377,4 @@ INSTANTIATE_TEST_SUITE_P(ClampTypeTestSuite, ClampTypeTest,
                          TritonSupportTestTypeToString);
 
 }  // namespace
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

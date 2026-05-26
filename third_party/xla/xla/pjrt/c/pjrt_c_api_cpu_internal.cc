@@ -43,6 +43,8 @@ limitations under the License.
 namespace pjrt {
 namespace cpu_plugin {
 
+const PJRT_Api* GetCpuPjrtApi();
+
 PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Client_Create_Args", PJRT_Client_Create_Args_STRUCT_SIZE,
@@ -65,7 +67,7 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
 
   PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
                         xla::GetPjRtCpuClient(std::move(options)));
-  args->client = pjrt::CreateWrapperClient(std::move(client));
+  args->client = pjrt::CreateWrapperClient(GetCpuPjrtApi(), std::move(client));
   return nullptr;
 }
 

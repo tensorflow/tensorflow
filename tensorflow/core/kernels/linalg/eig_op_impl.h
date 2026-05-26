@@ -80,10 +80,10 @@ class EigOp : public LinearAlgebraOp<InputScalar, OutputScalar> {
                            Eigen::EigenSolver<InputMatrix>>;
     EigenSolver eig(inputs[0], /*computeEigenvectors=*/compute_v_);
 
-    OP_REQUIRES(
-        context, eig.info() == Eigen::Success,
-        errors::InvalidArgument("Eigen decomposition was not "
-                                "successful. The input might not be valid."));
+    OP_REQUIRES(context, eig.info() == Eigen::Success,
+                absl::InvalidArgumentError(
+                    "Eigen decomposition was not "
+                    "successful. The input might not be valid."));
 
     outputs->at(0) = eig.eigenvalues().template cast<OutputScalar>();
     if (compute_v_) {

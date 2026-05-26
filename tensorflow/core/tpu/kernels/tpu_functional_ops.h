@@ -56,28 +56,28 @@ limitations under the License.
 
 namespace tensorflow {
 // Holds node's shape information for Concat/Split.
-using EdgeShapes = absl::linked_hash_map<const Edge*, std::vector<int>>;
+using EdgeShapes = absl::flat_hash_map<const Edge*, std::vector<int>>;
 using GroupedEdges =
-    absl::linked_hash_map<std::string, std::vector<const Edge*>>;
+    absl::flat_hash_map<std::string, std::vector<const Edge*>>;
 
 // Contains attrs "T", "sharding", "_tpu_replicate" for each XlaSharding op that
 // we find as part of searching for inputs to models that are replicated.
 using XlaShardingInfoMap =
-    absl::linked_hash_map<std::string,
+    absl::flat_hash_map<std::string,
                           std::tuple<DataType, std::string, std::string>>;
 
 // Contains attrs "T", and a pointer to tpu_replicated_metadata for ctrl dep
 // for each TpuReplicatedInput op that we find as part of searching for inputs
 // to models that are replicated.
 using TpuReplicatedInputInfoMap =
-    absl::linked_hash_map<std::string, std::tuple<DataType, Node*>>;
+    absl::flat_hash_map<std::string, std::tuple<DataType, Node*>>;
 
 namespace tpu_functional_internal {
 
 // Helper functions for graph rewrites.
 GroupedEdges GroupTensorsForInputPacking(
     const EdgeShapes& tpu_input_shapes,
-    const absl::linked_hash_map<const Edge*, DataType>& tpu_input_dtypes,
+    const absl::flat_hash_map<const Edge*, DataType>& tpu_input_dtypes,
     bool input_shape_opt, bool group_tensors_for_packing);
 GroupedEdges GroupTensorsForOutputPacking(Graph* graph,
                                           EdgeShapes& tpu_output_shapes,
@@ -85,7 +85,7 @@ GroupedEdges GroupTensorsForOutputPacking(Graph* graph,
 
 absl::Status CreateConcatAndSplitNodesForInputTensor(
     Graph* graph, const std::string& cluster_name, EdgeShapes* tpu_input_shapes,
-    const absl::linked_hash_map<std::string, std::vector<const Edge*>>&
+    const absl::flat_hash_map<std::string, std::vector<const Edge*>>&
         grouped_input_edges,
     int32_t minimum_input_tensors_packing, bool xla_spmd_input_sharded,
     const XlaShardingInfoMap& xla_sharding_info,
@@ -371,7 +371,7 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   std::shared_ptr<tpu::TPUOrdinalSelector> ordinal_selector_;
 
   // Maps input hash to TF fingerprint.
-  absl::linked_hash_map<uint64_t, uint64_t> inputs_to_fingerprint_;
+  absl::flat_hash_map<uint64_t, uint64_t> inputs_to_fingerprint_;
 
   // List of TPU devices
   std::vector<Device*> tpu_devices_;

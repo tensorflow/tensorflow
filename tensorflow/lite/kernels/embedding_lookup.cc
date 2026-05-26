@@ -32,13 +32,15 @@ limitations under the License.
 #include <cinttypes>
 #include <cstdint>
 #include <cstring>
+#include <functional>
+#include <utility>
 
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/types/half.h"
-
+#include "tensorflow/lite/util.h"
 namespace tflite {
 namespace ops {
 namespace builtin {
@@ -122,21 +124,26 @@ TfLiteStatus EvalSimple(TfLiteContext* context, TfLiteNode* node,
                          idx, row_size - 1);
       return kTfLiteError;
     } else {
-      std::memcpy(output_raw + i * row_bytes, value_raw + idx * row_bytes,
-                  row_bytes);
+      CheckedInt<size_t> offset_output = CheckedInt<size_t>(i) * row_bytes;
+      CheckedInt<size_t> offset_value = CheckedInt<size_t>(idx) * row_bytes;
+      if (offset_output.Overflow() || offset_value.Overflow()) {
+        TF_LITE_KERNEL_LOG(context, "Embedding Lookup: offset overflow.");
+        return kTfLiteError;
+      }
+      std::memcpy(output_raw + offset_output.Value(),
+                  value_raw + offset_value.Value(), row_bytes);
     }
   }
-
   return kTfLiteOk;
 }
 
 template <typename T>
-void Unpack4Bit(float scaling_factor, int col_size, const int8_t* value_ptr,
+void Unpack4Bit(float scaling_factor, size_t col_size, const int8_t* value_ptr,
                 T* output_ptr) {
   float scaling_factor0 = scaling_factor / 16;
-  int j = 0;
-  int i4_idx = 0;
-  for (; j < col_size - 1; j += 2, ++i4_idx) {
+  size_t j = 0;
+  size_t i4_idx = 0;
+  for (; j + 1 < col_size; j += 2, ++i4_idx) {
     int8_t i4_val = value_ptr[i4_idx];
     int8_t i8_val0 = i4_val << 4;
     int8_t i8_val1 = i4_val & 0xF0;
@@ -152,13 +159,12 @@ void Unpack4Bit(float scaling_factor, int col_size, const int8_t* value_ptr,
 }
 
 template <typename T>
-void Unpack2Bit(float scaling_factor, int col_size, const int8_t* value_ptr,
+void Unpack2Bit(float scaling_factor, size_t col_size, const int8_t* value_ptr,
                 T* output_ptr) {
   float scaling_factor0 = scaling_factor / 64;  // 2**6
-
-  int j = 0;
-  int i2_idx = 0;
-  for (; j < col_size - 3; j += 4, ++i2_idx) {
+  size_t j = 0;
+  size_t i2_idx = 0;
+  for (; j + 3 < col_size; j += 4, ++i2_idx) {
     int8_t i2_val = value_ptr[i2_idx];
     int8_t i8_val0 = static_cast<int8_t>(i2_val << 6);
     int8_t i8_val1 = static_cast<int8_t>(i2_val << 4) & 0xC0;
@@ -170,7 +176,7 @@ void Unpack2Bit(float scaling_factor, int col_size, const int8_t* value_ptr,
     output_ptr[j + 2] = i8_val2 * scaling_factor0;
     output_ptr[j + 3] = i8_val3 * scaling_factor0;
   }
-  int rem = col_size - j;
+  size_t rem = col_size - j;
   if (rem) {
     int8_t i2_val = value_ptr[i2_idx];
     int8_t i8_val0 = static_cast<int8_t>(i2_val << 6);
@@ -189,10 +195,16 @@ void Unpack2Bit(float scaling_factor, int col_size, const int8_t* value_ptr,
 TfLiteStatus EvalBlockwise(TfLiteContext* context, TfLiteNode* node,
                            const TfLiteTensor* lookup,
                            const TfLiteTensor* value, TfLiteTensor* output) {
-  if (value->type != kTfLiteInt4) {
-    TF_LITE_KERNEL_LOG(
-        context,
-        "Embedding Lookup: Blockwise embedding lookup only supports Int4 data");
+  if (value->type != kTfLiteInt4 && value->type != kTfLiteInt2) {
+    TF_LITE_KERNEL_LOG(context,
+                       "Embedding Lookup: Blockwise embedding lookup only "
+                       "supports Int4 and Int2 data");
+    return kTfLiteError;
+  }
+  if (output->type != kTfLiteFloat32 && output->type != kTfLiteFloat16) {
+    TF_LITE_KERNEL_LOG(context,
+                       "Embedding Lookup: Blockwise embedding lookup only "
+                       "supports Float32 and Float16 outputs");
     return kTfLiteError;
   }
   if (value->dims->size != 2) {
@@ -204,32 +216,60 @@ TfLiteStatus EvalBlockwise(TfLiteContext* context, TfLiteNode* node,
   const int row_size = SizeOfDimension(value, 0);
 
   // col_size after we flatten tensor into 2D.
-  int col_size = 1;
+  CheckedInt<size_t> col_size = 1;
   for (int i = 1; i < NumDimensions(value); i++) {
-    col_size *= SizeOfDimension(value, i);
+    col_size = col_size * CheckedInt<size_t>(SizeOfDimension(value, i));
+    if (col_size.Overflow()) {
+      TF_LITE_KERNEL_LOG(context, "Embedding Lookup: col_size overflow.");
+      return kTfLiteError;
+    }
   }
-
-  float* output_fp32_ptr =
-      output->type == kTfLiteFloat32 ? GetTensorData<float>(output) : nullptr;
-  half* output_fp16_ptr =
-      output->type == kTfLiteFloat16 ? GetTensorData<half>(output) : nullptr;
-  const int8_t* value_ptr = GetTensorData<int8_t>(value);
-  const int32_t* lookup_data = GetTensorData<int32_t>(lookup);
-
   const auto quantization_params =
       reinterpret_cast<const TfLiteBlockwiseQuantization*>(
           value->quantization.params);
   const TfLiteTensor& scale = context->tensors[quantization_params->scale];
   const int blocksize = quantization_params->blocksize;
   const int dimension_size = SizeOfDimension(lookup, 0);
-  if (col_size % blocksize != 0) {
+
+  float* output_fp32_ptr = GetTensorData<float>(output);
+  half* output_fp16_ptr = GetTensorData<half>(output);
+
+  const int8_t* value_ptr = GetTensorData<int8_t>(value);
+  const int32_t* lookup_data = GetTensorData<int32_t>(lookup);
+
+  // Wrap the correct 2/4-bit float32/float16 unpacking function.
+  auto [unpack_to_fp32, unpack_to_fp16] =
+      value->type == kTfLiteInt2
+          ? std::make_pair(Unpack2Bit<float>, Unpack2Bit<half>)
+          : std::make_pair(Unpack4Bit<float>, Unpack4Bit<half>);
+  const int values_per_byte = value->type == kTfLiteInt2 ? 4 : 2;
+  std::function<void(float, size_t, size_t)> unpack;
+  if (output->type == kTfLiteFloat32) {
+    unpack = [&, unpack = unpack_to_fp32](float scaling_factor,
+                                          size_t value_offset,
+                                          size_t output_offset) {
+      unpack(scaling_factor, blocksize,
+             &value_ptr[value_offset / values_per_byte],
+             &output_fp32_ptr[output_offset]);
+    };
+  } else {
+    unpack = [&, unpack = unpack_to_fp16](float scaling_factor,
+                                          size_t value_offset,
+                                          size_t output_offset) {
+      unpack(scaling_factor, blocksize,
+             &value_ptr[value_offset / values_per_byte],
+             &output_fp16_ptr[output_offset]);
+    };
+  }
+
+  if (col_size.Value() % blocksize != 0) {
     TF_LITE_KERNEL_LOG(context,
-                       "Embedding Lookup: lookup dimension %d must be "
+                       "Embedding Lookup: lookup dimension %zu must be "
                        "divisible by blocksize %d",
-                       col_size, blocksize);
+                       col_size.Value(), blocksize);
     return kTfLiteError;
   }
-  int num_blocks = col_size / blocksize;
+  size_t num_blocks = col_size.Value() / blocksize;
   for (int i = 0; i < dimension_size; i++) {
     int idx = lookup_data[i];
     if (idx >= row_size || idx < 0) {
@@ -239,20 +279,26 @@ TfLiteStatus EvalBlockwise(TfLiteContext* context, TfLiteNode* node,
                          idx, row_size - 1);
       return kTfLiteError;
     }
-    const size_t scale_offset = static_cast<size_t>(idx) * num_blocks;
-    const size_t value_offset = static_cast<size_t>(idx) * col_size;
-    for (int j = 0; j < num_blocks; ++j) {
-      float scaling_factor = GetTensorData<half>(&scale)[scale_offset + j];
-
-      if (output_fp32_ptr) {
-        Unpack4Bit(scaling_factor, blocksize,
-                   &value_ptr[(value_offset + j * blocksize) / 2],
-                   &output_fp32_ptr[j * blocksize + i * col_size]);
-      } else {
-        Unpack4Bit(scaling_factor, blocksize,
-                   &value_ptr[(value_offset + j * blocksize) / 2],
-                   &output_fp16_ptr[j * blocksize + i * col_size]);
+    CheckedInt<size_t> output_row_offset = CheckedInt<size_t>(i) * col_size;
+    CheckedInt<size_t> scale_offset = CheckedInt<size_t>(idx) * num_blocks;
+    CheckedInt<size_t> value_offset = CheckedInt<size_t>(idx) * col_size;
+    if (output_row_offset.Overflow() || scale_offset.Overflow() ||
+        value_offset.Overflow()) {
+      TF_LITE_KERNEL_LOG(context, "Embedding Lookup: offset overflow.");
+      return kTfLiteError;
+    }
+    for (size_t j = 0; j < num_blocks; ++j) {
+      float scaling_factor =
+          GetTensorData<half>(&scale)[scale_offset.Value() + j];
+      CheckedInt<size_t> val_off =
+          value_offset + CheckedInt<size_t>(j) * blocksize;
+      CheckedInt<size_t> out_off =
+          output_row_offset + CheckedInt<size_t>(j) * blocksize;
+      if (val_off.Overflow() || out_off.Overflow()) {
+        TF_LITE_KERNEL_LOG(context, "Embedding Lookup: offset overflow.");
+        return kTfLiteError;
       }
+      unpack(scaling_factor, val_off.Value(), out_off.Value());
     }
   }
   return kTfLiteOk;
@@ -264,25 +310,40 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
   const int row_size = SizeOfDimension(value, 0);
 
   // col_size after we flatten tensor into 2D.
-  int col_size = 1;
+  CheckedInt<size_t> col_size = 1;
   for (int i = 1; i < NumDimensions(value); i++) {
-    col_size *= SizeOfDimension(value, i);
+    col_size = col_size * CheckedInt<size_t>(SizeOfDimension(value, i));
+    if (col_size.Overflow()) {
+      TF_LITE_KERNEL_LOG(context, "Embedding Lookup: col_size overflow.");
+      return kTfLiteError;
+    }
   }
-
   auto copy_row = [&](float scaling_factor, auto output_ptr, auto value_ptr,
-                      int idx, int i) {
-    const size_t offset = static_cast<size_t>(idx) * col_size;
+                      int idx, size_t out_off) -> TfLiteStatus {
+    CheckedInt<size_t> offset = col_size * CheckedInt<size_t>(idx);
+    if (offset.Overflow()) {
+      TF_LITE_KERNEL_LOG(context, "Embedding Lookup: offset overflow.");
+      return kTfLiteError;
+    }
     if (value->type == kTfLiteInt4) {
-      Unpack4Bit(scaling_factor, col_size, &value_ptr[offset >> 1],
-                 &output_ptr[i * col_size]);
+      Unpack4Bit(scaling_factor, col_size.Value(),
+                 &value_ptr[offset.Value() >> 1], &output_ptr[out_off]);
     } else if (value->type == kTfLiteInt2) {
-      Unpack2Bit(scaling_factor, col_size, &value_ptr[offset >> 2],
-                 &output_ptr[i * col_size]);
+      Unpack2Bit(scaling_factor, col_size.Value(),
+                 &value_ptr[offset.Value() >> 2], &output_ptr[out_off]);
     } else {
-      for (int j = 0; j < col_size; j++) {
-        output_ptr[j + i * col_size] = value_ptr[offset + j] * scaling_factor;
+      for (size_t j = 0; j < col_size.Value(); j++) {
+        CheckedInt<size_t> output_idx = CheckedInt<size_t>(j) + out_off;
+        CheckedInt<size_t> value_idx = offset + CheckedInt<size_t>(j);
+        if (output_idx.Overflow() || value_idx.Overflow()) {
+          TF_LITE_KERNEL_LOG(context, "Embedding Lookup: index overflow.");
+          return kTfLiteError;
+        }
+        output_ptr[output_idx.Value()] =
+            value_ptr[value_idx.Value()] * scaling_factor;
       }
     }
+    return kTfLiteOk;
   };
 
   float* output_fp32_ptr =
@@ -301,6 +362,11 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
                          idx, row_size - 1);
       return kTfLiteError;
     } else {
+      CheckedInt<size_t> out_off = CheckedInt<size_t>(i) * col_size.Value();
+      if (out_off.Overflow()) {
+        TF_LITE_KERNEL_LOG(context, "Embedding Lookup: offset overflow.");
+        return kTfLiteError;
+      }
       // Dequantize embedding values.
       // TODO(alanchiao): refactor scalar multiply into separate function
       // for ease of adding a neon equivalent if ever necessary.
@@ -315,9 +381,11 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
       }
 
       if (output_fp32_ptr) {
-        copy_row(scaling_factor, output_fp32_ptr, value_ptr, idx, i);
+        TF_LITE_ENSURE_OK(context, copy_row(scaling_factor, output_fp32_ptr,
+                                            value_ptr, idx, out_off.Value()));
       } else {
-        copy_row(scaling_factor, output_fp16_ptr, value_ptr, idx, i);
+        TF_LITE_ENSURE_OK(context, copy_row(scaling_factor, output_fp16_ptr,
+                                            value_ptr, idx, out_off.Value()));
       }
     }
   }

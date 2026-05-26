@@ -53,7 +53,7 @@ LoopbackCollectives::CreateCommunicators(
   std::vector<std::unique_ptr<Communicator>> comms(num_ranks);
 
   for (size_t i = 0; i < num_ranks; ++i) {
-    auto* device = tsl::down_cast<GpuCollectives::Device*>(ranks[i].device);
+    auto* device = absl::down_cast<GpuCollectives::Device*>(ranks[i].device);
     comms[i] = std::make_unique<LoopbackCommunicator>(device->stream_executor(),
                                                       num_ranks, i);
     VLOG(3) << absl::StreamFormat(
@@ -75,7 +75,7 @@ LoopbackCollectives::SplitCommunicators(
   std::vector<std::unique_ptr<Communicator>> split_comms(num_ranks);
 
   for (size_t i = 0; i < num_ranks; ++i) {
-    auto* device = tsl::down_cast<GpuCollectives::Device*>(ranks[i].device);
+    auto* device = absl::down_cast<GpuCollectives::Device*>(ranks[i].device);
     split_comms[i] = std::make_unique<LoopbackCommunicator>(
         device->stream_executor(), num_ranks, i);
   }

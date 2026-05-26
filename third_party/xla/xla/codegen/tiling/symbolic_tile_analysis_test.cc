@@ -228,6 +228,14 @@ class SymbolicTileAnalysisTest : public HloHardwareIndependentTestBase {
     return std::nullopt;
   }
 
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_unsupported_enable_triton_multi_output_fusion(
+        true);
+    return debug_options;
+  }
+
   mlir::MLIRContext mlir_context_;
   TiledHloScheduleBuilder default_schedule_builder_ =
       CreateMajorToMinorTiledHloSchedule;
@@ -462,7 +470,6 @@ ENTRY entry_computation {
   fusion.1 = f32[8192] fusion(fusion), kind=kCustom, calls=fused_computation.1
   ROOT tuple = (f32[8192], f32[2048,8192]) tuple(fusion.1, fusion)
 })"));
-
   const auto* consumer =
       module->entry_computation()->root_instruction()->operand(0);
   const auto* producer = consumer->operand(0);

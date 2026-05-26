@@ -73,9 +73,9 @@ class DenseUpdateOp : public OpKernel {
                 errors::FailedPrecondition("Attempting to use uninitialized "
                                            "parameters: ",
                                            requested_input(0)));
-    OP_REQUIRES(
-        context, Tparams.IsSameSize(Tupdate),
-        errors::InvalidArgument("Parameters and update must be the same size"));
+    OP_REQUIRES(context, Tparams.IsSameSize(Tupdate),
+                absl::InvalidArgumentError(
+                    "Parameters and update must be the same size"));
 
     functor::DenseUpdate<Device, T, OP> update_functor;
     update_functor(context->template eigen_device<Device>(), Tparams.flat<T>(),

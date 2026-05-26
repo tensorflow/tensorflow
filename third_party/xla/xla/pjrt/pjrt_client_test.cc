@@ -391,6 +391,46 @@ TEST_P(PjRtClientTest, ExecuteWithConcurrentUsageAndDonation) {
                                      *literal));
 }
 
+TEST_P(PjRtClientTest, ExecuteWithWrongNumArgs) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
+  auto executable =
+      MakeIncrementProgram(client.get(), /*alias=*/false, /*device=*/0);
+
+  std::vector<int32_t> data(4, 0);
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+
+  ExecuteOptions options;
+  options.execution_mode = GetParam();
+
+  // Expected 1 argument, but passing 2.
+  {
+    auto results_or =
+        executable->Execute({{buffer.get(), buffer.get()}}, options);
+    EXPECT_FALSE(results_or.ok());
+    EXPECT_THAT(
+        results_or.status().message(),
+        ::testing::HasSubstr(
+            "Execution supplied 2 arguments but compiled program expected 1"));
+  }
+
+  // Expected 1 argument, but passing 0.
+  {
+    auto results_or = executable->Execute({{}}, options);
+    EXPECT_FALSE(results_or.ok());
+    EXPECT_THAT(
+        results_or.status().message(),
+        ::testing::HasSubstr(
+            "Execution supplied 0 arguments but compiled program expected 1"));
+  }
+}
+
 INSTANTIATE_TEST_SUITE_P(
     PjRtClientTestSuite, PjRtClientTest,
     ::testing::Values(ExecuteOptions::ExecutionMode::kSynchronous,

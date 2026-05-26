@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/statusor.h"
@@ -26,8 +27,8 @@ namespace stream_executor {
 absl::StatusOr<GpuSemaphore> GpuSemaphore::Create(StreamExecutor* executor) {
   // Allocate the value in pinned host memory that can be read from both
   // host and device.
-  TF_ASSIGN_OR_RETURN(auto alloc,
-                      executor->HostMemoryAllocate(sizeof(GpuSemaphoreState)));
+  ASSIGN_OR_RETURN(auto alloc,
+                   executor->HostMemoryAllocate(sizeof(GpuSemaphoreState)));
   return GpuSemaphore{std::move(alloc)};
 }
 

@@ -25,12 +25,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -48,7 +46,6 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/service_executable_run_options.h"
-#include "xla/status_macros.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 
@@ -180,6 +177,8 @@ ThunkKindProto Thunk::KindToProto(Kind kind) {
       return THUNK_KIND_CUSTOM_KERNEL;
     case kDynamicSlice:
       return THUNK_KIND_DYNAMIC_SLICE;
+    case kDynamicSliceFusion:
+      return THUNK_KIND_DYNAMIC_SLICE_FUSION;
     case kFft:
       return THUNK_KIND_FFT;
     case kGemm:
@@ -285,6 +284,8 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
       return kCustomKernel;
     case THUNK_KIND_DYNAMIC_SLICE:
       return kDynamicSlice;
+    case THUNK_KIND_DYNAMIC_SLICE_FUSION:
+      return kDynamicSliceFusion;
     case THUNK_KIND_FFT:
       return kFft;
     case THUNK_KIND_GEMM:
@@ -376,6 +377,7 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
     CASE(kCustomCall);
     CASE(kCustomKernel);
     CASE(kDynamicSlice);
+    CASE(kDynamicSliceFusion);
     CASE(kFft);
     CASE(kGemm);
     CASE(kGroup);
@@ -423,6 +425,9 @@ absl::StatusOr<Thunk::ThunkInfo> Thunk::ThunkInfo::FromProto(
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = proto.profile_annotation();
   thunk_info.thunk_id = ThunkId(proto.thunk_id());
+  if (proto.has_concurrent_region_id()) {
+    thunk_info.concurrent_region_id = proto.concurrent_region_id();
+  }
   return thunk_info;
 }
 
@@ -455,12 +460,6 @@ bool Thunk::IsCollective() const {
   }
 }
 
-absl::StatusOr<ThunkProto> Thunk::ToProto() const {
-  return absl::UnimplementedError(absl::StrFormat(
-      "Proto serialization for thunk of type %s is not implemented",
-      typeid(*this).name()));
-}
-
 ThunkMetadataProto Thunk::ToMetadataProto() const {
   ThunkMetadataProto metadata_proto;
   *metadata_proto.mutable_thunk_info() = thunk_info_.ToProto();
@@ -483,6 +482,9 @@ ThunkInfoProto Thunk::ThunkInfo::ToProto() const {
   ThunkInfoProto proto;
   proto.set_profile_annotation(profile_annotation);
   proto.set_thunk_id(thunk_id.value());
+  if (concurrent_region_id.has_value()) {
+    proto.set_concurrent_region_id(*concurrent_region_id);
+  }
   return proto;
 }
 
@@ -589,7 +591,9 @@ std::string ThunkSequence::ToString(int indent) const {
   for (int64_t i = 0; i < size(); ++i) {
     const std::unique_ptr<Thunk>& thunk = at(i);
     std::string description = thunk->ToString(indent + 1);
-    if (description.empty()) description = "(no description)";
+    if (description.empty()) {
+      description = "(no description)";
+    }
     absl::StrAppendFormat(
         &result, "%s%03d: %-*s [%-*s | %-*s] %s", indent_str,
         thunk->thunk_info().thunk_id.value(), max_thunk_kind_len,

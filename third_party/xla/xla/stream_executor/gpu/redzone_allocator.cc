@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -84,7 +85,7 @@ absl::StatusOr<DeviceAddress<uint8_t>> RedzoneAllocator::AllocateBytes(
   }
 
   int64_t rhs_slop = RoundUpToNearest(byte_size, kRhsRedzoneAlign) - byte_size;
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       ScopedDeviceAddress<uint8_t> allocated_buffer,
       memory_allocator_->Allocate(device_ordinal_,
                                   byte_size + 2 * redzone_size_ + rhs_slop,
@@ -115,12 +116,11 @@ absl::StatusOr<DeviceAddress<uint8_t>> RedzoneAllocator::AllocateBytes(
                            redzone_pattern_};
   uint32_t pattern32;
   std::memcpy(&pattern32, pattern_arr, sizeof(pattern32));
-  TF_RETURN_IF_ERROR(stream_->Memset32(&lhs_redzone, pattern32, redzone_size_));
+  RETURN_IF_ERROR(stream_->Memset32(&lhs_redzone, pattern32, redzone_size_));
   if (rhs_slop != 0) {
-    TF_RETURN_IF_ERROR(
-        stream_->Memcpy(&rhs_redzone_slop, &pattern32, rhs_slop));
+    RETURN_IF_ERROR(stream_->Memcpy(&rhs_redzone_slop, &pattern32, rhs_slop));
   }
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       stream_->Memset32(&rhs_redzone_nonslop, pattern32, redzone_size_));
 
   allocated_buffers_.emplace_back(std::move(allocated_buffer), byte_size);
@@ -135,8 +135,8 @@ static absl::StatusOr<RedzoneCheckStatus> CheckRedzoneHost(
     absl::string_view name, Stream* stream, uint8_t redzone_pattern) {
   uint64_t size = redzone.size();
   auto redzone_data = std::make_unique<uint8_t[]>(size);
-  TF_RETURN_IF_ERROR(stream->Memcpy(redzone_data.get(), redzone, size));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  RETURN_IF_ERROR(stream->Memcpy(redzone_data.get(), redzone, size));
+  RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   std::array<uint8_t, sizeof(uint64_t)> pattern_arr;
   pattern_arr.fill(redzone_pattern);
@@ -181,7 +181,7 @@ static absl::Status RunRedzoneChecker(
       std::min(tsl::MathUtil::CeilOfRatio(num_elements, threads_per_block),
                RedzoneAllocator::kMaxNumThreadBlocksForKernel);
 
-  TF_RETURN_IF_ERROR(comparison_kernel.Launch(
+  RETURN_IF_ERROR(comparison_kernel.Launch(
       ThreadDim(threads_per_block), BlockDim(block_count), stream, redzone,
       redzone_pattern, redzone.size(), out_param));
   return absl::OkStatus();
@@ -196,9 +196,9 @@ static absl::Status ReinitializeRedzone(Stream* stream,
                                         uint8_t redzone_pattern) {
   absl::FixedArray<uint8_t> redzone_array(redzone.size());
   redzone_array.fill(redzone_pattern);
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       stream->Memcpy(&redzone, redzone_array.data(), redzone.size()));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  RETURN_IF_ERROR(stream->BlockHostUntilDone());
   return absl::OkStatus();
 }
 
@@ -227,30 +227,28 @@ static absl::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
       buffer_uint8.GetSlice(redzone_size + user_allocation_size,
                             /*element_count=*/redzone_size + rhs_slop);
 
-  TF_RETURN_IF_ERROR(RunRedzoneChecker(stream, lhs_redzone, redzone_pattern,
-                                       out_param, comparison_kernel));
-  TF_RETURN_IF_ERROR(RunRedzoneChecker(stream, rhs_redzone, redzone_pattern,
-                                       out_param, comparison_kernel));
+  RETURN_IF_ERROR(RunRedzoneChecker(stream, lhs_redzone, redzone_pattern,
+                                    out_param, comparison_kernel));
+  RETURN_IF_ERROR(RunRedzoneChecker(stream, rhs_redzone, redzone_pattern,
+                                    out_param, comparison_kernel));
   int64_t result;
   CHECK_GE(out_param.size(), sizeof(result));
-  TF_RETURN_IF_ERROR(stream->Memcpy(&result, out_param, sizeof(result)));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  RETURN_IF_ERROR(stream->Memcpy(&result, out_param, sizeof(result)));
+  RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   if (result != 0) {
-    TF_ASSIGN_OR_RETURN(RedzoneCheckStatus lhs_check,
-                        CheckRedzoneHost(lhs_redzone, user_allocation, "LHS",
-                                         stream, redzone_pattern));
-    TF_ASSIGN_OR_RETURN(RedzoneCheckStatus rhs_check,
-                        CheckRedzoneHost(rhs_redzone, user_allocation, "RHS",
-                                         stream, redzone_pattern));
+    ASSIGN_OR_RETURN(RedzoneCheckStatus lhs_check,
+                     CheckRedzoneHost(lhs_redzone, user_allocation, "LHS",
+                                      stream, redzone_pattern));
+    ASSIGN_OR_RETURN(RedzoneCheckStatus rhs_check,
+                     CheckRedzoneHost(rhs_redzone, user_allocation, "RHS",
+                                      stream, redzone_pattern));
 
     CHECK(!lhs_check.ok() || !rhs_check.ok())
         << "Mismatched results with host and device comparison";
 
-    TF_RETURN_IF_ERROR(
-        ReinitializeRedzone(stream, lhs_redzone, redzone_pattern));
-    TF_RETURN_IF_ERROR(
-        ReinitializeRedzone(stream, rhs_redzone, redzone_pattern));
+    RETURN_IF_ERROR(ReinitializeRedzone(stream, lhs_redzone, redzone_pattern));
+    RETURN_IF_ERROR(ReinitializeRedzone(stream, rhs_redzone, redzone_pattern));
     return !lhs_check.ok() ? lhs_check : rhs_check;
   }
 
@@ -259,8 +257,8 @@ static absl::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
 
 absl::StatusOr<DeviceAddressBase> RedzoneAllocator::CreateBuffer(
     const xla::Shape& shape, bool initialize_buffers, int64_t& rng_state) {
-  TF_ASSIGN_OR_RETURN(stream_executor::DeviceAddressBase buffer,
-                      AllocateBytes(xla::ShapeUtil::ByteSizeOf(shape)));
+  ASSIGN_OR_RETURN(stream_executor::DeviceAddressBase buffer,
+                   AllocateBytes(xla::ShapeUtil::ByteSizeOf(shape)));
   if (initialize_buffers) {
     xla::gpu::InitializeBuffer(stream(), shape.element_type(), &rng_state,
                                buffer);
@@ -271,21 +269,19 @@ absl::StatusOr<DeviceAddressBase> RedzoneAllocator::CreateBuffer(
 absl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
   StreamExecutor* executor = stream_->parent();
 
-  TF_ASSIGN_OR_RETURN(auto kernel,
-                      gpu::GpuKernelRegistry::GetGlobalRegistry()
-                          .LoadKernel<gpu::RedzoneAllocatorKernel>(executor));
+  ASSIGN_OR_RETURN(auto kernel,
+                   gpu::GpuKernelRegistry::GetGlobalRegistry()
+                       .LoadKernel<gpu::RedzoneAllocatorKernel>(executor));
 
   DeviceAddressHandle out_param(executor, executor->AllocateScalar<uint64_t>());
-  TF_RETURN_IF_ERROR(
-      stream_->MemZero(out_param.address_ptr(), sizeof(uint64_t)));
+  RETURN_IF_ERROR(stream_->MemZero(out_param.address_ptr(), sizeof(uint64_t)));
 
   for (const auto& buf_and_size : allocated_buffers_) {
-    TF_ASSIGN_OR_RETURN(
-        RedzoneCheckStatus redzone_status,
-        CheckRedzonesForBuffer(stream_, *buf_and_size.first,
-                               DeviceAddress<uint64_t>(out_param.address()),
-                               kernel, buf_and_size.second, redzone_size_,
-                               redzone_pattern_));
+    ASSIGN_OR_RETURN(RedzoneCheckStatus redzone_status,
+                     CheckRedzonesForBuffer(
+                         stream_, *buf_and_size.first,
+                         DeviceAddress<uint64_t>(out_param.address()), kernel,
+                         buf_and_size.second, redzone_size_, redzone_pattern_));
     if (!redzone_status.ok()) {
       return redzone_status;
     }

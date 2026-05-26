@@ -338,6 +338,7 @@ class SpmdPartitioner : public HloModulePass {
 
   int64_t num_partitions() const { return num_partitions_; }
   int64_t num_replicas() const { return num_replicas_; }
+  bool enable_rgv3() const { return enable_rgv3_; }
 
  protected:
   absl::StatusOr<bool> RunImpl(
@@ -411,6 +412,7 @@ class SpmdPartitioner : public HloModulePass {
   SpmdPartitionerOptions options_;
   SPMDCollectiveOpsCreator collective_ops_creator_;
   absl::flat_hash_set<absl::string_view> execution_threads_;
+  bool enable_rgv3_ = false;
 };
 
 // Class describes partition state of the data represented by an HLO created
@@ -519,6 +521,8 @@ class PartitionedHlo {
 
   int64_t NewChannel() const { return (*state_.next_channel_id)++; }
 
+  bool enable_rgv3() const { return state_.partitioner->enable_rgv3(); }
+
   // Reshards the HLO to a usable partitioned input for a windowed user. Could
   // only modify the reshard cache.
   std::optional<WindowedInputShardReturnValue> ReshardAsWindowedInput(
@@ -582,6 +586,11 @@ class PartitionedHlo {
 
   // Helper function to reshard from partial replicate using AllToAll.
   std::optional<PartitionedHlo> ReshardPartialReplicateWithAllToAll(
+      const HloSharding& target) const;
+
+  // Helper function to reshard when manual subgroup status differs between
+  // source and target.
+  std::optional<PartitionedHlo> TryReshardWithManualSubgroup(
       const HloSharding& target) const;
 
   // SPMD instruction.

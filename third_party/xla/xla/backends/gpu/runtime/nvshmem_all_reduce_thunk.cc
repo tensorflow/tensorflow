@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
@@ -51,9 +52,9 @@ namespace gpu {
 absl::Status RunNvshmemAllReduce(ReductionKind reduction_kind,
                                  std::vector<DeviceBufferPair>& buffers,
                                  se::Stream& stream) {
-  TF_ASSIGN_OR_RETURN(auto* collectives, GetNvshmemCollectivesFromRegistry());
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Communicator> nvshmem_comm,
-                      collectives->CreateCommunicator());
+  ASSIGN_OR_RETURN(auto* collectives, GetNvshmemCollectivesFromRegistry());
+  ASSIGN_OR_RETURN(std::unique_ptr<Communicator> nvshmem_comm,
+                   collectives->CreateCommunicator());
 
   VLOG(3) << "Performing nvshmem all-reduce from device ordinal: "
           << *nvshmem_comm->CurrentRank();
@@ -61,7 +62,7 @@ absl::Status RunNvshmemAllReduce(ReductionKind reduction_kind,
     auto future = nvshmem_comm->AllReduce(
         buffer.source_buffer, buffer.destination_buffer, buffer.element_type,
         buffer.element_count, reduction_kind, GpuCollectives::On(stream));
-    TF_RETURN_IF_ERROR(future.Await());
+    RETURN_IF_ERROR(future.Await());
   }
 
   return absl::OkStatus();
@@ -72,7 +73,7 @@ namespace impl {
 absl::Status CheckNvshmemImplementableInst(const HloInstruction* inst,
                                            Thunk::Kind reduction_op) {
   for (HloInstruction* operand : inst->operands()) {
-    TF_RETURN_IF_ERROR(IsValidNvshmemOperand(operand->shape(), reduction_op));
+    RETURN_IF_ERROR(IsValidNvshmemOperand(operand->shape(), reduction_op));
   }
 
   if (!MatchReductionComputation(inst->called_computations().front())
@@ -135,7 +136,7 @@ absl::StatusOr<ThunkProto> NvshmemAllReduceThunk::ToProto() const {
       proto.mutable_nvshmem_all_reduce_thunk();
 
   for (const CollectiveThunk::Buffer& buffer : buffers_) {
-    TF_ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
+    ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
   }
 
   *thunk_proto->mutable_collective_config() = config_.config.ToProto();
@@ -151,15 +152,15 @@ NvshmemAllReduceThunk::FromProto(
   std::vector<CollectiveThunk::Buffer> buffers;
   buffers.reserve(thunk_proto.buffers_size());
   for (const CollectiveBufferProto& buffer_proto : thunk_proto.buffers()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         buffers.emplace_back(),
         CollectiveThunk::Buffer::FromProto(buffer_proto, buffer_allocations));
   }
 
   CollectiveConfig config =
       CollectiveConfig::FromProto(thunk_proto.collective_config());
-  TF_ASSIGN_OR_RETURN(ReductionKind reduction_kind,
-                      FromReductionKindProto(thunk_proto.reduction_kind()));
+  ASSIGN_OR_RETURN(ReductionKind reduction_kind,
+                   FromReductionKindProto(thunk_proto.reduction_kind()));
 
   return absl::WrapUnique<NvshmemAllReduceThunk>(new NvshmemAllReduceThunk(
       std::move(thunk_info), AllReduceConfig{std::move(config), reduction_kind},
@@ -168,10 +169,9 @@ NvshmemAllReduceThunk::FromProto(
 
 absl::Status NvshmemAllReduceThunk::RunNvshmemCollective(
     const ExecuteParams& params, se::Stream& stream) {
-  TF_ASSIGN_OR_RETURN(
-      std::vector<DeviceBufferPair> device_buffers,
-      ConvertToDeviceBuffers(params.buffer_allocations, buffers_,
-                             config_.config.operand_element_type));
+  ASSIGN_OR_RETURN(std::vector<DeviceBufferPair> device_buffers,
+                   ConvertToDeviceBuffers(params.buffer_allocations, buffers_,
+                                          config_.config.operand_element_type));
   return ::xla::gpu::RunNvshmemAllReduce(config_.reduction_kind, device_buffers,
                                          stream);
 }

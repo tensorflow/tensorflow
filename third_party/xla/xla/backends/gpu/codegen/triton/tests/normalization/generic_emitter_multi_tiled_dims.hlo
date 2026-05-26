@@ -42,7 +42,7 @@ ENTRY main {
   param_0 = f32[10,125,127]{2,1,0} parameter(0)
   param_1 = f32[127]{0} parameter(1)
   param_2 = f32[10,125]{1,0} parameter(2)
-  ROOT triton_softmax = f32[10,125,127]{2,1,0} fusion(param_0, param_1, param_2),
+  ROOT triton_fusion = f32[10,125,127]{2,1,0} fusion(param_0, param_1, param_2),
     kind=kCustom, calls=fusion,
     backend_config={
       "fusion_backend_config":{

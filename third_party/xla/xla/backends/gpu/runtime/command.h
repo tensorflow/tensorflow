@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_COMMAND_H_
 #define XLA_BACKENDS_GPU_RUNTIME_COMMAND_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -24,7 +25,6 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/casts.h"
 
 namespace xla::gpu {
 
@@ -65,14 +64,6 @@ namespace xla::gpu {
   V(kCustomCallCmd, "CustomCallCmd")                         \
   V(kBarrierCmd, "BarrierCmd")                               \
   V(kCollectiveCmd, "CollectiveCmd")                         \
-  V(kReduceScatterCmd, "ReduceScatterCmd")                   \
-  V(kAllToAllCmd, "AllToAllCmd")                             \
-  V(kAllGatherCmd, "AllGatherCmd")                           \
-  V(kCollectiveBroadcastCmd, "CollectiveBroadcastCmd")       \
-  V(kCollectivePermuteCmd, "CollectivePermuteCmd")           \
-  V(kRaggedAllToAllCmd, "RaggedAllToAllCmd")                 \
-  V(kRecvCmd, "RecvCmd")                                     \
-  V(kSendCmd, "SendCmd")                                     \
   V(kAsyncDone, "AsyncDone")                                 \
   V(kUnknownCmd, "UnknownCmd") \
   // clang-format on
@@ -132,6 +123,10 @@ class Command : public Thunk {
   }
 
   virtual ~Command() = default;
+
+  absl::StatusOr<ThunkProto> ToProto() const override {
+    return absl::InvalidArgumentError("Command can't be serialized.");
+  }
 
  protected:
   // Constructor for Thunk subclasses that are also Commands. Preserves the
@@ -242,8 +237,15 @@ class Command : public Thunk {
   std::invoke_result_t<F, const Command*> Walk(F&& callback) const;
 
  protected:
-  // WalkNested uses Thunk::Walker = absl::FunctionRef<absl::Status(Thunk*)>.
-  // Subclasses that have nested commands must override this.
+  // Walks all nested commands and calls `callback` for them. This is separate
+  // from Thunk::WalkNested because a Thunk/Command hybrid can own non-command
+  // thunks for direct execution and command executors for command-buffer
+  // recording.
+  using CommandWalker = absl::FunctionRef<absl::Status(Command*)>;
+  virtual absl::Status WalkNestedCommands(CommandWalker /*callback*/) {
+    return absl::OkStatus();
+  }
+
   absl::Status WalkNested(Walker callback) override { return absl::OkStatus(); }
 
  private:
@@ -276,11 +278,8 @@ std::invoke_result_t<F, Command*> Command::Walk(F&& callback) {
     }).IgnoreError();  // Error can never happen here.
   } else {
     RETURN_IF_ERROR(callback(this));
-    // Adapt Command*-typed callback to Thunk::Walker (Thunk*-typed) for
-    // WalkNested. The down_cast is safe because WalkNested only visits
-    // Commands in a Command context.
-    return WalkNested([&callback](Thunk* thunk) -> absl::Status {
-      return callback(tsl::down_cast<Command*>(thunk));
+    return WalkNestedCommands([&callback](Command* command) -> absl::Status {
+      return callback(command);
     });
   }
 }
@@ -328,9 +327,8 @@ class AsyncDoneCommand : public Command {
 // A sequence of commands (corresponds to a ThunkSequence from the Thunk API).
 //
 // Commands are stored as raw pointers in append order. Ownership is split:
-// - Commands created during conversion (i.e. Command subclasses in
-//   command_buffer_cmd.h that are not yet migrated to their corresponding
-//   Thunk) are owned by this sequence's internal `owned_` vector.
+// - Commands created during conversion are owned by this sequence's internal
+//   `owned_` vector.
 // - Commands that live in a Thunk which itself implements Command (e.g.
 //   ReplicaOrPartitionIdThunk) are borrowed: only a raw pointer is stored here,
 //   and the ThunkSequence in CommandBufferThunk retains ownership.

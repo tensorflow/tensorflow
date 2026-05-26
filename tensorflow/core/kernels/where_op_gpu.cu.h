@@ -128,7 +128,7 @@ struct CubDeviceSelectFlaggedCounter<T, TIndex, OutputIterator,
 
 template <typename T, typename TIndex>
 struct NumTrue<GPUDevice, T, TIndex> {
-  EIGEN_ALWAYS_INLINE static Status Compute(
+  EIGEN_ALWAYS_INLINE static absl::Status Compute(
       OpKernelContext* ctx, const GPUDevice& d,
       typename TTypes<T>::ConstFlat input,
       typename TTypes<TIndex>::UnalignedScalar num_true) {
@@ -173,7 +173,7 @@ struct NumTrue<GPUDevice, T, TIndex> {
           temp_storage_bytes, ", status: ", GpuGetErrorString(second_success));
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -261,13 +261,13 @@ Eigen::array<TIndex, NDIM> CalculateStrides(
 
 template <int NDIM, typename T, typename TIndex>
 struct Where<GPUDevice, NDIM, T, TIndex> {
-  EIGEN_ALWAYS_INLINE static Status Compute(
+  EIGEN_ALWAYS_INLINE static absl::Status Compute(
       OpKernelContext* ctx, const GPUDevice& d,
       typename TTypes<T, NDIM>::ConstTensor input,
       typename TTypes<int64_t>::Matrix output, TIndex* found_true_host) {
     if (output.dimension(0) == 0) {
       // Nothing to do.
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     const auto& cu_stream = GetGpuStream(ctx);
@@ -334,7 +334,7 @@ struct Where<GPUDevice, NDIM, T, TIndex> {
                                 d.stream(), output_rows, strides,
                                 output.data()));
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

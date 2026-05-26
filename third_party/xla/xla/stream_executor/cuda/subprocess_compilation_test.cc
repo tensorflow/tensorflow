@@ -39,30 +39,30 @@ TEST(SubprocessCompilationTest, GetToolVersion) {
   TF_ASSERT_OK_AND_ASSIGN(
       SemanticVersion ptxas_version,
       GetToolVersion(tsl::io::JoinPath(cuda_dir, "bin", "ptxas")));
-  EXPECT_EQ(ptxas_version.major(), 111);
-  EXPECT_EQ(ptxas_version.minor(), 2);
-  EXPECT_EQ(ptxas_version.patch(), 3);
+  EXPECT_EQ(ptxas_version.major_version(), 111);
+  EXPECT_EQ(ptxas_version.minor_version(), 2);
+  EXPECT_EQ(ptxas_version.patch_version(), 3);
 
   TF_ASSERT_OK_AND_ASSIGN(
       SemanticVersion nvlink_version,
       GetToolVersion(tsl::io::JoinPath(cuda_dir, "bin", "nvlink")));
-  EXPECT_EQ(nvlink_version.major(), 444);
-  EXPECT_EQ(nvlink_version.minor(), 5);
-  EXPECT_EQ(nvlink_version.patch(), 6);
+  EXPECT_EQ(nvlink_version.major_version(), 444);
+  EXPECT_EQ(nvlink_version.minor_version(), 5);
+  EXPECT_EQ(nvlink_version.patch_version(), 6);
 
   TF_ASSERT_OK_AND_ASSIGN(
       SemanticVersion fatbinary_version,
       GetToolVersion(tsl::io::JoinPath(cuda_dir, "bin", "fatbinary")));
-  EXPECT_EQ(fatbinary_version.major(), 777);
-  EXPECT_EQ(fatbinary_version.minor(), 8);
-  EXPECT_EQ(fatbinary_version.patch(), 9);
+  EXPECT_EQ(fatbinary_version.major_version(), 777);
+  EXPECT_EQ(fatbinary_version.minor_version(), 8);
+  EXPECT_EQ(fatbinary_version.patch_version(), 9);
 
   TF_ASSERT_OK_AND_ASSIGN(
       SemanticVersion nvdisasm_version,
       GetToolVersion(tsl::io::JoinPath(cuda_dir, "bin", "nvdisasm")));
-  EXPECT_EQ(nvdisasm_version.major(), 999);
-  EXPECT_EQ(nvdisasm_version.minor(), 1);
-  EXPECT_EQ(nvdisasm_version.patch(), 2);
+  EXPECT_EQ(nvdisasm_version.major_version(), 999);
+  EXPECT_EQ(nvdisasm_version.minor_version(), 1);
+  EXPECT_EQ(nvdisasm_version.patch_version(), 2);
 }
 
 TEST(SubprocessCompilationTest, GetNvlinkVersion) {
@@ -74,9 +74,9 @@ TEST(SubprocessCompilationTest, GetNvlinkVersion) {
 
   TF_ASSERT_OK_AND_ASSIGN(SemanticVersion nvlink_version,
                           GetNvLinkVersion(cuda_dir));
-  EXPECT_EQ(nvlink_version.major(), 444);
-  EXPECT_EQ(nvlink_version.minor(), 5);
-  EXPECT_EQ(nvlink_version.patch(), 6);
+  EXPECT_EQ(nvlink_version.major_version(), 444);
+  EXPECT_EQ(nvlink_version.minor_version(), 5);
+  EXPECT_EQ(nvlink_version.patch_version(), 6);
 }
 
 TEST(SubprocessCompilationTest, GetAsmCompilerVersion) {
@@ -88,9 +88,9 @@ TEST(SubprocessCompilationTest, GetAsmCompilerVersion) {
 
   TF_ASSERT_OK_AND_ASSIGN(SemanticVersion nvlink_version,
                           GetAsmCompilerVersion(cuda_dir));
-  EXPECT_EQ(nvlink_version.major(), 111);
-  EXPECT_EQ(nvlink_version.minor(), 2);
-  EXPECT_EQ(nvlink_version.patch(), 3);
+  EXPECT_EQ(nvlink_version.major_version(), 111);
+  EXPECT_EQ(nvlink_version.minor_version(), 2);
+  EXPECT_EQ(nvlink_version.patch_version(), 3);
 }
 
 TEST(SubprocessCompilationTest, FindCudaExecutable) {

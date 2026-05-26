@@ -95,6 +95,16 @@ void MaybeBatchDown(Batch<TaskType>& batch,
   }
 }
 
+namespace internal {
+
+inline constexpr absl::string_view kLazyCancellationReasonDeadlineExceeded =
+    "deadline_exceeded";
+inline constexpr absl::string_view kLazyCancellationReasonRpcCancelled =
+    "rpc_cancelled";
+
+void RecordLazyCancelledTaskMetrics(int64_t size, absl::string_view reason);
+
+}  // namespace internal
 }  // namespace serving
 }  // namespace tensorflow
 

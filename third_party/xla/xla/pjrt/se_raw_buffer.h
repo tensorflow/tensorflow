@@ -139,7 +139,7 @@ class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBufferImpl {
                         xla::Shape shape) override;
 
   absl::StatusOr<PjRtRawBufferRef> RemoveDynamicShapeMetadataIfPresent(
-      const xla::Shape& logical_shape) override;
+      const xla::Shape& device_shape, const xla::Shape& logical_shape) override;
 
   void CopyToLiteralAsync(
       Promise<> promise,

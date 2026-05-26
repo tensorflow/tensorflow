@@ -112,15 +112,18 @@ absl::StatusOr<xla::Shape> ReadDynamicShapeMetadata(
 }
 
 absl::StatusOr<PjRtRawBufferRef> RemoveDynamicShapeMetadataIfPresent(
-    PjRtRawBufferRef raw_buffer, const xla::Shape& logical_shape,
-    PjRtDynamicShapeKind kind) {
-  auto requirements =
-      PjRtShapeAndMetadataTransferRequirements::Get(logical_shape, kind);
-  if (requirements.metadata_size == 0) {
+    PjRtRawBufferRef raw_buffer, const xla::Shape& device_shape,
+    const xla::Shape& logical_shape, PjRtDynamicShapeKind kind) {
+  auto device_requirements =
+      PjRtShapeAndMetadataTransferRequirements::Get(device_shape, kind);
+  if (device_requirements.metadata_size == 0) {
     return raw_buffer;
   }
+  auto logical_requirements =
+      PjRtShapeAndMetadataTransferRequirements::Get(logical_shape, kind);
 
-  return raw_buffer->Slice(requirements.array_offset, requirements.array_size);
+  return raw_buffer->Slice(device_requirements.array_offset,
+                           logical_requirements.array_size);
 }
 
 void ReadDynamicShape(PjRtRawBufferRef raw_buffer,

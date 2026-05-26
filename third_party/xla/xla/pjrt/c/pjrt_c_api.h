@@ -77,6 +77,7 @@ typedef enum {
   PJRT_Extension_Type_Collectives,
   PJRT_Extension_Type_MultiSlice,
   PJRT_Extension_Type_HostMemoryAllocator,
+  PJRT_Extension_Type_XlaTransform,
 } PJRT_Extension_Type;
 
 // PJRT_Extension_Base contains a type and a pointer to next
@@ -111,7 +112,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 108
+#define PJRT_API_MINOR 110
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -2920,6 +2921,43 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_Fingerprint_Args,
 typedef PJRT_Error* PJRT_TopologyDescription_Fingerprint(
     PJRT_TopologyDescription_Fingerprint_Args* args);
 
+struct PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const PJRT_TopologyDescription* topology;
+  int memory_space_kind_id;
+  // Input shape
+  const int64_t* dims;
+  size_t num_dims;
+  PJRT_Buffer_Type element_type;
+  // Optional input layout
+  const PJRT_Buffer_MemoryLayout* layout;  // optional
+
+  // Output shape (serialized ShapeProto)
+  const char* serialized_shape;                   // out
+  size_t serialized_shape_size;                   // out
+  void (*serialized_shape_deleter)(const char*);  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(
+    PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace_Args,
+    serialized_shape_deleter);
+
+typedef PJRT_Error* PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace(
+    PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace_Args* args);
+
+struct PJRT_TopologyDescription_GetMemorySpaceKindIds_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const PJRT_TopologyDescription* topology;
+  const int* memory_space_kind_ids;  // out
+  size_t num_memory_space_kind_ids;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_GetMemorySpaceKindIds_Args,
+                          num_memory_space_kind_ids);
+
+typedef PJRT_Error* PJRT_TopologyDescription_GetMemorySpaceKindIds(
+    PJRT_TopologyDescription_GetMemorySpaceKindIds_Args* args);
+
 struct PJRT_Compile_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
@@ -3114,11 +3152,14 @@ typedef struct PJRT_Api {
   _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Fingerprint);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_ParameterMemoryKinds);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_ClearMemoryStats);
+  _PJRT_API_STRUCT_FIELD(
+      PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_GetMemorySpaceKindIds);
 } PJRT_Api;
 
 enum {
   PJRT_Api_STRUCT_SIZE =
-      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Device_ClearMemoryStats)
+      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_TopologyDescription_GetMemorySpaceKindIds)
 };
 
 #undef _PJRT_API_STRUCT_FIELD

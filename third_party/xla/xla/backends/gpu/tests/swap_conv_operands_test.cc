@@ -15,29 +15,35 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
-#include "xla/backends/gpu/tests/gpu_codegen_test.h"
+#include "absl/strings/string_view.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/stream_executor/device_description.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 
 // TODO(b/210165681): The tests in this file are fragile to HLO op names.
-
-namespace xla {
-namespace gpu {
-
+namespace xla::gpu {
 namespace {
 
-class SwapConvOperandsTest : public GpuCodegenTest {
+class SwapConvOperandsTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  public:
-  absl::StatusOr<se::GpuComputeCapability> GpuComputeCapability() {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<se::DeviceDescription> device_description,
-        GetTestPlatform()->DescriptionForDevice(0));
-
-    return device_description->gpu_compute_capability();
+  void MatchOptimizedHloWithShapes(absl::string_view hlo,
+                                   absl::string_view expected_hlo) {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                         GetOptimizedModule(hlo));
+    absl::StatusOr<bool> filecheck_result =
+        RunFileCheck(optimized_module->ToString(
+                         HloPrintOptions().set_print_operand_shape(true)),
+                     expected_hlo);
+    ASSERT_TRUE(filecheck_result.ok());
+    EXPECT_TRUE(filecheck_result.value());
   }
 };
 
@@ -57,8 +63,8 @@ ENTRY swap_conv {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(se::GpuComputeCapability gpu_compute_capability,
-                          GpuComputeCapability());
+  const se::GpuComputeCapability& gpu_compute_capability =
+      device_description().gpu_compute_capability();
 
   if (gpu_compute_capability.cuda_compute_capability()->IsAtLeastHopper()) {
     MatchOptimizedHloWithShapes(hlo_text,
@@ -88,8 +94,8 @@ ENTRY swap_conv {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(se::GpuComputeCapability gpu_compute_capability,
-                          GpuComputeCapability());
+  const se::GpuComputeCapability& gpu_compute_capability =
+      device_description().gpu_compute_capability();
 
   if (gpu_compute_capability.cuda_compute_capability()->IsAtLeastHopper()) {
     MatchOptimizedHloWithShapes(hlo_text,
@@ -129,5 +135,4 @@ ENTRY %conv3DBackpropInputV2(arg0.1: f32[3,3,3,2,3]) -> f32[2,4,3,3,2] {
 }
 
 }  // namespace
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

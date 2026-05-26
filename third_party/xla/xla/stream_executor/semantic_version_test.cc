@@ -34,36 +34,36 @@ namespace {
 
 TEST(SemanticVersion, Construction) {
   SemanticVersion version{1, 2, 3};
-  EXPECT_EQ(version.major(), 1);
-  EXPECT_EQ(version.minor(), 2);
-  EXPECT_EQ(version.patch(), 3);
+  EXPECT_EQ(version.major_version(), 1);
+  EXPECT_EQ(version.minor_version(), 2);
+  EXPECT_EQ(version.patch_version(), 3);
 }
 
 TEST(SemanticVersion, ConstructionFromArray) {
   SemanticVersion version{std::array<unsigned, 3>{1, 2, 3}};
-  EXPECT_EQ(version.major(), 1);
-  EXPECT_EQ(version.minor(), 2);
-  EXPECT_EQ(version.patch(), 3);
+  EXPECT_EQ(version.major_version(), 1);
+  EXPECT_EQ(version.minor_version(), 2);
+  EXPECT_EQ(version.patch_version(), 3);
 }
 
 TEST(SemanticVersion, Mutation) {
   SemanticVersion version{0, 0, 0};
-  version.major() = 1;
-  version.minor() = 2;
-  version.patch() = 3;
+  version.major_version() = 1;
+  version.minor_version() = 2;
+  version.patch_version() = 3;
 
-  EXPECT_EQ(version.major(), 1);
-  EXPECT_EQ(version.minor(), 2);
-  EXPECT_EQ(version.patch(), 3);
+  EXPECT_EQ(version.major_version(), 1);
+  EXPECT_EQ(version.minor_version(), 2);
+  EXPECT_EQ(version.patch_version(), 3);
 }
 
 TEST(SemanticVersion, ParseFromStringSuccess) {
   absl::StatusOr<SemanticVersion> version =
       SemanticVersion::ParseFromString("1.2.3");
   ASSERT_THAT(version, absl_testing::IsOk());
-  EXPECT_EQ(version->major(), 1);
-  EXPECT_EQ(version->minor(), 2);
-  EXPECT_EQ(version->patch(), 3);
+  EXPECT_EQ(version->major_version(), 1);
+  EXPECT_EQ(version->minor_version(), 2);
+  EXPECT_EQ(version->patch_version(), 3);
 }
 
 TEST(SemanticVersion, ParseFromStringInvalid) {

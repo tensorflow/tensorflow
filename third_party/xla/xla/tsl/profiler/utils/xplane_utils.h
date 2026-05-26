@@ -96,6 +96,9 @@ const XLine* FindLineWithId(const XPlane& plane, int64_t id);
 std::vector<const XLine*> FindLinesWithId(const XPlane& plane, int64_t id);
 const XLine* FindLineWithName(const XPlane& plane, absl::string_view name);
 
+// Returns the mutable line with the given name or nullptr if not found.
+XLine* FindMutableLineWithName(XPlane& plane, absl::string_view name);
+
 XStat* FindOrAddMutableStat(const XStatMetadata& stat_metadata, XEvent* event);
 
 void RemovePlane(XSpace* space, const XPlane* plane);
@@ -123,8 +126,10 @@ class XLinesComparatorByName {
   }
 };
 
-// Sorts each XLine's XEvents by offset_ps (ascending) and duration_ps
+// Sorts the XLine's XEvents by offset_ps (ascending) and duration_ps
 // (descending) so nested events are sorted from outer to innermost.
+void SortXLine(XLine* line);
+// Sorts each line of the XPlane.
 void SortXPlane(XPlane* plane);
 // Sorts each plane of the XSpace.
 void SortXSpace(XSpace* space);

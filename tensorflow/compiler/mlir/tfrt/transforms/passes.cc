@@ -139,6 +139,13 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
       .batch_timeout_micros = options.batch_timeout_micros,
       .allowed_batch_sizes = options.allowed_batch_sizes,
       .max_enqueued_batches = options.max_enqueued_batches,
+      .low_priority_max_batch_size = options.low_priority_max_batch_size,
+      .low_priority_batch_timeout_micros =
+          options.low_priority_batch_timeout_micros,
+      .low_priority_allowed_batch_sizes =
+          options.low_priority_allowed_batch_sizes,
+      .low_priority_max_enqueued_batches =
+          options.low_priority_max_enqueued_batches,
       .enable_large_batch_splitting = options.enable_large_batch_splitting,
       .mixed_priority_batching_policy = options.mixed_priority_batching_policy,
       .batch_queue_global_prioritization_num_threads =

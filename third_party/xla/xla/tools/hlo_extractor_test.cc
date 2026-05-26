@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/shape_util.h"
@@ -479,6 +480,80 @@ TEST_F(HloExtractorTest, TestWithCalledComputationsAndFusion) {
                     nullptr, nullptr, false, true);
   EXPECT_THAT(extracted->entry_computation()->root_instruction(),
               op::Tuple(op::Parameter(0), op::Parameter(0)));
+}
+
+TEST_F(HloExtractorTest, TestInheritedConfig) {
+  const char* hlo = R"(
+  HloModule test
+  computation.1 {
+    p.0 = s32[] parameter(0)
+    p.1 = s32[] parameter(1)
+    ROOT tuple = (s32[], s32[]) tuple(p.0, p.1)
+  }
+  computation.2 {
+    p.0 = s32[] parameter(0)
+    p.1 = s32[] parameter(1)
+    ROOT tuple = (s32[], s32[]) tuple(p.0, p.1)
+  }
+  ENTRY main {
+    p.0 = s32[] parameter(0)
+    p.1 = s32[] parameter(1)
+    p.2 = s32[] parameter(2)
+    call.1 = (s32[], s32[]) call(p.0, p.1), to_apply=computation.1
+    fused.1 = (s32[], s32[]) fusion(p.0, p.2), kind=kInput, calls=computation.2
+    gte.1 = get-tuple-element(call.1), index=0
+    gte.2 = get-tuple-element(fused.1), index=0
+    ROOT tuple = tuple(gte.1, gte.2)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  module->mutable_config().set_replica_count(module->config().replica_count() +
+                                             1);
+  auto extracted = ExtractModule(
+      module->entry_computation()->root_instruction(), /*height=*/-1,
+      /*extract_selector=*/nullptr, /*replace_type_selector=*/nullptr,
+      /*cross_computation=*/false, /*inline_calls_and_fusions=*/true,
+      /*run_verifier=*/false, /*inherit_module_config=*/true);
+  EXPECT_THAT(extracted->entry_computation()->root_instruction(),
+              op::Tuple(op::Parameter(0), op::Parameter(0)));
+  EXPECT_EQ(extracted->config().replica_count(),
+            module->config().replica_count());
+}
+
+TEST_F(HloExtractorTest, TestInheritedSchedule) {
+  const char* hlo = R"(
+  HloModule InheritedSchedule, is_scheduled=true
+  computation.1 {
+    p.0 = s32[] parameter(0)
+    p.1 = s32[] parameter(1)
+    ROOT tuple = (s32[], s32[]) tuple(p.0, p.1)
+  }
+  computation.2 {
+    p.0 = s32[] parameter(0)
+    p.1 = s32[] parameter(1)
+    ROOT tuple = (s32[], s32[]) tuple(p.0, p.1)
+  }
+  ENTRY main {
+    p.0 = s32[] parameter(0)
+    p.1 = s32[] parameter(1)
+    p.2 = s32[] parameter(2)
+    call.1 = (s32[], s32[]) call(p.0, p.1), to_apply=computation.1
+    fused.1 = (s32[], s32[]) fusion(p.0, p.2), kind=kInput, calls=computation.2
+    gte.1 = get-tuple-element(call.1), index=0
+    gte.2 = get-tuple-element(fused.1), index=0
+    ROOT tuple = tuple(gte.1, gte.2)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  auto extracted = ExtractModule(
+      module->entry_computation()->root_instruction(), /*height=*/-1,
+      /*extract_selector=*/nullptr, /*replace_type_selector=*/nullptr,
+      /*cross_computation=*/false, /*inline_calls_and_fusions=*/false,
+      /*run_verifier=*/false, /*inherit_module_config=*/false,
+      /*inherit_schedule=*/true);
+  ASSERT_TRUE(extracted->has_schedule());
+  for (HloComputation* computation : extracted->computations()) {
+    EXPECT_EQ(extracted->schedule().is_computation_scheduled(computation),
+              !computation->IsFusionComputation());
+  }
 }
 
 TEST_F(HloExtractorTest, TestInvalidModule) {

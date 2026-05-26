@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
@@ -326,17 +328,17 @@ absl::Status ExchangeTopologies(absl::string_view platform, int node_id,
   // puts it to the key-value store.
   std::string global_topology_key = GetGlobalTopologyKey(platform);
   if (node_id == 0) {
-    TF_ASSIGN_OR_RETURN(std::vector<LocalTopologyProto> local_topologies,
-                        GetAllLocalTopologies(platform, num_nodes, kv_store,
-                                              get_local_topology_timeout));
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(std::vector<LocalTopologyProto> local_topologies,
+                     GetAllLocalTopologies(platform, num_nodes, kv_store,
+                                           get_local_topology_timeout));
+    ASSIGN_OR_RETURN(
         *global_topology,
         BuildGlobalTopology(absl::Span<LocalTopologyProto>(local_topologies),
                             assign_global_device_ids));
-    TF_RETURN_IF_ERROR(kv_store->Set(global_topology_key,
-                                     global_topology->SerializeAsString()));
+    RETURN_IF_ERROR(kv_store->Set(global_topology_key,
+                                  global_topology->SerializeAsString()));
   } else {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         std::string global_topology_str,
         kv_store->Get(global_topology_key, get_global_topology_timeout));
     global_topology->ParseFromString(global_topology_str);

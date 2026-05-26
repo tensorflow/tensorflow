@@ -196,10 +196,10 @@ void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
   for (auto [argNum, argType] : llvm::enumerate(funcOp.getArgumentTypes())) {
     if (auto oldSharding =
             funcOp.getArgAttrOfType<StringAttr>(argNum, kXlaShardingAttr)) {
-      funcOp.setArgAttr(
-          argNum, kShardingAttr,
-          convertToSdyShardingAttr(parseShardingFromString(oldSharding),
-                                   funcOp.getContext()));
+      if (auto sdySharding = convertToSdyShardingAttr(
+              parseShardingFromString(oldSharding), funcOp.getContext())) {
+        funcOp.setArgAttr(argNum, kShardingAttr, sdySharding);
+      }
     }
     funcOp.removeArgAttr(argNum, kXlaShardingAttr);
   }
@@ -207,10 +207,10 @@ void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
   for (int64_t resNum = 0; resNum < funcOp.getNumResults(); ++resNum) {
     if (auto oldSharding =
             funcOp.getResultAttrOfType<StringAttr>(resNum, kXlaShardingAttr)) {
-      funcOp.setResultAttr(
-          resNum, kShardingAttr,
-          convertToSdyShardingAttr(parseShardingFromString(oldSharding),
-                                   funcOp.getContext()));
+      if (auto sdySharding = convertToSdyShardingAttr(
+              parseShardingFromString(oldSharding), funcOp.getContext())) {
+        funcOp.setResultAttr(resNum, kShardingAttr, sdySharding);
+      }
     }
     funcOp.removeResultAttr(resNum, kXlaShardingAttr);
   }
@@ -245,6 +245,7 @@ void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
     } else if (auto customCallOp = mlir::dyn_cast<CustomCallOp>(op)) {
       StringRef targetName = customCallOp.getCallTargetName();
       if (targetName == kShardingCustomCallTargetName ||
+          targetName == "X64Combine" ||
           isPythonCallbackCustomCall(customCallOp)) {
         customCallOp->setAttr(
             kShardingAttr,
@@ -266,18 +267,33 @@ void convertShardyAttrsWithoutHloShardingV3(FuncOp funcOp,
   // copying the result shardings.
   StringRef attributeName =
       xla::ToStringRef(HloSharding::kShardingFrontendAttrName);
-  for (auto [argNum, argType] : llvm::enumerate(funcOp.getArgumentTypes())) {
+  llvm::SmallVector<mlir::DictionaryAttr> funcArgAttrs;
+  funcArgAttrs.reserve(funcOp.getNumArguments());
+  for (int64_t argNum = 0; argNum < funcOp.getNumArguments(); argNum++) {
     // Attempt to extract the TensorShardingAttr from the frontend attributes
     // of the function argument/result.
+    // TODO(b/510714593): Batch remove/set attributes through a shardy utility.
+    mlir::NamedAttrList attrs(funcOp.getArgAttrDict(argNum));
     if (DictionaryAttr dictAttr = getFuncArgFrontendAttrs(funcOp, argNum)) {
       if (auto sharding =
               parseStringAttr<TensorShardingAttr>(dictAttr, attributeName)) {
-        funcOp.setArgAttr(argNum, kShardingAttr, sharding);
-        removeFrontendAttribute(funcOp, attributeName, argNum);
+        attrs.set(kShardingAttr, sharding);
+        llvm::SmallVector<NamedAttribute> existingAttributes =
+            getExistingFrontendAttributes(dictAttr,
+                                          /*excludedAttribute=*/attributeName);
+        if (!existingAttributes.empty()) {
+          attrs.set(
+              kFrontendAttributesAttr,
+              DictionaryAttr::get(funcOp.getContext(), existingAttributes));
+        } else {
+          attrs.erase(kFrontendAttributesAttr);
+        }
       }
     }
-    funcOp.removeArgAttr(argNum, kXlaShardingAttr);
+    attrs.erase(kXlaShardingAttr);
+    funcArgAttrs.push_back(attrs.getDictionary(funcOp.getContext()));
   }
+  funcOp.setAllArgAttrs(funcArgAttrs);
 
   // Due to `SdyRoundTripExportShardingsPass` keeping `kXlaShardingAttr`, remove
   // them purely for cleanliness of the module.

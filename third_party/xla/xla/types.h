@@ -21,6 +21,7 @@ limitations under the License.
 #include <limits>
 #include <type_traits>
 
+#include "absl/numeric/int128.h"
 #include "absl/strings/str_cat.h"
 #include "Eigen/Core"  // IWYU pragma: export
 #include "ml_dtypes/include/intn.h"
@@ -123,12 +124,22 @@ struct make_specialized_unsigned<T, typename std::enable_if_t<is_intN_v<T>>> {
                         std::make_unsigned_t<typename T::underlying_type>>;
 };
 
+template <>
+struct make_specialized_unsigned<absl::int128> {
+  using type = absl::uint128;
+};
+
 template <typename T>
 using make_specialized_unsigned_t = typename make_specialized_unsigned<T>::type;
 
 template <typename T, typename = void>
 struct make_specialized_signed {
   using type = std::make_signed_t<T>;
+};
+
+template <>
+struct make_specialized_signed<absl::uint128> {
+  using type = absl::int128;
 };
 
 template <typename T>

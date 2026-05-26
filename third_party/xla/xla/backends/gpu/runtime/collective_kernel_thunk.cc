@@ -42,7 +42,9 @@ limitations under the License.*/
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/runtime/device_id.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -138,14 +140,14 @@ absl::Status CopyCollectiveMetadataToDevice(
       reinterpret_cast<void**>(param_to_peers_ptrs_buffer.opaque());
   metadata.param_to_multimem_addresses =
       reinterpret_cast<void**>(multimem_addresses_buffer.opaque());
-  TF_RETURN_IF_ERROR(stream->Memcpy(&destination, &metadata,
-                                    sizeof(CollectiveKernelMetadata)));
-  TF_RETURN_IF_ERROR(stream->Memcpy(&param_to_peers_ptrs_buffer,
-                                    param_to_peers_ptrs.data(),
-                                    param_to_peers_ptrs_size));
-  TF_RETURN_IF_ERROR(stream->Memcpy(&multimem_addresses_buffer,
-                                    multimem_addresses.data(),
-                                    multimem_addresses_size));
+  RETURN_IF_ERROR(stream->Memcpy(&destination, &metadata,
+                                 sizeof(CollectiveKernelMetadata)));
+  RETURN_IF_ERROR(stream->Memcpy(&param_to_peers_ptrs_buffer,
+                                 param_to_peers_ptrs.data(),
+                                 param_to_peers_ptrs_size));
+  RETURN_IF_ERROR(stream->Memcpy(&multimem_addresses_buffer,
+                                 multimem_addresses.data(),
+                                 multimem_addresses_size));
   return absl::OkStatus();
 }
 }  // namespace
@@ -163,10 +165,10 @@ absl::StatusOr<bool> CollectiveKernelThunk::IsSupported(
     VLOG(3) << "Collective kernel not supported: " << status.message();
     return false;
   }
-  TF_RETURN_IF_ERROR(status);
+  RETURN_IF_ERROR(status);
   for (const GlobalDeviceId& device : clique_key.devices()) {
-    TF_ASSIGN_OR_RETURN(const int peer_device_id,
-                        GetLocalDeviceId(device, collective_params));
+    ASSIGN_OR_RETURN(const int peer_device_id,
+                     GetLocalDeviceId(device, collective_params));
     if (!executor.CanEnablePeerAccessTo(peer_device_id)) {
       XLA_VLOG_DEVICE(3, executor.device_ordinal())
           << "Peer access is not supported with device " << peer_device_id;
@@ -180,11 +182,11 @@ absl::Status CollectiveKernelThunk::Prepare(const PrepareParams& params) {
   TF_RET_CHECK(params.collective_params &&
                params.collective_params->device_assn);
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetCollectiveGpuCliqueKey(*params.collective_params, collective_config_));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       bool use_collective_kernel,
       IsSupported(clique_key, *params.executor, *params.collective_params));
 
@@ -192,7 +194,7 @@ absl::Status CollectiveKernelThunk::Prepare(const PrepareParams& params) {
     return absl::OkStatus();
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<std::vector<GlobalDeviceId>> device_groups,
       GetParticipatingDevicesGroups(*params.collective_params->device_assn,
                                     collective_config_.replica_groups,
@@ -202,7 +204,7 @@ absl::Status CollectiveKernelThunk::Prepare(const PrepareParams& params) {
   absl::c_for_each(device_groups, [](auto& group) { absl::c_sort(group); });
   absl::c_sort(device_groups);
 
-  TF_RETURN_IF_ERROR(params.collective_clique_requests->RequestClique(
+  RETURN_IF_ERROR(params.collective_clique_requests->RequestClique(
       clique_key, device_groups));
 
   absl::MutexLock lock(mutex_);
@@ -220,12 +222,12 @@ absl::Status CollectiveKernelThunk::Prepare(const PrepareParams& params) {
         kNumSignalFlags * sizeof(int32_t), kXlaAllocatedBufferAlignBytes);
     const int64_t kLocalBufferSize = xla::RoundUpTo<uint64_t>(
         buffers_[0].source_buffer.slice.size(), kXlaAllocatedBufferAlignBytes);
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         se::DeviceAddressHandle local_buffers_handle,
         AllocateMemory(params.executor, kLocalBufferSize * kNumBuffers,
                        "Local buffers"));
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         se::DeviceAddressHandle signal_buffers_handle,
         AllocateMemory(params.executor, kSignalBufferSize * kNumBuffers,
                        "Signal buffers"));
@@ -244,11 +246,11 @@ absl::Status CollectiveKernelThunk::Prepare(const PrepareParams& params) {
       XLA_VLOG_DEVICE(3, params.executor->device_ordinal())
           << "Request multicast address for source and destination buffers";
 
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           params.collective_memory_requests->RequestMulticastAddress(
               clique_key, params.buffer_allocations->GetDeviceAddress(
                               buffers_[0].source_buffer.slice)));
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           params.collective_memory_requests->RequestMulticastAddress(
               clique_key, params.buffer_allocations->GetDeviceAddress(
                               buffers_[0].destination_buffer.slice)));
@@ -265,7 +267,7 @@ int64_t CollectiveKernelThunk::GetInputSizeBytes() const {
 }
 
 absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetCollectiveGpuCliqueKey(*params.collective_params, collective_config_));
   const std::optional<RankId> rank =
@@ -285,10 +287,10 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
       // the buffer. The kernel will take care of leaving the buffer in
       // correct state after use, so we don't need to zero out after
       // initialization.
-      TF_RETURN_IF_ERROR(params.stream->MemZero(
+      RETURN_IF_ERROR(params.stream->MemZero(
           memory_state->signal_buffers_handle.address_ptr(),
           memory_state->signal_buffers_handle.address().size()));
-      TF_RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
+      RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
       // Create a kernel for execution.
       std::unique_ptr<se::Kernel> kernel = nullptr;
       if (!kernel_name_.empty()) {
@@ -370,7 +372,7 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
       multimem_addresses.resize(kNumParameters + 1, nullptr);
       const size_t multimem_addresses_size_bytes =
           multimem_addresses.size() * sizeof(void*);
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           param_to_peers_ptrs,
           CollectParamToPeers(clique_key, state->rank, params.stream,
                               std::move(parameters)));
@@ -410,13 +412,13 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
       state->metadata = params.executor->Allocate(
           sizeof(CollectiveKernelMetadata) + param_to_peers_ptrs_size_bytes, 0);
 
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           param_to_peers_ptrs,
           CollectParamToPeers(clique_key, state->rank, params.stream,
                               std::move(parameters)));
     }
 
-    TF_RETURN_IF_ERROR(CopyCollectiveMetadataToDevice(
+    RETURN_IF_ERROR(CopyCollectiveMetadataToDevice(
         params.stream, metadata, param_to_peers_ptrs, multimem_addresses,
         state->metadata));
     return absl::OkStatus();
@@ -428,13 +430,10 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
 absl::Status CollectiveKernelThunk::ExecuteOnStream(
     const ExecuteParams& params) {
   se::Stream* stream = params.stream;
-  if (is_async_) {
-    stream = params.collective_params->async_streams.at(
-        static_cast<int64_t>(AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));
-  }
+  TF_RET_CHECK(stream != nullptr);
   const int device_ordinal = stream->parent()->device_ordinal();
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetCollectiveGpuCliqueKey(*params.collective_params, collective_config_));
   const int32_t num_devices = clique_key.num_devices();
@@ -492,16 +491,16 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
         << launch_dimensions_->num_blocks() << "x"
         << launch_dimensions_->num_threads_per_block()
         << "(block x threadsPerBlock)";
-    TF_ASSIGN_OR_RETURN(se::DeviceAddressBase remote_buffers,
-                        GetParameterDeviceMemoryBase(
-                            state->metadata, /*num_parameters=*/kNumParameters,
-                            /*num_devices=*/num_devices,
-                            /*parameter_index=*/0));
-    TF_ASSIGN_OR_RETURN(se::DeviceAddressBase signal_buffers,
-                        GetParameterDeviceMemoryBase(
-                            state->metadata, /*num_parameters=*/kNumParameters,
-                            /*num_devices=*/num_devices,
-                            /*parameter_index=*/1));
+    ASSIGN_OR_RETURN(se::DeviceAddressBase remote_buffers,
+                     GetParameterDeviceMemoryBase(
+                         state->metadata, /*num_parameters=*/kNumParameters,
+                         /*num_devices=*/num_devices,
+                         /*parameter_index=*/0));
+    ASSIGN_OR_RETURN(se::DeviceAddressBase signal_buffers,
+                     GetParameterDeviceMemoryBase(
+                         state->metadata, /*num_parameters=*/kNumParameters,
+                         /*num_devices=*/num_devices,
+                         /*parameter_index=*/1));
     std::array<se::KernelArg, kAllReduceArgsCount> kernel_args = {
         source_buffer,
         destination_buffer,
@@ -556,4 +555,80 @@ CollectiveKernelThunk::GetParameterDeviceMemoryBase(
       (parameter_index * num_devices) * sizeof(void*),
       /*size_bytes=*/num_devices * sizeof(void*));
 }
+
+absl::StatusOr<std::unique_ptr<CollectiveKernelThunk>>
+CollectiveKernelThunk::FromProto(
+    ThunkInfo thunk_info, const CollectiveKernelThunkProto& thunk_proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  CollectiveConfig collective_config =
+      CollectiveConfig::FromProto(thunk_proto.collective_config());
+
+  ASSIGN_OR_RETURN(ReductionKind reduction_kind,
+                   FromReductionKindProto(thunk_proto.reduction_kind()));
+
+  std::vector<CollectiveThunk::Buffer> buffers;
+  buffers.reserve(thunk_proto.buffers_size());
+  for (const CollectiveBufferProto& proto : thunk_proto.buffers()) {
+    ASSIGN_OR_RETURN(
+        CollectiveThunk::Buffer buffer,
+        CollectiveThunk::Buffer::FromProto(proto, buffer_allocations));
+    buffers.push_back(std::move(buffer));
+  }
+
+  std::optional<LaunchDimensions> launch_dimensions = std::nullopt;
+  if (thunk_proto.has_launch_dimensions()) {
+    ASSIGN_OR_RETURN(launch_dimensions, LaunchDimensions::FromProto(
+                                            thunk_proto.launch_dimensions()));
+  }
+
+  std::optional<std::vector<uint8_t>> cubin = std::nullopt;
+  if (thunk_proto.has_cubin()) {
+    cubin = std::vector<uint8_t>{thunk_proto.cubin().begin(),
+                                 thunk_proto.cubin().end()};
+  }
+
+  return std::make_unique<CollectiveKernelThunk>(
+      std::move(thunk_info), std::move(collective_config), reduction_kind,
+      thunk_proto.is_async(), std::move(buffers),
+      thunk_proto.collective_kernel_enabled(), thunk_proto.kernel_name(),
+      launch_dimensions, thunk_proto.shmem_bytes(),
+      thunk_proto.is_multimem_enabled(), std::move(cubin),
+      thunk_proto.use_pdl());
+}
+
+absl::StatusOr<ThunkProto> CollectiveKernelThunk::ToProto() const {
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+
+  CollectiveKernelThunkProto* thunk_proto =
+      proto.mutable_collective_kernel_thunk();
+
+  *thunk_proto->mutable_collective_config() = collective_config_.ToProto();
+  thunk_proto->set_reduction_kind(ToReductionKindProto(reduction_kind_));
+  thunk_proto->set_is_async(is_async_);
+
+  for (const CollectiveThunk::Buffer& buffer : buffers_) {
+    ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
+  }
+
+  thunk_proto->set_collective_kernel_enabled(collective_kernel_enabled_);
+  thunk_proto->set_kernel_name(kernel_name_);
+
+  if (launch_dimensions_.has_value()) {
+    *thunk_proto->mutable_launch_dimensions() = launch_dimensions_->ToProto();
+  }
+
+  thunk_proto->set_shmem_bytes(shmem_bytes_);
+  thunk_proto->set_is_multimem_enabled(is_multimem_enabled_);
+
+  if (cubin_.has_value()) {
+    thunk_proto->set_cubin(reinterpret_cast<const char*>(cubin_->data()),
+                           cubin_->size());
+  }
+
+  thunk_proto->set_use_pdl(use_pdl_);
+
+  return proto;
+}
+
 }  // namespace xla::gpu

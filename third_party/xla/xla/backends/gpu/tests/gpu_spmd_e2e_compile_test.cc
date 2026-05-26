@@ -15,29 +15,30 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
-#include "xla/backends/gpu/tests/gpu_codegen_test.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_runner_interface.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/statusor.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 namespace {
 
-class GpuSpmdE2ECompileTest : public GpuCodegenTest {
+class GpuSpmdE2ECompileTest : public HloPjRtTestBase {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_autotune_level(0);
     return debug_options;
   }
@@ -57,11 +58,12 @@ ENTRY entry {
 
   HloModuleConfig config;
   config.set_use_spmd_partitioning(true);
-  auto hlo_module = ParseAndReturnVerifiedModule(hlo_string, config).value();
-
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
   // Verify that compilation succeeded.
-  absl::StatusOr<std::unique_ptr<Executable>> executable =
-      CompileToExecutable(std::move(hlo_module));
+  absl::StatusOr<std::unique_ptr<OpaqueExecutable>> executable =
+      CreateExecutable(std::move(hlo_module),
+                       /*run_hlo_passes=*/true);
   TF_EXPECT_OK(executable.status());
 }
 
@@ -83,10 +85,15 @@ ENTRY main {
   config.set_use_spmd_partitioning(true);
   config.set_num_partitions(2);
   config.set_debug_options(GetDebugOptionsForTest());
-  auto hlo_module = ParseAndReturnVerifiedModule(hlo_string, config).value();
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(std::move(hlo_module)));
+  DeviceAssignment device_assignment(/*replica_count=*/1,
+                                     /*computation_count=*/2);
+  device_assignment(0, 0) = 0;
+  device_assignment(0, 1) = 0;
+  config.set_static_device_assignment(device_assignment);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                       GetOptimizedModule(hlo_string, config));
 
   // Validate that no collective communication operations are generated in this
   // module.
@@ -116,10 +123,17 @@ ENTRY main {
   config.set_use_spmd_partitioning(true);
   config.set_num_partitions(4);
   config.set_debug_options(GetDebugOptionsForTest());
-  auto hlo_module = ParseAndReturnVerifiedModule(hlo_string, config).value();
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(std::move(hlo_module)));
+  DeviceAssignment device_assignment(/*replica_count=*/1,
+                                     /*computation_count=*/4);
+  device_assignment(0, 0) = 0;
+  device_assignment(0, 1) = 0;
+  device_assignment(0, 2) = 0;
+  device_assignment(0, 3) = 0;
+  config.set_static_device_assignment(device_assignment);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                       GetOptimizedModule(hlo_string, config));
   // Verify that none of the collective operations generated have control
   // dependencies.
   const HloComputation* entry = optimized_module->entry_computation();
@@ -158,10 +172,17 @@ ENTRY main {
   // dependencies for collectives, hence we effectively disable it for non-gemm
   // fusions here by setting the top_k_configs to 1.
   config.mutable_debug_options().set_xla_gpu_fusion_autotune_top_k_configs(1);
-  auto hlo_module = ParseAndReturnVerifiedModule(hlo_string, config).value();
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(std::move(hlo_module)));
+  DeviceAssignment device_assignment(/*replica_count=*/1,
+                                     /*computation_count=*/4);
+  device_assignment(0, 0) = 0;
+  device_assignment(0, 1) = 0;
+  device_assignment(0, 2) = 0;
+  device_assignment(0, 3) = 0;
+  config.set_static_device_assignment(device_assignment);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                       GetOptimizedModule(hlo_string, config));
   // Verify that control dependencies are inserted for collectives.
   bool has_control_deps = false;
   const HloComputation* entry = optimized_module->entry_computation();
@@ -176,5 +197,4 @@ ENTRY main {
 }
 
 }  // namespace
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

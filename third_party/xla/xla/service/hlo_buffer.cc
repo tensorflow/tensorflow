@@ -59,6 +59,15 @@ std::string HloBuffer::ToString() const {
                     }));
 }
 
+std::string HloBuffer::ToDebugString() const {
+  return absl::StrCat(
+      "HloBuffer id: ", id_, "\nvalues:\n\n",
+      absl::StrJoin(values_, "\n\n",
+                    [](std::string* result, const HloValue* value) {
+                      result->append(value->ToString());
+                    }));
+}
+
 std::ostream& operator<<(std::ostream& out, const HloBuffer& buffer) {
   out << buffer.ToString();
   return out;

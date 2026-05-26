@@ -61,9 +61,6 @@ _XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS = (
     "//xla/tools/multihost_hlo_runner:hlo_runner_main_gpu",
     "//xla/tools:compute_xspace_stats_main_gpu",
 )
-_KOKORO_ARTIFACTS_DIR = os.environ.get(
-    "KOKORO_ARTIFACTS_DIR", "$KOKORO_ARTIFACTS_DIR"
-)
 _GITHUB_WORKSPACE = os.environ.get("GITHUB_WORKSPACE", "$GITHUB_WORKSPACE")
 
 
@@ -92,11 +89,6 @@ def _dict_to_cli_options(d: Dict[str, Any]) -> List[str]:
   return [f"--{k}" if v is True else f"--{k}={v}" for k, v in d.items()]
 
 
-def _write_to_sponge_config(key, value) -> None:
-  with open("custom_sponge_config.csv", "a") as f:
-    f.write(f"{key},{value}\n")
-
-
 class BuildType(enum.Enum):
   """Enum representing all types of builds.
 
@@ -110,6 +102,7 @@ class BuildType(enum.Enum):
   XLA_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_8X_H100_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_ONEAPI_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_GPU_ROCM_GITHUB_ACTIONS = enum.auto()
 
   # Presubmit builds for regression testing.
   XLA_LINUX_ARM64_CPU_48_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
@@ -516,6 +509,44 @@ Build(
     target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
     build_tag_filters=oneapi_build_tag_filter,
     test_tag_filters=oneapi_test_tag_filter,
+    options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
+    subcommand="build",
+)
+
+# ROCm builds - hermetic LLVM
+# Tag filters from build_tools/rocm/rocm_tag_filters.sh + gpu
+rocm_tag_filter = (
+    "-no_gpu",
+    "-requires-gpu-intel",
+    "-requires-gpu-nvidia",
+    "-cuda-only",
+    "-oneapi-only",
+    "-requires-gpu-sm60",
+    "-requires-gpu-sm60-only",
+    "-requires-gpu-sm70",
+    "-requires-gpu-sm70-only",
+    "-requires-gpu-sm80",
+    "-requires-gpu-sm80-only",
+    "-requires-gpu-sm86",
+    "-requires-gpu-sm86-only",
+    "-requires-gpu-sm89",
+    "-requires-gpu-sm89-only",
+    "-requires-gpu-sm90",
+    "-requires-gpu-sm90-only",
+    "-skip_rocprofiler_sdk",
+    "-no_oss",
+    "-oss_excluded",
+    "-oss_serial",
+    "gpu",
+)
+
+Build(
+    type_=BuildType.XLA_LINUX_X86_GPU_ROCM_GITHUB_ACTIONS,
+    repo="openxla/xla",
+    configs=("warnings", "rbe_linux_cpu", "rocm_clang_hermetic"),
+    target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
+    build_tag_filters=rocm_tag_filter,
+    test_tag_filters=rocm_tag_filter,
     options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
     subcommand="build",
 )

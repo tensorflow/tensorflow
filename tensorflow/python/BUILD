@@ -774,6 +774,7 @@ pywrap_tensorflow_macro(
     win_def_file = ":pywrap_tensorflow_filtered_def_file",
     deps = [
         ":_pywrap_library_dependency_enforcer",
+        "@llvm-project//llvm:FileCheckLib",
     ] + select({
         "//tools/cc_target_os:gce": [],
         "//conditions:default": ["//learning/brain/google/data/service/data_transfer_protocols/void"],
@@ -982,6 +983,7 @@ pywrap_aware_filegroup(
         "//tensorflow/python/util:cpp_python_util",
         "//tensorflow/python/util:kernel_registry",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
+        "@llvm-project//llvm:FileCheckLib",  # filecheck_wrapper
         "@tsl//tsl/platform:tensor_float_32_utils",  # tensor_float_32
         "@tsl//tsl/profiler/lib:profiler_session_impl",  # profiler
         "@xla//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",  # profiler
@@ -1541,6 +1543,7 @@ cc_library(
             if_cuda_is_configured([
                 "@xla//xla/tsl/cuda:cupti",
                 "@xla//xla/tsl/cuda:nvshmem_stub",
+                "@xla//xla/tsl/cuda:cusolver",
             ]) + if_nccl([
                 "@xla//xla/tsl/cuda:nccl",
             ])

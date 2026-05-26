@@ -45,10 +45,10 @@ class OpDeleter {
 using OpPtr = std::unique_ptr<TFE_Op, OpDeleter>;
 
 using MaybeParallelTensorOwned =
-    absl::variant<std::unique_ptr<ParallelTensor>, TensorHandlePtr>;
+    std::variant<std::unique_ptr<ParallelTensor>, TensorHandlePtr>;
 
 using MaybeParallelTensorUnowned =
-    absl::variant<ParallelTensor*, TFE_TensorHandle*>;
+    std::variant<ParallelTensor*, TFE_TensorHandle*>;
 
 // A ParallelDevice on its own is not registered with a TFE_Context, and so has
 // no device name (e.g. for `tf.device`). `NamedParallelDevice` associates a
@@ -67,13 +67,13 @@ class NamedParallelDevice {
   std::unique_ptr<ParallelDevice> parallel_device_;
 };
 
-absl::optional<std::vector<MaybeParallelTensorOwned>> ExecuteWithSpecialOps(
+std::optional<std::vector<MaybeParallelTensorOwned>> ExecuteWithSpecialOps(
     const ParallelDevice& parallel_device,
     const std::string& parallel_device_name, TFE_Context* context,
     std::vector<MaybeParallelTensorUnowned> inputs, const char* operation_name,
     const TFE_OpAttrs* attributes, int expected_max_outputs,
     TF_Status* status) {
-  absl::optional<std::vector<MaybeParallelTensorOwned>> result;
+  std::optional<std::vector<MaybeParallelTensorOwned>> result;
   // TODO(allenl): We should remove "TPU" from these op names at the very least,
   // or consider other ways of packing/unpacking parallel tensors.
   if (operation_name == std::string("TPUReplicatedInput")) {
@@ -185,7 +185,7 @@ absl::optional<std::vector<MaybeParallelTensorOwned>> ExecuteWithSpecialOps(
       parallel_inputs.push_back(absl::get<ParallelTensor*>(input));
     }
   }
-  absl::optional<std::vector<std::unique_ptr<ParallelTensor>>>
+  std::optional<std::vector<std::unique_ptr<ParallelTensor>>>
       maybe_parallel_results(
           parallel_device.Execute(context, parallel_inputs, operation_name,
                                   attributes, expected_max_outputs, status));
@@ -361,7 +361,7 @@ void ParallelDeviceExecute(const TFE_Op* original_op, int* num_outputs,
     }
   }
 
-  absl::optional<std::vector<MaybeParallelTensorOwned>> maybe_typed_outputs(
+  std::optional<std::vector<MaybeParallelTensorOwned>> maybe_typed_outputs(
       ExecuteWithSpecialOps(named_device->device(), named_device->name(),
                             context, std::move(typed_inputs), operation_name,
                             attributes, *num_outputs, status));

@@ -44,7 +44,9 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/repeated_ptr_field.h"
+#include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
@@ -53,6 +55,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_payload_deduplicator.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/ptrvec.h"
 #include "xla/literal.h"
@@ -501,7 +504,7 @@ absl::Status HloComputation::RemoveParameter(int64_t param_no) {
   auto param_instruction_iterator = param_instructions_.begin() + param_no;
   param_instructions_.erase(param_instruction_iterator);
   // Throw removed fused parameter instruction away.
-  TF_RETURN_IF_ERROR(ForceRemoveInstruction(param_instruction));
+  RETURN_IF_ERROR(ForceRemoveInstruction(param_instruction));
 
   while (param_no < param_instructions_.size()) {
     param_instruction = param_instructions_[param_no];
@@ -509,9 +512,9 @@ absl::Status HloComputation::RemoveParameter(int64_t param_no) {
         AddInstructionInternal(HloInstruction::CreateParameter(
             param_no, param_instruction->shape(), StrCat("param_", param_no)));
     param_instruction->SetupDerivedInstruction(new_instr);
-    TF_RETURN_IF_ERROR(param_instruction->ReplaceAllUsesWith(new_instr));
+    RETURN_IF_ERROR(param_instruction->ReplaceAllUsesWith(new_instr));
     param_instructions_[param_no] = new_instr;
-    TF_RETURN_IF_ERROR(ForceRemoveInstruction(param_instruction));
+    RETURN_IF_ERROR(ForceRemoveInstruction(param_instruction));
     param_no++;
   }
 
@@ -550,7 +553,7 @@ absl::Status HloComputation::RemoveUnusedParametersImpl(bool allow_non_fusion) {
   for (int64_t i = 0; i < param_instructions_.size(); ++i) {
     HloInstruction* param_instruction = param_instructions_[i];
     if (param_instruction->IsDead()) {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           RemoveInstructionImpl(param_instruction, allow_non_fusion));
       ++removed;
       continue;
@@ -561,9 +564,9 @@ absl::Status HloComputation::RemoveUnusedParametersImpl(bool allow_non_fusion) {
       HloInstruction* new_instr = AddInstructionInternal(
           HloInstruction::CreateParameter(param_no, param_instruction->shape(),
                                           StrCat("param_", param_no)));
-      TF_RETURN_IF_ERROR(param_instruction->ReplaceAllUsesWith(new_instr));
+      RETURN_IF_ERROR(param_instruction->ReplaceAllUsesWith(new_instr));
       param_instructions_[param_no] = new_instr;
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           RemoveInstructionImpl(param_instruction, allow_non_fusion));
     }
   }
@@ -712,7 +715,7 @@ absl::Status HloComputation::RemoveInstructionAndUnusedOperands(
       continue;
     }
     if (ignore_control_dependencies) {
-      TF_RETURN_IF_ERROR(item->SafelyDropAllControlDependencies());
+      RETURN_IF_ERROR(item->SafelyDropAllControlDependencies());
     } else if (item->HasControlDependencies()) {
       continue;
     }
@@ -730,7 +733,7 @@ absl::Status HloComputation::RemoveInstructionAndUnusedOperands(
       // pointers in the worklist.
       parameters_to_be_removed.push_back(item);
     } else {
-      TF_RETURN_IF_ERROR(RemoveInstruction(item));
+      RETURN_IF_ERROR(RemoveInstruction(item));
     }
     removed.insert(item);
   }
@@ -761,7 +764,7 @@ absl::Status HloComputation::RemoveInstructionAndUnusedOperands(
   }
   for (HloInstruction* param : parameters_to_be_removed) {
     int64_t parameter_number = param->parameter_number();
-    TF_RETURN_IF_ERROR(RemoveParameter(parameter_number));
+    RETURN_IF_ERROR(RemoveParameter(parameter_number));
     for (HloInstruction* caller : callers) {
       // The caller could have been eagerly removed.
       if (caller->IsDead()) {
@@ -780,10 +783,9 @@ absl::Status HloComputation::RemoveInstructionAndUnusedOperands(
       if (operand->IsDead() &&
           operand->parent()->IsSafelyRemovable(
               operand, ignore_control_dependencies, computation_callers)) {
-        TF_RETURN_IF_ERROR(
-            operand->parent()->RemoveInstructionAndUnusedOperands(
-                operand, cleanup, ignore_control_dependencies,
-                computation_callers));
+        RETURN_IF_ERROR(operand->parent()->RemoveInstructionAndUnusedOperands(
+            operand, cleanup, ignore_control_dependencies,
+            computation_callers));
       }
     }
   }
@@ -1273,14 +1275,15 @@ absl::Cord HloComputation::ToCord(
   return std::move(printer).ToCord();
 }
 
-void HloComputation::ToProto(HloComputationProto* proto) const {
+void HloComputation::ToProto(HloComputationProto* proto,
+                             HloPayloadDeduplicator* deduplicator) const {
   CHECK(unique_id_ != -1)
       << "This computation does not have a valid id. Please make sure the "
          "computation is inside a module before dumping it.";
   proto->set_id(unique_id_);
   proto->set_name(name_);
   for (const HloInstruction* instruction : MakeInstructionPostOrder()) {
-    instruction->ToProto(proto->add_instructions());
+    instruction->ToProto(proto->add_instructions(), deduplicator);
   }
   proto->set_root_id(root_instruction()->unique_id());
   ComputeProgramShape().ToProto(*proto->mutable_program_shape());
@@ -1295,7 +1298,7 @@ HloComputation::CreateFromProto(
     const absl::flat_hash_map<int64_t, HloComputation*>& computation_map,
     bool prohibit_empty_literal, bool preserve_instruction_ids,
     absl::flat_hash_map<int64_t, int64_t>* id_remap_map,
-    const tsl::protobuf::RepeatedPtrField<std::string>* payloads) {
+    absl::Span<const std::shared_ptr<BackendConfigWrapper>> backend_configs) {
   // Instruction_map uses the ids of the instructions as defined in the proto.
   // The final instruction ids will change if preserve_instruction_ids is false.
   absl::flat_hash_map<int64_t, HloInstruction*> instruction_map;
@@ -1323,10 +1326,10 @@ HloComputation::CreateFromProto(
   int64_t parameter_count = 0;
 
   for (const HloInstructionProto& instruction_proto : proto.instructions()) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloInstruction> instruction,
-                        HloInstruction::CreateFromProto(
-                            instruction_proto, instruction_map, computation_map,
-                            prohibit_empty_literal, payloads));
+    ASSIGN_OR_RETURN(std::unique_ptr<HloInstruction> instruction,
+                     HloInstruction::CreateFromProto(
+                         instruction_proto, instruction_map, computation_map,
+                         prohibit_empty_literal, backend_configs));
     if (instruction->opcode() == HloOpcode::kParameter) {
       parameter_count++;
     }
@@ -1397,7 +1400,7 @@ HloComputation::CreateFromProto(
         << " has duplicate internal unique id " << instruction->local_id_;
     instruction_local_ids.insert(instruction->local_id_);
   }
-  TF_RETURN_IF_ERROR([&]() -> absl::Status {
+  RETURN_IF_ERROR([&]() -> absl::Status {
     std::vector<bool> parameters_seen(parameter_count);
     int parameters_seen_count = 0;
     for (auto& instruction : instructions) {
@@ -1556,15 +1559,15 @@ absl::StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
   async_done->set_metadata(instruction->metadata());
   async_done->CopyBackendConfigFrom(instruction);
   for (HloInstruction* control_pred : instruction->control_predecessors()) {
-    TF_RETURN_IF_ERROR(control_pred->AddControlDependencyTo(async_start));
+    RETURN_IF_ERROR(control_pred->AddControlDependencyTo(async_start));
   }
   for (HloInstruction* control_successor : instruction->control_successors()) {
-    TF_RETURN_IF_ERROR(async_done->AddControlDependencyTo(control_successor));
+    RETURN_IF_ERROR(async_done->AddControlDependencyTo(control_successor));
   }
 
   if (replace) {
-    TF_RETURN_IF_ERROR(instruction->DropAllControlDeps());
-    TF_RETURN_IF_ERROR(ReplaceInstruction(instruction, async_done));
+    RETURN_IF_ERROR(instruction->DropAllControlDeps());
+    RETURN_IF_ERROR(ReplaceInstruction(instruction, async_done));
   }
   return async_done;
 }
@@ -1585,8 +1588,8 @@ absl::StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
               instruction, i));
 
       index->push_back(i);
-      TF_ASSIGN_OR_RETURN(HloInstruction * element,
-                          DeepCopyHelper(gte, index, copy_leaf));
+      ASSIGN_OR_RETURN(HloInstruction * element,
+                       DeepCopyHelper(gte, index, copy_leaf));
       elements.push_back(element);
       index->pop_back();
     }
@@ -1769,9 +1772,9 @@ absl::StatusOr<bool> HloComputation::ReplaceInstruction(
 
 absl::Status HloComputation::ReplaceInstruction(
     HloInstruction* old_instruction, HloInstruction* new_instruction) {
-  TF_ASSIGN_OR_RETURN(bool changed,
-                      ReplaceInstruction(old_instruction, new_instruction,
-                                         /*preserve_sharding=*/false));
+  ASSIGN_OR_RETURN(bool changed,
+                   ReplaceInstruction(old_instruction, new_instruction,
+                                      /*preserve_sharding=*/false));
   DCHECK(changed);
   return absl::OkStatus();
 }
@@ -1787,9 +1790,8 @@ absl::StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
     return false;
   }
   if (relay_control_dependency) {
-    TF_RETURN_IF_ERROR(
-        new_instruction->CopyAllControlDepsFrom(old_instruction));
-    TF_RETURN_IF_ERROR(old_instruction->DropAllControlDeps());
+    RETURN_IF_ERROR(new_instruction->CopyAllControlDepsFrom(old_instruction));
+    RETURN_IF_ERROR(old_instruction->DropAllControlDeps());
   } else if (old_instruction->HasControlDependencies()) {
     VLOG(10) << "Skipping replacement because old instruction has "
                 "control dependencies";
@@ -1823,7 +1825,7 @@ absl::StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
     new_instruction->copy_sharding(old_instruction);
   }
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       old_instruction->ReplaceAllUsesWithDifferentShape(new_instruction));
 
   // Preserve the old instruction's name if the new and old instruction have the
@@ -1836,20 +1838,20 @@ absl::StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
     new_instruction->SetAndSanitizeName(old_instruction->name());
   }
   if (remove_unused_operands) {
-    TF_RETURN_IF_ERROR(RemoveInstructionAndUnusedOperands(
+    RETURN_IF_ERROR(RemoveInstructionAndUnusedOperands(
         old_instruction, /*cleanup=*/std::nullopt,
         /*ignore_control_dependencies=*/relay_control_dependency));
   } else {
-    TF_RETURN_IF_ERROR(RemoveInstruction(old_instruction));
+    RETURN_IF_ERROR(RemoveInstruction(old_instruction));
   }
   return true;
 }
 
 absl::Status HloComputation::ReplaceInstructionWithDifferentShape(
     HloInstruction* old_instruction, HloInstruction* new_instruction) {
-  TF_ASSIGN_OR_RETURN(bool changed, ReplaceInstructionWithDifferentShape(
-                                        old_instruction, new_instruction,
-                                        /*preserve_sharding=*/false));
+  ASSIGN_OR_RETURN(bool changed, ReplaceInstructionWithDifferentShape(
+                                     old_instruction, new_instruction,
+                                     /*preserve_sharding=*/false));
   DCHECK(changed);
   return absl::OkStatus();
 }
@@ -1876,9 +1878,8 @@ absl::Status HloComputation::AcceptWithOperandOrder(
   // visited root, which would invalidate iterators if the unreachable roots
   // weren't computed ahead of time.
   for (HloInstruction* root : CollectUnreachableRoots()) {
-    TF_RETURN_IF_ERROR(
-        root->AcceptWithOperandOrder(visitor, operand_order,
-                                     /*call_finish_visit=*/false));
+    RETURN_IF_ERROR(root->AcceptWithOperandOrder(visitor, operand_order,
+                                                 /*call_finish_visit=*/false));
   }
   // Visit the computation root instruction last.
   return root_instruction()->AcceptWithOperandOrder(visitor, operand_order,
@@ -1888,6 +1889,14 @@ absl::Status HloComputation::AcceptWithOperandOrder(
 std::unique_ptr<HloComputation> HloComputation::Clone(
     const std::string& suffix, HloCloneContext* context) {
   return CloneWithReplacements(
+      /*replacements=*/nullptr,
+      /*extra_parameters=*/{}, context, suffix);
+}
+
+std::pair<std::unique_ptr<HloComputation>, std::vector<HloInstruction*>>
+HloComputation::CloneWithSchedule(const std::string& suffix,
+                                  HloCloneContext* context) {
+  return CloneWithScheduleAndReplacements(
       /*replacements=*/nullptr,
       /*extra_parameters=*/{}, context, suffix);
 }
@@ -1936,24 +1945,31 @@ namespace {
 // unordered_instructions. Unmapped parameter instructions are placed just after
 // the last parameter instruction in the sorted mapped instruction order. All
 // other mapped instructions are placed at the end.
+template <typename OrderedInstructionPtr, typename UnorderedInstructionPtr>
 void SortClonedInstructions(
     const HloCloneContext& context,
     absl::FunctionRef<const HloInstruction*(const HloInstruction*)> replace,
     const HloComputation& computation,
-    const HloComputation::InstructionList& ordered_instructions,
-    std::vector<std::unique_ptr<HloInstruction>>& unordered_instructions) {
+    const std::vector<OrderedInstructionPtr>& ordered_instructions,
+    std::vector<UnorderedInstructionPtr>& unordered_instructions) {
   using InstructionSorter = MappedPtrContainerSorter<HloInstruction>;
   auto instruction_mapper = [&context, replace](const HloInstruction* i) {
     return context.FindInstruction(replace(i));
   };
   size_t num_mapped_instructions = 0;
   size_t mapped_index_of_last_parameter_plus_one = 0;
-  for (const auto& instruction : ordered_instructions) {
-    if (!instruction_mapper(instruction.get())) {
+  for (const auto& instruction_ptr : ordered_instructions) {
+    const HloInstruction* instruction;
+    if constexpr (std::is_same_v<OrderedInstructionPtr, HloInstruction*>) {
+      instruction = instruction_ptr;
+    } else {
+      instruction = instruction_ptr.get();
+    }
+    if (!instruction_mapper(instruction)) {
       continue;
     }
     ++num_mapped_instructions;
-    if (!HloParameterInstruction::ClassOf(instruction.get())) {
+    if (!HloParameterInstruction::ClassOf(instruction)) {
       continue;
     }
     mapped_index_of_last_parameter_plus_one = num_mapped_instructions;
@@ -2020,6 +2036,26 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
                         new_root);
 }
 
+std::pair<std::unique_ptr<HloComputation>, std::vector<HloInstruction*>>
+HloComputation::CloneWithScheduleAndReplacements(
+    const absl::flat_hash_map<const HloInstruction*,
+                              std::unique_ptr<HloInstruction>>* replacements,
+    absl::Span<const HloInstruction* const> extra_parameters,
+    HloCloneContext* context, const std::string& suffix,
+    std::variant<const HloInstruction*, const absl::Span<HloInstruction* const>>
+        new_root) {
+  std::unique_ptr<HloCloneContext> context_ptr;
+  if (context == nullptr) {
+    context_ptr = std::make_unique<HloCloneContext>(parent(), suffix);
+    context = context_ptr.get();
+  }
+  std::vector<HloInstruction*> clone_sequence;
+  std::unique_ptr<HloComputation> cloned_computation =
+      CloneInContext(*context, replacements, extra_parameters, suffix, new_root,
+                     &clone_sequence);
+  return {std::move(cloned_computation), std::move(clone_sequence)};
+}
+
 std::unique_ptr<HloComputation> HloComputation::CloneInContext(
     HloCloneContext& context,
     const absl::flat_hash_map<const HloInstruction*,
@@ -2027,7 +2063,8 @@ std::unique_ptr<HloComputation> HloComputation::CloneInContext(
     absl::Span<const HloInstruction* const> extra_parameters,
     const std::string& suffix,
     std::variant<const HloInstruction*, const absl::Span<HloInstruction* const>>
-        new_root) const {
+        new_root,
+    std::vector<HloInstruction*>* clone_sequence) const {
   // Look up instr in the replacements map, and return either the replacement,
   // or instr, if the replacement isn't present.
   //
@@ -2114,6 +2151,19 @@ std::unique_ptr<HloComputation> HloComputation::CloneInContext(
   // To make clone behavior match uncloned behavior, we reorder instructions to
   // match the order in instructions_.
   SortClonedInstructions(context, replace, *this, instructions_, instructions);
+
+  if (clone_sequence != nullptr) {
+    clone_sequence->reserve(instructions.size());
+    absl::c_transform(instructions, std::back_inserter(*clone_sequence),
+                      [](const std::unique_ptr<HloInstruction>& instruction) {
+                        return instruction.get();
+                      });
+
+    SortClonedInstructions(
+        context, replace, *this,
+        context.module()->schedule().sequence(this).instructions(),
+        *clone_sequence);
+  }
 
   Builder builder(suffix.empty() ? std::string(name())
                                  : absl::StrCat(name(), ".", suffix));

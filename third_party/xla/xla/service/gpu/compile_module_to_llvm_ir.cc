@@ -126,8 +126,7 @@ std::string Phase(absl::string_view phase_name, const HloModule* module) {
 }
 
 bool UseCache(const DebugOptions& options) {
-  return options.xla_gpu_enable_llvm_module_compilation_parallelism() &&
-         !options.xla_gpu_kernel_cache_file().empty();
+  return !options.xla_gpu_kernel_cache_file().empty();
 }
 
 }  // namespace
@@ -143,7 +142,7 @@ absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
   }
   if (tsl::Env::Default()->FileExists(resolved_path).ok()) {
     std::string serialized;
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         tsl::ReadFileToString(tsl::Env::Default(), resolved_path, &serialized));
     CompilationCacheProto proto;
     if (!proto.ParseFromString(serialized)) {
@@ -155,7 +154,7 @@ absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
       TF_RET_CHECK(ir_emitter_context.GetSanitizedUniqueName(name) == name)
           << "Failed registering " << name << "in NameUniquer.";
     }
-    TF_RETURN_IF_ERROR(ir_emitter_context.kernel_cache().Load(proto));
+    RETURN_IF_ERROR(ir_emitter_context.kernel_cache().Load(proto));
   } else {
     VLOG(1) << "Compilation cache file does not exist: " << resolved_path;
   }
@@ -193,7 +192,7 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
       hlo_ordering =
           std::make_unique<SequentialHloOrdering>(module->schedule());
   }
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(
           module, std::move(hlo_ordering),
@@ -255,7 +254,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   uint64_t start_usecs = tsl::Env::Default()->NowMicros();
 
   if (use_cache) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         LoadCache(ir_emitter_context, options.xla_gpu_kernel_cache_file()));
   }
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
@@ -264,12 +263,6 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   ASSIGN_OR_RETURN(auto sequential_thunk,
                    thunk_emitter.EmitHloEntryComputation(hlo_module));
   results.executable = std::move(sequential_thunk);
-
-  results.llvm_modules = thunk_emitter.ConsumeKernelModules();
-  if (results.llvm_modules.empty()) {
-    results.llvm_modules.push_back(
-        ir_emitter_context.CreateLLVMModule(hlo_module->name()));
-  }
 
   results.llvm_module_constants = thunk_emitter.ConsumeConstantsModule();
 

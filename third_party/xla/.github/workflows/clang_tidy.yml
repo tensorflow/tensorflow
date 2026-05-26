@@ -57,4 +57,4 @@ jobs:
           BAZEL_CMD: "bazel"
         run: |
           set -euo pipefail
-          $BAZEL_CMD run //build_tools/ci:run_clang_tidy
+          ./build_tools/ci/run_clang_tidy.sh

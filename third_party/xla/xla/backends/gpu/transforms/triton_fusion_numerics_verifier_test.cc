@@ -64,6 +64,9 @@ class TritonFusionNumericsVerifierTest
   DebugOptions GetDebugOptionsForTest() const override {
     auto options = HloPjRtTestBase::GetDebugOptionsForTest();
     options.set_xla_gpu_verify_triton_fusion_numerics(true);
+    // TODO: b/509502550 - remove the flag and disable tests that use
+    // multi-output fusions when removing the feature.
+    options.set_xla_gpu_unsupported_enable_triton_multi_output_fusion(true);
     return options;
   }
 

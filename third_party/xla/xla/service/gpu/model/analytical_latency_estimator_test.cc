@@ -21,14 +21,16 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/backends/gpu/tests/gpu_codegen_test.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/gpu/alias_info.h"
@@ -42,10 +44,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/casts.h"
 
-namespace xla {
-
-namespace gpu {
-
+namespace xla::gpu {
 namespace {
 
 int64_t GetInstructionIndexInSchedule(
@@ -85,29 +84,25 @@ absl::StatusOr<bool> RunScheduler(
           alias_info, shape_size_bytes);
   auto scheduler_core =
       std::make_unique<DefaultSchedulerCore>(scheduling_context, sched_config);
-  TF_ASSIGN_OR_RETURN(
-      bool value,
-      LatencyHidingScheduler(scheduling_context, std::move(scheduler_core))
-          .Run(module));
+  ASSIGN_OR_RETURN(bool value, LatencyHidingScheduler(scheduling_context,
+                                                      std::move(scheduler_core))
+                                   .Run(module));
 
   return value;
 }
 
-class AnalyticalLatencyHidingSchedulerTest : public GpuCodegenTest {
+class AnalyticalLatencyHidingSchedulerTest : public HloPjRtGpuTestBase {
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> ParseHloText(
       absl::string_view hlo_string) {
     return ParseAndReturnVerifiedModule(hlo_string, GetModuleConfigForTest());
   }
-  const se::DeviceDescription& GetDeviceDescription() {
-    return backend().default_stream_executor()->GetDeviceDescription();
-  }
   se::GpuComputeCapability GetGpuComputeCapability() {
-    return GetDeviceDescription().gpu_compute_capability();
+    return device_description().gpu_compute_capability();
   }
   std::unique_ptr<GpuAliasInfo> GetAliasInfo() {
-    return absl::down_cast<GpuCompiler*>(backend().compiler())
-        ->GetAliasInfo(GetDeviceDescription());
+    return absl::down_cast<GpuCompiler*>(compiler())
+        ->GetAliasInfo(device_description());
   }
 };
 
@@ -128,8 +123,7 @@ TEST_F(AnalyticalLatencyHidingSchedulerTest, TestAnalyticalLatencyEstimator) {
     GTEST_SKIP() << "This test is for datacenter GPUs.";
   }
 
-  const se::DeviceDescription dev_info =
-      backend().default_stream_executor()->GetDeviceDescription();
+  const se::DeviceDescription dev_info = device_description();
 
   // The test below has 2 allreduces, ar2 should be have the larger latency
   // so we expect ar1 to be run first and ar2 to be overlapped with conv0.
@@ -159,7 +153,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   hlo_module->mutable_config().set_num_partitions(8);
 
   HloSchedule& module_schedule = hlo_module->schedule();
@@ -191,5 +185,4 @@ ENTRY entry {
 }
 
 }  // namespace
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

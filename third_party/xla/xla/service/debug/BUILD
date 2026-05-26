@@ -94,11 +94,10 @@ xla_test(
         "h100",
         "b200",
     ],
-    use_legacy_runtime = True,
     deps = [
         "//xla:xla_proto_cc",
-        "//xla/backends/gpu/tests:gpu_codegen_test",
         "//xla/hlo/parser:hlo_parser",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/log:scoped_mock_log",

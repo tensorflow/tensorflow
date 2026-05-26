@@ -78,6 +78,12 @@ std::shared_ptr<model::Model> StandaloneTaskIterator::model() const {
   return iterator_->model();
 }
 
+void StandaloneTaskIterator::Cancel() {
+  if (iterator_) {
+    iterator_->Cancel();
+  }
+}
+
 absl::Status TaskRunner::Create(const experimental::WorkerConfig& worker_config,
                                 const TaskDef& task_def,
                                 std::unique_ptr<TaskIterator> iterator,
@@ -172,6 +178,10 @@ void FirstComeFirstServedTaskRunner::Cancel() {
   VLOG(2) << "Cancelling tf.data service FCFS task.";
   buffer_.Cancel(
       absl::CancelledError("tf.data service FCFS task is cancelled."));
+  mutex_lock l(mu_);
+  if (iterator_) {
+    iterator_->Cancel();
+  }
 }
 
 std::shared_ptr<model::Model> FirstComeFirstServedTaskRunner::model() const {
@@ -379,9 +389,14 @@ PrefetchThread::PrefetchThread(std::unique_ptr<TaskIterator> iterator,
 }
 
 PrefetchThread::~PrefetchThread() {
-  mutex_lock l(mu_);
-  cancelled_ = true;
-  cv_.notify_all();
+  {
+    mutex_lock l(mu_);
+    cancelled_ = true;
+    cv_.notify_all();
+  }
+  if (iterator_) {
+    iterator_->Cancel();
+  }
 }
 
 void PrefetchThread::Run() {

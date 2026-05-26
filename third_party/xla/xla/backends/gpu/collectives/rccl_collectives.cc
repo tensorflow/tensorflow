@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "rocm/rocm_config.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
@@ -89,7 +90,7 @@ class RcclIdStore {
 
   absl::StatusOr<CliqueIds> GetCliqueIds(const CliqueKey& key,
                                          RcclCollectives& rccl_collectives) {
-    auto* gpu_key = tsl::down_cast<const gpu::GpuCliqueKey*>(&key);
+    auto* gpu_key = absl::down_cast<const GpuCliqueKey*>(&key);
     if (gpu_key == nullptr) {
       return InvalidArgument("Expected GPU clique key");
     }
@@ -107,13 +108,12 @@ class RcclIdStore {
 
     CliqueId clique_id;
     if (process_id_ == device_to_process_.at(gpu_key->devices().front())) {
-      TF_ASSIGN_OR_RETURN(clique_id, rccl_collectives.CreateUniqueCliqueId());
-      TF_RETURN_IF_ERROR(
+      ASSIGN_OR_RETURN(clique_id, rccl_collectives.CreateUniqueCliqueId());
+      RETURN_IF_ERROR(
           kv_store_->Set(gpu_key->ToString(), clique_id.ToString()));
     } else {
-      TF_ASSIGN_OR_RETURN(
-          std::string id_str,
-          kv_store_->Get(gpu_key->ToString(), absl::Minutes(10)));
+      ASSIGN_OR_RETURN(std::string id_str,
+                       kv_store_->Get(gpu_key->ToString(), absl::Minutes(10)));
       clique_id = CliqueId(id_str);
     }
 
@@ -138,7 +138,7 @@ class RcclIdStore {
 //===----------------------------------------------------------------------===//
 
 static ncclComm_t Cast(const Communicator* comm) {
-  auto* rccl_communicator = tsl::down_cast<const RcclCommunicator*>(comm);
+  auto* rccl_communicator = absl::down_cast<const RcclCommunicator*>(comm);
   CHECK(rccl_communicator != nullptr) << "Unsupported XLA communicator";
   return rccl_communicator->comm();
 }
@@ -205,7 +205,7 @@ RcclCollectives::CreateCommunicatorsWithCancel(
           << "; fingerprint(id)=" << clique_ids->fingerprint();
 
   const auto& gpu_config =
-      tsl::down_cast<const GpuCollectives::Config&>(config);
+      absl::down_cast<const GpuCollectives::Config&>(config);
   if (!gpu_config.blocking_communicators && !gpu_config.async_execution) {
     return FailedPrecondition(
         "GpuCollectives::Config blocking_communicators is false, but "
@@ -219,14 +219,14 @@ RcclCollectives::CreateCommunicatorsWithCancel(
             << " of " << clique_key.num_devices()
             << "; fingerprint(id)=" << clique_ids->fingerprint()
             << "; size(id)=" << clique_ids->data().size();
-    auto* device = tsl::down_cast<GpuCollectives::Device*>(ranks[i].device);
+    auto* device = absl::down_cast<GpuCollectives::Device*>(ranks[i].device);
     TF_RET_CHECK(device != nullptr);
     auto activate_context = device->stream_executor()->Activate();
 
-    TF_ASSIGN_OR_RETURN(ncclConfig_t comm_config,
-                        AsRcclConfig(gpu_config, device->stream_executor()));
+    ASSIGN_OR_RETURN(ncclConfig_t comm_config,
+                     AsRcclConfig(gpu_config, device->stream_executor()));
 
-    TF_ASSIGN_OR_RETURN(auto nccl_unique_id, AsRcclUniqueId(clique_ids->at(0)));
+    ASSIGN_OR_RETURN(auto nccl_unique_id, AsRcclUniqueId(clique_ids->at(0)));
     ncclComm_t comm;
     XLA_RCCL_RETURN_IF_ERROR(
         ncclCommInitRankConfig(&comm, clique_key.num_devices(), nccl_unique_id,
@@ -254,7 +254,7 @@ RcclCollectives::CreateCommunicatorsWithCancel(
       });
     }
   }  // pool's destructor blocks until all scheduled work is done.
-  TF_RETURN_IF_ERROR(status);
+  RETURN_IF_ERROR(status);
   return comms;
 }
 
@@ -283,11 +283,11 @@ RcclCollectives::SplitCommunicatorsWithCancel(
 
 #if !defined(TENSORFLOW_USE_ROCM) || TF_ROCM_VERSION >= 60000
   auto make_comm = [&](int i) -> absl::StatusOr<ncclComm_t> {
-    auto* device = tsl::down_cast<GpuCollectives::Device*>(ranks[i].device);
+    auto* device = absl::down_cast<GpuCollectives::Device*>(ranks[i].device);
     TF_RET_CHECK(device != nullptr);
 
-    TF_ASSIGN_OR_RETURN(ncclConfig_t comm_config,
-                        AsRcclConfig(gpu_config, device->stream_executor()));
+    ASSIGN_OR_RETURN(ncclConfig_t comm_config,
+                     AsRcclConfig(gpu_config, device->stream_executor()));
 
     VLOG(1) << "Split NCCL communicator " << comms[i] << " with color " << color
             << " and key " << keys[i];
@@ -316,7 +316,7 @@ RcclCollectives::SplitCommunicatorsWithCancel(
       });
     }
   }  // pool's destructor blocks until all scheduled work is done.
-  TF_RETURN_IF_ERROR(status);
+  RETURN_IF_ERROR(status);
   return split_comms;
 #else
   return absl::UnimplementedError(
@@ -326,10 +326,10 @@ RcclCollectives::SplitCommunicatorsWithCancel(
 }
 
 static absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectives() {
-  TF_ASSIGN_OR_RETURN(xla::Collectives * collectives,
-                      xla::CollectivesRegistry::Get("gpu", "nvshmem"));
+  ASSIGN_OR_RETURN(xla::Collectives * collectives,
+                   xla::CollectivesRegistry::Get("gpu", "nvshmem"));
   xla::gpu::GpuCollectives* nvshmem_collectives =
-      tsl::down_cast<xla::gpu::GpuCollectives*>(collectives);
+      absl::down_cast<GpuCollectives*>(collectives);
   if (nvshmem_collectives == nullptr) {
     return absl::InternalError("Failed to get NVSHMEM collectives");
   }
@@ -339,7 +339,7 @@ static absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectives() {
 
 absl::StatusOr<void*> RcclCollectives::Allocate(uint64_t bytes) {
   if (xla::GetDebugOptionsFromFlags().xla_gpu_experimental_enable_nvshmem()) {
-    TF_ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
+    ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
     return nvshmem_collectives->Allocate(bytes);
   }
 
@@ -359,7 +359,7 @@ absl::StatusOr<void*> RcclCollectives::Allocate(uint64_t bytes) {
 
 absl::Status RcclCollectives::Deallocate(void* location) {
   if (xla::GetDebugOptionsFromFlags().xla_gpu_experimental_enable_nvshmem()) {
-    TF_ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
+    ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
     return nvshmem_collectives->Deallocate(location);
   }
 
@@ -378,9 +378,8 @@ absl::Status RcclCollectives::Deallocate(void* location) {
 absl::StatusOr<CliqueIdCallback> RcclCollectives::InitializeTopology(
     const Topology& topology) {
   if (xla::GetDebugOptionsFromFlags().xla_gpu_experimental_enable_nvshmem()) {
-    TF_ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
-    TF_RETURN_IF_ERROR(
-        nvshmem_collectives->InitializeTopology(topology).status());
+    ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
+    RETURN_IF_ERROR(nvshmem_collectives->InitializeTopology(topology).status());
   }
 
   if (topology.num_processes > 1) {

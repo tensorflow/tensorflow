@@ -38,6 +38,7 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/base/macros.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -48,6 +49,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
@@ -80,6 +82,8 @@ namespace xla {
 class HloComputation;
 class HloModule;
 class HloInstruction;
+class BackendConfigWrapper;
+class HloPayloadDeduplicator;
 
 // A small holder that is used to keep some immutable info alongside an
 // instruction pointer in an HloComputation's list of instructions
@@ -327,7 +331,8 @@ class HloInstruction {
       const absl::flat_hash_map<int64_t, HloInstruction*>& instruction_map,
       const absl::flat_hash_map<int64_t, HloComputation*>& computation_map = {},
       bool prohibit_empty_literal = true,
-      const tsl::protobuf::RepeatedPtrField<std::string>* payloads = nullptr);
+      absl::Span<const std::shared_ptr<BackendConfigWrapper>> backend_configs =
+          {});
 
   // Creates a parameter-retrieving instruction.
   static std::unique_ptr<HloInstruction> CreateParameter(
@@ -1677,6 +1682,10 @@ class HloInstruction {
 
   virtual void ToProto(HloInstructionProto* proto) const;
 
+  // Non-virtual overload that handles interning.
+  void ToProto(HloInstructionProto* proto,
+               HloPayloadDeduplicator* deduplicator) const;
+
   // Returns a category for the HLO. This could be something like "convolution"
   // or "elementwise".
   virtual std::string ToCategory() const;
@@ -1928,12 +1937,14 @@ class HloInstruction {
     return static_cast<int32_t>(unique_id >> 32);
   }
 
-  bool has_backend_config() const { return !backend_config_.empty(); }
+  bool has_backend_config() const { return !backend_config_->empty(); }
 
-  void clear_backend_config() { backend_config_ = BackendConfigWrapper(); }
+  void clear_backend_config() {
+    backend_config_ = std::make_shared<BackendConfigWrapper>();
+  }
 
   void CopyBackendConfigFrom(const HloInstruction* other) {
-    backend_config_ = BackendConfigWrapper(other->backend_config_);
+    backend_config_ = other->backend_config_;
   }
 
   // Replaces the frontend attributes with the provided argument.
@@ -2066,7 +2077,7 @@ class HloInstruction {
   template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
   absl::StatusOr<ConfigProto> backend_config() const {
     ConfigProto proto;
-    TF_RETURN_IF_ERROR(backend_config_.GetProto(&proto));
+    RETURN_IF_ERROR(backend_config_->GetProto(&proto));
     return proto;
   }
 
@@ -2077,21 +2088,26 @@ class HloInstruction {
   template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
   absl::Status MutateBackendConfig(
       const std::function<absl::Status(ConfigProto*)>& fn) {
-    return backend_config_.ApplyFnOnProto(fn);
+    if (backend_config_.use_count() > 1) {
+      backend_config_ =
+          std::make_shared<BackendConfigWrapper>(*backend_config_);
+    }
+    return backend_config_->ApplyFnOnProto(fn);
   }
 
   absl::Status set_backend_config(const tsl::protobuf::Message& proto) {
-    backend_config_ = BackendConfigWrapper(proto);
+    backend_config_ = std::make_shared<BackendConfigWrapper>(proto);
     return absl::OkStatus();
   }
 
   // Getter/setter for raw JSON-encoded backend config.  Prefer the
   // functions above that deal in proto Messages where possible.
   const std::string& raw_backend_config_string() const {
-    return backend_config_.GetRawString();
+    return backend_config_->GetRawString();
   }
   void set_raw_backend_config_string(std::string config_str) {
-    backend_config_ = BackendConfigWrapper(std::move(config_str));
+    backend_config_ =
+        std::make_shared<BackendConfigWrapper>(std::move(config_str));
   }
 
   bool is_default_config() const { return is_default_config_; }
@@ -2144,6 +2160,8 @@ class HloInstruction {
   void set_metadata_scheduling_name(absl::string_view name) {
     mutable_metadata().set_scheduling_name(name);
   }
+
+  bool has_metadata() const { return metadata_ != nullptr; }
 
   const OpMetadata& metadata() const {
     OpMetadata* m = metadata_.get();
@@ -2260,11 +2278,16 @@ class HloInstruction {
   HloInstruction* AddFusionOperand(HloInstruction* new_operand);
 
   // Delegates to HloFusionInstruction::MergeFusionInstruction.
-  void MergeFusionInstruction(HloInstruction* instruction_to_merge);
+  // remove_computation: when false, allows to defer the call to
+  // RemoveEmbeddedComputation to a later time.
+  void MergeFusionInstruction(HloInstruction* instruction_to_merge,
+                              bool remove_computation = true);
 
   // Delegates to HloFusionInstruction::MergeFusionInstructionIntoMultiOutput.
+  // remove_computation: when false, allows to defer the call to
+  // RemoveEmbeddedComputation to a later time.
   void MergeFusionInstructionIntoMultiOutput(
-      HloInstruction* instruction_to_merge);
+      HloInstruction* instruction_to_merge, bool remove_computation = true);
 
   // Delegates to HloFusionInstruction::FuseInstruction.
   HloInstruction* FuseInstruction(HloInstruction* instruction_to_fuse);
@@ -2794,8 +2817,10 @@ class HloInstruction {
   std::shared_ptr<Shape> shape_;
 
   // The backend-specific configuration for how a backend should compile this
-  // HLO. See the documentation on backend_config().
-  BackendConfigWrapper backend_config_;
+  // HLO. See the documentation on backend_config(). Declared as shared_ptr to
+  // implement copy-on-write.
+  absl_nonnull std::shared_ptr<BackendConfigWrapper> backend_config_ =
+      std::make_shared<BackendConfigWrapper>();
 
   // String identifier for instruction.
   std::string name_;

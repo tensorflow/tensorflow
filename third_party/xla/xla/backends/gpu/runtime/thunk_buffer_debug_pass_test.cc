@@ -51,7 +51,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -129,6 +128,10 @@ class FakeThunk : public Thunk {
   }
 
   BufferUses buffer_uses() const override { return buffer_uses_; }
+
+  absl::StatusOr<ThunkProto> ToProto() const override {
+    return absl::UnimplementedError("FakeThunk::ToProto is not implemented");
+  }
 
  private:
   BufferUses buffer_uses_;

@@ -206,8 +206,8 @@ class BufferAllocation {
     PrimitiveType element_type() const { return element_type_; }
 
     bool operator==(const Slice& other) const {
-      if (allocation_ == nullptr) {
-        return other.allocation_ == nullptr;
+      if (allocation_ == nullptr || other.allocation_ == nullptr) {
+        return other.allocation_ == allocation_;
       }
       // We don't compare element_type_ because it's not always set, and it's
       // not relevant for the comparison here.
@@ -283,7 +283,8 @@ class BufferAllocation {
   // being reported.
   std::string MemoryUsageReport(const std::string& prefix,
                                 float percentile = 0.05,
-                                int64_t more_than_k = 50) const;
+                                int64_t more_than_k = 50,
+                                bool print_shape_layout = false) const;
 
   BufferAllocationProto ToProto() const;
   static BufferAllocation FromProto(const BufferAllocationProto&);
@@ -565,7 +566,8 @@ class BufferAssignment {
   // Returns a memory usage report with the list of buffer allocations ordered
   // by the size(Z-A) and the values assigned to each buffer allocation.
   std::string MemoryUsageReport(float percentile = 0.05,
-                                int64_t more_than_k = 50) const;
+                                int64_t more_than_k = 50,
+                                bool print_shape_layout = false) const;
   // Verbose string tailored to debugging OOMs, includes the Hlo op metadata for
   // every buffer associated with each allocation.
   std::string ToVerboseString(const AliasInfo* alias_info,

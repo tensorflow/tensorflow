@@ -134,7 +134,7 @@ absl::StatusOr<Schedule> GetSchedule(
       continue;
     }
     parallel_dim_block_counts.push_back(
-        CeilOfRatio(dimension.dimension_size, dimension.tile_size));
+        CeilOfRatio(dimension.dimension_size, *dimension.tile_size));
     parallel_dim_ids.push_back(dim_id);
   }
 

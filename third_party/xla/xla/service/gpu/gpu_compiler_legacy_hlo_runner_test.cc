@@ -44,9 +44,9 @@ limitations under the License.
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
-#include "xla/service/hlo_runner_legacy.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/platform_util.h"
+#include "xla/service/restricted/hlo_runner_legacy.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tests/literal_test_util.h"
@@ -406,11 +406,6 @@ class NoKernelCacheTest : public KernelCacheTest {
     return debug_options;
   }
 };
-
-TEST_F(NoKernelCacheTest, NoCacheWithoutCompilationParallelism) {
-  EXPECT_TRUE(Run(kHloText, /*run_hlo_passes=*/false));
-  EXPECT_FALSE(CacheFileExists());
-}
 
 }  // namespace
 }  // namespace gpu

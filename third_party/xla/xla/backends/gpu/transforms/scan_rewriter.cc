@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -37,28 +38,15 @@ namespace xla::gpu {
 
 absl::StatusOr<bool> ScanRewriter::RunOnComputation(
     HloComputation* computation) {
-  bool changed = false;
   std::vector<HloScanInstruction*> scans;
   for (HloInstruction* inst : computation->instructions()) {
-    if (inst->opcode() == HloOpcode::kScan) {
+    if (hlo_query::IsStandardAssociativeScan(inst)) {
       scans.push_back(xla::Cast<HloScanInstruction>(inst));
     }
   }
 
+  bool changed = false;
   for (HloScanInstruction* scan : scans) {
-    // Skip if not a plain inclusive sum.
-    if (scan->is_reverse() || !scan->is_associative()) {
-      continue;
-    }
-    if (scan->inputs().size() != 1 || scan->inits().size() != 1) {
-      continue;
-    }
-    if (absl::c_any_of(scan->users(), [](HloInstruction* user) {
-          return user->opcode() != HloOpcode::kGetTupleElement ||
-                 user->tuple_index() > 0;
-        })) {
-      continue;
-    }
     const HloInstruction* init = scan->inits().front();
     while (init->opcode() == HloOpcode::kBroadcast) {
       init = init->operand(0);
@@ -76,11 +64,8 @@ absl::StatusOr<bool> ScanRewriter::RunOnComputation(
     if (binary_op != HloOpcode::kAdd) {
       continue;
     }
-    const Shape& shape = scan->shape().tuple_shapes(0);
-    if (!shape.IsArray()) {
-      continue;
-    }
 
+    const Shape& shape = scan->shape().tuple_shapes(0);
     int64_t scan_dim = scan->scan_dimension();
     int64_t row_length = shape.dimensions(scan_dim);
     int64_t vector_length = 1;
@@ -129,8 +114,10 @@ absl::StatusOr<bool> ScanRewriter::RunOnComputation(
     options.set_is_reverse(scan->is_reverse());
     RETURN_IF_ERROR(custom_call->set_backend_config(options));
 
-    RETURN_IF_ERROR(scan->ReplaceAllUsesWithDifferentShape(custom_call));
-    RETURN_IF_ERROR(computation->RemoveInstruction(scan));
+    // The second tuple element is the scratch buffer instead of the final
+    // carry, but all users of it are dead (see IsStandardAssociativeScan).
+    RETURN_IF_ERROR(
+        computation->ReplaceInstructionWithDifferentShape(scan, custom_call));
     changed = true;
   }
   return changed;

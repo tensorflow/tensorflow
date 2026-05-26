@@ -1,7 +1,11 @@
-# This file is expanded from a template by cuda_configure.bzl
-# Update cuda_configure.bzl#verify_build_defines when adding new variables.
+# This file is expanded from a template by rocm_configure.bzl
+# Update rocm_configure.bzl#verify_build_defines when adding new variables.
 
 load(":cc_toolchain_config.bzl", "cc_toolchain_config")
+load("@local_config_clang//:clang.bzl", "local_clang")
+
+# Local clang configuration for non-hermetic toolchain
+_LOCAL_CLANG = local_clang()
 
 licenses(["restricted"])
 
@@ -62,9 +66,10 @@ cc_toolchain_config(
     target_libc = "local",
     abi_version = "local",
     abi_libc_version = "local",
-    cxx_builtin_include_directories = [%{cxx_builtin_include_directories}],
-    host_compiler_path = "%{host_compiler_path}",
-    host_compiler_prefix = "%{host_compiler_prefix}",
+    # Include directories detected from local clang + ROCm includes
+    cxx_builtin_include_directories = _LOCAL_CLANG.include_directories + [%{cxx_builtin_include_directories}],
+    host_compiler_path = "clang/bin/crosstool_wrapper_driver_is_not_gcc",
+    host_compiler_prefix = "/usr/bin",
     compile_flags = [
         "-U_FORTIFY_SOURCE",
         "-fstack-protector",
@@ -72,6 +77,7 @@ cc_toolchain_config(
         "-Wunused-but-set-parameter",
         "-Wno-free-nonheap-object",
         "-fno-omit-frame-pointer",
+        "-no-canonical-prefixes",
     ],
     opt_compile_flags = [
         "-g0",
@@ -84,9 +90,10 @@ cc_toolchain_config(
     dbg_compile_flags = ["-g"],
     cxx_flags = ["-std=c++17"],
     link_flags = [
-        "-fuse-ld=gold",
+        "-fuse-ld=lld",
         "-Wl,-no-as-needed",
         "-Wl,-z,relro,-z,now",
+        "-Wl,--allow-shlib-undefined",
     ],
     link_libs = [
         "-lstdc++",
@@ -103,6 +110,8 @@ cc_toolchain_config(
     coverage_compile_flags = ["--coverage"],
     coverage_link_flags = ["--coverage"],
     supports_start_end_lib = True,
+    # Compiler path from local_clang_info(), sets CLANG_COMPILER_PATH env var
+    clang_compiler_path = _LOCAL_CLANG.compiler_path,
 )
 
 filegroup(

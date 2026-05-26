@@ -287,6 +287,8 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@xla//third_party/python_runtime:headers",
     ],
 )
@@ -1201,9 +1203,10 @@ tf_python_pybind_extension(
         "fast_module_type.pyi",
     ],
     deps = [
-        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/synchronization",
         "@pybind11",
         "@xla//third_party/python_runtime:headers",
     ],

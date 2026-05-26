@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
@@ -113,7 +114,7 @@ absl::Status MlirToXlaComputation(
       // disable it.
       exec_build_options->mutable_debug_options()
           ->set_xla_enable_hlo_sharding_v3(false);
-      TF_RETURN_IF_ERROR(ExportShardyForGSPMD(module));
+      RETURN_IF_ERROR(ExportShardyForGSPMD(module));
     }
 
     // Export a StableHLO + Shardy module into a pure StableHLO module, to
@@ -169,9 +170,9 @@ absl::Status MlirToXlaComputation(
     use_tuple_args = false;
   }
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
-                      xla::ConvertStablehloToHloWithOptions(
-                          module, use_tuple_args, return_tuple));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+                   xla::ConvertStablehloToHloWithOptions(module, use_tuple_args,
+                                                         return_tuple));
 
   xla_computation = XlaComputation(hlo_module->ToProto());
   return absl::OkStatus();
@@ -198,7 +199,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
     return diagnostic_handler.ConsumeStatus();
   }
 
-  TF_RETURN_IF_ERROR(UpgradeVersionedStablehlo(*module));
+  RETURN_IF_ERROR(UpgradeVersionedStablehlo(*module));
   return std::move(module);
 }
 
@@ -206,8 +207,8 @@ absl::Status ParseMlirModuleStringAndConvertToXlaComputation(
     absl::string_view mlir_module_str, XlaComputation& xla_computation,
     bool use_tuple_args, bool return_tuple) {
   mlir::MLIRContext context;
-  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                      xla::ParseMlirModuleString(mlir_module_str, context));
+  ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                   xla::ParseMlirModuleString(mlir_module_str, context));
   return xla::MlirToXlaComputation(*module, xla_computation, use_tuple_args,
                                    return_tuple,
                                    /*exec_build_options=*/nullptr);
@@ -292,7 +293,7 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
   // Usually the plugin is older than the framework, but occasionally a plugin's
   // nightly build will use the latest public release of a framework. Serialize
   // using the framework's version in these cases.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::string target,
       ExpectSuccess(mlir::stablehlo::getSmallerVersion(
                         requested_target, mlir::stablehlo::getCurrentVersion()),

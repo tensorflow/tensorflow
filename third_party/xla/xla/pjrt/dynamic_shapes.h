@@ -52,8 +52,8 @@ absl::StatusOr<xla::Shape> ReadDynamicShapeMetadata(
 
 // Returns a view sliced to exclude dynamic shape metadata.
 absl::StatusOr<PjRtRawBufferRef> RemoveDynamicShapeMetadataIfPresent(
-    PjRtRawBufferRef raw_buffer, const xla::Shape& logical_shape,
-    PjRtDynamicShapeKind kind);
+    PjRtRawBufferRef raw_buffer, const xla::Shape& device_shape,
+    const xla::Shape& logical_shape, PjRtDynamicShapeKind kind);
 
 // Reads dynamic shape metadata into an output AsyncValueRef.
 void ReadDynamicShape(PjRtRawBufferRef raw_buffer,

@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
+#include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
 #include "xla/backends/gpu/runtime/legacy_custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
@@ -80,6 +81,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tools/hlo_extractor.h"
 #include "xla/tsl/platform/errors.h"
@@ -372,9 +374,9 @@ absl::Status CollectSliceInfo(
       arg_offsets.emplace_back() = extracted_offset_modules.back().get();
     } else {
       // Loop offset computed on device and has to be transferred to host.
-      TF_ASSIGN_OR_RETURN(arg_offsets.emplace_back(),
-                          GetAllocationSlice(buffer_assignment, offset_value,
-                                             /*index=*/{}));
+      ASSIGN_OR_RETURN(arg_offsets.emplace_back(),
+                       GetAllocationSlice(buffer_assignment, offset_value,
+                                          /*index=*/{}));
     }
   }
   offsets[arg_idx] = std::move(arg_offsets);
@@ -546,10 +548,58 @@ absl::StatusOr<BufferAllocation::Slice> GetResultSlice(
       ShapeIndex(reversed_shape_index.rbegin(), reversed_shape_index.rend()));
 }
 
-absl::StatusOr<FusionEmissionResult> EmitGemm(
-    IrEmitterContext& ir_emitter_context, const HloFusionAdaptor& adaptor,
-    const HloFusionInstruction& fusion,
-    const HloCustomCallInstruction& custom_call, const CallGraph& call_graph) {
+absl::StatusOr<std::unique_ptr<Thunk>> CreateMatmulThunk(
+    const HloCustomCallInstruction& custom_call, Thunk::ThunkInfo thunk_info,
+    GemmConfig config, BufferAllocation::Slice lhs_slice,
+    BufferAllocation::Slice rhs_slice, BufferAllocation::Slice output,
+    std::optional<BufferAllocation::Slice> workspace, bool deterministic_ops) {
+  if (IsLegacyCublasMatmul(custom_call)) {
+    return std::make_unique<GemmThunk>(thunk_info, std::move(config), lhs_slice,
+                                       rhs_slice, output, workspace,
+                                       deterministic_ops);
+  }
+  ASSIGN_OR_RETURN(auto gpu_config,
+                   custom_call.backend_config<GpuBackendConfig>());
+  const auto& gemm_backend_config = gpu_config.gemm_backend_config();
+
+  ShapedSlice a{lhs_slice, custom_call.operand(0)->shape()};
+  ShapedSlice b{rhs_slice, custom_call.operand(1)->shape()};
+
+  Shape output_shape = custom_call.shape().IsArray()
+                           ? custom_call.shape()
+                           : custom_call.shape().tuple_shapes(0);
+  ShapedSlice c{output, output_shape};
+  ShapedSlice d{output, output_shape};
+
+  std::optional<ShapedSlice> workspace_buffer;
+  if (workspace.has_value()) {
+    workspace_buffer = ShapedSlice{*workspace, custom_call.shape().tuple_shapes(
+                                                   kGEMMWorkspaceBufferIndex)};
+  }
+
+  int64_t algorithm = gemm_backend_config.algorithm_case() ==
+                              GemmBackendConfig::kSelectedAlgorithm
+                          ? gemm_backend_config.selected_algorithm()
+                          : 0;
+
+  std::string canonical_hlo = custom_call.ToString(
+      HloPrintOptions::Fingerprint().set_print_backend_config(true));
+
+  return std::make_unique<CublasLtMatmulThunk>(
+      thunk_info, std::move(canonical_hlo), std::move(config),
+      se::gpu::BlasLt::Epilogue::kDefault, algorithm,
+      gemm_backend_config.autotune_workspace_size(), a, b, c, d,
+      /*bias=*/std::nullopt, /*aux=*/std::nullopt,
+      /*a_scale=*/std::nullopt, /*b_scale=*/std::nullopt,
+      /*c_scale=*/std::nullopt, /*d_scale=*/std::nullopt,
+      /*d_amax=*/std::nullopt, workspace_buffer);
+}
+
+AsyncThunkSequence EmitGemm(IrEmitterContext& ir_emitter_context,
+                            const HloFusionAdaptor& adaptor,
+                            const HloFusionInstruction& fusion,
+                            const HloCustomCallInstruction& custom_call,
+                            const CallGraph& call_graph) {
   const BufferAssignment& buffer_assignment =
       ir_emitter_context.buffer_assignment();
 
@@ -571,8 +621,7 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
   if (while_op.has_value()) {
     CHECK(while_op.value() != nullptr)
         << "GetWhileOp is not expected to return nullptr.";
-    TF_ASSIGN_OR_RETURN(inlined_module,
-                        ir_emitter_context.get_inlined_module());
+    ASSIGN_OR_RETURN(inlined_module, ir_emitter_context.get_inlined_module());
     auto inlined_while_op = inlined_module->get_inlined_inst(*while_op);
     CHECK(inlined_while_op != nullptr)
         << "While loop is not found in the inlined module.";
@@ -589,23 +638,21 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
       (init_module != nullptr && update_module != nullptr);
 
   unsigned arg_idx = 0;
-  TF_ASSIGN_OR_RETURN(
-      BufferAllocation::Slice lhs_slice,
-      GetOperandSlice(buffer_assignment, adaptor, fusion,
-                      *custom_call.operand(arg_idx), slice_instrs,
-                      /*shape_idx=*/{}, arg_idx));
-  TF_RETURN_IF_ERROR(CollectSliceInfo(
+  ASSIGN_OR_RETURN(BufferAllocation::Slice lhs_slice,
+                   GetOperandSlice(buffer_assignment, adaptor, fusion,
+                                   *custom_call.operand(arg_idx), slice_instrs,
+                                   /*shape_idx=*/{}, arg_idx));
+  RETURN_IF_ERROR(CollectSliceInfo(
       buffer_assignment, fusion, absl::Span<HloInstruction*>(slice_instrs),
       offset_buffer_indices, orig_shapes, sliced_shapes, offset_primitive_types,
       extracted_offset_modules, arg_idx++, can_compute_indvar_on_host, while_op,
       indvar_idx, inlined_module));
 
-  TF_ASSIGN_OR_RETURN(
-      BufferAllocation::Slice rhs_slice,
-      GetOperandSlice(buffer_assignment, adaptor, fusion,
-                      *custom_call.operand(arg_idx), slice_instrs,
-                      /*shape_idx=*/{}, arg_idx));
-  TF_RETURN_IF_ERROR(CollectSliceInfo(
+  ASSIGN_OR_RETURN(BufferAllocation::Slice rhs_slice,
+                   GetOperandSlice(buffer_assignment, adaptor, fusion,
+                                   *custom_call.operand(arg_idx), slice_instrs,
+                                   /*shape_idx=*/{}, arg_idx));
+  RETURN_IF_ERROR(CollectSliceInfo(
       buffer_assignment, fusion, absl::Span<HloInstruction*>(slice_instrs),
       offset_buffer_indices, orig_shapes, sliced_shapes, offset_primitive_types,
       extracted_offset_modules, arg_idx++, can_compute_indvar_on_host, while_op,
@@ -621,21 +668,21 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
   // 0. DynamicSliceThunk will take care of the offset adjustment.
   std::vector<BufferAllocation> fake_allocations(4, {0, 0, 0});
   if (fusion.shape().IsArray()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         output, GetResultSlice(buffer_assignment, adaptor, fusion, custom_call,
                                slice_instrs, /*shape_idx=*/{}, arg_idx));
-    TF_RETURN_IF_ERROR(CollectSliceInfo(
+    RETURN_IF_ERROR(CollectSliceInfo(
         buffer_assignment, fusion, absl::Span<HloInstruction*>(slice_instrs),
         offset_buffer_indices, orig_shapes, sliced_shapes,
         offset_primitive_types, extracted_offset_modules, arg_idx,
         can_compute_indvar_on_host, while_op, indvar_idx, inlined_module));
   } else {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         output,
         GetResultSlice(buffer_assignment, adaptor, fusion, custom_call,
                        slice_instrs, /*shape_idx=*/{kGEMMOutputBufferIndex},
                        arg_idx));
-    TF_RETURN_IF_ERROR(CollectSliceInfo(
+    RETURN_IF_ERROR(CollectSliceInfo(
         buffer_assignment, fusion, absl::Span<HloInstruction*>(slice_instrs),
         offset_buffer_indices, orig_shapes, sliced_shapes,
         offset_primitive_types, extracted_offset_modules, arg_idx++,
@@ -643,10 +690,10 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
 
     // TODO(vuson): If we want to support slices of workspace, we'd need to
     // start `HloFindIf` with `get-tuple-element` with the right index.
-    TF_ASSIGN_OR_RETURN(
-        workspace, GetAllocationSlice(buffer_assignment, &fusion,
-                                      /*index=*/{kGEMMWorkspaceBufferIndex}));
-    TF_RETURN_IF_ERROR(CollectSliceInfo(
+    ASSIGN_OR_RETURN(workspace,
+                     GetAllocationSlice(buffer_assignment, &fusion,
+                                        /*index=*/{kGEMMWorkspaceBufferIndex}));
+    RETURN_IF_ERROR(CollectSliceInfo(
         buffer_assignment, fusion, absl::Span<HloInstruction*>(slice_instrs),
         offset_buffer_indices, orig_shapes, sliced_shapes,
         offset_primitive_types, extracted_offset_modules, arg_idx,
@@ -668,7 +715,7 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
   const bool deterministic_ops =
       RequireDeterminism(fusion.GetModule()->config());
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       GemmConfig config,
       GemmConfig::For(static_cast<const HloInstruction*>(&custom_call),
                       ir_emitter_context.gpu_compute_capability()));
@@ -704,9 +751,12 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
     BufferAllocation::Slice slice_out_fake(&fake_allocations[fake_arg_idx], 0,
                                            out_fake_byte_size);
     ThunkSequence seq;
-    seq.emplace_back(std::make_unique<GemmThunk>(
-        thunk_info, std::move(config), slice_lhs_fake, slice_rhs_fake,
-        slice_out_fake, slice_workspace_fake, deterministic_ops));
+    ASSIGN_OR_RETURN(
+        auto matmul_thunk,
+        CreateMatmulThunk(custom_call, thunk_info, std::move(config),
+                          slice_lhs_fake, slice_rhs_fake, slice_out_fake,
+                          slice_workspace_fake, deterministic_ops));
+    seq.emplace_back(std::move(matmul_thunk));
 
     std::vector<std::optional<BufferAllocation::Slice>> arguments{
         lhs_slice, rhs_slice, output, workspace};
@@ -728,18 +778,20 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
         std::move(sliced_shapes), std::move(offset_primitive_types),
         std::move(offset_modules_metadata));
   } else {
-    thunk = std::make_unique<GemmThunk>(thunk_info, std::move(config),
-                                        lhs_slice, rhs_slice, output, workspace,
-                                        deterministic_ops);
+    ASSIGN_OR_RETURN(
+        thunk,
+        CreateMatmulThunk(custom_call, thunk_info, std::move(config), lhs_slice,
+                          rhs_slice, output, workspace, deterministic_ops));
   }
 
-  return FusionEmissionResult{ThunkSequence::Of(std::move(thunk))};
+  return ThunkSequence::Of(std::move(thunk));
 }
 
-absl::StatusOr<FusionEmissionResult> EmitCustomCall(
-    IrEmitterContext& ir_emitter_context, const HloFusionAdaptor& adaptor,
-    const HloFusionInstruction& fusion,
-    const HloCustomCallInstruction& custom_call, const CallGraph& call_graph) {
+AsyncThunkSequence EmitCustomCall(IrEmitterContext& ir_emitter_context,
+                                  const HloFusionAdaptor& adaptor,
+                                  const HloFusionInstruction& fusion,
+                                  const HloCustomCallInstruction& custom_call,
+                                  const CallGraph& call_graph) {
   const BufferAssignment& buffer_assignment =
       ir_emitter_context.buffer_assignment();
 
@@ -792,8 +844,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
   if (while_op.has_value()) {
     CHECK(while_op.value() != nullptr)
         << "GetWhileOp is not expected to return nullptr.";
-    TF_ASSIGN_OR_RETURN(inlined_module,
-                        ir_emitter_context.get_inlined_module());
+    ASSIGN_OR_RETURN(inlined_module, ir_emitter_context.get_inlined_module());
     auto inlined_while_op = inlined_module->get_inlined_inst(*while_op);
     CHECK(inlined_while_op != nullptr)
         << "While loop is not found in the inlined module.";
@@ -813,8 +864,9 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
   // TODO(vuson): add test for custom call with token-typed operands
   Slices operands;
   for (auto* operand : custom_call.operands()) {
-    TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-        operand->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+    RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+        operand->shape(),
+        [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
           if (subshape.IsToken()) {
             arg_idx++;
             operands.push_back(std::nullopt);
@@ -823,11 +875,11 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
           if (!subshape.IsArray()) {
             return absl::OkStatus();
           }
-          TF_ASSIGN_OR_RETURN(
+          ASSIGN_OR_RETURN(
               auto slice,
               GetOperandSlice(buffer_assignment, adaptor, fusion, *operand,
                               slice_instrs, /*shape_idx=*/index, arg_idx));
-          TF_RETURN_IF_ERROR(CollectSliceInfo(
+          RETURN_IF_ERROR(CollectSliceInfo(
               buffer_assignment, fusion,
               absl::Span<HloInstruction*>(slice_instrs), offsets, orig_shapes,
               sliced_shapes, offset_primitive_types, extracted_offset_modules,
@@ -841,8 +893,9 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
   }
 
   Slices results;
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-      custom_call.shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+  RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+      custom_call.shape(),
+      [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
         if (subshape.IsToken()) {
           arg_idx++;
           results.push_back(std::nullopt);
@@ -851,11 +904,11 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
         if (!subshape.IsArray()) {
           return absl::OkStatus();
         }
-        TF_ASSIGN_OR_RETURN(
+        ASSIGN_OR_RETURN(
             auto slice,
             GetResultSlice(buffer_assignment, adaptor, fusion, custom_call,
                            slice_instrs, /*shape_idx=*/index, arg_idx));
-        TF_RETURN_IF_ERROR(CollectSliceInfo(
+        RETURN_IF_ERROR(CollectSliceInfo(
             buffer_assignment, fusion,
             absl::Span<HloInstruction*>(slice_instrs), offsets, orig_shapes,
             sliced_shapes, offset_primitive_types, extracted_offset_modules,
@@ -941,7 +994,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
             "Unsupported backend config. Expected a string parsable into "
             "dictionary attribute");
       }
-      TF_ASSIGN_OR_RETURN(attributes, xla::ffi::BuildAttributesMap(dict));
+      ASSIGN_OR_RETURN(attributes, xla::ffi::BuildAttributesMap(dict));
     }
     return CustomCallThunk::Create(
         thunk_info, call_target_name, std::move(ops), std::move(res),
@@ -970,7 +1023,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
 
     Slices fake_operands;
     for (auto* operand : custom_call.operands()) {
-      TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+      RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
           operand->shape(),
           [&](const Shape& subshape, const ShapeIndex& index) {
             if (subshape.IsToken()) {
@@ -995,7 +1048,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
     }
 
     Slices fake_results;
-    TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+    RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
         custom_call.shape(),
         [&](const Shape& subshape, const ShapeIndex& index) {
           if (subshape.IsToken()) {
@@ -1019,7 +1072,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
         }));
 
     ThunkSequence seq;
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         seq.emplace_back(),
         found_ffi_handler
             ? ffi_thunk(std::move(fake_operands), std::move(fake_results))
@@ -1041,13 +1094,13 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
         std::move(orig_shapes), std::move(sliced_shapes),
         std::move(offset_primitive_types), std::move(offset_modules_metadata));
   } else {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         thunk, found_ffi_handler
                    ? ffi_thunk(std::move(operands), std::move(results))
                    : legacy_thunk(std::move(operands), std::move(results)));
   }
 
-  return FusionEmissionResult{ThunkSequence::Of(std::move(thunk))};
+  return ThunkSequence::Of(std::move(thunk));
 }
 
 using Slice = std::optional<BufferAllocation::Slice>;
@@ -1125,13 +1178,13 @@ CollectSliceArgumentMetadataForCollectives(
   // Collect slice information for inputs.
   unsigned arg_idx = 0;
   for (HloInstruction* operand : instr->operands()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         BufferAllocation::Slice src,
         GetOperandSlice(buffer_assignment, adaptor, fusion_instr,
                         /*start_instr=*/*operand, slice_data.slice_instrs,
                         /*shape_idx=*/{}, arg_idx));
     slice_data.arguments[arg_idx] = src;
-    TF_RETURN_IF_ERROR(CollectSliceInfo(
+    RETURN_IF_ERROR(CollectSliceInfo(
         buffer_assignment, fusion_instr,
         /*slice_instrs=*/absl::Span<HloInstruction*>(slice_data.slice_instrs),
         /*offsets=*/slice_data.offset_buffer_indices, slice_data.orig_shapes,
@@ -1152,13 +1205,13 @@ CollectSliceArgumentMetadataForCollectives(
     output_shape_indices.push_back({});
   }
   for (const ShapeIndex& output_shape_idx : output_shape_indices) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         BufferAllocation::Slice dst,
         GetResultSlice(buffer_assignment, adaptor, fusion_instr,
                        /*start_instr=*/*instr, slice_data.slice_instrs,
                        output_shape_idx, arg_idx));
     slice_data.arguments[arg_idx] = dst;
-    TF_RETURN_IF_ERROR(CollectSliceInfo(
+    RETURN_IF_ERROR(CollectSliceInfo(
         buffer_assignment, fusion_instr,
         /*slice_instrs=*/absl::Span<HloInstruction*>(slice_data.slice_instrs),
         /*offsets=*/slice_data.offset_buffer_indices, slice_data.orig_shapes,
@@ -1180,9 +1233,8 @@ CollectSliceArgumentMetadataForCollectives(
   }
   slice_data.isDynamic = absl::c_any_of(slice_data.slice_instrs,
                                         IsDynamicSliceOrDynamicUpdateSlice);
-  TF_ASSIGN_OR_RETURN(
-      auto backend_config,
-      fusion_instr.backend_config<xla::gpu::GpuBackendConfig>());
+  ASSIGN_OR_RETURN(auto backend_config,
+                   fusion_instr.backend_config<xla::gpu::GpuBackendConfig>());
   const std::string fusion_name =
       backend_config.fusion_backend_config().custom_fusion_config().name();
   TF_RET_CHECK(slice_data.isDynamic ==
@@ -1228,20 +1280,22 @@ CollectSliceArgumentMetadataForCollectives(
 }
 
 template <typename NcclThunkType, typename HloInstType>
-absl::StatusOr<FusionEmissionResult> EmitCollective(
-    IrEmitterContext& ir_emitter_context, const HloFusionAdaptor& adaptor,
-    const HloFusionInstruction& fusion_instr, const HloInstType* instr,
-    bool use_global_device_ids, const CallGraph& call_graph) {
+AsyncThunkSequence EmitCollective(IrEmitterContext& ir_emitter_context,
+                                  const HloFusionAdaptor& adaptor,
+                                  const HloFusionInstruction& fusion_instr,
+                                  const HloInstType* instr,
+                                  bool use_global_device_ids,
+                                  const CallGraph& call_graph) {
   const BufferAssignment& buffer_assignment =
       ir_emitter_context.buffer_assignment();
 
-  TF_ASSIGN_OR_RETURN(InlinedModule * inlined_module,
-                      ir_emitter_context.get_inlined_module());
+  ASSIGN_OR_RETURN(InlinedModule * inlined_module,
+                   ir_emitter_context.get_inlined_module());
 
-  TF_ASSIGN_OR_RETURN(auto slice_data,
-                      CollectSliceArgumentMetadataForCollectives(
-                          instr, buffer_assignment, adaptor, fusion_instr,
-                          call_graph, inlined_module));
+  ASSIGN_OR_RETURN(auto slice_data,
+                   CollectSliceArgumentMetadataForCollectives(
+                       instr, buffer_assignment, adaptor, fusion_instr,
+                       call_graph, inlined_module));
 
   int64_t replica_count = instr->GetModule()->config().replica_count();
   int64_t partition_count = instr->GetModule()->config().num_partitions();
@@ -1305,44 +1359,41 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
     return implementable_status;
   }
 
-  FusionEmissionResult result;
   // Depending on whether this is a dynamic fusion or not, we wrap the
   // thunk(s) within a dynamic-slice thunk.
-  if (slice_data.isDynamic) {
-    std::optional<DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata>
-        offset_modules_metadata = std::nullopt;
-    if (slice_data.can_compute_indvar_on_host) {
-      offset_modules_metadata =
-          DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata(
-              /*indvar_init=*/std::move(slice_data.init_module),
-              /*indvar_update=*/std::move(slice_data.update_module),
-              /*extracted_offset_modules=*/
-              std::move(slice_data.extracted_offset_modules));
-    }
-    std::unique_ptr<Thunk> thunk = std::make_unique<DynamicSliceThunk>(
-        thunk_info,
-        /*embedded_thunk=*/std::make_unique<ThunkSequence>(std::move(seq)),
-        std::move(slice_data.arguments), std::move(slice_data.fake_allocations),
-        std::move(slice_data.offset_buffer_indices),
-        std::move(slice_data.orig_shapes), std::move(slice_data.sliced_shapes),
-        std::move(slice_data.offset_primitive_types),
-        std::move(offset_modules_metadata));
-    result.thunks = ThunkSequence::Of(std::move(thunk));
-  } else {
-    result.thunks = std::move(seq);
+  if (!slice_data.isDynamic) {
+    return std::move(seq);
   }
-  return result;
+  std::optional<DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata>
+      offset_modules_metadata = std::nullopt;
+  if (slice_data.can_compute_indvar_on_host) {
+    offset_modules_metadata =
+        DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata(
+            /*indvar_init=*/std::move(slice_data.init_module),
+            /*indvar_update=*/std::move(slice_data.update_module),
+            /*extracted_offset_modules=*/
+            std::move(slice_data.extracted_offset_modules));
+  }
+  std::unique_ptr<Thunk> thunk = std::make_unique<DynamicSliceThunk>(
+      thunk_info,
+      /*embedded_thunk=*/std::make_unique<ThunkSequence>(std::move(seq)),
+      std::move(slice_data.arguments), std::move(slice_data.fake_allocations),
+      std::move(slice_data.offset_buffer_indices),
+      std::move(slice_data.orig_shapes), std::move(slice_data.sliced_shapes),
+      std::move(slice_data.offset_primitive_types),
+      std::move(offset_modules_metadata));
+  return ThunkSequence::Of(std::move(thunk));
 }
 
 }  // namespace
 
-absl::StatusOr<FusionEmissionResult> CustomFusion::Emit(
+AsyncThunkSequence CustomFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   return absl::UnimplementedError("Custom kernel fusion is not supported.");
 }
 
-absl::StatusOr<FusionEmissionResult> DynamicSliceFusion::Emit(
+AsyncThunkSequence DynamicSliceFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   const HloFusionAdaptor& adaptor = analysis_.fusion();
@@ -1371,7 +1422,8 @@ absl::StatusOr<FusionEmissionResult> DynamicSliceFusion::Emit(
 
   const auto& custom_call = *static_cast<const HloCustomCallInstruction*>(
       &maybe_custom_call_adaptor->instruction());
-  if (IsLegacyCublasMatmul(custom_call)) {
+  if (IsLegacyCublasMatmul(custom_call) ||
+      IsNonFusedCublasLtMatmul(custom_call)) {
     return EmitGemm(ir_emitter_context, adaptor, fusion, custom_call,
                     call_graph_);
   }

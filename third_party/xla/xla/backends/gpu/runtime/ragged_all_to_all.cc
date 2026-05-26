@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/primitive_util.h"
 #include "xla/stream_executor/device_address.h"
@@ -49,10 +50,8 @@ absl::Status LaunchTypedKernel(
     int64_t num_row_elements) {
   using KernelTrait = se::gpu::RaggedAllToAllKernel<PtrStorage, kVectorSize>;
 
-  TF_ASSIGN_OR_RETURN(
-      auto kernel,
-      se::gpu::GpuKernelRegistry::GetGlobalRegistry().LoadKernel<KernelTrait>(
-          stream->parent()));
+  ASSIGN_OR_RETURN(auto kernel, se::gpu::GpuKernelRegistry::GetGlobalRegistry()
+                                    .LoadKernel<KernelTrait>(stream->parent()));
 
   return kernel.Launch(thread_dims, block_dims, stream, input_buffer,
                        output_ptrs, input_offsets_buffer, send_sizes_buffer,
@@ -72,10 +71,8 @@ absl::Status LaunchTypedKernelWithSymmetricMemory(
   using KernelTrait =
       se::gpu::RaggedAllToAllWithSymmetricMemoryKernel<kVectorSize>;
 
-  TF_ASSIGN_OR_RETURN(
-      auto kernel,
-      se::gpu::GpuKernelRegistry::GetGlobalRegistry().LoadKernel<KernelTrait>(
-          stream->parent()));
+  ASSIGN_OR_RETURN(auto kernel, se::gpu::GpuKernelRegistry::GetGlobalRegistry()
+                                    .LoadKernel<KernelTrait>(stream->parent()));
 
   return kernel.Launch(thread_dims, block_dims, stream, input_buffer,
                        output_ptrs_symmetric_memory, output_sym_offset,
@@ -183,6 +180,13 @@ absl::Status RunRaggedAllToAllKernel(
   return RunRaggedAllToAllKernelImpl(launch_kernel, stream, element_type,
                                      num_outputs, num_updates_per_output,
                                      num_input_rows, num_row_elements);
+}
+
+bool IsRaggedAllToAllWithSymmetricMemoryKernelSupported(
+    PrimitiveType element_type) {
+  // Currently, the kernel doesn't support data types that are smaller
+  // than 1 byte.
+  return primitive_util::BitWidth(element_type) % 8 == 0;
 }
 
 absl::Status RunRaggedAllToAllWithSymmetricMemoryKernel(

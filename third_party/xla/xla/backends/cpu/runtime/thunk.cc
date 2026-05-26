@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/collectives/in_process_collectives.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
@@ -160,8 +161,8 @@ Thunk::CustomCallExecuteParams::CustomCallExecuteParams(
 
 absl::StatusOr<Thunk::YnnParams> Thunk::YnnParams::Create(
     const ExecutableRunOptions* run_options) {
-  TF_ASSIGN_OR_RETURN(YnnThreadpool threadpool,
-                      CreateYnnThreadpool(run_options->intra_op_thread_pool()));
+  ASSIGN_OR_RETURN(YnnThreadpool threadpool,
+                   CreateYnnThreadpool(run_options->intra_op_thread_pool()));
   return YnnParams(std::move(threadpool));
 }
 
@@ -231,9 +232,9 @@ static void ForEach(const ThunkSequence& sequence,
 static absl::Status ForEach(const ThunkSequence& sequence,
                             absl::FunctionRef<absl::Status(const Thunk&)> fn) {
   for (auto& thunk : sequence) {
-    TF_RETURN_IF_ERROR(fn(*thunk));
+    RETURN_IF_ERROR(fn(*thunk));
     for (auto& [name, nested] : thunk->nested_thunks()) {
-      TF_RETURN_IF_ERROR(ForEach(*nested, fn));
+      RETURN_IF_ERROR(ForEach(*nested, fn));
     }
   }
   return absl::OkStatus();

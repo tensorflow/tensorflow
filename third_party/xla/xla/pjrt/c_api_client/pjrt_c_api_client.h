@@ -279,6 +279,12 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
       PrimitiveType element_type,
       absl::Span<const int64_t> dims) const override;
 
+  absl::StatusOr<xla::Shape> MakeCanonicalShapeForMemorySpace(
+      int memory_space_kind_id, xla::Shape shape,
+      const xla::Layout* layout) const override;
+
+  absl::Span<const int> GetMemorySpaceKindIds() const override;
+
   absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>> Subslice(
       const PjRtDeviceDimensions& chips_per_host_bounds,
       const PjRtDeviceDimensions& host_bounds) const override;

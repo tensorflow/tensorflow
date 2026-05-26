@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/Builders.h"
@@ -407,9 +408,9 @@ absl::StatusOr<ExternFunctionInstruction> ParseExternFunctionName(
           absl::StrFormat("%s expects %d arguments, got %d", Instruction::kName,
                           Instruction::kNumArgs, num_args));
     }
-    TF_ASSIGN_OR_RETURN(MemSemantic semantic, ParseMemSemantic(tokens[2]));
-    TF_ASSIGN_OR_RETURN(MemSyncScope scope, ParseMemSyncScope(tokens[3]));
-    TF_ASSIGN_OR_RETURN(bool has_mask, ParseMask(tokens[4]));
+    ASSIGN_OR_RETURN(MemSemantic semantic, ParseMemSemantic(tokens[2]));
+    ASSIGN_OR_RETURN(MemSyncScope scope, ParseMemSyncScope(tokens[3]));
+    ASSIGN_OR_RETURN(bool has_mask, ParseMask(tokens[4]));
     return Instruction{semantic, scope, has_mask};
   }
 
@@ -422,10 +423,10 @@ absl::StatusOr<ExternFunctionInstruction> ParseExternFunctionName(
                           Instruction::kNumArgs, num_args));
     }
 
-    TF_ASSIGN_OR_RETURN(MemSemantic semantic, ParseMemSemantic(tokens[2]));
-    TF_ASSIGN_OR_RETURN(MemSyncScope scope, ParseMemSyncScope(tokens[3]));
-    TF_ASSIGN_OR_RETURN(Comparator comparator, ParseComparator(tokens[4]));
-    TF_ASSIGN_OR_RETURN(bool has_mask, ParseMask(tokens[5]));
+    ASSIGN_OR_RETURN(MemSemantic semantic, ParseMemSemantic(tokens[2]));
+    ASSIGN_OR_RETURN(MemSyncScope scope, ParseMemSyncScope(tokens[3]));
+    ASSIGN_OR_RETURN(Comparator comparator, ParseComparator(tokens[4]));
+    ASSIGN_OR_RETURN(bool has_mask, ParseMask(tokens[5]));
     return Instruction{semantic, scope, comparator, has_mask};
   }
 

@@ -48,7 +48,8 @@ class XTileTestBase {
       std::pair<mlir::OwningOpRef<mlir::ModuleOp>, std::unique_ptr<HloModule>>>
   CreateXTileIrAndFileCheck(std::unique_ptr<HloModule> hlo_module,
                             absl::string_view triton_fusion_name,
-                            absl::string_view filecheck_pattern);
+                            absl::string_view filecheck_pattern,
+                            bool use_experimental_fusion_emitter = false);
 
   // Creates a shared dialect IR from the given HLO computation and returns it.
   // This function also checks the generated shared dialect IR against the
@@ -56,7 +57,8 @@ class XTileTestBase {
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateXTileIrAndFileCheck(
       const HloComputation& computation,
       const BlockLevelParameters& block_level_parameters,
-      absl::string_view filecheck_pattern);
+      absl::string_view filecheck_pattern,
+      bool use_experimental_fusion_emitter = false);
 
   // Lowers the given shared dialect IR to Triton IR and checks the result
   // against the `filecheck_pattern`.

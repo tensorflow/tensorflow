@@ -25,6 +25,10 @@ def XlaDialect : Dialect {
   }];
   let cppNamespace = "::xla";
   let useDefaultAttributePrinterParser = 1;
+  let hasConstantMaterializer = 1;
+  let dependentDialects = [
+    "::mlir::arith::ArithDialect"
+  ];
 }
 
 #endif // XLA_CODEGEN_EMITTERS_IR_XLA_DIALECT

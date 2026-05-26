@@ -66,6 +66,7 @@ cc_library(
         "//xla/backends/cpu:alignment",
         "//xla/service/llvm_ir:llvm_type_conversion_util",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
@@ -119,6 +120,7 @@ bzl_library(
     visibility = ["//visibility:private"],
     deps = [
         "//xla/tsl:package_groups_bzl",
-        "//xla/tsl/platform:rules_cc_bzl",
+        "@bazel_skylib//lib:new_sets",
+        "@com_google_protobuf//bazel/common:proto_info_bzl",
     ],
 )

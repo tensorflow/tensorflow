@@ -1276,7 +1276,7 @@ absl::Status GetOpGradientCreator(const std::string& op, Creator* creator);
       const Node&, const string&, T*) const;                 \
   extern template Status FunctionLibraryDefinition::GetAttr( \
       const NodeDef&, const string&, T*) const;
-GET_ATTR(string)
+GET_ATTR(std::string)
 GET_ATTR(bool)
 #undef GET_ATTR
 

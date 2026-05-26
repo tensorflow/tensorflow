@@ -17,31 +17,31 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "xla/backends/gpu/tests/gpu_codegen_test.h"
+#include "absl/strings/string_view.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/backends/gpu/transforms/gemm_rewriter.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 namespace {
 
-class GemmBroadcastFoldingRewriteTest : public GpuCodegenTest {
+class GemmBroadcastFoldingRewriteTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  protected:
   const auto& GpuComputeComp() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .gpu_compute_capability();
+    return device_description().gpu_compute_capability();
   }
 
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloPjRtGpuTestBase::GetDebugOptionsForTest();
     // These tests test the cuBLAS rewriter so we have to make sure that we use
     // cuBLAS for them.
     debug_options.set_xla_gpu_enable_triton_gemm(false);
@@ -66,10 +66,10 @@ ENTRY AddDotsFunc {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %AddDotsFunc ({{.*}}: f32[3,2,2], {{.*}}: f32[2,2]) -> f32[3,2,2] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[3,2,2]{2,1,0} parameter(0)
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
-; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[3,2,2], {{.*}}: f32[2,2]) -> f32[3,2,2] {
+; CHECK-DAG:    [[P0:%[^ ]+]] = f32[3,2,2]{2,1,0} parameter(0)
+; CHECK-DAG:    [[P1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
+; CHECK-DAG:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="__cublas${{(lt\$matmul|gemm)}}",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -105,10 +105,10 @@ ENTRY AddDotsFunc {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %AddDotsFunc ({{.*}}: f32[2,2], {{.*}}: f32[3,2,2]) -> f32[3,2,2] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,2,2]{2,1,0} parameter(1)
-; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[2,2], {{.*}}: f32[3,2,2]) -> f32[3,2,2] {
+; CHECK-DAG:    [[P0:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
+; CHECK-DAG:    [[P1:%[^ ]+]] = f32[3,2,2]{2,1,0} parameter(1)
+; CHECK-DAG:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
 ; CHECK    :       custom_call_target="__cublas${{(lt\$matmul|gemm)}}",
 ; CHECK    :       backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -142,17 +142,17 @@ ENTRY AddDotsFunc {
 
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   // Use GemmRewriter to generate cublasGemm call.
   GemmRewriter gemm_rewriter(
       GpuComputeComp(),
       /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0});
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          this->RunHloPass(&gemm_rewriter, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       this->RunHloPass(&gemm_rewriter, module.get()));
   EXPECT_TRUE(changed);
   GemmBroadcastFoldingRewriter pass;
-  TF_ASSERT_OK_AND_ASSIGN(changed, this->RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 }
 
@@ -170,17 +170,17 @@ ENTRY AddDotsFunc {
 
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   // Use GemmRewriter to generate cublasGemm call.
   GemmRewriter gemm_rewriter(
       GpuComputeComp(),
       /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0});
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          this->RunHloPass(&gemm_rewriter, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       this->RunHloPass(&gemm_rewriter, module.get()));
   EXPECT_TRUE(changed);
   GemmBroadcastFoldingRewriter pass;
-  TF_ASSERT_OK_AND_ASSIGN(changed, this->RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 }
 
@@ -196,17 +196,17 @@ ENTRY %LHSBatchDimNonZero (Arg_1: f32[4,3], Arg_2: f32[4,7,3]) -> f32[4,7,7] {
 }
 )";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   // Use GemmRewriter to generate cublasGemm call.
   GemmRewriter gemm_rewriter(
       GpuComputeComp(),
       /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0});
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          this->RunHloPass(&gemm_rewriter, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       this->RunHloPass(&gemm_rewriter, module.get()));
   EXPECT_TRUE(changed);
   GemmBroadcastFoldingRewriter pass;
-  TF_ASSERT_OK_AND_ASSIGN(changed, this->RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, this->RunHloPass(&pass, module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -236,5 +236,4 @@ ENTRY %RHSBatchDimNonZero (Arg_1: f32[4,3], Arg_2: f32[4,7,3]) -> f32[4,7,7] {
 }
 
 }  // namespace
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

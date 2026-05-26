@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
@@ -51,7 +52,7 @@ struct XlaExecutableVersion
   absl::StatusOr<SerializedXlaExecutableVersion> ToProto(
       SerDesVersion version = SerDesVersion::current()) const {
     SerializedXlaExecutableVersion proto;
-    TF_RETURN_IF_ERROR(ToProto(proto, version));
+    RETURN_IF_ERROR(ToProto(proto, version));
     return proto;
   }
 

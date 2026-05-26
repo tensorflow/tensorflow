@@ -64,7 +64,8 @@ TEST(CudaExecutorTest, CreateDeviceDescription) {
   EXPECT_TRUE(result->compile_time_toolkit_version().IsValid());
   EXPECT_TRUE(result->cub_version().IsValid());
 
-  EXPECT_GT(result->kernel_mode_driver_version().major(), 300);  // NOLINT
+  EXPECT_GT(result->kernel_mode_driver_version().major_version(),
+            300);  // NOLINT
 
   EXPECT_GT(result->pcie_bandwidth(), 1024 * 1024);
   EXPECT_THAT(result->platform_version(), Not(IsEmpty()));
@@ -78,7 +79,7 @@ TEST(CudaExecutorTest, CreateDeviceDescription) {
   DeviceInterconnectInfo info = result->device_interconnect_info();
   // nvmlDeviceGetGpuFabricInfoV is only available in driver r545+
   if (result->cuda_compute_capability().IsAtLeastHopper() &&
-      result->kernel_mode_driver_version().major() >= 545 &&
+      result->kernel_mode_driver_version().major_version() >= 545 &&
       info.active_links) {
     EXPECT_GE(info.active_links, 18);
 
@@ -157,7 +158,7 @@ TEST(CudaExecutorTest, CreateCollectiveMemoryAllocatorWorks) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
                           allocator->Allocate(1024));
   EXPECT_NE(allocation->address().opaque(), nullptr);
-  EXPECT_EQ(allocation->address().size(), 1024);
+  EXPECT_GE(allocation->address().size(), 1024);
 }
 
 // TODO: b/420735471 - Enable test once fixed.

@@ -19,8 +19,11 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
-#include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_callbacks.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_profiler_target.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_result.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_target.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
 
@@ -29,9 +32,9 @@ namespace profiler {
 
 class CuptiWrapper : public xla::profiler::CuptiInterface {
  public:
-  CuptiWrapper() {}
+  CuptiWrapper() = default;
 
-  ~CuptiWrapper() override {}
+  ~CuptiWrapper() override = default;
 
   // CUPTI activity API
   CUptiResult ActivityDisable(CUpti_ActivityKind kind) override;
@@ -56,6 +59,26 @@ class CuptiWrapper : public xla::profiler::CuptiInterface {
       CUpti_BuffersCallbackRequestFunc func_buffer_requested,
       CUpti_BuffersCallbackCompleteFunc func_buffer_completed) override;
 
+  CUptiResult ActivityRegisterCallbacksV2(
+      CUpti_SubscriberHandle subscriber,
+      CuptiBuffersCallbackRequestFuncV2 func_buffer_requested,
+      CuptiBuffersCallbackCompleteFuncV2 func_buffer_completed) override;
+
+  CUptiResult ActivityEnableV2(CUpti_SubscriberHandle subscriber,
+                               CUpti_ActivityKind kind, void* cfg) override;
+
+  CUptiResult ActivityDisableV2(CUpti_SubscriberHandle subscriber,
+                                CUpti_ActivityKind kind, void* cfg) override;
+
+  CUptiResult ActivitySetAttributeV2(CUpti_SubscriberHandle subscriber,
+                                     CUpti_ActivityAttribute attr,
+                                     size_t* valueSize, void* value) override;
+
+  CUptiResult ActivityUseSystemThreadIdV2(
+      CUpti_SubscriberHandle subscriber) override;
+
+  CUptiResult ActivityUsePerThreadBufferV2() override;
+
   CUptiResult ActivityUsePerThreadBuffer() override;
 
   CUptiResult SetActivityFlushPeriod(uint32_t period_ms) override;
@@ -79,6 +102,9 @@ class CuptiWrapper : public xla::profiler::CuptiInterface {
 
   CUptiResult Subscribe(CUpti_SubscriberHandle* subscriber,
                         CUpti_CallbackFunc callback, void* userdata) override;
+
+  CUptiResult SubscribeV2(CUpti_SubscriberHandle* subscriber,
+                          CUpti_CallbackFunc callback, void* userdata) override;
 
   CUptiResult Unsubscribe(CUpti_SubscriberHandle subscriber) override;
 
@@ -209,9 +235,9 @@ class CuptiWrapper : public xla::profiler::CuptiInterface {
 // collected profiles will be empty.
 class CuptiWrapperStub : public xla::profiler::CuptiInterface {
  public:
-  CuptiWrapperStub() {}
+  CuptiWrapperStub() = default;
 
-  ~CuptiWrapperStub() override {}
+  ~CuptiWrapperStub() override = default;
 
   // CUPTI activity API
   CUptiResult ActivityDisable(CUpti_ActivityKind kind) override;
@@ -236,6 +262,26 @@ class CuptiWrapperStub : public xla::profiler::CuptiInterface {
       CUpti_BuffersCallbackRequestFunc func_buffer_requested,
       CUpti_BuffersCallbackCompleteFunc func_buffer_completed) override;
 
+  CUptiResult ActivityRegisterCallbacksV2(
+      CUpti_SubscriberHandle subscriber,
+      CuptiBuffersCallbackRequestFuncV2 func_buffer_requested,
+      CuptiBuffersCallbackCompleteFuncV2 func_buffer_completed) override;
+
+  CUptiResult ActivityEnableV2(CUpti_SubscriberHandle subscriber,
+                               CUpti_ActivityKind kind, void* cfg) override;
+
+  CUptiResult ActivityDisableV2(CUpti_SubscriberHandle subscriber,
+                                CUpti_ActivityKind kind, void* cfg) override;
+
+  CUptiResult ActivitySetAttributeV2(CUpti_SubscriberHandle subscriber,
+                                     CUpti_ActivityAttribute attr,
+                                     size_t* valueSize, void* value) override;
+
+  CUptiResult ActivityUseSystemThreadIdV2(
+      CUpti_SubscriberHandle subscriber) override;
+
+  CUptiResult ActivityUsePerThreadBufferV2() override;
+
   CUptiResult ActivityUsePerThreadBuffer() override;
 
   CUptiResult SetActivityFlushPeriod(uint32_t period_ms) override;
@@ -259,6 +305,9 @@ class CuptiWrapperStub : public xla::profiler::CuptiInterface {
 
   CUptiResult Subscribe(CUpti_SubscriberHandle* subscriber,
                         CUpti_CallbackFunc callback, void* userdata) override;
+
+  CUptiResult SubscribeV2(CUpti_SubscriberHandle* subscriber,
+                          CUpti_CallbackFunc callback, void* userdata) override;
 
   CUptiResult Unsubscribe(CUpti_SubscriberHandle subscriber) override;
 

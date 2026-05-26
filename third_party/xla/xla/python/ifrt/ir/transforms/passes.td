@@ -82,6 +82,32 @@ them. The duplicated callee `FuncOp` will not be removed.
   }];
 }
 
+def IfrtInsertCopyArraysReusePass :
+    Pass<"ifrt-insert-copy-arrays-reuse", "mlir::func::FuncOp"> {
+  let summary = "Add CopyArrays reuse for identifiers returned many times.";
+  let description = [{
+Insert CopyArrays ops with reuse semantics for identifiers returned many times
+to avoid implicit aliasing.
+
+```mlir
+!array = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
+func.func @main(%arg0: !array) -> (!array, !array) {
+  return %arg0, %arg0: !array, !array
+}
+```
+
+will be replaced by:
+
+```mlir
+!array = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
+func.func @main(%arg0: !array) -> (!array, !array) {
+  %1, %ctrl_1 = ifrt.CopyArrays(%arg0) {reuse=true} : (!array) -> (!array)
+  return %0, %1: !array, !array
+}
+```
+  }];
+}
+
 def IfrtMergeCopiesAndReshardsPass :
     Pass<"ifrt-merge-copies-and-reshards", "mlir::func::FuncOp"> {
   let summary = "Merge copies and reshards into a single op.";

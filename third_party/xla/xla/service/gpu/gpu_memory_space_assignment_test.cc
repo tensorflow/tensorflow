@@ -52,8 +52,8 @@ class GpuMemorySpaceAssignmentTest : public HloHardwareIndependentTestBase {
                                     /*num_hosts_per_partition=*/1,
                                     /*num_devices_per_host=*/1),
         multi_host_gpu_topology_(/*platform_version=*/"_",
-                                 /*num_partitions=*/1,
-                                 /*num_hosts_per_partition=*/2,
+                                 /*num_partitions=*/16,
+                                 /*num_hosts_per_partition=*/1,
                                  /*num_devices_per_host=*/1) {}
 
  public:

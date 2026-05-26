@@ -137,6 +137,30 @@ TEST_F(NamedShardingEqualityTest, DifferentMeshShape) {
                                              {"e"}, {"b:(1)2"}));
 }
 
+TEST(NamedShardingTest, ReplicatedEquality) {
+  Mesh mesh1({2, 2}, {"a", "b"});
+  Mesh mesh2({4, 4}, {"x", "y"});
+
+  NamedSharding replicated_no_mesh = NamedSharding::Replicate();
+  NamedSharding replicated_mesh1(mesh1);
+  NamedSharding replicated_mesh2(mesh2);
+  NamedSharding replicated_dims1 = test_utils::FromAxisNames(mesh1, {{}, {}});
+  NamedSharding replicated_dims2 =
+      test_utils::FromAxisNames(mesh2, {{}, {}, {}});
+
+  // Replicated shardings are always equal to each other.
+  EXPECT_EQ(replicated_no_mesh, replicated_mesh1);
+  EXPECT_EQ(replicated_mesh1, replicated_mesh2);
+  EXPECT_EQ(replicated_no_mesh, replicated_dims1);
+  EXPECT_EQ(replicated_dims1, replicated_dims2);
+
+  // Ensure they are not equal to a non-replicated sharding.
+  NamedSharding sharded = test_utils::FromAxisNames(mesh1, {{"a"}});
+  EXPECT_NE(replicated_no_mesh, sharded);
+  EXPECT_NE(replicated_mesh1, sharded);
+  EXPECT_NE(replicated_dims1, sharded);
+}
+
 TEST(NamedShardingTest, ToString) {
   Mesh mesh({2, 4, 3, 8}, {"a", "b", "c", "d"});
 

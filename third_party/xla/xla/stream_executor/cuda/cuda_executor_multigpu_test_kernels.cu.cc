@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_executor_multigpu_test_kernels.h"
 
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/tsl/platform/errors.h"
 
@@ -38,8 +39,8 @@ __global__ void MulticastReduceKernel(int* input, int* output, size_t size) {
 }  // namespace
 
 __host__ absl::Status MulticastReduce(int* input, int* output, size_t size) {
-  TF_RETURN_IF_ERROR(stream_executor::cuda::ToStatus(cudaSetDevice(0)));
-  TF_RETURN_IF_ERROR(stream_executor::cuda::ToStatus(cudaDeviceSynchronize()));
+  RETURN_IF_ERROR(stream_executor::cuda::ToStatus(cudaSetDevice(0)));
+  RETURN_IF_ERROR(stream_executor::cuda::ToStatus(cudaDeviceSynchronize()));
   MulticastReduceKernel<<<1, 1, 0>>>(input, output, size);
   cudaError_t err = cudaGetLastError();
   if (err != cudaSuccess) {

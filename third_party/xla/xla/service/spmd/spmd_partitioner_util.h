@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -598,13 +599,14 @@ HloInstruction* PadDataFromWindowReshard(
 // collective) from the sharding and provided replication_dims. Will prioritize
 // generating V3 format and fallback to V2 or V1 if needed.
 std::unique_ptr<CollectiveDeviceListBase> GetPartitionGroupsForReplication(
-    const HloSharding& sharding, absl::Span<const int64_t> replication_dims);
+    const HloSharding& sharding, absl::Span<const int64_t> replication_dims,
+    bool enable_rgv3 = true);
 
 // Generates partition groups (groups of devices that will communicate via a
 // collective) across provided target dims with provided group sizes.
 std::unique_ptr<CollectiveDeviceListBase> GetPartitionGroupsAcrossTargetDims(
     const HloSharding& sharding, absl::Span<const int64_t> target_dims,
-    absl::Span<const int64_t> group_sizes);
+    absl::Span<const int64_t> group_sizes, bool enable_rgv3 = true);
 
 // Expands partition group list across all replicas. Expects that provided
 // partition_group_list utilizes all the partitions.
@@ -898,20 +900,19 @@ absl::StatusOr<std::pair<int64_t, int64_t>> EvaluatePartitionCost(
       0, ShapeUtil::MakeShape(F32, {}), "input"));
   HloComputation* temp_entry = fake_module.AddEntryComputation(temp_b.Build());
 
-  TF_ASSIGN_OR_RETURN(SpmdPartitioningVisitor * visitor,
-                      detail::FindSpmdPartitioningVisitor(
-                          std::forward<Args>(partition_method_args)...));
+  ASSIGN_OR_RETURN(SpmdPartitioningVisitor * visitor,
+                   detail::FindSpmdPartitioningVisitor(
+                       std::forward<Args>(partition_method_args)...));
   SpmdPartitioner* partitioner = visitor->partitioner();
   std::unique_ptr<SpmdPartitioningVisitor> fake_visitor = visitor->Clone();
   fake_visitor->set_module(&fake_module);
   auto* fake_b = fake_visitor->builder();
   fake_b->set_visiting_hlo(temp_p);
   auto parameter_count = std::make_unique<int>(0);
-  TF_ASSIGN_OR_RETURN(
-      HloInstruction * new_hlo,
-      partition_method(detail::ArgModifier(
-          std::forward<Args>(partition_method_args), &fake_module,
-          parameter_count.get(), fake_visitor.get())...));
+  ASSIGN_OR_RETURN(HloInstruction * new_hlo,
+                   partition_method(detail::ArgModifier(
+                       std::forward<Args>(partition_method_args), &fake_module,
+                       parameter_count.get(), fake_visitor.get())...));
 
   if (new_hlo == nullptr) {
     return std::make_pair(INT64_MAX, INT64_MAX);
@@ -930,8 +931,8 @@ absl::StatusOr<std::pair<int64_t, int64_t>> EvaluatePartitionCost(
   fake_module.ReplaceComputations(replacement);
 
   HloDCE hlo_dce;
-  TF_ASSIGN_OR_RETURN(
-      auto _, hlo_dce.Run(&fake_module, partitioner->execution_threads()));
+  ASSIGN_OR_RETURN(auto _,
+                   hlo_dce.Run(&fake_module, partitioner->execution_threads()));
   (void)_;  // Suppress unused variable warning in OSS
   VLOG(5) << "Dry-run partitioning for op: " << original_hlo->ToString() << "\n"
           << fake_module.ToString();

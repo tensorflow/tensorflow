@@ -33,6 +33,9 @@ class TpuEvent : public Event {
     ExecutorApiFn()->TpuEvent_FreeFn(event_);
   }
 
+  TpuEvent(const TpuEvent&) = delete;
+  TpuEvent& operator=(const TpuEvent&) = delete;
+
  private:
   SE_Event* event_;
   tensorflow::tpu::TpuPlatformInterface* platform_;

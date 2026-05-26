@@ -8,7 +8,7 @@ That likely makes some kernels slower but correctness > speed.
 
 --- a/lib/Dialect/TritonGPU/Transforms/Pipeliner/WGMMAPipeline.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/Pipeliner/WGMMAPipeline.cpp
-@@ -655,6 +655,10 @@ static void insertAsyncWarpGroupDotWaitInLoop(
+@@ -665,6 +665,10 @@ static void insertAsyncWarpGroupDotWaitInLoop(
      }
    }
  
@@ -19,7 +19,7 @@ That likely makes some kernels slower but correctness > speed.
    for (auto asyncDot : llvm::make_first_range(properlyAsyncDots)) {
      // If the dot takes the LHS on registers i, we add a wait for the number
      // of properly async dots in the loop minus one.
-@@ -662,7 +666,8 @@ static void insertAsyncWarpGroupDotWaitInLoop(
+@@ -672,7 +676,8 @@ static void insertAsyncWarpGroupDotWaitInLoop(
      // iteration has completed, as to avoid rewriting the registers.
      if (!rsDotNeedsWait(asyncDot, forOp))
        continue;
@@ -29,7 +29,7 @@ That likely makes some kernels slower but correctness > speed.
      OpBuilder builder(asyncDot);
      builder.setInsertionPointAfter(asyncDot);
      auto newWait = ttng::WarpGroupDotWaitOp::create(
-@@ -684,13 +689,10 @@ static void insertAsyncWarpGroupDotWaitInLoop(
+@@ -694,13 +699,10 @@ static void insertAsyncWarpGroupDotWaitInLoop(
    auto lastAsyncDot = properlyAsyncDots.back().first;
    // If the last dot is an RS dot, we don't need to insert a wait
    // as we have already inserted a wait(properlyAsyncDots.size() - 1)

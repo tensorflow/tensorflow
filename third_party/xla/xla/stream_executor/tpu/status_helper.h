@@ -26,6 +26,9 @@ class StatusHelper {
   StatusHelper()
       : c_status(stream_executor::tpu::ExecutorApiFn()->TpuStatus_NewFn()) {}
 
+  StatusHelper(const StatusHelper&) = delete;
+  StatusHelper& operator=(const StatusHelper&) = delete;
+
   ~StatusHelper() {
     stream_executor::tpu::ExecutorApiFn()->TpuStatus_FreeFn(c_status);
   }

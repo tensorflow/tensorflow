@@ -3649,3 +3649,35 @@ func.func @scan_with_size(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tenso
   } : (tensor<2x3xf32>, tensor<3xf32>) -> (tensor<2x3xf32>, tensor<3xf32>)
   func.return %0 : tensor<2x3xf32>
 }
+
+// -----
+
+// CHECK-LABEL: func.func @mulhi_s32(
+// CHECK-SAME:    %[[ARG0:.*]]: tensor<4xi32>, %[[ARG1:.*]]: tensor<4xi32>) -> tensor<4xi32>
+// CHECK:         %[[RESULT:.*]] = mhlo.mulhi %[[ARG0]], %[[ARG1]] : tensor<4xi32>
+// CHECK:         return %[[RESULT]] : tensor<4xi32>
+func.func @mulhi_s32(%arg0 : tensor<4xi32>, %arg1 : tensor<4xi32>) -> tensor<4xi32> {
+  %result = "chlo.mulhi"(%arg0, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  func.return %result : tensor<4xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @mulhi_u32(
+// CHECK-SAME:    %[[ARG0:.*]]: tensor<4xui32>, %[[ARG1:.*]]: tensor<4xui32>) -> tensor<4xui32>
+// CHECK:         %[[RESULT:.*]] = mhlo.mulhi %[[ARG0]], %[[ARG1]] : tensor<4xui32>
+// CHECK:         return %[[RESULT]] : tensor<4xui32>
+func.func @mulhi_u32(%arg0 : tensor<4xui32>, %arg1 : tensor<4xui32>) -> tensor<4xui32> {
+  %result = "chlo.mulhi"(%arg0, %arg1) : (tensor<4xui32>, tensor<4xui32>) -> tensor<4xui32>
+  func.return %result : tensor<4xui32>
+}
+
+// CHECK-LABEL: func.func @mulhi_i16(
+// CHECK-SAME:    %[[ARG0:.*]]: tensor<4xi16>, %[[ARG1:.*]]: tensor<4xi16>) -> tensor<4xi16>
+// CHECK:         %[[RESULT:.*]] = mhlo.mulhi %[[ARG0]], %[[ARG1]] : tensor<4xi16>
+// CHECK:         return %[[RESULT]] : tensor<4xi16>
+func.func @mulhi_i16(%arg0 : tensor<4xi16>, %arg1 : tensor<4xi16>) -> tensor<4xi16> {
+  %result = "chlo.mulhi"(%arg0, %arg1) : (tensor<4xi16>, tensor<4xi16>) -> tensor<4xi16>
+  func.return %result : tensor<4xi16>
+}
+

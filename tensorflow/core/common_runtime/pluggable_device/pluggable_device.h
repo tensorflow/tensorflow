@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_PLUGGABLE_DEVICE_PLUGGABLE_DEVICE_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -58,7 +59,8 @@ class PluggableDevice : public LocalDevice {
   ~PluggableDevice() override;
 
   // Initialize the device and return the status of initialization.
-  absl::Status Init(const SessionOptions& options);
+  absl::Status Init(const SessionOptions& options,
+                    std::optional<int> stream_priority = std::nullopt);
 
   void ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
                     AsyncOpKernel::DoneCallback done) override;

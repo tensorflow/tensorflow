@@ -33,11 +33,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/tile_assignment.h"
@@ -71,13 +71,6 @@ absl::Status Mesh::Validate() {
     if (!seen_axis_names.insert(axis_name).second) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Mesh has duplicate axis names. Duplicate axis name: ", axis_name));
-    }
-    int64_t value;
-    if (absl::SimpleAtoi(axis_name, &value)) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Mesh axis name cannot be an integer to avoid confusion "
-                       "with axis indices: ",
-                       axis_name));
     }
   }
 
@@ -475,7 +468,7 @@ absl::Status ValidateSpanOfAxes(absl::Span<const AxisRef> axes,
     return absl::OkStatus();
   }
   for (const AxisRef& axis : axes) {
-    TF_RETURN_IF_ERROR(axis.Validate(mesh));
+    RETURN_IF_ERROR(axis.Validate(mesh));
   }
   if (!AxesCanCoexistWithoutOverlap(axes)) {
     return absl::InvalidArgumentError("Axes cannot coexist or axes overlap.");
@@ -493,12 +486,10 @@ absl::Status ValidateSpanOfAxes(absl::Span<const AxisRef> axes,
   return absl::OkStatus();
 }
 
-void SortAndMergeAxes(std::vector<AxisRef>& axes, const Mesh& mesh) {
+void MergeAxes(std::vector<AxisRef>& axes, const Mesh& mesh) {
   if (axes.empty()) {
     return;
   }
-
-  absl::c_sort(axes);
 
   auto current = axes.begin();
   for (auto next = current + 1; next != axes.end(); ++next) {
@@ -514,6 +505,15 @@ void SortAndMergeAxes(std::vector<AxisRef>& axes, const Mesh& mesh) {
     }
   }
   axes.erase(current + 1, axes.end());
+}
+
+void SortAndMergeAxes(std::vector<AxisRef>& axes, const Mesh& mesh) {
+  if (axes.empty()) {
+    return;
+  }
+
+  absl::c_sort(axes);
+  MergeAxes(axes, mesh);
 }
 
 bool TruncateAxesByRemovingOverlaps(std::vector<AxisRef>& axes,

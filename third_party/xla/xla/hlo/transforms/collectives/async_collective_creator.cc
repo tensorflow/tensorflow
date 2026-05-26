@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/frontend_attributes.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -127,7 +128,7 @@ absl::StatusOr<ReplacedAsync> CreateAsyncCollectivePermute(
 absl::StatusOr<ReplacedAsync> CreateAsyncStartDone(
     HloInstruction* instruction, absl::Span<const Shape> context_shapes) {
   HloComputation* computation = instruction->parent();
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       HloInstruction * done,
       computation->CreateAsyncInstructions(instruction, context_shapes,
                                            HloInstruction::kMainExecutionThread,
@@ -199,8 +200,11 @@ std::vector<HloInstruction*> AsyncCollectiveCreator::MatchCollectives(
       matched = convert;
     } else if (op == HloOpcode::kReduceScatter) {
       bool convert = config_.convert_reduce_scatter(instruction);
-      VLOG(2) << "kReduceScatter: convert=" << convert;
-      matched = convert;
+      int64_t size = GetShapeSize(instruction->shape());
+      int64_t threshold = config_.reduce_scatter_min_threshold_in_bytes;
+      VLOG(2) << "kReduceScatter: convert=" << convert << ", size=" << size
+              << ", threshold=" << threshold;
+      matched = convert && size >= threshold;
     } else if (op == HloOpcode::kRaggedAllToAll) {
       bool convert = config_.convert_ragged_all_to_all(instruction);
       VLOG(2) << "kRaggedAllToAll: convert=" << convert;
@@ -250,7 +254,7 @@ absl::StatusOr<bool> AsyncCollectiveCreator::ReplaceCollectives(
         return Internal("Unexpected opcode %s",
                         HloOpcodeString(instruction->opcode()));
     }
-    TF_RETURN_IF_ERROR(async_pair.status());
+    RETURN_IF_ERROR(async_pair.status());
     async_pair->start->set_metadata(instruction->metadata());
     async_pair->start->CopyBackendConfigFrom(instruction);
     async_pair->done->set_metadata(instruction->metadata());
@@ -260,9 +264,9 @@ absl::StatusOr<bool> AsyncCollectiveCreator::ReplaceCollectives(
     }
 
     // Update control dependencies if present.
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         instruction->CopyAllControlDepsTo(async_pair->start, async_pair->done));
-    TF_RETURN_IF_ERROR(instruction->DropAllControlDeps());
+    RETURN_IF_ERROR(instruction->DropAllControlDeps());
 
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         computation->ReplaceInstruction(instruction, async_pair->done),
@@ -305,8 +309,8 @@ absl::StatusOr<bool> AsyncCollectiveCreator::RunImpl(
     if (supported_collectives.empty()) {
       continue;
     }
-    TF_ASSIGN_OR_RETURN(bool comp_changed,
-                        ReplaceCollectives(computation, supported_collectives));
+    ASSIGN_OR_RETURN(bool comp_changed,
+                     ReplaceCollectives(computation, supported_collectives));
     collectives_replaced += supported_collectives.size();
     changed |= comp_changed;
   }

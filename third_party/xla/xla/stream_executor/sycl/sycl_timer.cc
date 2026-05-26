@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <level_zero/ze_api.h>
 
+#include "xla/tsl/platform/status_macros.h"
+
 constexpr int kMsecInSec = 1000;
 
 namespace stream_executor::sycl {
@@ -53,8 +55,8 @@ absl::StatusOr<float> GetEventElapsedTime(StreamExecutor* executor,
   // milliseconds.
   // We assume that all SYCL devices have the same frequency and mask, so
   // we use kDefaultDeviceOrdinal.
-  TF_ASSIGN_OR_RETURN(SyclTimerProperties timer_props,
-                      SyclGetTimerProperties(kDefaultDeviceOrdinal));
+  ASSIGN_OR_RETURN(SyclTimerProperties timer_props,
+                   SyclGetTimerProperties(kDefaultDeviceOrdinal));
 
   const uint64_t kernel_start_time = start_timestamp.global.kernelStart;
   const uint64_t kernel_end_time = end_timestamp.global.kernelEnd;
@@ -88,19 +90,19 @@ absl::StatusOr<absl::Duration> SyclTimer::GetElapsedDuration() {
   if (is_timer_stopped_) {
     return absl::FailedPreconditionError("Measuring inactive timer");
   }
-  TF_RETURN_IF_ERROR(stream_->RecordEvent(&stop_event_));
-  TF_ASSIGN_OR_RETURN(float elapsed_milliseconds,
-                      GetEventElapsedTime(executor_, start_event_.GetEvent(),
-                                          stop_event_.GetEvent()));
+  RETURN_IF_ERROR(stream_->RecordEvent(&stop_event_));
+  ASSIGN_OR_RETURN(float elapsed_milliseconds,
+                   GetEventElapsedTime(executor_, start_event_.GetEvent(),
+                                       stop_event_.GetEvent()));
   is_timer_stopped_ = true;
   return absl::Milliseconds(elapsed_milliseconds);
 }
 
 absl::StatusOr<SyclTimer> SyclTimer::Create(StreamExecutor* executor,
                                             Stream* stream) {
-  TF_ASSIGN_OR_RETURN(SyclEvent start_event, SyclEvent::Create(executor));
-  TF_ASSIGN_OR_RETURN(SyclEvent stop_event, SyclEvent::Create(executor));
-  TF_RETURN_IF_ERROR(stream->RecordEvent(&start_event));
+  ASSIGN_OR_RETURN(SyclEvent start_event, SyclEvent::Create(executor));
+  ASSIGN_OR_RETURN(SyclEvent stop_event, SyclEvent::Create(executor));
+  RETURN_IF_ERROR(stream->RecordEvent(&start_event));
   return SyclTimer(executor, std::move(start_event), std::move(stop_event),
                    stream);
 }

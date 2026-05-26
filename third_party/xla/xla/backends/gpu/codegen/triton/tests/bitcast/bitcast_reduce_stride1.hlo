@@ -1,5 +1,5 @@
-// RUN: hlo_to_xtileir %s | FileCheck %s
-// RUN: triton_test_correctness %s
+// RUN: hlo_to_xtileir --xla_gpu_unsupported_enable_triton_multi_output_fusion %s | FileCheck %s
+// RUN: triton_test_correctness --xla_gpu_unsupported_enable_triton_multi_output_fusion %s
 
 region {
   param_0.1 = f32[] parameter(0)

@@ -63,7 +63,7 @@ ConvParameters::ConvParameters(
     const absl::Span<const int64_t> dilation,
     const absl::Span<const int64_t> stride,
     const absl::Span<const int64_t> padding, DataType dtype, int group_count,
-    absl::optional<ConvParameters::FusionInfo> fusion_info, int version)
+    std::optional<ConvParameters::FusionInfo> fusion_info, int version)
     : device_id_(stream_exec->device_ordinal()) {
   proto_.set_batch(batch);
   proto_.set_in_depths(in_depths);

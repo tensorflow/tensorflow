@@ -22,16 +22,6 @@ gentbl_cc_library(
     ],
 )
 
-gentbl_cc_library(
-    name = "tensorflow_reduce_patterns_inc_gen",
-    tbl_outs = {"reducer/tf_reduce_patterns.inc": ["-gen-rewriters"]},
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "reducer/tf_mlir_reduce_patterns.td",
-    deps = [
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
-    ],
-)
-
 cc_library(
     name = "tfe_legalize_tfg",
     srcs = [

@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/ExecutionEngine/Orc/AbsoluteSymbols.h"
@@ -131,9 +132,9 @@ TEST(JitCompilerTest, Compile) {
 
   auto add_module = [&](absl::string_view ir, absl::string_view name,
                         size_t dylib_index) -> absl::Status {
-    TF_ASSIGN_OR_RETURN(llvm::orc::ThreadSafeModule tsm,
-                        ParseModule(tsc, ir, name));
-    TF_RETURN_IF_ERROR(compiler.AddModule(std::move(tsm), dylib_index));
+    ASSIGN_OR_RETURN(llvm::orc::ThreadSafeModule tsm,
+                     ParseModule(tsc, ir, name));
+    RETURN_IF_ERROR(compiler.AddModule(std::move(tsm), dylib_index));
     return absl::OkStatus();
   };
 

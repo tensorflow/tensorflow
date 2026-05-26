@@ -43,6 +43,7 @@ namespace gpu {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::UnorderedElementsAre;
 using ::tsl::proto_testing::EqualsProto;
 
 const char kReductionFusionHlo[] = R"(
@@ -152,6 +153,7 @@ TEST_F(NativeEmitterBackendTest, GetSupportedConfigs) {
 }
 
 TEST_F(NativeEmitterBackendTest, GetDefaultConfigForLoopFusion) {
+  debug_options_.set_xla_gpu_native_emitter_tune_unroll_factor_for_loops(true);
   TF_ASSERT_OK_AND_ASSIGN(auto loop_module,
                           ParseAndReturnVerifiedModule(kLoopFusionHlo));
   auto fusion = loop_module->entry_computation()->root_instruction();
@@ -163,10 +165,11 @@ TEST_F(NativeEmitterBackendTest, GetDefaultConfigForLoopFusion) {
   ASSERT_TRUE(config->UnpackTo(&native_emitter_config));
   EXPECT_THAT(
       native_emitter_config, EqualsProto(R"pb(type: NATIVE_EMITTER_TYPE_LOOP
-                                              unroll_factor: 4)pb"));
+                                              unroll_factor: 1)pb"));
 }
 
 TEST_F(NativeEmitterBackendTest, GetSupportedConfigsForLoopFusion) {
+  debug_options_.set_xla_gpu_native_emitter_tune_unroll_factor_for_loops(true);
   TF_ASSERT_OK_AND_ASSIGN(auto loop_module,
                           ParseAndReturnVerifiedModule(kLoopFusionHlo));
   auto fusion = loop_module->entry_computation()->root_instruction();
@@ -180,13 +183,12 @@ TEST_F(NativeEmitterBackendTest, GetSupportedConfigsForLoopFusion) {
     ASSERT_TRUE(config->UnpackTo(&native_config));
     native_configs.push_back(native_config);
   }
-  EXPECT_THAT(native_configs,
-              ElementsAre(EqualsProto(R"pb(type: NATIVE_EMITTER_TYPE_LOOP
-                                           unroll_factor: 2)pb"),
-                          EqualsProto(R"pb(type: NATIVE_EMITTER_TYPE_LOOP
-                                           unroll_factor: 4)pb"),
-                          EqualsProto(R"pb(type: NATIVE_EMITTER_TYPE_LOOP
-                                           unroll_factor: 8)pb")));
+  EXPECT_THAT(
+      native_configs,
+      UnorderedElementsAre(EqualsProto(R"pb(type: NATIVE_EMITTER_TYPE_LOOP
+                                            unroll_factor: 1)pb"),
+                           EqualsProto(R"pb(type: NATIVE_EMITTER_TYPE_LOOP
+                                            unroll_factor: 2)pb")));
 }
 
 TEST_F(NativeEmitterBackendTest,

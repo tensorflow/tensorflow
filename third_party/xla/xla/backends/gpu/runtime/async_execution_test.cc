@@ -44,6 +44,9 @@ class TestThunk : public Thunk {
   absl::Status ExecuteOnStream(const ExecuteParams&) override {
     return absl::OkStatus();
   }
+  absl::StatusOr<ThunkProto> ToProto() const override {
+    return absl::UnimplementedError("TestThunk::ToProto is not implemented");
+  }
 };
 
 static absl::StatusOr<se::StreamExecutor*> CreateExecutor() {

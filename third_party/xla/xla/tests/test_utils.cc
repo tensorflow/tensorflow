@@ -16,19 +16,19 @@ limitations under the License.
 #include "xla/tests/test_utils.h"
 
 #include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <random>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -381,7 +381,7 @@ absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     std::optional<int64_t> max_bits_of_precision,
     bool generate_aligned_ds_indices,
     GetIndexKnownZeroesFn get_index_known_zeroes) {
-  TF_ASSIGN_OR_RETURN(auto dataflow, HloDataflowAnalysis::Run(*module));
+  ASSIGN_OR_RETURN(auto dataflow, HloDataflowAnalysis::Run(*module));
   const auto params = module->entry_computation()->parameter_instructions();
   std::vector<Literal> arguments(params.size());
   for (int i = 0; i < params.size(); ++i) {
@@ -396,7 +396,7 @@ absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
                                          .shape()
                                    : params[i]->shape();
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         arguments[i],
         MakeConstrainedArgument(
             *dataflow, *params[i], param_shape, engine, use_large_range,
@@ -417,9 +417,8 @@ absl::StatusOr<std::vector<Literal>> MakeDataflowConstrainedArguments(
     engine = default_engine.get();
   }
 
-  TF_ASSIGN_OR_RETURN(
-      auto constraint_states,
-      ConstraintPropagator::Run(*module, get_index_known_zeroes));
+  ASSIGN_OR_RETURN(auto constraint_states,
+                   ConstraintPropagator::Run(*module, get_index_known_zeroes));
 
   const auto params = module->entry_computation()->parameter_instructions();
   std::vector<Literal> arguments(params.size());
@@ -450,7 +449,7 @@ absl::StatusOr<std::vector<Literal>> MakeDataflowConstrainedArguments(
                static_cast<int64_t>(interval.max)};
     }
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         arguments[i],
         MakeFakeLiteral(param_shape, engine, limit,
                         structure.needs_sorted_indices, structure.no_duplicates,

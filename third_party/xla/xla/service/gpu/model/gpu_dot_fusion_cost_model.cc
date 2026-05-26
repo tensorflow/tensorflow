@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
@@ -210,15 +211,14 @@ absl::StatusOr<ComputeAndFlops> CalculateComputeTimeWithTileAndWaveQuantization(
 }
 
 absl::StatusOr<absl::Duration> CalculateL2Time(
-    const DotProblemInfo& dot, const DotTileSize& dot_tile,
-    const se::DeviceDescription& device_info, bool is_tma_allowed) {
+    int64_t dot_k, int64_t tile_k, const se::DeviceDescription& device_info,
+    int64_t l2_bytes_read, bool is_tma_allowed) {
   // TODO(maniananth): L2 bandwidth has been hardcoded for H100 based on
   // microbenchmarking L2 bandwidth within a partition, but we should add this
   // to the device info and extend for more GPUs.
 
-  int64_t threadblock_count = CalculateNumThreadblocks(dot, dot_tile);
   double device_l2_bandwidth = 6.65 * 1e12;  // Measured H100 L2 bandwidth.
-  int64_t num_k_iters = CeilOfRatio<int64_t>(dot.k, dot_tile.k);
+  int64_t num_k_iters = CeilOfRatio<int64_t>(dot_k, tile_k);
 
   // Empirical overheads per K-dimension iteration.
   // The overhead is dictated by the memory instruction pathway rather than
@@ -231,9 +231,7 @@ absl::StatusOr<absl::Duration> CalculateL2Time(
   double k_loop_overhead =
       is_tma_allowed ? kTmaLoopOverheadSeconds : kLegacyLoopOverheadSeconds;
 
-  double base_time_seconds =
-      1.0f * CalculateL2Bytes(dot, dot_tile, threadblock_count) /
-      device_l2_bandwidth;
+  double base_time_seconds = 1.0f * l2_bytes_read / device_l2_bandwidth;
   return absl::Seconds(base_time_seconds + num_k_iters * k_loop_overhead);
 }
 
@@ -380,7 +378,7 @@ absl::StatusOr<int64_t> ExtractBlockK(const HloDotInstruction* dot) {
     return absl::FailedPreconditionError(
         "Dot instruction must have a backend config with tiling sizes.");
   }
-  TF_ASSIGN_OR_RETURN(auto tile_config, dot->backend_config<xla::gpu::Tile>());
+  ASSIGN_OR_RETURN(auto tile_config, dot->backend_config<xla::gpu::Tile>());
   TF_RET_CHECK(tile_config.sizes_size() > 0)
       << "Tile backend config must have sizes.";
   return tile_config.sizes(0);
@@ -389,7 +387,7 @@ absl::StatusOr<int64_t> ExtractBlockK(const HloDotInstruction* dot) {
 absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
     const HloDotInstruction* dot, const BlockLevelParameters& block_params,
     const se::DeviceDescription& device_info, std::optional<int64_t> block_k) {
-  TF_RETURN_IF_ERROR(IsSupported(dot));
+  RETURN_IF_ERROR(IsSupported(dot));
   if (block_params.output_tile_sizes.size() != 1) {
     return absl::UnimplementedError(
         absl::StrCat("Only single tile size is supported, got ",
@@ -400,7 +398,7 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   if (block_k.has_value()) {
     block_k_val = *block_k;
   } else {
-    TF_ASSIGN_OR_RETURN(block_k_val, ExtractBlockK(dot));
+    ASSIGN_OR_RETURN(block_k_val, ExtractBlockK(dot));
   }
 
   detail::DotProblemInfo dot_info(*dot);
@@ -424,9 +422,9 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   EstimateRunTimeData estimates;
 
   // Calculate compute roofline with tile and wave quantization.
-  TF_ASSIGN_OR_RETURN(detail::ComputeAndFlops compute_and_flops,
-                      detail::CalculateComputeTimeWithTileAndWaveQuantization(
-                          dot_info, dot_tile, device_info));
+  ASSIGN_OR_RETURN(detail::ComputeAndFlops compute_and_flops,
+                   detail::CalculateComputeTimeWithTileAndWaveQuantization(
+                       dot_info, dot_tile, device_info));
   estimates.compute_time = compute_and_flops.compute_time;
   estimates.flops = compute_and_flops.flops_with_wave_quant;
 
@@ -439,10 +437,16 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
   estimates.bytes_read = hbm_timing.bytes_read;
   estimates.bytes_written = hbm_timing.bytes_written;
 
+  int64_t threadblock_count =
+      detail::CalculateNumThreadblocks(dot_info, dot_tile);
+  estimates.l2_bytes_read =
+      detail::CalculateL2Bytes(dot_info, dot_tile, threadblock_count);
+
   // Calculate L2 time.
-  TF_ASSIGN_OR_RETURN(absl::Duration l2_time,
-                      detail::CalculateL2Time(dot_info, dot_tile, device_info,
-                                              block_params.is_tma_allowed));
+  ASSIGN_OR_RETURN(absl::Duration l2_time,
+                   detail::CalculateL2Time(dot_info.k, dot_tile.k, device_info,
+                                           estimates.l2_bytes_read,
+                                           block_params.is_tma_allowed));
 
   // Assuming perfect overlap between compute and memory.
   estimates.exec_time = std::max(

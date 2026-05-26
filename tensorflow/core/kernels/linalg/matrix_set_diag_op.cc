@@ -66,21 +66,21 @@ class MatrixSetDiagOp : public OpKernel {
       OP_REQUIRES(context,
                   TensorShapeUtils::IsScalar(diag_index.shape()) ||
                       TensorShapeUtils::IsVector(diag_index.shape()),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "diag_index must be a scalar or vector, received shape: ",
-                      diag_index.shape().DebugString()));
-      OP_REQUIRES(
-          context, diag_index.NumElements() > 0,
-          errors::InvalidArgument("diag_index must have at least one element"));
+                      diag_index.shape().DebugString())));
+      OP_REQUIRES(context, diag_index.NumElements() > 0,
+                  absl::InvalidArgumentError(
+                      "diag_index must have at least one element"));
       lower_diag_index = diag_index.flat<int32_t>()(0);
       upper_diag_index = lower_diag_index;
       if (TensorShapeUtils::IsVector(diag_index.shape())) {
         auto diag_index_size = diag_index.dim_size(0);
         OP_REQUIRES(
             context, 0 < diag_index_size && diag_index_size <= 2,
-            errors::InvalidArgument(
+            absl::InvalidArgumentError(absl::StrCat(
                 "diag_index must have only one or two elements, received ",
-                diag_index_size, " elements."));
+                diag_index_size, " elements.")));
         if (diag_index_size > 1) {
           upper_diag_index = diag_index.flat<int32_t>()(1);
         }
@@ -93,13 +93,13 @@ class MatrixSetDiagOp : public OpKernel {
 
     // Preliminary validation of sizes.
     OP_REQUIRES(context, TensorShapeUtils::IsMatrixOrHigher(input_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "input must be at least 2-dim, received shape: ",
-                    input.shape().DebugString()));
+                    input.shape().DebugString())));
     OP_REQUIRES(context, TensorShapeUtils::IsVectorOrHigher(diag_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "diagonal must be at least 1-dim, received shape: ",
-                    diag_shape.DebugString()));
+                    diag_shape.DebugString())));
 
     // Make sure lower_diag_index and upper_diag_index is valid.
     const Eigen::Index num_rows = input_shape.dim_size(input_rank - 2);
@@ -108,20 +108,20 @@ class MatrixSetDiagOp : public OpKernel {
         context,
         (-num_rows < lower_diag_index && lower_diag_index < num_cols) ||
             lower_diag_index == 0,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "lower_diag_index is out of bound: ", lower_diag_index,
-            " It must be between ", -num_rows, " and ", num_cols));
+            " It must be between ", -num_rows, " and ", num_cols)));
     OP_REQUIRES(context,
                 (-num_rows < upper_diag_index && upper_diag_index < num_cols) ||
                     upper_diag_index == 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "upper_diag_index is out of bound: ", upper_diag_index,
-                    " It must be between ", -num_rows, " and ", num_cols));
+                    " It must be between ", -num_rows, " and ", num_cols)));
     OP_REQUIRES(
         context, lower_diag_index <= upper_diag_index,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "lower_diag_index must not be larger than upper_diag_index: ",
-            lower_diag_index, " > ", upper_diag_index));
+            lower_diag_index, " > ", upper_diag_index)));
 
     // Check if diag size is consistent with input.
     const Eigen::Index num_diags = upper_diag_index - lower_diag_index + 1;
@@ -132,20 +132,20 @@ class MatrixSetDiagOp : public OpKernel {
     if (lower_diag_index != upper_diag_index) {
       OP_REQUIRES(
           context, diag_shape.dims() > input_rank - 2,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "Diagonal tensor rank must be large enough to contain a "
               "diagonal-count dimension. Input rank: ",
               input_rank, ", Expected diagonal rank >= ", input_rank - 1,
-              ", Received diagonal rank: ", diag_shape.dims()));
+              ", Received diagonal rank: ", diag_shape.dims())));
     }
 
-    OP_REQUIRES(
-        context,
-        lower_diag_index == upper_diag_index ||
-            (diag_shape.dim_size(input_rank - 2) == num_diags),
-        errors::InvalidArgument("The number of diagonals provided in `diag` "
-                                "is not consistent with `lower_diag_index` and "
-                                "`upper_diag_index`"));
+    OP_REQUIRES(context,
+                lower_diag_index == upper_diag_index ||
+                    (diag_shape.dim_size(input_rank - 2) == num_diags),
+                absl::InvalidArgumentError(
+                    "The number of diagonals provided in `diag` "
+                    "is not consistent with `lower_diag_index` and "
+                    "`upper_diag_index`"));
 
     TensorShape expected_diag_shape = input_shape;
     expected_diag_shape.RemoveLastDims(2);
@@ -158,13 +158,13 @@ class MatrixSetDiagOp : public OpKernel {
     OP_REQUIRES_OK(context, expected_diag_shape.AddDimWithStatus(max_diag_len));
     OP_REQUIRES(
         context, expected_diag_shape == diag_shape,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Either first dimensions of diagonal don't match input.shape[:-2], "
             "or diagonal.shape[:-1] is not equal to the longests diagonal in "
             "range [lower_diag_index:upper_diag_index].\nInput shape: ",
             input_shape.DebugString(),
             "\nDiagonal shape: ", diag_shape.DebugString(),
-            "\nExpected diagonal shape: ", expected_diag_shape.DebugString()));
+            "\nExpected diagonal shape: ", expected_diag_shape.DebugString())));
 
     if (input.NumElements() == 0) {
       // This is a no-op.

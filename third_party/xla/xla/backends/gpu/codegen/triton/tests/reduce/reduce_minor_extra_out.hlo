@@ -1,5 +1,5 @@
-// RUN: hlo_to_xtileir %s | FileCheck %s
-// RUN: triton_test_correctness %s
+// RUN: hlo_to_xtileir --xla_gpu_unsupported_enable_triton_multi_output_fusion %s | FileCheck %s
+// RUN: triton_test_correctness --xla_gpu_unsupported_enable_triton_multi_output_fusion %s
 // TODO: b/502910372 - enable when multi-output is supported.
 // RUN-NOT: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation %s | FileCheck %s
 // RUN-NOT: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation

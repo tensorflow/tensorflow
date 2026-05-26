@@ -170,6 +170,10 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
                             ArrayCopySemantics semantics) {
         return delegated_->BitcastArrays(arrays, specs, semantics);
       });
+  ON_CALL(*this, HashValues)
+      .WillByDefault([this](absl::Span<const ValueRef> values, HashMode mode) {
+        return delegated_->HashValues(values, mode);
+      });
   ON_CALL(*this, ReshardArrays)
       .WillByDefault([this](absl::Span<ArrayRef> arrays,
                             absl::Span<const ArraySpec> specs,

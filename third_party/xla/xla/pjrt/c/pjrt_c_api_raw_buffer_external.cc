@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/future.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
@@ -187,9 +188,9 @@ PjRtCApiBuffer_CreateRawAliasOfBuffer_Factory(PjRtBuffer* buffer) {
       return absl::UnimplementedError(
           "RawBuffer extension not implemented in this PJRT plugin.");
     }
-    TF_ASSIGN_OR_RETURN(PJRT_RawBuffer * raw_buffer,
-                        pjrt::PjRtCApiBuffer_CreateRawAliasOfBuffer(
-                            c_api, extension, c_api_buffer->c_buffer()));
+    ASSIGN_OR_RETURN(PJRT_RawBuffer * raw_buffer,
+                     pjrt::PjRtCApiBuffer_CreateRawAliasOfBuffer(
+                         c_api, extension, c_api_buffer->c_buffer()));
     return tsl::MakeRef<PjRtCApiRawBuffer>(
         raw_buffer, absl::down_cast<PjRtCApiClient*>(c_api_buffer->client()),
         c_api, extension);

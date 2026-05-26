@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -73,7 +74,7 @@ static absl::StatusOr<AttributesMap> ParseAttributes(
     mlir::Attribute attr = mlir::parseAttribute(backend_config, &mlir_context);
     if (auto dict = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(attr)) {
       // Convert the MLIR dictionary to FFI attributes.
-      TF_ASSIGN_OR_RETURN(attributes, xla::ffi::BuildAttributesMap(dict));
+      ASSIGN_OR_RETURN(attributes, xla::ffi::BuildAttributesMap(dict));
     } else {
       return Internal(
           "Unsupported backend config. Expected a string parsable into "
@@ -104,9 +105,9 @@ static absl::Status InstantiateHandlerState(
 
     ffi::InvokeContext invoke_context;
     invoke_context.state_context = {execution_state};
-    TF_RETURN_IF_ERROR(Invoke(ffi::GetXlaFfiApi(), handler.bundle.instantiate,
-                              instantiate_call_frame, invoke_context,
-                              XLA_FFI_ExecutionStage_INSTANTIATE));
+    RETURN_IF_ERROR(Invoke(ffi::GetXlaFfiApi(), handler.bundle.instantiate,
+                           instantiate_call_frame, invoke_context,
+                           XLA_FFI_ExecutionStage_INSTANTIATE));
   }
 
   return absl::OkStatus();
@@ -246,20 +247,19 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
   std::variant<CustomCallTarget, ffi::HandlerRegistration> target;
 
   if (api_version == CustomCallApiVersion::API_VERSION_TYPED_FFI) {
-    TF_ASSIGN_OR_RETURN(target, ffi::FindHandler(target_name, "Host"));
+    ASSIGN_OR_RETURN(target, ffi::FindHandler(target_name, "Host"));
 
-    TF_ASSIGN_OR_RETURN(AttributesMap attributes,
-                        ParseAttributes(backend_config));
+    ASSIGN_OR_RETURN(AttributesMap attributes, ParseAttributes(backend_config));
 
-    TF_RETURN_IF_ERROR(InstantiateHandlerState(
-        std::get<1>(target), execution_state.get(), attributes));
+    RETURN_IF_ERROR(InstantiateHandlerState(std::get<1>(target),
+                                            execution_state.get(), attributes));
 
-    TF_ASSIGN_OR_RETURN(call_frame, BuildCallFrameForTypedFFI(
-                                        api_version, op_buffers, backend_config,
-                                        std::move(attributes)));
+    ASSIGN_OR_RETURN(call_frame, BuildCallFrameForTypedFFI(
+                                     api_version, op_buffers, backend_config,
+                                     std::move(attributes)));
   } else {
     auto* registry = CustomCallTargetRegistry::Global();
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         target,
         ToCustomCallTarget(api_version, target_name,
                            registry->Lookup(std::string(target_name), "Host")));
@@ -310,8 +310,8 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallTypedFFI(
   for (int i = 0; i < op_buffers_.arguments_buffers.size(); ++i) {
     BufferAllocation::Slice& slice = op_buffers_.arguments_buffers[i];
     if constexpr (ShouldCheckBufferSlices()) {
-      TF_ASSIGN_OR_RETURN(arguments.emplace_back(),
-                          params.buffer_allocations->GetDeviceAddress(slice));
+      ASSIGN_OR_RETURN(arguments.emplace_back(),
+                       params.buffer_allocations->GetDeviceAddress(slice));
     } else {
       arguments.push_back(
           params.buffer_allocations->GetDeviceAddressUnchecked(slice));
@@ -330,8 +330,8 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallTypedFFI(
   for (int i = 0; i < op_buffers_.results_buffers.size(); ++i) {
     BufferAllocation::Slice& slice = op_buffers_.results_buffers[i];
     if constexpr (ShouldCheckBufferSlices()) {
-      TF_ASSIGN_OR_RETURN(results.emplace_back(),
-                          params.buffer_allocations->GetDeviceAddress(slice));
+      ASSIGN_OR_RETURN(results.emplace_back(),
+                       params.buffer_allocations->GetDeviceAddress(slice));
     } else {
       results.push_back(
           params.buffer_allocations->GetDeviceAddressUnchecked(slice));
@@ -344,8 +344,8 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallTypedFFI(
 
   // Borrow the FFI call frame from the object pool and update with the actual
   // device memory addresses.
-  TF_ASSIGN_OR_RETURN(auto call_frame, call_frames_.GetOrCreate());
-  TF_RETURN_IF_ERROR(call_frame->UpdateWithBuffers(arguments, results));
+  ASSIGN_OR_RETURN(auto call_frame, call_frames_.GetOrCreate());
+  RETURN_IF_ERROR(call_frame->UpdateWithBuffers(arguments, results));
 
   // Forward ExecutableRunOptions to the FFI handlers via the call options.
   CustomCallExecuteParams* custom_call_params = params.custom_call_params;
@@ -371,8 +371,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallUntypedAPI(
     auto& slice = op_buffers_.arguments_buffers[i];
     se::DeviceAddressBase arg;
     if constexpr (ShouldCheckBufferSlices()) {
-      TF_ASSIGN_OR_RETURN(arg,
-                          params.buffer_allocations->GetDeviceAddress(slice));
+      ASSIGN_OR_RETURN(arg, params.buffer_allocations->GetDeviceAddress(slice));
     } else {
       arg = params.buffer_allocations->GetDeviceAddressUnchecked(slice);
     }
@@ -391,8 +390,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallUntypedAPI(
     auto& slice = op_buffers_.results_buffers[i];
     se::DeviceAddressBase res;
     if constexpr (ShouldCheckBufferSlices()) {
-      TF_ASSIGN_OR_RETURN(res,
-                          params.buffer_allocations->GetDeviceAddress(slice));
+      ASSIGN_OR_RETURN(res, params.buffer_allocations->GetDeviceAddress(slice));
     } else {
       res = params.buffer_allocations->GetDeviceAddressUnchecked(slice);
     }

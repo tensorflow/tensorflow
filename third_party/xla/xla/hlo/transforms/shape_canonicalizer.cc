@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -59,7 +60,7 @@ absl::StatusOr<bool> ShapeCanonicalizer::RunImpl(
   VLOG(3) << "Garbage collected " << num_erased << " expired shapes";
 
   ShapeCanonicalizerVisitor visitor(shape_pool_);
-  TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&visitor));
+  RETURN_IF_ERROR(module->entry_computation()->Accept(&visitor));
   return visitor.changed();
 }
 

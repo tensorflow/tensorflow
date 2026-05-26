@@ -84,8 +84,9 @@ class ConvFusionRewriterUnitTest : public HloPjRtGpuTestBase {
   }
   stream_executor::dnn::VersionInfo GetDnnVersion() const {
     auto version = device_description().dnn_version();
-    return stream_executor::dnn::VersionInfo(version.major(), version.minor(),
-                                             version.patch());
+    return stream_executor::dnn::VersionInfo(version.major_version(),
+                                             version.minor_version(),
+                                             version.patch_version());
   }
 
   se::SemanticVersion GetToolkitVersion() const {
@@ -345,6 +346,32 @@ TEST_F(ConvFusionRewriterUnitTest, FuseRelu) {
                   .WithShape(F32, {1, 32, 9, 9}));
 }
 
+TEST_F(ConvFusionRewriterUnitTest, GroupedConvEpilogueNotFused) {
+  RunAndMatch(
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+      inputs = f32[8,32,28,32] parameter(0)
+      filters = f32[32,3,3,1] parameter(1)
+      bias = f32[32] parameter(2)
+      bias_broadcast = f32[8,32,28,32] broadcast(bias), dimensions={1}
+      zero = f32[] constant(0)
+      zeros = f32[8,32,28,32] broadcast(zero), dimensions={}
+      conv = f32[8,32,28,32] convolution(inputs, filters),
+               window={size=3x3 pad=1_1x1_1},
+               dim_labels=b01f_o01i->b01f,
+               feature_group_count=32
+      sum = add(conv, bias_broadcast)
+      ROOT relu = maximum(sum, zeros)
+    })",
+      m::Maximum(
+          m::Add(m::Fusion(m::Parameter(0), m::Parameter(1))
+                     .WithFusionKind(HloInstruction::FusionKind::kCustom),
+                 m::Op()),
+          m::Op()));
+}
+
 TEST_F(ConvFusionRewriterUnitTest, StrengthReduceF32ToF16) {
   RunAndMatch(R"(
     HloModule Test
@@ -386,8 +413,9 @@ class ConvFusionRewriterIntegrationTest
   }
   stream_executor::dnn::VersionInfo GetDnnVersion() const {
     auto version = device_description().dnn_version();
-    return stream_executor::dnn::VersionInfo(version.major(), version.minor(),
-                                             version.patch());
+    return stream_executor::dnn::VersionInfo(version.major_version(),
+                                             version.minor_version(),
+                                             version.patch_version());
   }
 
   stream_executor::SemanticVersion GetToolkitVersion() const {

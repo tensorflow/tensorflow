@@ -226,6 +226,22 @@ TEST_F(HloCseTest, IdenticalInstructions) {
   EXPECT_THAT(tuple, op::Tuple(first_operand, first_operand, first_operand));
 }
 
+TEST_F(HloCseTest, CseSafeZeroOperandAttrIsRespected) {
+  const char* const hlo_string = R"(
+    HloModule m
+    ENTRY entry {
+      c1 = u64[] custom-call(), custom_call_target="GetRngSeed", frontend_attributes={_xla_cse_safe_zero_operand="true"}
+      c2 = u64[] custom-call(), custom_call_target="GetRngSeed", frontend_attributes={_xla_cse_safe_zero_operand="true"}
+      ROOT root = (u64[], u64[]) tuple(c1, c2)
+    })";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&cse, m.get()));
+  EXPECT_TRUE(changed);
+  HloInstruction* root = m->entry_computation()->root_instruction();
+  EXPECT_EQ(root->operand(0), root->operand(1));
+}
+
 // Test two identical while loops with same inputs
 TEST_F(HloCseTest, WhileLoopsIdenticalConditionsAndBodiesSameInput) {
   const char* const hlo_string = R"(

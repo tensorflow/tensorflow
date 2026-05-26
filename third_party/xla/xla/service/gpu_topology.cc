@@ -39,6 +39,9 @@ absl::StatusOr<gpu::GpuModel> GetGpuModel(absl::string_view platform_type) {
   if (platform_type == "nvidia_h100") {
     return gpu::GpuModel::H100_SXM;
   }
+  if (platform_type == "tesla_h200") {
+    return gpu::GpuModel::H200;
+  }
   if (platform_type == "umbriel_b200") {
     return gpu::GpuModel::B200;
   }

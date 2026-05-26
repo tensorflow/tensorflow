@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/fingerprint.h"
 
 namespace xla::gpu {

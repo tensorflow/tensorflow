@@ -30,8 +30,11 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/ffi.h"
+#include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.pb.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
@@ -40,7 +43,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk_proto_deserialization.h"
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/ffi.h"
-#include "xla/ffi/ffi_api.h"
+#include "xla/ffi/ffi_registry.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -57,6 +60,7 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
+#include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
@@ -79,10 +83,12 @@ class DummyThunk : public Thunk {
   absl::Status ExecuteOnStream(const ExecuteParams& params) override {
     return absl::OkStatus();
   }
+  absl::StatusOr<ThunkProto> ToProto() const override {
+    return absl::UnimplementedError("DummyThunk::ToProto is not implemented");
+  }
 };
 
 using DynamicSliceThunkTest = HloHardwareIndependentTestBase;
-using ::testing::NotNull;
 using ::testing::SizeIs;
 using ::tsl::proto_testing::EqualsProto;
 
@@ -119,12 +125,12 @@ void CheckProtoRoundTrip(const DynamicSliceThunk& thunk,
       -> absl::StatusOr<std::unique_ptr<Thunk>> {
     ThunkSequenceProto thunk_sequence_proto;
     *thunk_sequence_proto.add_thunks() = thunk_proto;
-    TF_ASSIGN_OR_RETURN(ThunkSequence sequence,
-                        DeserializeThunkSequenceProto(
-                            thunk_sequence_proto, fake_allocations_span,
-                            /*hlo_module=*/nullptr,
-                            /*platform_name=*/"TEST_PLATFORM",
-                            /*gpu_compute_capability=*/{}));
+    ASSIGN_OR_RETURN(ThunkSequence sequence,
+                     DeserializeThunkSequenceProto(
+                         thunk_sequence_proto, fake_allocations_span,
+                         /*hlo_module=*/nullptr,
+                         /*platform_name=*/"TEST_PLATFORM",
+                         /*gpu_compute_capability=*/{}));
     return std::move(sequence.front());
   };
 
@@ -215,7 +221,7 @@ absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> CreateSlicedGemmThunk(
   backing_allocations.push_back(std::move(alloc_lhs_offset_0));
   backing_allocations.push_back(std::move(alloc_lhs_offset_1));
   // Preparing config for GEMM thunk.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       GemmConfig config,
       GemmConfig::For(
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
@@ -385,7 +391,7 @@ CreateMultipleSlicedOperandsGemmThunk(
   backing_allocations.push_back(std::move(alloc_rhs_offset_1));
 
   // Preparing config for GEMM thunk.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       GemmConfig config,
       GemmConfig::For(
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
@@ -929,7 +935,7 @@ CreateSlicedGemmArbitraryArgumentOrderThunk(
   backing_allocations.push_back(std::move(alloc_lhs_offset_1));
 
   // Preparing config for GEMM thunk.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       GemmConfig config,
       GemmConfig::For(
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
@@ -1104,7 +1110,7 @@ CreateSlicedGemmArbitraryNumberOfArgumentsThunk(
   backing_allocations.push_back(std::move(alloc_lhs_offset_1));
 
   // Preparing config for GEMM thunk.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       GemmConfig config,
       GemmConfig::For(
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
@@ -1270,7 +1276,7 @@ CreateSlicedTupledOperandGemmThunk(
   backing_allocations.push_back(std::move(alloc_lhs_offset_1));
 
   // Preparing config for GEMM thunk.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       GemmConfig config,
       GemmConfig::For(
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
@@ -1650,7 +1656,7 @@ CreateSlicedOperandsSameBufferGemmThunk(
   backing_allocations.push_back(std::move(alloc_lhs_offset_1));
 
   // Preparing config for GEMM thunk.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       GemmConfig config,
       GemmConfig::For(
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
@@ -1787,8 +1793,7 @@ CreateHostInductionVariableAndOffsetEvaluationThunk(
       ROOT select = s32[] select(compare, add, p0)
     }
   )";
-  TF_ASSIGN_OR_RETURN(auto offset_module,
-                      ParseAndReturnUnverifiedModule(offset));
+  ASSIGN_OR_RETURN(auto offset_module, ParseAndReturnUnverifiedModule(offset));
   offset_modules.emplace_back(std::move(offset_module));
   HloModule* offset_module_ptr = offset_modules.back().get();
   const char* indvar_init = R"(
@@ -1797,8 +1802,8 @@ CreateHostInductionVariableAndOffsetEvaluationThunk(
       ROOT c0 = s32[] constant(0)
     }
   )";
-  TF_ASSIGN_OR_RETURN(auto indvar_init_module,
-                      ParseAndReturnUnverifiedModule(indvar_init));
+  ASSIGN_OR_RETURN(auto indvar_init_module,
+                   ParseAndReturnUnverifiedModule(indvar_init));
   const char* indvar_update = R"(
     HloModule indvar_update
     ENTRY main {
@@ -1807,8 +1812,8 @@ CreateHostInductionVariableAndOffsetEvaluationThunk(
       ROOT add = s32[] add(p0, c1)
     }
   )";
-  TF_ASSIGN_OR_RETURN(auto indvar_update_module,
-                      ParseAndReturnUnverifiedModule(indvar_update));
+  ASSIGN_OR_RETURN(auto indvar_update_module,
+                   ParseAndReturnUnverifiedModule(indvar_update));
   se::StreamExecutor* executor = GpuExecutor();
 
   int64_t lhs_length = sizeof(float) * 2 * 4;
@@ -1847,7 +1852,7 @@ CreateHostInductionVariableAndOffsetEvaluationThunk(
 
   // Preparing config for GEMM thunk.
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       GemmConfig config,
       GemmConfig::For(
           /*lhs_shape=*/ShapeUtil::MakeShape(

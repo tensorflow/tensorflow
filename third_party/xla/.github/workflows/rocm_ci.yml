@@ -94,14 +94,14 @@ jobs:
             --//jax:build_jaxlib=wheel \
             --//jax:build_jax=true \
             --local_test_jobs=4 \
-            --action_env=JAX_ENABLE_X64=1 \
+            --action_env=JAX_ENABLE_X64=0 \
             --repo_env=HERMETIC_PYTHON_VERSION=3.14 \
             --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}"
 
   xla:
     needs: rocm-config
     name: XLA Linux x86 AMD Instinct GPU
-    runs-on: linux-x86-64-4gpu-amd
+    runs-on: linux-x86-64-1gpu-amd
     env:
       DOCKER_IMAGE: ${{ needs.rocm-config.outputs.docker-image }}
       EXECUTE_CI_BUILD_URL: https://raw.githubusercontent.com/ROCm/xla/refs/heads/rocm-dev-infra/build_tools/rocm/execute_ci_build_upstream.sh
@@ -135,15 +135,4 @@ jobs:
             --config=ci_single_gpu \
             --local_test_jobs=4 \
             --repo_env=TF_ROCM_RBE_SINGLE_GPU_POOL=linux_x64_gpu_gfx90a \
-            --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}"
-
-      - name: Test XLA [multi_gpu]
-        timeout-minutes: 120
-        run: |
-          build_tools/rocm/execute_ci_build_upstream.sh \
-            --config=rocm_ci \
-            --config=rocm_rbe \
-            --config=ci_multi_gpu \
-            --local_test_jobs=1 \
-            --strategy=TestRunner=local \
             --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}"

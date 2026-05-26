@@ -20,8 +20,8 @@ limitations under the License.
 #include "absl/base/log_severity.h"
 #include "absl/log/scoped_mock_log.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/gpu/tests/gpu_codegen_test.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
@@ -31,7 +31,7 @@ using ::testing::_;
 
 namespace {
 
-TEST_F(GpuCodegenTest, OnNanShouldLogHloInstruction) {
+TEST_F(HloPjRtTestBase, OnNanShouldLogHloInstruction) {
   static constexpr absl::string_view kHloModule = R"hlo(
     HloModule test_module
     ENTRY main {
@@ -41,8 +41,7 @@ TEST_F(GpuCodegenTest, OnNanShouldLogHloInstruction) {
     }
   )hlo";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHloModule));
   module->mutable_config().mutable_debug_options().set_xla_gpu_detect_nan(
       DebugOptions::DETECTION_MODE_WARNING);
   absl::ScopedMockLog log;
@@ -60,7 +59,7 @@ TEST_F(GpuCodegenTest, OnNanShouldLogHloInstruction) {
   log.StopCapturingLogs();
 }
 
-TEST_F(GpuCodegenTest, OnInfShouldLogHloInstruction) {
+TEST_F(HloPjRtTestBase, OnInfShouldLogHloInstruction) {
   static constexpr absl::string_view kHloModule = R"hlo(
     HloModule test_module
     ENTRY main {
@@ -71,8 +70,7 @@ TEST_F(GpuCodegenTest, OnInfShouldLogHloInstruction) {
     }
   )hlo";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHloModule));
   module->mutable_config().mutable_debug_options().set_xla_gpu_detect_inf(
       DebugOptions::DETECTION_MODE_WARNING);
   absl::ScopedMockLog log;
@@ -90,7 +88,7 @@ TEST_F(GpuCodegenTest, OnInfShouldLogHloInstruction) {
   log.StopCapturingLogs();
 }
 
-TEST_F(GpuCodegenTest, OnMinMaxShouldLogValuesAndHloInstruction) {
+TEST_F(HloPjRtTestBase, OnMinMaxShouldLogValuesAndHloInstruction) {
   static constexpr absl::string_view kHloModule = R"hlo(
     HloModule test_module
     ENTRY main {
@@ -101,8 +99,7 @@ TEST_F(GpuCodegenTest, OnMinMaxShouldLogValuesAndHloInstruction) {
     }
   )hlo";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHloModule));
   module->mutable_config().mutable_debug_options().set_xla_gpu_log_minmax(true);
   absl::ScopedMockLog log;
   EXPECT_CALL(log,

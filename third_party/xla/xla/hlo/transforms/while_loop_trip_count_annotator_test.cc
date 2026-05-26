@@ -302,7 +302,7 @@ TEST_F(TripCountAnnotatorTest, InductionVarForwardedToConstant) {
   for (const HloInstruction* instr : entry->instructions()) {
     if (instr->opcode() == HloOpcode::kConstant &&
         instr->shape().element_type() == S32 &&
-        instr->shape().dimensions_size() == 0 &&
+        instr->shape().dimensions().size() == 0 &&
         instr->literal().Get<int32_t>({}) == 10) {
       found_constant = true;
     }
@@ -350,7 +350,7 @@ TEST_F(TripCountAnnotatorTest, InductionVarForwardedNonZeroInit) {
   for (const HloInstruction* instr : entry->instructions()) {
     if (instr->opcode() == HloOpcode::kConstant &&
         instr->shape().element_type() == S32 &&
-        instr->shape().dimensions_size() == 0 &&
+        instr->shape().dimensions().size() == 0 &&
         instr->literal().Get<int32_t>({}) == 15) {
       found_constant = true;
     }
@@ -410,7 +410,7 @@ TEST_F(TripCountAnnotatorTest, InductionVarMultipleGTEsForwarded) {
   for (const HloInstruction* instr : entry->instructions()) {
     if (instr->opcode() == HloOpcode::kConstant &&
         instr->shape().element_type() == S32 &&
-        instr->shape().dimensions_size() == 0 &&
+        instr->shape().dimensions().size() == 0 &&
         instr->literal().Get<int32_t>({}) == 4) {
       constant_4_count++;
     }
@@ -509,7 +509,7 @@ TEST_F(TripCountAnnotatorTest, InductionVarNonZeroTupleIndexForwarded) {
   for (const HloInstruction* instr : entry->instructions()) {
     if (instr->opcode() == HloOpcode::kConstant &&
         instr->shape().element_type() == S32 &&
-        instr->shape().dimensions_size() == 0 &&
+        instr->shape().dimensions().size() == 0 &&
         instr->literal().Get<int32_t>({}) == 7) {
       found_constant_7 = true;
     }

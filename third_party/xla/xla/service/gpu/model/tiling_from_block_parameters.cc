@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/tiling_specification.h"
@@ -63,7 +64,17 @@ absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
             FlatTiling(dot_tiling_config_override->sizes().begin(),
                        dot_tiling_config_override->sizes().end());
       } else {
-        TF_ASSIGN_OR_RETURN(Tile tile_config, hlo->backend_config<Tile>());
+        if (!hlo->has_backend_config()) {
+          return absl::FailedPreconditionError(absl::StrCat(
+              "Dot instruction ", hlo->name(),
+              " does not have a backend config for tile sizes set."));
+        }
+        ASSIGN_OR_RETURN(Tile tile_config, hlo->backend_config<Tile>());
+        if (tile_config.sizes().empty()) {
+          return absl::FailedPreconditionError(
+              absl::StrCat("Dot instruction ", hlo->name(),
+                           " has an empty tile config in the backend config."));
+        }
         tile_mapping[hlo] =
             FlatTiling(tile_config.sizes().begin(), tile_config.sizes().end());
       }
@@ -119,7 +130,7 @@ absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
         break;
       case DimensionSemantics::kSequential: {
         if (dim.hlo->has_backend_config()) {
-          TF_ASSIGN_OR_RETURN(Tile config, dim.hlo->backend_config<Tile>());
+          ASSIGN_OR_RETURN(Tile config, dim.hlo->backend_config<Tile>());
           if (config.sizes_size() != 1) {
             return Internal(
                 "Only single-reduction operations are supported "

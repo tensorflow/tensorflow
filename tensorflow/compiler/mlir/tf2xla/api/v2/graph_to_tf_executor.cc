@@ -521,14 +521,15 @@ absl::StatusOr<FeedsByNode> GetFeedsByNode(
   for (const auto& input : inputs) {
     TensorId tensor = ParseTensorName(input.first);
     if (tensor.index() < 0)
-      return errors::FailedPrecondition(
-          "Feed output tensor must be a data output '", tensor.ToString(), "'");
+      return absl::FailedPreconditionError(
+          absl::StrCat("Feed output tensor must be a data output '",
+                       tensor.ToString(), "'"));
 
     auto& node = feeds_by_node[tensor.node()];
     if (!node.insert({tensor.index(), &input}).second)
-      return errors::FailedPrecondition(
-          "Multiple feeds for the same output tensor '", tensor.ToString(),
-          "'");
+      return absl::FailedPreconditionError(
+          absl::StrCat("Multiple feeds for the same output tensor '",
+                       tensor.ToString(), "'"));
   }
 
   return feeds_by_node;
@@ -568,10 +569,10 @@ absl::Status ImporterBase::ConvertDeferredFunctions() {
         // Some models have "_input_shapes" attribute, but with its value empty
         if (list.shape_size() > 0 &&
             list.shape_size() != signature.input_arg_size()) {
-          return errors::FailedPrecondition(
+          return absl::FailedPreconditionError(absl::StrCat(
               "Number of input arguments must be equal to the length of "
               "_input_shapes attribute in function '",
-              StringRefToView(conversion_metadata.function_name), "'.");
+              StringRefToView(conversion_metadata.function_name), "'."));
         }
         for (int i = 0, e = signature.input_arg_size(); i < e; i++) {
           auto& input_arg = signature.input_arg(i);
@@ -630,7 +631,7 @@ absl::Status ImporterBase::RemoveBackedges() {
   for (const auto& edge : back_edge_helper_.RemovedEdges()) {
     if (back_edge_node_output_.find(edge.src) != back_edge_node_output_.end() &&
         back_edge_node_output_[edge.src] != edge.src_output) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           "More than one of the src node outputs are backedges!");
     }
     back_edge_node_output_[edge.src] = edge.src_output;
@@ -731,7 +732,7 @@ absl::Status ImporterBase::GetInputOutputNodes(
   auto add_node = [&](absl::string_view name) {
     auto it = node_name_map.find(std::string(name));
     if (it == node_name_map.end()) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           absl::StrCat("Graph does not contain node: ", name));
     }
     nodes->insert(it->second);
@@ -829,9 +830,9 @@ absl::Status ImporterBase::AddNodesToShapeRefiner(
       } else {
         auto index_it = it->second.find(0);
         if (index_it == it->second.end()) {
-          return errors::FailedPrecondition(
-              "Missing feed output tensor at index 0 for node '", node->name(),
-              "'");
+          return absl::FailedPreconditionError(
+              absl::StrCat("Missing feed output tensor at index 0 for node '",
+                           node->name(), "'"));
         }
         node->AddAttr("shape", index_it->second->second.shape);
         DataType dtype = index_it->second->second.imported_dtype;
@@ -1034,10 +1035,10 @@ absl::StatusOr<mlir::Type> ImporterBase::InferOutputType(
           shape_inference::ShapeHandle h;
           absl::Status s = c->MakeShapeFromShapeProto(p, &h);
           if (!s.ok())
-            return errors::InvalidArgument(
-                "Node '", node.name(), " has an invalid ",
-                kOutputShapesAttrName, " attribute (shape #", idx, " error:'",
-                s.message(), "')");
+            return absl::InvalidArgumentError(
+                absl::StrCat("Node '", node.name(), " has an invalid ",
+                             kOutputShapesAttrName, " attribute (shape #", idx,
+                             " error:'", s.message(), "')"));
           c->set_output(idx, h);
         }
       }
@@ -1142,14 +1143,14 @@ absl::StatusOr<mlir::Type> ImporterBase::InferOutputType(
       const AttrValue* shape_attr = node.attrs().Find("_handle_shapes");
       if (dtype_attr && shape_attr) {
         if (dtype_attr->list().type().empty()) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Invalid \"_handle_dtypes\" attribute value for _Arg node: ",
-              shape_attr->DebugString());
+              shape_attr->DebugString()));
         }
         if (shape_attr->list().shape().empty()) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Invalid \"_handle_shapes\" attribute value for _Arg node: ",
-              shape_attr->DebugString());
+              shape_attr->DebugString()));
         }
         DataType dtype = dtype_attr->list().type(0);
         const TensorShapeProto& shape_proto = shape_attr->list().shape(0);
@@ -1305,7 +1306,7 @@ absl::StatusOr<mlir::Attribute> ImporterBase::ConvertAttributeValue(
         for (const auto& item : value.list().func()) {
           TF_ASSIGN_OR_RETURN(auto attr, ConvertFunctionCallName(item.name()));
           if (item.attr_size() != 0)
-            return errors::Unimplemented(
+            return absl::UnimplementedError(
                 "func attributes with non-zero attr.size()");
           if (attr) attrs.push_back(attr);
         }
@@ -1348,7 +1349,7 @@ absl::Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
   const auto& func_lib = graph_flib_;
   const auto* func_def = func_lib.Find(std::string(func_name));
   if (func_def == nullptr) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         absl::StrCat("Failed to find function '", StringRefToView(func_name),
                      "'. The imported TensorFlow GraphDef is ill-formed."));
   }
@@ -1415,7 +1416,7 @@ absl::Status ImporterBase::ConvertFeedsToPlaceholders(
     TensorId tensor = ParseTensorName(it.first);
     auto jt = node_name_map->find(std::string(tensor.node()));
     if (jt == node_name_map->end()) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           absl::StrCat("Graph does not contain node: ", tensor.node()));
     }
 
@@ -1604,7 +1605,7 @@ absl::Status ImporterBase::ConvertFunctionArgAndRets(
     mlir::Value arg_def = bb_arg;
 
     if (island->getNumResults() != 2)
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Only feed output tensors of single output nodes are supported");
 
     // Collect mapping of OutputTensor to associated block arg.
@@ -1645,7 +1646,7 @@ absl::Status ImporterBase::ConvertFunctionArgAndRets(
       // kRetOp and kDeviceRetOp should have just one operand unless they have
       // control dependencies.
       if (inner_op->getNumOperands() != 1)
-        return errors::Unimplemented("Return node with multiple inputs.");
+        return absl::UnimplementedError("Return node with multiple inputs.");
       inst_to_return.push_back(inner_op->getOperand(0));
       inst->dropAllReferences();
       inst->erase();
@@ -2076,7 +2077,7 @@ absl::Status ImporterBase::ConvertNode(const Node& node) {
     const Node& input_node = *input_edge->src();
     if (input_node.IsSource()) {
       if (in_edges.size() != 1) {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(
             "The node has other inputs besides the _Source node");
       }
       // We don't import the _SOURCE node.
@@ -2096,7 +2097,7 @@ absl::Status ImporterBase::ConvertNode(const Node& node) {
       continue;
     }
     if (node_values_.find(input_node.id()) == node_values_.end())
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           "Graph not traversed in reverse post order; use seen before def!");
     mlir::Operation* inst = node_values_[input_node.id()];
     if (input_edge->IsControlEdge())
@@ -2148,8 +2149,8 @@ absl::Status ImporterBase::ConvertNode(const Node& node) {
   // node.
   DeviceNameUtils::ParsedName parsed_name;
   if (!DeviceNameUtils::ParseFullName(node_def.device(), &parsed_name)) {
-    return errors::InvalidArgument(
-        "Op ", op_name, " has invalid device name: ", node_def.device());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Op ", op_name, " has invalid device name: ", node_def.device()));
   }
   // Keep the parsed name untouched if the device name is empty.
   if (!node_def.device().empty()) {
@@ -2221,7 +2222,7 @@ absl::Status ImporterBase::AddBackedges() {
   for (auto it : back_edge_dst_inputs_) {
     BackEdge& edge = it.second;
     if (!edge.src->IsNextIteration() || !edge.dst->IsMerge()) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           "Invalid backedge; should be from NextIteration to Merge!");
     }
     auto* sink = node_values_[edge.src->id()];
@@ -2303,8 +2304,8 @@ absl::StatusOr<mlir::FunctionType> ImporterBase::InferLibFunctionType(
         auto* node = graph_->FindNodeId(arg->id());
         dtype = node->output_type(0);
         if (dtype == DT_INVALID) {
-          return errors::InvalidArgument("Input ", it.index(),
-                                         "has invalid data type");
+          return absl::InvalidArgumentError(
+              absl::StrCat("Input ", it.index(), "has invalid data type"));
         }
       }
       TF_RETURN_IF_ERROR(
@@ -2440,7 +2441,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
   if (specs.graph_as_function) {
     if (specs.prune_unused_nodes || !specs.inputs.empty() ||
         !specs.outputs.empty())
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Pruning of graph is currently unsupported when the main graph is "
           "converted to a function.");
 
@@ -2608,8 +2609,8 @@ absl::StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
   for (const auto& it : specs.inputs) {
     Node* arg_node = arg_nodes->at(i).node;
     if (arg_node == nullptr) {
-      return errors::InvalidArgument("Input ", it.first,
-                                     " was not found in graph");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Input ", it.first, " was not found in graph"));
     }
     mlir::Type element_type;
     const auto& node_info = it.second;
@@ -2619,7 +2620,8 @@ absl::StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
     if (imported_dtype == DT_INVALID) {
       imported_dtype = arg_node->output_type(0);
       if (imported_dtype == DT_INVALID) {
-        return errors::InvalidArgument("Input ", i, "has invalid data type");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Input ", i, "has invalid data type"));
       }
     }
     // Check if we have subtypes first
@@ -2640,8 +2642,8 @@ absl::StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
         element_type =
             mlir::TF::VariantType::get(subtypes, builder.getContext());
       } else {
-        return errors::InvalidArgument(DataType_Name(imported_dtype),
-                                       " takes no subtypes.");
+        return absl::InvalidArgumentError(
+            absl::StrCat(DataType_Name(imported_dtype), " takes no subtypes."));
       }
     } else {
       TF_RETURN_IF_ERROR(
@@ -2661,14 +2663,15 @@ absl::StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
   ret_types.reserve(specs.outputs.size());
   for (int i = 0, e = specs.outputs.size(); i != e; ++i) {
     if (ret_nodes->at(i).node == nullptr) {
-      return errors::InvalidArgument("Output ", specs.outputs[i],
-                                     " was not found in graph");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Output ", specs.outputs[i], " was not found in graph"));
     }
   }
   for (const auto& ret : *ret_nodes) {
     if (ret.node->num_outputs() <= ret.index) {
-      return errors::InvalidArgument("Invalid output index ", ret.index,
-                                     " specified for node: ", ret.node->name());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Invalid output index ", ret.index,
+                       " specified for node: ", ret.node->name()));
     }
     TF_ASSIGN_OR_RETURN(auto type,
                         InferOutputType(*ret.node, ret.index, builder));
@@ -2685,19 +2688,19 @@ GraphDefImporter::GetArgsRetsAndTypesFromFunctionGraph(
   auto add_node = [](Node* node, absl::InlinedVector<OutputTensor, 4>* nodes) {
     auto* attr = node->attrs().Find("index");
     if (!attr)
-      return errors::InvalidArgument(node->type_string(), " node '",
-                                     node->name(),
-                                     "' is missing attribute 'index'");
+      return absl::InvalidArgumentError(
+          absl::StrCat(node->type_string(), " node '", node->name(),
+                       "' is missing attribute 'index'"));
 
     auto index = attr->i();
     const int num_nodes = nodes->size();
     if (num_nodes < index + 1) nodes->resize(index + 1);
 
     if ((*nodes)[index].node != nullptr)
-      return errors::InvalidArgument(node->type_string(), " node '",
-                                     node->name(), "' has attribute 'index' ",
-                                     index, " that conflicts with node '",
-                                     (*nodes)[index].node->name(), "'");
+      return absl::InvalidArgumentError(absl::StrCat(
+          node->type_string(), " node '", node->name(),
+          "' has attribute 'index' ", index, " that conflicts with node '",
+          (*nodes)[index].node->name(), "'"));
     (*nodes)[index] = {node, 0};
 
     return absl::OkStatus();
@@ -2717,8 +2720,8 @@ GraphDefImporter::GetArgsRetsAndTypesFromFunctionGraph(
   for (const auto& arg_node_and_idx : llvm::enumerate(*arg_nodes)) {
     auto& arg_node = arg_node_and_idx.value();
     if (arg_node.node == nullptr)
-      return errors::InvalidArgument("Graph missing _Arg at index ",
-                                     arg_node_and_idx.index());
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Graph missing _Arg at index ", arg_node_and_idx.index()));
 
     TF_ASSIGN_OR_RETURN(auto type,
                         InferOutputType(*arg_node.node, /*idx=*/0, builder));
@@ -2730,8 +2733,8 @@ GraphDefImporter::GetArgsRetsAndTypesFromFunctionGraph(
   for (const auto& ret_node_and_idx : llvm::enumerate(*ret_nodes)) {
     auto& ret_node = ret_node_and_idx.value();
     if (ret_node.node == nullptr)
-      return errors::InvalidArgument("Graph missing _Retval at index ",
-                                     ret_node_and_idx.index());
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Graph missing _Retval at index ", ret_node_and_idx.index()));
 
     TF_ASSIGN_OR_RETURN(auto type,
                         InferInputType(*ret_node.node, /*idx=*/0, builder));
@@ -2751,7 +2754,7 @@ absl::Status GraphDefImporter::GetControlRetsFromGraph(
     controls_to_idx.insert({control_and_idx.value(), control_and_idx.index()});
 
   if (controls_to_idx.size() != control_outputs.size())
-    return errors::InvalidArgument("Control outputs must be unique");
+    return absl::InvalidArgumentError("Control outputs must be unique");
 
   control_ret_nodes->resize(controls_to_idx.size());
 
@@ -2762,8 +2765,8 @@ absl::Status GraphDefImporter::GetControlRetsFromGraph(
 
   for (auto node_and_name : llvm::zip(*control_ret_nodes, control_outputs))
     if (std::get<0>(node_and_name) == nullptr)
-      return errors::InvalidArgument(
-          "Control output '", std::get<1>(node_and_name), "' is missing");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Control output '", std::get<1>(node_and_name), "' is missing"));
 
   return absl::OkStatus();
 }

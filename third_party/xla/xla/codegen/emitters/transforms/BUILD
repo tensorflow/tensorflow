@@ -35,8 +35,11 @@ cc_library(
     hdrs = ["lowering_utils.h"],
     deps = [
         "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/strings:str_format",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMCommonConversion",
         "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:MathDialect",
     ],
 )
 

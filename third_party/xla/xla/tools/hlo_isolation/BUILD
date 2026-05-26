@@ -1,6 +1,7 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(
     "//xla:xla.default.bzl",
+    "xla_cc_test",
     "xla_py_proto_library",
 )
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
@@ -27,6 +28,7 @@ xla_py_proto_library(
 
 cc_library(
     name = "hlo_isolation_api",
+    testonly = True,
     srcs = ["hlo_isolation_api.cc"],
     hdrs = ["hlo_isolation_api.h"],
     deps = [
@@ -47,7 +49,9 @@ cc_library(
         "//xla/tools:hlo_module_loader",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -58,6 +62,50 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_googlesource_code_re2//:re2",
+        "@tsl//tsl/platform:path",
+    ],
+)
+
+cc_library(
+    name = "hlo_isolation_test_base",
+    testonly = True,
+    hdrs = ["hlo_isolation_test_base.h"],
+    deps = [
+        ":hlo_isolation_api",
+        "//xla/hlo/ir:hlo",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/log",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_isolation_test_base_test",
+    srcs = ["hlo_isolation_test_base_test.cc"],
+    deps = [
+        ":hlo_isolation_api",
+        ":hlo_isolation_test_base",
+        "//xla:array2d",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/service:hlo_runner_interface",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tests:pjrt_interpreter_client_registry",
+        "//xla/tests:test_utils",
+        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:status_macros",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
         "@tsl//tsl/platform:path",
     ],
 )

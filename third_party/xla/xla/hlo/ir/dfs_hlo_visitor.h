@@ -102,6 +102,9 @@ class DfsHloVisitorBase {
   virtual absl::Status HandleMultiply(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }
+  virtual absl::Status HandleMulhi(HloInstructionPtr hlo) {
+    return HandleElementwiseBinary(hlo);
+  }
   virtual absl::Status HandleDot(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandleRaggedDot(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandleScaledDot(HloInstructionPtr hlo) = 0;

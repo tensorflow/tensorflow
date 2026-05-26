@@ -159,7 +159,8 @@ absl::Status EagerOperation::Execute(absl::Span<AbstractTensorHandle*> retvals,
                                      int* num_retvals) {
   for (ImmediateExecutionTensorHandle* handle : inputs_) {
     if (TensorHandle::classof(handle)) {
-      TF_RETURN_IF_ERROR(down_cast<TensorHandle*>(handle)->WaitUnknownDevice());
+      TF_RETURN_IF_ERROR(
+          absl::down_cast<TensorHandle*>(handle)->WaitUnknownDevice());
     }
   }
 

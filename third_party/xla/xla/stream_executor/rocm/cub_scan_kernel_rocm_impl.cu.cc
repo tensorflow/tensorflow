@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "rocm/include/rocprim/device/device_scan.hpp"
 #include "rocm/include/rocprim/device/device_segmented_scan.hpp"
@@ -134,9 +135,9 @@ absl::StatusOr<size_t> CubScanGetScratchSize(
     xla::PrimitiveType type, int64_t vector_length, int64_t row_length,
     int64_t column_length, CubScanKind kind, bool is_reverse) {
   size_t temp_bytes = 0;
-  TF_RETURN_IF_ERROR(CubScanDispatch(type, nullptr, &temp_bytes, nullptr,
-                                     nullptr, vector_length, row_length,
-                                     column_length, kind, is_reverse, nullptr));
+  RETURN_IF_ERROR(CubScanDispatch(type, nullptr, &temp_bytes, nullptr, nullptr,
+                                  vector_length, row_length, column_length,
+                                  kind, is_reverse, nullptr));
   return temp_bytes;
 }
 

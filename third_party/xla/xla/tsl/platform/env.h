@@ -48,6 +48,7 @@ limitations under the License.
 namespace tsl {
 
 class Thread;
+class ThreadNote;
 struct ThreadOptions;
 
 /// \brief An interface used by the tensorflow implementation to
@@ -348,10 +349,6 @@ class Env {
   /// \brief Copy the src to target.
   absl::Status CopyFile(const std::string& src, const std::string& target);
 
-
-
-
-
   /// \brief Returns the absolute path of the current executable. It resolves
   /// symlinks if there is any.
   std::string GetExecutablePath();
@@ -362,6 +359,14 @@ class Env {
   /// Creates a local unique file name that starts with |prefix| and ends with
   /// |suffix|. Returns true if success.
   bool CreateUniqueFileName(std::string* prefix, const std::string& suffix);
+
+  // Creates a note for the current thread. The note is active
+  // for the lifetime of the returned object.
+  // Returns nullptr if thread notes are not supported by the environment.
+  [[nodiscard]] virtual std::unique_ptr<ThreadNote> AddThreadNote(
+      const std::string& note) {
+    return nullptr;
+  }
 
   /// \brief Return the runfiles directory if running under bazel. Returns
   /// the directory the executable is located in if not running under bazel.
@@ -565,6 +570,17 @@ class Thread {
  private:
   Thread(const Thread&) = delete;
   void operator=(const Thread&) = delete;
+};
+
+// Represents a thread note.
+class ThreadNote {
+ public:
+  virtual ~ThreadNote() = default;
+  ThreadNote(const ThreadNote&) = delete;
+  ThreadNote& operator=(const ThreadNote&) = delete;
+
+ protected:
+  ThreadNote() = default;
 };
 
 /// \brief Cross-platform setenv.

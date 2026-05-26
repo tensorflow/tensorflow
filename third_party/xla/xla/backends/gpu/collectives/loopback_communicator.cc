@@ -55,7 +55,7 @@ static absl::Status Memcpy(const Communicator::Executor& executor,
     return absl::OkStatus();
   }
   auto* stream =
-      tsl::down_cast<const GpuCollectives::Executor&>(executor).stream();
+      absl::down_cast<const GpuCollectives::Executor&>(executor).stream();
   return stream->MemcpyD2D(&dst, src, size);
 }
 
@@ -248,7 +248,7 @@ absl::Status LoopbackCommunicator::LaunchRecv(se::DeviceAddressBase recv_buffer,
                                 rank_, peer.value(), count);
   size_t size = ByteSize(dtype, count);
   auto* stream =
-      tsl::down_cast<const GpuCollectives::Executor&>(executor).stream();
+      absl::down_cast<const GpuCollectives::Executor&>(executor).stream();
   return stream->MemZero(&recv_buffer, size);
 }
 

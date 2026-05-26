@@ -287,6 +287,10 @@ Subgraph::Subgraph(ErrorReporter* error_reporter,
   context_.GetTensor = nullptr;
   context_.GetEvalTensor = nullptr;
   context_.GetModelMetadata = GetModelMetadata;
+#if defined(_WIN32)
+  context_.TfLiteIntArrayCreate = TfLiteIntArrayCreate;
+  context_.TfLiteIntArrayFree = TfLiteIntArrayFree;
+#endif  // defined(_WIN32)
 
   // Reserve some space for the tensors to avoid excessive resizing.
   tensors_.reserve(kTensorsReservedCapacity);

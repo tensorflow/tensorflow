@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_test_util.h"
+#include "tensorflow/c/tf_status.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
@@ -302,22 +303,25 @@ TEST_F(StreamExecutorTest, DeviceMemoryUsage) {
 TEST_F(StreamExecutorTest, CreateStream) {
   static bool stream_created = false;
   static bool stream_deleted = false;
-  se_.create_stream = [](const SP_Device* const device, SP_Stream* stream,
-                         TF_Status* const status) -> void {
-    *stream = new SP_Stream_st(14);
+  se_.create_stream_with_options =
+      [](const SP_Device* const device, const SP_StreamOptions* options,
+         SP_Stream* stream, TF_Status* const status) -> void {
+    ASSERT_TRUE(options->has_priority);
+    *stream = new SP_Stream_st(14, options->priority);
     stream_created = true;
   };
   se_.destroy_stream = [](const SP_Device* const device,
                           SP_Stream stream) -> void {
     auto custom_stream = static_cast<SP_Stream_st*>(stream);
     ASSERT_EQ(custom_stream->stream_id, 14);
+    ASSERT_EQ(custom_stream->priority, 3);
     delete custom_stream;
     stream_deleted = true;
   };
 
   StreamExecutor* executor = GetExecutor(0);
   ASSERT_FALSE(stream_created);
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream(/*priority=*/3));
   ASSERT_TRUE(stream_created);
   ASSERT_FALSE(stream_deleted);
   stream.reset();

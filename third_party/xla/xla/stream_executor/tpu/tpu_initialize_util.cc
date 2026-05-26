@@ -31,6 +31,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "tsl/platform/logging.h"
 
@@ -81,26 +83,42 @@ const char* GetTpuDriverFile() {
   return tpu_dev_path;
 }
 
-// This function gets pid of a process and checks if that process is using tpu.
-// It is not able to check processes that are owned by another user.
+// This function (IsTpuUsed) gets pid of a process and checks if that process
+// is using tpu. It is not able to check processes that are owned by another
+// user.
 bool IsTpuUsed(int64_t pid) {
-  std::string path = absl::StrCat("/proc/", pid, "/fd");
-  DIR* raw_fd_dir = opendir(path.c_str());
+  std::string fd_dir_path = absl::StrCat("/proc/", pid, "/fd");
+  DIR* raw_fd_dir = opendir(fd_dir_path.c_str());
   if (!raw_fd_dir) {
     return false;
   }
   std::unique_ptr<DIR, int (*)(DIR*)> fd_dir(raw_fd_dir, closedir);
   struct dirent* ent;
-  std::string line;
+  std::string link_target;
   std::string tpu_dev_path = GetTpuDriverFile();
-  line.resize(tpu_dev_path.size());
+  // Resize line to be one byte larger than tpu_dev_path.size() to detect
+  // if the readlink result is longer than expected.
+  link_target.resize(tpu_dev_path.size() + 1);
+  std::string fd_file_path = absl::StrCat(fd_dir_path, "/");
+  size_t base_len = fd_file_path.size();
+
   while ((ent = readdir(raw_fd_dir))) {
-    if (!absl::ascii_isdigit(*ent->d_name)) continue;
-    int64_t fd;
-    if (!absl::SimpleAtoi(ent->d_name, &fd)) continue;
-    path = absl::StrCat("/proc/", pid, "/fd/", fd);
-    if (!readlink(path.c_str(), line.data(), line.size())) continue;
-    if (line != tpu_dev_path) continue;
+    absl::string_view d_name(ent->d_name);
+
+    if (!absl::c_all_of(d_name, absl::ascii_isdigit)) {
+      continue;
+    }
+
+    fd_file_path.resize(base_len);
+    fd_file_path.append(d_name.data(), d_name.size());
+    ssize_t len =
+        readlink(fd_file_path.c_str(), link_target.data(), link_target.size());
+    if (len < 0 || len != static_cast<ssize_t>(tpu_dev_path.size())) {
+      continue;
+    }
+    if (absl::string_view(link_target.data(), len) != tpu_dev_path) {
+      continue;
+    }
     return true;
   }
   return false;

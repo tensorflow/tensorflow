@@ -385,7 +385,7 @@ absl::Status RunCollectivePermute(P2PConfig::SourceTargetRanks source_target,
       auto future = comm.CollectivePermute(
           src, dst, buf.element_type, buf.element_count, source_target.source,
           target_ranks, GpuCollectives::On(stream));
-      TF_RETURN_IF_ERROR(future.Await());
+      RETURN_IF_ERROR(future.Await());
     }
   } else {
     auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
@@ -396,14 +396,14 @@ absl::Status RunCollectivePermute(P2PConfig::SourceTargetRanks source_target,
             se::DeviceAddressBase src = src_addrs.at(idx);
             se::DeviceAddressBase dst = dest_addrs.at(idx);
             const DeviceBufferPair& buf = buffers.at(idx);
-            TF_RETURN_IF_ERROR(comm->LaunchCollectivePermute(
+            RETURN_IF_ERROR(comm->LaunchCollectivePermute(
                 src, dst, buf.element_type, buf.element_count,
                 source_target.source, target_ranks,
                 GpuCollectives::On(stream)));
           }
           return absl::OkStatus();
         });
-    TF_RETURN_IF_ERROR(future.Await());
+    RETURN_IF_ERROR(future.Await());
   }
 
   if (!source_target.source) {
@@ -412,7 +412,7 @@ absl::Status RunCollectivePermute(P2PConfig::SourceTargetRanks source_target,
     VLOG(3) << absl::StreamFormat("%s : collective-Permute: Issuing MemZero",
                                   device_string);
     for (se::DeviceAddressBase& dest_addr : dest_addrs) {
-      TF_RETURN_IF_ERROR(stream.MemZero(&dest_addr, dest_addr.size()));
+      RETURN_IF_ERROR(stream.MemZero(&dest_addr, dest_addr.size()));
     }
   }
 
@@ -440,7 +440,7 @@ static absl::Status RunPeerAccessPermute(
   // Borrow a "ready" event and record it on our stream to signal that all
   // prior work on this rank's buffers is complete.
   ASSIGN_OR_RETURN(EventPool::Event ready, pool->GetOrCreateEvent());
-  TF_RETURN_IF_ERROR(stream.RecordEvent(ready->get()));
+  RETURN_IF_ERROR(stream.RecordEvent(ready->get()));
 
   // Create promise/future pair for the "done" event that the sender will
   // set after completing the memcpy.
@@ -459,7 +459,7 @@ static absl::Status RunPeerAccessPermute(
     // Wait for target's stream to be ready before writing to its buffers.
     ASSIGN_OR_RETURN(const Events& target_events,
                      rendezvous->at<Events>(target));
-    TF_RETURN_IF_ERROR(stream.WaitFor(target_events.ready->get()));
+    RETURN_IF_ERROR(stream.WaitFor(target_events.ready->get()));
 
     // Perform D2D copies from our source to target's destination.
     for (const auto& buf : device_buffers) {
@@ -469,14 +469,14 @@ static absl::Status RunPeerAccessPermute(
         return Internal("Peer address not found for target rank %d",
                         target.value());
       }
-      TF_RETURN_IF_ERROR(stream.MemcpyD2D(&*dst_addr, buf.source_buffer,
-                                          buf.source_buffer.size()));
+      RETURN_IF_ERROR(stream.MemcpyD2D(&*dst_addr, buf.source_buffer,
+                                       buf.source_buffer.size()));
     }
 
     // Record a "done" event and fulfill the promise so the target knows
     // the copy is complete.
     ASSIGN_OR_RETURN(EventPool::Event done, pool->GetOrCreateEvent());
-    TF_RETURN_IF_ERROR(stream.RecordEvent(done->get()));
+    RETURN_IF_ERROR(stream.RecordEvent(done->get()));
     done_promise.Set(std::move(done));
   } else {
     // Not a sender — fulfill promise with a dummy event.
@@ -488,7 +488,7 @@ static absl::Status RunPeerAccessPermute(
   if (!source_target.source) {
     for (const auto& buf : device_buffers) {
       auto dest = buf.destination_buffer;
-      TF_RETURN_IF_ERROR(stream.MemZero(&dest, dest.size()));
+      RETURN_IF_ERROR(stream.MemZero(&dest, dest.size()));
     }
   }
 
@@ -502,7 +502,7 @@ static absl::Status RunPeerAccessPermute(
     const absl::StatusOr<EventPool::Event>& done_result =
         source_events.done.Await();
     if (!done_result.ok()) return done_result.status();
-    TF_RETURN_IF_ERROR(stream.WaitFor((*done_result)->get()));
+    RETURN_IF_ERROR(stream.WaitFor((*done_result)->get()));
   }
 
   return absl::OkStatus();

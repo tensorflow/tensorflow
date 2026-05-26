@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/proto/pjrt_partial_program.pb.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
+#include "xla/shape.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/fingerprint.h"
@@ -229,33 +231,32 @@ class PjRtTopologyDescription {
 
   // Returns the number of chips.
   virtual absl::StatusOr<int> ChipCount() const {
-    TF_ASSIGN_OR_RETURN(int process_count, ProcessCount());
-    TF_ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
+    ASSIGN_OR_RETURN(int process_count, ProcessCount());
+    ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
     return process_count * chips_per_process;
   }
 
   // Returns the total number of cores of the default type.
   virtual absl::StatusOr<int> CoreCountOfDefaultType() const {
-    TF_ASSIGN_OR_RETURN(int process_count, ProcessCount());
-    TF_ASSIGN_OR_RETURN(int cores_per_process,
-                        CoreCountOfDefaultTypePerProcess());
+    ASSIGN_OR_RETURN(int process_count, ProcessCount());
+    ASSIGN_OR_RETURN(int cores_per_process, CoreCountOfDefaultTypePerProcess());
     return process_count * cores_per_process;
   }
 
   // As above, but returns the number of logical devices per host.
   virtual absl::StatusOr<int> LogicalDeviceCountOfDefaultTypePerProcess()
       const {
-    TF_ASSIGN_OR_RETURN(int logical_devices_per_chip,
-                        LogicalDeviceCountOfDefaultTypePerChip());
-    TF_ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
+    ASSIGN_OR_RETURN(int logical_devices_per_chip,
+                     LogicalDeviceCountOfDefaultTypePerChip());
+    ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
     return chips_per_process * logical_devices_per_chip;
   }
 
   // Returns the total number of logical devices of the default type.
   virtual absl::StatusOr<int> LogicalDeviceCountOfDefaultType() const {
-    TF_ASSIGN_OR_RETURN(int process_count, ProcessCount());
-    TF_ASSIGN_OR_RETURN(int logical_devices_per_process,
-                        LogicalDeviceCountOfDefaultTypePerProcess());
+    ASSIGN_OR_RETURN(int process_count, ProcessCount());
+    ASSIGN_OR_RETURN(int logical_devices_per_process,
+                     LogicalDeviceCountOfDefaultTypePerProcess());
     return process_count * logical_devices_per_process;
   }
 
@@ -267,8 +268,8 @@ class PjRtTopologyDescription {
 
   // Returns the number of cores of the default type per process.
   virtual absl::StatusOr<int> CoreCountOfDefaultTypePerProcess() const {
-    TF_ASSIGN_OR_RETURN(int cores_per_chip, CoreCountOfDefaultTypePerChip());
-    TF_ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
+    ASSIGN_OR_RETURN(int cores_per_chip, CoreCountOfDefaultTypePerChip());
+    ASSIGN_OR_RETURN(int chips_per_process, ChipsPerProcess());
     return cores_per_chip * chips_per_process;
   }
 
@@ -374,6 +375,22 @@ class PjRtTopologyDescription {
   // "mhlo.layout_mode" attribute.
   virtual absl::StatusOr<Layout> GetDefaultLayout(
       PrimitiveType element_type, absl::Span<const int64_t> dims) const = 0;
+
+  // Returns the canonical shape for a memory_space with an optionally provided
+  // layout. This is useful for predicting the full shape + layout of a buffer
+  // after it is transferred to a particular memory space.
+  virtual absl::StatusOr<xla::Shape> MakeCanonicalShapeForMemorySpace(
+      int memory_space_kind_id, xla::Shape shape,
+      const xla::Layout* layout) const {
+    return absl::UnimplementedError(
+        "MakeCanonicalShapeForMemorySpace is unsupported.");
+  }
+
+  // A list of all memory spaces kind_ids supported by this topology.
+  virtual absl::Span<const int> GetMemorySpaceKindIds() const;
+
+  // GetMemorySpaceKindIds()[0] should be the default memory space id.
+  int GetDefaultMemorySpaceKindId() const { return GetMemorySpaceKindIds()[0]; }
 
   virtual absl::StatusOr<PjRtTopologyDescriptionProto> ToProto() const {
     return absl::UnimplementedError("ToProto is unsupported.");

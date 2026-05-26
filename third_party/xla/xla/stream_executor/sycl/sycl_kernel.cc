@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -98,9 +99,17 @@ absl::Status SyclKernel::Launch(const ThreadDim& thread_dims,
     }
   };
 
-  // If arguments are already packed we can just launch the kernel.
   if (auto* packed = DynCast<KernelArgsPackedArrayBase>(&args)) {
-    return launch(*packed);
+    auto& pack = args_packing();
+    // Launch directly if no packing function is registered, or if the args
+    // do not implement PackableKernelArgs. The packing function requires
+    // PackableKernelArgs (e.g. KernelArgsPackedArray); types that don't
+    // (e.g. KernelArgsPackedTuple) are already in final packed form.
+    if (!pack || !dynamic_cast<const PackableKernelArgs*>(packed)) {
+      return launch(*packed);
+    }
+    ASSIGN_OR_RETURN(auto repacked, pack(*this, *packed));
+    return launch(*repacked);
   }
 
   // For device memory array we rely on a custom kernel arguments packing.
@@ -112,7 +121,7 @@ absl::Status SyclKernel::Launch(const ThreadDim& thread_dims,
           "memory arguments array");
     }
 
-    TF_ASSIGN_OR_RETURN(auto packed, pack(*this, *device_mem));
+    ASSIGN_OR_RETURN(auto packed, pack(*this, *device_mem));
     return launch(*packed);
   }
 

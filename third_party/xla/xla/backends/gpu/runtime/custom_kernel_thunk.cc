@@ -149,13 +149,12 @@ absl::Status CustomKernelThunk::ExecuteOnStream(const ExecuteParams& params) {
     PrintBufferContents(params.stream, buffer_args);
   }
 
-  se::KernelArgsDeviceAddressArrayAdapter kernel_args =
-      se::KernelArgsDeviceAddressArrayAdapter::Build(se::PackKernelArgs(
-          buffer_args, custom_kernel_.shared_memory_bytes()));
+  auto kernel_args =
+      se::PackKernelArgs(buffer_args, custom_kernel_.shared_memory_bytes());
 
   return kernel->Launch(
       custom_kernel_.thread_dims(), custom_kernel_.block_dims(),
-      custom_kernel_.cluster_dims(), params.stream, kernel_args);
+      custom_kernel_.cluster_dims(), params.stream, *kernel_args);
 }
 
 absl::StatusOr<const se::CommandBuffer::Command*> CustomKernelThunk::Record(
@@ -170,19 +169,18 @@ absl::StatusOr<const se::CommandBuffer::Command*> CustomKernelThunk::Record(
                                     execute_params.stream->parent()));
   auto& [kernel, buffer_args] = kernel_with_args;
 
-  se::KernelArgsDeviceAddressArrayAdapter kernel_args =
-      se::KernelArgsDeviceAddressArrayAdapter::Build(se::PackKernelArgs(
-          buffer_args, custom_kernel_.shared_memory_bytes()));
+  auto kernel_args =
+      se::PackKernelArgs(buffer_args, custom_kernel_.shared_memory_bytes());
 
   if (auto* create = std::get_if<RecordCreate>(&record_action)) {
     return command_buffer->CreateLaunch(
         custom_kernel_.thread_dims(), custom_kernel_.block_dims(), *kernel,
-        kernel_args, create->dependencies, priority());
+        *kernel_args, create->dependencies, priority());
   }
   if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
     RETURN_IF_ERROR(command_buffer->UpdateLaunch(
         update->command, custom_kernel_.thread_dims(),
-        custom_kernel_.block_dims(), *kernel, kernel_args));
+        custom_kernel_.block_dims(), *kernel, *kernel_args));
     return update->command;
   }
   return Internal("Invalid record action");

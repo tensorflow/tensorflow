@@ -290,6 +290,12 @@ const XLine* FindLineWithName(const XPlane& plane, absl::string_view name) {
   return (i != -1) ? &plane.lines(i) : nullptr;
 }
 
+XLine* FindMutableLineWithName(XPlane& plane, absl::string_view name) {
+  int i = Find(plane.lines(),
+               [name](const XLine* line) { return line->name() == name; });
+  return (i != -1) ? plane.mutable_lines(i) : nullptr;
+}
+
 XStat* FindOrAddMutableStat(const XStatMetadata& stat_metadata, XEvent* event) {
   for (auto& stat : *event->mutable_stats()) {
     if (stat.metadata_id() == stat_metadata.id()) {
@@ -339,16 +345,22 @@ bool XEventsComparator::operator()(const XEvent* a, const XEvent* b) const {
   return XEventTimespan(*a) < XEventTimespan(*b);
 }
 
+void SortXLine(XLine* line) {
+  auto& events = *line->mutable_events();
+  std::stable_sort(events.pointer_begin(), events.pointer_end(),
+                   XEventsComparator());
+}
+
 void SortXPlane(XPlane* plane) {
   for (XLine& line : *plane->mutable_lines()) {
-    auto& events = *line.mutable_events();
-    std::sort(events.pointer_begin(), events.pointer_end(),
-              XEventsComparator());
+    SortXLine(&line);
   }
 }
 
 void SortXSpace(XSpace* space) {
-  for (XPlane& plane : *space->mutable_planes()) SortXPlane(&plane);
+  for (XPlane& plane : *space->mutable_planes()) {
+    SortXPlane(&plane);
+  }
 }
 
 // Normalize the line's timestamp in this XPlane.

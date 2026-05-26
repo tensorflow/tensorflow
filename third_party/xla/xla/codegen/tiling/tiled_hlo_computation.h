@@ -38,6 +38,8 @@ namespace xla {
 //  * The last element in the vector in the root instruction.
 class TiledHloComputation {
  public:
+  using InstructionType = TiledHloInstruction;
+
   // Creates a computation from a list of instructions. The instructions are
   // expected to be sorted in def-before-use order. The `roots` parameter should
   // provide the roots in the order by increasing output index, and the pointers

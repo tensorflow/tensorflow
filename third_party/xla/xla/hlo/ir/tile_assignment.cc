@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -844,8 +845,10 @@ std::optional<AnalyzeTileAssignmentResult> AnalyzeTileAssignment(
             }
           });
       if (is_iota) {
-        std::vector<int64_t> mesh(tile_assignment.dimensions().begin(),
-                                  tile_assignment.dimensions().end());
+        std::vector<int64_t> mesh;
+        mesh.reserve(sub_dims->size());
+        absl::c_transform(*sub_dims, std::back_inserter(mesh),
+                          [](const SubDimInfo& info) { return info.size; });
         return AnalyzeTileAssignmentResult{
             /* .sub_dims = */ std::move(*sub_dims),
             /* .local_mesh = */ std::move(mesh),

@@ -42,6 +42,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/hlo_op_metadata.h"
 #include "xla/hlo/ir/mesh_and_axis.h"
@@ -757,7 +758,7 @@ absl::StatusOr<ShapeTree<HloSharding>> HloSharding::AsShapeTree(
     const Shape& shape) const {
   if (IsTuple()) {
     ShapeTree<HloSharding> result(shape, HloSharding::Replicate());
-    TF_RETURN_IF_ERROR(CheckLeafCount(shape));
+    RETURN_IF_ERROR(CheckLeafCount(shape));
     auto it = tuple_elements_.begin();
     for (auto& index_to_sharding : result.leaves()) {
       index_to_sharding.second = *it++;
@@ -770,7 +771,7 @@ absl::StatusOr<ShapeTree<HloSharding>> HloSharding::AsShapeTree(
 absl::StatusOr<HloSharding> HloSharding::GetTupleSharding(
     const Shape& shape) const {
   if (IsTuple()) {
-    TF_RETURN_IF_ERROR(CheckLeafCount(shape));
+    RETURN_IF_ERROR(CheckLeafCount(shape));
     return *this;
   }
   return SingleTuple(shape, *this);
@@ -818,7 +819,7 @@ absl::Status HloSharding::ValidateTuple(
     return absl::InvalidArgumentError(
         "Sharding is tuple-shaped but validation shape is not.");
   }
-  TF_RETURN_IF_ERROR(CheckLeafCount(shape));
+  RETURN_IF_ERROR(CheckLeafCount(shape));
   if (ShapeUtil::GetLeafCount(shape) == 0 && tuple_elements_.empty()) {
     // Empty tuples are allowed to not have sharding
     return absl::OkStatus();
@@ -929,15 +930,15 @@ absl::Status HloSharding::ValidateNonTuple(
   absl::flat_hash_set<int64_t> seen_devices;
   absl::Status status = tile_assignment_.array().EachStatus(
       [&num_devices, &seen_devices](absl::Span<const int64_t> indices,
-                                    int64_t device) {
-        TF_RETURN_IF_ERROR(DeviceInRange(device, num_devices));
+                                    int64_t device) -> absl::Status {
+        RETURN_IF_ERROR(DeviceInRange(device, num_devices));
         if (!seen_devices.insert(device).second) {
           return absl::InvalidArgumentError(absl::StrCat(
               "device ", device, " is not unique in tile assignment"));
         }
         return absl::OkStatus();
       });
-  TF_RETURN_IF_ERROR(status);
+  RETURN_IF_ERROR(status);
   if (num_devices.has_value() && seen_devices.size() != *num_devices) {
     return absl::InvalidArgumentError(
         absl::StrFormat("tile_assignment should have %d devices but has %d",
@@ -982,8 +983,8 @@ const TileAssignment& HloSharding::TileAgnosticDeviceAssignment() const {
     std::vector<HloSharding> tuple_shardings;
     tuple_shardings.reserve(proto.tuple_shardings().size());
     for (const OpSharding& tuple_sharding_proto : proto.tuple_shardings()) {
-      TF_ASSIGN_OR_RETURN(HloSharding sharding,
-                          HloSharding::FromProto(tuple_sharding_proto));
+      ASSIGN_OR_RETURN(HloSharding sharding,
+                       HloSharding::FromProto(tuple_sharding_proto));
       tuple_shardings.push_back(std::move(sharding));
     }
     return std::move(
@@ -1031,6 +1032,8 @@ const TileAssignment& HloSharding::TileAgnosticDeviceAssignment() const {
   }
 
   TF_RET_CHECK(!proto.tile_assignment_dimensions().empty());
+  TF_RET_CHECK(absl::c_all_of(proto.tile_assignment_dimensions(),
+                              [](int64_t d) { return d > 0; }));
 
   auto product_no_overflow =
       [](absl::Span<const int64_t> dims) -> absl::StatusOr<int64_t> {
@@ -1047,11 +1050,11 @@ const TileAssignment& HloSharding::TileAgnosticDeviceAssignment() const {
 
   // RE: the product of tile assignment tensor dimensions must be
   // equal to tile_assignment_devices.size() or the product of iota_dimensions.
-  TF_ASSIGN_OR_RETURN(int64_t product_of_dimensions,
-                      product_no_overflow(proto.tile_assignment_dimensions()));
+  ASSIGN_OR_RETURN(int64_t product_of_dimensions,
+                   product_no_overflow(proto.tile_assignment_dimensions()));
   if (use_iota_tile_assignments) {
-    TF_ASSIGN_OR_RETURN(int64_t product_of_iota_dimensions,
-                        product_no_overflow(proto.iota_reshape_dims()));
+    ASSIGN_OR_RETURN(int64_t product_of_iota_dimensions,
+                     product_no_overflow(proto.iota_reshape_dims()));
     TF_RET_CHECK(product_of_dimensions == product_of_iota_dimensions);
   } else {
     TF_RET_CHECK(product_of_dimensions ==
@@ -1430,8 +1433,8 @@ int64_t HloSharding::NumTiles(absl::Span<const int64_t> dims) const {
     return 1;
   }
   CHECK(!IsManual());
-  CHECK(!ReplicateOnLastTileDim() ||
-        !absl::c_linear_search(dims, num_dimensions() - 1));
+  CHECK(UseNamedShardingLeaf() || !HasPartialReplication() ||
+        !absl::c_linear_search(dims, SubgroupReplicationDim()));
   int64_t num_tiles = 1;
   for (int64_t d : dims) {
     CHECK(d < num_dimensions());

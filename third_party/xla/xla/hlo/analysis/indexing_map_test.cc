@@ -1136,6 +1136,36 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SimplifyReshape_Regression) {
   )"));
 }
 
+TEST_F(IndexingMapTest,
+       AffineMapSimplification_SymbolicTilingOffsetCancellation) {
+  auto indexing_map = Parse(R"(
+    ()[s0] -> (-(s0 floordiv 144) + (s0 * 32 + 4639) floordiv 4608),
+    domain:
+    s0 in [0, 10000]
+  )");
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+      ()[s0] -> (1),
+      domain:
+      s0 in [0, 10000]
+    )"));
+}
+
+TEST_F(IndexingMapTest,
+       AffineMapSimplification_NegativeTilingOffsetCancellation) {
+  auto indexing_map = Parse(R"(
+    ()[s0] -> (-(s0 floordiv 315) + (s0 * 2 - 40319) floordiv 630 + 65),
+    domain:
+    s0 in [0, 10000]
+  )");
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+      ()[s0] -> (1),
+      domain:
+      s0 in [0, 10000]
+    )"));
+}
+
 TEST_F(IndexingMapTest, AffineMapSimplification_DivsInSequence) {
   auto indexing_map = Parse(R"(
     ()[s0] -> (s0 - ((s0 floordiv 2) floordiv 7) * 14 + (s0 floordiv 14) * 14),

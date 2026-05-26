@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/MLIRContext.h"
 #include "google/protobuf/text_format.h"
 #include "xla/autotuning.pb.h"
@@ -292,11 +293,11 @@ TEST_F(TritonBackendTest, VerifyHopperConfigsAreDifferentFromBlackwell) {
     target_config_.device_description.set_gpu_compute_capability(
         se::GpuComputeCapability{cap});
 
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                        ParseAndReturnVerifiedModule(kSimpleGemmFusionHlo));
-    TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<BackendConfig>> configs,
-                        backend_.GetSupportedConfigs(*(
-                            module->entry_computation()->root_instruction())));
+    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     ParseAndReturnVerifiedModule(kSimpleGemmFusionHlo));
+    ASSIGN_OR_RETURN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                     backend_.GetSupportedConfigs(
+                         *(module->entry_computation()->root_instruction())));
 
     std::vector<TritonBackendConfig> result;
     for (auto& config : configs) {

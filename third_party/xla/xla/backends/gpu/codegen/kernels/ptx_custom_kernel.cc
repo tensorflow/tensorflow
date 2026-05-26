@@ -32,16 +32,17 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 
 namespace xla::gpu::kernel {
-
 namespace se = ::stream_executor;
 
-absl::StatusOr<std::unique_ptr<se::KernelArgsPackedArrayBase>>
-KernelArgsPacking(const se::Kernel& kernel, const se::KernelArgs& args) {
-  auto* mem_args = se::Cast<se::KernelArgsDeviceAddressArray>(&args);
-
-  return se::PackKernelArgs(mem_args->device_addr_args(),
-                            mem_args->number_of_shared_bytes());
+namespace {
+se::KernelArgsPackingSpec IdentityPackingSpec(int num_args) {
+  se::KernelArgsPackingSpec packing_spec;
+  for (int i = 0; i < num_args; i++) {
+    packing_spec.AddAddressArgument(i);
+  }
+  return packing_spec;
 }
+}  // namespace
 
 // Note: Make sure that the kernel_name matches the kernel name in the ptx,
 // otherwise you will get a "CUDA_ERROR_NOT_FOUND: named symbol not found.".
@@ -54,7 +55,7 @@ absl::StatusOr<CustomKernel> GetPtxCustomKernel(std::string kernel_name,
                                                 size_t shared_memory_bytes) {
   se::KernelLoaderSpec kernel_spec =
       se::KernelLoaderSpec::CreateCudaPtxInMemorySpec(
-          ptx, kernel_name, /*arity=*/num_args, KernelArgsPacking);
+          ptx, kernel_name, /*arity=*/num_args, IdentityPackingSpec(num_args));
   return CustomKernel(std::move(kernel_name), kernel_spec, block_dim,
                       thread_dim, shared_memory_bytes);
 }
@@ -65,7 +66,7 @@ absl::StatusOr<CustomKernel> GetPtxCustomKernel(
     se::ClusterDim cluster_dim, size_t shared_memory_bytes) {
   se::KernelLoaderSpec kernel_spec =
       se::KernelLoaderSpec::CreateCudaPtxInMemorySpec(
-          ptx, kernel_name, /*arity=*/num_args, KernelArgsPacking);
+          ptx, kernel_name, /*arity=*/num_args, IdentityPackingSpec(num_args));
   return CustomKernel(std::move(kernel_name), kernel_spec, block_dim,
                       thread_dim, cluster_dim, shared_memory_bytes);
 }
@@ -76,7 +77,8 @@ absl::StatusOr<CustomKernel> GetOwnedPtxCustomKernel(
     size_t shared_memory_bytes) {
   se::KernelLoaderSpec kernel_spec =
       se::KernelLoaderSpec::CreateOwningCudaPtxInMemorySpec(
-          std::move(ptx), kernel_name, /*arity=*/num_args, KernelArgsPacking);
+          std::move(ptx), kernel_name, /*arity=*/num_args,
+          IdentityPackingSpec(num_args));
   return CustomKernel(std::move(kernel_name), kernel_spec, block_dim,
                       thread_dim, shared_memory_bytes);
 }
@@ -85,14 +87,10 @@ absl::StatusOr<CustomKernel> CreateOwnedCubinCustomKernel(
     std::string kernel_name, std::vector<uint8_t> cubin, int num_args,
     se::BlockDim block_dim, se::ThreadDim thread_dim,
     size_t shared_memory_bytes) {
-  se::KernelArgsPackingSpec packing_spec;
-  for (int i = 0; i < num_args; i++) {
-    packing_spec.AddAddressArgument(i);
-  }
-
   se::KernelLoaderSpec kernel_spec =
       se::KernelLoaderSpec::CreateOwningCudaCubinInMemorySpec(
-          std::move(cubin), kernel_name, /*arity=*/num_args, packing_spec);
+          std::move(cubin), kernel_name, /*arity=*/num_args,
+          IdentityPackingSpec(num_args));
   return CustomKernel(std::move(kernel_name), std::move(kernel_spec), block_dim,
                       thread_dim, shared_memory_bytes);
 }

@@ -23,7 +23,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
-#include <complex>
 #include <cstdint>
 #include <functional>
 #include <iterator>
@@ -323,6 +322,16 @@ LogicalResult TypeExtensionsAttr::verifyEncoding(
       getBounds(), RankedTensorType::get(shape, elementType), emitError);
 }
 
+LogicalResult OriginalValueAttr::verify(
+    ::llvm::function_ref<::mlir::InFlightDiagnostic()> emitError,
+    bool is_synthetic_call,
+    ::llvm::ArrayRef<OriginalValueElementAttr> elements) {
+  if (is_synthetic_call && !elements.empty()) {
+    return emitError() << "expected empty elements for a synthetic call";
+  }
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // ReduceScatterOp
 //===----------------------------------------------------------------------===//
@@ -383,6 +392,7 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LogisticOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(MaxOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(MinOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(MulOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(MulhiOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(NegOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(NotOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(OrOp)
@@ -7898,6 +7908,120 @@ LogicalResult MhloDialect::verifyOperationAttribute(Operation* op,
              << arrayAttr.size();
   }
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// OriginalArrayAttr
+//===----------------------------------------------------------------------===//
+
+void OriginalArrayAttr::print(AsmPrinter& printer) const {
+  printer << "<" << getInstructionName() << ", ";
+  mlir::hlo::printDimSizes(printer, getShapeIndex());
+  printer << ">";
+}
+
+Attribute OriginalArrayAttr::parse(AsmParser& parser, Type /*type*/) {
+  if (failed(parser.parseLess())) return {};
+  StringAttr instructionName;
+  if (failed(parser.parseAttribute(instructionName))) return {};
+  if (failed(parser.parseComma())) return {};
+  auto shapeIndex = mlir::hlo::parseDimSizes(parser);
+  if (failed(shapeIndex)) return {};
+  if (failed(parser.parseGreater())) return {};
+  return OriginalArrayAttr::get(parser.getContext(), instructionName,
+                                *shapeIndex);
+}
+
+//===========================================================================//
+// OriginalValueElementAttr
+//===========================================================================//
+
+void OriginalValueElementAttr::print(AsmPrinter& printer) const {
+  printer << "<";
+  mlir::hlo::printDimSizes(printer, getShapeIndex());
+  printer << ", ";
+  if (getOriginalArray().has_value()) {
+    (*getOriginalArray()).print(printer);
+  } else {
+    printer << "none";
+  }
+  printer << ">";
+}
+
+Attribute OriginalValueElementAttr::parse(AsmParser& parser, Type type) {
+  if (failed(parser.parseLess())) return {};
+  auto shapeIndex = mlir::hlo::parseDimSizes(parser);
+  if (failed(shapeIndex)) return {};
+  if (failed(parser.parseComma())) return {};
+
+  std::optional<OriginalArrayAttr> originalArray;
+  if (succeeded(parser.parseOptionalKeyword("none"))) {
+    originalArray = std::nullopt;
+  } else {
+    auto arrayAttr = OriginalArrayAttr::parse(parser, type);
+    if (!arrayAttr) return {};
+    originalArray = llvm::cast<OriginalArrayAttr>(arrayAttr);
+  }
+
+  if (failed(parser.parseGreater())) return {};
+  return OriginalValueElementAttr::get(parser.getContext(), *shapeIndex,
+                                       originalArray);
+}
+
+//===========================================================================//
+// OriginalValueAttr
+//===========================================================================//
+
+// Define a custom printer for OriginalValue so we do not print names of nested
+// attributes when using let assemblyFormat declarations.
+//
+// For example, with let assemblyFormat declarations we could get:
+//
+// %0 = stablehlo.constant {mhlo.original_value = #mhlo.original_value<false,
+// [#mhlo.original_value_element<[], #mhlo.original_array<"constant.5", []>>]>}
+// dense<0> : tensor<i32>
+//
+// With custom assembly format it becomes:
+//
+// %0 = stablehlo.constant {mhlo.original_value = #mhlo.original_value<false,
+//[<[], <"constant.5", []>>]>} dense<0> : tensor<i32>
+void OriginalValueAttr::print(AsmPrinter& printer) const {
+  printer << "<" << (getIsSyntheticCall() ? "true" : "false") << ", [";
+  llvm::interleaveComma(
+      getElements(), printer,
+      [&](const OriginalValueElementAttr& el) { el.print(printer); });
+  printer << "]>";
+}
+
+Attribute OriginalValueAttr::parse(AsmParser& parser, Type type) {
+  if (failed(parser.parseLess())) return {};
+  bool isSyntheticCall = false;
+  if (succeeded(parser.parseOptionalKeyword("true"))) {
+    isSyntheticCall = true;
+  } else if (failed(parser.parseKeyword("false"))) {
+    return {};
+  }
+
+  if (failed(parser.parseComma())) return {};
+  if (failed(parser.parseLSquare())) return {};
+
+  SmallVector<OriginalValueElementAttr> elements;
+  auto parseElement = [&]() -> ParseResult {
+    auto el = OriginalValueElementAttr::parse(parser, type);
+    if (!el) return failure();
+    elements.push_back(llvm::cast<OriginalValueElementAttr>(el));
+    return success();
+  };
+
+  if (failed(parser.parseOptionalRSquare())) {
+    if (failed(parser.parseCommaSeparatedList(parseElement)) ||
+        failed(parser.parseRSquare())) {
+      return {};
+    }
+  }
+
+  if (failed(parser.parseGreater())) return {};
+  return OriginalValueAttr::get(parser.getContext(), isSyntheticCall, elements);
 }
 
 }  // namespace mlir::mhlo

@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
@@ -53,8 +54,8 @@ absl::StatusOr<std::vector<std::pair<int64_t, int64_t>>> GetSourceTargetPairs(
         absl::StrCat("expecting send/recv op with string attribute ",
                      kSendRecvSourceTargetPairsAttr));
   }
-  TF_ASSIGN_OR_RETURN(std::vector<ReplicaGroup> replica_groups,
-                      ParseReplicaGroupsOnly(src_dst_string.str()));
+  ASSIGN_OR_RETURN(std::vector<ReplicaGroup> replica_groups,
+                   ParseReplicaGroupsOnly(src_dst_string.str()));
   std::vector<std::pair<int64_t, int64_t>> source_target_pairs;
   source_target_pairs.reserve(replica_groups.size());
   for (const ReplicaGroup& replica_group : replica_groups) {
@@ -121,7 +122,7 @@ P2PConfig GetP2PConfigForSendRecv(const HloSendRecvInstruction* instr,
 absl::StatusOr<const int64_t> GetCollectiveCurrentId(
     CollectiveParams* collective_params, const P2PConfig& config) {
   GlobalDeviceId global_device_id = collective_params->global_device_id;
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       const DeviceAssignment::LogicalID current_logical_id,
       collective_params->device_assn->LogicalIdForDevice(global_device_id));
   const int64_t current_id =

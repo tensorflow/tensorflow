@@ -62,6 +62,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tsl/platform/random.h"
 #include "tsl/platform/retrying_utils.h"
 
 namespace tensorflow {
@@ -450,11 +451,6 @@ absl::Status DataServiceClient::AddTask(const TaskInfo& task_info)
       DCHECK_EQ(next_task_index_, 0);
     }
   }
-  if (!IsCoordinatedRead()) {
-    // Shuffle task order within each client to avoid thundering herd effect.
-    std::mt19937 rng;
-    std::shuffle(tasks_.begin(), tasks_.end(), rng);
-  }
   return absl::OkStatus();
 }
 
@@ -548,6 +544,11 @@ void DataServiceClient::UpdateTasks(const ClientHeartbeatResponse& resp)
       get_next_cv_.notify_all();
       break;
     }
+  }
+  if (!IsCoordinatedRead()) {
+    // Shuffle task order within each client to avoid thundering herd effect.
+    std::mt19937 rng(tsl::random::New64());
+    std::shuffle(tasks_.begin(), tasks_.end(), rng);
   }
 }
 

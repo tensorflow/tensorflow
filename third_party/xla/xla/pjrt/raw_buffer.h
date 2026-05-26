@@ -148,7 +148,7 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
 
   // Slices out any dynamic shape information (if present).
   virtual absl::StatusOr<PjRtRawBufferRef> RemoveDynamicShapeMetadataIfPresent(
-      const xla::Shape& logical_shape);
+      const xla::Shape& device_shape, const xla::Shape& logical_shape);
 
   // Reads the dynamic shape for a raw buffer. output_shape must be a
   // constructed AsyncValueRef which will have its dimensions updated.

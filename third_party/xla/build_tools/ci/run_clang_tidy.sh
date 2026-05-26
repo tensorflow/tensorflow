@@ -20,6 +20,21 @@ BUILD_WORKSPACE_DIRECTORY=${BUILD_WORKSPACE_DIRECTORY:-$(pwd)}
 cd "$BUILD_WORKSPACE_DIRECTORY"
 BAZEL_CMD=${BAZEL_CMD:-bazelisk}
 
+FIX=false
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --fix)
+      FIX=true
+      shift
+      ;;
+    *)
+      echo "Unknown option: $1"
+      exit 1
+      ;;
+  esac
+done
+
+
 if ! git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
   set +x
   echo "Error: This script must be run inside a Git repository."
@@ -40,7 +55,8 @@ if [ -z "$MERGE_BASE" ]; then
   echo "Example: git pull --rebase $REMOTE main" >&2
   exit 1
 fi
-CHANGED_FILES=$(git diff --name-only "$MERGE_BASE" | grep -E '\.(cc|h)$' || true)
+CHANGED_FILES=$(git diff --name-only --diff-filter=d "$MERGE_BASE" |
+  grep -E '\.(cc|h)$' || true)
 # Always exit with 0 if no C++ files are changed.
 if [ -z "$CHANGED_FILES" ]; then
   set +x
@@ -57,10 +73,32 @@ else
   QUERY="${BASE_QUERY}"
 fi
 # --output=label prints a hash that we want to avoid, hence using --output=starlark to print only the target labels.
-TARGETS=$($BAZEL_CMD cquery --output=starlark --starlark:expr="target.label" --config=clang-tidy "$QUERY")
+CONFIG="clang-tidy-noerrors"
+TARGETS=$($BAZEL_CMD cquery --output=starlark --starlark:expr="target.label" --config="$CONFIG" "$QUERY")
 if [ -z "$TARGETS" ]; then
   set +x
   echo "No relevant targets found for changed files."
   exit 0
 fi
-$BAZEL_CMD build --config=clang-tidy --keep_going $TARGETS
+
+# Create temporary files for the patch and BEP
+PATCH_FILE=$(mktemp)
+BEP_FILE=$(mktemp)
+# Ensure cleanup on exit
+trap 'rm -f "$PATCH_FILE" "$BEP_FILE"' EXIT
+
+# Generate the patch file for changed lines
+git diff "$MERGE_BASE" > "$PATCH_FILE"
+
+$BAZEL_CMD build --config="$CONFIG" --build_event_json_file="$BEP_FILE" --keep_going \
+  $TARGETS
+EXTRA_ARGS=()
+if [ "$FIX" = true ]; then
+  EXTRA_ARGS+=("--fix")
+fi
+
+$BAZEL_CMD run //build_tools/ci:clang_tidy_diff -- \
+  --patch "$PATCH_FILE" \
+  --repo-root "$BUILD_WORKSPACE_DIRECTORY" \
+  --bep-file "$BEP_FILE" \
+  "${EXTRA_ARGS[@]}"

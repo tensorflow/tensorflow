@@ -21,10 +21,12 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 #include <queue>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
@@ -35,8 +37,8 @@ namespace xla {
 
 HloReachabilityMap::HloReachabilityMap(
     absl::Span<const HloInstruction* const> instructions)
-    : bits_per_bitset_(instructions.size()),
-      words_per_bitset_((bits_per_bitset_ + BitSet::kBits - 1) / BitSet::kBits),
+    : words_per_bitset_((instructions.size() + BitSet::kBits - 1) /
+                        BitSet::kBits),
       total_words_((instructions.size() + 1 /*for tmp_bit_set_*/) *
                    words_per_bitset_) {
   if (!instructions.empty()) {
@@ -206,6 +208,126 @@ void HloReachabilityMap::UpdateReachabilityThroughInstruction(
       for (const HloInstruction* succ : item->control_successors()) {
         worklist.push(succ);
         ++in_worklist[succ];
+      }
+    }
+  }
+}
+
+// Use ptr tagging in `worklist` to check if current instruction is successor of
+// left or right.
+static constexpr uintptr_t FROM_LEFT_FLAG_MASK = 1;
+static constexpr uintptr_t PTR_MASK = ~FROM_LEFT_FLAG_MASK;
+static_assert(alignof(HloInstruction) >= 2,
+              "HloInstruction must be aligned to at least 2 bytes");
+void HloReachabilityMap::UpdateReachabilityForMerge(
+    const HloInstruction* left, const HloInstruction* right) {
+  DCHECK(tmp_worklist_.empty());
+  DCHECK(tmp_indices_to_update_.empty());
+  DCHECK(IsKeyPresent(GetKey(left)));
+  DCHECK(IsKeyPresent(GetKey(right)));
+
+  if (left == right) {
+    return;
+  }
+
+  Index left_index = GetIndex(left);
+  Index right_index = GetIndex(right);
+  BitSet left_bit_set = BitSetFromIndex(left_index);
+  BitSet right_bit_set = BitSetFromIndex(right_index);
+
+  absl::flat_hash_set<const HloInstruction*> visited;
+  auto add_to_worklist = [&](const HloInstruction* instr,
+                             bool from_left) -> void {
+    if (visited.insert(instr).second) {
+      if (IsKeyPresent(GetKey(instr))) {
+        BitSet bit_set = BitSetFromIndex(GetIndex(instr));
+        // If the node is already reachable from both sides, we can skip it.
+        if ((from_left && bit_set.Get(right_index)) ||
+            (!from_left && bit_set.Get(left_index))) {
+          return;
+        }
+      }
+      uintptr_t raw_addr = reinterpret_cast<uintptr_t>(instr);
+      tmp_worklist_.push_back(raw_addr | from_left);
+      return;
+    }
+    return;
+  };
+  add_to_worklist(left, /*from_left=*/true);
+  const bool left_added = !tmp_worklist_.empty();
+  add_to_worklist(right, /*from_left=*/false);
+  if (tmp_worklist_.empty()) {
+    return;
+  }
+  left_bit_set.GetDifferingWordUnions(right_bit_set, tmp_changed_words_);
+  if (tmp_changed_words_.empty()) {
+    tmp_worklist_.clear();
+    return;
+  }
+  while (!tmp_worklist_.empty()) {
+    const uintptr_t item_and_from_left = tmp_worklist_.back();
+    tmp_worklist_.pop_back();
+
+    // Use ptr tagging to show if instruction is successor of left or right.
+    const bool from_left = (item_and_from_left & FROM_LEFT_FLAG_MASK);
+    const HloInstruction* item =
+        reinterpret_cast<const HloInstruction*>(item_and_from_left & PTR_MASK);
+
+    if (IsKeyPresent(GetKey(item))) {
+      tmp_indices_to_update_.push_back(GetIndex(item));
+    }
+    for (const HloInstruction* user : item->users()) {
+      add_to_worklist(user, from_left);
+    }
+    for (const HloInstruction* succ : item->control_successors()) {
+      add_to_worklist(succ, from_left);
+    }
+  }
+  DCHECK(tmp_worklist_.empty());
+  // Based on the benchmarks, if the number of changed words is more than 25% of
+  // the size of the bitset, it is faster do full |= instead of using
+  // OrUpdatePartial.
+  if (tmp_changed_words_.size() > words_per_bitset_ * 0.25) {
+    // Is is guaranteed that either left_bit_set or right_bit_set is in
+    // tmp_indices_to_update_ based on the logic above.
+    BitSet info = left_added ? left_bit_set : right_bit_set;
+    info.OrUpdatePartial(tmp_changed_words_);
+    for (Index index : tmp_indices_to_update_) {
+      BitSet bit_set = BitSetFromIndex(index);
+      bit_set |= info;
+    }
+  } else {
+    for (Index index : tmp_indices_to_update_) {
+      BitSet bit_set = BitSetFromIndex(index);
+      bit_set.OrUpdatePartial(tmp_changed_words_);
+    }
+  }
+  tmp_changed_words_.clear();
+  tmp_indices_to_update_.clear();
+}
+
+void HloReachabilityMap::UpdateMultipleInstructions(
+    absl::flat_hash_map<const HloInstruction*,
+                        absl::flat_hash_set<const HloInstruction*>>
+        to_update) {
+  while (!to_update.empty()) {
+    auto it = to_update.begin();
+    const HloInstruction* instruction = it->first;
+
+    BitSet bit_set = BitSetFromIndex(GetIndex(instruction));
+    bool changed = false;
+    // NOLINTNEXTLINE the loop aggregation is order independent.
+    for (const HloInstruction* operand : it->second) {
+      BitSet operand_bit_set = BitSetFromIndex(GetIndex(operand));
+      changed |= bit_set.OrUpdate(operand_bit_set);
+    }
+    to_update.erase(it);
+    if (changed) {
+      for (const HloInstruction* user : instruction->users()) {
+        to_update[user].insert(instruction);
+      }
+      for (const HloInstruction* succ : instruction->control_successors()) {
+        to_update[succ].insert(instruction);
       }
     }
   }

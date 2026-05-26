@@ -650,7 +650,8 @@ BatchResourceBase::GetBatcherQueueOptions(
       /*mixed_priority_batching_policy*/
       MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize,
       /*enable_priority_aware_batch_scheduler=*/false,
-      /*enable_priority_aware_batch_scheduler_resplit=*/false);
+      /*enable_priority_aware_batch_scheduler_resplit=*/false,
+      /*enable_batching_task_lazy_cancellation=*/false);
 }
 
 /*static*/ BatchResourceBase::BatcherT::QueueOptions
@@ -665,7 +666,8 @@ BatchResourceBase::GetBatcherQueueOptions(
     const std::vector<int32_t>& low_priority_allowed_batch_sizes,
     MixedPriorityBatchingPolicy mixed_priority_batching_policy,
     bool enable_priority_aware_batch_scheduler,
-    bool enable_priority_aware_batch_scheduler_resplit) {
+    bool enable_priority_aware_batch_scheduler_resplit,
+    bool enable_batching_task_lazy_cancellation) {
   BatcherT::QueueOptions batcher_queue_options;
   batcher_queue_options.input_batch_size_limit = max_batch_size;
   batcher_queue_options.max_enqueued_batches = max_enqueued_batches;
@@ -699,7 +701,9 @@ BatchResourceBase::GetBatcherQueueOptions(
             << "enable_priority_aware_batch_scheduler="
             << enable_priority_aware_batch_scheduler << ", "
             << "enable_priority_aware_batch_scheduler_resplit="
-            << enable_priority_aware_batch_scheduler_resplit;
+            << enable_priority_aware_batch_scheduler_resplit << ", "
+            << "enable_batching_task_lazy_cancellation="
+            << enable_batching_task_lazy_cancellation;
   if (enable_priority_aware_batch_scheduler) {
     batcher_queue_options.enable_priority_aware_batch_scheduler = true;
 
@@ -714,6 +718,9 @@ BatchResourceBase::GetBatcherQueueOptions(
         std::max(total_allowed_enqueued_entries, static_cast<int64_t>(1));
     batcher_queue_options.priority_aware_scheduler_options.enable_task_resplit =
         enable_priority_aware_batch_scheduler_resplit;
+    batcher_queue_options.priority_aware_scheduler_options
+        .enable_lazy_cancellation_filtering =
+        enable_batching_task_lazy_cancellation;
   }
   batcher_queue_options.high_priority_queue_options.input_batch_size_limit =
       max_batch_size;
@@ -983,7 +990,6 @@ absl::Status BatchResourceBase::ConcatInputTensors(
         absl::Status final_status = absl::OkStatus();
         const int num_output = context->num_outputs();
 
-        LOG(INFO) << "Concatenating split task output";
         for (int i = 0; i < num_output; ++i) {
           Tensor output_tensor;
           if (absl::Status status = ConcatSplitTaskOutput(
@@ -995,13 +1001,10 @@ absl::Status BatchResourceBase::ConcatInputTensors(
           }
 
           if (input_task->forced_warmup_batch_size == 0) {
-            LOG(INFO) << "Setting output tensor";
             if (input_subtask_info.has_value()) {
-              LOG(INFO) << "Setting output tensor for subtask";
               (*input_subtask_info->output)[input_subtask_info->split_index]
                                            [i] = std::move(output_tensor);
             } else {
-              LOG(INFO) << "Setting output tensor for context";
               input_task->context->set_output(i, std::move(output_tensor));
             }
           }

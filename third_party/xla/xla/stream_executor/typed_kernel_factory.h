@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -39,8 +40,8 @@ class TypedKernelFactory {
   // Creates a typed kernel on a given executor from a kernel specification.
   static absl::StatusOr<TypedKernel<Params...>> Create(
       StreamExecutor *executor, const KernelLoaderSpec &spec) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Kernel> kernel,
-                        executor->LoadKernel(spec));
+    ASSIGN_OR_RETURN(std::unique_ptr<Kernel> kernel,
+                     executor->LoadKernel(spec));
     return TypedKernel<Params...>(std::move(kernel));
   }
 

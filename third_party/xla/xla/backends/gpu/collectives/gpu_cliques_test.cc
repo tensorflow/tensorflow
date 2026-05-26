@@ -466,7 +466,7 @@ TEST(GpuCliquesTest, DifferentCollectivesProduceDifferentCliques) {
   // Acquire clique with loopback collectives for the same key.
   ASSERT_OK_AND_ASSIGN(Collectives * loopback_base,
                        CollectivesRegistry::Get("GPU", "loopback"));
-  auto* loopback = tsl::down_cast<GpuCollectives*>(loopback_base);
+  auto* loopback = absl::down_cast<GpuCollectives*>(loopback_base);
 
   std::vector<std::shared_ptr<LockableGpuClique::Lock>> loopback_cliques;
   {

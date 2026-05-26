@@ -50,6 +50,9 @@ void CreateTritonXlaPipeline(
   auto* cuda_cc = gpu_cc.cuda_compute_capability();
   bool is_at_least_hopper = cuda_cc != nullptr && cuda_cc->IsAtLeastHopper();
 
+  auto* rocm_cc = gpu_cc.rocm_compute_capability();
+  bool rocm_supports_tdm = rocm_cc != nullptr && rocm_cc->has_tdm_support();
+
   if (rewrite_int4) {
     pm->addPass(mlir::triton::xla::CreateInt4ToPackedInt4RewritePass(
         /*enable_bf16x2=*/is_at_least_hopper));
@@ -59,7 +62,8 @@ void CreateTritonXlaPipeline(
     pm->addPass(CreateInsertPDLPass());
   }
   pm->addPass(mlir::triton::xla::CreateTritonXLAExtractInsertToTritonPass(
-      /*allow_tma=*/allow_tma && is_at_least_hopper, num_stages));
+      /*allow_tma=*/allow_tma && is_at_least_hopper,
+      /*allow_tdm=*/rocm_supports_tdm, num_stages));
   if (enable_pdl) {
     pm->addPass(emitters::CreateLowerPdlWaitPass());
   }

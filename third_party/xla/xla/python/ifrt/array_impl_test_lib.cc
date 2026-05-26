@@ -45,6 +45,8 @@ limitations under the License.
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -743,8 +745,28 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsWithLayout) {
   absl::c_iota(data, 0);
   Device* device = client->addressable_devices()[0];
 
-  auto layout = std::make_shared<xla::PjRtLayout>(
-      xla::LayoutUtil::MakeDescendingLayout(shape.dims().size()));
+  std::shared_ptr<xla::PjRtLayout> layout;
+  int64_t expected_size;
+  {
+    auto xla_layout =
+        xla::LayoutUtil::MakeDescendingLayout(shape.dims().size());
+    TF_ASSERT_OK_AND_ASSIGN(auto device_list, client->MakeDeviceList({device}));
+    auto topology = client->GetTopologyForDevices(device_list);
+    if (topology.ok()) {
+      auto topology_desc = (*topology)->description();
+      TF_ASSERT_OK_AND_ASSIGN(
+          xla::Shape xla_shape,
+          topology_desc->MakeCanonicalShapeForMemorySpace(
+              topology_desc->GetDefaultMemorySpaceKindId(),
+              xla::ShapeUtil::MakeShape(xla::PrimitiveType::F32, shape.dims()),
+              &xla_layout));
+      layout = std::make_shared<xla::PjRtLayout>(xla_shape.layout());
+      expected_size = xla::ShapeUtil::ArraySize(xla_shape);
+    } else {
+      layout = std::make_shared<xla::PjRtLayout>(std::move(xla_layout));
+      expected_size = *dtype.byte_size() * shape.num_elements();
+    }
+  }
 
   ArrayRef array;
   {
@@ -778,7 +800,6 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsWithLayout) {
   ASSERT_NE(result_layout, nullptr);
   EXPECT_EQ(*result_layout, *layout);
 
-  const int64_t expected_size = *dtype.byte_size() * shape.num_elements();
   EXPECT_THAT(array->ByteSize(), IsOkAndHolds(Optional(expected_size)));
 }
 

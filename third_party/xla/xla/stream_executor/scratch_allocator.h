@@ -21,7 +21,10 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/tsl/platform/statusor.h"
@@ -72,9 +75,13 @@ class OwningScratchAllocator : public ScratchAllocator {
 
   absl::StatusOr<DeviceAddress<uint8_t>> AllocateBytes(
       int64_t byte_size) override {
-    TF_ASSIGN_OR_RETURN(ScopedDeviceAddress<uint8_t> buffer,
-                        allocator_->Allocate(device_ordinal_, byte_size,
-                                             /*retry_on_failure=*/false));
+    if (byte_size < 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("byte_size must be non-negative, but got ", byte_size));
+    }
+    ASSIGN_OR_RETURN(ScopedDeviceAddress<uint8_t> buffer,
+                     allocator_->Allocate(device_ordinal_, byte_size,
+                                          /*retry_on_failure=*/false));
     buffers_.push_back(std::move(buffer));
     return *buffers_.back();
   }

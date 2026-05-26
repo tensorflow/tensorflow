@@ -212,6 +212,19 @@ bool IsCollective(const HloInstruction* instruction);
 // Returns true if instruction is an async collective op.
 absl::StatusOr<bool> IsAsyncCollective(const HloInstruction* instruction);
 
+// Returns true if instruction is a RaggedAllToAll op or an async-start that
+// wraps a RaggedAllToAll op.
+bool IsRaggedAllToAllOrAsyncStartRaggedAllToAll(
+    const HloInstruction* instruction);
+
+// Returns true if instruction is a RaggedAllToAll op or an async-done that
+// wraps a RaggedAllToAll op.
+bool IsRaggedAllToAllOrAsyncDoneRaggedAllToAll(
+    const HloInstruction* instruction);
+
+// Returns true if the one-shot zero-copy RaggedAllToAll feature is enabled.
+bool IsOneShotZeroCopyRaggedAllToAllEnabled(const DebugOptions& opts);
+
 // Returns the collective instruction if argument is a collective op (or a
 // collective fusion) with channel_id.
 HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction);

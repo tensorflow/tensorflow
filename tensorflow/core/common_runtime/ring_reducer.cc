@@ -19,6 +19,7 @@ limitations under the License.
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <string>
 #include <utility>
 
@@ -71,6 +72,12 @@ void RingReducer::Run(StatusCallback done) {
   num_subdivs_ = static_cast<int>(
       col_params_->instance.impl_details.subdiv_permutations.size());
   CHECK_GT(num_subdivs_, 0);
+  if (static_cast<int64_t>(group_size_) * static_cast<int64_t>(num_subdivs_) >
+      std::numeric_limits<int32_t>::max()) {
+    done_(absl::InvalidArgumentError(
+        "group_size * num_subdivs exceeds int32 limit"));
+    return;
+  }
 
   if (VLOG_IS_ON(1)) {
     std::string buf;

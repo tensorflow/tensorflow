@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
@@ -49,8 +50,8 @@ absl::StatusOr<std::unique_ptr<ConvolutionThunk>> ConvolutionThunk::Create(
     std::vector<ShapedSlice> operand_slices,
     std::vector<ShapedSlice> result_slices,
     BufferAllocation::Slice scratch_slice) {
-  TF_ASSIGN_OR_RETURN(GpuConvConfig config,
-                      GetGpuConvConfig(descriptor, /*inst_as_string=*/""));
+  ASSIGN_OR_RETURN(GpuConvConfig config,
+                   GetGpuConvConfig(descriptor, /*inst_as_string=*/""));
 
   // Can't use std::make_unique because the constructor is private.
   return absl::WrapUnique(new ConvolutionThunk(
@@ -111,9 +112,9 @@ absl::Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
           << " addr: " << scratch.opaque();
 
   auto opts = GetOrCreate(config_, params.stream);
-  TF_RETURN_IF_ERROR(RunGpuConv(config_, absl::MakeSpan(operand_se_buffers),
-                                absl::MakeSpan(result_se_buffers), scratch,
-                                params.stream, opts));
+  RETURN_IF_ERROR(RunGpuConv(config_, absl::MakeSpan(operand_se_buffers),
+                             absl::MakeSpan(result_se_buffers), scratch,
+                             params.stream, opts));
 
   // Note: Convolution has a tuple buffer as an output, but we don't need to
   // populate it as no one should be reading from the tuple directly.
@@ -141,28 +142,26 @@ Thunk::BufferUses ConvolutionThunk::buffer_uses() const {
 absl::StatusOr<std::unique_ptr<ConvolutionThunk>> ConvolutionThunk::FromProto(
     ThunkInfo thunk_info, const ConvolutionThunkProto& proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
-  TF_ASSIGN_OR_RETURN(GpuConvDescriptor descriptor,
-                      GpuConvDescriptor::FromProto(proto.conv_descriptor()));
+  ASSIGN_OR_RETURN(GpuConvDescriptor descriptor,
+                   GpuConvDescriptor::FromProto(proto.conv_descriptor()));
 
   std::vector<ShapedSlice> operand_slices;
   operand_slices.reserve(proto.operand_buffers_size());
   for (const ShapedSliceProto& slice_proto : proto.operand_buffers()) {
-    TF_ASSIGN_OR_RETURN(
-        operand_slices.emplace_back(),
-        ShapedSlice::FromProto(slice_proto, buffer_allocations));
+    ASSIGN_OR_RETURN(operand_slices.emplace_back(),
+                     ShapedSlice::FromProto(slice_proto, buffer_allocations));
   }
 
   std::vector<ShapedSlice> result_slices;
   result_slices.reserve(proto.result_buffers_size());
   for (const ShapedSliceProto& slice_proto : proto.result_buffers()) {
-    TF_ASSIGN_OR_RETURN(
-        result_slices.emplace_back(),
-        ShapedSlice::FromProto(slice_proto, buffer_allocations));
+    ASSIGN_OR_RETURN(result_slices.emplace_back(),
+                     ShapedSlice::FromProto(slice_proto, buffer_allocations));
   }
 
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch_slice,
-                      BufferAllocation::Slice::FromProto(proto.scratch_buffer(),
-                                                         buffer_allocations));
+  ASSIGN_OR_RETURN(BufferAllocation::Slice scratch_slice,
+                   BufferAllocation::Slice::FromProto(proto.scratch_buffer(),
+                                                      buffer_allocations));
 
   return Create(std::move(thunk_info), std::move(descriptor),
                 std::move(operand_slices), std::move(result_slices),
@@ -177,13 +176,13 @@ absl::StatusOr<ThunkProto> ConvolutionThunk::ToProto() const {
   *conv_proto->mutable_conv_descriptor() = descriptor_.ToProto();
 
   for (const ShapedSlice& slice : operand_buffers_) {
-    TF_ASSIGN_OR_RETURN(*conv_proto->add_operand_buffers(), slice.ToProto());
+    ASSIGN_OR_RETURN(*conv_proto->add_operand_buffers(), slice.ToProto());
   }
   for (const ShapedSlice& slice : result_buffers_) {
-    TF_ASSIGN_OR_RETURN(*conv_proto->add_result_buffers(), slice.ToProto());
+    ASSIGN_OR_RETURN(*conv_proto->add_result_buffers(), slice.ToProto());
   }
-  TF_ASSIGN_OR_RETURN(*conv_proto->mutable_scratch_buffer(),
-                      scratch_buffer_.ToProto());
+  ASSIGN_OR_RETURN(*conv_proto->mutable_scratch_buffer(),
+                   scratch_buffer_.ToProto());
 
   return proto;
 }

@@ -406,7 +406,8 @@ SessionRef::~SessionRef() = default;
 
 absl::Status SessionRef::CheckNotClosed() {
   mutex_lock l(run_lock_);
-  if (session_ == nullptr) return errors::Cancelled("Session has been closed.");
+  if (session_ == nullptr)
+    return absl::CancelledError("Session has been closed.");
   return absl::OkStatus();
 }
 

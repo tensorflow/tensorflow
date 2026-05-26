@@ -146,6 +146,20 @@ TEST(XPlaneUtilsTest, RemoveLine) {
   EXPECT_EQ(&plane.lines(1), line3);
 }
 
+TEST(XPlaneUtilsTest, FindMutableLineWithName) {
+  XPlane plane;
+  XLine* line1 = plane.add_lines();
+  line1->set_name("line1");
+  XLine* line2 = plane.add_lines();
+  line2->set_name("line2");
+
+  XLine* found = FindMutableLineWithName(plane, "line2");
+  EXPECT_EQ(found, line2);
+
+  XLine* not_found = FindMutableLineWithName(plane, "non_existent");
+  EXPECT_EQ(not_found, nullptr);
+}
+
 TEST(XPlaneUtilsTest, RemoveEvents) {
   XLine line;
   const XEvent* event1 = line.add_events();

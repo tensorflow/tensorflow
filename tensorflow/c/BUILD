@@ -620,11 +620,9 @@ tf_cuda_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        ":c_api",
         ":c_api_internal",
         ":c_api_macros_hdrs",
         ":checkpoint_reader",
-        ":tf_buffer",
         ":tf_buffer_internal",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_internal",
@@ -645,9 +643,9 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:blocking_counter",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@xla//xla/tsl/c:tsl_status_internal",
     ],
     alwayslink = 1,
 )

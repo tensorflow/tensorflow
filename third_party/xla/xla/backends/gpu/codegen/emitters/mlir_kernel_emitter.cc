@@ -369,7 +369,7 @@ MlirKernelFusion::EmitLlvmModule(const HloFusionInstruction& fusion,
       });
 }
 
-absl::StatusOr<FusionEmissionResult> MlirKernelFusion::Emit(
+AsyncThunkSequence MlirKernelFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   VLOG(4) << "Fusion: " << fusion.fused_instructions_computation()->ToString();
@@ -378,7 +378,8 @@ absl::StatusOr<FusionEmissionResult> MlirKernelFusion::Emit(
                                   GetDefaultBufferAlignment(), &fusion));
   auto [future_entry, cached] = ir_emitter_context.kernel_cache().GetWithStatus(
       fusion.fused_instructions_computation(), args.args(),
-      /*discriminator=*/"", [&]() -> xla::Future<KernelReuseCache::Entry> {
+      /*discriminator=*/"MlirKernelFusion",
+      [&]() -> xla::Future<KernelReuseCache::Entry> {
         std::string kernel_name = ir_emitter_context.GetSanitizedUniqueName(
             std::string(fusion.name()));
         return EmitLlvmModule(fusion, kernel_name, ir_emitter_context)
@@ -407,15 +408,13 @@ absl::StatusOr<FusionEmissionResult> MlirKernelFusion::Emit(
                   });
             });
       });
-  FusionEmissionResult result;
-
   Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
       &fusion, ir_emitter_context.GetNextThunkId());
   bool kernel_cached = cached;
-  result.thunks = future_entry.Map([&fusion, thunk_info = std::move(thunk_info),
-                                    args = std::move(args), kernel_cached](
-                                       const KernelReuseCache::Entry* entry)
-                                       -> absl::StatusOr<ThunkSequence> {
+  return future_entry.Map([&fusion, thunk_info = std::move(thunk_info),
+                           args = std::move(args),
+                           kernel_cached](const KernelReuseCache::Entry* entry)
+                              -> absl::StatusOr<ThunkSequence> {
     if (kernel_cached) {
       VLOG(3) << "Reuse: " << fusion.name() << " -> " << entry->kernel_name;
     }
@@ -429,8 +428,6 @@ absl::StatusOr<FusionEmissionResult> MlirKernelFusion::Emit(
     return ThunkSequence::Of(std::make_unique<CustomKernelThunk>(
         thunk_info, std::move(custom_kernel), args, entry->use_pdl));
   });
-
-  return result;
 }
 
 xla::Future<LlvmKernelSource> MlirKernelFusion::CreateLLVMModule(
@@ -463,13 +460,13 @@ MlirKernelEmitter::CreateMLIRModule(
   auto loc = mlir::NameLoc::get(builder.getStringAttr(fusion.name()));
   mlir::OwningOpRef<mlir::ModuleOp> module = llvm_ir::CreateMlirModuleOp(loc);
 
-  TF_ASSIGN_OR_RETURN(mlir::func::FuncOp entry_func,
-                      emitters::EmitKernelApi(
-                          *module, fusion, buffer_assignment,
-                          GetDefaultBufferAlignment(), entry_function_name));
+  ASSIGN_OR_RETURN(mlir::func::FuncOp entry_func,
+                   emitters::EmitKernelApi(*module, fusion, buffer_assignment,
+                                           GetDefaultBufferAlignment(),
+                                           entry_function_name));
   SetBackendKind(&mlir_context, entry_func, BackendKind::kGpu);
 
-  TF_RETURN_IF_ERROR(EmitMlir(module.get(), entry_func, fusion, mlir_context));
+  RETURN_IF_ERROR(EmitMlir(module.get(), entry_func, fusion, mlir_context));
   return module;
 }
 
@@ -543,8 +540,8 @@ absl::Status MlirKernelEmitter::EmitMlir(mlir::ModuleOp module,
   emitters::PartitionedComputations computations(
       fusion.fused_instructions_computation(), &mlir_context, epilogues);
 
-  TF_ASSIGN_OR_RETURN(auto call_targets, emitters::EmitPartitionedComputations(
-                                             module, computations));
+  ASSIGN_OR_RETURN(auto call_targets,
+                   emitters::EmitPartitionedComputations(module, computations));
 
   emitters::SetIndexDataLayout(module, fusion);
 
@@ -627,8 +624,9 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
     se::SemanticVersion ptx_version =
         nvptx::DetermineHighestSupportedPtxVersionFromCudaVersion(
             device.runtime_version());
-    pm.addPass(CreateConvertFloatNvidiaPass(
-        cc->major, cc->minor, ptx_version.major(), ptx_version.minor()));
+    pm.addPass(CreateConvertFloatNvidiaPass(cc->major, cc->minor,
+                                            ptx_version.major_version(),
+                                            ptx_version.minor_version()));
   } else if (auto* cc =
                  device.gpu_compute_capability().rocm_compute_capability()) {
     if (cc->has_fp8_support()) {

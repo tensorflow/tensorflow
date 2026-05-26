@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/map_util.h"
-#include "xla/service/call_graph.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape.h"
@@ -726,9 +725,6 @@ class LayoutAssignment : public HloModulePass {
   absl::flat_hash_set<const HloInstruction*> unconstrained_layout_instructions_;
 
   HloPredicate instruction_can_change_layout_func_;
-
-  // CallGraph of the module, used to track callsites of each computation.
-  std::unique_ptr<CallGraph> call_graph_;
 
   std::string ToString(const LayoutConstraints& constraints) const;
 

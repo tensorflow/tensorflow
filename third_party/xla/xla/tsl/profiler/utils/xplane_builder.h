@@ -330,6 +330,8 @@ class XLineBuilder {
   XEventBuilder AddEvent(const XEventMetadata& metadata);
   XEventBuilder AddEvent(const XEvent& event);
 
+  XLine* GetLine() const { return line_; }
+
   template <typename ForEachEventFunc>
   void ForEachEvent(ForEachEventFunc&& for_each_event) {
     for (XEvent& event : *line_->mutable_events()) {

@@ -332,7 +332,7 @@ absl::StatusOr<std::tuple<int, int>> BestCudnnConvAlgorithmIndices(
     for (const auto& result : results) {
       msg << "\n  " << result.failure().msg();
     }
-    return errors::NotFound(msg.str());
+    return absl::NotFoundError(msg.str());
   }
 
   return std::make_tuple(idx, idx_no_scratch);
@@ -368,7 +368,7 @@ StatusOr<AutotuneEntry<Op>> BestCudnnConvAlgorithm(
         std::unique_ptr<const se::dnn::OpRunner<typename Op::Signature>>>
         runners) {
   if (runners.size() != results.size()) {
-    return errors::Internal(
+    return absl::InternalError(
         "Mismatched size of autotune results and runners vectors.");
   }
   int idx;

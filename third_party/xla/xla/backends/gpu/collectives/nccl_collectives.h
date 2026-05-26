@@ -41,9 +41,6 @@ class NcclCollectives : public GpuCollectives {
  public:
   bool IsImplemented() const final { return true; }
 
-  bool SupportsDeviceComm() const final;
-  bool SupportsOneSidedComm() const final;
-
   size_t SymmetricMemoryAlignment() const final;
 
   absl::StatusOr<CliqueId> CreateUniqueCliqueId() const final;
@@ -81,10 +78,6 @@ class NcclCollectives : public GpuCollectives {
   absl::StatusOr<std::unique_ptr<Communicator>> CreateCommunicator() final {
     return absl::UnimplementedError("Not implemented.");
   }
-
-  absl::StatusOr<void*> Allocate(uint64_t bytes) final;
-
-  absl::Status Deallocate(void* location) final;
 
   absl::StatusOr<CliqueIdCallback> InitializeTopology(
       const Topology& topology) final;

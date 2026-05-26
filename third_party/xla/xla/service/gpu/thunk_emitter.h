@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -69,9 +70,6 @@ class ThunkEmitter {
   std::unique_ptr<llvm::Module> ConsumeConstantsModule() {
     return std::move(constants_module_);
   }
-  std::vector<std::unique_ptr<llvm::Module>> ConsumeKernelModules() {
-    return std::move(kernel_modules_);
-  }
 
  private:
   // Emits code for the given HLO computation.
@@ -108,7 +106,7 @@ class ThunkEmitter {
       const HloCollectivePermuteInstruction* hlo);
 
   template <typename CollectiveThunkType, typename HloInstType>
-  absl::StatusOr<ThunkSequence> EmitCollectiveThunk(
+  AsyncThunkSequence EmitCollectiveThunk(
       Thunk::Kind kind, const HloInstruction* async_start,
       const HloInstType* inst, std::optional<bool> use_global_device_ids);
 
@@ -209,12 +207,15 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitTriangularSolveCustomCall(
       const HloInstruction* hlo);
 
-  absl::StatusOr<ThunkSequence> EmitTritonCustomCall(
+  AsyncThunkSequence EmitTritonCustomCall(
       const HloCustomCallInstruction* instr);
 
   AsyncThunkSequence EmitWhile(const HloInstruction* instr);
 
   absl::Status AssertNonDeterminismIsOkay(const std::string& op_name);
+
+  AsyncThunkSequence EmitDynamicSliceFusionV2(
+      const HloFusionInstruction* instr);
 
   absl::StatusOr<BufferAllocation::Slice> GetAllocationSliceForHlo(
       const HloInstruction* instr, const ShapeIndex& index = {}) const;
@@ -246,9 +247,6 @@ class ThunkEmitter {
   // Module with constants.
   std::unique_ptr<llvm::Module> constants_module_;
 
-  // Modules for each emitted kernel.
-  std::vector<std::unique_ptr<llvm::Module>> kernel_modules_;
-
   // TODO(tjoerg): Attach the HloOrdering to the HloSchedule instead of
   // re-creating it here.
   absl::flat_hash_map<const HloModule*,
@@ -260,6 +258,24 @@ class ThunkEmitter {
   // to avoid deadlocks when foreign code calls into LLVM with a different
   // set of options.
   llvm_ir::LLVMCommandLineOptionsReleasableLock* llvm_options_lock_;
+
+  // AllocationOverrides lets EmitDynamicSliceFusionV2 redirect buffer lookups
+  // for specific HLO instructions. When emitting embedded thunks for a
+  // dynamic-slice fusion, the hero's operands and results must map to
+  // synthetic BufferAllocation::Slices (the "embedded_allocations") rather
+  // than the real buffer assignment. InstallAllocationOverrides sets the map;
+  // GetAllocationSliceForHlo checks it before falling through to the normal
+  // buffer assignment. The returned cleanup object restores the empty state.
+  using AllocationOverrides =
+      absl::flat_hash_map<const HloInstruction*,
+                          std::vector<BufferAllocation::Slice>>;
+
+  auto InstallAllocationOverrides(AllocationOverrides overrides) {
+    allocation_overrides_ = std::move(overrides);
+    return absl::MakeCleanup([this] { allocation_overrides_.clear(); });
+  }
+
+  AllocationOverrides allocation_overrides_;
 };
 
 }  // namespace xla::gpu

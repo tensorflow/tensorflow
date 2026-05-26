@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/runtime/collective_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -69,14 +70,14 @@ CollectivePermuteThunk::CollectivePermuteThunk(
 
 tsl::AsyncValueRef<CollectivePermuteThunk::ExecuteEvent>
 CollectivePermuteThunk::Execute(const ExecuteParams& params) {
-  TF_ASSIGN_OR_RETURN(OpDeviceMemory data, GetOpDeviceMemory(params));
+  ASSIGN_OR_RETURN(OpDeviceMemory data, GetOpDeviceMemory(params));
 
   Thunk::CollectiveExecuteParams* collective_params = params.collective_params;
   TF_RET_CHECK(collective_params) << "Collectives parameters are not set";
 
-  TF_ASSIGN_OR_RETURN(DeviceAssignment::LogicalID logical_id,
-                      collective_params->device_assignment->LogicalIdForDevice(
-                          collective_params->global_device_id));
+  ASSIGN_OR_RETURN(DeviceAssignment::LogicalID logical_id,
+                   collective_params->device_assignment->LogicalIdForDevice(
+                       collective_params->global_device_id));
 
   int32_t logical_device_id = op_params().has_channel_id
                                   ? logical_id.computation_id

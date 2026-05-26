@@ -21,11 +21,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/config.h"
 #include "absl/functional/bind_front.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -59,10 +59,9 @@ char PjRtCompiler::ID = 0;
 static absl::Status TranslateDeviceIds(PjRtClient* client,
                                        xla::CompileOptions& options) {
   if (options.executable_build_options.device_ordinal() != -1) {
-    TF_ASSIGN_OR_RETURN(
-        auto pjrt_global_device_id,
-        client->GetGlobalDeviceId(
-            DeviceId(options.executable_build_options.device_ordinal())));
+    ASSIGN_OR_RETURN(auto pjrt_global_device_id,
+                     client->GetGlobalDeviceId(DeviceId(
+                         options.executable_build_options.device_ordinal())));
     options.executable_build_options.set_device_ordinal(
         pjrt_global_device_id.value());
   }
@@ -83,7 +82,7 @@ static absl::Status TranslateDeviceIds(PjRtClient* client,
             result.Update(pjrt_global_device_id.status());
           }
         });
-    TF_RETURN_IF_ERROR(result);
+    RETURN_IF_ERROR(result);
     options.executable_build_options.set_device_assignment(
         std::move(device_assignment));
   }
@@ -113,9 +112,9 @@ tsl::Future<LoadedExecutableRef> PjRtCompiler::CompileAndLoad(
   }
   std::unique_ptr<HloProgram> xla_program =
       llvm::cast<HloProgram>(std::move(program));
-  TF_ASSIGN_OR_RETURN(auto xla_compile_options,
-                      GetXlaCompileOptions(std::move(options)));
-  TF_RETURN_IF_ERROR(
+  ASSIGN_OR_RETURN(auto xla_compile_options,
+                   GetXlaCompileOptions(std::move(options)));
+  RETURN_IF_ERROR(
       TranslateDeviceIds(client_, xla_compile_options->compile_options));
   auto compile = [client = client_, program = std::move(program),
                   xla_program = std::move(xla_program),
@@ -143,8 +142,8 @@ tsl::Future<ExecutableRef> PjRtCompiler::Compile(
   }
   std::unique_ptr<HloProgram> xla_program =
       llvm::cast<HloProgram>(std::move(program));
-  TF_ASSIGN_OR_RETURN(auto xla_compile_options,
-                      GetXlaCompileOptions(std::move(options)));
+  ASSIGN_OR_RETURN(auto xla_compile_options,
+                   GetXlaCompileOptions(std::move(options)));
   const auto* pjrt_topology = llvm::dyn_cast<PjRtTopology>(&topology);
   if (pjrt_topology == nullptr) {
     return absl::InvalidArgumentError("PjRtCompiler requires a PjRtTopology");
@@ -155,7 +154,7 @@ tsl::Future<ExecutableRef> PjRtCompiler::Compile(
   // When cross-compiling, the caller passes an empty device list because
   // device IDs belong to the target topology, not this client.
   if (client_ != nullptr && xla_compile_options->devices) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         TranslateDeviceIds(client_, xla_compile_options->compile_options));
   }
 
@@ -188,13 +187,13 @@ tsl::Future<LoadedExecutableRef> PjRtCompiler::DeserializeLoadedExecutable(
         "PjRtCompiler must be constructed with a Client to call "
         "DeserializeLoadedExecutable.");
   }
-  TF_ASSIGN_OR_RETURN(auto xla_deserialize_options,
-                      GetXlaDeserializeExecutableOptions(std::move(options)));
+  ASSIGN_OR_RETURN(auto xla_deserialize_options,
+                   GetXlaDeserializeExecutableOptions(std::move(options)));
   if (xla_deserialize_options->compile_options.has_value()) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         TranslateDeviceIds(client_, *xla_deserialize_options->compile_options));
   }
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto common_metadata_and_serialized_pjrt_executable,
       PjRtExecutable::CommonMetadata::Deserialize(
           serialized,
@@ -209,12 +208,11 @@ tsl::Future<LoadedExecutableRef> PjRtCompiler::DeserializeLoadedExecutable(
        user_context = UserContextScope::current()]() mutable
       -> absl::StatusOr<LoadedExecutableRef> {
     UserContextScope scope(std::move(user_context));
-    TF_ASSIGN_OR_RETURN(
-        auto pjrt_loaded_executable,
-        client->pjrt_client()->LoadSerializedExecutable(
-            common_metadata_and_serialized_pjrt_executable.second,
-            std::move(xla_deserialize_options->compile_options),
-            xla::LoadOptions()));
+    ASSIGN_OR_RETURN(auto pjrt_loaded_executable,
+                     client->pjrt_client()->LoadSerializedExecutable(
+                         common_metadata_and_serialized_pjrt_executable.second,
+                         std::move(xla_deserialize_options->compile_options),
+                         xla::LoadOptions()));
     // TODO(emilyaf): Remove the else branch once devices are plumbed
     // through from Australis and are always present in the
     // DeserializeExecutableOptions.
@@ -222,7 +220,7 @@ tsl::Future<LoadedExecutableRef> PjRtCompiler::DeserializeLoadedExecutable(
     if (xla_deserialize_options->devices.has_value()) {
       device_list = std::move(xla_deserialize_options->devices.value());
     } else {
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           device_list,
           GetDeviceListFromDeviceAssignment(
               client, pjrt_loaded_executable->device_assignment()));

@@ -27,21 +27,17 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
-#include "xla/literal_util.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -159,19 +155,25 @@ class HloAliasAnalysisTest : public HloHardwareIndependentTestBase {
 
 TEST_F(HloAliasAnalysisTest, BinaryOperation) {
   // Test the analysis on a single binary operation (Add).
-  auto builder = HloComputation::Builder(TestName());
-  auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
-  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
-      scalar_shape_, HloOpcode::kAdd, constant1, constant2));
-  module_->AddEntryComputation(builder.Build());
+  const char* hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  constant1 = f32[] constant(1.0)
+  constant2 = f32[] constant(2.0)
+  ROOT add = f32[] add(constant1, constant2)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
   SCOPED_TRACE(module_->ToString());
 
   const HloAliasAnalysis& analysis = RunAnalysis();
 
   EXPECT_EQ(analysis.buffers().size(), 3);
+
+  HloInstruction* add = FindInstruction(module_.get(), "add");
+  HloInstruction* constant1 = FindInstruction(module_.get(), "constant1");
+  HloInstruction* constant2 = FindInstruction(module_.get(), "constant2");
 
   // All of the buffer sets should trivially contain a single buffer containing
   // a single value.
@@ -188,25 +190,29 @@ TEST_F(HloAliasAnalysisTest, BinaryOperation) {
 
 TEST_F(HloAliasAnalysisTest, TupleAndGtes) {
   // Verify the analysis for a Tuple and GetTupleElement instructions.
-  auto builder = HloComputation::Builder(TestName());
-  auto param0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, scalar_shape_, "param0"));
-  auto param1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, scalar_shape_, "param1"));
-  auto tuple =
-      builder.AddInstruction(HloInstruction::CreateTuple({param0, param1}));
-  auto gte0 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, tuple, 0));
-  auto gte1 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, tuple, 1));
-  builder.AddInstruction(
-      HloInstruction::CreateBinary(scalar_shape_, HloOpcode::kAdd, gte0, gte1));
-  module_->AddEntryComputation(builder.Build());
+  const char* hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  param0 = f32[] parameter(0)
+  param1 = f32[] parameter(1)
+  tuple = (f32[], f32[]) tuple(param0, param1)
+  gte0 = f32[] get-tuple-element(tuple), index=0
+  gte1 = f32[] get-tuple-element(tuple), index=1
+  ROOT add = f32[] add(gte0, gte1)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
   SCOPED_TRACE(module_->ToString());
 
   const HloAliasAnalysis& analysis = RunAnalysis();
 
   EXPECT_EQ(analysis.buffers().size(), 4);
+
+  HloInstruction* tuple = FindInstruction(module_.get(), "tuple");
+  HloInstruction* param0 = FindInstruction(module_.get(), "param0");
+  HloInstruction* param1 = FindInstruction(module_.get(), "param1");
+  HloInstruction* gte0 = FindInstruction(module_.get(), "gte0");
 
   // Verify the expected aliasing of the tuple elements.
   EXPECT_EQ(analysis.GetUniqueBufferAt(tuple, /*index=*/{}).GetUniqueValue(),
@@ -237,18 +243,22 @@ TEST_F(HloAliasAnalysisTest, TupleAndGtes) {
 
 TEST_F(HloAliasAnalysisTest, NondistinctTuple) {
   // Test a expression with a non-distinct buffer set.
-  auto builder = HloComputation::Builder(TestName());
-  auto param0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, scalar_shape_, "param0"));
-  auto param1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, scalar_shape_, "param1"));
-  // param0 is included twice in the tuple.
-  auto tuple = builder.AddInstruction(
-      HloInstruction::CreateTuple({param0, param1, param0}));
-  module_->AddEntryComputation(builder.Build());
+  const char* hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  param0 = f32[] parameter(0)
+  param1 = f32[] parameter(1)
+  ROOT tuple = (f32[], f32[], f32[]) tuple(param0, param1, param0)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
   SCOPED_TRACE(module_->ToString());
 
   const HloAliasAnalysis& analysis = RunAnalysis();
+
+  HloInstruction* tuple = FindInstruction(module_.get(), "tuple");
+  HloInstruction* param0 = FindInstruction(module_.get(), "param0");
 
   EXPECT_THAT(
       analysis.GetUniqueBufferAt(param0).ComputePositions(),
@@ -262,25 +272,19 @@ TEST_F(HloAliasAnalysisTest, NondistinctTuple) {
 }
 
 TEST_F(HloAliasAnalysisTest, ParametersWithAliasing) {
-  const Shape tuple_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
+  const char* hlo_string = R"(
+HloModule test
 
-  auto builder = HloComputation::Builder(TestName());
-  auto param = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, tuple_shape, "p0"));
-  auto gte0 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, param, 0));
-  auto gte1 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, param, 1));
-
-  auto negate0 = builder.AddInstruction(
-      HloInstruction::CreateUnary(scalar_shape_, HloOpcode::kNegate, gte0));
-  auto negate1 = builder.AddInstruction(
-      HloInstruction::CreateUnary(scalar_shape_, HloOpcode::kNegate, gte1));
-
-  auto tuple =
-      builder.AddInstruction(HloInstruction::CreateTuple({negate0, negate1}));
-  module_->AddEntryComputation(builder.Build());
+ENTRY main {
+  param = (f32[], f32[]) parameter(0)
+  gte0 = f32[] get-tuple-element(param), index=0
+  gte1 = f32[] get-tuple-element(param), index=1
+  negate0 = f32[] negate(gte0)
+  negate1 = f32[] negate(gte1)
+  ROOT tuple = (f32[], f32[]) tuple(negate0, negate1)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
   SCOPED_TRACE(module_->ToString());
 
   TF_ASSERT_OK(module_->input_output_alias_config().SetUpAlias(
@@ -293,6 +297,10 @@ TEST_F(HloAliasAnalysisTest, ParametersWithAliasing) {
       /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{0}));
 
   const HloAliasAnalysis& analysis = RunAnalysis();
+
+  HloInstruction* tuple = FindInstruction(module_.get(), "tuple");
+  HloInstruction* gte0 = FindInstruction(module_.get(), "gte0");
+  HloInstruction* gte1 = FindInstruction(module_.get(), "gte1");
 
   EXPECT_EQ(analysis.GetUniqueBufferAt(gte0),
             analysis.GetUniqueBufferAt(tuple, /*index=*/{0}));
@@ -311,19 +319,17 @@ TEST_F(HloAliasAnalysisTest, ParametersWithCrossAliasing) {
   //      / \
   //     /   \
   //  (p0  ,  p1)
-  const Shape tuple_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
+  const char* hlo_string = R"(
+HloModule test
 
-  auto builder = HloComputation::Builder(TestName());
-  auto param = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, tuple_shape, "p0"));
-  auto gte0 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, param, 0));
-  auto gte1 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, param, 1));
-  auto tuple =
-      builder.AddInstruction(HloInstruction::CreateTuple({gte0, gte1}));
-  module_->AddEntryComputation(builder.Build());
+ENTRY main {
+  param = (f32[], f32[]) parameter(0)
+  gte0 = f32[] get-tuple-element(param), index=0
+  gte1 = f32[] get-tuple-element(param), index=1
+  ROOT tuple = (f32[], f32[]) tuple(gte0, gte1)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
   SCOPED_TRACE(module_->ToString());
 
   TF_ASSERT_OK(module_->input_output_alias_config().SetUpAlias(
@@ -336,6 +342,10 @@ TEST_F(HloAliasAnalysisTest, ParametersWithCrossAliasing) {
       /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{1}));
 
   const HloAliasAnalysis& analysis = RunAnalysis();
+
+  HloInstruction* tuple = FindInstruction(module_.get(), "tuple");
+  HloInstruction* gte0 = FindInstruction(module_.get(), "gte0");
+  HloInstruction* gte1 = FindInstruction(module_.get(), "gte1");
 
   // Every Ops in this graph are aliased with each other.
   EXPECT_EQ(analysis.GetUniqueBufferAt(gte0),
@@ -369,49 +379,33 @@ TEST_F(HloAliasAnalysisTest, InputOutputAliasingWithWhile) {
   //   %negate_2 = Negate(%while_2)
   //   return Tuple(negate_1, negate_2)
   //
-  const Shape tuple_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
+  const char* hlo_string = R"(
+HloModule test
 
-  // Element 0 passes transparently through the body.
-  auto body_builder = HloComputation::Builder("body");
-  auto body_param = body_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, tuple_shape, "param"));
-  auto body_element_0 = body_builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, body_param, 0));
-  auto body_element_1 = body_builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, body_param, 1));
-  auto add = body_builder.AddInstruction(HloInstruction::CreateBinary(
-      scalar_shape_, HloOpcode::kAdd, body_element_0, body_element_1));
-  auto body_tuple = body_builder.AddInstruction(
-      HloInstruction::CreateTuple({body_element_0, add}));
-  HloComputation* body = module_->AddEmbeddedComputation(body_builder.Build());
+body {
+  body_param = (f32[], f32[]) parameter(0)
+  body_element_0 = f32[] get-tuple-element(body_param), index=0
+  body_element_1 = f32[] get-tuple-element(body_param), index=1
+  add = f32[] add(body_element_0, body_element_1)
+  ROOT body_tuple = (f32[], f32[]) tuple(body_element_0, add)
+}
 
-  // Condition computation trivially returns a constant "false".
-  auto cond_builder = HloComputation::Builder("condition");
-  auto cond_param = cond_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, tuple_shape, "param"));
-  cond_builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
-  HloComputation* condition =
-      module_->AddEmbeddedComputation(cond_builder.Build());
+condition {
+  cond_param = (f32[], f32[]) parameter(0)
+  ROOT cond_constant = pred[] constant(false)
+}
 
-  auto builder = HloComputation::Builder(TestName());
-  auto param = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, tuple_shape, "p0"));
-
-  auto xla_while = builder.AddInstruction(
-      HloInstruction::CreateWhile(tuple_shape, condition, body, param));
-  auto while_element_1 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, xla_while, 0));
-  auto while_element_2 = builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, xla_while, 1));
-  auto negate_1 = builder.AddInstruction(HloInstruction::CreateUnary(
-      scalar_shape_, HloOpcode::kNegate, while_element_1));
-  auto negate_2 = builder.AddInstruction(HloInstruction::CreateUnary(
-      scalar_shape_, HloOpcode::kNegate, while_element_2));
-  auto tuple =
-      builder.AddInstruction(HloInstruction::CreateTuple({negate_1, negate_2}));
-  module_->AddEntryComputation(builder.Build());
+ENTRY main {
+  param = (f32[], f32[]) parameter(0)
+  xla_while = (f32[], f32[]) while(param), condition=condition, body=body
+  while_element_1 = f32[] get-tuple-element(xla_while), index=0
+  while_element_2 = f32[] get-tuple-element(xla_while), index=1
+  negate_1 = f32[] negate(while_element_1)
+  negate_2 = f32[] negate(while_element_2)
+  ROOT tuple = (f32[], f32[]) tuple(negate_1, negate_2)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
   SCOPED_TRACE(module_->ToString());
 
   TF_ASSERT_OK(module_->input_output_alias_config().SetUpAlias(
@@ -420,6 +414,19 @@ TEST_F(HloAliasAnalysisTest, InputOutputAliasingWithWhile) {
       /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{1}));
 
   const HloAliasAnalysis& analysis = RunAnalysis();
+
+  HloInstruction* param = FindInstruction(module_.get(), "param");
+  HloInstruction* xla_while = FindInstruction(module_.get(), "xla_while");
+  HloInstruction* body_param = FindInstruction(module_.get(), "body_param");
+  HloInstruction* cond_param = FindInstruction(module_.get(), "cond_param");
+  HloInstruction* add = FindInstruction(module_.get(), "add");
+  HloInstruction* negate_2 = FindInstruction(module_.get(), "negate_2");
+  HloInstruction* while_element_2 =
+      FindInstruction(module_.get(), "while_element_2");
+  HloInstruction* body_element_1 =
+      FindInstruction(module_.get(), "body_element_1");
+  HloInstruction* body_tuple = FindInstruction(module_.get(), "body_tuple");
+  HloInstruction* tuple = FindInstruction(module_.get(), "tuple");
 
   EXPECT_THAT(analysis.GetUniqueBufferAt(xla_while, /*index=*/{1}).values(),
               UnorderedElementsAre(&GetValueDefinedAt(param, {1}),
@@ -444,27 +451,32 @@ TEST_F(HloAliasAnalysisTest, InputOutputAliasingWithWhile) {
 TEST_F(HloAliasAnalysisTest, SingleCall) {
   // Test a single call of a subcomputation. The subcomputation adds its two
   // array-shaped parameters.
-  auto subbuilder = HloComputation::Builder("Subcomputation");
-  auto subparam0 = subbuilder.AddInstruction(
-      HloInstruction::CreateParameter(0, scalar_shape_, "param0"));
-  auto subparam1 = subbuilder.AddInstruction(
-      HloInstruction::CreateParameter(1, scalar_shape_, "param1"));
-  auto add = subbuilder.AddInstruction(HloInstruction::CreateBinary(
-      scalar_shape_, HloOpcode::kAdd, subparam0, subparam1));
-  HloComputation* called_computation =
-      module_->AddEmbeddedComputation(subbuilder.Build());
+  const char* hlo_string = R"(
+HloModule test
 
-  auto builder = HloComputation::Builder(TestName());
-  auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
-  auto call = builder.AddInstruction(HloInstruction::CreateCall(
-      scalar_shape_, {constant1, constant2}, called_computation));
-  module_->AddEntryComputation(builder.Build());
+Subcomputation {
+  subparam0 = f32[] parameter(0)
+  subparam1 = f32[] parameter(1)
+  ROOT add = f32[] add(subparam0, subparam1)
+}
+
+ENTRY main {
+  constant1 = f32[] constant(1.0)
+  constant2 = f32[] constant(2.0)
+  ROOT call = f32[] call(constant1, constant2), to_apply=Subcomputation
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
   SCOPED_TRACE(module_->ToString());
 
   const HloAliasAnalysis& analysis = RunAnalysis();
+
+  HloInstruction* constant1 = FindInstruction(module_.get(), "constant1");
+  HloInstruction* constant2 = FindInstruction(module_.get(), "constant2");
+  HloInstruction* subparam0 = FindInstruction(module_.get(), "subparam0");
+  HloInstruction* subparam1 = FindInstruction(module_.get(), "subparam1");
+  HloInstruction* add = FindInstruction(module_.get(), "add");
+  HloInstruction* call = FindInstruction(module_.get(), "call");
 
   // Verify aliasing of the kCall operands and the subcomputation parameters.
   EXPECT_THAT(analysis.GetUniqueBufferAt(constant1).ComputePositions(),
@@ -484,29 +496,34 @@ TEST_F(HloAliasAnalysisTest, SingleCall) {
 
 TEST_F(HloAliasAnalysisTest, ComputationCalledTwice) {
   // Test a subcomputation which is called twice with different argument values.
-  auto subbuilder = HloComputation::Builder("Subcomputation");
-  auto subparam0 = subbuilder.AddInstruction(
-      HloInstruction::CreateParameter(0, scalar_shape_, "param0"));
-  auto subparam1 = subbuilder.AddInstruction(
-      HloInstruction::CreateParameter(1, scalar_shape_, "param1"));
-  auto add = subbuilder.AddInstruction(HloInstruction::CreateBinary(
-      scalar_shape_, HloOpcode::kAdd, subparam0, subparam1));
-  HloComputation* called_computation =
-      module_->AddEmbeddedComputation(subbuilder.Build());
+  const char* hlo_string = R"(
+HloModule test
 
-  auto builder = HloComputation::Builder(TestName());
-  auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
-  auto call1 = builder.AddInstruction(HloInstruction::CreateCall(
-      scalar_shape_, {constant1, constant2}, called_computation));
-  auto call2 = builder.AddInstruction(HloInstruction::CreateCall(
-      scalar_shape_, {call1, constant2}, called_computation));
-  module_->AddEntryComputation(builder.Build());
+Subcomputation {
+  subparam0 = f32[] parameter(0)
+  subparam1 = f32[] parameter(1)
+  ROOT add = f32[] add(subparam0, subparam1)
+}
+
+ENTRY main {
+  constant1 = f32[] constant(1.0)
+  constant2 = f32[] constant(2.0)
+  call1 = f32[] call(constant1, constant2), to_apply=Subcomputation
+  ROOT call2 = f32[] call(call1, constant2), to_apply=Subcomputation
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
   SCOPED_TRACE(module_->ToString());
 
   const HloAliasAnalysis& analysis = RunAnalysis();
+
+  HloInstruction* constant1 = FindInstruction(module_.get(), "constant1");
+  HloInstruction* constant2 = FindInstruction(module_.get(), "constant2");
+  HloInstruction* subparam0 = FindInstruction(module_.get(), "subparam0");
+  HloInstruction* subparam1 = FindInstruction(module_.get(), "subparam1");
+  HloInstruction* add = FindInstruction(module_.get(), "add");
+  HloInstruction* call1 = FindInstruction(module_.get(), "call1");
+  HloInstruction* call2 = FindInstruction(module_.get(), "call2");
 
   EXPECT_THAT(analysis.GetUniqueBufferAt(constant1).ComputePositions(),
               UnorderedElementsAre(HloPosition{constant1, {}},
@@ -554,45 +571,46 @@ TEST_F(HloAliasAnalysisTest, SingleWhile) {
   //   %tuple = Tuple(%constant1, %constant2)
   //   return While(%tuple, body, condition)
   //
-  const Shape tuple_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
+  const char* hlo_string = R"(
+HloModule test
 
-  // Element 0 passes transparently through the body.
-  auto body_builder = HloComputation::Builder("body");
-  auto body_param = body_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, tuple_shape, "param"));
-  auto body_element_0 = body_builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, body_param, 0));
-  auto body_element_1 = body_builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, body_param, 1));
-  auto add = body_builder.AddInstruction(HloInstruction::CreateBinary(
-      scalar_shape_, HloOpcode::kAdd, body_element_0, body_element_1));
-  auto body_tuple = body_builder.AddInstruction(
-      HloInstruction::CreateTuple({body_element_0, add}));
-  HloComputation* body = module_->AddEmbeddedComputation(body_builder.Build());
+body {
+  body_param = (f32[], f32[]) parameter(0)
+  body_element_0 = f32[] get-tuple-element(body_param), index=0
+  body_element_1 = f32[] get-tuple-element(body_param), index=1
+  add = f32[] add(body_element_0, body_element_1)
+  ROOT body_tuple = (f32[], f32[]) tuple(body_element_0, add)
+}
 
-  // Condition computation trivially returns a constant "false".
-  auto cond_builder = HloComputation::Builder("condition");
-  auto cond_param = cond_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, tuple_shape, "param"));
-  cond_builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
-  HloComputation* condition =
-      module_->AddEmbeddedComputation(cond_builder.Build());
+condition {
+  cond_param = (f32[], f32[]) parameter(0)
+  ROOT cond_constant = pred[] constant(false)
+}
 
-  auto builder = HloComputation::Builder(TestName());
-  auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
-  auto tuple = builder.AddInstruction(
-      HloInstruction::CreateTuple({constant1, constant2}));
-  auto xla_while = builder.AddInstruction(
-      HloInstruction::CreateWhile(tuple_shape, condition, body, tuple));
-  module_->AddEntryComputation(builder.Build());
+ENTRY main {
+  constant1 = f32[] constant(1.0)
+  constant2 = f32[] constant(2.0)
+  tuple = (f32[], f32[]) tuple(constant1, constant2)
+  ROOT xla_while = (f32[], f32[]) while(tuple), condition=condition, body=body
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
   SCOPED_TRACE(module_->ToString());
 
   const HloAliasAnalysis& analysis = RunAnalysis();
+
+  HloInstruction* constant1 = FindInstruction(module_.get(), "constant1");
+  HloInstruction* constant2 = FindInstruction(module_.get(), "constant2");
+  HloInstruction* tuple = FindInstruction(module_.get(), "tuple");
+  HloInstruction* xla_while = FindInstruction(module_.get(), "xla_while");
+  HloInstruction* body_param = FindInstruction(module_.get(), "body_param");
+  HloInstruction* body_element_0 =
+      FindInstruction(module_.get(), "body_element_0");
+  HloInstruction* body_element_1 =
+      FindInstruction(module_.get(), "body_element_1");
+  HloInstruction* add = FindInstruction(module_.get(), "add");
+  HloInstruction* body_tuple = FindInstruction(module_.get(), "body_tuple");
+  HloInstruction* cond_param = FindInstruction(module_.get(), "cond_param");
 
   // Verify the positions of the aliased while buffers.
   EXPECT_THAT(
@@ -647,51 +665,43 @@ TEST_F(HloAliasAnalysisTest, SequentialWhiles) {
   //   %while1 = While(%while0, body, condition)
   //   return While(%while1, body, condition)
   //
-  const Shape tuple_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
+  const char* hlo_string = R"(
+HloModule test
 
-  // Element 0 passes transparently through the body.
-  auto body_builder = HloComputation::Builder("body");
-  auto body_param = body_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, tuple_shape, "param"));
-  auto body_element_0 = body_builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, body_param, 0));
-  auto body_element_1 = body_builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, body_param, 1));
-  auto add = body_builder.AddInstruction(HloInstruction::CreateBinary(
-      scalar_shape_, HloOpcode::kAdd, body_element_0, body_element_1));
-  body_builder.AddInstruction(
-      HloInstruction::CreateTuple({body_element_0, add}));
-  HloComputation* body = module_->AddEmbeddedComputation(body_builder.Build());
+body {
+  body_param = (f32[], f32[]) parameter(0)
+  body_element_0 = f32[] get-tuple-element(body_param), index=0
+  body_element_1 = f32[] get-tuple-element(body_param), index=1
+  add = f32[] add(body_element_0, body_element_1)
+  ROOT body_tuple = (f32[], f32[]) tuple(body_element_0, add)
+}
 
-  auto cond_builder = HloComputation::Builder("condition");
-  cond_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, tuple_shape, "param"));
-  cond_builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
-  HloComputation* condition =
-      module_->AddEmbeddedComputation(cond_builder.Build());
+condition {
+  cond_param = (f32[], f32[]) parameter(0)
+  ROOT cond_constant = pred[] constant(false)
+}
 
-  auto builder = HloComputation::Builder(TestName());
-  auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
-  auto tuple = builder.AddInstruction(
-      HloInstruction::CreateTuple({constant1, constant2}));
-  auto xla_while0 = builder.AddInstruction(
-      HloInstruction::CreateWhile(tuple_shape, condition, body, tuple));
-  auto xla_while1 = builder.AddInstruction(
-      HloInstruction::CreateWhile(tuple_shape, condition, body, xla_while0));
-  auto xla_while2 = builder.AddInstruction(
-      HloInstruction::CreateWhile(tuple_shape, condition, body, xla_while1));
-  module_->AddEntryComputation(builder.Build());
+ENTRY main {
+  constant1 = f32[] constant(1.0)
+  constant2 = f32[] constant(2.0)
+  tuple = (f32[], f32[]) tuple(constant1, constant2)
+  xla_while0 = (f32[], f32[]) while(tuple), condition=condition, body=body
+  xla_while1 = (f32[], f32[]) while(xla_while0), condition=condition, body=body
+  ROOT xla_while2 = (f32[], f32[]) while(xla_while1), condition=condition, body=body
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
 
   FlattenCallGraph flattener;
   TF_ASSERT_OK(flattener.Run(module_.get()).status());
   SCOPED_TRACE(module_->ToString());
 
   const HloAliasAnalysis& analysis = RunAnalysis();
+
+  HloInstruction* constant1 = FindInstruction(module_.get(), "constant1");
+  HloInstruction* constant2 = FindInstruction(module_.get(), "constant2");
+  HloInstruction* tuple = FindInstruction(module_.get(), "tuple");
+  HloInstruction* xla_while2 = FindInstruction(module_.get(), "xla_while2");
 
   EXPECT_EQ(analysis.GetUniqueBufferAt(tuple, /*index=*/{}),
             analysis.GetUniqueBufferAt(xla_while2, /*index=*/{}));
@@ -720,70 +730,56 @@ TEST_F(HloAliasAnalysisTest, NestedWhiles) {
   //   %tuple = Tuple(%constant1, %constant2)
   //   return While(%tuple, outer_body, condition)
   //
-  const Shape tuple_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
+  const char* hlo_string = R"(
+HloModule test
 
-  auto build_cond_computation = [&tuple_shape]() {
-    auto cond_builder = HloComputation::Builder("condition");
-    cond_builder.AddInstruction(
-        HloInstruction::CreateParameter(0, tuple_shape, "param"));
-    cond_builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
-    return cond_builder.Build();
-  };
-  // Build separate condition computations so the call graph is flat. The
-  // callgraph is always flattened in the compiler pipeline, and the flattened
-  // callgraph enables representative interference analysis.
-  HloComputation* condition1 =
-      module_->AddEmbeddedComputation(build_cond_computation());
-  HloComputation* condition2 =
-      module_->AddEmbeddedComputation(build_cond_computation());
+inner_body {
+  inner_param = (f32[], f32[]) parameter(0)
+  inner_element_0 = f32[] get-tuple-element(inner_param), index=0
+  inner_element_1 = f32[] get-tuple-element(inner_param), index=1
+  add = f32[] add(inner_element_0, inner_element_1)
+  ROOT tuple = (f32[], f32[]) tuple(inner_element_0, add)
+}
 
-  // Element 0 passes transparently through the body.
-  auto inner_builder = HloComputation::Builder("inner_body");
-  auto inner_param = inner_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, tuple_shape, "param"));
-  auto inner_element_0 = inner_builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, inner_param, 0));
-  auto inner_element_1 = inner_builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, inner_param, 1));
-  auto add = inner_builder.AddInstruction(HloInstruction::CreateBinary(
-      scalar_shape_, HloOpcode::kAdd, inner_element_0, inner_element_1));
-  inner_builder.AddInstruction(
-      HloInstruction::CreateTuple({inner_element_0, add}));
-  HloComputation* inner_body =
-      module_->AddEmbeddedComputation(inner_builder.Build());
+condition1 {
+  cond_param = (f32[], f32[]) parameter(0)
+  ROOT cond_constant = pred[] constant(false)
+}
 
-  // Element 1 passes transparently through the body.
-  auto outer_builder = HloComputation::Builder("outer_body");
-  auto outer_param = outer_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, tuple_shape, "param"));
-  auto outer_element_0 = outer_builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, outer_param, 0));
-  auto negate = outer_builder.AddInstruction(HloInstruction::CreateUnary(
-      scalar_shape_, HloOpcode::kNegate, outer_element_0));
-  auto outer_element_1 = outer_builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, outer_param, 1));
-  auto outer_tuple = outer_builder.AddInstruction(
-      HloInstruction::CreateTuple({negate, outer_element_1}));
-  auto nested_while = outer_builder.AddInstruction(HloInstruction::CreateWhile(
-      tuple_shape, condition1, inner_body, outer_tuple));
-  HloComputation* outer_body =
-      module_->AddEmbeddedComputation(outer_builder.Build());
+outer_body {
+  outer_param = (f32[], f32[]) parameter(0)
+  outer_element_0 = f32[] get-tuple-element(outer_param), index=0
+  negate = f32[] negate(outer_element_0)
+  outer_element_1 = f32[] get-tuple-element(outer_param), index=1
+  outer_tuple = (f32[], f32[]) tuple(negate, outer_element_1)
+  ROOT nested_while = (f32[], f32[]) while(outer_tuple), condition=condition1, body=inner_body
+}
 
-  auto builder = HloComputation::Builder(TestName());
-  auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
-  auto tuple = builder.AddInstruction(
-      HloInstruction::CreateTuple({constant1, constant2}));
-  auto entry_while = builder.AddInstruction(
-      HloInstruction::CreateWhile(tuple_shape, condition2, outer_body, tuple));
-  module_->AddEntryComputation(builder.Build());
+condition2 {
+  cond_param = (f32[], f32[]) parameter(0)
+  ROOT cond_constant = pred[] constant(false)
+}
+
+ENTRY main {
+  constant1 = f32[] constant(1.0)
+  constant2 = f32[] constant(2.0)
+  tuple = (f32[], f32[]) tuple(constant1, constant2)
+  ROOT entry_while = (f32[], f32[]) while(tuple), condition=condition2, body=outer_body
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
   SCOPED_TRACE(module_->ToString());
 
   const HloAliasAnalysis& analysis = RunAnalysis();
+
+  HloInstruction* constant1 = FindInstruction(module_.get(), "constant1");
+  HloInstruction* constant2 = FindInstruction(module_.get(), "constant2");
+  HloInstruction* entry_while = FindInstruction(module_.get(), "entry_while");
+  HloInstruction* nested_while = FindInstruction(module_.get(), "nested_while");
+  HloInstruction* inner_element_0 =
+      FindInstruction(module_.get(), "inner_element_0");
+  HloInstruction* inner_element_1 =
+      FindInstruction(module_.get(), "inner_element_1");
 
   EXPECT_EQ(analysis.GetUniqueBufferAt(constant1),
             analysis.GetUniqueBufferAt(entry_while, /*index=*/{0}));
@@ -819,45 +815,42 @@ TEST_F(HloAliasAnalysisTest, SwizzlingWhile) {
   //   %tuple = Tuple(%constant1, %constant2, %constant3)
   //   return While(%tuple, body, condition)
   //
-  const Shape tuple_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_, scalar_shape_});
+  const char* hlo_string = R"(
+HloModule test
 
-  auto body_builder = HloComputation::Builder("body");
-  auto body_param = body_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, tuple_shape, "param"));
-  auto body_element_0 = body_builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, body_param, 0));
-  auto body_element_1 = body_builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, body_param, 1));
-  auto body_element_2 = body_builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape_, body_param, 2));
-  body_builder.AddInstruction(HloInstruction::CreateTuple(
-      {body_element_1, body_element_2, body_element_0}));
-  HloComputation* body = module_->AddEmbeddedComputation(body_builder.Build());
+body {
+  body_param = (f32[], f32[], f32[]) parameter(0)
+  body_element_0 = f32[] get-tuple-element(body_param), index=0
+  body_element_1 = f32[] get-tuple-element(body_param), index=1
+  body_element_2 = f32[] get-tuple-element(body_param), index=2
+  ROOT body_tuple = (f32[], f32[], f32[]) tuple(body_element_1, body_element_2, body_element_0)
+}
 
-  auto cond_builder = HloComputation::Builder("condition");
-  cond_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, tuple_shape, "param"));
-  auto cond_constant = cond_builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
-  HloComputation* condition =
-      module_->AddEmbeddedComputation(cond_builder.Build());
+condition {
+  cond_param = (f32[], f32[], f32[]) parameter(0)
+  ROOT cond_constant = pred[] constant(false)
+}
 
-  auto builder = HloComputation::Builder(TestName());
-  auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
-  auto constant3 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(3.0)));
-  auto tuple = builder.AddInstruction(
-      HloInstruction::CreateTuple({constant1, constant2, constant3}));
-  auto xla_while = builder.AddInstruction(
-      HloInstruction::CreateWhile(tuple_shape, condition, body, tuple));
-  module_->AddEntryComputation(builder.Build());
+ENTRY main {
+  constant1 = f32[] constant(1.0)
+  constant2 = f32[] constant(2.0)
+  constant3 = f32[] constant(3.0)
+  tuple = (f32[], f32[], f32[]) tuple(constant1, constant2, constant3)
+  ROOT xla_while = (f32[], f32[], f32[]) while(tuple), condition=condition, body=body
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
   SCOPED_TRACE(module_->ToString());
 
   const HloAliasAnalysis& analysis = RunAnalysis();
+
+  HloInstruction* constant1 = FindInstruction(module_.get(), "constant1");
+  HloInstruction* constant2 = FindInstruction(module_.get(), "constant2");
+  HloInstruction* constant3 = FindInstruction(module_.get(), "constant3");
+  HloInstruction* tuple = FindInstruction(module_.get(), "tuple");
+  HloInstruction* xla_while = FindInstruction(module_.get(), "xla_while");
+  HloInstruction* cond_constant =
+      FindInstruction(module_.get(), "cond_constant");
 
   // The swizzling while makes most positions in the module alias leaving only 3
   // HloBuffers.
@@ -889,16 +882,21 @@ TEST_F(HloAliasAnalysisTest, SwizzlingWhile) {
 
 TEST_F(HloAliasAnalysisTest, Bitcast) {
   // Bitcasting a value should not produce a new buffer.
-  auto builder = HloComputation::Builder(TestName());
-  auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto bitcast = builder.AddInstruction(
-      HloInstruction::CreateBitcast(scalar_shape_, constant));
+  const char* hlo_string = R"(
+HloModule test
 
-  module_->AddEntryComputation(builder.Build());
+ENTRY main {
+  constant = f32[] constant(1.0)
+  ROOT bitcast = f32[] bitcast(constant)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
   SCOPED_TRACE(module_->ToString());
 
   const HloAliasAnalysis& analysis = RunAnalysis();
+
+  HloInstruction* constant = FindInstruction(module_.get(), "constant");
+  HloInstruction* bitcast = FindInstruction(module_.get(), "bitcast");
 
   EXPECT_EQ(analysis.buffers().size(), 1);
 
@@ -907,25 +905,25 @@ TEST_F(HloAliasAnalysisTest, Bitcast) {
 }
 
 TEST_F(HloAliasAnalysisTest, DynamicUpdateSlice) {
-  Shape shape = ShapeUtil::MakeShape(F32, {8});
-  Shape update_shape = ShapeUtil::MakeShape(F32, {4});
-  Shape index_shape = ShapeUtil::MakeShape(S32, {});
-  auto builder = HloComputation::Builder(TestName());
-  auto param0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, shape, "param0"));
-  auto param1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, update_shape, "param1"));
-  auto param2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(2, index_shape, "param2"));
-  auto copy0 = builder.AddInstruction(
-      HloInstruction::CreateUnary(shape, HloOpcode::kCopy, param0));
-  auto dynamic_update_slice = builder.AddInstruction(
-      HloInstruction::CreateDynamicUpdateSlice(shape, copy0, param1, {param2}));
+  const char* hlo_string = R"(
+HloModule test
 
-  module_->AddEntryComputation(builder.Build());
+ENTRY main {
+  param0 = f32[8] parameter(0)
+  param1 = f32[4] parameter(1)
+  param2 = s32[] parameter(2)
+  copy0 = f32[8] copy(param0)
+  ROOT dynamic_update_slice = f32[8] dynamic-update-slice(copy0, param1, param2)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
   SCOPED_TRACE(module_->ToString());
 
   HloAliasAnalysis& analysis = RunAnalysis();
+
+  HloInstruction* copy0 = FindInstruction(module_.get(), "copy0");
+  HloInstruction* dynamic_update_slice =
+      FindInstruction(module_.get(), "dynamic_update_slice");
 
   EXPECT_EQ(analysis.GetUniqueBufferAt(copy0),
             analysis.GetUniqueBufferAt(dynamic_update_slice));

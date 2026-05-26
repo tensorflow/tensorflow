@@ -42,3 +42,7 @@ message HloIsolationTestResult {
   repeated NumericCheck numeric_checks = 5;
   google.protobuf.Any platform_payload = 6;
 }
+
+message HloIsolationTestSummary {
+  repeated HloIsolationTestResult results = 1;
+}

@@ -19,6 +19,7 @@ limitations under the License.
 #include <limits>
 
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/lib/matrix.h"
@@ -35,7 +36,7 @@ namespace xla {
 SignAndLogDet SLogDet(XlaOp a) {
   absl::StatusOr<SignAndLogDet> result =
       [&]() -> absl::StatusOr<SignAndLogDet> {
-    TF_ASSIGN_OR_RETURN(Shape a_shape, a.builder()->GetShape(a));
+    ASSIGN_OR_RETURN(Shape a_shape, a.builder()->GetShape(a));
     auto qr = Qr(a);
 
     int64_t m = ShapeUtil::GetDimension(a_shape, -2);

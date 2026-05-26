@@ -154,11 +154,12 @@ namespace functor {
 
 template <typename T>
 struct StatelessRandomGammaFunctor<GPUDevice, T> {
-  static Status Fill(OpKernelContext* ctx, const T* alpha_flat,
-                     int64 num_samples, int64 num_alphas,
-                     int64 samples_per_alpha, const uint64* key,
-                     const uint64* counter, const random::PhiloxRandom& random,
-                     T* samples_flat) {
+  static absl::Status Fill(OpKernelContext* ctx, const T* alpha_flat,
+                           int64 num_samples, int64 num_alphas,
+                           int64 samples_per_alpha, const uint64* key,
+                           const uint64* counter,
+                           const random::PhiloxRandom& random,
+                           T* samples_flat) {
     const GPUDevice& d = ctx->eigen_device<GPUDevice>();
     GpuLaunchConfig cfg = GetGpuLaunchConfig(num_samples, d);
 
@@ -166,7 +167,7 @@ struct StatelessRandomGammaFunctor<GPUDevice, T> {
                                 cfg.thread_per_block, 0, d.stream(),
                                 num_samples, num_alphas, samples_per_alpha, key,
                                 counter, random, samples_flat, alpha_flat));
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

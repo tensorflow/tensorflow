@@ -109,6 +109,7 @@ extern const char kXlaNoOpSchedulingGroup[];
 extern const char kMustFuseAttr[];
 extern const char kMaximalFuseAttr[];
 extern const char kFuseLimitAttr[];
+extern const char kXlaCseSafeZeroOperandAttr[];
 
 // XLA frontend attribute for specifying groups of collectives that should be
 // launched together.

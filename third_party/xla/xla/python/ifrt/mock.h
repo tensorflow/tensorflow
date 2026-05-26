@@ -161,6 +161,8 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
               (absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
                ArrayCopySemantics semantics),
               (final));
+  MOCK_METHOD(tsl::Future<std::vector<uint64_t>>, HashValues,
+              (absl::Span<const ValueRef> values, HashMode mode), (final));
   MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>, ReshardArrays,
               (absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
                ArrayCopySemantics semantics),

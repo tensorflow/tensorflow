@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -123,7 +124,7 @@ absl::StatusOr<InterpolationSpecification> Spec(
   if (instr->opcode() == HloOpcode::kCollectivePermute) {
     auto* cp = Cast<HloCollectivePermuteInstruction>(instr);
     GpuHloCostAnalysis analysis(GpuHloCostAnalysis::Options(), device_info);
-    TF_RETURN_IF_ERROR(cp->Accept(&analysis));
+    RETURN_IF_ERROR(cp->Accept(&analysis));
     int64_t bytes_transferred = analysis.BytesTransferred(*cp);
     CollectivePermuteCostModelType permute_type =
         GetCollectivePermuteCostModelType(
@@ -139,13 +140,13 @@ absl::StatusOr<InterpolationSpecification> Spec(
 
   auto collective = Cast<HloCollectiveInstruction>(instr);
   GpuHloCostAnalysis analysis(GpuHloCostAnalysis::Options(), device_info);
-  TF_RETURN_IF_ERROR(collective->Accept(&analysis));
+  RETURN_IF_ERROR(collective->Accept(&analysis));
   int64_t bytes_transferred = analysis.BytesTransferred(*collective);
-  TF_ASSIGN_OR_RETURN(GPUCommunicationType comm,
-                      CommunicationType(num_devices_per_host, *collective,
-                                        device_info.gpu_compute_capability()));
-  TF_ASSIGN_OR_RETURN(int num_devices,
-                      GetNumParticipatingDevices(*collective->device_list()));
+  ASSIGN_OR_RETURN(GPUCommunicationType comm,
+                   CommunicationType(num_devices_per_host, *collective,
+                                     device_info.gpu_compute_capability()));
+  ASSIGN_OR_RETURN(int num_devices,
+                   GetNumParticipatingDevices(*collective->device_list()));
 
   CollectiveDeviceList list_of_devices =
       ConvertToV1CollectiveDeviceList(*collective->device_list());
@@ -396,7 +397,7 @@ HloOpcode AsyncToSyncOpcode(const HloCollectiveInstruction& instr) {
 
 absl::StatusOr<HloInstructionProfileList> ReadDefaultProfiles(
     const se::DeviceDescription& device_info) {
-  std::string key = HloOpProfiles::GetProfileName(device_info);
+  std::string key = HloOpProfiles::GetDeviceSpecificProfileName(device_info);
 
   if (!Profile().entries().contains(key)) {
     return absl::NotFoundError(absl::StrCat("Cannot find key: ", key));
@@ -437,8 +438,8 @@ ConstructExactInterpolators(int num_devices_per_host,
                           std::unique_ptr<InterpolatorBase<int64_t, 1>>>>();
 
   for (auto& profile : profiles.entries()) {
-    TF_ASSIGN_OR_RETURN(InterpolationSpecification spec,
-                        Spec(num_devices_per_host, profile, device_info));
+    ASSIGN_OR_RETURN(InterpolationSpecification spec,
+                     Spec(num_devices_per_host, profile, device_info));
     // Construct exact interpolators.
     CollectiveInterpolator::ExactInterpolatorKey exact_key = std::visit(
         absl::Overload{[&](PermuteOpSpecInfo permute_op_info) {
@@ -489,8 +490,8 @@ ConstructExactNNInterpolators(int num_devices_per_host,
 
   for (auto& profile : profiles.entries()) {
     VLOG(10) << "Processing profile: " << profile.DebugString();
-    TF_ASSIGN_OR_RETURN(InterpolationSpecification spec,
-                        Spec(num_devices_per_host, profile, device_info));
+    ASSIGN_OR_RETURN(InterpolationSpecification spec,
+                     Spec(num_devices_per_host, profile, device_info));
     std::visit(absl::Overload{
                    [&](PermuteOpSpecInfo permute_op_info) {
                      VLOG(10) << "  Spec: opcode=" << spec.opcode
@@ -562,8 +563,8 @@ ConstructFallbackInterpolators(int num_devices_per_host,
                           std::unique_ptr<InterpolatorBase<int64_t, 2>>>>();
 
   for (auto& profile : profiles.entries()) {
-    TF_ASSIGN_OR_RETURN(InterpolationSpecification spec,
-                        Spec(num_devices_per_host, profile, device_info));
+    ASSIGN_OR_RETURN(InterpolationSpecification spec,
+                     Spec(num_devices_per_host, profile, device_info));
     std::optional<GPUCommunicationType> collective_comm;
     std::visit(absl::Overload{[&](PermuteOpSpecInfo permute_op_info) {},
                               [&](const CollectiveOpSpecInfo& op_info) {
@@ -615,8 +616,8 @@ ConstructFallbackNNInterpolators(int num_devices_per_host,
                           std::unique_ptr<InterpolatorBase<int64_t, 2>>>>();
 
   for (auto& profile : profiles.entries()) {
-    TF_ASSIGN_OR_RETURN(InterpolationSpecification spec,
-                        Spec(num_devices_per_host, profile, device_info));
+    ASSIGN_OR_RETURN(InterpolationSpecification spec,
+                     Spec(num_devices_per_host, profile, device_info));
     std::optional<GPUCommunicationType> collective_comm;
     std::visit(absl::Overload{[&](PermuteOpSpecInfo permute_op_info) {},
                               [&](const CollectiveOpSpecInfo& op_info) {
@@ -657,16 +658,16 @@ ConstructFallbackNNInterpolators(int num_devices_per_host,
 CollectiveInterpolator::Create(int num_devices_per_host,
                                const se::DeviceDescription& device_info,
                                const GpuHloCostAnalysis* analysis) {
-  TF_ASSIGN_OR_RETURN(HloInstructionProfileList profiles,
-                      ReadDefaultProfiles(device_info));
+  ASSIGN_OR_RETURN(HloInstructionProfileList profiles,
+                   ReadDefaultProfiles(device_info));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto exact_interpolators,
       ConstructExactInterpolators(num_devices_per_host, profiles, device_info));
 
-  TF_ASSIGN_OR_RETURN(auto fallback_interpolators,
-                      ConstructFallbackInterpolators(num_devices_per_host,
-                                                     profiles, device_info));
+  ASSIGN_OR_RETURN(auto fallback_interpolators,
+                   ConstructFallbackInterpolators(num_devices_per_host,
+                                                  profiles, device_info));
 
   return std::unique_ptr<CollectiveInterpolator>(new CollectiveInterpolator(
       std::move(exact_interpolators), std::move(fallback_interpolators),
@@ -678,13 +679,13 @@ CollectiveInterpolator::Create(int num_devices_per_host,
                                const HloInstructionProfileList& profiles,
                                const se::DeviceDescription& device_info,
                                const GpuHloCostAnalysis* analysis) {
-  TF_ASSIGN_OR_RETURN(auto exact_interpolators,
-                      ConstructExactNNInterpolators(num_devices_per_host,
-                                                    profiles, device_info));
+  ASSIGN_OR_RETURN(auto exact_interpolators,
+                   ConstructExactNNInterpolators(num_devices_per_host, profiles,
+                                                 device_info));
 
-  TF_ASSIGN_OR_RETURN(auto fallback_interpolators,
-                      ConstructFallbackNNInterpolators(num_devices_per_host,
-                                                       profiles, device_info));
+  ASSIGN_OR_RETURN(auto fallback_interpolators,
+                   ConstructFallbackNNInterpolators(num_devices_per_host,
+                                                    profiles, device_info));
 
   return std::unique_ptr<CollectiveInterpolator>(new CollectiveInterpolator(
       std::move(exact_interpolators), std::move(fallback_interpolators),
@@ -757,10 +758,10 @@ absl::StatusOr<absl::Duration> CollectiveInterpolator::EstimatedRuntime(
         absl::StrCat("Cannot find key for instr: ", instr.ToString()));
   }
   auto* channel_instr = Cast<HloChannelInstruction>(&instr);
-  TF_ASSIGN_OR_RETURN(auto comm,
-                      CommunicationType(num_devices_per_host_, *channel_instr,
-                                        device_info_.gpu_compute_capability()));
-  TF_ASSIGN_OR_RETURN(auto num_devices, GetReplicaGroupCountAndSize(&instr));
+  ASSIGN_OR_RETURN(auto comm,
+                   CommunicationType(num_devices_per_host_, *channel_instr,
+                                     device_info_.gpu_compute_capability()));
+  ASSIGN_OR_RETURN(auto num_devices, GetReplicaGroupCountAndSize(&instr));
   std::array<int64_t, 2> point({bytes_transferred, num_devices->second});
   HloOpcode opcode = instr.opcode();
   if (instr.opcode() == HloOpcode::kAllGatherStart) {

@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
@@ -85,7 +86,7 @@ absl::StatusOr<ThunkProto> NvshmemRecvThunk::ToProto() const {
 
   NvshmemRecvThunkProto* thunk_proto = proto.mutable_nvshmem_recv_thunk();
   *thunk_proto->mutable_config() = P2PConfigToProto(config_);
-  TF_ASSIGN_OR_RETURN(*thunk_proto->mutable_buffer(), buffer_.ToProto());
+  ASSIGN_OR_RETURN(*thunk_proto->mutable_buffer(), buffer_.ToProto());
   thunk_proto->set_hlo_name(hlo_name_);
 
   return proto;
@@ -95,11 +96,10 @@ absl::StatusOr<std::unique_ptr<NvshmemRecvThunk>> NvshmemRecvThunk::FromProto(
     ThunkInfo thunk_info, const NvshmemRecvThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations,
     std::shared_ptr<NvshmemBufferAddresses> absl_nonnull buffer_addresses) {
-  TF_ASSIGN_OR_RETURN(P2PConfig config,
-                      P2PConfigFromProto(thunk_proto.config()));
-  TF_ASSIGN_OR_RETURN(CollectiveThunk::Buffer buffer,
-                      CollectiveThunk::Buffer::FromProto(thunk_proto.buffer(),
-                                                         buffer_allocations));
+  ASSIGN_OR_RETURN(P2PConfig config, P2PConfigFromProto(thunk_proto.config()));
+  ASSIGN_OR_RETURN(CollectiveThunk::Buffer buffer,
+                   CollectiveThunk::Buffer::FromProto(thunk_proto.buffer(),
+                                                      buffer_allocations));
 
   return absl::WrapUnique(new NvshmemRecvThunk(
       std::move(thunk_info), std::move(config), buffer,
@@ -107,23 +107,22 @@ absl::StatusOr<std::unique_ptr<NvshmemRecvThunk>> NvshmemRecvThunk::FromProto(
 }
 
 absl::Status NvshmemRecvThunk::Initialize(const InitializeParams& params) {
-  TF_RETURN_IF_ERROR(NvshmemCollectiveThunk::Initialize(params));
+  RETURN_IF_ERROR(NvshmemCollectiveThunk::Initialize(params));
   return absl::OkStatus();
 }
 
 absl::Status NvshmemRecvThunk::RunNvshmemCollective(const ExecuteParams& params,
                                                     se::Stream& stream) {
-  TF_ASSIGN_OR_RETURN(
-      std::vector<DeviceBufferPair> device_buffers,
-      ConvertToDeviceBuffers(params.buffer_allocations, {buffer_},
-                             config_.config.operand_element_type));
+  ASSIGN_OR_RETURN(std::vector<DeviceBufferPair> device_buffers,
+                   ConvertToDeviceBuffers(params.buffer_allocations, {buffer_},
+                                          config_.config.operand_element_type));
   TF_RET_CHECK(device_buffers.size() == 1) << "Expected one buffer pair.";
 
   GlobalDeviceId global_device_id = params.collective_params->global_device_id;
 
-  TF_ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID current_logical_id,
-                      params.collective_params->device_assn->LogicalIdForDevice(
-                          global_device_id));
+  ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID current_logical_id,
+                   params.collective_params->device_assn->LogicalIdForDevice(
+                       global_device_id));
   const int64_t current_id =
       config_.config.group_mode ==
               CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA
@@ -162,9 +161,9 @@ absl::Status NvshmemRecvThunk::RunNvshmemCollective(const ExecuteParams& params,
     return absl::OkStatus();
   }
 
-  TF_ASSIGN_OR_RETURN(auto* collectives, GetNvshmemCollectivesFromRegistry());
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Communicator> nvshmem_comm,
-                      collectives->CreateCommunicator());
+  ASSIGN_OR_RETURN(auto* collectives, GetNvshmemCollectivesFromRegistry());
+  ASSIGN_OR_RETURN(std::unique_ptr<Communicator> nvshmem_comm,
+                   collectives->CreateCommunicator());
   VLOG(1) << "Running Recv operation"
           << " element_type=" << buffer.element_type
           << " destination_buffer=" << buffer.destination_buffer.opaque()
@@ -174,8 +173,8 @@ absl::Status NvshmemRecvThunk::RunNvshmemCollective(const ExecuteParams& params,
   auto recv_future = nvshmem_comm->Recv(
       buffer.destination_buffer, buffer.source_buffer, buffer.element_type,
       buffer.element_count, RankId(*source_id), GpuCollectives::On(stream));
-  TF_RETURN_IF_ERROR(recv_future.Await());
-  TF_RETURN_IF_ERROR(nvshmem_comm->Quiet(GpuCollectives::On(stream)));
+  RETURN_IF_ERROR(recv_future.Await());
+  RETURN_IF_ERROR(nvshmem_comm->Quiet(GpuCollectives::On(stream)));
 
   return absl::OkStatus();
 }

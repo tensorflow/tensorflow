@@ -14,14 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include <gtest/gtest.h>
-#include "xla/backends/gpu/tests/gpu_codegen_test.h"
 #include "xla/error_spec.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 namespace {
 
-using SelectAndScatterTest = GpuCodegenTest;
+using SelectAndScatterTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
 
 TEST_F(SelectAndScatterTest, RegressionOOBWrites) {
   const char* hlo_text = R"(
@@ -50,5 +50,4 @@ ENTRY %select_and_scatter (operand: f32[5,5], source: f32[3,3]) -> f32[3,3] {
 }
 
 }  // namespace
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

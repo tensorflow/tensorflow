@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -61,7 +62,7 @@ struct TritonWrapperResult {
   // Triton. We need to propagate them because we later create the kernel and
   // splice the impl_fn into it.
   std::vector<llvm::Metadata*> nvvm_annotations;
-  std::unique_ptr<llvm::Module> llvm_module;
+  LlvmKernelSource kernel_source;
 };
 
 std::ostream& operator<<(std::ostream& os, const TritonWrapperResult& result);
@@ -77,7 +78,7 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
     const llvm::Triple& target_triple, const std::string& data_layout,
-    llvm::LLVMContext& llvm_context, mlir::MLIRContext& mlir_context);
+    mlir::MLIRContext& mlir_context);
 
 // Creates the initial Triton module for the given fusion.
 absl::StatusOr<TritonKernelSource> CreateTritonModule(
@@ -95,9 +96,8 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
     const llvm::Triple& target_triple, const std::string& data_layout,
-    TritonKernelSource triton_source, llvm::LLVMContext& llvm_context,
-    mlir::MLIRContext& mlir_context, bool is_xla_fusion,
-    bool emit_kernel = true);
+    TritonKernelSource triton_source, mlir::MLIRContext& mlir_context,
+    bool is_xla_fusion);
 
 std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
                              const se::DeviceDescription& device_info);

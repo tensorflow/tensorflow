@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/spmd/shardy/sdy_round_trip/dedup_meshes.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cstdint>
 #include <iterator>
 #include <memory>  // IWYU pragma: keep
@@ -28,6 +29,7 @@ limitations under the License.
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -41,6 +43,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "shardy/dialect/sdy/transforms/common/sharding_walker.h"
+#include "stablehlo/dialect/StablehloOps.h"
 
 namespace xla {
 namespace sdy {
@@ -425,6 +428,14 @@ void dedupMeshes(ModuleOp moduleOp, const SymbolTable& symbolTable,
                             duplicateMeshesToAxisMap);
         }
       });
+  for (const auto& [targetMesh, mainMeshAndMap] : duplicateMeshesToAxisMap) {
+    StringRef mainMeshName = mainMeshAndMap.first;
+    if (failed(SymbolTable::replaceAllSymbolUses(
+            symbolTable.lookup(targetMesh),
+            StringAttr::get(moduleOp.getContext(), mainMeshName), moduleOp))) {
+      assert(false && "failed to rename mesh symbol in replica_groups");
+    }
+  }
 }
 
 void eraseMeshes(SymbolTable& symbolTable,

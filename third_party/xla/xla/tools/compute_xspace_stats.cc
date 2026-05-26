@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -96,8 +97,8 @@ absl::StatusOr<LineStats> ProcessLineEvents(
 absl::StatusOr<int64_t> GetTotalTimePs(const XPlane& plane) {
   int64_t total_time_ps = 0;
   for (const auto& line : plane.lines()) {
-    TF_ASSIGN_OR_RETURN(xla::gpu::LineStats line_stats,
-                        xla::gpu::ProcessLineEvents(line));
+    ASSIGN_OR_RETURN(xla::gpu::LineStats line_stats,
+                     xla::gpu::ProcessLineEvents(line));
     total_time_ps += line_stats.device_time_ps;
   }
   return total_time_ps;
@@ -201,8 +202,8 @@ absl::StatusOr<GpuDeviceStats> CalculateGpuDeviceStats(const XSpace& xspace) {
 
   if (const XPlane* host_plane = tsl::profiler::FindPlaneWithName(
           xspace, tsl::profiler::kHostThreadsPlaneName)) {
-    TF_ASSIGN_OR_RETURN(result.peak_memory_usage_bytes,
-                        GetGPUPeakMemory(host_plane));
+    ASSIGN_OR_RETURN(result.peak_memory_usage_bytes,
+                     GetGPUPeakMemory(host_plane));
   }
 
   // Iterate over all planes to find GPU devices
@@ -232,8 +233,8 @@ absl::StatusOr<GpuDeviceStats> CalculateGpuDeviceStats(const XSpace& xspace) {
     // Process each line in the plane and accumulate stats for current GPU.
     for (const auto& line : plane.lines()) {
       if (absl::StartsWith(line.name(), "Stream #")) {
-        TF_ASSIGN_OR_RETURN(LineStats line_stats,
-                            ProcessLineEvents(line, memcpy_details_id));
+        ASSIGN_OR_RETURN(LineStats line_stats,
+                         ProcessLineEvents(line, memcpy_details_id));
         if (line_stats.device_time_ps > 0) {
           plane_device_time_ps += line_stats.device_time_ps;
           plane_memcpy_time_ps += line_stats.memcpy_time_ps;
@@ -268,7 +269,7 @@ absl::StatusOr<GpuDeviceStats> CalculateGpuDeviceStats(const XSpace& xspace) {
 
   // Calculate Wall Time from the "Task Environment" plane (Profiler Session
   // duration)
-  TF_ASSIGN_OR_RETURN(int64_t wall_time_ps, GetWallTimePs(xspace));
+  ASSIGN_OR_RETURN(int64_t wall_time_ps, GetWallTimePs(xspace));
   result.wall_time_us = static_cast<double>(wall_time_ps) / 1e6;
 
   return result;
@@ -280,12 +281,12 @@ absl::StatusOr<xla::gpu::CpuStats> CalculateCpuStats(const XSpace& xspace) {
   // Process the host CPU plane
   if (const XPlane* host_plane = tsl::profiler::FindPlaneWithName(
           xspace, tsl::profiler::kHostThreadsPlaneName)) {
-    TF_ASSIGN_OR_RETURN(int64_t total_time_ps, GetTotalTimePs(*host_plane));
+    ASSIGN_OR_RETURN(int64_t total_time_ps, GetTotalTimePs(*host_plane));
     result.cpu_time_us = static_cast<double>(total_time_ps) / 1e6;
   }
 
   // Calculate Wall Time from the "Task Environment" plane
-  TF_ASSIGN_OR_RETURN(int64_t wall_time_ps, GetWallTimePs(xspace));
+  ASSIGN_OR_RETURN(int64_t wall_time_ps, GetWallTimePs(xspace));
   result.wall_time_us = static_cast<double>(wall_time_ps) / 1e6;
 
   return result;
@@ -299,7 +300,7 @@ absl::Status Run(absl::string_view input_file, absl::string_view device_type) {
   // Read the XSpace protobuf
   tsl::Env* env = tsl::Env::Default();
   XSpace xspace_proto;
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       tsl::ReadBinaryProto(env, std::string(input_file), &xspace_proto));
 
   LOG(INFO) << "Successfully parsed XSpace proto.";

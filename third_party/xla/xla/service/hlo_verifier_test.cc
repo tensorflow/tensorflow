@@ -5506,5 +5506,44 @@ TEST_F(HloVerifierTest, VerifyAsyncStartAliasConfigInvalidShapeIndex) {
               HasSubstr("Invalid aliasing output shape index."));
 }
 
+TEST_F(HloVerifierTest, RejectsGetRngSeedWithOperand) {
+  const char* const hlo_string = R"(
+    HloModule test
+    ENTRY entry {
+      constant = u32[] constant(1)
+      ROOT call = u32[] custom-call(constant), custom_call_target="GetRngSeed"
+    })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_THAT(
+      verifier().Run(module.get()),
+      StatusIs(absl::StatusCode::kInternal, HasSubstr("must have 0 operands")));
+}
+
+TEST_F(HloVerifierTest, RejectsGetRngSeedWithNonU64Shape) {
+  const char* const hlo_string = R"(
+    HloModule test
+    ENTRY entry {
+      ROOT call = f32[] custom-call(), custom_call_target="GetRngSeed"
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_THAT(
+      verifier().Run(module.get()),
+      StatusIs(absl::StatusCode::kInternal, HasSubstr("must return U64 type")));
+}
+
+TEST_F(HloVerifierTest, RejectsGetRngSeedWithU32Shape) {
+  const char* const hlo_string = R"(
+    HloModule test
+    ENTRY entry {
+      ROOT call = u32[] custom-call(), custom_call_target="GetRngSeed"
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_THAT(
+      verifier().Run(module.get()),
+      StatusIs(absl::StatusCode::kInternal, HasSubstr("must return U64 type")));
+}
+
 }  // namespace
 }  // namespace xla

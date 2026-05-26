@@ -487,3 +487,11 @@ def get_backend_config_string(instruction_proto, module_proto=None) -> str:
       if isinstance(instruction_proto.backend_config, bytes)
       else instruction_proto.backend_config
   )
+
+
+# Expose hlo submodule.
+if hasattr(_xla, 'hlo_module_from_text'):
+  hlo = _xla
+else:
+  from . import _hlo as hlo  # pylint: disable=g-import-not-at-top
+

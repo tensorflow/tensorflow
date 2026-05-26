@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_executor.h"
 #include "xla/stream_executor/cuda/cuda_executor_multigpu_test_kernels.h"
 #include "xla/stream_executor/device_address.h"
@@ -55,7 +56,7 @@ absl::StatusOr<stream_executor::DeviceAddressBase> AllocateInitializedMemory(
   std::vector<T> device_memory_vector(num_initialized_elements, value);
 
   auto stride_memory = device_memory.GetByteSlice(offset, size);
-  TF_RETURN_IF_ERROR(executor->SynchronousMemcpy(
+  RETURN_IF_ERROR(executor->SynchronousMemcpy(
       &stride_memory, device_memory_vector.data(), size));
   return stride_memory;
 }
@@ -66,7 +67,7 @@ absl::Status CheckMemory(CudaExecutor* executor,
                          T expected_value) {
   size_t num_elements = device_memory.size() / sizeof(T);
   std::vector<T> device_memory_vector(num_elements, 0);
-  TF_RETURN_IF_ERROR(executor->SynchronousMemcpy(
+  RETURN_IF_ERROR(executor->SynchronousMemcpy(
       device_memory_vector.data(), device_memory, device_memory.size()));
   for (int i = 0; i < device_memory_vector.size(); ++i) {
     EXPECT_EQ(device_memory_vector[i], expected_value);

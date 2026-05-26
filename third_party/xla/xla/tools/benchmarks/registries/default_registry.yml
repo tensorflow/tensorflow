@@ -77,6 +77,31 @@ benchmarks: [
     github_labels: ["blocking_presubmit_test"]
   },
   {
+    name: "gemma4_2b_bf16"
+    description: "Gemma4 2B in Keras with bf16."
+    owner: "xprof-devs@"
+    input_artifact: {
+      input_format: HLO_TEXT
+      artifact_path: "xla/tools/benchmarks/hlo/hlo_gemma4_2b_bf16.hlo"
+    }
+    model_source_info: ["Gemma4 2B"]
+    hardware_execution_configs: [{
+      hardware_category: GPU_B200
+      topology: { num_hosts: 1, num_devices_per_host: 1, multi_host: false, multi_device: false }
+      target_metrics: [GPU_DEVICE_TIME, GPU_DEVICE_MEMCPY_TIME]
+      workflow_type: [PRESUBMIT, POSTSUBMIT]
+      runtime_flags: ["--num_repeats=5"]
+    },
+    {
+      hardware_category: CPU_X86
+      topology: { num_hosts: 1, num_devices_per_host: 1, multi_host: false, multi_device: false }
+      target_metrics: [CPU_TIME]
+      workflow_type: [PRESUBMIT, POSTSUBMIT]
+      runtime_flags: ["--num_repeats=5"]
+    }]
+    update_frequency_policy: QUARTERLY
+  },
+  {
     name: "nv_maxtext_1n1g_jit_train_step_before_optimization.hlo"
     description: "Nvidia benchmark for Maxtext 1 node 1 gpu config for gpt3-52k model."
     owner: "hmonishN@"

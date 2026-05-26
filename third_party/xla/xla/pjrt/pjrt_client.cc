@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
@@ -125,7 +126,7 @@ absl::StatusOr<std::uintptr_t> PjRtClient::UnsafeBufferPointer(
         "unsafe_buffer_pointer is not implemented for tuple buffers.");
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold,
       buffer->AcquireExternalReference());
   const void* ptr = external_reference_hold->OpaqueDeviceMemoryDataPointer();
@@ -179,8 +180,8 @@ CopyToDeviceStream::~CopyToDeviceStream() = default;
 
 absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
 PjRtLoadedExecutable::GetCostAnalysis() const {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloCostAnalysis> hlo_cost_analysis,
-                      client()->GetHloCostAnalysis());
+  ASSIGN_OR_RETURN(std::unique_ptr<HloCostAnalysis> hlo_cost_analysis,
+                   client()->GetHloCostAnalysis());
   return PjRtExecutableUtil::RunHloCostAnalysis(*GetExecutable(),
                                                 hlo_cost_analysis.get());
 }
@@ -195,8 +196,7 @@ absl::StatusOr<Shape> PjRtBuffer::HostShape() {
     absl::Span<const int64_t> literal_dims;
     std::optional<std::vector<int64_t>> logical_dims_storage;
     if (has_dynamic_dimensions()) {
-      TF_ASSIGN_OR_RETURN(std::vector<int64_t> logical_dims,
-                          logical_dimensions());
+      ASSIGN_OR_RETURN(std::vector<int64_t> logical_dims, logical_dimensions());
       logical_dims_storage.emplace(std::move(logical_dims));
       literal_dims = *logical_dims_storage;
     } else {
@@ -215,7 +215,7 @@ absl::StatusOr<Shape> PjRtBuffer::HostShape() {
     // to use the above non-tuple code path where possible.
     device_shape = on_device_shape();
     if (device_shape.is_dynamic()) {
-      TF_ASSIGN_OR_RETURN(device_shape, logical_on_device_shape());
+      ASSIGN_OR_RETURN(device_shape, logical_on_device_shape());
     }
   }
   return ShapeUtil::DeviceShapeToHostShape(device_shape);

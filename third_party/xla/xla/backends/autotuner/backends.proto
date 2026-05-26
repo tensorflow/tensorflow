@@ -10,20 +10,18 @@ option java_outer_classname = "Backends";
 // When adding a fission backend for a backend X, it should be named X_FISSION.
 enum Backend {
   UNSPECIFIED_BACKEND = 0;
+  reserved 3, 5, 12, 15;
+  reserved CUBLAS, CUBLAS_FISSION, ROCBLAS, ROCBLAS_FISSION;
   CUDNN = 1;
   TRITON = 2;
-  CUBLAS = 3;
   CUBLASLT = 4;
-  ROCBLAS = 5;
   HIPBLASLT = 6;
   MIOPEN = 7;
   CUSTOM_KERNEL = 8;
   BLOCK_LEVEL_EMITTER = 9;
   NATIVE_EMITTER = 10;
   LLVM_KERNEL_EMITTER = 11;
-  CUBLAS_FISSION = 12;
   CUBLASLT_FISSION = 13;
   CUSTOM_KERNEL_FISSION = 14;
-  ROCBLAS_FISSION = 15;
   HIPBLASLT_FISSION = 16;
 }

@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/service/spmd/shardy/sdy_round_trip/shard_map_export.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/shard_map_import.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_shardings.h"
+#include "xla/service/spmd/shardy/utils.h"
 
 namespace xla {
 namespace sdy {
@@ -91,6 +92,8 @@ void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
   pm.addNestedPass<FuncOp>(
       mlir::stablehlo_ext::createStablehloCanonicalizeFromHloImportPass());
   pm.addPass(createSdyRoundTripImportShardyAttrsPass(enableHloShardingV3));
+  pm.addPass(mlir::sdy::createFlattenCallGraphPass(isManualComputation));
+  pm.addPass(mlir::createSymbolDCEPass());  // After FlattenCallGraphPass.
   pm.addPass(createSdyRoundTripShardMapImportPass());
   // Deduplicate the functions cloned during shard map import.
   // TODO(enver): Instead drop clone functions selectively during the shard map

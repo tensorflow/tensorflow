@@ -28,6 +28,8 @@ def TritonXLAExtractInsertToTritonPass : Pass<"triton-xla-extract-insert-to-trit
   let options = [
     Option<"allow_tma_", "allow_tma", "bool", "false",
            "Whether to permit lowering to TMA.">,
+    Option<"allow_tdm_", "allow_tdm", "bool", "false",
+           "Whether to permit lowering to TDM (device-side tensor descriptors).">,
     Option<"num_stages_", "num_stages", "int", "1",
            "Number of stages for pipelining.">,
   ];

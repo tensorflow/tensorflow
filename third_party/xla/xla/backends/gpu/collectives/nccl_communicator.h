@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
@@ -48,15 +49,22 @@ limitations under the License.
 
 // Include NCCL after XLA headers.
 #include "third_party/nccl/nccl.h"
-
-#if NCCL_VERSION_CODE >= 22800
-// Device initiated collective operations were added in NCCL 2.28.0.
 #include "third_party/nccl/nccl_device.h"  // IWYU pragma: keep
-#endif                                          // NCCL_VERSION_CODE >= 22800
 
 namespace xla::gpu {
 
 using NcclSignalDesc = GpuSignalDesc;
+
+struct NcclCapabilities {
+  bool supports_device_comm;
+  bool supports_one_sided_comm;
+
+  // Reason one-sided comm is not supported, cached at construction. Empty
+  // if one-sided comm is supported.
+  std::string one_sided_comm_unsupported_reason;
+
+  absl::Status GetOneSidedCommUnsupportedError(absl::string_view op) const;
+};
 
 // XLA collectives communicator wrapping an NCCL communicator.
 class NcclCommunicator : public GpuCommunicator {
@@ -93,7 +101,6 @@ class NcclCommunicator : public GpuCommunicator {
   }
 
   bool SupportsDeviceComm() const final;
-  bool SupportsOneSidedComm() const final;
 
   absl::StatusOr<std::unique_ptr<GpuDeviceCommunicator>> CreateDeviceComm(
       const GpuDeviceCommunicator::Requirements& requirements) final;
@@ -218,9 +225,6 @@ class NcclCommunicator : public GpuCommunicator {
                                 const SignalDesc& signal_desc,
                                 const Executor& executor) final;
 
-  // Queries NCCL for one-sided comm support. Called once at construction.
-  bool QuerySupportsOneSidedComm() const;
-
   // Polls the communicator until any pending non-blocking operations are "done"
   // or aborted.
   absl::Status PollUntilDone() const;
@@ -273,18 +277,15 @@ class NcclCommunicator : public GpuCommunicator {
   // Has comm_ been aborted?
   bool aborted_ = false;
 
-  // Cached result of querying NCCL for one-sided comm support.
-  bool supports_one_sided_comm_ = false;
-
   // Nesting level of current NCCL group
   int group_nesting_level_ = 0;
+
+  NcclCapabilities capabilities_;
 };
 
 //===----------------------------------------------------------------------===//
 // NCCL device communicator
 //===----------------------------------------------------------------------===//
-
-#if NCCL_VERSION_CODE >= 22800
 
 // A device-side NCCL communicator.
 class NcclDeviceCommunicator : public GpuDeviceCommunicator {
@@ -314,8 +315,6 @@ class NcclDeviceCommunicator : public GpuDeviceCommunicator {
   const NcclCommunicator* comm_;
   ncclDevComm dev_comm_;
 };
-
-#endif  // NCCL_VERSION_CODE >= 22800
 
 }  // namespace xla::gpu
 
