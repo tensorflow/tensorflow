@@ -54,6 +54,7 @@ deviceless_tests = [
     "collectives/all_reduce.hlo",
     "concat/concat_offset_not_a_multiple_of_tile_size.hlo",
     "concat/concat_repro_crash.hlo",
+    "bitcast/bitcast_transpose_permutation_inversion.hlo",
 ]
 
 lit_test_suite(
