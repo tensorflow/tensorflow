@@ -21,7 +21,7 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-using SelectAndScatterTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
+using SelectAndScatterTest = HloPjRtInterpreterReferenceMixin<HloTestBase>;
 
 TEST_F(SelectAndScatterTest, RegressionOOBWrites) {
   const char* hlo_text = R"(

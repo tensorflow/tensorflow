@@ -35,7 +35,7 @@ static constexpr char kPlatform[] = "CUDA";
 static constexpr char kPlatform[] = "ROCM";
 #endif
 
-class DynamicSliceFusionTest : public HloPjRtTestBase {};
+class DynamicSliceFusionTest : public HloTestBase {};
 
 TEST_F(DynamicSliceFusionTest, GemmSlice) {
   const char* hlo_reference = R"(
