@@ -39,9 +39,8 @@ namespace {
 
 constexpr ErrorSpec kErrorSpec{0.0001};
 
-class VecOpsSimpleTest
-    : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+class VecOpsSimpleTest : public ClientLibraryTestRunnerMixin<
+                             HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  public:
   VecOpsSimpleTest() {
     mutable_debug_options()->add_xla_disable_hlo_passes("algsimp");

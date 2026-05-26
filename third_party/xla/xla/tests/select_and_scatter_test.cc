@@ -53,7 +53,7 @@ struct SelectAndScatterTestParam {
 
 class SelectAndScatterTest
     : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
+          HloPjRtInterpreterReferenceMixin<HloTestBase>>,
       public ::testing::WithParamInterface<SelectAndScatterTestParam> {
  public:
   SelectAndScatterTest() : builder_(TestName()) {

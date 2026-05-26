@@ -29,7 +29,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using SortTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
+using SortTest = HloPjRtInterpreterReferenceMixin<HloTestBase>;
 
 TEST_F(SortTest, SortDim0) {
   absl::string_view hlo_text_module = R"(

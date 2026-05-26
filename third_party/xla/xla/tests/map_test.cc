@@ -44,7 +44,7 @@ namespace xla {
 namespace {
 
 class MapTest : public ClientLibraryTestRunnerMixin<
-                    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+                    HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  public:
   MapTest() {
     mutable_debug_options()->add_xla_disable_hlo_passes("algsimp");
@@ -456,7 +456,7 @@ TEST_F(MapTest, MapOperationWithBuildError) {
                                    "different element types: f32[] and u16[]"));
 }
 
-using MapHloTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
+using MapHloTest = HloPjRtInterpreterReferenceMixin<HloTestBase>;
 
 // TODO(b/230123847): Enable this on GPU once mhlo allows mixed-type map.
 TEST_F(MapHloTest, MapWithMixedInputTypes) {
@@ -486,8 +486,8 @@ TEST_F(MapHloTest, MapWithMixedInputTypes) {
 
 // MapTest disables inline and algsimp. MapTestWithFullOpt runs all
 // optimizations.
-using MapTestWithFullOpt = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using MapTestWithFullOpt =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
 
 // Regression test for b/31466798. The inliner simplifies map(param0, param1,
 // power) to power(param0, param1) without deleting the old subcomputation which
