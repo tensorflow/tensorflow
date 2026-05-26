@@ -394,9 +394,11 @@ cc_library(
         "//xla/service:backend",
         "//xla/service:stream_pool",
         "//xla/stream_executor:device_address_allocator",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform:macros",
     ],
 )
