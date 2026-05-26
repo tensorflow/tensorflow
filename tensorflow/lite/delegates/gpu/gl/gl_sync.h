@@ -91,7 +91,7 @@ absl::Status GlActiveSyncWait();
 class GlShaderSync {
  public:
   static absl::Status NewSync(GlShaderSync* gl_sync);
-  GlShaderSync() {}
+  GlShaderSync() = default;
   absl::Status Wait();
 
  private:
