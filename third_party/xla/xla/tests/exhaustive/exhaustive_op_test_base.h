@@ -65,7 +65,7 @@ void AddExhaustiveFlags(std::vector<tsl::Flag>& flag_list);
 template <PrimitiveType T, size_t N>
 class ExhaustiveOpTestBase
     : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
+          HloPjRtInterpreterReferenceMixin<HloTestBase>> {
  public:
   using Traits = ExhaustiveOpTestTraits<T, N>;
   static constexpr PrimitiveType kT = Traits::kT;
