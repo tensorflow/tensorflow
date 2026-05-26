@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -74,6 +75,28 @@ void ExtendConfigsWithTma(
   }
 }
 
+// Attempt to extract an existing BlockLevelFusionConfig from the instruction.
+// Object nesting structure:
+// HloInstruction
+// └── GpuBackendConfig
+//     └── FusionBackendConfig
+//         └── BlockLevelFusionConfig
+absl::StatusOr<std::optional<BlockLevelFusionConfig>> GetPreExistingConfig(
+    const HloInstruction& instr) {
+  if (!instr.has_backend_config()) {
+    return std::nullopt;
+  }
+  ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
+                   instr.backend_config<GpuBackendConfig>());
+  if (gpu_backend_config.has_fusion_backend_config() &&
+      gpu_backend_config.fusion_backend_config()
+          .has_block_level_fusion_config()) {
+    return gpu_backend_config.fusion_backend_config()
+        .block_level_fusion_config();
+  }
+  return std::nullopt;
+}
+
 }  // namespace
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
@@ -82,13 +105,11 @@ BlockLevelEmitterBackend::GetSupportedConfigs(const HloInstruction& instr) {
     return std::vector<std::unique_ptr<BackendConfig>>();
   }
 
-  if (instr.has_backend_config()) {
-    auto config = GetDefaultConfig(instr);
-    if (!config.ok()) {
-      return std::vector<std::unique_ptr<BackendConfig>>();
-    }
+  ASSIGN_OR_RETURN(std::optional<BlockLevelFusionConfig> pre_existing_config,
+                   GetPreExistingConfig(instr));
+  if (pre_existing_config.has_value()) {
     std::vector<std::unique_ptr<BackendConfig>> configs;
-    configs.push_back(std::move(config.value()));
+    configs.push_back(Pack(pre_existing_config.value()));
     return configs;
   }
   auto fusion_adaptor =
@@ -150,23 +171,10 @@ BlockLevelEmitterBackend::GetDefaultConfig(const HloInstruction& instr) {
         absl::StrCat("BlockLevelEmitterBackend: unsupported instruction: ",
                      instr.ToString()));
   }
-  // Attempt to extract an existing BlockLevelFusionConfig from the instruction.
-  // Object nesting structure:
-  // HloInstruction
-  // └── GpuBackendConfig
-  //     └── FusionBackendConfig
-  //         └── BlockLevelFusionConfig
-  if (instr.has_backend_config()) {
-    ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
-                     instr.backend_config<GpuBackendConfig>());
-    if (gpu_backend_config.has_fusion_backend_config()) {
-      const FusionBackendConfig& fusion_backend_config =
-          gpu_backend_config.fusion_backend_config();
-      // If a BlockLevelFusionConfig is already present, return it directly.
-      if (fusion_backend_config.has_block_level_fusion_config()) {
-        return Pack(fusion_backend_config.block_level_fusion_config());
-      }
-    }
+  ASSIGN_OR_RETURN(std::optional<BlockLevelFusionConfig> pre_existing_config,
+                   GetPreExistingConfig(instr));
+  if (pre_existing_config.has_value()) {
+    return Pack(pre_existing_config.value());
   }
 
   // No explicit config found - create one from the cost model if possible.
