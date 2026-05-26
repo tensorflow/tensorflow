@@ -263,5 +263,38 @@ TEST(PjRtStreamExecutorClientTest, DeserializeAndDump) {
   EXPECT_EQ(compile_dump_contents, deserialize_dump_contents);
 }
 
+TEST(PjRtStreamExecutorClientTest, ExecutePortableRemoteDevice) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtStreamExecutorClient> client,
+                          GetClient());
+  Shape shape = xla::ShapeUtil::MakeScalarShape(F32);
+  ASSERT_FALSE(client->addressable_devices().empty());
+  auto* device0 = client->addressable_devices().front();
+  TF_ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * memory_space,
+                          device0->default_memory_space());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->CreateUninitializedBuffer(shape, memory_space));
+
+  CompileOptions compile_options;
+  compile_options.compile_portable_executable = true;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> executable,
+      ToyExecutable(
+          *client, shape, [](XlaBuilder& builder) {}, compile_options));
+
+  auto remote_device = std::make_unique<PjRtStreamExecutorDevice>(
+      1, /*local_device_state=*/nullptr, /*local_device_id=*/-1,
+      /*process_index=*/1, /*process_index_in_partition=*/1,
+      /*partition_index=*/0, "cpu");
+  remote_device->SetClient(client.get());
+
+  ExecuteOptions options;
+  auto result_or = executable->ExecutePortable({buffer.get(), buffer.get()},
+                                               remote_device.get(), options);
+  EXPECT_THAT(result_or.status(),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("not addressable")));
+}
+
 }  // namespace
 }  // namespace xla

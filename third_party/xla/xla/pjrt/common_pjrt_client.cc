@@ -1295,7 +1295,8 @@ CommonPjRtLoadedExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options,
     std::optional<tsl::Future<void>>& returned_future, bool fill_future) const {
-  RunId run_id = RunId(options.launch_id);
+  RunId run_id = options.launch_id != 0 ? RunId(options.launch_id)
+                                        : RunId::CreateUniqueId();
   tsl::profiler::TraceMe traceme("CommonPjRtLoadedExecutable::ExecuteSharded");
   for (int i = 0; i < addressable_devices_.size(); ++i) {
     if (addressable_devices_[i] == device) {
@@ -1331,6 +1332,12 @@ CommonPjRtLoadedExecutable::ExecutePortable(
   }
   if (device == nullptr) {
     return InvalidArgument("ExecutePortable expects a device to be specified");
+  }
+  if (!device->IsAddressable()) {
+    return InvalidArgument(
+        "ExecutePortable attempted to execute on device id %d which is not "
+        "addressable by this client",
+        device->global_device_id().value());
   }
 
   RETURN_IF_ERROR(ValidateHostTransferCallbacks(
