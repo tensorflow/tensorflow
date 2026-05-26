@@ -425,9 +425,11 @@ absl::StatusOr<TensorValue> EmitDot(EmitterContext& emitter_ctx,
     b.setInsertionPointToStart(for_op.getBody());
     Value iv = for_op.getInductionVar();
     Value iv_i32 = Cast(b, for_op.getInductionVar(), b.getI32Type());
+    const ge::TilingSpace::DimensionInfo& dim_info =
+        tiled_dot.tile().tiling_space().GetDimensionInfo(
+            *tiled_dot.hlo(), sequential_dim_ids.front());
     CHECK(emitter_ctx.MapSymbolIdToSequentialDimValue(
-        ge::TiledDimId(sequential_dim_ids.front()), iv,
-        Interval{0, loop_iteration_count.front() - 1}));
+        dim_info.id, iv, Interval{0, loop_iteration_count.front() - 1}));
 
     // Emit the dot region.
     const ge::TiledHloInstruction* lhs_operand = tiled_dot.operand(0);
@@ -510,9 +512,11 @@ absl::StatusOr<TensorValue> EmitScaledDot(
     mlir::OpBuilder::InsertionGuard g(b);
     b.setInsertionPointToStart(for_op.getBody());
     Value iv = for_op.getInductionVar();
+    const ge::TilingSpace::DimensionInfo& dim_info =
+        tiled_scaled_dot.tile().tiling_space().GetDimensionInfo(
+            *tiled_scaled_dot.hlo(), sequential_dim_ids.front());
     CHECK(emitter_ctx.MapSymbolIdToSequentialDimValue(
-        ge::TiledDimId(sequential_dim_ids.front()), iv,
-        Interval{0, loop_iteration_counts.front() - 1}));
+        dim_info.id, iv, Interval{0, loop_iteration_counts.front() - 1}));
 
     // Emit the dot region.
     const ge::TiledHloInstruction* lhs_operand = tiled_scaled_dot.operand(0);
