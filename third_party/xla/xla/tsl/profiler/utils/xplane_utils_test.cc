@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/tsl/profiler/utils/xplane_utils.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -1007,6 +1009,48 @@ TEST(XplaneUtilsTest, MergeSubprocessXSpace_WithoutProcessId) {
 
   ASSERT_EQ(dst_space.planes_size(), 1);
   EXPECT_EQ(dst_space.planes(0).name(), "plane2 [456]");
+}
+
+TEST(XplaneUtilsTest, DestructiveChunkXSpaceTest) {
+  auto space = std::make_unique<XSpace>();
+  space->add_hostnames("host1");
+  space->add_errors("error1");
+  space->add_warnings("warning1");
+
+  {
+    XPlaneBuilder p1(space->add_planes());
+    p1.SetName("p1");
+    auto l1 = p1.GetOrCreateLine(1);
+    auto e1 = l1.AddEvent(*p1.GetOrCreateEventMetadata("e1"));
+    e1.SetOffsetNs(10);
+    e1.SetDurationNs(10);
+  }
+  {
+    XPlaneBuilder p2(space->add_planes());
+    p2.SetName("p2");
+    auto l2 = p2.GetOrCreateLine(2);
+    auto e2 = l2.AddEvent(*p2.GetOrCreateEventMetadata("e2"));
+    e2.SetOffsetNs(20);
+    e2.SetDurationNs(20);
+  }
+
+  // Force multiple chunks by using a very small max_chunk_size.
+  size_t max_chunk_size = 1;
+  auto chunks = DestructiveChunkXSpace(max_chunk_size, std::move(space));
+
+  // Each plane will be split into at least two chunks: one for metadata and one
+  // or more for lines/events.
+  EXPECT_GE(chunks.size(), 5);
+  EXPECT_THAT(chunks[0]->hostnames(), UnorderedElementsAre("host1"));
+  EXPECT_TRUE(chunks[0]->planes().empty());
+
+  absl::flat_hash_set<std::string> plane_names;
+  for (size_t i = 1; i < chunks.size(); ++i) {
+    for (const auto& plane : chunks[i]->planes()) {
+      plane_names.insert(plane.name());
+    }
+  }
+  EXPECT_THAT(plane_names, UnorderedElementsAre("p1", "p2"));
 }
 
 }  // namespace

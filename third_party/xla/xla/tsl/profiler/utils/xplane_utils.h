@@ -16,8 +16,10 @@ limitations under the License.
 #define XLA_TSL_PROFILER_UTILS_XPLANE_UTILS_H_
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -313,6 +315,11 @@ inline bool IsOpLineName(absl::string_view line_name) {
 // Returns the timespan of the event from the device offset and duration stats.
 // If the stats are not present, returns the event's timespan.
 Timespan GetDeviceEventTimespan(const XEventVisitor& event);
+
+// Splits an XSpace into multiple XSpace chunks destructively.
+std::vector<std::unique_ptr<tensorflow::profiler::XSpace>>
+DestructiveChunkXSpace(size_t max_chunk_size,
+                       std::unique_ptr<tensorflow::profiler::XSpace> space);
 
 }  // namespace profiler
 }  // namespace tsl
