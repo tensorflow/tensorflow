@@ -390,7 +390,6 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-        "@tsl//tsl/platform:statusor",
     ],
 )
 
@@ -401,18 +400,19 @@ xla_cc_test(
         ":cost_analysis",
         "//xla:shape_util",
         "//xla/hlo/analysis:alias_info",
+        "//xla/hlo/analysis:hlo_alias_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:hlo_cost_analysis",
         "//xla/service/cost_modelling:op_cost",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:status_macros",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:errors",
-        "@tsl//tsl/platform:statusor",
     ],
 )
 
@@ -588,9 +588,6 @@ xla_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@com_googlesource_code_re2//:re2",
-        "@tsl//tsl/platform:errors",
-        "@tsl//tsl/platform:statusor",
-        "@tsl//tsl/platform:test",
     ],
 )
 

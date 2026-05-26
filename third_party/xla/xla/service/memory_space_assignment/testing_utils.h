@@ -116,8 +116,9 @@ class FakeCostAnalysis : public CostAnalysis {
                    std::unique_ptr<AliasInfo> alias_info,
                    std::unique_ptr<HloLiveRange> hlo_live_range,
                    std::unique_ptr<CallGraph> call_graph)
-      : CostAnalysis(op_cost_manager, options, std::move(alias_analysis),
+      : CostAnalysis(op_cost_manager, options, alias_analysis.get(),
                      std::move(hlo_live_range), std::move(call_graph)),
+        alias_analysis_(std::move(alias_analysis)),
         alias_info_(std::move(alias_info)) {}
 
  private:
@@ -128,6 +129,7 @@ class FakeCostAnalysis : public CostAnalysis {
                       absl::Span<const ShapeIndex>)>
       get_instruction_elapsed_in_alternate_memory_override_ = nullptr;
   std::function<float(int64_t)> get_async_copy_elapsed_override_ = nullptr;
+  std::unique_ptr<HloAliasAnalysis> alias_analysis_;
   std::unique_ptr<AliasInfo> alias_info_;
 };
 

@@ -193,7 +193,8 @@ class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
     for (HloComputation* computation : module->MakeNonfusionComputations()) {
       CHECK_OK(computation->Accept(&hlo_cost_analysis));
     }
-    CHECK_OK(HloAliasAnalysis::Run(module, &alias_info_).status());
+    auto alias_analysis_or = HloAliasAnalysis::Run(module, &alias_info_);
+    CHECK_OK(alias_analysis_or.status());
 
     Options memory_space_options = DefaultMemorySpaceOptions();
     if (memory_space_options_override) {
@@ -213,8 +214,9 @@ class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
             CreateHloCostAnalysisCalculator(hlo_cost_analysis_wrapper),
             /*enable_cache=*/false));
 
-    auto status_or_cost_analysis = CostAnalysis::Create(
-        op_cost_manager, cost_analysis_options, &alias_info_, *module);
+    auto status_or_cost_analysis =
+        CostAnalysis::Create(op_cost_manager, cost_analysis_options,
+                             &alias_info_, *module, alias_analysis_or->get());
     CHECK_OK(status_or_cost_analysis.status());
     auto cost_analysis = std::move(status_or_cost_analysis.value());
 
