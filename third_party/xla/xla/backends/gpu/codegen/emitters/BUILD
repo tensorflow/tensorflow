@@ -147,6 +147,7 @@ xla_cc_test(
     srcs = ["mlir_kernel_emitter_test.cc"],
     deps = [
         ":mlir_kernel_emitter",
+        "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen:cubin_custom_kernel_compiler",
         "//xla/backends/gpu/codegen:kernel_compiler",
         "//xla/codegen:llvm_kernel_source",

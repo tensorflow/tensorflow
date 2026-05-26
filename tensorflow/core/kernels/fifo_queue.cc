@@ -62,8 +62,8 @@ void FIFOQueue::TryEnqueue(const Tuple& tuple, OpKernelContext* ctx,
           1, callback, ctx, cm, token,
           [tuple, this](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             if (closed_) {
-              attempt->context->SetStatus(
-                  errors::Cancelled("FIFOQueue '", name_, "' is closed."));
+              attempt->context->SetStatus(absl::CancelledError(
+                  absl::StrCat("FIFOQueue '", name_, "' is closed.")));
               return kComplete;
             }
             if (queues_[0].size() < static_cast<size_t>(capacity_)) {
@@ -80,7 +80,7 @@ void FIFOQueue::TryEnqueue(const Tuple& tuple, OpKernelContext* ctx,
   if (!already_cancelled) {
     FlushUnlocked();
   } else {
-    ctx->SetStatus(errors::Cancelled("Enqueue operation was cancelled"));
+    ctx->SetStatus(absl::CancelledError("Enqueue operation was cancelled"));
     callback();
   }
 }
@@ -118,8 +118,8 @@ void FIFOQueue::TryEnqueueMany(const Tuple& tuple, OpKernelContext* ctx,
           batch_size, callback, ctx, cm, token,
           [tuple, this](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             if (closed_) {
-              attempt->context->SetStatus(
-                  errors::Cancelled("FIFOQueue '", name_, "' is closed."));
+              attempt->context->SetStatus(absl::CancelledError(
+                  absl::StrCat("FIFOQueue '", name_, "' is closed.")));
               return kComplete;
             }
             RunResult result = kNoProgress;
@@ -146,7 +146,7 @@ void FIFOQueue::TryEnqueueMany(const Tuple& tuple, OpKernelContext* ctx,
   if (!already_cancelled) {
     FlushUnlocked();
   } else {
-    ctx->SetStatus(errors::Cancelled("Enqueue operation was cancelled"));
+    ctx->SetStatus(absl::CancelledError("Enqueue operation was cancelled"));
     callback();
   }
 }
@@ -166,10 +166,10 @@ void FIFOQueue::TryDequeue(OpKernelContext* ctx, CallbackWithTuple callback) {
           [callback, this](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             const int64_t queue_size = queues_[0].size();
             if (closed_ && queue_size == 0) {
-              attempt->context->SetStatus(errors::OutOfRange(
-                  "FIFOQueue '", name_, "' is closed and has ",
-                  "insufficient elements (requested ", 1, ", current size ",
-                  queue_size, ")"));
+              attempt->context->SetStatus(absl::OutOfRangeError(
+                  absl::StrCat("FIFOQueue '", name_, "' is closed and has ",
+                               "insufficient elements (requested ", 1,
+                               ", current size ", queue_size, ")")));
               return kComplete;
             }
             if (queue_size > 0) {
@@ -186,7 +186,7 @@ void FIFOQueue::TryDequeue(OpKernelContext* ctx, CallbackWithTuple callback) {
   if (!already_cancelled) {
     FlushUnlocked();
   } else {
-    ctx->SetStatus(errors::Cancelled("Dequeue operation was cancelled"));
+    ctx->SetStatus(absl::CancelledError("Dequeue operation was cancelled"));
     callback(Tuple());
   }
 }
@@ -195,7 +195,7 @@ void FIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                                bool allow_small_batch,
                                CallbackWithTuple callback) {
   if (!specified_shapes()) {
-    ctx->SetStatus(errors::InvalidArgument(
+    ctx->SetStatus(absl::InvalidArgumentError(
         "FIFOQueue's DequeueMany and DequeueUpTo require the "
         "components to have specified shapes."));
     callback(Tuple());
@@ -272,11 +272,11 @@ void FIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                     absl::Status s = GetElementComponentFromBatch(
                         attempt->tuple, i, j, attempt->context, &element);
                     if (!s.ok()) {
-                      attempt->context->SetStatus(
-                          errors::DataLoss("Failed to restore element from "
-                                           "partially-dequeued batch "
-                                           "to FIFOQueue: ",
-                                           s.message()));
+                      attempt->context->SetStatus(absl::DataLossError(
+                          absl::StrCat("Failed to restore element from "
+                                       "partially-dequeued batch "
+                                       "to FIFOQueue: ",
+                                       s.message())));
                     }
                     queues_[j].push_front(element);
                   }
@@ -295,11 +295,11 @@ void FIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                   if (!enqueue_attempts_.empty()) return kProgress;
                 }
                 if (attempt->context->status().ok()) {
-                  attempt->context->SetStatus(errors::OutOfRange(
-                      "FIFOQueue '", name_, "' is closed and has ",
-                      "insufficient elements (requested ",
-                      attempt->elements_requested, ", current size ",
-                      queue_size, ")"));
+                  attempt->context->SetStatus(absl::OutOfRangeError(
+                      absl::StrCat("FIFOQueue '", name_, "' is closed and has ",
+                                   "insufficient elements (requested ",
+                                   attempt->elements_requested,
+                                   ", current size ", queue_size, ")")));
                 }
                 return kComplete;
               }
@@ -349,7 +349,7 @@ void FIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
   if (!already_cancelled) {
     FlushUnlocked();
   } else {
-    ctx->SetStatus(errors::Cancelled("Dequeue operation was cancelled"));
+    ctx->SetStatus(absl::CancelledError("Dequeue operation was cancelled"));
     callback(Tuple());
   }
 }
@@ -357,7 +357,8 @@ void FIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
 absl::Status FIFOQueue::MatchesNodeDef(const NodeDef& node_def) {
   if (!MatchesNodeDefOp(node_def, "FIFOQueue").ok() &&
       !MatchesNodeDefOp(node_def, "FIFOQueueV2").ok()) {
-    return errors::InvalidArgument("Expected FIFOQueue, found ", node_def.op());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected FIFOQueue, found ", node_def.op()));
   }
   TF_RETURN_IF_ERROR(MatchesNodeDefCapacity(node_def, capacity_));
   TF_RETURN_IF_ERROR(MatchesNodeDefTypes(node_def));
