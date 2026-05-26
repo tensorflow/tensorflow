@@ -59,6 +59,7 @@ cc_library(
     hdrs = ["host_event.h"],
     deps = [
         "//xla/stream_executor:event",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -79,7 +80,6 @@ cc_library(
         "//xla/stream_executor:stream_common",
         "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
     ],

@@ -29,9 +29,10 @@ limitations under the License.
 namespace se = stream_executor;
 
 TEST(HostStream, EnforcesFIFOOrder) {
-  se::Platform* platform =
-      se::PlatformManager::PlatformWithName("Host").value();
-  se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                          se::PlatformManager::PlatformWithName("Host"));
+  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor,
+                          platform->ExecutorForDevice(0));
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
   absl::Mutex mu;
   int expected = 0;
@@ -69,4 +70,21 @@ TEST(HostStream, Memset32) {
   for (int i = 0; i < 4; ++i) {
     EXPECT_EQ(buffer[i], pattern);
   }
+}
+
+TEST(HostStream, ReusedEvent) {
+  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                          se::PlatformManager::PlatformWithName("Host"));
+  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor,
+                          platform->ExecutorForDevice(0));
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  TF_ASSERT_OK_AND_ASSIGN(auto event, executor->CreateEvent());
+
+  TF_ASSERT_OK(stream->RecordEvent(event.get()));
+  TF_ASSERT_OK(stream->WaitFor(event.get()));
+
+  TF_ASSERT_OK(stream->RecordEvent(event.get()));
+  TF_ASSERT_OK(stream->WaitFor(event.get()));
+  EXPECT_EQ(event->PollForStatus(), se::Event::Status::kComplete);
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
 }
