@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/host/host_stream.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace {
 
@@ -49,7 +50,6 @@ class HostStreamDefaultFactory
     return std::make_unique<stream_executor::host::HostStream>(executor);
   }
 };
-
 }  // namespace
 
 namespace stream_executor {

@@ -95,6 +95,7 @@ cc_library(
     ],
     deps = [
         ":host_stream",
+        "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/synchronization",
@@ -147,6 +148,23 @@ xla_cc_test(
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "host_stream_factory_test",
+    srcs = ["host_stream_factory_test.cc"],
+    deps = [
+        ":host_platform",
+        ":host_stream",
+        ":host_stream_factory",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",

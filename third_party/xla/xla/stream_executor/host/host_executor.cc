@@ -141,8 +141,8 @@ HostExecutor::CreateDeviceDescription(int /*device_ordinal*/) {
 
   desc.set_device_address_bits(64);
 
-  // TODO: b/511236321 - How to report a value that's based in reality but that
-  // doesn't result in thrashing or other badness? 4GiB chosen arbitrarily.
+  // TODO: b/511236711 - How to report a value that's based in reality but
+  // that doesn't result in thrashing or other badness? 4GiB chosen arbitrarily.
   desc.set_device_memory_size(int64_t{4} * 1024 * 1024 * 1024);
 
   int64_t cycle_counter_frequency =

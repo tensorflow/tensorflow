@@ -28,7 +28,8 @@ namespace host {
 
 class HostStream;
 
-// Factory interface for creating CPU-based HostStream instances.
+// Factory interface for creating HostStream instances. Supports static
+// registration of custom factory implementations with priority ranking.
 class HostStreamFactory {
  public:
   virtual ~HostStreamFactory() = default;
@@ -36,8 +37,8 @@ class HostStreamFactory {
   // Creates a new HostStream associated with the given executor.
   virtual std::unique_ptr<HostStream> CreateStream(
       StreamExecutor* executor) const = 0;
-
-  // Registers a factory instance with a specified priority.
+  // Registers a custom HostStreamFactory instance with a specified priority.
+  // Higher priority values override lower priority registrations.
   static void Register(std::unique_ptr<HostStreamFactory> factory,
                        int priority);
 
