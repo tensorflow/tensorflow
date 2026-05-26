@@ -667,6 +667,55 @@ TEST(BFCAllocatorTest, SpatialUnderContention) {
   EXPECT_EQ(failures.load(std::memory_order_relaxed), 0);
 }
 
+TEST(BFCAllocatorTest, GetAndClearMemoryStats) {
+  BFCAllocator alloc(std::make_unique<FakeSubAllocator>(),
+                     /*total_memory=*/256 << 20, /*name=*/"test_stats",
+                     BFCAllocator::Options{});
+
+  std::optional<AllocatorStats> initial_stats = alloc.GetStats();
+  ASSERT_TRUE(initial_stats.has_value());
+  ASSERT_EQ(initial_stats->bytes_in_use, 0);
+  ASSERT_EQ(initial_stats->peak_bytes_in_use, 0);
+  ASSERT_EQ(initial_stats->peak_allocated_bytes, 0);
+
+  const size_t kAllocSize1 = 1024;
+  void* ptr1 = alloc.AllocateRaw(kAlignment, kAllocSize1);
+  ASSERT_NE(ptr1, nullptr);
+
+  std::optional<AllocatorStats> stats_after_alloc1 = alloc.GetStats();
+  ASSERT_TRUE(stats_after_alloc1.has_value());
+  ASSERT_EQ(stats_after_alloc1->bytes_in_use, 1024);
+  ASSERT_EQ(stats_after_alloc1->peak_bytes_in_use, 1024);
+  ASSERT_EQ(stats_after_alloc1->peak_allocated_bytes, 1024);
+
+  const size_t kAllocSize2 = 2048;
+  void* ptr2 = alloc.AllocateRaw(kAlignment, kAllocSize2);
+  ASSERT_NE(ptr2, nullptr);
+
+  std::optional<AllocatorStats> stats_after_alloc2 = alloc.GetStats();
+  ASSERT_TRUE(stats_after_alloc2.has_value());
+  ASSERT_EQ(stats_after_alloc2->bytes_in_use, 3072);
+  ASSERT_EQ(stats_after_alloc2->peak_bytes_in_use, 3072);
+  ASSERT_EQ(stats_after_alloc2->peak_allocated_bytes, 3072);
+
+  alloc.DeallocateRaw(ptr2);
+
+  std::optional<AllocatorStats> stats_after_free = alloc.GetStats();
+  ASSERT_TRUE(stats_after_free.has_value());
+  ASSERT_EQ(stats_after_free->bytes_in_use, 1024);
+  ASSERT_EQ(stats_after_free->peak_bytes_in_use, 3072);
+  ASSERT_EQ(stats_after_free->peak_allocated_bytes, 3072);
+
+  ASSERT_TRUE(alloc.ClearStats());
+  std::optional<AllocatorStats> stats_after_clear = alloc.GetStats();
+  ASSERT_TRUE(stats_after_clear.has_value());
+  EXPECT_EQ(stats_after_clear->bytes_in_use, 1024);
+  EXPECT_EQ(stats_after_clear->peak_bytes_in_use, 1024);
+  EXPECT_EQ(stats_after_clear->peak_allocated_bytes, 1024);
+
+  alloc.DeallocateRaw(ptr1);
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks.
 //===----------------------------------------------------------------------===//

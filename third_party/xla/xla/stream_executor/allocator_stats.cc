@@ -31,6 +31,7 @@ std::string AllocatorStats::DebugString() const {
       "MaxAllocSize:     %20s\n"
       "Reserved:         %20s\n"
       "PeakReserved:     %20s\n"
+      "PeakAllocated:    %20s\n"
       "LargestFreeBlock: %20s\n",
       tsl::strings::HumanReadableNumBytes(this->bytes_limit ? *this->bytes_limit
                                                             : 0),
@@ -40,6 +41,7 @@ std::string AllocatorStats::DebugString() const {
       tsl::strings::HumanReadableNumBytes(this->largest_alloc_size),
       tsl::strings::HumanReadableNumBytes(this->bytes_reserved),
       tsl::strings::HumanReadableNumBytes(this->peak_bytes_reserved),
+      tsl::strings::HumanReadableNumBytes(this->peak_allocated_bytes),
       tsl::strings::HumanReadableNumBytes(this->largest_free_block_bytes));
 }
 

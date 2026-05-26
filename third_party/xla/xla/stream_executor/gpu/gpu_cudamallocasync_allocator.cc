@@ -382,6 +382,9 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
     }
     stats_->peak_bytes_in_use =
         std::max(stats_->peak_bytes_in_use, stats_->bytes_in_use);
+    stats_->peak_allocated_bytes =
+        std::max(stats_->peak_allocated_bytes,
+                 stats_->bytes_in_use + stats_->bytes_reserved);
     stats_->largest_alloc_size =
         std::max<std::size_t>(stats_->largest_alloc_size, num_bytes);
     bool ptr_inserted = size_map_.emplace(ptr, num_bytes).second;
@@ -462,6 +465,7 @@ bool GpuCudaMallocAsyncAllocator::ClearStats() {
   absl::MutexLock l(mutex_);
   stats_->num_allocs = 0;
   stats_->peak_bytes_in_use = stats_->bytes_in_use;
+  stats_->peak_allocated_bytes = stats_->bytes_in_use + stats_->bytes_reserved;
   stats_->largest_alloc_size = 0;
   return true;
 }

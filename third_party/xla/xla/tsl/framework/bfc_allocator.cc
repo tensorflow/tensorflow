@@ -879,6 +879,8 @@ void BFCAllocator::FinishChunkAllocation(Chunk* chunk, size_t num_bytes) {
   }
   stats_.peak_bytes_in_use =
       std::max(stats_.peak_bytes_in_use, stats_.bytes_in_use);
+  stats_.peak_allocated_bytes = std::max(
+      stats_.peak_allocated_bytes, stats_.bytes_in_use + stats_.bytes_reserved);
   stats_.largest_alloc_size =
       std::max<std::size_t>(stats_.largest_alloc_size, chunk->size);
 
@@ -1601,6 +1603,7 @@ bool BFCAllocator::ClearStats() {
   absl::MutexLock l(mutex_);
   stats_.num_allocs = 0;
   stats_.peak_bytes_in_use = stats_.bytes_in_use;
+  stats_.peak_allocated_bytes = stats_.bytes_in_use + stats_.bytes_reserved;
   stats_.largest_alloc_size = 0;
   return true;
 }
