@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "llvm/ADT/SmallSet.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -33,12 +34,36 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
+namespace {
+
+llvm::SmallSet<int64_t, 4> ComputeUnrollFactors(
+    const HloInstruction& instr, int64_t default_unroll_factor,
+    const se::DeviceDescription& device_description) {
+  llvm::SmallSet<int64_t, 4> unroll_factors;
+  unroll_factors.insert(default_unroll_factor);
+
+  auto analysis = HloFusionAnalysis::Create(instr, device_description);
+  int64_t num_elements = ShapeUtil::ElementsIn(analysis.first_result_shape());
+  int64_t n_threads_max = analysis.device_info().threads_per_core_limit() *
+                          analysis.device_info().core_count();
+  if (num_elements >= n_threads_max &&
+      !MayCausePerformanceDropIfUnrolled(analysis.fusion())) {
+    int64_t max_unroll_factor = MaxUnrollFactor(&analysis);
+    unroll_factors.insert(max_unroll_factor);
+    if (max_unroll_factor > 1) {
+      unroll_factors.insert(max_unroll_factor / 2);
+    }
+  }
+  return unroll_factors;
+}
+
+}  // namespace
 
 // Returns true if the given instruction is a fusion instruction that is
 // supported by the native emitter backend.
@@ -68,31 +93,23 @@ NativeEmitterBackend::GetSupportedConfigs(const HloInstruction& instr) {
   if (!default_config_any->UnpackTo(&default_config)) {
     return absl::InternalError("Failed to unpack default config.");
   }
-
-  if (!debug_options().xla_gpu_native_emitter_tune_unroll_factor_for_loops() ||
-      default_config.type() != NativeEmitterType::NATIVE_EMITTER_TYPE_LOOP) {
-    configs.push_back(std::move(default_config_any));
+  // Tune unroll factor for loops.
+  if (debug_options().xla_gpu_native_emitter_tune_unroll_factor_for_loops() &&
+      default_config.type() == NativeEmitterType::NATIVE_EMITTER_TYPE_LOOP) {
+    llvm::SmallSet<int64_t, 4> unroll_factors =
+        ComputeUnrollFactors(instr, default_config.unroll_factor(),
+                             target_config().device_description);
+    for (int64_t unroll_factor : unroll_factors) {
+      NativeEmitterBackendConfig config;
+      config.set_type(NativeEmitterType::NATIVE_EMITTER_TYPE_LOOP);
+      config.set_unroll_factor(unroll_factor);
+      auto any = std::make_unique<google::protobuf::Any>();
+      any->PackFrom(config);
+      configs.push_back(std::move(any));
+    }
     return configs;
   }
-
-  // For loop fusions we try a few different unroll factors: default * {0.5, 1,
-  // 2}
-  int64_t unroll_factor = default_config.unroll_factor();
-
-  std::vector<int64_t> unroll_factors = {unroll_factor};
-  if (unroll_factor > 1) {
-    unroll_factors.insert(unroll_factors.begin(), unroll_factor / 2);
-  }
-  unroll_factors.push_back(2 * unroll_factor);
-
-  for (int64_t unroll_factor : unroll_factors) {
-    NativeEmitterBackendConfig config;
-    config.set_type(NativeEmitterType::NATIVE_EMITTER_TYPE_LOOP);
-    config.set_unroll_factor(unroll_factor);
-    auto any = std::make_unique<google::protobuf::Any>();
-    any->PackFrom(config);
-    configs.push_back(std::move(any));
-  }
+  configs.push_back(std::move(default_config_any));
   return configs;
 }
 

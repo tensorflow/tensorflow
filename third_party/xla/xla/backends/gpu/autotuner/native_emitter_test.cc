@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/substitute.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -38,11 +39,9 @@ limitations under the License.
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla.pb.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 namespace {
 
-using ::testing::ElementsAre;
 using ::testing::UnorderedElementsAre;
 using ::tsl::proto_testing::EqualsProto;
 
@@ -68,19 +67,19 @@ ENTRY %entry_computation (p0: f32[32,4096,2048]) -> f32[32,2048] {
     calls=%fused_reduce.clone
 })";
 
-const char kLoopFusionHlo[] = R"(
+const char kAddKernelHlo[] = R"(
 HloModule m
 
-%fused_add (p0: f32[32,16], p1: f32[32,16]) -> f32[32,16] {
-  %p0 = f32[32,16]{1,0} parameter(0)
-  %p1 = f32[32,16]{1,0} parameter(1)
-  ROOT %add = f32[32,16]{1,0} add(%p0, %p1)
+%fused_add (p0: f32[$0], p1: f32[$0]) -> f32[$0] {
+  %p0 = f32[$0]{1,0} parameter(0)
+  %p1 = f32[$0]{1,0} parameter(1)
+  ROOT %add = f32[$0]{1,0} add(%p0, %p1)
 }
 
-ENTRY %entry_computation (p0: f32[32,16], p1: f32[32,16]) -> f32[32,16] {
-  %p0 = f32[32,16]{1,0} parameter(0)
-  %p1 = f32[32,16]{1,0} parameter(1)
-  ROOT %loop_fusion = f32[32,16]{1,0} fusion(%p0, %p1), kind=kLoop,
+ENTRY %entry_computation (p0: f32[$0], p1: f32[$0]) -> f32[$0] {
+  %p0 = f32[$0]{1,0} parameter(0)
+  %p1 = f32[$0]{1,0} parameter(1)
+  ROOT %loop_fusion = f32[$0]{1,0} fusion(%p0, %p1), kind=kLoop,
     calls=%fused_add
 })";
 
@@ -116,7 +115,10 @@ class NativeEmitterBackendTest : public HloHardwareIndependentTestBase {
         stream_executor_(platform_->ExecutorForDevice(0).value()),
         target_config_(stream_executor_),
         compiler_(Compiler::GetForPlatform(platform_->id()).value()),
-        backend_(&debug_options_, compiler_.get(), &target_config_) {}
+        backend_(&debug_options_, compiler_.get(), &target_config_) {
+    debug_options_.set_xla_gpu_libnvjitlink_mode(
+        xla::DebugOptions::LIB_NV_JIT_LINK_MODE_DISABLED);
+  }
 
   DebugOptions debug_options_;
   se::Platform* platform_;
@@ -127,24 +129,24 @@ class NativeEmitterBackendTest : public HloHardwareIndependentTestBase {
 };
 
 TEST_F(NativeEmitterBackendTest, GetDefaultConfig) {
-  TF_ASSERT_OK_AND_ASSIGN(auto reduction_module,
-                          ParseAndReturnVerifiedModule(kReductionFusionHlo));
+  ASSERT_OK_AND_ASSIGN(auto reduction_module,
+                       ParseAndReturnVerifiedModule(kReductionFusionHlo));
   auto fusion = reduction_module->entry_computation()->root_instruction();
   // Call GetDefaultConfig on the fusion instruction.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
-                          backend_.GetDefaultConfig(*(fusion)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
+                       backend_.GetDefaultConfig(*(fusion)));
   // Verify the returned config is a native emitter config.
   NativeEmitterBackendConfig native_emitter_config;
   ASSERT_TRUE(config->UnpackTo(&native_emitter_config));
 }
 
 TEST_F(NativeEmitterBackendTest, GetSupportedConfigs) {
-  TF_ASSERT_OK_AND_ASSIGN(auto reduction_module,
-                          ParseAndReturnVerifiedModule(kReductionFusionHlo));
+  ASSERT_OK_AND_ASSIGN(auto reduction_module,
+                       ParseAndReturnVerifiedModule(kReductionFusionHlo));
   auto fusion = reduction_module->entry_computation()->root_instruction();
   // Call GetSupportedConfigs on the fusion instruction.
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
-                          backend_.GetSupportedConfigs(*(fusion)));
+  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                       backend_.GetSupportedConfigs(*(fusion)));
   // There should only be a single config for the native emitter backend.
   ASSERT_EQ(configs.size(), 1);
   // Verify the returned config is a native emitter config.
@@ -154,12 +156,13 @@ TEST_F(NativeEmitterBackendTest, GetSupportedConfigs) {
 
 TEST_F(NativeEmitterBackendTest, GetDefaultConfigForLoopFusion) {
   debug_options_.set_xla_gpu_native_emitter_tune_unroll_factor_for_loops(true);
-  TF_ASSERT_OK_AND_ASSIGN(auto loop_module,
-                          ParseAndReturnVerifiedModule(kLoopFusionHlo));
+  ASSERT_OK_AND_ASSIGN(
+      auto loop_module,
+      ParseAndReturnVerifiedModule(absl::Substitute(kAddKernelHlo, "32,16")));
   auto fusion = loop_module->entry_computation()->root_instruction();
   // Call GetDefaultConfig on the fusion instruction.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
-                          backend_.GetDefaultConfig(*(fusion)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
+                       backend_.GetDefaultConfig(*(fusion)));
   // Verify the returned config is a native emitter config.
   NativeEmitterBackendConfig native_emitter_config;
   ASSERT_TRUE(config->UnpackTo(&native_emitter_config));
@@ -170,12 +173,13 @@ TEST_F(NativeEmitterBackendTest, GetDefaultConfigForLoopFusion) {
 
 TEST_F(NativeEmitterBackendTest, GetSupportedConfigsForLoopFusion) {
   debug_options_.set_xla_gpu_native_emitter_tune_unroll_factor_for_loops(true);
-  TF_ASSERT_OK_AND_ASSIGN(auto loop_module,
-                          ParseAndReturnVerifiedModule(kLoopFusionHlo));
+  ASSERT_OK_AND_ASSIGN(auto loop_module,
+                       ParseAndReturnVerifiedModule(
+                           absl::Substitute(kAddKernelHlo, "1024,4096")));
   auto fusion = loop_module->entry_computation()->root_instruction();
   // Call GetSupportedConfigs on the fusion instruction.
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
-                          backend_.GetSupportedConfigs(*(fusion)));
+  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                       backend_.GetSupportedConfigs(*(fusion)));
   // Verify the returned configs.
   std::vector<NativeEmitterBackendConfig> native_configs;
   for (const auto& config : configs) {
@@ -186,27 +190,27 @@ TEST_F(NativeEmitterBackendTest, GetSupportedConfigsForLoopFusion) {
   EXPECT_THAT(
       native_configs,
       UnorderedElementsAre(EqualsProto(R"pb(type: NATIVE_EMITTER_TYPE_LOOP
-                                            unroll_factor: 1)pb"),
+                                            unroll_factor: 2)pb"),
                            EqualsProto(R"pb(type: NATIVE_EMITTER_TYPE_LOOP
-                                            unroll_factor: 2)pb")));
+                                            unroll_factor: 4)pb")));
 }
 
 TEST_F(NativeEmitterBackendTest,
        GetSupportedConfigsDoesNotSupportKCustomFusions) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kCustomFusionHlo));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kCustomFusionHlo));
   auto fusion_instruction = module->entry_computation()->root_instruction();
   // Call GetSupportedConfigs on the fusion instruction.
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
-                          backend_.GetSupportedConfigs(*(fusion_instruction)));
+  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                       backend_.GetSupportedConfigs(*(fusion_instruction)));
   // GetSupportedConfigs should return an empty vector as it doesn't support the
   // fusion.
   ASSERT_TRUE(configs.empty());
 }
 
 TEST_F(NativeEmitterBackendTest, ApplyConfig) {
-  TF_ASSERT_OK_AND_ASSIGN(auto reduction_module,
-                          ParseAndReturnVerifiedModule(kReductionFusionHlo));
+  ASSERT_OK_AND_ASSIGN(auto reduction_module,
+                       ParseAndReturnVerifiedModule(kReductionFusionHlo));
   auto fusion = reduction_module->entry_computation()->root_instruction();
   // Call ApplyConfig on the fusion instruction.
   NativeEmitterBackendConfig native_emitter_config;
@@ -217,14 +221,14 @@ TEST_F(NativeEmitterBackendTest, ApplyConfig) {
   ASSERT_EQ(fusion->fusion_kind(), HloInstruction::FusionKind::kInput);
   // Verify the fusion instruction has a native emitter backend config.
   ASSERT_TRUE(fusion->has_backend_config());
-  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_backend_config,
-                          fusion->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_backend_config,
+                       fusion->backend_config<GpuBackendConfig>());
   ASSERT_TRUE(gpu_backend_config.has_native_emitter_backend_config());
 }
 
 TEST_F(NativeEmitterBackendTest, ApplyConfigFailsForUnsupportedConfig) {
-  TF_ASSERT_OK_AND_ASSIGN(auto reduction_module,
-                          ParseAndReturnVerifiedModule(kReductionFusionHlo));
+  ASSERT_OK_AND_ASSIGN(auto reduction_module,
+                       ParseAndReturnVerifiedModule(kReductionFusionHlo));
   auto fusion = reduction_module->entry_computation()->root_instruction();
   BlockLevelFusionConfig block_level_fusion_config;
   BackendConfig config;
@@ -234,12 +238,12 @@ TEST_F(NativeEmitterBackendTest, ApplyConfigFailsForUnsupportedConfig) {
 }
 
 TEST_F(NativeEmitterBackendTest, CompileForDefaultConfig) {
-  TF_ASSERT_OK_AND_ASSIGN(auto reduction_module,
-                          ParseAndReturnVerifiedModule(kReductionFusionHlo));
+  ASSERT_OK_AND_ASSIGN(auto reduction_module,
+                       ParseAndReturnVerifiedModule(kReductionFusionHlo));
   auto fusion = reduction_module->entry_computation()->root_instruction();
   // Call GetDefaultConfig on the fusion instruction.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
-                          backend_.GetDefaultConfig(*(fusion)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
+                       backend_.GetDefaultConfig(*(fusion)));
   // Attempt to compile the fusion using the retrieved backend config.
   auto maybe_executable = backend_.Compile(*fusion, *config);
   // Verify that compilation succeeded and returned a valid executable.
@@ -272,15 +276,15 @@ class MockCompiler : public Compiler {
 };
 
 TEST_F(NativeEmitterBackendTest, CompileSetsIsAutotuningCompilationOption) {
-  TF_ASSERT_OK_AND_ASSIGN(auto reduction_module,
-                          ParseAndReturnVerifiedModule(kReductionFusionHlo));
+  ASSERT_OK_AND_ASSIGN(auto reduction_module,
+                       ParseAndReturnVerifiedModule(kReductionFusionHlo));
   auto fusion = reduction_module->entry_computation()->root_instruction();
   MockCompiler mock_compiler;
   NativeEmitterBackend backend(&debug_options_, &mock_compiler,
                                &target_config_);
   // Call GetDefaultConfig on the fusion instruction.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
-                          backend.GetDefaultConfig(*(fusion)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
+                       backend.GetDefaultConfig(*(fusion)));
   EXPECT_CALL(
       mock_compiler,
       RunBackend(
@@ -292,5 +296,4 @@ TEST_F(NativeEmitterBackendTest, CompileSetsIsAutotuningCompilationOption) {
 }
 
 }  // namespace
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
