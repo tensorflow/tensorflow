@@ -19,26 +19,23 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <new>
 #include <optional>
 #include <variant>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/generic_memory_allocation.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_allocator.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_common.h"
-#include "tsl/platform/mem.h"
 
 namespace stream_executor {
 namespace host {

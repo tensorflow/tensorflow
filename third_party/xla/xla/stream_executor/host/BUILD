@@ -96,6 +96,7 @@ cc_library(
     deps = [
         ":host_stream",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -133,7 +134,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@tsl//tsl/platform:platform_port",
     ],
-    alwayslink = True,
 )
 
 xla_cc_test(

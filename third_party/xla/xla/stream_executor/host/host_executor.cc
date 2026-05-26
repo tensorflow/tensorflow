@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Implementation of HostExecutor class [of those methods not defined in the
+/// Implementation of HostExecutor class [of those methods not defined in the
 // class declaration].
 #include "xla/stream_executor/host/host_executor.h"
 
@@ -22,7 +22,6 @@ limitations under the License.
 #include <memory>
 #include <new>
 #include <optional>
-#include <string>
 #include <utility>
 #include <variant>
 
@@ -113,7 +112,7 @@ absl::Status HostExecutor::SynchronousMemcpy(DeviceAddressBase* device_dst,
     return absl::InvalidArgumentError(
         "Null pointer passed to SynchronousMemcpy");
   }
-  memcpy(device_dst->opaque(), host_src, size);
+  std::memcpy(device_dst->opaque(), host_src, size);
   return absl::OkStatus();
 }
 
@@ -126,7 +125,7 @@ absl::Status HostExecutor::SynchronousMemcpy(
     return absl::InvalidArgumentError(
         "Null pointer passed to SynchronousMemcpy");
   }
-  memcpy(host_dst, device_src.opaque(), size);
+  std::memcpy(host_dst, device_src.opaque(), size);
   return absl::OkStatus();
 }
 
@@ -142,7 +141,7 @@ HostExecutor::CreateDeviceDescription(int /*device_ordinal*/) {
 
   desc.set_device_address_bits(64);
 
-  // TODO(rspringer): How to report a value that's based in reality but that
+  // TODO: b/511236321 - How to report a value that's based in reality but that
   // doesn't result in thrashing or other badness? 4GiB chosen arbitrarily.
   desc.set_device_memory_size(int64_t{4} * 1024 * 1024 * 1024);
 
@@ -163,7 +162,7 @@ HostExecutor::CreateDeviceDescription(int /*device_ordinal*/) {
 
 absl::StatusOr<std::unique_ptr<Stream>> HostExecutor::CreateStream(
     std::optional<std::variant<StreamPriority, int>> /*priority*/) {
-  const HostStreamFactory* factory = HostStreamFactory::GetFactory();
+  std::shared_ptr<HostStreamFactory> factory = HostStreamFactory::GetFactory();
   if (factory != nullptr) {
     return factory->CreateStream(this);
   }
