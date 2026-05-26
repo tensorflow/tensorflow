@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -100,6 +101,11 @@ class ShapeTracker {
   // Concatenates another ShapeTracker to this one.
   absl::Status ConcatenateFrom(const ShapeTracker& other);
 
+  // Splits this ShapeTracker into two independent ShapeTrackers at the given
+  // dimension of the input shape.
+  absl::StatusOr<std::pair<ShapeTracker, ShapeTracker>> SplitDimensions(
+      int64_t split_dimension) const;
+
   // Returns a new ShapeTracker with inverted operations.
   absl::StatusOr<ShapeTracker> GetInverted() const;
 
@@ -123,11 +129,11 @@ class ShapeTracker {
   std::string DebugString() const;
 
  private:
-  struct ViewMapping;
+  struct BufferView;
 
   void TryFoldProjection();
 
-  std::vector<ViewMapping> projections_;
+  std::vector<BufferView> projections_;
   xla::Shape input_shape_;
   xla::Shape output_shape_;
 };

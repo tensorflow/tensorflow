@@ -713,4 +713,104 @@ TEST(ShapeTrackerTest, AppendBitcastSixToOneSix) {
   EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{1, 6}));
 }
 
+TEST(ShapeTrackerTest, SplitDimensionsBasic) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4, 5});
+  ShapeTracker tracker(shape);
+
+  auto split_or = tracker.SplitDimensions(2);
+  ASSERT_TRUE(split_or.ok());
+  auto [lhs, rhs] = std::move(split_or).value();
+
+  EXPECT_EQ(lhs.input_shape().dimensions(), (std::vector<int64_t>{2, 3}));
+  EXPECT_EQ(lhs.output_shape().dimensions(), (std::vector<int64_t>{2, 3}));
+  EXPECT_TRUE(lhs.GetSteps().empty());
+
+  EXPECT_EQ(rhs.input_shape().dimensions(), (std::vector<int64_t>{4, 5}));
+  EXPECT_EQ(rhs.output_shape().dimensions(), (std::vector<int64_t>{4, 5}));
+  EXPECT_TRUE(rhs.GetSteps().empty());
+}
+
+TEST(ShapeTrackerTest, SplitDimensionsWithTransposeValid) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4, 5});
+  ShapeTracker tracker(shape);
+
+  // Transpose LHS: {1, 0, 2, 3} -> shape becomes {3, 2, 4, 5}
+  ASSERT_TRUE(tracker.AppendTranspose({1, 0, 2, 3}).ok());
+
+  auto split_or = tracker.SplitDimensions(2);
+  ASSERT_TRUE(split_or.ok());
+  auto [lhs, rhs] = std::move(split_or).value();
+
+  EXPECT_EQ(lhs.input_shape().dimensions(), (std::vector<int64_t>{2, 3}));
+  EXPECT_EQ(lhs.output_shape().dimensions(), (std::vector<int64_t>{3, 2}));
+  std::vector<ShapeTracker::Step> lhs_steps = lhs.GetSteps();
+  ASSERT_EQ(lhs_steps.size(), 1);
+  EXPECT_EQ(lhs_steps[0].type, ShapeTracker::Step::Type::kTranspose);
+  EXPECT_EQ(lhs_steps[0].dimensions, (std::vector<int64_t>{1, 0}));
+
+  EXPECT_EQ(rhs.input_shape().dimensions(), (std::vector<int64_t>{4, 5}));
+  EXPECT_EQ(rhs.output_shape().dimensions(), (std::vector<int64_t>{4, 5}));
+  EXPECT_TRUE(rhs.GetSteps().empty());
+}
+
+TEST(ShapeTrackerTest, SplitDimensionsWithTransposeInvalid) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4, 5});
+  ShapeTracker tracker(shape);
+
+  // Transpose across split point: {0, 2, 1, 3} (swaps 1 and 2)
+  ASSERT_TRUE(tracker.AppendTranspose({0, 2, 1, 3}).ok());
+
+  auto split_or = tracker.SplitDimensions(2);
+  EXPECT_FALSE(split_or.ok());
+}
+
+TEST(ShapeTrackerTest, SplitDimensionsWithReshapeValid) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4, 5});
+  ShapeTracker tracker(shape);
+
+  // Reshape LHS: {2, 3} -> {6}. Total shape becomes {6, 4, 5}
+  ASSERT_TRUE(tracker.AppendReshape({6, 4, 5}).ok());
+
+  auto split_or = tracker.SplitDimensions(2);
+  ASSERT_TRUE(split_or.ok());
+  auto [lhs, rhs] = std::move(split_or).value();
+
+  EXPECT_EQ(lhs.input_shape().dimensions(), (std::vector<int64_t>{2, 3}));
+  EXPECT_EQ(lhs.output_shape().dimensions(), (std::vector<int64_t>{6}));
+  std::vector<ShapeTracker::Step> lhs_steps = lhs.GetSteps();
+  ASSERT_EQ(lhs_steps.size(), 1);
+  EXPECT_EQ(lhs_steps[0].type, ShapeTracker::Step::Type::kReshape);
+  EXPECT_EQ(lhs_steps[0].dimensions, (std::vector<int64_t>{6}));
+
+  EXPECT_EQ(rhs.input_shape().dimensions(), (std::vector<int64_t>{4, 5}));
+  EXPECT_EQ(rhs.output_shape().dimensions(), (std::vector<int64_t>{4, 5}));
+  EXPECT_TRUE(rhs.GetSteps().empty());
+}
+
+TEST(ShapeTrackerTest, SplitDimensionsWithReshapeInvalid) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4, 5});
+  ShapeTracker tracker(shape);
+
+  // Reshape across split point: combines 3 and 4 into 12.
+  // {2, 3, 4, 5} -> {2, 12, 5}
+  ASSERT_TRUE(tracker.AppendReshape({2, 12, 5}).ok());
+
+  auto split_or = tracker.SplitDimensions(2);
+  EXPECT_FALSE(split_or.ok());
+}
+
+TEST(ShapeTrackerTest, SplitDimensionsWithDegenerate) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 1, 3, 4});
+  ShapeTracker tracker(shape);
+
+  auto split_or = tracker.SplitDimensions(2);
+  ASSERT_TRUE(split_or.ok());
+  auto [lhs, rhs] = std::move(split_or).value();
+
+  EXPECT_EQ(lhs.input_shape().dimensions(), (std::vector<int64_t>{2, 1}));
+  EXPECT_EQ(lhs.output_shape().dimensions(), (std::vector<int64_t>{2}));
+  EXPECT_EQ(rhs.input_shape().dimensions(), (std::vector<int64_t>{3, 4}));
+  EXPECT_EQ(rhs.output_shape().dimensions(), (std::vector<int64_t>{1, 3, 4}));
+}
+
 }  // namespace xla
