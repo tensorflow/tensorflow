@@ -462,6 +462,14 @@ struct Options {
   absl::flat_hash_map<HloPosition, std::vector<CustomCallPrefetchDetails>>
       hlo_position_to_custom_call_prefetch_details;
 
+  // Used in block prefetching mode. Returns the operand index of the source
+  // buffer (source of a DMA) for a custom fusion instruction that can be
+  // asyncified. Currently this matches cross-buffer slice fusions which can
+  // be lowered to asynchronous DMAs.
+  std::function<std::optional<int64_t>(const HloInstruction*)>
+      custom_fusion_block_prefetch_operand_index_fn =
+          [](const HloInstruction*) { return std::nullopt; };
+
   std::string ToString() const;
 };
 
