@@ -409,6 +409,17 @@ absl::StatusOr<bool> DoubleBufferingUnroll(HloInstruction* while_instr,
         config.known_init_step().init() + (peel_one_iteration ? step : 0));
   }
 
+  for (auto& dv : *new_config.mutable_dynamic_variables()) {
+    if (!dv.has_init() || !dv.has_step()) {
+      continue;
+    }
+    int64_t dv_step = dv.step();
+    dv.set_step(dv_step * 2);
+    if (peel_one_iteration) {
+      dv.set_init(dv.init() + dv_step);
+    }
+  }
+
   RETURN_IF_ERROR(while_instr->set_backend_config(new_config));
   return true;  // changed
 }

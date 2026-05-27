@@ -1124,7 +1124,7 @@ TEST_F(IrEmissionUtilsTest, DynamicVariableLoopCarriedVariable) {
         tuple = (s32[], s32[], s32[]) tuple(c0, c0, c0)
         ROOT while = (s32[], s32[], s32[]) while(tuple),
             condition=condition, body=while_body,
-            backend_config={"known_induction_variable":{"tuple_index":"0"},"dynamic_variable_tuple_indices":[1]}
+            backend_config={"known_induction_variable":{"tuple_index":"0"},"dynamic_variables":[{"tuple_index":"1"}]}
       }
   )";
 
@@ -1178,7 +1178,7 @@ TEST_F(IrEmissionUtilsTest, DynamicVariableWithIrrelevantGTE) {
         tuple = (s32[], s32[], s32[], s32[]) tuple(c0, c0, c0, c0)
         ROOT while = (s32[], s32[], s32[], s32[]) while(tuple),
             condition=condition, body=while_body,
-            backend_config={"known_induction_variable":{"tuple_index":"0"},"dynamic_variable_tuple_indices":[1, 2]}
+            backend_config={"known_induction_variable":{"tuple_index":"0"},"dynamic_variables":[{"tuple_index":"1"},{"tuple_index":"2"}]}
       }
   )";
 
@@ -1234,7 +1234,7 @@ TEST_F(IrEmissionUtilsTest, MultipleDynamicVariables) {
         tuple = (s32[], s32[], s32[], s32[]) tuple(c0, c0, c0, c0)
         ROOT while = (s32[], s32[], s32[], s32[]) while(tuple),
             condition=condition, body=while_body,
-            backend_config={"known_induction_variable":{"tuple_index":"0"},"dynamic_variable_tuple_indices":[1, 2]}
+            backend_config={"known_induction_variable":{"tuple_index":"0"},"dynamic_variables":[{"tuple_index":"1"},{"tuple_index":"2"}]}
       }
   )";
 

@@ -1313,7 +1313,6 @@ xla_cc_test(
     deps = [
         ":double_buffer_loop_unrolling",
         "//xla:xla_data_proto_cc",
-        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/hlo/testlib:filecheck",
@@ -1322,6 +1321,7 @@ xla_cc_test(
         "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "//xla/hlo/utils:hlo_query",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:status_matchers",
