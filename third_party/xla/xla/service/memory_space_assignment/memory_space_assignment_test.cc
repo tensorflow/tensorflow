@@ -15025,6 +15025,9 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.enable_sync_copy_replacement = true;
+  memory_space_options.enable_sync_slice_replacement = true;
+
   memory_space_options.max_size_in_bytes = 24;
   memory_space_options.reserved_bytes_for_block_prefetches = 23;
   memory_space_options.max_outstanding_block_prefetches = 10;
@@ -15082,6 +15085,9 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.enable_sync_copy_replacement = true;
+  memory_space_options.enable_sync_slice_replacement = true;
+
   memory_space_options.max_size_in_bytes = 96;
   memory_space_options.reserved_bytes_for_block_prefetches = 96;
   memory_space_options.max_outstanding_block_prefetches = 2;
@@ -15135,6 +15141,9 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.enable_sync_copy_replacement = true;
+  memory_space_options.enable_sync_slice_replacement = true;
+
   memory_space_options.max_size_in_bytes = 24;
   memory_space_options.reserved_bytes_for_block_prefetches = 24;
   memory_space_options.max_outstanding_block_prefetches = 10;
@@ -15188,6 +15197,9 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.enable_sync_copy_replacement = true;
+  memory_space_options.enable_sync_slice_replacement = true;
+
   memory_space_options.max_size_in_bytes = 24;
   memory_space_options.reserved_bytes_for_block_prefetches = 24;
   memory_space_options.max_outstanding_block_prefetches = 10;
@@ -15238,7 +15250,7 @@ TEST_F(MemorySpaceAssignmentTest,
   // scoped allocation of negate10 when we try to extend it for the entire live
   // range.
 
-  // To make sure we dont allocate block prefetches below MaxScopedMemorySize
+  // To make sure we don't allocate block prefetches below MaxScopedMemorySize
   // we reserve memory for scoped allocations before block prefetching and
   // process scoped allocations after block prefetching.
   absl::string_view hlo_string = R"hlo(
@@ -15263,6 +15275,9 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.enable_sync_copy_replacement = true;
+  memory_space_options.enable_sync_slice_replacement = true;
+
   memory_space_options.max_size_in_bytes = 48;
   memory_space_options.reserved_bytes_for_block_prefetches = 24;
   memory_space_options.max_outstanding_block_prefetches = 10;
@@ -15333,6 +15348,9 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias({1}, 3, {}));
   Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.enable_sync_copy_replacement = true;
+  memory_space_options.enable_sync_slice_replacement = true;
+
   memory_space_options.max_size_in_bytes = 24;
   memory_space_options.reserved_bytes_for_block_prefetches = 24;
   memory_space_options.max_outstanding_block_prefetches = 10;
@@ -15392,6 +15410,9 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.enable_sync_copy_replacement = true;
+  memory_space_options.enable_sync_slice_replacement = true;
+
   memory_space_options.max_size_in_bytes = 48;
   memory_space_options.reserved_bytes_for_block_prefetches = 48;
   memory_space_options.max_outstanding_block_prefetches = 10;
@@ -15450,6 +15471,9 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.enable_sync_copy_replacement = true;
+  memory_space_options.enable_sync_slice_replacement = true;
+
   memory_space_options.max_size_in_bytes = 72;
   memory_space_options.reserved_bytes_for_block_prefetches = 72;
   memory_space_options.max_outstanding_block_prefetches = 10;
@@ -15481,7 +15505,10 @@ ENTRY entry {
   EXPECT_EQ(add3->operand(0), add13->operand(0));
 }
 
-TEST_F(MemorySpaceAssignmentTest, TestBlockPrefetchSourceValueAliased) {
+// This test case is not longer supported in MSA. We only allow block
+// prefetching for parameters and async conversion candidates.
+TEST_F(MemorySpaceAssignmentTest,
+       DISABLED_TestBlockPrefetchSourceValueAliased) {
   // In this test, the source value of the block prefetch aliases to the left.
   // custom_call1 and custom_call3 alias to the left, we test that all aliases
   // to the left should be pinned to default memory space.
@@ -15533,6 +15560,9 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.enable_sync_copy_replacement = true;
+  memory_space_options.enable_sync_slice_replacement = true;
+
   memory_space_options.max_size_in_bytes = 400;
   memory_space_options.reserved_bytes_for_block_prefetches = 400;
   memory_space_options.max_outstanding_block_prefetches = 10;
@@ -15632,6 +15662,9 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.enable_sync_copy_replacement = true;
+  memory_space_options.enable_sync_slice_replacement = true;
+
   memory_space_options.max_size_in_bytes = 48;
   memory_space_options.reserved_bytes_for_block_prefetches = 48;
   memory_space_options.max_outstanding_block_prefetches = 10;
@@ -15698,6 +15731,9 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.enable_sync_copy_replacement = true;
+  memory_space_options.enable_sync_slice_replacement = true;
+
   memory_space_options.max_size_in_bytes = 48;
   memory_space_options.reserved_bytes_for_block_prefetches = 48;
   memory_space_options.max_outstanding_block_prefetches = 10;
@@ -15794,6 +15830,8 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.enable_sync_copy_replacement = true;
+
   memory_space_options.max_size_in_bytes = 48;
   memory_space_options.reserved_bytes_for_block_prefetches = 24;
   memory_space_options.max_outstanding_block_prefetches = 10;
@@ -15804,7 +15842,8 @@ ENTRY entry {
         return instruction->opcode() == HloOpcode::kSlice;
       };
   memory_space_options.block_prefetched_positions =
-      GetHloPositions(module.get(), {"p0", "p1", "p2"});
+      GetHloPositions(module.get(), {"p0", "p1", "p2", "slice0", "slice1",
+                                     "slice2", "slice3", "slice4", "slice5"});
 
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
   AssignMemorySpaceUsingCostAnalysis(module.get(),
@@ -15872,6 +15911,8 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.enable_sync_copy_replacement = true;
+
   memory_space_options.max_size_in_bytes = 96;
   memory_space_options.reserved_bytes_for_block_prefetches = 96;
   memory_space_options.max_outstanding_block_prefetches = 10;
@@ -15883,7 +15924,8 @@ ENTRY entry {
       };
 
   memory_space_options.block_prefetched_positions =
-      GetHloPositions(module.get(), {"p0", "p1", "p2"});
+      GetHloPositions(module.get(), {"p0", "p1", "p2", "slice0", "slice1",
+                                     "slice2", "slice3", "slice4", "slice5"});
 
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
   AssignMemorySpaceUsingCostAnalysis(module.get(),
@@ -15978,6 +16020,8 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.enable_sync_copy_replacement = true;
+
   memory_space_options.max_size_in_bytes = 96;
   memory_space_options.reserved_bytes_for_block_prefetches = 96;
   memory_space_options.max_outstanding_block_prefetches = 10;
@@ -15988,8 +16032,10 @@ ENTRY entry {
         return instruction->opcode() == HloOpcode::kDynamicSlice;
       };
 
-  memory_space_options.block_prefetched_positions =
-      GetHloPositions(module.get(), {"p0", "p1", "p2"});
+  memory_space_options.block_prefetched_positions = GetHloPositions(
+      module.get(),
+      {"p0", "p1", "p2", "dynamic_slice0", "dynamic_slice1", "dynamic_slice2",
+       "dynamic_slice3", "dynamic_slice4", "dynamic_slice5"});
 
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
   AssignMemorySpaceUsingCostAnalysis(module.get(),
@@ -16076,6 +16122,8 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.enable_sync_copy_replacement = true;
+
   memory_space_options.max_size_in_bytes = 48;
   memory_space_options.reserved_bytes_for_block_prefetches = 48;
   memory_space_options.max_outstanding_block_prefetches = 10;
@@ -16087,7 +16135,8 @@ ENTRY entry {
       };
 
   memory_space_options.block_prefetched_positions =
-      GetHloPositions(module.get(), {"p0", "p1", "p2"});
+      GetHloPositions(module.get(), {"p0", "p1", "p2", "slice0", "slice1",
+                                     "slice2", "slice3", "slice4", "slice5"});
 
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
   AssignMemorySpaceUsingCostAnalysis(module.get(),
@@ -16151,6 +16200,9 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.enable_sync_copy_replacement = true;
+  memory_space_options.enable_sync_slice_replacement = true;
+
   memory_space_options.max_size_in_bytes = 200;
   memory_space_options.reserved_bytes_for_block_prefetches = 200;
   memory_space_options.max_outstanding_block_prefetches = 10;
@@ -16267,6 +16319,9 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.enable_sync_copy_replacement = true;
+  memory_space_options.enable_sync_slice_replacement = true;
+
   memory_space_options.max_size_in_bytes = 96;
   memory_space_options.reserved_bytes_for_block_prefetches = 96;
   memory_space_options.max_outstanding_block_prefetches = 10;
@@ -16396,6 +16451,9 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.enable_sync_copy_replacement = true;
+  memory_space_options.enable_sync_slice_replacement = true;
+
   memory_space_options.max_size_in_bytes = 96;
   memory_space_options.reserved_bytes_for_block_prefetches = 96;
   memory_space_options.max_outstanding_block_prefetches = 10;
@@ -16502,6 +16560,9 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.enable_sync_copy_replacement = true;
+  memory_space_options.enable_sync_slice_replacement = true;
+
   memory_space_options.max_size_in_bytes = 1000;
   memory_space_options.reserved_bytes_for_block_prefetches = 1000;
   memory_space_options.max_outstanding_block_prefetches = 10;
@@ -16604,6 +16665,8 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.enable_sync_copy_replacement = true;
+
   memory_space_options.max_size_in_bytes = 256;
   memory_space_options.reserved_bytes_for_block_prefetches = 24;
   memory_space_options.max_outstanding_block_prefetches = 10;
@@ -16614,7 +16677,7 @@ ENTRY entry {
         return instruction->opcode() == HloOpcode::kSlice;
       };
   memory_space_options.block_prefetched_positions =
-      GetHloPositions(module.get(), {"p0"});
+      GetHloPositions(module.get(), {"p0", "slice0"});
   const std::string text_proto = R"pb(
     overrides {
       hlo_position_matcher { instruction_name_regex: "p0" }
@@ -16668,6 +16731,9 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.enable_sync_copy_replacement = true;
+  memory_space_options.enable_sync_slice_replacement = true;
+
   memory_space_options.max_size_in_bytes = 24;
   memory_space_options.reserved_bytes_for_block_prefetches = 24;
   memory_space_options.max_outstanding_block_prefetches = 10;
@@ -16733,6 +16799,9 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.enable_sync_copy_replacement = false;
+  memory_space_options.enable_sync_slice_replacement = false;
+
   memory_space_options.max_size_in_bytes = 24;
   memory_space_options.reserved_bytes_for_block_prefetches = 24;
   memory_space_options.max_outstanding_block_prefetches = 10;
