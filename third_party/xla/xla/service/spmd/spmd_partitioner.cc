@@ -5085,6 +5085,83 @@ absl::Status SpmdPartitioningVisitor::HandleWhile(HloInstruction* hlo) {
   return absl::OkStatus();
 }
 
+absl::Status SpmdPartitioningVisitor::HandleScan(HloInstruction* hlo) {
+  auto* scan = Cast<HloScanInstruction>(hlo);
+  const HloSharding& sharding = scan->sharding();
+  int64_t scan_dimension = scan->scan_dimension();
+
+  // 1. Partition inputs. Force replication strictly along the scan dimension.
+  std::vector<HloInstruction*> partitioned_inputs;
+  partitioned_inputs.reserve(scan->inputs().size());
+  for (HloInstruction* input : scan->inputs()) {
+    HloSharding target_sharding = input->sharding();
+    if (!target_sharding.IsReplicated() && !target_sharding.IsTuple() &&
+        !target_sharding.IsManual() &&
+        target_sharding.dimension(scan_dimension) > 1) {
+      target_sharding =
+          hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+              target_sharding, {scan_dimension});
+    }
+    partitioned_inputs.push_back(
+        GetPartitionedHlo(input).Reshard(target_sharding).hlo());
+  }
+
+  // 2. Partition inits. Shape of init is carry shape. We just partition it
+  // using its own sharding.
+  std::vector<HloInstruction*> partitioned_inits;
+  partitioned_inits.reserve(scan->inits().size());
+  for (HloInstruction* init : scan->inits()) {
+    partitioned_inits.push_back(
+        GetPartitionedHlo(init).Reshard(init->sharding()).hlo());
+  }
+
+  // 3. Determine the physical sharding of the partitioned scan.
+  // We force replication along the scan dimension in each leaf sharding.
+  HloSharding scan_physical_sharding = sharding;
+  if (sharding.IsTuple()) {
+    std::vector<HloSharding> new_tuple_shardings;
+    for (const HloSharding& sub : sharding.tuple_elements()) {
+      if (!sub.IsReplicated() && !sub.IsTuple() && !sub.IsManual() &&
+          sub.dimension(scan_dimension) > 1) {
+        new_tuple_shardings.push_back(
+            hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+                sub, {scan_dimension}));
+      } else {
+        new_tuple_shardings.push_back(sub);
+      }
+    }
+    scan_physical_sharding = HloSharding::FlatTuple(new_tuple_shardings);
+  } else {
+    if (!sharding.IsReplicated() && !sharding.IsManual() &&
+        sharding.dimension(scan_dimension) > 1) {
+      scan_physical_sharding =
+          hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+              sharding, {scan_dimension});
+    }
+  }
+
+  // 4. Create the new partitioned scan with the physical shape (replicated
+  // along scan dim).
+  Shape physical_shape =
+      MakePartitionedShape(scan->shape(), scan_physical_sharding);
+  HloInstruction* partitioned_scan =
+      b_.AddInstruction(HloInstruction::CreateScan(
+          physical_shape, partitioned_inputs, partitioned_inits,
+          scan->to_apply(), scan_dimension, scan->is_reverse(),
+          scan->is_associative()));
+
+  partitioned_scan->set_sharding(
+      scan_physical_sharding.NormalizeTupleSharding(physical_shape));
+
+  scan->SetupDerivedInstruction(partitioned_scan);
+
+  // 5. Reshard the partitioned scan back to the originally expected sharding.
+  SetPartitionedHlo(scan, PartitionedHlo(partitioned_scan, scan->shape(),
+                                         MakePartitioningState())
+                              .Reshard(sharding));
+  return absl::OkStatus();
+}
+
 absl::Status SpmdPartitioningVisitor::HandleConditional(HloInstruction* hlo) {
   std::vector<HloInstruction*> branch_args;
   branch_args.reserve(hlo->branch_count());
@@ -6299,15 +6376,14 @@ absl::StatusOr<bool> SpmdPartitioner::RunImpl(
             !execution_threads.contains(computation->execution_thread())) {
           return absl::OkStatus();
         }
-        if (node.context() != CallContext::kControlFlow) {
-          return absl::OkStatus();
-        }
         if (node.caller_callsites().empty()) {
           return absl::OkStatus();
         }
-        // PreprocessCallSites made sure a computation is only used by a single
-        // opcode and with a single sharding on the arguments.
         HloInstruction* caller = node.caller_callsites()[0].instruction();
+        if (node.context() != CallContext::kControlFlow &&
+            caller->opcode() != HloOpcode::kScan) {
+          return absl::OkStatus();
+        }
         if (caller->opcode() == HloOpcode::kAsyncStart) {
           // TODO: b/501070020 - Handle async start.
           return absl::OkStatus();
@@ -6344,6 +6420,46 @@ absl::StatusOr<bool> SpmdPartitioner::RunImpl(
           case HloOpcode::kConditional: {
             RETURN_IF_ERROR(
                 PartitionComputation(computation, caller->sharding(),
+                                     &next_channel_id, &logger, *call_graph)
+                    .status());
+            break;
+          }
+          case HloOpcode::kScan: {
+            auto* scan = Cast<HloScanInstruction>(caller);
+            int64_t scan_dimension = scan->scan_dimension();
+            int64_t num_outputs =
+                scan->shape().tuple_shapes_size() - scan->num_carries();
+            HloSharding scan_sharding = caller->sharding();
+            HloSharding to_apply_root_sharding = scan_sharding;
+            if (scan_sharding.IsTuple()) {
+              std::vector<HloSharding> new_element_shardings;
+              for (int64_t i = 0; i < scan_sharding.tuple_elements().size();
+                   ++i) {
+                const auto& element_sharding =
+                    scan_sharding.tuple_elements()[i];
+                if (i < num_outputs) {
+                  if (element_sharding.IsReplicated()) {
+                    new_element_shardings.push_back(element_sharding);
+                  } else {
+                    new_element_shardings.push_back(
+                        hlo_sharding_util::RemoveShapeDimensions(
+                            element_sharding, {scan_dimension}));
+                  }
+                } else {
+                  new_element_shardings.push_back(element_sharding);
+                }
+              }
+              to_apply_root_sharding =
+                  HloSharding::FlatTuple(new_element_shardings);
+            } else {
+              if (!scan_sharding.IsReplicated()) {
+                to_apply_root_sharding =
+                    hlo_sharding_util::RemoveShapeDimensions(scan_sharding,
+                                                             {scan_dimension});
+              }
+            }
+            RETURN_IF_ERROR(
+                PartitionComputation(computation, to_apply_root_sharding,
                                      &next_channel_id, &logger, *call_graph)
                     .status());
             break;
@@ -7028,6 +7144,33 @@ absl::StatusOr<bool> SpmdPartitioner::PreprocessCallSites(
           for (int64_t i = 0; i < hlo->operand_count(); ++i) {
             hlo->to_apply()->parameter_instruction(i)->set_sharding(
                 hlo->operand(i)->sharding());
+          }
+          break;
+        }
+        case HloOpcode::kScan: {
+          auto* scan = Cast<HloScanInstruction>(hlo);
+          int64_t scan_dimension = scan->scan_dimension();
+          int64_t num_inputs = scan->inputs().size();
+          for (int64_t i = 0; i < scan->operand_count(); ++i) {
+            const HloSharding& operand_sharding = scan->operand(i)->sharding();
+            HloSharding param_sharding = operand_sharding;
+            if (i < num_inputs) {
+              if (!operand_sharding.IsReplicated() &&
+                  !operand_sharding.IsTuple() && !operand_sharding.IsManual()) {
+                HloSharding replicated_sharding = operand_sharding;
+                if (!operand_sharding.IsTuple() &&
+                    !operand_sharding.IsManual() &&
+                    operand_sharding.dimension(scan_dimension) > 1) {
+                  replicated_sharding =
+                      hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+                          operand_sharding, {scan_dimension});
+                }
+                param_sharding = hlo_sharding_util::RemoveShapeDimensions(
+                    replicated_sharding, {scan_dimension});
+              }
+            }
+            scan->to_apply()->parameter_instruction(i)->set_sharding(
+                param_sharding);
           }
           break;
         }

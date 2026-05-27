@@ -1294,6 +1294,33 @@ ENTRY entry {
       expected_layout1));
 }
 
+TEST_P(SpmdPartitioningAllShardingTest, ScanTiledInput) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+sum {
+  lhs = f32[16] parameter(0)
+  rhs = f32[16] parameter(1)
+  add = f32[16] add(lhs, rhs)
+  ROOT tuple = (f32[16], f32[16]) tuple(add, add)
+}
+
+ENTRY entry {
+  input = f32[4,16] parameter(0), sharding={devices=[2,1]<=[2]}
+  init = f32[16] constant({0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}), sharding={replicated}
+  ROOT tuple = (f32[4,16], f32[16]) scan(input, init), dimensions={0},
+    num_carries=1, is_associative=true, to_apply=sum,
+    sharding={{devices=[1,2]<=[2]}, {replicated}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Scan());
+}
+
 TEST_P(SpmdPartitioningAllShardingTest, ReduceWindowReplicatedInput) {
   absl::string_view hlo_string = R"(
 HloModule module
