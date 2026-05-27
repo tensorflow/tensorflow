@@ -1137,7 +1137,7 @@ TEST_F(IndexingMapTest, SymbolicMapSimplification_SimplifyReshape_Regression) {
 
 TEST_F(IndexingMapTest, SymbolicMapSimplification_TilingOffsetCancellation) {
   auto indexing_map = Parse(R"(
-    ()[s0] -> (-(s0 floordiv 144) + (s0 * 32 + 4639) floordiv 4608),
+    ()[s0] -> (-(s0 floordiv 2) + (s0 * 2 + 5) floordiv 4),
     domain:
     s0 in [0, 10000]
   )");
@@ -1152,7 +1152,7 @@ TEST_F(IndexingMapTest, SymbolicMapSimplification_TilingOffsetCancellation) {
 TEST_F(IndexingMapTest,
        SymbolicMapSimplification_NegativeTilingOffsetCancellation) {
   auto indexing_map = Parse(R"(
-    ()[s0] -> (-(s0 floordiv 315) + (s0 * 2 - 40319) floordiv 630 + 65),
+    ()[s0] -> (-(s0 floordiv 2) + (s0 * 2 - 7) floordiv 4 + 3),
     domain:
     s0 in [0, 10000]
   )");
