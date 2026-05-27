@@ -120,8 +120,6 @@ class GpuCompiler : public LLVMCompiler {
 
   int64_t GetPointerSize() const { return pointer_size_; }
 
-  mlir::MLIRContext* mlir_context() { return &mlir_context_; }
-
   virtual std::unique_ptr<GpuAliasInfo> GetAliasInfo(
       const se::DeviceDescription& device_description) const {
     return std::make_unique<GpuAliasInfo>(device_description);
@@ -344,10 +342,6 @@ class GpuCompiler : public LLVMCompiler {
 
   GpuCompiler(const GpuCompiler&) = delete;
   GpuCompiler& operator=(const GpuCompiler&) = delete;
-
-  // A MLIR context that can be used by pre-codegen passes. For codegen, we will
-  // need to have a context with more dialects registered.
-  mlir::MLIRContext mlir_context_;
 
   absl::Mutex user_asm_hook_m_;
   AsmModuleHook user_asm_hook_ ABSL_GUARDED_BY(user_asm_hook_m_);

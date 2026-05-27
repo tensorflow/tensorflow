@@ -2818,6 +2818,7 @@ xla_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
         "@com_google_protobuf//:protobuf",
+        "@llvm-project//mlir:IR",
         "@tsl//tsl/profiler/protobuf:profiled_instructions_proto_cc",
     ],
 )

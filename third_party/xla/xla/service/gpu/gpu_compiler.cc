@@ -540,9 +540,7 @@ GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
       data_layout_(data_layout),
       pointer_size_(llvm::DataLayout(data_layout)
                         .getPointerSize(0 /* default address space */)),
-      mlir_context_pool_([]() { return CreateMlirContext(); }) {
-  RegisterSymbolicExprStorage(&mlir_context_);
-}
+      mlir_context_pool_([]() { return CreateMlirContext(); }) {}
 
 namespace {
 // Adds the HloVerifier for GPU to the given pipeline.
@@ -1778,7 +1776,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
     RETURN_IF_ERROR(AddAutotunerPass(
         &pipeline, hlo_module, gpu_version, options, thread_pool.get_mutable(),
         stream_exec, &gpu_topology.gpu_target_config(), alias_info,
-        &mlir_context_, ShapeSizeBytesFunction(), options.key_value_store));
+        mlir_context, ShapeSizeBytesFunction(), options.key_value_store));
 
     RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   } else {
