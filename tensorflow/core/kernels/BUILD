@@ -2,11 +2,7 @@ load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm",
-    "if_rocm_hipblaslt",
-)
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load(
     "@xla//xla/tsl/mkl:build_defs.bzl",
@@ -3647,7 +3643,7 @@ tf_kernel_library(
         "@xla//xla/tsl/framework/contraction:eigen_contraction_kernel",
     ] + mkl_deps() + if_cuda([
         "@xla//xla/stream_executor/cuda:cublas_plugin",
-    ]) + if_rocm_hipblaslt([
+    ]) + if_rocm([
         "@xla//xla/stream_executor/rocm:hipblas_lt_header",
     ]) + if_cuda_or_rocm([
         ":conv_ops_gpu_hdrs",
