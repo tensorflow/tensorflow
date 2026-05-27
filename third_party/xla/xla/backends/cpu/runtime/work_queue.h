@@ -221,7 +221,8 @@ template <typename ParallelWork>
 struct Worker::ParallelizeContext {
   ParallelizeContext(Eigen::ThreadPoolInterface* thread_pool,
                      tsl::CountDownAsyncValueRef<tsl::Chain> count_down,
-                     size_t num_work_items, ParallelWork&& parallel_work);
+                     size_t num_work_items, size_t num_partitions,
+                     ParallelWork&& parallel_work);
 
   Eigen::ThreadPoolInterface* thread_pool;
   tsl::CountDownAsyncValueRef<tsl::Chain> count_down;
@@ -234,10 +235,10 @@ template <typename ParallelWork>
 Worker::ParallelizeContext<ParallelWork>::ParallelizeContext(
     Eigen::ThreadPoolInterface* thread_pool,
     tsl::CountDownAsyncValueRef<tsl::Chain> count_down, size_t num_work_items,
-    ParallelWork&& parallel_work)
+    size_t num_partitions, ParallelWork&& parallel_work)
     : thread_pool(thread_pool),
       count_down(std::move(count_down)),
-      work_queue(num_work_items, /*num_partitions=*/this->count_down.count()),
+      work_queue(num_work_items, num_partitions),
       parallel_work(std::forward<ParallelWork>(parallel_work)) {}
 
 template <typename ParallelWork>
@@ -331,6 +332,10 @@ template <typename ParallelWork>
 ABSL_ATTRIBUTE_ALWAYS_INLINE tsl::AsyncValueRef<tsl::Chain> Worker::Parallelize(
     Eigen::ThreadPoolInterface* thread_pool, size_t num_workers,
     size_t num_work_items, ParallelWork&& parallel_work) {
+  if (ABSL_PREDICT_FALSE(num_work_items == 0)) {
+    return tsl::MakeAvailableAsyncValueRef<tsl::Chain>();
+  }
+
   // Short-circuit single-threaded execution.
   if (ABSL_PREDICT_FALSE(num_workers == 1)) {
     if (absl::Status status = ExecuteInline(
@@ -345,15 +350,22 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE tsl::AsyncValueRef<tsl::Chain> Worker::Parallelize(
   if (ABSL_PREDICT_FALSE(num_workers > std::numeric_limits<uint16_t>::max())) {
     num_workers = std::numeric_limits<uint16_t>::max();
   }
-  // Ensure we don't launch more workers than work items. Extra workers would be
-  // idle or cause out-of-bounds partition access.
-  num_workers = std::min(num_work_items, num_workers);
+
+  // Floor partition size so each Pop amortises across multiple items (one cache
+  // line) before stealing. Cap num_workers to num_partitions to avoid idle
+  // Eigen tasks and out-of-bounds partition access in Worker(worker_index,
+  // ...).
+  constexpr size_t kMinItemsPerPartition = 8;
+  const size_t num_partitions = std::max<size_t>(
+      1, std::min(num_workers, (num_work_items + kMinItemsPerPartition - 1) /
+                                   kMinItemsPerPartition));
+  num_workers = std::min(num_workers, num_partitions);
 
   tsl::CountDownAsyncValueRef<tsl::Chain> count_down(num_work_items);
   auto execute_event = count_down.AsRef();
 
   auto ctx = std::make_shared<ParallelizeContext<ParallelWork>>(
-      thread_pool, std::move(count_down), num_work_items,
+      thread_pool, std::move(count_down), num_work_items, num_partitions,
       std::forward<ParallelWork>(parallel_work));
 
   Parallelize(std::move(ctx), 0, num_workers);
