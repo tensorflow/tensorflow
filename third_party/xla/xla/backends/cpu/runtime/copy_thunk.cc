@@ -159,14 +159,17 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CopyThunk::Execute(
   // TODO(ezhulenev): Add extra checks for buffer aliasing, as we rely on the
   // fact that buffers do not alias each other to run copy in parallel.
 
-  VLOG(3) << absl::StreamFormat("Copy buffer: use_transpose=%s",
-                                transpose_plan_ ? "true" : "false");
-  VLOG(3) << absl::StreamFormat("  src: %s in slice %s (%p)",
-                                src_shape_.ToString(true),
-                                src_buffer_.ToString(), src_data.opaque());
-  VLOG(3) << absl::StreamFormat("  dst: %s in slice %s (%p)",
-                                dst_shape_.ToString(true),
-                                dst_buffer_.ToString(), dst_data.opaque());
+  // ToString operands to operator<< allocate even when VLOG is off.
+  if (ABSL_PREDICT_FALSE(VLOG_IS_ON(3))) {
+    VLOG(3) << absl::StreamFormat("Copy buffer: use_transpose=%s",
+                                  transpose_plan_ ? "true" : "false");
+    VLOG(3) << absl::StreamFormat("  src: %s in slice %s (%p)",
+                                  src_shape_.ToString(true),
+                                  src_buffer_.ToString(), src_data.opaque());
+    VLOG(3) << absl::StreamFormat("  dst: %s in slice %s (%p)",
+                                  dst_shape_.ToString(true),
+                                  dst_buffer_.ToString(), dst_data.opaque());
+  }
 
   // Skip no-op copy operations.
   if (ABSL_PREDICT_FALSE(parallel_block_params_.block_count == 0)) {

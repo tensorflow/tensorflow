@@ -23,6 +23,7 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -438,7 +439,10 @@ void ThunkExecutor::Execute(std::shared_ptr<ExecuteState> state,
                             Thunk::ExecuteSession::Lock lock) {
   DCHECK(!ready_queue.Empty()) << "Ready queue must not be empty";
 
-  tsl::profiler::TraceMe trace("ThunkExecutor::Execute");
+  std::optional<tsl::profiler::TraceMe> trace;
+  if (ABSL_PREDICT_FALSE(tsl::profiler::TraceMe::Active())) {
+    trace.emplace("ThunkExecutor::Execute");
+  }
   bool has_runner = params.task_runner != nullptr;
   bool has_lock = static_cast<bool>(lock);
 

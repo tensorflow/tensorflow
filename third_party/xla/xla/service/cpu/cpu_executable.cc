@@ -231,24 +231,33 @@ static int32_t GetDeviceOrdinal(const ExecutableRunOptions* run_options) {
 absl::Status CpuExecutable::ExecuteThunks(
     const ExecutableRunOptions* run_options,
     absl::Span<MaybeOwningDeviceAddress const> buffers) {
-  uint64_t start_ns = tsl::Env::Default()->NowNanos();
+  // NowNanos is otherwise dead work when no execution_profile is set.
+  uint64_t start_ns = 0;
+  if (ABSL_PREDICT_FALSE(run_options->execution_profile() != nullptr)) {
+    start_ns = tsl::Env::Default()->NowNanos();
+  }
 
   size_t profile_counters_size = 0;
   int64_t* profile_counters = nullptr;
 
   BufferAllocations allocations(buffers);
 
-  VLOG(3) << "Executing XLA:CPU thunks:";
-  VLOG(3) << absl::StrFormat("  Number of buffer allocations: %u",
-                             buffers.size());
-  auto mem_printer = [](std::string* out, const MaybeOwningDeviceAddress& mem) {
-    absl::StrAppend(out, absl::StrFormat("%p", mem.AsDeviceAddress().opaque()));
-  };
-  VLOG(3) << absl::StrFormat("  Buffer allocations: [%s]",
-                             absl::StrJoin(buffers, ", ", mem_printer));
-  VLOG(3) << absl::StrFormat("  Number of profile counters: %u",
-                             profile_counters_size);
-  VLOG(3) << absl::StrFormat("  Profile counters: %p", profile_counters);
+  // StrJoin + StrFormat operands to operator<< allocate even when VLOG off.
+  if (ABSL_PREDICT_FALSE(VLOG_IS_ON(3))) {
+    VLOG(3) << "Executing XLA:CPU thunks:";
+    VLOG(3) << absl::StrFormat("  Number of buffer allocations: %u",
+                               buffers.size());
+    auto mem_printer = [](std::string* out,
+                          const MaybeOwningDeviceAddress& mem) {
+      absl::StrAppend(out,
+                      absl::StrFormat("%p", mem.AsDeviceAddress().opaque()));
+    };
+    VLOG(3) << absl::StrFormat("  Buffer allocations: [%s]",
+                               absl::StrJoin(buffers, ", ", mem_printer));
+    VLOG(3) << absl::StrFormat("  Number of profile counters: %u",
+                               profile_counters_size);
+    VLOG(3) << absl::StrFormat("  Profile counters: %p", profile_counters);
+  }
 
   // Prepare for executing XLA program collectively.
   ASSIGN_OR_RETURN(Thunk::CollectiveExecuteParams collective_execute_params,
