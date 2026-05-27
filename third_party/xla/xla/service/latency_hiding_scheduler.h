@@ -253,6 +253,9 @@ class AsyncTracker {
   // Returns if this is an Async op start that the scheduler supports.
   virtual bool IsSupportedAsyncStart(const HloInstruction& hlo) const;
 
+  // Returns if this instruction should be considered a NOP.
+  virtual bool IsNop(const HloInstruction& hlo) const;
+
   // Returns resources used (i.e., occupied or released) by this instruction
   virtual ResourcesVector GetResourcesFromInstructionImpl(
       const HloInstruction& hlo) const;

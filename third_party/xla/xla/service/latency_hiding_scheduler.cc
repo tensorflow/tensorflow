@@ -119,15 +119,6 @@ namespace {
 
 const int64_t kDefaultMemorySpace = 0;
 
-bool IsNopInstruction(HloOpcode op, const HloInstruction& hlo) {
-  return op == HloOpcode::kGetTupleElement || op == HloOpcode::kBitcast ||
-         op == HloOpcode::kConstant || op == HloOpcode::kParameter ||
-         op == HloOpcode::kBroadcast || op == HloOpcode::kIota ||
-         hlo.IsEffectiveBitcast(op) ||
-         (op == HloOpcode::kTuple && hlo.user_count() == 1 &&
-          hlo.users().front()->opcode() == HloOpcode::kWhile);
-}
-
 bool InstructionDefinesValue(const HloInstruction* instruction,
                              const HloValue* value) {
   if (value->defining_instruction() == instruction) {
@@ -487,6 +478,16 @@ bool AsyncTracker::IsSupportedAsyncStart(const HloInstruction& hlo) const {
     }
   }
   return false;
+}
+
+bool AsyncTracker::IsNop(const HloInstruction& hlo) const {
+  HloOpcode op = hlo.opcode();
+  return op == HloOpcode::kGetTupleElement || op == HloOpcode::kBitcast ||
+         op == HloOpcode::kConstant || op == HloOpcode::kParameter ||
+         op == HloOpcode::kBroadcast || op == HloOpcode::kIota ||
+         hlo.IsEffectiveBitcast(op) ||
+         (op == HloOpcode::kTuple && hlo.user_count() == 1 &&
+          hlo.users().front()->opcode() == HloOpcode::kWhile);
 }
 
 ResourceType AsyncTracker::GetResourceTypeForOp(HloOpcode op) {
@@ -1799,8 +1800,8 @@ class ReadySetLt {
   bool has_early_target_scheduling_rule_;
   bool top_down_scheduling_;
 
-  static bool IsNop(const HloGraphNode& gn) {
-    return IsNopInstruction(gn.GetOpcode(), gn.GetInstr());
+  bool IsNop(const HloGraphNode& gn) const {
+    return sched_state_.async_tracker->IsNop(gn.GetInstr());
   }
 
   void UpdateCandidateResourceConstrained(
@@ -2806,7 +2807,7 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
     int64_t annotation = edge.Target().GetAnnotation();
     // We are adding the no-op instructions to a separate set so that we can
     // immediately schedule them when they are ready.
-    if (IsNopInstruction(edge.Target().GetOpcode(), edge.Target().GetInstr()) &&
+    if (sched_state->async_tracker->IsNop(edge.Target().GetInstr()) &&
         annotation == -1) {
       sched_state->nop_set.push_back(&edge.Target());
       continue;
@@ -3791,7 +3792,7 @@ DefaultSchedulerCore::ScheduleComputation(
   for (HloGraphNode* root : roots) {
     // Set ready time for the roots 0.
     root->SetReadyTime(0.0);
-    if (IsNopInstruction(root->GetInstr().opcode(), root->GetInstr())) {
+    if (sched_state->async_tracker->IsNop(root->GetInstr())) {
       sched_state->nop_set.push_back(root);
     } else {
       sched_state->ready_set.push_back(root);
