@@ -151,5 +151,28 @@ TEST_F(MultiModuleDriverTest, VerifyNestedSplittingHappens) {
   EXPECT_TRUE(filecheck_result.value());
 }
 
+TEST_F(MultiModuleDriverTest, CompileAndRunSharedCompilationUnit) {
+  const char* hlo_string = R"(
+HloModule module
+callee {
+  p0 = f32[] parameter(0)
+  ROOT neg = f32[] negate(p0)
+}
+ENTRY entry {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  call1 = f32[] call(p0), to_apply=callee,
+    frontend_attributes={compilation_unit="callee"}
+  call2 = f32[] call(p1), to_apply=callee,
+    frontend_attributes={compilation_unit="callee"}
+  ROOT add = f32[] add(call1, call2)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/true));
+}
+
 }  // namespace
 }  // namespace xla

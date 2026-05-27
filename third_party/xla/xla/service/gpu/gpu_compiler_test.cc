@@ -2889,6 +2889,40 @@ ENTRY entry {
   EXPECT_GT(MultiModuleDriver::GetCompileCount(), 0);
 }
 
+TEST_F(GpuCompilerTest, VerifySharedCompilationUnitCompilesOnGpu) {
+  const char* hlo_string = R"(
+HloModule module
+callee {
+  p0 = f32[] parameter(0)
+  ROOT neg = f32[] negate(p0)
+}
+ENTRY entry {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  call1 = f32[] call(p0), to_apply=callee,
+    frontend_attributes={compilation_unit="callee"}
+  call2 = f32[] call(p1), to_apply=callee,
+    frontend_attributes={compilation_unit="callee"}
+  ROOT add = f32[] add(call1, call2)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  auto options = Compiler::CompileOptions();
+  options.gpu_topology =
+      GetSingleDeviceGpuTopology(/*platform_version=*/"", gpu_target_config());
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler()->RunHloPasses(std::move(module), nullptr, options));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      compiler()->RunBackend(std::move(optimized_module), nullptr, options));
+}
+
 static absl::Status MockCustomCallExecuteF32(
     ffi::BufferR1<F32> src, ffi::Result<ffi::BufferR1<F32>> dst) {
   return absl::OkStatus();

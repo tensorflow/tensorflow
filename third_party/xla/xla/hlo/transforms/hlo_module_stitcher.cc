@@ -63,7 +63,6 @@ absl::StatusOr<bool> HloModuleStitcher::RunImpl(
   std::vector<HloComputation*> computations =
       module->MakeComputationPostOrder(execution_threads);
 
-  HloCloneContext context(module);
   for (HloComputation* comp : computations) {
     std::vector<HloInstruction*> instructions =
         comp->MakeInstructionPostOrder();
@@ -92,6 +91,7 @@ absl::StatusOr<bool> HloModuleStitcher::RunImpl(
               sub_entry->num_parameters()));
         }
 
+        HloCloneContext context(module);
         HloComputation* cloned_sub_entry = context.FindComputation(sub_entry);
         if (cloned_sub_entry == nullptr) {
           cloned_sub_entry = module->DeepCloneComputation(sub_entry, &context);

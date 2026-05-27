@@ -182,7 +182,7 @@ ENTRY main {
               StatusIs(absl::StatusCode::kInternal));
 }
 
-TEST_F(HloModuleStitcherTest, CachesClonedComputations) {
+TEST_F(HloModuleStitcherTest, UniquelyClonesSharedComputations) {
   const char* main_hlo_string = R"(
 HloModule main
 
@@ -219,15 +219,16 @@ ENTRY sub_entry {
   HloModuleStitcher stitcher(optimized_modules);
   EXPECT_THAT(stitcher.Run(main_module.get()), IsOkAndHolds(true));
 
-  // Count occurrences of sub_entry. If cached, it should appear only once in
-  // the module.
+  // Count occurrences of sub_entry. Since we do not cache cloned computations
+  // across custom calls, it should appear twice (uniquely cloned for each call)
+  // to avoid BufferAssignment crashes on shared stitched computations.
   int sub_entry_count = 0;
   for (auto* comp : main_module->computations()) {
     if (absl::StrContains(comp->name(), "sub_entry")) {
       sub_entry_count++;
     }
   }
-  EXPECT_EQ(sub_entry_count, 1);
+  EXPECT_EQ(sub_entry_count, 2);
 }
 
 TEST_F(HloModuleStitcherTest, LayoutReconciliationAddsKCopy) {
