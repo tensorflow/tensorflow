@@ -388,5 +388,34 @@ TEST_F(RaggedDotRewriterTest, BatchContracting) {
                       /*lhs_contracting_dim=*/2, /*rhs_contracting_dim=*/1));
 }
 
+TEST_F(RaggedDotRewriterTest, RewriteIfBlackwellForRaggedDotFusion) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = bf16[64,9]{1,0} parameter(0)
+    p1 = bf16[2,9,8]{2,1,0} parameter(1)
+    p2 = s64[2]{0} parameter(2)
+    ROOT ragged-dot = bf16[64,8]{1,0} ragged-dot(p0, p1, p2),
+                      lhs_contracting_dims={1}, rhs_contracting_dims={1},
+                      lhs_ragged_dims={0}, rhs_group_dims={0}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_use_ragged_dot_fusion(true);
+  // Blackwell is SM100, which has the cuDNN bug, so the fusion gate must
+  // fail and the rewriter must fall back to expansion.
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      RaggedDotRewriter(
+          se::CudaComputeCapability{se::CudaComputeCapability::kBlackwell, 0},
+          kMinCudnnVersionForRaggedDotFusion)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+}
+
 }  // namespace
 }  // namespace xla
