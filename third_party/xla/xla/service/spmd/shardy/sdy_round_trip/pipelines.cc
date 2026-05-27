@@ -60,12 +60,7 @@ void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm,
   pm.addPass(createSdyRoundTripDedupMeshesPass());
   pm.addPass(createSdyRoundTripExportOpsPass());
   pm.addPass(createSdyRoundTripShardMapExportPass(enableHloShardingV3));
-  // Preserve the SDY shardings for `createExportStablehloShardingsPass` so that
-  // we have both `mhlo.sharding`s and hidden `sdy.sharding`s on the module. We
-  // want to have `mhlo.sharding`s for Pathways to read from.
   pm.addPass(createSdyRoundTripExportShardyAttrsPass(enableHloShardingV3));
-  pm.addPass(createExportStablehloShardingsPass(
-      /*addMissingShardingToControlFlow=*/false, enableHloShardingV3));
 }
 
 void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,

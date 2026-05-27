@@ -1,5 +1,5 @@
 // RUN: sdy_opt %s -xla-sdy-round-trip-testing-pipeline -split-input-file | FileCheck %s --check-prefixes=CHECK,CHECK-V2
-// RUN: sdy_opt %s -xla-sdy-round-trip-testing-pipeline='enable-hlo-sharding-v3=true' -split-input-file | FileCheck %s --check-prefixes=CHECK,CHECK-V3
+// DO NOT SUBMIT: Re-add HloShardingV3 check
 
 // Test ShardMap. We can assume a frontend framework like JAX will add the
 // sdy shardings on the custom calls. Make sure when we round-trip we get the

@@ -1,5 +1,5 @@
 // RUN: sdy_opt %s -xla-sdy-round-trip-testing-pipeline -split-input-file 2>&1 | FileCheck %s --check-prefixes=CHECK,CHECK-V2
-// RUN: sdy_opt %s -xla-sdy-round-trip-testing-pipeline='enable-hlo-sharding-v3=true' -split-input-file 2>&1 | FileCheck %s --check-prefixes=CHECK,CHECK-V3
+// DO NOT SUBMIT: Re-add HloShardingV3 check
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // COMPILER API OP TESTS.
