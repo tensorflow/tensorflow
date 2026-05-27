@@ -54,6 +54,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/Passes.h"
+#include "shardy/dialect/sdy/ir/compatibility.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/register.h"
 #include "stablehlo/api/PortableApi.h"
@@ -281,12 +282,13 @@ absl::StatusOr<T> ExpectSuccess(mlir::FailureOr<T> result, std::string msg) {
   if (mlir::failed(result)) {
     return absl::InvalidArgumentError(msg);
   }
-  return result.value();
+  return *result;
 }
 
 absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
     mlir::ModuleOp mlir_module, absl::string_view requested_target,
-    bool inplace, bool allow_mixed_serialization) {
+    absl::string_view sdy_version, bool inplace,
+    bool allow_mixed_serialization) {
   mlir::MLIRContext* context = mlir_module->getContext();
   mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
 
@@ -327,19 +329,20 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
       mlir::stablehlo::createShapeLegalizeToStablehloPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());  // not required
-  if (!mlir::succeeded(pm.run(mlir_module))) {
-    const absl::Status status = diagnostic_handler.ConsumeStatus();
-    return absl::InvalidArgumentError(absl::StrCat(
-        "CHLO => [StableHLO+Shape] => StableHLO failed;\n\nDetailed "
-        "error from MLIR: ",
-        status.message()));
-  }
 
   // Avoid mutating the original module if it will be reused elsewhere
   mlir::OwningOpRef<mlir::ModuleOp> cloned;
   if (!inplace) {
     cloned = mlir_module.clone();
     mlir_module = *cloned;
+  }
+
+  if (!mlir::succeeded(pm.run(mlir_module))) {
+    const absl::Status status = diagnostic_handler.ConsumeStatus();
+    return absl::InvalidArgumentError(absl::StrCat(
+        "CHLO => [StableHLO+Shape] => StableHLO failed;\n\nDetailed "
+        "error from MLIR: ",
+        status.message()));
   }
 
   // Only allow mixed serialization of stable dialects.
@@ -349,7 +352,20 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
       return absl::InvalidArgumentError(absl::StrCat(
           "Failed to serialize StableHLO with mixed dialects to plugin "
           "version ",
-          target, "; found unstable op: ", unstable_dialect_op.value().str()));
+          target, "; found unstable op: ", unstable_dialect_op->str()));
+    }
+
+    auto sdy_version_val =
+        mlir::sdy::SdyDialectVersion::fromString(sdy_version);
+    if (mlir::failed(sdy_version_val)) {
+      return absl::InvalidArgumentError(
+          "Invalid SDY target version requested.");
+    }
+    if (mlir::failed(
+            mlir::sdy::downgradeModule(mlir_module, *sdy_version_val))) {
+      return absl::InvalidArgumentError(
+          "Failed to downgrade the module to use the SDY target version "
+          "requested.");
     }
   }
 
@@ -367,12 +383,21 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
   return buffer;
 }
 
+absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
+    mlir::ModuleOp mlir_module, absl::string_view requested_target,
+    bool inplace, bool allow_mixed_serialization) {
+  return SerializeUsingVersionedStablehlo(mlir_module, requested_target,
+                                          GetDefaultSdyVersion(), inplace,
+                                          allow_mixed_serialization);
+}
+
 absl::Status UpgradeVersionedStablehlo(mlir::ModuleOp mlir_module) {
   // Upgrade if VHLO
   mlir::PassManager pm(mlir_module->getContext());
   mlir::stablehlo::createStablehloDeserializePipeline(pm);
-  if (!mlir::succeeded(pm.run(mlir_module)))
+  if (!mlir::succeeded(pm.run(mlir_module))) {
     return xla::InvalidArgument("Failed to upgrade versioned StableHLO.");
+  }
   return absl::OkStatus();
 }
 
@@ -383,10 +408,24 @@ std::string GetDefaultStablehloVersion() {
       .toString();
 }
 
+std::string GetDefaultSdyVersion() {
+  // This version must be >=12w old.
+  return mlir::sdy::SdyDialectVersion::fromCompatibilityRequirement(
+             mlir::sdy::SdyDialectVersion::CompatibilityRequirement::WEEK_12)
+      .toString();
+}
+
 absl::StatusOr<std::string> Serialize(mlir::ModuleOp module,
-                                      absl::string_view target, bool inplace) {
-  return SerializeUsingVersionedStablehlo(module, target, inplace,
+                                      absl::string_view target,
+                                      absl::string_view sdy_version,
+                                      bool inplace) {
+  return SerializeUsingVersionedStablehlo(module, target, sdy_version, inplace,
                                           /*allow_mixed_serialization=*/true);
+}
+
+absl::StatusOr<std::string> Serialize(mlir::ModuleOp mlir_module,
+                                      absl::string_view target, bool inplace) {
+  return Serialize(mlir_module, target, GetDefaultSdyVersion(), inplace);
 }
 
 }  // namespace xla
