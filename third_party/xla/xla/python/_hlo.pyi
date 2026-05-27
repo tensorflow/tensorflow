@@ -79,6 +79,273 @@ class PrimitiveType(enum.IntEnum):
 
   TOKEN = 17
 
+class HloOpcode(enum.Enum):
+  kAbs = 0
+
+  kAcos = 1
+
+  kAcosh = 2
+
+  kAdd = 3
+
+  kAddDependency = 4
+
+  kAfterAll = 5
+
+  kAllGather = 6
+
+  kAllGatherDone = 7
+
+  kAllGatherStart = 8
+
+  kAllReduce = 9
+
+  kAllReduceDone = 10
+
+  kAllReduceStart = 11
+
+  kAllToAll = 12
+
+  kAnd = 13
+
+  kAsin = 14
+
+  kAsinh = 15
+
+  kAsyncDone = 16
+
+  kAsyncStart = 17
+
+  kAsyncUpdate = 18
+
+  kAtan2 = 19
+
+  kAtanh = 20
+
+  kBatchNormGrad = 21
+
+  kBatchNormInference = 22
+
+  kBatchNormTraining = 23
+
+  kBitcast = 24
+
+  kBitcastConvert = 25
+
+  kBroadcast = 26
+
+  kCall = 27
+
+  kCbrt = 28
+
+  kCeil = 29
+
+  kCholesky = 30
+
+  kClamp = 31
+
+  kClz = 32
+
+  kCollectiveBroadcast = 33
+
+  kCollectivePermute = 34
+
+  kCollectivePermuteDone = 35
+
+  kCollectivePermuteStart = 36
+
+  kCompare = 37
+
+  kComplex = 38
+
+  kConcatenate = 39
+
+  kConditional = 40
+
+  kConstant = 41
+
+  kConvert = 42
+
+  kConvolution = 43
+
+  kCopy = 44
+
+  kCopyDone = 45
+
+  kCopyStart = 46
+
+  kCos = 47
+
+  kCosh = 48
+
+  kCustomCall = 49
+
+  kDivide = 50
+
+  kDomain = 51
+
+  kDot = 52
+
+  kDynamicReshape = 53
+
+  kDynamicSlice = 54
+
+  kDynamicUpdateSlice = 55
+
+  kErf = 56
+
+  kExp = 57
+
+  kExpm1 = 58
+
+  kFft = 59
+
+  kFloor = 60
+
+  kFusion = 61
+
+  kGather = 62
+
+  kGetDimensionSize = 63
+
+  kGetTupleElement = 64
+
+  kImag = 65
+
+  kInfeed = 66
+
+  kIota = 67
+
+  kIsFinite = 68
+
+  kLog = 69
+
+  kLog1p = 70
+
+  kLogistic = 71
+
+  kMap = 72
+
+  kMaximum = 73
+
+  kMinimum = 74
+
+  kMulhi = 75
+
+  kMultiply = 76
+
+  kNegate = 77
+
+  kNot = 78
+
+  kOptimizationBarrier = 79
+
+  kOr = 80
+
+  kOutfeed = 81
+
+  kPad = 82
+
+  kParameter = 83
+
+  kPartitionId = 84
+
+  kPopulationCount = 85
+
+  kPower = 86
+
+  kRaggedAllToAll = 87
+
+  kRaggedDot = 88
+
+  kReal = 89
+
+  kRecv = 90
+
+  kRecvDone = 91
+
+  kReduce = 92
+
+  kReducePrecision = 93
+
+  kReduceScatter = 94
+
+  kReduceWindow = 95
+
+  kRemainder = 96
+
+  kReplicaId = 97
+
+  kReshape = 98
+
+  kReverse = 99
+
+  kRng = 100
+
+  kRngBitGenerator = 101
+
+  kRngGetAndUpdateState = 102
+
+  kRoundNearestAfz = 103
+
+  kRoundNearestEven = 104
+
+  kRsqrt = 105
+
+  kScaledDot = 106
+
+  kScan = 107
+
+  kScatter = 108
+
+  kSelect = 109
+
+  kSelectAndScatter = 110
+
+  kSend = 111
+
+  kSendDone = 112
+
+  kSetDimensionSize = 113
+
+  kShiftLeft = 114
+
+  kShiftRightArithmetic = 115
+
+  kShiftRightLogical = 116
+
+  kSign = 117
+
+  kSin = 118
+
+  kSinh = 119
+
+  kSlice = 120
+
+  kSort = 121
+
+  kSqrt = 122
+
+  kStochasticConvert = 123
+
+  kSubtract = 124
+
+  kTan = 125
+
+  kTanh = 126
+
+  kTopK = 127
+
+  kTranspose = 128
+
+  kTriangularSolve = 129
+
+  kTuple = 130
+
+  kWhile = 131
+
+  kXor = 132
+
 class Layout:
   @overload
   def __init__(self, arg: Sequence[int], /) -> None: ...
@@ -257,18 +524,47 @@ class HloPrintOptions:
   @is_in_nested_computation.setter
   def is_in_nested_computation(self, arg: bool, /) -> HloPrintOptions: ...
 
+class HloInstruction:
+  @property
+  def name(self) -> str: ...
+  def to_string(self) -> str: ...
+  @property
+  def opcode(self) -> HloOpcode: ...
+  def users(self) -> list[HloInstruction]: ...
+  def operands(self) -> list[HloInstruction]: ...
+  def async_wrapped_root(self) -> HloInstruction: ...
+  def __hash__(self) -> int: ...
+  def __eq__(self, arg: HloInstruction, /) -> bool: ...
+
 class HloComputation:
   @property
   def name(self) -> str: ...
   def render_html(self, arg: str, /) -> None: ...
+  def instructions(self) -> list[HloInstruction]: ...
+  def replace_instruction(
+      self, arg0: HloInstruction, arg1: HloInstruction, /
+  ) -> None: ...
+
+class HloSchedule:
+  def to_string(self) -> str: ...
+  def sequence(self, arg: HloComputation, /) -> list[HloInstruction]: ...
+  def set_sequence(
+      self, arg0: HloComputation, arg1: Sequence[HloInstruction], /
+  ) -> None: ...
+  def update(self) -> None: ...
+  def verify(self) -> None: ...
 
 class HloModule:
   @property
   def name(self) -> str: ...
   def to_string(self, options: HloPrintOptions = ...) -> str: ...
+  def schedule(self) -> HloSchedule | None: ...
+  def set_schedule(self, arg: HloSchedule, /) -> None: ...
+  def create_empty_schedule(self) -> HloSchedule: ...
   def as_serialized_hlo_module_proto(self) -> bytes: ...
   def from_serialized_hlo_module_proto(self) -> HloModule: ...
   def computations(self) -> list[HloComputation]: ...
+  def make_nonfusion_computations(self) -> list[HloComputation]: ...
   @property
   def spmd_output_sharding(self) -> OpSharding | None: ...
   @property
