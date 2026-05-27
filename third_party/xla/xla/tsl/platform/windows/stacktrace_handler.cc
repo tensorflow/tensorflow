@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tsl/platform/stacktrace_handler.h"
+#include "xla/tsl/platform/stacktrace_handler.h"
 
 // clang-format off
 #include <windows.h>  // Windows.h must be declared above dgbhelp.
@@ -31,8 +31,8 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/const_init.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/stacktrace.h"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/stacktrace.h"
 
 namespace tsl {
 

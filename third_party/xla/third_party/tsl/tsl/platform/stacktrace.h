@@ -16,19 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_STACKTRACE_H_
 #define TENSORFLOW_TSL_PLATFORM_STACKTRACE_H_
 
-#include "tsl/platform/platform.h"  // IWYU pragma: export
-
-// Include appropriate platform-dependent implementation.
-#if defined(PLATFORM_GOOGLE)
-#include "xla/tsl/platform/google/stacktrace.h"  // IWYU pragma: export
-#elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) ||    \
-    defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_POSIX_IOS) || \
-    defined(PLATFORM_GOOGLE_IOS)
-#include "xla/tsl/platform/default/stacktrace.h"  // IWYU pragma: export
-#elif defined(PLATFORM_WINDOWS)
-#include "xla/tsl/platform/windows/stacktrace.h"  // IWYU pragma: export
-#else
-#error Define the appropriate PLATFORM_<foo> macro for this platform
-#endif
+#include "xla/tsl/platform/stacktrace.h"
 
 #endif  // TENSORFLOW_TSL_PLATFORM_STACKTRACE_H_

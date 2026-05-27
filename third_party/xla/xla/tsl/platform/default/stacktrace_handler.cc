@@ -31,7 +31,7 @@ limitations under the License.
 
 #include <string>
 
-#include "tsl/platform/stacktrace.h"
+#include "xla/tsl/platform/stacktrace.h"
 
 #endif  // defined(TF_GENERATE_STACKTRACE)
 

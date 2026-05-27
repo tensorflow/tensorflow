@@ -107,7 +107,7 @@ tsl_cc_test(
 
 cc_library(
     name = "env",
-    textual_hdrs = [
+    hdrs = [
         "env.h",
         "file_system.h",
         "file_system_helper.h",
@@ -127,8 +127,8 @@ cc_library(
 
 cc_library(
     name = "env_time",
+    hdrs = ["env_time.h"],
     compatible_with = get_compatible_with_portable(),
-    textual_hdrs = ["env_time.h"],
     deps = [
         "@xla//xla/tsl/platform:env_time",
     ],
@@ -144,8 +144,8 @@ cc_library(
 
 cc_library(
     name = "mutex",
+    hdrs = ["mutex.h"],
     compatible_with = get_compatible_with_portable(),
-    textual_hdrs = ["mutex.h"],
     deps = [
         ":thread_annotations",
         "@com_google_absl//absl/base:core_headers",
@@ -253,8 +253,8 @@ cc_library(
 cc_library(
     name = "test",
     testonly = True,
+    hdrs = ["test.h"],
     compatible_with = get_compatible_with_portable(),
-    textual_hdrs = ["test.h"],
     deps = [
         "@xla//xla/tsl/platform:test",
     ],
@@ -301,7 +301,7 @@ filegroup(
 
 cc_library(
     name = "tracing",
-    textual_hdrs = ["tracing.h"],
+    hdrs = ["tracing.h"],
     deps = tf_platform_deps("tracing"),
 )
 
@@ -413,7 +413,6 @@ filegroup(
         "coding.cc",
         "coding.h",
         "context.h",
-        "cpu_info.cc",
         "cpu_info.h",
         "demangle.h",
         "denormal.cc",
@@ -667,7 +666,7 @@ filegroup(
 
 cc_library(
     name = "net",
-    textual_hdrs = ["net.h"],
+    hdrs = ["net.h"],
     deps = tf_windows_aware_platform_deps("net") + [
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
@@ -682,8 +681,7 @@ cc_library(
 
 cc_library(
     name = "platform_port",
-    compatible_with = get_compatible_with_portable(),
-    textual_hdrs = [
+    hdrs = [
         "cpu_info.h",
         "demangle.h",
         "host_info.h",
@@ -692,6 +690,7 @@ cc_library(
         "numa.h",
         "snappy.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     deps = tf_windows_aware_platform_deps("platform_port") + [
         ":macros",
         ":platform",
@@ -737,12 +736,13 @@ cc_library(
     name = "stacktrace_handler_hdrs_lib",
     hdrs = ["stacktrace_handler.h"],
     compatible_with = get_compatible_with_portable(),
+    deps = tf_windows_aware_platform_deps("stacktrace_handler") + ["@xla//xla/tsl/platform:stacktrace_handler"],
 )
 
 cc_library(
     name = "stacktrace_handler",
-    textual_hdrs = ["stacktrace_handler.h"],
-    deps = tf_windows_aware_platform_deps("stacktrace_handler"),
+    hdrs = ["stacktrace_handler.h"],
+    deps = tf_windows_aware_platform_deps("stacktrace_handler") + ["@xla//xla/tsl/platform:stacktrace_handler"],
     alwayslink = 1,
 )
 
@@ -885,8 +885,8 @@ cc_library(
 
 cc_library(
     name = "logging",
+    hdrs = ["logging.h"],
     compatible_with = get_compatible_with_portable(),
-    textual_hdrs = ["logging.h"],
     visibility = [
         "//visibility:public",
     ],
@@ -897,8 +897,8 @@ cc_library(
 
 cc_library(
     name = "error_logging",
+    hdrs = ["error_logging.h"],
     compatible_with = get_compatible_with_portable(),
-    textual_hdrs = ["error_logging.h"],
     visibility = [
         "//visibility:public",
     ],
@@ -924,7 +924,7 @@ cc_library(
 
 cc_library(
     name = "human_readable_json",
-    textual_hdrs = ["human_readable_json.h"],
+    hdrs = ["human_readable_json.h"],
     deps = tf_platform_deps("human_readable_json"),
 )
 
@@ -975,6 +975,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":platform",
+        "@xla//xla/tsl/platform:stacktrace",
     ] + tf_windows_aware_platform_deps("stacktrace"),
 )
 
@@ -996,8 +997,8 @@ tsl_cc_test(
 
 cc_library(
     name = "cuda_root_path",
+    hdrs = ["cuda_root_path.h"],
     compatible_with = get_compatible_with_portable(),
-    textual_hdrs = ["cuda_root_path.h"],
     deps = tf_cuda_root_path_deps(),
 )
 
@@ -1182,14 +1183,14 @@ tsl_cc_test(
 
 cc_library(
     name = "context",
+    hdrs = ["context.h"],
     compatible_with = get_compatible_with_portable(),
-    textual_hdrs = ["context.h"],
     deps = tf_platform_deps("context"),
 )
 
 cc_library(
     name = "load_library",
-    textual_hdrs = ["load_library.h"],
+    hdrs = ["load_library.h"],
     deps = [
         "@xla//xla/tsl/platform:status",
     ] + tf_windows_aware_platform_deps("load_library"),

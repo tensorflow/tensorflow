@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_MATMUL_OP_H_
 #define TENSORFLOW_CORE_KERNELS_MATMUL_OP_H_
 
+// DO NOT SUBMIT - trigger re-run of TF presubmit
+
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"

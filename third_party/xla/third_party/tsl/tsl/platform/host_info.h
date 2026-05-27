@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,58 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_HOST_INFO_H_
 #define TENSORFLOW_TSL_PLATFORM_HOST_INFO_H_
 
-#include <cstddef>
-#include <cstdint>
-#include <cstring>
-#include <string>
-
-#include "absl/strings/string_view.h"
-
-namespace tsl {
-namespace port {
-
-// Statistical data of IO operations performed by the job.
-struct IOStatistics {
-  struct Distribution {
-    uint64_t count = 0;
-    double mean = 0.0;
-    double std_dev = 0.0;
-  };
-  // Distribution of round trip IO latency in microseconds.
-  Distribution roundtrip_latency_usec;
-  // Distribution of data received by IO reads in bytes.
-  Distribution response_bytes;
-};
-
-// Return the hostname of the machine on which this process is running.
-std::string Hostname();
-
-// Return the job name as a string if it exists, otherwise return an empty
-// string.
-std::string JobName();
-
-// Returns the Borg job UID as an int64_t if it exists. Otherwise return -1.
-int64_t JobUid();
-
-// Returns the Borg task ID as an int64_t if it exists. Otherwise return -1.
-int64_t TaskId();
-
-// Retrieves the host file read statistics.
-IOStatistics GetIOStatistics();
-
-// Returns a copy of a given hostname that does not include domain or port.
-// Examples:
-//  "foo.example.com:80" -> "foo"
-//  "foo:80" -> "foo"
-inline std::string StripDomainAndPort(absl::string_view hoststring) {
-  size_t strip_from = hoststring.find_first_of(".:");
-  if (strip_from != absl::string_view::npos) {
-    return std::string(hoststring.substr(0, strip_from));
-  }
-  return std::string(hoststring);
-}
-
-}  // namespace port
-}  // namespace tsl
+#include "xla/tsl/platform/host_info.h"
 
 #endif  // TENSORFLOW_TSL_PLATFORM_HOST_INFO_H_

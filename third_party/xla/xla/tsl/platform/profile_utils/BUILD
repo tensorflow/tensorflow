@@ -60,3 +60,14 @@ cc_library(
     ],
     alwayslink = 1,
 )
+
+cc_library(
+    name = "clock_cycle_profiler",
+    srcs = ["clock_cycle_profiler.cc"],
+    hdrs = ["clock_cycle_profiler.h"],
+    deps = [
+        ":profile_utils_cpu_utils",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:macros",
+    ],
+)

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/platform/cpu_info.h"
+#include "xla/tsl/platform/cpu_info.h"
 
 // Required for cross compile with clang
 #ifdef PLATFORM_WINDOWS

@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,29 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstddef>
-
-#include "xla/tsl/platform/mem.h"
-#include "xla/tsl/platform/numa.h"
+#ifndef XLA_TSL_PLATFORM_STACKTRACE_HANDLER_H_
+#define XLA_TSL_PLATFORM_STACKTRACE_HANDLER_H_
 
 namespace tsl {
-namespace port {
+namespace testing {
 
-bool NUMAEnabled() { return false; }
+// Installs signal handlers to print out stack trace.
+// Although GoogleTest has support for generating stacktraces with abseil via
+// https://github.com/google/googletest/pull/1653, this doesn't cover our use
+// case of getting C++ stacktraces in our python tests.
+void InstallStacktraceHandler();
 
-int NUMANumNodes() { return 1; }
-
-void NUMASetThreadNodeAffinity(int node) {}
-
-int NUMAGetThreadNodeAffinity() { return kNUMANoAffinity; }
-
-void* NUMAMalloc(int node, size_t size, int minimum_alignment) {
-  return AlignedMalloc(size, static_cast<std::align_val_t>(minimum_alignment));
-}
-
-void NUMAFree(void* ptr, size_t size) { ::tsl::port::Free(ptr); }
-
-int NUMAGetMemAffinity(const void* ptr) { return kNUMANoAffinity; }
-
-}  // namespace port
+}  // namespace testing
 }  // namespace tsl
+
+#endif  // XLA_TSL_PLATFORM_STACKTRACE_HANDLER_H_

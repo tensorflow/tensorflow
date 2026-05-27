@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,29 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstddef>
+#ifndef XLA_TSL_PLATFORM_DEMANGLE_H_
+#define XLA_TSL_PLATFORM_DEMANGLE_H_
 
-#include "xla/tsl/platform/mem.h"
-#include "xla/tsl/platform/numa.h"
+#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 namespace port {
 
-bool NUMAEnabled() { return false; }
-
-int NUMANumNodes() { return 1; }
-
-void NUMASetThreadNodeAffinity(int node) {}
-
-int NUMAGetThreadNodeAffinity() { return kNUMANoAffinity; }
-
-void* NUMAMalloc(int node, size_t size, int minimum_alignment) {
-  return AlignedMalloc(size, static_cast<std::align_val_t>(minimum_alignment));
+// If the compiler supports, demangle a mangled symbol name and return
+// the demangled name. Otherwise, returns 'mangled' as is.
+std::string Demangle(const char* mangled);
+inline std::string Demangle(const std::string mangled) {
+  return Demangle(mangled.c_str());
 }
-
-void NUMAFree(void* ptr, size_t size) { ::tsl::port::Free(ptr); }
-
-int NUMAGetMemAffinity(const void* ptr) { return kNUMANoAffinity; }
 
 }  // namespace port
 }  // namespace tsl
+
+#endif  // XLA_TSL_PLATFORM_DEMANGLE_H_

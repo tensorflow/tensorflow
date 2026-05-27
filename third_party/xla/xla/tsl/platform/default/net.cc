@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/platform/net.h"
+#include "xla/tsl/platform/net.h"
 
 #include <netinet/in.h>
 #include <sys/socket.h>

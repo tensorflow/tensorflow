@@ -54,6 +54,7 @@ cc_library(
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:threadpool_interface",
+        "//xla/tsl/platform:tracing",
         "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/algorithm:container",
@@ -86,7 +87,6 @@ cc_library(
         "@tsl//tsl/platform:setround",
         "@tsl//tsl/platform:strcat",
         "@tsl//tsl/platform:thread_annotations",
-        "@tsl//tsl/platform:tracing",
     ],
 )
 
@@ -105,13 +105,14 @@ cc_library(
     deps = [
         ":env",
         ":wide_char",
+        "//xla/tsl/platform:load_library",
         "//xla/tsl/platform:logging",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
-        "@tsl//tsl/platform:load_library",
         "@tsl//tsl/platform:mutex",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -154,7 +155,7 @@ cc_library(
 cc_library(
     name = "load_library",
     srcs = ["load_library.cc"],
-    hdrs = ["@tsl//tsl/platform:load_library.h"],
+    hdrs = ["//xla/tsl/platform:load_library.h"],
     tags = [
         "manual",
         "no_oss",
@@ -169,9 +170,7 @@ cc_library(
 cc_library(
     name = "net",
     srcs = ["net.cc"],
-    hdrs = [
-        "@tsl//tsl/platform:net.h",
-    ],
+    hdrs = ["//xla/tsl/platform:net.h"],
     linkopts = ["-DEFAULTLIB:ws2_32.lib"],
     tags = [
         "manual",
@@ -192,18 +191,18 @@ cc_library(
     name = "platform_port",
     srcs = [
         "port.cc",
+        "//xla/tsl/platform:cpu_info.cc",
         "//xla/tsl/platform:numa_noop.cc",
-        "@tsl//tsl/platform:cpu_info.cc",
     ],
     hdrs = [
-        "@tsl//tsl/platform:cpu_info.h",
-        "@tsl//tsl/platform:demangle.h",
-        "@tsl//tsl/platform:host_info.h",
-        "@tsl//tsl/platform:init_main.h",
-        "@tsl//tsl/platform:macros.h",
-        "@tsl//tsl/platform:mem.h",
-        "@tsl//tsl/platform:numa.h",
-        "@tsl//tsl/platform:snappy.h",
+        "//xla/tsl/platform:cpu_info.h",
+        "//xla/tsl/platform:demangle.h",
+        "//xla/tsl/platform:host_info.h",
+        "//xla/tsl/platform:init_main.h",
+        "//xla/tsl/platform:macros.h",
+        "//xla/tsl/platform:mem.h",
+        "//xla/tsl/platform:numa.h",
+        "//xla/tsl/platform:snappy.h",
     ],
     copts = tsl_copts(),
     defines = ["TF_USE_SNAPPY"],
@@ -217,6 +216,7 @@ cc_library(
         "//xla/tsl/platform:dynamic_annotations",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:numa",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
@@ -225,7 +225,6 @@ cc_library(
         "@com_google_absl//absl/time",
         "@snappy",
         "@tsl//tsl/platform",
-        "@tsl//tsl/platform:macros",
     ],
 )
 
@@ -247,17 +246,17 @@ cc_library(
 cc_library(
     name = "stacktrace_handler",
     srcs = ["stacktrace_handler.cc"],
-    hdrs = ["@tsl//tsl/platform:stacktrace_handler.h"],
+    hdrs = ["//xla/tsl/platform:stacktrace_handler.h"],
     tags = [
         "manual",
         "no_oss",
         "nobuilder",
     ],
     deps = [
+        "//xla/tsl/platform:stacktrace",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
-        "@tsl//tsl/platform:stacktrace",
     ],
 )
 

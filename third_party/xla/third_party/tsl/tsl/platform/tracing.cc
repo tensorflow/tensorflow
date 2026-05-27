@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/platform/tracing.h"
+#include "xla/tsl/platform/tracing.h"
 
 #include <array>
 #include <atomic>

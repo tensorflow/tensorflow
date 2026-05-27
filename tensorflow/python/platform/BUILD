@@ -201,6 +201,7 @@ tf_python_pybind_extension(
         "@pybind11",
         "@tsl//tsl/platform:stacktrace_handler_hdrs_lib",
         "@xla//third_party/python_runtime:headers",
+        "@xla//xla/tsl/platform:stacktrace_handler",
     ],
 )
 

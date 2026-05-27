@@ -34,12 +34,12 @@ limitations under the License.
 #include "absl/base/const_init.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/load_library.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/ram_file_system.h"
 #include "xla/tsl/platform/windows/wide_char.h"
 #include "xla/tsl/platform/windows/windows_file_system.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
-#include "tsl/platform/load_library.h"
 
 #pragma comment(lib, "shlwapi.lib")
 

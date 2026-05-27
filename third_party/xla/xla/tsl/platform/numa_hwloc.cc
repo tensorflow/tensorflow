@@ -20,8 +20,8 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/log/log.h"
 #include "hwloc.h"
-#include "tsl/platform/mem.h"
-#include "tsl/platform/numa.h"
+#include "xla/tsl/platform/mem.h"
+#include "xla/tsl/platform/numa.h"
 
 namespace tsl {
 namespace port {

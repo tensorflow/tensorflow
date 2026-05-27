@@ -29,15 +29,15 @@ limitations under the License.
 #include <shlwapi.h>
 
 #include "absl/base/no_destructor.h"
+#include "xla/tsl/platform/cpu_info.h"
+#include "xla/tsl/platform/demangle.h"
+#include "xla/tsl/platform/host_info.h"
+#include "xla/tsl/platform/init_main.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/mem.h"
+#include "xla/tsl/platform/numa.h"
+#include "xla/tsl/platform/snappy.h"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/cpu_info.h"
-#include "tsl/platform/demangle.h"
-#include "tsl/platform/host_info.h"
-#include "tsl/platform/init_main.h"
-#include "tsl/platform/mem.h"
-#include "tsl/platform/numa.h"
-#include "tsl/platform/snappy.h"
 
 namespace tsl {
 namespace port {
