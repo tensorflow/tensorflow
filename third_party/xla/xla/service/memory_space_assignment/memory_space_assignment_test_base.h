@@ -476,8 +476,19 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
       int64_t memory_space) {
     for (const std::string& name : instruction_names) {
       HloInstruction* instruction = FindInstruction(module, name);
-      EXPECT_NE(instruction, nullptr);
-      EXPECT_EQ(instruction->shape().layout().memory_space(), memory_space);
+      EXPECT_NE(instruction, nullptr) << "Instruction not found: " << name;
+      if (!instruction) {
+        continue;
+      }
+      EXPECT_TRUE(instruction->shape().has_layout())
+          << "Instruction " << name << " has no layout.";
+      if (!instruction->shape().has_layout()) {
+        continue;
+      }
+      EXPECT_EQ(instruction->shape().layout().memory_space(), memory_space)
+          << "Instruction " << name << " has memory space "
+          << instruction->shape().layout().memory_space() << " instead of "
+          << memory_space;
     }
   }
 
