@@ -46,7 +46,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class RuntimeIntrinsicsTest : public HloPjRtTestBase {};
+class RuntimeIntrinsicsTest : public HloTestBase {};
 
 using ::testing::EndsWith;
 using ::testing::HasSubstr;

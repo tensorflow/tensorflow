@@ -214,7 +214,7 @@ class IterationLoggerThunk : public Thunk {
 
 // Non-known trip count while thunks are difficult to unit test, so we only have
 // a unit test for the known trip count case.
-class KnownTripCountWhileThunkTest : public HloPjRtTestBase {
+class KnownTripCountWhileThunkTest : public HloTestBase {
  protected:
   absl::Status ExecuteThunk(Thunk& thunk) {
     ASSIGN_OR_RETURN(auto name, PlatformUtil::CanonicalPlatformName("gpu"));

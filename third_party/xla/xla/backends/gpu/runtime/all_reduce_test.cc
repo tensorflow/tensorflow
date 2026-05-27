@@ -455,7 +455,7 @@ INSTANTIATE_TEST_SUITE_P(
                              info.param.num_elements);
     });
 
-class AllReduceHloTest : public HloPjRtTestBase {};
+class AllReduceHloTest : public HloTestBase {};
 
 TEST_F(AllReduceHloTest, DefaultDeviceAssnWithHloRunner) {
   // xla::HloRunnerPjRt passes a single device assignment. Test this returns an
