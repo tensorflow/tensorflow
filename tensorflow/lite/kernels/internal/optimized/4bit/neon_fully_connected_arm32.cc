@@ -151,12 +151,11 @@ void NeonRunKernelNoSDot<4, 1, 32>(const uint8_t* lhs, const int8_t* rhs,
           :
           : [lhs_ptr] "r"(lhs_ptr), [rhs_ptr] "r"(rhs_ptr),
             [element_ptr] "r"(element_ptr), [run_depth] "r"(run_depth)
-          : "cc", "memory", "r0", "r1", "r2", "r3", "r4", "r5", "r6", "d0",
-            "d1", "d2", "d3", "d4", "d5", "d6", "d7", "d8", "d9", "d10", "d11",
-            "d12", "d13", "d14", "d15", "d16", "d17", "d18", "d19", "d20",
-            "d21", "d22", "d23", "d24", "d25", "d26", "d27", "q0", "q1", "q2",
-            "q3", "q4", "q5", "q6", "q7", "q8", "q9", "q10", "q11", "q12",
-            "q13", "q14");
+          : "cc", "memory", "r0", "r1", "r3", "r4", "r6", "q0", "q1", "q2",
+            "q3", "q4", "q5", "q6", "q7", "q8", "q9", "q10", "q11", "q14", "d0",
+            "d1", "d2", "d3", "d4", "d5", "d8", "d9", "d10", "d11", "d12",
+            "d13", "d14", "d15", "d16", "d17", "d18", "d19", "d20", "d21",
+            "d22", "d23", "d24", "d25", "d26", "d27");
       element_ptr += 4;
     }
   }
