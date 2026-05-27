@@ -509,7 +509,6 @@ TEST(StreamExecutorGpuClientTest, ForwardUserDataToFfiHandler) {
       *result_literal));
 }
 
-
 TEST(StreamExecutorGpuClientTest, PassAttrToFfiHandler) {
   static constexpr char const* kProgram = R"(
     HloModule ffi_handler
@@ -1209,7 +1208,6 @@ TEST(StreamExecutorGpuClientTest, GpuDeviceSharedMemoryInfo) {
   }
 }
 
-
 TEST(PjRtCpuClientTest, CopyToMemorySpace) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto client, GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
@@ -1482,7 +1480,6 @@ TEST(StreamExecutorGpuClientTest, OpaqueDeviceMemoryDataPointer) {
 }
 
 namespace {
-
 
 constexpr char const* kD2HProgram = R"(
   HloModule f
@@ -1870,7 +1867,6 @@ TEST(StreamExecutorGpuClientTest, MlirParameterLayoutFromOptionsIsSetInHlo) {
   EXPECT_EQ(first_param_layout, Layout({0, 2, 1}));
 }
 
-
 TEST(StreamExecutorGpuClientTest, GetDefaultLayout) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto client, GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
@@ -1985,7 +1981,6 @@ TEST(StreamExecutorGpuClientTest, NonZeroGPUDeviceTimeMeasurementSingleGPU) {
       measurement0->GetTotalDuration(DeviceTimeMeasurement::DeviceType::kGpu),
       absl::ZeroDuration());
 }
-
 
 TEST(StreamExecutorGpuClientTest, DmaMapUnmap) {
   TF_ASSERT_OK_AND_ASSIGN(
@@ -2883,39 +2878,42 @@ TEST_F(VmmTest, CommandBufferVaRemappingTwoExecutables) {
   int old_vlog_cbt = absl::SetVLogLevel("command_buffer_thunk", 3);
   absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
 
-  // exec1 independently cycles va_range_idx: 0 (run 0), 1 (run 1), 0 (run 2).
+  // exec1 independently cycles va_range_idx: 0 (run 0), 1 (run 1), 0 (run 2), 1
+  // (run 3), 0 (run 4).
   EXPECT_CALL(mock_log, Log(absl::LogSeverity::kInfo, ::testing::_,
                             AllOf(HasSubstr("exec1_va_remapping"),
                                   HasSubstr("va_range_idx=0"))))
-      .Times(2);
+      .Times(3);
   EXPECT_CALL(mock_log, Log(absl::LogSeverity::kInfo, ::testing::_,
                             AllOf(HasSubstr("exec1_va_remapping"),
                                   HasSubstr("va_range_idx=1"))))
-      .Times(1);
+      .Times(2);
 
   // exec2 independently cycles va_range_idx the same way.
   EXPECT_CALL(mock_log, Log(absl::LogSeverity::kInfo, ::testing::_,
                             AllOf(HasSubstr("exec2_va_remapping"),
                                   HasSubstr("va_range_idx=0"))))
-      .Times(2);
+      .Times(3);
   EXPECT_CALL(mock_log, Log(absl::LogSeverity::kInfo, ::testing::_,
                             AllOf(HasSubstr("exec2_va_remapping"),
                                   HasSubstr("va_range_idx=1"))))
-      .Times(1);
+      .Times(2);
 
   // Each (exec, va_range_idx) pair creates its own CUDA graph (command buffer).
-  // Initialization fires once per new graph: 2 execs × 2 VA ranges = 4 times.
-  // Run 2 reuses the existing VA range 0 graphs → no additional initialization.
+  // Initialization fires once per graph AFTER a warmup iteration: 2 execs × 2
+  // VA ranges = 4 times.
+  // Runs 0-1 are warmup; Runs 2-3 are the first real executions (triggering
+  // initialization); Run 4 reuses the existing VA range 0 graphs.
   EXPECT_CALL(mock_log, Log(absl::LogSeverity::kInfo, ::testing::_,
                             HasSubstr("Initialize command buffer on device")))
       .Times(4);
 
   mock_log.StartCapturingLogs();
 
-  // 3 runs interleaved: each executable cycles VA range indices 0, 1, 0
+  // 5 runs interleaved: each executable cycles VA range indices 0, 1, 0, 1, 0
   // independently. Interleaving stresses that the two executables' VA ranges
   // do not alias or corrupt each other.
-  for (int run = 0; run < 3; ++run) {
+  for (int run = 0; run < 5; ++run) {
     float base = static_cast<float>(run + 1);
     auto x = LiteralUtil::CreateR1<float>(
         {base, base, base, base, base, base, base, base});
