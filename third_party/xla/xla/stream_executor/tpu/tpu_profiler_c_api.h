@@ -48,8 +48,8 @@ TFTPU_CAPI_EXPORT void TpuProfiler_Stop(TpuProfiler* tpu_profiler,
 // Step 2. Retrieve the data into a `buffer` of size `size_in_bytes`.
 //         Subsequently,The TPU driver clears its copy of the profile data.
 //
-//   uint8_t buffer = new uint8_t[size_in_bytes];
-//   TpuProfiler_CollectData(profiler, status, buffer, size_in_bytes);
+//   uint8_t* buffer = new uint8_t[size_in_bytes];
+//   TpuProfiler_CollectData(profiler, status, buffer, &size_in_bytes);
 //
 // Step 3. Unpack the data into an XSpace.
 //
