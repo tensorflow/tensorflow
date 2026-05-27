@@ -179,7 +179,7 @@ ENTRY main {
 
   HloModuleStitcher stitcher(optimized_modules);
   EXPECT_THAT(stitcher.Run(main_module.get()),
-              StatusIs(absl::StatusCode::kInternal));
+              absl_testing::StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST_F(HloModuleStitcherTest, UniquelyClonesSharedComputations) {
@@ -217,7 +217,8 @@ ENTRY sub_entry {
   optimized_modules["optimized_sub_module"] = sub_module.get();
 
   HloModuleStitcher stitcher(optimized_modules);
-  EXPECT_THAT(stitcher.Run(main_module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(stitcher.Run(main_module.get()),
+              absl_testing::IsOkAndHolds(true));
 
   // Count occurrences of sub_entry. Since we do not cache cloned computations
   // across custom calls, it should appear twice (uniquely cloned for each call)
@@ -329,7 +330,8 @@ ENTRY inner_entry {
   optimized_modules["inner_sub_module"] = inner_module.get();
 
   HloModuleStitcher stitcher(optimized_modules);
-  EXPECT_THAT(stitcher.Run(main_module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(stitcher.Run(main_module.get()),
+              absl_testing::IsOkAndHolds(true));
 
   const char* expected_hlo = R"(
 CHECK: %inner_entry
