@@ -91,7 +91,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/dynamic_slice_fusion_v2_thunk.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/fft_thunk.h"
-#include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
 #include "xla/backends/gpu/runtime/host_execute_thunk.h"
 #include "xla/backends/gpu/runtime/host_send_recv_thunk.h"
@@ -484,38 +483,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConvolutionThunk(
                            instr, ir_emitter_context_->GetNextThunkId()),
                        std::move(descriptor), std::move(operand_slices),
                        std::move(result_slices), scratch_slice));
-  return GetThunkSequence(std::move(thunk));
-}
-
-absl::StatusOr<ThunkSequence> ThunkEmitter::EmitGemmThunk(
-    const HloCustomCallInstruction* instr) {
-  ASSIGN_OR_RETURN(BufferAllocation::Slice a,
-                   GetAllocationSliceForHlo(instr->operand(0), {}));
-  ASSIGN_OR_RETURN(BufferAllocation::Slice b,
-                   GetAllocationSliceForHlo(instr->operand(1), {}));
-
-  // Result of a legacy cuBLAS custom call can be a tuple if we
-  // explicitly allocate workspace buffer in HLO. If result is an
-  // array, it means that workspace is not available, and cuBLAS
-  // will allocate its own workspace.
-  BufferAllocation::Slice c;
-  std::optional<BufferAllocation::Slice> workspace;
-
-  if (instr->shape().IsArray()) {
-    ASSIGN_OR_RETURN(c, GetAllocationSliceForHlo(instr, {}));
-  } else {
-    ASSIGN_OR_RETURN(c, GetAllocationSliceForHlo(instr, {0}));
-    ASSIGN_OR_RETURN(workspace, GetAllocationSliceForHlo(instr, {1}));
-  }
-
-  ASSIGN_OR_RETURN(
-      GemmConfig config,
-      GemmConfig::For(instr, ir_emitter_context_->gpu_compute_capability()));
-  auto thunk = std::make_unique<GemmThunk>(
-      Thunk::ThunkInfo::WithProfileAnnotation(
-          instr, ir_emitter_context_->GetNextThunkId()),
-      std::move(config), a, b, c, workspace,
-      RequireDeterminism(ir_emitter_context_->hlo_module().config()));
   return GetThunkSequence(std::move(thunk));
 }
 
@@ -2800,9 +2767,7 @@ AsyncThunkSequence ThunkEmitter::EmitAsyncStart(const HloInstruction* instr) {
 AsyncThunkSequence ThunkEmitter::EmitCustomCallSwitch(
     const HloInstruction* hlo) {
   auto* custom_call = Cast<HloCustomCallInstruction>(hlo);
-  if (IsLegacyCublasMatmul(*hlo)) {
-    return EmitGemmThunk(custom_call);
-  }
+
   if (IsCublasLtMatmul(*hlo)) {
     return EmitCublasLtMatmulThunk(custom_call);
   }

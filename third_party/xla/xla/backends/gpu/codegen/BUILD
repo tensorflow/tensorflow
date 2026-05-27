@@ -146,7 +146,6 @@ cc_library(
         "//xla/backends/gpu/runtime:custom_kernel_thunk",
         "//xla/backends/gpu/runtime:device_to_device_copy_thunk",
         "//xla/backends/gpu/runtime:dynamic_slice_thunk",
-        "//xla/backends/gpu/runtime:gemm_thunk",
         "//xla/backends/gpu/runtime:gpublas_lt_matmul_thunk",
         "//xla/backends/gpu/runtime:legacy_custom_call_thunk",
         "//xla/backends/gpu/runtime:thunk",

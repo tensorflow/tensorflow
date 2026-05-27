@@ -105,7 +105,7 @@ ENTRY e {
 constexpr absl::string_view kResultsInNoPtxHlo = R"(
   ENTRY e {
     a = f32[5,5] parameter(0)
-    ROOT _ = f32[5,5] custom-call(a, a), custom_call_target="__cublas$gemm",
+    ROOT _ = f32[5,5] custom-call(a, a), custom_call_target="__cublas$lt$matmul",
       backend_config="{ \"gemm_backend_config\": {\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}}"
   })";
 

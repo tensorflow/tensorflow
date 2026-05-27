@@ -2306,8 +2306,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return absl::string_view(kCublasLtMatmulCallTarget);
     }
 
-    // This case is not supported by cublasLt, fallback to legacy cublas.
-    return absl::string_view(kGemmCallTarget);
+    return absl::InternalError(
+        "GEMM is not supported by cublasLt and legacy cublas fallback is "
+        "removed.");
   }
 
   absl::StatusOr<bool> TypesAreSupportedByLegacyCublas(

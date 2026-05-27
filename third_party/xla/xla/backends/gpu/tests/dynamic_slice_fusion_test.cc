@@ -53,7 +53,7 @@ TEST_F(DynamicSliceFusionTest, GemmSlice) {
       bitcast.42 = f16[8,8]{1,0} bitcast(slice.14)
 
       custom-call.1 = (f16[8,8]{1,0}, s8[256]{0}) custom-call(bitcast.41, bitcast.42),
-        custom_call_target="__cublas$gemm",
+        custom_call_target="__cublas$lt$matmul",
         backend_config={"gemm_backend_config":{
           "alpha_real":1,
           "beta":0,
@@ -92,7 +92,7 @@ TEST_F(DynamicSliceFusionTest, GemmSlice) {
       slice.1 = f16[1,8,8]{2,1,0} dynamic-slice(p3, p1.1, p2.1, p2.1), dynamic_slice_sizes={1,8,8}
       bitcast.1 = f16[8,8]{1,0} bitcast(slice.1)
       custom-call.0 = (f16[8,8]{1,0}, s8[256]{0}) custom-call(bitcast.0, bitcast.1),
-        custom_call_target="__cublas$gemm",
+        custom_call_target="__cublas$lt$matmul",
         backend_config={"gemm_backend_config":{
           "alpha_real":1,
           "beta":0,

@@ -536,7 +536,6 @@ cc_library(
         "//xla/backends/gpu/runtime:dynamic_slice_fusion_v2_thunk",
         "//xla/backends/gpu/runtime:execution_stream_id",
         "//xla/backends/gpu/runtime:fft_thunk",
-        "//xla/backends/gpu/runtime:gemm_thunk",
         "//xla/backends/gpu/runtime:gpublas_lt_matmul_thunk",
         "//xla/backends/gpu/runtime:host_execute_thunk",
         "//xla/backends/gpu/runtime:host_send_recv_thunk",
