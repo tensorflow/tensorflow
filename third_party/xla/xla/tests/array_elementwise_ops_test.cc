@@ -93,7 +93,7 @@ std::pair<std::vector<T>, std::vector<T>> AllSignedPairs(
 template <typename T>
 void AddNegativeValuesMaybeRemoveZero(std::vector<T>& values) {
   values.reserve(values.size() * 2);
-  if (!has_zero_v<T>) {
+  if (!has_positive_or_negative_zero_v<T>) {
     values.erase(values.begin());
   }
   for (size_t i = 0, n = values.size(); i < n; ++i) {

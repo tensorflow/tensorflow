@@ -168,16 +168,38 @@ struct has_negative_zero<tsl::float8_e4m3fn> : std::bool_constant<true> {};
 template <typename T>
 inline constexpr bool has_negative_zero_v = has_negative_zero<T>::value;
 
-// has_zero[_v]
+// has_positive_zero[_v]
 
 template <typename T>
-struct has_zero : std::bool_constant<true> {};
+struct has_positive_zero
+    : std::bool_constant<is_specialized_floating_point_v<T>> {};
 
 template <>
-struct has_zero<tsl::float8_e8m0fnu> : std::bool_constant<false> {};
+struct has_positive_zero<tsl::float8_e8m0fnu> : std::bool_constant<false> {};
 
 template <typename T>
-inline constexpr bool has_zero_v = has_zero<T>::value;
+inline constexpr bool has_positive_zero_v = has_positive_zero<T>::value;
+
+// has_positive_or_negative_zero[_v]
+
+template <typename T>
+struct has_positive_or_negative_zero
+    : std::bool_constant<has_negative_zero_v<T> || has_positive_zero_v<T>> {};
+
+template <typename T>
+inline constexpr bool has_positive_or_negative_zero_v =
+    has_positive_or_negative_zero<T>::value;
+
+// exponent_bias[_v]
+
+template <typename T>
+struct exponent_bias
+    : std::integral_constant<int,
+                             (has_positive_or_negative_zero_v<T> ? 1 : 0) -
+                                 (std::numeric_limits<T>::min_exponent - 1)> {};
+
+template <typename T>
+inline constexpr int exponent_bias_v = exponent_bias<T>::value;
 
 }  // namespace xla
 
