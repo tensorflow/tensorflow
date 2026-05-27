@@ -589,6 +589,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> CreateMatmulThunk(
       thunk_info, std::move(canonical_hlo), std::move(config),
       se::gpu::BlasLt::Epilogue::kDefault, algorithm,
       gemm_backend_config.autotune_workspace_size(), a, b, c, d,
+      /*group_sizes=*/std::nullopt,
       /*bias=*/std::nullopt, /*aux=*/std::nullopt,
       /*a_scale=*/std::nullopt, /*b_scale=*/std::nullopt,
       /*c_scale=*/std::nullopt, /*d_scale=*/std::nullopt,

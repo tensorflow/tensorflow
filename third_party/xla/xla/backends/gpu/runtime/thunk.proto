@@ -288,8 +288,10 @@ message SelectKThunkProto {
 message CublasLtMatmulThunkProto {
   // For regular matmul, use gemm_config. For grouped matmul, use
   // grouped_gemm_config.
-  optional xla.GemmConfigProto gemm_config = 1;
-  optional xla.GroupedGemmConfigProto grouped_gemm_config = 19;
+  oneof impl {
+    xla.GemmConfigProto gemm_config = 1;
+    xla.GroupedGemmConfigProto grouped_gemm_config = 19;
+  }
 
   xla.BlasLtEpilogueProto epilogue = 2;
   int64 algorithm_idx = 3;

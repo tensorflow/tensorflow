@@ -332,9 +332,8 @@ HipblasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
     ASSIGN_OR_RETURN(BlasLt::Epilogue epilogue,
                      AsBlasLtEpilogue(backend_config.epilogue()));
 
-    ASSIGN_OR_RETURN(
-        BlasLt::MatmulPlanPtr plan,
-        blas_lt->GetGroupedMatmulPlan(grouped_gemm_config, epilogue));
+    ASSIGN_OR_RETURN(BlasLt::MatmulPlanPtr plan,
+                     blas_lt->GetMatmulPlan(grouped_gemm_config, epilogue));
 
     const Shape& output_shape = instr.shape();
     if (!output_shape.IsTuple() || output_shape.tuple_shapes().empty()) {

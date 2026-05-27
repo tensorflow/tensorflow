@@ -174,8 +174,9 @@ class GpuBlasLtThunkBuilder {
         epilogue,
         /*algorithm_idx*/ 0, backend_config.autotune_workspace_size(),
         slices[0], slices[1], has_matrix_bias ? slices[2] : slices.back(),
-        slices.back(), bias, std::nullopt, std::nullopt, std::nullopt,
-        std::nullopt, std::nullopt, std::nullopt, std::nullopt /* workspace */);
+        slices.back(), std::nullopt, bias, std::nullopt, std::nullopt,
+        std::nullopt, std::nullopt, std::nullopt, std::nullopt,
+        std::nullopt /* workspace */);
   }
 
   std::unique_ptr<BufferAllocations> buffer_allocations() {
@@ -338,8 +339,8 @@ struct MockBlasLt : public se::gpu::BlasLt {
     return MatmulPlanPtr{};
   }
 
-  absl::StatusOr<MatmulPlanPtr> GetGroupedMatmulPlan(
-      const se::gpu::GroupedGemmConfig&, Epilogue) const override {
+  absl::StatusOr<MatmulPlanPtr> GetMatmulPlan(const se::gpu::GroupedGemmConfig&,
+                                              Epilogue) const override {
     return MatmulPlanPtr{};
   }
 
@@ -651,7 +652,8 @@ class CublasLtMatmulThunkCmdBufTest : public ::testing::Test {
     thunk_.emplace(Thunk::ThunkInfo(), /*canonical_hlo=*/"", config,
                    se::gpu::BlasLt::Epilogue::kDefault, /*algorithm_idx=*/0,
                    /*autotune_workspace_size=*/0, slice_a, slice_b, slice_c,
-                   slice_d, /*bias=*/std::nullopt, /*aux=*/std::nullopt,
+                   slice_d, /*group_sizes=*/std::nullopt, /*bias=*/std::nullopt,
+                   /*aux=*/std::nullopt,
                    /*a_scale=*/std::nullopt, /*b_scale=*/std::nullopt,
                    /*c_scale=*/std::nullopt, /*d_scale=*/std::nullopt,
                    /*d_amax=*/std::nullopt, slice_workspace);
