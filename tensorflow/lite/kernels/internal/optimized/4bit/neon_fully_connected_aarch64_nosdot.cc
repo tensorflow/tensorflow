@@ -67,11 +67,11 @@ void NeonRunKernelNoSDot<4, 1, 32>(const uint8_t* lhs, const int8_t* rhs,
           mov x1, %[rhs_ptr]
           mov x4, x6
           ld1 {v4.16b}, [x4], #16
-          dup v16.4s, wzr
-          dup v17.4s, wzr
+          movi v16.4s, #0
+          movi v17.4s, #0
           ld1 {v5.16b}, [x4], #16
-          dup v18.4s, wzr
-          dup v19.4s, wzr
+          movi v18.4s, #0
+          movi v19.4s, #0
           ld1 {v6.16b}, [x4], #16
           and v8.16b, v4.16b, v24.16b
           and v9.16b, v5.16b, v24.16b
@@ -197,23 +197,23 @@ void NeonRunKernelNoSDot<4, 2, 32>(const uint8_t* lhs, const int8_t* rhs,
           mov x4, x6
           ld1 {v4.16b}, [x4], #16
           movi v31.16b, #15
-          dup v16.4s, wzr
-          dup v17.4s, wzr
+          movi v16.4s, #0
+          movi v17.4s, #0
           ld1 {v5.16b}, [x4], #16
-          dup v18.4s, wzr
-          dup v19.4s, wzr
+          movi v18.4s, #0
+          movi v19.4s, #0
           ld1 {v6.16b}, [x4], #16
           and v8.16b, v4.16b, v31.16b
           and v9.16b, v5.16b, v31.16b
           ld1 {v7.16b}, [x4], #16
           ushr v12.16b, v4.16b, #4
           ushr v13.16b, v5.16b, #4
-          dup v24.4s, wzr
+          movi v24.4s, #0
           ld1 {v0.16b}, [x1], #16
-          dup v25.4s, wzr
-          dup v26.4s, wzr
+          movi v25.4s, #0
+          movi v26.4s, #0
           ld1 {v1.16b}, [x1], #16
-          dup v27.4s, wzr
+          movi v27.4s, #0
           and v10.16b, v6.16b, v31.16b
           ld1 {v2.16b}, [x1], #16
           and v11.16b, v7.16b, v31.16b
@@ -378,26 +378,26 @@ void NeonRunKernelNoSDot<4, 4, 32>(const uint8_t* lhs, const int8_t* rhs,
           mov x1, %[rhs_ptr]
           mov x4, x6
           ld1 {v4.16b}, [x4], #16
-          dup v16.4s, wzr
-          dup v17.4s, wzr
-          dup v18.4s, wzr
-          dup v19.4s, wzr
+          movi v16.4s, #0
+          movi v17.4s, #0
+          movi v18.4s, #0
+          movi v19.4s, #0
           ld1 {v5.16b}, [x4], #16
-          dup v20.4s, wzr
-          dup v21.4s, wzr
-          dup v22.4s, wzr
+          movi v20.4s, #0
+          movi v21.4s, #0
+          movi v22.4s, #0
           ld1 {v6.16b}, [x4], #16
-          dup v23.4s, wzr
-          dup v24.4s, wzr
-          dup v25.4s, wzr
+          movi v23.4s, #0
+          movi v24.4s, #0
+          movi v25.4s, #0
           ld1 {v7.16b}, [x4], #16
-          dup v26.4s, wzr
-          dup v27.4s, wzr
-          dup v28.4s, wzr
-          dup v29.4s, wzr
+          movi v26.4s, #0
+          movi v27.4s, #0
+          movi v28.4s, #0
+          movi v29.4s, #0
           ld1 {v0.16b}, [x1], #16
-          dup v30.4s, wzr
-          dup v31.4s, wzr
+          movi v30.4s, #0
+          movi v31.4s, #0
           mov w3, %w[run_depth]
           ld1 {v1.16b}, [x1], #16
           and v8.16b, v4.16b, v3.16b

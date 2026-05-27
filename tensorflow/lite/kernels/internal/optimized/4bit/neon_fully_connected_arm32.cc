@@ -63,19 +63,17 @@ void NeonRunKernelNoSDot<4, 1, 32>(const uint8_t* lhs, const int8_t* rhs,
       const int8_t* rhs_ptr = rhs + right_index;
       asm volatile(
           R"asm(
-          mov r8, #15
-          vdup.8 d28, r8
+          vmov.i8 d28, #15
           mov r0, %[element_ptr]
           mov r6, %[lhs_ptr]
-          mov r8, #0
           mov r1, %[rhs_ptr]
           mov r4, r6
           vld1.8 {d8, d9}, [r4]!
-          vdup.8 q0, r8
-          vdup.8 q1, r8
+          vmov.i16 q0, #0
+          vmov.i16 q1, #0
           vld1.8 {d10, d11}, [r4]!
-          vdup.8 q2, r8
-          vdup.8 q3, r8
+          vmov.i16 q2, #0
+          vmov.i16 q3, #0
           vld1.8 {d12, d13}, [r4]!
           vand d16, d8, d28
           vand d17, d9, d28
@@ -161,12 +159,12 @@ void NeonRunKernelNoSDot<4, 1, 32>(const uint8_t* lhs, const int8_t* rhs,
           :
           : [lhs_ptr] "r"(lhs_ptr), [rhs_ptr] "r"(rhs_ptr),
             [element_ptr] "r"(element_ptr), [run_depth] "r"(run_depth)
-          : "cc", "memory", "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r8",
-            "d0", "d1", "d2", "d3", "d4", "d5", "d6", "d7", "d8", "d9", "d10",
-            "d11", "d12", "d13", "d14", "d15", "d16", "d17", "d18", "d19",
-            "d20", "d21", "d22", "d23", "d24", "d25", "d26", "d27", "d28",
-            "d29", "d30", "d31", "q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7",
-            "q8", "q9", "q10", "q11", "q12", "q13", "q14");
+          : "cc", "memory", "r0", "r1", "r2", "r3", "r4", "r5", "r6", "d0",
+            "d1", "d2", "d3", "d4", "d5", "d6", "d7", "d8", "d9", "d10", "d11",
+            "d12", "d13", "d14", "d15", "d16", "d17", "d18", "d19", "d20",
+            "d21", "d22", "d23", "d24", "d25", "d26", "d27", "d28", "d29",
+            "d30", "d31", "q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8",
+            "q9", "q10", "q11", "q12", "q13", "q14");
       element_ptr += 4;
     }
   }

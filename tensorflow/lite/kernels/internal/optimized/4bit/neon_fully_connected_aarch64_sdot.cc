@@ -67,11 +67,11 @@ DOTPROD_ATTRIBUTE void NeonRunKernelSDot<4, 1, 32>(
           mov x1, %[rhs_ptr]
           mov x4, x6
           ld1 {v4.16b}, [x4], #16
-          dup v16.4s, wzr
-          dup v17.4s, wzr
+          movi v16.4s, #0
+          movi v17.4s, #0
           ld1 {v5.16b}, [x4], #16
-          dup v18.4s, wzr
-          dup v19.4s, wzr
+          movi v18.4s, #0
+          movi v19.4s, #0
           ld1 {v6.16b, v7.16b}, [x4], #32
           and v8.16b, v4.16b, v24.16b
           and v9.16b, v5.16b, v24.16b
@@ -166,18 +166,18 @@ DOTPROD_ATTRIBUTE void NeonRunKernelSDot<4, 2, 32>(
           mov x1, %[rhs_ptr]
           mov x4, x6
           ld1 {v4.16b}, [x4], #16
-          dup v16.4s, wzr
-          dup v17.4s, wzr
+          movi v16.4s, #0
+          movi v17.4s, #0
           ld1 {v5.16b}, [x4], #16
-          dup v18.4s, wzr
-          dup v19.4s, wzr
+          movi v18.4s, #0
+          movi v19.4s, #0
           ld1 {v6.16b, v7.16b}, [x4], #32
-          dup v20.4s, wzr
-          dup v21.4s, wzr
+          movi v20.4s, #0
+          movi v21.4s, #0
           and v8.16b, v4.16b, v24.16b
           and v9.16b, v5.16b, v24.16b
-          dup v22.4s, wzr
-          dup v23.4s, wzr
+          movi v22.4s, #0
+          movi v23.4s, #0
           ushr v12.16b, v4.16b, #4
           ushr v13.16b, v5.16b, #4
           ld1 {v0.16b, v1.16b, v2.16b, v3.16b}, [x1], #64
@@ -288,26 +288,26 @@ DOTPROD_ATTRIBUTE void NeonRunKernelSDot<4, 4, 32>(
           mov x1, %[rhs_ptr]
           mov x4, x6
           ld1 {v4.16b}, [x4], #16
-          dup v16.4s, wzr
-          dup v17.4s, wzr
+          movi v16.4s, #0
+          movi v17.4s, #0
           ld1 {v5.16b}, [x4], #16
-          dup v18.4s, wzr
-          dup v19.4s, wzr
+          movi v18.4s, #0
+          movi v19.4s, #0
           ld1 {v6.16b, v7.16b}, [x4], #32
           and v8.16b, v4.16b, v3.16b
           and v9.16b, v5.16b, v3.16b
-          dup v20.4s, wzr
-          dup v21.4s, wzr
-          dup v22.4s, wzr
-          dup v23.4s, wzr
-          dup v24.4s, wzr
-          dup v25.4s, wzr
-          dup v26.4s, wzr
-          dup v27.4s, wzr
-          dup v28.4s, wzr
-          dup v29.4s, wzr
-          dup v30.4s, wzr
-          dup v31.4s, wzr
+          movi v20.4s, #0
+          movi v21.4s, #0
+          movi v22.4s, #0
+          movi v23.4s, #0
+          movi v24.4s, #0
+          movi v25.4s, #0
+          movi v26.4s, #0
+          movi v27.4s, #0
+          movi v28.4s, #0
+          movi v29.4s, #0
+          movi v30.4s, #0
+          movi v31.4s, #0
           ushr v12.16b, v4.16b, #4
           ushr v13.16b, v5.16b, #4
           ld1 {v0.16b, v1.16b}, [x1], #32
