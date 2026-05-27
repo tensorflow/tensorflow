@@ -1700,6 +1700,7 @@ cc_library(
     name = "host_memory_allocator",
     srcs = ["host_memory_allocator.cc"],
     hdrs = ["host_memory_allocator.h"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "//xla/runtime:device_id",
         "//xla/tsl/framework:allocator",
