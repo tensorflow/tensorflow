@@ -1305,6 +1305,35 @@ TEST_F(LayoutAssignmentTest, ReshapeBitcastMinimizeChangesMultipleOnes) {
                              .WithShape(F32, {1, 10, 1, 20}, {0, 2, 3, 1})));
 }
 
+TEST_F(LayoutAssignmentTest, CubDeviceScanLayoutIsPreserved) {
+  const char* hlo_text = R"(
+  HloModule ScanLayout
+
+  ENTRY scan {
+    p0 = f32[10,20]{1,0} parameter(0)
+    transpose = f32[20,10]{1,0} transpose(p0), dimensions={1,0}
+    ROOT scan = (f32[20,10]{1,0}, u8[128]{0})
+        custom-call(transpose), custom_call_target="xla.gpu.ext.cub_scan"
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_device_description_);
+
+  EXPECT_THAT(layout_assignment.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::CustomCall(m::Op().WithShape(F32, {20, 10}, {1, 0}))))
+      << module->ToString();
+}
+
 TEST_F(LayoutAssignmentTest, ReshapeBitcastMinimizeChangesAdjustNonDegenerate) {
   const char* hlo_text = R"(
   HloModule ReshapeLayout

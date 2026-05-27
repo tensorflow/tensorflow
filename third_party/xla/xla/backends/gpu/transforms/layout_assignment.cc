@@ -523,6 +523,12 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
           Cast<HloCustomCallInstruction>(instruction), constraints));
     }
 
+    if (auto* custom_call = DynCast<HloCustomCallInstruction>(instruction)) {
+      if (custom_call->custom_call_target().find(kCubDeviceScanTarget) == 0) {
+        RETURN_IF_ERROR(AddCubScanConstraints(custom_call, constraints));
+      }
+    }
+
     CHECK(!IsCublasLtGemm(*instruction))
         << "Gemm rewriting should run after layout assignment";
 
@@ -1069,6 +1075,20 @@ GpuLayoutAssignment::ChooseOutputLayoutFromOperandLayout(
 
   return LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
       operand_layout, user, operand_no);
+}
+
+absl::Status GpuLayoutAssignment::AddCubScanConstraints(
+    HloCustomCallInstruction* custom_call, LayoutConstraints* constraints) {
+  // 1. Pin the input (operand 0) to its initial layout.
+  RETURN_IF_ERROR(
+      SetOperandLayout(custom_call->operand(0)->shape(), custom_call, 0));
+
+  // 2. Pin the output (tuple element 0) to its initial layout.
+  RETURN_IF_ERROR(SetInstructionLayout(custom_call->shape(), custom_call,
+                                       /*mandatory=*/true, /*dfs=*/true,
+                                       /*allow_alias=*/false, ShapeIndex{0}));
+
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

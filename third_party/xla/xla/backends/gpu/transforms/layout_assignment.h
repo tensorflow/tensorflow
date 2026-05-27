@@ -96,6 +96,9 @@ class GpuLayoutAssignment : public LayoutAssignment {
   absl::Status AddDotBackendConstraints(LayoutConstraints* constraints,
                                         HloDotInstruction* instruction);
 
+  absl::Status AddCubScanConstraints(HloCustomCallInstruction* custom_call,
+                                     LayoutConstraints* constraints);
+
   const se::GpuComputeCapability gpu_version_;
   const se::DeviceDescription& device_description_;
 };
