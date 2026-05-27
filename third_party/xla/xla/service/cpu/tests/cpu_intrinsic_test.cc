@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
-#include <cctype>
 #include <memory>
 #include <string>
 #include <utility>
