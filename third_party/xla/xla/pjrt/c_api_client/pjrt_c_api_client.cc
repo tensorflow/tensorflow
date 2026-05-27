@@ -786,15 +786,32 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtCApiClient::LoadSerializedExecutable(absl::string_view serialized,
                                          std::optional<CompileOptions> options,
                                          const LoadOptions& load_options) {
-  PJRT_Executable_DeserializeAndLoad_Args des_args;
+  PJRT_Executable_DeserializeAndLoad_Args des_args{};
 
   des_args.struct_size = PJRT_Executable_DeserializeAndLoad_Args_STRUCT_SIZE;
-  des_args.extension_start = nullptr;
   des_args.client = c_client_.get();
   des_args.serialized_executable = serialized.data();
   des_args.serialized_executable_size = serialized.length();
-  des_args.overridden_serialized_compile_options = nullptr;
-  des_args.overridden_serialized_compile_options_size = 0;
+
+  PJRT_LoadOptions load_options_c_api{};
+  des_args.load_options = &load_options_c_api;
+
+  load_options_c_api.struct_size = PJRT_LoadOptions_STRUCT_SIZE;
+  if (load_options.computation_origin.has_value()) {
+    load_options_c_api.computation_origin =
+        load_options.computation_origin->data();
+    load_options_c_api.computation_origin_size =
+        load_options.computation_origin->size();
+  }
+  if (load_options.multi_slice_config != nullptr) {
+    auto* c_api_config = dynamic_cast<const pjrt::PjRtCApiMultiSliceConfig*>(
+        load_options.multi_slice_config);
+    if (c_api_config == nullptr) {
+      return absl::InvalidArgumentError(
+          "PjRtCApiClient only supports PjRtCApiMultiSliceConfig.");
+    }
+    load_options_c_api.multi_slice_config = c_api_config->get();
+  }
 
   std::string options_str;
   if (options) {

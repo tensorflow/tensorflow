@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.111
+
+* Added `PJRT_LoadOptions` and `load_options` to `PJRT_Executable_DeserializeAndLoad_Args`.
+
 ## 0.110
 
 * Added GetMemorySpaceKindIds() const to PJRT_TopologyDescription.

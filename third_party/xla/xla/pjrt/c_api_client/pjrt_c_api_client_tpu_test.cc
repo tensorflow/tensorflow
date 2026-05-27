@@ -520,5 +520,31 @@ TEST(PjRtCApiClientTpuTest, GetHostMemoryAllocator) {
   std::memset(ptr.get(), 0, size);
 }
 
+TEST(PjRtCApiClientTpuTest, LoadSerializedExecutableWithComputationOrigin) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetXlaPjrtTpuClient());
+
+  constexpr char kProgram[] = "func.func @main() {return}";
+  auto context = std::make_unique<mlir::MLIRContext>();
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          ParseMlirModuleString(kProgram, *context));
+  CompileOptions options;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtExecutable> executable,
+      client->Compile(
+          xla::MaybeOwningMlirModule(std::move(context), std::move(module)),
+          options));
+  ASSERT_NE(executable.get(), nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::string serialized_executable,
+                          executable->SerializeExecutable());
+
+  LoadOptions load_options;
+  load_options.computation_origin = PjRtDeviceDimensions({0, 0, 0});
+
+  EXPECT_OK(client->LoadSerializedExecutable(serialized_executable, {},
+                                             load_options));
+}
+
 }  // namespace
 }  // namespace xla
