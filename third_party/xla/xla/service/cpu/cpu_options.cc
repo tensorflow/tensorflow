@@ -168,4 +168,9 @@ bool EnableTiledEmitter(const HloModuleConfig& config) {
   return extra_options_map.count(kDisableTiledEmitter) == 0;
 }
 
+bool EnableExperimentalTiling(const HloModuleConfig& config) {
+  return config.debug_options()
+      .xla_cpu_experimental_enable_tiling_propagation();
+}
+
 }  // namespace xla::cpu::options

@@ -233,6 +233,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_cpu_enable_fast_math(false);
   opts.set_xla_cpu_enable_platform_dependent_math(true);
+  opts.set_xla_cpu_experimental_enable_tiling_propagation(false);
   // Disable forms of fast math that have caused users problems in the past.
   opts.set_xla_cpu_fast_math_honor_nans(true);
   opts.set_xla_cpu_fast_math_honor_infs(true);
@@ -1121,6 +1122,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_cpu_enable_platform_dependent_math(),
       "Enable platform dependent math in the CPU compiler; this may "
       "produce faster code at the expense of consistent results across CPUs."));
+  flag_list->push_back(tsl::Flag(
+      "xla_cpu_experimental_enable_tiling_propagation",
+      bool_setter_for(
+          &DebugOptions::set_xla_cpu_experimental_enable_tiling_propagation),
+      debug_options->xla_cpu_experimental_enable_tiling_propagation(),
+      "If true, enable experimental tiling propagation for CPU."));
   flag_list->push_back(tsl::Flag(
       "xla_cpu_fast_math_honor_nans",
       bool_setter_for(&DebugOptions::set_xla_cpu_fast_math_honor_nans),
