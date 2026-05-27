@@ -1453,3 +1453,22 @@ cc_binary(
         "@tsl//tsl/platform:platform_port",
     ],
 )
+
+cc_binary(
+    name = "count_hlo_ops",
+    srcs = ["count_hlo_ops.cc"],
+    deps = [
+        ":hlo_module_loader",
+        "//xla:debug_options_flags",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/tsl/platform:status_macros",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@tsl//tsl/platform:platform_port",
+    ],
+)
