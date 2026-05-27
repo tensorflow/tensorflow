@@ -1032,10 +1032,10 @@ test:rbe_cross_compile_base --strategy=TestRunner=local --build_tests_only
 test:rbe_cross_compile_base --verbose_failures=true --local_test_jobs=HOST_CPUS --test_output=errors
 
 # Set the target CPU to Aarch64
+common:cross_compile_linux_arm64 --config=cross_compile_base
 common:cross_compile_linux_arm64 --platforms=//tensorflow/tools/toolchains/cross_compile/config:linux_aarch64
 common:cross_compile_linux_arm64 --cpu=aarch64
 common:cross_compile_linux_arm64 --define=linux_arm64_cross_compile=true
-common:cross_compile_linux_arm64 --extra_execution_platforms="@ml_build_config_platform//:platform"
 
 # RBE cross-compile configs for Linux Aarch64
 common:rbe_cross_compile_linux_arm64 --config=cross_compile_linux_arm64
