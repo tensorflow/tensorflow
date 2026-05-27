@@ -136,8 +136,8 @@ TEST_F(NativeEmitterBackendTest, GetDefaultConfig) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
                        backend_.GetDefaultConfig(*(fusion)));
   // Verify the returned config is a native emitter config.
-  NativeEmitterBackendConfig native_emitter_config;
-  ASSERT_TRUE(config->UnpackTo(&native_emitter_config));
+  ASSERT_TRUE(config->has_native_emitter());
+  NativeEmitterBackendConfig native_emitter_config = config->native_emitter();
 }
 
 TEST_F(NativeEmitterBackendTest, GetSupportedConfigs) {
@@ -150,8 +150,7 @@ TEST_F(NativeEmitterBackendTest, GetSupportedConfigs) {
   // There should only be a single config for the native emitter backend.
   ASSERT_EQ(configs.size(), 1);
   // Verify the returned config is a native emitter config.
-  NativeEmitterBackendConfig native_emitter_config;
-  ASSERT_TRUE(configs[0]->UnpackTo(&native_emitter_config));
+  ASSERT_TRUE(configs[0]->has_native_emitter());
 }
 
 TEST_F(NativeEmitterBackendTest, GetDefaultConfigForLoopFusion) {
@@ -164,11 +163,10 @@ TEST_F(NativeEmitterBackendTest, GetDefaultConfigForLoopFusion) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
                        backend_.GetDefaultConfig(*(fusion)));
   // Verify the returned config is a native emitter config.
-  NativeEmitterBackendConfig native_emitter_config;
-  ASSERT_TRUE(config->UnpackTo(&native_emitter_config));
+  ASSERT_TRUE(config->has_native_emitter());
   EXPECT_THAT(
-      native_emitter_config, EqualsProto(R"pb(type: NATIVE_EMITTER_TYPE_LOOP
-                                              unroll_factor: 1)pb"));
+      config->native_emitter(), EqualsProto(R"pb(type: NATIVE_EMITTER_TYPE_LOOP
+                                                 unroll_factor: 1)pb"));
 }
 
 TEST_F(NativeEmitterBackendTest, GetSupportedConfigsForLoopFusion) {
@@ -183,9 +181,9 @@ TEST_F(NativeEmitterBackendTest, GetSupportedConfigsForLoopFusion) {
   // Verify the returned configs.
   std::vector<NativeEmitterBackendConfig> native_configs;
   for (const auto& config : configs) {
-    NativeEmitterBackendConfig native_config;
-    ASSERT_TRUE(config->UnpackTo(&native_config));
-    native_configs.push_back(native_config);
+    ASSERT_TRUE(config->has_native_emitter());
+
+    native_configs.push_back(config->native_emitter());
   }
   EXPECT_THAT(
       native_configs,
@@ -215,7 +213,7 @@ TEST_F(NativeEmitterBackendTest, ApplyConfig) {
   // Call ApplyConfig on the fusion instruction.
   NativeEmitterBackendConfig native_emitter_config;
   BackendConfig config;
-  config.PackFrom(native_emitter_config);
+  *config.mutable_native_emitter() = native_emitter_config;
   ASSERT_THAT(backend_.ApplyConfig(*(fusion), config), absl_testing::IsOk());
   // Verify the fusion instruction is now a kInput fusion.
   ASSERT_EQ(fusion->fusion_kind(), HloInstruction::FusionKind::kInput);
@@ -232,7 +230,7 @@ TEST_F(NativeEmitterBackendTest, ApplyConfigFailsForUnsupportedConfig) {
   auto fusion = reduction_module->entry_computation()->root_instruction();
   BlockLevelFusionConfig block_level_fusion_config;
   BackendConfig config;
-  config.PackFrom(block_level_fusion_config);
+  *config.mutable_block_level() = block_level_fusion_config;
   ASSERT_THAT(backend_.ApplyConfig(*(fusion), config),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }

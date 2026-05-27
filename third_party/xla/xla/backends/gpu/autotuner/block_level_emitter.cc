@@ -51,22 +51,23 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-std::unique_ptr<BackendConfig> Pack(const BlockLevelFusionConfig& config) {
-  auto any = std::make_unique<BackendConfig>();
-  any->PackFrom(config);
-  return any;
+std::unique_ptr<BackendConfig> Pack(
+    const BlockLevelFusionConfig& block_level_config) {
+  auto config = std::make_unique<BackendConfig>();
+  *config->mutable_block_level() = block_level_config;
+  return config;
 }
 
 void ExtendConfigsWithTma(
     std::vector<std::unique_ptr<BackendConfig>>& configs) {
   int64_t original_size = configs.size();
   for (int64_t i = 0; i < original_size; ++i) {
-    BlockLevelFusionConfig original_config;
-    if (!configs[i]->UnpackTo(&original_config)) {
+    if (!configs[i]->has_block_level()) {
       // This should not happen based on how configs are created.
-      LOG(ERROR) << "Failed to unpack BlockLevelFusionConfig";
+      LOG(ERROR) << "Expected BlockLevelFusionConfig";
       continue;
     }
+    BlockLevelFusionConfig original_config = configs[i]->block_level();
     if (IsTmaRecommended(original_config)) {
       BlockLevelFusionConfig new_config = original_config;
       new_config.set_is_tma_allowed(true);
@@ -190,11 +191,10 @@ absl::Status BlockLevelEmitterBackend::ApplyConfig(
   //     └── FusionBackendConfig
   //         └── BlockLevelFusionConfig
   // Ensure the provided config is of type BlockLevelFusionConfig.
-  BlockLevelFusionConfig block_level_fusion_config;
-  if (!config.UnpackTo(&block_level_fusion_config)) {
-    return absl::InvalidArgumentError(
-        "Invalid backend config type for BlockLevelFusionConfig.");
+  if (!config.has_block_level()) {
+    return absl::InvalidArgumentError("Expected BlockLevelFusionConfig.");
   }
+  BlockLevelFusionConfig block_level_fusion_config = config.block_level();
   // Extract the current GPU backend config from the instruction.
   // This contains the nested FusionBackendConfig we want to modify.
   ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,

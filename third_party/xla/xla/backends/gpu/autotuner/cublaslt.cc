@@ -121,12 +121,11 @@ CublasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.reserve(num_algorithms);
   for (int i = 0; i < num_algorithms; ++i) {
-    CublasLtBackendConfig gemm_key;
-    gemm_key.set_algorithm(i);
-    gemm_key.set_autotune_workspace_size(workspace_size);
-    auto any = std::make_unique<google::protobuf::Any>();
-    any->PackFrom(gemm_key);
-    configs.push_back(std::move(any));
+    auto config = std::make_unique<BackendConfig>();
+    auto* gemm_key = config->mutable_gemm();
+    gemm_key->set_algorithm(i);
+    gemm_key->set_autotune_workspace_size(workspace_size);
+    configs.push_back(std::move(config));
   }
 
   return configs;
@@ -139,23 +138,22 @@ CublasLtBackend::GetDefaultConfig(const HloInstruction& instr) {
         "Not a CublasLt custom call instruction.");
   }
 
-  AutotuneResult::GemmKey gemm_key;
-  gemm_key.set_algorithm(0);
+  auto config = std::make_unique<BackendConfig>();
+  auto* gemm_key = config->mutable_gemm();
+  gemm_key->set_algorithm(0);
   // We don't know the workspace size in advance, so we pick a reasonably large
   // value that is likely to be sufficient.
-  gemm_key.set_autotune_workspace_size(4194304);  // 4MiB
-  auto any = std::make_unique<google::protobuf::Any>();
-  any->PackFrom(gemm_key);
-  return any;
+  gemm_key->set_autotune_workspace_size(4194304);  // 4MiB
+  return config;
 }
 
 absl::Status CublasLtBackend::ApplyConfig(HloInstruction& instr,
                                           const BackendConfig& config) {
-  CublasLtBackendConfig gemm_key;
-  if (!config.UnpackTo(&gemm_key)) {
+  if (!config.has_gemm()) {
     return absl::InvalidArgumentError(
-        "Failed to unpack CublasLtBackendConfig from Any.");
+        "Expected GemmKey config for CublasLtBackend.");
   }
+  const AutotuneResult::GemmKey& gemm_key = config.gemm();
   ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                    instr.backend_config<GpuBackendConfig>());
   GemmBackendConfig& backend_config = *gpu_config.mutable_gemm_backend_config();

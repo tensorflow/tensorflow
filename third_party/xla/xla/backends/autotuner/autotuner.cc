@@ -85,15 +85,6 @@ tsl::Fprint128 GetFingerprint(const HloInstruction* instr) {
   return tsl::Fingerprint128(instr->ToString(options));
 }
 
-// Returns ShortDebugString of contents of Any proto, without type URL.
-std::string UnpackedAnyShortDebugString(const google::protobuf::Any& any) {
-  std::string s = any.ShortDebugString();
-  // Any is serialized as "go/debugonly [type/url] {<serialized_proto>}".
-  std::string type_url = absl::StrCat(" [", any.type_url(), "] ");
-  absl::StrReplaceAll({{type_url, ""}}, &s);
-  return s;
-}
-
 // It is important to fingerprint the entire module not just the autotuning
 // candidates, to avoid collisions in the key-value store when several
 // distinct modules have the same fusions, and are compiled at different
@@ -557,8 +548,8 @@ std::optional<Autotuner::Config> Autotuner::LookUp(
       VLOG(1) << "Found cached config for HLO: " << instr->ToString();
       for (auto& codegen_backend : codegen_backends_) {
         if (codegen_backend->backend() == cached_config->codegen_backend) {
-          auto backend_config = std::make_unique<google::protobuf::Any>(
-              cached_config->backend_config);
+          auto backend_config =
+              std::make_unique<BackendConfig>(cached_config->backend_config);
           return Config{codegen_backend.get(), std::move(backend_config)};
         }
       }
@@ -936,9 +927,9 @@ std::string Autotuner::Failure::ToString() const {
 }
 
 std::string Autotuner::ConfigResult::ToString(bool verbose) const {
-  std::string config_str = absl::StrFormat(
-      "%s : %s", config.codegen_backend->name(),
-      verbose ? UnpackedAnyShortDebugString(*config.backend_config) : "");
+  std::string config_str =
+      absl::StrFormat("%s : %s", config.codegen_backend->name(),
+                      verbose ? config.backend_config->ShortDebugString() : "");
   if (failure.has_value()) {
     absl::StrAppend(&config_str, " ", failure->ToString());
   }
@@ -968,16 +959,15 @@ AutotuneResult::FailureResult Autotuner::Failure::ToProto() const {
 
 AutotuneResult Autotuner::ConfigResult::ToProto() const {
   AutotuneResult result;
-  if (config.backend_config->Is<AutotuneResult::GemmKey>()) {
-    config.backend_config->UnpackTo(result.mutable_gemm());
-  } else if (config.backend_config->Is<AutotuneResult::TritonGemmKey>()) {
-    config.backend_config->UnpackTo(result.mutable_triton());
-  } else if (config.backend_config
-                 ->Is<stream_executor::dnn::AlgorithmProto>()) {
-    config.backend_config->UnpackTo(result.mutable_algorithm());
+  if (config.backend_config->has_gemm()) {
+    *result.mutable_gemm() = config.backend_config->gemm();
+  } else if (config.backend_config->has_triton()) {
+    *result.mutable_triton() = config.backend_config->triton();
+  } else if (config.backend_config->has_algorithm()) {
+    *result.mutable_algorithm() = config.backend_config->algorithm();
   } else {
     result.mutable_other()->set_name(config.codegen_backend->name());
-    *result.mutable_other()->mutable_config() = *config.backend_config;
+    result.mutable_other()->mutable_config()->PackFrom(*config.backend_config);
   }
   if (failure.has_value()) {
     *result.mutable_failure() = failure->ToProto();
@@ -989,7 +979,7 @@ AutotuneResult Autotuner::ConfigResult::ToProto() const {
 
 std::string Autotuner::Config::ToString() const {
   return absl::StrFormat("%s : %s", codegen_backend->name(),
-                         UnpackedAnyShortDebugString(*backend_config));
+                         backend_config->ShortDebugString());
 }
 
 std::string AutotuneConfig::ToString() const {

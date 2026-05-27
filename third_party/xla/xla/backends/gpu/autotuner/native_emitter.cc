@@ -87,60 +87,60 @@ NativeEmitterBackend::GetSupportedConfigs(const HloInstruction& instr) {
     return configs;
   }
 
-  ASSIGN_OR_RETURN(std::unique_ptr<BackendConfig> default_config_any,
+  ASSIGN_OR_RETURN(std::unique_ptr<BackendConfig> default_config,
                    GetDefaultConfig(instr));
-  NativeEmitterBackendConfig default_config;
-  if (!default_config_any->UnpackTo(&default_config)) {
-    return absl::InternalError("Failed to unpack default config.");
+  if (!default_config->has_native_emitter()) {
+    return absl::InternalError("Expected NativeEmitterBackendConfig.");
   }
   // Tune unroll factor for loops.
   if (debug_options().xla_gpu_native_emitter_tune_unroll_factor_for_loops() &&
-      default_config.type() == NativeEmitterType::NATIVE_EMITTER_TYPE_LOOP) {
-    llvm::SmallSet<int64_t, 4> unroll_factors =
-        ComputeUnrollFactors(instr, default_config.unroll_factor(),
-                             target_config().device_description);
+      default_config->native_emitter().type() ==
+          NativeEmitterType::NATIVE_EMITTER_TYPE_LOOP) {
+    llvm::SmallSet<int64_t, 4> unroll_factors = ComputeUnrollFactors(
+        instr, default_config->native_emitter().unroll_factor(),
+        target_config().device_description);
     for (int64_t unroll_factor : unroll_factors) {
-      NativeEmitterBackendConfig config;
-      config.set_type(NativeEmitterType::NATIVE_EMITTER_TYPE_LOOP);
-      config.set_unroll_factor(unroll_factor);
-      auto any = std::make_unique<google::protobuf::Any>();
-      any->PackFrom(config);
-      configs.push_back(std::move(any));
+      auto config_ptr = std::make_unique<BackendConfig>();
+      NativeEmitterBackendConfig* config = config_ptr->mutable_native_emitter();
+      config->set_type(NativeEmitterType::NATIVE_EMITTER_TYPE_LOOP);
+      config->set_unroll_factor(unroll_factor);
+      configs.push_back(std::move(config_ptr));
     }
     return configs;
   }
-  configs.push_back(std::move(default_config_any));
+  configs.push_back(std::move(default_config));
   return configs;
 }
 
 absl::StatusOr<std::unique_ptr<BackendConfig>>
 NativeEmitterBackend::GetDefaultConfig(const HloInstruction& instr) {
-  NativeEmitterBackendConfig config;
-  if (IsSupported(instr)) {
-    if (debug_options().xla_gpu_native_emitter_tune_unroll_factor_for_loops()) {
-      se::DeviceDescription device_description =
-          target_config().device_description;
-      HloFusionAnalysis fusion_analysis =
-          HloFusionAnalysis::Create(instr, device_description);
-      if (fusion_analysis.emitter_fusion_kind() ==
-          HloFusionAnalysis::EmitterFusionKind::kLoop) {
-        config.set_type(NativeEmitterType::NATIVE_EMITTER_TYPE_LOOP);
-        config.set_unroll_factor(ComputeLoopFusionConfig(fusion_analysis));
-      }
+  auto config = std::make_unique<BackendConfig>();
+  NativeEmitterBackendConfig* native_emitter_config =
+      config->mutable_native_emitter();
+  if (IsSupported(instr) &&
+      debug_options().xla_gpu_native_emitter_tune_unroll_factor_for_loops()) {
+    se::DeviceDescription device_description =
+        target_config().device_description;
+    HloFusionAnalysis fusion_analysis =
+        HloFusionAnalysis::Create(instr, device_description);
+    if (fusion_analysis.emitter_fusion_kind() ==
+        HloFusionAnalysis::EmitterFusionKind::kLoop) {
+      native_emitter_config->set_type(
+          NativeEmitterType::NATIVE_EMITTER_TYPE_LOOP);
+      native_emitter_config->set_unroll_factor(
+          ComputeLoopFusionConfig(fusion_analysis));
     }
   }
-  auto any = std::make_unique<google::protobuf::Any>();
-  any->PackFrom(config);
-  return any;
+  return config;
 }
 
 absl::Status NativeEmitterBackend::ApplyConfig(HloInstruction& instr,
                                                const BackendConfig& config) {
-  NativeEmitterBackendConfig native_emitter_fusion_config;
-  if (!config.UnpackTo(&native_emitter_fusion_config)) {
-    return absl::InvalidArgumentError(
-        "Invalid backend config type for NativeEmitterBackendConfig.");
+  if (!config.has_native_emitter()) {
+    return absl::InvalidArgumentError("Expected NativeEmitterBackendConfig.");
   }
+  const NativeEmitterBackendConfig& native_emitter_fusion_config =
+      config.native_emitter();
   auto fusion_instr = Cast<HloFusionInstruction>(&instr);
   HloInstruction::FusionKind emitter_fusion_kind =
       native_emitter_fusion_config.type() ==

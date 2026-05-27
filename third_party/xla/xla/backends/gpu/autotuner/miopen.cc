@@ -250,11 +250,9 @@ bool MIOpenBackend::IsSupported(const HloInstruction& instr) {
 absl::StatusOr<std::unique_ptr<BackendConfig>> MIOpenBackend::GetDefaultConfig(
     const HloInstruction& instr) {
   if (IsSupported(instr)) {
-    MIOpenBackendConfig config;
-    config.set_algo_id(0);
-    auto any = std::make_unique<google::protobuf::Any>();
-    any->PackFrom(config);
-    return any;
+    auto config = std::make_unique<BackendConfig>();
+    config->mutable_algorithm()->set_algo_id(0);
+    return config;
   }
   return absl::InvalidArgumentError(
       "MIOpen backend doesn't support getting a default config for this "
@@ -335,11 +333,11 @@ GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.reserve(conv_runners.size());
   for (const auto& runner : conv_runners) {
-    auto any = std::make_unique<google::protobuf::Any>();
+    auto config = std::make_unique<BackendConfig>();
     auto desc = runner->ToAlgorithmDesc();
     CHECK_GT(desc->algo_id(), 0);
-    any->PackFrom(desc->ToProto());
-    configs.push_back(std::move(any));
+    *config->mutable_algorithm() = desc->ToProto();
+    configs.push_back(std::move(config));
   }
   return configs;
 }
@@ -375,11 +373,11 @@ GetFusedConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
     std::vector<std::unique_ptr<BackendConfig>> configs;
     configs.reserve(runners.size());
     for (const auto& runner : runners) {
-      auto any = std::make_unique<google::protobuf::Any>();
+      auto config = std::make_unique<BackendConfig>();
       auto desc = runner->ToAlgorithmDesc();
       CHECK_LT(desc->algo_id(), 0);
-      any->PackFrom(desc->ToProto());
-      configs.push_back(std::move(any));
+      *config->mutable_algorithm() = desc->ToProto();
+      configs.push_back(std::move(config));
     }
     return configs;
   }
@@ -435,11 +433,11 @@ MIOpenBackend::GetSupportedConfigs(const HloInstruction& instr) {
 
 absl::Status MIOpenBackend::ApplyConfig(HloInstruction& instr,
                                         const BackendConfig& config) {
-  MIOpenBackendConfig algorithm_config;
-  if (!config.UnpackTo(&algorithm_config)) {
+  if (!config.has_algorithm()) {
     return absl::InvalidArgumentError(
-        "Failed to unpack MIOpenBackendConfig from Any.");
+        "Expected AlgorithmProto config for MIOpenBackend.");
   }
+  MIOpenBackendConfig algorithm_config = config.algorithm();
   if (IsSupported(instr)) {
     if (IsCustomCallToDnnFusedConvolution(instr)) {
       return ApplyConfigToFusedMIOpenCustomCall(instr, algorithm_config);

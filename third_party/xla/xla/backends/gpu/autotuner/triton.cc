@@ -175,10 +175,10 @@ TritonBackend::GetSupportedConfigsForDot(const HloInstruction* instr) {
     }
   }
   configs.reserve(gemm_configs.size());
-  for (const auto& config : gemm_configs) {
-    auto any = std::make_unique<google::protobuf::Any>();
-    any->PackFrom(config.ToProto());
-    configs.push_back(std::move(any));
+  for (const auto& gemm_config : gemm_configs) {
+    auto config = std::make_unique<BackendConfig>();
+    *config->mutable_triton() = gemm_config.ToProto();
+    configs.push_back(std::move(config));
   }
   return configs;
 }
@@ -216,15 +216,15 @@ TritonBackend::GetSupportedConfigsForScaledDot(const HloInstruction* instr) {
           continue;
         }
 
-        auto any = std::make_unique<google::protobuf::Any>();
-        any->PackFrom(TritonGemmConfig(block_m, block_n,
-                                       /*block_k=*/block_k,
-                                       /*num_stages=*/1,
-                                       /*num_warps=*/4,
-                                       /*num_ctas=*/1,
-                                       /*is_tma_allowed=*/false)
-                          .ToProto());
-        configs.push_back(std::move(any));
+        auto config = std::make_unique<BackendConfig>();
+        *config->mutable_triton() = TritonGemmConfig(block_m, block_n,
+                                                     /*block_k=*/block_k,
+                                                     /*num_stages=*/1,
+                                                     /*num_warps=*/4,
+                                                     /*num_ctas=*/1,
+                                                     /*is_tma_allowed=*/false)
+                                        .ToProto();
+        configs.push_back(std::move(config));
       }
     }
   }
@@ -248,18 +248,18 @@ TritonBackend::GetOverriddenConfigs(const HloInstruction* instr) {
     }
     configs.reserve(gemm_configs.config_size());
     for (const auto& gemm_config : gemm_configs.config()) {
-      auto any = std::make_unique<google::protobuf::Any>();
-      any->PackFrom(gemm_config);
-      configs.push_back(std::move(any));
+      auto config = std::make_unique<BackendConfig>();
+      *config->mutable_triton() = gemm_config;
+      configs.push_back(std::move(config));
     }
   }
   if (!debug_options().xla_gpu_override_gemm_autotuner().empty()) {
     AutotuneResult::TritonGemmKey gemm_config;
     CHECK(tsl::protobuf::TextFormat::ParseFromString(
         debug_options().xla_gpu_override_gemm_autotuner(), &gemm_config));
-    auto any = std::make_unique<google::protobuf::Any>();
-    any->PackFrom(gemm_config);
-    configs.push_back(std::move(any));
+    auto config = std::make_unique<BackendConfig>();
+    *config->mutable_triton() = gemm_config;
+    configs.push_back(std::move(config));
   }
   return configs;
 }
@@ -282,11 +282,11 @@ absl::Status TritonBackend::ApplyConfig(HloInstruction& instr,
     return absl::InvalidArgumentError(
         "TritonBackend does not support this instruction.");
   }
-  AutotuneResult::TritonGemmKey triton_config_proto;
-  if (!config.UnpackTo(&triton_config_proto)) {
+  if (!config.has_triton()) {
     return absl::InvalidArgumentError(
-        "Failed to unpack TritonBackendConfig from Any.");
+        "Expected TritonGemmKey config for TritonBackend.");
   }
+  const AutotuneResult::TritonGemmKey& triton_config_proto = config.triton();
 
   ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                    instr.backend_config<GpuBackendConfig>());

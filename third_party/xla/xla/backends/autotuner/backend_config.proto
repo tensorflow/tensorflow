@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package xla.autotuner;
+
+import "xla/autotuning.proto";
+import "xla/service/gpu/backend_configs.proto";
+import "xla/tsl/protobuf/dnn.proto";
+import "xla/service/cpu/backend_config.proto";
+
+option java_outer_classname = "BackendConfigProto";
+option java_multiple_files = true;
+
+message BackendConfig {
+  oneof config {
+    xla.AutotuneResult.GemmKey gemm = 1;
+    xla.AutotuneResult.TritonGemmKey triton = 2;
+    xla.gpu.BlockLevelFusionConfig block_level = 3;
+    stream_executor.dnn.AlgorithmProto algorithm = 4;
+    xla.cpu.LlvmKernelOptions llvm_kernel = 5;
+    xla.gpu.NativeEmitterBackendConfig native_emitter = 6;
+  }
+}

@@ -425,8 +425,7 @@ TEST_F(CublasFissionBackendTest, CublasFallbackForTf32Tf32F32X3Algorithm) {
 
   auto hasCublasConfig = [&](const auto& configs) {
     for (const auto& config : configs) {
-      AutotuneResult::GemmKey gemm_key;
-      if (config->UnpackTo(&gemm_key)) {
+      if (config->has_gemm()) {
         return true;
       }
     }
@@ -473,8 +472,7 @@ TEST_F(CublasFissionBackendTest, CublasFallbackForBf16Bf16F32Algorithm) {
 
   auto hasCublasConfig = [&](const auto& configs) {
     for (const auto& config : configs) {
-      AutotuneResult::GemmKey gemm_key;
-      if (config->UnpackTo(&gemm_key)) {
+      if (config->has_gemm()) {
         return true;
       }
     }

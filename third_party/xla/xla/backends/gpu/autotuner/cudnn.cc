@@ -251,11 +251,9 @@ GetCudnnFusionConfigs(const HloInstruction& instr,
   VLOG(2) << "Found " << plan_count << " plans for cudnn fusion.";
   configs.reserve(plan_count);
   for (int plan_id = 0; plan_id < plan_count; ++plan_id) {
-    CudnnBackendConfig config;
-    config.set_algo_id(plan_id);
-    auto any = std::make_unique<google::protobuf::Any>();
-    any->PackFrom(config);
-    configs.push_back(std::move(any));
+    auto config = std::make_unique<BackendConfig>();
+    config->mutable_algorithm()->set_algo_id(plan_id);
+    configs.push_back(std::move(config));
   }
   return configs;
 }
@@ -302,9 +300,9 @@ GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.reserve(algorithm_configs.size());
   for (const auto& algorithm_config : algorithm_configs) {
-    auto any = std::make_unique<google::protobuf::Any>();
-    any->PackFrom(algorithm_config);
-    configs.push_back(std::move(any));
+    auto config = std::make_unique<BackendConfig>();
+    *config->mutable_algorithm() = algorithm_config;
+    configs.push_back(std::move(config));
   }
   return configs;
 }
@@ -354,11 +352,9 @@ absl::StatusOr<std::unique_ptr<BackendConfig>> CudnnBackend::GetDefaultConfig(
   if (IsCustomCallToDnnConvolution(instr)) {
     // If the instruction is a custom call to a DnnConvolution, we can return
     // the default config.
-    CudnnBackendConfig config;
-    config.set_algo_id(-1);
-    auto any = std::make_unique<google::protobuf::Any>();
-    any->PackFrom(config);
-    return any;
+    auto config = std::make_unique<BackendConfig>();
+    config->mutable_algorithm()->set_algo_id(-1);
+    return config;
   }
 
   if (stream_executor() != nullptr && instr.opcode() == HloOpcode::kFusion &&
@@ -393,11 +389,11 @@ CudnnBackend::GetSupportedConfigs(const HloInstruction& instr) {
 
 absl::Status CudnnBackend::ApplyConfig(HloInstruction& instr,
                                        const BackendConfig& config) {
-  CudnnBackendConfig algorithm_config;
-  if (!config.UnpackTo(&algorithm_config)) {
+  if (!config.has_algorithm()) {
     return absl::InvalidArgumentError(
-        "Failed to unpack CudnnBackendConfig from Any.");
+        "Expected AlgorithmProto config for CudnnBackend.");
   }
+  const CudnnBackendConfig& algorithm_config = config.algorithm();
   if (instr.opcode() == HloOpcode::kFusion) {
     return ApplyConfigToCudnnFusion(instr, algorithm_config);
   }

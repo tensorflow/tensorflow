@@ -245,12 +245,11 @@ HipblasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
     std::vector<std::unique_ptr<BackendConfig>> configs;
     configs.reserve(num_algorithms);
     for (int i = 0; i < num_algorithms; ++i) {
-      HipblasLtBackendConfig gemm_key;
-      gemm_key.set_algorithm(i);
-      gemm_key.set_autotune_workspace_size(workspace_size);
-      auto any = std::make_unique<google::protobuf::Any>();
-      any->PackFrom(gemm_key);
-      configs.push_back(std::move(any));
+      auto config = std::make_unique<BackendConfig>();
+      auto* gemm_key = config->mutable_gemm();
+      gemm_key->set_algorithm(i);
+      gemm_key->set_autotune_workspace_size(workspace_size);
+      configs.push_back(std::move(config));
     }
     return configs;
   } else if (IsScaledDotFusion(instr)) {
@@ -303,12 +302,11 @@ HipblasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
     std::vector<std::unique_ptr<BackendConfig>> configs;
     configs.reserve(algorithms.size());
     for (int64_t i = 0; i < static_cast<int64_t>(algorithms.size()); ++i) {
-      HipblasLtBackendConfig gemm_key;
-      gemm_key.set_algorithm(i);
-      gemm_key.set_autotune_workspace_size(workspace_size);
-      auto any = std::make_unique<google::protobuf::Any>();
-      any->PackFrom(gemm_key);
-      configs.push_back(std::move(any));
+      auto config = std::make_unique<BackendConfig>();
+      auto* gemm_key = config->mutable_gemm();
+      gemm_key->set_algorithm(i);
+      gemm_key->set_autotune_workspace_size(workspace_size);
+      configs.push_back(std::move(config));
     }
     return configs;
   } else if (IsCublasLtGroupedMatmul(instr)) {
@@ -350,12 +348,11 @@ HipblasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
     std::vector<std::unique_ptr<BackendConfig>> configs;
     configs.reserve(num_algorithms);
     for (int i = 0; i < num_algorithms; ++i) {
-      HipblasLtBackendConfig gemm_key;
-      gemm_key.set_algorithm(i);
-      gemm_key.set_autotune_workspace_size(workspace_size);
-      auto any = std::make_unique<google::protobuf::Any>();
-      any->PackFrom(gemm_key);
-      configs.push_back(std::move(any));
+      auto config = std::make_unique<BackendConfig>();
+      auto* gemm_key = config->mutable_gemm();
+      gemm_key->set_algorithm(i);
+      gemm_key->set_autotune_workspace_size(workspace_size);
+      configs.push_back(std::move(config));
     }
 
     return configs;
@@ -370,20 +367,18 @@ HipblasLtBackend::GetDefaultConfig(const HloInstruction& instr) {
     return absl::InvalidArgumentError("Not a supported HipblasLt instruction.");
   }
 
-  AutotuneResult::GemmKey gemm_key;
-  gemm_key.set_algorithm(0);
-  auto any = std::make_unique<google::protobuf::Any>();
-  any->PackFrom(gemm_key);
-  return any;
+  auto config = std::make_unique<BackendConfig>();
+  config->mutable_gemm()->set_algorithm(0);
+  return config;
 }
 
 absl::Status HipblasLtBackend::ApplyConfig(HloInstruction& instr,
                                            const BackendConfig& config) {
-  HipblasLtBackendConfig gemm_key;
-  if (!config.UnpackTo(&gemm_key)) {
+  if (!config.has_gemm()) {
     return absl::InvalidArgumentError(
-        "Failed to unpack HipblasLtBackendConfig from Any.");
+        "Expected GemmKey config for HipblasLtBackend.");
   }
+  const AutotuneResult::GemmKey& gemm_key = config.gemm();
 
   if (IsCublasLtMatmul(instr) || IsCublasLtMatmulF8(instr)) {
     ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,

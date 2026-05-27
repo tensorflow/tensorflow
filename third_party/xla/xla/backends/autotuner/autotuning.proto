@@ -2,9 +2,9 @@ syntax = "proto3";
 
 package xla.autotuner;
 
-import "google/protobuf/any.proto";
 import "google/protobuf/duration.proto";
 import "xla/backends/autotuner/backends.proto";
+import "xla/backends/autotuner/backend_config.proto";
 
 option java_outer_classname = "Tuning";
 option java_multiple_files = true;
@@ -24,7 +24,7 @@ message Failure {
 
 message Config {
   Backend backend = 1;
-  google.protobuf.Any backend_config = 2;
+  BackendConfig backend_config = 2;
 }
 
 message ConfigProfile {

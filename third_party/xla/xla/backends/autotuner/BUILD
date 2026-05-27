@@ -19,13 +19,13 @@ cc_library(
     name = "codegen_backend",
     hdrs = ["codegen_backend.h"],
     deps = [
+        ":backend_config_proto_cc",
         ":backends_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:executable",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_protobuf//:any_cc_proto",
     ],
 )
 
@@ -108,6 +108,8 @@ xla_cc_test(
         "//xla/tsl/testing:temporary_directory",
         "//xla/tsl/util/proto:parse_text_proto",
         "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
@@ -140,6 +142,7 @@ cc_library(
     name = "autotuner_cache_interface",
     hdrs = ["autotuner_cache_interface.h"],
     deps = [
+        ":backend_config_proto_cc",
         ":backends_proto_cc",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/status",
@@ -155,11 +158,22 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "backend_config_proto",
+    srcs = ["backend_config.proto"],
+    deps = [
+        "//xla:autotuning_proto",
+        "//xla/service/cpu:backend_config_proto",
+        "//xla/service/gpu:backend_configs",
+        "//xla/tsl/protobuf:dnn_proto",
+    ],
+)
+
+tf_proto_library(
     name = "autotuning_proto",
     srcs = ["autotuning.proto"],
     deps = [
+        ":backend_config_proto",
         ":backends_proto",
-        "@com_google_protobuf//:any_proto",
         "@com_google_protobuf//:duration_proto",
     ],
 )
