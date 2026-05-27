@@ -615,6 +615,11 @@ class HloSharding {
   // REQUIRES: !IsReplicated() && !IsTuple()
   const TileAssignment& tile_assignment() const {
     CHECK(!IsTuple());
+    CHECK(!UseNamedShardingLeaf())
+        << "TileAssignment is an internal concept of HloShardingV1/V2, should "
+           "not be called for HloShardingV3. Please contact OpenXLA/Shardy "
+           "team if you encounter this error.";
+
     return tile_assignment_;
   }
 
@@ -711,7 +716,8 @@ class HloSharding {
   int64_t SubgroupReplicationDim() const {
     CHECK(!UseNamedShardingLeaf())
         << "SubgroupReplicationDim should not be called for HloShardingV3 as "
-           "all relevant use cases are handled separately.";
+           "all relevant use cases are handled separately. Please contact "
+           "OpenXLA/Shardy team if you encounter this error.";
     auto it = absl::c_find(subgroup_types_, OpSharding::REPLICATED);
     if (it != subgroup_types_.end()) {
       return (it - subgroup_types_.begin()) + TiledDataRank();
@@ -726,7 +732,8 @@ class HloSharding {
   int64_t SubgroupManualDim() const {
     CHECK(!UseNamedShardingLeaf())
         << "SubgroupManualDim should not be called for HloShardingV3 as all "
-           "relevant use cases are handled separately.";
+           "relevant use cases are handled separately. Please contact "
+           "OpenXLA/Shardy team if you encounter this error.";
     auto it = absl::c_find(subgroup_types_, OpSharding::MANUAL);
     if (it != subgroup_types_.end()) {
       return (it - subgroup_types_.begin()) + TiledDataRank();
@@ -738,7 +745,8 @@ class HloSharding {
   int64_t SubgroupUnreducedDim() const {
     CHECK(!UseNamedShardingLeaf())
         << "SubgroupUnreducedDim should not be called for HloShardingV3 as all "
-           "relevant use cases are handled separately.";
+           "relevant use cases are handled separately. Please contact "
+           "OpenXLA/Shardy team if you encounter this error.";
     auto it = absl::c_find(subgroup_types_, OpSharding::UNREDUCED);
     if (it != subgroup_types_.end()) {
       return (it - subgroup_types_.begin()) + TiledDataRank();
