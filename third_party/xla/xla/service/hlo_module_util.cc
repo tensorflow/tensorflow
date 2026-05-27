@@ -256,7 +256,7 @@ absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
     config->set_use_shardy_partitioner(
         execution_options->use_shardy_partitioner());
     // LINT.ThenChange(
-    //   //xla/service/hlo_runner_pjrt.cc
+    //   //xla/service/hlo_runner.cc
     // )
   } else {
     config->set_replica_count(default_num_replicas);

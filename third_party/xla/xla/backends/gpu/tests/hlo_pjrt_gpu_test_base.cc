@@ -89,7 +89,7 @@ HloPjRtGpuTestBase::HloPjRtGpuTestBase(
     DeviceShapeRepresentationFn device_shape_representation_fn,
     DeviceShapeSizeFn device_shape_size_fn, GpuTargetConfig gpu_target_config,
     std::unique_ptr<PjRtClient> client, HloPjRtTestBaseOptions options)
-    : HloRunnerAgnosticTestBase(MakeHloRunnerPjRtAotAware(std::move(client)),
+    : HloRunnerAgnosticTestBase(MakeAotAwareHloRunner(std::move(client)),
                                 std::move(device_shape_representation_fn),
                                 std::move(device_shape_size_fn),
                                 BuildOptions(std::move(options))),

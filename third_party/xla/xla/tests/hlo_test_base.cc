@@ -65,7 +65,7 @@ HloTestBase::HloTestBase(
     DeviceShapeRepresentationFn device_shape_representation_fn,
     DeviceShapeSizeFn device_shape_size_fn, std::unique_ptr<PjRtClient> client,
     HloTestBaseOptions options)
-    : HloRunnerAgnosticTestBase(MakeHloRunnerPjRtAotAware(std::move(client)),
+    : HloRunnerAgnosticTestBase(MakeAotAwareHloRunner(std::move(client)),
                                 std::move(device_shape_representation_fn),
                                 std::move(device_shape_size_fn),
                                 BuildOptions(std::move(options))) {}

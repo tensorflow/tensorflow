@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/hlo_runner_pjrt.h"
+#include "xla/service/hlo_runner.h"
 
 #include <cstdint>
 #include <functional>
@@ -165,12 +165,11 @@ class ArtifactDirTest : public ::testing::Test {
       tsl::io::JoinPath(testing::TempDir(), "artifact_dir");
 };
 
-using CompilePhaseHloRunnerPjRtTest = ArtifactDirTest;
+using CompilePhaseHloRunnerTest = ArtifactDirTest;
 
 // Tests that a call to CreateExecutable places the file in the right location.
-TEST_F(CompilePhaseHloRunnerPjRtTest, CreateExecutablePlacesFileCorrectly) {
-  CompilePhaseHloRunnerPjRt runner(std::make_unique<FakeClient>(),
-                                   artifact_dir_);
+TEST_F(CompilePhaseHloRunnerTest, CreateExecutablePlacesFileCorrectly) {
+  CompilePhaseHloRunner runner(std::make_unique<FakeClient>(), artifact_dir_);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m, CreateFakeModule());
   TF_ASSERT_OK(
       runner.CreateExecutable(std::move(m), /*run_hlo_passes=*/false).status());
@@ -183,10 +182,9 @@ TEST_F(CompilePhaseHloRunnerPjRtTest, CreateExecutablePlacesFileCorrectly) {
 
 // Tests that a CreateExecutable call with different run_hlo_passes value places
 // the file in a different location.
-TEST_F(CompilePhaseHloRunnerPjRtTest,
+TEST_F(CompilePhaseHloRunnerTest,
        CreateExecutablePlacesFilesCorrectlyWithDifferentRunHloPasses) {
-  CompilePhaseHloRunnerPjRt runner(std::make_unique<FakeClient>(),
-                                   artifact_dir_);
+  CompilePhaseHloRunner runner(std::make_unique<FakeClient>(), artifact_dir_);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m, CreateFakeModule());
   TF_ASSERT_OK(runner.CreateExecutable(std::move(m), /*run_hlo_passes=*/true));
 
@@ -198,10 +196,9 @@ TEST_F(CompilePhaseHloRunnerPjRtTest,
 
 // Tests that a CreateExecutable call with a different compilation
 // environment places the file in a different location.
-TEST_F(CompilePhaseHloRunnerPjRtTest,
+TEST_F(CompilePhaseHloRunnerTest,
        CreateExecutablePlacesFilesCorrectlyWithCompilationEnvironment) {
-  CompilePhaseHloRunnerPjRt runner(std::make_unique<FakeClient>(),
-                                   artifact_dir_);
+  CompilePhaseHloRunner runner(std::make_unique<FakeClient>(), artifact_dir_);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m, CreateFakeModule());
   m->comp_envs().RegisterProcessNewEnvFn(
       test::TestCompilationEnvironment1::GetDescriptor(),
@@ -225,10 +222,9 @@ TEST_F(CompilePhaseHloRunnerPjRtTest,
 
 // Tests that a CreateExecutable call with a different device assignment
 // places the file in a different location.
-TEST_F(CompilePhaseHloRunnerPjRtTest,
+TEST_F(CompilePhaseHloRunnerTest,
        CreateExecutablePlacesFilesCorrectlyWithDeviceAssignment) {
-  CompilePhaseHloRunnerPjRt runner(std::make_unique<FakeClient>(),
-                                   artifact_dir_);
+  CompilePhaseHloRunner runner(std::make_unique<FakeClient>(), artifact_dir_);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m1, CreateFakeModule());
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m2, CreateFakeModule());
 
@@ -250,16 +246,16 @@ TEST_F(CompilePhaseHloRunnerPjRtTest,
   EXPECT_EQ(children.size(), 2);
 }
 
-using ExecutePhaseHloRunnerPjRtTest = ArtifactDirTest;
+using ExecutePhaseHloRunnerTest = ArtifactDirTest;
 
 // Tests that a call to CreateExecutable reads the file from the correct path
 // and deserializes the right contents.
-TEST_F(ExecutePhaseHloRunnerPjRtTest, CreateExecutableReadsFileCorrectly) {
-  TF_ASSERT_OK(CompilePhaseHloRunnerPjRt::WriteCompressedExecutable(
+TEST_F(ExecutePhaseHloRunnerTest, CreateExecutableReadsFileCorrectly) {
+  TF_ASSERT_OK(CompilePhaseHloRunner::WriteCompressedExecutable(
       tsl::io::JoinPath(artifact_dir_, kModuleSerializedName), "hello world"));
   absl::Notification notification;
   std::optional<std::string> serialized_representation_read = std::nullopt;
-  ExecutePhaseHloRunnerPjRt runner(
+  ExecutePhaseHloRunner runner(
       std::make_unique<FakeClient>(
           [&notification,
            &serialized_representation_read](absl::string_view serialized) {
@@ -277,12 +273,11 @@ TEST_F(ExecutePhaseHloRunnerPjRtTest, CreateExecutableReadsFileCorrectly) {
   ASSERT_EQ(*serialized_representation_read, "hello world");
 }
 
-TEST_F(ExecutePhaseHloRunnerPjRtTest,
+TEST_F(ExecutePhaseHloRunnerTest,
        CreateExecutableFailsOnDuplicateLoadIfFeatureEnabled) {
-  TF_ASSERT_OK(CompilePhaseHloRunnerPjRt::WriteCompressedExecutable(
+  TF_ASSERT_OK(CompilePhaseHloRunner::WriteCompressedExecutable(
       tsl::io::JoinPath(artifact_dir_, kModuleSerializedName), "hello world"));
-  ExecutePhaseHloRunnerPjRt runner(std::make_unique<FakeClient>(),
-                                   artifact_dir_);
+  ExecutePhaseHloRunner runner(std::make_unique<FakeClient>(), artifact_dir_);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m, CreateFakeModule());
   TF_ASSERT_OK(runner.CreateExecutable(m->Clone(""), /*run_hlo_passes=*/false));
   EXPECT_THAT(
@@ -290,17 +285,17 @@ TEST_F(ExecutePhaseHloRunnerPjRtTest,
       StatusIs(
           absl::StatusCode::kInvalidArgument,
           StartsWith(
-              "ExecutePhaseHloRunnerPjRt::CreateExecutable called with a "
+              "ExecutePhaseHloRunner::CreateExecutable called with a "
               "module that loads an executable that was previously loaded.")));
 }
 
-TEST_F(ExecutePhaseHloRunnerPjRtTest,
+TEST_F(ExecutePhaseHloRunnerTest,
        CreateExecutableSucceedsOnDuplicateLoadIfFeatureDisabled) {
-  TF_ASSERT_OK(CompilePhaseHloRunnerPjRt::WriteCompressedExecutable(
+  TF_ASSERT_OK(CompilePhaseHloRunner::WriteCompressedExecutable(
       tsl::io::JoinPath(artifact_dir_, kModuleSerializedName), "hello world"));
-  ExecutePhaseHloRunnerPjRt runner(
-      std::make_unique<FakeClient>(), artifact_dir_,
-      /*compile_if_not_found=*/false, /*fail_duplicate_loads=*/false);
+  ExecutePhaseHloRunner runner(std::make_unique<FakeClient>(), artifact_dir_,
+                               /*compile_if_not_found=*/false,
+                               /*fail_duplicate_loads=*/false);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m, CreateFakeModule());
   TF_ASSERT_OK(runner.CreateExecutable(m->Clone(""), /*run_hlo_passes=*/false));
   TF_EXPECT_OK(runner.CreateExecutable(std::move(m), /*run_hlo_passes=*/false));

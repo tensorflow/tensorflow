@@ -3468,6 +3468,7 @@ cc_library(
         "//xla/hlo/evaluator:hlo_evaluator_interface",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/interpreter:interpreter_client",
+        "//xla/service:hlo_runner",
         "//xla/service:hlo_runner_pjrt",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/functional:any_invocable",

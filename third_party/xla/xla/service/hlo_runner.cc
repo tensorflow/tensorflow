@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/hlo_runner_pjrt.h"
+#include "xla/service/hlo_runner.h"
 
 #include <array>
 #include <climits>
@@ -66,9 +66,7 @@ limitations under the License.
 #include "xla/tsl/lib/io/zlib_inputstream.h"
 #include "xla/tsl/lib/io/zlib_outputbuffer.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "tsl/platform/fingerprint.h"
@@ -153,7 +151,7 @@ ExecuteOptions UpdateOrCreateDefaultExecuteOptions(
     std::optional<ExecuteOptions> in_options = std::nullopt) {
   // If a setting is not specified in execute_options, try to get it from the
   // ReplicatedExecuteOptions. If that is not specified, fall back to a
-  // HloRunnerPjRt-specific default value (or leave the setting untouched).
+  // HloRunner-specific default value (or leave the setting untouched).
 
   ExecuteOptions out_options;
   if (!in_options.has_value()) {
@@ -219,19 +217,18 @@ absl::StatusOr<PjRtMemorySpace* absl_nonnull> GetMemorySpaceFromLayout(
   return memory_space;
 }
 
-class HloRunnerPjRtExecutable : public OpaqueExecutable {
+class HloRunnerExecutable : public OpaqueExecutable {
  public:
   // Construct an internal executable with a PjRt executable that requires
   // loading prior to execution.
-  HloRunnerPjRtExecutable(const HloRunnerPjRt* absl_nonnull creator,
-                          std::unique_ptr<PjRtExecutable> executable)
+  HloRunnerExecutable(const HloRunner* absl_nonnull creator,
+                      std::unique_ptr<PjRtExecutable> executable)
       : OpaqueExecutable(creator), executable_(std::move(executable)) {}
   // Construct an internal executable with a pre-loaded PjRt executable. This
   // only exists to support PjRt clients that do not implement Compile() and
   // DeserializeExecutable() functionality.
-  HloRunnerPjRtExecutable(
-      const HloRunnerPjRt* absl_nonnull creator,
-      std::unique_ptr<PjRtLoadedExecutable> loaded_executable)
+  HloRunnerExecutable(const HloRunner* absl_nonnull creator,
+                      std::unique_ptr<PjRtLoadedExecutable> loaded_executable)
       : OpaqueExecutable(creator),
         loaded_executable_(std::move(loaded_executable)) {}
 
@@ -250,17 +247,14 @@ class HloRunnerPjRtExecutable : public OpaqueExecutable {
     return loaded_executable_.get();
   }
 
-  static absl::StatusOr<HloRunnerPjRtExecutable*> TryUnwrap(
-      const HloRunnerPjRt& runner,
-      OpaqueExecutable* absl_nonnull const wrapped) {
-    return OpaqueExecutable::TryUnwrap<HloRunnerPjRtExecutable>(runner,
-                                                                wrapped);
+  static absl::StatusOr<HloRunnerExecutable*> TryUnwrap(
+      const HloRunner& runner, OpaqueExecutable* absl_nonnull const wrapped) {
+    return OpaqueExecutable::TryUnwrap<HloRunnerExecutable>(runner, wrapped);
   }
-  static absl::StatusOr<const HloRunnerPjRtExecutable*> TryUnwrap(
-      const HloRunnerPjRt& runner,
+  static absl::StatusOr<const HloRunnerExecutable*> TryUnwrap(
+      const HloRunner& runner,
       const OpaqueExecutable* absl_nonnull const wrapped) {
-    return OpaqueExecutable::TryUnwrap<HloRunnerPjRtExecutable>(runner,
-                                                                wrapped);
+    return OpaqueExecutable::TryUnwrap<HloRunnerExecutable>(runner, wrapped);
   }
 
  private:
@@ -277,7 +271,7 @@ class HloRunnerPjRtExecutable : public OpaqueExecutable {
 // and returned instead. If that does not exist either, the default device
 // assignment is computed and returned.
 absl::StatusOr<DeviceAssignment> GetBestDeviceAssignment(
-    HloRunnerPjRtExecutable* const executable, PjRtClient& client) {
+    HloRunnerExecutable* const executable, PjRtClient& client) {
   ASSIGN_OR_RETURN(CompileOptions compile_options,
                    executable->executable()->GetCompileOptions());
   if (compile_options.executable_build_options.has_device_assignment()) {
@@ -293,10 +287,10 @@ absl::StatusOr<DeviceAssignment> GetBestDeviceAssignment(
 
 }  // namespace
 
-HloRunnerPjRt::HloRunnerPjRt(std::unique_ptr<PjRtClient> pjrt_client)
+HloRunner::HloRunner(std::unique_ptr<PjRtClient> pjrt_client)
     : pjrt_client_(std::move(pjrt_client)) {}
 
-absl::StatusOr<CompileOptions> HloRunnerPjRt::GenerateDefaultCompileOptions(
+absl::StatusOr<CompileOptions> HloRunner::GenerateDefaultCompileOptions(
     HloModule* module, bool run_hlo_passes) {
   ASSIGN_OR_RETURN(
       const DeviceAssignment device_assignment,
@@ -379,7 +373,7 @@ absl::StatusOr<CompileOptions> HloRunnerPjRt::GenerateDefaultCompileOptions(
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-HloRunnerPjRt::TransferLiteralsToDefaultDevice(
+HloRunner::TransferLiteralsToDefaultDevice(
     const absl::Span<const ShapeLayout> layouts,
     const absl::Span<const Literal* const> literals) {
   // Note: This function is used for single (default) device execution.
@@ -394,7 +388,7 @@ HloRunnerPjRt::TransferLiteralsToDefaultDevice(
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-HloRunnerPjRt::TransferLiteralsToDefaultDevice(
+HloRunner::TransferLiteralsToDefaultDevice(
     absl::Span<const Literal* const> literals) {
   std::vector<ShapeLayout> layouts;
   layouts.reserve(literals.size());
@@ -404,7 +398,7 @@ HloRunnerPjRt::TransferLiteralsToDefaultDevice(
   return TransferLiteralsToDefaultDevice(layouts, literals);
 }
 
-absl::StatusOr<Literal> HloRunnerPjRt::TransferLiteralsFromDevice(
+absl::StatusOr<Literal> HloRunner::TransferLiteralsFromDevice(
     absl::Span<const std::unique_ptr<PjRtBuffer>> output_buffers,
     const bool untuple_result) {
   if (!untuple_result) {
@@ -433,7 +427,7 @@ absl::StatusOr<Literal> HloRunnerPjRt::TransferLiteralsFromDevice(
   return Literal::MoveIntoTuple(absl::MakeSpan(result_leaves));
 }
 
-absl::StatusOr<Literal> HloRunnerPjRt::Execute(
+absl::StatusOr<Literal> HloRunner::Execute(
     std::unique_ptr<HloModule> module,
     absl::Span<const Literal* const> arguments, bool run_hlo_passes) {
   ASSIGN_OR_RETURN(const std::unique_ptr<OpaqueExecutable> executable,
@@ -442,12 +436,12 @@ absl::StatusOr<Literal> HloRunnerPjRt::Execute(
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-HloRunnerPjRt::ExecuteWithDeviceBuffers(
+HloRunner::ExecuteWithDeviceBuffers(
     OpaqueExecutable* executable,
     const std::vector<std::unique_ptr<PjRtBuffer>>& arguments,
     const ExecuteOptions* execute_options) {
-  ASSIGN_OR_RETURN(HloRunnerPjRtExecutable* const wrapped_executable,
-                   HloRunnerPjRtExecutable::TryUnwrap(*this, executable));
+  ASSIGN_OR_RETURN(HloRunnerExecutable* const wrapped_executable,
+                   HloRunnerExecutable::TryUnwrap(*this, executable));
 
   HloRunnerInterface::ReplicatedExecuteOptions replicated_execute_options;
   ExecuteOptions new_execute_options = UpdateOrCreateDefaultExecuteOptions(
@@ -474,11 +468,11 @@ HloRunnerPjRt::ExecuteWithDeviceBuffers(
 }
 
 absl::StatusOr<std::vector<absl::StatusOr<Literal>>>
-HloRunnerPjRt::ExecuteWithExecutable(OpaqueExecutable* executable,
-                                     absl::Span<const Literal* const> arguments,
-                                     int64_t num_repeats) {
-  ASSIGN_OR_RETURN(HloRunnerPjRtExecutable* const wrapped_executable,
-                   HloRunnerPjRtExecutable::TryUnwrap(*this, executable));
+HloRunner::ExecuteWithExecutable(OpaqueExecutable* executable,
+                                 absl::Span<const Literal* const> arguments,
+                                 int64_t num_repeats) {
+  ASSIGN_OR_RETURN(HloRunnerExecutable* const wrapped_executable,
+                   HloRunnerExecutable::TryUnwrap(*this, executable));
 
   ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
                    wrapped_executable->executable()->GetHloModules());
@@ -510,9 +504,8 @@ HloRunnerPjRt::ExecuteWithExecutable(OpaqueExecutable* executable,
   return results;
 }
 
-absl::StatusOr<std::unique_ptr<OpaqueExecutable>>
-HloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
-                                bool run_hlo_passes) {
+absl::StatusOr<std::unique_ptr<OpaqueExecutable>> HloRunner::CreateExecutable(
+    std::unique_ptr<HloModule> module, bool run_hlo_passes) {
   ASSIGN_OR_RETURN(CompileOptions compile_options,
                    GenerateDefaultCompileOptions(module.get(), run_hlo_passes));
   XlaComputation computation(module->ToProto());
@@ -522,8 +515,8 @@ HloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> pjrt_executable =
       pjrt_client_->Compile(computation, compile_options);
   if (pjrt_executable.ok()) {
-    return std::make_unique<HloRunnerPjRtExecutable>(
-        this, *std::move(pjrt_executable));
+    return std::make_unique<HloRunnerExecutable>(this,
+                                                 *std::move(pjrt_executable));
   }
   if (!absl::IsUnimplemented(pjrt_executable.status())) {
     return pjrt_executable.status();
@@ -533,12 +526,12 @@ HloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
   ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtLoadedExecutable> pjrt_loaded_executable,
       pjrt_client_->CompileAndLoad(computation, std::move(compile_options)));
-  return std::make_unique<HloRunnerPjRtExecutable>(
+  return std::make_unique<HloRunnerExecutable>(
       this, std::move(pjrt_loaded_executable));
 }
 
 absl::StatusOr<std::unique_ptr<OpaqueExecutable>>
-HloRunnerPjRt::DeserializeExecutable(const absl::string_view serialized) const {
+HloRunner::DeserializeExecutable(const absl::string_view serialized) const {
   // TODO: b/237720161 - According to the comment in the base class, the
   // `options` argument is mandatory. However, our implementation is capable of
   // handling the default case where it is not present. The options are
@@ -547,8 +540,8 @@ HloRunnerPjRt::DeserializeExecutable(const absl::string_view serialized) const {
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> pjrt_executable =
       pjrt_client_->DeserializeExecutable(serialized, /*options=*/std::nullopt);
   if (pjrt_executable.ok()) {
-    return std::make_unique<HloRunnerPjRtExecutable>(
-        this, *std::move(pjrt_executable));
+    return std::make_unique<HloRunnerExecutable>(this,
+                                                 *std::move(pjrt_executable));
   }
   if (!absl::IsUnimplemented(pjrt_executable.status())) {
     return pjrt_executable.status();
@@ -559,18 +552,18 @@ HloRunnerPjRt::DeserializeExecutable(const absl::string_view serialized) const {
   ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> pjrt_loaded_executable,
                    pjrt_client_->LoadSerializedExecutable(
                        serialized, /*options=*/std::nullopt, LoadOptions()));
-  return std::make_unique<HloRunnerPjRtExecutable>(
+  return std::make_unique<HloRunnerExecutable>(
       this, std::move(pjrt_loaded_executable));
 }
 
-absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
+absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
     std::unique_ptr<HloModule> module,
     const HloRunnerInterface::ReplicatedExecuteOptions& options) {
   return ExecuteReplicated(std::move(module), options,
                            /*device_assignment=*/nullptr);
 }
 
-absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
+absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
     std::unique_ptr<HloModule> module,
     const HloRunnerInterface::ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment) {
@@ -580,16 +573,14 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
                                          device_assignment);
 }
 
-absl::StatusOr<std::vector<Literal>>
-HloRunnerPjRt::ExecuteReplicatedWithExecutable(
+absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedWithExecutable(
     OpaqueExecutable* const absl_nonnull executable,
     const ReplicatedExecuteOptions& options) {
   return ExecuteReplicatedWithExecutable(executable, options,
                                          /*device_assignment=*/nullptr);
 }
 
-absl::StatusOr<std::vector<Literal>>
-HloRunnerPjRt::ExecuteReplicatedWithExecutable(
+absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedWithExecutable(
     OpaqueExecutable* const absl_nonnull executable,
     const HloRunnerInterface::ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment) {
@@ -600,7 +591,7 @@ HloRunnerPjRt::ExecuteReplicatedWithExecutable(
       options, device_assignment);
 }
 
-absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
+absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
     absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
     absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
     absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
@@ -608,8 +599,8 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
     DeviceAssignment* device_assignment) {
   CHECK_GT(options.num_devices, 0);
   ASSIGN_OR_RETURN(
-      HloRunnerPjRtExecutable* const wrapped_executable_device0,
-      HloRunnerPjRtExecutable::TryUnwrap(*this, executable_provider(0)));
+      HloRunnerExecutable* const wrapped_executable_device0,
+      HloRunnerExecutable::TryUnwrap(*this, executable_provider(0)));
 
   // NB: we assume all executables have the same device assignments.  If a
   // device assignment is provided, use it. Otherwise, use the one from the
@@ -648,8 +639,8 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
             for (const PjRtBuffer* const buffer : argument_buffer_slices[i]) {
               TF_RET_CHECK(buffer != nullptr);
             }
-            ASSIGN_OR_RETURN(HloRunnerPjRtExecutable* const executable,
-                             HloRunnerPjRtExecutable::TryUnwrap(
+            ASSIGN_OR_RETURN(HloRunnerExecutable* const executable,
+                             HloRunnerExecutable::TryUnwrap(
                                  *this, executable_provider_arg(i)));
             ASSIGN_OR_RETURN(
                 PjRtLoadedExecutable * pjrt_executable,
@@ -693,7 +684,7 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
       std::move(argument_provider), options, device_assignment);
 }
 
-absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicatedImpl(
+absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
     absl::AnyInvocable<
         absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>(
             absl::Span<const std::vector<PjRtBuffer*>>,
@@ -836,10 +827,9 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicatedImpl(
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-HloRunnerPjRt::TransferLiteralsToDevice(
-    absl::Span<const ShapeLayout> layouts,
-    absl::Span<const Literal* const> literals,
-    PjRtDevice* absl_nonnull device) {
+HloRunner::TransferLiteralsToDevice(absl::Span<const ShapeLayout> layouts,
+                                    absl::Span<const Literal* const> literals,
+                                    PjRtDevice* absl_nonnull device) {
   ASSIGN_OR_RETURN(bool flatten, MustFlattenInputTuple(layouts));
   ASSIGN_OR_RETURN(std::vector<Layout> parameter_layouts,
                    FlattenedParameterLayouts(layouts));
@@ -885,8 +875,7 @@ HloRunnerPjRt::TransferLiteralsToDevice(
   return buffers;
 }
 
-absl::StatusOr<std::unique_ptr<PjRtBuffer>>
-HloRunnerPjRt::TransferLiteralToDevice(
+absl::StatusOr<std::unique_ptr<PjRtBuffer>> HloRunner::TransferLiteralToDevice(
     const Literal& literal, PjRtMemorySpace* absl_nonnull const memory_space,
     const Layout& on_device_layout) {
   // Whenever possible, we want to respect the provided on-device layout. This
@@ -904,7 +893,7 @@ HloRunnerPjRt::TransferLiteralToDevice(
   return pjrt_client_->BufferFromHostLiteral(literal, memory_space);
 }
 
-absl::StatusOr<Literal> HloRunnerPjRt::TransferLiteralFromDevice(
+absl::StatusOr<Literal> HloRunner::TransferLiteralFromDevice(
     PjRtBuffer& buffer) {
   RETURN_IF_ERROR(buffer.GetReadyFuture().Await());
 
@@ -919,9 +908,9 @@ absl::StatusOr<Literal> HloRunnerPjRt::TransferLiteralFromDevice(
   return std::move(*literal);
 }
 
-absl::string_view HloRunnerPjRt::Name() const { return "HloRunnerPjRt"; }
+absl::string_view HloRunner::Name() const { return "HloRunner"; }
 
-bool HloRunnerPjRt::HasProperty(const HloRunnerPropertyTag::Type tag) const {
+bool HloRunner::HasProperty(const HloRunnerPropertyTag::Type tag) const {
   if (tag == HloRunnerPropertyTag::kUsingGpuRocm) {
     return pjrt_client_->platform_name() == RocmName();
   }
@@ -937,11 +926,10 @@ bool HloRunnerPjRt::HasProperty(const HloRunnerPropertyTag::Type tag) const {
   return false;
 }
 
-absl::StatusOr<const HloModule* absl_nonnull>
-HloRunnerPjRt::HloModuleFromWrapped(const OpaqueExecutable* wrapped) const {
-  ASSIGN_OR_RETURN(
-      const HloRunnerPjRtExecutable* const hlo_runner_pjrt_executable,
-      HloRunnerPjRtExecutable::TryUnwrap(*this, wrapped));
+absl::StatusOr<const HloModule* absl_nonnull> HloRunner::HloModuleFromWrapped(
+    const OpaqueExecutable* wrapped) const {
+  ASSIGN_OR_RETURN(const HloRunnerExecutable* const hlo_runner_pjrt_executable,
+                   HloRunnerExecutable::TryUnwrap(*this, wrapped));
   ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> modules,
                    hlo_runner_pjrt_executable->executable()->GetHloModules());
   if (!modules.empty()) {
@@ -950,35 +938,35 @@ HloRunnerPjRt::HloModuleFromWrapped(const OpaqueExecutable* wrapped) const {
   return absl::NotFoundError("PjRtLoadedExecutable has no modules.");
 }
 
-bool HloRunnerPjRt::ExecutablesAreEquivalent(
+bool HloRunner::ExecutablesAreEquivalent(
     const OpaqueExecutable* absl_nonnull lhs,
     const OpaqueExecutable* absl_nonnull rhs) const {
   constexpr auto kFingerprint =
-      [](const absl::StatusOr<const HloRunnerPjRtExecutable*> wrapped)
+      [](const absl::StatusOr<const HloRunnerExecutable*> wrapped)
       -> absl::StatusOr<std::string> {
-    ASSIGN_OR_RETURN(const HloRunnerPjRtExecutable* const executable, wrapped);
+    ASSIGN_OR_RETURN(const HloRunnerExecutable* const executable, wrapped);
     return executable->executable()->FingerprintExecutable();
   };
 
   const absl::StatusOr<std::string> lhs_fingerprint =
-      kFingerprint(HloRunnerPjRtExecutable::TryUnwrap(*this, lhs));
+      kFingerprint(HloRunnerExecutable::TryUnwrap(*this, lhs));
   if (!lhs_fingerprint.ok()) {
     return false;
   }
   const absl::StatusOr<std::string> rhs_fingerprint =
-      kFingerprint(HloRunnerPjRtExecutable::TryUnwrap(*this, rhs));
+      kFingerprint(HloRunnerExecutable::TryUnwrap(*this, rhs));
   if (!rhs_fingerprint.ok()) {
     return false;
   }
   return *lhs_fingerprint == *rhs_fingerprint;
 }
 
-absl::StatusOr<DeviceAssignment> HloRunnerPjRt::GetDefaultDeviceAssignment(
+absl::StatusOr<DeviceAssignment> HloRunner::GetDefaultDeviceAssignment(
     int num_replicas, int num_partitions) const {
   return pjrt_client_->GetDefaultDeviceAssignment(num_replicas, num_partitions);
 }
 
-// HloRunnerPjRt implementations for AoT use cases (i.e., compilation being a
+// HloRunner implementations for AoT use cases (i.e., compilation being a
 // phase distinct from execution):
 
 namespace {
@@ -1037,16 +1025,16 @@ inline absl::StatusOr<DeviceAssignment> AotDefaultDeviceAssignment(
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<OpaqueExecutable>>
-CompilePhaseHloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
-                                            const bool run_hlo_passes) {
+CompilePhaseHloRunner::CreateExecutable(std::unique_ptr<HloModule> module,
+                                        const bool run_hlo_passes) {
   const std::string path =
       tsl::io::JoinPath(artifact_dir_, MakeFilename(*module, run_hlo_passes));
   ASSIGN_OR_RETURN(
       std::unique_ptr<OpaqueExecutable> wrapped_executable,
-      HloRunnerPjRt::CreateExecutable(std::move(module), run_hlo_passes));
+      HloRunner::CreateExecutable(std::move(module), run_hlo_passes));
   ASSIGN_OR_RETURN(
-      HloRunnerPjRtExecutable* const executable,
-      HloRunnerPjRtExecutable::TryUnwrap(*this, wrapped_executable.get()));
+      HloRunnerExecutable* const executable,
+      HloRunnerExecutable::TryUnwrap(*this, wrapped_executable.get()));
 
   ASSIGN_OR_RETURN(const std::string serialized_executable,
                    executable->executable()->SerializeExecutable());
@@ -1055,7 +1043,7 @@ CompilePhaseHloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
 }
 
 /* static */
-absl::Status CompilePhaseHloRunnerPjRt::WriteCompressedExecutable(
+absl::Status CompilePhaseHloRunner::WriteCompressedExecutable(
     absl::string_view path, absl::string_view serialized_executable) {
   std::unique_ptr<tsl::WritableFile> file;
   RETURN_IF_ERROR(
@@ -1072,14 +1060,14 @@ absl::Status CompilePhaseHloRunnerPjRt::WriteCompressedExecutable(
 }
 
 absl::StatusOr<DeviceAssignment>
-CompilePhaseHloRunnerPjRt::GetDefaultDeviceAssignment(
-    int num_replicas, int num_partitions) const {
+CompilePhaseHloRunner::GetDefaultDeviceAssignment(int num_replicas,
+                                                  int num_partitions) const {
   return AotDefaultDeviceAssignment(num_replicas, num_partitions);
 }
 
 absl::StatusOr<std::unique_ptr<OpaqueExecutable>>
-ExecutePhaseHloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
-                                            const bool run_hlo_passes) {
+ExecutePhaseHloRunner::CreateExecutable(std::unique_ptr<HloModule> module,
+                                        const bool run_hlo_passes) {
   const std::string filename = MakeFilename(*module, run_hlo_passes);
   const std::string path = tsl::io::JoinPath(artifact_dir_, filename);
   tsl::tstring serialized_executable;
@@ -1092,7 +1080,7 @@ ExecutePhaseHloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
           "Failed to read serialized executable. ", status.message()));
     }
     LOG(INFO) << "Failed to read serialized executable. " << status;
-    return HloRunnerPjRt::CreateExecutable(std::move(module), run_hlo_passes);
+    return HloRunner::CreateExecutable(std::move(module), run_hlo_passes);
   }
   LOG(INFO) << "ExecutePhase deserializing " << module->name() << " from "
             << filename;
@@ -1104,7 +1092,7 @@ ExecutePhaseHloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
             loaded_executable_paths_.insert(path);
         !did_insert) {
       return absl::InvalidArgumentError(absl::StrFormat(
-          "ExecutePhaseHloRunnerPjRt::CreateExecutable called with a module "
+          "ExecutePhaseHloRunner::CreateExecutable called with a module "
           "that loads an executable that was previously loaded. The module "
           "name is %s and the filename is %s. If this is intentional, please "
           "set fail_duplicate_loads to false. This error exists to snuff out "
@@ -1123,7 +1111,7 @@ ExecutePhaseHloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
 }
 
 /* static */
-absl::Status ExecutePhaseHloRunnerPjRt::ReadCompressedExecutable(
+absl::Status ExecutePhaseHloRunner::ReadCompressedExecutable(
     absl::string_view path, tsl::tstring* serialized_executable) {
   std::unique_ptr<tsl::RandomAccessFile> file;
   RETURN_IF_ERROR(
@@ -1142,8 +1130,8 @@ absl::Status ExecutePhaseHloRunnerPjRt::ReadCompressedExecutable(
 }
 
 absl::StatusOr<DeviceAssignment>
-ExecutePhaseHloRunnerPjRt::GetDefaultDeviceAssignment(
-    int num_replicas, int num_partitions) const {
+ExecutePhaseHloRunner::GetDefaultDeviceAssignment(int num_replicas,
+                                                  int num_partitions) const {
   return AotDefaultDeviceAssignment(num_replicas, num_partitions);
 }
 
