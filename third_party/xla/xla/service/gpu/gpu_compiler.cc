@@ -765,9 +765,7 @@ absl::Status RunOptimizationPasses(
       debug_options.xla_gpu_enable_scatter_determinism_expander()) {
     // Scatter can be indeterministic if indices are not unique or a non
     // associative combiner function is used. Eliminate these Scatter ops.
-    if (debug_options.xla_gpu_enable_scatter_determinism_expander()) {
-      pipeline.AddPass<ScatterDeterminismExpander>();
-    }
+    pipeline.AddPass<ScatterDeterminismExpander>();
     pipeline.AddPass<ScatterExpander>(
         ScatterExpander::kEliminateIndeterministicScatters);
   }
