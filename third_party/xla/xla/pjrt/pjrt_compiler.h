@@ -465,15 +465,6 @@ class PjRtCompiler {
 void PjRtRegisterDefaultCompiler(absl::string_view platform_name,
                                  std::unique_ptr<PjRtCompiler> compiler);
 
-// Registers a compiler to compile programs for 'platform_name' with
-// 'compiler_variant'. Takes ownership of 'compiler'.
-//
-// REQUIRES: No compiler has been registered for the platform and compiler
-// variant yet.
-void PjRtRegisterCompiler(absl::string_view platform_name,
-                          absl::string_view compiler_variant,
-                          std::unique_ptr<PjRtCompiler> compiler);
-
 // Compiles a 'computation' and generates a 'PjRtExecutable' using the compiler
 // registered for the platform using PjRtRegisterCompiler. The returned
 // PjRtExecutable must be loaded by a compatible client before execution.

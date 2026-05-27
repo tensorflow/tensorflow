@@ -173,13 +173,6 @@ void PjRtRegisterDefaultCompiler(absl::string_view platform_name,
       /*variant_name=*/"", std::move(compiler)));
 }
 
-void PjRtRegisterCompiler(absl::string_view platform_name,
-                          absl::string_view compiler_variant,
-                          std::unique_ptr<PjRtCompiler> compiler) {
-  CHECK_OK(PjRtCompilerRegistry::Global().RegisterCompiler(
-      platform_name, compiler_variant, std::move(compiler)));
-}
-
 absl::StatusOr<PjRtCompiler*> GetDefaultPjRtCompiler(
     absl::string_view platform_name) {
   return PjRtCompilerRegistry::Global().GetCompiler(platform_name,
