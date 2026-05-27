@@ -162,7 +162,9 @@ BENCHMARK(BM_GetOrCreateUnderContention)
     ->ArgPair(1, 1000)
     ->ArgPair(2, 1000)
     ->ArgPair(4, 1000)
-    ->ArgPair(8, 1000);
+    ->ArgPair(8, 1000)
+    ->ArgPair(16, 1000)
+    ->ArgPair(32, 1000);
 
 }  // namespace
 }  // namespace xla
