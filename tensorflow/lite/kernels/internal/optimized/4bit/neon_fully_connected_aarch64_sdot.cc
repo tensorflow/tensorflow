@@ -47,7 +47,6 @@ DOTPROD_ATTRIBUTE void NeonRunKernelSDot<4, 1, 32>(
   const int end_col = rhs_layout_rows;
   const int clamped_end_row = std::min(end_row, dst_layout_cols);
   const int clamped_end_col = std::min(end_col, dst_layout_rows);
-  int32_t* element_ptr = dst;
   const int outer_rows = (clamped_end_row + rows_left - 1) / rows_left;
   const int outer_cols = (clamped_end_col + rows_right - 1) / rows_right;
   const int depth = std::min(lhs_layout_cols / cols, rhs_layout_cols / cols);
@@ -62,22 +61,18 @@ DOTPROD_ATTRIBUTE void NeonRunKernelSDot<4, 1, 32>(
       asm volatile(
           R"asm(
           movi v24.16b, #15
-          mov x0, %[element_ptr]
-          mov x6, %[lhs_ptr]
-          mov x1, %[rhs_ptr]
-          mov x4, x6
-          ld1 {v4.16b}, [x4], #16
+          ld1 {v4.16b}, [%[lhs_ptr]], #16
           movi v16.4s, #0
           movi v17.4s, #0
-          ld1 {v5.16b}, [x4], #16
+          ld1 {v5.16b}, [%[lhs_ptr]], #16
           movi v18.4s, #0
           movi v19.4s, #0
-          ld1 {v6.16b, v7.16b}, [x4], #32
+          ld1 {v6.16b, v7.16b}, [%[lhs_ptr]], #32
           and v8.16b, v4.16b, v24.16b
           and v9.16b, v5.16b, v24.16b
           ushr v12.16b, v4.16b, #4
           ushr v13.16b, v5.16b, #4
-          ld1 {v0.16b, v1.16b}, [x1], #32
+          ld1 {v0.16b, v1.16b}, [%[rhs_ptr]], #32
           and v10.16b, v6.16b, v24.16b
           and v11.16b, v7.16b, v24.16b
           ushr v14.16b, v6.16b, #4
@@ -86,7 +81,7 @@ DOTPROD_ATTRIBUTE void NeonRunKernelSDot<4, 1, 32>(
           subs w3, w3, #1
           b.ls 1f /* skip loop */
             0: /* loop start */
-            ld1 {v4.16b, v5.16b, v6.16b, v7.16b}, [x4], #64
+            ld1 {v4.16b, v5.16b, v6.16b, v7.16b}, [%[lhs_ptr]], #64
             sdot v16.4s, v8.16b, v1.16b
             sdot v17.4s, v9.16b, v1.16b
             sdot v18.4s, v10.16b, v1.16b
@@ -99,7 +94,7 @@ DOTPROD_ATTRIBUTE void NeonRunKernelSDot<4, 1, 32>(
             and v9.16b, v5.16b, v24.16b
             ushr v12.16b, v4.16b, #4
             ushr v13.16b, v5.16b, #4
-            ld1 {v0.16b, v1.16b}, [x1], #32
+            ld1 {v0.16b, v1.16b}, [%[rhs_ptr]], #32
             and v10.16b, v6.16b, v24.16b
             and v11.16b, v7.16b, v24.16b
             ushr v14.16b, v6.16b, #4
@@ -118,16 +113,13 @@ DOTPROD_ATTRIBUTE void NeonRunKernelSDot<4, 1, 32>(
           addp v4.4s, v16.4s, v17.4s
           addp v5.4s, v18.4s, v19.4s
           addp v6.4s, v4.4s, v5.4s
-          st1 {v6.4s}, [x0], #16
+          st1 {v6.4s}, [%[dst]], #16
           )asm"
-          : [lhs_ptr] "+r"(lhs_ptr), [rhs_ptr] "+r"(rhs_ptr),
-            [element_ptr] "+r"(element_ptr)
+          : [lhs_ptr] "+r"(lhs_ptr), [rhs_ptr] "+r"(rhs_ptr), [dst] "+r"(dst)
           : [run_depth] "r"(run_depth)
-          : "cc", "memory", "x0", "x1", "w2", "w3", "x4", "w5", "x6", "v0",
-            "v1", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12",
-            "v13", "v14", "v15", "v16", "v17", "v18", "v19", "v20", "v21",
-            "v22", "v23", "v24");
-      element_ptr += 4;
+          : "cc", "memory", "w3", "v0", "v1", "v4", "v5", "v6", "v7", "v8",
+            "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17", "v18",
+            "v19", "v24");
     }
   }
 }
@@ -146,7 +138,6 @@ DOTPROD_ATTRIBUTE void NeonRunKernelSDot<4, 2, 32>(
   const int end_col = rhs_layout_rows;
   const int clamped_end_row = std::min(end_row, dst_layout_cols);
   const int clamped_end_col = std::min(end_col, dst_layout_rows);
-  int32_t* element_ptr = dst;
   const int outer_rows = (clamped_end_row + rows_left - 1) / rows_left;
   const int outer_cols = (clamped_end_col + rows_right - 1) / rows_right;
   const int depth = std::min(lhs_layout_cols / cols, rhs_layout_cols / cols);
@@ -161,17 +152,13 @@ DOTPROD_ATTRIBUTE void NeonRunKernelSDot<4, 2, 32>(
       asm volatile(
           R"asm(
           movi v24.16b, #15
-          mov x0, %[element_ptr]
-          mov x6, %[lhs_ptr]
-          mov x1, %[rhs_ptr]
-          mov x4, x6
-          ld1 {v4.16b}, [x4], #16
+          ld1 {v4.16b}, [%[lhs_ptr]], #16
           movi v16.4s, #0
           movi v17.4s, #0
-          ld1 {v5.16b}, [x4], #16
+          ld1 {v5.16b}, [%[lhs_ptr]], #16
           movi v18.4s, #0
           movi v19.4s, #0
-          ld1 {v6.16b, v7.16b}, [x4], #32
+          ld1 {v6.16b, v7.16b}, [%[lhs_ptr]], #32
           movi v20.4s, #0
           movi v21.4s, #0
           and v8.16b, v4.16b, v24.16b
@@ -180,7 +167,7 @@ DOTPROD_ATTRIBUTE void NeonRunKernelSDot<4, 2, 32>(
           movi v23.4s, #0
           ushr v12.16b, v4.16b, #4
           ushr v13.16b, v5.16b, #4
-          ld1 {v0.16b, v1.16b, v2.16b, v3.16b}, [x1], #64
+          ld1 {v0.16b, v1.16b, v2.16b, v3.16b}, [%[rhs_ptr]], #64
           and v10.16b, v6.16b, v24.16b
           and v11.16b, v7.16b, v24.16b
           ushr v14.16b, v6.16b, #4
@@ -189,7 +176,7 @@ DOTPROD_ATTRIBUTE void NeonRunKernelSDot<4, 2, 32>(
           subs w3, w3, #1
           b.ls 1f /* skip loop */
             0: /* loop start */
-            ld1 {v4.16b, v5.16b, v6.16b, v7.16b}, [x4], #64
+            ld1 {v4.16b, v5.16b, v6.16b, v7.16b}, [%[lhs_ptr]], #64
             sdot v16.4s, v12.16b, v0.16b
             sdot v17.4s, v13.16b, v0.16b
             sdot v18.4s, v14.16b, v0.16b
@@ -209,7 +196,7 @@ DOTPROD_ATTRIBUTE void NeonRunKernelSDot<4, 2, 32>(
             and v8.16b, v4.16b, v24.16b
             and v9.16b, v5.16b, v24.16b
             ushr v12.16b, v4.16b, #4
-            ld1 {v0.16b, v1.16b, v2.16b, v3.16b}, [x1], #64
+            ld1 {v0.16b, v1.16b, v2.16b, v3.16b}, [%[rhs_ptr]], #64
             ushr v13.16b, v5.16b, #4
             and v10.16b, v6.16b, v24.16b
             and v11.16b, v7.16b, v24.16b
@@ -240,16 +227,13 @@ DOTPROD_ATTRIBUTE void NeonRunKernelSDot<4, 2, 32>(
           addp v9.4s, v22.4s, v23.4s
           addp v6.4s, v4.4s, v5.4s
           addp v7.4s, v8.4s, v9.4s
-          st1 {v6.4s, v7.4s}, [x0], #32
+          st1 {v6.4s, v7.4s}, [%[dst]], #32
           )asm"
-          : [lhs_ptr] "+r"(lhs_ptr), [rhs_ptr] "+r"(rhs_ptr),
-            [element_ptr] "+r"(element_ptr)
+          : [lhs_ptr] "+r"(lhs_ptr), [rhs_ptr] "+r"(rhs_ptr), [dst] "+r"(dst)
           : [run_depth] "r"(run_depth)
-          : "cc", "memory", "x0", "x1", "w2", "w3", "x4", "w5", "x6", "v0",
-            "v1", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12",
-            "v13", "v14", "v15", "v16", "v17", "v18", "v19", "v20", "v21",
-            "v22", "v23", "v24");
-      element_ptr += 8;
+          : "cc", "memory", "w3", "v0", "v1", "v2", "v3", "v4", "v5", "v6",
+            "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16",
+            "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24");
     }
   }
 }
@@ -268,7 +252,6 @@ DOTPROD_ATTRIBUTE void NeonRunKernelSDot<4, 4, 32>(
   const int end_col = rhs_layout_rows;
   const int clamped_end_row = std::min(end_row, dst_layout_cols);
   const int clamped_end_col = std::min(end_col, dst_layout_rows);
-  int32_t* element_ptr = dst;
   const int outer_rows = (clamped_end_row + rows_left - 1) / rows_left;
   const int outer_cols = (clamped_end_col + rows_right - 1) / rows_right;
   const int depth = std::min(lhs_layout_cols / cols, rhs_layout_cols / cols);
@@ -283,17 +266,13 @@ DOTPROD_ATTRIBUTE void NeonRunKernelSDot<4, 4, 32>(
       asm volatile(
           R"asm(
           movi v3.16b, #15
-          mov x0, %[element_ptr]
-          mov x6, %[lhs_ptr]
-          mov x1, %[rhs_ptr]
-          mov x4, x6
-          ld1 {v4.16b}, [x4], #16
+          ld1 {v4.16b}, [%[lhs_ptr]], #16
           movi v16.4s, #0
           movi v17.4s, #0
-          ld1 {v5.16b}, [x4], #16
+          ld1 {v5.16b}, [%[lhs_ptr]], #16
           movi v18.4s, #0
           movi v19.4s, #0
-          ld1 {v6.16b, v7.16b}, [x4], #32
+          ld1 {v6.16b, v7.16b}, [%[lhs_ptr]], #32
           and v8.16b, v4.16b, v3.16b
           and v9.16b, v5.16b, v3.16b
           movi v20.4s, #0
@@ -310,7 +289,7 @@ DOTPROD_ATTRIBUTE void NeonRunKernelSDot<4, 4, 32>(
           movi v31.4s, #0
           ushr v12.16b, v4.16b, #4
           ushr v13.16b, v5.16b, #4
-          ld1 {v0.16b, v1.16b}, [x1], #32
+          ld1 {v0.16b, v1.16b}, [%[rhs_ptr]], #32
           and v10.16b, v6.16b, v3.16b
           and v11.16b, v7.16b, v3.16b
           ushr v14.16b, v6.16b, #4
@@ -319,37 +298,37 @@ DOTPROD_ATTRIBUTE void NeonRunKernelSDot<4, 4, 32>(
           subs w3, w3, #1
           b.ls 1f /* skip loop */
             0: /* loop start */
-            ld1 {v4.16b, v5.16b, v6.16b, v7.16b}, [x4], #64
+            ld1 {v4.16b, v5.16b, v6.16b, v7.16b}, [%[lhs_ptr]], #64
             sdot v16.4s, v12.16b, v0.16b
             sdot v17.4s, v13.16b, v0.16b
             sdot v18.4s, v14.16b, v0.16b
             sdot v19.4s, v15.16b, v0.16b
-            ld1 {v2.16b}, [x1], #16
+            ld1 {v2.16b}, [%[rhs_ptr]], #16
             sdot v16.4s, v8.16b, v1.16b
             sdot v17.4s, v9.16b, v1.16b
             sdot v18.4s, v10.16b, v1.16b
             sdot v19.4s, v11.16b, v1.16b
-            ld1 {v0.16b}, [x1], #16
+            ld1 {v0.16b}, [%[rhs_ptr]], #16
             sdot v20.4s, v12.16b, v2.16b
             sdot v21.4s, v13.16b, v2.16b
             sdot v22.4s, v14.16b, v2.16b
             sdot v23.4s, v15.16b, v2.16b
-            ld1 {v1.16b}, [x1], #16
+            ld1 {v1.16b}, [%[rhs_ptr]], #16
             sdot v20.4s, v8.16b, v0.16b
             sdot v21.4s, v9.16b, v0.16b
             sdot v22.4s, v10.16b, v0.16b
             sdot v23.4s, v11.16b, v0.16b
-            ld1 {v2.16b}, [x1], #16
+            ld1 {v2.16b}, [%[rhs_ptr]], #16
             sdot v24.4s, v12.16b, v1.16b
             sdot v25.4s, v13.16b, v1.16b
             sdot v26.4s, v14.16b, v1.16b
             sdot v27.4s, v15.16b, v1.16b
-            ld1 {v0.16b}, [x1], #16
+            ld1 {v0.16b}, [%[rhs_ptr]], #16
             sdot v24.4s, v8.16b, v2.16b
             sdot v25.4s, v9.16b, v2.16b
             sdot v26.4s, v10.16b, v2.16b
             sdot v27.4s, v11.16b, v2.16b
-            ld1 {v1.16b}, [x1], #16
+            ld1 {v1.16b}, [%[rhs_ptr]], #16
             sdot v28.4s, v12.16b, v0.16b
             sdot v29.4s, v13.16b, v0.16b
             sdot v30.4s, v14.16b, v0.16b
@@ -358,12 +337,12 @@ DOTPROD_ATTRIBUTE void NeonRunKernelSDot<4, 4, 32>(
             sdot v29.4s, v9.16b, v1.16b
             sdot v30.4s, v10.16b, v1.16b
             sdot v31.4s, v11.16b, v1.16b
-            ld1 {v0.16b}, [x1], #16
+            ld1 {v0.16b}, [%[rhs_ptr]], #16
             and v8.16b, v4.16b, v3.16b
             and v9.16b, v5.16b, v3.16b
             ushr v12.16b, v4.16b, #4
             ushr v13.16b, v5.16b, #4
-            ld1 {v1.16b}, [x1], #16
+            ld1 {v1.16b}, [%[rhs_ptr]], #16
             and v10.16b, v6.16b, v3.16b
             and v11.16b, v7.16b, v3.16b
             ushr v14.16b, v6.16b, #4
@@ -375,32 +354,32 @@ DOTPROD_ATTRIBUTE void NeonRunKernelSDot<4, 4, 32>(
           sdot v17.4s, v13.16b, v0.16b
           sdot v18.4s, v14.16b, v0.16b
           sdot v19.4s, v15.16b, v0.16b
-          ld1 {v2.16b}, [x1], #16
+          ld1 {v2.16b}, [%[rhs_ptr]], #16
           sdot v16.4s, v8.16b, v1.16b
           sdot v17.4s, v9.16b, v1.16b
           sdot v18.4s, v10.16b, v1.16b
           sdot v19.4s, v11.16b, v1.16b
-          ld1 {v0.16b}, [x1], #16
+          ld1 {v0.16b}, [%[rhs_ptr]], #16
           sdot v20.4s, v12.16b, v2.16b
           sdot v21.4s, v13.16b, v2.16b
           sdot v22.4s, v14.16b, v2.16b
           sdot v23.4s, v15.16b, v2.16b
-          ld1 {v1.16b}, [x1], #16
+          ld1 {v1.16b}, [%[rhs_ptr]], #16
           sdot v20.4s, v8.16b, v0.16b
           sdot v21.4s, v9.16b, v0.16b
           sdot v22.4s, v10.16b, v0.16b
           sdot v23.4s, v11.16b, v0.16b
-          ld1 {v2.16b}, [x1], #16
+          ld1 {v2.16b}, [%[rhs_ptr]], #16
           sdot v24.4s, v12.16b, v1.16b
           sdot v25.4s, v13.16b, v1.16b
           sdot v26.4s, v14.16b, v1.16b
           sdot v27.4s, v15.16b, v1.16b
-          ld1 {v0.16b}, [x1], #16
+          ld1 {v0.16b}, [%[rhs_ptr]], #16
           sdot v24.4s, v8.16b, v2.16b
           sdot v25.4s, v9.16b, v2.16b
           sdot v26.4s, v10.16b, v2.16b
           sdot v27.4s, v11.16b, v2.16b
-          ld1 {v1.16b}, [x1], #16
+          ld1 {v1.16b}, [%[rhs_ptr]], #16
           sdot v28.4s, v12.16b, v0.16b
           sdot v29.4s, v13.16b, v0.16b
           sdot v30.4s, v14.16b, v0.16b
@@ -421,16 +400,14 @@ DOTPROD_ATTRIBUTE void NeonRunKernelSDot<4, 4, 32>(
           addp v5.4s, v12.4s, v13.4s
           addp v6.4s, v10.4s, v11.4s
           addp v7.4s, v8.4s, v9.4s
-          st1 {v4.4s, v5.4s, v6.4s, v7.4s}, [x0], #64
+          st1 {v4.4s, v5.4s, v6.4s, v7.4s}, [%[dst]], #64
           )asm"
-          : [lhs_ptr] "+r"(lhs_ptr), [rhs_ptr] "+r"(rhs_ptr),
-            [element_ptr] "+r"(element_ptr)
+          : [lhs_ptr] "+r"(lhs_ptr), [rhs_ptr] "+r"(rhs_ptr), [dst] "+r"(dst)
           : [run_depth] "r"(run_depth)
-          : "cc", "memory", "x0", "x1", "w2", "w3", "x4", "w5", "x6", "v0",
-            "v1", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12",
-            "v13", "v14", "v15", "v16", "v17", "v18", "v19", "v20", "v21",
-            "v22", "v23", "v24");
-      element_ptr += 16;
+          : "cc", "memory", "w3", "v0", "v1", "v2", "v3", "v4", "v5", "v6",
+            "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16",
+            "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24", "v25",
+            "v26", "v27", "v28", "v29", "v30", "v31");
     }
   }
 }

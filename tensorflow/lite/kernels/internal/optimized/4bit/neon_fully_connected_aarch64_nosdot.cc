@@ -47,7 +47,6 @@ void NeonRunKernelNoSDot<4, 1, 32>(const uint8_t* lhs, const int8_t* rhs,
   const int end_col = rhs_layout_rows;
   const int clamped_end_row = std::min(end_row, dst_layout_cols);
   const int clamped_end_col = std::min(end_col, dst_layout_rows);
-  int32_t* element_ptr = dst;
   const int outer_rows = (clamped_end_row + rows_left - 1) / rows_left;
   const int outer_cols = (clamped_end_col + rows_right - 1) / rows_right;
   const int depth = std::min(lhs_layout_cols / cols, rhs_layout_cols / cols);
@@ -62,58 +61,54 @@ void NeonRunKernelNoSDot<4, 1, 32>(const uint8_t* lhs, const int8_t* rhs,
       asm volatile(
           R"asm(
           movi v24.16b, #15
-          mov x0, %[element_ptr]
-          mov x6, %[lhs_ptr]
-          mov x1, %[rhs_ptr]
-          mov x4, x6
-          ld1 {v4.16b}, [x4], #16
+          ld1 {v4.16b}, [%[lhs_ptr]], #16
           movi v16.4s, #0
           movi v17.4s, #0
-          ld1 {v5.16b}, [x4], #16
+          ld1 {v5.16b}, [%[lhs_ptr]], #16
           movi v18.4s, #0
           movi v19.4s, #0
-          ld1 {v6.16b}, [x4], #16
+          ld1 {v6.16b}, [%[lhs_ptr]], #16
           and v8.16b, v4.16b, v24.16b
           and v9.16b, v5.16b, v24.16b
-          ld1 {v7.16b}, [x4], #16
+          ld1 {v7.16b}, [%[lhs_ptr]], #16
           ushr v12.16b, v4.16b, #4
           ushr v13.16b, v5.16b, #4
-          ld1 {v0.16b}, [x1], #16
+          ld1 {v0.16b}, [%[rhs_ptr]], #16
           and v10.16b, v6.16b, v24.16b
           and v11.16b, v7.16b, v24.16b
-          ld1 {v1.16b}, [x1], #16
+          ld1 {v1.16b}, [%[rhs_ptr]], #16
           ushr v14.16b, v6.16b, #4
           ushr v15.16b, v7.16b, #4
           mov w3, %w[run_depth]
           subs w3, w3, #1
           b.ls 1f /* skip loop */
             0: /* loop start */
-            ld1 {v4.16b}, [x4], #16
+            ld1 {v4.16b}, [%[lhs_ptr]], #16
             smull v20.8h, v12.8b, v0.8b
             smull v21.8h, v13.8b, v0.8b
             smull v22.8h, v14.8b, v0.8b
-            ld1 {v5.16b}, [x4], #16
+            ld1 {v5.16b}, [%[lhs_ptr]], #16
             smull v23.8h, v15.8b, v0.8b
             smlal v20.8h, v8.8b, v1.8b
             smlal v21.8h, v9.8b, v1.8b
-            ld1 {v6.16b}, [x4], #16
+            ld1 {v6.16b}, [%[lhs_ptr]], #16
             smlal v22.8h, v10.8b, v1.8b
             smlal v23.8h, v11.8b, v1.8b
             smlal2 v20.8h, v12.16b, v0.16b
-            ld1 {v7.16b}, [x4], #16
+            ld1 {v7.16b}, [%[lhs_ptr]], #16
             smlal2 v21.8h, v13.16b, v0.16b
             smlal2 v22.8h, v14.16b, v0.16b
             smlal2 v23.8h, v15.16b, v0.16b
             smlal2 v20.8h, v8.16b, v1.16b
             smlal2 v21.8h, v9.16b, v1.16b
             smlal2 v22.8h, v10.16b, v1.16b
-            ld1 {v0.16b}, [x1], #16
+            ld1 {v0.16b}, [%[rhs_ptr]], #16
             smlal2 v23.8h, v11.16b, v1.16b
             sadalp v16.4s, v20.8h
             sadalp v17.4s, v21.8h
             sadalp v18.4s, v22.8h
             sadalp v19.4s, v23.8h
-            ld1 {v1.16b}, [x1], #16
+            ld1 {v1.16b}, [%[rhs_ptr]], #16
             and v8.16b, v4.16b, v24.16b
             and v9.16b, v5.16b, v24.16b
             ushr v12.16b, v4.16b, #4
@@ -148,16 +143,13 @@ void NeonRunKernelNoSDot<4, 1, 32>(const uint8_t* lhs, const int8_t* rhs,
           addp v4.4s, v16.4s, v17.4s
           addp v5.4s, v18.4s, v19.4s
           addp v6.4s, v4.4s, v5.4s
-          st1 {v6.4s}, [x0], #16
+          st1 {v6.4s}, [%[dst]], #16
           )asm"
-          : [lhs_ptr] "+r"(lhs_ptr), [rhs_ptr] "+r"(rhs_ptr),
-            [element_ptr] "+r"(element_ptr)
+          : [lhs_ptr] "+r"(lhs_ptr), [rhs_ptr] "+r"(rhs_ptr), [dst] "+r"(dst)
           : [run_depth] "r"(run_depth)
-          : "cc", "memory", "x0", "x1", "w2", "w3", "x4", "w5", "x6", "v0",
-            "v1", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12",
-            "v13", "v14", "v15", "v16", "v17", "v18", "v19", "v20", "v21",
-            "v22", "v23", "v24");
-      element_ptr += 4;
+          : "cc", "memory", "w3", "v0", "v1", "v4", "v5", "v6", "v7", "v8",
+            "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17", "v18",
+            "v19", "v20", "v21", "v22", "v23", "v24");
     }
   }
 }
@@ -177,7 +169,6 @@ void NeonRunKernelNoSDot<4, 2, 32>(const uint8_t* lhs, const int8_t* rhs,
   const int end_col = rhs_layout_rows;
   const int clamped_end_row = std::min(end_row, dst_layout_cols);
   const int clamped_end_col = std::min(end_col, dst_layout_rows);
-  int32_t* element_ptr = dst;
   const int outer_rows = (clamped_end_row + rows_left - 1) / rows_left;
   const int outer_cols = (clamped_end_col + rows_right - 1) / rows_right;
   const int depth = std::min(lhs_layout_cols / cols, rhs_layout_cols / cols);
@@ -191,34 +182,30 @@ void NeonRunKernelNoSDot<4, 2, 32>(const uint8_t* lhs, const int8_t* rhs,
       const int8_t* rhs_ptr = rhs + right_index;
       asm volatile(
           R"asm(
-          mov x0, %[element_ptr]
-          mov x6, %[lhs_ptr]
-          mov x1, %[rhs_ptr]
-          mov x4, x6
-          ld1 {v4.16b}, [x4], #16
+          ld1 {v4.16b}, [%[lhs_ptr]], #16
           movi v31.16b, #15
           movi v16.4s, #0
           movi v17.4s, #0
-          ld1 {v5.16b}, [x4], #16
+          ld1 {v5.16b}, [%[lhs_ptr]], #16
           movi v18.4s, #0
           movi v19.4s, #0
-          ld1 {v6.16b}, [x4], #16
+          ld1 {v6.16b}, [%[lhs_ptr]], #16
           and v8.16b, v4.16b, v31.16b
           and v9.16b, v5.16b, v31.16b
-          ld1 {v7.16b}, [x4], #16
+          ld1 {v7.16b}, [%[lhs_ptr]], #16
           ushr v12.16b, v4.16b, #4
           ushr v13.16b, v5.16b, #4
           movi v24.4s, #0
-          ld1 {v0.16b}, [x1], #16
+          ld1 {v0.16b}, [%[rhs_ptr]], #16
           movi v25.4s, #0
           movi v26.4s, #0
-          ld1 {v1.16b}, [x1], #16
+          ld1 {v1.16b}, [%[rhs_ptr]], #16
           movi v27.4s, #0
           and v10.16b, v6.16b, v31.16b
-          ld1 {v2.16b}, [x1], #16
+          ld1 {v2.16b}, [%[rhs_ptr]], #16
           and v11.16b, v7.16b, v31.16b
           ushr v14.16b, v6.16b, #4
-          ld1 {v3.16b}, [x1], #16
+          ld1 {v3.16b}, [%[rhs_ptr]], #16
           ushr v15.16b, v7.16b, #4
           mov w3, %w[run_depth]
           subs w3, w3, #1
@@ -227,29 +214,29 @@ void NeonRunKernelNoSDot<4, 2, 32>(const uint8_t* lhs, const int8_t* rhs,
             smull v20.8h, v12.8b, v0.8b
             smull v21.8h, v13.8b, v0.8b
             smull v22.8h, v14.8b, v0.8b
-            ld1 {v4.16b}, [x4], #16
+            ld1 {v4.16b}, [%[lhs_ptr]], #16
             smull v23.8h, v15.8b, v0.8b
             smlal v20.8h, v8.8b, v1.8b
             smlal v21.8h, v9.8b, v1.8b
-            ld1 {v5.16b}, [x4], #16
+            ld1 {v5.16b}, [%[lhs_ptr]], #16
             smlal v22.8h, v10.8b, v1.8b
             smlal v23.8h, v11.8b, v1.8b
             smlal2 v20.8h, v12.16b, v0.16b
-            ld1 {v6.16b}, [x4], #16
+            ld1 {v6.16b}, [%[lhs_ptr]], #16
             smlal2 v21.8h, v13.16b, v0.16b
             smlal2 v22.8h, v14.16b, v0.16b
             smlal2 v23.8h, v15.16b, v0.16b
-            ld1 {v7.16b}, [x4], #16
+            ld1 {v7.16b}, [%[lhs_ptr]], #16
             smlal2 v20.8h, v8.16b, v1.16b
             smlal2 v21.8h, v9.16b, v1.16b
             smlal2 v22.8h, v10.16b, v1.16b
             smlal2 v23.8h, v11.16b, v1.16b
-            ld1 {v0.16b}, [x1], #16
+            ld1 {v0.16b}, [%[rhs_ptr]], #16
             sadalp v16.4s, v20.8h
             sadalp v17.4s, v21.8h
             sadalp v18.4s, v22.8h
             sadalp v19.4s, v23.8h
-            ld1 {v1.16b}, [x1], #16
+            ld1 {v1.16b}, [%[rhs_ptr]], #16
             smull v28.8h, v12.8b, v2.8b
             smull v29.8h, v13.8b, v2.8b
             smull v30.8h, v14.8b, v2.8b
@@ -266,12 +253,12 @@ void NeonRunKernelNoSDot<4, 2, 32>(const uint8_t* lhs, const int8_t* rhs,
             smlal2 v29.8h, v9.16b, v3.16b
             smlal2 v30.8h, v10.16b, v3.16b
             smlal2 v20.8h, v11.16b, v3.16b
-            ld1 {v2.16b}, [x1], #16
+            ld1 {v2.16b}, [%[rhs_ptr]], #16
             sadalp v24.4s, v28.8h
             sadalp v25.4s, v29.8h
             sadalp v26.4s, v30.8h
             sadalp v27.4s, v20.8h
-            ld1 {v3.16b}, [x1], #16
+            ld1 {v3.16b}, [%[rhs_ptr]], #16
             and v8.16b, v4.16b, v31.16b
             and v9.16b, v5.16b, v31.16b
             ushr v12.16b, v4.16b, #4
@@ -329,16 +316,14 @@ void NeonRunKernelNoSDot<4, 2, 32>(const uint8_t* lhs, const int8_t* rhs,
           addp v9.4s, v26.4s, v27.4s
           addp v6.4s, v4.4s, v5.4s
           addp v7.4s, v8.4s, v9.4s
-          st1 {v6.4s, v7.4s}, [x0], #32
+          st1 {v6.4s, v7.4s}, [%[dst]], #32
           )asm"
-          : [lhs_ptr] "+r"(lhs_ptr), [rhs_ptr] "+r"(rhs_ptr),
-            [element_ptr] "+r"(element_ptr)
+          : [lhs_ptr] "+r"(lhs_ptr), [rhs_ptr] "+r"(rhs_ptr), [dst] "+r"(dst)
           : [run_depth] "r"(run_depth)
-          : "cc", "memory", "x0", "x1", "w2", "w3", "x4", "w5", "x6", "v0",
-            "v1", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12",
-            "v13", "v14", "v15", "v16", "v17", "v18", "v19", "v20", "v21",
-            "v22", "v23", "v24");
-      element_ptr += 8;
+          : "cc", "memory", "w3", "v0", "v1", "v2", "v3", "v4", "v5", "v6",
+            "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16",
+            "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24", "v25",
+            "v26", "v27", "v28", "v29", "v30", "v31");
     }
   }
 }
@@ -358,7 +343,6 @@ void NeonRunKernelNoSDot<4, 4, 32>(const uint8_t* lhs, const int8_t* rhs,
   const int end_col = rhs_layout_rows;
   const int clamped_end_row = std::min(end_row, dst_layout_cols);
   const int clamped_end_col = std::min(end_col, dst_layout_rows);
-  int32_t* element_ptr = dst;
   const int outer_rows = (clamped_end_row + rows_left - 1) / rows_left;
   const int outer_cols = (clamped_end_col + rows_right - 1) / rows_right;
   const int depth = std::min(lhs_layout_cols / cols, rhs_layout_cols / cols);
@@ -373,33 +357,29 @@ void NeonRunKernelNoSDot<4, 4, 32>(const uint8_t* lhs, const int8_t* rhs,
       asm volatile(
           R"asm(
           movi v3.16b, #15
-          mov x0, %[element_ptr]
-          mov x6, %[lhs_ptr]
-          mov x1, %[rhs_ptr]
-          mov x4, x6
-          ld1 {v4.16b}, [x4], #16
+          ld1 {v4.16b}, [%[lhs_ptr]], #16
           movi v16.4s, #0
           movi v17.4s, #0
           movi v18.4s, #0
           movi v19.4s, #0
-          ld1 {v5.16b}, [x4], #16
+          ld1 {v5.16b}, [%[lhs_ptr]], #16
           movi v20.4s, #0
           movi v21.4s, #0
           movi v22.4s, #0
-          ld1 {v6.16b}, [x4], #16
+          ld1 {v6.16b}, [%[lhs_ptr]], #16
           movi v23.4s, #0
           movi v24.4s, #0
           movi v25.4s, #0
-          ld1 {v7.16b}, [x4], #16
+          ld1 {v7.16b}, [%[lhs_ptr]], #16
           movi v26.4s, #0
           movi v27.4s, #0
           movi v28.4s, #0
           movi v29.4s, #0
-          ld1 {v0.16b}, [x1], #16
+          ld1 {v0.16b}, [%[rhs_ptr]], #16
           movi v30.4s, #0
           movi v31.4s, #0
           mov w3, %w[run_depth]
-          ld1 {v1.16b}, [x1], #16
+          ld1 {v1.16b}, [%[rhs_ptr]], #16
           and v8.16b, v4.16b, v3.16b
           and v9.16b, v5.16b, v3.16b
           and v10.16b, v6.16b, v3.16b
@@ -419,7 +399,7 @@ void NeonRunKernelNoSDot<4, 4, 32>(const uint8_t* lhs, const int8_t* rhs,
             smlal2 v5.8h, v13.16b, v0.16b
             smlal2 v6.8h, v14.16b, v0.16b
             smlal2 v7.8h, v15.16b, v0.16b
-            ld1 {v2.16b}, [x1], #16
+            ld1 {v2.16b}, [%[rhs_ptr]], #16
             smlal v4.8h, v8.8b, v1.8b
             smlal v5.8h, v9.8b, v1.8b
             smlal v6.8h, v10.8b, v1.8b
@@ -428,7 +408,7 @@ void NeonRunKernelNoSDot<4, 4, 32>(const uint8_t* lhs, const int8_t* rhs,
             smlal2 v5.8h, v9.16b, v1.16b
             smlal2 v6.8h, v10.16b, v1.16b
             smlal2 v7.8h, v11.16b, v1.16b
-            ld1 {v0.16b}, [x1], #16
+            ld1 {v0.16b}, [%[rhs_ptr]], #16
             sadalp v16.4s, v4.8h
             sadalp v17.4s, v5.8h
             sadalp v18.4s, v6.8h
@@ -441,7 +421,7 @@ void NeonRunKernelNoSDot<4, 4, 32>(const uint8_t* lhs, const int8_t* rhs,
             smlal2 v5.8h, v13.16b, v2.16b
             smlal2 v6.8h, v14.16b, v2.16b
             smlal2 v7.8h, v15.16b, v2.16b
-            ld1 {v1.16b}, [x1], #16
+            ld1 {v1.16b}, [%[rhs_ptr]], #16
             smlal v4.8h, v8.8b, v0.8b
             smlal v5.8h, v9.8b, v0.8b
             smlal v6.8h, v10.8b, v0.8b
@@ -450,7 +430,7 @@ void NeonRunKernelNoSDot<4, 4, 32>(const uint8_t* lhs, const int8_t* rhs,
             smlal2 v5.8h, v9.16b, v0.16b
             smlal2 v6.8h, v10.16b, v0.16b
             smlal2 v7.8h, v11.16b, v0.16b
-            ld1 {v2.16b}, [x1], #16
+            ld1 {v2.16b}, [%[rhs_ptr]], #16
             sadalp v20.4s, v4.8h
             sadalp v21.4s, v5.8h
             sadalp v22.4s, v6.8h
@@ -463,7 +443,7 @@ void NeonRunKernelNoSDot<4, 4, 32>(const uint8_t* lhs, const int8_t* rhs,
             smlal2 v5.8h, v13.16b, v1.16b
             smlal2 v6.8h, v14.16b, v1.16b
             smlal2 v7.8h, v15.16b, v1.16b
-            ld1 {v0.16b}, [x1], #16
+            ld1 {v0.16b}, [%[rhs_ptr]], #16
             smlal v4.8h, v8.8b, v2.8b
             smlal v5.8h, v9.8b, v2.8b
             smlal v6.8h, v10.8b, v2.8b
@@ -472,7 +452,7 @@ void NeonRunKernelNoSDot<4, 4, 32>(const uint8_t* lhs, const int8_t* rhs,
             smlal2 v5.8h, v9.16b, v2.16b
             smlal2 v6.8h, v10.16b, v2.16b
             smlal2 v7.8h, v11.16b, v2.16b
-            ld1 {v1.16b}, [x1], #16
+            ld1 {v1.16b}, [%[rhs_ptr]], #16
             sadalp v24.4s, v4.8h
             sadalp v25.4s, v5.8h
             sadalp v26.4s, v6.8h
@@ -485,30 +465,30 @@ void NeonRunKernelNoSDot<4, 4, 32>(const uint8_t* lhs, const int8_t* rhs,
             smlal2 v5.8h, v13.16b, v0.16b
             smlal2 v6.8h, v14.16b, v0.16b
             smlal2 v7.8h, v15.16b, v0.16b
-            ld1 {v12.16b}, [x4], #16
+            ld1 {v12.16b}, [%[lhs_ptr]], #16
             smlal v4.8h, v8.8b, v1.8b
             smlal v5.8h, v9.8b, v1.8b
             smlal v6.8h, v10.8b, v1.8b
             smlal v7.8h, v11.8b, v1.8b
-            ld1 {v13.16b}, [x4], #16
+            ld1 {v13.16b}, [%[lhs_ptr]], #16
             smlal2 v4.8h, v8.16b, v1.16b
             smlal2 v5.8h, v9.16b, v1.16b
             smlal2 v6.8h, v10.16b, v1.16b
             smlal2 v7.8h, v11.16b, v1.16b
-            ld1 {v14.16b}, [x4], #16
+            ld1 {v14.16b}, [%[lhs_ptr]], #16
             sadalp v28.4s, v4.8h
             sadalp v29.4s, v5.8h
             sadalp v30.4s, v6.8h
             sadalp v31.4s, v7.8h
-            ld1 {v15.16b}, [x4], #16
+            ld1 {v15.16b}, [%[lhs_ptr]], #16
             and v8.16b, v12.16b, v3.16b
             and v9.16b, v13.16b, v3.16b
             and v10.16b, v14.16b, v3.16b
-            ld1 {v0.16b}, [x1], #16
+            ld1 {v0.16b}, [%[rhs_ptr]], #16
             and v11.16b, v15.16b, v3.16b
             ushr v12.16b, v12.16b, #4
             ushr v13.16b, v13.16b, #4
-            ld1 {v1.16b}, [x1], #16
+            ld1 {v1.16b}, [%[rhs_ptr]], #16
             ushr v14.16b, v14.16b, #4
             ushr v15.16b, v15.16b, #4
             subs w3, w3, #1
@@ -522,7 +502,7 @@ void NeonRunKernelNoSDot<4, 4, 32>(const uint8_t* lhs, const int8_t* rhs,
           smlal2 v5.8h, v13.16b, v0.16b
           smlal2 v6.8h, v14.16b, v0.16b
           smlal2 v7.8h, v15.16b, v0.16b
-          ld1 {v2.16b}, [x1], #16
+          ld1 {v2.16b}, [%[rhs_ptr]], #16
           smlal v4.8h, v8.8b, v1.8b
           smlal v5.8h, v9.8b, v1.8b
           smlal v6.8h, v10.8b, v1.8b
@@ -531,7 +511,7 @@ void NeonRunKernelNoSDot<4, 4, 32>(const uint8_t* lhs, const int8_t* rhs,
           smlal2 v5.8h, v9.16b, v1.16b
           smlal2 v6.8h, v10.16b, v1.16b
           smlal2 v7.8h, v11.16b, v1.16b
-          ld1 {v0.16b}, [x1], #16
+          ld1 {v0.16b}, [%[rhs_ptr]], #16
           sadalp v16.4s, v4.8h
           sadalp v17.4s, v5.8h
           sadalp v18.4s, v6.8h
@@ -544,7 +524,7 @@ void NeonRunKernelNoSDot<4, 4, 32>(const uint8_t* lhs, const int8_t* rhs,
           smlal2 v5.8h, v13.16b, v2.16b
           smlal2 v6.8h, v14.16b, v2.16b
           smlal2 v7.8h, v15.16b, v2.16b
-          ld1 {v1.16b}, [x1], #16
+          ld1 {v1.16b}, [%[rhs_ptr]], #16
           smlal v4.8h, v8.8b, v0.8b
           smlal v5.8h, v9.8b, v0.8b
           smlal v6.8h, v10.8b, v0.8b
@@ -553,7 +533,7 @@ void NeonRunKernelNoSDot<4, 4, 32>(const uint8_t* lhs, const int8_t* rhs,
           smlal2 v5.8h, v9.16b, v0.16b
           smlal2 v6.8h, v10.16b, v0.16b
           smlal2 v7.8h, v11.16b, v0.16b
-          ld1 {v2.16b}, [x1], #16
+          ld1 {v2.16b}, [%[rhs_ptr]], #16
           sadalp v20.4s, v4.8h
           sadalp v21.4s, v5.8h
           sadalp v22.4s, v6.8h
@@ -566,7 +546,7 @@ void NeonRunKernelNoSDot<4, 4, 32>(const uint8_t* lhs, const int8_t* rhs,
           smlal2 v5.8h, v13.16b, v1.16b
           smlal2 v6.8h, v14.16b, v1.16b
           smlal2 v7.8h, v15.16b, v1.16b
-          ld1 {v0.16b}, [x1], #16
+          ld1 {v0.16b}, [%[rhs_ptr]], #16
           smlal v4.8h, v8.8b, v2.8b
           smlal v5.8h, v9.8b, v2.8b
           smlal v6.8h, v10.8b, v2.8b
@@ -575,7 +555,7 @@ void NeonRunKernelNoSDot<4, 4, 32>(const uint8_t* lhs, const int8_t* rhs,
           smlal2 v5.8h, v9.16b, v2.16b
           smlal2 v6.8h, v10.16b, v2.16b
           smlal2 v7.8h, v11.16b, v2.16b
-          ld1 {v1.16b}, [x1], #16
+          ld1 {v1.16b}, [%[rhs_ptr]], #16
           sadalp v24.4s, v4.8h
           sadalp v25.4s, v5.8h
           sadalp v26.4s, v6.8h
@@ -612,16 +592,14 @@ void NeonRunKernelNoSDot<4, 4, 32>(const uint8_t* lhs, const int8_t* rhs,
           addp v5.4s, v12.4s, v13.4s
           addp v6.4s, v10.4s, v11.4s
           addp v7.4s, v8.4s, v9.4s
-          st1 {v4.4s, v5.4s, v6.4s, v7.4s}, [x0], #64
+          st1 {v4.4s, v5.4s, v6.4s, v7.4s}, [%[dst]], #64
           )asm"
-          : [lhs_ptr] "+r"(lhs_ptr), [rhs_ptr] "+r"(rhs_ptr),
-            [element_ptr] "+r"(element_ptr)
+          : [lhs_ptr] "+r"(lhs_ptr), [rhs_ptr] "+r"(rhs_ptr), [dst] "+r"(dst)
           : [run_depth] "r"(run_depth)
-          : "cc", "memory", "x0", "x1", "w2", "w3", "x4", "w5", "x6", "v0",
-            "v1", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12",
-            "v13", "v14", "v15", "v16", "v17", "v18", "v19", "v20", "v21",
-            "v22", "v23", "v24");
-      element_ptr += 16;
+          : "cc", "memory", "w3", "v0", "v1", "v2", "v3", "v4", "v5", "v6",
+            "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16",
+            "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24", "v25",
+            "v26", "v27", "v28", "v29", "v30", "v31");
     }
   }
 }
