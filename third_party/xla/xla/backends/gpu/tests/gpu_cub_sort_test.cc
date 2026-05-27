@@ -41,11 +41,10 @@ namespace {
 constexpr int kTestDataSize = 10000;
 
 // Common base class to share configuration and helpers.
-class CubSortTestBase
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+class CubSortTestBase : public HloPjRtInterpreterReferenceMixin<HloTestBase> {
  public:
   void SetUp() override {
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>::SetUp();
+    HloPjRtInterpreterReferenceMixin<HloTestBase>::SetUp();
     SortRewriter::SetSortModeForTestingOnly(SortRewriter::Mode::kAlways);
   }
 

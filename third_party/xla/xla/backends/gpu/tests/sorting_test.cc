@@ -49,9 +49,8 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class TypeSupportTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>,
-      public ::testing::WithParamInterface<PrimitiveType> {};
+class TypeSupportTest : public HloPjRtInterpreterReferenceMixin<HloTestBase>,
+                        public ::testing::WithParamInterface<PrimitiveType> {};
 
 TEST_P(TypeSupportTest, SortSupportsType) {
   constexpr char kHloTemplate[] = R"(
@@ -96,7 +95,7 @@ INSTANTIATE_TEST_SUITE_P(
       return primitive_util::LowercasePrimitiveTypeName(info.param);
     });
 
-class SortingTest : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+class SortingTest : public HloPjRtInterpreterReferenceMixin<HloTestBase> {
  protected:
   SortingTest() {}
 };
@@ -285,7 +284,7 @@ std::string GetTypeName(PrimitiveType type) {
 }
 
 // Test cub::DeviceRadixSort::SortKeys in XLA
-class CubSortKeysTest : public HloPjRtTestBase,
+class CubSortKeysTest : public HloTestBase,
                         public ::testing::WithParamInterface<
                             std::tuple<std::shared_ptr<Literal>, bool>> {};
 
@@ -324,7 +323,7 @@ ENTRY %main {
 
 // Test cub::DeviceRadixSort::SortPairs in XLA
 class CubSortPairsTest
-    : public HloPjRtTestBase,
+    : public HloTestBase,
       public ::testing::WithParamInterface<
           std::tuple<std::shared_ptr<Literal>, PrimitiveType, bool>> {};
 

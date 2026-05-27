@@ -33,7 +33,7 @@ namespace {
 
 // Tests NCCL group execution.
 
-class NcclGroupExecutionTest : public HloPjRtTestBase {
+class NcclGroupExecutionTest : public HloTestBase {
  public:
   NcclGroupExecutionTest() {
     VLOG(1) << "Running with " << test_runner().device_count() << " devices";
