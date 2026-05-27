@@ -415,15 +415,21 @@ absl::Status SyclStreamSynchronize(::sycl::queue* stream_handle) {
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::optional<::sycl::event>> SyclGetRecentEventFromStream(
+absl::StatusOr<::sycl::event> SyclGetRecentEventFromStream(
     ::sycl::queue* stream_handle) {
   try {
-    // Use the new DPC++/SYCL API when oneAPI version is at least 2024.2.
-    std::optional<::sycl::event> event =
-        IsOneAPIVersionAtLeast2024_2()
-            ? stream_handle->ext_oneapi_get_last_event()
-            : stream_handle->ext_oneapi_submit_barrier();
-    return event;
+    if (IsOneAPIVersionAtLeast2024_2()) {
+      // Zero overhead: Does not submit a barrier or enqueue work.
+      std::optional<::sycl::event> event =
+          stream_handle->ext_oneapi_get_last_event();
+      if (event.has_value()) {
+        return event.value();
+      }
+      // Submit a barrier if no prior event exists.
+      return stream_handle->ext_oneapi_submit_barrier();
+    }
+    // Always submit a barrier on older oneAPI versions.
+    return stream_handle->ext_oneapi_submit_barrier();
   } catch (const ::sycl::exception& e) {
     return absl::InternalError(absl::StrCat(
         "SyclGetRecentEventFromStream: Failed to get event from stream: ",

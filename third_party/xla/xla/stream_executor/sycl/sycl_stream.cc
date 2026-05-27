@@ -121,17 +121,10 @@ absl::Status SyclStream::WaitFor(Stream* other) {
 }
 
 absl::Status SyclStream::RecordEvent(Event* event) {
-  ::sycl::event sycl_event = static_cast<SyclEvent*>(event)->GetEvent();
-  ASSIGN_OR_RETURN(std::optional<::sycl::event> recent_event,
+  ASSIGN_OR_RETURN(::sycl::event recent_event,
                    SyclGetRecentEventFromStream(stream_handle_.get()));
-  if (!recent_event.has_value()) {
-    // TODO(intel-tf): Record sycl_event via SyclEvent's SetEvent() if no
-    // recent event is found.
-    return absl::InternalError(
-        "RecordEvent: No event returned from SyclGetRecentEventFromStream");
-  }
   // Update the event to the most recent one on the stream.
-  sycl_event = recent_event.value();
+  static_cast<SyclEvent*>(event)->SetEvent(recent_event);
   VLOG(2) << "Recording SYCL event on stream " << stream_handle_.get();
   return absl::OkStatus();
 }

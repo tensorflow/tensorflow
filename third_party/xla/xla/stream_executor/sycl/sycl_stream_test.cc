@@ -113,6 +113,7 @@ TEST_F(SyclStreamTest, Memset32) {
 
   EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
   EXPECT_THAT(host_buffer, Each(0xDEADBEEF));
+  executor_->Deallocate(&device_buffer);
 }
 
 TEST_F(SyclStreamTest, MemZero) {
@@ -149,6 +150,7 @@ TEST_F(SyclStreamTest, MemZero) {
   // And it shouldn't have touched the second half.
   EXPECT_THAT(absl::MakeConstSpan(host_buffer).subspan(kBufferNumElements / 2),
               Each(0xDEADBEEF));
+  executor_->Deallocate(&device_buffer);
 }
 
 TEST_F(SyclStreamTest, MemcpyHostToDeviceAndBack) {
@@ -178,6 +180,7 @@ TEST_F(SyclStreamTest, MemcpyHostToDeviceAndBack) {
 
   EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
   EXPECT_THAT(host_buffer, ElementsAreArray(src_buffer));
+  executor_->Deallocate(&device_buffer);
 }
 
 TEST_F(SyclStreamTest, MemcpyDeviceToDevice) {
@@ -207,6 +210,8 @@ TEST_F(SyclStreamTest, MemcpyDeviceToDevice) {
 
   EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
   EXPECT_THAT(host_buffer, Each(0xDEADBEEF));
+  executor_->Deallocate(&device_buffer1);
+  executor_->Deallocate(&device_buffer2);
 }
 
 TEST_F(SyclStreamTest, DoHostCallbackAndBlockHostUntilDone) {
@@ -295,6 +300,9 @@ TEST_F(SyclStreamTest, LaunchKernel) {
   EXPECT_THAT(stream->Memcpy(host_buffer.data(), c, kByteLength),
               absl_testing::IsOk());
   EXPECT_THAT(host_buffer, Each(5));
+  executor_->Deallocate(&a);
+  executor_->Deallocate(&b);
+  executor_->Deallocate(&c);
 }
 
 TEST_F(SyclStreamTest, SetName) {
@@ -360,6 +368,43 @@ TEST_F(SyclStreamTest, MultipleStreams) {
   // Callbacks may run concurrently or in any order since the streams are
   // independent.
   EXPECT_THAT(host_buffer, UnorderedElementsAreArray(expected));
+}
+
+TEST_F(SyclStreamTest, RecordEvent) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<SyclStream> stream1,
+                       SyclStream::Create(&executor_.value(),
+                                          /*enable_multiple_streams=*/true,
+                                          /*priority=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<SyclStream> stream2,
+                       SyclStream::Create(&executor_.value(),
+                                          /*enable_multiple_streams=*/true,
+                                          /*priority=*/std::nullopt));
+
+  ASSERT_OK_AND_ASSIGN(SyclEvent event, SyclEvent::Create(&executor_.value()));
+
+  constexpr int kBufferNumElements = 32;
+  DeviceAddress<uint32_t> device_buffer =
+      executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
+  constexpr uint64_t kBufferSizeBytes = kBufferNumElements * sizeof(uint32_t);
+
+  EXPECT_THAT(stream1->Memset32(&device_buffer, 0xDEADBEEF, kBufferSizeBytes),
+              absl_testing::IsOk());
+
+  ::sycl::event default_event = event.GetEvent();
+  EXPECT_THAT(stream1->RecordEvent(&event), absl_testing::IsOk());
+  // RecordEvent must update the event to reflect stream1's most recent work.
+  EXPECT_NE(event.GetEvent(), default_event);
+
+  EXPECT_THAT(stream2->WaitFor(&event), absl_testing::IsOk());
+
+  std::array<uint32_t, kBufferNumElements> host_buffer;
+  EXPECT_THAT(
+      stream2->Memcpy(host_buffer.data(), device_buffer, kBufferSizeBytes),
+      absl_testing::IsOk());
+  EXPECT_THAT(stream2->BlockHostUntilDone(), absl_testing::IsOk());
+  // Ensures stream2 reads the value written by stream1.
+  EXPECT_THAT(host_buffer, Each(0xDEADBEEF));
+  executor_->Deallocate(&device_buffer);
 }
 
 }  // namespace

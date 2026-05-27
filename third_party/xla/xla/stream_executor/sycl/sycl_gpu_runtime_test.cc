@@ -236,16 +236,13 @@ TEST_F(SyclGpuRuntimeTest, TestSyclGetRecentEventFromStream) {
 
   TF_ASSERT_OK(SyclStreamSynchronize(stream_handle.get()));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::optional<::sycl::event> event,
-                          SyclGetRecentEventFromStream(stream_handle.get()));
-
-  ASSERT_TRUE(event.has_value());
+  ASSERT_OK_AND_ASSIGN(::sycl::event event,
+                       SyclGetRecentEventFromStream(stream_handle.get()));
 
   // Expect the event to be in a valid state. The command_execution_status
   // should not be "unknown".
-  EXPECT_NE(
-      event.value().get_info<::sycl::info::event::command_execution_status>(),
-      ::sycl::info::event_command_status::ext_oneapi_unknown);
+  EXPECT_NE(event.get_info<::sycl::info::event::command_execution_status>(),
+            ::sycl::info::event_command_status::ext_oneapi_unknown);
 
   FreeAndNullify(device_buf);
 }
