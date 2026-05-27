@@ -386,6 +386,7 @@ HLO_MATCHER(SetDimensionSize);
 HLO_MATCHER(ShiftLeft);
 HLO_MATCHER(ShiftRightArithmetic);
 HLO_MATCHER(ShiftRightLogical);
+HLO_MATCHER(Scan);
 HLO_MATCHER(Sign);
 HLO_MATCHER(Sinh);
 HLO_MATCHER(Slice);
