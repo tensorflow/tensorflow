@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/command_buffer_conversion_pass.h"
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -42,6 +43,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/debug_options_flags.h"
@@ -50,6 +52,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_module_config.h"
@@ -63,6 +67,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -219,10 +224,13 @@ std::unique_ptr<ConvolutionThunk> CreateConvolutionThunk(
 
 std::unique_ptr<AsyncStartThunk> WrapInAsyncStartThunk(
     std::unique_ptr<AllGatherThunk> start_thunk) {
+  static std::atomic<uint64_t> next_id{1};
   ThunkSequence sequence;
   sequence.push_back(std::move(start_thunk));
-  return std::make_unique<AsyncStartThunk>(
-      Thunk::ThunkInfo(), CommunicationStreamId(0), std::move(sequence));
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.thunk_id = ThunkId(next_id.fetch_add(1));
+  return std::make_unique<AsyncStartThunk>(thunk_info, CommunicationStreamId(0),
+                                           std::move(sequence));
 }
 
 std::unique_ptr<AsyncDoneThunk> CreateAllGatherDoneThunk(Thunk* start_thunk) {
