@@ -27,8 +27,6 @@ limitations under the License.
 #include "absl/hash/hash_testing.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
@@ -817,7 +815,7 @@ TEST_F(IndexingMapTest, ConstraintMerge_Mod) {
                         )"));
 }
 
-TEST_F(IndexingMapTest, AffineMapSimplification_ConstantDims) {
+TEST_F(IndexingMapTest, SymbolicMapSimplification_ConstantDims) {
   auto indexing_map = Parse(R"(
     (d0) -> (d0),
     domain:
@@ -833,7 +831,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_ConstantDims) {
                                                 )"));
 }
 
-TEST_F(IndexingMapTest, AffineMapSimplification_SumOrderRegression) {
+TEST_F(IndexingMapTest, SymbolicMapSimplification_SumOrderRegression) {
   // This is a regression test for a bug where we didn't canonicalize the order
   // of summands correctly, leading to `Simplify` not being idempotent.
   auto indexing_map = Parse(R"(
@@ -849,7 +847,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SumOrderRegression) {
   EXPECT_FALSE(indexing_map.Simplify());
 }
 
-TEST_F(IndexingMapTest, AffineMapSimplification_SumOrderRegression2) {
+TEST_F(IndexingMapTest, SymbolicMapSimplification_SumOrderRegression2) {
   // This is a regression test for a bug where we didn't simplify the affine
   // expression fully after a single iteration.
   auto indexing_map = Parse(R"(
@@ -862,7 +860,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SumOrderRegression2) {
   EXPECT_FALSE(indexing_map.Simplify());
 }
 
-TEST_F(IndexingMapTest, AffineMapSimplification_FloorDivRegression) {
+TEST_F(IndexingMapTest, SymbolicMapSimplification_FloorDivRegression) {
   auto indexing_map = Parse(R"(
     (d0, d1) -> (((d0 floordiv 3) * 3 + d1 floordiv 2) floordiv 6),
     domain:
@@ -878,7 +876,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_FloorDivRegression) {
                                                )"));
 }
 
-TEST_F(IndexingMapTest, AffineMapSimplification_ModIsSub) {
+TEST_F(IndexingMapTest, SymbolicMapSimplification_ModIsSub) {
   auto indexing_map = Parse(R"(
     (d0) -> (d0 mod 42),
     domain:
@@ -892,7 +890,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_ModIsSub) {
                                                )"));
 }
 
-TEST_F(IndexingMapTest, AffineMapSimplification_ModIsAdd) {
+TEST_F(IndexingMapTest, SymbolicMapSimplification_ModIsAdd) {
   auto indexing_map = Parse(R"(
     (d0) -> (d0 mod 5),
     domain:
@@ -906,14 +904,14 @@ TEST_F(IndexingMapTest, AffineMapSimplification_ModIsAdd) {
                                                )"));
 }
 
-TEST_F(IndexingMapTest, AffineMapSimplification_ModIsNotAdd) {
+TEST_F(IndexingMapTest, SymbolicMapSimplification_ModIsNotAdd) {
   auto indexing_map1 = Parse("(d0) -> (d0 mod 5), domain: d0 in [-4, 0]");
   EXPECT_FALSE(indexing_map1.Simplify());
   auto indexing_map2 = Parse("(d0) -> (d0 mod 5), domain: d0 in [-6, -1]");
   EXPECT_FALSE(indexing_map2.Simplify());
 }
 
-TEST_F(IndexingMapTest, AffineMapSimplification_SubIsMod) {
+TEST_F(IndexingMapTest, SymbolicMapSimplification_SubIsMod) {
   auto indexing_map = Parse(R"(
     (d0)[s0] -> (d0 - (s0 floordiv 3) * 3 + s0),
     domain:
@@ -929,7 +927,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SubIsMod) {
                                                )"));
 }
 
-TEST_F(IndexingMapTest, AffineMapSimplification_SubIsModMultiplied) {
+TEST_F(IndexingMapTest, SymbolicMapSimplification_SubIsModMultiplied) {
   auto indexing_map = Parse(R"(
     (d0)[s0] -> (d0 - (s0 floordiv 3) * 12 + s0 * 7),
     domain:
@@ -945,7 +943,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SubIsModMultiplied) {
               )"));
 }
 
-TEST_F(IndexingMapTest, AffineMapSimplification_SubIsModSum) {
+TEST_F(IndexingMapTest, SymbolicMapSimplification_SubIsModSum) {
   auto indexing_map = Parse(R"(
     (d0)[s0] ->  (1 + d0 - ((s0 + 1) floordiv 3) * 3 + s0),
     domain:
@@ -962,7 +960,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SubIsModSum) {
 }
 
 TEST_F(IndexingMapTest,
-       AffineMapSimplification_DivsAndModsIfSmallerThanDivisor) {
+       SymbolicMapSimplification_DivsAndModsIfSmallerThanDivisor) {
   auto indexing_map = Parse(R"(
     (d0, d1) -> (d0 + d1 floordiv 16, d1 mod 16),
     domain:
@@ -978,7 +976,7 @@ TEST_F(IndexingMapTest,
                                                 )"));
 }
 
-TEST_F(IndexingMapTest, AffineMapSimplification_DivsAndModsWithMultipliers) {
+TEST_F(IndexingMapTest, SymbolicMapSimplification_DivsAndModsWithMultipliers) {
   auto indexing_map = Parse(R"(
     (d0, d1, d2) -> ((d0 * 100 + d1 * 10 + d2) floordiv 100,
                      ((d0 * 100 + d1 * 10 + d2) mod 100) floordiv 10,
@@ -999,7 +997,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_DivsAndModsWithMultipliers) {
 }
 
 TEST_F(IndexingMapTest,
-       AffineMapSimplification_DivsAndModsWithDivisibleMultipliers) {
+       SymbolicMapSimplification_DivsAndModsWithDivisibleMultipliers) {
   auto indexing_map = Parse(R"(
     (d0, d1, d2) -> ((d0 * 16 + d1 * 4 + d2) floordiv 8,
                      (d0 * 16 + d1 * 4 + d2) mod 8),
@@ -1019,7 +1017,7 @@ TEST_F(IndexingMapTest,
   )"));
 }
 
-TEST_F(IndexingMapTest, AffineMapSimplification_DivsAndModsWithReverse) {
+TEST_F(IndexingMapTest, SymbolicMapSimplification_DivsAndModsWithReverse) {
   auto indexing_map = Parse(R"(
     (d0, d1) -> (-((d0 * -11 - d1 + 109) floordiv 11) + 9,
                  d0 * 11 + d1 + ((d0 * -11 - d1 + 109) floordiv 11) * 11 - 99),
@@ -1036,7 +1034,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_DivsAndModsWithReverse) {
                                                )"));
 }
 
-TEST_F(IndexingMapTest, AffineMapSimplification_SimplifyReshape) {
+TEST_F(IndexingMapTest, SymbolicMapSimplification_SimplifyReshape) {
   auto indexing_map = Parse(R"(
     ()[s0] -> ((s0 * 128) mod 715 + ((s0 * 128) floordiv 715) * 715),
     domain:
@@ -1050,7 +1048,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SimplifyReshape) {
   )"));
 }
 
-TEST_F(IndexingMapTest, AffineMapSimplification_SimplifyReshape2) {
+TEST_F(IndexingMapTest, SymbolicMapSimplification_SimplifyReshape2) {
   auto indexing_map = Parse(R"(
     (d0, d1) -> ((d0 mod 8) * 128 + d1 + (d0 floordiv 8) * 1024),
     domain:
@@ -1067,7 +1065,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SimplifyReshape2) {
   )"));
 }
 
-TEST_F(IndexingMapTest, AffineMapSimplification_SimplifyReshape3) {
+TEST_F(IndexingMapTest, SymbolicMapSimplification_SimplifyReshape3) {
   auto indexing_map = Parse(R"(
     (d0, d1) -> (((d1 * 2 + d0 floordiv 64) mod 3) * 256 + (d0 mod 64) * 4
       + ((d1 * 128 + d0) floordiv 192) * 768),
@@ -1084,8 +1082,9 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SimplifyReshape3) {
   )"));
 }
 
-TEST_F(IndexingMapTest,
-       AffineMapSimplification_ModWithNegativeMultiplerDoesNotGetSimplified) {
+TEST_F(
+    IndexingMapTest,
+    SymbolicMapSimplification_ModWithNegativeMultiplierDoesNotGetSimplified) {
   auto indexing_map = Parse(R"(
     (d0) -> ((-d0) mod 2),
     domain:
@@ -1099,7 +1098,7 @@ TEST_F(IndexingMapTest,
   )"));
 }
 
-TEST_F(IndexingMapTest, AffineMapSimplification_SimplifyBitcastAndBack) {
+TEST_F(IndexingMapTest, SymbolicMapSimplification_SimplifyBitcastAndBack) {
   // `d0 floordiv 1536` is the result of simplifying this:
   // `((d0 * 2 + d1 floordiv 64) floordiv 3) floordiv 1024`.
   // This test verifies that we can still simplify the map after the
@@ -1121,7 +1120,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SimplifyBitcastAndBack) {
   )"));
 }
 
-TEST_F(IndexingMapTest, AffineMapSimplification_SimplifyReshape_Regression) {
+TEST_F(IndexingMapTest, SymbolicMapSimplification_SimplifyReshape_Regression) {
   // We have s0 * 128 in the mod, but s0 * 64 in the floordiv *.
   auto indexing_map = Parse(R"(
     ()[s0] -> ((s0 * 128) mod 715 + ((s0 * 64) floordiv 715) * 715),
@@ -1136,8 +1135,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SimplifyReshape_Regression) {
   )"));
 }
 
-TEST_F(IndexingMapTest,
-       AffineMapSimplification_SymbolicTilingOffsetCancellation) {
+TEST_F(IndexingMapTest, SymbolicMapSimplification_TilingOffsetCancellation) {
   auto indexing_map = Parse(R"(
     ()[s0] -> (-(s0 floordiv 144) + (s0 * 32 + 4639) floordiv 4608),
     domain:
@@ -1152,7 +1150,7 @@ TEST_F(IndexingMapTest,
 }
 
 TEST_F(IndexingMapTest,
-       AffineMapSimplification_NegativeTilingOffsetCancellation) {
+       SymbolicMapSimplification_NegativeTilingOffsetCancellation) {
   auto indexing_map = Parse(R"(
     ()[s0] -> (-(s0 floordiv 315) + (s0 * 2 - 40319) floordiv 630 + 65),
     domain:
@@ -1166,7 +1164,7 @@ TEST_F(IndexingMapTest,
     )"));
 }
 
-TEST_F(IndexingMapTest, AffineMapSimplification_DivsInSequence) {
+TEST_F(IndexingMapTest, SymbolicMapSimplification_DivsInSequence) {
   auto indexing_map = Parse(R"(
     ()[s0] -> (s0 - ((s0 floordiv 2) floordiv 7) * 14 + (s0 floordiv 14) * 14),
     domain:
@@ -1180,7 +1178,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_DivsInSequence) {
                                                )"));
 }
 
-TEST_F(IndexingMapTest, AffineMapSimplification_ModAddDistributive) {
+TEST_F(IndexingMapTest, SymbolicMapSimplification_ModAddDistributive) {
   auto indexing_map = Parse(R"(
     (d0, d1) -> ((d0 * 2 + d1) mod 2),
     domain:
@@ -1196,7 +1194,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_ModAddDistributive) {
   )"));
 }
 
-TEST_F(IndexingMapTest, AffineMapSimplification_FloorDivModLinear) {
+TEST_F(IndexingMapTest, SymbolicMapSimplification_FloorDivModLinear) {
   auto indexing_map = Parse(R"(
     (d0) -> ((d0 floordiv 16) * 16 + (d0 mod 16)),
     domain:
@@ -1210,7 +1208,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_FloorDivModLinear) {
   )"));
 }
 
-TEST_F(IndexingMapTest, AffineMapSimplification_DivDiv) {
+TEST_F(IndexingMapTest, SymbolicMapSimplification_DivDiv) {
   auto indexing_map = Parse(R"(
     ()[s0, s1] -> ((s0 * 2 + s1 floordiv 64) floordiv 3),
     domain:
@@ -1226,7 +1224,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_DivDiv) {
     )"));
 }
 
-TEST_F(IndexingMapTest, AffineMapSimplification_DivSumConstant) {
+TEST_F(IndexingMapTest, SymbolicMapSimplification_DivSumConstant) {
   auto indexing_map = Parse(R"(
     ()[s0] -> ((s0 * 6 + 9) floordiv 18),
     domain:
@@ -1240,18 +1238,19 @@ TEST_F(IndexingMapTest, AffineMapSimplification_DivSumConstant) {
     )"));
 }
 
-TEST_F(IndexingMapTest, AffineMapSimplification_DivSumDiv) {
+TEST_F(IndexingMapTest, SymbolicMapSimplification_DivSumDiv) {
   auto indexing_map = Parse(R"(
     ()[s0, s1] -> ((s0 floordiv 3 + s1 floordiv 3) floordiv 6),
     domain:
     s0 in [0, 1233],
     s1 in [0, 127]
   )");
-  // The rewrite tested in AffineMapSimplification_DivDiv must not trigger here.
+  // The rewrite tested in SymbolicMapSimplification_DivDiv must not trigger
+  // here.
   EXPECT_FALSE(indexing_map.Simplify());
 }
 
-TEST_F(IndexingMapTest, AffineMapSimplification_NegativeDiv) {
+TEST_F(IndexingMapTest, SymbolicMapSimplification_NegativeDiv) {
   // (s0 floordiv 2) floordiv -7 is not s0 floordiv -14:
   // 15 // 2 // -7 = -1
   // 15 // -14 = -2
@@ -1263,7 +1262,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_NegativeDiv) {
   EXPECT_FALSE(indexing_map.Simplify());
 }
 
-TEST_F(IndexingMapTest, AffineMapSimplification_ExtractFromMod) {
+TEST_F(IndexingMapTest, SymbolicMapSimplification_ExtractFromMod) {
   auto indexing_map = Parse(R"(
     ()[s0, s1, s2, s3] -> ((s0 * 458752 + s1 + s2 * 4 + s3 * 512) mod 20000),
     domain:
@@ -1286,7 +1285,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_ExtractFromMod) {
 }
 
 TEST_F(IndexingMapTest,
-       AffineMapSimplification_ExtractFromDiv_NegativeMultiplier) {
+       SymbolicMapSimplification_ExtractFromDiv_NegativeMultiplier) {
   auto indexing_map = Parse(R"(
     ()[s0, s1] -> ((s0 * 16 - (s1 floordiv 4) floordiv 2 + (s1 floordiv 8) * 2)
       floordiv 4),
