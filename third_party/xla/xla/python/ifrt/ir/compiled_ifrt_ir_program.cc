@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/ifrt/ir/compiled_ifrt_ir_program.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -50,10 +51,10 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/constants.h"
+#include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/program_interpreter.h"
-#include "xla/python/ifrt/ir/support/module_parsing.h"
 #include "xla/python/ifrt/ir/transforms/debug.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
@@ -63,8 +64,6 @@ limitations under the License.
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -404,6 +403,16 @@ CompiledIfrtIrProgram::Create(
   };
   return tsl::JoinFutures(ready_futures)
       .Map(FutureExecutor::Get(), std::move(create_program));
+}
+
+uint32_t CompiledIfrtIrProgram::GetNumAtomProgramExecutions() const {
+  uint32_t num_executions = 0;
+  program->mlir_module.walk([&](mlir::func::FuncOp func_op) {
+    if (IsIfrtFunction(func_op)) {
+      func_op.walk([&](CallLoadedExecutableOp call_op) { num_executions++; });
+    }
+  });
+  return num_executions;
 }
 
 }  // namespace ifrt
