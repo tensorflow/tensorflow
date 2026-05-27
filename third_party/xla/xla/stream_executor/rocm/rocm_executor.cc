@@ -677,16 +677,11 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
     VLOG(1) << "Resolve ROCM kernel " << kernel_name
             << " from symbol pointer: " << symbol;
 
-#if TF_ROCM_VERSION >= 60200
     hipFunction_t func;
     RETURN_IF_ERROR(
         ToStatus(hipGetFuncBySymbol(&func, spec.in_process_symbol()->symbol),
                  "Failed call to hipGetFuncBySymbol"));
     rocm_kernel->set_gpu_function(func);
-#else
-    rocm_kernel->set_gpu_function(
-        static_cast<hipFunction_t>(spec.in_process_symbol().symbol()));
-#endif  // TF_ROCM_VERSION >= 60200
 
   } else {
     return absl::InternalError("No method of loading ROCM kernel provided");

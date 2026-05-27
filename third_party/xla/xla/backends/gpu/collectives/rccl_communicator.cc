@@ -58,11 +58,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
 
-#if (TF_ROCM_VERSION >= 50200)
 #include "rocm/include/rccl/rccl.h"
-#else
-#include "rocm/include/rccl.h"
-#endif  // TF_ROCM_VERSION >= 50200
 
 namespace xla::gpu {
 namespace {
@@ -88,17 +84,9 @@ static absl::StatusOr<ncclDataType_t> ToNcclDataType(
     se::RocmComputeCapability rocm_cc) {
   switch (dtype) {
     case F8E5M2:
-#if TF_ROCM_VERSION >= 70000
       return rocm_cc.has_ocp_fp8_support() ? ncclFloat8e5m2 : ncclInt8;
-#else
-      return ncclInt8;
-#endif
     case F8E4M3FN:
-#if TF_ROCM_VERSION >= 70000
       return rocm_cc.has_ocp_fp8_support() ? ncclFloat8e4m3 : ncclInt8;
-#else
-      return ncclInt8;
-#endif
     case S8:
     case F8E5M2FNUZ:
     case F8E4M3FNUZ:

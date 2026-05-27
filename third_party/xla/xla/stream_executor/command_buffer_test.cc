@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,19 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef ROCM_ROCM_CONFIG_H_
-#define ROCM_ROCM_CONFIG_H_
+#include "xla/stream_executor/command_buffer.h"
 
-#define TF_ROCM_TOOLKIT_PATH "%{rocm_toolkit_path}"
+#include <gtest/gtest.h>
 
-#define TF_ROCM_VERSION %{rocm_version_number}
-#define TF_MIOPEN_VERSION %{miopen_version_number}
-#define TF_HIPRUNTIME_VERSION %{hipruntime_version_number}
-// NOTE: HipBlasLt is now always available, this flag is deprecated !
-#define TF_HIPBLASLT 1
+namespace stream_executor {
 
-#if TF_ROCM_VERSION != 0 && TF_ROCM_VERSION < 70100
-#error "XLA requires ROCm 7.1 or higher. Older versions are no longer supported."
-#endif
+class CommandBufferTest : public ::testing::Test {
+ protected:
+  using ResourceTypeId = CommandBuffer::ResourceTypeId;
 
-#endif  // ROCM_ROCM_CONFIG_H_
+  static ResourceTypeId GetNextResourceTypeId() {
+    return CommandBuffer::GetNextResourceTypeId();
+  }
+};
+
+TEST_F(CommandBufferTest, GetNextResourceTypeIdReturnsDifferentIds) {
+  ResourceTypeId id1 = GetNextResourceTypeId();
+  ResourceTypeId id2 = GetNextResourceTypeId();
+  EXPECT_NE(id1, id2);
+}
+
+}  // namespace stream_executor

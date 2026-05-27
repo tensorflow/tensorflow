@@ -43,11 +43,7 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/xla_data.pb.h"
 
-#if (TF_ROCM_VERSION >= 50200)
 #include "rocm/include/rccl/rccl.h"
-#else
-#include "rocm/include/rccl.h"
-#endif  // TF_ROCM_VERSION >= 50200
 
 namespace xla::gpu {
 
