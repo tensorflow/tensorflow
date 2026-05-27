@@ -52,10 +52,11 @@ class SubstrOp : public OpKernel {
     const TensorShape& input_shape = input_tensor.shape();
     const TensorShape& pos_shape = pos_tensor.shape();
     const TensorShape& len_shape = len_tensor.shape();
-    OP_REQUIRES(context, (pos_shape == len_shape),
-                errors::InvalidArgument(
-                    "pos and len should have the same shape, got: ",
-                    pos_shape.DebugString(), " vs. ", len_shape.DebugString()));
+    OP_REQUIRES(
+        context, (pos_shape == len_shape),
+        absl::InvalidArgumentError(absl::StrCat(
+            "pos and len should have the same shape, got: ",
+            pos_shape.DebugString(), " vs. ", len_shape.DebugString())));
 
     bool is_scalar = TensorShapeUtils::IsScalar(pos_shape);
 
@@ -136,9 +137,9 @@ class SubstrOp : public OpKernel {
       BCast bcast(BCast::FromShape(input_shape), BCast::FromShape(pos_shape),
                   /*fewer_dims_optimization*/ false);
       OP_REQUIRES(context, bcast.IsValid(),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "Incompatible shapes: ", input_shape.DebugString(),
-                      " vs. ", pos_shape.DebugString()));
+                      " vs. ", pos_shape.DebugString())));
       TensorShape output_shape = BCast::ToShape(bcast.result_shape());
       int ndims = output_shape.dims();
       Tensor* output_tensor = nullptr;
@@ -258,8 +259,8 @@ class SubstrOp : public OpKernel {
           break;
         }
         default: {
-          context->SetStatus(errors::Unimplemented(
-              "Substr broadcast not implemented for ", ndims, " dimensions"));
+          context->SetStatus(absl::UnimplementedError(absl::StrCat(
+              "Substr broadcast not implemented for ", ndims, " dimensions")));
         }
       }
     }
