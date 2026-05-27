@@ -71,7 +71,7 @@ jobs:
         ]
     name: ${{ matrix.job_info.pretty_name }}
     runs-on: ${{ matrix.job_info.pool }}
-    container: ${{ matrix.job_info.container }}
+    container: ${{ matrix.job_info.container }} # zizmor: ignore[unpinned-images]
     defaults:
       run:
         shell: bash
