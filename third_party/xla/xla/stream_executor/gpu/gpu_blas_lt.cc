@@ -326,29 +326,6 @@ size_t BlasLt::GetMatmulPlanCacheSize() const {
   return plan_cache_.size();
 }
 
-absl::StatusOr<BlasLt::MatmulPlan*> BlasLt::GetOrCreateGroupedMatmulPlan(
-    const std::string& key, PlanCreateFunc create) {
-  absl::MutexLock lock(plan_cache_mu_);
-  auto res = grouped_plan_cache_.emplace(key, MatmulPlanPtr{});
-  if (res.second || key.empty()) {
-    VLOG(2) << "Creating a grouped plan for: " << key;
-    ASSIGN_OR_RETURN(res.first->second, create());
-    VLOG(2) << "Grouped Plan created: cache size: "
-            << grouped_plan_cache_.size();
-  }
-  return res.first->second.get();
-}
-
-void BlasLt::ClearGroupedMatmulPlanCache() {
-  absl::MutexLock lock(plan_cache_mu_);
-  grouped_plan_cache_.clear();
-}
-
-size_t BlasLt::GetGroupedMatmulPlanCacheSize() const {
-  absl::MutexLock lock(plan_cache_mu_);
-  return grouped_plan_cache_.size();
-}
-
 absl::StatusOr<GemmConfig> GemmConfig::FromProto(
     const xla::GemmConfigProto& proto) {
   ASSIGN_OR_RETURN(MatrixLayout lhs_layout,

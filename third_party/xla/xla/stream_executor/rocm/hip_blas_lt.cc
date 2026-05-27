@@ -846,7 +846,7 @@ absl::Status BlasLt::GroupedMatmulPlan::DoInitialize(
   return absl::OkStatus();
 }
 
-absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetGroupedMatmulPlan(
+absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetMatmulPlan(
     const gpu::GroupedGemmConfig& cfg, Epilogue epilogue) const {
   auto compute_type = cfg.compute_type;
   if (!compute_type) {  // obtain compute_type unless provided by the user

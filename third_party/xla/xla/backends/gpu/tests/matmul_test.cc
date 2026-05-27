@@ -17,6 +17,7 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace {
