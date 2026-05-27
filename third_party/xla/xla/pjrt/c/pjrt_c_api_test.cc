@@ -1069,9 +1069,6 @@ FieldOffsetsAndSizesForVersion(int major_version, int minor_version) {
       add_field("PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace",
                 kFnPtrSize);
     }
-    if (minor_version >= 110) {
-      add_field("PJRT_TopologyDescription_GetMemorySpaceKindIds", kFnPtrSize);
-    }
     return version_offsets_and_sizes;
   }
   LOG(FATAL) << "Unsupported API version: " << major_version << "."
@@ -1527,9 +1524,6 @@ TEST_F(PjrtCAbiTestBase, FieldOffsetsAndSizes) {
             sizeof(
                 PJRT_Api::
                     PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace)}},  // NOLINT (whitespace/line_length)
-          {"PJRT_TopologyDescription_GetMemorySpaceKindIds",
-           {offsetof(PJRT_Api, PJRT_TopologyDescription_GetMemorySpaceKindIds),
-            sizeof(PJRT_Api::PJRT_TopologyDescription_GetMemorySpaceKindIds)}},
       };
   ASSERT_EQ(api_->pjrt_api_version.major_version, PJRT_API_MAJOR);
   ASSERT_EQ(api_->pjrt_api_version.minor_version, PJRT_API_MINOR);

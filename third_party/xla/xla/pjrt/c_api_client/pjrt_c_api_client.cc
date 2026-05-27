@@ -4322,36 +4322,6 @@ PjRtCApiTopologyDescription::MakeCanonicalShapeForMemorySpace(
   return xla::Shape::FromProto(shape_proto);
 }
 
-absl::Span<const int> PjRtCApiTopologyDescription::GetMemorySpaceKindIds()
-    const {
-  if (c_api_->pjrt_api_version.minor_version < 110 ||
-      c_api_->PJRT_TopologyDescription_GetMemorySpaceKindIds == nullptr) {
-    static const int kDefaultMemorySpaceKindIds[] = {-1};
-    return absl::MakeConstSpan(kDefaultMemorySpaceKindIds);
-  }
-
-  PJRT_TopologyDescription_GetMemorySpaceKindIds_Args args;
-  args.struct_size =
-      PJRT_TopologyDescription_GetMemorySpaceKindIds_Args_STRUCT_SIZE;
-  args.extension_start = nullptr;
-  args.topology = c_topology_;
-  args.memory_space_kind_ids = nullptr;
-  args.num_memory_space_kind_ids = 0;
-
-  std::unique_ptr<PJRT_Error, ::pjrt::PJRT_ErrorDeleter> error{
-      c_api_->PJRT_TopologyDescription_GetMemorySpaceKindIds(&args),
-      ::pjrt::MakeErrorDeleter(c_api_)};
-  if (error != nullptr) {
-    LOG(ERROR) << "PJRT_TopologyDescription_GetMemorySpaceKindIds failed: "
-               << ::pjrt::PjrtErrorToStatus(error.get(), c_api_).ToString();
-    static const int kDefaultMemorySpaceKindIds[] = {-1};
-    return absl::MakeConstSpan(kDefaultMemorySpaceKindIds);
-  }
-
-  return absl::MakeConstSpan(args.memory_space_kind_ids,
-                             args.num_memory_space_kind_ids);
-}
-
 void PjRtCApiTopologyDescription::InitAttributes() {
   PJRT_TopologyDescription_Attributes_Args args;
   args.struct_size = PJRT_TopologyDescription_Attributes_Args_STRUCT_SIZE;

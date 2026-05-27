@@ -1,9 +1,5 @@
 # PJRT C API changelog
 
-## 0.110
-
-* Added GetMemorySpaceKindIds() const to PJRT_TopologyDescription.
-
 ## 0.109
 
 *   Added MakeCanonicalShapeForMemorySpace to PJRT_TopologyDescription..

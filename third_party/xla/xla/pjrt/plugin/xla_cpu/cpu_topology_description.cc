@@ -98,13 +98,6 @@ absl::StatusOr<absl::string_view> CpuTopologyDescription::KindIdToKind(
       absl::StrCat("Unknown memory kind ID: ", kind));
 }
 
-absl::Span<const int> CpuTopologyDescription::GetMemorySpaceKindIds() const {
-  static const int kCpuMemorySpaceKindIds[] = {
-      CpuDeviceMemorySpace::kKindId, PinnedHostMemorySpace::kKindId,
-      UnpinnedHostMemorySpace::kKindId};
-  return absl::MakeConstSpan(kCpuMemorySpaceKindIds);
-}
-
 absl::StatusOr<xla::Shape>
 CpuTopologyDescription::MakeCanonicalShapeForMemorySpace(
     int memory_space_kind_id, xla::Shape shape,

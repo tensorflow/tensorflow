@@ -256,14 +256,6 @@ StreamExecutorGpuTopologyDescription::MakeCanonicalShapeForMemorySpace(
   return shape;
 }
 
-absl::Span<const int>
-StreamExecutorGpuTopologyDescription::GetMemorySpaceKindIds() const {
-  static const int kGpuMemorySpaceKindIds[] = {
-      static_cast<int>(tsl::Fingerprint32("device")),
-      static_cast<int>(tsl::Fingerprint32("pinned_host"))};
-  return absl::MakeConstSpan(kGpuMemorySpaceKindIds);
-}
-
 absl::StatusOr<PjRtDeviceDimensions>
 StreamExecutorGpuTopologyDescription::ChipBounds() const {
   return PjRtDeviceDimensions{gpu_topology_->num_partitions(),

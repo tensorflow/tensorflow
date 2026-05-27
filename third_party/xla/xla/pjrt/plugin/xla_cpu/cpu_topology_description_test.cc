@@ -154,21 +154,5 @@ TEST(CpuTopologyDescriptionTest, KindIdToKind) {
   EXPECT_FALSE(topology.KindIdToKind(-1).ok());
 }
 
-TEST(CpuTopologyDescriptionTest, MemorySpaceKindIds) {
-  std::vector<CpuTopology::CpuDevice> cpu_devices = {{0, 0}};
-  xla::cpu::TargetMachineOptions target_machine_options(
-      /*triple=*/"triple", /*cpu=*/"cpu", /*features=*/"");
-  CpuTopologyDescription topology(
-      xla::CpuId(), "cpu", "1.0",
-      CpuTopology(cpu_devices, target_machine_options));
-
-  EXPECT_THAT(
-      topology.GetMemorySpaceKindIds(),
-      ElementsAre(CpuDeviceMemorySpace::kKindId, PinnedHostMemorySpace::kKindId,
-                  UnpinnedHostMemorySpace::kKindId));
-  EXPECT_EQ(topology.GetDefaultMemorySpaceKindId(),
-            CpuDeviceMemorySpace::kKindId);
-}
-
 }  // namespace
 }  // namespace xla

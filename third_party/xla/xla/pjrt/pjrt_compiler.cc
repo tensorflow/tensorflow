@@ -295,9 +295,4 @@ PjRtPhaseCompiler::RunPhases(
   return programs;
 }
 
-absl::Span<const int> PjRtTopologyDescription::GetMemorySpaceKindIds() const {
-  static const int kDefaultMemorySpaceKindIds[] = {-1};
-  return absl::MakeConstSpan(kDefaultMemorySpaceKindIds);
-}
-
 }  // namespace xla
