@@ -17,14 +17,11 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/ops/math_ops.h"
 
-#include "absl/status/status.h"
-#include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_context.h"
-#include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/tracing_utils.h"
-#include "xla/tsl/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/errors.h"
 
 using tensorflow::tracing::MaybeSetOpName;
 
@@ -37,9 +34,9 @@ namespace ops {
 // Description:
 //   *NOTE*: `Multiply` supports broadcasting. More about broadcasting
 //   [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-absl::Status Mul(AbstractContext* ctx, AbstractTensorHandle* const x,
-                 AbstractTensorHandle* const y, AbstractTensorHandle** z,
-                 const char* name, const char* raw_device_name) {
+Status Mul(AbstractContext* ctx, AbstractTensorHandle* const x,
+           AbstractTensorHandle* const y, AbstractTensorHandle** z,
+           const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("Mul", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
@@ -67,9 +64,9 @@ absl::Status Mul(AbstractContext* ctx, AbstractTensorHandle* const x,
 //   # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
 //   tf.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
 //   ```
-absl::Status Conj(AbstractContext* ctx, AbstractTensorHandle* const input,
-                  AbstractTensorHandle** output, const char* name,
-                  const char* raw_device_name) {
+Status Conj(AbstractContext* ctx, AbstractTensorHandle* const input,
+            AbstractTensorHandle** output, const char* name,
+            const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("Conj", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
@@ -85,9 +82,9 @@ absl::Status Conj(AbstractContext* ctx, AbstractTensorHandle* const input,
 //   *NOTE*: `Add` supports broadcasting. `AddN` does not. More about
 //   broadcasting
 //   [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-absl::Status AddV2(AbstractContext* ctx, AbstractTensorHandle* const x,
-                   AbstractTensorHandle* const y, AbstractTensorHandle** z,
-                   const char* name, const char* raw_device_name) {
+Status AddV2(AbstractContext* ctx, AbstractTensorHandle* const x,
+             AbstractTensorHandle* const y, AbstractTensorHandle** z,
+             const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("AddV2", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
@@ -108,11 +105,10 @@ absl::Status AddV2(AbstractContext* ctx, AbstractTensorHandle* const x,
 //
 //   *Note*: The default kernel implementation for MatMul on GPUs uses
 //   cublas.
-absl::Status MatMul(AbstractContext* ctx, AbstractTensorHandle* const a,
-                    AbstractTensorHandle* const b,
-                    AbstractTensorHandle** product, bool transpose_a,
-                    bool transpose_b, const char* name,
-                    const char* raw_device_name) {
+Status MatMul(AbstractContext* ctx, AbstractTensorHandle* const a,
+              AbstractTensorHandle* const b, AbstractTensorHandle** product,
+              bool transpose_a, bool transpose_b, bool grad_a, bool grad_b,
+              const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("MatMul", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
@@ -120,6 +116,8 @@ absl::Status MatMul(AbstractContext* ctx, AbstractTensorHandle* const a,
   TF_RETURN_IF_ERROR(op_ptr->AddInput(b));
   TF_RETURN_IF_ERROR(op_ptr->SetAttrBool("transpose_a", transpose_a));
   TF_RETURN_IF_ERROR(op_ptr->SetAttrBool("transpose_b", transpose_b));
+  TF_RETURN_IF_ERROR(op_ptr->SetAttrBool("grad_a", grad_a));
+  TF_RETURN_IF_ERROR(op_ptr->SetAttrBool("grad_b", grad_b));
   int num_retvals = 1;
   return op_ptr->Execute(absl::MakeSpan(product, 1), &num_retvals);
 }
@@ -129,9 +127,9 @@ absl::Status MatMul(AbstractContext* ctx, AbstractTensorHandle* const a,
 //
 // Description:
 //   I.e., \\(y = -x\\).
-absl::Status Neg(AbstractContext* ctx, AbstractTensorHandle* const x,
-                 AbstractTensorHandle** y, const char* name,
-                 const char* raw_device_name) {
+Status Neg(AbstractContext* ctx, AbstractTensorHandle* const x,
+           AbstractTensorHandle** y, const char* name,
+           const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("Neg", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
@@ -148,10 +146,10 @@ absl::Status Neg(AbstractContext* ctx, AbstractTensorHandle* const x,
 //   `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry
 //   in `axis`. If `keep_dims` is true, the reduced dimensions are retained with
 //   length 1.
-absl::Status Sum(AbstractContext* ctx, AbstractTensorHandle* const input,
-                 AbstractTensorHandle* const reduction_indices,
-                 AbstractTensorHandle** output, bool keep_dims,
-                 const char* name, const char* raw_device_name) {
+Status Sum(AbstractContext* ctx, AbstractTensorHandle* const input,
+           AbstractTensorHandle* const reduction_indices,
+           AbstractTensorHandle** output, bool keep_dims, const char* name,
+           const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("Sum", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
@@ -168,9 +166,9 @@ absl::Status Sum(AbstractContext* ctx, AbstractTensorHandle* const input,
 // Description:
 //   *NOTE*: `Subtract` supports broadcasting. More about broadcasting
 //   [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-absl::Status Sub(AbstractContext* ctx, AbstractTensorHandle* const x,
-                 AbstractTensorHandle* const y, AbstractTensorHandle** z,
-                 const char* name, const char* raw_device_name) {
+Status Sub(AbstractContext* ctx, AbstractTensorHandle* const x,
+           AbstractTensorHandle* const y, AbstractTensorHandle** z,
+           const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("Sub", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
@@ -186,9 +184,9 @@ absl::Status Sub(AbstractContext* ctx, AbstractTensorHandle* const x,
 // Description:
 //   *NOTE*: `Div` supports broadcasting. More about broadcasting
 //   [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-absl::Status Div(AbstractContext* ctx, AbstractTensorHandle* const x,
-                 AbstractTensorHandle* const y, AbstractTensorHandle** z,
-                 const char* name, const char* raw_device_name) {
+Status Div(AbstractContext* ctx, AbstractTensorHandle* const x,
+           AbstractTensorHandle* const y, AbstractTensorHandle** z,
+           const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("Div", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
@@ -205,9 +203,9 @@ absl::Status Div(AbstractContext* ctx, AbstractTensorHandle* const x,
 //
 //   *NOTE*: `DivNoNan` supports broadcasting. More about broadcasting
 //   [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-absl::Status DivNoNan(AbstractContext* ctx, AbstractTensorHandle* const x,
-                      AbstractTensorHandle* const y, AbstractTensorHandle** z,
-                      const char* name, const char* raw_device_name) {
+Status DivNoNan(AbstractContext* ctx, AbstractTensorHandle* const x,
+                AbstractTensorHandle* const y, AbstractTensorHandle** z,
+                const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("DivNoNan", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
@@ -247,9 +245,9 @@ absl::Status DivNoNan(AbstractContext* ctx, AbstractTensorHandle* const x,
 //     x = tf.constant(1 + 1j)
 //     tf.math.exp(x) ==> 1.4686939399158851+2.2873552871788423j
 //     ```
-absl::Status Exp(AbstractContext* ctx, AbstractTensorHandle* const x,
-                 AbstractTensorHandle** y, const char* name,
-                 const char* raw_device_name) {
+Status Exp(AbstractContext* ctx, AbstractTensorHandle* const x,
+           AbstractTensorHandle** y, const char* name,
+           const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("Exp", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
@@ -263,9 +261,9 @@ absl::Status Exp(AbstractContext* ctx, AbstractTensorHandle* const x,
 //
 // Description:
 //   I.e., \\(y = \sqrt{x} = x^{1/2}\\).
-absl::Status Sqrt(AbstractContext* ctx, AbstractTensorHandle* const x,
-                  AbstractTensorHandle** y, const char* name,
-                  const char* raw_device_name) {
+Status Sqrt(AbstractContext* ctx, AbstractTensorHandle* const x,
+            AbstractTensorHandle** y, const char* name,
+            const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("Sqrt", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
@@ -280,9 +278,9 @@ absl::Status Sqrt(AbstractContext* ctx, AbstractTensorHandle* const x,
 // Description:
 //   Specifically, `grad = dy * 0.5 / y`, where `y = sqrt(x)`, and `dy`
 //   is the corresponding input gradient.
-absl::Status SqrtGrad(AbstractContext* ctx, AbstractTensorHandle* const y,
-                      AbstractTensorHandle* const dy, AbstractTensorHandle** z,
-                      const char* name, const char* raw_device_name) {
+Status SqrtGrad(AbstractContext* ctx, AbstractTensorHandle* const y,
+                AbstractTensorHandle* const dy, AbstractTensorHandle** z,
+                const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("SqrtGrad", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
@@ -304,9 +302,9 @@ absl::Status SqrtGrad(AbstractContext* ctx, AbstractTensorHandle* const y,
 //   x = tf.constant([0, 0.5, 1, 5])
 //   tf.math.log1p(x) ==> [0., 0.4054651, 0.6931472, 1.7917595]
 //   ```
-absl::Status Log1p(AbstractContext* ctx, AbstractTensorHandle* const x,
-                   AbstractTensorHandle** y, const char* name,
-                   const char* raw_device_name) {
+Status Log1p(AbstractContext* ctx, AbstractTensorHandle* const x,
+             AbstractTensorHandle** y, const char* name,
+             const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("Log1p", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));

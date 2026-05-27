@@ -83,10 +83,12 @@ Status SparseSoftmaxCrossEntropyWithLogits(AbstractContext* ctx, AbstractTensorH
   TF_RETURN_IF_ERROR(op_ptr->AddInput(features));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(labels));
   int num_retvals = 2;
-  AbstractTensorHandle* temp_outputs[2];
+  AbstractTensorHandle* temp_outputs[2] = {nullptr};
   Status status = op_ptr->Execute(temp_outputs, &num_retvals);
-  *loss = temp_outputs[0];
-  *backprop = temp_outputs[1];
+  if (status.ok()) {
+    *loss = temp_outputs[0];
+    *backprop = temp_outputs[1];
+  }
   return status;
 }
 
