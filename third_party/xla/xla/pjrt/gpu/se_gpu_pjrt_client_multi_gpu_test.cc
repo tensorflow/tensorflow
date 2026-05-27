@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <set>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -41,6 +42,7 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/debug_options_flags.h"
@@ -52,6 +54,9 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/pjrt/buffer_sequencing_event.h"
+#include "xla/pjrt/common_pjrt_client.h"
+#include "xla/pjrt/device_event.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/distributed.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
@@ -64,6 +69,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/profiling/device_time_measurement.h"
 #include "xla/pjrt/profiling/test_util/mock_device_time_measurement.h"
@@ -76,6 +82,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #if GOOGLE_CUDA
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #endif  // GOOGLE_CUDA
@@ -950,7 +958,8 @@ TEST(StreamExecutorGpuClientTest, FailedCrossHostReceiveArgsSizeMismatch) {
               "2.")));
 }
 
-TEST(StreamExecutorGpuClientTest, FailedCrossHostTransferSrcAndDstAddressable) {
+TEST(StreamExecutorGpuClientTest,
+     FailedCrossHostSendReceiveSrcAndDstAddressable) {
   // Create the client.
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                        GetStreamExecutorGpuClient(GetTestGpuClientOptions(2)));
@@ -999,16 +1008,17 @@ TEST(StreamExecutorGpuClientTest, FailedCrossHostTransferSrcAndDstAddressable) {
               "be between an addressable and a non-addressable device.")));
 }
 
-static std::string SuccessfulCrossHostTransferTestName(
+static std::string SuccessfulCrossHostSendReceiveTestName(
     const ::testing::TestParamInfo<int>& info) {
   return absl::StrFormat("num_arrays_%d", info.param);
 }
 
 static const char* test_binary_name;
 
-class SuccessfulCrossHostTransferTest : public ::testing::TestWithParam<int> {};
+class SuccessfulCrossHostSendReceiveTest
+    : public ::testing::TestWithParam<int> {};
 
-TEST_P(SuccessfulCrossHostTransferTest, SuccessfulCrossHostTransfer) {
+TEST_P(SuccessfulCrossHostSendReceiveTest, SuccessfulCrossHostSendReceive) {
   int num_arrays = GetParam();
 
   tsl::SubProcess sender;
@@ -1016,16 +1026,16 @@ TEST_P(SuccessfulCrossHostTransferTest, SuccessfulCrossHostTransfer) {
 
   std::vector<std::string> sender_argv;
   sender_argv.push_back(test_binary_name);
-  sender_argv.push_back("successful_cross_host_transfer_test");
-  sender_argv.push_back("--test_to_run=SuccessfulCrossHostTransferHelper");
-  sender_argv.push_back("--cross_host_test_role=sender");
+  sender_argv.push_back("successful_cross_host_send_receive_test");
+  sender_argv.push_back("--test_to_run=SuccessfulCrossHostSendReceiveHelper");
+  sender_argv.push_back("--cross_host_send_receive_test_role=sender");
   sender_argv.push_back(absl::StrFormat("--num_arrays=%d", num_arrays));
 
   std::vector<std::string> receiver_argv;
   receiver_argv.push_back(test_binary_name);
-  receiver_argv.push_back("successful_cross_host_transfer_test");
-  receiver_argv.push_back("--test_to_run=SuccessfulCrossHostTransferHelper");
-  receiver_argv.push_back("--cross_host_test_role=receiver");
+  receiver_argv.push_back("successful_cross_host_send_receive_test");
+  receiver_argv.push_back("--test_to_run=SuccessfulCrossHostSendReceiveHelper");
+  receiver_argv.push_back("--cross_host_send_receive_test_role=receiver");
   receiver_argv.push_back(absl::StrFormat("--num_arrays=%d", num_arrays));
 
   sender.SetProgram(test_binary_name, sender_argv);
@@ -1055,31 +1065,35 @@ TEST_P(SuccessfulCrossHostTransferTest, SuccessfulCrossHostTransfer) {
                                 << receiver_stderr;
 }
 
-INSTANTIATE_TEST_SUITE_P(SuccessfulCrossHostTransfer,
-                         SuccessfulCrossHostTransferTest,
+INSTANTIATE_TEST_SUITE_P(SuccessfulCrossHostSendReceive,
+                         SuccessfulCrossHostSendReceiveTest,
                          ::testing::ValuesIn({1, 2, 3}),
-                         SuccessfulCrossHostTransferTestName);
+                         SuccessfulCrossHostSendReceiveTestName);
 
-absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
-                                                 int num_arrays) {
-  std::string log_prefix = is_sender ? "sender" : "receiver";
-
-  // Sender creates a coordination service on so both processes can find each
-  // other via the distributed runtime (port chosen arbitrarily).
+struct PreparedCrossHostTransferTest {
   std::unique_ptr<xla::DistributedRuntimeService> service;
-  if (is_sender) {
+  std::unique_ptr<PjRtClient> client;
+};
+
+absl::StatusOr<PreparedCrossHostTransferTest> PrepareCrossHostTransferTest(
+    int rank_id, absl::string_view log_prefix) {
+  PreparedCrossHostTransferTest prepared_test;
+
+  // Rank 0 creates a coordination service on so both processes can find each
+  // other via the distributed runtime (port chosen arbitrarily).
+  if (rank_id == 0) {
     LOG(INFO) << log_prefix << ": creating coordination service";
     ASSIGN_OR_RETURN(
-        service, xla::GetDistributedRuntimeService(
-                     "127.0.0.1:12347",
-                     xla::CoordinationServiceImpl::Options{/*num_nodes=*/2}));
+        prepared_test.service,
+        xla::GetDistributedRuntimeService(
+            "127.0.0.1:12347",
+            xla::CoordinationServiceImpl::Options{/*num_nodes=*/2}));
     LOG(INFO) << log_prefix << ": created service";
   }
 
   // Connect to the coordination service.
-  int32_t node_id = is_sender ? 0 : 1;
   xla::DistributedRuntimeClient::Options distributed_options;
-  distributed_options.node_id = node_id;
+  distributed_options.node_id = rank_id;
   distributed_options.init_timeout = absl::Seconds(120);
   auto distributed_client =
       GetDistributedRuntimeClient("127.0.0.1:12347", distributed_options);
@@ -1090,16 +1104,27 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
 
   // Create the GPU client.
   GpuClientOptions options = GetTestGpuClientOptions(2);
-  options.node_id = node_id;
+  options.node_id = rank_id;
   options.num_nodes = 2;
   options.kv_store =
       GetDistributedKeyValueStore(distributed_client, /*key_prefix=*/"cross:");
-  options.allowed_devices = {node_id};
+  options.allowed_devices = {rank_id};
 
   LOG(INFO) << log_prefix << ": creating PjRtClient";
-  ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
-                   GetStreamExecutorGpuClient(options));
+  ASSIGN_OR_RETURN(prepared_test.client, GetStreamExecutorGpuClient(options));
   LOG(INFO) << log_prefix << ": PjRtClient created";
+
+  return prepared_test;
+}
+
+absl::Status SuccessfulCrossHostSendReceiveTestBody(bool is_sender,
+                                                    int num_arrays) {
+  std::string log_prefix = is_sender ? "sender" : "receiver";
+
+  ASSIGN_OR_RETURN(PreparedCrossHostTransferTest prepared_test,
+                   PrepareCrossHostTransferTest(is_sender ? 0 : 1, log_prefix));
+
+  std::unique_ptr<PjRtClient> client = std::move(prepared_test.client);
 
   // Sender logic.
   if (is_sender) {
@@ -1188,6 +1213,261 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
       LOG(INFO) << log_prefix << ": verification of receive " << i
                 << " complete";
     }
+  }
+
+  return absl::OkStatus();
+}
+
+TEST(StreamExecutorGpuClientTest, FailedCrossHostTransferSrcAndDstAddressable) {
+  ASSERT_OK_AND_ASSIGN(auto pjrt_client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions(2)));
+  auto* client =
+      tensorflow::down_cast<PjRtStreamExecutorClient*>(pjrt_client.get());
+  auto* memory_space = client->memory_spaces()[0];
+  auto literal = LiteralUtil::CreateR1<float>({41.0f, 42.0f, 43.0f, 44.0f});
+  ASSERT_OK_AND_ASSIGN(
+      Shape device_shape,
+      client->MakeDefaultShapeForMemorySpace(memory_space, literal.shape(),
+                                             /*layout=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(
+      int64_t on_device_bytes_count,
+      client->GetOnDeviceBytesCount(memory_space, device_shape));
+  ASSERT_OK_AND_ASSIGN(auto raw_buffer, client->AllocateRawBuffer(
+                                            memory_space, on_device_bytes_count,
+                                            /*retry_on_oom=*/true,
+                                            /*allocate_after=*/{}));
+
+  EXPECT_THAT(
+      client
+          ->CrossHostTransferBuffers(
+              /*transfer_dependencies=*/{},
+              /*transfer_specs=*/{CommonPjRtClient::CrossHostTransferSpec{
+                  GlobalDeviceId(0), GlobalDeviceId(1), std::move(raw_buffer)}})
+          .status(),
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          ::testing::StrEq(
+              "CrossHostTransferBuffers: remote device for buffer 0 is "
+              "addressable (global device id 1), but cross-host transfers must "
+              "be between an addressable and a non-addressable device.")));
+}
+
+struct SuccessfulCrossHostTransferTestParam {
+  int num_rank_0_to_rank_1;
+  int num_rank_1_to_rank_0;
+};
+
+static std::string SuccessfulCrossHostTransferTestName(
+    const ::testing::TestParamInfo<SuccessfulCrossHostTransferTestParam>&
+        info) {
+  return absl::StrFormat("num_rank0_to_rank1_%d_num_rank1_to_rank0_%d",
+                         info.param.num_rank_0_to_rank_1,
+                         info.param.num_rank_1_to_rank_0);
+}
+
+class SuccessfulCrossHostTransferTest
+    : public ::testing::TestWithParam<SuccessfulCrossHostTransferTestParam> {};
+
+TEST_P(SuccessfulCrossHostTransferTest, SuccessfulCrossHostTransfer) {
+  SuccessfulCrossHostTransferTestParam param = GetParam();
+
+  tsl::SubProcess rank_0;
+  tsl::SubProcess rank_1;
+
+  std::vector<std::string> rank_0_argv;
+  rank_0_argv.push_back(test_binary_name);
+  rank_0_argv.push_back("successful_cross_host_transfer_test");
+  rank_0_argv.push_back("--test_to_run=SuccessfulCrossHostTransferHelper");
+  rank_0_argv.push_back("--cross_host_transfer_test_rank=0");
+  rank_0_argv.push_back(
+      absl::StrFormat("--num_rank_0_to_rank_1=%d", param.num_rank_0_to_rank_1));
+  rank_0_argv.push_back(
+      absl::StrFormat("--num_rank_1_to_rank_0=%d", param.num_rank_1_to_rank_0));
+
+  std::vector<std::string> rank_1_argv;
+  rank_1_argv.push_back(test_binary_name);
+  rank_1_argv.push_back("successful_cross_host_transfer_test");
+  rank_1_argv.push_back("--test_to_run=SuccessfulCrossHostTransferHelper");
+  rank_1_argv.push_back("--cross_host_transfer_test_rank=1");
+  rank_1_argv.push_back(
+      absl::StrFormat("--num_rank_0_to_rank_1=%d", param.num_rank_0_to_rank_1));
+  rank_1_argv.push_back(
+      absl::StrFormat("--num_rank_1_to_rank_0=%d", param.num_rank_1_to_rank_0));
+
+  rank_0.SetProgram(test_binary_name, rank_0_argv);
+  rank_0.SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
+  rank_0.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
+
+  rank_1.SetProgram(test_binary_name, rank_1_argv);
+  rank_1.SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
+  rank_1.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
+
+  ASSERT_TRUE(rank_0.Start());
+  ASSERT_TRUE(rank_1.Start());
+
+  std::string rank_0_stdout, rank_0_stderr;
+  std::string rank_1_stdout, rank_1_stderr;
+
+  int rank_0_status =
+      rank_0.Communicate(nullptr, &rank_0_stdout, &rank_0_stderr);
+  int rank_1_status =
+      rank_1.Communicate(nullptr, &rank_1_stdout, &rank_1_stderr);
+
+  EXPECT_EQ(rank_0_status, 0) << "rank_0 stdout:\n"
+                              << rank_0_stdout << "\nrank_0 stderr:\n"
+                              << rank_0_stderr;
+  EXPECT_EQ(rank_1_status, 0) << "rank_1 stdout:\n"
+                              << rank_1_stdout << "\nrank_1 stderr:\n"
+                              << rank_1_stderr;
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    SuccessfulCrossHostTransfer, SuccessfulCrossHostTransferTest,
+    ::testing::ValuesIn(std::vector<SuccessfulCrossHostTransferTestParam>{
+        {1, 0}, {1, 1}, {2, 1}}),
+    SuccessfulCrossHostTransferTestName);
+
+absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
+                                                 int num_rank_0_to_rank_1,
+                                                 int num_rank_1_to_rank_0) {
+  std::string log_prefix = rank_id == 0 ? "rank_0" : "rank_1";
+  const int num_transfers = num_rank_0_to_rank_1 + num_rank_1_to_rank_0;
+
+  ASSIGN_OR_RETURN(PreparedCrossHostTransferTest prepared_test,
+                   PrepareCrossHostTransferTest(rank_id, log_prefix));
+  std::unique_ptr<PjRtClient> client = std::move(prepared_test.client);
+
+  // Prepare the data sent for each transfer.
+  // rank_id 0 sends buffers with data:
+  //  [0, ..., 255]
+  //  [1000, ..., 1255]
+  //  [2000, ..., 2255]
+  //  ...
+  // rank_id 1 sends buffers with data:
+  //  [10_000, ..., 10_255]
+  //  [11_000, ..., 11_255]
+  //  [12_000, ..., 12_255]
+  //  ...
+  std::vector<std::vector<int32_t>> transferred_data;
+  transferred_data.reserve(num_transfers);
+  for (int i = 0; i < num_rank_0_to_rank_1; ++i) {
+    std::vector<int32_t> curr_data(256);
+    absl::c_iota(curr_data, 1000 * i);
+    transferred_data.push_back(std::move(curr_data));
+  }
+  for (int i = 0; i < num_rank_1_to_rank_0; ++i) {
+    std::vector<int32_t> curr_data(256);
+    absl::c_iota(curr_data, 10000 + 1000 * i);
+    transferred_data.push_back(std::move(curr_data));
+  }
+  Shape shape = ShapeUtil::MakeShape(S32, {256});
+  ASSIGN_OR_RETURN(PjRtMemorySpace * default_memory_space,
+                   client->addressable_devices()[0]->default_memory_space());
+
+  // Initial values that will be populated in receive buffers (all zeros).
+  std::vector<int32_t> initial_zero_values(256, 0);
+
+  // The send / receive PjRtBuffers this rank allocates.
+  std::vector<std::unique_ptr<PjRtBuffer>> owned_buffers;
+  owned_buffers.reserve(num_transfers);
+
+  // Usage event promises that set the usage events on owned_buffers
+  // corresponding to the data transfers.
+  std::vector<tsl::RCReference<PjRtDeviceEventPromise>> usage_event_promises;
+  usage_event_promises.reserve(num_transfers);
+
+  // Passed as input to CrossHostTransferBuffers; contains raw buffers wrapped
+  // by owned_buffers.
+  std::vector<CommonPjRtClient::CrossHostTransferSpec> transfer_specs;
+  transfer_specs.reserve(num_transfers);
+
+  // Holds definition events of owned_buffers.
+  std::vector<PjRtDeviceEventRef> transfer_dependencies;
+
+  LOG(INFO) << log_prefix << ": preparing transfers.";
+  for (int i = 0; i < num_transfers; ++i) {
+    int src_global_device_id = i < num_rank_0_to_rank_1 ? 0 : 1;
+    int dst_global_device_id = i < num_rank_0_to_rank_1 ? 1 : 0;
+    bool is_sender = rank_id == src_global_device_id;
+
+    // Initialize a send / receive buffer.
+    ASSIGN_OR_RETURN(
+        std::unique_ptr<PjRtBuffer> buffer,
+        client->BufferFromHostBuffer(
+            /*data=*/is_sender ? transferred_data[i].data()
+                               : initial_zero_values.data(),
+            shape.element_type(), shape.dimensions(),
+            /*byte_strides=*/std::nullopt,
+            PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+            default_memory_space, /*device_layout=*/nullptr));
+
+    // Create a usage event for the transfer of this buffer.
+    tsl::RCReference<PjRtDeviceEventPromise> usage_event_promise;
+    PjRtDeviceEventRef usage_event;
+    ASSIGN_OR_RETURN(
+        std::tie(usage_event_promise, usage_event),
+        tensorflow::down_cast<CommonPjRtClient*>(client.get())
+            ->CreateLinkedEventPromise(
+                *client->addressable_devices()[0]->default_memory_space(),
+                absl::StrFormat("buffer %i", i)));
+    usage_event_promises.push_back(std::move(usage_event_promise));
+
+    // Get a raw buffer.
+    tsl::RCReference<CommonPjRtRawBuffer> raw_buffer;
+    RETURN_IF_ERROR(
+        tensorflow::down_cast<CommonPjRtBufferImpl*>(buffer.get())
+            ->AcquireScopedRawBuffer(
+                [&](tsl::RCReference<CommonPjRtRawBuffer> buf_raw_buffer,
+                    std::vector<PjRtDeviceEventRef>
+                        buf_definition_events) mutable
+                    -> absl::StatusOr<PjRtDeviceEventRef> {
+                  raw_buffer = std::move(buf_raw_buffer);
+                  for (PjRtDeviceEventRef& event : buf_definition_events) {
+                    transfer_dependencies.push_back(std::move(event));
+                  }
+                  return PjRtDeviceEventRef(usage_event);
+                },
+                "SuccessfulCrossHostTransferTestBody"));
+
+    // Form the transfer spec.
+    transfer_specs.push_back(CommonPjRtClient::CrossHostTransferSpec{
+        GlobalDeviceId(src_global_device_id),
+        GlobalDeviceId(dst_global_device_id), std::move(raw_buffer)});
+
+    owned_buffers.push_back(std::move(buffer));
+
+    LOG(INFO) << log_prefix << ": finished preparing transfer " << i;
+  }
+
+  // Perform transfers.
+  LOG(INFO) << log_prefix << ": enqueuing transfers";
+  ASSIGN_OR_RETURN(
+      std::vector<PjRtDeviceEventRef> usage_events,
+      tensorflow::down_cast<CommonPjRtClient*>(client.get())
+          ->CrossHostTransferBuffers(std::move(transfer_dependencies),
+                                     std::move(transfer_specs)));
+  EXPECT_EQ(usage_events.size(), num_transfers);
+
+  // Populate usage events.
+  LOG(INFO) << log_prefix << ": setting usage events";
+  for (int i = 0; i < usage_events.size(); ++i) {
+    usage_event_promises[i]->Set(usage_events[i]);
+  }
+
+  // Wait until the transfers are complete.
+  LOG(INFO) << log_prefix << ": waiting for transfers to complete";
+  for (PjRtDeviceEventRef& usage_event : usage_events) {
+    BlockUntilReady(usage_event.down_cast<BufferSequencingEvent>());
+  }
+
+  // Verify we received the correct data, and that the data we sent is
+  // uncorrupted.
+  for (int i = 0; i < num_transfers; ++i) {
+    ASSIGN_OR_RETURN(std::shared_ptr<xla::Literal> buffer_literal,
+                     owned_buffers[i]->ToLiteral().Await());
+    auto expected_literal = LiteralUtil::CreateR1<int32_t>(transferred_data[i]);
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected_literal, *buffer_literal));
+    LOG(INFO) << log_prefix << ": finished verification of transfer " << i;
   }
 
   return absl::OkStatus();
@@ -1385,9 +1665,9 @@ INSTANTIATE_TEST_SUITE_P(
 
 int main(int argc, char* argv[]) {
   // Populated by a command line flag. Will be either
-  // 'ShardedAutotuningWorksHelper', 'SuccessfulCrossHostTransferHelper', or
-  // empty. If empty, all tests are run. Otherwise, the test body for
-  // 'ShardedAutotuningWorks' or 'SuccessfulCrossHostTransfer' will be run.
+  // 'ShardedAutotuningWorksHelper', 'SuccessfulCrossHostSendReceiveHelper',
+  // 'SuccessfulCrossHostTransferHelper', or empty. If empty, all tests are run.
+  // Otherwise, the test body for the selected helper will be run.
   std::string test_to_run;
   xla::test_binary_name = argv[0];
 
@@ -1397,14 +1677,20 @@ int main(int argc, char* argv[]) {
   int num_nodes_using_cache = -1;
   std::string cache_dir;
 
-  // Variables used by SuccessfulCrossHostTransfer.
-  std::string cross_host_test_role;
+  // Variables used by cross host transfer tests.
   int num_arrays = -1;
+  // Used by SuccessfulCrossHostSendReceiveTest.
+  std::string cross_host_send_receive_test_role;
+  // Used by SuccessfulCrossHostTransferTest.
+  int cross_host_transfer_test_rank = -1;
+  int num_rank_0_to_rank_1 = -1;
+  int num_rank_1_to_rank_0 = -1;
 
   std::vector<tsl::Flag> flag_list = {
       tsl::Flag("test_to_run", &test_to_run,
                 "Which test(s) to execute. Allowed values: '' (runs "
-                "all tests), 'ShardedAutotuningWorksHelper' or "
+                "all tests), 'ShardedAutotuningWorksHelper', "
+                "'SuccessfulCrossHostSendReceiveHelper', or "
                 "'SuccessfulCrossHostTransferHelper'."),
 
       // Flags for ShardedAutotuningWorks.
@@ -1417,13 +1703,23 @@ int main(int argc, char* argv[]) {
       tsl::Flag("cache_dir", &cache_dir,
                 "Test parameter for ShardedAutotuningWorks."),
 
-      // Flags for SuccessfulCrossHostTransfer.
-      tsl::Flag("cross_host_test_role", &cross_host_test_role,
-                "Test parameter for SuccessfulCrossHostTransfer; either "
+      // Flags for cross host transfer tests.
+      tsl::Flag("cross_host_send_receive_test_role",
+                &cross_host_send_receive_test_role,
+                "Test parameter for SuccessfulCrossHostSendReceive; either "
                 "'sender' or 'receiver'."),
       tsl::Flag("num_arrays", &num_arrays,
+                "Test parameter for SuccessfulCrossHostSendReceive; number of "
+                "arrays to transfer."),
+      tsl::Flag("num_rank_0_to_rank_1", &num_rank_0_to_rank_1,
                 "Test parameter for SuccessfulCrossHostTransfer; number of "
-                "arrays to transfer.")};
+                "arrays sent from rank 0 to rank 1."),
+      tsl::Flag("num_rank_1_to_rank_0", &num_rank_1_to_rank_0,
+                "Test parameter for SuccessfulCrossHostTransfer; number of "
+                "arrays sent from rank 1 to rank 0."),
+      tsl::Flag(
+          "cross_host_transfer_test_rank", &cross_host_transfer_test_rank,
+          "Test parameter for SuccessfulCrossHostTransfer; either 0 or 1.")};
 
   xla::AppendDebugOptionsFlags(&flag_list);
   std::string usage = tsl::Flags::Usage(argv[0], flag_list);
@@ -1434,31 +1730,43 @@ int main(int argc, char* argv[]) {
     return RUN_ALL_TESTS();
   }
 
+  absl::Status result = absl::OkStatus();
+
   if (test_to_run == "ShardedAutotuningWorksHelper") {
-    absl::Status result = xla::ShardedAutotuningWorksTestBody(
+    result = xla::ShardedAutotuningWorksTestBody(
         node_id, num_active_nodes, num_nodes_using_cache, cache_dir);
-    if (!result.ok()) {
-      LOG(ERROR) << result;
-    }
-    return result.raw_code();
-  }
-  if (test_to_run == "SuccessfulCrossHostTransferHelper") {
-    absl::Status s;
-    if (cross_host_test_role == "sender") {
-      s = xla::SuccessfulCrossHostTransferTestBody(/*is_sender=*/true,
-                                                   num_arrays);
-    } else if (cross_host_test_role == "receiver") {
-      s = xla::SuccessfulCrossHostTransferTestBody(/*is_sender=*/false,
-                                                   num_arrays);
+  } else if (test_to_run == "SuccessfulCrossHostSendReceiveHelper") {
+    if (cross_host_send_receive_test_role == "sender") {
+      result = xla::SuccessfulCrossHostSendReceiveTestBody(
+          /*is_sender=*/true, num_arrays);
+    } else if (cross_host_send_receive_test_role == "receiver") {
+      result = xla::SuccessfulCrossHostSendReceiveTestBody(
+          /*is_sender=*/false, num_arrays);
     } else {
-      LOG(ERROR) << "cross_host_test_role must be 'sender' or 'receiver'.";
-      return 1;
+      result = absl::InvalidArgumentError(
+          "cross_host_send_receive_test_role must be 'sender' or "
+          "'receiver'.");
     }
-    if (!s.ok()) {
-      LOG(ERROR) << s;
+  } else if (test_to_run == "SuccessfulCrossHostTransferHelper") {
+    if (cross_host_transfer_test_rank != 0 &&
+        cross_host_transfer_test_rank != 1) {
+      result = absl::InvalidArgumentError(
+          "cross_host_transfer_test_rank must be 0 or 1.");
+    } else if (num_rank_0_to_rank_1 < 0 || num_rank_1_to_rank_0 < 0) {
+      result = absl::InvalidArgumentError(
+          "num_rank_0_to_rank_1 and num_rank_1_to_rank_0 must be set.");
+    } else {
+      result = xla::SuccessfulCrossHostTransferTestBody(
+          cross_host_transfer_test_rank, num_rank_0_to_rank_1,
+          num_rank_1_to_rank_0);
     }
-    return s.raw_code();
+  } else {
+    result = absl::InvalidArgumentError(absl::StrFormat(
+        "Unrecognized multiprocess test name %s.", test_to_run));
   }
-  LOG(ERROR) << "Unrecognized multiprocess test name " << test_to_run << ".";
-  return 1;
+
+  if (!result.ok()) {
+    LOG(ERROR) << result;
+  }
+  return result.raw_code();
 }
