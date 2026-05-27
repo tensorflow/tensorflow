@@ -82,7 +82,11 @@ IntelGpuCompiler::CompileTargetBinary(
   if (DumpingEnabledForHloModule(debug_module ? debug_module->name() : "",
                                  module_config.debug_options())) {
     if (debug_module) {
-      DumpToFileInDirOrStdout(*debug_module, "", "spv", spirv_str);
+      DumpToFileInDirOrStdout(*debug_module, "",
+                              shard_number.has_value()
+                                  ? (std::to_string(*shard_number) + ".spv")
+                                  : "spv",
+                              spirv_str);
     } else {
       LOG(ERROR) << "Dumping is not implemented since the file name cannot be "
                     "inferred. Please implement (potentially MLIR) module -> "
