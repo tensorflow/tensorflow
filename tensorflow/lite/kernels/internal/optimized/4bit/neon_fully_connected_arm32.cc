@@ -63,7 +63,7 @@ void NeonRunKernelNoSDot<4, 1, 32>(const uint8_t* lhs, const int8_t* rhs,
       const int8_t* rhs_ptr = rhs + right_index;
       asm volatile(
           R"asm(
-          vmov.i8 d28, #15
+          vmov.i8 q14, #15
           mov r0, %[element_ptr]
           mov r6, %[lhs_ptr]
           mov r1, %[rhs_ptr]
@@ -75,18 +75,14 @@ void NeonRunKernelNoSDot<4, 1, 32>(const uint8_t* lhs, const int8_t* rhs,
           vmov.i16 q2, #0
           vmov.i16 q3, #0
           vld1.8 {d12, d13}, [r4]!
-          vand d16, d8, d28
-          vand d17, d9, d28
-          vand d18, d10, d28
-          vand d19, d11, d28
+          vand q8, q4, q14
+          vand q9, q5, q14
           vld1.8 {d14, d15}, [r4]!
           vshr.u8 q4, q4, #4
           vshr.u8 q5, q5, #4
           vld1.8 {d24, d25}, [r1]!
-          vand d20, d12, d28
-          vand d21, d13, d28
-          vand d22, d14, d28
-          vand d23, d15, d28
+          vand q10, q6, q14
+          vand q11, q7, q14
           vld1.8 {d26, d27}, [r1]!
           vshr.u8 q6, q6, #4
           vshr.u8 q7, q7, #4
@@ -113,14 +109,10 @@ void NeonRunKernelNoSDot<4, 1, 32>(const uint8_t* lhs, const int8_t* rhs,
             vmlal.s8 q2, d21, d27
             vmlal.s8 q3, d23, d27
             vld1.8 {d24, d25, d26, d27}, [r1]!
-            vand d16, d8, d28
-            vand d17, d9, d28
-            vand d18, d10, d28
-            vand d19, d11, d28
-            vand d20, d12, d28
-            vand d21, d13, d28
-            vand d22, d14, d28
-            vand d23, d15, d28
+            vand q8, q4, q14
+            vand q9, q5, q14
+            vand q10, q6, q14
+            vand q11, q7, q14
             vshr.u8 q4, q4, #4
             vshr.u8 q5, q5, #4
             vshr.u8 q6, q6, #4
@@ -162,9 +154,9 @@ void NeonRunKernelNoSDot<4, 1, 32>(const uint8_t* lhs, const int8_t* rhs,
           : "cc", "memory", "r0", "r1", "r2", "r3", "r4", "r5", "r6", "d0",
             "d1", "d2", "d3", "d4", "d5", "d6", "d7", "d8", "d9", "d10", "d11",
             "d12", "d13", "d14", "d15", "d16", "d17", "d18", "d19", "d20",
-            "d21", "d22", "d23", "d24", "d25", "d26", "d27", "d28", "d29",
-            "d30", "d31", "q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8",
-            "q9", "q10", "q11", "q12", "q13", "q14");
+            "d21", "d22", "d23", "d24", "d25", "d26", "d27", "q0", "q1", "q2",
+            "q3", "q4", "q5", "q6", "q7", "q8", "q9", "q10", "q11", "q12",
+            "q13", "q14");
       element_ptr += 4;
     }
   }
