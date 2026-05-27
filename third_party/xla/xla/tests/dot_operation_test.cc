@@ -81,7 +81,7 @@ using TypesF16F32F64CF64 = ::testing::Types<
 #if GOOGLE_CUDA
 using TypesF8 = ::testing::Types<tsl::float8_e4m3fn>;
 #endif
-#if TF_HIPBLASLT && TF_ROCM_VERSION >= 60000
+#if TF_HIPBLASLT
 using TypesF8 = ::testing::Types<tsl::float8_e4m3fnuz>;
 #endif
 
@@ -761,7 +761,7 @@ TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMul) {
       {&x_data, &y_data}, this->error_spec_);
 }
 
-#if GOOGLE_CUDA || (TF_HIPBLASLT && TF_ROCM_VERSION >= 60000)
+#if GOOGLE_CUDA || TF_HIPBLASLT
 template <typename T>
 class DotOperationTestWithCublasLt_F16F32F64CF64 : public DotOperationTest {
  public:

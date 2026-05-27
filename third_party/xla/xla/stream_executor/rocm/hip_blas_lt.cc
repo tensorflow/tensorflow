@@ -134,20 +134,16 @@ static absl::StatusOr<hipblasLtEpilogue_t> AsHipblasLtEpilogue(
       return HIPBLASLT_EPILOGUE_RELU_BIAS;
     case gpu::BlasLt::Epilogue::kGELU:
       return HIPBLASLT_EPILOGUE_GELU;
-#if TF_ROCM_VERSION >= 60000
     case gpu::BlasLt::Epilogue::kGELUWithAux:
       return HIPBLASLT_EPILOGUE_GELU_AUX;
     case gpu::BlasLt::Epilogue::kBiasThenGELU:
       return HIPBLASLT_EPILOGUE_GELU_BIAS;
     case gpu::BlasLt::Epilogue::kBiasThenGELUWithAux:
       return HIPBLASLT_EPILOGUE_GELU_AUX_BIAS;
-#endif
-#if TF_ROCM_VERSION >= 70000
     case gpu::BlasLt::Epilogue::kSILU:
       return HIPBLASLT_EPILOGUE_SWISH_EXT;
     case gpu::BlasLt::Epilogue::kBiasThenSILU:
       return HIPBLASLT_EPILOGUE_SWISH_BIAS_EXT;
-#endif
     default:
       return absl::InternalError("Unsupported epilogue: " +
                                  std::to_string((int)epilogue));
@@ -276,7 +272,6 @@ auto BlasLt::RegularMatmulPlan::GetAlgorithms(size_t max_algorithm_count,
         break;
       }
       case gpu::ScaleMode::kBlockScaling: {
-#if TF_ROCM_VERSION >= 70000
         static int64_t dummy_pointer = 0xACEBALL;
         RETURN_IF_ERROR(SetAttr(op_desc_.get(),
                                 HIPBLASLT_MATMUL_DESC_A_SCALE_POINTER,
@@ -290,9 +285,6 @@ auto BlasLt::RegularMatmulPlan::GetAlgorithms(size_t max_algorithm_count,
                                 HIPBLASLT_MATMUL_DESC_A_SCALE_MODE, mx_scale));
         RETURN_IF_ERROR(SetAttr(op_desc_.get(),
                                 HIPBLASLT_MATMUL_DESC_B_SCALE_MODE, mx_scale));
-#else
-        return absl::InternalError("Block scaling requires ROCm >= 7.0");
-#endif
         break;
       }
     }
@@ -386,7 +378,6 @@ absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetMatmulPlan(
   ASSIGN_OR_RETURN(auto c_desc, MatrixLayout::Create(c_layout));
   ASSIGN_OR_RETURN(auto d_desc, MatrixLayout::Create(output_layout));
 
-#if TF_ROCM_VERSION >= 60000
   // Currently, the default bias data type in hipblasLt is the same with output
   // data type for fp8 matmul, which is different from cublasLt. This is a
   // workaround to match cublasLt behavior.
@@ -401,7 +392,6 @@ absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetMatmulPlan(
       }
     }
   }
-#endif  // TF_ROCM_VERSION >= 60000
 
   return std::make_unique<RegularMatmulPlan>(
       *this, std::move(op_desc), std::move(a_desc), std::move(b_desc),
@@ -464,7 +454,6 @@ absl::Status BlasLt::RegularMatmulPlan::DoMatmul(
                               args.bias.opaque()));
     }
 
-#if TF_ROCM_VERSION >= 60000
     if (a_scale != nullptr) {
       RETURN_IF_ERROR(SetAttr(op_desc_.get(),
                               HIPBLASLT_MATMUL_DESC_A_SCALE_POINTER,
@@ -485,12 +474,6 @@ absl::Status BlasLt::RegularMatmulPlan::DoMatmul(
                               HIPBLASLT_MATMUL_DESC_D_SCALE_POINTER,
                               args.d_scale.opaque()));
     }
-#else
-    if (!(args.a_scale == nullptr && args.b_scale == nullptr &&
-          args.c_scale == nullptr && args.d_scale == nullptr)) {
-      return absl::InternalError("hipblaslt does not support scale");
-    }
-#endif
 
     if (args.d_amax != nullptr) {
       return absl::InternalError("hipblaslt does not support amax");
@@ -553,7 +536,6 @@ absl::Status BlasLt::RegularMatmulPlan::ExecuteOnStream(
 
 // FP8 compatible types combinations (Full table in
 // https://github.com/ROCm/hipBLASLt/blob/develop/docs/api-reference.rst?plain=1)
-#if TF_ROCM_VERSION >= 60000
   TYPED_MATMUL(float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_16F,
                HIP_R_16F)
   TYPED_MATMUL(float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_32F,
@@ -568,9 +550,7 @@ absl::Status BlasLt::RegularMatmulPlan::ExecuteOnStream(
                HIP_R_16F)
   TYPED_MATMUL(float, HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_32F,
                HIP_R_32F)
-#endif
 
-#if TF_ROCM_VERSION >= 60200
   TYPED_MATMUL(float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_16BF,
                HIP_R_16BF)
   TYPED_MATMUL(float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E5M2_FNUZ, HIP_R_16BF,
@@ -583,9 +563,7 @@ absl::Status BlasLt::RegularMatmulPlan::ExecuteOnStream(
                HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E5M2_FNUZ)
   TYPED_MATMUL(float, HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E4M3_FNUZ,
                HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E5M2_FNUZ)
-#endif
 
-#if TF_ROCM_VERSION >= 60300
   TYPED_MATMUL(float, HIP_R_8F_E4M3, HIP_R_8F_E4M3, HIP_R_16BF, HIP_R_16BF)
   TYPED_MATMUL(float, HIP_R_8F_E4M3, HIP_R_8F_E4M3, HIP_R_16BF, HIP_R_8F_E4M3)
   TYPED_MATMUL(float, HIP_R_8F_E4M3, HIP_R_8F_E4M3, HIP_R_16F, HIP_R_8F_E4M3)
@@ -609,9 +587,7 @@ absl::Status BlasLt::RegularMatmulPlan::ExecuteOnStream(
   TYPED_MATMUL(float, HIP_R_8F_E5M2, HIP_R_8F_E4M3, HIP_R_16F, HIP_R_8F_E5M2)
   TYPED_MATMUL(float, HIP_R_8F_E5M2, HIP_R_8F_E4M3, HIP_R_16F, HIP_R_16F)
   TYPED_MATMUL(float, HIP_R_8F_E5M2, HIP_R_8F_E4M3, HIP_R_32F, HIP_R_32F)
-#endif
 
-#if TF_ROCM_VERSION >= 70000
   // MX FP4 (F4E2M1FN) type combinations
   TYPED_MATMUL(float, HIP_R_4F_E2M1, HIP_R_4F_E2M1, HIP_R_32F, HIP_R_32F)
   TYPED_MATMUL(float, HIP_R_4F_E2M1, HIP_R_4F_E2M1, HIP_R_32F, HIP_R_16F)
@@ -662,7 +638,6 @@ absl::Status BlasLt::RegularMatmulPlan::ExecuteOnStream(
   TYPED_MATMUL(float, HIP_R_8F_E5M2, HIP_R_4F_E2M1, HIP_R_16BF, HIP_R_16BF)
   TYPED_MATMUL(float, HIP_R_8F_E5M2, HIP_R_4F_E2M1, HIP_R_16BF, HIP_R_32F)
   TYPED_MATMUL(float, HIP_R_8F_E5M2, HIP_R_4F_E2M1, HIP_R_16BF, HIP_R_16F)
-#endif
 
   // Other data types:
   TYPED_MATMUL(float, HIP_R_16BF, HIP_R_16BF, HIP_R_16BF, HIP_R_16BF)

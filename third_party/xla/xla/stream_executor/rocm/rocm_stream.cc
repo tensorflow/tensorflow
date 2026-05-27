@@ -320,23 +320,9 @@ absl::Status LaunchRocmKernel(
           << " bdz: " << block_dim_z << " smem: " << shared_mem_bytes
           << " func: " << (const void*)function;
 
-  auto res = hipSuccess;
-#if TF_ROCM_VERSION < 60200
-  // for in-process kernel this function returns mangled kernel function name,
-  // and null otherwise
-  auto name = hipKernelNameRefByPtr((const void*)function, stream);
-  if (name != nullptr) {
-    res = hipLaunchKernel((const void*)function,
-                          dim3(grid_dim_x, grid_dim_y, grid_dim_z),
-                          dim3(block_dim_x, block_dim_y, block_dim_z),
-                          kernel_params, shared_mem_bytes, stream);
-  } else  // NOLINT(readability/braces)
-#endif    // TF_ROCM_VERSION < 60200
-  {
-    res = hipModuleLaunchKernel(function, grid_dim_x, grid_dim_y, grid_dim_z,
-                                block_dim_x, block_dim_y, block_dim_z,
-                                shared_mem_bytes, stream, kernel_params, extra);
-  }
+  auto res = hipModuleLaunchKernel(
+      function, grid_dim_x, grid_dim_y, grid_dim_z, block_dim_x, block_dim_y,
+      block_dim_z, shared_mem_bytes, stream, kernel_params, extra);
   RETURN_IF_ERROR(ToStatus(
       res, absl::StrCat("Failed to launch ROCm kernel: ", kernel_name,
                         "; grid: ", grid_dim_x, "x", grid_dim_y, "x",

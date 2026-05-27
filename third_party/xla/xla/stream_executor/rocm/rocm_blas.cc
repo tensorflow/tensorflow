@@ -159,7 +159,6 @@ static std::string ToString(rocblas_status status) {
     XVAL(rocblas_status_invalid_size);
     XVAL(rocblas_status_memory_error);
     XVAL(rocblas_status_internal_error);
-#if TF_ROCM_VERSION >= 60000
     XVAL(rocblas_status_perf_degraded);
     XVAL(rocblas_status_size_query_mismatch);
     XVAL(rocblas_status_size_increased);
@@ -169,7 +168,6 @@ static std::string ToString(rocblas_status status) {
     XVAL(rocblas_status_check_numerics_fail);
     XVAL(rocblas_status_excluded_from_build);
     XVAL(rocblas_status_arch_mismatch);
-#endif
     default:
       return absl::StrCat("<invalid rocBLAS status: ", status, ">");
   }
