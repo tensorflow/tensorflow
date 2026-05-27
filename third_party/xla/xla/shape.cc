@@ -348,17 +348,8 @@ void Shape::CheckStateIsEmpty() const {
 }
 
 void Shape::Clear() {
-  // Before setting the element type to invalid, we need to clear the state
-  // because the state may be non-empty if the shape was previously valid.
-  // Without this step, set_element_type() may CHECK-fail.
-  if (auto* const state = if_array_state()) {
-    *state = ArrayState();
-  } else if (auto* const state = if_tuple_state()) {
-    *state = TupleState();
-  } else if (auto* const state = if_buffer_state()) {
-    *state = BufferState();
-  }
-  set_element_type(PRIMITIVE_TYPE_INVALID);
+  state_ = InvalidState();
+  element_type_ = PRIMITIVE_TYPE_INVALID;
 }
 
 void Shape::set_element_type(const PrimitiveType value) {
