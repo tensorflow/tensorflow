@@ -1761,5 +1761,15 @@ TEST_F(IndexingMapTest, GetUsedParameters) {
   EXPECT_THAT(used_params.symbol_ids, ElementsAre(0));
 }
 
+TEST_F(IndexingMapTest, IsUndefined) {
+  IndexingMap undefined_map = IndexingMap::GetUndefined();
+  EXPECT_TRUE(undefined_map.IsUndefined());
+
+  IndexingMap defined_map = IndexingMap::FromTensorSizes(
+      ParseSymbolicMap("(d0) -> (d0)", &mlir_context_),
+      /*dim_upper_bounds=*/{10}, /*symbol_upper_bounds=*/{});
+  EXPECT_FALSE(defined_map.IsUndefined());
+}
+
 }  // namespace
 }  // namespace xla
