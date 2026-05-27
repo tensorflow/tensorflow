@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 
 namespace xla::gpu {
