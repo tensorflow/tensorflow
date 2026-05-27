@@ -215,6 +215,7 @@ limitations under the License.
 #include "xla/service/logical_buffer.h"
 #include "xla/service/map_inliner.h"
 #include "xla/service/multi_module_driver.h"
+#include "xla/service/scan_expander.h"
 #include "xla/service/scatter_expander.h"
 #include "xla/service/scatter_simplifier.h"
 #include "xla/service/select_and_scatter_expander.h"
@@ -856,15 +857,14 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<ConditionalCanonicalizer>();
   pipeline.AddPass<DynamicDimensionSimplifier>();
 
-  if (module->config()
-          .debug_options()
-          .xla_reduce_window_rewrite_base_length() != 0) {
-    pipeline.AddPass<HloPassFix<ReduceWindowRewriter>>(
-        module->config()
-            .debug_options()
-            .xla_reduce_window_rewrite_base_length());
+  int64_t rw_length =
+      module->config().debug_options().xla_reduce_window_rewrite_base_length();
+  pipeline.AddPass<HloPassFix<AssociativeScanRewriter>>(rw_length);
+  if (rw_length != 0) {
+    pipeline.AddPass<HloPassFix<ReduceWindowRewriter>>(rw_length);
     pipeline.AddPass<ReduceWindowResizer>();
   }
+  pipeline.AddPass<ScanExpander>();
   auto dynamic_padder_options = DynamicPadderOptions();
   // TODO(pgavin): ShapeChecks were never implemented correctly by the dynamic
   // padder.  The mode defaults to kIgnore, and it was not overridden for nested

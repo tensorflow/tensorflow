@@ -801,12 +801,13 @@ absl::Status RunOptimizationPasses(
   pipeline.AddPass<ConditionalCanonicalizer>();
   pipeline.AddPass<DynamicDimensionSimplifier>();
 
-  if (debug_options.xla_reduce_window_rewrite_base_length() != 0) {
-    pipeline.AddPass<HloPassFix<ReduceWindowRewriter>>(
-        debug_options.xla_reduce_window_rewrite_base_length());
+  int64_t rw_length = debug_options.xla_reduce_window_rewrite_base_length();
+  pipeline.AddPass<HloPassFix<AssociativeScanRewriter>>(rw_length);
+  if (rw_length != 0) {
+    pipeline.AddPass<HloPassFix<ReduceWindowRewriter>>(rw_length);
     pipeline.AddPass<ReduceWindowResizer>();
-    pipeline.AddPass<ScanExpander>();
   }
+  pipeline.AddPass<ScanExpander>();
 
   DynamicPadderOptions dynamic_padder_options;
 
