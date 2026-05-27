@@ -3585,7 +3585,8 @@ func.func @ragged_dot_contracting(%lhs : tensor<2x11x5xf32>, %rhs : tensor<2x5x7
 // CHECK-LABEL: func.func @ragged_dot_batch
 // CHECK-HIGH-LEVEL-LABEL: func.func @ragged_dot_batch
 func.func @ragged_dot_batch(%lhs : tensor<19x17x11x5xf32>, %rhs : tensor<19x17x5x7xf32>, %group_sizes : tensor<19x3xi64>) -> tensor<19x17x11x7xf32> {
-  // CHECK-HIGH-LEVEL: mhlo.ragged_dot
+  // CHECK: "mhlo.dot_general"{{.*}}lhs_batching_dimensions = [0, 1], rhs_batching_dimensions = [0, 1], lhs_contracting_dimensions = [3], rhs_contracting_dimensions = [2]
+  // CHECK-HIGH-LEVEL: "mhlo.dot_general"{{.*}}lhs_batching_dimensions = [0, 1], rhs_batching_dimensions = [0, 1], lhs_contracting_dimensions = [3], rhs_contracting_dimensions = [2]
   %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
     ragged_dot_dimension_numbers = #chlo.ragged_dot<
       lhs_batching_dimensions = [0,1],
