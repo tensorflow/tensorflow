@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -584,6 +585,20 @@ class InferenceBuilderImpl : public InferenceBuilder {
   }
 
   absl::Status Build(std::unique_ptr<InferenceRunner>* runner) final {
+    for (const auto& input : inputs_) {
+      if (NumElements(input.external_def) >
+          std::numeric_limits<int32_t>::max()) {
+        return absl::InvalidArgumentError(
+            "Input tensor size exceeds 32-bit indexing limits.");
+      }
+    }
+    for (const auto& output : outputs_) {
+      if (NumElements(output.external_def) >
+          std::numeric_limits<int32_t>::max()) {
+        return absl::InvalidArgumentError(
+            "Output tensor size exceeds 32-bit indexing limits.");
+      }
+    }
     auto kernels = NewNodeShaderRegistry();
     CompilationOptions compiler_options;
     compiler_options.allow_precision_loss =

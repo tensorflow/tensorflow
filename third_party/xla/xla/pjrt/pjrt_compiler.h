@@ -42,8 +42,10 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/proto/pjrt_partial_program.pb.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
+#include "xla/runtime/chip_id.h"
+#include "xla/runtime/device_id.h"
+#include "xla/runtime/process_id.h"
 #include "xla/shape.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/fingerprint.h"
 
@@ -107,6 +109,25 @@ class PjRtCompiler;
 using PjRtCompilerFactory =
     std::function<absl::StatusOr<std::unique_ptr<PjRtCompiler>>()>;
 
+// A key type for the compiler registry.
+struct PjRtCompilerType {
+  std::string platform_name;
+  std::string variant_name;
+
+  PjRtCompilerType(absl::string_view platform, absl::string_view variant)
+      : platform_name(platform), variant_name(variant) {}
+
+  template <typename H>
+  friend H AbslHashValue(H h, const PjRtCompilerType& c) {
+    return H::combine(std::move(h), c.platform_name, c.variant_name);
+  }
+
+  bool operator==(const PjRtCompilerType& other) const {
+    return platform_name == other.platform_name &&
+           variant_name == other.variant_name;
+  }
+};
+
 // PjRtCompilerRegistry manages the registration and lifecycle of PjRtCompilers.
 // It supports both direct registration of compiler instances and registration
 // of factories for deferred initialization.
@@ -153,12 +174,11 @@ class PjRtCompilerRegistry {
 
   absl::Mutex factory_mutex_;
 
-  absl::flat_hash_map<std::pair<std::string, std::string>,
-                      std::unique_ptr<PjRtCompiler>>
+  absl::flat_hash_map<PjRtCompilerType, std::unique_ptr<PjRtCompiler>>
       compilers_ ABSL_GUARDED_BY(compiler_mutex_);
 
-  absl::flat_hash_map<std::pair<std::string, std::string>, PjRtCompilerFactory>
-      factories_ ABSL_GUARDED_BY(factory_mutex_);
+  absl::flat_hash_map<PjRtCompilerType, PjRtCompilerFactory> factories_
+      ABSL_GUARDED_BY(factory_mutex_);
 };
 
 // Thread-safe. Returns a pointer to the registered compiler for the given
