@@ -1040,7 +1040,8 @@ message BatchingOptions {
   // tensorflow/core/kernels/batching_util/batch_scheduler.h.
   string mixed_priority_batching_policy = 7;
 
-  /**experimental options to override legacy priority batching parameters**/
+  // The following options are for legacy priority batching and are only for
+  // experimentation.
   // TODO(b/488097129): Remove these options after the experiment is done.
   // The maximum allowed batch size for low priority requests.
   int32 low_priority_max_batch_size = 8;
@@ -1055,11 +1056,4 @@ message BatchingOptions {
   // Maximum number of batches enqueued for processing before low priority
   // requests are failed fast.
   int32 low_priority_max_enqueued_batches = 11;
-  /**experimental options end**/
-
-  // The number of threads for processing warmup requests. Useful to process
-  // warmup requests without starving the regular batch threads when global
-  // scheduler is enabled.
-  // TODO(b/516818455): Remove warmup threads after in-lining warmup requests.
-  int32 num_warmup_batch_threads = 12;
 }

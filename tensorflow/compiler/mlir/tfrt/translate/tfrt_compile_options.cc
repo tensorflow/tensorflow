@@ -78,8 +78,6 @@ std::ostream& operator<<(std::ostream& os, const TfrtCompileOptions& options) {
                    ",")
             << ", low_priority_max_enqueued_batches = "
             << options.batch_options.low_priority_max_enqueued_batches()
-            << ", num_warmup_batch_threads = "
-            << options.batch_options.num_warmup_batch_threads()
             << ", enable_large_batch_splitting = "
             << options.batch_options.enable_large_batch_splitting()
             << ", mixed_priority_batching_policy = "

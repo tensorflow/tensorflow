@@ -146,7 +146,6 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
           options.low_priority_allowed_batch_sizes,
       .low_priority_max_enqueued_batches =
           options.low_priority_max_enqueued_batches,
-      .num_warmup_batch_threads = options.num_warmup_batch_threads,
       .enable_large_batch_splitting = options.enable_large_batch_splitting,
       .mixed_priority_batching_policy = options.mixed_priority_batching_policy,
       .batch_queue_global_prioritization_num_threads =
