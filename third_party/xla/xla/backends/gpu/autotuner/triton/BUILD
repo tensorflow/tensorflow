@@ -35,7 +35,6 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/gpu:tma_metadata",
         "//xla/tsl/lib/core:bits",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",

@@ -38,6 +38,8 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
 #include "xla/backends/gpu/transforms/fusion_wrapper.h"
 #include "xla/backends/gpu/transforms/priority_fusion.h"
+#include "xla/codegen/tiling/experimental/tiled_hlo.h"
+#include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -350,6 +352,22 @@ bool TritonBackend::IsSupported(const HloInstruction& instr) {
   if (backend_config.kind() == kTritonGemmFusionKind) {
     auto fusion = Cast<HloFusionInstruction>(&instr);
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
+    if (instr.GetModule()
+            ->config()
+            .debug_options()
+            .xla_gpu_experimental_enable_tiling_propagation()) {
+      std::unique_ptr<experimental::TilingSpace> ts =
+          experimental::TilingSpace::Create(*fusion_adaptor, mlir_context_);
+      auto tiled_computation_or = experimental::TiledHloComputation::Tile(
+          *fusion_adaptor, std::move(ts));
+      if (!tiled_computation_or.ok()) {
+        VLOG(1) << "Fusion is not tileable with experimental tiling: "
+                << tiled_computation_or.status().message();
+        return false;
+      }
+      return true;
+    }
+
     auto device_info = target_config().device_description;
     SymbolicTileAnalysisOrError analysis_or_error =
         SymbolicTileAnalysis::AnalyzeFusion(

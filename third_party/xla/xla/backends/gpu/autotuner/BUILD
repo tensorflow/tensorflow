@@ -308,6 +308,8 @@ cc_library(
         "//xla/backends/gpu/transforms:priority_fusion",
         "//xla/codegen/tiling:symbolic_tile_analysis",
         "//xla/codegen/tiling:tiling_specification",
+        "//xla/codegen/tiling/experimental:tile",
+        "//xla/codegen/tiling/experimental:tiled_hlo",
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/transforms/simplifiers:float_normalization",
