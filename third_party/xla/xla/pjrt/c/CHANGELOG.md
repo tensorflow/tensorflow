@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.111
+
+*   Added PJRT_HloOutputCallbackInfo to PJRT_ExecuteOptions.
+
 ## 0.110
 
 * Added GetMemorySpaceKindIds() const to PJRT_TopologyDescription.
