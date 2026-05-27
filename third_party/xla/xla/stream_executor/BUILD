@@ -823,13 +823,10 @@ cc_library(
     srcs = ["kernel_args_packing_spec.cc"],
     hdrs = ["kernel_args_packing_spec.h"],
     deps = [
-        ":device_address",
         ":kernel_args",
         ":kernel_args_packed_vector",
         ":kernel_args_packing_spec_proto_cc",
         "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
-        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
