@@ -27,16 +27,28 @@ RUN /setup.python.sh python3.14-nogil /builder.requirements.txt
 # TODO(b/376338367): switch to pyenv.
 RUN /setup.python.sh python3.12 /builder.requirements.txt
 
-COPY setup.sources.cudnn.sh /setup.sources.cudnn.sh
 ARG INSTALL_NVIDIA_PACKAGES=false
 ARG NVIDIA_PACKAGES_FILE=cuda12.1_cudnn9.1.packages.txt
 COPY ${NVIDIA_PACKAGES_FILE} /nvidia.packages.txt
+COPY setup.sources.cudnn.sh /setup.sources.cudnn.sh
+
+ARG INSTALL_CMAKE_TOOLCHAIN=false
+ARG CMAKE_TOOLCHAIN_PACKAGES_FILE=cmake_toolchain.packages.txt
+COPY ${CMAKE_TOOLCHAIN_PACKAGES_FILE} /cmake_toolchain.packages.txt
+COPY setup.toolchain.cmake.sh /setup.toolchain.cmake.sh
 
 RUN if [ "${INSTALL_NVIDIA_PACKAGES}" = "true" ]; then \
       echo "Installing Nvidia packages"; \
       /setup.sources.cudnn.sh && /setup.packages.sh /nvidia.packages.txt; \
     else \
-      echo "Nvidia packages are not installed"; \
+      echo "Nvidia packages will not be installed"; \
+    fi
+
+RUN if [ "${INSTALL_CMAKE_TOOLCHAIN}" = "true" ]; then \
+      echo "Installing CMake toolchain"; \
+      /setup.toolchain.cmake.sh && /setup.packages.sh /cmake_toolchain.packages.txt; \
+    else \
+      echo "CMake toolchain will not be installed"; \
     fi
 
 # Setup links for TensorFlow to compile.
