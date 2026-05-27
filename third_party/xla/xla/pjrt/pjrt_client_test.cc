@@ -769,9 +769,10 @@ TEST(PjRtClientTest, ClearPeakMemory) {
   TF_ASSERT_OK_AND_ASSIGN(auto initial_stats, device->GetAllocatorStats());
 
   // alloc
-  int64_t num_elements = 1024 / sizeof(float);
-  std::vector<float> data(num_elements, 1.0f);
-  Shape shape = ShapeUtil::MakeShape(F32, {num_elements});
+  const int64_t kAllocSize = 16 * 1024;
+  const int64_t num_elements = kAllocSize / sizeof(float);
+  const std::vector<float> data(num_elements, 1.0f);
+  const Shape shape = ShapeUtil::MakeShape(F32, {num_elements});
 
   TF_ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * memory_space,
                           device->default_memory_space());
@@ -785,12 +786,12 @@ TEST(PjRtClientTest, ClearPeakMemory) {
           /*on_done_with_host_buffer=*/nullptr, memory_space,
           /*device_layout=*/nullptr));
 
-  TF_ASSERT_OK(buffer->GetReadyFuture().Await());
+  ASSERT_OK(buffer->GetReadyFuture().Await());
 
   TF_ASSERT_OK_AND_ASSIGN(auto alloc_stats, device->GetAllocatorStats());
-  EXPECT_EQ(alloc_stats.bytes_in_use, initial_stats.bytes_in_use + 1024);
+  EXPECT_EQ(alloc_stats.bytes_in_use, initial_stats.bytes_in_use + kAllocSize);
   EXPECT_EQ(alloc_stats.peak_bytes_in_use,
-            initial_stats.peak_bytes_in_use + 1024);
+            initial_stats.peak_bytes_in_use + kAllocSize);
   EXPECT_EQ(alloc_stats.bytes_in_use, alloc_stats.peak_bytes_in_use);
 
   // dealloc
@@ -802,7 +803,7 @@ TEST(PjRtClientTest, ClearPeakMemory) {
 
   absl::Status clear_status = device->ClearMemoryStats();
   if (!absl::IsUnimplemented(clear_status)) {
-    TF_EXPECT_OK(clear_status);
+    ASSERT_OK(clear_status);
     TF_ASSERT_OK_AND_ASSIGN(auto clear_stats, device->GetAllocatorStats());
     EXPECT_EQ(clear_stats.bytes_in_use, dealloc_stats.bytes_in_use);
     EXPECT_EQ(clear_stats.peak_bytes_in_use, dealloc_stats.bytes_in_use);
