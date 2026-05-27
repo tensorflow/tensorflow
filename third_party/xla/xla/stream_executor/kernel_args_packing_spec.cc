@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -39,7 +40,8 @@ KernelArgPackingRelocationProto::Kind ToProtoKind(
     case KernelArgPackingRelocation::Kind::kBits64Absolute:
       return KernelArgPackingRelocationProto::KIND_BITS64_ABSOLUTE;
   }
-  CHECK(false) << "Unsupported relocation kind: " << static_cast<int>(kind);
+  LOG(FATAL) << "Unsupported relocation kind: " << static_cast<int>(kind);
+  return KernelArgPackingRelocationProto::KIND_BITS64_ABSOLUTE;
 }
 
 absl::StatusOr<KernelArgPackingRelocation::Kind> FromProtoKind(
@@ -66,10 +68,10 @@ absl::StatusOr<std::vector<char>> KernelArgPackingSpec::BuildArgument(
                               "at least %d, but got %zu)",
                               relocation_->argument_index() + 1, args.size()));
         }
-        PackedArgBase* arg = args[relocation_->argument_index()].get();
-        return std::vector<char>(
-            static_cast<char*>(arg->argument_address()),
-            static_cast<char*>(arg->argument_address()) + arg->size());
+        const auto& arg = args[relocation_->argument_index()];
+        const char* arg_addr =
+            static_cast<const char*>(arg->argument_address());
+        return std::vector<char>(arg_addr, arg_addr + arg->size());
       }
     }
     CHECK(false) << "Unsupported relocation kind: "
@@ -130,12 +132,12 @@ absl::StatusOr<KernelArgPackingSpec> KernelArgPackingSpec::FromProto(
     return KernelArgPackingSpec({}, std::move(relocation));
   }
 
-  std::vector<char> storage(proto.data().begin(), proto.data().end());
-  if (storage.empty()) {
+  if (proto.data().empty()) {
     return absl::InvalidArgumentError(
         "Either relocation or constant has to be provided.");
   }
 
+  std::vector<char> storage(proto.data().begin(), proto.data().end());
   return KernelArgPackingSpec(std::move(storage), std::nullopt);
 }
 
@@ -171,6 +173,7 @@ absl::StatusOr<KernelArgsPackingSpecProto> KernelArgsPackingSpec::ToProto()
 absl::StatusOr<KernelArgsPackingSpec> KernelArgsPackingSpec::FromProto(
     const KernelArgsPackingSpecProto& proto) {
   std::vector<KernelArgPackingSpec> kernel_arguments;
+  kernel_arguments.reserve(proto.kernel_arguments().size());
   for (const KernelArgPackingSpecProto& kernel_argument_proto :
        proto.kernel_arguments()) {
     ASSIGN_OR_RETURN(KernelArgPackingSpec kernel_argument,

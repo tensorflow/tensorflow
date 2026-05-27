@@ -827,6 +827,7 @@ cc_library(
         ":kernel_args_packed_vector",
         ":kernel_args_packing_spec_proto_cc",
         "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

@@ -95,6 +95,9 @@ TEST(KernelArgPackingSpecTest, BuildFor) {
   KernelArgPackingSpec first_arg =
       KernelArgPackingSpec::BuildFor(static_cast<uint32_t>(0x1348));
 
+  // KernelArgPackingSpec::BuildFor doesn't take endianness into
+  // account, so this assertion will fail for big endian architectures - which
+  // we don't support anyway.
   EXPECT_THAT(first_arg.BuildArgument(/*args=*/{}),
               IsOkAndHolds(ElementsAre(0x48, 0x13, 0, 0)));
 }
@@ -103,6 +106,9 @@ TEST(KernelArgPackingSpecTest, BuildForWithCustomPacking) {
   KernelArgPackingSpec first_arg =
       KernelArgPackingSpec::BuildFor(CustomData{0x1348});
 
+  // KernelArgPackingSpec::BuildFor doesn't take endianness into
+  // account, so this assertion will fail for big endian architectures - which
+  // we don't support anyway.
   EXPECT_THAT(first_arg.BuildArgument(/*args=*/{}),
               IsOkAndHolds(ElementsAre(0x49, 0x13, 0x00, 0x00)));
 }
@@ -165,7 +171,7 @@ TEST(KernelArgsPackingSpecTest, BuildArguments) {
   // an argument.
   EXPECT_EQ(packed_args->number_of_arguments(), 3);
   EXPECT_EQ(packed_args->number_of_shared_bytes(), 8989);
-  EXPECT_EQ(packed_args->argument_addresses().size(), 2);
+  ASSERT_THAT(packed_args->argument_addresses(), SizeIs(2));
   EXPECT_THAT(
       absl::Span<const char>(
           absl::bit_cast<const char*>(packed_args->argument_addresses().at(0)),
