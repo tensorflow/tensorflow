@@ -285,7 +285,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_reassociation_for_converted_ar(true);
 
   opts.set_xla_cpu_enable_xprof_traceme(false);
-  opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(true);
+  opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(false);
   opts.set_xla_multiheap_size_constraint_per_heap(-1);
   opts.set_xla_detailed_logging(true);
   opts.set_xla_enable_dumping(true);
@@ -295,7 +295,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_dynamic_slice_fusion(false);
   opts.set_xla_gpu_experimental_dynamic_slice_fusion_verify_offsets(false);
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
-  opts.set_xla_gpu_enable_shared_constants(true);
   opts.set_xla_gpu_enable_nccl_user_buffers(false);
   opts.set_xla_gpu_experimental_enable_nccl_symmetric_buffers(false);
   opts.set_xla_gpu_experimental_enable_nvshmem(false);
@@ -353,7 +352,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_while_loop_reduce_scatter_code_motion(false);
 
   opts.set_xla_gpu_collective_inflation_factor(1);
-  opts.set_xla_llvm_force_inline_before_split(true);
 
   opts.set_xla_gpu_exhaustive_tiling_search(false);
 
@@ -380,7 +378,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_experimental_enable_fusion_block_level_rewriter(false);
 
-  opts.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
   opts.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(false);
   opts.set_xla_gpu_enable_libnvptxcompiler(
       stream_executor::IsLibNvPtxCompilerSupported());
@@ -1727,17 +1724,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_force_compilation_parallelism(),
       "Overrides normal multi-threaded compilation setting to use this many "
       "threads. Setting to 0 (the default value) means no enforcement."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_llvm_module_compilation_parallelism",
-      bool_setter_for(
-          &DebugOptions::
-              set_xla_gpu_enable_llvm_module_compilation_parallelism),
-      debug_options->xla_gpu_enable_llvm_module_compilation_parallelism(),
-      "Decides whether we can do LLVM module compilation in a parallelised "
-      "way. If set to false, then it will be single threaded, otherwise the "
-      "number of threads depends on the "
-      "--xla_gpu_force_compilation_parallelism flag and the thread pool "
-      "supplied to GpuCompiler."));
 
   flag_list->push_back(tsl::Flag(
       "xla_gpu_default_to_alg_dot_bf16_bf16_f32",
@@ -1983,11 +1969,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::set_xla_gpu_nccl_termination_timeout_seconds),
       debug_options->xla_gpu_nccl_termination_timeout_seconds(),
       "Timeout in seconds before terminating jobs stuck in NCCL Rendezvous."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_shared_constants",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_shared_constants),
-      debug_options->xla_gpu_enable_shared_constants(),
-      "Enable constant sharing between GPU executables"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_nccl_user_buffers",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_nccl_user_buffers),
