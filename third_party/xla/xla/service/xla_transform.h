@@ -19,11 +19,11 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/hlo.pb.h"
 
 namespace xla {
 
@@ -66,6 +66,11 @@ class HloXlaTransform : public XlaTransformBase {
 void RegisterHloXlaTransform(HloXlaTransform::PipelineStage stage,
                              std::shared_ptr<HloXlaTransform> transform);
 
+// Runs the HLO compilation passes on the given module proto for the default or
+// first available platform, and returns the resulting module metadata.
+absl::StatusOr<xla::HloModuleMetadataProto> GetHloPassPipelineTrace(
+    const xla::HloModuleProto& proto);
+
 // Returns the list of registered HloXlaTransforms for the given stage.
 // Thread-safe.
 std::vector<std::shared_ptr<HloXlaTransform>> GetHloXlaTransforms(
@@ -86,11 +91,10 @@ absl::StatusOr<bool> ApplyXlaTransformsToModule(
 // order in which they were registered.
 class ApplyXlaTransforms : public HloModulePass {
  public:
-  explicit ApplyXlaTransforms(HloXlaTransform::PipelineStage stage)
-      : stage_(stage) {}
+  explicit ApplyXlaTransforms(HloXlaTransform::PipelineStage stage);
   ~ApplyXlaTransforms() override = default;
 
-  absl::string_view name() const override { return "apply-xla-transforms"; }
+  absl::string_view name() const override { return name_; }
 
   absl::StatusOr<bool> RunImpl(
       HloModule* module,
@@ -98,6 +102,7 @@ class ApplyXlaTransforms : public HloModulePass {
 
  private:
   HloXlaTransform::PipelineStage stage_;
+  std::string name_;
 };
 
 }  // namespace xla

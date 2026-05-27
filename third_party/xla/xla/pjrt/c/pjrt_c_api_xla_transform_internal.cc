@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_xla_transform_internal.h"
 
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <utility>
@@ -181,6 +182,45 @@ PJRT_Error* RegisterXlaTransform(PJRT_Register_Xla_Transform_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* GetHloPassPipelineTrace(
+    PJRT_Xla_Transform_Get_Hlo_Pass_Pipeline_Trace_Args* args) {
+  xla::HloModuleProto proto;
+  if (!proto.ParseFromArray(args->hlo_module.data, args->hlo_module.size)) {
+    return pjrt::StatusToPjRtError(
+        absl::InvalidArgumentError("Failed to parse HloModuleProto"));
+  }
+
+  auto metadata_proto_or = xla::GetHloPassPipelineTrace(proto);
+  if (!metadata_proto_or.ok()) {
+    return pjrt::StatusToPjRtError(metadata_proto_or.status());
+  }
+  const xla::HloModuleMetadataProto& metadata_proto = metadata_proto_or.value();
+
+  std::string serialized_metadata;
+  if (!tsl::SerializeToStringDeterministic(metadata_proto,
+                                           &serialized_metadata)) {
+    return pjrt::StatusToPjRtError(
+        absl::InternalError("Failed to serialize HloModuleMetadataProto"));
+  }
+
+  char* out_data = new char[serialized_metadata.size()];
+  std::memcpy(out_data, serialized_metadata.data(), serialized_metadata.size());
+
+  args->trace.serialized_trace = out_data;
+  args->trace.serialized_trace_size = serialized_metadata.size();
+
+  return nullptr;
+}
+
+void DestroyHloPassPipelineTrace(
+    PJRT_Xla_Transform_Destroy_Hlo_Pass_Pipeline_Trace_Args* args) {
+  if (args->trace != nullptr && args->trace->serialized_trace != nullptr) {
+    delete[] args->trace->serialized_trace;
+    args->trace->serialized_trace = nullptr;
+    args->trace->serialized_trace_size = 0;
+  }
+}
+
 }  // namespace
 
 PJRT_Xla_Transform_Extension CreateXlaTransformExtension(
@@ -192,6 +232,8 @@ PJRT_Xla_Transform_Extension CreateXlaTransformExtension(
           /*next=*/next,
       },
       /*register_xla_transform=*/RegisterXlaTransform,
+      /*get_hlo_pass_pipeline_trace=*/GetHloPassPipelineTrace,
+      /*destroy_hlo_pass_pipeline_trace=*/DestroyHloPassPipelineTrace,
   };
 }
 

@@ -104,11 +104,70 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Register_Xla_Transform_Args, callbacks);
 typedef PJRT_Error* (*PJRT_Register_Xla_Transform_Fn)(
     PJRT_Register_Xla_Transform_Args* args);
 
+// Struct representing a serialized HLO pass pipeline trace.
+// The 'serialized_trace' member is a pointer to the serialized
+// HloModuleMetadataProto. The 'serialized_trace_size' member is the size of
+// the serialized trace in bytes.
+typedef struct PJRT_HloPassPipelineTrace {
+  const char* serialized_trace;
+  size_t serialized_trace_size;
+} PJRT_HloPassPipelineTrace;
+
+// Struct representing the arguments for the get_hlo_pass_pipeline_trace
+// callback.
+// The member 'struct_size' must always be set to the size of the struct by
+// the client.
+// The member 'hlo_module' is the input serialized HloModuleProto.
+// The member 'trace' is the output serialized HloPassPipelineTrace.
+struct PJRT_Xla_Transform_Get_Hlo_Pass_Pipeline_Trace_Args {
+  size_t struct_size;
+  PJRT_XlaTransform_string hlo_module;
+  PJRT_HloPassPipelineTrace trace;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Xla_Transform_Get_Hlo_Pass_Pipeline_Trace_Args,
+                          trace);
+
+// Function pointer type for get_hlo_pass_pipeline_trace.
+// This function runs the HLO pass pipeline on the input 'hlo_module' and
+// returns a serialized trace of the passes that were executed.
+// The caller is responsible for destroying the returned trace using
+// destroy_hlo_pass_pipeline_trace.
+typedef PJRT_Error* (*PJRT_Xla_Transform_Get_Hlo_Pass_Pipeline_Trace_Fn)(
+    PJRT_Xla_Transform_Get_Hlo_Pass_Pipeline_Trace_Args* args);
+
+// Struct representing the arguments for the destroy_hlo_pass_pipeline_trace
+// callback.
+// The member 'struct_size' must always be set to the size of the struct by
+// the client.
+// The member 'trace' is a pointer to the HloPassPipelineTrace to be destroyed.
+struct PJRT_Xla_Transform_Destroy_Hlo_Pass_Pipeline_Trace_Args {
+  size_t struct_size;
+  PJRT_HloPassPipelineTrace* trace;
+};
+PJRT_DEFINE_STRUCT_TRAITS(
+    PJRT_Xla_Transform_Destroy_Hlo_Pass_Pipeline_Trace_Args, trace);
+
+// Function pointer type for destroy_hlo_pass_pipeline_trace.
+// This function deallocates the memory associated with the 'trace' returned
+// by get_hlo_pass_pipeline_trace.
+typedef void (*PJRT_Xla_Transform_Destroy_Hlo_Pass_Pipeline_Trace_Fn)(
+    PJRT_Xla_Transform_Destroy_Hlo_Pass_Pipeline_Trace_Args* args);
+
+// Extension struct for XLA transform operations.
+// This extension allows clients to register custom XLA transforms and to
+// retrieve HLO pass pipeline traces.
 typedef struct PJRT_Xla_Transform_Extension {
   PJRT_Extension_Base base;
+  // Registers a custom XLA transform.
   PJRT_Register_Xla_Transform_Fn register_xla_transform;
+  // Retrieves the HLO pass pipeline trace for a given HLO module.
+  PJRT_Xla_Transform_Get_Hlo_Pass_Pipeline_Trace_Fn get_hlo_pass_pipeline_trace;
+  // Destroys a HLO pass pipeline trace returned by get_hlo_pass_pipeline_trace.
+  PJRT_Xla_Transform_Destroy_Hlo_Pass_Pipeline_Trace_Fn
+      destroy_hlo_pass_pipeline_trace;
 } PJRT_Xla_Transform_Extension;
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Xla_Transform_Extension, register_xla_transform);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Xla_Transform_Extension,
+                          destroy_hlo_pass_pipeline_trace);
 
 #ifdef __cplusplus
 }
