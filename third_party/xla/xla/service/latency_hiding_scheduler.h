@@ -1317,6 +1317,7 @@ class BufferInfoTracker {
     // This expression is invoked repeatedly and is responsible for many cache
     // misses.
     bool non_default_memory_space_layout = false;
+    std::vector<const HloInstruction*> transitively_defining_calls;
   };
   BufferInfoTracker(const HloModule* module,
                     const HloAliasAnalysis* alias_analysis,
@@ -1477,6 +1478,14 @@ class MemoryPressureTracker {
     }
     return false;
   }
+  bool InstructionDefinesValue(const HloInstruction* instruction,
+                               const HloValue* value) const;
+  bool InstructionFirstDefinesBuffer(
+      const HloInstruction* instruction,
+      const BufferInfoTracker::ValueInfo& buffer_value_info) const;
+  bool InstructionTransitivelyDefines(
+      const HloInstruction* instruction,
+      const BufferInfoTracker::ValueInfo& buffer_value_info) const;
   const HloAliasAnalysis* hlo_alias_analysis_;
 
   // Mapping from instruction to dense id.
