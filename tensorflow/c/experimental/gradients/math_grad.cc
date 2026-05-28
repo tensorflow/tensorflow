@@ -43,8 +43,8 @@ static absl::Status SafeConj(AbstractContext* ctx,
     return tensorflow::ops::Identity(ctx, input, output, name);
   } else if (!DataTypeIsComplex(BaseType(dtype)) &&
              BaseType(dtype) != DT_VARIANT) {
-    return errors::InvalidArgument(
-        "Expected numeric or variant tensor, got dtype ", dtype);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected numeric or variant tensor, got dtype ", dtype));
   }
   return tensorflow::ops::Conj(ctx, input, output, name);
 }
