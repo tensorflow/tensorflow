@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
 #include "google/protobuf/message_lite.h"
 #include "riegeli/bytes/cord_writer.h"
 #include "riegeli/messages/serialize_message.h"
@@ -79,8 +80,11 @@ absl::Status SerializeIfrtIrProgram(riegeli::CordWriter<absl::Cord*>& writer,
                                     SerializedObjectLocation* location,
                                     IfrtIRProgram* ifrt_ir_program) {
   auto options = std::make_unique<SerializeIfrtIRProgramOptions>(
-      Version::getCurrentVersion().toString(),
-      ::mlir::vhlo::Version::getCurrentVersion().toString(),
+      /*ifrt_version=*/Version::getCurrentVersion().toString(),
+      /*atom_program_version=*/
+      mlir::vhlo::Version::getCurrentVersion().toString(),
+      /*atom_program_sdy_version=*/
+      mlir::sdy::SdyDialectVersion::getCurrentVersion().toString(),
       /*version_in_place=*/false);
 
   Serialized serialized;

@@ -310,6 +310,7 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:version",
     ],
 )
@@ -552,6 +553,7 @@ tsl_pybind_extension(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MLIRBindingsPythonHeaders",
         "@nanobind",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
     ],
 )
 
@@ -703,6 +705,7 @@ cc_library(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:version",
     ],
 )
@@ -917,6 +920,7 @@ cc_library(
         "@com_google_protobuf//:protobuf_lite",
         "@riegeli//riegeli/bytes:cord_writer",
         "@riegeli//riegeli/messages:serialize_message",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:version",
         "@tsl//tsl/platform:protobuf",
     ],

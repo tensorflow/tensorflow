@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Parser/Parser.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/Version.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/python/ifrt/array.h"
@@ -117,7 +118,8 @@ IfrtIrLoadedExecutableTestBase::SerDeRoundTrip(
           std::make_unique<SerializeIfrtIRProgramOptions>(
               Version::fromCompatibilityRequirement(compatibility_requirement)
                   .toString(),
-              mlir::vhlo::Version::getCurrentVersion().toString())));
+              mlir::vhlo::Version::getCurrentVersion().toString(),
+              mlir::sdy::SdyDialectVersion::getCurrentVersion().toString())));
 
   // Deserialize the versioned IFRT IR program.
   ASSIGN_OR_RETURN(program,

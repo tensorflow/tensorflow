@@ -136,10 +136,12 @@ absl::Status createOutlinedAtomProgramsToCompiledPipeline(
 void createIfrtToVersionedPipeline(mlir::OpPassManager& pm,
                                    std::string ifrt_target_version,
                                    std::string vhlo_target_version,
+                                   std::string sdy_target_version,
                                    IfrtIrProgramProto& ifrt_ir_program) {
   pm.addPass(createIfrtRemoveAttrsFromOtherDialectsPass());
   pm.addPass(createIfrtAtomProgramsToVhloPass(
-      ifrt_ir_program.mutable_atom_programs(), std::move(vhlo_target_version)));
+      ifrt_ir_program.mutable_atom_programs(), std::move(vhlo_target_version),
+      std::move(sdy_target_version)));
   pm.addPass(createIfrtLegalizeToVifrtPass());
   pm.addPass(createVifrtToVersionPass({std::move(ifrt_target_version)}));
   // Run symbol DCE to remove atom programs that have been legalized to VHLO.
