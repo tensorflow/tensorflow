@@ -273,7 +273,7 @@ TEST_F(TilingSpaceTest, TwoOutputsParallelDims) {
            offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
            strides [1, 1] upper bounds [10, 8]
       1 root tile:
-           offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
+           offsets [tid_0 * ts_2, tid_1 * ts_3] sizes [ts_2, ts_3]
            strides [1, 1] upper bounds [11, 9]
   )"));
 }

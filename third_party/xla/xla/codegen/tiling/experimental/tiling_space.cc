@@ -287,8 +287,11 @@ std::unique_ptr<TilingSpace> TilingSpace::Create(const HloFusionAdaptor& fusion,
     llvm::SmallVector<DimTile> dim_tiles;
     dim_tiles.reserve(dims.size());
     for (auto [index, dim] : llvm::enumerate(dims)) {
+      int64_t global_dim_id =
+          tiling_space->GetDimensionInfo(root.instruction(), index).id.value();
       dim_tiles.push_back(GetDefaultDimTile(
-          index, CreateSymbolExpr(index, tiling_space->num_dimensions(), ctx),
+          index,
+          CreateSymbolExpr(global_dim_id, tiling_space->num_dimensions(), ctx),
           dim));
     }
     Tile tile{*tiling_space, std::move(dim_tiles)};
