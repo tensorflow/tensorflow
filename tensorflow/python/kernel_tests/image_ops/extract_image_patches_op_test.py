@@ -162,7 +162,8 @@ class ExtractImagePatches(test.TestCase):
           padding="SAME",
       )
       return math_ops.reduce_sum(
-          array_ops.where(math_ops.is_nan(patches), 0.0, patches))
+          array_ops.where(
+              math_ops.is_nan(patches), array_ops.zeros_like(patches), patches))
 
     x = constant_op.constant(
         [[[[0.0], [-0.0], [float("nan")]],
