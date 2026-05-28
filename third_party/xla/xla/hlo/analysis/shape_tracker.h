@@ -108,7 +108,7 @@ class ShapeTracker {
 
   // Generates HLO instructions corresponding to the tracked operations.
   absl::StatusOr<HloInstruction*> ToInstructionChain(
-      HloInstruction* inst) const;
+      HloInstruction* inst, bool avoid_combining_reshapes = true) const;
 
   struct Step {
     enum class Type { kReshape, kTranspose };
@@ -120,14 +120,18 @@ class ShapeTracker {
   std::vector<Step> GetSteps() const;
 
   // Returns a debug string representation of the tracked operations.
-  std::string DebugString() const;
+  std::string DebugString(bool avoid_combining_reshapes = true) const;
 
  private:
-  struct ViewMapping;
+  struct BufferView;
+
+  static std::vector<Step> OptimizeSteps(const std::vector<Step>& steps,
+                                         const xla::Shape& input_shape,
+                                         const xla::Shape& output_shape);
 
   void TryFoldProjection();
 
-  std::vector<ViewMapping> projections_;
+  std::vector<BufferView> projections_;
   xla::Shape input_shape_;
   xla::Shape output_shape_;
 };

@@ -883,6 +883,7 @@ xla_cc_test(
         ":shape_tracker",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_config",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",

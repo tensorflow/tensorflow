@@ -17,14 +17,18 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 
@@ -332,7 +336,7 @@ TEST(ShapeTrackerTest, GetStepsAndDebugString) {
   EXPECT_EQ(steps[2].type, ShapeTracker::Step::Type::kReshape);
   EXPECT_EQ(steps[2].dimensions, (std::vector<int64_t>{1, 3, 2}));
 
-  EXPECT_EQ(tracker.DebugString(), "[1,2,3] -> R[2,3] -> T[3,2] -> R[1,3,2]");
+  EXPECT_EQ(tracker.DebugString(), "[1,2,3] -> T[3,1,2] -> R[1,3,2]");
 }
 
 TEST(ShapeTrackerTest, GetStepsFallback) {
@@ -345,11 +349,13 @@ TEST(ShapeTrackerTest, GetStepsFallback) {
   EXPECT_EQ(tracker.output_shape().dimensions(), (std::vector<int64_t>{8, 3}));
 
   std::vector<ShapeTracker::Step> steps = tracker.GetSteps();
-  ASSERT_EQ(steps.size(), 2);
-  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kTranspose);
-  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{2, 0, 1}));
-  EXPECT_EQ(steps[1].type, ShapeTracker::Step::Type::kReshape);
-  EXPECT_EQ(steps[1].dimensions, (std::vector<int64_t>{8, 3}));
+  ASSERT_EQ(steps.size(), 3);
+  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kReshape);
+  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{6, 4}));
+  EXPECT_EQ(steps[1].type, ShapeTracker::Step::Type::kTranspose);
+  EXPECT_EQ(steps[1].dimensions, (std::vector<int64_t>{1, 0}));
+  EXPECT_EQ(steps[2].type, ShapeTracker::Step::Type::kReshape);
+  EXPECT_EQ(steps[2].dimensions, (std::vector<int64_t>{8, 3}));
 
   EXPECT_EQ(tracker.DebugString(), "[2,3,4] -> T[4,2,3] -> R[8,3]");
 }
@@ -369,6 +375,42 @@ TEST(ShapeTrackerTest, PrependTranspose) {
   ASSERT_EQ(steps.size(), 1);
   EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kTranspose);
   EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{1, 0, 2}));
+}
+
+TEST(ShapeTrackerTest, PrependTransposeNonSymmetric) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+
+  ASSERT_TRUE(tracker.PrependTranspose({1, 2, 0}).ok());
+  EXPECT_EQ(tracker.output_shape().dimensions(),
+            (std::vector<int64_t>{2, 3, 4}));
+  EXPECT_EQ(tracker.input_shape().dimensions(),
+            (std::vector<int64_t>{4, 2, 3}));
+
+  std::vector<ShapeTracker::Step> steps = tracker.GetSteps();
+  ASSERT_EQ(steps.size(), 3);
+  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kReshape);
+  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{4, 6}));
+  EXPECT_EQ(steps[1].type, ShapeTracker::Step::Type::kTranspose);
+  EXPECT_EQ(steps[1].dimensions, (std::vector<int64_t>{1, 0}));
+  EXPECT_EQ(steps[2].type, ShapeTracker::Step::Type::kReshape);
+  EXPECT_EQ(steps[2].dimensions, (std::vector<int64_t>{2, 3, 4}));
+
+  EXPECT_EQ(tracker.DebugString(), "[4,2,3] -> T[2,3,4]");
+}
+
+TEST(ShapeTrackerTest, ScalarShapeBitcast) {
+  Shape src_shape = ShapeUtil::MakeShape(F32, {});
+  Shape dst_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 1}, {1, 0});
+  ShapeTracker tracker(src_shape);
+
+  ASSERT_TRUE(tracker.AppendBitcast(src_shape, dst_shape).ok());
+  EXPECT_EQ(tracker.output_shape().dimensions(), (std::vector<int64_t>{1, 1}));
+
+  std::vector<ShapeTracker::Step> steps = tracker.GetSteps();
+  ASSERT_EQ(steps.size(), 1);
+  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kReshape);
+  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{1, 1}));
 }
 
 TEST(ShapeTrackerTest, PrependReshape) {
@@ -711,6 +753,130 @@ TEST(ShapeTrackerTest, AppendBitcastSixToOneSix) {
   ASSERT_EQ(steps.size(), 1);
   EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kReshape);
   EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{1, 6}));
+}
+
+TEST(ShapeTrackerTest, OneElementReshapeTransposeBitcastChain) {
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 1});
+  ShapeTracker tracker(shape);
+
+  // Append operations
+  ASSERT_TRUE(tracker.AppendTranspose({2, 1, 0}).ok());
+  ASSERT_TRUE(tracker.AppendReshape({1, 1}).ok());
+  ASSERT_TRUE(tracker
+                  .AppendBitcast(ShapeUtil::MakeShape(F32, {1, 1}),
+                                 ShapeUtil::MakeShape(F32, {1}))
+                  .ok());
+
+  EXPECT_EQ(tracker.output_shape().dimensions(), (std::vector<int64_t>{1}));
+  std::vector<ShapeTracker::Step> steps = tracker.GetSteps();
+  ASSERT_EQ(steps.size(), 1);
+  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kReshape);
+  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{1}));
+
+  // Prepend operations
+  ShapeTracker tracker2(ShapeUtil::MakeShape(F32, {1}));
+  ASSERT_TRUE(tracker2.PrependTranspose({0}).ok());
+  ASSERT_TRUE(tracker2.PrependReshape({1, 1}).ok());
+  ASSERT_TRUE(tracker2
+                  .PrependBitcast(ShapeUtil::MakeShape(F32, {1, 1, 1}),
+                                  ShapeUtil::MakeShape(F32, {1, 1}))
+                  .ok());
+
+  std::vector<ShapeTracker::Step> steps2 = tracker2.GetSteps();
+  ASSERT_EQ(steps2.size(), 1);
+  EXPECT_EQ(steps2[0].type, ShapeTracker::Step::Type::kReshape);
+  EXPECT_EQ(steps2[0].dimensions, (std::vector<int64_t>{1}));
+}
+
+TEST(ShapeTrackerTest, OptimizeStepsDebugString) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+
+  ASSERT_TRUE(tracker.AppendTranspose({2, 0, 1}).ok());
+  ASSERT_TRUE(tracker.AppendReshape({8, 3}).ok());
+
+  EXPECT_EQ(tracker.DebugString(), "[2,3,4] -> T[4,2,3] -> R[8,3]");
+  EXPECT_EQ(tracker.DebugString(true), "[2,3,4] -> T[4,2,3] -> R[8,3]");
+  EXPECT_EQ(tracker.DebugString(false),
+            "[2,3,4] -> R[6,4] -> T[4,6] -> R[8,3]");
+
+  ShapeTracker tracker2(ShapeUtil::MakeShape(F32, {1, 2, 3}));
+  ASSERT_TRUE(tracker2.AppendTranspose({0, 2, 1}).ok());
+  EXPECT_EQ(tracker2.DebugString(true), "[1,2,3] -> T[3,1,2] -> R[1,3,2]");
+  EXPECT_EQ(tracker2.DebugString(false),
+            "[1,2,3] -> R[2,3] -> T[3,2] -> R[1,3,2]");
+}
+
+TEST(ShapeTrackerTest, OptimizeStepsToInstructionChain) {
+  auto module = std::make_unique<HloModule>("module", HloModuleConfig());
+  HloComputation::Builder builder("comp");
+
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+
+  module->AddEntryComputation(builder.Build());
+
+  ShapeTracker tracker(shape);
+  ASSERT_TRUE(tracker.AppendTranspose({2, 0, 1}).ok());
+  ASSERT_TRUE(tracker.AppendReshape({8, 3}).ok());
+
+  // 1. Test with avoid_combining_reshapes = false (glued legacy path)
+  {
+    auto chain_or = tracker.ToInstructionChain(param, false);
+    ASSERT_TRUE(chain_or.ok());
+    HloInstruction* root = chain_or.value();
+
+    // Should produce: Root -> Reshape -> Transpose -> Reshape -> parameter
+    EXPECT_EQ(root->opcode(), HloOpcode::kReshape);
+    const HloInstruction* next1 = root->operand(0);
+    EXPECT_EQ(next1->opcode(), HloOpcode::kTranspose);
+    const HloInstruction* next2 = next1->operand(0);
+    EXPECT_EQ(next2->opcode(), HloOpcode::kReshape);
+    EXPECT_EQ(next2->operand(0), param);
+  }
+
+  // 2. Test with avoid_combining_reshapes = true (optimized decombined path)
+  {
+    auto chain_or = tracker.ToInstructionChain(param, true);
+    ASSERT_TRUE(chain_or.ok());
+    HloInstruction* root = chain_or.value();
+
+    // Should produce: Root -> Reshape -> Transpose -> parameter (direct
+    // transpose on parameter!)
+    EXPECT_EQ(root->opcode(), HloOpcode::kReshape);
+    const HloInstruction* next1 = root->operand(0);
+    EXPECT_EQ(next1->opcode(), HloOpcode::kTranspose);
+    EXPECT_EQ(next1->operand(0), param);
+  }
+}
+
+TEST(ShapeTrackerTest, OptimizeStepsDegenerateDimensionsCorrectness) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 1, 3});
+  ShapeTracker tracker(shape);
+
+  ASSERT_TRUE(tracker.AppendTranspose({2, 1, 0}).ok());
+
+  EXPECT_EQ(tracker.DebugString(false),
+            "[2,1,3] -> R[2,3] -> T[3,2] -> R[3,1,2]");
+  EXPECT_EQ(tracker.DebugString(true), "[2,1,3] -> T[1,3,2] -> R[3,1,2]");
+}
+
+TEST(ShapeTrackerTest, OptimizeStepsScalarReshape) {
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 1});
+  ShapeTracker tracker(shape);
+
+  ASSERT_TRUE(tracker.AppendReshape({}).ok());
+
+  EXPECT_EQ(tracker.DebugString(true), "[1,1] -> R[]");
+  EXPECT_EQ(tracker.DebugString(false), "[1,1] -> R[]");
+}
+TEST(ShapeTrackerTest, OptimizeStepsOOBWithTrailingDegenerates) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  ShapeTracker tracker(shape);
+
+  ASSERT_TRUE(tracker.AppendReshape({6, 1, 1}).ok());
+  EXPECT_NO_FATAL_FAILURE(tracker.DebugString(true));
 }
 
 }  // namespace xla

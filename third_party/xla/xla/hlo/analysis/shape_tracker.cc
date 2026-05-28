@@ -18,8 +18,12 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <iterator>
+#include <numeric>
+#include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -40,8 +44,16 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/util.h"
 
-namespace xla {
+// Some invariants to simplify reasoning:
+//  - A tracker always has at least one projection.
+//  - Tracker doesn't support zero-element shapes (i.e. when any dimension is
+//  0).
+//  - The support of 1-element shapes happens in the outer layer of the class
+//  and doesn't use projections logic.
+//  - Projections never have extents of size 1. (except for the case of
+//  1-element shapes, which don't use projections anyway).
 
+namespace xla {
 namespace {
 
 struct PhysicalDimension {
@@ -80,7 +92,6 @@ absl::StatusOr<std::vector<PhysicalDimension>> BuildPhysicalDimensions(
     }
 
     int64_t size = std::min(src_rem, dst_rem);
-
     PhysicalDimension dim;
     dim.size = size;
     dim.src_logical_idx =
@@ -116,111 +127,92 @@ absl::StatusOr<std::vector<PhysicalDimension>> BuildPhysicalDimensions(
   return result;
 }
 
-// Represents the view of a single logical dimension, which may consist of
-// multiple physical segments (strides and extents) if the dimension is not
-// contiguous.
-struct DimensionView {
-  llvm::SmallVector<int64_t, 2> strides;
-  llvm::SmallVector<int64_t, 2> extents;
+}  // namespace
 
-  bool is_contiguous() const { return strides.size() == 1; }
-  bool operator==(const DimensionView& other) const {
-    return strides == other.strides && extents == other.extents;
-  }
-};
+struct ShapeTracker::BufferView {
+  struct Transformation {
+    llvm::SmallVector<int64_t, 6> input_reshape;
+    llvm::SmallVector<int64_t, 6> transpose;
+  };
 
-// Represents a view of a buffer, defined by a sequence of dimension views.
-struct BufferView {
-  llvm::SmallVector<DimensionView, 6> views;
-
-  DimensionView GetFlattenedAndCompactedView() const {
-    DimensionView compacted;
-    for (const auto& dim_view : views) {
-      for (size_t i = 0; i < dim_view.strides.size(); ++i) {
-        int64_t stride = dim_view.strides[i];
-        int64_t extent = dim_view.extents[i];
-
-        if (compacted.strides.empty()) {
-          compacted.strides.push_back(stride);
-          compacted.extents.push_back(extent);
-        } else if (compacted.strides.back() == stride * extent) {
-          compacted.extents.back() *= extent;
-          compacted.strides.back() = stride;
-        } else {
-          compacted.strides.push_back(stride);
-          compacted.extents.push_back(extent);
-        }
-      }
-    }
-    return compacted;
-  }
+  llvm::SmallVector<int64_t, 6> strides;
+  llvm::SmallVector<int64_t, 6> extents;
 
   bool operator==(const BufferView& other) const {
-    return views == other.views;
+    return strides == other.strides && extents == other.extents;
   }
+
+  // Flattens a set of sub-views and compacts contiguous elements.
+  static BufferView FlattenAndCompact(absl::Span<const BufferView> sub_views);
+
+  // Compacts contiguous adjacent strides/extents in decreasing-stride order.
+  static BufferView Compact(absl::Span<const int64_t> strides,
+                            absl::Span<const int64_t> extents);
+
+  // Attempts to partition the flat view into logical dimensions. Returns
+  // nullopt if layout is incompatible. A single logical dimension is allowed to
+  // span multiple non-contiguous segments (no contiguity check).
+  std::optional<std::vector<BufferView>> TryUnflatten(
+      absl::Span<const int64_t> logical_dims) const;
+
+  static BufferView FromShape(const xla::Shape& shape);
+  Transformation transformation() const;
 };
 
-BufferView ShapeToBufferView(const xla::Shape& shape) {
-  BufferView view;
+ShapeTracker::BufferView ShapeTracker::BufferView::Compact(
+    absl::Span<const int64_t> strides, absl::Span<const int64_t> extents) {
+  BufferView compacted;
+  for (size_t i = 0; i < strides.size(); ++i) {
+    int64_t stride = strides[i];
+    int64_t extent = extents[i];
 
-  const auto& dimensions = shape.dimensions();
-  int rank = dimensions.size();
-
-  std::vector<int64_t> strides(rank);
-
-  // Default layout: major-to-minor.
-  int64_t current_stride = 1;
-  for (int i = rank - 1; i >= 0; --i) {
-    strides[i] = current_stride;
-    current_stride *= dimensions[i];
-  }
-
-  for (int i = 0; i < rank; ++i) {
-    if (dimensions[i] == 1) {
-      continue;  // Skip degenerate dimensions.
+    if (!compacted.strides.empty() &&
+        compacted.strides.back() == stride * extent) {
+      // Adjacent segments are contiguous in decreasing stride order: merge them
+      compacted.extents.back() *= extent;
+      compacted.strides.back() = stride;
+    } else {
+      compacted.strides.push_back(stride);
+      compacted.extents.push_back(extent);
     }
-    DimensionView dim_view;
-    dim_view.strides.push_back(strides[i]);
-    dim_view.extents.push_back(dimensions[i]);
-    view.views.push_back(dim_view);
   }
-
-  return view;
+  return compacted;
 }
 
-bool TryReshape(BufferView& view, absl::Span<const int64_t> new_dims) {
-  DimensionView compacted = view.GetFlattenedAndCompactedView();
-
-  if (compacted.strides.empty()) {
-    view = BufferView{};
-    return true;
+ShapeTracker::BufferView ShapeTracker::BufferView::FlattenAndCompact(
+    absl::Span<const BufferView> sub_views) {
+  std::vector<int64_t> flat_strides;
+  std::vector<int64_t> flat_extents;
+  for (const auto& sub_view : sub_views) {
+    flat_strides.insert(flat_strides.end(), sub_view.strides.begin(),
+                        sub_view.strides.end());
+    flat_extents.insert(flat_extents.end(), sub_view.extents.begin(),
+                        sub_view.extents.end());
   }
+  return Compact(flat_strides, flat_extents);
+}
 
-  BufferView new_view;
+std::optional<std::vector<ShapeTracker::BufferView>>
+ShapeTracker::BufferView::TryUnflatten(
+    absl::Span<const int64_t> logical_dims) const {
+  std::vector<BufferView> sub_views;
+  sub_views.reserve(logical_dims.size());
+
   size_t atom_idx = 0;
-  int64_t rem_stride = compacted.strides[0];
-  int64_t rem_extent = compacted.extents[0];
+  int64_t rem_stride = strides[0];
+  int64_t rem_extent = extents[0];
 
-  for (int64_t d : new_dims) {
-    if (d == 1) {
-      continue;
-    }
-
-    DimensionView dim_view;
+  for (int64_t d : logical_dims) {
+    BufferView dim_view;
     int64_t rem_d = d;
 
     while (rem_d > 1) {
       int64_t take_extent = std::min(rem_extent, rem_d);
       if (rem_extent % take_extent != 0 || rem_d % take_extent != 0) {
-        return false;
+        return std::nullopt;
       }
 
       int64_t take_stride = rem_stride * (rem_extent / take_extent);
-      if (!dim_view.strides.empty() &&
-          take_stride != dim_view.strides.back() * dim_view.extents.back()) {
-        return false;
-      }
-
       dim_view.strides.push_back(take_stride);
       dim_view.extents.push_back(take_extent);
 
@@ -229,39 +221,26 @@ bool TryReshape(BufferView& view, absl::Span<const int64_t> new_dims) {
 
       if (rem_extent == 1) {
         atom_idx++;
-        if (atom_idx < compacted.strides.size()) {
-          rem_stride = compacted.strides[atom_idx];
-          rem_extent = compacted.extents[atom_idx];
+        if (atom_idx < strides.size()) {
+          rem_stride = strides[atom_idx];
+          rem_extent = extents[atom_idx];
         }
       }
     }
-    new_view.views.push_back(dim_view);
+    sub_views.push_back(dim_view);
   }
 
-  view = new_view;
-  return true;
+  return sub_views;
 }
 
-}  // namespace
-
-// Represents a mapping between an input buffer view and an output buffer
-// view. This is used to track how data is projected or reshaped.
-struct ShapeTracker::ViewMapping {
-  BufferView output;
-
-  struct Transformation {
-    llvm::SmallVector<int64_t, 6> input_reshape;
-    llvm::SmallVector<int64_t, 6> transpose;
-  };
-
-  explicit ViewMapping(const xla::Shape& shape);
-
-  Transformation output_transformation() const;
-
-  bool operator==(const ViewMapping& other) const {
-    return output == other.output;
-  }
-};
+ShapeTracker::BufferView ShapeTracker::BufferView::FromShape(
+    const xla::Shape& shape) {
+  BufferView view;
+  int64_t total_elements = ShapeUtil::ElementsIn(shape);
+  view.strides.push_back(1);
+  view.extents.push_back(total_elements);
+  return view;
+}
 
 ShapeTracker::~ShapeTracker() = default;
 ShapeTracker::ShapeTracker(const ShapeTracker&) = default;
@@ -269,13 +248,9 @@ ShapeTracker::ShapeTracker(ShapeTracker&&) noexcept = default;
 ShapeTracker& ShapeTracker::operator=(const ShapeTracker&) = default;
 ShapeTracker& ShapeTracker::operator=(ShapeTracker&&) noexcept = default;
 
-ShapeTracker::ViewMapping::ViewMapping(const xla::Shape& shape) {
-  output = ShapeToBufferView(shape);
-}
-
 ShapeTracker::ShapeTracker(xla::Shape shape)
     : input_shape_(shape), output_shape_(shape) {
-  projections_.push_back(ViewMapping(shape));
+  projections_.push_back(BufferView::FromShape(shape));
 }
 
 absl::StatusOr<ShapeTracker> ShapeTracker::FromProducerConsumer(
@@ -301,59 +276,79 @@ absl::StatusOr<ShapeTracker> ShapeTracker::FromProducerConsumer(
   return tracker;
 }
 
-// Transposes are always just shuffling of the existing projection.
+// Tries to transpose without introducing a copy (flattening). If transposed
+// dimension is not divisible by the neighboring stride, flatten and transpose.
+// This is a user facing function which may attempt to transpose degenerate
+// dimensions, therefore we need to expand mapping.
 absl::Status ShapeTracker::AppendTranspose(
     absl::Span<const int64_t> permutation) {
   if (permutation.size() != output_shape_.dimensions().size()) {
     return absl::InvalidArgumentError("Rank mismatch");
   }
+  if (!IsPermutation(permutation)) {
+    return absl::InvalidArgumentError("Invalid permutation");
+  }
+  if (ShapeUtil::ElementsIn(output_shape_) == 1) {
+    output_shape_ = ShapeUtil::PermuteDimensions(permutation, output_shape_);
+    LayoutUtil::SetToDefaultLayout(&output_shape_);
+    return absl::OkStatus();
+  }
 
   const auto& old_dimensions = output_shape_.dimensions();
-  std::vector<int> old_logical_to_view_idx(old_dimensions.size(), -1);
-  int view_idx = 0;
-  for (int i = 0; i < old_dimensions.size(); ++i) {
-    if (old_dimensions[i] != 1) {
-      old_logical_to_view_idx[i] = view_idx++;
+  std::vector<int64_t> non_degenerate_dims;
+  absl::c_copy_if(old_dimensions, std::back_inserter(non_degenerate_dims),
+                  [](int64_t d) { return d != 1; });
+
+  auto* current_view = &projections_.back();
+  auto opt_sub_views = current_view->TryUnflatten(non_degenerate_dims);
+
+  if (!opt_sub_views.has_value()) {
+    projections_.push_back(BufferView::FromShape(output_shape_));
+    current_view = &projections_.back();
+    opt_sub_views = current_view->TryUnflatten(non_degenerate_dims);
+    if (!opt_sub_views.has_value()) {
+      return absl::InternalError(
+          "Failed to unflatten contiguous layout after copy");
     }
   }
 
-  BufferView new_output_view;
-  const BufferView& old_output_view = projections_.back().output;
-
+  std::vector<BufferView> permuted_sub_views;
+  permuted_sub_views.reserve(non_degenerate_dims.size());
   for (int64_t dim : permutation) {
-    int idx = old_logical_to_view_idx[dim];
-    if (idx != -1) {
-      new_output_view.views.push_back(old_output_view.views[idx]);
+    if (old_dimensions[dim] == 1) {
+      continue;
     }
+    // Locate the physical index of this logical dimension by counting the
+    // non-degenerate dimensions to its left in the old shape.
+    int64_t physical_idx = absl::c_count_if(
+        absl::Span<const int64_t>(old_dimensions).subspan(0, dim),
+        [](int64_t d) { return d != 1; });
+    permuted_sub_views.push_back((*opt_sub_views)[physical_idx]);
   }
 
-  projections_.back().output = new_output_view;
+  *current_view = BufferView::FlattenAndCompact(permuted_sub_views);
   output_shape_ = ShapeUtil::PermuteDimensions(permutation, output_shape_);
   LayoutUtil::SetToDefaultLayout(&output_shape_);
 
+  TryFoldProjection();
   return absl::OkStatus();
 }
 
-// Tries to reshape without introducing a copy. If not possible, introduces a
-// copy and reshapes.
+// Reshapes never introduce a copy (even when new shape's strides are not
+// divisible by underlying strides), it defines how a view is cut.
 absl::Status ShapeTracker::AppendReshape(absl::Span<const int64_t> dimensions) {
-  int64_t new_elements = Product(dimensions);
-  if (new_elements != ShapeUtil::ElementsIn(output_shape_)) {
+  if (Product(dimensions) != ShapeUtil::ElementsIn(output_shape_)) {
     return absl::InvalidArgumentError("Product of dimensions mismatch");
   }
 
-  if (!TryReshape(projections_.back().output, dimensions)) {
-    // Introduce a copy as the reshape is not a bitcast.
-    projections_.push_back(ViewMapping(output_shape_));
-    if (!TryReshape(projections_.back().output, dimensions)) {
-      return absl::InternalError("Failed to reshape after introducing copy");
-    }
+  if (ShapeUtil::ElementsIn(output_shape_) == 1) {
+    output_shape_ =
+        ShapeUtil::MakeShape(output_shape_.element_type(), dimensions);
+    return absl::OkStatus();
   }
 
   output_shape_ =
       ShapeUtil::MakeShape(output_shape_.element_type(), dimensions);
-
-  TryFoldProjection();
   return absl::OkStatus();
 }
 
@@ -362,22 +357,19 @@ absl::Status ShapeTracker::AppendReshape(absl::Span<const int64_t> dimensions) {
 void ShapeTracker::TryFoldProjection() {
   while (projections_.size() > 1) {
     const auto& last = projections_.back();
-    auto transformation = last.output_transformation();
+    auto transformation = last.transformation();
     auto& prev = projections_[projections_.size() - 2];
 
-    BufferView temp_output = prev.output;
-    if (!TryReshape(temp_output, transformation.input_reshape)) {
+    auto opt_sub_views = prev.TryUnflatten(transformation.input_reshape);
+    if (!opt_sub_views.has_value()) {
       break;
     }
 
-    llvm::SmallVector<DimensionView, 6> permuted_views(
-        temp_output.views.size());
+    std::vector<BufferView> permuted_views(opt_sub_views->size());
     for (size_t i = 0; i < transformation.transpose.size(); ++i) {
-      permuted_views[i] = temp_output.views[transformation.transpose[i]];
+      permuted_views[i] = (*opt_sub_views)[transformation.transpose[i]];
     }
-    temp_output.views = std::move(permuted_views);
-
-    prev.output = std::move(temp_output);
+    prev = BufferView::FlattenAndCompact(permuted_views);
     projections_.pop_back();
   }
 }
@@ -386,9 +378,18 @@ void ShapeTracker::TryFoldProjection() {
 // it to the tracker.
 absl::Status ShapeTracker::AppendBitcast(const xla::Shape& src_shape,
                                          const xla::Shape& dst_shape) {
+  if (ShapeUtil::ElementsIn(src_shape) != ShapeUtil::ElementsIn(dst_shape)) {
+    return absl::InvalidArgumentError(
+        "Bitcast must preserve the total number of elements");
+  }
+
   if (!ShapeUtil::Compatible(src_shape, output_shape_)) {
     return absl::InvalidArgumentError(
         "Bitcast operand shape does not match current output shape");
+  }
+
+  if (ShapeUtil::ElementsIn(output_shape_) == 1) {
+    return AppendReshape(dst_shape.dimensions());
   }
 
   ASSIGN_OR_RETURN(std::vector<PhysicalDimension> dims,
@@ -484,6 +485,11 @@ absl::Status ShapeTracker::ConcatenateFrom(const ShapeTracker& other) {
         "tracker");
   }
 
+  if (ShapeUtil::ElementsIn(output_shape_) == 1) {
+    output_shape_ = other.output_shape();
+    return absl::OkStatus();
+  }
+
   for (const auto& step : other.GetSteps()) {
     switch (step.type) {
       case Step::Type::kReshape:
@@ -498,9 +504,8 @@ absl::Status ShapeTracker::ConcatenateFrom(const ShapeTracker& other) {
   return absl::OkStatus();
 }
 
-// Converts the projection into reshape+transpose.
-ShapeTracker::ViewMapping::Transformation
-ShapeTracker::ViewMapping::output_transformation() const {
+ShapeTracker::BufferView::Transformation
+ShapeTracker::BufferView::transformation() const {
   Transformation result;
 
   struct Atom {
@@ -509,11 +514,9 @@ ShapeTracker::ViewMapping::output_transformation() const {
     int64_t original_idx;
   };
   llvm::SmallVector<Atom, 6> atoms;
-  int64_t atom_idx = 0;
-  for (const auto& dim_view : output.views) {
-    for (size_t i = 0; i < dim_view.strides.size(); ++i) {
-      atoms.push_back({dim_view.strides[i], dim_view.extents[i], atom_idx++});
-    }
+  atoms.reserve(strides.size());
+  for (size_t i = 0; i < strides.size(); ++i) {
+    atoms.push_back({strides[i], extents[i], static_cast<int64_t>(i)});
   }
 
   auto sorted_atoms = atoms;
@@ -527,10 +530,8 @@ ShapeTracker::ViewMapping::output_transformation() const {
   }
 
   result.transpose.resize(atoms.size());
-  for (size_t i = 0; i < atoms.size(); ++i) {
-    auto it = absl::c_find_if(
-        sorted_atoms, [&](const Atom& a) { return a.original_idx == i; });
-    result.transpose[i] = std::distance(sorted_atoms.begin(), it);
+  for (size_t j = 0; j < sorted_atoms.size(); ++j) {
+    result.transpose[sorted_atoms[j].original_idx] = j;
   }
 
   return result;
@@ -540,9 +541,15 @@ ShapeTracker::ViewMapping::output_transformation() const {
 // reshape-transpose steps, and construct the tracker backwards. Note that it
 // doesn't necessarily contain the same number of steps/projections.
 absl::StatusOr<ShapeTracker> ShapeTracker::GetInverted() const {
+  if (ShapeUtil::ElementsIn(output_shape_) == 1) {
+    ShapeTracker inverted(output_shape_);
+    inverted.output_shape_ = input_shape_;
+    return inverted;
+  }
+
   ShapeTracker inverted(output_shape_);
   for (auto it = projections_.rbegin(); it != projections_.rend(); ++it) {
-    auto transformation = it->output_transformation();
+    auto transformation = it->transformation();
 
     std::vector<int64_t> transposed_dims(transformation.transpose.size());
     for (size_t i = 0; i < transformation.transpose.size(); ++i) {
@@ -573,7 +580,7 @@ absl::Status ShapeTracker::Invert() {
 
 absl::Status ShapeTracker::PrependTranspose(
     absl::Span<const int64_t> permutation) {
-  std::vector<int64_t> inv_perm(permutation.size());
+  llvm::SmallVector<int64_t, 6> inv_perm(permutation.size());
   for (size_t i = 0; i < permutation.size(); ++i) {
     inv_perm[permutation[i]] = i;
   }
@@ -600,13 +607,22 @@ absl::Status ShapeTracker::PrependBitcast(const xla::Shape& src_shape,
 }
 
 std::vector<ShapeTracker::Step> ShapeTracker::GetSteps() const {
+  if (ShapeUtil::ElementsIn(input_shape_) == 1) {
+    if (input_shape_.dimensions() == output_shape_.dimensions()) {
+      return {};
+    }
+    return {{Step::Type::kReshape,
+             std::vector<int64_t>(output_shape_.dimensions().begin(),
+                                  output_shape_.dimensions().end())}};
+  }
+
   std::vector<Step> steps;
   std::vector<int64_t> current_dims(input_shape_.dimensions().begin(),
                                     input_shape_.dimensions().end());
 
   for (size_t i = 0; i < projections_.size(); ++i) {
     const auto& projection = projections_[i];
-    auto transformation = projection.output_transformation();
+    auto transformation = projection.transformation();
 
     // If it is the last projection, and its transpose is identity,
     // we can skip it completely because the final reshape will handle it.
@@ -647,8 +663,145 @@ std::vector<ShapeTracker::Step> ShapeTracker::GetSteps() const {
   return steps;
 }
 
+namespace {
+
+// std::inclusive_scan is temporarily not used here because not all supported
+// compilers support it yet.
+std::vector<int64_t> PartialProducts(absl::Span<const int64_t> input) {
+  std::vector<int64_t> result;
+  result.reserve(input.size());
+  int64_t current = 1;
+  for (int64_t val : input) {
+    current *= val;
+    result.push_back(current);
+  }
+  return result;
+}
+
+// If a reshape tries to glue dimensions, the function keeps them when possible.
+// Do to that, it keeps the strides of the target dimensions (which we are
+// required to preserve), and inserts existing dimensions when it doens't
+// violate divisibility.
+std::pair<ShapeTracker::Step, std::vector<int64_t>> ExpandReshapeStep(
+    const ShapeTracker::Step& step, const std::vector<int64_t>& current_shape) {
+  std::vector<int64_t> strides_to_preserve = PartialProducts(step.dimensions);
+  std::vector<int64_t> strides_to_insert = PartialProducts(current_shape);
+
+  size_t preserve_idx = 0;
+  size_t insert_idx = 0;
+  std::vector<int64_t> new_mapping;
+  std::vector<int64_t> new_shapes;
+
+  // Both strides_to_preserve and strides_to_insert contain distinct elements
+  // (in increasing order), and have the same last element (total number of
+  // elements). In the loop below, `insert_stride` always follows behind
+  // `preserve_stride`, and therefore `insert_idx` always points to a valid
+  // element.
+  while (preserve_idx < strides_to_preserve.size()) {
+    int64_t preserve_stride = strides_to_preserve[preserve_idx];
+    int64_t insert_stride = strides_to_insert[insert_idx];
+    if (insert_stride < preserve_stride) {
+      if (preserve_stride % insert_stride == 0 &&
+          (new_shapes.empty() || insert_stride % new_shapes.back() == 0)) {
+        new_shapes.push_back(insert_stride);
+      }
+      ++insert_idx;
+      continue;
+    }
+
+    new_mapping.push_back(new_shapes.size());
+    new_shapes.push_back(preserve_stride);
+    ++preserve_idx;
+
+    if (insert_stride == preserve_stride) {
+      ++insert_idx;
+    }
+  }
+
+  absl::c_adjacent_difference(new_shapes, new_shapes.begin(),
+                              std::divides<int64_t>());
+
+  return {ShapeTracker::Step{ShapeTracker::Step::Type::kReshape, new_shapes},
+          new_mapping};
+}
+
+// Performs a transpose over an expanded shape.
+ShapeTracker::Step ExpandTransposeStep(const ShapeTracker::Step& step,
+                                       const std::vector<int64_t>& expansion) {
+  std::vector<int64_t> expanded;
+  expanded.reserve(expansion.back() + 1);
+  for (const int64_t dim : step.dimensions) {
+    const int64_t begin = dim == 0 ? 0 : expansion[dim - 1] + 1;
+    const int64_t end = expansion[dim] + 1;
+    const auto first = expanded.insert(expanded.end(), end - begin, 0);
+    std::iota(first, expanded.end(), begin);
+  }
+  return ShapeTracker::Step{ShapeTracker::Step::Type::kTranspose, expanded};
+}
+
+}  // namespace
+
+std::vector<ShapeTracker::Step> ShapeTracker::OptimizeSteps(
+    const std::vector<Step>& steps, const xla::Shape& input_shape,
+    const xla::Shape& output_shape) {
+  if (ShapeUtil::ElementsIn(input_shape) == 1) {
+    return steps;
+  }
+  std::vector<Step> optimized_steps;
+  std::vector<int64_t> current_shape(input_shape.dimensions().begin(),
+                                     input_shape.dimensions().end());
+
+  std::vector<int64_t> mapping(current_shape.size());
+  std::iota(mapping.begin(), mapping.end(), 0);
+
+  // If the final step is a reshape, skip it for two reasons:
+  // - Unlike other steps, it may contain degenerate dimensions which
+  // ExpandReshapeStep can't handle.
+  // - It is redundant, a reshape will be applied at the end anyway.
+  absl::Span<const Step> steps_span = steps;
+  if (!steps_span.empty() && steps_span.back().type == Step::Type::kReshape) {
+    steps_span.remove_suffix(1);
+  }
+
+  for (const auto& step : steps_span) {
+    Step new_step;
+    switch (step.type) {
+      case Step::Type::kReshape:
+        std::tie(new_step, mapping) = ExpandReshapeStep(step, current_shape);
+        if (new_step.dimensions != current_shape) {
+          current_shape = new_step.dimensions;
+          optimized_steps.push_back(std::move(new_step));
+        }
+        break;
+      case Step::Type::kTranspose:
+        new_step = ExpandTransposeStep(step, mapping);
+        std::vector<int64_t> new_shape(new_step.dimensions.size());
+        for (size_t i = 0; i < new_step.dimensions.size(); ++i) {
+          new_shape[i] = current_shape[new_step.dimensions[i]];
+        }
+        current_shape = std::move(new_shape);
+        optimized_steps.push_back(std::move(new_step));
+        break;
+    }
+  }
+
+  if (current_shape != output_shape.dimensions()) {
+    std::vector<int64_t> out_dims(output_shape.dimensions().begin(),
+                                  output_shape.dimensions().end());
+    if (!optimized_steps.empty() &&
+        optimized_steps.back().type == Step::Type::kReshape) {
+      // Overwrite the last reshape to avoid consecutive reshapes
+      optimized_steps.back().dimensions = out_dims;
+    } else {
+      optimized_steps.push_back({Step::Type::kReshape, out_dims});
+    }
+  }
+
+  return optimized_steps;
+}
+
 absl::StatusOr<HloInstruction*> ShapeTracker::ToInstructionChain(
-    HloInstruction* inst) const {
+    HloInstruction* inst, bool avoid_combining_reshapes) const {
   if (inst->shape().dimensions() != input_shape_.dimensions()) {
     return absl::InvalidArgumentError(
         "Input instruction shape dimensions mismatch");
@@ -657,7 +810,12 @@ absl::StatusOr<HloInstruction*> ShapeTracker::ToInstructionChain(
   HloComputation* computation = inst->parent();
   HloInstruction* current_inst = inst;
 
-  for (const auto& step : GetSteps()) {
+  std::vector<Step> steps = GetSteps();
+  if (avoid_combining_reshapes) {
+    steps = OptimizeSteps(steps, input_shape_, output_shape_);
+  }
+
+  for (const auto& step : steps) {
     switch (step.type) {
       case Step::Type::kReshape: {
         Shape new_shape = ShapeUtil::MakeShape(
@@ -680,13 +838,18 @@ absl::StatusOr<HloInstruction*> ShapeTracker::ToInstructionChain(
   return current_inst;
 }
 
-std::string ShapeTracker::DebugString() const {
+std::string ShapeTracker::DebugString(bool avoid_combining_reshapes) const {
   std::string result =
       absl::StrCat("[", absl::StrJoin(input_shape_.dimensions(), ","), "]");
   std::vector<int64_t> current_dims(input_shape_.dimensions().begin(),
                                     input_shape_.dimensions().end());
 
-  for (const auto& step : GetSteps()) {
+  std::vector<Step> steps = GetSteps();
+  if (avoid_combining_reshapes) {
+    steps = OptimizeSteps(steps, input_shape_, output_shape_);
+  }
+
+  for (const auto& step : steps) {
     switch (step.type) {
       case Step::Type::kReshape: {
         absl::StrAppend(&result, " -> R[", absl::StrJoin(step.dimensions, ","),
