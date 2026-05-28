@@ -738,6 +738,50 @@ xla_cc_test(
     ],
 )
 
+cc_library(
+    name = "pjrt_buffer_hash_util",
+    srcs = ["pjrt_buffer_hash_util.cc"],
+    hdrs = ["pjrt_buffer_hash_util.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla:comparison_util",
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_layout",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt:buffer_hash_util",
+        "//xla/tsl/concurrency:executor",
+        "//xla/tsl/concurrency:future",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "pjrt_buffer_hash_util_test",
+    size = "small",
+    srcs = ["pjrt_buffer_hash_util_test.cc"],
+    deps = [
+        ":pjrt_buffer_hash_util",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
+        "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt:buffer_hash_util",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 xla_cc_test(
     name = "pjrt_client_impl_test_cpu",
     size = "small",
