@@ -47,7 +47,8 @@ template <typename T>
 absl::StatusOr<stream_executor::DeviceAddressBase> AllocateInitializedMemory(
     CudaExecutor* executor, size_t size, size_t offset, T value) {
   stream_executor::DeviceAddressBase device_memory = executor->Allocate(
-      size + offset, static_cast<int64_t>(stream_executor::MemorySpace::kP2P));
+      size + offset,
+      static_cast<int64_t>(stream_executor::MemorySpace::kCollective));
   if (device_memory.opaque() == nullptr) {
     return absl::InternalError("Failed to allocate memory.");
   }
@@ -305,7 +306,7 @@ TEST(CudaExecutorMultiGpuTest, IsVmmMemoryCheck) {
 
   // Test with VMM memory
   stream_executor::DeviceAddressBase vmm_mem = executor->Allocate(
-      1024, static_cast<int64_t>(stream_executor::MemorySpace::kP2P));
+      1024, static_cast<int64_t>(stream_executor::MemorySpace::kCollective));
   EXPECT_TRUE(executor->IsVmmMemory(vmm_mem));
   executor->Deallocate(&vmm_mem);
 

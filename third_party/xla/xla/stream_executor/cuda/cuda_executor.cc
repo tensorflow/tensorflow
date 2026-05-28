@@ -1310,12 +1310,7 @@ DeviceAddressBase CudaExecutor::Allocate(uint64_t size, int64_t memory_space) {
     return AllocateAndTrack(*host_allocator_, size, "host");
   }
 
-  if (memory_space == static_cast<int64_t>(MemorySpace::kP2P)) {
-    return AllocateAndTrack(*vmm_allocator_, size, "vmm");
-  }
-
-  CHECK(memory_space == static_cast<int64_t>(MemorySpace::kDevice) ||
-        memory_space == static_cast<int64_t>(MemorySpace::kP2P));
+  CHECK(memory_space == static_cast<int64_t>(MemorySpace::kDevice));
 
   return AllocateAndTrack(*device_allocator_, size, "device");
 }
