@@ -259,6 +259,9 @@ TEST_P(RandomCholeskyTest, Real) {
 }
 
 TEST_P(RandomCholeskyTest, Complex) {
+  if (IsRocm()) {
+    GTEST_SKIP() << " hipblaslt doesn't suppport c64 c128 types";
+  }
   XlaBuilder builder(TestName());
 
   auto test_params = GetParam();
