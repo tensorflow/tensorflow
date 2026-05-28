@@ -1917,6 +1917,61 @@ class NestTest(parameterized.TestCase, test.TestCase):
       b: int
     self.assertTrue(nest.same_namedtuples(Foo1(1, 2), Foo(3, 4)))
 
+  def testFlattenDictItemsExceptionGetItem(self):
+    class ExceptionGetItemMapping(collections.abc.Mapping):
+
+      def __init__(self):
+        self._d = {1: 2}
+
+      def __getitem__(self, key):
+        raise ValueError("getitem error")
+
+      def __iter__(self):
+        return iter(self._d)
+
+      def __len__(self):
+        return len(self._d)
+
+    with self.assertRaisesRegex(ValueError, "getitem error"):
+      nest.flatten_dict_items(ExceptionGetItemMapping())
+
+  def testFlattenDictItemsExceptionIter(self):
+    class ExceptionIterMapping(collections.abc.Mapping):
+
+      def __getitem__(self, key):
+        return 1
+
+      def __iter__(self):
+        raise ValueError("iter error")
+
+      def __len__(self):
+        return 1
+
+    with self.assertRaisesRegex(ValueError, "iter error"):
+      nest.flatten_dict_items(ExceptionIterMapping())
+
+  def testPyObjectToStringFailureResilience(self):
+    class ExceptionStr:
+
+      def __hash__(self):
+        return 1
+
+      def __eq__(self, other):
+        return True
+
+      def __str__(self):
+        raise ValueError("str error")
+
+      def __repr__(self):
+        raise ValueError("repr error")
+
+    obj = ExceptionStr()
+    bad_dict = {(obj, obj): (1, 2)}
+    with self.assertRaisesRegex(
+        ValueError, "Cannot flatten dict because this key is not unique"
+    ):
+      nest.flatten_dict_items(bad_dict)
+
 
 class NestBenchmark(test.Benchmark):
 
