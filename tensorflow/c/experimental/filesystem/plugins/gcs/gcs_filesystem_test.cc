@@ -29,6 +29,8 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "third_party/cloud_cpp/google/cloud/common_options.h"
+#include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/stacktrace_handler.h"
 #include "tensorflow/core/platform/test.h"
@@ -689,6 +691,42 @@ TEST_F(GCSFilesystemTest, TestGetStorageClientOptions) {
     }
   }
   EXPECT_TRUE(found_x_goog_api_client);
+}
+
+TEST_F(GCSFilesystemTest, NewRandomAccessFile_Buffered_BackwardRead) {
+  tf_gcs_filesystem::InitTest(filesystem_, false, 10, 0, 0, 0, 0, status_);
+  ASSERT_TF_OK(status_) << "Could not initialize filesystem. "
+                        << TF_Message(status_);
+  std::string path = GetURIForPath("backward_read_file");
+  auto gcs_file =
+      static_cast<tf_gcs_filesystem::GCSFile*>(filesystem_->plugin_filesystem);
+  ASSERT_TRUE(InsertObject(path, "0123456789", &gcs_file->gcs_client, status_));
+
+  TF_RandomAccessFile* file = new TF_RandomAccessFile;
+  tf_gcs_filesystem::NewRandomAccessFile(filesystem_, path.c_str(), file,
+                                         status_);
+  ASSERT_TF_OK(status_);
+
+  std::string result;
+  result.resize(5);
+  // First read to populate localized cache: offset 5, size 5.
+  // Cache will contain "56789" with buffer_start = 5.
+  int64_t read = tf_random_access_file::Read(file, 5, 5, &result[0], status_);
+  ASSERT_EQ(read, 5) << "Read: " << read << "\n";
+  ASSERT_TF_OK(status_);
+  ASSERT_EQ(result, "56789") << "Result: " << result << "\n";
+
+  // Second read: backward read at offset 0, size 5.
+  // Previously, this would trigger an integer underflow because 0 < 10
+  // (buffer_end) and 5 (buffer_start) was truthy, leading to memcpy(..., data +
+  // (0 - 5), ...).
+  read = tf_random_access_file::Read(file, 0, 5, &result[0], status_);
+  ASSERT_EQ(read, 5) << "Read: " << read << "\n";
+  ASSERT_TF_OK(status_);
+  ASSERT_EQ(result, "01234") << "Result: " << result << "\n";
+
+  tf_random_access_file::Cleanup(file);
+  delete file;
 }
 
 }  // namespace

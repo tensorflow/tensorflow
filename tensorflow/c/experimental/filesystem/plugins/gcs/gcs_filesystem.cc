@@ -215,9 +215,9 @@ int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
     return gcs_file->read_fn(gcs_file->path, offset, n, buffer, status);
   } else {
     absl::MutexLock l(gcs_file->buffer_mutex);
-    size_t buffer_end = gcs_file->buffer_start + gcs_file->buffer.size();
+    uint64_t buffer_end = gcs_file->buffer_start + gcs_file->buffer.size();
     size_t copy_size = 0;
-    if (offset < buffer_end && gcs_file->buffer_start) {
+    if (offset >= gcs_file->buffer_start && offset < buffer_end) {
       copy_size = (std::min)(n, static_cast<size_t>(buffer_end - offset));
       memcpy(buffer,
              gcs_file->buffer.data() + (offset - gcs_file->buffer_start),
