@@ -25,8 +25,9 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Detects fusions that can be emitted using DynamicMemcpyFusion and annotates
-// them accordingly.
+// Detects fusions with a DS/DUS root that have a DynamicSliceConfig annotation
+// and restructures them into DynamicSliceFusion form: inserts a copy hero and
+// sets the backend config to kCustomFusion with "dynamic_slice_fusion" name.
 class FusionDynamicMemcpyRewriter : public HloModulePass {
  public:
   absl::string_view name() const override {
