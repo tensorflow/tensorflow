@@ -313,6 +313,11 @@ py_library(
     # visibility = visibility + [
     # "//learning/brain/contrib/learn:__pkg__",
     # "//learning/brain/mobile/lite/lstm:__pkg__",
+    # "//third_party/py/tf_keras/distribute:__pkg__",
+    # "//third_party/py/tf_keras/layers/preprocessing:__pkg__",
+    # "//third_party/py/tf_keras/models:__pkg__",
+    # "//third_party/py/tf_keras/optimizers:__pkg__",
+    # "//third_party/py/tf_keras/tests:__pkg__",
     # "//third_party/py/tf_slim/training:__pkg__",
     # ],
     # copybara:uncomment_end_and_comment_begin
