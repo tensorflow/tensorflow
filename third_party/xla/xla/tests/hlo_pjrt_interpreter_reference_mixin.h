@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "xla/hlo/evaluator/hlo_evaluator.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/service/hlo_runner_pjrt.h"
 #include "xla/tests/aot_utils.h"
 #include "xla/tests/hlo_runner_agnostic_reference_mixin.h"
@@ -40,6 +41,9 @@ class HloPjRtInterpreterReferenceMixin
             std::make_unique<HloRunnerPjRt>(MakeAotAwareInterpreterClient(
                 []() { return std::make_unique<HloEvaluator>(); })),
             std::forward<BaseArgs>(base_args)...) {}
+  bool IsRocm() {
+    return this->test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm);
+  }
   ~HloPjRtInterpreterReferenceMixin() override = default;
 };
 

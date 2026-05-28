@@ -2635,6 +2635,9 @@ ENTRY AddDotsFunc {
 }
 
 TEST_F(ParameterizedGemmRewriteTest, F64C64_CublasLtSupportTest) {
+  if (IsRocm()) {
+    GTEST_SKIP() << " hipblaslt doesn't support c64 c128 types";
+  }
   // This test should fail if gemm rewriter does not correctly rewrite
   // F64/C64 dots to cublas-lt or legacy cublas calls
   {
@@ -3047,8 +3050,6 @@ TEST_F(ParameterizedGemmRewriteTest, GemmTypeCombinationCheck) {
                            {"f16", "f16", true},
                            {"f32", "f32", true},
                            {"f64", "f64", true},
-                           {"c64", "c64", true},
-                           {"c128", "c128", true},
                            // mix type gemm
                            {"s8", "s32", true},
                            {"f16", "f32", true},
@@ -3070,26 +3071,30 @@ TEST_F(ParameterizedGemmRewriteTest, GemmTypeCombinationCheck) {
     std::vector<std::tuple<absl::string_view, absl::string_view, bool>>
         more_type_combinations = {
             {"s8", "bf16", false},  {"s8", "f16", false},
-            {"s8", "f64", false},   {"s8", "c64", false},
-            {"s8", "c128", false},
-
-            {"s32", "f32", false},  {"s32", "f64", false},
-            {"s32", "c64", false},  {"s32", "c128", false},
-
-            {"f16", "bf16", false}, {"f16", "f64", false},
-            {"f16", "c64", false},  {"f16", "c128", false},
-
-            {"bf16", "f16", false}, {"bf16", "f64", false},
-            {"bf16", "c64", false}, {"bf16", "c128", false},
-
-            {"f32", "f64", false},  {"f32", "c64", false},
-            {"f32", "c128", false},
-
-            {"f64", "c64", false},  {"f64", "c128", false},
+            {"s8", "f64", false},   {"s32", "f32", false},
+            {"s32", "f64", false},  {"f16", "bf16", false},
+            {"f16", "f64", false},  {"bf16", "f16", false},
+            {"bf16", "f64", false}, {"f32", "f64", false},
+            // Not suported in hipblaslt
+            // {"s8", "c64", false},
+            // {"s8", "c128", false},
+            // {"s32", "c64", false},
+            // {"s32", "c128", false},
+            // {"f16", "c64", false},
+            // {"f16", "c128", false},
+            // {"bf16", "c64", false},
+            // {"bf16", "c128", false},
+            // {"f32", "c64", false},
+            // {"f32", "c128", false},
+            // {"f64", "c64", false},
+            // {"f64", "c128", false},
         };
     type_combinations.insert(type_combinations.end(),
                              more_type_combinations.begin(),
                              more_type_combinations.end());
+  } else {
+    type_combinations.push_back({"c64", "c64", true});
+    type_combinations.push_back({"c128", "c128", true});
   }
 
   for (const auto& type_combination : type_combinations) {

@@ -136,6 +136,9 @@ TEST_F(QrTest, SimpleBatched) {
 }
 
 TEST_F(QrTest, SubnormalComplex) {
+  if (IsRocm()) {  // TODO: remove when hipblaslt get full support for c64
+    GTEST_SKIP() << "C64 support is not yet available in ROCm";
+  }
   // Verifies that we don't get NaNs in the case that the norm of a complex
   // number would be denormal but its imaginary value is not exactly 0.
   Array2D<complex64> a_vals({
