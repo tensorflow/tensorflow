@@ -481,9 +481,9 @@ GpuExecutable::GpuExecutable(
               }
               for (const BufferUse& use : cmd->buffer_uses()) {
                 BufferAllocation::Index index = use.slice().index();
-                if (buffer_assignment_) {
-                  const auto& alloc = buffer_assignment_->GetAllocation(index);
-                  if (alloc.is_constant() || alloc.size() == 0) continue;
+                if (index >= 0 && index < allocation_ptrs_.size()) {
+                  const BufferAllocation* alloc = allocation_ptrs_[index];
+                  if (alloc->is_constant() || alloc->size() == 0) continue;
                 }
                 command_buffer_allocation_indexes_.insert(index);
               }
