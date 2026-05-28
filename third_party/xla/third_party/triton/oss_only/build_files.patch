@@ -1291,7 +1291,7 @@ diff --git b/python/BUILD b/python/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/python/BUILD
-@@ -0,0 +1,202 @@
+@@ -0,0 +1,203 @@
 +# NOTE: Do not depend on any targets from this directory,
 +# but use //third_party/py/triton instead.
 +
@@ -1475,6 +1475,7 @@ new file mode 100644
 +        "@triton//:TritonTransforms",
 +        "@triton//third_party/amd:TDMUtility",
 +        "@triton//third_party/amd:TritonAMDGPU",
++        "@triton//third_party/amd:TritonAMDGPUTransforms",
 +        "@triton//third_party/nvidia:triton_nvidia",
 +        "@triton//third_party/proton:ProtonIR",
 +    ],
@@ -2214,7 +2215,7 @@ diff --git b/third_party/amd/BUILD b/third_party/amd/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/amd/BUILD
-@@ -0,0 +1,382 @@
+@@ -0,0 +1,383 @@
 +# load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 +
@@ -2247,13 +2248,14 @@ new file mode 100644
 +            "lib/TritonAMDGPUTransforms/**/*.cpp",
 +        ],
 +        exclude = [
++            "lib/TritonAMDGPUTransforms/Utility.h",
 +            "lib/TritonAMDGPUTransforms/MfmaGroup.cpp",  # Avoid circular dependency.
 +            "lib/TritonAMDGPUTransforms/WmmaGroup.cpp",  # Avoid circular dependency.
 +        ],
 +    ),
 +    hdrs = glob([
 +        "include/TritonAMDGPUTransforms/**/*.h",
-+    ]),
++    ]) + ["lib/TritonAMDGPUTransforms/Utility.h"],
 +    copts = _no_unused_variable + select({
 +        "@triton//:compiler_is_msvc": [],
 +        "//conditions:default": [
@@ -3344,7 +3346,7 @@ diff --git b/third_party/proton/BUILD b/third_party/proton/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/proton/BUILD
-@@ -0,0 +1,386 @@
+@@ -0,0 +1,403 @@
 +# load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 +load("@pybind11_bazel//:build_defs.bzl", "pybind_extension")
@@ -3693,6 +3695,20 @@ new file mode 100644
 +    textual_hdrs = ["csrc/include/Profiler/Instrumentation/InstrumentationMetadata.h"],
 +)
 +
++genrule(
++    name = "device_type_hdr_gen",
++    srcs = ["common/include/DeviceType.in"],
++    outs = ["common/include/DeviceType.h"],
++    cmd = "sed 's/@BACKEND_DEVICE_TAGS@//g' $< > $@",
++)
++
++genrule(
++    name = "registered_backends_src_gen",
++    srcs = ["csrc/lib/Backend/RegisteredBackends.in"],
++    outs = ["csrc/lib/Backend/RegisteredBackends.cpp"],
++    cmd = "sed -e 's/@BACKEND_REGISTRATION_HOOKS_FORWARD_DECLS@//g' -e 's/@BACKEND_REGISTRATION_HOOKS@//g' $< > $@",
++)
++
 +pybind_extension(
 +    name = "libproton",
 +    srcs = glob(
@@ -3703,7 +3719,10 @@ new file mode 100644
 +            "common/**/*.h",
 +        ],
 +        exclude = ["csrc/include/Profiler/Instrumentation/InstrumentationMetadata.h"],
-+    ),
++    ) + [
++        ":device_type_hdr_gen",
++        ":registered_backends_src_gen",
++    ],
 +    copts = [
 +        "-Wno-reorder-ctor",
 +        "-Wno-implicit-fallthrough",

@@ -146,7 +146,6 @@
  
    // CHECK: [[I0:%.*]] = llvm.extractvalue %arg0[0]
  
-
 --- a/test/Conversion/tritongpu_to_llvm_blackwell.mlir
 +++ b/test/Conversion/tritongpu_to_llvm_blackwell.mlir
 @@ -11,7 +11,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32} {
@@ -296,7 +295,7 @@
  // CHECK-LABEL: @experimental_lock_release
 -// CHECK: nvvm.barrier0
 +// CHECK: nvvm.barrier
- // CHECK: atom.global.acq_rel.gpu.exch.b32
+ // CHECK: atom.global.release.gpu.exch.b32
  tt.func private @experimental_lock_release(
    %lock: !tt.ptr<i32>,
 
@@ -409,7 +408,6 @@
 +  nvvm.barrier
    llvm.return
  }
- 
  
 --- a/test/TritonGPU/atomic-cas.mlir
 +++ b/test/TritonGPU/atomic-cas.mlir
