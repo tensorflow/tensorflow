@@ -322,8 +322,10 @@ cc_library(
     deps = [
         ":abstract_tensor_handle",
         ":unified_api_testutil",
+        "//tensorflow/c:tf_datatype_hdrs",
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/c/experimental/ops:math_ops",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -343,12 +345,14 @@ tf_cuda_cc_test(
         ":c_api_experimental",
         ":gradient_checker",
         ":unified_api_testutil",
+        "//tensorflow/c:tf_datatype_hdrs",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/c/experimental/ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:tensor_float_32_utils",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
     ],
 )
