@@ -154,9 +154,6 @@ class ThunkEmitter {
 
   absl::StatusOr<ThunkSequence> EmitFftThunk(const HloFftInstruction* hlo);
 
-  absl::StatusOr<ThunkSequence> EmitGemmThunk(
-      const HloCustomCallInstruction* hlo);
-
   absl::StatusOr<ThunkSequence> EmitInfeed(const HloInfeedInstruction* hlo);
 
   template <typename NvshmemAllReduceThunkType,

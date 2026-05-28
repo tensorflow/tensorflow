@@ -45,7 +45,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
-#include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
 #include "xla/backends/gpu/runtime/legacy_custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -553,11 +552,6 @@ absl::StatusOr<std::unique_ptr<Thunk>> CreateMatmulThunk(
     GemmConfig config, BufferAllocation::Slice lhs_slice,
     BufferAllocation::Slice rhs_slice, BufferAllocation::Slice output,
     std::optional<BufferAllocation::Slice> workspace, bool deterministic_ops) {
-  if (IsLegacyCublasMatmul(custom_call)) {
-    return std::make_unique<GemmThunk>(thunk_info, std::move(config), lhs_slice,
-                                       rhs_slice, output, workspace,
-                                       deterministic_ops);
-  }
   ASSIGN_OR_RETURN(auto gpu_config,
                    custom_call.backend_config<GpuBackendConfig>());
   const auto& gemm_backend_config = gpu_config.gemm_backend_config();
@@ -1423,8 +1417,7 @@ AsyncThunkSequence DynamicSliceFusion::Emit(
 
   const auto& custom_call = *static_cast<const HloCustomCallInstruction*>(
       &maybe_custom_call_adaptor->instruction());
-  if (IsLegacyCublasMatmul(custom_call) ||
-      IsNonFusedCublasLtMatmul(custom_call)) {
+  if (IsNonFusedCublasLtMatmul(custom_call)) {
     return EmitGemm(ir_emitter_context, adaptor, fusion, custom_call,
                     call_graph_);
   }
