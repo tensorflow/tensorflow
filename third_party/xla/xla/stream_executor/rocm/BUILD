@@ -458,7 +458,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":hipfft_if_static",
+        ":hipfft_if_static",  # buildcleaner: keep
         ":rocm_complex_converters",
         ":rocm_platform_id",
         "//xla/stream_executor:activate_context",
@@ -470,7 +470,6 @@ cc_library(
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:gpu_helpers_header",
         "//xla/stream_executor/platform:initialize",
-        "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/status",
         "@local_config_rocm//rocm:rocm_headers",

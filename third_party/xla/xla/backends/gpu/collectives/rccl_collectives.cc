@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "rocm/include/rccl/rccl.h"
 #include "rocm/rocm_config.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
@@ -65,12 +66,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/numbers.h"
-
-#if (TF_ROCM_VERSION >= 50200)
-#include "rocm/include/rccl/rccl.h"
-#else
-#include "rocm/include/rccl.h"
-#endif  // TF_ROCM_VERSION >= 50200
 
 namespace xla::gpu {
 
@@ -155,9 +150,7 @@ static absl::StatusOr<ncclConfig_t> AsRcclConfig(
     const se::StreamExecutor* stream_executor) {
   ncclConfig_t comm_config = NCCL_CONFIG_INITIALIZER;
   comm_config.blocking = config.blocking_communicators ? 1 : 0;
-#if !defined(TENSORFLOW_USE_ROCM) || TF_ROCM_VERSION > 50700
   comm_config.splitShare = config.split_share;
-#endif
   int nccl_version;
   XLA_RCCL_RETURN_IF_ERROR(ncclGetVersion(&nccl_version));
   if (config.max_nchannels > 0) {
@@ -281,7 +274,6 @@ RcclCollectives::SplitCommunicatorsWithCancel(
   const auto& gpu_config =
       absl::down_cast<const GpuCollectives::Config&>(config);
 
-#if !defined(TENSORFLOW_USE_ROCM) || TF_ROCM_VERSION >= 60000
   auto make_comm = [&](int i) -> absl::StatusOr<ncclComm_t> {
     auto* device = absl::down_cast<GpuCollectives::Device*>(ranks[i].device);
     TF_RET_CHECK(device != nullptr);
@@ -318,11 +310,6 @@ RcclCollectives::SplitCommunicatorsWithCancel(
   }  // pool's destructor blocks until all scheduled work is done.
   RETURN_IF_ERROR(status);
   return split_comms;
-#else
-  return absl::UnimplementedError(
-      absl::StrFormat("%s:%d: NCCL operation ncclCommSplit not implemented",
-                      __FILE__, __LINE__));
-#endif  // !defined(TENSORFLOW_USE_ROCM) || TF_ROCM_VERSION >= 60000
 }
 
 static absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectives() {

@@ -559,7 +559,7 @@ absl::StatusOr<ScopedTensorDescriptor> scope(
       std::vector<int64_t> dims64 =
           batch_descriptor.full_dims(dnn::DataLayout::kBatchDepthYX);
 
-#if (MIOPEN_BETA_API && TF_ROCM_VERSION >= 60300)
+#if MIOPEN_BETA_API
       status = miopenSetTensorDescriptorV2(obj.handle_, data_type, nd,
                                            (const size_t*)dims64.data(),
                                            (const size_t*)strides64.data());
@@ -640,7 +640,7 @@ absl::StatusOr<ScopedFilterDescriptor> scope(
       std::vector<int64_t> dims64 =
           filter_descriptor.full_dims(dnn::FilterLayout::kOutputInputYX);
 
-#if (MIOPEN_BETA_API && TF_ROCM_VERSION >= 60300)
+#if MIOPEN_BETA_API
       status = miopenSetTensorDescriptorV2(obj.handle_, data_type, nd,
                                            (const size_t*)dims64.data(),
                                            (const size_t*)strides64.data());
@@ -710,7 +710,6 @@ absl::StatusOr<ScopedConvolutionDescriptor> scope(
                << ToString(status);
   }
 
-#if (TF_ROCM_VERSION >= 50300)
   if (RequireMIOpenDeterminism()) {
     status = miopenSetConvolutionAttribute(
         obj.handle_, MIOPEN_CONVOLUTION_ATTRIB_DETERMINISTIC, 1);
@@ -719,7 +718,6 @@ absl::StatusOr<ScopedConvolutionDescriptor> scope(
                  << ToString(status);
     }
   }
-#endif
   return obj;
 }
 
@@ -4331,19 +4329,11 @@ class RocmFusedConvRunner : public dnn::FusedConvRunner {
 
     CHECK(output_profile_result == nullptr);
 
-    miopenStatus_t status;
-#if (TF_ROCM_VERSION >= 70000)
-    status = miopenExecuteFusionPlan_v2(
+    miopenStatus_t status = miopenExecuteFusionPlan_v2(
         miopen.handle(), fusion_plan_.fusion_plan_, input_nd_.handle(),
         input_data.opaque(), output_nd_.handle(), output_data.opaque(),
         fusion_plan_.fusion_args_, scratch_memory.opaque(),
         scratch_memory.size());
-#else
-    status = miopenExecuteFusionPlan(miopen.handle(), fusion_plan_.fusion_plan_,
-                                     input_nd_.handle(), input_data.opaque(),
-                                     output_nd_.handle(), output_data.opaque(),
-                                     fusion_plan_.fusion_args_);
-#endif
 
     if (status != miopenStatusSuccess) {
       LOG(ERROR) << "Failed to enqueue fused convolution on stream: "
@@ -4502,12 +4492,7 @@ absl::Status MIOpenSupport::GetFusedConvolveRunners(
       side_input_scale, leakyrelu_alpha, input_descriptor, filter_descriptor,
       bias_descriptor, output_descriptor, convolution_descriptor,
       activation_mode);
-// No way to invoke fused convs with workspace prior to rocm 7
-#if (TF_ROCM_VERSION >= 70000)
   if (runner_or.ok()) {
-#else
-  if (runner_or.ok() && runner_or.value()->GetWorkspaceSize() == 0) {
-#endif
     out_exec_plans->push_back(std::move(runner_or).value());
   }
 
@@ -4517,7 +4502,6 @@ absl::Status MIOpenSupport::GetFusedConvolveRunners(
 }
 
 bool UseNhwcLayoutForRocm() {
-#if TF_ROCM_VERSION >= 50100
   static bool is_enabled = [] {
     bool is_enabled = false;
     CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_ROCM_NHWC",
@@ -4525,9 +4509,6 @@ bool UseNhwcLayoutForRocm() {
     return is_enabled;
   }();
   return is_enabled;
-#else  // TF_ROCM_VERSION < 50000
-  return false;
-#endif
 }
 
 }  // namespace gpu

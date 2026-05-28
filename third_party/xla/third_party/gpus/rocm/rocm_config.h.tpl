@@ -24,4 +24,8 @@ limitations under the License.
 // NOTE: HipBlasLt is now always available, this flag is deprecated !
 #define TF_HIPBLASLT 1
 
+#if TF_ROCM_VERSION != 0 && TF_ROCM_VERSION < 70100
+#error "XLA requires ROCm 7.1 or higher. Older versions are no longer supported."
+#endif
+
 #endif  // ROCM_ROCM_CONFIG_H_
