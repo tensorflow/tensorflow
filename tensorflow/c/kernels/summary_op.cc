@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <sstream>
 #include <string>
 
@@ -90,7 +91,7 @@ void ScalarSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
       static_cast<tensorflow::tstring*>(TF_TensorData(params.tags));
   auto values_array = static_cast<T*>(TF_TensorData(params.values));
   // Copy tags and values into summary protobuf
-  for (int i = 0; i < TF_TensorElementCount(params.tags); ++i) {
+  for (int64_t i = 0; i < TF_TensorElementCount(params.tags); ++i) {
     tensorflow::Summary::Value* v = s.add_value();
     const tensorflow::tstring& Ttags_i = tags_array[i];
     v->set_tag(Ttags_i.data(), Ttags_i.size());
