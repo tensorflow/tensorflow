@@ -67,8 +67,8 @@ void HistogramSummaryOp_Delete(void* kernel) {
 template <typename T>
 void HistogramSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   HistogramSummaryOp* k = static_cast<HistogramSummaryOp*>(kernel);
-  TF_Tensor* tags;
-  TF_Tensor* values;
+  TF_Tensor* tags = nullptr;
+  TF_Tensor* values = nullptr;
   Safe_TF_StatusPtr status(TF_NewStatus());
   TF_GetInput(ctx, 0, &tags, status.get());
   Safe_TF_TensorPtr safe_tags_ptr(tags);
