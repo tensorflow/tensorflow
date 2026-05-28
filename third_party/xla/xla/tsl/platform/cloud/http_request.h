@@ -44,7 +44,7 @@ class HttpRequest {
  public:
   class Factory {
    public:
-    virtual ~Factory() {}
+    virtual ~Factory() = default;
     virtual HttpRequest* Create() = 0;
   };
 
@@ -90,8 +90,8 @@ class HttpRequest {
                                 const absl::Status& result) = 0;
   };
 
-  HttpRequest() {}
-  virtual ~HttpRequest() {}
+  HttpRequest() = default;
+  virtual ~HttpRequest() = default;
 
   /// Sets the request URI.
   virtual void SetUri(const std::string& uri) = 0;

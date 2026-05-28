@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/tsl/platform/cloud/ram_file_block_cache.h"
 
 #include <cstring>
+#include <memory>
 
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
@@ -331,7 +332,7 @@ TEST(RamFileBlockCacheTest, MaxStaleness) {
     return absl::OkStatus();
   };
   std::vector<char> out;
-  std::unique_ptr<NowSecondsEnv> env(new NowSecondsEnv);
+  std::unique_ptr<NowSecondsEnv> env = std::make_unique<NowSecondsEnv>();
   // Create a cache with max staleness of 2 seconds, and verify that it works as
   // expected.
   RamFileBlockCache cache1(8, 16, 2 /* max staleness */, fetcher, env.get());
@@ -434,7 +435,7 @@ TEST(RamFileBlockCacheTest, Prune) {
   };
   std::vector<char> out;
   // Our fake environment is initialized with the current timestamp.
-  std::unique_ptr<NowSecondsEnv> env(new NowSecondsEnv);
+  std::unique_ptr<NowSecondsEnv> env = std::make_unique<NowSecondsEnv>();
   uint64_t now = Env::Default()->NowSeconds();
   env->SetNowSeconds(now);
   RamFileBlockCache cache(8, 32, 1 /* max staleness */, fetcher, env.get());

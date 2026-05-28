@@ -31,7 +31,7 @@ class OAuthClient {
   OAuthClient();
   explicit OAuthClient(
       std::unique_ptr<HttpRequest::Factory> http_request_factory, Env* env);
-  virtual ~OAuthClient() {}
+  virtual ~OAuthClient() = default;
 
   /// \brief Retrieves a bearer token using a private key.
   ///
