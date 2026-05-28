@@ -11513,6 +11513,7 @@ Send an rpc to the external service that builds rpc payload based on prediction 
     Arg<TF_Int64Tensor, [{Scalar int64 tensor representing steps.}]>:$steps,
     Arg<TF_Int64Tensor, [{Scalar int64 tensor representing the GAIA ID.}]>:$gaia_id,
     Arg<TF_Uint64Tensor, [{1-D uint64 tensor representing a list of video IDs.}]>:$video_id,
+    Arg<TF_Int64Tensor, [{Scalar int64 tensor representing the timestamp.}]>:$timestamp,
 
     StrAttr:$op_config
   );
