@@ -16,7 +16,6 @@
 
 import enum
 import functools
-import gc
 import pprint
 import shutil
 import sys
@@ -1590,7 +1589,6 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
       )
 
     del trackable_obj
-    gc.collect()
     return self._convert_from_saved_model(graph_def)
 
 
