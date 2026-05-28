@@ -1042,6 +1042,24 @@ TEST(XplaneUtilsTest, MergeXSpaceTest) {
   EXPECT_EQ(to->planes(0).lines_size(), 2);  // Both lines should be present
 }
 
+TEST(XPlaneUtilsTest, RemoveEmptyPlanesWithStats) {
+  XSpace space;
+  auto* plane1 = space.add_planes();
+  plane1->set_name("p1");
+  plane1->add_lines()->set_name("p1l1");
+
+  auto* plane2 = space.add_planes();
+  plane2->set_name("p2");
+  plane2->add_stats()->set_metadata_id(1);
+
+  auto* plane3 = space.add_planes();
+  plane3->set_name("p3");
+
+  RemoveEmptyPlanes(&space);
+  ASSERT_EQ(space.planes_size(), 2);
+  EXPECT_EQ(space.planes(0).name(), "p1");
+  EXPECT_EQ(space.planes(1).name(), "p2");
+}
 }  // namespace
 
 }  // namespace profiler
