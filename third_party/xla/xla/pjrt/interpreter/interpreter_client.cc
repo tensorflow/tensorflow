@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/interpreter/interpreter_client.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <tuple>
@@ -281,7 +282,8 @@ InterpreterLoadedExecutable::ExecuteSharded(
     }
   }
 
-  ASSIGN_OR_RETURN(Literal result_literal, Evaluate(computation, literals));
+  ASSIGN_OR_RETURN(Literal result_literal,
+                   Evaluate(computation, literals, options));
   // Shrink the generated dynamic shape into static shape.
   result_literal = result_literal.ToStatic();
   if (fill_future) {
@@ -323,7 +325,8 @@ InterpreterLoadedExecutable::ExecutePortable(
 
 absl::StatusOr<Literal> InterpreterLoadedExecutable::Evaluate(
     const HloComputation& computation,
-    absl::Span<const Literal* const> arg_literals) const {
+    absl::Span<const Literal* const> arg_literals,
+    const ExecuteOptions& /*options*/) const {
   absl::MutexLock lock(hlo_evaluator_lock_);
   hlo_evaluator_->ResetVisitStates();
   return hlo_evaluator_->Evaluate(computation, arg_literals);

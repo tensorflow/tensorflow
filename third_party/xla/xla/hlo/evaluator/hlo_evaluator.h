@@ -237,11 +237,9 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     trace_mac_handler_ = std::move(handler);
   }
 
-  using EvalLiteralHandler = std::function<void(const HloInstruction* hlo,
-                                                const LiteralSlice& literal)>;
   // Sets a handler that is called during evaluation for each literal, e.g., in
   // case we want them dumped to a file.
-  void set_eval_literal_handler(EvalLiteralHandler handler) {
+  void set_eval_literal_handler(EvalLiteralHandler handler) override {
     eval_literal_handler_ = std::move(handler);
   }
 
