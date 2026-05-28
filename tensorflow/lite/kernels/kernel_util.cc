@@ -103,8 +103,9 @@ inline TfLiteStatus GetMutableInputSafe(const TfLiteContext* context,
                                         const TfLiteNode* node, int index,
                                         const TfLiteTensor** tensor) {
   int tensor_index;
-  TF_LITE_ENSURE_STATUS(ValidateTensorIndexingSafe(
-      context, index, node->inputs->size, node->inputs->data, &tensor_index));
+  TF_LITE_ENSURE_OK(
+      context, ValidateTensorIndexingSafe(context, index, node->inputs->size,
+                                          node->inputs->data, &tensor_index));
   *tensor = GetTensorAtIndex(context, tensor_index);
   return kTfLiteOk;
 }
@@ -141,8 +142,9 @@ TfLiteTensor* GetOutput(TfLiteContext* context, const TfLiteNode* node,
 TfLiteStatus GetOutputSafe(const TfLiteContext* context, const TfLiteNode* node,
                            int index, TfLiteTensor** tensor) {
   int tensor_index;
-  TF_LITE_ENSURE_STATUS(ValidateTensorIndexingSafe(
-      context, index, node->outputs->size, node->outputs->data, &tensor_index));
+  TF_LITE_ENSURE_OK(
+      context, ValidateTensorIndexingSafe(context, index, node->outputs->size,
+                                          node->outputs->data, &tensor_index));
   *tensor = GetTensorAtIndex(context, tensor_index);
   return kTfLiteOk;
 }
@@ -167,8 +169,8 @@ TfLiteStatus GetTemporarySafe(const TfLiteContext* context,
                               const TfLiteNode* node, int index,
                               TfLiteTensor** tensor) {
   int tensor_index;
-  TF_LITE_ENSURE_STATUS(
-      ValidateTensorIndexingSafe(context, index, node->temporaries->size,
+  TF_LITE_ENSURE_OK(context, ValidateTensorIndexingSafe(
+                                 context, index, node->temporaries->size,
                                  node->temporaries->data, &tensor_index));
   *tensor = GetTensorAtIndex(context, tensor_index);
   return kTfLiteOk;
@@ -188,8 +190,8 @@ TfLiteStatus GetIntermediatesSafe(const TfLiteContext* context,
                                   const TfLiteNode* node, int index,
                                   TfLiteTensor** tensor) {
   int tensor_index;
-  TF_LITE_ENSURE_STATUS(
-      ValidateTensorIndexingSafe(context, index, node->intermediates->size,
+  TF_LITE_ENSURE_OK(context, ValidateTensorIndexingSafe(
+                                 context, index, node->intermediates->size,
                                  node->intermediates->data, &tensor_index));
   *tensor = GetTensorAtIndex(context, tensor_index);
   return kTfLiteOk;

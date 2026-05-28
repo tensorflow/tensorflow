@@ -6255,7 +6255,7 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
     AddDequantizeOperatorsWhereNeeded(context, reg->builtin_code, node,
                                       node_index, &builder, nnapi_errno);
 
-    TF_LITE_ENSURE_OK(context,
+    TF_LITE_ENSURE_OK(context_,
                       builder.FinalizeAddOperation(nn_op_type, node_index));
     if (fc_nn_intermediate_output_index > -1) {
       TF_LITE_ENSURE_STATUS(builder.AppendReshape(
