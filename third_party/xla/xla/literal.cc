@@ -2347,6 +2347,11 @@ LiteralBase::ArrayValueState LiteralBase::Piece::get_array_value_state() const {
 
 void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
   *proto->mutable_shape() = subshape().ToProto();
+  if (subshape().is_dynamic()) {
+    for (int64_t i = 0; i < subshape().dimensions().size(); ++i) {
+      proto->add_dynamic_sizes(GetDynamicSize(i));
+    }
+  }
   switch (subshape().element_type()) {
     case PRED:
       CopyToRepeatedField(proto->mutable_preds(), data<bool>());
@@ -2549,6 +2554,23 @@ absl::Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
   ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
   TF_RET_CHECK(LayoutUtil::HasLayout(shape));
   TF_RET_CHECK(ShapeUtil::Equal(shape, subshape()));
+
+  if (shape.is_dynamic()) {
+    if (proto.dynamic_sizes_size() > 0) {
+      TF_RET_CHECK(proto.dynamic_sizes_size() == shape.dimensions().size());
+      for (int64_t i = 0; i < shape.dimensions().size(); ++i) {
+        SetDynamicSize(i, proto.dynamic_sizes(i));
+      }
+    } else {
+      // For backwards compatibility, if the proto does not contain dynamic
+      // sizes, we default to the static bounds.
+      for (int64_t i = 0; i < shape.dimensions().size(); ++i) {
+        if (shape.is_dynamic_dimension(i)) {
+          SetDynamicSize(i, shape.dimensions(i));
+        }
+      }
+    }
+  }
 
   switch (subshape().element_type()) {
     case PRED:

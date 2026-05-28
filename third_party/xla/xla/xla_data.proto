@@ -712,7 +712,8 @@ message LiteralProto {
   bytes f8e5m2s = 19;
   bytes f8e8m0fnus = 33;
   repeated int64 sparse_indices = 14;
-  // Next = 34
+  repeated int32 dynamic_sizes = 34;
+  // Next = 35
 }
 
 message WindowDimension {
