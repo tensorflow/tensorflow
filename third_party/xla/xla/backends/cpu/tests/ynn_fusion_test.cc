@@ -48,7 +48,7 @@ struct YnnFusionTestParams {
 };
 
 class YnnFusionTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>,
+    : public HloPjRtInterpreterReferenceMixin<HloTestBase>,
       public ::testing::WithParamInterface<YnnFusionTestParams> {
  public:
   static std::string Name(
@@ -235,7 +235,7 @@ struct AddWithBroadcastConfig {
 };
 
 class AddWithBroadcastTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>,
+    : public HloPjRtInterpreterReferenceMixin<HloTestBase>,
       public ::testing::WithParamInterface<
           std::tuple<YnnFusionTestParams, AddWithBroadcastConfig>> {
  public:
@@ -532,7 +532,7 @@ struct YnnUnaryOpTestParams {
 };
 
 class YnnUnaryOpTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>,
+    : public HloPjRtInterpreterReferenceMixin<HloTestBase>,
       public ::testing::WithParamInterface<YnnUnaryOpTestParams> {
  public:
   static std::string Name(
