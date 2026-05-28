@@ -80,10 +80,10 @@ std::string GetNumpyOrderComparator(
 }
 
 class SortRewriterTestBase
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+    : public HloPjRtInterpreterReferenceMixin<HloTestBase> {
  public:
   void SetUp() override {
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>::SetUp();
+    HloPjRtInterpreterReferenceMixin<HloTestBase>::SetUp();
     SortRewriter::SetSortModeForTestingOnly(SortRewriter::Mode::kAlways);
   }
 

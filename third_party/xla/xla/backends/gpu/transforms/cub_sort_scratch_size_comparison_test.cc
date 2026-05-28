@@ -54,11 +54,11 @@ struct TestParams {
 absl::StatusOr<int64_t> ExtractScratchSize(const HloModule& module);
 
 class CubSortScratchSizeComparisonTest
-    : public HloPjRtTestBase,
+    : public HloTestBase,
       public ::testing::WithParamInterface<std::tuple<int, int, int, int>> {
  protected:
   void SetUp() override {
-    HloPjRtTestBase::SetUp();
+    HloTestBase::SetUp();
     ASSERT_OK_AND_ASSIGN(test_platform_, PlatformUtil::GetPlatform("gpu"));
   }
 
