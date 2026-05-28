@@ -576,8 +576,10 @@ def gen_zipped_test_file(name, file, flags = ""):
     """
     native.genrule(
         name = file + ".files",
-        cmd = (("$(location //tensorflow/lite/testing:generate_examples) " +
-                " --zip_to_output {0} {1} $(@D)").format(file, flags)),
+        cmd = (("TF_FLAG_SAVED_MODEL_FINGERPRINTING=0 " +
+                "$(location //tensorflow/lite/testing:generate_examples) " +
+                "--enable_tensorflow_metrics_export=false " +
+                "--zip_to_output {0} {1} $(@D)").format(file, flags)),
         outs = [file],
         # `exec_tools` is required for PY3 compatibility in place of `tools`.
         tools = [
