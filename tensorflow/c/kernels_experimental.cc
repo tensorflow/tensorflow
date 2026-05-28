@@ -73,6 +73,10 @@ absl::Status EnsureSparseVariableAccess(
     void (*copyFunc)(TF_OpKernelContext* ctx, TF_Tensor* source,
                      TF_Tensor* dest),
     tensorflow::Var* var, bool lock_held = false) {
+  if (variantType && var->tensor()->dtype() != tensorflow::DT_VARIANT) {
+    return absl::InvalidArgumentError(
+        "variantType is true, but variable tensor dtype is not DT_VARIANT");
+  }
   auto* context = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
   if (var->copy_on_read_mode.load()) {
     return absl::OkStatus();
@@ -124,6 +128,10 @@ absl::Status PrepareToUpdateVariable(TF_OpKernelContext* ctx,
                                      void (*copyFunc)(TF_OpKernelContext* ctx,
                                                       TF_Tensor* source,
                                                       TF_Tensor* dest)) {
+  if (variantType && tensor->dtype() != tensorflow::DT_VARIANT) {
+    return absl::InvalidArgumentError(
+        "variantType is true, but tensor dtype is not DT_VARIANT");
+  }
   auto* context = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
   if (copy_on_read_mode || !tensor->RefCountIsOne()) {
     // Tensor's buffer is in use by some read, so we need to copy before

@@ -1080,8 +1080,10 @@ tf_cuda_cc_test(
     deps = [
         ":c_api",
         ":kernels",
+        ":kernels_experimental",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
