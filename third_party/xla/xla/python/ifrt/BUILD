@@ -476,6 +476,45 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "value_util",
+    srcs = ["value_util.cc"],
+    hdrs = ["value_util.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+        ":users",
+    ]),
+    deps = [
+        ":ifrt",
+        "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "value_util_test",
+    size = "small",
+    srcs = ["value_util_test.cc"],
+    deps = [
+        ":ifrt",
+        ":mock",
+        ":user_context",
+        ":value_util",
+        "//xla/tsl/concurrency:future",
+        "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "test_util",
     testonly = True,
     srcs = ["test_util.cc"],
@@ -1408,6 +1447,19 @@ cc_library(
         ":users",
     ]),
     deps = [":user_context"],
+)
+
+cc_library(
+    name = "value_util_cc",
+    srcs = ["value_util.cc"],
+    hdrs = ["value_util.h"],
+    deps = [
+        ":ifrt",
+        "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+    ],
 )
 
 xla_cc_test(
