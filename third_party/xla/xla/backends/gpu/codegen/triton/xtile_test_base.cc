@@ -61,8 +61,7 @@ absl::StatusOr<
     std::pair<mlir::OwningOpRef<mlir::ModuleOp>, std::unique_ptr<HloModule>>>
 XTileTestBase::CreateXTileIrAndFileCheck(std::unique_ptr<HloModule> hlo_module,
                                          absl::string_view triton_fusion_name,
-                                         absl::string_view filecheck_pattern,
-                                         bool use_experimental_fusion_emitter) {
+                                         absl::string_view filecheck_pattern) {
   auto* comp = hlo_module->GetComputationWithName(triton_fusion_name);
   TF_RET_CHECK(comp != nullptr) << absl::StrCat(
       "Computation '", triton_fusion_name, "' is not found in the module");
@@ -114,10 +113,13 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 XTileTestBase::CreateXTileIrAndFileCheck(
     const HloComputation& computation,
     const BlockLevelParameters& block_level_parameters,
-    absl::string_view filecheck_pattern, bool use_experimental_fusion_emitter) {
+    absl::string_view filecheck_pattern) {
   mlir::OwningOpRef<mlir::ModuleOp> xtile_dialect_module;
   LoadMlirDialectsForTriton(*mlir_context());
-  if (use_experimental_fusion_emitter) {
+  if (computation.parent()
+          ->config()
+          .debug_options()
+          .xla_gpu_experimental_enable_tiling_propagation()) {
     namespace ge = ::xla::gpu::experimental;
     auto* fusion = Cast<HloFusionInstruction>(computation.FusionInstruction());
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);

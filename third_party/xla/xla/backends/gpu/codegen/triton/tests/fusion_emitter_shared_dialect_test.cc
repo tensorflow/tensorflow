@@ -42,7 +42,16 @@ class XTileDialectTest : public HloHardwareIndependentTestBase,
 
 class XTileDialectTestParameterized
     : public XTileDialectTest,
-      public ::testing::WithParamInterface<bool> {};
+      public ::testing::WithParamInterface<bool> {
+ protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(
+        GetParam());
+    return debug_options;
+  }
+};
 
 INSTANTIATE_TEST_SUITE_P(XTileDialectTestParameterized,
                          XTileDialectTestParameterized, testing::Bool(),
@@ -78,8 +87,7 @@ ENTRY e {
       block_level_parameters,
       R"(
 CHECK: %[[RES:.*]] = stablehlo.transpose %[[ARG:.*]], dims = [1, 0] : (tensor<32x16xf32>) -> tensor<16x32xf32>
-)",
-      GetParam()));
+)"));
 }
 
 TEST_P(XTileDialectTestParameterized, HloBitcastIsLoweredToTensorBitcast) {
@@ -107,8 +115,7 @@ ENTRY e {
       *module->GetComputationWithName("bitcast_fusion"), block_level_parameters,
       R"(
 CHECK: %[[RES:.*]] = tensor.bitcast %[[ARG:.*]] : tensor<16x32xf32> to tensor<16x32xi32>
-)",
-      GetParam()));
+)"));
 }
 
 TEST_P(XTileDialectTestParameterized, HloIotaIsLoweredToStableHloIota) {
@@ -134,8 +141,7 @@ ENTRY e {
       *module->GetComputationWithName("iota_fusion"), block_level_parameters,
       R"(
 CHECK: %[[RES:.*]] = stablehlo.iota dim = 0 : tensor<16xi32>
-)",
-      GetParam()));
+)"));
 }
 
 TEST_P(XTileDialectTestParameterized,
@@ -165,8 +171,7 @@ ENTRY e {
       block_level_parameters,
       R"(
 CHECK: %[[RES:.*]] = stablehlo.broadcast_in_dim %[[ARG:.*]], dims = [0, 1] : (tensor<16x32xf32>) -> tensor<16x32x8xf32>
-)",
-      GetParam()));
+)"));
 }
 
 TEST_P(XTileDialectTestParameterized,
@@ -196,8 +201,7 @@ ENTRY e {
       block_level_parameters,
       R"(
 CHECK: %[[RES:.*]] = stablehlo.broadcast_in_dim %[[ARG:.*]], dims = [] : (tensor<f32>) -> tensor<16x32x8xf32>
-)",
-      GetParam()));
+)"));
 }
 
 TEST_P(XTileDialectTestParameterized, HloReduceIsLoweredToStableHloReduce) {
@@ -234,8 +238,7 @@ ENTRY e {
 CHECK: %[[INIT:.*]] = arith.constant dense<0.000000e+00> : tensor<f32>
 CHECK: %[[MASKED_INPUT:.*]] = xtile.mask {{.*}}
 CHECK: %[[RES:.*]] = stablehlo.reduce(%[[MASKED_INPUT]] init: %[[INIT]]) applies stablehlo.add across dimensions = [0] : (tensor<256x16xf32>, tensor<f32>) -> tensor<16xf32>
-)",
-      GetParam()));
+)"));
 }
 
 TEST_P(XTileDialectTestParameterized, HloReshapeIsLoweredToStableHloReshape) {
@@ -263,8 +266,7 @@ ENTRY e {
       *module->GetComputationWithName("reshape_fusion"), block_level_parameters,
       R"(
 CHECK: %[[RES:.*]] = stablehlo.reshape %[[ARG:.*]] : (tensor<16xi32>) -> tensor<1x16xi32>
-)",
-      GetParam()));
+)"));
 }
 
 TEST_P(XTileDialectTestParameterized, HloDotIsLoweredToStableHloDot) {
@@ -297,8 +299,7 @@ ENTRY e {
       R"(
 CHECK: %[[RES:.*]] = stablehlo.dot_general %[[ARG0:.*]], %[[ARG1:.*]], contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT] : (tensor<32x8xf32>, tensor<8x8xf32>) -> tensor<32x8xf32>
 CHECK: %[[ADD_RES:.*]] = arith.addf %[[ARG2:.*]], %[[RES]] : tensor<32x8xf32>
-)",
-      GetParam()));
+)"));
 }
 
 TEST_P(XTileDialectTestParameterized, HloScaledDotIsLoweredToXTileDotScaled) {
@@ -352,8 +353,7 @@ ENTRY e {
       R"(
       CHECK: %[[DOT:.*]] = xtile.dot_scaled %[[LHS:.*]] scale %[[LHS_SCALE:.*]], %[[RHS:.*]] scale %[[RHS_SCALE:.*]] {dot_dimension_numbers = #stablehlo.dot<lhs_contracting_dimensions = [1], rhs_contracting_dimensions = [0]>, fastMath = true} : tensor<128x128xf8E5M2>, tensor<128x4xi8> * tensor<128x256xf8E5M2>, tensor<256x4xi8> -> tensor<128x256xf32>
       CHECK: %[[RES:.*]] = arith.addf %{{.*}}, %[[DOT]] : tensor<128x256xf32>
-      )",
-      GetParam()));
+      )"));
 }
 
 TEST_P(XTileDialectTestParameterized,
@@ -393,8 +393,7 @@ TEST_P(XTileDialectTestParameterized,
       R"(
 CHECK: stablehlo.all_reduce
 CHECK: stablehlo.add
-)",
-      GetParam()));
+)"));
 }
 
 TEST_P(XTileDialectTestParameterized,
@@ -423,8 +422,7 @@ ENTRY e {
       *module->GetComputationWithName("add_fusion"), block_level_parameters,
       R"(
 CHECK: stablehlo.add{{.*}}: tensor<16xui32>
-)",
-      GetParam()));
+)"));
 }
 
 TEST_F(XTileDialectTest, HloAllGatherDotLowering) {
@@ -466,12 +464,15 @@ TEST_F(XTileDialectTest, HloAllGatherDotLowering) {
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnUnverifiedModule(kHloText));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_tiling_propagation(true);
 
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{128, 128}};
 
-  EXPECT_OK(CreateXTileIrAndFileCheck(
-      *module->GetComputationWithName("ag_dot"), block_level_parameters, R"(
+  EXPECT_OK(CreateXTileIrAndFileCheck(*module->GetComputationWithName("ag_dot"),
+                                      block_level_parameters, R"(
     CHECK: xtile.entry_func @xtile_dialect_fn(%arg0: memref<2xi64>
     CHECK: %[[SELECT1:.*]] = xtile.select_buffer %arg0[%{{.*}}]
     CHECK-SAME: : memref<2xi64> -> memref<2xi64>
@@ -480,8 +481,7 @@ TEST_F(XTileDialectTest, HloAllGatherDotLowering) {
     CHECK: %[[LHS_TILE:.*]] = xtile.extract %[[SELECT2]]
     CHECK: %[[RHS_TILE:.*]] = xtile.extract %arg1
     CHECK: stablehlo.dot_general %[[LHS_TILE]], %[[RHS_TILE]]
-    )",
-      /*use_experimental_fusion_emitter=*/true));
+    )"));
 }
 
 }  // namespace
