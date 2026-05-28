@@ -93,7 +93,7 @@ class TestBufferIntervalComparator : public BufferIntervalComparator {
   MsaBufferIntervalCompare compare_method_;
 };
 
-class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
+class MemorySpaceAssignmentTestBase : public HloTestBase {
  protected:
   // We use the following two memory space values to describe the default (slow
   // and large) and alternate (fast and small) memory spaces.
