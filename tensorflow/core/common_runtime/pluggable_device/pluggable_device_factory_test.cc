@@ -26,7 +26,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"  // IWYU pragma: keep
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/device/device_id_manager.h"
+#include "tensorflow/core/common_runtime/pluggable_device/pluggable_device.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_plugin_init.h"
+#include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_process_state.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/test.h"
@@ -35,6 +37,16 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+
+class TestPluggableDeviceProcessState : public PluggableDeviceProcessState {
+ public:
+  using PluggableDeviceProcessState::TestOnlyReset;
+};
+
+class TestPluggableDevice : public PluggableDevice {
+ public:
+  static void Reset() { PluggableDevice::TestOnlyReset(); }
+};
 
 extern "C" {
 // from test_pluggable_device.cc
@@ -61,6 +73,14 @@ class PluggableDeviceFactoryTest : public ::testing::Test {
     for (int i = 0; i < platform->VisibleDeviceCount(); ++i) {
       TF_ASSERT_OK(platform->ExecutorForDevice(i));
     }
+  }
+
+  void SetUp() override {
+    DeviceIdManager::TestOnlyReset();
+    static_cast<TestPluggableDeviceProcessState*>(
+        PluggableDeviceProcessState::singleton("MY_DEVICE", "MY_PLATFORM"))
+        ->TestOnlyReset();
+    TestPluggableDevice::Reset();
   }
 
   // Returns a SessionOptions object with given virtual device settings. In
@@ -90,7 +110,6 @@ class PluggableDeviceFactoryTest : public ::testing::Test {
 };
 
 TEST_F(PluggableDeviceFactoryTest, VirtualDevicesMemoryLimitTest) {
-  DeviceIdManager::TestOnlyReset();
   SessionOptions opts = MakeSessionOptions(
       /*memory_limit_mb=*/{{123, 456}, {789}}, /*priorities=*/{{0, 1}, {2}});
   std::vector<std::unique_ptr<Device>> devices;
@@ -103,10 +122,41 @@ TEST_F(PluggableDeviceFactoryTest, VirtualDevicesMemoryLimitTest) {
   EXPECT_EQ(devices[2]->attributes().memory_limit(), 789 << 20);
 }
 
+TEST_F(PluggableDeviceFactoryTest, VirtualDevicesResetTest) {
+  SessionOptions opts1 = MakeSessionOptions(
+      /*memory_limit_mb=*/{{100, 200}, {300}}, /*priorities=*/{{0, 1}, {2}});
+  std::vector<std::unique_ptr<Device>> devices1;
+  PluggableDeviceFactory factory("MY_DEVICE", "MY_PLATFORM");
+  TF_ASSERT_OK(factory.CreateDevices(opts1, "/job:localhost/replica:0/task:0",
+                                     &devices1));
+
+  EXPECT_EQ(devices1.size(), 3);
+  EXPECT_EQ(devices1[0]->attributes().memory_limit(), 100 << 20);
+  EXPECT_EQ(devices1[1]->attributes().memory_limit(), 200 << 20);
+  EXPECT_EQ(devices1[2]->attributes().memory_limit(), 300 << 20);
+
+  // Reset process state and test with different memory limits.
+  DeviceIdManager::TestOnlyReset();
+  static_cast<TestPluggableDeviceProcessState*>(
+      PluggableDeviceProcessState::singleton("MY_DEVICE", "MY_PLATFORM"))
+      ->TestOnlyReset();
+  TestPluggableDevice::Reset();
+
+  SessionOptions opts2 = MakeSessionOptions(
+      /*memory_limit_mb=*/{{123, 456}, {789}}, /*priorities=*/{{0, 1}, {2}});
+  std::vector<std::unique_ptr<Device>> devices2;
+  TF_ASSERT_OK(factory.CreateDevices(opts2, "/job:localhost/replica:0/task:0",
+                                     &devices2));
+
+  EXPECT_EQ(devices2.size(), 3);
+  EXPECT_EQ(devices2[0]->attributes().memory_limit(), 123 << 20);
+  EXPECT_EQ(devices2[1]->attributes().memory_limit(), 456 << 20);
+  EXPECT_EQ(devices2[2]->attributes().memory_limit(), 789 << 20);
+}
+
 // Test TF device to platform device mapping.
 
 TEST_F(PluggableDeviceFactoryTest, VirtualDevicesMappingDefaultTest) {
-  DeviceIdManager::TestOnlyReset();
   SessionOptions opts = MakeSessionOptions(
       /*memory_limit_mb=*/{}, /*priorities=*/{});  // no virtual devices
   std::vector<std::unique_ptr<Device>> devices;
@@ -124,7 +174,6 @@ TEST_F(PluggableDeviceFactoryTest, VirtualDevicesMappingDefaultTest) {
 }
 
 TEST_F(PluggableDeviceFactoryTest, VirtualDevicesMappingExplicitLimitTest) {
-  DeviceIdManager::TestOnlyReset();
   SessionOptions opts = MakeSessionOptions(
       /*memory_limit_mb=*/{{100, 200}, {300}}, /*priorities=*/{{0, 1}, {2}});
   std::vector<std::unique_ptr<Device>> devices;
@@ -150,7 +199,6 @@ TEST_F(PluggableDeviceFactoryTest, VirtualDevicesMappingExplicitLimitTest) {
 }
 
 TEST_F(PluggableDeviceFactoryTest, VirtualDevicesMappingEmptyLimitTest) {
-  DeviceIdManager::TestOnlyReset();
   // Empty inner vector means 1 virtual device taking all available memory.
   SessionOptions opts = MakeSessionOptions(/*memory_limit_mb=*/{{100, 200}, {}},
                                            /*priorities=*/{{0, 1}, {}});
