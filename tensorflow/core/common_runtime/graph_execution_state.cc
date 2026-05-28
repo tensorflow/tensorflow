@@ -97,7 +97,8 @@ GraphExecutionState::~GraphExecutionState() {
 #endif  // __ANDROID__
 
   auto flib_def = std::make_unique<FunctionLibraryDefinition>(
-      OpRegistry::Global(), graph_def);
+      OpRegistry::Global(), std::move(*graph_def.mutable_library()),
+      graph_def.debug_info());
 
   TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&graph_def, *flib_def, 0));
 

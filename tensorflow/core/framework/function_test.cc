@@ -1580,7 +1580,9 @@ TEST(FunctionLibraryDefinitionTest, ConstructFromGraphDef) {
   // This is the constructor being tested. It should pull the stack traces from
   // the GraphDef, and populate the FunctionLibraryDefinition's FunctionRecords
   // with them.
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), graph_def);
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(),
+                                    std::move(*graph_def.mutable_library()),
+                                    graph_def.debug_info());
 
   // Check that expected stack traces exist and are correctly mapped.
   EXPECT_THAT(lib_def.ListFunctionNames(),
