@@ -234,7 +234,7 @@ class OpNode {
   absl::Status InitializeNodeDef(const void* custom_initial_data,
                                  int custom_initial_data_size) {
     if (!custom_initial_data) {
-      return tensorflow::errors::Internal(
+      return absl::InternalError(
           "Cannot convert empty data into a valid NodeDef");
     }
     // The flexbuffer contains a vector where the first elements is the
@@ -248,8 +248,7 @@ class OpNode {
     name_ = v[0].AsString().str();
     if (!nodedef_.ParseFromString(v[1].AsString().str())) {
       nodedef_.Clear();
-      return tensorflow::errors::Internal(
-          "Failed to parse data into a valid NodeDef");
+      return absl::InternalError("Failed to parse data into a valid NodeDef");
     }
 
     // Fill NodeDef with defaults if it's a valid op.
@@ -305,8 +304,8 @@ class OpNode {
         // Lite native buffer, or could be produced by a separater subgraph). We
         // need to fetch it from the delegate's buffer_map.
         if (!buffer_map->HasTensor(input_index)) {
-          return tensorflow::errors::Internal(
-              "Cannot read from invalid tensor index ", input_index);
+          return absl::InternalError(absl::StrCat(
+              "Cannot read from invalid tensor index ", input_index));
         }
         run_state->input_tf_tensors[i] = buffer_map->GetTensor(input_index);
       } else {
@@ -443,7 +442,7 @@ absl::Status DelegateKernel::ExecuteOpKernelRunner(
   const auto& op_kernel_runner = node_data->op_kernel_runner();
 
   if (op_kernel_runner.op_kernel()->num_outputs() != node_data->NumOutputs()) {
-    return tensorflow::errors::Internal(
+    return absl::InternalError(
         "Unexpected number of outputs from tensorflow::OpKernel");
   }
 
