@@ -130,7 +130,8 @@ CpuExecutable::CpuExecutable(std::unique_ptr<HloModule> hlo_module,
       target_machine_options_(std::move(target_machine_options)),
       data_layout_(std::move(data_layout)) {
   if (assignment_ && has_module()) {
-    XlaDebugInfoManager::Get()->RegisterModule(shared_module(), assignment_);
+    XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
+                                               assignment_->ToProto());
   }
 
   if (assignment_) {
