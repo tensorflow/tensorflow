@@ -561,6 +561,8 @@ cc_library(
         ":pjrt_c_api_shardings_extension_hdrs",
         ":pjrt_c_api_status_utils",
         ":pjrt_c_api_wrapper_impl",
+        ":pjrt_c_api_xla_transform_extension_hdrs",
+        ":pjrt_c_api_xla_transform_internal",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_executable",

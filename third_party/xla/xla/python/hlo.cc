@@ -838,6 +838,25 @@ NB_MODULE(_hlo, m) {
                 const_cast<HloInstruction*>(new_inst->inst())));
       });
 
+  hlo_computation_class.def(
+      "create_unary_instruction",
+      [](ComputationWrapper& c, xla::HloOpcode opcode,
+         std::shared_ptr<InstructionWrapper> operand) {
+        if (operand == nullptr) {
+          throw XlaRuntimeError(
+              "create_unary_instruction operand cannot be None.");
+        }
+        // TODO(phawkins): Do not assume the output shape of a unary instruction
+        // always matches its operand's shape (e.g., for kIsFinite it returns
+        // PRED). Allow users to specify the output shape.
+        HloInstruction* new_inst =
+            const_cast<HloComputation*>(c.comp())->AddInstruction(
+                HloInstruction::CreateUnary(
+                    operand->inst()->shape(), opcode,
+                    const_cast<HloInstruction*>(operand->inst())));
+        return std::make_shared<InstructionWrapper>(new_inst, c.module());
+      });
+
   class ScheduleWrapper {
    public:
     ScheduleWrapper(const HloSchedule& schedule,
