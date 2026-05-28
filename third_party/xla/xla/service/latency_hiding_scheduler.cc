@@ -128,20 +128,8 @@ bool IsNopInstruction(HloOpcode op, const HloInstruction& hlo) {
           hlo.users().front()->opcode() == HloOpcode::kWhile);
 }
 
-}  // namespace
-
-bool MemoryPressureTracker::InstructionTransitivelyDefines(
-    const HloInstruction* instruction,
-    const BufferInfoTracker::ValueInfo& buffer_value_info) const {
-  if (instruction->called_computations().empty()) {
-    return false;
-  }
-  return absl::c_linear_search(buffer_value_info.transitively_defining_calls,
-                               instruction);
-}
-
-bool MemoryPressureTracker::InstructionDefinesValue(
-    const HloInstruction* instruction, const HloValue* value) const {
+bool InstructionDefinesValue(const HloInstruction* instruction,
+                             const HloValue* value) {
   if (value->defining_instruction() == instruction) {
     return true;
   }
@@ -164,14 +152,12 @@ bool MemoryPressureTracker::InstructionDefinesValue(
     return instruction->async_wrapped_instruction() ==
            value->defining_instruction();
   }
-  HloBuffer::Id id = hlo_alias_analysis_->GetBufferContainingValue(*value).id();
-  const auto& info = buffer_tracker_.GetBufferInfo(id);
-  return InstructionTransitivelyDefines(instruction, info);
+  return false;
 }
 
-bool MemoryPressureTracker::InstructionFirstDefinesBuffer(
+bool InstructionFirstDefinesBuffer(
     const HloInstruction* instruction,
-    const BufferInfoTracker::ValueInfo& buffer_value_info) const {
+    const BufferInfoTracker::ValueInfo& buffer_value_info) {
   if (buffer_value_info.first_definition == instruction) {
     return true;
   }
@@ -189,10 +175,8 @@ bool MemoryPressureTracker::InstructionFirstDefinesBuffer(
     return instruction->async_wrapped_instruction() ==
            buffer_value_info.first_definition;
   }
-  return InstructionTransitivelyDefines(instruction, buffer_value_info);
+  return false;
 }
-
-namespace {
 
 bool InstructionLastUsesBuffer(
     const HloInstruction* instruction,
@@ -972,13 +956,9 @@ BufferInfoTracker::BufferInfoTracker(
   // Recursively walk the HLO graph looking inside every computation and
   // collecting buffer information. Effectively flattening the HLO schedule
   // across called computations.
-  std::function<void(const HloComputation*,
-                     const std::vector<const HloInstruction*>&)>
-      process_computation = [&process_computation, module, alias_analysis, this,
-                             &shape_size_bytes](
-                                const HloComputation* computation,
-                                const std::vector<const HloInstruction*>&
-                                    call_stack) {
+  std::function<void(const HloComputation*)> process_computation =
+      [&process_computation, module, alias_analysis, this,
+       &shape_size_bytes](const HloComputation* computation) {
         // Skip computations that don't have schedules (e.g., host computations
         // created during compute offload that are executed separately).
         // Note: We don't need to track memory usage on CPU for now. If needed,
@@ -994,9 +974,7 @@ BufferInfoTracker::BufferInfoTracker(
             if (called_computation->IsFusionComputation()) {
               continue;
             }
-            std::vector<const HloInstruction*> next_call_stack = call_stack;
-            next_call_stack.push_back(instruction);
-            process_computation(called_computation, next_call_stack);
+            process_computation(called_computation);
           }
           ShapeUtil::ForEachSubshape(
               instruction->shape(),
@@ -1006,8 +984,6 @@ BufferInfoTracker::BufferInfoTracker(
                   if (buffer_infos_[buffer->id()].value == nullptr) {
                     buffer_infos_[buffer->id()] = CreateBufferInfo(
                         buffer, instruction, instruction, shape_size_bytes);
-                    buffer_infos_[buffer->id()].transitively_defining_calls =
-                        call_stack;
                   }
                 }
               });
@@ -1024,7 +1000,7 @@ BufferInfoTracker::BufferInfoTracker(
           }
         }
       };
-  process_computation(module->entry_computation(), {});
+  process_computation(module->entry_computation());
 }
 
 void ModulePressureState::InitializePressureStates(
