@@ -94,17 +94,19 @@ TfLiteStatus Resize(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
-  TfLiteIntArray* outputSize = TfLiteIntArrayCreate(1);
+  int output_size_dim0 = 0;
   switch (params->type) {
     case kTfLiteLshProjectionSparse:
-      outputSize->data[0] = SizeOfDimension(hash, 0);
+      output_size_dim0 = SizeOfDimension(hash, 0);
       break;
     case kTfLiteLshProjectionDense:
-      outputSize->data[0] = SizeOfDimension(hash, 0) * SizeOfDimension(hash, 1);
+      output_size_dim0 = SizeOfDimension(hash, 0) * SizeOfDimension(hash, 1);
       break;
     default:
       return kTfLiteError;
   }
+  TfLiteIntArray* outputSize = TfLiteIntArrayCreate(1);
+  outputSize->data[0] = output_size_dim0;
   return context->ResizeTensor(context, output, outputSize);
 }
 
