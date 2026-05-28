@@ -23,9 +23,11 @@ limitations under the License.
 #include <ostream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
@@ -223,6 +225,9 @@ class TilingSpace {
   // Simplifies an expression using actual dimension and symbol bounds
   // based on the assigned tile sizes and runtime variable bounds.
   SymbolicExpr SimplifyExpression(const SymbolicExpr& expr) const;
+
+  // Returns the list of valid tilings for the tiling space.
+  absl::StatusOr<std::vector<llvm::SmallVector<int64_t, 4>>> GetValidTilings();
 
  private:
   void ProcessDotLike(const HloInstruction& hlo);

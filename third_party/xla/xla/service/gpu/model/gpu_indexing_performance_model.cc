@@ -508,6 +508,37 @@ int64_t EstimateNumWarpsImpl(
   return GetNumWarps(largest_live_tile_size);
 }
 
+template <typename TiledHloComputationType>
+absl::StatusOr<std::optional<TiledRunTimeData>> EstimateTiledRunTimeDataImpl(
+    const HloFusionAdaptor& fusion_adaptor,
+    const TiledHloComputationType& tiled_hlo_computation,
+    const se::DeviceDescription& device_info,
+    HloCostAnalysis::ShapeSizeFunction shape_size,
+    absl::FunctionRef<int64_t(const HloInstruction*)> flops_per_element_fn) {
+  int64_t num_warps = EstimateNumWarpsImpl(tiled_hlo_computation);
+
+  ASSIGN_OR_RETURN(EstimateRunTimeData estimate_run_time_data,
+                   EstimateRunTimeForTiledHloComputationImpl(
+                       fusion_adaptor, tiled_hlo_computation, num_warps,
+                       device_info, shape_size, flops_per_element_fn));
+
+  // Skip tilings with infinite runtime (e.g., due to register spilling).
+  if (estimate_run_time_data.exec_time == absl::InfiniteDuration()) {
+    return std::nullopt;
+  }
+
+  BlockLevelParameters block_level_parameters;
+  auto tiled_roots = tiled_hlo_computation.roots();
+  block_level_parameters.output_tile_sizes.reserve(tiled_roots.size());
+  for (auto tiled_root : tiled_roots) {
+    auto tile_sizes = tiled_root->tile_sizes();
+    block_level_parameters.output_tile_sizes.emplace_back(tile_sizes.begin(),
+                                                          tile_sizes.end());
+  }
+  block_level_parameters.num_warps = num_warps;
+  return TiledRunTimeData{estimate_run_time_data, block_level_parameters};
+}
+
 }  // namespace
 
 int64_t GpuPerformanceModelWithIndexingAnalysis::FlopsPerElement(
@@ -667,67 +698,82 @@ int64_t GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
 absl::StatusOr<TopKTiledRunTimeDataOrError>
 GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
     const HloFusionAdaptor& fusion_adaptor, int top_k) {
-  SymbolicTileAnalysisOrError analysis_or_error =
-      SymbolicTileAnalysis::AnalyzeFusion(
-          fusion_adaptor, mlir_context_,
-          TritonEmitterConstraints::GetBuilder(*device_info_));
-
-  if (const auto* fusion_decision =
-          std::get_if<FusionDecision>(&analysis_or_error)) {
-    return *fusion_decision;
-  }
-
-  SymbolicTileAnalysis analysis =
-      std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
-
-  ASSIGN_OR_RETURN(auto tilings, analysis.GetValidTilings());
-
   absl::InlinedVector<TiledRunTimeData, 4> candidates;
 
-  for (const auto& tiling : tilings) {
-    // TODO(b/372454662): This needs to be adjusted if we want to support more
-    // than one "real root" (i.e. a root without users).
-    // Currently ComputeTiledComputation() may fail and return an
-    // Unimplemented error for cases of multi-output fusion that we do not
-    // support yet.
-    auto maybe_tiled_hlo_computation = analysis.ComputeTiledComputation(tiling);
-    if (!maybe_tiled_hlo_computation.ok()) {
-      if (maybe_tiled_hlo_computation.status().code() ==
-              absl::StatusCode::kUnimplemented &&
-          absl::StrContains(maybe_tiled_hlo_computation.status().message(),
-                            "multi-output fusion")) {
-        continue;
+  if (use_experimental_tiling_) {
+    std::unique_ptr<experimental::TilingSpace> sampling_tiling_space =
+        experimental::TilingSpace::Create(fusion_adaptor, mlir_context_);
+
+    ASSIGN_OR_RETURN(auto tilings, sampling_tiling_space->GetValidTilings());
+
+    for (const auto& tiling : tilings) {
+      std::unique_ptr<experimental::TilingSpace> tiling_space =
+          experimental::TilingSpace::Create(fusion_adaptor, mlir_context_);
+
+      RETURN_IF_ERROR(tiling_space->AssignTileSizes(
+          xla::xtile::GetPaddedTileSizes(tiling)));
+
+      ASSIGN_OR_RETURN(experimental::TiledHloComputation tiled_hlo_computation,
+                       experimental::TiledHloComputation::Tile(
+                           fusion_adaptor, std::move(tiling_space)));
+
+      ASSIGN_OR_RETURN(std::optional<TiledRunTimeData> tiled_run_time_data,
+                       EstimateTiledRunTimeDataImpl(
+                           fusion_adaptor, tiled_hlo_computation, *device_info_,
+                           shape_size_, [this](const HloInstruction* hlo) {
+                             return FlopsPerElement(hlo);
+                           }));
+
+      if (tiled_run_time_data.has_value()) {
+        candidates.push_back(*tiled_run_time_data);
       }
-      return maybe_tiled_hlo_computation.status();
+    }
+  } else {
+    SymbolicTileAnalysisOrError analysis_or_error =
+        SymbolicTileAnalysis::AnalyzeFusion(
+            fusion_adaptor, mlir_context_,
+            TritonEmitterConstraints::GetBuilder(*device_info_));
+
+    if (const auto* fusion_decision =
+            std::get_if<FusionDecision>(&analysis_or_error)) {
+      return *fusion_decision;
     }
 
-    auto tiled_hlo_computation = std::move(maybe_tiled_hlo_computation.value());
-    int64_t num_warps = EstimateNumWarps(tiled_hlo_computation);
+    SymbolicTileAnalysis analysis =
+        std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
 
-    ASSIGN_OR_RETURN(
-        EstimateRunTimeData estimate_run_time_data,
-        EstimateRunTimeForTiledHloComputationImpl(
-            fusion_adaptor, tiled_hlo_computation, num_warps, *device_info_,
-            shape_size_, [this](const HloInstruction* hlo) {
-              return FlopsPerElement(hlo);
-            }));
+    ASSIGN_OR_RETURN(auto tilings, analysis.GetValidTilings());
 
-    // Skip tilings with infinite runtime (e.g., due to register spilling).
-    if (estimate_run_time_data.exec_time == absl::InfiniteDuration()) {
-      continue;
+    for (const auto& tiling : tilings) {
+      // TODO(b/372454662): This needs to be adjusted if we want to support more
+      // than one "real root" (i.e. a root without users).
+      // Currently ComputeTiledComputation() may fail and return an
+      // Unimplemented error for cases of multi-output fusion that we do not
+      // support yet.
+      auto maybe_tiled_hlo_computation =
+          analysis.ComputeTiledComputation(tiling);
+      if (!maybe_tiled_hlo_computation.ok()) {
+        if (maybe_tiled_hlo_computation.status().code() ==
+                absl::StatusCode::kUnimplemented &&
+            absl::StrContains(maybe_tiled_hlo_computation.status().message(),
+                              "multi-output fusion")) {
+          continue;
+        }
+        return maybe_tiled_hlo_computation.status();
+      }
+
+      ASSIGN_OR_RETURN(
+          std::optional<TiledRunTimeData> tiled_run_time_data,
+          EstimateTiledRunTimeDataImpl(
+              fusion_adaptor, *maybe_tiled_hlo_computation, *device_info_,
+              shape_size_, [this](const HloInstruction* hlo) {
+                return FlopsPerElement(hlo);
+              }));
+
+      if (tiled_run_time_data.has_value()) {
+        candidates.push_back(*tiled_run_time_data);
+      }
     }
-
-    BlockLevelParameters block_level_parameters;
-    auto tiled_roots = tiled_hlo_computation.roots();
-    block_level_parameters.output_tile_sizes.reserve(tiled_roots.size());
-    for (auto tiled_root : tiled_roots) {
-      block_level_parameters.output_tile_sizes.emplace_back(
-          tiled_root->tile_sizes().begin(), tiled_root->tile_sizes().end());
-    }
-    block_level_parameters.num_warps = num_warps;
-
-    candidates.push_back(
-        TiledRunTimeData{estimate_run_time_data, block_level_parameters});
   }
 
   absl::c_stable_sort(

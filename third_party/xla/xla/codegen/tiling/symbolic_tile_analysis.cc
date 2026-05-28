@@ -54,6 +54,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/codegen/tiling/constraint_expression.h"
+#include "xla/codegen/tiling/experimental/tiling_space_utils.h"
 #include "xla/codegen/tiling/symbolic_tile.h"
 #include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
@@ -1999,52 +2000,11 @@ std::string SymbolicTileAnalysis::ToString() const {
                                       name_uniquer, tile_names);
 }
 
-namespace {
-
-// The possible tiles sizes for one dimension.
-absl::StatusOr<std::vector<int64_t>> PossibleTileSizesForOneDimension(
-    int64_t dim_size) {
-  if (dim_size < 0) {
-    return absl::InvalidArgumentError("Dimension size must be non-negative.");
-  }
-  std::vector<int64_t> result;
-  if (dim_size == 0) {
-    result.push_back(0);
-    return result;
-  }
-
-  result.reserve(absl::bit_width(static_cast<uint64_t>(dim_size)));
-  for (int64_t tile_size = 1; tile_size < dim_size; tile_size *= 2) {
-    result.push_back(tile_size);
-  }
-  result.push_back(dim_size);
-  return result;
-}
-
-}  // namespace
-
 namespace detail {
 
 absl::StatusOr<std::vector<FlatTiling>> GetFlatTilingsForInputSpace(
     absl::Span<const int64_t> input_space) {
-  std::vector<FlatTiling> flat_tilings;
-  flat_tilings.push_back({});
-  for (int64_t parameter_size : input_space) {
-    ASSIGN_OR_RETURN(std::vector<int64_t> possible_tile_sizes,
-                     PossibleTileSizesForOneDimension(parameter_size));
-    std::vector<FlatTiling> extended_tilings;
-    extended_tilings.reserve(flat_tilings.size() * possible_tile_sizes.size());
-    for (const FlatTiling& flat_tile_sizes : flat_tilings) {
-      for (int64_t tile_size : possible_tile_sizes) {
-        FlatTiling extended_tiling = flat_tile_sizes;
-        extended_tiling.push_back(tile_size);
-        extended_tilings.push_back(extended_tiling);
-      }
-    }
-    flat_tilings = std::move(extended_tilings);
-  }
-
-  return flat_tilings;
+  return xla::GetFlatTilingsForInputSpace(input_space);
 }
 
 }  // namespace detail

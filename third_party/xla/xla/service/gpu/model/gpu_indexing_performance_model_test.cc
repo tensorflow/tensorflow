@@ -81,7 +81,11 @@ class GpuIndexingPerformanceModelTest
 };
 
 INSTANTIATE_TEST_SUITE_P(GpuIndexingPerformanceModelTest,
-                         GpuIndexingPerformanceModelTest, ::testing::Bool());
+                         GpuIndexingPerformanceModelTest, ::testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           return info.param ? "ExperimentalTiling"
+                                             : "SymbolicTiling";
+                         });
 
 TEST_P(GpuIndexingPerformanceModelTest, TritonGemm) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
@@ -173,6 +177,13 @@ ENTRY main {
 
 // Example from b/383162692.
 TEST_P(GpuIndexingPerformanceModelTest, EstimateBestTiling_CombinedFusion) {
+  if (use_experimental_tiling()) {
+    // TODO: b/422689305 - Enable this test once multi-output fusions are
+    // supported.
+    GTEST_SKIP()
+        << "Experimental tiling does not support multi-output fusions yet.";
+  }
+
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
@@ -284,6 +295,13 @@ ENTRY entry_computation {
 }
 
 TEST_P(GpuIndexingPerformanceModelTest, EstimateBestTiling_MultioutputFusion) {
+  if (use_experimental_tiling()) {
+    // TODO: b/422689305 - Enable this test once multi-output fusions are
+    // supported.
+    GTEST_SKIP()
+        << "Experimental tiling does not support multi-output fusions yet.";
+  }
+
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
@@ -377,8 +395,16 @@ ENTRY main {
 
   EXPECT_EQ(tiled_runtime_data.block_level_parameters.output_tile_sizes.size(),
             1);
-  EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[0],
-              ElementsAre(4, 911));
+
+  // Experimental tiling uses padded tile sizes, while the symbolic tiling does
+  // not.
+  if (use_experimental_tiling()) {
+    EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[0],
+                ElementsAre(4, 1024));
+  } else {
+    EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[0],
+                ElementsAre(4, 911));
+  }
   EXPECT_EQ(tiled_runtime_data.block_level_parameters.num_warps, 4);
 
   EXPECT_EQ(tiled_runtime_data.runtime_data.bytes_read, kExpectedBytesRead);
