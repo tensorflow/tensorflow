@@ -278,10 +278,16 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
         shape.ToString());
   }
   for (const auto& tile : layout.tiles()) {
-    if (tile.dimensions().empty() ||
-        absl::c_any_of(tile.dimensions(),
-                       [](int64_t dim) { return dim == 0; })) {
+    if (tile.dimensions().empty()) {
       return InvalidArgument("layout has invalid tiles: %s", shape.ToString());
+    }
+    for (int64_t dim : tile.dimensions()) {
+      if (dim <= 0 && dim != Tile::kCombineDimension) {
+        return InvalidArgument(
+            "layout has invalid tiles: tile dimension %d must be positive or "
+            "kCombineDimension: %s",
+            dim, shape.ToString());
+      }
     }
   }
 
@@ -601,6 +607,11 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
   // 2. Iteratively apply each tile level.
   for (const Tile& tile : shape.layout().tiles()) {
     const int64_t tile_rank = tile.dimensions().size();
+    if (tile_rank > current_shape.size()) {
+      int64_t pad_size = tile_rank - current_shape.size();
+      current_shape.insert(current_shape.begin(), pad_size, 1);
+      current_indices.insert(current_indices.begin(), pad_size, 0);
+    }
     // Tiling applies to a suffix of the current physical dimensions.
     CHECK_LE(tile_rank, current_shape.size());
 
@@ -679,9 +690,13 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
   std::vector<TilingStep> steps;
 
   for (const Tile& tile : shape.layout().tiles()) {
+    const int64_t tile_rank = tile.dimensions().size();
+    if (tile_rank > current_shape.size()) {
+      int64_t pad_size = tile_rank - current_shape.size();
+      current_shape.insert(current_shape.begin(), pad_size, 1);
+    }
     steps.push_back({current_shape, tile});
 
-    const int64_t tile_rank = tile.dimensions().size();
     const int64_t suffix_start = current_shape.size() - tile_rank;
 
     std::vector<int64_t> next_shape;
@@ -739,10 +754,11 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
 
   // 4. Map the physical major-to-minor indices back to logical dimensions.
   std::vector<int64_t> logical_indices(num_dims);
+  int64_t pad_offset = current_indices.size() - num_dims;
   for (int i = 0; i < num_dims; ++i) {
     // The physical order was minor_to_major(num_dims-1) down to 0.
     int64_t logical_dim = shape.layout().minor_to_major(num_dims - 1 - i);
-    logical_indices[logical_dim] = current_indices[i];
+    logical_indices[logical_dim] = current_indices[pad_offset + i];
   }
 
   return logical_indices;
