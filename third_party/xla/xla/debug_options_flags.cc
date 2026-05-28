@@ -525,7 +525,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_command_buffer_update_mode(DebugOptions::ALWAYS_UPDATE);
 
   opts.set_xla_gpu_experimental_aot_compiled_thunks(true);
-  opts.set_xla_gpu_deviceless_cub_mode(DebugOptions::DEVICELESS_CUB_DISABLED);
+  opts.set_xla_gpu_deviceless_cub_mode(
+      DebugOptions::DEVICELESS_CUB_WITH_FALLBACK);
   return opts;
 }
 

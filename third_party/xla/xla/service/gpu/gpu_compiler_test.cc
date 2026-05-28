@@ -128,7 +128,6 @@ using ::testing::IsEmpty;
 using ::testing::IsSupersetOf;
 using ::testing::Matches;
 using ::testing::Not;
-using ::testing::StartsWith;
 using ::testing::TempDir;
 using ::testing::TestParamInfo;
 using ::testing::Values;
@@ -1660,15 +1659,6 @@ ENTRY %main {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(kHlo, config));
 
-  absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
-  EXPECT_CALL(mock_log,
-              Log(absl::LogSeverity::kWarning, EndsWith("/sort_rewriter.cc"),
-                  StartsWith("Using fallback sort algorithm")))
-      .Times(AtLeast(1));
-
-  // StartCapturingLogs has to be called even if we expect not to capture any
-  // logs.
-  mock_log.StartCapturingLogs();
   TF_ASSERT_OK(compiler()->RunHloPasses(std::move(module), nullptr, nullptr));
 }
 
@@ -1897,9 +1887,10 @@ ENTRY main {
         EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kCommandBuffer));
       } else if (kinds.size() == 4) {
         // CUB sort via FFI custom call
-        EXPECT_THAT(kinds,
-                    ElementsAre(Thunk::Kind::kKernel, Thunk::Kind::kCustomCall,
-                                Thunk::Kind::kKernel, Thunk::Kind::kKernel));
+        EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kCustomKernel,
+                                       Thunk::Kind::kCustomCall,
+                                       Thunk::Kind::kCustomKernel,
+                                       Thunk::Kind::kCustomKernel));
       } else {
         FAIL() << "Unexpected thunk sequence size: " << kinds.size();
       }

@@ -789,6 +789,13 @@ absl::StatusOr<bool> ShouldRewriteSort(
 
   TF_RET_CHECK(deviceless_cub_mode ==
                DebugOptions::DEVICELESS_CUB_WITH_FALLBACK);
+  LOG_EVERY_N_SEC(WARNING, 60)
+      << "Missing deviceless CUB scratch size data for sort. Using "
+         "fallback sort algorithm rather than SortRewriter, "
+         "which will be slower at runtime. \n"
+         "To avoid this, compile with a GPU present, or add the "
+         "deviceless CUB data for your device and CUB version to "
+         "xla/backends/gpu/libraries/cub/data";
   return false;
 }
 
