@@ -201,7 +201,7 @@ class AudioMicrofrontendOp : public OpKernel {
     const Tensor* audio;
     OP_REQUIRES_OK(ctx, ctx->input("audio", &audio));
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(audio->shape()),
-                InvalidArgument("audio is not a vector"));
+                absl::InvalidArgumentError("audio is not a vector"));
 
     auto audio_data =
         reinterpret_cast<const int16_t*>(audio->tensor_data().data());
@@ -227,7 +227,7 @@ class AudioMicrofrontendOp : public OpKernel {
     if (!TF_PREDICT_TRUE(
             FrontendPopulateState(&config_, &state, sample_rate_))) {
       ctx->CtxFailure(__FILE__, __LINE__,
-                      Internal("failed to populate frontend state"));
+                      absl::InternalError("failed to populate frontend state"));
       FrontendFreeStateContents(&state);
       return;
     }
