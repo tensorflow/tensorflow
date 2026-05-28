@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -38,12 +39,35 @@ limitations under the License.
 #include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/sorted_range.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
+
+std::vector<SourceTarget> GetSortedSourceTargetPairs(
+    const P2PConfig::IdToSourceTargetMap& id_to_source_target) {
+  std::vector<SourceTarget> source_target_pairs;
+  source_target_pairs.reserve(id_to_source_target.size() / 2);
+  auto cmp = [](const auto& a, const auto& b) {
+    return std::tie(a.second.source, a.first) <
+           std::tie(b.second.source, b.first);
+  };
+
+  for (const auto& [current_id, entry] :
+       tsl::SortedRange(id_to_source_target, cmp)) {
+    // Each link `source <-> target` is represented twice in the map.
+    // We only process the entry where `source` is populated (the first case)
+    // to avoid adding duplicate pairs.
+    if (entry.source.has_value()) {
+      SourceTarget pair;
+      pair.set_source(*entry.source);
+      pair.set_target(current_id);
+      source_target_pairs.push_back(pair);
+    }
+  }
+  return source_target_pairs;
+}
 
 absl::StatusOr<std::vector<std::pair<int64_t, int64_t>>> GetSourceTargetPairs(
     mlir::DictionaryAttr frontend_attributes) {

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/collective_permute_thunk.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -59,7 +58,6 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -273,20 +271,10 @@ absl::StatusOr<ThunkProto> CollectivePermuteThunk::ToProto() const {
   thunk_proto->set_collectives_mode(collectives_mode());
   thunk_proto->set_connected_components_enabled(connected_components_enabled_);
 
-  std::vector<SourceTarget> source_target_pairs;
-  source_target_pairs.reserve(config_.id_to_source_target.size() / 2);
-  for (const auto& [key_id, map_entry] : config_.id_to_source_target) {
-    SourceTarget pair;
-    if (!map_entry.source.has_value()) {
-      // Same pair is in the map with target/source switched.
-      continue;
-    }
-    pair.set_source(*map_entry.source);
-    pair.set_target(key_id);
-    source_target_pairs.push_back(pair);
-  }
-  thunk_proto->mutable_source_target_pairs()->Assign(
-      source_target_pairs.begin(), source_target_pairs.end());
+  std::vector<SourceTarget> sorted_pairs =
+      GetSortedSourceTargetPairs(config_.id_to_source_target);
+  thunk_proto->mutable_source_target_pairs()->Assign(sorted_pairs.begin(),
+                                                     sorted_pairs.end());
 
   return proto;
 }
