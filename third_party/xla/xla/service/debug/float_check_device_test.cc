@@ -31,7 +31,7 @@ using ::testing::_;
 
 namespace {
 
-TEST_F(HloPjRtTestBase, OnNanShouldLogHloInstruction) {
+TEST_F(HloTestBase, OnNanShouldLogHloInstruction) {
   static constexpr absl::string_view kHloModule = R"hlo(
     HloModule test_module
     ENTRY main {
@@ -59,7 +59,7 @@ TEST_F(HloPjRtTestBase, OnNanShouldLogHloInstruction) {
   log.StopCapturingLogs();
 }
 
-TEST_F(HloPjRtTestBase, OnInfShouldLogHloInstruction) {
+TEST_F(HloTestBase, OnInfShouldLogHloInstruction) {
   static constexpr absl::string_view kHloModule = R"hlo(
     HloModule test_module
     ENTRY main {
@@ -88,7 +88,7 @@ TEST_F(HloPjRtTestBase, OnInfShouldLogHloInstruction) {
   log.StopCapturingLogs();
 }
 
-TEST_F(HloPjRtTestBase, OnMinMaxShouldLogValuesAndHloInstruction) {
+TEST_F(HloTestBase, OnMinMaxShouldLogValuesAndHloInstruction) {
   static constexpr absl::string_view kHloModule = R"hlo(
     HloModule test_module
     ENTRY main {
