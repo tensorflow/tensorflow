@@ -6882,6 +6882,7 @@ xla_cc_test(
         ":hlo_cse",
         ":hlo_proto_cc",
         ":xla_transform",
+        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/pass:hlo_pass_pipeline",

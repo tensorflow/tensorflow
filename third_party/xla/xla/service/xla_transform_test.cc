@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_xla_transform_internal.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cse.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -204,6 +206,188 @@ TEST_F(XlaTransformTest, PjrtCApiExtension) {
 
   EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
             HloOpcode::kNegate);
+}
+
+TEST_F(XlaTransformTest, PjrtCApiExtensionPreservesSchedule) {
+  // 1. Define the C callback.
+  auto c_callback = [](PJRT_XlaTransform_Callbacks* callbacks,
+                       PJRT_XlaTransform_Args* args) {
+    EXPECT_NE(args->hlo_module.data, nullptr);
+    EXPECT_GT(args->hlo_module.size, 0);
+
+    xla::HloModuleProto proto;
+    EXPECT_TRUE(
+        proto.ParseFromArray(args->hlo_module.data, args->hlo_module.size));
+
+    DebugOptions debug_options;
+    TF_ASSERT_OK_AND_ASSIGN(auto config, HloModule::CreateModuleConfigFromProto(
+                                             proto, debug_options));
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            HloModule::CreateFromProto(proto, config));
+
+    // Return it as is but mark as changed.
+    xla::HloModuleProto modified_proto = module->ToProto();
+    static thread_local std::string persistent_proto;
+    persistent_proto.clear();
+    EXPECT_TRUE(
+        tsl::SerializeToStringDeterministic(modified_proto, &persistent_proto));
+
+    args->changed = true;
+    args->transformed_hlo_module.data = persistent_proto.data();
+    args->transformed_hlo_module.size = persistent_proto.size();
+
+    args->header.has_error = false;
+  };
+
+  // 2. Create the PJRT_XlaTransform_Callbacks struct.
+  PJRT_XlaTransform_Callbacks callbacks;
+  callbacks.version = PJRT_API_XLA_TRANSFORM_EXTENSION_VERSION;
+  callbacks.dtor = nullptr;
+  callbacks.transform_hlo_module = c_callback;
+
+  // 3. Create the XLA transform extension.
+  PJRT_Xla_Transform_Extension extension = pjrt::CreateXlaTransformExtension();
+
+  // 4. Register the transform using the extension.
+  PJRT_Register_Xla_Transform_Args args;
+  args.struct_size = PJRT_Register_Xla_Transform_Args_STRUCT_SIZE;
+  args.name = "pjrt_c_api_transform_schedule";
+  args.name_size = sizeof("pjrt_c_api_transform_schedule") - 1;
+  args.stage = PJRT_XlaTransform_PipelineStage_kPreScheduler;
+  args.callbacks = &callbacks;
+
+  PJRT_Error* error = extension.register_xla_transform(&args);
+  EXPECT_EQ(error, nullptr);
+
+  absl::string_view hlo_text = R"(
+    HloModule test_module, is_scheduled=true
+    ENTRY test_computation {
+      p0 = f32[] parameter(0)
+      add = f32[] add(p0, p0)
+      neg = f32[] negate(p0)
+      ROOT tuple = (f32[], f32[]) tuple(add, neg)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_text));
+
+  EXPECT_TRUE(module->has_schedule());
+  std::vector<std::string> expected_order;
+  for (const HloInstruction* inst : module->schedule()
+                                        .sequence(module->entry_computation())
+                                        .instructions()) {
+    expected_order.push_back(std::string(inst->name()));
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ApplyXlaTransformsToModule(HloXlaTransform::PipelineStage::kPreScheduler,
+                                 module.get()));
+  EXPECT_TRUE(changed);
+
+  // Verify that it still has a schedule.
+  EXPECT_TRUE(module->has_schedule());
+  LOG(INFO) << "Schedule after transform:\n" << module->schedule().ToString();
+  EXPECT_FALSE(module->schedule().empty());
+  auto status = module->schedule().Verify();
+  LOG(INFO) << "Schedule verify status: " << status;
+  EXPECT_TRUE(status.ok());
+
+  std::vector<std::string> actual_order;
+  for (const HloInstruction* inst : module->schedule()
+                                        .sequence(module->entry_computation())
+                                        .instructions()) {
+    actual_order.push_back(std::string(inst->name()));
+  }
+  EXPECT_EQ(expected_order, actual_order);
+}
+
+TEST_F(XlaTransformTest, PjrtCApiExtensionUnusedComputationScheduleUAF) {
+  // 1. Define the C callback.
+  auto c_callback = [](PJRT_XlaTransform_Callbacks* callbacks,
+                       PJRT_XlaTransform_Args* args) {
+    EXPECT_NE(args->hlo_module.data, nullptr);
+    EXPECT_GT(args->hlo_module.size, 0);
+
+    xla::HloModuleProto proto;
+    EXPECT_TRUE(
+        proto.ParseFromArray(args->hlo_module.data, args->hlo_module.size));
+
+    DebugOptions debug_options;
+    TF_ASSERT_OK_AND_ASSIGN(auto config, HloModule::CreateModuleConfigFromProto(
+                                             proto, debug_options));
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            HloModule::CreateFromProto(proto, config));
+
+    // Add unused computation
+    auto builder = HloComputation::Builder("unused_comp");
+    builder.AddInstruction(HloInstruction::CreateParameter(
+        0, ShapeUtil::MakeShape(F32, {}), "p0"));
+    auto unused_comp = module->AddEmbeddedComputation(builder.Build());
+    if (module->has_schedule()) {
+      module->schedule().GetOrCreateSequence(unused_comp);
+    }
+
+    xla::HloModuleProto modified_proto = module->ToProto();
+    static thread_local std::string persistent_proto;
+    persistent_proto.clear();
+    EXPECT_TRUE(
+        tsl::SerializeToStringDeterministic(modified_proto, &persistent_proto));
+
+    args->changed = true;
+    args->transformed_hlo_module.data = persistent_proto.data();
+    args->transformed_hlo_module.size = persistent_proto.size();
+
+    args->header.has_error = false;
+  };
+
+  // 2. Create the PJRT_XlaTransform_Callbacks struct.
+  PJRT_XlaTransform_Callbacks callbacks;
+  callbacks.version = PJRT_API_XLA_TRANSFORM_EXTENSION_VERSION;
+  callbacks.dtor = nullptr;
+  callbacks.transform_hlo_module = c_callback;
+
+  // 3. Create the XLA transform extension.
+  PJRT_Xla_Transform_Extension extension = pjrt::CreateXlaTransformExtension();
+
+  // 4. Register the transform using the extension.
+  PJRT_Register_Xla_Transform_Args args;
+  args.struct_size = PJRT_Register_Xla_Transform_Args_STRUCT_SIZE;
+  args.name = "pjrt_c_api_transform_uaf";
+  args.name_size = sizeof("pjrt_c_api_transform_uaf") - 1;
+  args.stage = PJRT_XlaTransform_PipelineStage_kPreScheduler;
+  args.callbacks = &callbacks;
+
+  PJRT_Error* error = extension.register_xla_transform(&args);
+  EXPECT_EQ(error, nullptr);
+
+  absl::string_view hlo_text = R"(
+    HloModule test_module, is_scheduled=true
+    ENTRY test_computation {
+      p0 = f32[] parameter(0)
+      add = f32[] add(p0, p0)
+      neg = f32[] negate(p0)
+      ROOT tuple = (f32[], f32[]) tuple(add, neg)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_text));
+
+  EXPECT_TRUE(module->has_schedule());
+
+  // This should not crash.
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ApplyXlaTransformsToModule(HloXlaTransform::PipelineStage::kPreScheduler,
+                                 module.get()));
+  EXPECT_TRUE(changed);
+
+  // Verify that it still has a schedule and it doesn't contain the unused comp.
+  EXPECT_TRUE(module->has_schedule());
+  auto status = module->schedule().Verify();
+  EXPECT_TRUE(status.ok());
 }
 
 }  // namespace

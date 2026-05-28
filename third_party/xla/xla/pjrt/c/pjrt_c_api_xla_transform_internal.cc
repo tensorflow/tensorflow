@@ -20,12 +20,15 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c/pjrt_c_api_xla_transform_extension.h"
@@ -80,6 +83,21 @@ class CApiXlaTransformAdapter : public HloXlaTransform {
       ASSIGN_OR_RETURN(
           auto temp_module,
           HloModule::CreateFromProto(transformed_proto, module->config()));
+
+      // Capture schedule from temp_module if it has one.
+      absl::flat_hash_map<HloComputation*, HloInstructionSequence>
+          comp_to_sequence;
+      if (temp_module->has_schedule()) {
+        absl::flat_hash_map<int64_t, HloComputation*> temp_comp_map;
+        for (HloComputation* comp : temp_module->computations()) {
+          temp_comp_map[comp->unique_id()] = comp;
+        }
+        for (const auto& [comp_id, sequence] :
+             temp_module->schedule().sequences()) {
+          comp_to_sequence[temp_comp_map[comp_id]] = sequence;
+        }
+      }
+
       // Capture the entry computation pointer before calling
       // MoveComputationsFrom, as MoveComputationsFrom can rename computations
       // on collision.
@@ -89,6 +107,20 @@ class CApiXlaTransformAdapter : public HloXlaTransform {
       module->ReplaceEntryComputation(new_entry);
 
       RETURN_IF_ERROR(module->RemoveUnusedComputations());
+
+      // Restore schedule if we captured one.
+      if (!comp_to_sequence.empty()) {
+        HloSchedule new_schedule(module);
+        absl::flat_hash_set<HloComputation*> remaining_computations(
+            module->computations().begin(), module->computations().end());
+        for (auto& [comp, sequence] : comp_to_sequence) {
+          if (remaining_computations.contains(comp)) {
+            sequence.update_id_sequence();
+            new_schedule.set_sequence(comp, std::move(sequence));
+          }
+        }
+        RETURN_IF_ERROR(module->set_schedule(std::move(new_schedule)));
+      }
 
       return true;
     }
