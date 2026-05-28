@@ -1343,6 +1343,7 @@ cc_library(
     name = "work_queue",
     hdrs = ["work_queue.h"],
     deps = [
+        "//xla:util",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base:core_headers",
@@ -1365,6 +1366,7 @@ xla_cc_test(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 
