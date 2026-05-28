@@ -68,63 +68,31 @@ class CApiXlaTransformAdapter : public HloXlaTransform {
     }
     callbacks_.transform_hlo_module(&callbacks_, &args);
 
-    if (args.header.has_error) {
-      return absl::InternalError("Error in C callback");
-    }
+    absl::Status status = absl::OkStatus();
+    bool changed = false;
 
-    if (args.changed) {
+    if (args.header.has_error) {
+      status = absl::InternalError(args.header.error_msg.data
+                                       ? std::string(args.header.error_msg.data,
+                                                     args.header.error_msg.size)
+                                       : "Error in C callback");
+    } else if (args.changed) {
       xla::HloModuleProto transformed_proto;
       if (!transformed_proto.ParseFromArray(args.transformed_hlo_module.data,
                                             args.transformed_hlo_module.size)) {
-        return absl::InternalError("Failed to parse transformed HLO module");
+        status = absl::InternalError("Failed to parse transformed HLO module");
+      } else {
+        status = UpdateHloModuleFromProto(module, transformed_proto);
+        changed = status.ok();
       }
-
-      // We need a HloModuleConfig. We can use the existing module's config.
-      ASSIGN_OR_RETURN(
-          auto temp_module,
-          HloModule::CreateFromProto(transformed_proto, module->config()));
-
-      // Capture schedule from temp_module if it has one.
-      absl::flat_hash_map<HloComputation*, HloInstructionSequence>
-          comp_to_sequence;
-      if (temp_module->has_schedule()) {
-        absl::flat_hash_map<int64_t, HloComputation*> temp_comp_map;
-        for (HloComputation* comp : temp_module->computations()) {
-          temp_comp_map[comp->unique_id()] = comp;
-        }
-        for (const auto& [comp_id, sequence] :
-             temp_module->schedule().sequences()) {
-          comp_to_sequence[temp_comp_map[comp_id]] = sequence;
-        }
-      }
-
-      // Capture the entry computation pointer before calling
-      // MoveComputationsFrom, as MoveComputationsFrom can rename computations
-      // on collision.
-      HloComputation* new_entry = temp_module->entry_computation();
-      module->MoveComputationsFrom(temp_module.get());
-
-      module->ReplaceEntryComputation(new_entry);
-
-      RETURN_IF_ERROR(module->RemoveUnusedComputations());
-
-      // Restore schedule if we captured one.
-      if (!comp_to_sequence.empty()) {
-        HloSchedule new_schedule(module);
-        absl::flat_hash_set<HloComputation*> remaining_computations(
-            module->computations().begin(), module->computations().end());
-        for (auto& [comp, sequence] : comp_to_sequence) {
-          if (remaining_computations.contains(comp)) {
-            sequence.update_id_sequence();
-            new_schedule.set_sequence(comp, std::move(sequence));
-          }
-        }
-        RETURN_IF_ERROR(module->set_schedule(std::move(new_schedule)));
-      }
-
-      return true;
     }
-    return false;
+
+    if (args.header.cleanup_fn != nullptr) {
+      args.header.cleanup_fn(args.header.data);
+    }
+
+    RETURN_IF_ERROR(status);
+    return changed;
   }
 
  private:

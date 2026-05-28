@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -109,6 +110,47 @@ absl::StatusOr<bool> ApplyXlaTransforms::RunImpl(
   VLOG(1) << "ApplyXlaTransforms EXIT";
   XLA_VLOG_LINES(1, module->ToString());
   return changed;
+}
+
+absl::Status UpdateHloModuleFromProto(HloModule* module,
+                                      const HloModuleProto& transformed_proto) {
+  ASSIGN_OR_RETURN(auto temp_module, HloModule::CreateFromProto(
+                                         transformed_proto, module->config()));
+
+  // Capture schedule from temp_module if it has one.
+  absl::flat_hash_map<HloComputation*, HloInstructionSequence> comp_to_sequence;
+  if (temp_module->has_schedule()) {
+    absl::flat_hash_map<int64_t, HloComputation*> temp_comp_map;
+    for (HloComputation* comp : temp_module->computations()) {
+      temp_comp_map[comp->unique_id()] = comp;
+    }
+    for (const auto& [comp_id, sequence] :
+         temp_module->schedule().sequences()) {
+      comp_to_sequence[temp_comp_map[comp_id]] = sequence;
+    }
+  }
+
+  HloComputation* new_entry = temp_module->entry_computation();
+  module->MoveComputationsFrom(temp_module.get());
+  module->ReplaceEntryComputation(new_entry);
+
+  RETURN_IF_ERROR(module->RemoveUnusedComputations());
+
+  // Restore schedule if we captured one.
+  if (!comp_to_sequence.empty()) {
+    HloSchedule new_schedule(module);
+    absl::flat_hash_set<HloComputation*> remaining_computations(
+        module->computations().begin(), module->computations().end());
+    for (auto& [comp, sequence] : comp_to_sequence) {
+      if (remaining_computations.contains(comp)) {
+        sequence.update_id_sequence();
+        new_schedule.set_sequence(comp, std::move(sequence));
+      }
+    }
+    RETURN_IF_ERROR(module->set_schedule(std::move(new_schedule)));
+  }
+
+  return absl::OkStatus();
 }
 
 }  // namespace xla

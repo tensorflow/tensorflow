@@ -231,6 +231,7 @@ limitations under the License.
 #include "xla/service/while_loop_constant_sinking.h"
 #include "xla/service/while_loop_invariant_code_motion.h"
 #include "xla/service/while_loop_simplifier.h"
+#include "xla/service/xla_transform.h"
 #include "xla/shape.h"
 #include "xla/shape_pool.h"
 #include "xla/shape_util.h"
@@ -1158,6 +1159,8 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   }
 
   pipeline.AddPass<PropagateCallMetadata>();
+  pipeline.AddPass<ApplyXlaTransforms>(
+      HloXlaTransform::PipelineStage::kPreScheduler);
   pipeline.AddPass<HloDCE>();
   return pipeline.Run(module).status();
 }
@@ -1767,6 +1770,13 @@ CpuCompiler::CompileCpuExecutable(
 
   ASSIGN_OR_RETURN(HloSchedule schedule, CreateHloSchedule(*module));
   RETURN_IF_ERROR(module->set_schedule(schedule));
+
+  {
+    HloPassPipeline post_scheduler_pipeline("HLO passes after scheduling");
+    post_scheduler_pipeline.AddPass<ApplyXlaTransforms>(
+        HloXlaTransform::PipelineStage::kPostScheduler);
+    RETURN_IF_ERROR(post_scheduler_pipeline.Run(module.get()).status());
+  }
 
   ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> assignment,
                    CreateBufferAssignment(*module));
