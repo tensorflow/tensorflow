@@ -162,7 +162,8 @@ class ExtractImagePatches(xla_test.XLATestCase):
             rates=rates,
             padding="SAME")
         sum_finite = math_ops.reduce_sum(
-            array_ops.where(math_ops.is_nan(patches), 0.0, patches))
+            array_ops.where(math_ops.is_nan(patches),
+                            array_ops.zeros_like(patches), patches))
       feed_dict = {image_placeholder: image}
       self.assertAllClose(8.0, sum_finite.eval(feed_dict=feed_dict))
 
