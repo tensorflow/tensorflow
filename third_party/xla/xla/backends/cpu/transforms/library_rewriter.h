@@ -23,7 +23,6 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "google/protobuf/repeated_field.h"
@@ -120,8 +119,10 @@ class LibraryRewriter : public HloModulePass {
                                              HloInstruction* to_fuse,
                                              FusionDirection dir);
 
-  // Fuses as many neighbors around `fusion` as possible
-  absl::Status FuseNeighbors(HloFusionInstruction* fusion, LibraryMatcher* lib);
+  // Fuses as many neighbors around `fusion` as possible. Returns true if any
+  // neighbors were fused.
+  absl::StatusOr<bool> FuseNeighbors(HloFusionInstruction* fusion,
+                                     LibraryMatcher* lib);
 
   // Finds and creates fusions in the given computation.
   absl::StatusOr<bool> ProcessComputation(HloComputation* computation);

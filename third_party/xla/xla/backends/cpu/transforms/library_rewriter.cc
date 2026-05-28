@@ -197,7 +197,7 @@ void LibraryRewriter::AddFusionCandidates(
     for (HloInstruction* operand : instr->operands()) {
       if (!fused_.contains(operand) &&
           absl::c_all_of(operand->users(), [&](HloInstruction* user) {
-            return user == fusion || user == instr;
+            return user == fusion || user == instr || fused_.contains(user);
           })) {
         queue.push(std::make_pair(operand, FusionDirection::kUp));
       }
@@ -250,8 +250,8 @@ absl::StatusOr<HloInstruction*> LibraryRewriter::GrowFusion(
   return new_instr;
 }
 
-absl::Status LibraryRewriter::FuseNeighbors(HloFusionInstruction* fusion,
-                                            LibraryMatcher* lib) {
+absl::StatusOr<bool> LibraryRewriter::FuseNeighbors(
+    HloFusionInstruction* fusion, LibraryMatcher* lib) {
   // A queue storing potential candidates for fusion: Each item is a pair of
   //   - Pointer to immediate neighbors of the current fusion node.
   //   - Travel direction: up (parents) and down (children).
@@ -260,6 +260,7 @@ absl::Status LibraryRewriter::FuseNeighbors(HloFusionInstruction* fusion,
   std::queue<std::pair<HloInstruction*, FusionDirection>> frontier;
   AddFusionCandidates(fusion, fusion, FusionDirection::kBoth, frontier);
 
+  bool changed = false;
   // BFS and fuse as many neighbors as possible.
   while (!frontier.empty() &&
          fusion->fused_instruction_count() < kMaxInstructionsInFusion) {
@@ -277,6 +278,7 @@ absl::Status LibraryRewriter::FuseNeighbors(HloFusionInstruction* fusion,
       ASSIGN_OR_RETURN(fusion,
                        MergeFusionInstructions(
                            fusion, Cast<HloFusionInstruction>(instr), dir));
+      changed = true;
       continue;
     }
 
@@ -296,8 +298,10 @@ absl::Status LibraryRewriter::FuseNeighbors(HloFusionInstruction* fusion,
                      GrowFusion(fusion, instr, dir));
     RETURN_IF_ERROR(
         InsertConvertIfNecessary(new_instr, lib->LibraryOpOutputType(instr)));
+    changed = true;
   }
-  return absl::OkStatus();
+
+  return changed;
 }
 
 absl::StatusOr<bool> LibraryRewriter::ProcessComputation(
@@ -349,7 +353,13 @@ absl::StatusOr<bool> LibraryRewriter::ProcessComputation(
 
     // Fuse as many neighbors as as we can.
     if (lib->ShouldGrowFusion(centroid)) {
-      RETURN_IF_ERROR(FuseNeighbors(fusion, lib));
+      // It is possible that fusing down eliminates uses of a value outside the
+      // fusion, which allows more fusion up to occur. To handle this case, we
+      // attempt to fuse neighbors repeatedly until no fusion occurs.
+      bool changed = true;
+      while (changed) {
+        ASSIGN_OR_RETURN(changed, FuseNeighbors(fusion, lib));
+      }
     }
   }
   return !fused_.empty();

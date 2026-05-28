@@ -624,6 +624,34 @@ INSTANTIATE_TEST_SUITE_P(CpuLibraryFusionTypeTestSuite,
                                               std::string("reduce")}),
                          CpuLibraryFusionTypeTest::Name);
 
+TEST_F(CpuLibraryTest, RetryFusion) {
+  //   p0 -> A (abs) -> B (add) -> C (dot) -> E (add)
+  //                     \___________________/
+  //
+  // C is the fusion starter (dot).
+  // Initially B cannot be fused because E (user of B) is not in the fusion.
+  // After C fuses E (down), B's users are all in the fusion, so B can be fused.
+  // Then A can also be fused.
+  const absl::string_view hlo_template = R"(
+    HloModule matmul
+
+    ENTRY %main {
+      %p0 = $in_dtype[64,64] parameter(0)
+      %p1 = $in_dtype[64,64] parameter(1)
+      %p2 = $in_dtype[64,64] parameter(2)
+      %A = $in_dtype[64,64] abs(%p0)
+      %B = $in_dtype[64,64] add(%A, %p1)
+      %C = $out_dtype[64,64] dot(%B, %p2), lhs_contracting_dims={1},
+                                            rhs_contracting_dims={0}
+      ROOT %E = $out_dtype[64,64] add(%C, %B)
+    })";
+
+  DotRewriteTestSpec spec = GetDefaultTestSpec();
+  spec.fusion_mode = "dot";
+  RunTestInternal(spec, hlo_template,
+                  FusionProperties{HloOpcode::kAdd, 3, 7, true});
+}
+
 TEST_F(CpuLibraryTest, UpdateFusion) {
   //                      c
   //                       \
