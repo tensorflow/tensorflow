@@ -15,9 +15,16 @@ limitations under the License.
 
 #include "xla/service/collective_decomposer_utils.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <limits>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -26,6 +33,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 

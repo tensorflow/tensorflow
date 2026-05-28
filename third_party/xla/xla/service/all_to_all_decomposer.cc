@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/all_to_all_decomposer.h"
 
+#include <cstdint>
 #include <optional>
 #include <vector>
 

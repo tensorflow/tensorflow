@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 
 #include "absl/status/status_matchers.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
