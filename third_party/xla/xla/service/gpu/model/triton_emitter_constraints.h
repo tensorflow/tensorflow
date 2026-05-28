@@ -18,10 +18,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/codegen/tiling/constraint_expression.h"
+#include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
 #include "xla/codegen/xtile/codegen/tiled_emitter_constraints.h"
@@ -120,6 +122,14 @@ class TritonEmitterConstraints : public EmitterSpecificConstraints {
 
   std::unique_ptr<TiledEmitterConstraints> tiled_emitter_constraints_;
 };
+
+namespace experimental {
+
+absl::Status VerifyTritonConstraints(
+    const TiledHloComputation& tiled_computation,
+    const se::DeviceDescription& device_info);
+
+}  // namespace experimental
 
 }  // namespace gpu
 }  // namespace xla

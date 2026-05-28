@@ -179,7 +179,9 @@ class TilingSpace {
   const DimensionInfo& GetDimensionInfo(const HloInstruction& hlo,
                                         int64_t dim_position) const;
 
-  // Assigns tile sizes to the dimensions.
+  // Assigns tile sizes to the dimensions and checks if the constraints derived
+  // from the operations are satisfied. That does NOT include backend-specific
+  // constraints.
   absl::Status AssignTileSizes(absl::Span<const int64_t> tile_sizes);
 
   // Returns the runtime variable info for `hlo` that uses it and its
