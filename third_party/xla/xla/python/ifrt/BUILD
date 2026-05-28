@@ -38,6 +38,7 @@ cc_library(
         "program.cc",
         # TODO(hyeontaek): Move this SerDes out of `ifrt` target once `Compiler::DeserializeLoadedExecutable()` is split into executable deserialization and executable loading, and thus the method can be removed.
         "executable_serdes.cc",
+        "bundle.cc",
         "shape.cc",
         "sharding.cc",
         "sharding_spec.cc",
@@ -63,6 +64,7 @@ cc_library(
         "program.h",
         # TODO(hyeontaek): Move this SerDes out of `ifrt` target once `Compiler::DeserializeLoadedExecutable()` is split into executable deserialization and executable loading, and thus the method can be removed.
         "executable_serdes.h",
+        "bundle.h",
         "shape.h",
         "sharding.h",
         "sharding_spec.h",
@@ -655,7 +657,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:test",
-        "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_layout",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",

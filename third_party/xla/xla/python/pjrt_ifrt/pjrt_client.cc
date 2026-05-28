@@ -65,6 +65,7 @@ limitations under the License.
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/basic_device_list.h"
+#include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/client_impl_util.h"
 #include "xla/python/ifrt/device.h"
@@ -1833,6 +1834,16 @@ tsl::Future<> PjRtClient::GetReadyFuture(absl::Span<const ValueRef> values) {
 absl::StatusOr<tsl::RCReference<Tuple>> PjRtClient::MakeTuple(
     absl::Span<ValueRef> values) {
   return PjRtTuple::Create(this, values);
+}
+
+absl::StatusOr<BundleRef> PjRtClient::Bundle(absl::Span<ValueRef> values,
+                                             ArrayCopySemantics semantics) {
+  return absl::UnimplementedError("Bundle is not implemented.");
+}
+
+absl::StatusOr<BundleRef> PjRtClient::ConcatBundles(
+    absl::Span<BundleRef> bundles, ArrayCopySemantics semantics) {
+  return absl::UnimplementedError("ConcatBundles is not implemented.");
 }
 
 absl::StatusOr<std::shared_ptr<Topology>> PjRtClient::GetTopologyForDevices(

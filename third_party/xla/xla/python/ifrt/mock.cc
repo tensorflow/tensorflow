@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -46,6 +47,7 @@ namespace xla {
 namespace ifrt {
 
 char MockArray::ID = 0;
+char MockBundle::ID = 0;
 char MockClient::ID = 0;
 char MockCompiler::ID = 0;
 char MockExecutable::ID = 0;
@@ -187,6 +189,17 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
   ON_CALL(*this, MakeTuple).WillByDefault([this](absl::Span<ValueRef> values) {
     return delegated_->MakeTuple(values);
   });
+
+  ON_CALL(*this, Bundle)
+      .WillByDefault(
+          [this](absl::Span<ValueRef> values, ArrayCopySemantics semantics) {
+            return delegated_->Bundle(values, semantics);
+          });
+  ON_CALL(*this, ConcatBundles)
+      .WillByDefault(
+          [this](absl::Span<BundleRef> bundles, ArrayCopySemantics semantics) {
+            return delegated_->ConcatBundles(bundles, semantics);
+          });
   ON_CALL(*this, CancelExecution)
       .WillByDefault([this](xla::ifrt::LoadedExecutable::CancellationHandle
                                 cancellation_handle,

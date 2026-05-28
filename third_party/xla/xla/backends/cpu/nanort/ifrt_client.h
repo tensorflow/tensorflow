@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
@@ -171,6 +172,14 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
 
   absl::StatusOr<tsl::RCReference<ifrt::Tuple>> MakeTuple(
       absl::Span<ifrt::ValueRef> values) override;
+
+  absl::StatusOr<ifrt::BundleRef> Bundle(
+      absl::Span<ifrt::ValueRef> values,
+      ifrt::ArrayCopySemantics semantics) override;
+
+  absl::StatusOr<ifrt::BundleRef> ConcatBundles(
+      absl::Span<ifrt::BundleRef> bundles,
+      ifrt::ArrayCopySemantics semantics) override;
 
   void CancelExecution(
       xla::ifrt::LoadedExecutable::CancellationHandle cancellation_handle,

@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/pjrt/utils.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
@@ -1057,6 +1058,12 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
   }
   result.outputs = std::move(outputs);
   return result;
+}
+
+absl::StatusOr<LoadedExecutable::ExecuteBundleResult>
+PjRtLoadedExecutable::ExecuteBundle(absl::Span<BundleRef> args,
+                                    const ExecuteOptions& options) {
+  return absl::UnimplementedError("ExecuteBundle is not implemented.");
 }
 
 absl::StatusOr<std::optional<std::string>> PjRtLoadedExecutable::Fingerprint()

@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/basic_device_list.h"
+#include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/client_impl_util.h"
 #include "xla/python/ifrt/compiler.h"
@@ -939,6 +940,12 @@ class NanoExecutable final
     return result;
   }
 
+  absl::StatusOr<ifrt::LoadedExecutable::ExecuteBundleResult> ExecuteBundle(
+      absl::Span<ifrt::BundleRef> args,
+      const ifrt::ExecuteOptions& options) override {
+    return absl::UnimplementedError("ExecuteBundle is not implemented.");
+  }
+
   // Returns a fingerprint of this executable.
   absl::StatusOr<std::optional<std::string>> Fingerprint() const override {
     return absl::UnimplementedError("Fingerprint is not implemented.");
@@ -1498,6 +1505,16 @@ tsl::Future<> NanoIfrtClient::GetReadyFuture(
 absl::StatusOr<tsl::RCReference<ifrt::Tuple>> NanoIfrtClient::MakeTuple(
     absl::Span<ifrt::ValueRef> values) {
   return tsl::MakeRef<NanoTuple>(this, std::move(values));
+}
+
+absl::StatusOr<ifrt::BundleRef> NanoIfrtClient::Bundle(
+    absl::Span<ifrt::ValueRef> values, ifrt::ArrayCopySemantics semantics) {
+  return absl::UnimplementedError("Bundle is not implemented.");
+}
+
+absl::StatusOr<ifrt::BundleRef> NanoIfrtClient::ConcatBundles(
+    absl::Span<ifrt::BundleRef> bundles, ifrt::ArrayCopySemantics semantics) {
+  return absl::UnimplementedError("ConcatBundles is not implemented.");
 }
 
 absl::string_view NanoIfrtClient::runtime_type() const { return "nano"; }
