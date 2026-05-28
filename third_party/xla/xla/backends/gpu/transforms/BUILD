@@ -3034,6 +3034,7 @@ xla_cc_test(
     tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":scan_rewriter",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/service:pattern_matcher",
