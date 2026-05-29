@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
 
+#include <iterator>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/call_once.h"
@@ -27,8 +29,10 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "re2/re2.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/kernel_stats.h"
 #include "xla/stream_executor/semantic_version.h"
 
@@ -38,6 +42,36 @@ namespace {
 static constexpr absl::string_view kPtxasErrorPayloadKey = "ptxas_log";
 
 }  // namespace
+
+void AppendArchitectureSpecificPtxCompilerFlags(
+    const CudaComputeCapability& cc, GpuAsmOpts options,
+    bool dump_compilation_log, std::vector<std::string>& flags) {
+  flags.push_back(absl::StrCat("-arch=", cc.GetPtxAsTargetName()));
+  flags.push_back("--warn-on-spills");
+
+  if (dump_compilation_log) {
+    flags.push_back("-v");
+  }
+
+  AppendPtxCompilerFlags(std::move(options), flags);
+}
+
+void AppendPtxCompilerFlags(GpuAsmOpts options,
+                            std::vector<std::string>& flags) {
+  if (XlaGpuPtxCompilerExtraFlagsToPrepend != nullptr) {
+    const absl::Span<const absl::string_view> extra_flags =
+        XlaGpuPtxCompilerExtraFlagsToPrepend();
+
+    flags.insert(flags.end(), extra_flags.begin(), extra_flags.end());
+  }
+
+  if (options.disable_gpuasm_optimizations) {
+    flags.push_back("-O0");
+  }
+
+  flags.insert(flags.end(), std::move_iterator(options.extra_flags.begin()),
+               std::move_iterator(options.extra_flags.end()));
+}
 
 absl::Status PtxRegisterAllocationError(absl::string_view message) {
   absl::Status status = absl::ResourceExhaustedError(message);

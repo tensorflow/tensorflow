@@ -15,15 +15,23 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
 
+#include <string>
+#include <vector>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/attributes.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/kernel_stats.h"
 
 namespace stream_executor {
 namespace {
+
+using ::testing::ElementsAreArray;
 
 // When the compilation succeeds, then the error log is empty.
 constexpr absl::string_view kPtxasLogSuccessfulCompilation = R"(
@@ -131,6 +139,161 @@ TEST(PtxCompilerHelpersTest, ModuleStatsAreCorrectlyExtractedFromLog) {
   kernel_stats_map = ExtractModuleStatsFromLog(kPtxasLogSuccessfulCompilation);
   EXPECT_EQ(kernel_stats_map.size(), 0);
 }
+
+struct AppendPtxFlagsTestParam {
+  std::string test_name ABSL_REQUIRE_EXPLICIT_INIT;
+  bool disable_gpuasm_optimizations ABSL_REQUIRE_EXPLICIT_INIT;
+  std::vector<std::string> extra_flags ABSL_REQUIRE_EXPLICIT_INIT;
+  std::vector<std::string> expected_flags ABSL_REQUIRE_EXPLICIT_INIT;
+};
+
+using AppendPtxFlagsTest = testing::TestWithParam<AppendPtxFlagsTestParam>;
+
+TEST_P(AppendPtxFlagsTest, GeneratesExpectedFlags) {
+  const AppendPtxFlagsTestParam& param = GetParam();
+  GpuAsmOpts options;
+  options.disable_gpuasm_optimizations = param.disable_gpuasm_optimizations;
+  options.extra_flags = param.extra_flags;
+  std::vector<std::string> flags;
+  AppendPtxCompilerFlags(options, flags);
+  EXPECT_THAT(flags, ElementsAreArray(param.expected_flags));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    AppendPtxFlagsTests, AppendPtxFlagsTest,
+    testing::Values(
+        AppendPtxFlagsTestParam{/*test_name=*/"Default",
+                                /*disable_gpuasm_optimizations=*/false,
+                                /*extra_flags=*/{},
+                                /*expected_flags=*/{}},
+        AppendPtxFlagsTestParam{/*test_name=*/"DisableOptimizations",
+                                /*disable_gpuasm_optimizations=*/true,
+                                /*extra_flags=*/{},
+                                /*expected_flags=*/{"-O0"}},
+        AppendPtxFlagsTestParam{/*test_name=*/"ExtraFlags",
+                                /*disable_gpuasm_optimizations=*/false,
+                                /*extra_flags=*/{"--foo", "-bar"},
+                                /*expected_flags=*/{"--foo", "-bar"}},
+        AppendPtxFlagsTestParam{
+            /*test_name=*/"DisableOptimizationsAndExtraFlags",
+            /*disable_gpuasm_optimizations=*/true,
+            /*extra_flags=*/{"--foo", "-bar"},
+            /*expected_flags=*/{"-O0", "--foo", "-bar"}}),
+    [](const testing::TestParamInfo<AppendPtxFlagsTestParam>& info) {
+      return info.param.test_name;
+    });
+
+struct AppendArchFlagsTestParam {
+  std::string test_name ABSL_REQUIRE_EXPLICIT_INIT;
+  CudaComputeCapability cc ABSL_REQUIRE_EXPLICIT_INIT;
+  bool disable_gpuasm_optimizations ABSL_REQUIRE_EXPLICIT_INIT;
+  std::vector<std::string> extra_flags ABSL_REQUIRE_EXPLICIT_INIT;
+  bool dump_compilation_log ABSL_REQUIRE_EXPLICIT_INIT;
+  std::vector<std::string> expected_flags ABSL_REQUIRE_EXPLICIT_INIT;
+};
+
+using AppendArchFlagsTest = testing::TestWithParam<AppendArchFlagsTestParam>;
+
+TEST_P(AppendArchFlagsTest, GeneratesExpectedFlags) {
+  const AppendArchFlagsTestParam& param = GetParam();
+  GpuAsmOpts options;
+  options.disable_gpuasm_optimizations = param.disable_gpuasm_optimizations;
+  options.extra_flags = param.extra_flags;
+  std::vector<std::string> flags;
+  AppendArchitectureSpecificPtxCompilerFlags(param.cc, options,
+                                             param.dump_compilation_log, flags);
+  EXPECT_THAT(flags, ElementsAreArray(param.expected_flags));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    AppendArchFlagsTests, AppendArchFlagsTest,
+    testing::Values(
+        AppendArchFlagsTestParam{
+            /*test_name=*/"AmpereDefault",
+            /*cc=*/CudaComputeCapability::Ampere(),
+            /*disable_gpuasm_optimizations=*/false,
+            /*extra_flags=*/{},
+            /*dump_compilation_log=*/false,
+            /*expected_flags=*/{"-arch=sm_80", "--warn-on-spills"}},
+        AppendArchFlagsTestParam{
+            /*test_name=*/"AmpereDumpLog",
+            /*cc=*/CudaComputeCapability::Ampere(),
+            /*disable_gpuasm_optimizations=*/false,
+            /*extra_flags=*/{},
+            /*dump_compilation_log=*/true,
+            /*expected_flags=*/{"-arch=sm_80", "--warn-on-spills", "-v"}},
+        AppendArchFlagsTestParam{
+            /*test_name=*/"AmpereDisableOptimizations",
+            /*cc=*/CudaComputeCapability::Ampere(),
+            /*disable_gpuasm_optimizations=*/true,
+            /*extra_flags=*/{},
+            /*dump_compilation_log=*/false,
+            /*expected_flags=*/{"-arch=sm_80", "--warn-on-spills", "-O0"}},
+        AppendArchFlagsTestParam{
+            /*test_name=*/"AmpereDumpLogAndDisableOptimizations",
+            /*cc=*/CudaComputeCapability::Ampere(),
+            /*disable_gpuasm_optimizations=*/true,
+            /*extra_flags=*/{},
+            /*dump_compilation_log=*/true,
+            /*expected_flags=*/
+            {"-arch=sm_80", "--warn-on-spills", "-v", "-O0"}},
+        AppendArchFlagsTestParam{
+            /*test_name=*/"AmpereExtraFlags",
+            /*cc=*/CudaComputeCapability::Ampere(),
+            /*disable_gpuasm_optimizations=*/false,
+            /*extra_flags=*/{"--foo", "-bar"},
+            /*dump_compilation_log=*/false,
+            /*expected_flags=*/
+            {"-arch=sm_80", "--warn-on-spills", "--foo", "-bar"}},
+        AppendArchFlagsTestParam{
+            /*test_name=*/"AmpereDumpLogAndExtraFlags",
+            /*cc=*/CudaComputeCapability::Ampere(),
+            /*disable_gpuasm_optimizations=*/false,
+            /*extra_flags=*/{"--foo", "-bar"},
+            /*dump_compilation_log=*/true,
+            /*expected_flags=*/
+            {"-arch=sm_80", "--warn-on-spills", "-v", "--foo", "-bar"}},
+        AppendArchFlagsTestParam{
+            /*test_name=*/"AmpereDisableOptAndExtraFlags",
+            /*cc=*/CudaComputeCapability::Ampere(),
+            /*disable_gpuasm_optimizations=*/true,
+            /*extra_flags=*/{"--foo", "-bar"},
+            /*dump_compilation_log=*/false,
+            /*expected_flags=*/
+            {"-arch=sm_80", "--warn-on-spills", "-O0", "--foo", "-bar"}},
+        AppendArchFlagsTestParam{
+            /*test_name=*/"AmpereAllOptions",
+            /*cc=*/CudaComputeCapability::Ampere(),
+            /*disable_gpuasm_optimizations=*/true,
+            /*extra_flags=*/{"--foo", "-bar"},
+            /*dump_compilation_log=*/true,
+            /*expected_flags=*/
+            {"-arch=sm_80", "--warn-on-spills", "-v", "-O0", "--foo", "-bar"}},
+        AppendArchFlagsTestParam{
+            /*test_name=*/"HopperDefault",
+            /*cc=*/CudaComputeCapability::Hopper(),
+            /*disable_gpuasm_optimizations=*/false,
+            /*extra_flags=*/{},
+            /*dump_compilation_log=*/false,
+            /*expected_flags=*/{"-arch=sm_90", "--warn-on-spills"}},
+        AppendArchFlagsTestParam{
+            /*test_name=*/"HopperAllOptions",
+            /*cc=*/CudaComputeCapability::Hopper(),
+            /*disable_gpuasm_optimizations=*/true,
+            /*extra_flags=*/{"--foo", "-bar"},
+            /*dump_compilation_log=*/true,
+            /*expected_flags=*/
+            {"-arch=sm_90", "--warn-on-spills", "-v", "-O0", "--foo", "-bar"}},
+        AppendArchFlagsTestParam{
+            /*test_name=*/"BlackwellDefault",
+            /*cc=*/CudaComputeCapability::Blackwell(),
+            /*disable_gpuasm_optimizations=*/false,
+            /*extra_flags=*/{},
+            /*dump_compilation_log=*/false,
+            /*expected_flags=*/{"-arch=sm_100", "--warn-on-spills"}}),
+    [](const testing::TestParamInfo<AppendArchFlagsTestParam>& info) {
+      return info.param.test_name;
+    });
 
 }  // namespace
 }  // namespace stream_executor
