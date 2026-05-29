@@ -918,8 +918,7 @@ absl::Status RendezvousAfterInitialization(
       run_options.device_ordinal(), run_options.run_options().run_id().ToInt());
 
   return Rendezvous(
-      rendezvous_name, rendezvous_key,
-      num_local_participants,
+      rendezvous_name, rendezvous_key, num_local_participants,
       absl::Seconds(
           debug_options
               ? debug_options->xla_gpu_executable_warn_stuck_timeout_seconds()
@@ -1424,6 +1423,11 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
 }
 
 absl::Status GpuExecutable::VerboseAllocationError(absl::Status s) {
+  if (buffer_assignment_proto_.has_value()) {
+    return ResourceExhausted("%s\n%s\n", s.message(),
+                             buffer_assignment_proto_->debug_summary());
+  }
+  TF_RET_CHECK(buffer_assignment_ != nullptr);
   return ResourceExhausted(
       "%s\n%s\n", s.message(),
       buffer_assignment_->ToVerboseString(alias_info_.get(),
@@ -1662,7 +1666,7 @@ absl::Status GpuExecutable::ExecuteThunksWithVaRemapping(
 std::optional<BufferAssignmentProto> GpuExecutable::buffer_assignment_proto()
     const {
   if (buffer_assignment_ != nullptr) {
-    return buffer_assignment_->ToProto();
+    return GetBufferAssigmentProtoWithDebugSummary(*buffer_assignment_);
   }
   return buffer_assignment_proto_;
 }
@@ -1925,7 +1929,8 @@ absl::StatusOr<GpuExecutableProto> GpuExecutable::ToProto() const {
   }
 
   if (buffer_assignment_ != nullptr) {
-    *proto.mutable_buffer_assignment() = buffer_assignment_->ToProto();
+    *proto.mutable_buffer_assignment() =
+        GetBufferAssigmentProtoWithDebugSummary(*buffer_assignment_);
   } else if (buffer_assignment_proto_.has_value()) {
     *proto.mutable_buffer_assignment() = buffer_assignment_proto_.value();
   }
@@ -2095,6 +2100,13 @@ absl::Status GpuExecutable::DumpExecutableIfEnabled(
       WriteSplitExecutableAndOptions(dump_proto, std::move(writer)));
 
   return absl::OkStatus();
+}
+
+BufferAssignmentProto GpuExecutable::GetBufferAssigmentProtoWithDebugSummary(
+    const BufferAssignment& buffer_assignment) const {
+  std::string debug_summary = buffer_assignment.ToVerboseString(
+      alias_info_.get(), debug_buffer_assignment_show_max_);
+  return buffer_assignment.ToProto(debug_summary);
 }
 
 }  // namespace gpu

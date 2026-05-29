@@ -1283,13 +1283,15 @@ std::string BufferAssignment::BufferInfoString() const {
   return binfo;
 }
 
-BufferAssignmentProto BufferAssignment::ToProto() const {
+BufferAssignmentProto BufferAssignment::ToProto(
+    absl::string_view debug_summary) const {
   BufferAssignmentProto proto;
   ToProto(&proto);
   return proto;
 }
 
-void BufferAssignment::ToProto(BufferAssignmentProto* proto) const {
+void BufferAssignment::ToProto(BufferAssignmentProto* proto,
+                               absl::string_view debug_summary) const {
   // NOTE: DataflowAnalysis state is serialized here in BufferAssignment,
   // because we need to do the HasAllocation check for each buffer. Otherwise
   // the buffer_size_ call might fail for some backends.
@@ -1329,6 +1331,7 @@ void BufferAssignment::ToProto(BufferAssignmentProto* proto) const {
       proto_peak_buffers->add_logical_buffer_ids(buffer->id());
     }
   }
+  proto->set_debug_summary(debug_summary);
 }
 
 MemoryUsageReportProto BufferAssignment::GetMemoryUsageReportProto(
