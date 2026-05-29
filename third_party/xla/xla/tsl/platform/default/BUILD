@@ -632,6 +632,11 @@ filegroup(
 )
 
 filegroup(
+    name = "additional_mobile_hdrs_no_runtime",
+    visibility = internal_visibility(["//tensorflow/core/platform:__pkg__"]),
+)
+
+filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "env.cc",
