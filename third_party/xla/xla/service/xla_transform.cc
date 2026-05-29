@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/xla_transform.h"
 
+#include <atomic>
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -26,13 +28,19 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/compiler.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
+#include "xla/service/platform_util.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -92,6 +100,12 @@ absl::StatusOr<bool> ApplyXlaTransformsToModule(
   return changed;
 }
 
+ApplyXlaTransforms::ApplyXlaTransforms(HloXlaTransform::PipelineStage stage)
+    : stage_(stage) {
+  static std::atomic<int64_t> next_id{0};
+  name_ = absl::StrCat("apply-xla-transforms-", next_id.fetch_add(1));
+}
+
 absl::StatusOr<bool> ApplyXlaTransforms::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -109,6 +123,60 @@ absl::StatusOr<bool> ApplyXlaTransforms::RunImpl(
   VLOG(1) << "ApplyXlaTransforms EXIT";
   XLA_VLOG_LINES(1, module->ToString());
   return changed;
+}
+
+absl::StatusOr<xla::HloModuleMetadataProto> GetHloPassPipelineTrace(
+    const xla::HloModuleProto& proto) {
+  xla::DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  auto config_or =
+      xla::HloModule::CreateModuleConfigFromProto(proto, debug_options);
+  if (!config_or.ok()) {
+    return config_or.status();
+  }
+  xla::HloModuleConfig config = std::move(config_or.value());
+
+  auto module_or = xla::HloModule::CreateFromProto(proto, config);
+  if (!module_or.ok()) {
+    return module_or.status();
+  }
+  std::unique_ptr<xla::HloModule> module = std::move(module_or.value());
+
+  stream_executor::Platform* platform = nullptr;
+  auto default_platform_or = xla::PlatformUtil::GetDefaultPlatform();
+  if (default_platform_or.ok()) {
+    platform = default_platform_or.value();
+  } else {
+    std::vector<std::string> platforms = {"TPU", "CUDA", "Host"};
+    for (const auto& p_name : platforms) {
+      auto p_or = stream_executor::PlatformManager::PlatformWithName(p_name);
+      if (p_or.ok()) {
+        platform = p_or.value();
+        break;
+      }
+    }
+  }
+  if (platform == nullptr) {
+    return absl::NotFoundError("No platform found for compilation");
+  }
+
+  auto compiler_or = xla::Compiler::GetForPlatform(platform->id());
+  if (!compiler_or.ok()) {
+    return compiler_or.status();
+  }
+  std::unique_ptr<xla::Compiler> compiler = std::move(compiler_or.value());
+
+  xla::Compiler::CompileOptions compile_options;
+  // We pass nullptr as executor, as the TPU compiler's RunHloPasses
+  // doesn't require it (it gets target from module config).
+  auto optimized_module_or = compiler->RunHloPasses(
+      std::move(module), /*executor=*/nullptr, compile_options);
+  if (!optimized_module_or.ok()) {
+    return optimized_module_or.status();
+  }
+  std::unique_ptr<xla::HloModule> optimized_module =
+      std::move(optimized_module_or.value());
+
+  return optimized_module->metadata()->proto();
 }
 
 }  // namespace xla
