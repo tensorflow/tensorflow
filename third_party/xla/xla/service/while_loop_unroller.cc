@@ -415,18 +415,10 @@ bool IsLoopInductionVar(const HloInstruction* instr,
 
 // Recursively checks if the given instruction inside a while loop can be
 // expressed as a value range, possibly depending on the loop induction variable
-// of that while loop.
+// of that while loop. RecursivelyIdentifyRange follows fusion-Parameter edges
+// to the outer operand, so this works for instructions inside fusions too.
 std::optional<Range> IdentifyRangeAsFunctionOfInductionVar(
     const HloInstruction* instr, const WhileLoopConfig& config) {
-  if (instr->parent()->IsFusionComputation()) {
-    if (!Match(instr, match::Parameter())) {
-      return std::nullopt;
-    }
-    HloInstruction* caller_fusion = instr->parent()->FusionInstruction();
-    return IdentifyRangeAsFunctionOfInductionVar(
-        caller_fusion->operand(instr->parameter_number()), config);
-  }
-
   std::optional<Range> loop_range = MatchTrivialLoopRange(config.while_instr);
   if (loop_range == std::nullopt) {
     return std::nullopt;
