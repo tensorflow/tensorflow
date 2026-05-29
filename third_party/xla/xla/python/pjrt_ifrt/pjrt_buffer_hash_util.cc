@@ -66,16 +66,16 @@ struct State {
 // RAII object that updates the state when an inflight hashing completes.
 class InflightHashing {
  public:
-  InflightHashing(State& state, int64_t byte_size)
-      : state_(state), byte_size_(byte_size) {}
+  InflightHashing(std::shared_ptr<State> state, int64_t byte_size)
+      : state_(std::move(state)), byte_size_(byte_size) {}
 
   ~InflightHashing() {
-    absl::MutexLock lock(state_.mu);
-    state_.current_in_flight_byte_size -= byte_size_;
+    absl::MutexLock lock(state_->mu);
+    state_->current_in_flight_byte_size -= byte_size_;
   }
 
  private:
-  State& state_;
+  std::shared_ptr<State> state_;
   const int64_t byte_size_;
 };
 
@@ -96,7 +96,7 @@ absl::StatusOr<std::vector<uint64_t>> HashPjRtBuffers(
   }
 
   SchedClosureExecutor executor;
-  State state;
+  auto state = std::make_shared<State>();
 
   std::vector<tsl::Future<uint64_t>> futures;
   futures.reserve(pjrt_buffers.size());
@@ -109,18 +109,18 @@ absl::StatusOr<std::vector<uint64_t>> HashPjRtBuffers(
         element_byte_size * index_domains[i].shape().num_elements();
 
     {
-      absl::MutexLock lock(state.mu);
-      auto condition = [&]() ABSL_SHARED_LOCKS_REQUIRED(state.mu) {
+      absl::MutexLock lock(state->mu);
+      auto condition = [&]() ABSL_SHARED_LOCKS_REQUIRED(state->mu) {
         // If a single buffer is larger than the limit, we allow it to exceed
         // the limit, but only if there is no other inflight hashing.
         if (buffer_byte_size > max_inflight_memory) {
-          return state.current_in_flight_byte_size == 0;
+          return state->current_in_flight_byte_size == 0;
         }
-        return state.current_in_flight_byte_size + buffer_byte_size <=
+        return state->current_in_flight_byte_size + buffer_byte_size <=
                max_inflight_memory;
       };
-      state.mu.Await(absl::Condition(&condition));
-      state.current_in_flight_byte_size += buffer_byte_size;
+      state->mu.Await(absl::Condition(&condition));
+      state->current_in_flight_byte_size += buffer_byte_size;
     }
 
     auto inflight_hashing =
