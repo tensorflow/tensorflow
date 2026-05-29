@@ -64,7 +64,7 @@ __global__ void TransposeKernel(int nthreads, const T* __restrict__ src,
 
 template <typename T, bool conjugate>
 void TransposeSimple(const GPUDevice& d, const Tensor& in,
-                     const absl::Span<const int32> perm, Tensor* out) {
+                     const absl::Span<const int32_t> perm, Tensor* out) {
   // Ensures we can use 32-bit index.
   const int64_t nelem = in.NumElements();
   CHECK_LT(nelem, std::numeric_limits<int32_t>::max())
@@ -113,7 +113,7 @@ void TransposeSimple(const GPUDevice& d, const Tensor& in,
 template <typename T, bool conjugate = false>
 struct TransposeUsingTile {
   static bool run(const Eigen::GpuDevice& d, const Tensor& in,
-                  const absl::Span<const int32> perm, Tensor* out) {
+                  const absl::Span<const int32_t> perm, Tensor* out) {
     // First try to reduce the dimensions of the input tensor.
     TransposePermsVec new_perm;
     TransposeDimsVec new_dims;
@@ -162,7 +162,7 @@ struct TransposeUsingTile {
 template <bool conjugate>
 struct TransposeUsingTile<complex64, conjugate> {
   static bool run(const Eigen::GpuDevice& d, const Tensor& in,
-                  const absl::Span<const int32> perm, Tensor* out) {
+                  const absl::Span<const int32_t> perm, Tensor* out) {
     if (!conjugate) {
       return TransposeUsingTile<uint64_t>::run(d, in, perm, out);
     } else {
@@ -174,7 +174,7 @@ struct TransposeUsingTile<complex64, conjugate> {
 template <bool conjugate>
 struct TransposeUsingTile<complex128, conjugate> {
   static bool run(const Eigen::GpuDevice& d, const Tensor& in,
-                  const absl::Span<const int32> perm, Tensor* out) {
+                  const absl::Span<const int32_t> perm, Tensor* out) {
     if (!conjugate) {
       return TransposeUsingTile<float4>::run(d, in, perm, out);
     } else {
@@ -195,7 +195,7 @@ struct TransposeUsingTile<complex128, conjugate> {
 template <typename T, bool conjugate>
 struct Transpose<GPUDevice, T, conjugate> {
   static void run(const GPUDevice& d, const Tensor& in,
-                  const absl::Span<const int32> perm, Tensor* out) {
+                  const absl::Span<const int32_t> perm, Tensor* out) {
     if (in.dims() > 1 &&
         internal::TransposeUsingTile<T, conjugate>::run(d, in, perm, out)) {
       return;
@@ -221,7 +221,7 @@ struct Transpose<GPUDevice, T, conjugate> {
 template <bool conjugate>
 struct Transpose<GPUDevice, tstring, conjugate> {
   static void run(const GPUDevice& d, const Tensor& in,
-                  const absl::Span<const int32> perm, Tensor* out) {
+                  const absl::Span<const int32_t> perm, Tensor* out) {
     LOG(FATAL) << "Transpose of DT_STRING tensor not supported on GPU.";
   }
 };
@@ -231,12 +231,12 @@ template struct Transpose<GPUDevice, tstring, false>;
 
 template <>
 absl::Status DoTranspose(const GPUDevice& device, const Tensor& in,
-                         const absl::Span<const int32> perm, Tensor* out) {
+                         const absl::Span<const int32_t> perm, Tensor* out) {
   return internal::DoTransposeImpl(device, in, perm, /*conjugate=*/false, out);
 }
 template <>
 absl::Status DoConjugateTranspose(const GPUDevice& device, const Tensor& in,
-                                  const absl::Span<const int32> perm,
+                                  const absl::Span<const int32_t> perm,
                                   Tensor* out) {
   return internal::DoTransposeImpl(device, in, perm, /*conjugate=*/true, out);
 }
