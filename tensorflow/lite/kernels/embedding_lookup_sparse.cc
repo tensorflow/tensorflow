@@ -240,9 +240,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     // If we are in a new aggregation bucket and the combiner is not the sum,
     // go back and finalize the result of the previous bucket.
     if (output_offset != current_output_offset) {
-      FinalizeAggregation(params->combiner, num_elements, current_total_weight,
-                          current_squares_weight, embedding_size.Value(),
-                          &output_ptr[current_output_offset]);
+      if (current_output_offset >= 0 &&
+          static_cast<size_t>(current_output_offset) + embedding_size.Value() <=
+              output_size.Value()) {
+        FinalizeAggregation(params->combiner, num_elements, current_total_weight,
+                            current_squares_weight, embedding_size.Value(),
+                            &output_ptr[current_output_offset]);
+      }
 
       // Track next bucket.
       num_elements = 0;
@@ -269,9 +273,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   // Finalize last bucket.
-  FinalizeAggregation(params->combiner, num_elements, current_total_weight,
-                      current_squares_weight, embedding_size.Value(),
-                      &GetTensorData<float>(output)[current_output_offset]);
+  if (current_output_offset >= 0 &&
+      static_cast<size_t>(current_output_offset) + embedding_size.Value() <=
+          output_size.Value()) {
+    FinalizeAggregation(params->combiner, num_elements, current_total_weight,
+                        current_squares_weight, embedding_size.Value(),
+                        &GetTensorData<float>(output)[current_output_offset]);
+  }
 
   return kTfLiteOk;
 }
