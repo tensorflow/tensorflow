@@ -48,11 +48,11 @@ class CholeskyGrad : public LinearAlgebraOp<Scalar> {
                 errors::InvalidArgument("Expected two input matrices, got %d.",
                                         input_matrix_shapes.size()));
     OP_REQUIRES(context, input_matrix_shapes[0] == input_matrix_shapes[1],
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Inputs (L and grad) must have the same shape."));
-    OP_REQUIRES(context,
-                TensorShapeUtils::IsSquareMatrix(input_matrix_shapes[0]),
-                errors::InvalidArgument("Inputs must be a square matrices."));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsSquareMatrix(input_matrix_shapes[0]),
+        absl::InvalidArgumentError("Inputs must be a square matrices."));
   }
 
   TensorShapes GetOutputMatrixShapes(
