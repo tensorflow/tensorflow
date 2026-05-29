@@ -28,7 +28,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #if defined(PLATFORM_GOOGLE)
-#include "thread/executor.h"
+#include "third_party/gloop/thread/executor.h"
 #include "thread/signal.h"
 #endif
 
