@@ -17,21 +17,21 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "xla/backends/gpu/tests/gpu_codegen_test.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 namespace {
 
-class WithoutDotDimensionSorterTest : public GpuCodegenTest {
+class WithoutDotDimensionSorterTest : public HloPjRtTestBase {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
     // The pass is disabled here to preserve suboptimal dimension order in
     // 1) UnsortedDimsCreateTransposes to reveal the transposes.
     // 2) DimOrderCanBeChanged for the comparison of ordered vs unordered.
@@ -104,7 +104,7 @@ ENTRY e {
                                       /*run_hlo_passes=*/true));
 }
 
-using DotDimensionSorterTest = GpuCodegenTest;
+using DotDimensionSorterTest = HloPjRtTestBase;
 
 TEST_F(DotDimensionSorterTest, SortContractingDims) {
   const char* module_string = R"(
@@ -118,8 +118,8 @@ ENTRY e {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
   const auto& dims =
       module->entry_computation()->root_instruction()->dot_dimension_numbers();
 
@@ -129,8 +129,7 @@ ENTRY e {
   EXPECT_EQ(dims.rhs_contracting_dimensions(0), 2);
   EXPECT_EQ(dims.rhs_contracting_dimensions(1), 1);
 
-  TF_ASSERT_OK_AND_ASSIGN(bool modified,
-                          DotDimensionSorter().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool modified, DotDimensionSorter().Run(module.get()));
   EXPECT_TRUE(modified);
   const auto& dims2 =
       module->entry_computation()->root_instruction()->dot_dimension_numbers();
@@ -154,14 +153,12 @@ ENTRY e {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool modified,
-                          DotDimensionSorter().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool modified, DotDimensionSorter().Run(module.get()));
   EXPECT_FALSE(modified);
 }
 
 }  // namespace
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

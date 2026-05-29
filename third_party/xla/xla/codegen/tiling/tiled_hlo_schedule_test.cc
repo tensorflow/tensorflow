@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiling_specification.h"
@@ -47,7 +46,6 @@ namespace xla {
 namespace {
 
 using ::absl_testing::StatusIs;
-using ::mlir::AffineExpr;
 using ::testing::HasSubstr;
 
 class TiledHloScheduleTest : public HloHardwareIndependentTestBase {
@@ -322,7 +320,7 @@ ENTRY main {
   // Check that evaluating the scheduled indexing map yields a transposed
   // schedule across the non-contracting dimensions of the dot.
   for (int64_t i = 0; i < linear_iteration_space_size; ++i) {
-    mlir::AffineExpr pid = mlir::getAffineConstantExpr(i, &mlir_context_);
+    SymbolicExpr pid = CreateSymbolicConstant(i, &mlir_context_);
     llvm::SmallVector<int64_t> major_to_minor_indices =
         major_to_minor_scheduled_indexing.Evaluate({pid}, {});
     llvm::SmallVector<int64_t> transposed_indices =

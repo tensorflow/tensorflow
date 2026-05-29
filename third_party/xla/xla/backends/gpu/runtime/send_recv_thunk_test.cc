@@ -47,7 +47,8 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tests/hlo_test_base_legacy.h"
+#include "xla/stream_executor/sycl/sycl_platform_id.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/util.h"
@@ -279,6 +280,10 @@ ENTRY computation {
                           ParseAndReturnVerifiedModule(hlo_text, config));
 
   se::StreamExecutor* executor = backend().default_stream_executor();
+  // TODO(Intel-tf): To remove this check once command buffer is implemented.
+  if (executor->GetPlatform()->id() == se::sycl::kSyclPlatformId) {
+    GTEST_SKIP() << "Command buffer is not supported on SYCL platform yet.";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> compiled_module,
@@ -291,7 +296,7 @@ ENTRY computation {
                                        /*device_allocator=*/nullptr));
   // Downcast to GPU executable
   xla::gpu::GpuExecutable* gpu_executable =
-      tensorflow::down_cast<xla::gpu::GpuExecutable*>(executable.get());
+      absl::down_cast<GpuExecutable*>(executable.get());
   ASSERT_NE(gpu_executable, nullptr);
 
   // Get the thunk sequence and check its size and type
@@ -314,7 +319,7 @@ ENTRY computation {
     kinds.push_back(thunk->kind());
   }
   // Verify that the inner Thunks match the expected sequence from the HLO
-  EXPECT_THAT(kinds, UnorderedElementsAre(Kind::kReplicaId, Kind::kKernel,
+  EXPECT_THAT(kinds, UnorderedElementsAre(Kind::kReplicaId, Kind::kCustomKernel,
                                           Kind::kAsyncStart, Kind::kAsyncDone,
                                           Kind::kAsyncStart, Kind::kAsyncDone));
 }

@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -51,7 +52,9 @@ namespace {
 // Combines the elements of to_combine into a single AllReduce op. All
 // entries in to_combine must be AllReduce ops with exactly one operand
 // and the same reduction operation.
-absl::Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
+absl::Status CombineAllReduces(
+    absl::Span<HloInstruction* const> to_combine,
+    const AllReduceCombiner::PostCombineFn& post_combine = nullptr) {
   if (to_combine.size() < 2) {
     return absl::OkStatus();
   }
@@ -90,7 +93,11 @@ absl::Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
           /*constrain_layout=*/false, to_combine.front()->channel_id(),
           Cast<HloAllReduceInstruction>(to_combine.front())
               ->use_global_device_ids()));
-  combined->set_metadata(to_combine.front()->metadata());
+  combined->set_metadata(MergeMetadata(to_combine));
+  combined->set_frontend_attributes(MergeFrontendAttributes(to_combine));
+  if (post_combine != nullptr) {
+    RETURN_IF_ERROR(post_combine(to_combine, combined));
+  }
 
   // We have to propagate the sharding manually because Domain instructions are
   // not guaranteed to preserve it for side effecting instructions.
@@ -103,7 +110,7 @@ absl::Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
   for (int64_t i = 0; i < to_combine.size(); ++i) {
     auto replace_with = HloInstruction::CreateGetTupleElement(
         to_combine[i]->shape(), combined, i);
-    TF_RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
+    RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
         to_combine[i], std::move(replace_with)));
   }
   return absl::OkStatus();
@@ -131,6 +138,16 @@ absl::StatusOr<bool> AllReduceCombiner::RunWithKeyCombiner(
     absl::FunctionRef<std::optional<AllReduceCombiner::GroupKey>(
         const HloInstruction*, const HloDomainMap&)>
         combine_key) {
+  return RunWithKeyCombiner(module, execution_threads, combine_key, nullptr);
+}
+
+absl::StatusOr<bool> AllReduceCombiner::RunWithKeyCombiner(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    absl::FunctionRef<std::optional<AllReduceCombiner::GroupKey>(
+        const HloInstruction*, const HloDomainMap&)>
+        combine_key,
+    PostCombineFn post_combine) {
   VLOG(1) << "Running AllReduceCombiner with threshold of "
           << combine_threshold_in_bytes_ << " bytes";
 
@@ -148,7 +165,7 @@ absl::StatusOr<bool> AllReduceCombiner::RunWithKeyCombiner(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
+    ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
 
     auto key_fn = [&domain_map, &combine_key](const HloInstruction* instruction)
         -> std::optional<AllReduceCombiner::GroupKey> {
@@ -158,10 +175,13 @@ absl::StatusOr<bool> AllReduceCombiner::RunWithKeyCombiner(
       return combine_key(instruction, *domain_map);
     };
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         bool computation_changed,
         CombineInstructionsByKey<AllReduceCombiner::GroupKey>(
-            computation, key_fn, &CombineAllReduces,
+            computation, key_fn,
+            [&](absl::Span<HloInstruction* const> to_combine) -> absl::Status {
+              return CombineAllReduces(to_combine, post_combine);
+            },
             combine_threshold_in_bytes_, combine_threshold_count_));
     changed |= computation_changed;
   }

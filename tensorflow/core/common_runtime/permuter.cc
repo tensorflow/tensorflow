@@ -71,7 +71,7 @@ absl::Status Permuter::InitializeCollectiveContext(
 void Permuter::Run(StatusCallback done) {
   if (col_params_->instance.permutation.size() !=
       col_params_->instance.devices.size()) {
-    done(errors::Internal("Permutation must be the same size as devices"));
+    done(absl::InternalError("Permutation must be the same size as devices"));
   }
   done_ = std::move(done);
   DispatchSend(col_params_->default_rank,

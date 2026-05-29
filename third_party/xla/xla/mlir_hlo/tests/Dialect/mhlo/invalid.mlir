@@ -200,6 +200,18 @@ func.func @reduce_precision_no_m_num(%arg0: tensor<3x4xf32>) -> (tensor<3x4xf32>
 
 // -----
 
+func.func @scan_explicit_size_mismatch(%input: tensor<10xf32>, %init: tensor<f32>) -> tensor<10xf32> {
+  // expected-error @+1 {{'mhlo.scan' op invalid scan dimension size of operand 0}}
+  %0:2 = mhlo.scan (%input) inits (%init) dimension=0 attributes {scan_dim_size = 20 : i64} {
+  ^bb0(%input0: tensor<f32>, %carry0: tensor<f32>):
+    %1 = mhlo.add %input0, %carry0 : tensor<f32>
+    mhlo.return %1, %1 : tensor<f32>, tensor<f32>
+  } : (tensor<10xf32>, tensor<f32>) -> (tensor<10xf32>, tensor<f32>)
+  func.return %0#0 : tensor<10xf32>
+}
+
+// -----
+
 func.func @scan_body_returns_too_few_results(%input: tensor<10xf32>, %init: tensor<f32>) -> tensor<10xf32> {
   // expected-error @+2 {{'mhlo.scan' op failed to infer returned types}}
   // expected-error @+1 {{ScanOp body must return at least 1 values (carries)}}

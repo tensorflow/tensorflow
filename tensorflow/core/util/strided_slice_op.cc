@@ -82,15 +82,15 @@ template <class T>
 static absl::Status BuildDenseSpec(const StridedSliceSparseSpec& sparse,
                                    StridedSliceDenseSpec* dense) {
   if (dense->dims < 0) {
-    return errors::InvalidArgument("Unexpected negative dense.dims: %d",
-                                   dense->dims);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unexpected negative dense.dims: %d", dense->dims));
   }
 
   if (dense->dims >= 1024) {
     // We do not expect to see tensors with rank >= 1024, it must mean that
     // there is a bug somewhere.
-    return errors::InvalidArgument("Unexpected large dense.dims: %d",
-                                   dense->dims);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unexpected large dense.dims: %d", dense->dims));
   }
 
   // Build expanded begin, end, strides, begin_mask, end_mask
@@ -140,11 +140,12 @@ static absl::Status BuildDenseSpec(const StridedSliceSparseSpec& sparse,
       } else {
         if (full_index == dense->begin.size()) {
           if (dense->dims == 0) {
-            return errors::InvalidArgument("Attempting to slice scalar input.");
+            return absl::InvalidArgumentError(
+                "Attempting to slice scalar input.");
           }
-          return errors::InvalidArgument("Index out of range using input dim ",
-                                         full_index, "; input has only ",
-                                         dense->dims, " dims");
+          return absl::InvalidArgumentError(
+              absl::StrCat("Index out of range using input dim ", full_index,
+                           "; input has only ", dense->dims, " dims"));
         }
 
         // Gather slicing spec into appropriate index
@@ -196,7 +197,8 @@ absl::Status ValidateStridedSliceOp(
     StridedSliceShapeSpec* shape_spec) {
   if (input_shape.unknown_rank()) {
     // Note: If the rank is unknown, "input_shape.dims()" is -1.
-    return errors::InvalidArgument("Unexpected input_shape with unknown rank");
+    return absl::InvalidArgumentError(
+        "Unexpected input_shape with unknown rank");
   }
 
   const bool begin_is_wrong =
@@ -211,22 +213,22 @@ absl::Status ValidateStridedSliceOp(
   if (begin_is_wrong || end_is_wrong ||
       !TensorShapeUtils::IsVector(strides_tensor.shape())) {
     if (begin_tensor != nullptr && end_tensor != nullptr) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Expected begin, end, and strides to be 1D equal size tensors, ",
           "but got shapes ", begin_tensor->shape().DebugString(), ", ",
           end_tensor->shape().DebugString(), ", and ",
-          strides_tensor.shape().DebugString(), " instead.");
+          strides_tensor.shape().DebugString(), " instead."));
     } else {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Expected begin, end, and strides to be 1D equal size tensors, ",
           "but got shape ", strides_tensor.shape().DebugString(),
-          " for strides.");
+          " for strides."));
     }
   }
   // Use bit compares to ensure ellipsis_mask is 0 or a power of 2
   // i.e. there exists only no more than one ellipsis
   if (ellipsis_mask && ((ellipsis_mask & (ellipsis_mask - 1)) != 0)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Multiple ellipses in slice spec not allowed");
   }
 
@@ -302,7 +304,8 @@ absl::Status ValidateStridedSliceOp(
     int64_t& stride_i = (*strides)[i];
     int64_t dim_i = input_shape.dim_size(i);
     if (stride_i == 0) {
-      return errors::InvalidArgument("strides[", i, "] must be non-zero");
+      return absl::InvalidArgumentError(
+          absl::StrCat("strides[", i, "] must be non-zero"));
     }
     bool shrink_i = (dense_spec.shrink_axis_mask & (1 << i));
     if (dim_i == -1) {
@@ -327,7 +330,7 @@ absl::Status ValidateStridedSliceOp(
       }
     };
     if (shrink_i && stride_i <= 0) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "only stride 1 allowed on non-range indexing.");
     }
     (*is_simple_slice) &= stride_i == 1;
@@ -344,8 +347,8 @@ absl::Status ValidateStridedSliceOp(
         begin_i = x_fwd;
         end_i = begin_i + 1;
         if (x_fwd < 0 || x_fwd >= dim_i) {
-          return errors::InvalidArgument(
-              "slice index ", begin_i, " of dimension ", i, " out of bounds.");
+          return absl::InvalidArgumentError(absl::StrCat(
+              "slice index ", begin_i, " of dimension ", i, " out of bounds."));
         }
       } else {
         begin_i = canonical(begin_i, 0);
@@ -463,9 +466,10 @@ absl::Status ValidateStridedSliceOp(
   // Verify that the output shapes are fully known
   if (!partial_processing_shape.AsTensorShape(processing_shape) ||
       !partial_final_shape.AsTensorShape(final_shape)) {
-    return errors::Internal("ValidateStridedSliceOp returned partial shapes ",
-                            partial_processing_shape.DebugString(), " and ",
-                            partial_final_shape.DebugString());
+    return absl::InternalError(
+        absl::StrCat("ValidateStridedSliceOp returned partial shapes ",
+                     partial_processing_shape.DebugString(), " and ",
+                     partial_final_shape.DebugString()));
   }
   return absl::OkStatus();
 }

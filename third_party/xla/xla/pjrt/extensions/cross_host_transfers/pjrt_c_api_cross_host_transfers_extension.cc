@@ -30,9 +30,9 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_common.h"
 #include "xla/shape.h"
 
 namespace pjrt {
@@ -80,9 +80,9 @@ xla::PjRtCrossHostRecvNotifier CCrossHostRecvNotifierToCpp(
           auto cpp_on_canceled = [user_arg = on_canceled_user_arg,
                                   on_canceled =
                                       on_canceled](absl::Status status) {
-            auto error = new PJRT_Error{status};
+            auto error = StatusToPjRtError(status);
             on_canceled(error, user_arg);
-            delete error;
+            DestroyPjRtError(error);
           };
           return cpp_cancel_notifier(std::move(serialized_descriptor_str),
                                      std::move(state),
@@ -102,10 +102,10 @@ xla::PjRtCrossHostRecvNotifier CCrossHostRecvNotifierToCpp(
                                 on_canceled_user_arg);
         };
     if (!recv_state.ok()) {
-      auto error = new PJRT_Error{recv_state.status()};
+      auto error = StatusToPjRtError(recv_state.status());
       notifier(error, nullptr, nullptr, 0, user_arg, cancel_notifier,
                cancel_notifier_function);
-      delete error;
+      DestroyPjRtError(error);
       return;
     }
     // Convert serialized descriptors to char*.
@@ -329,25 +329,40 @@ void PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice(
   xla::Future<std::string> future(std::move(serialized_descriptor));
 #else
   auto [promise, future] = xla::MakePromise<std::string>();
+
+  PJRT_Transfers_DescriptorDestructor destructor = nullptr;
+  // PJRT_API_CROSS_HOST_TRANSFERS_EXTENSION_VERSION 6 introduced the
+  // `descriptor_destructor` field. We check the runtime struct size to
+  // handle clients compiled with older versions of the header.
+  if (args->struct_size >=
+      PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice_Args_STRUCT_SIZE) {
+    destructor = args->descriptor_destructor;
+  }
+  if (destructor == nullptr) {
+    destructor = [](char** d, size_t* s) {
+      delete d;
+      delete s;
+    };
+  }
+
   if (args->event == nullptr) {
     // If `event` is not provided, populate the descriptor data synchronously.
     std::string serialized_descriptor = std::string(
         *args->serialized_descriptor, *args->serialized_descriptor_size);
     promise.Set(std::move(serialized_descriptor));
-    delete args->serialized_descriptor;
-    delete args->serialized_descriptor_size;
+    destructor(args->serialized_descriptor, args->serialized_descriptor_size);
   } else {
-    args->event->future.OnReady(
-        [promise = std::move(promise), descriptor = args->serialized_descriptor,
-         size = args->serialized_descriptor_size](absl::Status status) mutable {
-          if (status.ok()) {
-            promise.Set(std::string(*descriptor, *size));
-          } else {
-            promise.Set(status);
-          }
-          delete descriptor;
-          delete size;
-        });
+    args->event->future.OnReady([promise = std::move(promise),
+                                 descriptor = args->serialized_descriptor,
+                                 size = args->serialized_descriptor_size,
+                                 destructor](absl::Status status) mutable {
+      if (status.ok()) {
+        promise.Set(std::string(*descriptor, *size));
+      } else {
+        promise.Set(status);
+      }
+      destructor(descriptor, size);
+    });
 
     future.GetReadyFuture().OnReady([event = args->event](absl::Status status) {
       CHECK_OK(status);
@@ -364,9 +379,9 @@ void PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice(
   xla::PjRtBuffer::RemoteSendCallback on_done =
       [user_arg = args->on_done.user_arg, on_done = args->on_done.on_done](
           absl::Status status, bool sends_were_enqueued) {
-        auto error = new PJRT_Error{status};
+        auto error = StatusToPjRtError(status);
         on_done(error, sends_were_enqueued, user_arg);
-        delete error;
+        DestroyPjRtError(error);
       };
 
   args->buffer->buffer->CopyToRemoteDevice(future, on_done);

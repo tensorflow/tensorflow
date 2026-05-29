@@ -62,7 +62,7 @@ SparseToDenseSPMDExpander::ComputeLayoutBackward(
 
   Layout output_layout = output_layouts.lookup(0);
   if (output_layout.mesh().is_tpu_mesh()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Layout for SparseToDenseOp must not be on TPU Mesh.");
   }
   return llvm::DenseMap<int, Layout>({{0, output_layout}});

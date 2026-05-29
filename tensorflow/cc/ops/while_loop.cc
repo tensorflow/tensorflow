@@ -106,9 +106,9 @@ absl::Status CreateCond(const Scope& scope, const CondGraphBuilderFn& cond,
   TF_RETURN_IF_ERROR(scope.graph()->IsValidOutputTensor(raw_cond_out.node(),
                                                         raw_cond_out.index()));
   if (raw_cond_out.type() != DT_BOOL) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "BuildWhileLoop: 'cond' argument must return a boolean output, got ",
-        DataTypeString(raw_cond_out.type()));
+        DataTypeString(raw_cond_out.type())));
   }
   // TODO(skyewm): check that raw_cond_out is scalar
 
@@ -131,9 +131,9 @@ absl::Status CreateBody(const Scope& scope, const BodyGraphBuilderFn& body,
 
   const size_t num_loop_vars = inputs.size();
   if (outputs->size() != num_loop_vars) {
-    return errors::InvalidArgument(
-        "BuildWhileLoop: 'body' argument expected to return ", num_loop_vars,
-        " output(s), got ", outputs->size());
+    return absl::InvalidArgumentError(
+        absl::StrCat("BuildWhileLoop: 'body' argument expected to return ",
+                     num_loop_vars, " output(s), got ", outputs->size()));
   }
   for (const Output& output : *outputs) {
     TF_RETURN_IF_ERROR(

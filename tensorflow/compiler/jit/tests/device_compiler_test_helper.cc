@@ -158,7 +158,7 @@ DeviceCompilerSerializeTest::AlterPersistentCacheEntryHloModuleNames(
   }
 
   if (!altered) {
-    return errors::NotFound(
+    return absl::NotFoundError(
         "Did not find any persistent XLA compilation cache entries to alter.");
   }
   return absl::OkStatus();

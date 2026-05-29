@@ -23,9 +23,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/AsmParser/AsmParser.h"
-#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -33,7 +33,6 @@ limitations under the License.
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Location.h"
@@ -42,9 +41,11 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
+#include "xla/codegen/emitters/ir/xla_dialect.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
@@ -67,10 +68,9 @@ class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
   ElementalHloToMlirTest() {
     mlir_context_.loadDialect<
         mlir::tensor::TensorDialect, mlir::func::FuncDialect,
-        mlir::affine::AffineDialect, mlir::arith::ArithDialect,
-        mlir::math::MathDialect, mlir::scf::SCFDialect, mlir::mhlo::MhloDialect,
-        mlir::LLVM::LLVMDialect, mlir::DLTIDialect, xla::XlaDialect,
-        xla::gpu::XlaGpuDialect>();
+        mlir::arith::ArithDialect, mlir::math::MathDialect,
+        mlir::scf::SCFDialect, mlir::mhlo::MhloDialect, mlir::LLVM::LLVMDialect,
+        mlir::DLTIDialect, xla::XlaDialect, xla::gpu::XlaGpuDialect>();
     RegisterSymbolicExprStorage(&mlir_context_);
   }
 
@@ -112,14 +112,14 @@ class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
     auto& entry_pc =
         partitioned_computations.FindPartitionedComputation(entry_computation);
     auto call_targets = partitioned_computations.CreateCallTargetProvider(fns);
-    TF_RETURN_IF_ERROR(
-        SubgraphToMlirFunction(entry_pc, entry_pc.GetRootSubgraph(), entry_func,
-                               call_targets, &mlir_context_));
+    RETURN_IF_ERROR(SubgraphToMlirFunction(entry_pc, entry_pc.GetRootSubgraph(),
+                                           entry_func, call_targets,
+                                           &mlir_context_));
 
     if (!partitioned_computations.epilogues().empty()) {
       const auto& epilogue = partitioned_computations.epilogues().front();
-      TF_RETURN_IF_ERROR(SubgraphToMlirFunction(
-          entry_pc, epilogue, fns[&epilogue], call_targets, &mlir_context_));
+      RETURN_IF_ERROR(SubgraphToMlirFunction(entry_pc, epilogue, fns[&epilogue],
+                                             call_targets, &mlir_context_));
     }
 
     // Canonicalize and CSE for better readability of check tests.
@@ -132,8 +132,7 @@ class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
     llvm::raw_string_ostream stream(out);
     stream << module.get();
 
-    TF_ASSIGN_OR_RETURN(auto filecheck_result,
-                        RunFileCheck(out, filecheck_str));
+    ASSIGN_OR_RETURN(auto filecheck_result, RunFileCheck(out, filecheck_str));
     TF_RET_CHECK(filecheck_result);
     return absl::OkStatus();
   }
@@ -497,7 +496,7 @@ TEST_F(ElementalHloToMlirTest, Pad) {
     // CHECK-DAG:    %[[C4:.*]] = arith.constant 4
     // CHECK-DAG:    %[[C7:.*]] = arith.constant 7
     // CHECK:        %[[CONSTRAINT_VAL:.*]] = xla.apply_indexing
-    // CHECK-SAME:     <"(d0) -> ((d0 - 1) mod 2), domain: d0 in [1, 7]">(%[[X]])
+    // CHECK-SAME:     <"(d0) -> ((d0 + 1) mod 2), domain: d0 in [1, 7]">(%[[X]])
     // CHECK:        %[[CONSTRAINT:.*]] = arith.cmpi eq, %[[CONSTRAINT_VAL]], %[[C0]]
     // CHECK:        %[[X_L:.*]] = arith.cmpi sge, %[[X]], %[[C1]]
     // CHECK:        %[[X_H:.*]] = arith.cmpi sle, %[[X]], %[[C7]]
@@ -539,7 +538,7 @@ TEST_F(ElementalHloToMlirTest, PadUnsigned) {
     // CHECK-DAG:    %[[C4:.*]] = arith.constant 4
     // CHECK-DAG:    %[[C7:.*]] = arith.constant 7
     // CHECK:        %[[CONSTRAINT_VAL:.*]] = xla.apply_indexing
-    // CHECK-SAME:     <"(d0) -> ((d0 - 1) mod 2), domain: d0 in [1, 7]">(%[[X]])
+    // CHECK-SAME:     <"(d0) -> ((d0 + 1) mod 2), domain: d0 in [1, 7]">(%[[X]])
     // CHECK:        %[[CONSTRAINT:.*]] = arith.cmpi eq, %[[CONSTRAINT_VAL]], %[[C0]]
     // CHECK:        %[[X_L:.*]] = arith.cmpi sge, %[[X]], %[[C1]]
     // CHECK:        %[[X_H:.*]] = arith.cmpi sle, %[[X]], %[[C7]]
@@ -1387,8 +1386,8 @@ class ElementalHloToMlirEpilogueTest : public ElementalHloToMlirTest {
       epilogue.roots.push_back(entry->GetInstructionWithName("add"));
       epilogue.index_ranges = {2, 16, 17};
       epilogue.root_indexing.push_back(
-          IndexingMap{mlir::AffineMap::getMultiDimIdentityMap(3, &mlir_context_)
-                          .getSubMap({0, 2, 1}),
+          IndexingMap{SymbolicMap::GetMultiDimIdentityMap(3, &mlir_context_)
+                          .GetSubMap({0, 2, 1}),
                       DimVarsFromTensorSizes({2, 17, 17}),
                       {},
                       {}});

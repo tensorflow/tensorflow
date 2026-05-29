@@ -112,6 +112,9 @@ struct PassConfig {
   // but it may cause incorrect results when broadcasting ops are introduced by
   // explicit broadcasting in the source model.
   bool unsafe_fuse_dynamic_shaped_broadcast = false;
+
+  // When set to true, enable unsafe single batch rank reduction.
+  bool unsafe_single_batch_rank_reduction = false;
 };
 
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
@@ -146,7 +149,8 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
             << "\nmodel_origin_framework: "
             << tflite::ConverterFlags::ModelOriginFramework_Name(
                    pass_config.model_origin_framework)
-            << "\n";
+            << "\nunsafe_single_batch_rank_reduction: "
+            << pass_config.unsafe_single_batch_rank_reduction << "\n";
 }
 
 }  // namespace TFL

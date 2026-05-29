@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "third_party/nccl/nccl.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/stream_executor/device_address.h"
 
@@ -35,7 +36,14 @@ class NcclSymmetricMemory final : public SymmetricMemory {
   static absl::StatusOr<std::unique_ptr<NcclSymmetricMemory>> Create(
       ncclComm_t comm, stream_executor::DeviceAddressBase addr);
 
-  stream_executor::DeviceAddressBase addr() const override { return addr_; }
+  stream_executor::DeviceAddressBase addr() const final;
+  absl::StatusOr<stream_executor::DeviceAddressBase> multimem_addr()
+      const final;
+
+  absl::StatusOr<stream_executor::DeviceAddressBase> peer_addr(
+      RankId peer) const final;
+
+  ncclWindow_t win() const { return win_; }
 
   std::string ToString() const final;
 

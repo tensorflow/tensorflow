@@ -186,20 +186,21 @@ TEST(CommonTest, ParseInvalidDeploymentMode) {
 }
 
 TEST(CommonTest, IsPreemptedError) {
-  EXPECT_TRUE(IsPreemptedError(errors::Aborted("Aborted")));
-  EXPECT_TRUE(IsPreemptedError(errors::Cancelled("Cancelled")));
-  EXPECT_TRUE(IsPreemptedError(errors::Unavailable("Unavailable")));
+  EXPECT_TRUE(IsPreemptedError(absl::AbortedError("Aborted")));
+  EXPECT_TRUE(IsPreemptedError(absl::CancelledError("Cancelled")));
+  EXPECT_TRUE(IsPreemptedError(absl::UnavailableError("Unavailable")));
   EXPECT_FALSE(IsPreemptedError(absl::OkStatus()));
 }
 
 TEST(CommonTest, IsPermanentError) {
   EXPECT_FALSE(
-      IsPreemptedError(errors::FailedPrecondition("Failed precondition")));
-  EXPECT_FALSE(IsPreemptedError(errors::Internal("Internal")));
-  EXPECT_FALSE(IsPreemptedError(errors::InvalidArgument("Invalid argument")));
-  EXPECT_FALSE(IsPreemptedError(errors::NotFound("Not found")));
-  EXPECT_FALSE(IsPreemptedError(errors::OutOfRange("Out of range")));
-  EXPECT_FALSE(IsPreemptedError(errors::Unknown("Unknown")));
+      IsPreemptedError(absl::FailedPreconditionError("Failed precondition")));
+  EXPECT_FALSE(IsPreemptedError(absl::InternalError("Internal")));
+  EXPECT_FALSE(
+      IsPreemptedError(absl::InvalidArgumentError("Invalid argument")));
+  EXPECT_FALSE(IsPreemptedError(absl::NotFoundError("Not found")));
+  EXPECT_FALSE(IsPreemptedError(absl::OutOfRangeError("Out of range")));
+  EXPECT_FALSE(IsPreemptedError(absl::UnknownError("Unknown")));
 }
 }  // namespace
 }  // namespace data

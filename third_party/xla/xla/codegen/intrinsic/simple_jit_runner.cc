@@ -81,7 +81,8 @@ JitRunner::JitRunner(std::unique_ptr<llvm::Module> module,
   auto jit_builder = llvm::orc::LLJITBuilder();
   if (perf_listener_ != nullptr) {
     jit_builder = std::move(jit_builder.setObjectLinkingLayerCreator(
-        [&](llvm::orc::ExecutionSession& ES) {
+        [&](llvm::orc::ExecutionSession& ES,
+            llvm::jitlink::JITLinkMemoryManager& /*MemMgr*/) {
           auto obj_layer =
               std::make_unique<llvm::orc::RTDyldObjectLinkingLayer>(
                   ES, [](const llvm::MemoryBuffer& _) {

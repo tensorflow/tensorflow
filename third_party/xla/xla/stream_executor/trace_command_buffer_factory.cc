@@ -21,10 +21,11 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -33,7 +34,7 @@ TraceCommandBufferFactory::Create(
     StreamExecutor* executor,
     absl::AnyInvocable<absl::Status(Stream*)> function,
     CommandBuffer::Mode mode) {
-  TF_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
+  ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
   stream->SetName("Command buffer tracer");
   return TraceCommandBufferFactory::Create(executor, stream.get(),
                                            std::move(function), mode);
@@ -49,13 +50,13 @@ TraceCommandBufferFactory::Create(
         "Can't trace command buffer on a null stream");
 
   // Prepare an empty command buffer instance.
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<CommandBuffer> command_buffer,
-                      executor->CreateCommandBuffer(mode));
+  ASSIGN_OR_RETURN(std::unique_ptr<CommandBuffer> command_buffer,
+                   executor->CreateCommandBuffer(mode));
 
   // Trace and finalize the command buffer.
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       command_buffer->Trace(stream, [&]() { return function(stream); }));
-  TF_RETURN_IF_ERROR(command_buffer->Finalize());
+  RETURN_IF_ERROR(command_buffer->Finalize());
 
   return command_buffer;
 }

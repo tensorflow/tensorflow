@@ -36,6 +36,7 @@
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
@@ -103,6 +104,9 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
       absl::Span<const xla::ifrt::ArraySpec> specs,
       xla::ifrt::ArrayCopySemantics semantics) override;
 
+  tsl::Future<std::vector<uint64_t>> HashValues(
+      absl::Span<const ValueRef> values, HashMode mode) override;
+
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> ReshardArrays(
       absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
       ArrayCopySemantics semantics) override;
@@ -113,6 +117,18 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
       absl::Span<ValueRef> values) override {
     return absl::UnimplementedError(
         "MakeTuple is not supported for the IFRT proxy client.");
+  }
+
+  absl::StatusOr<BundleRef> Bundle(absl::Span<ValueRef> values,
+                                   ArrayCopySemantics semantics) override {
+    return absl::UnimplementedError(
+        "Bundle is not supported for the IFRT proxy client.");
+  }
+
+  absl::StatusOr<BundleRef> ConcatBundles(
+      absl::Span<BundleRef> bundles, ArrayCopySemantics semantics) override {
+    return absl::UnimplementedError(
+        "ConcatBundles is not supported for the IFRT proxy client.");
   }
 
   // TODO(b/474143687) add cancellation to proxy.

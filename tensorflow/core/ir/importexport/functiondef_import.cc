@@ -73,7 +73,7 @@ class ValueMapManager {
       Operation* placeholder = base_operation[0].getDefiningOp();
       if (!placeholder ||
           placeholder->getName().getStringRef() != "tfg.__mlir_placeholder")
-        return InvalidArgument(absl::StrCat(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Duplicated node (or function argument) with the same name: `",
             node_name.str(), "`"));
 
@@ -113,8 +113,8 @@ class ValueMapManager {
                       1))
             output_num = value;
           else
-            return InvalidArgument("Output index ", value,
-                                   " is invalid (too large)");
+            return absl::InvalidArgumentError(absl::StrCat(
+                "Output index ", value, " is invalid (too large)"));
         }
         output_name = output_name.take_front(colon_sep);
       }
@@ -140,7 +140,7 @@ class ValueMapManager {
       // Guard against accessing OOB. This probably should have been caught
       // earlier.
       if (base_operation.size() == 1)
-        return InvalidArgument(
+        return absl::InvalidArgumentError(
             "Requested result from op that produces no values, but not "
             "considered control dep");
 
@@ -181,12 +181,13 @@ Status ImportNodes(ValueMapManager value_manager,
   // Process every node and create a matching MLIR operation
   for (const NodeDef& node : nodes) {
     DVLOG(1) << "Processing node " << node.name() << "\n";
-    if (node.op().empty()) return InvalidArgument("empty op type");
+    if (node.op().empty()) return absl::InvalidArgumentError("empty op type");
     OperationState state(unknown_loc, absl::StrCat("tfg.", node.op()));
     // Fetch the inputs, creating placeholder if an input hasn't been visited.
     for (const std::string& input : node.input()) {
       if (input.empty())
-        return InvalidArgument("Node '", node.name(), "' has an empty input");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Node '", node.name(), "' has an empty input"));
       TF_ASSIGN_OR_RETURN(Value value,
                           value_manager.GetValueOrCreatePlaceholder(input));
       state.operands.push_back(value);
@@ -226,7 +227,7 @@ Status ImportNodes(ValueMapManager value_manager,
   // We don't expect any placeholder left at this point, fail if any.
   for (Operation& op : *builder.getInsertionBlock()) {
     if (op.getName().getStringRef() == "tfg.__mlir_placeholder") {
-      return InvalidArgument(absl::StrCat(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Couldn't import graph: placeholder left ",
           op.getAttrOfType<StringAttr>(name_attr).getValue().str()));
     }
@@ -286,7 +287,7 @@ Status ImportGenericFunction(
   NamedAttrList attrs;
   DictionaryAttr func_attrs = builder.getDictionaryAttr({});
   if (signature.name().empty())
-    return InvalidArgument("generic function without a name");
+    return absl::InvalidArgumentError("generic function without a name");
   attrs.append("sym_name", builder.getStringAttr(signature.name()));
   attrs.append("generic", builder.getUnitAttr());
   if (!signature.description().empty())
@@ -304,7 +305,8 @@ Status ImportGenericFunction(
     for (const OpDef_AttrDef& attr : signature.attr()) {
       NamedAttrList attr_def;
       if (attr.name().empty())
-        return InvalidArgument("Missing name for function attribute");
+        return absl::InvalidArgumentError(
+            "Missing name for function attribute");
       if (!attr.type().empty())
         attr_def.append(builder.getNamedAttr(
             "function_type", builder.getStringAttr(attr.type())));
@@ -353,7 +355,7 @@ Status ImportGenericFunction(
   // infrastructure expectations.
   for (const auto& namedAttr : func.attr()) {
     if (namedAttr.first.empty())
-      return InvalidArgument("Invalid function attribute name");
+      return absl::InvalidArgumentError("Invalid function attribute name");
     const std::string& name = "tf." + namedAttr.first;
     const AttrValue& tf_attr = namedAttr.second;
     TF_ASSIGN_OR_RETURN(Attribute attr,
@@ -457,7 +459,8 @@ Status ImportGenericFunction(
   llvm::StringMap<int> output_name_to_position;
   for (const OpDef::ArgDef& output : signature.output_arg()) {
     if (output_name_to_position.count(output.name()))
-      return InvalidArgument("Duplicated output_arg entry", output.name());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Duplicated output_arg entry", output.name()));
     output_name_to_position[output.name()] = res_num;
     ++res_num;
   }
@@ -465,7 +468,8 @@ Status ImportGenericFunction(
   llvm::StringMap<int> control_output_to_position;
   for (const std::string& output : signature.control_output()) {
     if (control_output_to_position.count(output))
-      return InvalidArgument("Duplicated control_output entry", output);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Duplicated control_output entry", output));
     control_output_to_position[output] = res_num;
     ++res_num;
   }
@@ -478,14 +482,14 @@ Status ImportGenericFunction(
   for (const auto& ret_val : func.ret()) {
     auto position = output_name_to_position.find(ret_val.first);
     if (position == output_name_to_position.end()) {
-      return InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Can't import function, returned value references unknown output "
           "argument ",
-          ret_val.first);
+          ret_val.first));
     }
     if (ret_val.second.empty()) {
-      return InvalidArgument("Function '", func.signature().name(),
-                             "' has empty result name");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Function '", func.signature().name(), "' has empty result name"));
     }
     TF_ASSIGN_OR_RETURN(
         ret_vals[position->second],
@@ -494,28 +498,30 @@ Status ImportGenericFunction(
   for (const auto& ret_val : func.control_ret()) {
     auto position = control_output_to_position.find(ret_val.first);
     if (position == control_output_to_position.end()) {
-      return InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Can't import function, returned value references unknown output "
           "argument ",
-          ret_val.first);
+          ret_val.first));
     }
     if (ret_val.second.empty()) {
-      return InvalidArgument("Function '", func.signature().name(),
-                             "' has empty control result name");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Function '", func.signature().name(),
+                       "' has empty control result name"));
     }
     TF_ASSIGN_OR_RETURN(Value result, value_manager.GetValueOrCreatePlaceholder(
                                           (Twine("^") + ret_val.second).str()));
     if (!mlir::isa<ControlType>(result.getType()))
-      return InvalidArgument("failed to map returned value ", ret_val.second,
-                             ", isn't a control output");
+      return absl::InvalidArgumentError(
+          absl::StrCat("failed to map returned value ", ret_val.second,
+                       ", isn't a control output"));
     ret_vals[func.ret_size() + position->second] = result;
   }
   // Check that all the of the return operands have been populated.
   for (const auto& indexed_val : llvm::enumerate(ret_vals)) {
     if (indexed_val.value()) continue;
-    return InvalidArgument(
-        "Failed to import function, missing output for position ",
-        indexed_val.index());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Failed to import function, missing output for position ",
+                     indexed_val.index()));
   }
   MutableArrayRef<Value> operands = ret_vals;
   ReturnOp ret_op = ReturnOp::create(body_builder, unknown_loc,

@@ -1,4 +1,4 @@
-// RUN: xla-opt %s --tritongpu-optimize-dot-operands
+// RUN: xla-opt %s --tritongpu-optimize-dot-operands -verify-diagnostics
 
 // Verify fix for b/439549903.
 

@@ -35,8 +35,11 @@ cc_library(
     hdrs = ["lowering_utils.h"],
     deps = [
         "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/strings:str_format",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMCommonConversion",
         "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:MathDialect",
     ],
 )
 
@@ -275,6 +278,7 @@ cc_library(
         "//xla/codegen/emitters/ir:xla",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/analysis:symbolic_map",
+        "//xla/hlo/analysis:symbolic_map_converter",
         "@com_google_absl//absl/base:core_headers",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",

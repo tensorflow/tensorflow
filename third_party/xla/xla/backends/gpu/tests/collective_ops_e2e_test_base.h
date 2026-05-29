@@ -104,10 +104,12 @@ class CollectiveOpsE2ETestBase : public gpu::HloPjRtGpuTestBase {
 class CollectiveOpsWithFlagsBase : public CollectiveOpsE2ETestBase {
  public:
   CollectiveOpsWithFlagsBase(bool enable_async, bool enable_p2p_memcpy,
-                             size_t memory_size, size_t collectives_memory_size)
+                             bool enable_symmetric_buffer, size_t memory_size,
+                             size_t collectives_memory_size)
       : CollectiveOpsE2ETestBase(memory_size, collectives_memory_size),
         enable_async_(enable_async),
-        enable_p2p_memcpy_(enable_p2p_memcpy) {}
+        enable_p2p_memcpy_(enable_p2p_memcpy),
+        enable_symmetric_buffer_(enable_symmetric_buffer) {}
 
  protected:
   DebugOptions GetDebugOptionsForTest() const override;
@@ -118,6 +120,7 @@ class CollectiveOpsWithFlagsBase : public CollectiveOpsE2ETestBase {
 
   const bool enable_async_;
   const bool enable_p2p_memcpy_;
+  const bool enable_symmetric_buffer_;
 };
 
 }  // namespace xla

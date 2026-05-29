@@ -19,8 +19,10 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassOptions.h"
 #include "mlir/Pass/PassRegistry.h"
+#include "shardy/dialect/sdy/transforms/import/passes.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/test_utils/stablehlo_to_hlo_to_stablehlo.h"
+#include "xla/service/spmd/shardy/utils.h"
 
 namespace xla {
 namespace sdy {
@@ -55,6 +57,15 @@ void registerSdyRoundTripTestingPipeline() {
       "Run Shardy export pipeline, then convert to HLO, then convert to "
       "StableHLO, then import back to Shardy",
       sdyRoundTripTestingPipeline);
+}
+
+void registerTestFlattenCallGraphPipeline() {
+  mlir::PassPipelineRegistration<>(
+      "xla-sdy-test-flatten-call-graph",
+      "Run FlattenCallGraphPass with isManualComputation predicate for testing",
+      [](mlir::OpPassManager& pm) {
+        pm.addPass(mlir::sdy::createFlattenCallGraphPass(isManualComputation));
+      });
 }
 
 }  // namespace sdy

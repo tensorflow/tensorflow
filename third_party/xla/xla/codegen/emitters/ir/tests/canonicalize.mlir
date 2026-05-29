@@ -228,7 +228,7 @@ func.func @apply_indexing_move_syms_to_dims(%dim0: index, %sym0: index)
   func.return %0 : index
 }
 
-// CHECK: #[[$MAP:.*]] = #xla.indexing_map<"(d0, d1) -> ((d0 * d1) * 2),
+// CHECK: #[[$MAP:.*]] = #xla.indexing_map<"(d0, d1) -> (d0 * d1 * 2),
 // CHECK-SAME:                     domain: d0 in [0, 3], d1 in [0, 2]
 // CHECK-LABEL: func.func @apply_indexing_move_syms_to_dims
 // CHECK-NEXT:  xla.apply_indexing #[[$MAP]]
@@ -272,7 +272,7 @@ func.func @loop_of_apply_indexing_with_syms(%dim0: index, %sym0: index, %input: 
   func.return %sum : f32
 }
 
-// CHECK: #[[$MAP:.*]] = #xla.indexing_map<"(d0, d1)[s0, s1] -> ((d0 * d1) * 2 + s0 + s1),
+// CHECK: #[[$MAP:.*]] = #xla.indexing_map<"(d0, d1)[s0, s1] -> (d0 * d1 * 2 + s0 + s1),
 // CHECK-SAME:                     domain: d0 in [0, 3], d1 in [0, 2], s0 in [0, 1024], s1 in [0, 32]
 // CHECK-LABEL: func.func @loop_of_apply_indexing_with_syms
 // CHECK-SAME:      %[[ARG0:.*]]: index, %[[ARG1:.*]]: index
@@ -312,12 +312,10 @@ func.func @fold_constant_dimensions(%input: tensor<350xf32>, %a1 : index) -> (te
 }
 
 // CHECK:      #[[$MAP:.*]] = #xla.indexing_map<"(th_x, bl_x, p2, p3)[idx] -> (
-// CHECK-SAME:   (th_x floordiv 64) * 100 + bl_x * 200 + idx + th_x + bl_x + p2 + p3 + 10)
+// CHECK-SAME:   (th_x floordiv 64) * 100 + bl_x * 201 + th_x + p2 + p3 + idx + 10)
 // CHECK-SAME:   domain: th_x in [0, 127], bl_x in [0, 174],
 // CHECK-SAME:   p2 in [1, 5], p3 in [0, 1000], idx in [0, 99],
-// CHECK-SAME:   bl_x + 5 in [0, 200],
-// CHECK-SAME:   p2 + p3 + 4 in [0, 10],
-// CHECK-SAME:   th_x + idx + 1 in [-1, 200]">
+// CHECK-SAME:   p2 + p3 in [-4, 6], th_x + idx in [-2, 199]">
 
 // CHECK-LABEL:   func.func @fold_constant_dimensions(
 // CHECK-SAME:        %[[ARG:.*]]: tensor<350xf32>, %[[SCALAR:.*]]: index)

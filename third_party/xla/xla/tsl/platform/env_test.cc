@@ -64,6 +64,18 @@ TEST(EnvTest, FileOperations) {
   EXPECT_EQ(content, "test1test2");
 }
 
+TEST(EnvTest, ReadFileToStringEmptyFile) {
+  Env* env = Env::Default();
+  ASSERT_OK_AND_ASSIGN(
+      tsl::testing::TemporaryDirectory temp_dir,
+      tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
+  std::string file_path = tsl::io::JoinPath(temp_dir.path(), "empty.txt");
+  EXPECT_THAT(WriteStringToFile(env, file_path, ""), IsOk());
+  std::string content = "pre_populated_garbage";
+  EXPECT_THAT(ReadFileToString(env, file_path, &content), IsOk());
+  EXPECT_TRUE(content.empty());
+}
+
 TEST(EnvTest, SimpleFileSystemConformance) {
   std::vector<std::string> schemes;
   Env* env = Env::Default();
@@ -106,6 +118,16 @@ TEST(EnvTest, RenameFile) {
   EXPECT_THAT(ReadFileToString(env, target_path, &target_content), IsOk());
   EXPECT_EQ(target_content, "source content");
 }
+
+#if defined(__linux__)
+TEST(EnvTest, ReadFileToStringAllowsShortReadsForSystemFiles) {
+  std::string content;
+  absl::Status s = ReadFileToString(
+      Env::Default(), "/sys/devices/system/cpu/kernel_max", &content);
+  EXPECT_OK(s);
+  EXPECT_FALSE(content.empty());
+}
+#endif
 
 }  // namespace
 }  // namespace tsl

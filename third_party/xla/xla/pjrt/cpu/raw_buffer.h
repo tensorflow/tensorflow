@@ -52,7 +52,9 @@ class CpuTrackedDeviceEventPromise : public PjRtDeviceEventPromise {
       tsl::RCReference<tsl::IndirectAsyncValue> av)
       : av_(av) {}
 
-  tsl::AsyncValue* async_value() const override { return av_.get(); }
+  PjRtDeviceEventPtr event() const override {
+    return PjRtDeviceEventPtr(tsl::AsyncValuePtr<CpuEvent>(av_.get()));
+  }
 
   void Set(PjRtDeviceEventRef event) override;
 
@@ -66,23 +68,8 @@ class CpuTrackedDeviceEventPromise : public PjRtDeviceEventPromise {
   tsl::RCReference<tsl::IndirectAsyncValue> av_;
 };
 
-class CpuTrackedDeviceEvent : public PjRtDeviceEvent {
- public:
-  explicit CpuTrackedDeviceEvent(tsl::AsyncValueRef<CpuEvent> event)
-      : event_(std::move(event)) {}
-
-  const tsl::AsyncValueRef<CpuEvent>& event() const { return event_; }
-
-  tsl::AsyncValue* async_value() const override {
-    return event_.GetAsyncValue();
-  }
-
-  static tsl::AsyncValueRef<CpuEvent> AfterAll(
-      absl::Span<const PjRtDeviceEventRef> events);
-
- private:
-  tsl::AsyncValueRef<CpuEvent> event_;
-};
+tsl::AsyncValueRef<CpuEvent> AfterAllCpuEvents(
+    absl::Span<const PjRtDeviceEventRef> events);
 
 class CpuTrackedDeviceEventSet : public PjRtDeviceEventSet {
  public:
@@ -90,9 +77,14 @@ class CpuTrackedDeviceEventSet : public PjRtDeviceEventSet {
     events_.reserve(reservation);
   }
 
-  void AddEvent(tsl::RCReference<tsl::AsyncValue> event) {
-    events_.push_back(std::move(event));
-  }
+  void AddEvent(PjRtDeviceEventRef event) override;
+
+  void AddEvent(tsl::RCReference<tsl::AsyncValue> event);
+
+  void AppendTo(
+      std::vector<tsl::RCReference<tsl::AsyncValue>>& events) override;
+  void AppendTo(std::vector<PjRtDeviceEventRef>& events) override;
+  void AppendTo(PjRtDeviceEventSet& events) override;
 
   absl::Span<const tsl::RCReference<tsl::AsyncValue>> events() const {
     return events_;
@@ -148,6 +140,8 @@ class CpuRawBuffer : public CommonPjRtRawBufferImpl {
 
   bool is_mutable() const final { return is_mutable_; }
 
+  absl::StatusOr<PjRtRawBufferRef> Slice(int64_t offset, int64_t size) override;
+
   absl::StatusOr<PjRtDeviceEventRef> CopyRawHostToDeviceAndReturnEvent(
       const void* src, int64_t offset, int64_t transfer_size) override;
 
@@ -176,15 +170,18 @@ class CpuRawBuffer : public CommonPjRtRawBufferImpl {
       tsl::RCReference<PjRtDeviceEventPromise> device_promise,
       MutableLiteralBase* literal, xla::Shape shape) override;
 
-  void CopyTo(tsl::RCReference<CommonPjRtRawBuffer> dst_raw_buffer,
+  void CopyTo(PjRtRawBufferRef dst_raw_buffer,
               tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise,
               tsl::RCReference<PjRtDeviceEventPromise> src_usage_event_promise,
               ::tsl::AsyncValueRef<bool> allocation_event) override;
 
-  absl::StatusOr<tsl::RCReference<tsl::AsyncValue>> GetRawBufferAsyncValue()
-      override {
-    return buffer_.CopyRCRef();
+  tsl::AsyncValue* GetRawBufferAsyncValue() override {
+    return buffer_.GetAsyncValue();
   }
+
+  absl::StatusOr<PjRtDeviceEventRef> CopyRawToRemoteDevice(
+      Future<std::string> serialized_descriptor, RemoteSendCallback on_done,
+      std::vector<PjRtDeviceEventRef> transfer_dependency_avs) override;
 
  private:
   PjRtMemorySpace* const memory_space_;
@@ -192,9 +189,6 @@ class CpuRawBuffer : public CommonPjRtRawBufferImpl {
   size_t buffer_size_;
   bool is_mutable_;
 };
-
-absl::StatusOr<xla::Shape> MakeDefaultCpuBufferShape(xla::Shape shape,
-                                                     const xla::Layout* layout);
 
 }  // namespace xla
 

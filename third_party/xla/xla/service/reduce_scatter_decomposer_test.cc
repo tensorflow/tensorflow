@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/shape.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -65,7 +67,7 @@ class ReduceScatterDecomposerTest : public HloHardwareIndependentTestBase {
     ASSERT_TRUE(changed);
 
     Literal multiplier = LiteralUtil::CreateR0<uint32_t>(shard_size);
-    ::testing::Matcher<const ::xla::HloInstruction *> id_matcher = [&]() {
+    ::testing::Matcher<const ::xla::HloInstruction*> id_matcher = [&]() {
       switch (mode) {
         case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION:
           return op::PartitionId();
@@ -86,9 +88,9 @@ class ReduceScatterDecomposerTest : public HloHardwareIndependentTestBase {
       }
     }();
     auto root = module->entry_computation()->root_instruction();
-    const Shape &shape = root->shape();
+    const Shape& shape = root->shape();
 
-    ::testing::Matcher<const ::xla::HloInstruction *> slice_index = id_matcher;
+    ::testing::Matcher<const ::xla::HloInstruction*> slice_index = id_matcher;
     if (action == PassAction::kTableLookup) {
       slice_index = op::Reshape(op::DynamicSlice(op::Constant(), id_matcher));
     }
@@ -102,7 +104,7 @@ class ReduceScatterDecomposerTest : public HloHardwareIndependentTestBase {
     }
     auto zero_matcher = op::Constant(LiteralUtil::Zero(U32));
 
-    std::vector<::testing::Matcher<const ::xla::HloInstruction *>> ds_operands(
+    std::vector<::testing::Matcher<const ::xla::HloInstruction*>> ds_operands(
         shape.dimensions().size() + 1, zero_matcher);
     if (attribute.has_value()) {
       ds_operands[0] =
@@ -265,6 +267,30 @@ ENTRY main {
           CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA,
           /*shard_size=*/0, /*shard_dimension=*/0,
           /*replica_count=*/2, [](const HloInstruction*) { return false; });
+}
+
+TEST_F(ReduceScatterDecomposerTest, AsyncReduceScatterNoChange) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add.2 = f32[] add(a, b)
+}
+
+async_rs {
+  p0 = f32[8] parameter(0)
+  ROOT rs = f32[4] reduce-scatter(p0), replica_groups={{0,1}}, dimensions={0}, to_apply=sum
+}
+
+ENTRY main {
+  p = f32[8] parameter(0)
+  async-start = ((f32[8]), f32[4], u32[]) async-start(p), calls=async_rs
+  ROOT async-done = f32[4] async-done(async-start), calls=async_rs
+}
+)";
+  RunPass(hlo_string, PassAction::kNoChange);
 }
 
 }  // namespace

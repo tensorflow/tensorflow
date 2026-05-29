@@ -19,19 +19,29 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/env.h"
 
 namespace xla {
 
 absl::StatusOr<bool> HloPassInterface::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  auto* env = tsl::Env::Default();
+  std::unique_ptr<tsl::ThreadNote> thread_note;
+  thread_note = env->AddThreadNote(absl::StrCat("Running HLO pass on module ",
+                                                module->name(), ": ", name()));
   return RunImpl(module, execution_threads);
 }
 
 absl::StatusOr<bool> HloPassInterface::Run(
     std::unique_ptr<HloModule>& module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  auto* env = tsl::Env::Default();
+  std::unique_ptr<tsl::ThreadNote> thread_note;
+  thread_note = env->AddThreadNote(absl::StrCat("Running HLO pass on module ",
+                                                module->name(), ": ", name()));
   return RunImpl(module, execution_threads);
 }
 

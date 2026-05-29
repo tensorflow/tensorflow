@@ -65,7 +65,7 @@ GpuCliqueKey::GpuCliqueKey(std::vector<GlobalDeviceId> devices,
       incarnations_(std::move(incarnations)) {}
 
 bool GpuCliqueKey::IsSubsetOf(const CliqueKey& other) const {
-  auto* other_gpu = tsl::down_cast<const GpuCliqueKey*>(&other);
+  auto* other_gpu = absl::down_cast<const GpuCliqueKey*>(&other);
   if (other_gpu == nullptr) {
     return false;
   }
@@ -117,12 +117,14 @@ std::string GpuCliqueKey::ToString() const {
 }
 
 void GpuCliqueKey::HashValue(absl::HashState state) const {
-  absl::HashState::combine(std::move(state), devices(), incarnations_);
+  absl::HashState::combine(std::move(state), devices(), communication_id_,
+                           incarnations_);
 }
 
 bool operator==(const GpuCliqueKey& a, const GpuCliqueKey& b) {
   return a.devices() == b.devices() &&
          a.num_local_participants_ == b.num_local_participants_ &&
+         a.communication_id_ == b.communication_id_ &&
          a.incarnations_ == b.incarnations_;
 }
 
@@ -133,7 +135,8 @@ bool operator!=(const GpuCliqueKey& a, const GpuCliqueKey& b) {
 // Constructs a tuple from the clique key for comparison purposes.
 static auto CmpKey(const GpuCliqueKey& key) {
   return std::make_tuple(key.devices().size(), key.devices(),
-                         key.num_local_participants(), key.incarnations());
+                         key.num_local_participants(), key.communication_id(),
+                         key.incarnations());
 }
 
 bool operator<(const GpuCliqueKey& a, const GpuCliqueKey& b) {

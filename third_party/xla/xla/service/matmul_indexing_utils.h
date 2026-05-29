@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -129,8 +130,9 @@ class DotOperandDims {
   // Inserts a dimension at the given index. The dimension is assigned the given
   // category. Within the category, the dimension is inserted before the first
   // dimension with index >= dim_idx (to keep sorted order).
-  absl::Status InsertDimension(Category category, int64_t dim_idx,
-                               int64_t dim_size);
+  absl::StatusOr<int64_t> InsertDimension(
+      Category category, int64_t dim_idx, int64_t dim_size,
+      std::optional<int64_t> insert_at_idx = std::nullopt);
 
   // Returns the shape of the operand.
   const Shape& shape() const { return shape_; }

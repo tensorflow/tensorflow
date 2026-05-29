@@ -55,6 +55,7 @@ cc_library(
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/service:cpu_plugin",
         "//xla/service:hlo_module_util",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/log",
@@ -131,6 +132,7 @@ cc_library(
         "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_pjrt_client",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -200,6 +202,7 @@ cc_library(
         "//xla/tools:hlo_control_flow_flattening",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:fixed_option_set_flag",
         "@com_google_absl//absl/algorithm:container",
@@ -240,7 +243,6 @@ xla_test(
         ],
         "gpu": [
             "multi_gpu",
-            "no_oss",
             "nomsan",
         ],
         "nvgpu_any": [
@@ -253,6 +255,7 @@ xla_test(
         "gpu",
     ],
     data = [":hlo_file"],
+    shard_count = 4,
     tags = ["no_mac"],
     deps = [
         ":create_client",
@@ -285,6 +288,7 @@ xla_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:subprocess",
         "//xla/tsl/platform:test",
@@ -333,6 +337,7 @@ tsl_pybind_extension(
         "//xla/service:cpu_plugin",
         "//xla/service:custom_call_target_registry",
         "//xla/service:hlo_module_util",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/log",
@@ -365,6 +370,15 @@ tsl_pybind_extension(
 xla_py_test(
     name = "python_hlo_runner_test",
     srcs = ["python_hlo_runner_test.py"],
+    # copybara:uncomment_begin(google-only)
+    # backends = [
+    # "v100",
+    # "a100",
+    # "h100",
+    # "b200",
+    # "gb200",
+    # ],
+    # copybara:uncomment_end
     data = [
         ":hlo_file",
     ],
@@ -372,10 +386,7 @@ xla_py_test(
         "gpu",
         # Transformer engine takes a long time to compile. Disabling it for CI tests.
         "no_oss",
-    ] + if_google(
-        [],
-        ["requires-gpu-sm90-only"],
-    ),
+    ],
     deps = [
         ":py_hlo_multihost_runner",
         "@absl_py//absl/testing:absltest",

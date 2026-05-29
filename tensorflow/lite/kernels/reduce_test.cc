@@ -1981,5 +1981,14 @@ TEST(ConstFloatProdOpTest, EmptyAxis) {
   EXPECT_EQ(m.Invoke(), kTfLiteOk);
 }
 
+TEST(ConstInt8MeanOpTest, AxisCountExceedsMaxLimitNoCrash) {
+  std::vector<float> data = {1.0, 2.0};
+  MeanOpConstModel m({TensorType_INT8, {1, 2}, -10.0, 10.0},
+                     {TensorType_INT8, {1}, -10.0, 10.0}, {5}, {0, 0, 0, 0, 0},
+                     false);
+  m.QuantizeAndPopulate<int8_t>(m.Input(), data);
+  EXPECT_EQ(m.Invoke(), kTfLiteOk);
+}
+
 }  // namespace
 }  // namespace tflite

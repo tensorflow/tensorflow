@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/c/kernels_experimental.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
@@ -283,7 +285,7 @@ TEST(TestKernel, TestRegisterAsyncKernelBuilder) {
     TF_EXPECT_OK(status);
     ASSERT_NE(nullptr, kernel.get());
     auto done = []() { async_kernel_done = true; };
-    down_cast<AsyncOpKernel*>(kernel.get())->ComputeAsync(nullptr, done);
+    absl::down_cast<AsyncOpKernel*>(kernel.get())->ComputeAsync(nullptr, done);
   }
 
   ASSERT_TRUE(async_kernel_done);
@@ -1467,3 +1469,47 @@ void set_tensor_data(TF_Tensor* tensor, T* values, size_t tensor_size_bytes,
 #endif
 }
 }  // namespace tensorflow
+
+extern absl::Status EnsureSparseVariableAccess(
+    TF_OpKernelContext* ctx, bool variantType,
+    void (*copyFunc)(TF_OpKernelContext* ctx, TF_Tensor* source,
+                     TF_Tensor* dest),
+    tensorflow::Var* var, bool lock_held = false);
+
+extern absl::Status PrepareToUpdateVariable(
+    TF_OpKernelContext* ctx, tensorflow::Tensor* tensor, bool copy_on_read_mode,
+    bool variantType,
+    void (*copyFunc)(TF_OpKernelContext* ctx, TF_Tensor* source,
+                     TF_Tensor* dest));
+
+TEST(TestKernel, EnsureSparseVariableAccessVariantTypeValidation) {
+  auto var = tensorflow::core::RefCountPtr<tensorflow::Var>(
+      new tensorflow::Var(tensorflow::DT_FLOAT));
+  *var->tensor() =
+      tensorflow::Tensor(tensorflow::DT_FLOAT, tensorflow::TensorShape({1}));
+
+  absl::Status status = EnsureSparseVariableAccess(
+      /*ctx=*/nullptr, /*variantType=*/true, /*copyFunc=*/nullptr, var.get(),
+      /*lock_held=*/false);
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(status.message(),
+            "variantType is true, but variable tensor dtype is not DT_VARIANT");
+
+  status = EnsureSparseVariableAccess(
+      /*ctx=*/nullptr, /*variantType=*/false, /*copyFunc=*/nullptr, var.get(),
+      /*lock_held=*/false);
+  EXPECT_TRUE(status.ok());
+}
+
+TEST(TestKernel, PrepareToUpdateVariableVariantTypeValidation) {
+  tensorflow::Tensor tensor(tensorflow::DT_FLOAT, tensorflow::TensorShape({1}));
+
+  absl::Status status = PrepareToUpdateVariable(
+      /*ctx=*/nullptr, &tensor, /*copy_on_read_mode=*/true,
+      /*variantType=*/true, /*copyFunc=*/nullptr);
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(status.message(),
+            "variantType is true, but tensor dtype is not DT_VARIANT");
+}

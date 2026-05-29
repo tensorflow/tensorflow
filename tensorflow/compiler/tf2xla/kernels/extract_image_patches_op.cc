@@ -49,61 +49,65 @@ class ExtractImagePatchesOp : public XlaOpKernel {
     const TensorFormat data_format = FORMAT_NHWC;
     const int num_dims = ksizes_.size();
 
-    OP_REQUIRES(
-        ctx, num_dims >= 3,
-        errors::InvalidArgument("Kernel size must have at least 3 dimensions"));
+    OP_REQUIRES(ctx, num_dims >= 3,
+                absl::InvalidArgumentError(
+                    "Kernel size must have at least 3 dimensions"));
     const int num_spatial_dims = num_dims - 2;
 
     OP_REQUIRES(ctx, strides_.size() == num_dims,
-                errors::InvalidArgument("Sliding window strides field must "
-                                        "specify ",
-                                        num_dims, " dimensions"));
-    OP_REQUIRES(ctx, dilations_.size() == num_dims,
-                errors::InvalidArgument("Dilations field must "
-                                        "specify ",
-                                        num_dims, " dimensions"));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Sliding window strides field must "
+                                 "specify ",
+                                 num_dims, " dimensions")));
+    OP_REQUIRES(
+        ctx, dilations_.size() == num_dims,
+        absl::InvalidArgumentError(absl::StrCat("Dilations field must "
+                                                "specify ",
+                                                num_dims, " dimensions")));
 
     int batch_dim = GetTensorBatchDimIndex(num_dims, data_format);
     int feature_dim = GetTensorFeatureDimIndex(num_dims, data_format);
     OP_REQUIRES(
         ctx, ksizes_[batch_dim] == 1 && ksizes_[feature_dim] == 1,
-        errors::Unimplemented("Current implementation does not yet support "
-                              "kernel sizes > 1 in the batch and depth "
-                              "dimensions."));
+        absl::UnimplementedError("Current implementation does not yet support "
+                                 "kernel sizes > 1 in the batch and depth "
+                                 "dimensions."));
     OP_REQUIRES(
         ctx, strides_[batch_dim] == 1 && strides_[feature_dim] == 1,
-        errors::Unimplemented("Current implementation does not yet support "
-                              "strides in the batch and depth dimensions."));
-    OP_REQUIRES(
-        ctx, dilations_[batch_dim] == 1 && dilations_[feature_dim] == 1,
-        errors::Unimplemented("Current implementation does not support "
-                              "dilations in the batch and depth dimensions."));
+        absl::UnimplementedError("Current implementation does not yet support "
+                                 "strides in the batch and depth dimensions."));
+    OP_REQUIRES(ctx, dilations_[batch_dim] == 1 && dilations_[feature_dim] == 1,
+                absl::UnimplementedError(
+                    "Current implementation does not support "
+                    "dilations in the batch and depth dimensions."));
 
     for (int i = 0; i < num_spatial_dims; ++i) {
       int input_dim = GetTensorSpatialDimIndex(num_dims, data_format, i);
       OP_REQUIRES(
           ctx, ksizes_[input_dim] >= 0,
-          errors::Unimplemented("Kernel size values must be non-negative; ", i,
-                                "th spatial dimension had dilation ",
-                                dilations_[input_dim]));
-      OP_REQUIRES(ctx, strides_[input_dim] >= 1,
-                  errors::Unimplemented("Stride values must be positive; ", i,
-                                        "th spatial dimension had dilation ",
-                                        dilations_[input_dim]));
-      OP_REQUIRES(ctx, dilations_[input_dim] >= 1,
-                  errors::Unimplemented("Dilation values must be positive; ", i,
-                                        "th spatial dimension had dilation ",
-                                        dilations_[input_dim]));
+          absl::UnimplementedError(absl::StrCat(
+              "Kernel size values must be non-negative; ", i,
+              "th spatial dimension had dilation ", dilations_[input_dim])));
+      OP_REQUIRES(
+          ctx, strides_[input_dim] >= 1,
+          absl::UnimplementedError(absl::StrCat(
+              "Stride values must be positive; ", i,
+              "th spatial dimension had dilation ", dilations_[input_dim])));
+      OP_REQUIRES(
+          ctx, dilations_[input_dim] >= 1,
+          absl::UnimplementedError(absl::StrCat(
+              "Dilation values must be positive; ", i,
+              "th spatial dimension had dilation ", dilations_[input_dim])));
     }
 
     xla::PrimitiveType type;
     OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(ctx->input_type(0), &type));
 
     const TensorShape input_shape = ctx->InputShape(0);
-    OP_REQUIRES(
-        ctx, input_shape.dims() == num_dims,
-        errors::InvalidArgument("input must be ", num_dims, "-dimensional",
-                                input_shape.DebugString()));
+    OP_REQUIRES(ctx, input_shape.dims() == num_dims,
+                absl::InvalidArgumentError(
+                    absl::StrCat("input must be ", num_dims, "-dimensional",
+                                 input_shape.DebugString())));
     const int64_t depth = input_shape.dim_size(feature_dim);
 
     xla::XlaBuilder* builder = ctx->builder();

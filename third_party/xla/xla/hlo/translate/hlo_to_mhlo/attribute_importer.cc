@@ -19,22 +19,35 @@ limitations under the License.
 
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/SymbolTable.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/ir/mesh_and_axis.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/layout.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
@@ -427,8 +440,8 @@ mlir::ArrayAttr ConvertOutputOperandAliasing(
 
 absl::StatusOr<mlir::mhlo::CustomCallApiVersion> ConvertCustomCallApiVersion(
     xla::CustomCallApiVersion api_version) {
-  TF_ASSIGN_OR_RETURN(auto stablehlo_api_version,
-                      stablehlo::ConvertCustomCallApiVersion(api_version));
+  ASSIGN_OR_RETURN(auto stablehlo_api_version,
+                   stablehlo::ConvertCustomCallApiVersion(api_version));
   auto mhlo_api_version = mlir::mhlo::symbolizeCustomCallApiVersion(
       mlir::stablehlo::stringifyCustomCallApiVersion(stablehlo_api_version));
   if (!mhlo_api_version.has_value()) {
@@ -480,6 +493,97 @@ mlir::NamedAttribute ConvertReplicaGroups(
                                mlir::DenseIntElementsAttr::get(type, attr));
 }
 
+mlir::StringAttr FindOrInsertSdyMesh(const Mesh& mesh,
+                                     mlir::SymbolTable* symbol_table,
+                                     mlir::OpBuilder* builder) {
+  if (!symbol_table) {
+    return {};
+  }
+
+  auto module_op = llvm::cast<mlir::ModuleOp>(symbol_table->getOp());
+  for (auto mesh_op : module_op.getOps<mlir::sdy::MeshOp>()) {
+    if (mesh_op.getMesh().getAxes().size() != mesh.num_axes()) {
+      continue;
+    }
+
+    bool compatible = true;
+    auto mesh_axes = mesh_op.getMesh().getAxes();
+    for (size_t i = 0; i < mesh_axes.size(); ++i) {
+      auto axis_attr = llvm::cast<mlir::sdy::MeshAxisAttr>(mesh_axes[i]);
+      if (axis_attr.getName() != mesh.axis_names()[i] ||
+          axis_attr.getSize() != mesh.axis_size(i)) {
+        compatible = false;
+        break;
+      }
+    }
+    if (compatible) {
+      return builder->getStringAttr(mesh_op.getSymName());
+    }
+  }
+
+  std::string name = "mesh";
+  int counter = 0;
+  while (symbol_table->lookup(name)) {
+    name = "mesh_" + std::to_string(++counter);
+  }
+  auto mesh_name_attr = builder->getStringAttr(name);
+
+  llvm::SmallVector<mlir::sdy::MeshAxisAttr> mesh_axes;
+  for (int i = 0; i < mesh.num_axes(); ++i) {
+    mesh_axes.push_back(mlir::sdy::MeshAxisAttr::get(
+        builder->getContext(), builder->getStringAttr(mesh.axis_names()[i]),
+        mesh.axis_size(i)));
+  }
+
+  mlir::OpBuilder::InsertionGuard guard(*builder);
+  builder->setInsertionPointToStart(module_op.getBody());
+  auto mesh_op = builder->create<mlir::sdy::MeshOp>(
+      builder->getUnknownLoc(), mesh_name_attr,
+      mlir::sdy::MeshAttr::get(builder->getContext(), mesh_axes));
+  symbol_table->insert(mesh_op);
+
+  return mesh_name_attr;
+}
+
+mlir::Attribute BuildMeshAxesAttr(
+    const MeshAxesReplicaGroupList& mesh_axes_list,
+    mlir::StringAttr mesh_name_attr, mlir::OpBuilder* builder) {
+  const Mesh& mesh = mesh_axes_list.mesh();
+  llvm::SmallVector<mlir::Attribute> axes_attrs;
+  for (const auto& axis_ref : mesh_axes_list.axes()) {
+    auto name = mesh.axis_names()[axis_ref.mesh_axis_index()];
+    mlir::stablehlo::SubAxisInfoAttr sub_axis_attr;
+    if (auto sub = axis_ref.sub_axis_info()) {
+      sub_axis_attr = mlir::stablehlo::SubAxisInfoAttr::get(
+          builder->getContext(), sub->pre_size, sub->size);
+    }
+    axes_attrs.push_back(mlir::stablehlo::AxisRefAttr::get(
+        builder->getContext(), builder->getStringAttr(name), sub_axis_attr));
+  }
+  return mlir::stablehlo::ReplicaGroupMeshAxesAttr::get(
+      builder->getContext(), mlir::FlatSymbolRefAttr::get(mesh_name_attr),
+      builder->getArrayAttr(axes_attrs));
+}
+
+mlir::NamedAttribute ConvertReplicaGroups(const HloInstruction* instruction,
+                                          mlir::SymbolTable* symbol_table,
+                                          mlir::OpBuilder* builder) {
+  if (instruction->device_list()->version() ==
+      CollectiveDeviceListVersion::kMeshAxes) {
+    DCHECK(symbol_table != nullptr)
+        << "Translating MeshAxesReplicaGroupList without a SymbolTable will "
+           "cause silent fallback to flattened representation.";
+    const auto& mesh_axes_list = static_cast<const MeshAxesReplicaGroupList&>(
+        *instruction->device_list());
+    if (auto mesh_name =
+            FindOrInsertSdyMesh(mesh_axes_list.mesh(), symbol_table, builder)) {
+      auto attr = BuildMeshAxesAttr(mesh_axes_list, mesh_name, builder);
+      return builder->getNamedAttr("replica_groups", attr);
+    }
+  }
+  return ConvertReplicaGroups(instruction->replica_groups(), builder);
+}
+
 mlir::NamedAttribute ConvertSourceTargetPairs(
     const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
     mlir::Builder* builder) {
@@ -496,6 +600,37 @@ mlir::NamedAttribute ConvertSourceTargetPairs(
 
 mlir::NamedAttribute ConvertUseGlobalDeviceIds(mlir::Builder* builder) {
   return builder->getNamedAttr("use_global_device_ids", builder->getUnitAttr());
+}
+
+// Converts the original value to attributes.
+mlir::mhlo::OriginalValueAttr ConvertOriginalValue(
+    const xla::OriginalValue& original_value, mlir::Builder* builder) {
+  if (original_value.is_synthetic_call()) {
+    return mlir::mhlo::OriginalValueAttr::get(builder->getContext(),
+                                              /*is_synthetic_call=*/true,
+                                              /*original_value_elements=*/{});
+  }
+  llvm::SmallVector<mlir::mhlo::OriginalValueElementAttr>
+      original_value_elements;
+  for (const auto& [shape_index, original_array] :
+       original_value.tree().leaves()) {
+    std::optional<mlir::mhlo::OriginalArrayAttr> original_array_attr;
+    if (original_array.has_value()) {
+      original_array_attr = mlir::mhlo::OriginalArrayAttr::get(
+          builder->getContext(),
+          builder->getStringAttr(original_array->instruction_name),
+          original_array->shape_index);
+    }
+    mlir::mhlo::OriginalValueElementAttr original_element_attr =
+        mlir::mhlo::OriginalValueElementAttr::get(
+            builder->getContext(), shape_index, original_array_attr);
+    original_value_elements.push_back(original_element_attr);
+  }
+  mlir::mhlo::OriginalValueAttr original_value_attr =
+      mlir::mhlo::OriginalValueAttr::get(builder->getContext(),
+                                         original_value.is_synthetic_call(),
+                                         original_value_elements);
+  return original_value_attr;
 }
 
 absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(

@@ -25,7 +25,11 @@ func.func @test_bytecode_customizations(
   arg_alias = #mhlo.output_operand_alias<output_tuple_indices = [0], operand_index = 0, operand_tuple_indices = [1]>,
   res_alias = [#mhlo.result_alias<result_index = [2]>,
                #mhlo.result_alias<tuple_indices = [1, 1], result_index = [2, 0, 1], must_alias>],
-  ext = #mhlo.type_extensions<bounds = [4]>
+  replica_groups_mesh_axes = #mhlo.replica_group_mesh_axes<mesh = @mesh, axes = [#mhlo.axis_ref<name = "foo">, #mhlo.axis_ref<name = "bar", sub_axis_info = (1)2>]>,
+  ext = #mhlo.type_extensions<bounds = [4]>,
+  orig_arr = #mhlo.original_array<"my_inst", [0, 1, 2]>,
+  orig_val_el = #mhlo.original_value_element<[0], <"source_op", []>>,
+  orig_val = #mhlo.original_value<false, [<[0], <"first_instruction", [0, 1]>>, <[1], <"second_instruction", [2]>>]>
 } {
   func.return
 }

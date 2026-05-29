@@ -102,7 +102,7 @@ class FakeDevice : public Device {
 
  public:
   absl::Status Sync() override {
-    return errors::Unimplemented("FakeDevice::Sync()");
+    return absl::UnimplementedError("FakeDevice::Sync()");
   }
 
   Allocator* GetAllocator(AllocatorAttributes attr) override { return nullptr; }
@@ -688,10 +688,10 @@ class TestTFFileSystem : public ::tensorflow::NullFileSystem {
   using ::tensorflow::NullFileSystem::NewReadOnlyMemoryRegionFromFile;
 
   absl::Status NewReadOnlyMemoryRegionFromFile(
-      const std::string& fname, ::tensorflow::TransactionToken* token,
+      const std::string& fname,
       std::unique_ptr<::tensorflow::ReadOnlyMemoryRegion>* result) override {
     if (fname != kTestMemRegionName) {
-      return ::tensorflow::errors::Unimplemented(
+      return absl::UnimplementedError(
           "NewReadOnlyMemoryRegionFromFile unimplemented");
     }
     const absl::string_view sp = data_tensor_.tensor_data();

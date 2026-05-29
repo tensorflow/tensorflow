@@ -123,7 +123,7 @@ XlaJitCompiledCpuFunction::Compile(
     // The XlaCompiler we use to build the xla computation always generates a
     // tuple result, and XlaCompiledCpuFunction relies on this for simpler
     // calling semantics.
-    return errors::Internal(
+    return absl::InternalError(
         "XlaJitCompiledCpuFunction requires the XLA result to be a tuple");
   }
   // The parameter names are currently meaningless, and redundant with the rest
@@ -202,7 +202,7 @@ XlaJitCompiledCpuFunction::Compile(
             compilation_result->proto());
 
     auto compiled_function_library =
-        tsl::down_cast<xla::cpu::CompiledFunctionLibrary*>(
+        absl::down_cast<xla::cpu::CompiledFunctionLibrary*>(
             cpu_executable->function_library());
 
     if (!compiled_function_library) {

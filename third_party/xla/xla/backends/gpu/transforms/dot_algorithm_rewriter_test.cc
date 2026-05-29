@@ -92,5 +92,55 @@ TEST_F(DotAlgorithmRewriterTest, NoDefaultToBF16) {
   EXPECT_FALSE(pass_result);
 }
 
+TEST_F(DotAlgorithmRewriterTest, DefaultToBF16_NonF32Result) {
+  const char* hlo_text = R"hlo(
+    HloModule test
+
+    ENTRY test {
+      p0 = f32[32,32] parameter(0)
+      p1 = f32[32,32] parameter(1)
+      ROOT dot = f64[32,32] dot(p0, p1),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+  )hlo";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  DebugOptions debug_options = config.debug_options();
+  debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
+  config.set_debug_options(debug_options);
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(auto pass_result,
+                       RunHloPass(DotAlgorithmRewriter(), module.get()));
+  EXPECT_FALSE(pass_result);
+}
+
+TEST_F(DotAlgorithmRewriterTest, DefaultToBF16_NonF32Operands) {
+  const char* hlo_text = R"hlo(
+    HloModule test
+
+    ENTRY test {
+      p0 = bf16[32,32] parameter(0)
+      p1 = bf16[32,32] parameter(1)
+      ROOT dot = f32[32,32] dot(p0, p1),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+  )hlo";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  DebugOptions debug_options = config.debug_options();
+  debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
+  config.set_debug_options(debug_options);
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(auto pass_result,
+                       RunHloPass(DotAlgorithmRewriter(), module.get()));
+  EXPECT_FALSE(pass_result);
+}
+
 }  // namespace
 }  // namespace xla::gpu

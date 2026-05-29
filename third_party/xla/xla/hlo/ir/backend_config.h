@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/message.h"
 #include "tsl/platform/human_readable_json.h"
 #include "tsl/platform/protobuf.h"
@@ -42,7 +43,7 @@ using EnableIfProto = typename std::enable_if_t<
 // This is morally equivalent to:
 //
 //   HloInstruction instr;
-//   TF_RETURN_IF_ERROR(instr.set_backend_config(proto));
+//   RETURN_IF_ERROR(instr.set_backend_config(proto));
 //   return instr.raw_backend_config_string();
 //
 absl::StatusOr<std::string> BackendConfigToRawString(
@@ -68,8 +69,7 @@ std::unique_ptr<tsl::protobuf::Message> CloneBackendConfigProto(
 class BackendConfigWrapper {
  public:
   BackendConfigWrapper() = default;
-  explicit BackendConfigWrapper(std::string raw_string)
-      : raw_string_(std::move(raw_string)) {}
+  explicit BackendConfigWrapper(std::string raw_string);
   explicit BackendConfigWrapper(const tsl::protobuf::Message& proto)
       : proto_(CloneBackendConfigProto(&proto)) {}
   BackendConfigWrapper(const BackendConfigWrapper& other) {

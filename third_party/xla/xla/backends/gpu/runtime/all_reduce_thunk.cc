@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace gpu {
@@ -60,7 +60,7 @@ namespace {
 absl::Status CheckImplementableInst(const HloInstruction* inst,
                                     Thunk::Kind reduction_op) {
   for (HloInstruction* operand : inst->operands()) {
-    TF_RETURN_IF_ERROR(IsValidOperand(operand->shape(), reduction_op));
+    RETURN_IF_ERROR(IsValidOperand(operand->shape(), reduction_op));
   }
 
   if (!MatchReductionComputation(inst->called_computations().front())
@@ -96,22 +96,19 @@ absl::Status RunAllReduce(ReductionKind reduction_kind,
                           bool use_symmetric_buffer) {
   int device_ordinal = stream.parent()->device_ordinal();
   XLA_VLOG_DEVICE(3, device_ordinal) << "Performing all-reduce";
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, &comm,
-                                          use_symmetric_buffer));
-
   auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
   Future<> future =
       gpu_comm->GroupExecute([reduction_kind, &buffers,
                               &stream](GpuCommunicator* comm) -> absl::Status {
         for (DeviceBufferPair& buffer : buffers) {
-          TF_RETURN_IF_ERROR(comm->LaunchAllReduce(
+          RETURN_IF_ERROR(comm->LaunchAllReduce(
               buffer.source_buffer, buffer.destination_buffer,
               buffer.element_type, buffer.element_count, reduction_kind,
               GpuCollectives::On(stream)));
         }
         return absl::OkStatus();
       });
-  TF_RETURN_IF_ERROR(future.Await());
+  RETURN_IF_ERROR(future.Await());
   XLA_VLOG_DEVICE(3, device_ordinal) << "Done performing all-reduce";
   return absl::OkStatus();
 }
@@ -119,10 +116,9 @@ absl::Status RunAllReduce(ReductionKind reduction_kind,
 AllReduceReduceScatterThunkBase::AllReduceReduceScatterThunkBase(
     Thunk::Kind kind, ThunkInfo thunk_info, AllReduceConfig config,
     std::vector<Buffer> buffers)
-    : CollectiveThunk(kind, thunk_info),
-      config_(std::move(config)),
-      buffers_(std::move(buffers)) {
-  CHECK_EQ(config_.config.operand_element_type.size(), buffers_.size());
+    : CollectiveThunk(kind, thunk_info, std::move(buffers)),
+      config_(std::move(config)) {
+  CHECK_EQ(config_.config.operand_element_type.size(), this->buffers().size());
 }
 
 AllReduceThunk::AllReduceThunk(
@@ -162,21 +158,21 @@ CollectiveOpGroupMode AllReduceThunk::GetGroupMode(
 }
 
 absl::Status AllReduceThunk::Prepare(const PrepareParams& params) {
-  TF_RETURN_IF_ERROR(CollectiveThunk::Prepare(params));
+  RETURN_IF_ERROR(CollectiveThunk::Prepare(params));
   return collective_kernel_thunk_->Prepare(params);
 }
 
 absl::Status AllReduceThunk::Initialize(const InitializeParams& params) {
-  TF_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
-  TF_ASSIGN_OR_RETURN(
+  RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
+  ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetCollectiveGpuCliqueKey(*params.collective_params, config()));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       bool use_collective_kernel,
       collective_kernel_thunk_->IsSupported(clique_key, *params.executor,
                                             *params.collective_params));
   if (use_collective_kernel) {
-    TF_RETURN_IF_ERROR(collective_kernel_thunk_->Initialize(params));
+    RETURN_IF_ERROR(collective_kernel_thunk_->Initialize(params));
   }
   return absl::OkStatus();
 }
@@ -185,18 +181,18 @@ absl::Status AllReduceThunk::RunCollective(const ExecuteParams& params,
                                            const GpuCliqueKey& clique_key,
                                            se::Stream& stream,
                                            Communicator& comm) {
-  TF_ASSIGN_OR_RETURN(
-      std::vector<DeviceBufferPair> device_buffers,
-      ConvertToDeviceBuffers(params.buffer_allocations, buffers_,
-                             config_.config.operand_element_type));
+  ASSIGN_OR_RETURN(std::vector<DeviceBufferPair> device_buffers,
+                   ConvertToDeviceBuffers(params.buffer_allocations, buffers(),
+                                          config_.config.operand_element_type));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       bool use_collective_kernel,
-      collective_kernel_thunk_->IsSupported(
-          clique_key, *params.stream->parent(), *params.collective_params));
+      collective_kernel_thunk_->IsSupported(clique_key, *stream.parent(),
+                                            *params.collective_params));
 
   if (use_collective_kernel) {
-    return collective_kernel_thunk_->ExecuteOnStream(params);
+    return collective_kernel_thunk_->ExecuteOnStream(
+        params.WithComputeStream(&stream));
   }
 
   return RunAllReduce(config_.reduction_kind, device_buffers, stream, comm,
@@ -204,7 +200,7 @@ absl::Status AllReduceThunk::RunCollective(const ExecuteParams& params,
 }
 
 absl::StatusOr<std::unique_ptr<AllReduceThunk>> AllReduceThunk::FromProto(
-    ThunkInfo thunk_info, const AllReduceStartThunkProto& thunk_proto,
+    ThunkInfo thunk_info, const AllReduceThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
   std::vector<CollectiveThunk::Buffer> buffers;
   buffers.reserve(thunk_proto.buffers_size());
@@ -223,15 +219,20 @@ absl::StatusOr<std::unique_ptr<AllReduceThunk>> AllReduceThunk::FromProto(
 
   std::optional<LaunchDimensions> launch_dimensions = std::nullopt;
   if (thunk_proto.has_launch_dimensions()) {
-    TF_ASSIGN_OR_RETURN(
-        launch_dimensions,
-        LaunchDimensions::FromProto(thunk_proto.launch_dimensions()));
+    ASSIGN_OR_RETURN(launch_dimensions, LaunchDimensions::FromProto(
+                                            thunk_proto.launch_dimensions()));
   }
+  std::optional<std::vector<uint8_t>> cubin =
+      thunk_proto.has_cubin()
+          ? std::make_optional(std::vector<uint8_t>{thunk_proto.cubin().begin(),
+                                                    thunk_proto.cubin().end()})
+          : std::nullopt;
   auto kernel_thunk = std::make_unique<CollectiveKernelThunk>(
       thunk_info, config, reduction_kind, thunk_proto.is_async(), buffers,
       thunk_proto.collective_kernel_enabled(), thunk_proto.kernel_name(),
       launch_dimensions, thunk_proto.shmem_bytes(),
-      thunk_proto.is_multimem_enabled());
+      thunk_proto.is_multimem_enabled(), std::move(cubin),
+      thunk_proto.use_pdl());
 
   return std::make_unique<AllReduceThunk>(
       std::move(thunk_info), AllReduceConfig{config, reduction_kind},
@@ -242,10 +243,9 @@ absl::StatusOr<ThunkProto> AllReduceThunk::ToProto() const {
   ThunkProto proto;
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 
-  AllReduceStartThunkProto* thunk_proto =
-      proto.mutable_all_reduce_start_thunk();
+  AllReduceThunkProto* thunk_proto = proto.mutable_all_reduce_thunk();
 
-  for (const Buffer& buffer : buffers_) {
+  for (const Buffer& buffer : buffers()) {
     ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
   }
 
@@ -262,6 +262,13 @@ absl::StatusOr<ThunkProto> AllReduceThunk::ToProto() const {
   if (auto launch_dimensions = collective_kernel_thunk_->launch_dimensions();
       launch_dimensions.has_value()) {
     *thunk_proto->mutable_launch_dimensions() = launch_dimensions->ToProto();
+  }
+  thunk_proto->set_use_pdl(collective_kernel_thunk_->use_pdl());
+  if (collective_kernel_thunk_->cubin()) {
+    *thunk_proto->mutable_cubin() =
+        std::string(reinterpret_cast<const char*>(
+                        collective_kernel_thunk_->cubin()->data()),
+                    collective_kernel_thunk_->cubin()->size());
   }
 
   return proto;
@@ -324,7 +331,7 @@ absl::StatusOr<ThunkProto> ReduceScatterThunk::ToProto() const {
 
   ReduceScatterThunkProto* thunk_proto = proto.mutable_reduce_scatter_thunk();
 
-  for (const Buffer& buffer : buffers_) {
+  for (const Buffer& buffer : buffers()) {
     ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
   }
 
@@ -338,10 +345,9 @@ absl::Status ReduceScatterThunk::RunCollective(const ExecuteParams& params,
                                                const GpuCliqueKey& clique_key,
                                                se::Stream& stream,
                                                Communicator& comm) {
-  TF_ASSIGN_OR_RETURN(
-      std::vector<DeviceBufferPair> device_buffers,
-      ConvertToDeviceBuffers(params.buffer_allocations, buffers_,
-                             config_.config.operand_element_type));
+  ASSIGN_OR_RETURN(std::vector<DeviceBufferPair> device_buffers,
+                   ConvertToDeviceBuffers(params.buffer_allocations, buffers(),
+                                          config_.config.operand_element_type));
   return RunReduceScatter(config_.reduction_kind, device_buffers, stream, comm,
                           config_.config.use_symmetric_buffer);
 }
@@ -352,10 +358,8 @@ absl::Status RunReduceScatter(ReductionKind reduction_kind,
                               bool use_symmetric_buffer) {
   int device_ordinal = stream.parent()->device_ordinal();
   XLA_VLOG_DEVICE(3, device_ordinal) << "Performing reduce-scatter";
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, &comm,
-                                          use_symmetric_buffer));
 
-  TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm.NumRanks());
+  ASSIGN_OR_RETURN(int32_t num_ranks, comm.NumRanks());
 
   auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
   Future<> future =
@@ -368,14 +372,14 @@ absl::Status RunReduceScatter(ReductionKind reduction_kind,
               << "Source buffer was not an exact multiple of the number of "
                  "participants.";
 
-          TF_RETURN_IF_ERROR(comm->LaunchReduceScatter(
+          RETURN_IF_ERROR(comm->LaunchReduceScatter(
               buffer.source_buffer, buffer.destination_buffer,
               buffer.element_type, buffer.element_count / num_ranks,
               reduction_kind, GpuCollectives::On(stream)));
         }
         return absl::OkStatus();
       });
-  TF_RETURN_IF_ERROR(future.Await());
+  RETURN_IF_ERROR(future.Await());
   XLA_VLOG_DEVICE(3, device_ordinal) << "Done performing reduce-scatter";
   return absl::OkStatus();
 }

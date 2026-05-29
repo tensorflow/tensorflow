@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -542,9 +543,10 @@ void CompileAndFilecheck(
   opts.num_partitions = num_partitions;
   opts.spmd_mode = FunctionalHloRunner::SpmdMode::kUseSpmdPartitioning;
   opts.xla_dump_to = dump_dir;
-  TF_EXPECT_OK(FunctionalHloRunner::LoadAndCompile(
-      *client, xla::DebugOptions{}, preproc_options, opts, hlo_file,
-      InputFormat::kText));
+  TF_EXPECT_OK(FunctionalHloRunner::LoadAndCompile(*client, xla::DebugOptions{},
+                                                   preproc_options, opts,
+                                                   hlo_file, InputFormat::kText)
+                   .status());
 
   {
     std::vector<std::string> after_opt_hlo_paths;
@@ -639,12 +641,12 @@ TEST_F(FunctionalHloRunnerTest, WhileKnownTripCountGetsCapped) {
 
 namespace {
 absl::StatusOr<std::string> GetExpectedBackendFingerprint() {
-  TF_ASSIGN_OR_RETURN(std::string platform_name,
-                      PlatformUtil::CanonicalPlatformName("gpu"));
+  ASSIGN_OR_RETURN(std::string platform_name,
+                   PlatformUtil::CanonicalPlatformName("gpu"));
   if (platform_name == "rocm") {
     return "2971291867";
   }
-  return "3357903800";
+  return "4040761820";
 }
 }  // namespace
 
@@ -695,7 +697,7 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id) {
   gpu_options.node_id = node_id;
   gpu_options.num_nodes = kNumNodes;
   gpu_options.allowed_devices = {node_id};
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       PjRtEnvironment env,
       xla::GetPjRtEnvironmentForGpu("127.0.0.1:12345", gpu_options,
                                     /*init_timeout=*/absl::Seconds(120)));
@@ -707,27 +709,28 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id) {
   // autotuner_test.cc. Here, we just check that compilation
   // actually succeeds, and that the autotuner runs correctly ends up storing
   // results for each node in the key-value store.
-  TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
-      *env.client, GetDebugOptionsFromFlags(),
-      FunctionalHloRunner::PreprocessingOptions{},
-      FunctionalHloRunner::RawCompileOptions{.num_replicas = kNumNodes},
-      GetHloPath("multiple_gemm_fusions.hlo"), InputFormat::kText, node_id,
-      kNumNodes, /*kv_store=*/nullptr,
-      /*use_gpu_count_workaround=*/false));
+  RETURN_IF_ERROR(
+      FunctionalHloRunner::LoadAndCompile(
+          *env.client, GetDebugOptionsFromFlags(),
+          FunctionalHloRunner::PreprocessingOptions{},
+          FunctionalHloRunner::RawCompileOptions{.num_replicas = kNumNodes},
+          GetHloPath("multiple_gemm_fusions.hlo"), InputFormat::kText, node_id,
+          kNumNodes, /*kv_store=*/nullptr,
+          /*use_gpu_count_workaround=*/false)
+          .status());
   if (node_id == 0) {
-    TF_ASSIGN_OR_RETURN(std::string backend_fp,
-                        GetExpectedBackendFingerprint());
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(std::string backend_fp, GetExpectedBackendFingerprint());
+    ASSIGN_OR_RETURN(
         std::string results0,
         env.kv_store->Get(
-            absl::StrCat("autotune_results_b190aeb9aa0b9e93e4c08d095726f562_",
+            absl::StrCat("autotune_results_fda6faffd312182b0b13b647233621fc_",
                          backend_fp, "_0"),
             absl::Seconds(1)));
     CHECK(absl::StrContains(results0, "result"));
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         std::string results1,
         env.kv_store->Get(
-            absl::StrCat("autotune_results_b190aeb9aa0b9e93e4c08d095726f562_",
+            absl::StrCat("autotune_results_fda6faffd312182b0b13b647233621fc_",
                          backend_fp, "_1"),
             absl::Seconds(1)));
     CHECK(absl::StrContains(results1, "result"));
@@ -741,8 +744,14 @@ absl::Status RunShardedHloWithClient(xla::PjRtClient& client) {
   // This method corresponds to:
   // --num_replicas=1 --num_partitions=16
   xla::DebugOptions debug_options;
+  debug_options.set_xla_gpu_autotune_level(0);
+  debug_options.set_xla_gpu_libnvjitlink_mode(
+      xla::DebugOptions::LIB_NV_JIT_LINK_MODE_DISABLED);
   FunctionalHloRunner::PreprocessingOptions preproc_options;
   FunctionalHloRunner::RawCompileOptions raw_compile_options;
+  ExecutionOptions execution_options;
+  *execution_options.mutable_debug_options() = debug_options;
+  raw_compile_options.execution_options = execution_options;
   raw_compile_options.num_replicas = 1;
   raw_compile_options.num_partitions = 16;
 

@@ -30,7 +30,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/log_severity.h"
-#include "absl/cleanup/cleanup.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/log/scoped_mock_log.h"
@@ -43,8 +42,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
 #include "xla/autotune_results.pb.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
@@ -79,17 +80,18 @@ limitations under the License.
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/gpu_topology.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
+#include "xla/service/multi_module_driver.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/xla_debug_info_manager.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
-#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
@@ -105,6 +107,7 @@ limitations under the License.
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/path.h"
@@ -118,17 +121,13 @@ namespace {
 namespace m = ::xla::match;
 
 using ::testing::AssertionResult;
+using ::testing::AtLeast;
 using ::testing::EndsWith;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::IsSupersetOf;
 using ::testing::Matches;
 using ::testing::Not;
-using ::testing::NotNull;
-using ::testing::Pointee;
-using ::testing::Property;
-using ::testing::SizeIs;
-using ::testing::StartsWith;
 using ::testing::TempDir;
 using ::testing::TestParamInfo;
 using ::testing::Values;
@@ -145,7 +144,7 @@ class GpuCompilerTest
 absl::StatusOr<std::string> ReadNonEmptyFile(absl::string_view file_path) {
   std::string str;
   tsl::Env* env = tsl::Env::Default();
-  TF_RETURN_IF_ERROR(tsl::ReadFileToString(env, std::string(file_path), &str));
+  RETURN_IF_ERROR(tsl::ReadFileToString(env, std::string(file_path), &str));
   if (str.empty()) {
     return absl::InvalidArgumentError(
         absl::StrCat("File is empty: ", file_path));
@@ -609,11 +608,11 @@ ENTRY main {
   EXPECT_EQ(operand_1->operand(0)->opcode(), HloOpcode::kAllGatherDone);
 }
 
-// This test ensures that the pathway for using the cuBLAS fallback (forming a
-// Triton fusion and falling back to cuBLAS in the autotuner) is exactly the
-// same as using cuBLAS directly (with Triton disabled).
+// This test ensures that the pathway for using the cuBlasLt fallback (forming a
+// Triton fusion and falling back to cuBlasLt in the autotuner) is exactly the
+// same as using cuBLasLt directly (with Triton disabled).
 TEST_F(GpuCompilerTest,
-       GemmFusionIsNoOpWhenGemmFusionAutotunerFallsBackToCublas) {
+       GemmFusionIsNoOpWhenGemmFusionAutotunerFallsBackToCublasLt) {
   if (!get_cuda_cc().IsAtLeastAmpere()) {
     GTEST_SKIP() << "Autotuning results have only been generated for Ampere "
                  << "and later GPUs";
@@ -651,8 +650,6 @@ ENTRY main {
   DebugOptions triton_enabled_debug_options = GetDebugOptionsForTest();
   triton_enabled_debug_options.clear_xla_gpu_experimental_autotune_backends();
   triton_enabled_debug_options.add_xla_gpu_experimental_autotune_backends(
-      autotuner::Backend::CUBLAS_FISSION);
-  triton_enabled_debug_options.add_xla_gpu_experimental_autotune_backends(
       autotuner::Backend::CUBLASLT_FISSION);
   triton_enabled_debug_options.add_xla_gpu_experimental_autotune_backends(
       autotuner::Backend::NATIVE_EMITTER);
@@ -666,9 +663,8 @@ ENTRY main {
   AutotuneResults results;
   ASSERT_OK(AutotunerCache::SerializeAutotuneResults(&results));
   EXPECT_FALSE(results.results().empty());
-  EXPECT_TRUE(absl::StrContains(results.DebugString(), "CUBLAS_FISSION") ||
-              // CUBLASLT_FISSION is dumped as GemmKey in the AutotunerResult.
-              absl::StrContains(results.DebugString(), "gemm"));
+  // CUBLASLT_FISSION is dumped as GemmKey in the AutotunerResult.
+  EXPECT_TRUE(absl::StrContains(results.DebugString(), "gemm"));
 
   // Triton disabled - this will skip the GemmFusion pass and use cuBLAS.
   DebugOptions triton_disabled_debug_options = GetDebugOptionsForTest();
@@ -683,10 +679,8 @@ ENTRY main {
   const HloInstruction* root =
       triton_enabled_module->entry_computation()->root_instruction();
   const HloInstruction* custom_op = root->operand(0)->operand(0);
-  bool is_cublas_gemm = GetDebugOptionsForTest().xla_gpu_enable_cublaslt()
-                            ? custom_op->IsCustomCall("__cublas$lt$matmul")
-                            : custom_op->IsCustomCall("__cublas$gemm");
-  EXPECT_TRUE(is_cublas_gemm) << custom_op->ToString();
+  EXPECT_TRUE(custom_op->IsCustomCall("__cublas$lt$matmul"))
+      << custom_op->ToString();
   // Make sure that the module has the same number of computations with/without
   // enabling triton gemm
   EXPECT_EQ(triton_enabled_module->computation_count(),
@@ -716,8 +710,6 @@ ENTRY main {
   DebugOptions triton_enabled_debug_options = GetDebugOptionsForTest();
   triton_enabled_debug_options.clear_xla_gpu_experimental_autotune_backends();
   triton_enabled_debug_options.add_xla_gpu_experimental_autotune_backends(
-      autotuner::Backend::CUBLAS_FISSION);
-  triton_enabled_debug_options.add_xla_gpu_experimental_autotune_backends(
       autotuner::Backend::CUBLASLT_FISSION);
   triton_enabled_debug_options.add_xla_gpu_experimental_autotune_backends(
       autotuner::Backend::NATIVE_EMITTER);
@@ -727,7 +719,7 @@ ENTRY main {
   auto triton_enabled_executable =
       triton_enabled_module_and_executable.second.get();
 
-  // Triton disabled - this will skip the GemmFusion pass and use cuBLAS.
+  // Triton disabled - this will skip the GemmFusion pass and use cuBlasLt.
   DebugOptions triton_disabled_debug_options = GetDebugOptionsForTest();
   triton_disabled_debug_options.set_xla_gpu_enable_triton_gemm(false);
   config.set_debug_options(triton_disabled_debug_options);
@@ -762,6 +754,13 @@ INSTANTIATE_TEST_SUITE_P(
 TEST_P(FloatNormalizationTest, Fp8Normalization) {
   const PrimitiveType lhs_type = GetParam().first;
   const PrimitiveType rhs_type = GetParam().second;
+
+  se::GpuComputeCapability gpu_cc =
+      device_description().gpu_compute_capability();
+  se::CudaComputeCapability cuda_cc = get_cuda_cc();
+  se::RocmComputeCapability rocm_cc =
+      device_description().rocm_compute_capability();
+
   const std::string lhs_name =
       primitive_util::LowercasePrimitiveTypeName(lhs_type);
   const std::string rhs_name =
@@ -796,12 +795,6 @@ ENTRY main {
     return GetOptimizedModuleForExecutable(module_str, config);
   };
 
-  se::GpuComputeCapability gpu_cc =
-      device_description().gpu_compute_capability();
-  se::CudaComputeCapability cuda_cc = get_cuda_cc();
-  se::RocmComputeCapability rocm_cc =
-      device_description().rocm_compute_capability();
-
   const std::string triton_keep_types = absl::Substitute(
       R"(CHECK: fusion($0{{[^)]*}}, $1{{[^)]*}}){{.*}}"kind":"{{__triton_gemm|__triton_nested_gemm_fusion}}")",
       lhs_name, rhs_name);
@@ -809,7 +802,7 @@ ENTRY main {
       R"(CHECK: custom-call($0{{[^)]*}}, $1{{[^)]*}}){{.*}}custom_call_target="__cublas$$lt$$matmul$$f8")",
       lhs_name, rhs_name);
   const std::string cublas_convert_to_f16 =
-      R"(CHECK: custom-call(f16{{.*}}, f16{{.*}}){{.*}}custom_call_target="{{__cublas\$gemm|__cublas\$lt\$matmul}}")";
+      R"(CHECK: custom-call(f16{{.*}}, f16{{.*}}){{.*}}custom_call_target="{{__cublas\$lt\$matmul}}")";
   const std::string fallback_convert_to_f16 =
       R"(CHECK: dot(f16{{[^)]*}}, f16{{[^)]*}}))";
 
@@ -826,7 +819,7 @@ ENTRY main {
         (cuda_cc.IsAtLeastHopper() ||
          (cuda_cc.IsAtLeastAmpere() && lhs_type == F8E5M2 &&
           rhs_type == F8E5M2) ||
-         rocm_cc.has_ocp_fp8_support())
+         gpu_cc.IsRocm())
             ? triton_keep_types
             : cublas_convert_to_f16;
     ASSERT_OK_AND_ASSIGN(
@@ -1023,7 +1016,7 @@ HloModule composite
 async_call {
   p0 = f32[32,32] parameter(0)
   p1 = f32[32,32] parameter(1)
-  gemm = (f32[32,32], s8[8192]) custom-call(p0, p1), custom_call_target="__cublas$gemm",
+  gemm = (f32[32,32], s8[8192]) custom-call(p0, p1), custom_call_target="__cublas$lt$matmul",
     backend_config={
       "gemm_backend_config":{"alpha_real":1,"alpha_imag":0,"beta":0,
       "dot_dimension_numbers":
@@ -1065,7 +1058,7 @@ ENTRY main {
       gpu_exec->thunk_executor().thunks()[0].get());
   EXPECT_EQ(async_start_thunk->thunks().size(), 1);
   EXPECT_THAT(async_start_thunk->thunks(),
-              ::testing::ElementsAre(ThunkKindIs(Thunk::kGemm)));
+              ::testing::ElementsAre(ThunkKindIs(Thunk::kCublasLtMatmul)));
 }
 
 TEST_F(GpuCompilerTest, StreamAnnotationThunkTestFDO) {
@@ -1075,7 +1068,7 @@ HloModule composite
 async_call {
   p0 = f32[32,32] parameter(0)
   p1 = f32[32,32] parameter(1)
-  gemm = (f32[32,32], s8[8192]) custom-call(p0, p1), custom_call_target="__cublas$gemm",
+  gemm = (f32[32,32], s8[8192]) custom-call(p0, p1), custom_call_target="__cublas$lt$matmul",
     backend_config={
       "gemm_backend_config":{"alpha_real":1,"alpha_imag":0,"beta":0,
       "dot_dimension_numbers":
@@ -1125,7 +1118,7 @@ ENTRY main {
       gpu_exec->thunk_executor().thunks()[0].get());
   EXPECT_EQ(async_start_thunk->thunks().size(), 1);
   EXPECT_THAT(async_start_thunk->thunks(),
-              ::testing::ElementsAre(ThunkKindIs(Thunk::kGemm)));
+              ::testing::ElementsAre(ThunkKindIs(Thunk::kCublasLtMatmul)));
 }
 
 using GpuCompilerPassTest = GpuCompilerTest;
@@ -1159,36 +1152,6 @@ ENTRY main {
   }
 
   EXPECT_EQ(triton_gemm_rewriter_has_run, expect_triton_gemm_rewriter_has_run);
-}
-
-TEST_F(GpuCompilerPassTest,
-       GpuCompilerRunsCustomKernelFusionByDefaultFromVolta) {
-  bool expect_custom_kernel_fusion_rewriter_has_run =
-      get_cuda_cc().major == se::CudaComputeCapability::kVolta;
-
-  constexpr absl::string_view constant_module = R"(
-HloModule noop
-
-ENTRY main {
-  ROOT constant = f32[] constant(0)
-})";
-
-  HloModuleConfig config = GetModuleConfigForTest();
-  ASSERT_OK_AND_ASSIGN(
-      auto optimized_module_and_executable,
-      GetOptimizedModuleForExecutable(constant_module, config));
-  const HloModule* optimized_module = optimized_module_and_executable.first;
-  const HloModuleMetadataProto& module_metadata =
-      optimized_module->metadata().proto();
-
-  bool custom_kernel_fusion_rewriter_has_run = false;
-  for (const HloPassMetadata& pass_metadata : module_metadata.pass_metadata()) {
-    custom_kernel_fusion_rewriter_has_run |=
-        pass_metadata.pass_name() == "custom-kernel-fusion-rewriter";
-  }
-
-  EXPECT_EQ(custom_kernel_fusion_rewriter_has_run,
-            expect_custom_kernel_fusion_rewriter_has_run);
 }
 
 class PassOrderTest : public GpuCompilerTest {
@@ -1599,7 +1562,7 @@ TEST_F(GpuCompilerTest,
     // CHECK:        ROOT {{.+}} = {{.+}} dynamic-update-slice({{.+}}, %[[bitcast]], {{.+}})
     // CHECK:      ENTRY
     // CHECK:        %[[fusion_start:.+]] = {{.+}} fusion-start({{.+}}), kind=kCustom, {{.+}}"name":"dynamic_address_computation"
-    // CHECK-NEXT:   %[[wrapped_dot:.+]] = {{.+}} fusion({{.+}}), kind=kLoop
+    // CHECK-NEXT:   %[[wrapped_dot:.+]] = {{.+}} fusion({{.+}})
     // CHECK-NEXT:   %[[fusion_done:.+]] = {{.+}} fusion-done(%[[fusion_start]]), {{.+}}"name":"dynamic_address_computation"
     // CHECK:        ROOT {{.+}} = {{.+}} tuple(%[[fusion_done]], %[[wrapped_dot]])
   )";
@@ -1696,15 +1659,6 @@ ENTRY %main {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(kHlo, config));
 
-  absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
-  EXPECT_CALL(mock_log,
-              Log(absl::LogSeverity::kWarning, EndsWith("/gpu_compiler.cc"),
-                  StartsWith("Using fallback sort algorithm")))
-      .Times(1);
-
-  // StartCapturingLogs has to be called even if we expect not to capture any
-  // logs.
-  mock_log.StartCapturingLogs();
   TF_ASSERT_OK(compiler()->RunHloPasses(std::move(module), nullptr, nullptr));
 }
 
@@ -1779,6 +1733,13 @@ ENTRY main {
 }
 
 TEST_F(GpuCompilerTest, NoCudnnVectorizationOnHopperAndBeyond) {
+  if (gpu_target_config().dnn_version_info <
+          stream_executor::dnn::VersionInfo(9, 12, 0) &&
+      absl::StrContains(device_description().name(), "GB200")) {
+    GTEST_SKIP()
+        << "Skipping test as it requires cuDNN >= 9.12. on GB200. Otherwise, "
+           "test will crash.";
+  }
   bool is_hopper_or_beyond = get_cuda_cc().IsAtLeastHopper();
 
   constexpr absl::string_view kHlo = R"(
@@ -1898,7 +1859,7 @@ ENTRY main {
 
   // Downcast to GPU executable
   xla::gpu::GpuExecutable* gpu_executable =
-      tensorflow::down_cast<xla::gpu::GpuExecutable*>(executable.get());
+      absl::down_cast<GpuExecutable*>(executable.get());
   ASSERT_NE(gpu_executable, nullptr);
 
   // Get the thunk sequence and check its size and type
@@ -1926,9 +1887,10 @@ ENTRY main {
         EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kCommandBuffer));
       } else if (kinds.size() == 4) {
         // CUB sort via FFI custom call
-        EXPECT_THAT(kinds,
-                    ElementsAre(Thunk::Kind::kKernel, Thunk::Kind::kCustomCall,
-                                Thunk::Kind::kKernel, Thunk::Kind::kKernel));
+        EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kCustomKernel,
+                                       Thunk::Kind::kCustomCall,
+                                       Thunk::Kind::kCustomKernel,
+                                       Thunk::Kind::kCustomKernel));
       } else {
         FAIL() << "Unexpected thunk sequence size: " << kinds.size();
       }
@@ -1953,8 +1915,10 @@ XLA_FFI_DEFINE_HANDLER(
         .Arg<ffi::AnyBuffer>()
         .Ret<ffi::AnyBuffer>());
 
-TEST_F(GpuCompilerTest,
-       ParametersUsedByCollectiveMosaicShouldBeCopiedToCollectiveMemory) {
+TEST_F(GpuCompilerTest, MosaicMultimemRequiresSymmetricMemoryCopies) {
+  if (device_description().gpu_compute_capability().IsRocm()) {
+    GTEST_SKIP() << "Mosaic GPU is not supported on ROCm.";
+  }
   XLA_FFI_Handler_Bundle bundle = {
       /*instantiate=*/nullptr,
       /*prepare=*/nullptr,
@@ -1966,17 +1930,16 @@ TEST_F(GpuCompilerTest,
   constexpr absl::string_view kHlo = R"(
     HloModule test
     ENTRY main {
-      parameter_used_by_mosaic_with_nvshmem = s32[1] parameter(0)
-      parameter_used_by_mosaic_with_multimem = s32[1] parameter(1)
-      parameter_used_by_non_collective_mosaic = s32[1] parameter(2)
+      p_multimem = s32[1] parameter(0)
+      p_non_coll = s32[1] parameter(1)
 
-      multimem_result = (s32[1]{0}) custom-call(%parameter_used_by_mosaic_with_multimem), custom_call_target="mosaic_gpu_v2", backend_config={xla_multimem_parameters = "0"}, api_version=API_VERSION_TYPED_FFI
+      cc_multimem = (s32[1]{0}) custom-call(p_multimem), custom_call_target="mosaic_gpu_v2", backend_config={xla_multimem_parameters = "0"}, api_version=API_VERSION_TYPED_FFI
+      res_multimem = s32[1] get-tuple-element(cc_multimem), index=0
 
-      nvshmem_result = (s32[1]{0}) custom-call(%parameter_used_by_mosaic_with_nvshmem), custom_call_target="mosaic_gpu_v2", backend_config={module="nvshmem"}, api_version=API_VERSION_TYPED_FFI
+      cc_non_coll = (s32[1]{0}) custom-call(p_non_coll), custom_call_target="mosaic_gpu_v2", api_version=API_VERSION_TYPED_FFI
+      res_non_coll = s32[1] get-tuple-element(cc_non_coll), index=0
 
-      non_collective_result = (s32[1]{0}) custom-call(%parameter_used_by_non_collective_mosaic), custom_call_target="mosaic_gpu_v2", api_version=API_VERSION_TYPED_FFI
-
-      ROOT result = tuple(multimem_result, nvshmem_result, non_collective_result)
+      ROOT result = tuple(res_multimem, res_non_coll)
     }
   )";
   HloModuleConfig config = GetModuleConfigForTest();
@@ -1986,13 +1949,35 @@ TEST_F(GpuCompilerTest,
                        GetOptimizedModuleForExecutable(kHlo, config));
 
   const HloModule* optimized_module = optimized_module_and_executable.first;
-  const char* kExpected = R"(
-    // CHECK:  %copy.1 = s32[1]{0} copy(%parameter_used_by_mosaic_with_nvshmem)
-    // CHECK:  %copy = s32[1]{0:S(1)} copy(%parameter_used_by_mosaic_with_multimem)
-    // CHECK:  %multimem_result = (s32[1]{0:S(1)}) custom-call(%copy), custom_call_target="mosaic_gpu_v2", api_version=API_VERSION_TYPED_FFI, backend_config={xla_multimem_parameters = "0"}
-    // CHECK:  %nvshmem_result = (s32[1]{0}) custom-call(%copy.1), custom_call_target="mosaic_gpu_v2", api_version=API_VERSION_TYPED_FFI, backend_config={module="nvshmem"}
-    // CHECK:  %non_collective_result = (s32[1]{0}) custom-call(%parameter_used_by_non_collective_mosaic), custom_call_target="mosaic_gpu_v2", api_version=API_VERSION_TYPED_FFI
-  )";
+
+  constexpr absl::string_view kExpected = R"(
+    // CHECK-DAG: [[P_MULTI:%[^ ]+]] = s32[1]{0} parameter(0)
+    // CHECK-DAG: [[P_NON:%[^ ]+]] = s32[1]{0} parameter(1)
+
+    // Multimem input parameters are copied to S1
+    // CHECK-DAG: [[COPY_MULTI_IN:%copy[^ ]*]] = s32[1]{0:S(1)} copy([[P_MULTI]])
+
+    // CHECK-DAG: [[CC_MULTI:%[^ ]+]] = (s32[1]{0:S(1)}) custom-call([[COPY_MULTI_IN]]){{.*}}backend_config={xla_multimem_parameters = "0"}
+    // CHECK-DAG: [[CC_NON:%[^ ]+]] = (s32[1]{0}) custom-call([[P_NON]])
+
+    // Extracting from the 1-element tuples returned by custom calls (all index=0)
+    // CHECK-DAG: [[GTE_MULTI:%[^ ]+]] = s32[1]{0:S(1)} get-tuple-element([[CC_MULTI]]), index=0
+    // CHECK-DAG: [[GTE_NON:%[^ ]+]] = s32[1]{0} get-tuple-element([[CC_NON]]), index=0
+
+    // XLA packs an intermediate tuple
+    // CHECK-DAG: [[INTER_TUPLE:%[^ ]+]] = (s32[1]{0:S(1)}, s32[1]{0}) tuple([[GTE_MULTI]], [[GTE_NON]])
+
+    // XLA unpacks the intermediate tuple to perform the isolation copies
+    // CHECK-DAG: [[GTE_OUT_MULTI:%[^ ]+]] = s32[1]{0:S(1)} get-tuple-element([[INTER_TUPLE]]), index=0
+    // CHECK-DAG: [[GTE_OUT_NON:%[^ ]+]] = s32[1]{0} get-tuple-element([[INTER_TUPLE]]), index=1
+
+    // The S1 -> S0 isolation copies
+    // CHECK-DAG: [[COPY_OUT_MULTI:%copy[^ ]*]] = s32[1]{0} copy([[GTE_OUT_MULTI]])
+
+    // The final ROOT is pure S0
+    // CHECK: ROOT %tuple{{.*}} = (s32[1]{0}, s32[1]{0}) tuple([[COPY_OUT_MULTI]], [[GTE_OUT_NON]])
+    )";
+
   EXPECT_THAT(RunFileCheck(
                   optimized_module->ToString(HloPrintOptions{}
                                                  .set_print_operand_shape(false)
@@ -2001,9 +1986,548 @@ TEST_F(GpuCompilerTest,
               absl_testing::IsOkAndHolds(true));
 }
 
+class MosaicNvshmemCopyTest : public GpuCompilerTest,
+                              public ::testing::WithParamInterface<bool> {};
+
+TEST_P(MosaicNvshmemCopyTest, IsolatesSymmetricMemoryBoundaries) {
+  if (device_description().gpu_compute_capability().IsRocm()) {
+    GTEST_SKIP() << "Mosaic GPU is not supported on ROCm.";
+  }
+  XLA_FFI_Handler_Bundle bundle = {
+      /*instantiate=*/nullptr,
+      /*prepare=*/nullptr,
+      /*initialize=*/nullptr,
+      /*execute=*/kMosaicGpuExecute,
+  };
+  xla::ffi::Ffi::RegisterStaticHandler(ffi::GetXlaFfiApi(), "mosaic_gpu_v2",
+                                       "CUDA", bundle);
+  constexpr absl::string_view kHlo = R"(
+    HloModule test
+    ENTRY main {
+      p_nvshmem = s32[1] parameter(0)
+      cc_nvshmem = (s32[1]{0}) custom-call(p_nvshmem), custom_call_target="mosaic_gpu_v2", backend_config={module="nvshmem"}, api_version=API_VERSION_TYPED_FFI
+      ROOT res_nvshmem = s32[1] get-tuple-element(cc_nvshmem), index=0
+    }
+  )";
+
+  bool enable_nvshmem = GetParam();
+  HloModuleConfig config = GetModuleConfigForTest();
+  DebugOptions& opts = config.mutable_debug_options();
+  opts.set_xla_gpu_experimental_enable_nvshmem(enable_nvshmem);
+
+  std::pair<const HloModule*, std::unique_ptr<OpaqueExecutable>>
+      optimized_module_and_executable;
+  ASSERT_OK_AND_ASSIGN(optimized_module_and_executable,
+                       GetOptimizedModuleForExecutable(kHlo, config));
+
+  const HloModule* optimized_module = optimized_module_and_executable.first;
+
+  constexpr absl::string_view kS1 = R"(
+    // CHECK: [[P_NV:%[^ ]+]] = s32[1]{0} parameter(0)
+    // CHECK: [[COPY_NV_IN:%copy[^ ]*]] = s32[1]{0:S(1)} copy([[P_NV]])
+    // CHECK: [[CC_NV:%[^ ]+]] = (s32[1]{0:S(1)}) custom-call([[COPY_NV_IN]]){{.*}}backend_config={module="nvshmem"}
+    // CHECK: [[GTE_NV:%[^ ]+]] = s32[1]{0:S(1)} get-tuple-element([[CC_NV]]), index=0
+    // CHECK: ROOT [[COPY_OUT_NV:%copy[^ ]*]] = s32[1]{0} copy([[GTE_NV]])
+    )";
+
+  constexpr absl::string_view kS0 = R"(
+    // CHECK: [[P_NV:%[^ ]+]] = s32[1]{0} parameter(0)
+    // CHECK: [[CC_NV:%[^ ]+]] = (s32[1]{0}) custom-call([[P_NV]]){{.*}}backend_config={module="nvshmem"}
+    // CHECK: ROOT [[GTE_NV:%[^ ]+]] = s32[1]{0} get-tuple-element([[CC_NV]]), index=0
+    )";
+
+  const absl::string_view kExpected = [&]() {
+    if (enable_nvshmem) {
+      return kS1;
+    }
+    return kS0;
+  }();
+
+  EXPECT_THAT(RunFileCheck(
+                  optimized_module->ToString(HloPrintOptions{}
+                                                 .set_print_operand_shape(false)
+                                                 .set_print_metadata(false)),
+                  kExpected),
+              absl_testing::IsOkAndHolds(true));
+}
+
+INSTANTIATE_TEST_SUITE_P(MosaicNvshmemCopyTestSuite, MosaicNvshmemCopyTest,
+                         ::testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           return info.param ? "enable_nvshmem_true"
+                                             : "enable_nvshmem_false";
+                         });
+
+TEST_F(GpuCompilerTest, MosaicCollectiveMetadataRequiresSymmetricMemoryCopies) {
+  if (device_description().gpu_compute_capability().IsRocm()) {
+    GTEST_SKIP() << "Mosaic GPU is not supported on ROCm.";
+  }
+  XLA_FFI_Handler_Bundle bundle = {
+      /*instantiate=*/nullptr,
+      /*prepare=*/nullptr,
+      /*initialize=*/nullptr,
+      /*execute=*/kMosaicGpuExecute,
+  };
+  xla::ffi::Ffi::RegisterStaticHandler(ffi::GetXlaFfiApi(), "mosaic_gpu_v2",
+                                       "CUDA", bundle);
+  constexpr absl::string_view kHlo = R"(
+    HloModule test
+    ENTRY main {
+      p = s32[1] parameter(0)
+      mosaic = (s32[1]{0}) custom-call(p), custom_call_target="mosaic_gpu_v2", api_version=API_VERSION_TYPED_FFI, backend_config={uses_xla_collective_metadata=true}
+      ROOT res = s32[1]{0} get-tuple-element(mosaic), index=0
+    }
+  )";
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.set_num_partitions(16);
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo, config));
+  Compiler::CompileOptions compile_options;
+  compile_options.gpu_topology =
+      GpuTopology(/*platform_version=*/"", 100, 1, 1, gpu_target_config());
+  ASSERT_OK_AND_ASSIGN(
+      auto optimized_module,
+      compiler()->RunHloPasses(module->Clone(), nullptr, compile_options));
+  ASSERT_OK_AND_ASSIGN(auto executable,
+                       compiler()->RunBackend(std::move(optimized_module),
+                                              nullptr, compile_options));
+  const HloModule& final_module =
+      absl::down_cast<GpuExecutable*>(executable.get())->module();
+
+  constexpr absl::string_view kExpected = R"(
+    // CHECK: [[P:%[^ ]+]] = s32[1]{0} parameter(0)
+    // CHECK: [[COPY_IN:%copy[^ ]*]] = s32[1]{0:S(1)} copy([[P]])
+    // CHECK: [[MOSAIC:%[^ ]+]] = (s32[1]{0:S(1)}) custom-call([[COPY_IN]]){{.*}}backend_config={uses_xla_collective_metadata=true}
+    // CHECK: [[GTE:%[^ ]+]] = s32[1]{0:S(1)} get-tuple-element([[MOSAIC]]), index=0
+    // CHECK: ROOT [[COPY_OUT:%copy[^ ]*]] = s32[1]{0} copy([[GTE]])
+  )";
+  EXPECT_THAT(
+      RunFileCheck(final_module.ToString(HloPrintOptions{}
+                                             .set_print_operand_shape(false)
+                                             .set_print_metadata(false)),
+                   kExpected),
+      absl_testing::IsOkAndHolds(true));
+}
+
+struct OneShotRaggedAllToAllMemSpaceParams {
+  bool is_zero_copy;
+  bool use_input_output_alias;
+};
+
+class OneShotRaggedAllToAllMemSpaceTest
+    : public GpuCompilerTest,
+      public ::testing::WithParamInterface<
+          OneShotRaggedAllToAllMemSpaceParams> {};
+
+INSTANTIATE_TEST_SUITE_P(
+    CollectiveBufferAnalysis, OneShotRaggedAllToAllMemSpaceTest,
+    Values(OneShotRaggedAllToAllMemSpaceParams{false, false},
+           OneShotRaggedAllToAllMemSpaceParams{false, true},
+           OneShotRaggedAllToAllMemSpaceParams{true, false},
+           OneShotRaggedAllToAllMemSpaceParams{true, true}),
+    [](const TestParamInfo<OneShotRaggedAllToAllMemSpaceTest::ParamType>&
+           info) {
+      return absl::StrCat(
+          info.param.is_zero_copy ? "zero_copy" : "no_zero_copy", "_",
+          info.param.use_input_output_alias ? "with_alias" : "no_alias");
+    });
+
+TEST_P(OneShotRaggedAllToAllMemSpaceTest, DirectUsage) {
+  constexpr absl::string_view kHloTemplate = R"(
+    HloModule test$0
+
+    ENTRY test_computation {
+      input = f32[16] parameter(0)
+      output = f32[16] parameter(1)
+      input_offsets = s64[2] parameter(2)
+      send_sizes = s64[2] parameter(3)
+      output_offsets = s64[2] parameter(4)
+      recv_sizes = s64[2] parameter(5)
+      ROOT ra2a = f32[16] ragged-all-to-all(input, output, input_offsets,
+      send_sizes, output_offsets, recv_sizes), replica_groups={{0,1}}
+    }
+  )";
+  bool use_input_output_alias = GetParam().use_input_output_alias;
+  // Inject the alias layout configuration into the HLO
+  std::string hlo_text = absl::StrReplaceAll(
+      kHloTemplate,
+      {{"$0",
+        use_input_output_alias ? ", input_output_alias={ {}: (1, {}) }" : ""}});
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  DebugOptions& opts = config.mutable_debug_options();
+  opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(true);
+  opts.set_xla_gpu_experimental_ragged_all_to_all_zero_copy(
+      GetParam().is_zero_copy);
+
+  std::pair<const HloModule*, std::unique_ptr<OpaqueExecutable>>
+      optimized_module_and_executable;
+  ASSERT_OK_AND_ASSIGN(optimized_module_and_executable,
+                       GetOptimizedModuleForExecutable(hlo_text, config));
+
+  const HloModule* optimized_module = optimized_module_and_executable.first;
+
+  constexpr absl::string_view kS0NoCopy = R"(
+    // CHECK:  %output = f32[16]{0} parameter(1)
+    // CHECK:  %ragged-all-to-all-start = ((f32[16]{0}, f32[16]{0}, s64[2]{0}, s64[2]{0}, s64[2]{0}, /*index=5*/s64[2]{0}), f32[16]{0}) ragged-all-to-all-start(%input, %output,
+    // CHECK:  ROOT %ragged-all-to-all-done = f32[16]{0} ragged-all-to-all-done(%ragged-all-to-all-start)
+  )";
+
+  constexpr absl::string_view kS0OneCopy = R"(
+    // CHECK:  %output = f32[16]{0} parameter(1)
+    // CHECK:  [[COPY1:%copy[0-9.]*]] = f32[16]{0} copy(%output)
+    // CHECK:  %ragged-all-to-all-start = ((f32[16]{0}, f32[16]{0}, s64[2]{0}, s64[2]{0}, s64[2]{0}, /*index=5*/s64[2]{0}), f32[16]{0}) ragged-all-to-all-start(%input, [[COPY1]],
+    // CHECK:  ROOT %ragged-all-to-all-done = f32[16]{0} ragged-all-to-all-done(%ragged-all-to-all-start)
+  )";
+
+  constexpr absl::string_view kS1TwoCopies = R"(
+    // CHECK:  %output = f32[16]{0} parameter(1)
+    // CHECK:  [[COPY1:%copy[0-9.]*]] = f32[16]{0:S(1)} copy(%output)
+    // CHECK:  %ragged-all-to-all-start = ((f32[16]{0}, f32[16]{0:S(1)}, s64[2]{0}, s64[2]{0}, s64[2]{0}, /*index=5*/s64[2]{0}), f32[16]{0:S(1)}) ragged-all-to-all-start(%input, [[COPY1]],
+    // CHECK:  %ragged-all-to-all-done = f32[16]{0:S(1)} ragged-all-to-all-done(%ragged-all-to-all-start)
+    // CHECK:  ROOT %copy.{{[0-9]+}} = f32[16]{0} copy(%ragged-all-to-all-done)
+  )";
+
+  const absl::string_view expected_check = [&]() {
+    if (GetParam().is_zero_copy) {
+      // Collective memory space should be empty after the module execution,
+      // otherwise symmetric memory in XLA will not work correctly during the
+      // next execution.
+      // Regardless of the input_output_alias, Entry output should be S0.
+      // Therefore, we need two copies - for Entry param(1) and for Entry result
+      return kS1TwoCopies;
+    }
+    if (use_input_output_alias) {
+      // Param(1) is in S0, and because of the input_output_alias, it is
+      // considered writeable. Therefore, no copy is needed.
+      return kS0NoCopy;
+    }
+    // Param(1) is in S0 and is read-only, so its HloBuffer size is 2.
+    // HLO needs one copy to safely mutate param(1).
+    // No copy is needed for the result.
+    return kS0OneCopy;
+  }();
+
+  EXPECT_THAT(RunFileCheck(
+                  optimized_module->ToString(HloPrintOptions{}
+                                                 .set_print_operand_shape(false)
+                                                 .set_print_metadata(false)),
+                  expected_check),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_P(OneShotRaggedAllToAllMemSpaceTest, LoopUsage) {
+  constexpr absl::string_view kHloTemplate = R"(
+    HloModule test$0
+
+    while_condition {
+      params = (s32[], f32[16], f32[16]) parameter(0)
+      loop_counter = s32[] get-tuple-element(params), index=0
+      limit = s32[] constant(4)
+      ROOT result = pred[] compare(loop_counter, limit), direction=LT
+    }
+
+    while_body {
+      params = (s32[], f32[16], f32[16]) parameter(0)
+      loop_counter = s32[] get-tuple-element(params), index=0
+      input = f32[16] get-tuple-element(params), index=1
+      output = f32[16] get-tuple-element(params), index=2
+      input_offsets = u64[2] constant({0, 1})
+      send_sizes = u64[2] constant({1, 1})
+      output_offsets = u64[2] constant({0, 1})
+      recv_sizes = u64[2] constant({1, 1})
+      ra2a = f32[16] ragged-all-to-all(input, output, input_offsets, send_sizes, output_offsets, recv_sizes), replica_groups={{0,1}}
+      new_loop_counter = s32[] add(loop_counter, s32[] constant(1))
+      ROOT result = tuple(new_loop_counter, input, ra2a)
+    }
+
+    ENTRY entry_computation {
+      init_loop_counter = s32[] constant(0)
+      input = f32[16] parameter(0)
+      output = f32[16] parameter(1)
+      while_init = tuple(init_loop_counter, input, output)
+      while = (s32[], f32[16], f32[16]) while(while_init), condition=while_condition, body=while_body
+      ROOT result = get-tuple-element(while), index=2
+    }
+  )";
+  bool use_input_output_alias = GetParam().use_input_output_alias;
+  // Inject the alias layout configuration into the HLO
+  std::string hlo_text = absl::StrReplaceAll(
+      kHloTemplate,
+      {{"$0",
+        use_input_output_alias ? ", input_output_alias={ {}: (1, {}) }" : ""}});
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  DebugOptions& opts = config.mutable_debug_options();
+  opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(true);
+  opts.set_xla_gpu_experimental_ragged_all_to_all_zero_copy(
+      GetParam().is_zero_copy);
+
+  std::pair<const HloModule*, std::unique_ptr<OpaqueExecutable>>
+      optimized_module_and_executable;
+  ASSERT_OK_AND_ASSIGN(optimized_module_and_executable,
+                       GetOptimizedModuleForExecutable(hlo_text, config));
+
+  const HloModule* optimized_module = optimized_module_and_executable.first;
+
+  constexpr absl::string_view kS0NoCopy = R"(
+    // CHECK:  [[OUTPUT1:%output[0-9.]*]] = f32[16]{0} parameter(1)
+    // CHECK:  %tuple = (s32[], f32[16]{0}, f32[16]{0}) tuple(%copy{{.*}}, %input{{.*}}, [[OUTPUT1]])
+    // CHECK:  %while = (s32[], f32[16]{0}, f32[16]{0}) while(%tuple)
+    // CHECK:  ROOT %result{{.*}}= f32[16]{0} get-tuple-element(%while), index=2
+  )";
+
+  constexpr absl::string_view kS0OneCopy = R"(
+    // CHECK:  [[OUTPUT1:%output[0-9.]*]] = f32[16]{0} parameter(1)
+    // CHECK:  [[COPY1:%copy[0-9.]*]] = f32[16]{0} copy([[OUTPUT1]])
+    // CHECK:  %tuple = (s32[], f32[16]{0}, f32[16]{0}) tuple(%copy{{.*}}, %input{{.*}}, [[COPY1]])
+    // CHECK:  %while = (s32[], f32[16]{0}, f32[16]{0}) while(%tuple)
+    // CHECK:  ROOT %result{{.*}}= f32[16]{0} get-tuple-element(%while), index=2
+  )";
+
+  constexpr absl::string_view kS1TwoCopies = R"(
+    // CHECK:  [[OUTPUT1:%output[0-9.]*]] = f32[16]{0} parameter(1)
+    // CHECK:  [[COPY1:%copy[0-9.]*]] = f32[16]{0:S(1)} copy([[OUTPUT1]])
+    // CHECK:  %tuple = (s32[], f32[16]{0}, f32[16]{0:S(1)}) tuple(%copy{{.*}}, %input{{.*}}, [[COPY1]])
+    // CHECK:  %while = (s32[], f32[16]{0}, f32[16]{0:S(1)}) while(%tuple)
+    // CHECK:  [[RESULT:%result[0-9.]*]] = f32[16]{0:S(1)} get-tuple-element(%while), index=2
+    // CHECK:  ROOT %copy{{.*}} = f32[16]{0} copy([[RESULT]])
+  )";
+
+  const absl::string_view expected_check = [&]() {
+    if (GetParam().is_zero_copy) {
+      // Collective memory space should be empty after the module execution,
+      // otherwise symmetric memory in XLA will not work correctly during the
+      // next execution.
+      // Regardless of the input_output_alias, Entry output should be S0.
+      // Therefore, we need two copies - for Entry param(1) and for Entry result
+      return kS1TwoCopies;
+    }
+    if (use_input_output_alias) {
+      // Param(1) is in S0, and because of the input_output_alias, it is
+      // considered writeable. Therefore, no copy is needed.
+      return kS0NoCopy;
+    }
+    // Param(1) is in S0 and is read-only, so its HloBuffer size is 2.
+    // HLO needs one copy to safely mutate param(1).
+    // No copy is needed for the result.
+    return kS0OneCopy;
+  }();
+
+  EXPECT_THAT(RunFileCheck(
+                  optimized_module->ToString(HloPrintOptions{}
+                                                 .set_print_operand_shape(false)
+                                                 .set_print_metadata(false)),
+                  expected_check),
+              absl_testing::IsOkAndHolds(true));
+}
+
+struct RequiresCollectiveSymmetricMemorySpaceParams {
+  bool is_sym_mem;
+  bool use_input_output_alias;
+};
+
+class RequiresCollectiveSymmetricMemorySpaceTest
+    : public GpuCompilerTest,
+      public ::testing::WithParamInterface<
+          RequiresCollectiveSymmetricMemorySpaceParams> {};
+
+TEST_P(RequiresCollectiveSymmetricMemorySpaceTest, DirectUsage) {
+  constexpr absl::string_view kHloTemplate = R"(
+HloModule test$0
+
+ENTRY test_computation {
+  p = u32[2] parameter(0)
+  ROOT permute = u32[2] collective-permute(p), source_target_pairs={{1,0}, {0,1}}
+}
+  )";
+  bool use_input_output_alias = GetParam().use_input_output_alias;
+  // Inject the alias layout configuration into the HLO
+  std::string hlo_text = absl::StrReplaceAll(
+      kHloTemplate,
+      {{"$0",
+        use_input_output_alias ? ", input_output_alias={ {}: (0, {}) }" : ""}});
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  if (GetParam().is_sym_mem) {
+    config.mutable_debug_options().set_xla_gpu_collective_permute_mode(
+        DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY);
+  }
+  std::pair<const HloModule*, std::unique_ptr<OpaqueExecutable>>
+      optimized_module_and_executable;
+  ASSERT_OK_AND_ASSIGN(optimized_module_and_executable,
+                       GetOptimizedModuleForExecutable(hlo_text, config));
+
+  const HloModule* optimized_module = optimized_module_and_executable.first;
+
+  constexpr absl::string_view kS0NoCopy = R"(
+    // CHECK:  %collective-permute-start = (u32[2]{0}, u32[2]{0}) collective-permute-start(%p)
+    // CHECK:  ROOT %collective-permute-done = u32[2]{0} collective-permute-done(%collective-permute-start)
+  )";
+
+  constexpr absl::string_view kS0OneResultCopy = R"(
+    // CHECK:  %collective-permute-start = (u32[2]{0}, u32[2]{0}) collective-permute-start(%p)
+    // CHECK:  %collective-permute-done = u32[2]{0} collective-permute-done(%collective-permute-start)
+    // CHECK:  ROOT %copy{{.*}} = u32[2]{0} copy(%collective-permute-done)
+  )";
+
+  constexpr absl::string_view kS1TwoCopies = R"(
+    // CHECK:  [[COPY0:%copy[0-9.]*]] = u32[2]{0:S(1)} copy(%p)
+    // CHECK:  %collective-permute-start = (u32[2]{0:S(1)}, u32[2]{0:S(1)}) collective-permute-start([[COPY0]])
+    // CHECK:  %collective-permute-done = u32[2]{0:S(1)} collective-permute-done(%collective-permute-start)
+    // CHECK:  ROOT %copy{{.*}} = u32[2]{0} copy(%collective-permute-done)
+  )";
+
+  const absl::string_view expected_check = [&]() {
+    if (GetParam().is_sym_mem) {
+      // Collective memory space should be empty after the module execution,
+      // otherwise symmetric memory in XLA will not work correctly during the
+      // next execution.
+      // Regardless of the input_output_alias, Entry output should be S0.
+      // Therefore, we need two copies - for Entry param(0) and for Entry result
+      return kS1TwoCopies;
+    }
+    if (use_input_output_alias) {
+      // Collective-permute is out-of-place operation. It uses two independent
+      // buffers for the input and output. Because input and output are aliased,
+      // the output buffer should be copied to the input buffer.
+      // Therefore, one copy for the result is needed.
+      return kS0OneResultCopy;
+    }
+    // Param(0) is in S0. Collective-permute is out-of-place operation.
+    // Therefore, param(0) HloBuffer size is 1. No copy is needed for the
+    // parameter(0). No copy is needed for the result as well.
+    return kS0NoCopy;
+  }();
+
+  EXPECT_THAT(RunFileCheck(
+                  optimized_module->ToString(HloPrintOptions{}
+                                                 .set_print_operand_shape(false)
+                                                 .set_print_metadata(false)),
+                  expected_check),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_P(RequiresCollectiveSymmetricMemorySpaceTest, LoopUsage) {
+  constexpr absl::string_view kHloTemplate = R"(
+    HloModule test$0
+
+    while_condition {
+      params = (s32[], u32[2]) parameter(0)
+      loop_counter = s32[] get-tuple-element(params), index=0
+      limit = s32[] constant(3)
+      ROOT result = pred[] compare(loop_counter, limit), direction=LT
+    }
+
+    while_body {
+      params = (s32[], u32[2]) parameter(0)
+      loop_counter = s32[] get-tuple-element(params), index=0
+      cp_input = u32[2] get-tuple-element(params), index=1
+      cp_output = u32[2] collective-permute(cp_input), source_target_pairs={{1,0}, {0,1}}, channel_id=1
+      new_loop_counter = s32[] add(loop_counter, s32[] constant(1))
+      ROOT result = (s32[], u32[2]) tuple(new_loop_counter, cp_output)
+    }
+
+    ENTRY entry_computation {
+      init_loop_counter = s32[] constant(0)
+      input = u32[2] parameter(0)
+      while_init = tuple(init_loop_counter, input)
+      while = (s32[], u32[2]) while(while_init), condition=while_condition, body=while_body
+      ROOT result = get-tuple-element(while), index=1
+    }
+  )";
+  bool use_input_output_alias = GetParam().use_input_output_alias;
+  // Inject the alias layout configuration into the HLO
+  std::string hlo_text = absl::StrReplaceAll(
+      kHloTemplate,
+      {{"$0",
+        use_input_output_alias ? ", input_output_alias={ {}: (0, {}) }" : ""}});
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  if (GetParam().is_sym_mem) {
+    config.mutable_debug_options().set_xla_gpu_collective_permute_mode(
+        DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY);
+  }
+  std::pair<const HloModule*, std::unique_ptr<OpaqueExecutable>>
+      optimized_module_and_executable;
+  ASSERT_OK_AND_ASSIGN(optimized_module_and_executable,
+                       GetOptimizedModuleForExecutable(hlo_text, config));
+
+  const HloModule* optimized_module = optimized_module_and_executable.first;
+
+  constexpr absl::string_view kS0NoCopy = R"(
+    // CHECK:ENTRY %entry_computation (input: u32[2]) -> u32[2] {
+    // CHECK:  %input = u32[2]{0} parameter(0)
+    // CHECK:  %tuple = (s32[], u32[2]{0}) tuple(%copy{{.*}}, %input)
+    // CHECK:  %while = (s32[], u32[2]{0}) while(%tuple)
+    // CHECK:  ROOT [[RESULT:%result[0-9.]*]] = u32[2]{0} get-tuple-element(%while)
+  )";
+
+  constexpr absl::string_view kS0OneParamCopy = R"(
+    // CHECK:ENTRY %entry_computation (input: u32[2]) -> u32[2] {
+    // CHECK:  %input = u32[2]{0} parameter(0)
+    // CHECK:  [[COPY1:%copy[0-9.]*]] = u32[2]{0} copy(%input)
+    // CHECK:  %tuple = (s32[], u32[2]{0}) tuple(%copy{{.*}}, [[COPY1]])
+    // CHECK:  %while = (s32[], u32[2]{0}) while(%tuple)
+    // CHECK:  ROOT [[RESULT:%result[0-9.]*]] = u32[2]{0} get-tuple-element(%while)
+  )";
+
+  constexpr absl::string_view kS1TwoCopies = R"(
+    // CHECK:ENTRY %entry_computation (input: u32[2]) -> u32[2] {
+    // CHECK:  %input = u32[2]{0} parameter(0)
+    // CHECK:  [[COPY1:%copy[0-9.]*]] = u32[2]{0:S(1)} copy(%input)
+    // CHECK:  %tuple = (s32[], u32[2]{0:S(1)}) tuple(%copy{{.*}}, [[COPY1]])
+    // CHECK:  %while = (s32[], u32[2]{0:S(1)}) while(%tuple)
+    // CHECK:  [[RESULT:%result[0-9.]*]] = u32[2]{0:S(1)} get-tuple-element(%while)
+    // CHECK:  ROOT %copy{{.*}} = u32[2]{0} copy([[RESULT]])
+  )";
+
+  const absl::string_view expected_check = [&]() {
+    if (GetParam().is_sym_mem) {
+      // Collective memory space should be empty after the module execution,
+      // otherwise symmetric memory in XLA will not work correctly during the
+      // next execution.
+      // Regardless of the input_output_alias, Entry output should be S0.
+      // Therefore, we need two copies - for Entry param(0) and for Entry result
+      return kS1TwoCopies;
+    }
+    if (use_input_output_alias) {
+      // Collective-permute is out-of-place operation. It uses two independent
+      // buffers for the input and output. While_body function copies
+      // collective-permute output to the input. While() op returns input
+      // buffer. Therefore, no copy is needed.
+      return kS0NoCopy;
+    }
+    // Param(0) is in S0 and read-only. while() op mutates input buffer.
+    // Therefore, one copy is needed for the param(0) before using it in the
+    // while() loop. Output is in S0 and no copy for the output is needed.
+    return kS0OneParamCopy;
+  }();
+
+  EXPECT_THAT(RunFileCheck(
+                  optimized_module->ToString(HloPrintOptions{}
+                                                 .set_print_operand_shape(false)
+                                                 .set_print_metadata(false)),
+                  expected_check),
+              absl_testing::IsOkAndHolds(true));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    CollectiveBufferAnalysis, RequiresCollectiveSymmetricMemorySpaceTest,
+    Values(RequiresCollectiveSymmetricMemorySpaceParams{false, false},
+           RequiresCollectiveSymmetricMemorySpaceParams{false, true},
+           RequiresCollectiveSymmetricMemorySpaceParams{true, false},
+           RequiresCollectiveSymmetricMemorySpaceParams{true, true}),
+    [](const TestParamInfo<
+        RequiresCollectiveSymmetricMemorySpaceTest::ParamType>& info) {
+      return absl::StrCat(
+          info.param.is_sym_mem ? "s1_mem" : "s0_mem", "_",
+          info.param.use_input_output_alias ? "with_alias" : "no_alias");
+    });
+
 struct GpuCompilerParametersCopyCollectiveMemoryTestParams {
   bool xla_gpu_enable_nccl_buffers;
   bool xla_gpu_experimental_enable_nccl_symmetric_buffers;
+  bool use_input_output_alias;
 };
 
 class GpuCompilerParametersCopyCollectiveMemoryTest
@@ -2011,10 +2535,9 @@ class GpuCompilerParametersCopyCollectiveMemoryTest
       public ::testing::WithParamInterface<
           GpuCompilerParametersCopyCollectiveMemoryTestParams> {};
 
-TEST_P(GpuCompilerParametersCopyCollectiveMemoryTest,
-       ParametersUsedBySymmetricCollectivesShouldBeCopiedToCollectiveMemory) {
-  constexpr absl::string_view kHlo = R"(
-    HloModule test
+TEST_P(GpuCompilerParametersCopyCollectiveMemoryTest, DirectUsage) {
+  constexpr absl::string_view kHloTemplate = R"(
+    HloModule test$0
 
     add {
       lhs = bf16[] parameter(0)
@@ -2029,6 +2552,13 @@ TEST_P(GpuCompilerParametersCopyCollectiveMemoryTest,
           replica_groups={}, to_apply=add, channel_id=1
     }
   )";
+  bool use_input_output_alias = GetParam().use_input_output_alias;
+  // Inject the alias layout configuration into the HLO
+  std::string hlo_text = absl::StrReplaceAll(
+      kHloTemplate,
+      {{"$0",
+        use_input_output_alias ? ", input_output_alias={ {}: (0, {}) }" : ""}});
+
   HloModuleConfig config = GetModuleConfigForTest();
   if (GetParam().xla_gpu_enable_nccl_buffers) {
     config.mutable_debug_options().set_xla_gpu_enable_nccl_user_buffers(true);
@@ -2040,38 +2570,182 @@ TEST_P(GpuCompilerParametersCopyCollectiveMemoryTest,
   std::pair<const HloModule*, std::unique_ptr<OpaqueExecutable>>
       optimized_module_and_executable;
   ASSERT_OK_AND_ASSIGN(optimized_module_and_executable,
-                       GetOptimizedModuleForExecutable(kHlo, config));
+                       GetOptimizedModuleForExecutable(hlo_text, config));
 
   const HloModule* optimized_module = optimized_module_and_executable.first;
 
-  constexpr absl::string_view kExpectedCopied = R"(
-    // CHECK:  %copy.2 = s32[1]{0:S(1)} copy(%parameter_used_by_collective)
-    // CHECK:  %all-reduce-start = s32[1]{0:S(1)} all-reduce-start(%copy.2)
+  bool is_symmetric_buffers =
+      GetParam().xla_gpu_enable_nccl_buffers ||
+      GetParam().xla_gpu_experimental_enable_nccl_symmetric_buffers;
+
+  constexpr absl::string_view kS0NoCopy = R"(
+    // CHECK:  %all-reduce-start = s32[1]{0} all-reduce-start(%parameter_used_by_collective)
+    // CHECK:  ROOT %all-reduce-done = s32[1]{0} all-reduce-done(%all-reduce-start)
   )";
 
-  constexpr absl::string_view kExpectedNotCopied = R"(
-    // CHECK:  %copy.2 = s32[1]{0} copy(%parameter_used_by_collective)
-    // CHECK:  %all-reduce-start = s32[1]{0} all-reduce-start(%copy.2)
+  constexpr absl::string_view kS0OneCopy = R"(
+    // CHECK:  %copy.{{[0-9]+}} = s32[1]{0} copy(%parameter_used_by_collective)
+    // CHECK:  %all-reduce-start = s32[1]{0} all-reduce-start(%copy.{{[0-9]+}})
+    // CHECK:  ROOT %all-reduce-done = s32[1]{0} all-reduce-done(%all-reduce-start)
   )";
 
-  EXPECT_THAT(
-      RunFileCheck(
-          optimized_module->ToString(HloPrintOptions{}
-                                         .set_print_operand_shape(false)
-                                         .set_print_metadata(false)),
-          (GetParam().xla_gpu_enable_nccl_buffers ||
-           GetParam().xla_gpu_experimental_enable_nccl_symmetric_buffers)
-              ? kExpectedCopied
-              : kExpectedNotCopied),
-      absl_testing::IsOkAndHolds(true));
+  constexpr absl::string_view kS1TwoCopies = R"(
+    // CHECK:  %copy.{{[0-9]+}} = s32[1]{0:S(1)} copy(%parameter_used_by_collective)
+    // CHECK:  %all-reduce-start = s32[1]{0:S(1)} all-reduce-start(%copy.{{[0-9]+}})
+    // CHECK:  %all-reduce-done = s32[1]{0:S(1)} all-reduce-done(%all-reduce-start)
+    // CHECK:  ROOT %copy.{{[0-9]+}} = s32[1]{0} copy(%all-reduce-done)
+  )";
+
+  const absl::string_view expected_check = [&]() {
+    if (is_symmetric_buffers) {
+      // Collective memory space should be empty after the module execution,
+      // otherwise symmetric memory in XLA will not work correctly during the
+      // next execution.
+      // Regardless of the input_output_alias, Entry output should be S0.
+      // Therefore, we need two copies - for Entry param(0) and for Entry result
+      return kS1TwoCopies;
+    }
+    if (use_input_output_alias) {
+      // Param(0) is in S0, and because of the input_output_alias, it is
+      // considered writeable. Therefore, no copy is needed.
+      return kS0NoCopy;
+    }
+    // Param(0) is in S0 and is read-only, so its HloBuffer size is 2.
+    // HLO needs one copy to safely mutate param(0).
+    // No copy is needed for the result.
+    return kS0OneCopy;
+  }();
+
+  EXPECT_THAT(RunFileCheck(
+                  optimized_module->ToString(HloPrintOptions{}
+                                                 .set_print_operand_shape(false)
+                                                 .set_print_metadata(false)),
+                  expected_check),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_P(GpuCompilerParametersCopyCollectiveMemoryTest, LoopUsage) {
+  constexpr absl::string_view kHloTemplate = R"(
+    HloModule test$0
+
+    add_fn {
+      lhs = bf16[] parameter(0)
+      rhs = bf16[] parameter(1)
+      ROOT add = bf16[] add(lhs, rhs)
+    }
+
+    while_condition {
+      params = (s32[], s32[1]) parameter(0)
+      loop_counter = s32[] get-tuple-element(params), index=0
+      limit = s32[] constant(4)
+      ROOT result = pred[] compare(loop_counter, limit), direction=LT
+    }
+
+    while_body {
+      params = (s32[], s32[1]) parameter(0)
+      loop_counter = s32[] get-tuple-element(params), index=0
+      ar_input = s32[1] get-tuple-element(params), index=1
+      ar_output = s32[1] all-reduce(ar_input), replica_groups={}, to_apply=add_fn, channel_id=1
+      new_loop_counter = s32[] add(loop_counter, s32[] constant(1))
+      ROOT result = (s32[], s32[1]) tuple(new_loop_counter, ar_output)
+    }
+
+    ENTRY entry_computation {
+      init_loop_counter = s32[] constant(0)
+      input = s32[1] parameter(0)
+      while_init = tuple(init_loop_counter, input)
+      while = (s32[], s32[1]) while(while_init), condition=while_condition, body=while_body
+      ROOT result = get-tuple-element(while), index=1
+    }
+  )";
+  bool use_input_output_alias = GetParam().use_input_output_alias;
+  // Inject the alias layout configuration into the HLO
+  std::string hlo_text = absl::StrReplaceAll(
+      kHloTemplate,
+      {{"$0",
+        use_input_output_alias ? ", input_output_alias={ {}: (0, {}) }" : ""}});
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  if (GetParam().xla_gpu_enable_nccl_buffers) {
+    config.mutable_debug_options().set_xla_gpu_enable_nccl_user_buffers(true);
+  }
+  if (GetParam().xla_gpu_experimental_enable_nccl_symmetric_buffers) {
+    config.mutable_debug_options()
+        .set_xla_gpu_experimental_enable_nccl_symmetric_buffers(true);
+  }
+  std::pair<const HloModule*, std::unique_ptr<OpaqueExecutable>>
+      optimized_module_and_executable;
+  ASSERT_OK_AND_ASSIGN(optimized_module_and_executable,
+                       GetOptimizedModuleForExecutable(hlo_text, config));
+
+  const HloModule* optimized_module = optimized_module_and_executable.first;
+
+  bool is_symmetric_buffers =
+      GetParam().xla_gpu_enable_nccl_buffers ||
+      GetParam().xla_gpu_experimental_enable_nccl_symmetric_buffers;
+
+  constexpr absl::string_view kS0NoCopy = R"(
+    // CHECK:  %input = s32[1]{0} parameter(0)
+    // CHECK:  %tuple = (s32[], s32[1]{0}) tuple({{.*}}, %input)
+    // CHECK:  %while = (s32[], s32[1]{0}) while(%tuple)
+    // CHECK:  ROOT %result.2.0 = s32[1]{0} get-tuple-element(%while), index=1
+  )";
+
+  constexpr absl::string_view kS0OneCopy = R"(
+    // CHECK:  %input = s32[1]{0} parameter(0)
+    // CHECK:  %copy.{{[0-9]+}} = s32[1]{0} copy(%input)
+    // CHECK:  %tuple = (s32[], s32[1]{0}) tuple({{.*}}, %copy.{{[0-9]+}})
+    // CHECK:  %while = (s32[], s32[1]{0}) while(%tuple)
+    // CHECK:  ROOT %result.2.0 = s32[1]{0} get-tuple-element(%while), index=1
+  )";
+
+  constexpr absl::string_view kS1TwoCopies = R"(
+    // CHECK:  %input = s32[1]{0} parameter(0)
+    // CHECK:  %copy.{{[0-9]+}} = s32[1]{0:S(1)} copy(%input)
+    // CHECK:  %tuple = (s32[], s32[1]{0:S(1)}) tuple({{.*}}, %copy.{{[0-9]+}})
+    // CHECK:  %while = (s32[], s32[1]{0:S(1)}) while(%tuple)
+    // CHECK:  %result.2.0 = s32[1]{0:S(1)} get-tuple-element(%while), index=1
+    // CHECK:  ROOT %copy.{{[0-9]+}} = s32[1]{0} copy(%result.2.0)
+  )";
+
+  const absl::string_view expected_check = [&]() {
+    if (is_symmetric_buffers) {
+      // Collective memory space should be empty after the module execution,
+      // otherwise symmetric memory in XLA will not work correctly during the
+      // next execution.
+      // Regardless of the input_output_alias, Entry output should be S0.
+      // Therefore, we need two copies - for Entry param(0) and for Entry result
+      return kS1TwoCopies;
+    }
+    if (use_input_output_alias) {
+      // Param(0) is in S0, and because of the input_output_alias, it is
+      // considered writeable. Therefore, no copy is needed.
+      return kS0NoCopy;
+    }
+    // Param(0) is in S0 and is read-only, so its HloBuffer size is 2.
+    // HLO needs one copy to safely mutate param(0).
+    // No copy is needed for the result.
+    return kS0OneCopy;
+  }();
+
+  EXPECT_THAT(RunFileCheck(
+                  optimized_module->ToString(HloPrintOptions{}
+                                                 .set_print_operand_shape(false)
+                                                 .set_print_metadata(false)),
+                  expected_check),
+              absl_testing::IsOkAndHolds(true));
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    ParametersUsedBySymmetricCollectivesShouldBeCopiedToCollectiveMemory,
-    GpuCompilerParametersCopyCollectiveMemoryTest,
-    Values(GpuCompilerParametersCopyCollectiveMemoryTestParams{false, false},
-           GpuCompilerParametersCopyCollectiveMemoryTestParams{true, false},
-           GpuCompilerParametersCopyCollectiveMemoryTestParams{false, true}),
+    CollectiveBufferAnalysis, GpuCompilerParametersCopyCollectiveMemoryTest,
+    Values(
+        GpuCompilerParametersCopyCollectiveMemoryTestParams{false, false,
+                                                            false},
+        GpuCompilerParametersCopyCollectiveMemoryTestParams{false, false, true},
+        GpuCompilerParametersCopyCollectiveMemoryTestParams{true, false, false},
+        GpuCompilerParametersCopyCollectiveMemoryTestParams{true, false, true},
+        GpuCompilerParametersCopyCollectiveMemoryTestParams{false, true, false},
+        GpuCompilerParametersCopyCollectiveMemoryTestParams{false, true, true}),
     [](const TestParamInfo<
         GpuCompilerParametersCopyCollectiveMemoryTest::ParamType>& info) {
       return absl::StrCat(
@@ -2080,7 +2754,8 @@ INSTANTIATE_TEST_SUITE_P(
           "_",
           info.param.xla_gpu_experimental_enable_nccl_symmetric_buffers
               ? "enable_nccl_symmetric_buffers"
-              : "disable_nccl_symmetric_buffers");
+              : "disable_nccl_symmetric_buffers",
+          "_", info.param.use_input_output_alias ? "with_alias" : "no_alias");
     });
 
 auto SelectKTestParams() {
@@ -2150,5 +2825,239 @@ TEST_F(GpuCompilerTest, GlobalLLVMLockGetsReleasedForCustomCallThunkCreation) {
   // Checking the result ensures that the custom call thunk was executed.
   EXPECT_EQ(result.GetLinear<int32_t>(0), 42);
 }
+
+// Reproducer for b/509990632.
+TEST_F(GpuCompilerTest, WhileLoopUnrollingFlagScalarConstantSinkerNoCrash) {
+  const char* const kHloString = R"(
+    HloModule test
+    fused_computation {
+      p0 = s32[] parameter(0)
+      p1 = s32[] parameter(1)
+      ROOT add = s32[] add(p0, p1)
+    }
+    ENTRY main {
+      p0 = s32[] parameter(0)
+      c1 = s32[] constant(1)
+      ROOT fusion = s32[] fusion(p0, c1), kind=kLoop, calls=fused_computation
+    }
+  )";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  auto& debug_options = config.mutable_debug_options();
+  debug_options.set_xla_gpu_enable_while_loop_unrolling(
+      DebugOptions::WHILE_LOOP_UNROLLING_FULL_UNROLL);
+
+  ASSERT_OK(GetOptimizedModuleForExecutable(kHloString, config).status());
+}
+
+TEST_F(GpuCompilerTest, VerifyMultiModuleSplittingAndCompilation) {
+  const char* hlo_string = R"(
+HloModule module
+callee {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+ENTRY entry {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT call = f32[] call(p0, p1), to_apply=callee, frontend_attributes={compilation_unit="callee", inlineable="false"}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  auto options = Compiler::CompileOptions();
+  options.gpu_topology =
+      GetSingleDeviceGpuTopology(/*platform_version=*/"", gpu_target_config());
+  MultiModuleDriver::ResetCompileCount();
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler()->RunHloPasses(std::move(module), nullptr, options));
+
+  EXPECT_GT(MultiModuleDriver::GetCompileCount(), 0);
+}
+
+TEST_F(GpuCompilerTest, VerifySharedCompilationUnitCompilesOnGpu) {
+  const char* hlo_string = R"(
+HloModule module
+callee {
+  p0 = f32[] parameter(0)
+  ROOT neg = f32[] negate(p0)
+}
+ENTRY entry {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  call1 = f32[] call(p0), to_apply=callee,
+    frontend_attributes={compilation_unit="callee"}
+  call2 = f32[] call(p1), to_apply=callee,
+    frontend_attributes={compilation_unit="callee"}
+  ROOT add = f32[] add(call1, call2)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  auto options = Compiler::CompileOptions();
+  options.gpu_topology =
+      GetSingleDeviceGpuTopology(/*platform_version=*/"", gpu_target_config());
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler()->RunHloPasses(std::move(module), nullptr, options));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      compiler()->RunBackend(std::move(optimized_module), nullptr, options));
+}
+
+static absl::Status MockCustomCallExecuteF32(
+    ffi::BufferR1<F32> src, ffi::Result<ffi::BufferR1<F32>> dst) {
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(
+    kMockCustomCallExecuteF32, MockCustomCallExecuteF32,
+    ffi::Ffi::Bind().Arg<ffi::BufferR1<F32>>().Ret<ffi::BufferR1<F32>>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test_mock_custom_call_f32",
+                         "gpu",
+                         XLA_FFI_Handler_Bundle{
+                             /*instantiate=*/nullptr,
+                             /*prepare=*/nullptr,
+                             /*initialize=*/nullptr,
+                             /*execute=*/kMockCustomCallExecuteF32,
+                         });
+
+class FrontendAttributesMemorySpaceTest
+    : public GpuCompilerTest,
+      public ::testing::WithParamInterface<bool> {};
+
+TEST_P(FrontendAttributesMemorySpaceTest, DirectUsage) {
+  constexpr absl::string_view kHloTemplate = R"(
+    HloModule test$0
+
+    ENTRY test_computation {
+      p = f32[16] parameter(0)
+      ROOT cc = f32[16] custom-call(p),
+        custom_call_target="__xla_test_mock_custom_call_f32",
+        api_version=API_VERSION_TYPED_FFI,
+        frontend_attributes={
+          operands_memory_spaces="{0:1}",
+          results_memory_spaces="{0:1}"
+        }
+    }
+  )";
+
+  bool use_input_output_alias = GetParam();
+  // Inject the alias layout configuration into the HLO
+  std::string hlo_text = absl::StrReplaceAll(
+      kHloTemplate,
+      {{"$0",
+        use_input_output_alias ? ", input_output_alias={ {}: (0, {}) }" : ""}});
+
+  HloModuleConfig config = GetModuleConfigForTest();
+
+  std::pair<const HloModule*, std::unique_ptr<OpaqueExecutable>>
+      optimized_module_and_executable;
+  ASSERT_OK_AND_ASSIGN(optimized_module_and_executable,
+                       GetOptimizedModuleForExecutable(hlo_text, config));
+
+  const HloModule* optimized_module = optimized_module_and_executable.first;
+
+  // Regardless of the input_output_alias it should be two copies
+  constexpr absl::string_view expected_check = R"(
+    // CHECK: %p = f32[16]{0} parameter(0)
+    // CHECK: [[COPY0:%copy[0-9.]*]] = f32[16]{0:S(1)} copy(%p)
+    // CHECK: %cc = f32[16]{0:S(1)} custom-call([[COPY0]])
+    // CHECK: ROOT %copy{{.*}} = f32[16]{0} copy(%cc)
+  )";
+
+  EXPECT_THAT(RunFileCheck(
+                  optimized_module->ToString(HloPrintOptions{}
+                                                 .set_print_operand_shape(false)
+                                                 .set_print_metadata(false)),
+                  expected_check),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_P(FrontendAttributesMemorySpaceTest, LoopUsage) {
+  constexpr absl::string_view kHloTemplate = R"(
+    HloModule test$0
+
+    while_condition {
+      params = (s32[], f32[16]) parameter(0)
+      loop_counter = s32[] get-tuple-element(params), index=0
+      limit = s32[] constant(3)
+      ROOT result = pred[] compare(loop_counter, limit), direction=LT
+    }
+
+    while_body {
+      params = (s32[], f32[16]) parameter(0)
+      loop_counter = s32[] get-tuple-element(params), index=0
+      cc_input = f32[16] get-tuple-element(params), index=1
+      cc = f32[16] custom-call(cc_input),
+        custom_call_target="__xla_test_mock_custom_call_f32",
+        api_version=API_VERSION_TYPED_FFI,
+        frontend_attributes={
+          operands_memory_spaces="{0:1}",
+          results_memory_spaces="{0:1}"
+        }
+      new_loop_counter = s32[] add(loop_counter, s32[] constant(1))
+      ROOT result = (s32[], f32[16]) tuple(new_loop_counter, cc)
+    }
+
+    ENTRY entry_computation {
+      init_loop_counter = s32[] constant(0)
+      input = f32[16] parameter(0)
+      while_init = tuple(init_loop_counter, input)
+      while = (s32[], f32[16]) while(while_init), condition=while_condition, body=while_body
+      ROOT result = get-tuple-element(while), index=1
+    }
+  )";
+
+  bool use_input_output_alias = GetParam();
+  // Inject the alias layout configuration into the HLO
+  std::string hlo_text = absl::StrReplaceAll(
+      kHloTemplate,
+      {{"$0",
+        use_input_output_alias ? ", input_output_alias={ {}: (0, {}) }" : ""}});
+
+  HloModuleConfig config = GetModuleConfigForTest();
+
+  std::pair<const HloModule*, std::unique_ptr<OpaqueExecutable>>
+      optimized_module_and_executable;
+  ASSERT_OK_AND_ASSIGN(optimized_module_and_executable,
+                       GetOptimizedModuleForExecutable(hlo_text, config));
+
+  const HloModule* optimized_module = optimized_module_and_executable.first;
+
+  // Regardless of the input_output_alias it should be two copies
+  constexpr absl::string_view expected_check = R"(
+    // CHECK: %input = f32[16]{0} parameter(0)
+    // CHECK: [[COPY0:%copy[0-9.]*]] = f32[16]{0:S(1)} copy(%input)
+    // CHECK: %tuple = (s32[], f32[16]{0:S(1)}) tuple(%copy{{.*}}, [[COPY0]])
+    // CHECK: %while = (s32[], f32[16]{0:S(1)}) while(%tuple)
+    // CHECK: [[RESULT:%result[0-9.]*]] = f32[16]{0:S(1)} get-tuple-element(%while), index=1
+    // CHECK: ROOT %copy{{.*}} = f32[16]{0} copy([[RESULT]])
+  )";
+
+  EXPECT_THAT(RunFileCheck(
+                  optimized_module->ToString(HloPrintOptions{}
+                                                 .set_print_operand_shape(false)
+                                                 .set_print_metadata(false)),
+                  expected_check),
+              absl_testing::IsOkAndHolds(true));
+}
+
+INSTANTIATE_TEST_SUITE_P(FrontendAttributesMemorySpace,
+                         FrontendAttributesMemorySpaceTest, ::testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           return info.param ? "with_alias" : "no_alias";
+                         });
+
 }  // namespace gpu
 }  // namespace xla

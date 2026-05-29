@@ -16,12 +16,14 @@ limitations under the License.
 #include <cstddef>
 
 #include "absl/base/casts.h"
+// clang-format off
+#include "xla/stream_executor/rocm/collective_signal_rocm.cu.h"  // IWYU pragma: keep
+// clang-format on
 #include "xla/stream_executor/gpu/collective_signal.cu.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/multi_gpu_barrier_kernel.cu.h"
 #include "xla/stream_executor/gpu/multi_gpu_barrier_kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
-#include "xla/stream_executor/rocm/collective_signal_rocm.cu.h"  // IWYU pragma: keep
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 
 namespace stream_executor::gpu {

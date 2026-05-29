@@ -31,6 +31,8 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
+#include "absl/container/btree_map.h"
+#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -46,6 +48,7 @@ limitations under the License.
 #include "absl/strings/strip.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/descriptor.h"
 #include "xla/array.h"
 #include "xla/comparison_util.h"
@@ -65,7 +68,6 @@ limitations under the License.
 #include "xla/hlo/ir/mesh_and_axis.h"
 #include "xla/hlo/ir/named_sharding.h"
 #include "xla/hlo/ir/replica_group.h"
-#include "xla/hlo/ir/stack_frames.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/parser/hlo_lexer.h"
 #include "xla/layout.h"
@@ -84,7 +86,6 @@ limitations under the License.
 #include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tuple_tree.h"
 #include "xla/types.h"
 #include "xla/util.h"
@@ -174,6 +175,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
+    case HloOpcode::kMulhi:
     case HloOpcode::kNegate:
     case HloOpcode::kPad:
     case HloOpcode::kPartitionId:
@@ -412,8 +414,7 @@ class HloParserImpl : public HloParser {
       HloComputation::Builder* builder, absl::string_view name,
       std::optional<Shape> shape, HloOpcode opcode,
       std::optional<HloOpcode> async_wrapped_opcode,
-      absl::flat_hash_map<std::string, AttrConfig>& attrs,
-      bool allow_attributes,
+      absl::btree_map<std::string, AttrConfig>& attrs, bool allow_attributes,
       std::vector<HloInstruction*>* preset_operands = nullptr);
 
   // Sets the sub-value of literal at the given linear index to the
@@ -487,22 +488,22 @@ class HloParserImpl : public HloParser {
   //  // Do something with 'bar'.
   //  if (foo) { // If attr foo is seen, do something with 'foo'. }
   //
-  bool ParseAttributes(
-      const absl::flat_hash_map<std::string, AttrConfig>& attrs,
-      bool allow_attributes = true, const std::optional<Shape>& shape = {});
+  bool ParseAttributes(const absl::btree_map<std::string, AttrConfig>& attrs,
+                       bool allow_attributes = true,
+                       const std::optional<Shape>& shape = {});
 
   // sub_attributes ::= '{' (','? attribute)* '}'
   //
   // Usage is the same as ParseAttributes. See immediately above.
   bool ParseSubAttributes(
-      const absl::flat_hash_map<std::string, AttrConfig>& attrs);
+      const absl::btree_map<std::string, AttrConfig>& attrs);
 
   // Parses one attribute. If it has already been seen, return error. Returns
   // true and adds to seen_attrs on success.
   //
   // Do not call this except in ParseAttributes or ParseSubAttributes.
   bool ParseAttributeHelper(
-      const absl::flat_hash_map<std::string, AttrConfig>& attrs,
+      const absl::btree_map<std::string, AttrConfig>& attrs,
       absl::flat_hash_set<std::string>* seen_attrs,
       const std::optional<Shape>& shape = {});
 
@@ -510,7 +511,7 @@ class HloParserImpl : public HloParser {
   // `non_proto_attrs`.
   bool CopyAttributeToProtoMessage(
       absl::flat_hash_set<std::string> non_proto_attrs,
-      const absl::flat_hash_map<std::string, AttrConfig>& attrs,
+      const absl::btree_map<std::string, AttrConfig>& attrs,
       tsl::protobuf::Message* message);
 
   // Parses an attribute string into a protocol buffer `message`.
@@ -519,7 +520,7 @@ class HloParserImpl : public HloParser {
   // `non_proto_attrs` specifies attributes that are not written to the proto,
   // but added to the HloInstruction.
   bool ParseAttributesAsProtoMessage(
-      const absl::flat_hash_map<std::string, AttrConfig>& non_proto_attrs,
+      const absl::btree_map<std::string, AttrConfig>& non_proto_attrs,
       tsl::protobuf::Message* message);
 
   // Parses a name and finds the corresponding hlo computation.
@@ -638,8 +639,8 @@ class HloParserImpl : public HloParser {
   bool ParseStackFramesList(StackFrameIndexProto* stack_frame_index);
 
   using AliasingData =
-      absl::flat_hash_map<ShapeIndex, HloInputOutputAliasConfig::Alias>;
-  using BufferDonor = absl::flat_hash_set<HloBufferDonorConfig::BufferDonor>;
+      absl::btree_map<ShapeIndex, HloInputOutputAliasConfig::Alias>;
+  using BufferDonor = absl::btree_set<HloBufferDonorConfig::BufferDonor>;
 
   // Parses the aliasing and buffer_donor information from string `s`, returns
   // `false` if it fails.
@@ -681,6 +682,9 @@ class HloParserImpl : public HloParser {
   // computation already exists.
   bool AddComputation(const std::string& name, HloComputation* computation,
                       LocTy name_loc);
+
+  static constexpr int kMaxShapeDepth = 32768;
+  int64_t shape_depth_ = 0;
 
   HloLexer lexer_;
 
@@ -1117,7 +1121,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   std::optional<AliasingData> aliasing_data;
   std::optional<BufferDonor> buffer_donor_data;
   std::optional<bool> alias_passthrough_params;
-  absl::flat_hash_map<std::string, AttrConfig> attrs;
+  absl::btree_map<std::string, AttrConfig> attrs;
   std::optional<ComputationLayout> entry_computation_layout;
   std::optional<FrontendAttributes> frontend_attributes;
   BoolList allow_spmd_sharding_propagation_to_parameters;
@@ -1268,7 +1272,7 @@ bool HloParserImpl::ParseFileLocationList(
     StackFrameIndexProto* stack_frame_index) {
   optional<int32_t> file_name_id, function_name_id, line, end_line, column,
       end_column;
-  absl::flat_hash_map<std::string, AttrConfig> attrs = {
+  absl::btree_map<std::string, AttrConfig> attrs = {
       {"file_name_id", {/*required=*/true, AttrTy::kInt32, &file_name_id}},
       {"function_name_id",
        {/*required=*/true, AttrTy::kInt32, &function_name_id}},
@@ -1297,7 +1301,7 @@ bool HloParserImpl::ParseFileLocationList(
 bool HloParserImpl::ParseStackFramesList(
     StackFrameIndexProto* stack_frame_index) {
   optional<int32_t> file_location_id, parent_frame_id;
-  absl::flat_hash_map<std::string, AttrConfig> attrs = {
+  absl::btree_map<std::string, AttrConfig> attrs = {
       {"file_location_id",
        {/*required=*/true, AttrTy::kInt32, &file_location_id}},
       {"parent_frame_id",
@@ -1402,7 +1406,7 @@ bool HloParserImpl::ParseComputation(HloComputation** entry_computation) {
             computation->root_instruction()->name(), ", ",
             ShapeUtil::HumanString(computation->root_instruction()->shape())));
   }
-  absl::flat_hash_map<std::string, AttrConfig> attrs;
+  absl::btree_map<std::string, AttrConfig> attrs;
   optional<std::string> execution_thread = HloInstruction::kMainExecutionThread;
   attrs["execution_thread"] = {/*required=*/false, AttrTy::kString,
                                &execution_thread};
@@ -1506,7 +1510,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
 
   // Add optional attributes. These are added to any HloInstruction type if
   // present.
-  absl::flat_hash_map<std::string, AttrConfig> attrs;
+  absl::btree_map<std::string, AttrConfig> attrs;
   optional<HloSharding> sharding;
   optional<FrontendAttributes> frontend_attributes;
   optional<StatisticsViz> statistics_viz;
@@ -1634,7 +1638,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     HloComputation::Builder* builder, absl::string_view name,
     std::optional<Shape> shape, HloOpcode opcode,
     std::optional<HloOpcode> async_wrapped_opcode,
-    absl::flat_hash_map<std::string, AttrConfig>& attrs, bool allow_attributes,
+    absl::btree_map<std::string, AttrConfig>& attrs, bool allow_attributes,
     std::vector<HloInstruction*>* preset_operands) {
   std::vector<HloInstruction*> operands;
   if (preset_operands) {
@@ -1812,6 +1816,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     case HloOpcode::kAdd:
     case HloOpcode::kDivide:
     case HloOpcode::kMultiply:
+    case HloOpcode::kMulhi:
     case HloOpcode::kSubtract:
     case HloOpcode::kAtan2:
     case HloOpcode::kComplex:
@@ -2281,6 +2286,10 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     case HloOpcode::kDynamicReshape: {
       if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes, shape)) {
+        return nullptr;
+      }
+      if (operands.empty()) {
+        TokenError("DynamicReshape requires at least one operand.");
         return nullptr;
       }
       return builder->AddInstruction(HloInstruction::CreateDynamicReshape(
@@ -4758,7 +4767,7 @@ bool HloParserImpl::ParseReplicaGroupsOnly(
 // domain ::= '{' 'kind=' domain_kind ',' 'entry=' entry_sharding ','
 //            'exit=' exit_sharding '}'
 bool HloParserImpl::ParseDomain(DomainData* domain) {
-  absl::flat_hash_map<std::string, AttrConfig> attrs;
+  absl::btree_map<std::string, AttrConfig> attrs;
   optional<std::string> kind;
   optional<HloSharding> entry_sharding;
   optional<HloSharding> exit_sharding;
@@ -5520,7 +5529,7 @@ bool HloParserImpl::ParseOperands(std::vector<HloInstruction*>* operands,
 
 // sub_attributes ::= '{' (','? attribute)* '}'
 bool HloParserImpl::ParseSubAttributes(
-    const absl::flat_hash_map<std::string, AttrConfig>& attrs) {
+    const absl::btree_map<std::string, AttrConfig>& attrs) {
   LocTy loc = lexer_.GetLoc();
   if (!ParseToken(TokKind::kLbrace, "expects '{' to start sub attributes")) {
     return false;
@@ -5537,6 +5546,7 @@ bool HloParserImpl::ParseSubAttributes(
     } while (lexer_.GetKind() != TokKind::kRbrace);
   }
   // Check that all required attrs were seen.
+  // Check that all required attrs were seen.
   for (const auto& attr_it : attrs) {
     if (attr_it.second.required &&
         seen_attrs.find(attr_it.first) == seen_attrs.end()) {
@@ -5549,7 +5559,7 @@ bool HloParserImpl::ParseSubAttributes(
 
 // attributes ::= (',' attribute)*
 bool HloParserImpl::ParseAttributes(
-    const absl::flat_hash_map<std::string, AttrConfig>& attrs,
+    const absl::btree_map<std::string, AttrConfig>& attrs,
     bool allow_attributes, const std::optional<Shape>& shape) {
   LocTy loc = lexer_.GetLoc();
   absl::flat_hash_set<std::string> seen_attrs;
@@ -5574,7 +5584,7 @@ bool HloParserImpl::ParseAttributes(
 }
 
 bool HloParserImpl::ParseAttributeHelper(
-    const absl::flat_hash_map<std::string, AttrConfig>& attrs,
+    const absl::btree_map<std::string, AttrConfig>& attrs,
     absl::flat_hash_set<std::string>* seen_attrs,
     const std::optional<Shape>& shape) {
   LocTy loc = lexer_.GetLoc();
@@ -6061,7 +6071,7 @@ bool HloParserImpl::ParseAttributeHelper(
 
 bool HloParserImpl::CopyAttributeToProtoMessage(
     absl::flat_hash_set<std::string> non_proto_attrs,
-    const absl::flat_hash_map<std::string, AttrConfig>& attrs,
+    const absl::btree_map<std::string, AttrConfig>& attrs,
     tsl::protobuf::Message* message) {
   const tsl::protobuf::Descriptor* descriptor = message->GetDescriptor();
   const tsl::protobuf::Reflection* reflection = message->GetReflection();
@@ -6122,10 +6132,10 @@ bool HloParserImpl::CopyAttributeToProtoMessage(
 
 // attributes ::= (',' attribute)*
 bool HloParserImpl::ParseAttributesAsProtoMessage(
-    const absl::flat_hash_map<std::string, AttrConfig>& non_proto_attrs,
+    const absl::btree_map<std::string, AttrConfig>& non_proto_attrs,
     tsl::protobuf::Message* message) {
   const tsl::protobuf::Descriptor* descriptor = message->GetDescriptor();
-  absl::flat_hash_map<std::string, AttrConfig> attrs;
+  absl::btree_map<std::string, AttrConfig> attrs;
 
   // Storage for attributes.
   std::vector<optional<bool>> bool_params;
@@ -7013,6 +7023,16 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
 //   ::= shape (',' shape)*
 bool HloParserImpl::ParseShape(Shape* result,
                                bool allow_fallback_to_default_layout) {
+  if (shape_depth_ >= kMaxShapeDepth) {
+    return Error(lexer_.GetLoc(),
+                 "Shape depth exceeds maximum supported depth.");
+  }
+  struct DepthGuard {
+    int64_t* d;
+    explicit DepthGuard(int64_t* d) : d(d) { (*d)++; }
+    ~DepthGuard() { (*d)--; }
+  } guard(&shape_depth_);
+
   if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "b" &&
       lexer_.LookAhead() == TokKind::kLparen) {  // Buffer shape
     lexer_.Lex();
@@ -7481,7 +7501,7 @@ bool HloParserImpl::ParseOriginalValueRecoveryTable(
 
 // '{' metadata_string '}'
 bool HloParserImpl::ParseMetadata(OpMetadata& metadata) {
-  absl::flat_hash_map<std::string, AttrConfig> attrs;
+  absl::btree_map<std::string, AttrConfig> attrs;
   optional<std::string> op_type;
   optional<std::string> op_name;
   optional<std::string> source_file;
@@ -7637,6 +7657,19 @@ bool HloParserImpl::ParseOpcode(
         *opcode = async_opcode;
         std::string wrapped_opcode(wrapped_opcode_view);
         status_or_result = StringToHloOpcode(wrapped_opcode);
+        // These ops do not support async wrapping.
+        // TODO(b/319466293): Remove this logic once these opcodes are migrated.
+        if (status_or_result.ok() &&
+            (status_or_result.value() == HloOpcode::kAllGather ||
+             status_or_result.value() == HloOpcode::kAllReduce ||
+             status_or_result.value() == HloOpcode::kCollectivePermute ||
+             status_or_result.value() == HloOpcode::kCopy ||
+             status_or_result.value() == HloOpcode::kRecv ||
+             status_or_result.value() == HloOpcode::kSend)) {
+          status_or_result = InvalidArgument("Unknown opcode: %s", val);
+          return false;
+        }
+
         return true;
       }
       return false;
@@ -8305,7 +8338,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
     const HloParserOptions& options) {
   auto module = std::make_unique<HloModule>(/*name=*/"_", config);
   HloParserImpl parser(str, options);
-  TF_RETURN_IF_ERROR(parser.Run(module.get()));
+  RETURN_IF_ERROR(parser.Run(module.get()));
   return module;
 }
 

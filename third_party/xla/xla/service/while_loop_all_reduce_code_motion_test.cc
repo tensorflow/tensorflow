@@ -50,6 +50,7 @@ namespace xla {
 namespace {
 
 namespace op = ::xla::testing::opcode_matchers;
+using ::testing::_;
 using ::testing::Ne;
 using ::testing::NotNull;
 using ::testing::Property;
@@ -2268,6 +2269,619 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, ComputationWithDUSAndAccumulation) {
     CHECK: tuple({{.+}}, {{.+}}, %[[ar2]], {{.+}})
   )"),
               absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(WhileLoopAllReduceCodeMotionTest,
+       ScalarAllReduceStaysInBodyWhenUsedAsScalingFactor) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule ar_with_scalar_multiply_correctness
+
+    %reduction {
+      %x = f32[] parameter(0)
+      %y = f32[] parameter(1)
+      ROOT %add = f32[] add(f32[] %x, f32[] %y)
+    }
+
+    %scalar_reduction {
+      %x = s32[] parameter(0)
+      %y = s32[] parameter(1)
+      ROOT %add = s32[] add(s32[] %x, s32[] %y)
+    }
+
+    %while_condition {
+      %param = (s32[], s32[], f32[128,128], f32[128,128], s32[]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      ROOT result = pred[] compare(%gte.0, %gte.1), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], s32[], f32[128,128], f32[128,128], s32[]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      %gte.2 = f32[128,128] get-tuple-element(%param), index=2
+      %gte.3 = f32[128,128] get-tuple-element(%param), index=3
+      %gte.4 = s32[] get-tuple-element(%param), index=4
+      %grad1 = f32[128,128] multiply(f32[128,128] %gte.2, f32[128,128] %gte.2)
+      %all-reduce.1 = f32[128,128] all-reduce(f32[128,128] %grad1), channel_id=1, replica_groups={{0,1,2,3}}, use_global_device_ids=true, to_apply=%reduction
+      %count = s32[] constant(1)
+      %all-reduce.scalar = s32[] all-reduce(s32[] %count), channel_id=2, replica_groups={{0,1,2,3}}, use_global_device_ids=true, to_apply=%scalar_reduction
+      %scalar.f32 = f32[] convert(s32[] %all-reduce.scalar)
+      %scalar.bcast = f32[128,128] broadcast(f32[] %scalar.f32), dimensions={}
+      %scaled.grad1 = f32[128,128] multiply(f32[128,128] %all-reduce.1, f32[128,128] %scalar.bcast)
+      %accumulation.1 = f32[128,128] add(f32[128,128] %scaled.grad1, f32[128,128] %gte.3)
+      %accumulation.scalar = s32[] add(s32[] %all-reduce.scalar, s32[] %gte.4)
+      %constant.1 = s32[] constant(1)
+      %increment_iteration = s32[] add(s32[] %gte.0, s32[] %constant.1)
+      ROOT %loop_result = (s32[], s32[], f32[128,128], f32[128,128], s32[]) tuple(%increment_iteration, %gte.1, %gte.2, %accumulation.1, %accumulation.scalar)
+    }
+
+    ENTRY ar_with_scalar_multiply_correctness {
+      %param.0 = s32[] parameter(0)
+      %param.1 = f32[128,128] parameter(1)
+      %constant.0 = s32[] constant(1)
+      %accumulation_buffer_init = f32[] constant(0)
+      %accumulation_buffer = f32[128,128] broadcast(f32[] %accumulation_buffer_init), dimensions={}
+      %scalar_buffer_init = s32[] constant(0)
+      %while_init = (s32[], s32[], f32[128,128], f32[128,128], s32[]) tuple(%constant.0, %param.0, %param.1, %accumulation_buffer, %scalar_buffer_init)
+      ROOT %while = (s32[], s32[], f32[128,128], f32[128,128], s32[]) while(%while_init), condition=%while_condition, body=%while_body
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                          WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  ASSERT_TRUE(simplified_loop);
+  TF_ASSERT_OK(
+      HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
+          .Run(module.get())
+          .status());
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
+  ASSERT_THAT(transformed_while, NotNull());
+  HloComputation* body = transformed_while->while_body();
+  std::vector<HloInstruction*> body_all_reduces;
+  absl::c_copy_if(body->instructions(), std::back_inserter(body_all_reduces),
+                  HloPredicateIsOp<HloOpcode::kAllReduce>);
+  ASSERT_THAT(body_all_reduces, SizeIs(1));
+  EXPECT_THAT(body_all_reduces[0], op::Shape("s32[]"));
+  std::vector<HloInstruction*> entry_all_reduces;
+  absl::c_copy_if(entry->instructions(), std::back_inserter(entry_all_reduces),
+                  HloPredicateIsOp<HloOpcode::kAllReduce>);
+  ASSERT_THAT(entry_all_reduces, SizeIs(1));
+  EXPECT_THAT(entry_all_reduces[0], op::Shape("f32[128,128]"));
+  EXPECT_THAT(
+      body->instructions(),
+      Contains(op::Multiply(_, op::Broadcast(op::Convert(op::AllReduce())))));
+}
+
+TEST_F(WhileLoopAllReduceCodeMotionTest,
+       MultipleGradientsScaledByScalarAllReduceStaysInBody) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule multi_grad_scalar_correctness
+
+    %reduction {
+      %x = f32[] parameter(0)
+      %y = f32[] parameter(1)
+      ROOT %add = f32[] add(f32[] %x, f32[] %y)
+    }
+
+    %scalar_reduction {
+      %x = s32[] parameter(0)
+      %y = s32[] parameter(1)
+      ROOT %add = s32[] add(s32[] %x, s32[] %y)
+    }
+
+    %while_condition {
+      %param = (s32[], s32[], f32[64,64], f32[64,64], f32[64,64], f32[64,64], s32[]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      ROOT result = pred[] compare(%gte.0, %gte.1), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], s32[], f32[64,64], f32[64,64], f32[64,64], f32[64,64], s32[]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      %gte.2 = f32[64,64] get-tuple-element(%param), index=2
+      %gte.3 = f32[64,64] get-tuple-element(%param), index=3
+      %gte.4 = f32[64,64] get-tuple-element(%param), index=4
+      %gte.5 = f32[64,64] get-tuple-element(%param), index=5
+      %gte.6 = s32[] get-tuple-element(%param), index=6
+      %grad1 = f32[64,64] multiply(f32[64,64] %gte.2, f32[64,64] %gte.2)
+      %all-reduce.grad1 = f32[64,64] all-reduce(f32[64,64] %grad1), channel_id=1, replica_groups={{0,1,2,3}}, use_global_device_ids=true, to_apply=%reduction
+      %grad2 = f32[64,64] add(f32[64,64] %gte.3, f32[64,64] %gte.3)
+      %all-reduce.grad2 = f32[64,64] all-reduce(f32[64,64] %grad2), channel_id=2, replica_groups={{0,1,2,3}}, use_global_device_ids=true, to_apply=%reduction
+      %count = s32[] constant(4)
+      %all-reduce.scalar = s32[] all-reduce(s32[] %count), channel_id=3, replica_groups={{0,1,2,3}}, use_global_device_ids=true, to_apply=%scalar_reduction
+      %scalar.f32 = f32[] convert(s32[] %all-reduce.scalar)
+      %scalar.bcast = f32[64,64] broadcast(f32[] %scalar.f32), dimensions={}
+      %scaled.grad1 = f32[64,64] multiply(f32[64,64] %all-reduce.grad1, f32[64,64] %scalar.bcast)
+      %accumulation.1 = f32[64,64] add(f32[64,64] %scaled.grad1, f32[64,64] %gte.4)
+      %scaled.grad2 = f32[64,64] multiply(f32[64,64] %all-reduce.grad2, f32[64,64] %scalar.bcast)
+      %accumulation.2 = f32[64,64] add(f32[64,64] %scaled.grad2, f32[64,64] %gte.5)
+      %accumulation.scalar = s32[] add(s32[] %all-reduce.scalar, s32[] %gte.6)
+      %constant.1 = s32[] constant(1)
+      %increment_iteration = s32[] add(s32[] %gte.0, s32[] %constant.1)
+      ROOT %loop_result = (s32[], s32[], f32[64,64], f32[64,64], f32[64,64], f32[64,64], s32[]) tuple(%increment_iteration, %gte.1, %gte.2, %gte.3, %accumulation.1, %accumulation.2, %accumulation.scalar)
+    }
+
+    ENTRY multi_grad_scalar_correctness {
+      %param.0 = s32[] parameter(0)
+      %param.1 = f32[64,64] parameter(1)
+      %param.2 = f32[64,64] parameter(2)
+      %constant.0 = s32[] constant(1)
+      %zero.init = f32[] constant(0)
+      %zero.buffer = f32[64,64] broadcast(f32[] %zero.init), dimensions={}
+      %scalar_buffer_init = s32[] constant(0)
+      %while_init = (s32[], s32[], f32[64,64], f32[64,64], f32[64,64], f32[64,64], s32[]) tuple(%constant.0, %param.0, %param.1, %param.2, %zero.buffer, %zero.buffer, %scalar_buffer_init)
+      ROOT %while = (s32[], s32[], f32[64,64], f32[64,64], f32[64,64], f32[64,64], s32[]) while(%while_init), condition=%while_condition, body=%while_body
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                          WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  ASSERT_TRUE(simplified_loop);
+  TF_ASSERT_OK(
+      HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
+          .Run(module.get())
+          .status());
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
+  ASSERT_THAT(transformed_while, NotNull());
+  HloComputation* body = transformed_while->while_body();
+  std::vector<HloInstruction*> body_all_reduces;
+  absl::c_copy_if(body->instructions(), std::back_inserter(body_all_reduces),
+                  HloPredicateIsOp<HloOpcode::kAllReduce>);
+  ASSERT_THAT(body_all_reduces, SizeIs(1));
+  EXPECT_THAT(body_all_reduces[0], op::Shape("s32[]"));
+  EXPECT_EQ(
+      absl::c_count_if(body->instructions(),
+                       Matches(op::Multiply(
+                           _, op::Broadcast(op::Convert(op::AllReduce()))))),
+      2);
+  std::vector<HloInstruction*> entry_all_reduces;
+  absl::c_copy_if(entry->instructions(), std::back_inserter(entry_all_reduces),
+                  HloPredicateIsOp<HloOpcode::kAllReduce>);
+  ASSERT_THAT(entry_all_reduces, SizeIs(2));
+  EXPECT_THAT(entry_all_reduces[0], op::Shape("f32[64,64]"));
+  EXPECT_THAT(entry_all_reduces[1], op::Shape("f32[64,64]"));
+}
+
+TEST_F(WhileLoopAllReduceCodeMotionTest,
+       NonScalarAllReducesMultipliedTogetherStayInBody) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule non_scalar_ar_multiply_correctness
+
+    %reduction {
+      %x = f32[] parameter(0)
+      %y = f32[] parameter(1)
+      ROOT %add = f32[] add(f32[] %x, f32[] %y)
+    }
+
+    %while_condition {
+      %param = (s32[], s32[], f32[128], f32[128], f32[128,128]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      ROOT result = pred[] compare(%gte.0, %gte.1), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], s32[], f32[128], f32[128], f32[128,128]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      %gte.2 = f32[128] get-tuple-element(%param), index=2
+      %gte.3 = f32[128] get-tuple-element(%param), index=3
+      %gte.4 = f32[128,128] get-tuple-element(%param), index=4
+      %row = f32[128] add(f32[128] %gte.2, f32[128] %gte.2)
+      %col = f32[128] add(f32[128] %gte.3, f32[128] %gte.3)
+      %all-reduce.row = f32[128] all-reduce(f32[128] %row), channel_id=1, replica_groups={{0,1,2,3}}, use_global_device_ids=true, to_apply=%reduction
+      %all-reduce.col = f32[128] all-reduce(f32[128] %col), channel_id=2, replica_groups={{0,1,2,3}}, use_global_device_ids=true, to_apply=%reduction
+      %row.bcast = f32[128,128] broadcast(f32[128] %all-reduce.row), dimensions={0}
+      %col.bcast = f32[128,128] broadcast(f32[128] %all-reduce.col), dimensions={1}
+      %product = f32[128,128] multiply(f32[128,128] %row.bcast, f32[128,128] %col.bcast)
+      %accumulation = f32[128,128] add(f32[128,128] %product, f32[128,128] %gte.4)
+      %constant.1 = s32[] constant(1)
+      %increment_iteration = s32[] add(s32[] %gte.0, s32[] %constant.1)
+      ROOT %loop_result = (s32[], s32[], f32[128], f32[128], f32[128,128]) tuple(%increment_iteration, %gte.1, %gte.2, %gte.3, %accumulation)
+    }
+
+    ENTRY non_scalar_ar_multiply_correctness {
+      %param.0 = s32[] parameter(0)
+      %param.1 = f32[128] parameter(1)
+      %param.2 = f32[128] parameter(2)
+      %constant.0 = s32[] constant(1)
+      %zero = f32[] constant(0)
+      %accumulation_buffer = f32[128,128] broadcast(f32[] %zero), dimensions={}
+      %while_init = (s32[], s32[], f32[128], f32[128], f32[128,128]) tuple(%constant.0, %param.0, %param.1, %param.2, %accumulation_buffer)
+      ROOT %while = (s32[], s32[], f32[128], f32[128], f32[128,128]) while(%while_init), condition=%while_condition, body=%while_body
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                          WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  EXPECT_FALSE(simplified_loop);
+  TF_ASSERT_OK(
+      HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
+          .Run(module.get())
+          .status());
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
+  ASSERT_THAT(transformed_while, NotNull());
+  HloComputation* body = transformed_while->while_body();
+  std::vector<HloInstruction*> body_all_reduces;
+  absl::c_copy_if(body->instructions(), std::back_inserter(body_all_reduces),
+                  HloPredicateIsOp<HloOpcode::kAllReduce>);
+  ASSERT_THAT(body_all_reduces, SizeIs(2));
+  EXPECT_THAT(body_all_reduces[0], op::Shape("f32[128]"));
+  EXPECT_THAT(body_all_reduces[1], op::Shape("f32[128]"));
+  std::vector<HloInstruction*> entry_all_reduces;
+  absl::c_copy_if(entry->instructions(), std::back_inserter(entry_all_reduces),
+                  HloPredicateIsOp<HloOpcode::kAllReduce>);
+  EXPECT_THAT(entry_all_reduces, SizeIs(0));
+}
+
+TEST_F(WhileLoopAllReduceCodeMotionTest,
+       ScalarAllReduceWithOnlyMultiplyUseIsNotDeleted) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule scalar_ar_only_multiply_use
+
+    %reduction {
+      %x = f32[] parameter(0)
+      %y = f32[] parameter(1)
+      ROOT %add = f32[] add(f32[] %x, f32[] %y)
+    }
+
+    %scalar_reduction {
+      %x = s32[] parameter(0)
+      %y = s32[] parameter(1)
+      ROOT %add = s32[] add(s32[] %x, s32[] %y)
+    }
+
+    %while_condition {
+      %param = (s32[], s32[], f32[128,128], f32[128,128]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      ROOT result = pred[] compare(%gte.0, %gte.1), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], s32[], f32[128,128], f32[128,128]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      %gte.2 = f32[128,128] get-tuple-element(%param), index=2
+      %gte.3 = f32[128,128] get-tuple-element(%param), index=3
+      %grad1 = f32[128,128] multiply(f32[128,128] %gte.2, f32[128,128] %gte.2)
+      %all-reduce.1 = f32[128,128] all-reduce(f32[128,128] %grad1), channel_id=1, replica_groups={{0,1,2,3}}, use_global_device_ids=true, to_apply=%reduction
+      %count = s32[] constant(1)
+      %all-reduce.scalar = s32[] all-reduce(s32[] %count), channel_id=2, replica_groups={{0,1,2,3}}, use_global_device_ids=true, to_apply=%scalar_reduction
+      %scalar.f32 = f32[] convert(s32[] %all-reduce.scalar)
+      %scalar.bcast = f32[128,128] broadcast(f32[] %scalar.f32), dimensions={}
+      %scaled.grad1 = f32[128,128] multiply(f32[128,128] %all-reduce.1, f32[128,128] %scalar.bcast)
+      %accumulation.1 = f32[128,128] add(f32[128,128] %scaled.grad1, f32[128,128] %gte.3)
+      %constant.1 = s32[] constant(1)
+      %increment_iteration = s32[] add(s32[] %gte.0, s32[] %constant.1)
+      ROOT %loop_result = (s32[], s32[], f32[128,128], f32[128,128]) tuple(%increment_iteration, %gte.1, %gte.2, %accumulation.1)
+    }
+
+    ENTRY scalar_ar_only_multiply_use {
+      %param.0 = s32[] parameter(0)
+      %param.1 = f32[128,128] parameter(1)
+      %constant.0 = s32[] constant(1)
+      %accumulation_buffer_init = f32[] constant(0)
+      %accumulation_buffer = f32[128,128] broadcast(f32[] %accumulation_buffer_init), dimensions={}
+      %while_init = (s32[], s32[], f32[128,128], f32[128,128]) tuple(%constant.0, %param.0, %param.1, %accumulation_buffer)
+      ROOT %while = (s32[], s32[], f32[128,128], f32[128,128]) while(%while_init), condition=%while_condition, body=%while_body
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                          WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  ASSERT_TRUE(simplified_loop);
+  TF_ASSERT_OK(
+      HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
+          .Run(module.get())
+          .status());
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
+  ASSERT_THAT(transformed_while, NotNull());
+  HloComputation* body = transformed_while->while_body();
+  std::vector<HloInstruction*> body_all_reduces;
+  absl::c_copy_if(body->instructions(), std::back_inserter(body_all_reduces),
+                  HloPredicateIsOp<HloOpcode::kAllReduce>);
+  ASSERT_THAT(body_all_reduces, SizeIs(1));
+  EXPECT_THAT(body_all_reduces[0], op::Shape("s32[]"));
+}
+
+TEST_F(WhileLoopAllReduceCodeMotionTest, ScatterAllReduceAccumulate) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule scatter_all_reduce
+
+    %reduction {
+      %x = bf16[] parameter(0)
+      %y = bf16[] parameter(1)
+      ROOT %add = bf16[] add(bf16[] %x, bf16[] %y)
+    }
+
+    %scatter_computation {
+      %p0 = bf16[] parameter(0)
+      %p1 = bf16[] parameter(1)
+      ROOT %add = bf16[] add(bf16[] %p0, bf16[] %p1)
+    }
+
+    %while_condition {
+      %param = (s32[], s32[], bf16[128,128], s32[4]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      ROOT result = pred[] compare(%gte.0, %gte.1), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], s32[], bf16[128,128], s32[4]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      %gte.2 = bf16[128,128] get-tuple-element(%param), index=2
+      %gte.3 = s32[4] get-tuple-element(%param), index=3
+      %updates = bf16[4,128] custom-call(), custom_call_target="some_op"
+      %scatter = bf16[128,128] scatter(%gte.2, %gte.3, %updates),
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1,
+          to_apply=%scatter_computation
+      %all-reduce = bf16[128,128] all-reduce(%scatter),
+          channel_id=1,
+          replica_groups={{0,1,2,3}},
+          use_global_device_ids=true,
+          to_apply=%reduction
+      %constant = s32[] constant(1)
+      %increment_iteration = s32[] add(%gte.0, %constant)
+      ROOT %loop_result = (s32[], s32[], bf16[128,128], s32[4]) tuple(%increment_iteration, %gte.1, %all-reduce, %gte.3)
+    }
+
+    ENTRY scatter_all_reduce {
+      %param.0 = s32[] parameter(0)
+      %param.1 = s32[4] parameter(1)
+      %constant.0 = s32[] constant(1)
+      %accumulation_buffer_init = bf16[] constant(0)
+      %accumulation_buffer = bf16[128,128] broadcast(%accumulation_buffer_init), dimensions={}
+      %while_init = (s32[], s32[], bf16[128,128], s32[4]) tuple(%constant.0, %param.0, %accumulation_buffer, %param.1)
+      ROOT %while = (s32[], s32[], bf16[128,128], s32[4]) while(%while_init), condition=%while_condition, body=%while_body
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                          WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  ASSERT_TRUE(simplified_loop);
+  TF_ASSERT_OK(HloVerifier(false, true).Run(module.get()).status());
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
+  ASSERT_THAT(transformed_while, NotNull());
+  EXPECT_THAT(transformed_while->while_body()->instructions(),
+              Each(Not(op::AllReduce())));
+  VLOG(1) << transformed_while->while_body()->ToString();
+}
+
+TEST_F(WhileLoopAllReduceCodeMotionTest, ScatterAllReduceWithSelectAndConvert) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule scatter_select_all_reduce
+
+    %reduction {
+      %x = f32[] parameter(0)
+      %y = f32[] parameter(1)
+      ROOT %add = f32[] add(f32[] %x, f32[] %y)
+    }
+
+    %scatter_computation {
+      %p0 = bf16[] parameter(0)
+      %p1 = bf16[] parameter(1)
+      ROOT %add = bf16[] add(bf16[] %p0, bf16[] %p1)
+    }
+
+    %while_condition {
+      %param = (s32[], s32[], bf16[128,128], s32[4]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      ROOT result = pred[] compare(%gte.0, %gte.1), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], s32[], bf16[128,128], s32[4]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      %gte.2 = bf16[128,128] get-tuple-element(%param), index=2
+      %gte.3 = s32[4] get-tuple-element(%param), index=3
+      %predicate = pred[128,128] custom-call(), custom_call_target="predicate"
+      %zero_scalar = bf16[] constant(0)
+      %zero = bf16[128,128] broadcast(%zero_scalar), dimensions={}
+      %select = bf16[128,128] select(%predicate, %zero, %gte.2)
+      %updates = bf16[4,128] custom-call(), custom_call_target="some_op"
+      %scatter = bf16[128,128] scatter(%select, %gte.3, %updates),
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1,
+          to_apply=%scatter_computation
+      %convert = f32[128,128] convert(%scatter)
+      %all-reduce = f32[128,128] all-reduce(%convert),
+          channel_id=1,
+          replica_groups={{0,1,2,3}},
+          use_global_device_ids=true,
+          to_apply=%reduction
+      %convert_back = bf16[128,128] convert(%all-reduce)
+      %constant = s32[] constant(1)
+      %increment_iteration = s32[] add(%gte.0, %constant)
+      ROOT %loop_result = (s32[], s32[], bf16[128,128], s32[4])
+          tuple(%increment_iteration, %gte.1, %convert_back, %gte.3)
+    }
+
+    ENTRY scatter_select_all_reduce {
+      %param.0 = s32[] parameter(0)
+      %param.1 = s32[4] parameter(1)
+      %constant.0 = s32[] constant(1)
+      %accumulation_buffer_init = bf16[] constant(0)
+      %accumulation_buffer = bf16[128,128] broadcast(%accumulation_buffer_init), dimensions={}
+      %while_init = (s32[], s32[], bf16[128,128], s32[4])
+          tuple(%constant.0, %param.0, %accumulation_buffer, %param.1)
+      ROOT %while = (s32[], s32[], bf16[128,128], s32[4])
+          while(%while_init), condition=%while_condition, body=%while_body
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                          WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  ASSERT_TRUE(simplified_loop);
+  TF_ASSERT_OK(HloVerifier(false, true).Run(module.get()).status());
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
+  ASSERT_THAT(transformed_while, NotNull());
+  EXPECT_THAT(transformed_while->while_body()->instructions(),
+              Each(Not(op::AllReduce())));
+}
+
+TEST_F(WhileLoopAllReduceCodeMotionTest, ScatterAllReduceBufferUsedElsewhere) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule scatter_all_reduce_buffer_used
+
+    %reduction {
+      %x = bf16[] parameter(0)
+      %y = bf16[] parameter(1)
+      ROOT %add = bf16[] add(bf16[] %x, bf16[] %y)
+    }
+
+    %scatter_computation {
+      %p0 = bf16[] parameter(0)
+      %p1 = bf16[] parameter(1)
+      ROOT %add = bf16[] add(bf16[] %p0, bf16[] %p1)
+    }
+
+    %while_condition {
+      %param = (s32[], s32[], bf16[128,128], s32[4]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      ROOT result = pred[] compare(%gte.0, %gte.1), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], s32[], bf16[128,128], s32[4]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      %gte.2 = bf16[128,128] get-tuple-element(%param), index=2
+      %gte.3 = s32[4] get-tuple-element(%param), index=3
+      %unexpected_use = bf16[128,128] negate(%gte.2)
+      %updates = bf16[4,128] custom-call(), custom_call_target="some_op"
+      %scatter = bf16[128,128] scatter(%gte.2, %gte.3, %updates),
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1,
+          to_apply=%scatter_computation
+      %all-reduce = bf16[128,128] all-reduce(%scatter),
+          channel_id=1,
+          replica_groups={{0,1,2,3}},
+          use_global_device_ids=true,
+          to_apply=%reduction
+      %constant = s32[] constant(1)
+      %increment_iteration = s32[] add(%gte.0, %constant)
+      ROOT %loop_result = (s32[], s32[], bf16[128,128], s32[4]) tuple(%increment_iteration, %gte.1, %all-reduce, %gte.3)
+    }
+
+    ENTRY scatter_all_reduce {
+      %param.0 = s32[] parameter(0)
+      %param.1 = s32[4] parameter(1)
+      %constant.0 = s32[] constant(1)
+      %accumulation_buffer_init = bf16[] constant(0)
+      %accumulation_buffer = bf16[128,128] broadcast(%accumulation_buffer_init), dimensions={}
+      %while_init = (s32[], s32[], bf16[128,128], s32[4]) tuple(%constant.0, %param.0, %accumulation_buffer, %param.1)
+      ROOT %while = (s32[], s32[], bf16[128,128], s32[4]) while(%while_init), condition=%while_condition, body=%while_body
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                          WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  EXPECT_FALSE(simplified_loop);
+  HloComputation* while_body =
+      module->entry_computation()->root_instruction()->called_computations()[0];
+  EXPECT_THAT(while_body->instructions(), Contains(op::AllReduce()));
+}
+
+TEST_F(WhileLoopAllReduceCodeMotionTest, ScatterAllReduceInvalidSelectPattern) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule scatter_invalid_select
+
+    %reduction {
+      %x = bf16[] parameter(0)
+      %y = bf16[] parameter(1)
+      ROOT %add = bf16[] add(bf16[] %x, bf16[] %y)
+    }
+
+    %scatter_computation {
+      %p0 = bf16[] parameter(0)
+      %p1 = bf16[] parameter(1)
+      ROOT %add = bf16[] add(bf16[] %p0, bf16[] %p1)
+    }
+
+    %while_condition {
+      %param = (s32[], s32[], bf16[128,128], s32[4]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      ROOT result = pred[] compare(%gte.0, %gte.1), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], s32[], bf16[128,128], s32[4]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      %gte.2 = bf16[128,128] get-tuple-element(%param), index=2
+      %gte.3 = s32[4] get-tuple-element(%param), index=3
+      %predicate = pred[128,128] custom-call(), custom_call_target="predicate"
+      %nonzero_scalar = bf16[] constant(1.0)
+      %nonzero = bf16[128,128] broadcast(%nonzero_scalar), dimensions={}
+      %select = bf16[128,128] select(%predicate, %nonzero, %gte.2)
+      %updates = bf16[4,128] custom-call(), custom_call_target="some_op"
+      %scatter = bf16[128,128] scatter(%select, %gte.3, %updates),
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1,
+          to_apply=%scatter_computation
+      %all-reduce = bf16[128,128] all-reduce(%scatter),
+          channel_id=1,
+          replica_groups={{0,1,2,3}},
+          use_global_device_ids=true,
+          to_apply=%reduction
+      %constant = s32[] constant(1)
+      %increment_iteration = s32[] add(%gte.0, %constant)
+      ROOT %loop_result = (s32[], s32[], bf16[128,128], s32[4])
+          tuple(%increment_iteration, %gte.1, %all-reduce, %gte.3)
+    }
+
+    ENTRY scatter_invalid_select {
+      %param.0 = s32[] parameter(0)
+      %param.1 = s32[4] parameter(1)
+      %constant.0 = s32[] constant(1)
+      %accumulation_buffer_init = bf16[] constant(0)
+      %accumulation_buffer = bf16[128,128] broadcast(%accumulation_buffer_init), dimensions={}
+      %while_init = (s32[], s32[], bf16[128,128], s32[4])
+          tuple(%constant.0, %param.0, %accumulation_buffer, %param.1)
+      ROOT %while = (s32[], s32[], bf16[128,128], s32[4])
+          while(%while_init), condition=%while_condition, body=%while_body
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                          WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  EXPECT_FALSE(simplified_loop);
+  HloComputation* while_body =
+      module->entry_computation()->root_instruction()->called_computations()[0];
+  EXPECT_THAT(while_body->instructions(), Contains(op::AllReduce()));
 }
 
 }  // namespace

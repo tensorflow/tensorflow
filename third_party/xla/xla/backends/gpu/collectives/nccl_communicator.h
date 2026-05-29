@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
@@ -48,13 +49,22 @@ limitations under the License.
 
 // Include NCCL after XLA headers.
 #include "third_party/nccl/nccl.h"
-
-#if NCCL_VERSION_CODE >= 22800
-// Device initiated collective operations were added in NCCL 2.28.0.
 #include "third_party/nccl/nccl_device.h"  // IWYU pragma: keep
-#endif                                          // NCCL_VERSION_CODE >= 22800
 
 namespace xla::gpu {
+
+using NcclSignalDesc = GpuSignalDesc;
+
+struct NcclCapabilities {
+  bool supports_device_comm;
+  bool supports_one_sided_comm;
+
+  // Reason one-sided comm is not supported, cached at construction. Empty
+  // if one-sided comm is supported.
+  std::string one_sided_comm_unsupported_reason;
+
+  absl::Status GetOneSidedCommUnsupportedError(absl::string_view op) const;
+};
 
 // XLA collectives communicator wrapping an NCCL communicator.
 class NcclCommunicator : public GpuCommunicator {
@@ -98,13 +108,6 @@ class NcclCommunicator : public GpuCommunicator {
   absl::StatusOr<std::unique_ptr<SymmetricMemory>> CreateSymmetricMemory(
       se::DeviceAddressBase addr) final;
 
-  // Since each XLA buffer is a slice into a larger BFCAllocator chunk, first
-  // get the base address of buffer. We will use the base address to keep track
-  // of which chunks we have registered.
-  absl::Status RegisterBufferOnce(se::DeviceAddressBase buffer_range,
-                                  int device_ordinal,
-                                  bool use_symmetric_buffer) final;
-
   Future<> GroupExecute(
       absl::AnyInvocable<absl::Status(GpuCommunicator*)> f) final;
 
@@ -144,6 +147,16 @@ class NcclCommunicator : public GpuCommunicator {
   Future<> Recv(se::DeviceAddressBase recv_buffer, PrimitiveType dtype,
                 size_t count, RankId peer, const Executor& executor) final;
 
+  Future<> Put(se::DeviceAddressBase send_buffer, SymmetricMemory* recv_buffer,
+               size_t offset, size_t count, RankId peer,
+               const Executor& executor) final;
+
+  Future<> Signal(RankId peer, const SignalDesc& signal_desc,
+                  const Executor& executor) final;
+
+  Future<> WaitSignal(RankId peer, int op_cnt, const SignalDesc& signal_desc,
+                      const Executor& executor) final;
+
   std::string ToString() const final;
 
   ncclComm_t comm() const { return comm_; }
@@ -151,23 +164,9 @@ class NcclCommunicator : public GpuCommunicator {
   se::StreamExecutor* stream_executor() const { return stream_executor_; }
 
  private:
-  absl::StatusOr<std::unique_ptr<RegisteredBufferHandle>> RegisterBuffer(
-      se::DeviceAddressBase buffer, int device_ordinal,
-      bool use_symmetric_buffer);
-
-  class NcclRegisteredBufferHandle;
-
   NcclCommunicator(se::StreamExecutor* stream_executor, ncclComm_t comm,
                    std::unique_ptr<tsl::Executor> executor,
-                   std::shared_ptr<CancellationToken> cancel)
-      : stream_executor_(stream_executor),
-        comm_(comm),
-        executor_(std::move(executor)),
-        cancel_(std::move(cancel)) {
-    VLOG(1) << absl::StreamFormat("[%d] Created NCCL communicator %s",
-                                  stream_executor_->device_ordinal(),
-                                  this->ToString());
-  }
+                   std::shared_ptr<CancellationToken> cancel);
 
   absl::Status GroupStart();
   absl::Status GroupEnd();
@@ -213,6 +212,18 @@ class NcclCommunicator : public GpuCommunicator {
   absl::Status LaunchRecv(se::DeviceAddressBase recv_buffer,
                           PrimitiveType dtype, size_t count, RankId peer,
                           const Executor& executor) final;
+
+  absl::Status LaunchPut(se::DeviceAddressBase send_buffer,
+                         SymmetricMemory* recv_buffer, size_t offset,
+                         size_t count, RankId peer,
+                         const Executor& executor) final;
+
+  absl::Status LaunchSignal(RankId peer, const SignalDesc& signal_desc,
+                            const Executor& executor) final;
+
+  absl::Status LaunchWaitSignal(RankId peer, int op_cnt,
+                                const SignalDesc& signal_desc,
+                                const Executor& executor) final;
 
   // Polls the communicator until any pending non-blocking operations are "done"
   // or aborted.
@@ -269,23 +280,12 @@ class NcclCommunicator : public GpuCommunicator {
   // Nesting level of current NCCL group
   int group_nesting_level_ = 0;
 
-  // Keep track of which communicators we have registered for already.
-  // Each ncclMemAlloc'd buffer needs to be registered once per comm.
-  struct RegisteredBuffers {
-    absl::Mutex mu;
-    // Buffer range to the registered buffer handle.
-    absl::flat_hash_map<void*,
-                        std::unique_ptr<Communicator::RegisteredBufferHandle>>
-        range_to_handle ABSL_GUARDED_BY(mu);
-  };
-  RegisteredBuffers registered_buffers_;
+  NcclCapabilities capabilities_;
 };
 
 //===----------------------------------------------------------------------===//
 // NCCL device communicator
 //===----------------------------------------------------------------------===//
-
-#if NCCL_VERSION_CODE >= 22800
 
 // A device-side NCCL communicator.
 class NcclDeviceCommunicator : public GpuDeviceCommunicator {
@@ -315,8 +315,6 @@ class NcclDeviceCommunicator : public GpuDeviceCommunicator {
   const NcclCommunicator* comm_;
   ncclDevComm dev_comm_;
 };
-
-#endif  // NCCL_VERSION_CODE >= 22800
 
 }  // namespace xla::gpu
 

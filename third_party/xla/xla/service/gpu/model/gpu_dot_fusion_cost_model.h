@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_MODEL_GPU_DOT_FUSION_COST_MODEL_H_
 
 #include <cstdint>
+#include <optional>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -32,12 +33,16 @@ namespace xla::gpu::gpu_dot_fusion_cost_model {
 // Returns OkStatus if the dot operation is supported by the cost model.
 absl::Status IsSupported(const HloDotInstruction* dot);
 
+// Extracts the contracting dimension size (block_k) from the backend config.
+absl::StatusOr<int64_t> ExtractBlockK(const HloDotInstruction* dot);
+
 // Estimates the run time for a GPU DOT operation with the given set of block
 // parameters.
 // Flops with tile and wave quant.
 absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
     const HloDotInstruction* dot, const BlockLevelParameters& block_params,
-    const se::DeviceDescription& device_info);
+    const se::DeviceDescription& device_info,
+    std::optional<int64_t> block_k = std::nullopt);
 
 namespace detail {
 
@@ -54,9 +59,11 @@ struct DotProblemInfo {
   explicit DotProblemInfo(const HloDotInstruction& dot);
 };
 
-struct OutputTileSize {
+struct DotTileSize {
   int64_t m = 0;
   int64_t n = 0;
+  int64_t k = 0;
+  int64_t b = 1;
 };
 
 // Returns the effective HBM bandwidth in bytes per second for a given dma_size.
@@ -80,8 +87,8 @@ HbmEstimates CalculateHbmTime(const DotProblemInfo& dot,
 
 // Calculates the L2 time for a GPU DOT operation.
 absl::StatusOr<absl::Duration> CalculateL2Time(
-    const DotProblemInfo& dot, const OutputTileSize& out_tile,
-    const se::DeviceDescription& device_info);
+    int64_t dot_k, int64_t tile_k, const se::DeviceDescription& device_info,
+    int64_t l2_bytes, bool is_tma_allowed);
 
 // Calculates the compute time for a GPU DOT operation with tile and wave
 // quantization effects taken into account.
@@ -95,7 +102,7 @@ struct ComputeAndFlops {
 };
 
 absl::StatusOr<ComputeAndFlops> CalculateComputeTimeWithTileAndWaveQuantization(
-    const DotProblemInfo& dot, const OutputTileSize& out_tile,
+    const DotProblemInfo& dot, const DotTileSize& dot_tile,
     const se::DeviceDescription& device_info);
 
 }  // namespace detail

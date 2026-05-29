@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/collective_utils.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -392,6 +393,43 @@ TEST_F(GpuReduceScatterCombinerTest,
                                          suggested_threshold_bytes);
   EXPECT_THAT(RunCombiner(module.get(), kDefaultReduceScatterCombineThreshold),
               absl_testing::IsOkAndHolds(false));
+}
+
+TEST_F(GpuReduceScatterCombinerTest, CombinedPipelinedRetainsBackendConfig) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  p0 = f32[128] parameter(0)
+  p1 = f32[128] parameter(1)
+  rs0 = f32[32] reduce-scatter(p0), dimensions={0}, to_apply=add,
+    replica_groups={},
+    backend_config={"collective_backend_config": {"is_pipelined": true}}
+  rs1 = f32[32] reduce-scatter(p1), dimensions={0}, to_apply=add,
+    replica_groups={},
+    backend_config={"collective_backend_config": {"is_pipelined": true}}
+  ROOT tuple = (f32[32], f32[32]) tuple(rs0, rs1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  EXPECT_THAT(
+      RunCombiner(module.get(), /*combine_threshold_bytes=*/1024 * 1024),
+      absl_testing::IsOkAndHolds(true));
+
+  const HloInstruction* combined =
+      module->entry_computation()->GetInstructionWithName("reduce-scatter");
+  ASSERT_NE(combined, nullptr);
+  TF_ASSERT_OK_AND_ASSIGN(auto config,
+                          combined->backend_config<GpuBackendConfig>());
+  EXPECT_TRUE(config.collective_backend_config().is_pipelined());
 }
 
 }  // namespace

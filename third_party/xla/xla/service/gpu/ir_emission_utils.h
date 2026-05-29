@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
@@ -131,6 +133,10 @@ inline constexpr absl::string_view
     kDynamicSliceFusionWithDynamicAddressComputationConfigName =
         "dynamic_address_computation";
 
+// The name of the custom fusion config for dynamic slice fusion V2.
+inline constexpr absl::string_view kDynamicSliceFusionConfigName =
+    "dynamic_slice_fusion";
+
 // Returns the name of the custom fusion config if the given instruction is a
 // custom fusion and has a custom fusion name, otherwise returns std::nullopt.
 // The custom fusion name is basically the value of
@@ -157,6 +163,10 @@ bool IsMosaicWithNvshmem(const HloInstruction& hlo);
 // Returns true if `hlo` will be implemented as a call to a Mosaic GPU kernel
 // with multimem.
 bool IsMosaicWithMultimem(const HloInstruction& hlo);
+
+// Returns true if `hlo` will be implemented as a call to a Mosaic GPU kernel
+// with collective metadata.
+bool IsMosaicWithCollectiveMetadata(const HloInstruction& hlo);
 
 // Returns true if instruction is a Mosaic GPU collective instruction.
 bool IsCollectiveMosaicGpuInstruction(const HloInstruction& hlo);
@@ -354,9 +364,8 @@ absl::StatusOr<std::string> GetProtoFingerprint(
 template <typename ConfigType>
 absl::StatusOr<std::string> FingerprintWithBackendConfig(
     const HloInstruction& hlo) {
-  TF_ASSIGN_OR_RETURN(const auto config, hlo.backend_config<ConfigType>());
-  TF_ASSIGN_OR_RETURN(const std::string fingerprint,
-                      GetProtoFingerprint(config));
+  ASSIGN_OR_RETURN(const auto config, hlo.backend_config<ConfigType>());
+  ASSIGN_OR_RETURN(const std::string fingerprint, GetProtoFingerprint(config));
   return absl::StrCat(hlo.ToString(HloPrintOptions::Fingerprint()),
                       ", backend_config_fingerprint=", fingerprint);
 }

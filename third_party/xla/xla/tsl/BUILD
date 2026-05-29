@@ -536,6 +536,11 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+bool_flag(
+    name = "no_nccl_support_flag",
+    build_setting_default = False,
+)
+
 config_setting(
     name = "using_no_nccl_support_define",
     define_values = dict(
@@ -544,10 +549,25 @@ config_setting(
     visibility = internal_visibility(["//visibility:private"]),
 )
 
+config_setting(
+    name = "using_no_nccl_support_flag",
+    flag_values = {":no_nccl_support_flag": "True"},
+    visibility = internal_visibility(["//visibility:private"]),
+)
+
+selects.config_setting_group(
+    name = "using_no_nccl_support",
+    match_any = [
+        ":using_no_nccl_support_define",
+        ":using_no_nccl_support_flag",
+    ],
+    visibility = internal_visibility(["//visibility:private"]),
+)
+
 selects.config_setting_group(
     name = "no_nccl_support",
     match_all = [
-        ":using_no_nccl_support_define",
+        ":using_no_nccl_support",
     ] + if_google([
         "@local_config_cuda//cuda:using_config_cuda",
     ]),
@@ -605,7 +625,7 @@ bzl_library(
         "//xla/tsl/mkl:build_defs_bzl",
         "//xla/tsl/platform:rules_cc_bzl",
         "@local_config_tensorrt//:build_defs_bzl",
-        "@xla//third_party/py/rules_pywrap:pywrap_bzl",
+        "@rules_ml_toolchain//py/rules_pywrap:pywrap_bzl",
         "@local_config_rocm//rocm:build_defs_bzl",
         "@local_config_sycl//sycl:build_defs_bzl",
         "//third_party/compute_library:build_defs_bzl",

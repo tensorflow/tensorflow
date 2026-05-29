@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -25,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/side_effect_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -48,7 +50,18 @@ std::optional<CollectivePermuteKey> GetCollectivePermuteKey(
     // Canonicalize the source-target pairs so that the order does not matter.
     absl::c_sort(source_target_pairs);
   }
-  return CollectivePermuteKey{source_target_pairs};
+
+  // Include the combiner_key frontend attribute in the key so that
+  // collective-permutes with different keys are not combined.
+  std::string combiner_key;
+  if (instruction->has_frontend_attributes()) {
+    auto it = instruction->frontend_attributes().map().find(kCombinerKeyAttr);
+    if (it != instruction->frontend_attributes().map().end()) {
+      combiner_key = it->second;
+    }
+  }
+
+  return CollectivePermuteKey{source_target_pairs, combiner_key};
 }
 
 }  // namespace xla

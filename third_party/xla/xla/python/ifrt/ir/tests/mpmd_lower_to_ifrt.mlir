@@ -62,7 +62,7 @@ func.func public @main(%arg0: !arg_0_tensor,
       // CHECK-NEXT: %[[RESHARD:.*]], %{{.+}} = ifrt.Reshard(%[[OUTPUTS_0]]) : (!ifrt.array<tensor<10x5xf32>, #sp, [0, 1, 2, 3]>) -> !ifrt.array<tensor<10x5xf32>, #sp, [4, 5, 6, 7]>
       // CHECK-NEXT: %[[OUTPUTS_1:.*]], %[[CONTROL_OUTPUT_1:.*]] = ifrt.Call @stage2(%arg1, %[[RESHARD]])
       // CHECK-NEXT: return %[[OUTPUTS_1]]
-      %0 = mpmd.fragment_call<mesh="mesh1", origin=[]> @stage1(%arg0, %arg2) {mpmd.is_gspmd_partitioned} : (!arg_0_tensor, !arg_2_tensor) -> !tmp_tensor_mesh1
+      %0 = mpmd.fragment_call<mesh="mesh1", origin=[]> @stage1(%arg0, %arg2) : (!arg_0_tensor, !arg_2_tensor) -> !tmp_tensor_mesh1
       %1 = mpmd.transfer %0 : (!tmp_tensor_mesh1) -> !tmp_tensor_mesh2
       %2 = mpmd.fragment_call<mesh="mesh2", origin=[]> @stage2(%arg1, %1) : (!arg_1_tensor, !tmp_tensor_mesh2) -> !res_tensor
       return %2 : !res_tensor
@@ -94,7 +94,7 @@ module @aliasing_output_to_io_aliases {
     // CHECK-DAG:    ifrt.mesh_name = "mesh1"
     // CHECK-DAG:    io_aliases = [array<i32: 1, 0>]
     // CHECK-SAME: }
-    %0 = mpmd.fragment_call<mesh="mesh1", origin=[]> @add_args(%arg0, %arg0) {mpmd.is_gspmd_partitioned} : (!tensor, !tensor) -> (!tensor)
+    %0 = mpmd.fragment_call<mesh="mesh1", origin=[]> @add_args(%arg0, %arg0) : (!tensor, !tensor) -> (!tensor)
     return %0 : !tensor
   }
 

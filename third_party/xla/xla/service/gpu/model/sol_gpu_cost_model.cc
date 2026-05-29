@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/collective_utils.h"
 #include "xla/stream_executor/device_description.h"
@@ -179,8 +180,8 @@ absl::Duration SolGPUCostModel::TransferDuration(
 absl::StatusOr<absl::Duration> SolGPUCostModel::RingLatency(
     const int64_t buff_size_bytes, const int num_nodes,
     const CollectiveType& coll_type, const int num_communicators) const {
-  TF_ASSIGN_OR_RETURN(int num_gpus,
-                      NumGpusPerComm(num_nodes, coll_type, num_communicators));
+  ASSIGN_OR_RETURN(int num_gpus,
+                   NumGpusPerComm(num_nodes, coll_type, num_communicators));
 
   int64_t per_gpu_msg_size_bytes;
   if (coll_type == CollectiveType::kSendRecv) {
@@ -227,7 +228,7 @@ absl::StatusOr<absl::Duration> SolGPUCostModel::RingLatency(
 absl::StatusOr<absl::Duration> SolGPUCostModel::AllToAllLatency(
     const int64_t buff_size_bytes, const int num_nodes,
     const int num_communicators) const {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       int num_gpus,
       NumGpusPerComm(num_nodes, SolGPUCostModel::CollectiveType::kAllToAll,
                      num_communicators));

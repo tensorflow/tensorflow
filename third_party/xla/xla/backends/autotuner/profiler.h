@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/service/executable.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/tsl/platform/statusor.h"
@@ -58,15 +59,18 @@ class Profiler {
   // Profiles a single executable.
   virtual absl::StatusOr<ProfileResult> Profile(
       std::unique_ptr<Executable> executable) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<InputBuffers> buffers,
-                        CreateInputBuffers(executable.get()));
+    ASSIGN_OR_RETURN(std::unique_ptr<InputBuffers> buffers,
+                     CreateInputBuffers(executable.get()));
     return Profile(executable.get(), *buffers);
   }
 
   // Creates Input buffers for a given executable on the device. The buffers
   // are created with the same shape as the input parameters of the executable.
+  // The optional instruction which was extracted to a module to create the
+  // executable, can be provided to enable operation-specific buffer
+  // initialization.
   virtual absl::StatusOr<std::unique_ptr<InputBuffers>> CreateInputBuffers(
-      const Executable* executable) = 0;
+      const Executable* executable, const HloInstruction* instr = nullptr) = 0;
 
   // Profiles a single executable with the provided buffers. The buffers
   // must be created by calling CreateInputBuffers from the same profiler.

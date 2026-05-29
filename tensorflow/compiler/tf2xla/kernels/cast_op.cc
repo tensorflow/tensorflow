@@ -60,17 +60,17 @@ class CastOp : public XlaOpKernel {
       output = xla::ConvertElementType(xla::Real(input), dst_type_);
     } else {
       if (use_truncation_) {
-        OP_REQUIRES(
-            ctx,
-            xla::primitive_util::IsFloatingPointType(src_type_) &&
-                xla::primitive_util::IsFloatingPointType(dst_type_),
-            errors::Unimplemented("Truncate attribute is only "
-                                  "implemented for floating point datatypes."));
+        OP_REQUIRES(ctx,
+                    xla::primitive_util::IsFloatingPointType(src_type_) &&
+                        xla::primitive_util::IsFloatingPointType(dst_type_),
+                    absl::UnimplementedError(
+                        "Truncate attribute is only "
+                        "implemented for floating point datatypes."));
         int mantissa_difference =
             xla::primitive_util::SignificandWidth(src_type_) -
             xla::primitive_util::SignificandWidth(dst_type_);
         OP_REQUIRES(ctx, mantissa_difference > 0,
-                    errors::Unimplemented(
+                    absl::UnimplementedError(
                         "Truncate attribute is only implemented in cases where "
                         "dst datatype "
                         "has fewer mantissa bits than the src datatype"));
@@ -82,7 +82,7 @@ class CastOp : public XlaOpKernel {
         xla::PrimitiveType same_width_int =
             xla::primitive_util::UnsignedIntegralTypeForBitWidth(src_bitwidth);
         OP_REQUIRES(ctx, same_width_int != xla::PRIMITIVE_TYPE_INVALID,
-                    errors::Unimplemented("Unexpected type bitwidth"));
+                    absl::UnimplementedError("Unexpected type bitwidth"));
         input = xla::BitcastConvertType(
             xla::And(
                 xla::BitcastConvertType(input, same_width_int),
@@ -129,14 +129,14 @@ class BitcastOp : public XlaOpKernel {
     OP_REQUIRES(ctx,
                 !xla::primitive_util::IsComplexType(src_type_) &&
                     !xla::primitive_util::IsComplexType(dst_type_),
-                errors::Unimplemented("Complex types not supported."));
+                absl::UnimplementedError("Complex types not supported."));
     auto input_bit_width = xla::primitive_util::BitWidth(src_type_);
     auto output_bit_width = xla::primitive_util::BitWidth(dst_type_);
 
     OP_REQUIRES(ctx,
                 output_bit_width % input_bit_width == 0 ||
                     input_bit_width % output_bit_width == 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Neither bit width is a multiple of the other."));
     output = xla::BitcastConvertType(input, dst_type_);
     ctx->SetOutput(0, output);

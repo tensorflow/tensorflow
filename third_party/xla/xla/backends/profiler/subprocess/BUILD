@@ -17,14 +17,18 @@ cc_library(
     ]),
     deps = [
         "//xla/tsl/platform:env",
+        "@com_github_grpc_grpc//:gpr",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
-        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
     ],
 )
@@ -32,12 +36,20 @@ cc_library(
 xla_cc_test(
     name = "subprocess_registry_test",
     srcs = ["subprocess_registry_test.cc"],
+    data = [":subprocess_main"],
+    env = {
+        "XPROF_TEST_SUBPROCESS_MAIN_PATH": "$(rlocationpath :subprocess_main)",
+    },
     deps = [
         ":subprocess_registry",
         "//xla/tsl/platform:env",
+        "//xla/tsl/platform:subprocess",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
+        "@tsl//tsl/platform:path",
     ],
 )
 
@@ -52,6 +64,7 @@ cc_library(
     deps = [
         ":subprocess_registry",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/profiler/utils:timestamp_utils",
         "//xla/tsl/profiler/utils:xplane_schema",

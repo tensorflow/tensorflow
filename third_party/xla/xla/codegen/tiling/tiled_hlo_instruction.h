@@ -33,6 +33,13 @@ limitations under the License.
 
 namespace xla {
 
+class TiledHloInstruction;
+
+// A region is a collection of instructions grouped to represent a nested
+// control flow (e.g., loops) or a distinct computation branch.
+class TiledHloRegion
+    : public std::vector<std::unique_ptr<TiledHloInstruction>> {};
+
 // A wrapper around HloInstruction that represents a tiled HLO instruction.
 //
 // The class contains information required to emit this instruction in
@@ -61,8 +68,7 @@ class TiledHloInstruction {
       llvm::SmallVector<int64_t> tile_sizes,
       llvm::SmallVector<int64_t> tile_strides,
       std::optional<IndexingMap> tile_offsets_indexing,
-      llvm::SmallVector<std::vector<std::unique_ptr<TiledHloInstruction>>>
-          regions = {});
+      llvm::SmallVector<TiledHloRegion> regions = {});
 
   // Returns the original HLO instruction.
   const HloInstruction* hlo() const { return hlo_; }
@@ -115,10 +121,7 @@ class TiledHloInstruction {
   // - dot has a single region for the entire dot loop body (including all its
   //   operands);
   // - concatenation has a region per operand.
-  absl::Span<const std::vector<std::unique_ptr<TiledHloInstruction>>> regions()
-      const {
-    return regions_;
-  }
+  absl::Span<const TiledHloRegion> hlo_regions() const { return regions_; }
 
   std::string ToString(int64_t indent = 0) const;
 
@@ -136,8 +139,7 @@ class TiledHloInstruction {
       llvm::SmallVector<int64_t> tile_sizes,
       llvm::SmallVector<int64_t> tile_strides,
       std::optional<IndexingMap> tile_offsets_indexing,
-      llvm::SmallVector<std::vector<std::unique_ptr<TiledHloInstruction>>>
-          regions = {})
+      llvm::SmallVector<TiledHloRegion> regions = {})
       : hlo_(hlo),
         operands_(std::move(operands)),
         runtime_variables_(std::move(runtime_variables)),
@@ -167,7 +169,7 @@ class TiledHloInstruction {
   // See comment for `tile_offsets_indexing()`.
   std::optional<IndexingMap> tile_offsets_indexing_;
 
-  llvm::SmallVector<std::vector<std::unique_ptr<TiledHloInstruction>>> regions_;
+  llvm::SmallVector<TiledHloRegion> regions_;
 };
 
 inline bool operator==(const TiledHloInstruction& lhs,

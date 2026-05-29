@@ -264,6 +264,7 @@ def xla_test(
         fail_if_no_test_linked = True,
         fail_if_no_test_selected = True,
         use_legacy_runtime = False,
+        test_cpu_fast_compile = False,
         **kwargs):
     """Generates strict_cc_test targets for the given XLA backends.
 
@@ -341,6 +342,8 @@ def xla_test(
       fail_if_no_test_selected: Whether to fail if no test case is executed.
       use_legacy_runtime: If true, adds the required dependencies for writing tests
         using the legacy runtime.
+      test_cpu_fast_compile: If true, generate a specialized test target for CPU
+        with FAST_COMPILE preset enabled.
       **kwargs: Additional keyword arguments to pass to strict_cc_test.
     """
 
@@ -369,7 +372,9 @@ def xla_test(
         this_backend_tags = ["xla_%s" % backend] + tags + backend_tags.get(backend, [])
         this_backend_copts = []
         this_backend_args = backend_args.get(backend, [])
-        this_backend_kwargs = dict(kwargs) | backend_kwargs.get(backend, {})
+        this_backend_kwargs = dict(kwargs)
+        for k, v in backend_kwargs.get(backend, {}).items():
+            this_backend_kwargs[k] = v
         this_backend_data = []
         backend_deps = []
         if backend == "cpu":
@@ -435,6 +440,14 @@ def xla_test(
         modifiers = backend.split("_")
         device = modifiers.pop(0)
 
+        this_backend_env = dict(env)
+        for k, v in {
+            "XLA_TEST_DEVICE": device,
+            "XLA_TEST_DEVICE_TYPE": device_type_for_env,
+            "XLA_TEST_MODIFIERS": ",".join(modifiers),
+        }.items():
+            this_backend_env[k] = v
+
         xla_cc_test(
             name = test_name,
             srcs = srcs,
@@ -443,16 +456,42 @@ def xla_test(
             args = args + this_backend_args,
             deps = deps + backend_deps,
             data = data + this_backend_data,
-            env = env | {
-                "XLA_TEST_DEVICE": device,
-                "XLA_TEST_DEVICE_TYPE": device_type_for_env,
-                "XLA_TEST_MODIFIERS": ",".join(modifiers),
-            },
+            env = this_backend_env,
             linkstatic = linkstatic,
             fail_if_no_test_linked = fail_if_no_test_linked,
             fail_if_no_test_selected = fail_if_no_test_selected,
             **this_backend_kwargs
         )
+
+        if backend == "cpu" and test_cpu_fast_compile:
+            fast_compile_test_name = test_name + "_fast_compile"
+            fast_compile_env = dict(env)
+            for k, v in {
+                "XLA_TEST_DEVICE": device,
+                "XLA_TEST_DEVICE_TYPE": device_type_for_env,
+                "XLA_TEST_MODIFIERS": ",".join(modifiers),
+            }.items():
+                fast_compile_env[k] = v
+            if "XLA_FLAGS" in fast_compile_env:
+                fast_compile_env["XLA_FLAGS"] += " --xla_cpu_opt_preset=FAST_COMPILE"
+            else:
+                fast_compile_env["XLA_FLAGS"] = "--xla_cpu_opt_preset=FAST_COMPILE"
+
+            xla_cc_test(
+                name = fast_compile_test_name,
+                srcs = srcs,
+                tags = this_backend_tags,
+                copts = copts + this_backend_copts,
+                args = args + this_backend_args,
+                deps = deps + backend_deps,
+                data = data + this_backend_data,
+                env = fast_compile_env,
+                linkstatic = linkstatic,
+                fail_if_no_test_linked = fail_if_no_test_linked,
+                fail_if_no_test_selected = fail_if_no_test_selected,
+                **this_backend_kwargs
+            )
+
         if ((backend in NVIDIA_GPU_BACKENDS and is_cuda_configured()) or
             (backend in AMD_GPU_DEFAULT_BACKENDS and is_rocm_configured())):
             test_names.append(test_name)

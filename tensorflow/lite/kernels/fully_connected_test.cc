@@ -151,7 +151,7 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
           FullyConnectedOptionsWeightsFormat_DEFAULT,
       int input_size = -1, bool weights_per_channel_quantized = false,
       std::vector<float> per_channel_quantization_scales = {},
-      const TensorType& filter_type = TensorType_FLOAT32)
+      const TensorType& filter_type = TensorType_FLOAT32, int channel_index = 0)
       : batches_(batches),
         units_(units),
         input_size_(input_size),
@@ -177,8 +177,7 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
                            /*zero_point=*/0,
                            /*per_channel_quantization=*/true,
                            per_channel_quantization_scales,
-                           per_channel_quantization_offsets,
-                           /*channel_index=*/0});
+                           per_channel_quantization_offsets, channel_index});
     } else {
       // per-tensor
       float min = input.min;
@@ -189,8 +188,8 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
           max = 7.f;
           break;
         case TensorType_INT2:
-          min = -2.f;
-          max = 2.f;
+          min = -1.f;
+          max = 1.f;
           break;
         case TensorType_INT8:
           min = -63.5f;
@@ -384,12 +383,13 @@ class PerChannelQuantizedFullyConnectedOpModel
       ActivationFunctionType activation_func = ActivationFunctionType_RELU,
       FullyConnectedOptionsWeightsFormat weights_format =
           FullyConnectedOptionsWeightsFormat_DEFAULT,
-      int input_size = -1, const TensorType& filter_type = TensorType_INT8)
+      int input_size = -1, const TensorType& filter_type = TensorType_INT8,
+      int channel_index = 0)
       : BaseFullyConnectedOpModel(
             registration, units, batches, input, output, bias_type,
             keep_num_dims, bias_tensor_optional, activation_func,
             weights_format, input_size, true, per_channel_quantization_scales,
-            filter_type) {}
+            filter_type, channel_index) {}
 
   void SetBias(const std::vector<float>& data) {
     PerChannelQuantizeBias(bias_, data);
@@ -846,6 +846,27 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt8) {
               ElementsAreArray(ArrayFloatNear({24, 25, 26, 58, 59, 60})));
   EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAre(23, 24, 25, 57, 58, 59));
 }
+
+#if GTEST_HAS_DEATH_TEST
+TEST_P(QuantizedFullyConnectedOpTest, QuantizedDimensionMustBeZero) {
+  EXPECT_DEATH(
+      {
+        PerChannelQuantizedFullyConnectedOpModel m(
+            GetRegistration(), /*units=*/3, /*batches=*/2,
+            /*input=*/{TensorType_INT8, {2, 10}, -63.5, 64},
+            /*per_channel_quantization_scales=*/
+            {0.2, 0.25, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5},
+            /*output=*/{TensorType_INT8, {}, -127, 128},
+            /*bias_type=*/TensorType_INT32,
+            /*keep_num_dims=*/false, /*bias_tensor_optional=*/true,
+            /*activation_func=*/ActivationFunctionType_RELU,
+            /*weights_format=*/FullyConnectedOptionsWeightsFormat_DEFAULT,
+            /*input_size=*/-1, /*filter_type=*/TensorType_INT8,
+            /*channel_index=*/1);
+      },
+      "Cannot allocate tensors");
+}
+#endif
 
 TEST_P(QuantizedFullyConnectedOpTest, SimpleTestPerChannelQuantizedInt8) {
   PerChannelQuantizedFullyConnectedOpModel m(

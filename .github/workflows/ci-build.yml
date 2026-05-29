@@ -29,25 +29,32 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'master' }}
 
 jobs:
-  #build-and-test-linux-x86-cpu:
-  #  uses: ./.github/workflows/build-reusable.yml
-  #  with:
-  #    runner: 'linux-x86-n2-16'
-  #    tfci: 'py313,linux_x86,rbe'
+  build-linux-x86-cpu:
+    uses: ./.github/workflows/build-reusable.yml
+    with:
+      runner: 'linux-x86-n2-16'
+      tfci: 'py313,linux_x86,rbe,no_docker'
 
-  #build-and-test-linux-x86-cuda:
-  #  uses: ./.github/workflows/build-reusable.yml
-  #  with:
-  #    runner: 'linux-x86-n4-32'
-  #    tfci: 'py313,linux_x86_cuda'
+  build-linux-x86-cuda:
+    uses: ./.github/workflows/build-reusable.yml
+    with:
+      runner: 'linux-x86-n2-16'
+      tfci: 'py313,linux_x86_cuda,rbe,no_docker'
 
-  #build-and-test-arm64:
-  #  uses: ./.github/workflows/build-reusable.yml
-  #  with:
-  #    runner: 'linux-arm64-c4a-16'
-  #    tfci: 'py313,linux_arm64,rbe'
+  build-linux-x86-cuda13:
+    uses: ./.github/workflows/build-reusable.yml
+    with:
+      runner: 'linux-x86-n2-16'
+      tfci: 'py313,linux_x86_cuda13_nvcc,rbe,no_docker'
 
-  build-and-test-windows-x86:
+  build-arm64:
+    uses: ./.github/workflows/build-reusable.yml
+    with:
+      runner: 'linux-x86-n2-16'
+      tfci: 'py313,linux_arm64_cross_compile,rbe,no_docker,enable_pycpp_build'
+      job_name: 'build-only'
+
+  build-windows-x86:
     uses: ./.github/workflows/build-reusable.yml
     with:
       runner: 'windows-x86-n2-16'

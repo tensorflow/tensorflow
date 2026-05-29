@@ -19,16 +19,12 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/Operation.h"
-#include "mlir/IR/Value.h"
 #include "mlir/Support/LLVM.h"
 #include "shardy/dialect/mpmd/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/ir/support/sharding_conversions.h"
 #include "xla/service/spmd/shardy/constants.h"
@@ -36,24 +32,20 @@ limitations under the License.
 
 namespace xla::ifrt::mpmd {
 
-namespace sdy = ::mlir::sdy;
-using ::mlir::DenseSet;
-using ::mlir::func::FuncOp;
-using ::mlir::mpmd::MeshTensorType;
-
-xla::HloSharding GetHloSharding(MeshTensorType mesh_tensor_type,
-                                sdy::MeshAttr sdy_mesh_attr) {
-  sdy::TensorShardingAttr sharding = mesh_tensor_type.getSharding();
+xla::HloSharding GetHloSharding(mlir::mpmd::MeshTensorType mesh_tensor_type,
+                                mlir::sdy::MeshAttr sdy_mesh_attr) {
+  mlir::sdy::TensorShardingAttr sharding = mesh_tensor_type.getSharding();
   // If there is no sharding, it means the mesh_tensor_type is fully replicated
   // but we need to pass a non-null sharding to the conversion function.
   if (!sharding) {
-    sharding = sdy::TensorShardingAttr::getFullyClosed(
+    sharding = mlir::sdy::TensorShardingAttr::getFullyClosed(
         mesh_tensor_type.getContext(),
         mesh_tensor_type.getRankedTensorType().getRank(),
         xla::sdy::kGlobalMeshName);
   }
   return xla::sdy::convertToHloSharding(
-      sharding, [&](sdy::TensorShardingAttr sharding) { return sdy_mesh_attr; },
+      sharding,
+      [&](mlir::sdy::TensorShardingAttr sharding) { return sdy_mesh_attr; },
       /*manualAxes=*/{});
 }
 
@@ -61,19 +53,16 @@ xla::HloSharding GetHloSharding(MeshTensorType mesh_tensor_type,
 // implementation now converts sdy sharding to hlo sharding and then to sharding
 // param.
 absl::StatusOr<xla::ifrt::ShardingParam> MeshTensorTypeToShardingParam(
-    MeshTensorType mesh_tensor_type, sdy::MeshAttr mesh_attr) {
+    mlir::mpmd::MeshTensorType mesh_tensor_type,
+    mlir::sdy::MeshAttr mesh_attr) {
   return xla::ifrt::support::ToShardingParam(
       /*hlo_sharding=*/GetHloSharding(mesh_tensor_type, mesh_attr),
       /*rank=*/mesh_tensor_type.getRankedTensorType().getRank(),
       /*num_devices=*/
       absl::c_accumulate(mesh_attr.getAxes(), 1,
-                         [](int64_t acc, sdy::MeshAxisAttr axis) {
+                         [](int64_t acc, mlir::sdy::MeshAxisAttr axis) {
                            return acc * axis.getSize();
                          }));
-}
-
-bool IsIfrtFunction(FuncOp func_op) {
-  return func_op->hasAttr(xla::ifrt::kIfrtFunctionAttrName);
 }
 
 }  // namespace xla::ifrt::mpmd

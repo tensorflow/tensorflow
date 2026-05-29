@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/WalkResult.h"
 #include "xla/python/ifrt/ir/constants.h"
+#include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
@@ -119,7 +120,7 @@ class IfrtDumpAtomProgramsPass
     mlir::OpBuilder builder(module_op);
     llvm::SmallVector<mlir::func::FuncOp, 128> funcs_to_empty;
     module_op.walk([&](mlir::func::FuncOp func_op) -> mlir::WalkResult {
-      if (!func_op->hasAttr(kIfrtFunctionAttrName)) {
+      if (!IsIfrtFunction(func_op)) {
         funcs_to_empty.push_back(func_op);
       }
       return mlir::WalkResult::advance();

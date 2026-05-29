@@ -537,6 +537,12 @@ config_setting(
 )
 
 config_setting(
+    name = "linux_arm64_cross_compile",
+    define_values = {"linux_arm64_cross_compile": "true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "linux_armhf",
     constraint_values =
         [
@@ -1098,6 +1104,7 @@ bzl_library(
     deps = [
         ":tf_version_bzl",
         # copybara:uncomment "//devtools/build_cleaner/skylark:build_defs_lib",
+        # copybara:uncomment "@rules_cc//cc:core_rules",
         "@rules_cc//cc/common",
         "@rules_java//java:rules",
         "@xla//xla/tsl:tsl_bzl",
@@ -1105,7 +1112,7 @@ bzl_library(
         "@xla//xla/tsl/mkl:build_defs_bzl",
         "//tensorflow/core/platform:build_config_root_bzl",
         "//tensorflow/core/platform:rules_cc_bzl",
-        "@xla//third_party/py/rules_pywrap:pywrap_bzl",
+        "@rules_ml_toolchain//py/rules_pywrap:pywrap_bzl",
         "@xla//third_party/compute_library:build_defs_bzl",
         "@xla//third_party/llvm_openmp:openmp_bzl",
         "@bazel_skylib//lib:new_sets",
@@ -1252,7 +1259,7 @@ pywrap_aware_tf_cc_shared_object(
         "//tensorflow:windows": [
         ],
         # copybara:uncomment_begin(google-only)
-        # "//tools/cpp:asan_build": [
+        # "@bazel_tools//tools/cpp:asan_build": [
         # "-Wl,--version-script,$(location //tensorflow/c:version_script.lds)",
         # ],
         # "//tools/cpp:hwasan_build": [

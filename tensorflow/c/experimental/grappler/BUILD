@@ -34,6 +34,7 @@ cc_library(
     deps = [
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:c_api_macros",
+        "//tensorflow/c:tf_buffer",
         "//tensorflow/c:tf_buffer_internal",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",

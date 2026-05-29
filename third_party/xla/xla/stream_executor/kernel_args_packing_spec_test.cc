@@ -48,12 +48,12 @@ struct KernelArgPacking<CustomData> {
 
 namespace {
 
-using absl_testing::IsOkAndHolds;
-using absl_testing::StatusIs;
+using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
 using ::testing::ElementsAre;
 using ::testing::SizeIs;
-using tsl::proto_testing::EqualsProto;
-using tsl::proto_testing::ParseTextProtoOrDie;
+using ::tsl::proto_testing::EqualsProto;
+using ::tsl::proto_testing::ParseTextProtoOrDie;
 
 // This function creates a `DeviceAddressBase` with an opaque pointer that
 // contains the given value. The size of the device memory is set to 0 since
@@ -69,104 +69,91 @@ DeviceAddressBase MakeDevicePointer(uint32_t value) {
       /*size=*/0);
 }
 
-TEST(KernelArgPackingSpecTest, WriteArgumentAddress) {
-  KernelArgPackingSpec first_arg;
-  first_arg.WriteArgumentAddress(/*argument_index=*/2);
+TEST(KernelArgPackingSpecTest, BuildArgRelocation) {
+  KernelArgPackingSpec first_arg = KernelArgPackingSpec::BuildArgRelocation(2);
 
-  // We fail if not enough arguments are provided.Since we are referencing
+  // We fail if not enough arguments are provided. Since we are referencing
   // argument #2, we will need to provide 3 arguments.
   EXPECT_THAT(
-      first_arg.BuildArgument({MakeDevicePointer(0), MakeDevicePointer(0)}),
+      first_arg.BuildArgument(
+          PackKernelArgs(
+              std::vector{MakeDevicePointer(0), MakeDevicePointer(0)}, 0)
+              ->packed_args()),
       StatusIs(absl::StatusCode::kInvalidArgument));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<char> first_arg_storage,
-      first_arg.BuildArgument({MakeDevicePointer(0), MakeDevicePointer(0),
-                               MakeDevicePointer(0xff42)}));
-  EXPECT_THAT(first_arg_storage,
-              ElementsAre(0x42, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00));
-}
-
-TEST(KernelArgPackingSpecTest, WriteMultipleArgumentAddresses) {
-  KernelArgPackingSpec first_arg;
-  first_arg.WriteArgumentAddress(/*argument_index=*/0);
-  first_arg.WriteArgumentAddress(/*argument_index=*/1);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<char> first_arg_storage,
+  EXPECT_THAT(
       first_arg.BuildArgument(
-          {MakeDevicePointer(0xff42), MakeDevicePointer(0xaabbccdd)}));
-  EXPECT_THAT(first_arg_storage,
-              ElementsAre(0x42, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xdd,
-                          0xcc, 0xbb, 0xaa, 0x00, 0x00, 0x00, 0x00));
+          PackKernelArgs(std::vector{MakeDevicePointer(0), MakeDevicePointer(0),
+                                     MakeDevicePointer(0xff42)},
+                         0)
+              ->packed_args()),
+      IsOkAndHolds(
+          ElementsAre(0x42, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)));
 }
 
-TEST(KernelArgPackingSpecTest, WriteConstant) {
-  KernelArgPackingSpec first_arg;
-  first_arg.WriteConstant(static_cast<uint32_t>(0x1348));
-  first_arg.WriteConstant(static_cast<uint64_t>(0x2389));
+TEST(KernelArgPackingSpecTest, BuildFor) {
+  KernelArgPackingSpec first_arg =
+      KernelArgPackingSpec::BuildFor(static_cast<uint32_t>(0x1348));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<char> first_arg_storage,
-                          first_arg.BuildArgument(/*args=*/{}));
-
-  // KernelArgPackingSpec::WriteConstant doesn't take endianness into
+  // KernelArgPackingSpec::BuildFor doesn't take endianness into
   // account, so this assertion will fail for big endian architectures - which
   // we don't support anyway.
-  EXPECT_THAT(first_arg_storage,
-              ElementsAre(0x48, 0x13, 0x00, 0x00, 0x89, 0x23, 0x00, 0x00, 0x00,
-                          0x00, 0x00, 0x00));
+  EXPECT_THAT(first_arg.BuildArgument(/*args=*/{}),
+              IsOkAndHolds(ElementsAre(0x48, 0x13, 0, 0)));
 }
 
-TEST(KernelArgPackingSpecTest, WriteConstantAndAddress) {
-  KernelArgPackingSpec first_arg;
-  first_arg.WriteArgumentAddress(/*argument_index=*/0);
-  first_arg.WriteConstant(static_cast<uint32_t>(0x1234));
+TEST(KernelArgPackingSpecTest, BuildForWithCustomPacking) {
+  KernelArgPackingSpec first_arg =
+      KernelArgPackingSpec::BuildFor(CustomData{0x1348});
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<char> first_arg_storage,
-                          first_arg.BuildArgument({MakeDevicePointer(0xff42)}));
-
-  EXPECT_THAT(first_arg_storage,
-              ElementsAre(0x42, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x34,
-                          0x12, 0x00, 0x00));
-}
-
-TEST(KernelArgPackingSpecTest, WriteConstantWithCustomPacking) {
-  KernelArgPackingSpec first_arg;
-  first_arg.WriteConstant(CustomData{0x1348});
-
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<char> first_arg_storage,
-                          first_arg.BuildArgument(/*args=*/{}));
-
-  // KernelArgPackingSpec::WriteConstant doesn't take endianness into
+  // KernelArgPackingSpec::BuildFor doesn't take endianness into
   // account, so this assertion will fail for big endian architectures - which
   // we don't support anyway.
-  EXPECT_THAT(first_arg_storage, ElementsAre(0x49, 0x13, 0x00, 0x00));
+  EXPECT_THAT(first_arg.BuildArgument(/*args=*/{}),
+              IsOkAndHolds(ElementsAre(0x49, 0x13, 0x00, 0x00)));
 }
 
 TEST(KernelArgPackingSpecTest, ToProto) {
-  KernelArgPackingSpec first_arg;
-  first_arg.WriteConstant(0x1234);
-  first_arg.WriteArgumentAddress(/*argument_index=*/0);
+  KernelArgPackingSpec first_arg = KernelArgPackingSpec::BuildArgRelocation(1);
 
-  EXPECT_THAT(
-      first_arg.ToProto(), IsOkAndHolds(EqualsProto(R"pb(
-        relocations { kind: KIND_BITS64_ABSOLUTE argument_index: 0 offset: 4 }
-        data: "\x34\x12\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-      )pb")));
+  EXPECT_THAT(first_arg.ToProto(), IsOkAndHolds(EqualsProto(R"pb(
+                relocations { kind: KIND_BITS64_ABSOLUTE argument_index: 1 }
+              )pb")));
+}
+
+TEST(KernelArgPackingSpecTest, ConstantToProto) {
+  KernelArgPackingSpec first_arg = KernelArgPackingSpec::BuildFor(1);
+
+  EXPECT_THAT(first_arg.ToProto(), IsOkAndHolds(EqualsProto(R"pb(
+                data: "\x01\x00\x00\x00"
+              )pb")));
 }
 
 TEST(KernelArgPackingSpecTest, FromProto) {
   auto proto = ParseTextProtoOrDie<KernelArgPackingSpecProto>(
       R"pb(
-        relocations { kind: KIND_BITS64_ABSOLUTE argument_index: 0 offset: 4 }
-        data: "\x34\x12\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+        relocations { kind: KIND_BITS64_ABSOLUTE argument_index: 1 }
       )pb");
 
   TF_ASSERT_OK_AND_ASSIGN(KernelArgPackingSpec spec,
                           KernelArgPackingSpec::FromProto(proto));
-  EXPECT_THAT(spec.BuildArgument({MakeDevicePointer(0xff42)}),
-              IsOkAndHolds(ElementsAre(0x34, 0x12, 0x00, 0x00, 0x42, 0xff, 0x00,
-                                       0x00, 0x00, 0x00, 0x00, 0x00)));
+  EXPECT_THAT(
+      spec.BuildArgument(PackKernelArgs(std::vector{MakeDevicePointer(0xff41),
+                                                    MakeDevicePointer(0xff42)},
+                                        0)
+                             ->packed_args()),
+      IsOkAndHolds(
+          ElementsAre(0x42, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)));
+}
+
+TEST(KernelArgPackingSpecTest, FromProtoNegativeArgumentIndex) {
+  auto proto = ParseTextProtoOrDie<KernelArgPackingSpecProto>(
+      R"pb(
+        relocations { kind: KIND_BITS64_ABSOLUTE argument_index: -1 }
+      )pb");
+
+  EXPECT_THAT(KernelArgPackingSpec::FromProto(proto),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(KernelArgsPackingSpecTest, BuildArguments) {
@@ -174,14 +161,17 @@ TEST(KernelArgsPackingSpecTest, BuildArguments) {
   spec.AddAddressArgument(/*argument_index=*/0);
   spec.AddConstantArgument(0x1234);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<KernelArgsPackedVector> packed_args,
-                          spec.BuildArguments({MakeDevicePointer(0xff42)},
-                                              /*shared_memory_bytes=*/8989));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<KernelArgsPackedVector> packed_args,
+      spec.BuildArguments(
+          PackKernelArgs(std::vector{MakeDevicePointer(0xff42)}, 0)
+              ->packed_args(),
+          /*shared_memory_bytes=*/8989));
   // We expect 3 arguments: 2 parameters and the shared memory which counts as
   // an argument.
   EXPECT_EQ(packed_args->number_of_arguments(), 3);
   EXPECT_EQ(packed_args->number_of_shared_bytes(), 8989);
-  EXPECT_EQ(packed_args->argument_addresses().size(), 2);
+  ASSERT_THAT(packed_args->argument_addresses(), SizeIs(2));
   EXPECT_THAT(
       absl::Span<const char>(
           absl::bit_cast<const char*>(packed_args->argument_addresses().at(0)),
@@ -204,9 +194,7 @@ TEST(KernelArgsPackingSpecTest, ToProto) {
                   relocations {
                     kind: KIND_BITS64_ABSOLUTE
                     argument_index: 33
-                    offset: 0
                   }
-                  data: "\x00\x00\x00\x00\x00\x00\x00\x00"
                 }
                 kernel_arguments { data: "\x34\x12\x00\x00" }
               )pb")));
@@ -216,17 +204,19 @@ TEST(KernelArgsPackingSpecTest, FromProto) {
   auto proto = ParseTextProtoOrDie<KernelArgsPackingSpecProto>(
       R"pb(
         kernel_arguments {
-          relocations { kind: KIND_BITS64_ABSOLUTE argument_index: 0 offset: 0 }
-          data: "\x00\x00\x00\x00\x00\x00\x00\x00"
+          relocations { kind: KIND_BITS64_ABSOLUTE argument_index: 0 }
         }
         kernel_arguments { data: "\x34\x12\x00\x00" }
       )pb");
 
   TF_ASSERT_OK_AND_ASSIGN(KernelArgsPackingSpec spec,
                           KernelArgsPackingSpec::FromProto(proto));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<KernelArgsPackedVector> arguments,
-                          spec.BuildArguments({MakeDevicePointer(0xff42)},
-                                              /*shared_memory_bytes=*/8989));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<KernelArgsPackedVector> arguments,
+      spec.BuildArguments(
+          PackKernelArgs(std::vector{MakeDevicePointer(0xff42)}, 0)
+              ->packed_args(),
+          /*shared_memory_bytes=*/8989));
   // We expect 3 arguments: 2 parameters and the shared memory which counts as
   // an argument.
   EXPECT_EQ(arguments->number_of_arguments(), 3);

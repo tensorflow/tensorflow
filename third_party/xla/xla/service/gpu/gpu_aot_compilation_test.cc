@@ -41,20 +41,21 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
 
-class GpuAotCompilationTest : public HloTestBase,
+class GpuAotCompilationTest : public HloTestBaseLegacy,
                               public ::testing::WithParamInterface<bool> {
  protected:
   void SetUp() override { debug_options_ = GetDebugOptionsForTest(); }
 
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloTestBaseLegacy::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_experimental_aot_compiled_thunks(GetParam());
     return debug_options;
   }
@@ -107,7 +108,7 @@ TEST_P(GpuAotCompilationTest, ExportAndLoadExecutable) {
       std::unique_ptr<Executable> executable,
       std::move(*aot_result)
           .LoadExecutable(compiler->PlatformId(),
-                          stream_exec->GetDeviceDescription()));
+                          stream_exec->GetDeviceDescription(), debug_options_));
 }
 
 TEST_P(GpuAotCompilationTest, AotCompilationWithoutGpuDevice) {
@@ -152,7 +153,7 @@ TEST_P(GpuAotCompilationTest, AotCompilationWithoutGpuDevice) {
       std::unique_ptr<Executable> executable,
       std::move(*aot_result)
           .LoadExecutable(compiler->PlatformId(),
-                          stream_exec->GetDeviceDescription()));
+                          stream_exec->GetDeviceDescription(), debug_options_));
 }
 
 namespace {
@@ -267,7 +268,7 @@ TEST_P(GpuAotCompilationTest, ExportAndLoadExecutableWithTriton) {
       std::unique_ptr<Executable> executable,
       std::move(*aot_result)
           .LoadExecutable(compiler->PlatformId(),
-                          stream_exec->GetDeviceDescription()));
+                          stream_exec->GetDeviceDescription(), debug_options_));
   std::unique_ptr<OpaqueExecutable> wrapped_executable =
       test_runner_as_hlo_runner().WrapExecutable(std::move(executable));
 

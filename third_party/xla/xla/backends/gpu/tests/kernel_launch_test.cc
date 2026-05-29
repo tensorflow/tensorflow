@@ -14,14 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 #include <gtest/gtest.h>
-#include "xla/backends/gpu/tests/gpu_codegen_test.h"
 #include "xla/error_spec.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 namespace {
 
-class KernelLaunchTest : public GpuCodegenTest {};
+class KernelLaunchTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {};
 
 TEST_F(KernelLaunchTest, Basic) {
   const char* hlo_text = R"(
@@ -64,5 +65,4 @@ TEST_F(KernelLaunchTest, KernelWithConstants) {
 }
 
 }  // namespace
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

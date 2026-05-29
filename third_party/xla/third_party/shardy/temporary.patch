@@ -1,15 +1,77 @@
+diff --git a/shardy/dialect/mpmd/transforms/common/merge_fragments.cc b/shardy/dialect/mpmd/transforms/common/merge_fragments.cc
+index 669f16b9..d4bd6583 100644
+--- a/shardy/dialect/mpmd/transforms/common/merge_fragments.cc
++++ b/shardy/dialect/mpmd/transforms/common/merge_fragments.cc
+@@ -203,14 +203,9 @@ SmallVector<std::pair<StringRef, Attribute>> MergedAttributes(
+                             rewriter.getUI32IntegerAttr(*merged_call_count));
+   }
+ 
+-  // Only track inferred_by when the merged result will still be an inferred
+-  // fragment (i.e., both inputs are inferred). User fragments should not carry
+-  // this attribute.
+-  if (!producer_op.isUserFragment() && !consumer_op.isUserFragment()) {
+-    if (std::optional<ArrayAttr> merged_inferred_by =
+-            MergeInferredByAttributes(producer_op, consumer_op)) {
+-      attributes.emplace_back(kInferredByAttr, *merged_inferred_by);
+-    }
++  if (std::optional<ArrayAttr> merged_inferred_by =
++          MergeInferredByAttributes(producer_op, consumer_op)) {
++    attributes.emplace_back(kInferredByAttr, *merged_inferred_by);
+   }
+ 
+   return attributes;
+diff --git a/shardy/dialect/mpmd/transforms/common/test/merge_inferred_fragments.mlir b/shardy/dialect/mpmd/transforms/common/test/merge_inferred_fragments.mlir
+index eb8f25d8..9bb12837 100644
+--- a/shardy/dialect/mpmd/transforms/common/test/merge_inferred_fragments.mlir
++++ b/shardy/dialect/mpmd/transforms/common/test/merge_inferred_fragments.mlir
+@@ -526,35 +526,3 @@ func.func @merge_inferred_by(%arg0: !mesh_1_tensor_4_8_f32)
+ 
+   func.return %1 : !mesh_1_tensor_4_8_f32
+ }
+-
+-// -----
+-
+-// Merging an inferred fragment into a user fragment should not carry
+-// inferred_by on the result, since user fragments should not have it.
+-// CHECK-LABEL: func @inferred_by_dropped_on_user_fragment
+-func.func @inferred_by_dropped_on_user_fragment(%arg0: !mesh_1_tensor_4_8_f32)
+-  -> (!mesh_1_tensor_4_8_f32) attributes {
+-    "topology"=#mpmd.topology<
+-      <"m1": <["x"=2]>>
+-    >} {
+-  // CHECK-NEXT: %[[MERGED:.*]] = mpmd.fragment<mesh="m1", origin=["user_frag"]> (%arg0)
+-  // CHECK-NOT: inferred_by
+-  // CHECK:     stablehlo.add
+-  // CHECK-NEXT:   stablehlo.multiply
+-  // CHECK-NEXT:   mpmd.return
+-  // CHECK-NEXT: }
+-  // CHECK-NEXT: return %[[MERGED]]
+-  %0 = mpmd.fragment<mesh="m1", origin=[]> (%arg0) {mpmd.inferred_by = ["some_pass"]}
+-    (%arg1: tensor<4x8xf32>) {
+-    %2 = stablehlo.add %arg1, %arg1 : tensor<4x8xf32>
+-    mpmd.return %2 : tensor<4x8xf32>
+-  } : (!mesh_1_tensor_4_8_f32) -> !mesh_1_tensor_4_8_f32
+-
+-  %1 = mpmd.fragment<mesh="m1", origin=["user_frag"]> (%0)
+-    (%arg1: tensor<4x8xf32>) {
+-    %2 = stablehlo.multiply %arg1, %arg1 : tensor<4x8xf32>
+-    mpmd.return %2 : tensor<4x8xf32>
+-  } : (!mesh_1_tensor_4_8_f32) -> !mesh_1_tensor_4_8_f32
+-
+-  func.return %1 : !mesh_1_tensor_4_8_f32
+-}
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 21ba653..0012897 100644
+index 6ef7a1a7..e6fcb600 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "7ccd92e5e6e5c622b2b571d396fff9016241a8f1"
--    LLVM_SHA256 = "0365ff939e7ba4876437f45318ac4140e7b278fd8b2c5dc1e78c4dd04104c831"
-+    LLVM_COMMIT = "293623ce99d4d6819378311c1506c5ab08d1d860"
-+    LLVM_SHA256 = "47c15c7f86cff0d482eaf3cbe16fad52b5a21d2b9ab20b4d3ee701414dbc4505"
+-    LLVM_COMMIT = "a225aafbd1a40be0dd9c31e2d0b0b7c42b9d36e3"
+-    LLVM_SHA256 = "38c5323c4137197eb8e991b73bcb44569056124f2e33898418c915b0cabc8860"
++    LLVM_COMMIT = "db9b595ae3b30d67bd4068f80c651f97eb4dea2d"
++    LLVM_SHA256 = "710a8eccb75a07ec5b25d44cae254edc335479060322edbdd937df547f7986d6"
  
      tf_http_archive(
          name = name,

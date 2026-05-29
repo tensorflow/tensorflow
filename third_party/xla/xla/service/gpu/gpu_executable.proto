@@ -29,7 +29,8 @@ message GpuExecutableProto {
     repeated BufferAllocationProto values = 1;
   }
 
-  // Used in the legacy format.
+  // Used in the legacy format and exists for debugging purposes in the new
+  // format.
   BufferAssignmentProto buffer_assignment = 2;
   // The buffer allocations of the executable, used in the new format.
   RepeatedBufferAllocations buffer_allocations = 10;

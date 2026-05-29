@@ -32,8 +32,9 @@ namespace {
 
 class MatmulPerfTableGenTest : public HloPjRtGpuTestBase {
   void SetUp() override {
-    if (!device_description().gpu_compute_capability().IsCuda()) {
-      GTEST_SKIP() << "Not built with --config=cuda";
+    auto compute_capability = device_description().gpu_compute_capability();
+    if (!compute_capability.IsCuda() && !compute_capability.IsRocm()) {
+      GTEST_SKIP() << "Not built with --config=cuda or --config=rocm";
     }
   }
 };
@@ -306,6 +307,38 @@ TEST_F(MatmulPerfTableGenTest, MergeGemmTables) {
   EXPECT_THAT(expected_merged_perf_table,
               tsl::proto_testing::IgnoringRepeatedFieldOrdering(
                   tsl::proto_testing::EqualsProto(actual_merged_perf_table)));
+}
+
+TEST_F(MatmulPerfTableGenTest, ProfilesSmallMatmul) {
+  MatmulPerfTableGen::Config cfg;
+  cfg.b_spec.start = 1;
+  cfg.b_spec.stop = 1;
+  cfg.b_spec.step = 1;
+  cfg.k_spec.start = 8;
+  cfg.k_spec.stop = 8;
+  cfg.k_spec.step = 1;
+  cfg.m_spec.start = 8;
+  cfg.m_spec.stop = 8;
+  cfg.m_spec.step = 1;
+  cfg.n_spec.start = 8;
+  cfg.n_spec.stop = 8;
+  cfg.n_spec.step = 1;
+  cfg.dry_run = false;
+  cfg.dtypes.emplace_back(
+      MatmulPerfTableGen::DataTypeSpec{"f32", "f32", "f32"});
+
+  MatmulPerfTableGen gen(&test_runner(), &device_description(), cfg);
+  DeviceHloInstructionProfiles profiles = gen.ComputeTable();
+
+  ASSERT_THAT(profiles.entries(), ::testing::SizeIs(1));
+  ASSERT_THAT(profiles.entries().begin()->second.entries(),
+              ::testing::SizeIs(1));
+
+  const HloInstructionProfile& entry =
+      profiles.entries().begin()->second.entries(0);
+
+  EXPECT_THAT(entry.clock_cycles(), ::testing::Gt(0));
+  EXPECT_THAT(entry.flops(), ::testing::Gt(0));
 }
 
 }  // namespace

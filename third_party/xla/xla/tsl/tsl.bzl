@@ -43,7 +43,7 @@ load(
     _transitive_parameters_library = "transitive_parameters_library",
 )
 load(
-    "@xla//third_party/py/rules_pywrap:pywrap.default.bzl",
+    "@rules_ml_toolchain//py/rules_pywrap:pywrap.default.bzl",
     "use_pywrap_rules",
 )
 load(
@@ -682,6 +682,11 @@ def tsl_pybind_extension_opensource(
                     # not being exported.  There should be a better way to deal with this.
                     "-Wl,-w",
                     "-Wl,-exported_symbols_list,$(location %s)" % exported_symbols_file,
+                    # Resolve Python C API symbols at module load time. Without
+                    # this the link fails on macOS because libpython is not
+                    # available at link time for the extension .so.
+                    "-undefined",
+                    "dynamic_lookup",
                 ],
                 clean_dep("//xla/tsl:windows"): [],
                 "//conditions:default": [
@@ -721,6 +726,11 @@ def tsl_pybind_extension_opensource(
                     # not being exported.  There should be a better way to deal with this.
                     "-Wl,-w",
                     "-Wl,-exported_symbols_list,$(location %s)" % exported_symbols_file,
+                    # Resolve Python C API symbols at module load time. Without
+                    # this the link fails on macOS because libpython is not
+                    # available at link time for the extension .so.
+                    "-undefined",
+                    "dynamic_lookup",
                 ],
                 clean_dep("//xla/tsl:windows"): [],
                 "//conditions:default": [

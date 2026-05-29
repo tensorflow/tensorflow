@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -203,7 +204,7 @@ absl::StatusOr<HloInstruction*> ShiftDequantizationF8(
   // Replace the dequantized dot operands in the parameter tuple used by while
   // with FP8 operands.
   for (int k = 0; k < 2; ++k) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         param_tuple->ReplaceOperandWithDifferentShape(k, operands[k]));
     ShapeUtil::UpdateTupleShape(operands[k]->shape(), k,
                                 param_tuple->mutable_shape());
@@ -225,17 +226,17 @@ absl::StatusOr<HloInstruction*> ShiftDequantizationF8(
   // instructions retrieving FP8 dot operands from the input tuple.
   HloInstruction* body_param = while_body->parameter_instruction(0);
   for (int k = 0; k < 2; ++k) {
-    TF_ASSIGN_OR_RETURN(HloInstruction * operand_f8,
-                        MakeGetTupleElementHlo(body_param, k));
+    ASSIGN_OR_RETURN(HloInstruction * operand_f8,
+                     MakeGetTupleElementHlo(body_param, k));
 
     if (while_root->operand(k) == gtes[k]) {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           while_root->ReplaceOperandWithDifferentShape(k, operand_f8));
       ShapeUtil::UpdateTupleShape(operand_f8->shape(), k,
                                   while_root->mutable_shape());
     }
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         HloInstruction * operand_scale,
         MakeGetTupleElementHlo(
             body_param, body_param->shape().tuple_shapes().size() - 2 + k));
@@ -250,7 +251,7 @@ absl::StatusOr<HloInstruction*> ShiftDequantizationF8(
         MakeConvertToHlo(operand_f8, gtes[k]->shape().element_type());
     HloInstruction* broadcast_scale =
         MakeBroadcastHlo(operand_scale, {}, operand_f32->shape());
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         HloInstruction * operand_scaled,
         MakeBinaryHlo(binaries[k]->opcode(), operand_f32, broadcast_scale));
 
@@ -260,11 +261,10 @@ absl::StatusOr<HloInstruction*> ShiftDequantizationF8(
     // exchanged in gemm_rewriter.cc.
     for (int l = 0; l < 2; ++l) {
       if (dots[l]->operand(k) == gtes[k]) {
-        TF_RETURN_IF_ERROR(dots[l]->ReplaceOperandWith(k, operand_scaled));
+        RETURN_IF_ERROR(dots[l]->ReplaceOperandWith(k, operand_scaled));
       }
       if (dyn_slices[l] && dyn_slices[l]->operand(0) == gtes[k]) {
-        TF_RETURN_IF_ERROR(
-            dyn_slices[l]->ReplaceOperandWith(0, operand_scaled));
+        RETURN_IF_ERROR(dyn_slices[l]->ReplaceOperandWith(0, operand_scaled));
       }
     }
 
@@ -285,13 +285,13 @@ absl::StatusOr<HloInstruction*> ShiftDequantizationF8(
       // Insert the dequantization between coll_perms[0] and dots[1].
       HloInstruction* coll_perm0_f32 =
           MakeConvertToHlo(coll_perms_f8[0], gtes[k]->shape().element_type());
-      TF_ASSIGN_OR_RETURN(HloInstruction * x_scaled,
-                          MakeBinaryHlo(binaries[k]->opcode(), coll_perm0_f32,
-                                        broadcast_scale));
-      TF_RETURN_IF_ERROR(dots[1]->ReplaceOperandWith(0, x_scaled));
+      ASSIGN_OR_RETURN(HloInstruction * x_scaled,
+                       MakeBinaryHlo(binaries[k]->opcode(), coll_perm0_f32,
+                                     broadcast_scale));
+      RETURN_IF_ERROR(dots[1]->ReplaceOperandWith(0, x_scaled));
 
       // Update the output tuple.
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           while_root->ReplaceOperandWithDifferentShape(0, coll_perms_f8[1]));
       ShapeUtil::UpdateTupleShape(coll_perms_f8[1]->shape(), 0,
                                   while_root->mutable_shape());
@@ -301,16 +301,16 @@ absl::StatusOr<HloInstruction*> ShiftDequantizationF8(
   // Update the shape of the while call in the parent computation.
   HloInstruction* new_while_instr = while_instr->AddInstruction(
       while_instr->CloneWithNewShape(while_root->shape()));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       while_instr->ReplaceAllUsesWithDifferentShape(new_while_instr));
-  TF_RETURN_IF_ERROR(while_instr->parent()->RemoveInstruction(while_instr));
+  RETURN_IF_ERROR(while_instr->parent()->RemoveInstruction(while_instr));
 
   if (coll_perms[0]) {
-    TF_RETURN_IF_ERROR(while_body->RemoveInstruction(coll_perms[1]));
-    TF_RETURN_IF_ERROR(while_body->RemoveInstruction(coll_perms[0]));
+    RETURN_IF_ERROR(while_body->RemoveInstruction(coll_perms[1]));
+    RETURN_IF_ERROR(while_body->RemoveInstruction(coll_perms[0]));
   }
-  TF_RETURN_IF_ERROR(while_body->RemoveInstruction(gtes[0]));
-  TF_RETURN_IF_ERROR(while_body->RemoveInstruction(gtes[1]));
+  RETURN_IF_ERROR(while_body->RemoveInstruction(gtes[0]));
+  RETURN_IF_ERROR(while_body->RemoveInstruction(gtes[1]));
 
   VLOG(5) << "FP8 dequantization moved into while loop.";
   return new_while_instr;
@@ -329,16 +329,9 @@ int64_t NumberOfInstructionsInComp(const HloComputation* comp, HloOpcode op) {
 absl::Status UpdateDotAndConsumerConfig(HloInstruction* dot,
                                         int64_t stream_id) {
   auto dot_gpu_config = dot->backend_config<gpu::GpuBackendConfig>();
-  HloInstruction* updater = dot->users()[0];
-  auto updater_gpu_config = updater->backend_config<gpu::GpuBackendConfig>();
   dot_gpu_config->set_operation_queue_id(stream_id);
-  if (!absl::c_linear_search(updater_gpu_config->wait_on_operation_queues(),
-                             stream_id)) {
-    updater_gpu_config->mutable_wait_on_operation_queues()->Add(stream_id);
-  }
 
-  TF_RETURN_IF_ERROR(dot->set_backend_config(dot_gpu_config.value()));
-  TF_RETURN_IF_ERROR(updater->set_backend_config(updater_gpu_config.value()));
+  RETURN_IF_ERROR(dot->set_backend_config(dot_gpu_config.value()));
   return absl::OkStatus();
 }
 
@@ -348,7 +341,7 @@ absl::Status SetForceDelayForInstruction(HloInstruction* instr,
 
   gpu_config->set_force_earliest_schedule(force_delay);
 
-  TF_RETURN_IF_ERROR(instr->set_backend_config(gpu_config.value()));
+  RETURN_IF_ERROR(instr->set_backend_config(gpu_config.value()));
   return absl::OkStatus();
 }
 
@@ -525,7 +518,7 @@ absl::Status ProcessWindowedEinsumLoopForActivationCaching(
   original_operands.push_back(new_full_buffer_output);
   HloInstruction* new_output_tuple = while_body->AddInstruction(
       HloInstruction::CreateTuple(original_operands));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       while_body->ReplaceInstructionWithDifferentShape(root, new_output_tuple));
 
   return absl::OkStatus();
@@ -647,7 +640,7 @@ absl::Status MoveAccumulationOutsideLoop(
   original_operands.push_back(concat);
   HloInstruction* new_output_tuple = while_body->AddInstruction(
       HloInstruction::CreateTuple(original_operands));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       while_body->ReplaceInstructionWithDifferentShape(root, new_output_tuple));
 
   // Update the shape of the while loop instruction.
@@ -671,7 +664,7 @@ absl::Status MoveAccumulationOutsideLoop(
   });
   if (it != loop->users().end()) {
     original_output_gte = *it;
-    TF_RETURN_IF_ERROR(original_output_gte->ReplaceAllUsesWith(reduced_result));
+    RETURN_IF_ERROR(original_output_gte->ReplaceAllUsesWith(reduced_result));
   }
   return absl::OkStatus();
 }
@@ -692,13 +685,13 @@ absl::Status PostProcessUnrolledLoop(HloInstruction* loop, int64_t stream_id) {
               m::CollectivePermute(
                   &matched_cp, m::GetTupleElement(m::Parameter(),
                                                   force_delay_cp_gte_index)))) {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           SetForceDelayForInstruction(matched_cp, /*force_delay=*/true));
     }
 
     if (HloPredicateIsOp<HloOpcode::kDot>(inst)) {
       // Dispatch the dot to additional compute stream.
-      TF_RETURN_IF_ERROR(UpdateDotAndConsumerConfig(inst, stream_id));
+      RETURN_IF_ERROR(UpdateDotAndConsumerConfig(inst, stream_id));
       ++stream_id;
     }
     // If dot's result is accumulated, this means we found a loop with
@@ -712,7 +705,7 @@ absl::Status PostProcessUnrolledLoop(HloInstruction* loop, int64_t stream_id) {
   if (partial_accumulations.size() > 0 &&
       absl::StrContains(while_body->name(),
                         WindowedEinsumHandler::kWindowedEinsumAgLoopName)) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         MoveAccumulationOutsideLoop(partial_accumulations, while_body, loop));
   }
   return absl::OkStatus();
@@ -801,7 +794,7 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
         }
       }
     }
-    TF_RETURN_IF_ERROR(allowed_intermediate_ops.back()->ReplaceOperandWith(
+    RETURN_IF_ERROR(allowed_intermediate_ops.back()->ReplaceOperandWith(
         0, matched_a2a->mutable_operand(0)));
     HloInstruction* new_a2a =
         matched_a2a->parent()->AddInstruction(HloInstruction::CreateAllToAll(
@@ -810,8 +803,8 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
             false, hlo_query::NextChannelId(*matched_a2a->GetModule()),
             split_dimension));
 
-    TF_RETURN_IF_ERROR(dot->ReplaceOperandWith(0, new_a2a));
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(dot->ReplaceOperandWith(0, new_a2a));
+    RETURN_IF_ERROR(
         matched_a2a->parent()->RemoveInstructionAndUnusedOperands(matched_a2a));
     MarkAsChanged();
     *lhs = new_a2a;
@@ -933,8 +926,7 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
                    "windowed einsum loop : "
                 << loop->ToString();
 
-        TF_RETURN_IF_ERROR(
-            ProcessWindowedEinsumLoopForActivationCaching(ag_loop));
+        RETURN_IF_ERROR(ProcessWindowedEinsumLoopForActivationCaching(ag_loop));
         ag_loop.consumed = true;
       }
 
@@ -952,15 +944,15 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
             MakeConvertToHlo(new_gte, binary->shape().element_type());
         HloInstruction* bcast_scale =
             MakeBroadcastHlo(scale, {}, new_convert->shape());
-        TF_ASSIGN_OR_RETURN(
+        ASSIGN_OR_RETURN(
             new_gte_scaled,
             MakeBinaryHlo(binary->opcode(), new_convert, bcast_scale));
       }
 
-      TF_RETURN_IF_ERROR(dot->ReplaceOperandWith(
+      RETURN_IF_ERROR(dot->ReplaceOperandWith(
           cache_output_index, scale ? new_gte_scaled : new_gte));
       if (all_gather->user_count() == 0) {
-        TF_RETURN_IF_ERROR(comp->RemoveInstruction(all_gather));
+        RETURN_IF_ERROR(comp->RemoveInstruction(all_gather));
       }
     }
     // Rewrites an all-to-all+gemm into multiple independent partial a2a+gemms
@@ -975,8 +967,8 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
     HloInstruction* lhs;
     HloInstruction* rhs;
     std::vector<xla::ReplicaGroup> replica_groups;
-    TF_ASSIGN_OR_RETURN(bool matched,
-                        MatchA2aGemmWithIntermediateReshapes(dot, &lhs, &rhs));
+    ASSIGN_OR_RETURN(bool matched,
+                     MatchA2aGemmWithIntermediateReshapes(dot, &lhs, &rhs));
     if (matched) {
       replica_groups = lhs->replica_groups();
       // We split the a2a+gemm along the contracting dimension into multiple
@@ -1061,7 +1053,7 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
 
       Shape partial_all_to_all_shape = lhs_slice_shape;
 
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           Shape partial_dot_shape,
           ShapeInference::InferDotOpShape(
               partial_all_to_all_shape, rhs_slice_shape, original_dot_dnums,
@@ -1099,10 +1091,9 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
             HloInstruction::CreateBinary(partial_dot->shape(), HloOpcode::kAdd,
                                          partial_dot, partial_result));
         a2a->SetupDerivedInstruction(partial_result);
-        TF_RETURN_IF_ERROR(
-            UpdateDotAndConsumerConfig(partial_dot, stream_id++));
+        RETURN_IF_ERROR(UpdateDotAndConsumerConfig(partial_dot, stream_id++));
       }
-      TF_RETURN_IF_ERROR(ReplaceInstruction(dot, partial_result));
+      RETURN_IF_ERROR(ReplaceInstruction(dot, partial_result));
     }
     return absl::OkStatus();
   }
@@ -1179,12 +1170,11 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
             matched_dot->shape(), {matched_dot}, a2a->replica_groups(), false,
             hlo_query::NextChannelId(*matched_dot->GetModule()),
             split_dimension));
-    TF_RETURN_IF_ERROR(allowed_intermediate_ops.back()->ReplaceOperandWith(
+    RETURN_IF_ERROR(allowed_intermediate_ops.back()->ReplaceOperandWith(
         0, result.a2a_replacement));
     inst->SetupDerivedInstruction(result.a2a_replacement);
 
-    TF_RETURN_IF_ERROR(
-        ReplaceInstruction(inst, allowed_intermediate_ops.front()));
+    RETURN_IF_ERROR(ReplaceInstruction(inst, allowed_intermediate_ops.front()));
     result.lhs = matched_dot->mutable_operand(0);
     result.rhs = matched_dot->mutable_operand(1);
     result.producer_gemm = matched_dot;
@@ -1207,8 +1197,8 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
     // Rewrites a gemm+alltoall into multiple independent partial gemm+a2as
     // to minimize communication overhead.
     std::vector<xla::ReplicaGroup> replica_groups;
-    TF_ASSIGN_OR_RETURN(MatchedGemmA2aResult matched_result,
-                        MatchGemmA2aWithIntermediateReshapes(inst));
+    ASSIGN_OR_RETURN(MatchedGemmA2aResult matched_result,
+                     MatchGemmA2aWithIntermediateReshapes(inst));
     if (matched_result.matched) {
       HloInstruction* a2a = inst;
       if (matched_result.a2a_replacement) {
@@ -1301,11 +1291,10 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
       HloInstruction* partial_result = output_buffer;
       Shape partial_all_to_all_shape = all_to_all->shape();
 
-      TF_ASSIGN_OR_RETURN(
-          Shape partial_dot_shape,
-          ShapeInference::InferDotOpShape(
-              lhs_slice_shape, rhs_slice_shape, original_dot_dnums,
-              /*preferred_element_type=*/std::nullopt));
+      ASSIGN_OR_RETURN(Shape partial_dot_shape,
+                       ShapeInference::InferDotOpShape(
+                           lhs_slice_shape, rhs_slice_shape, original_dot_dnums,
+                           /*preferred_element_type=*/std::nullopt));
       int64_t stream_id = hlo_query::NextChannelId(*all_to_all->GetModule());
       for (int64_t i = 0; i < group_size; ++i) {
         lhs_slice = comp->AddInstruction(HloInstruction::CreateSlice(
@@ -1340,10 +1329,9 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
             partial_all_to_all_shape, HloOpcode::kAdd, partial_all_to_all,
             partial_result));
         all_to_all->SetupDerivedInstruction(partial_result);
-        TF_RETURN_IF_ERROR(
-            UpdateDotAndConsumerConfig(partial_dot, stream_id++));
+        RETURN_IF_ERROR(UpdateDotAndConsumerConfig(partial_dot, stream_id++));
       }
-      TF_RETURN_IF_ERROR(ReplaceInstruction(all_to_all, partial_result));
+      RETURN_IF_ERROR(ReplaceInstruction(all_to_all, partial_result));
     }
 
     return absl::OkStatus();
@@ -1383,7 +1371,7 @@ absl::StatusOr<bool> WindowedEinsumHandler::RunImpl(
       }
 
       auto* while_op = *maybe_while_op;
-      TF_ASSIGN_OR_RETURN(auto maybe_new_op, ShiftDequantizationF8(comp));
+      ASSIGN_OR_RETURN(auto maybe_new_op, ShiftDequantizationF8(comp));
       if (maybe_new_op) {
         changed = true;
         while_op = maybe_new_op;
@@ -1399,7 +1387,7 @@ absl::StatusOr<bool> WindowedEinsumHandler::RunImpl(
   for (HloComputation* comp :
        module->MakeNonfusionComputations(execution_threads)) {
     WindowedEinsumVisitor visitor(all_ag_loops_);
-    TF_RETURN_IF_ERROR(comp->Accept(&visitor));
+    RETURN_IF_ERROR(comp->Accept(&visitor));
     changed |= visitor.changed();
   }
 
@@ -1412,11 +1400,11 @@ absl::StatusOr<bool> WindowedEinsumHandler::RunImpl(
     // expects until the passes are applied.
     AlgebraicSimplifierOptions options;
     options.set_run_to_fixed_point(false);
-    TF_ASSIGN_OR_RETURN(bool applied_algsimp, AlgebraicSimplifier(options).Run(
-                                                  module, execution_threads));
+    ASSIGN_OR_RETURN(bool applied_algsimp, AlgebraicSimplifier(options).Run(
+                                               module, execution_threads));
     changed |= applied_algsimp;
-    TF_ASSIGN_OR_RETURN(bool applied_cf,
-                        HloConstantFolding().Run(module, execution_threads));
+    ASSIGN_OR_RETURN(bool applied_cf,
+                     HloConstantFolding().Run(module, execution_threads));
     changed |= applied_cf;
   }
   for (HloInstruction* loop : all_windowed_einsum_loops) {
@@ -1434,7 +1422,7 @@ absl::StatusOr<bool> WindowedEinsumHandler::RunImpl(
     // We also need to keep the unrolled instructions in an isolated computation
     // unit such as a trivial loop so instructions here won't be fused with
     // other instructions later to disrupt the gemm-gemm overlap.
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         UnrollResult result,
         WhileLoopUnroller::UnrollAndReturnReplacement(
             loop, /*unroll_factor=*/-1, /*wrap_in_trivial_loop=*/true,
@@ -1445,7 +1433,7 @@ absl::StatusOr<bool> WindowedEinsumHandler::RunImpl(
       // unrolled which leaves the call graph non-flat. This is likely not the
       // optimal way to do things, but it preserves the previous behavior of
       // UnrollAndReturnReplacement which used to do it internally.
-      TF_RETURN_IF_ERROR(FlattenCallGraph().Run(module).status());
+      RETURN_IF_ERROR(FlattenCallGraph().Run(module).status());
 
       result.new_while_op->while_body()->SetAndSanitizeName(
           absl::StrCat("unrolled_", original_body_name));
@@ -1456,8 +1444,7 @@ absl::StatusOr<bool> WindowedEinsumHandler::RunImpl(
       // we add this attribute to it.
       result.new_while_op->set_frontend_attribute(
           "skip-simplify-while-loops_trip-count-one", "true");
-      TF_RETURN_IF_ERROR(
-          PostProcessUnrolledLoop(result.new_while_op, stream_id));
+      RETURN_IF_ERROR(PostProcessUnrolledLoop(result.new_while_op, stream_id));
     }
     changed |= result.unrolled;
   }

@@ -88,9 +88,9 @@ GraphView::GraphView(const GraphDef* graph, absl::Status* status)
   nodes_.reserve(num_nodes);
   for (const NodeDef& node : graph->node()) {
     if (!AddUniqueNodeInternal(&node)) {
-      *status = errors::InvalidArgument(
+      *status = absl::InvalidArgumentError(absl::StrCat(
           kGraphViewError, "graph has multiple nodes with the name '",
-          node.name(), "'.");
+          node.name(), "'."));
       Reset();
       return;
     }
@@ -126,19 +126,21 @@ absl::Status GraphView::CheckAndAddFaninsInternal(NodeView* node_view) {
   for (const std::string& input : node->input()) {
     TensorId fanin_id = ParseTensorName(input);
     if (fanin_id.node() == node_name) {
-      return errors::InvalidArgument(kGraphViewError, "node '", node_name,
-                                     "' has self cycle fanin '", input, "'.");
+      return absl::InvalidArgumentError(
+          absl::StrCat(kGraphViewError, "node '", node_name,
+                       "' has self cycle fanin '", input, "'."));
     }
     bool is_control = IsTensorIdControl(fanin_id);
     if (!is_control && has_observed_control) {
-      return errors::InvalidArgument(kGraphViewError, "node '", node_name,
-                                     "' has regular fanin '", input,
-                                     "' after controlling fanins.");
+      return absl::InvalidArgumentError(absl::StrCat(
+          kGraphViewError, "node '", node_name, "' has regular fanin '", input,
+          "' after controlling fanins."));
     }
     auto it = node_index_by_name_.find(fanin_id.node());
     if (it == node_index_by_name_.end()) {
-      return errors::InvalidArgument(kGraphViewError, "node '", node_name,
-                                     "' has missing fanin '", input, "'.");
+      return absl::InvalidArgumentError(
+          absl::StrCat(kGraphViewError, "node '", node_name,
+                       "' has missing fanin '", input, "'."));
     }
     const int fanin_node_index = it->second;
     NodeView& fanin_node_view = nodes_[fanin_node_index];
@@ -232,9 +234,9 @@ MutationNewNode Mutation::AddNode(NodeDef&& node, absl::Status* status) {
     const std::string& input = node.input(i);
     TensorId fanin_id = ParseTensorName(input);
     if (fanin_id.node() == node_name) {
-      *status =
-          errors::InvalidArgument(kMutationAddNodeError, "node '", node_name,
-                                  "' has self cycle fanin '", input, "'.");
+      *status = absl::InvalidArgumentError(
+          absl::StrCat(kMutationAddNodeError, "node '", node_name,
+                       "' has self cycle fanin '", input, "'."));
       return MutationNewNode(this, mutation_counter_, internal::kMissingIndex);
     }
     bool is_control = IsTensorIdControl(fanin_id);
@@ -242,9 +244,9 @@ MutationNewNode Mutation::AddNode(NodeDef&& node, absl::Status* status) {
       has_observed_control = true;
       controlling_fanins.emplace(fanin_id.node());
     } else if (has_observed_control) {
-      *status = errors::InvalidArgument(kMutationAddNodeError, "node '",
-                                        node_name, "' has regular fanin '",
-                                        input, "' after controlling fanins.");
+      *status = absl::InvalidArgumentError(absl::StrCat(
+          kMutationAddNodeError, "node '", node_name, "' has regular fanin '",
+          input, "' after controlling fanins."));
       return MutationNewNode(this, mutation_counter_, internal::kMissingIndex);
     } else {
       regular_fanins.emplace_back(fanin_id);
@@ -468,9 +470,9 @@ MutableGraphView::MutableGraphView(GraphDef* graph, absl::Status* status)
   nodes_.reserve(num_nodes);
   for (NodeDef& node : *graph->mutable_node()) {
     if (!AddUniqueNodeInternal(&node)) {
-      *status = errors::InvalidArgument(
+      *status = absl::InvalidArgumentError(absl::StrCat(
           kMutableGraphViewError, "graph has multiple nodes with the name '",
-          node.name(), "'.");
+          node.name(), "'."));
       Reset();
       return;
     }
@@ -512,20 +514,20 @@ absl::Status MutableGraphView::CheckFaninsInternal(
     for (const std::string& input : node->input()) {
       TensorId fanin_id = ParseTensorName(input);
       if (fanin_id.node() == node_name) {
-        return errors::InvalidArgument(kMutableGraphViewError, "node '",
-                                       node_name, "' has self cycle fanin '",
-                                       input, "'.");
+        return absl::InvalidArgumentError(
+            absl::StrCat(kMutableGraphViewError, "node '", node_name,
+                         "' has self cycle fanin '", input, "'."));
       }
       bool is_control = IsTensorIdControl(fanin_id);
       if (!is_control && has_observed_control) {
-        return errors::InvalidArgument(kMutableGraphViewError, "node '",
-                                       node_name, "' has regular fanin '",
-                                       input, "' after controlling fanins.");
+        return absl::InvalidArgumentError(absl::StrCat(
+            kMutableGraphViewError, "node '", node_name,
+            "' has regular fanin '", input, "' after controlling fanins."));
       }
       if (!node_index_by_name_.contains(fanin_id.node())) {
-        return errors::InvalidArgument(kMutableGraphViewError, "node '",
-                                       node_name, "' has missing fanin '",
-                                       input, "'.");
+        return absl::InvalidArgumentError(
+            absl::StrCat(kMutableGraphViewError, "node '", node_name,
+                         "' has missing fanin '", input, "'."));
       }
       if (is_control) {
         has_observed_control = true;
@@ -624,9 +626,9 @@ absl::Status MutableGraphView::GetNodeNamesAndPartitionUpdatedNodes(
   }
 
   auto name_conflict = [](const absl::string_view node_name) {
-    return errors::InvalidArgument(kMutableGraphViewApplyError,
-                                   "multiple nodes with the name: '", node_name,
-                                   "' exists in Mutation.");
+    return absl::InvalidArgumentError(absl::StrCat(
+        kMutableGraphViewApplyError, "multiple nodes with the name: '",
+        node_name, "' exists in Mutation."));
   };
 
   // Partition updated nodes by if they will be renamed or not.
@@ -694,9 +696,9 @@ absl::Status MutableGraphView::RemovedOrMissingNodeFanoutsWellFormed(
     const std::vector<RenamedOrOverwrittenNode>& renamed_nodes) {
   auto bad_fanout = [](absl::string_view fanout_node_name,
                        absl::string_view node_name) {
-    return errors::InvalidArgument(
-        kMutableGraphViewApplyError, "fanout '", fanout_node_name,
-        "' exist for missing node '", node_name, "'.");
+    return absl::InvalidArgumentError(
+        absl::StrCat(kMutableGraphViewApplyError, "fanout '", fanout_node_name,
+                     "' exist for missing node '", node_name, "'."));
   };
 
   // Lookup nodes to be overwritten.
@@ -779,25 +781,26 @@ absl::Status MutableGraphView::CheckNodeNamesAndFanins(
   for (auto& inplace_node : inplace_nodes) {
     auto& diff = mutation_.updated_nodes_[inplace_node];
     if (!internal::IsWellFormed(&diff, node_names)) {
-      return errors::InvalidArgument(
-          kMutableGraphViewApplyError, "inplace updated node '",
-          nodes_[diff.node_index].GetName(), "' is ill-formed.");
+      return absl::InvalidArgumentError(
+          absl::StrCat(kMutableGraphViewApplyError, "inplace updated node '",
+                       nodes_[diff.node_index].GetName(), "' is ill-formed."));
     }
   }
   for (auto& renamed_node : renamed_nodes) {
     auto& diff = mutation_.updated_nodes_[renamed_node.renamed_update_index_];
     if (!internal::IsWellFormed(&diff, node_names)) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           kMutableGraphViewApplyError, "renamed updated node '", diff.name,
-          "' ('", nodes_[diff.node_index].GetName(), "') is ill-formed.");
+          "' ('", nodes_[diff.node_index].GetName(), "') is ill-formed."));
     }
   }
 
   // Check if new nodes and their fanins are valid.
   for (auto& new_node : mutation_.new_nodes_) {
     if (!internal::IsWellFormed(&new_node, node_names)) {
-      return errors::InvalidArgument(kMutableGraphViewApplyError, "new node '",
-                                     new_node.node.name(), "' is ill-formed.");
+      return absl::InvalidArgumentError(
+          absl::StrCat(kMutableGraphViewApplyError, "new node '",
+                       new_node.node.name(), "' is ill-formed."));
     }
   }
 
@@ -1430,8 +1433,8 @@ absl::Status MutableGraphView::SortTopologically(
   if (!mutation_.updated_nodes_.empty() || !mutation_.new_nodes_.empty()) {
     // Cannot sort when there is an active mutation due to indices possibly
     // being changed or invalidated.
-    return errors::InvalidArgument(kMutableGraphViewSortTopologicallyError,
-                                   "active mutation exists.");
+    return absl::InvalidArgumentError(absl::StrCat(
+        kMutableGraphViewSortTopologicallyError, "active mutation exists."));
   }
 
   const int num_nodes = nodes_.size();
@@ -1443,8 +1446,9 @@ absl::Status MutableGraphView::SortTopologically(
         extra_dependency.from_ == extra_dependency.to_ ||
         extra_dependency.from_ < 0 || extra_dependency.from_ >= num_nodes ||
         extra_dependency.to_ < 0 || extra_dependency.to_ >= num_nodes) {
-      return errors::InvalidArgument(kMutableGraphViewSortTopologicallyError,
-                                     "invalid extra dependencies.");
+      return absl::InvalidArgumentError(
+          absl::StrCat(kMutableGraphViewSortTopologicallyError,
+                       "invalid extra dependencies."));
     }
     extra_dependencies_by_parent[extra_dependency.from_].push_back(
         extra_dependency.to_);
@@ -1565,16 +1569,16 @@ absl::Status MutableGraphView::SortTopologically(
     }
     const std::string edges_str =
         absl::StrCat("{", absl::StrJoin(edges_formatted, ", "), "}");
-    return errors::InvalidArgument(kMutableGraphViewSortTopologicallyError,
-                                   "detected edge(s) creating cycle(s) ",
-                                   edges_str, ".");
+    return absl::InvalidArgumentError(
+        absl::StrCat(kMutableGraphViewSortTopologicallyError,
+                     "detected edge(s) creating cycle(s) ", edges_str, "."));
   }
   if (curr_pos != kTopologicalSortDone) {
     // Not all nodes were processed.
     if (!ignore_cycles) {
-      return errors::InvalidArgument(
-          kMutableGraphViewSortTopologicallyError,
-          "was not able to sort all nodes topologically.");
+      return absl::InvalidArgumentError(
+          absl::StrCat(kMutableGraphViewSortTopologicallyError,
+                       "was not able to sort all nodes topologically."));
     }
     // Otherwise process all nodes regardless of cycles.
     for (const auto& node : nodes_) {

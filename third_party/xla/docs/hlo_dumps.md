@@ -73,6 +73,15 @@ graph.
 specified, it will dump to stdout. But the dump will not include binary data,
 e.g., proto files, to stdout.
 
+You can also set the HLO Dumps to use syntactic sugar wrappers as op names, by
+setting the `--xla_syntax_sugar_async_ops` flag to `true`. This can reduce the
+dump by about 20%. By default, this flag is set to `false`, and actual op names
+are used in the dump.
+
+```shell
+XLA_FLAGS="--xla_dump_to=DIRECTORY_PATH --xla_syntax_sugar_async_ops=true"
+```
+
 ## Dump Specific Intermediate Passes
 
 In addition to the standard pre-optimized / final-optimized HLOs, you can also

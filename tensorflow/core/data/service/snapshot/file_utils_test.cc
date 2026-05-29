@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -49,7 +50,7 @@ using tsl::testing::StatusIs;
 absl::StatusOr<std::string> CreateTestDirectory() {
   std::string directory;
   if (!tsl::Env::Default()->LocalTempFilename(&directory)) {
-    return tsl::errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Failed to create local test directory.");
   }
   TF_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(directory));

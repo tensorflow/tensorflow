@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/tests/collective_ops_e2e_test_base.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -57,6 +58,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -76,7 +78,7 @@ bool IsAsync(const HloInstruction* inst) {
 class CollectiveOpsTestE2E : public CollectiveOpsE2ETestBase {
  public:
   explicit CollectiveOpsTestE2E(size_t memory_size = 128 * kMB,
-                                size_t collectives_memory_size = 0)
+                                size_t collectives_memory_size = 128 * kMB)
       : CollectiveOpsE2ETestBase(memory_size, collectives_memory_size) {}
 
   bool HasFp8Support() {
@@ -85,6 +87,14 @@ class CollectiveOpsTestE2E : public CollectiveOpsE2ETestBase {
     }
     return Capability().rocm_compute_capability()->has_fp8_support() &&
            GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
+  }
+
+  // Ref:
+  // https://rocm.docs.amd.com/projects/HIP/en/latest/reference/low_fp_types.html#id4
+  bool IsNanooFp8Only() {
+    return Capability().IsRocm() &&
+           Capability().rocm_compute_capability()->has_nanoo_fp8_support() &&
+           !Capability().rocm_compute_capability()->has_ocp_fp8_support();
   }
 
   void CollectiveOpsVerifyF8Matmul(absl::string_view hlo_text,
@@ -119,14 +129,18 @@ class CollectiveOpsTestE2E : public CollectiveOpsE2ETestBase {
   }
 };
 
-class AsyncCollectiveOps : public CollectiveOpsWithFlagsBase,
-                           public ::testing::WithParamInterface<bool> {
+class AsyncCollectiveOps
+    : public CollectiveOpsWithFlagsBase,
+      public ::testing::WithParamInterface<std::tuple<bool, bool>> {
  public:
   AsyncCollectiveOps()
-      : CollectiveOpsWithFlagsBase(/*enable_async=*/GetParam(),
-                                   /*enable_p2p_memcpy=*/false,
-                                   /*memory_size=*/8 * kGB,
-                                   /*collectives_memory_size=*/0) {}
+      : CollectiveOpsWithFlagsBase(
+            /*enable_async=*/std::get<0>(GetParam()),
+            /*enable_p2p_memcpy=*/false,
+            /*enable_symmetric_buffer=*/std::get<1>(GetParam()),
+            /*memory_size=*/8 * kGB,
+            /*collectives_memory_size=*/std::get<1>(GetParam()) ? 8 * kGB : 0) {
+  }
 };
 
 class MemcpyCollectiveOps : public CollectiveOpsWithFlagsBase,
@@ -135,6 +149,7 @@ class MemcpyCollectiveOps : public CollectiveOpsWithFlagsBase,
   MemcpyCollectiveOps()
       : CollectiveOpsWithFlagsBase(/*enable_async=*/true,
                                    /*enable_p2p_memcpy=*/GetParam(),
+                                   /*enable_symmetric_buffer=*/false,
                                    /*memory_size=*/32 * kMB,
                                    /*collectives_memory_size=*/0) {}
 };
@@ -147,6 +162,7 @@ class AsyncMemcpyCollectiveOps
       : CollectiveOpsWithFlagsBase(
             /*enable_async=*/std::get<0>(GetParam()),
             /*enable_p2p_memcpy=*/std::get<1>(GetParam()),
+            /*enable_symmetric_buffer=*/false,
             /*memory_size=*/32 * kMB,
             /*collectives_memory_size=*/0) {}
 };
@@ -159,8 +175,13 @@ std::string GetMemcpyTestName(bool is_memcpy) {
   return is_memcpy ? "memcpy" : "nccl";
 }
 
-std::string GetAsyncTestSuiteName(const ::testing::TestParamInfo<bool>& info) {
-  return GetAsyncTestName(info.param);
+std::string GetAsyncTestSuiteName(
+    const ::testing::TestParamInfo<std::tuple<bool, bool>>& info) {
+  std::string test_name = GetAsyncTestName(std::get<0>(info.param));
+  if (std::get<1>(info.param)) {
+    test_name += "_symmetric";
+  }
+  return test_name;
 }
 
 std::string GetMemcpyTestSuiteName(const ::testing::TestParamInfo<bool>& info) {
@@ -171,6 +192,80 @@ std::string GetAsyncMemcpyTestSuiteName(
     const ::testing::TestParamInfo<std::tuple<bool, bool>>& info) {
   return absl::StrCat(GetAsyncTestName(std::get<0>(info.param)), "_",
                       GetMemcpyTestName(std::get<1>(info.param)));
+}
+
+// Parameterized test class for collectives with memory mode. Iterates over
+// supported collectives memory modes and async/sync.
+class CollectivesModeOps
+    : public CollectiveOpsE2ETestBase,
+      public ::testing::WithParamInterface<
+          std::tuple<bool, DebugOptions::CollectivesMode>> {
+ public:
+  CollectivesModeOps()
+      : CollectiveOpsE2ETestBase(
+            /*memory_size=*/32 * kMB,
+            /*collectives_memory_size=*/RequiresCollectiveMemory() ? 32 * kMB
+                                                                   : 0),
+        enable_async_(std::get<0>(GetParam())),
+        collectives_mode_(std::get<1>(GetParam())) {}
+
+ protected:
+  void SetUp() override {
+    CollectiveOpsE2ETestBase::SetUp();
+    if (!IsHopperAndHigher() &&
+        (collectives_mode_ == DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY ||
+         collectives_mode_ == DebugOptions::COLLECTIVES_PEER_MEMORY)) {
+      GTEST_SKIP() << "Test requires Hopper or higher";
+    }
+  }
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        CollectiveOpsE2ETestBase::GetDebugOptionsForTest();
+    if (!enable_async_) {
+      debug_options.add_xla_gpu_disable_async_collectives(
+          DebugOptions::COLLECTIVEPERMUTE);
+      debug_options.add_xla_gpu_disable_async_collectives(
+          DebugOptions::ALLGATHER);
+    }
+    debug_options.add_xla_disable_hlo_passes(
+        "gpu-convert-async-collectives-to-sync");
+    debug_options.set_xla_gpu_collective_permute_mode(collectives_mode_);
+    debug_options.set_xla_gpu_all_gather_mode(collectives_mode_);
+    return debug_options;
+  }
+
+  bool enable_async() const { return enable_async_; }
+  DebugOptions::CollectivesMode collectives_mode() { return collectives_mode_; }
+
+ private:
+  static bool RequiresCollectiveMemory() {
+    auto mode = std::get<1>(GetParam());
+    return mode == DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY;
+  }
+
+  bool enable_async_;
+  DebugOptions::CollectivesMode collectives_mode_;
+};
+
+std::string GetCollectivesModeTestName(DebugOptions::CollectivesMode mode) {
+  switch (mode) {
+    case DebugOptions::COLLECTIVES_PRIVATE_MEMORY:
+      return "private";
+    case DebugOptions::COLLECTIVES_PEER_MEMORY:
+      return "peer";
+    case DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY:
+      return "symmetric";
+    default:
+      return absl::StrCat("mode_", static_cast<int>(mode));
+  }
+}
+
+std::string GetCollectivesModeTestSuiteName(
+    const ::testing::TestParamInfo<
+        std::tuple<bool, DebugOptions::CollectivesMode>>& info) {
+  return absl::StrCat(GetAsyncTestName(std::get<0>(info.param)), "_",
+                      GetCollectivesModeTestName(std::get<1>(info.param)));
 }
 
 TEST_P(AsyncCollectiveOps, AsyncAllReduce) {
@@ -194,7 +289,7 @@ TEST_P(AsyncCollectiveOps, AsyncAllReduce) {
       << "Test requires at least " << kNumReplicas << " devices ("
       << device_count() << " available)";
 
-  const bool enable_async_all_reduce = GetParam();
+  const bool enable_async_all_reduce = enable_async_;
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
@@ -220,7 +315,45 @@ TEST_P(AsyncCollectiveOps, AsyncAllReduce) {
   }
 }
 
-TEST_P(AsyncCollectiveOps, AsyncAllGather) {
+TEST_P(AsyncCollectiveOps, AsyncCollectiveBroadcast) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    replica = u32[] replica-id()
+    ten = u32[] constant(10)
+    sum = u32[] add(replica, ten)
+    p = u32[2] broadcast(sum), dimensions={}
+    bcast = u32[2] collective-broadcast(p), replica_groups={{1, 0}}
+    ROOT res = copy(bcast)
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
+
+  const bool enable_async_collective_broadcast = enable_async_;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
+  HloInstruction* cb_start =
+      FindInstruction(hlo_module, HloOpcode::kAsyncStart);
+  HloInstruction* cb_done = FindInstruction(hlo_module, HloOpcode::kAsyncDone);
+  EXPECT_THAT(cb_start, NotNull());
+  EXPECT_THAT(cb_done, NotNull());
+  EXPECT_EQ(IsAsync(cb_start), enable_async_collective_broadcast);
+
+  const std::vector<Literal>& results = execution_result.results;
+  ASSERT_EQ(results.size(), kNumReplicas);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 11}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 11}, results[1]);
+}
+
+TEST_P(CollectivesModeOps, AllGather) {
   const absl::string_view kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -237,8 +370,6 @@ TEST_P(AsyncCollectiveOps, AsyncAllGather) {
       << "Test requires at least " << kNumReplicas << " devices ("
       << device_count() << " available)";
 
-  const bool enable_async_all_gather = GetParam();
-
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
@@ -252,7 +383,7 @@ TEST_P(AsyncCollectiveOps, AsyncAllGather) {
       FindInstruction(hlo_module, HloOpcode::kAllGatherDone);
   EXPECT_THAT(all_gather_start, NotNull());
   EXPECT_THAT(all_gather_done, NotNull());
-  EXPECT_EQ(IsAsync(all_gather_start), enable_async_all_gather);
+  EXPECT_EQ(IsAsync(all_gather_start), enable_async());
 
   const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
@@ -261,7 +392,7 @@ TEST_P(AsyncCollectiveOps, AsyncAllGather) {
   }
 }
 
-TEST_P(AsyncCollectiveOps, AsyncAllGatherMixedTypes) {
+TEST_P(CollectivesModeOps, AllGatherMixedTypes) {
   const absl::string_view kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -283,8 +414,6 @@ TEST_P(AsyncCollectiveOps, AsyncAllGatherMixedTypes) {
       << "Test requires at least " << kNumReplicas << " devices ("
       << device_count() << " available)";
 
-  const bool enable_async_all_gather = GetParam();
-
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
@@ -298,7 +427,7 @@ TEST_P(AsyncCollectiveOps, AsyncAllGatherMixedTypes) {
       FindInstruction(hlo_module, HloOpcode::kAllGatherDone);
   EXPECT_THAT(all_gather_start, NotNull());
   EXPECT_THAT(all_gather_done, NotNull());
-  EXPECT_EQ(IsAsync(all_gather_start), enable_async_all_gather);
+  EXPECT_EQ(IsAsync(all_gather_start), enable_async());
 
   std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
@@ -311,45 +440,7 @@ TEST_P(AsyncCollectiveOps, AsyncAllGatherMixedTypes) {
   }
 }
 
-TEST_P(AsyncCollectiveOps, AsyncCollectiveBroadcast) {
-  const absl::string_view kModuleStr = R"(
-  HloModule test
-  ENTRY test_computation {
-    replica = u32[] replica-id()
-    ten = u32[] constant(10)
-    sum = u32[] add(replica, ten)
-    p = u32[2] broadcast(sum), dimensions={}
-    bcast = u32[2] collective-broadcast(p), replica_groups={{1, 0}}
-    ROOT res = copy(bcast)
-  }
-  )";
-  const int64_t kNumReplicas = 2;
-  ASSERT_GE(device_count(), kNumReplicas)
-      << "Test requires at least " << kNumReplicas << " devices ("
-      << device_count() << " available)";
-
-  const bool enable_async_collective_broadcast = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
-
-  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
-                          ExecuteReplicated(std::move(module)));
-
-  const HloModule* hlo_module = execution_result.optimized_module;
-  HloInstruction* cb_start =
-      FindInstruction(hlo_module, HloOpcode::kAsyncStart);
-  HloInstruction* cb_done = FindInstruction(hlo_module, HloOpcode::kAsyncDone);
-  EXPECT_THAT(cb_start, NotNull());
-  EXPECT_THAT(cb_done, NotNull());
-  EXPECT_EQ(IsAsync(cb_start), enable_async_collective_broadcast);
-
-  const std::vector<Literal>& results = execution_result.results;
-  ASSERT_EQ(results.size(), kNumReplicas);
-  LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 11}, results[0]);
-  LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 11}, results[1]);
-}
-
-TEST_P(AsyncCollectiveOps, AsyncCollectivePermute) {
+TEST_P(CollectivesModeOps, CollectivePermute) {
   const absl::string_view kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -366,7 +457,6 @@ TEST_P(AsyncCollectiveOps, AsyncCollectivePermute) {
       << "Test requires at least " << kNumReplicas << " devices ("
       << device_count() << " available)";
 
-  const bool enable_async_collective_permute = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
@@ -380,7 +470,7 @@ TEST_P(AsyncCollectiveOps, AsyncCollectivePermute) {
       FindInstruction(hlo_module, HloOpcode::kCollectivePermuteDone);
   EXPECT_THAT(cp_start, NotNull());
   EXPECT_THAT(cp_done, NotNull());
-  EXPECT_EQ(IsAsync(cp_start), enable_async_collective_permute);
+  EXPECT_EQ(IsAsync(cp_start), enable_async());
 
   const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
@@ -388,7 +478,42 @@ TEST_P(AsyncCollectiveOps, AsyncCollectivePermute) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 10}, results[1]);
 }
 
-TEST_P(AsyncCollectiveOps, CombinedCollectivePermute) {
+// Verifies that collective-permute works correctly when the input is a
+// parameter (allocated in default memory space S(0)) and the result is returned
+// directly. The copy insertion pass must insert copies to move parameter data
+// into collective memory space when required.
+TEST_P(CollectivesModeOps, CollectivePermuteOnParameters) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    p = u32[2] parameter(0)
+    ROOT permute = u32[2] collective-permute(p), source_target_pairs={{1,0}, {0,1}}
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  // Replica 0 gets {10, 10}, replica 1 gets {11, 11}.
+  auto arg0 = LiteralUtil::CreateR1<uint32_t>({10, 10});
+  auto arg1 = LiteralUtil::CreateR1<uint32_t>({11, 11});
+  std::vector<std::vector<Literal*>> args = {{&arg0}, {&arg1}};
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module), args));
+
+  const std::vector<Literal>& results = execution_result.results;
+  ASSERT_EQ(results.size(), kNumReplicas);
+  // After permute: replica 0 receives from replica 1, replica 1 from replica 0.
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 11}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 10}, results[1]);
+}
+
+TEST_P(CollectivesModeOps, CombinedCollectivePermute) {
   const absl::string_view kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -404,7 +529,6 @@ TEST_P(AsyncCollectiveOps, CombinedCollectivePermute) {
   }
   )";
   const int64_t kNumReplicas = 2;
-  const bool enable_async_collective_permute = GetParam();
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
@@ -419,7 +543,7 @@ TEST_P(AsyncCollectiveOps, CombinedCollectivePermute) {
       FindInstruction(hlo_module, HloOpcode::kCollectivePermuteDone);
   EXPECT_THAT(cp_start, NotNull());
   EXPECT_THAT(cp_done, NotNull());
-  EXPECT_EQ(IsAsync(cp_start), enable_async_collective_permute);
+  EXPECT_EQ(IsAsync(cp_start), enable_async());
 
   const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
@@ -427,7 +551,7 @@ TEST_P(AsyncCollectiveOps, CombinedCollectivePermute) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({0, 0, 10, 10}, results[1]);
 }
 
-TEST_P(AsyncCollectiveOps, CollectivePermuteCombiner) {
+TEST_P(CollectivesModeOps, CollectivePermuteCombiner) {
   const absl::string_view kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -444,7 +568,6 @@ TEST_P(AsyncCollectiveOps, CollectivePermuteCombiner) {
   }
   )";
   const int64_t kNumReplicas = 4;
-  const bool enable_async_collective_permute = GetParam();
   if (device_count() < kNumReplicas) {
     GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
                  << device_count() << " available)";
@@ -477,7 +600,7 @@ TEST_P(AsyncCollectiveOps, CollectivePermuteCombiner) {
   // Expect 3 collective permute instructions combined into one.
   EXPECT_EQ(cp_start->operand_count(), 3);
   EXPECT_THAT(cp_done, NotNull());
-  EXPECT_EQ(IsAsync(cp_start), enable_async_collective_permute);
+  EXPECT_EQ(IsAsync(cp_start), enable_async());
 
   const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
@@ -515,7 +638,7 @@ TEST_P(AsyncCollectiveOps, AsyncReduceScatter) {
       << "Test requires at least " << kNumReplicas << " devices ("
       << device_count() << " available)";
 
-  const bool enable_async_reduce_scatter = GetParam();
+  const bool enable_async_reduce_scatter = enable_async_;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
@@ -554,7 +677,7 @@ TEST_P(AsyncCollectiveOps, AsyncAllToAllWithSplitDim) {
       << "Test requires at least " << kNumReplicas << " devices ("
       << device_count() << " available)";
 
-  const bool enable_async_all_to_all = GetParam();
+  const bool enable_async_all_to_all = enable_async_;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
@@ -638,7 +761,7 @@ TEST_P(AsyncCollectiveOps, AsyncAllToAllWithoutSplitDim) {
       << "Test requires at least " << kNumReplicas << " devices ("
       << device_count() << " available)";
 
-  const bool enable_async_all_to_all = GetParam();
+  const bool enable_async_all_to_all = enable_async_;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
@@ -714,7 +837,7 @@ TEST_P(AsyncCollectiveOps, AsyncAllToAllNumberOfElementsLargerThanInt32Max) {
       << "Test requires at least " << kNumReplicas << " devices ("
       << device_count() << " available)";
 
-  const bool enable_async_all_to_all = GetParam();
+  const bool enable_async_all_to_all = enable_async_;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
@@ -775,7 +898,7 @@ ENTRY entry {
                           ExecuteReplicated(std::move(module)));
 
   const HloModule* hlo_module = execution_result.optimized_module;
-  const bool enable_async_ragged_all_to_all = GetParam();
+  const bool enable_async_ragged_all_to_all = enable_async_;
   HloInstruction* ra2a_start =
       FindInstruction(hlo_module, HloOpcode::kAsyncStart);
   HloInstruction* ra2a_done =
@@ -974,7 +1097,7 @@ TEST_P(AsyncCollectiveOps, MatmulReplicated) {
                  << device_count() << " available)";
   }
 
-  bool enable_cublaslt = GetParam();
+  bool enable_cublaslt = std::get<0>(GetParam());
   VLOG(0) << "Running with CUBLAS enabled: " << enable_cublaslt;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -1010,8 +1133,144 @@ TEST_P(AsyncCollectiveOps, MatmulReplicated) {
   }
 }
 
+// Regression test: collective-permute inside a while loop must produce correct
+// results on every iteration. With one-sided mode (Put+WaitSignal), the NCCL
+// signal counter is cumulative -- WaitSignal(opCnt=N) waits until the total
+// signals received reaches N. If opCnt is not tracked cumulatively across loop
+// iterations, WaitSignal returns immediately on iteration 2+ and reads stale
+// data.
+TEST_P(CollectivesModeOps, CollectivePermuteInWhileLoop) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+
+  body {
+    param = (u32[], u32[2]) parameter(0)
+    i = u32[] get-tuple-element(param), index=0
+    data = u32[2] get-tuple-element(param), index=1
+    // Add replica-id before the permute so each iteration's contribution
+    // from both replicas is visible in the final result, making the test
+    // sensitive to data corruption.
+    replica = u32[] replica-id()
+    replica_bcast = u32[2] broadcast(replica), dimensions={}
+    data_plus_rid = u32[2] add(data, replica_bcast)
+    permuted = u32[2] collective-permute(data_plus_rid), source_target_pairs={{0,1},{1,0}}
+    one = u32[] constant(1)
+    i_next = u32[] add(i, one)
+    ROOT tuple = (u32[], u32[2]) tuple(i_next, permuted)
+  }
+
+  cond {
+    param = (u32[], u32[2]) parameter(0)
+    i = u32[] get-tuple-element(param), index=0
+    limit = u32[] constant(4)
+    ROOT lt = pred[] compare(i, limit), direction=LT
+  }
+
+  ENTRY test_computation {
+    replica = u32[] replica-id()
+    ten = u32[] constant(10)
+    init_data = u32[] add(replica, ten)
+    bcast = u32[2] broadcast(init_data), dimensions={}
+    zero = u32[] constant(0)
+    init = (u32[], u32[2]) tuple(zero, bcast)
+    loop = (u32[], u32[2]) while(init), condition=cond, body=body
+    ROOT result = u32[2] get-tuple-element(loop), index=1
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+
+  // Trace through 4 iterations with replica 0 (r=0) and replica 1 (r=1):
+  //   Init:  r0=[10,10]  r1=[11,11]
+  //   Iter1: +r then swap: r0=10+0=10, r1=11+1=12, swap → r0=12, r1=10
+  //   Iter2: +r then swap: r0=12+0=12, r1=10+1=11, swap → r0=11, r1=12
+  //   Iter3: +r then swap: r0=11+0=11, r1=12+1=13, swap → r0=13, r1=11
+  //   Iter4: +r then swap: r0=13+0=13, r1=11+1=12, swap → r0=12, r1=13
+  const std::vector<Literal>& results = execution_result.results;
+  ASSERT_EQ(results.size(), kNumReplicas);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({12, 12}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({13, 13}, results[1]);
+}
+
+// Regression test: combined collective-permute with 2 buffers inside a while
+// loop. This exercises the buffer coloring fix where while-loop aliasing
+// combined with the async-start tuple output shape causes tuple sub-elements
+// to be incorrectly colored as kDefault while their aliased values get
+// kCollective.
+TEST_P(CollectivesModeOps, CombinedCollectivePermuteInWhileLoop) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+
+  body {
+    param = (u32[], u32[2], f32[2]) parameter(0)
+    i = u32[] get-tuple-element(param), index=0
+    data0 = u32[2] get-tuple-element(param), index=1
+    data1 = f32[2] get-tuple-element(param), index=2
+    permuted = (u32[2], f32[2]) collective-permute(data0, data1),
+      source_target_pairs={{0,1},{1,0}}
+    perm0 = u32[2] get-tuple-element(permuted), index=0
+    perm1 = f32[2] get-tuple-element(permuted), index=1
+    one = u32[] constant(1)
+    i_next = u32[] add(i, one)
+    ROOT tuple = (u32[], u32[2], f32[2]) tuple(i_next, perm0, perm1)
+  }
+
+  cond {
+    param = (u32[], u32[2], f32[2]) parameter(0)
+    i = u32[] get-tuple-element(param), index=0
+    limit = u32[] constant(4)
+    ROOT lt = pred[] compare(i, limit), direction=LT
+  }
+
+  ENTRY test_computation {
+    replica = u32[] replica-id()
+    ten = u32[] constant(10)
+    init_u = u32[] add(replica, ten)
+    bcast_u = u32[2] broadcast(init_u), dimensions={}
+    init_f = f32[] convert(init_u)
+    bcast_f = f32[2] broadcast(init_f), dimensions={}
+    zero = u32[] constant(0)
+    init = (u32[], u32[2], f32[2]) tuple(zero, bcast_u, bcast_f)
+    loop = (u32[], u32[2], f32[2]) while(init), condition=cond, body=body
+    result0 = u32[2] get-tuple-element(loop), index=1
+    result1 = f32[2] get-tuple-element(loop), index=2
+    ROOT out = (u32[2], f32[2]) tuple(result0, result1)
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+
+  // 4 iterations of pure swap (even number → back to original):
+  //   Init:  r0=[10,10],[10.0,10.0]  r1=[11,11],[11.0,11.0]
+  //   After 4 swaps → back to initial state.
+  std::vector<Literal>& results = execution_result.results;
+  ASSERT_EQ(results.size(), kNumReplicas);
+  std::vector<Literal> r0 = results[0].DecomposeTuple();
+  std::vector<Literal> r1 = results[1].DecomposeTuple();
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 10}, r0[0]);
+  LiteralTestUtil::ExpectR1Equal<float>({10.0, 10.0}, r0[1]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 11}, r1[0]);
+  LiteralTestUtil::ExpectR1Equal<float>({11.0, 11.0}, r1[1]);
+}
+
 INSTANTIATE_TEST_SUITE_P(AsyncCollectiveOps, AsyncCollectiveOps,
-                         ::testing::Bool(), GetAsyncTestSuiteName);
+                         ::testing::Combine(::testing::Bool(),
+                                            ::testing::Bool()),
+                         GetAsyncTestSuiteName);
 
 INSTANTIATE_TEST_SUITE_P(MemcpyCollectiveOps, MemcpyCollectiveOps,
                          ::testing::Bool(), GetMemcpyTestSuiteName);
@@ -1020,6 +1279,15 @@ INSTANTIATE_TEST_SUITE_P(AsyncMemcpyCollectiveOps, AsyncMemcpyCollectiveOps,
                          ::testing::Combine(::testing::Bool(),
                                             ::testing::Bool()),
                          GetAsyncMemcpyTestSuiteName);
+
+INSTANTIATE_TEST_SUITE_P(
+    CollectivesModeOps, CollectivesModeOps,
+    ::testing::Combine(
+        ::testing::Bool(),
+        ::testing::Values(DebugOptions::COLLECTIVES_PRIVATE_MEMORY,
+                          DebugOptions::COLLECTIVES_PEER_MEMORY,
+                          DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY)),
+    GetCollectivesModeTestSuiteName);
 
 // Tests for HLO level transforms.
 TEST_F(CollectiveOpsTestE2E, WhileLoopReduceScatterCodeMotion) {
@@ -1333,6 +1601,59 @@ class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
   }
 };
 
+// Test that collective multi-streaming works correctly.
+TEST_F(CollectiveOpsTestE2E, CollectiveMultiStreaming) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    id_mat = u32[2,2] broadcast(id), dimensions={}
+    a2a = u32[2,2] all-to-all(u32[2,2] id_mat), replica_groups={{0,1},{2,3}}, dimensions={0}
+    ag_start = (u32[2,2], u32[4,2]) all-gather-start(u32[2,2] id_mat), replica_groups={{0,2},{1,3}}, dimensions={0}
+    add.1 = u32[2,2] add(id_mat, id_mat)
+    ag_done = u32[4,2] all-gather-done(ag_start)
+    a2a_reshape = u32[4] reshape(a2a)
+    ag_reshape = u32[8] reshape(ag_done)
+    add_reshape.1 = u32[4] reshape(add.1)
+    ROOT out = (u32[4], u32[8], u32[4]) tuple(a2a_reshape, ag_reshape, add_reshape.1)
+  }
+  )";
+  const int64_t kNumReplicas = 4;
+  if (device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << device_count() << " available)";
+  }
+
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_experimental_parallel_collective_overlap_limit(2);
+  debug_options.set_xla_gpu_experimental_enable_collective_multi_streaming(
+      true);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+  const HloModule* executable_module = execution_result.optimized_module;
+  ASSERT_NE(executable_module, nullptr);
+  ASSERT_TRUE(executable_module->has_schedule());
+  ASSERT_EQ(execution_result.results.size(), kNumReplicas);
+
+  // Check replica 0 outputs
+  std::vector<Literal> result_0_elems =
+      execution_result.results[0].DecomposeTuple();
+  ASSERT_EQ(result_0_elems.size(), 3);
+  // Flatten of [[0,0], [1,1]] = [0,0,1,1]
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({0, 0, 1, 1}, result_0_elems[0]);
+  // Flatten of [[0,0], [0,0], [2,2], [2,2]] = [0,0,0,0,2,2,2,2]
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({0, 0, 0, 0, 2, 2, 2, 2},
+                                           result_0_elems[1]);
+  // Flatten of [[0,0], [0,0]] = [0,0,0,0]
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({0, 0, 0, 0}, result_0_elems[2]);
+}
+
 TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
        WindowedEinsumE2EAllgatherMultiConsumer) {
   absl::string_view kModuleReplicatedStr = R"(
@@ -1357,6 +1678,9 @@ ENTRY main.12 {
 }
 
 TEST_F(CollectiveOpsTestE2EWindowedNonWindowed, WindowedEinsumE2EAllGatherF8) {
+  if (IsNanooFp8Only()) {
+    GTEST_SKIP() << "Test requires OCP FP8 (f8e4m3fn) support.";
+  }
   absl::string_view kModuleReplicatedStr = R"(
 HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(f8e4m3fn[2,16,48]{2,1,0}, f8e4m3fn[48,192]{1,0}, bf16[], bf16[])->bf16[2,16,192]{2,1,0}}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, num_partitions=4
 
@@ -1394,6 +1718,9 @@ ENTRY main {
 
 TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
        WindowedEinsumE2EAllGatherReshapeF8) {
+  if (IsNanooFp8Only()) {
+    GTEST_SKIP() << "Test requires OCP FP8 (f8e4m3fn) support.";
+  }
   absl::string_view kModuleReplicatedStr = R"(
 HloModule windowed_einsum_e2e_all_gather_multi_consumer_f8, entry_computation_layout={(f8e4m3fn[2,16,48]{2,1,0}, f8e4m3fn[2,24,192]{2,1,0}, bf16[], bf16[])->bf16[2,16,192]{2,1,0}}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, num_partitions=4
 
@@ -1432,6 +1759,9 @@ ENTRY main {
 
 TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
        WindowedEinsumE2EAllGatherMultiConsumerF8) {
+  if (IsNanooFp8Only()) {
+    GTEST_SKIP() << "Test requires OCP FP8 (f8e4m3fn) support.";
+  }
   absl::string_view kModuleReplicatedStr = R"(
 HloModule windowed_einsum_e2e_all_gather_multi_consumer_f8, entry_computation_layout={(f8e4m3fn[2,16,48]{2,1,0}, f8e4m3fn[48,192]{1,0}, f8e4m3fn[48,192]{1,0}, bf16[], bf16[], bf16[])->bf16[2,16,192]{2,1,0}}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, num_partitions=4
 
@@ -1475,6 +1805,9 @@ ENTRY main {
 
 TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
        WindowedEinsumE2EReduceScatterF8) {
+  if (IsNanooFp8Only()) {
+    GTEST_SKIP() << "Test requires OCP FP8 (f8e4m3fn) support.";
+  }
   absl::string_view kModuleReplicatedStr = R"(
 HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(f8e4m3fn[2,16,192]{2,1,0}, f8e4m3fn[192,48]{1,0}, bf16[], bf16[])->bf16[2,16,48]{2,1,0}}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, num_partitions=4
 
@@ -1501,6 +1834,162 @@ ENTRY main {
 
   // Verify the creation of FP8 GEMM Custom Calls on Hopper and newer
   // architectures.
+  DebugOptions opts = GetDebugOptionsForTest();
+  opts.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
+  opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
+  opts.set_xla_gpu_graph_min_graph_size(200);
+  opts.set_xla_gpu_enable_triton_gemm(false);
+  opts.add_xla_disable_hlo_passes("dot-merger");
+  CollectiveOpsVerifyF8Matmul(kModuleReplicatedStr, opts);
+}
+
+// FNUZ FP8 (f8e4m3fnuz/f8e5m2fnuz) variants of the windowed einsum tests
+// for platforms that only support FNUZ/NANOO FP8, not OCP FP8.
+// Ref:
+// https://rocm.docs.amd.com/projects/HIP/en/latest/reference/low_fp_types.html#id4
+
+TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
+       WindowedEinsumE2EAllGatherFnuzF8) {
+  if (!IsNanooFp8Only()) {
+    GTEST_SKIP() << "Test requires NANOO FP8 (f8e4m3fnuz) support.";
+  }
+  absl::string_view kModuleReplicatedStr = R"(
+HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(f8e4m3fnuz[2,16,48]{2,1,0}, f8e4m3fnuz[48,192]{1,0}, bf16[], bf16[])->bf16[2,16,192]{2,1,0}}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, num_partitions=4
+
+ENTRY main {
+  lhs = f8e4m3fnuz[2,16,48]{2,1,0} parameter(0), sharding={devices=[1,4,1]<=[4]}
+  rhs = f8e4m3fnuz[48,192]{1,0} parameter(1), sharding={devices=[1,4]<=[4]}
+  scale_lhs = bf16[] parameter(2)
+  scale_rhs = bf16[] parameter(3)
+  scale_lhs_bcast = bf16[2,16,48]{2,1,0} broadcast(scale_lhs), dimensions={}
+  scale_rhs_bcast = bf16[48,192]{1,0} broadcast(scale_rhs), dimensions={}
+  lhs_bf16 = bf16[2,16,48]{2,1,0} convert(lhs)
+  rhs_bf16 = bf16[48,192]{1,0} convert(rhs)
+  lhs_scaled = bf16[2,16,48]{2,1,0} multiply(scale_lhs_bcast, lhs_bf16)
+  rhs_scaled = bf16[48,192]{1,0} multiply(scale_rhs_bcast, rhs_bf16)
+  dot = bf16[2,16,192]{2,1,0} dot(lhs_scaled, rhs_scaled), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  ROOT custom-call = bf16[2,16,192]{2,1,0} custom-call(dot), custom_call_target="Sharding", sharding={devices=[1,1,4]<=[4]}
+} // main
+)";
+
+  CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr,
+                                          /*disable_dot_merger=*/true);
+
+  DebugOptions opts = GetDebugOptionsForTest();
+  opts.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
+  opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
+  opts.set_xla_gpu_graph_min_graph_size(200);
+  opts.set_xla_gpu_enable_triton_gemm(false);
+  opts.add_xla_disable_hlo_passes("dot-merger");
+  CollectiveOpsVerifyF8Matmul(kModuleReplicatedStr, opts);
+}
+
+TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
+       WindowedEinsumE2EAllGatherReshapeFnuzF8) {
+  if (!IsNanooFp8Only()) {
+    GTEST_SKIP() << "Test requires NANOO FP8 (f8e4m3fnuz) support.";
+  }
+  absl::string_view kModuleReplicatedStr = R"(
+HloModule windowed_einsum_e2e_all_gather_reshape_fnuz_f8, entry_computation_layout={(f8e4m3fnuz[2,16,48]{2,1,0}, f8e4m3fnuz[2,24,192]{2,1,0}, bf16[], bf16[])->bf16[2,16,192]{2,1,0}}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, num_partitions=4
+
+ENTRY main {
+  lhs = f8e4m3fnuz[2,16,48]{2,1,0} parameter(0), sharding={devices=[1,4,1]<=[4]}
+  rhs = f8e4m3fnuz[2,24,192]{2,1,0} parameter(1), sharding={devices=[1,1,4]<=[4]}
+  scale_lhs = bf16[] parameter(2)
+  scale_rhs = bf16[] parameter(3)
+  scale_lhs_bcast = bf16[2,16,48]{2,1,0} broadcast(scale_rhs), dimensions={}
+  scale_rhs_bcast = bf16[2,24,192]{2,1,0} broadcast(scale_lhs), dimensions={}
+  lhs_bf16 = bf16[2,16,48]{2,1,0} convert(lhs)
+  rhs_bf16 = bf16[2,24,192]{2,1,0} convert(rhs)
+  lhs_scaled = bf16[2,16,48]{2,1,0} multiply(scale_lhs_bcast, lhs_bf16)
+  rhs_scaled = bf16[2,24,192]{2,1,0} multiply(scale_rhs_bcast, rhs_bf16)
+  rhs_reshaped = bf16[48,192]{1,0} reshape(rhs_scaled)
+  dot = bf16[2,16,192]{2,1,0} dot(lhs_scaled, rhs_reshaped), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  ROOT custom-call = bf16[2,16,192]{2,1,0} custom-call(dot), custom_call_target="Sharding", sharding={devices=[1,1,4]<=[4]}
+} // main
+)";
+
+  CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr,
+                                          /*disable_dot_merger=*/true);
+
+  DebugOptions opts = GetDebugOptionsForTest();
+  opts.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
+  opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
+  opts.set_xla_gpu_graph_min_graph_size(200);
+  opts.set_xla_gpu_enable_triton_gemm(false);
+  opts.add_xla_disable_hlo_passes("dot-merger");
+  CollectiveOpsVerifyF8Matmul(kModuleReplicatedStr, opts);
+}
+
+TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
+       WindowedEinsumE2EAllGatherMultiConsumerFnuzF8) {
+  if (!IsNanooFp8Only()) {
+    GTEST_SKIP() << "Test requires NANOO FP8 (f8e4m3fnuz) support.";
+  }
+  absl::string_view kModuleReplicatedStr = R"(
+HloModule windowed_einsum_e2e_all_gather_multi_consumer_fnuz_f8, entry_computation_layout={(f8e4m3fnuz[2,16,48]{2,1,0}, f8e4m3fnuz[48,192]{1,0}, f8e4m3fnuz[48,192]{1,0}, bf16[], bf16[], bf16[])->bf16[2,16,192]{2,1,0}}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, num_partitions=4
+
+ENTRY main {
+  lhs = f8e4m3fnuz[2,16,48]{2,1,0} parameter(0), sharding={devices=[1,4,1]<=[4]}
+  rhs0 = f8e4m3fnuz[48,192]{1,0} parameter(1), sharding={devices=[1,4]<=[4]}
+  scale_lhs = bf16[] parameter(3)
+  scale_rhs0 = bf16[] parameter(4)
+  scale_lhs_bcast = bf16[2,16,48]{2,1,0} broadcast(scale_lhs), dimensions={}
+  scale_rhs0_bcast = bf16[48,192]{1,0} broadcast(scale_rhs0), dimensions={}
+  lhs_bf16 = bf16[2,16,48]{2,1,0} convert(lhs)
+  rhs0_bf16 = bf16[48,192]{1,0} convert(rhs0)
+  lhs_scaled = bf16[2,16,48]{2,1,0} multiply(scale_lhs_bcast, lhs_bf16)
+  rhs0_scaled = bf16[48,192]{1,0} multiply(scale_rhs0_bcast, rhs0_bf16)
+  dot0 = bf16[2,16,192]{2,1,0} dot(lhs_scaled, rhs0_scaled), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  rhs1 = f8e4m3fnuz[48,192]{1,0} parameter(2), sharding={devices=[1,4]<=[4]}
+  scale_rhs1 = bf16[] parameter(5)
+  scale_rhs1_bcast = bf16[48,192]{1,0} broadcast(scale_rhs1), dimensions={}
+  rhs1_bf16 = bf16[48,192]{1,0} convert(rhs1)
+  rhs1_scaled = bf16[48,192]{1,0} multiply(scale_rhs1_bcast, rhs1_bf16)
+  dot1 = bf16[2,16,192]{2,1,0} dot(lhs_scaled, rhs1_scaled), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  ROOT add = bf16[2,16,192]{2,1,0} add(dot0, dot1)
+} // main
+)";
+
+  CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr,
+                                          /*disable_dot_merger=*/true);
+
+  DebugOptions opts = GetDebugOptionsForTest();
+  opts.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
+  opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
+  opts.set_xla_gpu_graph_min_graph_size(200);
+  opts.set_xla_gpu_enable_triton_gemm(false);
+  opts.add_xla_disable_hlo_passes("dot-merger");
+  CollectiveOpsVerifyF8Matmul(kModuleReplicatedStr, opts);
+}
+
+TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
+       WindowedEinsumE2EReduceScatterFnuzF8) {
+  if (!IsNanooFp8Only()) {
+    GTEST_SKIP() << "Test requires NANOO FP8 (f8e4m3fnuz) support.";
+  }
+  absl::string_view kModuleReplicatedStr = R"(
+HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(f8e4m3fnuz[2,16,192]{2,1,0}, f8e4m3fnuz[192,48]{1,0}, bf16[], bf16[])->bf16[2,16,48]{2,1,0}}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, num_partitions=4
+
+ENTRY main {
+  lhs = f8e4m3fnuz[2,16,192]{2,1,0} parameter(0), sharding={devices=[1,1,4]<=[4]}
+  rhs = f8e4m3fnuz[192,48]{1,0} parameter(1), sharding={devices=[4,1]<=[4]}
+  scale_lhs = bf16[] parameter(2)
+  scale_rhs = bf16[] parameter(3)
+  scale_lhs_bcast = bf16[2,16,192]{2,1,0} broadcast(scale_lhs), dimensions={}
+  scale_rhs_bcast = bf16[192,48]{1,0} broadcast(scale_rhs), dimensions={}
+  lhs_bf16 = bf16[2,16,192]{2,1,0} convert(lhs)
+  rhs_bf16 = bf16[192,48]{1,0} convert(rhs)
+  lhs_scaled = bf16[2,16,192]{2,1,0} multiply(scale_lhs_bcast, lhs_bf16)
+  rhs_scaled = bf16[192,48]{1,0} multiply(scale_rhs_bcast, rhs_bf16)
+  dot = bf16[2,16,48]{2,1,0} dot(lhs_scaled, rhs_scaled), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  ROOT custom-call = bf16[2,16,48]{2,1,0} custom-call(dot), custom_call_target="Sharding", sharding={devices=[1,4,1]<=[4]}
+} // main
+)";
+
+  CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr,
+                                          /*disable_dot_merger=*/true);
+
   DebugOptions opts = GetDebugOptionsForTest();
   opts.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
   opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
@@ -1606,10 +2095,11 @@ ENTRY entry {
 }
 
 TEST_F(CollectiveOpsTestE2E, CollectivePipelinerF8) {
-  // Verify that FP8 patterns are preserved when collectives are pipelined so
-  // the GEMM rewriter can create FP8 matmuls.
   if (!HasFp8Support()) {
-    GTEST_SKIP() << "Test requires Hopper or newer architecture.";
+    GTEST_SKIP() << "Test requires FP8 support.";
+  }
+  if (IsNanooFp8Only()) {
+    GTEST_SKIP() << "Test requires OCP FP8 (f8e4m3fn) support.";
   }
 
   absl::string_view kModuleReplicatedStr = R"(
@@ -1628,6 +2118,63 @@ while_body {
   partial_dot_output = bf16[512,128] get-tuple-element(input), index=5
   lhs_f8 = f8e4m3fn[128,128] convert(lhs)
   rhs_f8 = f8e4m3fn[32,128] convert(rhs)
+  lhs_bf16 = bf16[128,128] convert(lhs_f8)
+  rhs_bf16 = bf16[32,128] convert(rhs_f8)
+  scale_lhs = bf16[] get-tuple-element(input), index=3
+  scale_rhs = bf16[] get-tuple-element(input), index=4
+  scale_lhs_bcast = bf16[128,128] broadcast(scale_lhs), dimensions={}
+  scale_rhs_bcast = bf16[32,128] broadcast(scale_rhs), dimensions={}
+  lhs_scaled = bf16[128,128] multiply(lhs_bf16, scale_lhs_bcast)
+  rhs_scaled = bf16[32,128] multiply(rhs_bf16, scale_rhs_bcast)
+  rhs_scaled_all_gathered = bf16[128,128] all-gather(rhs_scaled), channel_id=1, use_global_device_ids=true, dimensions={0}, replica_groups={{0,1,2,3}}
+  dot = bf16[128,128] dot(lhs_scaled, rhs_scaled_all_gathered), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  c0 = s32[] constant(0)
+  size = s32[] constant(128)
+  iteration_offset = s32[] multiply(loop_counter, size)
+  updated_dot_output = bf16[512,128] dynamic-update-slice(partial_dot_output, dot, iteration_offset, c0)
+  c1 = s32[] constant(1)
+  loop_counter_plus_one = s32[] add(loop_counter, c1)
+  ROOT tuple = (s32[], bf16[128,128], bf16[32,128], bf16[], bf16[], bf16[512,128]) tuple(loop_counter_plus_one, lhs, rhs, scale_lhs, scale_rhs, updated_dot_output)
+}
+ENTRY entry {
+  c0 = s32[] constant(0)
+  lhs = bf16[128,128] parameter(0)
+  rhs = bf16[32,128] parameter(1)
+  scale_lhs = bf16[] parameter(2)
+  scale_rhs = bf16[] parameter(3)
+  result_buffer = bf16[512,128] constant(0.)
+  while_input = (s32[], bf16[128,128], bf16[32,128], bf16[], bf16[], bf16[512,128]) tuple(c0, lhs, rhs, scale_lhs, scale_rhs, result_buffer)
+  while = (s32[], bf16[128,128], bf16[32,128], bf16[], bf16[], bf16[512,128]) while(while_input), condition=while_cond, body=while_body
+  ROOT dot_output = bf16[512,128] get-tuple-element(while), index=5
+}
+)";
+
+  auto opts = GetDebugOptionsForTest();
+  opts.set_xla_gpu_enable_triton_gemm(false);
+  CollectiveOpsVerifyF8Matmul(kModuleReplicatedStr, opts);
+}
+
+TEST_F(CollectiveOpsTestE2E, CollectivePipelinerFnuzF8) {
+  if (!IsNanooFp8Only()) {
+    GTEST_SKIP() << "Test requires NANOO FP8 (f8e4m3fnuz) support.";
+  }
+
+  absl::string_view kModuleReplicatedStr = R"(
+HloModule module, entry_computation_layout={(bf16[128,128], bf16[32,128], bf16[], bf16[])->bf16[512,128]}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, num_partitions=4
+while_cond {
+  input = (s32[], bf16[128,128], bf16[32,128], bf16[], bf16[], bf16[512,128]) parameter(0)
+  loop_counter = s32[] get-tuple-element(input), index=0
+  c4 = s32[] constant(4)
+  ROOT compare = pred[] compare(loop_counter, c4), direction=LT
+}
+while_body {
+  input = (s32[], bf16[128,128], bf16[32,128], bf16[], bf16[], bf16[512,128]) parameter(0)
+  loop_counter = s32[] get-tuple-element(input), index=0
+  lhs = bf16[128,128] get-tuple-element(input), index=1
+  rhs = bf16[32,128] get-tuple-element(input), index=2
+  partial_dot_output = bf16[512,128] get-tuple-element(input), index=5
+  lhs_f8 = f8e4m3fnuz[128,128] convert(lhs)
+  rhs_f8 = f8e4m3fnuz[32,128] convert(rhs)
   lhs_bf16 = bf16[128,128] convert(lhs_f8)
   rhs_bf16 = bf16[32,128] convert(rhs_f8)
   scale_lhs = bf16[] get-tuple-element(input), index=3
@@ -2546,5 +3093,61 @@ TEST_F(CollectiveOpsTestE2E, MultipleModuleDifferentDeviceGroupsShouldRun) {
                                                  {&input_literal2_3},
                                                  {&input_literal2_4}}));
 }
+
+TEST_F(CollectiveOpsTestE2E, CustomCollectiveCallShouldRun) {
+  const absl::string_view kModuleStr_1 = R"(
+  HloModule test
+
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+  sub {
+    lhs = f32[4] parameter(0)
+    rhs = f32[4] parameter(1)
+    ROOT sub = f32[4] subtract(lhs, rhs)
+  }
+  ENTRY test_computation {
+    param_0 = f32[4] parameter(0)
+    all-reduce = f32[4] all-reduce(param_0), to_apply=apply_op, replica_groups={{0,1}}
+    call1 = f32[4] call(param_0, param_0), to_apply=sub, frontend_attributes={_xla_stream_annotation="collective", inlineable="false"}
+    ROOT add =  f32[4] add(call1, all-reduce)
+  }
+  )";
+
+  const int64_t kNumReplicas_1 = 2;
+  if (device_count() < kNumReplicas_1) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas_1 << " devices ("
+                 << device_count() << " available)";
+  }
+
+  HloModuleConfig config_1 =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas_1);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module_1,
+                          ParseAndReturnVerifiedModule(kModuleStr_1, config_1));
+
+  int64_t num_elements_1 = ShapeUtil::ElementsIn(
+      module_1->entry_computation()->parameter_instructions()[0]->shape());
+
+  Array<float> input1_1({num_elements_1}), input1_2({num_elements_1});
+  input1_1.Fill(1.0f);
+  input1_2.Fill(1.0f);
+
+  Literal input_literal1_1 = LiteralUtil::CreateFromArray(input1_1);
+  Literal input_literal1_2 = LiteralUtil::CreateFromArray(input1_2);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result_1,
+      ExecuteReplicated(std::move(module_1),
+                        std::vector<std::vector<Literal*>>{
+                            {&input_literal1_1}, {&input_literal1_2}}));
+  Literal expected = LiteralUtil::CreateR1<float>({2, 2, 2, 2});
+  for (const Literal& result : execution_result_1.results) {
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+  }
+}
+
 }  // namespace
 }  // namespace xla

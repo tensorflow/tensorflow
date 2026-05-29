@@ -1,25 +1,46 @@
-// RUN: hlo_to_xtileir %s | FileCheck %s
+// RUN: hlo_to_xtileir %s | FileCheck %s --check-prefixes=CHECK,CHECK-OLD
 // RUN: triton_test_correctness %s
 
+// RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s --check-prefixes=CHECK,CHECK-NEW
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
 
 fusion {
   p = f32[8,48]{1,0} parameter(0)
-  ROOT bitcast = f32[8,16,3] bitcast(p)
+  ROOT bitcast = f32[8,3,16] bitcast(p)
 }
-// CHECK:     xtile.extract
-// CHECK-NOT: tt.trans
-// CHECK:     tt.reshape
-// CHECK-NOT: tt.trans
-// CHECK:     xtile.insert
+
+// CHECK-OLD: #[[$ATTR_0:.+]] = #xla.indexing_map<"(pid_0) -> ((pid_0 floordiv 6) * 2), domain: pid_0 in [0, 23]">
+// CHECK-OLD: #[[$ATTR_1:.+]] = #xla.indexing_map<"(pid_0) -> (((pid_0 floordiv 2) mod 3) * 16 + (pid_0 mod 2) * 8), domain: pid_0 in [0, 23]">
+// CHECK-OLD: #[[$ATTR_2:.+]] = #xla.indexing_map<"(pid_0) -> ((pid_0 floordiv 2) mod 3), domain: pid_0 in [0, 23]">
+// CHECK-OLD: #[[$ATTR_3:.+]] = #xla.indexing_map<"(pid_0) -> ((pid_0 mod 2) * 8), domain: pid_0 in [0, 23]">
+
+// CHECK-NEW: #[[$ATTR_0:.+]] = #xla.indexing_map<"(pid) -> ((pid floordiv 6) * 2), domain: pid in [0, 23]">
+// CHECK-NEW: #[[$ATTR_1:.+]] = #xla.indexing_map<"(pid) -> ((pid mod 6) * 8), domain: pid in [0, 23]">
+// CHECK-NEW: #[[$ATTR_2:.+]] = #xla.indexing_map<"(pid) -> ((pid floordiv 2) mod 3), domain: pid in [0, 23]">
+// CHECK-NEW: #[[$ATTR_3:.+]] = #xla.indexing_map<"(pid) -> ((pid mod 2) * 8), domain: pid in [0, 23]">
+
+// CHECK-LABEL:   xtile.entry_func @triton_fn(
+// CHECK-SAME:      %[[ARG0:.*]]: memref<8x48xf32>,
+// CHECK-SAME:      %[[ARG1:.*]]: memref<8x3x16xf32>,
+// CHECK-SAME:      %[[PID:.*]]: index) attributes {num_opaque_args = 0 : i32} {
+// CHECK:           %[[OFFSET0:.*]] = xla.apply_indexing #[[$ATTR_0]](%[[PID]])
+// CHECK:           %[[OFFSET1:.*]] = xla.apply_indexing #[[$ATTR_1]](%[[PID]])
+// CHECK:           %[[EXTRACT:.*]] = xtile.extract %[[ARG0]][%[[OFFSET0]], %[[OFFSET1]]] [2, 8] [1, 1] : memref<8x48xf32> -> tensor<2x8xf32>
+// CHECK:           %[[RESHAPE:.*]] = tt.reshape %[[EXTRACT]] : tensor<2x8xf32> -> tensor<2x1x8xf32>
+// CHECK:           %[[OFFSET2:.*]] = xla.apply_indexing #[[$ATTR_2]](%[[PID]])
+// CHECK:           %[[OFFSET3:.*]] = xla.apply_indexing #[[$ATTR_3]](%[[PID]])
+// CHECK:           xtile.insert %[[RESHAPE]] into %[[ARG1]][%[[OFFSET0]], %[[OFFSET2]], %[[OFFSET3]]] [2, 1, 8] [1, 1, 1] : tensor<2x1x8xf32> -> memref<8x3x16xf32>
+// CHECK:           xtile.return
+// CHECK:         }
 
 ENTRY main {
   p = f32[8,48]{1,0} parameter(0)
-  ROOT fusion = f32[8,16,3] fusion(p), kind=kCustom, calls=fusion,
+  ROOT fusion = f32[8,3,16] fusion(p), kind=kCustom, calls=fusion,
     backend_config={
     "fusion_backend_config":{
       "kind":"__triton",
       "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["2","8","1"]}],
+        "output_tiles":[{"sizes":["2","1","8"]}],
         "num_warps":"1",
         "num_ctas":"1",
         "num_stages":"1"}}}

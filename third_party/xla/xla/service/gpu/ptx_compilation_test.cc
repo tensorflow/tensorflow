@@ -48,7 +48,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/cuda/ptx_linking_method.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
@@ -105,7 +105,7 @@ ENTRY e {
 constexpr absl::string_view kResultsInNoPtxHlo = R"(
   ENTRY e {
     a = f32[5,5] parameter(0)
-    ROOT _ = f32[5,5] custom-call(a, a), custom_call_target="__cublas$gemm",
+    ROOT _ = f32[5,5] custom-call(a, a), custom_call_target="__cublas$lt$matmul",
       backend_config="{ \"gemm_backend_config\": {\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}}"
   })";
 
@@ -141,7 +141,7 @@ std::string GenerateParametrizedTestname(
 }
 
 class NVPTXCompilationTests
-    : public HloTestBase,
+    : public HloTestBaseLegacy,
       public ::testing::WithParamInterface<std::tuple<
           absl::string_view, PtxCompilationMethod, PtxLinkingMethod>> {
  public:
@@ -221,13 +221,13 @@ class NVPTXCompilationTests
   }
 
   DebugOptions GetDebugOptionsForTest() const override {
-    auto debug_options = HloTestBase::GetDebugOptionsForTest();
+    auto debug_options = HloTestBaseLegacy::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_autotune_level(0);
     return debug_options;
   }
 
   void SetUp() override {
-    HloTestBase::SetUp();
+    HloTestBaseLegacy::SetUp();
     absl::string_view name = std::get<0>(GetParam());
     PtxCompilationMethod compilation_method = std::get<1>(GetParam());
     PtxLinkingMethod linking_method = std::get<2>(GetParam());

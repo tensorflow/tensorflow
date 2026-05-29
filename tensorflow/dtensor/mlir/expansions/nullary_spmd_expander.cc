@@ -47,7 +47,7 @@ StatusOr<mlir::Operation*> NullarySPMDExpander::ExpandOp(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto op_layouts, ExtractLayoutFromOp(op));
   for (const auto& op_layout : op_layouts) {
     if (!op_layout)
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Nullary op layouts must be known before SPMD expansion.");
     all_operands_fully_replicated =
         all_operands_fully_replicated && op_layout->IsFullyReplicated();
@@ -69,10 +69,10 @@ StatusOr<mlir::Operation*> NullarySPMDExpander::ExpandOp(mlir::Operation* op) {
         for (int i = 0; i < op_layouts[0]->rank(); ++i) {
           const int num_shards = op_layouts[0]->num_shards_for_dim(i);
           if (shape[i] % num_shards != 0)
-            return errors::InvalidArgument(
+            return absl::InvalidArgumentError(absl::StrCat(
                 "has output dimension size ", shape[i],
                 " which is not evenly divisible by the number of shards ",
-                num_shards, " in the layout for that dimension.");
+                num_shards, " in the layout for that dimension."));
           new_shape[i] = shape[i] / num_shards;
         }
         const_op.setValueAttr(mlir::DenseElementsAttr::get(
@@ -119,14 +119,14 @@ StatusOr<llvm::DenseMap<int, Layout>> NullarySPMDExpander::ComputeLayoutForward(
   auto enclosing_mesh = op->getParentOfType<mlir::tf_device::ClusterOp>();
   TF_ASSIGN_OR_RETURN(auto mesh, ExtractDeviceMeshFromOp(enclosing_mesh));
   if (!mesh.has_value())
-    return errors::Internal("Failure in extracting mesh from Nullary Op.");
+    return absl::InternalError("Failure in extracting mesh from Nullary Op.");
   llvm::DenseMap<int, Layout> output_layouts;
   // Nullary ops always output replicated layout for output values.
   for (auto i = 0; i < op->getNumResults(); ++i) {
     auto output_ranked_type =
         mlir::dyn_cast<mlir::RankedTensorType>(op->getResult(i).getType());
     if (!output_ranked_type) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           llvm::formatv("requires output type to have statically known rank, "
                         "but got : {0}",
                         output_ranked_type)

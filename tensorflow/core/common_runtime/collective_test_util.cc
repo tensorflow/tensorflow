@@ -45,7 +45,7 @@ bool FailTestRMA::MaybeFail(const StatusCallback& done) {
     }
   }
   if (fail_now) {
-    auto error = errors::Internal("Deliberate failure");
+    auto error = absl::InternalError("Deliberate failure");
     LOG(INFO) << "triggering failure " << error;
     buf_rendezvous()->StartAbort(error);
     // The current call hasn't reached BufRendezvous yet, so we need to call

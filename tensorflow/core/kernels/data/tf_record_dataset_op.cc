@@ -272,9 +272,9 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
     // Sets up reader streams to read from the file at `current_file_index_`.
     absl::Status SetupStreamsLocked(Env* env) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (current_file_index_ >= dataset()->filenames_.size()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "current_file_index_:", current_file_index_,
-            " >= filenames_.size():", dataset()->filenames_.size());
+            " >= filenames_.size():", dataset()->filenames_.size()));
       }
 
       // Actually move on to next file.
@@ -330,7 +330,7 @@ void TFRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES_OK(ctx, ctx->input(kFileNames, &filenames_tensor));
   OP_REQUIRES(
       ctx, filenames_tensor->dims() <= 1,
-      errors::InvalidArgument("`filenames` must be a scalar or a vector."));
+      absl::InvalidArgumentError("`filenames` must be a scalar or a vector."));
 
   bool is_gcs_fs = true;
   bool is_s3_fs = true;
@@ -353,7 +353,7 @@ void TFRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
                  ParseScalarArgument<int64_t>(ctx, kBufferSize, &buffer_size));
   OP_REQUIRES(ctx,
               (buffer_size == kUnspecifiedBufferSize) || (buffer_size >= 0),
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(
                   "`buffer_size` must be >= 0 (0 == no buffering)"));
 
   std::vector<int64_t> byte_offsets;

@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/APFloat.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
@@ -356,10 +358,9 @@ Value EmitterHelper::GetElement(ImplicitLocOpBuilder& b, int operand_index,
 
 ScatterFusion::ScatterFusion(const HloFusionAnalysis& analysis,
                              const ScatterDescription& description,
-                             int64_t vector_size, MLIRContext* mlir_context)
+                             int64_t vector_size)
     : analysis_(analysis),
       description_(description),
-      mlir_context_(mlir_context),
       warp_size_(WarpSize(analysis_.device_info())),
       vector_size_(vector_size) {}
 
@@ -400,13 +401,13 @@ std::vector<emitters::EpilogueSpecification> ScatterFusion::GetEpilogues(
 
 ScatterWithDistributedUpdates::ScatterWithDistributedUpdates(
     const HloFusionAnalysis& analysis, const ScatterDescription& description,
-    int64_t vector_size, MLIRContext* mlir_context)
-    : ScatterFusion(analysis, description, vector_size, mlir_context) {
+    int64_t vector_size)
+    : ScatterFusion(analysis, description, vector_size) {
   // We have to make sure that there is no thread that processes elements of
   // two different update slice.
   auto launch_dimensions = CalculateLaunchDimensions(
       description_.update_shape, analysis_.device_info(),
-      {static_cast<int>(vector_size_)});
+      static_cast<int>(vector_size_));
   num_blocks_ = launch_dimensions.num_blocks();
   num_warps_ = CeilOfRatio(
       static_cast<int64_t>(launch_dimensions.num_threads_per_block()),
@@ -443,6 +444,7 @@ absl::Status ScatterFusion::EmitEntryFunction(
     const PartitionedComputations& computations,
     const CallTargetProvider& call_targets, FuncOp entry_function,
     const HloFusionInstruction& fusion) const {
+  mlir::MLIRContext* mlir_context = entry_function.getContext();
   EmitterHelper helper(description_, &computations, &call_targets,
                        entry_function, fusion);
 
@@ -454,7 +456,7 @@ absl::Status ScatterFusion::EmitEntryFunction(
 
   IndexingMap updates_map = IndexingMap::GetUndefined();
   IndexingMap indices_map = IndexingMap::GetUndefined();
-  ComputeIndexing(mlir_context_, &updates_map, &indices_map);
+  ComputeIndexing(mlir_context, &updates_map, &indices_map);
   updates_map.Simplify();
 
   return EmitEntryFunctionImpl(b, helper, updates_map, indices_map,
@@ -546,9 +548,8 @@ absl::Status ScatterWithDistributedUpdates::EmitEntryFunctionImpl(
 ScatterWithDistributedIndices::ScatterWithDistributedIndices(
     const HloFusionAnalysis& analysis, const ScatterDescription& description,
     int64_t vector_size, int64_t num_warps_per_slice,
-    int64_t num_indices_per_warp, int64_t indices_vector_size,
-    MLIRContext* mlir_context)
-    : ScatterFusion(analysis, description, vector_size, mlir_context),
+    int64_t num_indices_per_warp, int64_t indices_vector_size)
+    : ScatterFusion(analysis, description, vector_size),
       num_warps_per_slice_(num_warps_per_slice),
       num_indices_per_warp_(num_indices_per_warp),
       indices_vector_size_(indices_vector_size) {
@@ -561,10 +562,10 @@ void ScatterWithDistributedIndices::ComputeIndexing(
     MLIRContext* mlir_context, IndexingMap* updates_map,
     IndexingMap* indices_map) const {
   // Compute thread id mapping based on the first update operand.
-  auto thread_x = CreateDimExpr(
-      KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
-  auto block_x = CreateDimExpr(
-      KernelFusionInterface::kIndexingMapBlockIdxDims[0], mlir_context);
+  auto thread_x = CreateDimExpr(MlirKernelFusion::kIndexingMapThreadIdxDims[0],
+                                mlir_context);
+  auto block_x = CreateDimExpr(MlirKernelFusion::kIndexingMapBlockIdxDims[0],
+                               mlir_context);
   auto warp_id = thread_x / warp_size_;
   auto slice_id = (block_x * num_warps_ + warp_id) / num_warps_per_slice_;
   auto warp_id_in_slice =
@@ -600,7 +601,6 @@ void ScatterWithDistributedIndices::ComputeIndexing(
   }
 
   if (updates_map) {
-    // TODO (karupayun): Check number of dimensions.
     auto index_id = CreateSymbolExpr(0, kGpuGridDims, mlir_context);
     auto update_dim_loop = CreateSymbolExpr(1, kGpuGridDims, mlir_context);
     auto vector_id = CreateSymbolExpr(2, kGpuGridDims, mlir_context);
@@ -890,7 +890,7 @@ int64_t GetNumPossibleValidIndices(absl::Span<const int64_t> slice_shape,
 }
 
 std::unique_ptr<ScatterFusion> CreateScatterFusion(
-    const HloFusionAnalysis& analysis, MLIRContext* mlir_context) {
+    const HloFusionAnalysis& analysis) {
   auto description = GetScatterDescription(analysis);
   int64_t warp_size = WarpSize(analysis.device_info());
   int64_t num_elements_per_slice = Product(description.slice_shape);
@@ -940,15 +940,14 @@ std::unique_ptr<ScatterFusion> CreateScatterFusion(
     }
     return std::make_unique<ScatterWithDistributedIndices>(
         analysis, description, vector_size, num_warps_per_slice,
-        num_indices_per_warp, indices_vector_size, mlir_context);
+        num_indices_per_warp, indices_vector_size);
   }
   // Otherwise, we distribute the linearized updates tensor.
   vector_size =
       std::gcd(num_elements_per_slice,
-               ComputeLoopFusionConfig(analysis, description.update_shape)
-                   .unroll_factor);
-  return std::make_unique<ScatterWithDistributedUpdates>(
-      analysis, description, vector_size, mlir_context);
+               ComputeLoopFusionConfig(analysis, description.update_shape));
+  return std::make_unique<ScatterWithDistributedUpdates>(analysis, description,
+                                                         vector_size);
 }
 
 }  // namespace gpu

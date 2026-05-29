@@ -81,8 +81,8 @@ config_setting(
 config_setting(
     name = "tflite_gpu_extra_gles_deps",
     constraint_values = [
-        "//third_party/bazel_platforms/cpu:x86_64",
-        "//third_party/bazel_platforms/os:linux",
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
     ],
     values = {
         "copt": "-DTFLITE_GPU_EXTRA_GLES_DEPS",

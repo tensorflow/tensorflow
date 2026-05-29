@@ -24,6 +24,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -66,8 +67,8 @@ class StatefulRngSpmdPartitionerTest : public HloHardwareIndependentTestBase {
     HloModuleConfig config = GetModuleConfigForTest(1, num_partitions);
     config.set_use_spmd_partitioning(true);
     config.set_debug_options(debug_options);
-    TF_ASSIGN_OR_RETURN(auto module,
-                        ParseAndReturnVerifiedModule(hlo_module, config));
+    ASSIGN_OR_RETURN(auto module,
+                     ParseAndReturnVerifiedModule(hlo_module, config));
     HloPassPipeline pass("partitioning");
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
@@ -86,7 +87,7 @@ class StatefulRngSpmdPartitionerTest : public HloHardwareIndependentTestBase {
         debug_options.xla_gpu_operand_bytes_threshold_for_windowed_einsum());
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
-    TF_RETURN_IF_ERROR(pass.Run(module.get()).status());
+    RETURN_IF_ERROR(pass.Run(module.get()).status());
     return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
 

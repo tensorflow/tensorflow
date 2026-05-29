@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
@@ -24,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
@@ -86,8 +88,8 @@ NvshmemCollectiveThunk::NvshmemCollectiveThunk(Kind kind, ThunkInfo thunk_info,
     : Thunk(kind, thunk_info) {}
 
 absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectivesFromRegistry() {
-  TF_ASSIGN_OR_RETURN(xla::Collectives * collectives,
-                      xla::CollectivesRegistry::Get("gpu", "nvshmem"));
+  ASSIGN_OR_RETURN(xla::Collectives * collectives,
+                   xla::CollectivesRegistry::Get("gpu", "nvshmem"));
   return tsl::down_cast<xla::gpu::GpuCollectives*>(collectives);
 }
 
@@ -95,15 +97,19 @@ absl::Status NvshmemCollectiveThunk::Prepare(const PrepareParams& params) {
   TF_RET_CHECK(params.collective_params &&
                params.collective_params->device_assn);
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*params.collective_params, config().replica_groups,
                       config().group_mode));
 
-  TF_ASSIGN_OR_RETURN(std::vector<std::vector<GlobalDeviceId>> device_groups,
-                      GetParticipatingDevicesGroups(
-                          *params.collective_params->device_assn,
-                          config().replica_groups, config().group_mode));
+  ASSIGN_OR_RETURN(std::vector<std::vector<GlobalDeviceId>> device_groups,
+                   GetParticipatingDevicesGroups(
+                       *params.collective_params->device_assn,
+                       config().replica_groups, config().group_mode));
+
+  // Sort device groups: RequestClique expects pre-sorted groups.
+  absl::c_for_each(device_groups, [](auto& group) { absl::c_sort(group); });
+  absl::c_sort(device_groups);
 
   // Any NVSHMEM collective will need to require a barrier at the end of
   // graph execution to make sure all reads and writes to symmetrics buffers
@@ -112,7 +118,7 @@ absl::Status NvshmemCollectiveThunk::Prepare(const PrepareParams& params) {
   clique_reqs.barrier_reqs = CollectiveCliqueRequests::BarrierRequirements{
       /*module_execution_barrier=*/true};
   return params.collective_clique_requests->RequestClique(
-      clique_key, std::move(device_groups), clique_reqs);
+      clique_key, device_groups, clique_reqs);
 }
 
 absl::Status NvshmemCollectiveThunk::Initialize(
@@ -124,7 +130,7 @@ absl::Status NvshmemCollectiveThunk::ExecuteOnStream(
     const ExecuteParams& params) {
   VLOG(1) << absl::StreamFormat("Starting %s.", Thunk::KindToString(kind()));
   // Launch collective operation on the main stream.
-  TF_RETURN_IF_ERROR(RunNvshmemCollective(params, *params.stream));
+  RETURN_IF_ERROR(RunNvshmemCollective(params, *params.stream));
   return absl::OkStatus();
 }
 

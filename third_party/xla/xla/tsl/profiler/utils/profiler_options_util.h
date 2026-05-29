@@ -41,14 +41,39 @@ absl::Status SetValue(const tensorflow::ProfileOptions& options,
                       absl::flat_hash_set<absl::string_view>& input_keys,
                       std::function<void(T)> setter) {
   auto value = tsl::profiler::GetConfigValue(options, key);
-  if (value.has_value()) {
-    if (std::holds_alternative<T>(*value)) {
-      input_keys.erase(key);
-      setter(std::get<T>(*value));
-    } else {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Invalid value type for key: ", key, ". Expected a different type."));
-    }
+  if (!value.has_value()) {
+    // Assumed value is not set.
+    return absl::OkStatus();
+  }
+  if (!std::holds_alternative<T>(*value)) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Invalid value type for key: ", key, ". Expected a different type."));
+  }
+  input_keys.erase(key);
+  setter(std::get<T>(*value));
+  return absl::OkStatus();
+}
+
+template <typename T>
+absl::Status SetValueWithStatus(
+    const tensorflow::ProfileOptions& options, const std::string& key,
+    absl::flat_hash_set<absl::string_view>& input_keys,
+    std::function<absl::Status(T)> setter) {
+  auto value = tsl::profiler::GetConfigValue(options, key);
+  if (!value.has_value()) {
+    // Assumed value is not set.
+    return absl::OkStatus();
+  }
+  if (!std::holds_alternative<T>(*value)) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Invalid value type for key: ", key, ". Expected a different type."));
+  }
+  input_keys.erase(key);
+  absl::Status status = setter(std::get<T>(*value));
+  if (!status.ok()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Invalid value for key: ", key,
+        ". Setter function failed with error: ", status.message()));
   }
   return absl::OkStatus();
 }

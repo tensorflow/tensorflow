@@ -136,9 +136,8 @@ PYBIND11_MODULE(_pywrap_tf_item, m) {
                 "buffer");
           }
           if (metagraph.collection_def().count("train_op") == 0) {
-            tsl::MaybeRaiseRegisteredFromStatus(
-                tensorflow::errors::InvalidArgument(
-                    "train_op not specified in the metagraph"));
+            tsl::MaybeRaiseRegisteredFromStatus(absl::InvalidArgumentError(
+                "train_op not specified in the metagraph"));
           }
 
           tensorflow::grappler::ItemConfig cfg;
@@ -149,7 +148,7 @@ PYBIND11_MODULE(_pywrap_tf_item, m) {
                   "item", metagraph, cfg);
           if (item == nullptr) {
             tsl::MaybeRaiseRegisteredFromStatus(
-                tensorflow::errors::InvalidArgument("Invalid metagraph"));
+                absl::InvalidArgumentError("Invalid metagraph"));
           }
           return item.release();
         });

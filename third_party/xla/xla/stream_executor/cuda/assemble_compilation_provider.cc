@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/compilation_provider_options.h"
 #include "xla/stream_executor/cuda/composite_compilation_provider.h"
@@ -135,7 +136,7 @@ absl::StatusOr<std::unique_ptr<CompilationProvider>>
 AssembleCompilationProvider(const CompilationProviderOptions& options) {
   // TODO(b/381059098): Simplify this logic
 
-  TF_RETURN_IF_ERROR(CheckIncompatibleFlagSettings(options));
+  RETURN_IF_ERROR(CheckIncompatibleFlagSettings(options));
 
   std::string decision_log;
   const auto append_to_decision_log = [&](absl::string_view decision) {

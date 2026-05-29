@@ -23,6 +23,8 @@ limitations under the License.
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Value.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/codegen/kernel_definition.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
@@ -36,8 +38,8 @@ void AppendGlobalConstant(llvm::Module* module, int64_t num_elements,
                           absl::string_view symbol_name, int allocation_idx,
                           DenseDataIntermediate content, bool emit_initializer);
 
-absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
-    const HloSortInstruction* sort, IrEmitterContext* ir_emitter_context);
+AsyncThunkSequence EmitBitonicSortLLVMIR(const HloSortInstruction* sort,
+                                         IrEmitterContext* ir_emitter_context);
 
 // Input = {static array, dynamic_dim0, dynamic_dim1}
 // Output = {dynamic array(with dynamic dimension meta data at the end)}
@@ -83,9 +85,9 @@ absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
 //   return;
 // }
 //   ```
-absl::StatusOr<ThunkSequence> EmitPadToStaticLLVMIR(
-    const HloCustomCallInstruction* hlo, llvm::Module* llvm_module,
-    IrEmitterContext* ir_emitter_context);
+absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitPadToStaticLLVMIR(
+    const HloCustomCallInstruction* hlo, IrEmitterContext* ir_emitter_context,
+    const emitters::KernelArguments& kernel_arguments);
 
 // Input = {dynamic array(with dynamic dimension meta data at the end)}
 // Output = {static array, dynamic_dim0, dynamic_dim1}
@@ -131,13 +133,17 @@ absl::StatusOr<ThunkSequence> EmitPadToStaticLLVMIR(
 //   return;
 // }
 //   ```
-absl::StatusOr<ThunkSequence> EmitSliceToDynamicLLVMIR(
-    const HloCustomCallInstruction* hlo, llvm::Module* llvm_module,
-    IrEmitterContext* ir_emitter_context);
+absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitSliceToDynamicLLVMIR(
+    const HloCustomCallInstruction* hlo, IrEmitterContext* parent_context,
+    const emitters::KernelArguments& kernel_arguments);
 
-absl::StatusOr<ThunkSequence> EmitRngGetAndUpdateStateLLVMIR(
-    const HloRngGetAndUpdateStateInstruction* hlo, llvm::Module* llvm_module,
-    IrEmitterContext* ir_emitter_context);
+// Emit a kernel to increment the global state for Philox RNG
+// algorithm.
+absl::StatusOr<KernelDefinition<LlvmKernelSource>>
+EmitRngGetAndUpdateStateLLVMIR(
+    const HloRngGetAndUpdateStateInstruction* hlo,
+    IrEmitterContext* parent_context,
+    const emitters::KernelArguments& kernel_arguments);
 
 }  // namespace xla::gpu
 

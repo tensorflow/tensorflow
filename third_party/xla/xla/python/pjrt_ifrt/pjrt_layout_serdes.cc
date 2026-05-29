@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/layout.h"
@@ -76,8 +77,8 @@ class PjRtLayoutSerDes : public llvm::RTTIExtends<PjRtLayoutSerDes, SerDes> {
       return absl::FailedPreconditionError(absl::StrCat(
           "Unsupported ", version_number, " for PjRtLayout deserialization"));
     }
-    TF_ASSIGN_OR_RETURN(auto xla_layout,
-                        xla::Layout::FromProto(proto.xla_layout()));
+    ASSIGN_OR_RETURN(auto xla_layout,
+                     xla::Layout::FromProto(proto.xla_layout()));
     return PjRtLayout::Create(
         std::make_unique<xla::PjRtLayout>(std::move(xla_layout)));
   }

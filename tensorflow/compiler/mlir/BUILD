@@ -177,11 +177,11 @@ tf_cc_binary(
         ":init_mlir",
         ":register_common_dialects",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_reduce_patterns_inc_gen",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirReduceLib",
         "@llvm-project//mlir:Reducer",
+        "@llvm-project//mlir:Support",
     ],
 )
 

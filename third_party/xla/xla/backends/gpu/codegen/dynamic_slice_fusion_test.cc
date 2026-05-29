@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
@@ -54,7 +55,7 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tests/hlo_test_base_legacy.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -117,52 +118,6 @@ class DynamicSliceFusionTest : public HloTestBaseLegacy {
     return config;
   }
 
-  HloModuleConfig GetModuleConfigWithCommandBuffer() {
-    DebugOptions debug_options = GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_enable_cublaslt(false);
-    debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
-    debug_options.set_xla_gpu_enable_dynamic_slice_fusion(true);
-    debug_options.set_xla_gpu_triton_gemm_any(false);
-    debug_options.set_xla_gpu_enable_cublaslt(false);
-    debug_options.set_xla_gpu_cublas_fallback(true);
-    debug_options.set_xla_gpu_graph_min_graph_size(1);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLASLT);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUSTOM_CALL);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
-    debug_options.add_xla_gpu_enable_command_buffer(
-        DebugOptions::DYNAMIC_SLICE_FUSION);
-    HloModuleConfig config;
-    config.set_debug_options(debug_options);
-    return config;
-  }
-
-  HloModuleConfig GetModuleConfigWithCommandBufferUnrollLoops() {
-    DebugOptions debug_options = GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_enable_cublaslt(false);
-    debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
-    debug_options.set_xla_gpu_enable_dynamic_slice_fusion(true);
-    debug_options.set_xla_gpu_triton_gemm_any(false);
-    debug_options.set_xla_gpu_enable_cublaslt(false);
-    debug_options.set_xla_gpu_cublas_fallback(true);
-    debug_options.set_xla_gpu_graph_min_graph_size(1);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLASLT);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUSTOM_CALL);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::WHILE);
-    debug_options.add_xla_gpu_enable_command_buffer(
-        DebugOptions::DYNAMIC_SLICE_FUSION);
-    debug_options.set_xla_gpu_command_buffer_unroll_loops(true);
-    HloModuleConfig config;
-    config.set_debug_options(debug_options);
-    return config;
-  }
-
   HloModuleConfig GetModuleConfigWithDeterministicOps() {
     DebugOptions debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_exclude_nondeterministic_ops(true);
@@ -200,7 +155,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmSimple) {
     %bitcast.42 = bf16[8,8]{1,0} bitcast(%slice.14)
 
     ROOT %custom-call.1 = bf16[8,8]{1,0} custom-call(%bitcast.41, %bitcast.42),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -232,7 +187,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmSimple) {
     %bitcast.42 = bf16[8,8]{1,0} bitcast(%slice.14)
 
     ROOT %custom-call.1 = bf16[8,8]{1,0} custom-call(%bitcast.41, %bitcast.42),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -278,7 +233,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmWithWorkspace) {
     %bitcast.42 = f16[8,8]{1,0} bitcast(%slice.14)
 
     %custom-call.1 = (f16[8,8]{1,0}, s8[256]{0}) custom-call(%bitcast.41, %bitcast.42),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -311,7 +266,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmWithWorkspace) {
     %bitcast.42 = f16[8,8]{1,0} bitcast(%slice.14)
 
     %custom-call.1 = (f16[8,8]{1,0}, s8[256]{0}) custom-call(%bitcast.41, %bitcast.42),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -363,7 +318,7 @@ TEST_F(DynamicSliceFusionTest, NestedTupleOutputForCublasGemmWithWorkspace) {
     bitcast_2 = f16[8,8]{1,0} bitcast(slice_2)
 
     custom-call = (f16[8,8]{1,0}, s8[256]{0}) custom-call(bitcast_1, bitcast_2),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -396,7 +351,7 @@ TEST_F(DynamicSliceFusionTest, NestedTupleOutputForCublasGemmWithWorkspace) {
     bitcast_2 = f16[8,8]{1,0} bitcast(slice_2)
 
     custom-call = (f16[8,8]{1,0}, s8[256]{0}) custom-call(bitcast_1, bitcast_2),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -445,7 +400,7 @@ TEST_F(DynamicSliceFusionTest, ContiguousSlice) {
     %bitcast.42 = bf16[8,8]{1,0} bitcast(%slice.14)
 
     ROOT %custom-call.1 = bf16[4,8]{1,0} custom-call(%bitcast.41, %bitcast.42),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -477,7 +432,7 @@ TEST_F(DynamicSliceFusionTest, ContiguousSlice) {
     %bitcast.42 = bf16[8,8]{1,0} bitcast(%slice.14)
 
     ROOT %custom-call.1 = bf16[4,8]{1,0} custom-call(%bitcast.41, %bitcast.42),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -523,7 +478,7 @@ TEST_F(DynamicSliceFusionTest, ContiguousSliceNonDefaultLayout) {
     %bitcast.42 = bf16[8,8]{1,0} bitcast(%slice.14)
 
     ROOT %custom-call.1 = bf16[4,8]{1,0} custom-call(%bitcast.41, %bitcast.42),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -555,7 +510,7 @@ TEST_F(DynamicSliceFusionTest, ContiguousSliceNonDefaultLayout) {
     %bitcast.42 = bf16[8,8]{1,0} bitcast(%slice.14)
 
     ROOT %custom-call.1 = bf16[4,8]{1,0} custom-call(%bitcast.41, %bitcast.42),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -598,7 +553,7 @@ TEST_F(DynamicSliceFusionTest, OperandIsSlicedGetTupleElement) {
     %get-tuple-element.241 = f32[100,100]{1,0} get-tuple-element(%p0), index=1
     %concatenate.10 = f32[200,100]{1,0} concatenate(%get-tuple-element.240, %get-tuple-element.241), dimensions={0}
     %custom-call.16 = (f32[200,100]{1,0}, s8[120000]{0}) custom-call(%concatenate.10, %get-tuple-element.240),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={
         "gemm_backend_config":{
           "alpha_real":1,
@@ -621,7 +576,7 @@ TEST_F(DynamicSliceFusionTest, OperandIsSlicedGetTupleElement) {
     %get-tuple-element.97 = f32[200,100]{1,0} get-tuple-element(%custom-call.16), index=0
     %slice.26 = f32[100,100]{1,0} slice(%get-tuple-element.97), slice={[0:100], [0:100]}
     %custom-call.17 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%slice.26, %get-tuple-element.240),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={
         "gemm_backend_config":{
           "alpha_real":1,
@@ -652,7 +607,7 @@ TEST_F(DynamicSliceFusionTest, OperandIsSlicedGetTupleElement) {
     %p1.3 = f32[100,100]{1,0} parameter(1)
     %slice.56 = f32[100,100]{1,0} slice(%p0.3), slice={[0:100], [0:100]}
     %cublas-gemm.23 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%slice.56, %p1.3),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={
         "gemm_backend_config":{
           "alpha_real":1,
@@ -683,7 +638,7 @@ TEST_F(DynamicSliceFusionTest, OperandIsSlicedGetTupleElement) {
     %get-tuple-element.241 = f32[100,100]{1,0} get-tuple-element(%p0), index=1
     %concatenate.10 = f32[200,100]{1,0} concatenate(%get-tuple-element.240, %get-tuple-element.241), dimensions={0}
     %custom-call.16 = (f32[200,100]{1,0}, s8[120000]{0}) custom-call(%concatenate.10, %get-tuple-element.240),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={
         "gemm_backend_config":{
           "alpha_real":1,
@@ -734,7 +689,7 @@ TEST_F(DynamicSliceFusionTest, ReversedOperandOrder) {
     %bitcast.42 = f16[8,8]{1,0} bitcast(%slice.14)
 
     ROOT %custom-call.1 = f16[8,8]{1,0} custom-call(%bitcast.42, %bitcast.41),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -765,7 +720,7 @@ TEST_F(DynamicSliceFusionTest, ReversedOperandOrder) {
     %slice.0 = f16[1,8,8]{2,1,0} slice(%p1.1), slice={[0:1], [0:8], [0:8]}
     %bitcast.0 = f16[8,8]{1,0} bitcast(%slice.0)
     ROOT %custom-call.0 = f16[8,8]{1,0} custom-call(%bitcast.1, %bitcast.0),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={
         "gemm_backend_config":{
           "alpha_real":1,
@@ -816,7 +771,7 @@ TEST_F(DynamicSliceFusionTest, SingleOperandComputation) {
     %get-tuple-element.241 = f32[100,100]{1,0} get-tuple-element(%p0), index=1
     %concatenate.10 = f32[200,100]{1,0} concatenate(%get-tuple-element.240, %get-tuple-element.241), dimensions={0}
     %custom-call.16 = (f32[200,100]{1,0}, s8[120000]{0}) custom-call(%concatenate.10, %get-tuple-element.240),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={
         "gemm_backend_config":{
           "alpha_real":1,
@@ -839,7 +794,7 @@ TEST_F(DynamicSliceFusionTest, SingleOperandComputation) {
     %get-tuple-element.97 = f32[200,100]{1,0} get-tuple-element(%custom-call.16), index=0
     %slice.26 = f32[100,100]{1,0} slice(%get-tuple-element.97), slice={[0:100], [0:100]}
     %custom-call.17 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%slice.26, %slice.26),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={
         "gemm_backend_config":{
           "alpha_real":1,
@@ -869,7 +824,7 @@ TEST_F(DynamicSliceFusionTest, SingleOperandComputation) {
     %p0.3 = f32[200,100]{1,0} parameter(0)
     %slice.56 = f32[100,100]{1,0} slice(%p0.3), slice={[0:100], [0:100]}
     %cublas-gemm.23 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%slice.56, %slice.56),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={
         "gemm_backend_config":{
           "alpha_real":1,
@@ -900,7 +855,7 @@ TEST_F(DynamicSliceFusionTest, SingleOperandComputation) {
     %get-tuple-element.241 = f32[100,100]{1,0} get-tuple-element(%p0), index=1
     %concatenate.10 = f32[200,100]{1,0} concatenate(%get-tuple-element.240, %get-tuple-element.241), dimensions={0}
     %custom-call.16 = (f32[200,100]{1,0}, s8[120000]{0}) custom-call(%concatenate.10, %get-tuple-element.240),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={
         "gemm_backend_config":{
           "alpha_real":1,
@@ -950,7 +905,7 @@ TEST_F(DynamicSliceFusionTest, SlicedOperandAliasingOutput) {
       %slice.30 = f32[100,100]{1,0} slice(%concatenate.12), slice={[20:120], [0:100]}
       %slice.34 = f32[100,100]{1,0} slice(%concatenate.12), slice={[99:199], [0:100]}
       %cublas-gemm.15 = (f32[100,100]{1,0}, s8[120000]{0}) custom-call(%get-tuple-element.287, %slice.30, %slice.34),
-        custom_call_target="__cublas$gemm",
+        custom_call_target="__cublas$lt$matmul",
         output_to_operand_aliasing={{0}: (2, {})},
         backend_config={"gemm_backend_config":{
           "alpha_real":1,
@@ -981,7 +936,7 @@ TEST_F(DynamicSliceFusionTest, SlicedOperandAliasingOutput) {
     %slice.0 = f32[100,100]{1,0} slice(f32[200,100]{1,0} %p2), slice={[20:120], [0:100]}
     %p1 = f32[100,100]{1,0} parameter(1)
     %cublas-gemm.0 = (f32[100,100]{1,0}, s8[120000]{0}) custom-call(%p0.1, %slice.0, %p1),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={
         "gemm_backend_config":{
           "alpha_real":1,
@@ -1114,23 +1069,23 @@ static absl::Status SubBuffers(
   se::DeviceAddressBase dst5_mem = dst5->device_memory();
   se::DeviceAddressBase dst6_mem = dst6->device_memory();
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       stream->MemcpyD2D(&dst0_mem, src3.device_memory(), 8 * sizeof(float)));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       stream->MemcpyD2D(&dst1_mem, src0.device_memory(), 128 * sizeof(float)));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       stream->MemcpyD2D(&dst2_mem, src1.device_memory(), 256 * sizeof(float)));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       stream->MemcpyD2D(&dst3_mem, src2.device_memory(), 1024 * sizeof(float)));
-  TF_RETURN_IF_ERROR(stream->MemcpyD2D(&dst4_mem, src4.device_memory(),
-                                       4 * 8 * sizeof(float)));
-  TF_RETURN_IF_ERROR(stream->MemcpyD2D(&dst5_mem, src7.device_memory(),
-                                       3 * 128 * sizeof(float)));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(stream->MemcpyD2D(&dst4_mem, src4.device_memory(),
+                                    4 * 8 * sizeof(float)));
+  RETURN_IF_ERROR(stream->MemcpyD2D(&dst5_mem, src7.device_memory(),
+                                    3 * 128 * sizeof(float)));
+  RETURN_IF_ERROR(
       stream->MemcpyD2D(&dst6_mem, src6.device_memory(), 64 * sizeof(float)));
   stream_executor::DeviceAddressBase slice =
       dst6_mem.GetByteSlice(64 * sizeof(float), 32 * sizeof(float));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       stream->MemcpyD2D(&slice, src6.device_memory(), 32 * sizeof(float)));
   return absl::OkStatus();
 }
@@ -1302,7 +1257,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDynamic) {
     bitcast.42 = bf16[8,8]{1,0} bitcast(slice.14)
 
     ROOT custom-call.1 = bf16[8,8]{1,0} custom-call(bitcast.41, bitcast.42),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -1336,7 +1291,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDynamic) {
     bitcast.42 = bf16[8,8]{1,0} bitcast(slice.14)
 
     ROOT custom-call.1 = bf16[8,8]{1,0} custom-call(bitcast.41, bitcast.42),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -1386,7 +1341,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDynamicWithWorkspace) {
     %bitcast.42 = f16[8,8]{1,0} bitcast(%slice.14)
 
     %custom-call.1 = (f16[8,8]{1,0}, s8[256]{0}) custom-call(%bitcast.41, %bitcast.42),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -1421,7 +1376,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDynamicWithWorkspace) {
     %bitcast.42 = f16[8,8]{1,0} bitcast(%slice.14)
 
     %custom-call.1 = (f16[8,8]{1,0}, s8[256]{0}) custom-call(%bitcast.41, %bitcast.42),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -1478,7 +1433,7 @@ TEST_F(DynamicSliceFusionTest, DynamicContiguousSlice) {
     %slice.14 = bf16[1,1,8,8]{3,2,1,0} dynamic-slice(%p1, %c1_s32, %c5_s32, %c2_s32, %c0_s32), dynamic_slice_sizes={1,1,8,8}
     %bitcast.42 = bf16[8,8]{1,0} bitcast(%slice.14)
     ROOT %custom-call.1 = bf16[4,8]{1,0} custom-call(%bitcast.41, %bitcast.42),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -1514,7 +1469,7 @@ TEST_F(DynamicSliceFusionTest, DynamicContiguousSlice) {
     %bitcast.42 = bf16[8,8]{1,0} bitcast(%slice.14)
 
     ROOT %custom-call.1 = bf16[4,8]{1,0} custom-call(%bitcast.41, %bitcast.42),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -1569,7 +1524,7 @@ TEST_F(DynamicSliceFusionTest, DynamicContiguousSliceNonDefaultLayout) {
     %bitcast.42 = bf16[8,8]{1,0} bitcast(%slice.14)
 
     ROOT %custom-call.1 = bf16[4,8]{1,0} custom-call(%bitcast.41, %bitcast.42),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -1605,7 +1560,7 @@ TEST_F(DynamicSliceFusionTest, DynamicContiguousSliceNonDefaultLayout) {
     %bitcast.42 = bf16[8,8]{1,0} bitcast(%slice.14)
 
     ROOT %custom-call.1 = bf16[4,8]{1,0} custom-call(%bitcast.41, %bitcast.42),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -1654,7 +1609,7 @@ TEST_F(DynamicSliceFusionTest, DynamicOperandIsSlicedGetTupleElement) {
     %get-tuple-element.241 = f32[100,100]{1,0} get-tuple-element(%p0), index=1
     %concatenate.10 = f32[200,100]{1,0} concatenate(%get-tuple-element.240, %get-tuple-element.241), dimensions={0}
     %custom-call.16 = (f32[200,100]{1,0}, s8[120000]{0}) custom-call(%concatenate.10, %get-tuple-element.240),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={
         "gemm_backend_config":{
           "alpha_real":1,
@@ -1677,7 +1632,7 @@ TEST_F(DynamicSliceFusionTest, DynamicOperandIsSlicedGetTupleElement) {
     %get-tuple-element.97 = f32[200,100]{1,0} get-tuple-element(%custom-call.16), index=0
     %slice.26 = f32[100,100]{1,0} dynamic-slice(%get-tuple-element.97, %c0_s32, %c0_s32), dynamic_slice_sizes={100,100}
     %custom-call.17 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%slice.26, %get-tuple-element.240),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={
         "gemm_backend_config":{
           "alpha_real":1,
@@ -1709,7 +1664,7 @@ TEST_F(DynamicSliceFusionTest, DynamicOperandIsSlicedGetTupleElement) {
     %c0_s32 = s32[] parameter(2)
     %slice.56 = f32[100,100]{1,0} dynamic-slice(%p0.3, %c0_s32, %c0_s32), dynamic_slice_sizes={100,100}
     %cublas-gemm.23 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%slice.56, %p1.3),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={
         "gemm_backend_config":{
           "alpha_real":1,
@@ -1741,7 +1696,7 @@ TEST_F(DynamicSliceFusionTest, DynamicOperandIsSlicedGetTupleElement) {
     %get-tuple-element.241 = f32[100,100]{1,0} get-tuple-element(%p0), index=1
     %concatenate.10 = f32[200,100]{1,0} concatenate(%get-tuple-element.240, %get-tuple-element.241), dimensions={0}
     %custom-call.16 = (f32[200,100]{1,0}, s8[120000]{0}) custom-call(%concatenate.10, %get-tuple-element.240),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={
         "gemm_backend_config":{
           "alpha_real":1,
@@ -1794,7 +1749,7 @@ TEST_F(DynamicSliceFusionTest, DynamicReversedOperandOrder) {
     %bitcast.42 = f16[8,8]{1,0} bitcast(%slice.14)
 
     ROOT %custom-call.1 = f16[8,8]{1,0} custom-call(%bitcast.42, %bitcast.41),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -1827,7 +1782,7 @@ TEST_F(DynamicSliceFusionTest, DynamicReversedOperandOrder) {
     %slice.0 = f16[1,8,8]{2,1,0} dynamic-slice(%p1.1, %c0_s32, %c0_s32, %c0_s32), dynamic_slice_sizes={1,8,8}
     %bitcast.0 = f16[8,8]{1,0} bitcast(%slice.0)
     ROOT %custom-call.0 = f16[8,8]{1,0} custom-call(%bitcast.1, %bitcast.0),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={
         "gemm_backend_config":{
           "alpha_real":1,
@@ -1881,7 +1836,7 @@ TEST_F(DynamicSliceFusionTest, DynamicSingleOperandComputation) {
     %get-tuple-element.241 = f32[100,100]{1,0} get-tuple-element(%p0), index=1
     %concatenate.10 = f32[200,100]{1,0} concatenate(%get-tuple-element.240, %get-tuple-element.241), dimensions={0}
     %custom-call.16 = (f32[200,100]{1,0}, s8[120000]{0}) custom-call(%concatenate.10, %get-tuple-element.240),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={
         "gemm_backend_config":{
           "alpha_real":1,
@@ -1904,7 +1859,7 @@ TEST_F(DynamicSliceFusionTest, DynamicSingleOperandComputation) {
     %get-tuple-element.97 = f32[200,100]{1,0} get-tuple-element(%custom-call.16), index=0
     %slice.26 = f32[100,100]{1,0} dynamic-slice(%get-tuple-element.97, %c0_s32, %c0_s32), dynamic_slice_sizes={100,100}
     %custom-call.17 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%slice.26, %slice.26),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={
         "gemm_backend_config":{
           "alpha_real":1,
@@ -1935,7 +1890,7 @@ TEST_F(DynamicSliceFusionTest, DynamicSingleOperandComputation) {
     %c0_s32 = s32[] parameter(1)
     %slice.56 = f32[100,100]{1,0} dynamic-slice(%p0.3, %c0_s32, %c0_s32), dynamic_slice_sizes={100,100}
     %cublas-gemm.23 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%slice.56, %slice.56),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={
         "gemm_backend_config":{
           "alpha_real":1,
@@ -1967,7 +1922,7 @@ TEST_F(DynamicSliceFusionTest, DynamicSingleOperandComputation) {
     %get-tuple-element.241 = f32[100,100]{1,0} get-tuple-element(%p0), index=1
     %concatenate.10 = f32[200,100]{1,0} concatenate(%get-tuple-element.240, %get-tuple-element.241), dimensions={0}
     %custom-call.16 = (f32[200,100]{1,0}, s8[120000]{0}) custom-call(%concatenate.10, %get-tuple-element.240),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={
         "gemm_backend_config":{
           "alpha_real":1,
@@ -2020,7 +1975,7 @@ TEST_F(DynamicSliceFusionTest, DynamicSlicedOperandAliasingOutput) {
       %slice.30 = f32[100,100]{1,0} dynamic-slice(%concatenate.12, %c20_s32, %c0_s32), dynamic_slice_sizes={100,100}
       %slice.34 = f32[100,100]{1,0} dynamic-slice(%concatenate.12, %c99_s32, %c0_s32), dynamic_slice_sizes={100,100}
       %cublas-gemm.15 = (f32[100,100]{1,0}, s8[120000]{0}) custom-call(%get-tuple-element.287, %slice.30, %slice.34),
-        custom_call_target="__cublas$gemm",
+        custom_call_target="__cublas$lt$matmul",
         output_to_operand_aliasing={{0}: (2, {})},
         backend_config={"gemm_backend_config":{
           "alpha_real":1,
@@ -2053,7 +2008,7 @@ TEST_F(DynamicSliceFusionTest, DynamicSlicedOperandAliasingOutput) {
     %c20_s32 = s32[] parameter(4)
     %slice.0 = f32[100,100]{1,0} dynamic-slice(f32[200,100]{1,0} %p2, %c20_s32, %c0_s32), dynamic_slice_sizes={100,100}
     %cublas-gemm.0 = (f32[100,100]{1,0}, s8[120000]{0}) custom-call(%p0.1, %slice.0, %p1),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={
         "gemm_backend_config":{
           "alpha_real":1,
@@ -2121,7 +2076,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDUS) {
     bitcast.42 = bf16[8,8]{1,0} bitcast(slice.14)
 
     custom-call.1 = bf16[8,8]{1,0} custom-call(bitcast.41, bitcast.42),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -2158,7 +2113,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDUS) {
     bitcast.42 = bf16[8,8]{1,0} bitcast(slice.14)
 
     custom-call.1 = bf16[8,8]{1,0} custom-call(bitcast.41, bitcast.42),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -2214,7 +2169,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDUSWithWorkspace) {
     %slice.14 = f16[1,8,8]{2,1,0} dynamic-slice(%p1, %c1_s32, %c0_s32, %c0_s32), dynamic_slice_sizes={1,8,8}
     %bitcast.42 = f16[8,8]{1,0} bitcast(%slice.14)
     %custom-call.1 = (f16[8,8]{1,0}, s8[256]{0}) custom-call(%bitcast.41, %bitcast.42),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -2250,7 +2205,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDUSWithWorkspace) {
     %slice.14 = f16[1,8,8]{2,1,0} dynamic-slice(%p1, %c1_s32, %c0_s32, %c0_s32), dynamic_slice_sizes={1,8,8}
     %bitcast.42 = f16[8,8]{1,0} bitcast(%slice.14)
     %custom-call.1 = (f16[8,8]{1,0}, s8[256]{0}) custom-call(%bitcast.41, %bitcast.42),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -2305,7 +2260,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDUSWorkspaceIgnored) {
     %c0_s32 = s32[] constant(0)
 
     %custom-call.1 = (f16[8,8]{1,0}, s8[256]{0}) custom-call(%p0, %p1),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -2339,7 +2294,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDUSWorkspaceIgnored) {
     %c0_s32 = s32[] parameter(4)
 
     %custom-call.1 = (f16[8,8]{1,0}, s8[256]{0}) custom-call(%p0, %p1),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -2396,7 +2351,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDUSOffsetS32NotConstant) {
     %bitcast.42 = f16[8,8]{1,0} bitcast(%slice.14)
 
     %custom-call.1 = (f16[8,8]{1,0}, s8[256]{0}) custom-call(%bitcast.41, %bitcast.42),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -2434,7 +2389,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDUSOffsetS32NotConstant) {
     %bitcast.42 = f16[8,8]{1,0} bitcast(%slice.14)
 
     %custom-call.1 = (f16[8,8]{1,0}, s8[256]{0}) custom-call(%bitcast.41, %bitcast.42),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -2489,7 +2444,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDUSOffsetOOB) {
     %bitcast.42 = f16[8,8]{1,0} bitcast(%slice.14)
 
     %custom-call.1 = (f16[8,8]{1,0}, s8[256]{0}) custom-call(%bitcast.41, %bitcast.42),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -2527,7 +2482,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmDUSOffsetOOB) {
     %bitcast.42 = f16[8,8]{1,0} bitcast(%slice.14)
 
     %custom-call.1 = (f16[8,8]{1,0}, s8[256]{0}) custom-call(%bitcast.41, %bitcast.42),
-      custom_call_target="__cublas$gemm",
+      custom_call_target="__cublas$lt$matmul",
       backend_config={"gemm_backend_config":{
         "alpha_real":1,
         "beta":0,
@@ -2714,20 +2669,20 @@ static absl::Status SubBuffers2(
   se::DeviceAddressBase dst5_mem = dst5->device_memory();
   se::DeviceAddressBase dst6_mem = dst6->device_memory();
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       stream->MemcpyD2D(&dst0_mem, src3.device_memory(), 8 * sizeof(float)));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       stream->MemcpyD2D(&dst1_mem, src0.device_memory(), 128 * sizeof(float)));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       stream->MemcpyD2D(&dst2_mem, src1.device_memory(), 256 * sizeof(float)));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       stream->MemcpyD2D(&dst3_mem, src2.device_memory(), 1024 * sizeof(float)));
-  TF_RETURN_IF_ERROR(stream->MemcpyD2D(&dst4_mem, src4.device_memory(),
-                                       4 * 8 * sizeof(float)));
-  TF_RETURN_IF_ERROR(stream->MemcpyD2D(&dst5_mem, src6.device_memory(),
-                                       5 * 128 * sizeof(float)));
-  TF_RETURN_IF_ERROR(stream->MemcpyD2D(&dst6_mem, src5.device_memory(),
-                                       3 * 128 * sizeof(float)));
+  RETURN_IF_ERROR(stream->MemcpyD2D(&dst4_mem, src4.device_memory(),
+                                    4 * 8 * sizeof(float)));
+  RETURN_IF_ERROR(stream->MemcpyD2D(&dst5_mem, src6.device_memory(),
+                                    5 * 128 * sizeof(float)));
+  RETURN_IF_ERROR(stream->MemcpyD2D(&dst6_mem, src5.device_memory(),
+                                    3 * 128 * sizeof(float)));
   return absl::OkStatus();
 }
 
@@ -3300,7 +3255,7 @@ TEST_F(DynamicSliceFusionTest,
   // In the following checks, only the order of the thunks matter.
   EXPECT_THAT(thunks, ::testing::ElementsAre(ThunkKindIs(Thunk::kCopy),
                                              ThunkKindIs(Thunk::kAsyncStart),
-                                             ThunkKindIs(Thunk::kKernel),
+                                             ThunkKindIs(Thunk::kCustomKernel),
                                              ThunkKindIs(Thunk::kAsyncDone)));
 
   // Check that the async start thunk wraps a dynamic slice thunk which runs
@@ -3468,71 +3423,6 @@ TEST_F(DynamicSliceFusionTest,
   EXPECT_TRUE(RunAndCompareTwoModulesReplicated(
       std::move(fused_module), std::move(unfused_module),
       /*run_hlo_passes=*/false, /*use_threads=*/true, std::nullopt));
-}
-
-TEST_F(DynamicSliceFusionTest,
-       OffsetAsFunctionOfInductionVariableShouldUseOffsetModulesWithCmdBuffer) {
-  const char* hlo = R"(
-  HloModule test
-
-  %Body {
-    param = (f32[1,8,8]{2,1,0}, f32[1,8,8]{2,1,0}, f32[4,8,8]{2,1,0}, u32[]) parameter(0)
-    p0 = get-tuple-element(param), index=0
-    p1 = get-tuple-element(param), index=1
-    p2 = get-tuple-element(param), index=2
-    loop_iter = get-tuple-element(param), index=3
-
-    bitcast.41 = f32[8,8]{1,0} reshape(p0)
-    bitcast.42 = f32[8,8]{1,0} reshape(p1)
-    dot.1 = f32[8,8]{1,0} dot(bitcast.41, bitcast.42), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    bitcast.43 = f32[1,8,8]{2,1,0} reshape(dot.1)
-    c0 = u32[] constant(0)
-    c_trip_count = u32[] constant(11)
-    compare = pred[] compare(loop_iter, c0), direction=LT
-    add = u32[] add(loop_iter, c_trip_count)
-    offset = u32[] select(compare, add, loop_iter)
-    dus = f32[4,8,8]{2,1,0} dynamic-update-slice(p2, bitcast.43, offset, c0, c0)
-    c1 = u32[] constant(1)
-    add2 = u32[] add(loop_iter, c1)
-    ROOT tuple = tuple(p0, p1, dus, u32[] add2)
-  }
-
-  %Cond {
-    %param.1 = (f32[1,8,8]{2,1,0}, f32[1,8,8]{2,1,0}, f32[4,8,8]{2,1,0}, u32[]) parameter(0)
-    %i.1 = u32[] get-tuple-element(%param.1), index=3
-    %trip_count = u32[] constant(11)
-    ROOT %done = pred[] compare(u32[] %i.1, u32[] %trip_count), direction=LT
-  }
-
-  ENTRY %test {
-    %p0.1 = f32[1,8,8]{2,1,0} parameter(0)
-    %p1.1 = f32[1,8,8]{2,1,0} parameter(1)
-    %p2.1 = f32[4,8,8]{2,1,0} parameter(2)
-    %c0.1 = u32[] constant(0)
-    %initial_tuple = tuple(%p0.1, %p1.1, %p2.1, u32[] %c0.1)
-    ROOT %while = while(%initial_tuple), condition=%Cond, body=%Body, backend_config={"known_trip_count":{"n":"11"}}
-  })";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> cmd_buffer_module,
-                          ParseAndReturnVerifiedModule(hlo));
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> no_cmd_buffer_module,
-                          ParseAndReturnVerifiedModule(hlo));
-
-  ErrorSpec error_spec(1e-5, 1e-5);
-  EXPECT_TRUE(
-      RunAndCompareTwoModules(hlo, hlo, GetModuleConfigWithCommandBuffer(),
-                              GetModuleConfigWithoutCommandBuffer(), error_spec,
-                              /*run_hlo_passes=*/true));
-
-  se::StreamExecutor* stream_executor = GpuExecutor();
-  if (!IsAtLeastCuda12900(stream_executor)) {
-    GTEST_SKIP() << "While loop unrolling is not supported for CUDA < 12.9";
-  }
-  EXPECT_TRUE(RunAndCompareTwoModules(
-      hlo, hlo, GetModuleConfigWithCommandBufferUnrollLoops(),
-      GetModuleConfigWithoutCommandBuffer(), error_spec,
-      /*run_hlo_passes=*/true));
 }
 
 TEST_F(DynamicSliceFusionTest, MultipleOffsetsAsFunctionOfInductionVariable) {

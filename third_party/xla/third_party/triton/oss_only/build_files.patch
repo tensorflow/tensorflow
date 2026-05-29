@@ -5,7 +5,7 @@ diff --git b/BUILD b/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/BUILD
-@@ -0,0 +1,1236 @@
+@@ -0,0 +1,1280 @@
 +# This package imports OpenAI's Triton (https://github.com/triton-lang/triton).
 +
 +# copybara:uncomment load("@rules:copybara.bzl", "copybara_config_test")
@@ -66,6 +66,14 @@ new file mode 100644
 +    ":compiler_is_msvc": [],
 +    "//conditions:default": ["-Wno-unused-variable"],
 +})
++
++# generate version.h for building TritonPluginUtils
++genrule(
++    name = "triton_version_h_gen",
++    srcs = ["include/triton/Version.h.in"],
++    outs = ["include/triton/Version.h"],
++    cmd = "sed 's/@TRITON_VERSION@//g' $< > $@",
++)
 +
 +td_library(
 +    name = "td_files",
@@ -254,11 +262,20 @@ new file mode 100644
 +    tbl_outs = {
 +        "include/triton/Dialect/TritonInstrument/IR/Ops.h.inc": ["--gen-op-decls"],
 +        "include/triton/Dialect/TritonInstrument/IR/Ops.cpp.inc": ["--gen-op-defs"],
++    },
++    tblgen = "@llvm-project//mlir:mlir-tblgen",
++    td_file = "include/triton/Dialect/TritonInstrument/IR/TritonInstrumentOps.td",
++    deps = ["td_files"],
++)
++
++gentbl_cc_library(
++    name = "triton_instrument_attr_inc_gen",
++    tbl_outs = {
 +        "include/triton/Dialect/TritonInstrument/IR/OpsEnums.h.inc": ["--gen-enum-decls"],
 +        "include/triton/Dialect/TritonInstrument/IR/OpsEnums.cpp.inc": ["--gen-enum-defs"],
 +    },
 +    tblgen = "@llvm-project//mlir:mlir-tblgen",
-+    td_file = "include/triton/Dialect/TritonInstrument/IR/TritonInstrumentOps.td",
++    td_file = "include/triton/Dialect/TritonInstrument/IR/TritonInstrumentAttrDefs.td",
 +    deps = ["td_files"],
 +)
 +
@@ -554,6 +571,7 @@ new file mode 100644
 +    }),
 +    includes = ["include"],
 +    deps = [
++        ":Dump",
 +        ":GetEnv",  # for Utility
 +        ":TritonTools",
 +        ":gluon_attr_inc_gen",
@@ -571,6 +589,7 @@ new file mode 100644
 +        ":triton_gpu_ops_inc_gen",
 +        ":triton_gpu_type_interfaces_inc_gen",
 +        ":triton_gpu_types_inc_gen",
++        ":triton_instrument_attr_inc_gen",
 +        ":triton_instrument_dialect_inc_gen",
 +        ":triton_instrument_ops_inc_gen",
 +        ":triton_interfaces_inc_gen",
@@ -631,6 +650,8 @@ new file mode 100644
 +    ),
 +    copts = _no_unused_variable,
 +    deps = [
++        ":Dump",
++        ":GetEnv",
 +        ":TritonDialects",
 +        ":TritonGPUTransforms",
 +        ":triton_combine_inc_gen",
@@ -657,7 +678,6 @@ new file mode 100644
 +    srcs = glob(
 +        [
 +            "lib/Dialect/TritonGPU/Transforms/WarpSpecialization/*.cpp",
-+            "lib/Dialect/TritonGPU/Transforms/WarpSpecialization/*.h",
 +        ],
 +        exclude = [
 +            "lib/Dialect/TritonGPU/Transforms/WarpSpecialization/PartitionBuilder.cpp",
@@ -667,10 +687,13 @@ new file mode 100644
 +    hdrs = glob(
 +        [
 +            "include/triton/Dialect/TritonGPU/Transforms/WarpSpecialization/*.h",
++            "lib/Dialect/TritonGPU/Transforms/WarpSpecialization/*.h",
 +        ],
 +    ),
 +    copts = _no_unused_variable,
++    includes = ["lib/Dialect/TritonGPU/Transforms/WarpSpecialization"],
 +    deps = [
++        ":Dump",
 +        ":GetEnv",
 +        ":TritonDialects",
 +        ":TritonGPUTransforms",
@@ -705,9 +728,7 @@ new file mode 100644
 +    srcs = glob(
 +        include = [
 +            "lib/Dialect/TritonGPU/Transforms/*.cpp",
-+            "lib/Dialect/TritonGPU/Transforms/*.h",
 +            "lib/Dialect/TritonGPU/Transforms/Pipeliner/*.cpp",
-+            "lib/Dialect/TritonGPU/Transforms/Pipeliner/*.h",
 +        ],
 +        exclude = [
 +            "lib/Dialect/TritonGPU/Transforms/DescriptorMemoryLayouts.cpp",
@@ -724,6 +745,8 @@ new file mode 100644
 +    hdrs = glob(
 +        include = [
 +            "include/triton/Dialect/TritonGPU/Transforms/*.h",
++            "lib/Dialect/TritonGPU/Transforms/*.h",
++            "lib/Dialect/TritonGPU/Transforms/Pipeliner/*.h",
 +        ],
 +        exclude = [
 +            "include/triton/Dialect/TritonGPU/Transforms/DescriptorMemoryLayouts.h",
@@ -734,6 +757,7 @@ new file mode 100644
 +        # in TritonGPUTransforms depend on the headers in TritonTransforms, so
 +        # we need to include them here to avoid circular dependency.
 +        "include/triton/Dialect/Triton/Transforms/LoopPeeling.h",
++        "lib/Dialect/TritonGPU/Transforms/WarpSpecialization/PartitionAttrs.h",
 +    ],
 +    copts = select({
 +        ":compiler_is_msvc": [],
@@ -746,7 +770,14 @@ new file mode 100644
 +            "-Wno-implicit-fallthrough",
 +        ],
 +    }),
++    includes = [
++        "include",
++        "lib/Dialect/TritonGPU/Transforms",
++        "lib/Dialect/TritonGPU/Transforms/Pipeliner",
++        "lib/Dialect/TritonGPU/Transforms/WarpSpecialization",
++    ],
 +    deps = [
++        ":Dump",
 +        ":GetEnv",
 +        ":TritonDialects",
 +        ":TritonGPUToLLVM",
@@ -779,12 +810,11 @@ new file mode 100644
 +cc_library(
 +    name = "TritonGPUToLLVM",
 +    srcs = glob([
-+        "lib/Conversion/TritonGPUToLLVM/*.h",
 +        "lib/Conversion/TritonGPUToLLVM/**/*.cpp",
 +    ]),
 +    hdrs = glob([
-+        "include/triton/Tools/Sys/*.hpp",
 +        "include/triton/Conversion/TritonGPUToLLVM/*.h",
++        "lib/Conversion/TritonGPUToLLVM/*.h",
 +    ]),
 +    copts = select({
 +        "//conditions:default": [
@@ -797,12 +827,10 @@ new file mode 100644
 +        ":TritonDialects",
 +        ":TritonTools",
 +        ":triton_conversion_triton_gpu_to_llvm_pass_inc_gen",
-+        ":triton_gpu_attr_inc_gen",
 +        "@llvm-project//llvm:Support",
 +        "@llvm-project//mlir:Analysis",
 +        "@llvm-project//mlir:ArithDialect",
 +        "@llvm-project//mlir:ControlFlowDialect",
-+        "@llvm-project//mlir:DataLayoutInterfaces",
 +        "@llvm-project//mlir:FuncToLLVM",
 +        "@llvm-project//mlir:FunctionInterfaces",
 +        "@llvm-project//mlir:GPUDialect",
@@ -813,8 +841,6 @@ new file mode 100644
 +        "@llvm-project//mlir:Pass",
 +        "@llvm-project//mlir:Support",
 +        "@llvm-project//mlir:TransformUtils",
-+        "@llvm-project//mlir:Transforms",
-+        "@triton//third_party/nvidia:NVGPUDialect",
 +    ],
 +)
 +
@@ -839,6 +865,8 @@ new file mode 100644
 +        ],
 +    }),
 +    deps = [
++        ":Dump",
++        ":GetEnv",
 +        ":TritonDialects",
 +        ":triton_instrument_transforms_inc_gen",
 +        "@llvm-project//llvm:Support",
@@ -866,6 +894,7 @@ new file mode 100644
 +    hdrs = glob(
 +        [
 +            "include/triton/Dialect/TritonNvidiaGPU/Transforms/*.h",
++            "lib/Dialect/TritonNvidiaGPU/Transforms/*.h",
 +        ],
 +        # The file included into TritonDialects target which this target depends on.
 +        exclude = [
@@ -884,8 +913,12 @@ new file mode 100644
 +            "-Wno-private-header",
 +        ],
 +    }),
-+    includes = ["include"],
++    includes = [
++        "include",
++        "lib/Dialect/TritonNvidiaGPU/Transforms",
++    ],
 +    deps = [
++        ":Dump",
 +        ":GetEnv",
 +        ":TritonDialects",
 +        ":TritonGPUToLLVM",
@@ -900,6 +933,7 @@ new file mode 100644
 +        "@llvm-project//mlir:FunctionInterfaces",
 +        "@llvm-project//mlir:IR",
 +        "@llvm-project//mlir:Pass",
++        "@llvm-project//mlir:SCFDialect",
 +        "@llvm-project//mlir:Support",
 +        "@llvm-project//mlir:TransformUtils",
 +        "@llvm-project//mlir:Transforms",
@@ -918,11 +952,13 @@ new file mode 100644
 +cc_library(
 +    name = "TritonToTritonGPU",
 +    srcs = glob([
-+        "lib/Conversion/TritonToTritonGPU/*.h",
 +        "lib/Conversion/TritonToTritonGPU/*.cpp",
 +    ]),
 +    hdrs = glob(
-+        ["include/triton/Conversion/TritonToTritonGPU/*.h"],
++        [
++            "include/triton/Conversion/TritonToTritonGPU/*.h",
++            "lib/Conversion/TritonToTritonGPU/*.h",
++        ],
 +        exclude = ["include/triton/Conversion/TritonToTritonGPU/Passes.h"],
 +    ),
 +    copts = _no_unused_variable,
@@ -931,20 +967,16 @@ new file mode 100644
 +        ":TritonDialects",
 +        ":TritonGPUTransforms",
 +        ":TritonToTritonGPUPasses",
++        ":TritonTools",
++        ":TritonTransforms",
 +        ":triton_conversion_triton_to_triton_gpu_passes_inc_gen",
-+        "@llvm-project//llvm:Support",
 +        "@llvm-project//mlir:ArithDialect",
 +        "@llvm-project//mlir:ControlFlowDialect",
-+        "@llvm-project//mlir:GPUDialect",
 +        "@llvm-project//mlir:IR",
-+        "@llvm-project//mlir:IndexDialect",
 +        "@llvm-project//mlir:Pass",
 +        "@llvm-project//mlir:Support",
 +        "@llvm-project//mlir:TransformUtils",
-+        "@llvm-project//mlir:Transforms",
 +        "@llvm-project//mlir:UBDialect",
-+        "@triton//:TritonTools",
-+        "@triton//third_party/proton:ProtonIR",
 +    ],
 +)
 +
@@ -952,11 +984,14 @@ new file mode 100644
 +    name = "TritonLLVMIR",
 +    srcs = glob([
 +        "lib/Target/LLVMIR/*.cpp",
++    ]),
++    hdrs = glob([
++        "include/triton/Target/LLVMIR/*.h",
 +        "lib/Target/LLVMIR/*.h",
 +    ]),
-+    hdrs = glob(["include/triton/Target/LLVMIR/*.h"]),
 +    copts = _no_unused_variable,
 +    deps = [
++        ":Dump",
 +        ":GetEnv",
 +        ":TritonTransforms",
 +        ":triton_target_llvmir_passes_inc_gen",
@@ -1005,6 +1040,7 @@ new file mode 100644
 +    ]),
 +    hdrs = glob(["include/triton/Target/HSACO/*.h"]),
 +    deps = [
++        ":Dump",
 +        ":GetEnv",
 +        ":TritonLLVMIR",
 +        "@llvm-project//llvm:Core",
@@ -1027,21 +1063,29 @@ new file mode 100644
 +
 +cc_library(
 +    name = "GetEnv",
-+    hdrs = ["include/triton/Tools/Sys/GetEnv.hpp"],
++    hdrs = ["include/triton/Tools/Sys/GetEnv.h"],
++    strip_include_prefix = "include",
 +)
 +
 +cc_library(
 +    name = "Dump",
-+    hdrs = ["include/triton/Tools/Sys/Dump.hpp"],
++    hdrs = ["include/triton/Tools/Sys/Dump.h"],
++    strip_include_prefix = "include",
 +)
 +
 +cc_library(
 +    name = "TritonPluginUtils",
 +    srcs = ["lib/Tools/PluginUtils.cpp"],
-+    hdrs = ["include/triton/Tools/PluginUtils.h"],
++    hdrs = [
++        "include/triton/Tools/PluginUtils.h",
++        "include/triton/Version.h",
++    ],
 +    copts = _no_unused_variable,
 +    includes = ["include"],
 +    deps = [
++        ":Dump",
++        ":GetEnv",
++        ":triton_version_h_gen",
 +        "@llvm-project//llvm:Support",
 +        "@llvm-project//mlir:IR",
 +        "@llvm-project//mlir:Pass",
@@ -1065,8 +1109,6 @@ new file mode 100644
 +    deps = [
 +        "@llvm-project//llvm:Support",
 +        "@llvm-project//mlir:IR",
-+        "@llvm-project//mlir:Pass",
-+        "@llvm-project//mlir:PluginsLib",
 +        "@triton//third_party/f2reduce",
 +    ],
 +)
@@ -1077,7 +1119,11 @@ new file mode 100644
 +    hdrs = glob(["include/triton/Dialect/Gluon/Transforms/*.h"]),
 +    copts = _no_unused_variable,
 +    deps = [
++        ":Dump",
++        ":GetEnv",
++        ":TritonDialects",
 +        ":TritonGPUTransforms",
++        ":TritonTools",
 +        ":gluon_transforms_inc_gen",
 +        "@llvm-project//llvm:Support",
 +        "@llvm-project//mlir:ArithDialect",
@@ -1088,8 +1134,6 @@ new file mode 100644
 +        "@llvm-project//mlir:Support",
 +        "@llvm-project//mlir:TransformUtils",
 +        "@llvm-project//mlir:Transforms",
-+        "@triton//:TritonDialects",
-+        "@triton//:TritonTools",
 +    ],
 +    alwayslink = True,
 +)
@@ -1247,7 +1291,7 @@ diff --git b/python/BUILD b/python/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/python/BUILD
-@@ -0,0 +1,192 @@
+@@ -0,0 +1,202 @@
 +# NOTE: Do not depend on any targets from this directory,
 +# but use //third_party/py/triton instead.
 +
@@ -1275,15 +1319,22 @@ new file mode 100644
 +    hdrs = ["src/passes.h"],
 +    includes = ["src"],
 +    visibility = ["@triton//third_party:__subpackages__"],
++    deps = [
++        "@triton//:Dump",
++        "@triton//:GetEnv",
++    ],
 +)
 +
 +cc_library(
 +    name = "ir",
 +    hdrs = ["src/ir.h"],
++    copts = ["-Wno-unused-variable"],
 +    includes = ["src"],
 +    visibility = ["@triton//:__subpackages__"],
 +    deps = [
 +        "@llvm-project//mlir:IR",
++        "@triton//:Dump",
++        "@triton//:GetEnv",
 +        "@triton//:TritonGPUToLLVM",
 +    ],
 +)
@@ -1361,7 +1412,6 @@ new file mode 100644
 +        "src/gluon_ir.cc",
 +        "src/interpreter.cc",
 +        "src/ir.cc",
-+        "src/ir.h",
 +        "src/linear_layout.cc",
 +        "src/llvm.cc",
 +        "src/main.cc",
@@ -1374,6 +1424,7 @@ new file mode 100644
 +    ],
 +    deps = [
 +        ":gsan",
++        ":ir",
 +        ":passes",
 +        "@llvm-project//llvm:Analysis",
 +        "@llvm-project//llvm:CodeGen",
@@ -1406,6 +1457,8 @@ new file mode 100644
 +        "@llvm-project//mlir:Transforms",
 +        "@llvm-project//mlir:UBDialect",
 +        "@triton//:AllPassesAndDialects",
++        "@triton//:Dump",
++        "@triton//:GetEnv",
 +        "@triton//:GluonTransforms",
 +        "@triton//:TritonDialects",
 +        "@triton//:TritonGPUToLLVM",
@@ -1420,6 +1473,7 @@ new file mode 100644
 +        "@triton//:TritonToTritonGPUPasses",
 +        "@triton//:TritonTools",
 +        "@triton//:TritonTransforms",
++        "@triton//third_party/amd:TDMUtility",
 +        "@triton//third_party/amd:TritonAMDGPU",
 +        "@triton//third_party/nvidia:triton_nvidia",
 +        "@triton//third_party/proton:ProtonIR",
@@ -1445,7 +1499,7 @@ diff --git b/python/test/BUILD b/python/test/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/python/test/BUILD
-@@ -0,0 +1,385 @@
+@@ -0,0 +1,386 @@
 +load("//third_party/py/pytest:pytest_defs.bzl", "pytest_multi_tests", "pytest_test")
 +
 +package(
@@ -1509,6 +1563,7 @@ new file mode 100644
 +    "gluon/test_consan.py",
 +    "gluon/test_core.py",  # Disabled because of b/486813140, could be PTXAS bug.
 +    "gluon/test_frontend.py",
++    "gluon/test_lowerings.py",
 +
 +    # valueless internally
 +    "backend/test_device_backend.py",  # we run backends differently in g3
@@ -2035,7 +2090,7 @@ diff --git b/test/BUILD b/test/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/test/BUILD
-@@ -0,0 +1,117 @@
+@@ -0,0 +1,118 @@
 +# load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +
 +# copybara:uncomment_begin
@@ -2053,6 +2108,7 @@ new file mode 100644
 +#     data = [
 +#         "@llvm-project//llvm:FileCheck",
 +#         "@llvm-project//llvm:llc",
++#         "@llvm-project//llvm:not",
 +#         "@llvm-project//llvm:opt",
 +#         "@llvm-project//llvm:split-file",
 +#         "@llvm-project//mlir:mlir-translate",
@@ -2078,7 +2134,7 @@ new file mode 100644
 +# 
 +# build_test(
 +#     name = "build_test",
-+#     allow_empty_target = False,
++#     allow_empty_target = True,
 +#     targets = [
 +#         "@triton//:TritonDialects",
 +#         "@triton//:TritonGPUToLLVM",
@@ -2158,7 +2214,7 @@ diff --git b/third_party/amd/BUILD b/third_party/amd/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/amd/BUILD
-@@ -0,0 +1,373 @@
+@@ -0,0 +1,382 @@
 +# load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 +
@@ -2200,7 +2256,10 @@ new file mode 100644
 +    ]),
 +    copts = _no_unused_variable + select({
 +        "@triton//:compiler_is_msvc": [],
-+        "//conditions:default": ["-Wno-implicit-fallthrough"],
++        "//conditions:default": [
++            "-Wno-implicit-fallthrough",
++            "-Wno-non-virtual-dtor",
++        ],
 +    }),
 +    includes = [
 +        "include",
@@ -2246,11 +2305,12 @@ new file mode 100644
 +            "lib/TritonAMDGPUToLLVM/TDMUtility.*",
 +        ],
 +    ) + [
-+        "include/TritonAMDGPUToLLVM/TargetUtils.h",
-+        "lib/TritonAMDGPUToLLVM/TargetInfo.h",
++        "lib/Dialect/TritonAMDGPU/IR/TargetFeatures.cpp",
 +    ],
 +    hdrs = [
++        "include/Dialect/TritonAMDGPU/IR/TargetFeatures.h",
 +        "lib/TritonAMDGPUToLLVM/TDMUtility.h",
++        "lib/TritonAMDGPUToLLVM/TargetInfo.h",
 +    ],
 +    copts = _no_unused_variable,
 +    includes = [
@@ -2274,10 +2334,13 @@ new file mode 100644
 +
 +cc_library(
 +    name = "TritonAMDGPU",
-+    srcs = glob([
-+        "lib/Dialect/TritonAMDGPU/**/*.h",
-+        "lib/Dialect/TritonAMDGPU/**/*.cpp",
-+    ]),
++    srcs = glob(
++        [
++            "lib/Dialect/TritonAMDGPU/**/*.h",
++            "lib/Dialect/TritonAMDGPU/**/*.cpp",
++        ],
++        exclude = ["lib/Dialect/TritonAMDGPU/IR/TargetFeatures.cpp"],
++    ),
 +    hdrs = glob([
 +        "include/Dialect/TritonAMDGPU/**/*.h",
 +        "include/Utils/**/*.h",
@@ -2390,6 +2453,8 @@ new file mode 100644
 +        "@llvm-project//mlir:TransformUtils",
 +        "@llvm-project//mlir:Transforms",
 +        "@llvm-project//mlir:UBToLLVM",
++        "@triton//:Dump",
++        "@triton//:GetEnv",
 +        "@triton//:TritonDialects",
 +        "@triton//:TritonGPUToLLVM",
 +        "@triton//:TritonTools",
@@ -2537,7 +2602,7 @@ diff --git b/third_party/amd/backend/BUILD b/third_party/amd/backend/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/amd/backend/BUILD
-@@ -0,0 +1,43 @@
+@@ -0,0 +1,46 @@
 +# load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +
 +package(
@@ -2575,7 +2640,10 @@ new file mode 100644
 +    includes = [
 +        "include",
 +    ],
-+    textual_hdrs = glob(["include/**/*.h"]),
++    textual_hdrs = glob([
++        "include/**/*.h",
++        "include/**/*.hpp",
++    ]),
 +)
 +
 +exports_files([
@@ -2632,7 +2700,7 @@ diff --git b/third_party/nvidia/BUILD b/third_party/nvidia/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/nvidia/BUILD
-@@ -0,0 +1,556 @@
+@@ -0,0 +1,558 @@
 +# load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 +# copybara:uncomment load("@pybind11_bazel//:build_defs.bzl", "pybind_library")
@@ -2775,6 +2843,7 @@ new file mode 100644
 +        "@llvm-project//mlir:TransformUtils",
 +        "@llvm-project//mlir:Transforms",
 +        "@llvm-project//mlir:UBToLLVM",
++        "@triton//:GluonTransforms",
 +        "@triton//:TritonDialects",
 +        "@triton//:TritonGPUToLLVM",
 +        "@triton//:TritonGPUTransforms",
@@ -3112,6 +3181,7 @@ new file mode 100644
 +        ],
 +    }),
 +    includes = [
++        "../..",
 +        "include",
 +    ],
 +    deps = [
@@ -3274,7 +3344,7 @@ diff --git b/third_party/proton/BUILD b/third_party/proton/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/proton/BUILD
-@@ -0,0 +1,376 @@
+@@ -0,0 +1,386 @@
 +# load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 +load("@pybind11_bazel//:build_defs.bzl", "pybind_extension")
@@ -3617,14 +3687,23 @@ new file mode 100644
 +    ],
 +)
 +
++cc_library(
++    name = "instrumentation_metadata_hdr",
++    includes = ["csrc/include"],
++    textual_hdrs = ["csrc/include/Profiler/Instrumentation/InstrumentationMetadata.h"],
++)
++
 +pybind_extension(
 +    name = "libproton",
-+    srcs = glob([
-+        "csrc/**/*.cpp",
-+        "csrc/**/*.h",
-+        "common/**/*.cpp",
-+        "common/**/*.h",
-+    ]),
++    srcs = glob(
++        [
++            "csrc/**/*.cpp",
++            "csrc/**/*.h",
++            "common/**/*.cpp",
++            "common/**/*.h",
++        ],
++        exclude = ["csrc/include/Profiler/Instrumentation/InstrumentationMetadata.h"],
++    ),
 +    copts = [
 +        "-Wno-reorder-ctor",
 +        "-Wno-implicit-fallthrough",
@@ -3638,6 +3717,7 @@ new file mode 100644
 +        "//third_party/py/triton:__subpackages__",
 +    ],
 +    deps = [
++        ":instrumentation_metadata_hdr",
 +        "@local_config_cuda//cuda:cuda_headers",
 +        "//third_party/json",
 +        "@triton//third_party/amd/backend:headers",

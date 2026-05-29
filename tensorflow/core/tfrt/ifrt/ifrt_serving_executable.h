@@ -113,6 +113,12 @@ class IfrtServingExecutable {
       absl::Span<const tensorflow::Tensor> inputs,
       absl::Span<const int> variable_arg_indices);
 
+  // Executes the computation asynchronously.
+  // variable_arg_indices are in sorted order.
+  absl::StatusOr<tsl::Future<std::vector<tensorflow::Tensor>>> ExecuteAsync(
+      absl::Span<const tensorflow::Tensor> inputs,
+      absl::Span<const int> variable_arg_indices);
+
   // Freezes the model. After the Freeze(), JIT compile is not supported and
   // Execute() will return error if inputs contain uncompiled shapes.
   void Freeze();
@@ -282,6 +288,14 @@ class IfrtServingExecutable {
   int64_t program_id_;
   using SharedCachedExecutableBundle = std::shared_ptr<CachedExecutableBundle>;
 
+  struct ExecutionInfo {
+    xla::ifrt::LoadedExecutable::ExecuteResult execution_result;
+    SharedCachedExecutableBundle executable_bundle;
+    xla::ifrt::DeviceListRef device_list;
+    std::vector<xla::ifrt::ArrayRef> transfer_result;
+    std::shared_ptr<tsl::DeviceReservation> device_reservation;
+  };
+
   std::string model_name_;
   std::string signature_name_;
 
@@ -353,6 +367,11 @@ class IfrtServingExecutable {
                            absl::Span<const int> variable_arg_indices,
                            const xla::ifrt::DeviceListRef& device_list);
 
+  // Core implementation for Execute and ExecuteAsync.
+  absl::StatusOr<ExecutionInfo> ExecuteCore(
+      absl::Span<const tensorflow::Tensor> inputs,
+      absl::Span<const int> variable_arg_indices);
+
   // Creates an executable by calling tf2xla and xla compiler
   absl::StatusOr<IfrtServingExecutable::SharedCachedExecutableBundle>
   CreateExecutableSynchronously(
@@ -365,6 +384,7 @@ class IfrtServingExecutable {
       const Tf2HloResult& tf2hlo_result,
       xla::ifrt::LoadedExecutableRef ifrt_executable,
       std::vector<std::unique_ptr<TfHostCallback>> host_callbacks,
+      const xla::ifrt::Topology* topology,
       CachedExecutableBundle& executable_bundle);
 
   absl::StatusOr<std::unique_ptr<xla::ifrt::Sharding>> CreateSharding(

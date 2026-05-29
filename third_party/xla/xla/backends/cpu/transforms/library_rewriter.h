@@ -23,7 +23,6 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "google/protobuf/repeated_field.h"
@@ -42,6 +41,11 @@ limitations under the License.
 
 
 namespace xla::cpu {
+
+// The maximum number of instructions allowed in a library fusion. This avoids
+// crashing libraries with too large graphs. It could break good fusions, e.g.,
+// Softmax, etc. We should deploy a smarter logic in the future.
+static constexpr int kMaxInstructionsInFusion = 100;
 
 enum class FusionDirection {
   kUp,    // Traverse up (to parents).
@@ -88,6 +92,8 @@ class LibraryRewriter : public HloModulePass {
         libs_, [](const auto& lib) { return lib->fuse_reduce(); });
     fuse_eltwise_ = absl::c_any_of(
         libs_, [](const auto& lib) { return lib->fuse_eltwise(); });
+    fuse_conv_ =
+        absl::c_any_of(libs_, [](const auto& lib) { return lib->fuse_conv(); });
   }
   ~LibraryRewriter() override = default;
 
@@ -113,8 +119,10 @@ class LibraryRewriter : public HloModulePass {
                                              HloInstruction* to_fuse,
                                              FusionDirection dir);
 
-  // Fuses as many neighbors around `fusion` as possible
-  absl::Status FuseNeighbors(HloFusionInstruction* fusion, LibraryMatcher* lib);
+  // Fuses as many neighbors around `fusion` as possible. Returns true if any
+  // neighbors were fused.
+  absl::StatusOr<bool> FuseNeighbors(HloFusionInstruction* fusion,
+                                     LibraryMatcher* lib);
 
   // Finds and creates fusions in the given computation.
   absl::StatusOr<bool> ProcessComputation(HloComputation* computation);
@@ -135,6 +143,7 @@ class LibraryRewriter : public HloModulePass {
   bool fuse_dot_ = false;
   bool fuse_reduce_ = false;
   bool fuse_eltwise_ = false;
+  bool fuse_conv_ = false;
 };
 
 }  // namespace xla::cpu

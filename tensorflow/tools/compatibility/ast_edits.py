@@ -24,6 +24,70 @@ import tempfile
 import traceback
 
 import pasta
+from pasta.base import annotate as pasta_annotate
+from pasta.base import codegen as pasta_codegen
+from pasta.base import formatting as pasta_formatting
+from pasta.base import token_generator as pasta_token_generator
+
+
+def _patch_google_pasta_for_python314():
+  """Adds ast.Constant support to google-pasta on Python 3.14+."""
+  if sys.version_info < (3, 14):
+    return
+
+  def _annotate_constant(self, node):
+    value = node.value
+    if isinstance(value, str):
+      self.attr(
+          node, "content", [self.tokens.str], deps=("value",), default=value
+      )
+    elif isinstance(value, (int, float, complex)) and not isinstance(
+        value, bool
+    ):
+      contentargs = [
+          lambda: self.tokens.next_of_type(
+              pasta_token_generator.TOKENS.NUMBER
+          ).src
+      ]
+      peek = self.tokens.peek()
+      if peek is not None and peek.src == "-":
+        contentargs.insert(0, "-")
+      self.attr(
+          node,
+          "content",
+          contentargs,
+          deps=("value",),
+          default=str(value),
+      )
+    elif isinstance(value, bytes):
+      self.attr(
+          node, "content", [self.tokens.str], deps=("value",), default=value
+      )
+    elif value is Ellipsis:
+      self.token("...")
+    elif value in (True, False, None):
+      self.token(str(value))
+    else:
+      raise TypeError(type(value))
+
+  def _print_constant(self, node):
+    self.prefix(node)
+    content = pasta_formatting.get(node, "content")
+    if content is not None:
+      self.code += content
+    elif node.value is Ellipsis:
+      self.code += "..."
+    else:
+      self.code += repr(node.value)
+    self.suffix(node)
+
+  pasta_annotate.BaseVisitor.visit_Constant = pasta_annotate.expression(
+      _annotate_constant
+  )
+  pasta_codegen.Printer.visit_Constant = _print_constant
+
+
+_patch_google_pasta_for_python314()
 
 
 # Some regular expressions we will need for parsing

@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -32,7 +31,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/OperationSupport.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
@@ -49,12 +51,11 @@ limitations under the License.
 #include "xla/python/ifrt/ir/program_memory_tracer.h"
 #include "xla/python/ifrt/ir/serialization_utils.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
+#include "xla/python/ifrt/ir/utils.h"
 #include "xla/python/ifrt/ir/version.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -71,24 +72,13 @@ namespace {
 using DeviceIdToLogicalDeviceIdMap =
     absl::flat_hash_map<DeviceId, IfrtIrLogicalDeviceId>;
 
-// Returns a DeviceList for the given device ids.
-absl::StatusOr<DeviceListRef> LookUpDevices(Client* client,
-                                            absl::Span<const DeviceId> ids) {
-  absl::InlinedVector<Device*, 1> devices;
-  devices.reserve(ids.size());
-  for (DeviceId id : ids) {
-    TF_ASSIGN_OR_RETURN(Device * device, client->LookupDevice(id));
-    devices.push_back(device);
-  }
-  return client->MakeDeviceList(devices);
-}
-
 // Create a map from runtime device id to logical device id.
 absl::StatusOr<DeviceIdToLogicalDeviceIdMap> CreateDeviceIdToLogicalDeviceIdMap(
     std::shared_ptr<CompiledIfrtIrProgram> program) {
   DeviceIdToLogicalDeviceIdMap device_id_to_logical_device_id;
-  for (int i = 0; i < program->device_assignments.size(); ++i) {
-    const DeviceId device_id = program->device_assignments[i];
+  for (int i = 0; i < program->compile_options->device_assignments.size();
+       ++i) {
+    const DeviceId device_id = program->compile_options->device_assignments[i];
     auto [_, inserted] = device_id_to_logical_device_id.insert(
         {device_id, IfrtIrLogicalDeviceId(i)});
     if (!inserted) {
@@ -112,8 +102,8 @@ CreateAtomExecutableVersion(
   absl::Span<Device* const> devices = (*device_list)->devices();
 
   IfrtIrExecutableVersion::AtomExecutableVersion atom_executable_version;
-  TF_ASSIGN_OR_RETURN(std::shared_ptr<const ExecutableVersion> version,
-                      executable->executable_version());
+  ASSIGN_OR_RETURN(std::shared_ptr<const ExecutableVersion> version,
+                   executable->executable_version());
   atom_executable_version.runtime_abi_version = std::move(version);
   atom_executable_version.logical_device_ids.reserve(devices.size());
   for (Device* device : devices) {
@@ -142,21 +132,22 @@ IfrtIrLoadedExecutable::executable_version() const {
       std::vector<IfrtIrExecutableVersion::AtomExecutableVersion>
           runtime_abi_versions;
       runtime_abi_versions.reserve(program_->atom_program_executables->size());
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           DeviceIdToLogicalDeviceIdMap device_id_to_logical_device_id,
           CreateDeviceIdToLogicalDeviceIdMap(program_));
 
       for (const auto& [name, executable] :
            *program_->atom_program_executables) {
-        TF_ASSIGN_OR_RETURN(IfrtIrExecutableVersion::AtomExecutableVersion
-                                atom_executable_version,
-                            CreateAtomExecutableVersion(
-                                executable, device_id_to_logical_device_id));
+        ASSIGN_OR_RETURN(IfrtIrExecutableVersion::AtomExecutableVersion
+                             atom_executable_version,
+                         CreateAtomExecutableVersion(
+                             executable, device_id_to_logical_device_id));
         runtime_abi_versions.push_back(std::move(atom_executable_version));
       }
 
       return std::make_unique<IfrtIrExecutableVersion>(
-          Version::getCurrentVersion(), program_->device_assignments,
+          Version::getCurrentVersion(),
+          program_->compile_options->device_assignments,
           std::move(runtime_abi_versions));
     }();
   });
@@ -173,7 +164,7 @@ IfrtIrLoadedExecutable::GetHumanReadableProgramText() const {
       OperationToString(program_->program->mlir_module,
                         mlir::OpPrintingFlags().enableDebugInfo());
   for (const auto& [name, executable] : *program_->atom_program_executables) {
-    TF_ASSIGN_OR_RETURN(auto t, executable->GetHumanReadableProgramText());
+    ASSIGN_OR_RETURN(auto t, executable->GetHumanReadableProgramText());
     absl::StrAppend(&result, "\n\n", name, " -> ", t);
   }
   return result;
@@ -200,8 +191,8 @@ IfrtIrLoadedExecutable::GetMpmdCompiledMemoryStats() const {
   absl::flat_hash_map<std::string, xla::CompiledMemoryStats>
       mpmd_compiled_memory_stats;
   for (const auto& [name, executable] : *program_->atom_program_executables) {
-    TF_ASSIGN_OR_RETURN(auto compiled_memory_stats,
-                        executable->GetCompiledMemoryStats());
+    ASSIGN_OR_RETURN(auto compiled_memory_stats,
+                     executable->GetCompiledMemoryStats());
     mpmd_compiled_memory_stats.insert({name, std::move(compiled_memory_stats)});
   }
   return mpmd_compiled_memory_stats;
@@ -260,7 +251,7 @@ IfrtIrLoadedExecutable::GetParameterLayouts() const {
   DCHECK(this);
   TraceMe traceme(
       []() { return "IfrtIrLoadedExecutable::GetParameterLayouts"; });
-  TF_RETURN_IF_ERROR(program_->layout_status);
+  RETURN_IF_ERROR(program_->layout_status);
   std::vector<std::shared_ptr<const xla::PjRtLayout>> parameter_layouts;
   parameter_layouts.reserve(program_->in_specs.size());
   for (const auto& spec : program_->in_specs) {
@@ -273,7 +264,7 @@ absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
 IfrtIrLoadedExecutable::GetOutputLayouts() const {
   DCHECK(this);
   TraceMe traceme([]() { return "IfrtIrLoadedExecutable::GetOutputLayouts"; });
-  TF_RETURN_IF_ERROR(program_->layout_status);
+  RETURN_IF_ERROR(program_->layout_status);
   std::vector<std::shared_ptr<const xla::PjRtLayout>> output_layouts;
   output_layouts.reserve(program_->out_specs.size());
   for (const auto& spec : program_->out_specs) {
@@ -294,9 +285,8 @@ IfrtIrLoadedExecutable::GetHloModules() const {
   // same as HloModule::name()
   std::vector<std::shared_ptr<xla::HloModule>> all_modules;
   for (const auto& [name, executable] : *program_->atom_program_executables) {
-    TF_ASSIGN_OR_RETURN(
-        std::vector<std::shared_ptr<xla::HloModule>> this_modules,
-        executable->GetHloModules());
+    ASSIGN_OR_RETURN(std::vector<std::shared_ptr<xla::HloModule>> this_modules,
+                     executable->GetHloModules());
     all_modules.insert(all_modules.end(), this_modules.begin(),
                        this_modules.end());
   }
@@ -309,7 +299,7 @@ IfrtIrLoadedExecutable::GetMpmdHloModules() const {
   absl::flat_hash_map<std::string, std::vector<std::shared_ptr<xla::HloModule>>>
       mpmd_hlo_modules;
   for (const auto& [name, executable] : *program_->atom_program_executables) {
-    TF_ASSIGN_OR_RETURN(auto hlo_modules, executable->GetHloModules());
+    ASSIGN_OR_RETURN(auto hlo_modules, executable->GetHloModules());
     mpmd_hlo_modules.insert({name, std::move(hlo_modules)});
   }
   return mpmd_hlo_modules;
@@ -348,8 +338,7 @@ absl::StatusOr<absl::flat_hash_map<std::string, AttributeMap>>
 IfrtIrLoadedExecutable::GetMpmdCostAnalysis() const {
   absl::flat_hash_map<std::string, AttributeMap> mpmd_cost_analysis;
   for (const auto& [name, executable] : *program_->atom_program_executables) {
-    TF_ASSIGN_OR_RETURN(auto atom_program_analysis,
-                        executable->GetCostAnalysis());
+    ASSIGN_OR_RETURN(auto atom_program_analysis, executable->GetCostAnalysis());
     mpmd_cost_analysis.insert({name, std::move(atom_program_analysis)});
   }
   return mpmd_cost_analysis;
@@ -379,10 +368,11 @@ absl::StatusOr<LoadedExecutableRef> IfrtIrLoadedExecutable::Create(
     Client* client, std::shared_ptr<CompiledIfrtIrProgram> program) {
   tsl::profiler::TraceMe traceme("IfrtIrLoadedExecutable::Create");
 
-  TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
-                      LookUpDevices(client, program->device_assignments));
-  TF_ASSIGN_OR_RETURN(auto memory_tracer, ProgramMemoryTracer::Create(
-                                              program, client, device_list));
+  ASSIGN_OR_RETURN(
+      DeviceListRef device_list,
+      LookUpDevices(client, program->compile_options->device_assignments));
+  ASSIGN_OR_RETURN(auto memory_tracer,
+                   ProgramMemoryTracer::Create(program, client, device_list));
   return std::unique_ptr<IfrtIrLoadedExecutable>(new IfrtIrLoadedExecutable(
       client, std::move(program), std::move(device_list),
       std::move(memory_tracer)));
@@ -403,9 +393,22 @@ absl::StatusOr<LoadedExecutable::ExecuteResult> IfrtIrLoadedExecutable::Execute(
   return program_->execute_fn(args, options, std::move(devices));
 }
 
+absl::StatusOr<LoadedExecutable::ExecuteBundleResult>
+IfrtIrLoadedExecutable::ExecuteBundle(absl::Span<BundleRef> args,
+                                      const ExecuteOptions& options) {
+  return absl::UnimplementedError(
+      "ExecuteBundle is not implemented in IfrtIrLoadedExecutable");
+}
+
 absl::StatusOr<absl::Span<const int>>
 IfrtIrLoadedExecutable::GetDonatableInputIndices() const {
   return absl::MakeConstSpan(program_->donatable_input_indices);
 }
+
+void IfrtIrLoadedExecutable::SetDeleteOptions(const DeleteOptions& options) {
+  absl::MutexLock l(delete_options_mu_);
+  delete_options_ = options;
+}
+
 }  // namespace ifrt
 }  // namespace xla

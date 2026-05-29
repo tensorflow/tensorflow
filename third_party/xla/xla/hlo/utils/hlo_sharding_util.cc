@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -277,7 +278,12 @@ bool IsSubTilingOrEqualNamedSharding(const Shape& potential_sharded_shape,
       !sharding.manual_axes().empty()) {
     return false;
   }
-  CHECK(sub_mesh.DeviceAssignmentEquals(mesh));
+  if (!sub_mesh.DeviceAssignmentEquals(mesh)) {
+    return IsSubTilingOrEqualSharding(
+        potential_sharded_shape,
+        HloSharding::V3ToV2Sharding(potential_subsharding),
+        HloSharding::V3ToV2Sharding(sharding));
+  }
 
   CHECK_EQ(potential_subsharding.num_dimensions(), sharding.num_dimensions());
 
@@ -602,8 +608,7 @@ std::optional<std::vector<AxisRef>> MergeDimensionAxes(
 
 bool MergeNamedShardingIfCompatible(const NamedSharding& src,
                                     NamedSharding* dst) {
-  if (!src.mesh().DeviceAssignmentEquals(dst->mesh()) ||
-      src.num_dimensions() != dst->num_dimensions()) {
+  if (src.num_dimensions() != dst->num_dimensions()) {
     return false;
   }
 
@@ -672,7 +677,9 @@ bool MergeShardingIfCompatible(const HloSharding& to_merge_input,
     return true;
   }
 
-  if (to_merge_input.UseNamedShardingLeaf() && dst->UseNamedShardingLeaf()) {
+  if (to_merge_input.UseNamedShardingLeaf() && dst->UseNamedShardingLeaf() &&
+      to_merge_input.named_sharding().mesh().DeviceAssignmentEquals(
+          dst->named_sharding().mesh())) {
     NamedSharding dst_named = dst->named_sharding();
     if (MergeNamedShardingIfCompatible(to_merge_input.named_sharding(),
                                        &dst_named)) {
@@ -1064,8 +1071,8 @@ HloSharding TransposeSharding(const HloSharding& sharding,
     std::vector<NamedSharding::DimensionSharding> transposed_dim_shardings(
         sharding.num_dimensions());
     for (int64_t i = 0; i < dimensions.size(); ++i) {
-      transposed_dim_shardings[dimensions[i]] =
-          sharding.named_sharding().dim_sharding(i);
+      transposed_dim_shardings[i] =
+          sharding.named_sharding().dim_sharding(dimensions[i]);
     }
     return HloSharding(NamedSharding(
         sharding.named_sharding().mesh(), transposed_dim_shardings,
@@ -1835,7 +1842,8 @@ HloSharding PartiallyReplicateTiledShardingOnDims(
       CHECK_LT(dim, dim_shardings.size())
           << "Dimension " << dim << " is out of bounds for number dimensions "
           << dim_shardings.size();
-      dim_shardings[dim] = NamedSharding::DimensionSharding();
+      dim_shardings[dim] = NamedSharding::DimensionSharding(
+          /*axes=*/{}, /*is_closed=*/dim_shardings[dim].is_closed());
     }
     return HloSharding(NamedSharding(
         sharding.named_sharding().mesh(), dim_shardings,
@@ -3278,15 +3286,15 @@ absl::Status CanonicalizeLayoutAfterShardingPropagation(
     VLOG(4) << "There is no registered layout_canonicalization_callback.";
     return absl::OkStatus();
   }
-  TF_ASSIGN_OR_RETURN(auto shapes_with_layout,
-                      module->layout_canonicalization_callback()(*module));
+  ASSIGN_OR_RETURN(auto shapes_with_layout,
+                   module->layout_canonicalization_callback()(*module));
 
   if (module->entry_computation_layout().result_layout().LayoutIsSet() &&
       absl::c_any_of(update_output_layout, [](bool v) { return v; })) {
     if (absl::c_all_of(update_output_layout, [](bool v) { return v; })) {
-      TF_RETURN_IF_ERROR(module->mutable_entry_computation_layout()
-                             ->mutable_result_layout()
-                             ->CopyLayoutFromShape(shapes_with_layout.second));
+      RETURN_IF_ERROR(module->mutable_entry_computation_layout()
+                          ->mutable_result_layout()
+                          ->CopyLayoutFromShape(shapes_with_layout.second));
     } else {
       Shape result_shape = module->mutable_entry_computation_layout()
                                ->mutable_result_layout()
@@ -3299,9 +3307,9 @@ absl::Status CanonicalizeLayoutAfterShardingPropagation(
               shapes_with_layout.second.tuple_shapes(i);
         }
       }
-      TF_RETURN_IF_ERROR(module->mutable_entry_computation_layout()
-                             ->mutable_result_layout()
-                             ->CopyLayoutFromShape(result_shape));
+      RETURN_IF_ERROR(module->mutable_entry_computation_layout()
+                          ->mutable_result_layout()
+                          ->CopyLayoutFromShape(result_shape));
     }
   }
 
@@ -3314,10 +3322,9 @@ absl::Status CanonicalizeLayoutAfterShardingPropagation(
       bool parameter_layout_is_set =
           module->entry_computation_layout().parameter_layout(i).LayoutIsSet();
       if (update_parameter_layout && parameter_layout_is_set) {
-        TF_RETURN_IF_ERROR(
-            module->mutable_entry_computation_layout()
-                ->mutable_parameter_layout(i)
-                ->CopyLayoutFromShape(shapes_with_layout.first[i]));
+        RETURN_IF_ERROR(module->mutable_entry_computation_layout()
+                            ->mutable_parameter_layout(i)
+                            ->CopyLayoutFromShape(shapes_with_layout.first[i]));
       }
     }
   }

@@ -287,13 +287,6 @@ class CStreamExecutor : public StreamExecutorCommon {
     }
     return true;
   }
-  absl::Status SynchronousMemZero(DeviceMemoryBase* location,
-                                  uint64_t size) override {
-    // TODO(annarev): figure out if we should support memzero/memset
-    // functionality by allocating on host and then copying to device.
-    return tsl::errors::Unimplemented(
-        "SynchronousMemZero is not supported by pluggable device.");
-  }
   absl::Status SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
                                  const void* host_src, uint64_t size) override {
     OwnedTFStatus c_status(TF_NewStatus());
@@ -323,7 +316,7 @@ class CStreamExecutor : public StreamExecutorCommon {
   }
 
   absl::Status EnablePeerAccessTo(StreamExecutor* other) override {
-    return tsl::errors::Unimplemented(
+    return absl::UnimplementedError(
         "EnablePeerAccessTo is not supported by pluggable device.");
   }
   bool CanEnablePeerAccessTo(StreamExecutor* other) override { return false; }
@@ -378,8 +371,14 @@ class CStreamExecutor : public StreamExecutorCommon {
 
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
       std::optional<std::variant<StreamPriority, int>> priority) override {
+    SP_StreamOptions options{SP_STREAM_OPTIONS_STRUCT_SIZE};
+    options.has_priority = priority.has_value();
+    if (priority.has_value()) {
+      options.priority =
+          std::visit([](auto p) { return static_cast<int>(p); }, *priority);
+    }
     auto stream = std::make_unique<CStream>(&device_, stream_executor_, this);
-    TF_RETURN_IF_ERROR(stream->Create());
+    TF_RETURN_IF_ERROR(stream->Create(&options));
     return std::move(stream);
   }
 

@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -83,17 +84,6 @@ struct InterpolationSpecificationFlops {
   int64_t flops;
 };
 
-bool IsTritonGemm(const HloInstruction& instr) {
-  if (instr.called_computations().size() != 1) {
-    return false;
-  }
-  if (!IsTritonFusedComputation(*instr.called_computations()[0])) {
-    return false;
-  }
-  auto fused_range = instr.fused_instructions();
-  return absl::c_count_if(fused_range, HloPredicateIsOp<HloOpcode::kDot>) == 1;
-}
-
 InterpolationSpecification ExtractDotSpec(const DotDimensionNumbers& dot_dims,
                                           const Shape& lhs, const Shape& rhs,
                                           const Shape& out) {
@@ -140,13 +130,13 @@ absl::StatusOr<InterpolationSpecification> Spec(
         "Expected dot, got: ", profile.instruction().DebugString()));
   }
 
-  TF_ASSIGN_OR_RETURN(Shape lhs_shape,
-                      Shape::FromProto(profile.operands(0).shape()));
-  TF_ASSIGN_OR_RETURN(Shape rhs_shape,
-                      Shape::FromProto(profile.operands(1).shape()));
+  ASSIGN_OR_RETURN(Shape lhs_shape,
+                   Shape::FromProto(profile.operands(0).shape()));
+  ASSIGN_OR_RETURN(Shape rhs_shape,
+                   Shape::FromProto(profile.operands(1).shape()));
   DotDimensionNumbers dot_dims = profile.instruction().dot_dimension_numbers();
-  TF_ASSIGN_OR_RETURN(Shape out_shape,
-                      Shape::FromProto(profile.instruction().shape()));
+  ASSIGN_OR_RETURN(Shape out_shape,
+                   Shape::FromProto(profile.instruction().shape()));
   return ExtractDotSpec(dot_dims, lhs_shape, rhs_shape, out_shape);
 }
 
@@ -160,7 +150,7 @@ InterpolationSpecification Spec(const HloDotInstruction& dot,
 
 InterpolationSpecification Spec(const HloCustomCallInstruction& dot,
                                 const Shape& out_shape) {
-  CHECK(IsCublasGemm(dot));
+  CHECK(IsCublasLtGemm(dot));
   const Shape& lhs_shape = dot.operand(0)->shape();
   const Shape& rhs_shape = dot.operand(1)->shape();
   DotDimensionNumbers dot_dims = dot.backend_config<GpuBackendConfig>()
@@ -186,7 +176,7 @@ InterpolationSpecification Spec(const HloFusionInstruction& dot_fusion,
 
 absl::StatusOr<GemmPerfTableEntryValues> ReadDefaultProfile(
     const se::DeviceDescription& device_info) {
-  std::string key = HloOpProfiles::GetProfileName(device_info);
+  std::string key = HloOpProfiles::GetDeviceSpecificProfileName(device_info);
 
   if (!Profile().entries().contains(key)) {
     return absl::NotFoundError(absl::StrCat("Cannot find key: ", key));
@@ -200,7 +190,7 @@ std::optional<InterpolationSpecification> GetInterpolationSpec(
   if (instr.opcode() == HloOpcode::kDot) {
     auto* dot = Cast<HloDotInstruction>(&instr);
     spec = Spec(*dot, instr.shape());
-  } else if (IsCublasGemm(instr)) {
+  } else if (IsCublasLtGemm(instr)) {
     auto* dot = Cast<HloCustomCallInstruction>(&instr);
     spec = Spec(*dot, instr.shape().IsTuple()
                           ? ShapeUtil::GetTupleElementShape(instr.shape(), 0)
@@ -242,8 +232,8 @@ MatmulInterpolator::Create(const HloInstructionProfileList& profiles,
                            const se::DeviceDescription& device_info) {
   auto interpolator = std::make_unique<EuclideanNNInterpolator<int64_t, 4>>();
   for (auto& profile : profiles.entries()) {
-    TF_ASSIGN_OR_RETURN(InterpolationSpecification spec,
-                        Spec(profile, device_info));
+    ASSIGN_OR_RETURN(InterpolationSpecification spec,
+                     Spec(profile, device_info));
     std::array<int64_t, 4> point = {
         spec.b,
         spec.m,
@@ -261,8 +251,8 @@ MatmulInterpolator::Create(const HloInstructionProfileList& profiles,
 
 /*static*/ absl::StatusOr<std::unique_ptr<MatmulInterpolator>>
 MatmulInterpolator::Create(const se::DeviceDescription& device_info) {
-  TF_ASSIGN_OR_RETURN(GemmPerfTableEntryValues table,
-                      ReadDefaultProfile(device_info));
+  ASSIGN_OR_RETURN(GemmPerfTableEntryValues table,
+                   ReadDefaultProfile(device_info));
   absl::flat_hash_map<MatmulDTypeKey,
                       std::vector<InterpolationSpecificationFlops>>
       spec_map;

@@ -17,11 +17,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <utility>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 
 // for rocprofiler-sdk
 namespace xla {

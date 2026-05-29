@@ -25,7 +25,7 @@ class ConstructionFailsOp : public OpKernel {
  public:
   explicit ConstructionFailsOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES(ctx, false,
-                errors::InvalidArgument("Failure during construction."));
+                absl::InvalidArgumentError("Failure during construction."));
   }
 
   void Compute(OpKernelContext* ctx) override {}

@@ -160,8 +160,8 @@ void WarnIfBadPtxasVersion(absl::string_view method,
           << ", which corresponds to a CUDA version <=12.6.2. CUDA versions "
              "12.x.y up to and including 12.6.2 miscompile certain edge "
              "cases around clamping.\nPlease upgrade to CUDA 12.6.3 or newer.";
-      if (method != "ptxas" && compiler_version.major() == 12 &&
-          compiler_version.minor() == 6) {
+      if (method != "ptxas" && compiler_version.major_version() == 12 &&
+          compiler_version.minor_version() == 6) {
         LOG(ERROR) << "(Note that this warning may be shown spuriously for "
                       "CUDA 12.6.y, since "
                    << method << " does not report patch versions.)";

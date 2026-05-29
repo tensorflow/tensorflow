@@ -140,7 +140,7 @@ TEST(WebPIO, DecodeTestdataCorrectness) {
       "tensorflow/core/lib/webp/testdata/lossy_alpha1.webp");
   std::string contents;
   ASSERT_THAT(ReadFileToString(Env::Default(), file_path, &contents),
-              tsl::testing::IsOk());
+              absl_testing::IsOk());
 
   int width, height, channels;
   bool has_animation;

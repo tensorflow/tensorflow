@@ -99,7 +99,7 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE Integer ExactIntegerDivide(Integer numerator,
 }
 
 template <typename IntType,
-          absl::enable_if_t<!std::is_unsigned<IntType>::value, int> = 0>
+          std::enable_if_t<!std::is_unsigned<IntType>::value, int> = 0>
 ABSL_ATTRIBUTE_ALWAYS_INLINE bool IsPowerOfTwo(IntType n) {
   static_assert(std::is_integral<IntType>::value, "");
   return n > 0 && (n & (n - 1)) == 0;

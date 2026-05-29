@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/ifrt/user_context.h"
+#include "xla/python/pjrt_ifrt/basic_string_array.h"
 #include "xla/python/pjrt_ifrt/executable_metadata.pb.h"
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
@@ -116,8 +118,8 @@ absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
     Client* client, Compiler* compiler, absl::string_view mlir_module_str,
     absl::Span<Device* const> devices, bool replicated, bool serialize) {
   mlir::MLIRContext context;
-  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                      xla::ParseMlirModuleString(mlir_module_str, context));
+  ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                   xla::ParseMlirModuleString(mlir_module_str, context));
 
   xla::CompileOptions compile_options;
   ExecutableBuildOptions& build_options =
@@ -125,9 +127,8 @@ absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
   DeviceListRef device_list;
   if (devices.empty()) {
     compile_options.compile_portable_executable = true;
-    TF_ASSIGN_OR_RETURN(
-        device_list,
-        client->MakeDeviceList({client->addressable_devices().front()}));
+    ASSIGN_OR_RETURN(device_list, client->MakeDeviceList(
+                                      {client->addressable_devices().front()}));
   } else {
     if (devices.size() == 1) {
       build_options.set_device_ordinal(devices.front()->Id().value());
@@ -154,21 +155,19 @@ absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
       }
       build_options.set_device_assignment(device_assignment);
     }
-    TF_ASSIGN_OR_RETURN(device_list, client->MakeDeviceList(devices));
+    ASSIGN_OR_RETURN(device_list, client->MakeDeviceList(devices));
   }
   auto xla_compile_options =
       std::make_unique<XlaCompileOptions>(compile_options, device_list);
-  TF_ASSIGN_OR_RETURN(
-      auto loaded_executable,
-      compiler
-          ->CompileAndLoad(std::make_unique<HloProgram>(*module),
-                           std::move(xla_compile_options))
-          .Await());
+  ASSIGN_OR_RETURN(auto loaded_executable,
+                   compiler
+                       ->CompileAndLoad(std::make_unique<HloProgram>(*module),
+                                        std::move(xla_compile_options))
+                       .Await());
   if (!serialize) {
     return loaded_executable;
   }
-  TF_ASSIGN_OR_RETURN(auto serialized_executable,
-                      loaded_executable->Serialize());
+  ASSIGN_OR_RETURN(auto serialized_executable, loaded_executable->Serialize());
   auto options = std::make_unique<XlaDeserializeExecutableOptions>();
   options->devices = std::move(device_list);
   return compiler
@@ -446,6 +445,44 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecutePortable) {
   std::vector<float> expected_out_data(6);
   absl::c_iota(expected_out_data, 1);
   EXPECT_THAT(out_data, ElementsAreArray(expected_out_data));
+}
+
+TEST_P(LoadedExecutableImplTest, ExecuteWithNonPjRtCompatibleArrayArg) {
+  bool serialize = GetParam();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  Compiler* compiler = client->GetDefaultCompiler();
+
+  std::vector<Device*> devices = {client->addressable_devices().at(0)};
+  LoadedExecutableRef loaded_executable;
+  {
+    UserContextScope user_context_scope(test_util::MakeUserContext(20));
+    TF_ASSERT_OK_AND_ASSIGN(
+        loaded_executable,
+        CompileOnDevices(client.get(), compiler, module_add_one, devices,
+                         /*replicated=*/false, serialize));
+  }
+
+  Shape shape({2, 3});
+  Device* device = client->addressable_devices().at(0);
+  ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
+
+  BasicStringArray::Buffers buffers;
+  tsl::Future<BasicStringArray::Buffers> buffers_future(buffers);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      ArrayRef pjrt_incompatible_array,
+      BasicStringArray::Create(client.get(), shape, sharding, buffers_future,
+                               /*on_done_with_buffer=*/[]() {}));
+
+  ExecuteOptions execute_options;
+  execute_options.fill_status = true;
+
+  auto result = loaded_executable->Execute(
+      absl::MakeSpan(&pjrt_incompatible_array, 1), execute_options,
+      /*devices=*/std::nullopt);
+
+  EXPECT_THAT(result.status(), StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_P(LoadedExecutableImplTest, CancelExecution) {
@@ -883,8 +920,14 @@ TEST(ExecutableTest, ExecutableSerialization) {
   // CompiledMemoryStats upon executable deserialization.
   loaded_compiled_memory_stats.serialized_buffer_assignment = "";
   loaded_compiled_memory_stats.peak_memory_in_bytes = 0;
+  loaded_compiled_memory_stats.total_allocation_bytes = 0;
+  loaded_compiled_memory_stats.indefinite_allocations = 0;
+  loaded_compiled_memory_stats.peak_unpadded_heap_bytes = 0;
   deserialized_compiled_memory_stats.serialized_buffer_assignment = "";
   deserialized_compiled_memory_stats.peak_memory_in_bytes = 0;
+  deserialized_compiled_memory_stats.total_allocation_bytes = 0;
+  deserialized_compiled_memory_stats.indefinite_allocations = 0;
+  deserialized_compiled_memory_stats.peak_unpadded_heap_bytes = 0;
 
   EXPECT_THAT(deserialized_compiled_memory_stats.ToProto(),
               EqualsProto(loaded_compiled_memory_stats.ToProto()));

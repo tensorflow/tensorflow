@@ -1,0 +1,51 @@
+// RUN: hlo_to_xtileir %s | FileCheck %s
+// RUN: triton_test_correctness %s --abs_error_bound=1e-6 --rel_error_bound=1e-6
+// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation %s | FileCheck %s
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation --abs_error_bound=1e-6 --rel_error_bound=1e-6
+
+HloModule m
+
+add_fn {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+fused_reduce {
+  param_0 = f32[4,2]{1,0} parameter(0)
+  param_1 = f32[4,2]{1,0} parameter(1)
+// CHECK:      xtile.entry_func @triton_fn
+// CHECK-SAME:  %[[ARG0:[A-Za-z0-9]+]]: memref<4x2xf32>,
+// CHECK-SAME:  %[[ARG1:[A-Za-z0-9]+]]: memref<4x2xf32>,
+// CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
+// CHECK:      %[[CMP:.*]] = arith.cmpi slt, %{{.*}}, %{{.*}} : index
+// CHECK-NEXT: %[[IF:.*]] = scf.if %[[CMP]] -> (tensor<4x2xf32>) {
+// CHECK-NEXT:   %[[EXTRACT0:.*]] = xtile.extract %[[ARG0]][%[[C0]], {{.*}}] [4, 2] [1, 1] : memref<4x2xf32> -> tensor<4x2xf32>
+// CHECK-NEXT:   scf.yield %[[EXTRACT0]] : tensor<4x2xf32>
+// CHECK-NEXT: } else {
+// CHECK:        %[[EXTRACT1:.*]] = xtile.extract %[[ARG1]][%[[C0]], {{.*}}] [4, 2] [1, 1] : memref<4x2xf32> -> tensor<4x2xf32>
+// CHECK-NEXT:   scf.yield %[[EXTRACT1]] : tensor<4x2xf32>
+// CHECK-NEXT: }
+// CHECK-NEXT: %{{.*}} = "tt.reduce"(%[[IF]]) <{axis = 0 : i32}> ({
+// CHECK-NEXT: ^bb0(%arg4: f32, %arg5: f32):
+// CHECK-NEXT:   %[[ADDF:.*]] = arith.addf %arg4, %arg5 : f32
+// CHECK-NEXT:   tt.reduce.return %[[ADDF]] : f32
+// CHECK-NEXT: }) : (tensor<4x2xf32>) -> tensor<2xf32>
+  concat = f32[4,4]{1,0} concatenate(param_0, param_1), dimensions={1}
+  zero = f32[] constant(0)
+  ROOT sum = f32[4]{0} reduce(concat, zero), dimensions={0}, to_apply=add_fn
+}
+
+ENTRY main {
+  param_0.1 = f32[4,2]{1,0} parameter(0)
+  param_1.1 = f32[4,2]{1,0} parameter(1)
+  ROOT fusion = f32[4]{0} fusion(param_0.1, param_1.1), kind=kCustom, calls=fused_reduce,
+  backend_config={
+    fusion_backend_config:{
+      kind: "__triton",
+      block_level_fusion_config:{
+        output_tiles: [{sizes:[2]}],
+        num_warps: 1,
+        num_ctas: 1,
+        num_stages: 1}}}
+}

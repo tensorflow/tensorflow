@@ -481,8 +481,8 @@ absl::Status Execute(AbstractOperation* op_, AbstractContext* ctx,
   forward_op_->attrs.BuildNodeDef();
   std::unique_ptr<GradientFunction> gradient_fn;
   TF_RETURN_IF_ERROR(registry.Lookup(*forward_op_, &gradient_fn));
-  tape->RecordOperation(forward_op_->inputs, retvals, gradient_fn.release(),
-                        op_->Name());
+  tape->RecordOperation(forward_op_->inputs, retvals.subspan(0, *num_retvals),
+                        gradient_fn.release(), op_->Name());
   return absl::OkStatus();
 }
 }  // namespace internal

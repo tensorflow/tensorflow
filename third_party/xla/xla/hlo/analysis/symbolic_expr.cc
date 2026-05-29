@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <numeric>
 #include <optional>
 #include <string>
@@ -42,6 +43,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/StorageUniquer.h"
 #include "mlir/Support/TypeID.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/analysis/symbolic_map_serialization.h"
 
 namespace xla {
@@ -231,6 +233,12 @@ SymbolicExpr CanonicalizeMul(SymbolicExpr lhs, SymbolicExpr rhs) {
       }
       return simplified.Canonicalize();
     }
+  }
+
+  // Associativity: (X * C) * Y => (X * Y) * C
+  if (lhs.GetType() == SymbolicExprType::kMul &&
+      lhs.GetRHS().GetType() == SymbolicExprType::kConstant) {
+    return (lhs.GetLHS() * rhs * lhs.GetRHS()).Canonicalize();
   }
 
   // Distribute Mul over Add: (A + B) * C => (A * C) + (B * C)
@@ -679,6 +687,68 @@ int64_t SymbolicExpr::Evaluate(
   }
 }
 
+std::optional<int64_t> SafeEvaluateSymbolicExpr(
+    SymbolicExpr expr, absl::Span<int64_t const> dims,
+    absl::Span<int64_t const> syms) {
+  if (!expr) {
+    return std::nullopt;
+  }
+  if (expr.GetType() == SymbolicExprType::kVariable) {
+    int64_t num_dims = dims.size();
+    if (IsSymbol(expr, num_dims)) {
+      int64_t sym_index = GetSymbolIndex(expr, num_dims);
+      if (sym_index < 0 || sym_index >= syms.size()) {
+        return std::nullopt;
+      }
+      return syms[sym_index];
+    }
+    int64_t dim_index = GetDimensionIndex(expr, num_dims);
+    if (dim_index < 0 || dim_index >= dims.size()) {
+      return std::nullopt;
+    }
+    return dims[dim_index];
+  }
+  if (expr.GetType() == SymbolicExprType::kConstant) {
+    return expr.GetValue();
+  }
+  auto lhs = SafeEvaluateSymbolicExpr(expr.GetLHS(), dims, syms);
+  auto rhs = SafeEvaluateSymbolicExpr(expr.GetRHS(), dims, syms);
+  if (!lhs || !rhs) return std::nullopt;
+
+  int64_t result;
+  bool result_division_is_undefined =
+      rhs == 0 || (lhs == std::numeric_limits<int64_t>::min() && rhs == -1);
+  switch (expr.GetType()) {
+    case SymbolicExprType::kAdd:
+      if (llvm::AddOverflow(*lhs, *rhs, result)) {
+        return std::nullopt;
+      }
+      return result;
+    case SymbolicExprType::kMul:
+      if (llvm::MulOverflow(*lhs, *rhs, result)) {
+        return std::nullopt;
+      }
+      return result;
+    case SymbolicExprType::kFloorDiv:
+      return result_division_is_undefined
+                 ? std::nullopt
+                 : std::make_optional(llvm::divideFloorSigned(*lhs, *rhs));
+    case SymbolicExprType::kCeilDiv:
+      return result_division_is_undefined
+                 ? std::nullopt
+                 : std::make_optional(llvm::divideCeilSigned(*lhs, *rhs));
+    case SymbolicExprType::kMod:
+      return *rhs <= 0 ? std::nullopt
+                       : std::make_optional(llvm::mod(*lhs, *rhs));
+    case SymbolicExprType::kMax:
+      return std::make_optional(std::max(*lhs, *rhs));
+    case SymbolicExprType::kMin:
+      return std::make_optional(std::min(*lhs, *rhs));
+    default:
+      LOG(FATAL) << "Unknown binary op: " << static_cast<int>(expr.GetType());
+  }
+}
+
 SymbolicExpr SymbolicExpr::ReplaceVariables(
     absl::Span<const SymbolicExpr> substitutions) const {
   mlir::MLIRContext* ctx = GetContext();
@@ -880,20 +950,6 @@ SymbolicExpr SymbolicExpr::operator+(int64_t v) const {
   return *this + CreateSymbolicConstant(v, GetContext());
 }
 SymbolicExpr SymbolicExpr::operator+(SymbolicExpr other) const {
-  // x + 0 = x
-  if (other.GetType() == SymbolicExprType::kConstant && other.GetValue() == 0) {
-    return *this;
-  }
-  if (GetType() == SymbolicExprType::kConstant && GetValue() == 0) {
-    return other;
-  }
-
-  // Constants on the right
-  if (GetType() == SymbolicExprType::kConstant) {
-    return CreateSymbolicBinaryOp(SymbolicExprType::kAdd, other, *this,
-                                  GetContext());
-  }
-
   return CreateSymbolicBinaryOp(SymbolicExprType::kAdd, *this, other,
                                 GetContext());
 }
@@ -914,22 +970,6 @@ SymbolicExpr SymbolicExpr::operator*(int64_t v) const {
   return *this * CreateSymbolicConstant(v, GetContext());
 }
 SymbolicExpr SymbolicExpr::operator*(SymbolicExpr other) const {
-  // Try constant folding, neutral element simplification, and associativity.
-  if (other.GetType() == SymbolicExprType::kConstant) {
-    SymbolicExpr simplified = TrySimplifyMulByConstantRHS(*this, other);
-    if (simplified) {
-      return simplified;
-    }
-  } else if (GetType() == SymbolicExprType::kConstant) {
-    SymbolicExpr simplified = TrySimplifyMulByConstantRHS(other, *this);
-    if (simplified) {
-      return simplified;
-    }
-    // Swap, since constants should be on the right
-    return CreateSymbolicBinaryOp(SymbolicExprType::kMul, other, *this,
-                                  GetContext());
-  }
-
   return CreateSymbolicBinaryOp(SymbolicExprType::kMul, *this, other,
                                 GetContext());
 }
@@ -976,11 +1016,6 @@ SymbolicExpr SymbolicExpr::min(int64_t v) const {
   return this->min(CreateSymbolicConstant(v, GetContext()));
 }
 SymbolicExpr SymbolicExpr::min(SymbolicExpr other) const {
-  if (GetType() == SymbolicExprType::kConstant &&
-      other.GetType() == SymbolicExprType::kConstant) {
-    return CreateSymbolicConstant(std::min(GetValue(), other.GetValue()),
-                                  GetContext());
-  }
   return CreateSymbolicBinaryOp(SymbolicExprType::kMin, *this, other,
                                 GetContext());
 }
@@ -989,11 +1024,6 @@ SymbolicExpr SymbolicExpr::max(int64_t v) const {
   return this->max(CreateSymbolicConstant(v, GetContext()));
 }
 SymbolicExpr SymbolicExpr::max(SymbolicExpr other) const {
-  if (GetType() == SymbolicExprType::kConstant &&
-      other.GetType() == SymbolicExprType::kConstant) {
-    return CreateSymbolicConstant(std::max(GetValue(), other.GetValue()),
-                                  GetContext());
-  }
   return CreateSymbolicBinaryOp(SymbolicExprType::kMax, *this, other,
                                 GetContext());
 }
@@ -1044,6 +1074,29 @@ SymbolicExpr CreateSymbolicBinaryOp(SymbolicExprType type, SymbolicExpr lhs,
         type != SymbolicExprType::kVariable && lhs && rhs)
       << "We expect a binary operation and two symbolic expressions as "
          "children.";
+
+  // Ensure constants are on the RHS for commutative operations.
+  if (type == SymbolicExprType::kAdd || type == SymbolicExprType::kMul ||
+      type == SymbolicExprType::kMin || type == SymbolicExprType::kMax) {
+    if (lhs.GetType() == SymbolicExprType::kConstant) {
+      std::swap(lhs, rhs);
+    }
+  }
+
+  // x + 0 => x
+  if (type == SymbolicExprType::kAdd &&
+      rhs.GetType() == SymbolicExprType::kConstant && rhs.GetValue() == 0) {
+    return lhs;
+  }
+
+  // Multiplication simplifications.
+  if (type == SymbolicExprType::kMul &&
+      rhs.GetType() == SymbolicExprType::kConstant) {
+    if (SymbolicExpr simplified = TrySimplifyMulByConstantRHS(lhs, rhs)) {
+      return simplified;
+    }
+  }
+
   auto result = GetOrCreateSymbolicExpr(type, 0, lhs, rhs, mlir_context);
   // Basic constant folding.
   if (lhs.GetType() == SymbolicExprType::kConstant &&

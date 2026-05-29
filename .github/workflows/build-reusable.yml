@@ -24,12 +24,18 @@ on:
         description: 'TFCI environment variable'
         required: true
         type: string
+      job_name:
+        description: 'Name of the job'
+        required: false
+        type: string
+        default: 'build-and-test'
 
 permissions:
   contents: read
 
 jobs:
   build-and-test:
+    name: ${{ inputs.job_name }}
     runs-on: ${{ inputs.runner }}
     env:
       PIP_NO_CACHE_DIR: 1
@@ -41,11 +47,6 @@ jobs:
                    (contains(inputs.runner, 'windows-x86') && null) }}
     timeout-minutes: 300
     steps:
-
-      #- name: Enable Long Paths
-      #  if: contains(inputs.runner, 'windows-x86')
-      #  run: Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name 'LongPathsEnabled' -Value 1
-      #  shell: powershell
 
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # ratchet:actions/checkout@v4
@@ -61,3 +62,12 @@ jobs:
           TFCI: ${{ inputs.tfci }}
           TFCI_GITHUB_ACTIONS: true
         run: ./ci/official/pycpp.sh
+
+      - name: Upload Profile
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: "profile-${{ github.workflow }}-${{ inputs.runner }}-${{ inputs.tfci }}-${{ github.run_number }}-${{ github.run_attempt }}"
+          path: build_output/profile.json.gz
+          if-no-files-found: warn

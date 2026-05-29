@@ -21,22 +21,17 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_ROCM_ROCM_BLAS_H_
 
 #include "absl/base/thread_annotations.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "rocm/rocm_config.h"
 
 #define ROCBLAS_BETA_FEATURES_API
-#if TF_ROCM_VERSION >= 50600
 #include "rocm/include/rocblas/rocblas.h"
-#else
-#include "rocm/include/rocblas.h"
-#endif
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/plugin_registry.h"
-#if TF_HIPBLASLT
 #include "xla/stream_executor/rocm/hip_blas_lt.h"
-#endif
 #include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {
@@ -97,11 +92,7 @@ class ROCMBlas : public blas::BlasSupport {
   TENSORFLOW_STREAM_EXECUTOR_GPU_BLAS_SUPPORT_OVERRIDES
 
   gpu::BlasLt *GetBlasLt() override {
-#if TF_HIPBLASLT
     return &blas_lt_;
-#else
-    return nullptr;
-#endif
   }
 
  private:
@@ -198,9 +189,7 @@ class ROCMBlas : public blas::BlasSupport {
                       blas::CallContext context, uint64_t size1,
                       uint64_t size2);
 
-#if TF_HIPBLASLT
   rocm::BlasLt blas_lt_;
-#endif
 
   ROCMBlas(const ROCMBlas &) = delete;
   void operator=(const ROCMBlas &) = delete;

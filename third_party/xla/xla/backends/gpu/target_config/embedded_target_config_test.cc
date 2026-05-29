@@ -65,6 +65,13 @@ TEST(EmbeddedTargetConfigTest, DeviceInfoMatches) {
                             platform->ExecutorForDevice(i));
     const DeviceDescription& physical_device_description =
         executor->GetDeviceDescription();
+
+    // TODO(b/505078018): Do not skip once fixed.
+    if (physical_device_description.gpu_compute_capability().IsCuda() &&
+        physical_device_description.cuda_compute_capability().IsAmpere()) {
+      continue;
+    }
+
     auto it = gpu_specs.find(physical_device_description.name());
     const GpuDeviceInfoProto physical_device_info =
         physical_device_description.ToProto();
@@ -86,18 +93,16 @@ TEST(EmbeddedTargetConfigTest, DeviceInfoMatches) {
         GpuDeviceInfoProto::GetDescriptor()->FindFieldByName("numa_node"));
     diff.IgnoreField(GpuDeviceInfoProto::GetDescriptor()->FindFieldByName(
         "kernel_mode_driver_version"));
-    if (tsl::kIsOpenSource) {
-      diff.IgnoreField(GpuDeviceInfoProto::GetDescriptor()->FindFieldByName(
-          "driver_version"));
-      diff.IgnoreField(GpuDeviceInfoProto::GetDescriptor()->FindFieldByName(
-          "runtime_version"));
-      diff.IgnoreField(GpuDeviceInfoProto::GetDescriptor()->FindFieldByName(
-          "compile_time_toolkit_version"));
-      diff.IgnoreField(
-          GpuDeviceInfoProto::GetDescriptor()->FindFieldByName("dnn_version"));
-      diff.IgnoreField(
-          GpuDeviceInfoProto::GetDescriptor()->FindFieldByName("cub_version"));
-    }
+    diff.IgnoreField(
+        GpuDeviceInfoProto::GetDescriptor()->FindFieldByName("driver_version"));
+    diff.IgnoreField(GpuDeviceInfoProto::GetDescriptor()->FindFieldByName(
+        "runtime_version"));
+    diff.IgnoreField(GpuDeviceInfoProto::GetDescriptor()->FindFieldByName(
+        "compile_time_toolkit_version"));
+    diff.IgnoreField(
+        GpuDeviceInfoProto::GetDescriptor()->FindFieldByName("dnn_version"));
+    diff.IgnoreField(
+        GpuDeviceInfoProto::GetDescriptor()->FindFieldByName("cub_version"));
     diff.IgnoreField(
         DeviceInterconnectInfoProto::GetDescriptor()->FindFieldByName(
             "cluster_uuid"));

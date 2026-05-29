@@ -1356,7 +1356,7 @@ Status BaseGPUDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
   TF_RETURN_IF_ERROR(CacheDeviceIds());
   for (tsl::PlatformDeviceId platform_device_id : cached_device_ids_) {
     const string device_name =
-        strings::StrCat("/physical_device:GPU:", platform_device_id.value());
+        absl::StrCat("/physical_device:GPU:", platform_device_id.value());
     devices->push_back(device_name);
   }
 

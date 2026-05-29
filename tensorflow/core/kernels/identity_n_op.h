@@ -31,8 +31,9 @@ class IdentityNOp : public OpKernel {
     OpOutputList output;
     OP_REQUIRES_OK(context, context->input_list("input", &input));
     OP_REQUIRES_OK(context, context->output_list("output", &output));
-    OP_REQUIRES(context, input.size() == output.size(),
-                errors::InvalidArgument("Input and output counts must match"));
+    OP_REQUIRES(
+        context, input.size() == output.size(),
+        absl::InvalidArgumentError("Input and output counts must match"));
     if (absl::StrContains(name(), kTpuExecuteStagingNodeName)) {
       // TPU staging node execution is used for measuring launch latency.
       metrics::UpdateTpuVariableDistributionTime(EnvTime::NowMicros() -

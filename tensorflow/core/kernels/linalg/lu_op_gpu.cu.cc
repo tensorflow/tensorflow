@@ -87,18 +87,18 @@ class LuOpGpu : public AsyncOpKernel {
     // Analyze shape and validate inputs.
     const int input_rank = input.dims();
 
-    OP_REQUIRES_ASYNC(
-        context, input_rank >= 2,
-        errors::InvalidArgument("Input must have rank >= 2, got ", input_rank),
-        done);
+    OP_REQUIRES_ASYNC(context, input_rank >= 2,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "Input must have rank >= 2, got ", input_rank)),
+                      done);
 
     const int64_t num_rows = input.dim_size(input_rank - 2);
     const int64_t num_cols = input.dim_size(input_rank - 1);
 
     OP_REQUIRES_ASYNC(
         context, num_rows == num_cols,
-        errors::InvalidArgument("Input matrices must be squares, got", num_rows,
-                                " != ", num_cols),
+        absl::InvalidArgumentError(absl::StrCat(
+            "Input matrices must be squares, got", num_rows, " != ", num_cols)),
         done);
 
     TensorShape batch_shape;
@@ -244,9 +244,9 @@ class LuOpGpu : public AsyncOpKernel {
         for (int i = 0; i < host_infos[0].size(); ++i) {
           // Match the CPU error message for singular matrices. Otherwise
           // just print the original error message from the status below.
-          OP_REQUIRES_ASYNC(context, host_infos[0].data()[i] <= 0,
-                            errors::InvalidArgument("Input is not invertible."),
-                            done);
+          OP_REQUIRES_ASYNC(
+              context, host_infos[0].data()[i] <= 0,
+              absl::InvalidArgumentError("Input is not invertible."), done);
         }
       }
       OP_REQUIRES_OK_ASYNC(context, status, done);

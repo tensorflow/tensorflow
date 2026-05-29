@@ -3,7 +3,7 @@ load(
     "xla_cc_test",
 )
 load("//xla/tsl:tsl.bzl", "internal_visibility")
-load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_binary", "cc_library")
 load("//xla/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
@@ -144,5 +144,35 @@ xla_cc_test(
         "@tsl//tsl/profiler/lib:profiler_interface",
         "@tsl//tsl/profiler/lib:traceme",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
+cc_binary(
+    name = "traceme_encode_benchmark_with_cpu_tracer",
+    testonly = True,
+    srcs = [],
+    deps = [
+        "//xla/backends/profiler/cpu:host_tracer",
+        "//xla/tsl/profiler/backends/cpu:traceme_encode_benchmark",
+    ],
+)
+
+cc_binary(
+    name = "traceme_benchmark_with_cpu_tracer",
+    testonly = True,
+    srcs = [],
+    deps = [
+        "//xla/backends/profiler/cpu:host_tracer",
+        "//xla/tsl/profiler/backends/cpu:traceme_benchmark",
+    ],
+)
+
+cc_binary(
+    name = "connected_traceme_benchmark_with_cpu_tracer",
+    testonly = True,
+    srcs = [],
+    deps = [
+        "//xla/backends/profiler/cpu:host_tracer",
+        "//xla/tsl/profiler/backends/cpu:connected_traceme_benchmark",
     ],
 )

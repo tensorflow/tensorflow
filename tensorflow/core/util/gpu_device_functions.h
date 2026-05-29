@@ -161,8 +161,8 @@ using CudaGridRange = GpuGridRange<T...>;
 template <typename T>
 __device__ detail::GpuGridRange<T> GpuGridRangeX(T count) {
   return detail::GpuGridRange<T>(
-      /*begin=*/blockIdx.x * blockDim.x + threadIdx.x,
-      /*delta=*/gridDim.x * blockDim.x, /*end=*/count);
+      /*begin=*/static_cast<T>(blockIdx.x) * blockDim.x + threadIdx.x,
+      /*delta=*/static_cast<T>(gridDim.x) * blockDim.x, /*end=*/count);
 }
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeX, CudaGridRangeX);
 
@@ -171,8 +171,8 @@ CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeX, CudaGridRangeX);
 template <typename T>
 __device__ detail::GpuGridRange<T> GpuGridRangeY(T count) {
   return detail::GpuGridRange<T>(
-      /*begin=*/blockIdx.y * blockDim.y + threadIdx.y,
-      /*delta=*/gridDim.y * blockDim.y, /*end=*/count);
+      /*begin=*/static_cast<T>(blockIdx.y) * blockDim.y + threadIdx.y,
+      /*delta=*/static_cast<T>(gridDim.y) * blockDim.y, /*end=*/count);
 }
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeY, CudaGridRangeY);
 
@@ -181,8 +181,8 @@ CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeY, CudaGridRangeY);
 template <typename T>
 __device__ detail::GpuGridRange<T> GpuGridRangeZ(T count) {
   return detail::GpuGridRange<T>(
-      /*begin=*/blockIdx.z * blockDim.z + threadIdx.z,
-      /*delta=*/gridDim.z * blockDim.z, /*end=*/count);
+      /*begin=*/static_cast<T>(blockIdx.z) * blockDim.z + threadIdx.z,
+      /*delta=*/static_cast<T>(gridDim.z) * blockDim.z, /*end=*/count);
 }
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeZ, CudaGridRangeZ);
 
@@ -491,24 +491,25 @@ CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuLdg, CudaLdg);
 // Note: this function does not synchronize, and therefore the memory range is
 // not guaranteed to be zero until the next kernel launch.
 template <typename T>
-__global__ void SetZero(const int count, T* __restrict__ ptr) {
+__global__ void SetZero(const int64_t count, T* __restrict__ ptr) {
   // Check that the grid is one dimensional and index doesn't overflow.
   assert(blockDim.y == 1);
   assert(blockDim.z == 1);
   assert(blockDim.x * gridDim.x / blockDim.x == gridDim.x);
-  for (int i : GpuGridRangeX(count)) {
+  for (int64_t i : GpuGridRangeX(count)) {
     ptr[i] = T(0);
   }
 }
 
 // Helper to set all tensor entries to a specific value.
 template <typename T, typename Tvalue = T>
-__global__ void SetToValue(const int count, T* __restrict__ ptr, Tvalue value) {
+__global__ void SetToValue(const int64_t count, T* __restrict__ ptr,
+                           Tvalue value) {
   // Check that the grid is one dimensional and index doesn't overflow.
   assert(blockDim.y == 1);
   assert(blockDim.z == 1);
   assert(blockDim.x * gridDim.x / blockDim.x == gridDim.x);
-  for (int i : GpuGridRangeX(count)) {
+  for (int64_t i : GpuGridRangeX(count)) {
     ptr[i] = static_cast<T>(value);
   }
 }

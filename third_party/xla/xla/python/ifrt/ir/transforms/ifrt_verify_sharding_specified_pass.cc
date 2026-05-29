@@ -20,9 +20,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Visitors.h"
-#include "mlir/Support/LLVM.h"
 #include "mlir/Support/WalkResult.h"
-#include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
 
@@ -39,7 +37,7 @@ bool IsArrayWithUnspecifiedSharding(mlir::Type type) {
   if (array_type == nullptr) {
     return false;
   }
-  return mlir::isa<IfrtUnspecifiedShardingAttr>(array_type.getShardingAttr());
+  return IsUnspecifiedSharding(array_type.getShardingAttr());
 }
 
 class IfrtVerifyShardingSpecifiedPass
@@ -55,8 +53,7 @@ class IfrtVerifyShardingSpecifiedPass
 void IfrtVerifyShardingSpecifiedPass::runOnOperation() {
   mlir::func::FuncOp func_op = getOperation();
   // Only IFRT functions have IFRT types.
-  if (!func_op->hasAttr(kIfrtFunctionAttrName) &&
-      !func_op->hasAttr(kIfrtReshardFunctionAttrName)) {
+  if (!IsIfrtFunction(func_op)) {
     return;
   }
   mlir::FunctionType func_type = func_op.getFunctionType();

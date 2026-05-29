@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -58,6 +59,8 @@ class BuffersDebugFloatCheckThunk : public Thunk {
       const {
     return checked_thunk_buffers_;
   }
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
 
  private:
   struct Kernels {

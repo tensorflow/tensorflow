@@ -1,0 +1,22 @@
+diff --git a/python/dist/BUILD.bazel b/python/dist/BUILD.bazel
+--- a/python/dist/BUILD.bazel
++++ b/python/dist/BUILD.bazel
+@@ -10,1 +10,0 @@
+-load("@protobuf_pip_deps//:requirements.bzl", "requirement")
+@@ -14,1 +13,0 @@
+-load("@system_python//:version.bzl", "SYSTEM_PYTHON_VERSION")
+@@ -308,1 +306,1 @@
+-    data = [requirement("setuptools")],
++    data = [],
+@@ -370,1 +368,1 @@
+-        "//conditions:default": "cp" + SYSTEM_PYTHON_VERSION,
++        "//conditions:default": "cp312",
+diff --git a/python/dist/dist.bzl b/python/dist/dist.bzl
+--- a/python/dist/dist.bzl
++++ b/python/dist/dist.bzl
+@@ -4,1 +4,0 @@
+-load("@system_python//:version.bzl", "SYSTEM_PYTHON_VERSION")
+@@ -19,2 +18,2 @@
+     if python_version == "system":
+-        python_version = SYSTEM_PYTHON_VERSION
++        python_version = "312"

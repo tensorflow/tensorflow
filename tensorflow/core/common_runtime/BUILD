@@ -159,14 +159,10 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "@xla//xla/tsl/framework:allocator_retry.cc",
-        "@xla//xla/tsl/framework:allocator_retry.h",
         "@xla//xla/tsl/framework:bfc_allocator.cc",
-        "@xla//xla/tsl/framework:bfc_allocator.h",
-        "@xla//xla/tsl/framework:shared_counter.h",
     ] + glob(
         [
             "**/*.cc",
-            "**/*.h",
         ],
         exclude = [
             "**/*fuzz.*",
@@ -174,6 +170,27 @@ filegroup(
             "**/*testutil*",
             "**/*testlib*",
             "**/*main.cc",
+            "gpu/**/*",
+            "gpu_device_factory.*",
+        ],
+    ),
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
+        "@xla//xla/tsl/framework:allocator_retry.h",
+        "@xla//xla/tsl/framework:bfc_allocator.h",
+        "@xla//xla/tsl/framework:shared_counter.h",
+    ] + glob(
+        [
+            "**/*.h",
+        ],
+        exclude = [
+            "**/*fuzz.*",
+            "**/*test.*",
+            "**/*testutil*",
+            "**/*testlib*",
             "gpu/**/*",
             "gpu_device_factory.*",
         ],
@@ -1600,9 +1617,19 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+tf_cc_test(
+    name = "pool_allocator_test",
+    srcs = ["pool_allocator_test.cc"],
+    deps = [
+        ":pool_allocator",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -2317,6 +2344,7 @@ tf_cuda_library(
     ],
     copts = tf_copts(),
     features = ["-layering_check"],
+    visibility = default_package_visibility,
     deps = [
         ":core_cpu_internal",
         ":local_session_selection",
@@ -2333,6 +2361,7 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:device_profiler_session",
         "//tensorflow/core/profiler/lib:profiler_backends",
         "//tensorflow/core/profiler/lib:traceme_encode",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",

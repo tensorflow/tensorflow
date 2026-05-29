@@ -105,7 +105,7 @@ absl::StatusOr<ShardingRef> ShardingFromIfrtArrayType(
 
 // Creates an `ArraySpec` from a `mlir::Type`.
 //
-// Returns an error if the array_type is not an `IfrtArrayType`.
+// Returns an error if the `array_type` cannot be converted to an `ArraySpec`.
 //
 // The logical devices from the `IfrtArrayType` represent indices into the
 // device_list.

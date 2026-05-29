@@ -6,7 +6,7 @@ load(
     "@local_config_sycl//sycl:build_defs.bzl",
     "if_sycl_is_configured",
 )
-load("//xla:lit.bzl", "lit_device_test")
+load("//xla:lit.bzl", "lit_device_test", "lit_test_suite")
 load("//xla:xla.default.bzl", "xla_cc_binary", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google")
@@ -50,16 +50,53 @@ xla_cc_binary(
     ]),
 )
 
+deviceless_tests = [
+    "collectives/all_reduce.hlo",
+    "concat/concat_offset_not_a_multiple_of_tile_size.hlo",
+    "concat/concat_repro_crash.hlo",
+    "constraints/max_tensor_elements_violation.hlo",
+    "slice/boundary_dynamic_slice.hlo",
+]
+
+lit_test_suite(
+    name = "deviceless_tests",
+    srcs = deviceless_tests,
+    cfg = "//xla:lit.cfg.py",
+    tools = [
+        "//xla/backends/gpu/codegen/triton/tools:hlo_to_xtileir",
+        "@llvm-project//llvm:FileCheck",
+    ],
+)
+
 lit_device_test(
     name = "tests",
-    srcs = glob(["**/*.hlo"]),
+    srcs = glob(
+        include = ["**/*.hlo"],
+        exclude = deviceless_tests,
+    ),
     backends = [
         "h100",
         "b200",
     ],
+    data = [
+        "//xla/backends/gpu/target_config:all_gpu_specs",
+    ],
+    tags_override = {
+        "dot/dot_unit_tile_sizes.hlo": ["nozapfhahn"],
+        "dot/dot.hlo": ["nozapfhahn"],
+        "dot/layout_021_201_210.hlo": ["nozapfhahn"],
+        "dot/layout_201_012_201.hlo": ["nozapfhahn"],
+        "dot/layout_210_210_102.hlo": ["nozapfhahn"],
+        "dot/layout_210_210_210.hlo": ["nozapfhahn"],
+        "dot/dot_major_lhs_contract.hlo": ["nozapfhahn"],
+        "dot/dot_transpose_tma.hlo": ["nozapfhahn"],
+        "dot/reshape_of_pad.hlo": ["nozapfhahn"],
+        "dot/scaled_dot.hlo": ["nozapfhahn"],
+    },
     tools = [
         ":triton_test_correctness",
         "//xla/backends/gpu/codegen/triton/tools:hlo_to_xtileir",
+        "//xla/tools:hlo-opt",
         "@llvm-project//llvm:FileCheck",
     ],
 )
@@ -139,6 +176,7 @@ xla_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/log",
@@ -199,8 +237,8 @@ xla_test(
         "b200",
         "amdgpu_any",
     ],
+    shard_count = 4,
     tags = ["no_mac"],
-    use_legacy_runtime = True,
     deps = [
         "//xla:comparison_util",
         "//xla:error_spec",
@@ -208,13 +246,15 @@ xla_test(
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen/triton:support",
         "//xla/backends/gpu/codegen/triton:test_utils",
-        "//xla/backends/gpu/tests:gpu_codegen_test",
+        "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:device_description",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
     ],
@@ -231,8 +271,6 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service/gpu/model:block_level_parameters",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
     ],

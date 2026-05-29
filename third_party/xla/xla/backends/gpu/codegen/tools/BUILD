@@ -38,7 +38,7 @@ cc_library(
     deps = [
         "//xla:status_macros",
         "//xla/backends/gpu/codegen:fusions",
-        "//xla/backends/gpu/codegen/emitters:emitter_base",
+        "//xla/backends/gpu/codegen/emitters:mlir_kernel_emitter",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:hlo_fusion_analysis",
@@ -62,11 +62,11 @@ xla_cc_binary(
         ":test_lib",
         "//xla/codegen/tools:test_lib",
         "//xla/hlo/analysis:symbolic_map",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@tsl//tsl/platform:platform_port",
-        "@tsl//tsl/platform:statusor",
     ],
 )
 
@@ -120,6 +120,7 @@ xla_cc_binary(
     visibility = ["//visibility:private"],
     deps = [
         "//xla/codegen/tools:test_lib",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

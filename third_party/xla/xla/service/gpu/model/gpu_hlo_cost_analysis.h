@@ -102,12 +102,13 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
 
   // Returns the number of FLOPs needed to compute an element of the given
   // elementwise instruction.
-  int64_t GetFlopsPerElementwiseOpElement(PrimitiveType type, HloOpcode opcode);
+  int64_t GetFlopsPerElementwiseOpElement(PrimitiveType type,
+                                          HloOpcode opcode) const;
 
   // Returns the number of FLOPs needed to compute the output of the elementwise
   // instruction.
-  int64_t GetFlopsForElementwiseOp(HloOpcode op_code, const Shape& shape);
-  int64_t GetFlopsForElementwiseOp(const HloInstruction* instr);
+  int64_t GetFlopsForElementwiseOp(HloOpcode op_code, const Shape& shape) const;
+  int64_t GetFlopsForElementwiseOp(const HloInstruction* instr) const;
 
  protected:
   std::unique_ptr<HloCostAnalysis> CreateNestedCostAnalysis() override;

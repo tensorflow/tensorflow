@@ -33,6 +33,7 @@ limitations under the License.
 #include <ostream>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -43,10 +44,13 @@ limitations under the License.
 #include "absl/log/absl_log.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"  // from @eigen_archive
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -361,9 +365,9 @@ class SingleOpModel {
 
   // Set a delegate that is applied right after graph is prepared. This is
   // useful for testing other runtimes like NN API or GPU.
-  // Note: the caller still owns the memory of the passed-in `delegate`.
-  void SetDelegate(TfLiteDelegate* delegate) {
-    delegate_ = delegate;
+  // Takes ownership of the provided delegate.
+  void SetDelegate(Interpreter::TfLiteDelegatePtr&& delegate) {
+    delegate_ = std::move(delegate);
     // As this is a manually-set TF Lite delegate, we assume the intention of
     // the test is to test against the particular delegate, hence bypassing
     // applying TfLite default delegates (i.e. the XNNPACK delegate).
@@ -738,6 +742,9 @@ class SingleOpModel {
       if (t->type == kTfLiteInt4) {
         PopulateTensor4bit(index, /*offset=*/0, quantized_output.data(),
                            quantized_output.data() + quantized_output.size());
+      } else if (t->type == kTfLiteInt2) {
+        PopulateTensor2bit(index, /*offset=*/0, quantized_output.data(),
+                           quantized_output.data() + quantized_output.size());
       }
     }
   }
@@ -1024,6 +1031,9 @@ class SingleOpModel {
   void SetBypassDefaultDelegates() { bypass_default_delegates_ = true; }
 
   flatbuffers::FlatBufferBuilder builder_;
+  tflite::Interpreter::TfLiteDelegatePtr delegate_{nullptr,
+                                                   [](TfLiteDelegate*) {}};
+  TfLiteDelegate* last_applied_delegate_ = nullptr;
   std::unique_ptr<tflite::Interpreter> interpreter_;
   std::unique_ptr<OpResolver> resolver_;
 
@@ -1115,8 +1125,8 @@ class SingleOpModel {
       qmin = -7;
       qmax = 7;
     } else if (type == kTfLiteInt2) {
-      qmin = -2;
-      qmax = 2;
+      qmin = -1;
+      qmax = 1;
     } else {
       qmin = std::numeric_limits<T>::min();
       qmax = std::numeric_limits<T>::max();
@@ -1445,7 +1455,6 @@ class SingleOpModel {
   std::vector<int32_t> outputs_;
   std::vector<flatbuffers::Offset<Tensor>> tensors_;
   std::vector<flatbuffers::Offset<Buffer>> buffers_;
-  TfLiteDelegate* delegate_ = nullptr;  // not own the memory.
   std::optional<TfLiteStatus> delegate_application_status_ = std::nullopt;
   std::vector<std::vector<int>> input_shapes_;
   int num_applied_delegates_ = 0;

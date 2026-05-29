@@ -53,17 +53,6 @@ def workspace():
     rules_foreign_cc_dependencies()
     config_googleapis()
 
-    # Toolchains for ML projects hermetic builds.
-    # Details: https://github.com/google-ml-infra/rules_ml_toolchain
-    tf_http_archive(
-        name = "rules_ml_toolchain",
-        sha256 = "54c1a357f71f611efdb4891ebd4bcbe4aeb6dfa7e473f14fd7ecad5062096616",
-        strip_prefix = "rules_ml_toolchain-d8cb9c2c168cd64000eaa6eda0781a9615a26ffe",
-        urls = tf_mirror_urls(
-            "https://github.com/google-ml-infra/rules_ml_toolchain/archive/d8cb9c2c168cd64000eaa6eda0781a9615a26ffe.tar.gz",
-        ),
-    )
-
 # Alias so it can be loaded without assigning to a different symbol to prevent
 # shadowing previous loads and trigger a buildifier warning.
 tf_workspace0 = workspace

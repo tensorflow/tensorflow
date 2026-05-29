@@ -21,12 +21,12 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/ffi/ffi.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/xla_data.pb.h"
-#include "xla/tsl/platform/status_macros.h"
 
 XLA_FFI_REGISTER_ENUM_ATTR_DECODING(stream_executor::cuda::CubScanKind);
 XLA_FFI_REGISTER_ENUM_ATTR_DECODING(xla::PrimitiveType);

@@ -279,14 +279,16 @@ class SymbolicExprParserImpl {
         }
         lhs =
             CreateSymbolicBinaryOp(SymbolicExprType::kMul, lhs, rhs, context_);
-      } else if (absl::ConsumePrefix(&remaining_str_, "floordiv")) {
+      } else if (absl::ConsumePrefix(&remaining_str_, "floordiv") ||
+                 absl::ConsumePrefix(&remaining_str_, "floorDiv")) {
         SymbolicExpr rhs = ParseFactor();
         if (!rhs) {
           return SymbolicExpr();
         }
         lhs = CreateSymbolicBinaryOp(SymbolicExprType::kFloorDiv, lhs, rhs,
                                      context_);
-      } else if (absl::ConsumePrefix(&remaining_str_, "ceildiv")) {
+      } else if (absl::ConsumePrefix(&remaining_str_, "ceildiv") ||
+                 absl::ConsumePrefix(&remaining_str_, "ceilDiv")) {
         SymbolicExpr rhs = ParseFactor();
         if (!rhs) {
           return SymbolicExpr();
@@ -377,6 +379,14 @@ class SymbolicExprParserImpl {
     SkipWhitespace();
     if (remaining_str_.empty()) {
       return ReportError("Unexpected end of expression");
+    }
+    // Unary minus
+    if (absl::ConsumePrefix(&remaining_str_, "-")) {
+      SymbolicExpr expr = ParseFactor();
+      if (!expr) {
+        return SymbolicExpr();
+      }
+      return -expr;
     }
 
     // Case 1:Function call like max( ... ) or min( ... )
@@ -664,6 +674,36 @@ SymbolicExpr ParseSymbolicExpr(absl::string_view expr_str,
                                mlir::MLIRContext* mlir_context,
                                std::optional<int64_t> num_dims) {
   return ParseSymbolicExprAndAdvance(&expr_str, mlir_context, num_dims);
+}
+
+bool ParseSymbolicExprs(llvm::ArrayRef<std::string> dim_var_names,
+                        llvm::ArrayRef<std::string> symbol_var_names,
+                        llvm::ArrayRef<std::string> expr_strs,
+                        mlir::MLIRContext* mlir_context,
+                        llvm::SmallVectorImpl<SymbolicExpr>& symbolic_exprs) {
+  llvm::DenseMap<llvm::StringRef, SymbolicExpr> variable_map;
+  for (int i = 0; i < dim_var_names.size(); ++i) {
+    variable_map[llvm::StringRef(dim_var_names[i])] =
+        CreateSymbolicVariable(i, mlir_context);
+  }
+  for (int i = 0; i < symbol_var_names.size(); ++i) {
+    variable_map[llvm::StringRef(symbol_var_names[i])] =
+        CreateSymbolicVariable(dim_var_names.size() + i, mlir_context);
+  }
+
+  symbolic_exprs.reserve(expr_strs.size());
+  for (const auto& expr_str : expr_strs) {
+    absl::string_view str_view = expr_str;
+    SymbolicExpr expr =
+        ParseSymbolicExprAndAdvance(&str_view, mlir_context, variable_map);
+    if (!expr) {
+      llvm::errs() << "Failed to parse symbolic expression: " << expr_str
+                   << "\n";
+      return false;
+    }
+    symbolic_exprs.push_back(expr);
+  }
+  return true;
 }
 
 SymbolicExpr ParseSymbolicExprAndAdvance(absl::string_view* expr_str,

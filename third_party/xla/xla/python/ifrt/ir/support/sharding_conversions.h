@@ -16,7 +16,11 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_IR_SUPPORT_SHARDING_CONVERSIONS_H_
 #define XLA_PYTHON_IFRT_IR_SUPPORT_SHARDING_CONVERSIONS_H_
 
+#include <optional>
+#include <vector>
+
 #include "absl/status/statusor.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/xla_data.pb.h"
@@ -33,19 +37,38 @@ absl::StatusOr<xla::OpSharding> ToOpSharding(
 
 // Converts ShardingParam to HloSharding.
 //
-// This assumes that `sharding_param` is valid.
+// If `logical_device_ids` is provided, then a HloShardingV1 is returned.
+// Otherwise, IOTA is assumed and a HloShardingV2 is returned.
+//
+// The function assumes that `sharding_param` is valid.
 absl::StatusOr<xla::HloSharding> ToHloSharding(
-    const ShardingParam& sharding_param);
+    const ShardingParam& sharding_param,
+    std::optional<llvm::ArrayRef<int>> logical_device_ids = std::nullopt);
 
 // Converts HloSharding to ShardingParam.
 //
-// It assumes that `hlo_sharding` is valid.
+// It assumes that `hlo_sharding` is a valid HloShardingV2.
 //
 // Returns error when `hlo_sharding` cannot be converted to sharding param.
 // Only a subset of HloShardings are supported: REPLICATED (including MAXIMAL
 // on single-device), partially replicated, fully partitioned shardings.
 // (Non-fully-replicated) MAXIMAL and MANUAL shardings are not supported.
 absl::StatusOr<ShardingParam> ToShardingParam(
+    const xla::HloSharding& hlo_sharding, int rank, int num_devices);
+
+struct ShardingParamWithDeviceIds {
+  ShardingParam sharding_param;
+  // If `logical_device_ids` is nullopt, then the logical device ids are assumed
+  // to be IOTA.
+  std::optional<std::vector<int>> logical_device_ids;
+};
+
+// Converts HloSharding to ShardingParam and device ids.
+//
+// It assumes that `hlo_sharding` is valid. Has the same limitations as
+// `ToShardingParam`, but also supports converting HloShardingV1 (i.e.,
+// with non-iota tile assignments).
+absl::StatusOr<ShardingParamWithDeviceIds> ToShardingParamAndDevices(
     const xla::HloSharding& hlo_sharding, int rank, int num_devices);
 
 }  // namespace support

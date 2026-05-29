@@ -383,7 +383,7 @@ class CoordinationServiceAgent {
       ABSL_GUARDED_BY(state_mu_);
   absl::flat_hash_set<std::string> ongoing_barriers_ ABSL_GUARDED_BY(state_mu_);
 
-  IncarnationId leader_incarnation_{0};
+  IncarnationId service_incarnation_{0};
 
   absl::Mutex shutdown_mu_;
   bool shutting_down_ ABSL_GUARDED_BY(shutdown_mu_) = false;

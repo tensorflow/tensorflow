@@ -90,11 +90,12 @@ class UnsortedSegmentJoinOp : public OpKernel {
     const int32_t segment_dims = segment_id_shape.dims();
 
     const Tensor& num_segments_tensor = context->input(2);
-    OP_REQUIRES(context, num_segments_tensor.NumElements() != 0,
-                errors::InvalidArgument("Number of segments cannot be empty."));
-    OP_REQUIRES(context,
-                TensorShapeUtils::IsScalar(num_segments_tensor.shape()),
-                errors::InvalidArgument("Number of segments must be a scalar"));
+    OP_REQUIRES(
+        context, num_segments_tensor.NumElements() != 0,
+        absl::InvalidArgumentError("Number of segments cannot be empty."));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(num_segments_tensor.shape()),
+        absl::InvalidArgumentError("Number of segments must be a scalar"));
     auto num_segments = num_segments_tensor.scalar<NUM_SEGMENTS_TYPE>()();
 
     OP_REQUIRES(
@@ -102,18 +103,18 @@ class UnsortedSegmentJoinOp : public OpKernel {
         errors::InvalidArgument(
             "Number of segments must be non-negative but got ", num_segments));
     OP_REQUIRES(context, segment_dims != 0,
-                errors::InvalidArgument("Segment_id cannot have rank 0"));
+                absl::InvalidArgumentError("Segment_id cannot have rank 0"));
 
-    OP_REQUIRES(
-        context, segment_dims <= input_dims,
-        errors::OutOfRange("Invalid segment_id rank ", segment_dims,
-                           " for input with ", input_dims, " dimension(s)"));
+    OP_REQUIRES(context, segment_dims <= input_dims,
+                absl::OutOfRangeError(absl::StrCat(
+                    "Invalid segment_id rank ", segment_dims,
+                    " for input with ", input_dims, " dimension(s)")));
     for (auto i = 0; i < segment_dims; i++) {
       OP_REQUIRES(
           context, segment_id_shape.dim_size(i) == input_shape.dim_size(i),
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "Segment dimension is ", segment_id_shape.dim_size(i),
-              " while input dimension is ", input_dims, " in rank ", i));
+              " while input dimension is ", input_dims, " in rank ", i)));
     }
 
     // Making output tensor.
@@ -132,7 +133,7 @@ class UnsortedSegmentJoinOp : public OpKernel {
       OP_REQUIRES(
           context,
           ((flat_segment_id(i) < num_segments) && (flat_segment_id(i) >= 0)),
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(
               "segment_ids are not allowed to exceed num_segments or"
               " to have negative values."));
     }

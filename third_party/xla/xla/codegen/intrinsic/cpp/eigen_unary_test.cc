@@ -109,7 +109,7 @@ TEST(EigenUnaryTest, FastTanhfIsVectorized) {
 
   EXPECT_THAT(ir, ContainsRegex("fmul <16 x float>"));
   EXPECT_THAT(ir, ContainsRegex("fmul <8 x double>"));
-  EXPECT_THAT(ir, ContainsRegex("<16 x float>.*0x3E4DF2A3C0000000"));
+  EXPECT_THAT(ir, ContainsRegex("<16 x float>.*f0x326F951E"));
   EXPECT_THAT(ir, Not(ContainsRegex("llvm.x86")));
   EXPECT_THAT(ir, Not(ContainsRegex("llvm.aarch64")));
   EXPECT_THAT(ir, ContainsRegex("xla.unused.tanh.v16f32"));

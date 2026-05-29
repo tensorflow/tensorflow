@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiled_module.h"
@@ -31,11 +32,12 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/platform_util.h"
+#include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -86,7 +88,6 @@ class Gb200CrossCompilationTest : public HloPjRtTestBase {
 
     DebugOptions debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_autotune_level(4);
-    debug_options.set_xla_gpu_experimental_aot_compiled_thunks(true);
     module->mutable_config().set_debug_options(debug_options);
 
     ASSIGN_OR_RETURN(

@@ -66,6 +66,7 @@ cc_library(
         "//xla/tests:xla_test_backend_predicates",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/util:command_line_flags",
@@ -179,6 +180,8 @@ xla_test(
         "gpu": [
             "notsan",
         ],
+        "gb200": ["broken"],  # TODO(b/505945608): re-enable when fixed.
+        "gb300": ["broken"],  # TODO(b/505944727): re-enable when fixed.
     },
     backends = ["cpu"] + [
         gpu

@@ -81,7 +81,7 @@ void CopyDeviceToDevice(OpKernelContext* context, const Scalar* src,
                          .ok();
 
   if (!copy_status) {
-    context->SetStatus(errors::Internal("Copying device-to-device failed."));
+    context->SetStatus(absl::InternalError("Copying device-to-device failed."));
   }
 }
 
@@ -102,8 +102,8 @@ class TridiagonalSolveOpGpuLinalg : public LinearAlgebraOp<Scalar> {
     }
     OP_REQUIRES(
         context, perturb_singular_ == false,
-        errors::Unimplemented("The solver to support perturb_singular is"
-                              " not implemented on GPU."));
+        absl::UnimplementedError("The solver to support perturb_singular is"
+                                 " not implemented on GPU."));
   }
 
   void ValidateInputMatrixShapes(

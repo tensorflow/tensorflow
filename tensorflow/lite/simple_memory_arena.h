@@ -73,9 +73,11 @@ class ResizableAlignedBuffer {
   ~ResizableAlignedBuffer() { Release(); }
 
   // Resizes the buffer to make sure new_size bytes fit in the buffer. Keeps
-  // alignment and any existing the data. Returns true when any external
-  // pointers into the data array need to be adjusted (the buffer was moved).
-  bool Resize(size_t new_size);
+  // alignment and any existing the data. Returns kTfLiteError without
+  // modifying the existing allocation if the resize fails. Sets
+  // `buffer_reallocated` when any external pointers into the data array need to
+  // be adjusted (the buffer was moved).
+  TfLiteStatus Resize(size_t new_size, bool* buffer_reallocated);
   // Releases any allocated memory.
   void Release();
 

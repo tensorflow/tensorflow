@@ -46,16 +46,64 @@ TEST(PrimitiveUtilTest, StringToPrimitiveType) {
   EXPECT_IS_NOT_OK(primitive_util::StringToPrimitiveType("preD").status());
 }
 
-TEST(PrimitiveUtilTest, FloatTypes) {
-  EXPECT_EQ(primitive_util::SignificandWidth(F32), 24);
-  EXPECT_EQ(primitive_util::SignificandWidth(BF16), 8);
-  EXPECT_EQ(primitive_util::ExponentWidth(F32), 8);
-  EXPECT_EQ(primitive_util::ExponentWidth(BF16), 8);
-  EXPECT_EQ(primitive_util::UnderflowExponent(F32), -125);
-  EXPECT_EQ(primitive_util::UnderflowExponent(BF16), -125);
-  EXPECT_EQ(primitive_util::OverflowExponent(F32), 128);
-  EXPECT_EQ(primitive_util::OverflowExponent(BF16), 128);
+struct FloatTypeTestData {
+  PrimitiveType type;
+  int exponent_width;
+  int significand_width;
+  int exponent_bias;
+  int underflow_exponent;
+  int overflow_exponent;
+};
+
+class FloatTypeTest : public ::testing::TestWithParam<FloatTypeTestData> {};
+
+TEST_P(FloatTypeTest, SignificandWidth) {
+  const FloatTypeTestData& data = GetParam();
+  EXPECT_EQ(primitive_util::SignificandWidth(data.type), data.significand_width)
+      << "Failed for " << PrimitiveType_Name(data.type);
 }
+
+TEST_P(FloatTypeTest, ExponentWidth) {
+  const FloatTypeTestData& data = GetParam();
+  EXPECT_EQ(primitive_util::ExponentWidth(data.type), data.exponent_width)
+      << "Failed for " << PrimitiveType_Name(data.type);
+}
+
+TEST_P(FloatTypeTest, ExponentBias) {
+  const FloatTypeTestData& data = GetParam();
+  EXPECT_EQ(primitive_util::ExponentBias(data.type), data.exponent_bias)
+      << "Failed for " << PrimitiveType_Name(data.type);
+}
+
+TEST_P(FloatTypeTest, UnderflowExponent) {
+  const FloatTypeTestData& data = GetParam();
+  EXPECT_EQ(primitive_util::UnderflowExponent(data.type),
+            data.underflow_exponent)
+      << "Failed for " << PrimitiveType_Name(data.type);
+}
+
+TEST_P(FloatTypeTest, OverflowExponent) {
+  const FloatTypeTestData& data = GetParam();
+  EXPECT_EQ(primitive_util::OverflowExponent(data.type), data.overflow_exponent)
+      << "Failed for " << PrimitiveType_Name(data.type);
+}
+
+INSTANTIATE_TEST_SUITE_P(FloatTypeTests, FloatTypeTest,
+                         ::testing::ValuesIn<FloatTypeTestData>({
+                             {F32, 8, 24, 127, -125, 128},
+                             {BF16, 8, 8, 127, -125, 128},
+                             {F4E2M1FN, 2, 2, 1, 1, 3},
+                             {F8E3M4, 3, 5, 3, -1, 4},
+                             {F8E4M3, 4, 4, 7, -5, 8},
+                             {F8E4M3FN, 4, 4, 7, -5, 9},
+                             {F8E4M3B11FNUZ, 4, 4, 11, -9, 5},
+                             {F8E4M3FNUZ, 4, 4, 8, -6, 8},
+                             {F8E5M2, 5, 3, 15, -13, 16},
+                             {F8E5M2FNUZ, 5, 3, 16, -14, 16},
+                             {F8E8M0FNU, 8, 1, 127, -126, 128},
+                             {F16, 5, 11, 15, -13, 16},
+                             {F64, 11, 53, 1023, -1021, 1024},
+                         }));
 
 TEST(PrimitiveUtilTest, CastPreservesValues) {
   bool expecteds[PrimitiveType_ARRAYSIZE][PrimitiveType_ARRAYSIZE] = {};

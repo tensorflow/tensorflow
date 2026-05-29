@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "rocm/include/hip/hip_bfloat16.h"
 #include "rocm/include/hip/hip_fp16.h"
 #include "rocm/include/hip/hip_runtime.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
 #include "xla/xla_data.pb.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace stream_executor {
 namespace rocm {

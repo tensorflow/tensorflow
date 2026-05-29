@@ -57,23 +57,8 @@ class AllReduceReduceScatterThunkBase : public CollectiveThunk {
   const CollectiveConfig& config() const override { return config_.config; }
   ReductionKind reduction_kind() const { return config_.reduction_kind; }
 
-  absl::Span<const Buffer> buffers() const { return buffers_; }
-
-  BufferUses buffer_uses() const override {
-    BufferUses uses;
-    uses.reserve(buffers_.size() * 2);
-    for (const Buffer& buffer : buffers_) {
-      uses.push_back(BufferUse::Read(buffer.source_buffer.slice,
-                                     buffer.source_buffer.shape));
-      uses.push_back(BufferUse::Write(buffer.destination_buffer.slice,
-                                      buffer.destination_buffer.shape));
-    }
-    return uses;
-  }
-
  protected:
   const AllReduceConfig config_;
-  const std::vector<Buffer> buffers_;
 };
 
 // -----------------------------------------------------------------------------
@@ -105,7 +90,7 @@ class AllReduceThunk : public AllReduceReduceScatterThunkBase {
   absl::Status Initialize(const InitializeParams& params) override;
 
   static absl::StatusOr<std::unique_ptr<AllReduceThunk>> FromProto(
-      ThunkInfo thunk_info, const AllReduceStartThunkProto& thunk_proto,
+      ThunkInfo thunk_info, const AllReduceThunkProto& thunk_proto,
       absl::Span<const BufferAllocation> buffer_allocations);
 
   absl::StatusOr<ThunkProto> ToProto() const override;
@@ -116,6 +101,8 @@ class AllReduceThunk : public AllReduceReduceScatterThunkBase {
   absl::Status RunCollective(const ExecuteParams& params,
                              const GpuCliqueKey& clique_key, se::Stream& stream,
                              Communicator& comm) override;
+
+  bool CanUseSymmetricBuffer() const override { return true; }
 
  private:
   std::unique_ptr<CollectiveKernelThunk> collective_kernel_thunk_;

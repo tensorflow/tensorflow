@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "rocm/include/rccl/rccl.h"
 #include "rocm/rocm_config.h"  // IWYU pragma: keep
 #include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
@@ -42,12 +43,6 @@ limitations under the License.
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/xla_data.pb.h"
-
-#if (TF_ROCM_VERSION >= 50200)
-#include "rocm/include/rccl/rccl.h"
-#else
-#include "rocm/include/rccl.h"
-#endif  // TF_ROCM_VERSION >= 50200
 
 namespace xla::gpu {
 
@@ -79,13 +74,6 @@ class RcclCommunicator : public GpuCommunicator {
   absl::Status Abort() final;
   absl::Status HealthCheck() const final;
   absl::StatusOr<size_t> NumRanks() const final;
-
-  // Since each XLA buffer is a slice into a larger BFCAllocator chunk, first
-  // get the base address of buffer. We will use the base address to keep track
-  // of which chunks we have registered.
-  absl::Status RegisterBufferOnce(se::DeviceAddressBase buffer_range,
-                                  int device_ordinal,
-                                  bool use_symmetric_buffer) final;
 
   Future<> GroupExecute(
       absl::AnyInvocable<absl::Status(GpuCommunicator*)> f) final;
@@ -131,10 +119,6 @@ class RcclCommunicator : public GpuCommunicator {
   ncclComm_t comm() const { return comm_; }
 
  private:
-  absl::StatusOr<std::unique_ptr<RegisteredBufferHandle>> RegisterBuffer(
-      se::DeviceAddressBase buffer, int device_ordinal,
-      bool use_symmetric_buffer);
-
   class RcclRegisteredBufferHandle;
 
   RcclCommunicator(ncclComm_t comm, std::unique_ptr<tsl::Executor> executor,
@@ -239,17 +223,6 @@ class RcclCommunicator : public GpuCommunicator {
 
   // Nesting level of current RCCL group
   int group_nesting_level_ = 0;
-
-  // Keep track of which communicators we have registered for already.
-  // Each ncclMemAlloc'd buffer needs to be registered once per comm.
-  struct RegisteredBuffers {
-    absl::Mutex mu;
-    // Buffer range to the registered buffer handle.
-    absl::flat_hash_map<void*,
-                        std::unique_ptr<Communicator::RegisteredBufferHandle>>
-        range_to_handle ABSL_GUARDED_BY(mu);
-  };
-  RegisteredBuffers registered_buffers_;
 };
 
 }  // namespace xla::gpu

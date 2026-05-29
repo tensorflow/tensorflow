@@ -68,35 +68,34 @@ class CTCDecodeHelper {
     const TensorShape& inputs_shape = (*inputs)->shape();
 
     if (inputs_shape.dims() != 3) {
-      return errors::InvalidArgument("inputs is not a 3-Tensor");
+      return absl::InvalidArgumentError("inputs is not a 3-Tensor");
     }
     if (inputs_shape.num_elements() == 0) {
-      return errors::InvalidArgument("inputs must not be empty");
+      return absl::InvalidArgumentError("inputs must not be empty");
     }
 
     const int64_t max_time = inputs_shape.dim_size(0);
     const int64_t batch_size = inputs_shape.dim_size(1);
 
     if (max_time == 0) {
-      return errors::InvalidArgument("max_time is 0");
+      return absl::InvalidArgumentError("max_time is 0");
     }
     if (!TensorShapeUtils::IsVector((*seq_len)->shape())) {
-      return errors::InvalidArgument("sequence_length is not a vector");
+      return absl::InvalidArgumentError("sequence_length is not a vector");
     }
 
     if (!(batch_size == (*seq_len)->dim_size(0))) {
-      return errors::FailedPrecondition(
-          "len(sequence_length) != batch_size.  ",
-          "len(sequence_length):  ", (*seq_len)->dim_size(0),
-          " batch_size: ", batch_size);
+      return absl::FailedPreconditionError(absl::StrCat(
+          "len(sequence_length) != batch_size.  ", "len(sequence_length):  ",
+          (*seq_len)->dim_size(0), " batch_size: ", batch_size));
     }
 
     auto seq_len_t = (*seq_len)->vec<int32_t>();
 
     for (int b = 0; b < batch_size; ++b) {
       if (!(seq_len_t(b) <= max_time)) {
-        return errors::FailedPrecondition("sequence_length(", b,
-                                          ") <= ", max_time);
+        return absl::FailedPreconditionError(
+            absl::StrCat("sequence_length(", b, ") <= ", max_time));
       }
     }
 
@@ -210,7 +209,7 @@ class CTCGreedyDecoderOp : public OpKernel {
     const int64_t num_classes_raw = inputs_shape.dim_size(2);
     OP_REQUIRES(
         ctx, FastBoundsCheck(num_classes_raw, std::numeric_limits<int>::max()),
-        errors::InvalidArgument("num_classes cannot exceed max int"));
+        absl::InvalidArgumentError("num_classes cannot exceed max int"));
     const int num_classes = static_cast<const int>(num_classes_raw);
 
     auto inputs_t = inputs->tensor<T, 3>();
@@ -228,9 +227,9 @@ class CTCGreedyDecoderOp : public OpKernel {
     int blank_index =
         (blank_index_ < 0) ? num_classes + blank_index_ : blank_index_;
     OP_REQUIRES(ctx, FastBoundsCheck(blank_index, num_classes),
-                errors::InvalidArgument("blank_index expected to be between ",
-                                        -num_classes, " and ", num_classes - 1,
-                                        " but was ", blank_index_));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "blank_index expected to be between ", -num_classes,
+                    " and ", num_classes - 1, " but was ", blank_index_)));
 
     // Perform best path decoding
     std::vector<std::vector<std::vector<int> > > sequences(batch_size);
@@ -242,7 +241,7 @@ class CTCGreedyDecoderOp : public OpKernel {
         for (int t = 0; t < seq_len_t(b); ++t) {
           int max_class_indices;
           OP_REQUIRES(ctx, input_list_t[t].dimension(1) > 0,
-                      errors::InvalidArgument("Invalid input dimensions."));
+                      absl::InvalidArgumentError("Invalid input dimensions."));
           log_prob_t(b, 0) +=
               -RowMax<T>(input_list_t[t], b, &max_class_indices);
           if (max_class_indices != blank_index &&
@@ -319,7 +318,7 @@ class CTCBeamSearchDecoderOp : public OpKernel {
     const int64_t num_classes_raw = inputs_shape.dim_size(2);
     OP_REQUIRES(
         ctx, FastBoundsCheck(num_classes_raw, std::numeric_limits<int>::max()),
-        errors::InvalidArgument("num_classes cannot exceed max int"));
+        absl::InvalidArgumentError("num_classes cannot exceed max int"));
     const int num_classes = static_cast<const int>(num_classes_raw);
 
     log_prob_t.setZero();

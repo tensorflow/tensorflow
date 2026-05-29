@@ -37,21 +37,24 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/logging.h"
 #include "tsl/platform/scanner.h"
-#include "tsl/platform/str_util.h"
-#include "tsl/platform/strcat.h"
-#include "tsl/platform/stringpiece.h"
 
 namespace tsl {
 namespace io {
 namespace internal {
 namespace {
 
-const char kPathSep[] = "/";
+static constexpr char kPathSep[2] = "/";
+static_assert(
+    sizeof(kPathSep) == 2 && kPathSep[1] == '\0',
+    "`kPathSep` must consist of a single character followed by a null "
+    "terminator. (If this ever changes, update dependent code accordingly.)");
+
 }  // namespace
 
 std::string JoinPathImpl(std::initializer_list<absl::string_view> paths) {
@@ -223,6 +226,13 @@ std::string CleanPath(absl::string_view unclean_path) {
     path.assign(1, '.');
   }
   return path;
+}
+
+std::string EnsureTrailingSlash(absl::string_view path) {
+  if (!path.empty() && path.back() != internal::kPathSep[0]) {
+    return absl::StrCat(path, internal::kPathSep);
+  }
+  return std::string(path);
 }
 
 void ParseURI(absl::string_view uri, absl::string_view* scheme,

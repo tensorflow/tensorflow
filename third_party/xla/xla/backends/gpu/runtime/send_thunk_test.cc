@@ -36,6 +36,25 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
       R"pb(
         thunk_info { profile_annotation: "partition_id_profile_annotation" }
         send_thunk {
+          buffer {
+            element_count: 64
+            source_buffer {
+              slice { offset: 128 size: 256 buffer_allocation_index: 0 }
+              shape {
+                dimensions: 64
+                element_type: S32
+                is_dynamic_dimension: false
+              }
+            }
+            destination_buffer {
+              slice { offset: 0 size: 256 buffer_allocation_index: 1 }
+              shape {
+                dimensions: 64
+                element_type: S32
+                is_dynamic_dimension: false
+              }
+            }
+          }
           collective_config {}
           source_target_pairs: { source: 1 target: 2 }
         }
@@ -45,7 +64,8 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
   thunk_info.profile_annotation = proto.thunk_info().profile_annotation();
 
   std::vector<BufferAllocation> buffer_allocations = {
-      BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0)};
+      BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
+      BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
 
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<SendThunk> thunk,

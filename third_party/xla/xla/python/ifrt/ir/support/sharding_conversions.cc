@@ -18,7 +18,9 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <iterator>
+#include <memory>
 #include <numeric>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -29,8 +31,10 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "xla/array.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/tsl/platform/statusor.h"
@@ -151,8 +155,8 @@ absl::StatusOr<ShardingInfo> GetShardingInfo(
   }
 
   // In this branch, there are both replicated and unreduced axes.
-  TF_ASSIGN_OR_RETURN(std::vector<SubDimInfo> sub_dim_info,
-                      GetOrderedSubDims(dims, reshape_dims, permutation));
+  ASSIGN_OR_RETURN(std::vector<SubDimInfo> sub_dim_info,
+                   GetOrderedSubDims(dims, reshape_dims, permutation));
 
   // Update the axis sizes, possibly re-expanding collapsed axes.
   std::vector<int64_t> new_reshape_dims;
@@ -243,8 +247,7 @@ absl::StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param) {
     }
   }
   op_sharding.set_type(OpSharding::OTHER);
-  TF_ASSIGN_OR_RETURN(ShardingInfo sharding_info,
-                      GetShardingInfo(sharding_param));
+  ASSIGN_OR_RETURN(ShardingInfo sharding_info, GetShardingInfo(sharding_param));
 
   // Populate tile_assignment_dimensions.
   auto* tile_assignment_dims = op_sharding.mutable_tile_assignment_dimensions();
@@ -273,9 +276,10 @@ absl::StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param) {
 }
 
 absl::StatusOr<xla::HloSharding> ToHloSharding(
-    const ShardingParam& sharding_param) {
+    const ShardingParam& sharding_param,
+    std::optional<llvm::ArrayRef<int>> logical_device_ids) {
   if (sharding_param.NumDevices() == 1) {
-    // Generate single-device sharding as TileMaximal.
+    // Generate single-device sharding as replicated.
     return xla::HloSharding::Replicate();
   }
   if (!sharding_param.unreduced_axes().empty()) {
@@ -284,12 +288,35 @@ absl::StatusOr<xla::HloSharding> ToHloSharding(
       return xla::HloSharding::Unreduced();
     }
   }
-  TF_ASSIGN_OR_RETURN(ShardingInfo sharding_info,
-                      GetShardingInfo(sharding_param));
+  ASSIGN_OR_RETURN(ShardingInfo sharding_info, GetShardingInfo(sharding_param));
+
+  if (logical_device_ids.has_value() &&
+      logical_device_ids->size() != sharding_param.NumDevices()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "The size of `logical_device_ids` (%d) must be equal to the number of "
+        "devices in `ShardingParam` (%d)",
+        logical_device_ids->size(), sharding_param.NumDevices()));
+  }
+
+  auto make_tile_assignment =
+      [&](absl::Span<const int64_t> dims,
+          absl::Span<const int64_t> reshape_dims,
+          absl::Span<const int> permutation) -> TileAssignment {
+    if (!logical_device_ids.has_value()) {
+      return TileAssignment(dims, reshape_dims, permutation);
+    }
+    Array<int64_t> array = xla::ToArray(reshape_dims, permutation, dims);
+    for (int64_t i = 0; i < array.num_elements(); ++i) {
+      array.data()[i] = (*logical_device_ids)[array.data()[i]];
+    }
+    return TileAssignment(
+        std::make_shared<const Array<int64_t>>(std::move(array)));
+  };
+
   if (sharding_info.last_tile_dims.empty()) {
-    return xla::HloSharding::IotaTile(sharding_info.dims,
-                                      sharding_info.reshape_dims,
-                                      sharding_info.permutation);
+    return xla::HloSharding::Tile(
+        make_tile_assignment(sharding_info.dims, sharding_info.reshape_dims,
+                             sharding_info.permutation));
   }
   // If the only tile dimension is REPLICATED, we use
   // xla::HloSharding::PartialTile directly to avoid unnecessary
@@ -297,12 +324,12 @@ absl::StatusOr<xla::HloSharding> ToHloSharding(
   if (sharding_info.last_tile_dims.size() == 1 &&
       sharding_info.last_tile_dims[0] == OpSharding::REPLICATED) {
     return xla::HloSharding::PartialTile(
-        TileAssignment(sharding_info.dims, sharding_info.reshape_dims,
-                       sharding_info.permutation));
+        make_tile_assignment(sharding_info.dims, sharding_info.reshape_dims,
+                             sharding_info.permutation));
   }
   return xla::HloSharding::Subgroup(
-      TileAssignment(sharding_info.dims, sharding_info.reshape_dims,
-                     sharding_info.permutation),
+      make_tile_assignment(sharding_info.dims, sharding_info.reshape_dims,
+                           sharding_info.permutation),
       std::move(sharding_info.last_tile_dims));
 }
 
@@ -390,7 +417,7 @@ absl::StatusOr<ShardingParam> ToShardingParam(
       minor_to_major.permutation.push_back(num_axis - axis_id - 1);
     }
   } else {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         std::vector<SubDimInfo> subdim_info,
         GetOrderedSubDims(tile_assignment.iota()->dims(),
                           tile_assignment.iota()->reshape_dims(),
@@ -426,6 +453,56 @@ absl::StatusOr<ShardingParam> ToShardingParam(
   }
   return ShardingParam(std::move(dim_shards), std::move(minor_to_major),
                        std::move(unreduced_axes));
+}
+
+absl::StatusOr<ShardingParamWithDeviceIds> ToShardingParamAndDevices(
+    const xla::HloSharding& hlo_sharding, int rank, int num_devices) {
+  absl::StatusOr<ShardingParam> sharding_param_or =
+      ToShardingParam(hlo_sharding, rank, num_devices);
+  if (sharding_param_or.ok()) {
+    return ShardingParamWithDeviceIds{std::move(sharding_param_or.value()),
+                                      std::nullopt};
+  }
+  if (!hlo_sharding.IsTiled()) {
+    return sharding_param_or.status();
+  }
+  const xla::TileAssignment& tile_assignment = hlo_sharding.tile_assignment();
+  if (rank != hlo_sharding.TiledDataRank()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "`TiledData` expected to have %d dimensions, but has %d "
+        "dimensions; sharding=%s",
+        rank, hlo_sharding.TiledDataRank(), hlo_sharding.ToString()));
+  }
+  for (const auto& subgroup_type : hlo_sharding.subgroup_types()) {
+    if (subgroup_type != OpSharding::UNREDUCED &&
+        subgroup_type != OpSharding::REPLICATED) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Unsupported conversion to `ShardingParam` from `HloSharding` that "
+          "has a subgroup type other than `UNREDUCED` or `REPLICATED`; "
+          "sharding=",
+          hlo_sharding.ToString()));
+    }
+  }
+  std::vector<int64_t> dim_shards(tile_assignment.dimensions().begin(),
+                                  tile_assignment.dimensions().end());
+  if (hlo_sharding.ReplicateOnLastTileDim()) {
+    dim_shards.pop_back();
+  }
+  for (int i = 0; i < hlo_sharding.subgroup_types().size(); ++i) {
+    dim_shards.pop_back();
+  }
+  ShardingParam::MinorToMajor minor_to_major;
+  minor_to_major.permutation.push_back(0);
+  minor_to_major.axis_sizes.push_back(num_devices);
+  const xla::Array<int64_t>& array = tile_assignment.array();
+  std::vector<int> logical_device_ids;
+  logical_device_ids.reserve(array.num_elements());
+  for (int64_t i = 0; i < array.num_elements(); ++i) {
+    logical_device_ids.push_back(array.data()[i]);
+  }
+  return ShardingParamWithDeviceIds{
+      ShardingParam(std::move(dim_shards), std::move(minor_to_major)),
+      std::move(logical_device_ids)};
 }
 
 }  // namespace support

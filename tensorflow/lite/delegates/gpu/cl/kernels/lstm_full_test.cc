@@ -166,7 +166,8 @@ class LSTMOpModel : public SingleOpModel {
     auto options = TfLiteGpuDelegateOptionsV2Default();
     // MeanStddevNormalization is only implemented in OpenCL now.
     options.experimental_flags |= TFLITE_GPU_EXPERIMENTAL_FLAGS_CL_ONLY;
-    SetDelegate(TfLiteGpuDelegateV2Create(&options));
+    SetDelegate(
+        {TfLiteGpuDelegateV2Create(&options), TfLiteGpuDelegateV2Delete});
   }
 
   ~LSTMOpModel() { EXPECT_EQ(CountOpsExecutedByCpuKernel(), 0); }

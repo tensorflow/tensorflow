@@ -52,18 +52,19 @@ class CategoricalOp : public XlaOpKernel {
                    ctx->ConstantInputAsIntScalar(
                        1, &num_samples, xla::ValueInferenceMode::kUpperBound));
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(logits_shape),
-                errors::InvalidArgument("logits should be a matrix, got shape ",
-                                        logits_shape.DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("logits should be a matrix, got shape ",
+                                 logits_shape.DebugString())));
     OP_REQUIRES(ctx, num_samples >= 0,
-                errors::InvalidArgument(
-                    "num_samples should be nonnegative, got ", num_samples));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "num_samples should be nonnegative, got ", num_samples)));
 
     for (int i = 0; i < 2; i++) {
       const int64_t dim = logits_shape.dim_size(i);
-      OP_REQUIRES(
-          ctx, static_cast<int>(dim) == dim,
-          errors::InvalidArgument("logits.shape = ", logits_shape.DebugString(),
-                                  " too large for int"));
+      OP_REQUIRES(ctx, static_cast<int>(dim) == dim,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "logits.shape = ", logits_shape.DebugString(),
+                      " too large for int")));
     }
 
     const int64_t batch_size = logits_shape.dim_size(0);
@@ -178,9 +179,10 @@ class StatelessCategoricalOp : public CategoricalOp {
 
   void Compile(XlaOpKernelContext* ctx) override {
     TensorShape seed_shape = ctx->InputShape(2);
-    OP_REQUIRES(ctx, seed_shape.dims() == 1 && seed_shape.dim_size(0) == 2,
-                errors::InvalidArgument("seed must have shape [2], not ",
-                                        seed_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, seed_shape.dims() == 1 && seed_shape.dim_size(0) == 2,
+        absl::InvalidArgumentError(absl::StrCat(
+            "seed must have shape [2], not ", seed_shape.DebugString())));
     CategoricalOp::Compile(ctx);
   }
 

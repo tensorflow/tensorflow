@@ -52,6 +52,7 @@ cc_library(
         ":collectives",
         "//xla:util",
         "//xla/service:platform_util",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:btree",
@@ -71,11 +72,11 @@ cc_library(
     deps = [
         ":rank_id",
         ":reduction_kind",
+        ":symmetric_memory",
         "//xla:future",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/stream_executor:device_address",
-        "//xla/stream_executor:kernel_args",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -139,8 +140,11 @@ cc_library(
     name = "symmetric_memory",
     hdrs = ["symmetric_memory.h"],
     deps = [
+        ":rank_id",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:kernel_args",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
     ],
 )

@@ -18,16 +18,14 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include <cstdint>
 #include <functional>
-#include <limits>
 #include <optional>
+#include <string>
+#include <vector>
 
-#include "absl/strings/string_view.h"
-#include "xla/tsl/framework/numeric_types.h"
-#include "xla/tsl/framework/type_traits.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/platform/numa.h"
 
 namespace tsl {
@@ -108,7 +106,7 @@ struct AllocatorStats {
 enum class AllocatorMemoryType {
   kUnknown = 0,       // Memory type unknown.
   kDevice = 1,        // Memory on device.
-  kHostPageable = 2,  // Memory on host and it is pagable.
+  kHostPageable = 2,  // Memory on host and it is pageable.
   kHostPinned = 3,    // Memory on host and it is pinned.
 };
 
@@ -404,7 +402,7 @@ class SubAllocator {
   virtual ~SubAllocator() {}
   // Allocates at least num_bytes. Returns actual number of bytes allocated in
   // bytes_received. The caller can safely use the full bytes_received sized
-  // buffer following the returend pointer.
+  // buffer following the returned pointer.
   virtual void* Alloc(size_t alignment, size_t num_bytes,
                       size_t* bytes_received) = 0;
   virtual void Free(void* ptr, size_t num_bytes) = 0;

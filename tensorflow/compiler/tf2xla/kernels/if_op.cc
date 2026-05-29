@@ -112,26 +112,26 @@ static absl::Status ValidateShapes(
     std::vector<PartialTensorShape>& output_shapes) {
   // Check that both branches have identical input shapes.
   if (then_result.xla_input_shapes.size() != 1) {
-    return errors::FailedPrecondition("Expected one input shape");
+    return absl::FailedPreconditionError("Expected one input shape");
   }
 
   xla::Shape then_input_shape = then_result.xla_input_shapes[0];
   if (!then_input_shape.IsTuple()) {
-    return errors::FailedPrecondition("Expected tuple shape");
+    return absl::FailedPreconditionError("Expected tuple shape");
   }
 
   if (else_result.xla_input_shapes.size() != 1) {
-    return errors::FailedPrecondition("Expected one input shape");
+    return absl::FailedPreconditionError("Expected one input shape");
   }
   xla::Shape else_input_shape = else_result.xla_input_shapes[0];
   if (!else_input_shape.IsTuple()) {
-    return errors::FailedPrecondition("Expected tuple shape");
+    return absl::FailedPreconditionError("Expected tuple shape");
   }
   if (!xla::ShapeUtil::Compatible(then_input_shape, else_input_shape)) {
-    return errors::InvalidArgument(
-        "Input shapes of then and else branches do not match: ",
-        xla::ShapeUtil::HumanString(then_input_shape), " vs. ",
-        xla::ShapeUtil::HumanString(else_input_shape));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Input shapes of then and else branches do not match: ",
+                     xla::ShapeUtil::HumanString(then_input_shape), " vs. ",
+                     xla::ShapeUtil::HumanString(else_input_shape)));
   }
 
   // Check that both branches have identical output shapes.
@@ -143,19 +143,19 @@ static absl::Status ValidateShapes(
     // message.
     for (const PartialTensorShape& shape : output_shapes) {
       if (!shape.IsFullyDefined()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Output shapes of then and else branches do not match: ",
             xla::ShapeUtil::HumanString(then_result.xla_output_shape), " vs. ",
             xla::ShapeUtil::HumanString(else_result.xla_output_shape),
             "; this TF operation has dynamic output dimensions and TF and HLO "
             "have different requirements wrt shape constraints. This cannot be "
-            "handled currently.");
+            "handled currently."));
       }
     }
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Output shapes of then and else branches do not match: ",
         xla::ShapeUtil::HumanString(then_result.xla_output_shape), " vs. ",
-        xla::ShapeUtil::HumanString(else_result.xla_output_shape));
+        xla::ShapeUtil::HumanString(else_result.xla_output_shape)));
   }
 
   // Check that both branches have same TensorList output indices.
@@ -166,12 +166,12 @@ static absl::Status ValidateShapes(
     bool is_tensor_list_in_else_branch =
         else_result.outputs[output_index].is_tensor_list;
     if (is_tensor_list_in_then_branch != is_tensor_list_in_else_branch) {
-      return errors::FailedPrecondition(
-          "Output #", output_index, " is ",
-          (is_tensor_list_in_then_branch ? "" : "not"),
-          " a TensorList in then branch, but is ",
-          (is_tensor_list_in_else_branch ? "" : "not"),
-          " a TensorList in else branch");
+      return absl::FailedPreconditionError(
+          absl::StrCat("Output #", output_index, " is ",
+                       is_tensor_list_in_then_branch ? "" : "not",
+                       " a TensorList in then branch, but is ",
+                       is_tensor_list_in_else_branch ? "" : "not",
+                       " a TensorList in else branch"));
     }
   }
 
@@ -183,7 +183,7 @@ static absl::Status ValidateShapes(
   // arguments to both computations, so the resource update count must match.
   if (then_result.resource_updates.size() !=
       else_result.resource_updates.size()) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Different number of resources in then and else branch");
   }
 
@@ -194,8 +194,8 @@ static absl::Status ValidateShapes(
                  lhs.tensor_array_gradients_accessed ==
                      rhs.tensor_array_gradients_accessed;
     if (!equal) {
-      return errors::FailedPrecondition(
-          "Mismatch in resource of then and else branch for resource ", i);
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Mismatch in resource of then and else branch for resource ", i));
     }
   }
   return absl::OkStatus();
@@ -207,10 +207,10 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   xla::XlaBuilder* b = ctx->builder();
 
   OP_REQUIRES(ctx, cond_type_ == DT_BOOL,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(
                   "Condition argument must be a boolean for XLA compilation"));
   OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ctx->InputShape(0)),
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(
                   "Condition argument must be a scalar for XLA compilation"));
 
   VLOG(1) << "Building If: " << input_types_.size() << " inputs";
@@ -227,7 +227,8 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
 
       XlaCompiler::PopulateArgumentFromResource(*resource, &arg);
       OP_REQUIRES(ctx, arg.initialized,
-                  errors::Unimplemented("Uninitialized arguments: ", arg.name));
+                  absl::UnimplementedError(
+                      absl::StrCat("Uninitialized arguments: ", arg.name)));
       VLOG(2) << "Resource " << resource->name()
               << " type: " << DataTypeString(arg.type)
               << " shape: " << arg.HumanString()
@@ -367,9 +368,9 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
     auto shape_or = b->GetShape(token_output);
     OP_REQUIRES_OK(ctx, shape_or.status());
     OP_REQUIRES(ctx, shape_or.value().IsToken(),
-                errors::FailedPrecondition(
+                absl::FailedPreconditionError(absl::StrCat(
                     "Token output is not token type: ",
-                    xla::ShapeUtil::HumanString(shape_or.value())));
+                    xla::ShapeUtil::HumanString(shape_or.value()))));
     OP_REQUIRES_OK(ctx,
                    compiler->SetNodeToken(original_node_name_, token_output));
   }

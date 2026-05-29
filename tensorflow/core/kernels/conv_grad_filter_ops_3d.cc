@@ -138,21 +138,21 @@ class Conv3DBackpropFilterOp : public OpKernel {
       std::string data_format;
       OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
-                  errors::InvalidArgument("Invalid data format"));
+                  absl::InvalidArgumentError("Invalid data format"));
       OP_REQUIRES(
           context, data_format_ == FORMAT_NHWC,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(
               "Conv3DBackpropFilterOpV2 only supports NDHWC on the CPU."));
     }
 
     OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilation_));
     OP_REQUIRES(context, dilation_.size() == 5,
-                errors::InvalidArgument("Dilation rates field must "
-                                        "specify 5 dimensions"));
+                absl::InvalidArgumentError("Dilation rates field must "
+                                           "specify 5 dimensions"));
     OP_REQUIRES(context,
                 (GetTensorDim(dilation_, data_format_, 'C') == 1 &&
                  GetTensorDim(dilation_, data_format_, 'N') == 1),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Current implementation does not yet support "
                     "dilation rates in the batch and depth dimensions."));
 
@@ -161,20 +161,20 @@ class Conv3DBackpropFilterOp : public OpKernel {
                 (GetTensorDim(dilation_, data_format_, '0') == 1 &&
                  GetTensorDim(dilation_, data_format_, '1') == 1 &&
                  GetTensorDim(dilation_, data_format_, '2') == 1),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Current CPU implementation does not yet support "
                     "dilation rates larger than 1."));
 
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 5,
-                errors::InvalidArgument("Sliding window strides field must "
-                                        "specify 5 dimensions"));
-    OP_REQUIRES(
-        context,
-        (GetTensorDim(stride_, data_format_, 'C') == 1 &&
-         GetTensorDim(stride_, data_format_, 'N') == 1),
-        errors::InvalidArgument("Current implementation does not yet support "
-                                "strides in the batch and depth dimensions."));
+                absl::InvalidArgumentError("Sliding window strides field must "
+                                           "specify 5 dimensions"));
+    OP_REQUIRES(context,
+                (GetTensorDim(stride_, data_format_, 'C') == 1 &&
+                 GetTensorDim(stride_, data_format_, 'N') == 1),
+                absl::InvalidArgumentError(
+                    "Current implementation does not yet support "
+                    "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
   }
 
@@ -189,36 +189,37 @@ class Conv3DBackpropFilterOp : public OpKernel {
     if (takes_shape_) {
       const Tensor& filter_sizes = context->input(1);
       OP_REQUIRES(context, TensorShapeUtils::IsVector(filter_sizes.shape()),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "filter_sizes shape must be rank 1 but is rank ",
-                      filter_sizes.shape().dims()));
+                      filter_sizes.shape().dims())));
       OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
                                   filter_sizes.vec<int32_t>(), &filter_shape));
     } else {
       filter_shape = context->input(1).shape();
     }
 
-    OP_REQUIRES(context, input_shape.dims() == 5,
-                errors::InvalidArgument("input tensor must have 5 dimensions"));
     OP_REQUIRES(
-        context, filter_shape.dims() == 5,
-        errors::InvalidArgument("filter_sizes tensor must have 5 dimensions"));
-    OP_REQUIRES(
-        context, out_backprop_shape.dims() == 5,
-        errors::InvalidArgument("out_backprop tensor must have 5 dimensions"));
-    OP_REQUIRES(
-        context, input_shape.dim_size(4) == filter_shape.dim_size(3),
-        errors::InvalidArgument("input and filter_sizes must have the same "
-                                "number of channels. Got ",
-                                input_shape.dim_size(4), " for input and ",
-                                filter_shape.dim_size(3), " for filter_sizes"));
-    OP_REQUIRES(
-        context, out_backprop_shape.dim_size(4) == filter_shape.dim_size(4),
-        errors::InvalidArgument("out_backprop and filter_sizes must have the "
-                                "same number of channels. Got ",
-                                out_backprop_shape.dim_size(4),
-                                " for out_backprop and ",
-                                filter_shape.dim_size(4), " for filter_sizes"));
+        context, input_shape.dims() == 5,
+        absl::InvalidArgumentError("input tensor must have 5 dimensions"));
+    OP_REQUIRES(context, filter_shape.dims() == 5,
+                absl::InvalidArgumentError(
+                    "filter_sizes tensor must have 5 dimensions"));
+    OP_REQUIRES(context, out_backprop_shape.dims() == 5,
+                absl::InvalidArgumentError(
+                    "out_backprop tensor must have 5 dimensions"));
+    OP_REQUIRES(context, input_shape.dim_size(4) == filter_shape.dim_size(3),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "input and filter_sizes must have the same "
+                    "number of channels. Got ",
+                    input_shape.dim_size(4), " for input and ",
+                    filter_shape.dim_size(3), " for filter_sizes")));
+    OP_REQUIRES(context,
+                out_backprop_shape.dim_size(4) == filter_shape.dim_size(4),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "out_backprop and filter_sizes must have the "
+                    "same number of channels. Got ",
+                    out_backprop_shape.dim_size(4), " for out_backprop and ",
+                    filter_shape.dim_size(4), " for filter_sizes")));
 
     ConvBackpropDimensions dims;
     OP_REQUIRES_OK(context,
@@ -277,21 +278,21 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
       std::string data_format;
       OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
-                  errors::InvalidArgument("Invalid data format"));
+                  absl::InvalidArgumentError("Invalid data format"));
       OP_REQUIRES(
           context, data_format_ == FORMAT_NHWC,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(
               "Conv3DBackpropFilterOpV2 only supports NDHWC on the CPU."));
     }
 
     OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilation_));
     OP_REQUIRES(context, dilation_.size() == 5,
-                errors::InvalidArgument("Dilation rates field must "
-                                        "specify 5 dimensions"));
+                absl::InvalidArgumentError("Dilation rates field must "
+                                           "specify 5 dimensions"));
     OP_REQUIRES(context,
                 (GetTensorDim(dilation_, data_format_, 'C') == 1 &&
                  GetTensorDim(dilation_, data_format_, 'N') == 1),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Current implementation does not yet support "
                     "dilation rates in the batch and depth dimensions."));
 
@@ -300,20 +301,20 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
                 (GetTensorDim(dilation_, data_format_, '0') == 1 &&
                  GetTensorDim(dilation_, data_format_, '1') == 1 &&
                  GetTensorDim(dilation_, data_format_, '2') == 1),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Current CPU implementation does not yet support "
                     "dilation rates larger than 1."));
 
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 5,
-                errors::InvalidArgument("Sliding window strides field must "
-                                        "specify 5 dimensions"));
-    OP_REQUIRES(
-        context,
-        (GetTensorDim(stride_, data_format_, 'C') == 1 &&
-         GetTensorDim(stride_, data_format_, 'N') == 1),
-        errors::InvalidArgument("Current implementation does not yet support "
-                                "strides in the batch and depth dimensions."));
+                absl::InvalidArgumentError("Sliding window strides field must "
+                                           "specify 5 dimensions"));
+    OP_REQUIRES(context,
+                (GetTensorDim(stride_, data_format_, 'C') == 1 &&
+                 GetTensorDim(stride_, data_format_, 'N') == 1),
+                absl::InvalidArgumentError(
+                    "Current implementation does not yet support "
+                    "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
   }
 
@@ -328,36 +329,37 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
     if (takes_shape_) {
       const Tensor& filter_sizes = context->input(1);
       OP_REQUIRES(context, TensorShapeUtils::IsVector(filter_sizes.shape()),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "filter_sizes shape must be rank 1 but is rank ",
-                      filter_sizes.shape().dims()));
+                      filter_sizes.shape().dims())));
       OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
                                   filter_sizes.vec<int32_t>(), &filter_shape));
     } else {
       filter_shape = context->input(1).shape();
     }
 
-    OP_REQUIRES(context, input_shape.dims() == 5,
-                errors::InvalidArgument("input tensor must have 5 dimensions"));
     OP_REQUIRES(
-        context, filter_shape.dims() == 5,
-        errors::InvalidArgument("filter_sizes tensor must have 5 dimensions"));
-    OP_REQUIRES(
-        context, out_backprop_shape.dims() == 5,
-        errors::InvalidArgument("out_backprop tensor must have 5 dimensions"));
-    OP_REQUIRES(
-        context, input_shape.dim_size(4) == filter_shape.dim_size(3),
-        errors::InvalidArgument("input and filter_sizes must have the same "
-                                "number of channels. Got ",
-                                input_shape.dim_size(4), " for input and ",
-                                filter_shape.dim_size(3), " for filter_sizes"));
-    OP_REQUIRES(
-        context, out_backprop_shape.dim_size(4) == filter_shape.dim_size(4),
-        errors::InvalidArgument("out_backprop and filter_sizes must have the "
-                                "same number of channels. Got ",
-                                out_backprop_shape.dim_size(4),
-                                " for out_backprop and ",
-                                filter_shape.dim_size(4), " for filter_sizes"));
+        context, input_shape.dims() == 5,
+        absl::InvalidArgumentError("input tensor must have 5 dimensions"));
+    OP_REQUIRES(context, filter_shape.dims() == 5,
+                absl::InvalidArgumentError(
+                    "filter_sizes tensor must have 5 dimensions"));
+    OP_REQUIRES(context, out_backprop_shape.dims() == 5,
+                absl::InvalidArgumentError(
+                    "out_backprop tensor must have 5 dimensions"));
+    OP_REQUIRES(context, input_shape.dim_size(4) == filter_shape.dim_size(3),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "input and filter_sizes must have the same "
+                    "number of channels. Got ",
+                    input_shape.dim_size(4), " for input and ",
+                    filter_shape.dim_size(3), " for filter_sizes")));
+    OP_REQUIRES(context,
+                out_backprop_shape.dim_size(4) == filter_shape.dim_size(4),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "out_backprop and filter_sizes must have the "
+                    "same number of channels. Got ",
+                    out_backprop_shape.dim_size(4), " for out_backprop and ",
+                    filter_shape.dim_size(4), " for filter_sizes")));
 
     ConvBackpropDimensions dims;
     OP_REQUIRES_OK(context,
@@ -434,10 +436,10 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
 
     const int64_t work_unit_size = size_A + size_B + size_C;
 
-    OP_REQUIRES(
-        context, work_unit_size > 0,
-        errors::InvalidArgument("input, filter_sizes and out_backprop tensors "
-                                "must all have at least 1 element"));
+    OP_REQUIRES(context, work_unit_size > 0,
+                absl::InvalidArgumentError(
+                    "input, filter_sizes and out_backprop tensors "
+                    "must all have at least 1 element"));
 
     const size_t shard_size =
         (target_working_set_size + work_unit_size - 1) / work_unit_size;
@@ -698,11 +700,11 @@ void LaunchConvBackpropFilterOpImpl(
                               /*explicit_paddings=*/{}, data_format, &dims));
 
   auto* stream = context->op_device_context()->stream();
-  OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
+  OP_REQUIRES(context, stream, absl::InternalError("No GPU stream available."));
 
   if (DataTypeToEnum<T>::value == DT_BFLOAT16 &&
       !IsBF16SupportedInOps(stream)) {
-    context->SetStatus(errors::Unimplemented(
+    context->SetStatus(absl::UnimplementedError(
         "Conv3DBackpropFilter for GPU with bfloat16 is only supported "
         "with cuDNN on Ampere GPUs or later."));
     return;
@@ -1053,16 +1055,16 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
       std::string data_format;
       OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
-                  errors::InvalidArgument("Invalid data format"));
+                  absl::InvalidArgumentError("Invalid data format"));
     }
     OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilation_));
     OP_REQUIRES(context, dilation_.size() == 5,
-                errors::InvalidArgument("Dilation rates field must "
-                                        "specify 5 dimensions"));
+                absl::InvalidArgumentError("Dilation rates field must "
+                                           "specify 5 dimensions"));
     OP_REQUIRES(context,
                 (GetTensorDim(dilation_, data_format_, 'C') == 1 &&
                  GetTensorDim(dilation_, data_format_, 'N') == 1),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Current implementation does not yet support "
                     "dilation rates in the batch and depth dimensions."));
     OP_REQUIRES(
@@ -1070,23 +1072,23 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         (GetTensorDim(dilation_, data_format_, '0') > 0 &&
          GetTensorDim(dilation_, data_format_, '1') > 0 &&
          GetTensorDim(dilation_, data_format_, '2') > 0),
-        errors::InvalidArgument("Dilated rates should be larger than 0."));
+        absl::InvalidArgumentError("Dilated rates should be larger than 0."));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 5,
-                errors::InvalidArgument("Sliding window strides field must "
-                                        "specify 5 dimensions"));
-    OP_REQUIRES(
-        context,
-        (GetTensorDim(stride_, data_format_, 'C') == 1 &&
-         GetTensorDim(stride_, data_format_, 'N') == 1),
-        errors::InvalidArgument("Current implementation does not yet support "
-                                "strides in the batch and depth dimensions."));
+                absl::InvalidArgumentError("Sliding window strides field must "
+                                           "specify 5 dimensions"));
+    OP_REQUIRES(context,
+                (GetTensorDim(stride_, data_format_, 'C') == 1 &&
+                 GetTensorDim(stride_, data_format_, 'N') == 1),
+                absl::InvalidArgumentError(
+                    "Current implementation does not yet support "
+                    "strides in the batch and depth dimensions."));
     OP_REQUIRES(
         context,
         (GetTensorDim(stride_, data_format_, '0') > 0 &&
          GetTensorDim(stride_, data_format_, '1') > 0 &&
          GetTensorDim(stride_, data_format_, '2') > 0),
-        errors::InvalidArgument("Spatial strides should be larger than 0."));
+        absl::InvalidArgumentError("Spatial strides should be larger than 0."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
     cudnn_use_autotune_ = CudnnUseAutotune();
   }
@@ -1099,9 +1101,9 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
     if (takes_shape_) {
       const Tensor& filter_sizes = context->input(1);
       OP_REQUIRES(context, TensorShapeUtils::IsVector(filter_sizes.shape()),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "filter_sizes shape must be rank 1 but is rank ",
-                      filter_sizes.shape().dims()));
+                      filter_sizes.shape().dims())));
       OP_REQUIRES_OK(context, tensor::MakeShape(filter_sizes, &filter_shape));
     } else {
       filter_shape = context->input(1).shape();

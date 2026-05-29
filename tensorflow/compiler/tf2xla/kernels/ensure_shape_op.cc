@@ -41,10 +41,10 @@ class EnsureShapeOp : public XlaOpKernel {
     // valiate shape
     OP_REQUIRES(
         ctx, expected_shape_.IsCompatibleWith(shape),
-        errors::InvalidArgument("Shape of tensor ", this->def().input(0), " ",
-                                shape.DebugString(),
-                                " is not compatible with expected shape ",
-                                expected_shape_.DebugString(), "."));
+        absl::InvalidArgumentError(absl::StrCat(
+            "Shape of tensor ", this->def().input(0), " ", shape.DebugString(),
+            " is not compatible with expected shape ",
+            expected_shape_.DebugString(), ".")));
 
     // If the shape dimension in `expected_shape_` is already static, we would
     // remove the dynamic dimensions in XLA dynamic padder. Here we don't check

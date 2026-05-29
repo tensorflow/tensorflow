@@ -22,6 +22,7 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -31,25 +32,82 @@ limitations under the License.
 namespace tsl {
 namespace profiler {
 
+namespace {
+
+static constexpr uint64_t kRangeIdMask = (0x1ull << 48) - 1;
+static constexpr uint64_t kTidMask = ~kRangeIdMask;
+static constexpr uint64_t kSharedRangeIdMask = (0x1ull << 62) - 1;
+static constexpr uint64_t kSharedTid = 0x2ull << 62;
+static constexpr uint64_t kUninitializedTid = 3ull << 62;
+
+// All id with most significant bit value 0..... are id with normal thread
+// id, the real thread id is in the following 15 bits, and least significant
+// 48 bits are the range id. So the range of normal thread id is [0, 2^15 - 1].
+inline bool IsIdWithNormalTId(uint64_t id) { return (id >> 63) == 0; }
+inline bool IsNormalTId(uint16_t tid) { return (tid >> 15) == 0; }
+
+// All id with most significant bits value 10..... are id with shared thread
+// id. And the least significant 62 bits are the range id shared by all
+// threads using this shared thread id prefix.
+// All id with most significant bits value 11...... are uninitialized id.
+inline bool IsUninitializedId(uint64_t id) { return id >= kUninitializedTid; }
+
+// This will only be called by the threads which do call
+// annotation_stack::PushAnnotation(). The TID part in the thread local
+// storage will be keeped along with the thread lifetime.
+inline uint64_t InitializeUniqueId() {
+  // For backward compatibility, we start with thread id 1 instead of 0.
+  static std::atomic<uint16_t> next_free_thread_id = 1;
+  uint16_t tid = next_free_thread_id.load(std::memory_order_relaxed);
+  while (IsNormalTId(tid) && !next_free_thread_id.compare_exchange_weak(
+                                 tid, tid + 1, std::memory_order_release)) {
+  }
+  if (!IsNormalTId(tid)) {
+    LOG(WARNING) << "Thread is using shared thread id for scope range id "
+                    "generation. Performance may be degraded.";
+    return kSharedTid;
+  }
+  return static_cast<uint64_t>(tid) << 48;
+}
+
+inline uint64_t NextUniqueId(uint64_t id) {
+  static std::atomic<uint64_t> global_shared_range_id = 0;
+  if (IsUninitializedId(id)) {
+    id = InitializeUniqueId();
+  }
+  return IsIdWithNormalTId(id)
+             ? ((id + 1) & kRangeIdMask) | (id & kTidMask)
+             : ((kSharedRangeIdMask & global_shared_range_id.fetch_add(
+                                          1, std::memory_order_release)) |
+                kSharedTid);
+};
+
 // Returns the annotation data for the given generation.
-static auto GetAnnotationData(const std::atomic<int>& atomic) {
+auto GetAnnotationData(const std::atomic<int>& atomic) {
   static thread_local struct {
     int generation = 0;
     std::vector<size_t> stack;
     std::string string;
     std::vector<int64_t> scope_range_id_stack;
-  } data;
+    uint64_t scope_id_last = kUninitializedTid;
+  } data{};
   int generation = atomic.load(std::memory_order_acquire);
   if (generation != data.generation) {
-    data = {generation};
+    data.generation = generation;
+    data.stack.clear();
+    data.string.clear();
+    data.scope_range_id_stack.clear();
+    // Note that data.scope_id_last should be keep here.
   }
-  return std::make_tuple(&data.stack, &data.string, &data.scope_range_id_stack);
+  return std::make_tuple(&data.stack, &data.string, &data.scope_range_id_stack,
+                         &data.scope_id_last);
 };
 
-void AnnotationStack::PushAnnotation(absl::string_view name) {
-  static std::atomic<int64_t> scope_range_counter = 0;
+}  // namespace
 
-  auto [stack, string, scope_range_id_stack] = GetAnnotationData(generation_);
+void AnnotationStack::PushAnnotation(absl::string_view name) {
+  auto [stack, string, scope_range_id_stack, id_last] =
+      GetAnnotationData(generation_);
   stack->push_back(string->size());
   if (!string->empty()) {
     absl::StrAppend(
@@ -58,17 +116,13 @@ void AnnotationStack::PushAnnotation(absl::string_view name) {
   } else {
     string->assign(name);
   }
-  int64_t scope_range_id =
-      scope_range_counter.fetch_add(1, std::memory_order_relaxed) + 1;
-  if (TF_PREDICT_FALSE(scope_range_id == 0)) {
-    scope_range_id =
-        scope_range_counter.fetch_add(1, std::memory_order_relaxed) + 1;
-  }
-  scope_range_id_stack->push_back(scope_range_id);
+  *id_last = NextUniqueId(*id_last);
+  scope_range_id_stack->push_back(*id_last);
 }
 
 void AnnotationStack::PopAnnotation() {
-  auto [stack, string, scope_range_id_stack] = GetAnnotationData(generation_);
+  auto [stack, string, scope_range_id_stack, _] =
+      GetAnnotationData(generation_);
   if (stack->empty()) {
     string->clear();
     scope_range_id_stack->clear();

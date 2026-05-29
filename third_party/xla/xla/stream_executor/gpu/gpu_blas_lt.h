@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -30,11 +31,15 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.pb.h"
+#include "xla/stream_executor/scratch_allocator.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
@@ -172,6 +177,7 @@ struct GroupedGemmConfig {
   blas::DataType type_a, type_b, type_c, type_d;
   int64_t stride_ragged_dim;
   int64_t stride_group_dim;
+  int64_t c_stride_ragged_dim;
   int64_t output_stride_ragged_dim;
   // PrecisionConfig-level algorithm
   xla::PrecisionConfig::Algorithm precision_algorithm;
@@ -216,143 +222,28 @@ struct BlasLt {
   };
 
   struct MemoryArgs {
-    DeviceMemoryBase a, b, c, d;                          // these are mandatory
-    DeviceMemoryBase bias, aux;                           // these may be null
-    DeviceMemoryBase a_scale, b_scale, c_scale, d_scale;  // these may be null
+    DeviceAddressBase a, b, c, d;  // these are mandatory
+    DeviceAddressBase bias, aux;   // these may be null
+    DeviceAddressBase a_scale, b_scale, c_scale, d_scale;  // these may be null
     union {
-      DeviceMemoryBase d_amax;       // this may be null
-      DeviceMemoryBase group_sizes;  // used by grouped gemm
+      DeviceAddressBase d_amax;       // this may be null
+      DeviceAddressBase group_sizes;  // used by grouped gemm
     };
-    DeviceMemoryBase workspace;           // either workspace or
+    DeviceAddressBase workspace;          // either workspace or
     ScratchAllocator* scratch_allocator;  // scratch_allocator must not be null
   };
 
   struct MatmulPlan {
-    // This function is to be removed once TF interface is fixed,
-    // see tensorflow/core/kernels/matmul_util.cc
-    absl::Status ExecuteOnStream(
-        Stream* stream, DeviceAddressBase a, DeviceAddressBase b,
-        DeviceAddressBase c, DeviceAddressBase d,
-        DeviceAddressBase bias,  // may be null
-        DeviceAddressBase aux,   // may be null
-        DeviceAddressBase a_scale, DeviceAddressBase b_scale,
-        DeviceAddressBase c_scale, DeviceAddressBase d_scale,
-        DeviceAddressBase d_amax, const MatmulAlgorithm& algorithm,
-        ScratchAllocator& scratch_allocator,
-        blas::ProfileResult* profile_result = nullptr) const {
-      // Temporary hack until Tensorflow side is fixed
-      TF_RETURN_IF_ERROR(
-          const_cast<MatmulPlan*>(this)->SetAlgorithm(algorithm));
-      return ExecuteOnStream(stream,
-                             MemoryArgs{a,
-                                        b,
-                                        c,
-                                        d,
-                                        bias,
-                                        aux,
-                                        a_scale,
-                                        b_scale,
-                                        c_scale,
-                                        d_scale,
-                                        {d_amax},
-                                        DeviceAddressBase{},
-                                        &scratch_allocator},
-                             profile_result);
-    }
-
-    // API that uses scratch_allocator to allocate workspace.
-    // This version is used by TF: see tensorflow/core/kernels/matmul_util.cc
-    absl::Status ExecuteOnStream(
-        Stream* stream, DeviceAddressBase a, DeviceAddressBase b,
-        DeviceAddressBase c, DeviceAddressBase d,
-        DeviceAddressBase bias,  // may be null
-        DeviceAddressBase aux,   // may be null
-        DeviceAddressBase a_scale, DeviceAddressBase b_scale,
-        DeviceAddressBase c_scale, DeviceAddressBase d_scale,
-        DeviceAddressBase d_amax, ScratchAllocator& scratch_allocator,
-        blas::ProfileResult* profile_result = nullptr) const {
-      return ExecuteOnStream(stream,
-                             MemoryArgs{a,
-                                        b,
-                                        c,
-                                        d,
-                                        bias,
-                                        aux,
-                                        a_scale,
-                                        b_scale,
-                                        c_scale,
-                                        d_scale,
-                                        {d_amax},
-                                        DeviceAddressBase{},
-                                        &scratch_allocator},
-                             profile_result);
-    }
-
-    // API that uses pre-allocated buffer as workspace (regular matmul).
-    absl::Status ExecuteOnStream(
-        Stream* stream, DeviceAddressBase a, DeviceAddressBase b,
-        DeviceAddressBase c, DeviceAddressBase d,
-        DeviceAddressBase bias,  // may be null
-        DeviceAddressBase aux,   // may be null
-        DeviceAddressBase a_scale, DeviceAddressBase b_scale,
-        DeviceAddressBase c_scale, DeviceAddressBase d_scale,
-        DeviceAddressBase d_amax, DeviceAddressBase workspace,
-        blas::ProfileResult* profile_result = nullptr) const {
-      return ExecuteOnStream(stream,
-                             MemoryArgs{a,
-                                        b,
-                                        c,
-                                        d,
-                                        bias,
-                                        aux,
-                                        a_scale,
-                                        b_scale,
-                                        c_scale,
-                                        d_scale,
-                                        {d_amax},
-                                        workspace,
-                                        nullptr},
-                             profile_result);
-    }
-
-    // API that uses pre-allocated buffer as workspace (grouped matmul).
-    absl::Status ExecuteOnStream(
-        Stream* stream, DeviceMemoryBase a, DeviceMemoryBase b,
-        DeviceMemoryBase c, DeviceMemoryBase d, DeviceMemoryBase group_sizes,
-        DeviceMemoryBase bias,  // may be null
-        DeviceMemoryBase aux,   // may be null
-        DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
-        DeviceMemoryBase c_scale, DeviceMemoryBase d_scale,
-        DeviceMemoryBase d_amax, DeviceMemoryBase workspace,
-        blas::ProfileResult* profile_result = nullptr) const {
-      return ExecuteOnStream(stream,
-                             MemoryArgs{a,
-                                        b,
-                                        c,
-                                        d,
-                                        bias,
-                                        aux,
-                                        a_scale,
-                                        b_scale,
-                                        c_scale,
-                                        d_scale,
-                                        {group_sizes},
-                                        workspace,
-                                        nullptr},
-                             profile_result);
-    }
-
-    // The most general form: to be implemented by derived clases.
+    // Execute the matmul operation on the given stream.
     virtual absl::Status ExecuteOnStream(
         Stream* stream, const MemoryArgs& args,
-        blas::ProfileResult* profile_result) const = 0;
+        blas::ProfileResult* profile_result = nullptr) const = 0;
 
     // Returns a list of supported algorithms for DoMatmul. The algorithms are
     // returned in the order of increasing estimated compute time according to
     // an internal heuristic.
     virtual absl::StatusOr<std::vector<MatmulAlgorithm>> GetAlgorithms(
-        const Stream* stream, size_t max_algorithm_count = 128,
-        size_t max_workspace_size = 1ll << 32) const = 0;
+        size_t max_algorithm_count, size_t max_workspace_size) const = 0;
 
     // Algorithm must to be set before calling ExecuteOnStream function(s).
     // Usually, we call ExecuteOnStream with the same algorithm ID, hence using
@@ -371,40 +262,22 @@ struct BlasLt {
   virtual absl::StatusOr<MatmulPlanPtr> GetMatmulPlan(
       const GemmConfig& cfg, Epilogue epilogue) const = 0;
 
-  virtual absl::StatusOr<MatmulPlanPtr> GetGroupedMatmulPlan(
-      gpu::GroupedGemmConfig& config,
-      const std::vector<Epilogue>& epilogues) const = 0;
+  virtual absl::StatusOr<MatmulPlanPtr> GetMatmulPlan(
+      const gpu::GroupedGemmConfig& config, Epilogue epilogue) const = 0;
 
-  static BlasLt* Get(const Stream* stream);
-
-  // convenience function to create MatmulPlan directly using stream
-  static absl::StatusOr<MatmulPlanPtr> GetMatmulPlan(const Stream* stream,
-                                                     const GemmConfig& cfg,
-                                                     Epilogue epilogue);
-
-  static absl::StatusOr<MatmulPlanPtr> GetGroupedMatmulPlan(
-      const Stream* stream, gpu::GroupedGemmConfig& config,
-      const std::vector<Epilogue>& epilogues);
+  static absl::StatusOr<BlasLt*> Get(StreamExecutor* executor);
 
   absl::StatusOr<MatmulPlan*> GetOrCreateMatmulPlan(const std::string& key,
                                                     PlanCreateFunc create);
 
-  absl::StatusOr<MatmulPlan*> GetOrCreateGroupedMatmulPlan(
-      const std::string& key, PlanCreateFunc create);
-
   void ClearMatmulPlanCache();
   size_t GetMatmulPlanCacheSize() const;
-
-  void ClearGroupedMatmulPlanCache();
-  size_t GetGroupedMatmulPlanCacheSize() const;
 
   virtual ~BlasLt() = default;
 
  protected:
   mutable absl::Mutex plan_cache_mu_;
   absl::flat_hash_map<std::string, MatmulPlanPtr> plan_cache_
-      ABSL_GUARDED_BY(plan_cache_mu_);
-  absl::flat_hash_map<std::string, MatmulPlanPtr> grouped_plan_cache_
       ABSL_GUARDED_BY(plan_cache_mu_);
 };  // class BlasLt
 

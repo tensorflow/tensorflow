@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
@@ -56,7 +57,7 @@ Usage:
 
 The tool can be used to just compile the HLO and not run it:
 
-  bazel run hlo_runner_main -- /path/to/module1.hlo --run=false
+  bazel run hlo_runner_main -- /path/to/module1.hlo --compile_only=true
 
 Note that multiple HLOs can also be launched:
 
@@ -81,6 +82,7 @@ struct HloRunnerConfig {
   xla::InputFormat input_format;
   std::string output_mode_str = "return_outputs";
   bool should_run = true;
+  bool compile_only = false;
   bool enable_mock_nccl = false;
   std::string dump_output_literal_to = "";
   int task_id = 0;
@@ -168,8 +170,8 @@ PreprocessingOptionsFromFlags(const HloRunnerConfig& opts) {
 static absl::StatusOr<FunctionalHloRunner::RunningOptions>
 RunningOptionsFromFlags(const HloRunnerConfig& opts) {
   FunctionalHloRunner::RunningOptions out;
-  TF_ASSIGN_OR_RETURN(out.module_argument_mode,
-                      ArgumentModeFromString(opts.hlo_argument_mode));
+  ASSIGN_OR_RETURN(out.module_argument_mode,
+                   ArgumentModeFromString(opts.hlo_argument_mode));
   std::string error;
   if (!FunctionalHloRunner::AbslParseFlag(opts.output_mode_str,
                                           &out.module_output_mode, &error)) {
@@ -201,7 +203,7 @@ RawCompileOptionsFromFlags(const HloRunnerConfig& opts) {
                  : FunctionalHloRunner::SpmdMode::kUseSpmdPartitioning)
           : FunctionalHloRunner::SpmdMode::kNotUseSpmdPartitioning;
   if (!opts.execution_options_path.empty()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         out.execution_options,
         FunctionalHloRunner::LoadExecutionOptions(opts.execution_options_path));
   }
@@ -233,15 +235,15 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
 
   PreprocessFlags(opts);
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       xla::FunctionalHloRunner::PreprocessingOptions preproc_options,
       PreprocessingOptionsFromFlags(opts));
   preproc_options.annotate_while_loop_trip_count = true;
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       xla::FunctionalHloRunner::RawCompileOptions raw_compile_options,
       RawCompileOptionsFromFlags(opts));
-  TF_ASSIGN_OR_RETURN(xla::FunctionalHloRunner::RunningOptions running_options,
-                      RunningOptionsFromFlags(opts));
+  ASSIGN_OR_RETURN(xla::FunctionalHloRunner::RunningOptions running_options,
+                   RunningOptionsFromFlags(opts));
 
   // tsl::Flags::Parse() leaves unknown flags in argv, we assume that those are
   // HLO files to run. Note that argv[0] is the binary name and is excluded.
@@ -265,24 +267,24 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
     gpu_options.num_nodes = opts.num_nodes;
     gpu_options.enable_mock_nccl = opts.enable_mock_nccl;
     gpu_options.allocator_config.memory_fraction = opts.gpu_client_mem_fraction;
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         env, xla::GetPjRtEnvironmentForGpu(
                  opts.address_str, gpu_options,
                  absl::Seconds(opts.gpu_client_initialization_timeout_sec)));
     // Create a GPURunnerProfiler to profile GPU executions to save xspace data
     // to disk.
     if (env.client != nullptr && !opts.xla_gpu_dump_xspace_to.empty()) {
-      TF_ASSIGN_OR_RETURN(hlo_runner_profiler,
-                          HLORunnerProfiler::Create(opts.xla_gpu_dump_xspace_to,
-                                                    /*keep_xspace=*/false));
+      ASSIGN_OR_RETURN(hlo_runner_profiler,
+                       HLORunnerProfiler::Create(opts.xla_gpu_dump_xspace_to,
+                                                 /*keep_xspace=*/false));
       running_options.profiler = hlo_runner_profiler.get();
     }
   } else if (opts.device_type_str == "host") {
-    TF_ASSIGN_OR_RETURN(env, xla::GetPjRtEnvironmentForHostCpu());
+    ASSIGN_OR_RETURN(env, xla::GetPjRtEnvironmentForHostCpu());
     if (env.client != nullptr && !opts.xla_gpu_dump_xspace_to.empty()) {
-      TF_ASSIGN_OR_RETURN(hlo_runner_profiler,
-                          HLORunnerProfiler::Create(opts.xla_gpu_dump_xspace_to,
-                                                    /*keep_xspace=*/false));
+      ASSIGN_OR_RETURN(hlo_runner_profiler,
+                       HLORunnerProfiler::Create(opts.xla_gpu_dump_xspace_to,
+                                                 /*keep_xspace=*/false));
       running_options.profiler = hlo_runner_profiler.get();
     }
   } else {
@@ -300,18 +302,20 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
   for (int c = 1; c < argc; c++) {
     const char* hlo_file = argv[c];
     execution_profiles.clear();
-    if (opts.should_run) {
+    if (opts.should_run && !opts.compile_only) {
       std::cout << "\n** Running " << hlo_file << " **\n";
-      TF_RETURN_IF_ERROR(xla::FunctionalHloRunner::LoadAndRunAndDump(
+      RETURN_IF_ERROR(xla::FunctionalHloRunner::LoadAndRunAndDump(
           *env.client, GetDebugOptionsFromFlags(), preproc_options,
           raw_compile_options, running_options, hlo_file, opts.input_format,
           opts.dump_output_literal_to, opts.task_id, opts.num_nodes,
           env.kv_store, engine.get()));
     } else {
       std::cout << "\n** Compiling " << hlo_file << " **\n";
-      TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
-          *env.client, GetDebugOptionsFromFlags(), preproc_options,
-          raw_compile_options, argv[c], opts.input_format, opts.task_id));
+      RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
+                          *env.client, GetDebugOptionsFromFlags(),
+                          preproc_options, raw_compile_options, argv[c],
+                          opts.input_format, opts.task_id)
+                          .status());
     }
     for (int i = 0; i < execution_profiles.size(); ++i) {
       std::cout << "## Execution time, file=" << hlo_file << " repeat=" << i
@@ -356,7 +360,11 @@ int main(int argc, char** argv) {
                 "HLO input mode: text, proto_text, proto_binary, "
                 "snapshot_proto_binary, unoptimized_snapshot_proto_binary, or "
                 "unoptimized_snapshot_proto_text"),
-      tsl::Flag("run", &opts.should_run, "Should we run the compiled HLO?"),
+      // --run and --compile_only does the same thing, remove --run when it is
+      // safe to do so to avoid breaking 3P workflows.
+      tsl::Flag("compile_only", &opts.compile_only,
+                "Compiles a module without running it"),
+      tsl::Flag("run", &opts.should_run, "Compiles and runs a module"),
       tsl::Flag("dump_output_literal_to", &opts.dump_output_literal_to,
                 "A path to which the HLO output will be dumped. "
                 "Example: /a/b/literal.txt."),

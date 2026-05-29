@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -28,6 +29,8 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -823,6 +826,267 @@ TEST_F(InstructionFusionTest, DontFuseAcrossRoot) {
       op::Add(op::Multiply(op::Parameter(), op::Parameter()), op::Parameter()));
 }
 
+TEST_F(InstructionFusionTest, DoesNotFuseInsideScanBody) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  add_abs {
+    carry = f32[] parameter(0)
+    input = f32[] parameter(1)
+    abs1 = f32[] abs(input)
+    next = f32[] add(carry, abs1)
+    ROOT t = (f32[], f32[]) tuple(next, next)
+  }
+  ENTRY main {
+    input = f32[128]{0} parameter(0)
+    init = f32[] parameter(1)
+    ROOT scan = (f32[128]{0}, f32[]) scan(input, init), dimensions={0},
+        num_carries=1, is_reverse=false, to_apply=add_abs, is_associative=true
+  })"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      InstructionFusion(InstructionFusion::IsExpensive, &alias_info_,
+                        /*may_duplicate=*/true)
+          .Run(module.get()));
+  EXPECT_FALSE(changed) << module->ToString();
+
+  HloComputation* body = nullptr;
+  for (HloComputation* c : module->MakeNonfusionComputations()) {
+    if (c->name() == "add_abs") {
+      body = c;
+      break;
+    }
+  }
+  ASSERT_NE(body, nullptr) << "Scan body computation not found";
+
+  // No instruction inside the scan body should have been wrapped in a
+  // kFusion.
+  for (const HloInstruction* instr : body->instructions()) {
+    EXPECT_NE(instr->opcode(), HloOpcode::kFusion)
+        << "Found a kFusion inside a scan body: " << instr->ToString();
+  }
+
+  const HloInstruction* root = body->root_instruction();
+  ASSERT_EQ(root->opcode(), HloOpcode::kTuple);
+  ASSERT_EQ(root->operand_count(), 2);
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kAdd);
+  EXPECT_EQ(root->operand(1)->opcode(), HloOpcode::kAdd);
+}
+
+TEST_F(InstructionFusionTest, DoesNotFuseInsideNonAssociativeScanBody) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  add_abs {
+    carry = f32[] parameter(0)
+    input = f32[] parameter(1)
+    abs1 = f32[] abs(input)
+    next = f32[] add(carry, abs1)
+    ROOT t = (f32[], f32[]) tuple(next, next)
+  }
+  ENTRY main {
+    input = f32[128]{0} parameter(0)
+    init = f32[] parameter(1)
+    ROOT scan = (f32[128]{0}, f32[]) scan(input, init), dimensions={0},
+        num_carries=1, is_reverse=false, to_apply=add_abs, is_associative=false
+  })"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      InstructionFusion(InstructionFusion::IsExpensive, &alias_info_,
+                        /*may_duplicate=*/true)
+          .Run(module.get()));
+  EXPECT_FALSE(changed) << module->ToString();
+
+  HloComputation* body = nullptr;
+  for (HloComputation* c : module->MakeNonfusionComputations()) {
+    if (c->name() == "add_abs") {
+      body = c;
+      break;
+    }
+  }
+  ASSERT_NE(body, nullptr) << "Scan body computation not found";
+  for (const HloInstruction* instr : body->instructions()) {
+    EXPECT_NE(instr->opcode(), HloOpcode::kFusion)
+        << "Found a kFusion inside a scan body: " << instr->ToString();
+  }
+}
+
+// Returns the computation in `module` (skipping fusion computations) with the
+// given `name`, or nullptr if not found.
+static HloComputation* FindEmbeddedBody(HloModule* module,
+                                        absl::string_view name) {
+  for (HloComputation* c : module->MakeNonfusionComputations()) {
+    if (c->name() == name) {
+      return c;
+    }
+  }
+  return nullptr;
+}
+
+// Asserts that no instruction in `body` has been wrapped in a kFusion.
+static void ExpectNoFusionInBody(const HloComputation* body,
+                                 absl::string_view caller_kind) {
+  ASSERT_NE(body, nullptr) << caller_kind << " body computation not found";
+  for (const HloInstruction* instr : body->instructions()) {
+    EXPECT_NE(instr->opcode(), HloOpcode::kFusion)
+        << "Found a kFusion inside a " << caller_kind
+        << " body: " << instr->ToString();
+  }
+}
+
+TEST_F(InstructionFusionTest, DoesNotFuseInsideSortComparator) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  cmp {
+    a = f32[] parameter(0)
+    b = f32[] parameter(1)
+    abs_a = f32[] abs(a)
+    abs_b = f32[] abs(b)
+    sum_a = f32[] add(abs_a, abs_a)
+    sum_b = f32[] add(abs_b, abs_b)
+    ROOT lt = pred[] compare(sum_a, sum_b), direction=LT
+  }
+  ENTRY main {
+    input = f32[128]{0} parameter(0)
+    ROOT sorted = f32[128]{0} sort(input), dimensions={0}, to_apply=cmp
+  })"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      InstructionFusion(InstructionFusion::IsExpensive, &alias_info_,
+                        /*may_duplicate=*/true)
+          .Run(module.get()));
+  EXPECT_FALSE(changed) << module->ToString();
+  ExpectNoFusionInBody(FindEmbeddedBody(module.get(), "cmp"), "sort");
+}
+
+TEST_F(InstructionFusionTest, DoesNotFuseInsideMapBody) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  mapper {
+    x = f32[] parameter(0)
+    abs_x = f32[] abs(x)
+    ROOT add_x = f32[] add(abs_x, abs_x)
+  }
+  ENTRY main {
+    input = f32[128]{0} parameter(0)
+    ROOT mapped = f32[128]{0} map(input), dimensions={0}, to_apply=mapper
+  })"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      InstructionFusion(InstructionFusion::IsExpensive, &alias_info_,
+                        /*may_duplicate=*/true)
+          .Run(module.get()));
+  EXPECT_FALSE(changed) << module->ToString();
+  ExpectNoFusionInBody(FindEmbeddedBody(module.get(), "mapper"), "map");
+}
+
+TEST_F(InstructionFusionTest, DoesNotFuseInsideReduceReducer) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  reducer {
+    a = f32[] parameter(0)
+    b = f32[] parameter(1)
+    abs_b = f32[] abs(b)
+    sum = f32[] add(abs_b, abs_b)
+    ROOT add = f32[] add(a, sum)
+  }
+  ENTRY main {
+    input = f32[128]{0} parameter(0)
+    init = f32[] constant(0)
+    ROOT reduced = f32[] reduce(input, init), dimensions={0}, to_apply=reducer
+  })"));
+  TF_ASSERT_OK(InstructionFusion(InstructionFusion::IsExpensive, &alias_info_,
+                                 /*may_duplicate=*/true)
+                   .Run(module.get())
+                   .status());
+  ExpectNoFusionInBody(FindEmbeddedBody(module.get(), "reducer"), "reduce");
+}
+
+TEST_F(InstructionFusionTest, DoesNotFuseInsideReduceWindowReducer) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  reducer {
+    a = f32[] parameter(0)
+    b = f32[] parameter(1)
+    abs_b = f32[] abs(b)
+    sum = f32[] add(abs_b, abs_b)
+    ROOT add = f32[] add(a, sum)
+  }
+  ENTRY main {
+    input = f32[128]{0} parameter(0)
+    init = f32[] constant(0)
+    ROOT rw = f32[127]{0} reduce-window(input, init),
+        window={size=2}, to_apply=reducer
+  })"));
+  TF_ASSERT_OK(InstructionFusion(InstructionFusion::IsExpensive, &alias_info_,
+                                 /*may_duplicate=*/true)
+                   .Run(module.get())
+                   .status());
+  ExpectNoFusionInBody(FindEmbeddedBody(module.get(), "reducer"),
+                       "reduce-window");
+}
+
+TEST_F(InstructionFusionTest, DoesNotFuseInsideSelectAndScatter) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  ge_select {
+    a = f32[] parameter(0)
+    b = f32[] parameter(1)
+    abs_a = f32[] abs(a)
+    abs_b = f32[] abs(b)
+    ROOT ge = pred[] compare(abs_a, abs_b), direction=GE
+  }
+  add_scatter {
+    a = f32[] parameter(0)
+    b = f32[] parameter(1)
+    abs_b = f32[] abs(b)
+    sum = f32[] add(abs_b, abs_b)
+    ROOT add = f32[] add(a, sum)
+  }
+  ENTRY main {
+    operand = f32[6]{0} parameter(0)
+    source = f32[3]{0} parameter(1)
+    init = f32[] constant(0)
+    ROOT sas = f32[6]{0} select-and-scatter(operand, source, init),
+        window={size=2 stride=2}, select=ge_select, scatter=add_scatter
+  })"));
+  TF_ASSERT_OK(InstructionFusion(InstructionFusion::IsExpensive, &alias_info_,
+                                 /*may_duplicate=*/true)
+                   .Run(module.get())
+                   .status());
+  ExpectNoFusionInBody(FindEmbeddedBody(module.get(), "ge_select"),
+                       "select-and-scatter select");
+  ExpectNoFusionInBody(FindEmbeddedBody(module.get(), "add_scatter"),
+                       "select-and-scatter scatter");
+}
+
+TEST_F(InstructionFusionTest, DoesNotFuseInsideScatterUpdate) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  update_computation {
+    a = f32[] parameter(0)
+    b = f32[] parameter(1)
+    abs_b = f32[] abs(b)
+    sum = f32[] add(abs_b, abs_b)
+    ROOT add = f32[] add(a, sum)
+  }
+  ENTRY main {
+    operand = f32[8]{0} parameter(0)
+    indices = s32[3,1]{1,0} parameter(1)
+    updates = f32[3]{0} parameter(2)
+    ROOT scattered = f32[8]{0} scatter(operand, indices, updates),
+        update_window_dims={}, inserted_window_dims={0},
+        scatter_dims_to_operand_dims={0}, index_vector_dim=1,
+        to_apply=update_computation
+  })"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      InstructionFusion(InstructionFusion::IsExpensive, &alias_info_,
+                        /*may_duplicate=*/true)
+          .Run(module.get()));
+  EXPECT_FALSE(changed) << module->ToString();
+  ExpectNoFusionInBody(FindEmbeddedBody(module.get(), "update_computation"),
+                       "scatter");
+}
+
 TEST_F(InstructionFusionTest, DontFuseProducerIfInplaceConflict) {
   auto module = ParseAndReturnVerifiedModule(R"(
   HloModule test_module
@@ -850,7 +1114,7 @@ TEST_F(InstructionFusionTest, DontFuseProducerIfInplaceConflict) {
   HloInstruction* add = root->mutable_operand(1);
   FusionDecision fusion_decision = InstructionFusion::ShouldFuseInPlaceOp(
       add, root, &alias_info_, std::nullopt);
-  EXPECT_FALSE(fusion_decision.CanFuse());
+  EXPECT_TRUE(fusion_decision.IsForbidden());
 }
 
 class FusionDecisionTest : public HloHardwareIndependentTestBase {};

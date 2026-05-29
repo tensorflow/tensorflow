@@ -307,6 +307,7 @@ struct SubDimInfo {
 struct AnalyzeTileAssignmentResult {
   std::vector<SubDimInfo> sub_dims;
   std::vector<int64_t> local_mesh;
+  std::optional<IotaTileAssignment> iota;
 };
 
 // Given a vector of integers, we can factorize its elements into a product of

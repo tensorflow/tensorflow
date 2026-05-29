@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/core/c/common.h"
 
+#include <cstdarg>
 #include <cstddef>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
@@ -1008,6 +1010,44 @@ TEST(TensorCloneTest, CloneATensorAttributes) {
   TfLiteTensorFree(&model);
 
   // model.sparsity;
+}
+
+static char last_error[1024];
+static void MockReportError(struct TfLiteContext* context, const char* format,
+                            ...) {
+  va_list args;
+  va_start(args, format);
+  vsnprintf(last_error, sizeof(last_error), format, args);
+  va_end(args);
+}
+
+TEST(EnsureOk, NoMessage) {
+  TfLiteContext context;
+  context.ReportError = MockReportError;
+  last_error[0] = '\0';
+
+  auto test_fn = [](TfLiteContext* ctx) -> TfLiteStatus {
+    TF_LITE_ENSURE_OK(ctx, kTfLiteError);
+    return kTfLiteOk;
+  };
+
+  EXPECT_EQ(test_fn(&context), kTfLiteError);
+  EXPECT_STREQ(last_error, "");
+}
+
+TEST(EnsureOk, WithMessage) {
+  TfLiteContext context;
+  context.ReportError = MockReportError;
+  last_error[0] = '\0';
+
+  auto test_fn = [](TfLiteContext* ctx) -> TfLiteStatus {
+    TF_LITE_ENSURE_OK(ctx, kTfLiteError, "Error code: %d", 42);
+    return kTfLiteOk;
+  };
+
+  EXPECT_EQ(test_fn(&context), kTfLiteError);
+  EXPECT_THAT(last_error, ::testing::HasSubstr("Error code: 42"));
+  EXPECT_THAT(last_error, ::testing::HasSubstr("common_test.cc"));
 }
 
 }  // namespace tflite

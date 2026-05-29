@@ -14,9 +14,10 @@
 // CHECK-LABEL: "type_array_and_control"
 // CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}):
 func.func @type_array_and_control(%arg0: !array_t0) attributes {ifrt.function} {
-  // CHECK: "vifrt.CopyArraysV1"(%[[ARG0]])
+  // CHECK: "vifrt.CopyArraysV2"(%[[ARG0]])
   // CHECK-SAME: <{
   // CHECK-DAG: donated = false
+  // CHECK-DAG: reuse = false
   // CHECK-DAG: operandSegmentSizes = array<i32: 1, 0>
   // CHECK-SAME: }>
   // CHECK-SAME: (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [2, 3], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.control_v1)
@@ -29,9 +30,10 @@ func.func @type_array_and_control(%arg0: !array_t0) attributes {ifrt.function} {
 // CHECK-LABEL: "attr_unspecified_sharding"
 // CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}):
 func.func @attr_unspecified_sharding(%arg0: !array_us0) attributes {ifrt.function} {
-  // CHECK: "vifrt.CopyArraysV1"(%[[ARG0]])
+  // CHECK: "vifrt.CopyArraysV2"(%[[ARG0]])
   // CHECK-SAME: <{
   // CHECK-DAG: donated = false
+  // CHECK-DAG: reuse = false
   // CHECK-DAG: operandSegmentSizes = array<i32: 1, 0>
   // CHECK-SAME: }>
   // CHECK-SAME: (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_unspecified_v1, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_unspecified_v1, [2, 3], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.control_v1)
@@ -57,9 +59,10 @@ func.func @remap_attributes(
   // CHECK-SAME: <{
   // CHECK-DAG: donated = true
   // CHECK-DAG: mappings = [#vifrt.array_mapping_v1<0, 0, [#vifrt.mapping_v1<[0 : 1 : 1] to [0 : 1 : 1]>]>, #vifrt.array_mapping_v1<1, 0, [#vifrt.mapping_v1<[0 : 1 : 1] to [1 : 2 : 1]>]>]
+  // CHECK-DAG: operandSegmentSizes = array<i32: 2, 0>
   // CHECK-SAME: }>
-  // CHECK-SAME: (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 1>, [0], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 1>, [1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> !vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x2 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">
-  %0 = ifrt.RemapArrays(%arg0, %arg1)
+  // CHECK-SAME: (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 1>, [0], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 1>, [1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x2 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.control_v1)
+  %0, %ctrl_0 = ifrt.RemapArrays(%arg0, %arg1)
       mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>,
                 #ifrt.array_mapping<1, 0, [#ifrt.mapping<[0:1:1] to [1:2:1]>]>]
       {donated=true}
@@ -84,9 +87,10 @@ func.func @ifrt_function_attribute() attributes {ifrt.function} {
 // CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}):
 func.func @op_copy_arrays(%arg0: !array_cp0) -> !array_cp1
     attributes {ifrt.function} {
-  // CHECK: "vifrt.CopyArraysV1"(%[[ARG0]])
+  // CHECK: "vifrt.CopyArraysV2"(%[[ARG0]])
   // CHECK-SAME: <{
   // CHECK-DAG: donated = false
+  // CHECK-DAG: reuse = false
   // CHECK-DAG: operandSegmentSizes = array<i32: 1, 0>
   // CHECK-SAME: }>
   // CHECK-SAME: (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [2, 3], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.control_v1)
@@ -108,9 +112,9 @@ func.func @op_assemble(%arg0: !array_ad0, %arg1: !array_ad1)
   // CHECK-SAME: <{
   // CHECK-DAG: operandSegmentSizes = array<i32: 2, 0>
   // CHECK-SAME: }>
-  // CHECK-SAME: (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 1>, [0], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 1>, [1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> !vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x2 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">
-  %0 = "ifrt.Assemble"(%arg0, %arg1) {operandSegmentSizes=array<i32: 2, 0>}
-      : (!array_ad0, !array_ad1) -> !array_ad2
+  // CHECK-SAME: (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 1>, [0], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 1>, [1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x2 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.control_v1)
+  %0, %ctrl_0 = ifrt.Assemble(%arg0, %arg1)
+    : (!array_ad0, !array_ad1) -> !array_ad2
   return
 }
 
@@ -118,12 +122,9 @@ func.func @op_assemble(%arg0: !array_ad0, %arg1: !array_ad1)
 // CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}):
 func.func @op_disassemble(%arg0: !array_ad2) attributes {ifrt.function} {
   // CHECK: "vifrt.DisassembleV1"(%[[ARG0]])
-  // CHECK-SAME: {
-  // CHECK-DAG: operand_segment_sizes = array<i32: 2, 0>
-  // CHECK-SAME: }
-  // CHECK-SAME: (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x2 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 1>, [0], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 1>, [1], memory_kind = "vifrt.default", layout = "vifrt.default">)
-  %0, %1 = "ifrt.Disassemble"(%arg0) {operand_segment_sizes=array<i32: 2, 0>}
-      : (!array_ad2) -> (!array_ad0, !array_ad1)
+  // CHECK-SAME: (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x2 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 1>, [0], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 1>, [1], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.control_v1)
+  %0, %1, %ctrl_0 = ifrt.Disassemble(%arg0)
+    : (!array_ad2) -> (!array_ad0, !array_ad1)
   return
 }
 
@@ -131,16 +132,18 @@ func.func @op_disassemble(%arg0: !array_ad2) attributes {ifrt.function} {
 // CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}, %[[ARG1:.*]]: {{.*}}):
 func.func @op_after(%arg0: !array_cp0, %arg1: !array_cp1)
     -> (!array_cp0, !array_cp0) attributes {ifrt.function} {
-  // CHECK: %[[OUT:.+]]:2 = "vifrt.CopyArraysV1"(%[[ARG0]])
+  // CHECK: %[[OUT:.+]]:2 = "vifrt.CopyArraysV2"(%[[ARG0]])
   // CHECK-SAME: <{
   // CHECK-DAG: donated = false
+  // CHECK-DAG: reuse = false
   // CHECK-DAG: operandSegmentSizes = array<i32: 1, 0>
   // CHECK-SAME: }>
   // CHECK-SAME: (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [2, 3], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.control_v1)
   %0, %ctrl_0 = ifrt.CopyArrays(%arg0) : (!array_cp0) -> !array_cp1
-  // CHECK: "vifrt.CopyArraysV1"(%[[OUT]]#0, %[[ARG1]], %[[OUT]]#1)
+  // CHECK: "vifrt.CopyArraysV2"(%[[OUT]]#0, %[[ARG1]], %[[OUT]]#1)
   // CHECK-SAME: <{
   // CHECK-DAG: donated = false
+  // CHECK-DAG: reuse = false
   // CHECK-DAG: operandSegmentSizes = array<i32: 2, 1>
   // CHECK-SAME: }>
   // CHECK-SAME: (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [2, 3], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [2, 3], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.control_v1) -> (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.control_v1)
@@ -224,9 +227,10 @@ func.func @op_remap_arrays(
   // CHECK-SAME: <{
   // CHECK-DAG: donated = true
   // CHECK-DAG: mappings = [#vifrt.array_mapping_v1<0, 0, [#vifrt.mapping_v1<[0 : 1 : 1] to [0 : 1 : 1]>]>, #vifrt.array_mapping_v1<1, 0, [#vifrt.mapping_v1<[0 : 1 : 1] to [1 : 2 : 1]>]>]
+  // CHECK-DAG: operandSegmentSizes = array<i32: 2, 0>
   // CHECK-SAME: }>
-  // CHECK-SAME: (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 1>, [0], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 1>, [1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> !vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x2 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">
-  %0 = ifrt.RemapArrays(%arg0, %arg1)
+  // CHECK-SAME: (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 1>, [0], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 1>, [1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x2 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.control_v1)
+  %0, %ctrl_0 = ifrt.RemapArrays(%arg0, %arg1)
       mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>,
                 #ifrt.array_mapping<1, 0, [#ifrt.mapping<[0:1:1] to [1:2:1]>]>]
       {donated=true}
@@ -243,12 +247,14 @@ func.func @op_remap_arrays(
 func.func @op_bitcast_arrays(%arg0: !array_bc0 {ifrt.donated}) -> !array_bc1
     attributes {ifrt.function} {
   // CHECK: "vifrt.BitcastArraysV1"(%[[ARG0]])
-  // CHECK-SAME: <{donated = true}>
-  // CHECK-SAME: (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> !vifrt.array_v1<tensor<2x1x4xi32>, #vifrt.sharding_param_v2<1x1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">
-  %0 = ifrt.BitcastArrays(%arg0) {donated=true} : (!array_bc0) -> !array_bc1
+  // CHECK-SAME: <{
+  // CHECK-DAG: donated = true
+  // CHECK-DAG: operandSegmentSizes = array<i32: 1, 0>
+  // CHECK-SAME: }>
+  // CHECK-SAME: (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x1x4xi32>, #vifrt.sharding_param_v2<1x1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.control_v1)
+  %0, %ctrl_0 = ifrt.BitcastArrays(%arg0) {donated=true} : (!array_bc0) -> !array_bc1
   return %0: !array_bc1
 }
-
 
 !array_r0 = !ifrt.array<tensor<2xi32>,
                         #ifrt.sharding_param<2 to [0] on 2>, [0,1]>
@@ -301,9 +307,10 @@ func.func @donated_arguments(
 // CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}):
 func.func @op_func_call(%arg0: !array_cp0) -> !array_cp1
     attributes {ifrt.function} {
-  // CHECK: %[[OUT0:.+]]:2 = "vifrt.CopyArraysV1"(%[[ARG0]])
+  // CHECK: %[[OUT0:.+]]:2 = "vifrt.CopyArraysV2"(%[[ARG0]])
   // CHECK-SAME: <{
   // CHECK-DAG: donated = false
+  // CHECK-DAG: reuse = false
   // CHECK-DAG: operandSegmentSizes = array<i32: 1, 0>
   // CHECK-SAME: }>
   // CHECK-SAME: (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [2, 3], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.control_v1)
@@ -326,14 +333,40 @@ func.func @op_func_call(%arg0: !array_cp0) -> !array_cp1
 // CHECK-NEXT: (%[[ARG1:.*]]: {{.*}}):
 func.func @copy_back(%arg1: !array_cp1) -> !array_cp0
     attributes {ifrt.function} {
-  // CHECK: "vifrt.CopyArraysV1"(%[[ARG1]])
+  // CHECK: "vifrt.CopyArraysV2"(%[[ARG1]])
   // CHECK-SAME: <{
   // CHECK-DAG: donated = false
+  // CHECK-DAG: reuse = false
   // CHECK-DAG: operandSegmentSizes = array<i32: 1, 0>
   // CHECK-SAME: }>
   // CHECK-SAME: (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [2, 3], memory_kind = "vifrt.default", layout = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.control_v1)
   %0, %ctrl = ifrt.CopyArrays(%arg1) : (!array_cp1) -> !array_cp0
   return %0: !array_cp0
+}
+
+!token0 = !ifrt.array<tensor<!ifrt.token>,
+                      #ifrt.sharding_param< to [0] on 2>, [0, 1]>
+!token1 = !ifrt.array<tensor<!ifrt.token>,
+                      #ifrt.sharding_param< to [0] on 2>, [2, 3]>
+// CHECK: "vifrt.FuncV1"()
+// CHECK-SAME: <{
+// CHECK-DAG: arg_attrs = []
+// CHECK-DAG: function_type = #vifrt.type_v1<!vifrt.func_v1<(!vifrt.array_v1<tensor<!vifrt.token_v1>, #vifrt.sharding_param_v2< to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> !vifrt.array_v1<tensor<!vifrt.token_v1>, #vifrt.sharding_param_v2< to [0] on 2>, [2, 3], memory_kind = "vifrt.default", layout = "vifrt.default">>>
+// CHECK-DAG: res_attrs = []
+// CHECK-DAG: sym_name = "token_type"
+// CHECK-DAG: sym_visibility = "vifrt.default"
+// CHECK-SAME: }>
+// CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}):
+func.func @token_type(%arg0: !token0) -> !token1 attributes {ifrt.function} {
+  // CHECK: "vifrt.CopyArraysV2"(%[[ARG0]])
+  // CHECK-SAME: <{
+  // CHECK-DAG: donated = false
+  // CHECK-DAG: reuse = false
+  // CHECK-DAG: operandSegmentSizes = array<i32: 1, 0>
+  // CHECK-SAME: }>
+  // CHECK-SAME: (!vifrt.array_v1<tensor<!vifrt.token_v1>, #vifrt.sharding_param_v2< to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> (!vifrt.array_v1<tensor<!vifrt.token_v1>, #vifrt.sharding_param_v2< to [0] on 2>, [2, 3], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.control_v1)
+  %0, %ctrl = ifrt.CopyArrays(%arg0) : (!token0) -> !token1
+  return %0: !token1
 }
 
 // Important: The test verifying CallOps must be last. This is necessary because

@@ -37,6 +37,12 @@ Flag                                                                            
 **Compute centric** <br> `xla_msa_enable_cross_program_prefetch_freeing`                                                                                                 | Enables freeing optimization for cross-program-prefetched buffers.                                                                                                                                                                                                                                                                           | `xla_msa_enable_cross_program_prefetch_freeing=enabled`                                                                                                                        | `xla_msa_enable_cross_program_prefetch_freeing=enabled`                                                                                                                     | `xla_msa_enable_cross_program_prefetch_freeing=enabled/disabled`
 **Compute centric** <br> `xla_tpu_msa_inefficient_use_to_copy_ratio`                                                                                                     | The ratio of use bytes to copy bytes for a given allocation site below which we consider the site to be inefficient. This is used while making VMEM placement decisions. A value of 0 would treat all sites as efficient and a value of 1 would require the amount of bytes used at the site to be at least as much as the async copy bytes. | `xla_tpu_msa_inefficient_use_to_copy_ratio=0.5`                                                                                                                                | `xla_tpu_msa_inefficient_use_to_copy_ratio=0.5`                                                                                                                             | `xla_tpu_msa_inefficient_use_to_copy_ratio=[0, 1]`
 
+### CPU Performance Flags
+
+Flag | Description | Default Values | Suggested Values | Candidate Values
+:--- | :--- | :--- | :--- | :---
+`xla_cpu_opt_preset` | Sets the CPU optimization preset. `FAST_COMPILE` packages up a series of compiler tweaks that trade off small amounts of runtime performance for large returns in compile time. `FAST_RUNTIME` is the default and doesn't need to be specified. | `FAST_RUNTIME` | `FAST_COMPILE` (for development) | `FAST_RUNTIME`, `FAST_COMPILE`
+
 ## Memory Flags
 
 The flags listed below are provided to address HBM-related issues. These

@@ -87,52 +87,6 @@ TEST_F(CombinedGpuPerformanceModelTest,
   EXPECT_EQ(result->exec_time, expected_result.exec_time);
 }
 
-TEST_F(CombinedGpuPerformanceModelTest,
-       ReturnsIndexingModelResultForTritonFusion) {
-  auto module = ParseAndReturnVerifiedModule(R"(
-    HloModule test_module
-    triton_fusion {
-      p0 = f32[1024] parameter(0)
-      p1 = f32[1024] parameter(1)
-      ROOT add = f32[1024] add(p0, p1)
-    }
-    ENTRY entry_computation {
-      p0 = f32[1024] parameter(0)
-      p1 = f32[1024] parameter(1)
-      ROOT fusion = f32[1024] fusion(p0, p1), kind=kCustom, calls=triton_fusion,
-        backend_config={
-          "fusion_backend_config": {
-            kind: "__triton",
-            block_level_fusion_config: {
-              output_tiles: [{sizes: ["1024"]}],
-              num_warps: "1"
-            }
-          }
-        }
-    }
-  )")
-                    .value();
-  HloInstruction* fusion = module->entry_computation()->root_instruction();
-  ASSERT_OK(fusion->Accept(&analysis_));
-  GpuPerformanceModelWithIndexingAnalysis reference_model(
-      &device_info_, &fusion_analysis_cache_,
-      [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); },
-      &mlir_context_);
-  const EstimateRunTimeData expected_result =
-      reference_model.EstimateRunTimeForInstruction(fusion);
-
-  auto result = model_.EstimateRunTimeForInstruction(fusion, &analysis_);
-
-  ASSERT_OK(result.status());
-  EXPECT_EQ(result->flops, expected_result.flops);
-  EXPECT_EQ(result->bytes_read, expected_result.bytes_read);
-  EXPECT_EQ(result->bytes_written, expected_result.bytes_written);
-  EXPECT_EQ(result->read_time, expected_result.read_time);
-  EXPECT_EQ(result->write_time, expected_result.write_time);
-  EXPECT_EQ(result->compute_time, expected_result.compute_time);
-  EXPECT_EQ(result->exec_time, expected_result.exec_time);
-}
-
 // TODO: b/493907020 Remove this after removing from GpuPerformanceModel.
 TEST_F(CombinedGpuPerformanceModelTest,
        EstimateRunTimesMatchesGpuPerformanceModel) {

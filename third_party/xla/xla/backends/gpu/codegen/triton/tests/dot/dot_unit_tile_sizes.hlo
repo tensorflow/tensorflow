@@ -1,4 +1,5 @@
 // RUN: triton_test_correctness %s
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
 
 fusion {
   p0 = f32[2,3,32,125] parameter(0)

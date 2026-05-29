@@ -26,6 +26,7 @@ limitations under the License.
 #include "riegeli/bytes/writer.h"
 #include "riegeli/records/record_writer.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_proto_util.h"
 #include "xla/sort_json.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util/split_proto/split_proto.pb.h"
@@ -69,21 +70,48 @@ SplitProtoManifest BuildManifest(int32_t num_of_contants) {
 // deterministic because the order of keys in json is not guaranteed.
 //
 // If the backend config is not a json string, it is not modified.
-void NormalizeBackendConfig(gpu::GpuExecutableProto& executable) {
+absl::Status NormalizeBackendConfig(gpu::GpuExecutableProto& executable) {
   for (HloComputationProto& computation :
        *executable.mutable_hlo_module_with_config()
             ->mutable_hlo_module()
             ->mutable_computations()) {
     for (HloInstructionProto& instruction :
          *computation.mutable_instructions()) {
-      absl::StatusOr<std::string> normalized_backend_config =
-          SortJson(instruction.backend_config());
-      if (normalized_backend_config.ok()) {
-        instruction.set_backend_config(*normalized_backend_config);
+      auto backend_config_str_or = GetBackendConfigString(
+          instruction, &executable.hlo_module_with_config().hlo_module());
+      if (!backend_config_str_or.ok()) {
+        return backend_config_str_or.status();
       }
-      // If the backend config is not a json string, then do nothing.
+      std::string backend_config_str = std::move(backend_config_str_or).value();
+      auto normalized_or = SortJson(backend_config_str);
+      if (!normalized_or.ok()) {
+        continue;
+      }
+      std::string normalized = std::move(normalized_or).value();
+      if (normalized == backend_config_str) {
+        continue;
+      }
+      if (instruction.has_backend_config_payload()) {
+        Payload* payload = instruction.mutable_backend_config_payload();
+        switch (payload->payload_source_case()) {
+          case Payload::kId: {
+            int id = static_cast<int>(payload->id());
+            auto* module = executable.mutable_hlo_module_with_config()
+                               ->mutable_hlo_module();
+            *module->mutable_payloads(id) = normalized;
+            break;
+          }
+          case Payload::kValue:
+          case Payload::PAYLOAD_SOURCE_NOT_SET:
+            payload->set_value(normalized);
+            break;
+        }
+      } else {
+        instruction.set_backend_config(normalized);
+      }
     }
   }
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -93,33 +121,50 @@ absl::Status WriteSplitGpuExecutable(gpu::GpuExecutableProto executable,
   riegeli::RecordWriter record_writer(std::move(writer),
                                       GetSplitProtoRiegeliOptions());
   SplitProtoManifest manifest = BuildManifest(executable.constants_size());
-  TF_RETURN_IF_ERROR(WriteRecord(record_writer, manifest));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      WriteRecord(record_writer, manifest),
+      "failed to write manifest in GpuExecutableProto split proto");
 
-  TF_RETURN_IF_ERROR(WriteRecord(record_writer, executable.asm_text()));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      WriteRecord(record_writer, executable.asm_text()),
+      "failed to serialize asm_text in GpuExecutableProto split proto");
   executable.clear_asm_text();
-  TF_RETURN_IF_ERROR(WriteRecord(record_writer, executable.binary()));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      WriteRecord(record_writer, executable.binary()),
+      "failed to serialize binary in GpuExecutableProto split proto");
   executable.clear_binary();
 
   gpu::GpuExecutableProto dnn_graphs_wrapper;
   *dnn_graphs_wrapper.mutable_dnn_compiled_graphs() =
       std::move(executable.dnn_compiled_graphs());
   executable.clear_dnn_compiled_graphs();
-  TF_RETURN_IF_ERROR(WriteRecord(record_writer, dnn_graphs_wrapper));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      WriteRecord(record_writer, dnn_graphs_wrapper),
+      "failed to serialize dnn_compiled_graphs in GpuExecutableProto split "
+      "proto");
 
   for (gpu::GpuExecutableProto::ConstantInfoProto& constant :
        *executable.mutable_constants()) {
     gpu::GpuExecutableProto constant_wrapper;
     *constant_wrapper.add_constants() = std::move(constant);
-    TF_RETURN_IF_ERROR(WriteRecord(record_writer, constant_wrapper));
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        WriteRecord(record_writer, constant_wrapper),
+        "failed to serialize constant in GpuExecutableProto split proto");
   }
   executable.clear_constants();
 
   // The rest of the fields (i.e. the non-offloaded fields)
-  NormalizeBackendConfig(executable);
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      NormalizeBackendConfig(executable),
+      "failed to normalize backend config in GpuExecutableProto split proto");
   // Module IDs are created via a static counter when deserializing, and they
   // can cause non-determinism, so we don't preserve them.
   executable.mutable_hlo_module_with_config()->mutable_hlo_module()->clear_id();
-  TF_RETURN_IF_ERROR(WriteRecord(record_writer, executable));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      WriteRecord(record_writer, executable),
+      "failed to serialize the rest of the fields in GpuExecutableProto "
+      "split proto (all fields except asm_text, binary, "
+      "dnn_compiled_graphs, and constants)");
 
   if (!record_writer.Close()) {
     return record_writer.status();

@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/cord.h"
 #include "xla/tsl/platform/types.h"
 #include "tsl/platform/platform.h"
 

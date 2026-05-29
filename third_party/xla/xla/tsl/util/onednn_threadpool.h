@@ -34,6 +34,12 @@ namespace tsl {
 #ifndef ENABLE_ONEDNN_OPENMP
 using dnnl::threadpool_interop::threadpool_iface;
 
+// =============================================================================
+// This threadpool is synchronous and is used only in TensorFlow.
+// XLA has a different asynchronous-eligible threadpool at:
+//   xla/backends/cpu/runtime/onednn/onednn_threadpool.h
+// =============================================================================
+
 // Divide 'n' units of work equally among 'teams' threads. If 'n' is not
 // divisible by 'teams' and has a remainder 'r', the first 'r' teams have one
 // unit of work more than the rest. Returns the range of work that belongs to
@@ -138,8 +144,8 @@ class OneDnnThreadPool : public threadpool_iface {
                                              mid, mid + 1);
           last = mid;
         }
-        counter.DecrementCount();
         run_jobs(balance, first, n, njobs, fn);
+        counter.DecrementCount();
       };
 
       // Eigen avoids a thread hop by running the root of the tree on the main

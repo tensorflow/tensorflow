@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <utility>
 #include <variant>
@@ -369,8 +370,14 @@ static XLA_FFI_Error* XLA_FFI_State_Set(XLA_FFI_State_Set_Args* args) {
   ExecutionState* execution_state = GetExecutionState(args->ctx, args->stage);
   DCHECK(execution_state) << "ExecutionState must be set";
 
-  absl::Status status = execution_state->Set(
-      TypeRegistry::TypeId(args->type_id->type_id), args->state);
+  TypeRegistry::TypeId type_id(args->type_id->type_id);
+
+  auto type_info = TypeRegistry::GetTypeInfo(type_id);
+  if (!type_info.ok()) {
+    return new XLA_FFI_Error{type_info.status()};
+  }
+
+  absl::Status status = execution_state->Set(type_id, *type_info, args->state);
   if (!status.ok()) {
     return new XLA_FFI_Error{std::move(status)};
   }

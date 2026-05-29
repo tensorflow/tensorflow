@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -216,14 +217,14 @@ absl::StatusOr<TmaDescriptor> TmaDescriptor::Create(
         absl::StrFormat("unsupported element size: %d", element_byte_width));
   }
 
-  TF_RETURN_IF_ERROR(ValidateRank(global_dims, global_strides, box_dims,
-                                  element_strides, interleave));
-  TF_RETURN_IF_ERROR(ValidateGlobalDims(global_dims));
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(ValidateRank(global_dims, global_strides, box_dims,
+                               element_strides, interleave));
+  RETURN_IF_ERROR(ValidateGlobalDims(global_dims));
+  RETURN_IF_ERROR(
       ValidateGlobalStrides(global_dims, global_strides, interleave));
-  TF_RETURN_IF_ERROR(ValidateBoxDims(box_dims, element_byte_width, interleave));
-  TF_RETURN_IF_ERROR(ValidateElementStrides(element_strides));
-  TF_RETURN_IF_ERROR(ValidateInterleaveAndSwizzleCombos(
+  RETURN_IF_ERROR(ValidateBoxDims(box_dims, element_byte_width, interleave));
+  RETURN_IF_ERROR(ValidateElementStrides(element_strides));
+  RETURN_IF_ERROR(ValidateInterleaveAndSwizzleCombos(
       interleave, swizzle, box_dims, element_byte_width));
 
   return TmaDescriptor(global_dims, global_strides, box_dims, element_strides,
@@ -452,8 +453,8 @@ absl::StatusOr<TmaMetadata> TmaMetadata::FromProto(
     const TmaMetadataProto& proto) {
   TmaMetadata metadata;
   for (const auto& [arg_index, tma_info] : proto.arg_index_to_tma_info()) {
-    TF_ASSIGN_OR_RETURN(TmaDescriptor descriptor,
-                        TmaDescriptor::FromProto(tma_info));
+    ASSIGN_OR_RETURN(TmaDescriptor descriptor,
+                     TmaDescriptor::FromProto(tma_info));
     metadata.arg_index_to_tma_info.insert({arg_index, std::move(descriptor)});
   }
   return metadata;
@@ -522,11 +523,11 @@ absl::Status IsTmaCompatible(absl::Span<const int64_t> global_shape,
 
   // Attempt to construct a TmaDescriptor with the default values. If this
   // fails, then TMA is not compatible.
-  TF_ASSIGN_OR_RETURN(
-      auto tma_desc, TmaDescriptor::Create(
-                         normalized_global_shape, global_strides, box_dims,
-                         element_strides, element_byte_size, default_interleave,
-                         default_swizzle, default_l2_promotion));
+  ASSIGN_OR_RETURN(auto tma_desc,
+                   TmaDescriptor::Create(
+                       normalized_global_shape, global_strides, box_dims,
+                       element_strides, element_byte_size, default_interleave,
+                       default_swizzle, default_l2_promotion));
 
   return absl::OkStatus();
 }

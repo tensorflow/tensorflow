@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -995,7 +996,7 @@ void IncrementTfMlirBridgeSecondPhaseCounter(
       };
 
   mlir_second_phase_count
-      ->GetCell(std::string(mlir_bridge_second_phase_metric_names->at(metric)))
+      ->GetCell(mlir_bridge_second_phase_metric_names->at(metric))
       ->IncrementBy(1);
 }
 
@@ -1020,8 +1021,7 @@ void IncrementPhase2XlaCompilerCounter(Phase2XlaCompilerMetric metric) {
            "kCompileFunctionMlirFailure"},
       };
 
-  phase_2_xla_compiler_count->GetCell(std::string(metric_names->at(metric)))
-      ->IncrementBy(1);
+  phase_2_xla_compiler_count->GetCell(metric_names->at(metric))->IncrementBy(1);
 }
 
 void UpdateTpuErrorCounter(const std::string& op,

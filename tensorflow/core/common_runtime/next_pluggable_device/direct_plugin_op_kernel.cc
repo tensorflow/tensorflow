@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/status.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/direct_plugin_variable.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_resource.h"
@@ -70,9 +71,9 @@ absl::Status DirectPluginOpKernelContext::CreatePluginVariable(
     int index, PluginVariable** variable) const {
   const auto& arg_tensor = ctx_->input(index);
   if (arg_tensor.dtype() != DT_RESOURCE) {
-    return tsl::errors::InvalidArgument(
-        "Trying to obtain resource handle from Input[", index,
-        "], which is not type DT_RESOURCE.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Trying to obtain resource handle from Input[", index,
+                     "], which is not type DT_RESOURCE."));
   }
   const ResourceHandle& handle = arg_tensor.flat<ResourceHandle>()(0);
   Var* var;
@@ -86,7 +87,7 @@ absl::Status DirectPluginOpKernelContext::AllocateTempForPluginVariable(
     PluginVariable* variable) {
   auto* direct_variable = reinterpret_cast<DirectPluginVariable*>(variable);
   if (direct_variable->var_info_.var() == nullptr) {
-    return tsl::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "VariableInfo does not track a resource variable.");
   }
   Tensor* var_tensor = direct_variable->var_info_.var()->tensor();

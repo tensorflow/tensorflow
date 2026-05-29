@@ -27,6 +27,7 @@
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt_proxy/common/array_util.pb.h"
@@ -63,6 +64,9 @@ absl::StatusOr<std::vector<int64_t>> DefaultByteStrides(const DType dtype,
 absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromZerothElementPointer(
     const void* zeroth_element, const DType dtype, const Shape& shape,
     ByteStrides byte_strides) {
+  if (dtype.kind() == DType::kToken) {
+    return ArrayMemRegion(nullptr, 0);
+  }
   int byte_size;
   if (dtype.byte_size().has_value()) {
     byte_size = *dtype.byte_size();
@@ -130,10 +134,13 @@ absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromZerothElementPointer(
 absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromMinimalMemRegion(
     absl::string_view mem_region, const DType dtype, const Shape& shape,
     ByteStrides byte_strides) {
+  if (dtype.kind() == DType::kToken) {
+    return ArrayMemRegion(nullptr, 0);
+  }
   // FromZerothElementPointer() currently returns an error for any situation
   // where the zeroth_element will is not equal to the place where the minimal
   // memory region starts.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto result,
       FromZerothElementPointer(mem_region.data(), dtype, shape, byte_strides));
 

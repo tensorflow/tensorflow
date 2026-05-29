@@ -21,11 +21,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/backends/cpu/runtime/thunk_proto_serdes.h"
@@ -34,6 +36,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
 #include "xla/backends/cpu/ynn_emitter.h"
 #include "xla/backends/cpu/ynn_fusion_options.pb.h"
+#include "xla/backends/cpu/ynn_support.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -52,7 +55,7 @@ namespace xla::cpu {
 namespace {
 
 absl::Status YnnFusionThunkToProto(const Thunk& thunk, ThunkProto& proto) {
-  const auto& ynn_fusion_thunk = tsl::down_cast<const YnnFusionThunk&>(thunk);
+  const auto& ynn_fusion_thunk = absl::down_cast<const YnnFusionThunk&>(thunk);
   YnnFusionThunkProto* ynn_fusion_proto = proto.mutable_ynn_fusion_thunk();
   ynn_fusion_proto->mutable_options()->set_use_threadpool(
       ynn_fusion_thunk.options().use_threadpool);
@@ -60,13 +63,13 @@ absl::Status YnnFusionThunkToProto(const Thunk& thunk, ThunkProto& proto) {
 
   for (const YnnFusionThunk::Argument& argument :
        ynn_fusion_thunk.arguments()) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         SerializeSliceShapeIntoProto(argument.slice, argument.shape,
                                      ynn_fusion_proto->add_arguments_shapes()));
   }
 
   for (const YnnFusionThunk::Result& result : ynn_fusion_thunk.results()) {
-    TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
+    RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
         result.slice, result.shape, ynn_fusion_proto->add_results_shapes()));
   }
 
@@ -84,7 +87,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> YnnFusionThunkFromProto(
       ynn_fusion_proto.options().use_threadpool(),
   };
 
-  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+  ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
 
   if (hlo_module == nullptr) {
     return Internal(
@@ -110,16 +113,16 @@ absl::StatusOr<std::unique_ptr<Thunk>> YnnFusionThunkFromProto(
 
   std::vector<YnnFusionThunk::Argument> arguments;
   for (auto& argument_shape_proto : ynn_fusion_proto.arguments_shapes()) {
-    TF_ASSIGN_OR_RETURN(auto argument_shape,
-                        DeserializeSliceShapeFromProto(argument_shape_proto,
-                                                       buffer_allocations));
+    ASSIGN_OR_RETURN(auto argument_shape,
+                     DeserializeSliceShapeFromProto(argument_shape_proto,
+                                                    buffer_allocations));
     arguments.push_back(
         YnnFusionThunk::Argument{argument_shape.first, argument_shape.second});
   }
 
   std::vector<YnnFusionThunk::Result> results;
   for (auto& result_shape_proto : ynn_fusion_proto.results_shapes()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         auto result_shape,
         DeserializeSliceShapeFromProto(result_shape_proto, buffer_allocations));
     results.push_back(
@@ -129,30 +132,21 @@ absl::StatusOr<std::unique_ptr<Thunk>> YnnFusionThunkFromProto(
   absl::AnyInvocable<absl::StatusOr<YnnSubgraph>(
       absl::Span<const se::DeviceAddressBase> arguments_buffers)>
       builder;
-  absl::Span<const int64_t> captured_arguments_ids;
-  if (hlo->opcode() == HloOpcode::kDot) {
-    const HloDotInstruction* dot = Cast<HloDotInstruction>(hlo);
-    // TODO(b/455903737): If we know the RHS is a constant, we should capture it
-    // here.
-    bool capture_rhs = false;
-    // Construct YNNPACK subgraph builder from the dot instruction.
-    TF_ASSIGN_OR_RETURN(builder, EmitYnnDotBuilder(dot, capture_rhs));
-    static constexpr int64_t kCapturedIds[1] = {1};
-    if (capture_rhs) {
-      captured_arguments_ids = kCapturedIds;
+  auto* fusion = Cast<HloFusionInstruction>(hlo);
+  const HloComputation* computation = fusion->fused_instructions_computation();
+
+  std::vector<int64_t> captured_arguments_ids;
+  captured_arguments_ids.reserve(computation->num_parameters());
+  for (const HloInstruction* param : computation->parameter_instructions()) {
+    const HloInstruction* operand = fusion->operand(param->parameter_number());
+    if (IsConstant(operand)) {
+      captured_arguments_ids.push_back(param->parameter_number());
     }
-  } else if (hlo->opcode() == HloOpcode::kConvolution) {
-    const HloConvolutionInstruction* convolution =
-        Cast<HloConvolutionInstruction>(hlo);
-    // Construct YNNPACK subgraph builder from the convolution instruction.
-    TF_ASSIGN_OR_RETURN(builder, EmitYnnConvolutionBuilder(convolution));
-  } else {
-    auto* fusion = Cast<HloFusionInstruction>(hlo);
-    const HloComputation* computation =
-        fusion->fused_instructions_computation();
-    // Construct YNNPACK subgraph builder from the fusion computation.
-    TF_ASSIGN_OR_RETURN(builder, EmitYnnFusionBuilder(computation));
   }
+
+  // Construct YNNPACK subgraph builder from the fusion computation.
+  ASSIGN_OR_RETURN(builder,
+                   EmitYnnFusionBuilder(computation, captured_arguments_ids));
 
   return YnnFusionThunk::Create(
       std::move(options), std::move(info), hlo, std::move(arguments),

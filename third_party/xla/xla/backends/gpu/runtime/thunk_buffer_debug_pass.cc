@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_buffer_debug_checksum.h"
 #include "xla/backends/gpu/runtime/thunk_buffer_debug_float_check.h"
@@ -48,15 +49,15 @@ absl::StatusOr<bool> ThunkBufferDebugPass::Run(
 
   switch (mode_) {
     case Mode::kChecksum:
-      TF_RETURN_IF_ERROR(RunChecksumPassInternal(thunk_sequence, debug_options,
-                                                 hlo_module, allocator));
+      RETURN_IF_ERROR(RunChecksumPassInternal(thunk_sequence, debug_options,
+                                              hlo_module, allocator));
       break;
     case Mode::kFloatChecker:
-      TF_RETURN_IF_ERROR(RunFloatCheckPassInternal(
-          thunk_sequence, debug_options, hlo_module, allocator));
+      RETURN_IF_ERROR(RunFloatCheckPassInternal(thunk_sequence, debug_options,
+                                                hlo_module, allocator));
       break;
     case Mode::kBufferSaver:
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           RunDebugSaverInserter(thunk_sequence, debug_options, *hlo_module));
       break;
   }

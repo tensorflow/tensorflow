@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/layout.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
@@ -200,7 +201,7 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
     const Shape& shape, bool allow_missing_layouts) {
   if (shape.IsTuple()) {
     for (auto& element_shape : shape.tuple_shapes()) {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           ValidateLayoutInShape(element_shape, allow_missing_layouts));
     }
     return absl::OkStatus();
@@ -277,10 +278,16 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
         shape.ToString());
   }
   for (const auto& tile : layout.tiles()) {
-    if (tile.dimensions().empty() ||
-        absl::c_any_of(tile.dimensions(),
-                       [](int64_t dim) { return dim == 0; })) {
+    if (tile.dimensions().empty()) {
       return InvalidArgument("layout has invalid tiles: %s", shape.ToString());
+    }
+    for (int64_t dim : tile.dimensions()) {
+      if (dim <= 0 && dim != Tile::kCombineDimension) {
+        return InvalidArgument(
+            "layout has invalid tiles: tile dimension %d must be positive or "
+            "kCombineDimension: %s",
+            dim, shape.ToString());
+      }
     }
   }
 
@@ -416,16 +423,15 @@ absl::Status CopyLayoutInternal(const Shape& src, Shape* dst) {
           "cannot copy layout from shape: tuple element count differs");
     }
     for (int64_t i = 0; i < ShapeUtil::TupleElementCount(src); ++i) {
-      TF_RETURN_IF_ERROR(CopyLayoutInternal(src.tuple_shapes(i),
-                                            dst->mutable_tuple_shapes(i)));
+      RETURN_IF_ERROR(CopyLayoutInternal(src.tuple_shapes(i),
+                                         dst->mutable_tuple_shapes(i)));
     }
   } else if (src.IsArray()) {
     if (src.has_layout()) {
       if (src.dimensions().size() != dst->dimensions().size()) {
         return InvalidArgument("cannot copy layout from shape: ranks differs");
       }
-      TF_RETURN_IF_ERROR(
-          LayoutUtil::ValidateLayoutForShape(src.layout(), *dst));
+      RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(src.layout(), *dst));
       *dst->mutable_layout() = src.layout();
     } else {
       dst->clear_layout();
@@ -601,6 +607,11 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
   // 2. Iteratively apply each tile level.
   for (const Tile& tile : shape.layout().tiles()) {
     const int64_t tile_rank = tile.dimensions().size();
+    if (tile_rank > current_shape.size()) {
+      int64_t pad_size = tile_rank - current_shape.size();
+      current_shape.insert(current_shape.begin(), pad_size, 1);
+      current_indices.insert(current_indices.begin(), pad_size, 0);
+    }
     // Tiling applies to a suffix of the current physical dimensions.
     CHECK_LE(tile_rank, current_shape.size());
 
@@ -679,9 +690,13 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
   std::vector<TilingStep> steps;
 
   for (const Tile& tile : shape.layout().tiles()) {
+    const int64_t tile_rank = tile.dimensions().size();
+    if (tile_rank > current_shape.size()) {
+      int64_t pad_size = tile_rank - current_shape.size();
+      current_shape.insert(current_shape.begin(), pad_size, 1);
+    }
     steps.push_back({current_shape, tile});
 
-    const int64_t tile_rank = tile.dimensions().size();
     const int64_t suffix_start = current_shape.size() - tile_rank;
 
     std::vector<int64_t> next_shape;
@@ -739,10 +754,11 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
 
   // 4. Map the physical major-to-minor indices back to logical dimensions.
   std::vector<int64_t> logical_indices(num_dims);
+  int64_t pad_offset = current_indices.size() - num_dims;
   for (int i = 0; i < num_dims; ++i) {
     // The physical order was minor_to_major(num_dims-1) down to 0.
     int64_t logical_dim = shape.layout().minor_to_major(num_dims - 1 - i);
-    logical_indices[logical_dim] = current_indices[i];
+    logical_indices[logical_dim] = current_indices[pad_offset + i];
   }
 
   return logical_indices;

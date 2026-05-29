@@ -105,10 +105,10 @@ absl::Status DataTransferServer::Build(
     available_names.push_back(factory.first);
   }
 
-  return errors::NotFound(
+  return absl::NotFoundError(absl::StrCat(
       "No data transfer server factory has been registered for name ", name,
       ". The available names are: [ ", absl::StrJoin(available_names, ", "),
-      " ]");
+      " ]"));
 }
 
 void DataTransferClient::Register(std::string name, ClientFactoryT factory) {
@@ -133,10 +133,10 @@ absl::Status DataTransferClient::Build(
     available_names.push_back(factory.first);
   }
 
-  return errors::NotFound(
+  return absl::NotFoundError(absl::StrCat(
       "No data transfer client factory has been registered for name ", name,
       ". The available names are: [ ", absl::StrJoin(available_names, ", "),
-      " ]");
+      " ]"));
 }
 
 }  // namespace data

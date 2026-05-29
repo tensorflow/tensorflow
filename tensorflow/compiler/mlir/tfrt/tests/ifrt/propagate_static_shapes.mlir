@@ -42,3 +42,49 @@ module {
     func.return %2#0, %2#1, %2#2 : tensor<?x?xi32>, tensor<?xi32>, tensor<?x?xf32>
   }
 }
+
+// -----
+// CHECK-LABEL: func.func @callee(%arg0: tensor<?x?xi32> {tf._static_shape_arg_idx = 1 : i32}, %arg1: tensor<2xi64>) -> tensor<?x?xi32> attributes {tfrt_ifrt_serving.program_id = 789 : i64}
+// CHECK: return %arg0
+// CHECK-LABEL: func.func @main
+// CHECK-NEXT: %[[C0:.*]] = "tf.Const"
+// CHECK-NEXT: %[[C1:.*]] = "tf.IfrtCall"(%arg0, %[[C0]]) <{operandSegmentSizes = array<i32: 1, 1>, program_id = 789 : i64, variable_arg_indices = []}> : (tensor<?x?xi32>, tensor<2xi64>) -> tensor<?x?xi32>
+// CHECK-NEXT: %[[C2:.*]] = "tf.IfrtCall"(%arg0, %[[C0]]) <{operandSegmentSizes = array<i32: 1, 1>, program_id = 789 : i64, variable_arg_indices = []}> : (tensor<?x?xi32>, tensor<2xi64>) -> tensor<?x?xi32>
+// CHECK-NEXT: return %[[C2]]
+
+module {
+  func.func @callee(%arg0: tensor<?x?xi32>) -> tensor<?x?xi32> attributes {tfrt_ifrt_serving.program_id = 789 : i64} {
+    func.return %arg0 : tensor<?x?xi32>
+  }
+  func.func @main(%arg0: tensor<?x?xi32>) -> tensor<?x?xi32> {
+    %0 = "tf.Const"() {value = dense<[1, 2]> : tensor<2xi64>} : () -> tensor<2xi64>
+    %1 = "tf.SetStaticDimensionBounds"(%arg0, %0) : (tensor<?x?xi32>, tensor<2xi64>) -> tensor<?x?xi32>
+    %2 = "tf.IfrtCall"(%1) {program_id = 789 : i64, variable_arg_indices = [], operandSegmentSizes = array<i32: 1, 0>} : (tensor<?x?xi32>) -> tensor<?x?xi32>
+    %3 = "tf.SetStaticDimensionBounds"(%arg0, %0) : (tensor<?x?xi32>, tensor<2xi64>) -> tensor<?x?xi32>
+    %4 = "tf.IfrtCall"(%3) {program_id = 789 : i64, variable_arg_indices = [], operandSegmentSizes = array<i32: 1, 0>} : (tensor<?x?xi32>) -> tensor<?x?xi32>
+    func.return %4 : tensor<?x?xi32>
+  }
+}
+
+// -----
+// CHECK-LABEL: func.func @callee(%arg0: tensor<?x?xi32> {tf._static_shape_arg_idx = 1 : i32}, %arg1: tensor<2xi64>) -> tensor<?x?xi32> attributes {tfrt_ifrt_serving.program_id = 999 : i64}
+// CHECK: return %arg0
+// CHECK-LABEL: func.func @main
+// CHECK-NEXT: %[[C0:.*]] = "tf.Const"
+// CHECK-NEXT: %[[C1:.*]] = "tf.IfrtCall"(%arg0, %[[C0]]) <{operandSegmentSizes = array<i32: 1, 1>, program_id = 999 : i64, variable_arg_indices = []}> : (tensor<?x?xi32>, tensor<2xi64>) -> tensor<?x?xi32>
+// CHECK-NEXT: %[[C2:.*]] = "tf.AsyncIfrtCall"(%arg0, %[[C0]]) <{operandSegmentSizes = array<i32: 1, 1>, program_id = 999 : i64, variable_arg_indices = []}> : (tensor<?x?xi32>, tensor<2xi64>) -> tensor<?x?xi32>
+// CHECK-NEXT: return %[[C2]]
+
+module {
+  func.func @callee(%arg0: tensor<?x?xi32>) -> tensor<?x?xi32> attributes {tfrt_ifrt_serving.program_id = 999 : i64} {
+    func.return %arg0 : tensor<?x?xi32>
+  }
+  func.func @main(%arg0: tensor<?x?xi32>) -> tensor<?x?xi32> {
+    %0 = "tf.Const"() {value = dense<[1, 2]> : tensor<2xi64>} : () -> tensor<2xi64>
+    %1 = "tf.SetStaticDimensionBounds"(%arg0, %0) : (tensor<?x?xi32>, tensor<2xi64>) -> tensor<?x?xi32>
+    %2 = "tf.IfrtCall"(%1) {program_id = 999 : i64, variable_arg_indices = [], operandSegmentSizes = array<i32: 1, 0>} : (tensor<?x?xi32>) -> tensor<?x?xi32>
+    %3 = "tf.SetStaticDimensionBounds"(%arg0, %0) : (tensor<?x?xi32>, tensor<2xi64>) -> tensor<?x?xi32>
+    %4 = "tf.AsyncIfrtCall"(%3) {program_id = 999 : i64, variable_arg_indices = [], operandSegmentSizes = array<i32: 1, 0>} : (tensor<?x?xi32>) -> tensor<?x?xi32>
+    func.return %4 : tensor<?x?xi32>
+  }
+}

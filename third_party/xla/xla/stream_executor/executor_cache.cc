@@ -23,9 +23,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -42,11 +43,10 @@ absl::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
   }
 
   VLOG(2) << "building executor";
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<StreamExecutor> result, factory());
-  auto returned_executor = result.get();
+  ASSIGN_OR_RETURN(std::unique_ptr<StreamExecutor> result, factory());
   absl::MutexLock lock(mutex_);
-  cache_.emplace(ordinal, std::move(result));
-  return returned_executor;
+  auto [it, inserted] = cache_.emplace(ordinal, std::move(result));
+  return it->second.get();
 }
 
 absl::StatusOr<StreamExecutor*> ExecutorCache::Get(int ordinal) const {

@@ -31,21 +31,29 @@ cc_library(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
-        "nvtx_utils.h",
         "nvtx_utils_stub.cc",  #Include the stub implementation here since CUDA isn't relevant to Android.
-        "scoped_annotation.h",
         "scoped_memory_debug_annotation.cc",
-        "scoped_memory_debug_annotation.h",
-        "traceme.h",
-        "traceme_encode.h",
-        "@xla//xla/tsl/profiler/utils:mobile_srcs_no_runtime",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
 )
 
 filegroup(
-    name = "mobile_srcs_only_runtime",
+    name = "mobile_hdrs_no_runtime",
+    srcs = [
+        "nvtx_utils.h",
+        "scoped_annotation.h",
+        "scoped_memory_debug_annotation.h",
+        "traceme.h",
+        "traceme_encode.h",
+        "@xla//xla/tsl/profiler/utils:mobile_hdrs_no_runtime",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
     srcs = [
         "connected_traceme.h",
         "context_types.h",
@@ -245,10 +253,13 @@ cc_library(
     hdrs = ["traceme_encode.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tsl/platform",
+        "@com_google_absl//absl/base:config",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@xla//xla/tsl/platform:logging",
         "@xla//xla/tsl/platform:macros",
+        "@xla//xla/tsl/profiler/utils:traceme_global_flags",
     ],
 )
 

@@ -20,21 +20,23 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 
-#include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/async_execution.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 
@@ -48,7 +50,7 @@ AsyncStartThunk::AsyncStartThunk(ThunkInfo thunk_info,
     : Thunk(Thunk::kAsyncStart, std::move(thunk_info)),
       execution_stream_id_(execution_stream_id),
       executor_(std::move(thunks)),
-      async_execution_(std::make_shared<AsyncExecution>(this)) {}
+      async_execution_(std::make_shared<AsyncExecution>(this->thunk_info())) {}
 
 AsyncStartThunk::AsyncStartThunk(
     ThunkInfo thunk_info, ExecutionStreamId execution_stream_id,
@@ -116,7 +118,7 @@ absl::Status AsyncStartThunk::TransformNested(Transformer callback) {
 }
 
 AsyncExecutionId AsyncStartThunk::async_execution_id() const {
-  return absl::bit_cast<AsyncExecutionId>(async_execution_.get());
+  return AsyncExecutionId(thunk_info().thunk_id.value());
 }
 
 std::shared_ptr<AsyncExecution> AsyncStartThunk::async_execution() const {
@@ -129,7 +131,7 @@ std::shared_ptr<AsyncExecution> AsyncStartThunk::async_execution() const {
 
 AsyncDoneThunk::AsyncDoneThunk(ThunkInfo thunk_info,
                                std::shared_ptr<AsyncExecution> async_execution)
-    : Thunk(Thunk::kAsyncDone, std::move(thunk_info)),
+    : Command(CommandType::kAsyncDone, Kind::kAsyncDone, std::move(thunk_info)),
       async_execution_(std::move(async_execution)) {}
 
 std::string AsyncDoneThunk::ToString(int indent) const {
@@ -140,8 +142,22 @@ absl::Status AsyncDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   return async_execution_->Done(params.execution_scoped_state, params.stream);
 }
 
+absl::StatusOr<const se::CommandBuffer::Command*> AsyncDoneThunk::Record(
+    const Thunk::ExecuteParams& execute_params,
+    const RecordParams& record_params, RecordAction record_action,
+    se::CommandBuffer* command_buffer) {
+  if (auto* create = std::get_if<RecordCreate>(&record_action)) {
+    return command_buffer->CreateEmptyCmd(create->dependencies, priority());
+  }
+  if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
+    // No parameters to update; return existing node unchanged.
+    return update->command;
+  }
+  return Internal("Invalid record action");
+}
+
 AsyncExecutionId AsyncDoneThunk::async_execution_id() const {
-  return absl::bit_cast<AsyncExecutionId>(async_execution_.get());
+  return AsyncExecutionId(async_execution_->start_thunk_id().value());
 }
 
 std::shared_ptr<AsyncExecution> AsyncDoneThunk::async_execution() const {

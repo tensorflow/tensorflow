@@ -118,8 +118,9 @@ inline void biregister_rotate_8(int8x16_t* left, int8x16_t* right) {
 
 #ifndef __aarch64__
 inline int32x4_t vpaddq_s32(int32x4_t a, int32x4_t b) {
-  int32x4x2_t deinterleaved = vuzpq_s32(a, b);
-  return vqaddq_s32(deinterleaved.val[0], deinterleaved.val[1]);
+  int32x2_t a0 = vpadd_s32(vget_low_s32(a), vget_high_s32(a));
+  int32x2_t b0 = vpadd_s32(vget_low_s32(b), vget_high_s32(b));
+  return vcombine_s32(a0, b0);
 }
 #endif  // !__aarch64__
 

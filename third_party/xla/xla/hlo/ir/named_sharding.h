@@ -94,6 +94,9 @@ class NamedSharding {
 
   // Shardings using mesh with similar device assignment should compare equal
   bool operator==(const NamedSharding& other) const {
+    if (IsReplicated() && other.IsReplicated()) {
+      return true;
+    }
     return mesh_.DeviceAssignmentEquals(other.mesh_) &&
            dim_shardings_ == other.dim_shardings_ &&
            replicated_axes_ == other.replicated_axes_ &&

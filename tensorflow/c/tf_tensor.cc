@@ -263,7 +263,7 @@ absl::Status TensorInterface::BitcastFrom(const TensorInterface& from,
 absl::Status TensorInterface::FromProto(const tensorflow::TensorProto& from) {
   bool success = tensor_.FromProto(from);
   if (success) return absl::OkStatus();
-  return errors::InvalidArgument("Unparseable tensor proto");
+  return absl::InvalidArgumentError("Unparseable tensor proto");
 }
 
 }  // namespace tensorflow
@@ -300,7 +300,7 @@ AbstractTensorInterface* TensorInterfaceFromTensor(const Tensor& src,
                                                    absl::Status* status) {
   *status = absl::OkStatus();
   if (!src.IsInitialized()) {
-    *status = FailedPrecondition(
+    *status = absl::FailedPreconditionError(
         "attempt to use a tensor with an uninitialized value");
     return nullptr;
   }
@@ -329,7 +329,7 @@ TF_Tensor* TF_TensorFromTensorShallow(const tensorflow::Tensor& src,
                                       absl::Status* status) {
   *status = absl::OkStatus();
   if (!src.IsInitialized()) {
-    *status = FailedPrecondition(
+    *status = absl::FailedPreconditionError(
         "attempt to use a tensor with an uninitialized value");
     return nullptr;
   }

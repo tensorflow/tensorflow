@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/builder/lib/comparators.h"
 #include "xla/hlo/builder/xla_builder.h"
@@ -259,8 +260,8 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallTopK(
   XlaComputation comparator = CreateScalarComparisonComputation(
       "compare-value-and-index", {input->shape().element_type(), S32}, {Gt, Lt},
       &b);
-  TF_ASSIGN_OR_RETURN(HloComputation * compare_computation,
-                      XlaComputationToHloComputation(comparator, module_));
+  ASSIGN_OR_RETURN(HloComputation * compare_computation,
+                   XlaComputationToHloComputation(comparator, module_));
   // Each partition needs to do TopK separately, thus the base shape for sort
   // becomes [ceil(batch_size / batch_dim_partition), k * shard_count].
   const Shape sort_shape = ShapeUtil::MakeTupleShape(
@@ -305,7 +306,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallTopK(
 
 absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
     HloInstruction* hlo) {
-  TF_ASSIGN_OR_RETURN(auto attrs, ParseOpaqueAsAttributes(hlo));
+  ASSIGN_OR_RETURN(auto attrs, ParseOpaqueAsAttributes(hlo));
   auto dim_it = attrs.find("dimension");
   TF_RET_CHECK(dim_it != attrs.end())
       << "No dimension attribute in SPMD rotate op";
@@ -436,7 +437,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
 
 absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_MultiRotate(
     HloInstruction* hlo) {
-  TF_ASSIGN_OR_RETURN(auto attrs, ParseOpaqueAsAttributes(hlo));
+  ASSIGN_OR_RETURN(auto attrs, ParseOpaqueAsAttributes(hlo));
   auto dim_it = attrs.find("dimension");
   TF_RET_CHECK(dim_it != attrs.end())
       << "No dimension attribute in SPMD multi rotate op";
@@ -489,7 +490,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_MultiRotate(
   // This means that we need the first L elements from the right via a
   // halo exchange. Similarly, we need the last R elements from the left via a
   // halo exchange.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto super_shard_and_offset,
       ConstructHaloExchangeSuperShard(hlo->operand(0), dim,
                                       /*left_amount=*/right_amount,
@@ -835,7 +836,7 @@ SpmdPartitioningVisitor::ConstructHaloExchangeSuperShard(
 
 absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_MultiSlice(
     HloInstruction* hlo) {
-  TF_ASSIGN_OR_RETURN(auto attrs_pair, ParseOpaqueAsAttributesWithArrays(hlo));
+  ASSIGN_OR_RETURN(auto attrs_pair, ParseOpaqueAsAttributesWithArrays(hlo));
   auto& int_attrs = attrs_pair.first;
   auto& array_attrs = attrs_pair.second;
 
@@ -947,7 +948,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_MultiSlice(
       (start_index + from_left) +
       (post_halo_shard_size - sharded_input_size) * (participating_shards - 1);
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto super_shard_and_offset,
       ConstructHaloExchangeSuperShard(
           input_operand, dim, /*left_amount=*/from_left,
@@ -1024,7 +1025,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_MultiSlice(
 
 absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_MultiPad(
     HloInstruction* hlo) {
-  TF_ASSIGN_OR_RETURN(auto int_attrs, ParseOpaqueAsAttributes(hlo));
+  ASSIGN_OR_RETURN(auto int_attrs, ParseOpaqueAsAttributes(hlo));
 
   auto dim_it = int_attrs.find("dimension");
   TF_RET_CHECK(dim_it != int_attrs.end())
@@ -1102,13 +1103,13 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_MultiPad(
 
   HloInstruction* pad_value = GetPartitionedHlo(hlo->operand(1)).hlo();
 
-  TF_ASSIGN_OR_RETURN(auto super_shard_and_offset,
-                      ConstructHaloExchangeSuperShard(
-                          input_operand, dim, /*left_amount=*/from_left,
-                          /*right_amount=*/from_right,
-                          /*handle_last_shard=*/false, max_start_index,
-                          post_halo_shard_size, pad_value,
-                          /*first_shard_uses_pad_value=*/true));
+  ASSIGN_OR_RETURN(auto super_shard_and_offset,
+                   ConstructHaloExchangeSuperShard(
+                       input_operand, dim, /*left_amount=*/from_left,
+                       /*right_amount=*/from_right,
+                       /*handle_last_shard=*/false, max_start_index,
+                       post_halo_shard_size, pad_value,
+                       /*first_shard_uses_pad_value=*/true));
 
   HloInstruction* shard_to_slice = super_shard_and_offset.first;
 
@@ -1142,7 +1143,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_MultiPad(
 
 absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_Wrap(
     HloInstruction* hlo) {
-  TF_ASSIGN_OR_RETURN(auto attrs, ParseOpaqueAsAttributes(hlo));
+  ASSIGN_OR_RETURN(auto attrs, ParseOpaqueAsAttributes(hlo));
   auto dim_it = attrs.find("dimension");
   TF_RET_CHECK(dim_it != attrs.end())
       << "No dimension attribute in SPMD wrap op";
@@ -1171,7 +1172,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_Wrap(
       CeilOfRatio(hlo->shape().dimensions(dim), participating_shards);
   int64_t max_start_index =
       (post_wrap_shard_size - shard_size) * (participating_shards - 1);
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto super_shard_and_offset,
       ConstructHaloExchangeSuperShard(
           hlo->operand(0), dim, left_amount, right_amount,

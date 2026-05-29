@@ -212,9 +212,10 @@ HloValue::Uses HloValue::ComputeUses() const {
 }
 
 bool HloValue::IsRootOf(const HloComputation* computation) const {
-  return absl::c_any_of(positions_, [&](const HloPosition& position) {
-    return position.instruction->IsRoot() &&
-           position.instruction->parent() == computation;
+  const HloInstruction* root = computation->root_instruction();
+
+  return absl::c_any_of(positions_, [root](const HloPosition& position) {
+    return position.instruction == root;
   });
 }
 

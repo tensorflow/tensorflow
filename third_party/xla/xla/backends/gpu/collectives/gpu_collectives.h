@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -117,6 +118,11 @@ class GpuCollectives : public Collectives {
     //
     // If blocking_communicators is false, then async_execution must be true.
     bool async_execution = false;
+
+    // Decides whether communicators will be created to minimize resource
+    // utilization (i.e SM) during runtime. This is mainly used for overlapping
+    // with compute to avoid taking up compute resources.
+    bool use_minimal_resource = false;
   };
 
   // A cancelable version of Collectives::CreateCommunicators.
@@ -144,9 +150,6 @@ class GpuCollectives : public Collectives {
   // Returns true if GPU collectives are implemented.
   virtual bool IsImplemented() const = 0;
 
-  // Returns true if GPU collectives support device-initiated communication.
-  virtual bool SupportsDeviceComm() const { return false; }
-
   // Returns minimum alignment requirement for symmetric memory.
   virtual size_t SymmetricMemoryAlignment() const { return 1; }
 
@@ -157,9 +160,13 @@ class GpuCollectives : public Collectives {
       size_t offset, size_t count);
 
   // TODO(b/410686553): Use smart wrapper instead of void*.
-  virtual absl::StatusOr<void*> Allocate(uint64_t bytes) = 0;
+  virtual absl::StatusOr<void*> Allocate(uint64_t bytes) {
+    return Unimplemented("Allocate is not implemented");
+  }
 
-  virtual absl::Status Deallocate(void* buffer) = 0;
+  virtual absl::Status Deallocate(void* buffer) {
+    return Unimplemented("Deallocate is not implemented");
+  }
 
   // Creates a single communicator.
   virtual absl::StatusOr<std::unique_ptr<Communicator>>

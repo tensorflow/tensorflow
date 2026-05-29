@@ -360,6 +360,23 @@ class HloModule {
     }
   }
 
+  // Canonicalizes the local_ids of all instructions in all computations
+  // in this module and updates the schedule's instruction unique IDs.
+  //
+  // WARNING: This is a dangerous API because it reassigns local IDs in all
+  // computations. It should only be used in contexts where you are certain
+  // that nothing is caching instruction unique IDs or relying on the stability
+  // of local IDs.
+  void CanonicalizeComputationLocalIds();
+
+  // Reorders the computations in the module to match the post-order.
+  //
+  // Many analysis and optimization passes benefit from processing computations
+  // in post-order (callees before callers). Canonicalizing them in this order
+  // makes simple iteration over computations() yield a valid traversal order,
+  // improving determinism.
+  absl::Status ReorderComputationsToPostOrder();
+
   // Compute and return a topological sort of all computations in the module.
   // The sort is defined like so: if computation A has an instruction which
   // calls computation B, then A will appear after B in the sort.
@@ -455,6 +472,10 @@ class HloModule {
   void set_is_dynamic(bool is_dynamic) { is_dynamic_ = is_dynamic; }
 
  private:
+  // Private constructor which accepts the id to allow specifying pre-allocated
+  // module id.
+  HloModule(const std::string& name, HloModuleConfig config,
+            std::unique_ptr<CompilationEnvironments> comp_envs, int module_id);
   void PrintComputations(Printer* printer,
                          const HloPrintOptions& options) const;
   void PrintConfig(Printer* printer, const HloModuleConfig& config) const;
@@ -529,11 +550,11 @@ class HloModule {
           computation_id_to_id_remap_map);
 
   // Convert an HloModule to a proto.
-  void ToProto(HloModuleProto* proto) const;
+  void ToProto(HloModuleProto* proto, bool intern_backend_config = false) const;
 
-  HloModuleProto ToProto() const {
+  HloModuleProto ToProto(bool intern_backend_config = false) const {
     HloModuleProto proto;
-    ToProto(&proto);
+    ToProto(&proto, intern_backend_config);
     return proto;
   }
 
@@ -557,11 +578,13 @@ class HloModule {
       bool preserve_instruction_ids = true);
 
   // Convert an HloModule to or from a proto that includes module configuration
-  void ToProtoWithConfig(HloModuleProtoWithConfig* proto) const;
+  void ToProtoWithConfig(HloModuleProtoWithConfig* proto,
+                         bool intern_backend_config = false) const;
 
-  HloModuleProtoWithConfig ToProtoWithConfig() const {
+  HloModuleProtoWithConfig ToProtoWithConfig(
+      bool intern_backend_config = false) const {
     HloModuleProtoWithConfig proto;
-    ToProtoWithConfig(&proto);
+    ToProtoWithConfig(&proto, intern_backend_config);
     return proto;
   }
   static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProtoWithConfig(
@@ -717,6 +740,9 @@ class HloModule {
   void set_spmd_output_sharding(const HloSharding& sharding) {
     spmd_output_sharding_ = sharding;
   }
+
+  // Returns the next unique module id.
+  static int GetNextUniqueModuleId() { return next_unique_module_id_++; }
 
   // Base class for cached backend-specific data.
   class CacheEntry {

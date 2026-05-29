@@ -1,0 +1,68 @@
+/* Copyright 2026 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package xla.gpu;
+
+import "xla/backends/gpu/runtime/collective_thunk.proto";
+import "xla/core/collectives/reduction_kind.proto";
+import "xla/service/gpu/launch_dimensions.proto";
+
+option java_outer_classname = "CollectiveKernelThunk";
+option java_multiple_files = true;
+
+message CollectiveKernelThunkProto {
+  // Configuration parameters for the collective operation, including replica
+  // groups, number of participants, and participant ranks.
+  CollectiveConfigProto collective_config = 1;
+
+  // The reduction operator (e.g., Sum, Product, Min, Max) to apply in the
+  // collective operation.
+  xla.ReductionKindProto reduction_kind = 2;
+
+  // If true, execution runs asynchronously on a dedicated collective stream.
+  bool is_async = 3;
+
+  // The descriptors of the buffers involved in the collective operation.
+  repeated CollectiveBufferProto buffers = 4;
+
+  // Whether the optimized, one-shot (or P2P-based) collective kernel
+  // implementation is enabled.
+  bool collective_kernel_enabled = 5;
+
+  // Name of the custom collective GPU kernel to execute.
+  string kernel_name = 6;
+
+  // Dynamic grid and block configuration for launching the custom collective
+  // kernel.
+  optional LaunchDimensionsProto launch_dimensions = 7;
+
+  // Dynamic shared memory size (in bytes) requested for executing the
+  // collective kernel.
+  int32 shmem_bytes = 8;
+
+  // Whether NVLink multi-memory (multicast address space) strategy is enabled
+  // for P2P communication.
+  bool is_multimem_enabled = 9;
+
+  // Precompiled GPU kernel (CUDA binary) containing the compiled collective
+  // kernel.
+  optional bytes cubin = 10;
+
+  // If true, enables Programmatic Dependent Launch (PDL) to trigger dependent
+  // kernels directly from the GPU.
+  bool use_pdl = 11;
+}

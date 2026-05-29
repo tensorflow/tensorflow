@@ -139,10 +139,10 @@ LogicalResult LowerBlockBarrierOp(BlockBarrierOp block_barrier,
             builder,
             /*resultTypes=*/mlir::TypeRange{},
             /*ptr=*/signal_addresses,
-            /*signal_value=*/signal_value,
+            /*value=*/signal_value,
             /*mask=*/mlir::Value{},
-            /*scope=*/mlir::triton::MemSyncScope::SYSTEM,
-            /*sem=*/mlir::triton::MemSemantic::RELEASE);
+            /*mem_sync_scope=*/mlir::triton::MemSyncScope::SYSTEM,
+            /*mem_sync_semantic=*/mlir::triton::MemSemantic::RELEASE);
         // Pointer to SignalBuffers[rank]
         // -> !tt.ptr<i64>
         auto read_address_ptr_to_i64 = mlir::triton::AddPtrOp::create(
@@ -178,9 +178,9 @@ LogicalResult LowerBlockBarrierOp(BlockBarrierOp block_barrier,
             /*ptr=*/wait_addresses,
             /*expected=*/signal_value,
             /*mask=*/mlir::Value{},
-            /*scope=*/mlir::triton::MemSyncScope::SYSTEM,
-            /*sem=*/mlir::triton::MemSemantic::ACQUIRE,
-            /*comparator=*/Comparator::LT);
+            /*mem_sync_scope=*/mlir::triton::MemSyncScope::SYSTEM,
+            /*mem_sync_semantic=*/mlir::triton::MemSemantic::ACQUIRE,
+            /*comparator=*/Comparator::GE);
         // Terminate the block.
         mlir::scf::YieldOp::create(builder);
       });

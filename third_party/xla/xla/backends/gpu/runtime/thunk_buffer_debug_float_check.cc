@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log.pb.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
@@ -62,7 +63,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/buffer_debug_log.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -159,8 +159,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapWithFloatCheckThunk(
 
   const size_t temp_buffer_size_bytes =
       CalculateTempBufferSize(*thunk) * sizeof(xla::gpu::FloatCheckResult);
-  TF_ASSIGN_OR_RETURN(BufferAllocation * tmp_alloc,
-                      allocator.NewEmptyAllocation(temp_buffer_size_bytes));
+  ASSIGN_OR_RETURN(BufferAllocation * tmp_alloc,
+                   allocator.NewEmptyAllocation(temp_buffer_size_bytes));
   BufferAllocation::Slice tmp_slice(tmp_alloc, 0, tmp_alloc->size());
 
   VLOG(1) << "Wrapping thunk " << thunk->thunk_info().thunk_id
@@ -173,12 +173,9 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapWithFloatCheckThunk(
       std::make_unique<BuffersDebugFloatCheckThunk>(
           Thunk::ThunkInfo(), thunk_ptr->thunk_info(), log_slice, tmp_slice,
           std::move(buffers_to_check), std::move(metadata_store));
-  buffer_debug_float_check_thunk->add_control_predecessor(thunk_ptr);
   thunk_and_checks.push_back(std::move(buffer_debug_float_check_thunk));
   auto wrapped_thunk = std::make_unique<SequentialThunk>(
       Thunk::ThunkInfo(), std::move(thunk_and_checks));
-  wrapped_thunk->add_control_predecessor(&predecessor_thunk);
-  successor_thunk.add_control_predecessor(wrapped_thunk.get());
   return wrapped_thunk;
 }
 
@@ -313,8 +310,8 @@ absl::Status BufferDebugFloatCheck(
 
   auto buffer_debug_log = se::gpu::BufferDebugLog<BufferDebugFloatCheckEntry>::
       FromDeviceAddressUnchecked(log_buffer.device_memory());
-  TF_ASSIGN_OR_RETURN(std::vector<BufferDebugFloatCheckEntry> entries,
-                      buffer_debug_log.ReadFromDevice(*stream));
+  ASSIGN_OR_RETURN(std::vector<BufferDebugFloatCheckEntry> entries,
+                   buffer_debug_log.ReadFromDevice(*stream));
 
   std::vector<BufferDebugLogEntryId> entry_ids;
   entry_ids.reserve(entries.size());
@@ -422,14 +419,14 @@ absl::Status RunFloatCheckPassInternal(ThunkSequence* thunk_sequence,
   std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store =
       std::make_shared<BufferDebugLogEntryMetadataStore>();
 
-  TF_ASSIGN_OR_RETURN(BufferAllocation * log_alloc,
-                      allocator.NewEmptyAllocation(kLogSizeBytes));
+  ASSIGN_OR_RETURN(BufferAllocation * log_alloc,
+                   allocator.NewEmptyAllocation(kLogSizeBytes));
   BufferAllocation::Slice log_slice(log_alloc, 0, log_alloc->size());
 
-  TF_ASSIGN_OR_RETURN(auto buffer_debug_init_thunk,
-                      CreateDebugInitThunk(log_slice, hlo_module));
+  ASSIGN_OR_RETURN(auto buffer_debug_init_thunk,
+                   CreateDebugInitThunk(log_slice, hlo_module));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto buffer_debug_dump_thunk,
       CreateBufferDebugFloatCheckThunk(metadata_store, log_slice, hlo_module));
 
@@ -447,7 +444,7 @@ absl::Status RunFloatCheckPassInternal(ThunkSequence* thunk_sequence,
         allocator);
   };
 
-  TF_RETURN_IF_ERROR(thunk_sequence->TransformNested(transform_callback));
+  RETURN_IF_ERROR(thunk_sequence->TransformNested(transform_callback));
 
   thunk_sequence->reserve(thunk_sequence->size() + 2);
   thunk_sequence->insert(thunk_sequence->begin(),

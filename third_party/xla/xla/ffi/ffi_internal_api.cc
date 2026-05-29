@@ -139,6 +139,40 @@ static XLA_FFI_Error* XLA_FFI_INTERNAL_Stream_Get(XLA_FFI_ExecutionContext* ctx,
       InvalidArgument("XLA FFI GPU context is not available")};
 }
 
+static XLA_FFI_Error* XLA_FFI_INTERNAL_ComputationStream_Get(
+    XLA_FFI_ExecutionContext* ctx, int64_t id, void** stream) {
+  if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+          &ctx->backend_context)) {
+    if (id < 0 || id >= gpu->computation_streams.size()) {
+      return new XLA_FFI_Error{
+          InvalidArgument("Computation stream id %d is out of range [0, %d)",
+                          id, gpu->computation_streams.size())};
+    }
+    *stream = gpu->computation_streams[id];
+    return nullptr;
+  }
+
+  return new XLA_FFI_Error{
+      InvalidArgument("XLA FFI GPU context is not available")};
+}
+
+static XLA_FFI_Error* XLA_FFI_INTERNAL_CommunicationStream_Get(
+    XLA_FFI_ExecutionContext* ctx, int64_t id, void** stream) {
+  if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+          &ctx->backend_context)) {
+    if (id < 0 || id >= gpu->communication_streams.size()) {
+      return new XLA_FFI_Error{
+          InvalidArgument("Communication stream id %d is out of range [0, %d)",
+                          id, gpu->communication_streams.size())};
+    }
+    *stream = gpu->communication_streams[id];
+    return nullptr;
+  }
+
+  return new XLA_FFI_Error{
+      InvalidArgument("XLA FFI GPU context is not available")};
+}
+
 static XLA_FFI_Error* XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(
     XLA_FFI_ExecutionContext* ctx, void** allocator) {
   if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
@@ -260,6 +294,8 @@ const XLA_FFI_InternalApi* GetInternalApi() {
 
       // XLA:GPU specific APIs.
       XLA_FFI_INTERNAL_Stream_Get,
+      XLA_FFI_INTERNAL_ComputationStream_Get,
+      XLA_FFI_INTERNAL_CommunicationStream_Get,
       XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get,
       XLA_FFI_INTERNAL_CollectiveParams_Get,
       XLA_FFI_INTERNAL_CollectiveCliqueRequests_Get,

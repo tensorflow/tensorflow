@@ -252,16 +252,16 @@ ModelDatasetOp::ModelDatasetOp(OpKernelConstruction* ctx)
   }
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kCpuBudget, &cpu_budget_));
   OP_REQUIRES(ctx, cpu_budget_ >= 0,
-              errors::InvalidArgument("CPU budget must be positive but is ",
-                                      cpu_budget_, "."));
+              absl::InvalidArgumentError(absl::StrCat(
+                  "CPU budget must be positive but is ", cpu_budget_, ".")));
   if (ctx->HasAttr(kRamBudget)) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kRamBudget, &ram_budget_));
   } else {
     ram_budget_ = 0;
   }
   OP_REQUIRES(ctx, ram_budget_ >= 0,
-              errors::InvalidArgument("RAM budget must be positive but is ",
-                                      ram_budget_, "."));
+              absl::InvalidArgumentError(absl::StrCat(
+                  "RAM budget must be positive but is ", ram_budget_, ".")));
 }
 
 void ModelDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,

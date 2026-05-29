@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 
 #include "absl/strings/string_view.h"
@@ -43,7 +44,8 @@ TensorId ParseTensorName(absl::string_view name) {
     absl::string_view prefix = name.substr(0, colon_pos);
     absl::string_view suffix = name.substr(colon_pos + 1);
     uint64_t index;
-    if (str_util::ConsumeLeadingDigits(&suffix, &index) && suffix.empty()) {
+    if (str_util::ConsumeLeadingDigits(&suffix, &index) && suffix.empty() &&
+        index <= std::numeric_limits<int>::max()) {
       return TensorId(prefix, index);
     }
   }

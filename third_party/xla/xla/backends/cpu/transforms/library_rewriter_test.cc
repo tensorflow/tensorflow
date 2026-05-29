@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
@@ -87,7 +88,11 @@ class CpuLibraryTest : public TargetMachineTestBase {
 
     // Run the pass.
     tsl::protobuf::RepeatedField<int> fusion_types;
-    fusion_types.Add(DebugOptions::LIBRARY_FUSION_TYPE_DOT);
+    if (spec.fusion_mode == "single_dot") {
+      fusion_types.Add(DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
+    } else {
+      fusion_types.Add(DebugOptions::LIBRARY_FUSION_TYPE_DOT);
+    }
     if (spec.fusion_mode == "greedy") {
       fusion_types.Add(DebugOptions::LIBRARY_FUSION_TYPE_ELTWISE);
     }
@@ -619,6 +624,34 @@ INSTANTIATE_TEST_SUITE_P(CpuLibraryFusionTypeTestSuite,
                                               std::string("reduce")}),
                          CpuLibraryFusionTypeTest::Name);
 
+TEST_F(CpuLibraryTest, RetryFusion) {
+  //   p0 -> A (abs) -> B (add) -> C (dot) -> E (add)
+  //                     \___________________/
+  //
+  // C is the fusion starter (dot).
+  // Initially B cannot be fused because E (user of B) is not in the fusion.
+  // After C fuses E (down), B's users are all in the fusion, so B can be fused.
+  // Then A can also be fused.
+  const absl::string_view hlo_template = R"(
+    HloModule matmul
+
+    ENTRY %main {
+      %p0 = $in_dtype[64,64] parameter(0)
+      %p1 = $in_dtype[64,64] parameter(1)
+      %p2 = $in_dtype[64,64] parameter(2)
+      %A = $in_dtype[64,64] abs(%p0)
+      %B = $in_dtype[64,64] add(%A, %p1)
+      %C = $out_dtype[64,64] dot(%B, %p2), lhs_contracting_dims={1},
+                                            rhs_contracting_dims={0}
+      ROOT %E = $out_dtype[64,64] add(%C, %B)
+    })";
+
+  DotRewriteTestSpec spec = GetDefaultTestSpec();
+  spec.fusion_mode = "dot";
+  RunTestInternal(spec, hlo_template,
+                  FusionProperties{HloOpcode::kAdd, 3, 7, true});
+}
+
 TEST_F(CpuLibraryTest, UpdateFusion) {
   //                      c
   //                       \
@@ -653,6 +686,63 @@ TEST_F(CpuLibraryTest, UpdateFusion) {
   spec.fusion_mode = "dot";
   RunTestInternal(spec, hlo_template,
                   FusionProperties{HloOpcode::kAdd, 3, 8, true});
+}
+
+TEST_F(CpuLibraryTest, SingleDotFusion) {
+  //   b -------     c
+  //    \       \     \
+  // a -- mul -- dot -- add
+  //
+  // Only the dot should be in the fusion for "single_dot" mode.
+  const absl::string_view hlo_template = R"(
+    HloModule matmul
+
+    ENTRY %main {
+      %a = $in_dtype[64,64] parameter(0)
+      %b = $in_dtype[64,64] parameter(1)
+      %c = $in_dtype[64,64] parameter(2)
+      %mul = $in_dtype[64,64] multiply(%a, %b)
+      %dot = $in_dtype[64,64] dot(%mul, %b), lhs_contracting_dims={1},
+                                            rhs_contracting_dims={0}
+      ROOT %add = $in_dtype[64,64] add(%b, %c)
+    })";
+
+  DotRewriteTestSpec spec = GetDefaultTestSpec();
+  spec.fusion_mode = "single_dot";
+  RunTestInternal(spec, hlo_template,
+                  FusionProperties{HloOpcode::kDot, 2, 3, true});
+}
+
+TEST_F(CpuLibraryTest, NoHugeFusions) {
+  // A long chain of absolutes then a dot.
+  const absl::string_view hlo_template = R"(
+    HloModule matmul
+
+    ENTRY %main {
+      %a = $in_dtype[64,64] parameter(0)
+      %b = $in_dtype[64,64] parameter(1)
+      %abs0 = $in_dtype[64,64] abs(%a)
+      $absolutes
+      ROOT %dot = $in_dtype[64,64] dot(%abs$num_absolutes, %b),
+                  lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    })";
+
+  constexpr int kNumAbsolutes = kMaxInstructionsInFusion * 2;
+  std::string absolutes = "";
+  for (int i = 1; i < kNumAbsolutes; ++i) {
+    absl::StrAppend(
+        &absolutes,
+        absl::StrFormat("%%abs%d = $in_dtype[64,64] abs(%%abs%d)\n", i, i - 1));
+  }
+
+  DotRewriteTestSpec spec = GetDefaultTestSpec();
+  spec.fusion_mode = "dot";
+  std::string hlo = absl::StrReplaceAll(
+      hlo_template, {{"$absolutes", absolutes},
+                     {"$num_absolutes", absl::StrCat(kNumAbsolutes - 1)}});
+  RunTestInternal(
+      spec, hlo,
+      FusionProperties{HloOpcode::kDot, 2, kMaxInstructionsInFusion, true});
 }
 
 }  // namespace

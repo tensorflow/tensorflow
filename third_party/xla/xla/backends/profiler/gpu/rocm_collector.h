@@ -24,6 +24,7 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include "rocprofiler-sdk/agent.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
@@ -63,6 +64,8 @@ struct RocmDeviceOccupancyParams {
   int block_size = 0;
   size_t dynamic_smem_size = 0;
   void* func_ptr;
+  uint32_t max_waves_per_cu = 0;
+  uint32_t wave_front_size = 0;
 
   friend bool operator==(const RocmDeviceOccupancyParams& a,
                          const RocmDeviceOccupancyParams& b) noexcept {
@@ -78,7 +81,9 @@ struct RocmDeviceOccupancyParams {
                       a.attributes.ptxVersion,
                       a.block_size,
                       a.dynamic_smem_size,
-                      a.func_ptr} ==
+                      a.func_ptr,
+                      a.max_waves_per_cu,
+                      a.wave_front_size} ==
            std::tuple{b.attributes.binaryVersion,
                       b.attributes.cacheModeCA,
                       b.attributes.constSizeBytes,
@@ -90,7 +95,9 @@ struct RocmDeviceOccupancyParams {
                       b.attributes.ptxVersion,
                       b.block_size,
                       b.dynamic_smem_size,
-                      b.func_ptr};
+                      b.func_ptr,
+                      b.max_waves_per_cu,
+                      b.wave_front_size};
   }
 
   friend bool operator!=(const RocmDeviceOccupancyParams& a,
@@ -105,7 +112,8 @@ struct RocmDeviceOccupancyParams {
         std::move(hash_state), params.attributes.maxThreadsPerBlock,
         params.attributes.numRegs, params.attributes.sharedSizeBytes,
         params.attributes.maxDynamicSharedSizeBytes, params.block_size,
-        params.dynamic_smem_size, params.func_ptr);
+        params.dynamic_smem_size, params.func_ptr, params.max_waves_per_cu,
+        params.wave_front_size);
   }
 };
 
@@ -122,6 +130,9 @@ class RocmTraceCollector {
       : options_(options) {}
   virtual ~RocmTraceCollector() {}
 
+  // Agent data used by GetDeviceCapabilities instead of hipGetDeviceProperties
+  // (which can set sticky hipGetLastError for non-visible devices on ROCm 7+).
+  virtual void SetGpuAgents(std::vector<rocprofiler_agent_v0_t> /*agents*/) {}
   virtual void AddEvent(RocmTracerEvent&& event, bool is_auxiliary) = 0;
   virtual void OnEventsDropped(const std::string& reason,
                                uint32_t num_events) = 0;
@@ -148,7 +159,7 @@ class PerDeviceCollector {
   PerDeviceCollector() = default;
 
   void AddEvent(RocmTracerEvent&& event);
-  void GetDeviceCapabilities(int32_t device_ordinal,
+  void GetDeviceCapabilities(const rocprofiler_agent_v0_t& agent,
                              tsl::profiler::XPlaneBuilder* device_plane);
 
  private:
@@ -164,7 +175,6 @@ class PerDeviceCollector {
   std::vector<RocmTracerEvent> events_ ABSL_GUARDED_BY(events_mutex_);
   absl::flat_hash_map<RocmDeviceOccupancyParams, OccupancyStats>
       occupancy_cache_;
-  hipDeviceProp_t device_properties_;
 };  // PerDeviceCollector
 
 class RocmTraceCollectorImpl : public RocmTraceCollector {
@@ -177,6 +187,10 @@ class RocmTraceCollectorImpl : public RocmTraceCollector {
         start_walltime_ns_(start_walltime_ns),
         start_gputime_ns_(start_gputime_ns),
         num_gpus_(options.num_gpus) {}
+
+  void SetGpuAgents(std::vector<rocprofiler_agent_v0_t> agents) override {
+    gpu_agents_ = std::move(agents);
+  }
 
   void AddEvent(RocmTracerEvent&& event, bool is_auxiliary) override;
   void Flush() override;
@@ -197,6 +211,7 @@ class RocmTraceCollectorImpl : public RocmTraceCollector {
   uint64_t start_walltime_ns_;
   uint64_t start_gputime_ns_;
   int num_gpus_;
+  std::vector<rocprofiler_agent_v0_t> gpu_agents_;
 
   absl::Mutex event_maps_mutex_;
   absl::flat_hash_map<uint32_t, RocmTracerEvent> api_events_map_

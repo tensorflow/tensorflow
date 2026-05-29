@@ -163,6 +163,29 @@ def TF_IfrtCallOp : TF_Op<"IfrtCall", [AttrSizedOperandSegments]> {
   let hasVerifier = 1;
 }
 
+def TF_AsyncIfrtCallOp : TF_Op<"AsyncIfrtCall", [AttrSizedOperandSegments]> {
+  let summary = "Invokes a program via IFRT on a device asynchronously";
+
+  let description = [{
+    This op calls an IFRT program uniquely identified by the given program id.
+    Similar to `IfrtCallOp`, it performs the same work but invokes the program
+    asynchronously, enabling non-blocking execution within the runtime.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor> : $args,
+    Variadic<TF_Tensor> : $static_shapes,
+    I64Attr : $program_id,
+    I32ArrayAttr : $variable_arg_indices
+  );
+
+  let results = (outs Variadic<TF_Tensor> : $results);
+
+  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedOperandTypeListAttr Tstatic_shapes = TF_DerivedOperandTypeListAttr<1>;
+  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+}
+
 // TODO(chky): Consider adding this op to tensorflow core ops.
 def TF_PwStreamResultsOp : TF_Op<"PwStreamResults"> {
   let summary = "Streams results back to the controller";

@@ -1,6 +1,5 @@
 # Description:
 #  Tools for building the TensorFlow pip package.
-
 load("@cuda_cudart//:version.bzl", _cudart_version = "VERSION")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
@@ -280,6 +279,12 @@ py_binary(
     deps = ["@xla//third_party/py:setup_py_nvidia_dependencies_util"],
 )
 
+_cuda_major_version_split = _cudart_version.split(".")[0] if _cudart_version else ""
+
+cuda_major_version = _cuda_major_version_split if _cuda_major_version_split else "12"
+
+cuda_suffix = "_cu12" if cuda_major_version == "12" else ""
+
 genrule(
     name = "setup_py",
     srcs = ["setup.py.tpl"],
@@ -292,7 +297,7 @@ genrule(
           --tf_version "{wheel_version}{wheel_version_suffix}" \\
           --cuda_version {cuda_version}
     """.format(
-        cuda_version = _cudart_version or "12",
+        cuda_version = cuda_major_version,
         nvidia_wheel_versions = NVIDIA_WHEEL_VERSIONS,
         wheel_version = TF_VERSION,
         wheel_version_suffix = TF_SEMANTIC_VERSION_SUFFIX,
@@ -417,7 +422,7 @@ py_test(
         "cpu",
         "manual",
     ],
-    deps = if_wheel_dependency(tf_wheel_dep()) + [
+    deps = if_wheel_dependency([":prebuilt_tf_py_import"]) + [
         "@pypi//absl_py",
     ],
 )
@@ -437,7 +442,7 @@ py_test(
         "gpu",
         "manual",
     ],
-    deps = if_wheel_dependency(tf_wheel_dep()) + [
+    deps = if_wheel_dependency([":prebuilt_tf_py_import"]) + [
         "@pypi//absl_py",
     ],
 )
@@ -485,24 +490,56 @@ verify_manylinux_compliance_test(
     x86_64_compliance_tag = "manylinux_2_27_x86_64",
 )
 
+filegroup(
+    name = "nvidia_wheel_deps",
+    srcs = if_cuda([
+        "@pypi_nvidia_cublas{cuda}//:pkg".format(cuda = cuda_suffix),
+        "@pypi_nvidia_cuda_cupti{cuda}//:pkg".format(cuda = cuda_suffix),
+        "@pypi_nvidia_cuda_nvcc{cuda}//:pkg".format(cuda = cuda_suffix),
+        "@pypi_nvidia_cuda_nvrtc{cuda}//:pkg".format(cuda = cuda_suffix),
+        "@pypi_nvidia_cuda_runtime{cuda}//:pkg".format(cuda = cuda_suffix),
+        "@pypi_nvidia_cudnn_cu{cuda}//:pkg".format(cuda = cuda_major_version),
+        "@pypi_nvidia_cufft{cuda}//:pkg".format(cuda = cuda_suffix),
+        "@pypi_nvidia_curand{cuda}//:pkg".format(cuda = cuda_suffix),
+        "@pypi_nvidia_cusolver{cuda}//:pkg".format(cuda = cuda_suffix),
+        "@pypi_nvidia_cusparse{cuda}//:pkg".format(cuda = cuda_suffix),
+        "@pypi_nvidia_nccl_cu{cuda}//:pkg".format(cuda = cuda_major_version),
+        "@pypi_nvidia_nvjitlink{cuda}//:pkg".format(cuda = cuda_suffix),
+        "@pypi_nvidia_nvshmem_cu{cuda}//:pkg".format(cuda = cuda_major_version),
+    ]) + if_cuda(([
+        "@pypi_nvidia_nvvm{cuda}//:pkg".format(cuda = cuda_suffix),
+        "@pypi_nvidia_cuda_crt{cuda}//:pkg".format(cuda = cuda_suffix),
+    ] if cuda_major_version == "13" else [])),
+)
+
 py_import(
     name = "tf_py_import",
     wheel = ":wheel",
-    wheel_deps = if_cuda([
-        "@pypi//nvidia_cublas_cu12",
-        "@pypi//nvidia_cuda_cupti_cu12",
-        "@pypi//nvidia_cuda_nvcc_cu12",
-        "@pypi//nvidia_cuda_nvrtc_cu12",
-        "@pypi//nvidia_cuda_runtime_cu12",
-        "@pypi//nvidia_cudnn_cu12",
-        "@pypi//nvidia_cufft_cu12",
-        "@pypi//nvidia_curand_cu12",
-        "@pypi//nvidia_cusolver_cu12",
-        "@pypi//nvidia_cusparse_cu12",
-        "@pypi//nvidia_nccl_cu12",
-        "@pypi//nvidia_nvjitlink_cu12",
-        "@pypi//nvidia_nvshmem_cu12",
-    ]),
+    wheel_deps = if_cuda([":nvidia_wheel_deps"]),
+    deps = [
+        "@pypi//absl_py",
+        "@pypi//astunparse",
+        "@pypi//flatbuffers",
+        "@pypi//gast",
+        "@pypi//ml_dtypes",
+        "@pypi//numpy",
+        "@pypi//opt_einsum",
+        "@pypi//packaging",
+        "@pypi//protobuf",
+        "@pypi//requests",
+        "@pypi//termcolor",
+        "@pypi//typing_extensions",
+        "@pypi//wrapt",
+    ],
+)
+
+py_import(
+    name = "prebuilt_tf_py_import",
+    wheel = if_wheel_dependency(
+        tf_wheel_dep(),
+        ":wheel",
+    ),
+    wheel_deps = if_cuda([":nvidia_wheel_deps"]),
     deps = [
         "@pypi//absl_py",
         "@pypi//astunparse",

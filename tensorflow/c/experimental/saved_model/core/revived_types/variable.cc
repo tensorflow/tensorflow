@@ -40,7 +40,7 @@ limitations under the License.
 namespace tensorflow {
 
 Variable::Variable(ImmediateExecutionContext* ctx, DataType dtype,
-                   TensorShape shape, absl::optional<std::string> name,
+                   TensorShape shape, std::optional<std::string> name,
                    ImmediateTensorHandlePtr handle)
     : TensorHandleConvertible(std::move(handle)),
       name_(name.has_value() ? *name : "Variable"),
@@ -76,7 +76,7 @@ absl::Status Variable::ReadValue(ImmediateTensorHandlePtr* out) {
 
 absl::Status Variable::CreateUninitialized(
     ImmediateExecutionContext* ctx, DataType dtype, TensorShape shape,
-    absl::optional<std::string> name, const char* raw_device_name,
+    std::optional<std::string> name, const char* raw_device_name,
     const std::vector<std::string>& component_devices,
     std::unique_ptr<Variable>* output) {
   ImmediateTensorHandlePtr handle;
@@ -90,7 +90,7 @@ absl::Status Variable::CreateUninitialized(
   }
 
   if (!tensorflow::isa<EagerContext>(ctx)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Can only load distributed variables with EagerContext.");
   }
 
@@ -103,7 +103,8 @@ absl::Status Variable::CreateUninitialized(
         ctx, dtype, shape, device.empty() ? nullptr : device.c_str(),
         &handlePtr));
     if (!tensorflow::isa<TensorHandle>(handlePtr.get())) {
-      return errors::Internal("Returned replica handle has unsupported type.");
+      return absl::InternalError(
+          "Returned replica handle has unsupported type.");
     }
     handles.push_back(reinterpret_cast<TensorHandle*>(handlePtr.release()));
   }

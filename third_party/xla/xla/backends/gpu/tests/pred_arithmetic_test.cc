@@ -15,24 +15,23 @@ limitations under the License.
 
 #include <optional>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "xla/backends/gpu/tests/gpu_codegen_test.h"
 #include "xla/literal_util.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 
-namespace xla {
-namespace gpu {
-
+namespace xla::gpu {
 namespace {
 
-class PredArithmeticTest : public GpuCodegenTest {
+class PredArithmeticTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
  protected:
   void RunAndCompareTruthTable(const char* const hlo_text) {
     auto false_literal = LiteralUtil::CreateR0(false);
     auto true_literal = LiteralUtil::CreateR0(true);
 
-    TF_ASSERT_OK_AND_ASSIGN(auto module,
-                            ParseAndReturnVerifiedModule(hlo_text));
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
 
     // Each call to RunAndCompareNoHloPasses insists on taking ownership and
     // deleting the module, so just Clone it.
@@ -112,5 +111,4 @@ ENTRY compare {
 }
 
 }  // namespace
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

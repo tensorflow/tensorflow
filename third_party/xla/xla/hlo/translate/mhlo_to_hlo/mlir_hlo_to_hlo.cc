@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
@@ -68,6 +70,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/RegionUtils.h"
 #include "stablehlo/dialect/Base.h"
+#include "stablehlo/dialect/ReplicaGroupUtils.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/transforms/Passes.h"
 #include "xla/comparison_util.h"
@@ -85,6 +88,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
@@ -136,6 +140,7 @@ constexpr char kBackendConfig[] = "backend_config";
 constexpr char kCallTargetName[] = "call_target_name";
 constexpr char kCalledComputations[] = "called_computations";
 constexpr char kChannelId[] = "channel_id";
+constexpr char kControlDep[] = "control_dep";
 constexpr char kHasSideEffect[] = "has_side_effect";
 constexpr char kIsFallback[] = "is_fallback";
 constexpr char kRaggedAllToAll[] = "ragged_all_to_all";
@@ -299,9 +304,18 @@ static std::vector<std::pair<int64_t, int64_t>> Convert_source_target_pairs(
   return xla::ConvertNx2Attribute(source_target_pairs).value();
 }
 
+static absl::StatusOr<std::unique_ptr<xla::CollectiveDeviceListBase>>
+Convert_replica_groups(mlir::Attribute groups, mlir::Operation* op) {
+  return xla::ConvertReplicaGroups(groups, op);
+}
+
 static std::vector<xla::ReplicaGroup> Convert_replica_groups(
-    mlir::DenseIntElementsAttr groups) {
-  return xla::ConvertReplicaGroups(groups).value();
+    mlir::Attribute groups) {
+  auto result = xla::ConvertReplicaGroupsToV1(groups, nullptr);
+  if (!result.ok()) {
+    llvm::report_fatal_error(result.status().ToString().c_str());
+  }
+  return *result;
 }
 
 static void SetLayout(xla::Shape& shape, mlir::DenseIntElementsAttr layout) {
@@ -856,10 +870,17 @@ static std::optional<xla::OpSharding> CreateOpShardingFromAttribute(
 // have frontend attributes.
 void CreateFrontendAttributes(mlir::ArrayRef<mlir::NamedAttribute> named_attrs,
                               xla::FrontendAttributes& frontend_attributes) {
-  for (const auto& attr : named_attrs)
-    if (auto value_str_attr = mlir::dyn_cast<mlir::StringAttr>(attr.getValue()))
+  for (const auto& attr : named_attrs) {
+    if (auto value_str_attr =
+            mlir::dyn_cast<mlir::StringAttr>(attr.getValue())) {
       frontend_attributes.mutable_map()->insert(
           {attr.getName().str(), value_str_attr.getValue().str()});
+    } else if (auto bool_attr =
+                   mlir::dyn_cast<mlir::BoolAttr>(attr.getValue())) {
+      frontend_attributes.mutable_map()->insert(
+          {attr.getName().str(), bool_attr.getValue() ? "true" : "false"});
+    }
+  }
 }
 
 // Returns a FrontendAttributes proto from the "frontend_attributes" attribute
@@ -901,10 +922,11 @@ static void ExtractOriginalValuesFromFunction(
         original_value_protos) {
   original_value_protos->resize(function.getNumArguments(), std::nullopt);
   for (int i = 0, end = function.getNumArguments(); i < end; ++i) {
-    if (auto original_value_attr = function.getArgAttrOfType<mlir::StringAttr>(
-            i, xla::kMhloOriginalValueAttr)) {
+    if (auto original_value_attr =
+            function.getArgAttrOfType<mlir::mhlo::OriginalValueAttr>(
+                i, xla::kMhloOriginalValueAttr)) {
       (*original_value_protos)[i] =
-          xla::ConvertOriginalValue(original_value_attr.getValue());
+          xla::ConvertOriginalValue(original_value_attr);
     }
   }
 }
@@ -1087,8 +1109,8 @@ class ConvertToHloModule {
     // This is an invariant check as Run returns failure if there is no main
     // function and so the main proto shouldn't be consumed in that case.
     TF_RET_CHECK(main) << "requires module to have main function";
-    TF_ASSIGN_OR_RETURN(xla::XlaComputation computation,
-                        module_builder_.Build(lowered_computation_[main]));
+    ASSIGN_OR_RETURN(xla::XlaComputation computation,
+                     module_builder_.Build(lowered_computation_[main]));
     return std::move(*computation.mutable_proto());
   }
 
@@ -1484,21 +1506,26 @@ LogicalResult ExportXlaOp(AllGatherOp op, OpLoweringContext ctx) {
   if (shape_or->IsTuple()) {
     std::optional<xla::Layout> layout = std::nullopt;
     if (shape_or->has_layout()) layout = shape_or->layout();
-
-    auto tuple = xla::AllGatherTuple(
-        operands, all_gather_dim, shard_count,
-        Convert_replica_groups(op.getReplicaGroups()),
+    auto replica_groups = Convert_replica_groups(op.getReplicaGroups(), op);
+    if (!replica_groups.ok()) {
+      return op.emitOpError(replica_groups.status().ToString());
+    }
+    auto tuple = xla::AllGatherTupleWithDeviceList(
+        operands, all_gather_dim, shard_count, **replica_groups,
         Convert_channel_handle(op.getChannelHandle()), layout,
         Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
     BuildGetTupleElementsForTupleResults(op, tuple, ctx);
     return success();
   }
-
-  value_map[op->getResults()[0]] = xla::AllGather(
-      operands[0], all_gather_dim, shard_count,
-      Convert_replica_groups(op.getReplicaGroups()),
+  auto replica_groups = Convert_replica_groups(op.getReplicaGroups(), op);
+  if (!replica_groups.ok()) {
+    return op.emitOpError(replica_groups.status().ToString());
+  }
+  auto result = xla::AllGatherWithDeviceList(
+      operands[0], all_gather_dim, shard_count, **replica_groups,
       Convert_channel_handle(op.getChannelHandle()), std::nullopt,
       Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
+  value_map[op->getResults()[0]] = result;
 
   return success();
 }
@@ -1583,26 +1610,31 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
   else
     data_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
 
-  auto get_sharding = [](const xla::OpSharding& sharding) {
-    xla::OpSharding ret;
-    if (sharding.type() != xla::OpSharding::TUPLE) {
-      ret = sharding;
+  std::optional<xla::OpSharding> orig_sharding = ctx.builder->sharding();
+  std::optional<xla::OpSharding> data_sharding = std::nullopt;
+  std::optional<xla::OpSharding> token_sharding = std::nullopt;
+  if (orig_sharding.has_value()) {
+    if (orig_sharding->type() == xla::OpSharding::TUPLE) {
+      CHECK_GE(orig_sharding->tuple_shardings_size(), 2);
+      data_sharding = orig_sharding->tuple_shardings(0);
+      token_sharding = orig_sharding->tuple_shardings(
+          orig_sharding->tuple_shardings_size() - 1);
     } else {
-      ret = sharding.tuple_shardings(0);
+      data_sharding = *orig_sharding;
+      token_sharding = *orig_sharding;
     }
-    return ret;
-  };
-  if (ctx.builder->sharding().has_value()) {
-    // HLO Recv needs a 3-tuple sharding. Get the sharding from the builder and
-    // make it a 3-tuple sharding.
-    std::optional<xla::OpSharding> sharding = *ctx.builder->sharding();
-    xla::OpSharding single_sharding = get_sharding(*sharding);
-    auto* tuple_shardings = sharding->mutable_tuple_shardings();
+  }
+
+  if (orig_sharding.has_value()) {
+    // HLO Recv needs a 3-tuple sharding.
+    xla::OpSharding recv_sharding = *orig_sharding;
+    recv_sharding.set_type(xla::OpSharding::TUPLE);
+    auto* tuple_shardings = recv_sharding.mutable_tuple_shardings();
     tuple_shardings->Clear();
-    for (int i = 0; i < 3; ++i) {
-      tuple_shardings->Add(xla::OpSharding(single_sharding));
-    }
-    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, sharding);
+    tuple_shardings->Add(xla::OpSharding(*data_sharding));
+    tuple_shardings->Add(xla::OpSharding(*data_sharding));
+    tuple_shardings->Add(xla::OpSharding(*token_sharding));
+    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, recv_sharding);
     SetSourceTargetPairsAttributes(ctx.builder, source_target_pairs_string);
     token = xla::internal::XlaBuilderFriend::BuildRecv(
         ctx.builder, token, data_shape,
@@ -1616,20 +1648,15 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
 
   xla::XlaOp xla_result;
   {
-    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder,
-                                                    ctx.builder->sharding());
+    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, orig_sharding);
     xla_result = xla::internal::XlaBuilderFriend::BuildRecvDone(
         ctx.builder, token, data_shape,
         Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
   }
 
   xla::XlaOp data_tuple_element;
-  if (ctx.builder->sharding().has_value()) {
-    // HLO GetTupleElement needs a single sharding,
-    xla::XlaScopedShardingAssignment sharding_scope(
-        ctx.builder, get_sharding(*ctx.builder->sharding()));
-    data_tuple_element = xla::GetTupleElement(xla_result, 0);
-  } else {
+  {
+    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, data_sharding);
     data_tuple_element = xla::GetTupleElement(xla_result, 0);
   }
 
@@ -1643,13 +1670,7 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
     }
   }
 
-  // HLO GetTupleElement needs a single sharding,
-  std::optional<xla::OpSharding> sharding = ctx.builder->sharding();
-  if (sharding.has_value() && sharding->type() == xla::OpSharding::TUPLE) {
-    CHECK_GE(ctx.builder->sharding()->tuple_shardings_size(), 2);
-    sharding = ctx.builder->sharding()->tuple_shardings(1);
-  }
-  xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, sharding);
+  xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, token_sharding);
   value_map[op.getResult(num_results - 1)] =
       xla::GetTupleElement(xla_result, 1);
 
@@ -1682,7 +1703,9 @@ LogicalResult ExportXlaOp(InfeedOp op, OpLoweringContext ctx) {
   ctx.builder->ClearSharding();
   std::optional<xla::OpSharding> last_sharding;
   if (data_sharding.has_value()) {
-    last_sharding = *data_sharding->mutable_tuple_shardings()->ReleaseLast();
+    std::unique_ptr<xla::OpSharding> last_tuple_sharding(
+        data_sharding->mutable_tuple_shardings()->ReleaseLast());
+    last_sharding = *last_tuple_sharding;
   }
 
   if (!subshapes.empty()) {
@@ -2027,16 +2050,26 @@ LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
   if (shape_or->IsTuple()) {
     std::optional<xla::Shape> shape_with_layout = std::nullopt;
     if (shape_or->has_layout()) shape_with_layout = shape_or.value();
-    auto tuple = xla::AllReduceTuple(
-        operands, computation, Convert_replica_groups(op.getReplicaGroups()),
+    auto replica_groups = Convert_replica_groups(op.getReplicaGroups(), op);
+    if (!replica_groups.ok()) {
+      return op.emitOpError(replica_groups.status().ToString());
+    }
+    auto tuple = xla::AllReduceTupleWithDeviceList(
+        operands, computation, **replica_groups,
         Convert_channel_handle(op.getChannelHandle()), shape_with_layout,
         Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
     BuildGetTupleElementsForTupleResults(op, tuple, ctx);
   } else {
-    value_map[op->getResults()[0]] = xla::AllReduce(
-        operands[0], computation, Convert_replica_groups(op.getReplicaGroups()),
+    auto replica_groups = Convert_replica_groups(op.getReplicaGroups(), op);
+    if (!replica_groups.ok()) {
+      return op.emitOpError(replica_groups.status().ToString());
+    }
+
+    auto result = xla::AllReduceWithDeviceList(
+        operands[0], computation, **replica_groups,
         Convert_channel_handle(op.getChannelHandle()), std::nullopt,
         Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
+    value_map[op->getResults()[0]] = result;
   }
 
   return success();
@@ -2100,8 +2133,12 @@ LogicalResult ExportXlaOp(AllToAllOp op, OpLoweringContext ctx) {
     if (shape_or->has_layout()) {
       layout = shape_or->layout();
     }
-    auto tuple = xla::AllToAllTuple(
-        operands, Convert_replica_groups(op.getReplicaGroups()), layout,
+    auto replica_groups = Convert_replica_groups(op.getReplicaGroups(), op);
+    if (!replica_groups.ok()) {
+      return op.emitOpError(replica_groups.status().ToString());
+    }
+    auto tuple = xla::AllToAllTupleWithDeviceList(
+        operands, **replica_groups, layout,
         Convert_channel_handle(op.getChannelHandle()));
     BuildGetTupleElementsForTupleResults(op, tuple, ctx);
   } else {
@@ -2110,10 +2147,15 @@ LogicalResult ExportXlaOp(AllToAllOp op, OpLoweringContext ctx) {
     std::optional<uint64_t> splitCount = op.getSplitCount();
 
     // ArrayAllToAll always has exactly one operand (checked in the verifier).
-    value_map[op->getResults()[0]] = xla::AllToAll(
+    auto replica_groups = Convert_replica_groups(op.getReplicaGroups(), op);
+    if (!replica_groups.ok()) {
+      return op.emitOpError(replica_groups.status().ToString());
+    }
+    auto result = xla::AllToAllWithDeviceList(
         operands[0], *splitDimension, *concatDimension, *splitCount,
-        Convert_replica_groups(op.getReplicaGroups()),
+        **replica_groups,
         /*layout=*/std::nullopt, Convert_channel_handle(op.getChannelHandle()));
+    value_map[op->getResults()[0]] = result;
   }
 
   return success();
@@ -2177,9 +2219,13 @@ LogicalResult ExportXlaOp(CollectiveBroadcastOp op, OpLoweringContext ctx) {
   xla::XlaOp operand;
   if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
     return failure();
-  value_map[op->getResult(0)] = xla::CollectiveBroadcast(
-      operand, Convert_replica_groups(op.getReplicaGroups()),
-      Convert_channel_handle(op.getChannelHandle()));
+  auto replica_groups = Convert_replica_groups(op.getReplicaGroups(), op);
+  if (!replica_groups.ok()) {
+    return op.emitOpError(replica_groups.status().ToString());
+  }
+  auto result = xla::CollectiveBroadcastWithDeviceList(
+      operand, **replica_groups, Convert_channel_handle(op.getChannelHandle()));
+  value_map[op->getResult(0)] = result;
 
   return success();
 }
@@ -2545,10 +2591,11 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
              name == xla::kMhloFrontendAttributes;
     };
     for (const auto& attr : op->getAttrs()) {
-      if (!isSupportedAttrName(attr))
+      if (!isSupportedAttrName(attr)) {
         return op.emitOpError()
                << attr.getName().getValue()
                << " is not a supported attribute for RaggedAllToAll";
+      }
     }
     DenseIntElementsAttr replica_groups =
         backend_config.getAs<DenseIntElementsAttr>(kReplicaGroups);
@@ -2556,24 +2603,20 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
     channel_handle.set_handle(
         backend_config.getAs<IntegerAttr>(kChannelId).getInt());
     channel_handle.set_type(xla::ChannelHandle::CHANNEL_TYPE_INVALID);
-    xla::XlaOp ragged_all_to_all_op =
-        RaggedAllToAll(args[0], args[1], args[2], args[3], args[4], args[5],
-                       Convert_replica_groups(replica_groups), channel_handle);
-    value_map[op.getResult(0)] = ragged_all_to_all_op;
+
+    auto replica_groups_or = Convert_replica_groups(replica_groups, op);
+    if (!replica_groups_or.ok()) {
+      return op.emitOpError(replica_groups_or.status().ToString());
+    }
+    value_map[op.getResult(0)] = xla::RaggedAllToAllWithDeviceList(
+        args[0], args[1], args[2], args[3], args[4], args[5],
+        **replica_groups_or, channel_handle);
     return success();
   }
 
   if (op.getCalledComputations().size() > 1)
     return op.emitOpError()
            << "cannot export with more than one called computations";
-
-  // Custom call can be exported either with called computation or with layout
-  // attributes. The XlaBuilder API does not allow both.
-  if (!op.getCalledComputations().empty() && op.getOperandLayouts() &&
-      op.getResultLayouts()) {
-    return op.emitOpError() << "cannot export if both called computation and "
-                               "layouts are specified";
-  }
 
   auto xla_api_version = xla::ConvertCustomCallApiVersion(op.getApiVersion());
   if (!xla_api_version.ok()) return failure();
@@ -2644,8 +2687,13 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   }
 
   xla::XlaOp custom_call;
-  if (op.getCalledComputations().size() == 1 && op.getOperandLayouts() &&
-      op.getResultLayouts()) {
+  if (call_target_name == kControlDep) {
+    custom_call = xla::CustomCall(
+        ctx.builder, call_target_name, args, result_shape, backend_config,
+        op.getHasSideEffect(), output_operand_aliasing, literal_ptr,
+        custom_call_schedule, *xla_api_version);
+  } else if (op.getCalledComputations().size() == 1 && op.getOperandLayouts() &&
+             op.getResultLayouts()) {
     mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
         mlir::cast<FlatSymbolRefAttr>(op.getCalledComputations()[0]));
     if (failed(ctx.converter->RunOnFunction(callee))) {
@@ -2885,10 +2933,12 @@ LogicalResult ExportXlaOp(ReduceScatterOp op, OpLoweringContext ctx) {
                                                      computation))) {
     return failure();
   }
-
-  value_map[op] = xla::ReduceScatter(
-      operand, computation, scatter_dim, shard_count,
-      Convert_replica_groups(op.getReplicaGroups()),
+  auto replica_groups = Convert_replica_groups(op.getReplicaGroups(), op);
+  if (!replica_groups.ok()) {
+    return op.emitOpError(replica_groups.status().ToString());
+  }
+  value_map[op] = xla::ReduceScatterWithDeviceList(
+      operand, computation, scatter_dim, shard_count, **replica_groups,
       Convert_channel_handle(op.getChannelHandle()), std::nullopt,
       Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
   return success();
@@ -3092,10 +3142,14 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
     auto all_gather_dim = all_gather.getAllGatherDim();
     int64_t shard_count = result_type.getDimSize(all_gather_dim) /
                           operand_type.getDimSize(all_gather_dim);
+    auto replica_groups =
+        Convert_replica_groups(all_gather.getReplicaGroups(), all_gather);
+    if (!replica_groups.ok() || !*replica_groups) {
+      return op.emitOpError(replica_groups.status().ToString());
+    }
     (*ctx.values)[op.getResult()] =
         xla::internal::XlaBuilderFriend::BuildAllGatherStart(
-            ctx.builder, operand, all_gather_dim, shard_count,
-            Convert_replica_groups(all_gather.getReplicaGroups()),
+            ctx.builder, operand, all_gather_dim, shard_count, **replica_groups,
             Convert_channel_handle(all_gather.getChannelHandle()),
             ExtractLayout(all_gather,
                           mlir::cast<RankedTensorType>(result_type).getRank()),
@@ -3110,10 +3164,14 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
             &all_reduce.getComputation(), computation))) {
       return failure();
     }
+    auto replica_groups =
+        Convert_replica_groups(all_reduce.getReplicaGroups(), all_reduce);
+    if (!replica_groups.ok() || !*replica_groups) {
+      return op.emitOpError(replica_groups.status().ToString());
+    }
     (*ctx.values)[op.getResult()] =
         xla::internal::XlaBuilderFriend::BuildAllReduceStart(
-            ctx.builder, operand, computation,
-            Convert_replica_groups(all_reduce.getReplicaGroups()),
+            ctx.builder, operand, computation, **replica_groups,
             Convert_channel_handle(all_reduce.getChannelHandle()), std::nullopt,
             Convert_use_global_device_ids(all_reduce.getUseGlobalDeviceIds()));
     return success();
@@ -3309,8 +3367,12 @@ LogicalResult ExportXlaOp(AllToAllOp op, OpLoweringContext ctx) {
     if (shape_or->has_layout()) {
       layout = shape_or->layout();
     }
-    auto tuple = xla::AllToAllTuple(
-        operands, Convert_replica_groups(op.getReplicaGroups()), layout,
+    auto replica_groups = Convert_replica_groups(op.getReplicaGroups(), op);
+    if (!replica_groups.ok()) {
+      return op.emitOpError(replica_groups.status().ToString());
+    }
+    auto tuple = xla::AllToAllTupleWithDeviceList(
+        operands, **replica_groups, layout,
         Convert_channel_handle(op.getChannelHandle()));
     BuildGetTupleElementsForTupleResults(op, tuple, ctx);
   } else {
@@ -3319,10 +3381,15 @@ LogicalResult ExportXlaOp(AllToAllOp op, OpLoweringContext ctx) {
     std::optional<uint64_t> splitCount = op.getSplitCount();
 
     // ArrayAllToAll always has exactly one operand (checked in the verifier).
-    value_map[op->getResults()[0]] = xla::AllToAll(
+    auto replica_groups = Convert_replica_groups(op.getReplicaGroups(), op);
+    if (!replica_groups.ok()) {
+      return op.emitOpError(replica_groups.status().ToString());
+    }
+    auto result = xla::AllToAllWithDeviceList(
         operands[0], *splitDimension, *concatDimension, *splitCount,
-        Convert_replica_groups(op.getReplicaGroups()),
-        /*layout=*/std::nullopt, Convert_channel_handle(op.getChannelHandle()));
+        **replica_groups, /*layout=*/std::nullopt,
+        Convert_channel_handle(op.getChannelHandle()));
+    value_map[op->getResults()[0]] = result;
   }
 
   return success();
@@ -3357,9 +3424,13 @@ LogicalResult ExportXlaOp(mhlo::AsyncStartOp op, OpLoweringContext ctx) {
     auto all_gather_dim = all_gather_op.getAllGatherDim();
     int64_t shard_count = result_type.getDimSize(all_gather_dim) /
                           operand_type.getDimSize(all_gather_dim);
+    auto replica_groups =
+        Convert_replica_groups(all_gather_op.getReplicaGroups(), all_gather_op);
+    if (!replica_groups.ok()) {
+      return failure();
+    }
     value_map[result] = xla::internal::XlaBuilderFriend::BuildAllGatherStart(
-        ctx.builder, operands[0], all_gather_dim, shard_count,
-        Convert_replica_groups(all_gather_op.getReplicaGroups()),
+        ctx.builder, operands[0], all_gather_dim, shard_count, **replica_groups,
         Convert_channel_handle(all_gather_op.getChannelHandle()),
         ExtractLayout(all_gather_op,
                       mlir::cast<RankedTensorType>(result_type).getRank()),
@@ -3375,9 +3446,13 @@ LogicalResult ExportXlaOp(mhlo::AsyncStartOp op, OpLoweringContext ctx) {
       return failure();
     }
     if (operands.size() != 1) return failure();
+    auto replica_groups =
+        Convert_replica_groups(all_reduce_op.getReplicaGroups(), all_reduce_op);
+    if (!replica_groups.ok()) {
+      return failure();
+    }
     value_map[result] = xla::internal::XlaBuilderFriend::BuildAllReduceStart(
-        ctx.builder, operands[0], computation,
-        Convert_replica_groups(all_reduce_op.getReplicaGroups()),
+        ctx.builder, operands[0], computation, **replica_groups,
         Convert_channel_handle(all_reduce_op.getChannelHandle()), std::nullopt,
         Convert_use_global_device_ids(all_reduce_op.getUseGlobalDeviceIds()));
     return success();
@@ -3978,10 +4053,13 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
     channel_handle.set_handle(
         backend_config.getAs<IntegerAttr>(kChannelId).getInt());
     channel_handle.set_type(xla::ChannelHandle::CHANNEL_TYPE_INVALID);
-    xla::XlaOp ragged_all_to_all_op =
-        RaggedAllToAll(args[0], args[1], args[2], args[3], args[4], args[5],
-                       Convert_replica_groups(replica_groups), channel_handle);
-    value_map[op.getResult(0)] = ragged_all_to_all_op;
+    auto replica_groups_or = Convert_replica_groups(replica_groups, op);
+    if (!replica_groups_or.ok()) {
+      return op.emitOpError(replica_groups_or.status().ToString());
+    }
+    value_map[op.getResult(0)] = xla::RaggedAllToAllWithDeviceList(
+        args[0], args[1], args[2], args[3], args[4], args[5],
+        **replica_groups_or, channel_handle);
     return success();
   }
 
@@ -4126,7 +4204,6 @@ LogicalResult ExportXlaOp(XlaRngGetAndUpdateStateOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(ScanOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
   xla::XlaComputationId body;
   if (failed(ctx.converter->LowerRegionAsComputation(&op.getBody(), body))) {
     return failure();
@@ -4165,9 +4242,12 @@ LogicalResult ExportXlaOp(ScanOp op, OpLoweringContext ctx) {
       xla::Scan(inputs, inits, body, op.getDimension(), scan_dimension_size,
                 op.getIsReverse(), is_associative);
 
-  for (int i = 0; i < op.getNumResults(); ++i) {
-    value_map[op.getResult(i)] = xla::GetTupleElement(result, i);
-  }
+  // The HLO `kScan` instruction always produces a tuple, even with a single
+  // result. Use `BuildGetTupleElementsForTupleResults` so per-result shardings
+  // (e.g. propagated by Shardy) are applied to each get-tuple-element rather
+  // than the tuple as a whole, which would otherwise fail validation against
+  // the single-tensor element shape.
+  BuildGetTupleElementsForTupleResults(op, result, ctx);
   return success();
 }
 
@@ -4277,6 +4357,19 @@ LogicalResult ExportXlaOp(AsinhOp op, OpLoweringContext ctx) {
   }
   value_map[op] =
       xla::Asinh(operand, /*result_accuracy=*/std::nullopt, /*expand=*/false);
+  return success();
+}
+LogicalResult ExportXlaOp(MulhiOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp lhs;
+  if (failed(GetXlaOp(op.getLhs(), value_map, &lhs, op))) {
+    return failure();
+  }
+  xla::XlaOp rhs;
+  if (failed(GetXlaOp(op.getRhs(), value_map, &rhs, op))) {
+    return failure();
+  }
+  value_map[op] = xla::Mulhi(lhs, rhs);
   return success();
 }
 
@@ -5469,14 +5562,14 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
     return absl::InternalError("Unable to convert MHLO to StableHLO");
   }
 
-  TF_RETURN_IF_ERROR(PrepareForExport(module));
+  RETURN_IF_ERROR(PrepareForExport(module));
+
   mlir::BaseScopedDiagnosticHandler diag_handler(module.getContext());
   xla::XlaBuilder module_builder(kMain);
   ConvertToHloModule converter(module, module_builder, options);
   if (failed(converter.Run())) return diag_handler.ConsumeStatus();
-
-  TF_ASSIGN_OR_RETURN(xla::HloModuleProto hlo_module,
-                      converter.ConsumeMainProto());
+  ASSIGN_OR_RETURN(xla::HloModuleProto hlo_module,
+                   converter.ConsumeMainProto());
   StringRef module_name = module.getName() ? *module.getName() : kMain;
   hlo_module.set_name(module_name.str());
   if (auto cross_program_prefetches = module->getAttrOfType<mlir::ArrayAttr>(
@@ -5558,13 +5651,13 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
 absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertMlirHloToHloModule(
     mlir::ModuleOp module, MlirToHloConversionOptions options) {
   xla::HloProto hlo_proto;
-  TF_RETURN_IF_ERROR(ConvertMlirHloToHlo(module, &hlo_proto, options));
+  RETURN_IF_ERROR(ConvertMlirHloToHlo(module, &hlo_proto, options));
 
   // Create default config.
   const xla::HloModuleProto& module_proto = hlo_proto.hlo_module();
-  TF_ASSIGN_OR_RETURN(xla::HloModuleConfig config,
-                      xla::HloModule::CreateModuleConfigFromProto(
-                          module_proto, xla::GetDebugOptionsFromFlags()));
+  ASSIGN_OR_RETURN(xla::HloModuleConfig config,
+                   xla::HloModule::CreateModuleConfigFromProto(
+                       module_proto, xla::GetDebugOptionsFromFlags()));
 
   // Modify config with values stored in MLIR module attributes
   mhlo::ExportHloModuleConfig(config, module);
@@ -5577,7 +5670,7 @@ absl::Status BuildHloFromMlirHlo(mlir::ModuleOp& module,
                                  llvm::ArrayRef<xla::XlaOp> xla_params,
                                  std::vector<xla::XlaOp>& returns,
                                  MlirToHloConversionOptions options) {
-  TF_RETURN_IF_ERROR(PrepareForExport(module));
+  RETURN_IF_ERROR(PrepareForExport(module));
   mlir::func::FuncOp main = module.lookupSymbol<mlir::func::FuncOp>("main");
   mlir::Block& block = main.getRegion().front();
   // No tuple support in Builder converter API.
@@ -5632,12 +5725,12 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
 
 std::optional<xla::OriginalValueProto> CreateOriginalValueFromOp(
     mlir::Operation* op) {
-  auto original_value_attr =
-      op->getAttrOfType<mlir::StringAttr>(xla::kMhloOriginalValueAttr);
+  auto original_value_attr = op->getAttrOfType<mlir::mhlo::OriginalValueAttr>(
+      xla::kMhloOriginalValueAttr);
   if (!original_value_attr) {
     return std::nullopt;
   }
-  return xla::ConvertOriginalValue(original_value_attr.getValue());
+  return xla::ConvertOriginalValue(original_value_attr);
 }
 
 }  // namespace mlir

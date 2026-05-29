@@ -23,7 +23,6 @@ cc_library(
     hdrs = ["utils.h"],
     deps = [
         "//xla/hlo/ir:hlo_sharding",
-        "//xla/python/ifrt/ir",
         "//xla/python/ifrt/ir:sharding_param",
         "//xla/python/ifrt/ir/support:sharding_conversions",
         "//xla/service/spmd/shardy:constants",
@@ -49,7 +48,6 @@ cc_library(
         "//xla/client:executable_build_options",
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt/ir",
-        "//xla/python/ifrt/ir/transforms:built_in_spmd_expansions",
         "//xla/python/ifrt/ir/transforms:debug",
         "//xla/python/ifrt/ir/transforms:passes",
         "//xla/python/ifrt/ir/transforms:utils",

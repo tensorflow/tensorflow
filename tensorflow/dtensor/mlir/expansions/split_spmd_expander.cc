@@ -73,7 +73,7 @@ StatusOr<int64_t> GetAdjustedSplitDim(mlir::Value split_dim_value,
   if (split_dim < 0) {
     int rank = ValueRank(input_value);
     if (rank == -1) {
-      return errors::InvalidArgument("Input operand has rank -1.");
+      return absl::InvalidArgumentError("Input operand has rank -1.");
     }
     split_dim += rank;
   }
@@ -91,7 +91,7 @@ StatusOr<mlir::Operation*> SplitSPMDExpander::ExpandOp(mlir::Operation* op) {
       GetAdjustedSplitDim(split_op.getSplitDim(), split_op.getValue()));
 
   if (Layout::IsShardedDimension(input_layout.sharding_spec(split_dim))) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Spliting over sharded dimension is not supported.");
   }
 
@@ -144,7 +144,7 @@ StatusOr<mlir::Operation*> SplitVSPMDExpander::ExpandOp(mlir::Operation* op) {
       GetAdjustedSplitDim(split_v_op.getSplitDim(), split_v_op.getValue()));
 
   if (Layout::IsShardedDimension(input_layout.sharding_spec(split_dim))) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Spliting over sharded dimension is not supported.");
   }
 

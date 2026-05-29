@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "xla/stream_executor/vmm_device_address_allocator.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -29,6 +31,8 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -78,7 +82,7 @@ absl::Status DeviceAddressVmmAllocator::PopulateDevices(
     state->stream = cfg.stream;
     state->pa_budget = cfg.pa_budget;
 
-    TF_RETURN_IF_ERROR(allocator->InitializeDeviceState(*state));
+    RETURN_IF_ERROR(allocator->InitializeDeviceState(*state));
 
     VLOG(3) << "DeviceAddressVmmAllocator: registering device " << ordinal
             << " with pa_budget " << cfg.pa_budget;
@@ -93,7 +97,7 @@ DeviceAddressVmmAllocator::~DeviceAddressVmmAllocator() {
     // Briefly acquire the lock to read the last pending seqno.
     uint64_t last_seqno = 0;
     {
-      absl::MutexLock lock(&state->mu);
+      absl::MutexLock lock(state->mu);
       if (!state->pending_deallocations.empty()) {
         last_seqno = state->pending_deallocations.back().seqno;
       }
@@ -108,7 +112,7 @@ DeviceAddressVmmAllocator::~DeviceAddressVmmAllocator() {
     }
 
     {
-      absl::MutexLock lock(&state->mu);
+      absl::MutexLock lock(state->mu);
       for (auto& pending : state->pending_deallocations) {
         DoDeallocate(*state, pending.mem);
       }
@@ -178,7 +182,7 @@ void DeviceAddressVmmAllocator::WaitPendingDeallocationsToComplete(
 
   // Release the lock before spin-waiting to avoid stalling other threads for
   // potentially milliseconds while the GPU drains its work queue.
-  state.mu.Unlock();
+  state.mu.unlock();
 
   // Poll until the GPU writes a timeline value >= target_seqno.
   // Since timeline values are written in stream order, this guarantees all
@@ -190,7 +194,7 @@ void DeviceAddressVmmAllocator::WaitPendingDeallocationsToComplete(
   }
 
   // Reacquire the lock before modifying the maps.
-  state.mu.Lock();
+  state.mu.lock();
 
   for (auto& item : selected) {
     DoDeallocate(state, item.mem);
@@ -227,15 +231,14 @@ absl::StatusOr<DeviceAddressBase> DeviceAddressVmmAllocator::AllocateWithBudget(
   }
 
   // Create physical memory allocation (e.g. cuMemCreate).
-  TF_ASSIGN_OR_RETURN(auto raw_alloc, CreateAllocation(state.executor, size));
+  ASSIGN_OR_RETURN(auto raw_alloc, CreateAllocation(state.executor, size));
   const uint64_t padded_size = raw_alloc->address().size();
 
   // Reserve virtual address range (e.g. cuMemAddressReserve).
-  TF_ASSIGN_OR_RETURN(auto reservation,
-                      CreateReservation(state.executor, size));
+  ASSIGN_OR_RETURN(auto reservation, CreateReservation(state.executor, size));
 
   // Map physical memory into the virtual address range and enable access.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto scoped_mapping,
       reservation->MapTo(/*reservation_offset=*/0, /*allocation_offset=*/0,
                          padded_size, *raw_alloc));
@@ -310,7 +313,7 @@ DeviceAddressVmmAllocator::Allocate(int device_ordinal, uint64_t size,
     return DeviceNotFoundError(device_ordinal);
   }
 
-  absl::MutexLock lock(&state->mu);
+  absl::MutexLock lock(state->mu);
 
   // Try to reuse a completed pending deallocation with matching size.
   std::optional<DeviceAddressBase> reused =
@@ -355,7 +358,7 @@ absl::Status DeviceAddressVmmAllocator::Deallocate(int device_ordinal,
     return DeviceNotFoundError(device_ordinal);
   }
 
-  absl::MutexLock lock(&state->mu);
+  absl::MutexLock lock(state->mu);
 
   VLOG(3) << absl::StreamFormat(
       "Queueing deferred deallocation for virtual address %p (size=%uB) "
@@ -366,7 +369,7 @@ absl::Status DeviceAddressVmmAllocator::Deallocate(int device_ordinal,
   // timeline when the stream reaches this point. The CPU polls the timeline
   // value to know when it is safe to free the memory.
   uint64_t seqno = state->next_seqno++;
-  TF_RETURN_IF_ERROR(EnqueueDeferredDeallocation(*state, seqno));
+  RETURN_IF_ERROR(EnqueueDeferredDeallocation(*state, seqno));
 
   state->pending_deallocations.push_back({mem, seqno});
 
@@ -397,7 +400,7 @@ MemoryAllocation* DeviceAddressVmmAllocator::GetRawAllocation(
   if (state == nullptr) {
     return nullptr;
   }
-  absl::MutexLock lock(&state->mu);
+  absl::MutexLock lock(state->mu);
   auto it = state->raw_allocations.find(addr.opaque());
   if (it == state->raw_allocations.end()) {
     return nullptr;
@@ -411,7 +414,7 @@ MemoryReservation* DeviceAddressVmmAllocator::GetReservation(
   if (state == nullptr) {
     return nullptr;
   }
-  absl::MutexLock lock(&state->mu);
+  absl::MutexLock lock(state->mu);
   auto it = state->reservations.find(addr.opaque());
   if (it == state->reservations.end()) {
     return nullptr;

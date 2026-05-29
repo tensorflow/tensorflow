@@ -18,17 +18,17 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/gpu/tests/gpu_codegen_test.h"
+#include "xla/backends/gpu/tests/gpu_pjrt_codegen_test.h"
 #include "xla/error_spec.h"
-#include "tsl/platform/test.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
-class FloatConversionTest : public GpuCodegenTest {};
+class FloatConversionTest
+    : public HloPjRtInterpreterReferenceMixin<GpuPjRtCodegenTest> {};
 
 class FloatConversionParamTest
-    : public GpuCodegenTest,
+    : public HloPjRtInterpreterReferenceMixin<GpuPjRtCodegenTest>,
       public ::testing::WithParamInterface<std::string> {};
 
 INSTANTIATE_TEST_SUITE_P(FloatConversionParamSuite, FloatConversionParamTest,
@@ -138,5 +138,4 @@ TEST_F(FloatConversionTest, BF16ToS16IsBroken) {
                             ErrorSpec{1e-5, 1e-5}));
 }
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

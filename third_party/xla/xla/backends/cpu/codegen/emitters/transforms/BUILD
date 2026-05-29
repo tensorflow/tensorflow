@@ -45,6 +45,7 @@ cc_library(
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
         "//xla/codegen/emitters/ir:xla",
         "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/analysis:symbolic_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
         "@llvm-project//llvm:Support",

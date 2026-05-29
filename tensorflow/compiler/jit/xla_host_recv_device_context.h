@@ -61,7 +61,7 @@ class XlaHostRecvDeviceContext : public DeviceContext {
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
                              Tensor* device_tensor, StatusCallback done,
                              bool sync_dst_compute) const override {
-    done(errors::Internal("host->device copy not implemented."));
+    done(absl::InternalError("host->device copy not implemented."));
   }
 
   // Copies `device_memory_base_` with `shape_` into `cpu_tensor`.
@@ -73,7 +73,7 @@ class XlaHostRecvDeviceContext : public DeviceContext {
   void CopyTensorInSameDevice(const Tensor* input_tensor, Device* device,
                               Tensor* output_tensor,
                               StatusCallback done) const override {
-    done(errors::Internal("device->device copy not implemented."));
+    done(absl::InternalError("device->device copy not implemented."));
   }
 
  private:

@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
@@ -62,6 +63,15 @@ SymbolicMap ParseSymbolicMapAndAdvance(absl::string_view* map_str,
 SymbolicExpr ParseSymbolicExpr(absl::string_view expr_str,
                                mlir::MLIRContext* mlir_context,
                                std::optional<int64_t> num_dims = std::nullopt);
+// Parses a list of symbolic expressions from a list of string representations.
+// `dim_var_names` and `symbol_var_names` are used to resolve variable names to
+// symbolic expressions. Returns true if parsing was successful.
+bool ParseSymbolicExprs(llvm::ArrayRef<std::string> dim_var_names,
+                        llvm::ArrayRef<std::string> symbol_var_names,
+                        llvm::ArrayRef<std::string> expr_strs,
+                        mlir::MLIRContext* mlir_context,
+                        llvm::SmallVectorImpl<SymbolicExpr>& symbolic_exprs);
+
 // Parses a symbolic expression from `expr_str`. Advances `expr_str` past the
 // parsed expression. Returns the parsed expression or null if parsing failed.
 SymbolicExpr ParseSymbolicExprAndAdvance(

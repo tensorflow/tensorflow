@@ -23,19 +23,20 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_bf16.h"
 #include "third_party/gpus/cuda/include/cuda_fp16.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
 #include "xla/backends/gpu/ffi.h"
+#include "xla/backends/gpu/libraries/cub/cub_sort_utils.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"  // IWYU pragma: keep
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/xla_data.pb.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace stream_executor {
 namespace cuda {
@@ -130,10 +131,8 @@ absl::StatusOr<int64_t> ComputeScratchSize(SortKeysFn fn, int64_t num_items,
   RETURN_IF_ERROR(ToStatus(fn(nullptr, temp_bytes, nullptr, nullptr, num_items,
                               false, batch_size, nullptr)));
   int64_t scratch_size = temp_bytes;
-  if (batch_size > 1) {
-    scratch_size += sizeof(int32_t) - scratch_size % sizeof(int32_t);
-    scratch_size += (batch_size + 1) * sizeof(int32_t);
-  }
+  scratch_size =
+      xla::gpu::AddSegmentedSortOffsetsToScratchSize(scratch_size, batch_size);
   return scratch_size;
 }
 
@@ -143,10 +142,8 @@ absl::StatusOr<int64_t> ComputeScratchSize(SortPairsFn fn, int64_t num_items,
   RETURN_IF_ERROR(ToStatus(fn(nullptr, temp_bytes, nullptr, nullptr, nullptr,
                               nullptr, num_items, false, batch_size, nullptr)));
   int64_t scratch_size = temp_bytes;
-  if (batch_size > 1) {
-    scratch_size += sizeof(int32_t) - scratch_size % sizeof(int32_t);
-    scratch_size += (batch_size + 1) * sizeof(int32_t);
-  }
+  scratch_size =
+      xla::gpu::AddSegmentedSortOffsetsToScratchSize(scratch_size, batch_size);
   return scratch_size;
 }
 

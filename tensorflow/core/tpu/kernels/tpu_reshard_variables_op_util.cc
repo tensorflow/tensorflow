@@ -63,12 +63,12 @@ absl::Status FlushProgramMemory(se::Platform* platform, int device_ordinal) {
 absl::Status CheckIsValidKey(const Tensor& key) {
   if (!TensorShapeUtils::IsVector(key.shape()) ||
       key.shape().dim_size(0) != 3) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "new_format_key argument to TPUReshardVariables  must be a 3-element "
         "vector");
   }
   if (key.dtype() != DT_STRING) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "new_format_key argument to TPUReshardVariables must be DT_STRING "
         "type");
   }
@@ -108,10 +108,10 @@ absl::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceAddress>> BuildInputBuffers(
   TF_RETURN_IF_ERROR(context->input_list("vars", &var_list));
 
   if (var_list.size() != xla::ShapeUtil::TupleElementCount(input_host_shape)) {
-    return errors::InvalidArgument(
-        "Number of variables (", var_list.size(),
-        ") does not match input shape: ",
-        xla::ShapeUtil::TupleElementCount(input_host_shape));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Number of variables (", var_list.size(),
+                     ") does not match input shape: ",
+                     xla::ShapeUtil::TupleElementCount(input_host_shape)));
   }
 
   auto validate_shape = [&](int i, const Tensor& tensor) {
@@ -123,22 +123,22 @@ absl::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceAddress>> BuildInputBuffers(
     if (xla_tensor == nullptr) {
       // FromTensor failed; tensor must be empty.
       if (!xla::ShapeUtil::IsZeroElementArray(expected)) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Run-time shape mismatch for TPUExecute argument[", i, "] (",
             context->op_kernel().requested_input(i), "). Expected ",
             expected.ToString(),
             "; got empty tensor. If you are running "
             "with TF2 TPU, make sure you set `drop_remainder=False` when "
             "calling `dataset.batch` on the `tf.data.Dataset` so dynamic batch "
-            "size can be handled");
+            "size can be handled"));
       }
     } else {
       const xla::Shape& xla_shape = xla_tensor->shaped_buffer().on_host_shape();
       if (!xla::ShapeUtil::Compatible(expected, xla_shape)) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Run-time shape mismatch for TPUReshardVariables argument[", i,
             "] (", context->op_kernel().requested_input(i), "). Expected ",
-            expected.ToString(), "; got ", xla_shape.ToString());
+            expected.ToString(), "; got ", xla_shape.ToString()));
       }
     }
 
@@ -238,15 +238,15 @@ absl::Status UpdateOutputVariables(
   const int64_t sub_elements =
       xla::ShapeUtil::TupleElementCount(result_buffers.on_host_shape());
   if (sub_elements != output_tensor_shape_protos.size()) {
-    return errors::InvalidArgument(
-        "Mismatched numbers of output shapes: ", sub_elements, " vs. ",
-        output_tensor_shape_protos.size());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Mismatched numbers of output shapes: ", sub_elements,
+                     " vs. ", output_tensor_shape_protos.size()));
   }
 
   if (sub_elements != variables.size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Output count does not equal varaible count: ", sub_elements, " vs. ",
-        variables.size());
+        variables.size()));
   }
 
   std::vector<TensorShape> output_tensor_shapes;
@@ -259,9 +259,9 @@ absl::Status UpdateOutputVariables(
         xla::ShapeUtil::GetSubshape(result_buffers.on_host_shape(), {i});
     if (!xla_shape.IsArray() ||
         xla::ShapeUtil::ElementsIn(xla_shape) != shape.num_elements()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Mismatched number of elements in output shape: ",
-          xla::ShapeUtil::HumanString(xla_shape), " vs ", shape.DebugString());
+          xla::ShapeUtil::HumanString(xla_shape), " vs ", shape.DebugString()));
     }
     output_tensor_shapes.push_back(shape);
     VLOG(2) << "Output " << i << " shape " << shape.DebugString();

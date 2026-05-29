@@ -5663,47 +5663,46 @@ inline void ResizeNearestNeighbor(
   const RuntimeShape output_shape =
       RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
-  int32_t batches = MatchingDim(input_shape, 0, output_shape, 0);
-  int32_t input_height = input_shape.Dims(1);
-  int32_t input_width = input_shape.Dims(2);
-  int32_t depth = MatchingDim(input_shape, 3, output_shape, 3);
+  const int32_t batches = MatchingDim(input_shape, 0, output_shape, 0);
+  const int64_t input_height = input_shape.Dims(1);
+  const int64_t input_width = input_shape.Dims(2);
+  const int64_t depth = MatchingDim(input_shape, 3, output_shape, 3);
 
   // The Tensorflow version of this op allows resize on the width and height
   // axis only.
   TFLITE_DCHECK_EQ(output_size_shape.FlatSize(), 2);
-  int32_t output_height = output_size_data[0];
-  int32_t output_width = output_size_data[1];
+  const int32_t output_height = output_size_data[0];
+  const int32_t output_width = output_size_data[1];
 
   // Convert scales to fixed-point with 16 fractional bits. We add 1 as an
   // error factor and to avoid zero scales. For example, with input_height = 1,
   // output_height = 3, the float scaling factor would be non-zero at 1/3.
   // With fixed-point, this is zero.
-  int32_t height_scale = (input_height << 16) / output_height + 1;
-  int32_t width_scale = (input_width << 16) / output_width + 1;
+  const int64_t height_scale = (input_height << 16) / output_height + 1;
+  const int64_t width_scale = (input_width << 16) / output_width + 1;
 
-  const int col_offset = input_shape.Dims(3);
-  const int row_offset = input_shape.Dims(2) * col_offset;
-  const int batch_offset = input_shape.Dims(1) * row_offset;
+  const int64_t col_offset = input_shape.Dims(3);
+  const int64_t row_offset = input_shape.Dims(2) * col_offset;
+  const int64_t batch_offset = input_shape.Dims(1) * row_offset;
 
   const uint8_t* input_ptr = input_data;
   uint8_t* output_ptr = output_data;
-  for (int b = 0; b < batches; ++b) {
-    for (int y = 0; y < output_height; ++y) {
-      int32_t in_y = std::min((y * height_scale) >> 16, input_height - 1);
+  for (int32_t b = 0; b < batches; ++b) {
+    for (int32_t y = 0; y < output_height; ++y) {
+      const int64_t in_y = std::min((y * height_scale) >> 16, input_height - 1);
       // Check offset calculation is the same as the reference version. See
       // function comment for details. We check using a non-float version of:
-      // TFLITE_DCHECK_EQ(in_y, std::floor(y * (static_cast<float>(input_height)
-      //                                            / output_height)));
+      // in_y == std::floor(y * (static_cast<float>(input_height) /
+      // output_height));
       TFLITE_DCHECK_LT(y * input_height, output_height + in_y * output_height);
       TFLITE_DCHECK_GE(y * input_height, in_y * output_height);
       const uint8_t* y_input_ptr = input_ptr + in_y * row_offset;
-      for (int x = 0; x < output_width; ++x) {
-        int32_t in_x = std::min((x * width_scale) >> 16, input_width - 1);
+      for (int32_t x = 0; x < output_width; ++x) {
+        const int64_t in_x = std::min((x * width_scale) >> 16, input_width - 1);
         // Check offset calculation is the same as the reference version. See
         // function comment for details. We check using a non-float version of:
-        // TFLITE_DCHECK_EQ(in_y,
-        //                  std::floor(y * (static_cast<float>(input_width)
-        //                                      / output_width)));
+        // in_x == std::floor(x * (static_cast<float>(input_width) /
+        // output_width));
         TFLITE_DCHECK_LT(x * input_width, output_width + in_x * output_width);
         TFLITE_DCHECK_GE(x * input_width, in_x * output_width);
         const uint8_t* x_input_ptr = y_input_ptr + in_x * col_offset;

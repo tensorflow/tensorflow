@@ -408,6 +408,26 @@ class IfrtResourceDeserializeOpConversion
   }
 };
 
+class AsyncIfrtCallOpConversion
+    : public mlir::OpConversionPattern<mlir::TF::AsyncIfrtCallOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::TF::AsyncIfrtCallOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    llvm::SmallVector<mlir::Type> future_types(
+        op->getNumResults(), rewriter.getType<mlrt::compiler::FutureType>());
+
+    auto call_op = tf_mlrt::AsyncIfrtCallOp::create(
+        rewriter, op.getLoc(), future_types, op.getProgramId(),
+        op.getVariableArgIndices(), adaptor.getOperands());
+
+    rewriter.replaceOp(op, call_op.getResults());
+    return mlir::success();
+  }
+};
+
 std::optional<std::string> DecodeLongName(mlir::Location loc) {
   if (auto name_loc = mlir::dyn_cast<mlir::NameLoc>(loc)) {
     return name_loc.getName().str();
@@ -467,12 +487,12 @@ void CanonicalizeFunctionNameInNodeDef(const mlir::SymbolTable &symbol_table,
 
 class ExecuteOpConversion final : public mlir::ConversionPattern {
  public:
-  ExecuteOpConversion(mlir::MLIRContext *context,
-                      const mlir::SymbolTable *symbol_table,
-                      mlir::TypeConverter *type_converter,
-                      ExecuteOpRegistry *execute_op_registry,
-                      tfrt_stub::OpKernelRunnerCache *op_kernel_cache,
-                      const tfrt_stub::FallbackState *fallback_state)
+  ExecuteOpConversion(mlir::MLIRContext* context,
+                      const mlir::SymbolTable* symbol_table,
+                      mlir::TypeConverter* type_converter,
+                      ExecuteOpRegistry* execute_op_registry,
+                      tfrt_stub::OpKernelRunnerCache* op_kernel_cache,
+                      const tfrt_stub::FallbackState* fallback_state)
       : mlir::ConversionPattern(*type_converter,
                                 mlir::Pattern::MatchAnyOpTypeTag(),
                                 /*benefit=*/1, context),
@@ -969,7 +989,10 @@ class TfToMlrtPreParallelizationConversionPass
     options_.copyOptionValuesFrom(options);
   }
   TfToMlrtPreParallelizationConversionPass(
-      const TfToMlrtPreParallelizationConversionPass &other) {}
+      const TfToMlrtPreParallelizationConversionPass& other)
+      : PassWrapper(other) {
+    options_.copyOptionValuesFrom(other.options_);
+  }
   TfToMlrtPreParallelizationConversionPass &operator=(
       const TfToMlrtPreParallelizationConversionPass &) = delete;
 
@@ -1076,8 +1099,10 @@ class TfToMlrtConversionPass
     // This is needed to progating user configs into this pass.
     options_.copyOptionValuesFrom(options);
   }
-  TfToMlrtConversionPass(const TfToMlrtConversionPass &other)
-      : fallback_state_(other.fallback_state_) {}
+  TfToMlrtConversionPass(const TfToMlrtConversionPass& other)
+      : fallback_state_(other.fallback_state_) {
+    options_.copyOptionValuesFrom(other.options_);
+  }
   TfToMlrtConversionPass &operator=(const TfToMlrtConversionPass &) = delete;
 
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TfToMlrtConversionPass)
@@ -1130,7 +1155,6 @@ class TfToMlrtConversionPass
       options_.use_tpu_host_allocator_for_inputs =
           use_tpu_host_allocator_for_inputs_;
     }
-
     return mlir::success();
   }
 
@@ -1301,10 +1325,12 @@ class TfToMlrtConversionPass
     // LINT.IfChange
     // Order the list of added ops alphabetically.
     patterns.add<WhileOpConversion>(&context, &type_converter_, &symbol_table);
-    patterns.add<AsyncOpConversion, GetResourceOpConversion,
-                 SetResourceOpConversion, IfrtRestoreVariableOpConversion,
-                 TFAwaitOpConversion, TFPromiseOpConversion,
-                 IfrtResourceDeserializeOpConversion>(&context);
+    patterns
+        .add<AsyncOpConversion, GetResourceOpConversion,
+             SetResourceOpConversion, IfrtRestoreVariableOpConversion,
+             TFAwaitOpConversion, TFPromiseOpConversion,
+             IfrtResourceDeserializeOpConversion, AsyncIfrtCallOpConversion>(
+            &context);
     patterns.add<BatchFunctionOpConversion, CaseOpConversion, CondOpConversion,
                  TFAsyncWhileOpConversion, TFMapFnOpConversion>(type_converter_,
                                                                 &context);
@@ -1333,7 +1359,6 @@ class TfToMlrtConversionPass
       llvm::cl::desc("If true, fallback executeops that produce inputs to tpu "
                      "program will use tpu host allocator."),
       llvm::cl::init(false)};
-
   TfrtPipelineOptions options_;
   mlir::TypeConverter type_converter_;
   ExecuteOpRegistry execute_op_registry_;

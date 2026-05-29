@@ -52,9 +52,9 @@ class ArgOp : public OpKernel {
     const Tensor& dimension = context->input(1);
 
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(dimension.shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "dim must be a scalar, but received tensor of shape: ",
-                    dimension.shape().DebugString()));
+                    dimension.shape().DebugString())));
 
     const int32_t dim = internal::SubtleMustCopy(dimension.scalar<int32_t>()());
     const int input_dims = input.dims();
@@ -62,13 +62,13 @@ class ArgOp : public OpKernel {
     int axis = dim < 0 ? dim + input_dims : dim;
 
     OP_REQUIRES(context, FastBoundsCheck(axis, input_dims),
-                errors::InvalidArgument("Expected dimension in the range [",
-                                        -input_dims, ", ", input_dims,
-                                        "), but got ", dim));
-    OP_REQUIRES(
-        context, input.dim_size(axis) > 0,
-        errors::InvalidArgument("Reduction axis ", dim, " is empty in shape ",
-                                input.shape().DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Expected dimension in the range [", -input_dims, ", ",
+                    input_dims, "), but got ", dim)));
+    OP_REQUIRES(context, input.dim_size(axis) > 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Reduction axis ", dim, " is empty in shape ",
+                                 input.shape().DebugString())));
 
     TensorShape output_shape;
     const TensorShape& input_shape = input.shape();
@@ -101,11 +101,12 @@ class ArgOp : public OpKernel {
       HANDLE_DIM(7);
 
       default:
-        OP_REQUIRES(context, false,
-                    errors::InvalidArgument("Argmax and Argmin only support up "
-                                            "to 7 input dimensions, but got ",
-                                            input_dims, ". Inputs shape: ",
-                                            input.shape().DebugString()));
+        OP_REQUIRES(
+            context, false,
+            absl::InvalidArgumentError(absl::StrCat(
+                "Argmax and Argmin only support up "
+                "to 7 input dimensions, but got ",
+                input_dims, ". Inputs shape: ", input.shape().DebugString())));
     }
   }
 #undef HANDLE_DIM

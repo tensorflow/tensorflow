@@ -23,10 +23,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Casting.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -92,16 +92,12 @@ absl::Status IfrtVerifyBoundExternalLoadedExecutablePass::VerifyShardingsEqual(
     absl::string_view sharding_type) {
   for (const auto& it : llvm::enumerate(llvm::zip(types, shardings))) {
     const auto& [param_type, sharding] = it.value();
-    TF_ASSIGN_OR_RETURN(auto hlo_sharding,
-                        xla::HloSharding::FromProto(sharding));
-    auto array_type = llvm::dyn_cast<IfrtArrayType>(param_type);
-    CHECK(array_type);
-    auto array_sharding =
-        llvm::dyn_cast<IfrtShardingParamAttr>(array_type.getShardingAttr());
-    CHECK(array_sharding);
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(auto hlo_sharding, xla::HloSharding::FromProto(sharding));
+    IfrtArrayType array_type = GetArrayType(param_type);
+    IfrtShardingParamAttr sharding_attr = GetShardingParamAttr(array_type);
+    ASSIGN_OR_RETURN(
         const xla::HloSharding hlo_type_sharding,
-        xla::ifrt::support::ToHloSharding(array_sharding.getSharding()));
+        xla::ifrt::support::ToHloSharding(sharding_attr.getSharding()));
     if (hlo_sharding != hlo_type_sharding) {
       return absl::InvalidArgumentError(absl::StrCat(
           "expects an executable with ", sharding_type, " #", it.index(),

@@ -28,8 +28,6 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "xla/autotuning.pb.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/symbolic_tile_analysis.h"
-#include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -45,7 +43,7 @@ namespace xla::xtile {
 // gpu_cc: When set, used check for supported data types (e.g. FNUZ on ROCm),
 // Omit otherwise.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
-    absl::string_view fn_name, const HloFusionInstruction* fusion,
+    absl::string_view fn_name, const HloFusionInstruction& fusion,
     const ::xla::gpu::experimental::TiledHloComputation& tiled_computation,
     mlir::MLIRContext& mlir_context,
     absl::Span<mlir::Type> opaque_args_types = {},

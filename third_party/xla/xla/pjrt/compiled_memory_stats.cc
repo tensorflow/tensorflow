@@ -64,6 +64,11 @@ void CompiledMemoryStats::PopulateBufferStatsFromAllocations(
               "expected same memory space for all assignments in allocation");
       }
     }
+    if (alloc_memory_space == -1) {
+      // But if assignments are not available, then we have to assume that the
+      // default coloring behavior was used.
+      alloc_memory_space = alloc->color();
+    }
 
     bool is_host = alloc_memory_space == Layout::kHostMemorySpace;
     int64_t size = alloc->size();

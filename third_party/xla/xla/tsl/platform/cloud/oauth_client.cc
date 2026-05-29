@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include <openssl/bio.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
@@ -67,7 +68,7 @@ absl::Status ReadJsonValue(const Json::Value& json, const std::string& name,
 absl::Status ReadJsonString(const Json::Value& json, const std::string& name,
                             std::string* value) {
   Json::Value json_value;
-  TF_RETURN_IF_ERROR(ReadJsonValue(json, name, &json_value));
+  RETURN_IF_ERROR(ReadJsonValue(json, name, &json_value));
   if (!json_value.isString()) {
     return absl::FailedPreconditionError(
         absl::StrCat("JSON value '", name, "' is not string."));
@@ -79,7 +80,7 @@ absl::Status ReadJsonString(const Json::Value& json, const std::string& name,
 absl::Status ReadJsonInt(const Json::Value& json, const std::string& name,
                          int64_t* value) {
   Json::Value json_value;
-  TF_RETURN_IF_ERROR(ReadJsonValue(json, name, &json_value));
+  RETURN_IF_ERROR(ReadJsonValue(json, name, &json_value));
   if (!json_value.isIntegral()) {
     return absl::FailedPreconditionError(
         absl::StrCat("JSON value '", name, "' is not integer."));
@@ -189,15 +190,14 @@ absl::Status OAuthClient::GetTokenFromServiceAccountJson(
     absl::string_view scope, std::string* token,
     uint64_t* expiration_timestamp_sec) {
   if (!token || !expiration_timestamp_sec) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "'token' and 'expiration_timestamp_sec' cannot be nullptr.");
   }
   std::string private_key_serialized, private_key_id, client_id, client_email;
-  TF_RETURN_IF_ERROR(
-      ReadJsonString(json, "private_key", &private_key_serialized));
-  TF_RETURN_IF_ERROR(ReadJsonString(json, "private_key_id", &private_key_id));
-  TF_RETURN_IF_ERROR(ReadJsonString(json, "client_id", &client_id));
-  TF_RETURN_IF_ERROR(ReadJsonString(json, "client_email", &client_email));
+  RETURN_IF_ERROR(ReadJsonString(json, "private_key", &private_key_serialized));
+  RETURN_IF_ERROR(ReadJsonString(json, "private_key_id", &private_key_id));
+  RETURN_IF_ERROR(ReadJsonString(json, "client_id", &client_id));
+  RETURN_IF_ERROR(ReadJsonString(json, "client_email", &client_email));
 
   std::unique_ptr<BIO, std::function<void(BIO*)>> bio(
       BIO_new(BIO_s_mem()), [](BIO* ptr) { BIO_free_all(ptr); });
@@ -215,12 +215,12 @@ absl::Status OAuthClient::GetTokenFromServiceAccountJson(
   const uint64_t request_timestamp_sec = env_->NowSeconds();
 
   std::string encoded_claim, encoded_header;
-  TF_RETURN_IF_ERROR(EncodeJwtHeader(private_key_id, &encoded_header));
-  TF_RETURN_IF_ERROR(EncodeJwtClaim(client_email, scope, oauth_server_uri,
-                                    request_timestamp_sec, &encoded_claim));
+  RETURN_IF_ERROR(EncodeJwtHeader(private_key_id, &encoded_header));
+  RETURN_IF_ERROR(EncodeJwtClaim(client_email, scope, oauth_server_uri,
+                                 request_timestamp_sec, &encoded_claim));
   const std::string to_sign = encoded_header + "." + encoded_claim;
   std::string signature;
-  TF_RETURN_IF_ERROR(CreateSignature(private_key.get(), to_sign, &signature));
+  RETURN_IF_ERROR(CreateSignature(private_key.get(), to_sign, &signature));
   const std::string jwt = to_sign + "." + signature;
   const std::string request_body =
       absl::StrCat("grant_type=", kGrantType, "&assertion=", jwt);
@@ -231,12 +231,12 @@ absl::Status OAuthClient::GetTokenFromServiceAccountJson(
   request->SetUri(std::string(oauth_server_uri));
   request->SetPostFromBuffer(request_body.c_str(), request_body.size());
   request->SetResultBuffer(&response_buffer);
-  TF_RETURN_IF_ERROR(request->Send());
+  RETURN_IF_ERROR(request->Send());
 
   absl::string_view response =
       absl::string_view(response_buffer.data(), response_buffer.size());
-  TF_RETURN_IF_ERROR(ParseOAuthResponse(response, request_timestamp_sec, token,
-                                        expiration_timestamp_sec));
+  RETURN_IF_ERROR(ParseOAuthResponse(response, request_timestamp_sec, token,
+                                     expiration_timestamp_sec));
   return absl::OkStatus();
 }
 
@@ -244,13 +244,13 @@ absl::Status OAuthClient::GetTokenFromRefreshTokenJson(
     Json::Value json, absl::string_view oauth_server_uri, std::string* token,
     uint64_t* expiration_timestamp_sec) {
   if (!token || !expiration_timestamp_sec) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "'token' and 'expiration_timestamp_sec' cannot be nullptr.");
   }
   std::string client_id, client_secret, refresh_token;
-  TF_RETURN_IF_ERROR(ReadJsonString(json, "client_id", &client_id));
-  TF_RETURN_IF_ERROR(ReadJsonString(json, "client_secret", &client_secret));
-  TF_RETURN_IF_ERROR(ReadJsonString(json, "refresh_token", &refresh_token));
+  RETURN_IF_ERROR(ReadJsonString(json, "client_id", &client_id));
+  RETURN_IF_ERROR(ReadJsonString(json, "client_secret", &client_secret));
+  RETURN_IF_ERROR(ReadJsonString(json, "refresh_token", &refresh_token));
 
   const auto request_body = absl::StrCat(
       "client_id=", client_id, "&client_secret=", client_secret,
@@ -263,12 +263,12 @@ absl::Status OAuthClient::GetTokenFromRefreshTokenJson(
   request->SetUri(std::string(oauth_server_uri));
   request->SetPostFromBuffer(request_body.c_str(), request_body.size());
   request->SetResultBuffer(&response_buffer);
-  TF_RETURN_IF_ERROR(request->Send());
+  RETURN_IF_ERROR(request->Send());
 
   absl::string_view response =
       absl::string_view(response_buffer.data(), response_buffer.size());
-  TF_RETURN_IF_ERROR(ParseOAuthResponse(response, request_timestamp_sec, token,
-                                        expiration_timestamp_sec));
+  RETURN_IF_ERROR(ParseOAuthResponse(response, request_timestamp_sec, token,
+                                     expiration_timestamp_sec));
   return absl::OkStatus();
 }
 
@@ -276,7 +276,7 @@ absl::Status OAuthClient::ParseOAuthResponse(
     absl::string_view response, uint64_t request_timestamp_sec,
     std::string* token, uint64_t* expiration_timestamp_sec) {
   if (!token || !expiration_timestamp_sec) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "'token' and 'expiration_timestamp_sec' cannot be nullptr.");
   }
   Json::Value root;
@@ -287,15 +287,15 @@ absl::Status OAuthClient::ParseOAuthResponse(
   }
 
   std::string token_type;
-  TF_RETURN_IF_ERROR(ReadJsonString(root, "token_type", &token_type));
+  RETURN_IF_ERROR(ReadJsonString(root, "token_type", &token_type));
   if (token_type != "Bearer") {
     return absl::FailedPreconditionError("Unexpected Oauth token type: " +
                                          token_type);
   }
   int64_t expires_in = 0;
-  TF_RETURN_IF_ERROR(ReadJsonInt(root, "expires_in", &expires_in));
+  RETURN_IF_ERROR(ReadJsonInt(root, "expires_in", &expires_in));
   *expiration_timestamp_sec = request_timestamp_sec + expires_in;
-  TF_RETURN_IF_ERROR(ReadJsonString(root, "access_token", token));
+  RETURN_IF_ERROR(ReadJsonString(root, "access_token", token));
 
   return absl::OkStatus();
 }

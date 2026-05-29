@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <queue>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -61,11 +60,13 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
 
 using ::testing::_;
+using ::testing::UnorderedElementsAre;
 namespace op = xla::testing::opcode_matchers;
 
 class CollectivePipelinerTest : public HloHardwareIndependentTestBase {
@@ -2978,10 +2979,14 @@ TEST_F(CollectivePipelinerTest, TransformRecvSendBackwards) {
   )";
 
   auto should_pipeline = [](const HloInstruction* instruction) {
-    if (!HloPredicateIsOp<HloOpcode::kRecvDone>(instruction)) return false;
+    if (!HloPredicateIsOp<HloOpcode::kRecvDone>(instruction)) {
+      return false;
+    }
     const HloRecvDoneInstruction* recv_done =
         DynCast<const HloRecvDoneInstruction>(instruction);
-    if (recv_done->is_host_transfer()) return false;
+    if (recv_done->is_host_transfer()) {
+      return false;
+    }
     // Check that the recv-done is used for non-trivial computation, which can
     // also help avoid repeatedly pipelining a loop.
     return (recv_done->user_count() == 1 && recv_done->parent() != nullptr &&
@@ -3075,8 +3080,9 @@ TEST_F(CollectivePipelinerTest,
 
   auto should_pipeline = [](const HloInstruction* instr) {
     if (!HloPredicateIsOp<HloOpcode::kRecv>(instr) &&
-        !HloPredicateIsOp<HloOpcode::kSend>(instr))
+        !HloPredicateIsOp<HloOpcode::kSend>(instr)) {
       return false;
+    }
     const HloSendRecvInstruction* send_recv =
         DynCast<const HloSendRecvInstruction>(instr);
     // Check that the Send or Recv is used for non-trivial computation, which
@@ -5700,9 +5706,7 @@ ENTRY %main.117 (Arg_0.1: f32[10,1000,8000], Arg_1.2: f32[10,8000,1000], Arg_2.3
           /*postprocess_backward_peeled_trailing=*/{},
           /*should_add_loop_invariant_op_in_chain=*/false,
           /*collective_size_threshold_to_delay_sinking=*/INT64_MAX,
-          /*unique_channel_id=*/true,
-          /*postprocess_transformed_while_loop=*/
-          host_offload_utils::MarkDynamicVariables)
+          /*unique_channel_id=*/true)
           .value());
 
   std::vector<HloInstruction*> while_loops;
@@ -5719,13 +5723,12 @@ ENTRY %main.117 (Arg_0.1: f32[10,1000,8000], Arg_1.2: f32[10,8000,1000], Arg_2.3
   TF_ASSERT_OK_AND_ASSIGN(
       WhileLoopBackendConfig config,
       while_loops[0]->backend_config<WhileLoopBackendConfig>());
+  EXPECT_EQ(config.dynamic_variables_size(), 0)
+      << "CollectivePipeliner must not write dynamic_variables.";
 
-  std::set<int64_t> dynamic_indices(
-      config.dynamic_variable_tuple_indices().begin(),
-      config.dynamic_variable_tuple_indices().end());
-
-  std::set<int64_t> expected_indices = {0, 5};
-  EXPECT_EQ(dynamic_indices, expected_indices);
+  EXPECT_THAT(
+      host_offload_utils::CollectDynamicVariableTupleIndices(while_loops[0]),
+      UnorderedElementsAre(0, 5));
 }
 
 TEST_F(CollectivePipelinerTest, HostOffloadingBackward) {
@@ -5809,9 +5812,7 @@ ENTRY %main.117 (Arg_0.1: f32[10,1000,8000], Arg_1.2: f32[10,8000,1000], Arg_2.3
           /*postprocess_backward_peeled_trailing=*/{},
           /*should_add_loop_invariant_op_in_chain=*/false,
           /*collective_size_threshold_to_delay_sinking=*/INT64_MAX,
-          /*unique_channel_id=*/true,
-          /*postprocess_transformed_while_loop=*/
-          host_offload_utils::MarkDynamicVariables)
+          /*unique_channel_id=*/true)
           .value());
 
   std::vector<HloInstruction*> while_loops;
@@ -5828,13 +5829,12 @@ ENTRY %main.117 (Arg_0.1: f32[10,1000,8000], Arg_1.2: f32[10,8000,1000], Arg_2.3
   TF_ASSERT_OK_AND_ASSIGN(
       WhileLoopBackendConfig config,
       while_loops[0]->backend_config<WhileLoopBackendConfig>());
+  EXPECT_EQ(config.dynamic_variables_size(), 0)
+      << "CollectivePipeliner must not write dynamic_variables.";
 
-  std::set<int64_t> dynamic_indices(
-      config.dynamic_variable_tuple_indices().begin(),
-      config.dynamic_variable_tuple_indices().end());
-
-  std::set<int64_t> expected_indices = {0, 8};
-  EXPECT_EQ(dynamic_indices, expected_indices);
+  EXPECT_THAT(
+      host_offload_utils::CollectDynamicVariableTupleIndices(while_loops[0]),
+      UnorderedElementsAre(0, 8));
 }
 
 TEST_F(CollectivePipelinerTest, ForwardSubtractIndexWithGTELeaf) {
@@ -6378,6 +6378,333 @@ TEST_F(CollectivePipelinerTest, ForwardSinkWithClonedInvariantParameters) {
       FindInstruction(module.get(), HloOpcode::kAllReduce);
   ASSERT_NE(sunk_all_reduce, nullptr);
   EXPECT_EQ(sunk_all_reduce->parent(), module->entry_computation());
+}
+
+TEST_F(CollectivePipelinerTest, ForwardSinkWithIntermediateDUS) {
+  // Tests sinking an all-reduce whose output flows through an intermediate
+  // dynamic-update-slice (inserting at dim 1) before reaching the final DUS
+  // (inserting at dim 0). The intermediate DUS should be converted to a
+  // scatter when the batch dimension is added.
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], f32[3,1,4], f32[3,8,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], f32[3,1,4], f32[3,8,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = f32[3,1,4] get-tuple-element(param), index=1
+  get-tuple-element.35 = f32[3,8,128] get-tuple-element(param), index=2
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  constant.2561 = s32[] constant(0)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.99 = f32[1,8,128] dynamic-slice(get-tuple-element.35, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul = f32[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
+  ar.1 = f32[1,8,128] all-reduce(mul), replica_groups={}, to_apply=add, channel_id=1
+  constant.zero = f32[] constant(0)
+  reduce.1 = f32[] reduce(ar.1, constant.zero), dimensions={0,1,2}, to_apply=add
+  // Reshape scalar to [1,1] for insertion into the [1,4] buffer
+  reshape.1 = f32[1,1] reshape(reduce.1)
+  // Intermediate DUS: insert [1,1] into a zero-init'd [1,4] buffer at dim 1
+  inner-base-scalar = f32[] constant(0)
+  inner-base = f32[1,4] broadcast(inner-base-scalar), dimensions={}
+  inner-dus = f32[1,4] dynamic-update-slice(inner-base, reshape.1, constant.2561, select.1348)
+  // Final DUS: insert [1,4] into [3,1,4] at dim 0 (the pipeline dim)
+  reshape.2 = f32[1,1,4] reshape(inner-dus)
+  dynamic-update-slice.35 = f32[3,1,4] dynamic-update-slice(get-tuple-element.395, reshape.2, select.1348, constant.2561, constant.2561)
+  ROOT tuple = (s32[], f32[3,1,4], f32[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.35)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = f32[3,1,4] parameter(0)
+  p1 = f32[3,8,128] parameter(1)
+  tuple = (s32[], f32[3,1,4], f32[3,8,128]) tuple(c0, p0, p1)
+  while = (s32[], f32[3,1,4], f32[3,8,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = f32[3,1,4] get-tuple-element(while), index=1
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  EXPECT_TRUE(
+      RunOptimizer(
+          module.get(), /*last_run=*/true,
+          /*level_to_operate_on=*/0,
+          /*pipeline_use_tree=*/true,
+          /*process_different_sized_ops=*/true,
+          collective_pipeliner_utils::PipeliningDirection::kForwardSink,
+          /*should_process=*/HloPredicateIsOp<HloOpcode::kAllReduce>,
+          /*acceptable_formatting=*/HloPredicateIsNotOp<HloOpcode::kAllReduce>)
+          .value());
+  XLA_VLOG_LINES(1, module->ToString());
+
+  // Verify the all-reduce was sunk outside the loop
+  const HloInstruction* while_instr =
+      FindInstruction(module.get(), HloOpcode::kWhile);
+  ASSERT_NE(while_instr, nullptr);
+  // There should be an all-reduce in the entry computation (the sunk one).
+  bool found_sunk_all_reduce = false;
+  for (const HloInstruction* instr :
+       module->entry_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kAllReduce) {
+      found_sunk_all_reduce = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(found_sunk_all_reduce);
+
+  // Verify a scatter was created (from the intermediate DUS conversion)
+  // in the entry computation.
+  const HloInstruction* scatter =
+      FindInstruction(module.get(), HloOpcode::kScatter);
+  ASSERT_NE(scatter, nullptr);
+  EXPECT_EQ(scatter->parent(), module->entry_computation());
+}
+
+TEST_F(CollectivePipelinerTest, ForwardSinkWithIntermediateDUS2D) {
+  // Tests sinking with 2D inner DUS buffers: the all-reduce output is reduced
+  // to f32[4], reshaped to f32[4,1], and inserted via DUS into a 2D f32[4,8]
+  // buffer at a dynamic column position (dim 1). The result is then reshaped
+  // and inserted into the pipeline accumulation buffer via the final DUS at
+  // dim 0.
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], f32[3,4,8], f32[3,4,32]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], f32[3,4,8], f32[3,4,32]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = f32[3,4,8] get-tuple-element(param), index=1
+  get-tuple-element.35 = f32[3,4,32] get-tuple-element(param), index=2
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  constant.2561 = s32[] constant(0)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.99 = f32[1,4,32] dynamic-slice(get-tuple-element.35, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,4,32}
+  mul = f32[1,4,32] multiply(dynamic-slice.99, dynamic-slice.99)
+  ar.1 = f32[1,4,32] all-reduce(mul), replica_groups={}, to_apply=add, channel_id=1
+  // Reduce [1,4,32] -> [4] by summing over dims 0 and 2
+  constant.zero = f32[] constant(0)
+  reduce.1 = f32[4] reduce(ar.1, constant.zero), dimensions={0,2}, to_apply=add
+  // Reshape [4] -> [4,1] for 2D DUS update
+  reshape.1 = f32[4,1] reshape(reduce.1)
+  // Intermediate DUS: insert [4,1] into a zero-init'd [4,8] buffer at dim 1
+  inner-base-scalar = f32[] constant(0)
+  inner-base = f32[4,8] broadcast(inner-base-scalar), dimensions={}
+  inner-dus = f32[4,8] dynamic-update-slice(inner-base, reshape.1, constant.2561, select.1348)
+  // Final DUS: reshape [4,8] -> [1,4,8] and insert into [3,4,8] at dim 0
+  reshape.2 = f32[1,4,8] reshape(inner-dus)
+  dynamic-update-slice.35 = f32[3,4,8] dynamic-update-slice(get-tuple-element.395, reshape.2, select.1348, constant.2561, constant.2561)
+  ROOT tuple = (s32[], f32[3,4,8], f32[3,4,32]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.35)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = f32[3,4,8] parameter(0)
+  p1 = f32[3,4,32] parameter(1)
+  tuple = (s32[], f32[3,4,8], f32[3,4,32]) tuple(c0, p0, p1)
+  while = (s32[], f32[3,4,8], f32[3,4,32]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = f32[3,4,8] get-tuple-element(while), index=1
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  EXPECT_TRUE(
+      RunOptimizer(
+          module.get(), /*last_run=*/true,
+          /*level_to_operate_on=*/0,
+          /*pipeline_use_tree=*/true,
+          /*process_different_sized_ops=*/true,
+          collective_pipeliner_utils::PipeliningDirection::kForwardSink,
+          /*should_process=*/HloPredicateIsOp<HloOpcode::kAllReduce>,
+          /*acceptable_formatting=*/HloPredicateIsNotOp<HloOpcode::kAllReduce>)
+          .value());
+  XLA_VLOG_LINES(1, module->ToString());
+
+  // Verify the all-reduce was sunk outside the loop
+  const HloInstruction* while_instr =
+      FindInstruction(module.get(), HloOpcode::kWhile);
+  ASSERT_NE(while_instr, nullptr);
+  bool found_sunk_all_reduce = false;
+  for (const HloInstruction* instr :
+       module->entry_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kAllReduce) {
+      found_sunk_all_reduce = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(found_sunk_all_reduce);
+
+  // Verify a scatter was created (from the 2D intermediate DUS conversion)
+  // in the entry computation.
+  const HloInstruction* scatter =
+      FindInstruction(module.get(), HloOpcode::kScatter);
+  ASSERT_NE(scatter, nullptr);
+  EXPECT_EQ(scatter->parent(), module->entry_computation());
+}
+
+TEST_F(CollectivePipelinerTest, ForwardSinkWithOptBarrier) {
+  // Tests that forward sinking works when the DUS base operand is wrapped
+  // by an optimization barrier: param -> GTE -> opt-barrier(array) -> DUS.
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+  get-tuple-element.5 = bf16[3,8,128] get-tuple-element(param), index=2
+  // Optimization barrier on the DUS base (array value, not tuple).
+  opt-barrier = bf16[3,8,128] opt-barrier(get-tuple-element.395)
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  constant.2561 = s32[] constant(0)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.5, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
+  ar.1 = bf16[1,8,128] all-reduce(mul), replica_groups={}, to_apply=add, channel_id=1
+  dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(opt-barrier, ar.1, select.1348, constant.2561, constant.2561)
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.5)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[3,8,128] parameter(0)
+  tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+  while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true).value());
+  XLA_VLOG_LINES(1, module->ToString());
+
+  // Verify the all-reduce was sunk outside the loop
+  bool found_sunk_all_reduce = false;
+  for (const HloInstruction* instr :
+       module->entry_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kAllReduce) {
+      found_sunk_all_reduce = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(found_sunk_all_reduce);
+}
+
+TEST_F(CollectivePipelinerTest, ForwardWithOptBarrier) {
+  // Tests kForward pipelining when the DUS base operand is wrapped by an
+  // optimization barrier: param -> GTE -> opt-barrier(array) -> DUS.
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+  get-tuple-element.5 = bf16[3,8,128] get-tuple-element(param), index=2
+  // Optimization barrier on the DUS base (array value).
+  opt-barrier = bf16[3,8,128] opt-barrier(get-tuple-element.395)
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  constant.2561 = s32[] constant(0)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.5, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
+  ar.1 = bf16[1,8,128] all-reduce(mul), replica_groups={}, to_apply=add, channel_id=1
+  dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(opt-barrier, ar.1, select.1348, constant.2561, constant.2561)
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.5)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[3,8,128] parameter(0)
+  tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+  while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true).value());
+  XLA_VLOG_LINES(1, module->ToString());
+  // In kForward mode the all-reduce is peeled and the output is a DUS.
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::DynamicUpdateSlice(_, op::AllReduce(), _, _, _));
 }
 
 }  // namespace

@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -312,6 +313,14 @@ HloFusionAnalysis HloFusionAnalysis::Create(
       std::move(fusion_backend_config),
       HloFusionAdaptor::ForProducerConsumer(&producer, &consumer),
       &device_info);
+}
+
+const Shape& HloFusionAnalysis::first_result_shape() const {
+  const Shape* shape = &fusion_root(0).shape();
+  while (shape->IsTuple()) {
+    shape = &shape->tuple_shapes(0);
+  }
+  return *shape;
 }
 
 const HloInstruction* HloFusionAnalysis::FindHeroReduction() const {

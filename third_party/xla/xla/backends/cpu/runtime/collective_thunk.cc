@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/collectives/cpu_clique_key.h"
 #include "xla/backends/cpu/collectives/cpu_cliques.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
@@ -138,14 +139,14 @@ CollectiveThunk::GetOpDeviceMemory(const ExecuteParams& params) {
 
   absl::InlinedVector<se::DeviceAddressBase, 4> source_data(num_srcs);
   for (int i = 0; i < num_srcs; ++i) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         source_data[i],
         params.buffer_allocations->GetDeviceAddress(source_buffer(i)));
   }
 
   absl::InlinedVector<se::DeviceAddressBase, 4> destination_data(num_dsts);
   for (int i = 0; i < num_dsts; ++i) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         destination_data[i],
         params.buffer_allocations->GetDeviceAddress(destination_buffer(i)));
   }
@@ -171,12 +172,11 @@ absl::StatusOr<RendezvousKey> CollectiveThunk::GetRendezvousKey(
                                                 ? RendezvousKey::kCrossModule
                                                 : RendezvousKey::kCrossReplica;
 
-  TF_ASSIGN_OR_RETURN(
-      CollectiveOpGroupMode group_mode,
-      GetCollectiveOpGroupMode(op_params_.has_channel_id,
-                               op_params_.use_global_device_ids));
+  ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                   GetCollectiveOpGroupMode(op_params_.has_channel_id,
+                                            op_params_.use_global_device_ids));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<GlobalDeviceId> participating_devices,
       GetParticipatingDevices(params.global_device_id, device_assignment,
                               op_params_.group, group_mode));
@@ -212,16 +212,15 @@ Future<> CollectiveThunk::ExecuteWithCommunicator(
       << "Collectives interface is not set for collective operation";
 
   // Find out rendezvous key and rank in global devices for the current device.
-  TF_ASSIGN_OR_RETURN(RendezvousKey key, GetRendezvousKey(*params));
-  TF_ASSIGN_OR_RETURN(int32_t rank,
-                      RankInGlobalDevices(key, params->global_device_id));
+  ASSIGN_OR_RETURN(RendezvousKey key, GetRendezvousKey(*params));
+  ASSIGN_OR_RETURN(int32_t rank,
+                   RankInGlobalDevices(key, params->global_device_id));
 
   VLOG(3) << absl::StreamFormat("  rank=%d, key=%s", rank, key.ToString());
 
   CpuCliqueKey clique_key(key.global_devices);
-  TF_ASSIGN_OR_RETURN(
-      Communicator * communicator,
-      AcquireCommunicator(collectives, clique_key, RankId(rank)));
+  ASSIGN_OR_RETURN(Communicator * communicator,
+                   AcquireCommunicator(collectives, clique_key, RankId(rank)));
 
   return callback(key, *communicator);
 }

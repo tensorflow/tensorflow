@@ -263,4 +263,53 @@ TEST(GpuCliqueKeyTest, IsSubsetOfComparesIncarnations) {
   EXPECT_TRUE(key_with_incarnations2.IsSubsetOf(key_with_incarnations2));
 }
 
+TEST(GpuCliqueKeyTest, EqualityIncludesCommunicationId) {
+  GlobalDeviceId id0 = GlobalDeviceId(0);
+  GlobalDeviceId id1 = GlobalDeviceId(1);
+
+  GpuCliqueKey key0({id0, id1}, /*num_local_participants=*/2,
+                    CommunicationId(0));
+  GpuCliqueKey key1({id0, id1}, /*num_local_participants=*/2,
+                    CommunicationId(1));
+  GpuCliqueKey key2({id0, id1}, /*num_local_participants=*/2,
+                    CommunicationId(0));
+
+  EXPECT_NE(key0, key1);
+  EXPECT_EQ(key0, key2);
+}
+
+TEST(GpuCliqueKeyTest, CompareIncludesCommunicationId) {
+  GlobalDeviceId id0 = GlobalDeviceId(0);
+  GlobalDeviceId id1 = GlobalDeviceId(1);
+
+  GpuCliqueKey key0({id0, id1}, /*num_local_participants=*/2,
+                    CommunicationId(0));
+  GpuCliqueKey key1({id0, id1}, /*num_local_participants=*/2,
+                    CommunicationId(1));
+
+  EXPECT_LT(key0, key1);
+  EXPECT_GT(key1, key0);
+  EXPECT_FALSE(key0 > key1);
+  EXPECT_FALSE(key1 < key0);
+}
+
+TEST(GpuCliqueKeyTest, BtreeDistinguishesCommunicationId) {
+  GlobalDeviceId id0 = GlobalDeviceId(0);
+  GlobalDeviceId id1 = GlobalDeviceId(1);
+
+  GpuCliqueKey key0({id0, id1}, /*num_local_participants=*/2,
+                    CommunicationId(0));
+  GpuCliqueKey key1({id0, id1}, /*num_local_participants=*/2,
+                    CommunicationId(1));
+
+  absl::btree_map<GpuCliqueKey, int64_t, std::less<GpuCliqueKey>> map;
+  map[key0] = 0;
+  map[key1] = 1;
+
+  // Both keys should be present as separate entries.
+  EXPECT_EQ(map.size(), 2);
+  EXPECT_EQ(map[key0], 0);
+  EXPECT_EQ(map[key1], 1);
+}
+
 }  // namespace xla::gpu

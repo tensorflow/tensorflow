@@ -21,9 +21,11 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace stream_executor {
 namespace {
@@ -68,9 +70,11 @@ TEST(RocmComputeCapability, GfxVersion) {
 }
 
 TEST(RocmComputeCapability, IsSupportedGfxVersion) {
-  ASSERT_TRUE(RocmComputeCapability{"gfx900"}.is_supported_gfx_version());
+  ASSERT_FALSE(RocmComputeCapability{"gfx900"}.is_supported_gfx_version());
+  ASSERT_FALSE(RocmComputeCapability{"gfx906"}.is_supported_gfx_version());
   ASSERT_TRUE(RocmComputeCapability{"gfx1201"}.is_supported_gfx_version());
   ASSERT_TRUE(RocmComputeCapability{"gfx942"}.is_supported_gfx_version());
+  ASSERT_TRUE(RocmComputeCapability{"gfx1250"}.is_supported_gfx_version());
   ASSERT_FALSE(RocmComputeCapability{"some_string"}.is_supported_gfx_version());
 }
 
@@ -114,17 +118,26 @@ TEST(RocmComputeCapability, Accessors) {
   EXPECT_TRUE(RocmComputeCapability{"gfx12xx"}.gfx12());
   EXPECT_TRUE(RocmComputeCapability{"gfx12xxblabla"}.gfx12());
 
-  EXPECT_TRUE(RocmComputeCapability{"gfx12"}.fence_before_barrier());
-  EXPECT_TRUE(RocmComputeCapability{"anything"}.fence_before_barrier());
-  EXPECT_FALSE(RocmComputeCapability{"gfx900"}.fence_before_barrier());
-  EXPECT_FALSE(RocmComputeCapability{"gfx906"}.fence_before_barrier());
-
-  EXPECT_FALSE(RocmComputeCapability{"gfx900"}.has_hipblaslt());
   EXPECT_TRUE(RocmComputeCapability{"gfx942"}.has_hipblaslt());
   EXPECT_TRUE(RocmComputeCapability{"gfx90a"}.has_hipblaslt());
   EXPECT_TRUE(RocmComputeCapability{"gfx1200"}.has_hipblaslt());
   EXPECT_TRUE(RocmComputeCapability{"gfx1100"}.has_hipblaslt());
   EXPECT_TRUE(RocmComputeCapability{"gfx1103"}.has_hipblaslt());
+  EXPECT_TRUE(RocmComputeCapability{"gfx1250"}.has_hipblaslt());
+
+  EXPECT_FALSE(RocmComputeCapability{"gfx1250"}.has_nhwc_layout_support());
+  EXPECT_TRUE(RocmComputeCapability{"gfx1250"}.has_fast_fp16_support());
+  EXPECT_FALSE(RocmComputeCapability{"gfx1250"}.has_mfma_instr_support());
+  EXPECT_TRUE(
+      RocmComputeCapability{"gfx1250"}.has_packed_fp16_atomics_support());
+  EXPECT_TRUE(
+      RocmComputeCapability{"gfx1250"}.has_packed_bf16_atomics_support());
+  EXPECT_TRUE(RocmComputeCapability{"gfx1250"}.has_ocp_fp8_support());
+  EXPECT_TRUE(RocmComputeCapability{"gfx1250"}.has_mx_type_support());
+
+  EXPECT_TRUE(RocmComputeCapability{"gfx1250"}.has_tdm_support());
+  EXPECT_FALSE(RocmComputeCapability{"gfx942"}.has_tdm_support());
+  EXPECT_FALSE(RocmComputeCapability{"gfx1201"}.has_tdm_support());
 }
 
 TEST(GpuComputeCapability, ProtoConversion) {
@@ -134,8 +147,8 @@ TEST(GpuComputeCapability, ProtoConversion) {
       IsOkAndHolds(GpuComputeCapability(CudaComputeCapability::Volta())));
   EXPECT_THAT(
       GpuComputeCapability::FromProto(
-          GpuComputeCapability(RocmComputeCapability("gfx900")).ToProto()),
-      IsOkAndHolds(GpuComputeCapability(RocmComputeCapability("gfx900"))));
+          GpuComputeCapability(RocmComputeCapability("gfx908")).ToProto()),
+      IsOkAndHolds(GpuComputeCapability(RocmComputeCapability("gfx908"))));
 }
 
 TEST(ExecutionUnitDescription, ProtoConversion) {

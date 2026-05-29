@@ -71,7 +71,7 @@ class QuantizeTrainingTest : public ::testing::Test {
         return absl::OkStatus();
       }
     }
-    return errors::Unimplemented("Node ", name, " not found.");
+    return absl::UnimplementedError(absl::StrCat("Node ", name, " not found."));
   }
 
   std::unique_ptr<Graph> g_;

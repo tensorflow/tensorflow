@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/layout_util.h"
 #include "xla/service/compiler.h"
@@ -53,15 +54,14 @@ namespace {
 static absl::Status PopulateResultTupleBuffers(const ShapedBuffer& result,
                                                se::Stream* stream,
                                                se::Stream* transfer_stream) {
-  TF_ASSIGN_OR_RETURN(
-      auto transfer_manager,
-      TransferManager::GetForPlatform(stream->parent()->GetPlatform()));
+  ASSIGN_OR_RETURN(auto transfer_manager, TransferManager::GetForPlatform(
+                                              stream->parent()->GetPlatform()));
   if (transfer_manager->CanShapedBufferBeAccessedNow(stream->parent(),
                                                      result)) {
-    TF_RETURN_IF_ERROR(transfer_manager->WriteTupleIndexTablesAsync(
+    RETURN_IF_ERROR(transfer_manager->WriteTupleIndexTablesAsync(
         transfer_stream ? transfer_stream : stream, result));
     if (transfer_stream && transfer_stream != stream) {
-      TF_RETURN_IF_ERROR(stream->WaitFor(transfer_stream));
+      RETURN_IF_ERROR(stream->WaitFor(transfer_stream));
     }
     return absl::OkStatus();
   } else {
@@ -79,9 +79,9 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
     se::Stream* transfer_stream) {
   auto stream_exec = stream->parent();
   auto platform = stream_exec->GetPlatform();
-  TF_ASSIGN_OR_RETURN(auto transfer_manager,
-                      TransferManager::GetForPlatform(platform));
-  TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform->id()));
+  ASSIGN_OR_RETURN(auto transfer_manager,
+                   TransferManager::GetForPlatform(platform));
+  ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform->id()));
   auto shape_size_fn = compiler->ShapeSizeBytesFunction();
   auto device_ordinal = stream_exec->device_ordinal();
   VLOG(3) << "AllocateOutputMemoryWithInputReuse, device = " << device_ordinal
@@ -100,12 +100,13 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
   Shape device_shape = shape;
   xla::ShapeUtil::ForEachMutableSubshape(&device_shape, update_layout);
 
-  TF_RETURN_IF_ERROR(alias_config.ForEachAliasWithStatus(
+  RETURN_IF_ERROR(alias_config.ForEachAliasWithStatus(
       [&](const ShapeIndex& output_index,
           std::optional<HloInputOutputAliasConfig::Alias> alias)
           -> absl::Status {
         if (alias && alias->must_alias()) {
           VLOG(1) << alias->ToString();
+          TF_RET_CHECK(alias->parameter_number < arguments->size());
           const MaybeOwningDeviceAddress& original_input =
               (*arguments)[alias->parameter_number].Buffers().element(
                   alias->parameter_index);
@@ -185,7 +186,7 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
       const Shape& on_device_shape = result.Result().on_device_shape();
       const Shape& on_device_subshape =
           ShapeUtil::GetSubshape(on_device_shape, result_index);
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           auto allocated_buffer,
           allocator->Allocate(device_ordinal, allocation_bytes,
                               /*retry_on_failure=*/true,
@@ -201,7 +202,7 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
           << " parameter buffers (total result buffer size: "
           << total_result_buffer_bytes << ")";
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       PopulateResultTupleBuffers(result.Result(), stream, transfer_stream));
   return std::move(result);
 }
@@ -221,7 +222,7 @@ absl::StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
   const HloInputOutputAliasConfig& alias_config =
       !has_module() ? HloInputOutputAliasConfig()
                     : module().input_output_alias_config();
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       ExecutionOutput result,
       AllocateOutputMemoryWithInputReuse(
           shape, alias_config, run_options->allocator(), &arguments, stream,
@@ -233,7 +234,7 @@ absl::StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
   if (has_module()) {
     for (const auto& [parameter, index, offset] :
          module().CrossProgramPrefetches()) {
-      CHECK_LT(parameter, arguments.size());
+      TF_RET_CHECK(parameter < arguments.size());
       // Ensure the cross program prefetched buffer doesn't alias with any
       // program outputs. If the input and output aliased, the buffer could be
       // invalidated during program execution and the program could read stale
@@ -261,7 +262,7 @@ absl::StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
   // arguments.
   MarkToBeReleasedArguments(absl::MakeSpan(arguments), result);
 
-  TF_RETURN_IF_ERROR(LoadProgramAndEnqueueToStream(
+  RETURN_IF_ERROR(LoadProgramAndEnqueueToStream(
       *run_options, memory_bases, result.Result().root_buffer(),
       cross_program_prefetch_addrs, cross_program_prefetch_offsets));
   return std::move(result);

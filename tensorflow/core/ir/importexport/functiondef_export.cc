@@ -65,12 +65,13 @@ static absl::StatusOr<std::string> GetValueName(Value operand,
         FunctionOpInterface(block_operand.getParentBlock()->getParentOp()),
         arg_num - is_control);
     if (!arg_attrs)
-      return InvalidArgument("Missing attribute for argument #", arg_num);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Missing attribute for argument #", arg_num));
     StringAttr arg_name = arg_attrs.getAs<StringAttr>("tfg.name");
     if (!arg_name)
-      return InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Can't export graph with missing op-name for function parameter #",
-          arg_num);
+          arg_num));
     absl::StrAppend(&name, arg_name.getValue().str());
     return name;
   }
@@ -80,16 +81,19 @@ static absl::StatusOr<std::string> GetValueName(Value operand,
     producer = op_result.getDefiningOp();
   } else {
     if (!get_result)
-      return InvalidArgument("Missing get_result operation as input");
+      return absl::InvalidArgumentError(
+          "Missing get_result operation as input");
     producer = get_result.getValue().getDefiningOp();
     if (!producer)
-      return InvalidArgument("Expect a tfg operation as input to GetResultOp");
+      return absl::InvalidArgumentError(
+          "Expect a tfg operation as input to GetResultOp");
   }
 
   auto name_attr =
       producer->getAttrOfType<StringAttr>(TFGraphDialect::getNameAttrKey());
   if (!name_attr)
-    return InvalidArgument("Can't export graph with missing op-name");
+    return absl::InvalidArgumentError(
+        "Can't export graph with missing op-name");
 
   std::string name;
   if (is_control) name = "^";
@@ -108,7 +112,8 @@ static absl::StatusOr<std::string> GetValueName(Value operand,
 static Status ExportArgDef(OpDef::ArgDef *arg, DictionaryAttr arg_attrs,
                            FunctionDef::ArgAttrs *arg_def_attrs = nullptr) {
   StringAttr arg_name = arg_attrs.getAs<StringAttr>("tfg.name");
-  if (!arg_name) return InvalidArgument("Missing \"tfg.name\" attribute");
+  if (!arg_name)
+    return absl::InvalidArgumentError("Missing \"tfg.name\" attribute");
   arg->set_name(arg_name.getValue().str());
   StringAttr description = arg_attrs.getAs<StringAttr>("tfg.description");
   if (description) arg->set_description(description.getValue().str());
@@ -147,7 +152,7 @@ static Status ExportArgDef(OpDef::ArgDef *arg, DictionaryAttr arg_attrs,
 absl::StatusOr<FunctionDef> ConvertGenericFunctionToFunctionDef(
     GraphFuncOp func_op) {
   if (!func_op.getGeneric())
-    return InvalidArgument(
+    return absl::InvalidArgumentError(
         "Expected a generic function in ConvertGenericFunctionToFunctionDef");
   auto control_ty = tfg::ControlType::get(func_op.getContext());
   auto *tfg_dialect = cast<TFGraphDialect>(func_op->getDialect());
@@ -155,7 +160,8 @@ absl::StatusOr<FunctionDef> ConvertGenericFunctionToFunctionDef(
   FunctionDef fdef;
   for (Operation &op : func_op.SingleBlock::getBody()->without_terminator()) {
     if (op.getDialect() != tfg_dialect)
-      return InvalidArgument("Non tfg op encountered when exporting function");
+      return absl::InvalidArgumentError(
+          "Non tfg op encountered when exporting function");
 
     if (isa<GetResultOp>(&op)) continue;
 
@@ -177,7 +183,8 @@ absl::StatusOr<FunctionDef> ConvertGenericFunctionToFunctionDef(
       func_attr->set_name(attr.getName().str());
       DictionaryAttr dict_attr =
           mlir::dyn_cast<DictionaryAttr>(attr.getValue());
-      if (!dict_attr) return InvalidArgument("Expects dict attribute");
+      if (!dict_attr)
+        return absl::InvalidArgumentError("Expects dict attribute");
       if (StringAttr type = dict_attr.getAs<StringAttr>("function_type"))
         func_attr->set_type(type.getValue().str());
       if (Attribute default_value = dict_attr.get("default_value")) {
@@ -202,7 +209,7 @@ absl::StatusOr<FunctionDef> ConvertGenericFunctionToFunctionDef(
     for (Attribute attr : control_outputs) {
       StringAttr output = mlir::dyn_cast<StringAttr>(attr);
       if (!output)
-        return InvalidArgument(
+        return absl::InvalidArgumentError(
             "Can't export function with non-string \"control_output\" "
             "attribute entry");
       signature->add_control_output(output.getValue().str());
@@ -216,8 +223,9 @@ absl::StatusOr<FunctionDef> ConvertGenericFunctionToFunctionDef(
     if (arg_num % 2) continue;
     OpDef::ArgDef *arg = signature->add_input_arg();
     if (arg_num >= args_attr.size())
-      return InvalidArgument("Can't export function ", func_op.getName().str(),
-                             " because missing attributes for arg #", arg_num);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Can't export function ", func_op.getName().str(),
+                       " because missing attributes for arg #", arg_num));
     DictionaryAttr arg_attrs = mlir::cast<DictionaryAttr>(args_attr[arg_num]);
     FunctionDef::ArgAttrs func_def_arg_attrs;
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
@@ -241,15 +249,15 @@ absl::StatusOr<FunctionDef> ConvertGenericFunctionToFunctionDef(
   for (const auto &indexed_result : llvm::enumerate(return_op->getOperands())) {
     int res_num = indexed_result.index();
     if (res_num >= results_attr.size())
-      return InvalidArgument("Can't export function ", func_op.getName().str(),
-                             " because missing attributes for result #",
-                             res_num);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Can't export function ", func_op.getName().str(),
+                       " because missing attributes for result #", res_num));
     auto res_attrs = mlir::cast<DictionaryAttr>(results_attr[res_num]);
     auto name = res_attrs.getAs<StringAttr>("tfg.name");
     if (!name)
-      return InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Can't export function ", func_op.getName().str(),
-          " because missing \"tfg.name\" attribute for result #", res_num);
+          " because missing \"tfg.name\" attribute for result #", res_num));
 
     Value ret_val = indexed_result.value();
     if (ret_val.getType() == control_ty) {
@@ -283,16 +291,16 @@ absl::StatusOr<FunctionDef> ConvertGenericFunctionToFunctionDef(
     auto unique_ids_values = func_op->getAttrOfType<DenseIntElementsAttr>(
         "resource_arg_unique_ids_values");
     if (!unique_ids_values)
-      return InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Can't export function ", func_name,
           " because \"resource_arg_unique_ids_keys\" attribute is present "
           "but "
-          "\"resource_arg_unique_ids_values\" is missing");
+          "\"resource_arg_unique_ids_values\" is missing"));
     if (unique_ids_keys.size() != unique_ids_values.size())
-      return InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Can't export function ", func_name,
           " because \"resource_arg_unique_ids_keys\" array does not have the "
-          "same size as \"resource_arg_unique_ids_values\"");
+          "same size as \"resource_arg_unique_ids_values\""));
 
     auto *unique_ids_map = fdef.mutable_resource_arg_unique_id();
     for (auto key_value : llvm::zip(unique_ids_keys.getValues<int32_t>(),

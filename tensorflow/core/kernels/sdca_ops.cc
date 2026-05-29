@@ -81,9 +81,9 @@ struct ComputeOptions {
     } else if (loss_type == "poisson_loss") {
       loss_updater.reset(new PoissonLossUpdater);
     } else {
-      OP_REQUIRES(
-          context, false,
-          errors::InvalidArgument("Unsupported loss type: ", loss_type));
+      OP_REQUIRES(context, false,
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Unsupported loss type: ", loss_type)));
     }
     auto s = context->GetAttr("adaptative", &adaptive);
     if (!s.ok()) {
@@ -98,13 +98,13 @@ struct ComputeOptions {
                    context->GetAttr("num_dense_features", &num_dense_features));
     OP_REQUIRES(
         context, num_sparse_features + num_dense_features > 0,
-        errors::InvalidArgument("Requires at least one feature to train."));
+        absl::InvalidArgumentError("Requires at least one feature to train."));
 
     OP_REQUIRES(context,
                 static_cast<int64_t>(num_sparse_features) +
                         static_cast<int64_t>(num_dense_features) <=
                     std::numeric_limits<int>::max(),
-                errors::InvalidArgument(absl::StrFormat(
+                absl::InvalidArgumentError(absl::StrFormat(
                     "Too many feature groups: %d > %d",
                     static_cast<int64_t>(num_sparse_features) +
                         static_cast<int64_t>(num_dense_features),
@@ -143,17 +143,18 @@ void DoCompute(const ComputeOptions& options, OpKernelContext* const context) {
   const Tensor* example_state_data_t;
   OP_REQUIRES_OK(context,
                  context->input("example_state_data", &example_state_data_t));
-  OP_REQUIRES(
-      context, TensorShapeUtils::IsMatrix(example_state_data_t->shape()),
-      errors::InvalidArgument("example_state_data must be rank 2 but is rank ",
-                              example_state_data_t->dims()));
+  OP_REQUIRES(context,
+              TensorShapeUtils::IsMatrix(example_state_data_t->shape()),
+              absl::InvalidArgumentError(
+                  absl::StrCat("example_state_data must be rank 2 but is rank ",
+                               example_state_data_t->dims())));
   TensorShape expected_example_state_shape({examples.num_examples(), 4});
   OP_REQUIRES(context,
               example_state_data_t->shape() == expected_example_state_shape,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "Expected shape ", expected_example_state_shape.DebugString(),
                   " for example_state_data, got ",
-                  example_state_data_t->shape().DebugString()));
+                  example_state_data_t->shape().DebugString())));
 
   Tensor mutable_example_state_data_t(*example_state_data_t);
   auto example_state_data = mutable_example_state_data_t.matrix<float>();
@@ -311,8 +312,9 @@ class SdcaFprint : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
     OP_REQUIRES(context, TensorShapeUtils::IsVector(input.shape()),
-                errors::InvalidArgument("Input must be a vector, got shape ",
-                                        input.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input must be a vector, got shape ",
+                                 input.shape().DebugString())));
     Tensor* out;
     const int64_t num_elements = input.NumElements();
     OP_REQUIRES_OK(context, context->allocate_output(

@@ -662,7 +662,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     };
 
     void CancelThreads() TF_LOCKS_EXCLUDED(mu_) {
-      cancellation_manager_->StartCancel();
+      if (cancellation_manager_ != nullptr) {
+        cancellation_manager_->StartCancel();
+      }
       mutex_lock l(mu_);
       cancelled_ = true;
       for (auto& worker : workers_) {

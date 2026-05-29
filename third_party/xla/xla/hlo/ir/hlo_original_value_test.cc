@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_original_value.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -22,6 +23,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
 #include "absl/hash/hash_testing.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_original_value_util.h"
@@ -460,6 +462,28 @@ ENTRY main {
 
   EXPECT_NE(gte->original_value(), nullptr);
   EXPECT_EQ(gte->original_value()->ToString(), R"({"p0"})");
+}
+
+TEST_F(OriginalValueHloTest, CopyOriginalValueWithMap) {
+  auto src_original_value = std::make_shared<OriginalValue>(Node::Tuple({
+      Node::Leaf(OriginalArray{"instA", {0}}),
+      Node::Leaf(OriginalArray{"instB", {1}}),
+      Node::Leaf(OriginalArray{"instC", {2}}),
+  }));
+
+  auto dest_original_value =
+      std::make_shared<OriginalValue>(ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShape(F32, {}), ShapeUtil::MakeShape(F32, {})}));
+
+  absl::flat_hash_map<int64_t, int64_t> old_to_new_tuple_idx = {{2, 0}, {0, 1}};
+
+  CopyOriginalValue(src_original_value, dest_original_value,
+                    old_to_new_tuple_idx);
+
+  EXPECT_THAT(dest_original_value->original_array({0}),
+              Optional(Eq(OriginalArray{"instC", {2}})));
+  EXPECT_THAT(dest_original_value->original_array({1}),
+              Optional(Eq(OriginalArray{"instA", {0}})));
 }
 
 }  // namespace

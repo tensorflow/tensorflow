@@ -25,6 +25,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "tensorflow/cc/framework/ops.h"
@@ -45,7 +46,9 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
+#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
+#include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/graph_executor/config.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
@@ -449,6 +452,53 @@ TEST_P(GraphExecutorTest, Cancellation) {
 
 INSTANTIATE_TEST_SUITE_P(GraphExecutorTestSuite, GraphExecutorTest,
                          ::testing::Bool());
+
+TEST_F(GraphExecutorTest, CreateRequestInfoPopulatesRpcCancellationOptions) {
+  GraphDef graph_def;
+  TF_ASSERT_OK(GetSimpleGraphDef(graph_def));
+
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+  GraphExecutor::Options options(runtime.get());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::Create(
+          CreateDefaultSessionOptions(options), graph_def.library()));
+
+  auto resource_context = std::make_unique<tfrt::ResourceContext>();
+  auto client_graph_resource_context =
+      std::make_unique<tfrt::ResourceContext>();
+  OpKernelRunnerTable runner_table;
+  tfd::FallbackResourceArray resource_array;
+
+  GraphExecutionRunOptions run_options;
+  absl::Time now = absl::Now();
+  run_options.rpc_deadline_for_batching_task_cancellation = now;
+  bool is_cancelled = false;
+  run_options.is_rpc_cancelled_callback = [&is_cancelled]() {
+    return is_cancelled;
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto request_info,
+      CreateRequestInfo(
+          options, run_options, /*work_queue=*/nullptr, resource_context.get(),
+          client_graph_resource_context.get(), &runner_table, &resource_array,
+          *fallback_state, fallback_state->process_function_library_runtime()));
+
+  ASSERT_NE(request_info->tfrt_request_context, nullptr);
+  const auto* fallback_request_state =
+      request_info->tfrt_request_context
+          ->GetDataIfExists<tfd::KernelFallbackCompatRequestState>();
+  ASSERT_NE(fallback_request_state, nullptr);
+
+  EXPECT_EQ(
+      fallback_request_state->rpc_deadline_for_batching_task_cancellation(),
+      now);
+  EXPECT_FALSE(fallback_request_state->is_rpc_cancelled_callback()());
+  is_cancelled = true;
+  EXPECT_TRUE(fallback_request_state->is_rpc_cancelled_callback()());
+}
 
 TEST_F(GraphExecutorTest, Extend) {
   GraphDef graph_def;

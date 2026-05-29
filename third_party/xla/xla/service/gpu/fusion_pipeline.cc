@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/conv_fusion_rewriter.h"
 #include "xla/backends/gpu/transforms/multi_output_fusion.h"
 #include "xla/backends/gpu/transforms/priority_fusion.h"
+#include "xla/backends/gpu/transforms/ragged_dot_fusion_rewriter.h"
 #include "xla/backends/gpu/transforms/sort_iota_fusion.h"
 #include "xla/backends/gpu/transforms/variadic_op_splitter.h"
 #include "xla/hlo/ir/hlo_computation.h"

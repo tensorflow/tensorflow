@@ -98,8 +98,9 @@ INSTANTIATE_TEST_SUITE_P(VersionTest, PtxVersionFromCudaVersionTest,
                          }),
                          [](::testing::TestParamInfo<VersionPair> data) {
                            se::SemanticVersion cuda_version = data.param.first;
-                           return absl::StrCat("cuda_", cuda_version.major(),
-                                               "_", cuda_version.minor());
+                           return absl::StrCat(
+                               "cuda_", cuda_version.major_version(), "_",
+                               cuda_version.minor_version());
                          });
 
 }  // namespace

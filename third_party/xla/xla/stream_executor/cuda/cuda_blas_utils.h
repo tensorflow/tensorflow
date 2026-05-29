@@ -16,15 +16,15 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_BLAS_UTILS_H_
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_BLAS_UTILS_H_
 
-
 #include "absl/status/status.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "third_party/gpus/cuda/include/library_types.h"
 #include "xla/stream_executor/blas.h"
 #include "tsl/platform/errors.h"
 
 #define SE_CUBLAS_RETURN_IF_ERROR(expr) \
-  TF_RETURN_IF_ERROR(::stream_executor::cuda::ToStatus(expr, #expr))
+  RETURN_IF_ERROR(::stream_executor::cuda::ToStatus(expr, #expr))
 
 namespace stream_executor {
 namespace cuda {

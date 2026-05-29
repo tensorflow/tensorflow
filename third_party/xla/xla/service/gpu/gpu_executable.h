@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -29,7 +30,6 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -52,19 +52,24 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
+#include "xla/service/stream_pool.h"
+#include "xla/service/xla_debug_info_manager.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/kernel_stats.h"
 #include "xla/stream_executor/memory_reservation.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/scoped_module_handle.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla.pb.h"
 
@@ -78,6 +83,11 @@ namespace gpu {
 // This is an immutable data type after initialization, and thus thread safe.
 class GpuExecutable : public Executable {
  public:
+  struct NumAdditionalStreams {
+    int compute = 0;
+    int communication = 0;
+  };
+
   struct ConstantInfo {
     std::string symbol_name;
     DenseDataIntermediate content;
@@ -132,8 +142,9 @@ class GpuExecutable : public Executable {
     std::unique_ptr<HloModule> debug_module = nullptr;
     bool enable_debug_info_manager = true;
     ModuleStats module_stats;
-    stream_executor::ExecutableAbiVersion executable_abi_version;
+    se::ExecutableAbiVersion executable_abi_version;
     std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options;
+    std::optional<BufferAssignmentProto> buffer_assignment_proto;
   };
 
   static absl::StatusOr<std::unique_ptr<GpuExecutable>> Create(Params params);
@@ -202,9 +213,17 @@ class GpuExecutable : public Executable {
 
   const std::vector<ConstantInfo>& constants() const { return constants_; }
 
+  // Only returns a non-null pointer if this executable was constructed with a
+  // valid BufferAssignment. Deserialized executables do not have a valid
+  // BufferAssignment and will return nullptr.
   const BufferAssignment* buffer_assignment() const {
     return buffer_assignment_.get();
   }
+
+  // Returns the proto representation of `buffer_assignment()` if available,
+  // otherwise returns the stored buffer assignment proto if available. Returns
+  // nullopt if neither is available.
+  std::optional<BufferAssignmentProto> buffer_assignment_proto() const;
 
   const GpuAliasInfo* alias_info() const { return alias_info_.get(); }
 
@@ -227,7 +246,7 @@ class GpuExecutable : public Executable {
   // the given stream, it is skipped and the cached map is immediately returned
   // instead.
   absl::StatusOr<const BufferAllocToDeviceMemoryMap*> ResolveConstantGlobals(
-      stream_executor::Stream* stream);
+      se::Stream* stream);
 
   absl::Status VerboseAllocationError(absl::Status s);
 
@@ -235,7 +254,7 @@ class GpuExecutable : public Executable {
       const GpuExecutableProto&,
       const se::DeviceDescription& device_description,
       absl::string_view platform, DebugOptions debug_options,
-      const std::optional<stream_executor::KernelLoaderSpec::SymbolResolver>&
+      const std::optional<se::KernelLoaderSpec::SymbolResolver>&
           symbol_resolver = std::nullopt);
 
   absl::StatusOr<GpuExecutableProto> ToProto() const;
@@ -244,8 +263,8 @@ class GpuExecutable : public Executable {
       const ExecutableBuildOptions& options,
       const DebugOptions& debug_options) const final;
 
-  absl::StatusOr<stream_executor::ExecutableAbiVersion>
-  GetExecutableAbiVersion() const override {
+  absl::StatusOr<se::ExecutableAbiVersion> GetExecutableAbiVersion()
+      const override {
     return executable_abi_version_;
   }
 
@@ -275,6 +294,15 @@ class GpuExecutable : public Executable {
     std::optional<se::MemoryReservation::ScopedMapping> scoped_mapping;
   };
 
+  // Additional streams borrowed at run time for the execution.
+  struct BorrowedStreams {
+    std::vector<se::Stream*> streams;
+    std::vector<StreamPool::Ptr> owners;
+
+    // Assigns `stream` to all requested stream slots.
+    static BorrowedStreams Assign(se::Stream* stream, int num_streams);
+  };
+
   // Use GpuExecutable::Create() to create an instance.
   explicit GpuExecutable(
       std::unique_ptr<HloModule> debug_module, std::string asm_text,
@@ -290,8 +318,9 @@ class GpuExecutable : public Executable {
       absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
       bool enable_debug_info_manager, ModuleStats module_stats,
       absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto,
-      stream_executor::ExecutableAbiVersion executable_abi_version,
-      std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options);
+      se::ExecutableAbiVersion executable_abi_version,
+      std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
+      std::optional<BufferAssignmentProto> buffer_assignment_proto);
 
   // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.
@@ -313,14 +342,29 @@ class GpuExecutable : public Executable {
       const absl::flat_hash_map<LogicalBuffer::Color, int64_t>&
           allocate_granularity);
 
+  static absl::StatusOr<BorrowedStreams> BorrowStreams(
+      const ServiceExecutableRunOptions& run_options, int device_ordinal,
+      int num_streams, se::StreamPriority priority);
+
   // Handles the VA remapping path of ExecuteThunks: reserves or remaps the
   // virtual address range for command buffer allocations, then delegates to
   // ExecuteThunksImpl with the remapped BufferAllocations.
   absl::Status ExecuteThunksWithVaRemapping(
       const BufferAllocations& buffer_allocations,
       const ServiceExecutableRunOptions* run_options,
-      stream_executor::StreamExecutor* executor, int64_t unique_id,
-      Thunk::ExecutableSource executable_source, bool block_host_until_done);
+      se::StreamExecutor* executor, int64_t unique_id,
+      Thunk::ExecutableSource executable_source, bool block_host_until_done,
+      bool collective_use_minimal_resource);
+
+  static absl::Status ExecuteThunksImpl(
+      const DebugOptions* debug_options, const std::string& module_name,
+      ModuleIdentifier module_id, ThunkExecutor& thunk_executor,
+      Thunk::ExecutableSource executable_source,
+      const ServiceExecutableRunOptions* run_options,
+      const BufferAllocations& buffer_allocations, bool block_host_until_done,
+      NumAdditionalStreams num_additional_streams,
+      CollectiveMemoryCache& collective_memory_cache,
+      bool collective_use_minimal_resource);
 
   // The LLVM IR, in string format, of the unoptimized module generated for
   // this GpuExecutable. We save a string instead of an llvm::Module* because
@@ -348,8 +392,8 @@ class GpuExecutable : public Executable {
   // ThunkEmitter.
   std::unique_ptr<ThunkExecutor> thunk_executor_;
 
-  // Number of additional compute streams requested by `AsyncStartThunks`.
-  int64_t num_additional_compute_streams_;
+  // Number of additional streams available at run time.
+  NumAdditionalStreams num_additional_streams_;
 
   std::string module_name_;
 
@@ -382,6 +426,12 @@ class GpuExecutable : public Executable {
   // This object is also used for dumping debug info.
   std::shared_ptr<const xla::BufferAssignment> buffer_assignment_;
 
+  // A buffer assignment proto may exists when `buffer_assignment_` is nullptr.
+  // This happens when the executable is reconstructed from a proto (e.g. AOT).
+  // The full BufferAssignment object can't be reconstructed because it requires
+  // access to the compiler. But for debugging purposes, the proto is enough.
+  std::optional<BufferAssignmentProto> buffer_assignment_proto_;
+
   // Extra allocations added by thunk passes outside of the normal buffer
   // assignment process.
   // std::deque is used to ensure pointer stability.
@@ -403,17 +453,16 @@ class GpuExecutable : public Executable {
   absl::Mutex module_handle_mutex_;
   // Cache of module handles. Required to keep loaded modules alive until this
   // executable is destroyed.
-  absl::flat_hash_map<stream_executor::StreamExecutor*, se::ScopedModuleHandle>
+  absl::flat_hash_map<se::StreamExecutor*, se::ScopedModuleHandle>
       module_handles_ ABSL_GUARDED_BY(module_handle_mutex_);
   // Cache of constant buffer allocation maps used by `ResolveConstantGlobals`.
-  absl::flat_hash_map<stream_executor::StreamExecutor*,
+  absl::flat_hash_map<se::StreamExecutor*,
                       std::unique_ptr<BufferAllocToDeviceMemoryMap>>
       module_globals_ ABSL_GUARDED_BY(module_handle_mutex_);
 
   // Cache previous memory allocations for current module, this is used to help
   // identify if user's model have unstable pointers by turning on VLOG(5).
-  absl::flat_hash_map<stream_executor::StreamExecutor*,
-                      std::vector<se::DeviceAddressBase>>
+  absl::flat_hash_map<se::StreamExecutor*, std::vector<se::DeviceAddressBase>>
       module_allocations_ ABSL_GUARDED_BY(module_handle_mutex_);
 
   std::vector<ConstantInfo> constants_;
@@ -427,7 +476,7 @@ class GpuExecutable : public Executable {
   // Separate mutex for VA ranges to avoid contention with module_handle_mutex_
   // during VA remapping operations which may involve GPU synchronization.
   absl::Mutex va_ranges_mutex_;
-  absl::node_hash_map<stream_executor::StreamExecutor*, VaRanges>
+  absl::node_hash_map<std::pair<se::StreamExecutor*, int>, VaRanges>
       module_va_ranges_ ABSL_GUARDED_BY(va_ranges_mutex_);
 
   GpuExecutable(const GpuExecutable&) = delete;
@@ -437,7 +486,7 @@ class GpuExecutable : public Executable {
   // Might contain an error if the given thunk graph is not serializable.
   absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto_;
 
-  stream_executor::ExecutableAbiVersion executable_abi_version_;
+  se::ExecutableAbiVersion executable_abi_version_;
 
   std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options_;
 

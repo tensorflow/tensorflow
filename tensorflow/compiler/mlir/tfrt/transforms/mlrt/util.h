@@ -22,7 +22,7 @@ namespace mlrt_compiler {
 
 // Use fallback by default for anything that does not have a native kernel
 // with some exceptions.
-bool UseFallback(mlir::Operation *op);
+bool UseFallback(mlir::Operation* op);
 
 }  // namespace mlrt_compiler
 }  // namespace tensorflow

@@ -56,7 +56,7 @@ class BucketizeOp : public OpKernel {
   explicit BucketizeOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("boundaries", &boundaries_));
     OP_REQUIRES(context, std::is_sorted(boundaries_.begin(), boundaries_.end()),
-                errors::InvalidArgument("Expected sorted boundaries"));
+                absl::InvalidArgumentError("Expected sorted boundaries"));
   }
 
   void Compute(OpKernelContext* context) override {

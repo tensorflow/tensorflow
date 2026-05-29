@@ -23,7 +23,7 @@ exports_files(["LICENSE.txt"])
 
 NCCL_MAJOR = 2
 
-NCCL_MINOR = 27
+NCCL_MINOR = 29
 
 NCCL_PATCH = 7
 

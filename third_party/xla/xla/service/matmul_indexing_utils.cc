@@ -18,6 +18,7 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -29,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -103,9 +105,9 @@ absl::StatusOr<int64_t> ContractingDimensionIndex(const HloInstruction& dot,
 
 absl::StatusOr<int64_t> NonContractingDimensionIndex(const HloInstruction& dot,
                                                      const int operand_number) {
-  TF_ASSIGN_OR_RETURN(int64_t contracting_dim,
-                      ContractingDimensionIndex(dot, operand_number));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(int64_t contracting_dim,
+                   ContractingDimensionIndex(dot, operand_number));
+  ASSIGN_OR_RETURN(
       std::vector<int64_t> non_contracting_dims,
       GetNonContractingDims(dot.operand(operand_number)->shape(),
                             BatchDimensionsForOperand(dot, operand_number),
@@ -128,23 +130,23 @@ DotOperandDims::DotOperandDims(Shape shape,
 
 absl::StatusOr<std::array<DotOperandDims, 2>> DotOperandDims::FromDot(
     const HloInstruction* dot) {
-  TF_ASSIGN_OR_RETURN(auto lhs_dims, FromDotOperand(dot, 0));
-  TF_ASSIGN_OR_RETURN(auto rhs_dims, FromDotOperand(dot, 1));
+  ASSIGN_OR_RETURN(auto lhs_dims, FromDotOperand(dot, 0));
+  ASSIGN_OR_RETURN(auto rhs_dims, FromDotOperand(dot, 1));
   return std::array<DotOperandDims, 2>{lhs_dims, rhs_dims};
 }
 
 absl::StatusOr<std::array<DotOperandDims, 4>> DotOperandDims::FromScaledDot(
     const HloInstruction* scaled_dot) {
-  TF_ASSIGN_OR_RETURN(auto lhs_dims, FromDotOperand(scaled_dot, 0));
+  ASSIGN_OR_RETURN(auto lhs_dims, FromDotOperand(scaled_dot, 0));
   DotOperandDims lhs_scale_dims;
   if (!ShapeUtil::IsScalar(scaled_dot->operand(2)->shape())) {
-    TF_ASSIGN_OR_RETURN(lhs_scale_dims, FromDotOperand(scaled_dot, 2));
+    ASSIGN_OR_RETURN(lhs_scale_dims, FromDotOperand(scaled_dot, 2));
   }
 
-  TF_ASSIGN_OR_RETURN(auto rhs_dims, FromDotOperand(scaled_dot, 1));
+  ASSIGN_OR_RETURN(auto rhs_dims, FromDotOperand(scaled_dot, 1));
   DotOperandDims rhs_scale_dims;
   if (!ShapeUtil::IsScalar(scaled_dot->operand(3)->shape())) {
-    TF_ASSIGN_OR_RETURN(rhs_scale_dims, FromDotOperand(scaled_dot, 3));
+    ASSIGN_OR_RETURN(rhs_scale_dims, FromDotOperand(scaled_dot, 3));
   }
 
   return std::array<DotOperandDims, 4>{lhs_dims, rhs_dims, lhs_scale_dims,
@@ -157,9 +159,8 @@ absl::StatusOr<DotOperandDims> DotOperandDims::FromDotOperand(
   const auto& batch_dims = BatchDimensionsForOperand(*dot, operand_number);
   const auto& contracting_dims =
       ContractingDimensionsForOperand(*dot, operand_number);
-  TF_ASSIGN_OR_RETURN(
-      std::vector<int64_t> non_contracting_dims,
-      GetNonContractingDims(shape, batch_dims, contracting_dims));
+  ASSIGN_OR_RETURN(std::vector<int64_t> non_contracting_dims,
+                   GetNonContractingDims(shape, batch_dims, contracting_dims));
   return DotOperandDims(shape, batch_dims, non_contracting_dims,
                         contracting_dims);
 }
@@ -219,8 +220,8 @@ absl::StatusOr<Shape> DotOperandDims::ComputeOutputShape(
           operand.shape_.is_dynamic_dimension(nc_dim));
     }
   }
-  TF_ASSIGN_OR_RETURN(Shape output_shape, ShapeUtil::MakeValidatedShape(
-                                              element_type, output_dimensions));
+  ASSIGN_OR_RETURN(Shape output_shape, ShapeUtil::MakeValidatedShape(
+                                           element_type, output_dimensions));
   for (int64_t i = 0; i < output_dynamic_dimensions.size(); ++i) {
     output_shape.set_dynamic_dimension(i, output_dynamic_dimensions[i]);
   }
@@ -299,8 +300,9 @@ absl::Status DotOperandDims::EraseDimensions(int64_t start, int64_t end) {
   return absl::OkStatus();
 }
 
-absl::Status DotOperandDims::InsertDimension(Category category, int64_t dim_idx,
-                                             int64_t dim_size) {
+absl::StatusOr<int64_t> DotOperandDims::InsertDimension(
+    Category category, int64_t dim_idx, int64_t dim_size,
+    std::optional<int64_t> insert_at_idx) {
   TF_RET_CHECK(dim_idx >= 0);
   TF_RET_CHECK(dim_idx <= shape_.dimensions().size());
   shape_ = ShapeUtil::InsertDimensionAtIndex(shape_, dim_idx, dim_size);
@@ -311,12 +313,23 @@ absl::Status DotOperandDims::InsertDimension(Category category, int64_t dim_idx,
       }
     }
   }
-  // Insert before the first dimension with index >= dim_idx, to keep sorted
-  // dimensions list sorted.
-  auto iter = absl::c_find_if(dim_numbers_[category],
-                              [&](int64_t dim) { return dim >= dim_idx; });
-  dim_numbers_[category].insert(iter, dim_idx);
-  return absl::OkStatus();
+
+  int64_t index_within_category;
+  if (insert_at_idx.has_value()) {
+    index_within_category = *insert_at_idx;
+    TF_RET_CHECK(index_within_category >= 0 &&
+                 index_within_category <= dim_numbers_[category].size());
+    dim_numbers_[category].insert(
+        dim_numbers_[category].begin() + index_within_category, dim_idx);
+  } else {
+    // Insert before the first dimension with index >= dim_idx, to keep sorted
+    // dimensions list sorted.
+    auto iter = absl::c_find_if(dim_numbers_[category],
+                                [&](int64_t dim) { return dim >= dim_idx; });
+    index_within_category = std::distance(dim_numbers_[category].begin(), iter);
+    dim_numbers_[category].insert(iter, dim_idx);
+  }
+  return index_within_category;
 }
 
 absl::Status DotOperandDims::UpdateShape(const Shape& new_shape) {

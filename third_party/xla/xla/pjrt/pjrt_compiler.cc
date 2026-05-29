@@ -21,9 +21,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/attributes.h"
-#include "absl/base/casts.h"
-#include "absl/base/const_init.h"
 #include "absl/base/no_destructor.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -33,14 +30,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "mlir/IR/BuiltinOps.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/proto/pjrt_partial_program.pb.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/casts.h"
 
 namespace xla {
 
@@ -115,7 +111,7 @@ absl::StatusOr<PjRtCompiler*> PjRtCompilerRegistry::GetOrCreateCompiler(
   }
 
   // Create the compiler using the factory.
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtCompiler> compiler, factory());
+  ASSIGN_OR_RETURN(std::unique_ptr<PjRtCompiler> compiler, factory());
   auto* compiler_ptr = compiler.get();
 
   {
@@ -148,7 +144,7 @@ absl::Status PjRtCompilerRegistry::InitializeAllVariants() {
   }
 
   for (const auto& key : keys) {
-    TF_RETURN_IF_ERROR(InitializeVariant(key.first, key.second));
+    RETURN_IF_ERROR(InitializeVariant(key.first, key.second));
   }
   return absl::OkStatus();
 }
@@ -177,13 +173,6 @@ void PjRtRegisterDefaultCompiler(absl::string_view platform_name,
       /*variant_name=*/"", std::move(compiler)));
 }
 
-void PjRtRegisterCompiler(absl::string_view platform_name,
-                          absl::string_view compiler_variant,
-                          std::unique_ptr<PjRtCompiler> compiler) {
-  CHECK_OK(PjRtCompilerRegistry::Global().RegisterCompiler(
-      platform_name, compiler_variant, std::move(compiler)));
-}
-
 absl::StatusOr<PjRtCompiler*> GetDefaultPjRtCompiler(
     absl::string_view platform_name) {
   return PjRtCompilerRegistry::Global().GetCompiler(platform_name,
@@ -192,10 +181,8 @@ absl::StatusOr<PjRtCompiler*> GetDefaultPjRtCompiler(
 
 absl::StatusOr<PjRtPhaseCompiler*> GetDefaultPjRtPhaseCompiler(
     absl::string_view platform) {
-  TF_ASSIGN_OR_RETURN(PjRtCompiler * compiler,
-                      GetDefaultPjRtCompiler(platform));
-  PjRtPhaseCompiler* phase_compiler =
-      tensorflow::down_cast<PjRtPhaseCompiler*>(compiler);
+  ASSIGN_OR_RETURN(PjRtCompiler * compiler, GetDefaultPjRtCompiler(platform));
+  PjRtPhaseCompiler* phase_compiler = compiler->AsPhaseCompiler();
   if (phase_compiler == nullptr) {
     return absl::InvalidArgumentError(
         absl::StrCat("The compiler for platform ", platform,
@@ -224,8 +211,8 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
   auto compiler_variant = options.compiler_variant.value_or("");
   std::pair<std::string, std::string> key{std::string(platform_name),
                                           std::string(compiler_variant)};
-  TF_ASSIGN_OR_RETURN(PjRtCompiler * compiler,
-                      GetPjRtCompiler(platform_name, compiler_variant));
+  ASSIGN_OR_RETURN(PjRtCompiler * compiler,
+                   GetPjRtCompiler(platform_name, compiler_variant));
   return compiler->Compile(std::move(options), computation, topology, client);
 }
 
@@ -238,8 +225,8 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
   }
   auto platform_name = topology.platform_name();
   auto compiler_variant = options.compiler_variant.value_or("");
-  TF_ASSIGN_OR_RETURN(PjRtCompiler * compiler,
-                      GetPjRtCompiler(platform_name, compiler_variant));
+  ASSIGN_OR_RETURN(PjRtCompiler * compiler,
+                   GetPjRtCompiler(platform_name, compiler_variant));
   return compiler->Compile(std::move(options), std::move(module), topology,
                            client);
 }
@@ -285,7 +272,7 @@ PjRtPhaseCompiler::RunPhases(
     }
 
     // Validate (plugin specific) the input programs.
-    auto validation_status = it->second.validator(programs);
+    auto validation_status = it->second.validator(options, programs);
     if (!validation_status.ok()) {
       return validation_status;
     }
@@ -299,6 +286,11 @@ PjRtPhaseCompiler::RunPhases(
   }
 
   return programs;
+}
+
+absl::Span<const int> PjRtTopologyDescription::GetMemorySpaceKindIds() const {
+  static const int kDefaultMemorySpaceKindIds[] = {-1};
+  return absl::MakeConstSpan(kDefaultMemorySpaceKindIds);
 }
 
 }  // namespace xla

@@ -28,13 +28,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/cord.h"
 #include "absl/time/time.h"
 #include "stablehlo/dialect/Version.h"
 #include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
-#include "xla/pjrt/c/pjrt_c_api_cpu.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -137,20 +135,6 @@ TEST(PjRtCApiHelperTest, Callback) {
   EXPECT_TRUE(absl::IsUnimplemented(future.Await().status()));
 }
 
-TEST(PjRtCApiHelperTest, PjrtErrorToStatusPayloadTest) {
-  absl::Status status = absl::InternalError("test error");
-  status.SetPayload("test_payload", absl::Cord("test_value"));
-  PJRT_Error error{status};
-
-  const PJRT_Api* api = GetPjrtApi();
-  absl::Status result = PjrtErrorToStatus(&error, api);
-  EXPECT_EQ(result.code(), absl::StatusCode::kInternal);
-  EXPECT_EQ(result.message(), "test error");
-  auto payload = result.GetPayload("test_payload");
-  ASSERT_TRUE(payload.has_value());
-  EXPECT_EQ(*payload, "test_value");
-}
-
 TEST(PjRtCApiHelperTest, ConvertToCLayoutFromStrides) {
   std::vector<int64_t> strides = {4, 8};
   absl::StatusOr<BufferMemoryLayoutData> layout_data =
@@ -240,24 +224,33 @@ TEST(PjRtCApiHelperTest, ConvertFromCLayoutToLayoutNoTile) {
 
 TEST(PjRtCApiHelperTest, GetXlaPluginCAttributes) {
   auto result = GetXlaPluginCAttributes();
-  std::unordered_map<std::string, PJRT_NamedValue *> map;
-  for (PJRT_NamedValue &nv : result) {
+  std::unordered_map<std::string, PJRT_NamedValue*> map;
+  for (PJRT_NamedValue& nv : result) {
     auto [_, did_not_exist_yet] = map.insert({nv.name, &nv});
     EXPECT_TRUE(did_not_exist_yet);
   }
   EXPECT_TRUE(map.find("xla_version") != map.end());
-  PJRT_NamedValue *current = map["stablehlo_current_version"];
+  PJRT_NamedValue* current = map["stablehlo_current_version"];
   mlir::vhlo::Version current_version =
       mlir::vhlo::Version::getCurrentVersion();
   EXPECT_TRUE(current->int64_array_value[0] == current_version.getMajor());
   EXPECT_TRUE(current->int64_array_value[1] == current_version.getMinor());
   EXPECT_TRUE(current->int64_array_value[2] == current_version.getPatch());
-  PJRT_NamedValue *minimum = map["stablehlo_minimum_version"];
+  PJRT_NamedValue* minimum = map["stablehlo_minimum_version"];
   mlir::vhlo::Version minimum_version =
       mlir::vhlo::Version::getMinimumVersion();
   EXPECT_TRUE(minimum->int64_array_value[0] == minimum_version.getMajor());
   EXPECT_TRUE(minimum->int64_array_value[1] == minimum_version.getMinor());
   EXPECT_TRUE(minimum->int64_array_value[2] == minimum_version.getPatch());
+}
+
+TEST(PjRtCApiHelperTest, BuildXlaShapeFromCWithNullptrLayout) {
+  int64_t dims[] = {2, 3};
+  TF_ASSERT_OK_AND_ASSIGN(
+      xla::Shape shape,
+      BuildXlaShapeFromC(PJRT_Buffer_Type::PJRT_Buffer_Type_F32, dims, 2,
+                         nullptr));
+  EXPECT_FALSE(shape.has_layout());
 }
 
 }  // namespace

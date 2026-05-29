@@ -39,30 +39,31 @@ class SparseAddGradOp : public OpKernel {
                 TensorShapeUtils::IsMatrix(a_indices->shape()) &&
                     TensorShapeUtils::IsMatrix(b_indices->shape()) &&
                     TensorShapeUtils::IsMatrix(sum_indices->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input indices should be matrices but received shapes: ",
                     a_indices->shape().DebugString(), " and ",
                     b_indices->shape().DebugString(), " and ",
-                    sum_indices->shape().DebugString()));
+                    sum_indices->shape().DebugString())));
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsVector(backprop_val_grad->shape()),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Input backprop_val_grad should be a vector but received shape: ",
-            backprop_val_grad->shape().DebugString()));
-    OP_REQUIRES(
-        ctx,
-        a_indices->dim_size(1) == b_indices->dim_size(1) &&
-            b_indices->dim_size(1) == sum_indices->dim_size(1),
-        errors::InvalidArgument("The densified operands should have the same "
-                                "ndims; for A, B, sum got: ",
-                                a_indices->dim_size(1), b_indices->dim_size(1),
-                                sum_indices->dim_size(1)));
-    OP_REQUIRES(
-        ctx, backprop_val_grad->NumElements() == sum_indices->dim_size(0),
-        errors::InvalidArgument("# elements of backprop_val_grad and # rows of "
-                                "sum_indices should match (#nnz of sum): got ",
-                                backprop_val_grad->NumElements(), " and ",
-                                sum_indices->dim_size(0)));
+            backprop_val_grad->shape().DebugString())));
+    OP_REQUIRES(ctx,
+                a_indices->dim_size(1) == b_indices->dim_size(1) &&
+                    b_indices->dim_size(1) == sum_indices->dim_size(1),
+                absl::InvalidArgumentError(
+                    absl::StrCat("The densified operands should have the same "
+                                 "ndims; for A, B, sum got: ",
+                                 a_indices->dim_size(1), b_indices->dim_size(1),
+                                 sum_indices->dim_size(1))));
+    OP_REQUIRES(ctx,
+                backprop_val_grad->NumElements() == sum_indices->dim_size(0),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "# elements of backprop_val_grad and # rows of "
+                    "sum_indices should match (#nnz of sum): got ",
+                    backprop_val_grad->NumElements(), " and ",
+                    sum_indices->dim_size(0))));
 
     const int num_dims = a_indices->dim_size(1);
     const int64_t a_nnz = a_indices->dim_size(0);

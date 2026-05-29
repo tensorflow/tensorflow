@@ -17,7 +17,6 @@ limitations under the License.
 #include <optional>
 
 #include "absl/status/statusor.h"
-#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -63,7 +62,7 @@ mlir::LogicalResult SetArgHloSharding(mlir::func::FuncOp func_op,
     return mlir::success();
   }
 
-  if (llvm::isa<IfrtUnspecifiedShardingAttr>(sharding_attr)) {
+  if (IsUnspecifiedSharding(sharding_attr)) {
     // Sharding is not specified so we cannot lower to kHloShardingAttrName.
     return mlir::success();
   }
@@ -126,7 +125,7 @@ mlir::LogicalResult SetResultHloSharding(mlir::func::FuncOp func_op,
     return mlir::success();
   }
 
-  if (llvm::isa<IfrtUnspecifiedShardingAttr>(sharding_attr)) {
+  if (IsUnspecifiedSharding(sharding_attr)) {
     // Sharding is not specified so we cannot lower to kHloShardingAttrName.
     return mlir::success();
   }

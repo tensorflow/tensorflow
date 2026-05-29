@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/status/status.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/LogicalResult.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/PassManager.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -57,6 +59,7 @@ HloModuleImporter::HloModuleImporter(mlir::ModuleOp module,
   module.getContext()->loadDialect<mlir::func::FuncDialect>();
   module.getContext()->loadDialect<mlir::mhlo::MhloDialect>();
   module.getContext()->loadDialect<mlir::stablehlo::StablehloDialect>();
+  module.getContext()->loadDialect<mlir::sdy::SdyDialect>();
   module.getContext()->loadDialect<mlir::quant::QuantDialect>();
 }
 
@@ -90,50 +93,48 @@ absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
   if (!import_all_computation_) {
     // Only import the entry computation, any reachable one will be imported
     // unless turned into a region operation.
-    TF_RETURN_IF_ERROR(HloFunctionImporter::ImportAsFunc(
-                           *hlo_module.entry_computation(), symbol_table_,
-                           &function_map_, &builder_,
-                           /*is_main*/ true, flatten_computation_args_result_)
-                           .status());
+    RETURN_IF_ERROR(HloFunctionImporter::ImportAsFunc(
+                        *hlo_module.entry_computation(), symbol_table_,
+                        &function_map_, &builder_,
+                        /*is_main*/ true, flatten_computation_args_result_)
+                        .status());
 
     // Convert all ops to MHLO
     LLVM_DEBUG(llvm::dbgs() << "Emit StableHLO: " << emit_stablehlo_ << "\n");
     if (!emit_stablehlo_) {
-      TF_RETURN_IF_ERROR(ConvertToMhlo(module));
+      RETURN_IF_ERROR(ConvertToMhlo(module));
     }
     return absl::OkStatus();
   }
 
   auto* module_entry_computation = hlo_module.entry_computation();
   for (const auto* computation : hlo_module.computations()) {
-    TF_RETURN_IF_ERROR(HloFunctionImporter::ImportAsFunc(
-                           *computation, symbol_table_, &function_map_,
-                           &builder_,
-                           /*is_main*/ computation == module_entry_computation,
-                           flatten_computation_args_result_)
-                           .status());
+    RETURN_IF_ERROR(HloFunctionImporter::ImportAsFunc(
+                        *computation, symbol_table_, &function_map_, &builder_,
+                        /*is_main*/ computation == module_entry_computation,
+                        flatten_computation_args_result_)
+                        .status());
   }
 
   ImportEntryComputationLayoutAndTiles(
       hlo_module, module, flatten_computation_args_result_, builder_);
-  TF_RETURN_IF_ERROR(ImportLayoutModes(
+  RETURN_IF_ERROR(ImportLayoutModes(
       hlo_module, module, flatten_computation_args_result_, builder_));
 
   // Convert all ops to MHLO
   LLVM_DEBUG(llvm::dbgs() << "Emit StableHLO: " << emit_stablehlo_ << "\n");
   if (!emit_stablehlo_) {
-    TF_RETURN_IF_ERROR(ConvertToMhlo(module));
+    RETURN_IF_ERROR(ConvertToMhlo(module));
   }
   return absl::OkStatus();
 }
 
 absl::Status HloModuleImporter::Import(const HloModuleProto& module_proto) {
   DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
-  TF_ASSIGN_OR_RETURN(
-      auto module_config,
-      HloModule::CreateModuleConfigFromProto(module_proto, debug_options));
-  TF_ASSIGN_OR_RETURN(auto module,
-                      HloModule::CreateFromProto(module_proto, module_config));
+  ASSIGN_OR_RETURN(auto module_config, HloModule::CreateModuleConfigFromProto(
+                                           module_proto, debug_options));
+  ASSIGN_OR_RETURN(auto module,
+                   HloModule::CreateFromProto(module_proto, module_config));
 
   return Import(*module);
 }

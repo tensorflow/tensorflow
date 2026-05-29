@@ -1,6 +1,6 @@
 """Build rule for combining Tensorflow/XLA tests."""
 
-load("//tensorflow:strict.default.bzl", "py_strict_test")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 
 def parse_label_name(label):
@@ -54,7 +54,7 @@ EOF
 
     tf_xla_py_test(
         name = name,
-        test_rule = py_strict_test,
+        test_rule = py_test,
         srcs = [test_file],
         deps = [
             "//tensorflow/python/platform:client_testlib",

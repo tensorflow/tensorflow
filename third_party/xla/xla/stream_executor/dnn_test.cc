@@ -19,7 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace stream_executor {
 namespace {
@@ -53,6 +53,23 @@ TEST(DnnTest, VersionInfoComparisonOperators) {
       EXPECT_EQ((a >= b), va >= vb);
     }
   }
+}
+
+TEST(DnnTest, ReorderDimsRankBelow2) {
+  EXPECT_DEATH(dnn::ReorderDims({0}, dnn::DataLayout::kYXBatchDepth,
+                                dnn::DataLayout::kBatchYXDepth),
+               "");
+  EXPECT_DEATH(dnn::ReorderDims({0}, dnn::FilterLayout::kYXInputOutput,
+                                dnn::FilterLayout::kOutputInputYX),
+               "");
+}
+
+TEST(DnnTest, TensorDescriptorScalarStrides) {
+  dnn::TensorDescriptor desc =
+      dnn::TensorDescriptor::For(dnn::DataType::kFloat, {}, {});
+  EXPECT_EQ(desc.ndims(), 0);
+  EXPECT_TRUE(desc.GetPhysicalStridesMajorToMinor().empty());
+  EXPECT_TRUE(desc.GetLogicalStrides().empty());
 }
 
 }  // namespace

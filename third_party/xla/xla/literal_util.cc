@@ -28,6 +28,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/random/uniform_int_distribution.h"
 #include "absl/status/status.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/array2d.h"
 #include "xla/index_util.h"
 #include "xla/layout_util.h"
@@ -43,8 +45,10 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/tests/constraint_state.h"
 #include "xla/tsl/lib/core/bitmap.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/types.h"
 #include "xla/util.h"
@@ -798,7 +802,7 @@ absl::StatusOr<Literal> MakeFakeLiteral(
     const auto& shape_tuple_shapes = shape.tuple_shapes();
     elements.reserve(shape_tuple_shapes.size());
     for (const Shape& element_shape : shape_tuple_shapes) {
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           Literal element,
           MakeFakeLiteral(element_shape, engine, limit, is_sorted,
                           no_duplicates, use_large_range, max_bits_of_precision,
@@ -819,7 +823,7 @@ absl::StatusOr<Literal> MakeFakeLiteral(
   new_shape.mutable_layout()->set_element_size_in_bits(0);
   Literal literal(new_shape);
 
-  TF_RETURN_IF_ERROR(primitive_util::PrimitiveTypeSwitch<absl::Status>(
+  RETURN_IF_ERROR(primitive_util::PrimitiveTypeSwitch<absl::Status>(
       [&](auto primitive_type_constant) -> absl::Status {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
           using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
@@ -896,6 +900,78 @@ absl::StatusOr<Literal> MakeFakeLiteral(
     pointers[i] = &literals[i];
   }
   return pointers;
+}
+
+absl::StatusOr<Literal> MaterializeSparseOperand(
+    const LiteralSlice& values, const LiteralSlice& indices,
+    const SparsityConfig::TensorSparsityConfig& config) {
+  int64_t dim = config.dimension();
+  int64_t block_size = config.block_size();
+  TF_RET_CHECK(config.num_non_zero() == 1)
+      << "Only 1:N sparsity is currently supported.";
+  TF_RET_CHECK(config.stride() == 1)
+      << "Strided sparsity is not supported yet.";
+  TF_RET_CHECK(dim >= 0 && dim < values.shape().dimensions().size())
+      << "Invalid sparsity dimension: " << dim << ", must be in [0, "
+      << values.shape().dimensions().size() << ")";
+  TF_RET_CHECK(block_size > 0)
+      << "block_size must be strictly positive in SparsityConfig.";
+  TF_RET_CHECK(ShapeUtil::SameDimensions(values.shape(), indices.shape()))
+      << "Values shape " << ShapeUtil::HumanString(values.shape())
+      << " must have the same dimensions as indices shape "
+      << ShapeUtil::HumanString(indices.shape());
+  TF_RET_CHECK(ShapeUtil::ElementIsIntegral(indices.shape()))
+      << "Indices literal must be an integral type.";
+
+  std::vector<int64_t> dense_dims(values.shape().dimensions().begin(),
+                                  values.shape().dimensions().end());
+  TF_RET_CHECK(std::numeric_limits<int64_t>::max() / block_size >=
+               dense_dims[dim])
+      << "Dense dimension overflow triggered by large block_size.";
+  dense_dims[dim] = dense_dims[dim] * block_size;
+  Literal dense = Literal::CreateFromShape(
+      ShapeUtil::MakeShape(values.shape().element_type(), dense_dims));
+
+  return primitive_util::PrimitiveTypeSwitch<absl::StatusOr<Literal>>(
+      [&](auto primitive_type_constant) -> absl::StatusOr<Literal> {
+        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
+          using NativeT = typename primitive_util::PrimitiveTypeToNative<
+              primitive_type_constant>::type;
+          absl::Status status = absl::OkStatus();
+          values.EachCell<NativeT>([&](absl::Span<const int64_t> sparse_index,
+                                       NativeT val) {
+            if (!status.ok()) {
+              return;
+            }
+            std::optional<int64_t> position_in_block_opt =
+                indices.GetIntegralAsS64(sparse_index);
+            if (!position_in_block_opt.has_value()) {
+              status = absl::InvalidArgumentError(
+                  absl::StrCat("Failed to get integral value for indices at ",
+                               LiteralUtil::MultiIndexAsString(sparse_index)));
+              return;
+            }
+            int64_t position_in_block = *position_in_block_opt;
+            if (position_in_block < 0 || position_in_block >= block_size) {
+              status = absl::InvalidArgumentError(
+                  absl::StrCat("Invalid position in block: ", position_in_block,
+                               ", must be in [0, ", block_size, ")"));
+              return;
+            }
+            absl::InlinedVector<int64_t, 8> out_index(sparse_index.begin(),
+                                                      sparse_index.end());
+            out_index[dim] = sparse_index[dim] * block_size + position_in_block;
+            dense.Set<NativeT>(out_index, val);
+          });
+          if (!status.ok()) {
+            return status;
+          }
+          return std::move(dense);
+        }
+        return absl::InvalidArgumentError(
+            "Unsupported type for sparse matrix materialization.");
+      },
+      values.shape().element_type());
 }
 
 }  // namespace xla

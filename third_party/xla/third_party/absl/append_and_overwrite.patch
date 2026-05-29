@@ -1,0 +1,18 @@
+diff --git a/absl/strings/internal/append_and_overwrite.h b/absl/strings/internal/append_and_overwrite.h
+--- a/absl/strings/internal/append_and_overwrite.h
++++ b/absl/strings/internal/append_and_overwrite.h
+@@ -56,12 +56,10 @@
+     // Make sure to always grow by at least a factor of 2x.
+     const auto min_growth = str.capacity();
+     if (ABSL_PREDICT_FALSE(str.capacity() > str.max_size() - min_growth)) {
+-      resize = str.max_size();
++      str.reserve(str.max_size());
+     } else if (resize < str.capacity() + min_growth) {
+-      resize = str.capacity() + min_growth;
++      str.reserve(str.capacity() + min_growth);
+     }
+-  } else {
+-    resize = str.capacity();
+   }
+ 
+   // Avoid calling StringResizeAndOverwrite() here since it does an MSAN

@@ -15,19 +15,13 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/hoist_fused_bitcasts.h"
 
-#include <cstdint>
 #include <memory>
 #include <string>
-#include <utility>
-#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
 #include "absl/status/status_matchers.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "mlir/IR/MLIRContext.h"
@@ -96,6 +90,37 @@ class HoistFusedBitcastsReshapeTest
     return module;
   }
 };
+
+// Regression test for b/502455447.
+TEST_P(HoistFusedBitcastsReshapeTest, ShardingIsNotPreserved) {
+  absl::string_view hlo = R"(
+dot {
+  p1 = f8e4m3fn[5120,5120]{1,0} parameter(1)
+  p2 = f8e4m3fn[5120,5120]{1,0} parameter(2)
+  concat = f8e4m3fn[10240,5120]{1,0} concatenate(p1, p2), dimensions={0}, sharding={devices=[1,4,2]<=[2,4]T(1,0) last_tile_dim_replicate}
+  b0 = f8e4m3fn[5120,10240]{0,1} bitcast(concat), sharding={devices=[1,4,2]<=[2,4]T(1,0) last_tile_dim_replicate}
+  b1 = f8e4m3fn[8,640,10240]{1,0,2} bitcast(b0)
+  p0 = f8e4m3fn[32,5120]{1,0} parameter(0)
+  b2 = f8e4m3fn[32,8,640]{2,1,0} bitcast(p0)
+  d = f32[8,10240,32]{1,2,0} dot(b1, b2), lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={1}, rhs_contracting_dims={2}
+  ROOT r = f32[8,32,10240]{2,1,0} bitcast(d)
+}
+
+ENTRY main (p0: f8e4m3fn[32,5120], p1: f8e4m3fn[5120,5120], p2: f8e4m3fn[5120,5120]) -> f32[8,32,10240] {
+  p0 = f8e4m3fn[32,5120]{1,0} parameter(0)
+  p1 = f8e4m3fn[5120,5120]{1,0} parameter(1)
+  p2 = f8e4m3fn[5120,5120]{1,0} parameter(2)
+  ROOT f = f32[8,32,10240]{2,1,0}
+    fusion(p0, p1, p2), kind=kCustom, calls=dot,
+    backend_config={
+      "fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{
+          "block_m":"64","block_n":"32","block_k":"64",
+          "num_stages":"4","num_warps":"2"}}}
+}
+)";
+
+  std::unique_ptr<VerifiedHloModule> module = RunHoistFusedBitcasts(hlo);
+}
 
 // Tests hoisting of bitcasts which would otherwise trigger unsatisfiable
 // constraints during symbolic tile analysis.
@@ -1361,44 +1386,6 @@ INSTANTIATE_TEST_SUITE_P(HoistFusedBitcastsReshapeTestSuite,
                          [](const ::testing::TestParamInfo<HloOpcode>& info) {
                            return std::string(HloOpcodeString(info.param));
                          });
-
-struct CommonFactorsTestCase {
-  std::vector<int64_t> from, to;
-  absl::InlinedVector<std::pair<int64_t, int64_t>, 8> expected;
-};
-
-class CommonFactorsMergingTrivialRangesTest
-    : public ::testing::TestWithParam<CommonFactorsTestCase> {};
-
-TEST_P(CommonFactorsMergingTrivialRangesTest, Example) {
-  const CommonFactorsTestCase& test_case = GetParam();
-  EXPECT_EQ(test_case.expected, detail::CommonFactorsMergingTrivialRanges(
-                                    test_case.from, test_case.to));
-}
-
-INSTANTIATE_TEST_SUITE_P(
-    CommonFactorsMergingTrivialRangesTestSuite,
-    CommonFactorsMergingTrivialRangesTest,
-    ::testing::Values(
-        CommonFactorsTestCase{{1}, {}, {{0, 0}, {1, 0}}},
-        CommonFactorsTestCase{{}, {1}, {{0, 0}, {0, 1}}},
-        CommonFactorsTestCase{{}, {}, {{0, 0}}},
-        CommonFactorsTestCase{{1, 2, 0}, {2, 0, 3}, {{0, 0}, {3, 3}}},
-        CommonFactorsTestCase{{2, 3, 0}, {1, 0, 1000}, {{0, 0}, {3, 3}}},
-        CommonFactorsTestCase{{1, 1, 1}, {1, 1}, {{0, 0}, {1, 1}, {3, 2}}},
-        CommonFactorsTestCase{{1, 1, 3}, {3, 1, 1}, {{0, 0}, {3, 3}}},
-        CommonFactorsTestCase{{2, 6}, {4, 3}, {{0, 0}, {2, 2}}},
-        CommonFactorsTestCase{{1, 2, 6}, {4, 1, 3, 1}, {{0, 0}, {3, 4}}},
-        CommonFactorsTestCase{{2, 3, 4, 5}, {6, 20}, {{0, 0}, {2, 1}, {4, 2}}},
-        CommonFactorsTestCase{
-            {2, 3, 4, 5, 6}, {6, 20, 6}, {{0, 0}, {2, 1}, {4, 2}, {5, 3}}},
-        CommonFactorsTestCase{{2, 2, 2, 2}, {4, 4}, {{0, 0}, {2, 1}, {4, 2}}},
-        CommonFactorsTestCase{
-            {2, 5, 1, 3}, {1, 10, 3, 1}, {{0, 0}, {2, 2}, {4, 4}}}),
-    [](const ::testing::TestParamInfo<CommonFactorsTestCase>& info) {
-      return absl::StrCat(absl::StrJoin(info.param.from, "_"), "_to_",
-                          absl::StrJoin(info.param.to, "_"));
-    });
 
 }  // namespace
 }  // namespace gpu

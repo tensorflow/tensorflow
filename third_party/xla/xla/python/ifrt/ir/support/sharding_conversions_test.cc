@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/support/sharding_conversions.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,6 +28,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/python/ifrt/basic_device_list.h"
@@ -57,8 +60,7 @@ using ::xla::HloSharding;
 
 absl::StatusOr<HloSharding> ToHloShardingViaOpSharding(
     const ShardingParam& sharding_param) {
-  TF_ASSIGN_OR_RETURN(xla::OpSharding op_sharding,
-                      ToOpSharding(sharding_param));
+  ASSIGN_OR_RETURN(xla::OpSharding op_sharding, ToOpSharding(sharding_param));
   return HloSharding::FromProto(op_sharding);
 }
 
@@ -508,6 +510,120 @@ INSTANTIATE_TEST_SUITE_P(
               TileAssignment({4, 1, 3, 2}, {2, 3, 4}, {2, 1, 0}),
               {OpSharding::REPLICATED, OpSharding::UNREDUCED}),
           2, 24}}));
+
+struct ShardingParamToHloShardingWithDeviceIdsTestParam {
+  ShardingParam sharding_param;
+  std::vector<int> device_ids;
+  std::string expected_hlo_sharding_str;
+};
+
+using ShardingParamToHloShardingWithDeviceIdsTest =
+    ::testing::TestWithParam<ShardingParamToHloShardingWithDeviceIdsTestParam>;
+
+TEST_P(ShardingParamToHloShardingWithDeviceIdsTest,
+       ShardingParamToHloShardingWithDeviceIds) {
+  const auto& param = GetParam();
+  TF_EXPECT_OK(param.sharding_param.verify());
+  TF_ASSERT_OK_AND_ASSIGN(const HloSharding hlo_sharding,
+                          ToHloSharding(param.sharding_param,
+                                        llvm::ArrayRef<int>(param.device_ids)));
+  EXPECT_EQ(hlo_sharding.ToString(), param.expected_hlo_sharding_str);
+  if (hlo_sharding.IsTiled()) {
+    EXPECT_FALSE(hlo_sharding.tile_assignment().iota().has_value());
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ShardingParamToHloShardingWithDeviceIds,
+    ShardingParamToHloShardingWithDeviceIdsTest,
+    testing::ValuesIn<ShardingParamToHloShardingWithDeviceIdsTestParam>(
+        {{ShardingParam{/*dim_shards=*/{1, 1, 1},
+                        {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}},
+          {5, 4, 3, 2, 1, 0},
+          "{replicated}"},
+         {ShardingParam{/*dim_shards=*/{2, 3},
+                        {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}},
+          {5, 4, 3, 2, 1, 0},
+          "{devices=[2,3]5,4,3,2,1,0}"},
+         {ShardingParam{/*dim_shards=*/{2, 1, 3},
+                        {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}},
+          {3, 0, 5, 4, 1, 2},
+          "{devices=[2,1,3]3,4,0,1,5,2}"},
+         {ShardingParam{/*dim_shards=*/{2, 1},
+                        {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}},
+          {5, 4, 3, 2, 1, 0},
+          "{devices=[2,1,3]3,4,5,0,1,2 last_tile_dim_replicate}"},
+         {ShardingParam{/*dim_shards=*/{4},
+                        {/*permutation=*/{1, 0}, /*axis_sizes=*/{2, 2}}},
+          {3, 1, 2, 0},
+          "{devices=[4]3,2,1,0}"},
+         {ShardingParam{/*dim_shards=*/{2, 3},
+                        {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}},
+          {0, 1, 2, 3, 4, 5},
+          "{devices=[2,3]0,1,2,3,4,5}"}}));
+
+struct HloShardingV1RoundtripTestParam {
+  ShardingParam sharding_param;
+  std::vector<int> device_ids;
+  int rank;
+  int num_devices;
+};
+
+using HloShardingV1RoundtripTest =
+    ::testing::TestWithParam<HloShardingV1RoundtripTestParam>;
+
+TEST_P(HloShardingV1RoundtripTest, Roundtrip) {
+  const auto& param = GetParam();
+  TF_EXPECT_OK(param.sharding_param.verify());
+  TF_ASSERT_OK_AND_ASSIGN(const HloSharding v1_sharding,
+                          ToHloSharding(param.sharding_param,
+                                        llvm::ArrayRef<int>(param.device_ids)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      ShardingParamWithDeviceIds result,
+      ToShardingParamAndDevices(v1_sharding, param.rank, param.num_devices));
+  std::optional<llvm::ArrayRef<int>> logical_device_ids = std::nullopt;
+  if (result.logical_device_ids.has_value()) {
+    logical_device_ids.emplace(*result.logical_device_ids);
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      const HloSharding roundtrip_sharding,
+      ToHloSharding(result.sharding_param, logical_device_ids));
+  EXPECT_EQ(roundtrip_sharding.ToString(), v1_sharding.ToString());
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    HloShardingV1Roundtrip, HloShardingV1RoundtripTest,
+    testing::ValuesIn<HloShardingV1RoundtripTestParam>(
+        {{ShardingParam{/*dim_shards=*/{2, 3},
+                        {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}},
+          {5, 4, 3, 2, 1, 0},
+          2,
+          6},
+         {ShardingParam{/*dim_shards=*/{2, 1, 3},
+                        {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}},
+          {3, 0, 5, 4, 1, 2},
+          3,
+          6},
+         {ShardingParam{/*dim_shards=*/{2, 1},
+                        {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}},
+          {5, 4, 3, 2, 1, 0},
+          2,
+          6},
+         {ShardingParam{/*dim_shards=*/{4},
+                        {/*permutation=*/{1, 0}, /*axis_sizes=*/{2, 2}}},
+          {3, 1, 2, 0},
+          1,
+          4},
+         {ShardingParam{/*dim_shards=*/{2, 3},
+                        {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}},
+          {0, 1, 2, 3, 4, 5},
+          2,
+          6},
+         {ShardingParam{/*dim_shards=*/{1, 1, 1},
+                        {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}},
+          {5, 4, 3, 2, 1, 0},
+          3,
+          6}}));
 
 }  // namespace
 }  // namespace support

@@ -30,6 +30,18 @@ def StablehloRefineShapesPass : Pass<"stablehlo-ext-refine-shapes", "ModuleOp"> 
   }];
 }
 
+def ChloScanToReduceWindowPass : Pass<"stablehlo-ext-chlo-scan-to-reduce-window", "func::FuncOp"> {
+  let summary = "Downgrade chlo.scan to stablehlo.reduce_window";
+  let description = [{
+    Converts a chlo.scan with a single input/init and scalar add reducer to stablehlo.reduce_window.
+  }];
+  let options = [
+    Option<"targetVersionOption", "target-version", "std::string",
+           /*default=*/"", "the target version to serialize to">,
+  ];
+  let dependentDialects = ["stablehlo::StablehloDialect"];
+}
+
 def ChloPreserveHighLevelOpsPass : Pass<"stablehlo-ext-chlo-preserve-high-level-ops", "ModuleOp"> {
   let summary = "(Experimental) Preserve select CHLO ops as composites.";
   let description = [{

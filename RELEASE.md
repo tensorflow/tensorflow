@@ -8,8 +8,7 @@
 
 The TensorBoard dependency is no longer included by default. If you use `tf.summary.*` APIs or `tf.keras.callbacks.TensorBoard`, please install the `tensorboard` package separately (`pip install tensorboard`). Otherwise, TensorFlow will raise an ImportError.
 
-* <DOCUMENT BREAKING CHANGES HERE>
-* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_TransactionToken` and associated APIs.
 
 ### Known Caveats
 
@@ -24,6 +23,9 @@ The TensorBoard dependency is no longer included by default. If you use `tf.summ
     * Adds support for FP16 and BF16 in Unpack operator.
 
 ### Bug Fixes and Other Changes
+
+* `BatchFunction Operator`
+    * Adds the `num_warmup_batch_threads` op attribute to support a separate thread pool for processing warmup requests.
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>

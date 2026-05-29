@@ -1,0 +1,40 @@
+// RUN: hlo_to_xtileir %s 2>&1 | FileCheck %s --check-prefix=CHECK-ERROR
+
+// CHECK-ERROR: error: loc("slice"): 'scf.if' op along control flow edge from Operation scf.yield to parent: successor operand type #0 'tensor<1x1xf32>' should match successor input type #0 'tensor<64x16xf32>'
+
+HloModule min_repro, is_scheduled=true, entry_computation_layout={(f32[64,10]{1,0}, f32[1,16,10]{2,1,0}, f32[1,16,10]{2,1,0})->f32[64,10]{1,0}}
+
+%fused_computation (param_0: f32[64,10], param_1: f32[1,16,10], param_2: f32[1,16,10]) -> f32[64,10] {
+  %param_0 = f32[64,10]{1,0} parameter(0)
+  %param_1 = f32[1,16,10]{2,1,0} parameter(1)
+  %param_2 = f32[1,16,10]{2,1,0} parameter(2)
+  %inner_concat = f32[1,32,10]{2,1,0} concatenate(%param_1, %param_2), dimensions={1}
+  %reshape = f32[32,10]{1,0} reshape(%inner_concat)
+  %concat = f32[96,10]{1,0} concatenate(%param_0, %reshape), dimensions={0}
+  ROOT %slice = f32[64,10]{1,0} slice(%concat), slice={[0:64], [0:10]}
+}
+
+ENTRY %entry_computation (param_0: f32[64,10], param_1: f32[1,16,10], param_2: f32[1,16,10]) -> f32[64,10] {
+  %param_0 = f32[64,10]{1,0} parameter(0)
+  %param_1 = f32[1,16,10]{2,1,0} parameter(1)
+  %param_2 = f32[1,16,10]{2,1,0} parameter(2)
+  ROOT %fusion = f32[64,10]{1,0} fusion(%param_0, %param_1, %param_2), kind=kCustom, calls=%fused_computation,
+    backend_config={
+      "operation_queue_id":"0",
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "num_warps":"4",
+          "output_tiles":[{"sizes":["64","10"]}],
+          "num_ctas":1,
+          "num_stages":1,
+          "is_tma_allowed":true,
+          "is_warp_specialization_allowed":false,
+          "waves_per_eu":0
+        }
+      },
+      "force_earliest_schedule":false,
+      "reification_cost":[],
+      "device_type":"DEVICE_TYPE_INVALID"
+    }
+}

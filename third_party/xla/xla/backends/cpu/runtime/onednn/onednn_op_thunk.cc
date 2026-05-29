@@ -28,14 +28,16 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/types/span.h"
 #include "Eigen/ThreadPool"
+#include "xla/tsl/platform/status_macros.h"
 #include "oneapi/dnnl/dnnl_common.hpp"
 #include "oneapi/dnnl/dnnl_threadpool.hpp"
 #include "xla/backends/cpu/runtime/onednn/onednn_threadpool.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/service/cpu/onednn_config.pb.h"
 #include "xla/service/cpu/onednn_convolution.h"
 #include "xla/service/cpu/onednn_layer_norm.h"
 #include "xla/service/cpu/onednn_matmul.h"
@@ -50,15 +52,14 @@ namespace xla::cpu {
 
 // oneDNN runtime instantiated for the oneDNN operation.
 struct OneDnnOpThunk::OneDnnRuntime {
-  explicit OneDnnRuntime(Eigen::ThreadPoolInterface* thread_pool);
+  explicit OneDnnRuntime(Eigen::ThreadPoolInterface* thread_pool,
+                         const std::string& target);
 
   OneDnnRuntime(OneDnnRuntime&&) = default;
   OneDnnRuntime& operator=(OneDnnRuntime&&) = default;
 
   tsl::AsyncValueRef<OneDnnOpThunk::ExecuteEvent> Invoke(
       Eigen::ThreadPoolInterface* thread_pool,
-      absl::Span<MemrefInfoHandler> arguments,
-      absl::Span<MemrefInfoHandler> results,
       const OneDnnOpThunk::OneDnnOpConfig& config, const std::string& target);
 
   std::unique_ptr<OneDnnThreadPool> threadpool;
@@ -70,23 +71,30 @@ struct OneDnnOpThunk::OneDnnRuntime {
   // runtime. Otherwise, they would be destroyed as soon as we exit the
   // ExecuteOneDnn<primitive> method. This is a requirement of
   // oneDNN library's asynchronous execution model.
-  OneDnnResources resources;
-};
 
+  // Single resource instance (either for primitive or for graph)
+  std::unique_ptr<OneDnnBaseResources> base_resources;
+
+  OneDnnPrimResources& prim_resources() {
+    return *static_cast<OneDnnPrimResources*>(base_resources.get());
+  }
+  // TODO(intel-tf): Add graph resources accessor when needed.
+};
 OneDnnOpThunk::OneDnnRuntime::OneDnnRuntime(
-    Eigen::ThreadPoolInterface* thread_pool)
+    Eigen::ThreadPoolInterface* thread_pool, const std::string& target)
     : threadpool(
           std::make_unique<OneDnnThreadPool>(thread_pool, /*is_async=*/true)),
       cpu_engine(dnnl::engine::kind::cpu, 0),
       onednn_stream(
           dnnl::threadpool_interop::make_stream(cpu_engine, threadpool.get())),
-      resources() {}
+      // TODO(intel-tf): Select resource type based on operation type.
+      // For now we only support primitive ops.
+      base_resources(static_cast<std::unique_ptr<OneDnnBaseResources>>(
+          std::make_unique<OneDnnPrimResources>())) {}
 
 tsl::AsyncValueRef<OneDnnOpThunk::ExecuteEvent>
 OneDnnOpThunk::OneDnnRuntime::Invoke(
     Eigen::ThreadPoolInterface* thread_pool,
-    absl::Span<MemrefInfoHandler> arguments,
-    absl::Span<MemrefInfoHandler> results,
     const OneDnnOpThunk::OneDnnOpConfig& config, const std::string& target) {
   // Update threadpool
   threadpool->set_thread_pool(thread_pool);
@@ -96,25 +104,26 @@ OneDnnOpThunk::OneDnnRuntime::Invoke(
   absl::call_once(log_once_flag, [&] {
     VLOG(0) << absl::StreamFormat(
         "Executing oneDNN thunk with target `%s`: num_args=%d, num_results=%d",
-        target, arguments.size(), results.size());
+        target, base_resources->arg_memrefs.size(),
+        base_resources->result_memrefs.size());
   });
 
   if (target == "__onednn$matmul") {
     const auto& matmul_config = std::get<OneDnnMatMulConfig>(config);
-    ExecuteOneDnnMatMul(arguments, results, matmul_config, cpu_engine,
-                        onednn_stream, resources);
+    ExecuteOneDnnMatMul(matmul_config, cpu_engine, onednn_stream,
+                        prim_resources());
   } else if (target == "__onednn$convolution") {
     const auto& conv_config = std::get<OneDnnConvolutionConfig>(config);
-    ExecuteOneDnnConvolution(arguments, results, conv_config, cpu_engine,
-                             onednn_stream, resources);
+    ExecuteOneDnnConvolution(conv_config, cpu_engine, onednn_stream,
+                             prim_resources());
   } else if (target == "__onednn$layernorm") {
     const auto& ln_config = std::get<OneDnnNormConfig>(config);
-    ExecuteOneDnnLayerNorm(arguments, results, ln_config, cpu_engine,
-                           onednn_stream, resources);
+    ExecuteOneDnnLayerNorm(ln_config, cpu_engine, onednn_stream,
+                           prim_resources());
   } else if (target == "__onednn$softmax") {
     const auto& softmax_config = std::get<OneDnnSoftmaxConfig>(config);
-    ExecuteOneDnnSoftmax(arguments, results, softmax_config, cpu_engine,
-                         onednn_stream, resources);
+    ExecuteOneDnnSoftmax(softmax_config, cpu_engine, onednn_stream,
+                         prim_resources());
   } else {
     return absl::InvalidArgumentError(
         absl::StrFormat("Unsupported oneDNN operation target: `%s`", target));
@@ -162,16 +171,19 @@ tsl::AsyncValueRef<OneDnnOpThunk::ExecuteEvent> OneDnnOpThunk::Execute(
   DCHECK(thread_pool != nullptr) << "Thread pool must not be null";
 
   // Create oneDNN runtime for the operation.
-  auto runtime = std::make_unique<OneDnnRuntime>(thread_pool);
+  auto runtime = std::make_unique<OneDnnRuntime>(thread_pool, target_);
+
+  // Select which resource set to populate (graph op vs primitive op).
+  OneDnnBaseResources& base_resources = *runtime->base_resources;
 
   // Resolve device memory for arguments.
   int64_t num_operands = op_buffers_.arguments_shapes.size();
-  runtime->resources.arg_memrefs.reserve(num_operands);
+  base_resources.arg_memrefs.reserve(num_operands);
   for (size_t i = 0; i < num_operands; ++i) {
     const auto& shape = op_buffers_.arguments_shapes[i];
-    TF_ASSIGN_OR_RETURN(se::DeviceAddressBase arg,
-                        params.buffer_allocations->GetDeviceAddress(
-                            op_buffers_.arguments_buffers[i]));
+    ASSIGN_OR_RETURN(se::DeviceAddressBase arg,
+                     params.buffer_allocations->GetDeviceAddress(
+                         op_buffers_.arguments_buffers[i]));
 
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(arg.opaque(), arg.size());
     VLOG(3) << absl::StreamFormat(
@@ -179,17 +191,17 @@ tsl::AsyncValueRef<OneDnnOpThunk::ExecuteEvent> OneDnnOpThunk::Execute(
         arg.opaque());
 
     auto memref = CreateMemrefFromShape(shape, arg.opaque());
-    runtime->resources.arg_memrefs.push_back(std::move(memref));
+    base_resources.arg_memrefs.push_back(std::move(memref));
   }
 
   // Resolve device memory for results.
   int64_t num_results = op_buffers_.results_shapes.size();
-  runtime->resources.result_memrefs.reserve(num_results);
+  base_resources.result_memrefs.reserve(num_results);
   for (size_t i = 0; i < num_results; ++i) {
     const auto& shape = op_buffers_.results_shapes[i];
-    TF_ASSIGN_OR_RETURN(se::DeviceAddressBase res,
-                        params.buffer_allocations->GetDeviceAddress(
-                            op_buffers_.results_buffers[i]));
+    ASSIGN_OR_RETURN(se::DeviceAddressBase res,
+                     params.buffer_allocations->GetDeviceAddress(
+                         op_buffers_.results_buffers[i]));
 
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(res.opaque(), res.size());
     VLOG(3) << absl::StreamFormat("  res: %s (%p)",
@@ -197,12 +209,10 @@ tsl::AsyncValueRef<OneDnnOpThunk::ExecuteEvent> OneDnnOpThunk::Execute(
                                   res.opaque());
 
     auto memref = CreateMemrefFromShape(shape, res.opaque());
-    runtime->resources.result_memrefs.push_back(std::move(memref));
+    base_resources.result_memrefs.push_back(std::move(memref));
   }
 
-  auto executed = runtime->Invoke(
-      thread_pool, absl::MakeSpan(runtime->resources.arg_memrefs),
-      absl::MakeSpan(runtime->resources.result_memrefs), config_, target_);
+  auto executed = runtime->Invoke(thread_pool, config_, target_);
 
   // Do not return runtime to the pool until the execution is done.
   executed.AndThen([runtime = std::move(runtime)]() {

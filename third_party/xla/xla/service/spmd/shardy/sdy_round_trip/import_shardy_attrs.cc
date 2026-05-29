@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Value.h"
@@ -129,8 +131,10 @@ TensorShardingAttr openShardingDims(TensorShardingAttr sharding) {
                                  sharding.getUnreducedAxes());
 }
 
-void handleFuncResultSharding(CustomCallOp funcResultSharding, FuncOp funcOp,
-                              DictionaryAttr dictAttr, IRRewriter& rewriter) {
+bool handleFuncResultSharding(
+    CustomCallOp funcResultSharding, FuncOp funcOp,
+    llvm::SmallVector<DictionaryAttr>& funcResultAttrs, DictionaryAttr dictAttr,
+    IRRewriter& rewriter) {
   // This is a temporary CustomCallOp that holds the sharding from a
   // func result. When importing we want to move that sharding to the
   // func result and delete the CustomCallOp.
@@ -138,6 +142,7 @@ void handleFuncResultSharding(CustomCallOp funcResultSharding, FuncOp funcOp,
       dictAttr, xla::ToStringRef(HloSharding::kShardingFrontendAttrName));
 
   auto resultUses = funcResultSharding->getUses();
+  bool anyChanged = false;
   auto x64CombineOp = getX64CombineOnFuncResultSharding(funcResultSharding);
   if (x64CombineOp) {
     // X64Rewriter pass will pass through the two split 32-bit operands to
@@ -159,7 +164,11 @@ void handleFuncResultSharding(CustomCallOp funcResultSharding, FuncOp funcOp,
   bool hasNonFuncReturnUses = false;
   for (mlir::OpOperand& use : llvm::make_early_inc_range(resultUses)) {
     if (mlir::isa<mlir::func::ReturnOp>(use.getOwner())) {
-      funcOp.setResultAttr(use.getOperandNumber(), kShardingAttr, sharding);
+      int64_t resNum = use.getOperandNumber();
+      mlir::NamedAttrList attrs(funcResultAttrs[resNum]);
+      attrs.set(kShardingAttr, sharding);
+      funcResultAttrs[resNum] = attrs.getDictionary(funcOp.getContext());
+      anyChanged = true;
     } else if (use.getOwner() != funcResultSharding &&
                !dynCastX64CombineCustomCall(use.getOwner())) {
       hasNonFuncReturnUses = true;
@@ -179,6 +188,7 @@ void handleFuncResultSharding(CustomCallOp funcResultSharding, FuncOp funcOp,
   } else {
     rewriter.replaceOp(funcResultSharding, funcResultSharding.getOperands());
   }
+  return anyChanged;
 }
 
 // The sharding information is in the `kXlaShardingAttr` attribute.
@@ -186,10 +196,10 @@ void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
   for (auto [argNum, argType] : llvm::enumerate(funcOp.getArgumentTypes())) {
     if (auto oldSharding =
             funcOp.getArgAttrOfType<StringAttr>(argNum, kXlaShardingAttr)) {
-      funcOp.setArgAttr(
-          argNum, kShardingAttr,
-          convertToSdyShardingAttr(parseShardingFromString(oldSharding),
-                                   funcOp.getContext()));
+      if (auto sdySharding = convertToSdyShardingAttr(
+              parseShardingFromString(oldSharding), funcOp.getContext())) {
+        funcOp.setArgAttr(argNum, kShardingAttr, sdySharding);
+      }
     }
     funcOp.removeArgAttr(argNum, kXlaShardingAttr);
   }
@@ -197,13 +207,12 @@ void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
   for (int64_t resNum = 0; resNum < funcOp.getNumResults(); ++resNum) {
     if (auto oldSharding =
             funcOp.getResultAttrOfType<StringAttr>(resNum, kXlaShardingAttr)) {
-      funcOp.setResultAttr(
-          resNum, kShardingAttr,
-          convertToSdyShardingAttr(parseShardingFromString(oldSharding),
-                                   funcOp.getContext()));
+      if (auto sdySharding = convertToSdyShardingAttr(
+              parseShardingFromString(oldSharding), funcOp.getContext())) {
+        funcOp.setResultAttr(resNum, kShardingAttr, sdySharding);
+      }
     }
-    funcOp.removeResultAttr(
-        resNum, StringAttr::get(funcOp.getContext(), kXlaShardingAttr));
+    funcOp.removeResultAttr(resNum, kXlaShardingAttr);
   }
 
   // Extract the round-tripped shardy attributes from the operations.
@@ -236,6 +245,7 @@ void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
     } else if (auto customCallOp = mlir::dyn_cast<CustomCallOp>(op)) {
       StringRef targetName = customCallOp.getCallTargetName();
       if (targetName == kShardingCustomCallTargetName ||
+          targetName == "X64Combine" ||
           isPythonCallbackCustomCall(customCallOp)) {
         customCallOp->setAttr(
             kShardingAttr,
@@ -255,28 +265,53 @@ void convertShardyAttrsWithoutHloShardingV3(FuncOp funcOp,
   // Copy over the argument shardings, but not the result shardings yet.
   // We need to wait until after we've converted all the Operations before
   // copying the result shardings.
-  for (auto [argNum, argType] : llvm::enumerate(funcOp.getArgumentTypes())) {
+  StringRef attributeName =
+      xla::ToStringRef(HloSharding::kShardingFrontendAttrName);
+  llvm::SmallVector<mlir::DictionaryAttr> funcArgAttrs;
+  funcArgAttrs.reserve(funcOp.getNumArguments());
+  for (int64_t argNum = 0; argNum < funcOp.getNumArguments(); argNum++) {
     // Attempt to extract the TensorShardingAttr from the frontend attributes
     // of the function argument/result.
+    // TODO(b/510714593): Batch remove/set attributes through a shardy utility.
+    mlir::NamedAttrList attrs(funcOp.getArgAttrDict(argNum));
     if (DictionaryAttr dictAttr = getFuncArgFrontendAttrs(funcOp, argNum)) {
-      if (auto sharding = parseStringAttr<TensorShardingAttr>(
-              dictAttr,
-              xla::ToStringRef(HloSharding::kShardingFrontendAttrName))) {
-        funcOp.setArgAttr(argNum, kShardingAttr, sharding);
-        removeFrontendAttribute(
-            funcOp, xla::ToStringRef(HloSharding::kShardingFrontendAttrName),
-            argNum);
+      if (auto sharding =
+              parseStringAttr<TensorShardingAttr>(dictAttr, attributeName)) {
+        attrs.set(kShardingAttr, sharding);
+        llvm::SmallVector<NamedAttribute> existingAttributes =
+            getExistingFrontendAttributes(dictAttr,
+                                          /*excludedAttribute=*/attributeName);
+        if (!existingAttributes.empty()) {
+          attrs.set(
+              kFrontendAttributesAttr,
+              DictionaryAttr::get(funcOp.getContext(), existingAttributes));
+        } else {
+          attrs.erase(kFrontendAttributesAttr);
+        }
       }
     }
-    funcOp.removeArgAttr(argNum, kXlaShardingAttr);
+    attrs.erase(kXlaShardingAttr);
+    funcArgAttrs.push_back(attrs.getDictionary(funcOp.getContext()));
   }
+  funcOp.setAllArgAttrs(funcArgAttrs);
 
   // Due to `SdyRoundTripExportShardingsPass` keeping `kXlaShardingAttr`, remove
   // them purely for cleanliness of the module.
+  llvm::SmallVector<mlir::DictionaryAttr> newResultAttrs;
+  newResultAttrs.reserve(funcOp.getNumResults());
   for (int64_t resNum = 0; resNum < funcOp.getNumResults(); ++resNum) {
-    funcOp.removeResultAttr(
-        resNum, StringAttr::get(funcOp.getContext(), kXlaShardingAttr));
+    mlir::DictionaryAttr dict = funcOp.getResultAttrDict(resNum);
+    mlir::NamedAttrList attrs(dict);
+    if (attrs.erase(kXlaShardingAttr)) {
+      newResultAttrs.push_back(attrs.getDictionary(funcOp.getContext()));
+    } else {
+      newResultAttrs.push_back(dict);
+    }
   }
+  funcOp.setAllResultAttrs(newResultAttrs);
+
+  llvm::SmallVector<std::pair<CustomCallOp, DictionaryAttr>>
+      funcResultShardingOps;
 
   // Extract the round-tripped shardy attributes from the operations.
   funcOp.front().walk([&](Operation* op) {
@@ -316,7 +351,7 @@ void convertShardyAttrsWithoutHloShardingV3(FuncOp funcOp,
     } else if (auto customCallOp = mlir::dyn_cast<CustomCallOp>(op)) {
       StringRef targetName = customCallOp.getCallTargetName();
       if (targetName == kFuncResultShardingTargetName) {
-        handleFuncResultSharding(customCallOp, funcOp, dictAttr, rewriter);
+        funcResultShardingOps.push_back({customCallOp, dictAttr});
         return;
       }
       if (targetName == kShardingCustomCallTargetName ||
@@ -332,6 +367,19 @@ void convertShardyAttrsWithoutHloShardingV3(FuncOp funcOp,
     removeFrontendAttribute(
         op, xla::ToStringRef(HloSharding::kShardingFrontendAttrName));
   });
+
+  // TODO(b/510714593): Create a shardy utility to modify func result attributes
+  // as below but in a more general way and re-use it.
+  llvm::SmallVector<DictionaryAttr> funcResultAttrs;
+  funcOp.getAllResultAttrs(funcResultAttrs);
+  bool anyChanged = false;
+  for (auto& [customCallOp, dictAttr] : funcResultShardingOps) {
+    anyChanged |= handleFuncResultSharding(customCallOp, funcOp,
+                                           funcResultAttrs, dictAttr, rewriter);
+  }
+  if (anyChanged) {
+    funcOp.setAllResultAttrs(funcResultAttrs);
+  }
 }
 
 // Builds the shardy attributes coming from Shardy previously. This means

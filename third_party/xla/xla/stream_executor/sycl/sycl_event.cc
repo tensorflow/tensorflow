@@ -63,6 +63,18 @@ absl::Status SyclEvent::WaitStreamOnEvent(StreamExecutor* executor,
     return absl::InternalError(
         "WaitStreamOnEvent: Stream handle is not initialized.");
   }
+  try {
+    auto event_status =
+        event.get_info<::sycl::info::event::command_execution_status>();
+    if (event_status == ::sycl::info::event_command_status::complete) {
+      VLOG(2) << "Event is already complete; no need to wait.";
+      return absl::OkStatus();
+    }
+  } catch (const ::sycl::exception& e) {
+    return absl::InternalError(
+        "WaitStreamOnEvent: Failed to check event status before waiting: " +
+        std::string(e.what()));
+  }
   std::vector<::sycl::event> event_list{event};
   stream_handle->submit([&](::sycl::handler& cgh) {
     cgh.depends_on(event_list);

@@ -2,7 +2,7 @@ Fix for b/405045790.
 
 --- a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
-@@ -272,10 +272,13 @@ static bool bwdFilter(Operation *op) {
+@@ -272,9 +272,12 @@ static bool bwdFilter(Operation *op) {
        return false;
    }
  
@@ -11,11 +11,8 @@ Fix for b/405045790.
 +  // small. This is just a heuristic to avoid a regression.
    return (op->hasTrait<OpTrait::Elementwise>() && isMemoryEffectFree(op)) ||
           isView(op) ||
--         isa<Fp4ToFpOp, LoadOp, DescriptorLoadOp, BroadcastOp, ConvertLayoutOp>(
--             op);
-+         isa<Fp4ToFpOp, LoadOp, DescriptorLoadOp, /*BroadcastOp,*/
-+             ConvertLayoutOp>(op);
+-         isa<Fp4ToFpOp, LoadOp, DescriptorLoadLikeOpInterface, BroadcastOp,
++         isa<Fp4ToFpOp, LoadOp, DescriptorLoadLikeOpInterface,/*BroadcastOp,*/
+              ConvertLayoutOp>(op);
  }
  
- // Finds the bitwidth with which the value x is loaded
-

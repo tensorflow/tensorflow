@@ -87,7 +87,7 @@ load(
     "if_tensorrt_exec",
 )
 load(
-    "@xla//third_party/py/rules_pywrap:pywrap.default.bzl",
+    "@rules_ml_toolchain//py/rules_pywrap:pywrap.default.bzl",
     "use_pywrap_rules",
     _pybind_extension = "pybind_extension",
 )
@@ -3007,16 +3007,19 @@ _local_exec_transition = transition(
 )
 
 def _local_genrule_impl(ctx):
+    exec_tool_file = ctx.file.exec_tool_cross if ctx.file.exec_tool_cross else ctx.file.exec_tool_local
+
+    env = dict(ctx.configuration.default_shell_env)
+
     ctx.actions.run_shell(
-        mnemonic = "TensorflowLocalGenrule",
+        mnemonic = "LocalGenrule",
         outputs = [ctx.outputs.out],
-        inputs = [f for t in ctx.attr.srcs for f in t.files.to_list()],
-        tools = [ctx.executable.exec_tool],
-        arguments = [f.path for t in ctx.attr.srcs for f in t.files.to_list()] +
-                    [ctx.outputs.out.path],
-        command = "%s %s" % (ctx.executable.exec_tool.path, ctx.attr.arguments),
+        inputs = ctx.files.srcs + [exec_tool_file],
+        arguments = [f.path for f in ctx.files.srcs] + [ctx.outputs.out.path],
+        command = "if command -v python3 &>/dev/null; then python3 %s %s; else python %s %s; fi" % (exec_tool_file.path, ctx.attr.arguments, exec_tool_file.path, ctx.attr.arguments),
         execution_requirements = {"no-remote-exec": ""},
         use_default_shell_env = True,
+        env = env,
     )
 
 # A genrule that executes locally and forces the tool it runs to be built locally.
@@ -3030,10 +3033,13 @@ _local_genrule_internal = rule(
     implementation = _local_genrule_impl,
     attrs = {
         "out": attr.output(),
-        "exec_tool": attr.label(
-            executable = True,
+        "exec_tool_local": attr.label(
             cfg = _local_exec_transition,
-            allow_files = True,
+            allow_single_file = True,
+        ),
+        "exec_tool_cross": attr.label(
+            cfg = "exec",
+            allow_single_file = True,
         ),
         "arguments": attr.string(),
         "srcs": attr.label_list(
@@ -3044,10 +3050,18 @@ _local_genrule_internal = rule(
 )
 
 # Wrap the rule in a macro so we can pass in exec_compatible_with.
-def _local_genrule(**kwargs):
+def _local_genrule(exec_tool, **kwargs):
     tags = kwargs.pop("tags", [])
     tags = tags + ["no-remote-exec"]
     _local_genrule_internal(
+        exec_tool_local = select({
+            clean_dep("//tensorflow:linux_arm64_cross_compile"): None,
+            "//conditions:default": exec_tool,
+        }),
+        exec_tool_cross = select({
+            clean_dep("//tensorflow:linux_arm64_cross_compile"): exec_tool,
+            "//conditions:default": None,
+        }),
         tags = tags,
         **kwargs
     )
@@ -3059,7 +3073,7 @@ def tf_version_info_genrule(name, out, compatible_with = None):
         name = name,
         out = out,
         compatible_with = compatible_with,
-        exec_tool = "//tensorflow/tools/git:gen_git_source",
+        exec_tool = "//tensorflow/tools/git:gen_git_source.py",
         srcs = [
             "@local_config_git//:gen/spec.json",
             "@local_config_git//:gen/head",
@@ -3076,7 +3090,7 @@ def tf_py_build_info_genrule(name, out):
     _local_genrule(
         name = name,
         out = out,
-        exec_tool = "//tensorflow/tools/build_info:gen_build_info",
+        exec_tool = "//tensorflow/tools/build_info:gen_build_info.py",
         arguments =
             "--raw_generate \"$@\" " +
             " --key_value" +

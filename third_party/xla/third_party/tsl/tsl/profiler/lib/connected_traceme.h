@@ -79,12 +79,14 @@ class TraceMeProducer : public TraceMe {
   explicit TraceMeProducer(NameT&& name,
                            ContextType context_type = ContextType::kGeneric,
                            std::optional<uint64_t> context_id = std::nullopt,
-                           int level = tsl::profiler::TraceMeLevel::kCritical)
+                           int level = tsl::profiler::TraceMeLevel::kCritical,
+                           const char* source_loc = TRACEME_DEFAULT_FILE)
       : TraceMe(std::forward<NameT>(name), level),
         context_id_(context_id.has_value() ? context_id.value()
                                            : TraceMe::NewActivityId()) {
     AppendMetadata([&] {
-      return TraceMeEncode({{"_pt", context_type}, {"_p", context_id_}});
+      return TraceMeEncode({{"_pt", context_type}, {"_p", context_id_}},
+                           source_loc);
     });
   }
 
@@ -98,17 +100,20 @@ class TraceMeConsumer : public TraceMe {
  public:
   template <typename NameT>
   TraceMeConsumer(NameT&& name, ContextType context_type, uint64_t context_id,
-                  int level = tsl::profiler::TraceMeLevel::kCritical)
+                  int level = tsl::profiler::TraceMeLevel::kCritical,
+                  const char* source_loc = TRACEME_DEFAULT_FILE)
       : TraceMe(std::forward<NameT>(name), level) {
     AppendMetadata([&] {
-      return TraceMeEncode({{"_ct", context_type}, {"_c", context_id}});
+      return TraceMeEncode({{"_ct", context_type}, {"_c", context_id}},
+                           source_loc);
     });
   }
 
   template <typename NameT>
-  TraceMeConsumer(NameT&& name, uint64_t context_id, int level = 2)
+  TraceMeConsumer(NameT&& name, uint64_t context_id, int level = 2,
+                  const char* source_loc = TRACEME_DEFAULT_FILE)
       : TraceMeConsumer(std::forward<NameT>(name), ContextType::kGeneric,
-                        context_id, level) {}
+                        context_id, level, source_loc) {}
 };
 
 }  // namespace profiler

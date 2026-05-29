@@ -21,7 +21,7 @@
 
 --- a/test/TritonGPU/prefetch.mlir
 +++ b/test/TritonGPU/prefetch.mlir
-@@ -493,3 +493,23 @@ tt.func @matmul_loop_mixed_amd(%lb : index, %ub : index, %step : index, %A : !tt
+@@ -541,3 +541,23 @@ tt.func @matmul_loop_mixed_amd(%lb : index, %ub : index, %step : index, %A : !tt
    tt.return %loop#4 : tensor<128x128xf32, #C>
  }
  }  // end module

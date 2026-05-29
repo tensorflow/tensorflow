@@ -65,12 +65,12 @@ absl::Status DistributedTPURewriteHelpers::GetSystemDevice(
   device_set.FindMatchingDevices(*system_spec, &system_devices);
   if (system_devices.empty()) {
     if (system_spec_string.empty()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "No TPU_SYSTEM device found. Please ensure that you're connected to "
           "a host with a TPU_SYSTEM device.");
     }
-    return errors::InvalidArgument("No matching devices found for '",
-                                   system_spec_string, "'");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "No matching devices found for '", system_spec_string, "'"));
   } else if (system_devices.size() > 1) {
     // Validate that all system devices are part of the same job.
     std::unordered_set<std::string> job_names;
@@ -80,10 +80,10 @@ absl::Status DistributedTPURewriteHelpers::GetSystemDevice(
       job_names.insert(parsed_name.job);
     }
     if (job_names.size() > 1) {
-      return errors::InvalidArgument(
-          "System devices cannot be part "
-          "of multiple different jobs.  Found: ",
-          absl::StrJoin(job_names, ","));
+      return absl::InvalidArgumentError(
+          absl::StrCat("System devices cannot be part "
+                       "of multiple different jobs.  Found: ",
+                       absl::StrJoin(job_names, ",")));
     }
 
     // Identify the lexicographically first device from the list of
@@ -102,9 +102,9 @@ absl::Status DistributedTPURewriteHelpers::GetSystemDevice(
 
   *system_device = system_devices[0];
   if (!DeviceNameUtils::ParseFullName((*system_device)->name(), system_spec)) {
-    return errors::InvalidArgument("Unable to re-parse system device name ",
-                                   (*system_device)->name(),
-                                   " as a device spec.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unable to re-parse system device name ",
+                     (*system_device)->name(), " as a device spec."));
   }
   return absl::OkStatus();
 }
@@ -143,12 +143,12 @@ absl::Status DistributedTPURewriteHelpers::GetHostSystemDevices(
     const auto& parsed_name = host_device->parsed_name();
     TF_RET_CHECK(parsed_name.has_job);
     if (parsed_name.job != job_name) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "All TPU host devices must be in the same job");
     }
     TF_RET_CHECK(parsed_name.has_replica);
     if (parsed_name.replica != replica) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "All TPU host devices must be in the same replica");
     }
   }
@@ -205,9 +205,9 @@ absl::Status DistributedTPURewriteHelpers::GetTPUDevices(
     } else if (*num_tpus_per_host != host_tpu_devices.size()) {
       // Subsequent iterations: check the number of TPUs match the number on
       // the first host.
-      return errors::InvalidArgument(
-          "Mismatched number of TPU devices in cluster ", *num_tpus_per_host,
-          " vs. ", host_tpu_devices.size());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Mismatched number of TPU devices in cluster ",
+                       *num_tpus_per_host, " vs. ", host_tpu_devices.size()));
     }
     tpu_devices->push_back(std::move(host_tpu_devices));
   }

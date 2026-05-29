@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/backends/gpu/target_config/target_config.h"
@@ -38,7 +39,7 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/platform_id.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -268,10 +269,6 @@ TEST(HostCrossCompilationTest,
   passes_cpu_target_machine_options_instantiate_called = false;
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module, GetHloModule());
-  DebugOptions debug_options = hlo_module->config().debug_options();
-  debug_options.set_xla_gpu_experimental_aot_compiled_thunks(true);
-  hlo_module->mutable_config().set_debug_options(debug_options);
-
   ASSERT_OK_AND_ASSIGN(
       stream_executor::GpuTargetConfigProto gpu_target_config_proto,
       GetGpuTargetConfig(GpuModel::A6000));
@@ -298,10 +295,6 @@ TEST(HostCrossCompilationTest,
   passes_cpu_target_machine_options_instantiate_called = false;
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module, GetHloModule());
-  DebugOptions debug_options = hlo_module->config().debug_options();
-  debug_options.set_xla_gpu_experimental_aot_compiled_thunks(true);
-  hlo_module->mutable_config().set_debug_options(debug_options);
-
   ASSERT_OK_AND_ASSIGN(
       stream_executor::GpuTargetConfigProto gpu_target_config_proto,
       GetGpuTargetConfig(GpuModel::A6000));

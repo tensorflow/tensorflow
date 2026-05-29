@@ -23,7 +23,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/tests/hlo_test_base_legacy.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 

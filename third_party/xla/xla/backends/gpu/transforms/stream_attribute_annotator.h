@@ -26,23 +26,12 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// This pass checks to see if:
-//  1.  there's any instruction, that
-//      consumes data from other computes streams,
-//      is missing "wait_on_operation_queues" attribute.
-//  2.  there's any fusion instruction with non-default
-//      stream fusion root.
-// It will annotate the corresponding instruction with
-// the correct attribute in GpuBackendConfig.
-// Instructions annotated with operation_queue_id > 0
-// will be wrapped with AsyncInstruction and split into
-// AsyncStart and AsyncDone in the
-// StreamAttributeAsyncWrapper pass.
-// We also check if there's any non-default-stream
-// instruction's user doesn't have the correct "wait_on_operation_queues"
-// attribute and set it with producer's operation_queue_id.
-// "wait_on_operation_queues" will need to be used by the emitter to emit the
-// correct stream synchronization.
+// This pass checks to see if there's any fusion instruction with non-default
+// stream fusion root. It will annotate the corresponding instruction with
+// the correct operation_queue_id attribute in GpuBackendConfig. Instructions
+// annotated with operation_queue_id > 0 will be wrapped with AsyncInstruction
+// and split into AsyncStart and AsyncDone in the StreamAttributeAsyncWrapper
+// pass.
 
 class StreamAttributeAnnotator : public HloModulePass {
  public:

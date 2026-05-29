@@ -81,7 +81,8 @@ std::optional<TfOp> GetMemcpyOp(absl::string_view tf_op_fullname) {
     tf_op.category = Category::kMemcpyDToD;
     tf_op.type = kMemcpyDToDOp;
     return tf_op;
-  } else if (absl::StartsWithIgnoreCase(tf_op_fullname, "MEMCPYHToH")) {
+  }
+  if (absl::StartsWithIgnoreCase(tf_op_fullname, "MEMCPYHToH")) {
     tf_op.category = Category::kMemcpyHToH;
     tf_op.type = kMemcpyHToHOp;
     return tf_op;
@@ -120,7 +121,9 @@ bool IsJaxOpType(absl::string_view op_type) {
 }
 
 bool IsJaxOpNameAndType(absl::string_view op_name, absl::string_view op_type) {
-  if (op_name.empty() || !IsJaxOpType(op_type)) return false;
+  if (op_name.empty() || !IsJaxOpType(op_type)) {
+    return false;
+  }
   std::vector<absl::string_view> split_result =
       absl::StrSplit(op_name, kNameScopeSeparator);
   return absl::StrContains(split_result.back(), op_type);
@@ -197,7 +200,9 @@ std::vector<absl::string_view> ParseTfNameScopes(absl::string_view tf_op_name) {
   std::vector<absl::string_view> name_scopes =
       absl::StrSplit(tf_op_name, kNameScopeSeparator);
   // The last element is an op name not TF name scope.
-  if (!name_scopes.empty()) name_scopes.pop_back();
+  if (!name_scopes.empty()) {
+    name_scopes.pop_back();
+  }
   return name_scopes;
 }
 

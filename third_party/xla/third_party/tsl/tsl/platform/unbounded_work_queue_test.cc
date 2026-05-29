@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tsl/platform/unbounded_work_queue.h"
 
+#include <functional>
+#include <memory>
+
 #include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/env.h"

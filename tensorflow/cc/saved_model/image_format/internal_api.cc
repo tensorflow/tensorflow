@@ -99,7 +99,7 @@ absl::Status WriteSavedModel(SavedModel* saved_model_proto,
                              const std::string& file_prefix) {
 #if !defined(PLATFORM_WINDOWS) && !defined(__APPLE__)
   tools::proto_splitter::SavedModelSplitter splitter(saved_model_proto);
-  return splitter.Write(file_prefix);
+  return splitter.Write(file_prefix).status();
 #else
   return absl::UnimplementedError(
       "WriteSavedModel not implemented for Windows or MacOS.");

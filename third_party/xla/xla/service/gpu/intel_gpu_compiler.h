@@ -39,6 +39,8 @@ class IntelGpuCompiler : public GpuCompiler {
       const se::SemanticVersion& toolkit_version,
       CompilationStats* compilation_stats) override;
 
+  // TODO(b/511979384): Remove once xla_gpu_experimental_autotune_post_fusion is
+  // enabled by default.
   absl::Status AddConvAndGemmAutotuningPass(
       HloPassPipeline* pipeline, HloModule* hlo_module,
       const se::GpuComputeCapability& gpu_version,
@@ -50,14 +52,28 @@ class IntelGpuCompiler : public GpuCompiler {
       const DebugOptions& debug_options, mlir::MLIRContext* mlir_context,
       HloCostAnalysis::ShapeSizeFunction shape_size_fn) override;
 
+  absl::Status AddAutotunerPass(
+      HloPassPipeline* pipeline, HloModule* hlo_module,
+      const se::GpuComputeCapability& gpu_version,
+      const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
+      stream_executor::StreamExecutor* stream_executor,
+      const GpuTargetConfig* target_config, const AliasInfo* alias_info,
+      mlir::MLIRContext* mlir_context,
+      HloCostAnalysis::ShapeSizeFunction shape_size_fn,
+      const MultiProcessKeyValueStore& key_value_store) override;
+
   absl::StatusOr<BackendCompileResult> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
       const stream_executor::DeviceDescription& device_description,
       bool relocatable, const HloModule* debug_module,
-      const CompileOptions& options, std::optional<int> shard_number) override;
+      std::optional<int> shard_number) override;
 
   std::vector<std::string> GetLLVMCommandLineOptions(
       const DebugOptions& debug_options) const override;
+
+  void AddPaddingForGpublasGemms(
+      HloPassPipeline& pipeline, const DebugOptions& debug_options,
+      const se::GpuComputeCapability& gpu_version) override;
 
  private:
   IntelGpuCompiler(const IntelGpuCompiler&) = delete;

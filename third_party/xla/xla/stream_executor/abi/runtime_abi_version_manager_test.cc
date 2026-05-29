@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
+#include "xla/stream_executor/abi/runtime_abi_version.pb.h"
 
 namespace stream_executor {
 namespace {

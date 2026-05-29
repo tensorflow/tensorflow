@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_clique.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_cliques.h"
@@ -137,9 +138,10 @@ absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
   XLA_VLOG_DEVICE(2, params.executor->device_ordinal()) << absl::StreamFormat(
       "[run=%v] Acquire %d collective cliques for global device id %v; "
       "max number of channels for collectives %d; max number of "
-      "channels for p2p %d",
+      "channels for p2p %d; use_minimal_resource=%v",
       params.run_id, ordered_cliques.size(), params.global_device_id,
-      params.collective_max_nchannels, params.p2p_max_nchannels);
+      params.collective_max_nchannels, params.p2p_max_nchannels,
+      params.collective_use_minimal_resource);
 
   for (size_t i = 0; i < ordered_cliques.size(); ++i) {
     const CollectiveCliqueRequests::CliqueRequest& r = ordered_cliques[i];
@@ -182,8 +184,8 @@ absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
             "For non-local GPU cliques (cliques that span multiple processes) "
             "clique id callback must be passed via execution params");
       }
-      TF_ASSIGN_OR_RETURN(CliqueId clique_id,
-                          params.collectives->CreateUniqueCliqueId());
+      ASSIGN_OR_RETURN(CliqueId clique_id,
+                       params.collectives->CreateUniqueCliqueId());
       return CliqueIds(clique_id);
     };
 
@@ -191,13 +193,14 @@ absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
                                ? params.p2p_max_nchannels
                                : params.collective_max_nchannels;
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         std::shared_ptr<LockableGpuClique::Lock> clique,
         AcquireGpuClique(params.collectives, params.executor, params.run_id,
                          r.key, r.device_groups,
                          params.clique_id_callback ? *params.clique_id_callback
                                                    : default_clique_id_callback,
-                         *rank, cliques_map, max_channels));
+                         *rank, cliques_map, max_channels,
+                         params.collective_use_minimal_resource));
 
     cliques_map[r.key] = std::move(clique);
   }
@@ -229,9 +232,9 @@ absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
 
       auto* comm = dynamic_cast<GpuCommunicator*>(*(*clique)->comm(*rank));
       DCHECK(comm) << "Communicator must be in the acquired clique";
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<GpuDeviceCommunicator> dev_comm,
-                          comm->CreateDeviceComm(reqs));
-      TF_RETURN_IF_ERROR(
+      ASSIGN_OR_RETURN(std::unique_ptr<GpuDeviceCommunicator> dev_comm,
+                       comm->CreateDeviceComm(reqs));
+      RETURN_IF_ERROR(
           (*clique)->AddDeviceComm(*rank, reqs, std::move(dev_comm)));
     }
   }

@@ -36,8 +36,11 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/service/heap_simulator/allocation_block.h"
@@ -50,6 +53,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -176,17 +181,95 @@ void Allocation::AddUse(HloUse use) {
 
 absl::Status Allocation::UpdateUses(HloComputation* computation,
                                     HloInstruction* producing_instruction,
-                                    const BitcastSplitFn& bitcast_split_fn) {
+                                    const BitcastSplitFn& bitcast_split_fn,
+                                    const HloLiveRange& hlo_live_range,
+                                    const HloAliasAnalysis& alias_analysis) {
   for (const HloUse& use : uses()) {
     HloInstruction* replacement_instruction = producing_instruction;
-    Shape operand_shape = use.instruction->operand(use.operand_number)->shape();
+    const Shape& operand_shape =
+        use.instruction->operand(use.operand_number)->shape();
     if (operand_shape.IsTuple()) {
-      TF_ASSIGN_OR_RETURN(
-          replacement_instruction,
-          TupleUtil::ReplaceTupleWith(
-              producing_instruction,
-              use.instruction->mutable_operand(use.operand_number),
-              use.operand_index));
+      HloInstruction* tuple_inst =
+          use.instruction->mutable_operand(use.operand_number);
+
+      // Trace back to original instructions in the schedule to use
+      // HloAliasAnalysis safely.
+      auto find_original_leaf = [&](const HloInstruction* inst,
+                                    ShapeIndex index)
+          -> std::pair<const HloInstruction*, ShapeIndex> {
+        while (!hlo_live_range.instruction_schedule().contains(inst)) {
+          if (inst->opcode() == HloOpcode::kTuple) {
+            if (index.empty()) {
+              break;
+            }
+            int64_t op_idx = index[0];
+            inst = inst->operand(op_idx);
+            index = ShapeIndex(index.begin() + 1, index.end());
+          } else if (inst->opcode() == HloOpcode::kGetTupleElement) {
+            ShapeIndex new_index;
+            new_index.push_back(inst->tuple_index());
+            for (int i : index) {
+              new_index.push_back(i);
+            }
+            inst = inst->operand(0);
+            index = new_index;
+          } else if (inst->opcode() == HloOpcode::kBitcast ||
+                     inst->opcode() == HloOpcode::kCopy ||
+                     inst->opcode() == HloOpcode::kCopyDone ||
+                     inst->opcode() == HloOpcode::kCopyStart) {
+            inst = inst->operand(0);
+          } else {
+            break;
+          }
+        }
+        return {inst, index};
+      };
+
+      bool should_skip_reconstruction = false;
+
+      // If the producing instruction shares the same buffer with the operand,
+      // then we skip the reconstruction.
+      auto is_aliasing_operand = [&](int operand_index) {
+        ShapeIndex sub_index;
+        if (use.operand_index.size() > 1) {
+          sub_index = ShapeIndex(use.operand_index.begin() + 1,
+                                 use.operand_index.end());
+        }
+        auto [traced_operand, traced_index] =
+            find_original_leaf(tuple_inst->operand(operand_index), sub_index);
+        return hlo_live_range.instruction_schedule().contains(traced_operand) &&
+               hlo_live_range.instruction_schedule().contains(tuple_inst) &&
+               alias_analysis.GetUniqueBufferAt(traced_operand, traced_index)
+                       .id() ==
+                   alias_analysis
+                       .GetUniqueBufferAt(tuple_inst, use.operand_index)
+                       .id();
+      };
+
+      for (int operand_index = 0; operand_index < tuple_inst->operand_count();
+           ++operand_index) {
+        if (tuple_inst->opcode() == HloOpcode::kTuple &&
+            !use.operand_index.empty() &&
+            operand_index != use.operand_index.front()) {
+          continue;
+        }
+        if (tuple_inst->operand(operand_index) == producing_instruction &&
+            is_aliasing_operand(operand_index)) {
+          should_skip_reconstruction = true;
+          break;
+        }
+      }
+
+      if (should_skip_reconstruction) {
+        VLOG(4) << "Skipping tuple reconstruction for " << tuple_inst->name()
+                << " at index " << use.operand_index.ToString();
+        replacement_instruction = tuple_inst;
+      } else {
+        ASSIGN_OR_RETURN(
+            replacement_instruction,
+            TupleUtil::ReplaceTupleWith(producing_instruction, tuple_inst,
+                                        use.operand_index));
+      }
     } else if (!Shape::Equal().IgnoreSplitConfigInLayout()(
                    operand_shape, producing_instruction->shape())) {
       // When processing allocations, we treat bitcasts as trivial positions and
@@ -199,7 +282,7 @@ absl::Status Allocation::UpdateUses(HloComputation* computation,
           HloInstruction::CreateBitcast(operand_shape, producing_instruction));
       if (mutable_split_shape().has_value() &&
           producing_instruction->shape().layout().split_configs().size() != 0) {
-        TF_ASSIGN_OR_RETURN(
+        ASSIGN_OR_RETURN(
             int64_t split_dim,
             bitcast_split_fn(
                 replacement_instruction,
@@ -213,7 +296,7 @@ absl::Status Allocation::UpdateUses(HloComputation* computation,
             ->add_split_configs(split_config);
       }
     }
-    TF_RETURN_IF_ERROR(use.instruction->ReplaceOperandWith(
+    RETURN_IF_ERROR(use.instruction->ReplaceOperandWith(
         use.operand_number, replacement_instruction));
   }
   return absl::OkStatus();
@@ -291,10 +374,13 @@ bool PinnedAllocation::operator==(const Allocation& other) const {
   return casted_other != nullptr && (*this) == (*casted_other);
 }
 
-absl::Status PinnedAllocation::Process(const BitcastSplitFn& bitcast_split_fn) {
+absl::Status PinnedAllocation::Process(const BitcastSplitFn& bitcast_split_fn,
+                                       const HloLiveRange& hlo_live_range,
+                                       const HloAliasAnalysis& alias_analysis) {
   HloInstruction* producing_instruction = AddGetTupleElements();
   HloComputation* computation = producing_instruction->parent();
-  return UpdateUses(computation, producing_instruction, bitcast_split_fn);
+  return UpdateUses(computation, producing_instruction, bitcast_split_fn,
+                    hlo_live_range, alias_analysis);
 }
 
 std::string PinnedAllocation::ToString() const {
@@ -333,7 +419,8 @@ HloPosition ReservedAllocation::defining_position() const {
 }
 
 absl::Status ReservedAllocation::Process(
-    const BitcastSplitFn& bitcast_split_fn) {
+    const BitcastSplitFn& bitcast_split_fn, const HloLiveRange& hlo_live_range,
+    const HloAliasAnalysis& alias_analysis) {
   return absl::OkStatus();
 }
 
@@ -353,10 +440,10 @@ std::string ReservedAllocation::ToString() const {
   if (chunk) {
     absl::StrAppend(&memory_space_str, " chunk: ", chunk->ToString());
   }
-  return absl::StrCat(
-      "ReservedAllocation defined in alternate memory defined at ",
-      original_defining_position().ToString(), ", start_time: ", start_time(),
-      ", end_time: ", end_time(), " reserved: ", reserved_);
+  return absl::StrCat("ReservedAllocation defined in ", memory_space_str,
+                      " defined at ", original_defining_position().ToString(),
+                      ", start_time: ", start_time(),
+                      ", end_time: ", end_time(), " reserved: ", reserved_);
 }
 
 bool ReservedAllocation::operator==(const Allocation& other) const {
@@ -394,7 +481,9 @@ int64_t CopyAllocation::earliest_available_time() const {
   return copy_done_schedule_before_;
 }
 
-absl::Status CopyAllocation::Process(const BitcastSplitFn& bitcast_split_fn) {
+absl::Status CopyAllocation::Process(const BitcastSplitFn& bitcast_split_fn,
+                                     const HloLiveRange& hlo_live_range,
+                                     const HloAliasAnalysis& alias_analysis) {
   // If the copy start and copy done instructions are already present in the
   // original schedule we just need to schedule them in correct positions. There
   // is no need to create new instructions.
@@ -413,10 +502,10 @@ absl::Status CopyAllocation::Process(const BitcastSplitFn& bitcast_split_fn) {
   if (sync_mem_op_ != nullptr && sync_mem_op_->opcode() != HloOpcode::kCopy) {
     if (sync_mem_op_->opcode() == HloOpcode::kSlice ||
         sync_mem_op_->opcode() == HloOpcode::kDynamicSlice) {
-      TF_ASSIGN_OR_RETURN(copy_done_,
-                          computation->CreateAsyncInstructions(
-                              sync_mem_op_, {ShapeUtil::MakeShape(S32, {})},
-                              HloInstruction::kMainExecutionThread, false));
+      ASSIGN_OR_RETURN(copy_done_,
+                       computation->CreateAsyncInstructions(
+                           sync_mem_op_, {ShapeUtil::MakeShape(S32, {})},
+                           HloInstruction::kMainExecutionThread, false));
     } else {
       return Internal("Sync mem op is not a copy, slice, or dynamic slice.");
     }
@@ -430,8 +519,7 @@ absl::Status CopyAllocation::Process(const BitcastSplitFn& bitcast_split_fn) {
           computation->AddInstruction(HloInstruction::CreateBitcast(
               copy_start_->operand(0)->shape(), producing_instruction));
     }
-    TF_RETURN_IF_ERROR(
-        copy_start_->ReplaceOperandWith(0, producing_instruction));
+    RETURN_IF_ERROR(copy_start_->ReplaceOperandWith(0, producing_instruction));
   } else {
     Shape dest_shape = shape;
     if (memory_space() == MemorySpace::kDefault) {
@@ -450,7 +538,8 @@ absl::Status CopyAllocation::Process(const BitcastSplitFn& bitcast_split_fn) {
   // Update the allocation position with the copy complete instruction, so that
   // if there are further copies from it, they can find the correct position.
   set_original_defining_position(HloPosition{copy_done_, {}});
-  return UpdateUses(computation, copy_done_, bitcast_split_fn);
+  return UpdateUses(computation, copy_done_, bitcast_split_fn, hlo_live_range,
+                    alias_analysis);
 }
 
 void CopyAllocation::MarkIfNeeded(
@@ -566,7 +655,8 @@ SlicedCopyAllocation::SlicedCopyAllocation(
 }
 
 absl::Status SlicedCopyAllocation::Process(
-    const BitcastSplitFn& bitcast_split_fn) {
+    const BitcastSplitFn& bitcast_split_fn, const HloLiveRange& hlo_live_range,
+    const HloAliasAnalysis& alias_analysis) {
   Shape shape = defining_position().shape();
   HloInstruction* producing_instruction = AddGetTupleElements();
 
@@ -604,14 +694,14 @@ absl::Status SlicedCopyAllocation::Process(
   // Sliced copy allocations need to insert asynchronous copy nodes.
   for (SliceDetail& slice_detail :
        slice_details_sorted_by_exclusive_start_time_) {
-    TF_RETURN_IF_ERROR(slice_detail.CreateAsyncSlice(
+    RETURN_IF_ERROR(slice_detail.CreateAsyncSlice(
         slice_shape, *producing_instruction, *computation));
     VLOG(4) << "Created " << slice_detail.copy_start->name()
             << " for sliced copy allocation: " << ToString();
     slice_dones.push_back(slice_detail.copy_done);
   }
 
-  TF_RETURN_IF_ERROR(CreateBitcastConcat(shape, slice_dones));
+  RETURN_IF_ERROR(CreateBitcastConcat(shape, slice_dones));
 
   // If we bitcast to an array of bytes above, the result of the concatenated
   // slices will also be an array of bytes. Thus, we need to cast the
@@ -624,7 +714,8 @@ absl::Status SlicedCopyAllocation::Process(
   // Update the allocation position with the copy complete instruction, so that
   // if there are further copies from it, they can find the correct position.
   set_original_defining_position(HloPosition{concat_, {}});
-  return UpdateUses(computation, concat_, bitcast_split_fn);
+  return UpdateUses(computation, concat_, bitcast_split_fn, hlo_live_range,
+                    alias_analysis);
 }
 
 void SlicedCopyAllocation::MarkIfNeeded(
@@ -822,8 +913,8 @@ absl::Status SlicedCopyAllocation::SliceDetail::CreateAsyncSlice(
   HloInstruction* slice = parent.AddInstruction(
       HloInstruction::CreateSlice(slice_decision.sizing.slice_shape, &producer,
                                   start_indices, limit_indices, strides));
-  TF_ASSIGN_OR_RETURN(copy_done, parent.CreateAsyncInstructions(
-                                     slice, {ShapeUtil::MakeShape(S32, {})}));
+  ASSIGN_OR_RETURN(copy_done, parent.CreateAsyncInstructions(
+                                  slice, {ShapeUtil::MakeShape(S32, {})}));
   copy_start = copy_done->mutable_operand(0);
 
   return absl::OkStatus();
@@ -860,11 +951,13 @@ MirroredAllocation::MirroredAllocation(const Allocation& original_allocation,
       original_allocation_(original_allocation) {}
 
 absl::Status MirroredAllocation::Process(
-    const BitcastSplitFn& bitcast_split_fn) {
+    const BitcastSplitFn& bitcast_split_fn, const HloLiveRange& hlo_live_range,
+    const HloAliasAnalysis& alias_analysis) {
   set_original_defining_position(original_allocation_.defining_position());
   HloInstruction* producing_instruction = AddGetTupleElements();
   HloComputation* computation = producing_instruction->parent();
-  return UpdateUses(computation, producing_instruction, bitcast_split_fn);
+  return UpdateUses(computation, producing_instruction, bitcast_split_fn,
+                    hlo_live_range, alias_analysis);
 }
 
 ParentAllocation::ParentAllocation(const Allocation& original_allocation,
@@ -882,19 +975,21 @@ HloPosition ParentAllocation::defining_position() const {
   return original_defining_position();
 }
 
-absl::Status ParentAllocation::Process(const BitcastSplitFn& bitcast_split_fn) {
+absl::Status ParentAllocation::Process(const BitcastSplitFn& bitcast_split_fn,
+                                       const HloLiveRange& hlo_live_range,
+                                       const HloAliasAnalysis& alias_analysis) {
   // Add an additional parameter to the while HLO with a reference to the buffer
   // in the default memory space.
   HloInstruction* producing_instruction =
       original_allocation_.AddGetTupleElements();
   int new_tuple_index = calling_instruction_->shape().tuple_shapes().size();
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       HloInstruction * new_while_operand,
       TupleUtil::ReplaceTupleWith(producing_instruction,
                                   calling_instruction_->mutable_operand(0),
                                   {new_tuple_index}));
-  TF_RETURN_IF_ERROR(calling_instruction_->ReplaceOperandWithDifferentShape(
+  RETURN_IF_ERROR(calling_instruction_->ReplaceOperandWithDifferentShape(
       0, new_while_operand));
   *calling_instruction_->mutable_shape() = new_while_operand->shape();
   *calling_instruction_->while_condition()
@@ -912,12 +1007,13 @@ absl::Status ParentAllocation::Process(const BitcastSplitFn& bitcast_split_fn) {
   std::vector<HloInstruction*> while_users = calling_instruction_->users();
   HloInstruction* tuple_with_old_shape =
       TupleUtil::ExtractPrefix(calling_instruction_, new_tuple_index);
-  TF_RETURN_IF_ERROR(calling_instruction_->ReplaceAllUsesWithDifferentShape(
+  RETURN_IF_ERROR(calling_instruction_->ReplaceAllUsesWithDifferentShape(
       while_users, tuple_with_old_shape));
 
   HloInstruction* final_instruction = AddGetTupleElements();
   HloComputation* computation = final_instruction->parent();
-  return UpdateUses(computation, final_instruction, bitcast_split_fn);
+  return UpdateUses(computation, final_instruction, bitcast_split_fn,
+                    hlo_live_range, alias_analysis);
 }
 
 absl::Status ParentAllocation::PostProcess() {
@@ -927,10 +1023,10 @@ absl::Status ParentAllocation::PostProcess() {
   // new root. Doing the post-process step later ensures the root has been
   // updated with other changes, and we can safely add the additional parameter.
   HloComputation* while_body = calling_instruction_->while_body();
-  TF_ASSIGN_OR_RETURN(HloInstruction * new_while_body_root,
-                      TupleUtil::ReplaceTupleWith(
-                          AddGetTupleElements(), while_body->root_instruction(),
-                          original_defining_position().index));
+  ASSIGN_OR_RETURN(HloInstruction * new_while_body_root,
+                   TupleUtil::ReplaceTupleWith(
+                       AddGetTupleElements(), while_body->root_instruction(),
+                       original_defining_position().index));
   while_body->set_root_instruction(new_while_body_root,
                                    /*accept_different_shape=*/true);
   return absl::OkStatus();
@@ -1039,7 +1135,8 @@ absl::Status WindowPrefetchedAllocation::InsertWindowPrefetchInstruction(
 }
 
 absl::Status WindowPrefetchedAllocation::Process(
-    const BitcastSplitFn& bitcast_split_fn) {
+    const BitcastSplitFn& bitcast_split_fn, const HloLiveRange& hlo_live_range,
+    const HloAliasAnalysis& alias_analysis) {
   HloInstruction* use_instruction = use_.instruction;
   int64_t use_operand = use_instruction->operand_count();
   HloInstruction* producing_instruction =
@@ -1047,7 +1144,7 @@ absl::Status WindowPrefetchedAllocation::Process(
   HloComputation* computation = producing_instruction->parent();
   CHECK_EQ(use_instruction->opcode(), HloOpcode::kFusion);
 
-  TF_RETURN_IF_ERROR(InsertWindowPrefetchInstruction(
+  RETURN_IF_ERROR(InsertWindowPrefetchInstruction(
       producing_instruction, use_instruction, computation));
 
   // Notify the backend that an operand has been appended as a window prefetch
@@ -1107,7 +1204,9 @@ HloPosition ScopedAllocation::defining_position() const {
   return original_defining_position();
 }
 
-absl::Status ScopedAllocation::Process(const BitcastSplitFn& bitcast_split_fn) {
+absl::Status ScopedAllocation::Process(const BitcastSplitFn& bitcast_split_fn,
+                                       const HloLiveRange& hlo_live_range,
+                                       const HloAliasAnalysis& alias_analysis) {
   return absl::OkStatus();
 }
 
@@ -1147,8 +1246,7 @@ std::tuple<int64_t, bool, int64_t> GetAllocationSortTuple(
   int64_t scheduled_on_or_before = allocation->start_time();
   int64_t scheduled_on_or_after = allocation->start_time();
   if (allocation->is_copy_allocation()) {
-    auto copy_allocation =
-        tensorflow::down_cast<CopyAllocation*>(allocation.get());
+    auto copy_allocation = absl::down_cast<CopyAllocation*>(allocation.get());
     scheduled_on_or_before = copy_allocation->copy_done_schedule_before();
     scheduled_on_or_after = copy_allocation->copy_start_schedule_after();
   }

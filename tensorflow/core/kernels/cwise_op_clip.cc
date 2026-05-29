@@ -33,16 +33,17 @@ class ClipOp : public OpKernel {
     const Tensor& in0 = ctx->input(0);
     const Tensor& in1 = ctx->input(1);
     const Tensor& in2 = ctx->input(2);
-    OP_REQUIRES(ctx, (in0.shape() == in1.shape() ||
-                      TensorShapeUtils::IsScalar(in1.shape())) &&
-                     (in0.shape() == in2.shape() ||
-                      TensorShapeUtils::IsScalar(in2.shape())),
-                errors::InvalidArgument(
+    OP_REQUIRES(ctx,
+                (in0.shape() == in1.shape() ||
+                 TensorShapeUtils::IsScalar(in1.shape())) &&
+                    (in0.shape() == in2.shape() ||
+                     TensorShapeUtils::IsScalar(in2.shape())),
+                absl::InvalidArgumentError(absl::StrCat(
                     "clip_value_min and clip_value_max must be either of "
                     "the same shape as input, or a scalar. ",
                     "input shape: ", in0.shape().DebugString(),
                     "clip_value_min shape: ", in1.shape().DebugString(),
-                    "clip_value_max shape: ", in2.shape().DebugString()));
+                    "clip_value_max shape: ", in2.shape().DebugString())));
 
     Tensor* out = nullptr;
     OP_REQUIRES_OK(
@@ -249,12 +250,12 @@ INSTANTIATE_CPU(Eigen::half);
 INSTANTIATE_CPU(float);
 INSTANTIATE_CPU(double);
 INSTANTIATE_CPU(bfloat16);
-INSTANTIATE_CPU(int8);
-INSTANTIATE_CPU(int16);
-INSTANTIATE_CPU(int32);
+INSTANTIATE_CPU(int8_t);
+INSTANTIATE_CPU(int16_t);
+INSTANTIATE_CPU(int32_t);
 INSTANTIATE_CPU(int64_t);
-INSTANTIATE_CPU(uint8);
-INSTANTIATE_CPU(uint16);
+INSTANTIATE_CPU(uint8_t);
+INSTANTIATE_CPU(uint16_t);
 INSTANTIATE_CPU(std::complex<float>);
 INSTANTIATE_CPU(std::complex<double>);
 #undef INSTANTIATE_CPU

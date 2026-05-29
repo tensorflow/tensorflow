@@ -32,7 +32,7 @@ class CompositeTensorVariantFromComponents : public OpKernel {
     std::string type_spec_string;
     OP_REQUIRES_OK(context, context->GetAttr("metadata", &type_spec_string));
     OP_REQUIRES(context, metadata_.ParseFromString(type_spec_string),
-                errors::InvalidArgument("Error parsing metadata"));
+                absl::InvalidArgumentError("Error parsing metadata"));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -59,7 +59,7 @@ class CompositeTensorVariantToComponents : public OpKernel {
     std::string type_spec_string;
     OP_REQUIRES_OK(context, context->GetAttr("metadata", &type_spec_string));
     OP_REQUIRES(context, metadata_.ParseFromString(type_spec_string),
-                errors::InvalidArgument("Error parsing `metadata`"));
+                absl::InvalidArgumentError("Error parsing `metadata`"));
 
     OP_REQUIRES_OK(context,
                    context->GetAttr("Tcomponents", &component_dtypes_));
@@ -67,16 +67,17 @@ class CompositeTensorVariantToComponents : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     Tensor encoded_t = context->input(0);
-    OP_REQUIRES(
-        context, encoded_t.flat<Variant>().size() > 0,
-        errors::InvalidArgument("Input `encoded` must not be an empty variant "
-                                "tensor, but got ",
-                                encoded_t.DebugString()));
+    OP_REQUIRES(context, encoded_t.flat<Variant>().size() > 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input `encoded` must not be an empty variant "
+                                 "tensor, but got ",
+                                 encoded_t.DebugString())));
     auto* encoded = encoded_t.flat<Variant>()(0).get<CompositeTensorVariant>();
     OP_REQUIRES(context, encoded != nullptr,
-                errors::InvalidArgument("The input `encoded` is not a valid "
-                                        "CompositeTensorVariant tensor, got ",
-                                        encoded_t.DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("The input `encoded` is not a valid "
+                                 "CompositeTensorVariant tensor, got ",
+                                 encoded_t.DebugString())));
 
     // Check that the encoded TypeSpec is compatible with the expected TypeSpec.
     // For now, we just check that the class matches.
@@ -89,10 +90,10 @@ class CompositeTensorVariantToComponents : public OpKernel {
     auto actual_class = encoded->metadata().type_spec_proto().type_spec_class();
     OP_REQUIRES(
         context, expected_class == actual_class,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Expected a ", TypeSpecProto::TypeSpecClass_Name(expected_class),
             " (based on `type_spec`), but `encoded` contains a ",
-            TypeSpecProto::TypeSpecClass_Name(actual_class)));
+            TypeSpecProto::TypeSpecClass_Name(actual_class))));
 
     // Extract the component tensors.
     OpOutputList components;
@@ -100,18 +101,18 @@ class CompositeTensorVariantToComponents : public OpKernel {
     int num_components = encoded->flat_components().size();
 
     OP_REQUIRES(context, component_dtypes_.size() == num_components,
-                errors::InvalidArgument("Encoded value has ", num_components,
-                                        " tensor components; expected ",
-                                        component_dtypes_.size(),
-                                        " components based on type_spec"));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Encoded value has ", num_components,
+                    " tensor components; expected ", component_dtypes_.size(),
+                    " components based on type_spec")));
 
     for (int i = 0; i < component_dtypes_.size(); i++) {
       const Tensor& component = encoded->flat_components()[i];
       OP_REQUIRES(context, component_dtypes_[i] == component.dtype(),
-                  errors::InvalidArgument("Tensor component ", i, " had dtype ",
-                                          DataType_Name(component.dtype()),
-                                          "; expected dtype ",
-                                          DataType_Name(component_dtypes_[i])));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Tensor component ", i, " had dtype ",
+                      DataType_Name(component.dtype()), "; expected dtype ",
+                      DataType_Name(component_dtypes_[i]))));
       components.set(i, component);
     }
   }

@@ -13,26 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Implementation of HostExecutor class [of those methods not defined in the
+/// Implementation of HostExecutor class [of those methods not defined in the
 // class declaration].
 #include "xla/stream_executor/host/host_executor.h"
 
-#include <stdint.h>
-#include <string.h>
-
 #include <cstdint>
+#include <cstring>
 #include <memory>
+#include <new>
 #include <optional>
-#include <string>
 #include <utility>
 #include <variant>
 
 #include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/string_view.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/event.h"
@@ -45,92 +41,118 @@ limitations under the License.
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_allocator.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/profile_utils/cpu_utils.h"
-#include "xla/tsl/platform/threadpool.h"
-#include "tsl/platform/cpu_info.h"
 #include "tsl/platform/mem.h"
 
 namespace stream_executor {
 namespace host {
 
-HostStream* AsHostStream(Stream* stream) {
-  DCHECK(stream != nullptr);
-  return dynamic_cast<HostStream*>(stream);
-}
-
 absl::Status HostExecutor::Init() {
-  thread_pool_ = std::make_shared<tsl::thread::ThreadPool>(
-      tsl::Env::Default(), "host-executor", tsl::port::MaxParallelism());
   return absl::OkStatus();
 }
 
 absl::StatusOr<std::unique_ptr<Kernel>> HostExecutor::LoadKernel(
-    const KernelLoaderSpec& spec) {
-  return absl::InternalError("No method of loading host kernel provided");
+    const KernelLoaderSpec& /*spec*/) {
+  return absl::UnimplementedError("No method of loading host kernel provided");
 }
 
 bool HostExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
   tsl::port::MemoryInfo mem_info = tsl::port::GetMemoryInfo();
-  *free = (mem_info.free != INT64_MAX) ? mem_info.free : -1;
-  *total = (mem_info.total != INT64_MAX) ? mem_info.total : -1;
+  if (mem_info.free == INT64_MAX || mem_info.total == INT64_MAX) {
+    *free = -1;
+    *total = -1;
+    return false;
+  }
+  *free = mem_info.free;
+  *total = mem_info.total;
   return true;
 }
 
 DeviceAddressBase HostExecutor::Allocate(uint64_t size, int64_t memory_space) {
   CHECK_EQ(memory_space, 0);
-  // Use a minimum alignment of 64 bytes to be friendly to AVX512 code.
-  // This should probably be kept in sync with
-  // tsl::Allocator::kAllocatorAlignment.
-  return DeviceAddressBase(
-      tsl::port::AlignedMalloc(size, static_cast<std::align_val_t>(64)), size);
+  void* ptr = tsl::port::AlignedMalloc(
+      size, static_cast<std::align_val_t>(kHostAlignment));
+  if (size > 0 && ptr == nullptr) {
+    return DeviceAddressBase();
+  }
+  return DeviceAddressBase(ptr, size);
 }
 
 void HostExecutor::Deallocate(DeviceAddressBase* mem) {
-  tsl::port::AlignedFree(mem->opaque());
+  if (mem != nullptr && mem->opaque() != nullptr) {
+    tsl::port::AlignedFree(mem->opaque());
+  }
 }
 
-absl::Status HostExecutor::SynchronousMemZero(DeviceAddressBase* location,
-                                              uint64_t size) {
-  memset(location->opaque(), 0, size);
-  return absl::OkStatus();
+absl::StatusOr<std::unique_ptr<MemoryAllocation>>
+HostExecutor::HostMemoryAllocate(uint64_t size) {
+  void* ptr = tsl::port::AlignedMalloc(
+      size, static_cast<std::align_val_t>(kHostAlignment));
+  if (size > 0 && ptr == nullptr) {
+    return absl::ResourceExhaustedError(absl::StrFormat(
+        "Failed to allocate %u bytes of aligned host memory", size));
+  }
+  return std::make_unique<GenericMemoryAllocation>(
+      ptr, size, [](void* location, uint64_t /*size*/) {
+        tsl::port::AlignedFree(location);
+      });
 }
 
-absl::Status HostExecutor::SynchronousMemcpy(DeviceAddressBase* gpu_dst,
+absl::Status HostExecutor::SynchronousMemcpy(DeviceAddressBase* device_dst,
                                              const void* host_src,
                                              uint64_t size) {
-  memcpy(gpu_dst->opaque(), host_src, size);
+  if (device_dst == nullptr || device_dst->opaque() == nullptr ||
+      host_src == nullptr) {
+    if (size == 0) {
+      return absl::OkStatus();
+    }
+    return absl::InvalidArgumentError(
+        "Null pointer passed to SynchronousMemcpy");
+  }
+  std::memcpy(device_dst->opaque(), host_src, size);
   return absl::OkStatus();
 }
 
-absl::Status HostExecutor::SynchronousMemcpy(void* host_dst,
-                                             const DeviceAddressBase& gpu_src,
-                                             uint64_t size) {
-  memcpy(host_dst, gpu_src.opaque(), size);
+absl::Status HostExecutor::SynchronousMemcpy(
+    void* host_dst, const DeviceAddressBase& device_src, uint64_t size) {
+  if (host_dst == nullptr || device_src.opaque() == nullptr) {
+    if (size == 0) {
+      return absl::OkStatus();
+    }
+    return absl::InvalidArgumentError(
+        "Null pointer passed to SynchronousMemcpy");
+  }
+  std::memcpy(host_dst, device_src.opaque(), size);
   return absl::OkStatus();
 }
 
-void HostExecutor::DeallocateStream(Stream* stream) {}
+void HostExecutor::DeallocateStream(Stream* /*stream*/) {}
 
 absl::StatusOr<std::unique_ptr<Event>> HostExecutor::CreateEvent() {
   return std::make_unique<HostEvent>();
 }
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
-HostExecutor::CreateDeviceDescription(int device_ordinal) {
+HostExecutor::CreateDeviceDescription(int /*device_ordinal*/) {
   DeviceDescription desc;
 
   desc.set_device_address_bits(64);
 
-  // TODO(rspringer): How to report a value that's based in reality but that
-  // doesn't result in thrashing or other badness? 4GiB chosen arbitrarily.
-  desc.set_device_memory_size(static_cast<uint64_t>(4) * 1024 * 1024 * 1024);
+  // TODO: b/511236711 - How to report a value that's based in reality but
+  // that doesn't result in thrashing or other badness? 4GiB chosen arbitrarily.
+  desc.set_device_memory_size(int64_t{4} * 1024 * 1024 * 1024);
 
-  float cycle_counter_frequency = static_cast<float>(
-      tsl::profile_utils::CpuUtils::GetCycleCounterFrequency());
-  desc.set_clock_rate_ghz(cycle_counter_frequency / 1e9);
+  int64_t cycle_counter_frequency =
+      tsl::profile_utils::CpuUtils::GetCycleCounterFrequency();
+  if (cycle_counter_frequency <= 0) {
+    desc.set_clock_rate_ghz(
+        1.0f);  // Fallback reasonable clock rate if unavailable
+  } else {
+    desc.set_clock_rate_ghz(static_cast<float>(cycle_counter_frequency) / 1e9f);
+  }
 
   desc.set_name("Host");
   desc.set_platform_version("Default Version");
@@ -139,8 +161,8 @@ HostExecutor::CreateDeviceDescription(int device_ordinal) {
 }
 
 absl::StatusOr<std::unique_ptr<Stream>> HostExecutor::CreateStream(
-    std::optional<std::variant<StreamPriority, int>> priority) {
-  const HostStreamFactory* factory = HostStreamFactory::GetFactory();
+    std::optional<std::variant<StreamPriority, int>> /*priority*/) {
+  std::shared_ptr<HostStreamFactory> factory = HostStreamFactory::GetFactory();
   if (factory != nullptr) {
     return factory->CreateStream(this);
   }
@@ -151,16 +173,10 @@ absl::StatusOr<std::unique_ptr<MemoryAllocator>>
 HostExecutor::CreateMemoryAllocator(MemorySpace type) {
   if (type == MemorySpace::kHost) {
     return std::make_unique<GenericMemoryAllocator>(
-        [](uint64_t size) -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
-          void* ptr = new char[size];
-          return std::make_unique<GenericMemoryAllocation>(
-              ptr, size, [](void* location, uint64_t size) {
-                delete[] static_cast<char*>(location);
-              });
-        });
+        [this](uint64_t size) { return HostMemoryAllocate(size); });
   }
   return absl::UnimplementedError(
-      absl::StrFormat("Unsupported memory type %d", type));
+      absl::StrFormat("Unsupported memory type %d", static_cast<int>(type)));
 }
 
 }  // namespace host

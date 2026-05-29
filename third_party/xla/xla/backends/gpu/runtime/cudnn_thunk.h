@@ -26,18 +26,26 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/traced_command.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/shaped_slice.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/dnn.h"
 
 namespace xla {
 namespace gpu {
 
 // Wraps executable cuDNN graph objects.
-class CuDnnThunk : public Thunk {
+//
+// Also implements Command (via TracedCommand) so it can be recorded directly
+// into command buffers. Record() prefers explicit command-buffer construction
+// when the graph supports it and falls back to tracing ExecuteOnStream via
+// RecordTracedCommand otherwise.
+class CuDnnThunk : public TracedCommand {
  public:
   CuDnnThunk(std::string fingerprint, ThunkInfo, std::vector<ShapedSlice> args,
              std::vector<bool> output_args,
@@ -48,6 +56,11 @@ class CuDnnThunk : public Thunk {
 
   absl::Status Initialize(const InitializeParams&) override;
   absl::Status ExecuteOnStream(const ExecuteParams&) override;
+
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer) override;
 
   std::shared_ptr<se::dnn::LazyDnnGraph> graph() const { return graph_; }
   const std::vector<ShapedSlice>& arguments() const { return args_; }

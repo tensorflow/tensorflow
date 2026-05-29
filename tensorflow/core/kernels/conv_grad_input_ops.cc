@@ -123,10 +123,10 @@ void LaunchConv2DBackpropInputOpGpuImpl(
   DCHECK_EQ(dims.spatial_dims[1].output_size, expected_out_cols);
 
   auto* stream = ctx->op_device_context()->stream();
-  OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream available."));
+  OP_REQUIRES(ctx, stream, absl::InternalError("No GPU stream available."));
 
   if (!use_cudnn) {
-    ctx->SetStatus(errors::Unimplemented(
+    ctx->SetStatus(absl::UnimplementedError(
         "Conv2DBackpropInput for GPU is not currently supported "
         "without cudnn"));
     return;
@@ -306,8 +306,8 @@ void LaunchConv2DBackpropInputOpGpuImpl(
   } else if (compute_data_format == FORMAT_NHWC) {
     OP_REQUIRES_OK(ctx, transform_filter(FORMAT_OHWI));
   } else {
-    ctx->SetStatus(errors::InvalidArgument("Invalid compute data format: ",
-                                           ToString(compute_data_format)));
+    ctx->SetStatus(absl::InvalidArgumentError(absl::StrCat(
+        "Invalid compute data format: ", ToString(compute_data_format))));
     return;
   }
 
@@ -537,7 +537,7 @@ void SpatialConvolutionBackwardInputFunc<GPUDevice, int32_t>::operator()(
     typename TTypes<int32_t, 4>::ConstTensor,
     typename TTypes<int32_t, 4>::ConstTensor, Eigen::DenseIndex,
     Eigen::DenseIndex, Eigen::DenseIndex, Eigen::DenseIndex);
-extern template struct SpatialConvolutionBackwardInputFunc<GPUDevice, int32>;
+extern template struct SpatialConvolutionBackwardInputFunc<GPUDevice, int32_t>;
 
 template <>
 void SpatialConvolutionBackwardInputWithExplicitPaddingFunc<
@@ -550,7 +550,7 @@ void SpatialConvolutionBackwardInputWithExplicitPaddingFunc<
                                     Eigen::DenseIndex, Eigen::DenseIndex,
                                     Eigen::DenseIndex, Eigen::DenseIndex);
 extern template struct SpatialConvolutionBackwardInputWithExplicitPaddingFunc<
-    GPUDevice, int32>;
+    GPUDevice, int32_t>;
 
 }  // namespace functor
 

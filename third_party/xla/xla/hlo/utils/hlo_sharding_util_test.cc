@@ -641,7 +641,7 @@ TEST(HloShardingUtilTest, TransposeShardingReplicated) {
       HloSharding::Replicate({}, /*use_named_sharding=*/true));
 }
 
-TEST(HloShardingUtilTest, TransposeShardingTiled) {
+TEST(HloShardingUtilTest, TransposeShardingTiled1) {
   HloSharding input = HloSharding::IotaTile({1, 2, 1, 2});
   HloSharding output = HloSharding::IotaTile({2, 1, 2, 1}, {2, 2}, {1, 0});
   EXPECT_EQ(TransposeSharding(input, {3, 0, 1, 2}), output);
@@ -653,8 +653,22 @@ TEST(HloShardingUtilTest, TransposeShardingTiled) {
     NamedSharding output =
         test_utils::FromAxisNames(mesh, {{"b"}, {}, {"a"}, {}});
     EXPECT_EQ(
-        TransposeSharding(HloSharding(input), {3, 2, 1, 0}).named_sharding(),
+        TransposeSharding(HloSharding(input), {3, 0, 1, 2}).named_sharding(),
         output);
+  }
+}
+TEST(HloShardingUtilTest, TransposeShardingTiled2) {
+  HloSharding input = HloSharding::IotaTile({1, 1, 4});
+  HloSharding output = HloSharding::IotaTile({1, 4, 1});
+  EXPECT_EQ(TransposeSharding(input, {1, 2, 0}), output);
+
+  {
+    Mesh mesh({2, 2}, {"a", "b"});
+    NamedSharding input = test_utils::FromAxisNames(mesh, {{}, {}, {"a", "b"}});
+    NamedSharding output =
+        test_utils::FromAxisNames(mesh, {{}, {"a", "b"}, {}});
+    EXPECT_EQ(TransposeSharding(HloSharding(input), {1, 2, 0}).named_sharding(),
+              output);
   }
 }
 

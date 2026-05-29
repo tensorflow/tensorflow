@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log.pb.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
@@ -54,7 +55,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/buffer_debug_log.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -112,7 +112,6 @@ std::unique_ptr<Thunk> WrapWithChecksumThunk(
             Thunk::ThunkInfo(), log_slice, thunk->thunk_info().thunk_id,
             std::move(buffers_to_check_before),
             /*runs_before_checked_thunk=*/true, metadata_store);
-    thunk->add_control_predecessor(buffer_debug_before_thunk.get());
     thunk_and_checks.push_back(std::move(buffer_debug_before_thunk));
   }
 
@@ -124,14 +123,11 @@ std::unique_ptr<Thunk> WrapWithChecksumThunk(
         Thunk::ThunkInfo(), log_slice, thunk_ptr->thunk_info().thunk_id,
         std::move(buffers_to_check_after),
         /*runs_before_checked_thunk=*/false, metadata_store);
-    buffer_debug_after_thunk->add_control_predecessor(thunk_ptr);
     thunk_and_checks.push_back(std::move(buffer_debug_after_thunk));
   }
 
   auto wrapped_thunk = std::make_unique<SequentialThunk>(
       Thunk::ThunkInfo(), std::move(thunk_and_checks));
-  wrapped_thunk->add_control_predecessor(&predecessor_thunk);
-  successor_thunk.add_control_predecessor(wrapped_thunk.get());
   return wrapped_thunk;
 }
 
@@ -154,8 +150,8 @@ absl::Status DumpBufferDebugChecksumLog(
   auto buffer_debug_log =
       se::gpu::BufferDebugLog<BufferDebugLogEntry>::FromDeviceAddressUnchecked(
           log_buffer.device_memory());
-  TF_ASSIGN_OR_RETURN(std::vector<BufferDebugLogEntry> log_entries,
-                      buffer_debug_log.ReadFromDevice(*stream));
+  ASSIGN_OR_RETURN(std::vector<BufferDebugLogEntry> log_entries,
+                   buffer_debug_log.ReadFromDevice(*stream));
   BufferDebugLogProto buffer_debug_log_proto =
       metadata_store->EntriesToProto(log_entries);
 
@@ -224,14 +220,14 @@ absl::Status RunChecksumPassInternal(ThunkSequence* thunk_sequence,
   std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store =
       std::make_shared<BufferDebugLogEntryMetadataStore>();
 
-  TF_ASSIGN_OR_RETURN(BufferAllocation * log_alloc,
-                      allocator.NewEmptyAllocation(kLogSizeBytes));
+  ASSIGN_OR_RETURN(BufferAllocation * log_alloc,
+                   allocator.NewEmptyAllocation(kLogSizeBytes));
   BufferAllocation::Slice log_slice(log_alloc, 0, log_alloc->size());
 
-  TF_ASSIGN_OR_RETURN(auto buffer_debug_init_thunk,
-                      CreateDebugInitThunk(log_slice, hlo_module));
+  ASSIGN_OR_RETURN(auto buffer_debug_init_thunk,
+                   CreateDebugInitThunk(log_slice, hlo_module));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto buffer_debug_dump_thunk,
       CreateBufferDebugDumpThunk(metadata_store, log_slice, hlo_module));
 
@@ -248,7 +244,7 @@ absl::Status RunChecksumPassInternal(ThunkSequence* thunk_sequence,
                                  metadata_store);
   };
 
-  TF_RETURN_IF_ERROR(thunk_sequence->TransformNested(transform_callback));
+  RETURN_IF_ERROR(thunk_sequence->TransformNested(transform_callback));
 
   thunk_sequence->reserve(thunk_sequence->size() + 2);
   thunk_sequence->insert(thunk_sequence->begin(),

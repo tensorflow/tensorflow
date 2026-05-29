@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/support_legacy.h"
 
 #include <cstdint>
-#include <iterator>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -155,14 +154,19 @@ std::vector<HloOpcode> TritonSupportedUnaryElementwiseUpToFloatNormalization(
       element_type == PrimitiveType::BF16 ||
       element_type == PrimitiveType::F16 ||
       element_type == PrimitiveType::F64) {
-    absl::c_copy(std::vector<HloOpcode>{HloOpcode::kCos, HloOpcode::kExp,
-                                        HloOpcode::kExpm1, HloOpcode::kFloor,
-                                        HloOpcode::kCeil, HloOpcode::kLog,
-                                        HloOpcode::kLog1p, HloOpcode::kRsqrt,
-                                        HloOpcode::kSin, HloOpcode::kSqrt,
-                                        HloOpcode::kCbrt, HloOpcode::kTan,
-                                        HloOpcode::kTanh, HloOpcode::kErf},
-                 std::back_inserter(ret));
+    ret.insert(ret.end(), {
+                              HloOpcode::kAcos,  HloOpcode::kAcosh,
+                              HloOpcode::kAsin,  HloOpcode::kAsinh,
+                              HloOpcode::kAtanh, HloOpcode::kCbrt,
+                              HloOpcode::kCeil,  HloOpcode::kCos,
+                              HloOpcode::kCosh,  HloOpcode::kErf,
+                              HloOpcode::kExp,   HloOpcode::kExpm1,
+                              HloOpcode::kFloor, HloOpcode::kLog,
+                              HloOpcode::kLog1p, HloOpcode::kRoundNearestEven,
+                              HloOpcode::kRsqrt, HloOpcode::kSin,
+                              HloOpcode::kSinh,  HloOpcode::kSqrt,
+                              HloOpcode::kTan,   HloOpcode::kTanh,
+                          });
   }
   return ret;
 }
@@ -213,7 +217,7 @@ bool IsTritonSupportedElementwiseUpToFloatNormalization(
 CodegenDecision CanTritonHandleElementwise(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
   if (auto decision = IsInstructionSupportsDataTypes(instr, gpu_version);
-      !decision.CanFuse()) {
+      decision.IsForbidden()) {
     return decision;
   }
   if (instr.opcode() == HloOpcode::kConstant) {
@@ -335,7 +339,7 @@ CodegenDecision CanTritonHandleGEMM(
 
   if (auto decision =
           AreDotInputAndOutputTypesSupportedAndCompatible(dot, gpu_version);
-      !decision.CanFuse()) {
+      decision.IsForbidden()) {
     return decision;
   }
 

@@ -20,11 +20,16 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/autotune_results.pb.h"
@@ -34,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/runtime/object_pool.h"
 #include "xla/service/compilation_stats.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
@@ -64,6 +70,8 @@ namespace gpu {
 // The GPU compiler generates efficient GPU executables.
 class GpuCompiler : public LLVMCompiler {
  public:
+  using AsmModuleHook = absl::AnyInvocable<void(absl::string_view)>;
+
   GpuCompiler(se::Platform::Id platform_id, const char* target_triple,
               const char* data_layout);
 
@@ -97,10 +105,11 @@ class GpuCompiler : public LLVMCompiler {
   absl::StatusOr<std::unique_ptr<CompiledModule>> Export(
       Executable* executable) override;
 
-  absl::Status RunPostSchedulingPipelines(
-      HloModule* module, int64_t scheduler_mem_limit,
-      const se::DeviceDescription& gpu_device_info,
-      const GpuAliasInfo* alias_info);
+  absl::Status RunPostSchedulingPipelines(HloModule* module,
+                                          int64_t scheduler_mem_limit,
+                                          const GpuTopology& gpu_topology,
+                                          const GpuAliasInfo* alias_info,
+                                          mlir::MLIRContext* mlir_context);
 
   std::string target_triple() const { return target_triple_; }
   std::string data_layout() const { return data_layout_; }
@@ -110,8 +119,6 @@ class GpuCompiler : public LLVMCompiler {
   const char* GetTargetTriple() const { return target_triple_; }
 
   int64_t GetPointerSize() const { return pointer_size_; }
-
-  mlir::MLIRContext* mlir_context() { return &mlir_context_; }
 
   virtual std::unique_ptr<GpuAliasInfo> GetAliasInfo(
       const se::DeviceDescription& device_description) const {
@@ -147,13 +154,16 @@ class GpuCompiler : public LLVMCompiler {
   virtual std::vector<std::string> GetLLVMCommandLineOptions(
       const DebugOptions& debug_options) const = 0;
 
-  absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
-  GetAutotunerBackends(se::StreamExecutor* stream_exec,
-                       se::DeviceAddressAllocator* device_allocator,
-                       const Compiler::GpuTargetConfig* target_config,
-                       const AliasInfo* alias_info,
-                       const DebugOptions& debug_options,
-                       mlir::MLIRContext* mlir_context);
+  // Sets a callback that is invoked with all compiled ptx.
+  // Can be used for logging or statistics collection.
+  void SetAsmHook(AsmModuleHook hook) {
+    absl::MutexLock lock(user_asm_hook_m_);
+    user_asm_hook_ = std::move(hook);
+  }
+  void RemoveAsmHook() {
+    absl::MutexLock lock(user_asm_hook_m_);
+    user_asm_hook_ = nullptr;
+  }
 
  protected:
   struct BackendCompileResult {
@@ -163,12 +173,13 @@ class GpuCompiler : public LLVMCompiler {
     ModuleStats module_stats;
   };
 
-  static std::unique_ptr<HloPassPipeline> GetCublasRewriterPipeline(
-      const stream_executor::DeviceDescription& device_description,
-      bool enable_cublaslt = false);
-
   static std::unique_ptr<HloPassPipeline> GetCustomKernelRewriterPipeline(
       const stream_executor::DeviceDescription& device_description);
+
+  // Run right before GemmRewriter to add pads for gpublas gemms.
+  virtual void AddPaddingForGpublasGemms(
+      HloPassPipeline& pipeline, const DebugOptions& debug_options,
+      const se::GpuComputeCapability& gpu_version) = 0;
 
   // During compilation with device, stream_exec != null and autotune_results
   // == null. During deviceless AOT compilation, stream_exec == null and
@@ -178,10 +189,20 @@ class GpuCompiler : public LLVMCompiler {
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
       const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool,
-      CompilationStats* compilation_stats);
+      CompilationStats* compilation_stats, mlir::MLIRContext* mlir_context);
 
-  // Add autotuning passes for convolution and gemm.
-  // target_config must outlive the pipeline.
+  virtual absl::Status AddAutotunerPass(
+      HloPassPipeline* pipeline, HloModule* hlo_module,
+      const se::GpuComputeCapability& gpu_version,
+      const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
+      stream_executor::StreamExecutor* stream_executor,
+      const GpuTargetConfig* target_config, const AliasInfo* alias_info,
+      mlir::MLIRContext* mlir_context,
+      HloCostAnalysis::ShapeSizeFunction shape_size_fn,
+      const MultiProcessKeyValueStore& key_value_store);
+
+  // TODO(b/511979384): Remove once xla_gpu_experimental_autotune_post_fusion is
+  // enabled by default.
   virtual absl::Status AddConvAndGemmAutotuningPass(
       HloPassPipeline* pipeline, HloModule* hlo_module,
       const se::GpuComputeCapability& gpu_version,
@@ -193,14 +214,29 @@ class GpuCompiler : public LLVMCompiler {
       const DebugOptions& debug_options, mlir::MLIRContext* mlir_context,
       HloCostAnalysis::ShapeSizeFunction shape_size_fn);
 
-  // target_config must outlive the pipeline.
+  // TODO(b/511979384): Remove once xla_gpu_experimental_autotune_post_fusion is
+  // enabled by default.
   absl::Status AddFusionAutotuningPass(
       HloPassPipeline* pipeline, HloModule* hlo_module,
       const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
       stream_executor::StreamExecutor* stream_executor,
-      const GpuTargetConfig* target_config,
+      const Compiler::GpuTargetConfig* target_config,
       HloCostAnalysis::ShapeSizeFunction shape_size_fn,
       const MultiProcessKeyValueStore& key_value_store);
+
+  // TODO(b/511979384): Remove once xla_gpu_experimental_autotune_post_fusion is
+  // enabled by default.
+  absl::Status AutotunerAndPostCleanup(
+      HloPassPipeline& pipeline, HloModule* hlo_module,
+      const se::GpuComputeCapability& gpu_version,
+      const DebugOptions& debug_options, mlir::MLIRContext* mlir_context,
+      const se::DeviceDescription& device_description,
+      const std::string& platform_name, const CompileOptions& options,
+      tsl::thread::ThreadPool* thread_pool, se::StreamExecutor* stream_exec,
+      const Compiler::GpuTargetConfig* target_config,
+      const MultiProcessKeyValueStore& key_value_store,
+      const se::SemanticVersion& toolkit_version, const AliasInfo* alias_info,
+      HloCostAnalysis::ShapeSizeFunction shape_size_fn);
 
   // Runs cuDNN fusion and custom call compiler passes.
   virtual absl::Status RunCudnnCompilerPasses(HloModule* module,
@@ -219,14 +255,8 @@ class GpuCompiler : public LLVMCompiler {
   absl::StatusOr<CompileResultWithMetadata> CompileToBackendResult(
       HloModule* module, llvm::LLVMContext* llvm_context,
       const GpuTopology& gpu_topology, const CompileOptions& options,
-      se::StreamExecutor* absl_nullable stream_exec);
-
-  absl::StatusOr<BackendCompileResult> CompileAndLink(
-      const HloModuleConfig& module_config,
-      CompileModuleResults& compile_module_results,
-      const stream_executor::DeviceDescription& device_description,
-      const CompileOptions& options, const HloModule* debug_module,
-      se::StreamExecutor* absl_nullable stream_exec);
+      se::StreamExecutor* absl_nullable stream_exec,
+      mlir::MLIRContext* mlir_context);
 
   absl::StatusOr<BackendCompileResult> CompileSingleModule(
       const HloModuleConfig& module_config,
@@ -240,7 +270,7 @@ class GpuCompiler : public LLVMCompiler {
 
   absl::Status RunPreSchedulingPasses(
       HloModule* module, const se::DeviceDescription& gpu_device_info,
-      const GpuAliasInfo* alias_info);
+      const GpuAliasInfo* alias_info, mlir::MLIRContext* mlir_context);
   absl::Status RunCollectiveScheduleLinearizerPasses(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       CompilationStats* compilation_stats);
@@ -313,9 +343,10 @@ class GpuCompiler : public LLVMCompiler {
   GpuCompiler(const GpuCompiler&) = delete;
   GpuCompiler& operator=(const GpuCompiler&) = delete;
 
-  // A MLIR context that can be used by pre-codegen passes. For codegen, we will
-  // need to have a context with more dialects registered.
-  mlir::MLIRContext mlir_context_;
+  absl::Mutex user_asm_hook_m_;
+  AsmModuleHook user_asm_hook_ ABSL_GUARDED_BY(user_asm_hook_m_);
+
+  ObjectPool<std::unique_ptr<mlir::MLIRContext>> mlir_context_pool_;
 };
 
 }  // namespace gpu

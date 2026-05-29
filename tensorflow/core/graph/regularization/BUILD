@@ -78,6 +78,7 @@ tf_cc_test(
         ":util",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "//tensorflow/core/framework:node_def_proto_cc",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/status:statusor",

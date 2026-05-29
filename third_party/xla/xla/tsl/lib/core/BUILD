@@ -42,12 +42,13 @@ cc_library(
     deps = [
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status:status_matchers",
     ],
 )
 
 filegroup(
-    name = "mobile_srcs_only_runtime",
+    name = "mobile_hdrs_only_runtime",
     srcs = [
         "bitmap.h",
         "bits.h",

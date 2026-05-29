@@ -62,6 +62,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tsl/platform/random.h"
 #include "tsl/platform/retrying_utils.h"
 
 namespace tensorflow {
@@ -165,7 +166,7 @@ absl::StatusOr<GetNextResult> DataServiceClient::GetNext(
     }
     if (cancelled_) {
       VLOG(3) << "Returning from GetNext due to cancellation";
-      return errors::Cancelled("Data service iterator was cancelled");
+      return absl::CancelledError("Data service iterator was cancelled");
     }
     if (!status_.ok()) {
       VLOG(3) << "Returning from GetNext with error " << status_;
@@ -177,7 +178,8 @@ absl::StatusOr<GetNextResult> DataServiceClient::GetNext(
     }
     if (!ResultReady()) {
       VLOG(3) << "Returning from GetNext with internal error";
-      return errors::Internal("Expected a result to be ready, but none were.");
+      return absl::InternalError(
+          "Expected a result to be ready, but none were.");
     }
     result = PopNextResult();
     worker_thread_cv_.notify_one();
@@ -449,11 +451,6 @@ absl::Status DataServiceClient::AddTask(const TaskInfo& task_info)
       DCHECK_EQ(next_task_index_, 0);
     }
   }
-  if (!IsCoordinatedRead()) {
-    // Shuffle task order within each client to avoid thundering herd effect.
-    std::mt19937 rng;
-    std::shuffle(tasks_.begin(), tasks_.end(), rng);
-  }
   return absl::OkStatus();
 }
 
@@ -547,6 +544,11 @@ void DataServiceClient::UpdateTasks(const ClientHeartbeatResponse& resp)
       get_next_cv_.notify_all();
       break;
     }
+  }
+  if (!IsCoordinatedRead()) {
+    // Shuffle task order within each client to avoid thundering herd effect.
+    std::mt19937 rng(tsl::random::New64());
+    std::shuffle(tasks_.begin(), tasks_.end(), rng);
   }
 }
 
@@ -913,7 +915,7 @@ absl::Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
     {
       mutex_lock l(mu_);
       if (cancelled_) {
-        return errors::Cancelled("DataServiceDataset iterator cancelled");
+        return absl::CancelledError("DataServiceDataset iterator cancelled");
       }
     }
     int64_t now_micros = Env::Default()->NowMicros();

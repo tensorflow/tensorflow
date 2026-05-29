@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/abi/runtime_abi_version.h"
+#include "xla/stream_executor/abi/runtime_abi_version.pb.h"
 #include "xla/stream_executor/abi/runtime_abi_version_resolver.h"
 
 namespace stream_executor {

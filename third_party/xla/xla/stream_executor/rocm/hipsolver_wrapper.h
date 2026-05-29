@@ -1,4 +1,4 @@
-/* Copyright 2021 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,59 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file wraps hipsolver API calls with dso loader so that we don't need to
-// have explicit linking to libhipsolver. All TF hipsolver API usage should
-// route through this wrapper.
-
 #ifndef XLA_STREAM_EXECUTOR_ROCM_HIPSOLVER_WRAPPER_H_
 #define XLA_STREAM_EXECUTOR_ROCM_HIPSOLVER_WRAPPER_H_
 
-#include "rocm/rocm_config.h"
-
-#if TF_ROCM_VERSION >= 40500
-#if TF_ROCM_VERSION >= 50600
 #include "rocm/include/hipsolver/hipsolver.h"
-#else
-
-#include "rocm/include/hipsolver.h"
-#endif
-#include "xla/tsl/platform/env.h"
-#include "tsl/platform/dso_loader.h"
+#include "rocm/rocm_config.h"
 
 namespace stream_executor {
 namespace wrap {
 
-#ifdef PLATFORM_GOOGLE
-
-#define HIPSOLVER_API_WRAPPER(api_name)                          \
-  template <typename... Args>                                    \
-  auto api_name(Args... args) -> decltype(::api_name(args...)) { \
-    return ::api_name(args...);                                  \
-  }
-
-#else
-
-#define TO_STR_(x) #x
-#define TO_STR(x) TO_STR_(x)
-
-#define HIPSOLVER_API_WRAPPER(api_name)                                    \
-  template <typename... Args>                                              \
-  auto api_name(Args... args) -> decltype(::api_name(args...)) {           \
-    using FuncPtrT = std::add_pointer<decltype(::api_name)>::type;         \
-    static FuncPtrT loaded = []() -> FuncPtrT {                            \
-      static const char* kName = TO_STR(api_name);                         \
-      void* f;                                                             \
-      auto s = tsl::Env::Default()->GetSymbolFromLibrary(                  \
-          tsl::internal::CachedDsoLoader::GetHipsolverDsoHandle().value(), \
-          kName, &f);                                                      \
-      CHECK(s.ok()) << "could not find " << kName                          \
-                    << " in hipsolver lib; dlerror: " << s.message();      \
-      return reinterpret_cast<FuncPtrT>(f);                                \
-    }();                                                                   \
-    return loaded(args...);                                                \
-  }
-
-#endif
+#define HIPSOLVER_API_WRAPPER(api_name) using ::api_name;
 
 // clang-format off
 #define FOREACH_HIPSOLVER_API(__macro)       \
@@ -136,13 +93,10 @@ namespace wrap {
 
 FOREACH_HIPSOLVER_API(HIPSOLVER_API_WRAPPER)
 
-#undef TO_STR_
-#undef TO_STR
 #undef FOREACH_HIPSOLVER_API
 #undef HIPSOLVER_API_WRAPPER
 
 }  // namespace wrap
 }  // namespace stream_executor
 
-#endif  // TF_ROCM_VERSION
 #endif  // XLA_STREAM_EXECUTOR_ROCM_HIPSOLVER_WRAPPER_H_

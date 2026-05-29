@@ -61,9 +61,7 @@ class YnnMatcher : public LibraryMatcher {
   // Returns true if the HLO instruction is supported by the library.
   absl::StatusOr<bool> IsOpSupported(const HloInstruction* instr) override {
     if (instr->opcode() == HloOpcode::kDot) {
-      return IsDotSupportedByYnn(instr->dot_dimension_numbers(),
-                                 instr->operand(0)->shape(),
-                                 instr->operand(1)->shape(), instr->shape());
+      return IsDotSupportedByYnn(instr);
     }
     if (instr->opcode() == HloOpcode::kReduce ||
         instr->opcode() == HloOpcode::kReduceWindow) {
@@ -100,6 +98,9 @@ class YnnMatcher : public LibraryMatcher {
   // `--xla_cpu_experimental_ynn_fusion_type` flag.
   bool ShouldCreateFusion(const HloInstruction* instr) override {
     if (fuse_dot_ && instr->opcode() == HloOpcode::kDot) {
+      return true;
+    }
+    if (fuse_conv_ && instr->opcode() == HloOpcode::kConvolution) {
       return true;
     }
     if (fuse_reduce_ && (instr->opcode() == HloOpcode::kReduce ||

@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "xla/service/float_support.h"
 
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -42,7 +45,15 @@ bool FloatSupport::SupportsLowPrecisionOperand(const HloInstruction& hlo,
       // Upcasting these ops to higher precision results in a
       // different output, so they must be supported in low-precision.
       return true;
-
+    case HloOpcode::kScan:
+      // Associative scans are emitted directly by the backend; the to_apply
+      // computation is a symbolic combiner descriptor whose element types are
+      // independent of the scan's input/output element types under mixed
+      // precision (mirrors kReduce / kReduceWindow / kMap). Non-associative
+      // scans are expanded into kWhile by ScanExpander before reaching this
+      // pass, and BFloat16Propagation::ShouldKeepPrecisionUnchanged
+      // additionally pins them.
+      return Cast<HloScanInstruction>(&hlo)->is_associative() == TRI_STATE_TRUE;
     default:
       break;
   }
@@ -68,6 +79,9 @@ bool FloatSupport::SupportsLowPrecisionOutput(const HloInstruction& hlo) const {
       // Upcasting these ops to higher precision results in a
       // different output, so they must be supported in low-precision.
       return true;
+    case HloOpcode::kScan:
+      // See SupportsLowPrecisionOperand for rationale.
+      return Cast<HloScanInstruction>(&hlo)->is_associative() == TRI_STATE_TRUE;
     default:
       break;
   }
@@ -85,6 +99,12 @@ bool FloatSupport::SupportsMixedPrecisions(const HloInstruction& hlo) const {
     case HloOpcode::kWhile:
     case HloOpcode::kOptimizationBarrier:
       return true;
+    case HloOpcode::kScan:
+      // Associative scans are emitted directly by the backend; the to_apply
+      // computation is a symbolic combiner descriptor whose element types are
+      // independent of the scan's input/output element types under mixed
+      // precision (mirrors kReduce / kReduceWindow / kMap).
+      return Cast<HloScanInstruction>(&hlo)->is_associative() == TRI_STATE_TRUE;
     default:
       break;
   }

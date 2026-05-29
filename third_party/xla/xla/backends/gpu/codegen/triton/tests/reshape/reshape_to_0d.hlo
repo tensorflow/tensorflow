@@ -8,10 +8,9 @@ fusion {
   reshape2 = f32[] reshape(p1)
   ROOT add_op = f32[] add(reshape1, reshape2)
 }
-// CHECK:     tt.reshape
-// CHECK:     tt.reduce{{.*}}axis = 0
+// CHECK:     tt.unsplat
 // CHECK-NOT: tt.reshape
-// CHECK:     tt.reduce{{.*}}axis = 0
+// CHECK:     tt.unsplat
 // CHECK:     xtile.insert {{.*}} : tensor<f32>
 
 ENTRY main {

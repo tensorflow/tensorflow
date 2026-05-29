@@ -23,20 +23,24 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "xla/backends/cpu/target_machine_options.h"
-#include "xla/backends/gpu/codegen/llvm/llvm_ir_compiler.h"
+#include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/host_execute_thunk.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/runtime/object_pool.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/gpu/execution_stream_assignment.h"
@@ -47,10 +51,8 @@ limitations under the License.
 #include "xla/service/name_uniquer.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/status_macros.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 // Maps host offloading start ops to their async events so we can emit done
 // thunk sharing events with corresponding start thunk.
 using InstructionToHostExecuteAsyncEvents =
@@ -68,10 +70,10 @@ class IrEmitterContext {
                    absl::string_view platform_name,
                    const se::DeviceDescription& gpu_device_info,
                    mlir::MLIRContext* mlir_context,
-                   llvm::LLVMContext* llvm_context, bool emit_kernels,
-                   llvm::Triple target_triple, std::string data_layout,
-                   LlvmIrCompiler compiler,
-                   xla::cpu::TargetMachineOptions cpu_target_machine_options)
+                   llvm::LLVMContext* llvm_context, llvm::Triple target_triple,
+                   std::string data_layout, KernelCompiler* compiler,
+                   xla::cpu::TargetMachineOptions cpu_target_machine_options,
+                   ObjectPool<std::unique_ptr<mlir::MLIRContext>>* pool)
       : hlo_module_(hlo_module),
         buffer_assignment_(buffer_assignment),
         execution_stream_assignment_(execution_stream_assignment),
@@ -81,13 +83,22 @@ class IrEmitterContext {
         llvm_context_(llvm_context),
         data_layout_(std::move(data_layout)),
         target_triple_(std::move(target_triple)),
-        emit_kernels_(emit_kernels),
-        compiler_(std::move(compiler)),
-        cpu_target_machine_options_(std::move(cpu_target_machine_options)) {}
+        compiler_(compiler),
+        cpu_target_machine_options_(std::move(cpu_target_machine_options)),
+        mlir_context_pool_(pool) {}
 
   // Disallow copy and assign.
   IrEmitterContext(const IrEmitterContext&) = delete;
   IrEmitterContext& operator=(const IrEmitterContext&) = delete;
+
+  std::unique_ptr<IrEmitterContext> SubContext(
+      llvm::LLVMContext* llvm_context) {
+    return std::make_unique<IrEmitterContext>(
+        hlo_module_, buffer_assignment_, execution_stream_assignment_,
+        platform_name_, gpu_device_info_, mlir_context_, llvm_context,
+        target_triple_, data_layout_, compiler_, cpu_target_machine_options_,
+        mlir_context_pool_);
+  }
 
   // Simple accessors.
   const HloModule& hlo_module() const { return *hlo_module_; }
@@ -138,8 +149,6 @@ class IrEmitterContext {
     return instruction_to_host_execute_async_events_;
   }
 
-  bool emit_kernels() const { return emit_kernels_; }
-
   ThunkId GetNextThunkId() { return thunk_id_generator_.GetNextThunkId(); }
 
   // Compute the kernel name. The opcode string may contain "-" which cannot be
@@ -158,7 +167,14 @@ class IrEmitterContext {
     return llvm_module;
   }
 
-  LlvmIrCompiler& llvm_ir_compiler() { return compiler_; }
+  KernelCompiler* kernel_compiler() { return compiler_; }
+
+  BorrowedMlirContext BorrowMlirContext() {
+    auto context = mlir_context_pool_->GetOrCreate();
+    // Due to generator, always ok.
+    CHECK_OK(context.status());
+    return std::move(*context);
+  }
 
  private:
   const HloModule* hlo_module_;
@@ -177,17 +193,14 @@ class IrEmitterContext {
 
   InstructionToHostExecuteAsyncEvents instruction_to_host_execute_async_events_;
 
-  // We should not emit kernels when loading thunks from a compilation result.
-  const bool emit_kernels_;
-
   // Generates unique IDs for thunk creation.
   ThunkIdGenerator thunk_id_generator_;
 
-  LlvmIrCompiler compiler_;
+  KernelCompiler* compiler_;
   const xla::cpu::TargetMachineOptions cpu_target_machine_options_;
+  ObjectPool<std::unique_ptr<mlir::MLIRContext>>* mlir_context_pool_;
 };
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_IR_EMITTER_CONTEXT_H_

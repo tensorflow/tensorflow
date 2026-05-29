@@ -134,10 +134,10 @@ absl::Status VariantDeviceCopy(
       UnaryVariantOpRegistry::Global()->GetDeviceCopyFn(direction,
                                                         from.TypeId());
   if (device_copy_fn == nullptr) {
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "No unary variant device copy function found for direction: ",
         direction, " and Variant type_index: ",
-        port::MaybeAbiDemangle(from.TypeId().name()));
+        port::MaybeAbiDemangle(from.TypeId().name())));
   }
   return (*device_copy_fn)(from, to, copy_fn);
 }

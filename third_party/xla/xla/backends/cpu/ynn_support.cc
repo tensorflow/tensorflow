@@ -20,12 +20,14 @@ limitations under the License.
 #include <tuple>
 
 #include "ynnpack/include/ynnpack.h"
+#include "absl/algorithm/container.h"
 #include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/dot_dims.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -49,11 +51,9 @@ const absl::flat_hash_map<HloOpcode, ynn_unary_operator>& GetYnnUnaryOpMap() {
           {HloOpcode::kAbs, ynn_unary_abs},
           {HloOpcode::kCeil, ynn_unary_ceil},
           {HloOpcode::kConvert, ynn_unary_convert},
-          {HloOpcode::kCos, ynn_unary_cosine},
           {HloOpcode::kErf, ynn_unary_erf},
           {HloOpcode::kExp, ynn_unary_exp},
           {HloOpcode::kExpm1, ynn_unary_expm1},
-          {HloOpcode::kCbrt, ynn_unary_cube_root},
           {HloOpcode::kFloor, ynn_unary_floor},
           {HloOpcode::kLog, ynn_unary_log},
           {HloOpcode::kLog1p, ynn_unary_log1p},
@@ -62,7 +62,6 @@ const absl::flat_hash_map<HloOpcode, ynn_unary_operator>& GetYnnUnaryOpMap() {
           {HloOpcode::kRoundNearestEven, ynn_unary_round},
           {HloOpcode::kRsqrt, ynn_unary_reciprocal_square_root},
           {HloOpcode::kSign, ynn_unary_sign},
-          {HloOpcode::kSin, ynn_unary_sine},
           {HloOpcode::kSqrt, ynn_unary_square_root},
           {HloOpcode::kTanh, ynn_unary_tanh},
       });
@@ -125,8 +124,22 @@ bool IsLayoutSupportedByYnn(const Shape& shape) {
   return !shape.has_layout() || LayoutUtil::HasDescendingLayout(shape.layout());
 }
 
+namespace {
+
+bool CheckOperandCount(const HloInstruction* hlo, int num_operands) {
+  if (hlo->operands().size() != num_operands) {
+    return false;
+  }
+  return !absl::c_contains(hlo->operands(), nullptr);
+}
+
+}  // namespace
+
 bool IsBitcastOpSupportedByYnn(const HloInstruction* hlo) {
   CHECK_EQ(hlo->opcode(), HloOpcode::kBitcast);
+  if (!CheckOperandCount(hlo, 1)) {
+    return false;
+  }
   if (!YnnType(hlo->shape().element_type()).ok()) {
     return false;
   }
@@ -141,6 +154,9 @@ bool IsBitcastOpSupportedByYnn(const HloInstruction* hlo) {
 
 bool IsReshapeOpSupportedByYnn(const HloInstruction* hlo) {
   CHECK_EQ(hlo->opcode(), HloOpcode::kReshape);
+  if (!CheckOperandCount(hlo, 1)) {
+    return false;
+  }
   if (!YnnType(hlo->shape().element_type()).ok()) {
     return false;
   }
@@ -154,6 +170,134 @@ bool IsReshapeOpSupportedByYnn(const HloInstruction* hlo) {
   }
 
   return ShapeUtil::ReshapeIsBitcast(input->shape(), hlo->shape());
+}
+
+bool IsTransposeOpSupportedByYnn(const HloInstruction* hlo) {
+  CHECK_EQ(hlo->opcode(), HloOpcode::kTranspose);
+  if (!CheckOperandCount(hlo, 1)) {
+    return false;
+  }
+  if (!YnnType(hlo->shape().element_type()).ok()) {
+    return false;
+  }
+  const HloInstruction* input = hlo->operand(0);
+  if (hlo->shape().element_type() != input->shape().element_type()) {
+    return false;
+  }
+  return IsLayoutSupportedByYnn(hlo->shape()) &&
+         IsLayoutSupportedByYnn(input->shape());
+}
+
+bool IsBroadcastOpSupportedByYnn(const HloInstruction* hlo) {
+  CHECK_EQ(hlo->opcode(), HloOpcode::kBroadcast);
+  if (!CheckOperandCount(hlo, 1)) {
+    return false;
+  }
+  if (!YnnType(hlo->shape().element_type()).ok()) {
+    return false;
+  }
+  const HloInstruction* input = hlo->operand(0);
+  if (!IsLayoutSupportedByYnn(hlo->shape()) ||
+      !IsLayoutSupportedByYnn(input->shape())) {
+    return false;
+  }
+
+  // YNNPACK's broadcast operation can insert new dimensions, but not transpose.
+  // HLO broadcast is more general. For now, let's only support "simple"
+  // broadcasts that can be achieved by reshape + broadcast in YNNPACK. A
+  // broadcast is "simple" if it preserves the relative order of operand
+  // dimensions.
+  auto dimensions = hlo->dimensions();
+  for (int i = 1; i < dimensions.size(); ++i) {
+    if (dimensions[i] <= dimensions[i - 1]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool IsConcatenateOpSupportedByYnn(const HloInstruction* hlo) {
+  CHECK_EQ(hlo->opcode(), HloOpcode::kConcatenate);
+  if (!YnnType(hlo->shape().element_type()).ok()) {
+    return false;
+  }
+  if (!IsLayoutSupportedByYnn(hlo->shape())) {
+    return false;
+  }
+  for (const HloInstruction* operand : hlo->operands()) {
+    if (!operand) {
+      return false;
+    }
+    if (hlo->shape().element_type() != operand->shape().element_type()) {
+      return false;
+    }
+    if (!IsLayoutSupportedByYnn(operand->shape())) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool IsSliceOpSupportedByYnn(const HloInstruction* hlo) {
+  CHECK_EQ(hlo->opcode(), HloOpcode::kSlice);
+  if (!CheckOperandCount(hlo, 1)) {
+    return false;
+  }
+  if (!YnnType(hlo->shape().element_type()).ok()) {
+    return false;
+  }
+  const HloInstruction* input = hlo->operand(0);
+  if (!IsLayoutSupportedByYnn(hlo->shape()) ||
+      !IsLayoutSupportedByYnn(input->shape())) {
+    return false;
+  }
+
+  return hlo->shape().element_type() == input->shape().element_type();
+}
+
+bool IsPadOpSupportedByYnn(const HloInstruction* hlo) {
+  CHECK_EQ(hlo->opcode(), HloOpcode::kPad);
+  if (!CheckOperandCount(hlo, 2)) {
+    return false;
+  }
+  if (!YnnType(hlo->shape().element_type()).ok()) {
+    return false;
+  }
+  const HloInstruction* input = hlo->operand(0);
+  const HloInstruction* padding_value = hlo->operand(1);
+  if (hlo->shape().element_type() != input->shape().element_type() ||
+      hlo->shape().element_type() != padding_value->shape().element_type()) {
+    return false;
+  }
+  if (!IsLayoutSupportedByYnn(hlo->shape()) ||
+      !IsLayoutSupportedByYnn(input->shape())) {
+    return false;
+  }
+
+  const PaddingConfig& config = hlo->padding_config();
+  for (int i = 0; i < config.dimensions().size(); ++i) {
+    const auto& dim = config.dimensions(i);
+    if (input->shape().dimensions()[i] == 1) {
+      if (dim.edge_padding_low() != 0 || dim.edge_padding_high() != 0) {
+        // YNNPACK treats extent 1 dimensions as broadcasts (b/510492094).
+        return false;
+      }
+    }
+    if (dim.interior_padding() != 0) {
+      // YNNPACK's ynn_define_static_pad does not support interior padding.
+      return false;
+    }
+  }
+  return true;
+}
+
+bool IsIotaSupportedByYnn(const HloInstruction* hlo) {
+  CHECK_EQ(hlo->opcode(), HloOpcode::kIota);
+  PrimitiveType type = hlo->shape().element_type();
+  if (type != F32 && type != S32) {
+    return false;
+  }
+  return IsLayoutSupportedByYnn(hlo->shape());
 }
 
 bool IsConstantSupportedByYnn(const HloInstruction* hlo) {
@@ -171,14 +315,18 @@ bool IsElementwiseOpSupportedByYnn(const HloInstruction* hlo) {
   // In XLA IsElementwise is true for constants.
   CHECK(!hlo->IsConstant());
 
-  if (!YnnType(hlo->shape().element_type()).ok()) {
+  const PrimitiveType ty = hlo->shape().element_type();
+  if (ty == F64 || !YnnType(ty).ok()) {
     return false;
   }
 
-  if (!std::all_of(hlo->operands().begin(), hlo->operands().end(),
-                   [](const HloInstruction* op) {
-                     return YnnType(op->shape().element_type()).ok();
-                   })) {
+  if (absl::c_any_of(hlo->operands(), [](const HloInstruction* op) {
+        if (!op) {
+          return false;
+        }
+        const PrimitiveType op_ty = op->shape().element_type();
+        return op_ty == F64 || !YnnType(op_ty).ok();
+      })) {
     return false;
   }
 
@@ -201,9 +349,19 @@ bool IsElementwiseOpSupportedByYnn(const HloInstruction* hlo) {
   }
 }
 
-absl::StatusOr<bool> IsDotSupportedByYnn(
-    const DotDimensionNumbers& dot_dimensions, const Shape& lhs_shape,
-    const Shape& rhs_shape, const Shape& out_shape) {
+absl::StatusOr<bool> IsDotSupportedByYnn(const HloInstruction* hlo) {
+  CHECK_EQ(hlo->opcode(), HloOpcode::kDot);
+  if (!CheckOperandCount(hlo, 2)) {
+    return false;
+  }
+  const DotDimensionNumbers& dot_dimensions =
+      Cast<HloDotInstruction>(hlo)->dot_dimension_numbers();
+  const HloInstruction* lhs = hlo->operand(0);
+  const HloInstruction* rhs = hlo->operand(1);
+  const Shape& lhs_shape = lhs->shape();
+  const Shape& rhs_shape = rhs->shape();
+  const Shape& out_shape = hlo->shape();
+
   // Stores tuple of allowed (input, output) dtypes.
   static const absl::NoDestructor<absl::flat_hash_set<
       std::tuple<PrimitiveType, PrimitiveType, PrimitiveType>>>
@@ -235,11 +393,11 @@ absl::StatusOr<bool> IsDotSupportedByYnn(
   }
 
   // Check shapes.
-  TF_ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
-                                                      rhs_shape, out_shape));
+  ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
+                                                   rhs_shape, out_shape));
 
-  TF_ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
-                      GetDotCanonicalDims(dot_dimensions, dot_shape));
+  ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
+                   GetDotCanonicalDims(dot_dimensions, dot_shape));
 
   if (dot_canonical_dims.m == 1 || dot_canonical_dims.n == 1) {
     // TODO(b/430079105): YNNPACK does not handle vectors in dots. We could
@@ -268,14 +426,10 @@ absl::StatusOr<bool> IsDotSupportedByYnn(
   return true;
 }
 
-absl::StatusOr<bool> IsDotSupportedByYnn(const HloInstruction* hlo) {
-  CHECK_EQ(hlo->opcode(), HloOpcode::kDot);
-  return IsDotSupportedByYnn(hlo->dot_dimension_numbers(),
-                             hlo->operand(0)->shape(), hlo->operand(1)->shape(),
-                             hlo->shape());
-}
-
 bool IsReduceLikeOpSupportedByYnn(const HloInstruction* hlo) {
+  if (!CheckOperandCount(hlo, 2)) {
+    return false;
+  }
   if (!YnnType(hlo->shape().element_type()).ok()) {
     return false;
   }
@@ -311,9 +465,12 @@ bool IsReduceLikeOpSupportedByYnn(const HloInstruction* hlo) {
     const Window& window = reduce_window->window();
     int new_axis_count = 0;
     for (const WindowDimension& dim : window.dimensions()) {
-      if (dim.size() > 1) {
+      if (dim.size() > 1 || dim.stride() > 1) {
         // TODO(ashaposhnikov): consider relaxing the constraints below.
-        if (dim.stride() != dim.size()) {
+        if (dim.size() > 1 && dim.stride() != dim.size()) {
+          // When a reduce-window has a stride greater than 1 on a dimension
+          // with size 1, it effectively skips input elements, resulting in a
+          // smaller output dimension.
           return false;
         }
         if (dim.base_dilation() != 1) {
@@ -385,6 +542,9 @@ bool IsReduceLikeOpOffloadedToYnn(const HloInstruction* hlo) {
 
 bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr) {
   CHECK_EQ(instr->opcode(), HloOpcode::kConvolution);
+  if (!CheckOperandCount(instr, 2)) {
+    return false;
+  }
   const HloConvolutionInstruction* conv =
       Cast<HloConvolutionInstruction>(instr);
 
@@ -415,6 +575,12 @@ bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr) {
   const Shape& lhs_shape = conv->operand(0)->shape();
   const Shape& rhs_shape = conv->operand(1)->shape();
   const Shape& out_shape = conv->shape();
+
+  if (!IsLayoutSupportedByYnn(lhs_shape) ||
+      !IsLayoutSupportedByYnn(rhs_shape) ||
+      !IsLayoutSupportedByYnn(out_shape)) {
+    return false;
+  }
 
   PrimitiveType lhs_dtype = lhs_shape.element_type();
   PrimitiveType rhs_dtype = rhs_shape.element_type();

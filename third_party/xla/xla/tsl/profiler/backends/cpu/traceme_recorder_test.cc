@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
@@ -29,9 +30,10 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
+#include "xla/tsl/profiler/utils/traceme_global_flags.h"
+#include "tsl/profiler/lib/traceme_encode.h"
 
 namespace tsl {
 namespace profiler {
@@ -185,6 +187,21 @@ TEST(RecorderTest, Multithreaded) {
     EXPECT_GT(thread.events.size(), 1)
         << "Expected gaps in thread events between sessions";
   }
+}
+
+TEST(RecorderTest, EnableSourceLocation) {
+  EXPECT_TRUE(TraceMeGlobalFlags::IsSourceLocationEnabled());
+  // Currently, _src is not implemented in TraceMeEncode.
+  EXPECT_TRUE(absl::StrContains(TraceMeEncode("Hello", {}), "_src="));
+}
+
+TEST(RecorderTest, DisableSourceLocation) {
+  bool original_value = TraceMeGlobalFlags::IsSourceLocationEnabled();
+  g_enable_source_location.store(false);
+  EXPECT_FALSE(TraceMeGlobalFlags::IsSourceLocationEnabled());
+  EXPECT_FALSE(absl::StrContains(TraceMeEncode("Hello", {}), "_src="));
+  // Reset the flag to its original value.
+  g_enable_source_location.store(original_value);
 }
 
 }  // namespace

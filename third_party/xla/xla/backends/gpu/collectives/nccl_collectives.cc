@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "third_party/nccl/nccl.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
@@ -64,7 +65,6 @@ limitations under the License.
 #include "tsl/platform/casts.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/profiler/lib/traceme.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 
@@ -87,7 +87,7 @@ class NcclIdStore {
 
   absl::StatusOr<CliqueIds> GetCliqueIds(const CliqueKey& key,
                                          NcclCollectives& nccl_collectives) {
-    auto* gpu_key = tsl::down_cast<const gpu::GpuCliqueKey*>(&key);
+    auto* gpu_key = absl::down_cast<const GpuCliqueKey*>(&key);
     if (gpu_key == nullptr) {
       return InvalidArgument("Expected GPU clique key");
     }
@@ -113,8 +113,19 @@ class NcclIdStore {
                          : 1;
 
     // Create a KV store key for the given root process and captured clique key.
+    // We construct the key from the full (non-truncated) device list and
+    // exclude `num_local_participants` because it can differ across hosts for
+    // the same logical clique (e.g. P2P cliques from connected components).
     auto kv_key = [&](ProcessId root_process) {
-      return absl::StrFormat("root_process: %v; clique: %v", root_process, key);
+      return absl::StrFormat(
+          "root_process: %v; clique: devices=[%s]; communication_id=%v; "
+          "incarnations=[%s]",
+          root_process, absl::StrJoin(key.devices(), ","),
+          gpu_key->communication_id(),
+          absl::StrJoin(gpu_key->incarnations(), ",",
+                        [](std::string* out, IncarnationId id) {
+                          absl::StrAppend(out, id.value());
+                        }));
     };
 
     // Global devices that are responsible for generating clique ids.
@@ -200,7 +211,7 @@ static absl::StatusOr<std::unique_ptr<Communicator>> Cast(
 }
 
 static auto DeviceOrdinal(const Collectives::DeviceRank& rank) {
-  auto* device = tsl::down_cast<const GpuCollectives::Device*>(rank.device);
+  auto* device = absl::down_cast<const GpuCollectives::Device*>(rank.device);
   return device->stream_executor()->device_ordinal();
 }
 
@@ -220,7 +231,7 @@ static auto DeviceRanksToString(
 }
 
 static ncclComm_t Cast(const Communicator* comm) {
-  auto* nccl_communicator = tsl::down_cast<const NcclCommunicator*>(comm);
+  auto* nccl_communicator = absl::down_cast<const NcclCommunicator*>(comm);
   CHECK(nccl_communicator != nullptr) << "Unsupported XLA communicator";
   return nccl_communicator->comm();
 }
@@ -231,14 +242,13 @@ absl::StatusOr<CliqueId> NcclCollectives::CreateUniqueCliqueId() const {
   return CliqueId(absl::string_view(id.internal, NCCL_UNIQUE_ID_BYTES));
 }
 
-bool NcclCollectives::SupportsDeviceComm() const {
-  return NCCL_VERSION_CODE >= 22800;
-}
-
 size_t NcclCollectives::SymmetricMemoryAlignment() const {
-  // TODO(ezhulenev): Query memory alignment from CUDA executor for multicast
-  // memory (CU_MULTICAST_GRANULARITY_MINIMUM). Find how to query it for NCCL.
-  return 4096;
+  // Multicast memory requires buffers aligned to
+  // CU_MULTICAST_GRANULARITY_MINIMUM which is 2MB on Hopper. Since both
+  // symmetric and multicast buffers share the same kCollective memory space
+  // color, we use the larger alignment.
+  // TODO(ezhulenev): Query this from CUDA at runtime.
+  return 2 * 1024 * 1024;
 }
 
 static absl::StatusOr<ncclConfig_t> AsNcclConfig(
@@ -249,6 +259,14 @@ static absl::StatusOr<ncclConfig_t> AsNcclConfig(
   comm_config.splitShare = config.split_share;
   int nccl_version;
   XLA_NCCL_RETURN_IF_ERROR(ncclGetVersion(&nccl_version));
+
+  if (xla::GetDebugOptionsFromFlags()
+          .xla_gpu_experimental_enable_nccl_symmetric_buffers() &&
+      config.use_minimal_resource) {
+    VLOG(1) << "Setting CTAPolicy to NCCL_CTA_POLICY_ZERO";
+    comm_config.CTAPolicy = NCCL_CTA_POLICY_ZERO;
+  }
+
   if (config.max_nchannels > 0) {
     VLOG(1) << "Maximum number of channels is set to: " << comm_config.maxCTAs;
     comm_config.maxCTAs = config.max_nchannels;
@@ -282,7 +300,7 @@ static absl::StatusOr<std::vector<se::StreamExecutor*>> GetStreamExecutors(
     absl::Span<const NcclCollectives::DeviceRank> ranks) {
   std::vector<se::StreamExecutor*> stream_executors(ranks.size());
   for (size_t i = 0; i < ranks.size(); ++i) {
-    auto* device = tsl::down_cast<GpuCollectives::Device*>(ranks[i].device);
+    auto* device = absl::down_cast<GpuCollectives::Device*>(ranks[i].device);
     TF_RET_CHECK(device) << "Device must be GpuCollectives::Device";
     stream_executors[i] = device->stream_executor();
   }
@@ -308,7 +326,7 @@ NcclCollectives::CreateCommunicatorsWithCancel(
       clique_ids->size(), clique_ids->fingerprint());
 
   const auto& gpu_config =
-      tsl::down_cast<const GpuCollectives::Config&>(config);
+      absl::down_cast<const GpuCollectives::Config&>(config);
   if (!gpu_config.blocking_communicators && !gpu_config.async_execution) {
     return FailedPrecondition(
         "GpuCollectives::Config blocking_communicators is false, but "
@@ -338,7 +356,7 @@ NcclCollectives::CreateCommunicatorsWithCancel(
         device_ordinal, rank, rank, num_ranks, clique_ids->size(),
         clique_ids->fingerprint());
 
-    auto* device = tsl::down_cast<GpuCollectives::Device*>(ranks[i].device);
+    auto* device = absl::down_cast<GpuCollectives::Device*>(ranks[i].device);
     TF_RET_CHECK(device != nullptr);
     auto activate_context = device->stream_executor()->Activate();
 
@@ -417,7 +435,7 @@ NcclCollectives::SplitCommunicatorsWithCancel(
   ASSIGN_OR_RETURN(auto stream_executors, GetStreamExecutors(ranks));
 
   const auto& gpu_config =
-      tsl::down_cast<const GpuCollectives::Config&>(config);
+      absl::down_cast<const GpuCollectives::Config&>(config);
 
   auto make_comm = [&](int i) -> absl::StatusOr<ncclComm_t> {
     int32_t device_ordinal = DeviceOrdinal(ranks[i]);
@@ -480,50 +498,12 @@ static absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectives() {
   ASSIGN_OR_RETURN(xla::Collectives * collectives,
                    xla::CollectivesRegistry::Get("gpu", "nvshmem"));
   xla::gpu::GpuCollectives* nvshmem_collectives =
-      tsl::down_cast<xla::gpu::GpuCollectives*>(collectives);
+      absl::down_cast<GpuCollectives*>(collectives);
   if (nvshmem_collectives == nullptr) {
     return Internal("Failed to get NVSHMEM collectives");
   }
 
   return nvshmem_collectives;
-}
-
-absl::StatusOr<void*> NcclCollectives::Allocate(uint64_t bytes) {
-  if (xla::GetDebugOptionsFromFlags().xla_gpu_experimental_enable_nvshmem()) {
-    ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
-    return nvshmem_collectives->Allocate(bytes);
-  }
-
-  void* ptr = nullptr;
-  ncclResult_t res = ncclMemAlloc(&ptr, bytes);
-  if (res != ncclSuccess) {
-    return Internal(
-        "Failed to allocate %s (%llu bytes) from device collective memory: %s, "
-        "Last NCCL warning(error) log entry (may be unrelated): %s",
-        tsl::strings::HumanReadableNumBytes(bytes), bytes,
-        ncclGetErrorString(res), ncclGetLastError(nullptr));
-  }
-  VLOG(2) << "Allocated collective memory " << ptr << " of " << bytes
-          << " bytes";
-  return ptr;
-}
-
-absl::Status NcclCollectives::Deallocate(void* location) {
-  if (xla::GetDebugOptionsFromFlags().xla_gpu_experimental_enable_nvshmem()) {
-    ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
-    return nvshmem_collectives->Deallocate(location);
-  }
-
-  ncclResult_t res = ncclMemFree(location);
-  if (res != ncclSuccess) {
-    return Internal(
-        "Failed to free device collective memory at %p; result: %s, Last NCCL "
-        "warning(error) log entry (may be unrelated): %s",
-        location, ncclGetErrorString(res), ncclGetLastError(nullptr));
-  }
-
-  VLOG(2) << "Deallocated collective memory " << location;
-  return absl::OkStatus();
 }
 
 absl::StatusOr<GpuCollectives::CliqueIdCallback>
@@ -547,5 +527,5 @@ NcclCollectives::InitializeTopology(const Topology& topology) {
 
 }  // namespace xla::gpu
 
-XLA_COLLECTIVES_REGISTER("CUDA", "nccl", 1,
+XLA_COLLECTIVES_REGISTER("CUDA", "nccl", 100,
                          std::make_unique<xla::gpu::NcclCollectives>());

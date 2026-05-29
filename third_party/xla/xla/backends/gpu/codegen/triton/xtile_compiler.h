@@ -22,7 +22,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -36,6 +35,8 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/PassManager.h"
 #include "xla/autotuning.pb.h"
+#include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -61,7 +62,7 @@ struct TritonWrapperResult {
   // Triton. We need to propagate them because we later create the kernel and
   // splice the impl_fn into it.
   std::vector<llvm::Metadata*> nvvm_annotations;
-  std::unique_ptr<llvm::Module> llvm_module;
+  LlvmKernelSource kernel_source;
 };
 
 std::ostream& operator<<(std::ostream& os, const TritonWrapperResult& result);
@@ -72,34 +73,28 @@ void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context);
 // Generate Triton IR by running the provided generator and compile it into LLVM
 // IR.
 absl::StatusOr<TritonWrapperResult> TritonWrapper(
-    absl::string_view fn_name, const HloFusionInstruction* fusion,
+    absl::string_view fn_name, const HloFusionInstruction& fusion,
     const se::GpuComputeCapability& cc,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
     const llvm::Triple& target_triple, const std::string& data_layout,
-    llvm::LLVMContext& llvm_context, mlir::MLIRContext& mlir_context);
+    mlir::MLIRContext& mlir_context);
 
-// Creates the initial Triton module for the given fusion. Visible for testing,
-// use TritonWrapper instead.
-absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
-    absl::string_view fn_name, const HloFusionInstruction* fusion,
+// Creates the initial Triton module for the given fusion.
+absl::StatusOr<TritonKernelSource> CreateTritonModule(
+    absl::string_view fn_name, const HloFusionInstruction& fusion,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
-    mlir::MLIRContext& mlir_context, bool use_experimental_tiling = false);
+    mlir::MLIRContext& mlir_context);
 
 // Compiles a given Triton module to LLVM IR.
-// If `emit_kernels` is false, then the function skips emitting
-// the kernels, but it still returns correctly filled TritonWrapperResult.
-// That is useful when deserializing from the compilation cache.
 absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     absl::string_view kernel_name, const HloModule& hlo_module,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
-    mlir::ModuleOp triton_module, const llvm::Triple& target_triple,
-    const std::string& data_layout, llvm::LLVMContext& llvm_context,
-    mlir::MLIRContext& mlir_context, bool is_xla_fusion,
-    bool emit_kernel = true,
-    absl::AnyInvocable<std::string()> error_ctx_provider = nullptr);
+    const llvm::Triple& target_triple, const std::string& data_layout,
+    TritonKernelSource triton_source, mlir::MLIRContext& mlir_context,
+    bool is_xla_fusion);
 
 std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
                              const se::DeviceDescription& device_info);

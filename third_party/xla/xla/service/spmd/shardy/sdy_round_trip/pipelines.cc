@@ -26,21 +26,21 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
+#include "shardy/dialect/sdy/transforms/export/passes.h"
 #include "shardy/dialect/sdy/transforms/import/passes.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/spmd/shardy/round_trip_common/import_constants.h"
-#include "xla/service/spmd/shardy/round_trip_common/import_func_calls.h"
 #include "xla/service/spmd/shardy/round_trip_common/import_sdy_custom_calls.h"
 #include "xla/service/spmd/shardy/round_trip_common/open_while_free_vars_sharding.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/dedup_meshes.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/export_ops.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/export_shardy_attrs.h"
-#include "xla/service/spmd/shardy/sdy_round_trip/flatten_call_graph.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/import_shardy_attrs.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/shard_map_export.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/shard_map_import.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_shardings.h"
+#include "xla/service/spmd/shardy/utils.h"
 
 namespace xla {
 namespace sdy {
@@ -92,8 +92,14 @@ void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
   pm.addNestedPass<FuncOp>(
       mlir::stablehlo_ext::createStablehloCanonicalizeFromHloImportPass());
   pm.addPass(createSdyRoundTripImportShardyAttrsPass(enableHloShardingV3));
-  pm.addPass(createSdyRoundTripFlattenCallGraphPass());
+  pm.addPass(mlir::sdy::createFlattenCallGraphPass(isManualComputation));
+  pm.addPass(mlir::createSymbolDCEPass());  // After FlattenCallGraphPass.
   pm.addPass(createSdyRoundTripShardMapImportPass());
+  // Deduplicate the functions cloned during shard map import.
+  // TODO(enver): Instead drop clone functions selectively during the shard map
+  // import and remove the unflattener below.
+  pm.addPass(mlir::sdy::createUnflattenCallGraphPass());
+  pm.addPass(mlir::createSymbolDCEPass());  // After UnflattenCallGraphPass.
   pm.addPass(createImportSdyCustomCallsPass());
   pm.addNestedPass<FuncOp>(createOpenWhileFreeVarsShardingPass());
   if (enableHloShardingV3 || liftAndDedupMeshes) {
@@ -112,7 +118,6 @@ void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
           .setRegionSimplificationLevel(mlir::GreedySimplifyRegionLevel::Normal)
           .enableFolding(false)
           .enableConstantCSE(false)));
-  pm.addPass(createImportFuncCallsPass());
 }
 
 namespace {

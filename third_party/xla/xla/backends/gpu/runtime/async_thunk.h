@@ -22,10 +22,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/runtime/async_execution.h"
+#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
+#include "xla/stream_executor/command_buffer.h"
 
 namespace xla::gpu {
 
@@ -92,12 +94,24 @@ class AsyncStartThunk : public Thunk {
 // corresponding AsyncStartThunk (for pipelined async operations async execution
 // scope owned by a canonical start operation). It synchronizes the compute
 // stream with the async operation's completion event.
-class AsyncDoneThunk : public Thunk {
+//
+// Also implements the Command interface so it can be recorded directly into
+// command buffers as an empty dependency node when needed.
+class AsyncDoneThunk : public Command {
  public:
   AsyncDoneThunk(ThunkInfo thunk_info,
                  std::shared_ptr<AsyncExecution> async_execution);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer) override;
+
+  // AsyncDoneThunk touches no buffers; this is explicit rather than relying on
+  // the base class default.
+  BufferUses buffer_uses() const override { return {}; }
 
   absl::StatusOr<ThunkProto> ToProto() const override;
   static absl::StatusOr<std::unique_ptr<AsyncDoneThunk>> FromProto(

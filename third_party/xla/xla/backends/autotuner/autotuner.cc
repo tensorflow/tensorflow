@@ -19,8 +19,10 @@ limitations under the License.
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <limits>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
@@ -31,6 +33,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -41,13 +44,16 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/profiler.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/dump.h"
@@ -64,11 +70,7 @@ limitations under the License.
 #include "xla/tsl/util/proto/proto_utils.h"
 #include "xla/tsl/util/sorted_range.h"
 #include "xla/util.h"
-#include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/fingerprint.h"
-#include "tsl/profiler/lib/scoped_annotation.h"
-#include "tsl/profiler/lib/traceme.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 
@@ -81,15 +83,6 @@ tsl::Fprint128 GetFingerprint(const HloInstruction* instr) {
   options.set_print_operand_shape(true);
 
   return tsl::Fingerprint128(instr->ToString(options));
-}
-
-// Returns ShortDebugString of contents of Any proto, without type URL.
-std::string UnpackedAnyShortDebugString(const google::protobuf::Any& any) {
-  std::string s = any.ShortDebugString();
-  // Any is serialized as "go/debugonly [type/url] {<serialized_proto>}".
-  std::string type_url = absl::StrCat(" [", any.type_url(), "] ");
-  absl::StrReplaceAll({{type_url, ""}}, &s);
-  return s;
 }
 
 // It is important to fingerprint the entire module not just the autotuning
@@ -161,7 +154,8 @@ absl::StatusOr<std::unique_ptr<Autotuner>> Autotuner::Create(
     std::unique_ptr<AutotunerCacheInterface> cache,
     tsl::thread::ThreadPool* thread_pool) {
   if (codegen_backends.empty()) {
-    return absl::InvalidArgumentError("No codegen backends provided");
+    return absl::InvalidArgumentError(
+        "Autotuner initialization failed. No codegen backends provided.");
   }
   for (const auto& backend : codegen_backends) {
     VLOG(1) << "Registered backend: " << backend->name();
@@ -182,8 +176,8 @@ absl::Status Autotuner::Autotune(HloModule* module,
   VLOG(1) << "Finding configs for " << instruction_groups.size()
           << " unique instructions.";
 
-  TF_ASSIGN_OR_RETURN(std::vector<Config> configs,
-                      GetConfigsForAll(instruction_groups));
+  ASSIGN_OR_RETURN(std::vector<Config> configs,
+                   GetConfigsForAll(instruction_groups));
 
   for (int i = 0; i < instruction_groups.size(); i++) {
     auto& instructions = instruction_groups[i];
@@ -231,8 +225,8 @@ absl::Status Autotuner::Autotune(HloModule* module,
   VLOG(1) << "Shard " << my_shard_index << "/" << total_shards
           << ": finding configs for " << instruction_groups.size() << "/"
           << all_instruction_groups.size() << " unique instructions ";
-  TF_ASSIGN_OR_RETURN(std::vector<Config> configs,
-                      GetConfigsForAll(instruction_groups));
+  ASSIGN_OR_RETURN(std::vector<Config> configs,
+                   GetConfigsForAll(instruction_groups));
   std::vector<const HloInstruction*> autotuned_instructions;
   autotuned_instructions.reserve(instruction_groups.size());
   for (int i = 0; i < instruction_groups.size(); ++i) {
@@ -246,14 +240,21 @@ absl::Status Autotuner::Autotune(HloModule* module,
       GetKvStoreKey(module, my_shard_index, codegen_backends_);
   std::string local_results;
   if (!autotuned_instructions.empty()) {
-    TF_ASSIGN_OR_RETURN(local_results,
-                        cache_->Serialize(autotuned_instructions));
+    ASSIGN_OR_RETURN(local_results, cache_->Serialize(autotuned_instructions));
   }
   absl::StatusOr<std::string> stored_result = kv_store.TryGet(local_key);
   if (stored_result.status().code() == absl::StatusCode::kNotFound) {
     VLOG(2) << "Storing results for " << local_key;
-    TF_RETURN_IF_ERROR(kv_store.Set(local_key, local_results));
-    VLOG(2) << "Shard " << my_shard_index << " stored results at " << local_key;
+    absl::Status set_result = kv_store.Set(local_key, local_results);
+    if (absl::IsAlreadyExists(set_result)) {
+      VLOG(2) << "Shard " << my_shard_index << " tried to store results at "
+              << local_key << " but lost a race to do so";
+    } else if (!set_result.ok()) {
+      return set_result;
+    } else {
+      VLOG(2) << "Shard " << my_shard_index << " stored results at "
+              << local_key;
+    }
   } else if (!stored_result.ok()) {
     return stored_result.status();
   } else {
@@ -271,10 +272,10 @@ absl::Status Autotuner::Autotune(HloModule* module,
             << i << " / " << total_shards << " at " << remote_key;
     // TODO(b/361009609): reset to infinite duration once issue with MPI is
     // fixed. https://github.com/google/jax/issues/22995.
-    TF_ASSIGN_OR_RETURN(std::string remote_results,
-                        kv_store.Get(remote_key, absl::Hours(24)));
+    ASSIGN_OR_RETURN(std::string remote_results,
+                     kv_store.Get(remote_key, absl::Hours(24)));
     if (!remote_results.empty()) {
-      TF_RETURN_IF_ERROR(cache_->Deserialize(remote_results));
+      RETURN_IF_ERROR(cache_->Deserialize(remote_results));
     }
   }
 
@@ -283,15 +284,18 @@ absl::Status Autotuner::Autotune(HloModule* module,
   for (auto& instruction_group : all_instruction_groups) {
     CHECK(!instruction_group.empty());
     std::optional<Config> cached_config = LookUp(instruction_group[0]);
-    CHECK(cached_config.has_value())
-        << "Sharding autotuning failed: no config found for HLO: " +
-               instruction_group[0]->ToString();
+    if (!cached_config.has_value()) {
+      return absl::InternalError(absl::StrCat(
+          "Autotuning failed for HLO: ", instruction_group[0]->ToString(),
+          ". No configuration found in cache after synchronizing results "
+          "across all shards."));
+    }
     if (autotune_config_.dump_hlos) {
-      TF_RETURN_IF_ERROR(DumpHlo(instruction_group[0], *cached_config));
+      RETURN_IF_ERROR(DumpHlo(instruction_group[0], *cached_config));
     }
     CodegenBackend* codegen_backend = cached_config->codegen_backend;
     for (auto* instr : instruction_group) {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           codegen_backend->ApplyConfig(*instr, *cached_config->backend_config));
     }
   }
@@ -310,7 +314,14 @@ absl::Status Autotuner::Autotune(HloInstruction* instr) {
 }
 
 tsl::Future<Autotuner::Config> Autotuner::GetConfig(HloInstruction* instr) {
-  VLOG(1) << "Getting config for HLO: " << instr->ToString();
+  if (VLOG_IS_ON(1)) {
+    HloPrintOptions print_options;
+    if (VLOG_IS_ON(4)) {
+      print_options.set_print_subcomputation_mode(
+          HloPrintOptions::PrintSubcomputationMode::kFullBodies);
+    }
+    VLOG(1) << "Getting config for HLO: " << instr->ToString(print_options);
+  }
   std::optional<Config> cached_config = LookUp(instr);
   if (cached_config.has_value()) {
     VLOG(1) << "Using cached config: " << cached_config->ToString();
@@ -326,7 +337,7 @@ tsl::Future<Autotuner::Config> Autotuner::GetConfig(HloInstruction* instr) {
   }
 
   if (autotune_config_.use_default_config) {
-    TF_ASSIGN_OR_RETURN(Config default_config, GetDefaultConfig(*instr));
+    ASSIGN_OR_RETURN(Config default_config, GetDefaultConfig(*instr));
     VLOG(1) << "Using default config: " << default_config.ToString();
     return default_config;
   }
@@ -340,20 +351,26 @@ tsl::Future<Autotuner::Config> Autotuner::GetConfig(HloInstruction* instr) {
 }
 
 absl::Status Autotuner::IsValidExecutable(
-    const absl::StatusOr<std::unique_ptr<Executable>>& executable) const {
+    const absl::StatusOr<std::unique_ptr<Executable>>& executable,
+    const HloInstruction* instr) const {
   if (!executable.ok()) {
-    return absl::Status(
-        executable.status().code(),
+    return tsl::errors::CreateWithUpdatedMessage(
+        executable.status(),
         absl::StrCat("Compilation failed: ", executable.status().message()));
   }
 
-  if (!autotune_config_.allow_reg_spills && executable.value()) {
+  bool allow_spills = false;
+  if (autotune_config_.allow_reg_spills_fn) {
+    allow_spills = autotune_config_.allow_reg_spills_fn(*instr);
+  }
+
+  if (!allow_spills && *executable) {
     const auto spills_registers = [](const auto& pair) {
       const KernelStats& kernel_stats = pair.second;
       return kernel_stats.store_bytes_spilled > 0 ||
              kernel_stats.load_bytes_spilled > 0;
     };
-    ModuleStats module_stats = executable.value()->module_stats();
+    ModuleStats module_stats = (*executable)->module_stats();
     if (absl::c_any_of(module_stats, spills_registers)) {
       return absl::ResourceExhaustedError(
           "Discarding compilation due to register spilling.");
@@ -364,12 +381,21 @@ absl::Status Autotuner::IsValidExecutable(
 
 tsl::Future<Autotuner::Config> Autotuner::TuneBestConfig(
     HloInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(std::vector<Config> supported_configs,
-                      GetSupportedConfigs(instr));
+  ASSIGN_OR_RETURN(std::vector<Config> supported_configs,
+                   GetSupportedConfigs(instr));
   if (supported_configs.empty()) {
     return absl::InternalError(
-        absl::StrCat("Autotuner could not find any supported configs for HLO: ",
-                     instr->ToString()));
+        absl::StrCat("Autotuning failed for HLO: ", instr->ToString(),
+                     ". No supported configs found for this instruction."));
+  }
+  if (supported_configs.size() == 1) {
+    VLOG(1) << "Found only one supported config: "
+            << supported_configs[0].ToString();
+    std::vector<ConfigResult> results;
+    results.push_back({std::move(supported_configs[0]), std::nullopt,
+                       absl::ZeroDuration(), 0});
+    LogConfigResults(*instr, results);
+    return std::move(results.back().config);
   }
   VLOG(1) << "Found total of " << supported_configs.size()
           << " supported configs.";
@@ -378,24 +404,33 @@ tsl::Future<Autotuner::Config> Autotuner::TuneBestConfig(
   return std::move(executables)
       .Map([instr,
             this](std::vector<std::pair<
-                      Config, std::optional<std::unique_ptr<Executable>>>>&&
+                      Config, absl::StatusOr<std::unique_ptr<Executable>>>>&&
                       executables) mutable -> absl::StatusOr<Config> {
         std::vector<ExecutableCandidate> executable_candidates;
-        for (int i = 0; i < executables.size(); ++i) {
-          if (executables[i].second.has_value()) {
-            executable_candidates.push_back(
-                {std::move(executables[i].first),
-                 std::move(executables[i].second.value())});
+        std::vector<ConfigResult> results;
+        for (auto& [config, executable] : executables) {
+          if (!executable.ok()) {
+            VLOG(4) << "Failed to compile config " << config.ToString()
+                    << " with status: " << executable.status();
+            results.push_back({std::move(config),
+                               Failure{FailureKind::kCompilationFailed,
+                                       executable.status().ToString()},
+                               absl::ZeroDuration(), 0});
+            continue;
           }
+          executable_candidates.push_back(
+              {std::move(config), std::move(*executable)});
         }
 
         if (executable_candidates.empty()) {
+          LogConfigResults(*instr, results);
           return absl::InternalError(
-              absl::StrCat("Autotuner could not compile any configs for HLO: ",
-                           instr->ToString()));
+              absl::StrCat("Autotuner failed for HLO: ", instr->ToString(),
+                           ". No configs could be compiled."));
         }
         VLOG(1) << "Successfully compiled " << executable_candidates.size()
-                << " configs out of " << executables.size() << " configs.";
+                << " configs out of " << executables.size() << " configs with "
+                << results.size() << " compilation failures.";
 
         bool skip_profiling = executable_candidates.size() == 1 ||
                               autotune_config_.select_first_config;
@@ -403,20 +438,36 @@ tsl::Future<Autotuner::Config> Autotuner::TuneBestConfig(
           VLOG(1) << "Skipping profiling and using the "
                   << (autotune_config_.select_first_config ? "first" : "only")
                   << " config: " << executable_candidates[0].config.ToString();
-          return std::move(executable_candidates[0].config);
+          results.push_back({std::move(executable_candidates[0].config),
+                             std::nullopt, absl::ZeroDuration(), 0});
+          LogConfigResults(*instr, results);
+          return std::move(results.back().config);
         }
 
-        TF_ASSIGN_OR_RETURN(std::vector<ConfigResult> results,
-                            ProfileAll(std::move(executable_candidates)));
+        auto profile_results_or =
+            ProfileAll(std::move(executable_candidates), instr);
+        if (!profile_results_or.ok()) {
+          return tsl::errors::CreateWithUpdatedMessage(
+              profile_results_or.status(),
+              absl::StrCat("Autotuning failed for HLO: ", instr->ToString(),
+                           ". Failed to profile configs: ",
+                           profile_results_or.status().message()));
+        }
+        std::vector<ConfigResult> profile_results =
+            *std::move(profile_results_or);
+        results.insert(results.end(),
+                       std::make_move_iterator(profile_results.begin()),
+                       std::make_move_iterator(profile_results.end()));
         LogConfigResults(*instr, results);
         absl::StatusOr<ConfigResult> best_result = PickBestConfig(results);
         if (!best_result.ok()) {
           return absl::InternalError(
               absl::StrCat("Autotuning failed for HLO: ", instr->ToString(),
-                           " with error: ", best_result.status().ToString()));
+                           ". Failed to pick best config: ",
+                           best_result.status().message()));
         }
-        VLOG(1) << "Picked best config: " << best_result.value().ToString();
-        return std::move(best_result.value().config);
+        VLOG(1) << "Picked best config: " << best_result->ToString();
+        return std::move(best_result->config);
       });
 }
 
@@ -434,9 +485,12 @@ absl::StatusOr<std::vector<Autotuner::Config>> Autotuner::GetConfigsForAll(
     absl::StatusOr<Config> config_or = std::move(future_configs[i]).Await();
     combined_status.Update(config_or.status());
     if (!config_or.ok()) {
-      LOG(ERROR) << "Failed to autotune HLO: "
-                 << instruction_groups[i][0]->ToString()
-                 << " with status: " << config_or.status();
+      LOG(ERROR)
+          << "Could not get config for HLO: "
+          << instruction_groups[i][0]->ToString(
+                 HloPrintOptions().set_print_subcomputation_mode(
+                     HloPrintOptions::PrintSubcomputationMode::kFullBodies))
+          << ". Status: " << config_or.status();
       num_failures++;
     }
     status_or_configs.push_back(std::move(config_or));
@@ -444,16 +498,18 @@ absl::StatusOr<std::vector<Autotuner::Config>> Autotuner::GetConfigsForAll(
 
   if (!combined_status.ok() && num_failures > 1) {
     return tsl::errors::CreateWithUpdatedMessage(
-        combined_status, absl::StrCat("Failed to autotune: ", num_failures,
-                                      " out of ", instruction_groups.size(),
-                                      " instructions. See logs for details.\n",
-                                      combined_status.message()));
+        combined_status,
+        absl::StrCat(
+            "Failed to get configs for: ", num_failures, " out of ",
+            instruction_groups.size(),
+            " instructions. See logs for all failures. Example failure: \n",
+            combined_status.message()));
   }
   RETURN_IF_ERROR(combined_status);
   std::vector<Config> configs;
   for (auto& config_or : status_or_configs) {
     if (config_or.ok()) {
-      configs.push_back(std::move(config_or.value()));
+      configs.push_back(std::move(*config_or));
     }
   }
   return configs;
@@ -492,8 +548,8 @@ std::optional<Autotuner::Config> Autotuner::LookUp(
       VLOG(1) << "Found cached config for HLO: " << instr->ToString();
       for (auto& codegen_backend : codegen_backends_) {
         if (codegen_backend->backend() == cached_config->codegen_backend) {
-          auto backend_config = std::make_unique<google::protobuf::Any>(
-              cached_config->backend_config);
+          auto backend_config =
+              std::make_unique<BackendConfig>(cached_config->backend_config);
           return Config{codegen_backend.get(), std::move(backend_config)};
         }
       }
@@ -530,7 +586,7 @@ absl::StatusOr<std::vector<Autotuner::Config>> Autotuner::GetSupportedConfigs(
               << per_backend_configs.status();
       continue;
     }
-    VLOG(3) << "Found of " << per_backend_configs->size()
+    VLOG(3) << "Found " << per_backend_configs->size()
             << " supported configs for backend " << codegen_backend->name();
     for (auto& config : *per_backend_configs) {
       configs.push_back({codegen_backend.get(), std::move(config)});
@@ -539,37 +595,38 @@ absl::StatusOr<std::vector<Autotuner::Config>> Autotuner::GetSupportedConfigs(
   return configs;
 }
 
-std::optional<std::unique_ptr<Executable>> Autotuner::Compile(
-    HloInstruction* instr, const Config& config) {
+absl::StatusOr<std::unique_ptr<Executable>> Autotuner::Compile(
+    const HloInstruction* instr, const Config& config) {
   if (autotune_config_.exclude_cublas_config &&
       (config.codegen_backend->name() == "CUBLAS_FISSION" ||
        config.codegen_backend->name() == "CUBLASLT_FISSION" ||
        config.codegen_backend->name() == "ROCBLAS_FISSION" ||
        config.codegen_backend->name() == "HIPBLASLT_FISSION")) {
-    return std::nullopt;
+    return absl::CancelledError("exclude_cublas_config is set.");
   }
+  VLOG(4) << "Compiling config " << config.ToString() << " for HLO "
+          << instr->ToString();
   absl::StatusOr<std::unique_ptr<Executable>> executable =
       config.codegen_backend->Compile(*instr, *config.backend_config);
-
-  if (absl::Status status = IsValidExecutable(executable); !status.ok()) {
-    VLOG(4) << "Compilation failed for config " << config.ToString()
-            << " with status: " << status;
-    return std::nullopt;
+  if (absl::Status status = IsValidExecutable(executable, instr);
+      !status.ok()) {
+    return status;
   }
-  return std::make_optional(std::move(*executable));
+  return executable;
 }
 
 tsl::Future<std::vector<
-    std::pair<Autotuner::Config, std::optional<std::unique_ptr<Executable>>>>>
-Autotuner::CompileAll(HloInstruction* instr, std::vector<Config>& configs) {
+    std::pair<Autotuner::Config, absl::StatusOr<std::unique_ptr<Executable>>>>>
+Autotuner::CompileAll(const HloInstruction* instr,
+                      std::vector<Config>& configs) {
   if (thread_pool_ == nullptr) {
-    std::vector<std::pair<Config, std::optional<std::unique_ptr<Executable>>>>
+    std::vector<std::pair<Config, absl::StatusOr<std::unique_ptr<Executable>>>>
         executables;
     executables.reserve(configs.size());
     for (Config& config : configs) {
       executables.emplace_back(std::move(config), Compile(instr, config));
       if (autotune_config_.select_first_config &&
-          executables.back().second.has_value()) {
+          executables.back().second.ok()) {
         return std::move(executables);
       }
     }
@@ -577,73 +634,121 @@ Autotuner::CompileAll(HloInstruction* instr, std::vector<Config>& configs) {
   }
 
   std::vector<tsl::Future<
-      std::pair<Config, std::optional<std::unique_ptr<Executable>>>>>
+      std::pair<Config, absl::StatusOr<std::unique_ptr<Executable>>>>>
       executables;
   executables.reserve(configs.size());
   for (int i = 0; i < configs.size(); ++i) {
     executables.push_back(tsl::MakeFutureOn(
         *thread_pool_->AsExecutor(),
         [&, instr = instr, config = std::move(configs[i])]() mutable {
-          auto executable = Compile(instr, config);
-          return std::make_pair(std::move(config), std::move(executable));
+          return std::make_pair(std::move(config), Compile(instr, config));
         }));
   }
   return tsl::JoinFutures(absl::MakeSpan(executables));
 }
 
 absl::StatusOr<std::vector<Autotuner::ConfigResult>> Autotuner::ProfileAll(
-    std::vector<ExecutableCandidate> candidates) {
-  std::vector<ConfigResult> results_vec;
-  results_vec.reserve(candidates.size());
+    std::vector<ExecutableCandidate> candidates, const HloInstruction* instr) {
+  std::vector<ConfigResult> config_results(candidates.size());
 
   absl::MutexLock lock(profiler_m_);
 
   ASSIGN_OR_RETURN(
       std::unique_ptr<InputBuffers> input_buffers,
-      profiler_->CreateInputBuffers(candidates[0].executable.get()));
+      profiler_->CreateInputBuffers(candidates[0].executable.get(), instr));
 
-  std::optional<ScopedShapedBuffer> reference_output;
+  const auto is_trusted = [](const ExecutableCandidate& candidate) {
+    return !candidate.config.codegen_backend->CanProduceWrongResults();
+  };
+
+  std::vector<OutputCluster> clusters;
+  std::vector<int> profile_order(candidates.size());
+  std::iota(profile_order.begin(), profile_order.end(), 0);
+
+  auto first_untrusted = profile_order.begin();
   if (autotune_config_.check_buffers) {
-    VLOG(2) << "Checking buffers";
-    reference_output = GetReferenceOutput(candidates, *input_buffers);
-    if (!reference_output.has_value()) {
-      LOG(WARNING) << "No reference output found even though buffer checking "
-                      "was requested while autotuning";
-    }
+    first_untrusted =
+        std::stable_partition(profile_order.begin(), profile_order.end(),
+                              [&](int i) { return is_trusted(candidates[i]); });
+
+    VLOG(2) << "Validating outputs via clustering across " << candidates.size()
+            << " config(s).";
   }
 
-  for (int i = 0; i < candidates.size(); ++i) {
-    absl::StatusOr<ProfileResult> profile_result =
-        profiler_->Profile(candidates[i].executable.get(), *input_buffers);
+  for (auto it = profile_order.begin(); it != first_untrusted; ++it) {
+    const int i = *it;
+    config_results[i] =
+        ProfileCandidate(candidates[i], *input_buffers, clusters,
+                         /*is_trusted_config=*/true,
+                         /*allow_new_cluster=*/true);
+  }
 
-    std::optional<Failure> failure = std::nullopt;
-    absl::Duration duration = absl::ZeroDuration();
-    int scratch_bytes = 0;
-    if (!profile_result.ok()) {
-      failure = Failure{FailureKind::kExecutionFailed,
-                        profile_result.status().ToString()};
-    } else {
-      duration = profile_result->duration;
-      scratch_bytes = profile_result->scratch_bytes;
-      if (autotune_config_.check_buffers && reference_output.has_value()) {
-        CHECK(profile_result->output_buffer.has_value());
-        failure =
-            CheckBuffers(*input_buffers, profile_result->output_buffer.value(),
-                         reference_output.value());
-        if (failure.has_value()) {
-          CHECK(!autotune_config_.crash_on_check_failure);
-        }
+  // Untrusted configs create consensus clusters only if the trusted phase
+  // found no usable reference.
+  const bool has_trusted_reference = !clusters.empty();
+  for (auto it = first_untrusted; it != profile_order.end(); ++it) {
+    const int i = *it;
+    config_results[i] = ProfileCandidate(
+        candidates[i], *input_buffers, clusters, /*is_trusted_config=*/false,
+        /*allow_new_cluster=*/!has_trusted_reference);
+  }
+
+  if (autotune_config_.check_buffers) {
+    DemoteNonWinningClusterConfigs(config_results, clusters);
+    if (autotune_config_.crash_on_check_failure) {
+      // Only correctness-check failures are fatal here. kCompilationFailed and
+      // kExecutionFailed are expected outcomes during autotuning and silently
+      // discarding them is the intended behavior.
+      for (const ConfigResult& r : config_results) {
+        CHECK(!r.failure.has_value() ||
+              (r.failure->kind != FailureKind::kRedzoneCheckFailed &&
+               r.failure->kind != FailureKind::kWrongResults))
+            << "crash_on_check_failure: " << r.failure->ToString();
       }
     }
-    results_vec.push_back(
-        {std::move(candidates[i].config), failure, duration, scratch_bytes});
   }
   // Clear the candidates while holding the profiler lock
   // to unload their CUDA modules before any other thread starts profiling;
   // not doing this for example causes timeouts of delay kernels used for
   // precise CUDA event-based timing.
   candidates.clear();
-  return results_vec;
+  return config_results;
+}
+
+Autotuner::ConfigResult Autotuner::ProfileCandidate(
+    ExecutableCandidate& candidate, InputBuffers& input_buffers,
+    std::vector<OutputCluster>& clusters, bool is_trusted_config,
+    bool allow_new_cluster) {
+  absl::StatusOr<ProfileResult> profile_result =
+      profiler_->Profile(candidate.executable.get(), input_buffers);
+
+  std::optional<Failure> failure = std::nullopt;
+  absl::Duration duration = absl::ZeroDuration();
+  int scratch_bytes = 0;
+  int assigned_cluster = -1;
+  if (!profile_result.ok()) {
+    failure = Failure{FailureKind::kExecutionFailed,
+                      profile_result.status().ToString()};
+  } else {
+    duration = profile_result->duration;
+    scratch_bytes = profile_result->scratch_bytes;
+    if (autotune_config_.check_buffers) {
+      // Input buffers are shared across candidates; CheckInputBuffers both
+      // verifies redzone canaries and refreshes the buffers so the next
+      // candidate starts from a clean state.
+      absl::Status redzone = profiler_->CheckInputBuffers(input_buffers);
+      if (!redzone.ok()) {
+        failure = Failure{FailureKind::kRedzoneCheckFailed, redzone.ToString()};
+      } else {
+        CHECK(profile_result->output_buffer.has_value());
+        assigned_cluster = AssignToOutputCluster(
+            clusters, profile_result->output_buffer.value(), is_trusted_config,
+            allow_new_cluster);
+      }
+    }
+  }
+  return ConfigResult{std::move(candidate.config), failure, duration,
+                      scratch_bytes, assigned_cluster};
 }
 
 absl::StatusOr<Autotuner::ConfigResult> Autotuner::PickBestConfig(
@@ -661,42 +766,41 @@ absl::StatusOr<Autotuner::ConfigResult> Autotuner::PickBestConfig(
   }
 
   if (best_result == nullptr) {
-    std::string message = "No valid config found!";
+    std::string message = "All configs failed during profiling.";
     if (!failures.empty()) {
-      absl::StrAppend(&message, " Failures: ", failures.size(), "\n",
+      absl::StrAppend(&message, "\nFailures (", failures.size(), "):\n",
                       absl::StrJoin(failures, "\n"));
     }
     return absl::NotFoundError(message);
   }
 
-  if (autotune_config_.optimize_scratch_bytes) {
-    const ConfigResult* fastest_result = best_result;
-    int64_t min_scratch_bytes = std::numeric_limits<int64_t>::max();
-    absl::Duration duration_limit =
-        min_duration +
-        absl::Microseconds(autotune_config_.scratch_bytes_window_size_us);
-    absl::Duration min_duration_with_optimzed_scratch_bytes =
-        absl::InfiniteDuration();
-    for (ConfigResult& result : results) {
-      if (!result.failure.has_value() && result.duration <= duration_limit) {
-        bool current_result_is_better =
-            result.scratch_bytes < min_scratch_bytes ||
-            (result.scratch_bytes == min_scratch_bytes &&
-             result.duration < min_duration_with_optimzed_scratch_bytes);
-        if (current_result_is_better) {
-          min_scratch_bytes = result.scratch_bytes;
-          min_duration_with_optimzed_scratch_bytes = result.duration;
-          best_result = &result;
-        }
+  // Optimize scratch bytes
+  const ConfigResult* fastest_result = best_result;
+  int64_t min_scratch_bytes = std::numeric_limits<int64_t>::max();
+  absl::Duration duration_limit =
+      min_duration +
+      absl::Microseconds(autotune_config_.scratch_bytes_window_size_us);
+  absl::Duration min_duration_with_optimzed_scratch_bytes =
+      absl::InfiniteDuration();
+  for (ConfigResult& result : results) {
+    if (!result.failure.has_value() && result.duration <= duration_limit) {
+      bool current_result_is_better =
+          result.scratch_bytes < min_scratch_bytes ||
+          (result.scratch_bytes == min_scratch_bytes &&
+           result.duration < min_duration_with_optimzed_scratch_bytes);
+      if (current_result_is_better) {
+        min_scratch_bytes = result.scratch_bytes;
+        min_duration_with_optimzed_scratch_bytes = result.duration;
+        best_result = &result;
       }
     }
-    if (best_result != fastest_result) {
-      VLOG(2) << "Autotuner picked a slower config to save scratch memory. "
-              << "Fastest config: " << fastest_result->ToString() << ". "
-              << "Selected config: " << best_result->ToString() << ". "
-              << "Tolerance: " << autotune_config_.scratch_bytes_window_size_us
-              << "us.";
-    }
+  }
+  if (best_result != fastest_result) {
+    VLOG(2) << "Autotuner picked a slower config to save scratch memory. "
+            << "Fastest config: " << fastest_result->ToString() << ". "
+            << "Selected config: " << best_result->ToString() << ". "
+            << "Tolerance: " << autotune_config_.scratch_bytes_window_size_us
+            << "us.";
   }
 
   return std::move(*best_result);
@@ -711,47 +815,65 @@ absl::Status Autotuner::DumpHlo(HloInstruction* instr, const Config& config) {
   DumpToFileInDirOrStdout(*parent_module, "", absl::StrCat(id, ".before.txt"),
                           module->ToString());
   HloInstruction* root = module->entry_computation()->root_instruction();
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       config.codegen_backend->ApplyConfig(*root, *config.backend_config));
   DumpToFileInDirOrStdout(*parent_module, "", absl::StrCat(id, ".after.txt"),
                           module->ToString());
   return absl::OkStatus();
 }
 
-std::optional<ScopedShapedBuffer> Autotuner::GetReferenceOutput(
-    std::vector<ExecutableCandidate>& candidates, InputBuffers& input_buffers) {
-  for (auto& candidate : candidates) {
-    if (candidate.config.codegen_backend->CanProduceWrongResults()) {
-      continue;
-    }
-    absl::StatusOr<ProfileResult> profile_result =
-        profiler_->Profile(candidate.executable.get(), input_buffers);
-    if (!profile_result.ok()) {
-      VLOG(2) << "Failed to profile executable: " << profile_result.status();
-      continue;
-    }
-    if (profile_result.value().output_buffer.has_value()) {
-      VLOG(2) << "Found reference output for config: "
-              << candidate.config.ToString();
-      return std::move(profile_result.value().output_buffer.value());
+int Autotuner::AssignToOutputCluster(std::vector<OutputCluster>& clusters,
+                                     ScopedShapedBuffer& output,
+                                     bool is_trusted_config,
+                                     bool allow_new_cluster) {
+  for (int c = 0; c < clusters.size(); ++c) {
+    if (profiler_
+            ->CheckOutputBuffer(output, clusters[c].representative,
+                                autotune_config_.relative_tolerance)
+            .ok()) {
+      clusters[c].count++;
+      clusters[c].has_trusted_member |= is_trusted_config;
+      return c;
     }
   }
-  return std::nullopt;
+  if (!allow_new_cluster) return -1;
+  int new_idx = clusters.size();
+  clusters.push_back(OutputCluster{std::move(output), /*count=*/1,
+                                   /*has_trusted_member=*/is_trusted_config});
+  return new_idx;
 }
 
-std::optional<Autotuner::Failure> Autotuner::CheckBuffers(
-    InputBuffers& input_buffers, ScopedShapedBuffer& output_buffer,
-    ScopedShapedBuffer& reference_output) {
-  absl::Status status = profiler_->CheckInputBuffers(input_buffers);
-  if (!status.ok()) {
-    return Failure{FailureKind::kRedzoneCheckFailed, status.ToString()};
+void Autotuner::DemoteNonWinningClusterConfigs(
+    std::vector<ConfigResult>& results,
+    const std::vector<OutputCluster>& clusters) {
+  if (clusters.empty()) return;
+  // Prefer clusters with a trusted member; among the preferred set, pick the
+  // largest count (earliest insertion wins on tie).
+  const bool any_trusted = absl::c_any_of(
+      clusters, [](const OutputCluster& c) { return c.has_trusted_member; });
+  int winner = -1;
+  for (int c = 0; c < clusters.size(); ++c) {
+    if (any_trusted && !clusters[c].has_trusted_member) continue;
+    if (winner < 0 || clusters[c].count > clusters[winner].count) winner = c;
   }
-  status = profiler_->CheckOutputBuffer(output_buffer, reference_output,
-                                        autotune_config_.relative_tolerance);
-  if (!status.ok()) {
-    return Failure{FailureKind::kWrongResults, status.ToString()};
+  VLOG(2) << "Output clustering formed " << clusters.size()
+          << " cluster(s); selected cluster " << winner << " with "
+          << clusters[winner].count
+          << " member(s), trusted=" << clusters[winner].has_trusted_member;
+  for (ConfigResult& result : results) {
+    if (!result.failure.has_value() && result.cluster_index != winner) {
+      result.failure = Failure{
+          FailureKind::kWrongResults,
+          absl::StrCat("Output disagrees with winning cluster (member of "
+                       "cluster ",
+                       result.cluster_index, " of ", clusters.size(),
+                       "; winning cluster has ", clusters[winner].count,
+                       " member(s), trusted=",
+                       clusters[winner].has_trusted_member, ").")};
+      VLOG(3) << "Demoted config " << result.config.ToString() << " (cluster "
+              << result.cluster_index << ").";
+    }
   }
-  return std::nullopt;
 }
 
 void Autotuner::LogConfigResults(const HloInstruction& instr,
@@ -777,7 +899,7 @@ absl::Status Autotuner::DumpLogsToFile() {
   std::string textproto;
   tsl::protobuf::TextFormat::PrintToString(logs_, &textproto);
 
-  TF_RETURN_IF_ERROR(tsl::AppendStringToFile(
+  RETURN_IF_ERROR(tsl::AppendStringToFile(
       tsl::Env::Default(), autotune_config_.dump_logs_to, textproto));
   VLOG(1) << "Autotune logs appended to file: "
           << autotune_config_.dump_logs_to;
@@ -805,9 +927,9 @@ std::string Autotuner::Failure::ToString() const {
 }
 
 std::string Autotuner::ConfigResult::ToString(bool verbose) const {
-  std::string config_str = absl::StrFormat(
-      "%s : %s", config.codegen_backend->name(),
-      verbose ? UnpackedAnyShortDebugString(*config.backend_config) : "");
+  std::string config_str =
+      absl::StrFormat("%s : %s", config.codegen_backend->name(),
+                      verbose ? config.backend_config->ShortDebugString() : "");
   if (failure.has_value()) {
     absl::StrAppend(&config_str, " ", failure->ToString());
   }
@@ -819,7 +941,7 @@ AutotuneResult::FailureResult Autotuner::Failure::ToProto() const {
   AutotuneResult::FailureResult failure_proto;
   switch (kind) {
     case FailureKind::kCompilationFailed:
-      failure_proto.set_kind(AutotuneResult::UNKNOWN);
+      failure_proto.set_kind(AutotuneResult::DISQUALIFIED);
       break;
     case FailureKind::kExecutionFailed:
       failure_proto.set_kind(AutotuneResult::DISQUALIFIED);
@@ -837,16 +959,15 @@ AutotuneResult::FailureResult Autotuner::Failure::ToProto() const {
 
 AutotuneResult Autotuner::ConfigResult::ToProto() const {
   AutotuneResult result;
-  if (config.backend_config->Is<AutotuneResult::GemmKey>()) {
-    config.backend_config->UnpackTo(result.mutable_gemm());
-  } else if (config.backend_config->Is<AutotuneResult::TritonGemmKey>()) {
-    config.backend_config->UnpackTo(result.mutable_triton());
-  } else if (config.backend_config
-                 ->Is<stream_executor::dnn::AlgorithmProto>()) {
-    config.backend_config->UnpackTo(result.mutable_algorithm());
+  if (config.backend_config->has_gemm()) {
+    *result.mutable_gemm() = config.backend_config->gemm();
+  } else if (config.backend_config->has_triton()) {
+    *result.mutable_triton() = config.backend_config->triton();
+  } else if (config.backend_config->has_algorithm()) {
+    *result.mutable_algorithm() = config.backend_config->algorithm();
   } else {
     result.mutable_other()->set_name(config.codegen_backend->name());
-    *result.mutable_other()->mutable_config() = *config.backend_config;
+    result.mutable_other()->mutable_config()->PackFrom(*config.backend_config);
   }
   if (failure.has_value()) {
     *result.mutable_failure() = failure->ToProto();
@@ -858,7 +979,7 @@ AutotuneResult Autotuner::ConfigResult::ToProto() const {
 
 std::string Autotuner::Config::ToString() const {
   return absl::StrFormat("%s : %s", codegen_backend->name(),
-                         UnpackedAnyShortDebugString(*backend_config));
+                         backend_config->ShortDebugString());
 }
 
 std::string AutotuneConfig::ToString() const {
@@ -867,7 +988,6 @@ std::string AutotuneConfig::ToString() const {
       "  \"check_buffers\": %s,\n"
       "  \"relative_tolerance\": %f,\n"
       "  \"crash_on_check_failure\": %s,\n"
-      "  \"optimize_scratch_bytes\": %s,\n"
       "  \"scratch_bytes_window_size_us\": %d,\n"
       "  \"expect_all_instructions_in_cache\": %s,\n"
       "  \"dump_logs_to\": \"%s\",\n"
@@ -878,13 +998,12 @@ std::string AutotuneConfig::ToString() const {
       "  \"allow_reg_spills\": %s\n"
       "}",
       check_buffers ? "true" : "false", relative_tolerance,
-      crash_on_check_failure ? "true" : "false",
-      optimize_scratch_bytes ? "true" : "false", scratch_bytes_window_size_us,
+      crash_on_check_failure ? "true" : "false", scratch_bytes_window_size_us,
       expect_all_instructions_in_cache ? "true" : "false", dump_logs_to,
       exclude_cublas_config ? "true" : "false",
       select_first_config ? "true" : "false",
       use_default_config ? "true" : "false", dump_hlos ? "true" : "false",
-      allow_reg_spills ? "true" : "false");
+      allow_reg_spills_fn ? "dynamic" : "null");
 }
 
 AutotunerCacheInterface::CacheStats Autotuner::GetCacheStats() {

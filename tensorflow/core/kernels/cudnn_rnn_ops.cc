@@ -252,7 +252,7 @@ absl::Status ParseRNNMode(const std::string& str, RnnMode* rnn_mode) {
     *rnn_mode = RnnMode::kRnnGru;
     return absl::OkStatus();
   }
-  return errors::InvalidArgument("Invalid RNN mode: ", str);
+  return absl::InvalidArgumentError(absl::StrCat("Invalid RNN mode: ", str));
 }
 
 absl::Status ParseTFRNNInputMode(const std::string& str,
@@ -267,7 +267,8 @@ absl::Status ParseTFRNNInputMode(const std::string& str,
     *rnn_input_mode = TFRNNInputMode::kAutoSelect;
     return absl::OkStatus();
   }
-  return errors::InvalidArgument("Invalid RNN input mode: ", str);
+  return absl::InvalidArgumentError(
+      absl::StrCat("Invalid RNN input mode: ", str));
 }
 
 absl::Status ParseRNNDirectionMode(const std::string& str,
@@ -279,7 +280,8 @@ absl::Status ParseRNNDirectionMode(const std::string& str,
     *rnn_dir_mode = RnnDirectionMode::kRnnBidirectional;
     return absl::OkStatus();
   }
-  return errors::InvalidArgument("Invalid RNN direction mode: ", str);
+  return absl::InvalidArgumentError(
+      absl::StrCat("Invalid RNN direction mode: ", str));
 }
 
 absl::Status ToRNNInputMode(TFRNNInputMode tf_input_mode, int num_units,
@@ -296,8 +298,8 @@ absl::Status ToRNNInputMode(TFRNNInputMode tf_input_mode, int num_units,
                                               : RnnInputMode::kRnnLinearSkip;
       break;
     default:
-      return errors::InvalidArgument("Invalid TF input mode: ",
-                                     static_cast<int>(tf_input_mode));
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Invalid TF input mode: ", static_cast<int>(tf_input_mode)));
   }
   return absl::OkStatus();
 }
@@ -594,7 +596,7 @@ absl::Status ExtractForwardInput(OpKernelContext* context,
   TF_RETURN_IF_ERROR(context->input("params", params));
 
   if ((*input)->dims() != 3) {
-    return errors::InvalidArgument("RNN input must be a 3-D vector.");
+    return absl::InvalidArgumentError("RNN input must be a 3-D vector.");
   }
   if (time_major) {
     model_shapes->max_seq_length = (*input)->dim_size(0);
@@ -611,7 +613,7 @@ absl::Status ExtractForwardInput(OpKernelContext* context,
           : 1;
 
   if ((*input_h)->dims() != 3) {
-    return errors::InvalidArgument("RNN input_h must be a 3-D vector.");
+    return absl::InvalidArgumentError("RNN input_h must be a 3-D vector.");
   }
   if (time_major) {
     model_shapes->num_layers =
@@ -633,9 +635,9 @@ absl::Status ExtractForwardInput(OpKernelContext* context,
                      model_shapes->num_units});
   }
   if ((*input_h)->shape() != model_shapes->hidden_state_shape) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Invalid input_h shape: ", (*input_h)->shape().DebugString(), " ",
-        model_shapes->hidden_state_shape.DebugString());
+        model_shapes->hidden_state_shape.DebugString()));
   }
   if (model_types.HasInputC()) {
     model_shapes->cell_num_units = (*input_c)->dim_size(2);
@@ -651,20 +653,20 @@ absl::Status ExtractForwardInput(OpKernelContext* context,
     }
     if (num_proj == 0) {
       if ((*input_h)->shape() != (*input_c)->shape()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "input_h and input_c must have the same shape w/o projection: ",
             (*input_h)->shape().DebugString(), " ",
-            (*input_c)->shape().DebugString());
+            (*input_c)->shape().DebugString()));
       }
     } else {
       if ((*input_h)->dim_size(2) > (*input_c)->dim_size(2) ||
           num_proj != (*input_h)->dim_size(2) ||
           (*input_h)->dim_size(0) != (*input_c)->dim_size(0) ||
           (*input_h)->dim_size(1) != (*input_c)->dim_size(1)) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Invalid input_h and input_c w/ projection size: ", num_proj, " ",
             (*input_h)->shape().DebugString(), " ",
-            (*input_c)->shape().DebugString());
+            (*input_c)->shape().DebugString()));
       }
     }
   } else {
@@ -1272,19 +1274,19 @@ class CudnnRNNKernelCommon : public OpKernel {
     const Tensor* num_layers_t = nullptr;
     TF_RETURN_IF_ERROR(context->input("num_layers", &num_layers_t));
     if (!TensorShapeUtils::IsScalar(num_layers_t->shape())) {
-      return errors::InvalidArgument("num_layers is not a scalar");
+      return absl::InvalidArgumentError("num_layers is not a scalar");
     }
     int num_layers = num_layers_t->scalar<int>()();
     const Tensor* num_units_t = nullptr;
     TF_RETURN_IF_ERROR(context->input("num_units", &num_units_t));
     if (!TensorShapeUtils::IsScalar(num_units_t->shape())) {
-      return errors::InvalidArgument("num_units is not a scalar");
+      return absl::InvalidArgumentError("num_units is not a scalar");
     }
     int num_units = num_units_t->scalar<int>()();
     const Tensor* input_size_t = nullptr;
     TF_RETURN_IF_ERROR(context->input("input_size", &input_size_t));
     if (!TensorShapeUtils::IsScalar(input_size_t->shape())) {
-      return errors::InvalidArgument("input_size is not a scalar");
+      return absl::InvalidArgumentError("input_size is not a scalar");
     }
     int input_size = input_size_t->scalar<int>()();
 
@@ -1498,31 +1500,31 @@ class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
     // Number of params applied on inputs. The rest are applied on recurrent
     // hidden states.
     const int num_params_input_state = num_params_weights_per_layer / 2;
-    OP_REQUIRES(
-        context, num_params_weights_ % (num_layers * num_dirs) == 0,
-        errors::InvalidArgument("Number of params (weights) is not a multiple"
-                                "of num_layers * num_dirs."));
+    OP_REQUIRES(context, num_params_weights_ % (num_layers * num_dirs) == 0,
+                absl::InvalidArgumentError(
+                    "Number of params (weights) is not a multiple"
+                    "of num_layers * num_dirs."));
     OP_REQUIRES(
         context, num_params_biases_ % (num_layers * num_dirs) == 0,
-        errors::InvalidArgument("Number of params (biases) is not a multiple"
-                                "of num_layers * num_dirs."));
+        absl::InvalidArgumentError("Number of params (biases) is not a multiple"
+                                   "of num_layers * num_dirs."));
     if (num_proj_ == 0) {
-      OP_REQUIRES(
-          context, num_params_weights_per_layer % 2 == 0,
-          errors::InvalidArgument("Number of params (weights) per layer is not"
-                                  "an even number with no projection."));
+      OP_REQUIRES(context, num_params_weights_per_layer % 2 == 0,
+                  absl::InvalidArgumentError(
+                      "Number of params (weights) per layer is not"
+                      "an even number with no projection."));
     } else {
-      OP_REQUIRES(
-          context, num_params_weights_per_layer % 2 != 0,
-          errors::InvalidArgument("Number of params (weights) per layer is not"
-                                  "an odl number with projection."));
+      OP_REQUIRES(context, num_params_weights_per_layer % 2 != 0,
+                  absl::InvalidArgumentError(
+                      "Number of params (weights) per layer is not"
+                      "an odl number with projection."));
     }
 
     OP_REQUIRES(
         context, num_params_weights_ == rnn_desc->ParamsWeightRegions().size(),
-        errors::InvalidArgument("C Number of params mismatch. Expected ",
-                                num_params_weights_, ", got ",
-                                rnn_desc->ParamsWeightRegions().size()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "C Number of params mismatch. Expected ", num_params_weights_,
+            ", got ", rnn_desc->ParamsWeightRegions().size())));
     int h_num_units = (num_proj_ == 0 ? num_units : num_proj_);
     int c_num_units = (num_proj_ == 0 ? 0 : num_units);
     for (int i = 0; i < rnn_desc->ParamsWeightRegions().size(); i++) {
@@ -1574,15 +1576,16 @@ class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
 
     OP_REQUIRES(
         context, num_params_biases_ == rnn_desc->ParamsBiasRegions().size(),
-        errors::InvalidArgument("A Number of params mismatch. Expected ",
-                                num_params_biases_, ", got ",
-                                rnn_desc->ParamsBiasRegions().size()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "A Number of params mismatch. Expected ", num_params_biases_,
+            ", got ", rnn_desc->ParamsBiasRegions().size())));
     for (int i = 0; i < rnn_desc->ParamsBiasRegions().size(); i++) {
       int64_t size_in_bytes = rnn_desc->ParamsBiasRegions()[i].size;
       int64_t size = size_in_bytes / sizeof(T);
-      OP_REQUIRES(context, size == num_units,
-                  errors::InvalidArgument("Params size mismatch. Expected ",
-                                          num_units, ", got ", size));
+      OP_REQUIRES(
+          context, size == num_units,
+          absl::InvalidArgumentError(absl::StrCat(
+              "Params size mismatch. Expected ", num_units, ", got ", size)));
 
       Tensor* output = nullptr;
       OP_REQUIRES_OK(context,
@@ -2223,39 +2226,40 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     const TensorShape& cell_state_shape = model_shapes.cell_state_shape;
 
     if (output_shape != (*output)->shape()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Invalid output shape: ", (*output)->shape().DebugString(), " ",
-          output_shape.DebugString());
+          output_shape.DebugString()));
     }
     if (hidden_state_shape != (*output_h)->shape()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Invalid output_h shape: ", (*output_h)->shape().DebugString(), " ",
-          hidden_state_shape.DebugString());
+          hidden_state_shape.DebugString()));
     }
 
     if (output_shape != (*output_backprop)->shape()) {
-      return errors::InvalidArgument("Invalid output_backprop shape: ",
-                                     (*output_backprop)->shape().DebugString(),
-                                     " ", output_shape.DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Invalid output_backprop shape: ",
+                       (*output_backprop)->shape().DebugString(), " ",
+                       output_shape.DebugString()));
     }
     if (hidden_state_shape != (*output_h_backprop)->shape()) {
-      return errors::InvalidArgument(
-          "Invalid output_h_backprop shape: ",
-          (*output_h_backprop)->shape().DebugString(), " ",
-          hidden_state_shape.DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Invalid output_h_backprop shape: ",
+                       (*output_h_backprop)->shape().DebugString(), " ",
+                       hidden_state_shape.DebugString()));
     }
 
     if (model_types.HasInputC()) {
       if (cell_state_shape != (*output_c)->shape()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Invalid output_c shape: ", (*output_c)->shape().DebugString(), " ",
-            cell_state_shape.DebugString());
+            cell_state_shape.DebugString()));
       }
       if (cell_state_shape != (*output_c_backprop)->shape()) {
-        return errors::InvalidArgument(
-            "Invalid output_c_backprop shape: ",
-            (*output_c_backprop)->shape().DebugString(), " ",
-            cell_state_shape.DebugString());
+        return absl::InvalidArgumentError(
+            absl::StrCat("Invalid output_c_backprop shape: ",
+                         (*output_c_backprop)->shape().DebugString(), " ",
+                         cell_state_shape.DebugString()));
       }
     }
     return absl::OkStatus();

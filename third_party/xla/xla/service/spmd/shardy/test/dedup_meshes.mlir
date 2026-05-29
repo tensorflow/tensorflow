@@ -336,3 +336,27 @@ func.func private @foo(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mes
   %0 = stablehlo.negate %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y"}]>]>} : tensor<8x8xf32>
   return %0 : tensor<8x8xf32>
 }
+
+// -----
+
+// CHECK: sdy.mesh @mesh = <["x"=2, "y"=4]>
+// CHECK-NOT: sdy.mesh @mesh_0 = <["x"=2, "y"=4]>
+sdy.mesh @mesh = <["x"=2, "y"=4]>
+sdy.mesh @mesh_0 = <["x"=2, "y"=4]>
+
+// CHECK-LABEL: func @dedup_stablehlo_replica_group_mesh_axes
+func.func @dedup_stablehlo_replica_group_mesh_axes(%arg0: tensor<32xi32>) -> tensor<32xi32> {
+  // CHECK-NEXT: "stablehlo.all_reduce"
+  // CHECK-SAME: replica_groups = #stablehlo.replica_group_mesh_axes<mesh = @mesh, axes = [#stablehlo.axis_ref<name = "x">]>
+  %0 = "stablehlo.all_reduce"(%arg0) ({
+  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):
+    %1 = stablehlo.add %arg1, %arg2 : tensor<i32>
+    stablehlo.return %1 : tensor<i32>
+  }) {replica_groups = #stablehlo.replica_group_mesh_axes<mesh = @mesh_0, axes = [#stablehlo.axis_ref<name = "x">]>} : (tensor<32xi32>) -> tensor<32xi32>
+
+  // Verify that nesting inside ArrayAttr containers is recursively traversed and updated.
+  // CHECK: stablehlo.custom_call @dummy_target() {custom_array = [#stablehlo.replica_group_mesh_axes<mesh = @mesh, axes = [#stablehlo.axis_ref<name = "x">]>]} : () -> ()
+  stablehlo.custom_call @dummy_target() {custom_array = [#stablehlo.replica_group_mesh_axes<mesh = @mesh_0, axes = [#stablehlo.axis_ref<name = "x">]>]} : () -> ()
+
+  return %0 : tensor<32xi32>
+}

@@ -19,6 +19,8 @@ limitations under the License.
 #include <utility>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/shared_ptr_variant.h"
 #include "tensorflow/core/framework/variant.h"
@@ -141,12 +143,13 @@ class MutexLockOp : public AsyncOpKernel {
  public:
   void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
     Mutex* mutex = nullptr;
+    ResourceHandle handle;
+    OP_REQUIRES_OK_ASYNC(c, HandleFromInput(c, 0, &handle), done);
     OP_REQUIRES_OK_ASYNC(
         c,
-        LookupOrCreateResource<Mutex>(c, HandleFromInput(c, 0), &mutex,
-                                      [c](Mutex** ptr) {
-                                        *ptr = new Mutex(
-                                            c, HandleFromInput(c, 0).name());
+        LookupOrCreateResource<Mutex>(c, handle, &mutex,
+                                      [c, handle](Mutex** ptr) {
+                                        *ptr = new Mutex(c, handle.name());
                                         return absl::OkStatus();
                                       }),
         done);

@@ -98,6 +98,13 @@ filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "proto_text_util.cc",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "mobile_hdrs_no_runtime",
+    srcs = [
         "proto_text_util.h",
         "scanner.h",
         "str_util.h",
@@ -110,12 +117,20 @@ filegroup(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
+        "ordered_code.cc",
+        "@xla//xla/tsl/lib/strings:mobile_srcs_only_runtime",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
         "base64.h",
         "numbers.h",
-        "ordered_code.cc",
         "ordered_code.h",
         "proto_serialization.h",
-        "@xla//xla/tsl/lib/strings:mobile_srcs_only_runtime",
+        "@xla//xla/tsl/lib/strings:mobile_hdrs_only_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

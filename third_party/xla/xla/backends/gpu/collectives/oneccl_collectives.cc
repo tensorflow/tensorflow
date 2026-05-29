@@ -19,5 +19,5 @@ limitations under the License.
 
 #include "xla/core/collectives/collectives_registry.h"
 
-XLA_COLLECTIVES_REGISTER("SYCL", "oneccl", 1,
+XLA_COLLECTIVES_REGISTER("SYCL", "oneccl", 100,
                          std::make_unique<xla::gpu::OnecclCollectives>());

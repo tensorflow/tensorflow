@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -33,7 +34,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_opt_utils.h"
+#include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 #include "xla/side_effect_util.h"
 
 namespace xla::gpu {
@@ -54,6 +57,17 @@ void AbslStringify(Sink sink, ExecutionScopeKind kind) {
       sink.Append("communication");
       break;
   }
+}
+
+// Maps pipelined P2P ops to CommunicationStreamId(1) and (2), running them
+// on separate streams to avoid cyclic deadlocks.
+ExecutionStreamId GetP2PStreamId(const HloInstruction* instruction) {
+  const auto& fe_map = instruction->frontend_attributes().map();
+  auto it = fe_map.find(kSendRecvPipelineAttr);
+  if (it != fe_map.end() && it->second == "1") {
+    return ExecutionStreamId(CommunicationStreamId(2));
+  }
+  return ExecutionStreamId(CommunicationStreamId(1));
 }
 
 // A helper class to generate the next execution stream id using round-robin
@@ -108,8 +122,9 @@ std::optional<ExecutionScopeKind> IsExecutionScopeStart(
     const HloInstruction* hlo) {
   // Async operation that starts a new execution scope.
   if (auto* start = DynCast<HloAsyncStartInstruction>(hlo)) {
-    return IsWrappedCollective(start) ? ExecutionScopeKind::kCommunication
-                                      : ExecutionScopeKind::kCompute;
+    return IsWrappedCollective(start) || IsCustomCollectiveOp(start)
+               ? ExecutionScopeKind::kCommunication
+               : ExecutionScopeKind::kCompute;
   }
 
   // Async-collective operations not yet migrated to async wrappers.
@@ -137,7 +152,9 @@ std::optional<ExecutionScopeKind> IsExecutionScopeStart(
 std::optional<ExecutionStreamId> FindAssignedStreamId(
     const HloInstruction* instr, ExecutionScopeKind kind) {
   auto& attrs = instr->frontend_attributes().map();
-  if (auto it = attrs.find(kXlaStreamAnnotationAttr); it != attrs.end()) {
+  if (auto it = attrs.find(kXlaStreamAnnotationAttr);
+      it != attrs.end() &&
+      !absl::EqualsIgnoreCase(it->second, kXlaCollectiveStreamAnnotation)) {
     int32_t assigned_stream_id;
     CHECK(absl::SimpleAtoi(it->second, &assigned_stream_id));  // Crash OK
     switch (kind) {
@@ -177,10 +194,15 @@ ExecutionStreamAssignment::ExecutionStreamAssignment(const HloModule* module,
     for (const HloInstruction* hlo : instructions) {
       // Only assign execution stream IDs to scope-start operations.
       if (std::optional<ExecutionScopeKind> kind = IsExecutionScopeStart(hlo)) {
-        // Try to find explicitly assigned stream id, otherwise generate a new
-        // one using round-robin.
+        // Try to find explicitly assigned stream id, or use dedicated P2P
+        // stream for pipelined send/recv, otherwise generate a new execution
+        // stream id for the new execution scope.
         std::optional<ExecutionStreamId> stream_id =
             FindAssignedStreamId(hlo, *kind);
+        if (!stream_id.has_value() && IsPipelinedP2P(hlo) &&
+            options.number_of_communication_execution_streams > 1) {
+          stream_id = GetP2PStreamId(hlo);
+        }
         if (!stream_id.has_value()) {
           stream_id = execution_streams.Next(*kind);
         }

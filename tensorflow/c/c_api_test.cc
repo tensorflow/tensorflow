@@ -930,6 +930,37 @@ TEST(CAPI, ImportGraphDef_WithReturnOutputs) {
   TF_DeleteStatus(s);
 }
 
+TEST(CAPI, ImportGraphDefWithReturnOutputs_Fail) {
+  TF_Status* s = TF_NewStatus();
+  TF_Graph* graph = TF_NewGraph();
+
+  // Create an invalid GraphDef (using a non-existent op to force failure)
+  tensorflow::GraphDef graph_def_proto;
+  auto* node = graph_def_proto.add_node();
+  node->set_name("invalid_node");
+  node->set_op("NonExistentOp");
+
+  std::string serialized;
+  ASSERT_TRUE(graph_def_proto.SerializeToString(&serialized));
+
+  TF_Buffer* graph_def =
+      TF_NewBufferFromString(serialized.data(), serialized.size());
+
+  TF_ImportGraphDefOptions* opts = TF_NewImportGraphDefOptions();
+  TF_ImportGraphDefOptionsAddReturnOutput(opts, "invalid_node", 0);
+
+  TF_Output return_outputs[1];
+  TF_GraphImportGraphDefWithReturnOutputs(graph, graph_def, opts,
+                                          return_outputs, 1, s);
+
+  EXPECT_NE(TF_OK, TF_GetCode(s));
+
+  TF_DeleteImportGraphDefOptions(opts);
+  TF_DeleteBuffer(graph_def);
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
+}
+
 TEST(CAPI, ImportGraphDef_MissingUnusedInputMappings) {
   TF_Status* s = TF_NewStatus();
   TF_Graph* graph = TF_NewGraph();

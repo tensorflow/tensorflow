@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -51,8 +52,9 @@ namespace {
 // Combines the elements of to_combine into a single AllGather op. All entries
 // in to_combine must be AllGather ops with exactly one operand and the same
 // preferred all_gather_dimension.
-absl::Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine,
-                               bool combine_by_dim) {
+absl::Status CombineAllGathers(
+    absl::Span<HloInstruction* const> to_combine, bool combine_by_dim,
+    const AllGatherCombiner::PostCombineFn& post_combine) {
   if (to_combine.size() < 2) {
     return absl::OkStatus();
   }
@@ -112,7 +114,11 @@ absl::Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine,
           /*constrain_layout=*/false, to_combine.front()->channel_id(),
           Cast<HloAllGatherInstruction>(to_combine.front())
               ->use_global_device_ids()));
-  combined->set_metadata(to_combine.front()->metadata());
+  combined->set_metadata(MergeMetadata(to_combine));
+  combined->set_frontend_attributes(MergeFrontendAttributes(to_combine));
+  if (post_combine != nullptr) {
+    RETURN_IF_ERROR(post_combine(to_combine, combined));
+  }
 
   // We have to propagate the sharding manually because Domain instructions are
   // not guaranteed to preserve it for side effecting instructions.
@@ -131,8 +137,7 @@ absl::Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine,
                                        replacement->shape()),
           replacement));
     }
-    TF_RETURN_IF_ERROR(
-        computation.ReplaceInstruction(to_combine[i], replacement));
+    RETURN_IF_ERROR(computation.ReplaceInstruction(to_combine[i], replacement));
   }
 
   return absl::OkStatus();
@@ -195,6 +200,16 @@ absl::StatusOr<bool> AllGatherCombiner::RunWithKeyCombiner(
     absl::FunctionRef<std::optional<AllGatherCombiner::GroupKey>(
         const HloInstruction*, const HloDomainMap&, bool, bool)>
         combine_key) {
+  return RunWithKeyCombiner(module, execution_threads, combine_key, nullptr);
+}
+
+absl::StatusOr<bool> AllGatherCombiner::RunWithKeyCombiner(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    absl::FunctionRef<std::optional<AllGatherCombiner::GroupKey>(
+        const HloInstruction*, const HloDomainMap&, bool, bool)>
+        combine_key,
+    PostCombineFn post_combine) {
   VLOG(1) << "Running AllGatherCombiner with threshold of "
           << combine_threshold_in_bytes_ << " bytes";
 
@@ -220,7 +235,7 @@ absl::StatusOr<bool> AllGatherCombiner::RunWithKeyCombiner(
               << computation->ToString();
       continue;
     }
-    TF_ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
+    ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
 
     auto key_fn = [&](const HloInstruction* instruction) {
       return combine_key(instruction, *domain_map, combine_by_dim_,
@@ -228,10 +243,10 @@ absl::StatusOr<bool> AllGatherCombiner::RunWithKeyCombiner(
     };
     auto combine_fn =
         [&](absl::Span<HloInstruction* const> to_combine) -> absl::Status {
-      return CombineAllGathers(to_combine, combine_by_dim_);
+      return CombineAllGathers(to_combine, combine_by_dim_, post_combine);
     };
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         bool computation_changed,
         CombineInstructionsByKey<GroupKey>(computation, key_fn, combine_fn,
                                            combine_threshold_in_bytes_,
@@ -245,8 +260,8 @@ absl::StatusOr<bool> AllGatherCombiner::RunWithKeyCombiner(
 absl::StatusOr<bool> AllGatherCombiner::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  TF_ASSIGN_OR_RETURN(
-      bool changed, RunWithKeyCombiner(module, execution_threads, CombineKey));
+  ASSIGN_OR_RETURN(bool changed,
+                   RunWithKeyCombiner(module, execution_threads, CombineKey));
   return changed;
 }
 

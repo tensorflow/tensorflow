@@ -162,7 +162,7 @@ class WrapDatasetVariantOp : public OpKernel {
     OP_REQUIRES(ctx,
                 tensor.dtype() == DT_VARIANT &&
                     TensorShapeUtils::IsScalar(tensor.shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Dataset tensor must be a scalar of dtype DT_VARIANT."));
     DatasetBase* unused;
     OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(tensor, &unused));
@@ -189,13 +189,13 @@ class UnwrapDatasetVariantOp : public OpKernel {
     OP_REQUIRES(ctx,
                 tensor.dtype() == DT_VARIANT &&
                     TensorShapeUtils::IsScalar(tensor.shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Dataset tensor must be a scalar of dtype DT_VARIANT."));
     Variant variant = tensor.scalar<Variant>()();
     const WrappedDatasetVariantWrapper* wrapper =
         variant.get<WrappedDatasetVariantWrapper>();
     OP_REQUIRES(ctx, wrapper != nullptr,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Tensor must be a WrappedDataset variant object."));
     Tensor ds_tensor = wrapper->get();
     OP_REQUIRES_OK(ctx, ctx->set_output("output_handle", ds_tensor));
@@ -290,8 +290,9 @@ absl::Status GraphDefBuilderWrapper::AddDataset(
         opts->WithAttr(attr.first, attr.second));
   }
   if (opts->HaveError()) {
-    return errors::Internal("AddDataset: Failed to build Options with error ",
-                            opts->StatusToString());
+    return absl::InternalError(
+        absl::StrCat("AddDataset: Failed to build Options with error ",
+                     opts->StatusToString()));
   }
   NodeBuilder node_builder(
       use_dataset_name ? dataset->node_name() : opts->GetNameForOp(type_string),
@@ -314,14 +315,16 @@ absl::Status GraphDefBuilderWrapper::AddDataset(
         node_builder.Input(nodeout_inputs);
         list_inputs_iter++;
       } else {
-        return errors::InvalidArgument("No input found for index ", i);
+        return absl::InvalidArgumentError(
+            absl::StrCat("No input found for index ", i));
       }
     }
   }
   *output = opts->FinalizeBuilder(&node_builder);
   if (*output == nullptr) {
-    return errors::Internal("AddDataset: Failed to build ", type_string,
-                            " op with error ", opts->StatusToString());
+    return absl::InternalError(absl::StrCat("AddDataset: Failed to build ",
+                                            type_string, " op with error ",
+                                            opts->StatusToString()));
   }
   return absl::OkStatus();
 }
@@ -336,8 +339,8 @@ absl::Status GraphDefBuilderWrapper::AddFunction(
   }
   const FunctionDef* f_def = lib_def.Find(function_name);
   if (f_def == nullptr) {
-    return errors::InvalidArgument("Unable to find FunctionDef for ",
-                                   function_name, " in the registry.");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Unable to find FunctionDef for ", function_name, " in the registry."));
   }
   FunctionDefLibrary def;
   *def.add_function() = *f_def;
@@ -561,14 +564,14 @@ absl::Status GetCompressedElementFromVariantTensor(
     const Tensor& tensor, const CompressedElement** out_compressed_element) {
   if (!(tensor.dtype() == DT_VARIANT &&
         TensorShapeUtils::IsScalar(tensor.shape()))) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "`CompressedElement` tensor must be a scalar of dtype `DT_VARIANT`.");
   }
   const Variant& variant = tensor.scalar<Variant>()();
   const CompressedElement* compressed_element =
       variant.get<CompressedElement>();
   if (compressed_element == nullptr) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Tensor must be a `CompressedElement` object.");
   }
   *out_compressed_element = compressed_element;
@@ -631,13 +634,13 @@ std::string FullName(const std::string& prefix, const std::string& name) {
 
 absl::Status ExtractIteratorPrefix(absl::string_view key, std::string* prefix) {
   if (!absl::StartsWith(key, data::kFullNameRandomHex)) {
-    return errors::InvalidArgument("Key: ", key,
-                                   " was not generated using full_name.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Key: ", key, " was not generated using full_name."));
   }
   std::vector<std::string> split_keys = str_util::Split(key, data::kPipe);
   if (split_keys.size() != 2) {
-    return errors::InvalidArgument("Key: ", key,
-                                   " was not generated using full_name.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Key: ", key, " was not generated using full_name."));
   }
   std::string real_key = split_keys[1];
   const int pos = real_key.rfind(kColon);
@@ -649,17 +652,17 @@ absl::Status GetDatasetFromVariantTensor(const Tensor& tensor,
                                          DatasetBase** out_dataset) {
   if (!(tensor.dtype() == DT_VARIANT &&
         TensorShapeUtils::IsScalar(tensor.shape()))) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Dataset tensor must be a scalar of dtype DT_VARIANT.");
   }
   const Variant& variant = tensor.scalar<Variant>()();
   const DatasetVariantWrapper* wrapper = variant.get<DatasetVariantWrapper>();
   if (wrapper == nullptr) {
-    return errors::InvalidArgument("Tensor must be a Dataset object.");
+    return absl::InvalidArgumentError("Tensor must be a Dataset object.");
   }
   *out_dataset = wrapper->get();
   if (*out_dataset == nullptr) {
-    return errors::Internal("Read uninitialized Dataset variant.");
+    return absl::InternalError("Read uninitialized Dataset variant.");
   }
   return absl::OkStatus();
 }
@@ -667,7 +670,7 @@ absl::Status GetDatasetFromVariantTensor(const Tensor& tensor,
 absl::Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor) {
   if (!(tensor->dtype() == DT_VARIANT &&
         TensorShapeUtils::IsScalar(tensor->shape()))) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Dataset tensor must be a scalar of dtype DT_VARIANT.");
   }
   tensor->scalar<Variant>()() = DatasetVariantWrapper(dataset);
@@ -804,10 +807,10 @@ absl::Status DatasetBase::ComputeNumSources() {
   }
   for (const auto& input : inputs) {
     if (input->num_sources() < 0) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(absl::StrCat(
           "Cannot compute input sources for dataset of type ", type_string(),
           ", because sources could not be computed for input dataset of type ",
-          input->type_string());
+          input->type_string()));
     }
     num_sources_ += input->num_sources();
   }
@@ -821,28 +824,28 @@ absl::Status DatasetBase::CheckRandomAccessCompatible(
   int64_t cardinality = Cardinality(options);
   if (cardinality == kInfiniteCardinality ||
       cardinality == kUnknownCardinality) {
-    return tensorflow::errors::FailedPrecondition(
+    return absl::FailedPreconditionError(absl::StrCat(
         "Dataset of type ", this->DebugString(), " has ",
         cardinality == kInfiniteCardinality ? "infinite" : "unknown",
-        " cardinality, which does not support random access.");
+        " cardinality, which does not support random access."));
   }
   if (index < 0 || index >= cardinality) {
-    return errors::OutOfRange("Index out of range [0, ", cardinality,
-                              "):", index);
+    return absl::OutOfRangeError(
+        absl::StrCat("Index out of range [0, ", cardinality, "):", index));
   }
   return absl::OkStatus();
 }
 
 absl::Status DatasetBase::Get(OpKernelContext* ctx, int64_t index,
                               std::vector<Tensor>* out_tensors) const {
-  return errors::Unimplemented("Random access is not implemented for dataset ",
-                               DebugString());
+  return absl::UnimplementedError(absl::StrCat(
+      "Random access is not implemented for dataset ", DebugString()));
 }
 
 absl::Status DatasetBase::Get(AnyContext ctx, int64_t index,
                               std::vector<Tensor>* out_tensors) const {
-  return errors::Unimplemented("Random access is not implemented for dataset ",
-                               DebugString());
+  return absl::UnimplementedError(absl::StrCat(
+      "Random access is not implemented for dataset ", DebugString()));
 }
 
 absl::StatusOr<DatasetBase*> DatasetBase::Finalize(
@@ -911,17 +914,17 @@ absl::Status DatasetBase::MakeSplitProviders(
   std::vector<const DatasetBase*> inputs;
   absl::Status s = InputDatasets(&inputs);
   if (absl::IsUnimplemented(s)) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(absl::StrCat(
         "Cannot create split providers for dataset of type ", type_string(),
         ", because the dataset implements neither `InputDatasets` nor "
-        "`MakeSplitProvider`.");
+        "`MakeSplitProvider`."));
   }
   if (inputs.size() != 1) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(absl::StrCat(
         "Cannot create split providers for dataset of type ", type_string(),
         ", because the dataset is not unary (instead having arity ",
         inputs.size(),
-        "), and no custom implementation of `MakeSplitProvider` is defined.");
+        "), and no custom implementation of `MakeSplitProvider` is defined."));
   }
   return inputs[0]->MakeSplitProviders(split_providers);
 }
@@ -969,11 +972,11 @@ int64_t DatasetBase::Cardinality(CardinalityOptions options) const {
 
 absl::Status DatasetBase::InputDatasets(
     std::vector<const DatasetBase*>* inputs) const {
-  return errors::Unimplemented(
+  return absl::UnimplementedError(absl::StrCat(
       "Cannot compute input sources for dataset of type ", type_string(),
       ", because the dataset does not implement `InputDatasets`. To fix this, "
       "your dataset should override the `InputDatasets` method. If it is a "
-      "source dataset, it should return empty inputs.");
+      "source dataset, it should return empty inputs."));
 }
 
 absl::Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
@@ -1065,13 +1068,13 @@ absl::Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensorHelper(
 absl::Status DatasetBase::DatasetGraphDefBuilder::AddResourceHelper(
     SerializationContext* ctx, const Tensor& t, Node** output) {
   if (t.NumElements() == 0) {
-    return errors::InvalidArgument("Empty resouce handle");
+    return absl::InvalidArgumentError("Empty resouce handle");
   }
   const ResourceHandle& handle = t.flat<ResourceHandle>()(0);
   if (ctx->device_name() != handle.device()) {
-    return errors::InvalidArgument("Trying to access resource ", handle.name(),
-                                   " located in device ", handle.device(),
-                                   " from device ", ctx->device_name());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Trying to access resource ", handle.name(), " located in device ",
+        handle.device(), " from device ", ctx->device_name()));
   }
   ResourceBase* resource;
   TF_RETURN_IF_ERROR(ctx->resource_mgr()->Lookup(handle, &resource));
@@ -1225,11 +1228,12 @@ absl::Status DatasetBaseIterator::Skip(IteratorContext* ctx, int num_to_skip,
     }
   }
   if (TF_PREDICT_FALSE(absl::IsOutOfRange(s))) {
-    s = errors::Internal("Iterator \"", params_.prefix,
-                         "\" returned `OutOfRange`. This indicates an "
-                         "implementation error as `OutOfRange` errors are not "
-                         "expected to be returned here. Original message: ",
-                         s.message());
+    s = absl::InternalError(
+        absl::StrCat("Iterator \"", params_.prefix,
+                     "\" returned `OutOfRange`. This indicates an "
+                     "implementation error as `OutOfRange` errors are not "
+                     "expected to be returned here. Original message: ",
+                     s.message()));
     LOG(ERROR) << s;
   }
   DVLOG(3) << prefix() << " Skip exit";

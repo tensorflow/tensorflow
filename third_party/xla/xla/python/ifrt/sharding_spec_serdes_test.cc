@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
@@ -181,7 +182,12 @@ TEST_P(ShardingSpecSerDesTest,
 INSTANTIATE_TEST_SUITE_P(
     SerDesVersion_NumShards, ShardingSpecSerDesTest,
     testing::Combine(testing::ValuesIn(test_util::AllSupportedSerDesVersions()),
-                     testing::Values(2, 4)));
+                     testing::Values(2, 4)),
+    [](const testing::TestParamInfo<ShardingSpecSerDesTestParam>& info) {
+      return absl::StrCat("version_",
+                          std::get<0>(info.param).version_number().value(),
+                          "_num_shards_", std::get<1>(info.param));
+    });
 
 }  // namespace
 }  // namespace ifrt

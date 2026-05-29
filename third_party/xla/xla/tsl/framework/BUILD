@@ -47,14 +47,20 @@ filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "allocator.cc",
-        "allocator.h",
         "allocator_registry.cc",
-        "allocator_registry.h",
         "cpu_allocator_impl.cc",
+        "tracking_allocator.cc",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs_no_runtime",
+    srcs = [
+        "allocator.h",
+        "allocator_registry.h",
         "device_type.h",
         "fixedpoint_types.h",
         "numeric_types.h",
-        "tracking_allocator.cc",
         "tracking_allocator.h",
         "type_traits.h",
     ],
@@ -65,9 +71,15 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "cancellation.cc",
+        "metrics.cc",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
         "cancellation.h",
         "fixedpoint_types.h",
-        "metrics.cc",
         "metrics.h",
     ],
 )
@@ -104,14 +116,10 @@ cc_library(
         "tracking_allocator.cc",
         "tracking_allocator.h",
     ],
-    hdrs = [
-        "allocator.h",
-    ],
+    hdrs = ["allocator.h"],
     features = ["parse_headers"],
     visibility = ["//visibility:public"],
     deps = [
-        ":numeric_types",
-        ":type_traits",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -126,9 +134,9 @@ cc_library(
             "//xla/tsl/platform:env_impl",
             "//xla/tsl/platform:logging",
             "//xla/tsl/platform:macros",
+            "//xla/tsl/platform:types",
             "@tsl//tsl/platform:platform_port",
             "@tsl//tsl/platform:thread_annotations",
-            "//xla/tsl/platform:types",
         ],
         otherwise = [
             "//xla/tsl/lib/gtl:inlined_vector",
@@ -163,14 +171,11 @@ cc_library(
         "//third_party/xprof:__subpackages__",
     ]),
     deps = [
-        ":numeric_types",
-        ":type_traits",
         "//xla/tsl/lib/gtl:inlined_vector",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform:platform_port",
         "@tsl//tsl/platform:thread_annotations",
@@ -197,19 +202,38 @@ cc_library(
         "//xla/tsl/lib/core:bits",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:types",
         "//xla/tsl/profiler/utils:trace_filter_utils",
         "//xla/tsl/protobuf:bfc_memory_map_proto_cc",
-        "//xla/tsl/util:safe_reinterpret_cast",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@tsl//tsl/platform:numbers",
         "@tsl//tsl/platform:stacktrace",
         "@tsl//tsl/profiler/lib:scoped_memory_debug_annotation",
         "@tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+tsl_cc_test(
+    name = "bfc_allocator_test",
+    srcs = ["bfc_allocator_test.cc"],
+    deps = [
+        ":allocator",
+        ":bfc_allocator",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:env_impl",  # buildcleaner: keep
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/synchronization",
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 
@@ -273,6 +297,7 @@ cc_library(
         ":device_type",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:device_name_utils",
         "@com_google_absl//absl/algorithm:container",

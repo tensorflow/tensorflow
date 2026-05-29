@@ -555,4 +555,23 @@ def MlrtIfrtResourceDeserializeOp: TensorflowMlrt_Op<"ifrt_resource_deserialize"
   );
 }
 
+def AsyncIfrtCallOp : TensorflowMlrt_Op<"async_ifrt_call", []> {
+  let summary = "IFRT execution op for mlrt";
+  let description = [{
+    This op executes an IFRT program asynchronously.
+  }];
+
+  let arguments = (ins
+    I64Attr:$program_id,
+    I32ArrayAttr:$variable_arg_indices,
+    Variadic<TFTensorType>:$args
+  );
+
+  let results = (outs
+    Variadic<MlrtFutureType>:$results
+  );
+
+  let assemblyFormat = "`(` $args `)` attr-dict `:` functional-type($args, $results)";
+}
+
 #endif

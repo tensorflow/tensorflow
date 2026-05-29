@@ -18,13 +18,13 @@ limitations under the License.
 #include <memory>
 
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_abi_version_helpers.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/plugin/plugin_names.h"
 #include "xla/pjrt/proto/pjrt_abi_version.pb.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 

@@ -164,9 +164,10 @@ absl::Status TpuCompilationCacheInterface::MarkEntryForEviction(
     CompiledSubgraph* subgraph_to_evict = iter->second;
     // If there are external references, should not use this API.
     if (subgraph_to_evict->external_references != 0) {
-      return errors::Internal("Subgraph ", subgraph_to_evict->subgraph_key,
-                              " external_references greater than zero. Should "
-                              "use TpuCompilationCacheInterface::Release.");
+      return absl::InternalError(
+          absl::StrCat("Subgraph ", subgraph_to_evict->subgraph_key,
+                       " external_references greater than zero. Should "
+                       "use TpuCompilationCacheInterface::Release."));
     }
 
     VLOG(1) << "Marking " << subgraph_to_evict->subgraph_key
@@ -205,7 +206,8 @@ absl::Status TpuCompilationCacheInterface::Release(int64_t subgraph_uid) {
     auto iter = entries_by_uid_.find(subgraph_uid);
 
     if (iter == entries_by_uid_.end()) {
-      return errors::NotFound("No cache entry found for uid ", subgraph_uid);
+      return absl::NotFoundError(
+          absl::StrCat("No cache entry found for uid ", subgraph_uid));
     }
 
     CHECK_GT(iter->second->external_references, 0);
@@ -460,7 +462,7 @@ absl::Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
       }
 
       LOG_EVERY_N_SEC(WARNING, 30) << error_msg;
-      return errors::NotFound(error_msg);
+      return absl::NotFoundError(error_msg);
     }
 
     // The single ref on the newly-created entry is owned by the caller.
@@ -559,7 +561,7 @@ absl::Status TpuCompilationCacheInterface::GetKeysFromUid(
   absl::MutexLock lock(mu_);
   const auto iter = entries_by_uid_.find(uid);
   if (iter == entries_by_uid_.end()) {
-    return errors::NotFound("No subgraph found for uid ", uid);
+    return absl::NotFoundError(absl::StrCat("No subgraph found for uid ", uid));
   }
   *keys = iter->second->proto_key;
   return absl::OkStatus();
@@ -577,13 +579,14 @@ absl::Status TpuCompilationCacheInterface::Lookup(
   absl::MutexLock lock(mu_);
   const auto iter = entries_by_uid_.find(uid);
   if (iter == entries_by_uid_.end()) {
-    return errors::NotFound("No subgraph found for uid ", uid);
+    return absl::NotFoundError(absl::StrCat("No subgraph found for uid ", uid));
   }
   CompiledSubgraph* cache_entry = iter->second;
   if (proto_index < 0 ||
       proto_index >= cache_entry->tpu_program_group->program_count()) {
-    return errors::NotFound("No proto found for core index ", proto_index,
-                            " in subgraph with uid ", uid);
+    return absl::NotFoundError(absl::StrCat("No proto found for core index ",
+                                            proto_index,
+                                            " in subgraph with uid ", uid));
   }
   *entry = std::make_unique<CompilationCacheEntryRef>(this, cache_entry,
                                                       proto_index);
@@ -602,7 +605,8 @@ absl::Status TpuCompilationCacheInterface::Lookup(
   absl::MutexLock lock(mu_);
   const auto iter = entries_by_proto_key_.find(proto_key);
   if (iter == entries_by_proto_key_.end()) {
-    return errors::NotFound("No proto found for key ", proto_key);
+    return absl::NotFoundError(
+        absl::StrCat("No proto found for key ", proto_key));
   }
   CompiledSubgraph* cache_entry = iter->second.first;
   int proto_index = iter->second.second;

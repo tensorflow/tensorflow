@@ -14,9 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/testing/tf_driver.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
 #include <fstream>
-#include <iostream>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/strings/escaping.h"

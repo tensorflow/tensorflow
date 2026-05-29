@@ -139,12 +139,10 @@ tf_cc_test(
     tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":constant_folding",
-        ":dependency_optimizer",
         "//tensorflow/cc:array_ops_internal",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/core:all_kernels",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:direct_session",
         "//tensorflow/core:lib",
@@ -419,6 +417,7 @@ cc_library(
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/utils:topological_sort",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -776,6 +775,7 @@ cc_library(
     deps = [
         ":custom_graph_optimizer",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/base",
     ],
 )
 
@@ -959,7 +959,6 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",

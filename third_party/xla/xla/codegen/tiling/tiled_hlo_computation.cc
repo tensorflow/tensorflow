@@ -43,7 +43,7 @@ std::string InstructionsToString(
   for (const std::unique_ptr<xla::TiledHloInstruction>& tiled_hlo :
        instructions) {
     absl::InlinedVector<std::string, 4> regions;
-    for (const auto& region : tiled_hlo->regions()) {
+    for (const auto& region : tiled_hlo->hlo_regions()) {
       regions.push_back(
           InstructionsToString(region, indent + 4, name_uniquer, tile_names));
     }

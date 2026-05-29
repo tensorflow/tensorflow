@@ -19,6 +19,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_runner_interface.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "tsl/platform/casts.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace xla_compile {
@@ -47,7 +47,7 @@ class XlaCompileTest : public HloPjRtTestBase {
     TF_ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(), path,
                                        &serialized_aot_result));
 
-    auto* pjrt_runner = tsl::down_cast<HloRunnerPjRt*>(&test_runner());
+    auto* pjrt_runner = absl::down_cast<HloRunnerPjRt*>(&test_runner());
     ASSERT_TRUE(pjrt_runner != nullptr);
     ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<OpaqueExecutable> executable,

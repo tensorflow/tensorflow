@@ -535,5 +535,46 @@ ENTRY %Deduplicate () -> (f32[256], f32[256]) {
   EXPECT_TRUE(combined->shape().IsArray());
 }
 
+TEST_F(CollectivePermuteCombinerTest,
+       PreservesFrontendAttributesAndMergedMetadata) {
+  const char* const hlo_string = R"(
+HloModule CombineCollectivePermutes
+
+ENTRY %CombineCollectivePermutes () -> (f32[256], f32[512]) {
+  %constant = f64[] constant(42.3)
+  %broadcast = f32[256]{0} broadcast(f64[] %constant), dimensions={}
+  %collective-permute = f32[256]{0} collective-permute(f32[256]{0} %broadcast), source_target_pairs={{0,1},{1,0}}, channel_id=1, frontend_attributes={RESOURCE_TYPE="2",_scheduling_group="ring_attn_fwd_0"}, metadata={op_type="cp" op_name="model/ring/cp_0"}
+
+  %constant.1 = f64[] constant(42.3)
+  %broadcast.1 = f32[512]{0} broadcast(f64[] %constant.1), dimensions={}
+  %collective-permute.1 = f32[512]{0} collective-permute(f32[512]{0} %broadcast.1), source_target_pairs={{0,1},{1,0}}, channel_id=1, frontend_attributes={RESOURCE_TYPE="2",_scheduling_group="ring_attn_fwd_0"}, metadata={op_type="cp" op_name="model/ring/cp_1"}
+
+  ROOT %tuple = (f32[256]{0}, f32[512]{0}) tuple(%collective-permute, %collective-permute.1)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  CollectivePermuteCombiner combine(1024 * 1024, kMaxCombineCount);
+  ASSERT_EQ(CollectivePermuteCount(*module), 2);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  EXPECT_TRUE(changed);
+  ASSERT_EQ(CollectivePermuteCount(*module), 1);
+
+  const HloInstruction* combined =
+      FindInstruction(module.get(), HloOpcode::kCollectivePermute);
+  ASSERT_NE(combined, nullptr);
+
+  // Frontend attributes: shared keys with same values preserved.
+  ASSERT_TRUE(combined->has_frontend_attributes());
+  const auto& attrs = combined->frontend_attributes().map();
+  EXPECT_EQ(attrs.at("RESOURCE_TYPE"), "2");
+  EXPECT_EQ(attrs.at("_scheduling_group"), "ring_attn_fwd_0");
+
+  // Metadata: common prefix "model/ring/" extracted, suffixes joined.
+  const OpMetadata& md = combined->metadata();
+  EXPECT_EQ(md.op_type(), "cp");
+  EXPECT_EQ(md.op_name(), "model/ring/(cp_0:cp_1)");
+}
+
 }  // namespace
 }  // namespace xla

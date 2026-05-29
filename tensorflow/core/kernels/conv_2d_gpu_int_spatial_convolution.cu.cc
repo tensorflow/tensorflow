@@ -29,7 +29,7 @@ namespace tensorflow {
 
 namespace functor {
 
-template struct SpatialConvolution<Eigen::GpuDevice, int32>;
+template struct SpatialConvolution<Eigen::GpuDevice, int32_t>;
 
 }  // namespace functor
 }  // namespace tensorflow

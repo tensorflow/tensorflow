@@ -1,0 +1,25 @@
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
+
+fusion {
+  p0 = f32[100] parameter(0)
+  p1 = f32[100] parameter(1)
+  concat = f32[200] concatenate(p0, p1), dimensions={0}
+  c1 = f32[] constant(1.0)
+  bcast = f32[200] broadcast(c1), dimensions={}
+  add = f32[200] add(concat, bcast)
+  ROOT reshape = f32[10,20] reshape(add)
+}
+
+ENTRY main {
+  p0 = f32[100] parameter(0)
+  p1 = f32[100] parameter(1)
+  ROOT fusion = f32[10,20] fusion(p0, p1), kind=kCustom,
+    calls=fusion, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["1", "4"]}],
+        "num_warps":"1",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+}

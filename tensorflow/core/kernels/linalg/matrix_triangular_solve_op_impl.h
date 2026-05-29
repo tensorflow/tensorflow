@@ -158,9 +158,9 @@ class BaseMatrixTriangularSolveOp : public OpKernel {
     MatMulBCast bcast(in0.shape().dim_sizes(), in1.shape().dim_sizes());
     OP_REQUIRES(
         ctx, bcast.IsValid(),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "In[0] and In[1] must have compatible batch dimensions: ",
-            in0.shape().DebugString(), " vs. ", in1.shape().DebugString()));
+            in0.shape().DebugString(), " vs. ", in1.shape().DebugString())));
 
     TensorShape out_shape = bcast.output_batch_shape();
     auto batch_size = bcast.output_batch_size();
@@ -170,16 +170,16 @@ class BaseMatrixTriangularSolveOp : public OpKernel {
     OP_REQUIRES(
         ctx,
         in0_reshaped.CopyFrom(in0, TensorShape({bcast.x_batch_size(), d0, d1})),
-        errors::Internal("Failed to reshape In[0] from ",
-                         in0.shape().DebugString()));
+        absl::InternalError(absl::StrCat("Failed to reshape In[0] from ",
+                                         in0.shape().DebugString())));
     auto d2 = in1.dim_size(in1.dims() - 2);
     auto d3 = in1.dim_size(in1.dims() - 1);
     Tensor in1_reshaped;
     OP_REQUIRES(
         ctx,
         in1_reshaped.CopyFrom(in1, TensorShape({bcast.y_batch_size(), d2, d3})),
-        errors::Internal("Failed to reshape In[1] from ",
-                         in1.shape().DebugString()));
+        absl::InternalError(absl::StrCat("Failed to reshape In[1] from ",
+                                         in1.shape().DebugString())));
     if (adjoint_) std::swap(d0, d1);
     OP_REQUIRES(ctx, d1 == d2,
                 errors::InvalidArgument(
@@ -194,10 +194,10 @@ class BaseMatrixTriangularSolveOp : public OpKernel {
       return;
     }
     Tensor out_reshaped;
-    OP_REQUIRES(ctx,
-                out_reshaped.CopyFrom(*out, TensorShape({batch_size, d0, d3})),
-                errors::Internal("Failed to reshape output from ",
-                                 out->shape().DebugString()));
+    OP_REQUIRES(
+        ctx, out_reshaped.CopyFrom(*out, TensorShape({batch_size, d0, d3})),
+        absl::InternalError(absl::StrCat("Failed to reshape output from ",
+                                         out->shape().DebugString())));
     LaunchBatchMatrixTriangularSolve<Device, Scalar>::Launch(
         ctx, in0_reshaped, in1_reshaped, adjoint_, lower_, bcast,
         &out_reshaped);
@@ -223,21 +223,21 @@ class MatrixTriangularSolveOp
   void ValidateInputTensors(OpKernelContext* ctx, const Tensor& in0,
                             const Tensor& in1) override {
     const auto in0_num_dims = in0.dims();
-    OP_REQUIRES(
-        ctx, in0_num_dims >= 2,
-        errors::InvalidArgument("In[0] ndims must be >= 2: ", in0_num_dims));
+    OP_REQUIRES(ctx, in0_num_dims >= 2,
+                absl::InvalidArgumentError(
+                    absl::StrCat("In[0] ndims must be >= 2: ", in0_num_dims)));
 
     const auto in1_num_dims = in1.dims();
-    OP_REQUIRES(
-        ctx, in1_num_dims >= 2,
-        errors::InvalidArgument("In[1] ndims must be >= 2: ", in1_num_dims));
+    OP_REQUIRES(ctx, in1_num_dims >= 2,
+                absl::InvalidArgumentError(
+                    absl::StrCat("In[1] ndims must be >= 2: ", in1_num_dims)));
 
     const auto in0_last_dim = in0.dim_size(in0_num_dims - 1);
     const auto in0_prev_dim = in0.dim_size(in0_num_dims - 2);
     OP_REQUIRES(ctx, in0_last_dim == in0_prev_dim,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "In[0] matrices in the last dimensions must be square (",
-                    in0_last_dim, " =/= ", in0_prev_dim, ")"));
+                    in0_last_dim, " =/= ", in0_prev_dim, ")")));
   }
 };
 

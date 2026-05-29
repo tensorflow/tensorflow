@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/service/xla_debug_info_manager.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -25,7 +26,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/service/buffer_assignment.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 
@@ -35,9 +35,9 @@ class XlaDebugInfoManagerTestPeer {
  public:
   void RegisterModule(
       std::shared_ptr<const HloModule> hlo_module,
-      std::shared_ptr<const BufferAssignment> buffer_assignment) {
-    return xla_debug_info_manager_.RegisterModule(hlo_module,
-                                                  std::move(buffer_assignment));
+      std::optional<BufferAssignmentProto> buffer_assignment_proto) {
+    return xla_debug_info_manager_.RegisterModule(
+        hlo_module, std::move(buffer_assignment_proto));
   }
 
   void UnregisterModule(ModuleIdentifier module_id) {
@@ -90,7 +90,7 @@ class XlaDebugInfoManagerTest : public HloHardwareIndependentTestBase {
     debug_info.module = std::make_shared<HloModule>(module_name, config);
     ModuleIdentifier unique_id = debug_info.module->unique_id();
     debug_info.unique_id = unique_id;
-    xla_debug_info_manager_.RegisterModule(debug_info.module, nullptr);
+    xla_debug_info_manager_.RegisterModule(debug_info.module, std::nullopt);
     external_references_.push_back(std::move(debug_info));
     return unique_id;
   }

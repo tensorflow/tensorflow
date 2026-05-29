@@ -38,6 +38,30 @@ message BarrierError {
   int64 counter = 2;
 }
 
+// When the coordination service is constructed, it selects a random globally
+// unique 64-bit incarnation id. Coordination service clients do the same.
+//
+// When a client registers itself with the coordination service, the client and
+// service exchange incarnation ids. All subsequent requests sent by the client
+// include its incarnation id and the incarnation id of the service it
+// registered with.
+//
+// This incarnation tracking allows the client to detect when the coordination
+// service has failed and restarted (it will have a different incarnation id).
+// And, it similarly allows the coordination service to detect when the client
+// has failed.
+message Incarnations {
+  int32 task_id = 1;
+  fixed64 task_incarnation = 2;
+  fixed64 service_incarnation = 3;
+}
+
+// This error is returned by the coordination service when the client is
+// expecting to talk to a coordination service with a different incarnation id.
+message ServiceMismatchError {
+  fixed64 service_incarnation = 1;
+}
+
 message TaskInfo {
   int32 task_id = 1;
   fixed64 incarnation = 6;
@@ -62,32 +86,33 @@ message RegisterTaskRequest {
 }
 
 message RegisterTaskResponse {
-  fixed64 leader_incarnation = 1;
+  fixed64 service_incarnation = 1;
 }
 
 // Request and response messages for sending heartbeats.
 message HeartbeatRequest {
-  // Removed fields which used to specify the remote task.
-  reserved 1, 2;
-  fixed64 incarnation = 3;
-  int32 source_task_id = 4;
+  Incarnations incarnations = 1;
+  fixed64 incarnation = 2;
+  int32 source_task_id = 3;
 }
 
 message HeartbeatResponse {
-  fixed64 leader_incarnation = 1;
+  fixed64 service_incarnation = 1;
   // If there are failures in cluster, use additional metadata in response to
   // broadcast error code and message to other tasks.
 }
 
 message PollForErrorRequest {
-  int32 source_task_id = 1;
+  Incarnations incarnations = 1;
+  int32 source_task_id = 2;
 }
 
 message PollForErrorResponse {}
 
 // Request and response messages for disconnecting a task from the service.
 message ShutdownTaskRequest {
-  int32 source_task_id = 1;
+  Incarnations incarnations = 1;
+  int32 source_task_id = 2;
 }
 
 message ShutdownTaskResponse {}
@@ -130,7 +155,8 @@ message ShutdownTaskResponse {}
 //    example, a task may have failed and later recovered leading to an
 //    identical job state.
 message WatchTasksRequest {
-  int64 version_number = 1;
+  Incarnations incarnations = 1;
+  int64 version_number = 2;
 }
 
 message WatchTasksResponse {
@@ -148,15 +174,17 @@ message KeyValueEntry {
 
 // Request and response messages for inserting configuration key-value data.
 message InsertKeyValueRequest {
-  KeyValueEntry kv = 1;
-  bool allow_overwrite = 2;
+  Incarnations incarnations = 1;
+  KeyValueEntry kv = 2;
+  bool allow_overwrite = 3;
 }
 
 message InsertKeyValueResponse {}
 
 // Request and response messages for getting configuration key-value data.
 message GetKeyValueRequest {
-  string key = 1;
+  Incarnations incarnations = 1;
+  string key = 2;
 }
 
 message GetKeyValueResponse {
@@ -164,7 +192,8 @@ message GetKeyValueResponse {
 }
 
 message TryGetKeyValueRequest {
-  string key = 1;
+  Incarnations incarnations = 1;
+  string key = 2;
 }
 
 message TryGetKeyValueResponse {
@@ -172,8 +201,9 @@ message TryGetKeyValueResponse {
 }
 
 message IncrementKeyValueRequest {
-  string key = 1;
-  int64 increment = 2;
+  Incarnations incarnations = 1;
+  string key = 2;
+  int64 increment = 3;
 }
 
 message IncrementKeyValueResponse {
@@ -181,7 +211,8 @@ message IncrementKeyValueResponse {
 }
 
 message GetKeyValueDirRequest {
-  string directory_key = 1;
+  Incarnations incarnations = 1;
+  string directory_key = 2;
 }
 
 message GetKeyValueDirResponse {
@@ -192,23 +223,25 @@ message GetKeyValueDirResponse {
 // Request and response messages for deleting configuration key-value data.
 // When is_directory is true, delete key-values recursively under `key`.
 message DeleteKeyValueRequest {
-  string key = 1;
-  bool is_directory = 2;
+  Incarnations incarnations = 1;
+  string key = 2;
+  bool is_directory = 3;
 }
 
 message DeleteKeyValueResponse {}
 
 // Request and response messages for generic sync barriers.
 message BarrierRequest {
-  string barrier_id = 1;
-  int64 barrier_timeout_in_ms = 2;
+  Incarnations incarnations = 1;
+  string barrier_id = 2;
+  int64 barrier_timeout_in_ms = 3;
   // Denotes list of tasks that will wait for the barrier. If unspecified, it
   // implies that the entire cluster is participating in the barrier.
-  repeated int32 task_ids = 3;
+  repeated int32 task_ids = 4;
   // Task that is making the request.
-  int32 source_task_id = 4;
+  int32 source_task_id = 5;
   // The same id can be reused, so this tracks each unique invocation.
-  int64 counter = 5;
+  int64 counter = 6;
 }
 
 message BarrierResponse {
@@ -218,12 +251,14 @@ message BarrierResponse {
 
 // Request and response messages for querying the set of alive tasks.
 message GetAliveTasksRequest {
+  Incarnations incarnations = 1;
+
   // The task that is making the GetAliveTasks request.
-  int32 requesting_task_id = 1;
+  int32 requesting_task_id = 2;
 
   // The tasks to check for aliveness. This list must include the requesting
   // task.
-  repeated int32 task_ids = 2;
+  repeated int32 task_ids = 3;
 }
 
 message GetAliveTasksResponse {
@@ -238,11 +273,12 @@ message GetAliveTasksResponse {
 
 // Request and response messages for  cancelling generic sync barriers.
 message CancelBarrierRequest {
+  Incarnations incarnations = 1;
   // Barrier key.
-  string barrier_id = 1;
+  string barrier_id = 2;
   int64 counter = 3;
   // Task that is making the request.
-  int32 source_task_id = 2;
+  int32 source_task_id = 4;
 }
 
 message CancelBarrierResponse {}

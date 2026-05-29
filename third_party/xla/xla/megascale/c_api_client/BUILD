@@ -47,6 +47,7 @@ cc_library(
         "//xla/stream_executor:device_address",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
@@ -74,8 +75,8 @@ cc_library(
     deps = [
         "//xla/megascale:megascale_runtime_error_overlay_proto_cc",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
-        "//xla/pjrt/c:pjrt_c_api_helpers",
         "//xla/pjrt/c:pjrt_c_api_megascale_extension_hdrs",
+        "//xla/pjrt/c:pjrt_c_api_status_utils",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:string_view",
@@ -88,7 +89,7 @@ cc_library(
     hdrs = ["megascale_types.h"],
     visibility = internal_visibility([
         ":internal",
-        "//third_party/pathways:__subpackages__",
+        "//pathways:__subpackages__",
         "//xla/pjrt/c_api_client:__subpackages__",
     ]),
     deps = [
@@ -100,6 +101,7 @@ cc_library(
         "//xla/pjrt/c:pjrt_c_api_megascale_extension_hdrs",
         "//xla/pjrt/plugin:plugin_names",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",

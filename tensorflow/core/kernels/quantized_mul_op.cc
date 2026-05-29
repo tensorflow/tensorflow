@@ -287,26 +287,26 @@ class QuantizedMulOp : public OpKernel {
     const Tensor& y = context->input(1);
     auto& min_x_tensor = context->input(2);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_x_tensor.shape()),
-                errors::InvalidArgument("min_x must be a scalar"));
+                absl::InvalidArgumentError("min_x must be a scalar"));
     const float min_x = min_x_tensor.flat<float>()(0);
     auto& max_x_tensor = context->input(3);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_x_tensor.shape()),
-                errors::InvalidArgument("max_x must be a scalar"));
+                absl::InvalidArgumentError("max_x must be a scalar"));
     const float max_x = max_x_tensor.flat<float>()(0);
     auto& min_y_tensor = context->input(4);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_y_tensor.shape()),
-                errors::InvalidArgument("min_y must be a scalar"));
+                absl::InvalidArgumentError("min_y must be a scalar"));
     const float min_y = min_y_tensor.flat<float>()(0);
     auto& max_y_tensor = context->input(5);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_y_tensor.shape()),
-                errors::InvalidArgument("max_y must be a scalar"));
+                absl::InvalidArgumentError("max_y must be a scalar"));
     const float max_y = max_y_tensor.flat<float>()(0);
 
     BCast bcast(BCast::FromShape(x.shape()), BCast::FromShape(y.shape()));
     if (!bcast.IsValid()) {
-      context->SetStatus(errors::InvalidArgument(
-          "Incompatible shapes: ", x.shape().DebugString(), " vs. ",
-          y.shape().DebugString()));
+      context->SetStatus(absl::InvalidArgumentError(
+          absl::StrCat("Incompatible shapes: ", x.shape().DebugString(),
+                       " vs. ", y.shape().DebugString())));
       return;
     }
     Tensor* z;
@@ -317,9 +317,9 @@ class QuantizedMulOp : public OpKernel {
     // If the difference between the min and max is negative or zero, it makes
     // it hard to do meaningful intermediate operations on the values.
     OP_REQUIRES(context, (max_x > min_x),
-                errors::InvalidArgument("max_x must be larger than min_a."));
+                absl::InvalidArgumentError("max_x must be larger than min_a."));
     OP_REQUIRES(context, (max_y > min_y),
-                errors::InvalidArgument("max_x must be larger than min_b."));
+                absl::InvalidArgumentError("max_x must be larger than min_b."));
     const int32_t offset_x = FloatToQuantizedUnclamped<T>(0.0f, min_x, max_x);
     const int32_t offset_y = FloatToQuantizedUnclamped<T>(0.0f, min_y, max_y);
     const T* x_data = x.flat<T>().data();
@@ -362,7 +362,7 @@ class QuantizedMulOp : public OpKernel {
       }
       if (vector_num_elements == 0) {
         context->SetStatus(
-            errors::InvalidArgument("vector must have at least 1 element"));
+            absl::InvalidArgumentError("vector must have at least 1 element"));
         return;
       }
       VectorTensorMultiply<T, Toutput>(
@@ -379,10 +379,10 @@ class QuantizedMulOp : public OpKernel {
       LOG(INFO) << "bcast.y_bcast()="
                 << TensorShape(bcast.y_bcast()).DebugString();
 
-      context->SetStatus(errors::Unimplemented(
+      context->SetStatus(absl::UnimplementedError(absl::StrCat(
           "Broadcast between ", context->input(0).shape().DebugString(),
           " and ", context->input(1).shape().DebugString(),
-          " is not supported yet."));
+          " is not supported yet.")));
       return;
     }
 

@@ -46,7 +46,7 @@ using mlir::func::FuncOp;
 
 void AddClusterToIfrtRuntimeOpsPassPipeline(
     OpPassManager& pm, llvm::StringRef module_name,
-    bool enable_propagate_static_shapes_pass) {
+    bool enable_propagate_static_shapes_pass, bool enable_async_ifrt) {
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateExecutorDialectToFunctionalConversionPass());
 
@@ -64,7 +64,8 @@ void AddClusterToIfrtRuntimeOpsPassPipeline(
   pm.addPass(CreateConvertReferenceVariableToResourceVariablePass());
   pm.addPass(CreateLowerToIfrtRestoreVariablePass());
 
-  pm.addPass(CreateRewriteClusterToIfrtCallPass());
+  pm.addPass(CreateRewriteClusterToIfrtCallPass(enable_async_ifrt));
+
   if (enable_propagate_static_shapes_pass) {
     pm.addPass(CreatePropagateStaticShapesPass());
   }
@@ -121,7 +122,7 @@ void EnablePassIRPrinting(PassManager& pm, const std::string& dump_group_name,
 
 absl::Status RunClusterToIfrtRuntimeOpsPassPipeline(
     mlir::ModuleOp module, llvm::StringRef module_name,
-    bool enable_propagate_static_shapes_pass) {
+    bool enable_propagate_static_shapes_pass, bool enable_async_ifrt) {
   mlir::StatusScopedDiagnosticHandler diag_handler(
       module.getContext(), /*propagate=*/false,
       /*filter_stack=*/!VLOG_IS_ON(1));
@@ -130,7 +131,8 @@ absl::Status RunClusterToIfrtRuntimeOpsPassPipeline(
   ::tensorflow::applyTensorflowAndCLOptions(runtime_lowering);
 
   AddClusterToIfrtRuntimeOpsPassPipeline(runtime_lowering, module_name,
-                                         enable_propagate_static_shapes_pass);
+                                         enable_propagate_static_shapes_pass,
+                                         enable_async_ifrt);
 
   if (VLOG_IS_ON(1)) {
     ::tensorflow::DumpMlirOpToFile(

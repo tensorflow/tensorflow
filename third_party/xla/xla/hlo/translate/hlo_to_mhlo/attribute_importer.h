@@ -25,7 +25,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/SymbolTable.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
@@ -125,11 +127,21 @@ mlir::NamedAttribute ConvertChannelHandle(std::optional<int64_t> channel_id,
 mlir::NamedAttribute ConvertReplicaGroups(
     absl::Span<const ReplicaGroup> replica_groups, mlir::Builder* builder);
 
+// Converts the replica group attribute to a ReplicaGroupMeshAxesAttr if
+// applicable, otherwise falls back to DenseIntElementsAttr.
+mlir::NamedAttribute ConvertReplicaGroups(const HloInstruction* instruction,
+                                          mlir::SymbolTable* symbol_table,
+                                          mlir::OpBuilder* builder);
+
 mlir::NamedAttribute ConvertSourceTargetPairs(
     const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
     mlir::Builder* builder);
 
 mlir::NamedAttribute ConvertUseGlobalDeviceIds(mlir::Builder* builder);
+
+// Converts the original value to an MLIR attribute.
+mlir::mhlo::OriginalValueAttr ConvertOriginalValue(
+    const xla::OriginalValue& original_value, mlir::Builder* builder);
 
 // Extracts layouts from shapes and converts it into layout attributes (array of
 // rank-1 index tensors). Returns an error if any of the shapes is a tuple.

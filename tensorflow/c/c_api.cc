@@ -153,9 +153,8 @@ void TF_TensorFromProto(const TF_Buffer* from, TF_Tensor* to,
   if (!status->status.ok()) {
     return;
   }
-  status->status =
-      tensorflow::down_cast<tensorflow::TensorInterface*>(to->tensor)
-          ->FromProto(from_tensor_proto);
+  status->status = absl::down_cast<tensorflow::TensorInterface*>(to->tensor)
+                       ->FromProto(from_tensor_proto);
 }
 // --------------------------------------------------------------------------
 
@@ -373,7 +372,7 @@ static Status TF_TensorToTensorV1(const TF_Tensor* src, Tensor* dst) {
   }
   if (dst->dtype() == tensorflow::DT_RESOURCE) {
     const auto tensor_interface =
-        tensorflow::down_cast<const tensorflow::TensorInterface*>(src->tensor);
+        absl::down_cast<const tensorflow::TensorInterface*>(src->tensor);
 
     if (dst->dims() != 0) {
       return InvalidArgument(
@@ -1856,6 +1855,7 @@ void TF_GraphImportGraphDefWithReturnOutputs(
   TF_ImportGraphDefResults results;
   mutex_lock l(graph->mu);
   GraphImportGraphDefLocked(graph, def, options, &results, status);
+  if (!status->status.ok()) return;
   DCHECK_EQ(results.return_tensors.size(), num_return_outputs);
   memcpy(return_outputs, results.return_tensors.data(),
          num_return_outputs * sizeof(TF_Output));

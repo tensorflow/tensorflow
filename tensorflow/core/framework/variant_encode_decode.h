@@ -42,7 +42,8 @@ namespace tensorflow {
 //
 template <
     typename T,
-    bool = std::is_trivially_copyable<typename std::decay<T>::type>::value,
+    bool = std::is_trivially_copyable<typename std::decay<T>::type>::value &&
+           !std::is_pointer<typename std::decay<T>::type>::value,
     bool =
         std::is_same<typename std::decay<T>::type, ::tensorflow::Tensor>::value,
     bool = std::is_base_of<protobuf::MessageLite,
@@ -79,11 +80,24 @@ void EncodeVariantImpl(const T& value,
 
 // Specialization for other types
 template <typename T>
-void EncodeVariantImpl(const T& value,
-                       TypeResolver<T, false /* is_pod */, false /* Tensor */,
-                                    false /* protobuf */>,
-                       VariantTensorData* data) {
+typename std::enable_if<
+    !std::is_pointer<typename std::decay<T>::type>::value>::type
+EncodeVariantImpl(const T& value,
+                  TypeResolver<T, false /* is_pod */, false /* Tensor */,
+                               false /* protobuf */>,
+                  VariantTensorData* data) {
   value.Encode(data);
+}
+
+// Specialization for pointers
+template <typename T>
+typename std::enable_if<
+    std::is_pointer<typename std::decay<T>::type>::value>::type
+EncodeVariantImpl(const T& value,
+                  TypeResolver<T, false /* is_pod */, false /* Tensor */,
+                               false /* protobuf */>,
+                  VariantTensorData* data) {
+  // Pointers cannot be encoded.
 }
 
 // Specialization for POD type
@@ -118,11 +132,25 @@ bool DecodeVariantImpl(VariantTensorData data,
 
 // Specialization for other types
 template <typename T>
-bool DecodeVariantImpl(VariantTensorData data,
-                       TypeResolver<T, false /* is_pod */, false /* Tensor */,
-                                    false /* protobuf */>,
-                       T* value) {
+typename std::enable_if<!std::is_pointer<typename std::decay<T>::type>::value,
+                        bool>::type
+DecodeVariantImpl(VariantTensorData data,
+                  TypeResolver<T, false /* is_pod */, false /* Tensor */,
+                               false /* protobuf */>,
+                  T* value) {
   return value->Decode(std::move(data));
+}
+
+// Specialization for pointers
+template <typename T>
+typename std::enable_if<std::is_pointer<typename std::decay<T>::type>::value,
+                        bool>::type
+DecodeVariantImpl(VariantTensorData data,
+                  TypeResolver<T, false /* is_pod */, false /* Tensor */,
+                               false /* protobuf */>,
+                  T* value) {
+  // Pointers cannot be decoded.
+  return false;
 }
 
 template <typename C, typename = void>

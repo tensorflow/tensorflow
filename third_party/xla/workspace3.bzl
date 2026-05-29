@@ -46,6 +46,17 @@ def workspace():
         urls = tf_mirror_urls("https://github.com/bazel-contrib/bazel_features/releases/download/v1.25.0/bazel_features-v1.25.0.tar.gz"),
     )
 
+    # Toolchains for ML projects hermetic builds.
+    # Details: https://github.com/google-ml-infra/rules_ml_toolchain
+    tf_http_archive(
+        name = "rules_ml_toolchain",
+        sha256 = "ae78949e54340cd730b4013f3c66fd86e2a57ad42e83c59de41351799ce7604b",
+        strip_prefix = "rules_ml_toolchain-44a2499fc046cd3c88625494ad5b7ebffcbb7b7b",
+        urls = tf_mirror_urls(
+            "https://github.com/google-ml-infra/rules_ml_toolchain/archive/44a2499fc046cd3c88625494ad5b7ebffcbb7b7b.tar.gz",
+        ),
+    )
+
     # Maven dependencies.
     RULES_JVM_EXTERNAL_TAG = "4.3"
     tf_http_archive(
@@ -62,6 +73,14 @@ def workspace():
             "https://github.com/bazelbuild/platforms/releases/download/0.0.11/platforms-0.0.11.tar.gz",
         ),
         sha256 = "29742e87275809b5e598dc2f04d86960cc7a55b3067d97221c9abbc9926bff0f",
+    )
+
+    # clang-tidy checks.
+    tf_http_archive(
+        name = "bazel_clang_tidy",
+        strip_prefix = "bazel_clang_tidy-c4d35e0d0b838309358e57a2efed831780f85cd0",
+        sha256 = "96da6e935ccc91045cf928dbc57f22508a2729c51f7fb3f56178017b0deb9b3c",
+        urls = tf_mirror_urls("https://github.com/erenon/bazel_clang_tidy/archive/c4d35e0d0b838309358e57a2efed831780f85cd0.tar.gz"),
     )
 
 # Alias so it can be loaded without assigning to a different symbol to prevent

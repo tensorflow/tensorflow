@@ -19,6 +19,7 @@ limitations under the License.
 #define XLA_PRIMITIVE_UTIL_H_
 
 #include <array>
+#include <climits>
 #include <cstdint>
 #include <limits>
 #include <string>
@@ -74,6 +75,9 @@ bool HasNaN(PrimitiveType type);
 
 // Returns whether the type has a value for negative zero.
 bool HasNegativeZero(PrimitiveType type);
+
+// Returns whether the type has a value for positive zero.
+bool HasPositiveZero(PrimitiveType type);
 
 // Returns the XLA primitive type (eg, F32) corresponding to the given
 // template parameter native type (eg, float). Doesn't compile if the native
@@ -770,7 +774,7 @@ inline constexpr int BitWidth(PrimitiveType type) {
 // type is not an array type.
 inline constexpr int StorageBitWidth(PrimitiveType type) {
   if (type == PRED) {
-    return 8;
+    return sizeof(bool) * CHAR_BIT;
   }
   return BitWidth(type);
 }

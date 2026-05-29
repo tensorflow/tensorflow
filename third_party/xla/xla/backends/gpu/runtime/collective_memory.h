@@ -70,6 +70,11 @@ class CollectiveMemory {
       const GpuCliqueKey& clique, BufferAllocation::Index allocation) const;
 
   // Returns a symmetric memory and offset in that symmetric memory that
+  // corresponds to the given buffer allocation slice.
+  std::pair<SymmetricMemory*, size_t> FindSymmetricMemory(
+      const GpuCliqueKey& clique, BufferAllocation::Slice slice) const;
+
+  // Returns a symmetric memory and offset in that symmetric memory that
   // corresponds to the given device address.
   std::pair<SymmetricMemory*, size_t> FindSymmetricMemory(
       const GpuCliqueKey& clique, se::DeviceAddressBase addr) const;
@@ -80,6 +85,11 @@ class CollectiveMemory {
       const GpuCliqueKey& clique, BufferAllocation::Index allocation) const;
 
   // Returns a multimem address and offset from that multimem address that
+  // corresponds to the given buffer allocation slice.
+  std::pair<void*, size_t> FindMultimemAddress(
+      const GpuCliqueKey& clique, BufferAllocation::Slice slice) const;
+
+  // Returns a multimem address and offset from that multimem address that
   // corresponds to the given device address.
   std::pair<void*, size_t> FindMultimemAddress(
       const GpuCliqueKey& clique, se::DeviceAddressBase addr) const;
@@ -88,6 +98,12 @@ class CollectiveMemory {
   std::optional<se::DeviceAddressBase> FindPeerAddress(
       const GpuCliqueKey& clique, RankId rank,
       BufferAllocation::Index allocation) const;
+
+  // Returns a peer address that corresponds to the given buffer allocation
+  // slice.
+  std::optional<se::DeviceAddressBase> FindPeerAddress(
+      const GpuCliqueKey& clique, RankId rank,
+      BufferAllocation::Slice slice) const;
 
   // Returns a peer address corresponds to the given device address.
   std::optional<se::DeviceAddressBase> FindPeerAddress(
@@ -115,7 +131,7 @@ class CollectiveMemory {
 absl::StatusOr<CollectiveMemory> AcquireCollectiveMemory(
     const CollectiveParams& params, CollectiveCliques& cliques,
     const CollectiveMemoryRequests& requests,
-    CollectiveMemoryCache& collective_memory_cache);
+    CollectiveMemoryCache& memory_cache);
 
 //===----------------------------------------------------------------------===//
 // CollectiveMemory templates implementation.

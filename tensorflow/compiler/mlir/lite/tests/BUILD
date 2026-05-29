@@ -17,11 +17,13 @@ glob_lit_tests(
         "const-fold-unary-resource.mlir",
     ],
     size_override = {
-        "optimize.mlir": "medium",
+        "gpu_compatibility.mlir": "small",
+        "optimize.mlir": "large",
         "prepare-tf.mlir": "medium",
         "prepare-tf-fake-quant.mlir": "medium",
         "prepare-tf-fake-quant-4bit.mlir": "medium",
         "raise-custom-ops.mlir": "medium",
+        "rank_reduction.mlir": "small",
     },
     tags_override = {
         "legalize-tf.mlir": ["no_rocm"],

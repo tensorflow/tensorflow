@@ -116,7 +116,7 @@ TEST_F(TiledHloComputationTest, Dot) {
   EXPECT_THAT(tiled_hlo_computation.num_output_tiles_per_dim(),
               ElementsAre(1, 1, 8));
   EXPECT_EQ(tiled_hlo_computation.num_output_tiles(), 8);
-  EXPECT_THAT(tiled_hlo_computation.GetRoots(), SizeIs(1));
+  EXPECT_THAT(tiled_hlo_computation.roots(), SizeIs(1));
 }
 
 TEST_F(TiledHloComputationTest, Elementwise) {
@@ -162,7 +162,7 @@ add.tile_0 = add(p0.1.tile_0, p1.1.tile_0)
   EXPECT_THAT(tiled_hlo_computation.num_output_tiles_per_dim(),
               ElementsAre(8, 4));
   EXPECT_EQ(tiled_hlo_computation.num_output_tiles(), 32);
-  EXPECT_THAT(tiled_hlo_computation.GetRoots(), SizeIs(1));
+  EXPECT_THAT(tiled_hlo_computation.roots(), SizeIs(1));
 }
 
 TEST_F(TiledHloComputationTest, SoftmaxDiamond) {
@@ -211,7 +211,7 @@ ENTRY entry_computation {
   EXPECT_THAT(tiled_hlo_computation.num_output_tiles_per_dim(),
               ElementsAre(4, 32, 393));
   EXPECT_EQ(tiled_hlo_computation.num_output_tiles(), 4 * 32 * 393);
-  EXPECT_THAT(tiled_hlo_computation.GetRoots(), SizeIs(1));
+  EXPECT_THAT(tiled_hlo_computation.roots(), SizeIs(1));
 }
 
 }  // namespace

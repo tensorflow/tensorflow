@@ -22,12 +22,14 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/xla_data.pb.h"
 
 // This file contains thunks that set a buffer's elements to a particular value.
@@ -37,12 +39,20 @@ namespace xla {
 namespace gpu {
 
 // Thunk that zeroes out a given chunk of memory.
-class MemzeroThunk : public Thunk {
+// Also implements Command so it can be recorded directly into command buffers.
+class MemzeroThunk : public Command {
  public:
   explicit MemzeroThunk(ThunkInfo thunk_info, const ShapedSlice& dest)
-      : Thunk(Kind::kMemzero, thunk_info), dest_(dest) {}
+      : Command(CommandType::kMemzeroCmd, Kind::kMemzero,
+                std::move(thunk_info)),
+        dest_(dest) {}
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer) override;
 
   const ShapedSlice& destination() const { return dest_; }
 
@@ -64,15 +74,22 @@ class MemzeroThunk : public Thunk {
 
 // Thunk that sets a given chunk of memory to a particular 32-bit value.  The
 // destination chunk must have size divisible by 32 bits.
-class Memset32BitValueThunk : public Thunk {
+// Also implements Command so it can be recorded directly into command buffers.
+class Memset32BitValueThunk : public Command {
  public:
   explicit Memset32BitValueThunk(ThunkInfo thunk_info, uint32_t value,
                                  const BufferAllocation::Slice& dest)
-      : Thunk(Kind::kMemset32BitValue, thunk_info),
+      : Command(CommandType::kMemset32Cmd, Kind::kMemset32BitValue,
+                std::move(thunk_info)),
         value_(value),
         dest_(dest) {}
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer) override;
 
   const BufferAllocation::Slice& destination() const { return dest_; }
   uint32_t value() const { return value_; }

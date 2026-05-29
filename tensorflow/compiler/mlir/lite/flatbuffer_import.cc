@@ -527,7 +527,7 @@ StatusOr<Operation*> BuildExternalConstOpWithBufferIndex(
                                          /*is_constant=*/true));
   auto shaped_type = llvm::dyn_cast<mlir::RankedTensorType>(type);
   if (!shaped_type) {
-    return errors::Internal("Constant doesn't have a shape");
+    return absl::InternalError("Constant doesn't have a shape");
   }
   auto op = tfl::ExternalConstOp::create(
       builder, loc, shaped_type,
@@ -544,7 +544,7 @@ StatusOr<Operation*> BuildExternalConstOpWithExternalBuffer(
                                          /*is_constant=*/true));
   auto shaped_type = llvm::dyn_cast<mlir::RankedTensorType>(type);
   if (!shaped_type) {
-    return errors::Internal("Constant doesn't have a shape");
+    return absl::InternalError("Constant doesn't have a shape");
   }
 
   tflite::ExternalBufferT* external_buffer = nullptr;
@@ -555,7 +555,7 @@ StatusOr<Operation*> BuildExternalConstOpWithExternalBuffer(
     }
   }
   if (external_buffer == nullptr) {
-    return errors::Internal("External buffer not found");
+    return absl::InternalError("External buffer not found");
   }
 
   std::string group_name =
@@ -584,7 +584,7 @@ StatusOr<Operation*> BuildVariableOp(const tflite::TensorT& tensor,
                                          /*is_constant=*/true));
   auto shaped_type = llvm::dyn_cast<mlir::RankedTensorType>(type);
   if (!shaped_type) {
-    return errors::Internal("Constant doesn't have a shape");
+    return absl::InternalError("Constant doesn't have a shape");
   }
 
   static int stateful_variable_idx = 0;
@@ -625,7 +625,7 @@ static StatusOr<std::vector<int32_t>> ConvertSparseIndexVector(
                    [](auto x) { return static_cast<int32_t>(x); });
     return outputs;
   } else {
-    return errors::Unimplemented("Unsupported SparseIndexVector type");
+    return absl::UnimplementedError("Unsupported SparseIndexVector type");
   }
 }
 
@@ -638,7 +638,7 @@ static StatusOr<Operation*> BuildSparseConstOp(const tflite::TensorT& tensor,
                                          /*is_constant=*/true));
   auto shaped_type = llvm::dyn_cast<mlir::RankedTensorType>(type);
   if (!shaped_type) {
-    return errors::Internal("Constant doesn't have a shape");
+    return absl::InternalError("Constant doesn't have a shape");
   }
 
   TF_ASSIGN_OR_RETURN(type, tfl::GetTensorType(tensor, builder,
@@ -683,7 +683,7 @@ static StatusOr<Operation*> BuildSparseConstOp(const tflite::TensorT& tensor,
                                             tfl::DimensionType::SPARSE_CSR),
           0, segments, indices);
     } else {
-      return errors::Unimplemented("Unsupported dimension metadata type");
+      return absl::UnimplementedError("Unsupported dimension metadata type");
     }
   }
   auto s_param = tfl::SparsityParameterAttr::get(
@@ -726,7 +726,7 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
                                          /*get_storage=*/true));
   auto shaped_type = llvm::dyn_cast<mlir::RankedTensorType>(type);
   if (!shaped_type) {
-    return errors::Internal("Constant doesn't have a shape");
+    return absl::InternalError("Constant doesn't have a shape");
   }
 
   mlir::ElementsAttr value;
@@ -767,7 +767,7 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
 
     value = mlir::TF::TensorProtoAttr::get(shaped_type, mangled);
   } else {
-    return errors::Unimplemented("Constant of unsupported type");
+    return absl::UnimplementedError("Constant of unsupported type");
   }
 
   if (use_stablehlo_constant) {
@@ -776,7 +776,7 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
                                  buffer.size());
     auto vhlo_val = mlir::vhlo::TensorV1Attr::get(
         builder.getContext(), vhlo_type_converter.convertType(shaped_type),
-        val_ref);
+        DenseElementsAttr::getFromRawBuffer(shaped_type, val_ref));
     auto op =
         mlir::vhlo::ConstantOpV1::create(builder, loc, shaped_type, vhlo_val);
     return op.getOperation();
@@ -792,8 +792,8 @@ ConvertSubgraphIdxsToFunctionAttrs(tflite::BuiltinOptionsUnion options,
   if (auto* opts = options.AsCallOnceOptions()) {
     uint32_t init_idx = opts->init_subgraph_index;
     if (init_idx >= func_names.size()) {
-      return errors::InvalidArgument("subgraph with index not found: ",
-                                     init_idx);
+      return absl::InvalidArgumentError(
+          absl::StrCat("subgraph with index not found: ", init_idx));
     }
     auto init_attr = builder.getStringAttr(func_names.at(init_idx));
 
@@ -803,15 +803,15 @@ ConvertSubgraphIdxsToFunctionAttrs(tflite::BuiltinOptionsUnion options,
   if (auto* opts = options.AsIfOptions()) {
     uint32_t then_idx = opts->then_subgraph_index;
     if (then_idx >= func_names.size()) {
-      return errors::InvalidArgument("subgraph with index not found: ",
-                                     then_idx);
+      return absl::InvalidArgumentError(
+          absl::StrCat("subgraph with index not found: ", then_idx));
     }
     auto then_attr =
         mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(then_idx));
     uint32_t else_idx = opts->else_subgraph_index;
     if (else_idx >= func_names.size()) {
-      return errors::InvalidArgument("subgraph with index not found: ",
-                                     else_idx);
+      return absl::InvalidArgumentError(
+          absl::StrCat("subgraph with index not found: ", else_idx));
     }
     auto else_attr =
         mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(else_idx));
@@ -825,15 +825,15 @@ ConvertSubgraphIdxsToFunctionAttrs(tflite::BuiltinOptionsUnion options,
   if (auto* opts = options.AsWhileOptions()) {
     uint32_t cond_idx = opts->cond_subgraph_index;
     if (cond_idx >= func_names.size()) {
-      return errors::InvalidArgument("subgraph with index not found: ",
-                                     cond_idx);
+      return absl::InvalidArgumentError(
+          absl::StrCat("subgraph with index not found: ", cond_idx));
     }
     auto cond_attr =
         mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(cond_idx));
     uint32_t body_idx = opts->body_subgraph_index;
     if (body_idx >= func_names.size()) {
-      return errors::InvalidArgument("subgraph with index not found: ",
-                                     body_idx);
+      return absl::InvalidArgumentError(
+          absl::StrCat("subgraph with index not found: ", body_idx));
     }
     auto body_attr =
         mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(body_idx));
@@ -945,7 +945,7 @@ Status AddOpIntermediatesForLstm(
     OperationState& op_state, Location loc, OpBuilder& builder) {
   if (!op.intermediates.empty()) {
     if (op.intermediates.size() != 5) {
-      auto err = errors::InvalidArgument(
+      auto err = absl::InvalidArgumentError(
           "operator has intermediate tensors but the number of them is not "
           "five.");
       return emitError(loc, err.ToString()), err;
@@ -1179,8 +1179,8 @@ StatusOr<std::vector<int>> GetTensorIndices(
     if (found != name_to_index.end()) {
       indices.push_back(found->second);
     } else {
-      return errors::InvalidArgument("could not find tensor in subgraph: ",
-                                     name);
+      return absl::InvalidArgumentError(
+          absl::StrCat("could not find tensor in subgraph: ", name));
     }
   }
 
@@ -1498,7 +1498,7 @@ StatusOr<FuncOp> ConvertSubgraph(
   if (is_entry_point && !ordered_input_arrays.empty()) {
     if (!experimental_prune_unreachable_nodes_unconditionally) {
       // TODO(b/149922113): Resolve input-arrays/pruning flags interaction.
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "input-arrays should be used with experimental pruning flag");
     }
     TF_ASSIGN_OR_RETURN(func_inputs,
@@ -1573,7 +1573,7 @@ StatusOr<FuncOp> ConvertSubgraph(
     const auto& tensor = *subgraph.tensors.at(input_tensor);
     auto loc = TensorLoc(tensor, builder, base_loc);
     if (vals_map[input_tensor]) {
-      auto err = errors::FailedPrecondition("duplicate input arguments");
+      auto err = absl::FailedPreconditionError("duplicate input arguments");
       return emitError(loc, err.ToString()), err;
     }
     Value input_value = func.getArgument(i);

@@ -336,7 +336,7 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
         if (item != nullptr) {
           (*item->recv_state.waiter)(
               StatusGroup::MakeDerived(
-                  errors::Cancelled("RecvAsync is cancelled.")),
+                  absl::CancelledError("RecvAsync is cancelled.")),
               Rendezvous::Args(), item->args, Tensor(), /*is_dead=*/false);
           delete item;
         }
@@ -348,7 +348,7 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
       }
       bucket.mu.unlock();
       done(StatusGroup::MakeDerived(
-               errors::Cancelled("RecvAsync is cancelled.")),
+               absl::CancelledError("RecvAsync is cancelled.")),
            Rendezvous::Args(), recv_args, Tensor(), /*is_dead=*/false);
       if (rc_owner_) {
         rc_owner_->Unref();

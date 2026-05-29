@@ -32,7 +32,6 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Support/LLVM.h"
-#include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
@@ -71,16 +70,17 @@ llvm::hash_code GetMergeKey(CopyArraysOp op) {
   // CopyArrayOps do not support inputs with different src devices nor outputs
   // with different dst devices. Thus, it is safe to only include the first
   // src and dst devices.
-  auto input_type = mlir::cast<IfrtArrayType>(op.getInputs().front().getType());
+  IfrtArrayType input_type = GetArrayType(op.getInputs().front());
   hash = llvm::hash_combine(hash, input_type.getDevicesAttr());
-  auto output_type =
-      mlir::cast<IfrtArrayType>(op.getOutputs().front().getType());
+  IfrtArrayType output_type = GetArrayType(op.getOutputs().front());
   hash = llvm::hash_combine(hash, output_type.getDevicesAttr());
   // We can't hash by the bool itself, and `donated` is a optional attr, so
   // false can be represented by nullptr or BoolAttr(false). So we
   // explicitly convert to BoolAttr.
   hash = llvm::hash_combine(
       hash, mlir::BoolAttr::get(op.getContext(), op.getDonated()));
+  hash = llvm::hash_combine(
+      hash, mlir::BoolAttr::get(op.getContext(), op.getReuse()));
   hash = llvm::hash_combine(
       hash,
       StringAttr::get(op.getContext(), absl::StrCat(input_type.MemoryKind())));
@@ -104,10 +104,9 @@ llvm::hash_code GetMergeKey(ReshardOp op) {
   llvm::hash_code hash = llvm::hash_value("ReshardOp");
   // Only ReshardOp with one input and output are merged to other ops so its
   // safe to only take into account the first input and output types.
-  auto input_type = mlir::cast<IfrtArrayType>(op.getInputs().front().getType());
+  IfrtArrayType input_type = GetArrayType(op.getInputs().front());
   hash = llvm::hash_combine(hash, input_type.getDevicesAttr());
-  auto output_type =
-      mlir::cast<IfrtArrayType>(op.getOutputs().front().getType());
+  IfrtArrayType output_type = GetArrayType(op.getOutputs().front());
   hash = llvm::hash_combine(hash, output_type.getDevicesAttr());
   // We can't hash by the bool itself, and `donated` is a optional attr, so
   // false can be represented by nullptr or BoolAttr(false). So we explicitly
@@ -128,14 +127,21 @@ void RewriteCopyArraysGroup(mlir::IRRewriter& rewriter,
   locs.reserve(to_merge.size());
 
   bool donated = false;
-  for (mlir::Operation* group_op : to_merge) {
+  bool reuse = false;
+  for (auto [index, group_op] : llvm::enumerate(to_merge)) {
     auto copy_arrays_op = mlir::cast<CopyArraysOp>(group_op);
     inputs.append(copy_arrays_op.getInputs().begin(),
                   copy_arrays_op.getInputs().end());
     for (mlir::Value output : copy_arrays_op.getOutputs()) {
       output_types.push_back(output.getType());
     }
-    donated = copy_arrays_op.getDonated();
+    if (index == 0) {
+      donated = copy_arrays_op.getDonated();
+      reuse = copy_arrays_op.getReuse();
+    } else {
+      CHECK_EQ(donated, copy_arrays_op.getDonated());
+      CHECK_EQ(reuse, copy_arrays_op.getReuse());
+    }
     locs.push_back(group_op->getLoc());
   }
 
@@ -150,6 +156,7 @@ void RewriteCopyArraysGroup(mlir::IRRewriter& rewriter,
                            IfrtControlType::get(rewriter.getContext()),
                            /*inputs=*/inputs,
                            /*donated=*/donated,
+                           /*reuse=*/reuse,
                            /*control_inputs=*/mlir::ValueRange());
 
   // Replace the original group with the new merged CopyArrays.
@@ -302,8 +309,7 @@ bool MergeCopyAndReshardsIgnoringControlDependencies(FuncOp func_op) {
 void IfrtMergeCopiesAndReshardsPass::runOnOperation() {
   FuncOp func_op = getOperation();
   // We only need to run this pass on IFRT functions.
-  if (!func_op->hasAttr(kIfrtFunctionAttrName) &&
-      !func_op->hasAttr(kIfrtReshardFunctionAttrName)) {
+  if (!IsIfrtFunction(func_op)) {
     return;
   }
 

@@ -116,7 +116,7 @@ class CoordinationService {
   CoordinationService(CoordinationService&&) = default;
   CoordinationService& operator=(CoordinationService&&) = default;
 
-  IncarnationId GetServiceIncarnation() { return service_incarnation_; }
+  IncarnationId GetServiceIncarnation() const { return incarnation_; }
 
   // Register a task to the service.
   // Possible service errors:
@@ -289,6 +289,10 @@ class CoordinationService {
   void PollForErrorAsync(TaskId task, tsl::StatusCallback done);
 
  private:
+  std::string LogPrefix() const {
+    return absl::StrCat("[", incarnation_, "] ");
+  }
+
   void LogConnectStatusLocked() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   void BarrierAsyncLocked(absl::string_view barrier_id, int64_t counter,
                           absl::Duration timeout, TaskId task,
@@ -561,11 +565,11 @@ class CoordinationService {
   void ClusterStateUpdated() ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
   tsl::Env& env_;
-  const IncarnationId service_incarnation_{tsl::random::New64()};
+  const IncarnationId incarnation_{tsl::random::New64()};
   const Config config_;
 
   const std::string shutdown_barrier_id_ =
-      absl::StrCat("Shutdown::", service_incarnation_.value());
+      absl::StrCat("Shutdown::", incarnation_.value());
   std::vector<TaskId> shutdown_barrier_tasks_ ABSL_GUARDED_BY(state_mu_);
 
   absl::Mutex state_mu_;

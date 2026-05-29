@@ -46,19 +46,21 @@ class DecodePaddedRawOp : public OpKernel {
     int fixed_length;
     const auto& length_input = context->input(1);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(length_input.shape()),
-                errors::InvalidArgument("k must be scalar, got shape ",
-                                        length_input.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("k must be scalar, got shape ",
+                                 length_input.shape().DebugString())));
     fixed_length = length_input.scalar<int32_t>()();
 
     OP_REQUIRES(
         context, fixed_length % sizeof(T) == 0,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "fixed_length (", fixed_length,
-            ") must be a multiple of the size of out_type (", sizeof(T), ")"));
+            ") must be a multiple of the size of out_type (", sizeof(T), ")")));
 
-    OP_REQUIRES(context, fixed_length > 0,
-                errors::InvalidArgument("fixed_length (", fixed_length,
-                                        ") must be greater than zero."));
+    OP_REQUIRES(
+        context, fixed_length > 0,
+        absl::InvalidArgumentError(absl::StrCat(
+            "fixed_length (", fixed_length, ") must be greater than zero.")));
 
     int width = fixed_length / sizeof(T);
 

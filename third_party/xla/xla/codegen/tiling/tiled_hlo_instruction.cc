@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
@@ -71,7 +72,7 @@ absl::Status VerifyTiledHloInstructionConstructorPreconditions(
   }
 
   // - The number of results must match the rank of the HLO.
-  if (tile_offsets_indexing->GetAffineMap().getNumResults() != rank) {
+  if (tile_offsets_indexing->GetSymbolicMap().GetNumResults() != rank) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "tile_offsets_indexing must have the same number of results as the "
         "rank of the hlo shape. tile_offsets_indexing = %s, hlo = %s",
@@ -114,9 +115,8 @@ TiledHloInstruction::Create(
     llvm::SmallVector<int64_t> tile_sizes,
     llvm::SmallVector<int64_t> tile_strides,
     std::optional<IndexingMap> tile_offsets_indexing,
-    llvm::SmallVector<std::vector<std::unique_ptr<TiledHloInstruction>>>
-        regions) {
-  TF_RETURN_IF_ERROR(VerifyTiledHloInstructionConstructorPreconditions(
+    llvm::SmallVector<TiledHloRegion> regions) {
+  RETURN_IF_ERROR(VerifyTiledHloInstructionConstructorPreconditions(
       hlo, tile_sizes, tile_strides, tile_offsets_indexing, runtime_variables));
 
   return absl::WrapUnique(new TiledHloInstruction(

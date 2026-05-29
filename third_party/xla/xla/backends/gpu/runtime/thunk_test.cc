@@ -22,7 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "absl/status/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 
 namespace xla::gpu {
@@ -34,6 +34,9 @@ class TestThunk : public Thunk {
   explicit TestThunk(ThunkInfo thunk_info) : Thunk(kKernel, thunk_info) {}
   absl::Status ExecuteOnStream(const ExecuteParams& params) override {
     return absl::OkStatus();
+  }
+  absl::StatusOr<ThunkProto> ToProto() const override {
+    return absl::UnimplementedError("TestThunk::ToProto is not implemented");
   }
 };
 

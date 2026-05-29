@@ -37,6 +37,7 @@ cc_library(
     hdrs = ["heap_simulator.h"],
     deps = [
         ":allocation_block",
+        ":free_chunks_manager",
         "//xla:comparison_util",
         "//xla:union_find",
         "//xla:util",
@@ -52,6 +53,7 @@ cc_library(
         "//xla/service:logical_buffer",
         "//xla/service:time_utils",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:nullability",

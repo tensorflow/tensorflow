@@ -66,6 +66,9 @@ enum class DimIndex : int {
 // Return a reordered dims.
 std::vector<int64_t> ReorderDims(const std::vector<int64_t>& input,
                                  const DataLayout& from, const DataLayout& to);
+std::vector<int64_t> ReorderDims(const std::vector<int64_t>& input,
+                                 const FilterLayout& from,
+                                 const FilterLayout& to);
 
 // Helper functions to make methods more readable.
 inline int64_t GetDim(absl::Span<const int64_t> data, DimIndex dim) {

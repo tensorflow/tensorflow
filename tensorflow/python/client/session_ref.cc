@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -45,17 +46,22 @@ struct RunCounter {
   mutex* m;
   condition_variable* cv;
 
-  explicit RunCounter(std::shared_ptr<Session> s, uint64_t* v, mutex* m,
+  explicit RunCounter(const std::shared_ptr<Session>& s, uint64_t* v, mutex* m,
                       condition_variable* cv)
-      : session(std::move(s)), value(v), m(m), cv(cv) {
+      : value(v), m(m), cv(cv) {
     mutex_lock l(*m);
-    ++*value;
+    if (s != nullptr) {
+      session = s;
+      ++*value;
+    }
   }
 
   ~RunCounter() {
-    mutex_lock l(*m);
-    if (--*value == 0) {
-      cv->notify_all();
+    if (session != nullptr) {
+      mutex_lock l(*m);
+      if (--*value == 0) {
+        cv->notify_all();
+      }
     }
   }
 };
@@ -403,17 +409,13 @@ SessionRef::SessionRef(Session* session) : session_(session) {
 
 SessionRef::~SessionRef() = default;
 
-absl::Status SessionRef::CheckNotClosed() {
-  mutex_lock l(run_lock_);
-  if (session_ == nullptr) return errors::Cancelled("Session has been closed.");
-  return absl::OkStatus();
-}
-
 // If logging is active, log the start and end time of the operation along with
 // the request and response.
 #define LOG_AND_RUN_OPERATION(OpName, ...)                          \
-  TF_RETURN_IF_ERROR(CheckNotClosed());                             \
   RunCounter rc(session_, &run_count_, &run_lock_, &run_finished_); \
+  if (rc.session == nullptr) {                                      \
+    return absl::CancelledError("Session has been closed.");        \
+  }                                                                 \
   if (!logger_) {                                                   \
     return rc.session->OpName(__VA_ARGS__);                         \
   }                                                                 \
@@ -501,8 +503,10 @@ absl::Status SessionRef::ReleaseCallable(CallableHandle handle) {
 }
 
 absl::Status SessionRef::Close(const RunOptions& run_options) {
-  TF_RETURN_IF_ERROR(CheckNotClosed());
   mutex_lock l(run_lock_);
+  if (session_ == nullptr) {
+    return absl::CancelledError("Session has been closed.");
+  }
   absl::Status status;
   if (logger_) {
     status = logger_->RecordClose(session_.get(), run_options);
@@ -517,8 +521,10 @@ absl::Status SessionRef::Close(const RunOptions& run_options) {
 }
 
 absl::Status SessionRef::Close() {
-  TF_RETURN_IF_ERROR(CheckNotClosed());
   mutex_lock l(run_lock_);
+  if (session_ == nullptr) {
+    return absl::CancelledError("Session has been closed.");
+  }
   absl::Status status;
   if (logger_) {
     status = logger_->RecordClose(session_.get());

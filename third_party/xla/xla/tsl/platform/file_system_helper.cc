@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
@@ -277,7 +278,7 @@ absl::StatusOr<bool> FileExists(Env* env, const std::string& fname) {
   if (absl::IsNotFound(status)) {
     return false;
   }
-  TF_RETURN_IF_ERROR(status);
+  RETURN_IF_ERROR(status);
   return true;
 }
 

@@ -23,7 +23,7 @@ import "xla/core/collectives/reduction_kind.proto";
 option java_outer_classname = "NvshmemCollectiveThunk";
 option java_multiple_files = true;
 
-message NvshmemAllReduceStartThunkProto {
+message NvshmemAllReduceThunkProto {
   reserved 1;
   reserved "async_events_unique_id";
   CollectiveConfigProto collective_config = 2;
@@ -31,7 +31,7 @@ message NvshmemAllReduceStartThunkProto {
   xla.ReductionKindProto reduction_kind = 4;
 }
 
-message NvshmemCollectivePermuteStartThunkProto {
+message NvshmemCollectivePermuteThunkProto {
   reserved 1;
   reserved "async_events_unique_id";
   P2PConfigProto p2p_config = 2;

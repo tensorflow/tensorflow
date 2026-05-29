@@ -54,7 +54,7 @@ const Metadata* GetSignatureDefMetadata(const Model* model) {
 Status ReadSignatureDefMap(const Model* model, const Metadata* metadata,
                            SerializedSignatureDefMap* map) {
   if (!model || !metadata || !map) {
-    return tensorflow::errors::InvalidArgument("Arguments must not be nullptr");
+    return absl::InvalidArgumentError("Arguments must not be nullptr");
   }
   const flatbuffers::Vector<uint8_t>* flatbuffer_data =
       model->buffers()->Get(metadata->buffer())->data();
@@ -74,11 +74,10 @@ Status SetSignatureDefMap(const Model* model,
                           const SignatureDefMap& signature_def_map,
                           std::string* model_data_with_signature_def) {
   if (!model || !model_data_with_signature_def) {
-    return tensorflow::errors::InvalidArgument("Arguments must not be nullptr");
+    return absl::InvalidArgumentError("Arguments must not be nullptr");
   }
   if (signature_def_map.empty()) {
-    return tensorflow::errors::InvalidArgument(
-        "signature_def_map should not be empty");
+    return absl::InvalidArgumentError("signature_def_map should not be empty");
   }
   flexbuffers::Builder fbb;
   const size_t start_map = fbb.StartMap();
@@ -130,7 +129,7 @@ bool HasSignatureDef(const Model* model, const std::string& signature_key) {
 Status GetSignatureDefMap(const Model* model,
                           SignatureDefMap* signature_def_map) {
   if (!model || !signature_def_map) {
-    return tensorflow::errors::InvalidArgument("Arguments must not be nullptr");
+    return absl::InvalidArgumentError("Arguments must not be nullptr");
   }
   SignatureDefMap retrieved_signature_def_map;
   const Metadata* metadata = GetSignatureDefMetadata(model);
@@ -138,13 +137,13 @@ Status GetSignatureDefMap(const Model* model,
     SerializedSignatureDefMap signature_defs;
     auto status = ReadSignatureDefMap(model, metadata, &signature_defs);
     if (status != absl::OkStatus()) {
-      return tensorflow::errors::Internal("Error reading signature def map: ",
-                                          status.message());
+      return absl::InternalError(
+          absl::StrCat("Error reading signature def map: ", status.message()));
     }
     for (const auto& entry : signature_defs) {
       tensorflow::SignatureDef signature_def;
       if (!signature_def.ParseFromString(entry.second)) {
-        return tensorflow::errors::Internal(
+        return absl::InternalError(
             "Cannot parse signature def found in flatbuffer.");
       }
       retrieved_signature_def_map[entry.first] = signature_def;
@@ -156,7 +155,7 @@ Status GetSignatureDefMap(const Model* model,
 
 Status ClearSignatureDefMap(const Model* model, std::string* model_data) {
   if (!model || !model_data) {
-    return tensorflow::errors::InvalidArgument("Arguments must not be nullptr");
+    return absl::InvalidArgumentError("Arguments must not be nullptr");
   }
   auto mutable_model = std::make_unique<ModelT>();
   model->UnPackTo(mutable_model.get(), nullptr);

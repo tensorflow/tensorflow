@@ -23,11 +23,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/memory/memory.h"
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/interpreter.h"
-#include "tensorflow/lite/kernels/internal/test_util.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
@@ -145,6 +141,47 @@ class DepthwiseConvolutionOpModel : public BaseDepthwiseConvolutionOpModel {
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
 };
 
+class PrepareOnlyDepthwiseConvolutionOpModel : public SingleOpModel {
+ public:
+  PrepareOnlyDepthwiseConvolutionOpModel(
+      TfLiteRegistration* registration, const TensorData& input,
+      const TensorData& filter, const TensorData& output, Padding padding_type,
+      int dilation_factor = 1, int stride_width = 1, int stride_height = 1,
+      ActivationFunctionType fused_activation_function =
+          ActivationFunctionType_NONE) {
+    input_ = AddInput(input);
+    filter_ = AddInput(filter);
+
+    const int bias_size = GetShape(filter_)[3];
+    bias_ = AddInput({TensorType_FLOAT32, {bias_size}});
+    output_ = AddOutput(output);
+
+    const int input_depth = GetShape(input_)[3];
+    const int output_depth = GetShape(filter_)[3];
+    const int depth_mul = output_depth / input_depth;
+    SetBuiltinOp(
+        BuiltinOperator_DEPTHWISE_CONV_2D,
+        BuiltinOptions_DepthwiseConv2DOptions,
+        CreateDepthwiseConv2DOptions(
+            builder_, padding_type, stride_width, stride_height, depth_mul,
+            fused_activation_function, dilation_factor, dilation_factor)
+            .Union());
+
+    resolver_ = std::make_unique<SingleOpResolver>(
+        BuiltinOperator_DEPTHWISE_CONV_2D, registration);
+    BuildInterpreter({GetShape(input_), GetShape(filter_), GetShape(bias_)},
+                     /*num_threads=*/1, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false,
+                     /*allocate_and_delegate=*/false);
+  }
+
+ private:
+  int input_;
+  int filter_;
+  int bias_;
+  int output_;
+};
+
 const auto kKernelMap = new std::map<string, TfLiteRegistration*>({
     {"Reference", ops::builtin::Register_DEPTHWISE_CONVOLUTION_REF()},
     {"GenericOptimized",
@@ -158,6 +195,32 @@ class DepthwiseConvolutionOpTest : public SingleOpTest {
     return *kKernelMap;
   }
 };
+
+TEST(DepthwiseConvolutionPrepareSecurityTest, RejectsHybridInputOverflow) {
+  if (sizeof(void*) <= 4) {
+    GTEST_SKIP() << "Interpreter construction overflows before kernel Prepare"
+                    " on 32-bit.";
+  }
+  constexpr int kHugeDim = 46341;
+  PrepareOnlyDepthwiseConvolutionOpModel m(
+      ops::builtin::Register_DEPTHWISE_CONVOLUTION_GENERIC_OPT(),
+      {TensorType_FLOAT32, {kHugeDim, kHugeDim, 1, 1}},
+      {TensorType_INT8, {1, 1, 1, 1}, -1.0f, 1.0f}, {TensorType_FLOAT32, {}},
+      Padding_VALID);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(DepthwiseConvolutionPrepareSecurityTest, RejectsInt4FilterSizeOverflow) {
+  constexpr int kHugeDim = 46341;
+  PrepareOnlyDepthwiseConvolutionOpModel m(
+      ops::builtin::Register_DEPTHWISE_CONVOLUTION_GENERIC_OPT(),
+      {TensorType_FLOAT32, {1, kHugeDim, 1, 1}},
+      {TensorType_INT4, {1, kHugeDim, 1, kHugeDim}, 0.0f, 0.0f, 1.0f, 0},
+      {TensorType_FLOAT32, {}}, Padding_VALID);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
 
 TEST_P(DepthwiseConvolutionOpTest, ActivationReluTest) {
   DepthwiseConvolutionOpModel m(

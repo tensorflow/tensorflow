@@ -1139,7 +1139,9 @@ to be batched.}]>:$captured_tensors,
     DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["low_priority_padding_with_max_batch_size", "low_priority_padding_with_next_allowed_batch_size", "priority_isolation", "priority_merge"]>, "\"low_priority_padding_with_max_batch_size\"">:$mixed_priority_policy,
     DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["PAD_UP", "BATCH_DOWN", "MINIMIZE_TPU_COST_PER_REQUEST"]>, "\"PAD_UP\"">:$batch_padding_policy,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$enable_large_batch_splitting,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$enable_priority_aware_batch_scheduler
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$enable_priority_aware_batch_scheduler,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$enable_priority_aware_batch_scheduler_resplit,
+    DefaultValuedOptionalAttr<I64Attr, "0">:$num_warmup_batch_threads
   );
 
   let results = (outs
@@ -11511,6 +11513,7 @@ Send an rpc to the external service that builds rpc payload based on prediction 
     Arg<TF_Int64Tensor, [{Scalar int64 tensor representing steps.}]>:$steps,
     Arg<TF_Int64Tensor, [{Scalar int64 tensor representing the GAIA ID.}]>:$gaia_id,
     Arg<TF_Uint64Tensor, [{1-D uint64 tensor representing a list of video IDs.}]>:$video_id,
+    Arg<TF_Int64Tensor, [{Scalar int64 tensor representing the timestamp.}]>:$timestamp,
 
     StrAttr:$op_config
   );

@@ -415,7 +415,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     }
 
     void CancelThreads() TF_LOCKS_EXCLUDED(mu_) {
-      cancellation_manager_->StartCancel();
+      if (cancellation_manager_ != nullptr) {
+        cancellation_manager_->StartCancel();
+      }
       mutex_lock l(*mu_);
       cancelled_ = true;
       cond_var_->notify_all();

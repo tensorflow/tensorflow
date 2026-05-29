@@ -16,20 +16,25 @@ limitations under the License.
 #include "xla/backends/profiler/subprocess/subprocess_registry.h"
 
 #include <cstdint>
+#include <ctime>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/no_destructor.h"
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_set.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
+#include "grpc/support/time.h"
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/support/channel_arguments.h"
 #include "xla/tsl/platform/env.h"
@@ -40,10 +45,12 @@ namespace profiler {
 namespace subprocess {
 namespace {
 
+constexpr absl::Duration kConnectTimeout = absl::Seconds(30);
+
 // Registry of subprocesses.
 struct Registry {
   absl::Mutex mu;
-  absl::flat_hash_set<SubprocessInfo> subprocesses ABSL_GUARDED_BY(mu);
+  absl::flat_hash_map<int32_t, SubprocessInfo> subprocesses ABSL_GUARDED_BY(mu);
 };
 
 // Global registry of subprocesses.
@@ -52,7 +59,8 @@ Registry& registry() {
   return *registry;
 }
 
-absl::Status RegisterSubprocess(SubprocessInfo&& subprocess_info) {
+absl::StatusOr<SubprocessCleanup> RegisterSubprocess(
+    SubprocessInfo&& subprocess_info) {
   // This check ensures that there can't be a loop in the subprocess profiler
   // graph.
   if (subprocess_info.pid == tsl::Env::Default()->GetProcessId()) {
@@ -68,16 +76,39 @@ absl::Status RegisterSubprocess(SubprocessInfo&& subprocess_info) {
     return absl::InternalError(
         absl::StrCat("Unable to create channel to ", subprocess_info.address));
   }
+  // TODO(b/507516897): Remove manual conversion once grpc releases the
+  // absl::Time support.
+  gpr_timespec connect_timeout_spec;
+  timespec absl_timespec = absl::ToTimespec(absl::Now() + kConnectTimeout);
+  connect_timeout_spec.tv_sec = absl_timespec.tv_sec;
+  connect_timeout_spec.tv_nsec = absl_timespec.tv_nsec;
+  connect_timeout_spec.clock_type = GPR_CLOCK_REALTIME;
+  if (!channel->WaitForConnected(connect_timeout_spec)) {
+    return absl::DeadlineExceededError(
+        absl::StrCat("Timeout while connecting to ", subprocess_info.address));
+  }
   subprocess_info.profiler_stub =
       tensorflow::grpc::ProfilerService::NewStub(channel);
+  int32_t pid_to_unregister = subprocess_info.pid;
   {
     absl::MutexLock l(registry().mu);
-    if (!registry().subprocesses.insert(subprocess_info).second) {
+    if (!registry()
+             .subprocesses
+             .try_emplace(subprocess_info.pid, std::move(subprocess_info))
+             .second) {
       return absl::AlreadyExistsError(
           absl::StrCat(subprocess_info.DebugString(), " already registered"));
     }
   }
-  return absl::OkStatus();
+  return SubprocessCleanup([pid_to_unregister]() {
+    absl::MutexLock l(registry().mu);
+    if (registry().subprocesses.erase(pid_to_unregister) == 0) {
+      LOG_IF(WARNING, registry().subprocesses.find(pid_to_unregister) !=
+                          registry().subprocesses.end())
+          << "Failed to unregister "
+          << registry().subprocesses.at(pid_to_unregister).DebugString();
+    }
+  });
 }
 
 }  // namespace
@@ -86,29 +117,24 @@ std::string SubprocessInfo::DebugString() const {
   return absl::StrCat("SubprocessInfo(pid: ", pid, ", address: ", address, ")");
 }
 
-absl::Status RegisterSubprocess(uint32_t pid, int port) {
-  return RegisterSubprocess({pid, absl::StrCat("localhost:", port)});
-}
-
-absl::Status RegisterSubprocess(uint32_t pid,
-                                absl::string_view unix_domain_socket) {
-  return RegisterSubprocess({pid, absl::StrCat("unix:", unix_domain_socket)});
-}
-
-absl::Status UnregisterSubprocess(uint32_t pid) {
-  absl::MutexLock l(registry().mu);
-  if (registry().subprocesses.erase({pid, ""}) == 0) {
-    LOG(WARNING) << "Subprocess " << pid << " not found";
-    return absl::NotFoundError(absl::StrCat(pid, " not found"));
+absl::StatusOr<SubprocessCleanup> RegisterSubprocess(
+    int32_t pid, std::optional<int> port,
+    std::optional<absl::string_view> unix_domain_socket) {
+  if (!port.has_value() && !unix_domain_socket.has_value()) {
+    return absl::InvalidArgumentError(
+        "Either port or unix_domain_socket must be set");
   }
-  return absl::OkStatus();
+  const std::string address = unix_domain_socket.has_value()
+                                  ? absl::StrCat("unix:", *unix_domain_socket)
+                                  : absl::StrCat("localhost:", *port);
+  return RegisterSubprocess({pid, std::move(address)});
 }
 
 std::vector<SubprocessInfo> GetRegisteredSubprocesses() {
   absl::MutexLock l(registry().mu);
   std::vector<SubprocessInfo> subprocesses;
   subprocesses.reserve(registry().subprocesses.size());
-  for (const SubprocessInfo& subprocess_info : registry().subprocesses) {
+  for (const auto& [_, subprocess_info] : registry().subprocesses) {
     subprocesses.push_back(subprocess_info);
   }
   return subprocesses;

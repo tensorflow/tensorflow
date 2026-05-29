@@ -39,7 +39,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 70.
+// Next ID to use: 71.
 message ConverterFlags {
   reserved 54, 61;
 
@@ -383,4 +383,7 @@ message ConverterFlags {
 
   // If false, downcast x64 tensors and inputs to x32.
   optional bool enable_x64 = 69 [default = true];
+
+  // If true, enable unsafe single batch rank reduction.
+  optional bool unsafe_single_batch_rank_reduction = 70 [default = false];
 }

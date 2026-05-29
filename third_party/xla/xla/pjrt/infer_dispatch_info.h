@@ -16,19 +16,25 @@ limitations under the License.
 #ifndef XLA_PJRT_INFER_DISPATCH_INFO_H_
 #define XLA_PJRT_INFER_DISPATCH_INFO_H_
 
+#include "absl/status/statusor.h"
 #include "xla/pjrt/common_pjrt_client.h"
 
 namespace xla {
 
+// Helper for extracting parameter shapes from GetParameterShapes.
+std::vector<Shape> GetParameterShapes(const ComputationLayout& layout);
+
 // Constructs CommonPjRtLoadedExecutable::DispatchInfo from both device lists
 // and metadata extracted from the final HloModule.
 absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo> InferDispatchInfo(
-    CommonPjRtClient* client, const ComputationLayout& layout,
-    const HloInputOutputAliasConfig& alias_config,
+    CommonPjRtClient* client, std::vector<Shape> parameter_device_shapes,
+    Shape output_device_shape, const HloInputOutputAliasConfig& alias_config,
     std::shared_ptr<DeviceAssignment> device_assignment,
     std::vector<CommonPjRtLoadedExecutable::LogicalDeviceIds>
         addressable_device_logical_ids,
-    std::vector<PjRtDevice*> addressable_devices, bool tuple_inputs);
+    std::vector<PjRtDevice*> addressable_devices,
+    std::unique_ptr<CommonPjRtLoadedExecutable::DispatchInfo::Extras> extras,
+    bool tuple_inputs);
 
 // Constructs CommonPjRtLoadedExecutable::DispatchInfo from both device lists
 // and metadata extracted from the input mlir::ModuleOp. This may fail if all

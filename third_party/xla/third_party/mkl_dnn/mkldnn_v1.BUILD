@@ -126,6 +126,11 @@ _COPTS_LIST = select({
     "-DDNNL_ENABLE_GRAPH_DUMP",
 ] + tf_openmp_copts()
 
+_CXXOPTS_LIST = select({
+    "@xla//xla/tsl:windows": ["/std:c++17"],
+    "//conditions:default": ["-std=c++17"],
+})
+
 _INCLUDES_LIST = [
     "include",
     "src",
@@ -180,7 +185,17 @@ cc_library(
     copts = [
         "-O1",
         "-U_FORTIFY_SOURCE",
-    ] + _COPTS_LIST,
+    ] + _COPTS_LIST + _CXXOPTS_LIST,
+    includes = _INCLUDES_LIST,
+    textual_hdrs = _TEXTUAL_HDRS_LIST,
+    visibility = ["//visibility:public"],
+)
+
+# Separate out the C-library to limit copts.
+cc_library(
+    name = "onednn_ittnotify",
+    srcs = glob(["src/common/ittnotify/*.c"]),
+    copts = _COPTS_LIST,
     includes = _INCLUDES_LIST,
     textual_hdrs = _TEXTUAL_HDRS_LIST,
     visibility = ["//visibility:public"],
@@ -193,7 +208,6 @@ cc_library(
             "src/common/*.cpp",
             "src/cpu/*.cpp",
             "src/cpu/**/*.cpp",
-            "src/common/ittnotify/*.c",
             "src/cpu/jit_utils/**/*.cpp",
             "src/cpu/x64/**/*.cpp",
             "src/graph/interface/*.cpp",
@@ -213,7 +227,7 @@ cc_library(
             "src/cpu/sycl/**",
         ],
     ),
-    copts = _COPTS_LIST,
+    copts = _COPTS_LIST + _CXXOPTS_LIST,
     includes = _INCLUDES_LIST,
     # TODO(penpornk): Use lrt_if_needed from tensorflow.bzl instead.
     linkopts = select({
@@ -225,7 +239,10 @@ cc_library(
     }),
     textual_hdrs = _TEXTUAL_HDRS_LIST,
     visibility = ["//visibility:public"],
-    deps = [":onednn_autogen"] + if_mkl_ml(
+    deps = [
+        ":onednn_autogen",
+        ":onednn_ittnotify",
+    ] + if_mkl_ml(
         ["@xla//xla/tsl/mkl:intel_binary_blob"],
         [],
     ),

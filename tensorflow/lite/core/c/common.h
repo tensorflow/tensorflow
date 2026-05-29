@@ -56,6 +56,7 @@ limitations under the License.
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #include "tensorflow/lite/core/c/c_api_types.h"  // IWYU pragma: export
 
@@ -277,13 +278,34 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
     }                                                                        \
   } while (0)
 
-#define TF_LITE_ENSURE_OK(context, status) \
-  do {                                     \
-    const TfLiteStatus s = (status);       \
-    if ((s) != kTfLiteOk) {                \
-      return s;                            \
-    }                                      \
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
+#define TF_LITE_VAR_ARG_HEAD(FIRST, ...) FIRST
+#define TF_LITE_STRINGIFY_HELPER(x) #x
+#define TF_LITE_STRINGIFY(x) TF_LITE_STRINGIFY_HELPER(x)
+// Checks that `status` evaluates to `kTfLiteOk`.
+//
+// Can take a printf style log message and its parameters after the status. The
+// message will be printed using `TF_LITE_KERNEL_LOG` in case of error.
+#define TF_LITE_ENSURE_OK(context, status, ...)                              \
+  do {                                                                       \
+    const TfLiteStatus s = (status);                                         \
+    if (s != kTfLiteOk) {                                                    \
+      if (sizeof(TF_LITE_VAR_ARG_HEAD("" __VA_ARGS__)) > sizeof("")) {       \
+        TF_LITE_MAYBE_KERNEL_LOG((context), __FILE__ ":" TF_LITE_STRINGIFY(  \
+                                                __LINE__) ": " __VA_ARGS__); \
+      }                                                                      \
+      return s;                                                              \
+    }                                                                        \
   } while (0)
+#else
+#define TF_LITE_ENSURE_OK(context, status, ...) \
+  do {                                          \
+    const TfLiteStatus s = (status);            \
+    if ((s) != kTfLiteOk) {                     \
+      return s;                                 \
+    }                                           \
+  } while (0)
+#endif
 
 // `std::unreachable` not available until CC23.
 #ifdef __GNUC__  // GCC, Clang, ICC
@@ -1060,6 +1082,13 @@ typedef struct TfLiteContext {
   /// WARNING: This is an experimental interface that is subject to change.
   TfLiteStatus (*ReleaseSubgraphContext)(struct TfLiteContext* context,
                                          int subgraph_index);
+#if defined(_WIN32)
+  /// Create a array of a given `size` (uninitialized entries).
+  TfLiteIntArray* (*TfLiteIntArrayCreate)(int size);  // NOLINT
+
+  /// Free memory of array `a`.
+  void (*TfLiteIntArrayFree)(TfLiteIntArray* a);  // NOLINT
+#endif                                            // defined(_WIN32)
 } TfLiteContext;
 
 /// `TfLiteOperator` is an external version of `TfLiteRegistration`

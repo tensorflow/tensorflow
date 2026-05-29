@@ -4,6 +4,7 @@ package xla.gpu;
 
 import "xla/autotuning.proto";
 import "xla/tsl/protobuf/dnn.proto";
+import "xla/xla.proto";
 import "xla/xla_data.proto";
 
 // Backend configs for XLA:GPU.
@@ -149,6 +150,11 @@ message CollectiveBackendConfig {
   }
   CollectiveBackend backend = 5;
   reserved 2, 4;
+
+  // Memory mode for this collective operation. Determines which memory space
+  // the operation's buffers must be allocated in (private, symmetric, or peer
+  // memory).
+  xla.DebugOptions.CollectivesMode collectives_mode = 6;
 }
 
 // Backend config for collective metadata operation.
@@ -220,6 +226,34 @@ message BlockLevelFusionConfig {
 
   // Allow/disallow automatic warp specialization.
   bool is_warp_specialization_allowed = 7;
+
+  // Number of waves per execution unit (0 = no restriction).
+  int32 waves_per_eu = 8;
+}
+
+// A backend config for dynamic-slice and dynamic-update-slice instructions
+// whose runtime offset is a simple function of the parent loop iteration.
+// Only set on instructions where offset analysis succeeds; absence of this
+// config means the slice is truly data-dependent.
+message DynamicSliceConfig {
+  // Index into the while loop nest. Value `0` means that the dynamic slice
+  // offset depends on the innermost while loop. Value `1` means that it depends
+  // on the parent while loop. See `while_loop.h` in `xla/backends/gpu/runtime`
+  // that documents how while loops work at run time in XLA:GPU.
+  //
+  // Must be set when byte_stride != 0. When byte_stride == 0 the offset is
+  // loop invariant and fully defined by constant offsets.
+  optional int64 loop_index = 1;
+
+  // Initial byte offset into the sliced buffer. Together with a negative
+  // byte_stride it allows traversing buffer slices backwards.
+  int64 byte_offset = 2;
+
+  // Byte stride into the sliced buffer. At run time the buffer offset is
+  // computed as `byte_offset + loop_iteration[loop_index] * byte_stride`.
+  //
+  // When byte_stride is 0 the DS/DUS is loop-invariant (fully static offset).
+  int64 byte_stride = 3;
 }
 
 message DynamicMemcpyConfig {
@@ -396,7 +430,7 @@ enum DeviceType {
 }
 
 // Generic backend config for XLA:GPU
-// Next-Id: 18
+// Next-Id: 19
 message GpuBackendConfig {
   // Specifies which operation queue the current instruction will run on.
   // A backend may have multiple operation queues to run instructions
@@ -405,10 +439,6 @@ message GpuBackendConfig {
   // operation_queue_id->actual_hardware_queue_id if runtime will create
   // different IDs.
   int64 operation_queue_id = 1;
-
-  // Specifies which operation queues to await for data when running with
-  // multiple operation queues.
-  repeated int64 wait_on_operation_queues = 2;
 
   oneof backend_config {
     CudnnConvBackendConfig cudnn_conv_backend_config = 3;
@@ -434,6 +464,8 @@ message GpuBackendConfig {
     CollectiveMetadataBackendConfig collective_metadata_backend_config = 16;
 
     GroupedGemmBackendConfig grouped_gemm_backend_config = 17;
+
+    DynamicSliceConfig dynamic_slice_config = 18;
   }
 
   // This attribute instructs the latency-hiding scheduler to
@@ -454,4 +486,6 @@ message GpuBackendConfig {
 
   // Specifies the device type for the instruction.
   DeviceType device_type = 14;
+
+  reserved 2;  // was wait_on_operation_queues
 }

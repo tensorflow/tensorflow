@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/bit.h"
 #include "xla/core/collectives/rank_id.h"
@@ -100,7 +101,7 @@ absl::Status LaunchTypedKernel(
   static constexpr bool kIsTwoShot =
       TagType::kAllReduceStrategy == AllReduceStrategy::kTwoShot;
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto kernel,
       (se::gpu::GpuKernelRegistry::GetGlobalRegistry()
            .LoadKernel<
@@ -252,12 +253,16 @@ absl::Status IsAllReduceKernelSupported(
   if (!is_collective_kernel_enabled) {
     return absl::UnimplementedError("Collective kernel is not enabled.");
   }
-  const auto compute_capability = device_info.cuda_compute_capability();
-  if (!compute_capability.IsAtLeastHopper()) {
-    return absl::UnimplementedError(
-        absl::StrCat("Collective kernel is not supported for compute "
-                     "capability less than 9.0. Got ",
-                     compute_capability.ToString(), "."));
+  // Check if the device supports Triton collective codegen:
+  // CUDA: Requires compute capability 9.0+ (Hopper or newer)
+  // ROCm: All versions with Triton support are enabled
+  if (!device_info.cuda_compute_capability().IsAtLeastHopper() &&
+      !device_info.gpu_compute_capability().IsRocm()) {
+    return absl::UnimplementedError(absl::StrCat(
+        "Triton collective codegen requires CUDA compute capability >= 9.0 "
+        "(Hopper or newer) or a ROCm device with Triton support. "
+        "Got: ",
+        device_info.gpu_compute_capability().ToString(), "."));
   }
   // TODO(b/383125489): Support variadic arguments.
   if (num_operands != 1) {
@@ -312,7 +317,7 @@ absl::StatusOr<AllReduceInfo> BuildAllReduceInfo(
       num_elements * primitive_util::ByteWidth(element_type);
   const AllReduceStrategy strategy =
       GetAllReduceStrategy(byte_size, is_multimem_enabled);
-  TF_RETURN_IF_ERROR(IsAllReduceKernelSupported(
+  RETURN_IF_ERROR(IsAllReduceKernelSupported(
       is_collective_kernel_enabled, device_info, num_operands, reduction_kind,
       num_devices, num_elements, element_type, /*is_local=*/true,
       is_multimem_enabled, all_reduce->replica_groups()));
@@ -340,9 +345,9 @@ absl::Status RunAllReduceKernel(
     se::DeviceAddressBase symmetric_signal_buffer,  //
     uint32_t signal_value,                          //
     se::DeviceAddressBase metadata) {
-  TF_RETURN_IF_ERROR(IsAllReduceKernelSupported(num_ranks, num_elements,
-                                                element_type, reduction_kind,
-                                                all_reduce_strategy));
+  RETURN_IF_ERROR(IsAllReduceKernelSupported(num_ranks, num_elements,
+                                             element_type, reduction_kind,
+                                             all_reduce_strategy));
   const auto launch_kernel_impl = [&](auto tag) -> absl::Status {
     return LaunchTypedKernel(
         tag, stream, launch_dimensions, symmetric_input_buffer,

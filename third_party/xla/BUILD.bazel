@@ -12,3 +12,17 @@ license(
     package_name = "xla",
     license_kinds = ["@rules_license//licenses/spdx:Apache-2.0"],
 )
+
+filegroup(
+    name = "clang_tidy_config",
+    srcs = [".clang-tidy"],
+    visibility = ["//visibility:public"],
+)
+
+genrule(
+    name = "clang_tidy_config_noerrors",
+    srcs = ["//:.clang-tidy"],
+    outs = [".clang-tidy.noerrors"],
+    cmd = "grep -v 'WarningsAsErrors' $< > $@",
+    visibility = ["//visibility:public"],
+)

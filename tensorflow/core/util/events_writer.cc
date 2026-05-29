@@ -80,7 +80,7 @@ absl::Status EventsWriter::InitIfNeeded() {
       "Creating writable file ", filename_);
   recordio_writer_ = std::make_unique<io::RecordWriter>(recordio_file_.get());
   if (recordio_writer_ == nullptr) {
-    return errors::Unknown("Could not create record writer");
+    return absl::UnknownError("Could not create record writer");
   }
   num_outstanding_events_ = 0;
   VLOG(1) << "Successfully opened events file: " << filename_;
@@ -160,7 +160,8 @@ absl::Status EventsWriter::FileStillExists() {
   }
   // This can happen even with non-null recordio_writer_ if some other
   // process has removed the file.
-  return errors::Unknown("The events file ", filename_, " has disappeared.");
+  return absl::UnknownError(
+      absl::StrCat("The events file ", filename_, " has disappeared."));
 }
 
 }  // namespace tensorflow

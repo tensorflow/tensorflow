@@ -99,6 +99,17 @@ TEST(GpuTopologyTest, GetGpuTopologyForPlatformNvidiaH100) {
   EXPECT_TRUE(topology.has_gpu_target_config());
 }
 
+TEST(GpuTopologyTest, GetGpuTopologyForPlatformTeslaH200) {
+  auto topology_or = GetGpuTopologyForPlatform("tesla_h200", 2, 1, 4);
+  ASSERT_OK(topology_or);
+  const auto& topology = *topology_or;
+  EXPECT_EQ(topology.platform_version(), "tesla_h200");
+  EXPECT_EQ(topology.num_partitions(), 2);
+  EXPECT_EQ(topology.num_hosts_per_partition(), 1);
+  EXPECT_EQ(topology.num_devices_per_host(), 4);
+  EXPECT_TRUE(topology.has_gpu_target_config());
+}
+
 TEST(GpuTopologyTest, GetGpuTopologyForPlatformUmbrielB200) {
   auto topology_or = GetGpuTopologyForPlatform("umbriel_b200", 1, 2, 8);
   ASSERT_OK(topology_or);
@@ -118,6 +129,20 @@ TEST(GpuTopologyTest, GetGpuTopologyForPlatformOberonB200) {
   ASSERT_OK(topology_or);
   const auto& topology = *topology_or;
   EXPECT_EQ(topology.platform_version(), "oberon_b200");
+  EXPECT_EQ(topology.num_partitions(), 1);
+  EXPECT_EQ(topology.num_hosts_per_partition(), 2);
+  EXPECT_EQ(topology.num_devices_per_host(), 4);
+  EXPECT_TRUE(topology.has_gpu_target_config());
+  EXPECT_THAT(topology.host_target_machine_options(),
+              Optional(Property(&cpu::TargetMachineOptions::triple,
+                                "aarch64-linux-gnu")));
+}
+
+TEST(GpuTopologyTest, GetGpuTopologyForPlatformOberonB300) {
+  auto topology_or = GetGpuTopologyForPlatform("oberon_b300", 1, 2, 4);
+  ASSERT_OK(topology_or);
+  const auto& topology = *topology_or;
+  EXPECT_EQ(topology.platform_version(), "oberon_b300");
   EXPECT_EQ(topology.num_partitions(), 1);
   EXPECT_EQ(topology.num_hosts_per_partition(), 2);
   EXPECT_EQ(topology.num_devices_per_host(), 4);

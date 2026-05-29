@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "third_party/nvshmem/nvshmem.h"   // IWYU pragma: keep
 #include "third_party/nvshmem/nvshmemx.h"  // IWYU pragma: keep
 #include "xla/pjrt/distributed/key_value_store_interface.h"
@@ -89,10 +90,10 @@ absl::Status InitializeOnce() {
         char buf[sizeof(nvshmemx_uniqueid_t)];
         std::memcpy(buf, &nvshmem_id, sizeof(nvshmemx_uniqueid_t));
         absl::string_view nvshmem_id_str{buf, sizeof(buf)};
-        TF_RETURN_IF_ERROR(kv_store->Set(kKvStoreKey, nvshmem_id_str));
+        RETURN_IF_ERROR(kv_store->Set(kKvStoreKey, nvshmem_id_str));
       } else {
-        TF_ASSIGN_OR_RETURN(std::string id_str,
-                            kv_store->Get(kKvStoreKey, absl::Minutes(10)));
+        ASSIGN_OR_RETURN(std::string id_str,
+                         kv_store->Get(kKvStoreKey, absl::Minutes(10)));
         CHECK(id_str.size() >= sizeof(nvshmemx_uniqueid_t));
         std::memcpy(&nvshmem_id, id_str.data(), sizeof(nvshmemx_uniqueid_t));
       }

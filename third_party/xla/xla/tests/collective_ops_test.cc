@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -25,15 +24,16 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/types/span.h"
 #include "ml_dtypes/include/float8.h"
-#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/service/hlo_runner_interface.h"
+#include "xla/tests/aot_utils.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_utils.h"
+#include "xla/tests/pjrt_client_registry.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
@@ -50,15 +50,17 @@ namespace {
 //
 // Several tests requires at least four GPUs.  For instructions on running this
 // within Google, see go/multi-gpu-unit-test.
-class CollectiveOpsTest : public HloTestBase {
+class CollectiveOpsTest : public HloPjRtTestBase {
  public:
   CollectiveOpsTest() {
     VLOG(1) << "Running with " << num_devices() << " devices";
   }
 
+  int64_t num_devices() const { return test_runner().device_count(); }
+
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
     // Disable async->sync collective conversion pass to enable unit testing
     // of async collectives.
     debug_options.add_xla_disable_hlo_passes(
@@ -126,7 +128,7 @@ class CollectiveOpsTest : public HloTestBase {
         /*op=*/op, /*datatype=*/dtype);
     TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
                             ExecuteReplicated(std::move(module), {&input_value},
-                                              /*num_replicas=*/kNumReplicas,
+                                              /*num_devices=*/kNumReplicas,
                                               /*use_threads=*/true,
                                               /*run_hlo_passes=*/true));
     for (int replica_idx = 0; replica_idx < kNumReplicas; replica_idx++) {
@@ -329,7 +331,7 @@ TEST_F(CollectiveOpsTest, AllReduceAnd_Pred) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
-                        /*num_replicas=*/2,
+                        /*num_devices=*/2,
                         /*use_threads=*/true, /*run_hlo_passes=*/true));
   for (int replica_idx = 0; replica_idx < 2; replica_idx++) {
     EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<bool>({false}),
@@ -370,7 +372,7 @@ TEST_F(CollectiveOpsTest, AllReduceOr_Pred) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
-                        /*num_replicas=*/2,
+                        /*num_devices=*/2,
                         /*use_threads=*/true, /*run_hlo_passes=*/true));
   for (int replica_idx = 0; replica_idx < 2; replica_idx++) {
     EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<bool>({true}),
@@ -404,7 +406,7 @@ TEST_F(CollectiveOpsTest, AllReduce_AllCombinations) {
     TF_ASSERT_OK_AND_ASSIGN(
         std::vector<Literal> results,
         ExecuteReplicated(std::move(module), {&input_literal},
-                          /*num_replicas=*/devices.size(), &device_assn,
+                          /*num_devices=*/devices.size(), &device_assn,
                           /*run_hlo_passes=*/true, /*use_threads=*/true));
   }
 }
@@ -415,7 +417,7 @@ TEST_F(CollectiveOpsTest, AllReduce_AllCombinations) {
 //                     with async all-reduce enables
 TEST_F(CollectiveOpsTest, AllReduce_ManyConcurrentAllReduces) {
   if (test::DeviceTypeIs(test::kGpu)) {
-    GTEST_SKIP();
+    GTEST_SKIP() << "b/259130904: fails with async all-reduce enabled.";
   }
   const int64_t kNumElems = 1024;
   const int64_t kNumThreads = 200;
@@ -426,11 +428,6 @@ TEST_F(CollectiveOpsTest, AllReduce_ManyConcurrentAllReduces) {
   auto input_literal = LiteralUtil::CreateR1<float>(input_vec);
 
   HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/2);
-  auto executable =
-      CreateExecutable(MakeCrsModule(input_literal.shape(),
-                                     /*replica_groups=*/{}, config),
-                       /*run_hlo_passes=*/true)
-          .value();
   std::vector<int64_t> devices = {0, 1};
   auto device_assn = MakeDeviceAssn(devices);
 
@@ -442,9 +439,26 @@ TEST_F(CollectiveOpsTest, AllReduce_ManyConcurrentAllReduces) {
   tsl::thread::ThreadPool pool(tsl::Env::Default(), TestName(), kNumThreads);
   for (int64_t i = 0; i < kNumThreads * kRunsPerThread; ++i) {
     pool.Schedule([&] {
-      TF_ASSERT_OK(
-          ExecuteReplicatedWithHloRunner(executable.get(), opts, &device_assn)
-              .status());
+      absl::StatusOr<std::unique_ptr<PjRtClient>> client_status =
+          GetGlobalPjRtClientTestFactory().Get()();
+      CHECK_OK(client_status.status());
+      std::unique_ptr<PjRtClient> client = *std::move(client_status);
+      std::unique_ptr<HloRunnerPjRt> runner =
+          std::make_unique<HloRunnerPjRt>(std::move(client));
+
+      std::unique_ptr<HloModule> module =
+          MakeCrsModule(input_literal.shape(),
+                        /*replica_groups=*/{}, config);
+      absl::StatusOr<std::unique_ptr<OpaqueExecutable>> executable_status =
+          runner->CreateExecutable(std::move(module), /*run_hlo_passes=*/true);
+      CHECK_OK(executable_status.status());
+      std::unique_ptr<OpaqueExecutable> executable =
+          *std::move(executable_status);
+
+      TF_ASSERT_OK(runner
+                       ->ExecuteReplicatedWithExecutable(executable.get(), opts,
+                                                         &device_assn)
+                       .status());
       done.DecrementCount();
     });
   }
@@ -485,7 +499,7 @@ TEST_F(CollectiveOpsTest, AllReduce_CombinableAllReduces) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), {&input0_literal, &input1_literal},
-                        /*num_replicas=*/kNumReplicas,
+                        /*num_devices=*/kNumReplicas,
                         /*use_threads=*/true, /*run_hlo_passes=*/true));
   std::vector<float> expected0_vec = {2., 4., 6., 8., 10.};
   auto expected0_literal = LiteralUtil::CreateR1<float>(expected0_vec);
@@ -524,7 +538,7 @@ TEST_F(CollectiveOpsTest, AllReduce_ThreeReplicaGroups) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), {&input_literal}, /*num_replicas=*/4,
+      ExecuteReplicated(std::move(module), {&input_literal}, /*num_devices=*/4,
                         /*use_threads=*/true, /*run_hlo_passes=*/true));
 
   ASSERT_EQ(results.size(), 4);
@@ -570,7 +584,7 @@ TEST_F(CollectiveOpsTest, AllReduce_Degenerate) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
-                        /*num_replicas=*/kNumReplicas,
+                        /*num_devices=*/kNumReplicas,
                         /*use_threads=*/true, /*run_hlo_passes=*/true));
 
   ASSERT_EQ(results.size(), kNumReplicas);
@@ -673,7 +687,7 @@ TEST_F(CollectiveOpsTest, ReplicaId) {
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/num_devices());
   TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
@@ -1310,7 +1324,7 @@ TEST_F(CollectiveOpsTest, AllReduce_TupleAllReduce) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), {&input0_literal, &input1_literal},
-                        /*num_replicas=*/kNumReplicas,
+                        /*num_devices=*/kNumReplicas,
                         /*use_threads=*/true, /*run_hlo_passes=*/true));
   std::vector<float> expected0_vec = {2., 4., 6., 8., 10.};
   auto expected0_literal = LiteralUtil::CreateR1<float>(expected0_vec);
@@ -2434,6 +2448,11 @@ TEST_F(CollectiveOpsTest, SendRecv_ValidationAttr1) {
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  if (test::DeviceTypeIs(test::kGpu)) {
+    auto debug_options = config.debug_options();
+    debug_options.add_xla_disable_hlo_passes("hlo-verifier");
+    config.set_debug_options(debug_options);
+  }
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
@@ -2541,6 +2560,11 @@ body {
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  if (test::DeviceTypeIs(test::kGpu)) {
+    auto debug_options = config.debug_options();
+    debug_options.add_xla_disable_hlo_passes("hlo-verifier");
+    config.set_debug_options(debug_options);
+  }
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
@@ -2663,19 +2687,13 @@ TEST_F(CollectiveOpsTest, SendRecvCrossPartition) {
 class Fp8CollectiveOpsTest : public CollectiveOpsTest {
  public:
   Fp8CollectiveOpsTest() {
+    bool is_cuda =
+        test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuCuda);
     replacements_[kF8E4M3DatatypePlaceholder] =
-        Capability().IsCuda() ? "f8e4m3fn" : "f8e4m3fnuz";
+        is_cuda ? "f8e4m3fn" : "f8e4m3fnuz";
     replacements_[kF8E5M2DatatypePlaceholder] =
-        Capability().IsCuda() ? "f8e5m2" : "f8e5m2fnuz";
+        is_cuda ? "f8e5m2" : "f8e5m2fnuz";
     replacements_[kF8E8M0DatatypePlaceholder] = "f8e8m0fnu";
-  }
-
- protected:
-  const se::GpuComputeCapability& Capability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .gpu_compute_capability();
   }
 
   absl::flat_hash_map<absl::string_view, absl::string_view> replacements_;

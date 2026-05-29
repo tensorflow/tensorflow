@@ -47,7 +47,6 @@ class CollectiveBroadcastThunk : public CollectiveThunk {
       const HloCollectiveBroadcastInstruction* inst);
 
   const CollectiveConfig& config() const override { return config_; }
-  absl::Span<const Buffer> buffers() const { return buffers_; }
 
   static absl::string_view GetHloOpName() {
     return "collective-broadcast-start";
@@ -61,23 +60,10 @@ class CollectiveBroadcastThunk : public CollectiveThunk {
                            std::vector<Buffer> buffers);
 
   static absl::StatusOr<std::unique_ptr<CollectiveBroadcastThunk>> FromProto(
-      ThunkInfo thunk_info,
-      const CollectiveBroadcastStartThunkProto& thunk_proto,
+      ThunkInfo thunk_info, const CollectiveBroadcastThunkProto& thunk_proto,
       absl::Span<const BufferAllocation> buffer_allocations);
 
   absl::StatusOr<ThunkProto> ToProto() const override;
-
-  BufferUses buffer_uses() const override {
-    BufferUses uses;
-    uses.reserve(buffers_.size() * 2);
-    for (const Buffer& buffer : buffers_) {
-      uses.push_back(BufferUse::Read(buffer.source_buffer.slice,
-                                     buffer.source_buffer.shape));
-      uses.push_back(BufferUse::Write(buffer.destination_buffer.slice,
-                                      buffer.destination_buffer.shape));
-    }
-    return uses;
-  }
 
  protected:
   bool RequiresRendezvous() const override { return true; }
@@ -88,7 +74,6 @@ class CollectiveBroadcastThunk : public CollectiveThunk {
 
  private:
   const CollectiveConfig config_;
-  const std::vector<Buffer> buffers_;
 };
 
 absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,

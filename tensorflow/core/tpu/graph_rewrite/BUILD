@@ -383,6 +383,7 @@ cc_library(
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
         "//tensorflow/core/tpu:tpu_embedding_configuration_proto_rewrite",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:vlog_is_on",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",

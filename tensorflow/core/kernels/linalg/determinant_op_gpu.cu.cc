@@ -63,18 +63,34 @@ __global__ void DeterminantFromPivotedLUKernel(
     // Initialize sign to (-1)^order.
     const int order = PermutationOrder(n, all_pivots + o_idx * n);
     Scalar prod_sign = order % 2 ? Scalar(-1) : Scalar(1);
-    RealScalar sum_log_abs_det = RealScalar(0);
-    int i_idx = matrix_size * o_idx;
-    for (int i = 0; i < n; ++i, i_idx += stride) {
-      const RealScalar abs_i = Eigen::numext::abs(lu_factor[i_idx]);
-      sum_log_abs_det += Eigen::numext::log(abs_i);
-      prod_sign = prod_sign * Eigen::numext::sign(lu_factor[i_idx]);
-    }
     if (compute_log_abs_det) {
+      RealScalar sum_log_abs_det = RealScalar(0);
+      int i_idx = matrix_size * o_idx;
+      for (int i = 0; i < n; ++i, i_idx += stride) {
+        const RealScalar abs_i = Eigen::numext::abs(lu_factor[i_idx]);
+        sum_log_abs_det += Eigen::numext::log(abs_i);
+        if (abs_i == RealScalar(0)) {
+          prod_sign = Scalar(0);
+        } else {
+          if (Eigen::NumTraits<Scalar>::IsComplex) {
+            // Avoid Eigen::numext::sign as it may cause NaN issues for complex
+            // types in newer CUDA versions. Instead, calculate x / |x|.
+            prod_sign = prod_sign * (lu_factor[i_idx] /
+                                     Scalar(static_cast<RealScalar>(abs_i)));
+          } else {
+            prod_sign = prod_sign * Eigen::numext::sign(lu_factor[i_idx]);
+          }
+        }
+      }
       sign[o_idx] = prod_sign;
       log_abs_det[o_idx] = Scalar(sum_log_abs_det);
     } else {
-      log_abs_det[o_idx] = prod_sign * Eigen::numext::exp(sum_log_abs_det);
+      Scalar prod = prod_sign;
+      int i_idx = matrix_size * o_idx;
+      for (int i = 0; i < n; ++i, i_idx += stride) {
+        prod = prod * lu_factor[i_idx];
+      }
+      log_abs_det[o_idx] = prod;
     }
   }
 }

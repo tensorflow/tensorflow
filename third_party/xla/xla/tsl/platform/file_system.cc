@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/file_statistics.h"
 #include "xla/tsl/platform/logging.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #endif  // defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM) || \
         // defined(PLATFORM_GOOGLE)
 
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "tsl/platform/platform.h"
@@ -60,11 +62,9 @@ bool FileSystem::Match(absl::string_view filename, absl::string_view pattern) {
   return fnmatch(std::string(pattern).c_str(), std::string(filename).c_str(),
                  FNM_PATHNAME) == 0;
 #else
-  string regexp(pattern);
-  regexp = str_util::StringReplace(regexp, "*", "[^/]*", true);
-  regexp = str_util::StringReplace(regexp, "?", ".", true);
-  regexp = str_util::StringReplace(regexp, "(", "\\(", true);
-  regexp = str_util::StringReplace(regexp, ")", "\\)", true);
+  std::string regexp(pattern);
+  absl::StrReplaceAll({{"*", "[^/]*"}, {"?", "."}, {"(", "\\("}, {")", "\\)"}},
+                      &regexp);
   return RE2::FullMatch(filename, regexp);
 #endif  // defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM) || \
         // defined(PLATFORM_GOOGLE)
@@ -87,13 +87,11 @@ std::string FileSystem::TranslateName(absl::string_view name) const {
   return this->CleanPath(path);
 }
 
-absl::Status FileSystem::IsDirectory(const std::string& name,
-                                     TransactionToken* token) {
+absl::Status FileSystem::IsDirectory(const std::string& name) {
   // Check if path exists.
-  // TODO(sami):Forward token to other methods once migration is complete.
-  TF_RETURN_IF_ERROR(FileExists(name));
+  RETURN_IF_ERROR(FileExists(name));
   FileStatistics stat;
-  TF_RETURN_IF_ERROR(Stat(name, &stat));
+  RETURN_IF_ERROR(Stat(name, &stat));
   if (stat.is_directory) {
     return absl::OkStatus();
   }
@@ -106,10 +104,9 @@ absl::Status FileSystem::HasAtomicMove(const std::string& path,
   return absl::OkStatus();
 }
 
-void FileSystem::FlushCaches(TransactionToken* token) {}
+void FileSystem::FlushCaches() {}
 
 bool FileSystem::FilesExist(const std::vector<std::string>& files,
-                            TransactionToken* token,
                             std::vector<absl::Status>* status) {
   bool result = true;
   for (const auto& file : files) {
@@ -126,7 +123,6 @@ bool FileSystem::FilesExist(const std::vector<std::string>& files,
 }
 
 absl::Status FileSystem::DeleteRecursively(const std::string& dirname,
-                                           TransactionToken* token,
                                            int64_t* undeleted_files,
                                            int64_t* undeleted_dirs) {
   CHECK_NOTNULL(undeleted_files);
@@ -198,8 +194,12 @@ absl::Status FileSystem::DeleteRecursively(const std::string& dirname,
   return ret;
 }
 
-absl::Status FileSystem::RecursivelyCreateDir(const std::string& dirname,
-                                              TransactionToken* token) {
+absl::Status FileSystem::RecursivelyCreateDir(const std::string& dirname) {
+  return RecursivelyCreateDir(dirname, kDefaultMode);
+}
+
+absl::Status FileSystem::RecursivelyCreateDir(absl::string_view dirname,
+                                              uint32_t mode) {
   absl::string_view scheme, host, remaining_dir;
   this->ParseURI(dirname, &scheme, &host, &remaining_dir);
   std::vector<absl::string_view> sub_dirs;
@@ -237,7 +237,8 @@ absl::Status FileSystem::RecursivelyCreateDir(const std::string& dirname,
   std::string built_path(remaining_dir);
   for (const absl::string_view sub_dir : sub_dirs) {
     built_path = this->JoinPath(built_path, sub_dir);
-    absl::Status status = CreateDir(this->CreateURI(scheme, host, built_path));
+    absl::Status status =
+        CreateDir(this->CreateURI(scheme, host, built_path), mode);
     if (!status.ok() && status.code() != absl::StatusCode::kAlreadyExists) {
       return status;
     }
@@ -246,8 +247,7 @@ absl::Status FileSystem::RecursivelyCreateDir(const std::string& dirname,
 }
 
 absl::Status FileSystem::CopyFile(const std::string& src,
-                                  const std::string& target,
-                                  TransactionToken* token) {
+                                  const std::string& target) {
   return FileSystemCopyFile(this, src, this, target);
 }
 
@@ -500,16 +500,6 @@ std::string FileSystem::CreateURI(absl::string_view scheme,
     return std::string(path);
   }
   return absl::StrCat(scheme, "://", host, path);
-}
-
-std::string FileSystem::DecodeTransaction(const TransactionToken* token) {
-  // TODO(sami): Switch using StrCat when void* is supported
-  if (token) {
-    std::stringstream oss;
-    oss << "Token= " << token->token << ", Owner=" << token->owner;
-    return oss.str();
-  }
-  return "No Transaction";
 }
 
 }  // namespace tsl

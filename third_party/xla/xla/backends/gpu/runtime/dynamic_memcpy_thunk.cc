@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/copy_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -99,10 +100,10 @@ absl::StatusOr<ThunkProto> DynamicMemcpyThunk::ToProto() const {
 
   DynamicMemcpyThunkProto* dynamic_memcpy_thunk_proto =
       proto.mutable_dynamic_memcpy_thunk();
-  TF_ASSIGN_OR_RETURN(*dynamic_memcpy_thunk_proto->mutable_source_buffer(),
-                      source_buffer_.ToProto());
-  TF_ASSIGN_OR_RETURN(*dynamic_memcpy_thunk_proto->mutable_destination_buffer(),
-                      destination_buffer_.ToProto());
+  ASSIGN_OR_RETURN(*dynamic_memcpy_thunk_proto->mutable_source_buffer(),
+                   source_buffer_.ToProto());
+  ASSIGN_OR_RETURN(*dynamic_memcpy_thunk_proto->mutable_destination_buffer(),
+                   destination_buffer_.ToProto());
   dynamic_memcpy_thunk_proto->set_mem_size(mem_size_);
   *dynamic_memcpy_thunk_proto->mutable_offsets() = offsets_.ToProto();
   return proto;
@@ -112,14 +113,13 @@ absl::StatusOr<std::unique_ptr<DynamicMemcpyThunk>>
 DynamicMemcpyThunk::FromProto(
     ThunkInfo thunk_info, const DynamicMemcpyThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       ShapedSlice src_slice,
       ShapedSlice::FromProto(thunk_proto.source_buffer(), buffer_allocations));
-  TF_ASSIGN_OR_RETURN(ShapedSlice dst_slice,
-                      ShapedSlice::FromProto(thunk_proto.destination_buffer(),
-                                             buffer_allocations));
-  TF_ASSIGN_OR_RETURN(Offsets offsets,
-                      Offsets::FromProto(thunk_proto.offsets()));
+  ASSIGN_OR_RETURN(ShapedSlice dst_slice,
+                   ShapedSlice::FromProto(thunk_proto.destination_buffer(),
+                                          buffer_allocations));
+  ASSIGN_OR_RETURN(Offsets offsets, Offsets::FromProto(thunk_proto.offsets()));
   return std::make_unique<DynamicMemcpyThunk>(std::move(thunk_info), src_slice,
                                               dst_slice, thunk_proto.mem_size(),
                                               std::move(offsets));

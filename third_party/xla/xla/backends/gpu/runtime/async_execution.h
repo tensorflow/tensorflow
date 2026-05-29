@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/runtime/object_pool.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
@@ -80,7 +81,9 @@ class AsyncExecution {
   // We need to know the thunk that starts an async execution, as we use its id
   // as a key in the execution scoped state and its profile annotation for
   // logging.
-  explicit AsyncExecution(const Thunk* start_thunk);
+  explicit AsyncExecution(Thunk::ThunkInfo start_thunk_info);
+
+  ThunkId start_thunk_id() const { return start_thunk_info_.thunk_id; }
 
   // An RAII guard that automatically records an event on a given async stream
   // when it goes out of scope.
@@ -115,15 +118,11 @@ class AsyncExecution {
   // recorded by the corresponding Start call.
   absl::Status Done(Thunk::ExecutionScopedState* state, se::Stream* stream);
 
-  // Returns an async thunk that owns the async execution scope. For pipelined
-  // async operations this is the canonical start thunk.
-  const Thunk* start_thunk() const { return start_thunk_; }
-
  private:
   // Returns or creates an event pool for the given executor.
   EventPool& GetOrCreatePool(se::StreamExecutor* executor);
 
-  const Thunk* start_thunk_;
+  const Thunk::ThunkInfo start_thunk_info_;
 
   absl::Mutex mu_;
   absl::node_hash_map<se::StreamExecutor*, EventPool> event_pools_

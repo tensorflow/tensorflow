@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/client/client.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/executable_run_options.h"
@@ -116,14 +117,14 @@ class LocalExecutable {
   absl::StatusOr<T> AsyncCallAndBlockHostUntilDone(
       absl::Span<Shape const* const> argument_shapes,
       const ExecutableRunOptions& run_options, AsyncCallback&& async_callback) {
-    TF_ASSIGN_OR_RETURN(auto options_and_stream,
-                        RunHelper(argument_shapes, run_options));
+    ASSIGN_OR_RETURN(auto options_and_stream,
+                     RunHelper(argument_shapes, run_options));
     ExecutableRunOptions options = options_and_stream.first.run_options();
     options.set_device_ordinal(-1);
     absl::StatusOr<T> result = async_callback(options);
     absl::Status block_status = options.stream()->BlockHostUntilDone();
-    TF_RETURN_IF_ERROR(result.status());
-    TF_RETURN_IF_ERROR(block_status);
+    RETURN_IF_ERROR(result.status());
+    RETURN_IF_ERROR(block_status);
     return result;
   }
 

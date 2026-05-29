@@ -47,7 +47,7 @@ PYBIND11_MODULE(_pywrap_device_lib, m) {
     std::string serialized_attr;
     for (const auto& device : devices) {
       if (!device->attributes().SerializeToString(&serialized_attr)) {
-        tensorflow::MaybeRaiseFromStatus(tensorflow::errors::Internal(
+        tensorflow::MaybeRaiseFromStatus(absl::InternalError(
             "Could not serialize DeviceAttributes to bytes"));
       }
 

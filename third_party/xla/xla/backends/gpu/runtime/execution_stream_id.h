@@ -131,6 +131,12 @@ void AbslStringify(Sink& sink, const ExecutionStreamId& id) {
   }
 }
 
+// Number of async compute execution streams.
+inline constexpr int kDefaultNumComputeStreams = 4;
+
+// Number of async communication streams when multi-streaming is enabled.
+inline constexpr int kDefaultNumCommunicationStreams = 2;
+
 }  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_EXECUTION_STREAM_ID_H_

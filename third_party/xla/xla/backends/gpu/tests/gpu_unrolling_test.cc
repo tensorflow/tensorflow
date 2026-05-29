@@ -17,9 +17,12 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
+#include "absl/strings/substitute.h"
 #include "xla/backends/gpu/tests/gpu_pjrt_codegen_test.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/semantic_version.h"
 
 namespace xla {
 namespace gpu {
@@ -27,7 +30,7 @@ namespace {
 
 class GpuUnrollingTest : public GpuPjRtCodegenTest {};
 
-const char *const kAddModule = R"(
+const char* const kAddModule = R"(
     HloModule test_module
 
     fused_computation {
@@ -42,23 +45,37 @@ const char *const kAddModule = R"(
       ROOT fusion = f32[20000,20000]{1,0} fusion(p0, p1), kind=kLoop, calls=fused_computation
     })";
 
+int GetExpectedUnrollFactor(
+    const stream_executor::DeviceDescription& device_description) {
+  // The default unrolling factor is 4 (128 bit vector loads and stores), but
+  // CUDA 12.9+ supports 256 bit wide vector loads and stores on Blackwell
+  // hardware, therefore we expect an unrolling factor of 8.
+  if (device_description.cuda_compute_capability().IsBlackwell() &&
+      device_description.compile_time_toolkit_version() >=
+          stream_executor::SemanticVersion(12, 9, 0)) {
+    return 8;
+  }
+  return 4;
+}
+
 TEST_F(GpuUnrollingTest, UnrollDefaultTimes) {
-  // The default unrolling factor is 4.
   HloModuleConfig config;
   auto debug_options = GetDebugOptionsFromFlags();
   config.set_debug_options(debug_options);
   auto hlo_module = ParseAndReturnVerifiedModule(kAddModule, config).value();
 
-  EXPECT_OK(CompileAndVerifyIr(std::move(hlo_module),
-                               R"(
+  EXPECT_OK(CompileAndVerifyIr(
+      std::move(hlo_module),
+      absl::Substitute(R"(
 ; CHECK-LABEL: @{{[a-z_]*}}fusion
 ; CHECK-NOT: load float
 ; CHECK-NOT: store float
+; CHECK: load <$0 x float>
 ; CHECK: load <4 x float>
-; CHECK: load <4 x float>
-; CHECK: store <4 x float>
+; CHECK: store <$0 x float>
       )",
-                               /*match_optimized_ir=*/true));
+                       GetExpectedUnrollFactor(device_description())),
+      /*match_optimized_ir=*/true));
 }
 
 TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
@@ -66,7 +83,7 @@ TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
   auto debug_options = GpuPjRtCodegenTest::GetDebugOptionsForTest();
   config.set_debug_options(debug_options);
 
-  const char *const kUnfusedAddModule = R"(
+  const char* const kUnfusedAddModule = R"(
     HloModule test_module
     ENTRY AddFunc {
       p0 = f32[20000,20000]{1,0} parameter(0)
@@ -76,16 +93,18 @@ TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
 
-  EXPECT_OK(CompileAndVerifyIr(std::move(hlo_module),
-                               R"(
+  EXPECT_OK(CompileAndVerifyIr(
+      std::move(hlo_module),
+      absl::Substitute(R"(
 ; CHECK-LABEL: @wrapped_add
 ; CHECK-NOT: load float
 ; CHECK-NOT: store float
+; CHECK: load <$0 x float>
 ; CHECK: load <4 x float>
-; CHECK: load <4 x float>
-; CHECK: store <4 x float>
+; CHECK: store <$0 x float>
       )",
-                               /*match_optimized_ir=*/true));
+                       GetExpectedUnrollFactor(device_description())),
+      /*match_optimized_ir=*/true));
 }
 
 TEST_F(GpuUnrollingTest, UnrollUnfusedSine) {
@@ -93,7 +112,7 @@ TEST_F(GpuUnrollingTest, UnrollUnfusedSine) {
   auto debug_options = GpuPjRtCodegenTest::GetDebugOptionsForTest();
   config.set_debug_options(debug_options);
 
-  const char *const kUnfusedAddModule = R"(
+  const char* const kUnfusedAddModule = R"(
     HloModule test_module
 
     ENTRY SineFunc {
@@ -103,13 +122,15 @@ TEST_F(GpuUnrollingTest, UnrollUnfusedSine) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
 
-  EXPECT_OK(CompileAndVerifyIr(std::move(hlo_module),
-                               R"(
-; CHECK: load <4 x float>
-; CHECK-NOT: load <4 x float>
-; CHECK: store <4 x float>
+  EXPECT_OK(CompileAndVerifyIr(
+      std::move(hlo_module),
+      absl::Substitute(R"(
+; CHECK: load <$0 x float>
+; CHECK-NOT: load <$0 x float>
+; CHECK: store <$0 x float>
       )",
-                               /*match_optimized_ir=*/true));
+                       GetExpectedUnrollFactor(device_description())),
+      /*match_optimized_ir=*/true));
 }
 
 TEST_F(GpuUnrollingTest, UnrollMultiOutputFusion) {
@@ -120,7 +141,7 @@ TEST_F(GpuUnrollingTest, UnrollMultiOutputFusion) {
   debug_options.add_xla_disable_hlo_passes("layout-assignment");
   config.set_debug_options(debug_options);
 
-  const char *const kMultiOutputFusionModule = R"(
+  const char* const kMultiOutputFusionModule = R"(
     HloModule test_module
 
     fused_computation {

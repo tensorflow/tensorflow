@@ -15,29 +15,115 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/all_gather_thunk.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <memory>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/platform_util.h"
+#include "xla/service/service_executable_run_options.h"
+#include "xla/service/shaped_slice.h"
+#include "xla/shape_util.h"
+#include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/semantic_version.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
+#include "xla/stream_executor/trace_command_buffer_factory.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
 
 using ::tsl::proto_testing::EqualsProto;
 
+static se::StreamExecutor* GpuExecutor() {
+  auto name =
+      absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
+  auto* platform = se::PlatformManager::PlatformWithName(name).value();
+  return platform->ExecutorForDevice(0).value();
+}
+
+// Child command nodes (CreateChildCommand / UpdateChildCommand) require
+// CUDA 12.9+ driver and toolkit.
+static bool IsAtLeastCuda12900(const se::StreamExecutor* executor) {
+  const auto& desc = executor->GetDeviceDescription();
+  const auto* cuda_cc = desc.gpu_compute_capability().cuda_compute_capability();
+  if (cuda_cc == nullptr) {
+    return false;
+  }
+  return std::min(desc.driver_version(), desc.compile_time_toolkit_version()) >=
+         se::SemanticVersion(12, 9, 0);
+}
+
+// Test-only subclass whose ExecuteOnStream and Record both bypass NCCL so the
+// command-buffer wiring can be exercised without a live communicator. Record
+// traces a trivial memset into a nested command buffer and attaches it as a
+// child command, mirroring the structure produced by the production Record.
+class NoOpAllGatherThunk : public AllGatherThunk {
+ public:
+  NoOpAllGatherThunk(Thunk::ThunkInfo thunk_info, CollectiveConfig config,
+                     std::vector<CollectiveThunk::Buffer> buffers)
+      : AllGatherThunk(std::move(thunk_info), std::move(config),
+                       std::move(buffers)) {}
+
+  absl::Status ExecuteOnStream(const ExecuteParams&) override {
+    return absl::OkStatus();
+  }
+
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const ExecuteParams& execute_params, const RecordParams&,
+      RecordAction record_action, se::CommandBuffer* command_buffer) override {
+    se::DeviceAddressBase dst =
+        execute_params.buffer_allocations->GetDeviceAddress(
+            buffers()[0].destination_buffer.slice);
+    ASSIGN_OR_RETURN(
+        std::unique_ptr<se::CommandBuffer> nested_cmd,
+        se::TraceCommandBufferFactory::Create(
+            execute_params.stream->parent(),
+            execute_params.command_buffer_trace_stream,
+            [&](se::Stream* stream) { return stream->MemZero(&dst, 4); }));
+
+    if (auto* create = std::get_if<RecordCreate>(&record_action)) {
+      return command_buffer->CreateChildCommand(*nested_cmd,
+                                                create->dependencies);
+    }
+    if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
+      RETURN_IF_ERROR(
+          command_buffer->UpdateChildCommand(update->command, *nested_cmd));
+      return update->command;
+    }
+    return absl::InternalError("Invalid record action");
+  }
+};
+
 TEST(CollectiveThunkTest, ProtoRoundTrip) {
   ThunkProto proto = tsl::proto_testing::ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info { profile_annotation: "partition_id_profile_annotation" }
-        all_gather_start_thunk { collective_config {} }
+        all_gather_thunk {
+          collective_config {}
+          collectives_mode: COLLECTIVES_SYMMETRIC_MEMORY
+        }
       )pb");
 
   Thunk::ThunkInfo thunk_info;
@@ -48,12 +134,157 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
 
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<AllGatherThunk> thunk,
-      AllGatherThunk::FromProto(thunk_info, proto.all_gather_start_thunk(),
+      AllGatherThunk::FromProto(thunk_info, proto.all_gather_thunk(),
                                 buffer_allocations));
 
   ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
 
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
+}
+
+// Builds a NoOpAllGatherThunk with one F32[length] src->dst buffer pair.
+static NoOpAllGatherThunk MakeNoOpThunk(const BufferAllocation& alloc_src,
+                                        const BufferAllocation& alloc_dst,
+                                        int64_t length) {
+  int64_t byte_length = sizeof(float) * length;
+  ShapedSlice src_slice{BufferAllocation::Slice(&alloc_src, 0, byte_length),
+                        ShapeUtil::MakeShape(F32, {length})};
+  ShapedSlice dst_slice{BufferAllocation::Slice(&alloc_dst, 0, byte_length),
+                        ShapeUtil::MakeShape(F32, {length})};
+  CollectiveThunk::Buffer buffer{.element_count = length,
+                                 .source_buffer = src_slice,
+                                 .destination_buffer = dst_slice,
+                                 .source_memory_space = 0,
+                                 .destination_memory_space = 0};
+
+  CollectiveConfig config;
+  config.operand_element_type = {F32};
+
+  return NoOpAllGatherThunk(Thunk::ThunkInfo(), config, {buffer});
+}
+
+// Records AllGatherThunk into a primary command buffer (create phase) and
+// verifies that a non-null command node is returned.
+TEST(AllGatherThunkTest, RecordCommandBufferCreate) {
+  se::StreamExecutor* executor = GpuExecutor();
+  if (!IsAtLeastCuda12900(executor)) {
+    GTEST_SKIP() << "Child command nodes require CUDA 12.9+";
+  }
+
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(float) * length;
+
+  se::DeviceAddress<float> src = executor->AllocateArray<float>(length, 0);
+  se::DeviceAddress<float> dst = executor->AllocateArray<float>(length, 0);
+
+  BufferAllocation alloc_src(/*index=*/0, byte_length, /*color=*/0);
+  BufferAllocation alloc_dst(/*index=*/1, byte_length, /*color=*/0);
+
+  NoOpAllGatherThunk thunk = MakeNoOpThunk(alloc_src, alloc_dst, length);
+
+  se::StreamExecutorAddressAllocator allocator(executor);
+  BufferAllocations allocations({src, dst}, 0, &allocator);
+
+  ServiceExecutableRunOptions run_options;
+  Thunk::ExecuteParams execute_params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   /*command_buffer_trace_stream=*/stream.get(),
+                                   /*collective_params=*/nullptr,
+                                   /*collective_cliques=*/nullptr,
+                                   /*collective_memory=*/nullptr);
+
+  CommandStateManager state;
+  Command::RecordParams record_params = {state};
+
+  ASSERT_OK_AND_ASSIGN(
+      auto command_buffer,
+      executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
+  ASSERT_OK_AND_ASSIGN(const se::CommandBuffer::Command* cmd,
+                       thunk.Record(execute_params, record_params,
+                                    Command::RecordCreate{/*dependencies=*/{}},
+                                    command_buffer.get()));
+  EXPECT_NE(cmd, nullptr);
+
+  ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
+}
+
+// Records AllGatherThunk twice into the same command buffer: first as a create,
+// then as an update with different buffer allocations. Verifies that the same
+// command node pointer is returned on update.
+TEST(AllGatherThunkTest, RecordCommandBufferUpdate) {
+  se::StreamExecutor* executor = GpuExecutor();
+  if (!IsAtLeastCuda12900(executor)) {
+    GTEST_SKIP() << "Child command nodes require CUDA 12.9+";
+  }
+
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(float) * length;
+
+  se::DeviceAddress<float> src1 = executor->AllocateArray<float>(length, 0);
+  se::DeviceAddress<float> dst1 = executor->AllocateArray<float>(length, 0);
+
+  se::DeviceAddress<float> src2 = executor->AllocateArray<float>(length, 0);
+  se::DeviceAddress<float> dst2 = executor->AllocateArray<float>(length, 0);
+
+  BufferAllocation alloc_src(/*index=*/0, byte_length, /*color=*/0);
+  BufferAllocation alloc_dst(/*index=*/1, byte_length, /*color=*/0);
+
+  NoOpAllGatherThunk thunk = MakeNoOpThunk(alloc_src, alloc_dst, length);
+
+  se::StreamExecutorAddressAllocator allocator(executor);
+  ServiceExecutableRunOptions run_options;
+
+  BufferAllocations allocations1({src1, dst1}, 0, &allocator);
+  Thunk::ExecuteParams params1 =
+      Thunk::ExecuteParams::Create(run_options, allocations1, stream.get(),
+                                   /*command_buffer_trace_stream=*/stream.get(),
+                                   /*collective_params=*/nullptr,
+                                   /*collective_cliques=*/nullptr,
+                                   /*collective_memory=*/nullptr);
+
+  CommandStateManager state;
+  Command::RecordParams record_params = {state};
+
+  ASSERT_OK_AND_ASSIGN(
+      auto command_buffer,
+      executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
+  ASSERT_OK_AND_ASSIGN(const se::CommandBuffer::Command* cmd,
+                       thunk.Record(params1, record_params,
+                                    Command::RecordCreate{/*dependencies=*/{}},
+                                    command_buffer.get()));
+  ASSERT_NE(cmd, nullptr);
+
+  ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
+
+  BufferAllocations allocations2({src2, dst2}, 0, &allocator);
+  Thunk::ExecuteParams params2 =
+      Thunk::ExecuteParams::Create(run_options, allocations2, stream.get(),
+                                   /*command_buffer_trace_stream=*/stream.get(),
+                                   /*collective_params=*/nullptr,
+                                   /*collective_cliques=*/nullptr,
+                                   /*collective_memory=*/nullptr);
+
+  std::vector<BufferAllocation::Index> updated_allocs = {0, 1};
+  Command::RecordParams record_params2 = {state, std::move(updated_allocs)};
+
+  ASSERT_OK(command_buffer->Update());
+  ASSERT_OK_AND_ASSIGN(
+      const se::CommandBuffer::Command* updated_cmd,
+      thunk.Record(params2, record_params2, Command::RecordUpdate{cmd},
+                   command_buffer.get()));
+  EXPECT_EQ(updated_cmd, cmd);
+
+  ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
 }
 
 }  // namespace
