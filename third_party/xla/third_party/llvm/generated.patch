@@ -1,1 +1,13 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -2000,6 +2000,8 @@
+         "src/__support/FPUtil/x86_64/FEnvImpl.h",
+         "src/__support/FPUtil/aarch64/FEnvImpl.h",
+         "src/__support/FPUtil/aarch64/fenv_darwin_impl.h",
++        "src/__support/FPUtil/arm/FEnvImpl.h",
++        "src/__support/FPUtil/riscv/FEnvImpl.h",
+     ],
+     deps = [
+         ":__support_cpp_bit",
