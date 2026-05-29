@@ -1,7 +1,7 @@
 // RUN: litert-opt %s -canonicalize | FILECHECK_OPTS="" FileCheck %s
 
 // CHECK-LABEL: @elementwise_unary_ops
-func.func @elementwise_unary_ops() -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) {
+func.func @elementwise_unary_ops() -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) {
   %0 = arith.constant dense<-1.0> : tensor<f32>
   %1 = arith.constant dense<1.0> : tensor<f32>
   %2 = arith.constant dense<1.0> : tensor<f32>
@@ -19,7 +19,8 @@ func.func @elementwise_unary_ops() -> (tensor<f32>, tensor<f32>, tensor<f32>, te
   // CHECK-DAG: [[cst5:%.*]] = arith.constant dense<5.000000e-01> : tensor<f32>
   // CHECK-DAG: [[cst6:%.*]] = arith.constant dense<4.000000e+00> : tensor<f32>
   // CHECK-DAG: [[cst7:%.*]] = arith.constant dense<0.761594176> : tensor<f32>
-  // CHECK: return [[cst0]], [[cst1]], [[cst2]], [[cst3]], [[cst4]], [[cst5]], [[cst6]], [[cst7]]
+  // CHECK-DAG: [[cst8:%.*]] = arith.constant dense<0.73105859{{[78]}}> : tensor<f32>
+  // CHECK: return [[cst0]], [[cst1]], [[cst2]], [[cst3]], [[cst4]], [[cst5]], [[cst6]], [[cst7]], [[cst8]]
 
   %7 = "tfl.abs"(%0) : (tensor<f32>) -> tensor<f32>
   %8 = "tfl.sin"(%1) : (tensor<f32>) -> tensor<f32>
@@ -29,8 +30,9 @@ func.func @elementwise_unary_ops() -> (tensor<f32>, tensor<f32>, tensor<f32>, te
   %12 = "tfl.rsqrt"(%5) : (tensor<f32>) -> tensor<f32>
   %13 = "tfl.square"(%6) : (tensor<f32>) -> tensor<f32>
   %14 = "tfl.tanh"(%one) : (tensor<f32>) -> tensor<f32>
+  %15 = "tfl.logistic"(%one) : (tensor<f32>) -> tensor<f32>
 
-  func.return %7, %8, %9, %10, %11, %12, %13, %14 : tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
+  func.return %7, %8, %9, %10, %11, %12, %13, %14, %15 : tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
 }
 
 // CHECK-LABEL: @rank
