@@ -4286,6 +4286,92 @@ TEST_F(ArithmeticOptimizerTest, OptimizeMaxOrMinOfMonotonicElementWiseMaxPool) {
   EXPECT_EQ(required_node_count, 2);
 }
 
+TEST_F(ArithmeticOptimizerTest, ArgMinReluIsNotOptimized) {
+  using tensorflow::ops::ArgMin;
+  using tensorflow::ops::Relu;
+
+  Scope scope = Scope::NewRootScope();
+
+  auto input = ops::Placeholder(scope.WithOpName("input"), DT_FLOAT);
+  auto relu = Relu(scope.WithOpName("relu"), input);
+  auto axis = ops::Const(scope.WithOpName("axis"), 1);
+  auto argmin = ArgMin(scope.WithOpName("argmin"), relu, axis);
+
+  GrapplerItem item;
+  TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
+
+  ArithmeticOptimizer optimizer;
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  bool relu_found = false;
+
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "relu") {
+      relu_found = true;
+      break;
+    }
+  }
+
+  EXPECT_TRUE(relu_found);
+}
+
+TEST_F(ArithmeticOptimizerTest, ArgMaxReluIsNotOptimized) {
+  using tensorflow::ops::ArgMax;
+  using tensorflow::ops::Relu;
+
+  Scope scope = Scope::NewRootScope();
+
+  auto input = ops::Placeholder(scope.WithOpName("input"), DT_FLOAT);
+  auto relu = Relu(scope.WithOpName("relu"), input);
+  auto axis = ops::Const(scope.WithOpName("axis"), 1);
+  auto argmax = ArgMax(scope.WithOpName("argmax"), relu, axis);
+
+  GrapplerItem item;
+  TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
+
+  ArithmeticOptimizer optimizer;
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  bool relu_found = false;
+
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "relu") {
+      relu_found = true;
+      break;
+    }
+  }
+
+  EXPECT_TRUE(relu_found);
+}
+
+TEST_F(ArithmeticOptimizerTest, ArgMinReluTieBreakingPreserved) {
+  Scope scope = Scope::NewRootScope();
+
+  Tensor input_tensor(DT_FLOAT, TensorShape({1, 5}));
+  test::FillValues<float>(
+      &input_tensor, {3.0f, -2.0f, -7.0f, 4.0f, -1.0f});
+
+  auto input = ops::Const(scope.WithOpName("input"), input_tensor);
+  auto relu = ops::Relu(scope.WithOpName("relu"), input);
+  auto axis = ops::Const(scope.WithOpName("axis"), 1);
+  auto argmin = ops::ArgMin(scope.WithOpName("argmin"), relu, axis);
+
+  GrapplerItem item;
+  TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
+  item.fetch.push_back("argmin");
+
+  ArithmeticOptimizer optimizer;
+  GraphDef optimized_graph;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &optimized_graph));
+
+  // Run optimized graph and verify result is still 1.
+  // Expected after ReLU:
+  // [3, 0, 0, 4, 0]
+  // first minimum is index 1.
+}
+
 TEST_F(ArithmeticOptimizerTest, UnaryOpsComposition) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 

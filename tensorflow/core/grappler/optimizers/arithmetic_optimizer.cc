@@ -3560,7 +3560,7 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
     };
     bool is_non_decreasing = false;
     if (!IsInPreserveSet(*inner_function) &&
-        IsElementWiseMonotonic(*inner_function, &is_non_decreasing) &&
+        IsElementWiseStrictlyMonotonic(*inner_function, &is_non_decreasing) &&
         ctx().node_map->GetOutputs(inner_function->name()).size() == 1 &&
         (is_non_decreasing || !IsAnyMaxPool(*reduction_node)) &&
         !can_be_fused_by_remapper(*inner_function, *inner_function_input)) {
