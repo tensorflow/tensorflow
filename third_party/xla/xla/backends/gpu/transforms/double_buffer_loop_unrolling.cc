@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -33,22 +34,43 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/status_macros.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
+
+using StaticLoopIteration = DoubleBufferLoopUnrolling::StaticLoopIteration;
+using DynamicLoopIteration = DoubleBufferLoopUnrolling::DynamicLoopIteration;
+using LoopIteration = DoubleBufferLoopUnrolling::LoopIteration;
+
+DynamicSliceConfig DoubleBufferLoopUnrolling::MakeConfigForLoopIteration(
+    const DynamicSliceConfig& config,
+    const DoubleBufferLoopUnrolling::LoopIteration& loop_iteration) {
+  if (!config.has_loop_index()) {
+    return config;
+  }
+  DynamicSliceConfig new_config = config;
+  if (const auto* dyn = std::get_if<DynamicLoopIteration>(&loop_iteration)) {
+    new_config.set_byte_offset(config.byte_offset() +
+                               dyn->start_iteration * config.byte_stride());
+    new_config.set_byte_stride(config.byte_stride() * dyn->iteration_stride);
+    return new_config;
+  }
+  const auto& stat = std::get<StaticLoopIteration>(loop_iteration);
+  new_config.set_byte_offset(config.byte_offset() +
+                             stat.iteration * config.byte_stride());
+  new_config.set_byte_stride(0);
+  new_config.clear_loop_index();
+  return new_config;
+}
 
 namespace {
 
@@ -87,6 +109,52 @@ void SetChannelIdForNewCollective(HloInstruction* new_instr,
 
 using Interval = std::pair<int64_t, int64_t>;
 
+bool IsDynamicSliceOp(const HloInstruction* instr) {
+  return instr->opcode() == HloOpcode::kDynamicSlice ||
+         instr->opcode() == HloOpcode::kDynamicUpdateSlice;
+}
+
+absl::Status AdjustDynamicSliceConfig(HloInstruction* instr,
+                                      const LoopIteration& loop_iteration) {
+  if (!IsDynamicSliceOp(instr) || !instr->has_backend_config()) {
+    return absl::OkStatus();
+  }
+  return instr->MutateBackendConfig<GpuBackendConfig>(
+      [&](GpuBackendConfig* gbc) -> absl::Status {
+        if (!gbc->has_dynamic_slice_config()) {
+          return absl::OkStatus();
+        }
+        DynamicSliceConfig* config = gbc->mutable_dynamic_slice_config();
+        // loop_index > 0 means the offset depends on a loop outside the one
+        // being unrolled here, so its config is unaffected by this
+        // transformation.
+        if (!config->has_loop_index() || config->loop_index() != 0) {
+          return absl::OkStatus();
+        }
+        *config = DoubleBufferLoopUnrolling::MakeConfigForLoopIteration(
+            *config, loop_iteration);
+        return absl::OkStatus();
+      });
+}
+
+// Adjusts the DS/DUS DynamicSliceConfig on `instr` and, if it is a fusion,
+// recurses into its fused computation. Fusion computations are cloned with the
+// fusion instruction, so each clone has its own private fused computation and
+// no cross-clone deduplication is needed.
+absl::Status AdjustDynamicSliceConfigsForInstruction(
+    HloInstruction* instr, const LoopIteration& loop_iteration) {
+  RETURN_IF_ERROR(AdjustDynamicSliceConfig(instr, loop_iteration));
+  if (instr->opcode() == HloOpcode::kFusion) {
+    for (HloComputation* called_computation : instr->called_computations()) {
+      for (HloInstruction* nested : called_computation->instructions()) {
+        RETURN_IF_ERROR(
+            AdjustDynamicSliceConfigsForInstruction(nested, loop_iteration));
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
 // This function fixes the `_xla_send_recv_validation` attribute for peeled
 // instructions. When the loop trip count is odd, the peeled instructions are
 // moved before the loop. The collectives in these instructions correspond to
@@ -99,12 +167,13 @@ using Interval = std::pair<int64_t, int64_t>;
 // depends on whether the loop was peeled or not.
 //
 // If the loop was not peeled, then
-//  - iteration 0 of the new loop coressponds to iteration 0,1 of the old loop.
-//  - iteration 1 of the new loop coressponds to iteration 2,3 of the old loop.
+//  - iteration 0 of the new loop corresponds to iteration 0,1 of the old loop.
+//  - iteration 1 of the new loop corresponds to iteration 2,3 of the old loop.
 //  - and so on...
+//
 // If the loop was peeled, then the first iteration runs before the loop. So,
-//  - iteration 0 of the new loop coressponds to iteration 1,2 of the old loop.
-//  - iteration 1 of the new loop coressponds to iteration 3,4 of the old loop.
+//  - iteration 0 of the new loop corresponds to iteration 1,2 of the old loop.
+//  - iteration 1 of the new loop corresponds to iteration 3,4 of the old loop.
 //  - and so on...
 //
 // Consider the case when the loop was peeled, and the original attribute for
@@ -206,8 +275,18 @@ absl::StatusOr<bool> FullyUnroll(HloInstruction* while_instr,
     seen_ops.insert(old_instr);
   }
 
-  int n = config.known_trip_count().n();
-  while (--n) {
+  // Adjustment is deferred to the end because each unrolled iteration's
+  // clones become the source operands for the next iteration's clones. If we
+  // adjusted clones in place, `CloneWithNewOperands` in iteration i+1 would
+  // copy an already-flattened DynamicSliceConfig and miscompute its offset.
+  std::vector<std::pair<HloInstruction*, int64_t>> static_iteration_for;
+  static_iteration_for.reserve(config.known_trip_count().n() *
+                               ops_to_clone.size());
+  for (HloInstruction* instr : ops_to_clone) {
+    static_iteration_for.emplace_back(instr, 0);
+  }
+
+  for (int64_t i = 1; i < config.known_trip_count().n(); ++i) {
     std::vector<HloInstruction*> new_ops_to_clone;
     old_to_new_map[old_input_parameter] = new_input_parameter;
     for (HloInstruction* old_instr : ops_to_clone) {
@@ -232,6 +311,7 @@ absl::StatusOr<bool> FullyUnroll(HloInstruction* while_instr,
       SetChannelIdForNewCollective(new_instr, module);
       old_to_new_map[old_instr] = new_instr;
       new_ops_to_clone.push_back(new_instr);
+      static_iteration_for.emplace_back(new_instr, i);
       VLOG(2) << "Added instruction " << new_instr->ToString();
     }
 
@@ -253,6 +333,11 @@ absl::StatusOr<bool> FullyUnroll(HloInstruction* while_instr,
     new_input_parameter = while_body->root_instruction();
     ops_to_clone = std::move(new_ops_to_clone);
     changed = true;
+  }
+
+  for (const auto& [instr, iteration] : static_iteration_for) {
+    RETURN_IF_ERROR(AdjustDynamicSliceConfigsForInstruction(
+        instr, StaticLoopIteration{iteration}));
   }
 
   WhileLoopBackendConfig old_config;
@@ -279,7 +364,9 @@ absl::Status PeelInstructionsForOddTripCount(HloModule* module,
   HloComputation* parent_comp = while_instr->parent();
   old_to_new_map[input_parameter] = input_tuple;
 
-  for (HloInstruction* old_instr : while_body->MakeInstructionPostOrder()) {
+  std::vector<HloInstruction*> old_instructions =
+      while_body->MakeInstructionPostOrder();
+  for (HloInstruction* old_instr : old_instructions) {
     if (old_to_new_map.find(old_instr) != old_to_new_map.end()) {
       continue;
     }
@@ -293,6 +380,8 @@ absl::Status PeelInstructionsForOddTripCount(HloModule* module,
             old_instr->shape(), new_operands, suffix));
 
     SetChannelIdForNewCollective(new_instr, module);
+    RETURN_IF_ERROR(AdjustDynamicSliceConfigsForInstruction(
+        new_instr, StaticLoopIteration{0}));
     old_to_new_map[old_instr] = new_instr;
     VLOG(2) << "Added instruction " << new_instr->ToString()
             << " to parent computation.";
@@ -308,7 +397,7 @@ absl::Status PeelInstructionsForOddTripCount(HloModule* module,
           << while_instr->operand(0)->ToString();
 
   // Handle existing control dependencies.
-  for (HloInstruction* old_instr : while_body->MakeInstructionPostOrder()) {
+  for (HloInstruction* old_instr : old_instructions) {
     if (old_to_new_map.find(old_instr) != old_to_new_map.end()) {
       HloInstruction* new_instr = old_to_new_map[old_instr];
       VLOG(2) << "Processing control predecessors for peeled instruction "
@@ -362,9 +451,14 @@ absl::StatusOr<bool> DoubleBufferingUnroll(HloInstruction* while_instr,
     exact_trip_count -= 1;
   }
 
+  constexpr int64_t kUnrollFactor = 2;
+  constexpr int64_t kFirstUnrollCopy = 0;
+  constexpr int64_t kSecondUnrollCopy = 1;
   std::string suffix = "double_buffer_clone";
   old_to_new_map[input_parameter] = while_body->root_instruction();
-  for (HloInstruction* old_instr : while_body->MakeInstructionPostOrder()) {
+  std::vector<HloInstruction*> old_instructions =
+      while_body->MakeInstructionPostOrder();
+  for (HloInstruction* old_instr : old_instructions) {
     if (old_to_new_map.find(old_instr) != old_to_new_map.end()) {
       continue;
     }
@@ -384,8 +478,21 @@ absl::StatusOr<bool> DoubleBufferingUnroll(HloInstruction* while_instr,
       skip_control_dep_injection.insert(old_instr);
     }
     SetChannelIdForNewCollective(new_instr, module);
+    RETURN_IF_ERROR(AdjustDynamicSliceConfigsForInstruction(
+        new_instr, DynamicLoopIteration{/*start_iteration=*/peel_one_iteration +
+                                            kSecondUnrollCopy,
+                                        /*iteration_stride=*/kUnrollFactor}));
     old_to_new_map[old_instr] = new_instr;
     VLOG(2) << "Added instruction " << new_instr->ToString();
+  }
+
+  // Originals stay in the unrolled loop and execute the first copy of every
+  // pair, with stride doubled.
+  for (HloInstruction* old_instr : old_instructions) {
+    RETURN_IF_ERROR(AdjustDynamicSliceConfigsForInstruction(
+        old_instr, DynamicLoopIteration{/*start_iteration=*/peel_one_iteration +
+                                            kFirstUnrollCopy,
+                                        /*iteration_stride=*/kUnrollFactor}));
   }
 
   while_body->set_root_instruction(
