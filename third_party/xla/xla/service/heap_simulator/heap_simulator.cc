@@ -828,10 +828,11 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::Free(const BufferType* buffer,
 
 using Chunk = HeapSimulator::Chunk;
 
-void BufferIntervalTree::Add(int64_t start, int64_t end, const Chunk& chunk) {
+void BufferIntervalTree::Add(int64_t start, int64_t end, const Chunk& chunk,
+                             const void* buffer) {
   node_storage_.emplace_back(BufferIntervalTreeNode{
       start, end, end, chunk,
-      /*left=*/nullptr, /*right=*/nullptr, /*parent=*/nullptr});
+      /*left=*/nullptr, /*right=*/nullptr, /*parent=*/nullptr, buffer});
   if (root_ == nullptr) {
     root_ = &node_storage_.back();
     // This is root.
@@ -2488,11 +2489,30 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunks(
     const BufferInterval& buffer_interval, int64_t max_colocation_size) const {
   used_chunks_.clear();
 
+  // Precompute colocation set for O(1) fast lookup. Chunks belonging to the
+  // same logical buffer or its colocations are ignored during free space
+  // calculation to permit overlapping lifetimes of caller/callee views in async
+  // operations.
+  absl::flat_hash_set<const BufferType*> colocations =
+      GetTransitiveColocations(buffer_interval);
+  colocations.insert(buffer_interval.buffer);
+
+  auto conflicts = [&](const void* node_buffer_ptr) {
+    if (node_buffer_ptr == nullptr) {
+      return true;
+    }
+    const BufferType* node_buffer =
+        static_cast<const BufferType*>(node_buffer_ptr);
+    return !colocations.contains(node_buffer);
+  };
+
   // Collect chunks that are in use.
   interval_tree_.ApplyToNodesOverlappingInTime(
       buffer_interval.start, buffer_interval.end,
       [&](const BufferIntervalTreeNode* node) {
-        used_chunks_.push_back(node->chunk);
+        if (conflicts(node->buffer)) {
+          used_chunks_.push_back(node->chunk);
+        }
       });
 
   for (const BufferType* colocation :
@@ -2502,7 +2522,9 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunks(
             << ", end " << interval.end << " " << interval.buffer->ToString();
     interval_tree_.ApplyToNodesOverlappingInTime(
         interval.start, interval.end, [&](const BufferIntervalTreeNode* node) {
-          used_chunks_.push_back(node->chunk);
+          if (conflicts(node->buffer)) {
+            used_chunks_.push_back(node->chunk);
+          }
         });
   }
 
@@ -2698,14 +2720,14 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::CommitChunkAndInterval(
   const int64_t max_colocation_size = GetMaxColocationSize(buffer_interval);
   Chunk max_size_chunk =
       Chunk::FromOffsetSize(chunk.offset, max_colocation_size);
-  interval_tree_.Add(buffer_interval.start, buffer_interval.end,
-                     max_size_chunk);
+  interval_tree_.Add(buffer_interval.start, buffer_interval.end, max_size_chunk,
+                     static_cast<const void*>(buffer_interval.buffer));
   // NOLINTNEXTLINE
   for (auto colocation : GetTransitiveColocations(buffer_interval)) {
     auto colocation_interval = buffer_intervals_[colocation];
-    interval_tree_.Add(
-        colocation_interval.start, colocation_interval.end,
-        Chunk::FromOffsetSize(chunk.offset, max_colocation_size));
+    interval_tree_.Add(colocation_interval.start, colocation_interval.end,
+                       Chunk::FromOffsetSize(chunk.offset, max_colocation_size),
+                       static_cast<const void*>(colocation));
   }
 }
 
