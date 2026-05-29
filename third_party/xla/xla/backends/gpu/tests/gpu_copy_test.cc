@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/statusor.h"
@@ -422,9 +423,12 @@ TEST_F(GpuCopyTest, UseDynamicMemcpyIntegrationTest) {
   // This is an integration test to verify that the pipeline for replacing
   // dynamic-slices that depend on while loop iteration variables with memcpy
   // works as a whole.
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options().set_xla_gpu_enable_dynamic_slice_fusion(true);
+
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> hlo_module,
-      ParseAndReturnVerifiedModule(kSliceMemcpyModuleUnfused));
+      ParseAndReturnVerifiedModule(kSliceMemcpyModuleUnfused, config));
 
   // Check that there are exactly two fusions:
   // 1. A `compare` fusion for the loop condition.
