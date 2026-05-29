@@ -293,6 +293,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_recognize_reduction_optimization_level(0);
 
   opts.set_xla_gpu_enable_dynamic_slice_fusion(false);
+  opts.set_xla_gpu_enable_dus_accumulator_zero_init_elimination(false);
   opts.set_xla_gpu_experimental_dynamic_slice_fusion_verify_offsets(false);
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
   opts.set_xla_gpu_enable_shared_constants(true);
@@ -1969,6 +1970,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_enable_dynamic_slice_fusion(),
       "[Stable] Whether to enable address computation fusion to optimize "
       "dynamic-slice and dynamic-update-slice operations."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_dus_accumulator_zero_init_elimination",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_enable_dus_accumulator_zero_init_elimination),
+      debug_options->xla_gpu_enable_dus_accumulator_zero_init_elimination(),
+      "Replaces broadcast(0) scan-accumulator init with AllocateBuffer when "
+      "the body's DUS covers every slot."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_dynamic_slice_fusion_verify_offsets",
       bool_setter_for(

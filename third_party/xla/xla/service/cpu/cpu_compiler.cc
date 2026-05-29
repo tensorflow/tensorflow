@@ -130,6 +130,7 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/rng_expander.h"
 #include "xla/hlo/transforms/expanders/stochastic_convert_decomposer.h"
 #include "xla/hlo/transforms/literal_canonicalizer.h"
+#include "xla/hlo/transforms/metadata_interner.h"
 #include "xla/hlo/transforms/operand_upcaster.h"
 #include "xla/hlo/transforms/propagate_call_metadata.h"
 #include "xla/hlo/transforms/shape_canonicalizer.h"
@@ -623,6 +624,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     AddHloVerifier(&spmd_pipeline);
     spmd_pipeline.AddPass<FlattenCallGraph>();
     spmd_pipeline.AddPass<CallInliner>();
+    spmd_pipeline.AddPass<MetadataInterner>();
     spmd_pipeline.AddPass<ZeroSizedHloElimination>();
     spmd_pipeline.AddPass<ConditionalCanonicalizer>();
     if (use_shardy_partitioner) {
@@ -653,7 +655,8 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
           }
           return CallInliner::InlineOverridePolicy::kProhibitInline;
         });
-    RETURN_IF_ERROR(spmd_pipeline.Run(module).status());
+    spmd_pipeline.AddPass<MetadataInterner>();
+    TF_RETURN_IF_ERROR(spmd_pipeline.Run(module).status());
   } else {
     HloPassPipeline sharding_removal_pipeline("sharding-removal");
     AddHloVerifier(&sharding_removal_pipeline);
@@ -756,6 +759,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
   // Inline computations with a single call site.
   pipeline.AddPass<CallInliner>(/*single_call_site=*/true);
+  pipeline.AddPass<MetadataInterner>();
   pipeline.AddPass<BatchDotSimplification>();
   pipeline.AddPass<DotDecomposer>();
 
@@ -1085,6 +1089,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   if (flatten_after_fusion) {
     pipeline.AddPass<FlattenCallGraph>();
     pipeline.AddPass<CallInliner>(/*single_call_site=*/true);
+    pipeline.AddPass<MetadataInterner>();
   }
 
   // Combine collective operations to maximize network bandwidth usage.

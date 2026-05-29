@@ -84,6 +84,15 @@ class HloModule;
 class HloInstruction;
 class BackendConfigWrapper;
 class HloPayloadDeduplicator;
+struct HloProtoOptions {
+  bool deduplicate_backend_config = false;
+  bool deduplicate_metadata = true;
+
+  explicit HloProtoOptions(bool deduplicate_backend_config = false,
+                           bool deduplicate_metadata = true)
+      : deduplicate_backend_config(deduplicate_backend_config),
+        deduplicate_metadata(deduplicate_metadata) {}
+};
 
 // A small holder that is used to keep some immutable info alongside an
 // instruction pointer in an HloComputation's list of instructions
@@ -1682,9 +1691,9 @@ class HloInstruction {
 
   virtual void ToProto(HloInstructionProto* proto) const;
 
-  // Non-virtual overload that handles interning.
-  void ToProto(HloInstructionProto* proto,
-               HloPayloadDeduplicator* deduplicator) const;
+  // Non-virtual overload that handles payload deduplication options.
+  void ToProto(HloInstructionProto* proto, HloPayloadDeduplicator* deduplicator,
+               HloProtoOptions options = HloProtoOptions()) const;
 
   // Returns a category for the HLO. This could be something like "convolution"
   // or "elementwise".
@@ -2166,6 +2175,22 @@ class HloInstruction {
   const OpMetadata& metadata() const {
     OpMetadata* m = metadata_.get();
     return (m == nullptr) ? *kEmptyMetadata : *m;
+  }
+
+  bool has_interned_metadata() const {
+    if (metadata_ == nullptr || !metadata().has_interned_metadata_payload()) {
+      return false;
+    }
+    const auto& payload = metadata().interned_metadata_payload();
+    return payload.has_value() || payload.has_id();
+  }
+
+  std::string interned_metadata_string() const {
+    if (!has_interned_metadata()) {
+      return "";
+    }
+    const auto& payload = metadata().interned_metadata_payload();
+    return payload.has_value() ? payload.value() : "";
   }
 
   // Reconstructs the full Python call stack from HloMetadata.

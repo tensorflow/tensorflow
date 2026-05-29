@@ -7513,6 +7513,7 @@ bool HloParserImpl::ParseMetadata(OpMetadata& metadata) {
   optional<std::vector<int64_t>> profile_type;
   optional<std::string> deduplicated_name;
   optional<std::string> scheduling_name;
+  optional<std::string> interned_metadata;
   attrs["op_type"] = {/*required=*/false, AttrTy::kString, &op_type};
   attrs["op_name"] = {/*required=*/false, AttrTy::kString, &op_name};
   attrs["source_file"] = {/*required=*/false, AttrTy::kString, &source_file};
@@ -7530,6 +7531,8 @@ bool HloParserImpl::ParseMetadata(OpMetadata& metadata) {
                               &scheduling_name};
   attrs["stack_frame_id"] = {/*required=*/false, AttrTy::kInt32,
                              &stack_frame_id};
+  attrs["interned_metadata"] = {/*required=*/false, AttrTy::kString,
+                                &interned_metadata};
   if (!ParseSubAttributes(attrs)) {
     return false;
   }
@@ -7570,6 +7573,9 @@ bool HloParserImpl::ParseMetadata(OpMetadata& metadata) {
   }
   if (stack_frame_id) {
     metadata.set_stack_frame_id(*stack_frame_id);
+  }
+  if (interned_metadata) {
+    metadata.mutable_interned_metadata_payload()->set_value(*interned_metadata);
   }
   return true;
 }

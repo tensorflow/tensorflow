@@ -55,6 +55,7 @@ deviceless_tests = [
     "concat/concat_offset_not_a_multiple_of_tile_size.hlo",
     "concat/concat_repro_crash.hlo",
     "constraints/max_tensor_elements_violation.hlo",
+    "slice/boundary_dynamic_slice.hlo",
 ]
 
 lit_test_suite(

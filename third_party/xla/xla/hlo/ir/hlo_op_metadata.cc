@@ -77,6 +77,12 @@ std::string OpMetadataToString(const OpMetadata& metadata, bool only_op_name) {
     result.push_back(
         absl::StrCat("stack_frame_id=", metadata.stack_frame_id()));
   }
+  if (metadata.has_interned_metadata_payload() &&
+      metadata.interned_metadata_payload().has_value()) {
+    result.push_back(absl::StrCat(
+        "interned_metadata=\"",
+        absl::CEscape(metadata.interned_metadata_payload().value()), "\""));
+  }
   return absl::StrJoin(result, " ");
 }
 

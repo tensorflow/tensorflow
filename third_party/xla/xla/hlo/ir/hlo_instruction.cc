@@ -4153,7 +4153,7 @@ void HloInstruction::PrintWithCanonicalNameMap(
        (!metadata_->op_type().empty() || !metadata_->op_name().empty() ||
         !metadata_->source_file().empty() ||
         !metadata_->scheduling_name().empty() ||
-        metadata_->stack_frame_id() != 0))) {
+        metadata_->stack_frame_id() != 0 || has_interned_metadata()))) {
     printer->Append(", metadata={");
     if (options.print_inline_stack_frames() &&
         metadata_->stack_frame_id() != 0 && GetModule() != nullptr) {
@@ -4620,12 +4620,28 @@ void HloInstruction::ToProto(HloInstructionProto* proto) const {
 }
 
 void HloInstruction::ToProto(HloInstructionProto* proto,
-                             HloPayloadDeduplicator* deduplicator) const {
+                             HloPayloadDeduplicator* deduplicator,
+                             HloProtoOptions options) const {
   ToProto(proto);
-  if (deduplicator && !backend_config_->empty()) {
+  if (options.deduplicate_backend_config && deduplicator &&
+      !backend_config_->empty()) {
     proto->mutable_backend_config_payload()->set_id(
         deduplicator->Deduplicate(backend_config_.get()));
     proto->clear_backend_config();
+  }
+  if (metadata().has_interned_metadata_payload()) {
+    const Payload& payload = metadata().interned_metadata_payload();
+    if (!payload.has_value() || payload.has_id()) {
+      return;
+    }
+    const std::string& value = payload.value();
+    if (options.deduplicate_metadata && deduplicator) {
+      proto->mutable_metadata()->mutable_interned_metadata_payload()->set_id(
+          deduplicator->Deduplicate(value));
+    } else {
+      proto->mutable_metadata()->mutable_interned_metadata_payload()->set_value(
+          value);
+    }
   }
 }
 
