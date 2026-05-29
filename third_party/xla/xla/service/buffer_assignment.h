@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
@@ -443,6 +444,11 @@ class BufferAssignment {
     return allocations_;
   }
 
+  // Extracts the vector containing all buffer allocations in this assignment.
+  std::vector<BufferAllocation> ExtractAllocations() && {
+    return std::move(allocations_);
+  }
+
   // Returns the total size allocation holding all temporary buffers.
   int64_t temp_allocation_total_size() const {
     return temp_allocation_total_size_;
@@ -577,8 +583,11 @@ class BufferAssignment {
   std::string BufferInfoString() const;
 
   // Convert BufferAssignment to or from a proto.
-  BufferAssignmentProto ToProto() const;
-  void ToProto(BufferAssignmentProto* proto) const;
+  // `debug_summary` is an optional human readable summary of the buffer
+  // allocations used for debugging.
+  BufferAssignmentProto ToProto(absl::string_view debug_summary = "") const;
+  void ToProto(BufferAssignmentProto* proto,
+               absl::string_view debug_summary = "") const;
   static absl::StatusOr<std::unique_ptr<BufferAssignment>> FromProto(
       const BufferAssignmentProto& proto, const HloModule* module,
       BufferValue::SizeFunction buffer_size, const AliasInfo* alias_info);

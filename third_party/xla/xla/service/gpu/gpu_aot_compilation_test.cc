@@ -18,7 +18,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_format.h"
@@ -35,6 +37,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/platform_util.h"
@@ -48,6 +51,7 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+using ::testing::IsEmpty;
 
 class GpuAotCompilationTest : public HloTestBaseLegacy,
                               public ::testing::WithParamInterface<bool> {
@@ -109,6 +113,16 @@ TEST_P(GpuAotCompilationTest, ExportAndLoadExecutable) {
       std::move(*aot_result)
           .LoadExecutable(compiler->PlatformId(),
                           stream_exec->GetDeviceDescription(), debug_options_));
+  // This never worked in the old aot flow.
+  // if (debug_options_.xla_gpu_experimental_aot_compiled_thunks()) {
+  GpuExecutable* gpu_executable =
+      dynamic_cast<GpuExecutable*>(executable.get());
+  EXPECT_NE(gpu_executable, nullptr);
+  EXPECT_THAT(
+      gpu_executable->VerboseAllocationError(absl::InternalError("test error"))
+          .message(),
+      Not(IsEmpty()));
+  // }
 }
 
 TEST_P(GpuAotCompilationTest, AotCompilationWithoutGpuDevice) {

@@ -366,6 +366,9 @@ class GpuExecutable : public Executable {
       CollectiveMemoryCache& collective_memory_cache,
       bool collective_use_minimal_resource);
 
+  BufferAssignmentProto GetBufferAssigmentProtoWithDebugSummary(
+      const BufferAssignment& buffer_assignment) const;
+
   // The LLVM IR, in string format, of the unoptimized module generated for
   // this GpuExecutable. We save a string instead of an llvm::Module* because
   // leaving llvm::Module* in a singleton can cause the heap checker to emit

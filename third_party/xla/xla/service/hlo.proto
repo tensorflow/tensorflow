@@ -822,6 +822,11 @@ message BufferAssignmentProto {
   repeated BufferAllocationProto buffer_allocations = 3;
   repeated HeapSimulatorTrace heap_simulator_traces = 4;
   repeated PeakBuffers peak_buffers = 5;
+
+  // Human readable summary of the buffer allocations. Tailored to debugging
+  // OOMs, includes the Hlo op metadata for every buffer associated with each
+  // allocation.
+  string debug_summary = 6;
 }
 
 // Grouping message that contains all of the information above.
