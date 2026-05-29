@@ -251,6 +251,46 @@ bool IsElementWiseMonotonic(const NodeDef& node, bool* is_non_decreasing) {
   return false;
 }
 
+// Returns true if node represents a unary elementwise function that is
+// strictly monotonic. If *is_non_decreasing is true, the function is strictly
+// increasing, e.g. exp, sqrt. If *is_non_decreasing is false, the function is
+// strictly decreasing, e.g. inv.
+//
+// Unlike IsElementWiseMonotonic(), this excludes functions that may map
+// distinct inputs to the same output value (e.g. Relu, Relu6, Floor, Ceil,
+// Rint, Sign), since such functions do not preserve strict ordering and may
+// alter ArgMin/ArgMax tie-breaking semantics.
+bool IsElementWiseStrictlyMonotonic(const NodeDef& node,
+                                    bool* is_non_decreasing) {
+  static const gtl::FlatSet<std::string>* const
+      kStrictMonotonicNonDecreasingOps =
+          CHECK_NOTNULL((new gtl::FlatSet<std::string>{
+              "Acosh",    "Asin", "Asinh",   "Atan",  "Atanh",
+              "Elu",      "Erf",  "Exp",     "Expm1", "Log",
+              "Log1p",    "Selu", "Sigmoid", "Sinh",  "Softsign",
+              "Softplus", "Sqrt", "Tanh",
+          }));
+
+  static const gtl::FlatSet<std::string>* const
+      kStrictMonotonicNonIncreasingOps =
+          CHECK_NOTNULL(
+              (new gtl::FlatSet<std::string>{
+                "Acos", "Erfc", "Neg", "Rsqrt"
+          }));
+
+  if (kStrictMonotonicNonDecreasingOps->count(node.op()) > 0) {
+    if (is_non_decreasing) *is_non_decreasing = true;
+    return true;
+  }
+
+  if (kStrictMonotonicNonIncreasingOps->count(node.op()) > 0) {
+    if (is_non_decreasing) *is_non_decreasing = false;
+    return true;
+  }
+
+  return false;
+}
+
 bool IsElu(const NodeDef& node) { return node.op() == "Elu"; }
 
 bool IsEluGrad(const NodeDef& node) { return node.op() == "EluGrad"; }
