@@ -539,8 +539,10 @@ HloAsyncStartInstruction::CloneWithNewOperandsImpl(
           context->FindComputation(async_wrapped_computation());
     }
     if (new_wrapped_computation == nullptr) {
+      const std::string& suffix =
+          context != nullptr ? context->suffix() : "clone";
       new_wrapped_computation = module->AddEmbeddedComputation(
-          async_wrapped_computation()->Clone("clone", context));
+          async_wrapped_computation()->Clone(suffix, context));
       // Give the trampoline a trivial schedule if it already had one.
       if (module->has_schedule() && module->schedule().is_computation_scheduled(
                                         async_wrapped_computation())) {
@@ -2377,6 +2379,7 @@ HloCallableInstruction::GetOrCloneCalledComputations(
     HloCloneContext* context) const {
   HloModule* module = context != nullptr ? context->module() : GetModule();
   absl::InlinedVector<HloComputation*, 1> new_called_computations;
+  const std::string& suffix = context != nullptr ? context->suffix() : "clone";
   for (auto* comp : called_computations()) {
     HloComputation* new_custom_call_computation = nullptr;
     if (context != nullptr) {
@@ -2384,7 +2387,7 @@ HloCallableInstruction::GetOrCloneCalledComputations(
     }
     if (new_custom_call_computation == nullptr) {
       new_custom_call_computation =
-          module->AddEmbeddedComputation(comp->Clone("clone", context));
+          module->AddEmbeddedComputation(comp->Clone(suffix, context));
     }
     new_called_computations.push_back(new_custom_call_computation);
   }
