@@ -1056,6 +1056,18 @@ TEST(OpVersionTest, VersioningTileOperatorTest) {
 TEST(OpVersionTest, VersioningTransposeTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_TRANSPOSE,
+  };
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32, 7);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 8);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32, 6);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 6);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt4, 4);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 7);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_TRANSPOSE,
       .inputs = CreateOpSignatureTensorSpecs(kTfLiteInt16),
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
