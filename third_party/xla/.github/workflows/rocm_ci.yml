@@ -93,7 +93,7 @@ jobs:
             --config=single_gpu \
             --//jax:build_jaxlib=wheel \
             --//jax:build_jax=true \
-            --local_test_jobs=4 \
+            --local_test_jobs=1 \
             --action_env=JAX_ENABLE_X64=0 \
             --repo_env=HERMETIC_PYTHON_VERSION=3.14 \
             --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}"
@@ -133,6 +133,6 @@ jobs:
             --config=rocm_ci \
             --config=rocm_rbe \
             --config=ci_single_gpu \
-            --local_test_jobs=4 \
+            --local_test_jobs=1 \
             --repo_env=TF_ROCM_RBE_SINGLE_GPU_POOL=linux_x64_gpu_gfx90a \
             --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}"
