@@ -74,8 +74,9 @@ class CApiXlaTransformAdapter : public HloXlaTransform {
 
     if (args.changed) {
       xla::HloModuleProto transformed_proto;
-      if (!transformed_proto.ParseFromArray(args.transformed_hlo_module.data,
-                                            args.transformed_hlo_module.size)) {
+      if (!transformed_proto.ParseFromString(
+              absl::string_view(args.transformed_hlo_module.data,
+                                args.transformed_hlo_module.size))) {
         return absl::InternalError("Failed to parse transformed HLO module");
       }
 
