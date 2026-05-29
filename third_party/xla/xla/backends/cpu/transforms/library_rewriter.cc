@@ -190,16 +190,18 @@ absl::StatusOr<LibraryMatcher*> LibraryRewriter::ChooseLibrary(
 
 void LibraryRewriter::AddFusionCandidates(
     HloInstruction* fusion, HloInstruction* instr, FusionDirection dir,
-    std::queue<std::pair<HloInstruction*, FusionDirection>>& queue) {
+    std::queue<std::pair<HloInstruction*, FusionDirection>>& queue,
+    absl::flat_hash_set<HloInstruction*>& visited) {
   // Don't add anything that has already been fused or require multi-output
   // fusion support. (We don't support that yet.)
   if (dir == FusionDirection::kUp || dir == FusionDirection::kBoth) {
     for (HloInstruction* operand : instr->operands()) {
-      if (!fused_.contains(operand) &&
+      if (!fused_.contains(operand) && !visited.contains(operand) &&
           absl::c_all_of(operand->users(), [&](HloInstruction* user) {
             return user == fusion || user == instr || fused_.contains(user);
           })) {
         queue.push(std::make_pair(operand, FusionDirection::kUp));
+        visited.insert(operand);
       }
     }
   }
@@ -209,8 +211,9 @@ void LibraryRewriter::AddFusionCandidates(
   }
   HloInstruction* user = instr->users().front();
   if ((dir == FusionDirection::kDown || dir == FusionDirection::kBoth) &&
-      !fused_.contains(user)) {
+      !fused_.contains(user) && !visited.contains(user)) {
     queue.push(std::make_pair(user, FusionDirection::kDown));
+    visited.insert(user);
   }
 }
 
@@ -251,14 +254,17 @@ absl::StatusOr<HloInstruction*> LibraryRewriter::GrowFusion(
 }
 
 absl::StatusOr<bool> LibraryRewriter::FuseNeighbors(
-    HloFusionInstruction* fusion, LibraryMatcher* lib) {
+    HloFusionInstruction*& fusion, LibraryMatcher* lib) {
   // A queue storing potential candidates for fusion: Each item is a pair of
   //   - Pointer to immediate neighbors of the current fusion node.
   //   - Travel direction: up (parents) and down (children).
   // This queue only tracks original HLO instructions in the parent computation,
   // not any new instructions created during the fusion process.
   std::queue<std::pair<HloInstruction*, FusionDirection>> frontier;
-  AddFusionCandidates(fusion, fusion, FusionDirection::kBoth, frontier);
+  absl::flat_hash_set<HloInstruction*> visited;
+  visited.insert(fusion);
+  AddFusionCandidates(fusion, fusion, FusionDirection::kBoth, frontier,
+                      visited);
 
   bool changed = false;
   // BFS and fuse as many neighbors as possible.
@@ -291,7 +297,7 @@ absl::StatusOr<bool> LibraryRewriter::FuseNeighbors(
 
     // Add neighbors to the frontier.
     fused_.insert(instr);
-    AddFusionCandidates(fusion, instr, dir, frontier);
+    AddFusionCandidates(fusion, instr, dir, frontier, visited);
 
     // Fuse `instr` into `fusion` according to the travel direction.
     ASSIGN_OR_RETURN(HloInstruction * new_instr,

@@ -745,5 +745,34 @@ TEST_F(CpuLibraryTest, NoHugeFusions) {
       FusionProperties{HloOpcode::kDot, 2, kMaxInstructionsInFusion, true});
 }
 
+TEST_F(CpuLibraryTest, DoubleUseFusion) {
+  const absl::string_view hlo = R"(
+    HloModule m
+
+    fused_computation {
+      p0 = f32[64,64] parameter(0)
+      ROOT dot = f32[64,64] dot(p0, p0), lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+
+    ENTRY main {
+      p = f32[64,64] parameter(0)
+      f1 = f32[64,64] fusion(p), kind=kCustom, calls=fused_computation,
+        backend_config={
+          "fusion_config":{
+            "kind":"__ynn_fusion"
+          }
+        }
+      add = f32[64,64] add(f1, f1)
+      ROOT dot2 = f32[64,64] dot(add, add), lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+  )";
+
+  DotRewriteTestSpec spec = GetDefaultTestSpec();
+  spec.fusion_mode = "dot";
+  RunTestInternal(spec, hlo, FusionProperties{HloOpcode::kDot, 1, 4, true});
+}
+
 }  // namespace
 }  // namespace xla::cpu
