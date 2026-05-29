@@ -344,16 +344,12 @@ xla_test(
 xla_test(
     name = "se_gpu_pjrt_client_multi_gpu_test",
     srcs = ["se_gpu_pjrt_client_multi_gpu_test.cc"],
-    backend_tags = {
-        # TODO(464116734): Re-enable once multi-device presubmits will be available in OSS.
-        "nvgpu_any": [
-            "no_oss",
-        ],
-    },
     backends = ["gpu"],
     shard_count = 3,
     tags = [
         "multi_gpu",
+        # Takes to long to run and doesn't require 8x GPUs setup.
+        "no_oss",
         "nofixdeps",
     ],
     use_legacy_runtime = True,
