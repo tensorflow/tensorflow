@@ -206,6 +206,8 @@ class PjRtCApiDevice : public PjRtDevice {
 
   absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats() const override;
 
+  absl::Status ClearMemoryStats() override;
+
   absl::StatusOr<std::intptr_t> GetStreamForExternalReadyEvents()
       const override;
 

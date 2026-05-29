@@ -520,6 +520,46 @@ TEST(PjRtCApiClientTpuTest, GetHostMemoryAllocator) {
   std::memset(ptr.get(), 0, size);
 }
 
+TEST(PjRtCApiClientTpuTest, ClearMemoryStats) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetXlaPjrtTpuClient());
+  PjRtDevice* device = client->addressable_devices()[0];
+
+  TF_ASSERT_OK_AND_ASSIGN(auto initial_stats, device->GetAllocatorStats());
+
+  const int64_t kAllocSize = 1024 * 1024;  // 1MB
+  Shape shape = ShapeUtil::MakeShape(S32, {kAllocSize / sizeof(int32_t)});
+  TF_ASSERT_OK_AND_ASSIGN(
+      *shape.mutable_layout(),
+      client->GetDefaultLayout(shape.element_type(), shape.dimensions()));
+
+  TF_ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * memory_space,
+                          device->default_memory_space());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->CreateUninitializedBuffer(shape, memory_space));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto stats_after_alloc, device->GetAllocatorStats());
+  ASSERT_EQ(stats_after_alloc.bytes_in_use,
+            initial_stats.bytes_in_use + kAllocSize);
+  ASSERT_EQ(stats_after_alloc.peak_bytes_in_use,
+            initial_stats.peak_bytes_in_use + kAllocSize);
+
+  buffer.reset();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto stats_after_reset, device->GetAllocatorStats());
+  ASSERT_EQ(stats_after_reset.bytes_in_use, initial_stats.bytes_in_use);
+  ASSERT_EQ(stats_after_reset.peak_bytes_in_use,
+            stats_after_alloc.peak_bytes_in_use);
+
+  ASSERT_OK(device->ClearMemoryStats());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto stats_after_clear, device->GetAllocatorStats());
+  EXPECT_EQ(stats_after_clear.bytes_in_use, initial_stats.bytes_in_use);
+  EXPECT_EQ(stats_after_clear.peak_bytes_in_use,
+            stats_after_clear.bytes_in_use);
+}
+
 TEST(PjRtCApiClientTpuTest, LoadSerializedExecutableWithComputationOrigin) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetXlaPjrtTpuClient());

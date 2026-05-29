@@ -2044,6 +2044,24 @@ absl::StatusOr<tsl::AllocatorStats> PjRtCApiDevice::GetAllocatorStats() const {
   return result;
 }
 
+absl::Status PjRtCApiDevice::ClearMemoryStats() {
+  const PJRT_Api* api = client_->pjrt_c_api();
+  if (api == nullptr) {
+    return absl::InternalError("PJRT C API is null.");
+  }
+  if (api->PJRT_Device_ClearMemoryStats == nullptr) {
+    return absl::UnimplementedError(
+        "PJRT C API PJRT_Device_ClearMemoryStats is not supported by the "
+        "plugin.");
+  }
+  PJRT_Device_ClearMemoryStats_Args args;
+  args.struct_size = PJRT_Device_ClearMemoryStats_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.device = device_;
+  RETURN_STATUS_IF_PJRT_ERROR(api->PJRT_Device_ClearMemoryStats(&args), api);
+  return absl::OkStatus();
+}
+
 absl::StatusOr<std::intptr_t> PjRtCApiDevice::GetStreamForExternalReadyEvents()
     const {
   const PJRT_Api* c_api = client_->pjrt_c_api();
