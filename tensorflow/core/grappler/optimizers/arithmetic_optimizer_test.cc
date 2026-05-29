@@ -4286,7 +4286,7 @@ TEST_F(ArithmeticOptimizerTest, OptimizeMaxOrMinOfMonotonicElementWiseMaxPool) {
   EXPECT_EQ(required_node_count, 2);
 }
 
-TEST_F(ArithmeticOptimizerTest, ArgMinReluIsNotOptimized) {
+TEST_F(ArithmeticOptimizerTest, ArgMinReluNodePreserved) {
   using tensorflow::ops::ArgMin;
   using tensorflow::ops::Relu;
 
@@ -4316,7 +4316,7 @@ TEST_F(ArithmeticOptimizerTest, ArgMinReluIsNotOptimized) {
   EXPECT_TRUE(relu_found);
 }
 
-TEST_F(ArithmeticOptimizerTest, ArgMaxReluIsNotOptimized) {
+TEST_F(ArithmeticOptimizerTest, ArgMaxReluNodePreserved) {
   using tensorflow::ops::ArgMax;
   using tensorflow::ops::Relu;
 
@@ -4370,6 +4370,14 @@ TEST_F(ArithmeticOptimizerTest, ArgMinReluTieBreakingPreserved) {
   // Expected after ReLU:
   // [3, 0, 0, 4, 0]
   // first minimum is index 1.
+    
+  std::vector<Tensor> tensors =
+      EvaluateNodes(optimized_graph, item.fetch);
+
+  ASSERT_EQ(tensors.size(), 1);
+
+  test::ExpectTensorEqual<int64_t>(
+      tensors[0], test::AsTensor<int64_t>({1}));
 }
 
 TEST_F(ArithmeticOptimizerTest, UnaryOpsComposition) {
