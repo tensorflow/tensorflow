@@ -412,7 +412,7 @@ class SpmdPartitioner : public HloModulePass {
   SpmdPartitionerOptions options_;
   SPMDCollectiveOpsCreator collective_ops_creator_;
   absl::flat_hash_set<absl::string_view> execution_threads_;
-  bool enable_rgv3_ = false;
+  bool enable_rgv3_ = true;
 };
 
 // Class describes partition state of the data represented by an HLO created
