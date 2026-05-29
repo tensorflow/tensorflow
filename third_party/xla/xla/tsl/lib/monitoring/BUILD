@@ -290,7 +290,7 @@ cc_library(
 
 # Export source files needed for mobile builds, which do not use granular targets.
 filegroup(
-    name = "mobile_srcs_only_runtime",
+    name = "mobile_hdrs_only_runtime",
     srcs = [
         "cell_reader.h",
         "collection_registry.h",

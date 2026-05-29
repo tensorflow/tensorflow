@@ -82,6 +82,13 @@ cc_library(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
+        "@xla//xla/tsl/lib/random:mobile_srcs_only_runtime",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
         "distribution_sampler.h",
         "exact_uniform_int.h",
         "philox_random.h",
@@ -90,7 +97,7 @@ filegroup(
         "random_distributions_utils.h",
         "simple_philox.h",
         "weighted_picker.h",
-        "@xla//xla/tsl/lib/random:mobile_srcs_only_runtime",
+        "@xla//xla/tsl/lib/random:mobile_hdrs_only_runtime",
     ],
 )
 

@@ -17,10 +17,17 @@ filegroup(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
-        "dim_comparator.h",
         "group_iterator.cc",
-        "group_iterator.h",
         "sparse_tensor.cc",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
+        "dim_comparator.h",
+        "group_iterator.h",
         "sparse_tensor.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],

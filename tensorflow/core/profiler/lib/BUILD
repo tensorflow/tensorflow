@@ -250,7 +250,7 @@ tf_cc_test(
 )
 
 filegroup(
-    name = "mobile_srcs_no_runtime",
+    name = "mobile_hdrs_no_runtime",
     srcs = [
         "scoped_annotation.h",
         "scoped_memory_debug_annotation.h",
@@ -261,7 +261,7 @@ filegroup(
 )
 
 filegroup(
-    name = "mobile_srcs_only_runtime",
+    name = "mobile_hdrs_only_runtime",
     srcs = [
         "annotated_traceme.h",
         "connected_traceme.h",

@@ -81,10 +81,12 @@ absl::Status HostStream::MemZero(DeviceAddressBase* location, uint64_t size) {
   return absl::OkStatus();
 }
 
-absl::Status HostStream::WaitFor(Stream* other) { return absl::OkStatus(); }
+absl::Status HostStream::WaitFor(Stream* other) {
+  return other->BlockHostUntilDone();
+}
 
 absl::Status HostStream::WaitFor(Event* event) {
-  std::shared_ptr<absl::Notification> notification =
+  const std::shared_ptr<absl::Notification>& notification =
       static_cast<HostEvent*>(event)->notification();
   notification->WaitForNotification();
   return absl::OkStatus();

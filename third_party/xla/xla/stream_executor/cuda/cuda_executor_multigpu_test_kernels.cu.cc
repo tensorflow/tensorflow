@@ -27,7 +27,7 @@ __global__ void MulticastReduceKernel(int* input, int* output, size_t size) {
   for (int i = 0; i < size; i++) {
     int* multimem_element_ptr = input + i;
     int result = 0;
-    asm volatile("multimem.ld_reduce.relaxed.sys.global.add.u32 %0, [%1];"
+    asm volatile("multimem.ld_reduce.acquire.sys.global.add.u32 %0, [%1];"
                  : "=r"(result)
                  : "l"(multimem_element_ptr)
                  : "memory");

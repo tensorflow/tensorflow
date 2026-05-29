@@ -546,7 +546,7 @@ tsl_cc_test(
 )
 
 filegroup(
-    name = "mobile_srcs_no_runtime",
+    name = "mobile_hdrs_no_runtime",
     srcs = [
         "no_init.h",
         "trace_filter_utils.h",

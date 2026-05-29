@@ -13,7 +13,7 @@ package(
 )
 
 filegroup(
-    name = "mobile_srcs",
+    name = "mobile_hdrs",
     srcs = [
         "ctc_beam_entry.h",
         "ctc_beam_scorer.h",
@@ -25,7 +25,7 @@ filegroup(
 
 alias(
     name = "android_srcs",
-    actual = ":mobile_srcs",
+    actual = ":mobile_hdrs",
 )
 
 cc_library(

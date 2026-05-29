@@ -159,14 +159,10 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "@xla//xla/tsl/framework:allocator_retry.cc",
-        "@xla//xla/tsl/framework:allocator_retry.h",
         "@xla//xla/tsl/framework:bfc_allocator.cc",
-        "@xla//xla/tsl/framework:bfc_allocator.h",
-        "@xla//xla/tsl/framework:shared_counter.h",
     ] + glob(
         [
             "**/*.cc",
-            "**/*.h",
         ],
         exclude = [
             "**/*fuzz.*",
@@ -174,6 +170,27 @@ filegroup(
             "**/*testutil*",
             "**/*testlib*",
             "**/*main.cc",
+            "gpu/**/*",
+            "gpu_device_factory.*",
+        ],
+    ),
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
+        "@xla//xla/tsl/framework:allocator_retry.h",
+        "@xla//xla/tsl/framework:bfc_allocator.h",
+        "@xla//xla/tsl/framework:shared_counter.h",
+    ] + glob(
+        [
+            "**/*.h",
+        ],
+        exclude = [
+            "**/*fuzz.*",
+            "**/*test.*",
+            "**/*testutil*",
+            "**/*testlib*",
             "gpu/**/*",
             "gpu_device_factory.*",
         ],

@@ -418,16 +418,37 @@ cc_library(
 
 filegroup(
     name = "portable_op_registrations_and_gradients",
+    srcs = [
+        ":mobile_hdrs",
+        ":mobile_srcs",
+    ],
+)
+
+filegroup(
+    name = "mobile_srcs",
     srcs = ["//tensorflow/c/kernels:portable_all_ops"] + glob(
         [
             "**/*.cc",
-            "**/*.h",
         ],
         exclude = [
             "**/*test.cc",
             "**/*testutil*",
             "**/*testlib*",
             "**/*main.cc",
+            "**/tpu_*",
+        ],
+    ),
+)
+
+filegroup(
+    name = "mobile_hdrs",
+    srcs = glob(
+        [
+            "**/*.h",
+        ],
+        exclude = [
+            "**/*testutil*",
+            "**/*testlib*",
             "**/tpu_*",
         ],
     ),

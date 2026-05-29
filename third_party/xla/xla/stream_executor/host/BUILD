@@ -143,6 +143,7 @@ xla_cc_test(
     deps = [
         ":host_platform",
         "//xla/stream_executor:device_address",
+        "//xla/stream_executor:event",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream",
