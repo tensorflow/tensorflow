@@ -254,7 +254,7 @@ bool IsElementWiseMonotonic(const NodeDef& node, bool* is_non_decreasing) {
 // Returns true if node represents a unary elementwise function that is
 // strictly monotonic. If *is_non_decreasing is true, the function is strictly
 // increasing, e.g. exp, sqrt. If *is_non_decreasing is false, the function is
-// strictly decreasing, e.g. inv.
+// strictly decreasing, e.g. neg, rsqrt.
 //
 // Unlike IsElementWiseMonotonic(), this excludes functions that may map
 // distinct inputs to the same output value (e.g. Relu, Relu6, Floor, Ceil,
