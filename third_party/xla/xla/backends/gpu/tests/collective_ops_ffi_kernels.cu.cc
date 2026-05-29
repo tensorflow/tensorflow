@@ -70,9 +70,9 @@ static __global__ void MulticastAllReduce(uint32_t* src_mmem, uint32_t* dst,
 
   for (int64_t i = offset; i < count; i += stride) {
     uint32_t data = 0;
-    asm volatile("multimem.ld_reduce.relaxed.sys.global.add.u32 %0, [%1];"
+    asm volatile("multimem.ld_reduce.acquire.sys.global.add.u32 %0, [%1];"
                  : "=r"(data)
-                 : "l"(src_mmem + src_offset + offset)
+                 : "l"(src_mmem + src_offset + i)
                  : "memory");
     dst[i] = data;
   }
