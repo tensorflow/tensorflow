@@ -3419,8 +3419,7 @@ GpuCompiler::LoadExecutableFromAotResult(
   IrEmitterContext ir_emitter_context(
       hlo_module.get(), buffer_assignment.get(), &execution_stream_assignment,
       platform_name, device_description, borrowed_context->get(), &llvm_context,
-      /*emit_kernels=*/false, llvm::Triple(target_triple()), data_layout(),
-      &kernel_compiler,
+      llvm::Triple(target_triple()), data_layout(), &kernel_compiler,
       cpu::TargetMachineOptions(hlo_module->config().debug_options()),
       &mlir_context_pool_);
 

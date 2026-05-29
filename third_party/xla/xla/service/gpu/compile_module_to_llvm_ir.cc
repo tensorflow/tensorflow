@@ -244,7 +244,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   IrEmitterContext ir_emitter_context(
       hlo_module, results.buffer_assignment.get(),
       results.execution_stream_assignment.get(), platform_id->ToName(),
-      device_desc, borrowed_context->get(), llvm_context, /*emit_kernels=*/true,
+      device_desc, borrowed_context->get(), llvm_context,
       llvm::Triple(target_triple), data_layout, compiler,
       std::move(cpu_target_machine_options), mlir_context_pool);
   ThunkEmitter thunk_emitter(&ir_emitter_context, &llvm_options_lock);
