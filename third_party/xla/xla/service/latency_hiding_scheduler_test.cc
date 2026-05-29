@@ -3468,6 +3468,43 @@ TEST_F(LatencyHidingSchedulerTest, RerunWithSmallerMemoryLimit) {
             PositionInVector(new_instruction_sequence, cps));
 }
 
+TEST_F(LatencyHidingSchedulerTest, RerunDynamicBackoffFactor) {
+  absl::string_view hlo_string = R"(
+    HloModule rerun_scheduler_test, is_scheduled=true
+    ENTRY main {
+     p0 = bf16[8]{0} parameter(0)
+     c = bf16[] constant(0)
+     b = bf16[43]{0} broadcast(c), dimensions={}
+     s = bf16[1]{0} slice(b), slice={[0:1]}
+     cp = bf16[8]{0} collective-permute(p0), source_target_pairs={{0,1},{1,2},{2,3}}
+     ROOT tuple = (bf16[8]{0}, bf16[1]{0}) tuple(cp, s)
+  }
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.memory_limit = 110;
+  sched_config.rerun = 1;
+
+  TF_ASSERT_OK_AND_ASSIGN(auto scheduler_setup,
+                          SetupScheduler(hlo_module.get(), sched_config));
+  auto scheduler = std::move(scheduler_setup.first);
+  auto scheduler_core = std::move(scheduler_setup.second);
+
+  TF_EXPECT_OK(scheduler->Run(hlo_module.get()));
+
+  // Peak memory after first run is 136 bytes.
+  // Initial memory limit is 110 bytes.
+  // With the new logic (dynamic backoff factor), the backoff factor in the
+  // rerun is: 1.0 - (136 - 110) / 110 = 1.0 - 26 / 110 = 0.764.
+  // New memory limit: 110 * 0.764 = 84.
+  // With the old logic, backoff factor is always 0.9, so new memory limit:
+  // 110 * 0.9 = 99.
+  // Assert that the final memory limit is <= 85, which is only true with the
+  // dynamic backoff factor.
+  EXPECT_LE(scheduler_core->GetMemoryLimit(), 85);
+}
+
 TEST_F(LatencyHidingSchedulerTest, MultipleAsyncDoneOperationsDoNotCreateLoop) {
   absl::string_view hlo_string = R"(
 HloModule multiple_async_done_scheduler_test, is_scheduled=true
