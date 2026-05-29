@@ -187,9 +187,50 @@ TEST_P(YnnFusionTest, Slice) {
   RunTest(kModuleStr);
 }
 
-TEST_P(YnnFusionTest, Iota) {
-  if (GetParam().in_dtype == "bf16") {
-    GTEST_SKIP() << "Iota not supported for bf16";
+TEST_P(YnnFusionTest, IotaRank1) {
+  const std::string& in_dtype = GetParam().in_dtype;
+  if (in_dtype == "bf16" || in_dtype == "f64") {
+    GTEST_SKIP() << "Iota not supported for " << in_dtype;
+  }
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule iota
+
+    ynn_fusion {
+      ROOT %iota = $dtype[8] iota(), iota_dimension=0
+    }
+
+    ENTRY entry {
+      ROOT %fusion = $dtype[8] fusion(), kind=kCustom, calls=ynn_fusion,
+        backend_config={"fusion_config": {kind: "__ynn_fusion"}}
+    })";
+
+  RunTest(kModuleStr);
+}
+
+TEST_P(YnnFusionTest, IotaDim0) {
+  const std::string& in_dtype = GetParam().in_dtype;
+  if (in_dtype == "bf16" || in_dtype == "f64") {
+    GTEST_SKIP() << "Iota not supported for " << in_dtype;
+  }
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule iota
+
+    ynn_fusion {
+      ROOT %iota = $dtype[8, 10] iota(), iota_dimension=0
+    }
+
+    ENTRY entry {
+      ROOT %fusion = $dtype[8, 10] fusion(), kind=kCustom, calls=ynn_fusion,
+        backend_config={"fusion_config": {kind: "__ynn_fusion"}}
+    })";
+
+  RunTest(kModuleStr);
+}
+
+TEST_P(YnnFusionTest, IotaDim1) {
+  const std::string& in_dtype = GetParam().in_dtype;
+  if (in_dtype == "bf16" || in_dtype == "f64") {
+    GTEST_SKIP() << "Iota not supported for " << in_dtype;
   }
   constexpr absl::string_view kModuleStr = R"(
     HloModule iota
