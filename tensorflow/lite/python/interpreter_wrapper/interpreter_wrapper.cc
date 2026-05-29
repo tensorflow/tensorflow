@@ -90,7 +90,8 @@ std::unique_ptr<Interpreter> CreateInterpreter(
     const tflite::MutableOpResolver& resolver, bool preserve_all_tensors,
     bool disable_delegate_clustering, int num_threads,
     bool default_delegate_latest_features,
-    bool compress_quantization_zero_points, bool disable_delegate_node_fusion) {
+    bool compress_quantization_zero_points, bool disable_delegate_node_fusion,
+    bool force_delegate_node_profiling) {
   if (!model) {
     return nullptr;
   }
@@ -111,6 +112,7 @@ std::unique_ptr<Interpreter> CreateInterpreter(
   options.SetDisableDelegateClustering(disable_delegate_clustering);
   options.SetCompressQuantizationZeroPoints(compress_quantization_zero_points);
   options.SetDisableDelegateNodeFusion(disable_delegate_node_fusion);
+  options.SetForceDelegateNodeProfiling(force_delegate_node_profiling);
   InterpreterBuilder builder(*model, resolver, &options);
   if (default_delegate_latest_features) {
     builder.AddDelegate(xnnpack_delegate);
@@ -260,7 +262,8 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
     std::string* error_msg, bool preserve_all_tensors,
     bool disable_delegate_clustering, int num_threads,
     bool default_delegate_latest_features,
-    bool compress_quantization_zero_points, bool disable_delegate_node_fusion) {
+    bool compress_quantization_zero_points, bool disable_delegate_node_fusion,
+    bool force_delegate_node_profiling) {
   if (!model) {
     *error_msg = error_reporter->message();
     return nullptr;
@@ -301,7 +304,8 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
   auto interpreter = CreateInterpreter(
       model.get(), *resolver, preserve_all_tensors, disable_delegate_clustering,
       num_threads, default_delegate_latest_features,
-      compress_quantization_zero_points, disable_delegate_node_fusion);
+      compress_quantization_zero_points, disable_delegate_node_fusion,
+      force_delegate_node_profiling);
   if (!interpreter) {
     *error_msg = error_reporter->message();
     return nullptr;
@@ -961,7 +965,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
     std::string* error_msg, bool preserve_all_tensors,
     bool disable_delegate_clustering, int num_threads,
     bool default_delegate_latest_features,
-    bool compress_quantization_zero_points, bool disable_delegate_node_fusion) {
+    bool compress_quantization_zero_points, bool disable_delegate_node_fusion,
+    bool force_delegate_node_profiling) {
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
   std::unique_ptr<InterpreterWrapper::Model> model =
       Model::BuildFromFile(model_path, error_reporter.get());
@@ -970,7 +975,7 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
       registerers_by_name, registerers_by_func, error_msg, preserve_all_tensors,
       disable_delegate_clustering, num_threads,
       default_delegate_latest_features, compress_quantization_zero_points,
-      disable_delegate_node_fusion);
+      disable_delegate_node_fusion, force_delegate_node_profiling);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
@@ -982,7 +987,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
       error_msg, preserve_all_tensors, disable_delegate_clustering,
       /*num_threads=*/1, /*default_delegate_latest_features=*/false,
       /*compress_quantization_zero_points=*/false,
-      /*disable_delegate_node_fusion=*/false);
+      /*disable_delegate_node_fusion=*/false,
+      /*force_delegate_node_profiling=*/false);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
@@ -992,7 +998,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
     std::string* error_msg, bool preserve_all_tensors,
     bool disable_delegate_clustering, int num_threads,
     bool default_delegate_latest_features,
-    bool compress_quantization_zero_points, bool disable_delegate_node_fusion) {
+    bool compress_quantization_zero_points, bool disable_delegate_node_fusion,
+    bool force_delegate_node_profiling) {
   char* buf = nullptr;
   Py_ssize_t length;
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
@@ -1008,7 +1015,7 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
       registerers_by_name, registerers_by_func, error_msg, preserve_all_tensors,
       disable_delegate_clustering, num_threads,
       default_delegate_latest_features, compress_quantization_zero_points,
-      disable_delegate_node_fusion);
+      disable_delegate_node_fusion, force_delegate_node_profiling);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
@@ -1020,7 +1027,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
       disable_delegate_clustering, /*num_threads=*/1,
       /*default_delegate_latest_features=*/false,
       /*compress_quantization_zero_points=*/false,
-      /*disable_delegate_node_fusion=*/false);
+      /*disable_delegate_node_fusion=*/false,
+      /*force_delegate_node_profiling=*/false);
 }
 
 PyObject* InterpreterWrapper::ResetVariableTensors() {
