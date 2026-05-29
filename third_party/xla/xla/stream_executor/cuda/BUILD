@@ -2938,7 +2938,6 @@ cuda_library(
     ],
     deps = [
         ":cuda_platform_id",
-        "//xla/core/collectives:symmetric_memory",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:ragged_all_to_all_kernel",
