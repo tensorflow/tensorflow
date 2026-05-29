@@ -772,6 +772,14 @@ class BufferAssigner {
         heap_buffer_interval_compare;
     std::optional<BufferAssignment::BufferIsolationOptions> isolation_options;
     std::optional<BufferValue::Color> temp_buffer_color;
+
+    // The algorithm to use for assigning buffers for computations without a
+    // sequential ordering.
+    buffer_assignment::AssignmentAlgorithmForComputationsWithoutOrderingProto::
+        Value assignment_algorithm_for_computations_without_ordering =
+            buffer_assignment::
+                AssignmentAlgorithmForComputationsWithoutOrderingProto::DEFAULT;
+
     BufferOrder buffer_order = BufferOrder::kBiggestFirst;
 
     buffer_assignment::BufferAssignmentAlgorithmProto::Value
@@ -815,6 +823,19 @@ class BufferAssigner {
       LogicalBuffer::AlignmentFunction color_alignment, Options options);
 
  private:
+  // An interface for tracking BufferAllocations (including special) across
+  // computations without a sequential ordering and defining the strategy for
+  // reusing existing allocations for HloBuffers.
+  class BufferAllocationsManagerForComputationsWithoutOrdering;
+
+  // Default implementation of
+  // BufferAllocationsManagerForComputationsWithoutOrdering that performs a
+  // linear scan over tracked allocations to reuse the smallest fitting buffer.
+  // For each buffer this takes time proportional to the number of buffers with
+  // intersecting live ranges. This means that overall this can take quadratic
+  // time.
+  class DefaultBufferAllocationsManagerForComputationsWithoutOrdering;
+
   BufferAssigner(const AliasInfo* alias_info, Options opts)
       : alias_info_(alias_info), opts_(std::move(opts)) {}
   virtual ~BufferAssigner() = default;
@@ -835,7 +856,10 @@ class BufferAssigner {
       absl::flat_hash_map<const HloComputation*,
                           absl::flat_hash_set<const HloValue*>>*
           buffers_to_assign_sequentially,
-      BufferAssignment* assignment);
+      BufferAssignment* assignment,
+      buffer_assignment::
+          AssignmentAlgorithmForComputationsWithoutOrderingProto::Value
+              algorithm);
 
   // Returns true if buffer's live range interferences with buffer2's.
   bool LiveRangeInterferes(const HloValue* buffer1,
@@ -850,13 +874,31 @@ class BufferAssigner {
       absl::flat_hash_set<const HloBuffer*>* assigned_buffers,
       BufferAssignment* assignment);
 
+  // Assigns HloBuffers that require dedicated allocations upfront (constants,
+  // entry parameters, thread-local, tuples).
+  absl::StatusOr<bool> AssignSpecialHloBuffer(
+      const HloBuffer* hlo_buffer, bool is_thread_local,
+      BufferAllocationsManagerForComputationsWithoutOrdering*
+          allocation_manager,
+      BufferAssignment* assignment);
+
   // Assigns a single hlo buffer to an HLO allocation.
   absl::Status AssignSingleHloBuffer(
       const HloBuffer* hlo_buffer, bool is_thread_local,
       absl::flat_hash_map<const HloComputation*,
                           absl::flat_hash_set<const HloValue*>>*
           buffers_to_assign_sequentially,
-      std::vector<BufferAllocation::Index>* allocation_indices,
+      BufferAllocationsManagerForComputationsWithoutOrdering*
+          allocation_manager,
+      BufferAssignment* assignment);
+
+  // Delays assignment of temp buffers if all computations in the buffer have a
+  // sequential instruction ordering. Returns true if assignment was delayed.
+  bool DelayTemporaryBufferAssignment(
+      const HloBuffer* hlo_buffer,
+      absl::flat_hash_map<const HloComputation*,
+                          absl::flat_hash_set<const HloValue*>>*
+          buffers_to_assign_sequentially,
       BufferAssignment* assignment);
 
   // Assigns 'buffers_to_assign_sequentially' using heap simulation, assuming
