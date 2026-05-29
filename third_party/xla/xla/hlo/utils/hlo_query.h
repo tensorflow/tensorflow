@@ -92,6 +92,10 @@ bool IsBroadcastOfParameter(const HloInstruction& instr);
 // instructions (bitcast, get-tuple-element).
 bool IsEffectiveParameter(const HloInstruction&);
 
+// Walks past pass-through casts (kCopy, kConvert, kBitcast) and returns the
+// underlying value-producing instruction.
+const HloInstruction* StripCastLike(const HloInstruction* instr);
+
 // Returns first HLO of the computation with the opcode, otherwise nullptr.
 HloInstruction* GetFirstInstructionWithOpcode(const HloComputation& computation,
                                               HloOpcode opcode);

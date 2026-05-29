@@ -431,6 +431,10 @@ static absl::Status MulticastAllReduce(
   auto src_addr =
       se::DeviceAddress<uint32_t>::MakeFromByteSize(src_mmem, src.size_bytes());
 
+  // Block the host CPU thread until the asynchronous GPU copies / memory maps
+  // are complete.
+  RETURN_IF_ERROR(stream->BlockHostUntilDone());
+
   // Because we launch a trivial kernel we use a device-side rendezvous to make
   // sure that both devices will execute the kernel together after inputs become
   // ready on both devices. Any real kernel must use device-side barriers.
@@ -504,6 +508,10 @@ static absl::Status SymMulticastAllReduce(
   if (!src_multimem) {
     return absl::InternalError("Multimem address can't be resolved");
   }
+
+  // Block the host CPU thread until the asynchronous GPU copies / memory maps
+  // are complete.
+  RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   // Because we launch a trivial kernel we use a device-side rendezvous to make
   // sure that both devices will execute the kernel together after inputs become
@@ -582,6 +590,10 @@ static absl::Status SymPeerAllReduce(
     return absl::InternalError("Peer address can't be resolved");
   }
 
+  // Block the host CPU thread until the asynchronous GPU copies / memory maps
+  // are complete.
+  RETURN_IF_ERROR(stream->BlockHostUntilDone());
+
   // Because we launch a trivial kernel we use a device-side rendezvous to make
   // sure that both devices will execute the kernel together after inputs become
   // ready on both devices. Any real kernel must use device-side barriers.
@@ -654,6 +666,10 @@ static absl::Status PeerAllReduce(se::Stream* stream, ffi::BufferR0<U32> src,
   ASSIGN_OR_RETURN(auto kernel, se::gpu::GpuKernelRegistry::GetGlobalRegistry()
                                     .LoadKernel<Peer2AllReduce>(
                                         collective_params->executor));
+
+  // Block the host CPU thread until the asynchronous GPU copies / memory maps
+  // are complete.
+  RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   // Because we launch a trivial kernel we use a device-side rendezvous to make
   // sure that both devices will execute the kernel together after inputs become

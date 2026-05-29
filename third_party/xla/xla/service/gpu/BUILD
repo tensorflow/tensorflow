@@ -1699,6 +1699,7 @@ cc_library(
         "//xla/backends/gpu/transforms:dot_operand_converter",
         "//xla/backends/gpu/transforms:dot_strength_reduction",
         "//xla/backends/gpu/transforms:double_buffer_loop_unrolling",
+        "//xla/backends/gpu/transforms:dus_accumulator_zero_init_elimination",
         "//xla/backends/gpu/transforms:dynamic_slice_annotator",
         "//xla/backends/gpu/transforms:dynamic_slice_fusion_rewriter",
         "//xla/backends/gpu/transforms:estimate_cub_scan_scratch_size",

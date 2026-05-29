@@ -658,6 +658,10 @@ message DebugOptions {
   // Rewrite layer norm patterns into cuDNN library calls.
   optional bool xla_gpu_enable_cudnn_layer_norm = 262;
 
+  // Replaces broadcast(0) scan-accumulator init with AllocateBuffer when the
+  // body's DUS covers every slot.
+  optional bool xla_gpu_enable_dus_accumulator_zero_init_elimination = 490;
+
   // Enables address computation fusion to optimize dynamic-slice and
   // dynamic-update-slice operations around library calls.
   optional bool xla_gpu_enable_dynamic_slice_fusion = 105;
@@ -1598,7 +1602,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 490
+  // Next id: 491
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
