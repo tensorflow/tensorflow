@@ -544,6 +544,9 @@ class HloComputation:
   def replace_instruction(
       self, arg0: HloInstruction, arg1: HloInstruction, /
   ) -> None: ...
+  def create_unary_instruction(
+      self, arg0: HloOpcode, arg1: HloInstruction, /
+  ) -> HloInstruction: ...
 
 class HloSchedule:
   def to_string(self) -> str: ...

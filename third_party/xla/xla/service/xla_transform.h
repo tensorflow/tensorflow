@@ -100,6 +100,11 @@ class ApplyXlaTransforms : public HloModulePass {
   HloXlaTransform::PipelineStage stage_;
 };
 
+// Replaces the contents of `module` with the HloModule described by
+// `transformed_proto`.
+absl::Status UpdateHloModuleFromProto(HloModule* module,
+                                      const HloModuleProto& transformed_proto);
+
 }  // namespace xla
 
 #endif  // XLA_SERVICE_XLA_TRANSFORM_H_
