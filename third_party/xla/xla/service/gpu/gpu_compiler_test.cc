@@ -2156,9 +2156,9 @@ TEST_P(OneShotRaggedAllToAllMemSpaceTest, DirectUsage) {
   HloModuleConfig config = GetModuleConfigForTest();
   DebugOptions& opts = config.mutable_debug_options();
   opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(true);
-  if (GetParam().is_zero_copy) {
-    opts.set_xla_gpu_experimental_ragged_all_to_all_zero_copy(true);
-  }
+  opts.set_xla_gpu_experimental_ragged_all_to_all_zero_copy(
+      GetParam().is_zero_copy);
+
   std::pair<const HloModule*, std::unique_ptr<OpaqueExecutable>>
       optimized_module_and_executable;
   ASSERT_OK_AND_ASSIGN(optimized_module_and_executable,
@@ -2259,9 +2259,9 @@ TEST_P(OneShotRaggedAllToAllMemSpaceTest, LoopUsage) {
   HloModuleConfig config = GetModuleConfigForTest();
   DebugOptions& opts = config.mutable_debug_options();
   opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(true);
-  if (GetParam().is_zero_copy) {
-    opts.set_xla_gpu_experimental_ragged_all_to_all_zero_copy(true);
-  }
+  opts.set_xla_gpu_experimental_ragged_all_to_all_zero_copy(
+      GetParam().is_zero_copy);
+
   std::pair<const HloModule*, std::unique_ptr<OpaqueExecutable>>
       optimized_module_and_executable;
   ASSERT_OK_AND_ASSIGN(optimized_module_and_executable,
