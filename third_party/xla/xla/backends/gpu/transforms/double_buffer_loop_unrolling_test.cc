@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/double_buffer_loop_unrolling.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -37,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
@@ -62,6 +64,101 @@ int64_t CountInstructions(HloModule& module, HloOpcode opcode) {
 }
 
 using GpuLoopDoubleBufferTransformerTest = HloHardwareIndependentTestBase;
+
+DynamicSliceConfig MakeLoopConfig(int64_t loop_index, int64_t byte_offset,
+                                  int64_t byte_stride) {
+  DynamicSliceConfig config;
+  config.set_loop_index(loop_index);
+  config.set_byte_offset(byte_offset);
+  config.set_byte_stride(byte_stride);
+  return config;
+}
+
+DynamicSliceConfig MakeStaticConfig(int64_t byte_offset) {
+  DynamicSliceConfig config;
+  config.set_byte_offset(byte_offset);
+  config.set_byte_stride(0);
+  return config;
+}
+
+void ExpectDynamicSliceConfig(const HloInstruction* instr,
+                              std::optional<int64_t> loop_index,
+                              int64_t byte_offset, int64_t byte_stride) {
+  ASSERT_NE(instr, nullptr);
+  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig backend_config,
+                          instr->backend_config<GpuBackendConfig>());
+  ASSERT_TRUE(backend_config.has_dynamic_slice_config());
+  const DynamicSliceConfig& config = backend_config.dynamic_slice_config();
+  if (loop_index.has_value()) {
+    EXPECT_TRUE(config.has_loop_index());
+    EXPECT_EQ(config.loop_index(), *loop_index);
+  } else {
+    EXPECT_FALSE(config.has_loop_index());
+  }
+  EXPECT_EQ(config.byte_offset(), byte_offset);
+  EXPECT_EQ(config.byte_stride(), byte_stride);
+}
+
+TEST_F(GpuLoopDoubleBufferTransformerTest,
+       MakeConfigForLoopIterationConvertsConfigToStatic) {
+  DynamicSliceConfig config = MakeLoopConfig(/*loop_index=*/0,
+                                             /*byte_offset=*/16,
+                                             /*byte_stride=*/32);
+
+  DynamicSliceConfig new_config =
+      DoubleBufferLoopUnrolling::MakeConfigForLoopIteration(
+          config,
+          DoubleBufferLoopUnrolling::StaticLoopIteration{/*iteration=*/2});
+
+  EXPECT_FALSE(new_config.has_loop_index());
+  EXPECT_EQ(new_config.byte_offset(), 80);
+  EXPECT_EQ(new_config.byte_stride(), 0);
+}
+
+TEST_F(GpuLoopDoubleBufferTransformerTest,
+       MakeConfigForLoopIterationLeavesStaticConfigUnchanged) {
+  DynamicSliceConfig config = MakeStaticConfig(/*byte_offset=*/16);
+
+  DynamicSliceConfig new_config =
+      DoubleBufferLoopUnrolling::MakeConfigForLoopIteration(
+          config,
+          DoubleBufferLoopUnrolling::StaticLoopIteration{/*iteration=*/2});
+
+  EXPECT_FALSE(new_config.has_loop_index());
+  EXPECT_EQ(new_config.byte_offset(), 16);
+  EXPECT_EQ(new_config.byte_stride(), 0);
+}
+
+TEST_F(GpuLoopDoubleBufferTransformerTest,
+       MakeConfigForLoopIterationAdjustsDynamicOffsetAndStride) {
+  DynamicSliceConfig config = MakeLoopConfig(/*loop_index=*/0,
+                                             /*byte_offset=*/16,
+                                             /*byte_stride=*/32);
+
+  DynamicSliceConfig new_config =
+      DoubleBufferLoopUnrolling::MakeConfigForLoopIteration(
+          config, DoubleBufferLoopUnrolling::DynamicLoopIteration{
+                      /*start_iteration=*/1, /*iteration_stride=*/2});
+
+  ASSERT_TRUE(new_config.has_loop_index());
+  EXPECT_EQ(new_config.loop_index(), 0);
+  EXPECT_EQ(new_config.byte_offset(), 48);
+  EXPECT_EQ(new_config.byte_stride(), 64);
+}
+
+TEST_F(GpuLoopDoubleBufferTransformerTest,
+       MakeConfigForLoopIterationLeavesStaticConfigUnchangedForDynamicLoop) {
+  DynamicSliceConfig config = MakeStaticConfig(/*byte_offset=*/16);
+
+  DynamicSliceConfig new_config =
+      DoubleBufferLoopUnrolling::MakeConfigForLoopIteration(
+          config, DoubleBufferLoopUnrolling::DynamicLoopIteration{
+                      /*start_iteration=*/1, /*iteration_stride=*/2});
+
+  EXPECT_FALSE(new_config.has_loop_index());
+  EXPECT_EQ(new_config.byte_offset(), 16);
+  EXPECT_EQ(new_config.byte_stride(), 0);
+}
 
 TEST_F(GpuLoopDoubleBufferTransformerTest,
        AutoUnrollLoopWhenCollectivesArePresent) {
@@ -160,6 +257,260 @@ ENTRY main {
       WhileLoopBackendConfig config,
       while_instruction->backend_config<WhileLoopBackendConfig>());
   EXPECT_EQ(config.known_trip_count().n(), 10);
+}
+
+TEST_F(GpuLoopDoubleBufferTransformerTest,
+       UpdatesDynamicSliceConfigForEvenDoubleBuffering) {
+  constexpr absl::string_view kModuleString = R"(
+HloModule m
+
+condition {
+  input_tuple = (s32[], f32[8,4], f32[1,4]) parameter(0)
+  ivar = s32[] get-tuple-element(input_tuple), index=0
+  limit = s32[] constant(4)
+  ROOT done = pred[] compare(ivar, limit), direction=LT
+}
+
+body {
+  input_tuple = (s32[], f32[8,4], f32[1,4]) parameter(0)
+  ivar = s32[] get-tuple-element(input_tuple), index=0
+  buffer = f32[8,4] get-tuple-element(input_tuple), index=1
+  update = f32[1,4] get-tuple-element(input_tuple), index=2
+  c0 = s32[] constant(0)
+  updated = f32[8,4] dynamic-update-slice(buffer, update, ivar, c0),
+      backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":16,"byte_stride":32}}
+  one = s32[] constant(1)
+  ivar_plus_1 = s32[] add(ivar, one)
+  ROOT output_tuple = (s32[], f32[8,4], f32[1,4])
+      tuple(ivar_plus_1, updated, update)
+}
+
+ENTRY main {
+  buffer = f32[8,4] parameter(0)
+  update = f32[1,4] parameter(1)
+  init = s32[] constant(0)
+  tuple = (s32[], f32[8,4], f32[1,4]) tuple(init, buffer, update)
+  ROOT while = (s32[], f32[8,4], f32[1,4]) while(tuple),
+      condition=condition, body=body,
+      backend_config={"known_trip_count":{"n":"4"},
+                      "known_init_step":{"init":"0","step":"1"},
+                      "known_induction_variable":{"tuple_index":"0"}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  DoubleBufferLoopUnrolling unroller(
+      DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, unroller.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloComputation* body = module->GetComputationWithName("body");
+  ExpectDynamicSliceConfig(body->GetInstructionWithName("updated"),
+                           /*loop_index=*/0, /*byte_offset=*/16,
+                           /*byte_stride=*/64);
+  ExpectDynamicSliceConfig(
+      body->GetInstructionWithName("updated.double_buffer_clone"),
+      /*loop_index=*/0, /*byte_offset=*/48, /*byte_stride=*/64);
+}
+
+TEST_F(GpuLoopDoubleBufferTransformerTest,
+       UpdatesDynamicSliceConfigInsideClonedFusion) {
+  constexpr absl::string_view kModuleString = R"(
+HloModule m
+
+condition {
+  input_tuple = (s32[], f32[8,4], f32[1,4]) parameter(0)
+  ivar = s32[] get-tuple-element(input_tuple), index=0
+  limit = s32[] constant(4)
+  ROOT done = pred[] compare(ivar, limit), direction=LT
+}
+
+dus_fusion {
+  buffer = f32[8,4] parameter(0)
+  update = f32[1,4] parameter(1)
+  ivar = s32[] parameter(2)
+  c0 = s32[] constant(0)
+  ROOT updated = f32[8,4] dynamic-update-slice(buffer, update, ivar, c0),
+      backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":16,"byte_stride":32}}
+}
+
+body {
+  input_tuple = (s32[], f32[8,4], f32[1,4]) parameter(0)
+  ivar = s32[] get-tuple-element(input_tuple), index=0
+  buffer = f32[8,4] get-tuple-element(input_tuple), index=1
+  update = f32[1,4] get-tuple-element(input_tuple), index=2
+  updated_fusion = f32[8,4] fusion(buffer, update, ivar), kind=kLoop,
+      calls=dus_fusion
+  one = s32[] constant(1)
+  ivar_plus_1 = s32[] add(ivar, one)
+  ROOT output_tuple = (s32[], f32[8,4], f32[1,4])
+      tuple(ivar_plus_1, updated_fusion, update)
+}
+
+ENTRY main {
+  buffer = f32[8,4] parameter(0)
+  update = f32[1,4] parameter(1)
+  init = s32[] constant(0)
+  tuple = (s32[], f32[8,4], f32[1,4]) tuple(init, buffer, update)
+  ROOT while = (s32[], f32[8,4], f32[1,4]) while(tuple),
+      condition=condition, body=body,
+      backend_config={"known_trip_count":{"n":"4"},
+                      "known_init_step":{"init":"0","step":"1"},
+                      "known_induction_variable":{"tuple_index":"0"}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  DoubleBufferLoopUnrolling unroller(
+      DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, unroller.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloComputation* body = module->GetComputationWithName("body");
+  HloInstruction* original_fusion =
+      body->GetInstructionWithName("updated_fusion");
+  HloInstruction* cloned_fusion =
+      body->GetInstructionWithName("updated_fusion.double_buffer_clone");
+  ASSERT_NE(original_fusion, nullptr);
+  ASSERT_NE(cloned_fusion, nullptr);
+
+  ExpectDynamicSliceConfig(
+      hlo_query::GetFirstInstructionWithOpcode(
+          *original_fusion->fused_instructions_computation(),
+          HloOpcode::kDynamicUpdateSlice),
+      /*loop_index=*/0, /*byte_offset=*/16, /*byte_stride=*/64);
+  ExpectDynamicSliceConfig(hlo_query::GetFirstInstructionWithOpcode(
+                               *cloned_fusion->fused_instructions_computation(),
+                               HloOpcode::kDynamicUpdateSlice),
+                           /*loop_index=*/0, /*byte_offset=*/48,
+                           /*byte_stride=*/64);
+}
+
+TEST_F(GpuLoopDoubleBufferTransformerTest,
+       UpdatesDynamicSliceConfigForPeeledOddDoubleBuffering) {
+  constexpr absl::string_view kModuleString = R"(
+HloModule m
+
+condition {
+  input_tuple = (s32[], f32[8,4], f32[1,4]) parameter(0)
+  ivar = s32[] get-tuple-element(input_tuple), index=0
+  limit = s32[] constant(5)
+  ROOT done = pred[] compare(ivar, limit), direction=LT
+}
+
+body {
+  input_tuple = (s32[], f32[8,4], f32[1,4]) parameter(0)
+  ivar = s32[] get-tuple-element(input_tuple), index=0
+  buffer = f32[8,4] get-tuple-element(input_tuple), index=1
+  update = f32[1,4] get-tuple-element(input_tuple), index=2
+  c0 = s32[] constant(0)
+  updated = f32[8,4] dynamic-update-slice(buffer, update, ivar, c0),
+      backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":16,"byte_stride":32}}
+  one = s32[] constant(1)
+  ivar_plus_1 = s32[] add(ivar, one)
+  ROOT output_tuple = (s32[], f32[8,4], f32[1,4])
+      tuple(ivar_plus_1, updated, update)
+}
+
+ENTRY main {
+  buffer = f32[8,4] parameter(0)
+  update = f32[1,4] parameter(1)
+  init = s32[] constant(0)
+  tuple = (s32[], f32[8,4], f32[1,4]) tuple(init, buffer, update)
+  ROOT while = (s32[], f32[8,4], f32[1,4]) while(tuple),
+      condition=condition, body=body,
+      backend_config={"known_trip_count":{"n":"5"},
+                      "known_init_step":{"init":"0","step":"1"},
+                      "known_induction_variable":{"tuple_index":"0"}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  DoubleBufferLoopUnrolling unroller(
+      DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, unroller.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  ExpectDynamicSliceConfig(module->entry_computation()->GetInstructionWithName(
+                               "updated.peeled_double_buffer"),
+                           /*loop_index=*/std::nullopt, /*byte_offset=*/16,
+                           /*byte_stride=*/0);
+
+  HloComputation* body = module->GetComputationWithName("body");
+  ExpectDynamicSliceConfig(body->GetInstructionWithName("updated"),
+                           /*loop_index=*/0, /*byte_offset=*/48,
+                           /*byte_stride=*/64);
+  ExpectDynamicSliceConfig(
+      body->GetInstructionWithName("updated.double_buffer_clone"),
+      /*loop_index=*/0, /*byte_offset=*/80, /*byte_stride=*/64);
+}
+
+TEST_F(GpuLoopDoubleBufferTransformerTest,
+       ConvertsDynamicSliceConfigToStaticForFullUnroll) {
+  constexpr absl::string_view kModuleString = R"(
+HloModule m
+
+condition {
+  input_tuple = (s32[], f32[8,4], f32[1,4]) parameter(0)
+  ivar = s32[] get-tuple-element(input_tuple), index=0
+  limit = s32[] constant(3)
+  ROOT done = pred[] compare(ivar, limit), direction=LT
+}
+
+body {
+  input_tuple = (s32[], f32[8,4], f32[1,4]) parameter(0)
+  ivar = s32[] get-tuple-element(input_tuple), index=0
+  buffer = f32[8,4] get-tuple-element(input_tuple), index=1
+  update = f32[1,4] get-tuple-element(input_tuple), index=2
+  c0 = s32[] constant(0)
+  updated = f32[8,4] dynamic-update-slice(buffer, update, ivar, c0),
+      backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":16,"byte_stride":32}}
+  one = s32[] constant(1)
+  ivar_plus_1 = s32[] add(ivar, one)
+  ROOT output_tuple = (s32[], f32[8,4], f32[1,4])
+      tuple(ivar_plus_1, updated, update)
+}
+
+ENTRY main {
+  buffer = f32[8,4] parameter(0)
+  update = f32[1,4] parameter(1)
+  init = s32[] constant(0)
+  tuple = (s32[], f32[8,4], f32[1,4]) tuple(init, buffer, update)
+  ROOT while = (s32[], f32[8,4], f32[1,4]) while(tuple),
+      condition=condition, body=body,
+      backend_config={"known_trip_count":{"n":"3"},
+                      "known_init_step":{"init":"0","step":"1"},
+                      "known_induction_variable":{"tuple_index":"0"}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  DoubleBufferLoopUnrolling unroller(
+      DoubleBufferLoopUnrolling::UnrollStrategy::kFullUnroll);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, unroller.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* while_instruction = hlo_query::GetFirstInstructionWithOpcode(
+      *module->entry_computation(), HloOpcode::kWhile);
+  ASSERT_NE(while_instruction, nullptr);
+  std::vector<HloInstruction*> duses;
+  hlo_query::ForEachInstructionWithOpcode(
+      *while_instruction->while_body(), HloOpcode::kDynamicUpdateSlice,
+      [&](HloInstruction* dus) { duses.push_back(dus); });
+  ASSERT_EQ(duses.size(), 3);
+
+  std::vector<int64_t> byte_offsets;
+  for (HloInstruction* dus : duses) {
+    TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig backend_config,
+                            dus->backend_config<GpuBackendConfig>());
+    ASSERT_TRUE(backend_config.has_dynamic_slice_config());
+    const DynamicSliceConfig& config = backend_config.dynamic_slice_config();
+    EXPECT_FALSE(config.has_loop_index());
+    EXPECT_EQ(config.byte_stride(), 0);
+    byte_offsets.push_back(config.byte_offset());
+  }
+  std::sort(byte_offsets.begin(), byte_offsets.end());
+  EXPECT_THAT(byte_offsets, ::testing::ElementsAre(16, 48, 80));
 }
 
 TEST_F(GpuLoopDoubleBufferTransformerTest, FullUnrollOddTripCountTest) {
