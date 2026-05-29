@@ -448,18 +448,23 @@ class PreparedTransfer {
   AcquiredCliqueAndCommunicator clique_and_communicator_;
   bool is_sender_;
 
+  // The rank inside the communicator which corresponds to the remote device
+  // we need to transfer data to/from.
+  RankId peer_communicator_rank_;
+
   PreparedTransfer(StreamExecutorGpuClient* client,
                    gpu::GpuCliqueKey clique_key,
                    tsl::RCReference<PjRtRawBuffer> raw_buffer,
                    tsl::AsyncValueRef<BufferSequencingEvent> transfer_event,
                    AcquiredCliqueAndCommunicator clique_and_communicator,
-                   bool is_sender)
+                   bool is_sender, RankId peer_communicator_rank)
       : client_(client),
         clique_key_(std::move(clique_key)),
         raw_buffer_(std::move(raw_buffer)),
         transfer_event_(std::move(transfer_event)),
         clique_and_communicator_(std::move(clique_and_communicator)),
-        is_sender_(is_sender) {}
+        is_sender_(is_sender),
+        peer_communicator_rank_(peer_communicator_rank) {}
 
   PreparedTransfer(PreparedTransfer&&) = default;
   PreparedTransfer& operator=(PreparedTransfer&&) = default;
@@ -563,25 +568,35 @@ absl::StatusOr<PreparedTransfer> PrepareTransfer(
                            dst_device);
   });
 
-  // Form the GPU clique key.
+  // Form the GPU clique key. We use sorted([src_device, dst_device]) as the
+  // device list because GPU clique key is by default order-sensitive, and
+  // we want to use the same communicator for transfers i->j and i<-j.
   // TODO(asrao, mwhittaker): Supply correct incarnations when creating the
   // clique key.
+  std::vector<GlobalDeviceId> devices = {src_device, dst_device};
+  absl::c_sort(devices);
+  GlobalDeviceId local_device = is_sender ? src_device : dst_device;
+  RankId local_communicator_rank =
+      devices[0] == local_device ? RankId(0) : RankId(1);
+  RankId peer_communicator_rank =
+      devices[0] == local_device ? RankId(1) : RankId(0);
+
   const gpu::GpuCliqueKey clique_key = gpu::GpuCliqueKey(
-      /*devices=*/{src_device, dst_device},
+      /*devices=*/devices,
       /*num_local_participants=*/1);
 
   // Get the clique and communicator for the transfer.
-  ASSIGN_OR_RETURN(
-      AcquiredCliqueAndCommunicator clique_and_communicator,
-      AcquireCliqueAndCommunicator(client, gpu_collectives, clique_key,
-                                   /*device_groups=*/{{src_device, dst_device}},
-                                   acquired_cliques_map,
-                                   RankId(is_sender ? 0 : 1), stream));
+  ASSIGN_OR_RETURN(AcquiredCliqueAndCommunicator clique_and_communicator,
+                   AcquireCliqueAndCommunicator(
+                       client, gpu_collectives, clique_key,
+                       /*device_groups=*/{devices}, acquired_cliques_map,
+                       local_communicator_rank, stream));
 
   // Return the result.
   return PreparedTransfer(client, std::move(clique_key), std::move(raw_buffer),
                           std::move(transfer_event),
-                          std::move(clique_and_communicator), is_sender);
+                          std::move(clique_and_communicator), is_sender,
+                          peer_communicator_rank);
 }
 
 // Groups transfers by clique key, preserving the order in which each clique
@@ -807,23 +822,19 @@ void StreamExecutorGpuClient::ScheduleTransfersOnLocalDevice(
                      prepared_transfer.raw_buffer_.get())
                      ->device_buffer();
 
-      // We always set `peer` to RankId(1) if we are the sender, and RankId(0)
-      // if we are the receiver. This is because `PrepareTransfer()` always
-      // acquires a GPU clique where the sender is rank 0 and the receiver is
-      // rank 1.
       if (prepared_transfer.is_sender_) {
         RETURN_IF_ERROR(gpu_communicator->LaunchSend(
             /*send_buffer=*/mem->mem(),
             /*dtype=*/U8,
             /*count=*/mem->mem().size(),
-            /*peer=*/RankId(1),
+            /*peer=*/prepared_transfer.peer_communicator_rank_,
             /*executor=*/gpu::GpuCollectives::On(*stream)));
       } else {
         RETURN_IF_ERROR(gpu_communicator->LaunchRecv(
             /*recv_buffer=*/mem->mem(),
             /*dtype=*/U8,
             /*count=*/mem->mem().size(),
-            /*peer=*/RankId(0),
+            /*peer=*/prepared_transfer.peer_communicator_rank_,
             /*executor=*/gpu::GpuCollectives::On(*stream)));
       }
     }

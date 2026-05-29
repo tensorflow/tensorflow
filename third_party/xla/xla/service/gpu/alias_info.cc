@@ -218,6 +218,12 @@ std::optional<bool> FusionCanShareBufferHint(
 }
 }  // namespace
 
+bool GpuAliasInfo::IsNoOpForAliasAnalysis(
+    const HloInstruction* instruction) const {
+  return AliasInfo::IsNoOpForAliasAnalysis(instruction) ||
+         instruction->opcode() == HloOpcode::kReshape;
+}
+
 std::optional<bool> GpuAliasInfo::MayAlias(const HloInstruction* operand,
                                            const ShapeIndex& operand_index,
                                            const HloInstruction* user,
