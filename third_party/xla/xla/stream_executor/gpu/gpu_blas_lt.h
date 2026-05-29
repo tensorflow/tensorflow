@@ -234,35 +234,7 @@ struct BlasLt {
   };
 
   struct MatmulPlan {
-    // API that uses scratch_allocator to allocate workspace.
-    // This version is used by TF: see tensorflow/core/kernels/matmul_util.cc
-    absl::Status ExecuteOnStream(
-        Stream* stream, DeviceAddressBase a, DeviceAddressBase b,
-        DeviceAddressBase c, DeviceAddressBase d,
-        DeviceAddressBase bias,  // may be null
-        DeviceAddressBase aux,   // may be null
-        DeviceAddressBase a_scale, DeviceAddressBase b_scale,
-        DeviceAddressBase c_scale, DeviceAddressBase d_scale,
-        DeviceAddressBase d_amax, ScratchAllocator& scratch_allocator,
-        blas::ProfileResult* profile_result = nullptr) const {
-      return ExecuteOnStream(stream,
-                             MemoryArgs{a,
-                                        b,
-                                        c,
-                                        d,
-                                        bias,
-                                        aux,
-                                        a_scale,
-                                        b_scale,
-                                        c_scale,
-                                        d_scale,
-                                        {d_amax},
-                                        DeviceAddressBase{},
-                                        &scratch_allocator},
-                             profile_result);
-    }
-
-    // The most general form: to be implemented by derived clases.
+    // Execute the matmul operation on the given stream.
     virtual absl::Status ExecuteOnStream(
         Stream* stream, const MemoryArgs& args,
         blas::ProfileResult* profile_result = nullptr) const = 0;
@@ -272,14 +244,6 @@ struct BlasLt {
     // an internal heuristic.
     virtual absl::StatusOr<std::vector<MatmulAlgorithm>> GetAlgorithms(
         size_t max_algorithm_count, size_t max_workspace_size) const = 0;
-
-    // Shim for Tensorflow: to be removed once Tensorflow BlasLt interface is
-    // updated. Do not use this function directly !
-    virtual absl::StatusOr<std::vector<MatmulAlgorithm>> GetAlgorithms(
-        const Stream* /*stream*/, size_t max_algorithm_count,
-        size_t max_workspace_size) const {
-      return GetAlgorithms(max_algorithm_count, max_workspace_size);
-    }
 
     // Algorithm must to be set before calling ExecuteOnStream function(s).
     // Usually, we call ExecuteOnStream with the same algorithm ID, hence using
@@ -302,15 +266,6 @@ struct BlasLt {
       const gpu::GroupedGemmConfig& config, Epilogue epilogue) const = 0;
 
   static absl::StatusOr<BlasLt*> Get(StreamExecutor* executor);
-
-  // Shim for Tensorflow: to be removed once Tensorflow BlasLt interface
-  // is updated. Do not use this function directly !
-  static absl::StatusOr<MatmulPlanPtr> GetMatmulPlan(Stream* stream,
-                                                     const GemmConfig& cfg,
-                                                     Epilogue epilogue) {
-    ASSIGN_OR_RETURN(auto* blas_lt, Get(stream->parent()));
-    return blas_lt->GetMatmulPlan(cfg, epilogue);
-  }
 
   absl::StatusOr<MatmulPlan*> GetOrCreateMatmulPlan(const std::string& key,
                                                     PlanCreateFunc create);

@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_BLAS_LT_H_
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_BLAS_LT_H_
 
+#include <array>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <type_traits>
@@ -86,18 +88,22 @@ class BlasLt : public gpu::BlasLt {
 
   class MatmulPlan : public gpu::BlasLt::MatmulPlan {
    public:
+    friend class BlasLt;
+    // We use a fixed-size array to store the alpha and beta values which can
+    // fit all supported scale types.
+    constexpr static size_t kMaxScaleBytes = 16;
+
     MatmulPlan(const BlasLt& blas_lt, MatmulDesc&& op_desc,
                MatrixLayout&& a_desc, MatrixLayout&& b_desc,
-               MatrixLayout&& c_desc, MatrixLayout&& d_desc,
-               xla::complex128 alpha, double beta, bool must_swap_operands)
+               MatrixLayout&& c_desc, MatrixLayout&& d_desc, bool zero_beta,
+               bool must_swap_operands)
         : blas_lt_(blas_lt),
           op_desc_(std::move(op_desc)),
           a_desc_(std::move(a_desc)),
           b_desc_(std::move(b_desc)),
           c_desc_(std::move(c_desc)),
           d_desc_(std::move(d_desc)),
-          alpha_(alpha),
-          beta_(beta),
+          zero_beta_(zero_beta),
           must_swap_operands_(must_swap_operands) {}
 
     ~MatmulPlan() override = default;
@@ -115,18 +121,14 @@ class BlasLt : public gpu::BlasLt {
     }
 
    private:
-    absl::Status DoMatmul(Stream* stream, const void* alpha, const void* beta,
-                          const gpu::BlasLt::MemoryArgs& args,
-                          blas::ProfileResult* profile_result) const;
-
     const BlasLt& blas_lt_;
     MatmulDesc op_desc_;
     MatrixLayout a_desc_;
     MatrixLayout b_desc_;
     MatrixLayout c_desc_;
     MatrixLayout d_desc_;
-    xla::complex128 alpha_;
-    double beta_;
+    alignas(16) std::array<uint8_t, kMaxScaleBytes> alpha_, beta_;
+    bool zero_beta_;
     bool must_swap_operands_;
     std::optional<MatmulAlgorithm> algorithm_;  // selected algorithm
   };  // class MatmulPlan
