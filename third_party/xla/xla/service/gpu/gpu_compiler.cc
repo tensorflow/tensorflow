@@ -1478,13 +1478,9 @@ absl::Status RunDynamicSliceFusionPasses(HloModule* hlo_module,
                                          CompilationStats* compilation_stats) {
   const DebugOptions& opts = hlo_module->config().debug_options();
 
-  // Always annotate dynamic slice operation with statically know offsets. We
-  // rely on these annotations when running fusion dispatch pipeline to optimize
-  // DS/DUS fusions that can be replaced by a more efficient copy operation.
-  HloPassPipeline pipeline("dynamic-slice", compilation_stats);
-  pipeline.AddPass<DynamicSliceAnnotator>();
-
   if (opts.xla_gpu_enable_dynamic_slice_fusion()) {
+    HloPassPipeline pipeline("dynamic-slice", compilation_stats);
+    pipeline.AddPass<DynamicSliceAnnotator>();
     pipeline.AddPass<GpuReduceScatterCombiner>(
         kDefaultReduceScatterCombineThreshold,
         opts.xla_gpu_reduce_scatter_combine_threshold_bytes(),
@@ -1502,11 +1498,10 @@ absl::Status RunDynamicSliceFusionPasses(HloModule* hlo_module,
           });
       return hero_op.has_value();
     });
+    RETURN_IF_ERROR(
+        pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
+            .status());
   }
-
-  RETURN_IF_ERROR(
-      pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
-          .status());
 
   return absl::OkStatus();
 }
