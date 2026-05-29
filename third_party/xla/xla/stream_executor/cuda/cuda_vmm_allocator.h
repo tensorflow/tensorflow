@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/status/statusor.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -60,6 +61,13 @@ class CudaVmmAllocator : public MemoryAllocator {
   StreamExecutor* executor_;
   Options options_;
 };
+
+CUmemAllocationProp BuildVmmAllocationProp(
+    CUdevice device, const CudaVmmAllocator::Options& options);
+
+// Probes device VMM capabilities; falls back through simpler handle-type
+// combinations if the device rejects the strongest one.
+absl::StatusOr<CudaVmmAllocator::Options> QueryVmmOptions(CUdevice device);
 
 }  // namespace stream_executor::gpu
 

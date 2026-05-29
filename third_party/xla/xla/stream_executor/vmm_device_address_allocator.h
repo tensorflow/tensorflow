@@ -36,6 +36,10 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 
+namespace xla {
+class DeviceAssignment;
+}  // namespace xla
+
 namespace stream_executor {
 
 // Abstract base class for virtual memory map (VMM) allocators that separate
@@ -96,6 +100,20 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   // Pull in two-arg overload that sets retry_on_failure to true.
   using DeviceAddressAllocator::Allocate;
 
+  // RAII: while in scope, Allocate() treats allocations as multi-device iff
+  // the assignment has replica * computation > 1.
+  class DeviceAssignmentScope {
+   public:
+    explicit DeviceAssignmentScope(
+        const xla::DeviceAssignment* device_assignment);
+    ~DeviceAssignmentScope();
+    DeviceAssignmentScope(const DeviceAssignmentScope&) = delete;
+    DeviceAssignmentScope& operator=(const DeviceAssignmentScope&) = delete;
+
+   private:
+    const xla::DeviceAssignment* previous_;
+  };
+
   // Deallocates memory asynchronously. The caller can call this function even
   // if device kernels are still consuming the data — the actual deallocation
   // will be deferred until all previously enqueued work on the device's stream
@@ -143,6 +161,7 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
     // GPU stream sequence number recorded at deallocation time. When the
     // pinned_timeline value reaches this seqno, the memory is safe to free.
     uint64_t seqno;
+    bool multi_device = false;
   };
 
   struct PerDeviceState {
@@ -181,6 +200,8 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
     absl::flat_hash_map<void*, std::unique_ptr<MemoryReservation>> reservations
         ABSL_GUARDED_BY(mu);
     absl::flat_hash_map<void*, MemoryReservation::ScopedMapping> scoped_mappings
+        ABSL_GUARDED_BY(mu);
+    absl::flat_hash_map<void*, bool> multi_device_allocations
         ABSL_GUARDED_BY(mu);
   };
 
@@ -240,8 +261,11 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   // enqueued on the same stream after the recorded deallocation event, so GPU
   // stream ordering guarantees the old work finishes before the new work runs.
   std::optional<DeviceAddressBase> TryReusePendingDeallocation(
-      PerDeviceState& state, uint64_t size)
+      PerDeviceState& state, uint64_t size, bool multi_device)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state.mu);
+
+  // True iff the calling thread is inside a multi-device DeviceAssignmentScope.
+  static bool CurrentMultiDevice();
 
   // Round up size to the device's allocation granularity.
   uint64_t RoundUpToGranularity(const PerDeviceState& state,

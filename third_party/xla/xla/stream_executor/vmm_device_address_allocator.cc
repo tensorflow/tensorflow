@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "xla/service/computation_placer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -42,6 +43,28 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
+
+namespace {
+thread_local const xla::DeviceAssignment* current_device_assignment = nullptr;
+}  // namespace
+
+DeviceAddressVmmAllocator::DeviceAssignmentScope::DeviceAssignmentScope(
+    const xla::DeviceAssignment* device_assignment)
+    : previous_(current_device_assignment) {
+  current_device_assignment = device_assignment;
+}
+
+DeviceAddressVmmAllocator::DeviceAssignmentScope::~DeviceAssignmentScope() {
+  current_device_assignment = previous_;
+}
+
+bool DeviceAddressVmmAllocator::CurrentMultiDevice() {
+  const xla::DeviceAssignment* device_assignment = current_device_assignment;
+  return device_assignment != nullptr &&
+         device_assignment->replica_count() *
+                 device_assignment->computation_count() >
+             1;
+}
 
 static absl::Status DeviceNotFoundError(int device_ordinal) {
   return absl::NotFoundError(
@@ -221,6 +244,7 @@ void DeviceAddressVmmAllocator::DoDeallocate(PerDeviceState& state,
   state.reservations.erase(mem.opaque());
   // Erase the raw allocation last: its destructor releases the physical memory.
   state.raw_allocations.erase(mem.opaque());
+  state.multi_device_allocations.erase(mem.opaque());
 
   uint64_t rounded_size = RoundUpToGranularity(state, mem.size());
   DCHECK_GE(state.pa_allocated, rounded_size);
@@ -320,11 +344,13 @@ DeviceAddressVmmAllocator::Allocate(int device_ordinal, uint64_t size,
     return DeviceNotFoundError(device_ordinal);
   }
 
+  const bool multi_device = CurrentMultiDevice();
+
   absl::MutexLock lock(state->mu);
 
   // Try to reuse a completed pending deallocation with matching size.
   std::optional<DeviceAddressBase> reused =
-      TryReusePendingDeallocation(*state, size);
+      TryReusePendingDeallocation(*state, size, multi_device);
   if (reused.has_value()) {
     return ScopedDeviceAddress<uint8_t>(*reused, device_ordinal, this);
   }
@@ -346,6 +372,9 @@ DeviceAddressVmmAllocator::Allocate(int device_ordinal, uint64_t size,
   if (!result.ok()) {
     return result.status();
   }
+
+  if (multi_device)
+    state->multi_device_allocations.insert({result->opaque(), true});
 
   VLOG(3) << absl::StreamFormat(
       "Allocated virtual address %p (%uB) on device ordinal %d",
@@ -372,13 +401,15 @@ absl::Status DeviceAddressVmmAllocator::Deallocate(int device_ordinal,
       "on device ordinal %d",
       mem.opaque(), mem.size(), device_ordinal);
 
+  bool multi_device = state->multi_device_allocations.erase(mem.opaque()) > 0;
+
   // Assign the next sequence number and enqueue a GPU write to the pinned
   // timeline when the stream reaches this point. The CPU polls the timeline
   // value to know when it is safe to free the memory.
   uint64_t seqno = state->next_seqno++;
   RETURN_IF_ERROR(EnqueueDeferredDeallocation(*state, seqno));
 
-  state->pending_deallocations.push_back({mem, seqno});
+  state->pending_deallocations.push_back({mem, seqno, multi_device});
 
   return absl::OkStatus();
 }
@@ -472,13 +503,13 @@ uint64_t DeviceAddressVmmAllocator::GetAllocationGranularity(
 
 std::optional<DeviceAddressBase>
 DeviceAddressVmmAllocator::TryReusePendingDeallocation(PerDeviceState& state,
-                                                       uint64_t size) {
+                                                       uint64_t size,
+                                                       bool multi_device) {
   uint64_t rounded_size = RoundUpToGranularity(state, size);
   for (auto it = state.pending_deallocations.begin();
        it != state.pending_deallocations.end(); ++it) {
-    if (RoundUpToGranularity(state, it->mem.size()) != rounded_size) {
-      continue;
-    }
+    if (it->multi_device != multi_device) continue;
+    if (RoundUpToGranularity(state, it->mem.size()) != rounded_size) continue;
 
     DeviceAddressBase reused_mem(it->mem.opaque(), size);
     VLOG(3) << absl::StreamFormat(
@@ -487,6 +518,8 @@ DeviceAddressVmmAllocator::TryReusePendingDeallocation(PerDeviceState& state,
         reused_mem.opaque(), it->mem.size(), size, rounded_size,
         state.executor->device_ordinal());
     state.pending_deallocations.erase(it);
+    if (multi_device)
+      state.multi_device_allocations.insert({reused_mem.opaque(), true});
 
     return reused_mem;
   }

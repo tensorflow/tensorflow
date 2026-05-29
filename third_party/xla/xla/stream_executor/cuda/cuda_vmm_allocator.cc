@@ -41,7 +41,37 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 
-static CUmemAllocationProp GetAllocationProp(
+namespace {
+
+absl::StatusOr<bool> IsRdmaSupported(CUdevice device) {
+  int rdma_supported = 0;
+  RETURN_IF_ERROR(cuda::ToStatus(cuDeviceGetAttribute(
+      &rdma_supported,
+      CU_DEVICE_ATTRIBUTE_GPU_DIRECT_RDMA_WITH_CUDA_VMM_SUPPORTED, device)));
+  return rdma_supported;
+}
+
+absl::StatusOr<bool> IsFabricSupported(CUdevice device) {
+  int fabric_supported = 0;
+  CUresult result = cuDeviceGetAttribute(
+      &fabric_supported, CU_DEVICE_ATTRIBUTE_HANDLE_TYPE_FABRIC_SUPPORTED,
+      device);
+
+  // Older drivers return INVALID_VALUE when they don't recognize the attribute.
+  if (result == CUDA_ERROR_INVALID_VALUE) {
+    XLA_VLOG_DEVICE(1, device)
+        << "CU_DEVICE_ATTRIBUTE_HANDLE_TYPE_FABRIC_SUPPORTED not supported "
+           "by driver.";
+    return false;
+  }
+
+  RETURN_IF_ERROR(cuda::ToStatus(result));
+  return fabric_supported > 0;
+}
+
+}  // namespace
+
+CUmemAllocationProp BuildVmmAllocationProp(
     CUdevice device, const CudaVmmAllocator::Options& options) {
   CUmemAllocationProp properties = {};
   properties.type = CU_MEM_ALLOCATION_TYPE_PINNED;
@@ -59,6 +89,55 @@ static CUmemAllocationProp GetAllocationProp(
   properties.requestedHandleTypes =
       static_cast<CUmemAllocationHandleType>(handle_types);
   return properties;
+}
+
+absl::StatusOr<CudaVmmAllocator::Options> QueryVmmOptions(CUdevice device) {
+  ASSIGN_OR_RETURN(bool rdma, IsRdmaSupported(device));
+  ASSIGN_OR_RETURN(bool fabric, IsFabricSupported(device));
+
+  bool posix_fd = true;
+  size_t granularity = 0;
+
+  auto try_query = [&]() -> absl::Status {
+    CudaVmmAllocator::Options opts;
+    opts.enable_rdma = rdma;
+    opts.enable_posix_fd_handle = posix_fd;
+    opts.enable_fabric_handle = fabric;
+    CUmemAllocationProp props = BuildVmmAllocationProp(device, opts);
+    return cuda::ToStatus(cuMemGetAllocationGranularity(
+        &granularity, &props, CU_MEM_ALLOC_GRANULARITY_RECOMMENDED));
+  };
+
+  absl::Status status = try_query();
+  if (!status.ok() && fabric && posix_fd) {
+    XLA_LOG_DEVICE(WARNING, device)
+        << "VMM granularity query with FABRIC+POSIX_FD handle types failed: "
+        << status << "; retrying without FABRIC.";
+    fabric = false;
+    status = try_query();
+  }
+
+  if (!status.ok() && posix_fd) {
+    XLA_LOG_DEVICE(WARNING, device)
+        << "VMM granularity query with POSIX_FD handle type failed: " << status
+        << "; retrying with HANDLE_TYPE_NONE.";
+    posix_fd = false;
+    status = try_query();
+  }
+
+  if (!status.ok()) {
+    XLA_LOG_DEVICE(WARNING, device)
+        << "VMM granularity query with HANDLE_TYPE_NONE failed: " << status
+        << "; VMM is not supported for this device.";
+    return status;
+  }
+
+  CudaVmmAllocator::Options options;
+  options.alignment = granularity;
+  options.enable_rdma = rdma;
+  options.enable_posix_fd_handle = posix_fd;
+  options.enable_fabric_handle = fabric;
+  return options;
 }
 
 // Creates a physical VMM allocation. Tries cuMemCreate with the given
@@ -131,7 +210,7 @@ VmmAllocate(StreamExecutor* executor, const CudaVmmAllocator::Options& options,
       cuda::ToStatus(cuDeviceGet(&device, executor->device_ordinal())));
 
   // Query VMM allocation granularity and pad size to alignment boundary.
-  CUmemAllocationProp properties = GetAllocationProp(device, options);
+  CUmemAllocationProp properties = BuildVmmAllocationProp(device, options);
   size_t granularity = 0;
   RETURN_IF_ERROR(cuda::ToStatus(cuMemGetAllocationGranularity(
       &granularity, &properties, CU_MEM_ALLOC_GRANULARITY_RECOMMENDED)));

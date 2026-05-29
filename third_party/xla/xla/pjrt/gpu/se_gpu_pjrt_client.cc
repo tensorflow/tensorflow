@@ -146,6 +146,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_device_address_vmm_allocator.h"
 #include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
+#include "xla/stream_executor/vmm_device_address_allocator.h"
 #elif TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
 #endif
@@ -2003,6 +2004,11 @@ StreamExecutorGpuClient::RunAsync(
     allocate_granularity[static_cast<LogicalBuffer::Color>(
         gpu::MemorySpaceColor::kCollective)] = collective_memory_alignment;
   }
+
+  // Tag allocations made in this invocation as multi-device for VMM reuse.
+  se::DeviceAddressVmmAllocator::DeviceAssignmentScope
+      vmm_device_assignment_scope(
+          run_options->run_options().device_assignment());
 
   std::vector<se::DeviceAddressBase> buffers(allocations.size());
   {
