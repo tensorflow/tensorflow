@@ -17,12 +17,11 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "absl/memory/memory.h"
-#include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
 #include "re2/re2.h"
