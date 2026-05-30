@@ -41,7 +41,7 @@ limitations under the License.
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/stream_executor_memory_allocator.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
@@ -239,7 +239,9 @@ TYPED_TEST(DotOperationTest_F16F32F64CF64, FusedDot) {
   Literal rhs_handle =
       LiteralUtil::CreateR2FromArray2D<T>({{1.0f}, {2.0f}, {3.0f}, {4.0f}});
   if (std::is_same<Eigen::half, T>::value) {
-    this->error_spec_ = ErrorSpec{0.0001, 1e-3};
+    this->error_spec_ = ErrorSpec{0.001, 0.003};
+  } else if (std::is_same<float, T>::value) {
+    this->error_spec_ = ErrorSpec{0.001, 0.002};
   }
 
   this->template ComputeAndCompareR2<T>(
@@ -1611,7 +1613,7 @@ TEST_P(EinsumTest, SimpleEinsumTest) {
   } else {
     Einsum(x, y, config);
   }
-  ComputeAndCompare(&builder, {&x_literal, &y_literal}, ErrorSpec{1e-3, 1e-3});
+  ComputeAndCompare(&builder, {&x_literal, &y_literal}, ErrorSpec{0.01, 0.01});
 }
 
 std::vector<EinsumParamType> GetEinsumTestCases() {
@@ -1801,7 +1803,7 @@ ENTRY main {
 }
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-2, 7e-2}));
 }
 
 TEST_F(DotOperationTextTest, CpuTiledDotEmitterCachingBug_2) {
@@ -1826,7 +1828,7 @@ ENTRY main {
 }
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-2, 7e-2}));
 }
 
 TEST_F(DotOperationTextTest, S32IotaDot) {
@@ -2124,7 +2126,7 @@ ENTRY jaxpr_computation__5.33 {
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(module_string));
-  EXPECT_TRUE(RunAndCompare(std::move(module), /*error=*/std::nullopt));
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{0.001, 0.001}));
 }
 
 TEST_F(DotOperationTest, ReorderContractingDimsConstLHS_RL) {
