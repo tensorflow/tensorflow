@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <Python.h>
 
+#include <string>
+
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
@@ -46,7 +48,7 @@ class PythonTensorConverter {
                         const char* device_name)
       : py_eager_context_(py_eager_context),
         ctx_(ctx),
-        device_name_(device_name) {}
+        device_name_(device_name ? device_name : "") {}
 
   // Converts `src` to a tensor (if it's not already one), and returns a new
   // reference to the converted value.
@@ -68,7 +70,7 @@ class PythonTensorConverter {
  private:
   PyObject* py_eager_context_;
   TFE_Context* ctx_;
-  const char* device_name_;
+  std::string device_name_;
 };
 
 }  // namespace tensorflow

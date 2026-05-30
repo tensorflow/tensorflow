@@ -80,8 +80,9 @@ Safe_PyObjectPtr PythonTensorConverter::Convert(PyObject* src, DataType& dtype,
       Py_INCREF(src);
       return Safe_PyObjectPtr(src);
     } else {
-      TFE_TensorHandle* handle =
-          tensorflow::ConvertToEagerTensor(ctx_, src, dtype, device_name_);
+      TFE_TensorHandle* handle = tensorflow::ConvertToEagerTensor(
+          ctx_, src, dtype,
+          device_name_.empty() ? nullptr : device_name_.c_str());
       if (handle) {
         Safe_PyObjectPtr result(EagerTensorFromHandle(handle));
         if (!CheckDType(PyEagerTensor_Dtype(result.get()), dtype)) {
