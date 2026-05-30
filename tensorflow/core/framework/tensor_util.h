@@ -19,6 +19,9 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
