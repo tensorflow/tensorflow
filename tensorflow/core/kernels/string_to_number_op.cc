@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -55,7 +56,7 @@ class StringToNumberOp : public OpKernel {
                   strings::SafeStringToNumeric<OutputType>(input_flat(i),
                                                            &output_flat(i)),
                   absl::InvalidArgumentError(
-                      absl::StrCat(kErrorMessage, input_flat(i).c_str())));
+                      absl::StrCat(kErrorMessage, input_flat(i))));
     }
   }
 };

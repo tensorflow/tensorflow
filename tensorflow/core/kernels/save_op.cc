@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/io_ops.cc
-#include "tensorflow/core/kernels/save_restore_tensor.h"
-
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/save_restore_tensor.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
@@ -63,7 +63,7 @@ class ShardedFilenameOp : public OpKernel {
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &out));
     out->scalar<tstring>()() = absl::StrFormat(
-        "%s-%05d-of-%05d", ctx->input(0).scalar<tstring>()().c_str(),
+        "%s-%05d-of-%05d", absl::string_view(ctx->input(0).scalar<tstring>()()),
         ctx->input(1).scalar<int32_t>()(), ctx->input(2).scalar<int32_t>()());
   }
 };
@@ -85,9 +85,10 @@ class ShardedFilespecOp : public OpKernel {
     }
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &out));
-    out->scalar<tstring>()() = absl::StrFormat(
-        "%s-\?\?\?\?\?-of-%05d", ctx->input(0).scalar<tstring>()().c_str(),
-        ctx->input(1).scalar<int32_t>()());
+    out->scalar<tstring>()() =
+        absl::StrFormat("%s-\?\?\?\?\?-of-%05d",
+                        absl::string_view(ctx->input(0).scalar<tstring>()()),
+                        ctx->input(1).scalar<int32_t>()());
   }
 };
 REGISTER_KERNEL_BUILDER(Name("ShardedFilespec").Device(DEVICE_CPU),
