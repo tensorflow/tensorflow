@@ -443,7 +443,7 @@ absl::Status DelegateKernel::ExecuteOpKernelRunner(
   const auto& op_kernel_runner = node_data->op_kernel_runner();
 
   if (op_kernel_runner.op_kernel()->num_outputs() != node_data->NumOutputs()) {
-    return tensorflow::errors::Internal(
+    return absl::InternalError(
         "Unexpected number of outputs from tensorflow::OpKernel");
   }
 

@@ -59,6 +59,10 @@ build:ci_multi_gpu --flaky_test_attempts=3
 build:ci_multi_gpu --experimental_guard_against_concurrent_changes
 build:ci_multi_gpu --test_env=HIP_VISIBLE_DEVICES=0,1,2,3
 
+build:ci_rocm_cpu --run_under=//build_tools/rocm:sanitizer_wrapper
+build:ci_rocm_cpu --local_test_jobs=200
+build:ci_rocm_cpu --strategy=TestRunner=local
+
 test:xla_sgpu -- \
 //xla/... \
 -//xla/tests:iota_test_amdgpu_any \
