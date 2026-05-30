@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/c/tf_tensor.h"
 
+#include <limits>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -82,8 +83,12 @@ TF_Tensor* CreateTensor(TF_ManagedBuffer* buf, TF_DataType dtype,
              tensorflow::TensorShape(dimvec), buf);
   buf->Unref();
   size_t elem_size = TF_DataTypeSize(dtype);
-  if (elem_size > 0 && len < (elem_size * ret.NumElements())) {
-    return nullptr;
+  if (elem_size > 0) {
+    if (ret.NumElements() < 0 ||
+        ret.NumElements() > std::numeric_limits<size_t>::max() / elem_size ||
+        len < (elem_size * ret.NumElements())) {
+      return nullptr;
+    }
   }
   return new TF_Tensor{new tensorflow::TensorInterface(std::move(ret))};
 }

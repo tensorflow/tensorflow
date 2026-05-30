@@ -140,7 +140,7 @@ struct TF_ImportGraphDefOptions {
 
   // Backing memory for TensorId fields in opts.
   // TODO(skyewm): it'd be better if ImportGraphDefOptions owned this.
-  std::vector<std::string> tensor_id_data;
+  std::list<std::string> tensor_id_data;
 };
 
 struct TF_ImportGraphDefResults {
