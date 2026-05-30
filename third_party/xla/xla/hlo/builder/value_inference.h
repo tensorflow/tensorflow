@@ -50,9 +50,8 @@ class OptionalLiteral {
                              ShapeIndex shape_index = {}) const {
     if (mask_.Get<bool>(element_index, shape_index)) {
       return std::nullopt;
-    } else {
-      return value_.Get<NativeT>(element_index, shape_index);
     }
+    return value_.Get<NativeT>(element_index, shape_index);
   }
 
   // Returns true if all values in this literal slice are value.
