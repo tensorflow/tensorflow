@@ -66,6 +66,7 @@ namespace {
 
 using ::testing::_;
 using ::testing::AllOf;
+using ::testing::UnorderedElementsAre;
 using ::xla::test_only::ShardingFormatPicker;
 namespace op = xla::testing::opcode_matchers;
 
@@ -17205,11 +17206,7 @@ ENTRY entry {
                       ::testing::ElementsAre(1, 3, 5, 7, 9, 11, 13, 15))));
 }
 
-// TODO(b/510247535): Fix replica group construction for transposed shardings.
 TEST_P(SpmdPartitioningTest, OriginalValueWithTransposedShardingAnnotation) {
-  if (GetParam() == ShardingFormatPicker::ShardingType::kNamed) {
-    GTEST_SKIP() << "Skipping test for kV3 sharding format due to b/510247535.";
-  }
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -17247,24 +17244,24 @@ ENTRY entry {
   EXPECT_EQ(all_gather_instruction->all_gather_dimension(), 1);
   std::vector<ReplicaGroup> replica_groups =
       all_gather_instruction->replica_groups();
-  EXPECT_THAT(all_gather_instruction->replica_groups(),
-              ::testing::ElementsAre(
-                  ::testing::Property(&xla::ReplicaGroup::replica_ids,
-                                      ::testing::ElementsAre(0, 8)),
-                  ::testing::Property(&xla::ReplicaGroup::replica_ids,
-                                      ::testing::ElementsAre(2, 10)),
-                  ::testing::Property(&xla::ReplicaGroup::replica_ids,
-                                      ::testing::ElementsAre(4, 12)),
-                  ::testing::Property(&xla::ReplicaGroup::replica_ids,
-                                      ::testing::ElementsAre(6, 14)),
-                  ::testing::Property(&xla::ReplicaGroup::replica_ids,
-                                      ::testing::ElementsAre(1, 9)),
-                  ::testing::Property(&xla::ReplicaGroup::replica_ids,
-                                      ::testing::ElementsAre(3, 11)),
-                  ::testing::Property(&xla::ReplicaGroup::replica_ids,
-                                      ::testing::ElementsAre(5, 13)),
-                  ::testing::Property(&xla::ReplicaGroup::replica_ids,
-                                      ::testing::ElementsAre(7, 15))));
+  EXPECT_THAT(
+      all_gather_instruction->replica_groups(),
+      UnorderedElementsAre(::testing::Property(&xla::ReplicaGroup::replica_ids,
+                                               ::testing::ElementsAre(0, 8)),
+                           ::testing::Property(&xla::ReplicaGroup::replica_ids,
+                                               ::testing::ElementsAre(2, 10)),
+                           ::testing::Property(&xla::ReplicaGroup::replica_ids,
+                                               ::testing::ElementsAre(4, 12)),
+                           ::testing::Property(&xla::ReplicaGroup::replica_ids,
+                                               ::testing::ElementsAre(6, 14)),
+                           ::testing::Property(&xla::ReplicaGroup::replica_ids,
+                                               ::testing::ElementsAre(1, 9)),
+                           ::testing::Property(&xla::ReplicaGroup::replica_ids,
+                                               ::testing::ElementsAre(3, 11)),
+                           ::testing::Property(&xla::ReplicaGroup::replica_ids,
+                                               ::testing::ElementsAre(5, 13)),
+                           ::testing::Property(&xla::ReplicaGroup::replica_ids,
+                                               ::testing::ElementsAre(7, 15))));
   all_gather_instruction =
       static_cast<const HloAllGatherInstruction*>(*iterator);
   EXPECT_EQ(all_gather_instruction->all_gather_dimension(), 0);
