@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <vector>
