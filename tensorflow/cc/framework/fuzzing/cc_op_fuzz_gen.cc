@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
+#include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -68,7 +69,8 @@ std::string DefaultValue(OpDef_AttrDef attr) {
   }
   if (attr.has_allowed_values()) {
     if (!attr.allowed_values().list().s().empty()) {
-      return absl::StrCat("\"", attr.allowed_values().list().s(0), "\"");
+      return absl::StrCat(
+          "\"", absl::CEscape(attr.allowed_values().list().s(0)), "\"");
     } else if (!attr.allowed_values().list().type().empty()) {
       return DataType_Name(attr.allowed_values().list().type(0));
     }
