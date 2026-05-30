@@ -1215,7 +1215,7 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedBufferInterval::Slice(
   for (int i = 0; i < num_slices; ++i) {
     int64_t new_size = slice_sizes_sorted_by_offset[i];
     size_total += new_size;
-    make_free_chunks_intervals_.push_back(BufferInterval{
+    make_free_chunks_intervals_.emplace_back(
         full_buffer_interval_.buffer,
         /*size=*/
         (i == num_slices - 1 ? full_buffer_interval_.size : min_slice_size),
@@ -1224,7 +1224,7 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedBufferInterval::Slice(
         /*colocations=*/
         (i == num_slices - 1 ? full_buffer_interval_.colocations
                              : empty_colocations),
-        full_buffer_interval_.need_allocation});
+        full_buffer_interval_.need_allocation);
   }
 
   CHECK_EQ(size_total, full_buffer_interval_.size)
@@ -1322,7 +1322,7 @@ std::string GlobalDecreasingSizeBestFitHeap<
                     [](std::string* out, const BufferInterval& interval) {
                       absl::StrAppend(out, interval.ToString());
                     }),
-      " }, ", "slize_sizes_sorted_by_offsets: { ",
+      " }, ", "slice_sizes_sorted_by_offsets: { ",
       absl::StrJoin(slice_sizes_sorted_by_offset_, ", "), " } }");
 }
 
