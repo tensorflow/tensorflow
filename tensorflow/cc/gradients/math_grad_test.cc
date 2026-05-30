@@ -863,8 +863,8 @@ TEST_F(NaryGradTest, MinMulti) {
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
   auto all_same = Mul(scope_, Const(scope_, {1.f, 1.f, 1.f}), x);
   auto y = Min(scope_, all_same, {0});
-  // y is a [3] shaped tensor reduced along dimension 0, so it is [1] shaped
-  TensorShape y_shape({1});
+  // y is a [3] shaped tensor reduced along dimension 0, so it is [] shaped
+  TensorShape y_shape({});
   RunTest({x}, {x_shape}, {y}, {y_shape});
 }
 
@@ -873,7 +873,7 @@ TEST_F(NaryGradTest, MaxMulti) {
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
   auto all_same = Mul(scope_, Const(scope_, {1.f, 1.f, 1.f}), x);
   auto y = Max(scope_, all_same, {0});
-  TensorShape y_shape({1});
+  TensorShape y_shape({});
   RunTest({x}, {x_shape}, {y}, {y_shape});
 }
 
@@ -1016,7 +1016,7 @@ TEST_F(NaryGradTest, Prod) {
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
   auto y = Prod(scope_, x, {1});
   // y's shape is the result of reducing x along axes 1
-  TensorShape y_shape({2, 1, 2});
+  TensorShape y_shape({2, 2});
   RunTest({x}, {x_shape}, {y}, {y_shape});
 }
 

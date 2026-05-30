@@ -128,6 +128,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -615,7 +616,6 @@ cc_library(
         ":functional_ops",
         ":grad_op_registry",
         ":gradients",
-        "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status",
     ],
