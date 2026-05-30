@@ -5163,7 +5163,12 @@ tf_kernel_library(
     deps = SPARSE_DEPS + if_cuda_or_rocm([
         ":gpu_device_array",
         ":gpu_prim_helpers",
-    ]),
+    ]) + [
+        "//tensorflow/core/util:overflow",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 tf_kernel_library(

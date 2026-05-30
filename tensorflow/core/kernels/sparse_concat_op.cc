@@ -13,21 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/tensor_shape.h"
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/sparse_concat_op.h"
-
-#include <algorithm>
 #include <numeric>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/sparse_concat_op.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/util/overflow.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
@@ -149,6 +151,26 @@ class SparseConcatOp : public OpKernel {
     OP_REQUIRES(
         context, !overflow_ocurred,
         absl::InternalError("Encountered overflow from large input shape."));
+
+    // Validate each sparse input tensor
+    for (int i = 0; i < N; ++i) {
+      const Tensor& input_ind = inds[i];
+      const Tensor& input_val = vals[i];
+      const Tensor& input_shape_in = shapes[i];
+
+      // Safely extract shape information
+      absl::Span<const int64_t> input_shape(
+          input_shape_in.vec<int64_t>().data(), input_shape_in.NumElements());
+
+      absl::InlinedVector<int64_t, 8UL> std_order(input_shape.size());
+      std::iota(std_order.begin(), std_order.end(), 0);
+
+      sparse::SparseTensor input_sp;
+      OP_REQUIRES_OK(context, sparse::SparseTensor::Create(
+                                  input_ind, input_val, input_shape, std_order,
+                                  &input_sp));
+      OP_REQUIRES_OK(context, input_sp.IndicesValid());
+    }
 
     const TensorShape input_shape(shapes[0].vec<int64_t>());
     const int input_rank = input_shape.dims();
