@@ -1536,7 +1536,15 @@ CommonPjRtLoadedExecutable::ExecuteSharded(
     std::optional<tsl::Future<void>>& returned_future, bool fill_future) const {
   RunId run_id = options.launch_id != 0 ? RunId(options.launch_id)
                                         : RunId::CreateUniqueId();
-  tsl::profiler::TraceMe traceme("CommonPjRtLoadedExecutable::ExecuteSharded");
+  tsl::profiler::TraceMe traceme([&]() {
+    return tsl::profiler::TraceMeEncode(
+        absl::StrFormat("CommonPjRtLoadedExecutable::ExecuteSharded (%s)",
+                        name()),
+        {{"name", name()},
+         {"num_replicas", num_replicas()},
+         {"num_partitions", num_partitions()},
+         {"num_addressable_devices", addressable_devices_.size()}});
+  });
   for (int i = 0; i < addressable_devices_.size(); ++i) {
     if (addressable_devices_[i] == device) {
       RETURN_IF_ERROR(ValidateHostTransferCallbacks(
@@ -1562,7 +1570,15 @@ CommonPjRtLoadedExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options,
     std::optional<tsl::Future<void>>& returned_future, bool fill_future) const {
-  tsl::profiler::TraceMe traceme("CommonPjRtLoadedExecutable::ExecutePortable");
+  tsl::profiler::TraceMe traceme([&]() {
+    return tsl::profiler::TraceMeEncode(
+        absl::StrFormat("CommonPjRtLoadedExecutable::ExecutePortable (%s)",
+                        name()),
+        {{"name", name()},
+         {"num_replicas", num_replicas()},
+         {"num_partitions", num_partitions()},
+         {"num_addressable_devices", addressable_devices_.size()}});
+  });
   if (num_replicas() != 1 || num_partitions() != 1) {
     return InvalidArgument(
         "ExecutePortable expects a single-core executable but gets "
