@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace ops {
@@ -281,6 +282,30 @@ class FloatFullyConnectedOpModel : public BaseFullyConnectedOpModel {
   }
 
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+  std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
+};
+
+template <typename T_in, typename T_w, typename T_b, typename T_out>
+class MixedFullyConnectedOpModel : public BaseFullyConnectedOpModel {
+ public:
+  MixedFullyConnectedOpModel(TfLiteRegistration* registration, int units,
+                             int batches, const TensorData& input,
+                             const TensorData& output,
+                             const TensorType& bias_type,
+                             const TensorType& filter_type)
+      : BaseFullyConnectedOpModel(
+            registration, units, batches, input, output, bias_type,
+            /*keep_num_dims=*/false,
+            /*bias_tensor_optional=*/false, ActivationFunctionType_RELU,
+            FullyConnectedOptionsWeightsFormat_DEFAULT,
+            /*input_size=*/-1,
+            /*weights_per_channel_quantized=*/false,
+            /*per_channel_quantization_scales=*/{}, filter_type) {}
+
+  void SetBias(const std::vector<T_b>& f) { PopulateTensor(bias_, f); }
+  void SetWeights(const std::vector<T_w>& f) { PopulateTensor(weights_, f); }
+  void SetInput(const std::vector<T_in>& data) { PopulateTensor(input_, data); }
+  std::vector<T_out> GetOutput() { return ExtractVector<T_out>(output_); }
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
 };
 
@@ -560,6 +585,66 @@ TEST_P(FloatFullyConnectedOpTest, SimpleTest) {
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(m.GetOutput(), ElementsAre(24, 25, 26, 58, 59, 60));
+}
+
+TEST_P(FloatFullyConnectedOpTest, MixedPrecision_Float16Input_Float32Weights) {
+  MixedFullyConnectedOpModel<half, float, float, half> m(
+      GetRegistration(), /*units=*/3, /*batches=*/2,
+      /*input=*/{TensorType_FLOAT16, {2, 10}},
+      /*output=*/{TensorType_FLOAT16},
+      /*bias_type=*/TensorType_FLOAT32,
+      /*filter_type=*/TensorType_FLOAT32);
+  m.SetWeights({
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
+  });
+  m.SetBias({1, 2, 3});
+
+  m.SetInput({
+      half(1), half(2), half(3),  half(4),  half(5),
+      half(6), half(7), half(8),  half(-9), half(-10),  // b = 0
+      half(1), half(2), half(3),  half(4),  half(5),
+      half(6), half(7), half(-8), half(9),  half(-10),  // b = 1
+  });
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 3));
+  EXPECT_THAT(m.GetOutput(), ElementsAre(half(24), half(25), half(26), half(58),
+                                         half(59), half(60)));
+}
+
+TEST_P(FloatFullyConnectedOpTest,
+       Float16Precision_Float16Input_Float16Weights) {
+  MixedFullyConnectedOpModel<half, half, half, half> m(
+      GetRegistration(), /*units=*/3, /*batches=*/2,
+      /*input=*/{TensorType_FLOAT16, {2, 10}},
+      /*output=*/{TensorType_FLOAT16},
+      /*bias_type=*/TensorType_FLOAT16,
+      /*filter_type=*/TensorType_FLOAT16);
+  m.SetWeights({
+      half(1), half(2), half(3), half(4), half(5),
+      half(6), half(7), half(8), half(9), half(10),  // u = 0
+      half(1), half(2), half(3), half(4), half(5),
+      half(6), half(7), half(8), half(9), half(10),  // u = 1
+      half(1), half(2), half(3), half(4), half(5),
+      half(6), half(7), half(8), half(9), half(10),  // u = 2
+  });
+  m.SetBias({half(1), half(2), half(3)});
+
+  m.SetInput({
+      half(1), half(2), half(3),  half(4),  half(5),
+      half(6), half(7), half(8),  half(-9), half(-10),  // b = 0
+      half(1), half(2), half(3),  half(4),  half(5),
+      half(6), half(7), half(-8), half(9),  half(-10),  // b = 1
+  });
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 3));
+  EXPECT_THAT(m.GetOutput(), ElementsAre(half(24), half(25), half(26), half(58),
+                                         half(59), half(60)));
 }
 
 TEST_P(FloatFullyConnectedOpTest, SimpleTest2) {

@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 
@@ -55,6 +56,9 @@ tflite::TensorType GetTFLiteType() {
   }
   if (std::is_same<T, int32_t>::value) {
     return TensorType_INT32;
+  }
+  if (std::is_same<T, half>::value) {
+    return TensorType_FLOAT16;
   }
   return TensorType_FLOAT32;
 }
@@ -125,6 +129,23 @@ TEST(BatchMatMulOpTest, Float32Test_Simple) {
   EXPECT_THAT(model.GetOutput(),
               Pointwise(FloatingPointEq(),
                         {74., 80., 86., 92., 173., 188., 203., 218.}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 4}));
+}
+
+TEST(BatchMatMulOpTest, Float16Test_Simple) {
+  BatchMatMulOpModel<half> model({TensorType_FLOAT16, {1, 2, 3}},
+                                 {TensorType_FLOAT16, {1, 3, 4}});
+  model.PopulateTensor<half>(
+      model.lhs(), {half(1), half(2), half(3), half(4), half(5), half(6)});
+  model.PopulateTensor<half>(
+      model.rhs(),
+      {half(7), half(8), half(9), half(10), half(11), half(12), half(13),
+       half(14), half(15), half(16), half(17), half(18)});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {74., 80., 86., 92., 173., 188., 203., 218.},
+                  static_cast<float>(NumericLimits<half>::epsilon()) * 10)));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 4}));
 }
 

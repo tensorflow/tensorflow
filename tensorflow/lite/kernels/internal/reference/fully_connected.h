@@ -23,24 +23,24 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
 namespace reference_ops {
 
-inline void FullyConnected(
-    const FullyConnectedParams& params, const RuntimeShape& input_shape,
-    const float* input_data, const RuntimeShape& weights_shape,
-    const float* weights_data, const RuntimeShape& bias_shape,
-    const float* bias_data, const RuntimeShape& output_shape,
-    float* output_data) {
+template <typename T_in, typename T_w, typename T_b, typename T_out>
+inline void FullyConnected(const FullyConnectedParams& params,
+                           const RuntimeShape& input_shape,
+                           const T_in* input_data,
+                           const RuntimeShape& weights_shape,
+                           const T_w* weights_data,
+                           const RuntimeShape& bias_shape, const T_b* bias_data,
+                           const RuntimeShape& output_shape,
+                           T_out* output_data) {
   const float output_activation_min = params.float_activation_min;
   const float output_activation_max = params.float_activation_max;
-  // TODO(b/62193649): This really should be:
-  //     const int batches = ArraySize(output_dims, 1);
-  // but the current --variable_batch hack consists in overwriting the 3rd
-  // dimension with the runtime batch size, as we don't keep track for each
-  // array of which dimension is the batch dimension in it.
+
   const int output_dims_count = output_shape.DimensionsCount();
   const int weights_dims_count = weights_shape.DimensionsCount();
   const int batches = FlatSizeSkipDim(output_shape, output_dims_count - 1);
@@ -51,15 +51,18 @@ inline void FullyConnected(
     for (int out_c = 0; out_c < output_depth; ++out_c) {
       float total = 0.f;
       for (int d = 0; d < accum_depth; ++d) {
-        total += input_data[b * accum_depth + d] *
-                 weights_data[out_c * accum_depth + d];
+        total += static_cast<float>(input_data[b * accum_depth + d]) *
+                 static_cast<float>(weights_data[out_c * accum_depth + d]);
       }
       float bias_value = 0.0f;
       if (bias_data) {
-        bias_value = bias_data[out_c];
+        bias_value = static_cast<float>(bias_data[out_c]);
       }
-      output_data[out_c + output_depth * b] = ActivationFunctionWithMinMax(
-          total + bias_value, output_activation_min, output_activation_max);
+      output_data[out_c + output_depth * b] =
+          ActivationFunctionWithMinMax<T_out>(
+              static_cast<T_out>(total + bias_value),
+              static_cast<T_out>(output_activation_min),
+              static_cast<T_out>(output_activation_max));
     }
   }
 }
