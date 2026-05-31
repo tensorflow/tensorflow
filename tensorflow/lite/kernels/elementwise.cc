@@ -340,6 +340,15 @@ TfLiteStatus SinEval(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus CosEval(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  if (input->type == kTfLiteFloat16) {
+    return EvalImpl<half>(
+        context, node,
+        [](half h) {
+          return static_cast<half>(std::cos(static_cast<float>(h)));
+        },
+        kTfLiteFloat16);
+  }
   return EvalNumeric(context, node, std::cos);
 }
 
@@ -545,7 +554,7 @@ TfLiteRegistration* Register_SIN() {
   return &r;
 }
 
-GENERIC_PREPARE(PrepareCos, elementwise::IsNumericSupportedType, "Cos")
+GENERIC_PREPARE(PrepareCos, elementwise::IsSinCosSupportedType, "Cos")
 
 TfLiteRegistration* Register_COS() {
   static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr, PrepareCos,
