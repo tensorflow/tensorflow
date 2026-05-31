@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <iomanip>
 #include <iostream>
@@ -155,7 +156,7 @@ absl::StatusOr<Literal> ExecuteWithRunner(
     std::unique_ptr<HloModule> module,
     const BufferAssignmentProto* buffer_assignment_proto,
     absl::Span<const Literal> args, HloRunnerInterface* runner,
-    bool run_hlo_passes) {
+    bool run_hlo_passes, int64_t execution_seed = 0) {
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       VerifyHloModule(module.get(), /*layout_sensitive=*/false,
                       /*allow_mixed_precision=*/true),
@@ -164,12 +165,38 @@ absl::StatusOr<Literal> ExecuteWithRunner(
   std::cerr << "Running HLO module with runner " << runner->Name() << "...\n";
   XLA_VLOG_LINES(1, module->ToString());
   const auto start = std::chrono::high_resolution_clock::now();
-  auto result_status =
-      (buffer_assignment_proto == nullptr)
-          ? runner->Execute(std::move(module), args, run_hlo_passes)
-          : runner->ExecuteWithBufferAssignment(std::move(module),
-                                                buffer_assignment_proto, args,
-                                                run_hlo_passes);
+  absl::StatusOr<Literal> result_status;
+  if (execution_seed != 0) {
+    HloRunnerInterface::ReplicatedExecuteOptions rep_opts;
+    rep_opts.seed = execution_seed;
+    rep_opts.run_hlo_passes = run_hlo_passes;
+    for (const auto& arg : args) {
+      rep_opts.arguments.push_back(&arg);
+    }
+    rep_opts.num_devices = module->config().replica_count();
+
+    auto rep_result = runner->ExecuteReplicated(std::move(module), rep_opts);
+    if (!rep_result.ok()) {
+      result_status = rep_result.status();
+    } else if (rep_result->empty()) {
+      result_status =
+          absl::InternalError("ExecuteReplicated returned no results");
+    } else {
+      // For the purpose of run_hlo_module, returning a single Literal is
+      // expected. Taking the result of the first replica is sufficient for
+      // data-parallel replication (all replicas produce same result). For
+      // partitioned modules, this returns a partial result, but this tool
+      // does not support combining partitioned results in this path anyway.
+      result_status = std::move((*rep_result)[0]);
+    }
+  } else {
+    result_status =
+        (buffer_assignment_proto == nullptr)
+            ? runner->Execute(std::move(module), args, run_hlo_passes)
+            : runner->ExecuteWithBufferAssignment(std::move(module),
+                                                  buffer_assignment_proto, args,
+                                                  run_hlo_passes);
+  }
   const auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> diff = end - start;
   std::cerr << "... compiled and ran in " << diff.count() << "s.\n";
@@ -289,7 +316,8 @@ absl::Status RunAndCompareInternal(
       auto test_result,
       copy_result_on_failure(
           ExecuteWithRunner(std::move(test_module), buffer_assignment_proto,
-                            args, test_runner, options.run_test_hlo_passes),
+                            args, test_runner, options.run_test_hlo_passes,
+                            options.execution_seed),
           ModuleResult::kRuntimeError, test_run_result));
   if (test_run_result != nullptr) {
     *test_run_result = ModuleResult::kRan;
@@ -325,7 +353,8 @@ absl::Status RunAndCompareInternal(
       copy_result_on_failure(
           ExecuteWithRunner(std::move(reference_module),
                             /*buffer_assignment_proto=*/nullptr, args,
-                            reference_runner, options.run_reference_hlo_passes),
+                            reference_runner, options.run_reference_hlo_passes,
+                            options.execution_seed),
           ModuleResult::kRuntimeError, reference_run_result));
   if (reference_run_result != nullptr) {
     *reference_run_result = ModuleResult::kRan;
