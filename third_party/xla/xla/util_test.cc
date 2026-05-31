@@ -424,6 +424,28 @@ TEST_P(PackUnpackIntNTest, RoundTrip) {
 INSTANTIATE_TEST_SUITE_P(PackUnpackIntNTest, PackUnpackIntNTest,
                          testing::Values(1, 2, 4));
 
+TEST(UtilDeathTest, PackIntNOutputTooSmall) {
+  std::vector<char> input(9, 0);
+  std::vector<char> output(1, 0);
+  EXPECT_DEATH(PackIntN(1, input, absl::MakeSpan(output)),
+               "Output span too small");
+  EXPECT_DEATH(PackIntN(2, input, absl::MakeSpan(output)),
+               "Output span too small");
+  EXPECT_DEATH(PackIntN(4, input, absl::MakeSpan(output)),
+               "Output span too small");
+}
+
+TEST(UtilDeathTest, UnpackIntNInputTooSmall) {
+  std::vector<char> input(1, 0);
+  std::vector<char> output(9, 0);
+  EXPECT_DEATH(UnpackIntN(1, input, absl::MakeSpan(output)),
+               "Input span too small");
+  EXPECT_DEATH(UnpackIntN(2, input, absl::MakeSpan(output)),
+               "Input span too small");
+  EXPECT_DEATH(UnpackIntN(4, input, absl::MakeSpan(output)),
+               "Input span too small");
+}
+
 TEST(UtilTest, MaybeOwningTestNull) {
   MaybeOwning<char> m(nullptr);
   EXPECT_EQ(m.get(), nullptr);
