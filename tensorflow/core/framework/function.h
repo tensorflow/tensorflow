@@ -1126,7 +1126,7 @@ class CustomKernelCreator {
 
 typedef
 #if !defined(IS_MOBILE_PLATFORM)
-    absl::variant<Tensor, eager::RemoteTensorHandle*>
+    std::variant<Tensor, eager::RemoteTensorHandle*>
         FunctionArg;
 #else
     absl::variant<Tensor>
@@ -1134,7 +1134,7 @@ typedef
 #endif
 
 // Either a local tensor or the shape of a remote tensor.
-typedef absl::variant<Tensor, TensorShape> FunctionRet;
+typedef std::variant<Tensor, TensorShape> FunctionRet;
 
 // Used to instantiate and run functions in a distributed system.
 class DistributedFunctionLibraryRuntime {
