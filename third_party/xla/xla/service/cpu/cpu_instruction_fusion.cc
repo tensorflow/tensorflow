@@ -128,6 +128,7 @@ bool CpuInstructionFusion::IsExpensive(const HloInstruction& instruction) {
     case HloOpcode::kCopy:
     case HloOpcode::kCopyDone:
     case HloOpcode::kCopyStart:
+    case HloOpcode::kDataflow:
     case HloOpcode::kDynamicReshape:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:

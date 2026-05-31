@@ -180,6 +180,8 @@ class HloOpcode(enum.Enum):
 
   kCustomCall = 49
 
+  kDataflow = 133
+
   kDivide = 50
 
   kDomain = 51

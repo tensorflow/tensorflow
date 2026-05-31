@@ -285,6 +285,10 @@ class DfsHloVisitorBase {
     return HandleElementwiseUnary(hlo);
   }
 
+  virtual absl::Status HandleDataflow(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
+
   /* go/keep-sorted start */
   virtual absl::Status HandleInfeed(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandleOutfeed(HloInstructionPtr hlo) = 0;

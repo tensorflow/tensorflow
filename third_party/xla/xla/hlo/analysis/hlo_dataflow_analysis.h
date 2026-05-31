@@ -238,6 +238,7 @@ class HloDataflowAnalysis {
   bool UpdateConditionalValueSet(HloInstruction* conditional);
   bool UpdateCopyValueSet(HloInstruction* copy);
   bool UpdateDomainValueSet(HloInstruction* domain);
+  bool UpdateDataflowValueSet(HloInstruction* dataflow);
   bool UpdateGetTupleElementValueSet(HloInstruction* gte);
   bool UpdateParameterValueSet(HloInstruction* parameter);
   // Async op propagation rules:

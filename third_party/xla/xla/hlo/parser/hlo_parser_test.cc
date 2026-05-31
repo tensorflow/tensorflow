@@ -2972,6 +2972,34 @@ class HloParserTest : public ::testing::Test {
   }
 };
 
+TEST_F(HloParserTest, DataflowInstruction) {
+  const std::string original = R"(HloModule dataflow_module
+
+ENTRY %entry (x: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %dataflow_in = f32[] dataflow(f32[] %x), computation="some_callee"
+  ROOT %dataflow_out = f32[] dataflow(f32[] %dataflow_in), is_input_dataflow=false, computation="some_callee"
+}
+)";
+  auto result = ParseAndReturnVerifiedModule(original);
+  ASSERT_TRUE(result.ok()) << result.status();
+  const HloInstruction* root =
+      result.value()->entry_computation()->root_instruction();
+  ASSERT_EQ(root->opcode(), HloOpcode::kDataflow);
+  EXPECT_FALSE(root->is_input_dataflow());
+  EXPECT_EQ(root->computation(), "some_callee");
+
+  const HloInstruction* operand = root->operand(0);
+  ASSERT_EQ(operand->opcode(), HloOpcode::kDataflow);
+  EXPECT_TRUE(operand->is_input_dataflow());
+  EXPECT_EQ(operand->computation(), "some_callee");
+
+  // Verify round-trip serialization and parsing matches expectation
+  std::string serialized = result.value()->ToString();
+  EXPECT_THAT(serialized, ::testing::HasSubstr("is_input_dataflow=false"));
+  EXPECT_THAT(serialized, ::testing::HasSubstr("computation=\"some_callee\""));
+}
+
 TEST_F(HloParserTest, Empty) {
   const std::string original = "";
   auto result = ParseAndReturnUnverifiedModule(original);

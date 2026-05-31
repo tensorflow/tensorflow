@@ -707,6 +707,23 @@ bool HloDataflowAnalysis::UpdateDomainValueSet(HloInstruction* domain) {
   return changed;
 }
 
+bool HloDataflowAnalysis::UpdateDataflowValueSet(HloInstruction* dataflow) {
+  // Dataflow instructions just forward their operand.
+  CHECK_EQ(dataflow->opcode(), HloOpcode::kDataflow);
+  bool changed = false;
+  for (auto& pair : GetInstructionValueSet(dataflow)) {
+    const ShapeIndex& index = pair.first;
+    HloValueSet& value_set = pair.second;
+    HloValueSet& operand_value_set =
+        GetMutableValueSet(dataflow->operand(0), index);
+    if (value_set != operand_value_set) {
+      value_set = operand_value_set;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 bool HloDataflowAnalysis::UpdateAddDependencyValueSet(
     HloInstruction* add_dependency) {
   // AddDependency just forwards the value of its zero-th operand.
@@ -1037,6 +1054,8 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
       return UpdateBitcastValueSet(instruction);
     case HloOpcode::kDomain:
       return UpdateDomainValueSet(instruction);
+    case HloOpcode::kDataflow:
+      return UpdateDataflowValueSet(instruction);
     case HloOpcode::kCopy:
       return UpdateCopyValueSet(instruction);
     case HloOpcode::kGetTupleElement:
@@ -1263,6 +1282,7 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
         case HloOpcode::kConditional:
         case HloOpcode::kGetTupleElement:
         case HloOpcode::kDomain:
+        case HloOpcode::kDataflow:
         case HloOpcode::kOptimizationBarrier:
           // These instructions define no values. The values in their output
           // flow from their operands or from cross computation dataflow.
