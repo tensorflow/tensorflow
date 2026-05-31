@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace ops {
@@ -338,9 +339,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
 
   TF_LITE_ENSURE(context, lhs_data->type == kTfLiteFloat32 ||
+                              lhs_data->type == kTfLiteFloat16 ||
                               lhs_data->type == kTfLiteInt8 ||
                               lhs_data->type == kTfLiteInt16);
   TF_LITE_ENSURE(context, rhs_data->type == kTfLiteFloat32 ||
+                              rhs_data->type == kTfLiteFloat16 ||
                               rhs_data->type == kTfLiteInt8 ||
                               rhs_data->type == kTfLiteInt16);
   // Either we have a hybrid quantization with a float32 and an int8 input,
@@ -415,6 +418,10 @@ TfLiteStatus TransposeRowsColumns(TfLiteContext* context,
                                     tensor_out,
                                     GetTensorData<float>(tensor_out));
     return kTfLiteOk;
+  } else if (tensor_in->type == kTfLiteFloat16) {
+    TransposeRowsColumnsImpl<half>(tensor_in, GetTensorData<half>(tensor_in),
+                                   tensor_out, GetTensorData<half>(tensor_out));
+    return kTfLiteOk;
   } else if (tensor_in->type == kTfLiteInt8) {
     TransposeRowsColumnsImpl<int8_t>(
         tensor_in, GetTensorData<int8_t>(tensor_in), tensor_out,
@@ -427,7 +434,8 @@ TfLiteStatus TransposeRowsColumns(TfLiteContext* context,
     return kTfLiteOk;
   } else {
     TF_LITE_KERNEL_LOG(
-        context, "Can only transpose tensors with float, int8 or int16 type.");
+        context,
+        "Can only transpose tensors with float, float16, int8 or int16 type.");
     return kTfLiteError;
   }
 }
@@ -811,6 +819,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                  lhs_shape, GetTensorData<float>(lhs_tensor),
                                  GetTensorShape(output),
                                  GetTensorData<float>(output));
+      break;
+    case kTfLiteFloat16:
+      reference_ops::BatchMatMul(rhs_shape, GetTensorData<half>(rhs_tensor),
+                                 lhs_shape, GetTensorData<half>(lhs_tensor),
+                                 GetTensorShape(output),
+                                 GetTensorData<half>(output));
       break;
     case kTfLiteInt8:
     case kTfLiteInt16:

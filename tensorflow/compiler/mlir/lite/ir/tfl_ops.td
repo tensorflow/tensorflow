@@ -865,14 +865,14 @@ def TFL_ConcatenationOp : TFL_Op<"concatenation",
 
   let arguments = (
     ins TFL_VariadicTensorOf<
-      [F32, I64, I32, I16, QI4, I8, QI8, QUI8, UI8, UI32, I1]>:$values,
+      [F32, F16, I64, I32, I16, QI4, I8, QI8, QUI8, UI8, UI32, I1]>:$values,
     I32Attr:$axis,
     TFL_AFAttr:$fused_activation_function
   );
 
   let results = (outs
     TFL_TensorOf<
-      [F32, I64, I32, I16, QI4, I8, QI8, QUI8, UI8, UI32, I1]>:$output
+      [F32, F16, I64, I32, I16, QI4, I8, QI8, QUI8, UI8, UI32, I1]>:$output
   );
 
   let hasOptions = 1;
@@ -1026,9 +1026,9 @@ def TFL_CosOp: TFL_Op<"cos", [
     Computes element-wise Cosine of input
   }];
 
-  let arguments = (ins TFL_FpTensor:$x);
+  let arguments = (ins TFL_TensorOf<[F32, F16]>:$x);
 
-  let results = (outs TFL_FpTensor:$y);
+  let results = (outs TFL_TensorOf<[F32, F16]>:$y);
 
   let hasFolder = 1;
 
@@ -1188,8 +1188,8 @@ in the batch dimensions and broadcasting.
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, QI8, QI16, I8]>:$x,
-    TFL_TensorOf<[F32, QI8, QI16, I8]>:$y,
+    TFL_TensorOf<[F32, F16, QI8, QI16, I8]>:$x,
+    TFL_TensorOf<[F32, F16, QI8, QI16, I8]>:$y,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_x,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_y,
     // Used in post-training dynamic range quantization. If the value is true,
@@ -1198,7 +1198,7 @@ in the batch dimensions and broadcasting.
   );
 
    let results = (outs
-    TFL_TensorOf<[F32, QI8, QI16, I32]>:$output
+    TFL_TensorOf<[F32, F16, QI8, QI16, I32]>:$output
   );
 
   let hasOptions = 1;
@@ -2495,13 +2495,13 @@ equivalent to setting:
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I32, I64, QI4, I8, UI8, UI32, I1, TFL_Str, QI8, QUI8, TFL_Quint8, QI16]>:$input,
+    TFL_TensorOf<[F32, F16, I32, I64, QI4, I8, UI8, UI32, I1, TFL_Str, QI8, QUI8, TFL_Quint8, QI16]>:$input,
     TFL_I32OrI64Tensor:$begin,
     TFL_I32OrI64Tensor:$size
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I32, I64, QI4, I8, UI8, UI32, I1, TFL_Str, QI8, QUI8, TFL_Quint8, QI16]>:$output
+    TFL_TensorOf<[F32, F16, I32, I64, QI4, I8, UI8, UI32, I1, TFL_Str, QI8, QUI8, TFL_Quint8, QI16]>:$output
   );
 
   let hasVerifier = 1;
@@ -3399,11 +3399,11 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8, QI16]>:$input,
+    ins TFL_TensorOf<[F32, F16, QI8, QUI8, TFL_Quint8, QI16]>:$input,
     F32Attr:$beta
   );
 
-  let results = (outs TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8, QI16]>:$output);
+  let results = (outs TFL_TensorOf<[F32, F16, QI8, QUI8, TFL_Quint8, QI16]>:$output);
 
   let hasOptions = 1;
 
@@ -3675,12 +3675,12 @@ def TFL_TransposeOp : TFL_Op<"transpose", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[I32, BF16, F32, I8, UI8, QI8, QUI8, TFL_I4, QI4, TFL_Quint8, I1, I64, QI16]>:$input,
+    TFL_TensorOf<[I32, BF16, F32, F16, I8, UI8, QI8, QUI8, TFL_I4, QI4, TFL_Quint8, I1, I64, QI16]>:$input,
     TFL_TensorOf<[I32]>:$perm
   );
 
   let results = (outs
-    TFL_TensorOf<[I32, BF16, F32, I8, UI8, QI8, QUI8, TFL_I4, QI4, TFL_Quint8, I1, I64, QI16]>:$output
+    TFL_TensorOf<[I32, BF16, F32, F16, I8, UI8, QI8, QUI8, TFL_I4, QI4, TFL_Quint8, I1, I64, QI16]>:$output
   );
 
   let hasVerifier = 1;
@@ -4190,11 +4190,11 @@ def TFL_GeluOp: TFL_Op<"gelu", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, QI8, QUI8]>:$input,
+    TFL_TensorOf<[F32, F16, QI8, QUI8]>:$input,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$approximate
   );
 
-  let results = (outs TFL_TensorOf<[F32, QI8, QUI8]>:$output);
+  let results = (outs TFL_TensorOf<[F32, F16, QI8, QUI8]>:$output);
 
   let hasOptions = 1;
 }
