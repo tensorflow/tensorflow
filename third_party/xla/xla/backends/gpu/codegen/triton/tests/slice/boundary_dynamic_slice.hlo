@@ -1,6 +1,8 @@
-// RUN: (hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation || true) 2>&1 | FileCheck %s --check-prefix=CHECK-ERROR
+// RUN: hlo_to_xtileir %s | FileCheck %s
+// RUN: triton_test_correctness %s
 
-// CHECK-ERROR: {{xla::gpu::experimental::TiledHloInstruction::runtime_variables\(\)|Segmentation fault}}
+// RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
 
 max {
   x = f32[] parameter(0)
@@ -30,3 +32,18 @@ ENTRY main {
         "num_stages":1}}}
 }
 
+// CHECK-LABEL:   xtile.entry_func @triton_fn(
+// CHECK-SAME:      %[[ARG0:.*]]: memref<2x97xf32>,
+// CHECK-SAME:      %[[ARG1:.*]]: memref<2xf32>,
+// CHECK-SAME:      %[[ARG2:.*]]: index)
+// CHECK:           %[[CST:.*]] = arith.constant 0xFF800000 : f32
+// CHECK:           %[[C0:.*]] = arith.constant 0 : index
+// CHECK:           %[[EXTRACT:.*]] = xtile.extract %[[ARG0]][%[[ARG2]], %[[C0]]] [1, 128] [1, 1] : memref<2x97xf32> -> tensor<1x128xf32>
+// CHECK:           %[[MASK:.*]] = xtile.mask %[[EXTRACT]] bounds [1, 97], %[[CST]] : tensor<1x128xf32>
+// CHECK:           %[[REDUCE:.*]] = "tt.reduce"(%[[MASK]]) <{axis = 1 : i32}> ({
+// CHECK:           ^bb0(%{{.*}}: f32, %{{.*}}: f32):
+// CHECK:             %[[MAX:.*]] = arith.maximumf %{{.*}}, %{{.*}} : f32
+// CHECK:             tt.reduce.return %[[MAX]] : f32
+// CHECK:           }) : (tensor<1x128xf32>) -> tensor<1xf32>
+// CHECK:           xtile.insert %[[REDUCE]] into %[[ARG1]][%[[ARG2]]] [1] [1] : tensor<1xf32> -> memref<2xf32>
+// CHECK:           xtile.return

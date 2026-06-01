@@ -78,8 +78,11 @@ llvm::SmallVector<const TiledHloInstruction*, 2>
 TiledHloInstruction::runtime_variables() const {
   llvm::SmallVector<const TiledHloInstruction*, 2> runtime_variables;
   if (auto dyn_slice = DynCast<HloDynamicSliceInstruction>(hlo_)) {
-    for (int i = dyn_slice->first_index_operand_number();
-         i < hlo_->operand_count(); ++i) {
+    // `operands_` might be empty and inconsistent with `hlo_->operand_count()`
+    // if the instruction lies outside the fusion boundary (we skip populating
+    // its operands during traversal).
+    for (int i = dyn_slice->first_index_operand_number(); i < operands_.size();
+         ++i) {
       runtime_variables.push_back(operands_[i]);
     }
   }
