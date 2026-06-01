@@ -3362,7 +3362,7 @@ tf_cc_tests(
 tf_kernel_library(
     name = "save_restore_v2_ops",
     prefix = "save_restore_v2_ops",
-    deps = SAVE_RESTORE_DEPS,
+    deps = SAVE_RESTORE_DEPS + ["@com_google_absl//absl/strings"],
 )
 
 tf_kernel_library(
@@ -7273,7 +7273,6 @@ cc_library(
         "//tensorflow/core/util/quantization:uniform_quant_ops_attr_proto_cc",
         "//third_party/fft2d:fft2d_headers",
         "//third_party/icu/data:conversion_data",
-        "@com_google_absl//absl/base",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

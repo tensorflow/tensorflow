@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"  // IWYU pragma: keep
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/tensor_bundle/naming.h"
@@ -52,6 +54,12 @@ void ValidateInputs(bool is_save_op, OpKernelContext* context,
               absl::InvalidArgumentError(absl::StrCat(
                   "Input prefix should have a single element, got ",
                   prefix.NumElements(), " instead.")));
+  const std::string& prefix_string = prefix.scalar<tstring>()();
+  OP_REQUIRES(context,
+              !absl::StrContains(prefix_string, "../") &&
+                  !absl::StrContains(prefix_string, "..\\"),
+              absl::InvalidArgumentError("Path traversal via `../` or `..\\` "
+                                         "is not supported in the prefix."));
   OP_REQUIRES(context,
               TensorShapeUtils::IsVector(tensor_names.shape()) &&
                   TensorShapeUtils::IsVector(shape_and_slices.shape()),
@@ -287,8 +295,21 @@ class MergeV2Checkpoints : public OpKernel {
 
     const absl::Span<const tstring> input_prefixes =
         absl::Span<const tstring>(checkpoint_prefixes.flat<tstring>());
+    for (const tstring& input_prefix : input_prefixes) {
+      OP_REQUIRES(
+          context,
+          !absl::StrContains(input_prefix, "../") &&
+              !absl::StrContains(input_prefix, "..\\"),
+          absl::InvalidArgumentError("Path traversal via `../` or `..\\` is "
+                                     "not supported in the prefix."));
+    }
     Env* env = Env::Default();
     const std::string& merged_prefix = destination_prefix.scalar<tstring>()();
+    OP_REQUIRES(context,
+                !absl::StrContains(merged_prefix, "../") &&
+                    !absl::StrContains(merged_prefix, "..\\"),
+                absl::InvalidArgumentError("Path traversal via `../` or `..\\` "
+                                           "is not supported in the prefix."));
     OP_REQUIRES_OK(context,
                    tensorflow::MergeBundles(env, input_prefixes, merged_prefix,
                                             allow_missing_files_));

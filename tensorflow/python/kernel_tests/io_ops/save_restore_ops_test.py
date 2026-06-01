@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tensorflow.ops.io_ops."""
+
 import os
 
 from absl.testing import parameterized
@@ -45,6 +46,36 @@ class SaveRestoreTest(test.TestCase, parameterized.TestCase):
         [2], self.evaluate(io_ops.restore_v2("ckpt", ["x"], [""], [dtype]))
     )
 
+  @test_util.run_in_graph_and_eager_modes
+  def testPathTraversal(self):
+    os.chdir(self.get_temp_dir())
+    with self.assertRaisesRegex(
+        Exception, r"Path traversal via `\.\./` or `\.\.\\` is not supported"
+    ):
+      self.evaluate(
+          io_ops.save_v2("../ckpt", ["x"], [""], [constant_op.constant(2)])
+      )
+    with self.assertRaisesRegex(
+        Exception, r"Path traversal via `\.\./` or `\.\.\\` is not supported"
+    ):
+      self.evaluate(io_ops.restore_v2("../ckpt", ["x"], [""], [dtypes.int32]))
+    with self.assertRaisesRegex(
+        Exception, r"Path traversal via `\.\./` or `\.\.\\` is not supported"
+    ):
+      self.evaluate(
+          gen_io_ops.merge_v2_checkpoints(
+              ["../ckpt"], "ckpt", delete_old_dirs=True
+          )
+      )
+    with self.assertRaisesRegex(
+        Exception, r"Path traversal via `\.\./` or `\.\.\\` is not supported"
+    ):
+      self.evaluate(
+          gen_io_ops.merge_v2_checkpoints(
+              ["ckpt"], "../ckpt", delete_old_dirs=True
+          )
+      )
+
   @parameterized.parameters(_TEST_DTYPES)
   def testWithSliceInput(self, dtype):
     os.chdir(self.get_temp_dir())
@@ -68,12 +99,15 @@ class ShardedFileOpsTest(test.TestCase):
 
   def testShardedFileName(self):
     with session.Session(
-        target="", config=config_pb2.ConfigProto(device_count={"CPU": 2})):
+        target="", config=config_pb2.ConfigProto(device_count={"CPU": 2})
+    ):
       self.assertEqual(
           gen_io_ops.sharded_filename("foo", 4, 100).eval(),
-          b"foo-00004-of-00100")
+          b"foo-00004-of-00100",
+      )
       self.assertEqual(
-          gen_io_ops.sharded_filespec("foo", 100).eval(), b"foo-?????-of-00100")
+          gen_io_ops.sharded_filespec("foo", 100).eval(), b"foo-?????-of-00100"
+      )
 
 
 class ShapeInferenceTest(test.TestCase, parameterized.TestCase):
