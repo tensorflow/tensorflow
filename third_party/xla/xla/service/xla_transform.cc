@@ -133,6 +133,8 @@ absl::Status UpdateHloModuleFromProto(HloModule* module,
   HloComputation* new_entry = temp_module->entry_computation();
   module->MoveComputationsFrom(temp_module.get());
   module->ReplaceEntryComputation(new_entry);
+  module->mutable_config().SetComputationLayoutIfExists(
+      new_entry->ComputeProgramShape());
 
   RETURN_IF_ERROR(module->RemoveUnusedComputations());
 

@@ -34,8 +34,10 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_xla_transform_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_xla_transform_internal.h"
+#include "xla/service/computation_layout.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cse.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/tsl/platform/statusor.h"
@@ -388,6 +390,130 @@ TEST_F(XlaTransformTest, PjrtCApiExtensionUnusedComputationScheduleUAF) {
   EXPECT_TRUE(module->has_schedule());
   auto status = module->schedule().Verify();
   EXPECT_TRUE(status.ok());
+}
+
+class UpdateHloModuleFromProtoTest : public XlaTransformTest {
+ protected:
+  absl::StatusOr<std::unique_ptr<HloModule>>
+  CreateModuleWithNonDefaultLayout() {
+    absl::string_view hlo_text = R"(
+      HloModule test_module
+      ENTRY main {
+        p0 = f32[2,3] parameter(0)
+        ROOT neg = f32[2,3] negate(p0)
+      }
+    )";
+    ASSIGN_OR_RETURN(auto module, ParseAndReturnUnverifiedModule(hlo_text));
+    Shape non_default_shape = NonDefaultShape();
+    *module->mutable_entry_computation_layout()->mutable_parameter_layout(0) =
+        ShapeLayout(non_default_shape);
+    *module->mutable_entry_computation_layout()->mutable_result_layout() =
+        ShapeLayout(non_default_shape);
+    return module;
+  }
+
+  absl::StatusOr<HloModuleProto> HloTextToProto(absl::string_view hlo_text) {
+    ASSIGN_OR_RETURN(auto module, ParseAndReturnUnverifiedModule(hlo_text));
+    return module->ToProto();
+  }
+
+  Shape NonDefaultShape() {
+    return ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 3}, {0, 1});
+  }
+};
+
+TEST_F(UpdateHloModuleFromProtoTest, PropagatesNewLayout) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, CreateModuleWithNonDefaultLayout());
+
+  absl::string_view hlo_text = R"(
+    HloModule test_module
+    ENTRY main {
+      p0 = f32[2,3] parameter(0)
+      ROOT neg = f32[2,3] negate(p0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(HloModuleProto transformed_proto,
+                          HloTextToProto(hlo_text));
+
+  EXPECT_TRUE(UpdateHloModuleFromProto(module.get(), transformed_proto).ok());
+
+  // The layout should be updated to the default layout from the proto,
+  // instead of preserving the original non-default layout.
+  Shape default_shape = ShapeUtil::MakeShape(F32, {2, 3});
+  EXPECT_EQ(module->entry_computation_layout().parameter_layout(0),
+            ShapeLayout(default_shape));
+  EXPECT_EQ(module->entry_computation_layout().result_layout(),
+            ShapeLayout(default_shape));
+}
+
+TEST_F(UpdateHloModuleFromProtoTest, PropagatesNonDefaultLayout) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(R"(
+    HloModule test_module
+    ENTRY main {
+      p0 = f32[2,3] parameter(0)
+      ROOT neg = f32[2,3] negate(p0)
+    }
+  )"));
+
+  absl::string_view transformed_hlo = R"(
+    HloModule test_module
+    ENTRY main {
+      p0 = f32[2,3]{0,1} parameter(0)
+      ROOT neg = f32[2,3]{0,1} negate(p0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto transformed_module,
+                          ParseAndReturnUnverifiedModule(transformed_hlo));
+  HloModuleProto transformed_proto = transformed_module->ToProto();
+
+  EXPECT_TRUE(UpdateHloModuleFromProto(module.get(), transformed_proto).ok());
+
+  // The layout should be updated to the non-default layout from the proto.
+  EXPECT_EQ(module->entry_computation_layout().parameter_layout(0),
+            ShapeLayout(NonDefaultShape()));
+  EXPECT_EQ(module->entry_computation_layout().result_layout(),
+            ShapeLayout(NonDefaultShape()));
+}
+
+TEST_F(UpdateHloModuleFromProtoTest, IncompatibleShape) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, CreateModuleWithNonDefaultLayout());
+
+  absl::string_view transformed_hlo_text = R"(
+    HloModule test_module
+    ENTRY main {
+      p0 = f32[3,4] parameter(0)
+      ROOT neg = f32[3,4] negate(p0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(HloModuleProto transformed_proto,
+                          HloTextToProto(transformed_hlo_text));
+
+  EXPECT_FALSE(UpdateHloModuleFromProto(module.get(), transformed_proto).ok());
+
+  EXPECT_EQ(module->entry_computation_layout().parameter_layout(0),
+            ShapeLayout(NonDefaultShape()));
+  EXPECT_EQ(module->entry_computation_layout().result_layout(),
+            ShapeLayout(NonDefaultShape()));
+}
+
+TEST_F(UpdateHloModuleFromProtoTest, IncompatibleParamCount) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, CreateModuleWithNonDefaultLayout());
+
+  absl::string_view transformed_hlo_text = R"(
+    HloModule test_module
+    ENTRY main {
+      p0 = f32[2,3] parameter(0)
+      p1 = f32[2,3] parameter(1)
+      ROOT add = f32[2,3] add(p0, p1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(HloModuleProto transformed_proto,
+                          HloTextToProto(transformed_hlo_text));
+
+  EXPECT_FALSE(UpdateHloModuleFromProto(module.get(), transformed_proto).ok());
+
+  EXPECT_EQ(module->entry_computation_layout().parameter_layout(0),
+            ShapeLayout(NonDefaultShape()));
 }
 
 }  // namespace

@@ -6880,6 +6880,7 @@ xla_cc_test(
     name = "xla_transform_test",
     srcs = ["xla_transform_test.cc"],
     deps = [
+        ":computation_layout",
         ":hlo_cse",
         ":hlo_proto_cc",
         ":xla_transform",
