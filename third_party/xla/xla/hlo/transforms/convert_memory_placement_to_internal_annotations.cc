@@ -101,6 +101,9 @@ ConvertCustomCallWithExternalAnnotationToInternalAnnotation(
         c->AddInstruction(HloInstruction::CreateCustomCall(
             custom_call_operand->shape(), {custom_call_operand},
             *custom_call_target));
+    if (instruction->has_sharding()) {
+      new_result->set_sharding(instruction->sharding());
+    }
     RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(new_result));
     RETURN_IF_ERROR(c->RemoveInstructionAndUnusedOperands(instruction));
     return true;
