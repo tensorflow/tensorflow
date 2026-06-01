@@ -20,7 +20,7 @@ fusion {
   broadcast_4 = f32[10,125,127]{2,1,0} broadcast(reduce_0), dimensions={0,1}
   ROOT multiply = f32[10,125,127]{2,1,0} multiply(multiply_1, broadcast_4)
 }
-// CHECK:        #[[MAP:.*]] = #xla.indexing_map<"(pid_0) -> (pid_0 floordiv 125), domain: pid_0 in [0, 1249]">
+// CHECK:        #[[MAP:.*]] = #xla.indexing_map<"(pid_0) -> (pid_0 / 125), domain: pid_0 in [0, 1249]">
 // CHECK:        #[[MAP1:.*]] = #xla.indexing_map<"(pid_0) -> (pid_0 mod 125), domain: pid_0 in [0, 1249]">
 // CHECK:        xtile.entry_func @triton_fn
 // CHECK-SAME:      (%[[P0:.*]]: {{.*}}, %[[P1:.*]]: {{.*}}, %[[P2:.*]]: {{.*}}, %[[P3:.*]]: {{.*}}, %[[TID:.*]]: index)

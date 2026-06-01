@@ -321,10 +321,10 @@ TEST_F(TilingSpaceSimplifyExpressionTest,
 }
 
 TEST_F(TilingSpaceSimplifyExpressionTest, NestedFloorDivFactorsDivisor) {
-  auto expr = ParseSymbolicExpr("(d0 * 16 + d1 * 2) floordiv 200",
-                                &mlir_context_, /*num_dims=*/2);
+  auto expr = ParseSymbolicExpr("(d0 * 16 + d1 * 2) / 200", &mlir_context_,
+                                /*num_dims=*/2);
   EXPECT_EQ(tiling_space_->SimplifyExpression(expr),
-            ParseSymbolicExpr("(d0 * 8 + d1) floordiv 100", &mlir_context_,
+            ParseSymbolicExpr("(d0 * 8 + d1) / 100", &mlir_context_,
                               /*num_dims=*/2));
 }
 

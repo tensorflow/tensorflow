@@ -11,7 +11,7 @@ fusion {
     backend_config={sizes:[32]}
 }
 // CHECK-DAG: (pid_0) -> ((pid_0 mod 2) * 16)
-// CHECK-DAG: (pid_0) -> (((pid_0 floordiv 2) mod 16) * 8)
+// CHECK-DAG: (pid_0) -> (((pid_0 / 2) mod 16) * 8)
 
 ENTRY main {
   p0 = f32[2,32,64] parameter(0)

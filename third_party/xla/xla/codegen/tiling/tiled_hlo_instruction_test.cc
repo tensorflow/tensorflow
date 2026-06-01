@@ -54,8 +54,7 @@ TEST_F(TiledHloInstructionTest, TileSizesAndStridesShouldMatchHloShapeRank) {
       ShapeUtil::MakeShape(PrimitiveType::F32, {32, 64}), "p0");
 
   IndexingMap tile_offsets_indexing = IndexingMap::FromTensorSizes(
-      ParseSymbolicMap("(d0) -> (d0 floordiv 16, (d0 mod 16) * 16)",
-                       &mlir_context_),
+      ParseSymbolicMap("(d0) -> (d0 / 16, (d0 mod 16) * 16)", &mlir_context_),
       /*dim_upper_bounds=*/{8},
       /*symbol_upper_bounds=*/{});
 

@@ -115,6 +115,8 @@ Token::Kind GetSingleCharTokenType(char c) {
       return Token::Kind::kMinus;
     case '*':
       return Token::Kind::kTimes;
+    case '/':
+      return Token::Kind::kFloorDiv;
     default:
       return Token::Kind::kError;
   }

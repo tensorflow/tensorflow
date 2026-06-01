@@ -12,7 +12,7 @@ fusion (p0: f32[1024, 16], offset: s32[]) -> f32[8192] {
   ROOT bitcast = f32[8192]{0} bitcast(dynamic_slice)
 }
 
-// CHECK: #[[$ATTR_0:.+]] = #xla.indexing_map<"([[PID:pid(_0)?]], d1) -> ([[PID]] floordiv 2 + d1), domain: [[PID]] in [0, 1023], d1 in [0, 512]">
+// CHECK: #[[$ATTR_0:.+]] = #xla.indexing_map<"([[PID:pid(_0)?]], d1) -> ([[PID]] / 2 + d1), domain: [[PID]] in [0, 1023], d1 in [0, 512]">
 // CHECK: #[[$ATTR_1:.+]] = #xla.indexing_map<"([[PID]]) -> (([[PID]] mod 2) * 8), domain: [[PID]] in [0, 1023]">
 // CHECK: #[[$ATTR_2:.+]] = #xla.indexing_map<"([[PID]]) -> ([[PID]] * 8), domain: [[PID]] in [0, 1023]">
 // CHECK-LABEL:   xtile.entry_func @triton_fn(

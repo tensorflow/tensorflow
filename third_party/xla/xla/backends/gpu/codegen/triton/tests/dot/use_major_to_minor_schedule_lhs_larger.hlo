@@ -13,7 +13,7 @@ fusion {
     lhs_contracting_dims={2}, rhs_contracting_dims={1},
     backend_config={sizes:[32]}
 }
-// CHECK-DAG: ([[PID:pid(_0)?]]) -> ((([[PID]] floordiv 4) mod 8) * 16)
+// CHECK-DAG: ([[PID:pid(_0)?]]) -> ((([[PID]] / 4) mod 8) * 16)
 // CHECK-DAG: ([[PID]]) -> (([[PID]] mod 4) * 8)
 
 ENTRY main {

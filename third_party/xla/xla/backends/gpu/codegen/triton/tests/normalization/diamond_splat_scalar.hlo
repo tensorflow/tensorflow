@@ -17,7 +17,7 @@ fusion {
   broadcast_0 = f32[64,32,16]{2,1,0} broadcast(reduce_0), dimensions={0,1}
   ROOT _ = f32[64,32,16]{2,1,0} add(add_0, broadcast_0)
 }
-// CHECK:         #xla.indexing_map<"(pid_0) -> (pid_0 floordiv 32), domain: pid_0 in [0, 2047]">
+// CHECK:         #xla.indexing_map<"(pid_0) -> (pid_0 / 32), domain: pid_0 in [0, 2047]">
 // CHECK:         #xla.indexing_map<"(pid_0) -> (pid_0 mod 32), domain: pid_0 in [0, 2047]">
 // CHECK-LABEL:   xtile.entry_func @triton_fn(
 // CHECK-SAME:        %[[P0:[A-Za-z0-9_]*]]: memref<64x32x16xf32>
