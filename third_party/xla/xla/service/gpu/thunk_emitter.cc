@@ -1411,6 +1411,9 @@ AsyncThunkSequence ThunkEmitter::EmitDynamicSliceFusionV2(
         return absl::OkStatus();
       }));
 
+  RETURN_IF_ERROR(DynamicSliceFusionV2Thunk::VerifyBufferAssignment(
+      results, parameter_buffers, result_buffers));
+
   // embedded_allocations: synthetic allocations for the embedded thunk
   // executor. First N entries are for hero operands (one per Parameter),
   // then M entries for hero results (one per Result).

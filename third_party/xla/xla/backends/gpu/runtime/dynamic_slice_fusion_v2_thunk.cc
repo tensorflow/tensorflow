@@ -136,6 +136,48 @@ absl::Status DynamicSliceFusionV2Thunk::Initialize(
   return executor_.Initialize(params);
 }
 
+absl::Status DynamicSliceFusionV2Thunk::VerifyBufferAssignment(
+    absl::Span<const DynamicSliceFusion::Result> results,
+    absl::Span<const BufferAllocation::Slice> parameter_buffers,
+    absl::Span<const BufferAllocation::Slice> result_buffers) {
+  for (const DynamicSliceFusion::Result& result : results) {
+    if (!result.parameter_number.has_value()) {
+      continue;
+    }
+
+    const int64_t parameter_number = *result.parameter_number;
+    const int64_t parameter_buffer_count = parameter_buffers.size();
+
+    if (parameter_number < 0 || parameter_number >= parameter_buffer_count) {
+      return Internal(
+          "DUS result %d targets missing fusion parameter %d; parameter buffer "
+          "count is %d",
+          result.result_number, parameter_number, parameter_buffer_count);
+    }
+
+    const int64_t result_buffer_count = result_buffers.size();
+    if (result.result_number < 0 ||
+        result.result_number >= result_buffer_count) {
+      return Internal(
+          "DUS result %d has no result buffer; result buffer count is %d",
+          result.result_number, result_buffer_count);
+    }
+
+    const BufferAllocation::Slice& parameter_buffer =
+        parameter_buffers[parameter_number];
+    const BufferAllocation::Slice& result_buffer =
+        result_buffers[result.result_number];
+    if (parameter_buffer != result_buffer) {
+      return Internal(
+          "DUS result %d must alias fusion parameter %d, but result buffer is "
+          "%v and parameter buffer is %v",
+          result.result_number, parameter_number, result_buffer,
+          parameter_buffer);
+    }
+  }
+  return absl::OkStatus();
+}
+
 static absl::Status VerifySliceOffset(
     se::Stream& stream, const BufferAllocations& orig, absl::string_view kind,
     size_t idx, const std::optional<DynamicSliceConfig>& config,

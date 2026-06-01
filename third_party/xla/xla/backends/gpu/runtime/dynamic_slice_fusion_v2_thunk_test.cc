@@ -23,7 +23,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -53,11 +55,13 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
+using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
+using ::tsl::proto_testing::EqualsProto;
+
 using Parameter = DynamicSliceFusion::Parameter;
 using Result = DynamicSliceFusion::Result;
 using Offset = DynamicSliceFusion::Offset;
-using Expr = Offset::Expr;
-using ::tsl::proto_testing::EqualsProto;
 
 static absl::StatusOr<se::StreamExecutor*> CreateExecutor() {
   ASSIGN_OR_RETURN(std::string platform_name,
@@ -121,6 +125,31 @@ Thunk::ExecuteParams MakeExecuteParams(
       run_options, buffer_allocations, stream,
       /*command_buffer_trace_stream=*/nullptr, /*collective_params=*/nullptr,
       /*collective_cliques=*/nullptr, /*collective_memory=*/nullptr);
+}
+
+TEST(DynamicSliceFusionV2ThunkTest, VerifyBufferAssignment) {
+  BufferAllocation parameter_buffer(0, 1024, 0);
+  BufferAllocation unaliased_result_buffer(1, 1024, 0);
+  Shape result_shape = ShapeUtil::MakeShape(F32, {256});
+  Shape update_shape = ShapeUtil::MakeShape(F32, {64});
+
+  std::vector<Result> results = {
+      {0, 0, result_shape, update_shape, MakeConfig(0, 0, 256)}};
+
+  std::vector<BufferAllocation::Slice> parameter_buffers = {
+      BufferAllocation::Slice(&parameter_buffer, 0, 1024)};
+  std::vector<BufferAllocation::Slice> aliased_result_buffers = {
+      BufferAllocation::Slice(&parameter_buffer, 0, 1024)};
+  std::vector<BufferAllocation::Slice> unaliased_result_buffers = {
+      BufferAllocation::Slice(&unaliased_result_buffer, 0, 1024)};
+
+  EXPECT_OK(DynamicSliceFusionV2Thunk::VerifyBufferAssignment(
+      results, parameter_buffers, aliased_result_buffers));
+
+  absl::Status status = DynamicSliceFusionV2Thunk::VerifyBufferAssignment(
+      results, parameter_buffers, unaliased_result_buffers);
+  EXPECT_THAT(status,
+              StatusIs(absl::StatusCode::kInternal, HasSubstr("must alias")));
 }
 
 //===----------------------------------------------------------------------===//

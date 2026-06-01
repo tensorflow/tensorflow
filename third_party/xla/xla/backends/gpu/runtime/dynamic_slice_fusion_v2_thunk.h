@@ -96,6 +96,14 @@ class DynamicSliceFusionV2Thunk : public Thunk {
   std::string ToString(int indent) const override;
 
   absl::StatusOr<ThunkProto> ToProto() const override;
+
+  // Verifies that every result written through a DynamicUpdateSlice aliases the
+  // fusion parameter used as the DUS target buffer.
+  static absl::Status VerifyBufferAssignment(
+      absl::Span<const DynamicSliceFusion::Result> results,
+      absl::Span<const BufferAllocation::Slice> parameter_buffers,
+      absl::Span<const BufferAllocation::Slice> result_buffers);
+
   static absl::StatusOr<std::unique_ptr<DynamicSliceFusionV2Thunk>> FromProto(
       ThunkInfo thunk_info, const DynamicSliceFusionThunkProto& proto,
       absl::Span<const BufferAllocation> buffer_allocations,
