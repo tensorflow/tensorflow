@@ -332,8 +332,9 @@ absl::InlinedVector<const HloInstruction*, 2> ToInstructions(
           CHECK(region.size() == 1)
               << "CreateHloRegion: expected exactly 1 region for "
               << operand_hlo->ToString() << " but got " << region.size();
-          tiled_hlo->AddOperand(region.back().get());
-          tiled_hlo_instructions_set.Insert(std::move(region.back()));
+          auto [operand_tiled_hlo, inserted] =
+              tiled_hlo_instructions_set.Insert(std::move(region.back()));
+          tiled_hlo->AddOperand(operand_tiled_hlo);
         }
 
       } else {
