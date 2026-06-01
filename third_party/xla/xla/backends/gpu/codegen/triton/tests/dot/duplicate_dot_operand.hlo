@@ -1,0 +1,24 @@
+// RUN: (hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation || true) 2>&1 | FileCheck %s --check-prefix=CHECK-ERROR
+
+// CHECK-ERROR: {{absl::container_internal::raw_hash_map\<\>::at|xla::gpu::experimental::TiledHloInstruction::runtime_variables\(\)|Segmentation fault}}
+
+fusion {
+  p0 = f32[4,8] parameter(0)
+  p1 = f32[8,16] parameter(1)
+  dot = f32[4,16] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT mul = f32[4,16] multiply(dot, dot)
+}
+
+ENTRY main {
+  p0 = f32[4,8] parameter(0)
+  p1 = f32[8,16] parameter(1)
+  ROOT triton_fusion = f32[4,16] fusion(p0, p1), kind=kCustom, calls=fusion,
+    backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["1", "2"]}],
+        "num_warps":"1",
+        "num_ctas":1,
+        "num_stages":1}}}
+}
