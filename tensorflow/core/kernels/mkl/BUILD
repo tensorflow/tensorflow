@@ -127,7 +127,7 @@ tf_cc_test_mkl(
     srcs = ["mkl_sparse_matrix_matmul_op_benchmark.cc"],
     linkstatic = 1,
     deps = [
-        "//tensorflow/core/kernels/mkl:mkl_sparse_matrix_matmul_op",
+        ":mkl_sparse_matrix_matmul_op",
     ] + MKL_TEST_DEPS,
 )
 
@@ -524,9 +524,9 @@ tf_cc_test_mkl(
     srcs = ["mkl_matmul_op_benchmark.cc"],
     linkstatic = 1,
     deps = [
+        ":mkl_batch_matmul_op",
+        ":mkl_matmul_op",
         "//tensorflow/core/kernels:matmul_op",
-        "//tensorflow/core/kernels/mkl:mkl_batch_matmul_op",
-        "//tensorflow/core/kernels/mkl:mkl_matmul_op",
     ] + MKL_TEST_DEPS,
 )
 
@@ -552,9 +552,9 @@ tf_cc_test_mkl(
     srcs = ["onednn_nn_ops_benchmark.cc"],
     linkstatic = 1,
     deps = [
+        ":mkl_softmax_op",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/core/kernels:softmax_op",
-        "//tensorflow/core/kernels/mkl:mkl_softmax_op",
     ] + MKL_TEST_DEPS,
 )
 

@@ -118,8 +118,6 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:rewrite_utils",
         "//tensorflow/core/grappler/optimizers/data:auto_shard",
@@ -133,17 +131,13 @@ tf_cc_test(
     deps = [
         ":auto_shard_dataset_op",
         "//tensorflow/core:experimental_dataset_ops_op_lib",
-        "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:session_options",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/common_runtime:type_inference",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/kernels/data:range_dataset_op",
         "//tensorflow/core/kernels/data:shard_dataset_op",
-        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -204,14 +198,11 @@ tf_kernel_library(
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:serialization_utils",
         "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/grappler/optimizers/data:graph_utils",
-        "//tensorflow/core/platform:regexp",
     ],
 )
 
@@ -254,9 +245,6 @@ tf_kernel_library(
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:tstring",
         "//tensorflow/core/platform:types",
-        "//tensorflow/core/profiler/lib:traceme",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
@@ -289,7 +277,6 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:serialization_utils",
@@ -311,8 +298,6 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
     ],
 )
 
@@ -326,7 +311,6 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:split_utils",
-        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -338,7 +322,6 @@ tf_cc_test(
         ":directed_interleave_dataset_op",
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/kernels/data:range_dataset_op",
         "//tensorflow/core/kernels/data:tensor_slice_dataset_op",
@@ -374,7 +357,6 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:captured_function",
         "//tensorflow/core/data:dataset_utils",
@@ -388,7 +370,6 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:captured_function",
         "//tensorflow/core/data:dataset_utils",
@@ -404,7 +385,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core/platform:logging",
-        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -460,12 +440,8 @@ tf_cc_test(
         ":save_dataset_op",
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/data:captured_function",
         "//tensorflow/core/data:dataset_test_base",
-        "//tensorflow/core/data:dataset_utils",
-        "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:serialization_utils",
         "//tensorflow/core/framework:function_testlib",
         "//tensorflow/core/framework:types_proto_cc",
@@ -529,8 +505,6 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -544,7 +518,6 @@ tf_kernel_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:root_dataset",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:initializable_lookup_table",
@@ -552,7 +525,6 @@ tf_kernel_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -586,10 +558,7 @@ tf_cc_test(
     deps = [
         ":map_and_batch_dataset_op",
         "//tensorflow/core:experimental_dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels/data:range_dataset_op",
@@ -613,7 +582,6 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
-        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -642,10 +610,7 @@ tf_cc_test(
     deps = [
         ":parallel_interleave_dataset_op",
         "//tensorflow/core:experimental_dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/kernels/data:tensor_slice_dataset_op",
     ],
@@ -692,7 +657,6 @@ tf_kernel_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core/data:finalization_utils",
-        "//tensorflow/core/data:unbounded_thread_pool",
         "//tensorflow/core/kernels/data:iterator_ops",
         "//tensorflow/core/platform",
     ],
@@ -721,15 +685,11 @@ tf_cc_test(
     deps = [
         ":random_dataset_op",
         "//tensorflow/core:experimental_dataset_ops_op_lib",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/kernels/data:random_seed_ops",
-        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -741,8 +701,6 @@ tf_kernel_library(
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:name_utils",
         "@com_google_absl//absl/strings",
     ],
@@ -769,13 +727,9 @@ tf_cc_test(
     deps = [
         ":sampling_dataset_op",
         "//tensorflow/core:experimental_dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/kernels/data:range_dataset_op",
-        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -786,7 +740,6 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:captured_function",
         "//tensorflow/core/data:dataset_utils",
@@ -902,7 +855,6 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status",
@@ -917,8 +869,6 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:captured_function",
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/framework:attr_value_proto_cc",
@@ -944,7 +894,6 @@ tf_kernel_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -998,7 +947,6 @@ tf_kernel_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -1031,18 +979,14 @@ tf_cc_test(
     deps = [
         ":unique_dataset_op",
         "//tensorflow/core:experimental_dataset_ops_op_lib",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels/data:tensor_slice_dataset_op",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
-        "@eigen_archive//:eigen3",
     ],
 )
 

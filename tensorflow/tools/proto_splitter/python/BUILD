@@ -18,7 +18,7 @@ pytype_strict_library(
         "//waymo/ml/deploy/tensorflow:__pkg__",
     ],
     deps = [
-        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/protobuf:for_core_protos_py_proto",
         "//tensorflow/tools/proto_splitter:constants",
         "//tensorflow/tools/proto_splitter:split",
         "//tensorflow/tools/proto_splitter:split_graph_def",
@@ -37,7 +37,7 @@ py_test(
         ":saved_model",
         ":test_util",
         #internal proto upb dep
-        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/protobuf:for_core_protos_py_proto",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/tools/proto_splitter:constants",
     ],
@@ -47,7 +47,7 @@ pytype_strict_library(
     name = "test_util",
     srcs = ["test_util.py"],
     deps = [
-        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/framework:graph_proto_py_proto",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_util",
         "//third_party/py/numpy",
@@ -59,10 +59,10 @@ py_test(
     srcs = ["test_util_test.py"],
     strict_deps = True,
     deps = [
+        ":test_util",
         #internal proto upb dep
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/tools/proto_splitter/python:test_util",
         "@absl_py//absl/testing:parameterized",
     ],
 )

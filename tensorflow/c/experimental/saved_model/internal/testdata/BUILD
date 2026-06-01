@@ -19,7 +19,6 @@ py_binary(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/module",
-        "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/ops:while_loop",
         "//tensorflow/python/saved_model",

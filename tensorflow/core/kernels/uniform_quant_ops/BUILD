@@ -29,8 +29,6 @@ filegroup(
 filegroup(
     name = "portable_all_op_kernels",
     srcs = [
-        ":portable_all_op_kernels_headers",
-    ] + [
         "math_utils.cc",
         "tensor_utils.cc",
         "uniform_dequantize_op.cc",
@@ -40,6 +38,7 @@ filegroup(
         "uniform_quantized_convolution_ops.cc",
         "uniform_quantized_dot_ops.cc",
         "uniform_requantize_op.cc",
+        ":portable_all_op_kernels_headers",
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )
@@ -63,7 +62,6 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/util/quantization:uniform_quant_ops_params",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -201,7 +199,6 @@ tf_cc_test(
     deps = [
         ":tensor_utils",
         "//tensorflow/core/framework:tensor_testutil",
-        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:test",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",

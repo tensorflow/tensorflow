@@ -187,6 +187,49 @@ absl::Status Merger::ReadPb(const std::string& pb_file,
   return ret;
 }
 
+namespace {
+
+bool CompareMapKey(const FieldIndex::MapKey& key1,
+                   const FieldIndex::MapKey& key2) {
+  if (key1.type_case() != key2.type_case()) {
+    return key1.type_case() < key2.type_case();
+  }
+  switch (key1.type_case()) {
+    case FieldIndex::MapKey::TypeCase::kS:
+      return key1.s() < key2.s();
+    case FieldIndex::MapKey::TypeCase::kBoolean:
+      return key1.boolean() < key2.boolean();
+    case FieldIndex::MapKey::TypeCase::kUi32:
+      return key1.ui32() < key2.ui32();
+    case FieldIndex::MapKey::TypeCase::kUi64:
+      return key1.ui64() < key2.ui64();
+    case FieldIndex::MapKey::TypeCase::kI32:
+      return key1.i32() < key2.i32();
+    case FieldIndex::MapKey::TypeCase::kI64:
+      return key1.i64() < key2.i64();
+    default:
+      return false;
+  }
+}
+
+bool CompareFieldIndex(const FieldIndex& tag1, const FieldIndex& tag2) {
+  if (tag1.kind_case() != tag2.kind_case()) {
+    return tag1.kind_case() < tag2.kind_case();
+  }
+  switch (tag1.kind_case()) {
+    case FieldIndex::KindCase::kField:
+      return tag1.field() < tag2.field();
+    case FieldIndex::KindCase::kIndex:
+      return tag1.index() < tag2.index();
+    case FieldIndex::KindCase::kMapKey:
+      return CompareMapKey(tag1.map_key(), tag2.map_key());
+    default:
+      return false;
+  }
+}
+
+}  // namespace
+
 template <typename RecordReader>
 absl::Status Merger::ReadFields(const ChunkedMessage& chunked_message,
                                 RecordReader& reader,
@@ -210,28 +253,30 @@ absl::Status Merger::ReadFields(const ChunkedMessage& chunked_message,
   std::vector<ChunkedField> chunked_fields(
       chunked_message.chunked_fields().begin(),
       chunked_message.chunked_fields().end());
-  absl::Status sort_status = absl::OkStatus();
   std::sort(
       chunked_fields.begin(), chunked_fields.end(),
-      [&sort_status](ChunkedField cf1, ChunkedField cf2) {
+      // Ensure proper strict weak ordering.
+      [](const ChunkedField& cf1, const ChunkedField& cf2) {
         int tag_depth =
             std::min(cf1.field_tag().size(), cf2.field_tag().size());
         for (int depth = 0; depth < tag_depth; ++depth) {
-          FieldIndex tag1 = cf1.field_tag()[depth];
-          FieldIndex tag2 = cf2.field_tag()[depth];
-          if (tag1.has_field() && tag2.has_field()) {
-            uint32_t field1 = tag1.field();
-            uint32_t field2 = tag2.field();
-            if (field1 != field2) return field1 < field2;
-          } else if (tag1.has_index() && tag2.has_index()) {
-            uint64_t index1 = tag1.index();
-            uint64_t index2 = tag2.index();
-            if (index1 != index2) return index1 < index2;
-          } else if (tag1.has_map_key() && tag2.has_map_key()) {
-            return false;
-          } else {
-            sort_status = absl::FailedPreconditionError("Field tag mismatch");
-            return false;
+          const FieldIndex& tag1 = cf1.field_tag()[depth];
+          const FieldIndex& tag2 = cf2.field_tag()[depth];
+          bool is_equiv = false;
+          if (tag1.kind_case() == tag2.kind_case()) {
+            if (tag1.kind_case() == FieldIndex::KindCase::kField) {
+              is_equiv = (tag1.field() == tag2.field());
+            } else if (tag1.kind_case() == FieldIndex::KindCase::kIndex) {
+              is_equiv = (tag1.index() == tag2.index());
+            } else if (tag1.kind_case() == FieldIndex::KindCase::kMapKey) {
+              is_equiv = !CompareMapKey(tag1.map_key(), tag2.map_key()) &&
+                         !CompareMapKey(tag2.map_key(), tag1.map_key());
+            } else {
+              is_equiv = true;  // KIND_NOT_SET
+            }
+          }
+          if (!is_equiv) {
+            return CompareFieldIndex(tag1, tag2);
           }
         }
         if (cf1.field_tag().size() == cf2.field_tag().size()) {
@@ -240,7 +285,6 @@ absl::Status Merger::ReadFields(const ChunkedMessage& chunked_message,
         }
         return cf1.field_tag().size() < cf2.field_tag().size();
       });
-  if (!sort_status.ok()) return sort_status;
 
   // Use each chunked_field within the chunked_message to merge its
   // corresponding chunk into merged_message.

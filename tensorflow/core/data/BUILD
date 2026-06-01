@@ -92,15 +92,14 @@ cc_library(
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/log",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -563,12 +562,12 @@ tf_cc_test(
     # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":dataset_test_base",
+        ":dataset_utils",
         ":serialization_utils",
         ":split_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/framework:tensor_testutil",
     ],
 )

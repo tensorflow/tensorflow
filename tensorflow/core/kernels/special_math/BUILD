@@ -13,10 +13,7 @@ tf_kernel_library(
     gpu_deps = ["//tensorflow/core/kernels:cwise_lib"],
     prefix = "special_math_op",
     deps = [
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core:math_grad",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/kernels:cwise_op",

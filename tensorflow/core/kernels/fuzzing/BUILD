@@ -1,3 +1,4 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow/core/kernels/fuzzing:tf_ops_fuzz_target_lib.bzl", "tf_ops_fuzz_target_lib", "tf_oss_fuzz_corpus", "tf_oss_fuzz_dict")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
@@ -67,3 +68,11 @@ tf_oss_fuzz_corpus("scatter_nd")
 tf_ops_fuzz_target_lib("decode_csv")
 
 tf_oss_fuzz_corpus("decode_csv")
+
+bzl_library(
+    name = "tf_ops_fuzz_target_lib_bzl",
+    srcs = ["tf_ops_fuzz_target_lib.bzl"],
+    parse_tests = False,
+    visibility = ["//visibility:private"],
+    deps = ["@rules_cc//cc:core_rules"],
+)

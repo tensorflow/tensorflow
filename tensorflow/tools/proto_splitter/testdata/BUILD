@@ -78,7 +78,7 @@ tf_proto_library(
 #     srcs = ["split_graph_def_gen.py"],
 #     strict_deps = True,
 #     deps = [
-#         "//tensorflow/core:protos_all_py",
+#         "//tensorflow/core/framework:graph_proto_py_proto",
 #         "//tensorflow/python/lib/io:file_io",
 #         "//tensorflow/tools/proto_splitter:constants",
 #         "//tensorflow/tools/proto_splitter:split_graph_def",
@@ -94,7 +94,7 @@ tf_proto_library(
 #     srcs = ["split_saved_model_gen.py"],
 #     strict_deps = True,
 #     deps = [
-#         "//tensorflow/core:protos_all_py",
+#         "//tensorflow/core/protobuf:for_core_protos_py_proto",
 #         "//tensorflow/python/lib/io:file_io",
 #         "//tensorflow/tools/proto_splitter:constants",
 #         "//tensorflow/tools/proto_splitter/python:saved_model",

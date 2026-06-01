@@ -105,7 +105,6 @@ tf_cc_test(
     name = "stream_executor_test",
     srcs = ["stream_executor_test.cc"],
     deps = [
-        ":stream_executor",
         ":stream_executor_internal",
         ":stream_executor_test_util",
         "//tensorflow/c:tf_status_headers",
@@ -131,8 +130,5 @@ cc_library(
     srcs = ["stream_executor_test_util.cc"],
     hdrs = ["stream_executor_test_util.h"],
     visibility = ["//tensorflow:internal"],
-    deps = [
-        ":stream_executor_hdrs",
-        "//tensorflow/c:tf_status",
-    ],
+    deps = [":stream_executor_hdrs"],
 )

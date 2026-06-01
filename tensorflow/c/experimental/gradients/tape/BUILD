@@ -37,7 +37,6 @@ cc_library(
     ],
     deps = [
         "//tensorflow/c:tensor_interface",
-        "//tensorflow/c/eager:abstract_context",
         "//tensorflow/c/eager:abstract_operation",
         "//tensorflow/c/eager:abstract_tensor_handle",
         "//tensorflow/c/eager:gradients_internal",

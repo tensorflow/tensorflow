@@ -111,7 +111,6 @@ cc_library(
     deps = [
         ":function_metadata_type",
         "//tensorflow/c:c_api_macros",
-        "//tensorflow/c/experimental/saved_model/core:function_metadata",
     ],
 )
 
@@ -145,7 +144,6 @@ cc_library(
         ":signature_def_function",
         ":signature_def_function_type",
         "//tensorflow/c:c_api_macros",
-        "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_internal",
         "//tensorflow/c/eager:tfe_context_internal",
         "//tensorflow/c/experimental/saved_model/core:saved_model_api",
@@ -228,7 +226,6 @@ cc_library(
         ":signature_def_param_list",
         ":signature_def_param_list_type",
         "//tensorflow/c:c_api_macros",
-        "//tensorflow/c/experimental/saved_model/core:signature_def_function_metadata",
     ],
 )
 
@@ -260,7 +257,6 @@ cc_library(
         ":tensor_spec",
         ":tensor_spec_type",
         "//tensorflow/c:c_api_macros",
-        "//tensorflow/c:tf_shape_internal",
         "//tensorflow/c/experimental/saved_model/core:signature_def_function_metadata",
     ],
 )
@@ -336,7 +332,6 @@ cc_library(
     ],
     deps = [
         "//tensorflow/c:conversion_macros",
-        "//tensorflow/c:tf_shape_internal",
         "//tensorflow/c/experimental/saved_model/core:tensor_spec",
     ],
 )

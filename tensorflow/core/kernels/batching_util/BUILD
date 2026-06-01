@@ -17,7 +17,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:portable_gif_internal",
-        "//tensorflow/core/lib/core:notification",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/synchronization",
     ],
@@ -413,8 +412,6 @@ cc_library(
     srcs = ["bounded_executor.cc"],
     hdrs = ["bounded_executor.h"],
     deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
@@ -431,7 +428,6 @@ tf_cc_test(
     srcs = ["bounded_executor_test.cc"],
     deps = [
         ":bounded_executor",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
