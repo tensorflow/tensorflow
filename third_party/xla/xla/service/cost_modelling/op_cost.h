@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -413,6 +414,22 @@ std::unique_ptr<OpCostCalculator> CreateCalculatorWithPostProcessedCostValues(
 // the calculator returns the sum of the operand and output bytes accessed.
 std::unique_ptr<OpCostCalculator> CreateCalculatorWithDefaultTotalBytesAccessed(
     std::unique_ptr<OpCostCalculator> initial_calculator);
+
+// A rule defining how specific cost metrics should be overridden for specific
+// HLO opcodes.
+struct OpcodeMetricOverrideRule {
+  absl::flat_hash_set<HloOpcode> opcodes;
+  absl::flat_hash_set<CostMetricId::MetricType> metric_types;
+  double override_value = 0.0;
+};
+
+// Creates an OpCostCalculator that overrides metrics of specific HLO opcodes.
+//
+// If a query's HloOpcode and MetricType match any of the provided rules, the
+// overridden value is returned. Otherwise, the calculator returns a NotFound
+// status (triggering tree-level fallback).
+std::unique_ptr<OpCostCalculator> CreateOpcodeMetricOverrideCalculator(
+    std::vector<OpcodeMetricOverrideRule> rules);
 
 }  // namespace xla
 
