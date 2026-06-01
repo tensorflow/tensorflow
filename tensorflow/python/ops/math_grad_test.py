@@ -549,8 +549,9 @@ class XlogyTest(test.TestCase):
       x = constant_op.constant(0., dtype=dtype)
       y = constant_op.constant(0., dtype=dtype)
       xlogy_xgrad, xlogy_ygrad = self._xlogy_gradients(x, y)
+      # Gradient w.r.t. x at x=0, y=0 is log(0) = -inf.
+      self.assertAllClose(-np.inf, xlogy_xgrad)
       zero = self.evaluate(x)
-      self.assertAllClose(zero, xlogy_xgrad)
       self.assertAllClose(zero, xlogy_ygrad)
 
 
@@ -603,8 +604,9 @@ class Xlog1pyTest(test.TestCase):
       x = constant_op.constant(0., dtype=dtype)
       y = constant_op.constant(-1., dtype=dtype)
       xlog1py_xgrad, xlog1py_ygrad = self._xlog1py_gradients(x, y)
+      # Gradient w.r.t. x at x=0, y=-1 is log1p(-1) = log(0) = -inf.
+      self.assertAllClose(-np.inf, xlog1py_xgrad)
       zero = self.evaluate(x)
-      self.assertAllClose(zero, xlog1py_xgrad)
       self.assertAllClose(zero, xlog1py_ygrad)
 
 
