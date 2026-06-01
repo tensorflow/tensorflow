@@ -422,9 +422,9 @@ tf_cc_test(
     deps = [
         ":fake_clock_env",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/platform:env",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -624,9 +624,11 @@ cc_library(
     hdrs = ["padding.h"],
     deps = [
         ":tensor_format",
+        "//tensorflow/core:lib",
         "//tensorflow/core/framework:attr_value_proto_cc",
-        "//tensorflow/core/lib/core:errors",
-        "//tensorflow/core/lib/core:status",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -635,10 +637,9 @@ cc_library(
     srcs = ["einsum_op_util.cc"],
     hdrs = ["einsum_op_util.h"],
     deps = [
-        "//tensorflow/core/lib/core:errors",
-        "//tensorflow/core/lib/core:status",
-        "//tensorflow/core/lib/gtl:inlined_vector",
+        "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -667,6 +668,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/functional:bind_front",
+        "@com_google_absl//absl/log:check",
     ],
 )
 
@@ -931,7 +933,12 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -945,6 +952,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform",
         "@com_google_absl//absl/functional:bind_front",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/time",
     ],
 )
