@@ -250,6 +250,7 @@ absl::Status TilingSpace::AssignTileSizes(
 
 std::unique_ptr<TilingSpace> TilingSpace::Create(const HloFusionAdaptor& fusion,
                                                  mlir::MLIRContext* ctx) {
+  RegisterSymbolicExprStorage(ctx);
   auto tiling_space = std::make_unique<TilingSpace>();
   tiling_space->mlir_context_ = ctx;
   auto roots = fusion.GetRoots();

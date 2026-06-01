@@ -246,7 +246,6 @@ cc_library(
         "//xla/codegen/xtile/codegen:fusion_emitter",
         "//xla/codegen/xtile/ir:xtile",
         "//xla/codegen/xtile/ir/transforms:passes",
-        "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/translate/hlo_to_mhlo:hlo_function_importer",
         "//xla/hlo/utils:hlo_traversal",

@@ -302,7 +302,6 @@ struct SimplifyAffinePass
  public:
   void runOnOperation() override {
     MLIRContext* ctx = &getContext();
-    RegisterSymbolicExprStorage(ctx);
     mlir::RewritePatternSet patterns(ctx);
     patterns.add<RewriteAffineApply, RewriteApplyIndexingOp>(ctx);
     mlir::GreedyRewriteConfig config;
