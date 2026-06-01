@@ -523,15 +523,16 @@ class XlogyTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testZeroXGrad(self):
     for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
-      x = constant_op.constant(0., dtype=dtype)
-      y = constant_op.constant(3.1, dtype=dtype)
-      xlogy_xgrad, xlogy_ygrad = self._xlogy_gradients(x, y)
-      # Gradient w.r.t. x at x=0 should be log(y), not 0.
-      # d/dx x*log(y) = log(y) for all x including x=0.
-      expected_xgrad = self.evaluate(math_ops.log(y))
-      zero = self.evaluate(x)
-      self.assertAllClose(expected_xgrad, xlogy_xgrad)
-      self.assertAllClose(zero, xlogy_ygrad)
+      for y_val in [3.1, 0.0]:
+        x = constant_op.constant(0., dtype=dtype)
+        y = constant_op.constant(y_val, dtype=dtype)
+        xlogy_xgrad, xlogy_ygrad = self._xlogy_gradients(x, y)
+        # Gradient w.r.t. x at x=0 should be log(y), not 0.
+        # d/dx x*log(y) = log(y) for all x including x=0.
+        expected_xgrad = self.evaluate(math_ops.log(y))
+        zero = self.evaluate(x)
+        self.assertAllClose(expected_xgrad, xlogy_xgrad)
+        self.assertAllClose(zero, xlogy_ygrad)
 
   @test_util.run_deprecated_v1
   def testZeroYGrad(self):
@@ -576,15 +577,16 @@ class Xlog1pyTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testZeroXGrad(self):
     for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
-      x = constant_op.constant(0., dtype=dtype)
-      y = constant_op.constant(3.1, dtype=dtype)
-      xlog1py_xgrad, xlog1py_ygrad = self._xlog1py_gradients(x, y)
-      # Gradient w.r.t. x at x=0 should be log1p(y), not 0.
-      # d/dx x*log1p(y) = log1p(y) for all x including x=0.
-      expected_xgrad = self.evaluate(math_ops.log1p(y))
-      zero = self.evaluate(x)
-      self.assertAllClose(expected_xgrad, xlog1py_xgrad)
-      self.assertAllClose(zero, xlog1py_ygrad)
+      for y_val in [3.1, -1.0]:
+        x = constant_op.constant(0., dtype=dtype)
+        y = constant_op.constant(y_val, dtype=dtype)
+        xlog1py_xgrad, xlog1py_ygrad = self._xlog1py_gradients(x, y)
+        # Gradient w.r.t. x at x=0 should be log1p(y), not 0.
+        # d/dx x*log1p(y) = log1p(y) for all x including x=0.
+        expected_xgrad = self.evaluate(math_ops.log1p(y))
+        zero = self.evaluate(x)
+        self.assertAllClose(expected_xgrad, xlog1py_xgrad)
+        self.assertAllClose(zero, xlog1py_ygrad)
 
   @test_util.run_deprecated_v1
   def testNegOneYGrad(self):
