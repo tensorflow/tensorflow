@@ -114,6 +114,9 @@ class RcclCommunicator : public GpuCommunicator {
   Future<> Recv(se::DeviceAddressBase recv_buffer, PrimitiveType dtype,
                 size_t count, RankId peer, const Executor& executor) final;
 
+  absl::StatusOr<std::unique_ptr<SymmetricMemory>> CreateSymmetricMemory(
+      se::DeviceAddressBase addr) final;
+
   std::string ToString() const final;
 
   ncclComm_t comm() const { return comm_; }
