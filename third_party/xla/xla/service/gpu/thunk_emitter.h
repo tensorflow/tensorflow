@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/gpu/gpu_hlo_ordering.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/shaped_slice.h"
@@ -266,13 +267,15 @@ class ThunkEmitter {
   using AllocationOverrides =
       absl::flat_hash_map<const HloInstruction*,
                           std::vector<BufferAllocation::Slice>>;
-
   auto InstallAllocationOverrides(AllocationOverrides overrides) {
     allocation_overrides_ = std::move(overrides);
     return absl::MakeCleanup([this] { allocation_overrides_.clear(); });
   }
-
   AllocationOverrides allocation_overrides_;
+
+  // Stores HloFusionAnalysis objects to ensure they outlive any asynchronous
+  // operations that may hold references to them.
+  std::vector<std::unique_ptr<HloFusionAnalysis>> analysis_garbage_collector_;
 };
 
 }  // namespace xla::gpu

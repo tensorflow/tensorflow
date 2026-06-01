@@ -371,22 +371,6 @@ absl::StatusOr<TritonKernelSource> CreateTritonModule(
   return kernel_source;
 }
 
-std::ostream& operator<<(std::ostream& os, const TritonWrapperResult& result) {
-  os << "\nTritonWrapperResult: " << "\n";
-  os << "  shmem_bytes: " << result.shmem_bytes << "\n";
-  auto tma_metadata = result.tma_metadata.ToProto();
-  os << "  tma_metadata: {\n";
-  for (const auto& tma_entry : tma_metadata.arg_index_to_tma_info()) {
-    os << "    " << tma_entry.first << " : " << tma_entry.second.DebugString()
-       << "\n";
-  }
-  os << "  }\n";
-  os << "  thread_dims: " << result.thread_dims.ToString() << "\n";
-  os << "  nvvm_annotations: " << result.nvvm_annotations.size() << "\n";
-  os << "  llvm_module: " << result.kernel_source.ToString() << "\n";
-  return os;
-}
-
 absl::StatusOr<TritonWrapperResult> TritonWrapper(
     absl::string_view fn_name, const HloFusionInstruction& fusion,
     const se::GpuComputeCapability& gpu_cc,

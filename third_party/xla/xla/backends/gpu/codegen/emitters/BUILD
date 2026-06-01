@@ -145,6 +145,7 @@ cc_library(
 xla_cc_test(
     name = "mlir_kernel_emitter_test",
     srcs = ["mlir_kernel_emitter_test.cc"],
+    tags = ["gpu"],
     deps = [
         ":mlir_kernel_emitter",
         "//xla:xla_proto_cc",
@@ -326,6 +327,7 @@ cc_library(
 xla_cc_test(
     name = "reduction_base_test",
     srcs = ["reduction_base_test.cc"],
+    tags = ["gpu"],
     deps = [
         ":reduction_base",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",

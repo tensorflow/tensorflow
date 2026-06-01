@@ -808,6 +808,7 @@ cc_library(
 xla_cc_test(
     name = "coalescing_analysis_test",
     srcs = ["coalescing_analysis_test.cc"],
+    tags = ["gpu"],
     deps = [
         ":coalescing_analysis",
         "//xla:shape_util",

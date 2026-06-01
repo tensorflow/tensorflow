@@ -90,17 +90,18 @@ class TritonFusion : public FusionInterface {
   // compilation, but there are use-cases where we want to call the function
   // without compiling, e.g. during cost modelling. In that case, the function
   // calculates the values.
-  std::optional<LaunchConfig> GetLaunchConfig(
-      std::optional<se::ThreadDim> thread_dims_override = std::nullopt) const;
+  static std::optional<LaunchConfig> GetLaunchConfig(
+      const HloFusionAnalysis* analysis,
+      std::optional<se::ThreadDim> thread_dims_override = std::nullopt);
 
   // Generates a Triton kernel for the given fusion into the provided LLVM
   // module, and returns the `TritonWrapperResult` corresponding to the
   // generated kernel.
-  absl::StatusOr<TritonWrapperResult> GenerateTritonKernelAndWrapper(
+  xla::Future<TritonWrapperResult> GenerateTritonKernelAndWrapper(
       const HloFusionInstruction& fusion, absl::string_view impl_fn_name,
       const se::DeviceDescription& device_info,
       const llvm::Triple& target_triple, const std::string& data_layout,
-      mlir::MLIRContext* mlir_context) const;
+      BorrowedMlirContext borrowed_context, KernelCompiler* compiler) const;
 
  private:
   const HloFusionAnalysis& analysis_;

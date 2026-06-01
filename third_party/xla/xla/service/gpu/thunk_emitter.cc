@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
+#include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/codegen/kernels/ptx_custom_kernel.h"
 #include "xla/backends/gpu/codegen/llvm/llvm_emitter.h"
@@ -75,9 +76,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/collective_permute_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
-#include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
-#include "xla/backends/gpu/runtime/command_buffer_thunk.h"
-#include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/convolution_filter_thunk.pb.h"
 #include "xla/backends/gpu/runtime/convolution_reorder_thunk.h"
@@ -239,7 +237,9 @@ xla::Future<std::unique_ptr<CollectiveKernelThunk>> EmitCollectiveKernelThunk(
     IrEmitterContext* ir_emitter_context, const CallGraph* call_graph,
     Thunk::ThunkInfo thunk_info, std::vector<CollectiveThunk::Buffer> buffers,
     const HloAllReduceInstruction* instr, const AllReduceConfig& config,
-    ThunkEmitter* compiler) {
+    ThunkEmitter* compiler,
+    std::vector<std::unique_ptr<HloFusionAnalysis>>&
+        analysis_garbage_collector) {
   std::unique_ptr<HloModule> fused_module =
       NewModuleWithFusion(instr, HloInstruction::FusionKind::kLoop);
   HloFusionInstruction* fusion_instr = Cast<HloFusionInstruction>(
@@ -271,17 +271,20 @@ xla::Future<std::unique_ptr<CollectiveKernelThunk>> EmitCollectiveKernelThunk(
                       /*shmem_bytes=*/0,
                       /*launch_dimensions=*/std::nullopt, {}, false);
   }
-  const HloFusionAnalysis fusion_analysis =
-      HloFusionAnalysis::Create(*fusion_instr, device_info);
-  auto emitter = std::make_unique<TritonFusion>(fusion_analysis);
+  analysis_garbage_collector.push_back(
+      std::make_unique<HloFusionAnalysis>(HloFusionAnalysis::Create(
+          *fusion_instr, ir_emitter_context->gpu_device_info())));
+  auto emitter =
+      std::make_unique<TritonFusion>(*analysis_garbage_collector.back());
 
   ASSIGN_OR_RETURN(std::vector<Shape> unmanaged_arguments,
                    GetCollectiveUnmanagedKernelArguments(fusion_instr));
   return emitter
       ->Emit(*ir_emitter_context, *fusion_instr,
              /*instr_override=*/instr, unmanaged_arguments)
-      .Map([&, make_thunk =
-                   std::move(make_thunk)](TritonFusion::EmitResult result) {
+      .Map([make_thunk = std::move(make_thunk),
+            fused_module =
+                std::move(fused_module)](TritonFusion::EmitResult result) {
         return make_thunk(result.entry.kernel_name, result.entry.shmem_bytes,
                           result.entry.launch_dimensions,
                           std::move(result.entry.binary), result.entry.use_pdl);
@@ -1218,18 +1221,21 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTopKCustomCall(
 
 AsyncThunkSequence ThunkEmitter::EmitTritonCustomCall(
     const HloCustomCallInstruction* instr) {
-  mlir::MLIRContext& mlir_context = *ir_emitter_context_->mlir_context();
-
-  auto generate = [this, &instr,
-                   &mlir_context]() -> xla::Future<KernelReuseCache::Entry> {
-    LoadMlirDialectsForTriton(mlir_context);
-    TritonCall call =
-        TritonCall::Parse(instr->raw_backend_config_string(), &mlir_context);
+  BorrowedMlirContext borrowed_context =
+      ir_emitter_context_->BorrowMlirContext();
+  LoadMlirDialectsForTriton(**borrowed_context);
+  TritonCall call = TritonCall::Parse(instr->raw_backend_config_string(),
+                                      borrowed_context->get());
+  auto call_zeroed_outputs = call.zeroed_outputs;
+  auto generate =
+      [this, &instr, borrowed_context = std::move(borrowed_context),
+       call =
+           std::move(call)]() mutable -> xla::Future<KernelReuseCache::Entry> {
     std::string kernel_name =
         ir_emitter_context_->GetSanitizedUniqueName(call.name);
 
     ASSIGN_OR_RETURN(TritonKernelSource triton_source,
-                     EmitTritonFrom(call, kernel_name, mlir_context));
+                     EmitTritonFrom(call, kernel_name, **borrowed_context));
 
     HloModule* hlo_module = instr->GetModule();
 
@@ -1241,48 +1247,58 @@ AsyncThunkSequence ThunkEmitter::EmitTritonCustomCall(
         call.global_scratch_memory_size;
     block_level_parameters.is_tma_allowed = call.is_tma_allowed;
 
-    ASSIGN_OR_RETURN(
-        TritonWrapperResult result,
-        CompileTritonToLLVM(
+    return ir_emitter_context_->kernel_compiler()
+        ->CompileTritonToLlvm(
             kernel_name, *hlo_module, ir_emitter_context_->gpu_device_info(),
             block_level_parameters, ir_emitter_context_->target_triple(),
             ir_emitter_context_->data_layout(), std::move(triton_source),
-            mlir_context, /*is_xla_fusion=*/false));
-    auto local_module = std::move(result.kernel_source).thread_safe_module();
+            std::move(borrowed_context), /*is_xla_fusion=*/false)
+        .Map([kernel_name,
+              kernel_impl_name = ir_emitter_context_->GetSanitizedUniqueName(
+                  kernel_name + "_impl"),
+              instr, call = std::move(call),
+              kernel_compiler = ir_emitter_context_->kernel_compiler(),
+              buffer_assignment = &ir_emitter_context_->buffer_assignment(),
+              gpu_device_info = ir_emitter_context_->gpu_device_info()](
+                 TritonWrapperResult result)
+                 -> xla::Future<KernelReuseCache::Entry> {
+          auto local_module =
+              std::move(result.kernel_source).thread_safe_module();
 
-    ASSIGN_OR_RETURN(auto kernel_arguments,
-                     emitters::KernelArguments::Create(
-                         ir_emitter_context_->buffer_assignment(),
-                         GetDefaultBufferAlignment(), instr));
-    auto launch_dimensions = LaunchDimensions(
-        se::BlockDim(call.grid_x, call.grid_y, call.grid_z),
-        se::ThreadDim(
-            call.num_warps *
-            ir_emitter_context_->gpu_device_info().threads_per_warp()));
+          ASSIGN_OR_RETURN(
+              auto kernel_arguments,
+              emitters::KernelArguments::Create(
+                  *buffer_assignment, GetDefaultBufferAlignment(), instr));
+          auto launch_dimensions = LaunchDimensions(
+              se::BlockDim(call.grid_x, call.grid_y, call.grid_z),
+              se::ThreadDim(call.num_warps *
+                            gpu_device_info.threads_per_warp()));
 
-    ASSIGN_OR_RETURN(llvm::Function * kernel,
-                     RemoveUnusedTritonAbiArguments(
-                         local_module.getModuleUnlocked(), *ir_emitter_context_,
-                         kernel_name, call.global_scratch_memory_size > 0));
+          ASSIGN_OR_RETURN(
+              llvm::Function * kernel,
+              RemoveUnusedTritonAbiArguments(
+                  local_module.getModuleUnlocked(), kernel_name,
+                  kernel_impl_name, call.global_scratch_memory_size > 0));
 
-    AnnotateAttrsIfUnset(kernel_arguments, *kernel);
-    RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
-        ir_emitter_context_->gpu_device_info(), launch_dimensions, kernel,
-        local_module.getModuleUnlocked()));
+          AnnotateAttrsIfUnset(kernel_arguments, *kernel);
+          RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
+              gpu_device_info, launch_dimensions, kernel,
+              local_module.getModuleUnlocked()));
 
-    return ir_emitter_context_->kernel_compiler()
-        ->CompileToPtx(LlvmKernelSource{std::move(local_module)})
-        .Map([use_pdl = result.use_pdl, shmem_bytes = result.shmem_bytes,
-              launch_dimensions = std::move(launch_dimensions),
-              tma_metadata = result.tma_metadata,
-              kernel_name](const std::vector<uint8_t>& cubin) {
-          return KernelReuseCache::Entry{kernel_name,
-                                         launch_dimensions,
-                                         /*cluster_dim=*/std::nullopt,
-                                         shmem_bytes,
-                                         cubin,
-                                         tma_metadata,
-                                         use_pdl};
+          return kernel_compiler
+              ->CompileToPtx(LlvmKernelSource{std::move(local_module)})
+              .Map([use_pdl = result.use_pdl, shmem_bytes = result.shmem_bytes,
+                    launch_dimensions = std::move(launch_dimensions),
+                    tma_metadata = result.tma_metadata,
+                    kernel_name](const std::vector<uint8_t>& cubin) {
+                return KernelReuseCache::Entry{kernel_name,
+                                               launch_dimensions,
+                                               /*cluster_dim=*/std::nullopt,
+                                               shmem_bytes,
+                                               cubin,
+                                               tma_metadata,
+                                               use_pdl};
+              });
         });
   };
 
@@ -1290,10 +1306,6 @@ AsyncThunkSequence ThunkEmitter::EmitTritonCustomCall(
                    emitters::KernelArguments::Create(
                        ir_emitter_context_->buffer_assignment(),
                        GetDefaultBufferAlignment(), instr));
-
-  LoadMlirDialectsForTriton(mlir_context);
-  TritonCall call =
-      TritonCall::Parse(instr->raw_backend_config_string(), &mlir_context);
 
   auto [status_or_entry, was_cached] =
       ir_emitter_context_->kernel_cache().GetWithStatus(
@@ -1304,7 +1316,8 @@ AsyncThunkSequence ThunkEmitter::EmitTritonCustomCall(
   return status_or_entry.Map(
       [thunk_info = std::move(thunk_info),
        kernel_arguments = std::move(kernel_arguments),
-       call = std::move(call)](const KernelReuseCache::Entry* entry)
+       call_zeroed_outputs =
+           std::move(call_zeroed_outputs)](const KernelReuseCache::Entry* entry)
           -> absl::StatusOr<ThunkSequence> {
         ASSIGN_OR_RETURN(CustomKernel custom_kernel,
                          kernel::CreateOwnedCubinCustomKernel(
@@ -1315,7 +1328,7 @@ AsyncThunkSequence ThunkEmitter::EmitTritonCustomCall(
                              entry->shmem_bytes));
         return ThunkSequence::Of(std::make_unique<CustomKernelThunk>(
             thunk_info, std::move(custom_kernel), kernel_arguments,
-            entry->use_pdl, call.zeroed_outputs, entry->tma_metadata));
+            entry->use_pdl, call_zeroed_outputs, entry->tma_metadata));
       });
 }
 
@@ -1355,10 +1368,11 @@ AsyncThunkSequence ThunkEmitter::EmitAsyncComputation(
 }
 
 AsyncThunkSequence ThunkEmitter::EmitFusion(const HloFusionInstruction* instr) {
-  const se::DeviceDescription& device_info =
-      ir_emitter_context_->gpu_device_info();
-  const HloFusionAnalysis fusion_analysis =
-      HloFusionAnalysis::Create(*instr, device_info);
+  analysis_garbage_collector_.push_back(
+      std::make_unique<HloFusionAnalysis>(HloFusionAnalysis::Create(
+          *instr, ir_emitter_context_->gpu_device_info())));
+  const HloFusionAnalysis& fusion_analysis =
+      *analysis_garbage_collector_.back();
 
   // Intercept DynamicSliceFusionV2 custom fusions.
   if (fusion_analysis.emitter_fusion_kind() ==
@@ -1886,10 +1900,10 @@ AsyncThunkSequence ThunkEmitter::EmitCollectiveThunk(
   // lifted out of the all reduce thunk.
   if constexpr (kRequiresCollectiveKernelThunk<CollectiveThunkType>) {
     thunks =
-        EmitCollectiveKernelThunk(ir_emitter_context_, call_graph_.get(),
-                                  thunk_info, buffers,
-                                  Cast<HloAllReduceInstruction>(inst),
-                                  GetAllReduceConfigInst(inst), this)
+        EmitCollectiveKernelThunk(
+            ir_emitter_context_, call_graph_.get(), thunk_info, buffers,
+            Cast<HloAllReduceInstruction>(inst), GetAllReduceConfigInst(inst),
+            this, analysis_garbage_collector_)
             .Map([thunk_info = std::move(thunk_info),
                   use_memcpy_local_p2p = ir_emitter_context_->debug_options()
                                              .xla_gpu_use_memcpy_local_p2p(),

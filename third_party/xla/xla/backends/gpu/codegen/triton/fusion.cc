@@ -30,16 +30,14 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
-#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/TargetParser/Triple.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/codegen/kernels/ptx_custom_kernel.h"
 #include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
@@ -48,6 +46,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/llvm_kernel_source.h"
+#include "xla/future.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -91,27 +90,30 @@ static void PopulateNvvmAnnotations(
   }
 }
 
-absl::StatusOr<TritonWrapperResult>
-TritonFusion::GenerateTritonKernelAndWrapper(
+xla::Future<TritonWrapperResult> TritonFusion::GenerateTritonKernelAndWrapper(
     const HloFusionInstruction& fusion, absl::string_view impl_fn_name,
     const se::DeviceDescription& device_info, const llvm::Triple& target_triple,
-    const std::string& data_layout, mlir::MLIRContext* mlir_context) const {
+    const std::string& data_layout, BorrowedMlirContext borrowed_context,
+    KernelCompiler* compiler) const {
   if (!analysis_.fusion_backend_config().has_block_level_fusion_config()) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Block level fusion config is required for Triton fusions: ",
         fusion.ToString()));
   }
+
   BlockLevelParameters block_level_parameters =
       BlockLevelParameters::FromBlockLevelFusionConfig(
           analysis_.fusion_backend_config().block_level_fusion_config());
-  ASSIGN_OR_RETURN(TritonKernelSource kernel_source,
-                   CreateTritonModule(impl_fn_name, fusion, device_info,
-                                      block_level_parameters, *mlir_context));
+  ASSIGN_OR_RETURN(
+      TritonKernelSource kernel_source,
+      CreateTritonModule(impl_fn_name, fusion, device_info,
+                         block_level_parameters, **borrowed_context));
 
-  return CompileTritonToLLVM(impl_fn_name, *fusion.GetModule(), device_info,
-                             block_level_parameters, target_triple, data_layout,
-                             std::move(kernel_source), *mlir_context,
-                             /*is_xla_fusion=*/true);
+  return compiler->CompileTritonToLlvm(
+      impl_fn_name, *fusion.GetModule(), device_info, block_level_parameters,
+      target_triple, data_layout, std::move(kernel_source),
+      std::move(borrowed_context),
+      /*is_xla_fusion=*/true);
 };
 
 AsyncThunkSequence TritonFusion::Emit(
@@ -143,7 +145,6 @@ xla::Future<TritonFusion::EmitResult> TritonFusion::Emit(
     const HloInstruction* instr_override,
     absl::Span<const Shape> unmanaged_arguments) const {
   std::string suggested_kernel_name = std::string(fusion.name());
-  llvm::IRBuilder builder(*ir_emitter_context.llvm_context());
   VLOG(3) << fusion.ToString();
   ASSIGN_OR_RETURN(
       emitters::KernelArguments kernel_arguments,
@@ -162,81 +163,94 @@ xla::Future<TritonFusion::EmitResult> TritonFusion::Emit(
     const std::string sanitized_kernel_name =
         ir_emitter_context.GetSanitizedUniqueName(suggested_kernel_name);
 
-    ASSIGN_OR_RETURN(
-        TritonWrapperResult triton_wrapper_result,
-        GenerateTritonKernelAndWrapper(fusion, sanitized_kernel_name,
-                                       ir_emitter_context.gpu_device_info(),
-                                       ir_emitter_context.target_triple(),
-                                       ir_emitter_context.data_layout(),
-                                       ir_emitter_context.mlir_context()));
-    auto local_module =
-        std::move(triton_wrapper_result.kernel_source).thread_safe_module();
+    return GenerateTritonKernelAndWrapper(
+               fusion, sanitized_kernel_name,
+               ir_emitter_context.gpu_device_info(),
+               ir_emitter_context.target_triple(),
+               ir_emitter_context.data_layout(),
+               ir_emitter_context.BorrowMlirContext(),
+               ir_emitter_context.kernel_compiler())
+        .Map([analysis = &analysis_,
+              kernel_compiler = ir_emitter_context.kernel_compiler(),
+              gpu_device_info = ir_emitter_context.gpu_device_info(),
+              fusion = &fusion, sanitized_kernel_name,
+              sanitized_kernel_impl_name =
+                  ir_emitter_context.GetSanitizedUniqueName(
+                      sanitized_kernel_name + "_impl"),
+              kernel_arguments](TritonWrapperResult triton_wrapper_result)
+                 -> xla::Future<KernelReuseCache::Entry> {
+          auto local_module = std::move(triton_wrapper_result.kernel_source)
+                                  .thread_safe_module();
 
-    auto backend_config =
-        fusion.backend_config<GpuBackendConfig>()->fusion_backend_config();
-    absl::string_view fusion_kind = backend_config.kind();
+          ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
+                           fusion->backend_config<GpuBackendConfig>());
+          absl::string_view fusion_kind =
+              gpu_backend_config.fusion_backend_config().kind();
 
-    LaunchDimensions launch_dimensions;
+          LaunchDimensions launch_dimensions;
 
-    // TODO(bchetioui,pifon): this list should be consolidated; why do we need
-    // so many different fusion kinds?
-    const std::vector<absl::string_view> kSupportedFusionKinds = {
-        kTritonFusionKind,
-        kTritonNestedGemmFusionKind,
-        kTritonCollectiveFusionKind,
-    };
+          // TODO(bchetioui,pifon): this list should be consolidated; why do we
+          // need so many different fusion kinds?
+          const std::vector<absl::string_view> kSupportedFusionKinds = {
+              kTritonFusionKind,
+              kTritonNestedGemmFusionKind,
+              kTritonCollectiveFusionKind,
+          };
 
-    if (!absl::c_linear_search(kSupportedFusionKinds, fusion_kind)) {
-      return Internal("Unsupported fusion kind: %s", fusion_kind);
-    }
+          if (!absl::c_linear_search(kSupportedFusionKinds, fusion_kind)) {
+            return Internal("Unsupported fusion kind: %s", fusion_kind);
+          }
 
-    std::optional<LaunchConfig> launch_config;
-    // Currently GetLaunchConfig will compute the same value as the extracted
-    // one. They are different only when warp specialization is enabled.
-    // Ideally we should always pass the thread_dims value extracted from
-    // the Triton compilation. However, we are keeping the old code path
-    // to maintain the current behavior and be safe.
-    if (fusion.GetModule()
-            ->config()
-            .debug_options()
-            .xla_gpu_experimental_enable_triton_warp_specialization()) {
-      launch_config = this->GetLaunchConfig(triton_wrapper_result.thread_dims);
-    } else {
-      launch_config = this->GetLaunchConfig();
-    }
-    // This check should be enforced by `GenerateTritonKernelWrapper`.
-    CHECK(launch_config.has_value());
-    launch_dimensions = std::move(launch_config->launch_dimensions);
+          std::optional<LaunchConfig> launch_config;
+          // Currently GetLaunchConfig will compute the same value as the
+          // extracted one. They are different only when warp specialization is
+          // enabled. Ideally we should always pass the thread_dims value
+          // extracted from the Triton compilation. However, we are keeping the
+          // old code path to maintain the current behavior and be safe.
+          if (fusion->GetModule()
+                  ->config()
+                  .debug_options()
+                  .xla_gpu_experimental_enable_triton_warp_specialization()) {
+            launch_config =
+                GetLaunchConfig(analysis, triton_wrapper_result.thread_dims);
+          } else {
+            launch_config = GetLaunchConfig(analysis);
+          }
+          // This check should be enforced by `GenerateTritonKernelWrapper`.
+          CHECK(launch_config.has_value());
+          launch_dimensions = std::move(launch_config->launch_dimensions);
 
-    ASSIGN_OR_RETURN(llvm::Function * kernel,
-                     RemoveUnusedTritonAbiArguments(
-                         local_module.getModuleUnlocked(), ir_emitter_context,
-                         sanitized_kernel_name,
-                         /*keep_scratch=*/false));
+          ASSIGN_OR_RETURN(
+              llvm::Function * kernel,
+              RemoveUnusedTritonAbiArguments(local_module.getModuleUnlocked(),
+                                             sanitized_kernel_name,
+                                             sanitized_kernel_impl_name,
+                                             /*keep_scratch=*/false));
 
-    AnnotateAttrsIfUnset(kernel_arguments, *kernel);
-    PopulateNvvmAnnotations(local_module.getModuleUnlocked(), kernel,
-                            triton_wrapper_result);
+          AnnotateAttrsIfUnset(kernel_arguments, *kernel);
+          PopulateNvvmAnnotations(local_module.getModuleUnlocked(), kernel,
+                                  triton_wrapper_result);
 
-    RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
-        ir_emitter_context.gpu_device_info(), launch_dimensions, kernel,
-        local_module.getModuleUnlocked()));
+          RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
+              gpu_device_info, launch_dimensions, kernel,
+              local_module.getModuleUnlocked()));
 
-    return ir_emitter_context.kernel_compiler()
-        ->CompileToPtx(LlvmKernelSource{std::move(local_module)})
-        .Map([kernel_name = sanitized_kernel_name,
-              launch_dims = std::move(launch_dimensions),
-              tma_metadata = triton_wrapper_result.tma_metadata,
-              shmem_bytes = triton_wrapper_result.shmem_bytes,
-              use_pdl = triton_wrapper_result.use_pdl](
-                 const std::vector<uint8_t>& cubin) {
-          return KernelReuseCache::Entry{kernel_name,
-                                         launch_dims,
-                                         /*cluster_dim=*/std::nullopt,
-                                         shmem_bytes,
-                                         cubin,
-                                         tma_metadata,
-                                         use_pdl};
+          return kernel_compiler
+              ->CompileToPtx(LlvmKernelSource{std::move(local_module)})
+              .Map([kernel_name = sanitized_kernel_name,
+                    launch_dims = std::move(launch_dimensions),
+                    tma_metadata = triton_wrapper_result.tma_metadata,
+                    shmem_bytes = triton_wrapper_result.shmem_bytes,
+                    use_pdl = triton_wrapper_result.use_pdl](
+                       const std::vector<uint8_t>& cubin) {
+                return KernelReuseCache::Entry{kernel_name,
+                                               launch_dims,
+                                               /*cluster_dim=*/std::nullopt,
+                                               shmem_bytes,
+                                               cubin,
+                                               tma_metadata,
+                                               use_pdl};
+              });
         });
   };
 
@@ -263,44 +277,44 @@ int64_t GetNumberOfBlocks(absl::Span<const int64_t> dimensions,
 }  // namespace
 
 std::optional<TritonFusion::LaunchConfig> TritonFusion::GetLaunchConfig(
-    std::optional<se::ThreadDim> thread_dims_override) const {
-  if (analysis_.fusion_backend_config().has_block_level_fusion_config()) {
-    BlockLevelParameters block_level_parameters =
-        BlockLevelParameters::FromBlockLevelFusionConfig(
-            analysis_.fusion_backend_config().block_level_fusion_config());
+    const HloFusionAnalysis* analysis,
+    std::optional<se::ThreadDim> thread_dims_override) {
+  if (!analysis->fusion_backend_config().has_block_level_fusion_config()) {
+    // MatMul is not yet supported.
+    return std::nullopt;
+  }
+  BlockLevelParameters block_level_parameters =
+      BlockLevelParameters::FromBlockLevelFusionConfig(
+          analysis->fusion_backend_config().block_level_fusion_config());
 
-    // We expect all roots to have the same number of blocks. Otherwise we
-    // cannot codegen it.
-    int64_t num_blocks =
-        GetNumberOfBlocks(analysis_.fusion_root(0).shape().dimensions(),
-                          block_level_parameters.output_tile_sizes[0]);
-    for (int64_t i = 1; i < analysis_.fusion_root_count(); ++i) {
-      CHECK_EQ(GetNumberOfBlocks(analysis_.fusion_root(i).shape().dimensions(),
-                                 block_level_parameters.output_tile_sizes[i]),
-               num_blocks);
-    }
-
-    LaunchConfig launch_config;
-    // TODO(b/451901200): We eventually also want to be able to predict this
-    // value without compiling so the cost model can rely on it. Currently, we
-    // need the override for auto warp specialization.
-    if (thread_dims_override) {
-      launch_config.launch_dimensions = LaunchDimensions{
-          se::BlockDim(num_blocks), thread_dims_override.value()};
-    } else {
-      int64_t estimated_threads_per_block =
-          block_level_parameters.num_warps * WarpSize(analysis_.device_info());
-      launch_config.launch_dimensions =
-          LaunchDimensions{static_cast<uint64_t>(num_blocks),
-                           static_cast<uint64_t>(estimated_threads_per_block)};
-    }
-
-    launch_config.block_level_parameters = std::move(block_level_parameters);
-    return launch_config;
+  // We expect all roots to have the same number of blocks. Otherwise we
+  // cannot codegen it.
+  int64_t num_blocks =
+      GetNumberOfBlocks(analysis->fusion_root(0).shape().dimensions(),
+                        block_level_parameters.output_tile_sizes[0]);
+  for (int64_t i = 1; i < analysis->fusion_root_count(); ++i) {
+    CHECK_EQ(GetNumberOfBlocks(analysis->fusion_root(i).shape().dimensions(),
+                               block_level_parameters.output_tile_sizes[i]),
+             num_blocks);
   }
 
-  // MatMul is not yet supported.
-  return std::nullopt;
+  LaunchConfig launch_config;
+  // TODO(b/451901200): We eventually also want to be able to predict this
+  // value without compiling so the cost model can rely on it. Currently, we
+  // need the override for auto warp specialization.
+  if (thread_dims_override) {
+    launch_config.launch_dimensions = LaunchDimensions{
+        se::BlockDim(num_blocks), thread_dims_override.value()};
+  } else {
+    int64_t estimated_threads_per_block =
+        block_level_parameters.num_warps * WarpSize(analysis->device_info());
+    launch_config.launch_dimensions =
+        LaunchDimensions{static_cast<uint64_t>(num_blocks),
+                         static_cast<uint64_t>(estimated_threads_per_block)};
+  }
+
+  launch_config.block_level_parameters = std::move(block_level_parameters);
+  return launch_config;
 }
 
 }  // namespace gpu

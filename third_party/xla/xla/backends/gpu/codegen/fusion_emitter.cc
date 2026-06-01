@@ -217,12 +217,11 @@ absl::StatusOr<llvm::Function*> BuildKernelPrototype(
 }
 
 absl::StatusOr<llvm::Function*> RemoveUnusedTritonAbiArguments(
-    llvm::Module* llvm_module, IrEmitterContext& ir_emitter_context,
-    const std::string& sanitized_kernel_name, bool keep_scratch) {
+    llvm::Module* llvm_module, const std::string& sanitized_kernel_name,
+    const std::string& sanitized_kernel_impl_name, bool keep_scratch) {
   llvm::Function* impl_fn = llvm_module->getFunction(sanitized_kernel_name);
   TF_RET_CHECK(impl_fn);
-  impl_fn->setName(ir_emitter_context.GetSanitizedUniqueName(
-      sanitized_kernel_name + "_impl"));
+  impl_fn->setName(sanitized_kernel_impl_name);
 
   constexpr int arg_to_remove = 2;
 

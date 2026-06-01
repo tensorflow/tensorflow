@@ -672,7 +672,7 @@ absl::StatusOr<EstimateRunTimeData>
 GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTriton(
     const HloInstruction* instr) {
   const auto& fusion_analysis = fusion_analysis_cache_->Get(*instr);
-  auto launch_config = TritonFusion(fusion_analysis).GetLaunchConfig();
+  auto launch_config = TritonFusion::GetLaunchConfig(&fusion_analysis);
 
   if (!launch_config.has_value()) {
     return absl::InvalidArgumentError(
