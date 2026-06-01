@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/utils/traversal.h"
 
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/types/optional.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/graph_topology_view.h"
 

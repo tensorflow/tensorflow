@@ -15,9 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/utils/transitive_fanin.h"
 
-#include <queue>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/platform/errors.h"
