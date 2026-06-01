@@ -13,12 +13,21 @@
 // the License.
 // ==============================================================================
 
+#include <cmath>
+#include <cstdint>
+#include <functional>
+#include <limits>
+#include <utility>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/framework/types.pb.h"
 #define EIGEN_USE_THREADS
 
 #include <algorithm>
 #include <memory>
 #include <numeric>
-#include <tuple>
 #include <unordered_set>
 #include <vector>
 
