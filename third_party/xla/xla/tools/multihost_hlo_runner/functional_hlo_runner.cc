@@ -1327,10 +1327,10 @@ absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> LoadAndRun(
     std::string serialized_executable;
     RETURN_IF_ERROR(tsl::ReadFileToString(
         tsl::Env::Default(), std::string(hlo_file), &serialized_executable));
-    ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                     client.LoadSerializedExecutable(serialized_executable,
-                                                     /*options=*/std::nullopt,
-                                                     LoadOptions()));
+    ASSIGN_OR_RETURN(
+        std::unique_ptr<PjRtLoadedExecutable> executable,
+        client.LoadSerializedExecutable(serialized_executable, compile_options,
+                                        LoadOptions()));
     return Run(client, executable.get(), *final_arguments, running_options,
                engine);
   }
