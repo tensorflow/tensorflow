@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/framework/bfloat16.h"
 
-#include "absl/base/casts.h"
+#include <cmath>
+#include <cstdint>
+
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
