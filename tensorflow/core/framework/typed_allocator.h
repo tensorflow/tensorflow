@@ -66,6 +66,11 @@ class TypedAllocator {
   template <typename T>
   static void RunCtor(Allocator* raw_allocator, T* p, size_t n) {
     static_assert(is_simple_type<T>::value, "T is not a simple type.");
+#if defined(__has_feature)
+#if __has_feature(memory_sanitizer)
+    memset(p, 0, n * sizeof(T));
+#endif
+#endif
   }
 
   template <typename T>
