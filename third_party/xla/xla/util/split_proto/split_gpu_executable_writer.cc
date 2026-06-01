@@ -25,6 +25,7 @@ limitations under the License.
 #include "google/protobuf/message.h"
 #include "riegeli/bytes/writer.h"
 #include "riegeli/records/record_writer.h"
+#include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_proto_util.h"
 #include "xla/sort_json.h"
