@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/service/decision.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
@@ -266,29 +267,31 @@ absl::StatusOr<bool> TritonEmitterConstraints::ParametersSatisfyConstraints(
 
 namespace gpu::experimental {
 
-absl::Status VerifyTritonConstraints(
-    const TiledHloComputation& tiled_computation,
-    const se::DeviceDescription& device_info) {
+Decision VerifyTritonConstraints(const TiledHloComputation& tiled_computation,
+                                 const se::DeviceDescription& device_info) {
   // 1. Max Tensor Elements (TRITON_MAX_TENSOR_NUMEL limit in triton.language).
   // Triton's validate_block_shape (triton/python/triton/_utils.py) enforces
   // that the total number of elements in a padded block (product of tile sizes
   // padded to power of 2) does not exceed TRITON_MAX_TENSOR_NUMEL = 1048576.
   for (const TiledHloInstruction* inst : tiled_computation.instructions()) {
-    VLOG(2) << "Verifying constraints for instruction: "
-            << inst->hlo()->ToString() << " tile: " << inst->tile().ToString();
-    ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> static_tile_sizes,
-                     inst->tile().GetStaticTileSizes());
+    auto static_tile_sizes_or = inst->tile().GetStaticTileSizes();
+    if (!static_tile_sizes_or.ok()) {
+      return Decision(static_tile_sizes_or.status());
+    }
+    llvm::SmallVector<int64_t> static_tile_sizes =
+        std::move(*static_tile_sizes_or);
+
     int64_t product = 1;
     for (int64_t size : static_tile_sizes) {
       CHECK_GT(size, 0) << inst->hlo()->name() << " has non-positive tile size "
                         << size;
       int64_t padded_size = llvm::PowerOf2Ceil(size);
       if (padded_size > kMaxTensorNumElements / product) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("Instruction ", inst->hlo()->name(),
-                         " has a padded tile size product that exceeds the "
-                         "maximum allowed tensor size of ",
-                         kMaxTensorNumElements, " elements."));
+        return Decision::Forbid(absl::StrCat(
+            "Instruction ", inst->hlo()->name(),
+            " has a padded tile size product that exceeds the maximum allowed "
+            "tensor size of ",
+            kMaxTensorNumElements, " elements."));
       }
       product *= padded_size;
     }
@@ -301,14 +304,15 @@ absl::Status VerifyTritonConstraints(
   for (const TiledHloInstruction* inst : tiled_computation.instructions()) {
     if (inst->hlo()->opcode() == HloOpcode::kDot) {
       for (const TiledHloInstruction* operand : inst->operands()) {
-        VLOG(2) << "Verifying constraints for dot operand: "
-                << operand->hlo()->ToString()
-                << " tile: " << operand->tile().ToString();
-        ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> op_tile_sizes,
-                         operand->tile().GetStaticTileSizes());
+        auto op_tile_sizes_or = operand->tile().GetStaticTileSizes();
+        if (!op_tile_sizes_or.ok()) {
+          return Decision(op_tile_sizes_or.status());
+        }
+        llvm::SmallVector<int64_t> op_tile_sizes = std::move(*op_tile_sizes_or);
+
         for (int64_t size : op_tile_sizes) {
           if (size > kMaxMMADimSize) {
-            return absl::InvalidArgumentError(absl::StrCat(
+            return Decision::Forbid(absl::StrCat(
                 "Dot operand instruction ", operand->hlo()->name(),
                 " has a tile size of ", size,
                 ", which exceeds the maximum MMA dimension size of ",
@@ -325,16 +329,20 @@ absl::Status VerifyTritonConstraints(
     VLOG(2) << "Root: " << root->hlo()->name()
             << ", shape: " << root->hlo()->shape().ToString();
     if (!root->hlo()->shape().IsArray()) {
-      return absl::InvalidArgumentError(absl::StrCat(
+      return Decision::Forbid(absl::StrCat(
           "Root instruction ", root->hlo()->name(), " has a non-array shape."));
     }
-    ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> root_tile_sizes,
-                     root->tile().GetStaticTileSizes());
+    auto root_tile_sizes_or = root->tile().GetStaticTileSizes();
+    if (!root_tile_sizes_or.ok()) {
+      return Decision(root_tile_sizes_or.status());
+    }
+    llvm::SmallVector<int64_t> root_tile_sizes = std::move(*root_tile_sizes_or);
+
     VLOG(2) << "Root tile sizes: [" << absl::StrJoin(root_tile_sizes, ", ")
             << "]";
     auto dim_sizes = root->hlo()->shape().dimensions();
     if (root_tile_sizes.size() != dim_sizes.size()) {
-      return absl::InvalidArgumentError(absl::StrCat(
+      return Decision::Forbid(absl::StrCat(
           "Root instruction ", root->hlo()->name(), " has ",
           root_tile_sizes.size(), " tile sizes, but its HLO shape has ",
           dim_sizes.size(), " dimensions."));
@@ -348,7 +356,7 @@ absl::Status VerifyTritonConstraints(
                      << t << " in dimension " << i;
       int64_t d = dim_sizes[i];
       if (!(llvm::isPowerOf2_64(t) || t == d)) {
-        return absl::InvalidArgumentError(absl::StrCat(
+        return Decision::Forbid(absl::StrCat(
             "Root instruction ", root->hlo()->name(), " has a tile size of ", t,
             " in dimension ", i,
             ", which is neither a power of 2 nor equal to the dimension size ",
@@ -364,14 +372,14 @@ absl::Status VerifyTritonConstraints(
       int64_t dim_size = dim_sizes[i];
       int64_t blocks_in_dim = CeilOfRatio(dim_size, tile_size);
       if (blocks_in_dim > limit || num_blocks > (limit - 1) / blocks_in_dim) {
-        return absl::InvalidArgumentError(absl::StrCat(
+        return Decision::Forbid(absl::StrCat(
             "Number of blocks exceeds the device grid limit of ", limit, "."));
       }
       num_blocks *= blocks_in_dim;
     }
   }
 
-  return absl::OkStatus();
+  return Decision::Allow();
 }
 
 }  // namespace gpu::experimental

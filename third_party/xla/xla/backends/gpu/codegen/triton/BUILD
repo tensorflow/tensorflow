@@ -250,6 +250,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/translate/hlo_to_mhlo:hlo_function_importer",
         "//xla/hlo/utils:hlo_traversal",
+        "//xla/service:decision",
         "//xla/service:dump",
         "//xla/service:hlo_module_config",
         "//xla/service:instruction_fusion",

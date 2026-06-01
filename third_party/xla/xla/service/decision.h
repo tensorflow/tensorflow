@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "tsl/platform/platform.h"  // For PLATFORM_GOOGLE.
 
 #if defined(PLATFORM_GOOGLE)
 #include "absl/types/source_location.h"

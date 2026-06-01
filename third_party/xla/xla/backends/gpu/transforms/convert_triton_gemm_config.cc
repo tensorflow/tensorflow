@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/decision.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -258,11 +259,11 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParametersWithTilingSpace(
       continue;
     }
 
-    absl::Status verification_status = experimental::VerifyTritonConstraints(
+    Decision verification_status = experimental::VerifyTritonConstraints(
         *tiled_computation, device_description);
-    if (!verification_status.ok()) {
+    if (!verification_status) {
       VLOG(8) << "Candidate tiling violates Triton constraints: "
-              << verification_status.message();
+              << verification_status.Explain();
       continue;
     }
     // Finds the corresponding tiled instruction for its original HLO
