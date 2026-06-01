@@ -73,6 +73,9 @@ jobs:
       - name: "Check for Header Guards"
         if: always()
         run: "python3 build_tools/lint/check_header_guards.py"
+      - name: "Check for TF Status Macros"
+        if: always()
+        run: "python3 build_tools/lint/check_contents.py --prohibited_regex '\\bTF_(RETURN_IF_ERROR|ASSIGN_OR_RETURN)\\b' --failure_message 'Please use RETURN_IF_ERROR/ASSIGN_OR_RETURN over of TF_... variants.'"
       # ----------------Python checks----------------
       - name: "Check for python print()"
         if: always() # We want to run all checks, not just til first failure

@@ -53,5 +53,6 @@ int main() {
     return 1;
   }
 
+  // Dummy comment to test linter: TF_RETURN_IF_ERROR(status);
   return 0;
 }
