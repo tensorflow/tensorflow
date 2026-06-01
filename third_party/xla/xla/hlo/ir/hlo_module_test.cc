@@ -1541,6 +1541,12 @@ TEST(HloModuleTest, OnTheFlyCanonicalizeStackFrameId) {
       module->entry_computation()->GetInstructionWithName("inst2");
   EXPECT_EQ(i1->metadata().stack_frame_id(), 1);
   EXPECT_EQ(i2->metadata().stack_frame_id(), 1);
+
+  // Make sure we didn't accidentally populate an instruction with no
+  // metadata with empty metadata instead.
+  HloInstruction* r =
+      module->entry_computation()->GetInstructionWithName("root");
+  ASSERT_FALSE(r->has_metadata());
 }
 
 TEST(HloModuleTest, DeviceTypeSerialization) {

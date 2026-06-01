@@ -752,6 +752,9 @@ void HloModule::CanonicalizeStackFrameIds(
 
   for (HloComputation* computation : computations()) {
     for (HloInstruction* instruction : computation->instructions()) {
+      if (!instruction->has_metadata()) {
+        continue;
+      }
       OpMetadata& metadata = instruction->mutable_metadata();
       int old_id = metadata.stack_frame_id();
       if (old_id == 0) {
