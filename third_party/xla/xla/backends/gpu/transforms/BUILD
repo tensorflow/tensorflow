@@ -3938,6 +3938,7 @@ cc_library(
         "//xla/hlo/utils:hlo_query",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:call_graph",
+        "//xla/service:decision",
         "//xla/service:hlo_module_config",
         "//xla/service:instruction_fusion",
         "//xla/service/gpu:backend_configs_cc",

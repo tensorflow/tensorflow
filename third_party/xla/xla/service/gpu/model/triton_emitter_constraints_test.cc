@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/service/decision.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
@@ -341,8 +342,12 @@ class VerifyTritonConstraintsTest : public HloHardwareIndependentTestBase {
     ASSIGN_OR_RETURN(experimental::TiledHloComputation tiled_comp,
                      experimental::TiledHloComputation::Tile(
                          *fusion_adaptor, std::move(tiling_space)));
-    return experimental::VerifyTritonConstraints(tiled_comp,
-                                                 device_description_);
+    Decision decision =
+        experimental::VerifyTritonConstraints(tiled_comp, device_description_);
+    if (!decision) {
+      return absl::InvalidArgumentError(decision.Explain());
+    }
+    return absl::OkStatus();
   }
 
   mlir::MLIRContext mlir_context_;

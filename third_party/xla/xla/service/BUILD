@@ -2251,6 +2251,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@tsl//tsl/platform",
     ] + if_google(["@com_google_absl//absl/types:source_location"]),
 )
 
