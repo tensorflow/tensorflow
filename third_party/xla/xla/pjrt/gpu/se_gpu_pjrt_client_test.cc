@@ -91,6 +91,8 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_device_address_vmm_allocator.h"
 #endif  // GOOGLE_CUDA
 #include "xla/pjrt/gpu/se_gpu_pjrt_client_test_helper.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -2283,6 +2285,26 @@ TEST(StreamExecutorGpuClientTest,
   EXPECT_TRUE(se_topology->gpu_topology().has_gpu_target_config());
   EXPECT_TRUE(
       se_topology->gpu_topology().host_target_machine_options().has_value());
+}
+
+TEST(StreamExecutorGpuClientTest, PlatformAllocatorIsSynchronousPassthrough) {
+  // NOTE: Depends on xla_gpu_command_buffer_update_mode == ALWAYS_UPDATE (the
+  // default). If that default changes, the override at the top of
+  // GetStreamExecutorGpuDeviceAllocator() will silently rewrite kPlatform ->
+  // kVmm and this test will spuriously fail.
+  GpuClientOptions options;
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kPlatform;
+  options.allowed_devices = {0};
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+
+  auto* pjrt_se_client =
+      tensorflow::down_cast<PjRtStreamExecutorClient*>(client.get());
+  EXPECT_NE(dynamic_cast<se::StreamExecutorAddressAllocator*>(
+                pjrt_se_client->allocator()),
+            nullptr);
+  EXPECT_EQ(dynamic_cast<se::MultiDeviceAdapter*>(pjrt_se_client->allocator()),
+            nullptr);
 }
 
 #if GOOGLE_CUDA
