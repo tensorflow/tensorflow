@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 
 #include <cstddef>
+#include <cstring>
 #include <memory>
 #include <optional>
 #include <string>
@@ -59,7 +60,9 @@ absl::StatusCode PjrtErrorToStatusCode(const PJRT_Error* error,
 }
 
 absl::StatusCode PjrtErrorCodeToStatusCode(PJRT_Error_Code code) {
-  switch (code) {
+  int int_code;
+  std::memcpy(&int_code, &code, sizeof(code));
+  switch (int_code) {
     case PJRT_Error_Code_OK:
     case PJRT_Error_Code_CANCELLED:
     case PJRT_Error_Code_UNKNOWN:
@@ -77,12 +80,16 @@ absl::StatusCode PjrtErrorCodeToStatusCode(PJRT_Error_Code code) {
     case PJRT_Error_Code_UNAVAILABLE:
     case PJRT_Error_Code_DATA_LOSS:
     case PJRT_Error_Code_UNAUTHENTICATED:
-      return static_cast<absl::StatusCode>(code);
+      return static_cast<absl::StatusCode>(int_code);
+    default:
+      return absl::StatusCode::kUnknown;
   }
 }
 
 PJRT_Error_Code StatusCodeToPjrtErrorCode(absl::StatusCode code) {
-  switch (static_cast<tsl::error::Code>(code)) {
+  int int_code;
+  std::memcpy(&int_code, &code, sizeof(code));
+  switch (int_code) {
     case tsl::error::OK:
     case tsl::error::CANCELLED:
     case tsl::error::UNKNOWN:
@@ -100,7 +107,7 @@ PJRT_Error_Code StatusCodeToPjrtErrorCode(absl::StatusCode code) {
     case tsl::error::INTERNAL:
     case tsl::error::UNAVAILABLE:
     case tsl::error::DATA_LOSS:
-      return static_cast<PJRT_Error_Code>(code);
+      return static_cast<PJRT_Error_Code>(int_code);
     case tensorflow::error::
         DO_NOT_USE_RESERVED_FOR_FUTURE_EXPANSION_USE_DEFAULT_IN_SWITCH_INSTEAD_:
       CHECK(false) << "got DO_NOT_USE_RESERVED_FOR_FUTURE_EXPANSION_"
@@ -109,6 +116,8 @@ PJRT_Error_Code StatusCodeToPjrtErrorCode(absl::StatusCode code) {
       CHECK(false) << "got Code_INT_MIN_SENTINEL_DO_NOT_USE_";
     case tensorflow::error::Code_INT_MAX_SENTINEL_DO_NOT_USE_:
       CHECK(false) << "got Code_INT_MAX_SENTINEL_DO_NOT_USE_";
+    default:
+      return PJRT_Error_Code_UNKNOWN;
   }
 }
 
