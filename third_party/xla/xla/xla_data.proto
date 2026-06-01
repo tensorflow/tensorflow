@@ -570,6 +570,10 @@ message OpMetadata {
   // Instruction name available upon scheduling.
   string scheduling_name = 16;
 
+  // Deduplicated metadata at the module level, propagated from JAX through
+  // the "xla_interned_metadata" frontend attribute.
+  Payload interned_metadata_payload = 20;
+
   reserved 14;
 }
 

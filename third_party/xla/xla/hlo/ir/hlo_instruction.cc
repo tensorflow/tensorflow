@@ -4082,6 +4082,17 @@ bool HloInstruction::IsCrossReplicaAllReduce() const {
   return false;
 }
 
+std::string HloInstruction::interned_metadata_string() const {
+  if (!has_interned_metadata()) {
+    return "";
+  }
+  const auto& payload = metadata().interned_metadata_payload();
+  if (payload.has_value()) {
+    return payload.value();
+  }
+  return GetModule() ? GetModule()->GetMetadataPayload(payload.id()) : "";
+}
+
 void HloInstruction::PrintWithCanonicalNameMap(
     Printer* printer, const HloPrintOptions& options,
     CanonicalNameMap* canonical_name_map) const {
@@ -4153,8 +4164,9 @@ void HloInstruction::PrintWithCanonicalNameMap(
        (!metadata_->op_type().empty() || !metadata_->op_name().empty() ||
         !metadata_->source_file().empty() ||
         !metadata_->scheduling_name().empty() ||
-        metadata_->stack_frame_id() != 0))) {
+        metadata_->stack_frame_id() != 0 || has_interned_metadata()))) {
     printer->Append(", metadata={");
+    std::string metadata_str;
     if (options.print_inline_stack_frames() &&
         metadata_->stack_frame_id() != 0 && GetModule() != nullptr) {
       OpMetadata metadata = *metadata_;
@@ -4166,12 +4178,21 @@ void HloInstruction::PrintWithCanonicalNameMap(
         metadata.set_source_line(frame.line);
         metadata.set_source_column(frame.column);
       }
-      printer->Append(xla::OpMetadataToString(
-          metadata, options.print_metadata_only_op_name()));
+      metadata_str = xla::OpMetadataToString(
+          metadata, options.print_metadata_only_op_name());
     } else {
-      printer->Append(xla::OpMetadataToString(
-          *metadata_, options.print_metadata_only_op_name()));
+      metadata_str = xla::OpMetadataToString(
+          *metadata_, options.print_metadata_only_op_name());
     }
+    if (has_interned_metadata() && !options.print_metadata_only_op_name() &&
+        metadata_->interned_metadata_payload().has_id()) {
+      if (!metadata_str.empty()) {
+        absl::StrAppend(&metadata_str, " ");
+      }
+      absl::StrAppend(&metadata_str, "interned_metadata=\"",
+                      CEscape(interned_metadata_string()), "\"");
+    }
+    printer->Append(metadata_str);
     printer->Append("}");
   }
   if (options.print_backend_config() && !backend_config_->empty()) {

@@ -184,6 +184,87 @@ TEST_F(HloProtoUtilTest, ToProtoWithInlinedPayloadsInvalidId) {
   EXPECT_EQ(result.backend_config_payload().id(), 5);
 }
 
+TEST_F(HloProtoUtilTest, ToProtoWithInlinedPayloadsInternedMetadataId) {
+  HloInstructionProto instruction;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        metadata { interned_metadata_payload { id: 1 } }
+      )pb",
+      &instruction));
+
+  HloModuleProto module;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(R"pb(
+                                                           payloads: "payload_0"
+                                                           payloads: "payload_1"
+                                                         )pb",
+                                                         &module));
+
+  HloInstructionProto result = ToProtoWithInlinedPayloads(instruction, &module);
+  EXPECT_TRUE(result.has_metadata());
+  EXPECT_TRUE(result.metadata().has_interned_metadata_payload());
+  EXPECT_TRUE(result.metadata().interned_metadata_payload().has_value());
+  EXPECT_EQ(result.metadata().interned_metadata_payload().value(), "payload_1");
+}
+
+TEST_F(HloProtoUtilTest,
+       ToProtoWithInlinedPayloadsFourInstructionsInterleaved) {
+  HloComputationProto computation;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        instructions { backend_config_payload { id: 1 } }
+        instructions { metadata { interned_metadata_payload { id: 3 } } }
+        instructions {
+          backend_config_payload { id: 5 }
+          metadata { interned_metadata_payload { id: 7 } }
+        }
+        instructions {
+          backend_config_payload { value: "inline_cfg" }
+          metadata { interned_metadata_payload { value: "inline_meta" } }
+        }
+      )pb",
+      &computation));
+
+  HloModuleProto module;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        payloads: "noise_0"
+        payloads: "cfg_1"
+        payloads: "noise_2"
+        payloads: "meta_2"
+        payloads: "noise_4"
+        payloads: "cfg_3"
+        payloads: "noise_6"
+        payloads: "meta_3"
+      )pb",
+      &module));
+
+  HloInstructionProto r0 =
+      ToProtoWithInlinedPayloads(computation.instructions(0), &module);
+  EXPECT_TRUE(r0.has_backend_config_payload());
+  EXPECT_EQ(r0.backend_config_payload().value(), "cfg_1");
+  EXPECT_FALSE(r0.has_metadata());
+
+  HloInstructionProto r1 =
+      ToProtoWithInlinedPayloads(computation.instructions(1), &module);
+  EXPECT_FALSE(r1.has_backend_config_payload());
+  EXPECT_TRUE(r1.metadata().has_interned_metadata_payload());
+  EXPECT_EQ(r1.metadata().interned_metadata_payload().value(), "meta_2");
+
+  HloInstructionProto r2 =
+      ToProtoWithInlinedPayloads(computation.instructions(2), &module);
+  EXPECT_TRUE(r2.has_backend_config_payload());
+  EXPECT_EQ(r2.backend_config_payload().value(), "cfg_3");
+  EXPECT_TRUE(r2.metadata().has_interned_metadata_payload());
+  EXPECT_EQ(r2.metadata().interned_metadata_payload().value(), "meta_3");
+
+  HloInstructionProto r3 =
+      ToProtoWithInlinedPayloads(computation.instructions(3), &module);
+  EXPECT_TRUE(r3.has_backend_config_payload());
+  EXPECT_EQ(r3.backend_config_payload().value(), "inline_cfg");
+  EXPECT_TRUE(r3.metadata().has_interned_metadata_payload());
+  EXPECT_EQ(r3.metadata().interned_metadata_payload().value(), "inline_meta");
+}
+
 }  // namespace
 
 }  // namespace xla
