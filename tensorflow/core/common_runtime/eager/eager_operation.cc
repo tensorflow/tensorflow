@@ -150,7 +150,7 @@ absl::Status EagerOperation::SetAttrFloatList(const char* attr_name,
                                               const float* values,
                                               int num_values) {
   MutableAttrs()->Set(attr_name,
-                      gtl::ArraySlice<const float>(values, num_values));
+                      absl::Span<const const float>(values, num_values));
   return absl::OkStatus();
 }
 
@@ -158,7 +158,7 @@ absl::Status EagerOperation::SetAttrIntList(const char* attr_name,
                                             const int64_t* values,
                                             int num_values) {
   MutableAttrs()->Set(
-      attr_name, gtl::ArraySlice<const int64_t>(
+      attr_name, absl::Span<const const int64_t>(
                      reinterpret_cast<const int64_t*>(values), num_values));
   return absl::OkStatus();
 }
@@ -167,7 +167,7 @@ absl::Status EagerOperation::SetAttrTypeList(const char* attr_name,
                                              const DataType* values,
                                              int num_values) {
   MutableAttrs()->Set(attr_name,
-                      gtl::ArraySlice<const DataType>(values, num_values));
+                      absl::Span<const const DataType>(values, num_values));
   return absl::OkStatus();
 }
 
@@ -179,7 +179,7 @@ absl::Status EagerOperation::SetAttrBoolList(const char* attr_name,
     b[i] = values[i];
   }
   MutableAttrs()->Set(attr_name,
-                      gtl::ArraySlice<const bool>(b.get(), num_values));
+                      absl::Span<const const bool>(b.get(), num_values));
   return absl::OkStatus();
 }
 
@@ -222,7 +222,7 @@ absl::Status EagerOperation::SetAttrFunctionList(
     value_operation->Attrs().FillAttrValueMap(funcs[i].mutable_attr());
   }
   MutableAttrs()->Set(
-      attr_name, gtl::ArraySlice<const NameAttrList>(funcs.get(), num_values));
+      attr_name, absl::Span<const const NameAttrList>(funcs.get(), num_values));
   return absl::OkStatus();
 }
 
@@ -418,7 +418,7 @@ void EagerOperation::InferMixedTypeInputListAttrs(
       inference_attrs_.end()) {
     MutableAttrs()->Set(
         input_def.type_list_attr(),
-        gtl::ArraySlice<const DataType>(dtypes.data(), dtypes.size()));
+        absl::Span<const const DataType>(dtypes.data(), dtypes.size()));
     inference_attrs_.insert(input_def.type_list_attr());
   }
 }
