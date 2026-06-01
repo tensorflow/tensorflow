@@ -247,8 +247,40 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
     def func():
       return v.sparse_read(indices), sv.sparse_read(indices)
 
-    got, expect = func()
-    self.assertAllEqual(got, expect)
+    expect, got = func()
+    self.assertEqual(expect.shape, got.shape)
+    self.assertAllEqual(expect, got)
+
+  def test_sparse_read_out_of_order(self):
+    v = variables_lib.Variable(
+        constant_op.constant([[i] for i in range(30)], dtype=dtypes.float32)
+    )
+    indices = constant_op.constant([21, 0, 12, 22, 10])
+
+    v0 = variables_lib.Variable(
+        constant_op.constant([[i] for i in range(10)], dtype=dtypes.float32)
+    )
+    v1 = variables_lib.Variable(
+        constant_op.constant(
+            [[i] for i in range(10, 20)], dtype=dtypes.float32
+        )
+    )
+    v2 = variables_lib.Variable(
+        constant_op.constant(
+            [[i] for i in range(20, 30)], dtype=dtypes.float32
+        )
+    )
+    sv = sharded_variable.ShardedVariable([v0, v1, v2])
+
+    self.assertAllEqual(v.sparse_read(indices), sv.sparse_read(indices))
+
+    @def_function.function
+    def func():
+      return v.sparse_read(indices), sv.sparse_read(indices)
+
+    expect, got = func()
+    self.assertEqual(expect.shape, got.shape)
+    self.assertAllEqual(expect, got)
 
   def test_control_dep_on_assign(self):
     v0 = variables_lib.Variable([[0, 0]])
