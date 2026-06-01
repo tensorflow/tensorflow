@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/codegen/xtile/codegen/tiled_emitter_constraints.h"
 #include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/service/decision.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -125,9 +126,8 @@ class TritonEmitterConstraints : public EmitterSpecificConstraints {
 
 namespace experimental {
 
-absl::Status VerifyTritonConstraints(
-    const TiledHloComputation& tiled_computation,
-    const se::DeviceDescription& device_info);
+Decision VerifyTritonConstraints(const TiledHloComputation& tiled_computation,
+                                 const se::DeviceDescription& device_info);
 
 }  // namespace experimental
 
