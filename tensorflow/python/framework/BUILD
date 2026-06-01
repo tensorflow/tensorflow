@@ -1101,9 +1101,9 @@ cc_library(
         "//tensorflow/python/lib/core:py_util",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//tensorflow/python/util:cpp_python_util",
+        "//tensorflow/python/util:free_threading_mutex",
         "//tensorflow/python/util:function_parameter_canonicalizer",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
@@ -1129,9 +1129,11 @@ tf_python_pybind_extension(
         "_pywrap_python_api_dispatcher.pyi",
     ],
     deps = [
+        "//tensorflow/python/util:free_threading_mutex",
         "//tensorflow/python/util:function_parameter_canonicalizer_hdrs",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@pybind11",
         "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ] + if_pywrap([":python_api_dispatcher"]),

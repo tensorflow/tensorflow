@@ -281,6 +281,18 @@ tf_python_pybind_extension(
 )
 
 cc_library(
+    name = "free_threading_mutex",
+    hdrs = ["free_threading_mutex.h"],
+    visibility = [
+        "//tensorflow/python:__subpackages__",
+    ],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
     name = "cpp_python_util",
     srcs = ["util.cc"],
     hdrs = ["util.h"],

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/python/framework/python_api_dispatcher.h"
 
+#include <algorithm>
 #include <set>
 #include <vector>
 
@@ -23,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/python/lib/core/py_util.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
+#include "tensorflow/python/util/free_threading_mutex.h"
 #include "tensorflow/python/util/util.h"
 
 namespace tensorflow {
@@ -188,11 +190,11 @@ PySignatureChecker::PySignatureChecker(
     std::vector<ParamChecker> parameter_checkers)
     : positional_parameter_checkers_(std::move(parameter_checkers)) {
   // Check less expensive parameters first.
-  std::sort(positional_parameter_checkers_.begin(),
-            positional_parameter_checkers_.end(),
-            [](ParamChecker a, ParamChecker b) {
-              return a.second->cost() < b.second->cost();
-            });
+  std::stable_sort(positional_parameter_checkers_.begin(),
+                   positional_parameter_checkers_.end(),
+                   [](ParamChecker a, ParamChecker b) {
+                     return a.second->cost() < b.second->cost();
+                   });
 }
 
 bool PySignatureChecker::CheckCanonicalizedArgs(
@@ -244,9 +246,13 @@ PyInstanceChecker::~PyInstanceChecker() {
 PyTypeChecker::MatchType PyInstanceChecker::Check(PyObject* value) {
   DCheckPyGilState();
   auto* type = Py_TYPE(value);
-  auto it = py_class_cache_.find(type);
-  if (it != py_class_cache_.end()) {
-    return it->second;
+  {
+    tensorflow::py_util::FreeThreadingReaderMutexLock lock(
+        &py_class_cache_mutex_);
+    auto it = py_class_cache_.find(type);
+    if (it != py_class_cache_.end()) {
+      return it->second;
+    }
   }
 
   MatchType result = MatchType::NO_MATCH;
@@ -265,11 +271,23 @@ PyTypeChecker::MatchType PyInstanceChecker::Check(PyObject* value) {
     }
   }
 
-  if (py_class_cache_.size() < kMaxItemsInCache) {
-    Py_INCREF(type);
-    auto insert_result = py_class_cache_.insert({type, result});
-    if (!insert_result.second) {
-      Py_DECREF(type);  // Result was added by a different thread.
+  {
+    tensorflow::py_util::FreeThreadingWriterMutexLock lock(
+        &py_class_cache_mutex_);
+#ifdef Py_GIL_DISABLED
+    // Double check under the lock to handle concurrent insertions in
+    // free-threaded mode.
+    auto it = py_class_cache_.find(type);
+    if (it != py_class_cache_.end()) {
+      return it->second;
+    }
+#endif
+    if (py_class_cache_.size() < kMaxItemsInCache) {
+      Py_INCREF(type);
+      auto insert_result = py_class_cache_.insert({type, result});
+      if (!insert_result.second) {
+        Py_DECREF(type);  // Result was added by a different thread.
+      }
     }
   }
   return result;

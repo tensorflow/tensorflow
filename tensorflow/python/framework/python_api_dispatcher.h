@@ -38,6 +38,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
+#include "tensorflow/python/util/free_threading_mutex.h"
 #include "tensorflow/python/util/function_parameter_canonicalizer.h"
 
 namespace tensorflow {
@@ -206,8 +207,11 @@ class PyInstanceChecker : public PyTypeChecker {
   int cost() const override;
   std::string DebugString() const override;
 
-  // Size of the cache (for regression testing).
-  size_t cache_size() const { return py_class_cache_.size(); }
+  size_t cache_size() const {
+    tensorflow::py_util::FreeThreadingReaderMutexLock lock(
+        &py_class_cache_mutex_);
+    return py_class_cache_.size();
+  }
 
  private:
   // Python class to check values against.
@@ -216,7 +220,10 @@ class PyInstanceChecker : public PyTypeChecker {
   // Cache to avoid having to call PyObject_IsInstance.  Note: we rely on the
   // Python GIL (global interpreter lock) to avoid concurrent writes to this
   // cache, since `Check()` is always called from Python (via pybind11).
-  absl::flat_hash_map<PyTypeObject*, MatchType> py_class_cache_;
+  absl::flat_hash_map<PyTypeObject*, MatchType> py_class_cache_
+      ABSL_GUARDED_BY(py_class_cache_mutex_);
+
+  mutable tensorflow::py_util::FreeThreadingMutex py_class_cache_mutex_;
 
   // Maximum cache size.  In typical user programs, the cache will never become
   // full, but we use a maximum size in case the user creates types dynamically,
