@@ -176,6 +176,7 @@ cc_library(
         "//xla:comparison_util",
         "//xla:xla_data_proto_cc",
         "//xla/codegen/intrinsic",
+        "//xla/codegen/intrinsic:atan2",
         "//xla/codegen/intrinsic:erf",
         "//xla/codegen/intrinsic:exp",
         "//xla/codegen/intrinsic:fptrunc",
