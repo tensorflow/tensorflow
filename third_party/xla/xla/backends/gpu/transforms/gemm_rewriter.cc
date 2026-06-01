@@ -2589,6 +2589,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2FNUZ,
          PrimitiveType::F8E4M3FNUZ, DataType::kFloat},
 
+        {ComputationType::kF64, DataType::kDouble, PrimitiveType::F64,
+         PrimitiveType::F64, DataType::kDouble},
+
         // TF32
         {ComputationType::kTF32AsF32, DataType::kFloat, PrimitiveType::F32,
          PrimitiveType::F32, DataType::kFloat},
