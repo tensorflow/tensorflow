@@ -66,6 +66,10 @@ namespace {
 
 using ::testing::_;
 using ::testing::AllOf;
+using ::testing::Each;
+using ::testing::ElementsAre;
+using ::testing::HasSubstr;
+using ::testing::Property;
 using ::testing::UnorderedElementsAre;
 using ::xla::test_only::ShardingFormatPicker;
 namespace op = xla::testing::opcode_matchers;
@@ -14844,8 +14848,8 @@ ENTRY entry {
   auto module_status = PartitionComputation(hlo_string, /*num_devices=*/4);
   EXPECT_FALSE(module_status.status().ok());
   EXPECT_THAT(module_status.status().ToString(),
-              ::testing::HasSubstr("Manual all-reduce across devices that "
-                                   "belong to different manual subgroups"));
+              HasSubstr("Manual all-reduce across devices that "
+                        "belong to different manual subgroups"));
 }
 
 TEST_P(SpmdPartitioningTest, AllReduceNoSharding) {
@@ -16964,7 +16968,7 @@ ENTRY entry {
 
   auto replica_groups = Cast<HloAllReduceInstruction>(root)->replica_groups();
   EXPECT_EQ(replica_groups.size(), 4);
-  EXPECT_THAT(replica_groups[0].replica_ids(), ::testing::ElementsAre(0, 2));
+  EXPECT_THAT(replica_groups[0].replica_ids(), ElementsAre(0, 2));
 }
 
 TEST_P(SpmdPartitioningTest, RaggedDotContractingMode) {
@@ -17026,7 +17030,7 @@ ENTRY entry {
 
   auto replica_groups = Cast<HloAllReduceInstruction>(root)->replica_groups();
   EXPECT_EQ(replica_groups.size(), 8);
-  EXPECT_THAT(replica_groups[0].replica_ids(), ::testing::ElementsAre(0, 1));
+  EXPECT_THAT(replica_groups[0].replica_ids(), ElementsAre(0, 1));
 }
 
 TEST_P(SpmdPartitioningTest, RaggedDotBatchModeWithoutPadding) {
@@ -17057,7 +17061,7 @@ ENTRY entry {
 
   auto replica_groups = Cast<HloAllReduceInstruction>(root)->replica_groups();
   EXPECT_EQ(replica_groups.size(), 8);
-  EXPECT_THAT(replica_groups[0].replica_ids(), ::testing::ElementsAre(0, 1));
+  EXPECT_THAT(replica_groups[0].replica_ids(), ElementsAre(0, 1));
 }
 
 TEST_P(SpmdPartitioningTest, UnreducedDot) {
@@ -17092,7 +17096,7 @@ ENTRY entry {
   VLOG(1) << module->ToString();
   // Check that unreduced HloSharding is preserved after the pass.
   EXPECT_THAT(module->entry_computation()->parameter_instructions(),
-              ::testing::Each(op::Sharding("{unreduced}")));
+              Each(op::Sharding("{unreduced}")));
 }
 
 TEST_P(SpmdPartitioningTest, SubgroupUnreducedParam) {
@@ -17108,9 +17112,9 @@ ENTRY entry {
                           PartitionComputation(hlo_string, /*num_devices=*/4));
   VLOG(1) << module->ToString();
   // Check that unreduced HloSharding is preserved after the pass.
-  EXPECT_THAT(module->entry_computation()->parameter_instructions(),
-              ::testing::Each(op::Sharding(
-                  "{devices=[1,2,2]<=[4] last_tile_dims={unreduced}}")));
+  EXPECT_THAT(
+      module->entry_computation()->parameter_instructions(),
+      Each(op::Sharding("{devices=[1,2,2]<=[4] last_tile_dims={unreduced}}")));
 }
 
 TEST_P(SpmdPartitioningTest, SubgroupUnreducedDot) {
@@ -17186,8 +17190,8 @@ ENTRY entry {
       all_gather_instruction->replica_groups();
   std::vector<::testing::Matcher<ReplicaGroup>> expected_ag_groups;
   for (int i = 0; i < 8; ++i) {
-    expected_ag_groups.push_back(::testing::Property(
-        &ReplicaGroup::replica_ids, ::testing::ElementsAre(i * 2, i * 2 + 1)));
+    expected_ag_groups.push_back(
+        Property(&ReplicaGroup::replica_ids, ElementsAre(i * 2, i * 2 + 1)));
   }
   EXPECT_THAT(all_gather_instruction->replica_groups(),
               ElementsAreArray(expected_ag_groups));
@@ -17197,13 +17201,10 @@ ENTRY entry {
   EXPECT_EQ(all_gather_instruction->all_gather_dimension(), 0);
   replica_groups = all_gather_instruction->replica_groups();
   EXPECT_THAT(replica_groups,
-              ::testing::ElementsAre(
-                  ::testing::Property(
-                      &ReplicaGroup::replica_ids,
-                      ::testing::ElementsAre(0, 2, 4, 6, 8, 10, 12, 14)),
-                  ::testing::Property(
-                      &ReplicaGroup::replica_ids,
-                      ::testing::ElementsAre(1, 3, 5, 7, 9, 11, 13, 15))));
+              ElementsAre(Property(&ReplicaGroup::replica_ids,
+                                   ElementsAre(0, 2, 4, 6, 8, 10, 12, 14)),
+                          Property(&ReplicaGroup::replica_ids,
+                                   ElementsAre(1, 3, 5, 7, 9, 11, 13, 15))));
 }
 
 TEST_P(SpmdPartitioningTest, OriginalValueWithTransposedShardingAnnotation) {
@@ -17246,34 +17247,24 @@ ENTRY entry {
       all_gather_instruction->replica_groups();
   EXPECT_THAT(
       all_gather_instruction->replica_groups(),
-      UnorderedElementsAre(::testing::Property(&xla::ReplicaGroup::replica_ids,
-                                               ::testing::ElementsAre(0, 8)),
-                           ::testing::Property(&xla::ReplicaGroup::replica_ids,
-                                               ::testing::ElementsAre(2, 10)),
-                           ::testing::Property(&xla::ReplicaGroup::replica_ids,
-                                               ::testing::ElementsAre(4, 12)),
-                           ::testing::Property(&xla::ReplicaGroup::replica_ids,
-                                               ::testing::ElementsAre(6, 14)),
-                           ::testing::Property(&xla::ReplicaGroup::replica_ids,
-                                               ::testing::ElementsAre(1, 9)),
-                           ::testing::Property(&xla::ReplicaGroup::replica_ids,
-                                               ::testing::ElementsAre(3, 11)),
-                           ::testing::Property(&xla::ReplicaGroup::replica_ids,
-                                               ::testing::ElementsAre(5, 13)),
-                           ::testing::Property(&xla::ReplicaGroup::replica_ids,
-                                               ::testing::ElementsAre(7, 15))));
+      UnorderedElementsAre(
+          Property(&xla::ReplicaGroup::replica_ids, ElementsAre(0, 8)),
+          Property(&xla::ReplicaGroup::replica_ids, ElementsAre(2, 10)),
+          Property(&xla::ReplicaGroup::replica_ids, ElementsAre(4, 12)),
+          Property(&xla::ReplicaGroup::replica_ids, ElementsAre(6, 14)),
+          Property(&xla::ReplicaGroup::replica_ids, ElementsAre(1, 9)),
+          Property(&xla::ReplicaGroup::replica_ids, ElementsAre(3, 11)),
+          Property(&xla::ReplicaGroup::replica_ids, ElementsAre(5, 13)),
+          Property(&xla::ReplicaGroup::replica_ids, ElementsAre(7, 15))));
   all_gather_instruction =
       static_cast<const HloAllGatherInstruction*>(*iterator);
   EXPECT_EQ(all_gather_instruction->all_gather_dimension(), 0);
   replica_groups = all_gather_instruction->replica_groups();
-  EXPECT_THAT(
-      replica_groups,
-      ::testing::ElementsAre(
-          ::testing::Property(&ReplicaGroup::replica_ids,
-                              ::testing::ElementsAre(0, 2, 4, 6, 1, 3, 5, 7)),
-          ::testing::Property(
-              &ReplicaGroup::replica_ids,
-              ::testing::ElementsAre(8, 10, 12, 14, 9, 11, 13, 15))));
+  EXPECT_THAT(replica_groups,
+              ElementsAre(Property(&ReplicaGroup::replica_ids,
+                                   ElementsAre(0, 2, 4, 6, 1, 3, 5, 7)),
+                          Property(&ReplicaGroup::replica_ids,
+                                   ElementsAre(8, 10, 12, 14, 9, 11, 13, 15))));
 }
 
 TEST_P(SpmdPartitioningTest, OriginalValueWithTupleTypeShardingAnnotation) {
@@ -17716,8 +17707,7 @@ ENTRY entry {
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   // Check that unreduced HloSharding is preserved after the pass.
   for (auto* param : module->entry_computation()->parameter_instructions()) {
-    EXPECT_THAT(param->sharding().ToString(),
-                ::testing::HasSubstr("unreduced"));
+    EXPECT_THAT(param->sharding().ToString(), HasSubstr("unreduced"));
   }
 }
 
@@ -17732,9 +17722,9 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/4));
   // Check that unreduced HloSharding is preserved after the pass.
-  EXPECT_THAT(module->entry_computation()->parameter_instructions(),
-              ::testing::Each(op::Sharding(
-                  "{mesh['x'=2,'y'=2] [{?},{'x'}], unreduced={'y'}}")));
+  EXPECT_THAT(
+      module->entry_computation()->parameter_instructions(),
+      Each(op::Sharding("{mesh['x'=2,'y'=2] [{?},{'x'}], unreduced={'y'}}")));
 }
 
 TEST_F(SpmdPartitioningV3Test, PatternMatchMergeNamedSharding) {
