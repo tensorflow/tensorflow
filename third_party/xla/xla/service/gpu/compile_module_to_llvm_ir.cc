@@ -141,13 +141,9 @@ absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
                               cache_file_path);
   }
   if (tsl::Env::Default()->FileExists(resolved_path).ok()) {
-    std::string serialized;
-    RETURN_IF_ERROR(
-        tsl::ReadFileToString(tsl::Env::Default(), resolved_path, &serialized));
     CompilationCacheProto proto;
-    if (!proto.ParseFromString(serialized)) {
-      return Internal("Failed to parse serialized CompilationCacheProto.");
-    }
+    RETURN_IF_ERROR(
+        tsl::ReadBinaryProto(tsl::Env::Default(), resolved_path, &proto));
     // Register all cached kernel names with the name uniquer to avoid
     // naming conflicts.
     for (const auto& [name, _] : proto.entries()) {

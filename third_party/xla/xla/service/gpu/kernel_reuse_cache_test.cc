@@ -66,7 +66,7 @@ TEST_F(KernelReuseTest, ExportAndLoadWork) {
                     launch_dimensions { num_blocks: 1 num_threads_per_block: 1 }
                   }
                 }
-                compatibility_version: 2
+                compatibility_version: 3
               )pb"));
 
   TF_EXPECT_OK(cache.Load(proto));
@@ -102,7 +102,7 @@ TEST_F(KernelReuseTest, UpdatingDiskKernelCacheWorks) {
   {
     const CompilationCacheProto proto = [](std::string kernel_name) {
       KernelReuseCache cache;
-      auto [result, was_cached] = cache.GetWithStatus("fingerprint", [&]() {
+      auto [result, was_cached] = cache.GetWithStatus("fingerprint1", [&]() {
         return KernelReuseCache::Entry{.kernel_name = kernel_name,
                                        .binary = {7, 8}};
       });

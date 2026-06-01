@@ -15,17 +15,22 @@ limitations under the License.
 #include "xla/service/gpu/kernel_reuse_cache.h"
 
 #include <cstdint>
+#include <limits>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/random/random.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -40,11 +45,41 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/file_system.h"
 #include "xla/util.h"
 
 namespace xla::gpu {
+namespace {
 
-constexpr int kCacheCompatibilityVersion = 2;
+// Collisions are expected. Perfoming atomic file write.
+absl::Status SetFileContent(absl::string_view path, absl::string_view content) {
+  tsl::Env* env = tsl::Env::Default();
+  absl::InsecureBitGen gen;
+  std::string tmppath =
+      absl::StrCat(path, ".tmp.",
+                   absl::uniform_int_distribution<int>(
+                       0, std::numeric_limits<int>::max())(gen));
+  if (!env->CreateUniqueFileName(&tmppath, "")) {
+    return absl::InternalError(
+        absl::StrCat("Unable to create tempfile name for :", path));
+  }
+  bool has_atomic_move;
+  RETURN_IF_ERROR(env->HasAtomicMove(tmppath, &has_atomic_move));
+  if (!has_atomic_move) {
+    return absl::InternalError(
+        absl::StrCat("Atomic move is not supported for :", path));
+  }
+
+  std::unique_ptr<tsl::WritableFile> file;
+  RETURN_IF_ERROR(env->NewWritableFile(tmppath, &file));
+  RETURN_IF_ERROR(file->Append(content));
+  RETURN_IF_ERROR(file->Close());
+
+  return env->RenameFile(tmppath, std::string(path));
+}
+}  // namespace
+
+constexpr int kCacheCompatibilityVersion = 3;
 
 absl::Status KernelReuseCache::Load(const CompilationCacheProto& proto) {
   if (proto.compatibility_version() != kCacheCompatibilityVersion) {
@@ -123,13 +158,8 @@ absl::Status UpdateDiskKernelCache(absl::string_view path, const bool do_append,
                                    const CompilationCacheProto& current_cache) {
   CompilationCacheProto disk_cache;
   if (do_append) {
-    std::string serialized;
-    RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(),
-                                          std::string(path), &serialized));
-    if (!disk_cache.ParseFromString(serialized)) {
-      return Internal("Failed to parse serialized CompilationCacheProto.");
-    }
-
+    RETURN_IF_ERROR(tsl::ReadBinaryProto(tsl::Env::Default(), std::string(path),
+                                         &disk_cache));
     if (disk_cache.compatibility_version() != kCacheCompatibilityVersion) {
       LOG(WARNING) << "Provided CompilationCacheProto contains no longer "
                       "compatible data and needs to be regenerated.";
@@ -137,17 +167,23 @@ absl::Status UpdateDiskKernelCache(absl::string_view path, const bool do_append,
     }
   }
 
+  absl::flat_hash_set<std::string> kernel_fingerprints;
+  for (const auto& [_, entry] : disk_cache.entries()) {
+    kernel_fingerprints.insert(entry.fingerprint());
+  }
+
   int stored_kernel_count = 0;
   for (const auto& [name, entry] : current_cache.entries()) {
+    if (kernel_fingerprints.contains(entry.fingerprint())) {
+      continue;
+    }
     (*disk_cache.mutable_entries())[name] = entry;
     stored_kernel_count++;
   }
 
   disk_cache.set_compatibility_version(kCacheCompatibilityVersion);
   if (stored_kernel_count) {
-    RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(),
-                                           std::string(path),
-                                           disk_cache.SerializeAsString()));
+    RETURN_IF_ERROR(gpu::SetFileContent(path, disk_cache.SerializeAsString()));
     VLOG(2) << "Stored " << stored_kernel_count
             << " kernels in the cache file.";
   }
