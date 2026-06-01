@@ -3936,6 +3936,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/utils:hlo_query",
+        "//xla/hlo/utils:hlo_traversal",
         "//xla/service:call_graph",
         "//xla/service:hlo_module_config",
         "//xla/service:instruction_fusion",

@@ -274,6 +274,8 @@ absl::Status VerifyTritonConstraints(
   // that the total number of elements in a padded block (product of tile sizes
   // padded to power of 2) does not exceed TRITON_MAX_TENSOR_NUMEL = 1048576.
   for (const TiledHloInstruction* inst : tiled_computation.instructions()) {
+    VLOG(2) << "Verifying constraints for instruction: "
+            << inst->hlo()->ToString() << " tile: " << inst->tile().ToString();
     ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> static_tile_sizes,
                      inst->tile().GetStaticTileSizes());
     int64_t product = 1;
@@ -299,6 +301,9 @@ absl::Status VerifyTritonConstraints(
   for (const TiledHloInstruction* inst : tiled_computation.instructions()) {
     if (inst->hlo()->opcode() == HloOpcode::kDot) {
       for (const TiledHloInstruction* operand : inst->operands()) {
+        VLOG(2) << "Verifying constraints for dot operand: "
+                << operand->hlo()->ToString()
+                << " tile: " << operand->tile().ToString();
         ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> op_tile_sizes,
                          operand->tile().GetStaticTileSizes());
         for (int64_t size : op_tile_sizes) {

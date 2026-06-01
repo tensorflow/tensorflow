@@ -636,14 +636,14 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
     ASSIGN_OR_RETURN(experimental::TiledHloComputation tiled_hlo_computation,
                      experimental::TiledHloComputation::Tile(
                          fusion_adaptor, std::move(tiling_space)));
-
+    // TODO: b/511080616 - no need to check for emitter specific constraints?
+    // Symbolic analysis below does not use device_info_.
     return EstimateRunTimeForTiledHloComputationImpl(
         fusion_adaptor, tiled_hlo_computation, block_level_parameters.num_warps,
         *device_info_, shape_size_,
         [&](const HloInstruction* hlo) { return FlopsPerElement(hlo); });
   }
 
-  // TODO(b/332714755): Add caching for SymbolicTileAnalysis.
   SymbolicTileAnalysisOrError analysis_or_error =
       SymbolicTileAnalysis::AnalyzeFusion(
           fusion_adaptor, mlir_context_,

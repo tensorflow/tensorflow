@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -188,7 +189,8 @@ absl::StatusOr<bool> ConvertTritonGemmConfig::RunImpl(
 // propagation framework.
 absl::StatusOr<BlockLevelParameters> FindBlockLevelParametersWithTilingSpace(
     const HloInstruction* dot, const TritonGemmConfig& config,
-    MLIRContext* mlir_context) {
+    MLIRContext* mlir_context,
+    const se::DeviceDescription& device_description) {
   // M and N block sizes are defined at the fusion root output. However, because
   // the output shape may be transposed, elementwise fused, or broadcasted, M
   // and N can correspond to arbitrary dimensions at the root. This function
@@ -255,6 +257,14 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParametersWithTilingSpace(
               << " with error: " << tiled_computation.status().message();
       continue;
     }
+
+    absl::Status verification_status = experimental::VerifyTritonConstraints(
+        *tiled_computation, device_description);
+    if (!verification_status.ok()) {
+      VLOG(8) << "Candidate tiling violates Triton constraints: "
+              << verification_status.message();
+      continue;
+    }
     // Finds the corresponding tiled instruction for its original HLO
     // instruction.
     auto tiled_dot =
@@ -310,7 +320,8 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
           ->config()
           .debug_options()
           .xla_gpu_experimental_enable_tiling_propagation()) {
-    return FindBlockLevelParametersWithTilingSpace(dot, config, mlir_context);
+    return FindBlockLevelParametersWithTilingSpace(dot, config, mlir_context,
+                                                   device_description);
   }
 
   VLOG(3) << "FindOutputTileSizesForEpilogue of computation: "

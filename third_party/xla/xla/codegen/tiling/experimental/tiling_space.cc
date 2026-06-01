@@ -353,6 +353,8 @@ SymbolicExpr TilingSpace::SimplifyExpression(const SymbolicExpr& expr) const {
 
 absl::StatusOr<std::vector<llvm::SmallVector<int64_t, 4>>>
 TilingSpace::GetValidTilings() {
+  // TODO: b/511080616 - returned tilings should be valid. Right now we return
+  // all possible tilings and rely on the downstream to check the validity.
   llvm::SmallVector<int64_t, 4> input_space;
 
   for (const auto& dim : dimensions_) {

@@ -103,7 +103,7 @@ const char kSimpleGemmFusionHlo[] = R"(
       backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
   })";
 
-const char kScaledDotHlo[] = R"(
+const char kScaledDotHlo[] = R"hlo(
 HloModule ScaledDotIsFused, entry_computation_layout={(bf16[4,4]{1,0}, bf16[4,4]{1,0}, bf16[1,1]{1,0}, bf16[1,1]{1,0})->bf16[4,4]{1,0}}
 
 %fusion_dot (parameter_0: bf16[4,4], parameter_1: bf16[4,4], parameter_2: bf16[1,1], parameter_3: bf16[1,1]) -> bf16[4,4] {
@@ -120,7 +120,7 @@ ENTRY %entry (lhs: bf16[4,4], rhs: bf16[4,4], lhs_scale: bf16[1,1], rhs_scale: b
   %lhs_scale = bf16[1,1]{1,0} parameter(2)
   %rhs_scale = bf16[1,1]{1,0} parameter(3)
   ROOT %fusion = bf16[4,4]{1,0} fusion(%lhs, %rhs, %lhs_scale, %rhs_scale), kind=kCustom, calls=%fusion_dot, metadata={op_name="foo"}, backend_config={"operation_queue_id":"0","fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
-})";
+})hlo";
 
 class TritonBackendTest : public HloHardwareIndependentTestBase,
                           public ::testing::WithParamInterface<bool> {
