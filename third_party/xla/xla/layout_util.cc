@@ -296,6 +296,44 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
                            layout.element_size_in_bits());
   }
 
+  // Validate split configs.
+  absl::InlinedVector<bool, InlineRank()> physical_dims_in_split_config(
+      shape.dimensions().size(), false);
+  for (const SplitConfig& config : layout.split_configs()) {
+    int64_t physical_dim = config.dimension();
+    if (physical_dim < 0 || physical_dim >= shape.dimensions().size()) {
+      return InvalidArgument(
+          "split config has out-of-bounds physical dimension: %d; shape: %s",
+          physical_dim, shape.ToString());
+    }
+    if (physical_dims_in_split_config[physical_dim]) {
+      return InvalidArgument(
+          "split config has duplicate physical dimension: %d; shape: %s",
+          physical_dim, shape.ToString());
+    }
+    physical_dims_in_split_config[physical_dim] = true;
+
+    int64_t logical_dim = Major(layout, physical_dim);
+    int64_t dim_size = shape.dimensions(logical_dim);
+
+    int64_t last_split_index = 0;
+    for (int64_t split_index : config.split_indices()) {
+      if (split_index <= last_split_index) {
+        return InvalidArgument(
+            "split config split indices must be strictly increasing and "
+            "positive: {%s}; shape: %s",
+            absl::StrJoin(config.split_indices(), ", "), shape.ToString());
+      }
+      if (split_index >= dim_size) {
+        return InvalidArgument(
+            "split config split index is out of bounds: %d (dim size %d); "
+            "shape: %s",
+            split_index, dim_size, shape.ToString());
+      }
+      last_split_index = split_index;
+    }
+  }
+
   return absl::OkStatus();
 }
 

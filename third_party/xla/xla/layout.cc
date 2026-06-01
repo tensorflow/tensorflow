@@ -457,6 +457,16 @@ void Layout::clear_physical_shape() { physical_shape_ = nullptr; }
 Layout& Layout::DeleteDimension(int dim_to_delete) {
   CHECK_GE(dim_to_delete, 0);
   CHECK_LT(dim_to_delete, minor_to_major_.size());
+
+  int64_t deleted_physical_dim = -1;
+  for (int i = 0; i < minor_to_major_.size(); ++i) {
+    if (minor_to_major_[i] == dim_to_delete) {
+      deleted_physical_dim = minor_to_major_.size() - 1 - i;
+      break;
+    }
+  }
+  CHECK_NE(deleted_physical_dim, -1);
+
   for (int i = 0; i < minor_to_major_.size();) {
     if (minor_to_major_[i] == dim_to_delete) {
       minor_to_major_.erase(minor_to_major_.begin() + i);
@@ -467,6 +477,18 @@ Layout& Layout::DeleteDimension(int dim_to_delete) {
     }
     ++i;
   }
+
+  for (auto it = split_configs_.begin(); it != split_configs_.end();) {
+    if (it->dimension() == deleted_physical_dim) {
+      it = split_configs_.erase(it);
+    } else {
+      if (it->dimension() > deleted_physical_dim) {
+        it->set_dimension(it->dimension() - 1);
+      }
+      ++it;
+    }
+  }
+
   return *this;
 }
 
