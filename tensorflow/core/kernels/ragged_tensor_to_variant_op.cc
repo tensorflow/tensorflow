@@ -282,6 +282,10 @@ class RaggedTensorToVariantGradientOp : public OpKernel {
         // default-constructed variant; so treat it as a zero tensor with the
         // appropriate shape.
         const auto value_dtype = DataTypeToEnum<VALUE_TYPE>::v();
+        OP_REQUIRES(context, flat_row_splits.size() > i + 1,
+                    errors::InvalidArgument(
+                        "row_splits has insufficient size: ",
+                        flat_row_splits.size(), " vs required ", i + 2));
         auto piece_size = flat_row_splits(i + 1) - flat_row_splits(i);
         TensorShape zeros_shape = dense_values_shape;
         zeros_shape.set_dim(0, piece_size);
