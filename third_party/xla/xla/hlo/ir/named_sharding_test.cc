@@ -949,16 +949,5 @@ TEST(NamedShardingTest,
       ElementsAre(AxisRef(0, {1, 2}), AxisRef(0, {4, 2}), AxisRef(1, {1, 3})));
 }
 
-TEST(NamedShardingTest, JaxPartitions) {
-  Mesh mesh({2, 4, 3, 5}, {"a", "b", "c", "d"});
-  NamedSharding sharding =
-      test_utils::FromAxisNames(mesh, {{"a", "b"}, {}, {"c"}});
-  EXPECT_THAT(
-      sharding.JaxPartitions(),
-      ElementsAre(ElementsAre("a", "b"), ElementsAre(), ElementsAre("c")));
-
-  EXPECT_TRUE(NamedSharding::Replicate().JaxPartitions().empty());
-}
-
 }  // namespace
 }  // namespace xla

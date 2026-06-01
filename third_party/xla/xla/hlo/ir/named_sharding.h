@@ -149,13 +149,6 @@ class NamedSharding {
     return mesh_.device_assignment().num_elements();
   }
 
-  // Returns the partitions for the sharding which can be used to construct a
-  // JAX PartitionSpec.
-  //
-  // This method is only used for JAX as it requires every dimension to be
-  // closed and full axis.
-  std::vector<std::vector<std::string>> JaxPartitions() const;
-
   bool IsReplicated() const {
     return !IsSingleDevice() &&
            absl::c_all_of(dim_shardings_,

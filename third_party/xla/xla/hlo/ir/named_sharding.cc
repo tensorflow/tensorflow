@@ -365,22 +365,6 @@ std::ostream& operator<<(std::ostream& out, const NamedSharding& sharding) {
   return out << sharding.ToString();
 }
 
-std::vector<std::vector<std::string>> NamedSharding::JaxPartitions() const {
-  std::vector<std::vector<std::string>> partitions;
-  partitions.reserve(dim_shardings_.size());
-  for (const DimensionSharding& dim_sharding : dim_shardings_) {
-    CHECK(dim_sharding.is_closed()) << "JaxPartitions should only be "
-                                       "called for closed dimension shardings.";
-    std::vector<std::string>& partition = partitions.emplace_back();
-    for (const AxisRef& axis : dim_sharding.axes()) {
-      partition.emplace_back(mesh_.axis_names()[axis.mesh_axis_index()]);
-      CHECK(!axis.sub_axis_info().has_value())
-          << "JaxPartitions should only be called for full axis.";
-    }
-  }
-  return partitions;
-}
-
 std::vector<AxisRef> NamedSharding::GetImplicitlyReplicatedAxes() const {
   std::vector<AxisRef> implicitly_replicated_axes;
 
