@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
+#include "xla/core/collectives/registered_memory.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/future.h"
 #include "xla/runtime/device_id.h"
@@ -301,6 +302,37 @@ TEST(GpuCollectivesTest, CreateSymmetricMemory) {
   // Register allocated buffers as symmetric memory.
   auto fsymm = CreateSymmetricMemory(exec, comms, allocs);
   ASSERT_OK_AND_ASSIGN(auto symm, AwaitSymmetricMemory(std::move(fsymm)));
+}
+
+TEST(GpuCollectivesTest, CreateRegisteredMemory) {
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("CUDA"));
+
+  if (platform->VisibleDeviceCount() < 2) {
+    GTEST_SKIP() << "Test requires at least 2 GPUs";
+  }
+
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                       CreateExecutors(platform, 2));
+
+  ASSERT_OK_AND_ASSIGN(auto comms, CreateCommunicators(executors, {kD0, kD1}));
+
+  EXPECT_TRUE(comms[0]->platform_comm().handle);
+  EXPECT_TRUE(comms[1]->platform_comm().handle);
+
+  ASSERT_OK_AND_ASSIGN(auto allocators, CreateMemoryAllocators(executors));
+  ASSERT_OK_AND_ASSIGN(auto allocs, Allocate(allocators, 1024));
+
+  // Unlike symmetric memory, buffer registration is not a collective operation:
+  // each rank may register independently. The returned handle keeps the buffer
+  // registered until it is destroyed.
+  std::vector<std::unique_ptr<RegisteredMemory>> registered;
+  for (size_t i = 0; i < comms.size(); ++i) {
+    ASSERT_OK_AND_ASSIGN(
+        auto reg, comms[i]->CreateRegisteredMemory(allocs[i]->address()));
+    EXPECT_EQ(reg->addr(), allocs[i]->address());
+    registered.push_back(std::move(reg));
+  }
 }
 
 TEST(GpuCollectivesTest, CreateSymmetricMemoryOnDifferentComms) {
