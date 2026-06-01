@@ -2287,8 +2287,7 @@ bool DefinesCollectiveMemorySpaceFrontendAttr(const HloValue* value) {
   return false;
 }
 
-bool RequiresCollectiveInput(const HloUse& use, const DebugOptions& opts,
-                             const GpuTopology& gpu_topology) {
+bool RequiresCollectiveInput(const HloUse& use, const DebugOptions& opts) {
   const bool is_nccl_buffers_used =
       opts.xla_gpu_enable_nccl_user_buffers() ||
       opts.xla_gpu_experimental_enable_nccl_symmetric_buffers();
@@ -2330,17 +2329,10 @@ bool RequiresCollectiveInput(const HloUse& use, const DebugOptions& opts,
     return true;
   }
 
-  // Check Mosaic with uses_xla_collective_metadata attribute
-  if (gpu_topology.num_partitions() > gpu_topology.num_devices_per_host() &&
-      IsMosaicWithCollectiveMetadata(*user)) {
-    return true;
-  }
-
   return false;
 }
 
-bool RequiresCollectiveOutput(const HloValue* value, const DebugOptions& opts,
-                              const GpuTopology& gpu_topology) {
+bool RequiresCollectiveOutput(const HloValue* value, const DebugOptions& opts) {
   HloInstruction* def = value->defining_instruction();
   const bool is_nccl_buffers_used =
       opts.xla_gpu_enable_nccl_user_buffers() ||
@@ -2379,19 +2371,12 @@ bool RequiresCollectiveOutput(const HloValue* value, const DebugOptions& opts,
     return true;
   }
 
-  // Check Mosaic with uses_xla_collective_metadata attribute
-  if (gpu_topology.num_partitions() > gpu_topology.num_devices_per_host() &&
-      IsMosaicWithCollectiveMetadata(*def)) {
-    return true;
-  }
-
   return false;
 }
 
 void GpuCollectiveBufferAnalysis(
     HloModule* module, const HloAliasAnalysis& alias_analysis,
-    std::function<void(HloInstruction*, const ShapeIndex&)> add_index_to_copy,
-    const GpuTopology& gpu_topology) {
+    std::function<void(HloInstruction*, const ShapeIndex&)> add_index_to_copy) {
   const auto& opts = module->config().debug_options();
   VLOG(2) << "Running unified GPU Custom Buffer Analysis for collective memory "
              "spaces";
@@ -2417,7 +2402,7 @@ void GpuCollectiveBufferAnalysis(
       // Check if this buffer value is used by an op which requires collective
       // input memory space.
       for (const HloUse& use : value->GetUses()) {
-        if (RequiresCollectiveInput(use, opts, gpu_topology)) {
+        if (RequiresCollectiveInput(use, opts)) {
           used_by_collective = true;
           break;
         }
@@ -2428,7 +2413,7 @@ void GpuCollectiveBufferAnalysis(
         live_out_values.push_back(value);
       }
 
-      if (RequiresCollectiveOutput(value, opts, gpu_topology)) {
+      if (RequiresCollectiveOutput(value, opts)) {
         defined_by_collective = true;
       }
     }
@@ -2502,8 +2487,7 @@ void GpuCollectiveBufferAnalysis(
 }
 
 absl::Status RunPostSchedulingCopyInsertion(HloModule* module,
-                                            const GpuAliasInfo* alias_info,
-                                            const GpuTopology& gpu_topology) {
+                                            const GpuAliasInfo* alias_info) {
   // We run a separate pass of copy elision here because the sequential ordering
   // from the HLO schedule potentially allows for more copies to be eliminated.
   constexpr int64_t kRegionBasedLiveRangeAnalysisLimit = -1;
@@ -2531,11 +2515,10 @@ absl::Status RunPostSchedulingCopyInsertion(HloModule* module,
   RETURN_IF_ERROR(copy_insertion.CopyInsertion::AddSpecialCaseCopies(
       module, /*execution_threads=*/{},
       /*custom_buffer_analysis=*/
-      [&gpu_topology](HloModule* mod, const HloAliasAnalysis& alias_analysis,
-                      std::function<void(HloInstruction*, const ShapeIndex&)>
-                          add_index_to_copy) {
-        GpuCollectiveBufferAnalysis(mod, alias_analysis, add_index_to_copy,
-                                    gpu_topology);
+      [](HloModule* mod, const HloAliasAnalysis& alias_analysis,
+         std::function<void(HloInstruction*, const ShapeIndex&)>
+             add_index_to_copy) {
+        GpuCollectiveBufferAnalysis(mod, alias_analysis, add_index_to_copy);
       }));
 
   RETURN_IF_ERROR(HloDCE().Run(module).status());
@@ -3227,8 +3210,7 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
     const GpuTopology& gpu_topology, const GpuAliasInfo* alias_info,
     mlir::MLIRContext* mlir_context) {
   tsl::profiler::TraceMe traceme("RunPostSchedulingPipelines");
-  RETURN_IF_ERROR(
-      RunPostSchedulingCopyInsertion(module, alias_info, gpu_topology));
+  RETURN_IF_ERROR(RunPostSchedulingCopyInsertion(module, alias_info));
   HloPassPipeline main_pipeline("post-scheduling-passes");
 
   // Pipeline for async -> sync conversion on for non-overlapped async ops.

@@ -163,8 +163,7 @@ absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
 
 absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
     const HloModule* module, const GpuAliasInfo* alias_info,
-    BufferValue::SizeFunction buffer_size_bytes_function,
-    const GpuTopology& gpu_topology) {
+    BufferValue::SizeFunction buffer_size_bytes_function) {
   ScopedAnnotation annotation(Phase("XlaBufferAssignment", module));
 
   const DebugOptions& options = module->config().debug_options();
@@ -177,7 +176,7 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
 
   BufferAssigner::Options opts;
   opts.allocate_buffers_for_constants = true;
-  opts.colorer = CreateColorer(options, gpu_topology);
+  opts.colorer = CreateColorer(options);
   opts.temp_buffer_color = color;
   std::unique_ptr<HloOrdering> hlo_ordering;
   switch (options.xla_gpu_command_buffer_scheduling_mode()) {
@@ -223,10 +222,9 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
 
   CompileModuleResults results = InitializeResults(hlo_module);
 
-  ASSIGN_OR_RETURN(
-      results.buffer_assignment,
-      RunBufferAssignment(hlo_module, alias_info,
-                          std::move(buffer_size_bytes_function), gpu_topology));
+  ASSIGN_OR_RETURN(results.buffer_assignment,
+                   RunBufferAssignment(hlo_module, alias_info,
+                                       std::move(buffer_size_bytes_function)));
   ASSIGN_OR_RETURN(results.output_info,
                    GetOutputInfo(*hlo_module, *results.buffer_assignment));
 

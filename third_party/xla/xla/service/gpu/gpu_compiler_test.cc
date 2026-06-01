@@ -2074,7 +2074,7 @@ TEST_F(GpuCompilerTest, MosaicCollectiveMetadataRequiresSymmetricMemoryCopies) {
     HloModule test
     ENTRY main {
       p = s32[1] parameter(0)
-      mosaic = (s32[1]{0}) custom-call(p), custom_call_target="mosaic_gpu_v2", api_version=API_VERSION_TYPED_FFI, backend_config={uses_xla_collective_metadata=true}
+      mosaic = (s32[1]{0}) custom-call(p), custom_call_target="mosaic_gpu_v2", api_version=API_VERSION_TYPED_FFI, backend_config={uses_xla_collective_metadata=true}, frontend_attributes={operands_memory_spaces="{0:1}", results_memory_spaces="{0:1}"}
       ROOT res = s32[1]{0} get-tuple-element(mosaic), index=0
     }
   )";

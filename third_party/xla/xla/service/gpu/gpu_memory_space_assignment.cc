@@ -45,7 +45,6 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape_util.h"
@@ -212,9 +211,6 @@ bool HasMosaicWithMultimemInstruction(const HloValue& input_alias) {
   return HasMosaicInstruction(input_alias, IsMosaicWithMultimem);
 }
 
-bool HasMosaicWithCollectiveMetadataInstruction(const HloValue& input_alias) {
-  return HasMosaicInstruction(input_alias, IsMosaicWithCollectiveMetadata);
-}
 
 // Returns the memory space requested for the given custom call use, or
 // MemorySpaceColor::kDefault if none is specified.
@@ -294,7 +290,7 @@ namespace {
 // Determines the memory space color for the given HLO buffer
 absl::StatusOr<BufferValue::Color> DetermineBufferColor(
     const HloBuffer& buffer, bool use_collective_memory, bool use_nvshmem,
-    bool is_one_shot_zero_copy_ra2a, const GpuTopology& gpu_topology) {
+    bool is_one_shot_zero_copy_ra2a) {
   // Collect Color Candidates
   absl::InlinedVector<BufferValue::Color, 4> candidates;
   for (const HloValue* value : buffer.values()) {
@@ -333,24 +329,14 @@ absl::StatusOr<BufferValue::Color> DetermineBufferColor(
     // TODO(508106498): We need to start to respect replica groups once
     // mosaic will support them.
     const bool is_mosaic_with_nvshmem = HasMosaicWithNvshmemInstruction(*value);
-    const bool is_mosaic_with_collective_metadata =
-        HasMosaicWithCollectiveMetadataInstruction(*value);
     const bool is_mosaic_with_multimem =
         HasMosaicWithMultimemInstruction(*value);
 
-    if ((is_mosaic_with_nvshmem && use_nvshmem) || is_mosaic_with_multimem ||
-        (is_mosaic_with_collective_metadata &&
-         gpu_topology.num_partitions() > gpu_topology.num_devices_per_host())) {
+    if ((is_mosaic_with_nvshmem && use_nvshmem) || is_mosaic_with_multimem) {
       VLOG(1) << "Assigning color kCollective to value of instruction "
               << value->instruction()->ToShortString()
-              << " is_mosaic_with_collective_metadata "
-              << is_mosaic_with_collective_metadata
               << " is_mosaic_with_multimem " << is_mosaic_with_multimem
-              << " is_mosaic_with_nvshmem " << is_mosaic_with_nvshmem
-              << " topology { "
-              << " num_partitions: " << gpu_topology.num_partitions()
-              << " num_devices_per_host: "
-              << gpu_topology.num_devices_per_host() << " }";
+              << " is_mosaic_with_nvshmem " << is_mosaic_with_nvshmem;
       // This is a temporary solution until a separate BFC
       // allocator will be added for the symmetric memory space.
       candidates.push_back(
@@ -397,14 +383,13 @@ absl::StatusOr<BufferValue::Color> DetermineBufferColor(
 // is uniformly applied to all HloValues within the buffer.
 absl::Status AssignColors(bool use_collective_memory, bool use_nvshmem,
                           bool is_one_shot_zero_copy_ra2a,
-                          HloAliasAnalysis* alias_analysis,
-                          const GpuTopology& gpu_topology) {
+                          HloAliasAnalysis* alias_analysis) {
   HloDataflowAnalysis& dataflow_analysis = alias_analysis->dataflow_analysis();
   for (const HloBuffer& buffer : alias_analysis->buffers()) {
     ASSIGN_OR_RETURN(
         BufferValue::Color color,
         DetermineBufferColor(buffer, use_collective_memory, use_nvshmem,
-                             is_one_shot_zero_copy_ra2a, gpu_topology));
+                             is_one_shot_zero_copy_ra2a));
     // Apply buffer color to all values in the buffer.
     for (const HloValue* const_value : buffer.values()) {
       HloValue& mutable_value = dataflow_analysis.GetValue(const_value->id());
@@ -415,8 +400,7 @@ absl::Status AssignColors(bool use_collective_memory, bool use_nvshmem,
   return absl::OkStatus();
 }
 
-BufferAssigner::Colorer CreateColorer(const DebugOptions& option,
-                                      const GpuTopology& gpu_topology) {
+BufferAssigner::Colorer CreateColorer(const DebugOptions& option) {
   // NCCL old registered buffers.
   bool nccl_user_buffers = option.xla_gpu_enable_nccl_user_buffers();
   bool nccl_symmetric_buffers =
@@ -429,11 +413,10 @@ BufferAssigner::Colorer CreateColorer(const DebugOptions& option,
   bool is_one_shot_zero_copy_ra2a =
       IsOneShotZeroCopyRaggedAllToAllEnabled(option);
 
-  return [use_collective_memory, use_nvshmem, is_one_shot_zero_copy_ra2a,
-          gpu_topology](HloAliasAnalysis* alias_analysis, const HloOrdering&) {
+  return [use_collective_memory, use_nvshmem, is_one_shot_zero_copy_ra2a](
+             HloAliasAnalysis* alias_analysis, const HloOrdering&) {
     return AssignColors(use_collective_memory, use_nvshmem,
-                        is_one_shot_zero_copy_ra2a, alias_analysis,
-                        gpu_topology);
+                        is_one_shot_zero_copy_ra2a, alias_analysis);
   };
 }
 }  // namespace xla::gpu
