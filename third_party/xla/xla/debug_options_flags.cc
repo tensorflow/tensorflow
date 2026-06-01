@@ -296,7 +296,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_dus_accumulator_zero_init_elimination(false);
   opts.set_xla_gpu_experimental_dynamic_slice_fusion_verify_offsets(false);
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
-  opts.set_xla_gpu_enable_shared_constants(true);
   opts.set_xla_gpu_enable_nccl_user_buffers(false);
   opts.set_xla_gpu_experimental_enable_nccl_symmetric_buffers(false);
   opts.set_xla_gpu_experimental_enable_nvshmem(false);
@@ -1994,11 +1993,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::set_xla_gpu_nccl_termination_timeout_seconds),
       debug_options->xla_gpu_nccl_termination_timeout_seconds(),
       "Timeout in seconds before terminating jobs stuck in NCCL Rendezvous."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_shared_constants",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_shared_constants),
-      debug_options->xla_gpu_enable_shared_constants(),
-      "Enable constant sharing between GPU executables"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_nccl_user_buffers",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_nccl_user_buffers),
