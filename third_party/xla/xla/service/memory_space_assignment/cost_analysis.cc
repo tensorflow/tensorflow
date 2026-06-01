@@ -361,7 +361,9 @@ float CostAnalysis::GetInstructionElapsedDueToCompute(
   if (ExcludeInstructionFromElapsed(instruction)) {
     return 0.0f;
   }
-  return op_cost_manager_.ComputeSeconds(instruction);
+  return std::min(
+      static_cast<float>(op_cost_manager_.LatencySeconds(instruction)),
+      static_cast<float>(op_cost_manager_.ComputeSeconds(instruction)));
 }
 
 float CostAnalysis::GetInstructionElapsedDueToMemory(
@@ -391,7 +393,9 @@ float CostAnalysis::GetInstructionElapsedDueToMemory(
   float elapsed_due_to_default_mem =
       (total_bytes_accessed - bytes_accessed_from_alternate_mem) /
       DefaultMemBandwidthBytesPerSecond();
-  return elapsed_due_to_alternate_mem + elapsed_due_to_default_mem;
+  return std::min(
+      static_cast<float>(op_cost_manager_.LatencySeconds(instruction)),
+      elapsed_due_to_alternate_mem + elapsed_due_to_default_mem);
 }
 
 float CostAnalysis::GetInstructionElapsedDueToMemory(
@@ -442,7 +446,9 @@ float CostAnalysis::GetInstructionElapsedDueToMemory(
   float elapsed_due_to_default_mem =
       (total_bytes_accessed - bytes_accessed_from_alternate_mem) /
       DefaultMemBandwidthBytesPerSecond();
-  return elapsed_due_to_alternate_mem + elapsed_due_to_default_mem;
+  return std::min(
+      static_cast<float>(op_cost_manager_.LatencySeconds(instruction)),
+      elapsed_due_to_alternate_mem + elapsed_due_to_default_mem);
 }
 
 float CostAnalysis::GetInstructionElapsed(
@@ -451,8 +457,12 @@ float CostAnalysis::GetInstructionElapsed(
     return 0.0f;
   }
   float overhead = GetDefaultMemoryAccessOverhead(instruction);
-  return std::max(GetInstructionElapsedDueToCompute(instruction),
-                  GetInstructionElapsedDueToMemory(instruction) + overhead);
+  float elapsed =
+      std::max(GetInstructionElapsedDueToCompute(instruction),
+               GetInstructionElapsedDueToMemory(instruction) + overhead);
+  return std::min(
+      static_cast<float>(op_cost_manager_.LatencySeconds(instruction)),
+      elapsed);
 }
 
 float CostAnalysis::GetInstructionElapsedInAlternateMemory(
@@ -464,11 +474,14 @@ float CostAnalysis::GetInstructionElapsedInAlternateMemory(
   }
   float overhead = GetDefaultMemoryAccessOverhead(
       instruction, operands_in_alternate_mem, outputs_in_alternate_mem);
-  return std::max(
+  float elapsed = std::max(
       GetInstructionElapsedDueToCompute(instruction),
       GetInstructionElapsedDueToMemory(instruction, operands_in_alternate_mem,
                                        outputs_in_alternate_mem) +
           overhead);
+  return std::min(
+      static_cast<float>(op_cost_manager_.LatencySeconds(instruction)),
+      elapsed);
 }
 
 float CostAnalysis::GetInstructionElapsedInAlternateMemory(
@@ -477,9 +490,12 @@ float CostAnalysis::GetInstructionElapsedInAlternateMemory(
   if (ExcludeInstructionFromElapsed(instruction)) {
     return 0.0f;
   }
-  return std::max(
+  float elapsed = std::max(
       GetInstructionElapsedDueToCompute(instruction),
       GetInstructionElapsedDueToMemory(instruction, is_in_alternate_mem));
+  return std::min(
+      static_cast<float>(op_cost_manager_.LatencySeconds(instruction)),
+      elapsed);
 }
 
 float CostAnalysis::GetAsyncCopyElapsed(int64_t size_in_bytes) const {
