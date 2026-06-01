@@ -55,6 +55,7 @@ struct DotProblemInfo {
   xla::PrimitiveType rhs_element_type = PrimitiveType::PRIMITIVE_TYPE_INVALID;
   xla::PrimitiveType output_element_type =
       PrimitiveType::PRIMITIVE_TYPE_INVALID;
+  bool output_is_row_major = true;
 
   explicit DotProblemInfo(const HloDotInstruction& dot);
 };
@@ -83,6 +84,7 @@ struct HbmEstimates {
   absl::Duration total_time() { return read_time + write_time; }
 };
 HbmEstimates CalculateHbmTime(const DotProblemInfo& dot,
+                              const DotTileSize& dot_tile,
                               const se::DeviceDescription& device_info);
 
 // Calculates the L2 time for a GPU DOT operation.

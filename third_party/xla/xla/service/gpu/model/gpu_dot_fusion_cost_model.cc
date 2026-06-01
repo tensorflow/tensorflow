@@ -184,6 +184,15 @@ DotProblemInfo::DotProblemInfo(const HloDotInstruction& dot) {
   lhs_element_type = dot.operand(0)->shape().element_type();
   rhs_element_type = dot.operand(1)->shape().element_type();
   output_element_type = dot.shape().element_type();
+
+  output_is_row_major = true;
+  if (dot.shape().has_layout()) {
+    const auto& minor_to_major = dot.shape().layout().minor_to_major();
+    if (!minor_to_major.empty()) {
+      output_is_row_major =
+          (minor_to_major[0] == dot.shape().dimensions_size() - 1);
+    }
+  }
 }
 
 absl::StatusOr<ComputeAndFlops> CalculateComputeTimeWithTileAndWaveQuantization(
@@ -284,6 +293,7 @@ float GetEffectiveHbmBandwidth(const int64_t dma_size,
 }
 
 HbmEstimates CalculateHbmTime(const DotProblemInfo& dot,
+                              const DotTileSize& dot_tile,
                               const se::DeviceDescription& device_info) {
   // Calculate the number of bytes for input reads and output writes to HBM.
   int64_t lhs_tile_bytes = CeilOfRatio<int64_t>(
@@ -299,6 +309,39 @@ HbmEstimates CalculateHbmTime(const DotProblemInfo& dot,
   // loop and epilogue loop are executed sequentially.
   int64_t main_loop_bytes = lhs_tile_bytes + rhs_tile_bytes;
   int64_t epilogue_bytes = output_tile_bytes;
+
+  // Portable transaction size query from DeviceDescription:
+  int64_t transaction_size_bytes =
+      device_info.dram_to_l2_transaction_size_bytes() * 2;
+  if (transaction_size_bytes <= 0) {
+    transaction_size_bytes = 128;  // Safe default cache line size.
+  }
+
+  // Floating-point element size in bytes (prevents sub-byte 4-bit truncation
+  // bug):
+  double element_bytes =
+      static_cast<double>(BitWidth(dot.output_element_type)) / 8.0;
+
+  // Layout-aware contiguous tile store size calculation:
+  double continuous_write_width_bytes = 0.0;
+  if (dot.output_is_row_major) {
+    continuous_write_width_bytes = dot_tile.n * element_bytes;
+  } else {
+    continuous_write_width_bytes = dot_tile.m * element_bytes;
+  }
+
+  if (continuous_write_width_bytes > 0.0 &&
+      continuous_write_width_bytes < transaction_size_bytes) {
+    double write_coalesce_penalty =
+        static_cast<double>(transaction_size_bytes) /
+        continuous_write_width_bytes;
+    epilogue_bytes =
+        static_cast<int64_t>(output_tile_bytes * write_coalesce_penalty);
+  }
+
+  // Note: We do not multiply epilogue_bytes by the split_k_factor here, because
+  // the L2 cache absorbs the intermediate atomic write-back loops. Only the
+  // final sum is flushed to HBM DRAM.
 
   HbmEstimates result;
   result.bytes_read = main_loop_bytes;
@@ -430,7 +473,7 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
 
   // Calculate HBM roofline.
   detail::HbmEstimates hbm_timing =
-      detail::CalculateHbmTime(dot_info, device_info);
+      detail::CalculateHbmTime(dot_info, dot_tile, device_info);
 
   estimates.read_time = hbm_timing.read_time;
   estimates.write_time = hbm_timing.write_time;
