@@ -31,10 +31,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/autotuner/config_assigner.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/gpu/autotuner/factory.h"
 #include "xla/backends/gpu/autotuner/gpu_profiler.h"
@@ -57,7 +57,6 @@ limitations under the License.
 #include "xla/stream_executor/platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -436,11 +435,11 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
       target_config->device_description);
 
   ASSIGN_OR_RETURN(
-      std::unique_ptr<Autotuner> autotuner,
-      Autotuner::Create(std::move(backends), std::move(profiler),
-                        autotune_config, std::move(cache), thread_pool));
+      std::unique_ptr<ConfigAssigner> config_assigner,
+      ConfigAssigner::Create(std::move(backends), std::move(profiler),
+                             autotune_config, std::move(cache), thread_pool));
   return absl::WrapUnique(new AutotunerPass(
-      std::move(autotuner), std::move(should_autotune),
+      std::move(config_assigner), std::move(should_autotune),
       std::move(key_value_store), debug_options.xla_gpu_shard_autotuning()));
 }
 
@@ -453,13 +452,15 @@ absl::StatusOr<bool> AutotunerPass::RunImpl(
   bool shard_autotuning =
       enable_sharding_ && key_value_store_.process_count > 1;
   if (shard_autotuning) {
-    RETURN_IF_ERROR(
-        autotuner_->Autotune(module, should_autotune_, key_value_store_));
+    RETURN_IF_ERROR(config_assigner_->AssignConfigs(module, should_autotune_,
+                                                    key_value_store_));
   } else {
-    RETURN_IF_ERROR(autotuner_->Autotune(module, should_autotune_));
+    RETURN_IF_ERROR(config_assigner_->AssignConfigs(module, should_autotune_));
   }
-  VLOG(1) << "Autotuner cache stats: hits=" << autotuner_->GetCacheStats().hits
-          << ", misses=" << autotuner_->GetCacheStats().misses;
+  VLOG(1) << absl::StrCat(
+      "Autotuner cache stats: hits=",
+      config_assigner_->cache()->GetCacheStats().hits, ", misses=",
+      config_assigner_->cache()->GetCacheStats().misses);
   return true;
 }
 

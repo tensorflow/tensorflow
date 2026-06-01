@@ -26,15 +26,14 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/autotuner/config_assigner.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/cpu/autotuner/cpu_codegen_backend.h"
 #include "xla/backends/cpu/autotuner/cpu_profiler.h"
 #include "xla/backends/cpu/autotuner/llvm_kernel_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/cpu/backend_config.pb.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -52,15 +51,15 @@ absl::StatusOr<bool> LlvmKernelAutotuner::RunImpl(
 
   AutotuneConfig autotune_config;
   autotune_config.check_buffers = false;
-  ASSIGN_OR_RETURN(std::unique_ptr<Autotuner> autotuner,
-                   Autotuner::Create(std::move(codegen_backends),
-                                     std::move(profiler), autotune_config,
-                                     /*cache=*/nullptr));
+  ASSIGN_OR_RETURN(std::unique_ptr<ConfigAssigner> config_assigner,
+                   ConfigAssigner::Create(std::move(codegen_backends),
+                                          std::move(profiler), autotune_config,
+                                          /*cache=*/nullptr));
 
   bool hlo_changed = false;
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* instruction : computation->instructions()) {
-      auto status = autotuner->Autotune(instruction);
+      auto status = config_assigner->AssignConfig(instruction);
       hlo_changed |= status.ok();
     }
   }

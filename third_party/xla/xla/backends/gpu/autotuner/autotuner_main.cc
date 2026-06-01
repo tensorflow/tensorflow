@@ -29,9 +29,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/autotuner/config_assigner.h"
 #include "xla/backends/gpu/autotuner/gpu_profiler.h"
 #include "xla/backends/gpu/autotuner/legacy_cache.h"
 #include "xla/debug_options_flags.h"
@@ -52,12 +52,9 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/casts.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/init_main.h"
 
@@ -135,9 +132,9 @@ absl::Status Autotune(HloModule& module) {
           debug_options.xla_gpu_experimental_autotune_cache_mode(),
           target_config.device_description);
   ASSIGN_OR_RETURN(
-      std::unique_ptr<Autotuner> autotuner,
-      Autotuner::Create(std::move(backends), std::move(profiler),
-                        autotune_config, std::move(cache), &thread_pool));
+      std::unique_ptr<ConfigAssigner> config_assigner,
+      ConfigAssigner::Create(std::move(backends), std::move(profiler),
+                             autotune_config, std::move(cache), &thread_pool));
 
   bool do_not_autotune_cublas_and_cudnn =
       debug_options.xla_gpu_experimental_disable_binary_libraries() ||
@@ -169,7 +166,7 @@ absl::Status Autotune(HloModule& module) {
     return false;
   };
 
-  return autotuner->Autotune(&module, should_autotune);
+  return config_assigner->AssignConfigs(&module, should_autotune);
 }
 
 }  // namespace
