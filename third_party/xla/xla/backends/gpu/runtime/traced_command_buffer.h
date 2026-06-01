@@ -11,7 +11,7 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-==============================================================================*/
+=============================================================================*/
 
 #ifndef XLA_BACKENDS_GPU_RUNTIME_TRACED_COMMAND_BUFFER_H_
 #define XLA_BACKENDS_GPU_RUNTIME_TRACED_COMMAND_BUFFER_H_
@@ -20,9 +20,12 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/service/buffer_assignment.h"
@@ -58,13 +61,33 @@ class TracedCommandBuffer : public CommandState {
  private:
   std::vector<BufferAllocation::Index> allocs_indices_;
 
+  enum class State {
+    kEmpty,
+    kTracing,
+    kOccupied,
+  };
+
   struct Entry {
     std::vector<se::DeviceAddressBase> recorded_allocs;
     std::unique_ptr<se::CommandBuffer> command_buffer;
+    State state = State::kEmpty;
   };
   const Command* trace_cmd_;
   int64_t capacity_;
-  std::vector<Entry> entries_;
+  absl::Mutex mutex_;
+  absl::CondVar cv_;
+  std::vector<Entry> entries_ ABSL_GUARDED_BY(mutex_);
+
+  // Cache manipulation functions.
+  Entry& ShiftRight(size_t i) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  int FindEvictableSlot() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  int FindMatchingEntry(absl::Span<const se::DeviceAddressBase> allocs) const
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  int FindReservedTracingEntry(absl::Span<const se::DeviceAddressBase> allocs)
+      const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  std::unique_ptr<se::CommandBuffer> ReserveSlot(
+      int idx, absl::Span<const se::DeviceAddressBase> allocs)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 };
 
 }  // namespace xla::gpu

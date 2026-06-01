@@ -59,10 +59,12 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/xla_data.pb.h"
 
@@ -479,6 +481,51 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
   };
   run_traced_test(2);
   run_traced_test(3);
+}
+
+TEST(TracedCommandBuffer, GetOrUpdateCommandBufferConcurrent) {
+  se::StreamExecutor* executor = GpuExecutor();
+
+  auto stream = executor->CreateStream().value();
+  auto traced_cmd = FakeCmd();
+  BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
+  BufferAllocation alloc1(/*index=*/1, /*size=*/1024, /*color=*/0);
+
+  Shape shape = ShapeUtil::MakeShape(U8, {1024});
+  Command::BufferUses buffers = {
+      BufferUse::Read(BufferAllocation::Slice(&alloc0, 0, 1024), shape),
+      BufferUse::Write(BufferAllocation::Slice(&alloc1, 0, 1024), shape)};
+
+  TracedCommandBuffer traced_cmd_buffer(&traced_cmd, buffers,
+                                        /*capacity=*/16);
+
+  se::DeviceAddressBase mem0(reinterpret_cast<void*>(0x01234567));
+  se::DeviceAddressBase mem1(reinterpret_cast<void*>(0x12345670));
+
+  se::StreamExecutorAddressAllocator allocator(executor);
+  BufferAllocations allocations({mem0, mem1}, 0, &allocator);
+
+  se::DeviceAddress<int32_t> mem = executor->AllocateArray<int32_t>(16, 0);
+
+  auto trace = [&](se::Stream* stream) -> absl::Status {
+    RETURN_IF_ERROR(stream->Memset32(&mem, 42, 16));
+    return absl::OkStatus();
+  };
+
+  constexpr int kNumThreads = 10;
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                      kNumThreads);
+
+  for (int i = 0; i < kNumThreads; ++i) {
+    thread_pool.Schedule([&]() {
+      for (int j = 0; j < 100; ++j) {
+        ASSERT_OK_AND_ASSIGN(auto* command_buffer,
+                             traced_cmd_buffer.GetOrTraceCommandBuffer(
+                                 &allocations, executor, stream.get(), trace));
+        (void)command_buffer;
+      }
+    });
+  }
 }
 
 TEST(CommandBufferCmdTest, RecordExecutorsWithDependencies) {
