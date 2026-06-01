@@ -317,6 +317,11 @@ class ShardedVariableMixin(trackable.Trackable):
     first_var = variables[0]
     self._dtype = first_var.dtype
 
+    if first_var.shape.rank == 0:
+      raise ValueError(
+          'ShardedVariable requires variables of rank 1 or higher.'
+      )
+
     # All variables must have the same shape for axes > 0.
     higher_dim_shapes = {tuple(v.shape.as_list()[1:]) for v in variables}
     if len(higher_dim_shapes) > 1:
@@ -349,6 +354,13 @@ class ShardedVariableMixin(trackable.Trackable):
           '`variables`. `ShardedVariable` will infer `SaveSliceInfo` according '
           'to the order of the elements `variables`. '
           f'Received save slice info {save_slice_info}'
+      )
+
+    _trainables = {v.trainable for v in variables}
+    if len(_trainables) > 1:
+      raise ValueError(
+          'All elements in argument `variables` must have the same '
+          'trainable property.'
       )
 
     # We create an uninitialized saving_variable with the full shape, which can
@@ -422,9 +434,7 @@ class ShardedVariableMixin(trackable.Trackable):
           [var[slice_spec] for var in self._variables], axis=0
       )
     elif s is array_ops.newaxis:
-      return array_ops.concat(
-          [var[slice_spec[1:]] for var in self._variables], axis=0
-      )[array_ops.newaxis]
+      return self[slice_spec[1:]][array_ops.newaxis]
     else:
       if isinstance(s, tensor_lib.Tensor):
         raise TypeError(
@@ -585,20 +595,34 @@ class ShardedVariableMixin(trackable.Trackable):
 
   def assign(self, value, use_locking=None, name=None, read_value=True):
     for i, v in enumerate(self._variables):
-      v.assign(array_ops.slice(value, self._var_offsets[i], v.shape.as_list()))
+      new_name = '{}/part_{}'.format(name, i) if name is not None else None
+      v.assign(
+          array_ops.slice(value, self._var_offsets[i], v.shape.as_list()),
+          use_locking=use_locking,
+          name=new_name,
+          read_value=False,
+      )
     return self
 
   def assign_add(self, delta, use_locking=False, name=None, read_value=True):
     for i, v in enumerate(self._variables):
+      new_name = '{}/part_{}'.format(name, i) if name is not None else None
       v.assign_add(
-          array_ops.slice(delta, self._var_offsets[i], v.shape.as_list())
+          array_ops.slice(delta, self._var_offsets[i], v.shape.as_list()),
+          use_locking=use_locking,
+          name=new_name,
+          read_value=False,
       )
     return self
 
   def assign_sub(self, delta, use_locking=False, name=None, read_value=True):
     for i, v in enumerate(self._variables):
+      new_name = '{}/part_{}'.format(name, i) if name is not None else None
       v.assign_sub(
-          array_ops.slice(delta, self._var_offsets[i], v.shape.as_list())
+          array_ops.slice(delta, self._var_offsets[i], v.shape.as_list()),
+          use_locking=use_locking,
+          name=new_name,
+          read_value=False,
       )
     return self
 
@@ -611,6 +635,11 @@ class ShardedVariableMixin(trackable.Trackable):
       )
 
     base = self._shape[0] // len(self._variables)
+    if base == 0:
+      raise NotImplementedError(
+          'scatter_xxx ops are not supported for ShardedVariable where base '
+          'shard size is 0 (number of shards exceeds total dimension size).'
+      )
     extra = self._shape[0] % len(self._variables)
 
     # Assert that sharding conforms to "div" sharding
@@ -668,98 +697,65 @@ class ShardedVariableMixin(trackable.Trackable):
 
   # ==================== scatter ops implementations ======================== #
 
-  def scatter_add(self, sparse_delta, use_locking=False, name=None):
-    """Implements tf.Variable.scatter_add."""
+  def _scatter_impl(self, op_name, sparse_delta, use_locking=False, name=None):
     per_var_sparse_delta = self._decompose_indexed_slices(sparse_delta)
     for i, v in enumerate(self._variables):
-      new_name = None
-      if name is not None:
-        new_name = '{}/part_{}'.format(name, i)
-      v.scatter_add(per_var_sparse_delta[i], name=new_name)
+      new_name = '{}/part_{}'.format(name, i) if name is not None else None
+      getattr(v, op_name)(
+          per_var_sparse_delta[i], use_locking=use_locking, name=new_name
+      )
     return self
+
+  def scatter_add(self, sparse_delta, use_locking=False, name=None):
+    """Implements tf.Variable.scatter_add."""
+    return self._scatter_impl('scatter_add', sparse_delta, use_locking, name)
 
   def scatter_div(self, sparse_delta, use_locking=False, name=None):
     """Implements tf.Variable.scatter_div."""
-    per_var_sparse_delta = self._decompose_indexed_slices(sparse_delta)
-    for i, v in enumerate(self._variables):
-      new_name = None
-      if name is not None:
-        new_name = '{}/part_{}'.format(name, i)
-      v.scatter_div(per_var_sparse_delta[i], name=new_name)
-    return self
+    return self._scatter_impl('scatter_div', sparse_delta, use_locking, name)
 
   def scatter_max(self, sparse_delta, use_locking=False, name=None):
     """Implements tf.Variable.scatter_max."""
-    per_var_sparse_delta = self._decompose_indexed_slices(sparse_delta)
-    for i, v in enumerate(self._variables):
-      new_name = None
-      if name is not None:
-        new_name = '{}/part_{}'.format(name, i)
-      v.scatter_max(per_var_sparse_delta[i], name=new_name)
-    return self
+    return self._scatter_impl('scatter_max', sparse_delta, use_locking, name)
 
   def scatter_min(self, sparse_delta, use_locking=False, name=None):
     """Implements tf.Variable.scatter_min."""
-    per_var_sparse_delta = self._decompose_indexed_slices(sparse_delta)
-    for i, v in enumerate(self._variables):
-      new_name = None
-      if name is not None:
-        new_name = '{}/part_{}'.format(name, i)
-      v.scatter_min(per_var_sparse_delta[i], name=new_name)
-    return self
+    return self._scatter_impl('scatter_min', sparse_delta, use_locking, name)
 
   def scatter_mul(self, sparse_delta, use_locking=False, name=None):
     """Implements tf.Variable.scatter_mul."""
-    per_var_sparse_delta = self._decompose_indexed_slices(sparse_delta)
-    for i, v in enumerate(self._variables):
-      new_name = None
-      if name is not None:
-        new_name = '{}/part_{}'.format(name, i)
-      v.scatter_mul(per_var_sparse_delta[i], name=new_name)
-    return self
+    return self._scatter_impl('scatter_mul', sparse_delta, use_locking, name)
 
   def scatter_sub(self, sparse_delta, use_locking=False, name=None):
     """Implements tf.Variable.scatter_sub."""
-    per_var_sparse_delta = self._decompose_indexed_slices(sparse_delta)
-    for i, v in enumerate(self._variables):
-      new_name = None
-      if name is not None:
-        new_name = '{}/part_{}'.format(name, i)
-      v.scatter_sub(per_var_sparse_delta[i], name=new_name)
-    return self
+    return self._scatter_impl('scatter_sub', sparse_delta, use_locking, name)
 
   def scatter_update(self, sparse_delta, use_locking=False, name=None):
     """Implements tf.Variable.scatter_update."""
-    per_var_sparse_delta = self._decompose_indexed_slices(sparse_delta)
-    for i, v in enumerate(self._variables):
-      new_name = None
-      if name is not None:
-        new_name = '{}/part_{}'.format(name, i)
-      v.scatter_update(per_var_sparse_delta[i], name=new_name)
-    return self
+    return self._scatter_impl('scatter_update', sparse_delta, use_locking, name)
 
   def batch_scatter_update(self, sparse_delta, use_locking=False, name=None):
     """Implements tf.Variable.batch_scatter_update."""
-    per_var_sparse_delta = self._decompose_indexed_slices(sparse_delta)
-    for i, v in enumerate(self._variables):
-      new_name = None
-      if name is not None:
-        new_name = '{}/part_{}'.format(name, i)
-      v.batch_scatter_update(per_var_sparse_delta[i], name=new_name)
-    return self
+    return self._scatter_impl(
+        'batch_scatter_update', sparse_delta, use_locking, name
+    )
 
   # ================== scatter ops implementations END ====================== #
 
   def sparse_read(self, indices, name=None):
     """Implements tf.Variable.sparse_read."""
-    per_var_indices, _ = self._decompose_indices(indices)
+    per_var_indices, partition_assignments = self._decompose_indices(indices)
     result = []
     for i, v in enumerate(self._variables):
       new_name = None
       if name is not None:
         new_name = '{}/part_{}'.format(name, i)
       result.append(v.sparse_read(per_var_indices[i], name=new_name))
-    return array_ops.concat(result, axis=0)
+    original_indices = math_ops.range(array_ops.shape(indices)[0])
+    partitioned_indices = data_flow_ops.dynamic_partition(
+        original_indices, partition_assignments, len(self._variables)
+    )
+    return data_flow_ops.parallel_dynamic_stitch(partitioned_indices, result)
 
   def _gather_saveables_for_checkpoint(self):
     """Return a `Saveable` for each shard. See `Trackable`."""
@@ -811,8 +807,8 @@ class ShardedVariableMixin(trackable.Trackable):
 
   @property
   def _unique_id(self):
-    # String-replace to ensure uniqueness for checkpoint tracking
-    return self.variables[0]._unique_id.replace('part_0', 'sharded')  # pylint: disable=protected-access
+    # Ensure uniqueness for checkpoint tracking regardless of shard naming
+    return f'{self.variables[0]._unique_id}_sharded'  # pylint: disable=protected-access
 
   @property
   def _distribute_strategy(self):
@@ -887,12 +883,6 @@ class ShardedVariable(ShardedVariableMixin, composite_tensor.CompositeTensor):
   >>> tf.saved_model.save(model, export_dir='/tmp/saved_model',
   ...   signatures=model.serve_fn)
   """
-
-  @property
-  def _type_spec(self):
-    return ShardedVariableSpec(
-        *(resource_variable_ops.VariableSpec(v.shape, v.dtype)
-          for v in self._variables))
 
   @classmethod
   def _overload_all_operators(cls):
