@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <optional>
 #include <string>
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/while_loop.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
@@ -209,8 +211,7 @@ DynamicSliceThunk::DynamicSliceThunk(
   for (SliceDef& slice : slices_) {
     offsets_allocs_base_.push_back(offsets_allocs_size_);
     if (slice.sliced_shape.has_value()) {
-      offsets_allocs_size_ +=
-          slice.sliced_shape->dimensions().size() * sizeof(int64_t);
+      offsets_allocs_size_ += slice.sliced_shape->dimensions().size();
     }
   }
 }
@@ -237,12 +238,11 @@ absl::Status DynamicSliceThunk::Prepare(const PrepareParams& params) {
   RETURN_IF_ERROR(embedded_executor_.Prepare(params));
 
   if (offset_as_function_of_indvar_metadata_.has_value()) {
-    Indvar(this) =
-        HloEvaluator()
-            .Evaluate(
-                /*module=*/*offset_as_function_of_indvar_metadata_->indvar_init,
-                /*args=*/{})
-            .value();
+    ASSIGN_OR_RETURN(
+        Indvar(this),
+        HloEvaluator().Evaluate(
+            /*module=*/*offset_as_function_of_indvar_metadata_->indvar_init,
+            /*args=*/{}));
     VLOG(2) << "Indvar init module: "
             << offset_as_function_of_indvar_metadata_->indvar_init->ToString();
     VLOG(2)
@@ -260,11 +260,21 @@ absl::Status DynamicSliceThunk::Initialize(const InitializeParams& params) {
   if (offsets_allocs_.contains(params.executor)) {
     return absl::OkStatus();
   }
+  if (offset_as_function_of_indvar_metadata_.has_value()) {
+    ASSIGN_OR_RETURN(
+        Indvar(this),
+        HloEvaluator().Evaluate(
+            *offset_as_function_of_indvar_metadata_->indvar_init, {}));
+    VLOG(2) << "Initialize Indvar on worker thread = "
+            << Indvar(this).ToString();
+  }
 
-  VLOG(2) << "Allocate " << offsets_allocs_size_
+  VLOG(2) << "Allocate " << offsets_allocs_size_ * sizeof(int64_t)
           << " bytes for transferring offsets on executor: " << params.executor;
   ASSIGN_OR_RETURN(std::unique_ptr<se::MemoryAllocation> allocation,
-                   params.executor->HostMemoryAllocate(offsets_allocs_size_));
+                   params.executor->HostMemoryAllocate(offsets_allocs_size_ *
+                                                       sizeof(int64_t)));
+  memset(allocation->opaque(), 0, offsets_allocs_size_ * sizeof(int64_t));
   offsets_allocs_.emplace(params.executor, std::move(allocation));
 
   return absl::OkStatus();
@@ -283,6 +293,16 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
     return reinterpret_cast<int64_t*>(
         offsets_allocs_.at(stream.parent())->address().opaque());
   }();
+
+  if (offset_as_function_of_indvar_metadata_.has_value()) {
+    if (const WhileLoopState* state = IsInsideWhileLoop();
+        state && state->loop_iteration == 0) {
+      ASSIGN_OR_RETURN(
+          Indvar(this),
+          HloEvaluator().Evaluate(
+              *offset_as_function_of_indvar_metadata_->indvar_init, {}));
+    }
+  }
 
   auto offset_value = [&](int64_t arg_idx, int64_t offset_idx) -> int64_t& {
     return offsets_alloc[offsets_allocs_base_.at(arg_idx) + offset_idx];
