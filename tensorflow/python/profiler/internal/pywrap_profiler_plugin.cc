@@ -39,22 +39,26 @@ using ::tensorflow::profiler::ToolOptions;
 // will increase its reference count.
 ToolOptions ToolOptionsFromPythonDict(const py::dict& dictionary) {
   ToolOptions map;
-  for (const auto& item : dictionary) {
+  py::list items = dictionary.attr("items")();
+  for (const auto& item_handle : items) {
+    auto item = py::cast<py::tuple>(item_handle);
+    py::object key = item[0];
+    py::object val = item[1];
     std::variant<bool, int, std::string> value;
     try {
-      value = item.second.cast<bool>();
+      value = val.cast<bool>();
     } catch (...) {
       try {
-        value = item.second.cast<int>();
+        value = val.cast<int>();
       } catch (...) {
         try {
-          value = item.second.cast<std::string>();
+          value = val.cast<std::string>();
         } catch (...) {
           continue;
         }
       }
     }
-    map.emplace(item.first.cast<std::string>(), value);
+    map.emplace(key.cast<std::string>(), value);
   }
   return map;
 }
