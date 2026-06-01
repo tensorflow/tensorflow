@@ -13,6 +13,11 @@ package_group(
     ],
 )
 
+filegroup(
+    name = "thunk_coverage_hlo",
+    srcs = ["thunk_coverage.hlo"],
+)
+
 xla_test(
     name = "gemv_test",
     srcs = ["gemv_test.cc"],
