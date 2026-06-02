@@ -44,7 +44,9 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Parser/Parser.h"
+#include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Transforms/Passes.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/status_macros.h"
@@ -167,19 +169,19 @@ class HighwayHashStream final : public llvm::raw_ostream {
 absl::StatusOr<uint64_t> HloProgram::Fingerprint() const {
   tsl::StatusScopedDiagnosticHandler diag_handler(mlir_module_->getContext());
 
+  // Clone the module to avoid modifying the original.
+  mlir::OwningOpRef<mlir::ModuleOp> cloned_module(
+      llvm::cast<mlir::ModuleOp>(mlir_module_->clone()));
+
+  // Run StripDebugInfoPass on the cloned module.
+  mlir::PassManager pm(cloned_module->getContext());
+  pm.addPass(mlir::createStripDebugInfoPass());
+  if (mlir::failed(pm.run(*cloned_module))) {
+    return absl::InternalError(
+        "Failed to strip debug info during fingerprinting");
+  }
+
   mlir::BytecodeWriterConfig config;
-  config.attachAttributeCallback(
-      [](mlir::Attribute attr,
-         std::optional<llvm::StringRef>& group_name_override,
-         mlir::DialectBytecodeWriter& writer) -> mlir::LogicalResult {
-        if (llvm::isa_and_nonnull<mlir::LocationAttr>(attr)) {
-          // Ignore location attributes since they are for debugging only and
-          // do not affect the semantics of the program.
-          return mlir::success();
-        }
-        // Fall back to the default implementation.
-        return mlir::failure();
-      });
 
   // Use a version before `kUseListOrdering` due to an MLIR bug where use list
   // ordering is not stable.
@@ -191,7 +193,7 @@ absl::StatusOr<uint64_t> HloProgram::Fingerprint() const {
 
   HighwayHashStream os;
   mlir::LogicalResult result =
-      mlir::writeBytecodeToFile(mlir_module_, os, config);
+      mlir::writeBytecodeToFile(*cloned_module, os, config);
   absl::Status status = diag_handler.consumeStatus();
   if (!status.ok()) {
     tsl::errors::AppendToMessage(
