@@ -99,9 +99,13 @@ class NamedSharding {
     }
     return mesh_.DeviceAssignmentEquals(other.mesh_) &&
            dim_shardings_ == other.dim_shardings_ &&
-           replicated_axes_ == other.replicated_axes_ &&
            unreduced_axes_ == other.unreduced_axes_ &&
            manual_axes_ == other.manual_axes_;
+    // We don't compare `replicated_axes`. This refers to explicitly
+    // replicated axes. Whether an axis is replicated explicitly or
+    // implicitly does not matter for the logical equivalence of the
+    // sharding. This also matches the behavior in v2 sharding where
+    // there is no concept of explicitly replicated axis.
   }
 
   bool operator!=(const NamedSharding& other) const {

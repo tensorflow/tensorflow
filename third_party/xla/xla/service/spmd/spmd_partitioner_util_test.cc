@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -785,6 +786,82 @@ TEST(SPMDPartitionerUtilTest, GetPartitionGroupsAcrossTargetDimsGating) {
   EXPECT_EQ(groups_fallback->flattened_replica_groups(),
             groups_v3->flattened_replica_groups());
 }
+
+TEST(SPMDPartitionerUtilTest,
+     CanReshardWithCollectivePermuteImplicitAndExplicitReplication) {
+  Mesh mesh({2, 2, 2, 1}, {"d", "f", "e", "c"});
+  HloSharding source =
+      HloSharding(test_utils::FromAxisNames(mesh, {{"f"}, {}, {}}));
+  HloSharding target =
+      HloSharding(test_utils::FromAxisNames(mesh, {{"f"}, {}, {}},
+                                            /*replicated_axes=*/{"d"}));
+
+  // We don't want to collectively permute to a logically identical sharding as
+  // this would be a copy / identity operation.
+  EXPECT_FALSE(CanReshardWithCollectivePermute(source, target));
+}
+
+struct CanReshardWithCollectivePermuteTestCase {
+  std::string name;
+  HloSharding source;
+  HloSharding target;
+  bool expected_result;
+};
+
+class CanReshardWithCollectivePermuteEquivalenceTest
+    : public ::testing::TestWithParam<CanReshardWithCollectivePermuteTestCase> {
+};
+
+TEST_P(CanReshardWithCollectivePermuteEquivalenceTest, Equivalence) {
+  const auto& param = GetParam();
+  const HloSharding& source_v2 = param.source;
+  const HloSharding& target_v2 = param.target;
+  HloSharding source_v3 = HloSharding::ToV3Sharding(source_v2);
+  HloSharding target_v3 = HloSharding::ToV3Sharding(target_v2);
+
+  bool result_v2 = CanReshardWithCollectivePermute(source_v2, target_v2);
+  bool result_v3 = CanReshardWithCollectivePermute(source_v3, target_v3);
+
+  EXPECT_EQ(result_v2, result_v3);
+  EXPECT_EQ(result_v2, param.expected_result);
+  // We also test that CanReshardWithCollectivePermute yields the same result
+  // when mixing v2 and v3 shardings.
+  EXPECT_EQ(CanReshardWithCollectivePermute(source_v2, target_v3), result_v2);
+  EXPECT_EQ(CanReshardWithCollectivePermute(source_v3, target_v2), result_v2);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    EquivalenceTests, CanReshardWithCollectivePermuteEquivalenceTest,
+    testing::Values(
+        CanReshardWithCollectivePermuteTestCase{
+            "Replicated", HloSharding::Replicate(), HloSharding::Replicate(),
+            false},
+        CanReshardWithCollectivePermuteTestCase{
+            "TileSame", HloSharding::IotaTile({2, 4}),
+            HloSharding::IotaTile({2, 4}), false},
+        CanReshardWithCollectivePermuteTestCase{
+            "TileDiff", HloSharding::IotaTile({2, 4}),
+            HloSharding::IotaTile({2, 4}, {4, 2}, {1, 0}), true},
+        CanReshardWithCollectivePermuteTestCase{
+            "TileDiffDims", HloSharding::IotaTile({2, 4}),
+            HloSharding::IotaTile({4, 2}), false},
+        CanReshardWithCollectivePermuteTestCase{
+            "PartialTileSame",
+            HloSharding::PartialTile(TileAssignment({1, 2, 4})),
+            HloSharding::PartialTile(TileAssignment({1, 2, 4})), false},
+        CanReshardWithCollectivePermuteTestCase{
+            "PartialTileDiff",
+            HloSharding::PartialTile(TileAssignment({1, 2, 4})),
+            HloSharding::PartialTile(TileAssignment({1, 2, 4}, {4, 2}, {1, 0})),
+            true},
+        CanReshardWithCollectivePermuteTestCase{
+            "SingleDevice", HloSharding::SingleDevice(0),
+            HloSharding::SingleDevice(0), false},
+        CanReshardWithCollectivePermuteTestCase{
+            "SingleDeviceDiff", HloSharding::SingleDevice(0),
+            HloSharding::SingleDevice(1), false}),
+    [](const testing::TestParamInfo<CanReshardWithCollectivePermuteTestCase>&
+           info) { return info.param.name; });
 
 }  // namespace
 }  // namespace spmd

@@ -2358,9 +2358,7 @@ bool CanReshardWithCollectivePermute(const HloSharding& source_input,
           ? HloSharding::V3ToV2Sharding(target_input.named_sharding())
           : target_input;
 
-  return !source.IsReplicatedOrSingleDevice() &&
-         !target.IsReplicatedOrSingleDevice() &&
-         source.dimensions() == target.dimensions() &&
+  return source.dimensions() == target.dimensions() &&
          source.ReplicateOnLastTileDim() == target.ReplicateOnLastTileDim() &&
          source.tile_assignment() != target.tile_assignment();
 }
