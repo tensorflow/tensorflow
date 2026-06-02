@@ -17,6 +17,8 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <random>
+#include <tuple>
+#include <type_traits>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -555,5 +557,41 @@ INSTANTIATE_TEST_SUITE_P(
           std::make_tuple(4, 16, 32, 64),
 #endif
     }));
+
+template <typename T>
+class OverflowKernelTests : public ::testing::Test {};
+
+using RhsWidths = ::testing::Types<std::integral_constant<int, 1>
+#if defined(FC_4BIT_NEON) && defined(__aarch64__)
+                                   ,
+                                   std::integral_constant<int, 2>,
+                                   std::integral_constant<int, 4>
+#endif
+                                   >;
+TYPED_TEST_SUITE(OverflowKernelTests, RhsWidths);
+
+TYPED_TEST(OverflowKernelTests, OverflowTest) {
+  constexpr int rhs_width = TypeParam::value;
+  int lhs_layout_rows = 4;
+  int rhs_layout_rows = rhs_width;
+  int lhs_layout_cols = 1024;
+  int rhs_layout_cols = 1024;
+
+  // 0xff = two packed int4s with value of 15.
+  std::vector<uint8_t> test_lhs(lhs_layout_rows * lhs_layout_cols / 2, 0xff);
+  std::vector<int8_t> test_rhs(rhs_layout_rows * rhs_layout_cols, 127);
+  std::vector<int32_t> test_accum(lhs_layout_rows * rhs_layout_rows);
+
+  optimized_4bit::RunKernel<optimized_4bit::FilterWidth, rhs_width,
+                            optimized_4bit::FilterDepth>(
+      test_lhs.data(), test_rhs.data(), test_accum.data(), lhs_layout_rows,
+      lhs_layout_cols, rhs_layout_rows, rhs_layout_cols, rhs_layout_rows,
+      lhs_layout_rows);
+
+  for (int i = 0; i < (rhs_layout_rows * lhs_layout_rows); ++i) {
+    EXPECT_EQ(test_accum[i], 1950720);
+  }
+}
+
 }  // namespace
 }  // namespace tflite
