@@ -32,5 +32,6 @@ void AllocateLoggingDevice(const char* name, bool* arrived_flag,
                            void** device_info);
 TFE_TensorHandle* UnpackTensorHandle(TFE_TensorHandle* logged_tensor_handle,
                                      TF_Status* status);
+void DeleteLoggingDevice(void* device_info);
 
 #endif  // TENSORFLOW_C_EAGER_CUSTOM_DEVICE_TESTUTIL_H_
