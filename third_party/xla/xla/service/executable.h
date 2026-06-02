@@ -440,6 +440,17 @@ class Executable {
         "ExecutableAbiVersion is not supported by this executable.");
   }
 
+  // Returns the next VA range index for the given device ordinal. Cycle wraps
+  // at num_sets. Keeping this state in the Executable avoids ABA pointer reuse
+  // issues and memory leaks that happen when using global pointer maps.
+  int GetNextCommandBufferVaRangeIdx(int device_ordinal, int num_sets) const {
+    absl::MutexLock lock(&command_buffer_va_range_idx_mutex_);
+    int& idx = command_buffer_va_range_idx_[device_ordinal];
+    int result = idx;
+    idx = (idx + 1) % num_sets;
+    return result;
+  }
+
  private:
   // HloModule this was compiled from. BufferAssignment keeps pointers to
   // HloInstructions owned by the HloModule so we need to keep the HloModule
@@ -463,6 +474,10 @@ class Executable {
   // hlo_proto(). This avoids wasting CPU and memory if the proto isn't needed.
   std::unique_ptr<HloProto> hlo_proto_ ABSL_GUARDED_BY(hlo_proto_mutex_);
   mutable absl::Mutex hlo_proto_mutex_;
+
+  mutable absl::Mutex command_buffer_va_range_idx_mutex_;
+  mutable absl::flat_hash_map<int, int> command_buffer_va_range_idx_
+      ABSL_GUARDED_BY(command_buffer_va_range_idx_mutex_);
 };
 
 }  // namespace xla

@@ -1713,25 +1713,6 @@ PjRtStreamExecutorClient::RunAsync(
 // commands on the other, enabling CPU/GPU overlap.
 constexpr int kNumVaReservationSets = 2;
 
-// Returns the next VA range index for the given executable and device, keyed
-// per executable so each compiled module independently alternates between VA
-// range sets, enabling CPU/GPU overlap regardless of inter-module dispatch
-// order. Must be computed at lambda scheduling time (not inside the async
-// lambda) so that the scheduling order determines the counter order, keeping
-// all ranks in sync.
-int GetNextCommandBufferVaRangeIdx(const void* executable_key,
-                                   int device_ordinal) {
-  static absl::Mutex mu(absl::kConstInit);
-  static auto* counters =
-      new absl::flat_hash_map<std::pair<const void*, int>, int>();
-  absl::MutexLock lock(&mu);
-  auto key = std::make_pair(executable_key, device_ordinal);
-  int& idx = (*counters)[key];
-  int result = idx;
-  idx = (idx + 1) % kNumVaReservationSets;
-  return result;
-}
-
 // Enqueues a computation onto the compute stream. Each buffer returned in
 // device_buffers has a usage hold added that must be dropped on error or
 // converted on success.
@@ -1792,7 +1773,8 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
   // Compute the VA range index at scheduling time so the scheduling order
   // determines the counter order, keeping all ranks in sync.
   int command_buffer_va_range_idx =
-      GetNextCommandBufferVaRangeIdx(executable_->executable(), device_ordinal);
+      executable_->executable()->GetNextCommandBufferVaRangeIdx(
+          device_ordinal, kNumVaReservationSets);
 
   auto launch_on_device =
       [device_state, gpu_run_options = client_->gpu_run_options(options),
