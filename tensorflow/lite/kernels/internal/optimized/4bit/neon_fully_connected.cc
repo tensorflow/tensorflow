@@ -541,7 +541,14 @@ void NeonUnpack(float* output_ptr, const int32_t* dst, int batch_size,
   }
 }
 
-inline bool HasSDot() { return cpuinfo_has_arm_neon_dot(); }
+inline bool HasSDot() {
+  // CPUInfo already guards against double init
+  if (!cpuinfo_initialize()) {
+    // If we failed to init CPUInfo, assume ARM v8.2a-dotprod is not supported.
+    return false;
+  };
+  return cpuinfo_has_arm_neon_dot();
+}
 
 template <int RowsLeft, int RowsRight, int Cols>
 void NeonRunKernel(const uint8_t* lhs, const int8_t* rhs, int32_t* dst,
