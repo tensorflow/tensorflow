@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/ir/dialect.h"
@@ -270,6 +271,61 @@ TEST_F(ShapeInferenceTest, TestInferenceFailure) {
                      error_attr_values_fn, results)
                      .succeeded());
   }
+}
+
+TEST_F(ShapeInferenceTest, TestInvalidDtypeHandleDoS) {
+  auto operand_as_constant_fn = [](Value operand) -> Attribute {
+    return operand.getDefiningOp()->getAttr("value");
+  };
+
+  auto op_result_as_shape_fn = [](InferenceContext& ic,
+                                  OpResult op_result) -> ShapeHandle {
+    auto rt = mlir::dyn_cast<RankedTensorType>(op_result.getType());
+    if (!rt || rt.getRank() != 1 || !rt.hasStaticShape()) return {};
+
+    std::vector<DimensionHandle> dims(rt.getDimSize(0), ic.UnknownDim());
+    auto attr =
+        op_result.getDefiningOp()->getAttrOfType<DenseElementsAttr>("value");
+    for (auto element : llvm::enumerate(attr.getValues<APInt>()))
+      dims[element.index()] = ic.MakeDim(element.value().getSExtValue());
+    return ic.MakeShape(dims);
+  };
+
+  GraphFuncOp func = GetModule().lookupSymbol<GraphFuncOp>("test");
+  ASSERT_TRUE(func);
+  Block& block = *func.getBody().begin();
+
+  Operation* target_op = nullptr;
+  for (Operation& op : block.without_terminator()) {
+    if (op.getName().getStringRef() == "tfg.TensorListReserve") {
+      target_op = &op;
+      break;
+    }
+  }
+  ASSERT_TRUE(target_op);
+
+  auto result_element_type_fn = [&](int idx) -> Type {
+    return mlir::cast<ShapedType>(target_op->getResult(idx).getType())
+        .getElementType();
+  };
+
+  auto get_invalid_attr_values_fn =
+      [](Operation* op, llvm::StringRef op_name,
+         const tensorflow::OpRegistrationData* op_reg_data,
+         bool ignore_unregistered_attrs, tensorflow::AttrValueMap* attributes) {
+        (*attributes)[std::string("element_dtype")].set_type(
+            static_cast<tensorflow::DataType>(33));
+        (*attributes)[std::string("shape_type")].set_type(tensorflow::DT_INT32);
+        return absl::OkStatus();
+      };
+
+  SmallVector<ShapedTypeComponents> results;
+  auto res = InferReturnTypeComponentsForTFOp(
+      target_op->getLoc(), target_op, TFOp(target_op).getNonControlOperands(),
+      /*graph_version=*/1010, operand_as_constant_fn, op_result_as_shape_fn,
+      result_element_type_fn, get_invalid_attr_values_fn, results);
+
+  EXPECT_TRUE(failed(res));
 }
 
 }  // namespace tfg
