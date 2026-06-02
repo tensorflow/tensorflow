@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -36,30 +37,10 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "xla/backends/gpu/runtime/all_gather_thunk.h"
-#include "xla/backends/gpu/runtime/all_reduce_thunk.h"
-#include "xla/backends/gpu/runtime/all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/async_thunk.h"
-#include "xla/backends/gpu/runtime/collective_broadcast_thunk.h"
-#include "xla/backends/gpu/runtime/collective_permute_thunk.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
-#include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
-#include "xla/backends/gpu/runtime/convolution_thunk.h"
-#include "xla/backends/gpu/runtime/cudnn_thunk.h"
-#include "xla/backends/gpu/runtime/custom_call_thunk.h"
-#include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
-#include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
-#include "xla/backends/gpu/runtime/gemm_thunk.h"
-#include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
-#include "xla/backends/gpu/runtime/kernel_thunk.h"
-#include "xla/backends/gpu/runtime/legacy_custom_call_thunk.h"
-#include "xla/backends/gpu/runtime/memset_thunk.h"
-#include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
-#include "xla/backends/gpu/runtime/recv_thunk.h"
-#include "xla/backends/gpu/runtime/replica_id_thunk.h"
-#include "xla/backends/gpu/runtime/send_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
@@ -183,97 +164,6 @@ static absl::Status AppendCommands(ConversionContext& ctx,
       cmd_sequence.Append(&conditional_thunk);
       return absl::OkStatus();
     }
-    case Thunk::Kind::kCopy:
-      cmd_sequence.Append(static_cast<DeviceToDeviceCopyThunk*>(&thunk));
-      return absl::OkStatus();
-    case Thunk::Kind::kCustomCall:
-      // CustomCallThunk implements TracedCommand directly; append as borrowed
-      // pointer — the thunk outlives the command sequence.
-      if (auto* ffi_thunk = dynamic_cast<CustomCallThunk*>(&thunk)) {
-        cmd_sequence.Append(ffi_thunk);
-        return absl::OkStatus();
-      }
-      // LegacyCustomCallThunk implements TracedCommand directly; append as
-      // borrowed pointer — the thunk outlives the command sequence. Note: in
-      // production, command_buffer_conversion_pass excludes
-      // LegacyCustomCallThunk from automatic conversion, so this arm is only
-      // reached when the emitter is invoked directly (e.g. tests).
-      if (auto* legacy_thunk = dynamic_cast<LegacyCustomCallThunk*>(&thunk)) {
-        cmd_sequence.Append(legacy_thunk);
-        return absl::OkStatus();
-      }
-      return absl::InternalError("Unknown custom call thunk type");
-    // CustomKernelThunk implements Command directly; append borrowed pointer.
-    case Thunk::Kind::kCustomKernel:
-      cmd_sequence.Append(static_cast<CustomKernelThunk*>(&thunk));
-      return absl::OkStatus();
-    // KernelThunk implements Command directly; append borrowed pointer.
-    case Thunk::Kind::kKernel:
-      cmd_sequence.Append(static_cast<KernelThunk*>(&thunk));
-      return absl::OkStatus();
-    // GemmThunk implements TracedCommand directly; append as borrowed
-    // pointer — the thunk outlives the command sequence.
-    case Thunk::Kind::kGemm:
-      cmd_sequence.Append(static_cast<GemmThunk*>(&thunk));
-      return absl::OkStatus();
-    // CublasLtMatmulThunk implements TracedCommand directly; append as
-    // borrowed pointer — the thunk outlives the command sequence.
-    case Thunk::Kind::kCublasLtMatmul:
-      cmd_sequence.Append(static_cast<CublasLtMatmulThunk*>(&thunk));
-      return absl::OkStatus();
-    case Thunk::Kind::kMemzero:
-      cmd_sequence.Append(static_cast<MemzeroThunk*>(&thunk));
-      return absl::OkStatus();
-    // AllGatherThunk implements Command directly; append as borrowed pointer —
-    // the thunk outlives the command sequence.
-    case Thunk::Kind::kAllGather:
-      cmd_sequence.Append(static_cast<AllGatherThunk*>(&thunk));
-      return absl::OkStatus();
-    // AllReduceThunk implements Command directly; append as borrowed pointer —
-    // the thunk outlives the command sequence.
-    case Thunk::Kind::kAllReduce:
-      cmd_sequence.Append(static_cast<AllReduceThunk*>(&thunk));
-      return absl::OkStatus();
-    // ReduceScatterThunk implements Command directly; append as borrowed
-    // pointer — the thunk outlives the command sequence.
-    case Thunk::Kind::kReduceScatter:
-      cmd_sequence.Append(static_cast<ReduceScatterThunk*>(&thunk));
-      return absl::OkStatus();
-    // AllToAllThunk implements Command directly; append as borrowed pointer.
-    case Thunk::Kind::kAllToAll:
-      cmd_sequence.Append(static_cast<AllToAllThunk*>(&thunk));
-      return absl::OkStatus();
-    case Thunk::Kind::kCollectiveBroadcast:
-      cmd_sequence.Append(static_cast<CollectiveBroadcastThunk*>(&thunk));
-      return absl::OkStatus();
-    // CollectivePermuteThunk implements Command directly; append as borrowed
-    // pointer — the thunk outlives the command sequence.
-    case Thunk::Kind::kCollectivePermute:
-      cmd_sequence.Append(static_cast<CollectivePermuteThunk*>(&thunk));
-      return absl::OkStatus();
-    // RaggedAllToAllThunk implements Command directly; append borrowed pointer.
-    case Thunk::Kind::kRaggedAllToAll:
-      cmd_sequence.Append(static_cast<RaggedAllToAllThunk*>(&thunk));
-      return absl::OkStatus();
-    // RecvThunk implements Command directly; append borrowed pointer.
-    case Thunk::Kind::kRecv:
-      cmd_sequence.Append(static_cast<RecvThunk*>(&thunk));
-      return absl::OkStatus();
-    // SendThunk implements Command directly; append borrowed pointer.
-    case Thunk::Kind::kSend:
-      cmd_sequence.Append(static_cast<SendThunk*>(&thunk));
-      return absl::OkStatus();
-    // These thunks implement Command directly; append borrowed pointers.
-    // Note: kCopy also borrows DeviceToDeviceCopyThunk (see case above).
-    case Thunk::Kind::kMemset32BitValue:
-      cmd_sequence.Append(static_cast<Memset32BitValueThunk*>(&thunk));
-      return absl::OkStatus();
-    case Thunk::Kind::kPartitionId:
-      cmd_sequence.Append(static_cast<PartitionIdThunk*>(&thunk));
-      return absl::OkStatus();
-    case Thunk::Kind::kReplicaId:
-      cmd_sequence.Append(static_cast<ReplicaIdThunk*>(&thunk));
-      return absl::OkStatus();
     case Thunk::Kind::kAsyncDone:
       // Async done thunks are no-ops in command buffers.
       return absl::OkStatus();
@@ -283,16 +173,6 @@ static absl::Status AppendCommands(ConversionContext& ctx,
       cmd_sequence.Append(&while_thunk);
       return absl::OkStatus();
     }
-    // CuDnnThunk implements Command (via TracedCommand) directly; append
-    // borrowed pointer.
-    case Thunk::Kind::kCuDnn:
-      cmd_sequence.Append(static_cast<CuDnnThunk*>(&thunk));
-      return absl::OkStatus();
-    // ConvolutionThunk implements TracedCommand directly; append as
-    // borrowed pointer — the thunk outlives the command sequence.
-    case Thunk::Kind::kConvolution:
-      cmd_sequence.Append(static_cast<ConvolutionThunk*>(&thunk));
-      return absl::OkStatus();
     // Sequential thunk does not have any special semantics and we simply inline
     // all nested thunks into command buffer.
     case Thunk::Kind::kSequential:
@@ -313,11 +193,19 @@ static absl::Status AppendCommands(ConversionContext& ctx,
           "must already contain command buffers and XLA should not run command "
           "buffer scheduling pass the second time. If it happens in the test, "
           "try explicitly disabling command buffers in tested HLO module.");
-
     default:
-      return Internal("Unsupported thunk kind: %s",
-                      Thunk::KindToString(thunk.kind()));
+      break;
   }
+
+  if (auto* command = dynamic_cast<Command*>(&thunk)) {
+    // Command/thunk hybrids are owned by the input ThunkSequence and outlive
+    // the returned CommandSequence, so command sequences borrow them directly.
+    cmd_sequence.Append(command);
+    return absl::OkStatus();
+  }
+
+  return Internal("Unsupported thunk kind: %s",
+                  Thunk::KindToString(thunk.kind()));
 }
 
 namespace {
@@ -335,16 +223,18 @@ class ConcurrentRegionScheduler {
   }
 
   // Returns the scheduled thunks in topological order.
-  std::vector<Thunk*> scheduled_thunks() const { return scheduled_thunks_; }
+  const std::vector<Thunk*>& scheduled_thunks() const {
+    return scheduled_thunks_;
+  }
   // Returns the source nodes of the current region, i.e. the nodes that will
   // execute first.
-  std::vector<Thunk*> scheduled_source_thunks() const {
+  const std::vector<Thunk*>& scheduled_source_thunks() const {
     return scheduled_source_thunks_;
   }
   // Returns the sink nodes of the current region, i.e. the nodes that will
   // execute last.
-  std::vector<Thunk*> scheduled_sink_thunks() const {
-    return scheduled_sink_thunks_;
+  absl::Span<Thunk* const> scheduled_sink_thunks() const {
+    return absl::MakeConstSpan(scheduled_sink_thunks_);
   }
   // Returns artificial dependencies inserted by the scheduler.
   const absl::flat_hash_map<const Thunk*, std::vector<Thunk*>>&
@@ -439,7 +329,6 @@ class ConcurrentRegionScheduler {
     InitializeReady(thunks);
     std::vector<Thunk*> active;
     std::vector<Thunk*> previously_active;
-    scheduled_sink_thunks_.resize(kMaxConcurrentOps);
 
     while (ready_size() > 0) {
       MoveReadyToActive(active);
@@ -486,7 +375,7 @@ class ConcurrentRegionScheduler {
   // run in lockstep, the worst case performance determines the overall speed.
   static constexpr size_t kMaxConcurrentOps = 2;
   // Ready queue with kMaxConcurrentOps lanes.
-  std::deque<Thunk*> ready_[kMaxConcurrentOps];
+  std::array<std::deque<Thunk*>, kMaxConcurrentOps> ready_;
 
   // See comments on the methods above.
   size_t ready_size_ = 0;
@@ -498,70 +387,114 @@ class ConcurrentRegionScheduler {
   std::vector<Thunk*> scheduled_thunks_;
   absl::flat_hash_map<const Thunk*, std::vector<Thunk*>> scheduled_successors_;
   std::vector<Thunk*> scheduled_source_thunks_;
-  std::vector<Thunk*> scheduled_sink_thunks_;
+  std::array<Thunk*, kMaxConcurrentOps> scheduled_sink_thunks_ = {};
 };
 
-absl::Status AppendCommandsInConcurrentRegions(
-    ConversionContext& ctx, CommandSequence& cmd_sequence,
-    const ThunkSequence& sequence, const ConvertToCommandsOptions& options,
+struct ConcurrentRegion {
+  uint64_t id;
+  std::vector<Thunk*> thunks;
+};
+
+absl::StatusOr<std::vector<ConcurrentRegion>> CollectConcurrentRegions(
+    const ThunkSequence& sequence,
     std::optional<uint64_t> inherited_region_id) {
   std::vector<ThunkWithRegionId> flat_thunks =
       FlattenThunks(sequence, inherited_region_id);
-  absl::flat_hash_map<int64_t, std::vector<Thunk*>>
-      concurrent_region_id_to_thunks;
-  std::vector<int64_t> concurrent_region_ids;
+  std::vector<ConcurrentRegion> concurrent_regions;
+
   for (const auto& [thunk, region_id] : flat_thunks) {
     TF_RET_CHECK(region_id.has_value())
         << "Concurrent region id must be set in scheduling mode "
            "kConcurrentRegions. Failed on thunk: "
         << Thunk::KindToString(thunk->kind()) << " ("
         << thunk->profile_annotation() << ")";
-    const int64_t concurrent_region_id = region_id.value();
-    concurrent_region_id_to_thunks[concurrent_region_id].push_back(thunk);
-    if (concurrent_region_ids.empty() ||
-        concurrent_region_id > concurrent_region_ids.back()) {
-      concurrent_region_ids.push_back(concurrent_region_id);
+
+    const uint64_t concurrent_region_id = region_id.value();
+    if (concurrent_regions.empty() ||
+        concurrent_region_id != concurrent_regions.back().id) {
+      TF_RET_CHECK(concurrent_regions.empty() ||
+                   concurrent_region_id > concurrent_regions.back().id)
+          << "Concurrent region ids are not monotonic. Failed on thunk: "
+          << Thunk::KindToString(thunk->kind()) << " ("
+          << thunk->profile_annotation() << ")";
+      concurrent_regions.push_back({concurrent_region_id});
     }
-    TF_RET_CHECK(concurrent_region_id >= concurrent_region_ids.back())
-        << "Concurrent region ids are not monotonic."
-        << "Failed on thunk: " << Thunk::KindToString(thunk->kind()) << " ("
-        << thunk->profile_annotation() << ")";
+
+    concurrent_regions.back().thunks.push_back(thunk);
     VLOG(3) << "Thunk " << thunk->thunk_info().profile_annotation
             << " is in region " << concurrent_region_id;
   }
 
-  std::vector<ConcurrentRegionScheduler> concurrent_region_schedules;
-  absl::flat_hash_map<const Thunk*, int64_t> thunk_to_index;
+  return concurrent_regions;
+}
 
-  for (int64_t concurrent_region_id : concurrent_region_ids) {
-    std::vector<Thunk*> thunks =
-        concurrent_region_id_to_thunks[concurrent_region_id];
+int64_t CommandIndex(
+    const absl::flat_hash_map<const Thunk*, int64_t>& thunk_to_index,
+    const Thunk* thunk) {
+  auto it = thunk_to_index.find(thunk);
+  CHECK(it != thunk_to_index.end())
+      << "Missing command for thunk " << thunk->profile_annotation();
+  return it->second;
+}
+
+void AddCommandDependency(
+    ConversionContext& ctx, const CommandSequence& cmd_sequence,
+    const absl::flat_hash_map<const Thunk*, int64_t>& thunk_to_index,
+    const Thunk* predecessor, const Thunk* successor) {
+  const int64_t predecessor_index = CommandIndex(thunk_to_index, predecessor);
+  const int64_t successor_index = CommandIndex(thunk_to_index, successor);
+  ctx.extra_resources[successor_index].push_back(
+      ResourceUse::Read(cmd_sequence[predecessor_index]->token()));
+}
+
+absl::Status AppendScheduledConcurrentRegionCommands(
+    ConversionContext& ctx, CommandSequence& cmd_sequence,
+    std::vector<ConcurrentRegion>& concurrent_regions,
+    const ConvertToCommandsOptions& options,
+    std::vector<ConcurrentRegionScheduler>& concurrent_region_schedules,
+    absl::flat_hash_map<const Thunk*, int64_t>& thunk_to_index) {
+  concurrent_region_schedules.reserve(concurrent_regions.size());
+
+  for (ConcurrentRegion& region : concurrent_regions) {
     ConcurrentRegionScheduler& scheduler =
-        concurrent_region_schedules.emplace_back(absl::MakeSpan(thunks));
+        concurrent_region_schedules.emplace_back(absl::MakeSpan(region.thunks));
     for (Thunk* thunk : scheduler.scheduled_thunks()) {
+      const int64_t command_index = cmd_sequence.size();
       RETURN_IF_ERROR(AppendCommands(ctx, cmd_sequence, *thunk, options));
-      thunk_to_index[thunk] = cmd_sequence.size() - 1;
+      TF_RET_CHECK(cmd_sequence.size() == command_index + 1)
+          << "Concurrent region thunk must append exactly one command: "
+          << Thunk::KindToString(thunk->kind()) << " ("
+          << thunk->profile_annotation() << ")";
+      thunk_to_index[thunk] = command_index;
     }
   }
 
-  // Ensure extra_resources is sized to cover all commands added so far
-  // (including those added by nested AppendCommands calls).
-  ctx.extra_resources.resize(cmd_sequence.size());
+  return absl::OkStatus();
+}
 
-  // Add dependencies within concurrent regions.
+void AddDependenciesWithinConcurrentRegions(
+    ConversionContext& ctx, const CommandSequence& cmd_sequence,
+    absl::Span<const ConcurrentRegionScheduler> concurrent_region_schedules,
+    const absl::flat_hash_map<const Thunk*, int64_t>& thunk_to_index) {
   for (const auto& scheduler : concurrent_region_schedules) {
     // Suppress custom-deterministic-iteration-order.
-    // Non determinism is fine in this case since ctx.extra_resources is
+    // Non-determinism is fine in this case since ctx.extra_resources is
     // ordered and accessed by index. NOLINTNEXTLINE
-    for (auto& [thunk, successors] : scheduler.scheduled_successors()) {
+    for (const auto& [thunk, successors] : scheduler.scheduled_successors()) {
       for (Thunk* successor : successors) {
-        ctx.extra_resources[thunk_to_index[successor]].push_back(
-            ResourceUse::Read(cmd_sequence[thunk_to_index[thunk]]->token()));
+        AddCommandDependency(ctx, cmd_sequence, thunk_to_index, thunk,
+                             successor);
       }
     }
   }
-  // Add dependencies between concurrent regions. The source nodes of subsequent
-  // regions depend on all sink nodes of prior regions.
+}
+
+void AddDependenciesBetweenConcurrentRegions(
+    ConversionContext& ctx, const CommandSequence& cmd_sequence,
+    absl::Span<const ConcurrentRegionScheduler> concurrent_region_schedules,
+    const absl::flat_hash_map<const Thunk*, int64_t>& thunk_to_index) {
+  // The source nodes of each region depend on all sink nodes of the previous
+  // region to enforce serialization between regions.
   for (size_t i = 1; i < concurrent_region_schedules.size(); ++i) {
     for (Thunk* sink :
          concurrent_region_schedules[i - 1].scheduled_sink_thunks()) {
@@ -570,13 +503,33 @@ absl::Status AppendCommandsInConcurrentRegions(
       }
       for (Thunk* source :
            concurrent_region_schedules[i].scheduled_source_thunks()) {
-        // The source nodes of region `i` depend on the sink nodes of region
-        // `i-1` to ensure serialization between regions.
-        ctx.extra_resources[thunk_to_index[source]].push_back(
-            ResourceUse::Read(cmd_sequence[thunk_to_index[sink]]->token()));
-      };
+        AddCommandDependency(ctx, cmd_sequence, thunk_to_index, sink, source);
+      }
     }
   }
+}
+
+absl::Status AppendCommandsInConcurrentRegions(
+    ConversionContext& ctx, CommandSequence& cmd_sequence,
+    const ThunkSequence& sequence, const ConvertToCommandsOptions& options,
+    std::optional<uint64_t> inherited_region_id) {
+  ASSIGN_OR_RETURN(std::vector<ConcurrentRegion> concurrent_regions,
+                   CollectConcurrentRegions(sequence, inherited_region_id));
+
+  std::vector<ConcurrentRegionScheduler> concurrent_region_schedules;
+  absl::flat_hash_map<const Thunk*, int64_t> thunk_to_index;
+  RETURN_IF_ERROR(AppendScheduledConcurrentRegionCommands(
+      ctx, cmd_sequence, concurrent_regions, options,
+      concurrent_region_schedules, thunk_to_index));
+
+  // Ensure extra_resources is sized to cover all commands added so far
+  // (including those added by nested AppendCommands calls).
+  ctx.extra_resources.resize(cmd_sequence.size());
+
+  AddDependenciesWithinConcurrentRegions(
+      ctx, cmd_sequence, concurrent_region_schedules, thunk_to_index);
+  AddDependenciesBetweenConcurrentRegions(
+      ctx, cmd_sequence, concurrent_region_schedules, thunk_to_index);
   return absl::OkStatus();
 }
 
@@ -591,11 +544,8 @@ static absl::Status AppendCommands(ConversionContext& ctx,
     return AppendCommandsInConcurrentRegions(ctx, cmd_sequence, sequence,
                                              options, std::nullopt);
   }
-  absl::flat_hash_map<const Thunk*, int64_t> thunk_to_index;
   for (const std::unique_ptr<Thunk>& thunk : sequence) {
     RETURN_IF_ERROR(AppendCommands(ctx, cmd_sequence, *thunk, options));
-    int64_t index = cmd_sequence.size() - 1;
-    thunk_to_index[thunk.get()] = index;
   }
 
   return absl::OkStatus();
