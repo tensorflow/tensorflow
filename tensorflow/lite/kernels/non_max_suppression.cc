@@ -147,11 +147,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         GetOutputSafe(context, node, kSoftNMSOutputTensorNumSelectedIndices,
                       &output_num_selected_indices));
     output_num_selected_indices->type = kTfLiteInt32;
-    SetTensorSizes(context, output_num_selected_indices, {});
+    TF_LITE_ENSURE_OK(context,
+                      SetTensorSizes(context, output_num_selected_indices, {}));
 
     if (is_max_output_size_const) {
-      SetTensorSizes(context, output_selected_indices, {max_output_size_value});
-      SetTensorSizes(context, output_selected_scores, {max_output_size_value});
+      TF_LITE_ENSURE_OK(context,
+                        SetTensorSizes(context, output_selected_indices,
+                                       {max_output_size_value}));
+      TF_LITE_ENSURE_OK(context, SetTensorSizes(context, output_selected_scores,
+                                                {max_output_size_value}));
     } else {
       SetTensorToDynamic(output_selected_indices);
       SetTensorToDynamic(output_selected_scores);
@@ -168,10 +172,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                              kNMSOutputTensorNumSelectedIndices,
                                              &output_num_selected_indices));
     output_num_selected_indices->type = kTfLiteInt32;
-    SetTensorSizes(context, output_num_selected_indices, {});
+    TF_LITE_ENSURE_OK(context,
+                      SetTensorSizes(context, output_num_selected_indices, {}));
 
     if (is_max_output_size_const) {
-      SetTensorSizes(context, output_selected_indices, {max_output_size_value});
+      TF_LITE_ENSURE_OK(context,
+                        SetTensorSizes(context, output_selected_indices,
+                                       {max_output_size_value}));
     } else {
       SetTensorToDynamic(output_selected_indices);
     }
@@ -255,8 +262,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         GetOutputSafe(context, node, kSoftNMSOutputTensorNumSelectedIndices,
                       &output_num_selected_indices));
     if (!is_max_output_size_const) {
-      SetTensorSizes(context, output_selected_indices, {max_output_size_value});
-      SetTensorSizes(context, output_selected_scores, {max_output_size_value});
+      TF_LITE_ENSURE_OK(context,
+                        SetTensorSizes(context, output_selected_indices,
+                                       {max_output_size_value}));
+      TF_LITE_ENSURE_OK(context, SetTensorSizes(context, output_selected_scores,
+                                                {max_output_size_value}));
     }
     reference_ops::NonMaxSuppression(
         input_boxes->data.f, num_boxes, input_scores->data.f,
@@ -274,7 +284,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                              kNMSOutputTensorNumSelectedIndices,
                                              &output_num_selected_indices));
     if (!is_max_output_size_const) {
-      SetTensorSizes(context, output_selected_indices, {max_output_size_value});
+      TF_LITE_ENSURE_OK(context,
+                        SetTensorSizes(context, output_selected_indices,
+                                       {max_output_size_value}));
     }
     reference_ops::NonMaxSuppression(
         input_boxes->data.f, num_boxes, input_scores->data.f,
