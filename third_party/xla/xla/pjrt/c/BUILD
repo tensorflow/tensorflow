@@ -104,6 +104,20 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "pjrt_c_api_abi_version_helpers_test",
+    srcs = ["pjrt_c_api_abi_version_helpers_test.cc"],
+    deps = [
+        ":pjrt_c_api_abi_version_extension_hdrs",
+        ":pjrt_c_api_abi_version_helpers",
+        ":pjrt_c_api_hdrs",
+        "//xla/pjrt/proto:pjrt_abi_version_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "pjrt_c_api_megascale_extension_hdrs",
     hdrs = ["pjrt_c_api_megascale_extension.h"],
