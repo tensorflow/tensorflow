@@ -20,6 +20,9 @@ cc_library(
         "cluster_utils.h",
     ],
     compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(
@@ -58,7 +61,9 @@ cc_library(
         "//tensorflow/lite/toco:toco_port",
         "//tensorflow/lite/toco:tooling_util",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
     ],
 )
 
