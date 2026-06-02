@@ -413,21 +413,13 @@ absl::Status GpuHloCostAnalysis::HandleAllReduce(
   current_properties_.set_output_bytes_accessed(output_bytes_accessed);
   current_properties_[kCollBytesTransferred] = output_bytes_accessed;
   current_properties_[kBytesAccessedKey] = bytes_accessed;
-  current_properties_[kCollNumDevicesKey] = num_ranks;
   // Since allreduce has compute, we need to get flops for the compute
   // part which is an elementwise op.
   current_properties_[kFlopsKey] = GetFlopsForElementwiseOp(
       allreduce->to_apply()->root_instruction()->opcode(), allreduce->shape());
 
-  // TODO TJ support multi-node case, we need to know how many nodes there are.
-  int num_intra_steps = 2 * (num_ranks - 1);
-  // Compute algorithmic scaling ratio, this can be used to be multiplied with
-  // bus bandwidth to get the effective bandwidth of the algorithm. The scaling
-  // ratio differs based on what algorithm NCCL chooses to use. This is the
-  // scaling factor for ring since NCCL will only use ring for single-node, need
-  // to add support for tree algo in multi-node case.
-  float scaling_ratio = (1.0 * num_ranks) / num_intra_steps;
-  current_properties_[kCollAlgoScaleRatioKey] = scaling_ratio;
+  SetRingCollectiveProperties(num_ranks,
+                              /*num_intra_steps=*/2 * (num_ranks - 1));
 
   return absl::OkStatus();
 }
@@ -501,14 +493,33 @@ absl::Status GpuHloCostAnalysis::HandleReduce(const HloInstruction* hlo) {
   return absl::OkStatus();
 }
 
+void GpuHloCostAnalysis::SetRingCollectiveProperties(int64_t num_ranks,
+                                                     int64_t num_intra_steps) {
+  current_properties_[kCollNumDevicesKey] = num_ranks;
+  // TODO TJ support multi-node case, we need to know how many nodes there are.
+  // Compute algorithmic scaling ratio, this can be used to be multiplied with
+  // bus bandwidth to get the effective bandwidth of the algorithm. The scaling
+  // ratio differs based on what algorithm NCCL chooses to use. This is the
+  // scaling factor for ring since NCCL will only use ring for single-node, need
+  // to add support for tree algo in multi-node case.
+  current_properties_[kCollAlgoScaleRatioKey] =
+      num_intra_steps > 0 ? static_cast<float>(num_ranks) / num_intra_steps : 0;
+}
+
 absl::Status GpuHloCostAnalysis::HandleAllReduceStart(
     const HloInstruction* hlo) {
+  ASSIGN_OR_RETURN(int64_t num_ranks,
+                   NumRanks(*Cast<HloAllReduceInstruction>(hlo)));
+
   int64_t bytes_transferred = ShapeSize(hlo->shape(), options_.shape_size);
 
   current_properties_[kFlopsKey] = GetFlopsForElementwiseOp(
       hlo->to_apply()->root_instruction()->opcode(), hlo->shape());
   current_properties_[kBytesAccessedKey] = bytes_transferred;
   current_properties_[kCollBytesTransferred] = bytes_transferred;
+  SetRingCollectiveProperties(num_ranks,
+                              /*num_intra_steps=*/2 * (num_ranks - 1));
+
   return absl::OkStatus();
 }
 
@@ -523,6 +534,7 @@ absl::Status GpuHloCostAnalysis::HandleAllGather(const HloInstruction* hlo) {
 
   current_properties_[kBytesAccessedKey] = write_bytes + read_bytes;
   current_properties_[kCollBytesTransferred] = bytes_transferred;
+  SetRingCollectiveProperties(num_ranks, /*num_intra_steps=*/num_ranks - 1);
 
   return absl::OkStatus();
 }
@@ -540,6 +552,7 @@ absl::Status GpuHloCostAnalysis::HandleAllGatherStart(
 
   current_properties_[kBytesAccessedKey] = write_bytes + read_bytes;
   current_properties_[kCollBytesTransferred] = bytes_transferred;
+  SetRingCollectiveProperties(num_ranks, /*num_intra_steps=*/num_ranks - 1);
 
   return absl::OkStatus();
 }
@@ -573,6 +586,7 @@ absl::Status GpuHloCostAnalysis::HandleReduceScatter(
   current_properties_[kCollBytesTransferred] = bytes_transferred;
   current_properties_[kFlopsKey] = GetFlopsForElementwiseOp(
       hlo->to_apply()->root_instruction()->opcode(), hlo->shape());
+  SetRingCollectiveProperties(num_ranks, /*num_intra_steps=*/num_ranks - 1);
 
   return absl::OkStatus();
 }
