@@ -24,7 +24,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
@@ -241,7 +243,8 @@ class ParallelTensor {
   // Parallel tensors are immutable but compute their shape lazily unless it is
   // provided on construction. The optional has a value if the lazy computation
   // has been completed or the shape was provided on construction.
-  mutable std::optional<std::vector<int64_t>> shape_;
+  mutable absl::Mutex mu_;
+  mutable std::optional<std::vector<int64_t>> shape_ ABSL_GUARDED_BY(mu_);
   const TF_DataType dtype_;
 };
 

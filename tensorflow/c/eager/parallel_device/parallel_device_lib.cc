@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -25,6 +26,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/c_api.h"
@@ -40,7 +42,6 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tsl/platform/thread_annotations.h"
@@ -586,6 +587,7 @@ std::unique_ptr<ParallelTensor> ParallelTensor::FromTensorHandles(
 }
 
 absl::Status ParallelTensor::Shape(const std::vector<int64_t>** shape) const {
+  absl::MutexLock l(&mu_);
   if (!shape_.has_value()) {
     TF_Status status;
     PartialTensorShape combined_shape;
@@ -640,7 +642,7 @@ absl::Status ParallelTensor::SummarizeValue(std::string& summary) {
                     summarized_devices[component_index],
                     "\": ", component_summary);
   }
-  summary += "}";
+  absl::StrAppend(&summary, "}");
   return absl::OkStatus();
 }
 
