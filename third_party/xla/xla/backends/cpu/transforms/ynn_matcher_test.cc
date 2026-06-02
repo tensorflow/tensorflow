@@ -20,10 +20,10 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-class YnnE2eTest : public HloPjRtTestBase {
+class YnnE2eTest : public HloTestBase {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.add_xla_cpu_experimental_ynn_fusion_type(
         DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_CONVOLUTION);
     debug_options.clear_xla_cpu_experimental_ynn_fusion_type();
@@ -50,10 +50,10 @@ TEST_F(YnnE2eTest, DoNotDegroupConvolutionFeatures) {
                     "CHECK: f32[1,4,8,9]{3,2,1,0} convolution");
 }
 
-class YnnReduceTest : public HloPjRtTestBase {
+class YnnReduceTest : public HloTestBase {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.add_xla_cpu_experimental_ynn_fusion_type(
         DebugOptions::LIBRARY_FUSION_TYPE_REDUCE);
     return debug_options;
@@ -195,10 +195,10 @@ TEST_F(YnnReduceTest, ConvertReduce) {
   )");
 }
 
-class YnnDotTest : public HloPjRtTestBase {
+class YnnDotTest : public HloTestBase {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.add_xla_cpu_experimental_ynn_fusion_type(
         DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
     return debug_options;

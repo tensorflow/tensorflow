@@ -263,7 +263,10 @@ bool IsConflictFree(mlir::tensor::ExtractOp op) {
 }
 
 struct VectorizeLoad : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
-  using OpRewritePattern::OpRewritePattern;
+ public:
+  VectorizeLoad(mlir::MLIRContext* context, const DeviceSpec& device_spec)
+      : OpRewritePattern<mlir::tensor::ExtractOp>(context),
+        device_spec_(device_spec) {}
 
   mlir::LogicalResult matchAndRewrite(
       mlir::tensor::ExtractOp op,
@@ -282,6 +285,19 @@ struct VectorizeLoad : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
       return rewriter.notifyMatchFailure(op, "not a vectorizable loop");
     }
 
+    // Disable vectorization for sub-byte types (4/2-bit) on Intel GPUs. These
+    // types are packed (e.g., 2 int4s per byte) and are currently not
+    // supported in the LLVM SPIR-V backend as vector load operations.
+    auto element_type = vector_type.getElementType();
+    if (device_spec_.IsIntelGpu() && element_type.isIntOrFloat()) {
+      int bit_width = element_type.getIntOrFloatBitWidth();
+      if (bit_width == 2 || bit_width == 4) {
+        return rewriter.notifyMatchFailure(
+            op,
+            "sub-byte types are not supported for vector loads on Intel GPU");
+      }
+    }
+
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     b.setInsertionPoint(loop);
     auto vector_index =
@@ -297,6 +313,9 @@ struct VectorizeLoad : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
         op, loaded_vector, loop.getInductionVar());
     return mlir::success();
   }
+
+ private:
+  const DeviceSpec& device_spec_;
 };
 
 // Verifies that the insertions happening in the loop can all safely be batched
@@ -398,7 +417,10 @@ class VectorizeAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
 };
 
 struct VectorizeStore : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
-  using OpRewritePattern::OpRewritePattern;
+ public:
+  VectorizeStore(mlir::MLIRContext* context, const DeviceSpec& device_spec)
+      : OpRewritePattern<mlir::tensor::InsertOp>(context),
+        device_spec_(device_spec) {}
 
   mlir::LogicalResult matchAndRewrite(
       mlir::tensor::InsertOp op,
@@ -413,6 +435,19 @@ struct VectorizeStore : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
     auto vector_type = GetVectorType(op.getDest().getType(), loop);
     if (!vector_type) {
       return rewriter.notifyMatchFailure(op, "loop is not vectorizable");
+    }
+
+    // Disable vectorization for sub-byte types (4/2-bit) on Intel GPUs. These
+    // types are packed (e.g., 2 int4s per byte) and are currently not
+    // supported in the LLVM SPIR-V backend as vector store operations.
+    auto element_type = vector_type.getElementType();
+    if (device_spec_.IsIntelGpu() && element_type.isIntOrFloat()) {
+      int bit_width = element_type.getIntOrFloatBitWidth();
+      if (bit_width == 2 || bit_width == 4) {
+        return rewriter.notifyMatchFailure(
+            op,
+            "sub-byte types are not supported for vector stores on Intel GPU");
+      }
     }
 
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
@@ -452,6 +487,9 @@ struct VectorizeStore : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
 
     return mlir::success();
   }
+
+ private:
+  const DeviceSpec& device_spec_;
 };
 
 struct FoldVectorInsertExtractPairs
@@ -574,8 +612,8 @@ class VectorizeLoadsAndStoresPass
     }
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
-    patterns.add<VectorizeLoad, VectorizeStore, FoldVectorInsertExtractPairs>(
-        mlir_context);
+    patterns.add<VectorizeLoad, VectorizeStore>(mlir_context, device_spec_);
+    patterns.add<FoldVectorInsertExtractPairs>(mlir_context);
     patterns.add<VectorizeAtomicRMW>(mlir_context, device_spec_);
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {

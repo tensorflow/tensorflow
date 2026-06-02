@@ -23,10 +23,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
+
+using ::tsl::proto_testing::EqualsProto;
 
 class TripCountAnnotatorTest : public HloHardwareIndependentTestBase {};
 
@@ -224,6 +227,107 @@ TEST_F(TripCountAnnotatorTest, Int64Overflow) {
   EXPECT_EQ(config.known_induction_variable().tuple_index(), 0);
 }
 
+TEST_F(TripCountAnnotatorTest, FillsDynamicVariableInitStep) {
+  const char* kModuleStr = R"(
+    HloModule test
+    Body {
+      param = (s32[], s32[], f32[20,8]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      counter = s32[] get-tuple-element(param), index=1
+      buf = f32[20,8] get-tuple-element(param), index=2
+      one = s32[] constant(1)
+      zero = s32[] constant(0)
+      i_plus = s32[] add(i, one)
+      c_plus = s32[] add(counter, one)
+      to_host = f32[20,8] custom-call(buf), custom_call_target="MoveToHost"
+      slice = f32[1,8] dynamic-slice(to_host, counter, zero), dynamic_slice_sizes={1,8}
+      to_dev = f32[1,8] custom-call(slice), custom_call_target="MoveToDevice"
+      next_buf = f32[20,8] dynamic-update-slice(buf, to_dev, counter, zero)
+      ROOT tuple = (s32[], s32[], f32[20,8]) tuple(i_plus, c_plus, next_buf)
+    }
+
+    Cond {
+      param = (s32[], s32[], f32[20,8]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      ten = s32[] constant(10)
+      ROOT done = pred[] compare(i, ten), direction=LT
+    }
+
+    ENTRY test {
+      i_start = s32[] constant(0)
+      c_start = s32[] constant(5)
+      buf_start = f32[20,8] parameter(0)
+      initial_tuple = (s32[], s32[], f32[20,8]) tuple(i_start, c_start, buf_start)
+      ROOT while = (s32[], s32[], f32[20,8]) while(initial_tuple), condition=Cond, body=Body
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  WhileLoopTripCountAnnotator pass;
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, m.get()));
+  ASSERT_TRUE(changed);
+
+  ASSERT_OK_AND_ASSIGN(auto config,
+                       m->entry_computation()
+                           ->root_instruction()
+                           ->backend_config<WhileLoopBackendConfig>());
+  EXPECT_THAT(config, EqualsProto(R"pb(
+                known_trip_count { n: 10 }
+                known_induction_variable { tuple_index: 0 }
+                known_init_step { init: 0 step: 1 }
+                dynamic_variables { tuple_index: 1 init: 5 step: 1 }
+              )pb"));
+}
+
+TEST_F(TripCountAnnotatorTest, FillsDynamicVariableInitStepFromPrimaryCopy) {
+  const char* kModuleStr = R"(
+    HloModule test
+    Body {
+      param = (s32[], s32[], f32[20,8]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      shadow = s32[] get-tuple-element(param), index=1
+      buf = f32[20,8] get-tuple-element(param), index=2
+      one = s32[] constant(1)
+      zero = s32[] constant(0)
+      i_plus = s32[] add(i, one)
+      to_host = f32[20,8] custom-call(buf), custom_call_target="MoveToHost"
+      slice = f32[1,8] dynamic-slice(to_host, shadow, zero), dynamic_slice_sizes={1,8}
+      to_dev = f32[1,8] custom-call(slice), custom_call_target="MoveToDevice"
+      next_buf = f32[20,8] dynamic-update-slice(buf, to_dev, shadow, zero)
+      ROOT tuple = (s32[], s32[], f32[20,8]) tuple(i_plus, i, next_buf)
+    }
+
+    Cond {
+      param = (s32[], s32[], f32[20,8]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      ten = s32[] constant(10)
+      ROOT done = pred[] compare(i, ten), direction=LT
+    }
+
+    ENTRY test {
+      i_start = s32[] constant(1)
+      shadow_init = s32[] constant(0)
+      buf_start = f32[20,8] parameter(0)
+      initial_tuple = (s32[], s32[], f32[20,8]) tuple(i_start, shadow_init, buf_start)
+      ROOT while = (s32[], s32[], f32[20,8]) while(initial_tuple), condition=Cond, body=Body
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  WhileLoopTripCountAnnotator pass;
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, m.get()));
+  ASSERT_TRUE(changed);
+
+  ASSERT_OK_AND_ASSIGN(auto config,
+                       m->entry_computation()
+                           ->root_instruction()
+                           ->backend_config<WhileLoopBackendConfig>());
+  EXPECT_THAT(config, EqualsProto(R"pb(
+                known_trip_count { n: 9 }
+                known_induction_variable { tuple_index: 0 }
+                known_init_step { init: 1 step: 1 }
+                dynamic_variables { tuple_index: 1 init: 0 step: 1 }
+              )pb"));
+}
+
 TEST_F(TripCountAnnotatorTest, NonZeroTupleIndex) {
   const char* kModuleStr = R"(
     HloModule test
@@ -302,7 +406,7 @@ TEST_F(TripCountAnnotatorTest, InductionVarForwardedToConstant) {
   for (const HloInstruction* instr : entry->instructions()) {
     if (instr->opcode() == HloOpcode::kConstant &&
         instr->shape().element_type() == S32 &&
-        instr->shape().dimensions().size() == 0 &&
+        instr->shape().dimensions().empty() &&
         instr->literal().Get<int32_t>({}) == 10) {
       found_constant = true;
     }
@@ -350,7 +454,7 @@ TEST_F(TripCountAnnotatorTest, InductionVarForwardedNonZeroInit) {
   for (const HloInstruction* instr : entry->instructions()) {
     if (instr->opcode() == HloOpcode::kConstant &&
         instr->shape().element_type() == S32 &&
-        instr->shape().dimensions().size() == 0 &&
+        instr->shape().dimensions().empty() &&
         instr->literal().Get<int32_t>({}) == 15) {
       found_constant = true;
     }
@@ -410,7 +514,7 @@ TEST_F(TripCountAnnotatorTest, InductionVarMultipleGTEsForwarded) {
   for (const HloInstruction* instr : entry->instructions()) {
     if (instr->opcode() == HloOpcode::kConstant &&
         instr->shape().element_type() == S32 &&
-        instr->shape().dimensions().size() == 0 &&
+        instr->shape().dimensions().empty() &&
         instr->literal().Get<int32_t>({}) == 4) {
       constant_4_count++;
     }
@@ -509,12 +613,53 @@ TEST_F(TripCountAnnotatorTest, InductionVarNonZeroTupleIndexForwarded) {
   for (const HloInstruction* instr : entry->instructions()) {
     if (instr->opcode() == HloOpcode::kConstant &&
         instr->shape().element_type() == S32 &&
-        instr->shape().dimensions().size() == 0 &&
+        instr->shape().dimensions().empty() &&
         instr->literal().Get<int32_t>({}) == 7) {
       found_constant_7 = true;
     }
   }
   EXPECT_TRUE(found_constant_7);
+}
+
+TEST_F(TripCountAnnotatorTest, OverwritesPrePopulatedBackendConfig) {
+  const char* kModuleStr = R"(
+    HloModule test
+    Body {
+      param = (s32[]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      one = s32[] constant(1)
+      i_plus_one = s32[] add(i, one)
+      ROOT tuple = (s32[]) tuple(i_plus_one)
+    }
+
+    Cond {
+      param = (s32[]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      trip_count = s32[] constant(10)
+      ROOT done = pred[] compare(i, trip_count), direction=LT
+    }
+
+    ENTRY test {
+      i_start = s32[] constant(0)
+      initial_tuple = (s32[]) tuple(i_start)
+      ROOT while_loop = (s32[]) while(initial_tuple), condition=Cond, body=Body,
+        backend_config={"known_trip_count":{"n":"99"}}
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  WhileLoopTripCountAnnotator pass;
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, m.get()));
+  ASSERT_TRUE(changed);
+
+  HloInstruction* while_op = m->entry_computation()->root_instruction();
+  ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
+  ASSERT_OK_AND_ASSIGN(WhileLoopBackendConfig config,
+                       while_op->backend_config<WhileLoopBackendConfig>());
+  EXPECT_THAT(config, EqualsProto(R"pb(
+                known_induction_variable { tuple_index: 0 }
+                known_trip_count { n: 10 }
+                known_init_step { init: 0 step: 1 }
+              )pb"));
 }
 
 }  // namespace

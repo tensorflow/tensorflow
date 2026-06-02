@@ -158,7 +158,7 @@ TEST(CudaExecutorTest, CreateCollectiveMemoryAllocatorWorks) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
                           allocator->Allocate(1024));
   EXPECT_NE(allocation->address().opaque(), nullptr);
-  EXPECT_EQ(allocation->address().size(), 1024);
+  EXPECT_GE(allocation->address().size(), 1024);
 }
 
 // TODO: b/420735471 - Enable test once fixed.
@@ -238,7 +238,7 @@ TEST(CudaExecutorTest, AllocateMemoryWithVmmApi) {
   auto cuda_executor = dynamic_cast<CudaExecutor*>(executor);
   ASSERT_NE(cuda_executor, nullptr);
   DeviceAddressBase ptr =
-      cuda_executor->Allocate(1024, static_cast<int>(MemorySpace::kP2P));
+      cuda_executor->Allocate(1024, static_cast<int>(MemorySpace::kCollective));
 
   EXPECT_NE(ptr.opaque(), nullptr);
   TF_ASSERT_OK_AND_ASSIGN(size_t granularity,

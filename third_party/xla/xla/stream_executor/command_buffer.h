@@ -365,6 +365,7 @@ class CommandBuffer {
   }
 
  private:
+  friend class CommandBufferTest;
   friend class TraceCommandBufferFactory;
 
   // Tracing APIs are private because they do not compose with command buffer

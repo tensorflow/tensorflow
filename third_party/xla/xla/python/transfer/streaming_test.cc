@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
@@ -157,7 +158,7 @@ TEST(BulkTransferInterface, AwaitAfterInterfaces) {
 TEST(BulkTransferInterface, LocalTransport) {
   auto transport_factory = BulkTransportFactory::CreateLocal();
   auto a = transport_factory->InitBulkTransport();
-  auto b = transport_factory->RecvBulkTransport(a.request);
+  ASSERT_OK_AND_ASSIGN(auto b, transport_factory->RecvBulkTransport(a.request));
   std::move(a.start_bulk_transport)(b.request);
 
   std::string test_message = "secret message";
@@ -191,7 +192,7 @@ TEST(BulkTransferInterface, LocalTransport) {
 TEST(BulkTransferInterface, ClosedLocalTransport) {
   auto transport_factory = BulkTransportFactory::CreateLocal();
   auto a = transport_factory->InitBulkTransport();
-  auto b = transport_factory->RecvBulkTransport(a.request);
+  ASSERT_OK_AND_ASSIGN(auto b, transport_factory->RecvBulkTransport(a.request));
   std::move(a.start_bulk_transport)(b.request);
   a.bulk_transport = nullptr;
   absl::Notification recv_done;

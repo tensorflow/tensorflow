@@ -80,6 +80,10 @@ void PackOrCopy(PrimitiveType element_type, const LiteralSlice& literal,
                 void* data, int64_t size) {
   if (primitive_util::IsSubByteNonPredType(element_type)) {
     const int bit_width = primitive_util::BitWidth(element_type);
+    const int64_t expected_packed_size =
+        CeilOfRatio<int64_t>(literal.size_bytes(), 8 / bit_width);
+    CHECK_EQ(expected_packed_size, size)
+        << "Mismatched packed target size in PackOrCopy";
     absl::Span<const char> src_data_span(
         static_cast<const char*>(literal.untyped_data()), literal.size_bytes());
     absl::Span<char> dst_data_span(static_cast<char*>(data), size);

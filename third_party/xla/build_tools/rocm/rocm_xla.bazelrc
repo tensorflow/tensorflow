@@ -14,6 +14,7 @@ build:rocm_rbe --tls_client_certificate="/data/ci-cert.crt"
 build:rocm_rbe --tls_client_key="/data/ci-cert.key"
 build:rocm_rbe --spawn_strategy=remote,local
 build:rocm_rbe --grpc_keepalive_time=30s
+build:rocm_rbe --remote_cache_compression
 
 test:rocm_rbe --jobs=200
 test:rocm_rbe --remote_executor=grpcs://wardite.cluster.engflow.com

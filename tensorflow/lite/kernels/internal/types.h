@@ -999,7 +999,7 @@ struct TanhParams {
   int input_left_shift;
 };
 
-constexpr int kTransposeMaxDimensions = 6;
+constexpr int kTransposeMaxDimensions = 8;
 
 struct TransposeParams {
   int8_t perm_count;

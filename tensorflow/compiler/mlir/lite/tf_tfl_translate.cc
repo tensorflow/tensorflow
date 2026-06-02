@@ -140,7 +140,7 @@ int main(int argc, char **argv) {
       saved_model_version = 1;
     }
     if (input_mlir)
-      module = tensorflow::errors::InvalidArgument(
+      module = absl::InvalidArgumentError(
           "Importing saved model should not have input_mlir set");
 
     tags = absl::StrSplit(saved_model_tags, ',');

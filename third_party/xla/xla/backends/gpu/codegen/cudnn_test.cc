@@ -251,12 +251,6 @@ ENTRY e {
 }
 
 TEST_F(CuDnnFusionExecutionTest, CompilerSupportsFusionsWithWorkspace) {
-  // TODO(b/445172709, b/505078018): Re-enable once fixed.
-  se::CudaComputeCapability cuda_cc = get_cuda_cc();
-  if (cuda_cc.IsAtLeastBlackwell() || cuda_cc.IsAmpere()) {
-    GTEST_SKIP();
-  }
-
   const std::string kHloText = R"(
 f {
   a = f32[32,96] parameter(0)

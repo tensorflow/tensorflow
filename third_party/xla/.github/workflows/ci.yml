@@ -67,6 +67,12 @@ jobs:
             repo: "openxla/xla",
           },
           {
+            pool: "linux-x86-n2-16",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
+            name: "XLA Linux x86 GPU ROCm",
+            repo: "openxla/xla",
+          },
+          {
             pool: "linux-x86-g2-16-l4-1gpu",
             container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
             name: "XLA Linux x86 GPU L4",
@@ -111,7 +117,7 @@ jobs:
         ]
     name: ${{ matrix.job_info.name }}
     runs-on: ${{ matrix.job_info.pool }}
-    container: ${{ matrix.job_info.container }}
+    container: ${{ matrix.job_info.container }} # zizmor: ignore[unpinned-images]
     defaults:
       run:
         shell: bash

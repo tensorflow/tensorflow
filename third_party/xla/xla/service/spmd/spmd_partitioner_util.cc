@@ -402,7 +402,7 @@ std::vector<HloInstruction*> MakeTiledPartitionOrdinals(
     const HloSharding& sharding, HloInstruction* partition_id, SpmdBuilder* b) {
   CHECK(!sharding.IsReplicatedOrSingleDevice());
   auto dimensions = sharding.dimensions();
-  if (sharding.ReplicateOnLastTileDim()) {
+  if (!sharding.UseNamedShardingLeaf() && sharding.ReplicateOnLastTileDim()) {
     dimensions.remove_suffix(1);
   }
   auto table_shape = ShapeUtil::MakeShape(S32, dimensions);
@@ -1031,10 +1031,7 @@ std::optional<int64_t> UniqueTiledDim(const HloSharding& sharding) {
     return std::nullopt;
   }
   int64_t dim = -1;
-  int64_t rank = sharding.ReplicateOnLastTileDim()
-                     ? sharding.num_dimensions() - 1
-                     : sharding.num_dimensions();
-  for (int64_t i = 0; i < rank; ++i) {
+  for (int64_t i = 0; i < sharding.TiledDataRank(); ++i) {
     if (sharding.dimension(i) > 1) {
       if (dim != -1) {
         return std::nullopt;
@@ -3153,7 +3150,7 @@ GetMeshAxesPartitionGroupsForReplication(
   if (axis_refs.empty()) {
     return std::nullopt;
   }
-  SortAndMergeAxes(axis_refs, *mesh);
+  MergeAxes(axis_refs, *mesh);
   return MeshAxesReplicaGroupList(*mesh, axis_refs);
 }
 

@@ -34,9 +34,8 @@ class MemcpyFusion : public FusionInterface {
   explicit MemcpyFusion(const HloFusionAnalysis& analysis)
       : analysis_(analysis) {}
 
-  absl::StatusOr<FusionEmissionResult> Emit(
-      IrEmitterContext& ir_emitter_context,
-      const HloFusionInstruction& fusion) const final;
+  AsyncThunkSequence Emit(IrEmitterContext& ir_emitter_context,
+                          const HloFusionInstruction& fusion) const final;
 
  private:
   const HloFusionAnalysis& analysis_;
@@ -51,9 +50,8 @@ class DynamicMemcpyFusion : public FusionInterface {
   explicit DynamicMemcpyFusion(const HloFusionAnalysis& analysis)
       : analysis_(analysis) {}
 
-  absl::StatusOr<FusionEmissionResult> Emit(
-      IrEmitterContext& ir_emitter_context,
-      const HloFusionInstruction& fusion) const final;
+  AsyncThunkSequence Emit(IrEmitterContext& ir_emitter_context,
+                          const HloFusionInstruction& fusion) const final;
 
   // Inexpensive checks to see if a fusion might be a dynamic memcpy fusion.
   // If this returns true, GetMemcpyDescriptorForFusion might still fail.

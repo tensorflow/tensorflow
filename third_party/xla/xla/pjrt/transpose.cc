@@ -96,6 +96,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/ef57.h"
 #include "xla/permutation_util.h"
 #include "xla/pjrt/transpose_kernels.h"
@@ -823,7 +824,7 @@ absl::StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
   bool input_contiguity =
       o.chunk_contiguity == TransposePlan::ChunkContiguity::kInput;
 
-  TF_RETURN_IF_ERROR(ParseTilingSpecification(
+  RETURN_IF_ERROR(ParseTilingSpecification(
       ndim, o.output_tiling,
       /*nonstandard_layout=*/output_contiguity, plan->b_tiling_));
 
@@ -831,7 +832,7 @@ absl::StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
   absl::InlinedVector<int64_t, 4> temp_lda, temp_lda_tile, temp_a_tiling;
 
   // Parse the tile and stride specifications.
-  TF_RETURN_IF_ERROR(ParseTilingSpecification(
+  RETURN_IF_ERROR(ParseTilingSpecification(
       ndim, o.input_tiling,
       /*nonstandard_layout=*/o.input_striding.has_value() || input_contiguity,
       temp_a_tiling));
@@ -1599,8 +1600,8 @@ absl::StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
       key,
       [&](const TransposePlanCacheKey& key)
           -> absl::StatusOr<std::shared_ptr<TransposePlan>> {
-        TF_ASSIGN_OR_RETURN(std::unique_ptr<TransposePlan> plan,
-                            TransposePlan::Create(o));
+        ASSIGN_OR_RETURN(std::unique_ptr<TransposePlan> plan,
+                         TransposePlan::Create(o));
         return std::shared_ptr<TransposePlan>(std::move(plan));
       });
 }

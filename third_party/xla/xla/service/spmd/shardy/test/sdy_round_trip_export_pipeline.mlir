@@ -124,6 +124,7 @@ func.func @func_result_sharding_returning_op_value(%arg0: tensor<8x16xf32>)
 // CHECK-SAME:      %arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
 func.func @sharding_constraint(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
   // CHECK: stablehlo.custom_call @Sharding(%arg0)
+  // CHECK-NOT: has_side_effect
   // CHECK-V2-SAME: {mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh, [{\22axis_0\22, \22axis_1\22, ?}, {?}]>]>"}, mhlo.sharding =
   // CHECK-V3-NOT: mhlo.frontend_attributes
   // CHECK-V3-SAME: mhlo.sharding = "{mesh['axis_0'=2,'axis_1'=4,'axis_2'=4], [{'axis_0', 'axis_1', ?}, {?}]}"
@@ -259,4 +260,19 @@ func.func @named_sharding_module(%arg0: tensor<8x8xf32> {mhlo.sharding = "{mesh[
   %0 = stablehlo.add %arg0, %arg1 {mhlo.sharding = "{mesh[x=4,y=8], [{},{}]}"} : tensor<8x8xf32>
   %1 = stablehlo.dot %0, %arg2 : (tensor<8x8xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
   return %1 : tensor<8x16xf32>
+}
+
+// -----
+
+sdy.mesh @mesh_1 = <["x"=8, "y"=4]>
+
+// CHECK-LABEL: func @sharding_constraint_unreduced
+// CHECK-SAME:      %arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+func.func @sharding_constraint_unreduced(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+  // CHECK: stablehlo.custom_call @Sharding(%arg0)
+  // CHECK-V2-SAME: {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh_1, [{\22x\22, ?}, {?}], unreduced={\22y\22}>]>"}
+  // CHECK-V3-NOT: mhlo.frontend_attributes
+  // CHECK-V3-SAME: {has_side_effect = true, mhlo.sharding = "{mesh['x'=8,'y'=4], [{'x', ?}, {?}], unreduced={'y'}}"}
+  %0 = sdy.sharding_constraint %arg0 <@mesh_1, [{"x", ?}, {?}], unreduced={"y"}> :  tensor<8x8xf32>
+  return %0 : tensor<8x8xf32>
 }

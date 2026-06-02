@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/macros.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -264,6 +266,34 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
       absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
       ArrayCopySemantics semantics) = 0;
 
+  enum class HashMode : int {
+    // Hashes a value based on its physical representation. The hash value will
+    // be sensitive to the sharding and layout of values. This is typically fast
+    // to compute. Can be used to check the integrity of values across shard
+    // shape and layout preserving transformations.
+    kPhysical,
+    // Hashes a value based on its logical representation. The hash value will
+    // be invariant to the sharding and layout of values. This can be slower or
+    // more resource demanding to compute. Can be used to check the integrity of
+    // values across shard shape and layout changing transformations.
+    kLogical,
+  };
+
+  // Hashes the given values and returns one hash per value.
+  //
+  // The implementation of hashing depends on the runtime. The hash values are
+  // not guaranteed to be consistent across different runtimes. The computed
+  // hash values are expected to stay reasonably stable on the same runtime to
+  // allow integrity checks (e.g., the same hash values for the same runtime
+  // binary), but the actual stability may vary by runtimes.
+  //
+  // Some hashing implementations may execute an SPMD program on accelerator
+  // devices. Thus, for the maximum safety and portability, the caller should
+  // ensure that `HashValues()` calls and other execution calls are consistently
+  // ordered across multiple controllers.
+  virtual tsl::Future<std::vector<uint64_t>> HashValues(
+      absl::Span<const ValueRef> values, HashMode mode) = 0;
+
   // Reshards arrays to new arrays according to the given specs.
   //
   // If destination specs have the layout specifications, applies it to the
@@ -293,6 +323,18 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // Builds a tuple from a sequence of values.
   virtual absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
       absl::Span<ValueRef> values) = 0;
+
+  // Makes a `BundleRef` from `ValueRef`s.
+  //
+  // `semantics` must not be `kAlwaysCopy`.
+  virtual absl::StatusOr<BundleRef> Bundle(absl::Span<ValueRef> values,
+                                           ArrayCopySemantics semantics) = 0;
+
+  // Concatenates `Bundle`s into a single `Bundle`.
+  //
+  // `semantics` must not be `kAlwaysCopy`.
+  virtual absl::StatusOr<BundleRef> ConcatBundles(
+      absl::Span<BundleRef> bundles, ArrayCopySemantics semantics) = 0;
 
   // Attempts to cancel the execution that returned `cancellation_handle` in its
   // `ExecuteResult` when enqueued.

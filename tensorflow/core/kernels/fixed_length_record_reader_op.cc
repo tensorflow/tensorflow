@@ -171,17 +171,17 @@ class FixedLengthRecordReaderOp : public ReaderOpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("footer_bytes", &footer_bytes));
     OP_REQUIRES_OK(context, context->GetAttr("hop_bytes", &hop_bytes));
     OP_REQUIRES(context, header_bytes >= 0,
-                errors::InvalidArgument("header_bytes must be >= 0 not ",
-                                        header_bytes));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "header_bytes must be >= 0 not ", header_bytes)));
     OP_REQUIRES(context, record_bytes >= 0,
-                errors::InvalidArgument("record_bytes must be >= 0 not ",
-                                        record_bytes));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "record_bytes must be >= 0 not ", record_bytes)));
     OP_REQUIRES(context, footer_bytes >= 0,
-                errors::InvalidArgument("footer_bytes must be >= 0 not ",
-                                        footer_bytes));
-    OP_REQUIRES(
-        context, hop_bytes >= 0,
-        errors::InvalidArgument("hop_bytes must be >= 0 not ", hop_bytes));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "footer_bytes must be >= 0 not ", footer_bytes)));
+    OP_REQUIRES(context, hop_bytes >= 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("hop_bytes must be >= 0 not ", hop_bytes)));
     Env* env = context->env();
     std::string encoding;
     OP_REQUIRES_OK(context, context->GetAttr("encoding", &encoding));

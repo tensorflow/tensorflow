@@ -3506,6 +3506,40 @@ TEST(LiteralTest, SetShapeClearsCustomElementSizeInBitsOnTupleLeafArrays) {
   EXPECT_EQ(literal.shape().tuple_shapes(0).layout().element_size_in_bits(), 0);
 }
 
+TEST_F(LiteralUtilTest, CopyFromProtoWithDynamicShape) {
+  // Create a literal with dynamic shape.
+  Literal literal(ShapeUtil::MakeShape(F32, {10}, {true}));
+  literal.SetDynamicSize(0, 3);
+  literal.PopulateR1<float>({1.0, 2.0, 3.0});
+
+  // Serialize it to proto.
+  LiteralProto proto = literal.ToProto();
+
+  // Deserialize it back.
+  TF_ASSERT_OK_AND_ASSIGN(Literal deserialized,
+                          Literal::CreateFromProto(proto));
+
+  // We expect the deserialized literal to have dynamic size 3.
+  EXPECT_EQ(deserialized.GetDynamicSize(0), 3);
+  EXPECT_EQ(deserialized, literal);
+}
+
+TEST_F(LiteralUtilTest, CopyFromProtoDynamicShapeMismatch) {
+  // Create a literal with dynamic shape.
+  Literal literal(ShapeUtil::MakeShape(F32, {10}, {true}));
+  literal.SetDynamicSize(0, 3);
+  literal.PopulateR1<float>({1.0, 2.0, 3.0});
+
+  // Serialize it to proto.
+  LiteralProto proto = literal.ToProto();
+
+  // Mismatch dynamic sizes size by clearing it.
+  proto.clear_dynamic_sizes();
+
+  // Deserialize it back. This should error now.
+  EXPECT_FALSE(Literal::CreateFromProto(proto).ok());
+}
+
 }  // namespace
 
 }  // namespace xla

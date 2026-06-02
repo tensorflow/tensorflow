@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -353,7 +354,7 @@ MemoryBoundLoopOptimizer::Create(int loop_start, int loop_end,
           options.memory_bound_loop_optimizer_options, hlo_live_range,
           alias_analysis, *options.cost_analysis, &options.size_fn,
           options.reserved_scoped_memory_fn, options.alignment_in_bytes));
-  TF_RETURN_IF_ERROR(optimizer->Initialize());
+  RETURN_IF_ERROR(optimizer->Initialize());
   return std::move(optimizer);
 }
 

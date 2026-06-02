@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Pass/PassManager.h"
@@ -139,7 +140,7 @@ static absl::StatusOr<const PjRtCApiTopologyDescription> InitClientTopoDesc(
     const PJRT_Api* c_api, PJRT_Client* c_client) {
   absl::StatusOr<PJRT_TopologyDescription*> c_topo =
       pjrt::GetTopologyDescription(c_client, c_api);
-  TF_RETURN_IF_ERROR(c_topo.status());
+  RETURN_IF_ERROR(c_topo.status());
   return PjRtCApiTopologyDescription(c_api, *c_topo, /*owned=*/false);
 }
 
@@ -279,7 +280,7 @@ void PjRtCApiClient::InitDevicesAndMemorySpaces() {
   // Attach memory spaces to devices.
   // TODO(yueshengys): switch to global devices when supported.
   for (const auto& device : addressable_devices_) {
-    PjRtCApiDevice* cpp_device = tensorflow::down_cast<PjRtCApiDevice*>(device);
+    PjRtCApiDevice* cpp_device = absl::down_cast<PjRtCApiDevice*>(device);
     PJRT_Device* c_device = cpp_device->c_device();
     PJRT_Device_AddressableMemories_Args args;
     args.struct_size = PJRT_Device_AddressableMemories_Args_STRUCT_SIZE;
@@ -308,7 +309,7 @@ void PjRtCApiClient::InitDevicesAndMemorySpaces() {
   // TODO(yueshengys): switch to global memories when supported.
   for (const auto& memory : addressable_memory_spaces_) {
     PjRtCApiMemorySpace* cpp_memory =
-        tensorflow::down_cast<PjRtCApiMemorySpace*>(memory);
+        absl::down_cast<PjRtCApiMemorySpace*>(memory);
     PJRT_Memory* c_memory = cpp_memory->c_memory();
     PJRT_Memory_AddressableByDevices_Args args;
     args.struct_size = PJRT_Memory_AddressableByDevices_Args_STRUCT_SIZE;
@@ -577,11 +578,34 @@ std::string GetPluginStablehloVersionOrDefault(PjRtClient* client) {
     return xla::GetDefaultStablehloVersion();
   }
 
-  // If plugin doesn't report it StableHLO version, use the default.
+  // If plugin doesn't report its StableHLO version, use the default.
   auto attr_map = attributes->attributes;
   auto version = attr_map.find("stablehlo_current_version");
   if (version == attr_map.end()) {
     return xla::GetDefaultStablehloVersion();
+  }
+
+  std::vector<int64_t> v = std::get<std::vector<int64_t>>(version->second);
+  return absl::StrFormat("%d.%d.%d", v[0], v[1], v[2]);
+}
+
+std::string GetPluginSdyVersionOrDefault(PjRtClient* client) {
+  // If the plugin is not set, use the default.
+  if (!client) {
+    return xla::GetDefaultSdyVersion();
+  }
+
+  // If the plugin doesn't have attributes, use the default.
+  auto attributes = client->plugin_attributes();
+  if (!attributes.has_value()) {
+    return xla::GetDefaultSdyVersion();
+  }
+
+  // If plugin doesn't report its Shardy version, use the default.
+  auto attr_map = attributes->attributes;
+  auto version = attr_map.find("sdy_current_version");
+  if (version == attr_map.end()) {
+    return xla::GetDefaultSdyVersion();
   }
 
   std::vector<int64_t> v = std::get<std::vector<int64_t>>(version->second);
@@ -597,19 +621,21 @@ absl::StatusOr<std::pair<std::string, std::string>> SerializeProgram(
     PjRtClient* client, ProgramVariant program, const CompileOptions& options) {
   tsl::profiler::TraceMe traceme("PjRtCApiClient::SerializeProgram");
 
-  const std::string version_string = GetPluginStablehloVersionOrDefault(client);
+  const std::string target_version = GetPluginStablehloVersionOrDefault(client);
+  const std::string sdy_version = GetPluginSdyVersionOrDefault(client);
   bool allow_in_place_mlir_modification =
       options.allow_in_place_mlir_modification;
 
   // TODO: Consider cleanup of the MLIR Context if mutate in place is allowed.
   return std::visit(
       absl::Overload{
-          [&version_string,
+          [&target_version, &sdy_version,
            allow_in_place_mlir_modification](xla::MaybeOwningMlirModule module)
               -> absl::StatusOr<std::pair<std::string, std::string>> {
-            TF_ASSIGN_OR_RETURN(
+            ASSIGN_OR_RETURN(
                 std::string code,
-                xla::Serialize(module.mlir_module(), version_string,
+                xla::Serialize(module.mlir_module(), target_version,
+                               sdy_version,
                                /*inplace=*/allow_in_place_mlir_modification));
             return {std::make_pair(code, std::string(pjrt::kMlirFormat))};
           },
@@ -644,16 +670,16 @@ InitializeArgsAndCompile(PjRtCApiClient* api_client, const PJRT_Api* c_api,
     tsl::profiler::TraceMeConsumer consumer(
         "PjRtCApiClient::SerializeCompileOptions",
         tsl::profiler::ContextType::kPjrtLibraryCall, traceme_context_id);
-    TF_ASSIGN_OR_RETURN(const CompileOptionsProto options_proto,
-                        options.ToProto());
+    ASSIGN_OR_RETURN(const CompileOptionsProto options_proto,
+                     options.ToProto());
     compile_options_str = options_proto.SerializeAsString();
     args.compile_options = compile_options_str.c_str();
     args.compile_options_size = compile_options_str.size();
   }
 
   // Serialize program.
-  TF_ASSIGN_OR_RETURN(const auto code_and_format,
-                      SerializeProgram(api_client, std::move(module), options));
+  ASSIGN_OR_RETURN(const auto code_and_format,
+                   SerializeProgram(api_client, std::move(module), options));
   const auto& [code, format] = code_and_format;
   PJRT_Program program;
   program.struct_size = PJRT_Program_STRUCT_SIZE;
@@ -693,14 +719,11 @@ InitializeArgsAndCompileAot(const PJRT_Api* c_api, PjRtClient* client,
   if (client == nullptr) {
     args.client = nullptr;
   } else {
-    args.client =
-        tensorflow::down_cast<PjRtCApiClient*>(client)->pjrt_c_client();
+    args.client = absl::down_cast<PjRtCApiClient*>(client)->pjrt_c_client();
   }
-  args.topology =
-      tensorflow::down_cast<const PjRtCApiTopologyDescription*>(&topology)
-          ->c_topology();
-  TF_ASSIGN_OR_RETURN(const CompileOptionsProto options_proto,
-                      options.ToProto());
+  args.topology = absl::down_cast<const PjRtCApiTopologyDescription*>(&topology)
+                      ->c_topology();
+  ASSIGN_OR_RETURN(const CompileOptionsProto options_proto, options.ToProto());
 
   // Serialize compile options.
   std::string compile_options_str;
@@ -709,15 +732,15 @@ InitializeArgsAndCompileAot(const PJRT_Api* c_api, PjRtClient* client,
     tsl::profiler::TraceMeConsumer consumer(
         "PjRtCApiClient::SerializeCompileOptions",
         tsl::profiler::ContextType::kPjrtLibraryCall, traceme_context_id);
-    TF_ASSIGN_OR_RETURN(const CompileOptionsProto options_proto,
-                        options.ToProto());
+    ASSIGN_OR_RETURN(const CompileOptionsProto options_proto,
+                     options.ToProto());
     compile_options_str = options_proto.SerializeAsString();
     args.compile_options = compile_options_str.c_str();
     args.compile_options_size = compile_options_str.size();
   }
 
-  TF_ASSIGN_OR_RETURN(const auto code_and_format,
-                      SerializeProgram(client, std::move(module), options));
+  ASSIGN_OR_RETURN(const auto code_and_format,
+                   SerializeProgram(client, std::move(module), options));
   const auto& [code, format] = code_and_format;
   PJRT_Program program;
   program.struct_size = PJRT_Program_STRUCT_SIZE;
@@ -742,8 +765,8 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiClient::Compile(
     return absl::StrCat("PjRtCApiClient::CompileAndLoad(",
                         module.mlir_module().getName().value_or("").str(), ")");
   });
-  TF_ASSIGN_OR_RETURN(const PjRtTopologyDescription* const topology,
-                      GetTopologyDescription());
+  ASSIGN_OR_RETURN(const PjRtTopologyDescription* const topology,
+                   GetTopologyDescription());
   return InitializeArgsAndCompileAot(c_api_, this, std::move(module), options,
                                      *topology);
 }
@@ -763,20 +786,37 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtCApiClient::LoadSerializedExecutable(absl::string_view serialized,
                                          std::optional<CompileOptions> options,
                                          const LoadOptions& load_options) {
-  PJRT_Executable_DeserializeAndLoad_Args des_args;
+  PJRT_Executable_DeserializeAndLoad_Args des_args{};
 
   des_args.struct_size = PJRT_Executable_DeserializeAndLoad_Args_STRUCT_SIZE;
-  des_args.extension_start = nullptr;
   des_args.client = c_client_.get();
   des_args.serialized_executable = serialized.data();
   des_args.serialized_executable_size = serialized.length();
-  des_args.overridden_serialized_compile_options = nullptr;
-  des_args.overridden_serialized_compile_options_size = 0;
+
+  PJRT_LoadOptions load_options_c_api{};
+  des_args.load_options = &load_options_c_api;
+
+  load_options_c_api.struct_size = PJRT_LoadOptions_STRUCT_SIZE;
+  if (load_options.computation_origin.has_value()) {
+    load_options_c_api.computation_origin =
+        load_options.computation_origin->data();
+    load_options_c_api.computation_origin_size =
+        load_options.computation_origin->size();
+  }
+  if (load_options.multi_slice_config != nullptr) {
+    auto* c_api_config = dynamic_cast<const pjrt::PjRtCApiMultiSliceConfig*>(
+        load_options.multi_slice_config);
+    if (c_api_config == nullptr) {
+      return absl::InvalidArgumentError(
+          "PjRtCApiClient only supports PjRtCApiMultiSliceConfig.");
+    }
+    load_options_c_api.multi_slice_config = c_api_config->get();
+  }
 
   std::string options_str;
   if (options) {
-    TF_ASSIGN_OR_RETURN(const CompileOptionsProto options_proto,
-                        options->ToProto());
+    ASSIGN_OR_RETURN(const CompileOptionsProto options_proto,
+                     options->ToProto());
     options_str = options_proto.SerializeAsString();
     des_args.overridden_serialized_compile_options = options_str.c_str();
     des_args.overridden_serialized_compile_options_size = options_str.size();
@@ -809,10 +849,10 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Load(
   load_args.client = c_client_.get();
   load_args.executable = c_executable->c_executable();
 
-  TF_ASSIGN_OR_RETURN(CompileOptions compile_options,
-                      c_executable->GetCompileOptions());
-  TF_ASSIGN_OR_RETURN(const CompileOptionsProto options_proto,
-                      compile_options.ToProto());
+  ASSIGN_OR_RETURN(CompileOptions compile_options,
+                   c_executable->GetCompileOptions());
+  ASSIGN_OR_RETURN(const CompileOptionsProto options_proto,
+                   compile_options.ToProto());
   std::string options_str = options_proto.SerializeAsString();
   load_args.compile_options = options_str.c_str();
   load_args.compile_options_size = options_str.size();
@@ -849,15 +889,14 @@ PjRtCApiClient::CreateUninitializedBuffer(const Shape& shape,
 
   pjrt::BufferMemoryLayoutData c_layout_data;
   if (shape.has_layout()) {
-    TF_ASSIGN_OR_RETURN(c_layout_data,
-                        pjrt::ConvertToBufferMemoryLayoutData(shape.layout()));
+    ASSIGN_OR_RETURN(c_layout_data,
+                     pjrt::ConvertToBufferMemoryLayoutData(shape.layout()));
     args.shape_layout = &c_layout_data.c_layout;
   } else {
     args.shape_layout = nullptr;
   }
 
-  args.memory =
-      tensorflow::down_cast<PjRtCApiMemorySpace*>(memory_space)->c_memory();
+  args.memory = absl::down_cast<PjRtCApiMemorySpace*>(memory_space)->c_memory();
 
   RETURN_STATUS_IF_PJRT_ERROR(
       c_api_->PJRT_Client_CreateUninitializedBuffer(&args), c_api_);
@@ -892,21 +931,21 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::CreateErrorBuffer(
 
   pjrt::BufferMemoryLayoutData c_layout_data;
   if (shape.has_layout()) {
-    TF_ASSIGN_OR_RETURN(c_layout_data,
-                        pjrt::ConvertToBufferMemoryLayoutData(shape.layout()));
+    ASSIGN_OR_RETURN(c_layout_data,
+                     pjrt::ConvertToBufferMemoryLayoutData(shape.layout()));
     args.shape_layout = &c_layout_data.c_layout;
   } else {
     args.shape_layout = nullptr;
   }
 
-  args.memory = tensorflow::down_cast<PjRtCApiMemorySpace*>(memory)->c_memory();
+  args.memory = absl::down_cast<PjRtCApiMemorySpace*>(memory)->c_memory();
 
   absl::flat_hash_map<std::string, xla::PjRtValueType> payload_map;
   error.ForEachPayload([&](absl::string_view name, const absl::Cord& payload) {
     payload_map[name] = std::string(payload);
   });
-  TF_ASSIGN_OR_RETURN(std::vector<PJRT_NamedValue> c_payload,
-                      pjrt::ConvertToPjRtNamedValueList(payload_map));
+  ASSIGN_OR_RETURN(std::vector<PJRT_NamedValue> c_payload,
+                   pjrt::ConvertToPjRtNamedValueList(payload_map));
   args.payload = c_payload.data();
   args.num_payload = c_payload.size();
 
@@ -937,7 +976,7 @@ absl::Status FulfillAliasBuffer(
     // We have a real buffer, make sure it's a PjRtCApiBuffer and pass it to the
     // C API.
     PjRtCApiBuffer* c_buffer =
-        tensorflow::down_cast<PjRtCApiBuffer*>(real_buffer_or.value());
+        absl::down_cast<PjRtCApiBuffer*>(real_buffer_or.value());
     args.buffer = c_buffer->c_buffer();
     args.status_code = PJRT_Error_Code_OK;
     args.error_message = nullptr;
@@ -981,15 +1020,14 @@ PjRtCApiClient::CreateAliasBuffer(const Shape& shape,
 
   pjrt::BufferMemoryLayoutData c_layout_data;
   if (shape.has_layout()) {
-    TF_ASSIGN_OR_RETURN(c_layout_data,
-                        pjrt::ConvertToBufferMemoryLayoutData(shape.layout()));
+    ASSIGN_OR_RETURN(c_layout_data,
+                     pjrt::ConvertToBufferMemoryLayoutData(shape.layout()));
     args.shape_layout = &c_layout_data.c_layout;
   } else {
     args.shape_layout = nullptr;
   }
 
-  args.memory =
-      tensorflow::down_cast<PjRtCApiMemorySpace*>(memory_space)->c_memory();
+  args.memory = absl::down_cast<PjRtCApiMemorySpace*>(memory_space)->c_memory();
   args.alias_buffer = nullptr;
 
   RETURN_STATUS_IF_PJRT_ERROR(c_api_->PJRT_Client_CreateAliasBuffer(&args),
@@ -1047,8 +1085,7 @@ absl::StatusOr<std::uintptr_t> PjRtCApiClient::UnsafeBufferPointer(
   PJRT_Buffer_UnsafePointer_Args args;
   args.struct_size = PJRT_Buffer_UnsafePointer_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
-  args.buffer =
-      tensorflow::down_cast<const PjRtCApiBuffer*>(buffer)->c_buffer();
+  args.buffer = absl::down_cast<const PjRtCApiBuffer*>(buffer)->c_buffer();
 
   RETURN_STATUS_IF_PJRT_ERROR(c_api_->PJRT_Buffer_UnsafePointer(&args), c_api_);
 
@@ -1092,8 +1129,8 @@ PjRtCApiClient::BufferFromHostBufferInternalImpl(
   }
   pjrt::BufferMemoryLayoutData c_layout_data;
   if (device_layout != nullptr) {
-    TF_ASSIGN_OR_RETURN(c_layout_data,
-                        pjrt::ConvertToBufferMemoryLayoutData(*device_layout));
+    ASSIGN_OR_RETURN(c_layout_data,
+                     pjrt::ConvertToBufferMemoryLayoutData(*device_layout));
     args.device_layout = &c_layout_data.c_layout;
   } else {
     args.device_layout = nullptr;
@@ -1102,14 +1139,14 @@ PjRtCApiClient::BufferFromHostBufferInternalImpl(
   args.host_buffer_semantics =
       ::pjrt::ConvertToPjRtHostBufferSemantics(host_buffer_semantics);
   if (std::holds_alternative<PjRtDevice*>(device_or_memory)) {
-    args.device = tensorflow::down_cast<PjRtCApiDevice*>(
+    args.device = absl::down_cast<PjRtCApiDevice*>(
                       std::get<PjRtDevice*>(device_or_memory))
                       ->c_device();
     args.memory = nullptr;
   } else {
     CHECK(std::holds_alternative<PjRtMemorySpace*>(device_or_memory));
     args.device = nullptr;
-    args.memory = tensorflow::down_cast<PjRtCApiMemorySpace*>(
+    args.memory = absl::down_cast<PjRtCApiMemorySpace*>(
                       std::get<PjRtMemorySpace*>(device_or_memory))
                       ->c_memory();
   }
@@ -1169,7 +1206,7 @@ PjRtCApiClient::BufferFromHostLiteral(const LiteralSlice& literal,
         "BufferFromHostLiteral.");
   }
   absl::InlinedVector<int64_t, 4> strides(literal.shape().dimensions().size());
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       ShapeUtil::UnpackedByteStrides(literal.shape(), absl::MakeSpan(strides)));
   return BufferFromHostBufferInternalImpl(
       literal.untyped_data(), literal.shape().element_type(),
@@ -1193,8 +1230,8 @@ PjRtCApiClient::CreateViewOfDeviceBuffer(
   args.element_type = pjrt::ConvertToPjRtBufferType(shape.element_type());
   pjrt::BufferMemoryLayoutData c_layout_data;
   if (shape.has_layout()) {
-    TF_ASSIGN_OR_RETURN(c_layout_data,
-                        pjrt::ConvertToBufferMemoryLayoutData(shape.layout()));
+    ASSIGN_OR_RETURN(c_layout_data,
+                     pjrt::ConvertToBufferMemoryLayoutData(shape.layout()));
     args.layout = &(c_layout_data.c_layout);
   } else {
     args.layout = nullptr;
@@ -1212,8 +1249,7 @@ PjRtCApiClient::CreateViewOfDeviceBuffer(
     args.on_delete_callback_arg = nullptr;
   }
   args.device = nullptr;
-  args.memory =
-      tensorflow::down_cast<PjRtCApiMemorySpace*>(memory_space)->c_memory();
+  args.memory = absl::down_cast<PjRtCApiMemorySpace*>(memory_space)->c_memory();
   if (stream.has_value()) {
     args.stream = *stream;
   } else {
@@ -1269,8 +1305,8 @@ absl::StatusOr<Layout> PjRtCApiClient::GetDefaultLayout(
 
   std::string serialized_layout(serialize_args.serialized_bytes,
                                 serialize_args.serialized_bytes_size);
-  TF_ASSIGN_OR_RETURN(std::shared_ptr<const PjRtLayout> pjrt_layout,
-                      PjRtLayout::Deserialize(serialized_layout));
+  ASSIGN_OR_RETURN(std::shared_ptr<const PjRtLayout> pjrt_layout,
+                   PjRtLayout::Deserialize(serialized_layout));
 
   return pjrt_layout->xla_layout();
 }
@@ -1393,7 +1429,7 @@ PjRtCApiClient::MakeCrossHostReceiveBuffers(
   args.layouts = layout_list.data();
 
   args.notifier = pjrt::CppCrossHostRecvNotifierToC(c_api, std::move(notifier));
-  args.device = tensorflow::down_cast<PjRtCApiDevice*>(device)->c_device();
+  args.device = absl::down_cast<PjRtCApiDevice*>(device)->c_device();
 
   std::vector<PJRT_Buffer*> temp_buffers(shapes.size());
   args.buffers = temp_buffers.data();
@@ -1431,7 +1467,7 @@ absl::StatusOr<std::vector<Future<>>> PjRtCApiClient::CrossHostSendBuffers(
   c_buffers.reserve(buffers.size());
   for (PjRtBuffer* buffer : buffers) {
     c_buffers.push_back(
-        tensorflow::down_cast<const PjRtCApiBuffer*>(buffer)->c_buffer());
+        absl::down_cast<const PjRtCApiBuffer*>(buffer)->c_buffer());
   }
 
   args.buffers = c_buffers.data();
@@ -1492,7 +1528,7 @@ PjRtCApiClient::CrossHostReceiveBuffers(
   }
   args.layouts = layout_list.data();
 
-  args.device = tensorflow::down_cast<PjRtCApiDevice*>(device)->c_device();
+  args.device = absl::down_cast<PjRtCApiDevice*>(device)->c_device();
   args.src_global_device_ids = src_global_device_ids.data();
   args.transfer_keys = transfer_keys.data();
 
@@ -1575,8 +1611,8 @@ class PjRtCApiAsyncHostToDeviceTransferManager
 
     pjrt::BufferMemoryLayoutData c_layout_data;
     if (shape.has_layout()) {
-      TF_ASSIGN_OR_RETURN(
-          c_layout_data, pjrt::ConvertToBufferMemoryLayoutData(shape.layout()));
+      ASSIGN_OR_RETURN(c_layout_data,
+                       pjrt::ConvertToBufferMemoryLayoutData(shape.layout()));
       args.shape_layout = &c_layout_data.c_layout;
     } else {
       args.shape_layout = nullptr;
@@ -1716,8 +1752,8 @@ PjRtCApiClient::CreateBuffersForAsyncHostToDevice(
     for (int i = 0; i < device_layouts->size(); ++i) {
       if (device_layouts.has_value() && (*device_layouts)[i].has_value()) {
         const Layout& layout = (*device_layouts)[i].value();
-        TF_ASSIGN_OR_RETURN(pjrt::BufferMemoryLayoutData c_layout_data,
-                            pjrt::ConvertToBufferMemoryLayoutData(layout));
+        ASSIGN_OR_RETURN(pjrt::BufferMemoryLayoutData c_layout_data,
+                         pjrt::ConvertToBufferMemoryLayoutData(layout));
         layout_data_list.push_back(std::move(c_layout_data));
         device_layout_list.emplace_back(&(layout_data_list.back().c_layout));
       } else {
@@ -1729,8 +1765,7 @@ PjRtCApiClient::CreateBuffersForAsyncHostToDevice(
     args.num_device_layouts = 0;
     args.device_layouts = nullptr;
   }
-  args.memory =
-      tensorflow::down_cast<PjRtCApiMemorySpace*>(memory_space)->c_memory();
+  args.memory = absl::down_cast<PjRtCApiMemorySpace*>(memory_space)->c_memory();
 
   RETURN_STATUS_IF_PJRT_ERROR(
       c_api->PJRT_Client_CreateBuffersForAsyncHostToDevice(&args), c_api);
@@ -2009,6 +2044,24 @@ absl::StatusOr<tsl::AllocatorStats> PjRtCApiDevice::GetAllocatorStats() const {
   return result;
 }
 
+absl::Status PjRtCApiDevice::ClearMemoryStats() {
+  const PJRT_Api* api = client_->pjrt_c_api();
+  if (api == nullptr) {
+    return absl::InternalError("PJRT C API is null.");
+  }
+  if (api->PJRT_Device_ClearMemoryStats == nullptr) {
+    return absl::UnimplementedError(
+        "PJRT C API PJRT_Device_ClearMemoryStats is not supported by the "
+        "plugin.");
+  }
+  PJRT_Device_ClearMemoryStats_Args args;
+  args.struct_size = PJRT_Device_ClearMemoryStats_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.device = device_;
+  RETURN_STATUS_IF_PJRT_ERROR(api->PJRT_Device_ClearMemoryStats(&args), api);
+  return absl::OkStatus();
+}
+
 absl::StatusOr<std::intptr_t> PjRtCApiDevice::GetStreamForExternalReadyEvents()
     const {
   const PJRT_Api* c_api = client_->pjrt_c_api();
@@ -2068,8 +2121,8 @@ absl::StatusOr<bool> PjRtCApiDevice::PoisonExecution(int32_t launch_id,
   error.ForEachPayload([&](absl::string_view name, const absl::Cord& payload) {
     payload_map[name] = std::string(payload);
   });
-  TF_ASSIGN_OR_RETURN(std::vector<PJRT_NamedValue> c_payload,
-                      pjrt::ConvertToPjRtNamedValueList(payload_map));
+  ASSIGN_OR_RETURN(std::vector<PJRT_NamedValue> c_payload,
+                   pjrt::ConvertToPjRtNamedValueList(payload_map));
   args.payload = c_payload.data();
   args.num_payload = c_payload.size();
 
@@ -2288,8 +2341,8 @@ static absl::StatusOr<Shape> GetOutputShapeHelper(
   std::vector<xla::Shape> shapes;
   shapes.reserve(element_types.size());
   for (int i = 0; i < element_types.size(); ++i) {
-    TF_ASSIGN_OR_RETURN(xla::Shape shape, ShapeUtil::MakeValidatedShape(
-                                              element_types[i], dimensions[i]));
+    ASSIGN_OR_RETURN(xla::Shape shape, ShapeUtil::MakeValidatedShape(
+                                           element_types[i], dimensions[i]));
     *shape.mutable_layout() = layouts[i]->xla_layout();
     shapes.push_back(std::move(shape));
   }
@@ -2351,21 +2404,20 @@ PjRtCApiExecutable::GetParameterShardings() const {
 }
 
 absl::StatusOr<std::vector<Shape>> PjRtCApiExecutable::GetOutputShapes() const {
-  TF_ASSIGN_OR_RETURN(std::vector<std::vector<PrimitiveType>> element_types,
-                      GetOutputElementTypes());
-  TF_ASSIGN_OR_RETURN(std::vector<std::vector<DimensionVector>> dimensions,
-                      GetOutputDimensions());
-  TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<const PjRtLayout>> layouts,
-                      GetOutputLayouts());
+  ASSIGN_OR_RETURN(std::vector<std::vector<PrimitiveType>> element_types,
+                   GetOutputElementTypes());
+  ASSIGN_OR_RETURN(std::vector<std::vector<DimensionVector>> dimensions,
+                   GetOutputDimensions());
+  ASSIGN_OR_RETURN(std::vector<std::shared_ptr<const PjRtLayout>> layouts,
+                   GetOutputLayouts());
 
   // `PjRtExecutable::GetOutputLayouts` doesn't support MPMD executables.
   // Only one output is expected.
   CHECK_EQ(element_types.size(), 1);
   CHECK_EQ(dimensions.size(), 1);
 
-  TF_ASSIGN_OR_RETURN(
-      Shape shape,
-      GetOutputShapeHelper(element_types[0], dimensions[0], layouts));
+  ASSIGN_OR_RETURN(Shape shape, GetOutputShapeHelper(element_types[0],
+                                                     dimensions[0], layouts));
   return std::vector<Shape>{shape};
 }
 
@@ -2524,8 +2576,8 @@ PjRtCApiExecutable::GetParameterLayouts() const {
 
     std::string serialized_layout(serialize_args.serialized_bytes,
                                   serialize_args.serialized_bytes_size);
-    TF_ASSIGN_OR_RETURN(std::shared_ptr<const PjRtLayout> pjrt_layout,
-                        PjRtLayout::Deserialize(serialized_layout));
+    ASSIGN_OR_RETURN(std::shared_ptr<const PjRtLayout> pjrt_layout,
+                     PjRtLayout::Deserialize(serialized_layout));
     layouts.push_back(std::move(pjrt_layout));
   }
   return layouts;
@@ -2608,8 +2660,8 @@ PjRtCApiExecutable::GetOutputLayouts() const {
 
     std::string serialized_layout(serialize_args.serialized_bytes,
                                   serialize_args.serialized_bytes_size);
-    TF_ASSIGN_OR_RETURN(std::shared_ptr<const PjRtLayout> pjrt_layout,
-                        PjRtLayout::Deserialize(serialized_layout));
+    ASSIGN_OR_RETURN(std::shared_ptr<const PjRtLayout> pjrt_layout,
+                     PjRtLayout::Deserialize(serialized_layout));
     layouts.push_back(std::move(pjrt_layout));
   }
   return layouts;
@@ -2670,7 +2722,7 @@ PjRtCApiExecutable::GetHloModules() const {
 
   if (program_format == ::pjrt::kMlirFormat) {
     mlir::MLIRContext ctx;
-    TF_ASSIGN_OR_RETURN(  // NOLINT(clang-diagnostic-pre-c++20-compat)
+    ASSIGN_OR_RETURN(  // NOLINT(clang-diagnostic-pre-c++20-compat)
         mlir::OwningOpRef<mlir::ModuleOp> module,
         ParseMlirModuleString(code, ctx));
     mlir::PassManager pm(&ctx);
@@ -2681,8 +2733,8 @@ PjRtCApiExecutable::GetHloModules() const {
     // equivalent) once implemented.
     mlir::MlirToHloConversionOptions options;
     options.return_tuple = false;
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::HloModule> hlo_module,
-                        mlir::ConvertMlirHloToHloModule(module.get(), options));
+    ASSIGN_OR_RETURN(std::unique_ptr<xla::HloModule> hlo_module,
+                     mlir::ConvertMlirHloToHloModule(module.get(), options));
 
     std::vector<std::shared_ptr<HloModule>> out;
     out.push_back(std::move(hlo_module));
@@ -2692,8 +2744,8 @@ PjRtCApiExecutable::GetHloModules() const {
   HloModuleProtoWithConfig proto;
   proto.ParseFromString(code);
   std::vector<std::shared_ptr<HloModule>> out;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      HloModule::CreateFromProtoWithConfig(proto));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                   HloModule::CreateFromProtoWithConfig(proto));
   out.push_back(std::move(module));
   return out;
 }
@@ -2895,7 +2947,7 @@ static std::vector<std::vector<PJRT_Buffer*>> Convert2DCppBuffersToCBuffers(
     auto& c_list = c_lists.emplace_back();
     c_list.reserve(cpp_list.size());
     for (PjRtBuffer* buffer : cpp_list) {
-      auto* c_api_argument = tensorflow::down_cast<PjRtCApiBuffer*>(buffer);
+      auto* c_api_argument = absl::down_cast<PjRtCApiBuffer*>(buffer);
       c_list.push_back(c_api_argument->c_buffer());
     }
   }
@@ -3122,7 +3174,7 @@ absl::StatusOr<size_t> PjRtCApiLoadedExecutable::GetNumOutputs() const {
 absl::StatusOr<std::vector<std::vector<PJRT_Buffer*>>>
 PjRtCApiLoadedExecutable::InitializeOutputListsStorage(
     size_t outer_size) const {
-  TF_ASSIGN_OR_RETURN(size_t inner_size, GetNumOutputs());
+  ASSIGN_OR_RETURN(size_t inner_size, GetNumOutputs());
   std::vector<std::vector<PJRT_Buffer*>> c_output_lists_storage(
       outer_size, std::vector<PJRT_Buffer*>(inner_size));
   return c_output_lists_storage;
@@ -3163,7 +3215,7 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
   args.options->multi_slice_config = nullptr;
   if (options.multi_slice_config != nullptr) {
     args.options->multi_slice_config =
-        tsl::down_cast<const pjrt::PjRtCApiMultiSliceConfig*>(
+        absl::down_cast<const pjrt::PjRtCApiMultiSliceConfig*>(
             options.multi_slice_config)
             ->get();
   }
@@ -3264,8 +3316,7 @@ static absl::StatusOr<PJRT_ExecuteContext*> ForwardExecuteContext(
     return absl::OkStatus();
   };
 
-  TF_RETURN_IF_ERROR(
-      context->ffi_context().ForEachWithStatus(forward_user_data));
+  RETURN_IF_ERROR(context->ffi_context().ForEachWithStatus(forward_user_data));
 
   return create_args.context;
 }
@@ -3291,8 +3342,8 @@ PjRtCApiLoadedExecutable::Execute(
   }
 
   PJRT_ExecuteOptions c_options = {PJRT_ExecuteOptions_STRUCT_SIZE, nullptr};
-  TF_ASSIGN_OR_RETURN(c_options.context,
-                      ForwardExecuteContext(client_, options.context));
+  ASSIGN_OR_RETURN(c_options.context,
+                   ForwardExecuteContext(client_, options.context));
 
   // Don't forget to destroy execute context if we created it.
   auto destroy_context = absl::MakeCleanup([&]() {
@@ -3307,7 +3358,7 @@ PjRtCApiLoadedExecutable::Execute(
   });
 
   auto callback_data = std::make_shared<SendRecvCallbackData>();
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       PJRT_LoadedExecutable_Execute_Args args,
       GetCommonExecuteArgs(argument_handles, options, c_options,
                            c_argument_lists_storage, c_arguments,
@@ -3317,11 +3368,11 @@ PjRtCApiLoadedExecutable::Execute(
 
   // Allocates memory for output. `c_output_lists_storage` and `c_output_lists`
   // need to stay alive during the call of `PJRT_LoadedExecutable_Execute`.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<std::vector<PJRT_Buffer*>> c_output_lists_storage,
       InitializeOutputListsStorage(args.num_devices));
-  TF_ASSIGN_OR_RETURN(std::vector<PJRT_Buffer**> c_output_lists,
-                      InitializeOutputLists(c_output_lists_storage));
+  ASSIGN_OR_RETURN(std::vector<PJRT_Buffer**> c_output_lists,
+                   InitializeOutputLists(c_output_lists_storage));
   args.output_lists = c_output_lists.data();
 
   args.execute_device = nullptr;
@@ -3387,7 +3438,7 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
   auto callback_data = std::make_shared<SendRecvCallbackData>();
 
   PJRT_ExecuteOptions c_options = {PJRT_ExecuteOptions_STRUCT_SIZE, nullptr};
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       PJRT_LoadedExecutable_Execute_Args args,
       GetCommonExecuteArgs(argument_handles_vec, options, c_options,
                            c_argument_lists_storage, c_arguments,
@@ -3397,15 +3448,14 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
 
   // Allocates memory for output. `c_output_lists_storage` and `c_output_lists`
   // need to stay alive during the call of `PJRT_LoadedExecutable_Execute`.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<std::vector<PJRT_Buffer*>> c_output_lists_storage,
       InitializeOutputListsStorage(args.num_devices));
-  TF_ASSIGN_OR_RETURN(std::vector<PJRT_Buffer**> c_output_lists,
-                      InitializeOutputLists(c_output_lists_storage));
+  ASSIGN_OR_RETURN(std::vector<PJRT_Buffer**> c_output_lists,
+                   InitializeOutputLists(c_output_lists_storage));
   args.output_lists = c_output_lists.data();
 
-  args.execute_device =
-      tensorflow::down_cast<PjRtCApiDevice*>(device)->c_device();
+  args.execute_device = absl::down_cast<PjRtCApiDevice*>(device)->c_device();
   PJRT_Profiler_Extension profiler_extension =
       pjrt::CreatePjrtProfilerExtension(
           "PJRT_LoadedExecutable_Execute linkage");
@@ -3811,17 +3861,17 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiBuffer::CopyToMemorySpace(
     args.extension_start = nullptr;
     args.buffer = buffer_.get();
     args.dst_memory =
-        tensorflow::down_cast<PjRtCApiMemorySpace*>(dst_memory)->c_memory();
+        absl::down_cast<PjRtCApiMemorySpace*>(dst_memory)->c_memory();
     RETURN_STATUS_IF_PJRT_ERROR(api->PJRT_Buffer_CopyToMemory(&args), api);
     return std::unique_ptr<PjRtBuffer>(
         std::make_unique<PjRtCApiBuffer>(client_, args.dst_buffer));
   } else {
     // Copy across PjRtClients by copying through host
-    TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal,
-                        PjRtBuffer::ToLiteral().Await());
+    ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal,
+                     PjRtBuffer::ToLiteral().Await());
     absl::InlinedVector<int64_t, 4> byte_strides(
         literal->shape().dimensions().size());
-    TF_RETURN_IF_ERROR(ShapeUtil::UnpackedByteStrides(
+    RETURN_IF_ERROR(ShapeUtil::UnpackedByteStrides(
         literal->shape(), absl::MakeSpan(byte_strides)));
     // Avoid use-after-free on `literal` due to unsequenced move and use.
     Literal* literal_pointer = literal.get();
@@ -4112,8 +4162,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiBuffer::Bitcast(
   args.num_dims = dims.size();
   pjrt::BufferMemoryLayoutData c_layout_data;
   if (device_layout != nullptr) {
-    TF_ASSIGN_OR_RETURN(c_layout_data,
-                        pjrt::ConvertToBufferMemoryLayoutData(*device_layout));
+    ASSIGN_OR_RETURN(c_layout_data,
+                     pjrt::ConvertToBufferMemoryLayoutData(*device_layout));
     args.device_layout = &c_layout_data.c_layout;
   } else {
     args.device_layout = nullptr;
@@ -4212,7 +4262,7 @@ absl::StatusOr<std::string> PjRtCApiTopologyDescription::Serialize() const {
 absl::StatusOr<uint64_t> PjRtCApiTopologyDescription::Fingerprint() const {
   if (c_api_->pjrt_api_version.major_version == 0 &&
       c_api_->pjrt_api_version.minor_version < 101) {
-    TF_ASSIGN_OR_RETURN(std::string serialized, Serialize());
+    ASSIGN_OR_RETURN(std::string serialized, Serialize());
     return tsl::Fingerprint64(serialized);
   }
   PJRT_TopologyDescription_Fingerprint_Args args{};
@@ -4276,10 +4326,90 @@ absl::StatusOr<Layout> PjRtCApiTopologyDescription::GetDefaultLayout(
 
   std::string serialized_layout(serialize_args.serialized_bytes,
                                 serialize_args.serialized_bytes_size);
-  TF_ASSIGN_OR_RETURN(std::shared_ptr<const PjRtLayout> pjrt_layout,
-                      PjRtLayout::Deserialize(serialized_layout));
+  ASSIGN_OR_RETURN(std::shared_ptr<const PjRtLayout> pjrt_layout,
+                   PjRtLayout::Deserialize(serialized_layout));
 
   return pjrt_layout->xla_layout();
+}
+
+absl::StatusOr<xla::Shape>
+PjRtCApiTopologyDescription::MakeCanonicalShapeForMemorySpace(
+    int memory_space_kind_id, xla::Shape shape,
+    const xla::Layout* layout) const {
+  if (c_api_->pjrt_api_version.minor_version < 109 ||
+      c_api_->PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace ==
+          nullptr) {
+    return absl::UnimplementedError(
+        "PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace is not "
+        "supported by this PJRT C API implementation.");
+  }
+
+  PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace_Args args;
+  args.struct_size =
+      PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace_Args_STRUCT_SIZE;  // NOLINT (whitespace/line_length)
+  args.extension_start = nullptr;
+  args.topology = c_topology_;
+  args.memory_space_kind_id = memory_space_kind_id;
+  args.dims = shape.dimensions().data();
+  args.num_dims = shape.dimensions().size();
+  args.element_type = pjrt::ConvertToPjRtBufferType(shape.element_type());
+
+  pjrt::BufferMemoryLayoutData layout_data;
+  if (layout != nullptr) {
+    ASSIGN_OR_RETURN(layout_data,
+                     pjrt::ConvertToBufferMemoryLayoutData(*layout));
+    args.layout = &layout_data.c_layout;
+  } else {
+    args.layout = nullptr;
+  }
+
+  RETURN_STATUS_IF_PJRT_ERROR(
+      c_api_->PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace(&args),
+      c_api_);
+
+  absl::Cleanup cleanup = [&args] {
+    if (args.serialized_shape_deleter) {
+      args.serialized_shape_deleter(args.serialized_shape);
+    }
+  };
+
+  xla::ShapeProto shape_proto;
+  if (!shape_proto.ParseFromString(absl::string_view(
+          args.serialized_shape, args.serialized_shape_size))) {
+    return absl::InternalError("Failed to parse ShapeProto from C API.");
+  }
+
+  return xla::Shape::FromProto(shape_proto);
+}
+
+absl::Span<const int> PjRtCApiTopologyDescription::GetMemorySpaceKindIds()
+    const {
+  if (c_api_->pjrt_api_version.minor_version < 110 ||
+      c_api_->PJRT_TopologyDescription_GetMemorySpaceKindIds == nullptr) {
+    static const int kDefaultMemorySpaceKindIds[] = {-1};
+    return absl::MakeConstSpan(kDefaultMemorySpaceKindIds);
+  }
+
+  PJRT_TopologyDescription_GetMemorySpaceKindIds_Args args;
+  args.struct_size =
+      PJRT_TopologyDescription_GetMemorySpaceKindIds_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.topology = c_topology_;
+  args.memory_space_kind_ids = nullptr;
+  args.num_memory_space_kind_ids = 0;
+
+  std::unique_ptr<PJRT_Error, ::pjrt::PJRT_ErrorDeleter> error{
+      c_api_->PJRT_TopologyDescription_GetMemorySpaceKindIds(&args),
+      ::pjrt::MakeErrorDeleter(c_api_)};
+  if (error != nullptr) {
+    LOG(ERROR) << "PJRT_TopologyDescription_GetMemorySpaceKindIds failed: "
+               << ::pjrt::PjrtErrorToStatus(error.get(), c_api_).ToString();
+    static const int kDefaultMemorySpaceKindIds[] = {-1};
+    return absl::MakeConstSpan(kDefaultMemorySpaceKindIds);
+  }
+
+  return absl::MakeConstSpan(args.memory_space_kind_ids,
+                             args.num_memory_space_kind_ids);
 }
 
 void PjRtCApiTopologyDescription::InitAttributes() {
@@ -4327,7 +4457,7 @@ bool PjRtCApiTopologyDescription::is_subslice_topology() const {
 
 absl::StatusOr<PjRtTopologyDescriptionProto>
 PjRtCApiTopologyDescription::ToProto() const {
-  TF_ASSIGN_OR_RETURN(std::string serialized, Serialize());
+  ASSIGN_OR_RETURN(std::string serialized, Serialize());
   PjRtTopologyDescriptionProto proto;
   if (!proto.ParseFromString(serialized)) {
     return Internal("Failed to parse serialized PjRtTopologyDescriptionProto.");
@@ -4464,7 +4594,7 @@ PjRtCApiTopologyDescription::ProcessIds() const {
   if (tpu_topology_extension_ == nullptr) {
     return Unimplemented("ProcessIds is not supported by the PJRT C API.");
   }
-  TF_ASSIGN_OR_RETURN(int process_count, ProcessCount());
+  ASSIGN_OR_RETURN(int process_count, ProcessCount());
   std::vector<int> process_ids_storage(process_count);
   PJRT_TpuTopology_ProcessIds_Args args;
   args.struct_size = PJRT_TpuTopology_ProcessIds_Args_STRUCT_SIZE;
@@ -4489,8 +4619,8 @@ PjRtCApiTopologyDescription::LogicalDeviceOfDefaultTypeIdsOnProcess(
         "LogicalDeviceOfDefaultTypeIdsOnProcess is not supported by the PJRT "
         "C API.");
   }
-  TF_ASSIGN_OR_RETURN(int logical_device_count,
-                      LogicalDeviceCountOfDefaultTypePerProcess());
+  ASSIGN_OR_RETURN(int logical_device_count,
+                   LogicalDeviceCountOfDefaultTypePerProcess());
   std::vector<int> logical_device_ids_storage(logical_device_count);
   PJRT_TpuTopology_LogiDeviceIdsOnProcess_Args args;
   args.struct_size = PJRT_TpuTopology_LogiDeviceIdsOnProcess_Args_STRUCT_SIZE;
@@ -4701,8 +4831,10 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiCompiler::Compile(
       tsl::profiler::ContextType::kPjrtLibraryCall, traceme_context_id);
 
   std::string target_version = GetPluginStablehloVersionOrDefault(client);
-  TF_ASSIGN_OR_RETURN(std::string serialized,
-                      xla::Serialize(module.mlir_module(), target_version));
+  std::string sdy_version = GetPluginSdyVersionOrDefault(client);
+  ASSIGN_OR_RETURN(
+      std::string serialized,
+      xla::Serialize(module.mlir_module(), target_version, sdy_version));
   std::string format(pjrt::kMlirFormat);
   return InitializeArgsAndCompileAot(c_api_, client, std::move(module), options,
                                      topology);
@@ -4731,7 +4863,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
     absl::string_view device_type,
     const absl::flat_hash_map<std::string, PjRtValueType>& create_options,
     std::shared_ptr<KeyValueStoreInterface> kv_store) {
-  TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(device_type));
+  ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(device_type));
   if (c_api == nullptr) {
     return Internal("PJRT C API is nullptr for %s", device_type);
   }
@@ -4745,8 +4877,8 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> WrapClientAroundCApi(
   PJRT_Client_Create_Args init_args;
   init_args.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
   init_args.extension_start = nullptr;
-  TF_ASSIGN_OR_RETURN(std::vector<PJRT_NamedValue> c_options,
-                      pjrt::ConvertToPjRtNamedValueList(create_options));
+  ASSIGN_OR_RETURN(std::vector<PJRT_NamedValue> c_options,
+                   pjrt::ConvertToPjRtNamedValueList(create_options));
   init_args.create_options = c_options.data();
   init_args.num_options = c_options.size();
 
@@ -4771,7 +4903,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> WrapClientAroundCApi(
 absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
     absl::string_view device_type, absl::string_view topology_name,
     const absl::flat_hash_map<std::string, PjRtValueType>& create_options) {
-  TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(device_type));
+  ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(device_type));
   if (c_api == nullptr) {
     return Internal("PJRT C API is nullptr for %s", device_type);
   }
@@ -4784,8 +4916,8 @@ absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
   PJRT_TopologyDescription_Create_Args init_args;
   init_args.struct_size = PJRT_TopologyDescription_Create_Args_STRUCT_SIZE;
   init_args.extension_start = nullptr;
-  TF_ASSIGN_OR_RETURN(std::vector<PJRT_NamedValue> c_options,
-                      pjrt::ConvertToPjRtNamedValueList(create_options));
+  ASSIGN_OR_RETURN(std::vector<PJRT_NamedValue> c_options,
+                   pjrt::ConvertToPjRtNamedValueList(create_options));
   init_args.create_options = c_options.data();
   init_args.num_options = c_options.size();
   init_args.topology_name = topology_name.data();
@@ -4800,7 +4932,7 @@ absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
 
 absl::StatusOr<std::unique_ptr<PjRtCompiler>> GetCApiCompiler(
     absl::string_view device_type) {
-  TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(device_type));
+  ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(device_type));
   if (c_api == nullptr) {
     return Internal("PJRT C API is nullptr for %s", device_type);
   }
@@ -4808,8 +4940,8 @@ absl::StatusOr<std::unique_ptr<PjRtCompiler>> GetCApiCompiler(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtCompiler>> GetCApiCompiler() {
-  TF_ASSIGN_OR_RETURN(std::vector<std::string> device_types,
-                      pjrt::GetRegisteredPjrtApis());
+  ASSIGN_OR_RETURN(std::vector<std::string> device_types,
+                   pjrt::GetRegisteredPjrtApis());
   if (device_types.empty()) {
     return absl::FailedPreconditionError("PJRT_Api is not initialized.");
   }
@@ -4824,7 +4956,7 @@ absl::StatusOr<std::unique_ptr<PjRtCompiler>> GetCApiCompiler() {
 
 absl::StatusOr<std::unique_ptr<PjRtPhaseCompiler>> GetCApiPhaseCompiler(
     absl::string_view device_type) {
-  TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(device_type));
+  ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(device_type));
   if (c_api == nullptr) {
     return absl::InternalError(
         absl::StrCat("PJRT C API is nullptr for ", device_type));
@@ -4864,8 +4996,8 @@ absl::StatusOr<std::unique_ptr<PjRtPhaseCompiler>> GetCApiPhaseCompiler(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtPhaseCompiler>> GetCApiPhaseCompiler() {
-  TF_ASSIGN_OR_RETURN(std::vector<std::string> device_types,
-                      pjrt::GetRegisteredPjrtApis());
+  ASSIGN_OR_RETURN(std::vector<std::string> device_types,
+                   pjrt::GetRegisteredPjrtApis());
   if (device_types.empty()) {
     return absl::FailedPreconditionError("PJRT_Api is not initialized.");
   }
@@ -4898,8 +5030,7 @@ absl::Status PjRtCApiRuntimeAbiVersion::IsCompatibleWith(
       PJRT_RuntimeAbiVersion_IsCompatibleWithRuntime_Args_STRUCT_SIZE;
   args.abi_version = c_abi_version_;
   args.other_abi_version =
-      tensorflow::down_cast<const PjRtCApiRuntimeAbiVersion&>(
-          runtime_abi_version)
+      absl::down_cast<const PjRtCApiRuntimeAbiVersion&>(runtime_abi_version)
           .c_abi_version();
   RETURN_STATUS_IF_PJRT_ERROR(
       extension_->runtime_abi_version_is_compatible_with_runtime(&args),
@@ -4914,7 +5045,7 @@ absl::Status PjRtCApiRuntimeAbiVersion::IsCompatibleWith(
       PJRT_RuntimeAbiVersion_IsCompatibleWithExecutable_Args_STRUCT_SIZE;
   args.abi_version = c_abi_version_;
   args.executable_abi_version =
-      tensorflow::down_cast<const PjRtCApiExecutableAbiVersion&>(
+      absl::down_cast<const PjRtCApiExecutableAbiVersion&>(
           executable_abi_version)
           .c_abi_version();
   RETURN_STATUS_IF_PJRT_ERROR(

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/xla_data.pb.h"
@@ -53,7 +54,7 @@ absl::StatusOr<bool> AllGatherCSE::RunImpl(
           if (it != all_gather_map.end()) {
             VLOG(2) << "Replacing all-gather with previous result: "
                     << it->second->ToString();
-            TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(it->second));
+            RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(it->second));
             changed = true;
           } else {
             VLOG(2) << "Storing all-gather result for future use";

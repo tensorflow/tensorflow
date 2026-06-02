@@ -89,15 +89,15 @@ ENTRY entry {
   block_level_parameters.output_tile_sizes = {{1, 1}};
   block_level_parameters.num_warps = 0;
 
-  EXPECT_THAT(TritonWrapper(
-                  "test_fn", *triton_fusion,
-                  se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
-                  dev_info, block_level_parameters, triple, data_layout,
-                  llvm_ctx, mlir_context),
-              absl_testing::StatusIs(
-                  absl::StatusCode::kFailedPrecondition,
-                  ::testing::HasSubstr(
-                      "(num_warps, num_ctas, num_stages) must be positive")));
+  EXPECT_THAT(
+      TritonWrapper(
+          "test_fn", *triton_fusion,
+          se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
+          dev_info, block_level_parameters, triple, data_layout, mlir_context),
+      absl_testing::StatusIs(
+          absl::StatusCode::kFailedPrecondition,
+          ::testing::HasSubstr(
+              "(num_warps, num_ctas, num_stages) must be positive")));
 }
 
 TEST_F(TritonEmitterDevicelessTest,
@@ -196,7 +196,7 @@ ENTRY entry {
                         fusion->backend_config<GpuBackendConfig>()
                             ->fusion_backend_config()
                             .block_level_fusion_config()),
-                    triple, data_layout, llvm_ctx, mlir_context));
+                    triple, data_layout, mlir_context));
 
   // Warp specialization influences the total number of threads we end up
   // using. Usually we would expect num_warps * warp_size threads per block, but

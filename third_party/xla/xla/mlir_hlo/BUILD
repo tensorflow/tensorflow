@@ -536,6 +536,7 @@ cc_library(
     deps = [
         ":map_stablehlo_to_hlo_op",
         ":mlir_hlo",
+        ":unregistered_attributes",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

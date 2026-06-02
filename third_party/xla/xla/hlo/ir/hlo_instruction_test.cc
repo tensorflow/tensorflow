@@ -533,6 +533,49 @@ TEST_F(HloInstructionTest, CanonicalPrintingSupportsInt64) {
             "type=TOTALORDER");
 }
 
+TEST_F(HloInstructionTest, CanonicalPrintingSupportsCustomCall) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           R"(
+    HloModule custom_call_with_comp
+
+    max_F32 {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT maximum = f32[] maximum(lhs, rhs)
+    }
+
+    ENTRY CustomCall {
+      constant = f32[1]{0} constant({12345})
+      ROOT custom-call = f32[1,2,3]{0,2,1} custom-call(constant), custom_call_target="foo\"bar", called_computations={max_F32}
+    }
+  )"));
+
+  xla::HloPrintOptions hlo_print_options =
+      xla::HloPrintOptions(xla::HloPrintOptions::Canonical());
+  hlo_print_options.set_is_in_nested_computation(true);
+
+  xla::CanonicalNameMap new_map;
+  xla::StringPrinter printer;
+  module->entry_computation()
+      ->root_instruction()
+      ->operand(0)
+      ->PrintWithCanonicalNameMap(&printer, hlo_print_options, &new_map);
+  std::string param1_to_string = std::move(printer).ToString();
+
+  printer = StringPrinter();
+  // CustomCall Root Instruction
+  module->entry_computation()->root_instruction()->PrintWithCanonicalNameMap(
+      &printer, hlo_print_options, &new_map);
+  std::string param2_to_string = std::move(printer).ToString();
+
+  EXPECT_EQ(param1_to_string, "tmp_0 = f32[1]{0} constant({12345})");
+  EXPECT_EQ(param2_to_string,
+            "tmp_1 = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} tmp_0), "
+            "custom_call_target=\"foo\\\"bar\", called_computations={\n{\n  "
+            "tmp_0 = f32[] parameter(0)\n  tmp_1 = f32[] parameter(1)\n  ROOT "
+            "tmp_2 = f32[] maximum(f32[] tmp_0, f32[] tmp_1)\n}\n}");
+}
+
 TEST_F(HloInstructionTest, MapUnaryOutputDimToOperandDimConvert) {
   Shape shape = ShapeUtil::MakeShape(F32, {10, 20});
   auto param = HloInstruction::CreateParameter(0, shape, "p");

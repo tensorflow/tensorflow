@@ -297,15 +297,15 @@ class HloAsyncInstruction : public HloInstruction {
 
   void UpdateAsyncChain();
 
+  // Updates all future instructions in the async chain to match the shape of
+  // the current instruction.
+  void UpdateChainShapes();
+
  protected:
   // Helper to constructs async-{start,update,done}.
   HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
                       absl::Span<HloInstruction* const> operands,
                       HloOpcode async_wrapped_opcode);
-
-  // Updates all future instructions in the async chain to match the shape of
-  // the current instruction.
-  void UpdateChainShapes();
 
  private:
   // async-{update,done} inherit all their attributes from async-start,
@@ -1595,15 +1595,23 @@ class HloFusionInstruction : public HloCallableInstruction {
   // fused instruction set of 'this', updating operands as necessary.
   //
   // Precondition: 'instruction_to_merge' must be an operand of 'this'.
-  void MergeFusionInstruction(HloFusionInstruction* instruction_to_merge);
+  //
+  // remove_computation: when false, allows to defer the call to
+  // RemoveEmbeddedComputation to a later time.
+  void MergeFusionInstruction(HloFusionInstruction* instruction_to_merge,
+                              bool remove_computation = true);
 
   // Merges the fused instructions from instruction_to_merge into the fused
   // instruction set of 'this' and generates multi-output fusion instructions.
   // All the users of instruction_to_merge will be redirected to 'this'
   // instruction. instruction_to_merge will be removed from its parent
   // computation.
+  //
+  // remove_computation: when false, allows to defer the call to
+  // RemoveEmbeddedComputation to a later time.
   void MergeFusionInstructionIntoMultiOutput(
-      HloFusionInstruction* instruction_to_merge);
+      HloFusionInstruction* instruction_to_merge,
+      bool remove_computation = true);
 
   // Fuses the given instruction in this fusion instruction. instruction_to_fuse
   // is cloned and the clone is placed in the fusion

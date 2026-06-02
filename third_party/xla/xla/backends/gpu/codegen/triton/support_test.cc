@@ -305,7 +305,7 @@ class SupportTest : public HloHardwareIndependentTestBase,
     auto run_triton_codegen = [&]() {
       return TritonWrapper("test_fn", ti.TritonFusion(), cc, dev_info,
                            block_level_parameters, target_triple_, data_layout_,
-                           llvm_ctx_, mlir_context_);
+                           mlir_context_);
     };
 
     auto is_supported = IsTritonSupportedInstruction(ti.Instruction(), cc);
@@ -2309,7 +2309,7 @@ ENTRY entry {
       ParseTemplateAndGetInstruction(hlo_text, F32, HloOpcode::kFusion));
   se::GpuComputeCapability cc = DefaultDeviceForTesting();
   CodegenDecision decision = IsTritonSupportedInstruction(ti.Instruction(), cc);
-  ASSERT_FALSE(decision.CanFuse());
+  ASSERT_TRUE(decision.IsForbidden());
   EXPECT_THAT(decision.Explain(),
               HasSubstr("Nested fusions are not supported"));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{64, 32}, cc);
@@ -3287,6 +3287,7 @@ constexpr std::array kUnsupportedOps = {
     HloOpcode::kDynamicSlice,
     HloOpcode::kDynamicUpdateSlice,
     HloOpcode::kGather,
+    HloOpcode::kMulhi,
     HloOpcode::kRaggedDot,
     HloOpcode::kReduceWindow,
     HloOpcode::kScaledDot,

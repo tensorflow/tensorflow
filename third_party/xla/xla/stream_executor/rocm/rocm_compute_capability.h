@@ -87,8 +87,6 @@ class RocmComputeCapability {
   // hurt since they are immutable, but keeping them close to methods simplifies
   // maintanance.
   static constexpr absl::string_view kSupportedGfxVersions[]{
-      "gfx900",   // MI25
-      "gfx906",   // MI50 / MI60
       "gfx908",   // MI100
       "gfx90a",   // MI200
       "gfx942",   // MI300
@@ -181,11 +179,6 @@ class RocmComputeCapability {
 
   bool has_packed_bf16_atomics_support() const {
     return gfx9_mi300_series() || gfx12();
-  }
-
-  bool fence_before_barrier() const {
-    static constexpr absl::string_view kList[] = {"gfx900", "gfx906"};
-    return !IsThisGfxInAnyList(kList);
   }
 
   bool has_hipblaslt() const {

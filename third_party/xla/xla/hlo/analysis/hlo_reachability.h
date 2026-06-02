@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -122,6 +123,12 @@ class HloReachabilityMap {
                           absl::flat_hash_set<const HloInstruction*>>
           to_update);
 
+  // Update reachability map given left and right are going to be merged into a
+  // single instruction. Does not require the instructions to be in the
+  // reachability map.
+  void UpdateReachabilityForMerge(const HloInstruction* left,
+                                  const HloInstruction* right);
+
   // Returns true if "b" is reachable from "a"
   //
   // Note that this function only correctly answers queries about reachability
@@ -154,22 +161,15 @@ class HloReachabilityMap {
   }
 
   // Checks if an instruction is in the Reachability map.
-  bool IsPresent(const HloInstruction* instruction) const {
-    if (instruction == nullptr) {
-      return false;
-    }
-    const HloComputation* parent = instruction->parent();
-    return (parent != nullptr) && (parent->unique_id() == computation_id_) &&
-           GetKey(instruction) < indices_.size() &&
-           indices_[GetKey(instruction)] != kValueAbsent;
-  }
-
-  // Checks if an instruction is in the Reachability map.
   bool IsPresent(const HloInstruction& instruction) const {
     const HloComputation* parent = instruction.parent();
     return (parent != nullptr) && (parent->unique_id() == computation_id_) &&
-           GetKey(instruction) < indices_.size() &&
-           indices_[GetKey(instruction)] != kValueAbsent;
+           IsKeyPresent(GetKey(instruction));
+  }
+
+  // Checks if an instruction is in the Reachability map.
+  bool IsPresent(const HloInstruction* instruction) const {
+    return (instruction != nullptr) && IsPresent(*instruction);
   }
 
   // Replace the instruction "original" with "replacement" in the reachability
@@ -185,28 +185,45 @@ class HloReachabilityMap {
     using Word = uint64_t;
     static constexpr uint64_t kBits = sizeof(Word) * 8;
 
-    BitSet() : ptr_(nullptr), bits_(0) {}
+    BitSet() : ptr_(nullptr), words_(0) {}
     // Create a BitSet view of "num_bits" starting at "ptr".  The memory backing
     // the bit set must be rounded up to the nearest word boundary (for
     // efficiency, we sometimes write full words at the ragged edges of bitsets
     // that are not exactly multiples of kBits in size).
-    explicit BitSet(Word* ptr, size_t num_bits) : ptr_(ptr), bits_(num_bits) {}
+    explicit BitSet(Word* ptr, size_t num_bits) : ptr_(ptr), words_(num_bits) {}
 
     // Returns the bit at the given index.
     bool Get(Index index) const {
-      DCHECK(index >= 0 && index < bits_);
+      DCHECK(index >= 0 && index < words_ * kBits);
       return ptr_[index / kBits] & (1ull << (index % kBits));
     }
 
     // Sets the bit at the given index.
     void Set(Index index) {
-      DCHECK(index >= 0 && index < bits_);
+      DCHECK(index >= 0 && index < words_ * kBits);
       ptr_[index / kBits] |= 1ull << (index % kBits);
+    }
+
+    // Sets this bit-set to union of this bit-set and `other`.
+    void operator|=(const BitSet& other) {
+      DCHECK(words_ == other.words_);
+      if (ptr_ == other.ptr_) {
+        return;
+      }
+
+      // Ease the work of the auto-vectorizer.
+      const Word* a = ptr_;
+      const Word* b = other.ptr_;
+      Word* __restrict out = ptr_;
+      size_t num_words = NumWords();
+      for (size_t i = 0; i < num_words; ++i) {
+        out[i] = a[i] | b[i];
+      }
     }
 
     // Same as operator|=, but returns whether the bitset changed.
     bool OrUpdate(const BitSet& other) {
-      DCHECK(bits_ == other.bits_);
+      DCHECK(words_ == other.words_);
       if (ptr_ == other.ptr_) {
         return false;
       }
@@ -226,32 +243,46 @@ class HloReachabilityMap {
       return changed_accumulator;
     }
 
-    // Sets this bit-set to union of this bit-set and `other`.
-    void operator|=(const BitSet& other) {
-      DCHECK(bits_ == other.bits_);
+    // Same as operator|=, but only updates the words in the given diff.
+    void OrUpdatePartial(const std::vector<std::pair<size_t, Word>>& diff) {
+      for (const auto& [index, value] : diff) {
+        ptr_[index] |= value;
+      }
+    }
+
+    // Useful for updating multiple instructions at once using smaller diff.
+    // Used with OrUpdatePartial to identify different words and their unions.
+    void GetDifferingWordUnions(
+        const BitSet& other,
+        std::vector<std::pair<size_t, Word>>& diff_buffer) const {
+      DCHECK(diff_buffer.empty());
       if (ptr_ == other.ptr_) {
         return;
       }
 
       // Ease the work of the auto-vectorizer.
-      const Word* a = ptr_;
-      const Word* b = other.ptr_;
-      Word* __restrict out = ptr_;
+      const Word* __restrict a = ptr_;
+      const Word* __restrict b = other.ptr_;
       size_t num_words = NumWords();
       for (size_t i = 0; i < num_words; ++i) {
-        out[i] = a[i] | b[i];
+        Word ai = a[i];
+        Word bi = b[i];
+        if (ai != bi) {
+          diff_buffer.emplace_back(i, ai | bi);
+        }
       }
     }
+
     // Copy the bitset contents of "other" into "this".
     void CopyBitSet(const BitSet& other) {
-      DCHECK(bits_ == other.bits_);
+      DCHECK(words_ == other.words_);
       if (ptr_ == other.ptr_) {
         return;
       }
       memcpy(ptr_, other.ptr_, NumBytes());
     }
 
-    size_t NumWords() const { return (bits_ + kBits - 1) / kBits; }
+    size_t NumWords() const { return words_; }
     size_t NumBytes() const {
       return NumWords() * sizeof(Word) / sizeof(uint8_t);
     }
@@ -260,9 +291,6 @@ class HloReachabilityMap {
     void SetToZero() { memset(ptr_, 0, NumBytes()); }
 
     bool operator==(const BitSet& other) const {
-      if (bits_ != other.bits_) {
-        return false;
-      }
       absl::Span<Word> aspan(ptr_, NumWords());
       absl::Span<Word> bspan(other.ptr_, other.NumWords());
       return aspan == bspan;
@@ -271,7 +299,7 @@ class HloReachabilityMap {
 
    private:
     Word* ptr_;
-    size_t bits_;  // Number of bits in the set.
+    size_t words_;  // Number of bits in the set.
   };
 
   BitSet BitSetFromIndex(Index i) const {
@@ -279,7 +307,7 @@ class HloReachabilityMap {
     const uint64_t row_within_block = i & (kRowsPerAllocation - 1);
     return BitSet(
         bit_storage_[block].get() + row_within_block * words_per_bitset_,
-        bits_per_bitset_);
+        words_per_bitset_);
   }
 
   friend class HloReachabilityMapBitSetBenchmark;
@@ -291,6 +319,11 @@ class HloReachabilityMap {
 
   static Key GetKey(const HloInstruction& instruction) {
     return instruction.local_id();
+  }
+
+  // Checks if a key is in the Reachability map.
+  bool IsKeyPresent(Key key) const {
+    return key < indices_.size() && indices_[key] != kValueAbsent;
   }
 
   // Helper for SetReachabilityToUnion/FastSetReachabilityToUnion.
@@ -321,7 +354,6 @@ class HloReachabilityMap {
   static constexpr Index kValueAbsent = static_cast<Index>(-1);
   static constexpr int64_t kComputationIdAbsent = -1;
 
-  size_t bits_per_bitset_;
   size_t words_per_bitset_;
   size_t total_words_;  // Total allocated words in bit_storage_
   std::vector<std::unique_ptr<BitSet::Word[]>> bit_storage_;
@@ -330,6 +362,12 @@ class HloReachabilityMap {
   // call to the method.
   BitSet tmp_bit_set_;
   int64_t computation_id_;
+
+  // Used by UpdateReachabilityForMerge to avoid an allocation with each call
+  // to the method.
+  std::vector<std::pair<size_t, BitSet::Word>> tmp_changed_words_;
+  std::vector<uintptr_t> tmp_worklist_;
+  std::vector<Index> tmp_indices_to_update_;
 };
 
 }  // namespace xla

@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/future.h"
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/device_event.h"
@@ -124,7 +125,7 @@ absl::Status AbstractTrackedDeviceBuffer::WaitUntilBufferReadyOnStream(
     PjRtMemorySpace* memory_space, std::intptr_t stream) {
   auto* client = absl::down_cast<CommonPjRtClient*>(memory_space->client());
   for (const auto& event : definition_events()) {
-    TF_RETURN_IF_ERROR(client->WaitOnStream(memory_space, event, stream));
+    RETURN_IF_ERROR(client->WaitOnStream(memory_space, event, stream));
   }
   return absl::OkStatus();
 }
@@ -425,7 +426,7 @@ absl::Status CommonPjRtBuffer::AcquireScopedRawBuffer(
     return InvalidArgument("%s called on deleted or donated buffer: %s",
                            caller_name, device_buffer.status().ToString());
   }
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto device_event,
       std::move(scoped_acquire)(
           device_buffer.buffer()->raw_buffer(),
@@ -455,10 +456,9 @@ absl::Status CommonPjRtBuffer::AcquireScopedRawBuffer(
   std::vector<PjRtDeviceEventRef> definition_events(
       definition_events_span.begin(), definition_events_span.end());
 
-  TF_ASSIGN_OR_RETURN(
-      auto device_event,
-      std::move(scoped_acquire)(device_buffer.buffer()->raw_buffer(),
-                                std::move(definition_events)));
+  ASSIGN_OR_RETURN(auto device_event, std::move(scoped_acquire)(
+                                          device_buffer.buffer()->raw_buffer(),
+                                          std::move(definition_events)));
   device_buffer.ConvertUsageHold(std::move(device_event));
   return absl::OkStatus();
 }
@@ -467,7 +467,7 @@ absl::StatusOr<CommonPjRtBuffer::RawBufferForUsage>
 CommonPjRtBuffer::GetRawBufferForUsage(const char* caller_name) {
   xla::PjRtRawBufferRef raw_buffer;
   tsl::RCReference<xla::PjRtDeviceEventPromise> usage_done_promise;
-  TF_RETURN_IF_ERROR(AcquireScopedRawBuffer(
+  RETURN_IF_ERROR(AcquireScopedRawBuffer(
       [&](xla::PjRtRawBufferRef raw_buffer_ref,
           std::vector<xla::PjRtDeviceEventRef> definition_events)
           -> absl::StatusOr<xla::PjRtDeviceEventRef> {
@@ -477,9 +477,9 @@ CommonPjRtBuffer::GetRawBufferForUsage(const char* caller_name) {
         xla::PjRtDeviceEventRef usage_event;
         auto* client =
             absl::down_cast<CommonPjRtClient*>(memory_space_->client());
-        TF_ASSIGN_OR_RETURN(std::tie(usage_done_promise, usage_event),
-                            client->CreateLinkedEventPromise(
-                                memory_space_, "GetRawBufferForUsage"));
+        ASSIGN_OR_RETURN(std::tie(usage_done_promise, usage_event),
+                         client->CreateLinkedEventPromise(
+                             memory_space_, "GetRawBufferForUsage"));
         return usage_event;
       },
       caller_name));

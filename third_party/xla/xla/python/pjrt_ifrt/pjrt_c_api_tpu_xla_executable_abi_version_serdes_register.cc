@@ -15,37 +15,28 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/base/attributes.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_abi_version_helpers.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/plugin/plugin_names.h"
 #include "xla/pjrt/proto/pjrt_abi_version.pb.h"
-#include "xla/python/ifrt/serdes.h"
-#include "xla/python/pjrt_ifrt/tpu_xla_executable_abi_version.h"
-#include "xla/python/pjrt_ifrt/tpu_xla_executable_abi_version_serdes.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
-namespace {
+namespace tpu_xla_executable_abi_version_serdes {
 
+ABSL_ATTRIBUTE_WEAK
 absl::StatusOr<std::unique_ptr<xla::PjRtExecutableAbiVersion>>
-CApiPjRtExecutableAbiVersionFromProto(
+PjRtExecutableAbiVersionFromProto(
     const xla::PjRtExecutableAbiVersionProto& proto) {
-  TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kTpuPjrtName));
+  ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kTpuPjrtName));
   return pjrt::CApiExecutableAbiVersionFromProto(proto, c_api);
 }
 
-bool register_tpu_abi_version_serdes =
-    ([] {
-      xla::ifrt::RegisterSerDes<xla::TpuXlaExecutableAbiVersion>(
-          std::make_unique<xla::TpuXlaExecutableAbiVersionSerDes>(
-            CApiPjRtExecutableAbiVersionFromProto));
-    }(),
-     true);
-
-}  // namespace
+}  // namespace tpu_xla_executable_abi_version_serdes
 
 }  // namespace xla

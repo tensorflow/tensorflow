@@ -23,11 +23,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/collective_signal.cu.h"
 #include "xla/stream_executor/gpu/multi_gpu_barrier_kernel.h"
 
-#if NCCL_VERSION_CODE >= 22800
-// Device initiated collective operations were added in NCCL 2.28.0.
-#include "third_party/nccl/nccl_device.h"
-#endif  // NCCL_VERSION_CODE >= 22800
-
 namespace stream_executor::gpu {
 
 template <PlatformType PlatformT>
@@ -75,37 +70,6 @@ __global__ void MultiGpuBarrierKernelImpl(
 
   SyncRemoteBlocksAndUpdateCounter<PlatformT>(rank, num_ranks, signal_buffers,
                                               sync_counter);
-}
-
-template <PlatformType PlatformT>
-__global__ void MultiGpuBarrierWithNcclKernelImpl(
-    int64_t rank, int64_t num_ranks, void* signal_buffers_handle,
-    uint32_t* sync_counter, void* ptr_to_store, void* ptr_storage_handle) {
-  if constexpr (PlatformT == PlatformType::kCuda) {
-#if NCCL_VERSION_CODE >= 22800
-    if (ptr_to_store && threadIdx.x < num_ranks) {
-      void** ptr_storage = (void**)ncclGetLsaPointer(
-          (ncclWindow_t)ptr_storage_handle, 0, threadIdx.x);
-
-      ptr_storage[rank] = ptr_to_store;
-    }
-
-    // 1. Get individual signal buffers pointers.
-    std::array<uint32_t* __restrict__, MultiGpuBarrierWithNcclKernel::kMaxPeers>
-        signal_buffers;
-
-#pragma unroll
-    for (int64_t i = 0; i < MultiGpuBarrierWithNcclKernel::kMaxPeers; ++i) {
-      if (i < num_ranks) {
-        signal_buffers[i] = reinterpret_cast<uint32_t*>(
-            ncclGetLsaPointer((ncclWindow_t)signal_buffers_handle, 0, i));
-      }
-    }
-
-    SyncRemoteBlocksAndUpdateCounter<PlatformT>(rank, num_ranks, signal_buffers,
-                                                sync_counter);
-#endif  // NCCL_VERSION_CODE >= 22800
-  }
 }
 
 }  // namespace stream_executor::gpu

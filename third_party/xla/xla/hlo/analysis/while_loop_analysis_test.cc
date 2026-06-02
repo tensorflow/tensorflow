@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -90,8 +91,8 @@ absl::StatusOr<int64_t> WhileLoopAnalysisTest::MakeWhileLoopAndGetTripCount(
                            {"{{STEP}}", absl::StrCat(step)},
                            {"{{COMP_DIR}}", ComparisonDirectionToString(dir)}});
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      ParseAndReturnVerifiedModule(hlo_string));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                   ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* while_op = module->entry_computation()->root_instruction();
   std::optional<int64_t> trip_count = MatchTrivialLoopTripCount(
@@ -142,8 +143,8 @@ absl::StatusOr<Range> WhileLoopAnalysisTest::MakeWhileLoopAndGetRange(
                            {"{{STEP}}", absl::StrCat(step)},
                            {"{{COMP_DIR}}", ComparisonDirectionToString(dir)}});
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      ParseAndReturnVerifiedModule(hlo_string));
+  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                   ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* while_op = module->entry_computation()->root_instruction();
   std::optional<Range> range = MatchTrivialLoopRange(while_op);

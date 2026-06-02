@@ -22,7 +22,9 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -38,8 +40,7 @@ class AsyncCollectiveReplacerTest : public HloHardwareIndependentTestBase {
  public:
   absl::Status RunPass(HloModule* module, bool expect_change,
                        AsyncCollectiveReplacer::Config config) {
-    TF_ASSIGN_OR_RETURN(bool changed,
-                        AsyncCollectiveReplacer{config}.Run(module));
+    ASSIGN_OR_RETURN(bool changed, AsyncCollectiveReplacer{config}.Run(module));
     EXPECT_EQ(changed, expect_change);
     VLOG(1) << module->ToString();
     return absl::OkStatus();
@@ -465,6 +466,70 @@ TEST_F(AsyncCollectiveReplacerTest, ReduceScatterReplacedWithUnrelatedOp) {
   TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true, config));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               m::ReduceScatter());
+}
+
+TEST_F(AsyncCollectiveReplacerTest, AllReduceReplacedWithControlDep) {
+  const absl::string_view hlo_string = R"(
+      HloModule test
+
+      apply_op {
+        x = u32[] parameter(0)
+        y = u32[] parameter(1)
+        ROOT apply_op = u32[] add(x, y)
+      }
+
+      ENTRY test_computation {
+        id = u32[] replica-id()
+        start = u32[] all-reduce-start(id), to_apply=apply_op
+        done = u32[] all-reduce-done(start)
+        unrelated = u32[] constant(42)
+        cd = () custom-call(start, unrelated), custom_call_target="control_dep"
+        ROOT result = u32[] add(done, unrelated)
+      }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AsyncCollectiveReplacer::Config config;
+  config.convert_all_reduce = HloPredicateTrue;
+  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true, config));
+  EXPECT_THAT(module->entry_computation()->root_instruction(), m::Add());
+  for (const auto* inst : module->entry_computation()->instructions()) {
+    if (inst->opcode() == HloOpcode::kCustomCall) {
+      EXPECT_NE(inst->custom_call_target(), "control_dep");
+    }
+  }
+}
+
+TEST_F(AsyncCollectiveReplacerTest, AllReduceReplacedWithControlDepOnDone) {
+  const absl::string_view hlo_string = R"(
+      HloModule test
+
+      apply_op {
+        x = u32[] parameter(0)
+        y = u32[] parameter(1)
+        ROOT apply_op = u32[] add(x, y)
+      }
+
+      ENTRY test_computation {
+        id = u32[] replica-id()
+        start = u32[] all-reduce-start(id), to_apply=apply_op
+        done = u32[] all-reduce-done(start)
+        unrelated = u32[] constant(42)
+        cd = () custom-call(done, unrelated), custom_call_target="control_dep"
+        ROOT result = u32[] add(done, unrelated)
+      }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AsyncCollectiveReplacer::Config config;
+  config.convert_all_reduce = HloPredicateTrue;
+  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true, config));
+  EXPECT_THAT(module->entry_computation()->root_instruction(), m::Add());
+  for (const auto* inst : module->entry_computation()->instructions()) {
+    if (inst->opcode() == HloOpcode::kCustomCall) {
+      EXPECT_NE(inst->custom_call_target(), "control_dep");
+    }
+  }
 }
 
 }  // namespace

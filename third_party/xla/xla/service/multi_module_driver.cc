@@ -104,7 +104,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> MultiModuleDriver::Compile(
   ASSIGN_OR_RETURN(module, std::move(results[0]));
   std::vector<std::unique_ptr<HloModule>> optimized_submodules;
   optimized_submodules.reserve(results.size() - 1);
-  absl::flat_hash_map<std::string, const HloModule*> optimized_modules_map;
+  absl::flat_hash_map<std::string, HloModule*> optimized_modules_map;
   optimized_modules_map.reserve(results.size() - 1);
   for (size_t i = 1; i < results.size(); ++i) {
     ASSIGN_OR_RETURN(auto opt_submod, std::move(results[i]));

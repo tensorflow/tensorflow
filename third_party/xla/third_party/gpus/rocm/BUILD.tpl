@@ -1,6 +1,7 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_skylib//rules:common_settings.bzl", "string_flag")
-load("@local_config_rocm//rocm:build_defs.bzl", "rocm_lib_import")
+load("@config_rocm_hipcc//rocm:build_defs.bzl", "hipcc_config")
+load("@local_config_rocm//rocm:build_defs.bzl", "rocm_lib_import", "rocm_version_number")
 
 licenses(["restricted"])  # MPL2, portions GPL v3, LGPL v3, BSD-like
 
@@ -88,6 +89,9 @@ cc_library(
     ]),
     defines = {"__HIP_DISABLE_CPP_FUNCTIONS__": "1"},
     strip_include_prefix = "%{rocm_root}/include",
+    deps = [
+        "@xla//third_party/libdrm:drm_headers",
+    ],
 )
 
 cc_library(
@@ -110,6 +114,9 @@ cc_library(
 # These must live in a cc_library (not a toolchain feature) because
 # cc_library linkopts propagate transitively through CcInfo to the
 # final linking target, whereas toolchain features do not.
+# Get lib_paths from hipcc_config for multiple ROCm paths support
+_ROCM_LIB_PATHS = hipcc_config().lib_paths
+
 cc_library(
     name = "rocm_rpath",
     linkopts = select({
@@ -284,8 +291,8 @@ rocm_lib_import(
     data = glob(["%{rocm_root}/lib/librccl.so*"]),
     interface_library = "%{rocm_root}/lib/librccl.so",
     deps = [
-        ":hip_runtime_libs",
         ":amdsmi_libs",
+        ":hip_runtime_libs",
         ":rocm_smi_libs",
         ":rocprofiler_register_libs",
         ":roctx_libs",

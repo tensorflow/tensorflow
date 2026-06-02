@@ -30,7 +30,7 @@ concurrency:
 jobs:
   Tests:
     name: XLA Linux X86 GPU ONEAPI POSTSUBMIT
-    runs-on: linux-x86-intel-emr4148-1gpu-02
+    runs-on: linux-x64-battlemage-256-1gpu-intel
     container: 
       image: us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest  # zizmor: ignore[unpinned-images]
       options: --device=/dev/dri

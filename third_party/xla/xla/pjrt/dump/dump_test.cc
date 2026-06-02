@@ -200,7 +200,7 @@ TEST(DumpTest, DumpCompileInputsAsProto) {
 TEST(MaybeDumpCompileInputsTest, XlaDumpToNotSet) {
   const std::string temp_test_dir = tsl::testing::TmpDir();
   const std::string temp_test_subdir =
-      tsl::io::JoinPath(temp_test_dir, "compile_maybe_dump_test",
+      tsl::io::JoinPath(temp_test_dir, "compile_maybe_dump_test_not_set",
                         absl::StrCat(absl::ToUnixMillis(absl::Now())));
   TF_ASSERT_OK(tsl::Env::Default()->RecursivelyCreateDir(temp_test_subdir));
   xla::CompileOptions compile_options;
@@ -224,7 +224,7 @@ TEST(MaybeDumpCompileInputsTest, XlaDumpToNotSet) {
 TEST(MaybeDumpCompileInputsTest, XlaDumpToSet) {
   const std::string temp_test_dir = tsl::testing::TmpDir();
   const std::string temp_test_subdir =
-      tsl::io::JoinPath(temp_test_dir, "compile_maybe_dump_test",
+      tsl::io::JoinPath(temp_test_dir, "compile_maybe_dump_test_set",
                         absl::StrCat(absl::ToUnixMillis(absl::Now())));
   TF_ASSERT_OK(tsl::Env::Default()->RecursivelyCreateDir(temp_test_subdir));
   xla::CompileOptions compile_options;

@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
@@ -139,6 +140,7 @@ constexpr char kBackendConfig[] = "backend_config";
 constexpr char kCallTargetName[] = "call_target_name";
 constexpr char kCalledComputations[] = "called_computations";
 constexpr char kChannelId[] = "channel_id";
+constexpr char kControlDep[] = "control_dep";
 constexpr char kHasSideEffect[] = "has_side_effect";
 constexpr char kIsFallback[] = "is_fallback";
 constexpr char kRaggedAllToAll[] = "ragged_all_to_all";
@@ -920,10 +922,11 @@ static void ExtractOriginalValuesFromFunction(
         original_value_protos) {
   original_value_protos->resize(function.getNumArguments(), std::nullopt);
   for (int i = 0, end = function.getNumArguments(); i < end; ++i) {
-    if (auto original_value_attr = function.getArgAttrOfType<mlir::StringAttr>(
-            i, xla::kMhloOriginalValueAttr)) {
+    if (auto original_value_attr =
+            function.getArgAttrOfType<mlir::mhlo::OriginalValueAttr>(
+                i, xla::kMhloOriginalValueAttr)) {
       (*original_value_protos)[i] =
-          xla::ConvertOriginalValue(original_value_attr.getValue());
+          xla::ConvertOriginalValue(original_value_attr);
     }
   }
 }
@@ -1106,8 +1109,8 @@ class ConvertToHloModule {
     // This is an invariant check as Run returns failure if there is no main
     // function and so the main proto shouldn't be consumed in that case.
     TF_RET_CHECK(main) << "requires module to have main function";
-    TF_ASSIGN_OR_RETURN(xla::XlaComputation computation,
-                        module_builder_.Build(lowered_computation_[main]));
+    ASSIGN_OR_RETURN(xla::XlaComputation computation,
+                     module_builder_.Build(lowered_computation_[main]));
     return std::move(*computation.mutable_proto());
   }
 
@@ -1607,26 +1610,31 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
   else
     data_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
 
-  auto get_sharding = [](const xla::OpSharding& sharding) {
-    xla::OpSharding ret;
-    if (sharding.type() != xla::OpSharding::TUPLE) {
-      ret = sharding;
+  std::optional<xla::OpSharding> orig_sharding = ctx.builder->sharding();
+  std::optional<xla::OpSharding> data_sharding = std::nullopt;
+  std::optional<xla::OpSharding> token_sharding = std::nullopt;
+  if (orig_sharding.has_value()) {
+    if (orig_sharding->type() == xla::OpSharding::TUPLE) {
+      CHECK_GE(orig_sharding->tuple_shardings_size(), 2);
+      data_sharding = orig_sharding->tuple_shardings(0);
+      token_sharding = orig_sharding->tuple_shardings(
+          orig_sharding->tuple_shardings_size() - 1);
     } else {
-      ret = sharding.tuple_shardings(0);
+      data_sharding = *orig_sharding;
+      token_sharding = *orig_sharding;
     }
-    return ret;
-  };
-  if (ctx.builder->sharding().has_value()) {
-    // HLO Recv needs a 3-tuple sharding. Get the sharding from the builder and
-    // make it a 3-tuple sharding.
-    std::optional<xla::OpSharding> sharding = *ctx.builder->sharding();
-    xla::OpSharding single_sharding = get_sharding(*sharding);
-    auto* tuple_shardings = sharding->mutable_tuple_shardings();
+  }
+
+  if (orig_sharding.has_value()) {
+    // HLO Recv needs a 3-tuple sharding.
+    xla::OpSharding recv_sharding = *orig_sharding;
+    recv_sharding.set_type(xla::OpSharding::TUPLE);
+    auto* tuple_shardings = recv_sharding.mutable_tuple_shardings();
     tuple_shardings->Clear();
-    for (int i = 0; i < 3; ++i) {
-      tuple_shardings->Add(xla::OpSharding(single_sharding));
-    }
-    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, sharding);
+    tuple_shardings->Add(xla::OpSharding(*data_sharding));
+    tuple_shardings->Add(xla::OpSharding(*data_sharding));
+    tuple_shardings->Add(xla::OpSharding(*token_sharding));
+    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, recv_sharding);
     SetSourceTargetPairsAttributes(ctx.builder, source_target_pairs_string);
     token = xla::internal::XlaBuilderFriend::BuildRecv(
         ctx.builder, token, data_shape,
@@ -1640,20 +1648,15 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
 
   xla::XlaOp xla_result;
   {
-    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder,
-                                                    ctx.builder->sharding());
+    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, orig_sharding);
     xla_result = xla::internal::XlaBuilderFriend::BuildRecvDone(
         ctx.builder, token, data_shape,
         Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
   }
 
   xla::XlaOp data_tuple_element;
-  if (ctx.builder->sharding().has_value()) {
-    // HLO GetTupleElement needs a single sharding,
-    xla::XlaScopedShardingAssignment sharding_scope(
-        ctx.builder, get_sharding(*ctx.builder->sharding()));
-    data_tuple_element = xla::GetTupleElement(xla_result, 0);
-  } else {
+  {
+    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, data_sharding);
     data_tuple_element = xla::GetTupleElement(xla_result, 0);
   }
 
@@ -1667,13 +1670,7 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
     }
   }
 
-  // HLO GetTupleElement needs a single sharding,
-  std::optional<xla::OpSharding> sharding = ctx.builder->sharding();
-  if (sharding.has_value() && sharding->type() == xla::OpSharding::TUPLE) {
-    CHECK_GE(ctx.builder->sharding()->tuple_shardings_size(), 2);
-    sharding = ctx.builder->sharding()->tuple_shardings(1);
-  }
-  xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, sharding);
+  xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, token_sharding);
   value_map[op.getResult(num_results - 1)] =
       xla::GetTupleElement(xla_result, 1);
 
@@ -2690,8 +2687,13 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   }
 
   xla::XlaOp custom_call;
-  if (op.getCalledComputations().size() == 1 && op.getOperandLayouts() &&
-      op.getResultLayouts()) {
+  if (call_target_name == kControlDep) {
+    custom_call = xla::CustomCall(
+        ctx.builder, call_target_name, args, result_shape, backend_config,
+        op.getHasSideEffect(), output_operand_aliasing, literal_ptr,
+        custom_call_schedule, *xla_api_version);
+  } else if (op.getCalledComputations().size() == 1 && op.getOperandLayouts() &&
+             op.getResultLayouts()) {
     mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
         mlir::cast<FlatSymbolRefAttr>(op.getCalledComputations()[0]));
     if (failed(ctx.converter->RunOnFunction(callee))) {
@@ -4357,6 +4359,19 @@ LogicalResult ExportXlaOp(AsinhOp op, OpLoweringContext ctx) {
       xla::Asinh(operand, /*result_accuracy=*/std::nullopt, /*expand=*/false);
   return success();
 }
+LogicalResult ExportXlaOp(MulhiOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp lhs;
+  if (failed(GetXlaOp(op.getLhs(), value_map, &lhs, op))) {
+    return failure();
+  }
+  xla::XlaOp rhs;
+  if (failed(GetXlaOp(op.getRhs(), value_map, &rhs, op))) {
+    return failure();
+  }
+  value_map[op] = xla::Mulhi(lhs, rhs);
+  return success();
+}
 
 LogicalResult ExportXlaOp(AcosOp op, OpLoweringContext ctx) {
   return ExportElementwiseXlaOp<AcosOp, xla::Acos>(op, ctx);
@@ -5547,14 +5562,14 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
     return absl::InternalError("Unable to convert MHLO to StableHLO");
   }
 
-  TF_RETURN_IF_ERROR(PrepareForExport(module));
+  RETURN_IF_ERROR(PrepareForExport(module));
 
   mlir::BaseScopedDiagnosticHandler diag_handler(module.getContext());
   xla::XlaBuilder module_builder(kMain);
   ConvertToHloModule converter(module, module_builder, options);
   if (failed(converter.Run())) return diag_handler.ConsumeStatus();
-  TF_ASSIGN_OR_RETURN(xla::HloModuleProto hlo_module,
-                      converter.ConsumeMainProto());
+  ASSIGN_OR_RETURN(xla::HloModuleProto hlo_module,
+                   converter.ConsumeMainProto());
   StringRef module_name = module.getName() ? *module.getName() : kMain;
   hlo_module.set_name(module_name.str());
   if (auto cross_program_prefetches = module->getAttrOfType<mlir::ArrayAttr>(
@@ -5636,13 +5651,13 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
 absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertMlirHloToHloModule(
     mlir::ModuleOp module, MlirToHloConversionOptions options) {
   xla::HloProto hlo_proto;
-  TF_RETURN_IF_ERROR(ConvertMlirHloToHlo(module, &hlo_proto, options));
+  RETURN_IF_ERROR(ConvertMlirHloToHlo(module, &hlo_proto, options));
 
   // Create default config.
   const xla::HloModuleProto& module_proto = hlo_proto.hlo_module();
-  TF_ASSIGN_OR_RETURN(xla::HloModuleConfig config,
-                      xla::HloModule::CreateModuleConfigFromProto(
-                          module_proto, xla::GetDebugOptionsFromFlags()));
+  ASSIGN_OR_RETURN(xla::HloModuleConfig config,
+                   xla::HloModule::CreateModuleConfigFromProto(
+                       module_proto, xla::GetDebugOptionsFromFlags()));
 
   // Modify config with values stored in MLIR module attributes
   mhlo::ExportHloModuleConfig(config, module);
@@ -5655,7 +5670,7 @@ absl::Status BuildHloFromMlirHlo(mlir::ModuleOp& module,
                                  llvm::ArrayRef<xla::XlaOp> xla_params,
                                  std::vector<xla::XlaOp>& returns,
                                  MlirToHloConversionOptions options) {
-  TF_RETURN_IF_ERROR(PrepareForExport(module));
+  RETURN_IF_ERROR(PrepareForExport(module));
   mlir::func::FuncOp main = module.lookupSymbol<mlir::func::FuncOp>("main");
   mlir::Block& block = main.getRegion().front();
   // No tuple support in Builder converter API.
@@ -5710,12 +5725,12 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
 
 std::optional<xla::OriginalValueProto> CreateOriginalValueFromOp(
     mlir::Operation* op) {
-  auto original_value_attr =
-      op->getAttrOfType<mlir::StringAttr>(xla::kMhloOriginalValueAttr);
+  auto original_value_attr = op->getAttrOfType<mlir::mhlo::OriginalValueAttr>(
+      xla::kMhloOriginalValueAttr);
   if (!original_value_attr) {
     return std::nullopt;
   }
-  return xla::ConvertOriginalValue(original_value_attr.getValue());
+  return xla::ConvertOriginalValue(original_value_attr);
 }
 
 }  // namespace mlir

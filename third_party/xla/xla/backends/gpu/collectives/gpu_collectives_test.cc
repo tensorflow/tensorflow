@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
+#include "xla/core/collectives/registered_memory.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/future.h"
 #include "xla/runtime/device_id.h"
@@ -66,7 +68,7 @@ static absl::StatusOr<std::vector<se::StreamExecutor*>> CreateExecutors(
     se::Platform* platform, size_t n) {
   std::vector<se::StreamExecutor*> executors(n);
   for (size_t d = 0; d < n; ++d) {
-    TF_ASSIGN_OR_RETURN(executors[d], platform->ExecutorForDevice(d));
+    ASSIGN_OR_RETURN(executors[d], platform->ExecutorForDevice(d));
   }
   return executors;
 }
@@ -104,8 +106,7 @@ CreateCommunicators(absl::Span<se::StreamExecutor* const> executors,
 
   CliqueIds clique_ids;
   for (size_t i = 0; i < num_ids; ++i) {
-    TF_ASSIGN_OR_RETURN(CliqueId clique_id,
-                        collectives->CreateUniqueCliqueId());
+    ASSIGN_OR_RETURN(CliqueId clique_id, collectives->CreateUniqueCliqueId());
     clique_ids.Add(clique_id);
   }
 
@@ -115,10 +116,9 @@ CreateCommunicators(absl::Span<se::StreamExecutor* const> executors,
   config.blocking_communicators = blocking;
   config.async_execution = !blocking;
 
-  TF_ASSIGN_OR_RETURN(auto comms,
-                      collectives->CreateCommunicatorsWithCancel(
-                          clique_key, clique_ids, device_ranks, config,
-                          std::make_shared<CancellationToken>()));
+  ASSIGN_OR_RETURN(auto comms, collectives->CreateCommunicatorsWithCancel(
+                                   clique_key, clique_ids, device_ranks, config,
+                                   std::make_shared<CancellationToken>()));
   return DowncastComms(std::move(comms));
 }
 
@@ -157,10 +157,10 @@ SplitCommunicators(
     existing_comms_ptrs[i] = existing_comms[i].get();
   }
 
-  TF_ASSIGN_OR_RETURN(auto comms,
-                      collectives->SplitCommunicatorsWithCancel(
-                          existing_comms_ptrs, /*color=*/0, keys, config,
-                          device_ranks, std::make_shared<CancellationToken>()));
+  ASSIGN_OR_RETURN(auto comms,
+                   collectives->SplitCommunicatorsWithCancel(
+                       existing_comms_ptrs, /*color=*/0, keys, config,
+                       device_ranks, std::make_shared<CancellationToken>()));
   return DowncastComms(std::move(comms));
 }
 
@@ -171,7 +171,7 @@ CreateMemoryAllocators(absl::Span<se::StreamExecutor* const> executors) {
   std::vector<std::unique_ptr<se::MemoryAllocator>> allocators;
   allocators.reserve(executors.size());
   for (se::StreamExecutor* executor : executors) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         allocators.emplace_back(),
         executor->CreateMemoryAllocator(se::MemorySpace::kCollective));
   }
@@ -185,8 +185,8 @@ Allocate(absl::Span<const std::unique_ptr<se::MemoryAllocator>> allocators,
   std::vector<std::unique_ptr<se::MemoryAllocation>> allocations;
   allocations.reserve(allocators.size());
   for (auto& allocator : allocators) {
-    TF_ASSIGN_OR_RETURN(allocations.emplace_back(),
-                        allocator->Allocate(num_bytes));
+    ASSIGN_OR_RETURN(allocations.emplace_back(),
+                     allocator->Allocate(num_bytes));
   }
   return allocations;
 }
@@ -218,7 +218,7 @@ AwaitSymmetricMemory(
   symm.reserve(futures.size());
 
   for (auto& future : futures) {
-    TF_ASSIGN_OR_RETURN(symm.emplace_back(), std::move(future).Await());
+    ASSIGN_OR_RETURN(symm.emplace_back(), std::move(future).Await());
   }
 
   return symm;
@@ -302,6 +302,37 @@ TEST(GpuCollectivesTest, CreateSymmetricMemory) {
   // Register allocated buffers as symmetric memory.
   auto fsymm = CreateSymmetricMemory(exec, comms, allocs);
   ASSERT_OK_AND_ASSIGN(auto symm, AwaitSymmetricMemory(std::move(fsymm)));
+}
+
+TEST(GpuCollectivesTest, CreateRegisteredMemory) {
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("CUDA"));
+
+  if (platform->VisibleDeviceCount() < 2) {
+    GTEST_SKIP() << "Test requires at least 2 GPUs";
+  }
+
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                       CreateExecutors(platform, 2));
+
+  ASSERT_OK_AND_ASSIGN(auto comms, CreateCommunicators(executors, {kD0, kD1}));
+
+  EXPECT_TRUE(comms[0]->platform_comm().handle);
+  EXPECT_TRUE(comms[1]->platform_comm().handle);
+
+  ASSERT_OK_AND_ASSIGN(auto allocators, CreateMemoryAllocators(executors));
+  ASSERT_OK_AND_ASSIGN(auto allocs, Allocate(allocators, 1024));
+
+  // Unlike symmetric memory, buffer registration is not a collective operation:
+  // each rank may register independently. The returned handle keeps the buffer
+  // registered until it is destroyed.
+  std::vector<std::unique_ptr<RegisteredMemory>> registered;
+  for (size_t i = 0; i < comms.size(); ++i) {
+    ASSERT_OK_AND_ASSIGN(
+        auto reg, comms[i]->CreateRegisteredMemory(allocs[i]->address()));
+    EXPECT_EQ(reg->addr(), allocs[i]->address());
+    registered.push_back(std::move(reg));
+  }
 }
 
 TEST(GpuCollectivesTest, CreateSymmetricMemoryOnDifferentComms) {
@@ -472,11 +503,6 @@ TEST(GpuCollectivesTest, PutAndWaitSignal) {
     GTEST_SKIP() << "Test requires at least Hopper architecture";
   }
 
-  GpuCollectives* collectives = GpuCollectives::Default("GPU");
-  if (!collectives->SupportsOneSidedComm()) {
-    GTEST_SKIP() << "GPU collectives do not support one-sided RMA";
-  }
-
   ASSERT_OK_AND_ASSIGN(auto comms, CreateCommunicators(executors, {kD0, kD1}));
 
   ASSERT_OK_AND_ASSIGN(auto allocators, CreateMemoryAllocators(executors));
@@ -520,19 +546,19 @@ TEST(GpuCollectivesTest, PutAndWaitSignal) {
 
   auto f0 = MakeFutureOn<void>(exec, [&]() -> absl::Status {
     GpuCollectives::Executor gpu_exec(stream0.get());
-    TF_RETURN_IF_ERROR(comms[0]
-                           ->Put(send0_addr, symm_recv[0].get(), 0, kNumBytes,
-                                 RankId(1), gpu_exec)
-                           .Await());
+    RETURN_IF_ERROR(comms[0]
+                        ->Put(send0_addr, symm_recv[0].get(), 0, kNumBytes,
+                              RankId(1), gpu_exec)
+                        .Await());
     return comms[0]->WaitSignal(RankId(1), 1, signal_desc, gpu_exec).Await();
   });
 
   auto f1 = MakeFutureOn<void>(exec, [&]() -> absl::Status {
     GpuCollectives::Executor gpu_exec(stream1.get());
-    TF_RETURN_IF_ERROR(comms[1]
-                           ->Put(send1_addr, symm_recv[1].get(), 0, kNumBytes,
-                                 RankId(0), gpu_exec)
-                           .Await());
+    RETURN_IF_ERROR(comms[1]
+                        ->Put(send1_addr, symm_recv[1].get(), 0, kNumBytes,
+                              RankId(0), gpu_exec)
+                        .Await());
     return comms[1]->WaitSignal(RankId(0), 1, signal_desc, gpu_exec).Await();
   });
 

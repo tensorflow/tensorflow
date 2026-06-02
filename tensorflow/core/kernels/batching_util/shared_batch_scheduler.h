@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "xla/tsl/platform/criticality.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler_utils.h"
@@ -328,6 +329,9 @@ class SharedBatchScheduler
       // If true, the priority aware batch scheduler will resplit tasks into
       // smaller batches if needed.
       bool enable_task_resplit = false;
+      // If true, the batch scheduler lazily filters tasks whose RPC deadline
+      // has expired or were cancelled before they are sent for execution.
+      bool enable_lazy_cancellation_filtering = false;
     };
 
     PriorityAwareSchedulerOptions priority_aware_scheduler_options;
@@ -422,14 +426,16 @@ class PriorityTaskQueue {
                        std::vector<std::unique_ptr<TaskType>>* output_tasks)>
           split_input_task_func,
       bool enable_large_batch_splitting, bool enable_task_resplit,
-      size_t max_execution_batch_size, int64_t batch_timeout_micros,
-      bool disable_padding, ModelBatchStats* model_batch_stats, Env* env)
+      bool enable_lazy_cancellation_filtering, size_t max_execution_batch_size,
+      int64_t batch_timeout_micros, bool disable_padding,
+      ModelBatchStats* model_batch_stats, Env* env)
       : allowed_batch_sizes_(allowed_batch_sizes),
         batch_padding_policy_(batch_padding_policy),
         max_queue_depth_(max_queue_depth),
         split_input_task_func_(split_input_task_func),
         enable_large_batch_splitting_(enable_large_batch_splitting),
         enable_task_resplit_(enable_task_resplit),
+        enable_lazy_cancellation_filtering_(enable_lazy_cancellation_filtering),
         max_execution_batch_size_(max_execution_batch_size),
         batch_timeout_micros_(batch_timeout_micros),
         disable_padding_(disable_padding),
@@ -496,12 +502,38 @@ class PriorityTaskQueue {
     std::vector<std::unique_ptr<TaskType>> tasks_to_schedule;
     int remaining_size = size;
 
+    // Get current timestamp outside the loop to avoid repeated calls.
+    const absl::Time now = absl::FromUnixMicros(env_->NowMicros());
+
     while (remaining_size > 0 && !tasks_.empty()) {
       auto it = tasks_.begin();
 
       // TODO(b/491965163): Consider optimizing by evicting the highest priority
       // task if the shared status is an error potentially due to an evicted
       // sibling/sub-task.
+
+      // Lazy cancellation: skip cancelled/timed-out tasks first.
+      if constexpr (std::is_base_of_v<BatchTask, TaskType>) {
+        if (enable_lazy_cancellation_filtering_) {
+          if (it->task->IsDeadlineExceeded(now)) {
+            QueueEntry cancelled_entry = RemoveEntryInternal(it);
+            RecordLazyCancelledTaskMetrics(
+                cancelled_entry.task->size(),
+                kLazyCancellationReasonDeadlineExceeded);
+            cancelled_entry.task->FinishTask(absl::DeadlineExceededError(
+                "Task cancelled: RPC deadline exceeded."));
+            continue;
+          }
+          if (it->task->IsCancelled()) {
+            QueueEntry cancelled_entry = RemoveEntryInternal(it);
+            RecordLazyCancelledTaskMetrics(cancelled_entry.task->size(),
+                                           kLazyCancellationReasonRpcCancelled);
+            cancelled_entry.task->FinishTask(
+                absl::CancelledError("Task cancelled: RPC is cancelled."));
+            continue;
+          }
+        }
+      }
 
       // If task fits just add it to tasks_to_schedule.
       if (it->task->size() <= remaining_size) {
@@ -671,6 +703,7 @@ class PriorityTaskQueue {
       split_input_task_func_;
   const bool enable_large_batch_splitting_;
   const bool enable_task_resplit_ = false;
+  const bool enable_lazy_cancellation_filtering_;
   const size_t max_execution_batch_size_;
   const int64_t batch_timeout_micros_;
   const bool disable_padding_;
@@ -1306,6 +1339,8 @@ Queue<TaskType>::Queue(
           options.priority_aware_scheduler_options.max_queue_depth,
           options.split_input_task_func, options.enable_large_batch_splitting,
           options.priority_aware_scheduler_options.enable_task_resplit,
+          options.priority_aware_scheduler_options
+              .enable_lazy_cancellation_filtering,
           GetMaxExecutionBatchSize(options), options.batch_timeout_micros,
           options.disable_padding, options.model_batch_stats, env),
       options_(options),

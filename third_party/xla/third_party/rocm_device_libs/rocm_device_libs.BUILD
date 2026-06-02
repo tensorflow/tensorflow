@@ -59,5 +59,19 @@ bitcode_library(
     ]),
     file_specific_flags = {
         "gaaf.cl": ["-munsafe-fp-atomics"],
+        "media.cl": [
+            "-Xclang",
+            "-target-feature",
+            "-Xclang",
+            "+msad-insts",
+            "-Xclang",
+            "-target-feature",
+            "-Xclang",
+            "+mqsad-pk-insts",
+            "-Xclang",
+            "-target-feature",
+            "-Xclang",
+            "+mqsad-insts",
+        ],
     },
 )

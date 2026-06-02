@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/common_pjrt_client.h"
@@ -71,8 +72,7 @@ class CommonAsyncHostToDeviceTransferManager
           device_layouts->size(), shape_specs.size());
     }
 
-    auto* client =
-        tensorflow::down_cast<CommonPjRtClient*>(memory_space->client());
+    auto* client = absl::down_cast<CommonPjRtClient*>(memory_space->client());
     std::optional<std::string> debug_info = std::nullopt;
     const auto& current_anno =
         tsl::profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation();
@@ -116,7 +116,7 @@ class CommonAsyncHostToDeviceTransferManager
         allocation_events.push_back({});
       }
 
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           Shape device_shape,
           client->MakeDefaultShapeForMemorySpace(
               memory_space,
@@ -129,10 +129,10 @@ class CommonAsyncHostToDeviceTransferManager
                   : nullptr));
       auto shared_device_shape =
           std::make_shared<const Shape>(std::move(device_shape));
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           int64_t on_device_bytes_count,
           client->GetOnDeviceBytesCount(memory_space, *shared_device_shape));
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           auto raw_buffer,
           client->AllocateRawBuffer(memory_space, on_device_bytes_count,
                                     /*retry_on_oom=*/true, allocation_event));
@@ -142,20 +142,19 @@ class CommonAsyncHostToDeviceTransferManager
       tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise;
       PjRtDeviceEventRef definition_event;
       if (client->event_tracking_enabled()) {
-        TF_ASSIGN_OR_RETURN(
+        ASSIGN_OR_RETURN(
             std::tie(definition_event_promise, definition_event),
             client->CreateLinkedEventPromise(
                 memory_space,
                 absl::StrCat("AsyncHostToDeviceTransferManager Op:",
                              debug_info.value_or(""))));
       } else {
-        TF_ASSIGN_OR_RETURN(
-            std::tie(definition_event_promise, definition_event),
-            client->CreateLinkedEventPromise(memory_space, ""));
+        ASSIGN_OR_RETURN(std::tie(definition_event_promise, definition_event),
+                         client->CreateLinkedEventPromise(memory_space, ""));
       }
       definition_events.push_back(std::move(definition_event_promise));
 
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           auto buffer,
           client->DefineBuffer(shared_device_shape, memory_space, raw_buffer,
                                {std::move(definition_event)}));
@@ -261,7 +260,7 @@ class CommonAsyncHostToDeviceTransferManager
     tsl::profiler::TraceMeProducer producer("TransferLiteralToBuffer",
                                             tsl::profiler::ContextType::kPjRt);
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         auto h2d_transfer_event,
         client_->LinearizeInto(
             literal, *device_shapes_[buffer_index],
@@ -374,10 +373,9 @@ class CommonAsyncHostToDeviceTransferManager
       --remaining_buffer_count_;
     };
 
-    TF_ASSIGN_OR_RETURN(
-        auto h2d_transfer_event,
-        undispatched_buffer_ref->CopyRawHostToDeviceAndReturnEvent(
-            data, offset, transfer_size));
+    ASSIGN_OR_RETURN(auto h2d_transfer_event,
+                     undispatched_buffer_ref->CopyRawHostToDeviceAndReturnEvent(
+                         data, offset, transfer_size));
     if (client_->event_tracking_enabled()) {
       // Acquire when logging, for the sake of definition_events_.
       absl::MutexLock l(mu_);

@@ -12,6 +12,7 @@ limitations under the License.
 
 #include "xla/stream_executor/rocm/rocm_smi_util.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 

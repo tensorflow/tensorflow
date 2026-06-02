@@ -20,9 +20,9 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "//tensorflow/core:lib",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:str_util",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/dtensor/cc:constants",
         "//tensorflow/dtensor/cc:dstatus",

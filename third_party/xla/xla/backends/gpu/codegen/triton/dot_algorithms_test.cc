@@ -1856,7 +1856,7 @@ class PrecisionTests
 
   absl::Status CheckGemmPattern(const HloModule& module,
                                 absl::string_view pattern) {
-    TF_ASSIGN_OR_RETURN(bool ok, RunFileCheck(module.ToString(), pattern));
+    ASSIGN_OR_RETURN(bool ok, RunFileCheck(module.ToString(), pattern));
     if (!ok) {
       return absl::InternalError(
           absl::StrCat("The module does not contain the pattern: ", pattern));
@@ -1890,13 +1890,13 @@ class PrecisionTests
       return absl::InvalidArgumentError("Invalid backend");
     }
     config.set_debug_options(debug_options);
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                        GetOptimizedModule(hlo_text, config));
+    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     GetOptimizedModule(hlo_text, config));
     if (backend == Backend::kTriton) {
-      TF_RETURN_IF_ERROR(CheckGemmPattern(
+      RETURN_IF_ERROR(CheckGemmPattern(
           *module, "CHECK: {{__triton_gemm|__triton_nested_gemm_fusion}}"));
     } else if (backend == Backend::kBlas) {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           CheckGemmPattern(*module, "CHECK: __cublas${{gemm|lt\\$matmul}}"));
     } else {
       return absl::InvalidArgumentError("Invalid backend");

@@ -52,6 +52,7 @@ cc_library(
     deps = [
         "//xla/stream_executor:platform",
         "//xla/stream_executor/platform:platform_object_registry",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
     ] + if_cuda_is_configured([
@@ -98,6 +99,7 @@ xla_test(
         "//xla/stream_executor/gpu:gpu_test_kernels",
         "//xla/stream_executor/gpu:gpu_test_kernels_fatbin",
         "//xla/stream_executor/rocm:rocm_platform_id",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",

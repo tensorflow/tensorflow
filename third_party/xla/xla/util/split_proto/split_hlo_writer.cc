@@ -21,11 +21,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/message_lite.h"
 #include "google/protobuf/util/field_mask_util.h"
 #include "riegeli/bytes/writer.h"
 #include "riegeli/records/record_writer.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util/split_proto/split_proto.pb.h"
 #include "xla/util/split_proto/split_proto_riegeli_options.h"
 #include "xla/util/split_proto/split_proto_write_record.h"
@@ -67,24 +67,29 @@ HloProto GetProtoWithoutComputations(const HloProto& hlo_proto) {
 
 }  // namespace
 
-absl::Status WriteSplitHloProto(
-    const HloProto& hlo_proto, std::unique_ptr<riegeli::Writer> writer) {
+absl::Status WriteSplitHloProto(const HloProto& hlo_proto,
+                                std::unique_ptr<riegeli::Writer> writer) {
   riegeli::RecordWriter record_writer(std::move(writer),
                                       GetSplitProtoRiegeliOptions());
   SplitProtoManifest manifest =
       BuildManifest(hlo_proto.hlo_module().computations_size());
-  RETURN_IF_ERROR(WriteRecord(record_writer, manifest));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      WriteRecord(record_writer, manifest),
+      "failed to write manifest in HloProto split proto");
 
   // Write the rest of the fields
-  RETURN_IF_ERROR(WriteRecord(record_writer,
-                              GetProtoWithoutComputations(hlo_proto)));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      WriteRecord(record_writer, GetProtoWithoutComputations(hlo_proto)),
+      "failed to write the non-computations fields in HloProto split proto");
 
   // Write the HLO computations.
   for (const HloComputationProto& computation :
        hlo_proto.hlo_module().computations()) {
     HloProto sub_proto;
     *sub_proto.mutable_hlo_module()->add_computations() = computation;
-    RETURN_IF_ERROR(WriteRecord(record_writer, sub_proto));
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        WriteRecord(record_writer, sub_proto),
+        "failed to write HLO computation in HloProto split proto");
   }
 
   if (!record_writer.Close()) {

@@ -47,14 +47,20 @@ filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "allocator.cc",
-        "allocator.h",
         "allocator_registry.cc",
-        "allocator_registry.h",
         "cpu_allocator_impl.cc",
+        "tracking_allocator.cc",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs_no_runtime",
+    srcs = [
+        "allocator.h",
+        "allocator_registry.h",
         "device_type.h",
         "fixedpoint_types.h",
         "numeric_types.h",
-        "tracking_allocator.cc",
         "tracking_allocator.h",
         "type_traits.h",
     ],
@@ -65,9 +71,15 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "cancellation.cc",
+        "metrics.cc",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs_only_runtime",
+    srcs = [
         "cancellation.h",
         "fixedpoint_types.h",
-        "metrics.cc",
         "metrics.h",
     ],
 )
@@ -285,6 +297,7 @@ cc_library(
         ":device_type",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:device_name_utils",
         "@com_google_absl//absl/algorithm:container",

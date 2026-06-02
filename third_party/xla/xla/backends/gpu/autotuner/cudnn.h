@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_AUTOTUNER_CUDNN_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -74,6 +75,10 @@ class CudnnBackend : public GpuCodegenBackend {
                            const BackendConfig& config) override;
 
   bool CanProduceWrongResults() const override { return true; }
+
+  std::string version() const override {
+    return target_config().dnn_version_info.ToString();
+  }
 
  private:
   bool IsSupported(const HloInstruction& instr) override;

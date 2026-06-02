@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -405,10 +407,16 @@ absl::StatusOr<bool> RaggedDotRewriter::RunImpl(
           .debug_options()
           .xla_gpu_experimental_use_ragged_dot_grouped_gemm() &&
       module->config().debug_options().xla_gpu_enable_cublaslt();
+  const se::CudaComputeCapability* cuda_cc =
+      gpu_compute_capability_.has_value()
+          ? gpu_compute_capability_->cuda_compute_capability()
+          : nullptr;
   const bool ragged_dot_fusion_enabled =
       module->config()
           .debug_options()
-          .xla_gpu_experimental_use_ragged_dot_fusion();
+          .xla_gpu_experimental_use_ragged_dot_fusion() &&
+      cudnn_version_ >= kMinCudnnVersionForRaggedDotFusion &&
+      cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere();
 
   // Gather all Ragged Dot operations.
   std::vector<HloRaggedDotInstruction*> ragged_dots;
@@ -434,9 +442,9 @@ absl::StatusOr<bool> RaggedDotRewriter::RunImpl(
   }
 
   for (auto* ragged_dot : ragged_dots) {
-    TF_ASSIGN_OR_RETURN(auto general_dot, RaggedToGeneral(ragged_dot));
+    ASSIGN_OR_RETURN(auto general_dot, RaggedToGeneral(ragged_dot));
     general_dot->set_metadata(ragged_dot->metadata());
-    TF_RETURN_IF_ERROR(ragged_dot->parent()->ReplaceWithNewInstruction(
+    RETURN_IF_ERROR(ragged_dot->parent()->ReplaceWithNewInstruction(
         ragged_dot, std::move(general_dot)));
   }
 

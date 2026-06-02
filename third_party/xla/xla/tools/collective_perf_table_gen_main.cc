@@ -30,18 +30,22 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/model/collective_interpolator_data.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/tools/collective_perf_table_gen.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/util/command_line_flags.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/path.h"
 
@@ -148,6 +152,24 @@ std::vector<CollectivePerfTableGen::CollectiveType> ParseCollectives(
   return types;
 }
 
+std::vector<xla::PrimitiveType> ParseDataTypes(absl::string_view unparsed) {
+  std::vector<xla::PrimitiveType> types;
+  if (unparsed.empty()) {
+    return {xla::F32};  // Default to F32
+  }
+  for (absl::string_view token : absl::StrSplit(unparsed, ',')) {
+    std::string lower_token = absl::AsciiStrToLower(token);
+    auto type_or = xla::primitive_util::StringToPrimitiveType(lower_token);
+    if (type_or.ok()) {
+      types.push_back(type_or.value());
+    } else {
+      LOG(FATAL) << "Unsupported data type: " << token;
+    }
+  }
+  CHECK_GT(types.size(), 0);
+  return types;
+}
+
 CollectivePerfTableGen::StepSpec ParseStepSpec(absl::string_view unparsed) {
   CollectivePerfTableGen::StepSpec spec;
   for (absl::string_view token : absl::StrSplit(unparsed, ',')) {
@@ -236,16 +258,16 @@ absl::Status UpdateHeader(const DeviceHloInstructionProfiles& new_profiles,
   // 2. Save current profiles to temp file
   std::string temp_file_current =
       tsl::io::JoinPath("/tmp", "xla_gpu_perf_merge_current.pbtxt");
-  TF_RETURN_IF_ERROR(tsl::WriteStringToFile(
-      tsl::Env::Default(), temp_file_current, current_profiles_pbtxt));
+  RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(), temp_file_current,
+                                         current_profiles_pbtxt));
 
   // 3. Save new profiles to temp file
   std::string new_profiles_pbtxt;
   tsl::protobuf::TextFormat::PrintToString(new_profiles, &new_profiles_pbtxt);
   std::string temp_file_new =
       tsl::io::JoinPath("/tmp", "xla_gpu_perf_merge_new.pbtxt");
-  TF_RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(), temp_file_new,
-                                            new_profiles_pbtxt));
+  RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(), temp_file_new,
+                                         new_profiles_pbtxt));
 
   // 4. Merge
   std::vector<std::string> files_to_merge = {temp_file_current, temp_file_new};
@@ -264,12 +286,12 @@ absl::Status UpdateHeader(const DeviceHloInstructionProfiles& new_profiles,
 
   // 6. Update header
   std::string header_content;
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       tsl::ReadFileToString(tsl::Env::Default(), header_path, &header_content));
   std::string new_header_content =
       InjectProtoToString(header_content, merged_profiles_pbtxt);
-  TF_RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(), header_path,
-                                            new_header_content));
+  RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(), header_path,
+                                         new_header_content));
 
   LOG(INFO) << "Successfully merged profiles into " << header_path_flag;
   return absl::OkStatus();
@@ -293,6 +315,8 @@ int main(int argc, char* argv[]) {
   std::string merge_path;
   std::vector<std::string> merge_files;
   std::string update_header_path;
+  std::string data_types_unparsed = "F32";
+  bool test_2d_shapes = false;
 
   // Parse flags.
   std::vector<tsl::Flag> flag_list = {
@@ -337,6 +361,13 @@ int main(int argc, char* argv[]) {
       tsl::Flag(
           "update_header_path", &update_header_path,
           "Path to C++ header file to update in-place with new profiles."),
+      tsl::Flag("data_types", &data_types_unparsed,
+                "Comma separated list of data types to test. "
+                "Allowed values: S4, U4, F32, F16, BF16, F8E4M3FN, F8E5M2. "
+                "Defaults to F32."),
+      tsl::Flag("test_2d_shapes", &test_2d_shapes,
+                "Whether to test 2D shapes for all-gather operations. "
+                "Defaults to false (1D shapes only)."),
   };
 
   std::string kUsageString =
@@ -359,6 +390,56 @@ int main(int argc, char* argv[]) {
   cfg.replica_groups_list =
       CollectiveDeviceLists(collective_devices_spec_unparsed);
   cfg.output = output;
+  cfg.data_types = ParseDataTypes(data_types_unparsed);
+  cfg.test_2d_shapes = test_2d_shapes;
+
+  // Validate ALL_GATHER-only features (2D shapes and 4-bit types)
+  bool has_4bit_types = absl::c_any_of(
+      cfg.data_types,
+      [](xla::PrimitiveType t) { return t == xla::S4 || t == xla::U4; });
+
+  if (test_2d_shapes || has_4bit_types) {
+    bool has_all_gather = false;
+    bool has_other_collectives = false;
+    for (const auto& collective_type : cfg.collective_types) {
+      if (collective_type ==
+          CollectivePerfTableGen::CollectiveType::ALL_GATHER) {
+        has_all_gather = true;
+      } else {
+        has_other_collectives = true;
+      }
+    }
+
+    if (!has_all_gather) {
+      if (test_2d_shapes && has_4bit_types) {
+        LOG(FATAL) << "--test_2d_shapes=true and U4/S4 data types require "
+                   << "ALL_GATHER to be included in --collectives.";
+      } else if (test_2d_shapes) {
+        LOG(FATAL) << "--test_2d_shapes=true requires ALL_GATHER to be "
+                   << "included in --collectives. 2D shapes are only "
+                   << "supported for ALL_GATHER operations.";
+      } else {
+        LOG(FATAL) << "U4/S4 data types require ALL_GATHER to be included in "
+                   << "--collectives. 4-bit data types are only supported for "
+                   << "ALL_GATHER operations.";
+      }
+    }
+
+    if (has_other_collectives) {
+      if (has_4bit_types) {
+        LOG(FATAL) << "U4/S4 data types are only supported for ALL_GATHER "
+                   << "operations. Please remove other collective types from "
+                   << "--collectives or remove U4/S4 from --data_types.";
+      }
+      if (test_2d_shapes) {
+        LOG(WARNING)
+            << "--test_2d_shapes=true is set, but other collective "
+            << "types besides ALL_GATHER are also specified. 2D "
+            << "shapes will only be tested for ALL_GATHER "
+            << "operations. Other collectives will use 1D shapes only.";
+      }
+    }
+  }
 
   std::unique_ptr<CollectivePerfTableGen> gen =
       CollectivePerfTableGen::Create(cfg);

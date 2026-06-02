@@ -42,13 +42,13 @@ class RGBToHSVOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
     OP_REQUIRES(context, input.dims() >= 1,
-                errors::InvalidArgument("input must be at least 1D",
-                                        input.shape().DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "input must be at least 1D", input.shape().DebugString())));
     auto channels = input.dim_size(input.dims() - 1);
     OP_REQUIRES(context, channels == 3,
-                errors::FailedPrecondition(
+                absl::FailedPreconditionError(absl::StrCat(
                     "input must have 3 channels but input only has ", channels,
-                    " channels."));
+                    " channels.")));
 
     // Create the output Tensor with the same dimensions as the input Tensor.
     Tensor* output = nullptr;
@@ -81,13 +81,13 @@ class HSVToRGBOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
     OP_REQUIRES(context, input.dims() >= 1,
-                errors::InvalidArgument("input must be at least 1D",
-                                        input.shape().DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "input must be at least 1D", input.shape().DebugString())));
     auto channels = input.dim_size(input.dims() - 1);
     OP_REQUIRES(context, channels == 3,
-                errors::FailedPrecondition(
+                absl::FailedPreconditionError(absl::StrCat(
                     "input must have 3 channels but input only has ", channels,
-                    " channels."));
+                    " channels.")));
 
     // Create the output Tensor with the same dimensions as the input Tensor.
     Tensor* output = nullptr;

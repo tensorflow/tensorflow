@@ -94,14 +94,14 @@ PYBIND11_MODULE(_unified_api, m) {
     MaybeRaiseRegisteredFromTFStatus(status.get());
     if (!ctx) {
       MaybeRaiseRegisteredFromStatus(
-          Internal("TF_CreateFunction returned nullptr"));
+          absl::InternalError("TF_CreateFunction returned nullptr"));
     }
     if (!isa<TracingContext>(ctx)) {
       // TODO(srbs): Add a helper to convert the kind enum to a user-friendly
       // string.
-      MaybeRaiseRegisteredFromStatus(
-          Internal("TF_CreateFunction must return a TracingContext, found ",
-                   ctx->getKind()));
+      MaybeRaiseRegisteredFromStatus(absl::InternalError(
+          absl::StrCat("TF_CreateFunction must return a TracingContext, found ",
+                       ctx->getKind())));
     }
     return dyn_cast<TracingContext>(ctx);
   });
@@ -109,7 +109,8 @@ PYBIND11_MODULE(_unified_api, m) {
     TFE_Context* ctx =
         static_cast<TFE_Context*>(PyCapsule_GetPointer(obj.ptr(), nullptr));
     if (!ctx) {
-      MaybeRaiseRegisteredFromStatus(InvalidArgument("TFE_Context is nullptr"));
+      MaybeRaiseRegisteredFromStatus(
+          absl::InvalidArgumentError("TFE_Context is nullptr"));
     }
     return unwrap(ctx);
   });
@@ -149,22 +150,23 @@ PYBIND11_MODULE(_unified_api, m) {
         OutputList output_list;
         if (outputs.ptr() != Py_None) {
           if (!PyList_Check(outputs.ptr())) {
-            MaybeRaiseRegisteredFromStatus(
-                InvalidArgument("must provide a list of Tensors as inputs"));
+            MaybeRaiseRegisteredFromStatus(absl::InvalidArgumentError(
+                "must provide a list of Tensors as inputs"));
           }
           Py_ssize_t len = PyList_Size(outputs.ptr());
           output_list.outputs.resize(len);
           for (Py_ssize_t i = 0; i < len; ++i) {
             PyObject* elem = PyList_GetItem(outputs.ptr(), i);
             if (!elem) {
-              MaybeRaiseRegisteredFromStatus(
-                  InvalidArgument("Tensor at index  ", i, " is None."));
+              MaybeRaiseRegisteredFromStatus(absl::InvalidArgumentError(
+                  absl::StrCat("Tensor at index  ", i, " is None.")));
             }
             py::handle elem_h = elem;
             AbstractTensorHandle* handle = elem_h.cast<AbstractTensorHandle*>();
             if (!isa<TracingTensorHandle>(handle)) {
-              MaybeRaiseRegisteredFromStatus(InvalidArgument(
-                  "Tensor at index  ", i, " is not a graph tensor."));
+              MaybeRaiseRegisteredFromStatus(
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Tensor at index  ", i, " is not a graph tensor.")));
             }
             output_list.outputs[i] = handle;
           }
@@ -235,9 +237,9 @@ PYBIND11_MODULE(_unified_api, m) {
         if (!isa<ImmediateExecutionTensorHandle>(self)) {
           // TODO(srbs): Add a helper to convert the kind enum to a
           // user-friendly string.
-          MaybeRaiseRegisteredFromStatus(Internal(
+          MaybeRaiseRegisteredFromStatus(absl::InternalError(absl::StrCat(
               "AbstractTensorHandle.numpy() must be called with an ",
-              "ImmediateExecutionTensorHandle found type: ", self->getKind()));
+              "ImmediateExecutionTensorHandle found type: ", self->getKind())));
         }
         TF_Status s;
         TFE_TensorHandle* handle =
@@ -249,9 +251,9 @@ PYBIND11_MODULE(_unified_api, m) {
 
   m.def("EagerTensorToImmediateExecutionTensorHandle", [](py::object handle) {
     if (!EagerTensor_CheckExact(handle.ptr())) {
-      MaybeRaiseRegisteredFromStatus(
-          InvalidArgument("EagerTensorToImmediateExecutionTensorHandle called "
-                          "with non-EagerTensor."));
+      MaybeRaiseRegisteredFromStatus(absl::InvalidArgumentError(
+          "EagerTensorToImmediateExecutionTensorHandle called "
+          "with non-EagerTensor."));
     }
     TFE_TensorHandle* eager_tensor = EagerTensor_Handle(handle.ptr());
     auto t = static_cast<AbstractTensorHandle*>(unwrap(eager_tensor));

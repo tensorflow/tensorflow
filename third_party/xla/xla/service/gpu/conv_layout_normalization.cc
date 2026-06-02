@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -61,9 +62,8 @@ absl::StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
       hlo->shape().IsTuple() ? hlo->shape().tuple_shapes(0) : hlo->shape();
 
   Shape input_shape, filter_shape, output_shape;
-  TF_ASSIGN_OR_RETURN(
-      gpu::CudnnConvKind conv_kind,
-      gpu::GetCudnnConvKind(Cast<HloCustomCallInstruction>(hlo)));
+  ASSIGN_OR_RETURN(gpu::CudnnConvKind conv_kind,
+                   gpu::GetCudnnConvKind(Cast<HloCustomCallInstruction>(hlo)));
   switch (conv_kind) {
     case gpu::CudnnConvKind::kForward:
     case gpu::CudnnConvKind::kForwardActivation:
@@ -170,8 +170,8 @@ absl::StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
         normalized_conv->shape().tuple_shapes().size());
 
     for (int i = 0; i < normalized_conv->shape().tuple_shapes().size(); ++i) {
-      TF_ASSIGN_OR_RETURN(HloInstruction * normalized_out,
-                          MakeGetTupleElementHlo(normalized_conv, i));
+      ASSIGN_OR_RETURN(HloInstruction * normalized_out,
+                       MakeGetTupleElementHlo(normalized_conv, i));
       tuple_elements[i] =
           MakeBitcastHlo(normalized_out, hlo->shape().tuple_shapes(i));
     }
@@ -187,8 +187,8 @@ absl::StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
 absl::StatusOr<std::optional<HloInstruction*>> NormalizeLayoutForGpuCustomCalls(
     HloCustomCallInstruction* hlo) {
   if (IsCustomCallToDnnConvolution(*hlo)) {
-    TF_ASSIGN_OR_RETURN(std::optional<HloInstruction*> bc_to_orig,
-                        UpdateLayoutForCudnnConvolution(hlo));
+    ASSIGN_OR_RETURN(std::optional<HloInstruction*> bc_to_orig,
+                     UpdateLayoutForCudnnConvolution(hlo));
     return bc_to_orig;
   }
   return std::nullopt;

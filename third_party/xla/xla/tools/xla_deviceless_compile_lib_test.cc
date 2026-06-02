@@ -22,6 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -46,16 +47,23 @@ using ::testing::IsEmpty;
 using ::testing::Not;
 
 absl::StatusOr<Compiler::GpuTargetConfig> GetGpuTargetConfig() {
-  const std::string spec_file =
-      PlatformUtil::CanonicalPlatformName("gpu").value_or("") == "rocm"
-          ? "mi200.txtpb"
-          : "h100_sxm.txtpb";
+  const std::string spec_file = [&] {
+    const std::string platform_name =
+        PlatformUtil::CanonicalPlatformName("gpu").value_or("");
+    if (platform_name == "rocm") {
+      return "mi200.txtpb";
+    }
+    if (platform_name == "sycl") {
+      return "bmg_g21.txtpb";
+    }
+    return "h100_sxm.txtpb";
+  }();
   const std::string target_config_path =
       tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
                         "backends/gpu/target_config/specs", spec_file);
   stream_executor::GpuTargetConfigProto target_config_proto;
-  TF_RETURN_IF_ERROR(tsl::ReadTextProto(tsl::Env::Default(), target_config_path,
-                                        &target_config_proto));
+  RETURN_IF_ERROR(tsl::ReadTextProto(tsl::Env::Default(), target_config_path,
+                                     &target_config_proto));
   return Compiler::GpuTargetConfig::FromProto(target_config_proto);
 }
 

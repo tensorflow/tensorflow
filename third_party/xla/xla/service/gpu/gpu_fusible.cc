@@ -100,14 +100,6 @@ bool HasAnyTiledTransposeRoot(const HloComputation& computation) {
                         });
 }
 
-const Shape& GetElementShape(const HloFusionAnalysis& analysis) {
-  const Shape* shape = &analysis.fusion_root(0).shape();
-  while (shape->IsTuple()) {
-    shape = &shape->tuple_shapes(0);
-  }
-  return *shape;
-}
-
 }  // namespace
 
 int64_t MaxUnrollFactor(const HloFusionAnalysis* analysis) {
@@ -1056,7 +1048,7 @@ std::vector<HloComputation*> GetFusibleComputations(
 }
 
 int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis) {
-  return ComputeLoopFusionConfig(analysis, GetElementShape(analysis));
+  return ComputeLoopFusionConfig(analysis, analysis.first_result_shape());
 }
 
 int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis,

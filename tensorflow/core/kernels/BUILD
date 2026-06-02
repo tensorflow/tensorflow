@@ -2,11 +2,7 @@ load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm",
-    "if_rocm_hipblaslt",
-)
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load(
     "@xla//xla/tsl/mkl:build_defs.bzl",
@@ -46,6 +42,12 @@ load(
     "tf_cuda_tests_tags",
 )
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
+# copybara:uncomment_begin(reason: google-internal)
+# load("//tensorflow:third_party/tensorflow/google/internal_visibility.bzl", "LOOSE_HEADER_VISIBILITY")
+# copybara:uncomment_end_and_comment_begin
+LOOSE_HEADER_VISIBILITY = []
+# copybara:comment_end
 
 # Description:
 # Op kernel implementations for TensorFlow.
@@ -549,6 +551,12 @@ cc_library(
 cc_library(
     name = "pooling_ops_gpu_hdrs",
     hdrs = ["maxpooling_op_gpu.h"],
+    deps = [
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/framework:tensor_types",
+        "//tensorflow/core/util:tensor_format",
+        "@com_google_absl//absl/status",
+    ],
 )
 
 # We keep this target only because some contrib/ targets depend on it. The
@@ -2854,6 +2862,10 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/util/tensor_bundle",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -3635,7 +3647,7 @@ tf_kernel_library(
         "@xla//xla/tsl/framework/contraction:eigen_contraction_kernel",
     ] + mkl_deps() + if_cuda([
         "@xla//xla/stream_executor/cuda:cublas_plugin",
-    ]) + if_rocm_hipblaslt([
+    ]) + if_rocm([
         "@xla//xla/stream_executor/rocm:hipblas_lt_header",
     ]) + if_cuda_or_rocm([
         ":conv_ops_gpu_hdrs",
@@ -4350,6 +4362,8 @@ tf_kernel_library(
         ":redux_functor",
         "//tensorflow/core/profiler/lib:scoped_annotation",
         "//tensorflow/core/util:determinism_for_kernels",
+        "//tensorflow/core/util:overflow",
+        "@com_google_absl//absl/status",
     ] + if_cuda_or_rocm([
         ":reduction_ops",
         "@xla//xla/stream_executor:event_based_timer",
@@ -4642,8 +4656,13 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/core/util:overflow",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
+        "@local_config_cuda//cuda:cudnn_header",
+        "@xla//xla/tsl/framework/fixedpoint",
     ],
 )
 
@@ -4675,7 +4694,19 @@ cc_library(
     deps = [
         ":eigen_helpers",
         ":ops_util_hdrs",
+        ":pooling_ops_gpu_hdrs",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/framework:numeric_types",
+        "//tensorflow/core/framework:tensor_shape",
+        "//tensorflow/core/framework:tensor_types",
+        "//tensorflow/core/util:padding",
+        "//tensorflow/core/util:tensor_format",
+        "@com_google_absl//absl/status",
         "@eigen_archive//:eigen3",
+        "@xla//xla/tsl/framework/fixedpoint",
     ],
 )
 
@@ -4753,6 +4784,8 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/util:overflow",
+        "@com_google_absl//absl/status",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -6385,6 +6418,15 @@ cc_library(
 filegroup(
     name = "mobile_srcs",
     srcs = [
+        "initializable_lookup_table.cc",
+        "lookup_util.cc",
+        "pooling_ops_common.cc",
+    ],
+)
+
+filegroup(
+    name = "mobile_hdrs",
+    srcs = [
         "avgpooling_op.h",
         "batch_util.h",
         "cwise_ops.h",
@@ -6397,14 +6439,11 @@ filegroup(
         "eigen_cuboid_convolution.h",
         "eigen_pooling.h",
         "fifo_queue.h",
-        "initializable_lookup_table.cc",
         "initializable_lookup_table.h",
-        "lookup_util.cc",
         "lookup_util.h",
         "maxpooling_op.h",
         "ops_util.h",
         "padding_fifo_queue.h",
-        "pooling_ops_common.cc",
         "pooling_ops_common.h",
         "queue_base.h",
         "queue_op.h",
@@ -6661,7 +6700,6 @@ filegroup(
         "transpose_op.h",
         "where_op.h",
         "xent_op.h",
-    ] + [
         "//tensorflow/core/kernels/data:portable_all_op_kernels_headers",
         "//tensorflow/core/kernels/image:adjust_contrast_op.h",
         "//tensorflow/core/kernels/image:adjust_hue_op.h",
@@ -6810,9 +6848,6 @@ filegroup(
         "population_count_op.h",
         "winograd_transform.h",
         ":portable_extended_ops_headers",
-        "@xla//xla/tsl/framework/contraction:eigen_contraction_kernel.cc",
-        "@xla//xla/tsl/framework/contraction:eigen_contraction_kernel.h",
-    ] + [
         "//tensorflow/core/kernels/image:colorspace_op.cc",
         "//tensorflow/core/kernels/image:crop_and_resize_op.cc",
         "//tensorflow/core/kernels/image:crop_and_resize_op.h",
@@ -6830,6 +6865,8 @@ filegroup(
         "//tensorflow/core/kernels/linalg:einsum_op_impl_int32.cc",
         "//tensorflow/core/kernels/linalg:einsum_op_impl_int64.cc",
         "//tensorflow/core/kernels/uniform_quant_ops:portable_all_op_kernels",
+        "@xla//xla/tsl/framework/contraction:eigen_contraction_kernel.cc",
+        "@xla//xla/tsl/framework/contraction:eigen_contraction_kernel.h",
     ],
 )
 
@@ -7201,6 +7238,7 @@ cc_library(
     linkopts = if_android(["-ldl"]),
     tags = [
         "manual",
+        "nofixdeps",
         "notap",
     ],
     # These headers are not self-contained, so should be included in textual_hdrs only.
@@ -8023,27 +8061,25 @@ cc_library(
 )
 
 # For a more maintainable build this target should not exist and the headers
-# should  be split into the existing cc_library targets, but this change was
-# automatically  done so that we can remove long standing issues and complexity
+# should be split into the existing cc_library targets, but this change was
+# automatically done so that we can remove long standing issues and complexity
 # in the build system. It's up to the OWNERS of this package to get rid of it or
 # not. The use of the textual_hdrs attribute is discouraged, use hdrs instead.
 # Here it is used to avoid header parsing errors in packages where the feature
 # parse_headers was enabled since loose headers were not being parsed. See
 # go/loose-lsc-one-target-approach for more details.
+
 cc_library(
     name = "loose_headers",
     tags = ["avoid_dep"],
     textual_hdrs = glob(["*.h"]),
     visibility = [
-        "//visibility:public",
-    ],
-    deps = [
-        "//tensorflow/core/framework:graph_proto_cc",
-        "//tensorflow/core/framework:node_def_proto_cc",
-        "//tensorflow/core/framework:types_proto_cc",
-        "@com_google_absl//absl/synchronization",
-    ],
+        "//tensorflow:__subpackages__",
+    ] + LOOSE_HEADER_VISIBILITY,
 )
+
+# Deleted deps
+# [
 
 tf_kernel_library(
     name = "stochastic_cast_op",

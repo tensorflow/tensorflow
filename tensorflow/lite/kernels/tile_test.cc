@@ -304,6 +304,14 @@ TEST(TileTest, TestEmptyInput) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 0, 6}));
 }
 
+TEST(TileTest, MultiplierOverflowInt32) {
+  TileOpDynamicModel m({2, 3}, TensorType_INT32, TensorType_INT32);
+  m.SetInput({11, 12, 13, 21, 22, 23});
+  // 2 * 1073741824 = 2147483648 > 2147483647 (INT32_MAX)
+  m.SetMultipliers({1073741824, 1});
+  ASSERT_NE(m.Invoke(), kTfLiteOk);
+}
+
 INSTANTIATE_TEST_SUITE_P(TileTest, TileTest,
                          ::testing::Values(TestType::kConst,
                                            TestType::kDynamic));

@@ -601,24 +601,16 @@ TfLiteStatus InterpreterBuilder::ParseSignatureDefs(
                            "Missing exported method name for SignatureDef");
       return kTfLiteError;
     }
-    if (fb_signature_def->inputs() == nullptr) {
-      TF_LITE_REPORT_ERROR(error_reporter_,
-                           "NULL SignatureDef inputs for exported method %s",
-                           fb_signature_def->signature_key()->c_str());
-      return kTfLiteError;
-    }
-    if (fb_signature_def->outputs() == nullptr) {
-      TF_LITE_REPORT_ERROR(error_reporter_,
-                           "NULL SignatureDef outputs for exported method %s",
-                           fb_signature_def->signature_key()->c_str());
-      return kTfLiteError;
-    }
     signature_defs.resize(signature_defs.size() + 1);
     auto& signature_def = signature_defs.back();
-    signature_def.inputs = GetMapFromTensorMap(fb_signature_def->inputs());
-    signature_def.outputs = GetMapFromTensorMap(fb_signature_def->outputs());
     signature_def.signature_key = fb_signature_def->signature_key()->c_str();
     signature_def.subgraph_index = fb_signature_def->subgraph_index();
+    if (fb_signature_def->inputs()) {
+      signature_def.inputs = GetMapFromTensorMap(fb_signature_def->inputs());
+    }
+    if (fb_signature_def->outputs()) {
+      signature_def.outputs = GetMapFromTensorMap(fb_signature_def->outputs());
+    }
   }
   interpreter->SetSignatureDef(std::move(signature_defs));
   return kTfLiteOk;

@@ -29,9 +29,8 @@ class SortFusion : public FusionInterface {
  public:
   SortFusion() = default;
 
-  absl::StatusOr<FusionEmissionResult> Emit(
-      IrEmitterContext& ir_emitter_context,
-      const HloFusionInstruction& fusion) const final;
+  AsyncThunkSequence Emit(IrEmitterContext& ir_emitter_context,
+                          const HloFusionInstruction& fusion) const final;
 };
 
 }  // namespace gpu

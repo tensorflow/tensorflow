@@ -68,6 +68,18 @@ class PjRtTestTopology : public PjRtTopologyDescription {
   }
 };
 
+// Registers a compiler to compile programs for 'platform_name' with
+// 'compiler_variant'. Takes ownership of 'compiler'.
+//
+// REQUIRES: No compiler has been registered for the platform and compiler
+// variant yet.
+void PjRtRegisterCompiler(absl::string_view platform_name,
+                          absl::string_view compiler_variant,
+                          std::unique_ptr<PjRtCompiler> compiler) {
+  CHECK_OK(PjRtCompilerRegistry::Global().RegisterCompiler(
+      platform_name, compiler_variant, std::move(compiler)));
+}
+
 TEST(PjRtCompilerTest, CompilerNotRegistered) {
   PjRtTestTopology topology;
 
@@ -237,6 +249,12 @@ TEST(PjRtCompilerTest, VariantRegistryLookup) {
   // Lookup using the single-parameter overload.
   status = GetDefaultPjRtCompiler(platform);
   EXPECT_TRUE(absl::IsNotFound(status.status()));
+}
+
+TEST(PjRtTopologyDescriptionTest, DefaultMemorySpaceKindIds) {
+  PjRtTestTopology topology;
+  EXPECT_THAT(topology.GetMemorySpaceKindIds(), ::testing::ElementsAre(-1));
+  EXPECT_EQ(topology.GetDefaultMemorySpaceKindId(), -1);
 }
 
 TEST(PjRtCompilerTest, CompilerFactoryRegistered) {

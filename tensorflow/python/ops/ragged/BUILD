@@ -271,7 +271,6 @@ py_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/ops:array_ops",
-        "//tensorflow/python/ops:array_ops_gen",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:ragged_array_ops_gen",
         "//tensorflow/python/util:dispatch",

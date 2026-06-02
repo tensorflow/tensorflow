@@ -57,7 +57,7 @@ class GpuCostModelStatsCollectionTest : public HloHardwareIndependentTestBase {
 };
 
 TEST_F(GpuCostModelStatsCollectionTest, FusionInEntryComputation) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
     HloModule test_module
 
     log {
@@ -74,15 +74,15 @@ TEST_F(GpuCostModelStatsCollectionTest, FusionInEntryComputation) {
   EXPECT_THAT(cost_model_stats_.Run(module.get()), IsOkAndHolds(false));
 
   HloInstruction* root = module->entry_computation()->root_instruction();
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          root->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                       root->backend_config<GpuBackendConfig>());
 
   EXPECT_EQ(gpu_config.reification_cost_size(), 1);
   EXPECT_GT(gpu_config.reification_cost()[0].end_to_end_cycles(), 0);
 }
 
 TEST_F(GpuCostModelStatsCollectionTest, FusionInWhileComputation) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
     HloModule test_module
 
     cond {
@@ -111,15 +111,15 @@ TEST_F(GpuCostModelStatsCollectionTest, FusionInWhileComputation) {
                              ->root_instruction()
                              ->while_body()
                              ->root_instruction();
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          root->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                       root->backend_config<GpuBackendConfig>());
 
   EXPECT_EQ(gpu_config.reification_cost_size(), 1);
   EXPECT_GT(gpu_config.reification_cost()[0].end_to_end_cycles(), 0);
 }
 
 TEST_F(GpuCostModelStatsCollectionTest, GemmCostModelAddedToGemmFusion) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"hlo(
   HloModule test_module
 
   gemm_fusion_dot_computation {
@@ -152,8 +152,8 @@ TEST_F(GpuCostModelStatsCollectionTest, GemmCostModelAddedToGemmFusion) {
   EXPECT_THAT(cost_model_stats_.Run(module.get()), IsOkAndHolds(false));
 
   HloInstruction* root = module->entry_computation()->root_instruction();
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          root->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                       root->backend_config<GpuBackendConfig>());
 
   EXPECT_THAT(gpu_config.reification_cost(),
               Contains(Truly([](const ReificationCost& cost) {

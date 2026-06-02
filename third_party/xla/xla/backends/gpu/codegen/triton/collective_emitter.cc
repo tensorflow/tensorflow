@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/bit.h"
 #include "llvm/Support/Casting.h"
@@ -220,8 +221,8 @@ GetBlockLevelFusionConfigForAllReduce(
             << maybe_all_reduce_info.status();
     return std::nullopt;
   }
-  TF_ASSIGN_OR_RETURN(AllReduceInfo all_reduce_info,
-                      std::move(maybe_all_reduce_info));
+  ASSIGN_OR_RETURN(AllReduceInfo all_reduce_info,
+                   std::move(maybe_all_reduce_info));
   const Shape& output_shape = all_reduce->shape();
   const LaunchDimensions launch_dims = AllReduceLaunchDimensions(
       all_reduce_info.num_elements, all_reduce_info.num_devices,
@@ -400,8 +401,8 @@ class AllReduceEmitter {
         ttir::PointerType::get(builder_.getI64Type(), kGlobalAddressSpace);
     ptr_to_elem_type_ =
         ttir::PointerType::get(elem_storage_type_, kGlobalAddressSpace);
-    TF_ASSIGN_OR_RETURN(layout_, xtile::GetPermutationMinorToMajor(
-                                     ctx_.input_extract.getSource().getType()));
+    ASSIGN_OR_RETURN(layout_, xtile::GetPermutationMinorToMajor(
+                                  ctx_.input_extract.getSource().getType()));
 
     const llvm::ArrayRef<int64_t>& input_tile_shape_dims =
         ctx_.input_tile.getType().getShape();
@@ -960,7 +961,7 @@ GetCollectiveBlockLevelFusionConfig(const se::DeviceDescription& device_info,
 absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
     const se::DeviceDescription& device_info,
     HloFusionInstruction* fusion_instr) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       const std::optional<BlockLevelFusionConfig> block_config,
       GetCollectiveBlockLevelFusionConfig(device_info, fusion_instr));
   if (!block_config.has_value()) {
@@ -969,13 +970,13 @@ absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
             << ". Not using Triton collective fusion.";
     return false;
   }
-  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
-                      fusion_instr->backend_config<GpuBackendConfig>());
+  ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
+                   fusion_instr->backend_config<GpuBackendConfig>());
   gpu_backend_config.mutable_fusion_backend_config()->set_kind(
       kTritonCollectiveFusionKind);
   *gpu_backend_config.mutable_fusion_backend_config()
        ->mutable_block_level_fusion_config() = *std::move(block_config);
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       fusion_instr->set_backend_config(std::move(gpu_backend_config)));
   return true;
 }
@@ -1012,7 +1013,7 @@ absl::StatusOr<int32_t> AddCollectiveMetadataArguments(
     } else if (type == S4) {
       ir_type = b.getI4Type();
     } else {
-      TF_ASSIGN_OR_RETURN(ir_type, xtile::PrimitiveTypeToMlirType(b, type));
+      ASSIGN_OR_RETURN(ir_type, xtile::PrimitiveTypeToMlirType(b, type));
     }
     // Also add the remote/scratch buffers for collectives.
     // !tt.ptr<!tt.ptr<type>>

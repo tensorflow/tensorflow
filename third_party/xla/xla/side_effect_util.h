@@ -109,6 +109,7 @@ extern const char kXlaNoOpSchedulingGroup[];
 extern const char kMustFuseAttr[];
 extern const char kMaximalFuseAttr[];
 extern const char kFuseLimitAttr[];
+extern const char kXlaCseSafeZeroOperandAttr[];
 
 // XLA frontend attribute for specifying groups of collectives that should be
 // launched together.
@@ -126,6 +127,9 @@ extern const char kXlaTableNameAttr[];
 // Frontend attribute key used to control which collectives can be combined.
 // Collectives with different combiner_key values will not be combined together.
 extern const char kCombinerKeyAttr[];
+
+// Frontend attribute key used to control loop unrolling.
+extern const char kXlaLoopUnrollAttr[];
 
 }  // namespace xla
 

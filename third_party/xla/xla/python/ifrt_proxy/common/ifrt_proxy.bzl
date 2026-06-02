@@ -18,7 +18,7 @@ def ifrt_proxy_cc_test(
         **kwargs
     )
 
-default_ifrt_proxy_visibility = ["//xla/python:__subpackages__"]
+default_ifrt_proxy_visibility = ["//visibility:public"]
 
 def cc_library(**attrs):
     _cc_library(**attrs)

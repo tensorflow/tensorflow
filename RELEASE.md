@@ -21,6 +21,7 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
 * `tf.lite`
     * Adds support for QUI4 (Quantized Unsigned 4-bit) in Dequantize operator.
     * Adds support for FP16 and BF16 in Unpack operator.
+    * Transpose now supports up to 8D tensors.
 
 ### Bug Fixes and Other Changes
 

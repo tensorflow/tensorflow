@@ -1,7 +1,6 @@
 """Build rules for Tensorflow/XLA testing."""
 
 load("@xla//third_party/rules_python/python:defs.bzl", "py_library")
-load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow/compiler/tests:plugin.bzl", "plugins")
 load(
@@ -159,7 +158,7 @@ def tf_xla_py_test(
     native.test_suite(name = name, tests = test_names)
 
 def tf_xla_py_strict_test(**kwargs):
-    tf_xla_py_test(test_rule = py_strict_test, **kwargs)
+    tf_xla_py_test(**kwargs)
 
 def generate_backend_suites(backends = []):
     """Generates per-backend test_suites that run all tests for a backend."""

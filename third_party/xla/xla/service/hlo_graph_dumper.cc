@@ -59,6 +59,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -1179,6 +1180,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
+    case HloOpcode::kMulhi:
     case HloOpcode::kNegate:
     case HloOpcode::kNot:
     case HloOpcode::kPopulationCount:
@@ -1445,7 +1447,7 @@ std::string HloDotDumper::GetInstructionNodeBackendConfig(
       props = ExtractCudnnConvBackendConfigProps(
           config->cudnn_conv_backend_config());
     }
-  } else if (gpu::IsCublasGemm(*instr)) {
+  } else if (gpu::IsCublasLtGemm(*instr)) {
     absl::StatusOr<gpu::GpuBackendConfig> config =
         instr->backend_config<gpu::GpuBackendConfig>();
     if (config.ok()) {
@@ -2001,12 +2003,12 @@ static absl::StatusOr<std::string> CompressAndEncode(absl::string_view input) {
   auto gz_opts = tsl::io::ZlibCompressionOptions::GZIP();
   tsl::io::ZlibOutputBuffer gz_file(&f, gz_opts.input_buffer_size,
                                     gz_opts.output_buffer_size, gz_opts);
-  TF_RETURN_IF_ERROR(gz_file.Init());
-  TF_RETURN_IF_ERROR(gz_file.Append(input));
-  TF_RETURN_IF_ERROR(gz_file.Close());
+  RETURN_IF_ERROR(gz_file.Init());
+  RETURN_IF_ERROR(gz_file.Append(input));
+  RETURN_IF_ERROR(gz_file.Close());
 
   std::string encoded;
-  TF_RETURN_IF_ERROR(tsl::Base64Encode(compressed, &encoded));
+  RETURN_IF_ERROR(tsl::Base64Encode(compressed, &encoded));
   return absl::StrReplaceAll(encoded, {{"_", "/"}, {"-", "+"}});
 }
 
@@ -2037,8 +2039,8 @@ absl::StatusOr<std::string> WrapFusionExplorer(
                                  EscapeJSONString(p.to_highlight)));
       });
 
-  TF_ASSIGN_OR_RETURN(std::string dot_graphs_compressed,
-                      CompressAndEncode(dot_graphs));
+  ASSIGN_OR_RETURN(std::string dot_graphs_compressed,
+                   CompressAndEncode(dot_graphs));
 
   return absl::StrReplaceAll(
       R"wrapper(

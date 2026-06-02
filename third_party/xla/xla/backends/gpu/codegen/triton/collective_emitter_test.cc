@@ -20,6 +20,7 @@ limitations under the License.
 #include <ostream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -30,11 +31,15 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/codegen/cubin_custom_kernel_compiler.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
+#include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -44,6 +49,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/primitive_util.h"
+#include "xla/runtime/object_pool.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/hlo_creation_utils.h"
@@ -96,8 +102,8 @@ class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
 
   absl::StatusOr<ModuleWithFusion> BuildModuleWithFusion(
       std::string module_str) const {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                        ParseAndReturnVerifiedModule(module_str));
+    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     ParseAndReturnVerifiedModule(module_str));
     const HloInstruction* instr = hlo_query::GetFirstInstructionWithOpcode(
         *module->entry_computation(), HloOpcode::kAllReduceStart);
     std::unique_ptr<HloModule> module_with_fusion =
@@ -142,9 +148,9 @@ class CollectiveEmitterTest : public CollectiveBlockLevelConfigTest {
  public:
   absl::StatusOr<std::unique_ptr<ModuleWithEmitter>> BuildModuleWithEmitter(
       std::string module_str, const se::DeviceDescription& device_info) const {
-    TF_ASSIGN_OR_RETURN(ModuleWithFusion module_with_fusion,
-                        BuildModuleWithFusion(std::move(module_str)));
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(ModuleWithFusion module_with_fusion,
+                     BuildModuleWithFusion(std::move(module_str)));
+    ASSIGN_OR_RETURN(
         bool collective_fusion_config_set,
         TrySetGpuBackendConfigForCollective(
             device_info_, module_with_fusion.MutableFusionInstr()));
@@ -269,7 +275,7 @@ TEST_F(CollectiveEmitterTest, AllReduceWithTritonGetLaunchConfig) {
   auto& result = *result_ptr;
   const TritonFusion* triton_fusion = result.emitter.get();
   ASSERT_NE(triton_fusion, nullptr);
-  auto const launch_config = triton_fusion->GetLaunchConfig();
+  auto const launch_config = TritonFusion::GetLaunchConfig(&*result.analysis);
   ASSERT_NE(launch_config, std::nullopt);
   EXPECT_EQ(launch_config->launch_dimensions.num_blocks(), 32);
   EXPECT_EQ(launch_config->launch_dimensions.num_threads_per_block(), 512);
@@ -286,12 +292,29 @@ TEST_P(CollectiveEmitterParameterizedTest,
       BuildModuleWithEmitter(GetModuleStr(GetParam()), device_info_));
   const TritonFusion* triton_fusion = result->emitter.get();
   ASSERT_NE(triton_fusion, nullptr);
+
+  auto llvm_compiler =
+      [&](llvm::Module& llvm_module, const se::DeviceDescription& descr,
+          const DebugOptions& opts) -> absl::StatusOr<std::vector<uint8_t>> {
+    return std::vector<uint8_t>{1};
+  };
+  DebugOptions debug_options;
+  CubinCustomKernelCompiler kernel_compiler(llvm_compiler, device_info_,
+                                            debug_options);
+
+  ObjectPool<std::unique_ptr<mlir::MLIRContext>> mlir_context_pool(
+      []() { return CreateMlirContext(); });
+  TF_ASSERT_OK_AND_ASSIGN(BorrowedMlirContext borrowed_context,
+                          mlir_context_pool.GetOrCreate());
+
   TF_ASSERT_OK_AND_ASSIGN(  // Check that we can generate the kernel
       TritonWrapperResult triton_kernel,
-      triton_fusion->GenerateTritonKernelAndWrapper(
-          *result->FusionInstr(), "test-all-reduce-start", device_info_,
-          result->target_triple, result->data_layout, &result->llvm_context,
-          &result->mlir_context));
+      triton_fusion
+          ->GenerateTritonKernelAndWrapper(
+              *result->FusionInstr(), "test-all-reduce-start", device_info_,
+              result->target_triple, result->data_layout,
+              std::move(borrowed_context), &kernel_compiler)
+          .Await());
 }
 
 INSTANTIATE_TEST_SUITE_P(

@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -95,7 +96,7 @@ class FlattenCallGraphTest : public HloHardwareIndependentTestBase {
 
   absl::StatusOr<bool> RunFlattenCallGraph(HloModule* module) {
     FlattenCallGraph flatten;
-    TF_ASSIGN_OR_RETURN(bool result, flatten.Run(module));
+    ASSIGN_OR_RETURN(bool result, flatten.Run(module));
     return result;
   }
 
@@ -560,6 +561,44 @@ ENTRY %main (param: f32[]) -> (f32[], f32[], f32[]) {
   EXPECT_EQ(2, call_graph->GetNode(a_computation).caller_callsites().size());
   EXPECT_EQ(
       1, call_graph->GetNode(while_body_computation).caller_callsites().size());
+}
+
+TEST_F(FlattenCallGraphTest, PreserveScheduleTest) {
+  std::string hlo_string = R"(
+HloModule PreserveScheduleTest, is_scheduled=true
+
+%called_computation (param_0: f32[4096], param_1: f32[4096]) -> f32[4096] {
+  %param_0 = f32[4096] parameter(0)
+  %param_1 = f32[4096] parameter(1)
+  ROOT %result.1 = f32[4096] add(f32[4096] %param_0, f32[4096] %param_1)
+}
+
+ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
+  %a = f32[4096] parameter(0)
+  %b = f32[4096] parameter(1)
+  %call.0 = f32[4096] call(%a, %b), to_apply=%called_computation
+  %call.1 = f32[4096] call(%call.0, %b), to_apply=%called_computation
+  ROOT %add_1 = f32[4096] add(%a, %call.1)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  EXPECT_TRUE(result);
+
+  // We expect the entry computation and two called_computation computations.
+  EXPECT_EQ(3, module->computation_count());
+  HloComputation* called_computation_0 =
+      FindInstruction(module.get(), "call.0")->to_apply();
+  HloComputation* called_computation_1 =
+      FindInstruction(module.get(), "call.1")->to_apply();
+
+  EXPECT_TRUE(module->has_schedule());
+  const auto& schedule = module->schedule();
+
+  EXPECT_TRUE(schedule.is_computation_scheduled(called_computation_0));
+  EXPECT_TRUE(schedule.is_computation_scheduled(called_computation_1));
 }
 
 }  // namespace

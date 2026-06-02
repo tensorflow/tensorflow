@@ -126,6 +126,46 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemm) {
                             expected);
 }
 
+TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmFusedReluNotFused) {
+  const char* hlo = R"(
+    HloModule test
+
+    ENTRY %main.9 {
+      %p0 = f32[2,8,8]{2,1,0} parameter(0)
+      %p1 = f32[2,8,8]{2,1,0} parameter(1)
+      %slice.13 = f32[1,8,8]{2,1,0} slice(%p0), slice={[1:2], [0:8], [0:8]}
+      %bitcast.41 = f32[8,8]{1,0} bitcast(%slice.13)
+      %slice.14 = f32[1,8,8]{2,1,0} slice(%p1), slice={[1:2], [0:8], [0:8]}
+      %bitcast.42 = f32[8,8]{1,0} bitcast(%slice.14)
+
+      ROOT %custom-call.1 = f32[8,8]{1,0} custom-call(%bitcast.41, %bitcast.42),
+        custom_call_target="__cublas$lt$matmul",
+        backend_config={"gemm_backend_config":{
+          "alpha_real":1,
+          "beta":0,
+          "dot_dimension_numbers":{
+            "lhs_contracting_dimensions":["1"],
+            "rhs_contracting_dimensions":["0"],
+            "lhs_batch_dimensions":[],
+            "rhs_batch_dimensions":[]
+          },
+          "alpha_imag":0,
+          "precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},
+          "epilogue":"RELU",
+          "lhs_stride":"64",
+          "rhs_stride":"64",
+          "grad_x":false,
+          "grad_y":false
+        }}
+    }
+  )";
+
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  // We expect no changes (so we pass std::nullopt).
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
+                            std::nullopt);
+}
+
 TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmWithWorkspace) {
   const char* hlo = R"(
     HloModule test

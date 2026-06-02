@@ -70,9 +70,8 @@ class IrEmitterContext {
                    absl::string_view platform_name,
                    const se::DeviceDescription& gpu_device_info,
                    mlir::MLIRContext* mlir_context,
-                   llvm::LLVMContext* llvm_context, bool emit_kernels,
-                   llvm::Triple target_triple, std::string data_layout,
-                   KernelCompiler* compiler,
+                   llvm::LLVMContext* llvm_context, llvm::Triple target_triple,
+                   std::string data_layout, KernelCompiler* compiler,
                    xla::cpu::TargetMachineOptions cpu_target_machine_options,
                    ObjectPool<std::unique_ptr<mlir::MLIRContext>>* pool)
       : hlo_module_(hlo_module),
@@ -84,7 +83,6 @@ class IrEmitterContext {
         llvm_context_(llvm_context),
         data_layout_(std::move(data_layout)),
         target_triple_(std::move(target_triple)),
-        emit_kernels_(emit_kernels),
         compiler_(compiler),
         cpu_target_machine_options_(std::move(cpu_target_machine_options)),
         mlir_context_pool_(pool) {}
@@ -98,8 +96,8 @@ class IrEmitterContext {
     return std::make_unique<IrEmitterContext>(
         hlo_module_, buffer_assignment_, execution_stream_assignment_,
         platform_name_, gpu_device_info_, mlir_context_, llvm_context,
-        emit_kernels_, target_triple_, data_layout_, compiler_,
-        cpu_target_machine_options_, mlir_context_pool_);
+        target_triple_, data_layout_, compiler_, cpu_target_machine_options_,
+        mlir_context_pool_);
   }
 
   // Simple accessors.
@@ -151,8 +149,6 @@ class IrEmitterContext {
     return instruction_to_host_execute_async_events_;
   }
 
-  bool emit_kernels() const { return emit_kernels_; }
-
   ThunkId GetNextThunkId() { return thunk_id_generator_.GetNextThunkId(); }
 
   // Compute the kernel name. The opcode string may contain "-" which cannot be
@@ -196,9 +192,6 @@ class IrEmitterContext {
   llvm::Triple target_triple_;
 
   InstructionToHostExecuteAsyncEvents instruction_to_host_execute_async_events_;
-
-  // We should not emit kernels when loading thunks from a compilation result.
-  const bool emit_kernels_;
 
   // Generates unique IDs for thunk creation.
   ThunkIdGenerator thunk_id_generator_;

@@ -15,6 +15,7 @@ limitations under the License.
 
 #ifndef XLA_PYTHON_IFRT_IR_COMPILED_IFRT_IR_PROGRAM_H_
 #define XLA_PYTHON_IFRT_IR_COMPILED_IFRT_IR_PROGRAM_H_
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -82,6 +83,9 @@ struct CompiledIfrtIrProgram {
       std::unique_ptr<IfrtIRProgram> ifrt_ir_program,
       std::unique_ptr<IfrtIRCompileOptions> compile_options, Client* client,
       std::shared_ptr<AtomProgramCompiler> atom_program_compiler);
+
+  // Returns the number of atom program executions this program makes.
+  uint32_t GetNumAtomProgramExecutions() const;
 };
 
 }  // namespace ifrt

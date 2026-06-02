@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
@@ -408,10 +409,9 @@ absl::StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
   XLA_VLOG_LINES(2, module->ToString());
 
   auto alias_analysis = absl::WrapUnique(new HloAliasAnalysis(module));
-  TF_ASSIGN_OR_RETURN(
-      alias_analysis->dataflow_analysis_,
-      HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
-                               /*bitcast_defines_value=*/false));
+  ASSIGN_OR_RETURN(alias_analysis->dataflow_analysis_,
+                   HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
+                                            /*bitcast_defines_value=*/false));
 
   size_t num_values = alias_analysis->dataflow_analysis_->values().size();
   alias_analysis->buffers_ =

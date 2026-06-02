@@ -62,6 +62,7 @@ cc_library(
         "//xla/service/cpu:backend_config_proto_cc",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",

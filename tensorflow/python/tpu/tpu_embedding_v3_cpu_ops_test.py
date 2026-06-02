@@ -686,6 +686,96 @@ class TpuEmbeddingV3CPUOpsTest(parameterized.TestCase, test.TestCase):
         table_name="table",
     )
 
+  def test_invalid_id_counts_with_convert_to_sparse_core_csr_wrapped_coo_tensor(
+      self,
+  ):
+    sample_count = 16
+    token_count = 1024
+    combiner = "sum"
+    sparse_feature = sparse_ops.sparse_reorder(
+        sparse_tensor.SparseTensor(
+            indices=[[i % sample_count, i] for i in np.arange(token_count)],
+            values=np.arange(token_count),
+            dense_shape=[sample_count, 1024],
+        )
+    )
+
+    row_ids_list, col_ids_list, gains_list = (
+        xla_ops.convert_to_list_of_sparse_core_coo_tensors(
+            indices_or_row_splits=math_ops.cast(
+                sparse_feature.indices, dtype=dtypes.int32
+            ),
+            values=math_ops.cast(sparse_feature.values, dtype=dtypes.int32),
+            weights=1.0,
+            sample_count=sample_count,
+            combiner=combiner,
+            num_sc_per_chip=4,
+            row_offset=0,
+            col_offset=0,
+            col_shift=0,
+            num_sc_shards=16,
+            stacked_table_sample_count=sample_count,
+        )
+    )
+
+    sorted_row_ids_list = []
+    sorted_col_ids_list = []
+    sorted_gains_list = []
+    id_counts_list = []
+    for i in range(4):
+      (
+          sorted_row_ids,
+          sorted_col_ids,
+          sorted_gains,
+          id_counts,
+      ) = xla_ops.sort_list_of_sparse_core_coo_tensors(
+          row_ids_list=[row_ids_list[i]],
+          col_ids_list=[col_ids_list[i]],
+          gains_list=[gains_list[i]],
+          sample_count_list=[sample_count // 4],
+          col_offset_list=[0],
+          num_replica=4,
+          table_vocab_size=16384,
+          feature_width=16,
+          num_sc_per_chip=4,
+          max_ids_per_sparse_core=256,
+          max_unique_ids_per_sparse_core=256,
+          table_name="table",
+      )
+      sorted_row_ids_list.append(sorted_row_ids)
+      sorted_col_ids_list.append(sorted_col_ids)
+      sorted_gains_list.append(sorted_gains)
+
+      # Manually modify id_counts to trigger validation error
+      id_counts_size = array_ops.shape(id_counts)[0]
+      id_counts_before = array_ops.slice(id_counts, [0], [id_counts_size - 1])
+      last_element = array_ops.slice(id_counts, [id_counts_size - 1], [1])
+      new_last_element = last_element + 1
+      invalid_id_counts = array_ops.concat(
+          [id_counts_before, new_last_element], axis=0
+      )
+      id_counts_list.append(invalid_id_counts)
+
+    with self.assertRaisesRegex(
+        Exception,
+        "should not exceed the size of the corresponding sorted tensors",
+    ):
+      xla_ops.convert_to_sparse_core_csr_wrapped_coo_tensor(
+          sorted_row_ids_list=sorted_row_ids_list,
+          sorted_col_ids_list=sorted_col_ids_list,
+          sorted_gains_list=sorted_gains_list,
+          id_counts_list=id_counts_list,
+          splits=constant_op.constant(0, dtype=dtypes.int64),
+          sample_count_per_sc=sample_count // 4,
+          max_minibatches_per_sc=4,
+          max_ids_per_chip_per_sample=64,
+          table_vocab_size=16384,
+          feature_width=16,
+          num_replica=4,
+          allow_id_dropping=False,
+          table_name="table",
+      )
+
 
 if __name__ == "__main__":
   v2_compat.enable_v2_behavior()

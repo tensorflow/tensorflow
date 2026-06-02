@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/evaluator/hlo_evaluator_interface.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -95,7 +96,7 @@ class CachingHloEvaluatorTest : public ::testing::Test {
 
   absl::StatusOr<int64_t> ChildCount() const {
     std::vector<std::string> children;
-    TF_RETURN_IF_ERROR(tsl::Env::Default()->GetChildren(cache_dir_, &children));
+    RETURN_IF_ERROR(tsl::Env::Default()->GetChildren(cache_dir_, &children));
     return children.size();
   }
 

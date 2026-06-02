@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_state.h"
@@ -64,7 +65,7 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
-#include "xla/tests/hlo_test_base_legacy.h"
+#include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -121,16 +122,15 @@ class GpuBlasLtThunkBuilder {
 
   absl::StatusOr<std::unique_ptr<CublasLtMatmulThunk>> CreateThunk(
       HloInstruction* gemm) {
-    TF_ASSIGN_OR_RETURN(const auto gpu_config,
-                        gemm->backend_config<GpuBackendConfig>());
+    ASSIGN_OR_RETURN(const auto gpu_config,
+                     gemm->backend_config<GpuBackendConfig>());
     const auto& backend_config = gpu_config.gemm_backend_config();
 
-    TF_ASSIGN_OR_RETURN(
-        bool has_vector_bias,
-        gpublas_lt::EpilogueAddsVectorBias(backend_config.epilogue()));
+    ASSIGN_OR_RETURN(bool has_vector_bias, gpublas_lt::EpilogueAddsVectorBias(
+                                               backend_config.epilogue()));
     bool has_matrix_bias = backend_config.beta() != 0;
-    TF_ASSIGN_OR_RETURN(
-        auto epilogue, gpublas_lt::AsBlasLtEpilogue(backend_config.epilogue()));
+    ASSIGN_OR_RETURN(auto epilogue,
+                     gpublas_lt::AsBlasLtEpilogue(backend_config.epilogue()));
 
     std::vector<Shape> buf_shapes;
     for (auto op : gemm->operands()) {
@@ -147,8 +147,8 @@ class GpuBlasLtThunkBuilder {
     for (const Shape& shape : buf_shapes) {
       int64_t size = ShapeUtil::ByteSizeOf(shape);
       mem_buffers_.emplace_back();
-      TF_ASSIGN_OR_RETURN(mem_buffers_.back(),
-                          allocator_.Allocate(exec_->device_ordinal(), size));
+      ASSIGN_OR_RETURN(mem_buffers_.back(),
+                       allocator_.Allocate(exec_->device_ordinal(), size));
       allocs_.emplace_back(/*index=*/idx++, size, /*color=*/0);
       slices.push_back(
           {BufferAllocation::Slice{&allocs_.back(), /*offset*/ 0, size},
@@ -157,7 +157,7 @@ class GpuBlasLtThunkBuilder {
     // we need at least 3 buffers: lhs, rhs and output
     EXPECT_EQ(slices.size(),
               3 + size_t{has_matrix_bias} + size_t{has_vector_bias});
-    TF_ASSIGN_OR_RETURN(auto gemm_config, GemmConfig::For(gemm, gpu_comp_));
+    ASSIGN_OR_RETURN(auto gemm_config, GemmConfig::For(gemm, gpu_comp_));
 
     std::optional<ShapedSlice> bias;
     if (has_vector_bias) {
@@ -174,8 +174,9 @@ class GpuBlasLtThunkBuilder {
         epilogue,
         /*algorithm_idx*/ 0, backend_config.autotune_workspace_size(),
         slices[0], slices[1], has_matrix_bias ? slices[2] : slices.back(),
-        slices.back(), bias, std::nullopt, std::nullopt, std::nullopt,
-        std::nullopt, std::nullopt, std::nullopt, std::nullopt /* workspace */);
+        slices.back(), std::nullopt, bias, std::nullopt, std::nullopt,
+        std::nullopt, std::nullopt, std::nullopt, std::nullopt,
+        std::nullopt /* workspace */);
   }
 
   std::unique_ptr<BufferAllocations> buffer_allocations() {
@@ -201,7 +202,6 @@ void GpuBlasLtMatmulThunkTest::CreateExecuteThunksFromHLO(
                           this->ParseAndReturnVerifiedModule(hlo_string));
 
   GemmRewriterOptions options;
-  options.enable_cublaslt = GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
       RunHloPass(GemmRewriter(gpu_comp(executor),
@@ -228,11 +228,11 @@ void GpuBlasLtMatmulThunkTest::CreateExecuteThunksFromHLO(
 
     Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
     for (auto& thunk : gemm_thunks) {
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           thunk->Initialize({executor, source, allocs.get(), stream, stream}));
-      TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(thunk_params));
+      RETURN_IF_ERROR(thunk->ExecuteOnStream(thunk_params));
     }
-    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+    RETURN_IF_ERROR(stream->BlockHostUntilDone());
     return absl::OkStatus();
   };
 
@@ -339,8 +339,8 @@ struct MockBlasLt : public se::gpu::BlasLt {
     return MatmulPlanPtr{};
   }
 
-  absl::StatusOr<MatmulPlanPtr> GetGroupedMatmulPlan(
-      se::gpu::GroupedGemmConfig&, Epilogue) const override {
+  absl::StatusOr<MatmulPlanPtr> GetMatmulPlan(const se::gpu::GroupedGemmConfig&,
+                                              Epilogue) const override {
     return MatmulPlanPtr{};
   }
 
@@ -652,7 +652,8 @@ class CublasLtMatmulThunkCmdBufTest : public ::testing::Test {
     thunk_.emplace(Thunk::ThunkInfo(), /*canonical_hlo=*/"", config,
                    se::gpu::BlasLt::Epilogue::kDefault, /*algorithm_idx=*/0,
                    /*autotune_workspace_size=*/0, slice_a, slice_b, slice_c,
-                   slice_d, /*bias=*/std::nullopt, /*aux=*/std::nullopt,
+                   slice_d, /*group_sizes=*/std::nullopt, /*bias=*/std::nullopt,
+                   /*aux=*/std::nullopt,
                    /*a_scale=*/std::nullopt, /*b_scale=*/std::nullopt,
                    /*c_scale=*/std::nullopt, /*d_scale=*/std::nullopt,
                    /*d_amax=*/std::nullopt, slice_workspace);

@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
@@ -157,7 +158,7 @@ absl::Status CommandBufferThunk::Prepare(const PrepareParams& params) {
   // Always prepare thunks if they are present so we are ready to fall back
   // on them if we detect profiling activity.
   if (thunks_) {
-    TF_RETURN_IF_ERROR(thunks_->Prepare(params));
+    RETURN_IF_ERROR(thunks_->Prepare(params));
   }
 
   // TODO(b/290773547): Disabled CUDA graphs when profiling is active because of
@@ -170,7 +171,7 @@ absl::Status CommandBufferThunk::Prepare(const PrepareParams& params) {
     return absl::OkStatus();
   }
 
-  TF_RETURN_IF_ERROR(commands_.Prepare(params));
+  RETURN_IF_ERROR(commands_.Prepare(params));
 
   return absl::OkStatus();
 }
@@ -183,12 +184,12 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   }
 
   // Initialize commands.
-  TF_RETURN_IF_ERROR(commands_.Initialize(params));
+  RETURN_IF_ERROR(commands_.Initialize(params));
 
   // Always initialize thunks if they are present so we are ready to fall back
   // on them if we detect profiling activity.
   if (thunks_) {
-    TF_RETURN_IF_ERROR(thunks_->Initialize(params));
+    RETURN_IF_ERROR(thunks_->Initialize(params));
   }
 
   // TODO(b/290773547): Disabled CUDA graphs when profiling is active because of
@@ -201,7 +202,7 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
     return absl::OkStatus();
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,
       GetOrCreateCommandBuffer(params.executor, *params.buffer_allocations));
   absl::MutexLock lock(cmd_buffer->mutex);
@@ -265,8 +266,8 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
                                            /*is_initialization=*/true,
                                            /*command_buffer_update_mode=*/
                                            command_buffer_update_mode_};
-    TF_RETURN_IF_ERROR(commands_.Record(execute_params, record_params,
-                                        cmd_buffer->command_buffer.get()));
+    RETURN_IF_ERROR(commands_.Record(execute_params, record_params,
+                                     cmd_buffer->command_buffer.get()));
 
     uint64_t end_micros = tsl::Env::Default()->NowMicros();
     VLOG(3) << "Initialized command buffer on device #"
@@ -297,7 +298,7 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 
   se::StreamExecutor* executor = params.stream->parent();
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,
       GetOrCreateCommandBuffer(executor, *params.buffer_allocations));
 
@@ -306,7 +307,7 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   // warm up iteration, run through thunks if they are present.
   if (!cmd_buffer->warmup_done && thunks_) {
     VLOG(2) << "Executing warm up iteration of command buffer thunk";
-    TF_RETURN_IF_ERROR(thunks_->ExecuteOnStream(params));
+    RETURN_IF_ERROR(thunks_->ExecuteOnStream(params));
     cmd_buffer->warmup_done = true;
     return absl::OkStatus();
   }
@@ -349,8 +350,8 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
         /*is_initialization=*/is_first_record,
         /*command_buffer_update_mode=*/
         command_buffer_update_mode_};
-    TF_RETURN_IF_ERROR(commands_.Record(params, record_params,
-                                        cmd_buffer->command_buffer.get()));
+    RETURN_IF_ERROR(commands_.Record(params, record_params,
+                                     cmd_buffer->command_buffer.get()));
 
     uint64_t end_micros = tsl::Env::Default()->NowMicros();
     XLA_VLOG_DEVICE(3, executor->device_ordinal())
@@ -414,9 +415,8 @@ CommandBufferThunk::GetOrCreateCommandBuffer(
   }
 
   // Create a new empty command buffer.
-  TF_ASSIGN_OR_RETURN(
-      auto command_buffer,
-      executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
+  ASSIGN_OR_RETURN(auto command_buffer, executor->CreateCommandBuffer(
+                                            se::CommandBuffer::Mode::kPrimary));
   auto emplaced = state_->command_buffers.emplace(
       key, std::make_shared<ExecutorCommandBuffer>(std::move(command_buffer)));
   // With kNumVaReservationSets=2, at most 2 command buffers should exist per
@@ -491,7 +491,7 @@ void CommandBufferThunk::EvictCommandBuffers() {
 
 absl::Status CommandBufferThunk::WalkNested(Walker callback) {
   if (thunks_ != nullptr) {
-    TF_RETURN_IF_ERROR(thunks_->Walk(callback));
+    RETURN_IF_ERROR(thunks_->Walk(callback));
   }
   return absl::OkStatus();
 }

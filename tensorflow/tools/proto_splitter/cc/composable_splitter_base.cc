@@ -150,7 +150,8 @@ absl::Status ComposableSplitterBase::CheckIfWriteImplemented() {
   return absl::OkStatus();
 }
 
-absl::Status ComposableSplitterBase::Write(std::string file_prefix) {
+absl::StatusOr<std::string> ComposableSplitterBase::Write(
+    std::string file_prefix) {
   TF_RETURN_IF_ERROR(CheckIfWriteImplemented());
 
   auto split_results = Split();
@@ -180,7 +181,7 @@ absl::Status ComposableSplitterBase::Write(std::string file_prefix) {
     if (!writer.Close()) return writer.status();
   }
   LOG(INFO) << "Splitter output written to " << output_path;
-  return absl::OkStatus();
+  return output_path;
 }
 
 absl::StatusOr<std::tuple<std::string, bool>>

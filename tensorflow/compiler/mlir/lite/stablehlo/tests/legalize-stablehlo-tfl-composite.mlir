@@ -20,3 +20,13 @@ func.func @test_odml_detector(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) -> (te
   %1 = stablehlo.composite "odml.detector" %0 {composite_attributes = {name = "out", working_dir = "/tmp/tst"}, decomposition = @test_odml_detector.detector.impl_0} : (tensor<2xf32>) -> tensor<2xf32>
   return %1 : tensor<2xf32>
 }
+
+// ---
+
+func.func private @test_litert_custom_op.impl_0(%arg0: tensor<2xf32>) -> tensor<2xf32>
+// CHECK-LABEL: func.func @test_litert_custom_op
+func.func @test_litert_custom_op(%arg0: tensor<2xf32>) -> (tensor<2xf32>) {
+  // CHECK: "tfl.custom"(%arg0) <{custom_code = "litert_custom_op.my_op"
+  %0 = stablehlo.composite "litert_custom_op.my_op" %arg0 {composite_attributes = {}, decomposition = @test_litert_custom_op.impl_0} : (tensor<2xf32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}

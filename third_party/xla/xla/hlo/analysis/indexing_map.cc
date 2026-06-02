@@ -211,8 +211,10 @@ SymbolicExpr SymbolicExprSimplifier::RewriteMod(SymbolicExpr mod) {
     return expr;
   });
 
-  if (extracted_constant % m != 0) {
-    new_lhs = new_lhs + (extracted_constant % m);
+  int64_t count = llvm::divideFloorSigned(extracted_constant, m);
+  int64_t rem = extracted_constant - count * m;
+  if (rem != 0) {
+    new_lhs = new_lhs + rem;
   }
 
   // Split the sum into `multiplied * multiplier_gcd + not_multiplied`.
@@ -276,6 +278,18 @@ SymbolicExpr SymbolicExprSimplifier::SimplifySumDiv(SymbolicExpr dividend,
         extracted = extracted + GetLhs(expr) * factor;
         // Remove from dividend.
         return zero_;
+      }
+    }
+    // Extract constant multiples of divisor from plain constant summands.
+    if (expr.GetType() == SymbolicExprType::kConstant) {
+      int64_t val = expr.GetValue();
+      if (val >= divisor || val <= -divisor) {
+        int64_t count = llvm::divideFloorSigned(val, divisor);
+        int64_t remainder = val - count * divisor;
+        extracted = extracted + CreateSymbolicConstant(
+                                    count, range_evaluator_->GetMLIRContext());
+        return CreateSymbolicConstant(remainder,
+                                      range_evaluator_->GetMLIRContext());
       }
     }
     // Not a constant multiplier, keep in dividend.

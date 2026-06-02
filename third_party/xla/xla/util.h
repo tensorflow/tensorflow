@@ -38,8 +38,10 @@ limitations under the License.
 #include "absl/base/macros.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/numeric/bits.h"
+#include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -642,13 +644,18 @@ struct UnsignedIntegerTypeForSize<8> {
   using type = uint64_t;
 };
 
+template <>
+struct UnsignedIntegerTypeForSize<16> {
+  using type = absl::uint128;
+};
+
 template <size_t kBytes>
 using UnsignedIntegerTypeForSizeType =
     typename UnsignedIntegerTypeForSize<kBytes>::type;
 
 template <size_t kBytes>
 using SignedIntegerTypeForSizeType =
-    std::make_signed_t<UnsignedIntegerTypeForSizeType<kBytes>>;
+    make_specialized_signed_t<UnsignedIntegerTypeForSizeType<kBytes>>;
 
 template <typename T>
 auto SignAndMagnitude(T x) {
@@ -862,7 +869,12 @@ template <size_t kBitsPerElement>
 void PackIntN(absl::Span<const char> input, absl::Span<char> output) {
   static_assert(1 <= kBitsPerElement);
   static_assert(kBitsPerElement <= 7);
-  constexpr auto kElementsPerByte = 8 / kBitsPerElement;
+  constexpr size_t kElementsPerByte = 8 / kBitsPerElement;
+  const size_t required_output_size =
+      CeilOfRatio(input.size(), kElementsPerByte);
+  ABSL_CHECK_GE(output.size(), required_output_size)
+      << "Output span too small for packed elements: " << output.size() << " < "
+      << required_output_size;
   const size_t aligned_inputs = input.size() / kElementsPerByte;
   for (size_t i = 0; i < aligned_inputs; ++i) {
     char byte = 0;
@@ -900,20 +912,6 @@ inline void PackIntN(int bits_per_element, absl::Span<const char> input,
   }
 }
 
-// Same as above, but takes the number of bits per element, a pointer to the
-// source data, and the size of the data in bytes. Returns a unique pointer to
-// the packed data.
-inline std::unique_ptr<char[]> PackIntN(int bits_per_element, const char* data,
-                                        size_t size) {
-  size_t packed_size = size * bits_per_element / 8;
-  // Note: we can use `std::make_unique_for_overwrite` once C++20 is supported.
-  std::unique_ptr<char[]> buffer(new char[packed_size]);
-  auto src = absl::MakeSpan(data, size);
-  auto dst = absl::MakeSpan(buffer.get(), packed_size);
-  PackIntN(bits_per_element, src, dst);
-  return buffer;
-}
-
 // Takes a sequence of packed values, such that every byte stores multiple
 // values, and unpacks them so every byte stores one value in the low-order
 // bits. `input` should have
@@ -924,6 +922,11 @@ void UnpackIntN(absl::Span<const char> input, absl::Span<char> output) {
   static_assert(1 <= kBitsPerElement);
   static_assert(kBitsPerElement <= 7);
   constexpr auto kElementsPerByte = 8 / kBitsPerElement;
+  const size_t required_input_size =
+      CeilOfRatio(output.size(), kElementsPerByte);
+  ABSL_CHECK_GE(input.size(), required_input_size)
+      << "Input span too small for unpacked elements: " << input.size() << " < "
+      << required_input_size;
   const size_t aligned_outputs = output.size() / kElementsPerByte;
   for (size_t i = 0; i < aligned_outputs; ++i) {
     const char byte = input[i];
@@ -954,20 +957,6 @@ inline void UnpackIntN(int bits_per_element, absl::Span<const char> input,
   } else {
     LOG(FATAL) << "Invalid bits_per_element: " << bits_per_element;
   }
-}
-
-// Same as above, but takes the number of bits per element, a pointer to the
-// source data, and the size of the data in bytes. Returns a unique pointer to
-// the unpacked data.
-inline std::unique_ptr<char[]> UnpackIntN(int bits_per_element,
-                                          const char* data, size_t size) {
-  size_t unpacked_size = size * 8 / bits_per_element;
-  // Note: we can use `std::make_unique_for_overwrite` once C++20 is supported.
-  std::unique_ptr<char[]> buffer(new char[unpacked_size]);
-  auto src = absl::MakeSpan(data, size);
-  auto dst = absl::MakeSpan(buffer.get(), unpacked_size);
-  UnpackIntN(bits_per_element, src, dst);
-  return buffer;
 }
 
 // Returns a container with `sorted_ids_to_remove` elements removed.

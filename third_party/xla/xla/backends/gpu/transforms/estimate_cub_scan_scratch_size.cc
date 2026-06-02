@@ -93,7 +93,8 @@ absl::Status EstimateCubScanScratchSize::RunOnScanInstruction(
       ShapeUtil::MakeShape(U8, {scratch_size});
   HloInstruction* new_custom_call =
       custom_call->AddInstruction(HloInstruction::CreateCustomCall(
-          new_shape, custom_call->operands(), kCubDeviceScanTarget));
+          new_shape, custom_call->operands(), kCubDeviceScanTarget,
+          custom_call->operand_shapes_with_layout()));
   static_cast<HloCustomCallInstruction*>(new_custom_call)
       ->set_api_version(CustomCallApiVersion::API_VERSION_TYPED_FFI);
   std::string backend_config = absl::StrFormat(

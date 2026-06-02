@@ -31,6 +31,7 @@ cc_library(
         "//xla/service/gpu:gpu_fusible",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:launch_dimensions",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -144,8 +145,10 @@ cc_library(
 xla_cc_test(
     name = "mlir_kernel_emitter_test",
     srcs = ["mlir_kernel_emitter_test.cc"],
+    tags = ["gpu"],
     deps = [
         ":mlir_kernel_emitter",
+        "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen:cubin_custom_kernel_compiler",
         "//xla/backends/gpu/codegen:kernel_compiler",
         "//xla/codegen:llvm_kernel_source",
@@ -200,6 +203,7 @@ cc_library(
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:launch_dimensions",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -230,6 +234,7 @@ cc_library(
         "//xla/service/gpu:gpu_fusible",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:launch_dimensions",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -322,6 +327,7 @@ cc_library(
 xla_cc_test(
     name = "reduction_base_test",
     srcs = ["reduction_base_test.cc"],
+    tags = ["gpu"],
     deps = [
         ":reduction_base",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",

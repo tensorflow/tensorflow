@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/gpu/runtime/buffer_comparator.h"
 #include "xla/executable_run_options.h"
@@ -115,9 +116,9 @@ static absl::Status InitializeInputBuffer(GpuInputBuffers& gpu_buffers,
   }
 
   se::DeviceAddressBase buffer = rz_buffers.input_buffers()[buffer_index];
-  TF_RETURN_IF_ERROR(stream->Memcpy(const_cast<se::DeviceAddressBase*>(&buffer),
-                                    values, size_bytes));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  RETURN_IF_ERROR(stream->Memcpy(const_cast<se::DeviceAddressBase*>(&buffer),
+                                 values, size_bytes));
+  RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   return absl::OkStatus();
 }
@@ -136,8 +137,8 @@ static absl::Status InitializeBuffersIfRequiredByOpcode(
   if (instr->opcode() == HloOpcode::kCustomCall &&
       instr->custom_call_target() == "__cublas$lt$groupedMatmul") {
     // Get the backend config to extract ragged dimension information
-    TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                        instr->backend_config<GpuBackendConfig>());
+    ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                     instr->backend_config<GpuBackendConfig>());
     const GroupedGemmBackendConfig& grouped_config =
         gpu_config.grouped_gemm_backend_config();
     const RaggedDotDimensionNumbers& ragged_dims =
@@ -186,7 +187,7 @@ static absl::Status InitializeBuffersIfRequiredByOpcode(
           group_sizes[i] = static_cast<int32_t>(base_group_size);
         }
       }
-      TF_RETURN_IF_ERROR(InitializeInputBuffer(
+      RETURN_IF_ERROR(InitializeInputBuffer(
           gpu_buffers, stream,
           instr->operand_count() - 1,  // Last parameter is group sizes
           group_sizes.data(), total_elements * sizeof(int32_t)));
@@ -202,7 +203,7 @@ static absl::Status InitializeBuffersIfRequiredByOpcode(
           group_sizes[i] = base_group_size;
         }
       }
-      TF_RETURN_IF_ERROR(InitializeInputBuffer(
+      RETURN_IF_ERROR(InitializeInputBuffer(
           gpu_buffers, stream,
           instr->operand_count() - 1,  // Last parameter is group sizes
           group_sizes.data(), total_elements * sizeof(int64_t)));
@@ -243,7 +244,7 @@ std::unique_ptr<GpuProfiler> GpuProfiler::Create(
 
 absl::StatusOr<std::unique_ptr<InputBuffers>> GpuProfiler::CreateInputBuffers(
     const Executable* executable, const HloInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       RedzoneBuffers buffers,
       RedzoneBuffers::FromProgramShape(
           executable->compute_computation_layout().ComputeProgramShape(),
@@ -255,7 +256,7 @@ absl::StatusOr<std::unique_ptr<InputBuffers>> GpuProfiler::CreateInputBuffers(
   gpu_buffers->redzone_buffers = std::move(buffers);
 
   // Initialize buffers based on operation type
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       InitializeBuffersIfRequiredByOpcode(instr, *gpu_buffers, stream_));
 
   return gpu_buffers;
@@ -273,11 +274,11 @@ absl::StatusOr<ProfileResult> GpuProfiler::Profile(
     std::vector<ExecutionInput> execution_inputs =
         CreateExecutionInputsFromBuffers(rz_buffers.input_buffers(),
                                          rz_buffers.input_shapes());
-    TF_RETURN_IF_ERROR(Execute(executable, std::move(execution_inputs),
-                               /*profile=*/nullptr)
-                           .status());
+    RETURN_IF_ERROR(Execute(executable, std::move(execution_inputs),
+                            /*profile=*/nullptr)
+                        .status());
 
-    TF_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
+    RETURN_IF_ERROR(stream_->BlockHostUntilDone());
   }
 
   ExecutionProfile profile;
@@ -286,9 +287,8 @@ absl::StatusOr<ProfileResult> GpuProfiler::Profile(
       CreateExecutionInputsFromBuffers(rz_buffers.input_buffers(),
                                        rz_buffers.input_shapes());
 
-  TF_ASSIGN_OR_RETURN(
-      ExecutionOutput execution_output,
-      Execute(executable, std::move(execution_inputs), &profile));
+  ASSIGN_OR_RETURN(ExecutionOutput execution_output,
+                   Execute(executable, std::move(execution_inputs), &profile));
 
   result.duration = absl::Nanoseconds(profile.compute_time_ns());
   result.output_buffer = execution_output.Commit().ConsumeResult();
@@ -321,8 +321,8 @@ absl::Status GpuProfiler::CheckInputBuffers(InputBuffers& buffers) {
   const GpuInputBuffers& gpu_buffers =
       absl::down_cast<const GpuInputBuffers&>(buffers);
   const RedzoneBuffers& rz_buffers = gpu_buffers.redzone_buffers;
-  TF_ASSIGN_OR_RETURN(se::RedzoneAllocator::RedzoneCheckStatus rz_check_status,
-                      rz_buffers.RedzoneAllocator().CheckRedzones());
+  ASSIGN_OR_RETURN(se::RedzoneAllocator::RedzoneCheckStatus rz_check_status,
+                   rz_buffers.RedzoneAllocator().CheckRedzones());
   if (rz_check_status.ok()) {
     return absl::OkStatus();
   }
@@ -340,10 +340,9 @@ absl::Status GpuProfiler::CheckOutputBuffer(ScopedShapedBuffer& output,
         BufferComparator comparator(subshape, rtol,
                                     /*verbose=*/false);
 
-        TF_ASSIGN_OR_RETURN(
-            bool outputs_match,
-            comparator.CompareEqual(stream_, output.buffer(index),
-                                    reference.buffer(index)));
+        ASSIGN_OR_RETURN(bool outputs_match,
+                         comparator.CompareEqual(stream_, output.buffer(index),
+                                                 reference.buffer(index)));
         if (outputs_match) {
           return absl::OkStatus();
         }

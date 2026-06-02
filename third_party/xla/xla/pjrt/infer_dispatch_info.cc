@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -56,7 +57,7 @@ limitations under the License.
 
 namespace xla {
 
-static std::vector<Shape> GetParameterShapes(const ComputationLayout& layout) {
+std::vector<Shape> GetParameterShapes(const ComputationLayout& layout) {
   // For now, XLA programs compiled with multiple arguments for PJRT cannot use
   // tuples for any of their arguments, so we can assume that a tuple can only
   // arise when there is a single argument.
@@ -74,8 +75,7 @@ static std::vector<Shape> GetParameterShapes(const ComputationLayout& layout) {
   return shapes;
 }
 
-static absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo>
-InferDispatchInfo(
+absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo> InferDispatchInfo(
     CommonPjRtClient* client, std::vector<Shape> parameter_device_shapes,
     Shape output_device_shape, const HloInputOutputAliasConfig& alias_config,
     std::shared_ptr<DeviceAssignment> device_assignment,
@@ -95,7 +95,7 @@ InferDispatchInfo(
       .extras = std::move(extras),
   };
   for (const auto& shape : result.parameter_device_shapes) {
-    TF_ASSIGN_OR_RETURN(int kind, client->GetMemorySpaceKindForShape(shape));
+    ASSIGN_OR_RETURN(int kind, client->GetMemorySpaceKindForShape(shape));
     result.parameter_memory_space_kind_ids.push_back(kind);
   }
   {
@@ -105,13 +105,13 @@ InferDispatchInfo(
             : absl::MakeSpan(&*result.output_device_shape, 1);
     result.output_memory_space_kind_ids.reserve(shapes.size());
     for (const auto& shape : shapes) {
-      TF_ASSIGN_OR_RETURN(int kind, client->GetMemorySpaceKindForShape(shape));
+      ASSIGN_OR_RETURN(int kind, client->GetMemorySpaceKindForShape(shape));
       result.output_memory_space_kind_ids.push_back(kind);
     }
   }
   // Initializes information about which arguments to which executables must
   // be donated due to aliases that were specified by the computation.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       result.parameters_that_must_be_donated,
       ComputeParametersThatMustBeDonated(
           alias_config, result.parameter_device_shapes.size(), tuple_inputs));
@@ -119,25 +119,12 @@ InferDispatchInfo(
       result.parameter_device_shapes.size());
   for (const Shape& shape : result.parameter_device_shapes) {
     DCHECK(!shape.IsTuple());
-    TF_ASSIGN_OR_RETURN(int kind, client->GetMemorySpaceKindForShape(shape));
-    TF_ASSIGN_OR_RETURN(int64_t size_in_bytes,
-                        client->GetOnDeviceBytesCount(kind, shape));
+    ASSIGN_OR_RETURN(int kind, client->GetMemorySpaceKindForShape(shape));
+    ASSIGN_OR_RETURN(int64_t size_in_bytes,
+                     client->GetOnDeviceBytesCount(kind, shape));
     result.input_buffer_sizes_in_bytes.push_back(size_in_bytes);
   }
   return result;
-}
-
-absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo> InferDispatchInfo(
-    CommonPjRtClient* client, const ComputationLayout& layout,
-    const HloInputOutputAliasConfig& alias_config,
-    std::shared_ptr<DeviceAssignment> device_assignment,
-    std::vector<CommonPjRtLoadedExecutable::LogicalDeviceIds>
-        addressable_device_logical_ids,
-    std::vector<PjRtDevice*> addressable_devices, bool tuple_inputs) {
-  return InferDispatchInfo(
-      client, GetParameterShapes(layout), layout.result_shape(), alias_config,
-      std::move(device_assignment), std::move(addressable_device_logical_ids),
-      std::move(addressable_devices), nullptr, tuple_inputs);
 }
 
 absl::StatusOr<std::vector<int64_t>> GetShardShape(
@@ -209,23 +196,22 @@ absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo> InferDispatchInfo(
     xla::PrimitiveType primitive_type;
     if (auto tensor_type = mlir::dyn_cast<mlir::RankedTensorType>(type)) {
       llvm::ArrayRef<int64_t> dims = tensor_type.getShape();
-      TF_ASSIGN_OR_RETURN(
-          shard_shape,
-          GetShardShape(sharding, dims,
-                        extras->num_replicas * extras->num_partitions));
+      ASSIGN_OR_RETURN(shard_shape, GetShardShape(sharding, dims,
+                                                  extras->num_replicas *
+                                                      extras->num_partitions));
       primitive_type =
           xla::ConvertMlirTypeToPrimitiveType(tensor_type.getElementType());
     } else {
       primitive_type = xla::ConvertMlirTypeToPrimitiveType(type);
     }
-    TF_ASSIGN_OR_RETURN(auto* memory_space,
-                        addressable_devices[0]->default_memory_space());
+    ASSIGN_OR_RETURN(auto* memory_space,
+                     addressable_devices[0]->default_memory_space());
     auto xla_shard_shape =
         xla::ShapeUtil::MakeShape(primitive_type, shard_shape);
     // TODO(parkers): Fix the nullptr layout.
-    TF_ASSIGN_OR_RETURN(auto xla_shape,
-                        client->MakeDefaultShapeForMemorySpace(
-                            memory_space, xla_shard_shape, nullptr));
+    ASSIGN_OR_RETURN(auto xla_shape,
+                     client->MakeDefaultShapeForMemorySpace(
+                         memory_space, xla_shard_shape, nullptr));
     auto layout = std::make_shared<PjRtLayout>(xla_shape.layout());
     return std::make_tuple(xla_shape, layout);
   };
@@ -243,9 +229,8 @@ absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo> InferDispatchInfo(
                                        /*manualAxes=*/{});
     xla::Shape shape;
     std::shared_ptr<const xla::PjRtLayout> layout;
-    TF_ASSIGN_OR_RETURN(
-        (std::tie(shape, layout)),
-        get_xla_shape(hlo_sharding, main.getArgumentTypes()[i]));
+    ASSIGN_OR_RETURN((std::tie(shape, layout)),
+                     get_xla_shape(hlo_sharding, main.getArgumentTypes()[i]));
 
     parameter_device_shapes.push_back(shape);
     extras->parameter_shardings->push_back(hlo_sharding.ToProto());
@@ -267,8 +252,8 @@ absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo> InferDispatchInfo(
 
     xla::Shape shape;
     std::shared_ptr<const xla::PjRtLayout> layout;
-    TF_ASSIGN_OR_RETURN((std::tie(shape, layout)),
-                        get_xla_shape(hlo_sharding, main.getResultTypes()[i]));
+    ASSIGN_OR_RETURN((std::tie(shape, layout)),
+                     get_xla_shape(hlo_sharding, main.getResultTypes()[i]));
 
     result_shapes.push_back(std::move(shape));
     extras->output_shardings->push_back(hlo_sharding.ToProto());
@@ -283,7 +268,7 @@ absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo> InferDispatchInfo(
       HloInputOutputAliasConfig(output_device_shape);
 
   const auto& input_output_alias_config = extras->input_output_alias_config;
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto result,
       InferDispatchInfo(client, std::move(parameter_device_shapes),
                         std::move(output_device_shape),
@@ -297,7 +282,7 @@ absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo> InferDispatchInfo(
       result.parameter_memory_space_kind_ids.size());
   for (size_t i = 0; i < result.parameter_memory_space_kind_ids.size(); ++i) {
     auto* device = result.addressable_devices[0];
-    TF_ASSIGN_OR_RETURN(auto* memory_space, device->default_memory_space());
+    ASSIGN_OR_RETURN(auto* memory_space, device->default_memory_space());
     for (auto* ms : device->memory_spaces()) {
       if (ms->kind_id() == result.parameter_memory_space_kind_ids[i]) {
         memory_space = ms;
@@ -309,7 +294,7 @@ absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo> InferDispatchInfo(
       result.output_memory_space_kind_ids.size());
   for (size_t i = 0; i < result.output_memory_space_kind_ids.size(); ++i) {
     auto* device = result.addressable_devices[0];
-    TF_ASSIGN_OR_RETURN(auto* memory_space, device->default_memory_space());
+    ASSIGN_OR_RETURN(auto* memory_space, device->default_memory_space());
     for (auto* ms : device->memory_spaces()) {
       if (ms->kind_id() == result.output_memory_space_kind_ids[i]) {
         memory_space = ms;

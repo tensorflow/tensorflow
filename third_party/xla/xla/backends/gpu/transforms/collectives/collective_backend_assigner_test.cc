@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -53,15 +54,15 @@ class CollectiveBackendAssignerTest : public HloHardwareIndependentTestBase {
 
   absl::StatusOr<CollectiveBackendConfig_CollectiveBackend>
   GetCollectiveBackendConfig(const HloInstruction* instr) {
-    TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                        instr->backend_config<GpuBackendConfig>());
+    ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                     instr->backend_config<GpuBackendConfig>());
     return gpu_config.collective_backend_config().backend();
   }
 
   absl::StatusOr<DebugOptions::CollectivesMode> GetCollectivesMode(
       const HloInstruction* instr) {
-    TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                        instr->backend_config<GpuBackendConfig>());
+    ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                     instr->backend_config<GpuBackendConfig>());
     return gpu_config.collective_backend_config().collectives_mode();
   }
 };
@@ -350,6 +351,57 @@ TEST_F(CollectiveBackendAssignerTest,
   // permute flag).
   EXPECT_THAT(
       GetCollectivesMode(all_reduce),
+      absl_testing::IsOkAndHolds(DebugOptions::COLLECTIVES_MODE_INVALID));
+}
+
+TEST_F(CollectiveBackendAssignerTest, AllGatherSymmetricMemorySetsMode) {
+  absl::string_view kHloText = R"(
+    HloModule m
+
+    ENTRY main {
+      p0 = u32[4,8] parameter(0)
+      ROOT result = u32[8,8] all-gather(p0), dimensions={0},
+        replica_groups={{0,1}}, channel_id=20
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  module->mutable_config().mutable_debug_options().set_xla_gpu_all_gather_mode(
+      DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY);
+
+  EXPECT_THAT(RunCollectiveBackendAssigner(
+                  module.get(), /*num_devices_per_host=*/1, /*slice_size=*/0),
+              absl_testing::IsOkAndHolds(true));
+
+  const HloInstruction* all_gather =
+      module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      GetCollectivesMode(all_gather),
+      absl_testing::IsOkAndHolds(DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY));
+}
+
+TEST_F(CollectiveBackendAssignerTest, AllGatherPrivateMemoryLeavesDefault) {
+  absl::string_view kHloText = R"(
+    HloModule m
+
+    ENTRY main {
+      p0 = u32[4,8] parameter(0)
+      ROOT result = u32[8,8] all-gather(p0), dimensions={0},
+        replica_groups={{0,1}}, channel_id=21
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+
+  ASSERT_THAT(RunCollectiveBackendAssigner(module.get(),
+                                           /*num_devices_per_host=*/1,
+                                           /*slice_size=*/0),
+              absl_testing::IsOk());
+
+  const HloInstruction* all_gather =
+      module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      GetCollectivesMode(all_gather),
       absl_testing::IsOkAndHolds(DebugOptions::COLLECTIVES_MODE_INVALID));
 }
 

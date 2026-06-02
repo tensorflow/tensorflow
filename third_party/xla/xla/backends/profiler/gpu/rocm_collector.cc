@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/rocm_collector.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <sstream>
@@ -623,7 +624,11 @@ std::vector<RocmTracerEvent> RocmTraceCollectorImpl::ApiActivityInfoExchange() {
   */
 
   std::vector<RocmTracerEvent> aggregated_events;
-  aggregated_events.reserve(api_events_map_.size());
+  size_t total_activities = 0;
+  for (const auto& [_, v] : activity_ops_events_map_) {
+    total_activities += v.size();
+  }
+  aggregated_events.reserve(api_events_map_.size() + total_activities);
 
   // Copy info from activity events to API callback events
   for (auto& [key, api_event] : api_events_map_) {
@@ -666,65 +671,79 @@ std::vector<RocmTracerEvent> RocmTraceCollectorImpl::ApiActivityInfoExchange() {
     }  // switch
   }  // for
 
-  // Make sure for all activity events we have API callback events
+  // Make sure for all activity events we have API callback events.
+  //
+  // `activity_iter.second` is a vector keyed by correlation_id; a single
+  // hipGraphLaunch can produce many kernel-dispatch records sharing one
+  // correlation_id. Iterate the whole vector; the api_event lookup is
+  // invariant across it and hoisted out of the inner loop.
   for (auto& activity_iter : activity_ops_events_map_) {
-    RocmTracerEvent& activity_event = activity_iter.second.front();
+    if (activity_iter.second.empty()) {
+      continue;
+    }
+    const uint32_t corr_id = activity_iter.first;
 
-    auto api_event = api_events_map_.find(activity_event.correlation_id);
-
-    if (api_event == api_events_map_.end()) {
-      api_event = auxiliary_api_events_map_.find(activity_event.correlation_id);
-
-      if (api_event == auxiliary_api_events_map_.end()) {
-        OnEventsDropped(
-            "An event from activity was discarded."
-            "Could not find the counterpart HIP API.",
-            activity_event.correlation_id);
-        PrintRocmTracerEvent(activity_event, ". Dropped!");
-        continue;
-      }
+    const RocmTracerEvent* api_event = nullptr;
+    if (auto it = api_events_map_.find(corr_id); it != api_events_map_.end()) {
+      api_event = &it->second;
+    } else if (auto it_aux = auxiliary_api_events_map_.find(corr_id);
+               it_aux != auxiliary_api_events_map_.end()) {
+      api_event = &it_aux->second;
     }
 
-    switch (activity_event.type) {
-      case RocmTracerEventType::Kernel:
-        activity_event.kernel_info = api_event->second.kernel_info;
-        PrintRocmTracerEvent(activity_event,
-                             ". activity event from api_event.");
-        aggregated_events.push_back(activity_event);
-        break;
+    if (api_event == nullptr) {
+      // Drop the entire vector together; log once per correlation_id
+      // instead of per activity event (the activities all share corr_id).
+      OnEventsDropped(
+          "An event from activity was discarded."
+          "Could not find the counterpart HIP API.",
+          corr_id);
+      PrintRocmTracerEvent(activity_iter.second.front(), ". Dropped!");
+      continue;
+    }
 
-      case RocmTracerEventType::MemcpyD2H:
-      case RocmTracerEventType::MemcpyH2D:
-      case RocmTracerEventType::MemcpyD2D:
-      case RocmTracerEventType::MemcpyOther:
-        // activity_event.memcpy_info = api_event->second.memcpy_info;
-        aggregated_events.push_back(activity_event);
-        break;
-      case RocmTracerEventType::Memset:
-        activity_event.memset_info = api_event->second.memset_info;
-        aggregated_events.push_back(activity_event);
-        break;
+    for (auto& activity_event : activity_iter.second) {
+      switch (activity_event.type) {
+        case RocmTracerEventType::Kernel:
+          activity_event.kernel_info = api_event->kernel_info;
+          PrintRocmTracerEvent(activity_event,
+                               ". activity event from api_event.");
+          aggregated_events.push_back(activity_event);
+          break;
 
-      case RocmTracerEventType::MemoryAlloc:
-      case RocmTracerEventType::MemoryFree:
-        activity_event.device_id = api_event->second.device_id;
-        aggregated_events.push_back(activity_event);
-        break;
+        case RocmTracerEventType::MemcpyD2H:
+        case RocmTracerEventType::MemcpyH2D:
+        case RocmTracerEventType::MemcpyD2D:
+        case RocmTracerEventType::MemcpyOther:
+          // activity_event.memcpy_info = api_event->memcpy_info;
+          aggregated_events.push_back(activity_event);
+          break;
+        case RocmTracerEventType::Memset:
+          activity_event.memset_info = api_event->memset_info;
+          aggregated_events.push_back(activity_event);
+          break;
 
-      case RocmTracerEventType::Synchronization:
-        activity_event.device_id = api_event->second.device_id;
-        aggregated_events.push_back(activity_event);
-        break;
-      default:
-        OnEventsDropped("Missing API-Activity information exchange. Dropped!",
-                        activity_event.correlation_id);
-        PrintRocmTracerEvent(activity_event, ". Dropped!");
-        LOG(WARNING) << "A ROCm activity event with unimplemented API "
-                        "callback merge dropped! "
-                        "Type="
-                     << GetRocmTracerEventTypeName(activity_event.type);
-    }  // switch
-  }  // for
+        case RocmTracerEventType::MemoryAlloc:
+        case RocmTracerEventType::MemoryFree:
+          activity_event.device_id = api_event->device_id;
+          aggregated_events.push_back(activity_event);
+          break;
+
+        case RocmTracerEventType::Synchronization:
+          activity_event.device_id = api_event->device_id;
+          aggregated_events.push_back(activity_event);
+          break;
+        default:
+          OnEventsDropped("Missing API-Activity information exchange. Dropped!",
+                          activity_event.correlation_id);
+          PrintRocmTracerEvent(activity_event, ". Dropped!");
+          LOG(WARNING) << "A ROCm activity event with unimplemented API "
+                          "callback merge dropped! "
+                          "Type="
+                       << GetRocmTracerEventTypeName(activity_event.type);
+      }  // switch
+    }  // for activity_event
+  }  // for activity_iter
 
   return aggregated_events;
 }

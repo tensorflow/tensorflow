@@ -1132,13 +1132,18 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/compiler/tf2tensorrt:common_utils",
         "//tensorflow/compiler/tf2tensorrt:trt_parameters",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib_headers_for_pybind",
+        "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/gtl:array_slice",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@pybind11",
         "@xla//third_party/python_runtime:headers",
@@ -1389,6 +1394,8 @@ tf_python_pybind_extension(
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime:graph_constructor",
+        "//tensorflow/core/common_runtime:session",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
@@ -1543,6 +1550,7 @@ cc_library(
             if_cuda_is_configured([
                 "@xla//xla/tsl/cuda:cupti",
                 "@xla//xla/tsl/cuda:nvshmem_stub",
+                "@xla//xla/tsl/cuda:cusolver",
             ]) + if_nccl([
                 "@xla//xla/tsl/cuda:nccl",
             ])

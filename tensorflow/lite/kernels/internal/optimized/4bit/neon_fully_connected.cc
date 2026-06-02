@@ -39,8 +39,9 @@ inline int8x16_t vqmovn_high_s16(int8x8_t a_s8x8, int16x8_t b_s16x8) {
 }
 
 inline int32x4_t vpaddq_s32(int32x4_t a, int32x4_t b) {
-  int32x4x2_t deinterleaved = vuzpq_s32(a, b);
-  return vqaddq_s32(deinterleaved.val[0], deinterleaved.val[1]);
+  int32x2_t a0 = vpadd_s32(vget_low_s32(a), vget_high_s32(a));
+  int32x2_t b0 = vpadd_s32(vget_low_s32(b), vget_high_s32(b));
+  return vcombine_s32(a0, b0);
 }
 
 inline float vmaxvq_f32(float32x4_t max_f32x4) {

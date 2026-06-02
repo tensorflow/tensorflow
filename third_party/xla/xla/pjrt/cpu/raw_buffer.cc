@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/future.h"
 #include "xla/layout.h"
@@ -100,8 +101,8 @@ tsl::AsyncValueRef<CpuEvent> AfterAllCpuEvents(
 /*static*/ absl::StatusOr<tsl::RCReference<CpuRawBuffer>>
 CpuRawBuffer::Allocate(PjRtMemorySpace* memory_space, size_t size_bytes,
                        const CpuDeviceMemory::Allocator& allocator) {
-  TF_ASSIGN_OR_RETURN(auto memory,
-                      CpuDeviceMemory::Allocate(size_bytes, allocator));
+  ASSIGN_OR_RETURN(auto memory,
+                   CpuDeviceMemory::Allocate(size_bytes, allocator));
   return tsl::MakeRef<CpuRawBuffer>(memory_space, std::move(memory), size_bytes,
                                     /*is_mutable=*/true);
 }
@@ -141,7 +142,7 @@ absl::Status CpuRawBuffer::ValidateSlice(int64_t offset, int64_t slice_size) {
 
 absl::StatusOr<PjRtRawBufferRef> CpuRawBuffer::Slice(int64_t offset,
                                                      int64_t slice_size) {
-  TF_RETURN_IF_ERROR(ValidateSlice(offset, slice_size));
+  RETURN_IF_ERROR(ValidateSlice(offset, slice_size));
   auto sliced_memory =
       CpuDeviceMemory::CreateSlicedMemory(buffer_, offset, slice_size);
   return tsl::MakeRef<CpuRawBuffer>(memory_space_, std::move(sliced_memory),
@@ -151,7 +152,7 @@ absl::StatusOr<PjRtRawBufferRef> CpuRawBuffer::Slice(int64_t offset,
 absl::StatusOr<PjRtDeviceEventRef>
 CpuRawBuffer::CopyRawHostToDeviceAndReturnEvent(const void* src, int64_t offset,
                                                 int64_t transfer_size) {
-  TF_RETURN_IF_ERROR(ValidateSlice(offset, transfer_size));
+  RETURN_IF_ERROR(ValidateSlice(offset, transfer_size));
   std::memcpy(static_cast<uint8_t*>(GetHostPointer()) + offset, src,
               transfer_size);
   return PjRtDeviceEventRef(tsl::MakeAvailableAsyncValueRef<CpuEvent>());
@@ -160,7 +161,7 @@ CpuRawBuffer::CopyRawHostToDeviceAndReturnEvent(const void* src, int64_t offset,
 absl::StatusOr<PjRtDeviceEventRef>
 CpuRawBuffer::CopyRawDeviceToHostAndReturnEvent(void* dst, int64_t offset,
                                                 int64_t transfer_size) {
-  TF_RETURN_IF_ERROR(ValidateSlice(offset, transfer_size));
+  RETURN_IF_ERROR(ValidateSlice(offset, transfer_size));
   std::memcpy(dst, static_cast<uint8_t*>(GetHostPointer()) + offset,
               transfer_size);
   return PjRtDeviceEventRef(tsl::MakeAvailableAsyncValueRef<CpuEvent>());
@@ -238,7 +239,7 @@ absl::StatusOr<PjRtDeviceEventRef> CpuRawBuffer::CopyFromHostBuffer(
         options.num_threads =
             std::min(thread_pool->NumThreads(), max_transpose_threads);
       }
-      TF_ASSIGN_OR_RETURN(transpose, client->GetTransposePlan(options));
+      ASSIGN_OR_RETURN(transpose, client->GetTransposePlan(options));
     }
     std::optional<std::function<void(std::function<void(void)>)>> schedule_work;
     if (thread_pool && max_transpose_threads > 1) {
@@ -296,27 +297,6 @@ absl::StatusOr<PjRtDeviceEventRef> CpuRawBuffer::CopyFromHostBuffer(
     }
   }
   return PjRtDeviceEventRef(tsl::MakeAvailableAsyncValueRef<CpuEvent>());
-}
-
-absl::StatusOr<xla::Shape> MakeDefaultCpuBufferShape(
-    xla::Shape shape, const xla::Layout* layout) {
-  if (layout) {
-    shape.mutable_layout()->mutable_minor_to_major()->assign(
-        layout->minor_to_major().begin(), layout->minor_to_major().end());
-  } else {
-    xla::LayoutUtil::SetToDefaultLayout(&shape);
-  }
-  auto element_type = shape.element_type();
-  if (primitive_util::IsSubByteNonPredType(element_type)) {
-    shape.mutable_layout()->set_element_size_in_bits(
-        primitive_util::BitWidth(element_type));
-  }
-  if (layout && *layout != shape.layout()) {
-    return absl::UnimplementedError(
-        absl::StrCat("PjRt CPU buffers only support default layout. ",
-                     shape.ToString(), " vs ", layout->ToString()));
-  }
-  return shape;
 }
 
 void CpuRawBuffer::ReadDynamicShape(tsl::AsyncValueRef<xla::Shape> output_shape,
@@ -389,7 +369,7 @@ void CpuRawBuffer::CopyToLiteralAsync(
 
             absl::InlinedVector<int64_t, 4> byte_strides(
                 shape.dimensions().size());
-            TF_RETURN_IF_ERROR(ShapeUtil::UnpackedByteStrides(
+            RETURN_IF_ERROR(ShapeUtil::UnpackedByteStrides(
                 shape, absl::MakeSpan(byte_strides)));
             absl::Span<const int64_t> dims = shape.dimensions();
             absl::InlinedVector<int64_t, 4> permutation(dims.size());
@@ -401,8 +381,8 @@ void CpuRawBuffer::CopyToLiteralAsync(
             options.dims = dims;
             options.permutation = permutation;
             options.input_striding = TransposePlan::Striding{byte_strides};
-            TF_ASSIGN_OR_RETURN(std::shared_ptr<TransposePlan> plan,
-                                client->GetTransposePlan(options));
+            ASSIGN_OR_RETURN(std::shared_ptr<TransposePlan> plan,
+                             client->GetTransposePlan(options));
             plan->Execute(input_span.data(), output_span.data());
           } else {
             if (primitive_util::IsSubByteNonPredType(shape.element_type())) {

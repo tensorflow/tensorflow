@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.pb.h"
 #include "xla/tsl/platform/errors.h"
@@ -126,7 +127,7 @@ void BoundedDynamicShapeTag::ToProto(BoundedDynamicShapeTagProto& proto,
 
 absl::StatusOr<DynamicShape> DynamicShape::Create(Shape shape,
                                                   DynamicShapeTag tag) {
-  TF_RETURN_IF_ERROR(std::visit(
+  RETURN_IF_ERROR(std::visit(
       overloaded{
           [&](const BoundedDynamicShapeTag& tag) -> absl::Status {
             if (tag.DynamicDims().size() != shape.dims().size()) {
@@ -166,9 +167,9 @@ absl::StatusOr<DynamicShape> DynamicShape::FromProto(
         "Unsupported ", version_number, " for DynamicShape deserialization"));
   }
 
-  TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
+  ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
   if (proto.has_bounded_dynamic_shape_tag()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         BoundedDynamicShapeTag tag,
         BoundedDynamicShapeTag::FromProto(proto.bounded_dynamic_shape_tag()));
     return DynamicShape::Create(std::move(shape), std::move(tag));

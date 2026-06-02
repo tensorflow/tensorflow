@@ -414,6 +414,9 @@ TEST_P(UnaryElementwiseTest, Unary) {
 
 TEST_P(BinaryElementwiseTest, Binary) {
   auto [opcode, type] = GetParam();
+  if (opcode == HloOpcode::kMulhi) {
+    GTEST_SKIP() << "Mulhi is not supported for S4/U4";
+  }
   auto type_name = primitive_util::LowercasePrimitiveTypeName(type);
 
   const std::string hlo_text = absl::Substitute(

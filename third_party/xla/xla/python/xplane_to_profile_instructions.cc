@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/tsl/platform/env.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "xla/tsl/profiler/utils/xplane_visitor.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -68,12 +70,12 @@ void GetXPlaneLatencyInfo(
     absl::flat_hash_map<std::string, HloLatencyInfo>* hlo_latency_info) {
   // Iterate events.
   xplane.ForEachLine([hlo_latency_info,
-                      hlo_module_info](const XLineVisitor& xline) {
+                      &hlo_module_info](const XLineVisitor& xline) {
     if (xline.DisplayName() == tsl::profiler::kXlaAsyncOpLineName) {
       return;
     }
     xline.ForEachEvent([hlo_latency_info,
-                        hlo_module_info](const XEventVisitor& xevent) {
+                        &hlo_module_info](const XEventVisitor& xevent) {
       int64_t event_type =
           xevent.Type().value_or(HostEventType::kUnknownHostEventType);
       if (IsInternalEvent(event_type)) return;
@@ -181,7 +183,7 @@ absl::Status ConvertXplaneUnderLogdirToProfiledInstructionsProto(
                                    profiled_instructions_proto) {
   // Find the xplane files for each host under logdir.
   std::vector<std::string> children_path;
-  TF_RETURN_IF_ERROR(tsl::Env::Default()->GetChildren(logdir, &children_path));
+  RETURN_IF_ERROR(tsl::Env::Default()->GetChildren(logdir, &children_path));
   if (children_path.empty()) {
     return absl::NotFoundError(
         absl::StrCat("Could not find file under: ", logdir));
@@ -191,13 +193,13 @@ absl::Status ConvertXplaneUnderLogdirToProfiledInstructionsProto(
     if (absl::StrContains(child_path, kXPlanePb)) {
       std::string xspace_path = ProfilerJoinPath(logdir, child_path);
       tensorflow::profiler::XSpace xspace;
-      TF_RETURN_IF_ERROR(
+      RETURN_IF_ERROR(
           ReadBinaryProto(tsl::Env::Default(), xspace_path, &xspace));
       xspaces.push_back(xspace);
     }
   }
 
-  return ConvertXplaneToProfiledInstructionsProto(xspaces,
+  return ConvertXplaneToProfiledInstructionsProto(std::move(xspaces),
                                                   profiled_instructions_proto);
 }
 

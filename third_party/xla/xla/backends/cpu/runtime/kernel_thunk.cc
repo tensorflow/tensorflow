@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/kernel.h"
@@ -175,8 +176,7 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
 
   for (const ShapedSlice& buffer : arguments_buffers_) {
     if constexpr (ShouldCheckBufferSlices()) {
-      TF_ASSIGN_OR_RETURN(auto mem,
-                          allocations->GetDeviceAddress(buffer.slice));
+      ASSIGN_OR_RETURN(auto mem, allocations->GetDeviceAddress(buffer.slice));
       kernel_args_ptr++->data = mem.opaque();
     } else {
       auto mem = allocations->GetDeviceAddressUnchecked(buffer.slice);
@@ -186,8 +186,7 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
 
   for (const ShapedSlice& buffer : results_buffers_) {
     if constexpr (ShouldCheckBufferSlices()) {
-      TF_ASSIGN_OR_RETURN(auto mem,
-                          allocations->GetDeviceAddress(buffer.slice));
+      ASSIGN_OR_RETURN(auto mem, allocations->GetDeviceAddress(buffer.slice));
       kernel_args_ptr++->data = mem.opaque();
     } else {
       auto mem = allocations->GetDeviceAddressUnchecked(buffer.slice);
@@ -203,9 +202,9 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
   // property holds.
   if constexpr (ShouldCheckBufferSlices()) {
     // TODO(abanas): Check also for overlapping buffers.
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         CheckBufferAlignment(info(), min_alignment_.value_or(0), kernel_args));
-    TF_RETURN_IF_ERROR(CheckInvariantBuffersMemory(kernel_args));
+    RETURN_IF_ERROR(CheckInvariantBuffersMemory(kernel_args));
   }
 
   // TODO(ezhulenev): Kernel ptr should be loaded as a part of Thunk
@@ -224,12 +223,12 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
     }
   });
 
-  TF_RETURN_IF_ERROR(kernel_.status());
+  RETURN_IF_ERROR(kernel_.status());
   Kernel* kernel = &kernel_.value();
 
   // Use a fast path if kernel called just once.
   if (ABSL_PREDICT_TRUE(call_once_)) {
-    TF_RETURN_IF_ERROR(kernel->CallOnce(kernel_args));
+    RETURN_IF_ERROR(kernel->CallOnce(kernel_args));
     return OkExecuteEvent();
   }
 
@@ -241,7 +240,7 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
                           params.intra_op_threadpool);
   }
 
-  TF_RETURN_IF_ERROR(kernel->Launch(num_workgroups_, kernel_args));
+  RETURN_IF_ERROR(kernel->Launch(num_workgroups_, kernel_args));
   return OkExecuteEvent();
 }
 

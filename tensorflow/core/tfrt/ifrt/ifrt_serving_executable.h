@@ -384,6 +384,7 @@ class IfrtServingExecutable {
       const Tf2HloResult& tf2hlo_result,
       xla::ifrt::LoadedExecutableRef ifrt_executable,
       std::vector<std::unique_ptr<TfHostCallback>> host_callbacks,
+      const xla::ifrt::Topology* topology,
       CachedExecutableBundle& executable_bundle);
 
   absl::StatusOr<std::unique_ptr<xla::ifrt::Sharding>> CreateSharding(

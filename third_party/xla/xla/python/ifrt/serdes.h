@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/serdes.pb.h"
@@ -141,8 +142,8 @@ template <typename InterfaceType>
 absl::StatusOr<std::unique_ptr<InterfaceType>> Deserialize(
     const Serialized& serialized,
     std::unique_ptr<typename InterfaceType::DeserializeOptions> options) {
-  TF_ASSIGN_OR_RETURN(auto result, serdes_internal::DeserializeUnchecked(
-                                       serialized, std::move(options)));
+  ASSIGN_OR_RETURN(auto result, serdes_internal::DeserializeUnchecked(
+                                    serialized, std::move(options)));
   if (!llvm::isa<InterfaceType>(result.get())) {
     return absl::InternalError(
         "Unexpected Serializable type after deserialization");

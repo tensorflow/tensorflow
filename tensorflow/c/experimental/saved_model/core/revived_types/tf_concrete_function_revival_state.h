@@ -53,7 +53,7 @@ struct TFConcreteFunctionRevivalState {
   // However, SavedBareConcreteFunctions do not have a FunctionSpec.
   // Note(bmzhao): if function_spec_.has_value(), *function_spec_ is guaranteed
   // to be non-null.
-  absl::optional<const FunctionSpec*> function_spec;
+  std::optional<const FunctionSpec*> function_spec;
 };
 
 }  // namespace tensorflow

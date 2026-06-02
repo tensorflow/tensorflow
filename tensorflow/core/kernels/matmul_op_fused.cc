@@ -199,7 +199,6 @@ struct LaunchFusedMatMulOp<CPUDevice, T> {
 
 namespace {
 
-#if GOOGLE_CUDA || TF_HIPBLASLT
 absl::StatusOr<stream_executor::gpu::BlasLt::Epilogue> GetBlasLtEpilogOp(
     FusedComputationType fusion) {
   if (fusion == FusedComputationType::kBiasAdd) {
@@ -263,7 +262,6 @@ se::blas::AlgorithmConfig AutotuneMatmul(
   }
   return algorithm_config;
 }
-#endif
 
 template <typename LaunchFunc, typename Sig>
 absl::StatusOr<std::vector<xla::AutotuneResult>> AutotuneMatMulImpl(
@@ -513,9 +511,6 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
       default:
         use_cudnn = false;
     }
-#if !(GOOGLE_CUDA || TF_HIPBLASLT)
-    use_cudnn = true;
-#endif
 
     const auto& cc =
         stream->parent()->GetDeviceDescription().gpu_compute_capability();
@@ -572,7 +567,6 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
       OP_REQUIRES_OK(context, cudnn_launch_status);
       return;
     }
-#if GOOGLE_CUDA || TF_HIPBLASLT
     auto epilog_op_or = GetBlasLtEpilogOp(fusion);
     OP_REQUIRES_OK(context, epilog_op_or.status());
     se::gpu::BlasLt::Epilogue epilog_op = epilog_op_or.value();
@@ -617,7 +611,6 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
     }
 
     OP_REQUIRES_OK(context, launch_func(scratch_allocator, alg_idx, nullptr));
-#endif
   }
 };
 

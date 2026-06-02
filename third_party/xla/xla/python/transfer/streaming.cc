@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
@@ -265,17 +266,23 @@ class LocalBulkTransportFactory : public BulkTransportFactory {
                                       remote_bulk_transport_info) {};
     return out;
   }
-  BulkTransportRecvResult RecvBulkTransport(
+  absl::StatusOr<BulkTransportRecvResult> RecvBulkTransport(
       const SocketTransferEstablishBulkTransport& remote_bulk_transport_info)
       override {
     BulkTransportRecvResult out;
     absl::MutexLock l(mu_);
-    CHECK_EQ(remote_bulk_transport_info.bulk_transport_impl_kind(),
-             SocketTransferEstablishBulkTransport::LOCAL);
-    CHECK_EQ(remote_bulk_transport_info.bulk_transport_uuid_size(), 1);
+    if (remote_bulk_transport_info.bulk_transport_impl_kind() !=
+            SocketTransferEstablishBulkTransport::LOCAL ||
+        remote_bulk_transport_info.bulk_transport_uuid_size() != 1) {
+      return absl::InternalError("Invalid bulk transport info");
+    }
     auto it = local_bulk_transports_.find(
         remote_bulk_transport_info.bulk_transport_uuid(0));
-    CHECK(it != local_bulk_transports_.end());
+    if (it == local_bulk_transports_.end()) {
+      return absl::InternalError(
+          absl::StrCat("Invalid bulk transport uuid: ",
+                       remote_bulk_transport_info.bulk_transport_uuid(0)));
+    }
     auto bulk_transport_out = std::move(it->second);
     local_bulk_transports_.erase(it);
     out.bulk_transport = std::move(bulk_transport_out);
@@ -529,9 +536,15 @@ class StringVectorPullTableEntry : public PullTable::Entry {
               const SocketTransferPullRequest& req,
               size_t base_req_id) override {
     for (uint64_t bid : req.buffer_ids()) {
-      auto data_copy = std::make_unique<std::string>(buffers_[bid]);
       auto req_id = base_req_id;
       ++base_req_id;
+      if (bid >= buffers_.size()) {
+        state->SendError(
+            req_id, 0, 0, false,
+            absl::InvalidArgumentError("StringVectorPullTableEntry::Handle"));
+        continue;
+      }
+      auto data_copy = std::make_unique<std::string>(buffers_[bid]);
       auto& data = *data_copy;
       state->Send(req_id, data.data(), 0, data.size(), true,
                   [data = std::move(data_copy)]() {});

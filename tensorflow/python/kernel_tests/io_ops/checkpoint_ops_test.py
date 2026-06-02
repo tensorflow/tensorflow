@@ -22,6 +22,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_checkpoint_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
@@ -252,6 +253,60 @@ class LoadAndRemapMatrixTest(test.TestCase):
               initializing_values=initializing_values,
               num_rows=1,
               num_cols=1))
+
+  @test_util.run_deprecated_v1
+  def test_load_and_remap_empty_old_tensor_name(self):
+    old_tensor_name_placeholder = array_ops.placeholder(dtypes.string)
+    remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
+        ckpt_path=[self.bundle_file],
+        old_tensor_name=old_tensor_name_placeholder,
+        row_remapping=[0],
+        col_remapping=[],
+        initializing_values=[],
+        num_rows=1,
+        num_cols=self.old_num_cols,
+    )
+
+    with self.cached_session() as sess:
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          'old_tensor_name.*must have exactly one element',
+      ):
+        sess.run(remapped_matrix, feed_dict={old_tensor_name_placeholder: []})
+
+  def test_load_and_remap_out_of_bounds_row_remapping(self):
+    # self.old_num_rows is 5. We use 5 (out of bounds) in row_remapping.
+    with self.cached_session(), self.assertRaisesRegex(
+        errors.InvalidArgumentError, 'Row remapping index 5 is out of bounds'
+    ):
+      self.evaluate(
+          gen_checkpoint_ops.load_and_remap_matrix(
+              ckpt_path=[self.bundle_file],
+              old_tensor_name=self.old_tensor_name,
+              row_remapping=[0, 5],
+              col_remapping=[],
+              initializing_values=[],
+              num_rows=2,
+              num_cols=self.old_num_cols,
+          )
+      )
+
+  def test_load_and_remap_out_of_bounds_col_remapping(self):
+    # self.old_num_cols is 16. We use 16 (out of bounds) in col_remapping.
+    with self.cached_session(), self.assertRaisesRegex(
+        errors.InvalidArgumentError, 'Col remapping index 16 is out of bounds'
+    ):
+      self.evaluate(
+          gen_checkpoint_ops.load_and_remap_matrix(
+              ckpt_path=[self.bundle_file],
+              old_tensor_name=self.old_tensor_name,
+              row_remapping=list(range(self.old_num_rows)),
+              col_remapping=[0, 16],
+              initializing_values=[],
+              num_rows=self.old_num_rows,
+              num_cols=2,
+          )
+      )
 
   @test_util.run_deprecated_v1
   def test_load_and_remap_invalid_remapping(self):

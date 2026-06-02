@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/ffi.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
@@ -99,8 +100,8 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.cpu.ffi_execution_context",
                          });
 
 absl::StatusOr<LocalClient*> CreateClient() {
-  TF_ASSIGN_OR_RETURN(se::Platform * platform,
-                      PlatformUtil::GetPlatform(PLATFORM));
+  ASSIGN_OR_RETURN(se::Platform * platform,
+                   PlatformUtil::GetPlatform(PLATFORM));
   LocalClientOptions client_options(platform, 1, 1, std::nullopt);
   return ClientLibrary::GetOrCreateLocalClient(client_options);
 }

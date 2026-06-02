@@ -16,12 +16,17 @@ limitations under the License.
 
 #include <Python.h>
 
+#include <cstddef>
 #include <functional>
 #include <memory>
+#include <string>
 #include <unordered_map>
+#include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/macros.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -216,7 +221,7 @@ class CachedTypeCheck {
  private:
   std::function<int(PyObject*)> ternary_predicate_;
   mutex type_to_sequence_map_mu_;
-  std::unordered_map<PyTypeObject*, bool> type_to_sequence_map_
+  absl::flat_hash_map<PyTypeObject*, bool> type_to_sequence_map_
       TF_GUARDED_BY(type_to_sequence_map_mu_);
 };
 
@@ -475,7 +480,7 @@ int IsDispatchableHelper(PyObject* o) {
 // ValueIterator interface
 class ValueIterator {
  public:
-  virtual ~ValueIterator() {}
+  virtual ~ValueIterator() = default;
   virtual Safe_PyObjectPtr next() = 0;
 
   bool valid() const { return is_valid_; }
@@ -567,18 +572,20 @@ class SequenceValueIterator : public ValueIterator {
  public:
   explicit SequenceValueIterator(PyObject* iterable)
       : seq_(PySequence_Fast(iterable, "")),
-        size_(seq_.get() ? PySequence_Fast_GET_SIZE(seq_.get()) : 0),
         index_(0) {}
 
   Safe_PyObjectPtr next() override {
     Safe_PyObjectPtr result;
-    if (index_ < size_) {
-      // PySequence_Fast_GET_ITEM returns a borrowed reference.
-      PyObject* elem = PySequence_Fast_GET_ITEM(seq_.get(), index_);
-      ++index_;
-      if (elem) {
-        Py_INCREF(elem);
-        result.reset(elem);
+    if (seq_) {
+      Py_ssize_t current_size = PySequence_Fast_GET_SIZE(seq_.get());
+      if (index_ < current_size) {
+        // PySequence_Fast_GET_ITEM returns a borrowed reference.
+        PyObject* elem = PySequence_Fast_GET_ITEM(seq_.get(), index_);
+        ++index_;
+        if (elem) {
+          Py_INCREF(elem);
+          result.reset(elem);
+        }
       }
     }
 
@@ -587,7 +594,6 @@ class SequenceValueIterator : public ValueIterator {
 
  private:
   Safe_PyObjectPtr seq_;
-  const Py_ssize_t size_;
   Py_ssize_t index_;
 };
 
@@ -606,7 +612,7 @@ class SingleValueIterator : public ValueIterator {
 // should have already called PyErr_SetString.
 class ErrorValueIterator : public ValueIterator {
  public:
-  ErrorValueIterator() {}
+  ErrorValueIterator() = default;
   Safe_PyObjectPtr next() override { return nullptr; }
 };
 
@@ -1218,7 +1224,7 @@ PyObject* SameNamedtuples(PyObject* o1, PyObject* o2) {
     Py_RETURN_FALSE;
   }
 
-  if (GetClassName(o1).compare(GetClassName(o2)) == 0) {
+  if (GetClassName(o1) == GetClassName(o2)) {
     Py_RETURN_TRUE;
   } else {
     Py_RETURN_FALSE;

@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/ffi.h"
 #include "xla/backends/cpu/nanort/nanort_client.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
@@ -60,7 +61,7 @@ absl::StatusOr<std::unique_ptr<HostOffloadingExecutable>> CompileFromString(
     absl::string_view str,
     HostOffloadingExecutableProto::ExecutableType executable_type) {
   HloModuleConfig config;
-  TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnUnverifiedModule(str));
+  ASSIGN_OR_RETURN(auto module, ParseAndReturnUnverifiedModule(str));
 
   HostOffloadingExecutableProto executable_proto;
   *executable_proto.mutable_hlo_module() = module->ToProto();
@@ -70,9 +71,9 @@ absl::StatusOr<std::unique_ptr<HostOffloadingExecutable>> CompileFromString(
     case HostOffloadingExecutableProto::EXECUTABLE_TYPE_NANORT: {
       xla::cpu::NanoRtClient client;
       XlaComputation computation(module->ToProto());
-      TF_ASSIGN_OR_RETURN(auto executable, client.Compile(computation));
-      TF_ASSIGN_OR_RETURN(auto aot_compilation_result,
-                          client.Export(executable.get()));
+      ASSIGN_OR_RETURN(auto executable, client.Compile(computation));
+      ASSIGN_OR_RETURN(auto aot_compilation_result,
+                       client.Export(executable.get()));
 
       xla::cpu::CpuAotCompilationResult* cpu_aot_compilation_result =
           absl::down_cast<cpu::CpuAotCompilationResult*>(

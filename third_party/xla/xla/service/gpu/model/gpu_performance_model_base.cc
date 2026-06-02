@@ -44,8 +44,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 namespace {
 
@@ -166,7 +165,8 @@ LaunchDimensions GpuPerformanceModelBase::EstimateFusionLaunchDimensions(
   // launch dimensions only for SoftMax fusions.
   if (const auto* triton_emitter =
           dynamic_cast<const TritonFusion*>(emitter.get())) {
-    if (auto launch_config = triton_emitter->GetLaunchConfig()) {
+    if (std::optional<TritonFusion::LaunchConfig> launch_config =
+            TritonFusion::GetLaunchConfig(&fusion_analysis)) {
       return launch_config->launch_dimensions;
     }
   }
@@ -451,5 +451,4 @@ double GetCoalescingUtilizationRate(
                          gpu_device_info.dram_to_l2_transaction_size_bytes();
 }
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

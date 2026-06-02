@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -242,7 +243,7 @@ absl::StatusOr<GPUCommunicationType> CommunicationType(
   }
 
   if (const auto* collective = DynCast<HloCollectiveInstruction>(&instr)) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         CollectiveMetadata comm,
         CommunicationContext(*collective, num_devices_per_partition));
     if (IsSingleHost(comm)) {

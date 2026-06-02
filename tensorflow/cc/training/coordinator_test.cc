@@ -130,11 +130,13 @@ TEST(CoordinatorTest, TestRealStop) {
   std::atomic<int> counter(0);
   Coordinator coord;
 
-  std::unique_ptr<MockQueueRunner> qr1(new MockQueueRunner(&coord));
+  std::unique_ptr<MockQueueRunner> qr1 =
+      std::make_unique<MockQueueRunner>(&coord);
   qr1->StartCounting(&counter, 100);
   TF_ASSERT_OK(coord.RegisterRunner(std::move(qr1)));
 
-  std::unique_ptr<MockQueueRunner> qr2(new MockQueueRunner(&coord));
+  std::unique_ptr<MockQueueRunner> qr2 =
+      std::make_unique<MockQueueRunner>(&coord);
   qr2->StartCounting(&counter, 100);
   TF_ASSERT_OK(coord.RegisterRunner(std::move(qr2)));
 
@@ -170,11 +172,11 @@ TEST(CoordinatorTest, TestRequestStop) {
 TEST(CoordinatorTest, TestJoin) {
   Coordinator coord;
   int join_counter = 0;
-  std::unique_ptr<MockQueueRunner> qr1(
-      new MockQueueRunner(&coord, &join_counter));
+  std::unique_ptr<MockQueueRunner> qr1 =
+      std::make_unique<MockQueueRunner>(&coord, &join_counter);
   TF_ASSERT_OK(coord.RegisterRunner(std::move(qr1)));
-  std::unique_ptr<MockQueueRunner> qr2(
-      new MockQueueRunner(&coord, &join_counter));
+  std::unique_ptr<MockQueueRunner> qr2 =
+      std::make_unique<MockQueueRunner>(&coord, &join_counter);
   TF_ASSERT_OK(coord.RegisterRunner(std::move(qr2)));
 
   TF_EXPECT_OK(coord.RequestStop());
@@ -187,17 +189,20 @@ TEST(CoordinatorTest, StatusReporting) {
   absl::Notification start;
   BlockingCounter counter(3);
 
-  std::unique_ptr<MockQueueRunner> qr1(new MockQueueRunner(&coord));
+  std::unique_ptr<MockQueueRunner> qr1 =
+      std::make_unique<MockQueueRunner>(&coord);
   qr1->StartSettingStatus(absl::Status(absl::StatusCode::kCancelled, ""),
                           &counter, &start);
   TF_ASSERT_OK(coord.RegisterRunner(std::move(qr1)));
 
-  std::unique_ptr<MockQueueRunner> qr2(new MockQueueRunner(&coord));
+  std::unique_ptr<MockQueueRunner> qr2 =
+      std::make_unique<MockQueueRunner>(&coord);
   qr2->StartSettingStatus(absl::Status(absl::StatusCode::kInvalidArgument, ""),
                           &counter, &start);
   TF_ASSERT_OK(coord.RegisterRunner(std::move(qr2)));
 
-  std::unique_ptr<MockQueueRunner> qr3(new MockQueueRunner(&coord));
+  std::unique_ptr<MockQueueRunner> qr3 =
+      std::make_unique<MockQueueRunner>(&coord);
   qr3->StartSettingStatus(absl::Status(absl::StatusCode::kOutOfRange, ""),
                           &counter, &start);
   TF_ASSERT_OK(coord.RegisterRunner(std::move(qr3)));
@@ -210,7 +215,8 @@ TEST(CoordinatorTest, StatusReporting) {
 
 TEST(CoordinatorTest, JoinWithoutStop) {
   Coordinator coord;
-  std::unique_ptr<MockQueueRunner> qr(new MockQueueRunner(&coord));
+  std::unique_ptr<MockQueueRunner> qr =
+      std::make_unique<MockQueueRunner>(&coord);
   TF_ASSERT_OK(coord.RegisterRunner(std::move(qr)));
 
   EXPECT_EQ(coord.Join().code(), Code::FAILED_PRECONDITION);

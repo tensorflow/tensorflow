@@ -265,5 +265,50 @@ ENTRY fusion.2653 {
               2);
 }
 
+TEST_F(FusionConstantSinkingTest, SinkMustFuseConstantsInCustomFusion) {
+  std::string hlo_string = R"(
+HloModule jit_fused_op
+
+%fused_computation.clone (param_0.2: bf16[1024,1024], param_1.4: bf16[]) -> bf16[1024,1024] {
+  %param_0.2 = bf16[1024,1024]{1,0:T(8,128)(2,1)} parameter(0)
+  %param_1.4 = bf16[]{:T(256)} parameter(1)
+  %mul.7 = bf16[1024,1024]{1,0:T(8,128)(2,1)} broadcast(%param_1.4), dimensions={}, frontend_attributes={MUST_FUSE="1"}
+  ROOT %mul.6 = bf16[1024,1024]{1,0:T(8,128)(2,1)} multiply(%param_0.2, %mul.7), frontend_attributes={MUST_FUSE="1"}
+}
+
+%fused_computation.1 (param_0.1: bf16[1024,4096], param_1.3: s32[], param_2.2: bf16[1024,3072], param_3.1: bf16[1024,1024], param_4: bf16[]) -> bf16[1024,4096] {
+  %param_0.1 = bf16[1024,4096]{1,0:T(8,128)(2,1)} parameter(0)
+  %param_3.1 = bf16[1024,1024]{1,0:T(8,128)(2,1)} parameter(3)
+  %param_4 = bf16[]{:T(256)} parameter(4)
+  %broadcast_multiply_fusion.1 = bf16[1024,1024]{1,0:T(8,128)(2,1)} fusion(%param_3.1, %param_4), kind=kLoop, calls=%fused_computation.clone, frontend_attributes={MUST_FUSE="1"}
+  %param_2.2 = bf16[1024,3072]{1,0:T(8,128)(2,1)} parameter(2)
+  %quantized_matmul_kernel.1 = bf16[1024,3072]{1,0:T(8,128)(2,1)} custom-call(%broadcast_multiply_fusion.1, %param_2.2), custom_call_target="tpu_custom_call", operand_layout_constraints={bf16[1024,1024]{1,0}, bf16[1024,3072]{1,0}}, frontend_attributes={MUST_FUSE="1",kernel_metadata={}}, backend_config={"custom_call_config": {"body": "the body", "serialization_format": 1, "needs_layout_passes": true, "allow_input_fusion": [true,true,true]}}
+  %param_1.3 = s32[]{:T(128)} parameter(1)
+  ROOT %dynamic_update_slice.2 = bf16[1024,4096]{1,0:T(8,128)(2,1)} dynamic-update-slice(%param_0.1, %quantized_matmul_kernel.1, %param_1.3, %param_1.3), frontend_attributes={MUST_FUSE="1"}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"indices_config":{"index_known_bits":[{"zeroes":"4294967295","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"}],"is_index_aligned":[]},"used_scoped_memory_configs":[]}
+}
+
+ENTRY %main.3 (x.1: bf16[1024,1024], w.1: bf16[1024,3072], out.1: bf16[1024,4096]) -> bf16[1024,4096] {
+  %out.1 = bf16[1024,4096]{1,0:T(8,128)(2,1)} parameter(2), metadata={op_name="out"}
+  %constant.1 = s32[]{:T(128)} constant(0), frontend_attributes={MUST_FUSE="1"}
+  %w.1 = bf16[1024,3072]{1,0:T(8,128)(2,1)} parameter(1), metadata={op_name="w"}
+  %x.1 = bf16[1024,1024]{1,0:T(8,128)(2,1)} parameter(0), metadata={op_name="x"}
+  %constant.0 = bf16[]{:T(256)} constant(2), frontend_attributes={MUST_FUSE="1"}
+  ROOT %custom-call_dynamic-update-slice_fusion = bf16[1024,4096]{1,0:T(8,128)(2,1)} fusion(%out.1, %constant.1, %w.1, %x.1, %constant.0), kind=kCustom, calls=%fused_computation.1, frontend_attributes={MUST_FUSE="1"}
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  FusionConstantSinking constant_sinking;
+
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_sinking, module.get()));
+
+  EXPECT_TRUE(result);
+  EXPECT_THAT(
+      module->GetComputationWithName("fused_computation.1")->num_parameters(),
+      3);
+}
+
 }  // namespace
 }  // namespace xla

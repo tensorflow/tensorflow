@@ -285,6 +285,12 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
     result->push_back(current_output_index);
     for (INDEX_TYPE i = 1; i < index_size; ++i) {
       INDEX_TYPE next_value_rowid = value_rowids(i);
+      if (next_value_rowid < current_value_rowid) {
+        return errors::InvalidArgument(
+            "value_rowids must be monotonically "
+            "increasing, but got ",
+            next_value_rowid, " after ", current_value_rowid);
+      }
       if (next_value_rowid == current_value_rowid) {
         if (current_output_index >= 0) {
           ++current_output_column;
@@ -521,13 +527,19 @@ class RaggedTensorToTensorOp : public RaggedTensorToTensorBaseOp<INDEX_TYPE> {
     INDEX_TYPE src_start = 0;  // Start of contiguous region (in values)
     INDEX_TYPE dst_start = 0;  // Destination for contiguous region (in output)
     INDEX_TYPE dst_end = 0;    // Destination for contiguous region (in output)
-    for (int src_i = 0; src_i <= output_index_size; ++src_i) {
+    for (INDEX_TYPE src_i = 0; src_i <= output_index_size; ++src_i) {
       // dst_i is the destination where the value at src_i should be copied.
       INDEX_TYPE dst_i = src_i < output_index_size ? output_index[src_i] : -1;
 
       // If we're still in a contiguous region, then update dst_end go to the
       // next src_i.
       if (dst_i == dst_end) {
+        if (src_i < output_index_size) {
+          OP_REQUIRES(context,
+                      (dst_end + 1) * value_element_size <=
+                          output_tensor->NumElements(),
+                      errors::Internal("Destination index out of bounds."));
+        }
         ++dst_end;
         continue;
       }
@@ -551,6 +563,9 @@ class RaggedTensorToTensorOp : public RaggedTensorToTensorBaseOp<INDEX_TYPE> {
         dst_i = output_size / value_element_size;
       }
       if (dst_i > dst_end) {
+        OP_REQUIRES(context,
+                    dst_i * value_element_size <= output_tensor->NumElements(),
+                    errors::Internal("Destination index out of bounds."));
         if (default_value_tensor.NumElements() == 1) {
           std::fill(output_base + dst_end * value_element_size,
                     output_base + dst_i * value_element_size, *default_value);
@@ -572,6 +587,12 @@ class RaggedTensorToTensorOp : public RaggedTensorToTensorBaseOp<INDEX_TYPE> {
         dst_start = dst_end;
       } else {
         // src_i should be copied -- include it in the contiguous region.
+        if (src_i < output_index_size) {
+          OP_REQUIRES(context,
+                      (dst_end + 1) * value_element_size <=
+                          output_tensor->NumElements(),
+                      errors::Internal("Destination index out of bounds."));
+        }
         src_start = src_i;
         dst_start = dst_end;
         dst_end = dst_start + 1;

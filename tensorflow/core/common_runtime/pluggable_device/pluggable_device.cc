@@ -21,6 +21,7 @@ limitations under the License.
 #include <list>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -86,12 +87,13 @@ class PluggableDevice::StreamGroupFactory {
                                             TfDeviceId tf_device_id,
                                             int stream_group_within_device,
                                             se::StreamExecutor* executor,
-                                            const GPUOptions& options) {
+                                            int num_d2d_streams,
+                                            std::optional<int> priority) {
     mutex_lock guard(lock_);
     StreamGroup* group = &streams_[key_type(device_type, tf_device_id.value(),
                                             stream_group_within_device)];
     if (!group->compute) {
-      auto stream_or_status = executor->CreateStream();
+      auto stream_or_status = executor->CreateStream(priority);
       if (!stream_or_status.ok()) {
         LOG(ERROR) << "Failed to create stream for device "
                    << tf_device_id.value()
@@ -103,7 +105,7 @@ class PluggableDevice::StreamGroupFactory {
       VLOG(2) << "Created stream[" << stream_group_within_device
               << "] = " << group->compute;
 
-      stream_or_status = executor->CreateStream();
+      stream_or_status = executor->CreateStream(priority);
       if (!stream_or_status.ok()) {
         LOG(ERROR) << "Failed to create stream for device "
                    << tf_device_id.value()
@@ -115,7 +117,7 @@ class PluggableDevice::StreamGroupFactory {
       VLOG(2) << "Created host_to_device_stream[" << stream_group_within_device
               << "] = " << group->host_to_device;
 
-      stream_or_status = executor->CreateStream();
+      stream_or_status = executor->CreateStream(priority);
       if (!stream_or_status.ok()) {
         LOG(ERROR) << "Failed to create stream for device "
                    << tf_device_id.value()
@@ -127,8 +129,6 @@ class PluggableDevice::StreamGroupFactory {
       VLOG(2) << "Created device_to_host_stream[" << stream_group_within_device
               << "] = " << group->device_to_host;
 
-      int num_d2d_streams =
-          options.experimental().num_dev_to_dev_copy_streams();
       if (num_d2d_streams == 0) num_d2d_streams = 1;
       if (num_d2d_streams < 1 || num_d2d_streams > 4) {
         LOG(ERROR)
@@ -137,7 +137,7 @@ class PluggableDevice::StreamGroupFactory {
         num_d2d_streams = 1;
       }
       for (int i = 0; i < num_d2d_streams; ++i) {
-        stream_or_status = executor->CreateStream();
+        stream_or_status = executor->CreateStream(priority);
         if (!stream_or_status.ok()) {
           LOG(ERROR) << "Failed to create stream for device "
                      << tf_device_id.value()
@@ -152,6 +152,13 @@ class PluggableDevice::StreamGroupFactory {
       }
     }
     return group;
+  }
+
+  // Helper method for unit tests to reset the streams. Never use in production.
+  void TestOnlyReset() {
+    mutex_lock guard(lock_);
+    streams_.clear();
+    allocated_streams_.clear();
   }
 
   // Returns a reference to the StreamGroupFactory singleton. Note that this is
@@ -200,7 +207,12 @@ PluggableDevice::~PluggableDevice() {
   device_context_->Unref();
 }
 
-absl::Status PluggableDevice::Init(const SessionOptions& options) {
+void PluggableDevice::TestOnlyReset() {
+  StreamGroupFactory::Global().TestOnlyReset();
+}
+
+absl::Status PluggableDevice::Init(const SessionOptions& options,
+                                   std::optional<int> stream_priority) {
   se::Platform* platform = PluggableDeviceMachineManager(platform_name_);
   auto executor_status = DeviceIdUtil::ExecutorForTfDeviceId(
       DeviceType(device_type()), platform, tf_device_id_);
@@ -215,7 +227,10 @@ absl::Status PluggableDevice::Init(const SessionOptions& options) {
 
   stream_ = StreamGroupFactory::Global().GetOrCreate(
       device_type(), tf_device_id_, 0, executor_,
-      options.config.pluggable_device_options());
+      options.config.pluggable_device_options()
+          .experimental()
+          .num_dev_to_dev_copy_streams(),
+      stream_priority);
   device_context_ = new PluggableDeviceContext(
       0, stream_->compute, stream_->host_to_device, stream_->device_to_host,
       stream_->device_to_device);

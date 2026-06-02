@@ -190,9 +190,6 @@ class CpuRawBuffer : public CommonPjRtRawBufferImpl {
   bool is_mutable_;
 };
 
-absl::StatusOr<xla::Shape> MakeDefaultCpuBufferShape(xla::Shape shape,
-                                                     const xla::Layout* layout);
-
 }  // namespace xla
 
 #endif  // XLA_PJRT_CPU_RAW_BUFFER_H_

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/autotuner/autotuner.h"
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -25,6 +26,8 @@ limitations under the License.
 #include "google/protobuf/any.pb.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
@@ -68,8 +71,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-// Use one of existing gpu backend config protos as a test config.
-using TestConfig = gpu::CustomFusionConfig;
 using absl_testing::IsOk;
 using absl_testing::StatusIs;
 using ::testing::_;
@@ -81,21 +82,63 @@ using ::testing::UnorderedElementsAre;
 using ::tsl::proto_testing::EqualsProto;
 using ::tsl::proto_testing::ParseTextProtoOrDie;
 
+int64_t GetAlgorithmId(absl::string_view name) {
+  static const auto* kConfigMap =
+      new absl::flat_hash_map<absl::string_view, int64_t>({
+          {"best_config", 1},
+          {"another_config", 2},
+          {"only_config", 3},
+          {"invalid_config_1", 4},
+          {"invalid_config_2", 5},
+          {"test_config_1", 6},
+          {"non_compilable_config", 7},
+          {"test_config_failure", 7},
+          {"test_config_2", 8},
+          {"wrong_results_config", 9},
+          {"majority_slow", 10},
+          {"majority_fast", 11},
+          {"minority_fastest", 12},
+          {"trusted_config", 13},
+          {"untrusted_1", 14},
+          {"untrusted_2", 15},
+          {"untrusted_3", 16},
+          {"untrusted_first", 17},
+          {"trusted_second", 18},
+          {"trusted_a", 19},
+          {"trusted_b", 20},
+          {"untrusted_matches_b", 21},
+          {"untrusted_matches_none", 22},
+          {"test_config_3", 23},
+          {"default", 24},
+          {"config_1", 25},
+          {"config_2", 26},
+          {"trusted_fails", 27},
+          {"config_most_time_less_scratch", 28},
+          {"config_less_time_less_scratch", 29},
+          {"config_least_time_most_scratch", 30},
+          {"config_more_time_less_scratch", 31},
+      });
+  if (auto it = kConfigMap->find(name); it != kConfigMap->end()) {
+    return it->second;
+  }
+  LOG(FATAL) << "Unknown config name: " << name;
+  return 0;
+}
+
 MATCHER_P(ConfigMatcher, name, "") {
-  TestConfig test_config;
-  arg.UnpackTo(&test_config);
-  return test_config.name() == name;
+  if (!arg.has_gemm()) {
+    return false;
+  }
+  return arg.gemm().algorithm() == GetAlgorithmId(name);
 }
 
 MATCHER_P(InstructionMatcher, opcode, "") { return arg.opcode() == opcode; }
 MATCHER_P(InstrPtrMatcher, opcode, "") { return arg->opcode() == opcode; }
 
-std::unique_ptr<google::protobuf::Any> GetTestConfig(std::string name) {
-  TestConfig config;
-  config.set_name(name);
-  auto any = std::make_unique<google::protobuf::Any>();
-  any->PackFrom(config);
-  return any;
+std::unique_ptr<BackendConfig> GetTestConfig(absl::string_view name) {
+  auto config = std::make_unique<BackendConfig>();
+  config->mutable_gemm()->set_algorithm(GetAlgorithmId(name));
+  return config;
 }
 
 AutotuneConfig GetTestAutotuneConfig() {
@@ -108,6 +151,7 @@ class MockCodegenBackend : public CodegenBackend {
  public:
   MOCK_METHOD(absl::string_view, name, (), (const, override));
   MOCK_METHOD(autotuner::Backend, backend, (), (const, override));
+  MOCK_METHOD(std::string, version, (), (const, override));
   MOCK_METHOD(absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>,
               GetSupportedConfigs, (const HloInstruction& instr), (override));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<BackendConfig>>, GetDefaultConfig,
@@ -515,9 +559,7 @@ TEST_F(AutotunerTest, CacheHit) {
   auto cache_manager = std::make_unique<MockAutotunerCache>();
   AutotunerCacheInterface::Config config;
   config.codegen_backend = autotuner::Backend::UNSPECIFIED_BACKEND;
-  TestConfig test_config;
-  GetTestConfig("test_config_2")->UnpackTo(&test_config);
-  config.backend_config.PackFrom(test_config);
+  config.backend_config = *GetTestConfig("test_config_2");
 
   EXPECT_CALL(*cache_manager, Lookup(_)).WillOnce(Return(config));
 
@@ -923,7 +965,6 @@ TEST_F(AutotunerTest, AutotuneWithScratchBytesOptimization) {
 
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::move(backend_1));
-  config_.optimize_scratch_bytes = true;
   config_.scratch_bytes_window_size_us = 8;
   ASSERT_OK_AND_ASSIGN(
       auto autotuner,
@@ -1005,14 +1046,7 @@ TEST_F(AutotunerTest, DumpLogsToFile) {
   auto expected_logs = ParseTextProtoOrDie<AutotuningLogs>(R"pb(
     logs {
       results {
-        other {
-          name: "mock_backend"
-          config {
-            [type.googleapis.com/xla.gpu.CustomFusionConfig] {
-              name: "test_config_failure"
-            }
-          }
-        }
+        gemm { algorithm: 7 }
         run_time { seconds: 0 nanos: 0 }
         failure {
           kind: DISQUALIFIED
@@ -1020,26 +1054,12 @@ TEST_F(AutotunerTest, DumpLogsToFile) {
         }
       }
       results {
-        other {
-          name: "mock_backend"
-          config {
-            [type.googleapis.com/xla.gpu.CustomFusionConfig] {
-              name: "test_config_1"
-            }
-          }
-        }
+        gemm { algorithm: 6 }
         run_time { seconds: 2 nanos: 0 }
         scratch_bytes: 100
       }
       results {
-        other {
-          name: "mock_backend"
-          config {
-            [type.googleapis.com/xla.gpu.CustomFusionConfig] {
-              name: "test_config_2"
-            }
-          }
-        }
+        gemm { algorithm: 8 }
         run_time { seconds: 1 nanos: 0 }
       }
     }
@@ -1113,7 +1133,7 @@ TEST_F(AutotunerTest, SelectFirstConfig) {
 }
 
 TEST_F(AutotunerTest, ConfigsWithRegisterSpillingAreAllowed) {
-  config_.allow_reg_spills = true;
+  config_.allow_reg_spills_fn = [](const HloInstruction&) { return true; };
 
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.push_back(GetTestConfig("test_config_1"));
@@ -1149,7 +1169,7 @@ TEST_F(AutotunerTest, ConfigsWithRegisterSpillingAreAllowed) {
 }
 
 TEST_F(AutotunerTest, ConfigsWithRegisterSpillingAreFiltered) {
-  config_.allow_reg_spills = false;
+  config_.allow_reg_spills_fn = [](const HloInstruction&) { return false; };
 
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.push_back(GetTestConfig("test_config_1"));
@@ -1637,7 +1657,6 @@ TEST(AutotuneConfigTest, ToString) {
   config.check_buffers = true;
   config.relative_tolerance = 1e-4;
   config.crash_on_check_failure = false;
-  config.optimize_scratch_bytes = true;
   config.scratch_bytes_window_size_us = 10;
   config.expect_all_instructions_in_cache = false;
   config.dump_logs_to = "/tmp/log";
@@ -1645,14 +1664,13 @@ TEST(AutotuneConfigTest, ToString) {
   config.select_first_config = false;
   config.use_default_config = true;
   config.dump_hlos = false;
-  config.allow_reg_spills = false;
+  config.allow_reg_spills_fn = [](const HloInstruction&) { return false; };
 
   std::string expected =
       "{\n"
       "  \"check_buffers\": true,\n"
       "  \"relative_tolerance\": 0.000100,\n"
       "  \"crash_on_check_failure\": false,\n"
-      "  \"optimize_scratch_bytes\": true,\n"
       "  \"scratch_bytes_window_size_us\": 10,\n"
       "  \"expect_all_instructions_in_cache\": false,\n"
       "  \"dump_logs_to\": \"/tmp/log\",\n"
@@ -1660,7 +1678,7 @@ TEST(AutotuneConfigTest, ToString) {
       "  \"select_first_config\": false,\n"
       "  \"use_default_config\": true,\n"
       "  \"dump_hlos\": false,\n"
-      "  \"allow_reg_spills\": false\n"
+      "  \"allow_reg_spills\": dynamic\n"
       "}";
   EXPECT_EQ(config.ToString(), expected);
 }

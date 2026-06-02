@@ -5723,5 +5723,37 @@ TEST(NNAPIDelegate, DISABLED_CustomFloorVendorExtensionDynamic) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1.0, 2.0, 3.0, 4.0}));
 }
 
+TEST(NNMemory, CleansUpFileDescriptors) {
+  const NnApi* nnapi = NnApiImplementation();
+  EXPECT_NE(nnapi, nullptr);
+  if (nnapi->android_sdk_version < delegate::nnapi::kMinSdkVersionForNNAPI) {
+    GTEST_SKIP();
+  }
+  if (nnapi->ASharedMemory_create == nullptr ||
+      nnapi->ANeuralNetworksMemory_createFromFd == nullptr) {
+    GTEST_SKIP();
+  }
+
+  // Save the next available file descriptor.
+  // (This test assumes that there are no background threads running
+  // that will allocate / deallocate file descriptors.)
+  int expected_next_available_fd = dup(STDOUT_FILENO);
+  int ret = close(expected_next_available_fd);
+  EXPECT_EQ(ret, 0);
+
+  using tflite::delegate::nnapi::NNMemory;
+  std::unique_ptr<NNMemory> nn_memory = NNMemory::Create(nnapi, "foo", 42);
+  EXPECT_NE(nn_memory->get_handle(), nullptr);
+  EXPECT_NE(nn_memory->get_data_ptr(), nullptr);
+  EXPECT_EQ(nn_memory->get_byte_size(), 42);
+  nn_memory.reset();
+
+  // Verify that NNMemory didn't leak any file descriptors.
+  int next_available_fd = dup(STDOUT_FILENO);
+  EXPECT_EQ(next_available_fd, expected_next_available_fd);
+  ret = close(next_available_fd);
+  EXPECT_EQ(ret, 0);
+}
+
 }  // namespace
 }  // namespace tflite

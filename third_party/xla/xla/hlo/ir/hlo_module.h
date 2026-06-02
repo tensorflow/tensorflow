@@ -369,6 +369,14 @@ class HloModule {
   // of local IDs.
   void CanonicalizeComputationLocalIds();
 
+  // Reorders the computations in the module to match the post-order.
+  //
+  // Many analysis and optimization passes benefit from processing computations
+  // in post-order (callees before callers). Canonicalizing them in this order
+  // makes simple iteration over computations() yield a valid traversal order,
+  // improving determinism.
+  absl::Status ReorderComputationsToPostOrder();
+
   // Compute and return a topological sort of all computations in the module.
   // The sort is defined like so: if computation A has an instruction which
   // calls computation B, then A will appear after B in the sort.
@@ -542,11 +550,11 @@ class HloModule {
           computation_id_to_id_remap_map);
 
   // Convert an HloModule to a proto.
-  void ToProto(HloModuleProto* proto) const;
+  void ToProto(HloModuleProto* proto, bool intern_backend_config = false) const;
 
-  HloModuleProto ToProto() const {
+  HloModuleProto ToProto(bool intern_backend_config = false) const {
     HloModuleProto proto;
-    ToProto(&proto);
+    ToProto(&proto, intern_backend_config);
     return proto;
   }
 
@@ -570,11 +578,13 @@ class HloModule {
       bool preserve_instruction_ids = true);
 
   // Convert an HloModule to or from a proto that includes module configuration
-  void ToProtoWithConfig(HloModuleProtoWithConfig* proto) const;
+  void ToProtoWithConfig(HloModuleProtoWithConfig* proto,
+                         bool intern_backend_config = false) const;
 
-  HloModuleProtoWithConfig ToProtoWithConfig() const {
+  HloModuleProtoWithConfig ToProtoWithConfig(
+      bool intern_backend_config = false) const {
     HloModuleProtoWithConfig proto;
-    ToProtoWithConfig(&proto);
+    ToProtoWithConfig(&proto, intern_backend_config);
     return proto;
   }
   static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProtoWithConfig(

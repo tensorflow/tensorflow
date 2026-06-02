@@ -24,7 +24,7 @@ on:
 env:
   GOBIN: "/usr/local/bin"
   PYTHONPATH: "."
-  BANT_VERSION: "0.2.7"
+  BANT_VERSION: "0.2.8"
 
 jobs:
   dwyu:

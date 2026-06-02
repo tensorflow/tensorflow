@@ -856,7 +856,7 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
              direction == TransformDirection::kOutputToInput) {
     if (CodegenDecision decision = legacy_triton::IsTritonSupportedDynamicSlice(
             *Cast<HloDynamicSliceInstruction>(&hlo));
-        !decision.CanFuse()) {
+        decision.IsForbidden()) {
       // CodegenDecision is actually the same type as FusionDecision.
       return decision;
     }
@@ -1066,7 +1066,7 @@ GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
   }
   if (auto decision =
           legacy_triton::IsTritonSupportedInstruction(hlo, gpu_version);
-      !decision.CanFuse()) {
+      decision.IsForbidden()) {
     return decision;
   }
   DimOrdersAndReqsOrError result_or_error =

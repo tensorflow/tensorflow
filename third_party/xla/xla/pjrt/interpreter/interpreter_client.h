@@ -392,7 +392,8 @@ class InterpreterLoadedExecutable final : public PjRtLoadedExecutable {
  private:
   absl::StatusOr<Literal> Evaluate(
       const HloComputation& computation,
-      absl::Span<const Literal* const> arg_literals) const
+      absl::Span<const Literal* const> arg_literals,
+      const ExecuteOptions& options) const
       ABSL_LOCKS_EXCLUDED(hlo_evaluator_lock_);
 
   PjRtClient* client_ = nullptr;

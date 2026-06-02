@@ -15,7 +15,7 @@ add_computation {
   ROOT fusion = f32[] fusion(p0, p1), kind=kLoop, calls=fusion
 }
 
-triton_softmax_computation {
+nested_reduce {
   p0 = pred[10,128]{1,0} parameter(0)
   p0_f32 = f32[10,128]{1,0} convert(p0)
   zero = f32[] constant(0)
@@ -26,8 +26,8 @@ triton_softmax_computation {
 
 ENTRY main {
   p0 = pred[10,128]{1,0} parameter(0)
-  ROOT softmax = f32[10,128] fusion(p0), kind=kCustom,
-    calls=triton_softmax_computation,
+  ROOT triton_fusion = f32[10,128] fusion(p0), kind=kCustom,
+    calls=nested_reduce,
     backend_config={
       "fusion_backend_config":{
         "kind":"__triton",

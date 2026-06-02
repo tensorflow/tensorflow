@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/profiler/gpu/rocm_collector.h"
 #include "xla/backends/profiler/gpu/rocm_tracer.h"
 #include "xla/backends/profiler/gpu/rocm_tracer_utils.h"
@@ -112,7 +113,7 @@ absl::Status GpuTracer::DoStart() {
       trace_collector_options, start_walltime_ns, start_gputime_ns);
   rocm_trace_collector_->SetGpuAgents(rocm_tracer_->GpuAgents());
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       rocm_tracer_->Enable(tracer_options, rocm_trace_collector_.get()));
   return absl::OkStatus();
 }

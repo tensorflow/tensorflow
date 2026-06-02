@@ -480,6 +480,17 @@ enum ProfileGenerationStrategy {
   PROFILE_GENERATION_STRATEGY_LCM_MOE = 6;
 }
 
+// Represents a string payload that can be either stored inline (small)
+// or interned in the module's payloads list (large).
+message Payload {
+  oneof payload_source {
+    // Inlined value.
+    bytes value = 1;
+    // Reference to HloModuleProto.payloads.
+    int64 id = 2;
+  }
+}
+
 // Symbolization metadata for HLO Instructions.
 //
 // This metadata is used for debugging XLA code generation, as well as
@@ -701,7 +712,8 @@ message LiteralProto {
   bytes f8e5m2s = 19;
   bytes f8e8m0fnus = 33;
   repeated int64 sparse_indices = 14;
-  // Next = 34
+  repeated int32 dynamic_sizes = 34;
+  // Next = 35
 }
 
 message WindowDimension {
@@ -1425,9 +1437,28 @@ message WhileLoopBackendConfig {
   // and tuple index 0.
   KnownInductionVariable known_induction_variable = 3;
 
-  // Variables that should be treated as induction variables for dynamic memcpy
-  // analysis, even though they are not the primary induction variable.
-  repeated int64 dynamic_variable_tuple_indices = 4;
+  // Field 4 was `repeated int64 dynamic_variable_tuple_indices`; merged into
+  // `dynamic_variables` below.
+  reserved 4;
+  reserved "dynamic_variable_tuple_indices";
+
+  message DynamicVariable {
+    int64 tuple_index = 1;
+    // `init` and `step` describe the affine value of this variable as
+    // `init + iteration * step`. They are optional: a writer that knows a
+    // tuple position is a dynamic variable but does not (yet) know the affine
+    // parameters can leave them unset, in which case consumers should fall
+    // back to `known_init_step` (e.g. for FusionDynamicMemcpyRewriter offset
+    // computation).
+    optional int64 init = 2;
+    optional int64 step = 3;
+  }
+
+  // Tuple positions that should be treated as induction variables for dynamic
+  // memcpy analysis, even though they are not the primary induction variable.
+  // When `init`/`step` are set, they take precedence over `known_init_step`
+  // for offset computation.
+  repeated DynamicVariable dynamic_variables = 5;
 }
 
 // Specifies a pair of output/operand buffers that alias each other for

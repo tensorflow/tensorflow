@@ -25,6 +25,7 @@ limitations under the License.
 #include "cub/device/device_scan.cuh"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_bf16.h"  // IWYU pragma: keep
 #include "third_party/gpus/cuda/include/cuda_fp16.h"  // IWYU pragma: keep
@@ -136,7 +137,7 @@ absl::Status CubThreadScanDispatch(const T* d_in, T* d_out, int64_t row_length,
   constexpr int block_size = 256;
   auto* kernel = ThreadScanKernel<T, ScanOpT, block_size>;
   size_t shared_mem_bytes = block_size * row_length * sizeof(T);
-  TF_RETURN_IF_ERROR(ToStatus(cudaFuncSetAttribute(
+  RETURN_IF_ERROR(ToStatus(cudaFuncSetAttribute(
       reinterpret_cast<const void*>(kernel),
       cudaFuncAttributeMaxDynamicSharedMemorySize, shared_mem_bytes)));
   int grid_size = (column_length + block_size - 1) / block_size;
@@ -183,10 +184,10 @@ absl::Status CubScanDispatch(void* d_temp_storage, size_t* temp_bytes,
   // max threads per block, which should match ScanPolicyT::BLOCK_THREADS
   // because we use that as __launch_bounds__.
   cudaFunction_t function;
-  TF_RETURN_IF_ERROR(ToStatus(
+  RETURN_IF_ERROR(ToStatus(
       cudaGetFuncBySymbol(&function, reinterpret_cast<const void*>(kernel))));
   int block_size;
-  TF_RETURN_IF_ERROR(ToStatus(cuFuncGetAttribute(
+  RETURN_IF_ERROR(ToStatus(cuFuncGetAttribute(
       &block_size, CU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK, function)));
 
   cudaLaunchConfig_t config = {
@@ -273,9 +274,9 @@ absl::StatusOr<size_t> CubScanGetScratchSize(
     xla::PrimitiveType type, int64_t vector_length, int64_t row_length,
     int64_t column_length, CubScanKind kind, bool is_reverse) {
   size_t temp_bytes = 0;
-  TF_RETURN_IF_ERROR(CubScanDispatch(type, nullptr, &temp_bytes, nullptr,
-                                     nullptr, vector_length, row_length,
-                                     column_length, kind, is_reverse, nullptr));
+  RETURN_IF_ERROR(CubScanDispatch(type, nullptr, &temp_bytes, nullptr, nullptr,
+                                  vector_length, row_length, column_length,
+                                  kind, is_reverse, nullptr));
   return temp_bytes;
 }
 

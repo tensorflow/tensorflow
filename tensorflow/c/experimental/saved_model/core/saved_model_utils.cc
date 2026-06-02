@@ -333,8 +333,8 @@ absl::Status FlattenSignature(
   }
 }
 
-absl::optional<int> FindNodeAtPath(absl::string_view path,
-                                   const SavedObjectGraph& object_graph) {
+std::optional<int> FindNodeAtPath(absl::string_view path,
+                                  const SavedObjectGraph& object_graph) {
   const auto& nodes = object_graph.nodes();
   if (nodes.empty()) {
     return absl::nullopt;

@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/types/source_location.h"
 #endif  // PLATFORM_GOOGLE
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_operand_index.h"
@@ -109,6 +110,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
+    case HloOpcode::kMulhi:
     case HloOpcode::kNegate:
     case HloOpcode::kNot:
     case HloOpcode::kOptimizationBarrier:
@@ -705,7 +707,7 @@ absl::StatusOr<bool> InstructionFusion::RunImpl(
 
         if (fusion_instruction == nullptr) {
           FusionDecision fusion_decision = use_regular_fusion.Or(use_mof);
-          CHECK(!fusion_decision.CanFuse());
+          CHECK(fusion_decision.IsForbidden());
           if (dump_fusion) {
             VLOG(2) << "Not fusing " << operand->ToShortString() << "| into |"
                     << instruction->ToShortString() << "| as "
@@ -733,8 +735,8 @@ absl::StatusOr<bool> InstructionFusion::RunImpl(
           // Operand is now dead. Remove from queue.
           fusion_queue->RemoveInstruction(operand);
           // Remove from computation.
-          TF_RETURN_IF_ERROR(operand->SafelyDropAllControlDependencies());
-          TF_RETURN_IF_ERROR(computation->RemoveInstruction(operand));
+          RETURN_IF_ERROR(operand->SafelyDropAllControlDependencies());
+          RETURN_IF_ERROR(computation->RemoveInstruction(operand));
         }
 
         if (dump_fusion) {

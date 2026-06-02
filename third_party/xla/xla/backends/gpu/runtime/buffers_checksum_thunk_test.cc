@@ -26,6 +26,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
@@ -240,10 +241,10 @@ TEST_F(BuffersDebugChecksumThunkTest,
     BufferAllocations allocations;
   };
   auto setup_device = [this](int device_ordinal) -> absl::StatusOr<TestDevice> {
-    TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
-                        platform_->ExecutorForDevice(device_ordinal));
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
-                        executor->CreateStream());
+    ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+                     platform_->ExecutorForDevice(device_ordinal));
+    ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
+                     executor->CreateStream());
     auto allocator =
         std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
             executor);

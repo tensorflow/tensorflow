@@ -21,13 +21,8 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
-
-#if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "third_party/gpus/cudnn/cudnn.h"  // IWYU pragma: keep
-#include "third_party/gpus/cudnn/cudnn_version.h"
-#endif
 
 namespace xla::gpu {
 namespace {
@@ -47,9 +42,10 @@ class CudnnNormRewriterTest
 
  protected:
   void SetUp() override {
-#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8905)
-    GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
-#endif
+    if (device_description().runtime_version() <
+        stream_executor::SemanticVersion(12, 0, 0)) {
+      GTEST_SKIP() << "Layer norm kernels require CUDA 12.";
+    }
     if (!(GetCudaComputeCapability().major ==
           se::CudaComputeCapability::kAmpere) &&
         !(GetCudaComputeCapability().major ==

@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -108,8 +109,8 @@ XlaOp Any(XlaOp predicates) {
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     auto f = ConstantR0<bool>(builder, false);
     XlaComputation logical_or = CreateScalarOrComputation(PRED, builder);
-    TF_ASSIGN_OR_RETURN(const Shape& predicates_shape,
-                        builder->GetShape(predicates));
+    ASSIGN_OR_RETURN(const Shape& predicates_shape,
+                     builder->GetShape(predicates));
     std::vector<int64_t> all_dimensions(predicates_shape.dimensions().size());
     std::iota(all_dimensions.begin(), all_dimensions.end(), 0);
     return Reduce(predicates, f, logical_or, all_dimensions);
@@ -144,7 +145,7 @@ static XlaComputation CreateMinMaxComputation(XlaBuilder* outer_builder,
 XlaOp ArgMinMax(XlaOp input, PrimitiveType output_type, int axis, bool is_min) {
   XlaBuilder* builder = input.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
+    ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
     XlaOp value_init_value;
     if (is_min) {
       value_init_value = MaxValue(builder, input_shape.element_type());

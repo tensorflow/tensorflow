@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -79,9 +80,9 @@ class IfrtIrLoadedExecutableTest
   // Returns true if the test runs on TPU v4. This is a helper method called
   // from tests that require TPU v4.
   absl::StatusOr<bool> IsUsingTpuV4() {
-    TF_ASSIGN_OR_RETURN(DeviceListRef devices, PickDevices(1));
-    TF_ASSIGN_OR_RETURN(std::shared_ptr<Topology> topology,
-                        client_->GetTopologyForDevices(devices));
+    ASSIGN_OR_RETURN(DeviceListRef devices, PickDevices(1));
+    ASSIGN_OR_RETURN(std::shared_ptr<Topology> topology,
+                     client_->GetTopologyForDevices(devices));
     return topology->DeviceDescriptions().front()->device_kind() == "TPU v4";
   }
 
@@ -217,6 +218,48 @@ module {
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
       result.outputs[0], dtype, shard_shape, {{1, 2}, {3, 4}}, devices));
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, AliasingOutputs) {
+  std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                     [0,1]>
+module {
+  func.func @main(%arg0: !array) -> (!array, !array) attributes {ifrt.function} {
+    return %arg0, %arg0 : !array, !array
+  }
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                          LoadFromSource(source));
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  TF_ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_exec,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+
+  std::vector<int> data0 = {0, 1};
+  std::vector<int> data1 = {2, 3};
+  Shape shard_shape({1, 2});
+  DType dtype(DType::kS32);
+  TF_ASSERT_OK_AND_ASSIGN(
+      ArrayRef input, CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
+                                  shard_shape, dtype, devices));
+
+  TF_ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                          loaded_exec->Execute(absl::MakeSpan(&input, 1),
+                                               ExecuteOptionsWithFillStatus(),
+                                               /*devices=*/std::nullopt));
+
+  TF_ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 2);
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, shard_shape, {{0, 1}, {2, 3}}, devices));
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[1], dtype, shard_shape, {{0, 1}, {2, 3}}, devices));
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, CopyArrays) {
@@ -1912,10 +1955,12 @@ module @auto_layout {
   ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                        LoadFromSource(source));
   auto program = std::make_unique<IfrtIRProgram>(*mlir_module);
+  // TODO(b/510955190): Update compatibility requirement to WEEK_4 once the
+  // 4 weeks version is >= 0.4.0.
   ASSERT_OK_AND_ASSIGN(
       program,
       SerDeRoundTrip(std::move(program),
-                     xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
+                     xla::ifrt::Version::CompatibilityRequirement::NONE));
   ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(4));
   ASSERT_OK_AND_ASSIGN(
       auto ifrt_ir_executable,

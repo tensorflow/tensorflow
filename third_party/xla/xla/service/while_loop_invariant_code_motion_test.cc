@@ -824,5 +824,38 @@ ENTRY entry {
             "{\"while.5#*/add.1\"})");
 }
 
+TEST_F(WhileLoopInvariantCodeMotionTest, HoistsGetRngSeed) {
+  const char* const hlo_string = R"(
+HloModule licm_get_rng_seed_test
+
+body {
+  p_body = (u64[1], u64[1]) parameter(0)
+  gte0 = u64[1] get-tuple-element(p_body), index=0
+  rng_seed = u64[] custom-call(), custom_call_target="GetRngSeed"
+  bcast = u64[1] broadcast(rng_seed), dimensions={}
+  add = u64[1] add(gte0, bcast)
+  ROOT tuple = (u64[1], u64[1]) tuple(gte0, add)
+}
+
+cond {
+  p_cond = (u64[1], u64[1]) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  p_entry_0 = (u64[1], u64[1]) parameter(0)
+  ROOT while0 = (u64[1], u64[1]) while(p_entry_0), condition=cond, body=body
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  EXPECT_TRUE(simplified_loop);
+
+  EXPECT_THAT(m->entry_computation()->instructions(),
+              Contains(op::CustomCall()));
+}
+
 }  // namespace
 }  // namespace xla

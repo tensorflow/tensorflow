@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -64,9 +65,9 @@ absl::StatusOr<RelocatableModule>
 NvptxcompilerCompilationProvider::CompileToRelocatableModule(
     const CudaComputeCapability& cc, absl::string_view ptx,
     const CompilationOptions& options) const {
-  TF_ASSIGN_OR_RETURN(Assembly assembly,
-                      CompileHelper(cc, ptx, options,
-                                    /*compile_to_relocatable_module=*/true));
+  ASSIGN_OR_RETURN(Assembly assembly,
+                   CompileHelper(cc, ptx, options,
+                                 /*compile_to_relocatable_module=*/true));
   return RelocatableModule{std::move(assembly.cubin),
                            std::move(assembly.compilation_log),
                            std::move(assembly.module_stats)};

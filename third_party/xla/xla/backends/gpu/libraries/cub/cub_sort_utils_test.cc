@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/service/hlo.pb.h"
 
 namespace xla::gpu {
 namespace {

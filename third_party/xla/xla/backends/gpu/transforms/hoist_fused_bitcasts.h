@@ -16,14 +16,9 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_HOIST_FUSED_BITCASTS_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_HOIST_FUSED_BITCASTS_H_
 
-#include <cstdint>
-#include <utility>
-
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
@@ -47,19 +42,6 @@ class HoistFusedBitcasts : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 };
 
-namespace detail {
-
-// Returns the start indices of consecutive non-overlapping subsequences of `a`
-// and `b` with the same product (see `CommonFactors` from `util.h`) grouping
-// ranges having product of 1 with neighbors.
-//
-// For example, if a=[2, 5, 1, 3] and b=[1, 10, 3, 1], the result will be
-// {{0, 0}, {2, 2}, {4, 4}}, grouping [2,5] with [1,10] and [1,3] with [3,1].
-absl::InlinedVector<std::pair<int64_t, int64_t>, 8>
-CommonFactorsMergingTrivialRanges(absl::Span<const int64_t> a,
-                                  absl::Span<const int64_t> b);
-
-}  // namespace detail
 
 }  // namespace xla::gpu
 

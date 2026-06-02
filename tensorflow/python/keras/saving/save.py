@@ -27,7 +27,7 @@ from tensorflow.python.keras.utils.io_utils import path_to_string
 try:
   # Disable loading HDF5 plugins from a default path and prevent ZDI-CAN-25480.
   # Importing h5py prior to importing tensorflow will restore the old behavior.
-  os.environ['HDF5_PLUGIN_PATH'] = 'disable'
+  os.environ.setdefault('HDF5_PLUGIN_PATH', os.devnull)
   import h5py
 except ImportError:
   h5py = None

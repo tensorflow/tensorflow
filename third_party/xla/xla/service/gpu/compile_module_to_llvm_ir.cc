@@ -126,8 +126,7 @@ std::string Phase(absl::string_view phase_name, const HloModule* module) {
 }
 
 bool UseCache(const DebugOptions& options) {
-  return options.xla_gpu_enable_llvm_module_compilation_parallelism() &&
-         !options.xla_gpu_kernel_cache_file().empty();
+  return !options.xla_gpu_kernel_cache_file().empty();
 }
 
 }  // namespace
@@ -142,20 +141,16 @@ absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
                               cache_file_path);
   }
   if (tsl::Env::Default()->FileExists(resolved_path).ok()) {
-    std::string serialized;
-    TF_RETURN_IF_ERROR(
-        tsl::ReadFileToString(tsl::Env::Default(), resolved_path, &serialized));
     CompilationCacheProto proto;
-    if (!proto.ParseFromString(serialized)) {
-      return Internal("Failed to parse serialized CompilationCacheProto.");
-    }
+    RETURN_IF_ERROR(
+        tsl::ReadBinaryProto(tsl::Env::Default(), resolved_path, &proto));
     // Register all cached kernel names with the name uniquer to avoid
     // naming conflicts.
     for (const auto& [name, _] : proto.entries()) {
       TF_RET_CHECK(ir_emitter_context.GetSanitizedUniqueName(name) == name)
           << "Failed registering " << name << "in NameUniquer.";
     }
-    TF_RETURN_IF_ERROR(ir_emitter_context.kernel_cache().Load(proto));
+    RETURN_IF_ERROR(ir_emitter_context.kernel_cache().Load(proto));
   } else {
     VLOG(1) << "Compilation cache file does not exist: " << resolved_path;
   }
@@ -164,8 +159,7 @@ absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
 
 absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
     const HloModule* module, const GpuAliasInfo* alias_info,
-    BufferValue::SizeFunction buffer_size_bytes_function,
-    const GpuTopology& gpu_topology) {
+    BufferValue::SizeFunction buffer_size_bytes_function) {
   ScopedAnnotation annotation(Phase("XlaBufferAssignment", module));
 
   const DebugOptions& options = module->config().debug_options();
@@ -178,7 +172,7 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
 
   BufferAssigner::Options opts;
   opts.allocate_buffers_for_constants = true;
-  opts.colorer = CreateColorer(options, gpu_topology);
+  opts.colorer = CreateColorer(options);
   opts.temp_buffer_color = color;
   std::unique_ptr<HloOrdering> hlo_ordering;
   switch (options.xla_gpu_command_buffer_scheduling_mode()) {
@@ -193,7 +187,7 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
       hlo_ordering =
           std::make_unique<SequentialHloOrdering>(module->schedule());
   }
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(
           module, std::move(hlo_ordering),
@@ -224,10 +218,9 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
 
   CompileModuleResults results = InitializeResults(hlo_module);
 
-  ASSIGN_OR_RETURN(
-      results.buffer_assignment,
-      RunBufferAssignment(hlo_module, alias_info,
-                          std::move(buffer_size_bytes_function), gpu_topology));
+  ASSIGN_OR_RETURN(results.buffer_assignment,
+                   RunBufferAssignment(hlo_module, alias_info,
+                                       std::move(buffer_size_bytes_function)));
   ASSIGN_OR_RETURN(results.output_info,
                    GetOutputInfo(*hlo_module, *results.buffer_assignment));
 
@@ -245,7 +238,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   IrEmitterContext ir_emitter_context(
       hlo_module, results.buffer_assignment.get(),
       results.execution_stream_assignment.get(), platform_id->ToName(),
-      device_desc, borrowed_context->get(), llvm_context, /*emit_kernels=*/true,
+      device_desc, borrowed_context->get(), llvm_context,
       llvm::Triple(target_triple), data_layout, compiler,
       std::move(cpu_target_machine_options), mlir_context_pool);
   ThunkEmitter thunk_emitter(&ir_emitter_context, &llvm_options_lock);
@@ -255,7 +248,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   uint64_t start_usecs = tsl::Env::Default()->NowMicros();
 
   if (use_cache) {
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         LoadCache(ir_emitter_context, options.xla_gpu_kernel_cache_file()));
   }
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
@@ -264,12 +257,6 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   ASSIGN_OR_RETURN(auto sequential_thunk,
                    thunk_emitter.EmitHloEntryComputation(hlo_module));
   results.executable = std::move(sequential_thunk);
-
-  results.llvm_modules = thunk_emitter.ConsumeKernelModules();
-  if (results.llvm_modules.empty()) {
-    results.llvm_modules.push_back(
-        ir_emitter_context.CreateLLVMModule(hlo_module->name()));
-  }
 
   results.llvm_module_constants = thunk_emitter.ConsumeConstantsModule();
 

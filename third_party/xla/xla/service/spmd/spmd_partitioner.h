@@ -84,6 +84,10 @@ struct SpmdPartitionerOptions {
   // Whether the entry computations' signature could change after partitioning.
   bool allow_module_signature_change = false;
 
+  // Whether the entry computations' layout signature could change after
+  // partitioning.
+  bool allow_module_layout_signature_change = false;
+
   // If true, keep and reuse the all-gather results at the cost of memory
   // pressure. If false, insert all-gather repeatedly to increase memory
   // efficiency. Then ScheduleAwareCollectiveOpsCSE can be used to remove
@@ -412,7 +416,7 @@ class SpmdPartitioner : public HloModulePass {
   SpmdPartitionerOptions options_;
   SPMDCollectiveOpsCreator collective_ops_creator_;
   absl::flat_hash_set<absl::string_view> execution_threads_;
-  bool enable_rgv3_ = false;
+  bool enable_rgv3_ = true;
 };
 
 // Class describes partition state of the data represented by an HLO created
@@ -586,6 +590,11 @@ class PartitionedHlo {
 
   // Helper function to reshard from partial replicate using AllToAll.
   std::optional<PartitionedHlo> ReshardPartialReplicateWithAllToAll(
+      const HloSharding& target) const;
+
+  // Helper function to reshard when manual subgroup status differs between
+  // source and target.
+  std::optional<PartitionedHlo> TryReshardWithManualSubgroup(
       const HloSharding& target) const;
 
   // SPMD instruction.

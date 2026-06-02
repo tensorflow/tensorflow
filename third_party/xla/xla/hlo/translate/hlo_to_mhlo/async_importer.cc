@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -108,7 +109,7 @@ absl::StatusOr<mlir::Operation*> ImportStablehloAsyncStart(
                                         sync_operands, attributes);
   mlir::stablehlo::ReturnOp::create(async_builder, loc,
                                     sync_operation->getResults());
-  TF_RETURN_IF_ERROR(mutate_op(sync_operation));
+  RETURN_IF_ERROR(mutate_op(sync_operation));
   return async_start.getOperation();
 }
 
@@ -175,7 +176,7 @@ absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncStart(
       async_builder, loc, Untuple(result_types[1]), sync_operand, attributes);
   mlir::func::ReturnOp::create(async_builder, loc,
                                sync_operation->getResults());
-  TF_RETURN_IF_ERROR(mutate_op(sync_operation));
+  RETURN_IF_ERROR(mutate_op(sync_operation));
 
   function->setAttr(kExecutionThread, builder->getStringAttr("main"));
 

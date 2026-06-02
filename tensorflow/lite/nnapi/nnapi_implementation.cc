@@ -91,7 +91,7 @@ int ASharedMemory_create(const char* name, size_t size) {
 
   // Make sure new shared memory region is created: shm_open return an error if
   // shm object with given name already exists (O_CREAT | O_EXCL)
-  int fd = shm_open(name, O_RDWR | O_CREAT | O_EXCL, 0644);
+  int fd = shm_open(name, O_RDWR | O_CREAT | O_EXCL, 0600);
   if (fd < 0) {
     return fd;
   }

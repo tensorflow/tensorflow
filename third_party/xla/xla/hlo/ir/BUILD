@@ -63,6 +63,7 @@ cc_library(
     ],
     deps = [
         ":backend_config",
+        ":hlo_payload_deduplicator",
         ":hlo_sharding",
         ":mesh_and_axis",
         ":named_sharding",
@@ -207,6 +208,7 @@ cc_library(
         "//xla:array",
         "//xla:xla_data_proto_cc",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
@@ -228,6 +230,7 @@ cc_library(
         ":tile_assignment",
         "//xla:xla_data_proto_cc",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
@@ -254,6 +257,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
@@ -325,6 +329,7 @@ cc_library(
     deps = [
         "//xla:util",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -348,6 +353,28 @@ xla_cc_test(
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
+    name = "hlo_payload_deduplicator",
+    srcs = ["hlo_payload_deduplicator.cc"],
+    hdrs = ["hlo_payload_deduplicator.h"],
+    deps = [
+        ":backend_config",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_payload_deduplicator_test",
+    srcs = ["hlo_payload_deduplicator_test.cc"],
+    deps = [
+        ":backend_config",
+        ":hlo_payload_deduplicator",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

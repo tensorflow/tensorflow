@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/array.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
@@ -799,8 +800,8 @@ class LiteralBase {
       if (!proto.ParseFromString(shape_bytes)) {
         return InvalidArgument("Failed to parse shape protobuf");
       }
-      TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto));
-      TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
+      ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto));
+      RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
       return std::move(shape);
     }
 
@@ -1188,12 +1189,11 @@ class LiteralBase {
     template <typename Fn>
     absl::Status ForEachHelper(const Fn& func, const Piece& piece,
                                ShapeIndex* index) const {
-      TF_RETURN_IF_ERROR(func(*index, piece));
+      RETURN_IF_ERROR(func(*index, piece));
       if (auto* tuple_rep = piece.storage_.GetTupleRep()) {
         for (int64_t i = 0; i < tuple_rep->children.size(); ++i) {
           index->push_back(i);
-          TF_RETURN_IF_ERROR(
-              ForEachHelper(func, tuple_rep->children[i], index));
+          RETURN_IF_ERROR(ForEachHelper(func, tuple_rep->children[i], index));
           index->pop_back();
         }
       }
@@ -1219,11 +1219,11 @@ class LiteralBase {
     template <typename Fn>
     absl::Status ForEachMutableHelper(const Fn& func, Piece* piece,
                                       ShapeIndex* index) {
-      TF_RETURN_IF_ERROR(func(*index, piece));
+      RETURN_IF_ERROR(func(*index, piece));
       if (auto* tuple_rep = piece->storage_.GetTupleRep()) {
         for (int64_t i = 0; i < tuple_rep->children.size(); ++i) {
           index->push_back(i);
-          TF_RETURN_IF_ERROR(
+          RETURN_IF_ERROR(
               ForEachMutableHelper(func, &tuple_rep->children[i], index));
           index->pop_back();
         }
@@ -1767,7 +1767,7 @@ template <typename OutputIterator>
 absl::Status LiteralBase::SerializeWithShapeProto(const ShapeProto& shape_proto,
                                                   OutputIterator output) const {
   SerializeState<OutputIterator> state(shape_proto, output);
-  TF_RETURN_IF_ERROR(root_piece().ForEachSubpieceWithStatus(
+  RETURN_IF_ERROR(root_piece().ForEachSubpieceWithStatus(
       [&](const ShapeIndex& shape_index, const Piece& piece) -> absl::Status {
         const Shape& subshape = piece.subshape();
         if (subshape.IsTuple()) {
@@ -1798,9 +1798,9 @@ absl::StatusOr<Literal> Literal::Deserialize(InputIterator begin,
   if (!state.ReadElement(shape_size)) {
     return InvalidArgument("Failed to read shape size");
   }
-  TF_ASSIGN_OR_RETURN(Shape shape, state.ReadShape(shape_size));
+  ASSIGN_OR_RETURN(Shape shape, state.ReadShape(shape_size));
   Literal literal(shape);
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       literal.mutable_root_piece().ForEachMutableSubpieceWithStatus(
           [&](const ShapeIndex& shape_index, Piece* piece) -> absl::Status {
             const Shape& subshape = piece->subshape();

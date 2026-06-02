@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/base/no_destructor.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/btree_map.h"
@@ -61,9 +62,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/hash.h"
@@ -127,12 +126,38 @@ struct ProcessGpuCliques {
   // The latest state of every task.
   std::vector<coordination::TaskInfo> task_state_infos ABSL_GUARDED_BY(mu);
 };
+
+// Process-wide callbacks invoked for each newly created GPU clique.
+struct GpuCliqueCreatedCallbacks {
+  absl::Mutex mu;
+  std::vector<GpuCliqueCreatedCallback> callbacks ABSL_GUARDED_BY(mu);
+};
 }  // namespace
 
 // Returns process-local GPU cliques.
 static ProcessGpuCliques& GetProcessGpuCliques() {
   static absl::NoDestructor<ProcessGpuCliques> cliques;
   return *cliques;
+}
+
+// Returns process-wide GPU clique creation callbacks.
+static GpuCliqueCreatedCallbacks& GetGpuCliqueCreatedCallbacks() {
+  static absl::NoDestructor<GpuCliqueCreatedCallbacks> callbacks;
+  return *callbacks;
+}
+
+void RegisterOnGpuCliqueCreatedCallback(GpuCliqueCreatedCallback callback) {
+  GpuCliqueCreatedCallbacks& callbacks = GetGpuCliqueCreatedCallbacks();
+  absl::MutexLock lock(callbacks.mu);
+  callbacks.callbacks.push_back(std::move(callback));
+}
+
+static void NotifyOnGpuCliqueCreated(GpuClique& clique) {
+  GpuCliqueCreatedCallbacks& callbacks = GetGpuCliqueCreatedCallbacks();
+  absl::MutexLock lock(callbacks.mu);
+  for (GpuCliqueCreatedCallback& callback : callbacks.callbacks) {
+    callback(clique);
+  }
 }
 
 namespace internal {
@@ -458,12 +483,21 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
       return s;
     }
 
-    // Create a new clique with given clique key and communicators.
-    CliqueCacheKey cache_key(collectives, clique_key);
+    // Create a new clique before inserting it into the process state, so
+    // callbacks observe every constructed clique, including cliques that lose
+    // an insertion race and will be destroyed.
+    auto lockable_clique = std::make_shared<LockableGpuClique>(
+        clique_key, clique_ids, std::move(comms), peer_access_enabled,
+        std::move(cancel));
+
+    {  // Cannot contend: this LockableGpuClique is not published yet.
+      LockableGpuClique::Lock clique_lock = lockable_clique->Acquire();
+      NotifyOnGpuCliqueCreated(*clique_lock);
+    }
+
+    // Add the clique to the process state for a given cache key.
     auto emplaced = state.cliques.try_emplace(
-        cache_key, std::make_shared<LockableGpuClique>(
-                       clique_key, clique_ids, std::move(comms),
-                       peer_access_enabled, std::move(cancel)));
+        CliqueCacheKey(collectives, clique_key), std::move(lockable_clique));
 
     // We can have a race to create a clique for a given key, the winner
     // inserts it into a map and the looser destroys all communicators.
@@ -705,13 +739,21 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
       return s;
     }
 
-    // Create a new clique with given clique key and communicators.
-    CliqueCacheKey cache_key(collectives, clique_key);
+    // Create a new clique before inserting it into the process state, so
+    // callbacks observe every constructed clique, including cliques that lose
+    // an insertion race and will be destroyed.
+    auto lockable_clique = std::make_shared<LockableGpuClique>(
+        clique_key, std::nullopt, std::move(comms), peer_access_enabled,
+        std::move(cancel), /*parent=*/&**parent_clique);
+
+    {  // Cannot contend: this LockableGpuClique is not published yet.
+      LockableGpuClique::Lock clique_lock = lockable_clique->Acquire();
+      NotifyOnGpuCliqueCreated(*clique_lock);
+    }
+
+    // Add the clique to the process state for a given cache key.
     auto emplaced = state.cliques.try_emplace(
-        cache_key,
-        std::make_shared<LockableGpuClique>(
-            clique_key, std::nullopt, std::move(comms), peer_access_enabled,
-            std::move(cancel), /*parent=*/&**parent_clique));
+        CliqueCacheKey(collectives, clique_key), std::move(lockable_clique));
 
     // We can have a race to create a clique for a given key, the winner
     // inserts it into a map and the looser destroys all communicators.

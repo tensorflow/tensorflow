@@ -1,6 +1,5 @@
 load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
-load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 load("//tensorflow/core/platform:distribute.bzl", "distribute_py_strict_test")
@@ -1253,7 +1252,7 @@ tf_py_strict_test(
     srcs = ["multi_worker_test_base_test.py"],
     exec_properties = select({
         # copybara:uncomment_begin(google-only)
-        # "//tools/cpp:asan_build": {"mem": "16g"},
+        # "@bazel_tools//tools/cpp:asan_build": {"mem": "16g"},
         # copybara:uncomment_end
         "//conditions:default": None,
     }),

@@ -31,7 +31,7 @@ class TapeContext : public AbstractContext {
   void Release() override;
   TapeOperation* CreateOperation() override;
   absl::Status RegisterFunction(AbstractFunction*) override;
-  absl::Status RemoveFunction(const string& func) override;
+  absl::Status RemoveFunction(const std::string& func) override;
   // For LLVM style RTTI.
   static bool classof(const AbstractContext* ptr) {
     return ptr->getKind() == kTape;

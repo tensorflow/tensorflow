@@ -61,10 +61,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_blas_lt.h"
 #endif  // GOOGLE_CUDA
 #if TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#if TF_HIPBLASLT
 #include "xla/stream_executor/rocm/hip_blas_lt.h"
-#endif
 #endif
 
 namespace tensorflow {
@@ -472,7 +469,7 @@ struct LaunchBatchMatMul<CPUDevice, Scalar> {
   }
 };
 
-#if GOOGLE_CUDA || TF_HIPBLASLT
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace {
 // A dummy type to group matmul autotune results together.
@@ -486,9 +483,6 @@ typedef AutotuneSingleton<BlasLtMatmulAutoTuneGroup, BlasLtMatmulPlanParams,
     AutoTuneBatchMatmul;
 
 }  // namespace
-
-#endif  // GOOGLE_CUDA
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 class BlasScratchAllocator : public se::ScratchAllocator {
  public:
@@ -599,7 +593,6 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
     if (grad_y) {
       call_context = se::blas::CallContext::kBackpropInput2;
     }
-#if GOOGLE_CUDA || TF_HIPBLASLT
     static const bool use_autotune = MatmulAutotuneEnable();
     bool bCublasLtSupport = true;
 
@@ -740,7 +733,6 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
         }
       }
     } else {
-#endif  // GOOGLE_CUDA
       bool use_strided_batched =
           (!bcast.IsBroadcastingRequired() || is_full_broadcast) &&
           batch_size > 1;
@@ -854,9 +846,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
               ", k=", k, ", batch_size=", batch_size));
         }
       }
-#if GOOGLE_CUDA || TF_HIPBLASLT
     }
-#endif  // GOOGLE_CUDA
   }
 };
 

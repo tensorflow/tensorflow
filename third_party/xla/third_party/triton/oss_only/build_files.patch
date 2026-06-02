@@ -5,7 +5,7 @@ diff --git b/BUILD b/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/BUILD
-@@ -0,0 +1,1279 @@
+@@ -0,0 +1,1280 @@
 +# This package imports OpenAI's Triton (https://github.com/triton-lang/triton).
 +
 +# copybara:uncomment load("@rules:copybara.bzl", "copybara_config_test")
@@ -968,6 +968,7 @@ new file mode 100644
 +        ":TritonGPUTransforms",
 +        ":TritonToTritonGPUPasses",
 +        ":TritonTools",
++        ":TritonTransforms",
 +        ":triton_conversion_triton_to_triton_gpu_passes_inc_gen",
 +        "@llvm-project//mlir:ArithDialect",
 +        "@llvm-project//mlir:ControlFlowDialect",
@@ -1498,7 +1499,7 @@ diff --git b/python/test/BUILD b/python/test/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/python/test/BUILD
-@@ -0,0 +1,385 @@
+@@ -0,0 +1,386 @@
 +load("//third_party/py/pytest:pytest_defs.bzl", "pytest_multi_tests", "pytest_test")
 +
 +package(
@@ -1562,6 +1563,7 @@ new file mode 100644
 +    "gluon/test_consan.py",
 +    "gluon/test_core.py",  # Disabled because of b/486813140, could be PTXAS bug.
 +    "gluon/test_frontend.py",
++    "gluon/test_lowerings.py",
 +
 +    # valueless internally
 +    "backend/test_device_backend.py",  # we run backends differently in g3
@@ -2600,7 +2602,7 @@ diff --git b/third_party/amd/backend/BUILD b/third_party/amd/backend/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/amd/backend/BUILD
-@@ -0,0 +1,43 @@
+@@ -0,0 +1,46 @@
 +# load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +
 +package(
@@ -2638,7 +2640,10 @@ new file mode 100644
 +    includes = [
 +        "include",
 +    ],
-+    textual_hdrs = glob(["include/**/*.h"]),
++    textual_hdrs = glob([
++        "include/**/*.h",
++        "include/**/*.hpp",
++    ]),
 +)
 +
 +exports_files([

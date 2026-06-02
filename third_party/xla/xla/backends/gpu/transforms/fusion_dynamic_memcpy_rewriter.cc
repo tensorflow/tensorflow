@@ -15,16 +15,14 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/fusion_dynamic_memcpy_rewriter.h"
 
-#include <algorithm>
-#include <cstdint>
+#include <memory>
 #include <optional>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "xla/backends/gpu/codegen/copy.h"
+#include "xla/backends/gpu/transforms/dynamic_slice_fusion.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -33,49 +31,71 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/shape_util.h"
-#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
 
-const HloInstruction* SkipOptionalBitcast(const HloInstruction* instr) {
-  while (instr->opcode() == HloOpcode::kBitcast) {
-    instr = instr->operand(0);
+bool HasDynamicSliceConfig(const HloInstruction* instr) {
+  auto config = instr->backend_config<GpuBackendConfig>();
+  return config.ok() && config->has_dynamic_slice_config();
+}
+
+bool IsBitcastOrReshape(const HloInstruction* instr) {
+  return instr->opcode() == HloOpcode::kBitcast ||
+         instr->opcode() == HloOpcode::kReshape;
+}
+
+HloInstruction* WalkThroughBitcastsAndReshapes(HloInstruction* instr) {
+  while (IsBitcastOrReshape(instr)) {
+    instr = instr->mutable_operand(0);
   }
   return instr;
 }
 
-std::optional<DynamicSliceConfig> GetDynamicSliceConfig(
-    const HloInstruction* instr) {
-  auto config = instr->backend_config<GpuBackendConfig>();
-  if (!config.ok() || !config->has_dynamic_slice_config()) {
+struct MemcpyFusionCandidate {
+  HloInstruction* slicing;
+  HloInstruction* copy_operand;
+};
+
+// Detects DS/DUS-root memcpy fusions before they have a copy hero. `slicing` is
+// the DS/DUS instruction carrying DynamicSliceConfig, and `copy_operand` is the
+// value that would become the operand of the inserted copy hero.
+std::optional<MemcpyFusionCandidate> FindMemcpyFusionCandidate(
+    HloComputation* computation) {
+  HloInstruction* root = computation->root_instruction();
+  HloInstruction* ds_or_dus = WalkThroughBitcastsAndReshapes(root);
+
+  if (!HasDynamicSliceConfig(ds_or_dus)) {
     return std::nullopt;
   }
-  return config->dynamic_slice_config();
-}
 
-const HloInstruction* FindEnclosingWhileLoop(const HloInstruction* instr) {
-  const HloComputation* computation = instr->parent();
-  while (computation != nullptr) {
-    auto callers = computation->caller_instructions(HloOpcode::kWhile);
-    if (!callers.empty()) {
-      return callers.front();
-    }
-    auto all_callers = computation->caller_instructions();
-    if (all_callers.empty()) {
-      break;
-    }
-    computation = all_callers.front()->parent();
-  }
-  return nullptr;
-}
-
-int64_t GetSliceByteSize(const HloInstruction* ds_or_dus) {
   if (ds_or_dus->opcode() == HloOpcode::kDynamicSlice) {
-    return ShapeUtil::ByteSizeOf(ds_or_dus->shape());
+    return MemcpyFusionCandidate{ds_or_dus, root};
   }
-  return ShapeUtil::ByteSizeOf(ds_or_dus->operand(1)->shape());
+
+  if (ds_or_dus->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    return MemcpyFusionCandidate{ds_or_dus, ds_or_dus->mutable_operand(1)};
+  }
+
+  return std::nullopt;
+}
+
+bool CanRewriteAsDynamicSliceFusion(const MemcpyFusionCandidate& candidate) {
+  auto can_resolve_copy_hero_parameters = [](HloInstruction* operand) {
+    std::unique_ptr<HloInstruction> copy = HloInstruction::CreateUnary(
+        operand->shape(), HloOpcode::kCopy, operand);
+    return DynamicSliceFusion::ResolveParameters(copy.get()).ok();
+  };
+
+  if (!can_resolve_copy_hero_parameters(candidate.copy_operand)) {
+    return false;
+  }
+
+  if (candidate.slicing->opcode() == HloOpcode::kDynamicSlice) {
+    return true;
+  }
+
+  return DynamicSliceFusion::ResolveResults(candidate.copy_operand).ok();
 }
 
 }  // namespace
@@ -92,69 +112,47 @@ absl::StatusOr<bool> FusionDynamicMemcpyRewriter::RunImpl(
 
     HloFusionInstruction* fusion =
         Cast<HloFusionInstruction>(computation->FusionInstruction());
-    if (!DynamicMemcpyFusion::IsCandidateFusion(*fusion)) {
+
+    // Skip kCustom fusions: they already have a hero and were created by the
+    // dynamic slice fusion rewriter. Their DUS roots also carry
+    // DynamicSliceConfig but must not be re-processed.
+    if (fusion->fusion_kind() == HloInstruction::FusionKind::kCustom) {
       continue;
     }
 
-    const HloInstruction* root =
-        SkipOptionalBitcast(fusion->fused_expression_root());
-
-    std::optional<DynamicSliceConfig> ds_config = GetDynamicSliceConfig(root);
-    if (!ds_config.has_value()) {
+    std::optional<MemcpyFusionCandidate> candidate =
+        FindMemcpyFusionCandidate(computation);
+    if (!candidate.has_value() || !CanRewriteAsDynamicSliceFusion(*candidate)) {
       continue;
     }
 
     ASSIGN_OR_RETURN(auto backend_config,
                      fusion->backend_config<GpuBackendConfig>());
     auto* fusion_config = backend_config.mutable_fusion_backend_config();
-    fusion_config->set_kind(kDynamicMemcpyFusionKind);
-    auto* memcpy_config = fusion_config->mutable_dynamic_memcpy_config();
+    fusion_config->set_kind(kCustomFusionKind);
+    fusion_config->mutable_custom_fusion_config()->set_name(
+        kDynamicSliceFusionConfigName);
 
-    bool is_src = root->opcode() == HloOpcode::kDynamicSlice;
-    int64_t buffer_size = ShapeUtil::ByteSizeOf(root->operand(0)->shape());
-    int64_t max_offset = buffer_size - GetSliceByteSize(root);
-
-    if (ds_config->byte_stride() == 0) {
-      int64_t offset =
-          std::clamp(ds_config->byte_offset(), int64_t{0}, max_offset);
-      if (is_src) {
-        memcpy_config->add_src_offset_bytes(offset);
-        memcpy_config->add_dst_offset_bytes(0);
-      } else {
-        memcpy_config->add_src_offset_bytes(0);
-        memcpy_config->add_dst_offset_bytes(offset);
-      }
+    if (candidate->slicing->opcode() == HloOpcode::kDynamicSlice) {
+      // DS case: insert copy after the root (which is DS or bitcast of DS).
+      HloInstruction* copy =
+          computation->AddInstruction(HloInstruction::CreateUnary(
+              candidate->copy_operand->shape(), HloOpcode::kCopy,
+              candidate->copy_operand));
+      computation->set_root_instruction(copy);
     } else {
-      const HloInstruction* while_loop = FindEnclosingWhileLoop(fusion);
-      if (while_loop == nullptr) {
-        LOG(INFO) << "Cannot find enclosing while loop for " << fusion->name();
-        continue;
-      }
-
-      auto loop_config = while_loop->backend_config<WhileLoopBackendConfig>();
-      if (!loop_config.ok() || !loop_config->has_known_trip_count()) {
-        LOG(INFO) << "While loop has unknown trip count for " << fusion->name();
-        continue;
-      }
-
-      int64_t trip_count = loop_config->known_trip_count().n();
-      memcpy_config->set_depends_on_loop(true);
-
-      for (int64_t i = 0; i < trip_count; ++i) {
-        int64_t offset =
-            std::clamp(ds_config->byte_offset() + i * ds_config->byte_stride(),
-                       int64_t{0}, max_offset);
-        if (is_src) {
-          memcpy_config->add_src_offset_bytes(offset);
-          memcpy_config->add_dst_offset_bytes(0);
-        } else {
-          memcpy_config->add_src_offset_bytes(0);
-          memcpy_config->add_dst_offset_bytes(offset);
-        }
-      }
+      // DUS case: insert copy before the DUS update operand (operand 1).
+      HloInstruction* copy =
+          computation->AddInstruction(HloInstruction::CreateUnary(
+              candidate->copy_operand->shape(), HloOpcode::kCopy,
+              candidate->copy_operand));
+      RETURN_IF_ERROR(candidate->slicing->ReplaceOperandWith(1, copy));
     }
 
+    // Set backend config to target DynamicSliceFusionV2.
     RETURN_IF_ERROR(fusion->set_backend_config(backend_config));
+
+    fusion->set_fusion_kind(HloInstruction::FusionKind::kCustom);
     has_changed = true;
   }
 

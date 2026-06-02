@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "rocm/include/rocprofiler-sdk/agent.h"
 #include "rocm/include/rocprofiler-sdk/buffer.h"
 #include "rocm/include/rocprofiler-sdk/buffer_tracing.h"
@@ -439,44 +440,44 @@ absl::Status RocmTracer::InitProfiling(void* tool_data) {
     }
   }
 
-  TF_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+  RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
       rocprofiler_create_context(&utility_context_)));
 
   auto code_object_ops = std::vector<rocprofiler_tracing_operation_t>{
       ROCPROFILER_CODE_OBJECT_DEVICE_KERNEL_SYMBOL_REGISTER};
 
-  TF_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+  RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
       rocprofiler_configure_callback_tracing_service(
           utility_context_, ROCPROFILER_CALLBACK_TRACING_CODE_OBJECT,
           code_object_ops.data(), code_object_ops.size(), code_object_callback,
           nullptr)));
 
-  TF_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+  RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
       rocprofiler_start_context(utility_context_)));
   VLOG(1) << "rocprofiler start utilityContext";
 
   constexpr auto buffer_size_bytes = 100 * 4096;
   constexpr auto buffer_watermark_bytes = 40 * 4096;
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       RocprofilerStatusToAbslStatus(rocprofiler_create_context(&context_)));
 
-  TF_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(rocprofiler_create_buffer(
+  RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(rocprofiler_create_buffer(
       context_, buffer_size_bytes, buffer_watermark_bytes,
       ROCPROFILER_BUFFER_POLICY_LOSSLESS, tool_tracing_callback, tool_data,
       &buffer_)));
 
-  TF_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+  RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
       rocprofiler_configure_buffer_tracing_service(
           context_, ROCPROFILER_BUFFER_TRACING_HIP_RUNTIME_API, nullptr, 0,
           buffer_)));
 
-  TF_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+  RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
       rocprofiler_configure_buffer_tracing_service(
           context_, ROCPROFILER_BUFFER_TRACING_KERNEL_DISPATCH, nullptr, 0,
           buffer_)));
 
-  TF_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+  RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
       rocprofiler_configure_buffer_tracing_service(
           context_, ROCPROFILER_BUFFER_TRACING_MEMORY_COPY, nullptr, 0,
           buffer_)));
@@ -485,7 +486,7 @@ absl::Status RocmTracer::InitProfiling(void* tool_data) {
     const rocprofiler_tracing_operation_t* hip_ops = nullptr;
     size_t hip_ops_count = 0;
 
-    TF_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+    RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
         rocprofiler_configure_callback_tracing_service(
             context_, ROCPROFILER_CALLBACK_TRACING_HIP_RUNTIME_API, hip_ops,
             hip_ops_count,
@@ -506,13 +507,13 @@ absl::Status RocmTracer::InitProfiling(void* tool_data) {
   }
 
   auto client_thread = rocprofiler_callback_thread_t{};
-  TF_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+  RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
       rocprofiler_create_callback_thread(&client_thread)));
-  TF_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+  RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
       rocprofiler_assign_callback_thread(buffer_, client_thread)));
 
   int isValid = 0;
-  TF_RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
+  RETURN_IF_ERROR(RocprofilerStatusToAbslStatus(
       rocprofiler_context_is_valid(context_, &isValid)));
   if (isValid == 0) {
     context_.handle = 0;
@@ -539,12 +540,18 @@ void RocmTracer::toolFinalize(void* tool_data) {
   rocprofiler_stop_context(obj.utility_context_);
   obj.utility_context_.handle = 0;
   rocprofiler_stop_context(obj.context_);
-  // flush buffer here or in disable?
   obj.context_.handle = 0;
 }
 
 void RocmTracer::Disable() {
-  rocprofiler_status_t status = rocprofiler_flush_buffer(buffer_);
+  // Stop first so no new records enter the rocprofiler buffer; this pairs
+  // with the rocprofiler_start_context() in Enable().
+  rocprofiler_status_t status = rocprofiler_stop_context(context_);
+  if (status != ROCPROFILER_STATUS_SUCCESS) {
+    LOG(WARNING) << "rocprofiler_stop_context failed with error " << status;
+  }
+
+  status = rocprofiler_flush_buffer(buffer_);
   if (status != ROCPROFILER_STATUS_SUCCESS) {
     LOG(WARNING) << "rocprofiler_flush_buffer failed with error " << status;
   }

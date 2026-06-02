@@ -192,7 +192,7 @@ struct LaunchBatchBandedTriangularSolve {
       min_abs_pivot = matrix.row(in_x.dim_size(1) - 1).cwiseAbs().minCoeff();
     }
     OP_REQUIRES(context, min_abs_pivot > RealScalar(0),
-                errors::InvalidArgument("Input matrix is not invertible."));
+                absl::InvalidArgumentError("Input matrix is not invertible."));
 
     Shard(worker_threads.num_threads, worker_threads.workers, batch_size,
           cost_per_unit,
@@ -225,9 +225,9 @@ class BandedTriangularSolveOpCpu : public OpKernel {
     MatMulBCast bcast(in0.shape().dim_sizes(), in1.shape().dim_sizes());
     OP_REQUIRES(
         ctx, bcast.IsValid(),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "In[0] and In[1] must have compatible batch dimensions: ",
-            in0.shape().DebugString(), " vs. ", in1.shape().DebugString()));
+            in0.shape().DebugString(), " vs. ", in1.shape().DebugString())));
 
     TensorShape out_shape = bcast.output_batch_shape();
     auto batch_size = bcast.output_batch_size();
@@ -237,16 +237,16 @@ class BandedTriangularSolveOpCpu : public OpKernel {
     OP_REQUIRES(
         ctx,
         in0_reshaped.CopyFrom(in0, TensorShape({bcast.x_batch_size(), d0, d1})),
-        errors::Internal("Failed to reshape In[0] from ",
-                         in0.shape().DebugString()));
+        absl::InternalError(absl::StrCat("Failed to reshape In[0] from ",
+                                         in0.shape().DebugString())));
     auto d2 = in1.dim_size(in1.dims() - 2);
     auto d3 = in1.dim_size(in1.dims() - 1);
     Tensor in1_reshaped;
     OP_REQUIRES(
         ctx,
         in1_reshaped.CopyFrom(in1, TensorShape({bcast.y_batch_size(), d2, d3})),
-        errors::Internal("Failed to reshape In[1] from ",
-                         in1.shape().DebugString()));
+        absl::InternalError(absl::StrCat("Failed to reshape In[1] from ",
+                                         in1.shape().DebugString())));
     OP_REQUIRES(ctx, d1 == d2,
                 errors::InvalidArgument(
                     "In[0] mismatch In[1] shape: ", d1, " vs. ", d2, ": ",
@@ -260,10 +260,10 @@ class BandedTriangularSolveOpCpu : public OpKernel {
       return;
     }
     Tensor out_reshaped;
-    OP_REQUIRES(ctx,
-                out_reshaped.CopyFrom(*out, TensorShape({batch_size, d1, d3})),
-                errors::Internal("Failed to reshape output from ",
-                                 out->shape().DebugString()));
+    OP_REQUIRES(
+        ctx, out_reshaped.CopyFrom(*out, TensorShape({batch_size, d1, d3})),
+        absl::InternalError(absl::StrCat("Failed to reshape output from ",
+                                         out->shape().DebugString())));
     LaunchBatchBandedTriangularSolve<Scalar>::Launch(
         ctx, in0_reshaped, in1_reshaped, adjoint_, lower_, bcast,
         &out_reshaped);
@@ -272,21 +272,21 @@ class BandedTriangularSolveOpCpu : public OpKernel {
  private:
   void ValidateInputTensors(OpKernelContext* ctx, const Tensor& in0,
                             const Tensor& in1) {
-    OP_REQUIRES(
-        ctx, in0.dims() >= 2,
-        errors::InvalidArgument("In[0] ndims must be >= 2: ", in0.dims()));
+    OP_REQUIRES(ctx, in0.dims() >= 2,
+                absl::InvalidArgumentError(
+                    absl::StrCat("In[0] ndims must be >= 2: ", in0.dims())));
 
-    OP_REQUIRES(
-        ctx, in1.dims() >= 2,
-        errors::InvalidArgument("In[1] ndims must be >= 2: ", in1.dims()));
+    OP_REQUIRES(ctx, in1.dims() >= 2,
+                absl::InvalidArgumentError(
+                    absl::StrCat("In[1] ndims must be >= 2: ", in1.dims())));
 
     OP_REQUIRES(ctx, in0.NumElements() > 0,
-                errors::InvalidArgument("In[0] must not be an empty tensor: ",
-                                        in0.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "In[0] must not be an empty tensor: ", in0.DebugString())));
 
     OP_REQUIRES(ctx, in1.NumElements() > 0,
-                errors::InvalidArgument("In[1] must not be an empty tensor: ",
-                                        in1.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "In[1] must not be an empty tensor: ", in1.DebugString())));
   }
   bool lower_;
   bool adjoint_;

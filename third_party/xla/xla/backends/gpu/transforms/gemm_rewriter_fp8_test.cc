@@ -200,6 +200,34 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-2, 1e-2}));
 }
 
+TEST_F(ParameterizedFp8GemmRewriteTest, F8TransposeWithNonMajorBatchDim) {
+  RunAndFilecheckHloRewrite(
+      R"(
+e {
+  lhs = <<F8E5M2>>[2,2,16]{2,1,0} parameter(0)
+  rhs = <<F8E4M3>>[8,2,16]{0,2,1} parameter(1)
+  out = f32[2,2,8]{2,1,0} dot(lhs, rhs),
+      lhs_batch_dims={1}, lhs_contracting_dims={2},
+      rhs_batch_dims={1}, rhs_contracting_dims={2}
+})",
+      GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
+                   GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
+      R"(
+; CHECK:         [[LHS_PAD:%[^ ]+]] = <<F8E5M2>>[16,2,16]{{.*}} pad
+; CHECK:         [[RHS_TRANSPOSE:%[^ ]+]] = <<F8E4M3>>[2,8,16]{{.*}} transpose
+; CHECK:         [[RHS_BITCAST:%[^ ]+]] = <<F8E4M3>>[16,2,8]{{.*}} bitcast([[RHS_TRANSPOSE]])
+; CHECK:         [[RHS_PAD:%[^ ]+]] = <<F8E4M3>>[16,2,16]{{.*}} pad([[RHS_BITCAST]]
+; CHECK:         {{.*}} custom-call([[LHS_PAD]], [[RHS_PAD]]
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8"
+; CHECK:           backend_config={
+; CHECK-DAG:         "lhs_contracting_dimensions":["2"]
+; CHECK-DAG:         "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:         "lhs_batch_dimensions":["1"]
+; CHECK-DAG:         "rhs_batch_dimensions":["1"]
+; CHECK:           }
+      )");
+}
+
 TEST_F(ParameterizedFp8GemmRewriteTest, DoNotRewriteToF8OnPreAda) {
   if (!IsCuda()) {
     GTEST_SKIP() << "FP8 Rewrite pattern is different on ROCM-6.2 ";

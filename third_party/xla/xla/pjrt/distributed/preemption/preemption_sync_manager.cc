@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/coordination/coordination_service_agent.h"
 #include "xla/pjrt/distributed/preemption/preemption_notifier.h"
@@ -82,7 +83,7 @@ absl::Status PreemptionSyncManager::Initialize(
 absl::Status PreemptionSyncManager::Initialize(
     CoordinationServiceAgent* agent,
     const std::string& preemption_notifier_type) {
-  TF_ASSIGN_OR_RETURN(tsl::Env * env, agent->GetEnv());
+  ASSIGN_OR_RETURN(tsl::Env * env, agent->GetEnv());
   return Initialize(agent, PreemptionNotifier::CreatePreemptionNotifier(
                                preemption_notifier_type, env));
 }
@@ -95,7 +96,7 @@ absl::Status PreemptionSyncManager::Initialize(
     CHECK(!shut_down_);
   }
 
-  TF_ASSIGN_OR_RETURN(tsl::Env * env, agent->GetEnv());
+  ASSIGN_OR_RETURN(tsl::Env * env, agent->GetEnv());
   env_ = env;
   agent_ = agent;
   preemption_notifier_ = std::move(notifier);

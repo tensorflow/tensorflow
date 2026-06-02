@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/backends/autotuner/autotuner_cache.pb.h"
+#include "xla/backends/autotuner/backend_config.pb.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 
@@ -38,7 +38,7 @@ class AutotunerCacheInterface {
   // Serializable config. Will be changed to a proto in the future.
   struct Config {
     autotuner::Backend codegen_backend;
-    google::protobuf::Any backend_config;
+    autotuner::BackendConfig backend_config;
   };
 
   struct CacheStats {

@@ -91,6 +91,38 @@ static void BM_ReduceAddBF16(benchmark::State& state,
       RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
 }
 
+static void BM_ReduceAddF64(benchmark::State& state,
+                            HloBenchmarkOptions options) {
+  int64_t d0 = state.range(0);
+
+  absl::string_view hlo = R"(
+    HloModule reduce_add_f64_$d0
+
+    add {
+      p0 = f64[] parameter(0)
+      p1 = f64[] parameter(1)
+      ROOT add = f64[] add(p0, p1)
+    }
+
+    ENTRY e {
+      p0 = f64[1,2,1,$d0,256] parameter(0)
+      c0 = f64[] constant(0)
+      ROOT reduce = f64[1,2] reduce(p0, c0), dimensions={2,3,4}, to_apply=add
+    }
+  )";
+
+  std::minstd_rand0 engine;
+
+  auto shape = ShapeUtil::MakeShape(F64, {1, 2, 1, d0, 256});
+  auto p0_status =
+      LiteralUtil::CreateRandomLiteral<F64>(shape, &engine, 1.0, 0.1);
+  CHECK_OK(p0_status.status());
+
+  std::vector<const Literal*> args = {&p0_status.value()};
+  CHECK_OK(
+      RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
+}
+
 static void BM_SumOfSquaresF32(benchmark::State& state,
                                HloBenchmarkOptions options) {
   int64_t d0 = state.range(0);
@@ -236,6 +268,30 @@ static void BM_ReduceAddBF16OverDimension(benchmark::State& state,
       state, hlo, {}, {{"$reduce_dim", absl::StrCat(reduce_dim)}}, options));
 }
 
+static void BM_ReduceAddF64OverDimension(benchmark::State& state,
+                                         HloBenchmarkOptions options) {
+  int64_t reduce_dim = state.range(0);
+
+  constexpr absl::string_view hlo = R"(
+  HloModule reduce_add_f64_reduce_dim_$reduce_dim
+
+  add {
+    p0 = f64[] parameter(0)
+    p1 = f64[] parameter(1)
+    ROOT add = f64[] add(p0, p1)
+  }
+
+  ENTRY e {
+    p0 = f64[1024,1024] parameter(0)
+    c0 = f64[] constant(0)
+    ROOT reduce = f64[1024] reduce(p0, c0), dimensions={$reduce_dim}, to_apply=add
+  }
+)";
+
+  CHECK_OK(RunHloBenchmark(
+      state, hlo, {}, {{"$reduce_dim", absl::StrCat(reduce_dim)}}, options));
+}
+
 static void BM_ReduceWindowAddF32SkippingData(benchmark::State& state,
                                               HloBenchmarkOptions options) {
   constexpr absl::string_view hlo = R"(
@@ -291,6 +347,7 @@ static void BM_ReduceWindowAddF32OverlappingWindows(
 
 BENCHMARK_SIZES(BM_ReduceAddF32);
 BENCHMARK_SIZES(BM_ReduceAddBF16);
+BENCHMARK_SIZES(BM_ReduceAddF64);
 BENCHMARK_SIZES(BM_SumOfSquaresF32);
 
 XLA_CPU_BENCHMARK(BM_ReduceAddF32OverDimension)
@@ -300,6 +357,12 @@ XLA_CPU_BENCHMARK(BM_ReduceAddF32OverDimension)
     ->MeasureProcessCPUTime();
 
 XLA_CPU_BENCHMARK(BM_ReduceAddBF16OverDimension)
+    ->ArgName("reduce_dim")
+    ->Arg(0)
+    ->Arg(1)
+    ->MeasureProcessCPUTime();
+
+XLA_CPU_BENCHMARK(BM_ReduceAddF64OverDimension)
     ->ArgName("reduce_dim")
     ->Arg(0)
     ->Arg(1)

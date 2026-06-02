@@ -204,11 +204,6 @@ bool isManualComputation(mlir::func::CallOp callOp);
 bool isManualComputationOnName(mlir::StringRef funcName,
                                bool isInlineable = false);
 
-// Returns if `type` has a total size of one.
-//
-// In case `type` is not a static shaped type, returns false.
-bool isSizeOfOne(mlir::Type type);
-
 }  // namespace sdy
 }  // namespace xla
 

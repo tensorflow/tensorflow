@@ -70,6 +70,9 @@ class MemoryReservation {
     // allocation(s) and can be accessed from the device.
     DeviceAddressBase mapped_address() const;
 
+    // Returns true if this object does not own a mapping.
+    bool is_null() const { return reservation_ == nullptr; }
+
    private:
     // Unmaps the given range on the reservation and logs on failure.
     static void UnmapAndLogIfError(MemoryReservation* reservation,

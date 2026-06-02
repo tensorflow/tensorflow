@@ -127,6 +127,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@shardy//shardy/dialect/sdy/ir:dialect",
         "@shardy//shardy/dialect/sdy/transforms/common:sharding_walker",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 

@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util/split_proto/split_proto_reader.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {

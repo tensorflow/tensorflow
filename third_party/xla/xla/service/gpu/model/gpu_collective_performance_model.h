@@ -36,7 +36,7 @@ class GpuPerformanceWithCollectiveModel : public GpuPerformanceModelBase {
       const se::DeviceDescription& gpu_device_info);
 
  private:
-  static absl::Duration ComputeAllreduceTime(
+  static absl::Duration ComputeCollectiveTimeForRing(
       const HloInstruction& instr, const GpuHloCostAnalysis* cost_analysis,
       const se::DeviceDescription& gpu_device_info);
 };

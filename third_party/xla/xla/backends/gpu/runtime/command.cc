@@ -31,14 +31,7 @@ std::string CommandTypeString(CommandType type) {
 
 bool IsCollectiveCommand(CommandType type) {
   switch (type) {
-    case CommandType::kAllGatherCmd:
-    case CommandType::kAllToAllCmd:
-    case CommandType::kCollectiveBroadcastCmd:
     case CommandType::kCollectiveCmd:
-    case CommandType::kCollectivePermuteCmd:
-    case CommandType::kRaggedAllToAllCmd:
-    case CommandType::kRecvCmd:
-    case CommandType::kSendCmd:
       return true;
     default:
       return false;

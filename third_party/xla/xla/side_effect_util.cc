@@ -91,6 +91,8 @@ const char kFuseLimitAttr[] = "FUSE_LIMIT";
 
 const char kMaximalFuseAttr[] = "MAXIMAL_FUSE";
 
+const char kXlaCseSafeZeroOperandAttr[] = "_xla_cse_safe_zero_operand";
+
 const char kCollectivesGroupAttr[] = "_collectives_group";
 
 const char kNumSlotVariables[] = "_num_slot_variables";
@@ -102,5 +104,7 @@ const char kLogTag[] = "_xla_log_tag";
 const char kXlaTableNameAttr[] = "_xla_table_name";
 
 const char kCombinerKeyAttr[] = "combiner_key";
+
+const char kXlaLoopUnrollAttr[] = "_xla_loop_unroll_strategy";
 
 }  // namespace xla

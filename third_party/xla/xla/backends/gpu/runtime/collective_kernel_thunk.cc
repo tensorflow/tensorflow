@@ -86,8 +86,8 @@ absl::StatusOr<se::DeviceAddressHandle> AllocateMemory(
     absl::string_view debug_buffer_name) {
   se::DeviceAddressHandle local_buffer_alloc(
       executor,
-      executor->Allocate(
-          size, static_cast<int64_t>(stream_executor::MemorySpace::kP2P)));
+      executor->Allocate(size, static_cast<int64_t>(
+                                   stream_executor::MemorySpace::kCollective)));
   if (local_buffer_alloc.address().is_null()) {
     return absl::InternalError(absl::StrFormat(
         "Failed to allocate %s for all-reduce.", debug_buffer_name));
@@ -140,14 +140,14 @@ absl::Status CopyCollectiveMetadataToDevice(
       reinterpret_cast<void**>(param_to_peers_ptrs_buffer.opaque());
   metadata.param_to_multimem_addresses =
       reinterpret_cast<void**>(multimem_addresses_buffer.opaque());
-  TF_RETURN_IF_ERROR(stream->Memcpy(&destination, &metadata,
-                                    sizeof(CollectiveKernelMetadata)));
-  TF_RETURN_IF_ERROR(stream->Memcpy(&param_to_peers_ptrs_buffer,
-                                    param_to_peers_ptrs.data(),
-                                    param_to_peers_ptrs_size));
-  TF_RETURN_IF_ERROR(stream->Memcpy(&multimem_addresses_buffer,
-                                    multimem_addresses.data(),
-                                    multimem_addresses_size));
+  RETURN_IF_ERROR(stream->Memcpy(&destination, &metadata,
+                                 sizeof(CollectiveKernelMetadata)));
+  RETURN_IF_ERROR(stream->Memcpy(&param_to_peers_ptrs_buffer,
+                                 param_to_peers_ptrs.data(),
+                                 param_to_peers_ptrs_size));
+  RETURN_IF_ERROR(stream->Memcpy(&multimem_addresses_buffer,
+                                 multimem_addresses.data(),
+                                 multimem_addresses_size));
   return absl::OkStatus();
 }
 }  // namespace
@@ -165,10 +165,10 @@ absl::StatusOr<bool> CollectiveKernelThunk::IsSupported(
     VLOG(3) << "Collective kernel not supported: " << status.message();
     return false;
   }
-  TF_RETURN_IF_ERROR(status);
+  RETURN_IF_ERROR(status);
   for (const GlobalDeviceId& device : clique_key.devices()) {
-    TF_ASSIGN_OR_RETURN(const int peer_device_id,
-                        GetLocalDeviceId(device, collective_params));
+    ASSIGN_OR_RETURN(const int peer_device_id,
+                     GetLocalDeviceId(device, collective_params));
     if (!executor.CanEnablePeerAccessTo(peer_device_id)) {
       XLA_VLOG_DEVICE(3, executor.device_ordinal())
           << "Peer access is not supported with device " << peer_device_id;
@@ -182,11 +182,11 @@ absl::Status CollectiveKernelThunk::Prepare(const PrepareParams& params) {
   TF_RET_CHECK(params.collective_params &&
                params.collective_params->device_assn);
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetCollectiveGpuCliqueKey(*params.collective_params, collective_config_));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       bool use_collective_kernel,
       IsSupported(clique_key, *params.executor, *params.collective_params));
 
@@ -194,7 +194,7 @@ absl::Status CollectiveKernelThunk::Prepare(const PrepareParams& params) {
     return absl::OkStatus();
   }
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<std::vector<GlobalDeviceId>> device_groups,
       GetParticipatingDevicesGroups(*params.collective_params->device_assn,
                                     collective_config_.replica_groups,
@@ -204,7 +204,7 @@ absl::Status CollectiveKernelThunk::Prepare(const PrepareParams& params) {
   absl::c_for_each(device_groups, [](auto& group) { absl::c_sort(group); });
   absl::c_sort(device_groups);
 
-  TF_RETURN_IF_ERROR(params.collective_clique_requests->RequestClique(
+  RETURN_IF_ERROR(params.collective_clique_requests->RequestClique(
       clique_key, device_groups));
 
   absl::MutexLock lock(mutex_);
@@ -222,12 +222,12 @@ absl::Status CollectiveKernelThunk::Prepare(const PrepareParams& params) {
         kNumSignalFlags * sizeof(int32_t), kXlaAllocatedBufferAlignBytes);
     const int64_t kLocalBufferSize = xla::RoundUpTo<uint64_t>(
         buffers_[0].source_buffer.slice.size(), kXlaAllocatedBufferAlignBytes);
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         se::DeviceAddressHandle local_buffers_handle,
         AllocateMemory(params.executor, kLocalBufferSize * kNumBuffers,
                        "Local buffers"));
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         se::DeviceAddressHandle signal_buffers_handle,
         AllocateMemory(params.executor, kSignalBufferSize * kNumBuffers,
                        "Signal buffers"));
@@ -238,22 +238,20 @@ absl::Status CollectiveKernelThunk::Prepare(const PrepareParams& params) {
             std::move(local_buffers_handle), std::move(signal_buffers_handle),
             strategy, kLocalBufferSize, kSignalBufferSize}));
 
-    // If we decided to run kernel using multimem strategy we request multimem
-    // addresses for input and output buffers (both of them must be allocated
+    // If we decided to run kernel using multimem strategy we request symmetric
+    // memory for input and output buffers (both of them must be allocated
     // from the collective allocator at run time).
     auto& stream_memory = per_stream_memory_.at(params.executor);
     if (stream_memory->strategy == AllReduceStrategy::kMultimem) {
       XLA_VLOG_DEVICE(3, params.executor->device_ordinal())
           << "Request multicast address for source and destination buffers";
 
-      TF_RETURN_IF_ERROR(
-          params.collective_memory_requests->RequestMulticastAddress(
-              clique_key, params.buffer_allocations->GetDeviceAddress(
-                              buffers_[0].source_buffer.slice)));
-      TF_RETURN_IF_ERROR(
-          params.collective_memory_requests->RequestMulticastAddress(
-              clique_key, params.buffer_allocations->GetDeviceAddress(
-                              buffers_[0].destination_buffer.slice)));
+      RETURN_IF_ERROR(
+          params.collective_memory_requests->RequestSymmetricAllocation(
+              clique_key, buffers_[0].source_buffer.slice.index()));
+      RETURN_IF_ERROR(
+          params.collective_memory_requests->RequestSymmetricAllocation(
+              clique_key, buffers_[0].destination_buffer.slice.index()));
     }
   }
 
@@ -267,7 +265,7 @@ int64_t CollectiveKernelThunk::GetInputSizeBytes() const {
 }
 
 absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetCollectiveGpuCliqueKey(*params.collective_params, collective_config_));
   const std::optional<RankId> rank =
@@ -287,10 +285,10 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
       // the buffer. The kernel will take care of leaving the buffer in
       // correct state after use, so we don't need to zero out after
       // initialization.
-      TF_RETURN_IF_ERROR(params.stream->MemZero(
+      RETURN_IF_ERROR(params.stream->MemZero(
           memory_state->signal_buffers_handle.address_ptr(),
           memory_state->signal_buffers_handle.address().size()));
-      TF_RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
+      RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
       // Create a kernel for execution.
       std::unique_ptr<se::Kernel> kernel = nullptr;
       if (!kernel_name_.empty()) {
@@ -372,7 +370,7 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
       multimem_addresses.resize(kNumParameters + 1, nullptr);
       const size_t multimem_addresses_size_bytes =
           multimem_addresses.size() * sizeof(void*);
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           param_to_peers_ptrs,
           CollectParamToPeers(clique_key, state->rank, params.stream,
                               std::move(parameters)));
@@ -382,19 +380,25 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
           0);
 
       auto [src_mmem, src_mmem_offset] =
-          params.collective_memory->FindMultimemAddress(clique_key, src_addr);
+          params.collective_memory->FindSymmetricMemory(clique_key, src_addr);
       auto [dst_mmem, dst_mmem_offset] =
-          params.collective_memory->FindMultimemAddress(clique_key, dst_addr);
+          params.collective_memory->FindSymmetricMemory(clique_key, dst_addr);
       TF_RET_CHECK(src_mmem)
-          << "Multimem addresses for source buffer not found";
+          << "Symmetric memory addresses for source buffer not found";
       TF_RET_CHECK(dst_mmem)
           << "Multimem addresses for destination buffer not found";
 
+      ASSIGN_OR_RETURN(se::DeviceAddressBase src_multimem_address,
+                       src_mmem->multimem_addr());
+      ASSIGN_OR_RETURN(se::DeviceAddressBase dst_multimem_address,
+                       dst_mmem->multimem_addr());
       multimem_addresses[0] =
-          tsl::safe_reinterpret_cast<char*>(src_mmem) + src_mmem_offset;
+          tsl::safe_reinterpret_cast<char*>(src_multimem_address.opaque()) +
+          src_mmem_offset;
       // Kernel doesn't use multimem operations for signal buffers.
       multimem_addresses[2] =
-          tsl::safe_reinterpret_cast<char*>(dst_mmem) + dst_mmem_offset;
+          tsl::safe_reinterpret_cast<char*>(dst_multimem_address.opaque()) +
+          dst_mmem_offset;
 
       XLA_VLOG_DEVICE(3, params.executor->device_ordinal())
           << "Constructed device state {"
@@ -412,13 +416,13 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
       state->metadata = params.executor->Allocate(
           sizeof(CollectiveKernelMetadata) + param_to_peers_ptrs_size_bytes, 0);
 
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           param_to_peers_ptrs,
           CollectParamToPeers(clique_key, state->rank, params.stream,
                               std::move(parameters)));
     }
 
-    TF_RETURN_IF_ERROR(CopyCollectiveMetadataToDevice(
+    RETURN_IF_ERROR(CopyCollectiveMetadataToDevice(
         params.stream, metadata, param_to_peers_ptrs, multimem_addresses,
         state->metadata));
     return absl::OkStatus();
@@ -430,13 +434,10 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
 absl::Status CollectiveKernelThunk::ExecuteOnStream(
     const ExecuteParams& params) {
   se::Stream* stream = params.stream;
-  if (is_async_) {
-    stream = params.collective_params->async_streams.at(
-        static_cast<int64_t>(AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));
-  }
+  TF_RET_CHECK(stream != nullptr);
   const int device_ordinal = stream->parent()->device_ordinal();
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetCollectiveGpuCliqueKey(*params.collective_params, collective_config_));
   const int32_t num_devices = clique_key.num_devices();
@@ -494,16 +495,16 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
         << launch_dimensions_->num_blocks() << "x"
         << launch_dimensions_->num_threads_per_block()
         << "(block x threadsPerBlock)";
-    TF_ASSIGN_OR_RETURN(se::DeviceAddressBase remote_buffers,
-                        GetParameterDeviceMemoryBase(
-                            state->metadata, /*num_parameters=*/kNumParameters,
-                            /*num_devices=*/num_devices,
-                            /*parameter_index=*/0));
-    TF_ASSIGN_OR_RETURN(se::DeviceAddressBase signal_buffers,
-                        GetParameterDeviceMemoryBase(
-                            state->metadata, /*num_parameters=*/kNumParameters,
-                            /*num_devices=*/num_devices,
-                            /*parameter_index=*/1));
+    ASSIGN_OR_RETURN(se::DeviceAddressBase remote_buffers,
+                     GetParameterDeviceMemoryBase(
+                         state->metadata, /*num_parameters=*/kNumParameters,
+                         /*num_devices=*/num_devices,
+                         /*parameter_index=*/0));
+    ASSIGN_OR_RETURN(se::DeviceAddressBase signal_buffers,
+                     GetParameterDeviceMemoryBase(
+                         state->metadata, /*num_parameters=*/kNumParameters,
+                         /*num_devices=*/num_devices,
+                         /*parameter_index=*/1));
     std::array<se::KernelArg, kAllReduceArgsCount> kernel_args = {
         source_buffer,
         destination_buffer,

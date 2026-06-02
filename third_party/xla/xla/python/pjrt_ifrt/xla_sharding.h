@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/hash/hash.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/device_list.h"
@@ -106,7 +107,15 @@ class HloSharding final
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const;
 
-  xla::HloSharding xla_hlo_sharding_;
+  const xla::HloSharding xla_hlo_sharding_;
+
+  // Cached information for computing shard shapes.
+  // If `std::nullopt`, the shard shape is the same as the shape.
+  struct TileInformation {
+    int64_t tiled_data_rank;
+    absl::Span<const int64_t> dimensions;
+  };
+  std::optional<TileInformation> tile_information_;
 
   // Cached hash. 0 indicates the hash needs to be computed and cached.
   // May be written multiple times with the same non-zero value.

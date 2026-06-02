@@ -20,6 +20,8 @@ filegroup(
     name = "headers",
     srcs = [
         "tsl_status.h",
+        "tsl_status_helper.h",
+        "tsl_status_internal.h",
     ],
     visibility = internal_visibility(["//tensorflow:__subpackages__"]),
 )
@@ -29,7 +31,6 @@ filegroup(
     srcs = glob(
         [
             "*.cc",
-            "*.h",
         ],
         exclude = [
             "*test*",

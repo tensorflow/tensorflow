@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "rocm/include/rccl/rccl.h"
 #include "rocm/rocm_config.h"  // IWYU pragma: keep
 #include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
@@ -42,12 +43,6 @@ limitations under the License.
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/xla_data.pb.h"
-
-#if (TF_ROCM_VERSION >= 50200)
-#include "rocm/include/rccl/rccl.h"
-#else
-#include "rocm/include/rccl.h"
-#endif  // TF_ROCM_VERSION >= 50200
 
 namespace xla::gpu {
 
@@ -118,6 +113,9 @@ class RcclCommunicator : public GpuCommunicator {
 
   Future<> Recv(se::DeviceAddressBase recv_buffer, PrimitiveType dtype,
                 size_t count, RankId peer, const Executor& executor) final;
+
+  absl::StatusOr<std::unique_ptr<SymmetricMemory>> CreateSymmetricMemory(
+      se::DeviceAddressBase addr) final;
 
   std::string ToString() const final;
 

@@ -315,6 +315,14 @@ HloFusionAnalysis HloFusionAnalysis::Create(
       &device_info);
 }
 
+const Shape& HloFusionAnalysis::first_result_shape() const {
+  const Shape* shape = &fusion_root(0).shape();
+  while (shape->IsTuple()) {
+    shape = &shape->tuple_shapes(0);
+  }
+  return *shape;
+}
+
 const HloInstruction* HloFusionAnalysis::FindHeroReduction() const {
   if (emitter_fusion_kind_ != EmitterFusionKind::kReduction) {
     return nullptr;

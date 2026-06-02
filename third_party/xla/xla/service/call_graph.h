@@ -29,13 +29,14 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/tsl/platform/statusor.h"
+#include "tsl/platform/logging.h"
 
 namespace xla {
 
@@ -176,7 +177,6 @@ class CallGraph {
   using VisitorFunction = absl::FunctionRef<absl::Status(const CallGraphNode&)>;
   using ChangedVisitorFunction =
       absl::FunctionRef<absl::StatusOr<bool>(const CallGraphNode&)>;
-  using NodeIndex = int32_t;
 
   // Builds and returns a call graph for the given HLO module. If a non-empty
   // execution_threads is provided, only computations that are in
@@ -246,9 +246,8 @@ class CallGraph {
   // If called with %a and %b, this function would return (%x, %y). %x is an
   // ancestor of %a, and %y is an ancestor of %b, and %x and %y are in the same
   // computation.
-  std::pair<const HloInstruction*, const HloInstruction*>
-  NearestAncestorsInSameComputation(const HloInstruction* a,
-                                    const HloInstruction* b) const;
+  std::pair<HloInstruction*, HloInstruction*> NearestAncestorsInSameComputation(
+      HloInstruction* a, HloInstruction* b) const;
 
   // Given a set of instructions within a computation, returns nearest common
   // ancestors as Hlo instructions (There could be multiple nearest common
@@ -375,10 +374,9 @@ class CallGraph {
   // Vector of all nodes in the call graph.
   std::vector<CallGraphNode> nodes_;
 
-  static constexpr NodeIndex kComputationIdAbsent = -1;
-  // Vector used as a map from HLO computation unique id to the index of the
-  // corresponding call graph node in nodes_.
-  std::vector<NodeIndex> node_indices_;
+  // Map from HLO computation to the index of the corresponding call graph node
+  // in nodes_.
+  absl::flat_hash_map<const HloComputation*, int64_t> node_indices_;
 
   // The execution threads that the call graph is built for.
   absl::flat_hash_set<absl::string_view> execution_threads_;

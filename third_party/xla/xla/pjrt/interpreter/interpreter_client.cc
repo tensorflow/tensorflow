@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/interpreter/interpreter_client.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <tuple>
@@ -29,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -160,8 +162,8 @@ ExtractInterpreterInputLiteralsFromBuffers(
       std::make_unique<Literal>(ShapeUtil::MakeTupleShape(shapes),
                                 /*allocate_arrays=*/false);
   for (int i = 0; i < literals.size(); ++i) {
-    TF_RETURN_IF_ERROR(tupled_arg_literal->MoveFrom(std::move(*literals[i]),
-                                                    /*dest_shape_index=*/{i}));
+    RETURN_IF_ERROR(tupled_arg_literal->MoveFrom(std::move(*literals[i]),
+                                                 /*dest_shape_index=*/{i}));
   }
 
   // Replace arg literals with the tupled literal.
@@ -208,7 +210,7 @@ InterpreterLoadedExecutable::Execute(
   }
 
   std::optional<Future<>> returned_future;
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<PjRtBuffer>> replica_result,
       ExecuteSharded(argument_handles[0], addressable_devices_[0], options,
                      returned_future, returned_futures.has_value()));
@@ -256,10 +258,10 @@ InterpreterLoadedExecutable::ExecuteSharded(
   // Extract the literals from the arguments.
   const HloComputation& computation =
       *hlo_module_to_execute->entry_computation();
-  TF_ASSIGN_OR_RETURN(const auto literals_and_storage,
-                      ExtractInterpreterInputLiteralsFromBuffers(
-                          argument_handles, computation,
-                          compile_options_.parameter_is_tupled_arguments));
+  ASSIGN_OR_RETURN(const auto literals_and_storage,
+                   ExtractInterpreterInputLiteralsFromBuffers(
+                       argument_handles, computation,
+                       compile_options_.parameter_is_tupled_arguments));
   const absl::Span<const Literal* const> literals =
       std::get<0>(literals_and_storage);
   if (computation.num_parameters() != literals.size()) {
@@ -280,15 +282,16 @@ InterpreterLoadedExecutable::ExecuteSharded(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(Literal result_literal, Evaluate(computation, literals));
+  ASSIGN_OR_RETURN(Literal result_literal,
+                   Evaluate(computation, literals, options));
   // Shrink the generated dynamic shape into static shape.
   result_literal = result_literal.ToStatic();
   if (fill_future) {
     returned_future = Future<>(absl::OkStatus());
   }
 
-  TF_ASSIGN_OR_RETURN(PjRtMemorySpace * memory_space,
-                      device->default_memory_space());
+  ASSIGN_OR_RETURN(PjRtMemorySpace * memory_space,
+                   device->default_memory_space());
 
   // Transform the result literal back into a one or more
   // InterpreterLiteralWrapperBuffer.
@@ -322,7 +325,8 @@ InterpreterLoadedExecutable::ExecutePortable(
 
 absl::StatusOr<Literal> InterpreterLoadedExecutable::Evaluate(
     const HloComputation& computation,
-    absl::Span<const Literal* const> arg_literals) const {
+    absl::Span<const Literal* const> arg_literals,
+    const ExecuteOptions& /*options*/) const {
   absl::MutexLock lock(hlo_evaluator_lock_);
   hlo_evaluator_->ResetVisitStates();
   return hlo_evaluator_->Evaluate(computation, arg_literals);
@@ -362,7 +366,7 @@ InterpreterClient::CompileAndLoad(const XlaComputation& computation,
   const bool allow_auto_layout =
       build_options.has_debug_options() &&
       build_options.debug_options().xla_pjrt_allow_auto_layout_in_hlo();
-  TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
+  RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
       computation,
       [allow_auto_layout](Shape shape) -> absl::StatusOr<Shape> {
         if (allow_auto_layout && !shape.has_layout()) {
@@ -381,7 +385,7 @@ InterpreterClient::CompileAndLoad(MaybeOwningMlirModule module,
                                   CompileOptions options) {
   XlaComputation xla_computation;
   ExecutableBuildOptions& exec_build_options = options.executable_build_options;
-  TF_RETURN_IF_ERROR(MlirToXlaComputation(
+  RETURN_IF_ERROR(MlirToXlaComputation(
       module.mlir_module(), xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
       /*return_tuple=*/false, &exec_build_options));
@@ -392,14 +396,14 @@ InterpreterClient::CompileAndLoad(MaybeOwningMlirModule module,
     return CompileAndLoad(xla_computation, options);
   }
 
-  TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
-                      GetArgLayoutModes(module.mlir_module()));
-  TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> out_layout_modes,
-                      GetOutputLayoutModes(module.mlir_module()));
-  TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> arg_memory_spaces,
-                      GetArgMemoryKinds(module.mlir_module()));
-  TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
-                      GetOutputMemoryKinds(module.mlir_module()));
+  ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
+                   GetArgLayoutModes(module.mlir_module()));
+  ASSIGN_OR_RETURN(std::vector<LayoutMode> out_layout_modes,
+                   GetOutputLayoutModes(module.mlir_module()));
+  ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> arg_memory_spaces,
+                   GetArgMemoryKinds(module.mlir_module()));
+  ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
+                   GetOutputMemoryKinds(module.mlir_module()));
 
   // MLIR module no longer required - release any memory if owned.
   module = MaybeOwningMlirModule();
@@ -418,7 +422,7 @@ InterpreterClient::CompileAndLoad(MaybeOwningMlirModule module,
   };
 
   // This call will update result_layout in options.executable_build_options.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       auto arg_layouts_and_pointers,
       LayoutModesToXla(xla_computation, arg_layout_modes, out_layout_modes,
                        arg_memory_spaces, out_memory_spaces,
@@ -457,14 +461,13 @@ InterpreterClient::CompileInternal(
     LayoutCanonicalizationCallback layout_canonicalization_callback,
     CompileOptions options) {
   CompileOptions input_options = options;
-  TF_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
+  RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
   if (layout_canonicalization_callback != nullptr) {
     options.executable_build_options.set_layout_canonicalization_callback(
         layout_canonicalization_callback);
   }
 
-  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
-                      computation.GetProgramShape());
+  ASSIGN_OR_RETURN(ProgramShape program_shape, computation.GetProgramShape());
 
   const ExecutableBuildOptions& build_options =
       options.executable_build_options;
@@ -472,14 +475,14 @@ InterpreterClient::CompileInternal(
       CreateExecutionOptions(build_options, &program_shape);
 
   // Unoptimized HloModuleConfig.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> hlo_module_config,
       CreateModuleConfig(program_shape, argument_shapes, &execution_options,
                          execution_options.num_replicas(),
                          /*num_threads=*/std::nullopt,
                          /*aot_options=*/nullptr));
   // Unoptimized HloModule.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,
       HloModule::CreateFromProto(computation.proto(), *hlo_module_config));
 
@@ -489,7 +492,7 @@ InterpreterClient::CompileInternal(
   }
 
   if (!build_options.run_backend_only()) {
-    TF_ASSIGN_OR_RETURN(hlo_module, RunHloPasses(std::move(hlo_module)));
+    ASSIGN_OR_RETURN(hlo_module, RunHloPasses(std::move(hlo_module)));
   }
 
   return RunBackend(std::move(hlo_module), options);
@@ -515,14 +518,14 @@ absl::StatusOr<std::unique_ptr<HloModule>> InterpreterClient::RunHloPasses(
       hlo_module->mutable_entry_computation_layout());
   pipeline.AddPass<ConvolutionTypeCanonicalizer>();
 
-  TF_RETURN_IF_ERROR(pipeline.Run(hlo_module.get()).status());
+  RETURN_IF_ERROR(pipeline.Run(hlo_module.get()).status());
   return hlo_module;
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 InterpreterClient::RunBackend(std::unique_ptr<HloModule> hlo_module,
                               CompileOptions& options) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       DynamicDimensionInference dynamic_dimension_inference,
       DynamicDimensionInference::Run(
           hlo_module.get(),
@@ -539,7 +542,7 @@ InterpreterClient::RunBackend(std::unique_ptr<HloModule> hlo_module,
       addressable_device_logical_ids;
   std::vector<PjRtDevice*> addressable_devices;
   int num_replicas = 0, num_partitions = 0;
-  TF_RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
+  RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
       options.compile_portable_executable, &options.executable_build_options,
       [this](int num_replicas, int num_partitions) {
         return GetDefaultDeviceAssignment(num_replicas, num_partitions);

@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -73,6 +74,10 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
   // Returns the number of warps for the given tiled HLO computation.
   static int64_t EstimateNumWarps(
       const TiledHloComputation& tiled_hlo_computation);
+
+  // Returns the number of warps for the given tiled HLO computation.
+  static int64_t EstimateNumWarps(
+      const experimental::TiledHloComputation& tiled_hlo_computation);
 
   absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputation(
       const HloFusionAdaptor& fusion_adaptor,

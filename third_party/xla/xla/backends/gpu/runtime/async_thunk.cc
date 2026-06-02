@@ -20,8 +20,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 
-#include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -118,7 +118,7 @@ absl::Status AsyncStartThunk::TransformNested(Transformer callback) {
 }
 
 AsyncExecutionId AsyncStartThunk::async_execution_id() const {
-  return absl::bit_cast<AsyncExecutionId>(async_execution_.get());
+  return AsyncExecutionId(thunk_info().thunk_id.value());
 }
 
 std::shared_ptr<AsyncExecution> AsyncStartThunk::async_execution() const {
@@ -157,7 +157,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> AsyncDoneThunk::Record(
 }
 
 AsyncExecutionId AsyncDoneThunk::async_execution_id() const {
-  return absl::bit_cast<AsyncExecutionId>(async_execution_.get());
+  return AsyncExecutionId(async_execution_->start_thunk_id().value());
 }
 
 std::shared_ptr<AsyncExecution> AsyncDoneThunk::async_execution() const {

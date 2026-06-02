@@ -76,6 +76,9 @@ bool HasNaN(PrimitiveType type);
 // Returns whether the type has a value for negative zero.
 bool HasNegativeZero(PrimitiveType type);
 
+// Returns whether the type has a value for positive zero.
+bool HasPositiveZero(PrimitiveType type);
+
 // Returns the XLA primitive type (eg, F32) corresponding to the given
 // template parameter native type (eg, float). Doesn't compile if the native
 // type has no corresponding primitive type.

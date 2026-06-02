@@ -41,8 +41,7 @@ TEST(TanhTest, FloatTanhVectorized) {
   module->print(stream, nullptr);
 
   EXPECT_THAT(ir, ContainsRegex("fmul <4 x float>"));
-  EXPECT_THAT(
-      ir, ContainsRegex("fcmp olt <4 x float>.*float 0x3F3A36E2E0000000.*"));
+  EXPECT_THAT(ir, ContainsRegex("fcmp olt <4 x float>.*float 4.000000e-04.*"));
 }
 }  // namespace
 }  // namespace codegen

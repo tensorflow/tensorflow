@@ -26,7 +26,6 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 #include <variant>
-#include <vector>
 
 #include "absl/base/macros.h"
 #include "absl/container/fixed_array.h"

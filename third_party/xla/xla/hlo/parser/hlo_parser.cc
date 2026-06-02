@@ -48,6 +48,7 @@ limitations under the License.
 #include "absl/strings/strip.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/descriptor.h"
 #include "xla/array.h"
 #include "xla/comparison_util.h"
@@ -174,6 +175,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
+    case HloOpcode::kMulhi:
     case HloOpcode::kNegate:
     case HloOpcode::kPad:
     case HloOpcode::kPartitionId:
@@ -1814,6 +1816,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     case HloOpcode::kAdd:
     case HloOpcode::kDivide:
     case HloOpcode::kMultiply:
+    case HloOpcode::kMulhi:
     case HloOpcode::kSubtract:
     case HloOpcode::kAtan2:
     case HloOpcode::kComplex:
@@ -8335,7 +8338,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
     const HloParserOptions& options) {
   auto module = std::make_unique<HloModule>(/*name=*/"_", config);
   HloParserImpl parser(str, options);
-  TF_RETURN_IF_ERROR(parser.Run(module.get()));
+  RETURN_IF_ERROR(parser.Run(module.get()));
   return module;
 }
 

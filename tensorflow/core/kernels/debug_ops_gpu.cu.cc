@@ -198,7 +198,7 @@ template struct ConciseHealthLaunch<Eigen::half, double>;
 template struct ConciseHealthLaunch<float, double>;
 template struct ConciseHealthLaunch<double, double>;
 template struct ConciseHealthLaunch<int16, double>;
-template struct ConciseHealthLaunch<int32, double>;
+template struct ConciseHealthLaunch<int32_t, double>;
 
 template <typename Tin, typename Tout>
 struct FullHealthLaunch {

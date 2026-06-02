@@ -206,6 +206,8 @@ class PjRtCApiDevice : public PjRtDevice {
 
   absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats() const override;
 
+  absl::Status ClearMemoryStats() override;
+
   absl::StatusOr<std::intptr_t> GetStreamForExternalReadyEvents()
       const override;
 
@@ -278,6 +280,12 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
   absl::StatusOr<Layout> GetDefaultLayout(
       PrimitiveType element_type,
       absl::Span<const int64_t> dims) const override;
+
+  absl::StatusOr<xla::Shape> MakeCanonicalShapeForMemorySpace(
+      int memory_space_kind_id, xla::Shape shape,
+      const xla::Layout* layout) const override;
+
+  absl::Span<const int> GetMemorySpaceKindIds() const override;
 
   absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>> Subslice(
       const PjRtDeviceDimensions& chips_per_host_bounds,

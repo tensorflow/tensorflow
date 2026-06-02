@@ -17,10 +17,8 @@ from collections.abc import Sequence
 import io
 import json
 import pathlib
-import platform
 import tempfile
 import textwrap
-import unittest
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -28,11 +26,6 @@ from absl.testing import parameterized
 from build_tools.ci import clang_tidy_diff
 
 
- # clang_tidy_diff_test is broken in github for ARM (b/513009394)
-@unittest.skipIf(
-    platform.machine().lower() in ["arm64", "aarch64"],
-    "Temporarily disabled on ARM due to CI failures"
-)
 class TestClangTidyDiff(parameterized.TestCase):
 
   @parameterized.parameters(
@@ -101,7 +94,7 @@ class TestClangTidyDiff(parameterized.TestCase):
     )
 
   def test_parse_diff(self):
-    tmpdir = self.create_tempdir()
+    tmpdir = self.create_tempdir().full_path
     diff_path = pathlib.Path(tmpdir) / "test.diff"
     with open(diff_path, "w") as f:
 
@@ -243,7 +236,7 @@ class TestClangTidyDiff(parameterized.TestCase):
 
   def test_process_file_no_substring_false_positives(self):
     """Tests that we don't get false positives from diff file paths being substrings of other file paths."""
-    tmpdir = self.create_tempdir()
+    tmpdir = self.create_tempdir().full_path
     yaml_path = pathlib.Path(tmpdir) / "xla/long_util.cc.clang-tidy.yaml"
     yaml_path.parent.mkdir(parents=True, exist_ok=True)
     with open(yaml_path, "w") as f:
@@ -286,7 +279,7 @@ class TestClangTidyDiff(parameterized.TestCase):
       )
     config = clang_tidy_diff.AppConfig(
         patch=diff_path.as_posix(),
-        repo_root=tmpdir.full_path,
+        repo_root=tmpdir,
         bep_file=bep_path.as_posix(),
         warnings_as_errors=True,
     )
@@ -297,7 +290,7 @@ class TestClangTidyDiff(parameterized.TestCase):
     self.assertNotIn("util.cc", filterer.seen_files)
 
   def test_process_file_empty_yaml_aspect_path(self):
-    tmpdir = self.create_tempdir()
+    tmpdir = self.create_tempdir().full_path
     yaml_path = pathlib.Path(tmpdir) / (
         "bazel-out/k8-opt/bin/xla/backends/bazel_clang_tidy_xla/"
         "backends/source.cc.target.clang-tidy.yaml"
@@ -339,7 +332,7 @@ class TestClangTidyDiff(parameterized.TestCase):
     )
     config = clang_tidy_diff.AppConfig(
         patch=diff_path.as_posix(),
-        repo_root=tmpdir.full_path,
+        repo_root=tmpdir,
         bep_file=bep_path.as_posix(),
         warnings_as_errors=False,
     )

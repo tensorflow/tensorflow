@@ -374,4 +374,62 @@ def MHLO_ReplicaGroupMeshAxes : AttrDef<MHLO_Dialect, "ReplicaGroupMeshAxes"> {
   let assemblyFormat = "`<` struct(params) `>`";
 }
 
+def MHLO_OriginalArrayAttr : AttrDef<MHLO_Dialect, "OriginalArray"> {
+  let mnemonic = "original_array";
+  let summary = "The information of a result computed in an unoptimized module";
+  let parameters = (ins
+      "StringAttr" :$instructionName,
+      MHLO_Dims:$shapeIndex
+  );
+  let hasCustomAssemblyFormat = 1;
+  let description = [{
+    The data structure stores the information of a result computed in an
+    unoptimized module. It consists of a pair of attributes as follows:
+      - "instructionName": A StringAttr specifying the name of the instruction
+        in the unoptimized module that produces an array or a tuple that
+        includes this array.
+      - "shapeIndex": A DenseI64ArrayAttr representing the shape index of the
+        array if the instruction produces a tuple.
+  }];
+}
+
+def MHLO_OriginalValueElementAttr : AttrDef<MHLO_Dialect, "OriginalValueElement"> {
+  let mnemonic = "original_value_element";
+  let summary = "A node in the original value tuple tree";
+  let parameters = (ins
+      MHLO_Dims:$shapeIndex,
+      OptionalParameter<"std::optional<::mlir::mhlo::OriginalArrayAttr>">:$originalArray
+  );
+  let hasCustomAssemblyFormat = 1;
+  let description = [{
+    The `original_value_element` attribute stores the information of a node in the tuple tree of the original value. It includes the following attributes:
+      - "shapeIndex": A DenseI64ArrayAttr representing the shape index of the node within the tuple tree.
+      - "originalArray": The original array saved in this node.
+  }];
+}
+
+def MHLO_OriginalValueAttr : AttrDef<MHLO_Dialect, "OriginalValue"> {
+  let mnemonic = "original_value";
+  let summary = "Represents the origin of an HLO value in the unoptimized graph";
+  let parameters = (ins
+    "bool":$is_synthetic_call,
+    ArrayRefParameter<"::mlir::mhlo::OriginalValueElementAttr", "Array of original value nodes">:$elements
+  );
+
+  let description = [{
+    Models xla::OriginalValue.
+    If 'is_synthetic_call' is true, this represents a synthetic call, and
+    'elements' should be empty.
+    If 'is_synthetic_call' is false, 'elements' contains the flattened
+    representation of the TupleTree<std::optional<OriginalArray>>. Each entry in
+    'elements' is an OriginalValueElementAttr, representing a pair of
+    ShapeIndex (the key) and an optional OriginalArray (the value).
+  }];
+
+  let hasCustomAssemblyFormat = 1;
+
+  // Add a verifier to ensure 'elements' is empty when 'is_synthetic_call' is true.
+  let genVerifyDecl = 1;
+}
+
 #endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_ATTRS

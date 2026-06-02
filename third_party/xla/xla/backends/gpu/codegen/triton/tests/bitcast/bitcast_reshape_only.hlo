@@ -10,11 +10,11 @@ fusion {
 }
 
 // CHECK-OLD: #[[$ATTR_0:.+]] = #xla.indexing_map<"(pid_0) -> (pid_0 * 4), domain: pid_0 in [0, 15]">
-// CHECK-OLD: #[[$ATTR_1:.+]] = #xla.indexing_map<"(pid_0) -> (pid_0 floordiv 2), domain: pid_0 in [0, 15]">
+// CHECK-OLD: #[[$ATTR_1:.+]] = #xla.indexing_map<"(pid_0) -> (pid_0 / 2), domain: pid_0 in [0, 15]">
 // CHECK-OLD: #[[$ATTR_2:.+]] = #xla.indexing_map<"(pid_0) -> ((pid_0 mod 2) * 4), domain: pid_0 in [0, 15]">
 
 // CHECK-NEW: #[[$ATTR_0:.+]] = #xla.indexing_map<"(pid) -> (pid * 4), domain: pid in [0, 15]">
-// CHECK-NEW: #[[$ATTR_1:.+]] = #xla.indexing_map<"(pid) -> (pid floordiv 2), domain: pid in [0, 15]">
+// CHECK-NEW: #[[$ATTR_1:.+]] = #xla.indexing_map<"(pid) -> (pid / 2), domain: pid in [0, 15]">
 // CHECK-NEW: #[[$ATTR_2:.+]] = #xla.indexing_map<"(pid) -> ((pid mod 2) * 4), domain: pid in [0, 15]">
 
 // CHECK-LABEL:   xtile.entry_func @triton_fn(

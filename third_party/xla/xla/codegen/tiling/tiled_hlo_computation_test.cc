@@ -111,7 +111,7 @@ TEST_F(TiledHloComputationTest, Dot) {
       hlo: %p1.1 = f32[128,32]{1,0} parameter(1)
       tile_sizes: (4, 4)
       tile_strides: (1, 1)
-      tile_offsets_indexing: (pid_0) -> ((pid_0 mod 32) * 4, (pid_0 floordiv 32) * 4), domain: pid_0 in [0, 255]
+      tile_offsets_indexing: (pid_0) -> ((pid_0 mod 32) * 4, (pid_0 / 32) * 4), domain: pid_0 in [0, 255]
   })");
   EXPECT_THAT(tiled_hlo_computation.num_output_tiles_per_dim(),
               ElementsAre(1, 1, 8));
@@ -144,17 +144,17 @@ TEST_F(TiledHloComputationTest, Elementwise) {
   hlo: %p0.1 = f32[128,128]{1,0} parameter(0)
   tile_sizes: (16, 32)
   tile_strides: (1, 1)
-  tile_offsets_indexing: (pid_0) -> ((pid_0 floordiv 4) * 16, (pid_0 mod 4) * 32), domain: pid_0 in [0, 31]
+  tile_offsets_indexing: (pid_0) -> ((pid_0 / 4) * 16, (pid_0 mod 4) * 32), domain: pid_0 in [0, 31]
 p1.1.tile_0 = parameter()
   hlo: %p1.1 = f32[128,128]{1,0} parameter(1)
   tile_sizes: (16, 32)
   tile_strides: (1, 1)
-  tile_offsets_indexing: (pid_0) -> ((pid_0 floordiv 4) * 16, (pid_0 mod 4) * 32), domain: pid_0 in [0, 31]
+  tile_offsets_indexing: (pid_0) -> ((pid_0 / 4) * 16, (pid_0 mod 4) * 32), domain: pid_0 in [0, 31]
 add.tile_0 = add(p0.1.tile_0, p1.1.tile_0)
   hlo: %add = f32[128,128]{1,0} add(%p0, %p1)
   tile_sizes: (16, 32)
   tile_strides: (1, 1)
-  tile_offsets_indexing: (pid_0) -> ((pid_0 floordiv 4) * 16, (pid_0 mod 4) * 32), domain: pid_0 in [0, 31]
+  tile_offsets_indexing: (pid_0) -> ((pid_0 / 4) * 16, (pid_0 mod 4) * 32), domain: pid_0 in [0, 31]
   operands:
     %p0.1 = parameter()
     %p1.1 = parameter()

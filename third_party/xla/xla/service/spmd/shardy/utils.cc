@@ -38,7 +38,6 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
@@ -476,7 +475,8 @@ mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
         << "Expected HloShardingV3 during Shardy import when "
            "'xla_enable_hlo_sharding_v3' flag is enabled, but got "
            "non-replicated HloShardingV2 <<"
-        << hloSharding;
+        << hloSharding
+        << ". Please contact OpenXLA/Shardy team if you encounter this error.";
     return nullptr;
   }
 
@@ -541,18 +541,6 @@ bool isManualComputation(CallOp callOp) {
 bool isManualComputationOnName(mlir::StringRef funcName, bool isInlineable) {
   return funcName.contains(isInlineable ? kInlineableManualComputationFuncName
                                         : kManualComputationFuncName);
-}
-
-bool isSizeOfOne(mlir::Type type) {
-  if (auto shapedType = mlir::dyn_cast<mlir::ShapedType>(type)) {
-    if (!shapedType.hasStaticShape()) {
-      // Returns false if not a static shape.
-      return false;
-    }
-    return shapedType.getNumElements() == 1;
-  }
-  // Returns false if not a shaped type.
-  return false;
 }
 
 }  // namespace sdy

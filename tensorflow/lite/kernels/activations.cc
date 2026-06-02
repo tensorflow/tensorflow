@@ -1240,18 +1240,10 @@ TfLiteStatus SoftmaxQuantized<int16, int16>(TfLiteContext* context,
                                             TfLiteTensor* output,
                                             SoftmaxOpData* data,
                                             KernelType kernel_type) {
-  if (NumDimensions(input) >= 1 && NumDimensions(input) <= 4) {
-    reference_ops::SoftmaxInt16(
-        data->params, GetTensorShape(input), GetTensorData<int16_t>(input),
-        GetTensorShape(output), GetTensorData<int16_t>(output));
-    return kTfLiteOk;
-  } else {
-    TF_LITE_KERNEL_LOG(context,
-                       "Only 1D, 2D, 3D and 4D tensors supported for int16 "
-                       "input with int16 output, got %dD.",
-                       NumDimensions(input));
-    return kTfLiteError;
-  }
+  reference_ops::SoftmaxInt16(
+      data->params, GetTensorShape(input), GetTensorData<int16_t>(input),
+      GetTensorShape(output), GetTensorData<int16_t>(output));
+  return kTfLiteOk;
 }
 
 template <KernelType kernel_type>
