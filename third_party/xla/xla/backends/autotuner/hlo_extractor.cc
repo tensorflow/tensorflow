@@ -1,0 +1,70 @@
+/* Copyright 2025 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "xla/backends/autotuner/hlo_extractor.h"
+
+#include <utility>
+#include <vector>
+
+#include "absl/container/flat_hash_map.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/tsl/util/sorted_range.h"
+#include "tsl/platform/fingerprint.h"
+
+namespace xla {
+namespace {
+
+tsl::Fprint128 GetFingerprint(const HloInstruction* instr) {
+  auto options = HloPrintOptions::Fingerprint();
+  options.set_print_backend_config(true);
+  options.set_sort_backend_config(true);
+  options.set_print_operand_shape(true);
+
+  return tsl::Fingerprint128(instr->ToString(options));
+}
+
+}  // namespace
+
+std::vector<EquivalentInstructions> HloExtractor::ExtractEquivalentInstructions(
+    const HloModule* module, const InstructionFilterFn& filter_fn) {
+  absl::flat_hash_map<tsl::Fprint128, EquivalentInstructions,
+                      tsl::Fprint128Hasher>
+      grouped_instructions;
+  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+    for (HloInstruction* instr : computation->MakeInstructionPostOrder()) {
+      if (filter_fn(*instr)) {
+        grouped_instructions[GetFingerprint(instr)].push_back(instr);
+      }
+    }
+  }
+  // Ensures deterministic iteration using sorted range.
+  std::vector<EquivalentInstructions> result;
+  result.reserve(grouped_instructions.size());
+  for (auto& [fingerprint, nodes] :
+       tsl::SortedRange(grouped_instructions, [](const auto& a, const auto& b) {
+         if (a.first.high64 != b.first.high64) {
+           return a.first.high64 < b.first.high64;
+         }
+         return a.first.low64 < b.first.low64;
+       })) {
+    result.push_back(std::move(nodes));
+  }
+  return result;
+}
+
+}  // namespace xla
