@@ -55,7 +55,7 @@ TfLiteStatus CheckDimensionsMatch(TfLiteContext* context,
   switch (NumDimensions(indices)) {
     case 0:
     case 1: {
-      if (NumDimensions(values) != 0) {
+      if (NumDimensions(values) == 0) {
         TF_LITE_ENSURE_EQ(context, NumElements(indices), NumElements(values));
       }
       TF_LITE_ENSURE_EQ(context, NumElements(output_shape), 1);
@@ -64,10 +64,9 @@ TfLiteStatus CheckDimensionsMatch(TfLiteContext* context,
     case 2: {
       TF_LITE_ENSURE_EQ(context, SizeOfDimension(indices, 1),
                         NumElements(output_shape));
-      if (NumDimensions(values) != 0) {
+      if (NumDimensions(values) == 0)
         TF_LITE_ENSURE_EQ(context, SizeOfDimension(indices, 0),
                           NumElements(values));
-      }
       break;
     }
     default:
@@ -189,6 +188,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
   output->type = values->type;
+  TF_LITE_ENSURE_EQ(context, NumDimensions(output_shape), 1);
 
   if (!IsConstantOrPersistentTensor(output_shape)) {
     SetTensorToDynamic(output);
@@ -220,18 +220,18 @@ TfLiteStatus SparseToDenseImpl(TfLiteContext* context, TfLiteNode* node) {
                       ResizeOutputShape(context, output_shape, output));
   }
 
-  const int num_indices = (NumDimensions(indices) < 2)
-                              ? NumElements(indices)
-                              : SizeOfDimension(indices, 0);
+  const int num_indices = SizeOfDimension(indices, 0);
   const bool value_is_scalar = NumDimensions(values) == 0;
   std::vector<std::vector<TI>> indices_vector;
   indices_vector.reserve(num_indices);
   TF_LITE_ENSURE_OK(context, GetIndicesVector<TI>(context, indices, num_indices,
                                                   &indices_vector));
-  return reference_ops::SparseToDense(indices_vector, GetTensorData<T>(values),
-                                      *GetTensorData<T>(default_value),
-                                      value_is_scalar, GetTensorShape(output),
-                                      GetTensorData<T>(output));
+  reference_ops::SparseToDense(indices_vector, GetTensorData<T>(values),
+                               *GetTensorData<T>(default_value),
+                               value_is_scalar, GetTensorShape(output),
+                               GetTensorData<T>(output));
+
+  return kTfLiteOk;
 }
 
 template <typename T>

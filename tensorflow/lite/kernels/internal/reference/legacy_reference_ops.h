@@ -1138,12 +1138,11 @@ inline void RankOneSelect(const D* input_condition_data,
 }
 
 template <typename T, typename TI>
-inline TfLiteStatus SparseToDense(const std::vector<std::vector<TI>>& indices,
-                                  const T* values, T default_value,
-                                  T* output_data, const Dims<4>& output_dims,
-                                  bool value_is_scalar) {
-  return SparseToDense(indices, values, default_value, value_is_scalar,
-                       DimsToShape(output_dims), output_data);
+inline void SparseToDense(const std::vector<std::vector<TI>>& indices,
+                          const T* values, T default_value, T* output_data,
+                          const Dims<4>& output_dims, bool value_is_scalar) {
+  SparseToDense(indices, values, default_value, value_is_scalar,
+                DimsToShape(output_dims), output_data);
 }
 
 template <typename Scalar>
