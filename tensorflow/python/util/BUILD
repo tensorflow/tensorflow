@@ -1019,6 +1019,7 @@ py_library(
 py_library(
     name = "module_wrapper",
     srcs = ["module_wrapper.py"],
+    lazy_imports = True,
     strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
