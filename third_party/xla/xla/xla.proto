@@ -140,6 +140,9 @@ message DebugOptions {
     // Enables loop unrolling when we have at least one collective within a
     // while loop.
     WHILE_LOOP_UNROLLING_AUTO_UNROLL = 3;
+    // Enables loop unrolling only on loops annotated with
+    // `_xla_loop_unroll_strategy`.
+    WHILE_LOOP_UNROLLING_MANUAL_UNROLL = 4;
   }
 
   //--------------------------------------------------------------------------//

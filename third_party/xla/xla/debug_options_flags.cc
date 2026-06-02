@@ -1776,7 +1776,9 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "`WHILE_LOOP_UNROLLING_DOUBLE_BUFFER` unrolls the loop by factor of 2, "
       "`WHILE_LOOP_UNROLLING_FULL_UNROLL` will unroll the entire loop "
       "`WHILE_LOOP_UNROLLING_AUTO_UNROLL` unrolls by a factor of 2, if there is"
-      " any collective present within a while loop."));
+      " any collective present within a while loop."
+      "`WHILE_LOOP_UNROLLING_MANUAL_UNROLL` will unroll loops annotated with"
+      " the `_xla_loop_unroll_strategy` attribute."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_all_reduce_combine_threshold_bytes",
       int64_setter_for(

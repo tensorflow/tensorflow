@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/side_effect_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -575,13 +577,34 @@ absl::StatusOr<bool> DoubleBufferLoopUnrolling::RunImpl(
               << " has an iteration count of one, skipping unrolling.";
       continue;
     }
-
+    absl::string_view manual_unroll_attr_val = "";
+    auto& attrs = while_instr->frontend_attributes().map();
+    if (auto it = attrs.find(kXlaLoopUnrollAttr); it != attrs.end()) {
+      manual_unroll_attr_val = it->second;
+      if (!(absl::EqualsIgnoreCase(manual_unroll_attr_val,
+                                   kManualUnrollDoubleBuffer) ||
+            absl::EqualsIgnoreCase(manual_unroll_attr_val,
+                                   kManualUnrollFull))) {
+        LOG(FATAL) << "Invalid value for " << kXlaLoopUnrollAttr
+                   << " attribute: " << manual_unroll_attr_val
+                   << ". Expected values are: " << kManualUnrollDoubleBuffer
+                   << ", " << kManualUnrollFull;
+      }
+    }
     if (unroll_strategy_ == UnrollStrategy::kFullUnroll) {
       ASSIGN_OR_RETURN(changed, FullyUnroll(while_instr, module));
     } else if (unroll_strategy_ == UnrollStrategy::kDoubleBuffer) {
       ASSIGN_OR_RETURN(changed, DoubleBufferingUnroll(while_instr, module));
     } else if (unroll_strategy_ == UnrollStrategy::kAuto) {
       ASSIGN_OR_RETURN(changed, AutoUnroll(while_instr, module));
+    } else if (unroll_strategy_ == UnrollStrategy::kManual) {
+      if (absl::EqualsIgnoreCase(manual_unroll_attr_val, kManualUnrollFull)) {
+        ASSIGN_OR_RETURN(changed, FullyUnroll(while_instr, module));
+      }
+      if (absl::EqualsIgnoreCase(manual_unroll_attr_val,
+                                 kManualUnrollDoubleBuffer)) {
+        ASSIGN_OR_RETURN(changed, DoubleBufferingUnroll(while_instr, module));
+      }
     } else {
       LOG(FATAL) << absl::StrCat("Unhandled unrolling strategy: ",
                                  unroll_strategy_);

@@ -58,7 +58,15 @@ namespace gpu {
 // stride is multiplied by the unroll factor.
 class DoubleBufferLoopUnrolling : public HloModulePass {
  public:
-  enum class UnrollStrategy { kDoubleBuffer, kFullUnroll, kAuto };
+  enum class UnrollStrategy {
+    kDoubleBuffer,
+    kFullUnroll,
+    kAuto,
+    kManual,
+  };
+  static constexpr absl::string_view kManualUnrollFull = "full";
+  static constexpr absl::string_view kManualUnrollDoubleBuffer =
+      "double-buffer";
 
   explicit DoubleBufferLoopUnrolling(
       UnrollStrategy unroll_strategy = UnrollStrategy::kDoubleBuffer)

@@ -128,6 +128,9 @@ extern const char kXlaTableNameAttr[];
 // Collectives with different combiner_key values will not be combined together.
 extern const char kCombinerKeyAttr[];
 
+// Frontend attribute key used to control loop unrolling.
+extern const char kXlaLoopUnrollAttr[];
+
 }  // namespace xla
 
 #endif  // XLA_SIDE_EFFECT_UTIL_H_

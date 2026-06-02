@@ -2014,6 +2014,128 @@ ENTRY main {
               )pb"));
 }
 
+TEST_F(GpuLoopDoubleBufferTransformerTest, ManualFullyUnroll) {
+  const char* const kModuleString = R"(
+HloModule Manual_unroll
+condition_nested {
+  input_tuple = (s32[]) parameter(0)
+  cond = s32[] get-tuple-element(input_tuple), index=0
+  trip_count = s32[] constant(10)
+  ROOT done = pred[] compare(cond, trip_count), direction=LT
+}
+body_nested {
+ input_tuple = (s32[]) parameter(0)
+ cond = s32[] get-tuple-element(input_tuple), index=0
+ one = s32[] constant(1)
+ cond_plus_1 = s32[] add(cond, one)
+ ROOT output = (s32[]) tuple(cond_plus_1)
+}
+condition {
+  input_tuple = (s32[]) parameter(0)
+  cond = s32[] get-tuple-element(input_tuple), index=0
+  trip_count = s32[] constant(10)
+  ROOT done = pred[] compare(cond, trip_count), direction=LT
+}
+body {
+  input_tuple = (s32[]) parameter(0)
+  ROOT output = (s32[]) while(input_tuple), condition=condition_nested, body=body_nested, backend_config={"known_trip_count":{"n":"11"}}, frontend_attributes={_xla_loop_unroll_strategy="full"}
+}
+ENTRY main {
+ param_0 = (s32[]) parameter(0)
+ ROOT while = (s32[]) while(param_0), condition=condition, body=body, backend_config={"known_trip_count":{"n":"11"}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  DoubleBufferLoopUnrolling double_buffer(
+      DoubleBufferLoopUnrolling::UnrollStrategy::kManual);
+  EXPECT_THAT(double_buffer.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+  HloInstruction* outter_while =
+      module->entry_computation()->root_instruction();
+  // The outter while loop should not be touched at all.
+  EXPECT_EQ(outter_while->opcode(), HloOpcode::kWhile);
+  EXPECT_EQ(outter_while->backend_config<WhileLoopBackendConfig>()
+                ->known_trip_count()
+                .n(),
+            11);
+  HloComputation* outter_while_body = outter_while->while_body();
+  int64_t num_inner_whiles = 0;
+  hlo_query::ForEachInstructionWithOpcode(
+      *outter_while_body, HloOpcode::kWhile,
+      [&num_inner_whiles](HloInstruction* instr) {
+        EXPECT_EQ(instr->backend_config<WhileLoopBackendConfig>()
+                      ->known_trip_count()
+                      .n(),
+                  1);
+        ++num_inner_whiles;
+      });
+  // Outter loop should not be unrolled, the inner while count should be still
+  // be 1.
+  EXPECT_EQ(num_inner_whiles, 1);
+}
+
+TEST_F(GpuLoopDoubleBufferTransformerTest, ManualDoubleBufferUnroll) {
+  const char* const kModuleString = R"(
+HloModule Manual_unroll
+condition_nested {
+  input_tuple = (s32[]) parameter(0)
+  cond = s32[] get-tuple-element(input_tuple), index=0
+  trip_count = s32[] constant(10)
+  ROOT done = pred[] compare(cond, trip_count), direction=LT
+}
+body_nested {
+ input_tuple = (s32[]) parameter(0)
+ cond = s32[] get-tuple-element(input_tuple), index=0
+ one = s32[] constant(1)
+ cond_plus_1 = s32[] add(cond, one)
+ ROOT output = (s32[]) tuple(cond_plus_1)
+}
+condition {
+  input_tuple = (s32[]) parameter(0)
+  cond = s32[] get-tuple-element(input_tuple), index=0
+  trip_count = s32[] constant(10)
+  ROOT done = pred[] compare(cond, trip_count), direction=LT
+}
+body {
+  input_tuple = (s32[]) parameter(0)
+  ROOT output = (s32[]) while(input_tuple), condition=condition_nested, body=body_nested, backend_config={"known_trip_count":{"n":"11"}}, frontend_attributes={_xla_loop_unroll_strategy="double-buffer"}
+}
+ENTRY main {
+ param_0 = (s32[]) parameter(0)
+ ROOT while = (s32[]) while(param_0), condition=condition, body=body, backend_config={"known_trip_count":{"n":"11"}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  DoubleBufferLoopUnrolling double_buffer(
+      DoubleBufferLoopUnrolling::UnrollStrategy::kManual);
+  EXPECT_THAT(double_buffer.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+  HloInstruction* outter_while =
+      module->entry_computation()->root_instruction();
+  // The outter while loop should not be touched at all.
+  EXPECT_EQ(outter_while->opcode(), HloOpcode::kWhile);
+  EXPECT_EQ(outter_while->backend_config<WhileLoopBackendConfig>()
+                ->known_trip_count()
+                .n(),
+            11);
+  HloComputation* outter_while_body = outter_while->while_body();
+  int64_t num_inner_whiles = 0;
+  hlo_query::ForEachInstructionWithOpcode(
+      *outter_while_body, HloOpcode::kWhile,
+      [&num_inner_whiles](HloInstruction* instr) {
+        EXPECT_EQ(instr->backend_config<WhileLoopBackendConfig>()
+                      ->known_trip_count()
+                      .n(),
+                  5);
+        ++num_inner_whiles;
+      });
+  // Outter loop should not be unrolled, the inner while count should be still
+  // be 1.
+  EXPECT_EQ(num_inner_whiles, 1);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
