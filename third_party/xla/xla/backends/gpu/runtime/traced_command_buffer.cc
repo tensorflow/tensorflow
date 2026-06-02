@@ -18,9 +18,11 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/optimization.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
@@ -38,7 +40,6 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/trace_command_buffer_factory.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
@@ -88,7 +89,8 @@ absl::StatusOr<se::CommandBuffer*> TracedCommandBuffer::GetOrTraceCommandBuffer(
     if (ABSL_PREDICT_TRUE(absl::c_equal(entries_[i].recorded_allocs, allocs) &&
                           entries_[i].command_buffer)) {
       VLOG(6) << "Command buffer trace cache hit for command "
-              << trace_cmd_->ToString(0);
+              << trace_cmd_->ToString(0)
+              << " (buffer: " << entries_[i].command_buffer.get() << ")";
       return shift_right(i).command_buffer.get();
     }
 
@@ -103,7 +105,8 @@ absl::StatusOr<se::CommandBuffer*> TracedCommandBuffer::GetOrTraceCommandBuffer(
         RETURN_IF_ERROR(entries_[i].command_buffer->SetPriority(priority));
       }
       VLOG(6) << "Command buffer trace cache create new item for command "
-              << trace_cmd_->ToString(0);
+              << trace_cmd_->ToString(0)
+              << " (buffer: " << entries_[i].command_buffer.get() << ")";
       return shift_right(i).command_buffer.get();
     }
   }
@@ -111,12 +114,17 @@ absl::StatusOr<se::CommandBuffer*> TracedCommandBuffer::GetOrTraceCommandBuffer(
   // Create a new entry by calling a user-provided tracing function, replace
   // the last entry with it, move it to front and return a pointer to cached
   // command buffer.
+  VLOG(6) << "Command buffer trace cache evicting old command buffer "
+          << entries_[capacity_ - 1].command_buffer.get()
+          << " to make room for command " << trace_cmd_->ToString(0);
   ASSIGN_OR_RETURN(
       entries_[capacity_ - 1].command_buffer,
       se::TraceCommandBufferFactory::Create(executor, stream, trace));
   entries_[capacity_ - 1].recorded_allocs.assign(allocs.begin(), allocs.end());
   VLOG(6) << "Command buffer trace cache does replacement for command "
-          << trace_cmd_->ToString(0);
+          << trace_cmd_->ToString(0)
+          << " (new buffer: " << entries_[capacity_ - 1].command_buffer.get()
+          << ")";
   return shift_right(capacity_ - 1).command_buffer.get();
 }
 
