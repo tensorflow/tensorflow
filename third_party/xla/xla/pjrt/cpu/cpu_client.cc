@@ -126,8 +126,6 @@ limitations under the License.
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -151,6 +149,21 @@ static int CpuDeviceCount() {
 }
 
 namespace {
+
+int32_t GetCpuDeviceOrdinal(const DeviceAssignment& device_assignment,
+                            int process_index) {
+  for (int replica = 0; replica < device_assignment.replica_count();
+       ++replica) {
+    for (int computation = 0;
+         computation < device_assignment.computation_count(); ++computation) {
+      GlobalDeviceId id(device_assignment(replica, computation));
+      if (UnpackCpuProcessIndex(id) == process_index) {
+        return UnpackCpuLocalDeviceId(id);
+      }
+    }
+  }
+  return 0;
+}
 
 // A custom memory allocator function passed via the CPU client options.
 using CustomAllocatorFn =
@@ -196,7 +209,9 @@ void UpdateResultLayoutMemorySpaces(
     result_layout = *options.executable_build_options.result_layout();
   } else {
     auto program_shape_or = computation.GetProgramShape();
-    if (!program_shape_or.ok()) return;
+    if (!program_shape_or.ok()) {
+      return;
+    }
     result_layout =
         LayoutUtil::GetWithDefaultLayout(program_shape_or->result());
   }
@@ -212,6 +227,104 @@ void UpdateResultLayoutMemorySpaces(
   };
   ShapeUtil::ForEachMutableSubshape(&result_layout, set_memory_space);
   options.executable_build_options.set_result_layout(result_layout);
+}
+
+struct MlirCompilationSetup {
+  XlaComputation computation;
+  bool delegate_to_xla_compile = false;
+  std::vector<const Shape*> argument_layout_pointers;
+  LayoutCanonicalizationCallback layout_callback;
+};
+
+absl::Status ResolveXlaComputationLayouts(
+    const XlaComputation& computation, CompileOptions& options,
+    std::vector<const Shape*>& argument_layout_pointers) {
+  const ExecutableBuildOptions& build_options =
+      options.executable_build_options;
+  const bool allow_auto_layout =
+      build_options.has_debug_options() &&
+      build_options.debug_options().xla_pjrt_allow_auto_layout_in_hlo();
+
+  RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
+      computation,
+      [allow_auto_layout](Shape shape) -> absl::StatusOr<Shape> {
+        if (allow_auto_layout && !shape.has_layout()) {
+          return shape;
+        }
+        return LayoutUtil::GetWithDefaultLayout(shape);
+      },
+      options.argument_layouts, &options.executable_build_options,
+      &argument_layout_pointers));
+
+  ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
+                   GetOutputMemoryKinds(computation));
+  bool has_non_default_output_memory_space = false;
+  for (MemorySpaceColor color : out_memory_spaces) {
+    if (color != Layout::kDefaultMemorySpace) {
+      has_non_default_output_memory_space = true;
+      break;
+    }
+  }
+
+  if (has_non_default_output_memory_space) {
+    UpdateResultLayoutMemorySpaces(out_memory_spaces, computation, options);
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<MlirCompilationSetup> SetupMlirCompilation(
+    MaybeOwningMlirModule& module, CompileOptions& options,
+    const CpuTopologyDescription& topology) {
+  MlirCompilationSetup setup;
+  int module_id = HloModule::GetNextUniqueModuleId();
+  RETURN_IF_ERROR(pjrt::MaybeDumpCompileInputs(options, module.mlir_module(),
+                                               topology, module_id));
+  XlaComputation xla_computation;
+  ExecutableBuildOptions& exec_build_options = options.executable_build_options;
+  RETURN_IF_ERROR(MlirToXlaComputation(
+      module.mlir_module(), xla_computation,
+      /*use_tuple_args=*/options.parameter_is_tupled_arguments,
+      /*return_tuple=*/false, &exec_build_options));
+  xla_computation.mutable_proto()->set_pjrt_id(module_id);
+  setup.computation = std::move(xla_computation);
+
+  if (options.argument_layouts) {
+    setup.delegate_to_xla_compile = true;
+    return setup;
+  }
+
+  ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
+                   GetArgLayoutModes(module.mlir_module()));
+  ASSIGN_OR_RETURN(std::vector<LayoutMode> out_layout_modes,
+                   GetOutputLayoutModes(module.mlir_module()));
+  ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> arg_memory_spaces,
+                   GetArgMemoryKinds(module.mlir_module()));
+  ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
+                   GetOutputMemoryKinds(module.mlir_module()));
+
+  module = MaybeOwningMlirModule();
+
+  ASSIGN_OR_RETURN(
+      auto arg_layouts_and_pointers,
+      LayoutModesToXla(setup.computation, arg_layout_modes, out_layout_modes,
+                       arg_memory_spaces, out_memory_spaces,
+                       &LayoutUtil::GetWithDefaultLayout,
+                       options.executable_build_options));
+  setup.argument_layout_pointers = std::move(arg_layouts_and_pointers.second);
+
+  setup.layout_callback = [arg_layout_modes = std::move(arg_layout_modes),
+                           out_layout_modes = std::move(out_layout_modes),
+                           arg_memory_spaces = std::move(arg_memory_spaces),
+                           out_memory_spaces = std::move(out_memory_spaces)](
+                              const HloModule& hlo_module)
+      -> absl::StatusOr<std::pair<std::vector<Shape>, Shape>> {
+    XlaComputation temp_computation(XlaComputation(hlo_module.ToProto()));
+    return LayoutModesToXlaShapes(
+        temp_computation, arg_layout_modes, out_layout_modes, arg_memory_spaces,
+        out_memory_spaces, &LayoutUtil::GetWithDefaultLayout);
+  };
+
+  return setup;
 }
 
 }  // namespace
@@ -380,19 +493,27 @@ absl::Span<PjRtMemorySpace* const> PjRtCpuClient::memory_spaces() const {
   return memory_spaces_;
 }
 
-absl::StatusOr<DeviceAssignment> PjRtCpuClient::GetDefaultDeviceAssignment(
-    int num_replicas, int num_partitions) const {
-  if (num_partitions * num_replicas <= addressable_devices().size()) {
+absl::StatusOr<DeviceAssignment> CpuGetDefaultDeviceAssignment(
+    const CpuTopologyDescription& topology, int num_replicas,
+    int num_partitions) {
+  auto device_descriptions = topology.DeviceDescriptions();
+  if (num_partitions * num_replicas <= device_descriptions.size()) {
     xla::DeviceAssignment assignment(num_replicas, num_partitions);
     for (int i = 0; i < num_replicas; ++i) {
       for (int j = 0; j < num_partitions; ++j) {
-        assignment(i, j) =
-            addressable_devices().at(i * num_partitions + j)->id();
+        assignment(i, j) = device_descriptions.at(i * num_partitions + j)->id();
       }
     }
     return assignment;
   }
-  return computation_placer_->AssignDevices(num_replicas, num_partitions);
+  ComputationPlacer computation_placer;
+  return computation_placer.AssignDevices(num_replicas, num_partitions);
+}
+
+absl::StatusOr<DeviceAssignment> PjRtCpuClient::GetDefaultDeviceAssignment(
+    int num_replicas, int num_partitions) const {
+  return CpuGetDefaultDeviceAssignment(*topology_, num_replicas,
+                                       num_partitions);
 }
 
 absl::StatusOr<Layout> PjRtCpuClient::GetDefaultLayout(
@@ -488,8 +609,8 @@ PjRtCpuExecutable::GetParameterMemoryKinds() const {
   std::vector<absl::string_view>& memory_kinds = out.emplace_back();
   memory_kinds.reserve(parameter_device_shapes_.size());
   for (const xla::Shape& s : parameter_device_shapes_) {
-    ASSIGN_OR_RETURN(int kind_id, topology_->GetMemorySpaceKindForShape(s));
-    ASSIGN_OR_RETURN(absl::string_view kind, topology_->KindIdToKind(kind_id));
+    ASSIGN_OR_RETURN(int kind_id, topology_.GetMemorySpaceKindForShape(s));
+    ASSIGN_OR_RETURN(absl::string_view kind, topology_.KindIdToKind(kind_id));
     memory_kinds.push_back(kind);
   }
   return out;
@@ -501,7 +622,7 @@ PjRtCpuExecutable::GetOutputMemoryKinds() const {
   std::vector<absl::string_view>& leaf_kinds = out.emplace_back();
   leaf_kinds.reserve(output_memory_space_kind_ids_.size());
   for (int kind_id : output_memory_space_kind_ids_) {
-    ASSIGN_OR_RETURN(absl::string_view kind, topology_->KindIdToKind(kind_id));
+    ASSIGN_OR_RETURN(absl::string_view kind, topology_.KindIdToKind(kind_id));
     leaf_kinds.push_back(kind);
   }
   return out;
@@ -686,56 +807,14 @@ absl::StatusOr<std::pair<std::unique_ptr<PjRtCpuExecutable>,
                          std::shared_ptr<DeviceAssignment>>>
 PjRtCpuClient::CompileAndAssignDevices(MaybeOwningMlirModule module,
                                        CompileOptions options) {
-  int module_id = HloModule::GetNextUniqueModuleId();
-  RETURN_IF_ERROR(pjrt::MaybeDumpCompileInputs(options, module.mlir_module(),
-                                               *topology_, module_id));
-  XlaComputation xla_computation;
-  ExecutableBuildOptions& exec_build_options = options.executable_build_options;
-  RETURN_IF_ERROR(MlirToXlaComputation(
-      module.mlir_module(), xla_computation,
-      /*use_tuple_args=*/options.parameter_is_tupled_arguments,
-      /*return_tuple=*/false, &exec_build_options));
-  xla_computation.mutable_proto()->set_pjrt_id(module_id);
-
-  if (options.argument_layouts) {
-    return CompileAndAssignDevices(xla_computation, options);
+  ASSIGN_OR_RETURN(MlirCompilationSetup setup,
+                   SetupMlirCompilation(module, options, *topology_));
+  if (setup.delegate_to_xla_compile) {
+    return CompileAndAssignDevices(setup.computation, options);
   }
-
-  ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
-                   GetArgLayoutModes(module.mlir_module()));
-  ASSIGN_OR_RETURN(std::vector<LayoutMode> out_layout_modes,
-                   GetOutputLayoutModes(module.mlir_module()));
-  ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> arg_memory_spaces,
-                   GetArgMemoryKinds(module.mlir_module()));
-  ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
-                   GetOutputMemoryKinds(module.mlir_module()));
-
-  // MLIR module no longer required - release any memory if owned.
-  module = MaybeOwningMlirModule();
-
-  // If auto-sharding modifies shapes of arguments and/or result,
-  // we get a callback to restore the layouts. Let us restore the layouts
-  // according to the attributes we parsed from MLIR.
-  auto layout_callback = [&arg_layout_modes, &out_layout_modes,
-                          &arg_memory_spaces,
-                          &out_memory_spaces](const HloModule& module)
-      -> absl::StatusOr<std::pair<std::vector<Shape>, Shape>> {
-    XlaComputation xla_computation(XlaComputation(module.ToProto()));
-    return LayoutModesToXlaShapes(
-        xla_computation, arg_layout_modes, out_layout_modes, arg_memory_spaces,
-        out_memory_spaces, &LayoutUtil::GetWithDefaultLayout);
-  };
-
-  // This call will update result_layout in options.executable_build_options.
-  ASSIGN_OR_RETURN(
-      auto arg_layouts_and_pointers,
-      LayoutModesToXla(xla_computation, arg_layout_modes, out_layout_modes,
-                       arg_memory_spaces, out_memory_spaces,
-                       &LayoutUtil::GetWithDefaultLayout,
-                       options.executable_build_options));
-
-  return CompileInternal(xla_computation, arg_layouts_and_pointers.second,
-                         layout_callback, options, /*aot_options=*/nullptr);
+  return CompileInternal(setup.computation, setup.argument_layout_pointers,
+                         setup.layout_callback, options,
+                         /*aot_options=*/nullptr);
 }
 
 absl::StatusOr<std::pair<std::unique_ptr<PjRtCpuExecutable>,
@@ -743,44 +822,8 @@ absl::StatusOr<std::pair<std::unique_ptr<PjRtCpuExecutable>,
 PjRtCpuClient::CompileAndAssignDevices(const XlaComputation& computation,
                                        CompileOptions options) {
   std::vector<const Shape*> argument_layout_pointers;
-  const ExecutableBuildOptions& build_options =
-      options.executable_build_options;
-  const bool allow_auto_layout =
-      build_options.has_debug_options() &&
-      build_options.debug_options().xla_pjrt_allow_auto_layout_in_hlo();
-  RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
-      computation,
-      [allow_auto_layout](Shape shape) -> absl::StatusOr<Shape> {
-        if (allow_auto_layout && !shape.has_layout()) {
-          return shape;
-        }
-        return LayoutUtil::GetWithDefaultLayout(shape);
-      },
-      options.argument_layouts, &options.executable_build_options,
-      &argument_layout_pointers));
-
-  // Read output memory kinds from frontend attributes to ensure host memory
-  // space is propagated for host-offloaded outputs (e.g., unpinned_host).
-  ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
-                   GetOutputMemoryKinds(computation));
-  bool has_non_default_output_memory_space = false;
-  for (MemorySpaceColor color : out_memory_spaces) {
-    if (color != Layout::kDefaultMemorySpace) {
-      has_non_default_output_memory_space = true;
-      break;
-    }
-  }
-
-  if (has_non_default_output_memory_space) {
-    // Update the result layout to carry the correct memory spaces.
-    UpdateResultLayoutMemorySpaces(out_memory_spaces, computation, options);
-
-    return CompileInternal(computation, argument_layout_pointers,
-                           /*layout_canonicalization_callback=*/nullptr,
-                           options,
-                           /*aot_options=*/nullptr);
-  }
-
+  RETURN_IF_ERROR(ResolveXlaComputationLayouts(computation, options,
+                                               argument_layout_pointers));
   return CompileInternal(computation, argument_layout_pointers,
                          /*layout_canonicalization_callback=*/nullptr, options);
 }
@@ -818,8 +861,13 @@ PjRtCpuClient::CompileAndLoad(MaybeOwningMlirModule module,
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCpuClient::Load(
     std::shared_ptr<PjRtExecutable> executable,
     const LoadOptions& load_options) {
-  TF_RET_CHECK(absl::down_cast<PjRtCpuExecutable*>(executable.get()));
-  auto cpu_executable = std::static_pointer_cast<PjRtCpuExecutable>(executable);
+  auto* cpu_exec_ptr = dynamic_cast<PjRtCpuExecutable*>(executable.get());
+  if (cpu_exec_ptr == nullptr) {
+    return absl::InvalidArgumentError(
+        "PjRtCpuClient::Load: executable is not a PjRtCpuExecutable.");
+  }
+  auto cpu_executable =
+      std::static_pointer_cast<PjRtCpuExecutable>(std::move(executable));
   CompileOptions options = cpu_executable->compile_options();
   int unused_num_replicas;
   int unused_num_partitions;
@@ -838,46 +886,194 @@ PjRtCpuClient::CompileAheadOfTimeAndLoad(
     const XlaComputation& computation, CompileOptions options,
     const AotCompilationOptions& aot_options) {
   std::vector<const Shape*> argument_layout_pointers;
-  const ExecutableBuildOptions& build_options =
-      options.executable_build_options;
-  const bool allow_auto_layout =
-      build_options.has_debug_options() &&
-      build_options.debug_options().xla_pjrt_allow_auto_layout_in_hlo();
-  RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
-      computation,
-      [allow_auto_layout](Shape shape) -> absl::StatusOr<Shape> {
-        if (allow_auto_layout && !shape.has_layout()) {
-          return shape;
-        }
-        return LayoutUtil::GetWithDefaultLayout(shape);
-      },
-      options.argument_layouts, &options.executable_build_options,
-      &argument_layout_pointers));
-  ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
-                   GetOutputMemoryKinds(computation));
-  bool has_non_default_output_memory_space = false;
-  for (MemorySpaceColor color : out_memory_spaces) {
-    if (color != Layout::kDefaultMemorySpace) {
-      has_non_default_output_memory_space = true;
-      break;
-    }
-  }
-
-  if (has_non_default_output_memory_space) {
-    UpdateResultLayoutMemorySpaces(out_memory_spaces, computation, options);
-    ASSIGN_OR_RETURN(
-        auto results,
-        CompileInternal(computation, argument_layout_pointers,
-                        /*layout_canonicalization_callback=*/nullptr, options,
-                        &aot_options));
-    return LoadInternal(std::move(results.first), std::move(results.second));
-  }
-
+  RETURN_IF_ERROR(ResolveXlaComputationLayouts(computation, options,
+                                               argument_layout_pointers));
   ASSIGN_OR_RETURN(auto results,
                    CompileInternal(computation, argument_layout_pointers,
                                    /*layout_canonicalization_callback=*/nullptr,
                                    options, &aot_options));
   return LoadInternal(std::move(results.first), std::move(results.second));
+}
+
+struct CpuCompilationParams {
+  LayoutCanonicalizationCallback layout_canonicalization_callback = nullptr;
+  std::optional<int> num_threads = std::nullopt;
+  tsl::thread::ThreadPool* compile_thread_pool = nullptr;
+  const AotCompilationOptions* absl_nullable aot_options = nullptr;
+  int process_index = 0;
+  bool collectives_exists = false;
+  std::function<void(HloModuleConfig&)> customize_hlo_module_config = nullptr;
+};
+
+absl::StatusOr<std::pair<std::unique_ptr<PjRtCpuExecutable>,
+                         std::shared_ptr<DeviceAssignment>>>
+CompileCpuExecutableInternal(
+    const XlaComputation& computation,
+    const std::vector<const Shape*>& argument_layout_pointers,
+    const CpuTopologyDescription& topology, CompileOptions options,
+    CpuCompilationParams params) {
+  tsl::profiler::TraceMe traceme("CompileCpuExecutable");
+  RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
+
+  if (params.layout_canonicalization_callback) {
+    options.executable_build_options.set_layout_canonicalization_callback(
+        params.layout_canonicalization_callback);
+  }
+
+  int num_replicas;
+  int num_partitions;
+  std::shared_ptr<DeviceAssignment> device_assignment;
+  RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
+      options.compile_portable_executable, &options.executable_build_options,
+      [&topology = topology](int num_replicas, int num_partitions) {
+        return CpuGetDefaultDeviceAssignment(topology, num_replicas,
+                                             num_partitions);
+      },
+      &num_replicas, &num_partitions, &device_assignment));
+
+  if (!params.collectives_exists && device_assignment) {
+    for (int replica = 0; replica < device_assignment->replica_count();
+         ++replica) {
+      for (int computation = 0;
+           computation < device_assignment->computation_count();
+           ++computation) {
+        GlobalDeviceId id((*device_assignment)(replica, computation));
+        if (UnpackCpuProcessIndex(id) != params.process_index) {
+          return absl::InvalidArgumentError(
+              "Multiprocess computations aren't implemented on the CPU "
+              "backend.");
+        }
+      }
+    }
+  }
+
+  ExecutableBuildOptions& build_options = options.executable_build_options;
+  if (device_assignment != nullptr && build_options.device_ordinal() < 0) {
+    build_options.set_device_ordinal(
+        GetCpuDeviceOrdinal(*device_assignment, params.process_index));
+  }
+
+  ASSIGN_OR_RETURN(ProgramShape program_shape, computation.GetProgramShape());
+  std::unique_ptr<Executable> cpu_executable;
+  ExecutionOptions execution_options =
+      CreateExecutionOptions(build_options, &program_shape);
+  ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModuleConfig> hlo_module_config,
+      CreateModuleConfig(program_shape, argument_layout_pointers,
+                         &execution_options, execution_options.num_replicas(),
+                         params.num_threads, params.aot_options));
+
+  if (params.customize_hlo_module_config) {
+    params.customize_hlo_module_config(*hlo_module_config);
+  }
+
+  const xla::HloModuleProto& hlo_module_proto = computation.proto();
+  ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> hlo_module,
+      xla::HloModule::CreateFromProto(hlo_module_proto, *hlo_module_config));
+
+  if (params.aot_options) {
+    ASSIGN_OR_RETURN(
+        cpu_executable,
+        CompileAheadOfTime(std::move(hlo_module), build_options,
+                           execution_options, *params.aot_options));
+  } else {
+    // Prioritize user-specified compile thread pool over the default parameter
+    tsl::thread::ThreadPool* thread_pool = build_options.compile_thread_pool();
+    if (!thread_pool) {
+      thread_pool = params.compile_thread_pool;
+    }
+    xla::Compiler::CompileOptions compile_options{
+        build_options.device_allocator(), thread_pool,
+        build_options.layout_canonicalization_callback()};
+    const cpu::TargetMachineOptions& target_machine_options =
+        topology.cpu_topology().target_machine_options();
+    compile_options.cpu_target_config.emplace(target_machine_options);
+
+    ASSIGN_OR_RETURN(cpu_executable,
+                     JitCompile(std::move(hlo_module), build_options,
+                                execution_options, compile_options));
+  }
+
+  auto cpu_executable_ptr =
+      absl::down_cast<cpu::CpuExecutable*>(cpu_executable.get());
+  ASSIGN_OR_RETURN(
+      auto result_buffer_indices,
+      FindResultBufferAllocationIndex(cpu_executable_ptr->buffer_assignment(),
+                                      cpu_executable->module()));
+
+  std::unique_ptr<HloModule> unoptimized_hlo_module = nullptr;
+  const bool xla_dump_hlo_unoptimized_snapshots =
+      options.executable_build_options.has_debug_options() &&
+      options.executable_build_options.debug_options()
+          .xla_dump_hlo_unoptimized_snapshots();
+  if (xla_dump_hlo_unoptimized_snapshots) {
+    ASSIGN_OR_RETURN(
+        unoptimized_hlo_module,
+        HloModule::CreateFromProto(computation.proto(),
+                                   cpu_executable->module().config()));
+  }
+
+  options.executable_build_options.set_layout_canonicalization_callback(
+      nullptr);
+  auto executable = std::make_unique<PjRtCpuExecutable>(
+      num_replicas, num_partitions, options.parameter_is_tupled_arguments,
+      options, std::move(cpu_executable), std::move(result_buffer_indices),
+      std::move(unoptimized_hlo_module), topology);
+  RETURN_IF_ERROR(
+      executable->SetUpDonation(options.parameter_is_tupled_arguments));
+
+  return std::make_pair(std::move(executable), std::move(device_assignment));
+}
+
+static absl::StatusOr<std::unique_ptr<PjRtCpuExecutable>>
+CompileCpuExecutableWithParams(
+    const XlaComputation& computation,
+    const std::vector<const Shape*>& argument_layout_pointers,
+    CompileOptions options, const CpuTopologyDescription& topology,
+    std::function<void(HloModuleConfig&)> customize_hlo_module_config,
+    LayoutCanonicalizationCallback layout_canonicalization_callback) {
+  CpuCompilationParams params;
+  params.layout_canonicalization_callback =
+      std::move(layout_canonicalization_callback);
+  params.collectives_exists = true;
+  params.customize_hlo_module_config = std::move(customize_hlo_module_config);
+
+  ASSIGN_OR_RETURN(auto results,
+                   CompileCpuExecutableInternal(
+                       computation, argument_layout_pointers, topology,
+                       std::move(options), std::move(params)));
+  return std::move(results.first);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtCpuExecutable>> CompileCpuExecutable(
+    const XlaComputation& computation, CompileOptions options,
+    const CpuTopologyDescription& topology,
+    std::function<void(HloModuleConfig&)> customize_hlo_module_config) {
+  std::vector<const Shape*> argument_layout_pointers;
+  RETURN_IF_ERROR(ResolveXlaComputationLayouts(computation, options,
+                                               argument_layout_pointers));
+  return CompileCpuExecutableWithParams(
+      computation, argument_layout_pointers, std::move(options), topology,
+      std::move(customize_hlo_module_config),
+      /*layout_canonicalization_callback=*/nullptr);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtCpuExecutable>> CompileCpuExecutable(
+    MaybeOwningMlirModule module, CompileOptions options,
+    const CpuTopologyDescription& topology,
+    std::function<void(HloModuleConfig&)> customize_hlo_module_config) {
+  ASSIGN_OR_RETURN(MlirCompilationSetup setup,
+                   SetupMlirCompilation(module, options, topology));
+  if (setup.delegate_to_xla_compile) {
+    return CompileCpuExecutable(std::move(setup.computation),
+                                std::move(options), topology,
+                                std::move(customize_hlo_module_config));
+  }
+  return CompileCpuExecutableWithParams(
+      std::move(setup.computation), std::move(setup.argument_layout_pointers),
+      std::move(options), topology, std::move(customize_hlo_module_config),
+      std::move(setup.layout_callback));
 }
 
 absl::StatusOr<std::pair<std::unique_ptr<PjRtCpuExecutable>,
@@ -888,142 +1084,24 @@ PjRtCpuClient::CompileInternal(
     LayoutCanonicalizationCallback layout_canonicalization_callback,
     CompileOptions options,
     const AotCompilationOptions* absl_nullable aot_options) {
-  tsl::profiler::TraceMe traceme("PjRtCpuClient::Compile");
-  auto input_options = options;
-
-  RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
-
-  if (layout_canonicalization_callback) {
-    options.executable_build_options.set_layout_canonicalization_callback(
-        layout_canonicalization_callback);
+  std::optional<int> num_threads = std::nullopt;
+  if (eigen_intraop_device() != nullptr &&
+      eigen_intraop_device()->getPool() != nullptr) {
+    num_threads = eigen_intraop_device()->getPool()->NumThreads();
   }
+  CpuCompilationParams params;
+  params.layout_canonicalization_callback =
+      std::move(layout_canonicalization_callback);
+  params.num_threads = num_threads;
+  params.compile_thread_pool = eigen_intraop_pool();
+  params.aot_options = aot_options;
+  params.process_index = process_index();
+  params.collectives_exists = (collectives_ != nullptr);
+  params.customize_hlo_module_config = customize_hlo_module_config_;
 
-  int num_replicas;
-  int num_partitions;
-  std::shared_ptr<DeviceAssignment> device_assignment;
-  RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
-      options.compile_portable_executable, &options.executable_build_options,
-      [this](int num_replicas, int num_partitions) {
-        return this->GetDefaultDeviceAssignment(num_replicas, num_partitions);
-      },
-      &num_replicas, &num_partitions, &device_assignment));
-
-  if (collectives_ == nullptr && device_assignment) {
-    for (int replica = 0; replica < device_assignment->replica_count();
-         ++replica) {
-      for (int computation = 0;
-           computation < device_assignment->computation_count();
-           ++computation) {
-        GlobalDeviceId id((*device_assignment)(replica, computation));
-        if (UnpackCpuProcessIndex(id) != process_index()) {
-          // TODO(phawkins): improve this error message when we're ready to
-          // publicize that multiprocess collectives exist.
-          return InvalidArgument(
-              "Multiprocess computations aren't implemented on the CPU "
-              "backend.");
-        }
-      }
-    }
-  }
-
-  ExecutableBuildOptions& build_options = options.executable_build_options;
-  if (device_assignment != nullptr && build_options.device_ordinal() < 0) {
-    RETURN_IF_ERROR([&]() -> absl::Status {
-      for (int replica = 0; replica < num_replicas; ++replica) {
-        for (int partition = 0; partition < num_partitions; ++partition) {
-          GlobalDeviceId device_id((*device_assignment)(replica, partition));
-          if (UnpackCpuProcessIndex(device_id) != process_index()) {
-            VLOG(3) << "Non-local device: " << device_id;
-            continue;
-          }
-          ASSIGN_OR_RETURN(PjRtDevice * device, LookupDevice(device_id));
-          build_options.set_device_ordinal(device->local_hardware_id().value());
-          return absl::OkStatus();
-        }
-      }
-      return absl::OkStatus();
-    }());
-  }
-
-  ASSIGN_OR_RETURN(ProgramShape program_shape, computation.GetProgramShape());
-
-  std::unique_ptr<Executable> cpu_executable;
-  ExecutionOptions execution_options =
-      CreateExecutionOptions(build_options, &program_shape);
-
-  // Unoptimized HloModuleConfig.
-  ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModuleConfig> hlo_module_config,
-      CreateModuleConfig(program_shape, argument_layout_pointers,
-                         &execution_options, execution_options.num_replicas(),
-                         eigen_intraop_device()->getPool()->NumThreads(),
-                         aot_options));
-
-  // Apply the user-provided callback to customize the HloModuleConfig.
-  if (customize_hlo_module_config_) {
-    customize_hlo_module_config_(*hlo_module_config);
-  }
-
-  // Unoptimized HloModule.
-  const xla::HloModuleProto& hlo_module_proto = computation.proto();
-  ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> hlo_module,
-      xla::HloModule::CreateFromProto(hlo_module_proto, *hlo_module_config));
-
-  if (aot_options) {
-    ASSIGN_OR_RETURN(cpu_executable,
-                     CompileAheadOfTime(std::move(hlo_module), build_options,
-                                        execution_options, *aot_options));
-  } else {
-    xla::Compiler::CompileOptions compile_options{
-        build_options.device_allocator(), build_options.compile_thread_pool(),
-        build_options.layout_canonicalization_callback()};
-    if (!compile_options.thread_pool) {
-      compile_options.thread_pool = async_work_runner_->thread_pool();
-    }
-    const cpu::TargetMachineOptions& target_machine_options =
-        topology_->cpu_topology().target_machine_options();
-
-    compile_options.cpu_target_config.emplace(target_machine_options);
-
-    ASSIGN_OR_RETURN(cpu_executable,
-                     JitCompile(std::move(hlo_module), build_options,
-                                execution_options, compile_options));
-  }
-
-  auto cpu_executable_ptr =
-      absl::down_cast<cpu::CpuExecutable*>(cpu_executable.get());
-
-  // `result_buffer_indices` has the buffer allocation indices that make up the
-  // output buffer (could be tuple).
-  ASSIGN_OR_RETURN(
-      auto result_buffer_indices,
-      FindResultBufferAllocationIndex(cpu_executable_ptr->buffer_assignment(),
-                                      cpu_executable->module()));
-
-  std::unique_ptr<HloModule> unoptimized_hlo_module = nullptr;
-
-  const bool xla_dump_hlo_unoptimized_snapshots =
-      options.executable_build_options.has_debug_options() &&
-      options.executable_build_options.debug_options()
-          .xla_dump_hlo_unoptimized_snapshots();
-
-  if (xla_dump_hlo_unoptimized_snapshots) {
-    ASSIGN_OR_RETURN(
-        unoptimized_hlo_module,
-        HloModule::CreateFromProto(computation.proto(),
-                                   cpu_executable->module().config()));
-  }
-
-  auto executable = std::make_unique<PjRtCpuExecutable>(
-      num_replicas, num_partitions, options.parameter_is_tupled_arguments,
-      std::move(input_options), std::move(cpu_executable),
-      std::move(result_buffer_indices), std::move(unoptimized_hlo_module),
-      *topology_);
-  RETURN_IF_ERROR(
-      executable->SetUpDonation(options.parameter_is_tupled_arguments));
-
-  return std::make_pair(std::move(executable), std::move(device_assignment));
+  return CompileCpuExecutableInternal(computation, argument_layout_pointers,
+                                      *topology_, std::move(options),
+                                      std::move(params));
 }
 
 absl::StatusOr<PjRtRawBufferRef> PjRtCpuClient::ImportForeignMemory(
@@ -1241,7 +1319,7 @@ PjRtCpuExecutable::PjRtCpuExecutable(
     CompileOptions compile_options, std::unique_ptr<Executable> cpu_executable,
     absl::InlinedVector<BufferAllocation::Index, 4> result_buffer_indices,
     std::unique_ptr<HloModule> unoptimized_hlo_module,
-    const CpuTopologyDescription& topology)
+    CpuTopologyDescription topology)
     : num_replicas_(num_replicas),
       num_partitions_(num_partitions),
       parameter_is_tupled_arguments_(parameter_is_tupled_arguments),
@@ -1252,7 +1330,7 @@ PjRtCpuExecutable::PjRtCpuExecutable(
           cpu_executable_->module().entry_computation_layout())),
       result_buffer_indices_(std::move(result_buffer_indices)),
       unoptimized_hlo_module_(std::move(unoptimized_hlo_module)),
-      topology_(&topology) {
+      topology_(std::move(topology)) {
   auto hlo_cost_analysis =
       std::make_unique<HloCostAnalysis>(cpu::CpuExecutable::ShapeSizeBytes);
   CHECK_OK(cpu_executable_->module().entry_computation()->Accept(
@@ -1271,7 +1349,7 @@ PjRtCpuExecutable::PjRtCpuExecutable(
           ? absl::Span<const xla::Shape>(result_shape.tuple_shapes())
           : absl::Span<const xla::Shape>(&result_shape, 1);
   for (const xla::Shape& s : shapes) {
-    auto kind_id_or = topology_->GetMemorySpaceKindForShape(s);
+    auto kind_id_or = topology_.GetMemorySpaceKindForShape(s);
     if (kind_id_or.ok()) {
       output_memory_space_kind_ids_.push_back(*kind_id_or);
     } else {
@@ -1466,13 +1544,14 @@ static absl::StatusOr<tsl::AsyncValueRef<CpuDeviceMemory>> MemoryForAllocation(
       return absl::down_cast<CpuRawBuffer*>(allocated_output.get())->buffer();
     }
     return arg->buffer();
-  } else if (allocation.is_constant() &&
-             allocation.index() < constants.size()) {
+  }
+  if (allocation.is_constant() && allocation.index() < constants.size()) {
     se::DeviceAddressBase constant =
         constants[allocation.index()].AsDeviceAddress();
     return CpuDeviceMemory::CreateConstantMemory(constant.opaque(),
                                                  constant.size());
-  } else if (allocation.is_constant() || allocation.is_thread_local()) {
+  }
+  if (allocation.is_constant() || allocation.is_thread_local()) {
     return CpuDeviceMemory::CreateConstantMemory(nullptr, 0);
   }
 
@@ -1525,10 +1604,10 @@ PjRtCpuLoadedExecutable::LoadRawExecutable(
 }
 
 tsl::AsyncValueRef<CpuEvent> PjRtCpuClient::GetCollectiveLaunchEvent(
-    RunId run_id, uint64_t executabe_id, size_t num_addressable_devices,
+    RunId run_id, uint64_t executable_id, size_t num_addressable_devices,
     tsl::AsyncValueRef<CpuEvent> execute_event) {
   mu_.lock();
-  auto key = std::make_pair(run_id, executabe_id);
+  auto key = std::make_pair(run_id, executable_id);
   auto it = launch_events_.find(key);
   if (it == launch_events_.end()) {
     tsl::CountDownAsyncValueRef<CpuEvent> count_down(num_addressable_devices);
@@ -1557,9 +1636,8 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
     const ExecuteOptions& options,
     absl::Span<const PjRtRawBufferRef> input_buffers,
     absl::Span<const PjRtRawBufferRef> output_leaf_buffers,
-    std::vector<PjRtDeviceEventRef> extra_deps,
-    std::vector<PjRtDeviceEventRef> control_deps, bool is_predetermined_error,
-    bool fill_future) && {
+    PjRtDeviceEventRefVector extra_deps, PjRtDeviceEventRefVector control_deps,
+    bool is_predetermined_error, bool fill_future) && {
   PjRtRawLoadedExecutable::RawExecuteResult result;
   // `returned_future_can_be_set_event` indicates when `returned_future` can be
   // set using `execute_event`. This is necessary to delay setting the
@@ -1571,13 +1649,13 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
   auto returned_future_can_be_set_event =
       tsl::MakeConstructedAsyncValueRef<CpuEvent>();
 
-  std::vector<PjRtDeviceEventRef> input_deps = std::move(control_deps);
+  PjRtDeviceEventRefVector input_deps = std::move(control_deps);
   size_t num_control_deps = input_deps.size();
-  for (auto& event : extra_deps) {
+  ConsumeEvents(std::move(extra_deps), [&](PjRtDeviceEventRef&& event) {
     if (event) {
       input_deps.push_back(std::move(event));
     }
-  }
+  });
   auto execute_event = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
   MarkEventReadyOnExit ready_on_exit(execute_event);
   result.primary_execute_event = PjRtDeviceEventRef(execute_event);
@@ -1842,8 +1920,8 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
           buffer_alloc.Allocate(*allocator);
           buffer_alloc_and_copy.AllocateAndCopy(*allocator);
 
-          size_t i = 0;
-          for (const auto& event : input_deps_avs) {
+          for (size_t i = 0; i < input_deps_avs.size(); ++i) {
+            const auto& event = input_deps_avs[i];
             if (i >= num_control_deps) {
               if (auto error = event.GetErrorIfPresent()) {
                 scoped_async_execution.SetError(Internal(
@@ -1852,7 +1930,6 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
                 return;
               }
             }
-            ++i;
           }
           auto status = [&]() -> absl::Status {
             ASSIGN_OR_RETURN(auto thunks_execute_event, execute_thunks());

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/cpu/cpu_pjrt_compiler.h"
 
+#include <cstdint>
 #include <cstdlib>
 #include <memory>
 #include <string>
@@ -23,8 +24,12 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -34,18 +39,47 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/hlo_module_stitcher.h"
+#include "xla/layout.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
+#include "xla/pjrt/mock_pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
+#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/path.h"
 
 namespace xla::cpu {
 namespace {
+
+class MockNonCpuTopologyDescription : public PjRtTopologyDescription {
+ public:
+  PjRtPlatformId platform_id() const override { return 12345; }
+  absl::string_view platform_name() const override { return "mock_non_cpu"; }
+  absl::string_view platform_version() const override { return "test"; }
+  std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
+      const override {
+    LOG(FATAL) << "Unused";
+  }
+  absl::StatusOr<uint64_t> Fingerprint() const override { return 123; }
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+      const override {
+    LOG(FATAL) << "Unused";
+  }
+  absl::StatusOr<Layout> GetDefaultLayout(
+      PrimitiveType element_type,
+      absl::Span<const int64_t> dims) const override {
+    return absl::UnimplementedError("Unimplemented");
+  }
+};
 
 constexpr absl::string_view kProgram = R"(HloModule Computation
 
@@ -225,6 +259,84 @@ TEST_F(CpuPjrtCompilerTest, CompileMultiModuleHloSuccess) {
   // Verify that the multi-module stitching logic executed correctly by checking
   // for the stitching custom calls generated midway through the pipeline.
   EXPECT_TRUE(TempDirContainsHloString(xla::kMultiModuleCustomCallTarget));
+}
+
+TEST_F(CpuPjrtCompilerTest, CompileWithMismatchedTopologyFailsGracefully) {
+  xla::CompileOptions options;
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kProgram));
+  xla::XlaComputation computation(module->ToProto());
+
+  MockNonCpuTopologyDescription topology_description;
+
+  xla::cpu::CpuPjRtCompiler compiler;
+  auto result = compiler.Compile(options, computation, topology_description,
+                                 /*client=*/nullptr);
+  EXPECT_FALSE(result.ok());
+  EXPECT_EQ(result.status().code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(result.status().message(),
+              testing::HasSubstr("Invalid platform ID"));
+}
+
+TEST_F(CpuPjrtCompilerTest, CompileClientlessAndExecuteOnClient) {
+  xla::CompileOptions options;
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kProgram));
+  xla::XlaComputation computation(module->ToProto());
+
+  auto topology_description = GetDefaultCpuTopologyDescription();
+
+  xla::cpu::CpuPjRtCompiler compiler;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      compiler.Compile(options, computation, *topology_description,
+                       /*client=*/nullptr));
+  ASSERT_NE(executable, nullptr);
+
+  // Get active CPU client.
+  xla::CpuClientOptions client_options;
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          xla::GetXlaPjrtCpuClient(client_options));
+  ASSERT_NE(client, nullptr);
+
+  // Load the compiled executable.
+  xla::LoadOptions load_options;
+  TF_ASSERT_OK_AND_ASSIGN(auto loaded_executable,
+                          client->Load(std::move(executable), load_options));
+  ASSERT_NE(loaded_executable, nullptr);
+
+  // Execute it and verify correctness.
+  xla::ExecuteOptions exec_options;
+  TF_ASSERT_OK_AND_ASSIGN(auto results,
+                          loaded_executable->Execute({{}}, exec_options));
+  ASSERT_EQ(results.size(), 1);
+  ASSERT_EQ(results[0].size(), 1);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, results[0][0]->ToLiteralSync());
+  EXPECT_EQ(literal->Get<int32_t>({}), 2);
+}
+
+TEST_F(CpuPjrtCompilerTest,
+       CompileMlirWithNonCpuClientBypassesClientDelegation) {
+  xla::CompileOptions options;
+  auto context = std::make_unique<mlir::MLIRContext>();
+  context->loadDialect<mlir::func::FuncDialect, mlir::mhlo::MhloDialect>();
+  auto mlir_module =
+      mlir::parseSourceString<mlir::ModuleOp>(kMlirProgram, context.get());
+
+  auto topology_description = GetDefaultCpuTopologyDescription();
+
+  xla::MockPjRtClient non_cpu_client;
+  EXPECT_CALL(non_cpu_client, platform_id())
+      .WillRepeatedly(testing::Return(12345));
+  EXPECT_CALL(non_cpu_client, Compile(testing::_, testing::_)).Times(0);
+
+  xla::cpu::CpuPjRtCompiler compiler;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      compiler.Compile(options,
+                       xla::MaybeOwningMlirModule(std::move(context),
+                                                  std::move(mlir_module)),
+                       *topology_description, &non_cpu_client));
+  EXPECT_NE(executable, nullptr);
 }
 
 }  // namespace

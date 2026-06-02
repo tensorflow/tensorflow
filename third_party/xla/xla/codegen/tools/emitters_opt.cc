@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+#include <utility>
+
+#include "absl/log/check.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
@@ -42,6 +46,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "mlir/Transforms/Passes.h"
+#include "google/protobuf/text_format.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_dialect.h"
 #include "xla/backends/cpu/codegen/emitters/transforms/passes.h"
@@ -57,6 +62,7 @@ limitations under the License.
 #include "xla/codegen/xtile/ir/xtile_dialect.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/stream_executor/device_description.pb.h"
 
 struct EmittersOptOptions
     : public mlir::PassPipelineOptions<EmittersOptOptions> {
