@@ -54,7 +54,7 @@ void MergeSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   std::unordered_set<std::string> tags;
   Safe_TF_StatusPtr status(TF_NewStatus());
   for (int input_num = 0; input_num < TF_NumInputs(ctx); ++input_num) {
-    TF_Tensor* input;
+    TF_Tensor* input = nullptr;
     TF_GetInput(ctx, input_num, &input, status.get());
     Safe_TF_TensorPtr safe_input_ptr(input);
     if (TF_GetCode(status.get()) != TF_OK) {
