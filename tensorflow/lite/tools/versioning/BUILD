@@ -102,7 +102,6 @@ tf_cc_test(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:types",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )
