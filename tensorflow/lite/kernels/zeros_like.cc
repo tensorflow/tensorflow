@@ -49,16 +49,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
-  const int num_elements = NumElements(input);
   switch (input->type) {
     case kTfLiteInt64:
-      memset(GetTensorData<int64_t>(output), 0, num_elements * sizeof(int64_t));
+      memset(GetTensorData<int64_t>(output), 0, output->bytes);
       break;
     case kTfLiteInt32:
-      memset(GetTensorData<int32_t>(output), 0, num_elements * sizeof(int32_t));
+      memset(GetTensorData<int32_t>(output), 0, output->bytes);
       break;
     case kTfLiteFloat32:
-      memset(GetTensorData<float>(output), 0, num_elements * sizeof(float));
+      memset(GetTensorData<float>(output), 0, output->bytes);
       break;
     default:
       TF_LITE_KERNEL_LOG(context,
