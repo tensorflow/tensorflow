@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
@@ -246,13 +247,23 @@ static void LogPtxasTooOld(const std::string& ptxas_path, int cc_major,
   }
 }
 
-static void AppendArgsFromOptions(GpuAsmOpts options,
-                                  std::vector<std::string>& args) {
-  if (options.disable_gpuasm_optimizations) {
-    args.push_back("-O0");
-  }
-  args.insert(args.end(), options.extra_flags.begin(),
-              options.extra_flags.end());
+static std::vector<std::string> CreatePtxasArgs(absl::string_view ptxas_path,
+                                                absl::string_view ptx_path,
+                                                absl::string_view cubin_path,
+                                                const CudaComputeCapability& cc,
+                                                GpuAsmOpts options,
+                                                bool dump_compilation_log) {
+  std::vector<std::string> args = {
+      std::string(ptxas_path),
+      std::string(ptx_path),
+      "-o",
+      std::string(cubin_path),
+  };
+
+  AppendArchitectureSpecificPtxCompilerFlags(cc, std::move(options),
+                                             dump_compilation_log, args);
+
+  return args;
 }
 
 absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingPtxAs(
@@ -260,7 +271,7 @@ absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingPtxAs(
     bool cancel_if_reg_spill, bool dump_compilation_log) {
   ASSIGN_OR_RETURN(std::string ptxas_path,
                    FindPtxAsExecutable(options.preferred_cuda_dir));
-  return CompileGpuAsmUsingPtxAs(ptxas_path, cc, ptx, options,
+  return CompileGpuAsmUsingPtxAs(ptxas_path, cc, ptx, std::move(options),
                                  cancel_if_reg_spill, dump_compilation_log);
 }
 
@@ -297,21 +308,10 @@ absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingPtxAs(
     tsl::Env::Default()->DeleteFile(cubin_path).IgnoreError();
   };
   tsl::SubProcess ptxas_info_dumper;
-  std::vector<std::string> ptxas_args = {
-      std::string{ptxas_path},
-      ptx_path,
-      "-o",
-      cubin_path,
-      absl::StrCat("-arch=", cc.GetPtxAsTargetName(
-                                 CudaComputeCapability::CompileMode::kSass)),
-      "--warn-on-spills"};
-  if (VLOG_IS_ON(2) || dump_compilation_log) {
-    ptxas_args.push_back("-v");
-  }
-  AppendArgsFromOptions(options, ptxas_args);
-  if (VLOG_IS_ON(3)) {
-    VLOG(3) << absl::StrJoin(ptxas_args, " ");
-  }
+  const std::vector<std::string> ptxas_args =
+      CreatePtxasArgs(ptxas_path, ptx_path, cubin_path, cc, std::move(options),
+                      VLOG_IS_ON(2) || dump_compilation_log);
+  VLOG(3) << absl::StrJoin(ptxas_args, " ");
 
   ptxas_info_dumper.SetProgram(std::string{ptxas_path}, ptxas_args);
   ptxas_info_dumper.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
@@ -417,7 +417,7 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsmUsingFatbin(
 
   // Compute the ptxas options that were used to produce the cubins.
   std::vector<std::string> ptxas_options;
-  AppendArgsFromOptions(options, ptxas_options);
+  AppendPtxCompilerFlags(std::move(options), ptxas_options);
 
   // Invoke fatbinary and collect its output.
   tsl::SubProcess fatbinary;

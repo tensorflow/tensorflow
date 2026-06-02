@@ -1057,12 +1057,15 @@ cc_library(
         ":cuda_compute_capability",
         "//xla/stream_executor:kernel_stats",
         "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
         "@com_googlesource_code_re2//:re2",
     ],
 )
@@ -1071,11 +1074,28 @@ xla_cc_test(
     name = "ptx_compiler_helpers_test",
     srcs = ["ptx_compiler_helpers_test.cc"],
     deps = [
+        ":cuda_compute_capability",
         ":ptx_compiler_helpers",
         "//xla/stream_executor:kernel_stats",
+        "//xla/stream_executor/gpu:gpu_asm_opts",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "ptx_compiler_helpers_extra_flags_test",
+    srcs = ["ptx_compiler_helpers_extra_flags_test.cc"],
+    deps = [
+        ":cuda_compute_capability",
+        ":ptx_compiler_helpers",
+        "//xla/stream_executor/gpu:gpu_asm_opts",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1091,8 +1111,11 @@ cc_library(
         ":cuda_compute_capability",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/gpu:gpu_asm_opts",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -1139,7 +1162,10 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/gpu:gpu_asm_opts",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -2267,6 +2293,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:vlog_is_on",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

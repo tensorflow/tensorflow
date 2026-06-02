@@ -102,24 +102,14 @@ absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingLibNvPtxCompiler(
     nvPTXCompilerDestroy(&compiler_handle);
   };
 
-  options.extra_flags.emplace_back(
-      absl::StrCat("-arch=", cc.GetPtxAsTargetName()));
-  options.extra_flags.emplace_back("--warn-on-spills");
+  std::vector<std::string> flags;
+  AppendArchitectureSpecificPtxCompilerFlags(
+      cc, std::move(options), VLOG_IS_ON(2) || dump_compilation_log, flags);
+  VLOG(3) << absl::StrJoin(flags, " ");
 
-  if (VLOG_IS_ON(2) || dump_compilation_log) {
-    options.extra_flags.emplace_back("-v");
-  }
-  if (options.disable_gpuasm_optimizations) {
-    options.extra_flags.emplace_back("-O0");
-  }
-
-  if (VLOG_IS_ON(3)) {
-    VLOG(3) << absl::StrJoin(options.extra_flags, " ");
-  }
-
-  std::vector<const char*> cmdline_options_ptrs{};
-  absl::c_transform(options.extra_flags,
-                    std::back_inserter(cmdline_options_ptrs),
+  std::vector<const char*> cmdline_options_ptrs;
+  cmdline_options_ptrs.reserve(flags.size());
+  absl::c_transform(flags, std::back_inserter(cmdline_options_ptrs),
                     [](const std::string& s) { return s.c_str(); });
 
   nvPTXCompileResult compile_result =
