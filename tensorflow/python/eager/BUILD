@@ -205,6 +205,7 @@ py_library(
 py_library(
     name = "context",
     srcs = ["context.py"],
+    lazy_imports = True,
     strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = [
