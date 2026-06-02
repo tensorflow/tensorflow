@@ -156,6 +156,8 @@ TfLiteStatus InferenceProfilerStage::Init(
 TfLiteStatus InferenceProfilerStage::Run() {
   // Generate random inputs.
   std::vector<void*> input_ptrs;
+  std::vector<size_t> input_sizes;
+  input_sizes.reserve(model_info_->inputs.size());
   for (int i = 0; i < model_info_->inputs.size(); ++i) {
     const TfLiteType model_input_type = model_info_->inputs[i]->type;
     if (model_input_type == kTfLiteUInt8) {
@@ -163,29 +165,35 @@ TfLiteStatus InferenceProfilerStage::Run() {
           input_num_elements_[i], std::numeric_limits<uint8_t>::min(),
           std::numeric_limits<uint8_t>::max(), &uint8_tensors_[i]);
       input_ptrs.push_back(uint8_tensors_[i].data());
+      input_sizes.push_back(uint8_tensors_[i].size() * sizeof(uint8_t));
     } else if (model_input_type == kTfLiteInt8) {
       GenerateRandomGaussianData(
           input_num_elements_[i], std::numeric_limits<int8_t>::min(),
           std::numeric_limits<int8_t>::max(), &int8_tensors_[i]);
       input_ptrs.push_back(int8_tensors_[i].data());
+      input_sizes.push_back(int8_tensors_[i].size() * sizeof(int8_t));
     } else if (model_input_type == kTfLiteInt32) {
       GenerateRandomGaussianData(
           input_num_elements_[i], std::numeric_limits<int32_t>::min(),
           std::numeric_limits<int32_t>::max(), &int32_tensors_[i]);
       input_ptrs.push_back(int32_tensors_[i].data());
+      input_sizes.push_back(int32_tensors_[i].size() * sizeof(int32_t));
     } else if (model_input_type == kTfLiteInt64) {
       GenerateRandomGaussianData(
           input_num_elements_[i], std::numeric_limits<int64_t>::min(),
           std::numeric_limits<int64_t>::max(), &int64_tensors_[i]);
       input_ptrs.push_back(int64_tensors_[i].data());
+      input_sizes.push_back(int64_tensors_[i].size() * sizeof(int64_t));
     } else if (model_input_type == kTfLiteBool) {
       GenerateRandomGaussianData(input_num_elements_[i], 0, 1,
                                  &bool_tensors_[i]);
       input_ptrs.push_back(bool_tensors_[i].data());
+      input_sizes.push_back(bool_tensors_[i].size() * sizeof(bool));
     } else if (model_input_type == kTfLiteFloat32) {
       GenerateRandomGaussianData(input_num_elements_[i], -1, 1,
                                  &(float_tensors_[i]));
       input_ptrs.push_back(float_tensors_[i].data());
+      input_sizes.push_back(float_tensors_[i].size() * sizeof(float));
     } else if (model_input_type == kTfLiteFloat16) {
       GenerateRandomGaussianData(input_num_elements_[i], -1, 1,
                                  &(float_tensors_[i]));
@@ -194,6 +202,7 @@ TfLiteStatus InferenceProfilerStage::Run() {
             fp16_ieee_from_fp32_value(float_tensors_[i][j]);
       }
       input_ptrs.push_back(float16_tensors_[i].data());
+      input_sizes.push_back(float16_tensors_[i].size() * sizeof(uint16_t));
     } else {
       LOG(ERROR) << "InferenceProfilerStage only supports "
                     "float16/float32/int8/uint8/int32/int64/bool "
@@ -203,8 +212,8 @@ TfLiteStatus InferenceProfilerStage::Run() {
   }
 
   // Run both inference stages.
-  test_stage_->SetInputs(input_ptrs);
-  reference_stage_->SetInputs(input_ptrs);
+  test_stage_->SetInputs(input_ptrs, input_sizes);
+  reference_stage_->SetInputs(input_ptrs, input_sizes);
   if (test_stage_->Run() != kTfLiteOk) return kTfLiteError;
   if (reference_stage_->Run() != kTfLiteOk) return kTfLiteError;
 
