@@ -809,6 +809,7 @@ lit_test_suite_for_gpus(
             "pdl.hlo",
         ],
         "mi200": [
+            "dot_bf16.hlo",
             "element_wise_row_vectorization.hlo",
             "scatter_bf16.hlo",
             "single_instruction.hlo",
