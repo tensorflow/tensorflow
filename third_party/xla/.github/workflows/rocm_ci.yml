@@ -41,6 +41,7 @@ jobs:
     if: ${{ github.event_name != 'pull_request' || github.base_ref == 'main' }}
     name: JAX Linux x86 AMD Instinct GPU
     runs-on: linux-x86-64-1gpu-amd
+    timeout-minutes: 80
     env:
       DOCKER_IMAGE: ${{ needs.rocm-config.outputs.docker-image }}
     container: &rocm_container
@@ -81,7 +82,7 @@ jobs:
         run: /opt/rocm/bin/rocminfo
 
       - name: Run JAX Unit Tests
-        timeout-minutes: 120
+        timeout-minutes: 60
         working-directory: jax
         run: |
           ./ci/run_bazel_test_rocm_rbe.sh \
@@ -99,6 +100,7 @@ jobs:
     needs: rocm-config
     name: XLA Linux x86 AMD Instinct GPU
     runs-on: linux-x86-64-1gpu-amd
+    timeout-minutes: 80
     env:
       DOCKER_IMAGE: ${{ needs.rocm-config.outputs.docker-image }}
       EXECUTE_CI_BUILD_URL: https://raw.githubusercontent.com/ROCm/xla/refs/heads/rocm-dev-infra/build_tools/rocm/execute_ci_build_upstream.sh
@@ -124,7 +126,7 @@ jobs:
         run: /opt/rocm/bin/rocminfo
 
       - name: Test XLA [single_gpu]
-        timeout-minutes: 120
+        timeout-minutes: 60
         run: |
           build_tools/rocm/execute_ci_build_upstream.sh \
             --config=rocm_ci \
