@@ -5160,7 +5160,11 @@ tf_kernel_library(
     name = "sparse_concat_op",
     features = ["-layering_check"],
     prefix = "sparse_concat_op",
-    deps = SPARSE_DEPS + if_cuda_or_rocm([
+    deps = SPARSE_DEPS + [
+        "//tensorflow/core/util:overflow",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ] + if_cuda_or_rocm([
         ":gpu_device_array",
         ":gpu_prim_helpers",
     ]),
