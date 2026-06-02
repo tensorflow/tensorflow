@@ -3324,7 +3324,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "save_op",
     prefix = "save_op",
-    deps = SAVE_RESTORE_DEPS,
+    deps = SAVE_RESTORE_DEPS + ["@com_google_absl//absl/strings:str_format"],
 )
 
 tf_kernel_library(
@@ -4872,7 +4872,7 @@ tf_cc_test(
 tf_kernel_library(
     name = "string_to_number_op",
     prefix = "string_to_number_op",
-    deps = PARSING_DEPS,
+    deps = PARSING_DEPS + ["@com_google_absl//absl/strings"],
 )
 
 cc_library(
