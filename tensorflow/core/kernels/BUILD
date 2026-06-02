@@ -3303,28 +3303,32 @@ tf_kernel_library(
     deps = IO_DEPS,
 )
 
-SAVE_RESTORE_DEPS = [
-    ":checkpoint_callback_manager",
-    ":save_restore_tensor",
-    "//tensorflow/core:framework",
-    "//tensorflow/core:lib",
-    "//tensorflow/core:lib_internal",
-    "//tensorflow/core:protos_all_cc",
-    "//tensorflow/core/framework:bounds_check",
-    "//tensorflow/core/util/tensor_bundle",
-    "//tensorflow/core/util/tensor_bundle:naming",
-]
-
 tf_kernel_library(
     name = "restore_op",
     prefix = "restore_op",
-    deps = SAVE_RESTORE_DEPS,
+    deps = [
+        ":checkpoint_callback_manager",
+        ":save_restore_tensor",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
 )
 
 tf_kernel_library(
     name = "save_op",
     prefix = "save_op",
-    deps = SAVE_RESTORE_DEPS,
+    deps = [
+        ":save_restore_tensor",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/framework:tensor",
+        "//tensorflow/core/framework:tensor_shape",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+    ],
 )
 
 tf_kernel_library(
@@ -3362,7 +3366,17 @@ tf_cc_tests(
 tf_kernel_library(
     name = "save_restore_v2_ops",
     prefix = "save_restore_v2_ops",
-    deps = SAVE_RESTORE_DEPS,
+    deps = [
+        ":checkpoint_callback_manager",
+        ":save_restore_tensor",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/util/tensor_bundle",
+        "//tensorflow/core/util/tensor_bundle:naming",
+    ],
 )
 
 tf_kernel_library(
