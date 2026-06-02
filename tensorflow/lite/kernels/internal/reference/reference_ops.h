@@ -523,11 +523,13 @@ struct GatherNdHelperResult {
 // Returns common values being used on both `GatherNd` and `GatherNdString`.
 inline GatherNdHelperResult GatherNdHelper(const RuntimeShape& params_shape,
                                            const RuntimeShape& indices_shape) {
+  TFLITE_DCHECK_GE(indices_shape.DimensionsCount(), 1);
   GatherNdHelperResult ret;
   ret.n_slices = 1;
   ret.slice_size = 1;
   const int indices_dims = indices_shape.DimensionsCount();
   ret.indices_nd = indices_shape.Dims(indices_dims - 1);
+  TFLITE_DCHECK_LE(ret.indices_nd, params_shape.DimensionsCount());
   const int params_dims = params_shape.DimensionsCount();
   for (int i = 0; i < indices_dims - 1; ++i) {
     ret.n_slices *= indices_shape.Dims(i);
@@ -539,9 +541,10 @@ inline GatherNdHelperResult GatherNdHelper(const RuntimeShape& params_shape,
   }
 
   int remain_flat_size = params_shape.FlatSize();
-  ret.dims_to_count = std::vector<int>(ret.indices_nd, 0);
+  ret.dims_to_count.assign(ret.indices_nd, 0);
   for (int i = 0; i < ret.indices_nd; ++i) {
-    ret.dims_to_count[i] = remain_flat_size / params_shape.Dims(i);
+    const int dim = params_shape.Dims(i);
+    ret.dims_to_count[i] = (dim == 0) ? 0 : remain_flat_size / dim;
     remain_flat_size = ret.dims_to_count[i];
   }
 
@@ -561,12 +564,25 @@ inline TfLiteStatus GatherNd(const RuntimeShape& params_shape,
   ruy::profiler::ScopeLabel label("GatherNd");
 
   const GatherNdHelperResult res = GatherNdHelper(params_shape, indices_shape);
+  if (res.n_slices == 0) return kTfLiteOk;
+
+  if (indices_data == nullptr ||
+      (res.slice_size > 0 &&
+       (params_data == nullptr || output_data == nullptr))) {
+    return kTfLiteError;
+  }
+
+  const int flat_size = params_shape.FlatSize();
   for (int i = 0; i < res.n_slices; ++i) {
     int64_t from_pos = 0;
     for (int j = 0; j < res.indices_nd; ++j) {
-      from_pos += indices_data[i * res.indices_nd + j] * res.dims_to_count[j];
+      const auto coord = indices_data[i * res.indices_nd + j];
+      if (coord < 0 || coord >= params_shape.Dims(j)) {
+        return kTfLiteError;
+      }
+      from_pos += static_cast<int64_t>(coord) * res.dims_to_count[j];
     }
-    if (from_pos < 0 || from_pos + res.slice_size > params_shape.FlatSize()) {
+    if (from_pos < 0 || from_pos + res.slice_size > flat_size) {
       return kTfLiteError;
     }
     std::memcpy(output_data + i * res.slice_size, params_data + from_pos,
@@ -589,17 +605,39 @@ inline TfLiteStatus GatherNdString(const RuntimeShape& params_shape,
   ruy::profiler::ScopeLabel label("GatherNdString");
 
   const GatherNdHelperResult res = GatherNdHelper(params_shape, indices_shape);
+  if (res.n_slices == 0) {
+    if (output_data != nullptr) {
+      DynamicBuffer buffer;
+      buffer.WriteToTensor(output_data, /*new_shape=*/nullptr);
+    }
+    return kTfLiteOk;
+  }
+
+  if (indices_data == nullptr || params_data == nullptr ||
+      output_data == nullptr) {
+    return kTfLiteError;
+  }
+
   DynamicBuffer buffer;
+  const int num_strings =
+      params_data->data.raw != nullptr ? GetStringCount(params_data) : 0;
+  const int max_pos = std::min(params_shape.FlatSize(), num_strings);
   for (int i = 0; i < res.n_slices; ++i) {
     int64_t from_pos = 0;
     for (int j = 0; j < res.indices_nd; ++j) {
-      from_pos += indices_data[i * res.indices_nd + j] * res.dims_to_count[j];
+      const auto coord = indices_data[i * res.indices_nd + j];
+      if (coord < 0 || coord >= params_shape.Dims(j)) {
+        return kTfLiteError;
+      }
+      from_pos += static_cast<int64_t>(coord) * res.dims_to_count[j];
     }
-    if (from_pos < 0 || from_pos + res.slice_size > params_shape.FlatSize()) {
+    if (from_pos < 0 || from_pos + res.slice_size > max_pos) {
       return kTfLiteError;
     }
     for (int j = 0; j < res.slice_size; ++j) {
-      buffer.AddString(GetString(params_data, from_pos + j));
+      if (buffer.AddString(GetString(params_data, from_pos + j)) != kTfLiteOk) {
+        return kTfLiteError;
+      }
     }
   }
   buffer.WriteToTensor(output_data, /*new_shape=*/nullptr);
