@@ -106,8 +106,8 @@ class TflToStablehloPass
   void getDependentDialects(DialectRegistry& registry) const override {
     mlir::stablehlo::registerAllDialects(registry);
   }
-  inline TFL::ConstBytesAttr CustomOption(OpBuilder* builder,
-                                          const std::string& content) {
+  TFL::ConstBytesAttr CustomOption(OpBuilder* builder,
+                                   const std::string& content) {
     return TFL::ConstBytesAttr::get(builder->getContext(),
                                     StringRef(content.data(), content.size()));
   }
