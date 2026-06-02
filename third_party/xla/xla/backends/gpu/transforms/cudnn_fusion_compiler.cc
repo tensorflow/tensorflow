@@ -157,6 +157,8 @@ inline std::optional<fe::DataType_t> ToCudnnDataType(const PrimitiveType type) {
       return t::BFLOAT16;
     case PrimitiveType::S32:
       return t::INT32;
+    case PrimitiveType::S64:
+      return t::INT64;
     case PrimitiveType::S4:
       return t::INT4;
     case PrimitiveType::S8:
@@ -181,6 +183,8 @@ inline std::optional<fe::DataType_t> GetComputeDataType(
   fe::DataType_t compute_dtype = fe::DataType_t::FLOAT;
   if (type == F64) {
     compute_dtype = fe::DataType_t::DOUBLE;
+  } else if (type == S64) {
+    compute_dtype = fe::DataType_t::INT64;
   } else if (primitive_util::IsIntegralType(type)) {
 #if CUDNN_VERSION >= 90100
     compute_dtype = fe::DataType_t::INT32;
