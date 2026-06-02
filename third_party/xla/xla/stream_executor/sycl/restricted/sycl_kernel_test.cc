@@ -10,13 +10,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "absl/types/span.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/service/gpu/gpu_executable.h"
