@@ -88,6 +88,7 @@ py_library(
         "window_op.py",
         "zip_op.py",
     ],
+    lazy_imports = True,
     strict_deps = True,
     deps = [
         ":debug_mode",
