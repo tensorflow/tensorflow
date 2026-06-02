@@ -108,6 +108,10 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   // Returns the stream for the given device ordinal.
   absl::StatusOr<Stream*> GetStream(int device_ordinal) override;
 
+  // Waits for all pending stream-ordered deallocations on the given device to
+  // complete, then releases the corresponding allocator bookkeeping.
+  absl::Status SynchronizePendingOperations(int device_ordinal);
+
   // Returns the StreamExecutor for the given device ordinal.
   absl::StatusOr<StreamExecutor*> GetStreamExecutor(int device_ordinal) const;
 

@@ -50,6 +50,15 @@ static absl::Status DeviceNotFoundError(int device_ordinal) {
                       device_ordinal));
 }
 
+// Interval between CPU polls of the GPU-written deallocation timeline while
+// waiting for deferred frees to become safe. The 50us value is a conservative
+// initial tradeoff: long enough to avoid busy-spinning a CPU core and short
+// enough to keep forced allocator synchronization responsive; it has not been
+// benchmark-tuned, so workload-specific tests could refine it if this wait
+// shows up in profiles.
+static constexpr absl::Duration kGpuTimelinePollInterval =
+    absl::Microseconds(50);
+
 // Returns the completed timeline value from pinned host memory using an
 // acquire load, so all GPU writes prior to this value are visible.
 // Uses __atomic_load_n rather than std::atomic<> because the pointer is
@@ -107,7 +116,7 @@ DeviceAddressVmmAllocator::~DeviceAddressVmmAllocator() {
     // memory. pinned_timeline is not ABSL_GUARDED_BY and last_seqno is a local.
     if (state->pinned_timeline != nullptr && last_seqno > 0) {
       while (LoadTimeline(state->pinned_timeline) < last_seqno) {
-        absl::SleepFor(absl::Microseconds(50));
+        absl::SleepFor(kGpuTimelinePollInterval);
       }
     }
 
@@ -187,10 +196,8 @@ void DeviceAddressVmmAllocator::WaitPendingDeallocationsToComplete(
   // Poll until the GPU writes a timeline value >= target_seqno.
   // Since timeline values are written in stream order, this guarantees all
   // earlier pending deallocations have also completed.
-  // Sleep 50us per iteration to release the CPU core while waiting rather
-  // than hot-spinning.
   while (LoadTimeline(state.pinned_timeline) < target_seqno) {
-    absl::SleepFor(absl::Microseconds(50));
+    absl::SleepFor(kGpuTimelinePollInterval);
   }
 
   // Reacquire the lock before modifying the maps.
@@ -383,6 +390,38 @@ absl::StatusOr<Stream*> DeviceAddressVmmAllocator::GetStream(
     return DeviceNotFoundError(device_ordinal);
   }
   return state->stream;
+}
+
+absl::Status DeviceAddressVmmAllocator::SynchronizePendingOperations(
+    int device_ordinal) {
+  PerDeviceState* state = GetPerDeviceState(device_ordinal);
+  if (state == nullptr) {
+    return DeviceNotFoundError(device_ordinal);
+  }
+
+  uint64_t target_seqno;
+  {
+    absl::MutexLock lock(state->mu);
+    if (state->pending_deallocations.empty()) {
+      return absl::OkStatus();
+    }
+    target_seqno = state->pending_deallocations.back().seqno;
+  }
+
+  while (LoadTimeline(state->pinned_timeline) < target_seqno) {
+    absl::SleepFor(kGpuTimelinePollInterval);
+  }
+
+  {
+    absl::MutexLock lock(state->mu);
+    while (!state->pending_deallocations.empty() &&
+           state->pending_deallocations.front().seqno <= target_seqno) {
+      DoDeallocate(*state, state->pending_deallocations.front().mem);
+      state->pending_deallocations.pop_front();
+    }
+  }
+
+  return absl::OkStatus();
 }
 
 absl::StatusOr<StreamExecutor*> DeviceAddressVmmAllocator::GetStreamExecutor(

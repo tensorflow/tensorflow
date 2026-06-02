@@ -236,6 +236,26 @@ TEST_F(DeviceAddressVmmAllocatorTest, ExplicitDeallocate) {
   scoped_address.Release();
 }
 
+TEST_F(DeviceAddressVmmAllocatorTest, SynchronizePendingOperationsDrainsQueue) {
+  ASSERT_OK_AND_ASSIGN(
+      auto allocator,
+      gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
+
+  const int ordinal = executor_->device_ordinal();
+  ASSERT_OK_AND_ASSIGN(
+      auto scoped_address,
+      allocator->Allocate(ordinal, 1024, /*retry_on_failure=*/true,
+                          static_cast<int64_t>(MemorySpace::kCollective)));
+
+  DeviceAddressBase addr = scoped_address.cref();
+  scoped_address.Release();
+  ASSERT_THAT(allocator->Deallocate(ordinal, addr), IsOk());
+  EXPECT_NE(allocator->GetRawAllocation(ordinal, addr), nullptr);
+
+  ASSERT_THAT(allocator->SynchronizePendingOperations(ordinal), IsOk());
+  EXPECT_EQ(allocator->GetRawAllocation(ordinal, addr), nullptr);
+}
+
 TEST_F(DeviceAddressVmmAllocatorTest, DeallocateNull) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto allocator,
