@@ -240,8 +240,9 @@ TEST_P(RuntimeShapeTest, TestFlatSize) {
   const std::vector<int32_t> src = IotaVector(kSmallSize);
   const RuntimeShape shape(src.size(), src.data());
   int32_t flat_size = 1;
-  for (std::vector<int>::const_iterator it = src.begin(); it != src.end(); ++it)
-    flat_size *= *it;
+  for (const int32_t val : src) {
+    flat_size *= val;
+  }
   EXPECT_EQ(shape.FlatSize(), flat_size);
 }
 
@@ -374,6 +375,20 @@ TEST(RuntimeShapeTest, TestCheckedFlatSizeSkipDimRejectsOverflow) {
   size_t flat_size = 0;
   EXPECT_FALSE(shape.CheckedFlatSizeSkipDim(/*skip_dim=*/0, flat_size));
 }
+
+#if GTEST_HAS_DEATH_TEST
+TEST(RuntimeShapeTest, TestDimsRejectsOutOfBounds) {
+  const RuntimeShape shape({2, 3, 4});
+  EXPECT_DEATH(shape.Dims(-1), "");
+  EXPECT_DEATH(shape.Dims(3), "");
+}
+
+TEST(RuntimeShapeTest, TestSetDimRejectsOutOfBounds) {
+  RuntimeShape shape({2, 3, 4});
+  EXPECT_DEATH(shape.SetDim(-1, 1), "");
+  EXPECT_DEATH(shape.SetDim(3, 1), "");
+}
+#endif
 
 INSTANTIATE_TEST_SUITE_P(BigSmall, RuntimeShapeTest,
                          testing::Values(kSmallSize, kBigSize),

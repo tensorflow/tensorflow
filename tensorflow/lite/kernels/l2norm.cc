@@ -18,8 +18,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/l2normalization.h"
 #include "tensorflow/lite/kernels/internal/reference/l2normalization.h"
-#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -128,8 +127,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     }
 #undef TF_LITE_L2NORM
   } else if (output->type == kTfLiteInt8) {
-    const auto input_shape = GetTensorShape(input);
-    const auto output_shape = GetTensorShape(output);
+    const RuntimeShape input_shape = GetTensorShape(input);
+    const RuntimeShape output_shape = GetTensorShape(output);
     const int trailing_dim = input_shape.DimensionsCount() - 1;
     const int depth =
         MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);

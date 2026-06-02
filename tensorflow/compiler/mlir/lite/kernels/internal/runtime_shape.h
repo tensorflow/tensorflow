@@ -19,6 +19,7 @@ limitations under the License.
 // decouple TFLite from MLIR.
 // LINT.IfChange
 
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -95,13 +96,13 @@ class RuntimeShape {
 
   ~RuntimeShape();
 
-  inline int32_t DimensionsCount() const { return size_; }
+  int32_t DimensionsCount() const { return size_; }
 
   int32_t Dims(int i) const;
 
-  inline void SetDim(int i, int32_t val) {
-    TFLITE_DCHECK_GE(i, 0);
-    TFLITE_DCHECK_LT(i, size_);
+  void SetDim(int i, int32_t val) {
+    TFLITE_CHECK_GE(i, 0);
+    TFLITE_CHECK_LT(i, size_);
 #ifndef TF_LITE_STATIC_MEMORY
     if (size_ > kMaxSmallSize) {
       dims_pointer_[i] = val;
@@ -113,14 +114,14 @@ class RuntimeShape {
 #endif  // TF_LITE_STATIC_MEMORY
   }
 
-  inline int32_t* DimsData() {
+  int32_t* DimsData() {
 #ifndef TF_LITE_STATIC_MEMORY
     return size_ > kMaxSmallSize ? dims_pointer_ : dims_;
 #else
     return dims_;
 #endif  // TF_LITE_STATIC_MEMORY
   }
-  inline const int32_t* DimsData() const {
+  const int32_t* DimsData() const {
 #ifndef TF_LITE_STATIC_MEMORY
     return size_ > kMaxSmallSize ? dims_pointer_ : dims_;
 #else
@@ -128,10 +129,10 @@ class RuntimeShape {
 #endif  // TF_LITE_STATIC_MEMORY
   }
   // The caller must ensure that the shape is no bigger than 5-D.
-  inline const int32_t* DimsDataUpTo5D() const { return dims_; }
+  const int32_t* DimsDataUpTo5D() const { return dims_; }
 
 #ifndef TF_LITE_STATIC_MEMORY
-  inline void Resize(int dimensions_count) {
+  void Resize(int dimensions_count) {
     const int32_t old_size = size_;
     size_ = dimensions_count;
 
@@ -162,7 +163,7 @@ class RuntimeShape {
 
 #ifndef TF_LITE_STATIC_MEMORY
   template <typename T>
-  inline void BuildFrom(const T& src_iterable) {
+  void BuildFrom(const T& src_iterable) {
     const int dimensions_count =
         std::distance(src_iterable.begin(), src_iterable.end());
     Resize(dimensions_count);
@@ -179,8 +180,8 @@ class RuntimeShape {
   // (a) as Dims<4>-dependent code is eliminated, the reliance on this should be
   // reduced, and (b) some kernels are stricly 4-D, but then the shapes of their
   // inputs should already be 4-D, so this function should not be needed.
-  inline static RuntimeShape ExtendedShape(int new_shape_size,
-                                           const RuntimeShape& shape) {
+  static RuntimeShape ExtendedShape(int new_shape_size,
+                                    const RuntimeShape& shape) {
 #ifdef TF_LITE_STATIC_MEMORY
     TFLITE_DCHECK_LE(new_shape_size, kMaxSmallSize);
 #endif  // TF_LITE_STATIC_MEMORY
@@ -188,7 +189,7 @@ class RuntimeShape {
   }
 
 #ifndef TF_LITE_STATIC_MEMORY
-  inline void BuildFrom(const std::initializer_list<int> init_list) {
+  void BuildFrom(const std::initializer_list<int> init_list) {
     BuildFrom<const std::initializer_list<int>>(init_list);
   }
 #endif  // TF_LITE_STATIC_MEMORY
@@ -299,13 +300,13 @@ class RuntimeShape {
       : size_(0) {
     // If the following check fails, it is likely because a 4D-only kernel is
     // being used with an array of larger dimension count.
-    TFLITE_DCHECK_GE(new_shape_size, shape.DimensionsCount());
+    TFLITE_CHECK_GE(new_shape_size, shape.DimensionsCount());
     Resize(new_shape_size);
 #else
       : size_(new_shape_size) {
     // If the following check fails, it is likely because a 4D-only kernel is
     // being used with an array of larger dimension count.
-    TFLITE_DCHECK_GE(new_shape_size, shape.DimensionsCount());
+    TFLITE_CHECK_GE(new_shape_size, shape.DimensionsCount());
 #endif  // TF_LITE_STATIC_MEMORY
     const int size_increase = new_shape_size - shape.DimensionsCount();
     for (int i = 0; i < size_increase; ++i) {
@@ -316,7 +317,7 @@ class RuntimeShape {
   }
 
   // Number of dimensions in the shape.
-  // size_t * sizeof(int32_t) is the number of bytes to allocate which should
+  // size_ * sizeof(int32_t) is the number of bytes to allocate which should
   // not exceed the maximum value of size_t.
   int32_t size_;
   union {
@@ -331,7 +332,7 @@ class RuntimeShape {
 inline mlir::Dims<4> ToRuntimeDims(const mlir::RuntimeShape& array_shape) {
   mlir::Dims<4> result;
   const int dimensions_count = array_shape.DimensionsCount();
-  TFLITE_DCHECK_LE(dimensions_count, 4);
+  TFLITE_CHECK_LE(dimensions_count, 4);
   int cum_prod = 1;
   for (int i = 0; i < 4; i++) {
     const int new_dim =
@@ -358,7 +359,7 @@ inline RuntimeShape DimsToShape(const mlir::Dims<4>& dims) {
 
 inline int Offset(const RuntimeShape& shape, int i0, int i1, int i2, int i3) {
   TFLITE_DCHECK_EQ(shape.DimensionsCount(), 4);
-  const int* dims_data = reinterpret_cast<const int*>(shape.DimsDataUpTo5D());
+  const int32_t* dims_data = shape.DimsDataUpTo5D();
   TFLITE_DCHECK((dims_data[0] == 0 && i0 == 0) ||
                 (i0 >= 0 && i0 < dims_data[0]));
   TFLITE_DCHECK((dims_data[1] == 0 && i1 == 0) ||
@@ -373,7 +374,7 @@ inline int Offset(const RuntimeShape& shape, int i0, int i1, int i2, int i3) {
 inline int Offset(const RuntimeShape& shape, int i0, int i1, int i2, int i3,
                   int i4) {
   TFLITE_DCHECK_EQ(shape.DimensionsCount(), 5);
-  const int* dims_data = reinterpret_cast<const int*>(shape.DimsDataUpTo5D());
+  const int32_t* dims_data = shape.DimsDataUpTo5D();
   TFLITE_DCHECK((dims_data[0] == 0 && i0 == 0) ||
                 (i0 >= 0 && i0 < dims_data[0]));
   TFLITE_DCHECK((dims_data[1] == 0 && i1 == 0) ||

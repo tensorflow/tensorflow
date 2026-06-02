@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/kernels/internal/runtime_shape.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <limits>
@@ -59,8 +60,8 @@ RuntimeShape::~RuntimeShape() {
 }
 
 int32_t RuntimeShape::Dims(int i) const {
-  TFLITE_DCHECK_GE(i, 0);
-  TFLITE_DCHECK_LT(i, size_);
+  TFLITE_CHECK_GE(i, 0);
+  TFLITE_CHECK_LT(i, size_);
 #ifndef TF_LITE_STATIC_MEMORY
   return size_ > kMaxSmallSize ? dims_pointer_[i] : dims_[i];
 #else
@@ -82,7 +83,7 @@ void RuntimeShape::ReplaceWith(int dimensions_count, const int32_t* dims_data) {
 
 int RuntimeShape::FlatSize() const {
   int buffer_size = 1;
-  const int* dims_data = reinterpret_cast<const int*>(DimsData());
+  const int32_t* dims_data = DimsData();
   for (int i = 0; i < size_; i++) {
     buffer_size *= dims_data[i];
   }
