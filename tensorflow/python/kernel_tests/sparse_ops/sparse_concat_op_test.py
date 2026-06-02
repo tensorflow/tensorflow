@@ -396,6 +396,12 @@ class SparseConcatTest(test.TestCase):
     z = sparse_ops.sparse_concat(-1, [x, y])
     self.assertEqual(z.get_shape().as_list(), [2, 4])
 
+  def testConcatZeroVolumeInvalidShape(self):
+    sp_a = sparse_tensor.SparseTensor(
+        indices=[[0, 0]], values=[1.0], dense_shape=[0, 2])
+    with self.assertRaisesOpError("is out of bounds"):
+      self.evaluate(sparse_ops.sparse_concat(1, [sp_a, sp_a]))
+
 
 if __name__ == "__main__":
   test.main()
