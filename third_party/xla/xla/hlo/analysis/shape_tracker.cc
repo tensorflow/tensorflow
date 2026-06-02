@@ -129,67 +129,35 @@ absl::StatusOr<std::vector<PhysicalDimension>> BuildPhysicalDimensions(
 
 }  // namespace
 
-struct ShapeTracker::BufferView {
-  struct Transformation {
-    llvm::SmallVector<int64_t, 6> input_reshape;
-    llvm::SmallVector<int64_t, 6> transpose;
-  };
-
-  llvm::SmallVector<int64_t, 6> strides;
-  llvm::SmallVector<int64_t, 6> extents;
-
-  bool operator==(const BufferView& other) const {
-    return strides == other.strides && extents == other.extents;
+void ShapeTracker::BufferView::MergeAdjacentDimensions() {
+  if (strides_.empty()) {
+    return;
   }
-
-  // Flattens a set of sub-views and compacts contiguous elements.
-  static BufferView FlattenAndCompact(absl::Span<const BufferView> sub_views);
-
-  // Compacts contiguous adjacent strides/extents in decreasing-stride order.
-  static BufferView Compact(absl::Span<const int64_t> strides,
-                            absl::Span<const int64_t> extents);
-
-  // Attempts to partition the flat view into logical dimensions. Returns
-  // nullopt if layout is incompatible. A single logical dimension is allowed to
-  // span multiple non-contiguous segments (no contiguity check).
-  std::optional<std::vector<BufferView>> TryUnflatten(
-      absl::Span<const int64_t> logical_dims) const;
-
-  static BufferView FromShape(const xla::Shape& shape);
-  Transformation transformation() const;
-};
-
-ShapeTracker::BufferView ShapeTracker::BufferView::Compact(
-    absl::Span<const int64_t> strides, absl::Span<const int64_t> extents) {
-  BufferView compacted;
-  for (size_t i = 0; i < strides.size(); ++i) {
-    int64_t stride = strides[i];
-    int64_t extent = extents[i];
-
-    if (!compacted.strides.empty() &&
-        compacted.strides.back() == stride * extent) {
-      // Adjacent segments are contiguous in decreasing stride order: merge them
-      compacted.extents.back() *= extent;
-      compacted.strides.back() = stride;
+  size_t w = 0;
+  for (size_t i = 1; i < strides_.size(); ++i) {
+    if (strides_[i] * extents_[i] == strides_[w]) {
+      extents_[w] *= extents_[i];
+      strides_[w] = strides_[i];
     } else {
-      compacted.strides.push_back(stride);
-      compacted.extents.push_back(extent);
+      ++w;
+      strides_[w] = strides_[i];
+      extents_[w] = extents_[i];
     }
   }
-  return compacted;
+  strides_.resize(w + 1);
+  extents_.resize(w + 1);
 }
 
-ShapeTracker::BufferView ShapeTracker::BufferView::FlattenAndCompact(
+ShapeTracker::BufferView ShapeTracker::BufferView::FromSubviews(
     absl::Span<const BufferView> sub_views) {
-  std::vector<int64_t> flat_strides;
-  std::vector<int64_t> flat_extents;
+  BufferView result;
   for (const auto& sub_view : sub_views) {
-    flat_strides.insert(flat_strides.end(), sub_view.strides.begin(),
-                        sub_view.strides.end());
-    flat_extents.insert(flat_extents.end(), sub_view.extents.begin(),
-                        sub_view.extents.end());
+    result.strides_.insert(result.strides_.end(), sub_view.strides_.begin(),
+                           sub_view.strides_.end());
+    result.extents_.insert(result.extents_.end(), sub_view.extents_.begin(),
+                           sub_view.extents_.end());
   }
-  return Compact(flat_strides, flat_extents);
+  return result;
 }
 
 std::optional<std::vector<ShapeTracker::BufferView>>
@@ -199,8 +167,8 @@ ShapeTracker::BufferView::TryUnflatten(
   sub_views.reserve(logical_dims.size());
 
   size_t atom_idx = 0;
-  int64_t rem_stride = strides[0];
-  int64_t rem_extent = extents[0];
+  int64_t rem_stride = strides_[0];
+  int64_t rem_extent = extents_[0];
 
   for (int64_t d : logical_dims) {
     BufferView dim_view;
@@ -213,17 +181,17 @@ ShapeTracker::BufferView::TryUnflatten(
       }
 
       int64_t take_stride = rem_stride * (rem_extent / take_extent);
-      dim_view.strides.push_back(take_stride);
-      dim_view.extents.push_back(take_extent);
+      dim_view.strides_.push_back(take_stride);
+      dim_view.extents_.push_back(take_extent);
 
       rem_d /= take_extent;
       rem_extent /= take_extent;
 
       if (rem_extent == 1) {
         atom_idx++;
-        if (atom_idx < strides.size()) {
-          rem_stride = strides[atom_idx];
-          rem_extent = extents[atom_idx];
+        if (atom_idx < strides_.size()) {
+          rem_stride = strides_[atom_idx];
+          rem_extent = extents_[atom_idx];
         }
       }
     }
@@ -233,12 +201,12 @@ ShapeTracker::BufferView::TryUnflatten(
   return sub_views;
 }
 
-ShapeTracker::BufferView ShapeTracker::BufferView::FromShape(
+ShapeTracker::BufferView ShapeTracker::BufferView::FromShapeCompacted(
     const xla::Shape& shape) {
   BufferView view;
   int64_t total_elements = ShapeUtil::ElementsIn(shape);
-  view.strides.push_back(1);
-  view.extents.push_back(total_elements);
+  view.strides_.push_back(1);
+  view.extents_.push_back(total_elements);
   return view;
 }
 
@@ -250,7 +218,7 @@ ShapeTracker& ShapeTracker::operator=(ShapeTracker&&) noexcept = default;
 
 ShapeTracker::ShapeTracker(xla::Shape shape)
     : input_shape_(shape), output_shape_(shape) {
-  projections_.push_back(BufferView::FromShape(shape));
+  projections_.push_back(BufferView::FromShapeCompacted(shape));
 }
 
 absl::StatusOr<ShapeTracker> ShapeTracker::FromProducerConsumer(
@@ -303,7 +271,7 @@ absl::Status ShapeTracker::AppendTranspose(
   auto opt_sub_views = current_view->TryUnflatten(non_degenerate_dims);
 
   if (!opt_sub_views.has_value()) {
-    projections_.push_back(BufferView::FromShape(output_shape_));
+    projections_.push_back(BufferView::FromShapeCompacted(output_shape_));
     current_view = &projections_.back();
     opt_sub_views = current_view->TryUnflatten(non_degenerate_dims);
     if (!opt_sub_views.has_value()) {
@@ -326,7 +294,9 @@ absl::Status ShapeTracker::AppendTranspose(
     permuted_sub_views.push_back((*opt_sub_views)[physical_idx]);
   }
 
-  *current_view = BufferView::FlattenAndCompact(permuted_sub_views);
+  *current_view = BufferView::FromSubviews(permuted_sub_views);
+  current_view->MergeAdjacentDimensions();
+
   output_shape_ = ShapeUtil::PermuteDimensions(permutation, output_shape_);
   LayoutUtil::SetToDefaultLayout(&output_shape_);
 
@@ -357,7 +327,7 @@ absl::Status ShapeTracker::AppendReshape(absl::Span<const int64_t> dimensions) {
 void ShapeTracker::TryFoldProjection() {
   while (projections_.size() > 1) {
     const auto& last = projections_.back();
-    auto transformation = last.transformation();
+    auto transformation = last.AsTransformation();
     auto& prev = projections_[projections_.size() - 2];
 
     auto opt_sub_views = prev.TryUnflatten(transformation.input_reshape);
@@ -365,11 +335,13 @@ void ShapeTracker::TryFoldProjection() {
       break;
     }
 
-    std::vector<BufferView> permuted_views(opt_sub_views->size());
+    std::vector<BufferView> permuted_views;
+    permuted_views.reserve(opt_sub_views->size());
     for (size_t i = 0; i < transformation.transpose.size(); ++i) {
-      permuted_views[i] = (*opt_sub_views)[transformation.transpose[i]];
+      permuted_views.push_back((*opt_sub_views)[transformation.transpose[i]]);
     }
-    prev = BufferView::FlattenAndCompact(permuted_views);
+    prev = BufferView::FromSubviews(permuted_views);
+    prev.MergeAdjacentDimensions();
     projections_.pop_back();
   }
 }
@@ -505,7 +477,7 @@ absl::Status ShapeTracker::ConcatenateFrom(const ShapeTracker& other) {
 }
 
 ShapeTracker::BufferView::Transformation
-ShapeTracker::BufferView::transformation() const {
+ShapeTracker::BufferView::AsTransformation() const {
   Transformation result;
 
   struct Atom {
@@ -514,9 +486,9 @@ ShapeTracker::BufferView::transformation() const {
     int64_t original_idx;
   };
   llvm::SmallVector<Atom, 6> atoms;
-  atoms.reserve(strides.size());
-  for (size_t i = 0; i < strides.size(); ++i) {
-    atoms.push_back({strides[i], extents[i], static_cast<int64_t>(i)});
+  atoms.reserve(strides_.size());
+  for (size_t i = 0; i < strides_.size(); ++i) {
+    atoms.push_back({strides_[i], extents_[i], static_cast<int64_t>(i)});
   }
 
   auto sorted_atoms = atoms;
@@ -549,7 +521,7 @@ absl::StatusOr<ShapeTracker> ShapeTracker::GetInverted() const {
 
   ShapeTracker inverted(output_shape_);
   for (auto it = projections_.rbegin(); it != projections_.rend(); ++it) {
-    auto transformation = it->transformation();
+    auto transformation = it->AsTransformation();
 
     std::vector<int64_t> transposed_dims(transformation.transpose.size());
     for (size_t i = 0; i < transformation.transpose.size(); ++i) {
@@ -622,7 +594,7 @@ std::vector<ShapeTracker::Step> ShapeTracker::GetSteps() const {
 
   for (size_t i = 0; i < projections_.size(); ++i) {
     const auto& projection = projections_[i];
-    auto transformation = projection.transformation();
+    auto transformation = projection.AsTransformation();
 
     // If it is the last projection, and its transpose is identity,
     // we can skip it completely because the final reshape will handle it.

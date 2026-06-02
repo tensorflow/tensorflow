@@ -17,12 +17,14 @@ limitations under the License.
 #define XLA_HLO_ANALYSIS_SHAPE_TRACKER_H_
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/SmallVector.h"
 #include "xla/shape.h"
 #include "xla/util.h"
 
@@ -123,7 +125,7 @@ class ShapeTracker {
   std::string DebugString(bool avoid_combining_reshapes = true) const;
 
  private:
-  struct BufferView;
+  class BufferView;
 
   static std::vector<Step> OptimizeSteps(const std::vector<Step>& steps,
                                          const xla::Shape& input_shape,
@@ -134,6 +136,39 @@ class ShapeTracker {
   std::vector<BufferView> projections_;
   xla::Shape input_shape_;
   xla::Shape output_shape_;
+};
+
+class ShapeTracker::BufferView {
+ public:
+  // Creates a view representing a shape as a single contiguous segment.
+  static BufferView FromShapeCompacted(const xla::Shape& shape);
+  // Flattens a set of sub-views.
+  static BufferView FromSubviews(absl::Span<const BufferView> sub_views);
+
+  struct Transformation {
+    llvm::SmallVector<int64_t, 6> input_reshape;
+    llvm::SmallVector<int64_t, 6> transpose;
+  };
+  Transformation AsTransformation() const;
+
+  bool operator==(const BufferView& other) const {
+    return strides_ == other.strides_ && extents_ == other.extents_;
+  }
+
+  // Combines contiguous adjacent strides/extents in decreasing-stride order.
+  void MergeAdjacentDimensions();
+
+  // Attempts to partition the flat view into logical dimensions. Returns
+  // nullopt if layout is incompatible. A single logical dimension is allowed to
+  // span multiple non-contiguous segments.
+  std::optional<std::vector<BufferView>> TryUnflatten(
+      absl::Span<const int64_t> logical_dims) const;
+
+ private:
+  BufferView() = default;
+
+  llvm::SmallVector<int64_t, 6> strides_;
+  llvm::SmallVector<int64_t, 6> extents_;
 };
 
 }  // namespace xla
