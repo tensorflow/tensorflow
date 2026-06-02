@@ -85,6 +85,8 @@ class CollectiveOpsTestE2E : public CollectiveOpsE2ETestBase {
     if (Capability().IsCuda()) {
       return Capability().cuda_compute_capability()->IsAtLeast(8, 9);
     }
+    // TODO(Intel-tf): Update this when FP8 is supported.
+    if (Capability().IsOneAPI()) return false;
     return Capability().rocm_compute_capability()->has_fp8_support() &&
            GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
   }
