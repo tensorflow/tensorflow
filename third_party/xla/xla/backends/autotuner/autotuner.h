@@ -182,12 +182,6 @@ class Autotuner {
         cache_(std::move(cache)),
         thread_pool_(thread_pool) {}
 
-  // Returns a list of instruction groups that can be autotuned. Each group
-  // contains a set of instructions that are equivalent as they have the same
-  // HLO fingerprint.
-  std::vector<InstructionGroup> GetAutotuningCandidates(
-      const HloModule* module, const InstructionFilterFn& should_autotune);
-
   // Gets the best config for each given instruction and errors out if any of
   // them fails.
   absl::StatusOr<std::vector<Config>> GetConfigsForAll(

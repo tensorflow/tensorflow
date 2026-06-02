@@ -30,7 +30,6 @@ limitations under the License.
 
 #include "google/protobuf/any.pb.h"
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
@@ -39,7 +38,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
@@ -50,6 +48,7 @@ limitations under the License.
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/autotuner/hlo_extractor.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -65,25 +64,14 @@ limitations under the License.
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/proto/proto_utils.h"
-#include "xla/tsl/util/sorted_range.h"
 #include "xla/util.h"
 #include "tsl/platform/fingerprint.h"
 
 namespace xla {
 
 namespace {
-
-tsl::Fprint128 GetFingerprint(const HloInstruction* instr) {
-  auto options = HloPrintOptions::Fingerprint();
-  options.set_print_backend_config(true);
-  options.set_sort_backend_config(true);
-  options.set_print_operand_shape(true);
-
-  return tsl::Fingerprint128(instr->ToString(options));
-}
 
 // It is important to fingerprint the entire module not just the autotuning
 // candidates, to avoid collisions in the key-value store when several
@@ -168,7 +156,7 @@ absl::StatusOr<std::unique_ptr<Autotuner>> Autotuner::Create(
 absl::Status Autotuner::Autotune(HloModule* module,
                                  const InstructionFilterFn& should_autotune) {
   std::vector<InstructionGroup> instruction_groups =
-      GetAutotuningCandidates(module, should_autotune);
+      ExtractEquivalentInstructions(*module, should_autotune);
   if (instruction_groups.empty()) {
     VLOG(1) << "No instructions to autotune.";
     return absl::OkStatus();
@@ -202,7 +190,7 @@ absl::Status Autotuner::Autotune(HloModule* module,
 
   // 1. Get all the instructions that could be autotuned.
   std::vector<InstructionGroup> all_instruction_groups =
-      GetAutotuningCandidates(module, should_autotune);
+      ExtractEquivalentInstructions(*module, should_autotune);
   if (all_instruction_groups.empty()) {
     VLOG(1) << "No instructions to autotune.";
     return absl::OkStatus();
@@ -513,31 +501,6 @@ absl::StatusOr<std::vector<Autotuner::Config>> Autotuner::GetConfigsForAll(
     }
   }
   return configs;
-}
-
-std::vector<Autotuner::InstructionGroup> Autotuner::GetAutotuningCandidates(
-    const HloModule* module, const InstructionFilterFn& should_autotune) {
-  absl::flat_hash_map<tsl::Fprint128, InstructionGroup, tsl::Fprint128Hasher>
-      grouped_instructions;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
-    for (HloInstruction* instr : computation->MakeInstructionPostOrder()) {
-      if (should_autotune(*instr)) {
-        grouped_instructions[GetFingerprint(instr)].push_back(instr);
-      }
-    }
-  }
-  // Ensures deterministic iteration using sorted range.
-  std::vector<InstructionGroup> result;
-  for (auto& [fingerprint, nodes] :
-       tsl::SortedRange(grouped_instructions, [](const auto& a, const auto& b) {
-         if (a.first.high64 != b.first.high64) {
-           return a.first.high64 < b.first.high64;
-         }
-         return a.first.low64 < b.first.low64;
-       })) {
-    result.push_back(std::move(nodes));
-  }
-  return result;
 }
 
 std::optional<Autotuner::Config> Autotuner::LookUp(
