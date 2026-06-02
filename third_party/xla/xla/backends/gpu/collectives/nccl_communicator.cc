@@ -40,12 +40,14 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/collectives/nccl_errors.h"
+#include "xla/backends/gpu/collectives/nccl_registered_memory.h"
 #include "xla/backends/gpu/collectives/nccl_symmetric_memory.h"
 #include "xla/backends/gpu/collectives/nccl_types.h"
 #include "xla/backends/gpu/collectives/single_threaded_executor.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
+#include "xla/core/collectives/registered_memory.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/future.h"
 #include "xla/primitive_util.h"
@@ -186,6 +188,19 @@ NcclCommunicator::CreateDeviceComm(
         }
 
         return NcclDeviceCommunicator::CreateFrom(*this, requirements);
+      });
+}
+
+absl::StatusOr<std::unique_ptr<RegisteredMemory>>
+NcclCommunicator::CreateRegisteredMemory(se::DeviceAddressBase addr) {
+  return ExecuteAwait<std::unique_ptr<RegisteredMemory>>(
+      [this, addr]() -> absl::StatusOr<std::unique_ptr<RegisteredMemory>> {
+        VLOG(5) << "Registering buffer for device address: " << addr.opaque();
+        if (cancel_->IsCancelled()) {
+          return FailedPrecondition("NcclCommunicator aborted");
+        }
+
+        return NcclRegisteredMemory::Create(comm_, addr);
       });
 }
 

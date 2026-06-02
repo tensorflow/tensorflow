@@ -137,6 +137,15 @@ tf_proto_library(
 )
 
 cc_library(
+    name = "registered_memory",
+    hdrs = ["registered_memory.h"],
+    deps = [
+        "//xla/stream_executor:device_address",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_library(
     name = "symmetric_memory",
     hdrs = ["symmetric_memory.h"],
     deps = [
