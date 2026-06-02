@@ -103,6 +103,26 @@ const char kTritonGemmFusionHlo[] = R"(
       backend_config={"fusion_backend_config": {kind: "__triton_gemm"}}
   })";
 
+const char kScaledDotGemmFusionHlo[] = R"(
+  block_scaled_dot {
+    lhs = f8e4m3fn[256,128] parameter(0)
+    rhs = f8e4m3fn[384,128] parameter(1)
+    lhs_scale = f8e8m0fnu[256,4] parameter(2)
+    rhs_scale = f8e8m0fnu[384,4] parameter(3)
+    ROOT result = f32[256,384] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+        lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  }
+
+  ENTRY main {
+    lhs = f8e4m3fn[256,128] parameter(0)
+    rhs = f8e4m3fn[384,128] parameter(1)
+    lhs_scale = f8e8m0fnu[256,4] parameter(2)
+    rhs_scale = f8e8m0fnu[384,4] parameter(3)
+    ROOT result = f32[256,384] fusion(lhs, rhs, lhs_scale, rhs_scale),
+        kind=kCustom, calls=block_scaled_dot,
+        backend_config={"fusion_backend_config":{kind:"__triton_gemm"}}
+  })";
+
 const char kCudnnCustomCallHlo[] = R"(
   HloModule module
 
@@ -190,6 +210,27 @@ TEST_F(CudnnBackendTest, GetSupportedConfigsFromTritonGemmFusion) {
                           ParseAndReturnVerifiedModule(kTritonGemmFusionHlo));
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_->GetSupportedConfigs(
+          (*hlo_module->entry_computation()->root_instruction()));
+  EXPECT_THAT(configs, absl_testing::IsOkAndHolds(SizeIs(Gt(0))));
+}
+
+TEST_F(CudnnBackendTest, GetSupportedConfigsFromScaledDotGemmFusion) {
+  se::CudaComputeCapability cc =
+      stream_executor_->GetDeviceDescription().cuda_compute_capability();
+  if (!cc.IsAtLeastBlackwell()) {
+    GTEST_SKIP() << "Block-scaled dot is only supported on Blackwell GPUs.";
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> hlo_module,
+      ParseAndReturnVerifiedModule(kScaledDotGemmFusionHlo));
+  // Test with cudnn_gemm_fusion_level = 0 to ensure it is permanently enabled.
+  DebugOptions debug_options = debug_options_;
+  debug_options.set_xla_gpu_cudnn_gemm_fusion_level(0);
+  CudnnBackend backend(stream_executor_, &debug_options, &compiler_,
+                       &target_config_);
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
+      backend.GetSupportedConfigs(
           (*hlo_module->entry_computation()->root_instruction()));
   EXPECT_THAT(configs, absl_testing::IsOkAndHolds(SizeIs(Gt(0))));
 }

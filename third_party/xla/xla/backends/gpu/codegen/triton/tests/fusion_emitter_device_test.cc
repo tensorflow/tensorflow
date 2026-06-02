@@ -104,6 +104,7 @@ class TritonEmitterTest
         GpuPjRtCodegenTest>::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_unsupported_enable_triton_multi_output_fusion(
         true);
+    debug_options.set_xla_gpu_experimental_disable_binary_libraries(true);
     return debug_options;
   }
 

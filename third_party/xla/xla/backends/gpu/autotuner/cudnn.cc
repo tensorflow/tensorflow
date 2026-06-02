@@ -148,7 +148,8 @@ bool IsSupportedCudnnFusion(const HloInstruction& instr,
   }
 
   if (hero->opcode() == HloOpcode::kConvolution ||
-      hero->opcode() == HloOpcode::kRaggedDot) {
+      hero->opcode() == HloOpcode::kRaggedDot ||
+      hero->opcode() == HloOpcode::kScaledDot) {
     return true;
   }
 
