@@ -1,1 +1,305 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/llvm/include/llvm/IR/GlobalObject.h b/llvm/include/llvm/IR/GlobalObject.h
+--- a/llvm/include/llvm/IR/GlobalObject.h
++++ b/llvm/include/llvm/IR/GlobalObject.h
+@@ -181,7 +181,7 @@
+                             SmallVectorImpl<MDNode *> &MDs) const;
+   /// @}
+ 
+-  LLVM_ABI bool hasMetadataOtherThanDebugLoc() const;
++  LLVM_ABI bool hasMetadataOtherThanDebugLocAndGuid() const;
+ 
+   /// Copy metadata from Src, adjusting offsets by Offset.
+   LLVM_ABI void copyMetadata(const GlobalObject *Src, unsigned Offset);
+diff -ruN --strip-trailing-cr a/llvm/include/llvm/Transforms/Utils/AssignGUID.h b/llvm/include/llvm/Transforms/Utils/AssignGUID.h
+--- a/llvm/include/llvm/Transforms/Utils/AssignGUID.h
++++ b/llvm/include/llvm/Transforms/Utils/AssignGUID.h
+@@ -17,6 +17,8 @@
+ #ifndef LLVM_TRANSFORMS_UTILS_ASSIGNGUID_H
+ #define LLVM_TRANSFORMS_UTILS_ASSIGNGUID_H
+ 
++#include "llvm/IR/GlobalVariable.h"
++#include "llvm/IR/LLVMContext.h"
+ #include "llvm/IR/Module.h"
+ #include "llvm/IR/PassManager.h"
+ #include "llvm/Support/Debug.h"
+@@ -35,6 +37,11 @@
+   }
+ 
+   static bool isRequired() { return true; }
++
++  // Let GlobalMerge assign a GUID for merged GVs, instead of needing to
++  // traverse all the module; or instead of making GlobalValue::assignGUID
++  // public.
++  static void assignGUIDForMergedGV(GlobalVariable &GV);
+ };
+ 
+ } // end namespace llvm
+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/GlobalMerge.cpp b/llvm/lib/CodeGen/GlobalMerge.cpp
+--- a/llvm/lib/CodeGen/GlobalMerge.cpp
++++ b/llvm/lib/CodeGen/GlobalMerge.cpp
+@@ -80,6 +80,7 @@
+ #include "llvm/IR/GlobalVariable.h"
+ #include "llvm/IR/Instruction.h"
+ #include "llvm/IR/IntrinsicInst.h"
++#include "llvm/IR/LLVMContext.h"
+ #include "llvm/IR/Module.h"
+ #include "llvm/IR/Type.h"
+ #include "llvm/IR/Use.h"
+@@ -94,6 +95,7 @@
+ #include "llvm/Target/TargetLoweringObjectFile.h"
+ #include "llvm/Target/TargetMachine.h"
+ #include "llvm/TargetParser/Triple.h"
++#include "llvm/Transforms/Utils/AssignGUID.h"
+ #include <algorithm>
+ #include <cassert>
+ #include <cstddef>
+@@ -605,6 +607,7 @@
+ 
+       NumMerged++;
+     }
++    AssignGUIDPass::assignGUIDForMergedGV(*MergedGV);
+     Changed = true;
+     i = j;
+   }
+@@ -726,14 +729,15 @@
+     if (GV.isTagged())
+       continue;
+ 
+-    // Don't merge globals with metadata other than !dbg, as this is essentially
+-    // equivalent to adding metadata to an existing global, which is not
+-    // necessarily a correct transformation depending on the specific metadata's
+-    // semantics. We will later use copyMetadata() to copy metadata from
+-    // component globals to the combined global, which only knows how to do this
+-    // correctly for !dbg (and !type, but by this point LowerTypeTests will have
+-    // already run).
+-    if (GV.hasMetadataOtherThanDebugLoc())
++    // Don't merge globals with metadata other than !dbg or !guid, as this is
++    // essentially equivalent to adding metadata to an existing global, which is
++    // not necessarily a correct transformation depending on the specific
++    // metadata's semantics. We will later use copyMetadata() to copy metadata
++    // from component globals to the combined global, which only knows how to do
++    // this correctly for !dbg (and !type, but by this point LowerTypeTests will
++    // have already run).
++    // Note that a new !guid will be created as part of doMerge
++    if (GV.hasMetadataOtherThanDebugLocAndGuid())
+       continue;
+ 
+     Type *Ty = GV.getValueType();
+diff -ruN --strip-trailing-cr a/llvm/lib/IR/Globals.cpp b/llvm/lib/IR/Globals.cpp
+--- a/llvm/lib/IR/Globals.cpp
++++ b/llvm/lib/IR/Globals.cpp
+@@ -452,11 +452,11 @@
+   return true;
+ }
+ 
+-bool GlobalObject::hasMetadataOtherThanDebugLoc() const {
++bool GlobalObject::hasMetadataOtherThanDebugLocAndGuid() const {
+   SmallVector<std::pair<unsigned, MDNode *>, 4> MDs;
+   getAllMetadata(MDs);
+   for (const auto &V : MDs)
+-    if (V.first != LLVMContext::MD_dbg)
++    if (V.first != LLVMContext::MD_dbg && V.first != LLVMContext::MD_unique_id)
+       return true;
+   return false;
+ }
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/IPO/ConstantMerge.cpp b/llvm/lib/Transforms/IPO/ConstantMerge.cpp
+--- a/llvm/lib/Transforms/IPO/ConstantMerge.cpp
++++ b/llvm/lib/Transforms/IPO/ConstantMerge.cpp
+@@ -98,9 +98,9 @@
+ static CanMerge makeMergeable(GlobalVariable *Old, GlobalVariable *New) {
+   if (!Old->hasGlobalUnnamedAddr() && !New->hasGlobalUnnamedAddr())
+     return CanMerge::No;
+-  if (Old->hasMetadataOtherThanDebugLoc())
++  if (Old->hasMetadataOtherThanDebugLocAndGuid())
+     return CanMerge::No;
+-  assert(!New->hasMetadataOtherThanDebugLoc());
++  assert(!New->hasMetadataOtherThanDebugLocAndGuid());
+ 
+   // Merging constants with different comdats means one group cannot in general
+   // be dropped independently without the other group now having an invalid
+@@ -175,8 +175,8 @@
+       if (GV.isWeakForLinker())
+         continue;
+ 
+-      // Don't touch globals with metadata other then !dbg.
+-      if (GV.hasMetadataOtherThanDebugLoc())
++      // Don't touch globals with metadata other than !dbg or !guid.
++      if (GV.hasMetadataOtherThanDebugLocAndGuid())
+         continue;
+ 
+       Constant *Init = GV.getInitializer();
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/IPO/MemProfContextDisambiguation.cpp b/llvm/lib/Transforms/IPO/MemProfContextDisambiguation.cpp
+--- a/llvm/lib/Transforms/IPO/MemProfContextDisambiguation.cpp
++++ b/llvm/lib/Transforms/IPO/MemProfContextDisambiguation.cpp
+@@ -5899,9 +5899,20 @@
+           break;
+         }
+       }
+-      assert(GVSummary && GVSummary->modulePath() == SrcModule);
++      // TODO: Put back the assert once we have metadata on imported copies of
++      // aliases linking them back to the original alias GUID, which would allow
++      // us to locate the alias summary here.
++      // assert(GVSummary && GVSummary->modulePath() == SrcModule);
+     }
+ 
++    // GVSummary can be null if this is a function imported as a copy of an
++    // alias, and we don't have the aliasee's summary in our distributed index.
++    // TODO: Once we can locate the original GUID for imported aliases (e.g. via
++    // TBD additional metadata), we should find the alias summary instead, and
++    // we can remove this check and fall back to the original check below.
++    if (!GVSummary)
++      continue;
++
+     // If this was an imported alias skip it as we won't have the function
+     // summary, and it should be cloned in the original module.
+     if (isa<AliasSummary>(GVSummary))
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Utils/AssignGUID.cpp b/llvm/lib/Transforms/Utils/AssignGUID.cpp
+--- a/llvm/lib/Transforms/Utils/AssignGUID.cpp
++++ b/llvm/lib/Transforms/Utils/AssignGUID.cpp
+@@ -29,4 +29,13 @@
+       continue;
+     F.assignGUID();
+   }
+-}
++}
++
++void AssignGUIDPass::assignGUIDForMergedGV(GlobalVariable &GV) {
++  // FIXME: merging adds all the guids of the original GVs. We currently drop
++  // that metadata from GV first, but we may want to remember those later, if
++  // we had a motivation for that. In that case, we need some other metadata
++  // to maintain that association.
++  GV.eraseMetadata(LLVMContext::MD_unique_id);
++  GV.assignGUID();
++}
+diff -ruN --strip-trailing-cr a/llvm/test/ThinLTO/X86/memprof-imported-alias-assert.ll b/llvm/test/ThinLTO/X86/memprof-imported-alias-assert.ll
+--- a/llvm/test/ThinLTO/X86/memprof-imported-alias-assert.ll
++++ b/llvm/test/ThinLTO/X86/memprof-imported-alias-assert.ll
+@@ -0,0 +1,64 @@
++;; Test that we do not assert/crash in distributed ThinLTO when an alias is
++;; imported as a copy of the aliasee, but the aliasee summary is not in the
++;; distributed index.
++
++; REQUIRES: asserts
++
++; RUN: rm -rf %t && split-file %s %t && cd %t
++; RUN: opt -thinlto-bc src1.ll >src1.o
++; RUN: opt -thinlto-bc src2.ll >src2.o
++; RUN: llvm-lto2 run src1.o src2.o -enable-memprof-context-disambiguation \
++; RUN:  -supports-hot-cold-new \
++; RUN:  -thinlto-distributed-indexes \
++; RUN:  -r=src1.o,main,plx \
++; RUN:  -r=src1.o,alias, \
++; RUN:  -r=src2.o,alias,pl \
++; RUN:  -r=src2.o,aliasee,pl \
++; RUN:  -r=src2.o,_Znam, \
++; RUN:  -o %t.out
++
++;; ThinLTO backend for the importing module. Make sure this succeeds.
++; RUN: opt -import-all-index -passes=function-import,memprof-context-disambiguation \
++; RUN:  -summary-file=src1.o.thinlto.bc \
++; RUN:  -memprof-import-summary=src1.o.thinlto.bc \
++; RUN:  -enable-import-metadata \
++; RUN:  -stats -pass-remarks=memprof-context-disambiguation \
++; RUN:  src1.o -S 2>&1 | FileCheck %s
++
++; CHECK: define available_externally hidden ptr @alias(ptr %{{.*}})
++
++;--- src1.ll
++target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
++target triple = "x86_64-unknown-linux-gnu"
++
++define i32 @main() {
++entry:
++  %call = call ptr @alias(ptr null), !callsite !0
++  ret i32 0
++}
++
++declare ptr @alias(ptr)
++
++!0 = !{i64 8632435727821051414}
++
++;--- src2.ll
++target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
++target triple = "x86_64-unknown-linux-gnu"
++
++@alias = hidden alias ptr (ptr), ptr @aliasee
++
++define ptr @aliasee(ptr %0) !guid !1 {
++entry:
++  %call = call ptr @_Znam(i64 10), !memprof !2, !callsite !7
++  ret ptr null
++}
++
++declare ptr @_Znam(i64)
++
++!1 = !{i64 6174544574081827517}
++!2 = !{!3, !5}
++!3 = !{!4, !"notcold"}
++!4 = !{i64 9086428284934609951, i64 8632435727821051414}
++!5 = !{!6, !"cold"}
++!6 = !{i64 9086428284934609951, i64 -3421689549917153178}
++!7 = !{i64 9086428284934609951}
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/ConstantMerge/merge-dbg.ll b/llvm/test/Transforms/ConstantMerge/merge-dbg.ll
+--- a/llvm/test/Transforms/ConstantMerge/merge-dbg.ll
++++ b/llvm/test/Transforms/ConstantMerge/merge-dbg.ll
+@@ -1,4 +1,5 @@
+ ; RUN: opt < %s -passes=constmerge -S | FileCheck %s
++; RUN: opt < %s -passes=assign-guid,constmerge -S | FileCheck %s
+ 
+ ; CHECK: = constant i32 1, !dbg [[A:![0-9]+]], !dbg [[B:![0-9]+]]
+ @a = internal constant i32 1, !dbg !0
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/GlobalMerge/guid.ll b/llvm/test/Transforms/GlobalMerge/guid.ll
+--- a/llvm/test/Transforms/GlobalMerge/guid.ll
++++ b/llvm/test/Transforms/GlobalMerge/guid.ll
+@@ -0,0 +1,38 @@
++; We can merge globals with a guid metadata, and the guid of the merged object
++; is different from that of the original objects.
++; RUN: opt -passes='global-merge<max-offset=100>' -S -o - %s | FileCheck %s
++
++target datalayout = "e-p:64:64"
++target triple = "x86_64-unknown-linux-gnu"
++
++; CHECK: @_MergedGlobals = private global <{ i32, i32 }> <{ i32 1, i32 2 }>, align 4, !guid !0
++; CHECK: @_MergedGlobals.1 = private global <{ i32, i32 }> <{ i32 3, i32 4 }>, section "foo", align 4, !guid !1
++
++; CHECK-DAG: @a = internal alias i32, ptr @_MergedGlobals{{$}}
++@a = internal global i32 1, !guid !{i64 1}
++
++; CHECK-DAG: @b = internal alias i32, getelementptr inbounds (<{ i32, i32 }>, ptr @_MergedGlobals, i32 0, i32 1)
++@b = internal global i32 2, !guid !{i64 2}
++
++; CHECK-DAG: @c = internal alias i32, ptr @_MergedGlobals.1{{$}}
++@c = internal global i32 3, section "foo",  !guid !{i64 3}
++
++; CHECK-DAG: @d = internal alias i32, getelementptr inbounds (<{ i32, i32 }>, ptr @_MergedGlobals.1, i32 0, i32 1)
++@d = internal global i32 4, section "foo", !guid !{i64 4}
++
++; CHECK: define void @use() !guid !2
++define void @use() !guid !{i64 5} {
++  ; CHECK: load i32, ptr @_MergedGlobals,
++  %x = load i32, ptr @a
++  ; CHECK: load i32, ptr getelementptr inbounds (<{ i32, i32 }>, ptr @_MergedGlobals, i32 0, i32 1)
++  %y = load i32, ptr @b
++  ; CHECK: load i32, ptr @_MergedGlobals.1
++  %z1 = load i32, ptr @c
++  ; CHECK: load i32, ptr getelementptr inbounds (<{ i32, i32 }>, ptr @_MergedGlobals.1, i32 0, i32 1)
++  %z2 = load i32, ptr @d
++  ret void
++}
++
++; CHECK: !0 = !{i64 {{-?[0-9][0-9]+}}}
++; CHECK: !1 = !{i64 {{-?[0-9][0-9]+}}}
++; CHECK: !2 = !{i64 5}
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -1999,6 +1999,8 @@
+         "src/__support/FPUtil/x86_64/FEnvImpl.h",
+         "src/__support/FPUtil/aarch64/FEnvImpl.h",
+         "src/__support/FPUtil/aarch64/fenv_darwin_impl.h",
++        "src/__support/FPUtil/arm/FEnvImpl.h",
++        "src/__support/FPUtil/riscv/FEnvImpl.h",
+     ],
+     deps = [
+         ":__support_cpp_bit",
