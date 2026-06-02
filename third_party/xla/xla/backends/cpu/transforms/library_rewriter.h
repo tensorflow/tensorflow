@@ -47,12 +47,6 @@ namespace xla::cpu {
 // Softmax, etc. We should deploy a smarter logic in the future.
 static constexpr int kMaxInstructionsInFusion = 100;
 
-enum class FusionDirection {
-  kUp,    // Traverse up (to parents).
-  kDown,  // Traverse down (to children).
-  kBoth,  // Traverse both up and down.
-};
-
 struct LibraryRewriterOptions {
   bool use_onednn = false;
   bool use_ynnpack = false;

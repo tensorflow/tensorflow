@@ -26,10 +26,14 @@ limitations under the License.
 #include "xla/backends/cpu/onednn_support.h"
 #include "xla/backends/cpu/transforms/library_matcher.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla::cpu {
+// TODO(intel-tf): Use oneDNN defined constant
+static constexpr int kMaxOneDnnFusionSize = 10;
 
 class OneDnnMatcher : public LibraryMatcher {
  public:
@@ -40,9 +44,17 @@ class OneDnnMatcher : public LibraryMatcher {
 
   // Returns the set of supported HLO instructions.
   absl::flat_hash_set<HloOpcode> SupportedOps() const override {
-    static const auto* kSupportedOps = new absl::flat_hash_set<HloOpcode>{
-        HloOpcode::kDot, HloOpcode::kAdd, HloOpcode::kMultiply,
-        HloOpcode::kExp};
+    static const auto* kSupportedOps = []() {
+      static auto* supported_ops =
+          new absl::flat_hash_set<HloOpcode>{HloOpcode::kDot};
+      for (const auto& [op, _] : GetOneDnnUnaryOpMap()) {
+        supported_ops->insert(op);
+      }
+      for (const auto& [op, _] : GetOneDnnBinaryOpMap()) {
+        supported_ops->insert(op);
+      }
+      return supported_ops;
+    }();
     return *kSupportedOps;
   }
 
@@ -51,20 +63,7 @@ class OneDnnMatcher : public LibraryMatcher {
     if (!SupportedOps().contains(instr->opcode())) {
       return false;
     }
-    if (instr->opcode() == HloOpcode::kDot) {
-      return IsOneDnnDotSupported(
-          instr->dot_dimension_numbers(), instr->operand(0)->shape(),
-          instr->operand(1)->shape(), instr->shape(), target_machine_features_);
-    }
-
-    return IsOneDnnSupportedDType(instr->shape().element_type(),
-                                  target_machine_features_) &&
-           std::all_of(instr->operands().begin(), instr->operands().end(),
-                       [this](const HloInstruction* operand) {
-                         return IsOneDnnSupportedDType(
-                             operand->shape().element_type(),
-                             target_machine_features_);
-                       });
+    return IsOpSupportedByOneDnn(instr, target_machine_features_);
   }
 
   // Returns true if we should start a new fusion containing just the given HLO
@@ -72,6 +71,33 @@ class OneDnnMatcher : public LibraryMatcher {
   bool ShouldCreateFusion(const HloInstruction* instr) override {
     // Policy: Only dots can start a fusion for now.
     return instr->opcode() == HloOpcode::kDot;
+  }
+
+  // TODO(intel-tf): Adjust the max fusion size for oneDNN library.
+  int MaxFusionSize() const override { return kMaxOneDnnFusionSize; }
+
+  // oneDNN library does not support merging fusions.
+  // TODO(intel-tf): Evaluate if merging fusions has performance benefit for
+  // oneDNN.
+  bool ShouldMergeFusions() override { return false; }
+
+  bool ShouldFuse(const HloFusionInstruction* fusion,
+                  const HloInstruction* instr) override {
+    if (!IsOpSupported(instr).value_or(false)) {
+      return false;
+    }
+    // oneDNN currently only supports one dot per fusion.
+    if (instr->opcode() == HloOpcode::kDot &&
+        hlo_query::FindInstruction(fusion->fused_instructions_computation(),
+                                   HloOpcode::kDot)) {
+      return false;
+    }
+    return true;
+  }
+
+  // oneDNN fusions currently support downward growth only.
+  FusionDirection fusion_direction() const override {
+    return FusionDirection::kDown;
   }
 
   // Returns a prefix string for the fusion op's name.
