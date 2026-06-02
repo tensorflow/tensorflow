@@ -4805,6 +4805,8 @@ cc_library(
 
 PARSING_DEPS = [
     "@com_google_absl//absl/base",
+    "@com_google_absl//absl/status",
+    "@com_google_absl//absl/strings",
     "//tensorflow/core:core_cpu_internal",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
@@ -4834,7 +4836,6 @@ tf_kernel_library(
     prefix = "decode_compressed_op",
     deps = [
         "//tensorflow/core:lib_internal",
-        "@com_google_absl//absl/status",
         "@net_zstd//:zstd",
     ] + PARSING_DEPS,
 )
@@ -4850,7 +4851,6 @@ tf_kernel_library(
     prefix = "parse_tensor_op",
     deps = [
         "//tensorflow/core/util/tensor_bundle:byteswaptensor",
-        "@com_google_absl//absl/strings",
     ] + PARSING_DEPS,
 )
 
