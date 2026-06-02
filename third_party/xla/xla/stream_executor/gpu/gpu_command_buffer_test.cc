@@ -176,6 +176,32 @@ TEST(GpuCommandBufferTest, TraceSingleKernel) {
   ASSERT_EQ(dst, expected);
 }
 
+TEST(GpuCommandBufferTest, TraceEmptyChildCommand) {
+  Platform* platform = GpuPlatform();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (executor->GetPlatform()->id() == cuda::kCudaPlatformId &&
+      !IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "Command buffer tracing is supported after CUDA 12.3";
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  ASSERT_OK_AND_ASSIGN(auto traced_cmd_buffer,
+                       TraceCommandBufferFactory::Create(
+                           executor, stream.get(),
+                           [](Stream*) { return absl::OkStatus(); }, nested));
+
+  ASSERT_OK_AND_ASSIGN(auto cmd_buffer, executor->CreateCommandBuffer(primary));
+  ASSERT_OK_AND_ASSIGN(auto* child,
+                       cmd_buffer->CreateChildCommand(*traced_cmd_buffer, {}));
+  (void)child;
+  ASSERT_OK(cmd_buffer->Finalize());
+
+  ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
+}
+
 TEST(GpuCommandBufferTest, LaunchNestedCommandBuffer) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();

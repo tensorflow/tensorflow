@@ -766,16 +766,17 @@ absl::Status CudaCommandBuffer::Trace(
           << (end_nanos - start_nanos) / 1000 << " μs)";
 
   // Check that traced graph is not empty. Trying to instantiate a CUDA graph
-  // with empty child node leads to a crash.
+  // with an empty child node leads to a crash. If the traced operation did not
+  // launch any CUDA work, add an explicit empty node so the child graph is a
+  // valid no-op command.
   size_t num_root_nodes = 0;
   RETURN_IF_ERROR(cuda::ToStatus(
       cuGraphGetRootNodes(captured_graph, nullptr, &num_root_nodes)));
 
   if (num_root_nodes == 0) {
-    return absl::InternalError(
-        "Traced CUDA graph is empty. Traced function (custom call) did not "
-        "launch any CUDA operations on the captured CUDA stream. Instantiating "
-        "empty child nodes leads to CUDA crashes.");
+    VLOG(5) << "Traced CUDA graph is empty; adding an empty node";
+    ASSIGN_OR_RETURN(auto* empty, CreateEmptyCmd({}, StreamPriority::Default));
+    (void)empty;
   }
 
   return absl::OkStatus();

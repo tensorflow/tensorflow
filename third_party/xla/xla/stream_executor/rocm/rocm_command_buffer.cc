@@ -420,10 +420,9 @@ absl::Status RocmCommandBuffer::Trace(
                "Failed to get HIP graph root node count"));
 
   if (num_root_nodes == 0) {
-    return absl::InternalError(
-        "Traced HIP graph is empty. Traced function (custom call) did not "
-        "launch any HIP operations on the captured HIP stream. Instantiating "
-        "empty child nodes leads to crashes.");
+    VLOG(5) << "Traced HIP graph is empty; adding an empty node";
+    ASSIGN_OR_RETURN(auto* empty, CreateEmptyCmd({}, StreamPriority::Default));
+    (void)empty;
   }
 
   return absl::OkStatus();
