@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
-#include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/service/decision.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -701,25 +702,40 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
   absl::InlinedVector<TiledRunTimeData, 4> candidates;
 
   if (use_experimental_tiling_) {
-    std::unique_ptr<experimental::TilingSpace> sampling_tiling_space =
-        experimental::TilingSpace::Create(fusion_adaptor, mlir_context_);
+    using experimental::TiledHloComputation;
+    using experimental::TilingSpace;
+
+    std::unique_ptr<TilingSpace> sampling_tiling_space =
+        TilingSpace::Create(fusion_adaptor, mlir_context_);
 
     ASSIGN_OR_RETURN(auto tilings, sampling_tiling_space->GetValidTilings());
 
-    for (const auto& tiling : tilings) {
-      std::unique_ptr<experimental::TilingSpace> tiling_space =
-          experimental::TilingSpace::Create(fusion_adaptor, mlir_context_);
+    for (const llvm::SmallVector<int64_t, 4>& tiling : tilings) {
+      std::unique_ptr<TilingSpace> tiling_space =
+          TilingSpace::Create(fusion_adaptor, mlir_context_);
 
       RETURN_IF_ERROR(tiling_space->AssignTileSizes(
           xla::xtile::GetPaddedTileSizes(tiling)));
 
-      ASSIGN_OR_RETURN(experimental::TiledHloComputation tiled_hlo_computation,
-                       experimental::TiledHloComputation::Tile(
-                           fusion_adaptor, std::move(tiling_space)));
+      const absl::StatusOr<TiledHloComputation> tiled_computation =
+          TiledHloComputation::Tile(fusion_adaptor, std::move(tiling_space));
+      if (!tiled_computation.ok()) {
+        // TODO: b/511080616 - GetValidTilings() must return only tilings that
+        // can be tiled and we should treat all errors here as a failure.
+        VLOG(1) << "Tiling failed for " << absl::StrJoin(tiling, ",")
+                << " with error: " << tiled_computation.status().message();
+        continue;
+      }
+      if (const Decision valid = experimental::VerifyTritonConstraints(
+              *tiled_computation, *device_info_);
+          !valid) {
+        VLOG(1) << "Triton constraints violated for tiling " << valid.Explain();
+        continue;
+      }
 
       ASSIGN_OR_RETURN(std::optional<TiledRunTimeData> tiled_run_time_data,
                        EstimateTiledRunTimeDataImpl(
-                           fusion_adaptor, tiled_hlo_computation, *device_info_,
+                           fusion_adaptor, *tiled_computation, *device_info_,
                            shape_size_, [this](const HloInstruction* hlo) {
                              return FlopsPerElement(hlo);
                            }));
