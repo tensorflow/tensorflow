@@ -105,8 +105,10 @@ DeviceAddressVmmAllocator::~DeviceAddressVmmAllocator() {
   for (auto& [ordinal, state] : per_device_) {
     // Briefly acquire the lock to read the last pending seqno.
     uint64_t last_seqno = 0;
+    bool has_stream = true;
     {
       absl::MutexLock lock(state->mu);
+      has_stream = (state->stream != nullptr);
       if (!state->pending_deallocations.empty()) {
         last_seqno = state->pending_deallocations.back().seqno;
       }
@@ -114,7 +116,8 @@ DeviceAddressVmmAllocator::~DeviceAddressVmmAllocator() {
 
     // Spin-wait for any pending GPU work to complete before freeing physical
     // memory. pinned_timeline is not ABSL_GUARDED_BY and last_seqno is a local.
-    if (state->pinned_timeline != nullptr && last_seqno > 0) {
+    // Spin-wait only if we still have a valid stream.
+    if (has_stream && state->pinned_timeline != nullptr && last_seqno > 0) {
       while (LoadTimeline(state->pinned_timeline) < last_seqno) {
         absl::SleepFor(kGpuTimelinePollInterval);
       }
@@ -133,6 +136,22 @@ DeviceAddressVmmAllocator::~DeviceAddressVmmAllocator() {
       state->destroy_fn();
     }
   }
+}
+
+void DeviceAddressVmmAllocator::ClearStream(int device_ordinal) {
+  PerDeviceState* state = GetPerDeviceState(device_ordinal);
+  if (state == nullptr) {
+    return;
+  }
+  absl::MutexLock lock(&state->mu);
+  state->stream = nullptr;
+
+  // Immediately free all currently pending deallocations since the stream
+  // is being destroyed and all GPU activity is already synchronized.
+  for (auto& pending : state->pending_deallocations) {
+    DoDeallocate(*state, pending.mem);
+  }
+  state->pending_deallocations.clear();
 }
 
 DeviceAddressVmmAllocator::PerDeviceState*
@@ -367,6 +386,13 @@ absl::Status DeviceAddressVmmAllocator::Deallocate(int device_ordinal,
 
   absl::MutexLock lock(state->mu);
 
+  // Fallback to synchronous deallocation if the stream was cleared during
+  // shutdown.
+  if (state->stream == nullptr) {
+    DoDeallocate(*state, mem);
+    return absl::OkStatus();
+  }
+
   VLOG(3) << absl::StreamFormat(
       "Queueing deferred deallocation for virtual address %p (size=%uB) "
       "on device ordinal %d",
@@ -388,6 +414,9 @@ absl::StatusOr<Stream*> DeviceAddressVmmAllocator::GetStream(
   PerDeviceState* state = GetPerDeviceState(device_ordinal);
   if (state == nullptr) {
     return DeviceNotFoundError(device_ordinal);
+  }
+  if (state->stream == nullptr) {
+    return absl::FailedPreconditionError("Stream has been cleared.");
   }
   return state->stream;
 }
