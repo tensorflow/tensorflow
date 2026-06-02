@@ -91,6 +91,7 @@ using NumericOrString = std::variant<std::string, int64_t, double>;
 // computation is attached to an HloInstruction within some other computation.
 // The meaning of the nested computation depends on the instruction it's
 // attached to.
+
 class HloModule {
  public:
   HloModule(const std::string& name, HloModuleConfig config);
@@ -550,11 +551,12 @@ class HloModule {
           computation_id_to_id_remap_map);
 
   // Convert an HloModule to a proto.
-  void ToProto(HloModuleProto* proto, bool intern_backend_config = false) const;
+  void ToProto(HloModuleProto* proto,
+               HloProtoOptions options = HloProtoOptions()) const;
 
-  HloModuleProto ToProto(bool intern_backend_config = false) const {
+  HloModuleProto ToProto(HloProtoOptions options = HloProtoOptions()) const {
     HloModuleProto proto;
-    ToProto(&proto, intern_backend_config);
+    ToProto(&proto, options);
     return proto;
   }
 
@@ -579,14 +581,15 @@ class HloModule {
 
   // Convert an HloModule to or from a proto that includes module configuration
   void ToProtoWithConfig(HloModuleProtoWithConfig* proto,
-                         bool intern_backend_config = false) const;
+                         HloProtoOptions options = HloProtoOptions()) const;
 
   HloModuleProtoWithConfig ToProtoWithConfig(
-      bool intern_backend_config = false) const {
+      HloProtoOptions options = HloProtoOptions()) const {
     HloModuleProtoWithConfig proto;
-    ToProtoWithConfig(&proto, intern_backend_config);
+    ToProtoWithConfig(&proto, options);
     return proto;
   }
+
   static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProtoWithConfig(
       const HloModuleProtoWithConfig& proto, bool prohibit_empty_literal = true,
       std::unique_ptr<CompilationEnvironments> comp_envs = nullptr,

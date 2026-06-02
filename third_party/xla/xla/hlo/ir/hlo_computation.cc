@@ -1276,14 +1276,14 @@ absl::Cord HloComputation::ToCord(
 }
 
 void HloComputation::ToProto(HloComputationProto* proto,
-                             HloPayloadDeduplicator* deduplicator) const {
+                             HloProtoOptions options) const {
   CHECK(unique_id_ != -1)
       << "This computation does not have a valid id. Please make sure the "
          "computation is inside a module before dumping it.";
   proto->set_id(unique_id_);
   proto->set_name(name_);
   for (const HloInstruction* instruction : MakeInstructionPostOrder()) {
-    instruction->ToProto(proto->add_instructions(), deduplicator);
+    instruction->ToProto(proto->add_instructions(), options);
   }
   proto->set_root_id(root_instruction()->unique_id());
   ComputeProgramShape().ToProto(*proto->mutable_program_shape());

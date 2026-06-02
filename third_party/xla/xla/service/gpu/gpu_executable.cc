@@ -918,8 +918,7 @@ absl::Status RendezvousAfterInitialization(
       run_options.device_ordinal(), run_options.run_options().run_id().ToInt());
 
   return Rendezvous(
-      rendezvous_name, rendezvous_key,
-      num_local_participants,
+      rendezvous_name, rendezvous_key, num_local_participants,
       absl::Seconds(
           debug_options
               ? debug_options->xla_gpu_executable_warn_stuck_timeout_seconds()
@@ -1931,8 +1930,8 @@ absl::StatusOr<GpuExecutableProto> GpuExecutable::ToProto() const {
   }
 
   if (has_module()) {
-    *proto.mutable_hlo_module_with_config() =
-        module().ToProtoWithConfig(/*intern_backend_config=*/true);
+    *proto.mutable_hlo_module_with_config() = module().ToProtoWithConfig(
+        HloProtoOptions{/*deduplicate_backend_config=*/true});
   }
 
   proto.mutable_output_info_map()->Reserve(output_info_.size());

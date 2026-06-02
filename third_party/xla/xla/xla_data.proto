@@ -570,6 +570,10 @@ message OpMetadata {
   // Instruction name available upon scheduling.
   string scheduling_name = 16;
 
+  // Metadata payload that may be stored inline as a value or by ID into
+  // HloModuleProto.payloads during module serialization.
+  Payload metadata_payload = 20;
+
   reserved 14;
 }
 
