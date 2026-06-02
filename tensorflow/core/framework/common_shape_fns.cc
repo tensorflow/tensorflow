@@ -108,6 +108,10 @@ absl::Status GetWindowedOutputSizeFromDims(
 }
 
 absl::Status UnchangedShape(shape_inference::InferenceContext* c) {
+  if (c->num_inputs() == 0 || c->num_outputs() == 0) {
+    return absl::InvalidArgumentError(
+        "UnchangedShape requires at least one input and one output.");
+  }
   c->set_output(0, c->input(0));
   auto* handle_data = c->input_handle_shapes_and_types(0);
   if (handle_data != nullptr) {
