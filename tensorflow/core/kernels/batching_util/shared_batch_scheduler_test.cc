@@ -34,10 +34,12 @@ limitations under the License.
 #include "absl/container/fixed_array.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/lib/monitoring/cell_reader.h"
 #include "xla/tsl/platform/criticality.h"
@@ -3702,8 +3704,8 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, RankQueuesPriority) {
     TF_EXPECT_OK(ScheduleTask(/*task_size=*/1, queue_high.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
 
-    // Sleep to trigger batch threads startup.
-    Env::Default()->SleepForMicroseconds(100);
+    // Wait for batch thread to start up and go to sleep.
+    env.BlockUntilThreadsAsleep(1);
 
     // Advance clock to trigger timeouts.
     env.AdvanceByMicroseconds(2000);
