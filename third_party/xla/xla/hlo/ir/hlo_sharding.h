@@ -397,7 +397,11 @@ class HloSharding {
   // Returns if the sharding has partial replication and partial sharding. If
   // true, data is sharded according to other dimensions of tile_assignment(),
   // but replicated across devices along the last dimension.
-  bool ReplicateOnLastTileDim() const { return replicate_on_last_tile_dim_; }
+  bool ReplicateOnLastTileDim() const {
+    CHECK(!UseNamedShardingLeaf())
+        << "NamedSharding does not support ReplicateOnLastTileDim";
+    return replicate_on_last_tile_dim_;
+  }
 
   // Returns whether there is any partial replication. This can be using
   // ReplicateOnLastTileDim or subgroups with REPLICATED.
@@ -673,6 +677,8 @@ class HloSharding {
   // Gets the subgroup types array.
   // REQUIRES: !IsTuple()
   const std::vector<OpSharding::Type>& subgroup_types() const {
+    CHECK(!UseNamedShardingLeaf())
+        << "NamedSharding does not use subgroup types.";
     return subgroup_types_;
   }
 

@@ -409,6 +409,31 @@ bool hasGspmdAttrsOrOps(mlir::ModuleOp module) {
   return false;
 }
 
+bool hasFrontendMhloShardings(mlir::ModuleOp module) {
+  for (auto func : module.getOps<mlir::func::FuncOp>()) {
+    for (unsigned int argIndex = 0; argIndex < func.getNumArguments();
+         ++argIndex) {
+      if (hasKey(sdy::getFuncArgFrontendAttrs(func, argIndex),
+                 xla::ToStringRef(HloSharding::kShardingFrontendAttrName))) {
+        return true;
+      }
+    }
+    bool hasFrontendSharding = false;
+    func->walk([&hasFrontendSharding](mlir::Operation* op) {
+      if (hasKey(sdy::getFrontendAttrs(op),
+                 xla::ToStringRef(HloSharding::kShardingFrontendAttrName))) {
+        hasFrontendSharding = true;
+        return mlir::WalkResult::interrupt();
+      }
+      return mlir::WalkResult::advance();
+    });
+    if (hasFrontendSharding) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool hasShardyMesh(mlir::ModuleOp module) {
   return !module.getOps<mlir::sdy::MeshOp>().empty();
 }
