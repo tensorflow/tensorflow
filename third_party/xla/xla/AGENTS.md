@@ -4,6 +4,16 @@ This document provides guidelines for AI code assistants when generating,
 suggesting, or modifying code within the
 `third_party/tensorflow/compiler/xla` (OpenXLA) codebase.
 
+> [!CAUTION]
+> **CRITICAL BOUNDARY RULE**: Double-check which file path you are modifying!
+> - **OSS (`third_party/tensorflow/compiler/xla/...`)**: Follow *this* document.
+>   You must adhere to strict open-source portability. **NO** `LOG(DFATAL)`,
+>   **NO** `DCHECK`, and no Google-internal libraries are permitted.
+> - **Internal**: If modifying internal-only files, internal-specific
+>   guidelines and overrides (such as permitting `LOG(DFATAL)` or depending on
+>   internal libraries) may apply. Consult the internal guidelines directory if
+>   working within the internal tree.
+
 ## General Context
 
 *   **Impact:** OpenXLA is a core compiler for machine learning acceleration. Changes here affect the open-source community and various hardware backends.
@@ -93,3 +103,14 @@ suggesting, or modifying code within the
 
 9.  **Namespaces**:
     *   Prefer xla::gpu over nested namespaces.
+
+10. **Tooling & Hygiene Check**:
+    *   **Dependency Hygiene**: Run `build_cleaner` on any modified `BUILD`
+        files to ensure all imports and dependencies conform to the strict
+        OpenXLA target policy.
+    *   **Formatting & Style**: Apply C++ formatting and style checks (e.g.,
+        `hg lint` or clang-format) to modified files. Keep changes highly
+        focused and minimize unrelated modifications.
+    *   **Modernization & Standard Replacements**: Where applicable, replace
+        verbose `std::` algorithms with Abseil container algorithms (e.g.,
+        prefer `absl::c_any_of` over iterator-based `std::any_of`).
