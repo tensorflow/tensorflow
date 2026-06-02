@@ -53,20 +53,20 @@ ABSL_CONST_INIT absl::Mutex transforms_mutex(absl::kConstInit);
 
 void RegisterHloXlaTransform(HloXlaTransform::PipelineStage stage,
                              std::shared_ptr<HloXlaTransform> transform) {
-  absl::MutexLock transforms_lock(&transforms_mutex);
+  absl::MutexLock transforms_lock(transforms_mutex);
   auto& transforms = GetHloXlaTransformsInternal();
   transforms[stage].emplace_back(std::move(transform));
 }
 
 std::vector<std::shared_ptr<HloXlaTransform>> GetHloXlaTransforms(
     HloXlaTransform::PipelineStage stage) {
-  absl::MutexLock transforms_lock(&transforms_mutex);
+  absl::MutexLock transforms_lock(transforms_mutex);
   auto& transforms = GetHloXlaTransformsInternal();
   return transforms[stage];
 }
 
 void ClearHloXlaTransforms() {
-  absl::MutexLock transforms_lock(&transforms_mutex);
+  absl::MutexLock transforms_lock(transforms_mutex);
   GetHloXlaTransformsInternal().clear();
 }
 
@@ -74,7 +74,7 @@ absl::StatusOr<bool> ApplyXlaTransformsToModule(
     HloXlaTransform::PipelineStage stage, xla::HloModule* module) {
   std::vector<std::shared_ptr<HloXlaTransform>> transforms;
   {
-    absl::MutexLock transforms_lock(&transforms_mutex);
+    absl::MutexLock transforms_lock(transforms_mutex);
     auto& transforms_map = GetHloXlaTransformsInternal();
     auto it = transforms_map.find(stage);
     if (it == transforms_map.end()) {
