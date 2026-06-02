@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
+#include "xla/core/collectives/registered_memory.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/future.h"
 #include "xla/stream_executor/device_address.h"
@@ -135,6 +136,16 @@ class GpuCommunicator : public Communicator {
   virtual absl::StatusOr<std::unique_ptr<GpuDeviceCommunicator>>
   CreateDeviceComm(const GpuDeviceCommunicator::Requirements& requirements) {
     return Unimplemented("Device communicator is not implementing");
+  }
+
+  // Registers an existing device address range with this communicator for
+  // accelerated ("zero-copy") collectives. Unlike CreateSymmetricMemory this
+  // makes no symmetry assumption about the buffer's address across ranks and is
+  // NOT a collective operation -- each rank may register independently. Returns
+  // an RAII handle; destroying it deregisters the range from this communicator.
+  virtual absl::StatusOr<std::unique_ptr<RegisteredMemory>>
+  CreateRegisteredMemory(se::DeviceAddressBase addr) {
+    return Unimplemented("Registered memory is not implemented");
   }
 
   // Creates a symmetric memory from the existing device address range. This is

@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
+#include "xla/core/collectives/registered_memory.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/future.h"
 #include "xla/stream_executor/device_address.h"
@@ -104,6 +105,9 @@ class NcclCommunicator : public GpuCommunicator {
 
   absl::StatusOr<std::unique_ptr<GpuDeviceCommunicator>> CreateDeviceComm(
       const GpuDeviceCommunicator::Requirements& requirements) final;
+
+  absl::StatusOr<std::unique_ptr<RegisteredMemory>> CreateRegisteredMemory(
+      se::DeviceAddressBase addr) final;
 
   absl::StatusOr<std::unique_ptr<SymmetricMemory>> CreateSymmetricMemory(
       se::DeviceAddressBase addr) final;

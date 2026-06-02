@@ -302,6 +302,7 @@ xla_cc_test(
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/core/collectives:reduction_kind",
+        "//xla/core/collectives:registered_memory",
         "//xla/core/collectives:symmetric_memory",
         "//xla/runtime:device_id",
         "//xla/stream_executor:device_address",
@@ -338,6 +339,7 @@ cc_library(
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/core/collectives:reduction_kind",
+        "//xla/core/collectives:registered_memory",
         "//xla/core/collectives:symmetric_memory",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:kernel_args",
@@ -513,6 +515,30 @@ cc_library(
         "@com_google_absl//absl/log:vlog_is_on",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
+    ],
+)
+
+cc_library(
+    name = "nccl_registered_memory",
+    srcs = ["nccl_registered_memory.cc"],
+    hdrs = ["nccl_registered_memory.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    visibility = [
+        "//xla/backends/gpu/runtime:__subpackages__",
+        "//xla/stream_executor/cuda:__subpackages__",
+    ],
+    deps = [
+        ":nccl_errors",
+        "//xla/core/collectives:registered_memory",
+        "//xla/stream_executor:device_address",
+        "//xla/tsl/cuda:nccl",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -713,6 +739,7 @@ cc_library(
         ":gpu_collectives",
         ":gpu_communicator",
         ":nccl_errors",
+        ":nccl_registered_memory",
         ":nccl_symmetric_memory",
         ":nccl_types",
         ":single_threaded_executor",
@@ -723,6 +750,7 @@ cc_library(
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/core/collectives:reduction_kind",
+        "//xla/core/collectives:registered_memory",
         "//xla/core/collectives:symmetric_memory",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:stream",
@@ -746,6 +774,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_config_cuda//cuda:cuda_headers",
