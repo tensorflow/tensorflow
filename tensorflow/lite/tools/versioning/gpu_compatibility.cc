@@ -851,6 +851,11 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
               CheckInputsConstsOutputs(op_sig, /*required_runtime_inputs=*/3,
                                        /*required_const_inputs=*/2,
                                        /*required_outputs=*/4));
+          if (!op_sig.outputs[3].dims.empty() &&
+              op_sig.outputs[3].dims.back() % 4 != 0) {
+            return absl::UnimplementedError(
+                "BasicLSTM activation depth must be a multiple of 4.");
+          }
           if (tf_options->activation != kTfLiteActTanh) {
             return absl::UnimplementedError(
                 absl::StrCat("Only TANH activation is supported. but node has ",

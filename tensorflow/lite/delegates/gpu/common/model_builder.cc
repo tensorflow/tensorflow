@@ -1527,6 +1527,10 @@ class LSTMOperationParser : public TFLiteOperationParser {
     int activ_tensor_idx = tflite_node->outputs->data[3];
     RETURN_IF_ERROR(
         reader->ReadValueByTensorIdx(activ_tensor_idx, &activ_temp));
+    if (activ_temp->tensor.shape.c % 4 != 0) {
+      return absl::UnimplementedError(
+          "BasicLSTM activation depth must be a multiple of 4.");
+    }
 
     RETURN_IF_ERROR(reader->AddInput(concat_node, 0));  // input
     RETURN_IF_ERROR(reader->AddInput(concat_node, 1));  // prev_activ
