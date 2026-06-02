@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
+#include "tsl/platform/numbers.h"
 
 namespace xla {
 
@@ -137,13 +138,16 @@ absl::StatusOr<std::shared_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
   if (gpu_system_memory_size.has_value()) {
     allocator_memory = gpu_system_memory_size.value();
   }
+  const std::string allocator_memory_str =
+      absl::StrCat(tsl::strings::HumanReadableNumBytes(allocator_memory), " (",
+                   allocator_memory, " bytes)");
 
   if (preallocate) {
-    LOG(INFO) << "XLA backend allocating " << allocator_memory
-              << " bytes on device " << device_ordinal << " for BFCAllocator.";
+    LOG(INFO) << "XLA backend allocating " << allocator_memory_str
+              << " on device " << device_ordinal << " for BFCAllocator.";
   } else {
-    LOG(INFO) << "XLA backend will use up to " << allocator_memory
-              << " bytes on device " << device_ordinal << " for BFCAllocator.";
+    LOG(INFO) << "XLA backend will use up to " << allocator_memory_str
+              << " on device " << device_ordinal << " for BFCAllocator.";
   }
 
   tsl::BFCAllocator::Options opts;
