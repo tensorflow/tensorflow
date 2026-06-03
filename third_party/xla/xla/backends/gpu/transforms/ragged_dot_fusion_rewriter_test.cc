@@ -100,10 +100,10 @@ class RaggedDotFusionRewriterUnitTest : public HloPjRtGpuTestBase {
   }
 
   RaggedDotFusionRewriterUnitTest()
-      : HloPjRtGpuTestBase(HloPjRtTestBaseOptions{
-            /*verifier_layout_sensitive=*/false,
-            /*allow_mixed_precision_in_hlo_verifier=*/false,
-            /*instruction_can_change_layout_func=*/{}}) {}
+      : HloPjRtGpuTestBase(
+            HloTestBaseOptions{/*verifier_layout_sensitive=*/false,
+                               /*allow_mixed_precision_in_hlo_verifier=*/false,
+                               /*instruction_can_change_layout_func=*/{}}) {}
 };
 
 TEST_F(RaggedDotFusionRewriterUnitTest, TestSupportedRaggedDot) {
@@ -149,10 +149,9 @@ class RaggedDotFusionRewriterIntegrationTest
 
   RaggedDotFusionRewriterIntegrationTest()
       : HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase>(
-            HloPjRtTestBaseOptions{
-                /*verifier_layout_sensitive=*/false,
-                /*allow_mixed_precision_in_hlo_verifier=*/false,
-                /*instruction_can_change_layout_func=*/{}}) {}
+            HloTestBaseOptions{/*verifier_layout_sensitive=*/false,
+                               /*allow_mixed_precision_in_hlo_verifier=*/false,
+                               /*instruction_can_change_layout_func=*/{}}) {}
 
  protected:
   std::string GetOptimizedHlo(absl::string_view hlo_string) {

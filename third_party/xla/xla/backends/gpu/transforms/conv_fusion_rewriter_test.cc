@@ -144,10 +144,10 @@ class ConvFusionRewriterUnitTest : public HloPjRtGpuTestBase {
   }
 
   ConvFusionRewriterUnitTest()
-      : HloPjRtGpuTestBase(HloPjRtTestBaseOptions{
-            /*verifier_layout_sensitive=*/false,
-            /*allow_mixed_precision_in_hlo_verifier=*/false,
-            /*instruction_can_change_layout_func=*/{}}) {}
+      : HloPjRtGpuTestBase(
+            HloTestBaseOptions{/*verifier_layout_sensitive=*/false,
+                               /*allow_mixed_precision_in_hlo_verifier=*/false,
+                               /*instruction_can_change_layout_func=*/{}}) {}
 };
 
 TEST_F(ConvFusionRewriterUnitTest, TestConvInt8ToFloat) {
@@ -497,10 +497,9 @@ class ConvFusionRewriterIntegrationTest
 
   ConvFusionRewriterIntegrationTest()
       : HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase>(
-            HloPjRtTestBaseOptions{
-                /*verifier_layout_sensitive=*/false,
-                /*allow_mixed_precision_in_hlo_verifier=*/false,
-                /*instruction_can_change_layout_func=*/{}}) {}
+            HloTestBaseOptions{/*verifier_layout_sensitive=*/false,
+                               /*allow_mixed_precision_in_hlo_verifier=*/false,
+                               /*instruction_can_change_layout_func=*/{}}) {}
 
  protected:
   std::string GetOptimizedHlo(absl::string_view hlo_string) {

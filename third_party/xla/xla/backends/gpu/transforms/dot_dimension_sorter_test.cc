@@ -28,10 +28,10 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-class WithoutDotDimensionSorterTest : public HloPjRtTestBase {
+class WithoutDotDimensionSorterTest : public HloTestBase {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     // The pass is disabled here to preserve suboptimal dimension order in
     // 1) UnsortedDimsCreateTransposes to reveal the transposes.
     // 2) DimOrderCanBeChanged for the comparison of ordered vs unordered.
@@ -104,7 +104,7 @@ ENTRY e {
                                       /*run_hlo_passes=*/true));
 }
 
-using DotDimensionSorterTest = HloPjRtTestBase;
+using DotDimensionSorterTest = HloTestBase;
 
 TEST_F(DotDimensionSorterTest, SortContractingDims) {
   const char* module_string = R"(

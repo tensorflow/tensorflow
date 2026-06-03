@@ -27,7 +27,7 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-using BlockScalingRewriterExecutionTest = HloPjRtTestBase;
+using BlockScalingRewriterExecutionTest = HloTestBase;
 
 TEST_F(BlockScalingRewriterExecutionTest, QuantizeDequantizeCompare) {
   constexpr absl::string_view hlo_test = R"(

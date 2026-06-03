@@ -35,7 +35,7 @@ namespace {
 using ::testing::HasSubstr;
 
 class ReductionLayoutNormalizerTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+    : public HloPjRtInterpreterReferenceMixin<HloTestBase> {
  public:
   void CheckReductionLayoutNormalizer(
       absl::string_view hlo, std::optional<absl::string_view> expected) {

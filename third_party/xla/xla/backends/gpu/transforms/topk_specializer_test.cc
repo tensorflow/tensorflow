@@ -60,7 +60,7 @@ class TopkTest : public HloPjRtGpuTestBase, public ParameterizedInterface {
  protected:
   TopkTest()
       : HloPjRtGpuTestBase(
-            HloPjRtTestBaseOptions{.verifier_layout_sensitive = true}) {}
+            HloTestBaseOptions{.verifier_layout_sensitive = true}) {}
 
   absl::StatusOr<std::unique_ptr<HloModule>> TopkHlo(
       int n, int k, int batch_size, absl::string_view dtype) const {
