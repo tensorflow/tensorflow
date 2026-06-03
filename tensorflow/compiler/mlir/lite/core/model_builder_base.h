@@ -355,6 +355,24 @@ class FlatBufferModelBase {
     if (!model->initialized()) {
       model.reset();
     } else {
+      // Verify the flatbuffer structure before following any offsets.
+      // Without this check, ValidateModelBuffers() calls model_->buffers()
+      // which follows the root table offset without bounds checking, causing
+      // heap-buffer-overflow on crafted inputs (see #115308).
+      if (model->allocation_) {
+        size_t alloc_size =
+            std::min(model->allocation_->bytes(),
+                     static_cast<size_t>(FLATBUFFERS_MAX_BUFFER_SIZE - 1));
+        flatbuffers::Verifier verifier(
+            reinterpret_cast<const uint8_t*>(model->allocation_->base()),
+            alloc_size, flatbuffers::Verifier::Options());
+        if (!VerifyModelBuffer(verifier)) {
+          TF_LITE_REPORT_ERROR(error_reporter,
+                               "The model is not a valid Flatbuffer buffer");
+          model.reset();
+          return model;
+        }
+      }
       model->ValidateModelBuffers(error_reporter);
     }
     return model;
