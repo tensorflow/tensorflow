@@ -874,8 +874,11 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
       // implementation for broadcasted add across all dimensions.
       OneDnnFusionConfig_FusionKind kind =
           (ShapeUtil::TrueNumDimensions(addend->shape()) == 1)
-              ? (fusions_config->ops().empty() ? OneDnnFusionConfig::BIAS
-                                               : OneDnnFusionConfig::UNDEFINED)
+              ? (fusions_config->ops().empty()
+                     ? (addend->shape().dimensions().back() != 1
+                            ? OneDnnFusionConfig::BIAS
+                            : OneDnnFusionConfig::BINARY_ADD)
+                     : OneDnnFusionConfig::UNDEFINED)
           : can_fuse_sum ? OneDnnFusionConfig::SUM
                          : OneDnnFusionConfig::BINARY_ADD;
       if (kind == OneDnnFusionConfig::UNDEFINED) return absl::OkStatus();
