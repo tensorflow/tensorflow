@@ -363,6 +363,25 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   pm.addPass(mlir::sdy::createSaveModuleOpPass(shardyDir, "input_module",
                                                dumpIndex++));
 
+  bool enableHloShardingV3 =
+      hloModule->config().debug_options().xla_enable_hlo_sharding_v3();
+  // Fallback is required to support models exported earlier with mixed
+  // serialization disabled. One such use case is ifrt where support for mixed
+  // serialization was added recently here cl/900438035 but we need to wait for
+  // 6 months compatibility window.
+  // TODO (b/519501636): Remove this fallback once 6 months compatibility window
+  // for ifrt has passed in Nov'2026.
+  if (xla::sdy::hasFrontendMhloShardings(mlirModule)) {
+    LOG(WARNING)
+        << "Module contains sdy shardings in frontend_attributes even when "
+           "HloShardingV3 is enabled. Disabling HloShardingV3 to prevent "
+           "conflicts during Shardy import.";
+    hloModule->mutable_config()
+        .mutable_debug_options()
+        .set_xla_enable_hlo_sharding_v3(false);
+    enableHloShardingV3 = false;
+  }
+
   if (importMhloShardings) {
     // This branch is only used for testing. It allows us to test the module
     // with hlo shardings without the frontend attributes.
@@ -382,7 +401,7 @@ absl::Status runShardingPropagation(HloModule* hloModule,
     // This branch is in production.
     addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/true,
                                   /*liftAndDedupMeshes=*/true,
-                                  debugOptions.xla_enable_hlo_sharding_v3(),
+                                  enableHloShardingV3,
                                   enableNativeNonFlatSupport);
   }
 
@@ -395,8 +414,7 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   mlir::sdy::addPropagationPipeline(pm, dumpIndex, options);
 
   xla::sdy::StablehloExportPipelineOptions stablehloExportPipelineOptions;
-  stablehloExportPipelineOptions.enableHloShardingV3 =
-      debugOptions.xla_enable_hlo_sharding_v3();
+  stablehloExportPipelineOptions.enableHloShardingV3 = enableHloShardingV3;
   stablehloExportPipelineOptions.exportAllReduceScatter =
       debugOptions.xla_sdy_export_all_reduce_scatter();
   stablehloExportPipelineOptions.simplifyReplicatedShardings = true;

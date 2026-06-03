@@ -173,6 +173,9 @@ absl::StatusOr<std::string> duplicateShardingsAtIndices(
 // TODO(b/420837831): delete this once we don't fall back to GSPMD.
 bool hasGspmdAttrsOrOps(mlir::ModuleOp module);
 
+// Returns true if the module has frontend_attributes containing mhlo.sharding.
+bool hasFrontendMhloShardings(mlir::ModuleOp module);
+
 // Check if the module has any sort of Shardy mesh:
 // - `mesh`
 // - `maximal_mesh_{X}`
