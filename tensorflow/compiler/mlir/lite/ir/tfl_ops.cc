@@ -5183,7 +5183,7 @@ OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
       const char* raw_input = blob->getData().data();
       if (raw_input != nullptr) {
         static absl::Mutex compute_permutation_mutex(absl::kConstInit);
-        absl::MutexLock lock(&compute_permutation_mutex);
+        absl::MutexLock lock(compute_permutation_mutex);
         // Compute the result and write to `raw_output`.
         ComputePermutation(perms, output_shape, raw_input, element_byte_size,
                            /*current_axis=*/0, raw_output, current_input_index,

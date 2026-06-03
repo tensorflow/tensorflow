@@ -38,6 +38,7 @@ xla_cc_binary(
         "//xla/service/restricted:hlo_runner_legacy",
         "//xla/stream_executor:platform",
         "//xla/tools/hlo_isolation:hlo_isolation_api",
+        "//xla/tools/hlo_isolation:hlo_isolation_proto_cc",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:command_line_flags",
