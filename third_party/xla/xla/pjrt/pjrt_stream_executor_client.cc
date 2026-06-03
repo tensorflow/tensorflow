@@ -1666,7 +1666,7 @@ PjRtStreamExecutorClient::RunAsync(
     auto buf =
         tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(results[i].get())
             ->device_buffer();
-    if (buf.IsAvailable()) {
+    if (buf.IsConcrete()) {
       if (buf->mem().opaque() != mem.opaque() ||
           buf->mem().size() != mem.size()) {
         return absl::InvalidArgumentError("An alias result does not match.");

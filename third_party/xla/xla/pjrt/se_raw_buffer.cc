@@ -216,6 +216,10 @@ PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
 
 ShapedBuffer PjRtStreamExecutorRawBuffer::AsShapedBuffer(
     const xla::Shape& shape) {
+  if (device_buffer_) {
+    tsl::BlockUntilReady(device_buffer_);
+    CHECK(!device_buffer_.IsError());
+  }
   auto* device = memory_space()->devices()[0];
   ShapedBuffer shaped_buffer(shape, device->local_device_id().value(),
                              device->local_hardware_id().value());
@@ -284,6 +288,14 @@ void PjRtStreamExecutorRawBuffer::CopyToLiteralAsync(
        on_device_shape = std::move(shape), promise = std::move(promise),
        literal, client = client_, memory_space = memory_space_,
        device_buffer = device_buffer_]() mutable {
+        // CRITICAL: Block until host-side device_buffer is fully concrete and
+        // allocated.
+        tsl::BlockUntilReady(device_buffer);
+        if (device_buffer.IsError()) {
+          promise.Set(device_buffer.GetError());
+          client->SetEventAsError(usage_event, device_buffer.GetError());
+          return;
+        }
         std::shared_ptr<TransposePlan> transpose;
         se::Stream* stream = local_device->GetDeviceToHostStream();
         TransferManager* transfer_manager =
@@ -393,6 +405,10 @@ void PjRtStreamExecutorRawBuffer::CopyToLiteralAsync(
 
 absl::StatusOr<PjRtDeviceEventRef>
 PjRtStreamExecutorRawBuffer::MakeAllocationReadyEvent() {
+  tsl::BlockUntilReady(device_buffer_);
+  if (device_buffer_.IsError()) {
+    return device_buffer_.GetError();
+  }
   auto* client =
       tensorflow::down_cast<PjRtStreamExecutorClient*>(memory_space_->client());
   ASSIGN_OR_RETURN(auto result,
