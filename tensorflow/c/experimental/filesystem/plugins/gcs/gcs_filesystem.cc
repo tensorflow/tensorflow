@@ -150,6 +150,11 @@ static int64_t LoadBufferFromGCS(const std::string& path, size_t offset,
     TF_SetStatus(status, TF_UNKNOWN, "Could not get content-length header");
     return -1;
   }
+  if (read < 0 || read > static_cast<int64_t>(buffer_size)) {
+    TF_SetStatus(status, TF_INTERNAL,
+                 "Read length from GCS exceeds buffer size.");
+    return -1;
+  }
   // `TF_OUT_OF_RANGE` isn't considered as an error. So we clear it here.
   TF_SetStatus(status, TF_OK, "");
   VLOG(1) << absl::StrFormat("Successful read of %s @ %u of size: %u", path,
