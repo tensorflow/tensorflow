@@ -181,6 +181,8 @@ TryToFindInFileBasedCacheIfEnabled(const AutotuneCacheKey& key,
   AutotuneResult result;
   if (!tsl::protobuf::TextFormat::ParseFromString(autotune_result_str,
                                                   &result)) {
+    LOG(ERROR) << "Failed to parse autotune result from file: " << file_path
+               << " with content: " << autotune_result_str;
     return absl::InvalidArgumentError("Failed to parse autotune result.");
   }
   return result;
