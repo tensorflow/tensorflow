@@ -462,12 +462,6 @@ std::string RoundTripFpToString(tsl::float8_e3m4 value);
 // Returns a string which can losslessly round trip to a float8 E8M0FNU.
 std::string RoundTripFpToString(tsl::float8_e8m0fnu value);
 
-// Returns a string which can losslessly round trip to a float6 E3M2FN.
-std::string RoundTripFpToString(tsl::float6_e3m2fn value);
-
-// Returns a string which can losslessly round trip to a float6 E2M3FN.
-std::string RoundTripFpToString(tsl::float6_e2m3fn value);
-
 // Returns a string which can losslessly round trip to a bfloat.
 std::string RoundTripFpToString(tsl::bfloat16 value);
 
