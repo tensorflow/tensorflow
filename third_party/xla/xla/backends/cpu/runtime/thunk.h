@@ -72,9 +72,9 @@ class Thunk {
   enum class Kind {
     kCall,
     kCollective,
-    kCopy,
     kConditional,
     kConvolution,
+    kCopy,
     kCustomCall,
     kDot,
     kFft,
