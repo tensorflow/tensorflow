@@ -20,9 +20,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "absl/types/any.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -35,7 +35,7 @@ namespace {
 
 TEST(MakeFullyConnected, Smoke) {
   GraphFloat32 graph;
-  auto input = graph.NewValue();
+  Value* input = graph.NewValue();
   input->tensor.shape = BHWC(1, 4, 4, 8);
 
   Convolution2DAttributes attr0;
@@ -62,36 +62,35 @@ TEST(MakeFullyConnected, Smoke) {
   attr2.weights.shape = OHWI(32, 1, 1, 16);
   attr2.bias.shape = Linear(32);
 
-  auto conv1x1_node0 = graph.NewNode();
+  Node* conv1x1_node0 = graph.NewNode();
   conv1x1_node0->operation.type = ToString(OperationType::CONVOLUTION_2D);
   conv1x1_node0->operation.attributes = attr0;
-  auto conv4x4_node1 = graph.NewNode();
+  Node* conv4x4_node1 = graph.NewNode();
   conv4x4_node1->operation.type = ToString(OperationType::CONVOLUTION_2D);
   conv4x4_node1->operation.attributes = attr1;
-  auto conv1x1_node2 = graph.NewNode();
+  Node* conv1x1_node2 = graph.NewNode();
   conv1x1_node2->operation.type = ToString(OperationType::CONVOLUTION_2D);
   conv1x1_node2->operation.attributes = attr2;
 
-  ASSERT_TRUE(graph.AddConsumer(conv1x1_node0->id, input->id).ok());
+  ASSERT_OK(graph.AddConsumer(conv1x1_node0->id, input->id));
 
   Value* output = nullptr;
-  ASSERT_TRUE(AddOutput(&graph, conv1x1_node2, &output).ok());
+  ASSERT_OK(AddOutput(&graph, conv1x1_node2, &output));
   output->tensor.shape = BHWC(1, 1, 1, 32);
 
   Value* link1 = nullptr;
-  ASSERT_TRUE(
-      ConnectTwoNodes(&graph, conv1x1_node0, conv4x4_node1, &link1).ok());
+  ASSERT_OK(ConnectTwoNodes(&graph, conv1x1_node0, conv4x4_node1, &link1));
   link1->tensor.shape = BHWC(1, 4, 4, 16);
 
   Value* link2 = nullptr;
-  ASSERT_TRUE(
-      ConnectTwoNodes(&graph, conv4x4_node1, conv1x1_node2, &link2).ok());
+  ASSERT_OK(ConnectTwoNodes(&graph, conv4x4_node1, conv1x1_node2, &link2));
   link2->tensor.shape = BHWC(1, 1, 1, 16);
 
   ASSERT_EQ(3, graph.nodes().size());
   ASSERT_EQ(4, graph.values().size());
 
-  auto transformation = NewMakeFullyConnectedFromConvolution();
+  std::unique_ptr<NodeTransformation> transformation =
+      NewMakeFullyConnectedFromConvolution();
   ModelTransformer transformer(&graph);
   transformer.Apply("make_fully_connected", transformation.get());
 
@@ -103,10 +102,44 @@ TEST(MakeFullyConnected, Smoke) {
             graph.nodes()[1]->operation.type);
   ASSERT_EQ(ToString(OperationType::FULLY_CONNECTED),
             graph.nodes()[2]->operation.type);
-  auto fc_attr = std::any_cast<FullyConnectedAttributes>(
+  const auto& fc_attr = std::any_cast<const FullyConnectedAttributes&>(
       graph.nodes()[2]->operation.attributes);
   EXPECT_EQ(OHWI(32, 1, 1, 16), fc_attr.weights.shape);
   EXPECT_EQ(Linear(32), fc_attr.bias.shape);
+}
+
+TEST(MakeFullyConnected, GroupedConvolutionNotConverted) {
+  GraphFloat32 graph;
+  Value* input = graph.NewValue();
+  input->tensor.shape = BHWC(1, 1, 1, 8);
+
+  Convolution2DAttributes attr;
+  attr.padding.prepended = HW(0, 0);
+  attr.padding.appended = HW(0, 0);
+  attr.strides = HW(1, 1);
+  attr.dilations = HW(1, 1);
+  attr.groups = 2;
+  attr.weights.shape = OHWI(16, 1, 1, 4);
+  attr.bias.shape = Linear(16);
+
+  Node* node = graph.NewNode();
+  node->operation.type = ToString(OperationType::CONVOLUTION_2D);
+  node->operation.attributes = attr;
+
+  ASSERT_OK(graph.AddConsumer(node->id, input->id));
+
+  Value* output = nullptr;
+  ASSERT_OK(AddOutput(&graph, node, &output));
+  output->tensor.shape = BHWC(1, 1, 1, 16);
+
+  std::unique_ptr<NodeTransformation> transformation =
+      NewMakeFullyConnectedFromConvolution();
+  ModelTransformer transformer(&graph);
+  transformer.Apply("make_fully_connected", transformation.get());
+
+  ASSERT_EQ(1, graph.nodes().size());
+  EXPECT_EQ(ToString(OperationType::CONVOLUTION_2D),
+            graph.nodes()[0]->operation.type);
 }
 
 }  // namespace
