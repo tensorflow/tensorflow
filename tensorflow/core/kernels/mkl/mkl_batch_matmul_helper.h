@@ -40,7 +40,7 @@ struct MklBatchMatMulHelper {
     auto ndims_input = input_shape.dims();
     auto ndims_output = output_shape.dims();
     auto dim_offset = ndims_output - ndims_input;
-    DCHECK(dim_offset > 0);
+    DCHECK(dim_offset >= 0);
     reshaped_dims->clear();
     reshaped_dims->resize(ndims_output, 1);
     auto input_dims = input_shape.dim_sizes();
@@ -73,6 +73,21 @@ struct MklBatchMatMulHelper {
     auto lhs_strides = CalculateTFStrides(lhs_dims);
     auto rhs_strides = CalculateTFStrides(rhs_dims);
     auto out_strides = CalculateTFStrides(out_dims);
+
+    // When a tensor has been expanded to match the output rank via
+    // ExpandInputDimsToOutputShape, the prepended dimensions have size 1 and
+    // are broadcast. Their strides must be set to 0 so that OneDNN re-reads
+    // the same data for each batch index instead of advancing the pointer
+    // beyond the actual tensor buffer (which causes heap corruption).
+    // See #117700.
+    int dim_offset_lhs = std::max(0, ndims_out - ndims_lhs);
+    for (int i = 0; i < dim_offset_lhs; ++i) {
+      lhs_strides[i] = 0;
+    }
+    int dim_offset_rhs = std::max(0, ndims_out - ndims_rhs);
+    for (int i = 0; i < dim_offset_rhs; ++i) {
+      rhs_strides[i] = 0;
+    }
 
     if (adj_x) {
       int m_idx = ndims_out - 1;
