@@ -56,7 +56,6 @@ cc_library(
     srcs = ["collective_backend_assigner.cc"],
     hdrs = ["collective_backend_assigner.h"],
     deps = [
-        ":collective_ops_utils",
         "//xla:shape_util",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",

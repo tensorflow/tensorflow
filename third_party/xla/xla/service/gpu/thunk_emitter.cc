@@ -97,11 +97,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/legacy_custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/norm_thunk.h"
-#include "xla/backends/gpu/runtime/nvshmem_all_reduce_thunk.h"
-#include "xla/backends/gpu/runtime/nvshmem_collective_permute_thunk.h"
-#include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
-#include "xla/backends/gpu/runtime/nvshmem_recv_thunk.h"
-#include "xla/backends/gpu/runtime/nvshmem_send_thunk.h"
 #include "xla/backends/gpu/runtime/outfeed_thunk.h"
 #include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/recv_thunk.h"
@@ -321,7 +316,6 @@ ThunkEmitter::ThunkEmitter(
         llvm_options_lock)
     : ir_emitter_context_(ir_emitter_context),
       send_recv_events_(std::make_shared<HostSendRecvAsyncEvents>()),
-      nvshmem_buffer_addresses_(std::make_shared<NvshmemBufferAddresses>()),
       call_graph_(CallGraph::Build(&ir_emitter_context->hlo_module())),
       constants_module_(ir_emitter_context_->CreateLLVMModule(
           absl::StrCat(ir_emitter_context_->hlo_module().name(), "_consts"))),
@@ -1676,17 +1670,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReplicaOrPartitionId(
       result_slice));
 }
 
-[[deprecated("Use NCCL 2.28+ primitives instead.")]] bool IsNvshmemCollective(
-    const HloInstruction* instr) {
-  if (instr->has_backend_config()) {
-    auto gpu_config = instr->backend_config<GpuBackendConfig>();
-    const CollectiveBackendConfig& backend_config =
-        gpu_config.value().collective_backend_config();
-    return backend_config.backend() == CollectiveBackendConfig::NVSHMEM;
-  }
-  return false;
-}
-
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectivePermute(
     const HloCollectivePermuteInstruction* instr) {
   // First output is aliased.
@@ -1745,25 +1728,13 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectivePermute(
   }
   if (!CollectivePermuteThunk::IsDegenerate(instr, replica_count,
                                             partition_count)) {
-    if (IsNvshmemCollective(instr)) {
-      // Note: xla_gpu_use_memcpy_local_p2p flag won't be used for now since the
-      // NVSHMEM collective permute thunk doesn't perform any memcpy operations
-      // at the moment.
-      thunks.push_back(std::make_unique<NvshmemCollectivePermuteThunk>(
-          Thunk::ThunkInfo::WithProfileAnnotation(
-              instr, ir_emitter_context_->GetNextThunkId()),
-          instr, replica_count, partition_count, buffers,
-          ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p()));
-    } else {
-      thunks.push_back(std::make_unique<CollectivePermuteThunk>(
-          Thunk::ThunkInfo::WithProfileAnnotation(
-              instr, ir_emitter_context_->GetNextThunkId()),
-          instr, replica_count, partition_count, buffers,
-          ir_emitter_context_->debug_options()
-              .xla_gpu_collective_permute_mode(),
-          ir_emitter_context_->debug_options()
-              .xla_gpu_collective_permute_connected_components()));
-    }
+    thunks.push_back(std::make_unique<CollectivePermuteThunk>(
+        Thunk::ThunkInfo::WithProfileAnnotation(
+            instr, ir_emitter_context_->GetNextThunkId()),
+        instr, replica_count, partition_count, buffers,
+        ir_emitter_context_->debug_options().xla_gpu_collective_permute_mode(),
+        ir_emitter_context_->debug_options()
+            .xla_gpu_collective_permute_connected_components()));
   }
 
   // For synchronous collectives, emit thunks directly without async wrapping.
@@ -2053,136 +2024,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectiveAsyncDone(
       it->second));
 }
 
-[[deprecated(
-    "Use NCCL 2.28+ primitives instead.")]] absl::StatusOr<ThunkSequence>
-ThunkEmitter::EmitNvshmemAsyncDone(const HloInstruction* inst) {
-  bool is_send_recv =
-      inst->opcode() == HloOpcode::kSendDone ||
-      inst->opcode() == HloOpcode::kRecvDone ||
-      (inst->opcode() == HloOpcode::kAsyncDone &&
-       (inst->async_wrapped_instruction()->opcode() == HloOpcode::kSend ||
-        inst->async_wrapped_instruction()->opcode() == HloOpcode::kRecv));
-  const HloInstruction* start =
-      is_send_recv ? FindCanonicalSendRecvStartOp(inst) : inst->operand(0);
-
-  // Find the async execution for the start operation.
-  auto it = hlo_async_executions_.find(start);
-  TF_RET_CHECK(it != hlo_async_executions_.end())
-      << "couldn't find async execution for start operation";
-
-  // Can be null if no start thunk was created (e.g. if the start op is
-  // degenerate), in which case there's nothing to do here.
-  if (!it->second) {
-    return ThunkSequence{};
-  }
-
-  return GetThunkSequence(std::make_unique<AsyncDoneThunk>(
-      Thunk::ThunkInfo::WithProfileAnnotation(
-          inst, ir_emitter_context_->GetNextThunkId()),
-      it->second));
-}
-
-template <typename NvshmemAllReduceThunkType, typename HloAllReduceInstruction>
-[[deprecated(
-    "Use NCCL 2.28+ primitives instead.")]] absl::StatusOr<ThunkSequence>
-ThunkEmitter::EmitNvshmemThunk(Thunk::Kind kind,
-                               const HloInstruction* async_start,
-                               const HloAllReduceInstruction* inst,
-                               std::optional<bool> use_global_device_ids) {
-  CHECK(kind == Thunk::Kind::kNvshmemAllReduce);
-  const auto& hlo_config = ir_emitter_context_->hlo_module().config();
-  int64_t replica_count = hlo_config.replica_count();
-  int64_t partition_count = hlo_config.num_partitions();
-  VLOG(2) << NvshmemAllReduceThunkType::GetHloOpName()
-          << "; replica count: " << replica_count
-          << "; partition count: " << partition_count
-          << "; operand count: " << inst->operand_count();
-
-  // A given collective op can be degenerate if across all groups formed
-  // by it are singleton. In such a case, we don't need to do any communication
-  // and we can just copy the input to the output.
-  bool is_degenerate = GetCollectiveConfig(inst, use_global_device_ids)
-                           .IsDegenerate(replica_count, partition_count);
-  absl::Status implementable_status =
-      NvshmemAllReduceThunkType::CheckImplementable(inst, replica_count,
-                                                    partition_count);
-  bool should_use_nvshmem_thunk = !is_degenerate && implementable_status.ok();
-
-  // Stash relevant information in CollectiveThunk::Buffer even if we may
-  // not generate an NvshmemCollectiveThunk.
-  std::vector<CollectiveThunk::Buffer> buffers;
-
-  int64_t operand_count = inst->operand_count();
-  buffers.reserve(operand_count);
-
-  // Adds a source and destination buffers pair to `buffers`.
-  auto add_buffer = [&](int64_t element_count, const ShapedSlice& src,
-                        int64_t src_memory_space, const ShapedSlice& dst,
-                        int64_t dst_memory_space) {
-    buffers.push_back(
-        CollectiveThunk::Buffer{/*element_count=*/element_count,
-                                /*source_buffer=*/src,
-                                /*destination_buffer=*/dst,
-                                /*source_memory_space=*/src_memory_space,
-                                /*destination_memory_space=*/dst_memory_space});
-  };
-
-  // For other operations simply zip operands with results.
-  for (int64_t i = 0; i < operand_count; i++) {
-    ShapeIndex idx = operand_count > 1 ? ShapeIndex({i}) : ShapeIndex({});
-    const Shape& src_shape = inst->operand(i)->shape();
-    const Shape& dst_shape = ShapeUtil::GetSubshape(inst->shape(), idx);
-    ASSIGN_OR_RETURN(auto src, GetAllocationSliceForHlo(inst->operand(i)));
-    ASSIGN_OR_RETURN(auto dst, GetAllocationSliceForHlo(inst, idx));
-    add_buffer(ShapeUtil::ElementsIn(src_shape), {src, src_shape},
-               src_shape.layout().memory_space(), {dst, dst_shape},
-               dst_shape.layout().memory_space());
-  }
-
-  if (should_use_nvshmem_thunk) {
-    auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
-        inst, ir_emitter_context_->GetNextThunkId());
-    // The wrapper name is used when syntactic sugar is turned on.
-    if (ir_emitter_context_->debug_options().xla_syntax_sugar_async_ops()) {
-      thunk_info.profile_annotation = async_start->name();
-    }
-    auto thunk = std::make_unique<NvshmemAllReduceThunkType>(
-        thunk_info, inst, /*buffers=*/std::move(buffers),
-        ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p());
-
-    // For synchronous collectives, emit thunk directly without async wrapping.
-    if (IsGPUSyncCollective(*async_start)) {
-      hlo_async_executions_.try_emplace(async_start, nullptr);
-      return ThunkSequence::Of(std::move(thunk));
-    }
-
-    // Wrap in AsyncStartThunk for asynchronous execution.
-    const ExecutionStreamAssignment& stream_assignment =
-        ir_emitter_context_->execution_stream_assignment();
-    ASSIGN_OR_RETURN(ExecutionStreamId execution_stream_id,
-                     stream_assignment.GetExecutionStreamId(async_start));
-
-    auto start_thunk = std::make_unique<AsyncStartThunk>(
-        Thunk::ThunkInfo::WithProfileAnnotation(
-            async_start, ir_emitter_context_->GetNextThunkId()),
-        execution_stream_id, ThunkSequence::Of(std::move(thunk)));
-
-    auto [it, inserted] = hlo_async_executions_.emplace(
-        async_start, start_thunk->async_execution());
-    if (!inserted) {
-      return Internal("Async execution already exists for instruction %s",
-                      async_start->ToString());
-    }
-
-    return GetThunkSequence(std::move(start_thunk));
-  }
-
-  if (!is_degenerate) {
-    return implementable_status;
-  }
-  return EmitDegeneratedCollectiveThunk(buffers, async_start, inst);
-}
-
 template <typename HloInstType>
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDegeneratedCollectiveThunk(
     std::vector<CollectiveThunk::Buffer>& buffers,
@@ -2403,18 +2244,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSendThunk(
         /*destination_buffer=*/slice,
         /*source_memory_space=*/memory_space,
         /*destination_memory_space=*/memory_space};
-    if (IsNvshmemCollective(instr)) {
-      thunk = std::make_unique<NvshmemSendThunk>(
-          Thunk::ThunkInfo::WithProfileAnnotation(
-              instr, ir_emitter_context_->GetNextThunkId()),
-          instr, replica_count, partition_count, buffer,
-          nvshmem_buffer_addresses_);
-    } else {
-      thunk = std::make_unique<SendThunk>(
-          Thunk::ThunkInfo::WithProfileAnnotation(
-              instr, ir_emitter_context_->GetNextThunkId()),
-          instr, replica_count, partition_count, buffer);
-    }
+    thunk = std::make_unique<SendThunk>(
+        Thunk::ThunkInfo::WithProfileAnnotation(
+            instr, ir_emitter_context_->GetNextThunkId()),
+        instr, replica_count, partition_count, buffer);
     // Wrap in AsyncStartThunk if not emitted as part of a group thunk.
     if (!emit_group_thunks) {
       const HloInstruction* canonical_send_instr =
@@ -2466,9 +2299,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSendThunk(
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSendDoneThunk(
     const HloSendDoneInstruction* instr) {
   if (!instr->is_host_transfer()) {
-    if (IsNvshmemCollective(instr)) {
-      return EmitNvshmemAsyncDone(instr);
-    }
     return EmitCollectiveAsyncDone(instr);
   }
 
@@ -2506,18 +2336,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRecvThunk(
         /*destination_buffer=*/slice,
         /*source_memory_space=*/memory_space,
         /*destination_memory_space=*/memory_space};
-    if (IsNvshmemCollective(instr)) {
-      thunk = std::make_unique<NvshmemRecvThunk>(
-          Thunk::ThunkInfo::WithProfileAnnotation(
-              instr, ir_emitter_context_->GetNextThunkId()),
-          instr, replica_count, partition_count, buffer,
-          nvshmem_buffer_addresses_);
-    } else {
-      thunk = std::make_unique<RecvThunk>(
-          Thunk::ThunkInfo::WithProfileAnnotation(
-              instr, ir_emitter_context_->GetNextThunkId()),
-          instr, replica_count, partition_count, buffer);
-    }
+    thunk = std::make_unique<RecvThunk>(
+        Thunk::ThunkInfo::WithProfileAnnotation(
+            instr, ir_emitter_context_->GetNextThunkId()),
+        instr, replica_count, partition_count, buffer);
     // Wrap in AsyncStartThunk if not emitted as part of a group thunk.
     if (!emit_group_thunks) {
       const HloInstruction* canonical_recv_instr =
@@ -2570,9 +2392,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRecvThunk(
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRecvDoneThunk(
     const HloRecvDoneInstruction* instr) {
   if (!instr->is_host_transfer()) {
-    if (IsNvshmemCollective(instr)) {
-      return EmitNvshmemAsyncDone(instr);
-    }
     return EmitCollectiveAsyncDone(instr);
   }
   if (!instr->channel_id().has_value()) {
@@ -2854,15 +2673,9 @@ AsyncThunkSequence ThunkEmitter::EmitHloInstruction(const HloInstruction* hlo,
           all_gather->use_global_device_ids());
     }
     case HloOpcode::kAllReduceDone:
-      return IsNvshmemCollective(hlo) ? EmitNvshmemAsyncDone(hlo)
-                                      : EmitCollectiveAsyncDone(hlo);
+      return EmitCollectiveAsyncDone(hlo);
     case HloOpcode::kAllReduceStart: {
       auto* all_reduce = Cast<HloAllReduceInstruction>(hlo);
-      if (IsNvshmemCollective(hlo)) {
-        return EmitNvshmemThunk<NvshmemAllReduceThunk, HloAllReduceInstruction>(
-            Thunk::kNvshmemAllReduce, all_reduce, all_reduce,
-            all_reduce->use_global_device_ids());
-      }
       return EmitCollectiveThunk<AllReduceThunk, HloAllReduceInstruction>(
           Thunk::kAllReduce, all_reduce, all_reduce,
           all_reduce->use_global_device_ids());
@@ -2874,8 +2687,7 @@ AsyncThunkSequence ThunkEmitter::EmitHloInstruction(const HloInstruction* hlo,
     case HloOpcode::kCall:
       return EmitCallComputation(hlo);
     case HloOpcode::kCollectivePermuteDone:
-      return IsNvshmemCollective(hlo) ? EmitNvshmemAsyncDone(hlo)
-                                      : EmitCollectiveAsyncDone(hlo);
+      return EmitCollectiveAsyncDone(hlo);
     case HloOpcode::kCollectivePermuteStart:
       return EmitCollectivePermute(Cast<HloCollectivePermuteInstruction>(hlo));
     case HloOpcode::kConditional:

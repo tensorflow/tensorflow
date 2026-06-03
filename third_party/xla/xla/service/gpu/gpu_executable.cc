@@ -60,7 +60,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command_buffer_conversion_pass.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
-#include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
 #include "xla/backends/gpu/runtime/scratch_memory.h"
 #include "xla/backends/gpu/runtime/scratch_memory_requests.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
@@ -963,49 +962,37 @@ absl::Status BarrierAfterExecutable(
     const ServiceExecutableRunOptions& run_options,
     const DebugOptions* absl_nullable debug_options, se::Stream& stream,
     const size_t num_participants) {
-  if (debug_options != nullptr &&
-      debug_options->xla_gpu_experimental_enable_nvshmem()) {
-    // NOLINTNEXTLINE(clang-diagnostic-deprecated-declarations)
-    ASSIGN_OR_RETURN(auto* collectives, GetNvshmemCollectivesFromRegistry());
-    ASSIGN_OR_RETURN(std::unique_ptr<Communicator> nvshmem_comm,
-                     collectives->CreateCommunicator());
+  RETURN_IF_ERROR(stream.BlockHostUntilDone());
 
-    RETURN_IF_ERROR(nvshmem_comm->Barrier(GpuCollectives::On(stream)));
-  } else {
-    RETURN_IF_ERROR(stream.BlockHostUntilDone());
+  XLA_VLOG_DEVICE(1, run_options.device_ordinal()) << absl::StreamFormat(
+      "Join thunks in barrier after module execution rendezvous with %d "
+      "local "
+      "participants",
+      num_participants);
 
-    XLA_VLOG_DEVICE(1, run_options.device_ordinal()) << absl::StreamFormat(
-        "Join thunks in barrier after module execution rendezvous with %d "
-        "local "
-        "participants",
-        num_participants);
+  tsl::profiler::TraceMe trace([&] {
+    return tsl::profiler::TraceMeEncode(
+        "RendezvousAfterExecution",
+        {{"run_id", run_options.run_options().run_id().ToInt()},
+         {"num_local_participants", num_participants}});
+  });
 
-    tsl::profiler::TraceMe trace([&] {
-      return tsl::profiler::TraceMeEncode(
-          "RendezvousAfterExecution",
-          {{"run_id", run_options.run_options().run_id().ToInt()},
-           {"num_local_participants", num_participants}});
-    });
+  auto rendezvous_key = InitializationKey{run_options.run_options().run_id()};
+  auto rendezvous_name = absl::StrFormat(
+      "thunk barrier after module execution completion for device ordinal "
+      "%d; run_id=%d",
+      run_options.device_ordinal(), run_options.run_options().run_id().ToInt());
 
-    auto rendezvous_key = InitializationKey{run_options.run_options().run_id()};
-    auto rendezvous_name = absl::StrFormat(
-        "thunk barrier after module execution completion for device ordinal "
-        "%d; run_id=%d",
-        run_options.device_ordinal(),
-        run_options.run_options().run_id().ToInt());
-
-    return Rendezvous(
-        rendezvous_name, rendezvous_key, num_participants,
-        absl::Seconds(
-            debug_options
-                ? debug_options->xla_gpu_executable_warn_stuck_timeout_seconds()
-                : 10),
-        absl::Seconds(
-            debug_options
-                ? debug_options->xla_gpu_executable_terminate_timeout_seconds()
-                : 30));
-  }
-  return absl::OkStatus();
+  return Rendezvous(
+      rendezvous_name, rendezvous_key, num_participants,
+      absl::Seconds(
+          debug_options
+              ? debug_options->xla_gpu_executable_warn_stuck_timeout_seconds()
+              : 10),
+      absl::Seconds(
+          debug_options
+              ? debug_options->xla_gpu_executable_terminate_timeout_seconds()
+              : 30));
 }
 
 absl::StatusOr<const GpuExecutable::BufferAllocToDeviceMemoryMap*>

@@ -207,14 +207,6 @@ ThunkKindProto Thunk::KindToProto(Kind kind) {
       return THUNK_KIND_MEMZERO;
     case kNorm:
       return THUNK_KIND_NORM;
-    case kNvshmemAllReduce:
-      return THUNK_KIND_NVSHMEM_ALL_REDUCE;
-    case kNvshmemCollectivePermute:
-      return THUNK_KIND_NVSHMEM_COLLECTIVE_PERMUTE;
-    case kNvshmemRecv:
-      return THUNK_KIND_NVSHMEM_RECV;
-    case kNvshmemSend:
-      return THUNK_KIND_NVSHMEM_SEND;
     case kOutfeed:
       return THUNK_KIND_OUTFEED;
     case kPartitionId:
@@ -314,14 +306,6 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
       return kMemzero;
     case THUNK_KIND_NORM:
       return kNorm;
-    case THUNK_KIND_NVSHMEM_ALL_REDUCE:
-      return kNvshmemAllReduce;
-    case THUNK_KIND_NVSHMEM_COLLECTIVE_PERMUTE:
-      return kNvshmemCollectivePermute;
-    case THUNK_KIND_NVSHMEM_RECV:
-      return kNvshmemRecv;
-    case THUNK_KIND_NVSHMEM_SEND:
-      return kNvshmemSend;
     case THUNK_KIND_OUTFEED:
       return kOutfeed;
     case THUNK_KIND_PARTITION_ID:
@@ -392,10 +376,6 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
     CASE(kMemset32BitValue);
     CASE(kMemzero);
     CASE(kNorm);
-    CASE(kNvshmemAllReduce);
-    CASE(kNvshmemCollectivePermute);
-    CASE(kNvshmemRecv);
-    CASE(kNvshmemSend);
     CASE(kOutfeed);
     CASE(kPartitionId);
     CASE(kRaggedAllToAll);
@@ -416,8 +396,7 @@ std::ostream& operator<<(std::ostream& os, Thunk::Kind kind) {
 }
 
 bool IsReductionCollective(Thunk::Kind kind) {
-  return kind == Thunk::kAllReduce || kind == Thunk::kReduceScatter ||
-         kind == Thunk::kNvshmemAllReduce;
+  return kind == Thunk::kAllReduce || kind == Thunk::kReduceScatter;
 }
 
 absl::StatusOr<Thunk::ThunkInfo> Thunk::ThunkInfo::FromProto(

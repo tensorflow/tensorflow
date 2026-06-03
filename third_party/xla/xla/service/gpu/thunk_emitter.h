@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/async_execution.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/host_send_recv_thunk.h"
-#include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -157,14 +156,7 @@ class ThunkEmitter {
 
   absl::StatusOr<ThunkSequence> EmitInfeed(const HloInfeedInstruction* hlo);
 
-  template <typename NvshmemAllReduceThunkType,
-            typename HloAllReduceInstruction>
-  absl::StatusOr<ThunkSequence> EmitNvshmemThunk(
-      Thunk::Kind kind, const HloInstruction* async_start,
-      const HloAllReduceInstruction* inst,
-      std::optional<bool> use_global_device_ids);
 
-  absl::StatusOr<ThunkSequence> EmitNvshmemAsyncDone(const HloInstruction* hlo);
 
   absl::StatusOr<ThunkSequence> EmitNormThunk(
       const HloCustomCallInstruction* hlo);
@@ -228,10 +220,6 @@ class ThunkEmitter {
 
   // Container for async host send/recv events shared by host send/recv thunks.
   std::shared_ptr<HostSendRecvAsyncEvents> send_recv_events_;
-
-  // Shared buffer addresses registry for NVSHMEM put/get operations.
-  [[deprecated("Use NCCL 2.28+ primitives instead.")]]
-  std::shared_ptr<NvshmemBufferAddresses> nvshmem_buffer_addresses_;
 
   // Maps async-start instructions to their AsyncExecution so that the
   // corresponding async-done can emit an AsyncDoneThunk sharing the same

@@ -23,7 +23,6 @@ import "xla/backends/gpu/runtime/collective_thunk.proto";
 import "xla/backends/gpu/runtime/convolution_filter_thunk.proto";
 import "xla/backends/gpu/runtime/copy_thunk.proto";
 import "xla/backends/gpu/runtime/dynamic_slice_thunk.proto";
-import "xla/backends/gpu/runtime/nvshmem_collective_thunk.proto";
 import "xla/backends/gpu/runtime/thunk_kind.proto";
 import "xla/core/collectives/reduction_kind.proto";
 import "xla/core/host_offloading/host_offloading_executable.proto";
@@ -521,17 +520,13 @@ message ThunkProto {
     CollectiveBroadcastThunkProto collective_broadcast_thunk = 46;
     CollectiveGroupThunkProto collective_group_thunk = 47;
     DynamicMemcpyThunkProto dynamic_memcpy_thunk = 48;
-    NvshmemAllReduceThunkProto nvshmem_all_reduce_thunk = 52;
-    NvshmemCollectivePermuteThunkProto nvshmem_collective_permute_thunk = 53;
-    NvshmemSendThunkProto nvshmem_send_thunk = 54;
-    NvshmemRecvThunkProto nvshmem_recv_thunk = 55;
     AsyncStartThunkProto async_start_thunk = 57;
     AsyncDoneThunkProto async_done_thunk = 58;
     CollectiveKernelThunkProto collective_kernel_thunk = 59;
     DynamicSliceFusionThunkProto dynamic_slice_fusion_thunk = 60;
   }
 
-  reserved 10, 37, 49, 50, 51, 56;
+  reserved 10, 37, 49, 50, 51, 52, 53, 54, 55, 56;
   reserved "wait_for_streams_thunk";
   reserved "nvshmem_collective_done_thunk";
   reserved "nvshmem_collective_permute_done_thunk";
@@ -547,6 +542,10 @@ message ThunkProto {
   reserved "collective_broadcast_start_thunk";
   reserved "nvshmem_all_reduce_start_thunk";
   reserved "nvshmem_collective_permute_start_thunk";
+  reserved "nvshmem_all_reduce_thunk";
+  reserved "nvshmem_collective_permute_thunk";
+  reserved "nvshmem_send_thunk";
+  reserved "nvshmem_recv_thunk";
 }
 
 message ThunkSequenceProto {
