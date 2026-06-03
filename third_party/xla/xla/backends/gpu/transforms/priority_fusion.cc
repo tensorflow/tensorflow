@@ -157,7 +157,45 @@ class PriorityFusionQueue {
   using Priority = absl::Duration;
 
  public:
+  static absl::StatusOr<std::unique_ptr<PriorityFusionQueue>> Create(
+      HloComputation* computation,
+      const GpuHloCostAnalysis::Options& cost_analysis_options,
+      const se::DeviceDescription* device_info,
+      FusionProcessDumpProto* fusion_process_dump,
+      tsl::thread::ThreadPool* thread_pool, mlir::MLIRContext* mlir_context,
+      HloFusionAnalysisCache& fusion_analysis_cache,
+      FusionDeduplicationCache& fusion_deduplication_cache,
+      bool triton_heroless_fusion_enabled, const AliasInfo* alias_info) {
+    auto cost_analysis = std::make_unique<GpuHloCostAnalysis>(
+        cost_analysis_options, *device_info);
+    VLOG(2) << "Running full HLO cost analysis for " << computation->name();
+    RETURN_IF_ERROR(computation->Accept(cost_analysis.get()));
+
+    auto queue = std::make_unique<PriorityFusionQueue>(
+        computation, std::move(cost_analysis), cost_analysis_options,
+        device_info, fusion_process_dump, thread_pool, mlir_context,
+        fusion_analysis_cache, fusion_deduplication_cache,
+        triton_heroless_fusion_enabled, alias_info);
+
+    std::vector<HloInstruction*> instructions;
+    for (auto* instruction : computation->MakeInstructionPostOrder()) {
+      RETURN_IF_ERROR(queue->UpdatePerformanceModelCache(instruction));
+      if (HloPredicateIsOp<HloOpcode::kParameter>(instruction) ||
+          instruction->user_count() == 0 || !instruction->IsFusible() ||
+          HloPredicateIsOp<HloOpcode::kTuple, HloOpcode::kGetTupleElement>(
+              instruction)) {
+        continue;
+      }
+      instructions.push_back(instruction);
+    }
+
+    RETURN_IF_ERROR(queue->ComputeAndSetPriorities(std::move(instructions)));
+
+    return queue;
+  }
+
   PriorityFusionQueue(HloComputation* computation,
+                      std::unique_ptr<GpuHloCostAnalysis>&& cost_analysis,
                       const GpuHloCostAnalysis::Options& cost_analysis_options,
                       const se::DeviceDescription* device_info,
                       FusionProcessDumpProto* fusion_process_dump,
@@ -169,7 +207,7 @@ class PriorityFusionQueue {
                       const AliasInfo* alias_info)
       : computation_(computation),
         device_info_(device_info),
-        cost_analysis_(cost_analysis_options, *device_info),
+        cost_analysis_(std::move(cost_analysis)),
         combined_gpu_performance_model_(*device_info, fusion_analysis_cache,
                                         *mlir_context,
                                         cost_analysis_options.shape_size),
@@ -181,27 +219,10 @@ class PriorityFusionQueue {
         reachability_(HloDfsReachability::Build(computation)),
         triton_heroless_fusion_enabled_(triton_heroless_fusion_enabled),
         alias_info_(alias_info) {
-    VLOG(2) << "Running full HLO cost analysis for " << computation_->name();
-    CHECK_OK(computation_->Accept(&cost_analysis_));
-
     dump_fusion_visualization_ = computation->parent()
                                      ->config()
                                      .debug_options()
                                      .xla_dump_fusion_visualization();
-
-    // Initializes the priority queue.
-    std::vector<HloInstruction*> instructions;
-    for (auto* instruction : computation->MakeInstructionPostOrder()) {
-      CHECK_OK(UpdatePerformanceModelCache(instruction));
-      if (HloPredicateIsOp<HloOpcode::kParameter>(instruction) ||
-          instruction->user_count() == 0 || !instruction->IsFusible() ||
-          HloPredicateIsOp<HloOpcode::kTuple, HloOpcode::kGetTupleElement>(
-              instruction)) {
-        continue;
-      }
-      instructions.push_back(instruction);
-    }
-    CHECK_OK(ComputeAndSetPriorities(instructions));
   }
 
   absl::Status ComputeAndSetPriorities(
@@ -314,7 +335,7 @@ class PriorityFusionQueue {
     // Discard the result, we only care about ensuring that the cost model's
     // cache contains the entry for the producer.
     return combined_gpu_performance_model_
-        .EstimateRunTimeForInstruction(producer, &cost_analysis_)
+        .EstimateRunTimeForInstruction(producer, cost_analysis_.get())
         .status();
   }
 
@@ -323,7 +344,7 @@ class PriorityFusionQueue {
     // Revisit costs of all updated ops. It's important to update cost analysis
     // before recalculating priorities.
     for (auto instruction : to_update_priority_) {
-      RETURN_IF_ERROR(cost_analysis_.RevisitInstruction(instruction));
+      RETURN_IF_ERROR(cost_analysis_->RevisitInstruction(instruction));
     }
     for (auto producer : to_update_priority_) {
       RETURN_IF_ERROR(UpdatePerformanceModelCache(producer));
@@ -581,7 +602,7 @@ class PriorityFusionQueue {
                                                  possible_consumers)) {
         ASSIGN_OR_RETURN(CombinedGpuPerformanceModel::RunTimes run_times,
                          combined_gpu_performance_model_.EstimateRunTimes(
-                             producer, &cost_analysis_,
+                             producer, cost_analysis_.get(),
                              /*fused_consumers=*/possible_consumers));
         absl::MutexLock lock(preferred_consumer_mutex_);
         preferred_consumer_[producer] = possible_consumers[0];
@@ -610,7 +631,7 @@ class PriorityFusionQueue {
     // from the Triton cost model.
     ASSIGN_OR_RETURN(CombinedGpuPerformanceModel::RunTimes run_times,
                      combined_gpu_performance_model_.EstimateRunTimes(
-                         producer, &cost_analysis_, fused_consumers));
+                         producer, cost_analysis_.get(), fused_consumers));
     Priority current_priority;
     if (is_incremental_update) {
       // subtract the runtimes of removed consumers
@@ -864,7 +885,7 @@ class PriorityFusionQueue {
     // have exponential time/memory requirements for emitting certain fusion
     // kernels, in which case we don't want to fuse.
     // TODO(b/119692968): Remove this once we have fixed our fusion emitter.
-    if (cost_analysis_.ProducerConsumerMergedTooLarge(*producer, *consumer)) {
+    if (cost_analysis_->ProducerConsumerMergedTooLarge(*producer, *consumer)) {
       return FusionDecision::Forbid(
           "the fusion would result in an overly large code duplication");
     }
@@ -993,7 +1014,7 @@ class PriorityFusionQueue {
   const se::DeviceDescription* device_info_;
 
   // Cost Analysis that is used to estimate the cost of a fusion.
-  GpuHloCostAnalysis cost_analysis_;
+  std::unique_ptr<GpuHloCostAnalysis> cost_analysis_;
 
   // Combined performance model.
   CombinedGpuPerformanceModel combined_gpu_performance_model_;
@@ -1157,11 +1178,13 @@ absl::StatusOr<bool> PriorityFusion::RunImpl(
   for (auto* computation : fusible_computations) {
     CHECK(!computation->IsFusionComputation());
 
-    auto fusion_queue = std::make_unique<PriorityFusionQueue>(
-        computation, cost_analysis_options_, &device_info_,
-        fusion_process_dump_.get(), thread_pool_, mlir_context_,
-        fusion_analysis_cache_, fusion_deduplication_cache,
-        triton_heroless_fusion_enabled, alias_info_);
+    ASSIGN_OR_RETURN(
+        std::unique_ptr<PriorityFusionQueue> fusion_queue,
+        PriorityFusionQueue::Create(
+            computation, cost_analysis_options_, &device_info_,
+            fusion_process_dump_.get(), thread_pool_, mlir_context_,
+            fusion_analysis_cache_, fusion_deduplication_cache,
+            triton_heroless_fusion_enabled, alias_info_));
 
     while (fusion_queue->DequeueNextProducer()) {
       auto producer = fusion_queue->current_producer();
