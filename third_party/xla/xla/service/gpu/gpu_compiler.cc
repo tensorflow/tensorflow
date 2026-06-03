@@ -3073,7 +3073,8 @@ GpuCompiler::LegacyCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
   ASSIGN_OR_RETURN(
       results.emplace_back(),
       LegacyGpuAotCompilationResult::FromModule(
-          hlo_module.get(), res.compile_module_results.buffer_assignment.get(),
+          hlo_module.get(),
+          res.compile_module_results.buffer_assignment->ToProto(),
           res.backend_result.asm_text, res.backend_result.binary,
           res.backend_result.dnn_compiled_graphs, pointer_size_, this));
 
@@ -3101,7 +3102,7 @@ absl::StatusOr<std::unique_ptr<CompiledModule>> GpuCompiler::Export(
   }
 
   return LegacyGpuAotCompilationResult::FromModule(
-      &gpu_executable->module(), gpu_executable->buffer_assignment(),
+      &gpu_executable->module(), gpu_executable->buffer_assignment()->ToProto(),
       gpu_executable->text(), gpu_executable->binary(),
       gpu_executable->dnn_compiled_graphs(), pointer_size_, this);
 }

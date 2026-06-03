@@ -2160,7 +2160,6 @@ cc_library(
         "//xla/stream_executor:platform",
         "//xla/tsl/lib/strings:proto_serialization",
         "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
