@@ -68,6 +68,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/overflow.h"
 #include "tsl/platform/ml_dtypes.h"
 
 namespace tensorflow {
@@ -647,12 +648,17 @@ template <typename T>
 TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64_t n) {
   CHECK_GT(n, 0);
   const int64_t in_n = ProtoHelper<T>::NumElements(in);
-  const int64_t alloc_bytes = n * static_cast<int64_t>(sizeof(T));
+  // MultiplyWithoutOverflow returns a negative value if n * sizeof(T) would
+  // overflow int64. An overflowing byte count is itself an extreme
+  // amplification attempt, so it is rejected together with the >64 MB case
+  // below (this also avoids signed-overflow undefined behavior).
+  const int64_t alloc_bytes =
+      MultiplyWithoutOverflow(n, static_cast<int64_t>(sizeof(T)));
   // Block amplification: large allocation with no backing data in proto.
-  if (in_n <= 0 && alloc_bytes > kMaxBytesFromProtoNoData) {
+  if (in_n <= 0 &&
+      (alloc_bytes < 0 || alloc_bytes > kMaxBytesFromProtoNoData)) {
     LOG(ERROR) << "FromProtoField rejected: proto requests " << n
-               << " elements (" << alloc_bytes
-               << " bytes) but contains no data (amplification attack guard).";
+               << " elements but contains no data (amplification guard).";
     return nullptr;
   }
   Buffer<T>* buf = new Buffer<T>(a, n);
