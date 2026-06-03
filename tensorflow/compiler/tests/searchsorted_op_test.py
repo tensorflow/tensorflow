@@ -88,5 +88,49 @@ class SearchSorteddOpTest(xla_test.XLATestCase):
       self._test2DExample(dtype, 'right', sorted_sequence, values, correct_ans)
 
 
+  def testLowerBoundNaN(self):
+    sorted_sequence = np.array(
+        [[2.0, 4.0, 8.0, 16.0, 32.0, 64.0]],
+        dtype=np.float32)
+    values = np.array(
+        [[np.nan, 8.0]],
+        dtype=np.float32)
+    expected = np.searchsorted(
+        sorted_sequence[0],
+        values[0],
+        side="left")
+    with self.session() as session:
+      with self.test_scope():
+        tf_ans = array_ops.searchsorted(
+            sorted_sequence,
+            values,
+            side="left")
+      tf_out = session.run(tf_ans)
+    self.assertAllEqual(expected.reshape(1, -1), tf_out)
+
+  def testUpperBoundNaN(self):
+    sorted_sequence = np.array(
+        [[2.0, 4.0, 8.0, 16.0, 32.0, 64.0]],
+        dtype=np.float32)
+
+    values = np.array(
+        [[np.nan, 8.0]],
+        dtype=np.float32)
+
+    expected = np.searchsorted(
+        sorted_sequence[0],
+        values[0],
+        side="right")
+
+    with self.session() as session:
+      with self.test_scope():
+        tf_ans = array_ops.searchsorted(
+            sorted_sequence,
+            values,
+            side="right")
+      tf_out = session.run(tf_ans)
+
+    self.assertAllEqual(expected.reshape(1, -1), tf_out)
+
 if __name__ == '__main__':
   test.main()

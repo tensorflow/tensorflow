@@ -30,6 +30,56 @@ namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
 
 namespace {
+
+template <typename T>
+struct GpuNanAwareCompare {
+  __device__ bool operator()(const T& a, const T& b) const {
+    if constexpr (std::is_floating_point<T>::value) {
+      if (Eigen::numext::isnan(a)) return false;
+      if (Eigen::numext::isnan(b)) return true;
+    }
+    return a < b;
+  }
+};
+
+template <typename T, typename OutType, typename Compare>
+__device__ OutType gpu_lower_bound(const T* first, OutType count, T val,
+                                   Compare comp) {
+  const T* orig_first = first;
+  OutType step = 0;
+  while (count > 0) {
+    const T* it = first;
+    step = count / 2;
+    it += step;
+    if (comp(*it, val)) {
+      first = ++it;
+      count -= step + 1;
+    } else {
+      count = step;
+    }
+  }
+  return first - orig_first;
+}
+
+template <typename T, typename OutType, typename Compare>
+__device__ OutType gpu_upper_bound(const T* first, OutType count, T val,
+                                   Compare comp) {
+  const T* orig_first = first;
+  OutType step = 0;
+  while (count > 0) {
+    const T* it = first;
+    step = count / 2;
+    it += step;
+    if (!comp(val, *it)) {
+      first = ++it;
+      count -= step + 1;
+    } else {
+      count = step;
+    }
+  }
+  return first - orig_first;
+}
+
 template <typename T, typename OutType>
 __global__ void UpperBoundKernel(const T* __restrict__ sorted_inputs,
                                  int64_t batch_size, int64_t sorted_inputs_size,
@@ -39,8 +89,9 @@ __global__ void UpperBoundKernel(const T* __restrict__ sorted_inputs,
   for (int64_t work_unit_id : GpuGridRangeX(values_size * batch_size)) {
     int64_t bid = work_unit_id / values_size;
     T value = values[work_unit_id];
-    outputs[work_unit_id] = gpu_helper::upper_bound<T, OutType>(
-        sorted_inputs + bid * sorted_inputs_size, sorted_inputs_size, value);
+    outputs[work_unit_id] = gpu_upper_bound<T, OutType>(
+        sorted_inputs + bid * sorted_inputs_size, sorted_inputs_size, value,
+        GpuNanAwareCompare<T>());
   }
 }
 
@@ -53,8 +104,9 @@ __global__ void LowerBoundKernel(const T* __restrict__ sorted_inputs,
   for (int64_t work_unit_id : GpuGridRangeX(values_size * batch_size)) {
     int64_t bid = work_unit_id / values_size;
     T value = values[work_unit_id];
-    outputs[work_unit_id] = gpu_helper::lower_bound<T, OutType>(
-        sorted_inputs + bid * sorted_inputs_size, sorted_inputs_size, value);
+    outputs[work_unit_id] = gpu_lower_bound<T, OutType>(
+        sorted_inputs + bid * sorted_inputs_size, sorted_inputs_size, value,
+        GpuNanAwareCompare<T>());
   }
 }
 }  // namespace

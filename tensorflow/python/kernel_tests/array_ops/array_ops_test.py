@@ -157,6 +157,7 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
     mask = make_mask(arr_shape[:ndims_mask])
     if axis is not None:
       mask = make_mask(arr_shape[axis:ndims_mask + axis])
+    masked_arr = None
     if axis is None or axis == 0:
       masked_arr = arr[mask]
     elif axis == 1:
@@ -2220,6 +2221,45 @@ class SortedSearchTest(test_util.TensorFlowTestCase):
       return array_ops.searchsorted(x, y)
 
     _ = g.get_concrete_function()
+
+  def testNaN(self):
+    """NaN should always be placed at the end of a sorted sequence."""
+    # Test NaN in values
+    sorted_sequence = np.array([2., 4., 8., 16., 32., 64.], dtype=np.float32)
+    values = np.array([np.nan, 8.0], dtype=np.float32)
+    for side in ("left", "right"):
+      with self.subTest(side=side, case="nan_in_values"):
+        expected = np.searchsorted(sorted_sequence, values, side=side)
+        actual = self.evaluate(
+            array_ops.searchsorted(sorted_sequence, values, side=side))
+        self.assertAllEqual(expected, actual)
+
+    # Test NaN in sorted_sequence
+    sorted_sequence_with_nan = np.array(
+        [2., 4., 8., np.nan, np.nan], dtype=np.float32)
+    values_to_search = np.array([3.0, np.nan], dtype=np.float32)
+    for side in ("left", "right"):
+      with self.subTest(side=side, case="nan_in_sequence"):
+        expected = np.searchsorted(
+            sorted_sequence_with_nan, values_to_search, side=side)
+        actual = self.evaluate(array_ops.searchsorted(
+            sorted_sequence_with_nan, values_to_search, side=side))
+        self.assertAllEqual(expected, actual)
+
+    # Regression test: NaN in sorted_sequence with multiple NaNs, searching
+    # for finite values that fall before, between, and after non-NaN elements.
+    sorted_sequence_with_nans = np.array(
+        [2.0, 4.0, np.nan, np.nan], dtype=np.float32)
+    for val in [3.0, 5.0, np.nan]:
+      for side in ("left", "right"):
+        with self.subTest(side=side, val=val, case="nan_in_sorted_regression"):
+          expected = np.searchsorted(
+              sorted_sequence_with_nans,
+              np.array([val], dtype=np.float32), side=side)
+          actual = self.evaluate(array_ops.searchsorted(
+              sorted_sequence_with_nans,
+              np.array([val], dtype=np.float32), side=side))
+          self.assertAllEqual(expected, actual)
 
   def testInvalidValuesLowerBound(self):
     arg_0_tensor = random_ops.random_uniform([3, 3], dtype=dtypes.float32)
