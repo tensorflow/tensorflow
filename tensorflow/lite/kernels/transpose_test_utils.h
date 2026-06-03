@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_TRANSPOSE_TEST_UTILS_H_
 #define TENSORFLOW_LITE_KERNELS_TRANSPOSE_TEST_UTILS_H_
 
+#include <cstdint>
 #include <functional>
 #include <vector>
 
@@ -54,12 +55,10 @@ std::vector<T> RunTestPermutation(const absl::Span<const int> shape,
     output_shape.SetDim(i, input_shape.Dims(perms[i]));
   }
 
-  TransposeParams params{};
-  params.perm_count = static_cast<int8_t>(perms.size());
-  absl::c_copy(perms, params.perm);
+  std::vector<int32_t> perm_data(perms.begin(), perms.end());
 
-  reference_ops::Transpose(params, input_shape, input.data(), output_shape,
-                           out.data());
+  reference_ops::Transpose(perm_data.data(), perm_data.size(), input_shape,
+                           input.data(), output_shape, out.data());
   return out;
 }
 
