@@ -180,6 +180,9 @@ absl::Status FastParseSerializedExample(
     if (is_dense) {
       if (example_dtype == tf::DT_INVALID) continue;
 
+      if (dense_feature_last_example[d] == example_index) {
+        continue;
+      }
       dense_feature_last_example[d] = example_index;
 
       if (example_dtype != config.dense[d].dtype) {
@@ -404,6 +407,7 @@ absl::Status FastParseSerializedExample(
 void CountSparseFeatures(const SparseBuffer& sparse_buffer,
                          size_t* total_num_features, size_t* max_num_features) {
   const std::vector<size_t>& end_indices = sparse_buffer.example_end_indices;
+  if (end_indices.empty()) return;
   *total_num_features += end_indices.back();
   *max_num_features = std::max(*max_num_features, end_indices[0]);
   for (size_t i = 1; i < end_indices.size(); ++i) {
@@ -442,22 +446,16 @@ void CopySparseBufferToTensor(tf::DataType dtype, size_t offset,
 }
 
 inline void CopyToBuffer(absl::Span<const tstring> vec, char* tensor_buffer,
-                         int num_examples, int batch_size,
-                         int elements_per_stride) {
-  int i = 0, k = 0;
+                         int num_examples, int elements_per_stride) {
+  int i = 0;
+  int k = 0;
   int start = 0;
   for (; i < num_examples; ++i) {
     for (int j = 0; j < elements_per_stride; ++j) {
-      memcpy(tensor_buffer + start, vec[k].c_str(), vec[k].size());
-      start += vec[k].size();
-      k++;
-    }
-  }
-  // Will happen if the number of examples is less than the desired batch size.
-  for (; i < batch_size; ++i) {
-    for (int j = 0; j < elements_per_stride; ++j) {
-      memcpy(tensor_buffer + start, vec[k].c_str(), vec[k].size());
-      start += vec[k].size();
+      if (k < static_cast<int>(vec.size())) {
+        memcpy(tensor_buffer + start, vec[k].c_str(), vec[k].size());
+        start += vec[k].size();
+      }
       k++;
     }
   }
@@ -508,11 +506,15 @@ absl::Status FastParseExampleLite(
     TfLiteIntArray* index_shape = TfLiteIntArrayCreate(2);
     index_shape->data[0] = total_num_features;
     index_shape->data[1] = 2;
-    context->ResizeTensor(context, indices, index_shape);
+    if (context->ResizeTensor(context, indices, index_shape) != kTfLiteOk) {
+      return absl::InternalError("Failed to resize sparse indices tensor");
+    }
 
     TfLiteIntArray* output_shape = TfLiteIntArrayCreate(1);
     output_shape->data[0] = total_num_features;
-    context->ResizeTensor(context, values, output_shape);
+    if (context->ResizeTensor(context, values, output_shape) != kTfLiteOk) {
+      return absl::InternalError("Failed to resize sparse values tensor");
+    }
 
     SparseBuffer& buffer = sparse_buffers[d];
 
@@ -555,6 +557,7 @@ absl::Status FastParseExampleLite(
     size_t max_num_features = 0;
     std::vector<size_t>& end_indices =
         varlen_dense_buffers[d].example_end_indices;
+    if (end_indices.empty()) continue;
     max_num_features = std::max(max_num_features, end_indices[0]);
     for (size_t i = 1; i < end_indices.size(); ++i) {
       size_t example_size = end_indices[i] - end_indices[i - 1];
@@ -607,7 +610,8 @@ absl::Status FastParseExampleLite(
     if (result->dense_values[d]->type == kTfLiteString) {
       auto& in = result->dense_tensors[d];
       auto vec = in.vec<tstring>();
-      const int batch_size = result->dense_values[d]->dims->data[0];
+      const int batch_size =
+          serialized->dims->size > 0 ? serialized->dims->data[0] : 1;
       const int elements_per_stride = config.dense[d].elements_per_stride;
       int total_size = 0;
       std::vector<int32_t> offsets;
@@ -645,8 +649,7 @@ absl::Status FastParseExampleLite(
                sizeof(int32_t));
       }
       absl::Span<const tstring> slice(vec.data(), vec.size());
-      CopyToBuffer(slice, tensor_buffer + start, count, batch_size,
-                   elements_per_stride);
+      CopyToBuffer(slice, tensor_buffer + start, count, elements_per_stride);
     }
   }
   return absl::OkStatus();
@@ -713,6 +716,9 @@ TfLiteStatus PrepareParseExample(TfLiteContext* context, TfLiteNode* node) {
   data->config.dense.clear();
   data->config.sparse.clear();
   data->got.dense_values.clear();
+  data->got.sparse_indices.clear();
+  data->got.sparse_values.clear();
+  data->got.sparse_shapes.clear();
   const flexbuffers::Vector& v =
       flexbuffers::GetRoot(
           reinterpret_cast<const uint8_t*>(node->custom_initial_data),
