@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <utility>
 
