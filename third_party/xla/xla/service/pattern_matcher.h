@@ -529,8 +529,8 @@ auto AllOf(const detail::AllOfPattern<Item, InnerPs...>& inner_p,
                                 InnerPs..., OuterPs...>(inner_ps...,
                                                         outer_ps...);
   };
-  return absl::apply(make_all_of, std::tuple_cat(inner_p.patterns(),
-                                                 std::make_tuple(outer_ps...)));
+  return std::apply(make_all_of, std::tuple_cat(inner_p.patterns(),
+                                                std::make_tuple(outer_ps...)));
 }
 
 namespace detail {
