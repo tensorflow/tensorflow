@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/device_event_utils.h"
+#include "xla/pjrt/dynamic_shapes.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -751,9 +752,13 @@ absl::Status CommonPjRtClient::PrepareArguments(
         if (on_device_shape.is_dynamic() && !expected_shape.is_dynamic()) {
           ASSIGN_OR_RETURN(auto handle_logical_device_shape,
                            handle->logical_on_device_shape());
-          auto status_or_buffer =
-              actual_buffer->RemoveDynamicShapeMetadataIfPresent(
-                  on_device_shape, handle_logical_device_shape);
+          auto* client = absl::down_cast<CommonPjRtClient*>(
+              actual_buffer->memory_space()->client());
+          auto ds_kind = client->GetDynamicShapeKind(
+              actual_buffer->memory_space()->kind_id());
+          auto status_or_buffer = xla::RemoveDynamicShapeMetadataIfPresent(
+              actual_buffer, on_device_shape, handle_logical_device_shape,
+              ds_kind);
 
           if (!status_or_buffer.ok()) {
             absl::Status status = status_or_buffer.status();
@@ -2317,9 +2322,10 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
     return Future<>(
         InvalidArgument("ToLiteral() called from inside host callback."));
   }
-  absl::StatusOr<Shape> device_shape = logical_on_device_shape();
-  if (!device_shape.ok()) {
-    return Future<>(device_shape.status());
+  auto device_shape = on_device_shape();
+  absl::StatusOr<Shape> logical_shape = logical_on_device_shape();
+  if (!logical_shape.ok()) {
+    return Future<>(logical_shape.status());
   }
 
   // TODO(zhangqiaorjc): Fast path if zero device_buffer wait events.
@@ -2366,18 +2372,20 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
       src_definition_events_avs_copy = src_definition_events_avs;
   common_client->async_work_runner()->ExecuteWhenReady(
       src_definition_events_avs_copy,
-      [common_client, shape = *std::move(device_shape),
+      [common_client, shape = *std::move(logical_shape),
+       device_shape = std::move(device_shape),
        src_definition_events_avs = std::move(src_definition_events_avs),
        raw_buffer = std::move(raw_buffer),
        device_promise = std::move(device_promise), literal,
        generator = std::move(generator), promise = std::move(promise),
        context_id = producer.GetContextId()]() mutable {
         auto copy_literal_async =
-            [shape = std::move(shape),
+            [shape = std::move(shape), device_shape = std::move(device_shape),
              src_definition_events_avs = std::move(src_definition_events_avs),
              raw_buffer = std::move(raw_buffer),
              device_promise = std::move(device_promise),
-             promise = std::move(promise), context_id = context_id](
+             promise = std::move(promise), context_id = context_id,
+             common_client](
                 const absl::StatusOr<MutableLiteralBase*>& value) mutable {
               tsl::profiler::TraceMeConsumer traceme(
                   [&] {
@@ -2429,6 +2437,18 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
                 }
                 promise.Set();
                 return;
+              }
+              if (!device_shape.is_static()) {
+                auto ds_kind = common_client->GetDynamicShapeKind(
+                    raw_buffer->memory_space()->kind_id());
+                auto status_or_buffer =
+                    xla::RemoveDynamicShapeMetadataIfPresent(
+                        raw_buffer, device_shape, shape, ds_kind);
+                if (!status_or_buffer.ok()) {
+                  notify_all(status_or_buffer.status());
+                  return;
+                }
+                raw_buffer = *status_or_buffer;
               }
               raw_buffer->CopyToLiteralAsync(std::move(promise), device_promise,
                                              literal, std::move(shape));
@@ -2624,11 +2644,12 @@ absl::StatusOr<Shape> CommonPjRtBufferImpl::logical_on_device_shape() {
       [&](PjRtRawBufferRef raw_buffer,
           std::vector<PjRtDeviceEventRef> definition_events)
           -> absl::StatusOr<PjRtDeviceEventRef> {
+        auto ds_kind = client()->GetDynamicShapeKind(memory_space()->kind_id());
         xla::ExecuteWhenReady(
             absl::MakeSpan(definition_events), buf_client->async_work_runner(),
             [definition_events = std::move(definition_events),
              raw_buffer = raw_buffer, output_shape = output_shape,
-             device_shape = std::move(device_shape)]() mutable {
+             device_shape = std::move(device_shape), ds_kind]() mutable {
               tsl::profiler::TraceMe traceme("D2H Read Shape Metadata");
               absl::Status status = xla::GetErrors(definition_events);
               if (!status.ok()) {
@@ -2638,8 +2659,8 @@ absl::StatusOr<Shape> CommonPjRtBufferImpl::logical_on_device_shape() {
                                  status.message())));
                 return;
               }
-              raw_buffer->ReadDynamicShape(output_shape,
-                                           std::move(device_shape));
+              xla::ReadDynamicShape(raw_buffer, output_shape, device_shape,
+                                    ds_kind);
             });
         tsl::BlockUntilReady(output_shape.CopyRCRef().get());
         if (auto* error = output_shape.GetErrorIfPresent()) {
@@ -2651,7 +2672,8 @@ absl::StatusOr<Shape> CommonPjRtBufferImpl::logical_on_device_shape() {
       },
       "logical_on_device_shape()"));
 
-  return output_shape.get();
+  return client()->UpdateLayoutForDynamicShapes(memory_space()->kind_id(),
+                                                output_shape.get());
 }
 
 void CommonPjRtBufferImpl::Delete() {

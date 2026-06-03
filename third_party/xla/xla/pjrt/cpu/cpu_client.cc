@@ -1314,7 +1314,7 @@ PjRtCpuExecutable::PjRtCpuExecutable(
       input_buffer_sizes_in_bytes_.push_back(
           PjRtShapeAndMetadataTransferRequirements::Get(
               computation_layout.parameter_shape(i),
-              PjRtDynamicShapeKind::kNotSupported)
+              PjRtDynamicShapeKind::kSuffix)
               .size);
     }
   } else {
@@ -1325,7 +1325,7 @@ PjRtCpuExecutable::PjRtCpuExecutable(
       input_buffer_sizes_in_bytes_.push_back(
           PjRtShapeAndMetadataTransferRequirements::Get(
               computation_layout.parameter_shape(0).tuple_shapes(i),
-              PjRtDynamicShapeKind::kNotSupported)
+              PjRtDynamicShapeKind::kSuffix)
               .size);
     }
   }
