@@ -63,7 +63,7 @@ KernelThunk::KernelThunk(Thunk::ThunkInfo thunk_info, std::string kernel_name,
                          stream_executor::gpu::TmaMetadata tma_metadata,
                          std::vector<int64_t> zeroed_output_buffer_indices,
                          bool use_pdl)
-    : Command(CommandType::kLaunchCmd, Kind::kKernel, std::move(thunk_info)),
+    : Command(Kind::kKernel, std::move(thunk_info)),
       args_(kernel_arguments.GetArgumentShapedSlices()),
       written_(kernel_arguments.GetArgumentOutputFlags()),
       zeroed_output_buffer_indices_(std::move(zeroed_output_buffer_indices)),

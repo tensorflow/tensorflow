@@ -45,8 +45,7 @@ namespace gpu {
 DeviceToDeviceCopyThunk::DeviceToDeviceCopyThunk(
     ThunkInfo thunk_info, const ShapedSlice& source_buffer,
     const ShapedSlice& destination_buffer, int64_t mem_size)
-    : Command(CommandType::kMemcpyDeviceToDeviceCmd, Kind::kCopy,
-              std::move(thunk_info)),
+    : Command(Kind::kCopy, std::move(thunk_info)),
       source_buffer_(source_buffer),
       destination_buffer_(destination_buffer),
       mem_size_(mem_size) {

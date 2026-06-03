@@ -252,8 +252,7 @@ CustomCallThunk::CustomCallThunk(
     std::unique_ptr<ffi::ExecutionState> execution_state,
     const HloComputation* called_computation,
     std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options)
-    : TracedCommand(CommandType::kCustomCallCmd, Thunk::kCustomCall,
-                    thunk_info),
+    : TracedCommand(Thunk::kCustomCall, thunk_info),
       target_name_(std::move(target_name)),
       operands_(std::move(operands)),
       results_(std::move(results)),

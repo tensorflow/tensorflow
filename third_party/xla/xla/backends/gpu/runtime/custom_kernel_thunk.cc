@@ -61,8 +61,7 @@ CustomKernelThunk::CustomKernelThunk(
     const emitters::KernelArguments& kernel_arguments, bool use_pdl,
     std::vector<int64_t> zeroed_output_buffer_indices,
     stream_executor::gpu::TmaMetadata tma_metadata)
-    : Command(CommandType::kCustomKernelLaunchCmd, Kind::kCustomKernel,
-              std::move(thunk_info)),
+    : Command(Kind::kCustomKernel, std::move(thunk_info)),
       args_(kernel_arguments.GetArgumentShapedSlices()),
       written_(kernel_arguments.GetArgumentOutputFlags()),
       custom_kernel_(std::move(custom_kernel)),
@@ -206,8 +205,7 @@ CustomKernelThunk::CustomKernelThunk(
     std::vector<ShapedSlice> args, std::vector<bool> written,
     std::vector<int64_t> zeroed_output_buffer_indices,
     stream_executor::gpu::TmaMetadata tma_metadata, bool use_pdl)
-    : Command(CommandType::kCustomKernelLaunchCmd, Kind::kCustomKernel,
-              std::move(thunk_info)),
+    : Command(Kind::kCustomKernel, std::move(thunk_info)),
       args_(std::move(args)),
       written_(std::move(written)),
       custom_kernel_(std::move(custom_kernel)),

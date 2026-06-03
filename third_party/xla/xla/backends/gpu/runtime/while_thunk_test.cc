@@ -112,7 +112,7 @@ struct FakeSeCommand : public se::CommandBuffer::Command {};
 class RecordingCommand : public Command {
  public:
   explicit RecordingCommand(CommandRecordCounts* counts)
-      : Command(CommandType::kUnknownCmd), counts_(counts) {}
+      : Command(Thunk::Kind::kCommand), counts_(counts) {}
 
   absl::Status Prepare(const PrepareParams&) override {
     ++counts_->prepares;

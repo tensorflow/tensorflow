@@ -131,7 +131,7 @@ std::shared_ptr<AsyncExecution> AsyncStartThunk::async_execution() const {
 
 AsyncDoneThunk::AsyncDoneThunk(ThunkInfo thunk_info,
                                std::shared_ptr<AsyncExecution> async_execution)
-    : Command(CommandType::kAsyncDone, Kind::kAsyncDone, std::move(thunk_info)),
+    : Command(Kind::kAsyncDone, std::move(thunk_info)),
       async_execution_(std::move(async_execution)) {}
 
 std::string AsyncDoneThunk::ToString(int indent) const {

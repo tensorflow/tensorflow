@@ -39,11 +39,10 @@ namespace xla::gpu {
 // TracedCommand
 //===----------------------------------------------------------------------===//
 
-TracedCommand::TracedCommand(CommandType cmd_type) : Command(cmd_type) {}
+TracedCommand::TracedCommand(Thunk::Kind kind) : Command(kind) {}
 
-TracedCommand::TracedCommand(CommandType cmd_type, Thunk::Kind thunk_kind,
-                             ThunkInfo thunk_info)
-    : Command(cmd_type, thunk_kind, std::move(thunk_info)) {}
+TracedCommand::TracedCommand(Thunk::Kind thunk_kind, ThunkInfo thunk_info)
+    : Command(thunk_kind, std::move(thunk_info)) {}
 
 absl::StatusOr<const se::CommandBuffer::Command*> TracedCommand::Record(
     const Thunk::ExecuteParams& execute_params,

@@ -134,8 +134,7 @@ LegacyCustomCallThunk::LegacyCustomCallThunk(
     std::vector<NullableShapedSlice> results, std::string opaque,
     CustomCallTarget call_target,
     const std::optional<CustomCallApiVersion>& api_version)
-    : TracedCommand(CommandType::kCustomCallCmd, Thunk::kCustomCall,
-                    thunk_info),
+    : TracedCommand(Thunk::kCustomCall, thunk_info),
       api_version_(api_version),
       target_name_(std::move(target_name)),
       operands_(std::move(operands)),

@@ -107,7 +107,7 @@ WhileThunk::WhileThunk(
     const BufferAllocation::Slice& condition_result_buffer_index,
     ThunkSequence condition_thunks, ThunkSequence body_thunks,
     std::optional<int64_t> trip_count)
-    : Command(CommandType::kWhileCmd, Kind::kWhile, std::move(thunk_info)),
+    : Command(Kind::kWhile, std::move(thunk_info)),
       condition_result_buffer_index_(condition_result_buffer_index),
       condition_executor_(std::move(condition_thunks)),
       body_executor_(std::move(body_thunks)),

@@ -370,7 +370,7 @@ static void VlogCommandSequenceDetails(const CommandSequence& commands) {
       }
     }
 
-    std::string cmd_name = CommandTypeString(cmd->command_type());
+    std::string cmd_name = std::string(Thunk::KindToString(cmd->kind()));
 
     if (has_input && !has_output && !has_temp) {
       input_count++;
@@ -495,7 +495,7 @@ CommandExecutor::RecordCreate(
         GetKernelAnnotation(command->profile_annotation());
 
     // Skip recording collective commands if mock collectives are enabled.
-    if (execute_params.mock_collectives && IsCollectiveCommand(*command)) {
+    if (execute_params.mock_collectives && command->IsCollective()) {
       continue;
     }
 
@@ -627,7 +627,7 @@ absl::Status CommandExecutor::RecordUpdate(
         GetKernelAnnotation(command->profile_annotation());
 
     // Skip updating collective commands if mock collectives are enabled.
-    if (execute_params.mock_collectives && IsCollectiveCommand(*command)) {
+    if (execute_params.mock_collectives && command->IsCollective()) {
       continue;
     }
 

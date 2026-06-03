@@ -57,8 +57,7 @@ CublasLtMatmulThunk::CublasLtMatmulThunk(
     std::optional<ShapedSlice> b_scale, std::optional<ShapedSlice> c_scale,
     std::optional<ShapedSlice> d_scale, std::optional<ShapedSlice> d_amax,
     std::optional<const ShapedSlice> workspace)
-    : TracedCommand(CommandType::kCublasLtCmd, Kind::kCublasLtMatmul,
-                    std::move(thunk_info)),
+    : TracedCommand(Kind::kCublasLtMatmul, std::move(thunk_info)),
       gemm_config_(std::move(gemm_config)),
       epilogue_(epilogue),
       algorithm_idx_(algorithm_idx),

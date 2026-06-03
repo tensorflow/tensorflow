@@ -100,7 +100,7 @@ struct FakeSeCommand : public se::CommandBuffer::Command {};
 class BranchRecordingCommand : public Command {
  public:
   explicit BranchRecordingCommand(BranchRecordCounts* counts)
-      : Command(CommandType::kUnknownCmd), counts_(counts) {}
+      : Command(Thunk::Kind::kCommand), counts_(counts) {}
 
   absl::Status Prepare(const PrepareParams&) override {
     ++counts_->prepares;
@@ -341,29 +341,27 @@ TEST(ConditionalThunkTest, RecordCreatesAndUpdatesCommandBufferCase) {
   EXPECT_CALL(command_buffer,
               UpdateCase(&case_se_command,
                          testing::A<se::DeviceAddress<int32_t>>(), testing::_))
-      .WillOnce(
-          [&](const se::CommandBuffer::Command* command,
-              se::DeviceAddress<int32_t>,
-              std::vector<se::CommandBuffer::UpdateCommands> update_branches)
-              -> absl::Status {
-            ++update_case_calls;
-            update_case_branch_count = update_branches.size();
-            if (command != &case_se_command) {
-              return absl::InternalError("unexpected case command");
-            }
-            if (update_branches.size() != branch_command_buffers.size()) {
-              return absl::InternalError("unexpected branch count");
-            }
-            for (size_t i = 0; i < update_branches.size(); ++i) {
-              RETURN_IF_ERROR(
-                  branch_command_buffers[i]->command_buffer->Update());
-              RETURN_IF_ERROR(update_branches[i](
-                  branch_command_buffers[i]->command_buffer.get()));
-              RETURN_IF_ERROR(
-                  branch_command_buffers[i]->command_buffer->Finalize());
-            }
-            return absl::OkStatus();
-          });
+      .WillOnce([&](const se::CommandBuffer::Command* command,
+                    se::DeviceAddress<int32_t>,
+                    std::vector<se::CommandBuffer::UpdateCommands>
+                        update_branches) -> absl::Status {
+        ++update_case_calls;
+        update_case_branch_count = update_branches.size();
+        if (command != &case_se_command) {
+          return absl::InternalError("unexpected case command");
+        }
+        if (update_branches.size() != branch_command_buffers.size()) {
+          return absl::InternalError("unexpected branch count");
+        }
+        for (size_t i = 0; i < update_branches.size(); ++i) {
+          RETURN_IF_ERROR(branch_command_buffers[i]->command_buffer->Update());
+          RETURN_IF_ERROR(update_branches[i](
+              branch_command_buffers[i]->command_buffer.get()));
+          RETURN_IF_ERROR(
+              branch_command_buffers[i]->command_buffer->Finalize());
+        }
+        return absl::OkStatus();
+      });
 
   ASSERT_OK_AND_ASSIGN(
       const se::CommandBuffer::Command* updated_case_command,
@@ -401,7 +399,7 @@ TEST(ConditionalThunkTest, ToProto) {
 
   std::unique_ptr<ConditionalThunk> thunk = CreateConditionalThunk(
       thunk_info, {slice, shape}, std::move(branch_thunk_seq));
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk->ToProto());
 
   std::string expected = R"pb(
     thunk_info { profile_annotation: "profile_annotation" }
@@ -457,7 +455,7 @@ TEST(ConditionalThunkTest, FromProto) {
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0)};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<ConditionalThunk> thunk,
       ConditionalThunk::FromProto(
           thunk_info, proto.conditional_thunk(), buffer_allocations,
@@ -466,7 +464,7 @@ TEST(ConditionalThunkTest, FromProto) {
             return DummyThunk::FromProto(proto, Kind::kCustomCall);
           }));
   ASSERT_NE(thunk, nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
@@ -531,7 +529,7 @@ TEST(ConditionalThunkTest, TransformNested) {
   auto conditional_thunk = std::make_unique<ConditionalThunk>(
       Thunk::ThunkInfo(), ShapedSlice{slice, shape}, std::move(branch_thunks));
 
-  TF_EXPECT_OK(conditional_thunk->TransformNested([](auto) {
+  EXPECT_OK(conditional_thunk->TransformNested([](auto) {
     return std::make_unique<DummyThunk>(Kind::kCustomCall, Thunk::ThunkInfo());
   }));
 

@@ -124,7 +124,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> HandleRecordAction(
 ConditionalThunk::ConditionalThunk(ThunkInfo thunk_info,
                                    const ShapedSlice& branch_index_buffer_index,
                                    std::vector<ThunkSequence> branch_thunks)
-    : Command(CommandType::kCaseCmd, Kind::kConditional, std::move(thunk_info)),
+    : Command(Kind::kConditional, std::move(thunk_info)),
       branch_index_buffer_index_(branch_index_buffer_index),
       branch_index_is_bool_(branch_index_buffer_index.shape.element_type() ==
                             PRED) {
