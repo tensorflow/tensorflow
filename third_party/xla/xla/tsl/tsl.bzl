@@ -142,12 +142,7 @@ def internal_visibility(internal_targets):
 # TODO(jakeharmon): Use this to replace if_static
 # TODO(b/356020232): remove completely after migration is done
 def if_tsl_link_protobuf(if_true, if_false = []):
-    if use_pywrap_rules():
-        return if_true
-    return select({
-        "//conditions:default": if_true,
-        clean_dep("//xla/tsl:tsl_protobuf_header_only"): if_false,
-    })
+    return if_true
 
 def if_libtpu(if_true, if_false = []):
     """Shorthand for select()ing whether to build backend support for TPUs when building libtpu.so"""
