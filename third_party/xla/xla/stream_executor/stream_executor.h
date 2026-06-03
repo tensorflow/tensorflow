@@ -419,7 +419,11 @@ inline DeviceAddress<T> StreamExecutor::AllocateArray(uint64_t element_count,
                  << "]";
     return DeviceAddress<T>();
   }
-  return DeviceAddress<T>(Allocate(bytes, memory_space));
+  DeviceAddressBase allocated = Allocate(bytes, memory_space);
+  if (allocated.is_null()) {
+    return DeviceAddress<T>();
+  }
+  return DeviceAddress<T>(DeviceAddressBase(allocated.opaque(), bytes));
 }
 
 }  // namespace stream_executor

@@ -969,7 +969,7 @@ absl::Status CudaExecutor::Init() {
     vmm_options_.enable_fabric_handle = false;
   }
 
-  device_allocator_ = std::make_unique<CudaDeviceAllocator>(this);
+  device_allocator_ = std::make_unique<CudaVmmAllocator>(this, vmm_options_);
   host_allocator_ = std::make_unique<CudaHostAllocator>(this, numa_node_);
   vmm_allocator_ = std::make_unique<CudaVmmAllocator>(this, vmm_options_);
 
