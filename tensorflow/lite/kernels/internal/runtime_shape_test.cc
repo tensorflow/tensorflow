@@ -30,6 +30,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 
 using testing::Each;
 using testing::ElementsAreArray;
@@ -375,6 +376,17 @@ TEST(RuntimeShapeTest, TestCheckedFlatSizeSkipDimRejectsOverflow) {
                             std::numeric_limits<int32_t>::max()});
   size_t flat_size = 0;
   EXPECT_FALSE(shape.CheckedFlatSizeSkipDim(/*skip_dim=*/0, flat_size));
+}
+
+TEST(RuntimeShapeTest, TestDimsFlatSizeSafeFromOverflow) {
+  Dims<4> dims;
+  dims.sizes[0] = 2;
+  dims.sizes[1] = 3;
+  dims.sizes[2] = 1073741824;
+  dims.sizes[3] = 2;
+
+  int64_t size = FlatSize(dims);
+  EXPECT_EQ(size, 12884901888LL);
 }
 
 INSTANTIATE_TEST_SUITE_P(BigSmall, RuntimeShapeTest,

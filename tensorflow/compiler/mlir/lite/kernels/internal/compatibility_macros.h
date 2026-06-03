@@ -60,4 +60,27 @@ limitations under the License.
 
 // LINT.ThenChange(//tensorflow/lite/kernels/internal/compatibility.h)
 
+// TFLITE_DEPRECATED()
+//
+// Duplicated from absl/base/macros.h to avoid pulling in that library.
+// Marks a deprecated class, struct, enum, function, method and variable
+// declarations. The macro argument is used as a custom diagnostic message (e.g.
+// suggestion of a better alternative).
+//
+// Example:
+//
+//   class TFLITE_DEPRECATED("Use Bar instead") Foo {...};
+//   TFLITE_DEPRECATED("Use Baz instead") void Bar() {...}
+//
+// Every usage of a deprecated entity will trigger a warning when compiled with
+// clang's `-Wdeprecated-declarations` option. This option is turned off by
+// default, but the warnings will be reported by clang-tidy.
+#if defined(__clang__) && __cplusplus >= 201103L
+#define TFLITE_DEPRECATED(message) __attribute__((deprecated(message)))
+#endif
+
+#ifndef TFLITE_DEPRECATED
+#define TFLITE_DEPRECATED(message)
+#endif
+
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_KERNELS_INTERNAL_COMPATIBILITY_MACROS_H_

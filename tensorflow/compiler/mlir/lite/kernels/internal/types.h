@@ -12,19 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_TYPES_H_
-#define TENSORFLOW_LITE_KERNELS_INTERNAL_TYPES_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_KERNELS_INTERNAL_TYPES_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_KERNELS_INTERNAL_TYPES_H_
 
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
-#include <initializer_list>
 #include <type_traits>
 
-#include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/kernels/internal/runtime_shape.h"
+#include "tensorflow/compiler/mlir/lite/kernels/internal/compatibility_macros.h"
+#include "tensorflow/compiler/mlir/lite/kernels/internal/runtime_shape.h"
 
-namespace tflite {
+namespace tflite_migration {
 
 enum class FusedActivationFunctionType : uint8_t {
   kNone,
@@ -224,7 +223,8 @@ inline size_t ReducedOutputOffset(const int num_dims, const int* dims,
 // calling ops to ensure that they perform verification checks on tensor shapes
 // if they don't support a particular behavior.
 
-inline int64_t Offset(const Dims<4>& dims, int i0, int i1, int i2, int i3) {
+inline int64_t Offset(const mlir::Dims<4>& dims, int i0, int i1, int i2,
+                      int i3) {
   TFLITE_DCHECK((i0 == 0 && dims.sizes[0] == 0) ||
                 (i0 >= 0 && i0 < dims.sizes[0]));
   TFLITE_DCHECK((i1 == 0 && dims.sizes[1] == 0) ||
@@ -239,7 +239,7 @@ inline int64_t Offset(const Dims<4>& dims, int i0, int i1, int i2, int i3) {
          static_cast<int64_t>(i3) * dims.strides[3];
 }
 
-inline int64_t Offset(const Dims<4>& dims, const int* index) {
+inline int64_t Offset(const mlir::Dims<4>& dims, const int* index) {
   return Offset(dims, index[0], index[1], index[2], index[3]);
 }
 
@@ -248,7 +248,7 @@ inline int64_t Offset(const Dims<4>& dims, const int* index) {
 // Note that this will be phased out with Dims<4>, since RuntimeShape::Dims()
 // already performs this check.
 template <int N>
-int64_t ArraySize(const Dims<N>& array, int index) {
+int64_t ArraySize(const mlir::Dims<N>& array, int index) {
   TFLITE_DCHECK(index >= 0 && index < N);
   return array.sizes[index];
 }
@@ -269,22 +269,22 @@ int64_t MatchingArraySize(const ArrayType1& array1, int index1,
 }
 
 // Get common shape dim, DCHECKing that they all agree.
-inline int MatchingDim(const RuntimeShape& shape1, int index1,
-                       const RuntimeShape& shape2, int index2) {
+inline int MatchingDim(const mlir::RuntimeShape& shape1, int index1,
+                       const mlir::RuntimeShape& shape2, int index2) {
   TFLITE_DCHECK_EQ(shape1.Dims(index1), shape2.Dims(index2));
   return std::min(shape1.Dims(index1), shape2.Dims(index2));
 }
 
 template <typename... Args>
-int MatchingDim(const RuntimeShape& shape1, int index1,
-                const RuntimeShape& shape2, int index2, Args... args) {
+int MatchingDim(const mlir::RuntimeShape& shape1, int index1,
+                const mlir::RuntimeShape& shape2, int index2, Args... args) {
   TFLITE_DCHECK_EQ(shape1.Dims(index1), shape2.Dims(index2));
   return MatchingDim(shape1, index1, args...);
 }
 
 // Will be phased out with Dims<4>, replaced by RuntimeShape::FlatSize().
 template <int N>
-inline int64_t FlatSize(const Dims<N>& dims) {
+inline int64_t FlatSize(const mlir::Dims<N>& dims) {
   int64_t flat_size = 1;
   for (int i = 0; i < N; ++i) {
     flat_size *= dims.sizes[i];
@@ -293,26 +293,26 @@ inline int64_t FlatSize(const Dims<N>& dims) {
 }
 
 TFLITE_DEPRECATED("Prefer FlatSize.")
-inline int64_t RequiredBufferSizeForDims(const Dims<4>& dims) {
+inline int64_t RequiredBufferSizeForDims(const mlir::Dims<4>& dims) {
   return FlatSize(dims);
 }
 
-inline int64_t MatchingElementsSize(const RuntimeShape& shape,
-                                    const RuntimeShape& check_shape_0) {
+inline int64_t MatchingElementsSize(const mlir::RuntimeShape& shape,
+                                    const mlir::RuntimeShape& check_shape_0) {
   const int64_t size_1 = shape.FlatSize();
   const int64_t size_2 = check_shape_0.FlatSize();
-  TFLITE_CHECK_EQ(size_1, size_2);
+  TFLITE_DCHECK_EQ(size_1, size_2);
   return size_1;
 }
 
-inline int64_t MatchingElementsSize(const RuntimeShape& shape,
-                                    const RuntimeShape& check_shape_0,
-                                    const RuntimeShape& check_shape_1) {
+inline int64_t MatchingElementsSize(const mlir::RuntimeShape& shape,
+                                    const mlir::RuntimeShape& check_shape_0,
+                                    const mlir::RuntimeShape& check_shape_1) {
   const int64_t size_1 = shape.FlatSize();
   const int64_t size_2 = check_shape_0.FlatSize();
   const int64_t size_3 = check_shape_1.FlatSize();
-  TFLITE_CHECK_EQ(size_1, size_2);
-  TFLITE_CHECK_EQ(size_2, size_3);
+  TFLITE_DCHECK_EQ(size_1, size_2);
+  TFLITE_DCHECK_EQ(size_2, size_3);
   return size_1;
 }
 
@@ -322,8 +322,8 @@ inline int64_t MatchingElementsSize(const RuntimeShape& shape,
 // arrays.
 // Flat size calculation, checking that dimensions match with one or more other
 // arrays.
-inline int64_t MatchingFlatSize(const RuntimeShape& shape,
-                                const RuntimeShape& check_shape_0) {
+inline int64_t MatchingFlatSize(const mlir::RuntimeShape& shape,
+                                const mlir::RuntimeShape& check_shape_0) {
   TFLITE_DCHECK_EQ(shape.DimensionsCount(), check_shape_0.DimensionsCount());
   const int dims_count = shape.DimensionsCount();
   for (int i = 0; i < dims_count; ++i) {
@@ -332,9 +332,9 @@ inline int64_t MatchingFlatSize(const RuntimeShape& shape,
   return shape.FlatSize();
 }
 
-inline int64_t MatchingFlatSize(const RuntimeShape& shape,
-                                const RuntimeShape& check_shape_0,
-                                const RuntimeShape& check_shape_1) {
+inline int64_t MatchingFlatSize(const mlir::RuntimeShape& shape,
+                                const mlir::RuntimeShape& check_shape_0,
+                                const mlir::RuntimeShape& check_shape_1) {
   TFLITE_DCHECK_EQ(shape.DimensionsCount(), check_shape_0.DimensionsCount());
   const int dims_count = shape.DimensionsCount();
   for (int i = 0; i < dims_count; ++i) {
@@ -343,10 +343,10 @@ inline int64_t MatchingFlatSize(const RuntimeShape& shape,
   return MatchingFlatSize(shape, check_shape_1);
 }
 
-inline int64_t MatchingFlatSize(const RuntimeShape& shape,
-                                const RuntimeShape& check_shape_0,
-                                const RuntimeShape& check_shape_1,
-                                const RuntimeShape& check_shape_2) {
+inline int64_t MatchingFlatSize(const mlir::RuntimeShape& shape,
+                                const mlir::RuntimeShape& check_shape_0,
+                                const mlir::RuntimeShape& check_shape_1,
+                                const mlir::RuntimeShape& check_shape_2) {
   TFLITE_DCHECK_EQ(shape.DimensionsCount(), check_shape_0.DimensionsCount());
   const int dims_count = shape.DimensionsCount();
   for (int i = 0; i < dims_count; ++i) {
@@ -355,11 +355,11 @@ inline int64_t MatchingFlatSize(const RuntimeShape& shape,
   return MatchingFlatSize(shape, check_shape_1, check_shape_2);
 }
 
-inline int64_t MatchingFlatSize(const RuntimeShape& shape,
-                                const RuntimeShape& check_shape_0,
-                                const RuntimeShape& check_shape_1,
-                                const RuntimeShape& check_shape_2,
-                                const RuntimeShape& check_shape_3) {
+inline int64_t MatchingFlatSize(const mlir::RuntimeShape& shape,
+                                const mlir::RuntimeShape& check_shape_0,
+                                const mlir::RuntimeShape& check_shape_1,
+                                const mlir::RuntimeShape& check_shape_2,
+                                const mlir::RuntimeShape& check_shape_3) {
   TFLITE_DCHECK_EQ(shape.DimensionsCount(), check_shape_0.DimensionsCount());
   const int dims_count = shape.DimensionsCount();
   for (int i = 0; i < dims_count; ++i) {
@@ -371,8 +371,8 @@ inline int64_t MatchingFlatSize(const RuntimeShape& shape,
 // Flat size calculation, checking that dimensions match with one or more other
 // arrays.
 template <int N>
-inline int64_t MatchingFlatSize(const Dims<N>& dims,
-                                const Dims<N>& check_dims_0) {
+inline int64_t MatchingFlatSize(const mlir::Dims<N>& dims,
+                                const mlir::Dims<N>& check_dims_0) {
   for (int i = 0; i < N; ++i) {
     TFLITE_DCHECK_EQ(ArraySize(dims, i), ArraySize(check_dims_0, i));
   }
@@ -380,9 +380,9 @@ inline int64_t MatchingFlatSize(const Dims<N>& dims,
 }
 
 template <int N>
-inline int64_t MatchingFlatSize(const Dims<N>& dims,
-                                const Dims<N>& check_dims_0,
-                                const Dims<N>& check_dims_1) {
+inline int64_t MatchingFlatSize(const mlir::Dims<N>& dims,
+                                const mlir::Dims<N>& check_dims_0,
+                                const mlir::Dims<N>& check_dims_1) {
   for (int i = 0; i < N; ++i) {
     TFLITE_DCHECK_EQ(ArraySize(dims, i), ArraySize(check_dims_0, i));
   }
@@ -390,10 +390,10 @@ inline int64_t MatchingFlatSize(const Dims<N>& dims,
 }
 
 template <int N>
-inline int64_t MatchingFlatSize(const Dims<N>& dims,
-                                const Dims<N>& check_dims_0,
-                                const Dims<N>& check_dims_1,
-                                const Dims<N>& check_dims_2) {
+inline int64_t MatchingFlatSize(const mlir::Dims<N>& dims,
+                                const mlir::Dims<N>& check_dims_0,
+                                const mlir::Dims<N>& check_dims_1,
+                                const mlir::Dims<N>& check_dims_2) {
   for (int i = 0; i < N; ++i) {
     TFLITE_DCHECK_EQ(ArraySize(dims, i), ArraySize(check_dims_0, i));
   }
@@ -401,11 +401,11 @@ inline int64_t MatchingFlatSize(const Dims<N>& dims,
 }
 
 template <int N>
-inline int64_t MatchingFlatSize(const Dims<N>& dims,
-                                const Dims<N>& check_dims_0,
-                                const Dims<N>& check_dims_1,
-                                const Dims<N>& check_dims_2,
-                                const Dims<N>& check_dims_3) {
+inline int64_t MatchingFlatSize(const mlir::Dims<N>& dims,
+                                const mlir::Dims<N>& check_dims_0,
+                                const mlir::Dims<N>& check_dims_1,
+                                const mlir::Dims<N>& check_dims_2,
+                                const mlir::Dims<N>& check_dims_3) {
   for (int i = 0; i < N; ++i) {
     TFLITE_DCHECK_EQ(ArraySize(dims, i), ArraySize(check_dims_0, i));
   }
@@ -414,7 +414,7 @@ inline int64_t MatchingFlatSize(const Dims<N>& dims,
 
 // Flat size calculation, checking if their extended shapes match.
 inline int64_t MatchingExtendedShapeFlatSize(
-    const RuntimeShape& shape, const RuntimeShape& check_shape_0) {
+    const mlir::RuntimeShape& shape, const mlir::RuntimeShape& check_shape_0) {
   const int shape_dims = shape.DimensionsCount();
   const int check_shape_0_dims = check_shape_0.DimensionsCount();
   const int min_dims = std::min(shape_dims, check_shape_0_dims);
@@ -433,8 +433,8 @@ inline int64_t MatchingExtendedShapeFlatSize(
 }
 
 inline int64_t MatchingExtendedShapeFlatSize(
-    const RuntimeShape& shape, const RuntimeShape& check_shape_0,
-    const RuntimeShape& check_shape_1) {
+    const mlir::RuntimeShape& shape, const mlir::RuntimeShape& check_shape_0,
+    const mlir::RuntimeShape& check_shape_1) {
   const int64_t flat_size = MatchingExtendedShapeFlatSize(shape, check_shape_0);
   TFLITE_DCHECK_EQ(MatchingExtendedShapeFlatSize(shape, check_shape_1),
                    flat_size);
@@ -442,8 +442,9 @@ inline int64_t MatchingExtendedShapeFlatSize(
 }
 
 inline int64_t MatchingExtendedShapeFlatSize(
-    const RuntimeShape& shape, const RuntimeShape& check_shape_0,
-    const RuntimeShape& check_shape_1, const RuntimeShape& check_shape_2) {
+    const mlir::RuntimeShape& shape, const mlir::RuntimeShape& check_shape_0,
+    const mlir::RuntimeShape& check_shape_1,
+    const mlir::RuntimeShape& check_shape_2) {
   const int64_t flat_size = MatchingExtendedShapeFlatSize(shape, check_shape_0);
   TFLITE_DCHECK_EQ(
       MatchingExtendedShapeFlatSize(shape, check_shape_1, check_shape_2),
@@ -452,9 +453,10 @@ inline int64_t MatchingExtendedShapeFlatSize(
 }
 
 inline int64_t MatchingExtendedShapeFlatSize(
-    const RuntimeShape& shape, const RuntimeShape& check_shape_0,
-    const RuntimeShape& check_shape_1, const RuntimeShape& check_shape_2,
-    const RuntimeShape& check_shape_3) {
+    const mlir::RuntimeShape& shape, const mlir::RuntimeShape& check_shape_0,
+    const mlir::RuntimeShape& check_shape_1,
+    const mlir::RuntimeShape& check_shape_2,
+    const mlir::RuntimeShape& check_shape_3) {
   const int64_t flat_size = MatchingExtendedShapeFlatSize(shape, check_shape_0);
   TFLITE_DCHECK_EQ(MatchingExtendedShapeFlatSize(shape, check_shape_1,
                                                  check_shape_2, check_shape_3),
@@ -466,7 +468,7 @@ inline int64_t MatchingExtendedShapeFlatSize(
 // full array flat size or the flat size with one dimension skipped (commonly
 // the depth).
 template <int N>
-inline int64_t FlatSizeSkipDim(const Dims<N>& dims, int skip_dim) {
+inline int64_t FlatSizeSkipDim(const mlir::Dims<N>& dims, int skip_dim) {
   TFLITE_DCHECK(skip_dim >= 0 && skip_dim < N);
   int64_t flat_size = 1;
   for (int i = 0; i < N; ++i) {
@@ -477,8 +479,8 @@ inline int64_t FlatSizeSkipDim(const Dims<N>& dims, int skip_dim) {
 
 // A combination of MatchingFlatSize() and FlatSizeSkipDim().
 template <int N>
-inline int64_t MatchingFlatSizeSkipDim(const Dims<N>& dims, int skip_dim,
-                                       const Dims<N>& check_dims_0) {
+inline int64_t MatchingFlatSizeSkipDim(const mlir::Dims<N>& dims, int skip_dim,
+                                       const mlir::Dims<N>& check_dims_0) {
   for (int i = 0; i < N; ++i) {
     if (i != skip_dim) {
       TFLITE_DCHECK_EQ(ArraySize(dims, i), ArraySize(check_dims_0, i));
@@ -488,9 +490,9 @@ inline int64_t MatchingFlatSizeSkipDim(const Dims<N>& dims, int skip_dim,
 }
 
 template <int N>
-inline int64_t MatchingFlatSizeSkipDim(const Dims<N>& dims, int skip_dim,
-                                       const Dims<N>& check_dims_0,
-                                       const Dims<N>& check_dims_1) {
+inline int64_t MatchingFlatSizeSkipDim(const mlir::Dims<N>& dims, int skip_dim,
+                                       const mlir::Dims<N>& check_dims_0,
+                                       const mlir::Dims<N>& check_dims_1) {
   for (int i = 0; i < N; ++i) {
     if (i != skip_dim) {
       TFLITE_DCHECK_EQ(ArraySize(dims, i), ArraySize(check_dims_0, i));
@@ -500,10 +502,10 @@ inline int64_t MatchingFlatSizeSkipDim(const Dims<N>& dims, int skip_dim,
 }
 
 template <int N>
-inline int64_t MatchingFlatSizeSkipDim(const Dims<N>& dims, int skip_dim,
-                                       const Dims<N>& check_dims_0,
-                                       const Dims<N>& check_dims_1,
-                                       const Dims<N>& check_dims_2) {
+inline int64_t MatchingFlatSizeSkipDim(const mlir::Dims<N>& dims, int skip_dim,
+                                       const mlir::Dims<N>& check_dims_0,
+                                       const mlir::Dims<N>& check_dims_1,
+                                       const mlir::Dims<N>& check_dims_2) {
   for (int i = 0; i < N; ++i) {
     if (i != skip_dim) {
       TFLITE_DCHECK_EQ(ArraySize(dims, i), ArraySize(check_dims_0, i));
@@ -513,11 +515,11 @@ inline int64_t MatchingFlatSizeSkipDim(const Dims<N>& dims, int skip_dim,
 }
 
 template <int N>
-inline int64_t MatchingFlatSizeSkipDim(const Dims<N>& dims, int skip_dim,
-                                       const Dims<N>& check_dims_0,
-                                       const Dims<N>& check_dims_1,
-                                       const Dims<N>& check_dims_2,
-                                       const Dims<N>& check_dims_3) {
+inline int64_t MatchingFlatSizeSkipDim(const mlir::Dims<N>& dims, int skip_dim,
+                                       const mlir::Dims<N>& check_dims_0,
+                                       const mlir::Dims<N>& check_dims_1,
+                                       const mlir::Dims<N>& check_dims_2,
+                                       const mlir::Dims<N>& check_dims_3) {
   for (int i = 0; i < N; ++i) {
     if (i != skip_dim) {
       TFLITE_DCHECK_EQ(ArraySize(dims, i), ArraySize(check_dims_0, i));
@@ -530,7 +532,7 @@ inline int64_t MatchingFlatSizeSkipDim(const Dims<N>& dims, int skip_dim,
 // Data is required to be contiguous, and so many operators can use either the
 // full array flat size or the flat size with one dimension skipped (commonly
 // the depth).
-inline int64_t FlatSizeSkipDim(const RuntimeShape& shape, int skip_dim) {
+inline int64_t FlatSizeSkipDim(const mlir::RuntimeShape& shape, int skip_dim) {
   const int dims_count = shape.DimensionsCount();
   TFLITE_DCHECK(skip_dim >= 0 && skip_dim < dims_count);
   const auto* dims_data = shape.DimsData();
@@ -542,8 +544,9 @@ inline int64_t FlatSizeSkipDim(const RuntimeShape& shape, int skip_dim) {
 }
 
 // A combination of MatchingFlatSize() and FlatSizeSkipDim().
-inline int64_t MatchingFlatSizeSkipDim(const RuntimeShape& shape, int skip_dim,
-                                       const RuntimeShape& check_shape_0) {
+inline int64_t MatchingFlatSizeSkipDim(
+    const mlir::RuntimeShape& shape, int skip_dim,
+    const mlir::RuntimeShape& check_shape_0) {
   const int dims_count = shape.DimensionsCount();
   for (int i = 0; i < dims_count; ++i) {
     if (i != skip_dim) {
@@ -553,9 +556,10 @@ inline int64_t MatchingFlatSizeSkipDim(const RuntimeShape& shape, int skip_dim,
   return FlatSizeSkipDim(shape, skip_dim);
 }
 
-inline int64_t MatchingFlatSizeSkipDim(const RuntimeShape& shape, int skip_dim,
-                                       const RuntimeShape& check_shape_0,
-                                       const RuntimeShape& check_shape_1) {
+inline int64_t MatchingFlatSizeSkipDim(
+    const mlir::RuntimeShape& shape, int skip_dim,
+    const mlir::RuntimeShape& check_shape_0,
+    const mlir::RuntimeShape& check_shape_1) {
   const int dims_count = shape.DimensionsCount();
   for (int i = 0; i < dims_count; ++i) {
     if (i != skip_dim) {
@@ -565,10 +569,11 @@ inline int64_t MatchingFlatSizeSkipDim(const RuntimeShape& shape, int skip_dim,
   return MatchingFlatSizeSkipDim(shape, skip_dim, check_shape_1);
 }
 
-inline int64_t MatchingFlatSizeSkipDim(const RuntimeShape& shape, int skip_dim,
-                                       const RuntimeShape& check_shape_0,
-                                       const RuntimeShape& check_shape_1,
-                                       const RuntimeShape& check_shape_2) {
+inline int64_t MatchingFlatSizeSkipDim(
+    const mlir::RuntimeShape& shape, int skip_dim,
+    const mlir::RuntimeShape& check_shape_0,
+    const mlir::RuntimeShape& check_shape_1,
+    const mlir::RuntimeShape& check_shape_2) {
   const int dims_count = shape.DimensionsCount();
   for (int i = 0; i < dims_count; ++i) {
     if (i != skip_dim) {
@@ -578,11 +583,12 @@ inline int64_t MatchingFlatSizeSkipDim(const RuntimeShape& shape, int skip_dim,
   return MatchingFlatSizeSkipDim(shape, skip_dim, check_shape_1, check_shape_2);
 }
 
-inline int64_t MatchingFlatSizeSkipDim(const RuntimeShape& shape, int skip_dim,
-                                       const RuntimeShape& check_shape_0,
-                                       const RuntimeShape& check_shape_1,
-                                       const RuntimeShape& check_shape_2,
-                                       const RuntimeShape& check_shape_3) {
+inline int64_t MatchingFlatSizeSkipDim(
+    const mlir::RuntimeShape& shape, int skip_dim,
+    const mlir::RuntimeShape& check_shape_0,
+    const mlir::RuntimeShape& check_shape_1,
+    const mlir::RuntimeShape& check_shape_2,
+    const mlir::RuntimeShape& check_shape_3) {
   const int dims_count = shape.DimensionsCount();
   for (int i = 0; i < dims_count; ++i) {
     if (i != skip_dim) {
@@ -594,7 +600,7 @@ inline int64_t MatchingFlatSizeSkipDim(const RuntimeShape& shape, int skip_dim,
 }
 
 template <int N>
-bool IsPackedWithoutStrides(const Dims<N>& dims) {
+bool IsPackedWithoutStrides(const mlir::Dims<N>& dims) {
   int64_t expected_stride = 1;
   for (int d = 0; d < N; d++) {
     if (dims.strides[d] != expected_stride) return false;
@@ -604,7 +610,7 @@ bool IsPackedWithoutStrides(const Dims<N>& dims) {
 }
 
 template <int N>
-void ComputeStrides(Dims<N>* dims) {
+void ComputeStrides(mlir::Dims<N>* dims) {
   dims->strides[0] = 1;
   for (int d = 1; d < N; d++) {
     dims->strides[d] = dims->strides[d - 1] * dims->sizes[d - 1];
@@ -1105,6 +1111,6 @@ struct is_int32_or_int64
                                               std::is_same<T, int64_t>::value> {
 };
 
-}  // namespace tflite
+}  // namespace tflite_migration
 
-#endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_TYPES_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_KERNELS_INTERNAL_TYPES_H_
