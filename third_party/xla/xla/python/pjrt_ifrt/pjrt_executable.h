@@ -401,6 +401,7 @@ class PjRtLoadedExecutable final
   std::shared_ptr<std::vector<tsl::RCReference<LoadedHostCallback>>>
       all_loaded_host_callbacks_;
   std::vector<PjRtHostSendAndRecvLoadedHostCallback*> host_send_recv_callbacks_;
+  std::vector<PjRtHloOutputLoadedHostCallback*> host_hlo_output_callbacks_;
 
   PjRtExecutable::CommonMetadata common_metadata_;
   // If the executable is portable, shardings in `output_shardings_` will use an
