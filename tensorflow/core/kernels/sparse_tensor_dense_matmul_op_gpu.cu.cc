@@ -117,7 +117,7 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
     GpuLaunchConfig config = GetGpuLaunchConfig(p * nnz, d);
 
     if (OpDeterminismRequired()) {
-      return errors::Unimplemented(
+      return absl::UnimplementedError(
           "A deterministic GPU implementation of "
           "SparseTensorDenseMatmulOp is not currently available.");
     }
