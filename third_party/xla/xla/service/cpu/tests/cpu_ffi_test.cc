@@ -47,7 +47,7 @@ XLA_FFI_DEFINE_HANDLER(
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$io_callback", "Host",
                          kIOCallback);
 
-class CpuFFITest : public HloPjRtTestBase {
+class CpuFFITest : public HloTestBase {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GetDebugOptionsFromFlags();
