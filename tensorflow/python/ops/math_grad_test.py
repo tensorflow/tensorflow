@@ -649,6 +649,55 @@ class XdivyTest(test.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+class CumprodGradTest(test.TestCase):
+
+  def _cumprod_grad(self, values, axis=0, exclusive=False, reverse=False,
+                    dtype=dtypes.float64):
+    x = constant_op.constant(values, dtype=dtype)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = math_ops.reduce_sum(
+          math_ops.cumprod(
+              x, axis=axis, exclusive=exclusive, reverse=reverse))
+    return self.evaluate(tape.gradient(y, x))
+
+  def testCumprodGradients(self):
+    cases = [
+        ("no_zero", [2.0, 3.0, 4.0], [16.0, 10.0, 6.0]),
+        ("zero_beginning", [0.0, 2.0, 3.0], [9.0, 0.0, 0.0]),
+        ("zero_middle", [1.5, 0.0, 2.0, 3.0], [1.0, 13.5, 0.0, 0.0]),
+        ("zero_end", [2.0, 3.0, 0.0], [4.0, 2.0, 6.0]),
+        ("multiple_zeros", [2.0, 0.0, 0.0, 3.0], [1.0, 2.0, 0.0, 0.0]),
+    ]
+    for dtype in (dtypes.float32, dtypes.float64):
+      for name, values, expected in cases:
+        with self.subTest(name=name, dtype=dtype):
+          self.assertAllClose(
+              expected, self._cumprod_grad(values, dtype=dtype))
+
+  def testCumprodGradientAxisOne(self):
+    values = [[0.0, 2.0, 3.0], [2.0, 3.0, 0.0]]
+    expected = [[9.0, 0.0, 0.0], [4.0, 2.0, 6.0]]
+    self.assertAllClose(expected, self._cumprod_grad(values, axis=1))
+
+  def testExclusiveCumprodGradientWithZero(self):
+    self.assertAllClose(
+        [1.0, 4.5, 0.0, 0.0],
+        self._cumprod_grad([1.5, 0.0, 2.0, 3.0], exclusive=True))
+
+  def testReverseCumprodGradientWithZero(self):
+    self.assertAllClose(
+        [0.0, 15.0, 3.0, 3.0],
+        self._cumprod_grad([1.5, 0.0, 2.0, 3.0], reverse=True))
+
+  def testExclusiveReverseCumprodGradientWithZero(self):
+    self.assertAllClose(
+        [0.0, 6.0, 3.0, 3.0],
+        self._cumprod_grad(
+            [1.5, 0.0, 2.0, 3.0], exclusive=True, reverse=True))
+
+
+@test_util.run_all_in_graph_and_eager_modes
 class PowGradTest(test.TestCase):
 
   def test_zero_grad_tf_gradients(self):
