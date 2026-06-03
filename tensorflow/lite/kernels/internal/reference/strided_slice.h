@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_STRIDED_SLICE_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_STRIDED_SLICE_H_
 
+#include <functional>
+#include <vector>
+
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -25,6 +28,123 @@ limitations under the License.
 namespace tflite {
 
 namespace reference_ops {
+
+struct DynamicStridedSliceParams {
+  std::vector<int32_t> start_indices;
+  std::vector<int32_t> stop_indices;
+  std::vector<int32_t> strides;
+  uint32_t begin_mask = 0;
+  uint32_t end_mask = 0;
+  uint32_t shrink_axis_mask = 0;
+  bool offset = false;
+};
+
+inline bool AxisMask(uint32_t mask, int axis) {
+  return mask & (uint32_t{1} << axis);
+}
+
+inline int StartForAxis(const DynamicStridedSliceParams& params,
+                        const RuntimeShape& input_shape, int axis) {
+  const int axis_size = input_shape.Dims(axis);
+  int start = params.start_indices[axis];
+  const int stride = params.strides[axis];
+  if (start < 0) {
+    start += axis_size;
+  }
+  if (stride > 0) {
+    start = strided_slice::Clamp(start, 0, axis_size);
+  } else {
+    start = strided_slice::Clamp(start, -1, axis_size - 1);
+  }
+  if (AxisMask(params.begin_mask, axis)) {
+    start = stride > 0 ? 0 : axis_size - 1;
+  }
+  return start;
+}
+
+inline int EndForAxis(const DynamicStridedSliceParams& params,
+                      const RuntimeShape& input_shape, int axis, int start) {
+  const bool shrink_axis = AxisMask(params.shrink_axis_mask, axis);
+  const int axis_size = input_shape.Dims(axis);
+  if (shrink_axis) {
+    return start >= axis_size ? start : start + 1;
+  }
+  int end = params.stop_indices[axis];
+  if (params.offset) {
+    end += start;
+  }
+  const int stride = params.strides[axis];
+  if (end < 0) {
+    end += axis_size;
+  }
+  if (stride > 0) {
+    end = strided_slice::Clamp(end, 0, axis_size);
+  } else {
+    end = strided_slice::Clamp(end, -1, axis_size - 1);
+  }
+  if (AxisMask(params.end_mask, axis)) {
+    end = stride > 0 ? axis_size : -1;
+  }
+  return end;
+}
+
+template <typename T>
+inline void StridedSlice(const DynamicStridedSliceParams& op_params,
+                         const RuntimeShape& input_shape,
+                         const RuntimeShape& output_shape,
+                         SequentialTensorWriter<T>* writer) {
+  ruy::profiler::ScopeLabel label("StridedSlice");
+  const int dims = input_shape.DimensionsCount();
+  std::vector<int> starts(dims);
+  std::vector<int> stops(dims);
+  std::vector<int> input_strides(dims);
+  if (dims == 0) {
+    writer->Write(0);
+    return;
+  }
+  input_strides[dims - 1] = 1;
+  for (int i = dims - 2; i >= 0; --i) {
+    input_strides[i] = input_strides[i + 1] * input_shape.Dims(i + 1);
+  }
+  for (int axis = 0; axis < dims; ++axis) {
+    starts[axis] = StartForAxis(op_params, input_shape, axis);
+    stops[axis] = EndForAxis(op_params, input_shape, axis, starts[axis]);
+  }
+
+  auto loop_condition = [](int index, int stop, int stride) {
+    return stride > 0 ? index < stop : index > stop;
+  };
+  std::function<void(int, int)> write_slice = [&](int axis, int input_index) {
+    if (axis == dims) {
+      writer->Write(input_index);
+      return;
+    }
+    for (int offset = starts[axis];
+         loop_condition(offset, stops[axis], op_params.strides[axis]);
+         offset += op_params.strides[axis]) {
+      write_slice(axis + 1, input_index + offset * input_strides[axis]);
+    }
+  };
+  write_slice(/*axis=*/0, /*input_index=*/0);
+}
+
+template <typename T>
+inline void StridedSlice(const DynamicStridedSliceParams& op_params,
+                         const RuntimeShape& input_shape, const T* input_data,
+                         const RuntimeShape& output_shape, T* output_data) {
+  SequentialTensorWriter<T> writer(input_data, output_data);
+  StridedSlice<T>(op_params, input_shape, output_shape, &writer);
+}
+
+template <typename T>
+inline void StridedSlice(const DynamicStridedSliceParams& op_params,
+                         const RuntimeShape& input_shape,
+                         const TfLiteTensor* input,
+                         const RuntimeShape& output_shape,
+                         TfLiteTensor* output) {
+  SequentialTensorWriter<T> writer(input, output);
+  StridedSlice<T>(op_params, input_shape, output_shape, &writer);
+}
 
 template <typename T>
 inline void StridedSlice(const tflite::StridedSliceParams& op_params,

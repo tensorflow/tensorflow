@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <initializer_list>
+#include <numeric>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -91,6 +92,9 @@ class TransposeOpModel : public SingleOpModel {
   void SetInput(std::initializer_list<float> data) {
     PopulateTensor<float>(input_, data);
   }
+  void SetInput(const std::vector<float>& data) {
+    PopulateTensor<float>(input_, data);
+  }
 
   void SetPerm(std::initializer_list<int> data) {
     PopulateTensor<int>(perm_, data);
@@ -144,6 +148,31 @@ class TransposeOpDynamicModel : public TransposeOpModel {
     BuildInterpreter({input_shape, perm_shape});
   }
 };
+
+TEST(TransposeTest, Test7DInputConstTensor) {
+  std::vector<float> expected =
+      RunTestPermutation<float>({2, 1, 2, 1, 2, 1, 3}, {6, 0, 2, 4, 1, 3, 5});
+  TransposeOpConstModel m({2, 1, 2, 1, 2, 1, 3}, {7}, {6, 0, 2, 4, 1, 3, 5});
+  std::vector<float> input(expected.size());
+  std::iota(input.begin(), input.end(), 0.0f);
+  m.SetInput(input);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 2, 2, 2, 1, 1, 1}));
+  EXPECT_EQ(m.GetOutput(), expected);
+}
+
+TEST(TransposeTest, Test7DInputDynamicTensor) {
+  std::vector<float> expected =
+      RunTestPermutation<float>({2, 1, 2, 1, 2, 1, 3}, {6, 0, 2, 4, 1, 3, 5});
+  TransposeOpDynamicModel m({2, 1, 2, 1, 2, 1, 3}, {7});
+  std::vector<float> input(expected.size());
+  std::iota(input.begin(), input.end(), 0.0f);
+  m.SetInput(input);
+  m.SetPerm({6, 0, 2, 4, 1, 3, 5});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 2, 2, 2, 1, 1, 1}));
+  EXPECT_EQ(m.GetOutput(), expected);
+}
 
 #if GTEST_HAS_DEATH_TEST
 TEST(TransposeTest, TestUnequalPermSize) {
