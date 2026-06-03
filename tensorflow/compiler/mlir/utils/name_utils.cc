@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 
-#include <cctype>
 #include <string>
 
 #include "llvm/ADT/STLExtras.h"
