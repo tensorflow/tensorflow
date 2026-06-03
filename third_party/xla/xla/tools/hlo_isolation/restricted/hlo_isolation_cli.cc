@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/service/restricted/hlo_runner_legacy.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/tools/hlo_isolation/hlo_isolation.pb.h"
 #include "xla/tools/hlo_isolation/hlo_isolation_api.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/command_line_flags.h"
