@@ -304,7 +304,9 @@ absl::StatusOr<bool> HloPassPipeline::RunImpl(
           << name();
 
   tsl::profiler::TraceMe traceme([&] {
-    return tsl::profiler::TraceMeEncode(name(), {{"module", module->name()}});
+    return tsl::profiler::TraceMeEncode(
+        absl::StrCat(name(), " (", module->name(), ")"),
+        {{"module", module->name()}});
   });
   // Copy debug options by value as passes may modify module config.
   DebugOptions debug_options = module->config().debug_options();
@@ -320,7 +322,9 @@ absl::StatusOr<bool> HloPassPipeline::RunImpl(
           << name();
 
   tsl::profiler::TraceMe traceme([&] {
-    return tsl::profiler::TraceMeEncode(name(), {{"module", module->name()}});
+    return tsl::profiler::TraceMeEncode(
+        absl::StrCat(name(), " (", module->name(), ")"),
+        {{"module", module->name()}});
   });
   // Copy debug options by value as passes may modify module config.
   DebugOptions debug_options = module->config().debug_options();

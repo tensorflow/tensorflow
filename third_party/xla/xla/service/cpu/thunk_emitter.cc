@@ -183,9 +183,19 @@ ThunkEmitter::ThunkEmitter(IrEmitter2& ir_emitter,
           options::EnableTiledEmitter(hlo_module_config_)) {}
 
 static Thunk::Info ThunkInfo(const HloInstruction* instruction) {
+  std::string op_name(instruction->name());
   const HloModule* module = instruction->GetModule();
-  return Thunk::Info{std::string(instruction->name()),
-                     std::string(module->name()), module->unique_id()};
+  std::string module_name(module->name());
+
+  // Use the submodule name if available:
+  auto it = instruction->frontend_attributes().map().find("compilation_unit");
+  if (it != instruction->frontend_attributes().map().end()) {
+    module_name = it->second;
+    absl::StrAppend(&op_name, " (", it->second, ")");
+  }
+
+  return Thunk::Info{std::move(op_name), std::move(module_name),
+                     module->unique_id()};
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitEntryComputation(
