@@ -109,8 +109,8 @@ class KernelSpecs {
  private:
   // The signature is pattern match based.
   struct SignatureInfo : public llvm::DenseMapInfo<Signature> {
-    static inline Signature getEmptyKey() { return {}; }
-    static inline Signature getTombstoneKey() { return {nullptr}; }
+    static Signature getEmptyKey() { return {}; }
+    static Signature getTombstoneKey() { return {nullptr}; }
     static unsigned getHashValue(Signature val) {
       return llvm::hash_combine_range(val.begin(), val.end());
     }
