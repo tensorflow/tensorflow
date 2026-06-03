@@ -518,12 +518,22 @@ class UnsortedSegmentReductionOp : public OpKernel {
                    internal::ValidateUnsortedSegmentReduction(
                        this, context, data, segment_ids, num_segments));
     const auto segment_flat = segment_ids.flat<Index>();
-    const Index output_rows = internal::SubtleMustCopy(static_cast<Index>(
+    const int64_t num_segments_val =
         num_segments.dtype() == DT_INT32 ? num_segments.scalar<int32_t>()()
-                                         : num_segments.scalar<int64_t>()()));
-    OP_REQUIRES(context, output_rows >= 0,
-                errors::InvalidArgument("Input num_segments == ", output_rows,
+                                         : num_segments.scalar<int64_t>()();
+    OP_REQUIRES(context, num_segments_val >= 0,
+                errors::InvalidArgument("Input num_segments == ",
+                                        num_segments_val,
                                         " must not be negative."));
+    // Guard against excessively large num_segments that would cause integer
+    // overflow in output tensor size calculations, leading to illegal memory
+    // access or process abort (see #117549).
+    const int64_t kMaxSegments = static_cast<int64_t>(1) << 31;  // 2G
+    OP_REQUIRES(context, num_segments_val <= kMaxSegments,
+                errors::InvalidArgument(
+                    "Input num_segments == ", num_segments_val,
+                    " is too large. Must be at most ", kMaxSegments));
+    const Index output_rows = internal::SubtleMustCopy(static_cast<Index>(num_segments_val));
     TensorShape output_shape;
     OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(output_rows));
     for (int i = segment_ids.dims(); i < data.dims(); i++) {
