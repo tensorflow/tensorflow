@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
+#include <vector>
 
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
@@ -74,10 +75,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TransposeContext op_context(context, node);
 
-  // Ensure validity of input tensor.
-  TF_LITE_ENSURE_MSG(context,
-                     NumDimensions(op_context.input) <= kTransposeMaxDimensions,
-                     "Transpose op only supports 1D-8D input arrays.");
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.input->type,
                           op_context.output->type);
 
@@ -98,17 +95,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   const int* perm_data = GetTensorData<int32_t>(op_context.perm);
   const int size = op_context.perm->dims->data[0];
-  TransposeParams params;
-  params.perm_count = size;
+  std::vector<int32_t> perm_data_normalized(size);
   for (int i = 0; i < size; ++i) {
     int perm = perm_data[i];
     if (perm < 0) perm += size;
-    params.perm[i] = perm;
+    perm_data_normalized[i] = perm;
   }
-#define TF_LITE_TRANSPOSE(type, scalar)                     \
-  type::Transpose(params, GetTensorShape(op_context.input), \
-                  GetTensorData<scalar>(op_context.input),  \
-                  GetTensorShape(op_context.output),        \
+#define TF_LITE_TRANSPOSE(type, scalar)                    \
+  type::Transpose(perm_data_normalized.data(), size,       \
+                  GetTensorShape(op_context.input),        \
+                  GetTensorData<scalar>(op_context.input), \
+                  GetTensorShape(op_context.output),       \
                   GetTensorData<scalar>(op_context.output))
 
   // Transpose kernel only does rearranging values not numeric evaluations on
@@ -125,8 +122,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           GetTensorShape(op_context.input).FlatSize(),
           /*bit_width=*/4, unpacked_input_data.get());
       reference_ops::Transpose(
-          params, GetTensorShape(op_context.input), unpacked_input_data.get(),
-          GetTensorShape(op_context.output), unpacked_output_data.get());
+          perm_data_normalized.data(), size, GetTensorShape(op_context.input),
+          unpacked_input_data.get(), GetTensorShape(op_context.output),
+          unpacked_output_data.get());
       // Pack the output back to int4.
       tflite::tensor_utils::PackInt8IntoDenseInt(
           unpacked_output_data.get(),
