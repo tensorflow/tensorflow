@@ -813,12 +813,27 @@ void InterleaveDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   OP_REQUIRES(
       ctx, cycle_length > 0,
       errors::InvalidArgument("cycle_length must be greater than zero."));
+  // Guard against excessively large cycle_length values that would cause
+  // integer overflow in modulo operations or allocate an unreasonably large
+  // vector in the iterator (see #116198).
+  static constexpr int64_t kMaxCycleLength = 1 << 20;  // 1M
+  OP_REQUIRES(
+      ctx, cycle_length <= kMaxCycleLength,
+      errors::InvalidArgument(
+          "cycle_length must be at most ", kMaxCycleLength,
+          ", got: ", cycle_length));
 
   int64_t block_length = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kBlockLength, &block_length));
   OP_REQUIRES(
       ctx, block_length > 0,
       errors::InvalidArgument("block_length must be greater than zero."));
+  static constexpr int64_t kMaxBlockLength = 1 << 20;  // 1M
+  OP_REQUIRES(
+      ctx, block_length <= kMaxBlockLength,
+      errors::InvalidArgument(
+          "block_length must be at most ", kMaxBlockLength,
+          ", got: ", block_length));
 
   std::unique_ptr<CapturedFunction> captured_func;
   OP_REQUIRES_OK(ctx,
