@@ -2000,7 +2000,7 @@ def _CumprodGrad(op: ops.Operation, grad):
       exclusive=exclusive,
       reverse=reverse,
   )
-  non_zero_x = array_ops.where_v2(is_zero, array_ops.ones_like(x), x)
+  non_zero_x = array_ops.where_v2(is_zero, math_ops.cast(1, x.dtype), x)
   non_zero_prod = math_ops.cumprod(
       non_zero_x, axis, exclusive=exclusive, reverse=reverse
   )
