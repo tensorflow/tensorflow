@@ -296,7 +296,7 @@ MakeRunnerAndGetDeviceDescription() {
       GetXlaPjrtGpuClient(options);
   CHECK_OK(client);
   GpuTargetConfig gpu_target_config = GetGpuTargetConfig(client->get());
-  return {std::make_unique<HloRunnerPjRt>(*std::move(client)),
+  return {std::make_unique<HloRunner>(*std::move(client)),
           gpu_target_config.device_description};
 }
 

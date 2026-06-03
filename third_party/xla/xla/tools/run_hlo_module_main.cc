@@ -109,7 +109,7 @@ std::unique_ptr<xla::HloRunnerInterface> CreateRunner(
   absl::StatusOr<std::unique_ptr<xla::PjRtClient>> client =
       xla::GetPjRtClientForPlatform(platform_name);
   CHECK_OK(client);
-  return std::make_unique<xla::HloRunnerPjRt>(*std::move(client));
+  return std::make_unique<xla::HloRunner>(*std::move(client));
 }
 
 }  // namespace
