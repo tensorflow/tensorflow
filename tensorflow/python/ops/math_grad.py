@@ -2007,7 +2007,7 @@ def _CumprodGrad(op: ops.Operation, grad):
   zero_prod_grad = array_ops.where_v2(
       math_ops.equal(zero_count, 1),
       non_zero_prod * grad,
-      array_ops.zeros_like(grad),
+      math_ops.cast(0, grad.dtype),
   )
   zero_grad = math_ops.cumsum(
       zero_prod_grad, axis, exclusive=exclusive, reverse=not reverse
