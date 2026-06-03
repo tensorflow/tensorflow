@@ -3521,7 +3521,7 @@ cc_library(
     ]),
     visibility = if_google(
         xla_internal([
-            "tests:__pkg__",
+            "tests:__subpackages__",
             "tools:__pkg__",
         ]) + [
             "//xla/codegen/intrinsic/accuracy:__pkg__",
