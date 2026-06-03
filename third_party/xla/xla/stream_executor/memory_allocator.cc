@@ -37,7 +37,7 @@ absl::StatusOr<DeviceAddressBase> MemoryAllocator::AllocationTracker::Track(
   DeviceAddressBase addr = allocation->address();
   void* ptr = addr.opaque();
 
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   uint64_t id = next_allocation_id_++;
   // Set the payload on the DeviceAddressBase handle being returned. This
   // allows subsequent operations using this specific handle to quickly find
@@ -61,7 +61,7 @@ absl::StatusOr<DeviceAddressBase> MemoryAllocator::AllocationTracker::Track(
 
 bool MemoryAllocator::AllocationTracker::IsTracked(
     const DeviceAddressBase& addr) const {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   uint64_t id = addr.payload();
   if (id == 0 && addr.opaque() != nullptr) {
     auto it = ptr_to_id_.find(addr.opaque());
@@ -75,7 +75,7 @@ bool MemoryAllocator::AllocationTracker::IsTracked(
 absl::Status MemoryAllocator::AllocationTracker::Free(DeviceAddressBase addr) {
   std::unique_ptr<MemoryAllocation> allocation_to_free;
   {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     uint64_t id = addr.payload();
 
     // If payload is 0, the caller may have reconstructed the DeviceAddressBase
