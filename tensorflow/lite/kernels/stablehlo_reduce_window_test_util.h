@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_STABLEHLO_REDUCE_WINDOW_TEST_UTIL_H_
 
 #include <algorithm>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -26,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace reduce_window {
@@ -54,14 +56,19 @@ struct Tensor {
   static Tensor<T> iota(std::initializer_list<I> shape) {
     Tensor<T> tensor;
     tensor.shape.assign(shape.begin(), shape.end());
-    tensor.data.resize(absl::c_accumulate(shape, 1, std::multiplies<>()));
+    tensor.data.resize(tensor.size());
     absl::c_iota(tensor.data, 1);
     return tensor;
   }
 
   // Returns the number of values in the tensor.
   int64_t size() const {
-    return absl::c_accumulate(shape, 1, std::multiplies<>());
+    tflite::CheckedInt<int64_t> total_size = 1;
+    for (const int64_t dim : shape) {
+      total_size *= dim;
+    }
+    assert(!total_size.Overflow());
+    return total_size.Value();
   }
 
   // Computes the strides for each valid dimension in the tensor.
