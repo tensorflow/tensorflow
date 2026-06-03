@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <cmath>
+#include <type_traits>
 
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/custom_ops_register.h"
@@ -87,6 +88,9 @@ TfLiteStatus PointwiseUnaryOpEval(TfLiteContext* context, TfLiteNode* node) {
 struct Sign {
   template <typename T>
   static T Eval(T x) {
+    if (IsNan(x)) {
+      return x;
+    }
     if (x > 0) {
       return 1;
     }
@@ -94,6 +98,19 @@ struct Sign {
       return -1;
     }
     return 0;
+  }
+
+ private:
+  template <typename T>
+  static typename std::enable_if<std::is_floating_point<T>::value, bool>::type
+  IsNan(T x) {
+    return std::isnan(x);
+  }
+
+  template <typename T>
+  static typename std::enable_if<!std::is_floating_point<T>::value, bool>::type
+  IsNan(T) {
+    return false;
   }
 };
 

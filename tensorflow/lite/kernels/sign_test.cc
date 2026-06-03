@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <cmath>
+#include <limits>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -96,6 +97,22 @@ TYPED_TEST(SignTestFloat, TestBatchFloat) {
 
   EXPECT_EQ(got, std::vector<Float>(
       {1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, 0.0}));
+}
+
+TEST(SignTestFloat, TestBatchFloat32PreservesNan) {
+  tflite::TensorData x = {TensorType_FLOAT32, {5}};
+  tflite::TensorData output = {TensorType_FLOAT32, {5}};
+  SignModel m(x, output);
+
+  auto got = m.GetOutput<float>(
+      {std::numeric_limits<float>::quiet_NaN(), 7.0, -0.0, -3.5, 0.0});
+
+  ASSERT_EQ(got.size(), 5);
+  EXPECT_TRUE(std::isnan(got[0]));
+  EXPECT_EQ(got[1], 1.0);
+  EXPECT_EQ(got[2], 0.0);
+  EXPECT_EQ(got[3], -1.0);
+  EXPECT_EQ(got[4], 0.0);
 }
 
 template <typename Int>
