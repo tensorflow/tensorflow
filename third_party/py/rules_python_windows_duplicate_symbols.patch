@@ -1,0 +1,57 @@
+--- a/python/private/hermetic_runtime_repo_setup.bzl
++++ b/python/private/hermetic_runtime_repo_setup.bzl
+@@ -127,10 +127,25 @@
+     cc_library(
+         name = "python_headers",
+         hdrs = [":includes"],
+-        deps = [":python_headers_abi3"] + select({
++        includes = [
++            "include",
++        ] + select({
++            _IS_FREETHREADED_YES: [
++                "include/python{major}.{minor}t".format(**version_dict),
++            ],
++            _IS_FREETHREADED_NO: [
++                "include/python{major}.{minor}".format(**version_dict),
++                "include/python{major}.{minor}m".format(**version_dict),
++            ],
++        }),
++        deps = select({
+             "@bazel_tools//src/conditions:windows": [":interface"],
+             "//conditions:default": [],
+         }),
++        linkopts = select({
++            "@bazel_tools//src/conditions:windows": ["/NODEFAULTLIB:python3.lib", "/NODEFAULTLIB:python3t.lib"],
++            "//conditions:default": [],
++        }),
+     )
+     native.config_setting(
+         name = "is_freethreaded_linux",
+@@ -175,23 +190,23 @@
+                 "lib/libpython{major}.{minor}t.dylib".format(**version_dict),
+             ],
+             ":is_freethreaded_windows": [
+-                "python3t.dll",
+                 "python{major}{minor}t.dll".format(**version_dict),
+                 "libs/python{major}{minor}t.lib".format(**version_dict),
+-                "libs/python3t.lib",
+             ],
+             "@platforms//os:macos": ["lib/libpython{major}.{minor}.dylib".format(**version_dict)],
+             "@platforms//os:windows": [
+-                "python3.dll",
+                 "python{major}{minor}.dll".format(**version_dict),
+                 "libs/python{major}{minor}.lib".format(**version_dict),
+-                "libs/python3.lib",
+             ],
+             "//conditions:default": [
+                 "lib/libpython{major}.{minor}.so".format(**version_dict),
+                 "lib/libpython{major}.{minor}.so.1.0".format(**version_dict),
+             ],
+         }),
++        linkopts = select({
++            "@platforms//os:windows": ["/NODEFAULTLIB:python3.lib", "/NODEFAULTLIB:python3t.lib"],
++            "//conditions:default": [],
++        }),
+     )
+ 
+     native.exports_files(["python", python_bin])

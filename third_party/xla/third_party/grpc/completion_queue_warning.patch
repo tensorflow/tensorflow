@@ -1,0 +1,13 @@
+--- a/src/python/grpcio/grpc/_cython/_cygrpc/aio/completion_queue.pxd.pxi
++++ b/src/python/grpcio/grpc/_cython/_cygrpc/aio/completion_queue.pxd.pxi
+@@ -28,7 +28,9 @@
+     #ifdef _WIN32
+         send((SOCKET)fd, "1", 1, 0);
+     #else
+-        write(fd, "1", 1);
++        if (write(fd, "1", 1) < 0) {
++            // Ignore error
++        }
+     #endif
+     }
+     """
