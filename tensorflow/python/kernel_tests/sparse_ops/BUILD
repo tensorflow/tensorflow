@@ -359,7 +359,7 @@ cuda_py_strict_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "sparse_xent_op_test_base",
     srcs = ["sparse_xent_op_test_base.py"],
     strict_deps = True,
