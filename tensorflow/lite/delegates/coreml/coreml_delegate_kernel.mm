@@ -34,28 +34,31 @@ TfLiteStatus GetDims(int* batch_size, int* height_size, int* width_size, int* de
   }
   int* dim[] = {batch_size, height_size, width_size, depth_size};
   for (int i = 0; i < 4; ++i) *(dim[i]) = 1;
-  for (int i = 4 - dims->size; i < 4; ++i) {
-    *dim[i] = dims->data[i - (4 - dims->size)];
+  const int offset = 4 - dims->size;
+  for (int i = 0; i < dims->size; ++i) {
+    *dim[offset + i] = dims->data[i];
   }
   return kTfLiteOk;
 }
 
-void TransposeToCHW(const float* hwc, float* chw, const TfLiteIntArray* hwc_dims) {
+TfLiteStatus TransposeToCHW(const float* hwc, float* chw, const TfLiteIntArray* hwc_dims) {
   int batch_size, height_size, width_size, depth_size;
-  GetDims(&batch_size, &height_size, &width_size, &depth_size, hwc_dims);
+  TF_LITE_ENSURE_STATUS(GetDims(&batch_size, &height_size, &width_size, &depth_size, hwc_dims));
   RuntimeShape hwc_shape({batch_size, height_size, width_size, depth_size});
   RuntimeShape chw_shape({batch_size, depth_size, height_size, width_size});
   TransposeParams params = {/*perm_count=*/4, /*perm=*/{0, 3, 1, 2}};
   optimized_ops::Transpose<float>(params, hwc_shape, hwc, chw_shape, chw);
+  return kTfLiteOk;
 }
 
-void TransposeToHWC(const float* chw, float* hwc, const TfLiteIntArray* hwc_dims) {
+TfLiteStatus TransposeToHWC(const float* chw, float* hwc, const TfLiteIntArray* hwc_dims) {
   int batch_size, height_size, width_size, depth_size;
-  GetDims(&batch_size, &height_size, &width_size, &depth_size, hwc_dims);
+  TF_LITE_ENSURE_STATUS(GetDims(&batch_size, &height_size, &width_size, &depth_size, hwc_dims));
   RuntimeShape hwc_shape({batch_size, height_size, width_size, depth_size});
   RuntimeShape chw_shape({batch_size, depth_size, height_size, width_size});
   TransposeParams params = {/*perm_count=*/4, /*perm=*/{0, 2, 3, 1}};
   optimized_ops::Transpose<float>(params, chw_shape, chw, hwc_shape, hwc);
+  return kTfLiteOk;
 }
 }  // namespace
 
@@ -65,14 +68,14 @@ TfLiteStatus CoreMlDelegateKernel::Init(TfLiteContext* context,
     executor_ = [[::CoreMlExecutor alloc] init];
     TF_LITE_ENSURE_STATUS(BuildModel(context, delegate_params));
     // Serialize the model protocol buffer and compile it.
-    if (model_ == nullptr) {
-      TF_LITE_KERNEL_LOG(context, "Failed to createModel");
-      return kTfLiteError;
-    }
     NSURL* model_url = [executor_ saveModel:model_.get()];
     model_.reset();
+    if (model_url == nil) {
+      TF_LITE_KERNEL_LOG(context, "Failed to save model.");
+      return kTfLiteError;
+    }
     if (![executor_ build:model_url]) {
-      TF_LITE_KERNEL_LOG(context, "Failed to Compile and save Model.");
+      TF_LITE_KERNEL_LOG(context, "Failed to compile and save model.");
       return kTfLiteError;
     }
     return kTfLiteOk;
@@ -91,8 +94,8 @@ void CoreMlDelegateKernel::AddInputTensors(const TfLiteIntArray* input_tensors,
   }
 }
 
-void CoreMlDelegateKernel::AddOutputTensors(const TfLiteIntArray* output_tensors,
-                                            TfLiteContext* context) {
+TfLiteStatus CoreMlDelegateKernel::AddOutputTensors(const TfLiteIntArray* output_tensors,
+                                                    TfLiteContext* context) {
   auto* model_description = model_->mutable_description();
   for (int i = 0; i < output_tensors->size; ++i) {
     const int tensor_id = output_tensors->data[i];
@@ -102,7 +105,7 @@ void CoreMlDelegateKernel::AddOutputTensors(const TfLiteIntArray* output_tensors
     output->set_name(builder_->GetTensorName(tensor_id));
     auto* multi_array = output->mutable_type()->mutable_multiarraytype();
     int batch_size, height_size, width_size, depth_size;
-    GetDims(&batch_size, &height_size, &width_size, &depth_size, tensor.dims);
+    TF_LITE_ENSURE_STATUS(GetDims(&batch_size, &height_size, &width_size, &depth_size, tensor.dims));
     multi_array->set_datatype(CoreML::Specification::ArrayFeatureType::FLOAT32);
     if (coreml_version_ >= 3) {
       multi_array->mutable_shape()->Add(batch_size);
@@ -111,17 +114,18 @@ void CoreMlDelegateKernel::AddOutputTensors(const TfLiteIntArray* output_tensors
     multi_array->mutable_shape()->Add(height_size);
     multi_array->mutable_shape()->Add(width_size);
   }
+  return kTfLiteOk;
 }
 
 TfLiteStatus CoreMlDelegateKernel::BuildModel(TfLiteContext* context,
                                               const TfLiteDelegateParams* delegate_params) {
-  TfLiteNode* node;
-  TfLiteRegistration* reg;
-  builder_.reset(new delegates::coreml::GraphBuilder(coreml_version_));
+  builder_ = std::make_unique<delegates::coreml::GraphBuilder>(coreml_version_);
   // Add Inputs
   AddInputTensors(delegate_params->input_tensors, context);
   // Build all ops.
   for (int node_index : TfLiteIntArrayView(delegate_params->nodes_to_replace)) {
+    TfLiteNode* node;
+    TfLiteRegistration* reg;
     TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(context, node_index, &node, &reg));
     auto* op_builder = builder_->AddBuilder(reg->builtin_code, node);
     if (op_builder == nullptr) {
@@ -146,7 +150,7 @@ TfLiteStatus CoreMlDelegateKernel::BuildModel(TfLiteContext* context,
     TF_LITE_KERNEL_LOG(context, "Failed to build Model");
     return kTfLiteError;
   }
-  AddOutputTensors(delegate_params->output_tensors, context);
+  TF_LITE_ENSURE_STATUS(AddOutputTensors(delegate_params->output_tensors, context));
   auto* model_description = model_->mutable_description();
   for (int i = 0; i < delegate_params->input_tensors->size; ++i) {
     const int tensor_id = delegate_params->input_tensors->data[i];
@@ -157,7 +161,7 @@ TfLiteStatus CoreMlDelegateKernel::BuildModel(TfLiteContext* context,
       // TODO(karimnosseir): Handle different types ?
       auto* multi_array = input->mutable_type()->mutable_multiarraytype();
       int batch_size, height_size, width_size, depth_size;
-      GetDims(&batch_size, &height_size, &width_size, &depth_size, tensor.dims);
+      TF_LITE_ENSURE_STATUS(GetDims(&batch_size, &height_size, &width_size, &depth_size, tensor.dims));
       multi_array->set_datatype(CoreML::Specification::ArrayFeatureType::FLOAT32);
       if (coreml_version_ >= 3) {
         multi_array->mutable_shape()->Add(batch_size);
@@ -172,6 +176,10 @@ TfLiteStatus CoreMlDelegateKernel::BuildModel(TfLiteContext* context,
 }
 
 TfLiteStatus CoreMlDelegateKernel::Prepare(TfLiteContext* context, TfLiteNode* node) {
+  input_tensor_ids_.clear();
+  inputs_.clear();
+  outputs_.clear();
+
   for (int tensor_index : TfLiteIntArrayView(node->inputs)) {
     if (builder_->IsTensorUsed(tensor_index)) {
       input_tensor_ids_.push_back(tensor_index);
@@ -183,7 +191,7 @@ TfLiteStatus CoreMlDelegateKernel::Prepare(TfLiteContext* context, TfLiteNode* n
     TfLiteTensor* tensor = &context->tensors[tensor_index];
     const int input_size = NumElements(tensor);
     int batch_size, height_size, width_size, depth_size;
-    GetDims(&batch_size, &height_size, &width_size, &depth_size, tensor->dims);
+    TF_LITE_ENSURE_STATUS(GetDims(&batch_size, &height_size, &width_size, &depth_size, tensor->dims));
 
     std::vector<int> input_shape = {depth_size, height_size, width_size};
     if (coreml_version_ >= 3) {
@@ -205,24 +213,24 @@ TfLiteStatus CoreMlDelegateKernel::Prepare(TfLiteContext* context, TfLiteNode* n
 }
 
 TfLiteStatus CoreMlDelegateKernel::Invoke(TfLiteContext* context, TfLiteNode* node) {
-  if (@available(iOS 11.0, *)) {
+  if (@available(iOS 12.0, *)) {
     @autoreleasepool {
-      TfLiteIntArrayView node_inputs(node->inputs);
-      for (int i = 0; i < input_tensor_ids_.size(); ++i) {
+      for (size_t i = 0; i < input_tensor_ids_.size(); ++i) {
         const int tensor_id = input_tensor_ids_[i];
         TfLiteTensor* tensor = &context->tensors[tensor_id];
         const float* float_ptr = tensor->data.f;
+        std::vector<float> floats;
         if (tensor->type == kTfLiteFloat16) {
-          std::vector<float> floats = std::vector<float>(NumElements(tensor));
+          floats = std::vector<float>(NumElements(tensor));
           const uint16_t* float16_ptr = reinterpret_cast<uint16_t const*>(tensor->data.f16);
-          for (int j = 0; j < floats.size(); j++) {
+          for (size_t j = 0; j < floats.size(); j++) {
             floats[j] = fp16_ieee_to_fp32_value(float16_ptr[j]);
           }
           float_ptr = floats.data();
         }
         // Transpose input to CHW.
         // TODO(b/143992544): try adding transpose op for inputs.
-        TransposeToCHW(float_ptr, inputs_[i].data.data(), tensor->dims);
+        TF_LITE_ENSURE_STATUS(TransposeToCHW(float_ptr, inputs_[i].data.data(), tensor->dims));
       }
 
       if (![executor_ invokeWithInputs:inputs_ outputs:outputs_]) {
@@ -230,12 +238,21 @@ TfLiteStatus CoreMlDelegateKernel::Invoke(TfLiteContext* context, TfLiteNode* no
       }
       for (int i = 0; i < node->outputs->size; ++i) {
         TfLiteTensor* output_tensor = GetOutput(context, node, i);
-        TransposeToHWC(outputs_[i].data.data(), output_tensor->data.f, output_tensor->dims);
+        if (output_tensor->type == kTfLiteFloat16) {
+          std::vector<float> temp_fp32(NumElements(output_tensor));
+          TF_LITE_ENSURE_STATUS(TransposeToHWC(outputs_[i].data.data(), temp_fp32.data(), output_tensor->dims));
+          uint16_t* float16_ptr = reinterpret_cast<uint16_t*>(output_tensor->data.f16);
+          for (size_t j = 0; j < temp_fp32.size(); j++) {
+            float16_ptr[j] = fp16_ieee_from_fp32_value(temp_fp32[j]);
+          }
+        } else {
+          TF_LITE_ENSURE_STATUS(TransposeToHWC(outputs_[i].data.data(), output_tensor->data.f, output_tensor->dims));
+        }
       }
     }
     return kTfLiteOk;
   } else {
-    TF_LITE_KERNEL_LOG(context, "Minimum required iOS version is 11.0.");
+    TF_LITE_KERNEL_LOG(context, "Minimum required iOS version is 12.0.");
     return kTfLiteError;
   }
 }
