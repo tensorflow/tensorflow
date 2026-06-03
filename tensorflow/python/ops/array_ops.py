@@ -3835,6 +3835,14 @@ def batch_to_space(input, crops, block_size, name=None, block_shape=None):  # py
   block_size = deprecation.deprecated_argument_lookup("block_shape",
                                                       block_shape, "block_size",
                                                       block_size)
+  # Note: tf.compat.v1.batch_to_space forwards to batch_to_space_nd, which
+  # supports block_shape = [1, 1] as a valid, safe no-op in C++. We enforce
+  # block_size >= 2 here to maintain the legacy V1 API contract (matching
+  # the C++ BatchToSpace OpDef and kernel constraints).
+  if not isinstance(block_size, (int, np.integer)):
+    raise TypeError(f"Block size should be an integer: {block_size}")
+  if block_size < 2:
+    raise ValueError(f"Block size should be > 1: {block_size}")
   result = batch_to_space_nd(
       input,
       crops=crops,
