@@ -94,7 +94,6 @@ absl::Status SetPjrtApi(absl::string_view device_type, const PJRT_Api* api) {
   }
   (*pjrt_apis)[canonicalize_device_type] =
       std::make_pair(api, /*is_initialized=*/false);
-  LOG(INFO) << "PJRT_Api is set for device type " << canonicalize_device_type;
   return absl::OkStatus();
 }
 
