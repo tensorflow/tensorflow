@@ -750,30 +750,31 @@ TEST_F(WhileCopyInsertionTest, WhileFeedingWhileThruParameterWithCopies) {
   const std::string& hlo_string = R"(
 HloModule DependentTupleElements
 
-%DependentTupleElements.Body (loop_state.1: (s32[], f32[8])) -> (s32[], f32[8]) {
-  %loop_state.1 = (s32[], f32[8]{0}) parameter(0)
-  %get-tuple-element.1 = s32[] get-tuple-element((s32[], f32[8]{0}) %loop_state.1), index=0
+%Body {
+  %loop_state.1 = (s32[], f32[8]) parameter(0)
+  %get-tuple-element.1 = s32[] get-tuple-element(%loop_state.1), index=0
   %constant.1 = s32[] constant(1)
-  %add = s32[] add(s32[] %get-tuple-element.1, s32[] %constant.1)
-  %get-tuple-element.2 = f32[8]{0} get-tuple-element((s32[], f32[8]{0}) %loop_state.1), index=1
-  %convert = f32[] convert(s32[] %get-tuple-element.1)
-  %broadcast = f32[8]{0} broadcast(f32[] %convert), dimensions={}
-  %add.1 = f32[8]{0} add(f32[8]{0} %get-tuple-element.2, f32[8]{0} %broadcast)
-  ROOT %tuple = (s32[], f32[8]{0}) tuple(s32[] %add, f32[8]{0} %add.1)
+  %add = s32[] add(%get-tuple-element.1, %constant.1)
+  %get-tuple-element.2 = f32[8] get-tuple-element(%loop_state.1), index=1
+  %convert = f32[] convert(%get-tuple-element.1)
+  %broadcast = f32[8] broadcast(%convert), dimensions={}
+  %add.1 = f32[8] add(%get-tuple-element.2, %broadcast)
+  ROOT %tuple = (s32[], f32[8]) tuple(%add, %add.1)
 }
 
-%DependentTupleElements.Condition (loop_state: (s32[], f32[8])) -> pred[] {
-  %loop_state = (s32[], f32[8]{0}) parameter(0)
-  %get-tuple-element = s32[] get-tuple-element((s32[], f32[8]{0}) %loop_state), index=0
+%Condition {
+  %loop_state = (s32[], f32[8]) parameter(0)
+  %get-tuple-element = s32[] get-tuple-element(%loop_state), index=0
   %constant = s32[] constant(10)
-  ROOT %compare = pred[] compare(s32[] %get-tuple-element, s32[] %constant), direction=LT
+  ROOT %compare = pred[] compare(%get-tuple-element, %constant), direction=LT
 }
 
-ENTRY %DependentTupleElements.While () -> (s32[], f32[8]) {
+ENTRY %While {
   %constant.2 = s32[] constant(0)
-  %constant.3 = f32[8]{0} constant({0, 0, 0, 0, 0, 0, 0, 0})
-  %tuple.1 = (s32[], f32[8]{0}) tuple(s32[] %constant.2, f32[8]{0} %constant.3)
-  ROOT %while.1 = (s32[], f32[8]{0}) while((s32[], f32[8]{0}) %tuple.1), condition=%DependentTupleElements.Condition, body=%DependentTupleElements.Body
+  %constant.3 = f32[8] constant({0, 0, 0, 0, 0, 0, 0, 0})
+  %tuple.1 = (s32[], f32[8]) tuple(%constant.2, %constant.3)
+  ROOT %while.1 = (s32[], f32[8]) while(%tuple.1),
+                  condition=%Condition, body=%Body
 }
 )";
   auto module_ = ParseAndReturnVerifiedModule(hlo_string).value();
@@ -817,30 +818,31 @@ TEST_F(WhileCopyInsertionTest, WhileFeedingWhileThruParameterNoCopies) {
   const std::string& hlo_string = R"(
 HloModule DependentTupleElements
 
-%DependentTupleElements.Body (loop_state.1: (s32[], f32[8])) -> (s32[], f32[8]) {
-  %loop_state.1 = (s32[], f32[8]{0}) parameter(0)
-  %get-tuple-element.1 = s32[] get-tuple-element((s32[], f32[8]{0}) %loop_state.1), index=0
+%Body {
+  %loop_state.1 = (s32[], f32[8]) parameter(0)
+  %get-tuple-element.1 = s32[] get-tuple-element(%loop_state.1), index=0
   %constant.1 = s32[] constant(1)
-  %add = s32[] add(s32[] %get-tuple-element.1, s32[] %constant.1)
-  %get-tuple-element.2 = f32[8]{0} get-tuple-element((s32[], f32[8]{0}) %loop_state.1), index=1
-  %convert = f32[] convert(s32[] %get-tuple-element.1)
-  %broadcast = f32[8]{0} broadcast(f32[] %convert), dimensions={}
-  %add.1 = f32[8]{0} add(f32[8]{0} %get-tuple-element.2, f32[8]{0} %broadcast)
-  ROOT %tuple = (s32[], f32[8]{0}) tuple(s32[] %add, f32[8]{0} %add.1)
+  %add = s32[] add(%get-tuple-element.1, %constant.1)
+  %get-tuple-element.2 = f32[8] get-tuple-element(%loop_state.1), index=1
+  %convert = f32[] convert(%get-tuple-element.1)
+  %broadcast = f32[8] broadcast(%convert), dimensions={}
+  %add.1 = f32[8] add(%get-tuple-element.2, %broadcast)
+  ROOT %tuple = (s32[], f32[8]) tuple(%add, %add.1)
 }
 
-%DependentTupleElements.Condition (loop_state: (s32[], f32[8])) -> pred[] {
-  %loop_state = (s32[], f32[8]{0}) parameter(0)
-  %get-tuple-element = s32[] get-tuple-element((s32[], f32[8]{0}) %loop_state), index=0
+%Condition {
+  %loop_state = (s32[], f32[8]) parameter(0)
+  %get-tuple-element = s32[] get-tuple-element(%loop_state), index=0
   %constant = s32[] constant(10)
-  ROOT %compare = pred[] compare(s32[] %get-tuple-element, s32[] %constant), direction=LT
+  ROOT %compare = pred[] compare(%get-tuple-element, %constant), direction=LT
 }
 
-ENTRY %DependentTupleElements.While () -> (s32[], f32[8]) {
+ENTRY %While {
   %constant.2 = s32[] constant(0)
-  %constant.3 = f32[8]{0} constant({0, 0, 0, 0, 0, 0, 0, 0})
-  %tuple.1 = (s32[], f32[8]{0}) tuple(s32[] %constant.2, f32[8]{0} %constant.3)
-  ROOT %while.1 = (s32[], f32[8]{0}) while((s32[], f32[8]{0}) %tuple.1), condition=%DependentTupleElements.Condition, body=%DependentTupleElements.Body
+  %constant.3 = f32[8] constant({0, 0, 0, 0, 0, 0, 0, 0})
+  %tuple.1 = (s32[], f32[8]) tuple(%constant.2, %constant.3)
+  ROOT %while.1 = (s32[], f32[8]) while(%tuple.1),
+      condition=%Condition, body=%Body
 }
 )";
   auto module_ = ParseAndReturnVerifiedModule(hlo_string).value();
@@ -876,32 +878,56 @@ TEST_F(WhileCopyInsertionTest, WhileFeedingWhileThruParameterBig) {
   const std::string& hlo_string = R"(
 HloModule DependentTupleElements
 
-%DependentTupleElements.Body (loop_state.1: (s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0})) -> (s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}) {
-  %loop_state.1 = (s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}) parameter(0)
-  %get-tuple-element.1 = s32[] get-tuple-element((s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}) %loop_state.1), index=0
+%Body {
+  %loop_state.1 = (
+    s32[], f32[8], s32[], f32[8], s32[], f32[8], s32[], f32[8], s32[], f32[8],
+    s32[], f32[8], s32[], f32[8], s32[], f32[8], s32[], f32[8], s32[], f32[8]
+  ) parameter(0)
+  %get-tuple-element.1 = s32[] get-tuple-element(%loop_state.1), index=0
   %constant.1 = s32[] constant(1)
-  %add = s32[] add(s32[] %get-tuple-element.1, s32[] %constant.1)
-  %get-tuple-element.2 = f32[8]{0} get-tuple-element((s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}) %loop_state.1), index=1
-  %convert = f32[] convert(s32[] %get-tuple-element.1)
-  %broadcast = f32[8]{0} broadcast(f32[] %convert), dimensions={}
-  %add.1 = f32[8]{0} add(f32[8]{0} %get-tuple-element.2, f32[8]{0} %broadcast)
-  ROOT %tuple = (s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}) tuple(s32[] %add, f32[8]{0} %add.1, s32[] %add, f32[8]{0} %add.1, s32[] %add, f32[8]{0} %add.1, s32[] %add, f32[8]{0} %add.1, s32[] %add, f32[8]{0} %add.1, s32[] %add, f32[8]{0} %add.1, s32[] %add, f32[8]{0} %add.1, s32[] %add, f32[8]{0} %add.1, s32[] %add, f32[8]{0} %add.1, s32[] %add, f32[8]{0} %add.1)
+  %add = s32[] add(%get-tuple-element.1, %constant.1)
+  %get-tuple-element.2 = f32[8] get-tuple-element(%loop_state.1), index=1
+  %convert = f32[] convert(%get-tuple-element.1)
+  %broadcast = f32[8] broadcast(%convert), dimensions={}
+  %add.1 = f32[8] add(%get-tuple-element.2, %broadcast)
+  ROOT %tuple = (
+    s32[], f32[8], s32[], f32[8], s32[], f32[8], s32[], f32[8], s32[], f32[8],
+    s32[], f32[8], s32[], f32[8], s32[], f32[8], s32[], f32[8], s32[], f32[8]
+  ) tuple(
+    %add, %add.1, %add, %add.1, %add, %add.1, %add, %add.1, %add, %add.1,
+    %add, %add.1, %add, %add.1, %add, %add.1, %add, %add.1, %add, %add.1
+  )
 }
 
-%DependentTupleElements.Condition (loop_state: (s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0})) -> pred[] {
-  %loop_state = (s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}) parameter(0)
-  %get-tuple-element = s32[] get-tuple-element((s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}) %loop_state), index=0
+%Condition {
+  %loop_state = (
+    s32[], f32[8], s32[], f32[8], s32[], f32[8], s32[], f32[8], s32[], f32[8],
+    s32[], f32[8], s32[], f32[8], s32[], f32[8], s32[], f32[8], s32[], f32[8]
+  ) parameter(0)
+  %get-tuple-element = s32[] get-tuple-element(%loop_state), index=0
   %constant = s32[] constant(10)
-  ROOT %compare = pred[] compare(s32[] %get-tuple-element, s32[] %constant), direction=LT
+  ROOT %compare = pred[] compare(%get-tuple-element, %constant), direction=LT
 }
 
-ENTRY %DependentTupleElements.While () -> (s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}) {
+ENTRY %While {
   %constant.2 = s32[] constant(0)
-  %constant.3 = f32[8]{0} constant({0, 0, 0, 0, 0, 0, 0, 0})
-  %tuple.1 = (s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}) tuple(s32[] %constant.2, f32[8]{0} %constant.3, s32[] %constant.2, f32[8]{0} %constant.3, s32[] %constant.2, f32[8]{0} %constant.3, s32[] %constant.2, f32[8]{0} %constant.3, s32[] %constant.2, f32[8]{0} %constant.3, s32[] %constant.2, f32[8]{0} %constant.3, s32[] %constant.2, f32[8]{0} %constant.3, s32[] %constant.2, f32[8]{0} %constant.3, s32[] %constant.2, f32[8]{0} %constant.3, s32[] %constant.2, f32[8]{0} %constant.3)
-  ROOT %while.1 = (s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}) while( (s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}) %tuple.1), condition=%DependentTupleElements.Condition, body=%DependentTupleElements.Body
+  %constant.3 = f32[8] constant({0, 0, 0, 0, 0, 0, 0, 0})
+  %tuple.1 = (
+    s32[], f32[8], s32[], f32[8], s32[], f32[8], s32[], f32[8], s32[], f32[8],
+    s32[], f32[8], s32[], f32[8], s32[], f32[8], s32[], f32[8], s32[], f32[8]
+  ) tuple(
+    %constant.2, %constant.3, %constant.2, %constant.3, %constant.2,
+    %constant.3, %constant.2, %constant.3, %constant.2, %constant.3,
+    %constant.2, %constant.3, %constant.2, %constant.3, %constant.2,
+    %constant.3, %constant.2, %constant.3, %constant.2, %constant.3
+  )
+  ROOT %while.1 = (
+    s32[], f32[8], s32[], f32[8], s32[], f32[8], s32[], f32[8], s32[], f32[8],
+    s32[], f32[8], s32[], f32[8], s32[], f32[8], s32[], f32[8], s32[], f32[8]
+  ) while(%tuple.1), condition=%Condition, body=%Body
 }
 )";
+
   auto module_ = ParseAndReturnVerifiedModule(hlo_string).value();
   auto while_hlo = module_->entry_computation()->root_instruction();
   // module_ and while_hlo are the pre-existing module and hlo, the below
@@ -1898,28 +1924,29 @@ HloModule TokensShouldNotBeCopied
 
 %Body (param.1: (s32[], token[])) -> (s32[], token[]) {
   %param.1 = (s32[], token[]) parameter(0)
-  %get-tuple-element.1 = s32[] get-tuple-element((s32[], token[]) %param.1), index=0
+  %get-tuple-element.1 = s32[] get-tuple-element(%param.1), index=0
   %constant.1 = s32[] constant(1)
-  %add = s32[] add(s32[] %get-tuple-element.1, s32[] %constant.1)
-  %get-tuple-element.2 = token[] get-tuple-element((s32[], token[]) %param.1), index=1
-  %after-all = token[] after-all(token[] %get-tuple-element.2)
-  ROOT %tuple = (s32[], token[]) tuple(s32[] %add, token[] %after-all)
+  %add = s32[] add(%get-tuple-element.1, %constant.1)
+  %get-tuple-element.2 = token[] get-tuple-element(%param.1), index=1
+  %after-all = token[] after-all(%get-tuple-element.2)
+  ROOT %tuple = (s32[], token[]) tuple(%add, %after-all)
 }
 
 %Cond (param: (s32[], token[])) -> pred[] {
   %param = (s32[], token[]) parameter(0)
-  %get-tuple-element = s32[] get-tuple-element((s32[], token[]) %param), index=0
+  %get-tuple-element = s32[] get-tuple-element(%param), index=0
   %constant = s32[] constant(42)
-  ROOT %less-than = pred[] compare(s32[] %get-tuple-element, s32[] %constant), direction=LT
+  ROOT %less-than = pred[] compare(%get-tuple-element, %constant), direction=LT
 }
 
 ENTRY %TokensShouldNotBeCopied () -> s32[] {
   %one = s32[] constant(1)
   %negative_one = s32[] negate(%one)
   %init_token = token[] after-all()
-  %init_tuple = (s32[], token[]) tuple(s32[] %negative_one, token[] %init_token)
-  %while = (s32[], token[]) while((s32[], token[]) %init_tuple), condition=%Cond, body=%Body
-  ROOT %root = s32[] get-tuple-element((s32[], token[]) %while), index=0
+  %init_tuple = (s32[], token[]) tuple(%negative_one, %init_token)
+  %while = (s32[], token[]) while(%init_tuple),
+      condition=%Cond, body=%Body
+  ROOT %root = s32[] get-tuple-element(%while), index=0
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -2131,7 +2158,8 @@ if-body.v5 {
   get-tuple-element.66 = s32[] get-tuple-element(get-tuple-element.18), index=1
   add.3 = s32[] add(get-tuple-element.65, get-tuple-element.66)
   tuple.33 = (s32[]) tuple(add.3)
-  ROOT tuple.34 = (s32[], (s32[], s32[], s32[]), (s32[])) tuple(constant.3, get-tuple-element.18, tuple.33)
+  ROOT tuple.34 = (s32[], (s32[], s32[], s32[]), (s32[])) tuple(constant.3,
+      get-tuple-element.18, tuple.33)
 }
 
 if-condition.v4 {
@@ -2148,24 +2176,30 @@ _functionalize_body_1__.v28 {
   add.4 = s32[] add(get-tuple-element.68, constant.7)
   get-tuple-element.69 = s32[] get-tuple-element(arg_tuple.4), index=1
   get-tuple-element.70 = s32[] get-tuple-element(arg_tuple.4), index=2
-  less-than-or-equal-to = pred[] compare(get-tuple-element.69, get-tuple-element.70), direction=LE
+  less-than-or-equal-to = pred[] compare(get-tuple-element.69,
+      get-tuple-element.70), direction=LE
   constant.8 = s32[] constant(0)
   select = s32[] select(less-than-or-equal-to, constant.8, constant.7)
   get-tuple-element.71 = s32[] get-tuple-element(arg_tuple.4), index=3
-  tuple.35 = (s32[], s32[], s32[]) tuple(get-tuple-element.69, get-tuple-element.71, get-tuple-element.70)
+  tuple.35 = (s32[], s32[], s32[]) tuple(get-tuple-element.69,
+      get-tuple-element.71, get-tuple-element.70)
   tuple.36 = (s32[]) tuple(constant.8)
-  tuple.37 = (s32[], (s32[], s32[], s32[]), (s32[])) tuple(select, tuple.35, tuple.36)
-  while = (s32[], (s32[], s32[], s32[]), (s32[])) while(tuple.37), condition=if-condition.v4, body=if-body.v5
+  tuple.37 = (s32[], (s32[], s32[], s32[]), (s32[])) tuple(select, tuple.35,
+      tuple.36)
+  while = (s32[], (s32[], s32[], s32[]), (s32[])) while(tuple.37),
+      condition=if-condition.v4, body=if-body.v5
   get-tuple-element.72 = (s32[]) get-tuple-element(while), index=2
   get-tuple-element.73 = s32[] get-tuple-element(get-tuple-element.72), index=0
-  ROOT tuple.38 = (s32[], s32[], s32[], s32[]) tuple(add.4, get-tuple-element.69, get-tuple-element.70, get-tuple-element.73)
+  ROOT tuple.38 = (s32[], s32[], s32[], s32[]) tuple(add.4,
+      get-tuple-element.69, get-tuple-element.70, get-tuple-element.73)
 }
 
 cond_wrapper.v3.1 {
   inputs.1 = (s32[], s32[], s32[], s32[]) parameter(0)
   get-tuple-element.75 = s32[] get-tuple-element(inputs.1), index=0
   constant.11 = s32[] constant(7)
-  ROOT less-than.2 = pred[] compare(get-tuple-element.75, constant.11), direction=LT
+  ROOT less-than.2 = pred[] compare(get-tuple-element.75, constant.11),
+      direction=LT
 }
 
 _functionalize_body_2__.v25 {
@@ -2174,26 +2208,32 @@ _functionalize_body_2__.v25 {
   get-tuple-element.77 = s32[] get-tuple-element(arg_tuple.5), index=2
   get-tuple-element.78 = s32[] get-tuple-element(arg_tuple.5), index=3
   get-tuple-element.79 = s32[] get-tuple-element(arg_tuple.5), index=4
-  tuple.39 = (s32[], s32[], s32[], s32[]) tuple(get-tuple-element.76, get-tuple-element.77, get-tuple-element.78, get-tuple-element.79)
-  while.2 = (s32[], s32[], s32[], s32[]) while(tuple.39), condition=cond_wrapper.v3.1, body=_functionalize_body_1__.v28
+  tuple.39 = (s32[], s32[], s32[], s32[]) tuple(get-tuple-element.76,
+      get-tuple-element.77, get-tuple-element.78, get-tuple-element.79)
+  while.2 = (s32[], s32[], s32[], s32[]) while(tuple.39),
+      condition=cond_wrapper.v3.1, body=_functionalize_body_1__.v28
   get-tuple-element.80 = s32[] get-tuple-element(while.2), index=0
   get-tuple-element.81 = s32[] get-tuple-element(arg_tuple.5), index=1
   constant.12 = s32[] constant(1)
   add.5 = s32[] add(get-tuple-element.81, constant.12)
   get-tuple-element.82 = s32[] get-tuple-element(while.2), index=3
-  ROOT tuple.40 = (s32[], s32[], s32[], s32[], s32[]) tuple(get-tuple-element.80, add.5, get-tuple-element.77, get-tuple-element.78, get-tuple-element.82)
+  ROOT tuple.40 = (s32[], s32[], s32[], s32[],
+      s32[]) tuple(get-tuple-element.80, add.5, get-tuple-element.77,
+          get-tuple-element.78, get-tuple-element.82)
 }
 
 cond_wrapper.v3.2 {
   inputs.2 = (s32[], s32[], s32[], s32[], s32[]) parameter(0)
   get-tuple-element.83 = s32[] get-tuple-element(inputs.2), index=1
   constant.13 = s32[] constant(5)
-  ROOT less-than.3 = pred[] compare(get-tuple-element.83, constant.13), direction=LT
+  ROOT less-than.3 = pred[] compare(get-tuple-element.83, constant.13),
+      direction=LT
 }
 
 ENTRY TestComputation {
   arg_tuple.6 = (s32[], s32[], s32[], s32[], s32[]) parameter(0)
-  ROOT while.3 = (s32[], s32[], s32[], s32[], s32[]) while(arg_tuple.6), condition=cond_wrapper.v3.2, body=_functionalize_body_2__.v25
+  ROOT while.3 = (s32[], s32[], s32[], s32[], s32[]) while(arg_tuple.6),
+      condition=cond_wrapper.v3.2, body=_functionalize_body_2__.v25
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
@@ -2212,7 +2252,8 @@ if-body.v5 {
   get-tuple-element.66 = s32[] get-tuple-element(get-tuple-element.18), index=1
   add.3 = s32[] add(get-tuple-element.65, get-tuple-element.66)
   tuple.33 = (s32[]) tuple(add.3)
-  ROOT tuple.34 = (s32[], (s32[], s32[], s32[]), (s32[])) tuple(constant.3, get-tuple-element.18, tuple.33)
+  ROOT tuple.34 = (s32[], (s32[], s32[], s32[]), (s32[])) tuple(constant.3,
+      get-tuple-element.18, tuple.33)
 }
 
 if-condition.v4 {
@@ -2229,14 +2270,16 @@ if-body.v5.1 {
   get-tuple-element.70 = s32[] get-tuple-element(get-tuple-element.68), index=2
   multiply.1 = s32[] multiply(get-tuple-element.70, get-tuple-element.70)
   tuple.35 = (s32[]) tuple(multiply.1)
-  ROOT tuple.36 = (s32[], (s32[], s32[], s32[]), (s32[])) tuple(constant.5, get-tuple-element.68, tuple.35)
+  ROOT tuple.36 = (s32[], (s32[], s32[], s32[]), (s32[])) tuple(constant.5,
+      get-tuple-element.68, tuple.35)
 }
 
 if-condition.v4.1 {
   p.4 = (s32[], (s32[], s32[], s32[]), (s32[])) parameter(0)
   get-tuple-element.71 = s32[] get-tuple-element(p.4), index=0
   constant.6 = s32[] constant(1)
-  ROOT equal-to.1 = pred[] compare(get-tuple-element.71, constant.6), direction=EQ
+  ROOT equal-to.1 = pred[] compare(get-tuple-element.71, constant.6),
+      direction=EQ
 }
 
 _functionalize_body_1__.v28 {
@@ -2246,25 +2289,32 @@ _functionalize_body_1__.v28 {
   add.4 = s32[] add(get-tuple-element.72, constant.7)
   get-tuple-element.73 = s32[] get-tuple-element(arg_tuple.4), index=1
   get-tuple-element.74 = s32[] get-tuple-element(arg_tuple.4), index=2
-  less-than-or-equal-to = pred[] compare(get-tuple-element.73, get-tuple-element.74), direction=LE
+  less-than-or-equal-to = pred[] compare(get-tuple-element.73,
+      get-tuple-element.74), direction=LE
   constant.8 = s32[] constant(0)
   select = s32[] select(less-than-or-equal-to, constant.8, constant.7)
   get-tuple-element.75 = s32[] get-tuple-element(arg_tuple.4), index=3
-  tuple.37 = (s32[], s32[], s32[]) tuple(get-tuple-element.73, get-tuple-element.75, get-tuple-element.74)
+  tuple.37 = (s32[], s32[], s32[]) tuple(get-tuple-element.73,
+      get-tuple-element.75, get-tuple-element.74)
   tuple.38 = (s32[]) tuple(constant.8)
-  tuple.39 = (s32[], (s32[], s32[], s32[]), (s32[])) tuple(select, tuple.37, tuple.38)
-  while = (s32[], (s32[], s32[], s32[]), (s32[])) while(tuple.39), condition=if-condition.v4, body=if-body.v5
-  while.1 = (s32[], (s32[], s32[], s32[]), (s32[])) while(while), condition=if-condition.v4.1, body=if-body.v5.1
+  tuple.39 = (s32[], (s32[], s32[], s32[]), (s32[])) tuple(select, tuple.37,
+      tuple.38)
+  while = (s32[], (s32[], s32[], s32[]), (s32[])) while(tuple.39),
+      condition=if-condition.v4, body=if-body.v5
+  while.1 = (s32[], (s32[], s32[], s32[]), (s32[])) while(while),
+      condition=if-condition.v4.1, body=if-body.v5.1
   get-tuple-element.76 = (s32[]) get-tuple-element(while.1), index=2
   get-tuple-element.77 = s32[] get-tuple-element(get-tuple-element.76), index=0
-  ROOT tuple.40 = (s32[], s32[], s32[], s32[]) tuple(add.4, get-tuple-element.73, get-tuple-element.74, get-tuple-element.77)
+  ROOT tuple.40 = (s32[], s32[], s32[], s32[]) tuple(add.4,
+      get-tuple-element.73, get-tuple-element.74, get-tuple-element.77)
 }
 
 cond_wrapper.v3.1 {
   inputs.1 = (s32[], s32[], s32[], s32[]) parameter(0)
   get-tuple-element.78 = s32[] get-tuple-element(inputs.1), index=0
   constant.11 = s32[] constant(7)
-  ROOT less-than.2 = pred[] compare(get-tuple-element.78, constant.11), direction=LT
+  ROOT less-than.2 = pred[] compare(get-tuple-element.78, constant.11),
+      direction=LT
 }
 
 _functionalize_body_2__.v25 {
@@ -2273,26 +2323,32 @@ _functionalize_body_2__.v25 {
   get-tuple-element.80 = s32[] get-tuple-element(arg_tuple.5), index=2
   get-tuple-element.81 = s32[] get-tuple-element(arg_tuple.5), index=3
   get-tuple-element.82 = s32[] get-tuple-element(arg_tuple.5), index=4
-  tuple.41 = (s32[], s32[], s32[], s32[]) tuple(get-tuple-element.79, get-tuple-element.80, get-tuple-element.81, get-tuple-element.82)
-  while.2 = (s32[], s32[], s32[], s32[]) while(tuple.41), condition=cond_wrapper.v3.1, body=_functionalize_body_1__.v28
+  tuple.41 = (s32[], s32[], s32[], s32[]) tuple(get-tuple-element.79,
+      get-tuple-element.80, get-tuple-element.81, get-tuple-element.82)
+  while.2 = (s32[], s32[], s32[], s32[]) while(tuple.41),
+      condition=cond_wrapper.v3.1, body=_functionalize_body_1__.v28
   get-tuple-element.83 = s32[] get-tuple-element(while.2), index=0
   get-tuple-element.84 = s32[] get-tuple-element(arg_tuple.5), index=1
   constant.12 = s32[] constant(1)
   add.5 = s32[] add(get-tuple-element.84, constant.12)
   get-tuple-element.85 = s32[] get-tuple-element(while.2), index=3
-  ROOT tuple.42 = (s32[], s32[], s32[], s32[], s32[]) tuple(get-tuple-element.83, add.5, get-tuple-element.80, get-tuple-element.81, get-tuple-element.85)
+  ROOT tuple.42 = (s32[], s32[], s32[], s32[],
+      s32[]) tuple(get-tuple-element.83, add.5, get-tuple-element.80,
+          get-tuple-element.81, get-tuple-element.85)
 }
 
 cond_wrapper.v3.2 {
   inputs.2 = (s32[], s32[], s32[], s32[], s32[]) parameter(0)
   get-tuple-element.86 = s32[] get-tuple-element(inputs.2), index=1
   constant.13 = s32[] constant(5)
-  ROOT less-than.3 = pred[] compare(get-tuple-element.86, constant.13), direction=LT
+  ROOT less-than.3 = pred[] compare(get-tuple-element.86, constant.13),
+      direction=LT
 }
 
 ENTRY TestComputation {
   arg_tuple.6 = (s32[], s32[], s32[], s32[], s32[]) parameter(0)
-  ROOT while.3 = (s32[], s32[], s32[], s32[], s32[]) while(arg_tuple.6), condition=cond_wrapper.v3.2, body=_functionalize_body_2__.v25
+  ROOT while.3 = (s32[], s32[], s32[], s32[], s32[]) while(arg_tuple.6),
+      condition=cond_wrapper.v3.2, body=_functionalize_body_2__.v25
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
@@ -2320,7 +2376,8 @@ cond.outer {
 
 body.outer {
   param.cond.outer = pred[] parameter(0)
-  ROOT while = pred[] while(param.cond.outer), condition=cond.inner, body=body.inner
+  ROOT while = pred[] while(param.cond.outer), condition=cond.inner,
+      body=body.inner
 }
 
 ENTRY TestComputation {
@@ -2418,7 +2475,8 @@ body.outer {
   param.body.outer = (pred[], pred[]) parameter(0)
   gte.0 = pred[] get-tuple-element(param.body.outer), index=0
   gte.1 = pred[] get-tuple-element(param.body.outer), index=1
-  while.inner = (pred[], pred[]) while(param.body.outer), condition=cond.inner, body=body.inner
+  while.inner = (pred[], pred[]) while(param.body.outer), condition=cond.inner,
+      body=body.inner
   gte.2 = pred[] get-tuple-element(while.inner), index=0
   after-all = token[] after-all()
   outfeed = token[] outfeed(gte.2, after-all)
@@ -2429,7 +2487,8 @@ ENTRY TestComputation {
   entry_param.1 = pred[] parameter(0)
   entry_param.2 = pred[] parameter(1)
   tuple = (pred[], pred[]) tuple(entry_param.1, entry_param.2)
-  while.outer = (pred[], pred[]) while(tuple), condition=cond.outer, body=body.outer
+  while.outer = (pred[], pred[]) while(tuple), condition=cond.outer,
+      body=body.outer
   gte = pred[] get-tuple-element(while.outer), index=0
   ROOT not = pred[] not(gte)
 }
@@ -2472,7 +2531,8 @@ body.outer {
   param.1 = (pred[], f32[2], f32[2]) parameter(0)
   pred.1 = pred[] get-tuple-element(param.1), index=0
   arg_tuple.11 = f32[2] get-tuple-element(param.1), index=1
-  if = (f32[2], f32[2]) conditional(pred.1, arg_tuple.11, arg_tuple.11), true_computation=on_true, false_computation=on_false
+  if = (f32[2], f32[2]) conditional(pred.1, arg_tuple.11, arg_tuple.11),
+      true_computation=on_true, false_computation=on_false
   e1 = f32[2] get-tuple-element(if), index=0
   e2 = f32[2] get-tuple-element(if), index=1
   ROOT res = (pred[], f32[2], f32[2]) tuple(pred.1,e1, e2)
@@ -2481,8 +2541,10 @@ body.outer {
 ENTRY TestComputation {
   entry_param.1 = pred[] parameter(0)
   float_param = f32[2] parameter(1)
-  entry_param = (pred[], f32[2], f32[2]) tuple(entry_param.1, float_param, float_param)
-  ROOT while = (pred[], f32[2], f32[2]) while(entry_param), condition=cond.outer, body=body.outer
+  entry_param = (pred[], f32[2], f32[2]) tuple(entry_param.1, float_param,
+      float_param)
+  ROOT while = (pred[], f32[2], f32[2]) while(entry_param),
+      condition=cond.outer, body=body.outer
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -2518,7 +2580,8 @@ body.outer {
   param.1 = (pred[], f32[2]) parameter(0)
   pred.1 = pred[] get-tuple-element(param.1), index=0
   arg_tuple.11 = f32[2] get-tuple-element(param.1), index=1
-  if = f32[2] conditional(pred.1, arg_tuple.11, arg_tuple.11), true_computation=on_true, false_computation=on_false
+  if = f32[2] conditional(pred.1, arg_tuple.11, arg_tuple.11),
+      true_computation=on_true, false_computation=on_false
   ROOT res = (pred[], f32[2]) tuple(pred.1,if)
 }
 
@@ -2526,7 +2589,8 @@ ENTRY TestComputation {
   entry_param.1 = pred[] parameter(0)
   float_param = f32[2] parameter(1)
   entry_param = (pred[], f32[2]) tuple(entry_param.1, float_param)
-  ROOT while = (pred[], f32[2]) while(entry_param), condition=cond.outer, body=body.outer
+  ROOT while = (pred[], f32[2]) while(entry_param), condition=cond.outer,
+      body=body.outer
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -2546,23 +2610,23 @@ HloModule Module
 fused_computation {
   param0 = f32[3,3,96,1] parameter(0)
   param1 = f32[] parameter(1)
-  broadcast = f32[3,3,96,1] broadcast(f32[] param1), dimensions={}
-  ROOT %add.0 = f32[3,3,96,1] add(f32[3,3,96,1] param0, f32[3,3,96,1] broadcast)
+  broadcast = f32[3,3,96,1] broadcast(param1), dimensions={}
+  ROOT %add.0 = f32[3,3,96,1] add(param0, broadcast)
 }
 
 ENTRY entry_computation {
   arg0 = f32[3,3,96,1] parameter(0)
   arg1 = f32[] parameter(1)
-  fusion = f32[3,3,96,1] fusion(f32[3,3,96,1] arg0, f32[] arg1),
+  fusion = f32[3,3,96,1] fusion(arg0, arg1),
     kind=kLoop, calls=fused_computation
-  negate = f32[] negate(f32[] arg1)
+  negate = f32[] negate(arg1)
   ROOT tuple = (f32[3,3,96,1], f32[3,3,96,1], f32[], f32[]) tuple(
     f32[3,3,96,1] fusion,
     f32[3,3,96,1] arg0,
     f32[] negate,
     f32[] arg1)
 }
-  )";
+)";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -2589,8 +2653,9 @@ HloModule cluster
 
 ENTRY Entry {
   %arg = f32[8,28,28,1] parameter(0)
-  %bitcast.2 = f32[8,1,28,28] bitcast(f32[8,28,28,1] %arg)
-  ROOT %tuple.1 = (f32[8,1,28,28], f32[8,28,28,1]) tuple(f32[8,1,28,28] %bitcast.2, f32[8,28,28,1] %arg)
+  %bitcast.2 = f32[8,1,28,28] bitcast(%arg)
+  ROOT %tuple.1 = (f32[8,1,28,28],
+      f32[8,28,28,1]) tuple(%bitcast.2, %arg)
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -2613,7 +2678,8 @@ ENTRY main {
   constant.1 = f32[] constant(0)
   broadcast.6 = f32[128,1,128] broadcast(constant.1), dimensions={}
   constant.3 = s32[] constant(0)
-  ROOT dynamic-update-slice.5 = f32[1280,1,128] dynamic-update-slice(negate, broadcast.6, constant.3, constant.3, constant.3)
+  ROOT dynamic-update-slice.5 = f32[1280,1,128] dynamic-update-slice(negate,
+      broadcast.6, constant.3, constant.3, constant.3)
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -2631,13 +2697,15 @@ fused_computation {
   constant.1 = f32[] constant(0)
   broadcast.6 = f32[128,1,128] broadcast(constant.1), dimensions={}
   constant.3 = s32[] constant(0)
-  ROOT dynamic-update-slice.5 = f32[1280,1,128] dynamic-update-slice(param0, broadcast.6, constant.3, constant.3, constant.3)
+  ROOT dynamic-update-slice.5 = f32[1280,1,128] dynamic-update-slice(param0,
+      broadcast.6, constant.3, constant.3, constant.3)
 }
 
 ENTRY main {
   param = f32[1280,1,128] parameter(0)
   negate = f32[1280,1,128] negate(param)
-  ROOT fusion = f32[1280,1,128] fusion(negate), kind=kLoop, calls=fused_computation
+  ROOT fusion = f32[1280,1,128] fusion(negate), kind=kLoop,
+      calls=fused_computation
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -2657,8 +2725,10 @@ ENTRY main {
   broadcast.6 = f32[128,1,128] broadcast(constant.1), dimensions={}
   constant.3 = s32[] constant(0)
   add = f32[1280,1,128] add(negate, negate)
-  dynamic-update-slice.5 = f32[1280,1,128] dynamic-update-slice(negate, broadcast.6, constant.3, constant.3, constant.3)
-  ROOT tuple = (f32[1280,1,128], f32[1280,1,128]) tuple(add, dynamic-update-slice.5)
+  dynamic-update-slice.5 = f32[1280,1,128] dynamic-update-slice(negate,
+      broadcast.6, constant.3, constant.3, constant.3)
+  ROOT tuple = (f32[1280,1,128], f32[1280,1,128]) tuple(add,
+      dynamic-update-slice.5)
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -2676,7 +2746,8 @@ ENTRY main {
   constant.1 = f32[] constant(0)
   broadcast.6 = f32[128,1,128] broadcast(constant.1), dimensions={}
   constant.3 = s32[] constant(0)
-  ROOT dynamic-update-slice.5 = f32[1280,1,128] dynamic-update-slice(param, broadcast.6, constant.3, constant.3, constant.3)
+  ROOT dynamic-update-slice.5 = f32[1280,1,128] dynamic-update-slice(param,
+      broadcast.6, constant.3, constant.3, constant.3)
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -2694,7 +2765,8 @@ fused_computation {
   constant.1 = f32[] constant(0)
   broadcast.6 = f32[128,1,128] broadcast(constant.1), dimensions={}
   constant.3 = s32[] constant(0)
-  ROOT dynamic-update-slice.5 = f32[1280,1,128] dynamic-update-slice(param0, broadcast.6, constant.3, constant.3, constant.3)
+  ROOT dynamic-update-slice.5 = f32[1280,1,128] dynamic-update-slice(param0,
+      broadcast.6, constant.3, constant.3, constant.3)
 }
 
 ENTRY main {
@@ -2716,17 +2788,23 @@ TEST_F(CopyInsertionTest, ChainDynamicUpdateSliceCopy) {
 HloModule Module
 
 ENTRY main {
-  state = (s32[], f32[1280,1,128]{2,1,0}) parameter(0)
+  state = (s32[], f32[1280,1,128]) parameter(0)
   constant.1 = f32[] constant(0)
-  broadcast.6 = f32[128,1,128]{2,1,0} broadcast(constant.1), dimensions={}
-  get-tuple-element.4 = f32[1280,1,128]{2,1,0} get-tuple-element(state), index=1
+  broadcast.6 = f32[128,1,128] broadcast(constant.1), dimensions={}
+  get-tuple-element.4 = f32[1280,1,128] get-tuple-element(state), index=1
   get-tuple-element.3 = s32[] get-tuple-element(state), index=0
   constant.2 = s32[] constant(128)
   add.5 = s32[] add(get-tuple-element.3, constant.2)
   constant.3 = s32[] constant(0)
-  dynamic-update-slice.5 = f32[1280,1,128]{2,1,0} dynamic-update-slice(get-tuple-element.4, broadcast.6, constant.3, constant.3, constant.3)
-  dynamic-update-slice.9 = f32[1280,1,128]{2,1,0} dynamic-update-slice(dynamic-update-slice.5, broadcast.6, constant.3, constant.3, constant.3)
-  ROOT tuple.85 = (s32[], f32[1280,1,128]{2,1,0}) tuple(add.5, dynamic-update-slice.9)
+  dynamic-update-slice.5 = f32[1280,1,128] dynamic-update-slice(get-tuple-element.4, broadcast.6,
+      constant.3,
+      constant.3,
+      constant.3)
+  dynamic-update-slice.9 = f32[1280,1,128] dynamic-update-slice(dynamic-update-slice.5, broadcast.6,
+      constant.3,
+      constant.3,
+      constant.3)
+  ROOT tuple.85 = (s32[], f32[1280,1,128]) tuple(add.5, dynamic-update-slice.9)
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -2744,7 +2822,8 @@ fused_computation.1 {
   constant.1 = f32[] constant(0)
   broadcast.6 = f32[128,1,128] broadcast(constant.1), dimensions={}
   constant.3 = s32[] constant(0)
-  ROOT dynamic-update-slice.5 = f32[1280,1,128] dynamic-update-slice(param0, broadcast.6, constant.3, constant.3, constant.3)
+  ROOT dynamic-update-slice.5 = f32[1280,1,128] dynamic-update-slice(param0,
+      broadcast.6, constant.3, constant.3, constant.3)
 }
 
 fused_computation.2 {
@@ -2752,15 +2831,18 @@ fused_computation.2 {
   param1 = f32[1280,1,128] parameter(1)
   slice = f32[128,1,128] slice(param1), slice={[0:128], [0:1], [0:128]}
   constant.3 = s32[] constant(0)
-  ROOT dynamic-update-slice.5 = f32[1280,1,128] dynamic-update-slice(param0, slice, constant.3, constant.3, constant.3)
+  ROOT dynamic-update-slice.5 = f32[1280,1,128] dynamic-update-slice(param0,
+      slice, constant.3, constant.3, constant.3)
 }
 
 ENTRY main {
   param = f32[1280,1,128] parameter(0)
   negate = f32[1280,1,128] negate(param)
   add = f32[1280,1,128] add(negate, negate)
-  fusion1 = f32[1280,1,128] fusion(negate), kind=kLoop, calls=fused_computation.1
-  ROOT fusion2 = f32[1280,1,128] fusion(fusion1, negate), kind=kLoop, calls=fused_computation.2
+  fusion1 = f32[1280,1,128] fusion(negate), kind=kLoop,
+      calls=fused_computation.1
+  ROOT fusion2 = f32[1280,1,128] fusion(fusion1, negate), kind=kLoop,
+      calls=fused_computation.2
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -2782,9 +2864,12 @@ fused_computation {
   broadcast.6 = f32[128,1,128] broadcast(constant.1), dimensions={}
   constant.3 = s32[] constant(0)
   add.1 = f32[1280,1,128] add(param0, param0)
-  dynamic-update-slice.5 = f32[1280,1,128] dynamic-update-slice(param1, broadcast.6, constant.3, constant.3, constant.3)
-  dynamic-update-slice.6 = f32[1280,1,128] dynamic-update-slice(param2, broadcast.6, constant.3, constant.3, constant.3)
-  ROOT tuple.1 = (f32[1280,1,128], f32[1280,1,128], f32[1280,1,128]) tuple(add.1, dynamic-update-slice.5, dynamic-update-slice.6)
+  dynamic-update-slice.5 = f32[1280,1,128] dynamic-update-slice(param1,
+      broadcast.6, constant.3, constant.3, constant.3)
+  dynamic-update-slice.6 = f32[1280,1,128] dynamic-update-slice(param2,
+      broadcast.6, constant.3, constant.3, constant.3)
+  ROOT tuple.1 = (f32[1280,1,128], f32[1280,1,128], f32[1280,1,128])
+                tuple(add.1, dynamic-update-slice.5, dynamic-update-slice.6)
 }
 
 ENTRY main {
@@ -2792,14 +2877,16 @@ ENTRY main {
   negate0 = f32[1280,1,128] negate(param)
   negate1 = f32[1280,1,128] negate(param)
   negate2 = f32[1280,1,128] negate(param)
-  fusion = (f32[1280,1,128], f32[1280,1,128], f32[1280,1,128]) fusion(negate0, negate1, negate2), kind=kLoop, calls=fused_computation
+  fusion = (f32[1280,1,128], f32[1280,1,128], f32[1280,1,128]) fusion(negate0,
+      negate1, negate2), kind=kLoop, calls=fused_computation
   gte0 = f32[1280,1,128] get-tuple-element(fusion), index=0
   gte1 = f32[1280,1,128] get-tuple-element(fusion), index=1
   gte2 = f32[1280,1,128] get-tuple-element(fusion), index=2
   add0 = f32[1280,1,128] add(negate0, gte0)
   add1 = f32[1280,1,128] add(negate1, gte1)
   add2 = f32[1280,1,128] add(negate2, gte2)
-  ROOT tuple = (f32[1280,1,128], f32[1280,1,128], f32[1280,1,128]) tuple(add0, add1, add2)
+  ROOT tuple = (f32[1280,1,128], f32[1280,1,128], f32[1280,1,128]) tuple(add0,
+      add1, add2)
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -2822,9 +2909,13 @@ fused_computation {
   broadcast.6 = f32[128,1,128] broadcast(constant.1), dimensions={}
   constant.3 = s32[] constant(0)
   add.1 = f32[1280,1,128] add(param0, param0)
-  dynamic-update-slice.5 = f32[1280,1,128] dynamic-update-slice(param1, broadcast.6, constant.3, constant.3, constant.3)
-  dynamic-update-slice.6 = f32[1280,1,128] dynamic-update-slice(param2, broadcast.6, constant.3, constant.3, constant.3)
-  ROOT tuple.1 = (f32[1280,1,128], f32[1280,1,128], f32[1280,1,128]) tuple(add.1, dynamic-update-slice.5, dynamic-update-slice.6)
+  dynamic-update-slice.5 = f32[1280,1,128] dynamic-update-slice(param1,
+      broadcast.6, constant.3, constant.3, constant.3)
+  dynamic-update-slice.6 = f32[1280,1,128] dynamic-update-slice(param2,
+      broadcast.6, constant.3, constant.3, constant.3)
+  ROOT tuple.1 = (f32[1280,1,128], f32[1280,1,128],
+      f32[1280,1,128]) tuple(add.1, dynamic-update-slice.5,
+          dynamic-update-slice.6)
 }
 
 ENTRY main {
@@ -2832,14 +2923,16 @@ ENTRY main {
   negate0 = f32[1280,1,128] negate(param)
   negate1 = f32[1280,1,128] negate(param)
   negate2 = f32[1280,1,128] negate(param)
-  fusion = (f32[1280,1,128], f32[1280,1,128], f32[1280,1,128]) fusion(negate0, negate1, negate2), kind=kLoop, calls=fused_computation
+  fusion = (f32[1280,1,128], f32[1280,1,128], f32[1280,1,128]) fusion(negate0,
+      negate1, negate2), kind=kLoop, calls=fused_computation
   gte0 = f32[1280,1,128] get-tuple-element(fusion), index=0
   gte1 = f32[1280,1,128] get-tuple-element(fusion), index=1
   gte2 = f32[1280,1,128] get-tuple-element(fusion), index=2
   add0 = f32[1280,1,128] add(negate0, gte0)
   add1 = f32[1280,1,128] add(gte1, gte1)
   add2 = f32[1280,1,128] add(negate2, gte2)
-  ROOT tuple = (f32[1280,1,128], f32[1280,1,128], f32[1280,1,128]) tuple(add0, add1, add2)
+  ROOT tuple = (f32[1280,1,128], f32[1280,1,128], f32[1280,1,128]) tuple(add0,
+      add1, add2)
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -2860,14 +2953,16 @@ update_s32 {
 }
 
 fused_computation {
-  iota.1 = s32[73729]{0} iota(), iota_dimension=0
-  ROOT indices.1 = s32[73729]{0} reverse(iota.1), dimensions={0}
+  iota.1 = s32[73729] iota(), iota_dimension=0
+  ROOT indices.1 = s32[73729] reverse(iota.1), dimensions={0}
 }
 
 ENTRY main {
-  iota.2 = s32[73729]{0} iota(), iota_dimension=0
-  fusion = s32[73729]{0} fusion(), kind=kLoop, calls=fused_computation
-  ROOT scatter = s32[73729]{0} scatter(iota.2, fusion, iota.2), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=update_s32
+  iota.2 = s32[73729] iota(), iota_dimension=0
+  fusion = s32[73729] fusion(), kind=kLoop, calls=fused_computation
+  ROOT scatter = s32[73729] scatter(iota.2, fusion, iota.2),
+      update_window_dims={}, inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=update_s32
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -2895,16 +2990,20 @@ update_s32 {
 }
 
 fused_computation {
-  iota.1 = s32[73729]{0} iota(), iota_dimension=0
-  ROOT indices.1 = s32[73729]{0} reverse(iota.1), dimensions={0}
+  iota.1 = s32[73729] iota(), iota_dimension=0
+  ROOT indices.1 = s32[73729] reverse(iota.1), dimensions={0}
 }
 
 ENTRY main {
   zero = s32[] constant(0)
-  data = s32[73729]{0} iota(), iota_dimension=0
-  iota.2 = s32[73729]{0} iota(), iota_dimension=0
-  fusion = s32[73729]{0} fusion(), kind=kLoop, calls=fused_computation
-  ROOT scatter = (s32[73729]{0}, s32[73729]{0}, s32[73729]{0}) scatter(data, data, data, fusion, iota.2, iota.2, iota.2), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=update_s32
+  data = s32[73729] iota(), iota_dimension=0
+  iota.2 = s32[73729] iota(), iota_dimension=0
+  fusion = s32[73729] fusion(), kind=kLoop, calls=fused_computation
+  ROOT scatter = (s32[73729], s32[73729], s32[73729])
+                scatter(data, data, data, fusion, iota.2, iota.2, iota.2),
+                        update_window_dims={}, inserted_window_dims={0},
+                        scatter_dims_to_operand_dims={0}, index_vector_dim=1,
+                        to_apply=update_s32
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -2925,33 +3024,30 @@ TEST_F(CopyInsertionTest, NestedWhileAndConditional3) {
   const std::string& hlo_string = R"(
 HloModule TestModule
 
-on_true.1
- {
+on_true.1 {
   ROOT v1 = f32[2] parameter(0)
 }
 
-on_false.1
- {
+on_false.1 {
   v1 = f32[2] parameter(0)
   ROOT v2 = f32[2] multiply(v1,v1)
 }
 
-on_true
- {
+on_true {
   v1 = f32[2] parameter(0)
   v2 = f32[2] add(v1,v1)
   v3 = (f32[2],f32[2]) tuple(v1,v2)
   v4 = f32[2] get-tuple-element(v3), index=1
   v5 = f32[2] multiply(v4,v2)
-   ROOT t1 = (f32[2], f32[2]) tuple(v5,v2)
+  ROOT t1 = (f32[2], f32[2]) tuple(v5,v2)
 }
 
-on_false
- {
+on_false {
   v1 = f32[2] parameter(0)
   v2 = f32[2] multiply(v1,v1)
   pred.1 = pred[] constant(true)
-  v4 = f32[2] conditional(pred.1, v1, v2), true_computation=on_true.1, false_computation=on_false.1
+  v4 = f32[2] conditional(pred.1, v1, v2), true_computation=on_true.1,
+      false_computation=on_false.1
   v5 = f32[2] multiply(v4,v2)
   ROOT t2 = (f32[2], f32[2]) tuple(v2,v5)
 
@@ -2966,7 +3062,8 @@ body.outer {
   param.1 = (pred[], f32[2], f32[2]) parameter(0)
   pred.1 = pred[] get-tuple-element(param.1), index=0
   arg_tuple.11 = f32[2] get-tuple-element(param.1), index=1
-  if = (f32[2], f32[2]) conditional(pred.1, arg_tuple.11, arg_tuple.11), true_computation=on_true, false_computation=on_false
+  if = (f32[2], f32[2]) conditional(pred.1, arg_tuple.11, arg_tuple.11),
+      true_computation=on_true, false_computation=on_false
   e1 = f32[2] get-tuple-element(if), index=0
   e2 = f32[2] get-tuple-element(if), index=1
   ROOT res = (pred[], f32[2], f32[2]) tuple(pred.1,e1, e2)
@@ -2975,8 +3072,10 @@ body.outer {
 ENTRY TestComputation {
   entry_param.1 = pred[] parameter(0)
   float_param = f32[2] parameter(1)
-  entry_param = (pred[], f32[2], f32[2]) tuple(entry_param.1, float_param, float_param)
-  ROOT while = (pred[], f32[2], f32[2]) while(entry_param), condition=cond.outer, body=body.outer
+  entry_param = (pred[], f32[2], f32[2]) tuple(entry_param.1, float_param,
+      float_param)
+  ROOT while = (pred[], f32[2], f32[2]) while(entry_param),
+      condition=cond.outer, body=body.outer
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -2991,29 +3090,34 @@ TEST_F(CopyInsertionTest, ConditionalBranchMustCopy1) {
 HloModule TestModule
 
  branch_0_comp.5.clone {
- %parameter.0 = (s32[2]{0:T(128)}) parameter(0)
- %get-tuple-element = s32[2]{0:T(128)} get-tuple-element((s32[2]{0:T(128)}) %parameter.0), index=0
- %negate = s32[2]{0:T(128)} negate(s32[2]{0:T(128)} %get-tuple-element)
- %copy = s32[2]{0:T(128)} copy(s32[2]{0:T(128)} %negate)
- ROOT tuple.5 = (s32[2]{0:T(128)}) tuple(%copy)
+ %parameter.0 = (s32[2]) parameter(0)
+ %get-tuple-element = s32[2] get-tuple-element(%parameter.0),
+     index=0
+ %negate = s32[2] negate(%get-tuple-element)
+ %copy = s32[2] copy(%negate)
+ ROOT tuple.5 = (s32[2]) tuple(%copy)
  }
 
  branch_1_comp.12.clone {
-  %parameter.4 = (s32[2]{0:T(128)}) parameter(0)
-  %get-tuple-element.5 = s32[2]{0:T(128)} get-tuple-element((s32[2]{0:T(128)}) %parameter.4), index=0
-  %copy.1 = s32[2]{0:T(128)} copy(s32[2]{0:T(128)} %get-tuple-element.5)
-  ROOT tuple.6 = (s32[2]{0:T(128)}) tuple(%copy.1)
+  %parameter.4 = (s32[2]) parameter(0)
+  %get-tuple-element.5 = s32[2] get-tuple-element(%parameter.4),
+      index=0
+  %copy.1 = s32[2] copy(%get-tuple-element.5)
+  ROOT tuple.6 = (s32[2]) tuple(%copy.1)
  }
 
 ENTRY TestComputation {
-  %parameter.1 = s32[]{:T(128)} parameter(0), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
-  %parameter.2 = s32[2]{0:T(128)} parameter(1), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
-  %parameter.3 = s32[2]{0:T(128)} parameter(2), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
-  %tuple.1 = (s32[2]{0:T(128)}) tuple(s32[2]{0:T(128)} %parameter.3)
-  %tuple.3 = (s32[2]{0:T(128)}) tuple(s32[2]{0:T(128)} %parameter.2)
-  %conditional.18 = (s32[2]{0:T(128)}) conditional(s32[]{:T(128)} %parameter.1, (s32[2]{0:T(128)}) %tuple.1, (s32[2]{0:T(128)}) %tuple.3), branch_computations={%branch_0_comp.5.clone, %branch_1_comp.12.clone}, metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
-  %gte.1 = s32[2]{0:T(128)} get-tuple-element(conditional.18), index=0
-  ROOT tuple.4 = (s32[2]{0:T(128)},s32[2]{0:T(128)}) tuple(parameter.2, gte.1)
+  %parameter.1 = s32[] parameter(0)
+  %parameter.2 = s32[2] parameter(1)
+  %parameter.3 = s32[2] parameter(2)
+  %tuple.1 = (s32[2]) tuple(%parameter.3)
+  %tuple.3 = (s32[2]) tuple(%parameter.2)
+  %conditional.18 = (s32[2]) conditional(%parameter.1,
+      %tuple.1, %tuple.3),
+      branch_computations={%branch_0_comp.5.clone,
+                          %branch_1_comp.12.clone}
+  %gte.1 = s32[2] get-tuple-element(conditional.18), index=0
+  ROOT tuple.4 = (s32[2],s32[2]) tuple(parameter.2, gte.1)
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -3037,33 +3141,37 @@ TEST_F(CopyInsertionTest, ConditionalBranchMustCopy2) {
 HloModule TestModule
 
  branch_0_comp.5.clone {
- %parameter.0 = (s32[2]{0:T(128)}) parameter(0)
- %get-tuple-element = s32[2]{0:T(128)} get-tuple-element((s32[2]{0:T(128)}) %parameter.0), index=0
- %negate = s32[2]{0:T(128)} negate(s32[2]{0:T(128)} %get-tuple-element)
- %copy = s32[2]{0:T(128)} copy(s32[2]{0:T(128)} %negate)
- ROOT tuple.5 = (s32[2]{0:T(128)}) tuple(%copy)
+ %parameter.0 = (s32[2]) parameter(0)
+ %get-tuple-element = s32[2] get-tuple-element(%parameter.0), index=0
+ %negate = s32[2] negate(%get-tuple-element)
+ %copy = s32[2] copy(%negate)
+ ROOT tuple.5 = (s32[2]) tuple(%copy)
  }
 
  branch_1_comp.12.clone {
-  %parameter.4 = (s32[2]{0:T(128)}) parameter(0)
-  %get-tuple-element.5 = s32[2]{0:T(128)} get-tuple-element((s32[2]{0:T(128)}) %parameter.4), index=0
-  %copy.1 = s32[2]{0:T(128)} copy(s32[2]{0:T(128)} %get-tuple-element.5)
+  %parameter.4 = (s32[2]) parameter(0)
+  %get-tuple-element.5 = s32[2] get-tuple-element(%parameter.4),
+      index=0
+  %copy.1 = s32[2] copy(%get-tuple-element.5)
   %constant.1 = s32[] constant(0)
   %broadcast.6 = s32[2] broadcast(constant.1), dimensions={}
-  dynamic-update-slice.5 = s32[2]{0:T(128)} dynamic-update-slice(%copy.1, %broadcast.6, %constant.1)
-  %add.1 = s32[2]{0:T(128)} add(dynamic-update-slice.5, %copy.1)
-  ROOT tuple.6 = (s32[2]{0:T(128)}) tuple(%add.1)
+  dynamic-update-slice.5 = s32[2] dynamic-update-slice(%copy.1,
+      %broadcast.6, %constant.1)
+  %add.1 = s32[2] add(dynamic-update-slice.5, %copy.1)
+  ROOT tuple.6 = (s32[2]) tuple(%add.1)
  }
 
 ENTRY TestComputation {
-  %parameter.1 = s32[]{:T(128)} parameter(0), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
-  %parameter.2 = s32[2]{0:T(128)} parameter(1), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
-  %parameter.3 = s32[2]{0:T(128)} parameter(2), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
-  %tuple.1 = (s32[2]{0:T(128)}) tuple(s32[2]{0:T(128)} %parameter.3)
-  %tuple.3 = (s32[2]{0:T(128)}) tuple(s32[2]{0:T(128)} %parameter.2)
-  %conditional.18 = (s32[2]{0:T(128)}) conditional(s32[]{:T(128)} %parameter.1, (s32[2]{0:T(128)}) %tuple.1, (s32[2]{0:T(128)}) %tuple.3), branch_computations={%branch_0_comp.5.clone, %branch_1_comp.12.clone}
-  %gte.1 = s32[2]{0:T(128)} get-tuple-element(conditional.18), index=0
-  ROOT tuple.4 = (s32[2]{0:T(128)},s32[2]{0:T(128)}) tuple(parameter.2, gte.1)
+  %parameter.1 = s32[] parameter(0)
+  %parameter.2 = s32[2] parameter(1)
+  %parameter.3 = s32[2] parameter(2)
+  %tuple.1 = (s32[2]) tuple(%parameter.3)
+  %tuple.3 = (s32[2]) tuple(%parameter.2)
+  %conditional.18 = (s32[2]) conditional(%parameter.1,
+      %tuple.1, %tuple.3), branch_computations={%branch_0_comp.5.clone,
+          %branch_1_comp.12.clone}
+  %gte.1 = s32[2] get-tuple-element(conditional.18), index=0
+  ROOT tuple.4 = (s32[2],s32[2]) tuple(parameter.2, gte.1)
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -3087,27 +3195,31 @@ TEST_F(CopyInsertionTest, ConditionalBranchMustCopy3) {
   const std::string& hlo_string = R"(
 HloModule primitive_computation_cond.19
 %branch_0_comp.5.clone (parameter.0: (s32[2])) -> (s32[2]) {
-  %parameter.0 = (s32[2]{0:T(128)}) parameter(0)
-  %get-tuple-element = s32[2]{0:T(128)} get-tuple-element((s32[2]{0:T(128)}) %parameter.0), index=0
-  %negate = s32[2]{0:T(128)} negate(s32[2]{0:T(128)} %get-tuple-element)
-  %copy = s32[2]{0:T(128)} copy(s32[2]{0:T(128)} %negate)
-  ROOT %tuple.5 = (s32[2]{0:T(128)}) tuple(s32[2]{0:T(128)} %copy)
+  %parameter.0 = (s32[2]) parameter(0)
+  %get-tuple-element = s32[2] get-tuple-element(%parameter.0),
+      index=0
+  %negate = s32[2] negate(%get-tuple-element)
+  %copy = s32[2] copy(%negate)
+  ROOT %tuple.5 = (s32[2]) tuple(%copy)
 }
 
 %branch_1_comp.12.clone (parameter.4: (s32[2])) -> (s32[2]) {
-  %parameter.4 = (s32[2]{0:T(128)}) parameter(0)
-  %get-tuple-element.5 = s32[2]{0:T(128)} get-tuple-element((s32[2]{0:T(128)}) %parameter.4), index=0
-  %copy.1 = s32[2]{0:T(128)} copy(s32[2]{0:T(128)} %get-tuple-element.5)
-  ROOT %tuple.6 = (s32[2]{0:T(128)}) tuple(s32[2]{0:T(128)} %copy.1)
+  %parameter.4 = (s32[2]) parameter(0)
+  %get-tuple-element.5 = s32[2] get-tuple-element(%parameter.4), index=0
+  %copy.1 = s32[2] copy(%get-tuple-element.5)
+  ROOT %tuple.6 = (s32[2]) tuple(%copy.1)
 }
 
-ENTRY %primitive_computation_cond.19 (parameter.1: s32[], parameter.2: s32[2], parameter.3: s32[2]) -> (s32[2]) {
-  %parameter.1 = s32[]{:T(128)} parameter(0), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
-  %parameter.3 = s32[2]{0:T(128)} parameter(2), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
-  %tuple.1 = (s32[2]{0:T(128)}) tuple(s32[2]{0:T(128)} %parameter.3)
-  %parameter.2 = s32[2]{0:T(128)} parameter(1), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
-  %tuple.3 = (s32[2]{0:T(128)}) tuple(s32[2]{0:T(128)} %parameter.2)
-  ROOT %conditional.18 = (s32[2]{0:T(128)}) conditional(s32[]{:T(128)} %parameter.1, (s32[2]{0:T(128)}) %tuple.1, (s32[2]{0:T(128)}) %tuple.3), branch_computations={%branch_0_comp.5.clone, %branch_1_comp.12.clone}, metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
+ENTRY %primitive_computation_cond.19 (parameter.1: s32[], parameter.2: s32[2],
+    parameter.3: s32[2]) -> (s32[2]) {
+  %parameter.1 = s32[] parameter(0)
+  %parameter.3 = s32[2] parameter(2)
+  %tuple.1 = (s32[2]) tuple(%parameter.3)
+  %parameter.2 = s32[2] parameter(1)
+  %tuple.3 = (s32[2]) tuple(%parameter.2)
+  ROOT %conditional.18 = (s32[2]) conditional(%parameter.1, %tuple.1, %tuple.3),
+          branch_computations={%branch_0_comp.5.clone,
+                              %branch_1_comp.12.clone}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -3131,29 +3243,33 @@ TEST_F(CopyInsertionTest, ConditionalBranchDoNotCopy1) {
 HloModule TestModule
 
  branch_0_comp.5.clone {
- %parameter.0 = (s32[2]{0:T(128)}) parameter(0)
- %get-tuple-element = s32[2]{0:T(128)} get-tuple-element((s32[2]{0:T(128)}) %parameter.0), index=0
- %negate = s32[2]{0:T(128)} negate(s32[2]{0:T(128)} %get-tuple-element)
- %copy = s32[2]{0:T(128)} copy(s32[2]{0:T(128)} %negate)
- ROOT tuple.5 = (s32[2]{0:T(128)}) tuple(%copy)
+ %parameter.0 = (s32[2]) parameter(0)
+ %get-tuple-element = s32[2] get-tuple-element(%parameter.0),
+     index=0
+ %negate = s32[2] negate(%get-tuple-element)
+ %copy = s32[2] copy(%negate)
+ ROOT tuple.5 = (s32[2]) tuple(%copy)
  }
 
  branch_1_comp.12.clone {
-  %parameter.4 = (s32[2]{0:T(128)}) parameter(0)
-  %get-tuple-element.5 = s32[2]{0:T(128)} get-tuple-element((s32[2]{0:T(128)}) %parameter.4), index=0
-  %copy.1 = s32[2]{0:T(128)} copy(s32[2]{0:T(128)} %get-tuple-element.5)
-  ROOT tuple.6 = (s32[2]{0:T(128)}) tuple(%copy.1)
+  %parameter.4 = (s32[2]) parameter(0)
+  %get-tuple-element.5 = s32[2] get-tuple-element(%parameter.4),
+      index=0
+  %copy.1 = s32[2] copy(%get-tuple-element.5)
+  ROOT tuple.6 = (s32[2]) tuple(%copy.1)
  }
 
 ENTRY TestComputation {
-  %parameter.1 = s32[]{:T(128)} parameter(0), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
-  %parameter.2 = s32[2]{0:T(128)} parameter(1), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
-  %parameter.3 = s32[2]{0:T(128)} parameter(2), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
-  %tuple.1 = (s32[2]{0:T(128)}) tuple(s32[2]{0:T(128)} %parameter.3)
-  %tuple.3 = (s32[2]{0:T(128)}) tuple(s32[2]{0:T(128)} %parameter.2)
-  %conditional.18 = (s32[2]{0:T(128)}) conditional(s32[]{:T(128)} %parameter.1, (s32[2]{0:T(128)}) %tuple.1, (s32[2]{0:T(128)}) %tuple.3), branch_computations={%branch_0_comp.5.clone, %branch_1_comp.12.clone}, metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
-  %gte.1 = s32[2]{0:T(128)} get-tuple-element(conditional.18), index=0
-  ROOT tuple.4 = (s32[2]{0:T(128)},s32[2]{0:T(128)}) tuple(gte.1, gte.1)
+  %parameter.1 = s32[] parameter(0)
+  %parameter.2 = s32[2] parameter(1)
+  %parameter.3 = s32[2] parameter(2)
+  %tuple.1 = (s32[2]) tuple(%parameter.3)
+  %tuple.3 = (s32[2]) tuple(%parameter.2)
+  %conditional.18 = (s32[2]) conditional(%parameter.1,
+      %tuple.1, %tuple.3), branch_computations={%branch_0_comp.5.clone,
+          %branch_1_comp.12.clone}
+  %gte.1 = s32[2] get-tuple-element(conditional.18), index=0
+  ROOT tuple.4 = (s32[2],s32[2]) tuple(gte.1, gte.1)
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -3176,27 +3292,29 @@ HloModule TestModule
 
 branch_0 {
   param_0 = f64[] parameter(0)
-  negate.2 = f64[] negate(f64[] param_0)
-  ROOT tuple = (f64[], f64[]) tuple(f64[] negate.2, f64[] negate.2)
+  negate.2 = f64[] negate(param_0)
+  ROOT tuple = (f64[], f64[]) tuple(negate.2, negate.2)
 }
 
 fused_computation {
   param_0.1 = f64[] parameter(0)
-  abs.2 = f64[] abs(f64[] param_0.1)
-  negate.1 = f64[] negate(f64[] param_0.1)
-  ROOT %tuple.2 = (f64[], f64[]) tuple(f64[] negate.1, f64[] abs.2)
+  abs.2 = f64[] abs(param_0.1)
+  negate.1 = f64[] negate(param_0.1)
+  ROOT %tuple.2 = (f64[], f64[]) tuple(negate.1, abs.2)
 }
 
 branch_1 {
   param_0.2 = f64[] parameter(0)
-  ROOT fusion = (f64[], f64[]) fusion(f64[] param_0.2), kind=kLoop, calls=%fused_computation
+  ROOT fusion = (f64[], f64[]) fusion(param_0.2), kind=kLoop,
+      calls=%fused_computation
 }
 
 ENTRY main {
   pred.0 = s32[] parameter(0)
   param_1 = f64[] parameter(1)
   param_2 = f64[] parameter(2)
-  ROOT conditional.0 = (f64[], f64[]) conditional(s32[] pred.0, f64[] param_1, f64[] param_2), branch_computations={%branch_0, %branch_1}
+  ROOT conditional.0 = (f64[], f64[]) conditional(pred.0, param_1,
+      f64[] param_2), branch_computations={%branch_0, %branch_1}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -3231,9 +3349,9 @@ branch_0 {
 
 fused_computation {
   param_0.1 = f64[] parameter(0)
-  abs.2 = f64[] abs(f64[] param_0.1)
-  negate.1 = f64[] negate(f64[] param_0.1)
-  ROOT %tuple.2 = (f64[], f64[]) tuple(f64[] negate.1, f64[] abs.2)
+  abs.2 = f64[] abs(param_0.1)
+  negate.1 = f64[] negate(param_0.1)
+  ROOT %tuple.2 = (f64[], f64[]) tuple(negate.1, abs.2)
 }
 
 reduce_region {
@@ -3248,15 +3366,17 @@ reduce_region {
 
 branch_1 {
   c_0 = f64[] constant(0)
-  param_0.1 = f64[128]{0} parameter(0)
-  ROOT reduce = (f64[], f64[]) reduce(param_0.1, param_0.1, c_0, c_0), dimensions={0}, to_apply=reduce_region
+  param_0.1 = f64[128] parameter(0)
+  ROOT reduce = (f64[], f64[]) reduce(param_0.1, param_0.1, c_0, c_0),
+      dimensions={0}, to_apply=reduce_region
 }
 
 ENTRY main {
   pred.0 = s32[] parameter(0)
   empty_tuple = () tuple()
   param_2 = f64[128] parameter(1), sharding={replicated}
-  ROOT conditional.0 = (f64[], f64[]) conditional(s32[] pred.0, () empty_tuple, f64[128] param_2), branch_computations={%branch_0, %branch_1}
+  ROOT conditional.0 = (f64[], f64[]) conditional(pred.0, empty_tuple,
+      f64[128] param_2), branch_computations={%branch_0, %branch_1}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -3285,35 +3405,35 @@ TEST_F(CopyInsertionTest, RootInstructionNotLast) {
 HloModule module, is_scheduled=true
 
 body2 {
-  p_body2 = (f32[2]{0}) parameter(0)
-  p_body2.1 = f32[2]{0} get-tuple-element(p_body2), index=0
-  add.3 = f32[2]{0} add(p_body2.1, p_body2.1)
-  ROOT root2 = (f32[2]{0}) tuple(add.3)
+  p_body2 = (f32[2]) parameter(0)
+  p_body2.1 = f32[2] get-tuple-element(p_body2), index=0
+  add.3 = f32[2] add(p_body2.1, p_body2.1)
+  ROOT root2 = (f32[2]) tuple(add.3)
 }
 
 condition2 {
-  p_cond2 = (f32[2]{0}) parameter(0)
+  p_cond2 = (f32[2]) parameter(0)
   ROOT result = pred[] constant(true)
 }
 
 body {
-  p_body = (f32[2]{0}) parameter(0)
-  p_body.1 = f32[2]{0} get-tuple-element(p_body), index=0
-  ROOT root = (f32[2]{0}) tuple(p_body.1)
-  copy = f32[2]{0} copy(p_body.1)
-  tuple = (f32[2]{0}) tuple(copy)
-  while.1 = (f32[2]{0}) while(tuple), condition=condition2, body=body2
+  p_body = (f32[2]) parameter(0)
+  p_body.1 = f32[2] get-tuple-element(p_body), index=0
+  ROOT root = (f32[2]) tuple(p_body.1)
+  copy = f32[2] copy(p_body.1)
+  tuple = (f32[2]) tuple(copy)
+  while.1 = (f32[2]) while(tuple), condition=condition2, body=body2
 }
 
 condition {
-  p_cond = (f32[2]{0}) parameter(0)
+  p_cond = (f32[2]) parameter(0)
   ROOT result = pred[] constant(true)
 }
 
 ENTRY entry {
-  const0 = f32[2]{0} constant({1, 2})
-  while_init = (f32[2]{0}) tuple(const0)
-  ROOT while.0 = (f32[2]{0}) while(while_init), condition=condition, body=body
+  const0 = f32[2] constant({1, 2})
+  while_init = (f32[2]) tuple(const0)
+  ROOT while.0 = (f32[2]) while(while_init), condition=condition, body=body
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -3330,27 +3450,41 @@ TEST_F(CopyInsertionTest, InPlaceCollectivePermuteCopy) {
 HloModule hlo_runner_test_0.1
 ENTRY hlo_runner_test_0.1 {
     replica_id = u32[] replica-id()
-    broadcast.0 = u32[2,8,128]{2,1,0:T(2,128)} broadcast(u32[] replica_id), dimensions={}
+    broadcast.0 = u32[2,8,128] broadcast(replica_id), dimensions={}
     constant.1 = u32[] constant(1000)
-    broadcast.1 = u32[2,8,128]{2,1,0:T(2,128)} broadcast(u32[] constant.1), dimensions={}
-    broadcast.2 = u32[4,8,128]{2,1,0:T(2,128)} broadcast(u32[] constant.1), dimensions={}
+    broadcast.1 = u32[2,8,128] broadcast(constant.1), dimensions={}
+    broadcast.2 = u32[4,8,128] broadcast(constant.1), dimensions={}
     constant.2 = s32[] constant(0)
     constant.3 = s32[] constant(1)
-    tuple.input = (u32[2,8,128]{2,1,0:T(2,128)}, u32[2,8,128]{2,1,0:T(2,128)}) tuple(u32[2,8,128]{2,1,0:T(2,128)} broadcast.0, u32[2,8,128]{2,1,0:T(2,128)} broadcast.0)
-    tuple.output = (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) tuple(u32[2,8,128]{2,1,0:T(2,128)} broadcast.1, u32[4,8,128]{2,1,0:T(2,128)} broadcast.2)
-    tuple.2 = (s32[],s32[],s32[]) tuple(constant.2, constant.2, constant.2)
-    tuple.3 = (s32[],s32[],s32[]) tuple(constant.3, constant.2, constant.2)
-    tuple.4 = ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple((s32[],s32[],s32[]) tuple.2, (s32[],s32[],s32[]) tuple.3)
+    tuple.input = (u32[2,8,128], u32[2,8,128]) tuple(broadcast.0, broadcast.0)
+    tuple.output = (u32[2,8,128], u32[4,8,128]) tuple(broadcast.1, broadcast.2)
+    tuple.2 = (s32[], s32[], s32[]) tuple(constant.2, constant.2, constant.2)
+    tuple.3 = (s32[], s32[], s32[]) tuple(constant.3, constant.2, constant.2)
+    tuple.4 = ((s32[], s32[], s32[]), (s32[], s32[], s32[])) tuple(tuple.2,
+        tuple.3)
     constant.4 = s32[] constant(2)
-    tuple.5 = (s32[],s32[],s32[]) tuple(constant.4, constant.2, constant.2)
-    tuple.6 = ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple((s32[],s32[],s32[]) tuple.2, (s32[],s32[],s32[]) tuple.5)
-    tuple.7 = ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple((s32[],s32[],s32[]) tuple.2, (s32[],s32[],s32[]) tuple.2)
-    tuple.8 = (((s32[],s32[],s32[]), (s32[],s32[],s32[])), ((s32[],s32[],s32[]), (s32[],s32[],s32[]))) tuple(((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple.4, ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple.7)
-    tuple.9 = (((s32[],s32[],s32[]), (s32[],s32[],s32[])), ((s32[],s32[],s32[]), (s32[],s32[],s32[]))) tuple(((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple.4, ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple.6)
-    tuple.10 = (((s32[],s32[],s32[]), (s32[],s32[],s32[])), ((s32[],s32[],s32[]), (s32[],s32[],s32[]))) tuple(((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple.4, ((s32[],s32[],s32[]), (s32[],s32[],s32[])) tuple.7)
-    collective-permute.0 = (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) collective-permute((u32[2,8,128]{2,1,0:T(2,128)}, u32[2,8,128]{2,1,0:T(2,128)}) tuple.input, (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) tuple.output, (((s32[],s32[],s32[]), (s32[],s32[],s32[])), ((s32[],s32[],s32[]), (s32[],s32[],s32[]))) tuple.8, (((s32[],s32[],s32[]), (s32[],s32[],s32[])), ((s32[],s32[],s32[]), (s32[],s32[],s32[]))) tuple.9), source_target_pairs={{0,1},{1,2},{2,3},{3,0},{0,3},{3,2},{2,1},{1,0}}, slice_sizes={{1,8,128},{1,8,128},{2,8,128},{2,8,128}}
-    collective-permute.1 = (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) collective-permute((u32[2,8,128]{2,1,0:T(2,128)}, u32[2,8,128]{2,1,0:T(2,128)}) tuple.input, (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) tuple.output, (((s32[],s32[],s32[]), (s32[],s32[],s32[])), ((s32[],s32[],s32[]), (s32[],s32[],s32[]))) tuple.8, (((s32[],s32[],s32[]), (s32[],s32[],s32[])), ((s32[],s32[],s32[]), (s32[],s32[],s32[]))) tuple.10), source_target_pairs={{0,1},{1,2},{2,3},{3,0},{0,3},{3,2},{2,1},{1,0}}, slice_sizes={{1,8,128},{1,8,128},{2,8,128},{2,8,128}}
-    ROOT tuple = ((u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}), (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)})) tuple(collective-permute.0, collective-permute.1)
+    tuple.5 = (s32[], s32[], s32[]) tuple(constant.4, constant.2, constant.2)
+    tuple.6 = ((s32[], s32[], s32[]), (s32[], s32[], s32[])) tuple(tuple.2,
+        tuple.5)
+    tuple.7 = ((s32[], s32[], s32[]), (s32[], s32[], s32[])) tuple(tuple.2,
+        tuple.2)
+    tuple.8 = (((s32[], s32[], s32[]), (s32[], s32[], s32[])),
+        ((s32[], s32[], s32[]), (s32[], s32[], s32[]))) tuple(tuple.4, tuple.7)
+    tuple.9 = (((s32[], s32[], s32[]), (s32[], s32[], s32[])),
+        ((s32[], s32[], s32[]), (s32[], s32[], s32[]))) tuple(tuple.4, tuple.6)
+    tuple.10 = (((s32[], s32[], s32[]), (s32[], s32[], s32[])),
+        ((s32[], s32[], s32[]), (s32[], s32[], s32[]))) tuple(tuple.4, tuple.7)
+    collective-permute.0 = (u32[2,8,128], u32[4,8,128]) collective-permute(
+        tuple.input, tuple.output, tuple.8, tuple.9),
+            source_target_pairs={{0,1},{1,2},{2,3},{3,0},{0,3},{3,2},{2,1},{1,0}},
+            slice_sizes={{1,8,128},{1,8,128},{2,8,128},{2,8,128}}
+    collective-permute.1 = (u32[2,8,128], u32[4,8,128]) collective-permute(
+        tuple.input, tuple.output, tuple.8, tuple.10),
+            source_target_pairs={{0,1},{1,2},{2,3},{3,0},{0,3},{3,2},{2,1},{1,0}},
+            slice_sizes={{1,8,128},{1,8,128},{2,8,128},{2,8,128}}
+    ROOT tuple = ((u32[2,8,128], u32[4,8,128]),
+        (u32[2,8,128], u32[4,8,128])) tuple(collective-permute.0,
+            collective-permute.1)
   }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -3370,9 +3504,11 @@ ENTRY main {
   broadcast.6 = f32[128,1,128] broadcast(constant.1), dimensions={}
   broadcast.7 = f32[128,1,128] broadcast(constant.1), dimensions={}
   constant.3 = s32[] constant(0)
-  dynamic-update-slice.5 = f32[128,1,128] dynamic-update-slice(broadcast.6, broadcast.7, constant.3, constant.3, constant.3)
+  dynamic-update-slice.5 = f32[128,1,128] dynamic-update-slice(broadcast.6,
+      broadcast.7, constant.3, constant.3, constant.3)
   add1 = f32[128,1,128] add(dynamic-update-slice.5, dynamic-update-slice.5)
-  dynamic-update-slice.4 = f32[128,1,128] dynamic-update-slice(broadcast.6, broadcast.7, constant.3, constant.3, constant.3)
+  dynamic-update-slice.4 = f32[128,1,128] dynamic-update-slice(broadcast.6,
+      broadcast.7, constant.3, constant.3, constant.3)
   add2 = f32[128,1,128] add(dynamic-update-slice.4, dynamic-update-slice.4)
   tuple = (f32[128,1,128], f32[128,1,128]) tuple(add1, add2)
 }
@@ -3390,14 +3526,17 @@ TEST_F(CopyInsertionTest, CustomCallAliasingCopyInsertedAliasedParam) {
   // computation, but it does not own that buffer so a precautionary copy
   // must be inserted.
   const char* const kModuleString = R"(
-    HloModule xla_computation_f
+HloModule xla_computation_f
 
-    ENTRY xla_computation_f {
-      parameter.1 = f32[2,3,4,5] parameter(0)
-      parameter.2 = f32[2,3,4,5] parameter(1)
-      ROOT custom-call = f32[2,3,4,5] custom-call(parameter.1, parameter.2), custom_call_target="dm_softmax", operand_layout_constraints={f32[2,3,4,5], f32[2,3,4,5]}, output_to_operand_aliasing={{}: (0, {})}
-    }
-  )";
+ENTRY xla_computation_f {
+  parameter.1 = f32[2,3,4,5] parameter(0)
+  parameter.2 = f32[2,3,4,5] parameter(1)
+  ROOT custom-call = f32[2,3,4,5] custom-call(parameter.1, parameter.2),
+                    custom_call_target="dm_softmax",
+                    operand_layout_constraints={f32[2,3,4,5], f32[2,3,4,5]},
+                    output_to_operand_aliasing={{}: (0, {})}
+}
+)";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
@@ -3411,16 +3550,19 @@ TEST_F(CopyInsertionTest, CustomCallAliasingCopyInsertedAliasedReuse) {
   // by a different instruction (add.2) A copy must be inserted so the correct
   // HloValue is passed to the add, and not the result of the aliased call.
   const char* const kModuleString = R"(
-    HloModule xla_computation_f
+HloModule xla_computation_f
 
-    ENTRY xla_computation_f {
-      parameter.1 = f32[2,3,4,5] parameter(0)
-      parameter.2 = f32[2,3,4,5] parameter(1)
-      add.1 = f32[2,3,4,5] add(parameter.1, parameter.2)
-      custom-call = f32[2,3,4,5] custom-call(add.1, parameter.2), custom_call_target="dm_softmax", operand_layout_constraints={f32[2,3,4,5], f32[2,3,4,5]}, output_to_operand_aliasing={{}: (0, {})}
-      ROOT add.2 = f32[2,3,4,5] add(custom-call, add.1)
-    }
-  )";
+ENTRY xla_computation_f {
+  parameter.1 = f32[2,3,4,5] parameter(0)
+  parameter.2 = f32[2,3,4,5] parameter(1)
+  add.1 = f32[2,3,4,5] add(parameter.1, parameter.2)
+  custom-call = f32[2,3,4,5] custom-call(add.1, parameter.2),
+                custom_call_target="dm_softmax",
+                operand_layout_constraints={f32[2,3,4,5], f32[2,3,4,5]},
+                output_to_operand_aliasing={{}: (0, {})}
+  ROOT add.2 = f32[2,3,4,5] add(custom-call, add.1)
+}
+)";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
@@ -3435,14 +3577,17 @@ TEST_F(CopyInsertionTest, CustomCallAliasingCopyRemoved) {
   // This custom call aliases an intermediate result, and the value is never
   // reused. There is no need for a copy.
   const char* const kModuleString = R"(
-    HloModule xla_computation_f__1
-    ENTRY xla_computation_f {
-      parameter.1 = f32[2,3,4,5] parameter(0)
-      parameter.2 = f32[2,3,4,5] parameter(1)
-      add = f32[2,3,4,5] add(parameter.1, parameter.2)
-      ROOT custom-call = f32[2,3,4,5] custom-call(add, parameter.2), custom_call_target="dm_softmax", operand_layout_constraints={f32[2,3,4,5], f32[2,3,4,5]}, output_to_operand_aliasing={{}: (0, {})}
-    }
-  )";
+HloModule xla_computation_f__1
+ENTRY xla_computation_f {
+  parameter.1 = f32[2,3,4,5] parameter(0)
+  parameter.2 = f32[2,3,4,5] parameter(1)
+  add = f32[2,3,4,5] add(parameter.1, parameter.2)
+  ROOT custom-call = f32[2,3,4,5] custom-call(add, parameter.2),
+                    custom_call_target="dm_softmax",
+                    operand_layout_constraints={f32[2,3,4,5], f32[2,3,4,5]},
+                    output_to_operand_aliasing={{}: (0, {})}
+}
+)";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
@@ -3457,22 +3602,27 @@ TEST_F(CopyInsertionTest, ReverseInConditional) {
 HloModule jit_f.0
 
 %region_0.4 (Arg_.5: u8[300,451,3]) -> (u8[300,451,3]) {
-  %Arg_.5 = u8[300,451,3]{1,0,2:T(8,128)(4,1)} parameter(0)
-  ROOT %tuple = (u8[300,451,3]{1,0,2:T(8,128)(4,1)}) tuple(u8[300,451,3]{1,0,2:T(8,128)(4,1)} %Arg_.5)
+  %Arg_.5 = u8[300,451,3] parameter(0)
+  ROOT %tuple = (u8[300,451,3]) tuple(%Arg_.5)
 }
 
 %region_1.9 (Arg_.10: u8[300,451,3]) -> (u8[300,451,3]) {
-  %Arg_.10 = u8[300,451,3]{1,0,2:T(8,128)(4,1)} parameter(0)
-  %reverse = u8[300,451,3]{1,0,2:T(8,128)(4,1)} reverse(u8[300,451,3]{1,0,2:T(8,128)(4,1)} %Arg_.10), dimensions={0}
-  ROOT %tuple.1 = (u8[300,451,3]{1,0,2:T(8,128)(4,1)}) tuple(u8[300,451,3]{1,0,2:T(8,128)(4,1)} %reverse)
+  %Arg_.10 = u8[300,451,3] parameter(0)
+  %reverse = u8[300,451,3] reverse(%Arg_.10),
+      dimensions={0}
+  ROOT %tuple.1 = (u8[300,451,3]) tuple(%reverse)
 }
 
 ENTRY %main.13 (Arg_0.1: pred[], Arg_1.2: u8[300,451,3]) -> u8[300,451,3] {
-  %Arg_0.1 = pred[]{:T(1024)} parameter(0)
-  %convert.3 = s32[]{:T(256)} convert(pred[]{:T(1024)} %Arg_0.1)
-  %Arg_1.2 = u8[300,451,3]{1,0,2:T(8,128)(4,1)} parameter(1)
-  %conditional.12.clone = (u8[300,451,3]{1,0,2:T(8,128)(4,1)}) conditional(s32[]{:T(256)} %convert.3, u8[300,451,3]{1,0,2:T(8,128)(4,1)} %Arg_1.2, u8[300,451,3]{1,0,2:T(8,128)(4,1)} %Arg_1.2), branch_computations={%region_0.4, %region_1.9}
-  ROOT %get-tuple-element = u8[300,451,3]{1,0,2:T(8,128)(4,1)} get-tuple-element((u8[300,451,3]{1,0,2:T(8,128)(4,1)}) %conditional.12.clone), index=0
+  %Arg_0.1 = pred[] parameter(0)
+  %convert.3 = s32[] convert(%Arg_0.1)
+  %Arg_1.2 = u8[300,451,3] parameter(1)
+  %conditional.12.clone = (u8[300,451,3]) conditional(%convert.3, %Arg_1.2,
+      %Arg_1.2),
+      branch_computations={%region_0.4,
+      %region_1.9}
+  ROOT %get-tuple-element = u8[300,451,3] get-tuple-element(%conditional.12.clone),
+      index=0
 }
 )";
 
@@ -3492,7 +3642,8 @@ TEST_F(CopyInsertionTest, InputOutputAliasCopy) {
 HloModule main_tf2xla.11, input_output_alias={ {0}: (0, {1}, may-alias) }
 
 ENTRY %main_tf2xla.11 (arg_tuple.1: (f32[], f32[])) -> (f32[], f32[]) {
-ROOT %arg_tuple.1 = (f32[]{:T(256)}, f32[]{:T(256)}) parameter(0), parameter_replication={false,false}, sharding={{replicated}, {replicated}}
+ROOT %arg_tuple.1 = (f32[], f32[]) parameter(0),
+    parameter_replication={false,false}, sharding={{replicated}, {replicated}}
 }
 )";
 
@@ -3507,16 +3658,17 @@ ROOT %arg_tuple.1 = (f32[]{:T(256)}, f32[]{:T(256)}) parameter(0), parameter_rep
 
 TEST_F(CopyInsertionTest, AddControlDependencyForInputOutputAlias) {
   const char* const kModuleString = R"(
-  HloModule test, input_output_alias={ {0}: (0, {}, may-alias), {1}: (1, {}, may-alias) }
+HloModule test, input_output_alias={ {0}: (0, {}, may-alias), {1}: (1, {},
+    may-alias) }
 
-  ENTRY test {
-    x = f32[3] parameter(0)
-    y = f32[3] parameter(1)
-    add = f32[3] add(x, y)
-    mul = f32[3] multiply(x, y)
-    ROOT result = (f32[3], f32[3]) tuple(add, mul)
-  }
-  )";
+ENTRY test {
+  x = f32[3] parameter(0)
+  y = f32[3] parameter(1)
+  add = f32[3] add(x, y)
+  mul = f32[3] multiply(x, y)
+  ROOT result = (f32[3], f32[3]) tuple(add, mul)
+}
+)";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
@@ -3539,27 +3691,31 @@ TEST_F(CopyInsertionTest, AsyncCallDUSNoCopy) {
 HloModule async_call
 
 %called_computation {
-  %out_param = s32[1024]{0} parameter(1)
-  %input = s32[1024]{0} parameter(0)
+  %out_param = s32[1024] parameter(1)
+  %input = s32[1024] parameter(0)
   %size = s32[] constant(256)
   %index = s32[] custom-call(), custom_call_target="Baz"
-  %start = s32[] multiply(s32[] %size, s32[] %index)
-  %input2 = s32[256]{0} dynamic-slice(s32[1024]{0} %input, s32[] %start), dynamic_slice_sizes={256}
-  %output = s32[256]{0} add(s32[256]{0} %input2, s32[256]{0} %input2)
-  ROOT %output2 = s32[1024]{0} dynamic-update-slice(s32[1024]{0} %out_param, s32[256]{0} %output, s32[] %start)
+  %start = s32[] multiply(%size, %index)
+  %input2 = s32[256] dynamic-slice(%input, %start), dynamic_slice_sizes={256}
+  %output = s32[256] add(%input2, %input2)
+  ROOT %output2 = s32[1024] dynamic-update-slice(%out_param, %output, %start)
 }, execution_thread="foobar"
 
 %async_wrapped {
-  %async_param = s32[1024]{0} parameter(0)
-  %async_param.1 = s32[1024]{0} parameter(1)
-  ROOT %call = s32[1024]{0} call(s32[1024]{0} %async_param, s32[1024]{0} %async_param.1), to_apply=%called_computation
+  %async_param = s32[1024] parameter(0)
+  %async_param.1 = s32[1024] parameter(1)
+  ROOT %call = s32[1024] call(%async_param, %async_param.1),
+      to_apply=%called_computation
 }, execution_thread="foobar"
 
 ENTRY %main {
-  %input.1 = s32[1024]{0} parameter(0)
-  %buf = s32[1024]{0} custom-call(), custom_call_target="AllocateBuffer"
-  %async-start = ((s32[1024]{0}, s32[1024]{0}), s32[1024]{0}, u32[]) async-start(s32[1024]{0} %input.1, s32[1024]{0} %buf), async_execution_thread="foobar", calls=%async_wrapped
-  ROOT %async-done = s32[1024]{0} async-done(((s32[1024]{0}, s32[1024]{0}), s32[1024]{0}, u32[]) %async-start), async_execution_thread="foobar", calls=%async_wrapped
+  %input.1 = s32[1024] parameter(0)
+  %buf = s32[1024] custom-call(), custom_call_target="AllocateBuffer"
+  %async-start = ((s32[1024], s32[1024]), s32[1024],
+      u32[]) async-start(%input.1, %buf),
+          async_execution_thread="foobar", calls=%async_wrapped
+  ROOT %async-done = s32[1024] async-done(%async-start),
+      async_execution_thread="foobar", calls=%async_wrapped
 }
 )";
 
@@ -3578,27 +3734,31 @@ TEST_F(CopyInsertionTest, AsyncCallDUSCopy) {
 HloModule async_call
 
 %called_computation {
-  %out_param = s32[1024]{0} parameter(1)
-  %input = s32[1024]{0} parameter(0)
+  %out_param = s32[1024] parameter(1)
+  %input = s32[1024] parameter(0)
   %size = s32[] constant(256)
   %index = s32[] custom-call(), custom_call_target="Baz"
-  %start = s32[] multiply(s32[] %size, s32[] %index)
-  %input2 = s32[256]{0} dynamic-slice(s32[1024]{0} %input, s32[] %start), dynamic_slice_sizes={256}
-  %output = s32[256]{0} add(s32[256]{0} %input2, s32[256]{0} %input2)
-  ROOT %output2 = s32[1024]{0} dynamic-update-slice(s32[1024]{0} %out_param, s32[256]{0} %output, s32[] %start)
+  %start = s32[] multiply(%size, %index)
+  %input2 = s32[256] dynamic-slice(%input, %start), dynamic_slice_sizes={256}
+  %output = s32[256] add(%input2, %input2)
+  ROOT %output2 = s32[1024] dynamic-update-slice(%out_param, %output, %start)
 }, execution_thread="foobar"
 
 %async_wrapped {
-  %async_param = s32[1024]{0} parameter(0)
-  %async_param.1 = s32[1024]{0} parameter(1)
-  ROOT %call = s32[1024]{0} call(s32[1024]{0} %async_param, s32[1024]{0} %async_param.1), to_apply=%called_computation
+  %async_param = s32[1024] parameter(0)
+  %async_param.1 = s32[1024] parameter(1)
+  ROOT %call = s32[1024] call(%async_param, %async_param.1),
+      to_apply=%called_computation
 }, execution_thread="foobar"
 
 ENTRY %main {
-  %input.1 = s32[1024]{0} parameter(0)
-  %input.2 = s32[1024]{0} parameter(1)
-  %async-start = ((s32[1024]{0}, s32[1024]{0}), s32[1024]{0}, u32[]) async-start(s32[1024]{0} %input.1, s32[1024]{0} %input.2), async_execution_thread="foobar", calls=%async_wrapped
-  ROOT %async-done = s32[1024]{0} async-done(((s32[1024]{0}, s32[1024]{0}), s32[1024]{0}, u32[]) %async-start), async_execution_thread="foobar", calls=%async_wrapped
+  %input.1 = s32[1024] parameter(0)
+  %input.2 = s32[1024] parameter(1)
+  %async-start = ((s32[1024], s32[1024]), s32[1024],
+      u32[]) async-start(%input.1, %input.2),
+          async_execution_thread="foobar", calls=%async_wrapped
+  ROOT %async-done = s32[1024] async-done(%async-start),
+      async_execution_thread="foobar", calls=%async_wrapped
 }
 )";
 
@@ -3615,7 +3775,8 @@ ENTRY %main {
 TEST_F(CopyInsertionTest,
        RegionAnalysisDoesNotAddUnnecessaryCopyOfInputTupleElements) {
   const char* const kModuleString = R"(
-HloModule while_aliasing, input_output_alias={ {0}: (0, {}, may-alias), {1}: (1, {}, may-alias), {2}: (2, {}, may-alias) }
+HloModule while_aliasing, input_output_alias={ {0}: (0, {},
+    may-alias), {1}: (1, {}, may-alias), {2}: (2, {}, may-alias) }
 
 add {
   param_0 = f32[1,128] parameter(0)
@@ -3636,7 +3797,8 @@ body {
   add = f32[1,128] add(param_0, param_1)
   c0 = f32[] constant(0)
   splat_c0 = f32[1,128] broadcast(c0), dimensions={}
-  ROOT output_tuple = (f32[1,128], f32[1,128], pred[]) tuple(add, splat_c0, cond)
+  ROOT output_tuple = (f32[1,128], f32[1,128], pred[]) tuple(add, splat_c0,
+      cond)
 }
 
 ENTRY main {
@@ -3644,7 +3806,8 @@ ENTRY main {
   param_1 = f32[1,128] parameter(1)
   param_2 = pred[] parameter(2)
   tuple = (f32[1,128], f32[1,128], pred[]) tuple(param_0, param_1, param_2)
-  ROOT while = (f32[1,128], f32[1,128], pred[]) while(tuple), condition=condition, body=body
+  ROOT while = (f32[1,128], f32[1,128], pred[]) while(tuple),
+      condition=condition, body=body
 }
 )";
 
@@ -3666,19 +3829,22 @@ ENTRY main {
 TEST_F(CopyInsertionTest,
        RegionAnalysisDoesNotAddCopyForNonUpdateParameterOfDynamicSliceUpdate) {
   const char* const kModuleString = R"(
-HloModule while_aliasing, input_output_alias={ {0}: (0, {}, may-alias), {1}: (1, {}, may-alias), {2}: (2, {}, may-alias), {3}: (3, {}, may-alias) }
+HloModule while_aliasing, input_output_alias={ {0}: (0, {},
+    may-alias), {1}: (1, {}, may-alias), {2}: (2, {}, may-alias), {3}: (3, {},
+        may-alias) }
 
 fused_computation {
-  param_0 = f32[4,2,128,512]{3,2,1,0} parameter(0)
-  param_1 = f32[2,128,512]{2,1,0} parameter(1)
-  bitcast.1 = f32[1,2,128,512]{3,2,1,0} bitcast(param_1)
+  param_0 = f32[4,2,128,512] parameter(0)
+  param_1 = f32[2,128,512] parameter(1)
+  bitcast.1 = f32[1,2,128,512] bitcast(param_1)
   param_2 = s32[] parameter(2)
   constant.1 = s32[] constant(0)
   compare.1 = pred[] compare(param_2, constant.1), direction=LT
   constant.2 = s32[] constant(4)
   add.1 = s32[] add(param_2, constant.2)
   select.1 = s32[] select(compare.1, add.1, param_2)
-  ROOT dynamic-update-slice.73 = f32[4,2,128,512]{3,2,1,0} dynamic-update-slice(param_0, bitcast.1, select.1, constant.1, constant.1, constant.1)
+  ROOT dynamic-update-slice.73 = f32[4,2,128,512] dynamic-update-slice(param_0,
+      bitcast.1, select.1, constant.1, constant.1, constant.1)
 }
 
 condition {
@@ -3689,13 +3855,15 @@ condition {
 body {
   input_tuple = (s32[], f32[2,128,512], f32[4,2,128,512], pred[]) parameter(0)
   get-tuple-element.0 = s32[] get-tuple-element(input_tuple), index=0
-  get-tuple-element.1 = f32[4,2,128,512]{3,2,1,0} get-tuple-element(input_tuple), index=2
-  get-tuple-element.2 = f32[2,128,512]{2,1,0} get-tuple-element(input_tuple), index=1
-  fusion = f32[4,2,128,512]{3,2,1,0} fusion(get-tuple-element.1, get-tuple-element.2, get-tuple-element.0), kind=kLoop, calls=fused_computation
+  get-tuple-element.1 = f32[4,2,128,512] get-tuple-element(input_tuple), index=2
+  get-tuple-element.2 = f32[2,128,512] get-tuple-element(input_tuple), index=1
+  fusion = f32[4,2,128,512] fusion(get-tuple-element.1, get-tuple-element.2,
+      get-tuple-element.0), kind=kLoop, calls=fused_computation
   cond = pred[] get-tuple-element(input_tuple), index=3
   c0 = f32[] constant(0)
-  fusion.1 = f32[2,128,512]{2,1,0} broadcast(c0), dimensions={}
-  ROOT output_tuple = (s32[], f32[2,128,512], f32[4,2,128,512], pred[]) tuple(get-tuple-element.0, fusion.1, fusion, cond)
+  fusion.1 = f32[2,128,512] broadcast(c0), dimensions={}
+  ROOT output_tuple = (s32[], f32[2,128,512], f32[4,2,128,512],
+      pred[]) tuple(get-tuple-element.0, fusion.1, fusion, cond)
 }
 
 ENTRY main {
@@ -3703,8 +3871,10 @@ ENTRY main {
   param_1 = f32[4,2,128,512] parameter(1)
   param_2 = pred[] parameter(2)
   param_3 = s32[] parameter(3)
-  tuple = (s32[], f32[2,128,512], f32[4,2,128,512], pred[]) tuple(param_3, param_0, param_1, param_2)
-  ROOT while = (s32[], f32[2,128,512], f32[4,2,128,512], pred[]) while(tuple), condition=condition, body=body
+  tuple = (s32[], f32[2,128,512], f32[4,2,128,512], pred[]) tuple(param_3,
+      param_0, param_1, param_2)
+  ROOT while = (s32[], f32[2,128,512], f32[4,2,128,512], pred[]) while(tuple),
+      condition=condition, body=body
 }
 )";
 
@@ -3747,7 +3917,8 @@ ENTRY main {
   param_1 = f32[1,128] parameter(1)
   param_2 = pred[] parameter(2)
   tuple = (f32[1,128], f32[1,128], pred[]) tuple(param_0, param_1, param_2)
-  ROOT while = (f32[1,128], f32[1,128], pred[]) while(tuple), condition=condition, body=body
+  ROOT while = (f32[1,128], f32[1,128], pred[]) while(tuple),
+      condition=condition, body=body
 }
 )";
 
@@ -3771,39 +3942,39 @@ TEST_F(CopyInsertionTest, DontInsertCopiesInAsyncComputation) {
 HloModule test
 
 %async_computation {
-  %param_0 = f32[10,32,512]{2,1,0:T(8,128)S(5)} parameter(0)
-  %param_1 = f32[1,32,512]{2,1,0:T(8,128)} parameter(1)
-  %param_2 = s32[]{:T(128)} parameter(2)
-  %param_3 = s32[]{:T(128)} parameter(3)
-  %param_4 = s32[]{:T(128)} parameter(4)
-  ROOT %dynamic-update-slice.1 = f32[10,32,512]{2,1,0:T(8,128)S(5)}
+  %param_0 = f32[10,32,512] parameter(0)
+  %param_1 = f32[1,32,512] parameter(1)
+  %param_2 = s32[] parameter(2)
+  %param_3 = s32[] parameter(3)
+  %param_4 = s32[] parameter(4)
+  ROOT %dynamic-update-slice.1 = f32[10,32,512]
     dynamic-update-slice(%param_0, %param_1, %param_2, %param_3, %param_4)
 }
 
 ENTRY %main {
-  %param.1 = (s32[]{:T(128)}, f32[32,512]{1,0:T(8,128)},
-              f32[10,32,512]{2,1,0:T(8,128)S(5)}) parameter(0)
-  %get-tuple-element.132 = f32[10,32,512]{2,1,0:T(8,128)S(5)} get-tuple-element(
+  %param.1 = (s32[], f32[32,512],
+              f32[10,32,512]) parameter(0)
+  %get-tuple-element.132 = f32[10,32,512] get-tuple-element(
     %param.1), index=2
-  %get-tuple-element.131 = f32[32,512]{1,0:T(8,128)} get-tuple-element(
+  %get-tuple-element.131 = f32[32,512] get-tuple-element(
     %param.1), index=1
-  %cosine.0 = f32[32,512]{1,0:T(8,128)} cosine(%get-tuple-element.131)
-  %reshape.6 = f32[1,32,512]{2,1,0:T(8,128)} reshape(%cosine.0)
-  %get-tuple-element.130 = s32[]{:T(128)} get-tuple-element(%param.1), index=0
-  %constant.49 = s32[]{:T(128)} constant(0)
-  %compare.13 = pred[]{:T(512)} compare(
+  %cosine.0 = f32[32,512] cosine(%get-tuple-element.131)
+  %reshape.6 = f32[1,32,512] reshape(%cosine.0)
+  %get-tuple-element.130 = s32[] get-tuple-element(%param.1), index=0
+  %constant.49 = s32[] constant(0)
+  %compare.13 = pred[] compare(
       %get-tuple-element.130, %constant.49), direction=LT
-  %constant.50 = s32[]{:T(128)} constant(10)
-  %add.22 = s32[]{:T(128)} add(%get-tuple-element.130, %constant.50)
-  %select.6 = s32[]{:T(128)} select(
+  %constant.50 = s32[] constant(10)
+  %add.22 = s32[] add(%get-tuple-element.130, %constant.50)
+  %select.6 = s32[] select(
       %compare.13, %add.22, %get-tuple-element.130)
   %dynamic-update-slice-start = (
-    (f32[10,32,512]{2,1,0:T(8,128)S(5)}, f32[1,32,512]{2,1,0:T(8,128)},
-     s32[]{:T(128)}, s32[]{:T(128)}, s32[]{:T(128)}),
-     f32[10,32,512]{2,1,0:T(8,128)S(5)}, u32[]) async-start(
+    (f32[10,32,512], f32[1,32,512],
+     s32[], s32[], s32[]),
+     f32[10,32,512], u32[]) async-start(
       %get-tuple-element.132, %reshape.6, %select.6,
       %constant.49, %constant.49), calls=%async_computation
-  ROOT %dynamic-update-slice-done = f32[10,32,512]{2,1,0:T(8,128)S(5)}
+  ROOT %dynamic-update-slice-done = f32[10,32,512]
     async-done(%dynamic-update-slice-start), calls=%async_computation
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
@@ -3827,36 +3998,41 @@ TEST_F(CopyInsertionTest, AsyncDUSInLoop) {
 HloModule module
 
 async_wrapped {
-  async_param.1 = s32[1024]{0} parameter(0)
-  async_param.2 = s32[256]{0} parameter(1)
+  async_param.1 = s32[1024] parameter(0)
+  async_param.2 = s32[256] parameter(1)
   async_param.3 = s32[] parameter(2)
-  ROOT dus = s32[1024]{0} dynamic-update-slice(async_param.1, async_param.2, async_param.3)
+  ROOT dus = s32[1024] dynamic-update-slice(async_param.1, async_param.2,
+      async_param.3)
 }
 
 condition {
-  input_tuple = (s32[1024]{0}, s32[256]{0}, s32[], pred[]) parameter(0)
+  input_tuple = (s32[1024], s32[256], s32[], pred[]) parameter(0)
   ROOT cond = pred[] get-tuple-element(input_tuple), index=3
 }
 
 body {
-  input_tuple = (s32[1024]{0}, s32[256]{0}, s32[], pred[]) parameter(0)
-  input.1 = s32[1024]{0} get-tuple-element(input_tuple), index=0
-  input.2 = s32[256]{0} get-tuple-element(input_tuple), index=1
+  input_tuple = (s32[1024], s32[256], s32[], pred[]) parameter(0)
+  input.1 = s32[1024] get-tuple-element(input_tuple), index=0
+  input.2 = s32[256] get-tuple-element(input_tuple), index=1
   input.3 = s32[] get-tuple-element(input_tuple), index=2
   input.4 = pred[] get-tuple-element(input_tuple), index=3
-  async-start = ((s32[1024]{0}, s32[256]{0}, s32[]), s32[1024]{0}, u32[]) async-start(input.1, input.2, input.3), calls=%async_wrapped
-  async-done = s32[1024]{0} async-done(async-start), calls=async_wrapped
-  ROOT tuple = (s32[1024]{0}, s32[256]{0}, s32[], pred[]) tuple(async-done, input.2, input.3, input.4)
+  async-start = ((s32[1024], s32[256], s32[]), s32[1024],
+      u32[]) async-start(input.1, input.2, input.3), calls=%async_wrapped
+  async-done = s32[1024] async-done(async-start), calls=async_wrapped
+  ROOT tuple = (s32[1024], s32[256], s32[], pred[]) tuple(async-done, input.2,
+      input.3, input.4)
 }
 
 ENTRY main {
-  input.1 = s32[256]{0} parameter(0)
+  input.1 = s32[256] parameter(0)
   input.2 = s32[] parameter(1)
   input.3 = pred[] parameter(2)
-  broadcast = s32[1024]{0} broadcast(input.2), dimensions={}
-  while_tuple = (s32[1024]{0}, s32[256]{0}, s32[], pred[]) tuple(broadcast, input.1, input.2, input.3)
-  while = (s32[1024]{0}, s32[256]{0}, s32[], pred[]) while(while_tuple), condition=condition, body=body
-  ROOT gte = s32[1024]{0} get-tuple-element(while), index=0
+  broadcast = s32[1024] broadcast(input.2), dimensions={}
+  while_tuple = (s32[1024], s32[256], s32[], pred[]) tuple(broadcast, input.1,
+      input.2, input.3)
+  while = (s32[1024], s32[256], s32[], pred[]) while(while_tuple),
+      condition=condition, body=body
+  ROOT gte = s32[1024] get-tuple-element(while), index=0
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
@@ -3871,38 +4047,38 @@ ENTRY main {
 
 TEST_F(CopyInsertionTest, PartiallyPipelinedAsyncRecv) {
   constexpr absl::string_view kModuleString = R"(
-    HloModule test, entry_computation_layout={()->f32[16]{0}}, num_partitions=4
+HloModule test, entry_computation_layout={()->f32[16]}, num_partitions=4
 
-    while_body {
-      param = ((f32[16]{0}, u32[], token[])) parameter(0)
-      prev_recv = (f32[16]{0}, u32[], token[]) get-tuple-element(param), index=0
-      recv_done = (f32[16]{0}, token[]) recv-done(prev_recv), channel_id=1
-      after_all = token[] after-all()
-      recv = (f32[16]{0}, u32[], token[]) recv(after_all), channel_id=1,
+while_body {
+  param = ((f32[16], u32[], token[])) parameter(0)
+  prev_recv = (f32[16], u32[], token[]) get-tuple-element(param), index=0
+  recv_done = (f32[16], token[]) recv-done(prev_recv), channel_id=1
+  after_all = token[] after-all()
+  recv = (f32[16], u32[], token[]) recv(after_all), channel_id=1,
           frontend_attributes={
             _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
-      ROOT tuple = ((f32[16]{0}, u32[], token[])) tuple(recv)
-    }
+  ROOT tuple = ((f32[16], u32[], token[])) tuple(recv)
+}
 
-    // Infinite loop to keep IR small.
-    while_condition {
-      param = ((f32[16]{0}, u32[], token[])) parameter(0)
-      ROOT infinite_loop = pred[] constant(true)
-    }
+// Infinite loop to keep IR small.
+while_condition {
+  param = ((f32[16], u32[], token[])) parameter(0)
+  ROOT infinite_loop = pred[] constant(true)
+}
 
-    ENTRY main_spmd {
-      after_all = token[] after-all()
-      recv = (f32[16]{0}, u32[], token[]) recv(after_all), channel_id=1,
+ENTRY main_spmd {
+  after_all = token[] after-all()
+  recv = (f32[16], u32[], token[]) recv(after_all), channel_id=1,
           frontend_attributes={
             _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
-      init = ((f32[16]{0}, u32[], token[])) tuple(recv)
-      while = ((f32[16]{0}, u32[], token[])) while(init),
+  init = ((f32[16], u32[], token[])) tuple(recv)
+  while = ((f32[16], u32[], token[])) while(init),
           condition=while_condition, body=while_body
-      recv_ctx = (f32[16]{0}, u32[], token[]) get-tuple-element(while), index=0
-      recv_done = (f32[16]{0}, token[]) recv-done(recv_ctx), channel_id=1
-      ROOT result = f32[16]{0} get-tuple-element(recv_done), index=0
-    }
-    )";
+  recv_ctx = (f32[16], u32[], token[]) get-tuple-element(while), index=0
+  recv_done = (f32[16], token[]) recv-done(recv_ctx), channel_id=1
+  ROOT result = f32[16] get-tuple-element(recv_done), index=0
+}
+)";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
   CopyInsertion copy_insertion(&alias_info_,
@@ -3926,44 +4102,44 @@ TEST_F(CopyInsertionTest, PartiallyPipelinedAsyncRecv) {
 
 TEST_F(CopyInsertionTest, PartiallyPipelinedAsyncRecvMultipleUses) {
   constexpr absl::string_view kModuleString = R"(
-    HloModule test, entry_computation_layout={(f32[16]{0})->f32[16]{0}},
-        num_partitions=4
+HloModule test, entry_computation_layout={(f32[16])->f32[16]},
+    num_partitions=4
 
-    while_body {
-      param = ((f32[16]{0}, u32[], token[]), f32[16]{0}) parameter(0)
-      prev_recv = (f32[16]{0}, u32[], token[]) get-tuple-element(param), index=0
-      recv_done = (f32[16]{0}, token[]) recv-done(prev_recv), channel_id=1
-      recv_data = f32[16]{0} get-tuple-element(recv_done), index=0
-      after_all = token[] after-all()
-      recv = (f32[16]{0}, u32[], token[]) recv(after_all), channel_id=1,
-          frontend_attributes={
-            _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
+while_body {
+  param = ((f32[16], u32[], token[]), f32[16]) parameter(0)
+  prev_recv = (f32[16], u32[], token[]) get-tuple-element(param), index=0
+  recv_done = (f32[16], token[]) recv-done(prev_recv), channel_id=1
+  recv_data = f32[16] get-tuple-element(recv_done), index=0
+  after_all = token[] after-all()
+  recv = (f32[16], u32[], token[]) recv(after_all), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
 
-      // `recv_data` is again here, which extends it's live range.
-      ROOT tuple = ((f32[16]{0}, u32[], token[]), f32[16]{0}) tuple(recv,
-          recv_data)
-    }
+  // `recv_data` is again here, which extends it's live range.
+  ROOT tuple = ((f32[16], u32[], token[]), f32[16]) tuple(recv,
+      recv_data)
+}
 
-    // Infinite loop to keep IR small.
-    while_condition {
-      param = ((f32[16]{0}, u32[], token[]), f32[16]{0}) parameter(0)
-      ROOT infinite_loop = pred[] constant(true)
-    }
+// Infinite loop to keep IR small.
+while_condition {
+  param = ((f32[16], u32[], token[]), f32[16]) parameter(0)
+  ROOT infinite_loop = pred[] constant(true)
+}
 
-    ENTRY main_spmd {
-      data = f32[16]{0} parameter(0)
-      after_all = token[] after-all()
-      recv = (f32[16]{0}, u32[], token[]) recv(after_all), channel_id=1,
-          frontend_attributes={
-            _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
-      init = ((f32[16]{0}, u32[], token[]), f32[16]{0}) tuple(recv, data)
-      while = ((f32[16]{0}, u32[], token[]), f32[16]{0}) while(init),
-          condition=while_condition, body=while_body
-      recv_ctx = (f32[16]{0}, u32[], token[]) get-tuple-element(while), index=0
-      recv_done = (f32[16]{0}, token[]) recv-done(recv_ctx), channel_id=1
-      ROOT result = f32[16]{0} get-tuple-element(recv_done), index=0
-    }
-    )";
+ENTRY main_spmd {
+  data = f32[16] parameter(0)
+  after_all = token[] after-all()
+  recv = (f32[16], u32[], token[]) recv(after_all), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
+  init = ((f32[16], u32[], token[]), f32[16]) tuple(recv, data)
+  while = ((f32[16], u32[], token[]), f32[16]) while(init),
+      condition=while_condition, body=while_body
+  recv_ctx = (f32[16], u32[], token[]) get-tuple-element(while), index=0
+  recv_done = (f32[16], token[]) recv-done(recv_ctx), channel_id=1
+  ROOT result = f32[16] get-tuple-element(recv_done), index=0
+}
+)";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
   CopyInsertion copy_insertion(&alias_info_,
@@ -3994,44 +4170,44 @@ TEST_F(CopyInsertionTest, PartiallyPipelinedAsyncRecvMultipleUses) {
 
 TEST_F(CopyInsertionTest, PartiallyPipelinedAsyncSendMultipleUses) {
   constexpr absl::string_view kModuleString = R"(
-    HloModule test, entry_computation_layout={(f32[16]{0})->f32[16]{0}},
-        num_partitions=4
+HloModule test, entry_computation_layout={(f32[16])->f32[16]},
+    num_partitions=4
 
-    while_body {
-      param = ((f32[16]{0}, u32[], token[]), f32[16]{0}) parameter(0)
-      prev_send = (f32[16]{0}, u32[], token[]) get-tuple-element(param), index=0
-      data = f32[16]{0} get-tuple-element(param), index=1
-      send_done = (f32[16]{0}, token[]) send-done(prev_send), channel_id=1
-      after_all = token[] after-all()
-      send = (f32[16]{0}, u32[], token[]) send(data, after_all), channel_id=1,
-          frontend_attributes={
-            _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
+while_body {
+  param = ((f32[16], u32[], token[]), f32[16]) parameter(0)
+  prev_send = (f32[16], u32[], token[]) get-tuple-element(param), index=0
+  data = f32[16] get-tuple-element(param), index=1
+  send_done = (f32[16], token[]) send-done(prev_send), channel_id=1
+  after_all = token[] after-all()
+  send = (f32[16], u32[], token[]) send(data, after_all), channel_id=1,
+      frontend_attributes={
+        _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
 
-      // `data` is used again here, which extends it's live range beyond `send`.
-      ROOT tuple = ((f32[16]{0}, u32[], token[]), f32[16]{0}) tuple(send, data)
-    }
+  // `data` is used again here, which extends it's live range beyond `send`.
+  ROOT tuple = ((f32[16], u32[], token[]), f32[16]) tuple(send, data)
+}
 
-    // Infinite loop to keep IR small.
-    while_condition {
-      param = ((f32[16]{0}, u32[], token[]), f32[16]{0}) parameter(0)
-      ROOT infinite_loop = pred[] constant(true)
-    }
+// Infinite loop to keep IR small.
+while_condition {
+  param = ((f32[16], u32[], token[]), f32[16]) parameter(0)
+  ROOT infinite_loop = pred[] constant(true)
+}
 
-    ENTRY main_spmd {
-      data0 = f32[16]{0} parameter(0)
-      data1 = f32[16] add(data0, data0)
-      after_all = token[] after-all()
-      send = (f32[16]{0}, u32[], token[]) send(data1, after_all), channel_id=1,
-          frontend_attributes={
-            _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
-      init = ((f32[16]{0}, u32[], token[]), f32[16]{0}) tuple(send, data1)
-      while = ((f32[16]{0}, u32[], token[]), f32[16]{0}) while(init),
-          condition=while_condition, body=while_body
-      send_ctx = (f32[16]{0}, u32[], token[]) get-tuple-element(while), index=0
-      send_done = (f32[16]{0}, token[]) send-done(send_ctx), channel_id=1
-      ROOT data2 = f32[16]{0} get-tuple-element(while), index=1
-    }
-    )";
+ENTRY main_spmd {
+  data0 = f32[16] parameter(0)
+  data1 = f32[16] add(data0, data0)
+  after_all = token[] after-all()
+  send = (f32[16], u32[], token[]) send(data1, after_all), channel_id=1,
+      frontend_attributes={
+        _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
+  init = ((f32[16], u32[], token[]), f32[16]) tuple(send, data1)
+  while = ((f32[16], u32[], token[]), f32[16]) while(init),
+      condition=while_condition, body=while_body
+  send_ctx = (f32[16], u32[], token[]) get-tuple-element(while), index=0
+  send_done = (f32[16], token[]) send-done(send_ctx), channel_id=1
+  ROOT data2 = f32[16] get-tuple-element(while), index=1
+}
+)";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
   CopyInsertion copy_insertion(&alias_info_,
@@ -4072,65 +4248,65 @@ TEST_F(CopyInsertionTest, PartiallyPipelinedAsyncSendMultipleUses) {
 
 TEST_F(CopyInsertionTest, PartiallyPipelinedAsyncSendRecvPipelineParallelism) {
   constexpr absl::string_view kModuleString = R"(
-    HloModule test, entry_computation_layout={(f32[16]{0})->f32[16]{0}},
-        num_partitions=4
+HloModule test, entry_computation_layout={(f32[16])->f32[16]},
+    num_partitions=4
 
-    while_body {
-      param = ((f32[16]{0}, u32[], token[]), (f32[16]{0}, u32[], token[]),
-          f32[16]{0}, f32[16]{0}) parameter(0)
+while_body {
+  param = ((f32[16], u32[], token[]), (f32[16], u32[], token[]),
+      f32[16], f32[16]) parameter(0)
 
-      prev_fwd = f32[16]{0} get-tuple-element(param), index=3
+  prev_fwd = f32[16] get-tuple-element(param), index=3
 
-      prev_send = (f32[16]{0}, u32[], token[]) get-tuple-element(param), index=0
-      send_done = (f32[16]{0}, token[]) send-done(prev_send), channel_id=1
-      prev_recv = (f32[16]{0}, u32[], token[]) get-tuple-element(param), index=1
-      recv_done = (f32[16]{0}, token[]) recv-done(prev_recv), channel_id=2
+  prev_send = (f32[16], u32[], token[]) get-tuple-element(param), index=0
+  send_done = (f32[16], token[]) send-done(prev_send), channel_id=1
+  prev_recv = (f32[16], u32[], token[]) get-tuple-element(param), index=1
+  recv_done = (f32[16], token[]) recv-done(prev_recv), channel_id=2
 
-      fwd = f32[16]{0} get-tuple-element(recv_done), index=0
+  fwd = f32[16] get-tuple-element(recv_done), index=0
 
-      after_all = token[] after-all()
-      send = (f32[16]{0}, u32[], token[]) send(prev_fwd, after_all),
-          channel_id=1,
-          frontend_attributes={
-            _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
-      recv = (f32[16]{0}, u32[], token[]) recv(after_all), channel_id=2,
-          frontend_attributes={
-            _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
+  after_all = token[] after-all()
+  send = (f32[16], u32[], token[]) send(prev_fwd, after_all),
+      channel_id=1,
+      frontend_attributes={
+        _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
+  recv = (f32[16], u32[], token[]) recv(after_all), channel_id=2,
+      frontend_attributes={
+        _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
 
-      // Both, the data that was sent and the data that was received are live
-      // until the end of the while loop.
-      ROOT tuple = ((f32[16]{0}, u32[], token[]), (f32[16]{0}, u32[], token[]),
-          f32[16]{0}, f32[16]{0}) tuple(send, recv, prev_fwd, fwd)
-    }
+  // Both, the data that was sent and the data that was received are live
+  // until the end of the while loop.
+  ROOT tuple = ((f32[16], u32[], token[]), (f32[16], u32[], token[]),
+      f32[16], f32[16]) tuple(send, recv, prev_fwd, fwd)
+}
 
-    // Infinite loop to keep IR small.
-    while_condition {
-      param = ((f32[16]{0}, u32[], token[]), (f32[16]{0}, u32[], token[]),
-          f32[16]{0}, f32[16]{0}) parameter(0)
-      ROOT infinite_loop = pred[] constant(true)
-    }
+// Infinite loop to keep IR small.
+while_condition {
+  param = ((f32[16], u32[], token[]), (f32[16], u32[], token[]),
+      f32[16], f32[16]) parameter(0)
+  ROOT infinite_loop = pred[] constant(true)
+}
 
-    ENTRY main_spmd {
-      data = f32[16]{0} parameter(0)
-      after_all = token[] after-all()
-      recv = (f32[16]{0}, u32[], token[]) recv(after_all), channel_id=1,
-          frontend_attributes={
-            _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
-      send = (f32[16]{0}, u32[], token[]) send(data, after_all), channel_id=2,
-          frontend_attributes={
-            _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
-      init = ((f32[16]{0}, u32[], token[]), (f32[16]{0}, u32[], token[]),
-          f32[16]{0}, f32[16]{0}) tuple(send, recv, data, data)
-      while = ((f32[16]{0}, u32[], token[]), (f32[16]{0}, u32[], token[]),
-          f32[16]{0}, f32[16]{0}) while(init), condition=while_condition,
-          body=while_body
-      recv_ctx = (f32[16]{0}, u32[], token[]) get-tuple-element(while), index=0
-      recv_done = (f32[16]{0}, token[]) recv-done(recv_ctx), channel_id=1
-      send_ctx = (f32[16]{0}, u32[], token[]) get-tuple-element(while), index=0
-      send_done = (f32[16]{0}, token[]) send-done(send_ctx), channel_id=2
-      ROOT data_ = f32[16]{0} get-tuple-element(recv_done), index=0
-    }
-    )";
+ENTRY main_spmd {
+  data = f32[16] parameter(0)
+  after_all = token[] after-all()
+  recv = (f32[16], u32[], token[]) recv(after_all), channel_id=1,
+      frontend_attributes={
+        _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
+  send = (f32[16], u32[], token[]) send(data, after_all), channel_id=2,
+      frontend_attributes={
+        _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
+  init = ((f32[16], u32[], token[]), (f32[16], u32[], token[]),
+      f32[16], f32[16]) tuple(send, recv, data, data)
+  while = ((f32[16], u32[], token[]), (f32[16], u32[], token[]),
+      f32[16], f32[16]) while(init), condition=while_condition,
+      body=while_body
+  recv_ctx = (f32[16], u32[], token[]) get-tuple-element(while), index=0
+  recv_done = (f32[16], token[]) recv-done(recv_ctx), channel_id=1
+  send_ctx = (f32[16], u32[], token[]) get-tuple-element(while), index=0
+  send_done = (f32[16], token[]) send-done(send_ctx), channel_id=2
+  ROOT data_ = f32[16] get-tuple-element(recv_done), index=0
+}
+)";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
   CopyInsertion copy_insertion(&alias_info_,
@@ -4176,60 +4352,60 @@ TEST_F(CopyInsertionTest, PartiallyPipelinedAsyncSendRecvPipelineParallelism) {
 TEST_F(CopyInsertionTest,
        PartiallyPipelinedAsyncSendRecvPipelineParallelismDirectFwd) {
   constexpr absl::string_view kModuleString = R"(
-    HloModule test, num_partitions=4
+HloModule test, num_partitions=4
 
-    while_body {
-      param = ((f32[16]{0}, u32[], token[]), (f32[16]{0}, u32[], token[]))
-          parameter(0)
+while_body {
+  param = ((f32[16], u32[], token[]), (f32[16], u32[], token[]))
+      parameter(0)
 
-      send_ctx = (f32[16]{0}, u32[], token[]) get-tuple-element(param), index=0
-      recv_ctx = (f32[16]{0}, u32[], token[]) get-tuple-element(param), index=1
-      send_done = (f32[16]{0}, token[]) send-done(send_ctx), channel_id=1
-      recv_done = (f32[16]{0}, token[]) recv-done(recv_ctx), channel_id=2
+  send_ctx = (f32[16], u32[], token[]) get-tuple-element(param), index=0
+  recv_ctx = (f32[16], u32[], token[]) get-tuple-element(param), index=1
+  send_done = (f32[16], token[]) send-done(send_ctx), channel_id=1
+  recv_done = (f32[16], token[]) recv-done(recv_ctx), channel_id=2
 
-      data = f32[16]{0} get-tuple-element(recv_done), index=0
+  data = f32[16] get-tuple-element(recv_done), index=0
 
-      after_all = token[] after-all()
-      send_ctx_ = (f32[16]{0}, u32[], token[]) send(data, after_all),
-          channel_id=1,
-          frontend_attributes={
-            _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
-      recv_ctx_ = (f32[16]{0}, u32[], token[]) recv(after_all), channel_id=2,
-          frontend_attributes={
-            _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
+  after_all = token[] after-all()
+  send_ctx_ = (f32[16], u32[], token[]) send(data, after_all),
+      channel_id=1,
+      frontend_attributes={
+        _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
+  recv_ctx_ = (f32[16], u32[], token[]) recv(after_all), channel_id=2,
+      frontend_attributes={
+        _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
 
-      ROOT tuple = ((f32[16]{0}, u32[], token[]), (f32[16]{0}, u32[], token[]))
-          tuple(send_ctx_, recv_ctx_)
-    }
+  ROOT tuple = ((f32[16], u32[], token[]), (f32[16], u32[], token[]))
+      tuple(send_ctx_, recv_ctx_)
+}
 
-    // Infinite loop to keep IR small.
-    while_condition {
-      param = ((f32[16]{0}, u32[], token[]), (f32[16]{0}, u32[], token[]))
-          parameter(0)
-      ROOT infinite_loop = pred[] constant(true)
-    }
+// Infinite loop to keep IR small.
+while_condition {
+  param = ((f32[16], u32[], token[]), (f32[16], u32[], token[]))
+      parameter(0)
+  ROOT infinite_loop = pred[] constant(true)
+}
 
-    ENTRY main_spmd {
-      data = f32[16]{0} parameter(0)
-      after_all = token[] after-all()
-      send_ctx = (f32[16]{0}, u32[], token[]) send(data, after_all),
-          channel_id=2,
-          frontend_attributes={
-            _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
-      recv_ctx = (f32[16]{0}, u32[], token[]) recv(after_all), channel_id=1,
-          frontend_attributes={
-            _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
-      init = ((f32[16]{0}, u32[], token[]), (f32[16]{0}, u32[], token[]))
-          tuple(send_ctx, recv_ctx)
-      while = ((f32[16]{0}, u32[], token[]), (f32[16]{0}, u32[], token[]))
-          while(init), condition=while_condition, body=while_body
-      recv_ctx_ = (f32[16]{0}, u32[], token[]) get-tuple-element(while), index=0
-      recv_done = (f32[16]{0}, token[]) recv-done(recv_ctx_), channel_id=1
-      send_ctx_ = (f32[16]{0}, u32[], token[]) get-tuple-element(while), index=1
-      send_done = (f32[16]{0}, token[]) send-done(send_ctx_), channel_id=2
-      ROOT data_ = f32[16]{0} get-tuple-element(recv_done), index=0
-    }
-    )";
+ENTRY main_spmd {
+  data = f32[16] parameter(0)
+  after_all = token[] after-all()
+  send_ctx = (f32[16], u32[], token[]) send(data, after_all),
+      channel_id=2,
+      frontend_attributes={
+        _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
+  recv_ctx = (f32[16], u32[], token[]) recv(after_all), channel_id=1,
+      frontend_attributes={
+        _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
+  init = ((f32[16], u32[], token[]), (f32[16], u32[], token[]))
+      tuple(send_ctx, recv_ctx)
+  while = ((f32[16], u32[], token[]), (f32[16], u32[], token[]))
+      while(init), condition=while_condition, body=while_body
+  recv_ctx_ = (f32[16], u32[], token[]) get-tuple-element(while), index=0
+  recv_done = (f32[16], token[]) recv-done(recv_ctx_), channel_id=1
+  send_ctx_ = (f32[16], u32[], token[]) get-tuple-element(while), index=1
+  send_done = (f32[16], token[]) send-done(send_ctx_), channel_id=2
+  ROOT data_ = f32[16] get-tuple-element(recv_done), index=0
+}
+)";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
 
@@ -4256,29 +4432,29 @@ TEST_F(CopyInsertionTest,
 // for transitioning from copyable to non-copyable.
 TEST_F(CopyInsertionTest, NonCopyableOneChainOutsideWhileLoop) {
   constexpr absl::string_view kModuleString = R"(
-    HloModule test
+HloModule test
 
-    ENTRY main {
-      p0 = f32[16] parameter(0)
-      p1 = f32[16] parameter(1)
-      // Avoid directly using parameters to distinguish special copies from
-      // non-copyable transitioning copies.
-      d0 = f32[16] add(p0, p1)
-      d1 = f32[16] add(p1, p1)
-      pin-d0 = b(f32[16]) custom-call(d0), custom_call_target="Pin",
-        output_to_operand_aliasing={{}:(0, {})}
-      call = (b(f32[16]), u32[], token[])
-        custom-call(pin-d0, d1), custom_call_target="update",
-        output_to_operand_aliasing={{0}:(0, {})}
-      noncopyable = b(f32[16]) get-tuple-element(call), index=0
-      d2 = f32[16] custom-call(noncopyable), custom_call_target="Unpin",
-        output_to_operand_aliasing={{}:(0, {})}
-      // The control-predecessor prevents copy insertion from making r0 the
-      // control predecessor of pin_d0 and remove the added copy.
-      d3 = f32[16] add(d0, d1), control-predecessors={pin-d0}
-      ROOT d4 = f32[16] add(d3, d2)
-    }
-    )";
+ENTRY main {
+  p0 = f32[16] parameter(0)
+  p1 = f32[16] parameter(1)
+  // Avoid directly using parameters to distinguish special copies from
+  // non-copyable transitioning copies.
+  d0 = f32[16] add(p0, p1)
+  d1 = f32[16] add(p1, p1)
+  pin-d0 = b(f32[16]) custom-call(d0), custom_call_target="Pin",
+    output_to_operand_aliasing={{}:(0, {})}
+  call = (b(f32[16]), u32[], token[])
+    custom-call(pin-d0, d1), custom_call_target="update",
+    output_to_operand_aliasing={{0}:(0, {})}
+  noncopyable = b(f32[16]) get-tuple-element(call), index=0
+  d2 = f32[16] custom-call(noncopyable), custom_call_target="Unpin",
+    output_to_operand_aliasing={{}:(0, {})}
+  // The control-predecessor prevents copy insertion from making r0 the
+  // control predecessor of pin_d0 and remove the added copy.
+  d3 = f32[16] add(d0, d1), control-predecessors={pin-d0}
+  ROOT d4 = f32[16] add(d3, d2)
+}
+)";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
   CopyInsertion copy_insertion(&alias_info_,
@@ -4296,38 +4472,39 @@ TEST_F(CopyInsertionTest, NonCopyableOneChainOutsideWhileLoop) {
 // inside a while-body.
 TEST_F(CopyInsertionTest, NonCopyableOneChainInsideWhileLoop) {
   constexpr absl::string_view kModuleString = R"(
-    HloModule test
+HloModule test
 
-    while_body {
-      param = (f32[16], f32[16]) parameter(0)
-      pw0 = f32[16] get-tuple-element(param), index=0
-      pin-pw0 = b(f32[16]) custom-call(pw0), custom_call_target="Pin",
-        output_to_operand_aliasing={{}:(0, {})}
-      call = b(f32[16]) custom-call(pin-pw0), custom_call_target="update",
-        output_to_operand_aliasing={{}: (0, {})}
-      unpin-call = f32[16] custom-call(call), custom_call_target="Unpin",
-        output_to_operand_aliasing={{}:(0, {})}
-      pw1 = f32[16] get-tuple-element(param), index=1
-      dw = f32[16] add(pw1, pw0), control-predecessors={pin-pw0}
-      ROOT tuple = (f32[16], f32[16]) tuple(unpin-call, dw)
-    }
+while_body {
+  param = (f32[16], f32[16]) parameter(0)
+  pw0 = f32[16] get-tuple-element(param), index=0
+  pin-pw0 = b(f32[16]) custom-call(pw0), custom_call_target="Pin",
+    output_to_operand_aliasing={{}:(0, {})}
+  call = b(f32[16]) custom-call(pin-pw0), custom_call_target="update",
+    output_to_operand_aliasing={{}: (0, {})}
+  unpin-call = f32[16] custom-call(call), custom_call_target="Unpin",
+    output_to_operand_aliasing={{}:(0, {})}
+  pw1 = f32[16] get-tuple-element(param), index=1
+  dw = f32[16] add(pw1, pw0), control-predecessors={pin-pw0}
+  ROOT tuple = (f32[16], f32[16]) tuple(unpin-call, dw)
+}
 
-    while_condition {
-      pc = (f32[16], f32[16]) parameter(0)
-      ROOT infinite_loop = pred[] constant(true)
-    }
+while_condition {
+  pc = (f32[16], f32[16]) parameter(0)
+  ROOT infinite_loop = pred[] constant(true)
+}
 
-    ENTRY main {
-      p0 = f32[16] parameter(0)
-      // Avoid directly using p0 in the while-body to avoid copies.
-      d0 = f32[16] add(p0, p0)
-      d1 = f32[16] add(p0, p0)
-      init = (f32[16], f32[16]) tuple(d0, d1)
-      while = (f32[16], f32[16]) while(init), condition=while_condition, body=while_body
-      d2 = f32[16] get-tuple-element(while), index=0
-      d3 = f32[16] get-tuple-element(while), index=1
-      ROOT d4 = f32[16] add(d2, d3)
-    })";
+ENTRY main {
+  p0 = f32[16] parameter(0)
+  // Avoid directly using p0 in the while-body to avoid copies.
+  d0 = f32[16] add(p0, p0)
+  d1 = f32[16] add(p0, p0)
+  init = (f32[16], f32[16]) tuple(d0, d1)
+  while = (f32[16], f32[16]) while(init), condition=while_condition,
+      body=while_body
+  d2 = f32[16] get-tuple-element(while), index=0
+  d3 = f32[16] get-tuple-element(while), index=1
+  ROOT d4 = f32[16] add(d2, d3)
+})";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
   CopyInsertion copy_insertion(&alias_info_,
@@ -4349,50 +4526,51 @@ TEST_F(CopyInsertionTest, NonCopyableOneChainInsideWhileLoop) {
 // Similar to the previous test, but there are two non-copyable chains.
 TEST_F(CopyInsertionTest, NonCopyableTwoChainsInsideWhileLoop) {
   constexpr absl::string_view kModuleString = R"(
-    HloModule test
+HloModule test
 
-    while_body {
-      param = (f32[16], f32[16]) parameter(0)
-      pw0 = f32[16] get-tuple-element(param), index=0
-      pin0-pw0 = b(f32[16]) custom-call(pw0), custom_call_target="Pin",
-        output_to_operand_aliasing={{}:(0, {})}
-      call0 = b(f32[16]) custom-call(pin0-pw0), custom_call_target="update0",
-        output_to_operand_aliasing={{}: (0, {})}
-      pin1-pw0 = b(f32[16]) custom-call(pw0), custom_call_target="Pin",
-        output_to_operand_aliasing={{}:(0, {})}
-      call1 = (b(f32[16]), b(f32[16])) custom-call(pin1-pw0, call0),
-        custom_call_target="update1",
-        output_to_operand_aliasing={{0}: (1, {}), {1}: (0, {})}
-      call1-0 = b(f32[16]) get-tuple-element(call1), index=0
-      unpin-call1-0 = f32[16] custom-call(call1-0), custom_call_target="Unpin",
-        output_to_operand_aliasing={{}:(0, {})}
-      call1-1 = b(f32[16]) get-tuple-element(call1), index=1
-      call2 = b(f32[16]) custom-call(call1-1), custom_call_target="update2",
-        output_to_operand_aliasing={{}: (0, {})}
-      unpin-call2 = f32[16] custom-call(call2), custom_call_target="Unpin",
-        output_to_operand_aliasing={{}:(0, {})}
-      pw1 = f32[16] get-tuple-element(param), index=1
-      dw0 = f32[16] add(pw1, pw0), control-predecessors={pin0-pw0, pin1-pw0}
-      dw1 = f32[16] add(dw0, unpin-call1-0)
-      ROOT tuple = (f32[16], f32[16]) tuple(unpin-call2, dw1)
-    }
+while_body {
+  param = (f32[16], f32[16]) parameter(0)
+  pw0 = f32[16] get-tuple-element(param), index=0
+  pin0-pw0 = b(f32[16]) custom-call(pw0), custom_call_target="Pin",
+    output_to_operand_aliasing={{}:(0, {})}
+  call0 = b(f32[16]) custom-call(pin0-pw0), custom_call_target="update0",
+    output_to_operand_aliasing={{}: (0, {})}
+  pin1-pw0 = b(f32[16]) custom-call(pw0), custom_call_target="Pin",
+    output_to_operand_aliasing={{}:(0, {})}
+  call1 = (b(f32[16]), b(f32[16])) custom-call(pin1-pw0, call0),
+    custom_call_target="update1",
+    output_to_operand_aliasing={{0}: (1, {}), {1}: (0, {})}
+  call1-0 = b(f32[16]) get-tuple-element(call1), index=0
+  unpin-call1-0 = f32[16] custom-call(call1-0), custom_call_target="Unpin",
+    output_to_operand_aliasing={{}:(0, {})}
+  call1-1 = b(f32[16]) get-tuple-element(call1), index=1
+  call2 = b(f32[16]) custom-call(call1-1), custom_call_target="update2",
+    output_to_operand_aliasing={{}: (0, {})}
+  unpin-call2 = f32[16] custom-call(call2), custom_call_target="Unpin",
+    output_to_operand_aliasing={{}:(0, {})}
+  pw1 = f32[16] get-tuple-element(param), index=1
+  dw0 = f32[16] add(pw1, pw0), control-predecessors={pin0-pw0, pin1-pw0}
+  dw1 = f32[16] add(dw0, unpin-call1-0)
+  ROOT tuple = (f32[16], f32[16]) tuple(unpin-call2, dw1)
+}
 
-    while_condition {
-      pc = (f32[16], f32[16]) parameter(0)
-      ROOT infinite_loop = pred[] constant(true)
-    }
+while_condition {
+  pc = (f32[16], f32[16]) parameter(0)
+  ROOT infinite_loop = pred[] constant(true)
+}
 
-    ENTRY main {
-      p0 = f32[16] parameter(0)
-      // Avoid directly using p0 in the while-body to avoid copies.
-      d0 = f32[16] add(p0, p0)
-      d1 = f32[16] add(p0, p0)
-      init = (f32[16], f32[16]) tuple(d0, d1)
-      while = (f32[16], f32[16]) while(init), condition=while_condition, body=while_body
-      d2 = f32[16] get-tuple-element(while), index=0
-      d3 = f32[16] get-tuple-element(while), index=1
-      ROOT d4 = f32[16] add(d2, d3)
-    })";
+ENTRY main {
+  p0 = f32[16] parameter(0)
+  // Avoid directly using p0 in the while-body to avoid copies.
+  d0 = f32[16] add(p0, p0)
+  d1 = f32[16] add(p0, p0)
+  init = (f32[16], f32[16]) tuple(d0, d1)
+  while = (f32[16], f32[16]) while(init), condition=while_condition,
+      body=while_body
+  d2 = f32[16] get-tuple-element(while), index=0
+  d3 = f32[16] get-tuple-element(while), index=1
+  ROOT d4 = f32[16] add(d2, d3)
+})";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
   CopyInsertion copy_insertion(&alias_info_,
@@ -4427,41 +4605,42 @@ TEST_F(CopyInsertionTest, NonCopyableTwoChainsInsideWhileLoop) {
 // no copy is needed inside the while-loop.
 TEST_F(CopyInsertionTest, NonCopyableOneChainPartiallyInsideWhileLoop) {
   constexpr absl::string_view kModuleString = R"(
-    HloModule test
+HloModule test
 
-    while_body {
-      param = (b(f32[16]), f32[16]) parameter(0)
-      pw0 = b(f32[16]) get-tuple-element(param), index=0
-      call0 = b(f32[16]) custom-call(pw0), custom_call_target="update0",
-        output_to_operand_aliasing={{}: (0, {})}
-      call1 = b(f32[16]) custom-call(call0), custom_call_target="update1",
-        output_to_operand_aliasing={{}: (0, {})}
-      pw1 = f32[16] get-tuple-element(param), index=1
-      dw = f32[16] add(pw1, pw1)
-      ROOT tuple = (b(f32[16]), f32[16]) tuple(call1, dw)
-    }
+while_body {
+  param = (b(f32[16]), f32[16]) parameter(0)
+  pw0 = b(f32[16]) get-tuple-element(param), index=0
+  call0 = b(f32[16]) custom-call(pw0), custom_call_target="update0",
+    output_to_operand_aliasing={{}: (0, {})}
+  call1 = b(f32[16]) custom-call(call0), custom_call_target="update1",
+    output_to_operand_aliasing={{}: (0, {})}
+  pw1 = f32[16] get-tuple-element(param), index=1
+  dw = f32[16] add(pw1, pw1)
+  ROOT tuple = (b(f32[16]), f32[16]) tuple(call1, dw)
+}
 
-    while_condition {
-      pc = (b(f32[16]), f32[16]) parameter(0)
-      ROOT infinite_loop = pred[] constant(true)
-    }
+while_condition {
+  pc = (b(f32[16]), f32[16]) parameter(0)
+  ROOT infinite_loop = pred[] constant(true)
+}
 
-    ENTRY main {
-      p0 = f32[16] parameter(0)
-      // Avoid directly using p0 in the while-body to avoid copies.
-      d0 = f32[16] add(p0, p0)
-      d1 = f32[16] add(p0, p0)
-      pin-d0 = b(f32[16]) custom-call(d0), custom_call_target="Pin",
-        output_to_operand_aliasing={{}:(0, {})}
-      init = (b(f32[16]), f32[16]) tuple(pin-d0, d1)
-      while = (b(f32[16]), f32[16]) while(init), condition=while_condition, body=while_body
-      noncopyable0 = b(f32[16]) get-tuple-element(while), index=0
-      d2 = f32[16] custom-call(noncopyable0), custom_call_target="Unpin",
-        output_to_operand_aliasing={{}:(0, {})}
-      d3 = f32[16] get-tuple-element(while), index=1
-      d4 = f32[16] add(d2, d3)
-      ROOT d5 = f32[16] add(d4, d0)
-    })";
+ENTRY main {
+  p0 = f32[16] parameter(0)
+  // Avoid directly using p0 in the while-body to avoid copies.
+  d0 = f32[16] add(p0, p0)
+  d1 = f32[16] add(p0, p0)
+  pin-d0 = b(f32[16]) custom-call(d0), custom_call_target="Pin",
+    output_to_operand_aliasing={{}:(0, {})}
+  init = (b(f32[16]), f32[16]) tuple(pin-d0, d1)
+  while = (b(f32[16]), f32[16]) while(init), condition=while_condition,
+      body=while_body
+  noncopyable0 = b(f32[16]) get-tuple-element(while), index=0
+  d2 = f32[16] custom-call(noncopyable0), custom_call_target="Unpin",
+    output_to_operand_aliasing={{}:(0, {})}
+  d3 = f32[16] get-tuple-element(while), index=1
+  d4 = f32[16] add(d2, d3)
+  ROOT d5 = f32[16] add(d4, d0)
+})";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
@@ -4481,68 +4660,68 @@ TEST_F(CopyInsertionTest, NonCopyableOneChainPartiallyInsideWhileLoop) {
 // into two parts. This is similar to the pipelined Send/Recv cases.
 TEST_F(CopyInsertionTest, NonCopyableChainPipelinedSeparatedParts) {
   constexpr absl::string_view kModuleString = R"(
-    HloModule test
+HloModule test
 
-    while_body {
-      param = (f32[16], b(f32[16])) parameter(0)
-      noncopyable0-w = b(f32[16]) get-tuple-element(param), index=1
-      pw1 = f32[16] get-tuple-element(param), index=0
-      dw0 = f32[16] add(pw1, pw1)
-      call0-w = (b(f32[16]), f32[16], token[])
-        custom-call(noncopyable0-w, dw0), custom_call_target="update0",
-        output_to_operand_aliasing={{0}:(0, {})}
-      noncopyable1-w = b(f32[16]) get-tuple-element(call0-w), index=0
-      dw1 = f32[16] get-tuple-element(call0-w), index=1
-      dw2 = f32[16] add(pw1, dw1)
-      dw3 = f32[16] add(dw2, dw2)
-      pin-dw3 = b(f32[16]) custom-call(dw3), custom_call_target="Pin",
-        output_to_operand_aliasing={{}:(0, {})}
-      call1-w = (b(f32[16]), f32[16], token[])
-        custom-call(dw2, pin-dw3), custom_call_target="update1",
-        output_to_operand_aliasing={{0}:(1, {})}
-      noncopyable2-w = b(f32[16]) get-tuple-element(call1-w), index=0
-      dw4 = f32[16] get-tuple-element(call1-w), index=1
-      unpin-noncopyable1-w = f32[16] custom-call(noncopyable1-w),
-        custom_call_target="Unpin", output_to_operand_aliasing={{}:(0, {})}
-      add = f32[16] add(dw4, unpin-noncopyable1-w) // keep noncopyable1-w alive.
-      dw5 = f32[16] add(add, dw3) // Keep dw3 alive.
-      ROOT tuple = (f32[16], b(f32[16])) tuple(dw5, noncopyable2-w)
-    }
+while_body {
+  param = (f32[16], b(f32[16])) parameter(0)
+  noncopyable0-w = b(f32[16]) get-tuple-element(param), index=1
+  pw1 = f32[16] get-tuple-element(param), index=0
+  dw0 = f32[16] add(pw1, pw1)
+  call0-w = (b(f32[16]), f32[16], token[])
+    custom-call(noncopyable0-w, dw0), custom_call_target="update0",
+    output_to_operand_aliasing={{0}:(0, {})}
+  noncopyable1-w = b(f32[16]) get-tuple-element(call0-w), index=0
+  dw1 = f32[16] get-tuple-element(call0-w), index=1
+  dw2 = f32[16] add(pw1, dw1)
+  dw3 = f32[16] add(dw2, dw2)
+  pin-dw3 = b(f32[16]) custom-call(dw3), custom_call_target="Pin",
+    output_to_operand_aliasing={{}:(0, {})}
+  call1-w = (b(f32[16]), f32[16], token[])
+    custom-call(dw2, pin-dw3), custom_call_target="update1",
+    output_to_operand_aliasing={{0}:(1, {})}
+  noncopyable2-w = b(f32[16]) get-tuple-element(call1-w), index=0
+  dw4 = f32[16] get-tuple-element(call1-w), index=1
+  unpin-noncopyable1-w = f32[16] custom-call(noncopyable1-w),
+    custom_call_target="Unpin", output_to_operand_aliasing={{}:(0, {})}
+  add = f32[16] add(dw4, unpin-noncopyable1-w) // keep noncopyable1-w alive.
+  dw5 = f32[16] add(add, dw3) // Keep dw3 alive.
+  ROOT tuple = (f32[16], b(f32[16])) tuple(dw5, noncopyable2-w)
+}
 
-    // Infinite loop to keep IR small.
-    while_condition {
-      pc = (f32[16], b(f32[16])) parameter(0)
-      ROOT infinite_loop = pred[] constant(true)
-    }
+// Infinite loop to keep IR small.
+while_condition {
+  pc = (f32[16], b(f32[16])) parameter(0)
+  ROOT infinite_loop = pred[] constant(true)
+}
 
-    ENTRY main {
-      p0 = f32[16] parameter(0)
-      p1 = f32[16] parameter(1)
-      d0 = f32[16] add(p0, p1)
-      d1 = f32[16] add(p1, p1)
-      pin-d0 = b(f32[16]) custom-call(d0), custom_call_target="Pin",
-        output_to_operand_aliasing={{}:(0, {})}
-      call0 = (b(f32[16]), f32[16], token[])
-        custom-call(pin-d0, d1), custom_call_target="update0",
-        output_to_operand_aliasing={{0}:(0, {})}
-      noncopyable0 = b(f32[16]) get-tuple-element(call0), index=0
-      d2 = f32[16] get-tuple-element(call0), index=1
-      init = (f32[16], b(f32[16])) tuple(d2, noncopyable0)
-      while = (f32[16], b(f32[16])) while(init), condition=while_condition,
-        body=while_body
-      noncopyable1 = b(f32[16]) get-tuple-element(while), index=1
-      d3 = f32[16] get-tuple-element(while), index=0
-      call1 = (b(f32[16]), f32[16], token[])
-        custom-call(noncopyable1), custom_call_target="update1",
-        output_to_operand_aliasing={{0}:(0, {})}
-      noncopyable2 = b(f32[16]) get-tuple-element(call1), index=0
-      unpin = f32[16] custom-call(noncopyable2), custom_call_target="Unpin",
-        output_to_operand_aliasing={{}:(0, {})}
-      d4 = f32[16] add(d0, d3)
-      d5 = f32[16] add(d1, unpin)
-      ROOT result = (f32[16], f32[16]) tuple(d4, d5)
-    }
-    )";
+ENTRY main {
+  p0 = f32[16] parameter(0)
+  p1 = f32[16] parameter(1)
+  d0 = f32[16] add(p0, p1)
+  d1 = f32[16] add(p1, p1)
+  pin-d0 = b(f32[16]) custom-call(d0), custom_call_target="Pin",
+    output_to_operand_aliasing={{}:(0, {})}
+  call0 = (b(f32[16]), f32[16], token[])
+    custom-call(pin-d0, d1), custom_call_target="update0",
+    output_to_operand_aliasing={{0}:(0, {})}
+  noncopyable0 = b(f32[16]) get-tuple-element(call0), index=0
+  d2 = f32[16] get-tuple-element(call0), index=1
+  init = (f32[16], b(f32[16])) tuple(d2, noncopyable0)
+  while = (f32[16], b(f32[16])) while(init), condition=while_condition,
+    body=while_body
+  noncopyable1 = b(f32[16]) get-tuple-element(while), index=1
+  d3 = f32[16] get-tuple-element(while), index=0
+  call1 = (b(f32[16]), f32[16], token[])
+    custom-call(noncopyable1), custom_call_target="update1",
+    output_to_operand_aliasing={{0}:(0, {})}
+  noncopyable2 = b(f32[16]) get-tuple-element(call1), index=0
+  unpin = f32[16] custom-call(noncopyable2), custom_call_target="Unpin",
+    output_to_operand_aliasing={{}:(0, {})}
+  d4 = f32[16] add(d0, d3)
+  d5 = f32[16] add(d1, unpin)
+  ROOT result = (f32[16], f32[16]) tuple(d4, d5)
+}
+)";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
@@ -4569,61 +4748,62 @@ TEST_F(CopyInsertionTest, NonCopyableChainPipelinedSeparatedParts) {
 // non-copyable at the while-init.
 TEST_F(CopyInsertionTest, NonCopyableChainPipelinedConnectedParts) {
   constexpr absl::string_view kModuleString = R"(
-    HloModule test
+HloModule test
 
-    while_body {
-      param = (b(f32[16]), f32[16]) parameter(0)
-      noncopyable0-w = b(f32[16]) get-tuple-element(param), index=0
-      pw1 = f32[16] get-tuple-element(param), index=1
-      dw0 = f32[16] add(pw1, pw1)
-      call0-w = (b(f32[16]), f32[16], token[])
-        custom-call(noncopyable0-w, dw0), custom_call_target="update0",
-        output_to_operand_aliasing={{0}:(0, {})}
-      noncopyable1-w = b(f32[16]) get-tuple-element(call0-w), index=0
-      dw1 = f32[16] get-tuple-element(call0-w), index=1
-      dw2 = f32[16] add(pw1, dw1)
-      call1-w = (b(f32[16]), f32[16], token[])
-        custom-call(noncopyable1-w, dw2), custom_call_target="update1",
-        output_to_operand_aliasing={{0}:(0, {})}
-      noncopyable2-w = b(f32[16]) get-tuple-element(call1-w), index=0
-      dw3 = f32[16] get-tuple-element(call1-w), index=1
-      dw4 = f32[16] add(dw3, pw1)
-      ROOT tuple = (b(f32[16]), f32[16]) tuple(noncopyable2-w, dw4)
-    }
+while_body {
+  param = (b(f32[16]), f32[16]) parameter(0)
+  noncopyable0-w = b(f32[16]) get-tuple-element(param), index=0
+  pw1 = f32[16] get-tuple-element(param), index=1
+  dw0 = f32[16] add(pw1, pw1)
+  call0-w = (b(f32[16]), f32[16], token[])
+    custom-call(noncopyable0-w, dw0), custom_call_target="update0",
+    output_to_operand_aliasing={{0}:(0, {})}
+  noncopyable1-w = b(f32[16]) get-tuple-element(call0-w), index=0
+  dw1 = f32[16] get-tuple-element(call0-w), index=1
+  dw2 = f32[16] add(pw1, dw1)
+  call1-w = (b(f32[16]), f32[16], token[])
+    custom-call(noncopyable1-w, dw2), custom_call_target="update1",
+    output_to_operand_aliasing={{0}:(0, {})}
+  noncopyable2-w = b(f32[16]) get-tuple-element(call1-w), index=0
+  dw3 = f32[16] get-tuple-element(call1-w), index=1
+  dw4 = f32[16] add(dw3, pw1)
+  ROOT tuple = (b(f32[16]), f32[16]) tuple(noncopyable2-w, dw4)
+}
 
-    // Infinite loop to keep IR small.
-    while_condition {
-      param = (b(f32[16]), f32[16]) parameter(0)
-      ROOT infinite_loop = pred[] constant(true)
-    }
+// Infinite loop to keep IR small.
+while_condition {
+  param = (b(f32[16]), f32[16]) parameter(0)
+  ROOT infinite_loop = pred[] constant(true)
+}
 
-    ENTRY main {
-      p0 = f32[16] parameter(0)
-      p1 = f32[16] parameter(1)
-      d0 = f32[16] add(p0, p1)
-      d1 = f32[16] add(p1, p1)
-      pin-d0 = b(f32[16]) custom-call(d0), custom_call_target="Pin",
-        output_to_operand_aliasing={{}:(0, {})}
-      call0 = (b(f32[16]), f32[16], token[])
-        custom-call(pin-d0, d1), custom_call_target="update0",
-        output_to_operand_aliasing={{0}:(0, {})}
-      noncopyable0 = b(f32[16]) get-tuple-element(call0), index=0
-      d2 = f32[16] get-tuple-element(call0), index=1
-      init = (b(f32[16]), f32[16]) tuple(noncopyable0, d2)
-      while = (b(f32[16]), f32[16]) while(init), condition=while_condition, body=while_body
-      noncopyable1 = b(f32[16]) get-tuple-element(while), index=0
-      d3 = f32[16] get-tuple-element(while), index=1
-      call1 = (b(f32[16]), f32[16], token[])
-        custom-call(noncopyable1), custom_call_target="update1",
-        output_to_operand_aliasing={{0}:(0, {})}
-      noncopyable2 = b(f32[16]) get-tuple-element(call1), index=0
-      unpin = f32[16] custom-call(noncopyable2), custom_call_target="Unpin",
-        output_to_operand_aliasing={{}:(0, {})}
-      d4 = f32[16] add(d0, d3)
-      d5 = f32[16] add(d1, unpin)
-      ROOT result = (f32[16], f32[16]) tuple(d4, d5)
-    }
-    )";
+ENTRY main {
+  p0 = f32[16] parameter(0)
+  p1 = f32[16] parameter(1)
+  d0 = f32[16] add(p0, p1)
+  d1 = f32[16] add(p1, p1)
+  pin-d0 = b(f32[16]) custom-call(d0), custom_call_target="Pin",
+    output_to_operand_aliasing={{}:(0, {})}
+  call0 = (b(f32[16]), f32[16], token[])
+    custom-call(pin-d0, d1), custom_call_target="update0",
+    output_to_operand_aliasing={{0}:(0, {})}
+  noncopyable0 = b(f32[16]) get-tuple-element(call0), index=0
+  d2 = f32[16] get-tuple-element(call0), index=1
+  init = (b(f32[16]), f32[16]) tuple(noncopyable0, d2)
+  while = (b(f32[16]), f32[16]) while(init), condition=while_condition,
+      body=while_body
+  noncopyable1 = b(f32[16]) get-tuple-element(while), index=0
+  d3 = f32[16] get-tuple-element(while), index=1
+  call1 = (b(f32[16]), f32[16], token[])
+    custom-call(noncopyable1), custom_call_target="update1",
+    output_to_operand_aliasing={{0}:(0, {})}
+  noncopyable2 = b(f32[16]) get-tuple-element(call1), index=0
+  unpin = f32[16] custom-call(noncopyable2), custom_call_target="Unpin",
+    output_to_operand_aliasing={{}:(0, {})}
+  d4 = f32[16] add(d0, d3)
+  d5 = f32[16] add(d1, unpin)
+  ROOT result = (f32[16], f32[16]) tuple(d4, d5)
+}
+)";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
