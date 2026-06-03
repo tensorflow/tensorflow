@@ -213,28 +213,28 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
           size_t i = 0;
           for (; i < dataset()->state_types_.size(); ++i) {
             if (state_and_output[i].dtype() != dataset()->state_types_[i]) {
-              return errors::InvalidArgument(
+              return absl::InvalidArgumentError(absl::StrCat(
                   "Got wrong type for scan_func return value ", i,
                   " (expected ", DataTypeString(dataset()->state_types_[i]),
-                  ", got ", DataTypeString(state_and_output[i].dtype()), ").");
+                  ", got ", DataTypeString(state_and_output[i].dtype()), ")."));
             }
             state_.push_back(std::move(state_and_output[i]));
           }
           for (; i < state_and_output.size(); ++i) {
             const size_t output_index = i - dataset()->state_types_.size();
             if (state_and_output[i].dtype() != output_dtypes()[output_index]) {
-              return errors::InvalidArgument(
+              return absl::InvalidArgumentError(absl::StrCat(
                   "Got wrong type for scan_func return value ", i,
                   " (expected ",
                   DataTypeString(dataset()->state_types_[output_index]),
-                  ", got ", DataTypeString(state_and_output[i].dtype()), ").");
+                  ", got ", DataTypeString(state_and_output[i].dtype()), ")."));
             }
             if (!output_shapes()[output_index].IsCompatibleWith(
                     state_and_output[i].shape())) {
-              return errors::InvalidArgument(
+              return absl::InvalidArgumentError(absl::StrCat(
                   "Got wrong shape for scan_func return value ", i,
                   " (expected ", output_shapes()[output_index].DebugString(),
-                  ", got ", state_and_output[i].shape().DebugString(), ").");
+                  ", got ", state_and_output[i].shape().DebugString(), ")."));
             }
 
             out_tensors->push_back(std::move(state_and_output[i]));
@@ -244,8 +244,8 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
             // To guarantee that the transformation preserves the cardinality of
             // the dataset, we convert `OutOfRange` to `InvalidArgument` as the
             // former may be interpreted by a caller as the end of sequence.
-            return errors::InvalidArgument(
-                "Function invocation produced OutOfRangeError: ", s.message());
+            return absl::InvalidArgumentError(absl::StrCat(
+                "Function invocation produced OutOfRangeError: ", s.message()));
           } else {
             // `f` may deliberately raise `errors::OutOfRange` to indicate
             // that we should terminate the iteration early.

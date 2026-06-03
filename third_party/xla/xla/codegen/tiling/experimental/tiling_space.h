@@ -89,15 +89,12 @@ inline std::ostream& operator<<(std::ostream& os, TiledDimId id) {
 // TilePropagation.
 class TilingSpace {
  public:
-  TilingSpace() : constraints_(ConstraintExpression::GetAlwaysSatisfied()) {}
+  TilingSpace() : constraint_(ConstraintExpression::GetAlwaysSatisfied()) {}
 
   // Disable copy constructor and assignment to prevent dangling pointers
   // inside hlo_to_dimension_.
   TilingSpace(const TilingSpace&) = delete;
   TilingSpace& operator=(const TilingSpace&) = delete;
-
-  // Unique ID for the dimension or runtime variable.
-  using ID = int64_t;
 
   enum class DimensionSemantics { kParallel, kSequential };
   struct DimensionInfo {
@@ -156,7 +153,7 @@ class TilingSpace {
   };
 
   // Special constraint requiring that `expr` evaluated at concrete tile sizes
-  // is a clean multiple of the concrete value of `tile_size` symbol.
+  // is a multiple of `tile_size`.
   // This allows verification using IsMultipleOf without heuristics for tid.
   struct DivisibilityConstraint {
     SymbolicExpr expr;
@@ -196,9 +193,6 @@ class TilingSpace {
   llvm::SmallVector<DimensionInfo, 4> dimensions() const {
     return llvm::to_vector(dimensions_);
   }
-
-  ConstraintExpression& mutable_constraint() { return constraints_; }
-  const ConstraintExpression& constraint() const { return constraints_; }
 
   void AddDivisibilityConstraint(SymbolicExpr expr, SymbolicExpr tile_size) {
     divisibility_constraints_.push_back({expr, tile_size});
@@ -258,8 +252,8 @@ class TilingSpace {
   // there will be only one symbolic tile.
   llvm::SmallVector<Tile, 2> tiled_roots_;
 
-  // Constraint expression for the tiling space.
-  ConstraintExpression constraints_;
+  // Constraint for tile sizes.
+  ConstraintExpression constraint_;
 
   // Special divisibility constraints.
   llvm::SmallVector<DivisibilityConstraint, 2> divisibility_constraints_;

@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/DenseMap.h"
@@ -171,8 +172,8 @@ std::string TilingSpace::ToString() const {
     ss << index << " root tile: " << tile.ToString(/*print_variables=*/false)
        << "\n";
   }
-  if (!constraints_.IsAlwaysSatisfied()) {
-    ss << "Constraints:\n" << constraints_.ToString() << "\n";
+  if (!constraint_.IsAlwaysSatisfied()) {
+    ss << "Constraints:\n" << constraint_.ToString() << "\n";
   }
   if (!divisibility_constraints_.empty()) {
     ss << "Divisibility constraints:\n";
@@ -204,6 +205,10 @@ std::optional<const TilingSpace::RTVarInfo*> TilingSpace::GetRTVarInfo(
 
 absl::Status TilingSpace::AssignTileSizes(
     absl::Span<const int64_t> tile_sizes) {
+  if (!is_symbolic_) {
+    return absl::InternalError(
+        "Tile sizes have already been assigned to this tiling space.");
+  }
   CHECK_EQ(tile_sizes.size(), dimensions_.size());
   is_symbolic_ = false;
 
@@ -221,6 +226,13 @@ absl::Status TilingSpace::AssignTileSizes(
           CreateSymbolicConstant(0, mlir_context_);
     }
   }
+
+  if (!constraint_.IsSatisfiedBy(tile_sizes)) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "Tile sizes %s do not satisfy constraint %s",
+        absl::StrJoin(tile_sizes, ","), constraint_.ToString()));
+  }
+
   for (const auto& c : divisibility_constraints_) {
     SymbolicExpr replaced_size = c.tile_size.Replace(replacement_map);
     if (replaced_size.GetType() != SymbolicExprType::kConstant) {

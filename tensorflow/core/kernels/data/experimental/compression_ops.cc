@@ -49,37 +49,37 @@ UncompressElementOp::UncompressElementOp(OpKernelConstruction* ctx)
 
 void UncompressElementOp::Compute(OpKernelContext* ctx) {
   Tensor tensor = ctx->input(0);
-  OP_REQUIRES(
-      ctx, tensor.dims() == 0,
-      errors::InvalidArgument("UncompressElement requires its input to be a "
-                              "scalar, but encountered an input with ",
-                              tensor.dims(), " dimensions."));
-  OP_REQUIRES(
-      ctx, tensor.dtype() == DT_VARIANT,
-      errors::InvalidArgument("UncompressElement requires its input to be a "
-                              "variant, but encountered an input with dtype ",
-                              DataTypeString(tensor.dtype())));
+  OP_REQUIRES(ctx, tensor.dims() == 0,
+              absl::InvalidArgumentError(
+                  absl::StrCat("UncompressElement requires its input to be a "
+                               "scalar, but encountered an input with ",
+                               tensor.dims(), " dimensions.")));
+  OP_REQUIRES(ctx, tensor.dtype() == DT_VARIANT,
+              absl::InvalidArgumentError(
+                  absl::StrCat("UncompressElement requires its input to be a "
+                               "variant, but encountered an input with dtype ",
+                               DataTypeString(tensor.dtype()))));
   const Variant& variant = tensor.scalar<Variant>()();
   const CompressedElement* compressed = variant.get<CompressedElement>();
   OP_REQUIRES(
       ctx, compressed != nullptr,
-      errors::InvalidArgument(
+      absl::InvalidArgumentError(absl::StrCat(
           "Input does not contain a compressed element. Instead got tensor ",
-          tensor.DebugString()));
+          tensor.DebugString())));
 
   std::vector<Tensor> components;
   OP_REQUIRES_OK(ctx, UncompressElement(*compressed, &components));
   OP_REQUIRES(ctx, components.size() == output_types_.size(),
-              errors::FailedPrecondition("Expected ", output_types_.size(),
-                                         " outputs from uncompress, but got ",
-                                         components.size()));
+              absl::FailedPreconditionError(absl::StrCat(
+                  "Expected ", output_types_.size(),
+                  " outputs from uncompress, but got ", components.size())));
   for (int i = 0; i < components.size(); ++i) {
     OP_REQUIRES(
         ctx, components[i].dtype() == output_types_[i],
-        errors::FailedPrecondition("Expected a tensor of type ",
-                                   DataTypeString(output_types_[i]),
-                                   " but got a tensor of type ",
-                                   DataTypeString(components[i].dtype())));
+        absl::FailedPreconditionError(absl::StrCat(
+            "Expected a tensor of type ", DataTypeString(output_types_[i]),
+            " but got a tensor of type ",
+            DataTypeString(components[i].dtype()))));
     ctx->set_output(i, components[i]);
   }
 }

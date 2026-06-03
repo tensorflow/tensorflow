@@ -235,7 +235,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
                 key_func_output[0].dtype() != DT_INT64 ||
                 key_func_output[0].NumElements() != 1) {
               // TODO(b/78665031): Support non-int64 keys.
-              return errors::InvalidArgument(
+              return absl::InvalidArgumentError(
                   "`key_func` must return a scalar int64.");
             }
             const int64_t key = key_func_output[0].scalar<int64_t>()();
