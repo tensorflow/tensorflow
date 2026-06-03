@@ -43,7 +43,7 @@ Status InitializeTpuLibrary(void* library_handle) {
     void (*initialize_fn)(bool init_library, int num_args, const char** args);
     initialize_fn = reinterpret_cast<decltype(initialize_fn)>(
         dlsym(library_handle, "TfTpu_Initialize"));
-    (*initialize_fn)(/*init_library=*/true, args.second.size(),
+    (*initialize_fn)(/*init_library=*/true, args.second.size() - 1,
                      args.second.data());
 
     RegisterTpuPlatform();

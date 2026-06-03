@@ -374,7 +374,6 @@ cc_library(
         "@xla//xla/stream_executor/tpu:tpu_api_dlsym_set_fn",
         "@xla//xla/stream_executor/tpu:tpu_executor",
         "@xla//xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
-        "@xla//xla/stream_executor/tpu:tpu_executor_init_fns",
         "@xla//xla/stream_executor/tpu:tpu_initialize_util",
         "@xla//xla/stream_executor/tpu:tpu_library_init_fns",
         "@xla//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
