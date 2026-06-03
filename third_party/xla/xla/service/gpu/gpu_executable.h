@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/dense_data_intermediate.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo.pb.h"
@@ -97,7 +98,7 @@ class GpuExecutable : public Executable {
     GpuExecutableProto::ConstantInfoProto ToProto() const;
 
     static ConstantInfo FromProto(
-        const GpuExecutableProto::ConstantInfoProto& proto);
+        GpuExecutableProto::ConstantInfoProto&& proto);
   };
 
   struct OutputInfo {
@@ -286,8 +287,7 @@ class GpuExecutable : public Executable {
   absl::Status VerboseAllocationError(absl::Status s);
 
   static absl::StatusOr<std::unique_ptr<GpuExecutable>> FromProto(
-      const GpuExecutableProto&,
-      const se::DeviceDescription& device_description,
+      GpuExecutableProto&&, const se::DeviceDescription& device_description,
       absl::string_view platform, DebugOptions debug_options,
       const std::optional<se::KernelLoaderSpec::SymbolResolver>&
           symbol_resolver = std::nullopt);

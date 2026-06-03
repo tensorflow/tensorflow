@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/gpu/dense_data_intermediate.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 
