@@ -56,7 +56,7 @@ class TpuNodeContext final {
 
   int device_ordinal() const;
 
-  xla::Backend* backend() const;
+  std::shared_ptr<xla::Backend> backend() const;
 
   stream_executor::StreamExecutor* stream_executor() const;
 
