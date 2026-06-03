@@ -531,7 +531,7 @@ tsl::Future<> CommonPjRtClient::MakeTrackedReadyFuture(
 
 absl::StatusOr<std::shared_ptr<TransposePlan>>
 CommonPjRtClient::GetTransposePlan(const TransposePlan::Options& options) {
-  absl::MutexLock lock(&transpose_mu_);
+  absl::MutexLock lock(transpose_mu_);
   return transpose_cache_.GetOrCreate(options);
 }
 
