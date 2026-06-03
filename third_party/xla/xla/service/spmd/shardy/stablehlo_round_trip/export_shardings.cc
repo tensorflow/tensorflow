@@ -303,6 +303,7 @@ HloSharding getHloShardingForOp(
   }
 
   std::vector<HloSharding> newShardings;
+  newShardings.reserve(shardings.size());
   llvm::transform(shardings, std::back_inserter(newShardings),
                   [&](TensorShardingAttr sdySharding) {
                     return convertToHloSharding(sdySharding, getMeshAttr,
@@ -311,6 +312,7 @@ HloSharding getHloShardingForOp(
                   });
 
   std::vector<xla::Shape> shapes;
+  shapes.reserve(op->getNumResults());
   llvm::transform(op->getResultTypes(), std::back_inserter(shapes),
                   [&](mlir::Type type) { return xla::TypeToShape(type); });
 
