@@ -1906,5 +1906,26 @@ TEST_F(MatmulTest, MulTanhMul) {
   )");
 }
 
+TEST_F(MatmulTest, BiasAlongNonLastDimShouldNotFuseAsBias) {
+  // When a 1D addend is broadcast along a non-last dimension
+  // (e.g., M dimension instead of N), it should be fused as BINARY_ADD, not
+  // BIAS. OneDNN's matmul BIAS requires the non-trivial dimension to be the
+  // last (N) dimension.
+  const char* matmul_module_str = R"(
+  HloModule matmul.biasadd.test.f32
+
+  ENTRY matmul.biasadd.test.f32 {
+    arg0.1 = f32[4,300,32] parameter(0)
+    arg0.2 = f32[4,32,300] parameter(1)
+    arg0.3 = f32[300]{0} parameter(2)
+    dot.0 = f32[4,300,300] dot(arg0.1, arg0.2), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+    broad.0 = f32[4,300,300] broadcast(arg0.3), dimensions={1}
+    ROOT add.0 = f32[4,300,300] add(dot.0, broad.0)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_binary_add_);
+}
+
 }  // namespace cpu
 }  // namespace xla
