@@ -210,10 +210,6 @@ struct DenseMapInfo<xla::SymbolicExpr> {
     auto* pointer = llvm::DenseMapInfo<void*>::getEmptyKey();
     return xla::SymbolicExpr(static_cast<xla::SymbolicExprStorage*>(pointer));
   }
-  static xla::SymbolicExpr getTombstoneKey() {
-    auto* pointer = llvm::DenseMapInfo<void*>::getTombstoneKey();
-    return xla::SymbolicExpr(static_cast<xla::SymbolicExprStorage*>(pointer));
-  }
   static unsigned getHashValue(xla::SymbolicExpr val) {
     return hash_value(val);
   }

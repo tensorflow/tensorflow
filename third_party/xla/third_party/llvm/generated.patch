@@ -1,1 +1,417 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/InstCombine/InstCombineCasts.cpp b/llvm/lib/Transforms/InstCombine/InstCombineCasts.cpp
+--- a/llvm/lib/Transforms/InstCombine/InstCombineCasts.cpp
++++ b/llvm/lib/Transforms/InstCombine/InstCombineCasts.cpp
+@@ -1562,9 +1562,6 @@
+   if (Instruction *Result = commonCastTransforms(Zext))
+     return Result;
+ 
+-  if (auto *NewI = foldExtractionOfVectorDeinterleave(Zext))
+-    return NewI;
+-
+   Value *Src = Zext.getOperand(0);
+   Type *SrcTy = Src->getType(), *DestTy = Zext.getType();
+ 
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/InstCombine/InstCombineInternal.h b/llvm/lib/Transforms/InstCombine/InstCombineInternal.h
+--- a/llvm/lib/Transforms/InstCombine/InstCombineInternal.h
++++ b/llvm/lib/Transforms/InstCombine/InstCombineInternal.h
+@@ -822,9 +822,6 @@
+   Value *foldSelectWithConstOpToBinOp(ICmpInst *Cmp, Value *TrueVal,
+                                       Value *FalseVal);
+   Instruction *foldSelectValueEquivalence(SelectInst &SI, CmpInst &CI);
+-
+-  Instruction *foldExtractionOfVectorDeinterleave(ZExtInst &RootZExt);
+-
+   bool replaceInInstruction(Value *V, Value *Old, Value *New,
+                             unsigned Depth = 0);
+ 
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/InstCombine/InstCombineVectorOps.cpp b/llvm/lib/Transforms/InstCombine/InstCombineVectorOps.cpp
+--- a/llvm/lib/Transforms/InstCombine/InstCombineVectorOps.cpp
++++ b/llvm/lib/Transforms/InstCombine/InstCombineVectorOps.cpp
+@@ -3305,145 +3305,3 @@
+ 
+   return MadeChange ? &SVI : nullptr;
+ }
+-
+-/// Given the following de-interleaving shufflevectors and the consuming zexts:
+-/// ```
+-/// %f0 = shufflevector <8 x i32> %v, <4 x i32> <i32 0, i32 2, i32 4, i32 6>
+-/// %f1 = shufflevector <8 x i32> %v, <4 x i32> <i32 1, i32 3, i32 5, i32 7>
+-/// %z0 = zext <4 x i32> %f0 to <4 x i64>
+-/// %z1 = zext <4 x i32> %f1 to <4 x i64>
+-/// ```
+-/// We can actually bitcast the input value, `%v` first before replacing zexts
+-/// with simple arithmetics on this new bitcast:
+-/// ```
+-/// %bc = bitcast <8 x i32> %v to <4 x i64>
+-//  %z0 = and <4 x i64> %bc, splat (i64 4294967295)
+-//  %z1 = lshr <4 x i64> %bc, splat (i64 32)
+-/// ```
+-/// This transformation is almost always benefitial as shufflevector is more
+-/// expensive than normal arithmetics.
+-Instruction *
+-InstCombinerImpl::foldExtractionOfVectorDeinterleave(ZExtInst &RootZExt) {
+-  // This pattern involves bitcast that is not compatible with big endian.
+-  if (DL.isBigEndian())
+-    return nullptr;
+-
+-  // The actual value that got de-interleaved.
+-  Value *DIV;
+-
+-  using namespace PatternMatch;
+-  Value *SVI = nullptr, *DI = nullptr;
+-  if (!match(&RootZExt,
+-             m_ZExt(m_CombineOr(
+-                 m_ExtractValue(m_Value(DI, m_Deinterleave2(m_Value(DIV)))),
+-                 m_Value(SVI, m_Shuffle(m_Value(), m_Value()))))))
+-    return nullptr;
+-
+-  auto isDeinterleaveShuffle =
+-      [](Instruction *I) -> std::pair<Value *, unsigned> {
+-    Value *V;
+-    ArrayRef<int> ShuffleMask;
+-    unsigned Index;
+-    if (match(I, m_Shuffle(m_Value(V), m_Undef(), m_Mask(ShuffleMask))) &&
+-        isa<FixedVectorType>(V->getType())) {
+-      unsigned NumInputElements =
+-          cast<VectorType>(V->getType())->getElementCount().getFixedValue();
+-      if (ShuffleVectorInst::isDeInterleaveMaskOfFactor(ShuffleMask, 2,
+-                                                        Index) &&
+-          Index < 2 &&
+-          ShuffleVectorInst::isSingleSourceMask(ShuffleMask,
+-                                                NumInputElements) &&
+-          ShuffleMask.size() * 2 == NumInputElements)
+-        return {V, Index};
+-    }
+-    return {nullptr, UINT_MAX};
+-  };
+-
+-  // Validate either the shufflevector or the vector.deinterleave2 and obtain
+-  // the value they're de-interleaving.
+-  if (SVI) {
+-    // We will find other shufflevectors later.
+-    DIV = isDeinterleaveShuffle(cast<Instruction>(SVI)).first;
+-    if (!DIV)
+-      return nullptr;
+-  } else {
+-    // We should already capture the value that got de-interleaved (i.e. DIV).
+-    assert(DI && DIV);
+-    if (!all_of(DI->users(), [](User *Usr) -> bool {
+-          auto *EV = dyn_cast<ExtractValueInst>(Usr);
+-          return EV && EV->getNumIndices() == 1;
+-        }))
+-      return nullptr;
+-  }
+-
+-  auto *InputVecTy = dyn_cast<VectorType>(DIV->getType());
+-  if (!InputVecTy)
+-    return nullptr;
+-  auto *InElementTy = dyn_cast<IntegerType>(InputVecTy->getElementType());
+-  if (!InElementTy)
+-    return nullptr;
+-  if (!InputVecTy->getElementCount().isKnownEven())
+-    return nullptr;
+-
+-  // {Field instruction, Field index}
+-  SmallVector<std::pair<Instruction *, unsigned>, 4> Fields;
+-  if (SVI) {
+-    for (auto *Usr : DIV->users()) {
+-      auto *FieldI = dyn_cast<Instruction>(Usr);
+-      if (!FieldI)
+-        continue;
+-      auto [V, Index] = isDeinterleaveShuffle(FieldI);
+-      if (V != DIV)
+-        continue;
+-      assert(Index < 2);
+-      Fields.push_back({FieldI, Index});
+-    }
+-  } else {
+-    // llvm.vector.deinterleave2.
+-    for (User *Field : DI->users()) {
+-      auto *FieldI = cast<ExtractValueInst>(Field);
+-      unsigned FieldIdx = *FieldI->idx_begin();
+-      assert(FieldIdx < 2);
+-      Fields.push_back({FieldI, FieldIdx});
+-    }
+-  }
+-
+-  // {field to be replaced, field index}
+-  SmallVector<std::pair<ZExtInst *, unsigned>, 4> FieldReplacements;
+-  // We commit the transformation only if all the field users can be replaced,
+-  // otherwise the primary de-interleaving construction, regardless of
+-  // llvm.vector.deinterleave2 or shufflevectors, will still be there.
+-  for (auto [Field, FieldIdx] : Fields) {
+-    for (User *FieldUsr : Field->users()) {
+-      auto *ZExt = dyn_cast<ZExtInst>(FieldUsr);
+-      if (!ZExt)
+-        return nullptr;
+-      // Only if it's doubling the element size.
+-      if (ZExt->getDestTy() != ZExt->getSrcTy()->getExtendedType())
+-        return nullptr;
+-      FieldReplacements.push_back({ZExt, FieldIdx});
+-    }
+-  }
+-
+-  // Double the element size but half the vector length.
+-  auto *BitcastedTy = VectorType::getExtendedElementVectorType(InputVecTy);
+-  BitcastedTy = VectorType::getHalfElementsVectorType(BitcastedTy);
+-  // Since we're going to "merge" lanes via bitcast, we need to freeze any
+-  // potential poison lanes first.
+-  Value *Freeze = Builder.CreateFreeze(DIV);
+-  Value *Bitcast = Builder.CreateBitCast(Freeze, BitcastedTy);
+-  unsigned InElementBitWidth = InElementTy->getBitWidth();
+-  auto Mask = APInt::getLowBitsSet(InElementBitWidth * 2, InElementBitWidth);
+-  Value *NewField0 = Builder.CreateAnd(Bitcast, Mask);
+-  Value *NewField1 = Builder.CreateLShr(Bitcast, InElementBitWidth);
+-
+-  for (auto [I, Idx] : FieldReplacements) {
+-    assert(Idx < 2 && "unsupported field index");
+-    replaceInstUsesWith(*I, Idx ? NewField1 : NewField0);
+-    // Make sure the old ZExt are in the worklist so that they
+-    // can be removed in the following iterations.
+-    addToWorklist(I);
+-  }
+-
+-  return &RootZExt;
+-}
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/ARM/mve-narrow.ll b/llvm/test/Transforms/InstCombine/ARM/mve-narrow.ll
+--- a/llvm/test/Transforms/InstCombine/ARM/mve-narrow.ll
++++ b/llvm/test/Transforms/InstCombine/ARM/mve-narrow.ll
+@@ -244,9 +244,8 @@
+ define <4 x i32> @test_vshrn_const(<8 x i16> %a) {
+ ; CHECK-LABEL: @test_vshrn_const(
+ ; CHECK-NEXT:    [[Y:%.*]] = call <8 x i16> @llvm.arm.mve.vshrn.v8i16.v4i32(<8 x i16> poison, <4 x i32> <i32 512, i32 0, i32 0, i32 0>, i32 3, i32 0, i32 0, i32 0, i32 0, i32 1)
+-; CHECK-NEXT:    [[TMP2:%.*]] = freeze <8 x i16> [[Y]]
+-; CHECK-NEXT:    [[TMP1:%.*]] = bitcast <8 x i16> [[TMP2]] to <4 x i32>
+-; CHECK-NEXT:    [[ZA:%.*]] = lshr <4 x i32> [[TMP1]], splat (i32 16)
++; CHECK-NEXT:    [[Z:%.*]] = shufflevector <8 x i16> [[Y]], <8 x i16> poison, <4 x i32> <i32 1, i32 3, i32 5, i32 7>
++; CHECK-NEXT:    [[ZA:%.*]] = zext <4 x i16> [[Z]] to <4 x i32>
+ ; CHECK-NEXT:    ret <4 x i32> [[ZA]]
+ ;
+   %y = call <8 x i16> @llvm.arm.mve.vshrn.v8i16.v4i32(<8 x i16> %a, <4 x i32> <i32 512, i32 0, i32 0, i32 0>, i32 3, i32 0, i32 0, i32 0, i32 0, i32 1)
+@@ -259,9 +258,8 @@
+ ; CHECK-LABEL: @test_undef_bits(
+ ; CHECK-NEXT:  e:
+ ; CHECK-NEXT:    [[TMP0:%.*]] = call <8 x i16> @llvm.arm.mve.vshrn.v8i16.v4i32(<8 x i16> poison, <4 x i32> <i32 256, i32 0, i32 0, i32 0>, i32 8, i32 1, i32 1, i32 1, i32 0, i32 1)
+-; CHECK-NEXT:    [[TMP5:%.*]] = freeze <8 x i16> [[TMP0]]
+-; CHECK-NEXT:    [[TMP1:%.*]] = bitcast <8 x i16> [[TMP5]] to <4 x i32>
+-; CHECK-NEXT:    [[TMP2:%.*]] = lshr <4 x i32> [[TMP1]], splat (i32 16)
++; CHECK-NEXT:    [[TMP1:%.*]] = shufflevector <8 x i16> [[TMP0]], <8 x i16> poison, <4 x i32> <i32 1, i32 3, i32 5, i32 7>
++; CHECK-NEXT:    [[TMP2:%.*]] = zext <4 x i16> [[TMP1]] to <4 x i32>
+ ; CHECK-NEXT:    [[TMP3:%.*]] = bitcast <4 x i32> [[TMP2]] to <8 x i16>
+ ; CHECK-NEXT:    [[TMP4:%.*]] = extractelement <8 x i16> [[TMP3]], i64 0
+ ; CHECK-NEXT:    ret i16 [[TMP4]]
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/fold-zext-of-deinterleave.ll b/llvm/test/Transforms/InstCombine/fold-zext-of-deinterleave.ll
+--- a/llvm/test/Transforms/InstCombine/fold-zext-of-deinterleave.ll
++++ b/llvm/test/Transforms/InstCombine/fold-zext-of-deinterleave.ll
+@@ -1,210 +0,0 @@
+-; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 6
+-; RUN: opt -S -p instcombine < %s | FileCheck %s
+-
+-define <8 x i64> @zext_shufflevector(<16 x i32> %v) {
+-; CHECK-LABEL: define <8 x i64> @zext_shufflevector(
+-; CHECK-SAME: <16 x i32> [[V:%.*]]) {
+-; CHECK-NEXT:    [[TMP2:%.*]] = freeze <16 x i32> [[V]]
+-; CHECK-NEXT:    [[TMP1:%.*]] = bitcast <16 x i32> [[TMP2]] to <8 x i64>
+-; CHECK-NEXT:    [[Z0:%.*]] = and <8 x i64> [[TMP1]], splat (i64 4294967295)
+-; CHECK-NEXT:    [[Z1:%.*]] = lshr <8 x i64> [[TMP1]], splat (i64 32)
+-; CHECK-NEXT:    [[R:%.*]] = mul nuw <8 x i64> [[Z0]], [[Z1]]
+-; CHECK-NEXT:    ret <8 x i64> [[R]]
+-;
+-  %f0 = shufflevector <16 x i32> %v, <16 x i32> poison, <8 x i32> <i32 0, i32 2, i32 4, i32 6, i32 8, i32 10, i32 12, i32 14>
+-  %f1 = shufflevector <16 x i32> %v, <16 x i32> poison, <8 x i32> <i32 1, i32 3, i32 5, i32 7, i32 9, i32 11, i32 13, i32 15>
+-  %z0 = zext <8 x i32> %f0 to <8 x i64>
+-  %z1 = zext <8 x i32> %f1 to <8 x i64>
+-  %r = mul <8 x i64> %z0, %z1
+-  ret <8 x i64> %r
+-}
+-
+-define <8 x i64> @zext_shufflevector_single_field(<16 x i32> %v) {
+-; CHECK-LABEL: define <8 x i64> @zext_shufflevector_single_field(
+-; CHECK-SAME: <16 x i32> [[V:%.*]]) {
+-; CHECK-NEXT:    [[TMP2:%.*]] = freeze <16 x i32> [[V]]
+-; CHECK-NEXT:    [[TMP1:%.*]] = bitcast <16 x i32> [[TMP2]] to <8 x i64>
+-; CHECK-NEXT:    [[Z0:%.*]] = and <8 x i64> [[TMP1]], splat (i64 4294967295)
+-; CHECK-NEXT:    ret <8 x i64> [[Z0]]
+-;
+-  %f0 = shufflevector <16 x i32> %v, <16 x i32> poison, <8 x i32> <i32 0, i32 2, i32 4, i32 6, i32 8, i32 10, i32 12, i32 14>
+-  %z0 = zext <8 x i32> %f0 to <8 x i64>
+-  ret <8 x i64> %z0
+-}
+-
+-define <vscale x 8 x i64> @zext_deinterleave(<vscale x 16 x i32> %v) {
+-; CHECK-LABEL: define <vscale x 8 x i64> @zext_deinterleave(
+-; CHECK-SAME: <vscale x 16 x i32> [[V:%.*]]) {
+-; CHECK-NEXT:    [[TMP2:%.*]] = freeze <vscale x 16 x i32> [[V]]
+-; CHECK-NEXT:    [[TMP1:%.*]] = bitcast <vscale x 16 x i32> [[TMP2]] to <vscale x 8 x i64>
+-; CHECK-NEXT:    [[Z0:%.*]] = and <vscale x 8 x i64> [[TMP1]], splat (i64 4294967295)
+-; CHECK-NEXT:    [[Z1:%.*]] = lshr <vscale x 8 x i64> [[TMP1]], splat (i64 32)
+-; CHECK-NEXT:    [[R:%.*]] = mul nuw <vscale x 8 x i64> [[Z0]], [[Z1]]
+-; CHECK-NEXT:    ret <vscale x 8 x i64> [[R]]
+-;
+-  %d = call {<vscale x 8 x i32>, <vscale x 8 x i32>} @llvm.vector.deinterleave2(<vscale x 16 x i32> %v)
+-  %f0 = extractvalue {<vscale x 8 x i32>, <vscale x 8 x i32>} %d, 0
+-  %f1 = extractvalue {<vscale x 8 x i32>, <vscale x 8 x i32>} %d, 1
+-  %z0 = zext <vscale x 8 x i32> %f0 to <vscale x 8 x i64>
+-  %z1 = zext <vscale x 8 x i32> %f1 to <vscale x 8 x i64>
+-  %r = mul <vscale x 8 x i64> %z0, %z1
+-  ret <vscale x 8 x i64> %r
+-}
+-
+-define <vscale x 8 x i64> @zext_deinterleave_multi_zext_per_field(<vscale x 16 x i32> %v) {
+-; CHECK-LABEL: define <vscale x 8 x i64> @zext_deinterleave_multi_zext_per_field(
+-; CHECK-SAME: <vscale x 16 x i32> [[V:%.*]]) {
+-; CHECK-NEXT:    [[TMP2:%.*]] = freeze <vscale x 16 x i32> [[V]]
+-; CHECK-NEXT:    [[TMP1:%.*]] = bitcast <vscale x 16 x i32> [[TMP2]] to <vscale x 8 x i64>
+-; CHECK-NEXT:    [[Z0:%.*]] = and <vscale x 8 x i64> [[TMP1]], splat (i64 4294967295)
+-; CHECK-NEXT:    [[Z1:%.*]] = lshr <vscale x 8 x i64> [[TMP1]], splat (i64 32)
+-; CHECK-NEXT:    [[R:%.*]] = mul nuw <vscale x 8 x i64> [[Z0]], [[Z1]]
+-; CHECK-NEXT:    [[R2:%.*]] = mul <vscale x 8 x i64> [[R]], [[Z0]]
+-; CHECK-NEXT:    ret <vscale x 8 x i64> [[R2]]
+-;
+-  %d = call {<vscale x 8 x i32>, <vscale x 8 x i32>} @llvm.vector.deinterleave2(<vscale x 16 x i32> %v)
+-  %f0 = extractvalue {<vscale x 8 x i32>, <vscale x 8 x i32>} %d, 0
+-  %f1 = extractvalue {<vscale x 8 x i32>, <vscale x 8 x i32>} %d, 1
+-  %z0 = zext <vscale x 8 x i32> %f0 to <vscale x 8 x i64>
+-  %z0.1 = zext <vscale x 8 x i32> %f0 to <vscale x 8 x i64>
+-  %z1 = zext <vscale x 8 x i32> %f1 to <vscale x 8 x i64>
+-  %r = mul <vscale x 8 x i64> %z0, %z1
+-  %r2 = mul <vscale x 8 x i64> %r, %z0.1
+-  ret <vscale x 8 x i64> %r2
+-}
+-
+-define <vscale x 8 x i64> @zext_deinterleave_single_field(<vscale x 16 x i32> %v) {
+-; CHECK-LABEL: define <vscale x 8 x i64> @zext_deinterleave_single_field(
+-; CHECK-SAME: <vscale x 16 x i32> [[V:%.*]]) {
+-; CHECK-NEXT:    [[TMP2:%.*]] = freeze <vscale x 16 x i32> [[V]]
+-; CHECK-NEXT:    [[TMP1:%.*]] = bitcast <vscale x 16 x i32> [[TMP2]] to <vscale x 8 x i64>
+-; CHECK-NEXT:    [[Z1:%.*]] = lshr <vscale x 8 x i64> [[TMP1]], splat (i64 32)
+-; CHECK-NEXT:    ret <vscale x 8 x i64> [[Z1]]
+-;
+-  %d = call {<vscale x 8 x i32>, <vscale x 8 x i32>} @llvm.vector.deinterleave2(<vscale x 16 x i32> %v)
+-  %f1 = extractvalue {<vscale x 8 x i32>, <vscale x 8 x i32>} %d, 1
+-  %z1 = zext <vscale x 8 x i32> %f1 to <vscale x 8 x i64>
+-  ret <vscale x 8 x i64> %z1
+-}
+-
+-; This code is effectively just doing bitcast on the loaded value.
+-define <8 x i64> @to_bitcast(ptr %p) {
+-; CHECK-LABEL: define <8 x i64> @to_bitcast(
+-; CHECK-SAME: ptr [[P:%.*]]) {
+-; CHECK-NEXT:    [[LD:%.*]] = load <16 x i32>, ptr [[P]], align 4
+-; CHECK-NEXT:    [[TMP1:%.*]] = freeze <16 x i32> [[LD]]
+-; CHECK-NEXT:    [[LD1:%.*]] = bitcast <16 x i32> [[TMP1]] to <8 x i64>
+-; CHECK-NEXT:    ret <8 x i64> [[LD1]]
+-;
+-  %ld = load <16 x i32>, ptr %p, align 4
+-  %f1 = shufflevector <16 x i32> %ld, <16 x i32> poison, <8 x i32> <i32 1, i32 3, i32 5, i32 7, i32 9, i32 11, i32 13, i32 15>
+-  %z1 = zext <8 x i32> %f1 to <8 x i64>
+-  %part1 = shl nuw <8 x i64> %z1, splat (i64 32)
+-  %f0 = shufflevector <16 x i32> %ld, <16 x i32> poison, <8 x i32> <i32 0, i32 2, i32 4, i32 6, i32 8, i32 10, i32 12, i32 14>
+-  %part0 = zext <8 x i32> %f0 to <8 x i64>
+-  %r = or disjoint <8 x i64> %part1, %part0
+-  ret <8 x i64> %r
+-}
+-
+-define <vscale x 8 x i64> @to_bitcast_deinterleave(ptr %p) {
+-; CHECK-LABEL: define <vscale x 8 x i64> @to_bitcast_deinterleave(
+-; CHECK-SAME: ptr [[P:%.*]]) {
+-; CHECK-NEXT:    [[LD:%.*]] = load <vscale x 16 x i32>, ptr [[P]], align 4
+-; CHECK-NEXT:    [[TMP1:%.*]] = freeze <vscale x 16 x i32> [[LD]]
+-; CHECK-NEXT:    [[LD1:%.*]] = bitcast <vscale x 16 x i32> [[TMP1]] to <vscale x 8 x i64>
+-; CHECK-NEXT:    ret <vscale x 8 x i64> [[LD1]]
+-;
+-  %ld = load <vscale x 16 x i32>, ptr %p, align 4
+-  %d = call {<vscale x 8 x i32>, <vscale x 8 x i32>} @llvm.vector.deinterleave2(<vscale x 16 x i32> %ld)
+-  %f1 = extractvalue {<vscale x 8 x i32>, <vscale x 8 x i32>} %d, 1
+-  %z1 = zext <vscale x 8 x i32> %f1 to <vscale x 8 x i64>
+-  %part1 = shl nuw <vscale x 8 x i64> %z1, splat (i64 32)
+-  %f0 = extractvalue {<vscale x 8 x i32>, <vscale x 8 x i32>} %d, 0
+-  %part0 = zext <vscale x 8 x i32> %f0 to <vscale x 8 x i64>
+-  %r = or disjoint <vscale x 8 x i64> %part1, %part0
+-  ret <vscale x 8 x i64> %r
+-}
+-
+-define <8 x i64> @negative_zext_shufflevector_not_zext(<16 x i32> %v) {
+-; CHECK-LABEL: define <8 x i64> @negative_zext_shufflevector_not_zext(
+-; CHECK-SAME: <16 x i32> [[V:%.*]]) {
+-; CHECK-NEXT:    [[F0:%.*]] = shufflevector <16 x i32> [[V]], <16 x i32> poison, <8 x i32> <i32 0, i32 2, i32 4, i32 6, i32 8, i32 10, i32 12, i32 14>
+-; CHECK-NEXT:    [[F1:%.*]] = shufflevector <16 x i32> [[V]], <16 x i32> poison, <8 x i32> <i32 1, i32 3, i32 5, i32 7, i32 9, i32 11, i32 13, i32 15>
+-; CHECK-NEXT:    [[Z0:%.*]] = zext <8 x i32> [[F0]] to <8 x i64>
+-; CHECK-NEXT:    [[A:%.*]] = add <8 x i32> [[F1]], splat (i32 7)
+-; CHECK-NEXT:    [[Z1:%.*]] = zext <8 x i32> [[A]] to <8 x i64>
+-; CHECK-NEXT:    [[R:%.*]] = mul nuw <8 x i64> [[Z0]], [[Z1]]
+-; CHECK-NEXT:    ret <8 x i64> [[R]]
+-;
+-  %f0 = shufflevector <16 x i32> %v, <16 x i32> poison, <8 x i32> <i32 0, i32 2, i32 4, i32 6, i32 8, i32 10, i32 12, i32 14>
+-  %f1 = shufflevector <16 x i32> %v, <16 x i32> poison, <8 x i32> <i32 1, i32 3, i32 5, i32 7, i32 9, i32 11, i32 13, i32 15>
+-  %z0 = zext <8 x i32> %f0 to <8 x i64>
+-  %a = add <8 x i32> %f1, splat (i32 7)
+-  %z1 = zext <8 x i32> %a to <8 x i64>
+-  %r = mul <8 x i64> %z0, %z1
+-  ret <8 x i64> %r
+-}
+-
+-define <vscale x 8 x i64> @negative_zext_deinterleave_not_zext(<vscale x 16 x i32> %v) {
+-; CHECK-LABEL: define <vscale x 8 x i64> @negative_zext_deinterleave_not_zext(
+-; CHECK-SAME: <vscale x 16 x i32> [[V:%.*]]) {
+-; CHECK-NEXT:    [[D:%.*]] = call { <vscale x 8 x i32>, <vscale x 8 x i32> } @llvm.vector.deinterleave2.nxv16i32(<vscale x 16 x i32> [[V]])
+-; CHECK-NEXT:    [[F0:%.*]] = extractvalue { <vscale x 8 x i32>, <vscale x 8 x i32> } [[D]], 0
+-; CHECK-NEXT:    [[F1:%.*]] = extractvalue { <vscale x 8 x i32>, <vscale x 8 x i32> } [[D]], 1
+-; CHECK-NEXT:    [[A:%.*]] = add <vscale x 8 x i32> [[F0]], splat (i32 7)
+-; CHECK-NEXT:    [[Z0:%.*]] = zext <vscale x 8 x i32> [[A]] to <vscale x 8 x i64>
+-; CHECK-NEXT:    [[Z1:%.*]] = zext <vscale x 8 x i32> [[F1]] to <vscale x 8 x i64>
+-; CHECK-NEXT:    [[R:%.*]] = mul nuw <vscale x 8 x i64> [[Z0]], [[Z1]]
+-; CHECK-NEXT:    ret <vscale x 8 x i64> [[R]]
+-;
+-  %d = call {<vscale x 8 x i32>, <vscale x 8 x i32>} @llvm.vector.deinterleave2(<vscale x 16 x i32> %v)
+-  %f0 = extractvalue {<vscale x 8 x i32>, <vscale x 8 x i32>} %d, 0
+-  %f1 = extractvalue {<vscale x 8 x i32>, <vscale x 8 x i32>} %d, 1
+-  %a = add <vscale x 8 x i32> %f0, splat (i32 7)
+-  %z0 = zext <vscale x 8 x i32> %a to <vscale x 8 x i64>
+-  %z1 = zext <vscale x 8 x i32> %f1 to <vscale x 8 x i64>
+-  %r = mul <vscale x 8 x i64> %z0, %z1
+-  ret <vscale x 8 x i64> %r
+-}
+-
+-define <8 x i64> @negative_zext_shufflevector_invalid_zext(<16 x i16> %v) {
+-; CHECK-LABEL: define <8 x i64> @negative_zext_shufflevector_invalid_zext(
+-; CHECK-SAME: <16 x i16> [[V:%.*]]) {
+-; CHECK-NEXT:    [[F0:%.*]] = shufflevector <16 x i16> [[V]], <16 x i16> poison, <8 x i32> <i32 0, i32 2, i32 4, i32 6, i32 8, i32 10, i32 12, i32 14>
+-; CHECK-NEXT:    [[F1:%.*]] = shufflevector <16 x i16> [[V]], <16 x i16> poison, <8 x i32> <i32 1, i32 3, i32 5, i32 7, i32 9, i32 11, i32 13, i32 15>
+-; CHECK-NEXT:    [[Z0:%.*]] = zext <8 x i16> [[F0]] to <8 x i64>
+-; CHECK-NEXT:    [[Z1:%.*]] = zext <8 x i16> [[F1]] to <8 x i64>
+-; CHECK-NEXT:    [[R:%.*]] = mul nuw nsw <8 x i64> [[Z0]], [[Z1]]
+-; CHECK-NEXT:    ret <8 x i64> [[R]]
+-;
+-  %f0 = shufflevector <16 x i16> %v, <16 x i16> poison, <8 x i32> <i32 0, i32 2, i32 4, i32 6, i32 8, i32 10, i32 12, i32 14>
+-  %f1 = shufflevector <16 x i16> %v, <16 x i16> poison, <8 x i32> <i32 1, i32 3, i32 5, i32 7, i32 9, i32 11, i32 13, i32 15>
+-  %z0 = zext <8 x i16> %f0 to <8 x i64>
+-  %z1 = zext <8 x i16> %f1 to <8 x i64>
+-  %r = mul <8 x i64> %z0, %z1
+-  ret <8 x i64> %r
+-}
+-
+-define <2 x i64> @negative_zext_shufflevector_invalid_shuffle_mask1(<2 x i32> %v) {
+-; CHECK-LABEL: define <2 x i64> @negative_zext_shufflevector_invalid_shuffle_mask1(
+-; CHECK-SAME: <2 x i32> [[V:%.*]]) {
+-; CHECK-NEXT:    [[F1:%.*]] = shufflevector <2 x i32> [[V]], <2 x i32> poison, <2 x i32> <i32 1, i32 poison>
+-; CHECK-NEXT:    [[Z1:%.*]] = zext <2 x i32> [[F1]] to <2 x i64>
+-; CHECK-NEXT:    ret <2 x i64> [[Z1]]
+-;
+-  %f1 = shufflevector <2 x i32> %v, <2 x i32> poison, <2 x i32> <i32 1, i32 3>
+-  %z1 = zext <2 x i32> %f1 to <2 x i64>
+-  ret <2 x i64> %z1
+-}
+-
+-define <2 x i64> @negative_zext_shufflevector_invalid_shuffle_mask2(<8 x i32> %v) {
+-; CHECK-LABEL: define <2 x i64> @negative_zext_shufflevector_invalid_shuffle_mask2(
+-; CHECK-SAME: <8 x i32> [[V:%.*]]) {
+-; CHECK-NEXT:    [[F1:%.*]] = shufflevector <8 x i32> [[V]], <8 x i32> poison, <2 x i32> <i32 0, i32 2>
+-; CHECK-NEXT:    [[Z1:%.*]] = zext <2 x i32> [[F1]] to <2 x i64>
+-; CHECK-NEXT:    ret <2 x i64> [[Z1]]
+-;
+-  %f1 = shufflevector <8 x i32> %v, <8 x i32> poison, <2 x i32> <i32 0, i32 2>
+-  %z1 = zext <2 x i32> %f1 to <2 x i64>
+-  ret <2 x i64> %z1
+-}

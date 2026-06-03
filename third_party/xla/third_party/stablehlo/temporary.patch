@@ -17,6 +17,15 @@ diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/pointwise.mlir b/stabl
 diff --ruN a/stablehlo/stablehlo/dialect/Base.td b/stablehlo/stablehlo/dialect/Base.td
 --- stablehlo/stablehlo/dialect/Base.td
 +++ stablehlo/stablehlo/dialect/Base.td
+@@ -152,7 +152,7 @@
+     AnyTypeOf<[HLO_PerAxisQuantizedSignedInt, HLO_PerAxisQuantizedUnsignedInt], "per-axis integer quantized">;
+ 
+ // Token type.
+-def HLO_Token : Type<CPred<"::llvm::isa<TokenType>($_self)">, "token">;
++def HLO_Token : Type<CPred<"::llvm::isa<::mlir::stablehlo::TokenType>($_self)">, "token">;
+ 
+ // Any integer tensor types
+ def HLO_IntTensor : RankedTensorOf<[HLO_Int]>;
 @@ -181,7 +181,7 @@
  
  def HLO_Tensor : RankedTensorOf<[HLO_Float, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt]>;
@@ -230,6 +239,17 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/
  }
  
  LogicalResult AllReduceOp::inferReturnTypeComponents(
+@@ -3724,10 +3770,6 @@
+     return NonSpatialDim(DenseMapInfo<int64_t>::getEmptyKey());
+   }
+ 
+-  static inline NonSpatialDim getTombstoneKey() {
+-    return NonSpatialDim(DenseMapInfo<int64_t>::getTombstoneKey());
+-  }
+-
+   static unsigned getHashValue(const NonSpatialDim& key) {
+     return DenseMapInfo<int64_t>::getHashValue(key);
+   }
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
 --- stablehlo/stablehlo/dialect/StablehloOps.td
 +++ stablehlo/stablehlo/dialect/StablehloOps.td
