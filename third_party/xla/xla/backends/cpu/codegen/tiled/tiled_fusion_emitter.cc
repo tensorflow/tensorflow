@@ -315,7 +315,8 @@ bool IsSupportedTilingType(PrimitiveType type) {
 
   // Some f8 types are not supported by the emitter, just don't support any of
   // them for now.
-  if (primitive_util::IsF8Type(type) || primitive_util::IsMXType(type)) {
+  if (primitive_util::IsF8Type(type) || primitive_util::IsF6Type(type) ||
+      primitive_util::IsMXType(type)) {
     return false;
   }
 
