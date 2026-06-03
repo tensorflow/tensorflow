@@ -543,5 +543,11 @@ bool isManualComputationOnName(mlir::StringRef funcName, bool isInlineable) {
                                         : kManualComputationFuncName);
 }
 
+bool isAnyManualComputationOnName(mlir::StringRef funcName) {
+  return funcName.contains(kManualComputationFuncName) ||
+         funcName.contains(kInlineableManualComputationFuncName) ||
+         funcName.contains(kInlineableCalleeFuncName);
+}
+
 }  // namespace sdy
 }  // namespace xla

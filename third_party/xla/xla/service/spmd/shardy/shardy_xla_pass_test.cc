@@ -1244,25 +1244,37 @@ TEST_F(ShardyXLATest, PreserveOriginalValueRecoveryTable) {
 
 TEST_F(ShardyXLATest, UpdateInlineableAttr) {
   const char* const hloString = R"(
-    HloModule module
+    HloModule module, entry_computation_layout={(f32[8,8])->f32[8,8]}
 
     xla.sdy.manual_computation_body {
-      constant.0 = f32[1] constant({0})
-      ROOT tuple.1 = () tuple()
+      ROOT p0 = f32[8,8] parameter(0)
     }
 
     ENTRY entry {
-      ROOT call.2 = () call(), to_apply=xla.sdy.manual_computation_body, frontend_attributes={inlineable="false"}
+      p0 = f32[8,8] parameter(0), sharding={replicated}
+      %custom-call.2 = (f32[8,8]) custom-call(p0), custom_call_target="xla.sdy.GlobalToLocalShape",
+        frontend_attributes={
+          xla.sdy.in_shardings="#sdy.sharding_per_value<[<mesh<[\"x\"=2]>, [{}, {}]>]>",
+          xla.sdy.manual_axes="#sdy<manual_axes{\"x\"}>"
+        }
+      %local_param = f32[8,8] get-tuple-element(%custom-call.2), index=0
+      %call.1 = f32[8,8] call(%local_param), to_apply=xla.sdy.manual_computation_body, frontend_attributes={inlineable="false"}
+      ROOT %custom-call.3 = f32[8,8] custom-call(%call.1), custom_call_target="xla.sdy.LocalToGlobalShape",
+        frontend_attributes={
+          xla.sdy.manual_axes="#sdy<manual_axes{\"x\"}>",
+          xla.sdy.out_shardings="#sdy.sharding_per_value<[<mesh<[\"x\"=2]>, [{}, {}]>]>"
+        }
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
   runShardy(module.get(), /*stablehloImport=*/false,
             /*runSdyShardingPropagation=*/false);
 
-  HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_EQ(root->opcode(), HloOpcode::kCall);
-  EXPECT_FALSE(root->has_frontend_attributes());
-  EXPECT_EQ(root->to_apply()->name(), "inlineable_callee");
+  HloInstruction* callInst =
+      FindInstruction(module.get(), xla::HloOpcode::kCall);
+  ASSERT_NE(callInst, nullptr);
+  EXPECT_FALSE(callInst->has_frontend_attributes());
+  EXPECT_EQ(callInst->to_apply()->name(), "xla.sdy.inlineable_callee.1");
 }
 
 TEST_F(ShardyXLATest, ManualComputationCallOpWithToken) {
@@ -1387,6 +1399,48 @@ TEST_F(ShardyXLATest, StackFrameMetadataReplacedTest) {
   EXPECT_NE(copy, nullptr);
   EXPECT_EQ(copy->metadata().op_name(), "copy");
   EXPECT_EQ(copy->metadata().stack_frame_id(), 1);
+}
+
+TEST_F(ShardyXLATest, SdyManualComputationErase) {
+  const char* const hloString = R"(
+    HloModule sdy_erase, entry_computation_layout={(f32[8,8])->f32[8,8]}
+
+    xla.sdy.manual_computation_body.11 {
+      Arg_0.12 = f32[8,8] parameter(0)
+      ROOT add = f32[8,8] add(Arg_0.12, Arg_0.12)
+    }
+
+    ENTRY main {
+      p0 = f32[8,8] parameter(0), sharding={replicated}
+      %custom-call.2 = (f32[8,8]) custom-call(p0), custom_call_target="xla.sdy.GlobalToLocalShape",
+        frontend_attributes={
+          xla.sdy.in_shardings="#sdy.sharding_per_value<[<mesh<[\"x\"=2]>, [{}, {}]>]>",
+          xla.sdy.manual_axes="#sdy<manual_axes{\"x\"}>"
+        }
+      %local_param = f32[8,8] get-tuple-element(%custom-call.2), index=0
+      %call.1 = f32[8,8] call(%local_param), to_apply=xla.sdy.manual_computation_body.11
+      ROOT %custom-call.3 = f32[8,8] custom-call(%call.1), custom_call_target="xla.sdy.LocalToGlobalShape",
+        frontend_attributes={
+          xla.sdy.manual_axes="#sdy<manual_axes{\"x\"}>",
+          xla.sdy.out_shardings="#sdy.sharding_per_value<[<mesh<[\"x\"=2]>, [{}, {}]>]>"
+        }
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+
+  runShardy(module.get(), /*stablehloImport=*/false,
+            /*runSdyShardingPropagation=*/false);
+
+  for (const HloInstruction* inst :
+       module->entry_computation()->instructions()) {
+    EXPECT_FALSE(inst->IsCustomCall("SPMDFullToShardShape"));
+    EXPECT_FALSE(inst->IsCustomCall("SPMDShardToFullShape"));
+  }
+  HloInstruction* callInst =
+      FindInstruction(module.get(), xla::HloOpcode::kCall);
+  ASSERT_NE(callInst, nullptr);
+  EXPECT_EQ(callInst->to_apply()->name(), "xla.sdy.inlineable_callee.1");
 }
 
 }  // namespace sdy

@@ -29,7 +29,8 @@ namespace sdy {
 // `kManualAxes` attribute, which will be processed in
 // `ExportStablehloShardingsPass`.
 std::unique_ptr<mlir::Pass> createStablehloRoundTripShardMapExportPass(
-    bool createHloShardingConstraints = false);
+    bool createHloShardingConstraints = false,
+    bool eraseManualComputations = false);
 
 // Registers the xla-sdy-stablehlo-round-trip-shard-map-export pass.
 void registerStablehloRoundTripShardMapExportPass();

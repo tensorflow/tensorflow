@@ -38,7 +38,7 @@ void addStablehloExportPipeline(mlir::OpPassManager& pm,
   // folding.
   pm.addPass(createExportOpsPass(options.keepHloShardingConstraints));
   pm.addPass(createStablehloRoundTripShardMapExportPass(
-      options.keepHloShardingConstraints));
+      options.keepHloShardingConstraints, options.eraseManualComputations));
   pm.addPass(mlir::createSymbolDCEPass());
   // If we don't add a sharding to a control flow op without one,
   // StableHLO -> HLO conversion won't add a sharding for that op even if a
