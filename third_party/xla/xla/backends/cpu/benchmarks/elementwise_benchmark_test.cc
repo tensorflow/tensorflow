@@ -15,8 +15,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <random>
+#include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -195,5 +199,56 @@ BM_UNARY_OP_ALL_TYPES(Sin);
 BM_UNARY_OP_ALL_TYPES(Sqrt);
 BM_UNARY_OP_ALL_TYPES(Tan);
 BM_UNARY_OP_ALL_TYPES(Tanh);
+
+static void BM_Atan(benchmark::State& state, const HloBenchmarkOptions& options,
+                    PrimitiveType type) {
+  int64_t d0 = state.range(0);
+  std::string type_name = absl::AsciiStrToLower(PrimitiveType_Name(type));
+
+  absl::string_view hlo = R"(
+    HloModule atan_$type_$d0
+
+    ENTRY e {
+      p0 = $type[1,2,1,$d0,256] parameter(0)
+      c1 = $type[] constant(1.0)
+      b1 = $type[1,2,1,$d0,256] broadcast(c1), dimensions={}
+      ROOT root = $type[1,2,1,$d0,256] atan2(p0, b1)
+    }
+  )";
+
+  std::minstd_rand0 engine;
+  auto shape = ShapeUtil::MakeShape(type, {1, 2, 1, d0, 256});
+
+  auto p0_status = [&]() -> absl::StatusOr<Literal> {
+    switch (type) {
+      case F32:
+        return LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f,
+                                                     0.1f);
+      case F64:
+        return LiteralUtil::CreateRandomLiteral<F64>(shape, &engine, 1.0, 0.1);
+      default:
+        return absl::InvalidArgumentError(
+            absl::StrCat("Unsupported type: ", PrimitiveType_Name(type)));
+    }
+  }();
+
+  ASSERT_OK(p0_status.status());
+  Literal p0 = std::move(p0_status).value();
+
+  std::vector<const Literal*> args = {&p0};
+  CHECK_OK(RunHloBenchmark(state, hlo, args,
+                           {{"$d0", absl::StrCat(d0)}, {"$type", type_name}},
+                           options));
+}
+
+static void BM_AtanF32(benchmark::State& state, HloBenchmarkOptions options) {
+  BM_Atan(state, options, F32);
+}
+BENCHMARK_SIZES(BM_AtanF32);
+
+static void BM_AtanF64(benchmark::State& state, HloBenchmarkOptions options) {
+  BM_Atan(state, options, F64);
+}
+BENCHMARK_SIZES(BM_AtanF64);
 
 }  // namespace xla::cpu

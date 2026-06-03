@@ -37,6 +37,23 @@ struct AccuracyBudget {
   std::optional<UlpBudget> rocm_gpu = {};
 };
 
+// Atan
+constexpr AccuracyBudget kAtanF32Budget = {
+    /*cpu=*/{/*regular=*/3,
+             /*subnormal=*/1},
+    /*gpu=*/
+    {/*regular=*/1,
+     /*subnormal=*/0},
+};
+
+constexpr AccuracyBudget kAtanF64Budget = {
+    /*cpu=*/{/*regular=*/2,
+             /*subnormal=*/1},
+    /*gpu=*/
+    {/*regular=*/1,
+     /*subnormal=*/0},
+};
+
 // Exp
 constexpr AccuracyBudget kExpF32Budget = {
     /*cpu=*/{/*regular=*/6,

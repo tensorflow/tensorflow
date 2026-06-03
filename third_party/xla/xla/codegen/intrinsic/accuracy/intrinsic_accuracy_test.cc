@@ -181,6 +181,20 @@ void LogAccuracyReport(const AccuracyReport& report,
 std::string MakeUnaryHloModule(absl::string_view op_name, PrimitiveType type,
                                int64_t count) {
   std::string type_str = primitive_util::LowercasePrimitiveTypeName(type);
+  if (op_name == "atan") {
+    return absl::StrFormat(R"(
+HloModule atan_accuracy_test
+
+ENTRY main {
+  input = %s[%d] parameter(0)
+  constant_one = %s[] constant(1)
+  broadcast_one = %s[%d] broadcast(constant_one), dimensions={}
+  ROOT result = %s[%d] atan2(input, broadcast_one)
+}
+)",
+                           type_str, count, type_str, type_str, count, type_str,
+                           count);
+  }
   return absl::StrFormat(R"(
 HloModule %s_accuracy_test
 
@@ -227,6 +241,9 @@ struct IntrinsicAccuracyTestParam {
 std::vector<IntrinsicAccuracyTestParam> GetAccuracyTestParams() {
   namespace accuracy = ::xla::codegen::intrinsic::accuracy;
   std::vector<IntrinsicAccuracyTestParam> params = {
+      {"atan", F32, accuracy::kGoldenAtan, accuracy::kAtanF32Budget},
+      {"atan", F64, accuracy::kGoldenAtan, accuracy::kAtanF64Budget},
+
       {"tanh", F32, accuracy::kGoldenTanh, accuracy::kTanhF32Budget},
       {"tanh", F64, accuracy::kGoldenTanh, accuracy::kTanhF64Budget},
 
