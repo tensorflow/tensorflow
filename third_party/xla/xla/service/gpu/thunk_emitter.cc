@@ -55,7 +55,6 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"
-#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
@@ -101,6 +100,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/recv_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
+#include "xla/backends/gpu/runtime/rng_seed_thunk.h"
 #include "xla/backends/gpu/runtime/select_k_thunk.h"
 #include "xla/backends/gpu/runtime/send_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
@@ -173,7 +173,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/casts.h"
 #include "tsl/platform/human_readable_json.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
@@ -1670,6 +1669,15 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReplicaOrPartitionId(
       result_slice));
 }
 
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRngSeedThunk(
+    const HloInstruction* instr) {
+  ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
+                   GetAllocationSliceForHlo(instr, {}));
+  return GetThunkSequence(std::make_unique<RngSeedThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(
+          instr, ir_emitter_context_->GetNextThunkId()),
+      result_slice));
+}
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectivePermute(
     const HloCollectivePermuteInstruction* instr) {
   // First output is aliased.
@@ -2109,6 +2117,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitOutfeed(
 static absl::flat_hash_map<std::string, std::string> ConvertFrontendAttributes(
     const FrontendAttributes& attrs) {
   absl::flat_hash_map<std::string, std::string> result;
+  // NOLINTNEXTLINE
   for (auto& [k, v] : attrs.map()) {
     result[k] = v;
   }
@@ -2657,6 +2666,9 @@ AsyncThunkSequence ThunkEmitter::EmitCustomCallSwitch(
       hlo->custom_call_target() == kUnpinCustomCallTarget ||
       hlo->custom_call_target() == kCreateBufferCustomCallTarget) {
     return ThunkSequence{};
+  }
+  if (hlo->custom_call_target() == "GetRngSeed") {
+    return EmitRngSeedThunk(hlo);
   }
   return EmitCustomCallThunk(custom_call);
 }
