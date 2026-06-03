@@ -2725,6 +2725,22 @@ def MHLO_CopyOp: MHLO_Op<"copy",
   }];
 }
 
+def MHLO_DataflowOp: MHLO_UnaryElementwiseOp<"dataflow",
+      [Pure, HLO_CompatibleOperandsAndResultType], MHLO_Tensor> {
+  let summary = "Dataflow operation";
+  let description = [{
+    This operation is private to the XLA compiler, so it does not yet have a
+    specification.
+
+    Informally, this operation a connected between the `operand` and the users
+    of this operation. Strictly a no-op.
+    Example:
+    ```mlir
+    %0 = mhlo.dataflow %arg0 : tensor<f32>
+    ```
+  }];
+}
+
 def MHLO_CrossReplicaSumOp : MHLO_Op<"cross-replica-sum",
     [Pure, HLO_CompatibleOperandsAndResultType]> {
   let summary = "CrossReplicaSum operation";

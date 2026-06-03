@@ -177,6 +177,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kMultiply:
     case HloOpcode::kMulhi:
     case HloOpcode::kNegate:
+    case HloOpcode::kDataflow:
     case HloOpcode::kPad:
     case HloOpcode::kPartitionId:
     case HloOpcode::kPopulationCount:

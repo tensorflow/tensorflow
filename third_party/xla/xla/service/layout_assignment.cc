@@ -2905,6 +2905,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kMultiply:
     case HloOpcode::kMulhi:
     case HloOpcode::kNegate:
+    case HloOpcode::kDataflow:
     case HloOpcode::kNot:
     case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kOr:

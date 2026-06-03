@@ -259,6 +259,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kMultiply:
     case HloOpcode::kMulhi:
     case HloOpcode::kNegate:
+    case HloOpcode::kDataflow:
     case HloOpcode::kNot:
     case HloOpcode::kOr:
     case HloOpcode::kPopulationCount:
