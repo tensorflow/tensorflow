@@ -820,6 +820,7 @@ cc_library(
         "//xla/backends/cpu/runtime:logical_id_thunk",
         "//xla/backends/cpu/runtime:outfeed_thunk",
         "//xla/backends/cpu/runtime:reduce_scatter_thunk",
+        "//xla/backends/cpu/runtime:rng_seed_thunk",
         "//xla/backends/cpu/runtime:rng_state_thunk",
         "//xla/backends/cpu/runtime:sort_thunk",
         "//xla/backends/cpu/runtime:thunk",

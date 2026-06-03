@@ -284,6 +284,10 @@ message ReplicaIdThunkProto {
   xla.buffer_assignment.BufferAllocationSliceProto logical_id_buffer = 1;
 }
 
+message RngSeedThunkProto {
+  xla.buffer_assignment.BufferAllocationSliceProto dest_buffer = 1;
+}
+
 message InfoProto {
   string op_name = 1;
   string module_name = 2;
@@ -314,6 +318,7 @@ message ThunkProto {
     PartitionIdThunkProto partition_id_thunk = 19;
     ReplicaIdThunkProto replica_id_thunk = 20;
     YnnFusionThunkProto ynn_fusion_thunk = 21;
+    RngSeedThunkProto rng_seed_thunk = 22;
   }
 }
 

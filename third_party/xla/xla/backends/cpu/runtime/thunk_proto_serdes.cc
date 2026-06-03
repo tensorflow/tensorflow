@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/kernel_thunk.h"
 #include "xla/backends/cpu/runtime/logical_id_thunk.h"
 #include "xla/backends/cpu/runtime/outfeed_thunk.h"
+#include "xla/backends/cpu/runtime/rng_seed_thunk.h"
 #include "xla/backends/cpu/runtime/rng_state_thunk.h"
 #include "xla/backends/cpu/runtime/serdes_base.h"
 #include "xla/backends/cpu/runtime/sort_thunk.h"
@@ -168,6 +170,8 @@ static absl::StatusOr<Thunk::Kind> ProtoThunkToThunkKind(
       return Thunk::Kind::kReplicaId;
     case ThunkProto::ImplCase::kYnnFusionThunk:
       return Thunk::Kind::kYnnFusion;
+    case ThunkProto::ImplCase::kRngSeedThunk:
+      return Thunk::Kind::kRngSeed;
     case ThunkProto::ImplCase::IMPL_NOT_SET:
       return Internal("Thunk kind not set.");
   }
@@ -446,6 +450,12 @@ static absl::Status ToProto(const ReplicaIdThunk& thunk, ThunkProto& proto) {
   return absl::OkStatus();
 }
 
+static absl::Status ToProto(const RngSeedThunk& thunk, ThunkProto& proto) {
+  ASSIGN_OR_RETURN(*proto.mutable_rng_seed_thunk()->mutable_dest_buffer(),
+                   thunk.dest_buffer().ToProto());
+  return absl::OkStatus();
+}
+
 absl::StatusOr<ThunkProto> ThunkSerDesProtobuf::ToProto(
     const Thunk& thunk) const {
   ThunkProto proto;
@@ -512,6 +522,10 @@ absl::StatusOr<ThunkProto> ThunkSerDesProtobuf::ToProto(
               absl::down_cast<const internal::LogicalIdThunk<
                   internal::LogicalIdKind::kReplicaId>&>(thunk)),
           proto));
+      break;
+    case Thunk::Kind::kRngSeed:
+      RETURN_IF_ERROR(::xla::cpu::ToProto(
+          absl::down_cast<const RngSeedThunk&>(thunk), proto));
       break;
     default:
       return absl::UnimplementedError(
@@ -825,6 +839,19 @@ static absl::StatusOr<std::unique_ptr<Thunk>> ReplicaIdThunkFromProto(
       std::move(info), std::move(logical_id_buffer));
 }
 
+static absl::StatusOr<std::unique_ptr<RngSeedThunk>> RngSeedThunkFromProto(
+    const ThunkProto& proto,
+    const std::vector<BufferAllocation>& buffer_allocations) {
+  ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+
+  ASSIGN_OR_RETURN(
+      BufferAllocation::Slice dest_buffer,
+      BufferAllocation::Slice::FromProto(proto.rng_seed_thunk().dest_buffer(),
+                                         buffer_allocations));
+
+  return RngSeedThunk::Create(std::move(info), std::move(dest_buffer));
+}
+
 absl::StatusOr<std::unique_ptr<Thunk>> ThunkSerDesProtobuf::FromProto(
     const ThunkProto& proto) const {
   CHECK(buffer_allocations_ != nullptr);
@@ -867,6 +894,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> ThunkSerDesProtobuf::FromProto(
       return PartitionIdThunkFromProto(proto, *buffer_allocations_);
     case Thunk::Kind::kReplicaId:
       return ReplicaIdThunkFromProto(proto, *buffer_allocations_);
+    case Thunk::Kind::kRngSeed:
+      return RngSeedThunkFromProto(proto, *buffer_allocations_);
     default:
       return absl::Status(absl::StatusCode::kInvalidArgument,
                           absl::StrFormat("Unsupported thunk kind: %s",
