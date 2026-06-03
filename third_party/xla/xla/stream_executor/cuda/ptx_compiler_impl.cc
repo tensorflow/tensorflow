@@ -47,7 +47,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/kernel_stats.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -90,7 +89,7 @@ static absl::string_view ToString(nvPTXCompileResult status) {
   } while (false)
 
 absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingLibNvPtxCompiler(
-    const CudaComputeCapability& cc, const std::string& ptx_contents,
+    const CudaComputeCapability& cc, absl::string_view ptx_contents,
     GpuAsmOpts options, bool cancel_if_reg_spill, bool dump_compilation_log) {
   ASSIGN_OR_RETURN(auto version, GetLibNvPtxCompilerVersion());
   WarnIfBadPtxasVersion("nvPTXCompiler", cc, version);
@@ -177,7 +176,7 @@ absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingLibNvPtxCompiler(
             std::min(ptx_contents.length(),
                      VLOG_IS_ON(3) ? ptx_contents.length() : 4096);
         VLOG(2) << "The following ptx produced a warning during compilation: \n"
-                << absl::string_view(ptx_contents).substr(0, ptxLogLength)
+                << ptx_contents.substr(0, ptxLogLength)
                 << (ptx_contents.size() > ptxLogLength ? "..." : "");
       }
       if (cancel_if_reg_spill &&
