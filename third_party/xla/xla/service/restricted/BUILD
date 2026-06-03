@@ -34,6 +34,7 @@ cc_library(
         "//xla/service:computation_placer",
         "//xla/service:executable",
         "//xla/service:hlo_module_util",
+        "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_runner_interface",
         "//xla/service:maybe_owning_device_address",
         "//xla/service:shaped_buffer",
