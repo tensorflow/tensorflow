@@ -56,6 +56,19 @@ cc_library(
 )
 
 cc_library(
+    name = "interval_tree",
+    hdrs = ["interval_tree.h"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "embedded_constant_buffers",
     srcs = ["embedded_constant_buffers.cc"],
     hdrs = ["embedded_constant_buffers.h"],

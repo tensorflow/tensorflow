@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/union_find.h"
+#include "xla/util/interval_tree.h"
 
 namespace xla {
 
@@ -337,38 +338,10 @@ class NoFragmentationStatsHeap : public HeapAlgorithm<BufferType> {
   int64_t max_heap_size_ = 0;
 };
 
-// Node in BufferIntervalTree that stores the alloc and free times of a buffer,
-// and the chunk assigned to it.
-struct BufferIntervalTreeNode {
-  // Alloc time.
-  int64_t start;
-  // Free time.
-  int64_t end;
-  // Maximum free time of all nodes in the subtree where this node is the root.
-  int64_t subtree_end;
-  // Allocated chunk for the buffer.
-  HeapSimulator::Chunk chunk;
-  // Left child.
-  BufferIntervalTreeNode* left;
-  // Right child.
-  BufferIntervalTreeNode* right;
-  // parent
-  BufferIntervalTreeNode* parent;
+using BufferIntervalTreeNode = IntervalTreeNode<HeapSimulator::Chunk>;
 
-  std::string ToString() const;
-};
-
-// An interval tree that can query buffers overlapping in time.
-class BufferIntervalTree {
+class BufferIntervalTree : public IntervalTree<HeapSimulator::Chunk> {
  public:
-  using Chunk = HeapSimulator::Chunk;
-  // Adds a buffer to the interval tree, with the time interval and allocated
-  // chunk specified.
-  void Add(int64_t start, int64_t end, const Chunk& chunk);
-
-  // Remove the interval from the tree. Returns true if the chunk is removed.
-  bool Remove(int64_t start, int64_t end, const Chunk& chunk);
-
   // Apply fn to the nodes that overlap with the given time interval. It is
   // guaranteed that fn is called for non-null nodes.
   void ApplyToNodesOverlappingInTime(
@@ -388,7 +361,8 @@ class BufferIntervalTree {
 
   // Returns vector of allocated chunks that overlap with the given time
   // interval.
-  std::vector<Chunk> ChunksOverlappingInTime(int64_t start, int64_t end) const;
+  std::vector<HeapSimulator::Chunk> ChunksOverlappingInTime(int64_t start,
+                                                            int64_t end) const;
 
   BufferIntervalTreeNode* GetRoot() { return root_; }
 
@@ -446,9 +420,6 @@ class BufferIntervalTree {
   // to be non-null.
   std::vector<const BufferIntervalTreeNode*> NodesOverlappingInTime(
       int64_t start, int64_t end) const;
-
-  BufferIntervalTreeNode* root_ = nullptr;
-  std::list<BufferIntervalTreeNode> node_storage_;
 };
 
 // An iterator that is passed to
