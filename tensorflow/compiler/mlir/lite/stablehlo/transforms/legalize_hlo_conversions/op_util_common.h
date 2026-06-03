@@ -51,7 +51,7 @@ class Layout {
   // there are more than 2 special dims.
   int64_t SpecialDim1() const { return special_dim1_; }
 
-  // Convenience accesor for getting the dimension size of the first
+  // Convenience accessor for getting the dimension size of the first
   // special dimension from a shape.
   int64_t SpecialDim1(llvm::ArrayRef<int64_t> shape) const {
     return shape[special_dim1_];
