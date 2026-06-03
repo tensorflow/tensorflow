@@ -599,10 +599,10 @@ cc_library(
     deps = [
         ":c_api_macros_hdrs",
         ":tf_buffer_internal",
-        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:protobuf",
-        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
