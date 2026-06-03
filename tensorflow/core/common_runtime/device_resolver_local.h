@@ -26,7 +26,7 @@ namespace tensorflow {
 class DeviceMgr;
 
 // Implements DeviceResolverInterface in a single-task context.
-class DeviceResolverLocal : public DeviceResolverInterface {
+class TF_EXPORT DeviceResolverLocal : public DeviceResolverInterface {
  public:
   explicit DeviceResolverLocal(const DeviceMgr* dev_mgr) : dev_mgr_(dev_mgr) {}
 

@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/tpu/kernels/sparse_core_layout.h"
 
 namespace tensorflow {
 
@@ -219,15 +220,7 @@ ABSL_ATTRIBUTE_WEAK bool GetDisableTableStacking() {
   return sparse_core_flags->tf_xla_sparse_core_disable_table_stacking;
 }
 
-ABSL_ATTRIBUTE_WEAK int64_t GetXlaSparseCoreStackingMemLimit() {
-  XlaSparseCoreFlags* sparse_core_flags = GetXlaSparseCoreFlags();
-  return sparse_core_flags->tf_xla_sparse_core_stacking_mem_limit_bytes;
-}
 
-ABSL_ATTRIBUTE_WEAK int64_t GetXlaSparseCoreStackingTableShardLimit() {
-  XlaSparseCoreFlags* sparse_core_flags = GetXlaSparseCoreFlags();
-  return sparse_core_flags->tf_xla_sparse_core_stacking_table_shard_limit_bytes;
-}
 
 xla::XlaOp ApplyWeightClippingToTable(xla::XlaBuilder* builder,
                                       xla::XlaOp table, float clip_weight_min,

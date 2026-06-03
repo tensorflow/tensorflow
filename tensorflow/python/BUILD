@@ -1281,6 +1281,7 @@ tf_python_pybind_extension(
         "//tensorflow/core/framework:pywrap_required_hdrs",
         "//tensorflow/core/lib/llvm_rtti",
         "//tensorflow/core/platform",
+        "//tensorflow/python/eager:pywrap_tfe_lib",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
@@ -1295,9 +1296,7 @@ tf_python_pybind_extension(
         "@dlpack",
         "@pybind11",
         # copybara:uncomment "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
-    ] + if_pywrap(
-        if_true = ["//tensorflow/python/eager:pywrap_tfe_lib"],
-    ) + if_static(
+    ] + if_static(
         extra_deps = [
             "//tensorflow/core/protobuf:eager_service_proto_cc",
             "//tensorflow/core/protobuf:master_proto_cc",
@@ -1751,6 +1750,15 @@ pywrap_common_library(
     dep = ":_pywrap_tensorflow",
     filter_name = "_pywrap_tensorflow_common",
     visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:platform",
+        "//tensorflow/python/lib/core:pybind11_lib",
+    ] + select({
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "//tensorflow/python/eager:pywrap_tfe_lib",
+        ],
+    }),
 )
 
 alias(

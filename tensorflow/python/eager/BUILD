@@ -88,6 +88,7 @@ cc_library(
         "@xla//xla/tsl/platform:status",
         "@xla//xla/tsl/python/lib/core:numpy",
     ],
+    alwayslink = 1,
 )
 
 tf_python_pybind_extension(

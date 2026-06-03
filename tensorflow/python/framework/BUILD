@@ -712,6 +712,7 @@ tf_python_pybind_extension(
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/framework:op_def_builder",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "@com_google_absl//absl/algorithm:container",

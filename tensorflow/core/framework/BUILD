@@ -1083,6 +1083,9 @@ cc_library(
     name = "op_def_builder",
     srcs = ["op_def_builder.cc"],
     hdrs = ["op_def_builder.h"],
+    visibility = default_visibility + [
+        "//tensorflow/python/framework:__subpackages__",
+    ],
     deps = [
         ":attr_value_proto_cc",
         ":attr_value_util",
@@ -1101,6 +1104,7 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "@com_google_absl//absl/strings",
     ],
+    alwayslink = 1,
 )
 
 # TODO(mdan): Move these into a separate directory.

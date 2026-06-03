@@ -1504,6 +1504,7 @@ cc_library(
     hdrs = ["sparse_core_ops_utils.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":sparse_core_layout",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:status",
