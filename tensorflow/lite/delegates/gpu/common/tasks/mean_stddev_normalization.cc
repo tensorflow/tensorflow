@@ -21,8 +21,12 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <utility>
+#include <variant>
 
+#include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/substitute.h"
+#include "absl/types/any.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 

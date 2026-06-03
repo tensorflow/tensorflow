@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv_3x3_stride_h2.h"
 
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/status.h"

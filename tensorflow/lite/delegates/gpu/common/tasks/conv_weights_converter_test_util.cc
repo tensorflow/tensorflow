@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_weights_converter_test_util.h"
 
+#include <cstdint>
+#include <cstring>
 #include <memory>
+#include <utility>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/testing_util.h"
 #include "tensorflow/lite/delegates/gpu/common/task/weights_conversion.h"

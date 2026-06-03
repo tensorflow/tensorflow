@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/one_hot.h"
 
 #include <string>
-#include <utility>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 
