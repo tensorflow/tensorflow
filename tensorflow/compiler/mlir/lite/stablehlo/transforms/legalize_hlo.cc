@@ -1061,7 +1061,7 @@ class ConvertNonTrivialConvOp
 
     // Mirror the filter in the spatial dimensions.
     mlir::Value reverse_filter_in = conv_op.getRhs();
-    // If the kernel is with format anything other than HWOI, we
+    // If the kernel has a format other than HWOI, we
     // transpose it to [0,1,o,i] as the TF->TFL pass anticipates this and the
     // kernel format information will be lost once we legalize to TF
     if (!isKernelFormatHWOI(dnums)) {
