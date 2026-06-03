@@ -88,6 +88,13 @@ RUN wget https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud
     ln -s /google-cloud-sdk/bin/gcloud /usr/bin/gcloud
 ENV PATH="$PATH:/google-cloud-sdk/bin/:/usr/local/cuda/bin/"
 
+# Download and install gh CLI v2.49.0 from GitHub.
+RUN wget https://github.com/cli/cli/releases/download/v2.49.0/gh_2.49.0_linux_amd64.tar.gz && \
+    echo "3f7ef10a8ae6164220db20cf6d4fb96528c61d614f0803ccf39b1cabb6ae7263  gh_2.49.0_linux_amd64.tar.gz" | sha256sum --check && \
+    tar zxf gh_2.49.0_linux_amd64.tar.gz && \
+    mv gh_2.49.0_linux_amd64/bin/gh /usr/local/bin/gh && \
+    rm -rf gh_2.49.0_linux_amd64*
+
 # Download and install patchelf v0.18.0 from GitHub. The default Ubuntu focal
 # packages only provide the "0.10-2build1" version. We use patchelf to manipulate
 # certain shared libraries during the wheel building process (https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/pip_package/build_pip_package.sh#L255-L262).
