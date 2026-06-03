@@ -802,6 +802,7 @@ xla_cc_test(
         ":thunk",
         ":thunk_executor",
         ":thunk_proto_cc",
+        "//xla:future",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/service:buffer_assignment",
@@ -884,6 +885,7 @@ cc_library(
         ":shaped_slice",
         ":thunk",
         ":thunk_proto_cc",
+        "//xla:future",
         "//xla:shape_util",
         "//xla:util",
         "//xla/runtime:buffer_use",
@@ -1804,6 +1806,7 @@ cc_library(
         ":shaped_slice",
         ":thunk",
         ":thunk_proto_cc",
+        "//xla:future",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -1878,11 +1881,11 @@ cc_library(
         "//xla/stream_executor:stream",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@tsl//tsl/platform:casts",
     ],
 )
 
@@ -2098,12 +2101,12 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@tsl//tsl/platform:casts",
     ],
 )
 
@@ -2343,12 +2346,11 @@ xla_test(
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main",  # buildcleaner: keep
     ],
 )
 
@@ -2399,6 +2401,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:tied_ref",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
@@ -2413,7 +2416,6 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@tsl//tsl/platform:casts",
     ],
 )
 
@@ -2532,11 +2534,11 @@ cc_library(
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:stream",
         "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@tsl//tsl/platform:casts",
     ],
 )
 
@@ -2655,6 +2657,7 @@ cc_library(
         "//xla/stream_executor:stream",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -2662,7 +2665,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@tsl//tsl/platform:casts",
     ],
 )
 
@@ -3280,19 +3282,20 @@ cc_library(
     srcs = ["collective_group_thunk.cc"],
     hdrs = ["collective_group_thunk.h"],
     deps = [
+        ":collective_cliques",
         ":collective_thunk",
         ":thunk",
         ":thunk_executor",
         ":thunk_proto_cc",
         "//xla:future",
         "//xla:util",
-        "//xla/backends/gpu/collectives:gpu_clique_key",
+        "//xla/backends/gpu/collectives:gpu_collectives",
         "//xla/backends/gpu/collectives:gpu_communicator",
-        "//xla/core/collectives:communicator",
+        "//xla/runtime:device_id",
         "//xla/service:buffer_assignment",
         "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

@@ -20,8 +20,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -29,18 +29,15 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
-#include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/future.h"
 #include "xla/primitive_util.h"
-#include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/casts.h"
 
 namespace xla::gpu {
 
@@ -76,11 +73,6 @@ absl::StatusOr<size_t> LoopbackCommunicator::CurrentRank() { return rank_; }
 std::string LoopbackCommunicator::ToString() const {
   return absl::StrFormat("LoopbackCommunicator(rank=%d, num_ranks=%d)", rank_,
                          num_ranks_);
-}
-
-Future<> LoopbackCommunicator::GroupExecute(
-    absl::AnyInvocable<absl::Status(GpuCommunicator*)> f) {
-  return Future<>(f(this));
 }
 
 //===----------------------------------------------------------------------===//

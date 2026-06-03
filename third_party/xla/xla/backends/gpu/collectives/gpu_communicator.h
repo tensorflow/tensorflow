@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
@@ -160,10 +161,12 @@ class GpuCommunicator : public Communicator {
   // Host-side collective communication APIs
   //===--------------------------------------------------------------------===//
 
-  // Executes f in a group. f should invoke synchronous collective methods like
-  // LaunchAllReduce and not asynchronous collective methods like AllReduce.
-  virtual Future<> GroupExecute(
-      absl::AnyInvocable<absl::Status(GpuCommunicator*)> f) = 0;
+  // Executes a group of collective launches on this communicator. All
+  // collective operations in the `group` must use only *this communicator,
+  // otherwise behavior is undefined.
+  virtual Future<> GroupExecute(absl::AnyInvocable<absl::Status() &&> group) {
+    return Future<>(std::move(group)());
+  }
 
   virtual absl::Status LaunchAllReduce(se::DeviceAddressBase send_buffer,
                                        se::DeviceAddressBase recv_buffer,
