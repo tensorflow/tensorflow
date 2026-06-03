@@ -56,6 +56,13 @@ cc_library(
 )
 
 cc_library(
+    name = "interval_tree",
+    hdrs = ["interval_tree.h"],
+    visibility = internal_visibility([":friends"]),
+    deps = ["//third_party/gloop/util/intervaltree"],
+)
+
+cc_library(
     name = "embedded_constant_buffers",
     srcs = ["embedded_constant_buffers.cc"],
     hdrs = ["embedded_constant_buffers.h"],
