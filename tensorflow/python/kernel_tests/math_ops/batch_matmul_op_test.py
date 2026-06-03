@@ -154,6 +154,39 @@ def _GetBatchMatmulOpBroadcastingTest(dtype, adjoint_a, adjoint_b,
   return Test
 
 
+class BatchMatmulBroadcastRankMismatchTest(test.TestCase):
+  """Regression test for rank-4 x rank-2 matmul broadcasting.
+
+  When OneDNN is enabled, broadcasting a rank-2 tensor to match a rank-4
+  tensor caused heap corruption because CalculateTFStrides computed non-zero
+  strides for the prepended broadcast dimensions. See #117700.
+  """
+
+  def testRank4xRank2(self):
+    np.random.seed(280958)
+    p = np.random.normal(size=[13, 1, 3, 4]).astype(np.float32)
+    w = np.random.normal(size=[4, 16]).astype(np.float32)
+    expected = np.matmul(p, w)
+    result = math_ops.matmul(p, w)
+    self.assertAllClose(self.evaluate(result), expected, rtol=1e-5, atol=1e-5)
+
+  def testRank4xRank2BatchDim(self):
+    np.random.seed(42)
+    p = np.random.normal(size=[2, 3, 4, 5]).astype(np.float32)
+    w = np.random.normal(size=[5, 7]).astype(np.float32)
+    expected = np.matmul(p, w)
+    result = math_ops.matmul(p, w)
+    self.assertAllClose(self.evaluate(result), expected, rtol=1e-5, atol=1e-5)
+
+  def testRank3xRank2(self):
+    np.random.seed(42)
+    p = np.random.normal(size=[5, 3, 4]).astype(np.float32)
+    w = np.random.normal(size=[4, 6]).astype(np.float32)
+    expected = np.matmul(p, w)
+    result = math_ops.matmul(p, w)
+    self.assertAllClose(self.evaluate(result), expected, rtol=1e-5, atol=1e-5)
+
+
 class BatchMatmulGradientTest(test.TestCase):
 
   # loss = sum(batch_matmul(x, y)). Verify dl/dx and dl/dy via the
