@@ -19,6 +19,7 @@ limitations under the License.
 #include <complex>
 
 #include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/reference/broadcast_loop.h"
 
 namespace tflite {
 
@@ -130,6 +131,30 @@ inline void BroadcastMul6DSlow(const ArithmeticParams& params,
                                const uint8_t* input2_data,
                                const RuntimeShape& output_shape,
                                uint8_t* output_data) {
+  const int broadcast_rank = std::max(
+      output_shape.DimensionsCount(),
+      std::max(input1_shape.DimensionsCount(), input2_shape.DimensionsCount()));
+  if (broadcast_rank > kMaxMulBroadcastDim) {
+    ForEachBroadcastedElement(
+        input1_shape, input2_shape, output_shape,
+        [&](int output_index, int input1_index, int input2_index) {
+          const int32_t offsetted_input1_val =
+              params.input1_offset + input1_data[input1_index];
+          const int32_t offsetted_input2_val =
+              params.input2_offset + input2_data[input2_index];
+          const int32_t unclamped_result =
+              params.output_offset +
+              MultiplyByQuantizedMultiplier(
+                  offsetted_input1_val * offsetted_input2_val,
+                  params.output_multiplier, params.output_shift);
+          const int32_t clamped_output = std::min(
+              params.quantized_activation_max,
+              std::max(params.quantized_activation_min, unclamped_result));
+          output_data[output_index] = static_cast<uint8_t>(clamped_output);
+        });
+    return;
+  }
+
   NdArrayDesc<kMaxMulBroadcastDim> desc1;
   NdArrayDesc<kMaxMulBroadcastDim> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
@@ -175,9 +200,26 @@ BroadcastMul6DSlow(const ArithmeticParams& params,
                    const T* input2_data,
                    const RuntimeShape& unextended_output_shape,
                    T* output_data) {
-  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 6);
-  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 6);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 6);
+  const int broadcast_rank =
+      std::max(unextended_output_shape.DimensionsCount(),
+               std::max(unextended_input1_shape.DimensionsCount(),
+                        unextended_input2_shape.DimensionsCount()));
+  if (broadcast_rank > kMaxMulBroadcastDim) {
+    ForEachBroadcastedElement(
+        unextended_input1_shape, unextended_input2_shape,
+        unextended_output_shape,
+        [&](int output_index, int input1_index, int input2_index) {
+          T output_activation_min;
+          T output_activation_max;
+          GetActivationParams(params, &output_activation_min,
+                              &output_activation_max);
+          output_data[output_index] = ActivationFunctionWithMinMax<T>(
+              input1_data[input1_index] * input2_data[input2_index],
+              output_activation_min, output_activation_max);
+        });
+    return;
+  }
+
   NdArrayDesc<kMaxMulBroadcastDim> desc1;
   NdArrayDesc<kMaxMulBroadcastDim> desc2;
   NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
@@ -225,9 +267,20 @@ inline void BroadcastMul6DSlow(const ArithmeticParams& params,
                                const std::complex<float>* input2_data,
                                const RuntimeShape& unextended_output_shape,
                                std::complex<float>* output_data) {
-  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 6);
-  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 6);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 6);
+  const int broadcast_rank =
+      std::max(unextended_output_shape.DimensionsCount(),
+               std::max(unextended_input1_shape.DimensionsCount(),
+                        unextended_input2_shape.DimensionsCount()));
+  if (broadcast_rank > kMaxMulBroadcastDim) {
+    ForEachBroadcastedElement(
+        unextended_input1_shape, unextended_input2_shape,
+        unextended_output_shape,
+        [&](int output_index, int input1_index, int input2_index) {
+          output_data[output_index] =
+              input1_data[input1_index] * input2_data[input2_index];
+        });
+    return;
+  }
 
   NdArrayDesc<kMaxMulBroadcastDim> desc1;
   NdArrayDesc<kMaxMulBroadcastDim> desc2;

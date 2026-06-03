@@ -15,6 +15,8 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include <algorithm>
+#include <functional>
 #include <initializer_list>
 #include <limits>
 #include <map>
@@ -57,6 +59,97 @@ tflite::TensorType GetTFLiteType() {
     return TensorType_INT32;
   }
   return TensorType_FLOAT32;
+}
+
+int FlatSize(const std::vector<int>& shape) {
+  return std::accumulate(shape.begin(), shape.end(), 1, std::multiplies<int>());
+}
+
+std::vector<int> ExtendShape(const std::vector<int>& shape, int rank) {
+  std::vector<int> extended_shape(rank, 1);
+  std::copy(shape.begin(), shape.end(),
+            extended_shape.begin() + rank - static_cast<int>(shape.size()));
+  return extended_shape;
+}
+
+std::vector<int> StridesForShape(const std::vector<int>& shape) {
+  std::vector<int> strides(shape.size());
+  int stride = 1;
+  for (int i = shape.size() - 1; i >= 0; --i) {
+    strides[i] = stride;
+    stride *= shape[i];
+  }
+  return strides;
+}
+
+template <typename LhsT, typename RhsT, typename OutT>
+std::vector<OutT> ExpectedBatchMatMul(const std::vector<int>& lhs_shape,
+                                      const std::vector<LhsT>& lhs,
+                                      const std::vector<int>& rhs_shape,
+                                      const std::vector<RhsT>& rhs,
+                                      bool adj_x = false, bool adj_y = false) {
+  const int rank = std::max(static_cast<int>(lhs_shape.size()),
+                            static_cast<int>(rhs_shape.size()));
+  const std::vector<int> lhs_extended_shape = ExtendShape(lhs_shape, rank);
+  const std::vector<int> rhs_extended_shape = ExtendShape(rhs_shape, rank);
+  const std::vector<int> lhs_strides = StridesForShape(lhs_extended_shape);
+  const std::vector<int> rhs_strides = StridesForShape(rhs_extended_shape);
+  const int batch_rank = rank - 2;
+  std::vector<int> batch_dims(batch_rank);
+  int batch_count = 1;
+  for (int i = 0; i < batch_rank; ++i) {
+    batch_dims[i] = std::max(lhs_extended_shape[i], rhs_extended_shape[i]);
+    batch_count *= batch_dims[i];
+  }
+  const int rows =
+      adj_x ? lhs_extended_shape[rank - 1] : lhs_extended_shape[rank - 2];
+  const int cols =
+      adj_y ? rhs_extended_shape[rank - 2] : rhs_extended_shape[rank - 1];
+  const int accum_depth =
+      adj_x ? lhs_extended_shape[rank - 2] : lhs_extended_shape[rank - 1];
+  auto decode_batch = [&](int batch) {
+    std::vector<int> coordinates(batch_rank);
+    for (int i = batch_rank - 1; i >= 0; --i) {
+      coordinates[i] = batch % batch_dims[i];
+      batch /= batch_dims[i];
+    }
+    return coordinates;
+  };
+  auto flat_index = [&](const std::vector<int>& shape,
+                        const std::vector<int>& strides,
+                        const std::vector<int>& batch_coordinates, bool adj,
+                        int row, int col) {
+    int index = 0;
+    for (int i = 0; i < batch_rank; ++i) {
+      const int coordinate = shape[i] == 1 ? 0 : batch_coordinates[i];
+      index += coordinate * strides[i];
+    }
+    const int physical_row = adj ? col : row;
+    const int physical_col = adj ? row : col;
+    index +=
+        physical_row * strides[rank - 2] + physical_col * strides[rank - 1];
+    return index;
+  };
+
+  std::vector<OutT> expected(batch_count * rows * cols);
+  for (int batch = 0; batch < batch_count; ++batch) {
+    const std::vector<int> batch_coordinates = decode_batch(batch);
+    for (int row = 0; row < rows; ++row) {
+      for (int col = 0; col < cols; ++col) {
+        OutT total = 0;
+        for (int k = 0; k < accum_depth; ++k) {
+          total += static_cast<OutT>(
+                       lhs[flat_index(lhs_extended_shape, lhs_strides,
+                                      batch_coordinates, adj_x, row, k)]) *
+                   static_cast<OutT>(
+                       rhs[flat_index(rhs_extended_shape, rhs_strides,
+                                      batch_coordinates, adj_y, k, col)]);
+        }
+        expected[batch * rows * cols + row * cols + col] = total;
+      }
+    }
+  }
+  return expected;
 }
 
 template <typename T>
@@ -351,6 +444,78 @@ TEST(BatchMatMulOpTest, Float32Test_Broadcast3DAdjXOptimization) {
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutput(), ElementsAreArray(res));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({4, 3, 2, 2, 2}));
+}
+
+TEST(BatchMatMulOpTest, Float32Test_BroadcastRankSix) {
+  const std::vector<int> lhs_shape = {2, 1, 2, 1, 2, 3};
+  const std::vector<int> rhs_shape = {1, 2, 1, 2, 3, 4};
+  BatchMatMulOpModel<float> model({TensorType_FLOAT32, lhs_shape},
+                                  {TensorType_FLOAT32, rhs_shape});
+  std::vector<float> lhs(FlatSize(lhs_shape));
+  std::vector<float> rhs(FlatSize(rhs_shape));
+  std::iota(lhs.begin(), lhs.end(), 1.0f);
+  std::iota(rhs.begin(), rhs.end(), 0.25f);
+
+  model.PopulateTensor<float>(model.lhs(), lhs);
+  model.PopulateTensor<float>(model.rhs(), rhs);
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(
+      model.GetOutput(),
+      ElementsAreArray(ArrayFloatNear(ExpectedBatchMatMul<float, float, float>(
+          lhs_shape, lhs, rhs_shape, rhs))));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 2, 2, 2, 2, 4}));
+}
+
+TEST(BatchMatMulOpTest, Float32Test_BroadcastRankSevenWithAdjoints) {
+  const std::vector<int> lhs_shape = {2, 1, 2, 1, 2, 3, 2};
+  const std::vector<int> rhs_shape = {1, 2, 1, 2, 1, 3, 4};
+  BatchMatMulOpModel<float> model({TensorType_FLOAT32, lhs_shape},
+                                  {TensorType_FLOAT32, rhs_shape},
+                                  /*adj_x=*/true, /*adj_y=*/false);
+  std::vector<float> lhs(FlatSize(lhs_shape));
+  std::vector<float> rhs(FlatSize(rhs_shape));
+  for (int i = 0; i < lhs.size(); ++i) {
+    lhs[i] = static_cast<float>((i % 13) - 6) * 0.25f;
+  }
+  for (int i = 0; i < rhs.size(); ++i) {
+    rhs[i] = static_cast<float>((i % 17) - 8) * 0.125f;
+  }
+
+  model.PopulateTensor<float>(model.lhs(), lhs);
+  model.PopulateTensor<float>(model.rhs(), rhs);
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(
+      model.GetOutput(),
+      ElementsAreArray(ArrayFloatNear(ExpectedBatchMatMul<float, float, float>(
+          lhs_shape, lhs, rhs_shape, rhs, /*adj_x=*/true,
+          /*adj_y=*/false))));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 2, 2, 2, 2, 2, 4}));
+}
+
+TEST(BatchMatMulOpTest, Int8Test_BroadcastRankSix) {
+  const std::vector<int> lhs_shape = {2, 1, 2, 1, 2, 3};
+  const std::vector<int> rhs_shape = {1, 2, 1, 2, 3, 4};
+  BatchMatMulOpModel<int32_t> model({TensorType_INT8, lhs_shape},
+                                    {TensorType_INT8, rhs_shape});
+  std::vector<int8_t> lhs(FlatSize(lhs_shape));
+  std::vector<int8_t> rhs(FlatSize(rhs_shape));
+  for (int i = 0; i < lhs.size(); ++i) {
+    lhs[i] = static_cast<int8_t>((i % 7) - 3);
+  }
+  for (int i = 0; i < rhs.size(); ++i) {
+    rhs[i] = static_cast<int8_t>((i % 11) - 5);
+  }
+
+  model.PopulateTensor<int8_t>(model.lhs(), lhs);
+  model.PopulateTensor<int8_t>(model.rhs(), rhs);
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAreArray(ExpectedBatchMatMul<int8_t, int8_t, int32_t>(
+                  lhs_shape, lhs, rhs_shape, rhs)));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 2, 2, 2, 2, 4}));
 }
 
 TEST(BatchMatMulOpTest, Float32Test_BroadcastFromRHS) {
