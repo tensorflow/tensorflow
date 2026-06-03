@@ -338,6 +338,57 @@ TYPED_TEST(FloatMulTest, WithBroadcast) {
   }
 }
 
+TYPED_TEST(FloatMulTest, WithBroadcastRankSeven) {
+  using T = TypeParam;
+  const std::vector<int> input1_shape = {2, 1, 2, 1, 2, 1, 2};
+  const std::vector<int> input2_shape = {1, 2, 1, 2, 1, 2, 1};
+  const std::vector<int> output_shape = {2, 2, 2, 2, 2, 2, 2};
+  std::vector<float> input1(16);
+  std::vector<float> input2(8);
+  std::iota(input1.begin(), input1.end(), 1.0f);
+  std::iota(input2.begin(), input2.end(), 0.25f);
+  MulOpModel<T> m({GetTensorType<T>(), input1_shape},
+                  {GetTensorType<T>(), input2_shape}, {GetTensorType<T>(), {}},
+                  ActivationFunctionType_NONE, ToVector<T>(input1),
+                  ToVector<T>(input2), /*constant_tensors=*/false);
+  TFLITE_INVOKE_AND_CHECK(T, &m);
+
+  auto strides_for = [](const std::vector<int>& shape) {
+    std::vector<int> strides(shape.size());
+    int stride = 1;
+    for (int i = shape.size() - 1; i >= 0; --i) {
+      strides[i] = stride;
+      stride *= shape[i];
+    }
+    return strides;
+  };
+  const std::vector<int> input1_strides = strides_for(input1_shape);
+  const std::vector<int> input2_strides = strides_for(input2_shape);
+  const std::vector<int> output_strides = strides_for(output_shape);
+  std::vector<float> expected(128);
+  for (int output_index = 0; output_index < expected.size(); ++output_index) {
+    int remaining_index = output_index;
+    int input1_index = 0;
+    int input2_index = 0;
+    for (int dim = 0; dim < output_shape.size(); ++dim) {
+      const int coordinate = remaining_index / output_strides[dim];
+      remaining_index %= output_strides[dim];
+      if (input1_shape[dim] != 1) {
+        input1_index += coordinate * input1_strides[dim];
+      }
+      if (input2_shape[dim] != 1) {
+        input2_index += coordinate * input2_strides[dim];
+      }
+    }
+    expected[output_index] = input1[input1_index] * input2[input2_index];
+  }
+
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray(ArrayFloatNear(
+          expected, static_cast<float>(NumericLimits<T>::epsilon()) * 10)));
+}
+
 TYPED_TEST(FloatMulTest, MixedBroadcast) {
   using T = TypeParam;
   for (bool constant_tensors : {false, true}) {
