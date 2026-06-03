@@ -53,8 +53,15 @@ __global__ void LowerBoundKernel(const T* __restrict__ sorted_inputs,
   for (int64_t work_unit_id : GpuGridRangeX(values_size * batch_size)) {
     int64_t bid = work_unit_id / values_size;
     T value = values[work_unit_id];
-    outputs[work_unit_id] = gpu_helper::lower_bound<T, OutType>(
-        sorted_inputs + bid * sorted_inputs_size, sorted_inputs_size, value);
+    // NaN is the largest value in total order; lower_bound must place it at
+    // the end.  IEEE 754 NaN comparisons are all-false, so the bare < inside
+    // gpu_helper::lower_bound would place it at position 0.
+    if (Eigen::numext::isnan(value)) {
+      outputs[work_unit_id] = sorted_inputs_size;
+    } else {
+      outputs[work_unit_id] = gpu_helper::lower_bound<T, OutType>(
+          sorted_inputs + bid * sorted_inputs_size, sorted_inputs_size, value);
+    }
   }
 }
 }  // namespace
