@@ -1080,7 +1080,7 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
 }
 
 absl::StatusOr<se::DeviceAddressBase> GpuExecutable::BufferForAllocation(
-    VariantArguments arguments,
+    ParameterBufferResolver get_parameter_buffer,
     const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
     const BufferAllocation& allocation,
     se::DeviceAddressAllocator* const memory_allocator, int device_ordinal,
@@ -1091,26 +1091,19 @@ absl::StatusOr<se::DeviceAddressBase> GpuExecutable::BufferForAllocation(
     return se::DeviceAddressBase{};
   }
   if (allocation.is_entry_computation_parameter()) {
-    int64_t param_no = allocation.parameter_number();
-    se::DeviceAddressBase registered_buffer = [&] {
-      if (auto unowned_shapedbuffers =
-              std::get_if<absl::Span<const ShapedBuffer* const>>(&arguments)) {
-        return (*unowned_shapedbuffers)[param_no]->buffers().element(
-            allocation.param_shape_index());
-      }
-      return std::get<absl::Span<ExecutionInput>>(arguments)[param_no]
-          .Buffer(allocation.param_shape_index())
-          .AsDeviceAddress();
-    }();
-    if (registered_buffer.is_null() && registered_buffer.size() > 0) {
+    ASSIGN_OR_RETURN(ParameterBuffer registered_buffer,
+                     get_parameter_buffer(allocation));
+    if (registered_buffer.buffer.is_null() &&
+        registered_buffer.buffer.size() > 0) {
       return FailedPrecondition(
           "Cannot run XLA computation because pointer to (sub-)buffer at "
           "index %s of parameter %d was null.  All pointers to "
           "(sub-)buffers must not be null, unless the (sub-)buffer has "
           "zero elements.",
-          allocation.param_shape_index().ToString(), param_no);
+          allocation.param_shape_index().ToString(),
+          registered_buffer.parameter_number);
     }
-    return registered_buffer;
+    return registered_buffer.buffer;
   }
   if (allocation.is_constant()) {
     auto it = globals->find(arg_idx);
@@ -1140,8 +1133,8 @@ absl::StatusOr<se::DeviceAddressBase> GpuExecutable::BufferForAllocation(
   return buffer_address;
 }
 
-static absl::Status CheckAlignment(const BufferAllocation& allocation,
-                                   se::DeviceAddressBase buffer, int arg_idx) {
+absl::Status CheckAlignment(const BufferAllocation& allocation,
+                            se::DeviceAddressBase buffer, int arg_idx) {
   const int64_t expected_alignment = [&] {
     if (allocation.is_entry_computation_parameter()) {
       return kEntryParameterAlignBytes;
@@ -1191,7 +1184,8 @@ static GpuCollectives* ResolveGpuCollectives(
 }
 
 absl::StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
-    const ServiceExecutableRunOptions* run_options, VariantArguments arguments,
+    const ServiceExecutableRunOptions* run_options,
+    ParameterBufferResolver get_parameter_buffer,
     const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
     se::DeviceAddressAllocator* const memory_allocator, int device_ordinal) {
   tsl::profiler::TraceMe hlo_module_activity(
@@ -1223,11 +1217,42 @@ absl::StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
     const BufferAllocation& allocation = *allocations[i];
     ASSIGN_OR_RETURN(
         buffers.emplace_back(),
-        BufferForAllocation(arguments, globals, allocation, memory_allocator,
-                            device_ordinal, i, allocate_granularity));
+        BufferForAllocation(get_parameter_buffer, globals, allocation,
+                            memory_allocator, device_ordinal, i,
+                            allocate_granularity));
     RETURN_IF_ERROR(CheckAlignment(allocation, buffers.back(), i));
   }
   return {{buffers, device_ordinal, memory_allocator}};
+}
+
+absl::StatusOr<se::DeviceAddressBase>
+GpuExecutable::AllocateCopyProtectedOutputBuffer(
+    const ServiceExecutableRunOptions* run_options,
+    BufferAllocations& buffer_allocations, const ShapeIndex& index,
+    const BufferAllocation& allocation, int device_ordinal,
+    se::DeviceAddressAllocator* const memory_allocator) {
+  // The caller guards this against aliasing pass-through params, as we do not
+  // need to write into the output buffer in that case.
+  XLA_VLOG_DEVICE(3, device_ordinal)
+      << "Using copy-protection: aliasing is specified, but the "
+         "buffer is not donated; allocating a fresh buffer";
+  int64_t allocation_size =
+      ShapeUtil::ByteSizeOf(ShapeUtil::GetSubshape(result_shape(), index));
+  absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> allocated_buffer =
+      memory_allocator->Allocate(device_ordinal, allocation_size,
+                                 /*retry_on_failure=*/true,
+                                 /*memory_space=*/allocation.color());
+  if (!allocated_buffer.ok()) {
+    return VerboseAllocationError(allocated_buffer.status());
+  }
+  se::DeviceAddressBase result_buffer = allocated_buffer->Release();
+  se::DeviceAddressBase& aliased_buffer =
+      buffer_allocations.GetMutableDeviceAddress(allocation.index());
+  CHECK_EQ(aliased_buffer.size(), result_buffer.size());
+  RETURN_IF_ERROR(run_options->stream()->MemcpyD2D(
+      &result_buffer, aliased_buffer, aliased_buffer.size()));
+  aliased_buffer = result_buffer;
+  return result_buffer;
 }
 
 absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
@@ -1288,9 +1313,26 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
                          memory_allocator, device_ordinal,
                          executor->device_ordinal());
 
-  ASSIGN_OR_RETURN(BufferAllocations buffer_allocations,
-                   GenerateBufferAllocations(run_options, arguments, globals,
-                                             memory_allocator, device_ordinal));
+  auto get_parameter_buffer = [&](const BufferAllocation& allocation)
+      -> absl::StatusOr<ParameterBuffer> {
+    int64_t param_no = allocation.parameter_number();
+    if (auto unowned_shapedbuffers =
+            std::get_if<absl::Span<const ShapedBuffer* const>>(&arguments)) {
+      return ParameterBuffer{
+          (*unowned_shapedbuffers)[param_no]->buffers().element(
+              allocation.param_shape_index()),
+          param_no};
+    }
+    return ParameterBuffer{
+        std::get<absl::Span<ExecutionInput>>(arguments)[param_no]
+            .Buffer(allocation.param_shape_index())
+            .AsDeviceAddress(),
+        param_no};
+  };
+  ASSIGN_OR_RETURN(
+      BufferAllocations buffer_allocations,
+      GenerateBufferAllocations(run_options, get_parameter_buffer, globals,
+                                memory_allocator, device_ordinal));
   XLA_VLOG_DEVICE(3, device_ordinal) << buffer_allocations.ToString();
   absl::Span<const BufferAllocation* const> allocations = GetAllocations();
 
@@ -1366,29 +1408,10 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
       } else if (!output_info.passthrough &&
                  !ShapeUtil::GetSubshape(program_shape_.result(), index)
                       .IsTuple()) {
-        // The guard is above is not to insert copy-protection when aliasing
-        // pass-through params, as we do not need to write into the output
-        // buffer.
-        XLA_VLOG_DEVICE(3, device_ordinal)
-            << "Using copy-protection: aliasing is specified, but the "
-               "buffer is not donated; allocating a fresh buffer";
-        int64_t allocation_size = ShapeUtil::ByteSizeOf(
-            ShapeUtil::GetSubshape(program_shape_.result(), index));
-        absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> allocated_buffer =
-            memory_allocator->Allocate(device_ordinal, allocation_size,
-                                       /*retry_on_failure=*/true,
-                                       /*memory_space=*/allocation->color());
-        if (!allocated_buffer.ok()) {
-          return VerboseAllocationError(allocated_buffer.status());
-        }
-        result_buffer = allocated_buffer->Release();
-        se::DeviceAddressBase& aliased_buffer =
-            buffer_allocations.GetMutableDeviceAddress(
-                output_info.allocation_index);
-        CHECK_EQ(aliased_buffer.size(), result_buffer.size());
-        RETURN_IF_ERROR(run_options->stream()->MemcpyD2D(
-            &result_buffer, aliased_buffer, aliased_buffer.size()));
-        aliased_buffer = result_buffer;
+        ASSIGN_OR_RETURN(result_buffer,
+                         AllocateCopyProtectedOutputBuffer(
+                             run_options, buffer_allocations, index,
+                             *allocation, device_ordinal, memory_allocator));
       }
     }
 
