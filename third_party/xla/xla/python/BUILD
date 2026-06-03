@@ -780,6 +780,8 @@ tsl_pybind_extension(
     srcs = ["xla_transform_py.cc"],
     deps = [
         "//xla/service:xla_transform",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@nanobind",
     ],
 )
