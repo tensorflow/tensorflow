@@ -285,7 +285,7 @@ class BatchResourceBase : public ResourceBase {
       MixedPriorityBatchingPolicy mixed_priority_batching_policy,
       bool enable_priority_aware_batch_scheduler,
       bool enable_priority_aware_batch_scheduler_resplit,
-      bool enable_batching_task_lazy_cancellation = false);
+      bool enable_batching_task_lazy_cancellation);
 
   static AdaptiveBatcherT::QueueOptions GetAdaptiveBatcherQueueOptions(
       int32_t max_batch_size, int32_t batch_timeout_micros,

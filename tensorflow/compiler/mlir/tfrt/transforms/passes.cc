@@ -155,6 +155,8 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
           options.enable_priority_aware_batch_scheduler,
       .enable_priority_aware_batch_scheduler_resplit =
           options.enable_priority_aware_batch_scheduler_resplit,
+      .enable_batching_task_lazy_cancellation =
+          options.enable_batching_task_lazy_cancellation,
   }));
 
   // Deduplicate functions invoked by tf.BatchFunction with the same

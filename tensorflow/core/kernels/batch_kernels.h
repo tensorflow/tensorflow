@@ -119,6 +119,10 @@ class BatchFunctionKernel : public AsyncOpKernel {
   bool has_attribute_enable_large_batch_splitting_ = false;
   bool enable_priority_aware_batch_scheduler_ = false;
   bool enable_priority_aware_batch_scheduler_resplit_ = false;
+  // If true, the priority-aware batch scheduler will lazily filter out and
+  // cancel tasks that have been cancelled or have exceeded their deadline
+  // before batch formation.
+  bool enable_batching_task_lazy_cancellation_ = false;
   bool enable_adaptive_batch_threads_ = false;
 
   mutex mu_;
