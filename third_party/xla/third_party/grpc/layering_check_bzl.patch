@@ -8,10 +8,3 @@
              linkopts = select({
                  # The "-undefined dynamic_lookup" flag allows the shared library to use symbols
                  # that are not defined at link time but will be resolved at runtime.
---- a/src/python/grpcio/grpc/_cython/BUILD.bazel
-+++ b/src/python/grpcio/grpc/_cython/BUILD.bazel
-@@ -34,3 +34,4 @@
-     data = [":copy_roots_pem"],
-     defines = ["GRPC_PYTHON_BUILD=1"],
-+    features = ["-layering_check"],
-     deps = [
