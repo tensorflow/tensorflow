@@ -120,8 +120,8 @@ struct NodeItem {
   }
 
   gtl::ArraySlice<ControlEdgeInfo> output_control_edges() const {
-    return gtl::ArraySlice<const ControlEdgeInfo>(output_control_edge_base(),
-                                                  num_output_control_edges);
+    return absl::Span<const const ControlEdgeInfo>(output_control_edge_base(),
+                                                   num_output_control_edges);
   }
 
   DataType input_type(int i) const {
