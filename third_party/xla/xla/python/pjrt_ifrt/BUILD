@@ -454,6 +454,7 @@ cc_library(
         "//xla/pjrt/distributed/coordination:coordination_service_proto_cc",
         "//xla/python/ifrt",
         "//xla/python/ifrt:attribute_map",
+        "//xla/python/ifrt:basic_bundle",
         "//xla/python/ifrt:basic_device_list",
         "//xla/python/ifrt:client_impl_util",
         "//xla/python/ifrt:serdes_version",
@@ -779,6 +780,19 @@ xla_cc_test(
         "//xla/python/ifrt:buffer_hash_util",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "pjrt_bundle_impl_test_cpu",
+    size = "small",
+    srcs = ["pjrt_bundle_impl_test_cpu.cc"],
+    deps = [
+        ":pjrt_cpu_client_multi_process_test_lib",
+        "//xla/python/ifrt:bundle_impl_test_lib",
+        "//xla/python/ifrt:test_util",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
     ],
 )
 

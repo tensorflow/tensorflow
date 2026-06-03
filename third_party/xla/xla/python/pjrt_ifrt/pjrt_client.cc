@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/basic_bundle.h"
 #include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client.h"
@@ -98,9 +99,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -1838,12 +1837,12 @@ absl::StatusOr<tsl::RCReference<Tuple>> PjRtClient::MakeTuple(
 
 absl::StatusOr<BundleRef> PjRtClient::Bundle(absl::Span<ValueRef> values,
                                              ArrayCopySemantics semantics) {
-  return absl::UnimplementedError("Bundle is not implemented.");
+  return BasicBundle::Create(values, semantics);
 }
 
 absl::StatusOr<BundleRef> PjRtClient::ConcatBundles(
     absl::Span<BundleRef> bundles, ArrayCopySemantics semantics) {
-  return absl::UnimplementedError("ConcatBundles is not implemented.");
+  return BasicBundle::ConcatBundles(bundles, semantics);
 }
 
 absl::StatusOr<std::shared_ptr<Topology>> PjRtClient::GetTopologyForDevices(
