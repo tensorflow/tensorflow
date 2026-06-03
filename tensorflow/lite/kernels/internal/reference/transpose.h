@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_TRANSPOSE_H_
 
 #include <array>
+#include <vector>
 
 #include "tensorflow/lite/kernels/internal/types.h"
 
@@ -166,19 +167,26 @@ inline void SetupTransposeStrides(
   }
 }
 
+inline void SetupTransposeStrides(std::vector<int>& stride,
+                                  const int32_t* shape, const int dims) {
+  stride[dims - 1] = 1;
+  for (int i = dims - 2; i >= 0; --i) {
+    stride[i] = stride[i + 1] * shape[i + 1];
+  }
+}
+
 }  // namespace transpose_internal
 
 // Copies a tensor to an other buffer and permutes its dimensions.
 //
-// Note: template parameter N is not used anymore. It is kept for API
-// compatibility with TFLite micro.
-template <typename T, int N = kTransposeMaxDimensions>
-void Transpose(const TransposeParams& params, const RuntimeShape& input_shape,
-               const T* input_data, const RuntimeShape& output_shape,
-               T* output_data) {
+template <typename T>
+void Transpose(const int32_t* perm, int perm_count,
+               const RuntimeShape& input_shape, const T* input_data,
+               const RuntimeShape& output_shape, T* output_data) {
   using transpose_internal::SetupTransposeStrides;
   using transpose_internal::TransposeImpl;
   using transpose_internal::TransposeStorageType;
+  (void)perm_count;
   // Transpose kernel only does rearranging values not numeric evaluations on
   // each cell. It's safe to implement per size of scalar type and this trick
   // keeps the total code size in a reasonable range.
@@ -189,12 +197,23 @@ void Transpose(const TransposeParams& params, const RuntimeShape& input_shape,
       reinterpret_cast<StorageType*>(output_data);
 
   const int dims = input_shape.DimensionsCount();
-  std::array<int, kTransposeMaxDimensions> input_stride, output_stride;
+  std::vector<int> input_stride(dims);
+  std::vector<int> output_stride(dims);
   SetupTransposeStrides(input_stride, input_shape.DimsData(), dims);
   SetupTransposeStrides(output_stride, output_shape.DimsData(), dims);
-  TransposeImpl(0, dims, &params.perm[0], input_data_storage,
-                input_stride.data(), output_data_storage, output_stride.data(),
+  TransposeImpl(0, dims, perm, input_data_storage, input_stride.data(),
+                output_data_storage, output_stride.data(),
                 output_shape.DimsData());
+}
+
+// Note: template parameter N is not used anymore. It is kept for API
+// compatibility with TFLite micro.
+template <typename T, int N = kTransposeMaxDimensions>
+void Transpose(const TransposeParams& params, const RuntimeShape& input_shape,
+               const T* input_data, const RuntimeShape& output_shape,
+               T* output_data) {
+  Transpose(&params.perm[0], params.perm_count, input_shape, input_data,
+            output_shape, output_data);
 }
 
 }  // namespace reference_ops
