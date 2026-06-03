@@ -440,7 +440,7 @@ class QuantizationPattern : public RewritePattern {
     CustomMap custom_map = quant_params_.quant_spec.custom_map;
 
     // Rewrite the floating-point ops to the quantized version, by fusing
-    // preceding dequantize ops and succeding quantize ops.
+    // preceding dequantize ops and succeeding quantize ops.
     for (mlir::Operation* quantizing_op : quantizing_ops) {
       // If it is requantize op, we shouldn't rewrite this op.
       if (llvm::isa<QuantizeOpT, DequantizeOpT>(quantizing_op)) {

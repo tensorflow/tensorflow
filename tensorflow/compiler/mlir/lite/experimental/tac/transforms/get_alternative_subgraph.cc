@@ -75,7 +75,7 @@ std::vector<InferenceDeviceType> GetAllAlternativeInferenceDeviceType(
       all_device_inference_types.push_back({device, QUANTIZED_UINT8});
     }
 
-    // We will alway enable float.
+    // We will always enable float.
     all_device_inference_types.push_back({device, FLOAT});
   }
 
@@ -84,10 +84,10 @@ std::vector<InferenceDeviceType> GetAllAlternativeInferenceDeviceType(
 
 // This pass will try to get alternative subgraph:
 // Say a subgraph is annotated with CPU (it probably means the ops it contains
-// cannot be run on other deviecs):
+// cannot be run on other devices):
 //
 // We will try:
-// 1) If we can do some mathmatically equaivalent transformation so this
+// 1) If we can do some mathematically equivalent transformation so this
 //   subgraph can be run on other devices.
 // 2) We will other apply device-specifics optimizations as well, that includes
 //   maybe tensor layout transformation, device specific fusion, etc.
