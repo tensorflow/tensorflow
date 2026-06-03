@@ -1507,7 +1507,7 @@ xla_cc_test(
 # bzl_library(
 #     name = "ifrt_bzl",
 #     srcs = ["ifrt.bzl"],
-#     parse_tests = False,
+#     # parse_tests = False,
 #     visibility = ["//visibility:private"],
 #     deps = ["//xla/tsl:package_groups_bzl"],
 # )
@@ -1515,7 +1515,7 @@ xla_cc_test(
 # bzl_library(
 #     name = "ifrt_google_bzl",
 #     srcs = ["ifrt.google.bzl"],
-#     parse_tests = False,
+#     # parse_tests = False,
 #     visibility = ["//visibility:private"],
 # )
 # copybara:uncomment_end

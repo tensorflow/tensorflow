@@ -20,7 +20,6 @@ platform(
     constraint_values = [
         "@platforms//cpu:%{cpu}",
         "@platforms//os:%{platform}",
-        ":platform_constraint",
     ],
     exec_properties = %{exec_properties},
 )
