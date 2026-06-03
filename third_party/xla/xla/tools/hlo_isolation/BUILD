@@ -38,6 +38,7 @@ cc_library(
         "//xla:literal",
         "//xla:literal_comparison",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/hlo/transforms:defuser",
@@ -84,6 +85,7 @@ xla_cc_test(
     srcs = ["hlo_isolation_test_base_test.cc"],
     deps = [
         ":hlo_isolation_api",
+        ":hlo_isolation_proto_cc",
         ":hlo_isolation_test_base",
         "//xla:array2d",
         "//xla:literal",
