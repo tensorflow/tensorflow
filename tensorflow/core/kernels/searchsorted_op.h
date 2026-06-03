@@ -32,8 +32,8 @@ struct UpperBoundFunctor {
   static absl::Status Compute(
       OpKernelContext* context,
       const typename TTypes<T, 1>::ConstTensor& sorted_inputs,
-      const typename TTypes<T, 1>::ConstTensor& values, int batch_size,
-      int num_inputs, int num_values,
+      const typename TTypes<T, 1>::ConstTensor& values, int64_t batch_size,
+      int64_t num_inputs, int64_t num_values,
       typename TTypes<OutType, 1>::Tensor* output);
 };
 
@@ -44,10 +44,11 @@ struct LowerBoundFunctor {
   static absl::Status Compute(
       OpKernelContext* context,
       const typename TTypes<T, 1>::ConstTensor& sorted_inputs,
-      const typename TTypes<T, 1>::ConstTensor& values, int batch_size,
-      int num_inputs, int num_values,
+      const typename TTypes<T, 1>::ConstTensor& values, int64_t batch_size,
+      int64_t num_inputs, int64_t num_values,
       typename TTypes<OutType, 1>::Tensor* output);
 };
+
 }  // namespace functor
 
 }  // end namespace tensorflow
