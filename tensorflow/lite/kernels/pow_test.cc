@@ -129,6 +129,17 @@ TEST(PowOpModel, BroadcastTest) {
   EXPECT_THAT(model.GetOutput(), ElementsAre(20736, 16, 2401, 4096));
 }
 
+TEST(PowOpModel, BroadcastRankFive) {
+  PowOpModel<int32_t> model({TensorType_INT32, {1, 2, 1, 2, 2}},
+                            {TensorType_INT32, {1, 1, 2}},
+                            {TensorType_INT32, {}});
+  model.PopulateTensor<int32_t>(model.input1(), {2, 3, 4, 5, 2, 3, 4, 5});
+  model.PopulateTensor<int32_t>(model.input2(), {2, 3});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 1, 2, 2));
+  EXPECT_THAT(model.GetOutput(), ElementsAre(4, 27, 16, 125, 4, 27, 16, 125));
+}
+
 TYPED_TEST(FloatPowTest, BroadcastFloatTest) {
   using T = TypeParam;
   PowOpModel<T> model({GetTensorType<T>(), {1, 2, 2, 1}},
