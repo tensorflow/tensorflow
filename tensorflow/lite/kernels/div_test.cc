@@ -215,6 +215,20 @@ TYPED_TEST(FloatDivTest, WithBroadcast5D) {
   }
 }
 
+TYPED_TEST(FloatDivTest, WithBroadcast6D) {
+  using T = TypeParam;
+  DivOpModel<T> m({GetTensorType<T>(), {1, 2, 1, 1, 2, 2}},
+                  {GetTensorType<T>(), {1, 1, 2}}, {GetTensorType<T>(), {}},
+                  ActivationFunctionType_NONE);
+  m.template PopulateTensor<T>(m.input1(), {2, 6, 4, 12, 6, 18, 8, 24});
+  m.template PopulateTensor<T>(m.input2(), {2, 3});
+  TFLITE_INVOKE_AND_CHECK(T, &m);
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {1, 2, 2, 4, 3, 6, 4, 8},
+                  static_cast<float>(NumericLimits<T>::epsilon() * 10))));
+}
+
 TEST(IntegerDivOpTest, NoActivation) {
   IntegerDivOpModel m({TensorType_INT32, {1, 2, 2, 1}},
                       {TensorType_INT32, {1, 2, 2, 1}}, {TensorType_INT32, {}},

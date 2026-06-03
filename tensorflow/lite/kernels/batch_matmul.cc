@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/runtime_shape.h"
@@ -350,11 +349,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       (lhs_data->type == kTfLiteFloat32 && rhs_data->type == kTfLiteInt8) ||
           lhs_data->type == rhs_data->type ||
           (lhs_data->type == kTfLiteInt16 && rhs_data->type == kTfLiteInt8));
-  // Support dimensions between 2 and 5, inclusive.
+  // Support matrix inputs with zero or more leading batch dimensions.
   TF_LITE_ENSURE(context, NumDimensions(lhs_data) >= 2);
-  TF_LITE_ENSURE(context, NumDimensions(lhs_data) <= 5);
   TF_LITE_ENSURE(context, NumDimensions(rhs_data) >= 2);
-  TF_LITE_ENSURE(context, NumDimensions(rhs_data) <= 5);
 
   const int lhs_rank = NumDimensions(lhs_data);
   const int rhs_rank = NumDimensions(rhs_data);
@@ -391,20 +388,21 @@ template <typename scalar>
 void TransposeRowsColumnsImpl(const TfLiteTensor* tensor_in,
                               const scalar* input, TfLiteTensor* tensor_out,
                               scalar* output) {
-  RuntimeShape transposed_shape(GetTensorShape(tensor_in));
   RuntimeShape shape(GetTensorShape(tensor_in));
-  TransposeParams params;
-  int rank = NumDimensions(tensor_in);
-  params.perm_count = rank;
-  for (int i = 0; i < rank - 2; ++i) {
-    params.perm[i] = i;
+  const int rank = NumDimensions(tensor_in);
+  const int rows = shape.Dims(rank - 2);
+  const int cols = shape.Dims(rank - 1);
+  const int matrix_size = rows * cols;
+  const int batch_count = shape.FlatSize() / matrix_size;
+  for (int batch = 0; batch < batch_count; ++batch) {
+    const scalar* input_batch = input + batch * matrix_size;
+    scalar* output_batch = output + batch * matrix_size;
+    for (int row = 0; row < rows; ++row) {
+      for (int col = 0; col < cols; ++col) {
+        output_batch[col * rows + row] = input_batch[row * cols + col];
+      }
+    }
   }
-  // Transpose the last two dimensions.
-  params.perm[rank - 2] = rank - 1;
-  params.perm[rank - 1] = rank - 2;
-  transposed_shape.SetDim(rank - 1, shape.Dims(rank - 2));
-  transposed_shape.SetDim(rank - 2, shape.Dims(rank - 1));
-  optimized_ops::Transpose(params, shape, input, transposed_shape, output);
 }
 
 TfLiteStatus TransposeRowsColumns(TfLiteContext* context,

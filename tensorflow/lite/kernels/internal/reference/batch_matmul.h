@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <vector>
 
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -49,59 +50,98 @@ inline int extent(const RuntimeShape& shape, int x) {
   return prod;
 }
 
+inline int ProductDims(const RuntimeShape& shape, int begin, int end) {
+  int product = 1;
+  for (int i = begin; i < end; ++i) {
+    product *= shape.Dims(i);
+  }
+  return product;
+}
+
+inline int ProductValues(const std::vector<int>& values) {
+  int product = 1;
+  for (int value : values) {
+    product *= value;
+  }
+  return product;
+}
+
+inline std::vector<int> BroadcastBatchDims(const RuntimeShape& lhs_shape,
+                                           const RuntimeShape& rhs_shape,
+                                           int batch_rank) {
+  std::vector<int> batch_dims(batch_rank);
+  for (int i = 0; i < batch_rank; ++i) {
+    batch_dims[i] = broadcast_dim(lhs_shape.Dims(i), rhs_shape.Dims(i));
+  }
+  return batch_dims;
+}
+
+inline std::vector<int> BatchStrides(const RuntimeShape& shape, int batch_rank,
+                                     int matrix_size) {
+  std::vector<int> strides(batch_rank);
+  int stride = matrix_size;
+  for (int i = batch_rank - 1; i >= 0; --i) {
+    strides[i] = shape.Dims(i) == 1 ? 0 : stride;
+    stride *= shape.Dims(i);
+  }
+  return strides;
+}
+
+inline int BatchOffset(int batch_index, const std::vector<int>& batch_dims,
+                       const std::vector<int>& strides) {
+  int offset = 0;
+  for (int i = static_cast<int>(batch_dims.size()) - 1; i >= 0; --i) {
+    const int coordinate = batch_index % batch_dims[i];
+    batch_index /= batch_dims[i];
+    offset += coordinate * strides[i];
+  }
+  return offset;
+}
+
 }  // namespace batch_matmul
 
 template <typename Ta, typename Tb, typename Tout>
 inline void BatchMatMul(const RuntimeShape& lhs_shape, const Ta* lhs_data,
                         const RuntimeShape& rhs_shape, const Tb* rhs_data,
                         const RuntimeShape& output_shape, Tout* output_data) {
+  (void)output_shape;
+  const int rank =
+      std::max(lhs_shape.DimensionsCount(), rhs_shape.DimensionsCount());
   const RuntimeShape extended_lhs_shape =
-      RuntimeShape::ExtendedShape(5, lhs_shape);
+      RuntimeShape::ExtendedShape(rank, lhs_shape);
   const RuntimeShape extended_rhs_shape =
-      RuntimeShape::ExtendedShape(5, rhs_shape);
-
-  const int batch_dim0 = batch_matmul::broadcast_dim(
-      extended_lhs_shape.Dims(0), extended_rhs_shape.Dims(0));
-  const int batch_dim1 = batch_matmul::broadcast_dim(
-      extended_lhs_shape.Dims(1), extended_rhs_shape.Dims(1));
-  const int batch_dim2 = batch_matmul::broadcast_dim(
-      extended_lhs_shape.Dims(2), extended_rhs_shape.Dims(2));
-
-  const int lhs_ext0 = batch_matmul::extent(extended_lhs_shape, 0);
-  const int lhs_ext1 = batch_matmul::extent(extended_lhs_shape, 1);
-  const int lhs_ext2 = batch_matmul::extent(extended_lhs_shape, 2);
-  const int rhs_ext0 = batch_matmul::extent(extended_rhs_shape, 0);
-  const int rhs_ext1 = batch_matmul::extent(extended_rhs_shape, 1);
-  const int rhs_ext2 = batch_matmul::extent(extended_rhs_shape, 2);
+      RuntimeShape::ExtendedShape(rank, rhs_shape);
+  const int batch_rank = rank - 2;
+  const std::vector<int> batch_dims = batch_matmul::BroadcastBatchDims(
+      extended_lhs_shape, extended_rhs_shape, batch_rank);
 
   // Set params for each matrix multiply.
-  const int lhs_rows = extended_lhs_shape.Dims(3);
-  const int rhs_cols = extended_rhs_shape.Dims(4);
-  const int accum_depth = extended_lhs_shape.Dims(4);
+  const int lhs_rows = extended_lhs_shape.Dims(rank - 2);
+  const int rhs_cols = extended_rhs_shape.Dims(rank - 1);
+  const int accum_depth = extended_lhs_shape.Dims(rank - 1);
+  const int lhs_matrix_size = lhs_rows * accum_depth;
+  const int rhs_matrix_size = rhs_cols * accum_depth;
+  const std::vector<int> lhs_batch_strides = batch_matmul::BatchStrides(
+      extended_lhs_shape, batch_rank, lhs_matrix_size);
+  const std::vector<int> rhs_batch_strides = batch_matmul::BatchStrides(
+      extended_rhs_shape, batch_rank, rhs_matrix_size);
+  const int batch_count = batch_matmul::ProductValues(batch_dims);
 
-  for (int b0 = 0; b0 < batch_dim0; ++b0) {
-    const Ta* lhs_ptr0 = lhs_data + (b0 * lhs_ext0);
-    const Tb* rhs_ptr0 = rhs_data + (b0 * rhs_ext0);
-    for (int b1 = 0; b1 < batch_dim1; ++b1) {
-      const Ta* lhs_ptr1 = lhs_ptr0 + b1 * lhs_ext1;
-      const Tb* rhs_ptr1 = rhs_ptr0 + b1 * rhs_ext1;
-      for (int b2 = 0; b2 < batch_dim2; ++b2) {
-        const Ta* lhs_ptr2 = lhs_ptr1 + b2 * lhs_ext2;
-        const Tb* rhs_ptr2 = rhs_ptr1 + b2 * rhs_ext2;
-        Tout* out_ptr = output_data + ((b0 * batch_dim1 * batch_dim2) +
-                                       b1 * batch_dim2 + b2) *
-                                          lhs_rows * rhs_cols;
-        for (int j = 0; j < rhs_cols; ++j) {
-          for (int i = 0; i < lhs_rows; ++i) {
-            Tout total = 0;
-            for (int k = 0; k < accum_depth; ++k) {
-              total += static_cast<Tout>(lhs_ptr2[accum_depth * i + k]) *
-                       static_cast<Tout>(rhs_ptr2[j * accum_depth + k]);
-            }
-            int idx = lhs_rows * j + i;
-            out_ptr[idx] = total;
-          }
+  for (int batch = 0; batch < batch_count; ++batch) {
+    const Ta* lhs_ptr = lhs_data + batch_matmul::BatchOffset(batch, batch_dims,
+                                                             lhs_batch_strides);
+    const Tb* rhs_ptr = rhs_data + batch_matmul::BatchOffset(batch, batch_dims,
+                                                             rhs_batch_strides);
+    Tout* out_ptr = output_data + batch * lhs_rows * rhs_cols;
+    for (int j = 0; j < rhs_cols; ++j) {
+      for (int i = 0; i < lhs_rows; ++i) {
+        Tout total = 0;
+        for (int k = 0; k < accum_depth; ++k) {
+          total += static_cast<Tout>(lhs_ptr[accum_depth * i + k]) *
+                   static_cast<Tout>(rhs_ptr[j * accum_depth + k]);
         }
+        const int idx = lhs_rows * j + i;
+        out_ptr[idx] = total;
       }
     }
   }
@@ -114,42 +154,36 @@ inline void BatchMatMul(const RuntimeShape& lhs_shape, const int8_t* lhs_data,
                         const RuntimeShape& output_shape, float* output_data,
                         bool* compute_row_sums,
                         const float* per_channel_scales) {
+  (void)output_shape;
+  const int rank =
+      std::max(lhs_shape.DimensionsCount(), rhs_shape.DimensionsCount());
   const RuntimeShape extended_lhs_shape =
-      RuntimeShape::ExtendedShape(5, lhs_shape);
+      RuntimeShape::ExtendedShape(rank, lhs_shape);
   const RuntimeShape extended_rhs_shape =
-      RuntimeShape::ExtendedShape(5, rhs_shape);
-
-  const int batch_dim0 = batch_matmul::broadcast_dim(
-      extended_lhs_shape.Dims(0), extended_rhs_shape.Dims(0));
-  const int batch_dim1 = batch_matmul::broadcast_dim(
-      extended_lhs_shape.Dims(1), extended_rhs_shape.Dims(1));
-  const int batch_dim2 = batch_matmul::broadcast_dim(
-      extended_lhs_shape.Dims(2), extended_rhs_shape.Dims(2));
-
-  const int lhs_ext0 = batch_matmul::extent(extended_lhs_shape, 0);
-  const int lhs_ext1 = batch_matmul::extent(extended_lhs_shape, 1);
-  const int lhs_ext2 = batch_matmul::extent(extended_lhs_shape, 2);
-  const int rhs_ext0 = batch_matmul::extent(extended_rhs_shape, 0);
-  const int rhs_ext1 = batch_matmul::extent(extended_rhs_shape, 1);
-  const int rhs_ext2 = batch_matmul::extent(extended_rhs_shape, 2);
+      RuntimeShape::ExtendedShape(rank, rhs_shape);
+  const int batch_rank = rank - 2;
+  const std::vector<int> batch_dims = batch_matmul::BroadcastBatchDims(
+      extended_lhs_shape, extended_rhs_shape, batch_rank);
 
   // Set params for each matrix multiply.
-  const int lhs_rows = extended_lhs_shape.Dims(3);
-  const int rhs_cols = extended_rhs_shape.Dims(4);
-  const int accum_depth = extended_lhs_shape.Dims(4);
-
-  const int ioff_ext0 = rhs_ext0 == 0 ? 0 : rhs_cols;
-  const int ioff_ext1 = rhs_ext1 == 0 ? 0 : rhs_cols;
-  const int ioff_ext2 = rhs_ext2 == 0 ? 0 : rhs_cols;
-  const int woff_ext0 = lhs_ext0 == 0 ? 0 : lhs_rows;
-  const int woff_ext1 = lhs_ext1 == 0 ? 0 : lhs_rows;
-  const int woff_ext2 = lhs_ext2 == 0 ? 0 : lhs_rows;
+  const int lhs_rows = extended_lhs_shape.Dims(rank - 2);
+  const int rhs_cols = extended_rhs_shape.Dims(rank - 1);
+  const int accum_depth = extended_lhs_shape.Dims(rank - 1);
+  const int lhs_matrix_size = lhs_rows * accum_depth;
+  const int rhs_matrix_size = rhs_cols * accum_depth;
+  const std::vector<int> lhs_batch_strides = batch_matmul::BatchStrides(
+      extended_lhs_shape, batch_rank, lhs_matrix_size);
+  const std::vector<int> rhs_batch_strides = batch_matmul::BatchStrides(
+      extended_rhs_shape, batch_rank, rhs_matrix_size);
+  const std::vector<int> scale_batch_strides =
+      batch_matmul::BatchStrides(extended_rhs_shape, batch_rank, rhs_cols);
+  const std::vector<int> row_sum_batch_strides =
+      batch_matmul::BatchStrides(extended_lhs_shape, batch_rank, lhs_rows);
+  const int batch_count = batch_matmul::ProductValues(batch_dims);
 
   if (!compute_row_sums || *compute_row_sums) {
-    int num_weights_matrices = 1;
-    for (int i = 1; i < extended_lhs_shape.DimensionsCount() - 2; ++i) {
-      num_weights_matrices *= extended_lhs_shape.Dims(i);
-    }
+    const int num_weights_matrices =
+        batch_matmul::ProductDims(extended_lhs_shape, 0, batch_rank);
     tensor_utils::ReductionSumVector(
         lhs_data, row_sums, num_weights_matrices * lhs_rows, accum_depth);
     if (compute_row_sums) {
@@ -157,46 +191,39 @@ inline void BatchMatMul(const RuntimeShape& lhs_shape, const int8_t* lhs_data,
     }
   }
 
-  for (int b0 = 0; b0 < batch_dim0; ++b0) {
-    const int8_t* lhs_ptr0 = lhs_data + (b0 * lhs_ext0);
-    const int8_t* rhs_ptr0 = rhs_data + (b0 * rhs_ext0);
-    const int32_t* ioff_ptr0 = input_offset + (b0 * ioff_ext0);
-    const float* scale_ptr0 = scaling_factors + (b0 * ioff_ext0);
-    const int32_t* woff_ptr0 = row_sums + (b0 * woff_ext0);
-    for (int b1 = 0; b1 < batch_dim1; ++b1) {
-      const int8_t* lhs_ptr1 = lhs_ptr0 + b1 * lhs_ext1;
-      const int8_t* rhs_ptr1 = rhs_ptr0 + b1 * rhs_ext1;
-      const int32_t* ioff_ptr1 = ioff_ptr0 + (b1 * ioff_ext1);
-      const float* scale_ptr1 = scale_ptr0 + (b1 * ioff_ext1);
-      const int32_t* woff_ptr1 = woff_ptr0 + (b1 * woff_ext1);
-      for (int b2 = 0; b2 < batch_dim2; ++b2) {
-        const int8_t* lhs_ptr2 = lhs_ptr1 + b2 * lhs_ext2;
-        const int8_t* rhs_ptr2 = rhs_ptr1 + b2 * rhs_ext2;
-        const int32_t* ioff_ptr2 = ioff_ptr1 + (b2 * ioff_ext2);
-        const float* scale_ptr2 = scale_ptr1 + (b2 * ioff_ext2);
-        const int32_t* woff_ptr2 = woff_ptr1 + (b2 * woff_ext2);
-        float* out_ptr = output_data + ((b0 * batch_dim1 * batch_dim2) +
-                                        b1 * batch_dim2 + b2) *
-                                           lhs_rows * rhs_cols;
-        for (int j = 0; j < rhs_cols; ++j) {
-          const float batch_scaling_factor = scale_ptr2[j];
-          const float batch_offset = static_cast<float>(ioff_ptr2[j]);
-          for (int i = 0; i < lhs_rows; ++i) {
-            int32_t total = 0;
-            for (int k = 0; k < accum_depth; ++k) {
-              total +=
-                  lhs_ptr2[accum_depth * i + k] * rhs_ptr2[j * accum_depth + k];
-            }
-            int32_t row_sum = woff_ptr2[i];
-            total -= row_sum * batch_offset;
-            int idx = lhs_rows * j + i;
-            float scale = batch_scaling_factor;
-            if (per_channel_scales) {
-              scale *= per_channel_scales[i];
-            }
-            out_ptr[idx] += scale * total;
-          }
+  for (int batch = 0; batch < batch_count; ++batch) {
+    const int8_t* lhs_ptr =
+        lhs_data +
+        batch_matmul::BatchOffset(batch, batch_dims, lhs_batch_strides);
+    const int8_t* rhs_ptr =
+        rhs_data +
+        batch_matmul::BatchOffset(batch, batch_dims, rhs_batch_strides);
+    const int32_t* ioff_ptr =
+        input_offset +
+        batch_matmul::BatchOffset(batch, batch_dims, scale_batch_strides);
+    const float* scale_ptr =
+        scaling_factors +
+        batch_matmul::BatchOffset(batch, batch_dims, scale_batch_strides);
+    const int32_t* woff_ptr =
+        row_sums +
+        batch_matmul::BatchOffset(batch, batch_dims, row_sum_batch_strides);
+    float* out_ptr = output_data + batch * lhs_rows * rhs_cols;
+    for (int j = 0; j < rhs_cols; ++j) {
+      const float batch_scaling_factor = scale_ptr[j];
+      const float batch_offset = static_cast<float>(ioff_ptr[j]);
+      for (int i = 0; i < lhs_rows; ++i) {
+        int32_t total = 0;
+        for (int k = 0; k < accum_depth; ++k) {
+          total += lhs_ptr[accum_depth * i + k] * rhs_ptr[j * accum_depth + k];
         }
+        const int32_t row_sum = woff_ptr[i];
+        total -= row_sum * batch_offset;
+        const int idx = lhs_rows * j + i;
+        float scale = batch_scaling_factor;
+        if (per_channel_scales) {
+          scale *= per_channel_scales[i];
+        }
+        out_ptr[idx] += scale * total;
       }
     }
   }
@@ -209,29 +236,28 @@ inline void BatchMatMul(const FullyConnectedParams& params,
                         const RuntimeShape& rhs_shape, const rhsT* rhs_data,
                         const RuntimeShape& output_shape,
                         outputT* output_data) {
+  (void)output_shape;
+  const int rank =
+      std::max(lhs_shape.DimensionsCount(), rhs_shape.DimensionsCount());
   const RuntimeShape extended_lhs_shape =
-      RuntimeShape::ExtendedShape(5, lhs_shape);
+      RuntimeShape::ExtendedShape(rank, lhs_shape);
   const RuntimeShape extended_rhs_shape =
-      RuntimeShape::ExtendedShape(5, rhs_shape);
-
-  const int batch_dim0 = batch_matmul::broadcast_dim(
-      extended_lhs_shape.Dims(0), extended_rhs_shape.Dims(0));
-  const int batch_dim1 = batch_matmul::broadcast_dim(
-      extended_lhs_shape.Dims(1), extended_rhs_shape.Dims(1));
-  const int batch_dim2 = batch_matmul::broadcast_dim(
-      extended_lhs_shape.Dims(2), extended_rhs_shape.Dims(2));
-
-  const int lhs_ext0 = batch_matmul::extent(extended_lhs_shape, 0);
-  const int lhs_ext1 = batch_matmul::extent(extended_lhs_shape, 1);
-  const int lhs_ext2 = batch_matmul::extent(extended_lhs_shape, 2);
-  const int rhs_ext0 = batch_matmul::extent(extended_rhs_shape, 0);
-  const int rhs_ext1 = batch_matmul::extent(extended_rhs_shape, 1);
-  const int rhs_ext2 = batch_matmul::extent(extended_rhs_shape, 2);
+      RuntimeShape::ExtendedShape(rank, rhs_shape);
+  const int batch_rank = rank - 2;
+  const std::vector<int> batch_dims = batch_matmul::BroadcastBatchDims(
+      extended_lhs_shape, extended_rhs_shape, batch_rank);
 
   // Set params for each matrix multiply.
-  const int lhs_rows = extended_lhs_shape.Dims(3);
-  const int rhs_cols = extended_rhs_shape.Dims(4);
-  const int accum_depth = extended_lhs_shape.Dims(4);
+  const int lhs_rows = extended_lhs_shape.Dims(rank - 2);
+  const int rhs_cols = extended_rhs_shape.Dims(rank - 1);
+  const int accum_depth = extended_lhs_shape.Dims(rank - 1);
+  const int lhs_matrix_size = lhs_rows * accum_depth;
+  const int rhs_matrix_size = rhs_cols * accum_depth;
+  const std::vector<int> lhs_batch_strides = batch_matmul::BatchStrides(
+      extended_lhs_shape, batch_rank, lhs_matrix_size);
+  const std::vector<int> rhs_batch_strides = batch_matmul::BatchStrides(
+      extended_rhs_shape, batch_rank, rhs_matrix_size);
+  const int batch_count = batch_matmul::ProductValues(batch_dims);
 
   const int32_t input_offset = params.input_offset;
   const int32_t filter_offset = params.weights_offset;
@@ -242,36 +268,27 @@ inline void BatchMatMul(const FullyConnectedParams& params,
   const int32_t output_activation_max = params.quantized_activation_max;
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
 
-  for (int b0 = 0; b0 < batch_dim0; ++b0) {
-    const lhsT* lhs_ptr0 = lhs_data + (b0 * lhs_ext0);
-    const rhsT* rhs_ptr0 = rhs_data + (b0 * rhs_ext0);
-    for (int b1 = 0; b1 < batch_dim1; ++b1) {
-      const lhsT* lhs_ptr1 = lhs_ptr0 + b1 * lhs_ext1;
-      const rhsT* rhs_ptr1 = rhs_ptr0 + b1 * rhs_ext1;
-      for (int b2 = 0; b2 < batch_dim2; ++b2) {
-        const lhsT* lhs_ptr2 = lhs_ptr1 + b2 * lhs_ext2;
-        const rhsT* rhs_ptr2 = rhs_ptr1 + b2 * rhs_ext2;
-        outputT* out_ptr = output_data + ((b0 * batch_dim1 * batch_dim2) +
-                                          b1 * batch_dim2 + b2) *
-                                             lhs_rows * rhs_cols;
-
-        for (int j = 0; j < rhs_cols; ++j) {
-          for (int i = 0; i < lhs_rows; ++i) {
-            AccumT total = 0;
-            for (int k = 0; k < accum_depth; ++k) {
-              AccumT lhs_val = lhs_ptr2[accum_depth * i + k];
-              AccumT rhs_val = rhs_ptr2[accum_depth * j + k];
-              total += (lhs_val + filter_offset) * (rhs_val + input_offset);
-            }
-            int32_t total_scaled = MultiplyByQuantizedMultiplier(
-                total, output_multiplier, output_shift);
-            total_scaled += output_offset;
-            total_scaled = std::max(total_scaled, output_activation_min);
-            total_scaled = std::min(total_scaled, output_activation_max);
-            const int idx = lhs_rows * j + i;
-            out_ptr[idx] = static_cast<outputT>(total_scaled);
-          }
+  for (int batch = 0; batch < batch_count; ++batch) {
+    const lhsT* lhs_ptr = lhs_data + batch_matmul::BatchOffset(
+                                         batch, batch_dims, lhs_batch_strides);
+    const rhsT* rhs_ptr = rhs_data + batch_matmul::BatchOffset(
+                                         batch, batch_dims, rhs_batch_strides);
+    outputT* out_ptr = output_data + batch * lhs_rows * rhs_cols;
+    for (int j = 0; j < rhs_cols; ++j) {
+      for (int i = 0; i < lhs_rows; ++i) {
+        AccumT total = 0;
+        for (int k = 0; k < accum_depth; ++k) {
+          AccumT lhs_val = lhs_ptr[accum_depth * i + k];
+          AccumT rhs_val = rhs_ptr[accum_depth * j + k];
+          total += (lhs_val + filter_offset) * (rhs_val + input_offset);
         }
+        int32_t total_scaled = MultiplyByQuantizedMultiplier(
+            total, output_multiplier, output_shift);
+        total_scaled += output_offset;
+        total_scaled = std::max(total_scaled, output_activation_min);
+        total_scaled = std::min(total_scaled, output_activation_max);
+        const int idx = lhs_rows * j + i;
+        out_ptr[idx] = static_cast<outputT>(total_scaled);
       }
     }
   }

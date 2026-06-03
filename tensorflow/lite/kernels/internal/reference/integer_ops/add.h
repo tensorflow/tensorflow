@@ -20,6 +20,7 @@ limitations under the License.
 #include <limits>
 
 #include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/reference/broadcast_loop.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -132,6 +133,19 @@ void BroadcastBinaryFunction6DSlow(
     void (*check_arithmetic_params)(const ArithmeticParams&),
     T (*binary_func)(T, T, const ArithmeticParams&)) {
   constexpr int kMaxBroadcastDim = 6;
+  const int broadcast_rank = std::max(
+      output_shape.DimensionsCount(),
+      std::max(input1_shape.DimensionsCount(), input2_shape.DimensionsCount()));
+  if (broadcast_rank > kMaxBroadcastDim) {
+    check_arithmetic_params(params);
+    reference_ops::ForEachBroadcastedElement(
+        input1_shape, input2_shape, output_shape,
+        [&](int output_index, int input1_index, int input2_index) {
+          output_data[output_index] = binary_func(
+              input1_data[input1_index], input2_data[input2_index], params);
+        });
+    return;
+  }
 
   // In Tensorflow, the dimensions are canonically named (batch_number, row,
   // col, channel), with extents (batches, height, width, depth), with the
