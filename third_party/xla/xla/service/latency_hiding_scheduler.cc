@@ -153,17 +153,7 @@ bool MemoryPressureTracker::InstructionDefinesValue(
   // value. This is needed in cases, e.g., where we wrap a value-defining
   // instruction in a async call for offloading, and the async start itself will
   // effectively define the value in the current scope that the scheduler is
-  // running in.
-  if (instruction->opcode() == HloOpcode::kAsyncStart ||
-      instruction->opcode() == HloOpcode::kAsyncDone) {
-    if (instruction->async_wrapped_opcode() == HloOpcode::kCall) {
-      return instruction->async_wrapped_instruction()
-                 ->called_computations()[0]
-                 ->root_instruction() == value->defining_instruction();
-    }
-    return instruction->async_wrapped_instruction() ==
-           value->defining_instruction();
-  }
+  // running in. This also handles the case of a call instruction.
   HloBuffer::Id id = hlo_alias_analysis_->GetBufferContainingValue(*value).id();
   const auto& info = buffer_tracker_.GetBufferInfo(id);
   return InstructionTransitivelyDefines(instruction, info);
@@ -180,15 +170,6 @@ bool MemoryPressureTracker::InstructionFirstDefinesBuffer(
   }
   // Similar to logic above, also check if the instruction is a call to a
   // computation that defines the value.
-  if (instruction->opcode() == HloOpcode::kAsyncStart) {
-    if (instruction->async_wrapped_opcode() == HloOpcode::kCall) {
-      return instruction->async_wrapped_instruction()
-                 ->called_computations()[0]
-                 ->root_instruction() == buffer_value_info.first_definition;
-    }
-    return instruction->async_wrapped_instruction() ==
-           buffer_value_info.first_definition;
-  }
   return InstructionTransitivelyDefines(instruction, buffer_value_info);
 }
 

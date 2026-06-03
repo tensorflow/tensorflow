@@ -5901,6 +5901,58 @@ ENTRY main {
   // scheduled!
   EXPECT_LE(scheduler_core->GetMemoryPeak(), 32784);
 }
+
+TEST_F(LatencyHidingSchedulerTest, MemoryPressureTrackingWithAsyncCollective) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add = f32[] add(a, b)
+}
+
+async_computation {
+  p = f32[1024] parameter(0)
+  ROOT ar = f32[1024] all-reduce(p), to_apply=sum
+}
+
+ENTRY entry {
+  p0 = f32[1024] parameter(0)
+  all-reduce.start = ((f32[1024]), f32[1024], u32[]) async-start(p0), calls=async_computation
+  c0 = f32[1024] negate(p0)
+  c1 = f32[1024] negate(c0)
+  all-reduce.done = f32[1024] async-done(all-reduce.start), calls=async_computation
+  ROOT root = f32[1024] add(c1, all-reduce.done)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.memory_limit = 20000;
+
+  TF_ASSERT_OK_AND_ASSIGN(auto scheduler_setup,
+                          SetupScheduler(hlo_module.get(), sched_config));
+  auto scheduler = std::move(scheduler_setup.first);
+  auto scheduler_core = std::move(scheduler_setup.second);
+
+  TF_EXPECT_OK(scheduler->Run(hlo_module.get()));
+  // Peak memory at all-reduce.done for bottom-up scheduling:
+  // - all-reduce.start output are composed of 4 buffers:
+  //   1. all-reduce.start output tuple (size 8196) (tuple)
+  //   2. all-reduce.start nested input tuple (size 4096) (excluding input
+  //   buffer due to parameter passing)
+  //   3. all-reduce.start collective result  (size 4096)
+  //   4. all-reduce.start state (size 4)
+  //   Total Async Live = 16396 bytes.
+  // - 1 intermediate buffer is live at peak:
+  //   c1 output, size 4096.
+  // - 8 bytes of tuple pointer overhead.
+  // Total Peak = 16396 + 4096 + 8 = 20496 bytes.
+  //
+  EXPECT_EQ(scheduler_core->GetMemoryPeak(), 20496);
+}
+
 class LatencyHidingSchedulerBenchmark : public LatencyHidingSchedulerTest {
  public:
   void TestBody() override {}
