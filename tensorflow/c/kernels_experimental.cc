@@ -332,8 +332,12 @@ void TF_TemporaryVariable(TF_OpKernelContext* ctx, TF_DataType dtype,
   OP_REQUIRES(context, rm,
               absl::InternalError("No per-step resource manager."));
 
+  std::string name_str;
+  if (var_name != nullptr && var_name->data != nullptr) {
+    name_str = std::string(var_name->data, var_name->len);
+  }
   std::string unique_name =
-      TemporaryVariableName(var_name->data, context->frame_iter());
+      TemporaryVariableName(name_str, context->frame_iter());
   auto* tmp_var = new TmpVar;
   OP_REQUIRES(context, tmp_var,
               absl::ResourceExhaustedError("Could not allocate TmpVar."));
@@ -364,19 +368,28 @@ void TF_DestroyTemporaryVariable(TF_OpKernelContext* ctx, const int index,
                                  TF_StringView* var_name,
                                  TF_Status* tf_status) {
   auto* context = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
-  if (!IsRefType(context->input_dtype(0))) {
+  if (index < 0 || index >= context->num_inputs()) {
+    tf_status->status = absl::InvalidArgumentError(
+        "TF_DestroyTemporaryVariable index out of bounds");
+    return;
+  }
+  if (!IsRefType(context->input_dtype(index))) {
     tf_status->status = absl::InvalidArgumentError(
         "TF_DestroyTemporaryVariable requires input is ref");
     return;
   }
-  Tensor tmpvar = context->mutable_input(0, false);
+  Tensor tmpvar = context->mutable_input(index, false);
   context->set_output(0, tmpvar);
 
   tensorflow::ResourceMgr* rm = context->resource_manager();
   OP_REQUIRES(context, rm,
               absl::InternalError("No per-step resource manager."));
+  std::string name_str;
+  if (var_name != nullptr && var_name->data != nullptr) {
+    name_str = std::string(var_name->data, var_name->len);
+  }
   std::string unique_name =
-      TemporaryVariableName(var_name->data, context->frame_iter());
+      TemporaryVariableName(name_str, context->frame_iter());
   OP_REQUIRES_OK(context,
                  context->step_container()->Delete<TmpVar>(rm, unique_name));
 
