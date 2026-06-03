@@ -305,9 +305,9 @@ class CudaExecutor : public GpuExecutor {
       ABSL_GUARDED_BY(alive_gpu_streams_mu_);
 
   // Memory allocators for supported memory spaces.
-  std::unique_ptr<CudaDeviceAllocator> device_allocator_;
+  std::unique_ptr<CudaVmmAllocator> device_allocator_;
   std::unique_ptr<CudaHostAllocator> host_allocator_;
-  std::unique_ptr<CudaVmmAllocator> vmm_allocator_;  // null if VMM unsupported
+  std::unique_ptr<CudaVmmAllocator> vmm_allocator_;
 
   // Tracks allocations made through the memory allocators, bridging the RAII
   // MemoryAllocation API to the raw-pointer Allocate/Deallocate interface.

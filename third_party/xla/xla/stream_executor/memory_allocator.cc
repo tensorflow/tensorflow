@@ -77,7 +77,6 @@ absl::Status MemoryAllocator::AllocationTracker::Free(DeviceAddressBase addr) {
   {
     absl::MutexLock lock(mu_);
     uint64_t id = addr.payload();
-
     // If payload is 0, the caller may have reconstructed the DeviceAddressBase
     // using only the void* pointer. We fall back to looking up the unique ID
     // using the pointer, if it is not null.
@@ -107,7 +106,7 @@ absl::Status MemoryAllocator::AllocationTracker::Free(DeviceAddressBase addr) {
           "Address mismatch for payload ID %d: provided %p, tracked %p", id,
           addr.opaque(), tracked_addr.opaque()));
     }
-    if (addr.size() != 0 && addr.size() != tracked_addr.size()) {
+    if (addr.size() > tracked_addr.size()) {
       return absl::InvalidArgumentError(absl::StrFormat(
           "Size mismatch for payload ID %d: provided %d, tracked %d", id,
           addr.size(), tracked_addr.size()));

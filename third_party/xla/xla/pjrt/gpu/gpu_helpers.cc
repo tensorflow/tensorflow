@@ -52,6 +52,15 @@ limitations under the License.
 
 namespace xla {
 
+static size_t RoundUpGpuMemoryLimit(size_t allocator_memory) {
+  // GPU device allocations can be rounded up by backend allocation granularity.
+  // BFC accounts the allocator-reported size as usable pool memory, so round
+  // the limit too to keep memory stats consistent and avoid pool_bytes
+  // exceeding bytes_limit.
+  constexpr size_t kGpuMemoryLimitGranularity = 2 * 1024 * 1024;
+  return RoundUpTo<size_t>(allocator_memory, kGpuMemoryLimitGranularity);
+}
+
 // Builds an xla::LocalClient for the GPU platform.
 absl::StatusOr<LocalClient*> GetGpuXlaClient(
     const std::optional<std::string>& platform_name,
@@ -138,6 +147,9 @@ absl::StatusOr<std::shared_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
   if (gpu_system_memory_size.has_value()) {
     allocator_memory = gpu_system_memory_size.value();
   }
+
+  allocator_memory = RoundUpGpuMemoryLimit(allocator_memory);
+
   const std::string allocator_memory_str =
       absl::StrCat(tsl::strings::HumanReadableNumBytes(allocator_memory), " (",
                    allocator_memory, " bytes)");
@@ -179,6 +191,7 @@ absl::StatusOr<std::shared_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
   bool preallocate = collective_memory_size != 0;
   size_t allocator_memory =
       preallocate ? collective_memory_size : total_memory * memory_fraction;
+  allocator_memory = RoundUpGpuMemoryLimit(allocator_memory);
 
   if (preallocate) {
     LOG(INFO) << "XLA backend allocating " << allocator_memory

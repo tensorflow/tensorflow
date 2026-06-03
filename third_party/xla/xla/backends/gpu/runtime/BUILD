@@ -4328,6 +4328,9 @@ cc_library(
 xla_test(
     name = "topk_test",
     srcs = ["topk_test.cc"],
+    backend_tags = {
+        "h100": ["full"],
+    },
     backends = ["gpu"],
     deps = [
         ":topk",
