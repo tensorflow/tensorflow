@@ -8604,6 +8604,81 @@ TEST_F(AlgebraicSimplifierTest, CpuDotStrengthReductionGEMV) {
 
   EXPECT_THAT(computation->instructions(), ::testing::Contains(op::Dot()));
 }
+TEST_F(AlgebraicSimplifierTest,
+       CpuDotStrengthReductionLayoutSensitiveMinorMost) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  Shape lhs_shape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2048, 2048}, {1, 0});
+  Shape rhs_shape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2048, 2048}, {1, 0});
+  Shape output_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {2048}, {0});
+
+  auto lhs = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, lhs_shape, "lhs"));
+  auto rhs = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, rhs_shape, "rhs"));
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_batch_dimensions(0);
+  dot_dnums.add_rhs_batch_dimensions(0);
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(1);
+
+  builder.AddInstruction(HloInstruction::CreateDot(
+      output_shape, lhs, rhs, dot_dnums, DefaultPrecisionConfig(2)));
+
+  auto computation = module->AddEntryComputationWithLayouts(builder.Build());
+
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_executing_on_cpu(true);
+  options.set_enable_dot_strength_reduction(true);
+  options.set_is_layout_sensitive(true);
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          AlgebraicSimplifier(options).Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  EXPECT_THAT(computation->instructions(), ::testing::Each(Not(op::Dot())));
+}
+
+TEST_F(AlgebraicSimplifierTest,
+       CpuDotStrengthReductionLayoutSensitiveNotMinorMost) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  Shape lhs_shape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2048, 2048}, {0, 1});
+  Shape rhs_shape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2048, 2048}, {1, 0});
+  Shape output_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {2048}, {0});
+
+  auto lhs = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, lhs_shape, "lhs"));
+  auto rhs = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, rhs_shape, "rhs"));
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_batch_dimensions(0);
+  dot_dnums.add_rhs_batch_dimensions(0);
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(1);
+
+  builder.AddInstruction(HloInstruction::CreateDot(
+      output_shape, lhs, rhs, dot_dnums, DefaultPrecisionConfig(2)));
+
+  auto computation = module->AddEntryComputationWithLayouts(builder.Build());
+
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_executing_on_cpu(true);
+  options.set_enable_dot_strength_reduction(true);
+  options.set_is_layout_sensitive(true);
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          AlgebraicSimplifier(options).Run(module.get()));
+  EXPECT_FALSE(changed);
+
+  EXPECT_THAT(computation->instructions(), ::testing::Contains(op::Dot()));
+}
 
 class DotStrengthReductionTest
     : public AlgebraicSimplifierTest,
