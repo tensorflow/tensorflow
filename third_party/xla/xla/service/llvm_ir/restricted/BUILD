@@ -18,7 +18,6 @@ package_group(
 xla_cc_test(
     name = "llvm_util_test",
     srcs = ["llvm_util_test.cc"],
-    tags = ["pjrt_migration_candidate"],
     deps = [
         "//xla:error_spec",
         "//xla:literal",

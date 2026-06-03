@@ -21,7 +21,6 @@ xla_test(
     backends = [
         "cpu",
     ],
-    tags = ["pjrt_migration_candidate"],
     use_legacy_runtime = True,
     deps = [
         "//xla:debug_options_flags",

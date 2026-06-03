@@ -86,7 +86,6 @@ cc_library(
 xla_cc_test(
     name = "sol_latency_estimator_test",
     srcs = ["sol_latency_estimator_test.cc"],
-    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_interpolator",
         ":sol_gpu_cost_model",

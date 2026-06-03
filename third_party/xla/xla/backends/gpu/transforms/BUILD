@@ -4012,7 +4012,6 @@ xla_cc_test(
 xla_cc_test(
     name = "scaled_dot_rewriter_test",
     srcs = ["scaled_dot_rewriter_test.cc"],
-    tags = ["pjrt_migration_candidate"],
     deps = [
         ":scaled_dot_rewriter",
         "//xla:error_spec",

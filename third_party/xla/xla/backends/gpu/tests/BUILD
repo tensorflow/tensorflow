@@ -1211,7 +1211,6 @@ xla_test(
         ],
     },
     backends = ["gpu"],
-    tags = ["pjrt_migration_candidate"],
     use_legacy_runtime = True,
     deps = [
         "//xla:literal",
@@ -1245,7 +1244,6 @@ xla_test(
     backends = [
         "gpu",
     ],
-    tags = ["pjrt_migration_candidate"],
     use_legacy_runtime = True,
     deps = [
         "//xla:error_spec",

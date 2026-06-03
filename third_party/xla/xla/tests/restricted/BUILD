@@ -62,7 +62,6 @@ xla_test(
         "cpu",
         "gpu",
     ],
-    tags = ["pjrt_migration_candidate"],
     use_legacy_runtime = True,
     deps = [
         ":hlo_test_base_legacy",

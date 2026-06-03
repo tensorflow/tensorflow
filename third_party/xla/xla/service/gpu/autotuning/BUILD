@@ -173,7 +173,6 @@ xla_test(
     name = "redzone_buffers_test",
     srcs = ["redzone_buffers_test.cc"],
     backends = ["gpu"],
-    tags = ["pjrt_migration_candidate"],
     use_legacy_runtime = True,
     deps = [
         ":redzone_buffers",
@@ -206,10 +205,7 @@ xla_cc_test(
     name = "autotuner_cache_test",
     srcs = ["autotuner_cache_test.cc"],
     data = ["//xla/backends/gpu/target_config:all_gpu_specs"],
-    tags = [
-        "gpu",
-        "pjrt_migration_candidate",
-    ],
+    tags = ["gpu"],
     deps = [
         ":autotune_cache_key",
         ":autotuner_cache",

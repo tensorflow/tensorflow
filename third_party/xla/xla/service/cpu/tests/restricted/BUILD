@@ -20,7 +20,6 @@ package_group(
 xla_cc_test(
     name = "cpu_aot_export_test",
     srcs = ["cpu_aot_export_test.cc"],
-    tags = ["pjrt_migration_candidate"],
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/service:compiler",
@@ -46,7 +45,6 @@ xla_cc_test(
     name = "onednn_fusion_test",
     srcs = ["onednn_fusion_test.cc"],
     local_defines = if_graph_api(["XLA_ONEDNN_USE_GRAPH_API=1"]),
-    tags = ["pjrt_migration_candidate"],
     deps = [
         "//xla:error_spec",
         "//xla/service:cpu_plugin",
