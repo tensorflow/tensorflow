@@ -24,11 +24,12 @@ OverridableFetchContent_Declare(
   abseil-cpp
   GIT_REPOSITORY https://github.com/abseil/abseil-cpp
   # Sync with tensorflow/third_party/absl/workspace.bzl
-  GIT_TAG 255c84dadd029fd8ad25c5efb5933e47beaa00c7
+  GIT_TAG 5650e9cf76d3be4318d5fa3af38ee483ddfd5e4a
   GIT_SHALLOW TRUE
   GIT_PROGRESS TRUE
   PREFIX "${CMAKE_BINARY_DIR}"
   SOURCE_DIR "${CMAKE_BINARY_DIR}/abseil-cpp"
+  PATCH_COMMAND git apply ${CMAKE_CURRENT_LIST_DIR}/abseil-cpp-gcc9.patch
 )
 OverridableFetchContent_GetProperties(abseil-cpp)
 if(NOT abseil-cpp_POPULATED)

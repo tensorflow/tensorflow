@@ -1,0 +1,13 @@
+diff --git a/absl/base/policy_checks.h b/absl/base/policy_checks.h
+--- a/absl/base/policy_checks.h
++++ b/absl/base/policy_checks.h
+@@ -55,7 +55,7 @@
+ // We support GCC 7 and later.
+ // This minimum will go up.
+ #if defined(__GNUC__) && !defined(__clang__)
+-#if __GNUC__ < 10
+-#error "This package requires GCC 10 or higher."
++#if __GNUC__ < 9
++#error "This package requires GCC 9 or higher (patched for LiteRT GCC 9 compatibility)."
+ #endif
+ #endif
