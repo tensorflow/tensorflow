@@ -30,6 +30,8 @@ using float8_e4m3b11fnuz = ::ml_dtypes::float8_e4m3b11fnuz;
 using float8_e5m2 = ::ml_dtypes::float8_e5m2;
 using float8_e5m2fnuz = ::ml_dtypes::float8_e5m2fnuz;
 using float8_e8m0fnu = ::ml_dtypes::float8_e8m0fnu;
+using float6_e3m2fn = ::ml_dtypes::float6_e3m2fn;
+using float6_e2m3fn = ::ml_dtypes::float6_e2m3fn;
 
 using int1 = ::ml_dtypes::int1;
 using uint1 = ::ml_dtypes::uint1;
