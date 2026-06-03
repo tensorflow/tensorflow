@@ -318,7 +318,8 @@ cc_library(
         ],
         ":arm32_any": [
             "optimized/4bit/neon_fully_connected.cc",
-            "optimized/4bit/neon_fully_connected_arm32.cc",
+            "optimized/4bit/neon_fully_connected_arm32_nosdot.cc",
+            "optimized/4bit/neon_fully_connected_arm32_sdot.cc",
             "optimized/4bit/neon_fully_connected_impl.h",
         ],
         "//conditions:default": [],

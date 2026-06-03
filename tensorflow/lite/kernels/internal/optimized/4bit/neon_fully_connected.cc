@@ -555,14 +555,12 @@ void NeonRunKernel(const uint8_t* lhs, const int8_t* rhs, int32_t* dst,
                    int lhs_layout_rows, int lhs_layout_cols,
                    int rhs_layout_rows, int rhs_layout_cols,
                    int dst_layout_rows, int dst_layout_cols) {
-#ifdef __aarch64__
   if (HasSDot()) {
     NeonRunKernelSDot<RowsLeft, RowsRight, Cols>(
         lhs, rhs, dst, lhs_layout_rows, lhs_layout_cols, rhs_layout_rows,
         rhs_layout_cols, dst_layout_rows, dst_layout_cols);
     return;
   }
-#endif
   NeonRunKernelNoSDot<RowsLeft, RowsRight, Cols>(
       lhs, rhs, dst, lhs_layout_rows, lhs_layout_cols, rhs_layout_rows,
       rhs_layout_cols, dst_layout_rows, dst_layout_cols);
