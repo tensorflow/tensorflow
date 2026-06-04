@@ -436,6 +436,7 @@ cc_library(
         "//xla:array",
         "//xla:printer",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
