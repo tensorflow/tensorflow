@@ -160,6 +160,47 @@ ShapeTracker::BufferView ShapeTracker::BufferView::FromSubviews(
   return result;
 }
 
+absl::StatusOr<ShapeTracker::BufferView>
+ShapeTracker::BufferView::FromStridesAndExtents(
+    absl::Span<const int64_t> strides, absl::Span<const int64_t> extents) {
+  if (strides.size() != extents.size()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Strides and extents size mismatch: ", strides.size(),
+                     " vs ", extents.size()));
+  }
+
+  for (size_t i = 0; i < strides.size(); ++i) {
+    if (strides[i] < 1) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Stride must be >= 1, got: ", strides[i]));
+    }
+    if (extents[i] < 1) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Extent must be >= 1, got: ", extents[i]));
+    }
+  }
+
+  llvm::SmallVector<int64_t, 6> order(strides.size());
+  absl::c_iota(order, 0);
+  absl::c_stable_sort(
+      order, [&](int64_t a, int64_t b) { return strides[a] < strides[b]; });
+
+  int64_t running = 1;
+  for (int64_t i : order) {
+    if (strides[i] < running) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Overlapping strides: stride ", strides[i],
+                       " is less than running size ", running));
+    }
+    running = strides[i] * extents[i];
+  }
+
+  BufferView view;
+  view.strides_.assign(strides.begin(), strides.end());
+  view.extents_.assign(extents.begin(), extents.end());
+  return view;
+}
+
 std::optional<std::vector<ShapeTracker::BufferView>>
 ShapeTracker::BufferView::TryUnflatten(
     absl::Span<const int64_t> logical_dims) const {
@@ -201,6 +242,28 @@ ShapeTracker::BufferView::TryUnflatten(
   return sub_views;
 }
 
+ShapeTracker::BufferView ShapeTracker::BufferView::FromShape(
+    const xla::Shape& shape) {
+  BufferView view;
+  const int64_t num_dims = shape.dimensions().size();
+  view.strides_.reserve(num_dims);
+  view.extents_.reserve(num_dims);
+  int64_t stride = 1;
+  int64_t i = num_dims;
+  while (i--) {
+    view.strides_.push_back(stride);
+    view.extents_.push_back(shape.dimensions(i));
+    stride *= shape.dimensions(i);
+  }
+  std::reverse(view.strides_.begin(), view.strides_.end());
+  std::reverse(view.extents_.begin(), view.extents_.end());
+  if (view.strides_.empty()) {
+    view.strides_.push_back(1);
+    view.extents_.push_back(1);
+  }
+  return view;
+}
+
 ShapeTracker::BufferView ShapeTracker::BufferView::FromShapeCompacted(
     const xla::Shape& shape) {
   BufferView view;
@@ -208,6 +271,67 @@ ShapeTracker::BufferView ShapeTracker::BufferView::FromShapeCompacted(
   view.strides_.push_back(1);
   view.extents_.push_back(total_elements);
   return view;
+}
+
+std::optional<ShapeTracker::BufferView>
+ShapeTracker::BufferView::TryIntersectWith(int64_t stride,
+                                           int64_t extent) const {
+  BufferView result;
+  for (int64_t i = 0; i < strides_.size(); ++i) {
+    int64_t out_s = std::max(stride, strides_[i]);
+    int64_t min_s = std::min(stride, strides_[i]);
+    if (out_s % min_s != 0) {
+      return std::nullopt;
+    }
+    int64_t out_upper_slice =
+        std::min(stride * extent, strides_[i] * extents_[i]);
+    if (out_upper_slice <= out_s) {
+      continue;
+    }
+    if (out_upper_slice % out_s != 0) {
+      return std::nullopt;
+    }
+    result.strides_.push_back(out_s);
+    result.extents_.push_back(out_upper_slice / out_s);
+  }
+  return result;
+}
+
+std::optional<ShapeTracker::BufferView>
+ShapeTracker::BufferView::TryIntersectWith(
+    const ShapeTracker::BufferView& other) const {
+  BufferView other_normalized = other;
+  other_normalized.MergeAdjacentDimensions();
+
+  BufferView result;
+  for (int64_t i = 0; i < strides_.size(); ++i) {
+    auto intersection =
+        other_normalized.TryIntersectWith(strides_[i], extents_[i]);
+    if (!intersection.has_value()) {
+      return std::nullopt;
+    }
+    result.strides_.insert(result.strides_.end(),
+                           intersection->strides_.begin(),
+                           intersection->strides_.end());
+    result.extents_.insert(result.extents_.end(),
+                           intersection->extents_.begin(),
+                           intersection->extents_.end());
+  }
+  return result;
+}
+
+void ShapeTracker::BufferView::Pack() {
+  llvm::SmallVector<int64_t, 6> order(strides_.size());
+  absl::c_iota(order, 0);
+  absl::c_stable_sort(order, [&](unsigned a, unsigned b) {
+    return strides_[a] < strides_[b];  // innermost (smallest stride) first
+  });
+
+  int64_t running = 1;
+  for (unsigned i : order) {
+    strides_[i] = running;
+    running *= extents_[i];
+  }
 }
 
 ShapeTracker::~ShapeTracker() = default;
@@ -760,13 +884,7 @@ std::vector<ShapeTracker::Step> ShapeTracker::OptimizeSteps(
   if (current_shape != output_shape.dimensions()) {
     std::vector<int64_t> out_dims(output_shape.dimensions().begin(),
                                   output_shape.dimensions().end());
-    if (!optimized_steps.empty() &&
-        optimized_steps.back().type == Step::Type::kReshape) {
-      // Overwrite the last reshape to avoid consecutive reshapes
-      optimized_steps.back().dimensions = out_dims;
-    } else {
-      optimized_steps.push_back({Step::Type::kReshape, out_dims});
-    }
+    optimized_steps.push_back({Step::Type::kReshape, out_dims});
   }
 
   return optimized_steps;

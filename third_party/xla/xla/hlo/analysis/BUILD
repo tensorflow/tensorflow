@@ -888,5 +888,6 @@ xla_cc_test(
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
+        "@llvm-project//llvm:Support",
     ],
 )

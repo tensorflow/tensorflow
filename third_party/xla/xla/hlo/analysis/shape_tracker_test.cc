@@ -22,8 +22,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "llvm/ADT/SmallVector.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -47,6 +49,8 @@ void ExpectStepsEqual(const std::vector<ShapeTracker::Step>& actual,
         << "Step mismatch at index " << i;
   }
 }
+
+using BufferView = ShapeTracker::BufferView;
 
 }  // namespace
 
@@ -880,4 +884,243 @@ TEST(ShapeTrackerTest, OptimizeStepsOOBWithTrailingDegenerates) {
   EXPECT_NO_FATAL_FAILURE(tracker.DebugString(true));
 }
 
+namespace {
+
+TEST(BufferViewTest, FromStridesAndExtentsSuccess1D) {
+  auto view_or = BufferView::FromStridesAndExtents({4}, {5});
+  ASSERT_TRUE(view_or.ok());
+  EXPECT_EQ(view_or->strides(), (std::vector<int64_t>{4}));
+  EXPECT_EQ(view_or->extents(), (std::vector<int64_t>{5}));
+}
+
+TEST(BufferViewTest, FromStridesAndExtentsSuccessMultiDim) {
+  auto view_or = BufferView::FromStridesAndExtents({12, 4, 1}, {2, 3, 4});
+  ASSERT_TRUE(view_or.ok());
+  EXPECT_EQ(view_or->strides(), (std::vector<int64_t>{12, 4, 1}));
+  EXPECT_EQ(view_or->extents(), (std::vector<int64_t>{2, 3, 4}));
+}
+
+TEST(BufferViewTest, FromStridesAndExtentsSizeMismatch) {
+  auto view_or = BufferView::FromStridesAndExtents({4, 1}, {5});
+  EXPECT_FALSE(view_or.ok());
+  EXPECT_EQ(view_or.status().code(), absl::StatusCode::kInvalidArgument);
+}
+
+TEST(BufferViewTest, FromStridesAndExtentsInvalidStride) {
+  auto view_or = BufferView::FromStridesAndExtents({0}, {5});
+  EXPECT_FALSE(view_or.ok());
+  EXPECT_EQ(view_or.status().code(), absl::StatusCode::kInvalidArgument);
+}
+
+TEST(BufferViewTest, FromStridesAndExtentsInvalidExtent) {
+  auto view_or = BufferView::FromStridesAndExtents({4}, {-1});
+  EXPECT_FALSE(view_or.ok());
+  EXPECT_EQ(view_or.status().code(), absl::StatusCode::kInvalidArgument);
+}
+
+TEST(BufferViewTest, FromStridesAndExtentsOverlap) {
+  auto view_or = BufferView::FromStridesAndExtents({2, 3}, {2, 2});
+  EXPECT_FALSE(view_or.ok());
+  EXPECT_EQ(view_or.status().code(), absl::StatusCode::kInvalidArgument);
+}
+
+TEST(BufferViewTest, FromStridesAndExtentsWithGaps) {
+  auto view_or = BufferView::FromStridesAndExtents({2, 5}, {2, 3});
+  ASSERT_TRUE(view_or.ok());
+  EXPECT_EQ(view_or->strides(), (std::vector<int64_t>{2, 5}));
+  EXPECT_EQ(view_or->extents(), (std::vector<int64_t>{2, 3}));
+}
+
+TEST(BufferViewTest, FromShapeScalar) {
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  BufferView view = BufferView::FromShape(shape);
+  EXPECT_EQ(view.strides(), (std::vector<int64_t>{1}));
+  EXPECT_EQ(view.extents(), (std::vector<int64_t>{1}));
+}
+
+TEST(BufferViewTest, FromShape1D) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10});
+  BufferView view = BufferView::FromShape(shape);
+  EXPECT_EQ(view.strides(), (std::vector<int64_t>{1}));
+  EXPECT_EQ(view.extents(), (std::vector<int64_t>{10}));
+}
+
+TEST(BufferViewTest, FromShapeMultiDim) {
+  // Shape [2, 3, 4]
+  // Expected strides: [12, 4, 1]
+  // Expected extents: [2, 3, 4]
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  BufferView view = BufferView::FromShape(shape);
+  EXPECT_EQ(view.strides(), (std::vector<int64_t>{12, 4, 1}));
+  EXPECT_EQ(view.extents(), (std::vector<int64_t>{2, 3, 4}));
+}
+
+TEST(BufferViewTest, PackAlreadyPacked) {
+  ASSERT_OK_AND_ASSIGN(BufferView view,
+                       BufferView::FromStridesAndExtents({3, 1}, {2, 3}));
+  BufferView expected = view;
+  view.Pack();
+  EXPECT_EQ(view, expected);
+}
+
+TEST(BufferViewTest, PackWithGaps) {
+  ASSERT_OK_AND_ASSIGN(BufferView view,
+                       BufferView::FromStridesAndExtents({8, 2}, {2, 3}));
+  view.Pack();
+  // Should compress to strides [3, 1]
+  EXPECT_EQ(view.strides(), (std::vector<int64_t>{3, 1}));
+  EXPECT_EQ(view.extents(), (std::vector<int64_t>{2, 3}));
+}
+
+TEST(BufferViewTest, TryIntersectWithStrideExtentCompatibleFull) {
+  ASSERT_OK_AND_ASSIGN(BufferView view,
+                       BufferView::FromStridesAndExtents({4}, {5}));
+  auto result = view.TryIntersectWith(4, 5);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result->strides(), (std::vector<int64_t>{4}));
+  EXPECT_EQ(result->extents(), (std::vector<int64_t>{5}));
+}
+
+TEST(BufferViewTest, TryIntersectWithStrideExtentCompatiblePartialSameStride) {
+  ASSERT_OK_AND_ASSIGN(BufferView view,
+                       BufferView::FromStridesAndExtents({4}, {5}));
+  auto result = view.TryIntersectWith(4, 3);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result->strides(), (std::vector<int64_t>{4}));
+  EXPECT_EQ(result->extents(), (std::vector<int64_t>{3}));
+}
+
+TEST(BufferViewTest,
+     TryIntersectWithStrideExtentCompatiblePartialLargerStride) {
+  ASSERT_OK_AND_ASSIGN(BufferView view,
+                       BufferView::FromStridesAndExtents({4}, {5}));
+  auto result = view.TryIntersectWith(8, 2);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result->strides(), (std::vector<int64_t>{8}));
+  EXPECT_EQ(result->extents(), (std::vector<int64_t>{2}));
+}
+
+TEST(BufferViewTest, TryIntersectWithStrideExtentIncompatible) {
+  ASSERT_OK_AND_ASSIGN(BufferView view,
+                       BufferView::FromStridesAndExtents({4}, {5}));
+  auto result = view.TryIntersectWith(3, 3);
+  EXPECT_FALSE(result.has_value());
+}
+
+TEST(BufferViewTest, TryIntersectWithNonAlignedLimit) {
+  // Strictly speaking, the intersection (if we describe it as a set of
+  // addressable elements) can be expressed as [8], [3] in this case. But that
+  // would result in non-aligned strides, we don't allow this.
+  ASSERT_OK_AND_ASSIGN(BufferView view,
+                       BufferView::FromStridesAndExtents({8}, {3}));
+  auto result = view.TryIntersectWith(4, 5);
+  EXPECT_FALSE(result.has_value());
+}
+
+TEST(BufferViewTest, TryIntersectWithOtherCompatible) {
+  ASSERT_OK_AND_ASSIGN(BufferView view1,
+                       BufferView::FromStridesAndExtents({4}, {5}));
+  ASSERT_OK_AND_ASSIGN(BufferView view2,
+                       BufferView::FromStridesAndExtents({8}, {2}));
+  auto result = view1.TryIntersectWith(view2);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(*result, view2);
+}
+
+TEST(BufferViewTest, TryIntersectWithOtherIncompatible) {
+  ASSERT_OK_AND_ASSIGN(BufferView view1,
+                       BufferView::FromStridesAndExtents({4}, {5}));
+  ASSERT_OK_AND_ASSIGN(BufferView view2,
+                       BufferView::FromStridesAndExtents({3}, {3}));
+  auto result = view1.TryIntersectWith(view2);
+  EXPECT_FALSE(result.has_value());
+}
+
+TEST(BufferViewTest, TryIntersectWithOtherUpperSliceLEOutS) {
+  ASSERT_OK_AND_ASSIGN(BufferView view,
+                       BufferView::FromStridesAndExtents({2}, {3}));
+  auto result = view.TryIntersectWith(12, 2);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result->strides().empty());
+  EXPECT_TRUE(result->extents().empty());
+}
+
+TEST(BufferViewTest, MergeAdjacentDimensionsContiguous) {
+  ASSERT_OK_AND_ASSIGN(BufferView view, BufferView::FromStridesAndExtents(
+                                            {12, 4, 1}, {2, 3, 4}));
+  view.MergeAdjacentDimensions();
+  EXPECT_EQ(view.strides(), (std::vector<int64_t>{1}));
+  EXPECT_EQ(view.extents(), (std::vector<int64_t>{24}));
+}
+
+TEST(BufferViewTest, MergeAdjacentDimensionsNonContiguous) {
+  ASSERT_OK_AND_ASSIGN(BufferView view, BufferView::FromStridesAndExtents(
+                                            {16, 4, 1}, {2, 3, 4}));
+  view.MergeAdjacentDimensions();
+  EXPECT_EQ(view.strides(), (std::vector<int64_t>{16, 1}));
+  EXPECT_EQ(view.extents(), (std::vector<int64_t>{2, 12}));
+}
+
+TEST(BufferViewTest, MergeAdjacentDimensionsMultiple) {
+  ASSERT_OK_AND_ASSIGN(BufferView view, BufferView::FromStridesAndExtents(
+                                            {48, 16, 4, 1}, {2, 3, 4, 4}));
+  view.MergeAdjacentDimensions();
+  EXPECT_EQ(view.strides(), (std::vector<int64_t>{1}));
+  EXPECT_EQ(view.extents(), (std::vector<int64_t>{96}));
+}
+
+TEST(BufferViewTest, MergeAdjacentDimensionsPartial) {
+  ASSERT_OK_AND_ASSIGN(BufferView view, BufferView::FromStridesAndExtents(
+                                            {48, 12, 4}, {2, 2, 3}));
+  view.MergeAdjacentDimensions();
+  EXPECT_EQ(view.strides(), (std::vector<int64_t>{48, 4}));
+  EXPECT_EQ(view.extents(), (std::vector<int64_t>{2, 6}));
+}
+
+TEST(BufferViewTest, TryUnflattenFlatTo3D) {
+  ASSERT_OK_AND_ASSIGN(BufferView view,
+                       BufferView::FromStridesAndExtents({1}, {24}));
+  auto result = view.TryUnflatten({2, 3, 4});
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result->size(), 3);
+  EXPECT_EQ((*result)[0], *BufferView::FromStridesAndExtents({12}, {2}));
+  EXPECT_EQ((*result)[1], *BufferView::FromStridesAndExtents({4}, {3}));
+  EXPECT_EQ((*result)[2], *BufferView::FromStridesAndExtents({1}, {4}));
+}
+
+TEST(BufferViewTest, TryUnflattenNonContiguousCompatible) {
+  ASSERT_OK_AND_ASSIGN(BufferView view,
+                       BufferView::FromStridesAndExtents({16, 1}, {2, 12}));
+  auto result = view.TryUnflatten({2, 3, 4});
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result->size(), 3);
+  EXPECT_EQ((*result)[0], *BufferView::FromStridesAndExtents({16}, {2}));
+  EXPECT_EQ((*result)[1], *BufferView::FromStridesAndExtents({4}, {3}));
+  EXPECT_EQ((*result)[2], *BufferView::FromStridesAndExtents({1}, {4}));
+}
+
+TEST(BufferViewTest, TryUnflattenIncompatible) {
+  ASSERT_OK_AND_ASSIGN(BufferView view,
+                       BufferView::FromStridesAndExtents({1}, {24}));
+  auto result = view.TryUnflatten({5, 5});
+  EXPECT_FALSE(result.has_value());
+}
+
+TEST(BufferViewTest, AsTransformationIdentity) {
+  ASSERT_OK_AND_ASSIGN(BufferView view,
+                       BufferView::FromStridesAndExtents({3, 1}, {2, 3}));
+  auto trans = view.AsTransformation();
+  EXPECT_EQ(trans.input_reshape, (llvm::SmallVector<int64_t, 6>{2, 3}));
+  EXPECT_EQ(trans.transpose, (llvm::SmallVector<int64_t, 6>{0, 1}));
+}
+
+TEST(BufferViewTest, AsTransformationPermuted) {
+  ASSERT_OK_AND_ASSIGN(BufferView view,
+                       BufferView::FromStridesAndExtents({1, 3}, {3, 2}));
+  auto trans = view.AsTransformation();
+  EXPECT_EQ(trans.input_reshape, (llvm::SmallVector<int64_t, 6>{2, 3}));
+  EXPECT_EQ(trans.transpose, (llvm::SmallVector<int64_t, 6>{1, 0}));
+}
+
+}  // namespace
 }  // namespace xla
