@@ -118,6 +118,16 @@ class ShapeTracker {
   absl::StatusOr<ShapeTracker> Narrow(
       absl::Span<const int64_t> dims_to_keep) const;
 
+  // Zips multiple ShapeTrackers into a single one.
+  // For example, suppose we have two trackers:
+  // [10,42] -> (reshape)[5,4,7,3] -> (transpose)[3,4,5,7]
+  // [6,2] -> (transpose)[2,6] -> (reshape)[12]
+  // Then the zipped tracker will be:
+  // [10,42,6,2] -> (reshape)[5,4,7,3,6,2] -> (transpose)[3,4,5,7,2,6] ->
+  // (reshape)[3,4,5,7,12]
+  static absl::StatusOr<ShapeTracker> Zip(
+      absl::Span<const ShapeTracker> trackers);
+
   // Generates HLO instructions corresponding to the tracked operations.
   absl::StatusOr<HloInstruction*> ToInstructionChain(
       HloInstruction* inst, bool avoid_combining_reshapes = true) const;

@@ -1412,5 +1412,129 @@ TEST(ShapeTrackerTest, NarrowSkipFirstDimensionInFind) {
   EXPECT_EQ(narrowed.output_shape().dimensions(), (std::vector<int64_t>{10}));
 }
 
+TEST(ShapeTrackerTest, ZipSimpleContiguous) {
+  Shape shape1 = ShapeUtil::MakeShape(F32, {2, 3});
+  ShapeTracker tracker1(shape1);
+  ASSERT_TRUE(tracker1.AppendTranspose({1, 0}).ok());
+
+  Shape shape2 = ShapeUtil::MakeShape(F32, {4});
+  ShapeTracker tracker2(shape2);
+
+  auto zipped_or = ShapeTracker::Zip({tracker1, tracker2});
+  ASSERT_TRUE(zipped_or.ok());
+  ShapeTracker zipped = std::move(zipped_or).value();
+
+  EXPECT_EQ(zipped.input_shape().dimensions(), (std::vector<int64_t>{2, 3, 4}));
+  EXPECT_EQ(zipped.output_shape().dimensions(),
+            (std::vector<int64_t>{3, 2, 4}));
+  EXPECT_EQ(zipped.DebugString(/*avoid_combining_reshapes=*/false),
+            "[2,3,4] -> T[3,2,4]");
+}
+
+TEST(ShapeTrackerTest, ZipWithPadding) {
+  Shape shape1 = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker1(shape1);
+  // Force two projections:
+  ASSERT_TRUE(tracker1.AppendTranspose({2, 0, 1}).ok());  // output [4, 2, 3]
+  ASSERT_TRUE(
+      tracker1.AppendReshape({3, 8}).ok());  // Forces copy, output [3, 8]
+
+  Shape shape2 = ShapeUtil::MakeShape(F32, {5});
+  ShapeTracker tracker2(shape2);
+
+  auto zipped_or = ShapeTracker::Zip({tracker1, tracker2});
+  ASSERT_TRUE(zipped_or.ok());
+  ShapeTracker zipped = std::move(zipped_or).value();
+
+  EXPECT_EQ(zipped.input_shape().dimensions(),
+            (std::vector<int64_t>{2, 3, 4, 5}));
+  EXPECT_EQ(zipped.output_shape().dimensions(),
+            (std::vector<int64_t>{3, 8, 5}));
+
+  // We should have at least 2 steps representing the joint operations:
+  EXPECT_EQ(zipped.DebugString(/*avoid_combining_reshapes=*/false),
+            "[2,3,4,5] -> R[6,4,5] -> T[4,6,5] -> R[3,8,5]");
+}
+
+TEST(ShapeTrackerTest, ZipWithOneElementShape) {
+  Shape shape1 = ShapeUtil::MakeShape(F32, {1});
+  ShapeTracker tracker1(shape1);
+
+  Shape shape2 = ShapeUtil::MakeShape(F32, {2, 3});
+  ShapeTracker tracker2(shape2);
+  ASSERT_TRUE(tracker2.AppendTranspose({1, 0}).ok());
+
+  auto zipped_or = ShapeTracker::Zip({tracker1, tracker2});
+  ASSERT_TRUE(zipped_or.ok());
+  ShapeTracker zipped = std::move(zipped_or).value();
+
+  EXPECT_EQ(zipped.input_shape().dimensions(), (std::vector<int64_t>{1, 2, 3}));
+  EXPECT_EQ(zipped.output_shape().dimensions(),
+            (std::vector<int64_t>{1, 3, 2}));
+
+  std::vector<ShapeTracker::Step> steps = zipped.GetSteps();
+  ASSERT_EQ(steps.size(), 3);
+  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kReshape);
+  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{2, 3}));
+  EXPECT_EQ(steps[1].type, ShapeTracker::Step::Type::kTranspose);
+  EXPECT_EQ(steps[1].dimensions, (std::vector<int64_t>{1, 0}));
+  EXPECT_EQ(steps[2].type, ShapeTracker::Step::Type::kReshape);
+  EXPECT_EQ(steps[2].dimensions, (std::vector<int64_t>{1, 3, 2}));
+
+  EXPECT_EQ(zipped.DebugString(), "[1,2,3] -> T[3,1,2] -> R[1,3,2]");
+}
+
+TEST(ShapeTrackerTest, ZipValidationErrors) {
+  Shape shape_f32 = ShapeUtil::MakeShape(F32, {2, 3});
+  ShapeTracker tracker_f32(shape_f32);
+
+  Shape shape_s32 = ShapeUtil::MakeShape(S32, {4});
+  ShapeTracker tracker_s32(shape_s32);
+
+  // Empty list:
+  EXPECT_FALSE(ShapeTracker::Zip({}).ok());
+
+  // Element type mismatch:
+  EXPECT_FALSE(ShapeTracker::Zip({tracker_f32, tracker_s32}).ok());
+}
+
+TEST(ShapeTrackerTest, ZipTotalElementsIsOne) {
+  Shape shape1 = ShapeUtil::MakeShape(F32, {1});
+  ShapeTracker tracker1(shape1);
+
+  Shape shape2 = ShapeUtil::MakeShape(F32, {1, 1});
+  ShapeTracker tracker2(shape2);
+
+  auto zipped_or = ShapeTracker::Zip({tracker1, tracker2});
+  ASSERT_TRUE(zipped_or.ok());
+  ShapeTracker zipped = std::move(zipped_or).value();
+
+  // Since total_elements == 1, it returns early.
+  EXPECT_EQ(zipped.input_shape().dimensions(), (std::vector<int64_t>{1, 1, 1}));
+  EXPECT_EQ(zipped.output_shape().dimensions(),
+            (std::vector<int64_t>{1, 1, 1}));
+}
+
+TEST(ShapeTrackerTest, ZipPadProjections) {
+  Shape shape1 = ShapeUtil::MakeShape(F32, {2, 3});
+  ShapeTracker tracker1(shape1);
+  ASSERT_TRUE(tracker1.AppendTranspose({1, 0}).ok());
+  // AppendReshape that forces a new projection.
+  ASSERT_TRUE(tracker1.AppendReshape({6}).ok());
+
+  Shape shape2 = ShapeUtil::MakeShape(F32, {4});
+  ShapeTracker tracker2(shape2);
+  // tracker2 has 1 projection and >1 elements.
+  // max_projections will be 2 (from tracker1).
+  // tracker2 will be padded with a noop projection.
+
+  auto zipped_or = ShapeTracker::Zip({tracker1, tracker2});
+  ASSERT_TRUE(zipped_or.ok());
+  ShapeTracker zipped = std::move(zipped_or).value();
+
+  EXPECT_EQ(zipped.input_shape().dimensions(), (std::vector<int64_t>{2, 3, 4}));
+  EXPECT_EQ(zipped.output_shape().dimensions(), (std::vector<int64_t>{6, 4}));
+}
+
 }  // namespace
 }  // namespace xla

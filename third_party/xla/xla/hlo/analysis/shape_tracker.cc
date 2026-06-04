@@ -1117,4 +1117,82 @@ absl::StatusOr<ShapeTracker> ShapeTracker::Narrow(
   return sliced_tracker;
 }
 
+absl::StatusOr<ShapeTracker> ShapeTracker::Zip(
+    absl::Span<const ShapeTracker> trackers) {
+  if (trackers.empty()) {
+    return absl::InvalidArgumentError("Zip requires at least one ShapeTracker");
+  }
+
+  if (absl::c_any_of(trackers, [&](const ShapeTracker& a) {
+        return a.input_shape().element_type() !=
+               trackers[0].input_shape().element_type();
+      })) {
+    return absl::InvalidArgumentError("Element types must match for Zip");
+  }
+  xla::PrimitiveType element_type = trackers[0].input_shape().element_type();
+
+  auto concat_shapes = [&](auto get_shape) {
+    std::vector<int64_t> joint_dims;
+    for (const auto& tracker : trackers) {
+      absl::c_copy(get_shape(tracker).dimensions(),
+                   std::back_inserter(joint_dims));
+    }
+    Shape joint_shape = ShapeUtil::MakeShape(element_type, joint_dims);
+    return joint_shape;
+  };
+
+  Shape zipped_input_shape =
+      concat_shapes([](const ShapeTracker& t) { return t.input_shape(); });
+  Shape zipped_output_shape =
+      concat_shapes([](const ShapeTracker& t) { return t.output_shape(); });
+
+  ShapeTracker zipped(zipped_input_shape);
+  zipped.output_shape_ = std::move(zipped_output_shape);
+
+  int64_t total_elements = ShapeUtil::ElementsIn(zipped_input_shape);
+  if (total_elements == 1) {
+    return zipped;
+  }
+
+  size_t max_projections = 0;
+  for (const auto& tracker : trackers) {
+    if (ShapeUtil::ElementsIn(tracker.input_shape()) > 1) {
+      max_projections = std::max(max_projections, tracker.projections_.size());
+    }
+  }
+
+  zipped.projections_.clear();
+  zipped.projections_.resize(max_projections, ShapeTracker::BufferView());
+
+  int64_t scale = total_elements;
+  for (const auto& tracker : trackers) {
+    int64_t tracker_elements = ShapeUtil::ElementsIn(tracker.input_shape());
+    scale /= tracker_elements;
+    if (tracker_elements == 1) {
+      continue;
+    }
+
+    for (size_t s = 0; s < tracker.projections_.size(); ++s) {
+      const auto& view = tracker.projections_[s];
+      for (size_t j = 0; j < view.strides_.size(); ++j) {
+        zipped.projections_[s].strides_.push_back(view.strides_[j] * scale);
+        zipped.projections_[s].extents_.push_back(view.extents_[j]);
+      }
+    }
+
+    // If the current tracker has fewer projections than the max, pad it with a
+    // noop.
+    for (size_t s = tracker.projections_.size(); s < max_projections; ++s) {
+      zipped.projections_[s].strides_.push_back(scale);
+      zipped.projections_[s].extents_.push_back(tracker_elements);
+    }
+  }
+
+  for (auto& projection : zipped.projections_) {
+    projection.MergeAdjacentDimensions();
+  }
+
+  return zipped;
+}
+
 }  // namespace xla
