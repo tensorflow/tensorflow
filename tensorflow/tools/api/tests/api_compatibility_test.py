@@ -308,8 +308,8 @@ class ApiCompatibilityTest(test.TestCase):
         # modules. Write them to files. Also record all updates in files.
         for key in only_in_actual | set(updated_keys):
           filepath = _KeyToFilePath(key, api_version)
-          file_io.write_string_to_file(
-              filepath, text_format.MessageToString(actual_dict[key]))
+          content = text_format.MessageToString(actual_dict[key])
+          file_io.write_string_to_file(filepath, content)
       else:
         # Include the actual differences to help debugging.
         for d, verbose_d in zip(diffs, verbose_diffs):
