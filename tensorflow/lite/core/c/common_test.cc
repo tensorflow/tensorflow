@@ -1081,4 +1081,24 @@ TEST(EnsureOk, WithMessage) {
 
 TEST(TensorFree, NullTensor_DoesNotCrash) { TfLiteTensorFree(nullptr); }
 
+// Regression tests for TfLiteTensorResizeMaybeCopy safety checks (#115068).
+
+TEST(TfLiteTensorResizeMaybeCopyTest, NullTensorReturnsError) {
+  EXPECT_EQ(TfLiteTensorResizeMaybeCopy(16, /*tensor=*/nullptr,
+                                         /*preserve_data=*/false),
+            kTfLiteError);
+}
+
+TEST(TfLiteTensorResizeMaybeCopyTest, IntegerOverflowReturnsError) {
+  TfLiteTensor tensor;
+  memset(&tensor, 0, sizeof(tensor));
+  tensor.allocation_type = kTfLiteDynamic;
+  // num_bytes close to SIZE_MAX — addition of 16 would overflow.
+  size_t huge = std::numeric_limits<size_t>::max() - 7;
+  EXPECT_EQ(TfLiteTensorResizeMaybeCopy(huge, &tensor,
+                                         /*preserve_data=*/false),
+            kTfLiteError);
+  // Clean up (no allocation should have happened).
+}
+
 }  // namespace tflite
