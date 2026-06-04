@@ -1382,7 +1382,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
   transfer_specs.reserve(num_transfers);
 
   // Holds definition events of owned_buffers.
-  std::vector<PjRtDeviceEventRef> transfer_dependencies;
+  PjRtDeviceEventRefVector transfer_dependencies;
 
   LOG(INFO) << log_prefix << ": preparing transfers.";
   for (int i = 0; i < num_transfers; ++i) {
@@ -1417,8 +1417,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
         tensorflow::down_cast<CommonPjRtBufferImpl*>(buffer.get())
             ->AcquireScopedRawBuffer(
                 [&](tsl::RCReference<CommonPjRtRawBuffer> buf_raw_buffer,
-                    std::vector<PjRtDeviceEventRef>
-                        buf_definition_events) mutable
+                    PjRtDeviceEventRefVector buf_definition_events) mutable
                     -> absl::StatusOr<PjRtDeviceEventRef> {
                   raw_buffer = std::move(buf_raw_buffer);
                   for (PjRtDeviceEventRef& event : buf_definition_events) {
@@ -1441,7 +1440,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
   // Perform transfers.
   LOG(INFO) << log_prefix << ": enqueuing transfers";
   ASSIGN_OR_RETURN(
-      std::vector<PjRtDeviceEventRef> usage_events,
+      PjRtDeviceEventRefVector usage_events,
       tensorflow::down_cast<CommonPjRtClient*>(client.get())
           ->CrossHostTransferBuffers(std::move(transfer_dependencies),
                                      std::move(transfer_specs)));
