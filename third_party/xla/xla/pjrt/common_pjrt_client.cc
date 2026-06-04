@@ -979,9 +979,8 @@ CommonPjRtClient::MakeCrossHostReceiveBuffers(
                                        /*retry_on_oom=*/true,
                                        /*allocate_after=*/{}));
 
-    tsl::AsyncValue* buffer_av = raw_buffer->GetRawBufferAsyncValue();
-    transfer_dependency_events.push_back(
-        PjRtDeviceEventPtr::FromAsyncValue(buffer_av).CopyRef());
+    PjRtDeviceEventPtr buffer_av = raw_buffer->GetRawBufferAsyncValue();
+    transfer_dependency_events.push_back(buffer_av.CopyRef());
     raw_buffers.push_back(std::move(raw_buffer));
   }
 
@@ -2331,15 +2330,15 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
   // TODO(zhangqiaorjc): Fast path if zero device_buffer wait events.
   // Make two copies because EnqueueWorkWhenReady below needs two different
   // lifetimes.
-  std::vector<tsl::RCReference<tsl::AsyncValue>> src_definition_events_avs;
+  std::vector<PjRtDeviceEventRef> src_definition_events;
 
   tsl::RCReference<PjRtDeviceEventPromise> device_promise;
   PjRtRawBufferRef raw_buffer;
   auto hold_status = AcquireScopedRawBuffer(
       [&](PjRtRawBufferRef buf_raw_buffer,
-          std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events)
+          std::vector<PjRtDeviceEventRef> definition_events)
           -> absl::StatusOr<PjRtDeviceEventRef> {
-        src_definition_events_avs = std::move(definition_events);
+        src_definition_events = std::move(definition_events);
         if (buf_raw_buffer) {
           raw_buffer = std::move(buf_raw_buffer);
           PjRtDeviceEventRef device_event;
@@ -2360,7 +2359,7 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
   if (device_promise) {
     if (common_client->event_tracking_enabled()) {
       common_client->AddEventDependencies(
-          memory_space(), device_promise->event(), src_definition_events_avs);
+          memory_space(), device_promise->event(), src_definition_events);
     }
   }
 
@@ -2368,20 +2367,20 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
   // D2H dispatch should be in parallel, e.g. one Execute event finish may
   // trigger multiple outputs' D2H, they should happen in different threads in
   // parallel.
-  absl::Span<const tsl::RCReference<tsl::AsyncValue>>
-      src_definition_events_avs_copy = src_definition_events_avs;
-  common_client->async_work_runner()->ExecuteWhenReady(
-      src_definition_events_avs_copy,
+  absl::Span<const PjRtDeviceEventRef> src_definition_events_ref =
+      src_definition_events;
+  xla::ExecuteWhenReady(
+      src_definition_events_ref, common_client->async_work_runner(),
       [common_client, shape = *std::move(logical_shape),
        device_shape = std::move(device_shape),
-       src_definition_events_avs = std::move(src_definition_events_avs),
+       src_definition_events = std::move(src_definition_events),
        raw_buffer = std::move(raw_buffer),
        device_promise = std::move(device_promise), literal,
        generator = std::move(generator), promise = std::move(promise),
        context_id = producer.GetContextId()]() mutable {
         auto copy_literal_async =
             [shape = std::move(shape), device_shape = std::move(device_shape),
-             src_definition_events_avs = std::move(src_definition_events_avs),
+             src_definition_events = std::move(src_definition_events),
              raw_buffer = std::move(raw_buffer),
              device_promise = std::move(device_promise),
              promise = std::move(promise), context_id = context_id,
@@ -2416,9 +2415,9 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
                 return;
               }
               // Errors in src buffer are surfaced to user.
-              for (const auto& av : src_definition_events_avs) {
-                if (auto* error = av->GetErrorIfPresent()) {
-                  notify_all(*error);
+              for (const auto& ev : src_definition_events) {
+                if (auto error = ev.GetErrorIfPresent()) {
+                  notify_all(std::move(*error));
                   return;
                 }
               }
@@ -2475,7 +2474,7 @@ CommonPjRtBufferImpl::CreateRawAliasOfBuffer() {
   PjRtRawBufferRef raw_buffer;
   RETURN_IF_ERROR(AcquireScopedRawBuffer(
       [&](PjRtRawBufferRef buf_raw_buffer,
-          std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events)
+          std::vector<PjRtDeviceEventRef> definition_events)
           -> absl::StatusOr<PjRtDeviceEventRef> {
         raw_buffer = std::move(buf_raw_buffer);
         return PjRtDeviceEventRef();
@@ -2540,14 +2539,14 @@ Future<> CommonPjRtBufferImpl::CopyRawToHostFuture(Future<void*> dst,
                                                    int64_t offset,
                                                    int64_t transfer_size) {
   auto buf_client = absl::down_cast<CommonPjRtClient*>(client());
-  std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events;
+  std::vector<PjRtDeviceEventRef> definition_events;
   PjRtRawBufferRef raw_buffer;
   // tsl::RCReference<tsl::IndirectAsyncValue> indirect_usage_event;
   tsl::RCReference<PjRtDeviceEventPromise> usage_event_promise;
   PjRtDeviceEventRef usage_event;
   auto hold_status = AcquireScopedRawBuffer(
       [&](PjRtRawBufferRef buf_raw_buffer,
-          std::vector<tsl::RCReference<tsl::AsyncValue>> buf_definition_events)
+          std::vector<PjRtDeviceEventRef> buf_definition_events)
           -> absl::StatusOr<PjRtDeviceEventRef> {
         definition_events = std::move(buf_definition_events);
         if (buf_raw_buffer) {
@@ -2601,18 +2600,18 @@ Future<> CommonPjRtBufferImpl::CopyRawToHostFuture(Future<void*> dst,
 
     // We do this before the call to EnqueueWorkWhenReady because we are going
     // to std::move(definition_events) and indirect_usage_event.
-    absl::Span<const tsl::RCReference<tsl::AsyncValue>> definition_events_ref =
+    absl::Span<const PjRtDeviceEventRef> definition_events_ref =
         definition_events;
-    buf_client->async_work_runner()->ExecuteWhenReady(
-        definition_events_ref,
+    xla::ExecuteWhenReady(
+        definition_events_ref, buf_client->async_work_runner(),
         [dst = *dst, transfer_size, offset, raw_buffer = std::move(raw_buffer),
          definition_events = std::move(definition_events),
          usage_event_promise = std::move(usage_event_promise)]() mutable {
           // Errors in src buffer are surfaced to user.
-          for (const auto& av : definition_events) {
-            if (auto* error = av->GetErrorIfPresent()) {
+          for (const auto& ev : definition_events) {
+            if (auto error = ev.GetErrorIfPresent()) {
               // Signal the usage event to unblock consumers of buffer.
-              usage_event_promise->SetError(*error);
+              usage_event_promise->SetError(std::move(*error));
               return;
             }
           }

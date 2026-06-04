@@ -408,7 +408,7 @@ class CommonPjRtClient : public PjRtClient {
 
   virtual void AddEventDependencies(
       PjRtMemorySpace* memory_space, PjRtDeviceEventPtr device_event,
-      absl::Span<const tsl::RCReference<tsl::AsyncValue>> dependencies) {}
+      absl::Span<const PjRtDeviceEventRef> dependencies) {}
 
   virtual void RegisterClientThreadWait(PjRtMemorySpace* memory_space,
                                         PjRtDeviceEventPtr device_event,

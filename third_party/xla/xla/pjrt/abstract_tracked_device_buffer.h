@@ -323,13 +323,6 @@ class CommonPjRtBuffer : public PjRtBuffer {
   absl::Status AcquireScopedRawBuffer(
       absl::AnyInvocable<absl::StatusOr<PjRtDeviceEventRef>(
           PjRtRawBufferRef raw_buffer,
-          std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events) &&>
-          scoped_acquire,
-      const char* caller_name = "AcquireScopedRawBuffer");
-
-  absl::Status AcquireScopedRawBuffer(
-      absl::AnyInvocable<absl::StatusOr<PjRtDeviceEventRef>(
-          PjRtRawBufferRef raw_buffer,
           std::vector<PjRtDeviceEventRef> definition_events) &&>
           scoped_acquire,
       const char* caller_name = "AcquireScopedRawBuffer");

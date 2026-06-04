@@ -152,8 +152,8 @@ class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBufferImpl {
       tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise,
       tsl::RCReference<PjRtDeviceEventPromise> src_usage_event_promise,
       ::tsl::AsyncValueRef<bool> allocation_event) override;
-  tsl::AsyncValue* GetRawBufferAsyncValue() override {
-    return device_buffer_.GetAsyncValue();
+  PjRtDeviceEventPtr GetRawBufferAsyncValue() override {
+    return PjRtDeviceEventPtr::FromAsyncValue(device_buffer_.GetAsyncValue());
   }
 
   absl::StatusOr<PjRtDeviceEventRef> CopyRawToRemoteDevice(
