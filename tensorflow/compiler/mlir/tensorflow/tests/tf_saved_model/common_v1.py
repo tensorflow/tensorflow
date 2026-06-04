@@ -18,6 +18,8 @@ There is a fair amount of setup needed to initialize tensorflow and get it
 into a proper TF2 execution mode. This hides that boilerplate.
 """
 
+import atexit
+import shutil
 import tempfile
 from absl import app
 from absl import flags
@@ -89,6 +91,7 @@ def do_test(
       save_model_path = FLAGS.save_model_path
     else:
       save_model_path = tempfile.mkdtemp(suffix='.saved_model')
+      atexit.register(shutil.rmtree, save_model_path, ignore_errors=True)
 
     signature_def_map, init_op, assets_collection = create_signature()
 
