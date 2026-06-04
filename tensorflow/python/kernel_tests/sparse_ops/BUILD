@@ -2,6 +2,7 @@
 
 load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 
 package(
@@ -362,7 +363,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "sparse_xent_op_test_base",
     srcs = ["sparse_xent_op_test_base.py"],
-    strict_deps = True,
     deps = [
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
