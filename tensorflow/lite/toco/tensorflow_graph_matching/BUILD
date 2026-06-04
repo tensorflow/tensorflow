@@ -52,13 +52,13 @@ cc_library(
     deps = [
         ":cluster",
         ":cluster_utils",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite/toco:model",
         "//tensorflow/lite/toco:toco_port",
         "//tensorflow/lite/toco:tooling_util",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/log:absl_log",
     ],
 )
 
