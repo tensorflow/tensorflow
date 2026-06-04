@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/command_buffer.h"

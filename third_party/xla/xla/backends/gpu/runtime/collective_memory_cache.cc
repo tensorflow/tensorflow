@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/collective_memory_cache.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <utility>
