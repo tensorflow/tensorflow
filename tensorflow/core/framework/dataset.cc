@@ -125,7 +125,7 @@ const char kWrappedDatasetVariantTypeName[] =
 
 class WrappedDatasetVariantWrapper {
  public:
-  WrappedDatasetVariantWrapper() {}
+  WrappedDatasetVariantWrapper() = default;
 
   explicit WrappedDatasetVariantWrapper(const Tensor& ds_tensor)
       : ds_tensor_(ds_tensor) {}
