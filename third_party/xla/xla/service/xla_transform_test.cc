@@ -95,6 +95,38 @@ TEST_F(XlaTransformTest, ApplyTransforms) {
   EXPECT_TRUE(changed);
 }
 
+TEST_F(XlaTransformTest, TransformMixedPrecisionPad) {
+  absl::string_view hlo_text = R"(
+    HloModule test_module
+    ENTRY test_computation {
+      p0 = bf16[1,1,4,4] parameter(0)
+      p1 = bf16[1,1,4,4] parameter(1)
+      c0 = f32[] constant(0)
+      ROOT pad.0 = bf16[1,1,8,4] pad(p1, c0), padding=0_0x0_0x0_4x0_0
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          xla::ParseAndReturnUnverifiedModule(hlo_text));
+
+  auto transform = std::make_shared<TrivialTransform>("trivial_transform");
+  RegisterHloXlaTransform(HloXlaTransform::PipelineStage::kPreScheduler,
+                          transform);
+
+  HloPassPipeline pipeline("test_pipeline");
+
+  AlgebraicSimplifierOptions options;
+  pipeline.AddPass<AlgebraicSimplifier>(options);
+  pipeline.AddPass<ApplyXlaTransforms>(
+      HloXlaTransform::PipelineStage::kPreScheduler);
+  pipeline.AddPass<HloTrivialScheduler>();
+  pipeline.AddPass<ApplyXlaTransforms>(
+      HloXlaTransform::PipelineStage::kPostScheduler);
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
+  EXPECT_TRUE(changed);
+}
+
 TEST_F(XlaTransformTest, PassPipeline) {
   auto pre_transform = std::make_shared<TrivialTransform>("pre_trivial");
   RegisterHloXlaTransform(HloXlaTransform::PipelineStage::kPreScheduler,

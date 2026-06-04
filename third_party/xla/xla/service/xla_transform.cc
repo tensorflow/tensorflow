@@ -101,7 +101,7 @@ absl::StatusOr<bool> ApplyXlaTransforms::RunImpl(
   ASSIGN_OR_RETURN(bool changed, ApplyXlaTransformsToModule(stage_, module));
   if (changed) {
     HloVerifier verifier(/*layout_sensitive=*/false,
-                         /*allow_mixed_precision=*/false);
+                         /*allow_mixed_precision=*/true);
     auto verifier_status = verifier.Run(module);
     if (!verifier_status.status().ok()) {
       return verifier_status.status();
