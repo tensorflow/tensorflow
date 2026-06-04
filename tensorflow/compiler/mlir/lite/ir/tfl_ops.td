@@ -2249,6 +2249,8 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
       $_state.addTypes(input.getType());
     }]>
   ];
+
+  let hasFolder = 1;
 }
 
 def TFL_LogOp: TFL_Op<"log", [
