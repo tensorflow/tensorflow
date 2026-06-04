@@ -840,8 +840,7 @@ PjRtStreamExecutorClient::LinearizeHostBufferInto(
   return PjRtDeviceEventRef(definition_event);
 }
 
-absl::StatusOr<
-    std::pair<tsl::RCReference<PjRtDeviceEventPromise>, PjRtDeviceEventRef>>
+absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
 PjRtStreamExecutorClient::CreateLinkedEventPromise(
     PjRtMemorySpace* memory_space, absl::string_view debug_info) {
   auto* device = tensorflow::down_cast<PjRtStreamExecutorDevice*>(
@@ -851,8 +850,8 @@ PjRtStreamExecutorClient::CreateLinkedEventPromise(
   auto result = tsl::MakeRef<PjRtStreamExecutorDeviceEventPromise>(
       this, local_device, async_work_runner());
   PjRtDeviceEventRef event = result->event().CopyRef();
-  return std::pair<tsl::RCReference<PjRtDeviceEventPromise>,
-                   PjRtDeviceEventRef>(std::move(result), std::move(event));
+  return std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>(
+      std::move(result), std::move(event));
 }
 
 PjRtDeviceEventRef PjRtStreamExecutorClient::CreateErrorDeviceEvent(

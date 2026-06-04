@@ -251,7 +251,7 @@ absl::StatusOr<PjRtRawBufferRef> PjRtStreamExecutorRawBuffer::Slice(
 }
 
 void PjRtStreamExecutorRawBuffer::CopyToLiteralAsync(
-    Promise<> promise, tsl::RCReference<PjRtDeviceEventPromise> device_promise,
+    Promise<> promise, PjRtDeviceEventPromiseRef device_promise,
     MutableLiteralBase* literal, xla::Shape shape) {
   auto usage_event =
       BufferSequencingEvent::Create(client_->async_work_runner());
@@ -389,8 +389,8 @@ PjRtStreamExecutorRawBuffer::MakeAllocationReadyEvent() {
 
 void PjRtStreamExecutorRawBuffer::CopyTo(
     PjRtRawBufferRef dst_raw_buffer,
-    tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise,
-    tsl::RCReference<PjRtDeviceEventPromise> src_usage_event_promise,
+    PjRtDeviceEventPromiseRef definition_event_promise,
+    PjRtDeviceEventPromiseRef src_usage_event_promise,
     ::tsl::AsyncValueRef<bool> allocation_event) {
   bool is_intra_client =
       dst_raw_buffer->memory_space()->client() == memory_space()->client();
@@ -483,8 +483,8 @@ void PjRtStreamExecutorRawBuffer::ScheduleCopyTo(
     AsyncWorkRunner* async_work_runner,
     std::vector<PjRtDeviceEventRef> transfer_dependency_events,
     PjRtRawBufferRef dst_raw_buffer,
-    tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise,
-    tsl::RCReference<PjRtDeviceEventPromise> src_usage_event_promise,
+    PjRtDeviceEventPromiseRef definition_event_promise,
+    PjRtDeviceEventPromiseRef src_usage_event_promise,
     ::tsl::AsyncValueRef<bool> allocation_event) {
   if (dst_raw_buffer->memory_space()->client() == memory_space()->client()) {
     async_work_runner->Schedule(
@@ -510,8 +510,8 @@ void PjRtStreamExecutorRawBuffer::ScheduleCopyTo(
 void PjRtStreamExecutorRawBuffer::IntraClientCopyToWithDependencies(
     std::vector<PjRtDeviceEventRef> dependencies,
     PjRtRawBufferRef dst_raw_buffer,
-    tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise,
-    tsl::RCReference<PjRtDeviceEventPromise> src_usage_event_promise,
+    PjRtDeviceEventPromiseRef definition_event_promise,
+    PjRtDeviceEventPromiseRef src_usage_event_promise,
     ::tsl::AsyncValueRef<bool> allocation_event) {
   auto usage_event =
       BufferSequencingEvent::Create(client_->async_work_runner());

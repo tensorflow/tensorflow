@@ -310,6 +310,8 @@ class PjRtDeviceEventPromise
   virtual void SetReady() = 0;
 };
 
+using PjRtDeviceEventPromiseRef = tsl::RCReference<PjRtDeviceEventPromise>;
+
 // A collection of events. This is not an event itself because we may want to
 // add events in the future.
 class PjRtDeviceEventSet {

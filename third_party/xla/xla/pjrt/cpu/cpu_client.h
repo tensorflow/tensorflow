@@ -238,8 +238,7 @@ class PjRtCpuClient final : public CommonPjRtClient {
       PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
       bool retry_on_oom) override;
 
-  absl::StatusOr<
-      std::pair<tsl::RCReference<PjRtDeviceEventPromise>, PjRtDeviceEventRef>>
+  absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
   CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
                            absl::string_view debug_info) override;
 

@@ -302,9 +302,10 @@ absl::StatusOr<PjRtDeviceEventRef> CpuRawBuffer::MakeAllocationReadyEvent() {
   return PjRtDeviceEventRef(tsl::MakeAvailableAsyncValueRef<CpuEvent>());
 }
 
-void CpuRawBuffer::CopyToLiteralAsync(
-    Promise<> promise, tsl::RCReference<PjRtDeviceEventPromise> device_promise,
-    MutableLiteralBase* literal, xla::Shape shape) {
+void CpuRawBuffer::CopyToLiteralAsync(Promise<> promise,
+                                      PjRtDeviceEventPromiseRef device_promise,
+                                      MutableLiteralBase* literal,
+                                      xla::Shape shape) {
   CommonPjRtClient* client =
       absl::down_cast<CommonPjRtClient*>(memory_space()->client());
   client->async_work_runner()->Execute(
@@ -380,11 +381,10 @@ void CpuRawBuffer::CopyToLiteralAsync(
       });
 }
 
-void CpuRawBuffer::CopyTo(
-    PjRtRawBufferRef dst_raw_buffer,
-    tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise,
-    tsl::RCReference<PjRtDeviceEventPromise> src_usage_event_promise,
-    ::tsl::AsyncValueRef<bool> allocation_event) {
+void CpuRawBuffer::CopyTo(PjRtRawBufferRef dst_raw_buffer,
+                          PjRtDeviceEventPromiseRef definition_event_promise,
+                          PjRtDeviceEventPromiseRef src_usage_event_promise,
+                          ::tsl::AsyncValueRef<bool> allocation_event) {
   if (allocation_event) {
     allocation_event.SetStateConcrete();
   }

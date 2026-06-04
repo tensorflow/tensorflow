@@ -1373,7 +1373,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
 
   // Usage event promises that set the usage events on owned_buffers
   // corresponding to the data transfers.
-  std::vector<tsl::RCReference<PjRtDeviceEventPromise>> usage_event_promises;
+  std::vector<PjRtDeviceEventPromiseRef> usage_event_promises;
   usage_event_promises.reserve(num_transfers);
 
   // Passed as input to CrossHostTransferBuffers; contains raw buffers wrapped
@@ -1402,7 +1402,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
             default_memory_space, /*device_layout=*/nullptr));
 
     // Create a usage event for the transfer of this buffer.
-    tsl::RCReference<PjRtDeviceEventPromise> usage_event_promise;
+    PjRtDeviceEventPromiseRef usage_event_promise;
     PjRtDeviceEventRef usage_event;
     ASSIGN_OR_RETURN(
         std::tie(usage_event_promise, usage_event),

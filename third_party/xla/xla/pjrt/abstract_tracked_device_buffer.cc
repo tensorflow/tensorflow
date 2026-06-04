@@ -441,7 +441,7 @@ absl::Status CommonPjRtBuffer::AcquireScopedRawBuffer(
 absl::StatusOr<CommonPjRtBuffer::RawBufferForUsage>
 CommonPjRtBuffer::GetRawBufferForUsage(const char* caller_name) {
   xla::PjRtRawBufferRef raw_buffer;
-  tsl::RCReference<xla::PjRtDeviceEventPromise> usage_done_promise;
+  xla::PjRtDeviceEventPromiseRef usage_done_promise;
   RETURN_IF_ERROR(AcquireScopedRawBuffer(
       [&](xla::PjRtRawBufferRef raw_buffer_ref,
           std::vector<xla::PjRtDeviceEventRef> definition_events)

@@ -178,7 +178,7 @@ class CommonPjRtClient : public PjRtClient {
   // Create a linked device-event and device-event-promise such that
   // setting an event into the event promise populates the device-event.
   virtual absl::StatusOr<
-      std::pair<tsl::RCReference<PjRtDeviceEventPromise>, PjRtDeviceEventRef>>
+      std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
   CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
                            absl::string_view debug_info) {
     return absl::UnimplementedError(
@@ -206,8 +206,7 @@ class CommonPjRtClient : public PjRtClient {
       const char* callee_method, absl::string_view debug_info);
 
   template <typename T, std::enable_if_t<std::is_invocable_v<T>, bool> = true>
-  absl::StatusOr<
-      std::pair<tsl::RCReference<PjRtDeviceEventPromise>, PjRtDeviceEventRef>>
+  absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
   CreateLinkedEventPromise(PjRtMemorySpace* memory_space, T&& debug_info_cb) {
     if (event_tracking_enabled()) {
       return CreateLinkedEventPromise(memory_space,
@@ -319,7 +318,7 @@ class CommonPjRtClient : public PjRtClient {
   virtual void ScheduleRemoteSend(
       PjRtMemorySpace* memory_space, PjRtRawBufferRef raw_buffer,
       std::vector<PjRtDeviceEventRef> definition_events,
-      tsl::RCReference<PjRtDeviceEventPromise> usage_event_promise,
+      PjRtDeviceEventPromiseRef usage_event_promise,
       Future<std::string> serialized_descriptor,
       PjRtBuffer::RemoteSendCallback on_done);
 

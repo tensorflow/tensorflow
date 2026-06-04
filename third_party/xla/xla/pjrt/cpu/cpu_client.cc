@@ -1124,8 +1124,7 @@ absl::StatusOr<CompiledMemoryStats> PjRtCpuExecutable::GetCompiledMemoryStats()
   return memory_stats;
 }
 
-absl::StatusOr<
-    std::pair<tsl::RCReference<PjRtDeviceEventPromise>, PjRtDeviceEventRef>>
+absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
 PjRtCpuClient::CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
                                         absl::string_view debug_info) {
   auto definition_event_promise = tsl::MakeIndirectAsyncValue();

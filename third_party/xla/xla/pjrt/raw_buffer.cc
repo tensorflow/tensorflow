@@ -57,8 +57,8 @@ void CommonPjRtRawBuffer::ScheduleCopyTo(
     AsyncWorkRunner* async_work_runner,
     std::vector<PjRtDeviceEventRef> transfer_dependency_events,
     PjRtRawBufferRef dst_raw_buffer,
-    tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise,
-    tsl::RCReference<PjRtDeviceEventPromise> src_usage_event_promise,
+    PjRtDeviceEventPromiseRef definition_event_promise,
+    PjRtDeviceEventPromiseRef src_usage_event_promise,
     tsl::AsyncValueRef<bool> allocation_event) {
   absl::Span<const PjRtDeviceEventRef> events_span = transfer_dependency_events;
   xla::ExecuteWhenReady(

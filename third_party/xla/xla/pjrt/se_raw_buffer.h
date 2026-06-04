@@ -108,22 +108,22 @@ class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBufferImpl {
 
   absl::StatusOr<PjRtRawBufferRef> Slice(int64_t offset, int64_t size) override;
 
-  void CopyToLiteralAsync(
-      Promise<> promise,
-      tsl::RCReference<PjRtDeviceEventPromise> device_promise,
-      MutableLiteralBase* literal, xla::Shape shape) override;
+  void CopyToLiteralAsync(Promise<> promise,
+                          PjRtDeviceEventPromiseRef device_promise,
+                          MutableLiteralBase* literal,
+                          xla::Shape shape) override;
 
   void CopyTo(PjRtRawBufferRef dst_raw_buffer,
-              tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise,
-              tsl::RCReference<PjRtDeviceEventPromise> src_usage_event_promise,
+              PjRtDeviceEventPromiseRef definition_event_promise,
+              PjRtDeviceEventPromiseRef src_usage_event_promise,
               ::tsl::AsyncValueRef<bool> allocation_event) override;
 
   void ScheduleCopyTo(
       AsyncWorkRunner* async_work_runner,
       std::vector<PjRtDeviceEventRef> transfer_dependency_events,
       PjRtRawBufferRef dst_raw_buffer,
-      tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise,
-      tsl::RCReference<PjRtDeviceEventPromise> src_usage_event_promise,
+      PjRtDeviceEventPromiseRef definition_event_promise,
+      PjRtDeviceEventPromiseRef src_usage_event_promise,
       ::tsl::AsyncValueRef<bool> allocation_event) override;
   PjRtDeviceEventPtr GetRawBufferAsyncValue() override {
     return PjRtDeviceEventPtr::FromAsyncValue(device_buffer_.GetAsyncValue());
@@ -145,8 +145,8 @@ class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBufferImpl {
   void IntraClientCopyToWithDependencies(
       std::vector<PjRtDeviceEventRef> dependencies,
       PjRtRawBufferRef dst_raw_buffer,
-      tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise,
-      tsl::RCReference<PjRtDeviceEventPromise> src_usage_event_promise,
+      PjRtDeviceEventPromiseRef definition_event_promise,
+      PjRtDeviceEventPromiseRef src_usage_event_promise,
       ::tsl::AsyncValueRef<bool> allocation_event);
 };
 

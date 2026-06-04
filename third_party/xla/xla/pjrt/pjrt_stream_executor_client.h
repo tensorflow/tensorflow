@@ -429,8 +429,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
       absl::AnyInvocable<void() &&> on_done_with_host_buffer,
       const xla::Shape& device_shape, PjRtRawBufferRef raw_buffer) override;
 
-  absl::StatusOr<
-      std::pair<tsl::RCReference<PjRtDeviceEventPromise>, PjRtDeviceEventRef>>
+  absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
   CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
                            absl::string_view debug_info) override;
 

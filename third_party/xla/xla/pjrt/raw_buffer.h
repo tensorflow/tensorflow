@@ -148,19 +148,18 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
 
   // Interprets buffer contents as having shape and linearizes these contents
   // async into the provided literal.
-  virtual void CopyToLiteralAsync(
-      Promise<> promise,
-      tsl::RCReference<PjRtDeviceEventPromise> device_promise,
-      MutableLiteralBase* literal, xla::Shape shape) = 0;
+  virtual void CopyToLiteralAsync(Promise<> promise,
+                                  PjRtDeviceEventPromiseRef device_promise,
+                                  MutableLiteralBase* literal,
+                                  xla::Shape shape) = 0;
 
   // Copies directly into dst_raw_buffer. Must set definition_event_promise,
   // when dst_raw_buffer is ready, allocation_event before using dst_raw_buffer
   // and src_usage_event_promise when done using this buffer.
-  virtual void CopyTo(
-      PjRtRawBufferRef dst_raw_buffer,
-      tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise,
-      tsl::RCReference<PjRtDeviceEventPromise> src_usage_event_promise,
-      tsl::AsyncValueRef<bool> allocation_event) = 0;
+  virtual void CopyTo(PjRtRawBufferRef dst_raw_buffer,
+                      PjRtDeviceEventPromiseRef definition_event_promise,
+                      PjRtDeviceEventPromiseRef src_usage_event_promise,
+                      tsl::AsyncValueRef<bool> allocation_event) = 0;
 
   // Blocks on a list of dependencies and then copies directly into
   // dst_raw_buffer. Must set definition_event_promise,
@@ -170,8 +169,8 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
       AsyncWorkRunner* async_work_runner,
       std::vector<PjRtDeviceEventRef> transfer_dependency_events,
       PjRtRawBufferRef dst_raw_buffer,
-      tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise,
-      tsl::RCReference<PjRtDeviceEventPromise> src_usage_event_promise,
+      PjRtDeviceEventPromiseRef definition_event_promise,
+      PjRtDeviceEventPromiseRef src_usage_event_promise,
       tsl::AsyncValueRef<bool> allocation_event);
 
   // Returns the async value associated with the buffer.

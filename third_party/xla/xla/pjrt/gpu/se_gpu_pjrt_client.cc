@@ -951,7 +951,7 @@ StreamExecutorGpuClient::PrepareReceiveBuffer(PjRtDevice* device, Shape shape) {
 void StreamExecutorGpuClient::ScheduleRemoteSend(
     PjRtMemorySpace* memory_space, PjRtRawBufferRef raw_buffer,
     std::vector<PjRtDeviceEventRef> definition_events,
-    tsl::RCReference<PjRtDeviceEventPromise> usage_event_promise,
+    PjRtDeviceEventPromiseRef usage_event_promise,
     Future<std::string> serialized_descriptor,
     PjRtBuffer::RemoteSendCallback on_done) {
   // Get the default GpuCollectives instance.
