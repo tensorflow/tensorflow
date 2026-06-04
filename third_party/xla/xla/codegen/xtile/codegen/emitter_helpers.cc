@@ -219,6 +219,11 @@ Value EmitClampedRTVar(mlir::ImplicitLocOpBuilder& b,
 // the induction variables yet.
 absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
     ArrayRef<SymbolicExpr> exprs) {
+  // Create offset_indexing_map
+  // (pid, sequential_dims) -> (tiling dimensions)
+  // and then evaluate expressions (tiling dimensions) -> (...) using
+  // values for pid and sequential_dim_id_to_value_.
+
   MLIRContext* mlir_context = tiled_computation_.GetMLIRContext();
   const ge::TilingSpace& tiling_space = tiled_computation_.tiling_space();
   // Get all dimension and symbol IDs from all of the expressions.
@@ -226,6 +231,10 @@ absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
       GetUsedParameters(exprs, tiling_space.num_dimensions());
   const auto& dim_ids = used_parameters.dimension_ids;
   const auto& symbol_ids = used_parameters.symbol_ids;
+
+  SmallVector<Value> dim_values{Cast(b_, pid_, pid_.getType())};
+  std::vector<IndexingMap::Variable> dim_variables{
+      IndexingMap::Variable(schedule_.pid_bounds, "pid")};
 
   int64_t symbol_count = 0;
   SmallVector<Value> symbol_values;
@@ -249,7 +258,7 @@ absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
         }
         case ge::TilingSpace::DimensionSemantics::kSequential: {
           dim_replacements[dim] =
-              CreateSymbolExpr(symbol_count++, /*num_dims=*/1, mlir_context);
+              CreateSymbolExpr(symbol_count++, dim_values.size(), mlir_context);
           auto [value, range] = GetSequentialDimValue(ge::TiledDimId(dim));
           symbol_values.push_back(value);
           symbol_variables.push_back(
@@ -275,7 +284,7 @@ absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
       TensorValue tensor_value = TiledHloToTensorValue(*tiled_hlo);
       symbol_values.push_back(EmitClampedRTVar(b_, tensor_value, bounds));
       symbol_replacements[symbol_id] =
-          CreateSymbolExpr(symbol_count++, /*num_dims=*/1, mlir_context);
+          CreateSymbolExpr(symbol_count++, dim_values.size(), mlir_context);
       symbol_variables.push_back(
           IndexingMap::Variable{bounds, absl::StrCat("rt_", symbol_id)});
     }
@@ -288,13 +297,12 @@ absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
         expr.ReplaceDimsAndSymbols(dim_replacements, symbol_replacements));
   }
   IndexingMap offset_indexing_map(
-      SymbolicMap::Get(mlir_context, /*num_dimensions=*/1, symbol_count,
+      SymbolicMap::Get(mlir_context, dim_values.size(), symbol_count,
                        updated_exprs),
-      {IndexingMap::Variable(schedule_.pid_bounds, "pid")},
-      std::move(symbol_variables), {});
-  SmallVector<Value> dims{Cast(b_, pid_, pid_.getType())};
-  return emitters::ApplyIndexing(offset_indexing_map, /*dims=*/dims,
-                                 /*symbols=*/symbol_values, b_);
+      std::move(dim_variables), std::move(symbol_variables), {});
+
+  return emitters::ApplyIndexing(offset_indexing_map, dim_values, symbol_values,
+                                 b_);
 }
 
 absl::StatusOr<Type> PrimitiveTypeToMlirType(

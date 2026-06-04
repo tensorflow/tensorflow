@@ -406,6 +406,8 @@ struct UsedParameters {
   // Sorted list of symbol IDs.
   llvm::SmallVector<int64_t> symbol_ids;
 };
+
+// Returns IDs of dimensions and symbols that participate in SymbolicExpr.
 UsedParameters GetUsedParameters(absl::Span<const SymbolicExpr> exprs,
                                  int64_t num_dims);
 
