@@ -56,8 +56,7 @@ void NeonRunKernelNoSDot<4, 1, 32>(const uint8_t* lhs, const int8_t* rhs,
       const int right_index = j * rows_right * rhs_layout_cols;
       const int8_t* rhs_ptr = rhs + right_index;
       int run_depth = depth;
-      asm volatile(
-          R"asm(
+      asm(R"asm(
           vmov.i8 q14, #15
           vld1.8 {q4}, [%[lhs_ptr]]!
           vmov.i32 q0, #0

@@ -58,8 +58,7 @@ DOTPROD_ATTRIBUTE void NeonRunKernelSDot<4, 1, 32>(
       int right_index = j * rows_right * rhs_layout_cols;
       const int8_t* rhs_ptr = rhs + right_index;
       int run_depth = depth;
-      asm volatile(
-          R"asm(
+      asm(R"asm(
           movi v24.16b, #15
           ld1 {v4.16b}, [%[lhs_ptr]], #16
           movi v16.4s, #0
@@ -152,8 +151,7 @@ DOTPROD_ATTRIBUTE void NeonRunKernelSDot<4, 2, 32>(
       int right_index = j * rows_right * rhs_layout_cols;
       const int8_t* rhs_ptr = rhs + right_index;
       int run_depth = depth;
-      asm volatile(
-          R"asm(
+      asm(R"asm(
           movi v24.16b, #15
           ld1 {v4.16b}, [%[lhs_ptr]], #16
           movi v16.4s, #0
@@ -266,8 +264,7 @@ DOTPROD_ATTRIBUTE void NeonRunKernelSDot<4, 4, 32>(
       int right_index = j * rows_right * rhs_layout_cols;
       const int8_t* rhs_ptr = rhs + right_index;
       int run_depth = depth;
-      asm volatile(
-          R"asm(
+      asm(R"asm(
           movi v3.16b, #15
           ld1 {v4.16b}, [%[lhs_ptr]], #16
           movi v16.4s, #0
