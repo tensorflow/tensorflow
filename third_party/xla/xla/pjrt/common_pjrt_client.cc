@@ -2438,18 +2438,15 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
                 promise.Set();
                 return;
               }
-              if (!device_shape.is_static()) {
-                auto ds_kind = common_client->GetDynamicShapeKind(
-                    raw_buffer->memory_space()->kind_id());
-                auto status_or_buffer =
-                    xla::RemoveDynamicShapeMetadataIfPresent(
-                        raw_buffer, device_shape, shape, ds_kind);
-                if (!status_or_buffer.ok()) {
-                  notify_all(status_or_buffer.status());
-                  return;
-                }
-                raw_buffer = *status_or_buffer;
+              auto ds_kind = common_client->GetDynamicShapeKind(
+                  raw_buffer->memory_space()->kind_id());
+              auto status_or_buffer = xla::RemoveDynamicShapeMetadataIfPresent(
+                  raw_buffer, device_shape, shape, ds_kind);
+              if (!status_or_buffer.ok()) {
+                notify_all(status_or_buffer.status());
+                return;
               }
+              raw_buffer = *status_or_buffer;
               raw_buffer->CopyToLiteralAsync(std::move(promise), device_promise,
                                              literal, std::move(shape));
             };
@@ -2636,6 +2633,7 @@ Future<> CommonPjRtBufferImpl::CopyRawToHostFuture(Future<void*> dst,
 absl::StatusOr<Shape> CommonPjRtBufferImpl::logical_on_device_shape() {
   Shape device_shape = on_device_shape();
   if (device_shape.is_static()) {
+    StripMetadataForLogicalShape(device_shape);
     return device_shape;
   }
   auto buf_client = absl::down_cast<CommonPjRtClient*>(client());
