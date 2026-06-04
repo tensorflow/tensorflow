@@ -75,7 +75,7 @@ std::optional<std::string> GetCustomFusionName(const HloInstruction* instr) {
   return fusion_config.custom_fusion_config().name();
 }
 
-TEST_F(FusionDynamicMemcpyRewriterTest, RewritesDsToV2Fusion) {
+TEST_F(FusionDynamicMemcpyRewriterTest, RewritesDsToDynamicSliceFusion) {
   constexpr char kHlo[] = R"(
     dynamic_slice {
       p0 = s32[4] parameter(0)
@@ -147,7 +147,7 @@ TEST_F(FusionDynamicMemcpyRewriterTest, DoesNotRewriteCall) {
       << module->ToString();
 }
 
-TEST_F(FusionDynamicMemcpyRewriterTest, RewritesDusToV2Fusion) {
+TEST_F(FusionDynamicMemcpyRewriterTest, RewritesDusToDynamicSliceFusion) {
   constexpr char kHlo[] = R"(
     dynamic_slice {
       p0 = s32[4,8,8] parameter(0)
@@ -316,6 +316,115 @@ TEST_F(FusionDynamicMemcpyRewriterTest,
     ENTRY main {
       p0 = s32[4] parameter(0)
       ROOT fusion = s32[1] fusion(p0), kind=kLoop, calls=dynamic_slice
+    })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(FusionDynamicMemcpyRewriter().Run(module.get()),
+              absl_testing::IsOkAndHolds(false))
+      << module->ToString();
+}
+
+TEST_F(FusionDynamicMemcpyRewriterTest,
+       DoesNotRewriteDusWithUnannotatedDynamicSliceUpdate) {
+  constexpr char kHlo[] = R"(
+    dynamic_slice {
+      p0 = s32[4,8] parameter(0)
+      p1 = s32[4,8] parameter(1)
+      p2 = s32[] parameter(2)
+      c0 = s32[] constant(0)
+
+      update = s32[1,8] dynamic-slice(p1, p2, c0),
+          dynamic_slice_sizes={1,8}
+
+      ROOT update-slice = s32[4,8] dynamic-update-slice(p0, update, p2, c0),
+          backend_config={"dynamic_slice_config":
+              {"byte_offset":"0","byte_stride":"32","loop_index":"0"}}
+    }
+
+    ENTRY main {
+      input = s32[4,8] parameter(0)
+      val = s32[4,8] parameter(1)
+      ivar = s32[] parameter(2)
+      ROOT updated = s32[4,8] fusion(input, val, ivar), kind=kLoop,
+          calls=dynamic_slice
+    })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(FusionDynamicMemcpyRewriter().Run(module.get()),
+              absl_testing::IsOkAndHolds(false))
+      << module->ToString();
+}
+
+TEST_F(FusionDynamicMemcpyRewriterTest, RewritesDusWithStaticSliceUpdate) {
+  constexpr char kHlo[] = R"(
+    dynamic_slice {
+      p0 = s32[4,8] parameter(0)
+      p1 = s32[4,8] parameter(1)
+      p2 = s32[] parameter(2)
+      c0 = s32[] constant(0)
+
+      update = s32[1,8] slice(p1), slice={[1:2], [0:8]}
+
+      ROOT update-slice = s32[4,8] dynamic-update-slice(p0, update, p2, c0),
+          backend_config={"dynamic_slice_config":
+              {"byte_offset":"0","byte_stride":"32","loop_index":"0"}}
+    }
+
+    ENTRY main {
+      input = s32[4,8] parameter(0)
+      val = s32[4,8] parameter(1)
+      ivar = s32[] parameter(2)
+      ROOT updated = s32[4,8] fusion(input, val, ivar), kind=kLoop,
+          calls=dynamic_slice
+    })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(FusionDynamicMemcpyRewriter().Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+
+  const HloInstruction* fusion =
+      module->entry_computation()->root_instruction();
+  ASSERT_EQ(fusion->opcode(), HloOpcode::kFusion);
+  EXPECT_EQ(fusion->fusion_kind(), HloInstruction::FusionKind::kCustom);
+
+  const HloInstruction* hero =
+      DynamicSliceFusion::FindHero(fusion->fused_instructions_computation());
+  ASSERT_NE(hero, nullptr);
+  EXPECT_EQ(hero->opcode(), HloOpcode::kCopy);
+
+  ASSERT_OK_AND_ASSIGN(auto parameters,
+                       DynamicSliceFusion::ResolveParameters(hero));
+  EXPECT_THAT(parameters,
+              ElementsAre(Parameter{1, ShapeUtil::MakeShape(S32, {4, 8}),
+                                    ShapeUtil::MakeShape(S32, {1, 8}),
+                                    MakeStaticConfig(32), std::nullopt}));
+}
+
+TEST_F(FusionDynamicMemcpyRewriterTest,
+       DoesNotRewriteDusWithStridedStaticSliceUpdate) {
+  constexpr char kHlo[] = R"(
+    dynamic_slice {
+      p0 = s32[4,8] parameter(0)
+      p1 = s32[4,8] parameter(1)
+      p2 = s32[] parameter(2)
+      c0 = s32[] constant(0)
+
+      update = s32[2,8] slice(p1), slice={[0:4:2], [0:8]}
+
+      ROOT update-slice = s32[4,8] dynamic-update-slice(p0, update, p2, c0),
+          backend_config={"dynamic_slice_config":
+              {"byte_offset":"0","byte_stride":"32","loop_index":"0"}}
+    }
+
+    ENTRY main {
+      input = s32[4,8] parameter(0)
+      val = s32[4,8] parameter(1)
+      ivar = s32[] parameter(2)
+      ROOT updated = s32[4,8] fusion(input, val, ivar), kind=kLoop,
+          calls=dynamic_slice
     })";
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,

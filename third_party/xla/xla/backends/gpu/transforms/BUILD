@@ -273,6 +273,7 @@ cc_library(
     hdrs = ["fusion_dynamic_memcpy_rewriter.h"],
     deps = [
         ":dynamic_slice_fusion",
+        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/service/gpu:backend_configs_cc",

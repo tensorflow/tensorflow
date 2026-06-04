@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/shape_util.h"
 
 namespace xla::gpu {
 namespace {
@@ -38,6 +39,30 @@ namespace {
 bool HasDynamicSliceConfig(const HloInstruction* instr) {
   auto config = instr->backend_config<GpuBackendConfig>();
   return config.ok() && config->has_dynamic_slice_config();
+}
+
+bool IsSlicingInstruction(const HloInstruction* instr) {
+  return instr->opcode() == HloOpcode::kSlice ||
+         instr->opcode() == HloOpcode::kDynamicSlice ||
+         instr->opcode() == HloOpcode::kDynamicUpdateSlice;
+}
+
+bool IsSlicingInstructionCompatible(const HloInstruction* instr) {
+  if (instr->opcode() == HloOpcode::kSlice) {
+    return IsContiguousSlice(*instr) &&
+           ShapeUtil::ByteStrides(instr->operand(0)->shape()).has_value();
+  }
+
+  return HasDynamicSliceConfig(instr);
+}
+
+bool AllSlicingInstructionsCompatible(const HloComputation* computation) {
+  for (const HloInstruction* instr : computation->instructions()) {
+    if (IsSlicingInstruction(instr) && !IsSlicingInstructionCompatible(instr)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool IsBitcastOrReshape(const HloInstruction* instr) {
@@ -81,14 +106,29 @@ std::optional<MemcpyFusionCandidate> FindMemcpyFusionCandidate(
 }
 
 bool CanRewriteAsDynamicSliceFusion(const MemcpyFusionCandidate& candidate) {
-  auto can_resolve_copy_hero_parameters = [](HloInstruction* operand) {
+  auto resolve_copy_hero_parameters = [](HloInstruction* operand) {
     std::unique_ptr<HloInstruction> copy = HloInstruction::CreateUnary(
         operand->shape(), HloOpcode::kCopy, operand);
-    return DynamicSliceFusion::ResolveParameters(copy.get()).ok();
+    return DynamicSliceFusion::ResolveParameters(copy.get());
   };
 
-  if (!can_resolve_copy_hero_parameters(candidate.copy_operand)) {
+  auto parameters = resolve_copy_hero_parameters(candidate.copy_operand);
+  if (!parameters.ok()) {
     return false;
+  }
+
+  for (const DynamicSliceFusion::Parameter& parameter : *parameters) {
+    if (parameter.slice_config.has_value()) {
+      continue;
+    }
+
+    // Without DynamicSliceConfig, DynamicSliceFusion will pass the original
+    // parameter buffer base address to the embedded copy thunk. This is only
+    // correct for unsliced pass-through operands.
+    if (ShapeUtil::ByteSizeOf(parameter.slice_shape) !=
+        ShapeUtil::ByteSizeOf(parameter.parameter_shape)) {
+      return false;
+    }
   }
 
   if (candidate.slicing->opcode() == HloOpcode::kDynamicSlice) {
@@ -122,7 +162,9 @@ absl::StatusOr<bool> FusionDynamicMemcpyRewriter::RunImpl(
 
     std::optional<MemcpyFusionCandidate> candidate =
         FindMemcpyFusionCandidate(computation);
-    if (!candidate.has_value() || !CanRewriteAsDynamicSliceFusion(*candidate)) {
+    if (!candidate.has_value() ||
+        !AllSlicingInstructionsCompatible(computation) ||
+        !CanRewriteAsDynamicSliceFusion(*candidate)) {
       continue;
     }
 
@@ -149,7 +191,7 @@ absl::StatusOr<bool> FusionDynamicMemcpyRewriter::RunImpl(
       RETURN_IF_ERROR(candidate->slicing->ReplaceOperandWith(1, copy));
     }
 
-    // Set backend config to target DynamicSliceFusionV2.
+    // Set backend config to target dynamic slice custom fusion.
     RETURN_IF_ERROR(fusion->set_backend_config(backend_config));
 
     fusion->set_fusion_kind(HloInstruction::FusionKind::kCustom);
