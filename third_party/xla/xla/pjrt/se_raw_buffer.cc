@@ -250,29 +250,6 @@ absl::StatusOr<PjRtRawBufferRef> PjRtStreamExecutorRawBuffer::Slice(
       RawSEDeviceMemory::CreateSlice(device_buffer_, offset, size), size);
 }
 
-void PjRtStreamExecutorRawBuffer::ReadDynamicShape(
-    tsl::AsyncValueRef<xla::Shape> output_shape, xla::Shape shape) {
-  auto* stream = local_device_->GetDeviceToHostStream();
-  auto shaped_buffer = AsShapedBuffer(shape);
-  TransferManager* transfer_manager =
-      client_->client()->backend().transfer_manager();
-  auto status = transfer_manager->ReadDynamicShapes(stream, &shaped_buffer,
-                                                    &*output_shape);
-  if (!status.ok()) {
-    output_shape.SetError(status);
-  } else {
-    output_shape.SetStateConcrete();
-  }
-}
-
-absl::StatusOr<PjRtRawBufferRef>
-PjRtStreamExecutorRawBuffer::RemoveDynamicShapeMetadataIfPresent(
-    const xla::Shape& device_shape, const xla::Shape& logical_shape) {
-  auto kind = client_->GetDynamicShapeKind(memory_space_->kind_id());
-  return xla::RemoveDynamicShapeMetadataIfPresent(
-      tsl::FormRef(this), device_shape, logical_shape, kind);
-}
-
 void PjRtStreamExecutorRawBuffer::CopyToLiteralAsync(
     Promise<> promise, tsl::RCReference<PjRtDeviceEventPromise> device_promise,
     MutableLiteralBase* literal, xla::Shape shape) {

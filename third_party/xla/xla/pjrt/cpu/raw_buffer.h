@@ -162,9 +162,6 @@ class CpuRawBuffer : public CommonPjRtRawBufferImpl {
       const Shape& shape, AsyncWorkRunner* async_work_runner,
       tsl::thread::ThreadPool* thread_pool, int max_transpose_threads);
 
-  void ReadDynamicShape(tsl::AsyncValueRef<xla::Shape> output_shape,
-                        xla::Shape shape) override;
-
   void CopyToLiteralAsync(
       Promise<> promise,
       tsl::RCReference<PjRtDeviceEventPromise> device_promise,

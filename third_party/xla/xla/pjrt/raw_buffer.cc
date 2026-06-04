@@ -42,13 +42,6 @@ std::vector<RegisterRawBufferFactory::FactoryFuncT>& GetFactoryFuncs() {
   return *funcs;
 }
 
-absl::StatusOr<PjRtRawBufferRef>
-CommonPjRtRawBuffer::RemoveDynamicShapeMetadataIfPresent(
-    const xla::Shape& device_shape, const xla::Shape& logical_shape) {
-  return absl::InvalidArgumentError(absl::StrCat(
-      "Dynamic shapes are not supported for ", memory_space()->DebugString()));
-}
-
 absl::StatusOr<std::vector<PjRtRawBufferRef>> CommonPjRtRawBuffer::MultiSlice(
     absl::Span<const SliceInfo> slices) {
   std::vector<PjRtRawBufferRef> results;
