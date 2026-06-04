@@ -851,7 +851,7 @@ PjRtStreamExecutorClient::CreateLinkedEventPromise(
       this, local_device, async_work_runner());
   PjRtDeviceEventRef event = result->event().CopyRef();
   return std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>(
-      std::move(result), std::move(event));
+      PjRtDeviceEventPromiseRef(std::move(result)), std::move(event));
 }
 
 PjRtDeviceEventRef PjRtStreamExecutorClient::CreateErrorDeviceEvent(

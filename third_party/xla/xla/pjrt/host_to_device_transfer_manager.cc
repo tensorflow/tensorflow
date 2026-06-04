@@ -194,7 +194,7 @@ class CommonAsyncHostToDeviceTransferManager
       // definition_events_[x].GetAsyncValue might return nullptr.
       for (auto& event : definition_events_) {
         if (event) {
-          event->SetError(absl::InternalError(
+          event.SetError(absl::InternalError(
               "Async transfer object was deleted before transfers completed."));
         }
       }
@@ -272,7 +272,7 @@ class CommonAsyncHostToDeviceTransferManager
       client_->AppendDescriptionToEvent(
           memory_space_, h2d_transfer_event.ptr(),
           " TransferToDevice TransferLiteralToBuffer",
-          {definition_events_[buffer_index]->event()});
+          {definition_events_[buffer_index].event()});
     }
 
     auto finish = [this, buffer_index, transfer_event = h2d_transfer_event,
@@ -303,7 +303,7 @@ class CommonAsyncHostToDeviceTransferManager
       CHECK(definition_event);
       // Dependency of event on transfer_event was recorded above in
       // AppendDescriptionToEvent.
-      definition_event->Set(std::move(transfer_event));
+      definition_event.Set(std::move(transfer_event));
     };
     h2d_transfer_event.AndThen(std::move(finish));
     std::move(cleanup).Cancel();
@@ -387,7 +387,7 @@ class CommonAsyncHostToDeviceTransferManager
           absl::StrCat(" TransferToDevice TransferRawData offset:", offset,
                        " size:", transfer_size,
                        " last_transfer:", is_last_transfer, op_name),
-          {definition_events_[buffer_index]->event()});
+          {definition_events_[buffer_index].event()});
     }
 
     h2d_transfer_event.AndThen([this, buffer_index,
@@ -414,7 +414,7 @@ class CommonAsyncHostToDeviceTransferManager
           // error while holding the lock to avoid a race.
           auto state = transfer_event.async_value()->state();
           if (state == tsl::AsyncValue::State::kError) {
-            definition_event_ref->SetError(
+            definition_event_ref.SetError(
                 transfer_event.async_value()->GetError());
             definition_event_ref = PjRtDeviceEventPromiseRef();
           } else {
@@ -436,7 +436,7 @@ class CommonAsyncHostToDeviceTransferManager
       if (definition_event) {
         // Dependency of event on transfer_event was recorded above in
         // AppendDescriptionToEvent.
-        definition_event->Set(std::move(transfer_event));
+        definition_event.Set(std::move(transfer_event));
       }
     });
     std::move(cleanup).Cancel();
@@ -450,7 +450,7 @@ class CommonAsyncHostToDeviceTransferManager
     // called after the last transfer has been enqueued.
     auto definition_event = std::move(definition_events_[buffer_index]);
     CHECK(definition_event);
-    definition_event->SetError(error);
+    definition_event.SetError(error);
     if (allocation_events_[buffer_index]) {
       allocation_events_[buffer_index]->SetError(error);
     }
@@ -466,7 +466,7 @@ class CommonAsyncHostToDeviceTransferManager
         if (definition_events_.size() > 1) {
           absl::StrAppend(&annotation, " buf_idx:", i);
         }
-        client_->AppendDescriptionToEvent(memory_space_, event->event(),
+        client_->AppendDescriptionToEvent(memory_space_, event.event(),
                                           annotation, {});
       }
     }

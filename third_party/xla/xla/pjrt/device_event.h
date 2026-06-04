@@ -38,6 +38,8 @@ namespace xla {
 namespace internal {
 
 const PJRT_DeviceEvent_FunctionTable* GetBuiltinAsyncValueCApiFunctionTable();
+const PJRT_DeviceEventPromise_FunctionTable*
+GetBuiltinDeviceEventPromiseCApiFunctionTable();
 
 PJRT_DeviceEvent_State ToPjrtDeviceEventState(tsl::AsyncValue::State state);
 
@@ -293,8 +295,10 @@ class PjRtDeviceEventRef {
 // Instead of taking a device event as an argument, apis may instead decide to
 // return a promise which is fulfilled later.
 class PjRtDeviceEventPromise
-    : public tsl::ReferenceCounted<PjRtDeviceEventPromise> {
+    : public PJRT_DeviceEventPromise,
+      public tsl::ReferenceCounted<PjRtDeviceEventPromise> {
  public:
+  PjRtDeviceEventPromise();
   virtual ~PjRtDeviceEventPromise() = default;
 
   // The underlying AsyncValue.
@@ -308,9 +312,62 @@ class PjRtDeviceEventPromise
 
   // Mark the event as ready.
   virtual void SetReady() = 0;
+
+  virtual PJRT_DeviceEventPromise* ToC() { return this; }
 };
 
-using PjRtDeviceEventPromiseRef = tsl::RCReference<PjRtDeviceEventPromise>;
+class PjRtDeviceEventPromiseRef {
+ public:
+  PjRtDeviceEventPromiseRef() : promise_(nullptr) {}
+  explicit PjRtDeviceEventPromiseRef(
+      tsl::RCReference<PjRtDeviceEventPromise> promise);
+  ~PjRtDeviceEventPromiseRef();
+  PjRtDeviceEventPromiseRef(const PjRtDeviceEventPromiseRef& other);
+  PjRtDeviceEventPromiseRef& operator=(const PjRtDeviceEventPromiseRef& other);
+  PjRtDeviceEventPromiseRef(PjRtDeviceEventPromiseRef&& other) noexcept;
+  PjRtDeviceEventPromiseRef& operator=(
+      PjRtDeviceEventPromiseRef&& other) noexcept;
+
+  static PjRtDeviceEventPromiseRef TakeRef(PJRT_DeviceEventPromise* promise);
+  static PjRtDeviceEventPromiseRef FormRef(PJRT_DeviceEventPromise* promise);
+
+  PJRT_DeviceEventPromise* get() const { return promise_; }
+
+  // The underlying AsyncValue.
+  PjRtDeviceEventPtr event() const;
+
+  // Fulfill the promise.
+  void Set(PjRtDeviceEventRef event) const;
+
+  // Mark the promise as an error.
+  void SetError(absl::Status s) const;
+
+  // Mark the event as ready.
+  void SetReady() const;
+
+  template <typename T>
+  tsl::RCReference<T> down_cast() const {
+    if (promise_ == nullptr ||
+        promise_->vtable !=
+            internal::GetBuiltinDeviceEventPromiseCApiFunctionTable()) {
+      return tsl::RCReference<T>();
+    }
+    auto* cpp_promise = static_cast<PjRtDeviceEventPromise*>(promise_);
+    auto* derived = dynamic_cast<T*>(cpp_promise);
+    if (derived == nullptr) {
+      return tsl::RCReference<T>();
+    }
+    return tsl::FormRef(derived);
+  }
+
+  explicit operator bool() const { return promise_ != nullptr; }
+
+ private:
+  explicit PjRtDeviceEventPromiseRef(PJRT_DeviceEventPromise* promise)
+      : promise_(promise) {}
+
+  PJRT_DeviceEventPromise* promise_;
+};
 
 }  // namespace xla
 

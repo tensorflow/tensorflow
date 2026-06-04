@@ -69,6 +69,36 @@ struct PJRT_DeviceEvent {
   void* device_event;
 };
 
+typedef struct PJRT_DeviceEventPromise PJRT_DeviceEventPromise;
+
+struct PJRT_DeviceEventPromise_FunctionTable {
+  size_t struct_size;    // sizeof(PJRT_DeviceEventPromise_FunctionTable);
+  size_t instance_size;  // sizeof(PJRT_DeviceEventPromise);
+  PJRT_Extension_Base* extension_start;
+  // Ref count increment.
+  void (*inc_ref)(PJRT_DeviceEventPromise* promise);
+  // Ref count decrement.
+  void (*dec_ref)(PJRT_DeviceEventPromise* promise);
+  // Returns the promise's ready event by reference.
+  PJRT_DeviceEvent (*event)(PJRT_DeviceEventPromise* promise);
+  // Sets the promise's ready event to be ready once event is ready.
+  // Takes a ref on event.
+  void (*set)(PJRT_DeviceEventPromise* promise, PJRT_DeviceEvent event);
+  // Like set, but for an immediate error (takes ownership of the error).
+  void (*set_error)(PJRT_DeviceEventPromise* promise, PJRT_Error* error);
+  // Like set, but directly marks the event as ready.
+  void (*set_ready)(PJRT_DeviceEventPromise* promise);
+};
+
+// A PJRT_DeviceEventPromise* is a refcounted promise that allows marking
+// the chained PJRT_DeviceEvent as ready or error.
+struct PJRT_DeviceEventPromise {
+  const struct PJRT_DeviceEventPromise_FunctionTable* vtable;
+};
+
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_DeviceEventPromise_FunctionTable, set_ready);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_DeviceEventPromise, vtable);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

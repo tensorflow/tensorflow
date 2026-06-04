@@ -107,6 +107,7 @@ cc_library(
     hdrs = ["ynn_matcher.h"],
     deps = [
         ":library_matcher",
+        "//xla:shape_util",
         "//xla/backends/cpu:ynn_support",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/hlo/ir:hlo",

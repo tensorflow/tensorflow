@@ -1450,7 +1450,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
   // Populate usage events.
   LOG(INFO) << log_prefix << ": setting usage events";
   for (int i = 0; i < usage_events.size(); ++i) {
-    usage_event_promises[i]->Set(usage_events[i]);
+    usage_event_promises[i].Set(usage_events[i]);
   }
 
   // Wait until the transfers are complete.
