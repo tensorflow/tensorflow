@@ -187,6 +187,11 @@ absl::StatusOr<std::optional<Type>> DotDefaultOperandsType(
     return std::nullopt;
   }
   auto debug_options = dot.GetModule()->config().debug_options();
+  for (int p : dot.precision_config().operand_precision()) {
+    if (p != PrecisionConfig::DEFAULT) {
+      return lhs_type;
+    }
+  }
   if (debug_options.xla_gpu_default_to_alg_dot_bf16_bf16_f32()) {
     return b.getBF16Type();
   }
