@@ -66,6 +66,7 @@ cc_library(
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/resource",
+        "@com_google_absl//absl/status",
     ] + if_mobile([
         "//tensorflow/core:portable_tensorflow_lib_lite",
     ]) + if_not_mobile([
@@ -84,12 +85,14 @@ tf_cc_test(
     deps = [
         ":buffer_map",
         ":buffer_map_util",
+        ":util",
         "//tensorflow/core:framework",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/testing:util",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
 )
