@@ -1252,7 +1252,7 @@ TEST(StreamExecutorGpuClientTest, ShouldStageHostToDeviceTransfersSetToTrue) {
 
   // TODO(b/b/482307468) Switch to absl::down_cast after upgrade.
   [[deprecated("remove after absl upgrade")]] auto* staging_client =
-      tensorflow::down_cast<StreamExecutorGpuClient*>(client_staging.get());
+      absl::down_cast<StreamExecutorGpuClient*>(client_staging.get());
 
   EXPECT_TRUE(staging_client->ShouldStageHostToDeviceTransfers(
       data.data(), sizeof(float) * data.size()));
@@ -1283,7 +1283,7 @@ TEST(StreamExecutorGpuClientTest, ShouldStageHostToDeviceTransfersSetToFalse) {
 
   // TODO(b/b/482307468) Switch to absl::down_cast after upgrade.
   [[deprecated("remove after absl upgrade")]] auto* no_staging_client =
-      tensorflow::down_cast<StreamExecutorGpuClient*>(client_no_staging.get());
+      absl::down_cast<StreamExecutorGpuClient*>(client_no_staging.get());
 
   EXPECT_FALSE(no_staging_client->ShouldStageHostToDeviceTransfers(
       data.data(), sizeof(float) * data.size()));
@@ -1987,7 +1987,7 @@ TEST(StreamExecutorGpuClientTest, DmaMapUnmap) {
       auto gpu_client, GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
   // TODO(b/b/482307468) Switch to absl::down_cast after upgrade.
   [[deprecated("remove after absl upgrade")]] auto client =
-      tensorflow::down_cast<PjRtStreamExecutorClient*>(gpu_client.get());
+      absl::down_cast<PjRtStreamExecutorClient*>(gpu_client.get());
   size_t dma_size = 1024;
   size_t alignment = 4096;
   auto host_dma_ptr = tsl::port::AlignedMalloc(
@@ -2119,7 +2119,7 @@ ENTRY main.5 {
 
     // TODO(b/b/482307468) Switch to absl::down_cast after upgrade.
     [[deprecated("remove after absl upgrade")]] auto* opaque_ptr =
-        tensorflow::down_cast<CommonPjRtRawBuffer*>(raw_buffer.get())
+        absl::down_cast<CommonPjRtRawBuffer*>(raw_buffer.get())
             ->OpaqueDeviceMemoryDataPointer();
     if (opaque_ptr == last_opaque_ptr) {
       clobbered = true;
@@ -2164,13 +2164,13 @@ TEST(StreamExecutorGpuClientTest, EventCaching) {
       auto client, GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
   // TODO(b/b/482307468) Switch to absl::down_cast after upgrade.
   [[deprecated("remove after absl upgrade")]] auto* async_work_runner =
-      tensorflow::down_cast<PjRtStreamExecutorClient*>(client.get())
+      absl::down_cast<PjRtStreamExecutorClient*>(client.get())
           ->async_work_runner();
   const auto& device = client->addressable_devices()[0];
   // TODO(b/b/482307468) Switch to absl::down_cast after upgrade.
   [[deprecated(
       "remove after absl upgrade")]] LocalDeviceState* local_device_state =
-      tensorflow::down_cast<const PjRtStreamExecutorDevice*>(device)
+      absl::down_cast<const PjRtStreamExecutorDevice*>(device)
           ->local_device_state();
   ASSERT_TRUE(local_device_state != nullptr);
   size_t sync_point0 = local_device_state->GetNextComputeStreamSyncPoint();
@@ -2201,7 +2201,7 @@ TEST(StreamExecutorGpuClientTest, LinkedEventPromise) {
       auto pjrt_client, GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
   // TODO(b/b/482307468) Switch to absl::down_cast after upgrade.
   [[deprecated("remove after absl upgrade")]] auto* client =
-      tensorflow::down_cast<PjRtStreamExecutorClient*>(pjrt_client.get());
+      absl::down_cast<PjRtStreamExecutorClient*>(pjrt_client.get());
   auto* memory_space = client->memory_spaces()[0];
   auto literal = LiteralUtil::CreateR1<float>({41.0f, 42.0f, 43.0f, 44.0f});
   TF_ASSERT_OK_AND_ASSIGN(
@@ -2318,7 +2318,7 @@ TEST_F(VmmTest, VmmAllocatorCanBeSet) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
 
   auto* pjrt_se_client =
-      tensorflow::down_cast<PjRtStreamExecutorClient*>(client.get());
+      absl::down_cast<PjRtStreamExecutorClient*>(client.get());
   EXPECT_NE(dynamic_cast<se::gpu::CudaDeviceAddressVmmAllocator*>(
                 pjrt_se_client->allocator()),
             nullptr);
