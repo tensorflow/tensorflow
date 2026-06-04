@@ -209,7 +209,7 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
             "//conditions:default": [":" + out_o],
         }),
         hdrs = [":" + out_header],
-        deps = deps + [
+        deps = [
             "//xla/util:embedded_constant_buffers",
             "@com_google_absl//absl/strings:string_view",
         ],

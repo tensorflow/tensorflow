@@ -34,7 +34,8 @@ limitations under the License.
 #include "llvm/Linker/Linker.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
-#include "xla/codegen/intrinsic/cpp/eigen_unary_ll.h"
+#include "xla/codegen/intrinsic/cpp/eigen_unary_32_ll.h"
+#include "xla/codegen/intrinsic/cpp/eigen_unary_64_ll.h"
 #include "xla/codegen/intrinsic/intrinsic.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 
@@ -42,7 +43,11 @@ namespace xla::codegen {
 
 const std::string& GetCppGenIrString(
     const intrinsics::IntrinsicOptions& options) {
-  return ::llvm_ir::kEigenUnaryLlIr;
+  if (options.Contains("+avx512f") && (options.prefer_vector_width == 512 ||
+                                       options.prefer_vector_width == 0)) {
+    return ::llvm_ir::kEigenUnary64LlIr;
+  }
+  return ::llvm_ir::kEigenUnary32LlIr;
 }
 
 bool AreEigenIntrinsicsAvailable() {
