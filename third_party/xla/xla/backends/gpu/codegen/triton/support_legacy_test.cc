@@ -138,7 +138,7 @@ ENTRY e {
           ApplyFloatNormalization(ti.Module().get(), GetComputeCapability()));
       EXPECT_TRUE(RunAndCompareNoHloPasses(
           std::move(ti.Module()),
-          ErrorSpec{/*aabs=*/primitive_util::IsF8Type(lhs_type) ? 1.0 : 2e-4,
+          ErrorSpec{/*aabs=*/primitive_util::IsF8Type(lhs_type) ? 1.0 : 5e-4,
                     /*arel=*/2e-4}));
     } else {
       if (CombinationCrashesTriton(lhs_type, rhs_type, output_type,

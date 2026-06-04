@@ -439,7 +439,7 @@ TEST_F(TriangularSolveTest, BatchedLeftUpper) {
                       /*transpose_a=*/TriangularSolveOptions::NO_TRANSPOSE));
 
   ComputeAndCompareR3<float>(&builder, bvals, {&a_data, &b_data},
-                             ErrorSpec(1e-2, 1e-2));
+                             ErrorSpec(1e-2, 2e-2));
 }
 
 struct TriangularSolveTestSpec {

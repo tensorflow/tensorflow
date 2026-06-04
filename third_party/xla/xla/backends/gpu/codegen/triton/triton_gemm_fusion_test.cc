@@ -186,7 +186,7 @@ ENTRY e {
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters,
                                  R"(
-CHECK: tt.dot {{.*}} : tensor<16x32xf32> * tensor<32x16xf32> -> tensor<16x16xf32>
+CHECK: tt.dot {{.*}} : tensor<16x32xbf16> * tensor<32x16xbf16> -> tensor<16x16xf32>
 )"));
 }
 
@@ -266,7 +266,7 @@ ENTRY e {
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters, R"(
 CHECK: scf.if {{.*}} -> (tensor<1x32x64xf32>)
-CHECK: tt.dot {{.*}} : tensor<16x32xf32> * tensor<32x64xf32> -> tensor<16x64xf32>
+CHECK: tt.dot {{.*}} : tensor<16x32xbf16> * tensor<32x64xbf16> -> tensor<16x64xf32>
 )"));
 }
 
@@ -860,7 +860,7 @@ ENTRY e {
 ; CHECK-SAME: backend_config={{.*}}"kind":"__triton_nested_gemm_fusion"
 )");
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/2e-4, /*arel=*/1e-4}));
 }
 
 // This tests the complexity heuristics in TritonWrapper.
@@ -1630,7 +1630,7 @@ ENTRY e {
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/2e-3}));
 }
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be
@@ -2214,7 +2214,7 @@ ENTRY e {
 
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(ref_module),
                                       std::move(module_and_metadata.module),
-                                      ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2},
+                                      ErrorSpec{/*aabs=*/1e-2, /*arel=*/6e-2},
                                       /*run_hlo_passes=*/false));
 }
 

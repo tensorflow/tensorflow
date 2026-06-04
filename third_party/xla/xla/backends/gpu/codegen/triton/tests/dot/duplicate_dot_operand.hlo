@@ -18,7 +18,9 @@ fusion {
 // CHECK:           %[[EXTRACT0:.*]] = xtile.extract %[[ARG0]][%[[APPLY_IDX0]], %[[C0]]] [1, 8] [1, 1] : memref<4x8xf32> -> tensor<1x8xf32>
 // CHECK:           %[[APPLY_IDX1:.*]] = xla.apply_indexing #indexing_map1(%[[ARG3]])
 // CHECK:           %[[EXTRACT1:.*]] = xtile.extract %[[ARG1]][%[[C0]], %[[APPLY_IDX1]]] [8, 2] [1, 1] : memref<8x16xf32> -> tensor<8x2xf32>
-// CHECK:           %[[DOT:.*]] = tt.dot %[[EXTRACT0]], %[[EXTRACT1]], %[[CST]], inputPrecision = tf32 : tensor<1x8xf32> * tensor<8x2xf32> -> tensor<1x2xf32>
+// CHECK:           %[[TRUNC0:.*]] = arith.truncf %[[EXTRACT0]] : tensor<1x8xf32> to tensor<1x8xbf16>
+// CHECK:           %[[TRUNC1:.*]] = arith.truncf %[[EXTRACT1]] : tensor<8x2xf32> to tensor<8x2xbf16>
+// CHECK:           %[[DOT:.*]] = tt.dot %[[TRUNC0]], %[[TRUNC1]], %[[CST]], inputPrecision = tf32 : tensor<1x8xbf16> * tensor<8x2xbf16> -> tensor<1x2xf32>
 // CHECK:           %[[MUL:.*]] = arith.mulf %[[DOT]], %[[DOT]] : tensor<1x2xf32>
 // CHECK:           xtile.insert %[[MUL]] into %[[ARG2]][%[[APPLY_IDX0]], %[[APPLY_IDX1]]] [1, 2] [1, 1] : tensor<1x2xf32> -> memref<4x16xf32>
 // CHECK:           xtile.return

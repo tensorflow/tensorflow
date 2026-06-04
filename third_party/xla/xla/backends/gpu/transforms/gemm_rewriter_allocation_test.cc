@@ -79,7 +79,7 @@ ENTRY AddDotsFunc {
 
   // Bias should be fused into the multiplication.
   CheckNumberOfAllocations(hlo_text, 4);
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-3}));
 }
 
 }  // namespace
