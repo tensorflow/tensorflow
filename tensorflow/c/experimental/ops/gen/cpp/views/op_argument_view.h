@@ -30,7 +30,7 @@ class OpArgumentView {
   explicit OpArgumentView(std::string type, std::string var,
                           std::string def = "");
 
-  std::string Declaration() const;
+  std::string Declaration(bool is_header = false) const;
   std::string Initializer() const;
   bool HasDefaultValue() const;
 

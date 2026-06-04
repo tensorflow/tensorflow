@@ -521,7 +521,7 @@ EXPORTS
  ?MakeShapeFromShapeTensor@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20260107@absl@@HPEAVShapeHandle@23@@Z
  ?MakeShapeFromTensorShape@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20260107@absl@@AEBVTensorShape@3@PEAVShapeHandle@23@@Z
  ?MapToLocalCode@status_internal@lts_20260107@absl@@YA?AW4StatusCode@23@H@Z
- ?MatMul@ops@tensorflow@@YA?AVStatus@lts_20260107@absl@@PEAVAbstractContext@2@QEAVAbstractTensorHandle@2@1PEAPEAV72@_N3PEBD4@Z
+ ?MatMul@ops@tensorflow@@YA?AVStatus@lts_20260107@absl@@PEAVAbstractContext@2@QEAVAbstractTensorHandle@2@1PEAPEAV72@_N333PEBD4@Z
  ?MatMulRegisterer@gradients@tensorflow@@YAPEAVGradientFunction@12@AEBUForwardOperation@12@@Z
  ?MatchSignature@OpKernelContext@tensorflow@@QEAA?AVStatus@lts_20260107@absl@@V?$Span@$$CBW4DataType@tensorflow@@@45@0@Z
  ?Matrix@InferenceContext@shape_inference@tensorflow@@QEAA?AVShapeHandle@23@UDimensionOrConstant@23@0@Z

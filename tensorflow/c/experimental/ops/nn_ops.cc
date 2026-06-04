@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/ops/nn_ops.h"
 
-#include <cstring>
+#include <cstring>  // NOLINT
 
 #include "absl/status/status.h"
 #include "absl/types/span.h"
@@ -25,8 +25,8 @@ limitations under the License.
 #include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/tracing_utils.h"
-#include "xla/tsl/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/framework/types.h"  // NOLINT
+#include "tensorflow/core/platform/errors.h"  // NOLINT
 
 using tensorflow::tracing::MaybeSetOpName;
 
@@ -55,10 +55,12 @@ absl::Status SparseSoftmaxCrossEntropyWithLogits(
   TF_RETURN_IF_ERROR(op_ptr->AddInput(features));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(labels));
   int num_retvals = 2;
-  AbstractTensorHandle* temp_outputs[2];
+  AbstractTensorHandle* temp_outputs[2] = {nullptr};
   absl::Status status = op_ptr->Execute(temp_outputs, &num_retvals);
-  *loss = temp_outputs[0];
-  *backprop = temp_outputs[1];
+  if (status.ok()) {
+    *loss = temp_outputs[0];
+    *backprop = temp_outputs[1];
+  }
   return status;
 }
 
