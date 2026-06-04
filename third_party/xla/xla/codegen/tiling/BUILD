@@ -24,6 +24,7 @@ cc_library(
         "tiled_hlo_instruction.h",
     ],
     deps = [
+        "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
