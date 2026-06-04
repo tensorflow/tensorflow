@@ -108,6 +108,16 @@ class ShapeTracker {
   // Inverts this ShapeTracker in-place.
   absl::Status Invert();
 
+  // Slices the tracker keeping only the specified input dimensions (and
+  // tracking them through the tracker). If dimensions are not sorted, the
+  // tracker implicitly starts with a transpose that puts them in order. The
+  // output shape of the returned tracker won't have degenerate dimensions as
+  // it's not possible to tell which of the original dimensions they correspond
+  // to. If you expect the particular output shape (you usually do), append a
+  // reshape to the returned tracker.
+  absl::StatusOr<ShapeTracker> Narrow(
+      absl::Span<const int64_t> dims_to_keep) const;
+
   // Generates HLO instructions corresponding to the tracked operations.
   absl::StatusOr<HloInstruction*> ToInstructionChain(
       HloInstruction* inst, bool avoid_combining_reshapes = true) const;
@@ -130,8 +140,6 @@ class ShapeTracker {
   static std::vector<Step> OptimizeSteps(const std::vector<Step>& steps,
                                          const xla::Shape& input_shape,
                                          const xla::Shape& output_shape);
-
-  void TryFoldProjection();
 
   std::vector<BufferView> projections_;
   xla::Shape input_shape_;
@@ -192,6 +200,7 @@ class ShapeTracker::BufferView {
   std::optional<BufferView> TryIntersectWith(const BufferView& other) const;
 
   bool IsEmpty() const { return strides_.empty(); }
+  int64_t ElementsIn() const;
   bool operator==(const BufferView& other) const {
     return strides_ == other.strides_ && extents_ == other.extents_;
   }
@@ -199,6 +208,7 @@ class ShapeTracker::BufferView {
   absl::Span<const int64_t> extents() const { return extents_; }
 
  private:
+  friend class ShapeTracker;
   BufferView() = default;
 
   llvm::SmallVector<int64_t, 6> strides_;

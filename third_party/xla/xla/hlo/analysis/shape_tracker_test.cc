@@ -25,6 +25,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -945,6 +946,33 @@ TEST(BufferViewTest, FromShape1D) {
   EXPECT_EQ(view.extents(), (std::vector<int64_t>{10}));
 }
 
+TEST(BufferViewTest, ElementsIn) {
+  // Scalar
+  {
+    Shape shape = ShapeUtil::MakeShape(F32, {});
+    BufferView view = BufferView::FromShape(shape);
+    EXPECT_EQ(view.ElementsIn(), 1);
+  }
+  // 1D
+  {
+    Shape shape = ShapeUtil::MakeShape(F32, {10});
+    BufferView view = BufferView::FromShape(shape);
+    EXPECT_EQ(view.ElementsIn(), 10);
+  }
+  // Multi-dim
+  {
+    Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+    BufferView view = BufferView::FromShape(shape);
+    EXPECT_EQ(view.ElementsIn(), 24);
+  }
+  // Empty view
+  {
+    auto view_or = BufferView::FromStridesAndExtents({}, {});
+    ASSERT_TRUE(view_or.ok());
+    EXPECT_EQ(view_or->ElementsIn(), 0);
+  }
+}
+
 TEST(BufferViewTest, FromShapeMultiDim) {
   // Shape [2, 3, 4]
   // Expected strides: [12, 4, 1]
@@ -1083,9 +1111,17 @@ TEST(BufferViewTest, TryUnflattenFlatTo3D) {
   auto result = view.TryUnflatten({2, 3, 4});
   ASSERT_TRUE(result.has_value());
   ASSERT_EQ(result->size(), 3);
-  EXPECT_EQ((*result)[0], *BufferView::FromStridesAndExtents({12}, {2}));
-  EXPECT_EQ((*result)[1], *BufferView::FromStridesAndExtents({4}, {3}));
-  EXPECT_EQ((*result)[2], *BufferView::FromStridesAndExtents({1}, {4}));
+
+  auto expect_eq_view = [&](const BufferView& actual,
+                            absl::Span<const int64_t> strides,
+                            absl::Span<const int64_t> extents) {
+    ASSERT_OK_AND_ASSIGN(auto expected,
+                         BufferView::FromStridesAndExtents(strides, extents));
+    EXPECT_EQ(actual, expected);
+  };
+  expect_eq_view((*result)[0], {12}, {2});
+  expect_eq_view((*result)[1], {4}, {3});
+  expect_eq_view((*result)[2], {1}, {4});
 }
 
 TEST(BufferViewTest, TryUnflattenNonContiguousCompatible) {
@@ -1094,9 +1130,17 @@ TEST(BufferViewTest, TryUnflattenNonContiguousCompatible) {
   auto result = view.TryUnflatten({2, 3, 4});
   ASSERT_TRUE(result.has_value());
   ASSERT_EQ(result->size(), 3);
-  EXPECT_EQ((*result)[0], *BufferView::FromStridesAndExtents({16}, {2}));
-  EXPECT_EQ((*result)[1], *BufferView::FromStridesAndExtents({4}, {3}));
-  EXPECT_EQ((*result)[2], *BufferView::FromStridesAndExtents({1}, {4}));
+
+  auto expect_eq_view = [&](const BufferView& actual,
+                            absl::Span<const int64_t> strides,
+                            absl::Span<const int64_t> extents) {
+    ASSERT_OK_AND_ASSIGN(auto expected,
+                         BufferView::FromStridesAndExtents(strides, extents));
+    EXPECT_EQ(actual, expected);
+  };
+  expect_eq_view((*result)[0], {16}, {2});
+  expect_eq_view((*result)[1], {4}, {3});
+  expect_eq_view((*result)[2], {1}, {4});
 }
 
 TEST(BufferViewTest, TryUnflattenIncompatible) {
@@ -1120,6 +1164,252 @@ TEST(BufferViewTest, AsTransformationPermuted) {
   auto trans = view.AsTransformation();
   EXPECT_EQ(trans.input_reshape, (llvm::SmallVector<int64_t, 6>{2, 3}));
   EXPECT_EQ(trans.transpose, (llvm::SmallVector<int64_t, 6>{1, 0}));
+}
+
+TEST(ShapeTrackerTest, Narrow1DKeep) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10});
+  ShapeTracker tracker(shape);
+
+  auto narrowed_or = tracker.Narrow({0});
+  ASSERT_TRUE(narrowed_or.ok());
+  ShapeTracker narrowed = std::move(narrowed_or).value();
+
+  EXPECT_EQ(narrowed.input_shape().dimensions(), (std::vector<int64_t>{10}));
+  EXPECT_EQ(narrowed.output_shape().dimensions(), (std::vector<int64_t>{10}));
+}
+
+TEST(ShapeTrackerTest, Narrow1DDrop) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10});
+  ShapeTracker tracker(shape);
+
+  auto narrowed_or = tracker.Narrow({});
+  ASSERT_TRUE(narrowed_or.ok());
+  ShapeTracker narrowed = std::move(narrowed_or).value();
+
+  EXPECT_EQ(narrowed.input_shape().dimensions(), (std::vector<int64_t>{}));
+  EXPECT_EQ(narrowed.output_shape().dimensions(), (std::vector<int64_t>{}));
+}
+
+TEST(ShapeTrackerTest, NarrowMultiDimKeepSubset) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+
+  auto narrowed_or = tracker.Narrow({0, 2});
+  ASSERT_TRUE(narrowed_or.ok());
+  ShapeTracker narrowed = std::move(narrowed_or).value();
+
+  EXPECT_EQ(narrowed.input_shape().dimensions(), (std::vector<int64_t>{2, 4}));
+  EXPECT_EQ(narrowed.output_shape().dimensions(), (std::vector<int64_t>{2, 4}));
+  EXPECT_EQ(narrowed.DebugString(true), "[2,4]");
+}
+
+TEST(ShapeTrackerTest, NarrowTransposedShape) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+
+  ASSERT_TRUE(tracker.AppendTranspose({2, 1, 0}).ok());
+
+  auto narrowed_or = tracker.Narrow({0, 2});
+  ASSERT_TRUE(narrowed_or.ok());
+  ShapeTracker narrowed = std::move(narrowed_or).value();
+
+  EXPECT_EQ(narrowed.input_shape().dimensions(), (std::vector<int64_t>{2, 4}));
+  EXPECT_EQ(narrowed.output_shape().dimensions(), (std::vector<int64_t>{4, 2}));
+  EXPECT_EQ(narrowed.DebugString(true), "[2,4] -> T[4,2]");
+}
+
+TEST(ShapeTrackerTest, NarrowToScalar) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+
+  auto narrowed_or = tracker.Narrow({});
+  ASSERT_TRUE(narrowed_or.ok());
+  ShapeTracker narrowed = std::move(narrowed_or).value();
+
+  EXPECT_EQ(narrowed.input_shape().dimensions(), (std::vector<int64_t>{}));
+  EXPECT_EQ(narrowed.output_shape().dimensions(), (std::vector<int64_t>{}));
+}
+
+TEST(ShapeTrackerTest, NarrowDegenerateCollapsesOutputButPreservesInputRank) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 1, 4});
+  ShapeTracker tracker(shape);
+
+  // Narrow keeping the degenerate dimension 1.
+  // Kept elements is 1, so it triggers the kept_elements == 1 logic.
+  auto narrowed_or = tracker.Narrow({1});
+  ASSERT_TRUE(narrowed_or.ok());
+  ShapeTracker narrowed = std::move(narrowed_or).value();
+
+  // Input shape must preserve rank 1 (corresponding to dims_to_keep).
+  EXPECT_EQ(narrowed.input_shape().dimensions(), (std::vector<int64_t>{1}));
+  // Output shape must collapse to scalar (rank 0).
+  EXPECT_EQ(narrowed.output_shape().dimensions(), (std::vector<int64_t>{}));
+}
+
+TEST(ShapeTrackerTest, NarrowTransposedShapeWithCompaction) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+
+  // This transpose results in strides [1, 12, 4] which compacts dim 1 & 2.
+  // The compacted BufferView has rank 2: strides [1, 4], extents [4, 6].
+  ASSERT_TRUE(tracker.AppendTranspose({2, 0, 1}).ok());
+
+  // We keep dims 2 and 0 (sizes 4 and 2), dropping dim 1.
+  // If SliceProjections is implemented robustly with intersection,
+  // it handles the rank-change/compaction gracefully.
+  auto narrowed_or = tracker.Narrow({0, 2});
+  ASSERT_TRUE(narrowed_or.ok());
+  ShapeTracker narrowed = std::move(narrowed_or).value();
+
+  EXPECT_EQ(narrowed.input_shape().dimensions(), (std::vector<int64_t>{2, 4}));
+  EXPECT_EQ(narrowed.output_shape().dimensions(), (std::vector<int64_t>{4, 2}));
+  EXPECT_EQ(narrowed.DebugString(true), "[2,4] -> T[4,2]");
+}
+
+TEST(ShapeTrackerTest, NarrowValidationErrors) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+
+  EXPECT_FALSE(tracker.Narrow({3}).ok());
+  EXPECT_FALSE(tracker.Narrow({-1}).ok());
+  EXPECT_FALSE(tracker.Narrow({0, 0}).ok());
+  EXPECT_FALSE(tracker.Narrow({2, 0, 2}).ok());
+}
+
+TEST(ShapeTrackerTest, NarrowUnsorted) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+
+  // Narrow keeping dims 2 and 0 (sizes 4 and 2), in that order.
+  // Input to narrowed tracker should be [4, 2].
+  // Output of narrowed tracker should be [2, 4] because original was identity
+  // and we implicitly start with transpose [4, 2] -> [2, 4].
+  auto narrowed_or = tracker.Narrow({2, 0});
+  ASSERT_TRUE(narrowed_or.ok());
+  ShapeTracker narrowed = std::move(narrowed_or).value();
+
+  EXPECT_EQ(narrowed.input_shape().dimensions(), (std::vector<int64_t>{4, 2}));
+  EXPECT_EQ(narrowed.output_shape().dimensions(), (std::vector<int64_t>{2, 4}));
+  EXPECT_EQ(narrowed.DebugString(true), "[4,2] -> T[2,4]");
+}
+
+TEST(ShapeTrackerTest, NarrowWithMultipleProjections) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+
+  ASSERT_TRUE(tracker.AppendTranspose({2, 0, 1}).ok());  // output [4, 2, 3]
+  ASSERT_TRUE(
+      tracker.AppendReshape({3, 8}).ok());  // Forces copy, output [3, 8]
+
+  auto narrowed_or = tracker.Narrow({0, 2});
+  ASSERT_TRUE(narrowed_or.ok());
+  ShapeTracker narrowed = std::move(narrowed_or).value();
+
+  EXPECT_EQ(narrowed.input_shape().dimensions(), (std::vector<int64_t>{2, 4}));
+  EXPECT_EQ(narrowed.output_shape().dimensions(), (std::vector<int64_t>{4, 2}));
+  EXPECT_EQ(narrowed.DebugString(true), "[2,4] -> T[4,2]");
+}
+
+TEST(ShapeTrackerTest, NarrowFoldsProjectionsToReshape) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+
+  // Append transpose that compacts dims 1 and 2.
+  ASSERT_TRUE(tracker.AppendTranspose({2, 0, 1}).ok());  // output [4, 2, 3]
+  // Append reshape that forces a copy.
+  ASSERT_TRUE(tracker.AppendReshape({3, 8}).ok());  // output [3, 8]
+
+  // Verify we have multiple steps.
+  EXPECT_GT(tracker.GetSteps().size(), 1);
+
+  // Narrow keeping only input dimensions 0 and 1.
+  auto narrowed_or = tracker.Narrow({0, 1});
+  ASSERT_TRUE(narrowed_or.ok());
+  ShapeTracker narrowed = std::move(narrowed_or).value();
+
+  // The resulting tracker should have folded the projections and simplified to
+  // 1 reshape step.
+  EXPECT_EQ(narrowed.GetSteps().size(), 1);
+  EXPECT_EQ(narrowed.DebugString(true), "[2,3] -> R[6]");
+}
+
+TEST(ShapeTrackerTest, NarrowFoldsProjectionsToTranspose) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  ShapeTracker tracker(shape);
+
+  // Append transpose that compacts dims 1 and 2.
+  ASSERT_TRUE(tracker.AppendTranspose({2, 0, 1}).ok());  // output [4, 2, 3]
+  // Append reshape that forces a copy.
+  ASSERT_TRUE(tracker.AppendReshape({3, 8}).ok());  // output [3, 8]
+
+  // Verify we have multiple steps.
+  EXPECT_GT(tracker.GetSteps().size(), 1);
+
+  // Narrow keeping only input dimensions 0 and 2.
+  auto narrowed_or = tracker.Narrow({0, 2});
+  ASSERT_TRUE(narrowed_or.ok());
+  ShapeTracker narrowed = std::move(narrowed_or).value();
+
+  // The resulting narrowed tracker should have folded the projections.
+  // If folding occurred, it should be represented by a single transpose step.
+  std::vector<ShapeTracker::Step> steps = narrowed.GetSteps();
+  ASSERT_EQ(steps.size(), 1);
+  EXPECT_EQ(steps[0].type, ShapeTracker::Step::Type::kTranspose);
+  EXPECT_EQ(steps[0].dimensions, (std::vector<int64_t>{1, 0}));
+}
+
+TEST(ShapeTrackerTest, RemappingInSliceProjectionsWorksForTransposedInput) {
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 10});
+  ShapeTracker tracker(shape);
+
+  // P1 will be unflattened and permuted to strides {1, 2}, extents {2, 5}.
+  ASSERT_TRUE(tracker.AppendReshape({5, 2}).ok());
+  ASSERT_TRUE(tracker.AppendTranspose({1, 0}).ok());
+
+  // P2 will be unflattened and permuted to strides {1, 5}, extents {5, 2}.
+  ASSERT_TRUE(tracker.AppendReshape({2, 5}).ok());
+  ASSERT_TRUE(tracker.AppendTranspose({1, 0}).ok());
+
+  // P1 intersection succeeds and remapped_slice is correctly formed.
+  // P2 intersection succeeds on the remapped slice.
+  auto narrowed_or = tracker.Narrow({1});
+  ASSERT_TRUE(narrowed_or.ok());
+  ShapeTracker narrowed = std::move(narrowed_or).value();
+  EXPECT_EQ(narrowed.input_shape().dimensions(), (std::vector<int64_t>{10}));
+  EXPECT_EQ(narrowed.output_shape().dimensions(), (std::vector<int64_t>{10}));
+}
+
+TEST(ShapeTrackerTest, NarrowIncompatibleSlice) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 5, 3});
+  ShapeTracker tracker(shape);
+
+  ASSERT_TRUE(tracker.AppendReshape({5, 6}).ok());
+  ASSERT_TRUE(tracker.AppendTranspose({1, 0}).ok());
+
+  auto narrowed_or = tracker.Narrow({1});
+  EXPECT_FALSE(narrowed_or.ok());
+  EXPECT_EQ(narrowed_or.status().code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(narrowed_or.status().message(),
+              ::testing::HasSubstr("Slice is incompatible with projection"));
+}
+
+TEST(ShapeTrackerTest, NarrowSkipFirstDimensionInFind) {
+  // We want to test the case where the lambda inside absl::c_find_if evaluates
+  // to false for the first projection dimension and true for the second.
+  // This happens when the slice belongs to the inner dimension.
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 10});
+  ShapeTracker tracker(shape);
+
+  // Slice that intersects only with the inner dimension.
+  // The first check in c_find_if will be `s % proj_stride == 0`
+  // -> `1 % 10 == 0`, which is false.
+  // The second check will be `1 % 1 == 0`, which is true.
+  auto narrowed_or = tracker.Narrow({1});
+  ASSERT_TRUE(narrowed_or.ok());
+
+  ShapeTracker narrowed = narrowed_or.value();
+  EXPECT_EQ(narrowed.input_shape().dimensions(), (std::vector<int64_t>{10}));
+  EXPECT_EQ(narrowed.output_shape().dimensions(), (std::vector<int64_t>{10}));
 }
 
 }  // namespace
