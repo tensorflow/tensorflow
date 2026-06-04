@@ -709,6 +709,7 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
         TilingSpace::Create(fusion_adaptor, mlir_context_);
 
     ASSIGN_OR_RETURN(auto tilings, sampling_tiling_space->GetValidTilings());
+    VLOG(1) << "Number of tilings: " << tilings.size();
 
     for (const llvm::SmallVector<int64_t, 4>& tiling : tilings) {
       std::unique_ptr<TilingSpace> tiling_space =
@@ -759,6 +760,7 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
         std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
 
     ASSIGN_OR_RETURN(auto tilings, analysis.GetValidTilings());
+    VLOG(1) << "Number of tilings: " << tilings.size();
 
     for (const auto& tiling : tilings) {
       // TODO(b/372454662): This needs to be adjusted if we want to support more

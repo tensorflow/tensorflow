@@ -216,8 +216,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     } else {
       int64_t dataset_id_int;
       if (!absl::SimpleAtoi(dataset_id_, &dataset_id_int)) {
-        return errors::Internal("Failed to parse dataset ID: ", dataset_id_,
-                                ". Expect integers.");
+        return absl::InternalError(absl::StrCat(
+            "Failed to parse dataset ID: ", dataset_id_, ". Expect integers."));
       }
       Node* dataset_id;
       TF_RETURN_IF_ERROR(b->AddScalar(dataset_id_int, &dataset_id));
@@ -377,12 +377,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     absl::Status SaveInternal(SerializationContext* ctx,
                               IteratorStateWriter* writer) override {
-      return errors::Unimplemented("SaveInternal is not yet supported");
+      return absl::UnimplementedError("SaveInternal is not yet supported");
     }
 
     absl::Status RestoreInternal(IteratorContext* ctx,
                                  IteratorStateReader* reader) override {
-      return errors::Unimplemented("RestoreInternal is not yet supported");
+      return absl::UnimplementedError("RestoreInternal is not yet supported");
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
@@ -537,8 +537,8 @@ DataServiceDatasetOp::DataServiceDatasetOp(OpKernelConstruction* ctx)
   } else if (op_name == kDataServiceDatasetV4) {
     op_version_ = 4;
   } else {
-    ctx->CtxFailure(errors::FailedPrecondition(
-        "Unrecognized data service dataset op name: ", op_name));
+    ctx->CtxFailure(absl::FailedPreconditionError(
+        absl::StrCat("Unrecognized data service dataset op name: ", op_name)));
     return;
   }
 
@@ -602,7 +602,7 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
     processing_mode.set_sharding_policy(ProcessingModeDef::DYNAMIC);
   } else {
     OP_REQUIRES(ctx, processing_mode.ParseFromString(processing_mode_str),
-                errors::InvalidArgument(absl::Substitute(
+                absl::InvalidArgumentError(absl::Substitute(
                     "Failed to parse ProcessingModeDef from string: $0",
                     std::string(processing_mode_str))));
   }
@@ -610,12 +610,14 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
   tstring address;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kAddress, &address));
   OP_REQUIRES(ctx, !address.empty(),
-              errors::InvalidArgument(kAddress, " must be non-empty."));
+              absl::InvalidArgumentError(
+                  absl::StrCat(kAddress, " must be non-empty.")));
 
   tstring protocol;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kProtocol, &protocol));
   OP_REQUIRES(ctx, !protocol.empty(),
-              errors::InvalidArgument(kProtocol, " must be non-empty."));
+              absl::InvalidArgumentError(
+                  absl::StrCat(kProtocol, " must be non-empty.")));
 
   tstring job_name;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kJobName, &job_name));
@@ -689,8 +691,8 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
       ctx,
       max_outstanding_requests == model::kAutotune ||
           max_outstanding_requests > 0,
-      errors::InvalidArgument(kMaxOutstandingRequests, " must be positive or ",
-                              model::kAutotune));
+      absl::InvalidArgumentError(absl::StrCat(
+          kMaxOutstandingRequests, " must be positive or ", model::kAutotune)));
 
   absl::StatusOr<DataServiceMetadata> metadata =
       GetDataServiceMetadata(dataset_id, address, protocol);

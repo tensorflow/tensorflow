@@ -258,7 +258,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
           --waiting_;
         }
         if (cancelled_) {
-          return errors::Cancelled("Iterator was cancelled");
+          return absl::CancelledError("Iterator was cancelled");
         }
         std::swap(result, batch_results_.front());
         batch_results_.pop_front();
@@ -455,9 +455,9 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
           // To guarantee that the transformation preserves the cardinality of
           // the dataset, we convert `OutOfRange` to `InvalidArgument` as the
           // former may be interpreted by a caller as the end of sequence.
-          status = errors::InvalidArgument(
-              "Function invocation produced OutOfRangeError: ",
-              status.message());
+          status = absl::InvalidArgumentError(
+              absl::StrCat("Function invocation produced OutOfRangeError: ",
+                           status.message()));
         }
         result->UpdateStatus(status, offset);
         if (status.ok()) {
@@ -474,11 +474,11 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
                 TensorShape batch_shape = batch->shape();
                 batch_shape.RemoveDim(0);
                 result->UpdateStatus(
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "Cannot add tensor to the batch: number of elements "
                         "does not match. Shapes are: [tensor]: ",
                         tensor.shape().DebugString(),
-                        ", [batch]: ", batch_shape.DebugString()),
+                        ", [batch]: ", batch_shape.DebugString())),
                     offset);
                 break;
               }
@@ -550,8 +550,8 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
                                     return_values->at(i).dtype(),
                                     component_shape);
         if (!result->output.back().IsInitialized()) {
-          return errors::ResourceExhausted(
-              "Failed to allocate memory for the batch of component ", i);
+          return absl::ResourceExhaustedError(absl::StrCat(
+              "Failed to allocate memory for the batch of component ", i));
         }
       }
       RecordBufferEnqueue(ctx.get(), result->output);
@@ -754,15 +754,17 @@ void MapAndBatchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                        DatasetBase** output) {
   int64_t batch_size = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kBatchSize, &batch_size));
-  OP_REQUIRES(ctx, batch_size > 0,
-              errors::InvalidArgument("batch_size must be greater than zero."));
+  OP_REQUIRES(
+      ctx, batch_size > 0,
+      absl::InvalidArgumentError("batch_size must be greater than zero."));
 
   int64_t num_parallel_calls = 0;
   OP_REQUIRES_OK(
       ctx, ParseScalarArgument(ctx, kNumParallelCalls, &num_parallel_calls));
-  OP_REQUIRES(
-      ctx, num_parallel_calls > 0 || num_parallel_calls == model::kAutotune,
-      errors::InvalidArgument("num_parallel_calls must be greater than zero."));
+  OP_REQUIRES(ctx,
+              num_parallel_calls > 0 || num_parallel_calls == model::kAutotune,
+              absl::InvalidArgumentError(
+                  "num_parallel_calls must be greater than zero."));
 
   bool drop_remainder;
   OP_REQUIRES_OK(ctx,
