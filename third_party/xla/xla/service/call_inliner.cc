@@ -239,17 +239,26 @@ bool InlineComposites(
              instruction->frontend_attributes().map().at("composite.name"));
 }
 
+}  // namespace
+
 // Introduces a specific attribute so that the frontend has the direct
 // control over inlining specific calls.
-bool FrontendAttributesAllowInlining(const HloInstruction* instruction) {
+CallInliner::FrontendInlinePolicy CallInliner::GetFrontendInlinePolicy(
+    const HloInstruction* instruction) {
   auto it = instruction->frontend_attributes().map().find("inlineable");
   if (it != instruction->frontend_attributes().map().end()) {
-    return it->second == "true";
+    if (it->second == "false" || it->second == "never" ||
+        it->second == "avoid") {
+      return FrontendInlinePolicy::kAvoid;
+    }
+    if (it->second == "true" || it->second == "always" ||
+        it->second == "force") {
+      return FrontendInlinePolicy::kForce;
+    }
+    return FrontendInlinePolicy::kAuto;
   }
-  return true;
+  return FrontendInlinePolicy::kAuto;
 }
-
-}  // namespace
 
 /* static */ absl::StatusOr<CallInliner::InlinedInstructionMap>
 CallInliner::Inline(HloInstruction* call, bool propagate_metadata) {
@@ -341,7 +350,7 @@ bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
   }
 
   if (policy != InlineOverridePolicy::kAllowIgnoreFrontendAttributes) {
-    if (!FrontendAttributesAllowInlining(instruction)) {
+    if (GetFrontendInlinePolicy(instruction) == FrontendInlinePolicy::kAvoid) {
       return false;
     }
   }
@@ -364,6 +373,10 @@ bool CallInliner::ShouldInline(const CallGraph& call_graph,
 
   if (!InlineInstructionAllowed(instruction, policy)) {
     return false;
+  }
+
+  if (GetFrontendInlinePolicy(instruction) == FrontendInlinePolicy::kForce) {
+    return true;
   }
 
   // If we're only inlining calls with a single call site, check that.
@@ -479,7 +492,8 @@ bool IsInlineableComputation(HloComputation* computation) {
     bool prerequisite = instruction->opcode() == HloOpcode::kCall &&
                         !instruction->has_backend_config() &&
                         !instruction->parent()->IsAsyncComputation();
-    if (!prerequisite || (!FrontendAttributesAllowInlining(instruction))) {
+    if (!prerequisite || CallInliner::GetFrontendInlinePolicy(instruction) ==
+                             CallInliner::FrontendInlinePolicy::kAvoid) {
       return false;
     }
     return true;
