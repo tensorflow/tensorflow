@@ -44,7 +44,7 @@ std::unique_ptr<HloRunnerInterface> GetReferenceRunner() {
   if (!client.ok()) {
     LOG(FATAL) << "Failed to create XLA:CPU PjRtClient: " << client.status();
   }
-  return std::make_unique<HloRunnerPjRt>(*std::move(client));
+  return std::make_unique<HloRunner>(*std::move(client));
 }
 
 class SampleFileTest : public HloRunnerAgnosticReferenceMixin<HloPjRtTestBase> {

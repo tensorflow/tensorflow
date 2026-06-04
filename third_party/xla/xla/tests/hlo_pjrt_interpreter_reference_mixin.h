@@ -38,7 +38,7 @@ class HloPjRtInterpreterReferenceMixin
   template <typename... BaseArgs>
   explicit HloPjRtInterpreterReferenceMixin(BaseArgs&&... base_args)
       : HloRunnerAgnosticReferenceMixin<T>(
-            std::make_unique<HloRunnerPjRt>(MakeAotAwareInterpreterClient(
+            std::make_unique<HloRunner>(MakeAotAwareInterpreterClient(
                 []() { return std::make_unique<HloEvaluator>(); })),
             std::forward<BaseArgs>(base_args)...) {}
   bool IsRocm() {
