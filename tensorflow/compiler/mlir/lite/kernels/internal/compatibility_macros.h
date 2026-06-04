@@ -58,6 +58,34 @@ limitations under the License.
 #define TFLITE_DCHECK_LT(x, y) ((x) < (y)) ? (void)0 : TFLITE_ASSERT_FALSE
 #endif
 
+#ifndef TFLITE_CHECK
+#define TFLITE_CHECK(condition) (condition) ? (void)0 : TFLITE_ABORT
+#endif
+
+#ifndef TFLITE_CHECK_EQ
+#define TFLITE_CHECK_EQ(x, y) ((x) == (y)) ? (void)0 : TFLITE_ABORT
+#endif
+
+#ifndef TFLITE_CHECK_NE
+#define TFLITE_CHECK_NE(x, y) ((x) != (y)) ? (void)0 : TFLITE_ABORT
+#endif
+
+#ifndef TFLITE_CHECK_GE
+#define TFLITE_CHECK_GE(x, y) ((x) >= (y)) ? (void)0 : TFLITE_ABORT
+#endif
+
+#ifndef TFLITE_CHECK_GT
+#define TFLITE_CHECK_GT(x, y) ((x) > (y)) ? (void)0 : TFLITE_ABORT
+#endif
+
+#ifndef TFLITE_CHECK_LE
+#define TFLITE_CHECK_LE(x, y) ((x) <= (y)) ? (void)0 : TFLITE_ABORT
+#endif
+
+#ifndef TFLITE_CHECK_LT
+#define TFLITE_CHECK_LT(x, y) ((x) < (y)) ? (void)0 : TFLITE_ABORT
+#endif
+
 // LINT.ThenChange(//tensorflow/lite/kernels/internal/compatibility.h)
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_KERNELS_INTERNAL_COMPATIBILITY_MACROS_H_
