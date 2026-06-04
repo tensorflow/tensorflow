@@ -9008,6 +9008,15 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduceWindow(
       return absl::OkStatus();
     }
 
+    // In case the source operand is not a scalar, we reshape it to a scalar
+    // before we attempt to broadcast it.
+    if (!ShapeUtil::IsScalar(val_const->shape())) {
+      TF_RET_CHECK(ShapeUtil::IsEffectiveScalar(val_const->shape()));
+      val_const = reduce_window->AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeScalarShape(val_const->shape().element_type()),
+          val_const));
+    }
+
     int64_t reduction_dim = -1;
     bool valid_pattern = true;
 
