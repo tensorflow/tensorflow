@@ -88,7 +88,7 @@ def do_test(
     if FLAGS.save_model_path:
       save_model_path = FLAGS.save_model_path
     else:
-      save_model_path = tempfile.mktemp(suffix='.saved_model')
+      save_model_path = tempfile.mkdtemp(suffix='.saved_model')
 
     signature_def_map, init_op, assets_collection = create_signature()
 
