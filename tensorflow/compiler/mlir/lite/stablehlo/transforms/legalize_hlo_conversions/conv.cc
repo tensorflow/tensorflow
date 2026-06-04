@@ -386,7 +386,7 @@ LogicalResult ConvertNonTrivialConvToTransposeConvOp::matchAndRewrite(
   // strides
   //===-----
 
-  // TFL::TransposeConv2d applies strides on LHS. strides == lhs_dilation
+  // TFL::TransposeConv2D applies strides on LHS. strides == lhs_dilation
   auto strides = data.InputDilations();
   auto tfl_h_stride = rewriter.getI32IntegerAttr(strides[0]);
   auto tfl_w_stride = rewriter.getI32IntegerAttr(strides[1]);
