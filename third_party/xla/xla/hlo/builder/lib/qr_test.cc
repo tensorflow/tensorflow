@@ -39,8 +39,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using QrTest = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using QrTest =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(QrTest, Simple) {
   Array2D<float> data({
