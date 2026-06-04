@@ -161,7 +161,7 @@ class NcclCommunicator : public GpuCommunicator {
 
   ncclComm_t comm() const { return comm_; }
 
-  se::StreamExecutor* stream_executor() const { return stream_executor_; }
+  se::StreamExecutor* stream_executor() const final { return stream_executor_; }
 
   bool IsBlocking() const { return executor_ == nullptr; }
 

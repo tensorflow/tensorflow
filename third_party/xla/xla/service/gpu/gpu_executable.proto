@@ -102,5 +102,10 @@ message GpuExecutableProto {
   // The host target machine options of the executable.
   optional xla.cpu.TargetMachineOptionsProto cpu_target_machine_options = 15;
 
+  // Human readable summary of the buffer allocations. Tailored to debugging
+  // OOMs, includes the Hlo op metadata for every buffer associated with each
+  // allocation.
+  string buffer_allocations_debug_summary = 16;
+
   reserved 7;
 }
