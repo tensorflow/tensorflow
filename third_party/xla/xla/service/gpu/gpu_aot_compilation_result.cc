@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/kernel_symbol_registry.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_id.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/util/split_proto/split_gpu_executable_writer.h"
@@ -107,8 +108,7 @@ absl::StatusOr<std::string> GpuAotCompilationResult::SerializeAsString() const {
 
 absl::StatusOr<std::unique_ptr<Executable>>
 GpuAotCompilationResult::LoadExecutable(
-    se::Platform::Id platform_id,
-    const se::DeviceDescription& device_description,
+    se::PlatformId platform_id, const se::DeviceDescription& device_description,
     const DebugOptions& debug_options) && {
   const auto symbol_resolver = [&](absl::string_view symbol_name) {
     stream_executor::KernelSymbolRegistry& registry =
@@ -124,9 +124,9 @@ GpuAotCompilationResult::LoadExecutable(
       hlo_fingerprint_.low64, hlo_fingerprint_.high64,
       executable_fingerprint_.low64, executable_fingerprint_.high64);
 
-  return GpuExecutable::FromProto(GetExecutableProto(), device_description,
-                                  platform_id->ToName(), debug_options,
-                                  symbol_resolver);
+  return GpuExecutable::FromProto(std::move(*this).TakeExecutableProto(),
+                                  device_description, platform_id->ToName(),
+                                  debug_options, symbol_resolver);
 }
 
 const GpuExecutableProto& GpuAotCompilationResult::GetExecutableProto() const {
@@ -137,6 +137,17 @@ const GpuExecutableProto& GpuAotCompilationResult::GetExecutableProto() const {
           [](const GpuExecutableProto& stack_proto)
               -> const GpuExecutableProto& { return stack_proto; }),
       gpu_executable_proto_);
+}
+
+GpuExecutableProto GpuAotCompilationResult::TakeExecutableProto() && {
+  return std::visit(
+      absl::Overload(
+          [](internal::ArenaAllocatedGpuExecutableProto&& arena_proto)
+              -> GpuExecutableProto { return std::move(*arena_proto.proto); },
+          [](GpuExecutableProto&& stack_proto) -> GpuExecutableProto {
+            return std::move(stack_proto);
+          }),
+      std::move(gpu_executable_proto_));
 }
 
 absl::StatusOr<CompiledMemoryStats>

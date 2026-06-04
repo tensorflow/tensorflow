@@ -90,6 +90,7 @@ limitations under the License.
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/dense_data_intermediate.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
@@ -1897,10 +1898,11 @@ GpuExecutableProto::ConstantInfoProto GpuExecutable::ConstantInfo::ToProto()
 }
 
 GpuExecutable::ConstantInfo GpuExecutable::ConstantInfo::FromProto(
-    const GpuExecutableProto::ConstantInfoProto& proto) {
+    GpuExecutableProto::ConstantInfoProto&& proto) {
   return ConstantInfo{
       /*symbol_name=*/proto.symbol_name(),
-      /*content=*/DenseDataIntermediate::FromProto(proto.content()),
+      /*content=*/
+      DenseDataIntermediate::FromProto(std::move(*proto.mutable_content())),
       /*allocation_index=*/static_cast<int>(proto.allocation_index())};
 }
 
@@ -1968,8 +1970,7 @@ absl::StatusOr<GpuExecutableProto> GpuExecutable::ToProto() const {
 }
 
 absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
-    const GpuExecutableProto& proto,
-    const se::DeviceDescription& device_description,
+    GpuExecutableProto&& proto, const se::DeviceDescription& device_description,
     absl::string_view platform_name, DebugOptions debug_options,
     const std::optional<se::KernelLoaderSpec::SymbolResolver>&
         symbol_resolver) {
@@ -1977,7 +1978,7 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
   params.debug_options = std::move(debug_options);
   params.enable_debug_info_manager =
       params.debug_options.xla_gpu_executable_embed_debug_info();
-  params.asm_text = proto.asm_text();
+  params.asm_text = std::move(*proto.mutable_asm_text());
   const std::string& binary = proto.binary();
   params.binary.assign(binary.begin(), binary.end());
   params.buffer_assignment = nullptr;
@@ -1995,7 +1996,8 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
     }
   }
   if (proto.has_buffer_assignment()) {
-    params.buffer_assignment_proto.emplace(proto.buffer_assignment());
+    params.buffer_assignment_proto.emplace(
+        std::move(*proto.mutable_buffer_assignment()));
   }
 
   params.mlir_allocations.emplace();
@@ -2006,8 +2008,8 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
         BufferAllocation::FromProto(allocation_proto));
   }
 
-  for (const auto& [key, value] : proto.dnn_compiled_graphs()) {
-    params.dnn_compiled_graphs.emplace(key, value);
+  for (auto& [key, value] : *proto.mutable_dnn_compiled_graphs()) {
+    params.dnn_compiled_graphs.emplace(key, std::move(value));
   }
 
   ASSIGN_OR_RETURN(
@@ -2031,7 +2033,7 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
   }
 
   ThunkSequenceProto thunk_sequence_proto;
-  *thunk_sequence_proto.mutable_thunks() = proto.thunks();
+  *thunk_sequence_proto.mutable_thunks() = std::move(*proto.mutable_thunks());
   ASSIGN_OR_RETURN(
       ThunkSequence thunk_sequence,
       DeserializeThunkSequenceProto(
@@ -2043,8 +2045,9 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
       std::make_unique<ThunkExecutor>(std::move(thunk_sequence));
 
   params.constants.reserve(proto.constants().size());
-  for (const auto& constant_proto : proto.constants()) {
-    params.constants.push_back(ConstantInfo::FromProto(constant_proto));
+  for (auto& constant_proto : *proto.mutable_constants()) {
+    params.constants.push_back(
+        ConstantInfo::FromProto(std::move(constant_proto)));
   }
 
   params.output_info.reserve(proto.output_info_map().size());
@@ -2056,7 +2059,7 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
     params.output_info.emplace(std::move(shape_index), std::move(output_info));
   }
 
-  params.module_name = proto.module_name();
+  params.module_name = std::move(*proto.mutable_module_name());
   ASSIGN_OR_RETURN(params.program_shape,
                    ProgramShape::FromProto(proto.program_shape()));
 

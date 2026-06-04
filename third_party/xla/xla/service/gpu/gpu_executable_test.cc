@@ -500,8 +500,8 @@ TEST_F(GpuExecutableTest, ProtoConversion) {
   DebugOptions debug_options = GetDebugOptionsFromFlags();
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GpuExecutable> reconstructed_executable,
-      GpuExecutable::FromProto(proto, device_description, "TEST_PLATFORM",
-                               debug_options));
+      GpuExecutable::FromProto(std::move(proto), device_description,
+                               "TEST_PLATFORM", debug_options));
   EXPECT_THAT(reconstructed_executable->text(), "test_asm_text");
   EXPECT_THAT(reconstructed_executable->binary(), ElementsAre(1, 2, 3));
   EXPECT_THAT(
@@ -680,10 +680,7 @@ TEST_F(GpuExecutableTest, FromProtoWithSymbolResolver) {
             arity: 42
             kernel_args_packing_spec {
               kernel_arguments {
-                relocations {
-                  kind: KIND_BITS64_ABSOLUTE
-                  argument_index: 0
-                }
+                relocations { kind: KIND_BITS64_ABSOLUTE argument_index: 0 }
               }
               kernel_arguments { data: "\x34\x12\x00\x00" }
             }
@@ -710,10 +707,10 @@ TEST_F(GpuExecutableTest, FromProtoWithSymbolResolver) {
   };
 
   DebugOptions debug_options = GetDebugOptionsFromFlags();
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<GpuExecutable> executable,
-      GpuExecutable::FromProto(proto, device_description, "TEST_PLATFORM",
-                               debug_options, symbol_resolver));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
+                          GpuExecutable::FromProto(
+                              GpuExecutableProto(proto), device_description,
+                              "TEST_PLATFORM", debug_options, symbol_resolver));
 
   const CustomKernelThunk* custom_kernel_thunk =
       dynamic_cast<const CustomKernelThunk*>(
@@ -841,8 +838,8 @@ TEST_F(GpuExecutableTest, FromProtoRegistersHloModuleWithDebugInfoManager) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GpuExecutable> executable,
-      GpuExecutable::FromProto(proto, device_description, "TEST_PLATFORM",
-                               debug_options));
+      GpuExecutable::FromProto(GpuExecutableProto(proto), device_description,
+                               "TEST_PLATFORM", debug_options));
   ASSERT_TRUE(executable->has_module());
   EXPECT_TRUE(XlaDebugInfoManager::Get()->TracksModule(
       executable->module().unique_id()));
@@ -850,8 +847,8 @@ TEST_F(GpuExecutableTest, FromProtoRegistersHloModuleWithDebugInfoManager) {
   debug_options.set_xla_gpu_executable_embed_debug_info(false);
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GpuExecutable> executable_without_debug_info_manager,
-      GpuExecutable::FromProto(proto, device_description, "TEST_PLATFORM",
-                               debug_options));
+      GpuExecutable::FromProto(GpuExecutableProto(proto), device_description,
+                               "TEST_PLATFORM", debug_options));
   ASSERT_TRUE(executable_without_debug_info_manager->has_module());
   EXPECT_FALSE(XlaDebugInfoManager::Get()->TracksModule(
       executable_without_debug_info_manager->module().unique_id()));
@@ -946,7 +943,7 @@ TEST_F(GpuExecutableTest, BufferAssignment) {
 
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GpuExecutable> reconstructed_executable,
-      GpuExecutable::FromProto(executable_proto,
+      GpuExecutable::FromProto(std::move(executable_proto),
                                stream_executor::DeviceDescription(),
                                "TEST_PLATFORM", DebugOptions()));
 

@@ -96,6 +96,7 @@ class GpuAotCompilationResult : public CompiledModule {
 
  private:
   const GpuExecutableProto& GetExecutableProto() const;
+  GpuExecutableProto TakeExecutableProto() &&;
 
   explicit GpuAotCompilationResult(
       std::variant<internal::ArenaAllocatedGpuExecutableProto,
