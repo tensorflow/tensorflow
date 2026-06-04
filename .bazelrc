@@ -40,7 +40,6 @@
 #     cuda:         Build with CUDA support.
 #     cuda_clang    Build with CUDA Clang support.
 #     rocm:         Build with AMD GPU support (rocm)
-#     mkl:          Enable full mkl support.
 #     nogcp:        Disable GCS support.
 #     nonccl:       Disable nccl support.
 #
@@ -274,20 +273,6 @@ common:ios_fat --ios_multi_cpus=armv7,arm64,i386,x86_64
 common:monolithic --define framework_shared_object=false
 common:monolithic --define tsl_protobuf_header_only=false
 common:monolithic --experimental_link_static_libraries_once=false  # b/229868128
-
-# Please note that MKL on MacOS is still not supported.
-# If you would like to use a local MKL instead of downloading, please set the
-# environment variable "TF_MKL_ROOT" every time before build.
-common:mkl --define=build_with_mkl=true --define=enable_mkl=true
-common:mkl --define=tensorflow_mkldnn_contraction_kernel=0
-common:mkl --define=build_with_openmp=true
-common:mkl -c opt
-
-# config to build OneDNN backend with a user specified threadpool.
-common:mkl_threadpool --define=build_with_mkl=true --define=enable_mkl=true
-common:mkl_threadpool --define=tensorflow_mkldnn_contraction_kernel=0
-common:mkl_threadpool --define=build_with_mkl_opensource=true
-common:mkl_threadpool -c opt
 
 # Config setting to build oneDNN with Compute Library for the Arm Architecture (ACL).
 # with Eigen threadpool support
