@@ -1168,7 +1168,7 @@ FunctionCallFrame::FunctionCallFrame(DataTypeSlice arg_types,
   rets_.resize(ret_types_.size());
 }
 
-FunctionCallFrame::~FunctionCallFrame() {}
+FunctionCallFrame::~FunctionCallFrame() = default;
 
 absl::Status FunctionCallFrame::SetArgs(absl::Span<const Tensor> args) {
   // Input type checks.
