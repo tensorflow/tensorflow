@@ -921,6 +921,10 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
       PJRT_Chunk*, PJRT_CallbackError*, size_t, bool)>;
   // std::function version of PJRT_RecvCallback
   using RecvCallbackFunction = std::function<void(PJRT_CopyToDeviceStream*)>;
+  // std::function version of PJRT_HloOutputCallback
+  using HloOutputCallbackFunction =
+      std::function<void(int64_t replica_id, int64_t partition_id,
+                         absl::Span<std::shared_ptr<Literal> const> literals)>;
 
   // Override to call FingerprintExecutable through the wrapped
   // PjRtCApiExecutable.
@@ -931,13 +935,31 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
  private:
   std::vector<LogicalDeviceIds> addressable_device_logical_ids_;
   // Groups data needed to support send/recv execution callbacks.
+ public:
+  struct HloOutputCallbackState {
+    // Key is {replica_id, partition_id}.
+    absl::flat_hash_map<std::pair<int64_t, int64_t>,
+                        std::vector<std::shared_ptr<Literal>>>
+        accumulated_literals;
+    absl::flat_hash_map<std::pair<int64_t, int64_t>, std::vector<bool>>
+        received_operands;
+    absl::Mutex mu;
+    HloOutputCallbackFunction callback;
+    size_t num_operands;
+  };
+
+ private:
   struct SendRecvCallbackData {
     std::vector<std::vector<PJRT_SendCallbackInfo>> c_send_callbacks;
     std::vector<PJRT_SendCallbackInfo*> c_send_callback_lists;
     std::vector<std::vector<PJRT_RecvCallbackInfo>> c_recv_callbacks;
     std::vector<PJRT_RecvCallbackInfo*> c_recv_callback_lists;
+    std::vector<PJRT_HloOutputCallbackInfo> c_hlo_output_callbacks;
     std::vector<SendCallbackFunction> send_callback_functions;
     std::vector<RecvCallbackFunction> recv_callback_functions;
+    std::vector<HloOutputCallbackFunction> hlo_output_callback_functions;
+    std::vector<std::unique_ptr<HloOutputCallbackState>>
+        hlo_output_callback_states;
   };
 
   // Returns the number of outputs of the executable.
