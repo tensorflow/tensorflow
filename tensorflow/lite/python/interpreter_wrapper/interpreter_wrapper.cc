@@ -829,6 +829,10 @@ PyObject* InterpreterWrapper::GetTensor(int tensor_index,
       // Numpy doesn't have int4 type, so we double the size of the buffer
       // to hold int8 type for each (4-bit packed) element.
       numpy_bytes *= 2;
+    } else if (tensor->type == kTfLiteInt2) {
+      // Numpy doesn't have int2 type, so we quadruple the size of the buffer
+      // to hold int8 type for each (2-bit packed) element.
+      numpy_bytes *= 4;
     }
     void* data = malloc(numpy_bytes);
     if (!data) {
@@ -856,6 +860,21 @@ PyObject* InterpreterWrapper::GetTensor(int tensor_index,
         uint8_t upper = byte >> 4;
         numpy_data[2 * i] = lower;
         numpy_data[2 * i + 1] = upper;
+      }
+    } else if (tensor->type == kTfLiteInt2) {
+      int8_t* tensor_data = reinterpret_cast<int8_t*>(tensor->data.raw);
+      int8_t* numpy_data = static_cast<int8_t*>(data);
+      // Unpack each 2-bit value to an 8-bit container.
+      for (size_t i = 0; i < tensor->bytes; i++) {
+        int8_t byte = tensor_data[i];
+        int8_t first = static_cast<int8_t>(byte << 6) >> 6;
+        int8_t second = static_cast<int8_t>(byte << 4) >> 6;
+        int8_t third = static_cast<int8_t>(byte << 2) >> 6;
+        int8_t fourth = static_cast<int8_t>(byte) >> 6;
+        numpy_data[4 * i] = first;
+        numpy_data[4 * i + 1] = second;
+        numpy_data[4 * i + 2] = third;
+        numpy_data[4 * i + 3] = fourth;
       }
     } else {
       memcpy(data, tensor->data.raw, tensor->bytes);
