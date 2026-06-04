@@ -87,6 +87,8 @@ CreateMutatorFactories() {
   mutator_factories.push_back(XplaneRootEventMutatorFactory::CreateFactory(
       HostEventType::kProcessBatch, 2));
   mutator_factories.push_back(XplaneRootEventMutatorFactory::CreateFactory(
+      HostEventType::kOrbaxProcessBatch, 2));
+  mutator_factories.push_back(XplaneRootEventMutatorFactory::CreateFactory(
       HostEventType::kBatchingSessionRun, 1));
   // Legacy asynchronous TPU execution dispatcher
   mutator_factories.push_back(
