@@ -60,6 +60,10 @@ class FoldReshapeAroundForLoop : public mlir::OpRewritePattern<scf::ForOp> {
           (reshape_op.getOperand().getType() == yield_operands[i].getType())) {
         continue;
       }
+      if (reshape_op.getSrc().getType().getRank() == 0 ||
+          reshape_op.getType().getRank() == 0) {
+        continue;
+      }
 
       Value inner_yield_val = reshape_op.getOperand();
       const Location op_loc = for_op.getLoc();
