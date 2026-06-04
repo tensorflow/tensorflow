@@ -28,7 +28,6 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/btree_map.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
@@ -96,11 +95,6 @@ static bool IsAtLeastCuda12900(const se::StreamExecutor* executor) {
 
 class FakeGpuCommunicator : public GpuCommunicator {
  public:
-  Future<> GroupExecute(
-      absl::AnyInvocable<absl::Status(GpuCommunicator*)> f) override {
-    return f(this);
-  }
-
   absl::Status LaunchAllReduce(se::DeviceAddressBase, se::DeviceAddressBase,
                                PrimitiveType, size_t, ReductionKind,
                                const Executor&) override {

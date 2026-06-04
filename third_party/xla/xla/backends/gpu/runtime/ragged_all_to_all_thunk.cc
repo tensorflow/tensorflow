@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/container/node_hash_map.h"
@@ -82,7 +83,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/casts.h"
 
 namespace xla {
 namespace gpu {
@@ -206,30 +206,28 @@ absl::Status RunAllToAllOnIndexBuffer(
     const se::DeviceAddressBase& destination_buffer, PrimitiveType element_type,
     se::Stream& stream, Communicator& comm) {
   ASSIGN_OR_RETURN(int32_t num_ranks, comm.NumRanks());
+  auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
 
-  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
-  Future<> future = gpu_comm->GroupExecute(
-      [num_ranks, num_updates_per_replica, element_type, &source_buffer,
-       &destination_buffer, &stream](GpuCommunicator* comm) -> absl::Status {
-        for (int peer = 0; peer < num_ranks; ++peer) {
-          int64_t offset = peer * num_updates_per_replica;
-          se::DeviceAddressBase send_slice =
-              GpuCollectives::Slice(source_buffer, element_type, offset,
-                                    /*count=*/num_updates_per_replica);
-          se::DeviceAddressBase recv_slice =
-              GpuCollectives::Slice(destination_buffer, element_type, offset,
-                                    /*count=*/num_updates_per_replica);
-          RETURN_IF_ERROR(comm->LaunchSend(send_slice, element_type,
+  Future<> future = gpu_comm->GroupExecute([&]() -> absl::Status {
+    for (int peer = 0; peer < num_ranks; ++peer) {
+      int64_t offset = peer * num_updates_per_replica;
+      se::DeviceAddressBase send_slice =
+          GpuCollectives::Slice(source_buffer, element_type, offset,
+                                /*count=*/num_updates_per_replica);
+      se::DeviceAddressBase recv_slice =
+          GpuCollectives::Slice(destination_buffer, element_type, offset,
+                                /*count=*/num_updates_per_replica);
+      RETURN_IF_ERROR(gpu_comm->LaunchSend(send_slice, element_type,
                                            /*count=*/num_updates_per_replica,
                                            RankId(peer),
                                            GpuCollectives::On(stream)));
-          RETURN_IF_ERROR(comm->LaunchRecv(recv_slice, element_type,
+      RETURN_IF_ERROR(gpu_comm->LaunchRecv(recv_slice, element_type,
                                            /*count=*/num_updates_per_replica,
                                            RankId(peer),
                                            GpuCollectives::On(stream)));
-        }
-        return absl::OkStatus();
-      });
+    }
+    return absl::OkStatus();
+  });
   RETURN_IF_ERROR(future.Await());
   return stream.BlockHostUntilDone();
 }
@@ -850,8 +848,6 @@ absl::Status RunRaggedAllToAll(
   const int64_t* send_sizes = ragged_metadata_allocs[1];
   const int64_t* output_offsets = ragged_metadata_allocs[2];
 
-  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
-
   if (use_put_path) {
     XLA_VLOG_DEVICE(3, device_ordinal)
         << "RunRaggedAllToAll: using Put+Signal path";
@@ -859,35 +855,30 @@ absl::Status RunRaggedAllToAll(
     int64_t element_byte_width = primitive_util::ByteWidth(element_type);
     se::DeviceAddressBase input_buffer = buffers[0].source_buffer;
 
-    Future<> future = gpu_comm->GroupExecute(
-        [num_updates_per_replica, num_ranks, input_offsets, send_sizes,
-         output_offsets, ragged_row_element_size, element_type,
-         element_byte_width, output_base_offset, &input_buffer,
-         output_symmetric_memory,
-         &stream](GpuCommunicator* comm) -> absl::Status {
-          for (int peer = 0; peer < num_ranks; ++peer) {
-            for (int64_t i = 0; i < num_updates_per_replica; ++i) {
-              const int64_t idx = peer * num_updates_per_replica + i;
-              const int64_t send_count =
-                  send_sizes[idx] * ragged_row_element_size;
+    auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
+    Future<> future = gpu_comm->GroupExecute([&]() -> absl::Status {
+      for (int peer = 0; peer < num_ranks; ++peer) {
+        for (int64_t i = 0; i < num_updates_per_replica; ++i) {
+          const int64_t idx = peer * num_updates_per_replica + i;
+          const int64_t send_count = send_sizes[idx] * ragged_row_element_size;
 
-              const se::DeviceAddressBase send_slice = GpuCollectives::Slice(
-                  input_buffer, element_type,
-                  input_offsets[idx] * ragged_row_element_size, send_count);
+          const se::DeviceAddressBase send_slice = GpuCollectives::Slice(
+              input_buffer, element_type,
+              input_offsets[idx] * ragged_row_element_size, send_count);
 
-              const size_t byte_offset =
-                  output_base_offset + output_offsets[idx] *
-                                           ragged_row_element_size *
-                                           element_byte_width;
-              const size_t byte_count = send_count * element_byte_width;
+          const size_t byte_offset =
+              output_base_offset + output_offsets[idx] *
+                                       ragged_row_element_size *
+                                       element_byte_width;
+          const size_t byte_count = send_count * element_byte_width;
 
-              RETURN_IF_ERROR(comm->LaunchPut(
-                  send_slice, output_symmetric_memory, byte_offset, byte_count,
-                  RankId(peer), GpuCollectives::On(stream)));
-            }
-          }
-          return absl::OkStatus();
-        });
+          RETURN_IF_ERROR(gpu_comm->LaunchPut(
+              send_slice, output_symmetric_memory, byte_offset, byte_count,
+              RankId(peer), GpuCollectives::On(stream)));
+        }
+      }
+      return absl::OkStatus();
+    });
     RETURN_IF_ERROR(future.Await());
 
     GpuSignalDesc signal_desc(/*sig_idx=*/0, /*ctx=*/0);
@@ -905,42 +896,38 @@ absl::Status RunRaggedAllToAll(
       << "RunRaggedAllToAll: using Send/Recv path";
   const int64_t* recv_sizes = ragged_metadata_allocs[3];
 
-  Future<> future = gpu_comm->GroupExecute(
-      [num_updates_per_replica, num_ranks, input_offsets, send_sizes,
-       output_offsets, recv_sizes, ragged_row_element_size, &buffers,
-       &stream](GpuCommunicator* comm) -> absl::Status {
-        PrimitiveType element_type = buffers[0].element_type;
+  auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
+  Future<> future = gpu_comm->GroupExecute([&]() -> absl::Status {
+    PrimitiveType element_type = buffers[0].element_type;
 
-        se::DeviceAddressBase input_buffer = buffers[0].source_buffer;
-        se::DeviceAddressBase output_buffer = buffers[1].destination_buffer;
+    se::DeviceAddressBase input_buffer = buffers[0].source_buffer;
+    se::DeviceAddressBase output_buffer = buffers[1].destination_buffer;
 
-        for (int64_t i = 0; i < num_updates_per_replica; ++i) {
-          for (int peer = 0; peer < num_ranks; ++peer) {
-            int64_t idx = peer * num_updates_per_replica + i;
-            se::DeviceAddressBase send_slice = GpuCollectives::Slice(
-                input_buffer, element_type,
-                input_offsets[idx] * ragged_row_element_size,
-                send_sizes[idx] * ragged_row_element_size);
+    for (int64_t i = 0; i < num_updates_per_replica; ++i) {
+      for (int peer = 0; peer < num_ranks; ++peer) {
+        int64_t idx = peer * num_updates_per_replica + i;
+        se::DeviceAddressBase send_slice =
+            GpuCollectives::Slice(input_buffer, element_type,
+                                  input_offsets[idx] * ragged_row_element_size,
+                                  send_sizes[idx] * ragged_row_element_size);
 
-            se::DeviceAddressBase recv_slice = GpuCollectives::Slice(
-                output_buffer, element_type,
-                output_offsets[idx] * ragged_row_element_size,
-                recv_sizes[idx] * ragged_row_element_size);
+        se::DeviceAddressBase recv_slice =
+            GpuCollectives::Slice(output_buffer, element_type,
+                                  output_offsets[idx] * ragged_row_element_size,
+                                  recv_sizes[idx] * ragged_row_element_size);
 
-            RETURN_IF_ERROR(
-                comm->LaunchSend(send_slice, element_type,
-                                 send_sizes[idx] * ragged_row_element_size,
-                                 RankId(peer), GpuCollectives::On(stream)));
+        RETURN_IF_ERROR(gpu_comm->LaunchSend(
+            send_slice, element_type, send_sizes[idx] * ragged_row_element_size,
+            RankId(peer), GpuCollectives::On(stream)));
 
-            RETURN_IF_ERROR(
-                comm->LaunchRecv(recv_slice, element_type,
-                                 recv_sizes[idx] * ragged_row_element_size,
-                                 RankId(peer), GpuCollectives::On(stream)));
-          }
-        }
+        RETURN_IF_ERROR(gpu_comm->LaunchRecv(
+            recv_slice, element_type, recv_sizes[idx] * ragged_row_element_size,
+            RankId(peer), GpuCollectives::On(stream)));
+      }
+    }
 
-        return absl::OkStatus();
-      });
+    return absl::OkStatus();
+  });
   return future.Await();
 }
 

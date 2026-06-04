@@ -612,6 +612,94 @@ TEST_P(CollectivesModeOps, CollectivePermuteCombiner) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({2, 2, 4, 4, 12, 12}, results[3]);
 }
 
+TEST_F(CollectiveOpsTestE2E, CollectiveGroupAllReduceDifferentReplicaGroups) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+
+  add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT add = f32[] add(x, y)
+  }
+
+  grouped_all_reduce {
+    p0 = f32[4] parameter(0)
+    p1 = f32[4] parameter(1)
+    all-start = f32[4] all-reduce-start(p0),
+      replica_groups={{0,1,2,3}}, to_apply=add,
+      backend_config={"collective_backend_config":{"is_sync":true}}
+    pair01_23-start = f32[4] all-reduce-start(p1),
+      replica_groups={{0,1},{2,3}}, to_apply=add,
+      backend_config={"collective_backend_config":{"is_sync":true}}
+    all = f32[4] all-reduce-done(all-start)
+    pair01_23 = f32[4] all-reduce-done(pair01_23-start)
+    ROOT tuple = (f32[4], f32[4]) tuple(all, pair01_23)
+  }
+
+  ENTRY main {
+    p0 = f32[4] parameter(0)
+    p1 = f32[4] parameter(1)
+    start = ((f32[4], f32[4]), (f32[4], f32[4])) async-start(p0, p1),
+      calls=grouped_all_reduce, frontend_attributes={_collectives_group=""}
+    ROOT done = (f32[4], f32[4]) async-done(start)
+  }
+  )";
+  const int64_t kNumReplicas = 4;
+  if (device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << device_count() << " available)";
+  }
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  std::vector<Literal> all_args;
+  std::vector<Literal> pair_args;
+  all_args.reserve(kNumReplicas);
+  pair_args.reserve(kNumReplicas);
+  for (int64_t replica = 0; replica < kNumReplicas; ++replica) {
+    all_args.push_back(LiteralUtil::CreateR1<float>(
+        {static_cast<float>(replica), static_cast<float>(replica),
+         static_cast<float>(replica), static_cast<float>(replica)}));
+    pair_args.push_back(LiteralUtil::CreateR1<float>(
+        {static_cast<float>(replica), static_cast<float>(replica),
+         static_cast<float>(replica), static_cast<float>(replica)}));
+  }
+
+  std::vector<std::vector<Literal*>> args(kNumReplicas);
+  for (int64_t replica = 0; replica < kNumReplicas; ++replica) {
+    args[replica] = {&all_args[replica], &pair_args[replica]};
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module), args));
+
+  std::vector<Literal>& results = execution_result.results;
+  ASSERT_EQ(results.size(), kNumReplicas);
+
+  std::vector<Literal> replica0 = results[0].DecomposeTuple();
+  ASSERT_EQ(replica0.size(), 2);
+  LiteralTestUtil::ExpectR1Equal<float>({6, 6, 6, 6}, replica0[0]);
+  LiteralTestUtil::ExpectR1Equal<float>({1, 1, 1, 1}, replica0[1]);
+
+  std::vector<Literal> replica1 = results[1].DecomposeTuple();
+  ASSERT_EQ(replica1.size(), 2);
+  LiteralTestUtil::ExpectR1Equal<float>({6, 6, 6, 6}, replica1[0]);
+  LiteralTestUtil::ExpectR1Equal<float>({1, 1, 1, 1}, replica1[1]);
+
+  std::vector<Literal> replica2 = results[2].DecomposeTuple();
+  ASSERT_EQ(replica2.size(), 2);
+  LiteralTestUtil::ExpectR1Equal<float>({6, 6, 6, 6}, replica2[0]);
+  LiteralTestUtil::ExpectR1Equal<float>({5, 5, 5, 5}, replica2[1]);
+
+  std::vector<Literal> replica3 = results[3].DecomposeTuple();
+  ASSERT_EQ(replica3.size(), 2);
+  LiteralTestUtil::ExpectR1Equal<float>({6, 6, 6, 6}, replica3[0]);
+  LiteralTestUtil::ExpectR1Equal<float>({5, 5, 5, 5}, replica3[1]);
+}
+
 TEST_P(AsyncCollectiveOps, AsyncReduceScatter) {
   const absl::string_view kModuleStr = R"(
   HloModule test
