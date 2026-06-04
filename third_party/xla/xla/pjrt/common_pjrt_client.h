@@ -218,7 +218,7 @@ class CommonPjRtClient : public PjRtClient {
 
   virtual std::unique_ptr<PjRtDeviceEventSet> CreateDeviceEventSet(
       size_t preallocated_size) const {
-    LOG(FATAL) << "Implement";
+    return std::make_unique<DefaultPjRtDeviceEventSet>(preallocated_size);
   }
 
   tsl::Future<> MakeTrackedReadyFuture(PjRtDeviceEventPtr device_event,

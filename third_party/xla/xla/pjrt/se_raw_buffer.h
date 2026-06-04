@@ -63,33 +63,6 @@ class PjRtStreamExecutorDeviceEventPromise : public PjRtDeviceEventPromise {
   tsl::AsyncValueRef<BufferSequencingEvent> event_;
 };
 
-class PjRtStreamExecutorDeviceEventSet : public PjRtDeviceEventSet {
- public:
-  explicit PjRtStreamExecutorDeviceEventSet(size_t reservation) {
-    events_.reserve(reservation);
-  }
-
-  void AddEvent(PjRtDeviceEventRef event) override;
-  void AddEvent(const BufferSequencingEventRef& event);
-
-  void AppendTo(
-      std::vector<tsl::RCReference<tsl::AsyncValue>>& events) override;
-  void AppendTo(std::vector<PjRtDeviceEventRef>& events) override;
-  void AppendTo(PjRtDeviceEventSet& events) override;
-
-  const absl::flat_hash_set<BufferSequencingEvent*>& events() const {
-    return events_;
-  }
-
-  std::vector<BufferSequencingEventRef> event_refs() && {
-    return std::move(event_refs_);
-  }
-
- private:
-  absl::flat_hash_set<BufferSequencingEvent*> events_;
-  std::vector<BufferSequencingEventRef> event_refs_;
-};
-
 class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBufferImpl {
  public:
   PjRtStreamExecutorRawBuffer(

@@ -404,39 +404,6 @@ void CpuRawBuffer::CopyTo(
   definition_event_promise->Set(*std::move(other_event));
 }
 
-void CpuTrackedDeviceEventSet::AddEvent(PjRtDeviceEventRef event) {
-  if (event) {
-    events_.push_back(tsl::FormRef(event.async_value()));
-  }
-}
-
-void CpuTrackedDeviceEventSet::AddEvent(
-    tsl::RCReference<tsl::AsyncValue> event) {
-  events_.push_back(std::move(event));
-}
-
-void CpuTrackedDeviceEventSet::AppendTo(
-    std::vector<tsl::RCReference<tsl::AsyncValue>>& events) {
-  for (const auto& ev : events_) {
-    events.push_back(ev);
-  }
-}
-
-void CpuTrackedDeviceEventSet::AppendTo(
-    std::vector<PjRtDeviceEventRef>& events) {
-  events.reserve(events.size() + events_.size());
-  for (const auto& ev : events_) {
-    events.push_back(
-        PjRtDeviceEventRef(tsl::AsyncValueRef<tsl::AsyncValue>(ev)));
-  }
-}
-
-void CpuTrackedDeviceEventSet::AppendTo(PjRtDeviceEventSet& events) {
-  for (const auto& ev : events_) {
-    events.AddEvent(PjRtDeviceEventRef(tsl::AsyncValueRef<CpuEvent>(ev)));
-  }
-}
-
 absl::StatusOr<PjRtDeviceEventRef> CpuRawBuffer::CopyRawToRemoteDevice(
     Future<std::string> serialized_descriptor, RemoteSendCallback on_done,
     std::vector<PjRtDeviceEventRef> transfer_dependency_avs) {

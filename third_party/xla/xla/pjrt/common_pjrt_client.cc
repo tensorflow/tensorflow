@@ -27,10 +27,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/base/casts.h"
 #include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -53,6 +55,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
+#include "xla/pjrt/c/pjrt_c_api_device_event.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/device_event_utils.h"
 #include "xla/pjrt/dynamic_shapes.h"
@@ -429,12 +432,11 @@ CommonPjRtClient::BufferFromHostBuffer(
   ASSIGN_OR_RETURN(
       std::tie(definition_event_promise, definition_event),
       CreateLinkedEventPromise(memory_space, "BufferFromHostBuffer"));
-  auto events = hold.buffer()->GetAsyncValueDefinitionAndUsageEvents();
+  auto events = hold.buffer()->GetAsyncValueDefinitionAndUsageDeviceEvents();
   hold.ConfirmDonation();
 
-  absl::Span<const tsl::RCReference<tsl::AsyncValue>> events_span = events;
-  async_work_runner()->ExecuteWhenReady(
-      events_span,
+  xla::ExecuteWhenReady(
+      events, async_work_runner(),
       [this, definition_event_promise = std::move(definition_event_promise),
        data, type, dims, byte_strides, host_buffer_semantics,
        on_done_with_host_buffer = std::move(on_done_with_host_buffer),
@@ -657,6 +659,8 @@ absl::Status CommonPjRtClient::PrepareArguments(
     PjRtDevice* device, int replica, int partition,
     absl::Span<const Shape> parameter_device_shapes, bool& is_error,
     bool allow_fallback_for_donation) {
+  absl::flat_hash_set<void*> extra_deps_seen;
+  absl::flat_hash_set<void*> control_deps_seen;
   if (argument_handles.size() != parameter_device_shapes.size()) {
     return InvalidArgument(
         "Execution supplied %d arguments but compiled program expected %d",
@@ -776,7 +780,22 @@ absl::Status CommonPjRtClient::PrepareArguments(
       }
 
       // Definition events are never modified after buffer construction.
-      is_error |= device_buffer->AddDefinitionEventsToSet(extra_deps);
+      for (const auto& ev : device_buffer->definition_events()) {
+        if (ev) {
+          switch (ev.ptr().state()) {
+            case PJRT_DeviceEvent_State_Error:
+              is_error = true;
+              ABSL_FALLTHROUGH_INTENDED;
+            case PJRT_DeviceEvent_State_Unavailable:
+              if (extra_deps_seen.insert(ev.ptr().ToC().device_event).second) {
+                extra_deps.AddEvent(ev);
+              }
+              break;
+            case PJRT_DeviceEvent_State_Ready:
+              break;
+          }
+        }
+      }
       // If we are trying to donate this buffer, we must wait on its usage
       // events as well as its definition events to ensure that all reads on
       // this buffer (e.g., d2h transfer) have been completed before it can be
@@ -789,7 +808,14 @@ absl::Status CommonPjRtClient::PrepareArguments(
                            tfrt_buffer->GetOnDeviceSizeInBytes());
           donated_buffer_stats.emplace_back(std::make_pair(i, on_device_size));
         }
-        device_buffer->AddUsageEventsToSet(control_deps);
+        for (const auto& ev : device_buffer->usage_events()) {
+          if (ev.ptr().state() == PJRT_DeviceEvent_State_Ready) {
+            continue;
+          }
+          if (control_deps_seen.insert(ev.ptr().ToC().device_event).second) {
+            control_deps.AddEvent(ev);
+          }
+        }
       }
     }
     // Debug logging of buffer donation and input buffer shapes and size.

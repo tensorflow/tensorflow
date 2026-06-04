@@ -112,6 +112,7 @@ limitations under the License.
 #include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/device_event.h"
+#include "xla/pjrt/device_event_utils.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/dump/dump.h"
 #include "xla/pjrt/dynamic_shapes.h"
@@ -1795,6 +1796,14 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
   int command_buffer_va_range_idx =
       GetNextCommandBufferVaRangeIdx(executable_->executable(), device_ordinal);
 
+  std::vector<PjRtDeviceEventRef> extra_deps_vec =
+      std::move(
+          *tensorflow::down_cast<DefaultPjRtDeviceEventSet*>(extra_deps.get()))
+          .Consume();
+  std::vector<PjRtDeviceEventRef> control_deps_vec =
+      std::move(*tensorflow::down_cast<DefaultPjRtDeviceEventSet*>(
+                    control_deps.get()))
+          .Consume();
   auto launch_on_device =
       [device_state, gpu_run_options = client_->gpu_run_options(options),
        launch_id = options.launch_id, run_id = run_id_,
@@ -1811,14 +1820,9 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
        on_device_executable_parameter_shapes =
            on_device_executable_parameter_shapes_,
        replica = replica_, partition = partition_,
-       extra_deps =
-           std::move(*tensorflow::down_cast<PjRtStreamExecutorDeviceEventSet*>(
-                         extra_deps.get()))
-               .event_refs(),
+       extra_deps = std::move(extra_deps_vec),
        control_deps =
-           std::move(*tensorflow::down_cast<PjRtStreamExecutorDeviceEventSet*>(
-                         control_deps.get()))
-               .event_refs()]() mutable -> PjRtDeviceEventRef {
+           std::move(control_deps_vec)]() mutable -> PjRtDeviceEventRef {
     ExecutableRunOptions run_options;
     run_options.set_stream(device_state->compute_stream());
     run_options.set_device_ordinal(device_state->local_device_id().value());
@@ -1851,17 +1855,30 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
     }
 
     absl::Status predetermined_error;
-    for (BufferSequencingEventRef& event : extra_deps) {
-      if (event->IsPredeterminedError()) {
-        if (predetermined_error.ok()) {
-          predetermined_error = event->GetDefinedStatus();
+    for (PjRtDeviceEventRef& event : extra_deps) {
+      if (auto ev = event.down_cast<BufferSequencingEvent>()) {
+        if (ev->IsPredeterminedError()) {
+          if (predetermined_error.ok()) {
+            predetermined_error = ev->GetDefinedStatus();
+          }
+        }
+        ev->WaitForEventOnStream(device_state->compute_stream());
+      } else if (event) {
+        xla::BlockUntilReady(event);
+        if (auto error = event.GetErrorIfPresent()) {
+          if (predetermined_error.ok()) {
+            predetermined_error = *error;
+          }
         }
       }
-      event->WaitForEventOnStream(device_state->compute_stream());
     }
 
-    for (BufferSequencingEventRef& event : control_deps) {
-      event->WaitForEventOnStream(device_state->compute_stream());
+    for (PjRtDeviceEventRef& event : control_deps) {
+      if (auto ev = event.down_cast<BufferSequencingEvent>()) {
+        ev->WaitForEventOnStream(device_state->compute_stream());
+      } else if (event) {
+        xla::BlockUntilReady(event);
+      }
     }
 
     if (is_predetermined_error) {
@@ -2077,11 +2094,6 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
   execute_results.future = std::move(maybe_future);
   execute_results.primary_execute_event = std::move(definition_event);
   return execute_results;
-}
-
-std::unique_ptr<PjRtDeviceEventSet>
-PjRtStreamExecutorClient::CreateDeviceEventSet(size_t preallocated_size) const {
-  return std::make_unique<PjRtStreamExecutorDeviceEventSet>(preallocated_size);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>>

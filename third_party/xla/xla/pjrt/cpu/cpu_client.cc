@@ -74,6 +74,7 @@ limitations under the License.
 #include "xla/pjrt/cpu/raw_buffer.h"
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/device_event.h"
+#include "xla/pjrt/device_event_utils.h"
 #include "xla/pjrt/dump/dump.h"
 #include "xla/pjrt/dynamic_shapes.h"
 #include "xla/pjrt/host_callback.h"
@@ -1135,11 +1136,6 @@ PjRtCpuClient::CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
                         std::move(definition_event));
 }
 
-std::unique_ptr<PjRtDeviceEventSet> PjRtCpuClient::CreateDeviceEventSet(
-    size_t preallocated_size) const {
-  return std::make_unique<CpuTrackedDeviceEventSet>(preallocated_size);
-}
-
 absl::StatusOr<PjRtRawBufferRef> PjRtCpuClient::AllocateRawBuffer(
     PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
     bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after) {
@@ -1575,10 +1571,10 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
       tsl::MakeConstructedAsyncValueRef<CpuEvent>();
 
   auto& input_deps =
-      *absl::down_cast<CpuTrackedDeviceEventSet*>(control_deps.get());
+      *absl::down_cast<DefaultPjRtDeviceEventSet*>(control_deps.get());
   size_t num_control_deps = input_deps.events().size();
   for (auto& event :
-       std::move(*absl::down_cast<CpuTrackedDeviceEventSet*>(extra_deps.get()))
+       std::move(*absl::down_cast<DefaultPjRtDeviceEventSet*>(extra_deps.get()))
            .Consume()) {
     input_deps.AddEvent(std::move(event));
   }
@@ -1680,9 +1676,9 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
     // We only created enough threads for one collective to complete.
     // The next collective launch will not be scheduled onto threadpool until
     // this one completes.
-    input_deps.AddEvent(client_->GetCollectiveLaunchEvent(
+    input_deps.AddEvent(PjRtDeviceEventRef(client_->GetCollectiveLaunchEvent(
         run_id_, reinterpret_cast<uint64_t>(executable_),
-        num_addressable_devices_, execute_event));
+        num_addressable_devices_, execute_event)));
   } else {
     // This is a non-parallel computation. Add the last enqueue event as a
     // dependency with any error cleared.
@@ -1695,7 +1691,8 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
           [last_enqueue_done_event = last_enqueue_done_event.CopyRef()]() {
             last_enqueue_done_event.emplace();
           });
-      input_deps.AddEvent(std::move(last_enqueue_done_event));
+      input_deps.AddEvent(
+          PjRtDeviceEventRef(std::move(last_enqueue_done_event)));
     }
   }
   if (options.context != nullptr) {
@@ -1820,13 +1817,12 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
         stream_event_map->Clear(execution_stream_id, self);
       });
     }
-    absl::Span<const tsl::RCReference<tsl::AsyncValue>> events_avs_ref =
-        input_deps.events();
     CpuScopedAsyncExecution scoped_async_execution =
         device_->async_execution_tracker()->NewAsyncExecution(
             run_id_.ToInt(), std::move(ready_on_exit).Release());
-    client->async_work_runner()->ExecuteWhenReady(
-        events_avs_ref,
+    absl::Span<const PjRtDeviceEventRef> events_ref = input_deps.events();
+    xla::ExecuteWhenReady(
+        events_ref, client->async_work_runner(),
         [cpu_executable, buffer_alloc = std::move(buffer_alloc),
          buffer_alloc_and_copy = std::move(buffer_alloc_and_copy),
          execute_thunks = std::move(execute_thunks),
@@ -1847,9 +1843,9 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
           buffer_alloc_and_copy.AllocateAndCopy(*allocator);
 
           size_t i = 0;
-          for (const auto& av : input_deps_avs) {
+          for (const auto& event : input_deps_avs) {
             if (i >= num_control_deps) {
-              if (auto* error = av->GetErrorIfPresent()) {
+              if (auto error = event.GetErrorIfPresent()) {
                 scoped_async_execution.SetError(Internal(
                     "Error dispatching computation: %s", error->message()));
                 returned_future_can_be_set_event.SetStateConcrete();

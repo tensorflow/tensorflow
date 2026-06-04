@@ -71,33 +71,6 @@ class CpuTrackedDeviceEventPromise : public PjRtDeviceEventPromise {
 tsl::AsyncValueRef<CpuEvent> AfterAllCpuEvents(
     absl::Span<const PjRtDeviceEventRef> events);
 
-class CpuTrackedDeviceEventSet : public PjRtDeviceEventSet {
- public:
-  explicit CpuTrackedDeviceEventSet(size_t reservation) {
-    events_.reserve(reservation);
-  }
-
-  void AddEvent(PjRtDeviceEventRef event) override;
-
-  void AddEvent(tsl::RCReference<tsl::AsyncValue> event);
-
-  void AppendTo(
-      std::vector<tsl::RCReference<tsl::AsyncValue>>& events) override;
-  void AppendTo(std::vector<PjRtDeviceEventRef>& events) override;
-  void AppendTo(PjRtDeviceEventSet& events) override;
-
-  absl::Span<const tsl::RCReference<tsl::AsyncValue>> events() const {
-    return events_;
-  }
-
-  std::vector<tsl::RCReference<tsl::AsyncValue>> Consume() && {
-    return std::move(events_);
-  }
-
- private:
-  std::vector<tsl::RCReference<tsl::AsyncValue>> events_;
-};
-
 class CpuRawBuffer : public CommonPjRtRawBufferImpl {
  public:
   CpuRawBuffer(PjRtMemorySpace* memory_space,
