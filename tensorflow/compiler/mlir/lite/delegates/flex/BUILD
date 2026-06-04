@@ -3,7 +3,6 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_mobile",
     "if_not_mobile",
-    "tf_features_nolayering_check_if_ios",
 )
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
@@ -37,7 +36,6 @@ cc_library(
         "//tensorflow:android": ["-Wno-private-header"],
         "//conditions:default": [],
     }),
-    features = tf_features_nolayering_check_if_ios(),
     visibility = internal_visibility_allowlist(),
     deps = if_mobile([
         "//tensorflow/core:portable_tensorflow_lib_lite",

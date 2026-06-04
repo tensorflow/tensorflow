@@ -6,6 +6,12 @@ package(
     licenses = ["notice"],
 )
 
+filegroup(
+    name = "hdrs",
+    srcs = ["jxl_io.h"],
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "jxl_io",
     srcs = ["jxl_io.cc"],

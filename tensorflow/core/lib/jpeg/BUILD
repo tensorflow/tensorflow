@@ -20,6 +20,12 @@ package(
     licenses = ["notice"],
 )
 
+filegroup(
+    name = "hdrs",
+    srcs = ["jpeg_mem.h"],
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "jpeg_internal",
     srcs = [
