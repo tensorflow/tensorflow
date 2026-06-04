@@ -25,7 +25,7 @@ cc_library(
     name = "half",
     hdrs = [
         "bit_cast.h",
-        "fp16.h",
+        "fp16_internal.h",
         "half.h",
     ],
     # copybara:uncomment_begin(google-only)

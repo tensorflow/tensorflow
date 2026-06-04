@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_TYPES_FP16_H_
-#define TENSORFLOW_LITE_TYPES_FP16_H_
+#ifndef TENSORFLOW_LITE_TYPES_FP16_INTERNAL_H_
+#define TENSORFLOW_LITE_TYPES_FP16_INTERNAL_H_
 
 #include <stdint.h>
 
@@ -227,4 +227,4 @@ static inline uint16_t fp16_ieee_from_fp32_value(float f) {
 
 #endif  // !defined(FP16_H) && !defined(FP16_BITCASTS_H)
 
-#endif  // TENSORFLOW_LITE_TYPES_FP16_H_
+#endif  // TENSORFLOW_LITE_TYPES_FP16_INTERNAL_H_
