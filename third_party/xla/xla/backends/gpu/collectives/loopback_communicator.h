@@ -21,7 +21,6 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/inlined_vector.h"
-#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -53,8 +52,6 @@ class LoopbackCommunicator : public GpuCommunicator {
   absl::StatusOr<size_t> NumRanks() const final;
   absl::StatusOr<size_t> CurrentRank() final;
   std::string ToString() const final;
-  Future<> GroupExecute(
-      absl::AnyInvocable<absl::Status(GpuCommunicator*)> f) final;
 
   Future<> AllReduce(se::DeviceAddressBase send_buffer,
                      se::DeviceAddressBase recv_buffer, PrimitiveType dtype,

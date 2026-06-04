@@ -18,22 +18,24 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
+#include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
-#include "xla/core/collectives/communicator.h"
 #include "xla/future.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/util.h"
 
@@ -56,41 +58,38 @@ std::string CollectiveGroupThunk::ToString(int indent) const {
   return absl::StrCat("\n", executor_.thunks().ToString(indent + 1));
 }
 
-absl::StatusOr<GpuCliqueKey> CollectiveGroupThunk::GetCliqueKey(
-    const Thunk& thunk, const Thunk::ExecuteParams& params) {
-  // Gather the set of all cliques. There should be only one.
-  absl::flat_hash_set<GpuCliqueKey> clique_set;
-  RETURN_IF_ERROR(thunk.Walk([&](const Thunk* nested) -> absl::Status {
-    if (auto* collective = dynamic_cast<const CollectiveThunk*>(nested)) {
-      ASSIGN_OR_RETURN(GpuCliqueKey clique_key,
-                       collective->GetCliqueKey(params));
-      clique_set.insert(std::move(clique_key));
-    }
-    return absl::OkStatus();
-  }));
-
-  if (clique_set.empty()) {
-    return InvalidArgument("No clique in NCCL group");
-  }
-  if (clique_set.size() > 1) {
-    return InvalidArgument("More than one clique in NCCL group");
-  }
-
-  return *clique_set.begin();
-}
-
 absl::Status CollectiveGroupThunk::ExecuteOnStream(
     const Thunk::ExecuteParams& params) {
-  ASSIGN_OR_RETURN(GpuCliqueKey clique_key, GetCliqueKey(*this, params));
-  ASSIGN_OR_RETURN(Communicator * comm,
-                   params.collective_cliques->GetComm(
-                       clique_key, params.collective_params->global_device_id));
-  auto* gpu_comm = absl::down_cast<GpuCommunicator*>(comm);
-  Future<> group_future = gpu_comm->GroupExecute(
-      [this, &params](GpuCommunicator* comm) -> absl::Status {
-        return executor_.ExecuteOnStream(params);
-      });
-  return group_future.Await();
+  GlobalDeviceId global_device_id = params.collective_params->global_device_id;
+
+  // Collect all communicators used by nested thunks.
+  std::vector<GpuCommunicator*> comms;
+  for (const std::unique_ptr<Thunk>& thunk : executor_.thunks()) {
+    auto* collective_thunk = absl::down_cast<CollectiveThunk*>(thunk.get());
+    ASSIGN_OR_RETURN(auto clique_key, collective_thunk->GetCliqueKey(params));
+    ASSIGN_OR_RETURN(GpuCommunicator * comm, params.collective_cliques->GetComm(
+                                                 clique_key, global_device_id));
+    if (!absl::c_contains(comms, comm)) {
+      comms.push_back(comm);
+    }
+  }
+
+  // It is a bug if collective group was formed with no collective ops.
+  if (comms.empty()) {
+    return InvalidArgument(
+        "Collective group must have at least one nested collective thunk");
+  }
+
+  // If nested thunks use a single comm, use it directly to execute the group.
+  if (comms.size() == 1) {
+    Future<> executed = comms.front()->GroupExecute(
+        [&] { return executor_.ExecuteOnStream(params); });
+    return executed.Await();
+  }
+
+  // Otherwise use a multi-comm group launch.
+  return params.collective_params->collectives->GroupLaunch(
+      comms, [&] { return executor_.ExecuteOnStream(params); });
 }
 
 absl::Status CollectiveGroupThunk::WalkNested(Walker callback) {

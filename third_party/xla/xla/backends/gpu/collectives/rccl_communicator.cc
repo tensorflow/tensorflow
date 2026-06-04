@@ -27,12 +27,12 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/functional/function_ref.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "rocm/include/hip/hip_runtime.h"
@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/collectives/rccl_errors.h"
+#include "xla/backends/gpu/collectives/rccl_group.h"
 #include "xla/backends/gpu/collectives/rccl_symmetric_memory.h"
 #include "xla/backends/gpu/collectives/single_threaded_executor.h"
 #include "xla/core/collectives/communicator.h"
@@ -58,7 +59,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/casts.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -256,13 +257,19 @@ absl::StatusOr<size_t> RcclCommunicator::NumRanks() const {
 }
 
 Future<> RcclCommunicator::GroupExecute(
-    absl::AnyInvocable<absl::Status(GpuCommunicator*)> f) {
-  return Execute([f = std::move(f), this]() mutable -> absl::Status {
-    RETURN_IF_ERROR(GroupStart());
-    RETURN_IF_ERROR(f(this));
-    RETURN_IF_ERROR(GroupEnd());
-    return absl::OkStatus();
+    absl::AnyInvocable<absl::Status() &&> group) {
+  return Execute([group = std::move(group), this]() mutable {
+    return GroupLaunch([&] { return std::move(group)(); });
   });
+}
+
+absl::Status RcclCommunicator::GroupLaunch(
+    absl::FunctionRef<absl::Status()> group) {
+  ASSIGN_OR_RETURN(bool launched, RcclGroupLaunch(group));
+  if (launched) {
+    return PollUntilDone();
+  }
+  return absl::OkStatus();
 }
 
 Future<> RcclCommunicator::AllReduce(se::DeviceAddressBase send_buffer,
@@ -348,29 +355,6 @@ Future<> RcclCommunicator::Recv(se::DeviceAddressBase recv_buffer,
   });
 }
 
-absl::Status RcclCommunicator::GroupStart() {
-  VLOG(5) << "Start RCCL group";
-  XLA_RCCL_RETURN_IF_ERROR(ncclGroupStart());
-  group_nesting_level_++;
-  return absl::OkStatus();
-}
-
-absl::Status RcclCommunicator::GroupEnd() {
-  VLOG(5) << "End RCCL group";
-  XLA_RCCL_RETURN_IF_ERROR(ncclGroupEnd());
-  group_nesting_level_--;
-  if (group_nesting_level_ > 0) {
-    // Though NCCL allows groups to be nested, no operations are actually
-    // performed until the outermost group ends. The inner calls to
-    // GroupStart() and GroupEnd() are effectively noops.
-    //
-    // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/groups.html
-    return absl::OkStatus();
-  }
-  // Wait for the communicator to finish.
-  return PollUntilDone();
-}
-
 absl::Status RcclCommunicator::LaunchAllReduce(
     se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
     PrimitiveType dtype, size_t count, ReductionKind reduction_kind,
@@ -398,7 +382,7 @@ absl::Status RcclCommunicator::LaunchAllReduce(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
       nccl_dtype, ToNcclReduction(reduction_kind), comm_,
       AsHipStream(stream))));
-  if (group_nesting_level_ == 0) {
+  if (!IsInsideRcclGroupLaunch()) {
     RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
@@ -429,7 +413,7 @@ absl::Status RcclCommunicator::LaunchBroadcast(
   RETURN_IF_ERROR(XLA_RCCL_STATUS(ncclBroadcast(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
       nccl_dtype, root.value(), comm_, AsHipStream(stream))));
-  if (group_nesting_level_ == 0) {
+  if (!IsInsideRcclGroupLaunch()) {
     RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
@@ -462,7 +446,7 @@ absl::Status RcclCommunicator::LaunchReduceScatter(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
       nccl_dtype, ToNcclReduction(reduction_kind), comm_,
       AsHipStream(stream))));
-  if (group_nesting_level_ == 0) {
+  if (!IsInsideRcclGroupLaunch()) {
     RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
@@ -492,7 +476,7 @@ absl::Status RcclCommunicator::LaunchAllGather(
   RETURN_IF_ERROR(XLA_RCCL_STATUS(ncclAllGather(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
       nccl_dtype, comm_, AsHipStream(stream))));
-  if (group_nesting_level_ == 0) {
+  if (!IsInsideRcclGroupLaunch()) {
     RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
@@ -540,21 +524,21 @@ absl::Status RcclCommunicator::LaunchAllToAll(
           dtype, /*is_reduction_op=*/false,
           stream->parent()->GetDeviceDescription().rocm_compute_capability()));
 
-  RETURN_IF_ERROR(GroupStart());
-  for (size_t i = 0; i < send_buffers.size(); ++i) {
-    se::DeviceAddressBase send_buffer = send_buffers[i];
-    se::DeviceAddressBase recv_buffer = recv_buffers[i];
+  auto group = [&] {
+    for (size_t i = 0; i < send_buffers.size(); ++i) {
+      se::DeviceAddressBase send_buffer = send_buffers[i];
+      se::DeviceAddressBase recv_buffer = recv_buffers[i];
 
-    XLA_RCCL_RETURN_IF_ERROR(ncclSend(send_buffer.opaque(),
-                                      ToNcclCount(dtype, count), nccl_dtype, i,
-                                      comm_, AsHipStream(stream)));
-
-    XLA_RCCL_RETURN_IF_ERROR(ncclRecv(recv_buffer.opaque(),
-                                      ToNcclCount(dtype, count), nccl_dtype, i,
-                                      comm_, AsHipStream(stream)));
-  }
-  RETURN_IF_ERROR(GroupEnd());
-  return absl::OkStatus();
+      XLA_RCCL_RETURN_IF_ERROR(ncclSend(send_buffer.opaque(),
+                                        ToNcclCount(dtype, count), nccl_dtype,
+                                        i, comm_, AsHipStream(stream)));
+      XLA_RCCL_RETURN_IF_ERROR(ncclRecv(recv_buffer.opaque(),
+                                        ToNcclCount(dtype, count), nccl_dtype,
+                                        i, comm_, AsHipStream(stream)));
+    }
+    return absl::OkStatus();
+  };
+  return GroupLaunch(group);
 }
 
 absl::Status RcclCommunicator::LaunchCollectivePermute(
@@ -590,23 +574,23 @@ absl::Status RcclCommunicator::LaunchCollectivePermute(
     return absl::OkStatus();
   }
 
-  RETURN_IF_ERROR(GroupStart());
+  auto group = [&] {
+    if (source_rank) {
+      XLA_RCCL_RETURN_IF_ERROR(
+          ncclRecv(recv_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
+                   source_rank->value(), comm_, AsHipStream(stream)));
+    }
 
-  if (source_rank) {
-    XLA_RCCL_RETURN_IF_ERROR(
-        ncclRecv(recv_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
-                 source_rank->value(), comm_, AsHipStream(stream)));
-  }
+    for (RankId target_rank : target_ranks) {
+      XLA_RCCL_RETURN_IF_ERROR(
+          ncclSend(send_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
+                   target_rank.value(), comm_, AsHipStream(stream)));
+    }
 
-  for (auto target_rank : target_ranks) {
-    XLA_RCCL_RETURN_IF_ERROR(
-        ncclSend(send_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
-                 target_rank.value(), comm_, AsHipStream(stream)));
-  }
+    return absl::OkStatus();
+  };
 
-  RETURN_IF_ERROR(GroupEnd());
-
-  return absl::OkStatus();
+  return GroupLaunch(group);
 }
 
 absl::Status RcclCommunicator::LaunchSend(se::DeviceAddressBase send_buffer,
@@ -634,7 +618,7 @@ absl::Status RcclCommunicator::LaunchSend(se::DeviceAddressBase send_buffer,
   RETURN_IF_ERROR(XLA_RCCL_STATUS(
       ncclSend(send_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
                peer.value(), comm_, AsHipStream(stream))));
-  if (group_nesting_level_ == 0) {
+  if (!IsInsideRcclGroupLaunch()) {
     RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
@@ -665,7 +649,7 @@ absl::Status RcclCommunicator::LaunchRecv(se::DeviceAddressBase recv_buffer,
   RETURN_IF_ERROR(XLA_RCCL_STATUS(
       ncclRecv(recv_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
                peer.value(), comm_, AsHipStream(stream))));
-  if (group_nesting_level_ == 0) {
+  if (!IsInsideRcclGroupLaunch()) {
     RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();

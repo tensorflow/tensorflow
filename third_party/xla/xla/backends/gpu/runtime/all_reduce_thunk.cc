@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -53,7 +54,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/casts.h"
 
 namespace xla {
 namespace gpu {
@@ -98,18 +98,15 @@ absl::Status RunAllReduce(ReductionKind reduction_kind,
                           bool use_symmetric_buffer) {
   int device_ordinal = stream.parent()->device_ordinal();
   XLA_VLOG_DEVICE(3, device_ordinal) << "Performing all-reduce";
-  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
-  Future<> future =
-      gpu_comm->GroupExecute([reduction_kind, &buffers,
-                              &stream](GpuCommunicator* comm) -> absl::Status {
-        for (DeviceBufferPair& buffer : buffers) {
-          RETURN_IF_ERROR(comm->LaunchAllReduce(
-              buffer.source_buffer, buffer.destination_buffer,
-              buffer.element_type, buffer.element_count, reduction_kind,
-              GpuCollectives::On(stream)));
-        }
-        return absl::OkStatus();
-      });
+  auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
+  Future<> future = gpu_comm->GroupExecute([&]() -> absl::Status {
+    for (DeviceBufferPair& buffer : buffers) {
+      RETURN_IF_ERROR(gpu_comm->LaunchAllReduce(
+          buffer.source_buffer, buffer.destination_buffer, buffer.element_type,
+          buffer.element_count, reduction_kind, GpuCollectives::On(stream)));
+    }
+    return absl::OkStatus();
+  });
   RETURN_IF_ERROR(future.Await());
   XLA_VLOG_DEVICE(3, device_ordinal) << "Done performing all-reduce";
   return absl::OkStatus();
@@ -363,24 +360,22 @@ absl::Status RunReduceScatter(ReductionKind reduction_kind,
 
   ASSIGN_OR_RETURN(int32_t num_ranks, comm.NumRanks());
 
-  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
-  Future<> future =
-      gpu_comm->GroupExecute([num_ranks, reduction_kind, &buffers,
-                              &stream](GpuCommunicator* comm) -> absl::Status {
-        for (DeviceBufferPair& buffer : buffers) {
-          // buffer.element_count is the source buffers element count. For
-          // ncclReduceScatter, we need the destination buffers element count.
-          TF_RET_CHECK(buffer.element_count % num_ranks == 0)
-              << "Source buffer was not an exact multiple of the number of "
-                 "participants.";
+  auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
+  Future<> future = gpu_comm->GroupExecute([&]() -> absl::Status {
+    for (DeviceBufferPair& buffer : buffers) {
+      // buffer.element_count is the source buffers element count. For
+      // ncclReduceScatter, we need the destination buffers element count.
+      TF_RET_CHECK(buffer.element_count % num_ranks == 0)
+          << "Source buffer was not an exact multiple of the number of "
+             "participants.";
 
-          RETURN_IF_ERROR(comm->LaunchReduceScatter(
-              buffer.source_buffer, buffer.destination_buffer,
-              buffer.element_type, buffer.element_count / num_ranks,
-              reduction_kind, GpuCollectives::On(stream)));
-        }
-        return absl::OkStatus();
-      });
+      RETURN_IF_ERROR(gpu_comm->LaunchReduceScatter(
+          buffer.source_buffer, buffer.destination_buffer, buffer.element_type,
+          buffer.element_count / num_ranks, reduction_kind,
+          GpuCollectives::On(stream)));
+    }
+    return absl::OkStatus();
+  });
   RETURN_IF_ERROR(future.Await());
   XLA_VLOG_DEVICE(3, device_ordinal) << "Done performing reduce-scatter";
   return absl::OkStatus();

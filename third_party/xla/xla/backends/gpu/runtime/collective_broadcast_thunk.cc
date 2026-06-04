@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/casts.h"
 
 namespace xla::gpu {
 
@@ -118,20 +118,19 @@ absl::Status CollectiveBroadcastThunk::RunCollective(
 
 absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
                                     se::Stream& stream, Communicator& comm) {
-  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
-  Future<> future = gpu_comm->GroupExecute(
-      [&buffers, &stream](GpuCommunicator* comm) -> absl::Status {
-        for (auto buffer : buffers) {
-          se::DeviceAddressBase src_addr = buffer.source_buffer;
-          se::DeviceAddressBase dest_addr = buffer.destination_buffer;
-          RETURN_IF_ERROR(comm->LaunchBroadcast(
-              // Always use rank 0 since we always broadcast from the first id
-              // in replica_groups
-              src_addr, dest_addr, buffer.element_type, buffer.element_count,
-              RankId(0), GpuCollectives::On(stream)));
-        }
-        return absl::OkStatus();
-      });
+  auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
+  Future<> future = gpu_comm->GroupExecute([&]() -> absl::Status {
+    for (auto buffer : buffers) {
+      se::DeviceAddressBase src_addr = buffer.source_buffer;
+      se::DeviceAddressBase dest_addr = buffer.destination_buffer;
+      RETURN_IF_ERROR(gpu_comm->LaunchBroadcast(
+          // Always use rank 0 since we always broadcast from the first id
+          // in replica_groups
+          src_addr, dest_addr, buffer.element_type, buffer.element_count,
+          RankId(0), GpuCollectives::On(stream)));
+    }
+    return absl::OkStatus();
+  });
   return future.Await();
 }
 
