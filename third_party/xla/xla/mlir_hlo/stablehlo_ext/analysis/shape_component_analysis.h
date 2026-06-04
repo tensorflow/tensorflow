@@ -151,12 +151,7 @@ struct DenseMapInfo<mlir::stablehlo_ext::ShapeComponentAnalysis::Symbol> {
                 DenseMapInfo::getEmptyKey(),
             llvm::DenseMapInfo<size_t>::getEmptyKey()};
   }
-  static inline mlir::stablehlo_ext::ShapeComponentAnalysis::Symbol
-  getTombstoneKey() {
-    return {mlir::stablehlo_ext::ShapeComponentAnalysis::ShapeOrValueInfo::
-                DenseMapInfo::getTombstoneKey(),
-            llvm::DenseMapInfo<size_t>::getTombstoneKey()};
-  }
+
   static unsigned getHashValue(
       mlir::stablehlo_ext::ShapeComponentAnalysis::Symbol symbol) {
     return llvm::hash_combine(
