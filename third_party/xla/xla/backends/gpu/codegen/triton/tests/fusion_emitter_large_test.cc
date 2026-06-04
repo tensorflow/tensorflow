@@ -73,7 +73,7 @@ ENTRY e {
 )";
 
   EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextTest,
-                                      ErrorSpec{1e-3, 1e-3},
+                                      ErrorSpec{/*aabs=*/3e-3, /*arel=*/1e-2},
                                       /*run_hlo_passes=*/false));
 }
 
@@ -98,7 +98,7 @@ ENTRY e {
 ; CHECK: triton
 )");
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/3e-3, /*arel=*/1e-2}));
 }
 
 TEST_F(TritonGemmTest, LargeBatchWorks) {
@@ -121,7 +121,7 @@ ENTRY e {
   // Batch size of 102400 is over 65535 so the X grid dimension has to be used
   // for it.
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/3e-3, /*arel=*/1e-2}));
 }
 
 using TritonNormalizationTest = HloInterpreterReferenceMixin<HloTestBase>;

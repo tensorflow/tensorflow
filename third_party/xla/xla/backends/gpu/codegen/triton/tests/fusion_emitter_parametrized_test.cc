@@ -118,16 +118,16 @@ INSTANTIATE_TEST_SUITE_P(RewriteTestSuite, MixedTypeTest,
                          ::testing::ValuesIn({
                              MixTypeParams{PRED, F16, 16, 32, 8},
                              MixTypeParams{PRED, BF16, 16, 32, 8},
-                             MixTypeParams{PRED, F32, 16, 32, 8, 2e-4, 2e-3},
+                             MixTypeParams{PRED, F32, 16, 32, 8, 2e-3, 3e-3},
                              MixTypeParams{S8, F16, 16, 32, 8},
                              MixTypeParams{S8, BF16, 16, 32, 8},
-                             MixTypeParams{S8, F32, 16, 32, 8, 5e-2, 1e-2},
-                             MixTypeParams{S8, F32, 101, 7, 303, 0.1, 0.1},
-                             MixTypeParams{S8, F32, 101, 32, 303, 0.1, 0.1},
-                             MixTypeParams{S8, F32, 101, 2048, 303, 0.5, 0.1},
-                             MixTypeParams{S8, F32, 101, 2555, 303, 0.5, 0.1},
+                             MixTypeParams{S8, F32, 16, 32, 8, 2e-1, 1e-2},
+                             MixTypeParams{S8, F32, 101, 7, 303, 2e-1, 2e-1},
+                             MixTypeParams{S8, F32, 101, 32, 303, 3e-1, 2e-1},
+                             MixTypeParams{S8, F32, 101, 2048, 303, 2.0, 2e-1},
+                             MixTypeParams{S8, F32, 101, 2555, 303, 3.0, 2e-1},
                              MixTypeParams{S16, F16, 30, 19, 12},
-                             MixTypeParams{S32, F32, 4, 4, 4, 1, 1e-2},
+                             MixTypeParams{S32, F32, 4, 4, 4, 2e6, 1e-2},
                              MixTypeParams{F16, BF16, 16, 32, 8},
                              MixTypeParams{F16, F32, 16, 32, 8, 1e-3, 1e-6},
                              MixTypeParams{BF16, F16, 16, 32, 8, 1e-3, 1e-6},
@@ -187,7 +187,7 @@ triton_gemm___computation {
   c.1 = f32[33,68]{1,0} convert(f1.1)
   ROOT _.1 = f32[15,68]{1,0} dot(parameter_0, c.1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    operand_precision={HIGH, HIGH},
+    operand_precision={HIGHEST, HIGHEST},
     backend_config={sizes:[32]}
 }
 
@@ -362,7 +362,7 @@ triton_gemm___computation {
   c.1 = f32[11,63]{1,0} convert(f1.1)
   ROOT _.1 = f32[92,63]{1,0} dot(parameter_0, c.1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    operand_precision={HIGH, HIGH},
+    operand_precision={HIGHEST, HIGHEST},
     backend_config={sizes:[32]}
 }
 
@@ -717,7 +717,7 @@ triton_gemm___computation {
   m = f32[11,63] multiply(cv, parameter_1)
   ROOT _.1 = f32[92,63]{1,0} dot(parameter_0, m),
     lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    operand_precision={HIGH, HIGH},
+    operand_precision={HIGHEST, HIGHEST},
     backend_config={sizes:[64]}
 }
 

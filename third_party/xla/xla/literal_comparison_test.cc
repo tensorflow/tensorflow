@@ -15,11 +15,17 @@ limitations under the License.
 
 #include "xla/literal_comparison.h"
 
+#include <string>
+#include <vector>
+
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
 
@@ -118,6 +124,78 @@ TYPED_TEST(LiteralComparisonTest, FloatUsingCompareNear_NotEqual_4ulps) {
   EXPECT_IS_OK(literal_comparison::Near(expected, actual, error_spec,
                                         /*detailed_message=*/false,
                                         /*miscompare_callback=*/nullptr));
+}
+
+TEST(LiteralComparisonSuggestionsTest, SuggestErrorSpec) {
+  // Create expected and actual literals that will fail standard comparison
+  // in a way that generates multiple distinct candidates.
+  // Element 1: actual = 1.002,  expected = 1.0   -> abs_err = 0.002,  rel_err =
+  // 0.002 Element 2: actual = 20.04,  expected = 20.0  -> abs_err = 0.04,
+  // rel_err = 0.002 Element 3: actual = 0.0511, expected = 0.05  -> abs_err =
+  // 0.0011, rel_err = 0.022
+
+  auto expected = LiteralUtil::CreateR1<float>({1.0f, 20.0f, 0.05f});
+  auto actual = LiteralUtil::CreateR1<float>({1.002f, 20.04f, 0.0511f});
+
+  ErrorSpec error_spec(0.001, 0.001);
+
+  absl::Status status =
+      literal_comparison::Near(expected, actual, error_spec,
+                               /*detailed_message=*/true,
+                               /*miscompare_callback=*/nullptr);
+
+  EXPECT_FALSE(status.ok());
+  std::string error_message = std::string(status.message());
+
+  // Verify that suggestions are present
+  EXPECT_TRUE(absl::StrContains(
+      error_message, "Suggested ErrorSpec adjustments to make this test pass:"))
+      << "Actual message:\n"
+      << error_message;
+
+  // Verify specific options (rounded to 1 sig fig)
+  EXPECT_TRUE(absl::StrContains(error_message, "ErrorSpec{0.05, 0.001}"))
+      << "Actual message:\n"
+      << error_message;
+  EXPECT_TRUE(absl::StrContains(error_message, "ErrorSpec{0.002, 0.003}"))
+      << "Actual message:\n"
+      << error_message;
+  EXPECT_TRUE(absl::StrContains(error_message, "ErrorSpec{0.001, 0.03}"))
+      << "Actual message:\n"
+      << error_message;
+
+  // Verify current spec is printed
+  EXPECT_TRUE(absl::StrContains(error_message,
+                                "Current ErrorSpec: ErrorSpec{0.001, 0.001}"))
+      << "Actual message:\n"
+      << error_message;
+}
+
+TEST(LiteralComparisonSuggestionsTest,
+     SuggestErrorSpecPerformanceOnLargeMismatches) {
+  // If the test times out then the algorithm gets broken.
+  constexpr int N = 100000;
+  std::vector<float> expected_vec(N, 100.0f);
+  std::vector<float> actual_vec(N);
+  for (int i = 0; i < N; ++i) {
+    // Generate trade-off errors: abs_error = (i + 1), rel_error = (N - i) / 100
+    actual_vec[i] = 100.0f + static_cast<float>(i + 1);
+  }
+
+  Literal expected = LiteralUtil::CreateR1<float>(expected_vec);
+  Literal actual = LiteralUtil::CreateR1<float>(actual_vec);
+  ErrorSpec error_spec(0.1, 0.001);
+
+  absl::Status status =
+      literal_comparison::Near(expected, actual, error_spec,
+                               /*detailed_message=*/true,
+                               /*miscompare_callback=*/nullptr);
+
+  EXPECT_FALSE(status.ok());
+  std::string error_message = std::string(status.message());
+  EXPECT_TRUE(absl::StrContains(
+      error_message,
+      "Suggested ErrorSpec adjustments to make this test pass:"));
 }
 
 }  // namespace

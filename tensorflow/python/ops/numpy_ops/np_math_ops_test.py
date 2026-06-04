@@ -15,9 +15,11 @@
 """Tests for tf numpy mathematical methods."""
 
 import itertools
+
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
@@ -227,6 +229,26 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.match(
         np_math_ops.isclose(a, b, equal_nan=equal_nan),
         np.isclose(a, b, equal_nan=equal_nan))
+
+  @parameterized.named_parameters(
+      ('isclose_int32', np_math_ops.isclose, np.int32),
+      ('allclose_int32', np_math_ops.allclose, np.int32),
+      ('isclose_float32', np_math_ops.isclose, np.float32),
+      ('allclose_float32', np_math_ops.allclose, np.float32),
+  )
+  def testCloseNonBroadcastableShapesXla(self, close_fn, dtype):
+    a = ops.convert_to_tensor(np.arange(4, dtype=dtype))
+    b = ops.convert_to_tensor(np.arange(8, dtype=dtype))
+
+    error_types = (ValueError, errors.InvalidArgumentError)
+    error_pattern = r'Incompatible shapes|Dimensions must be equal|broadcast'
+
+    with self.assertRaisesRegex(error_types, error_pattern):
+      close_fn(a, b)
+
+    compiled_close_fn = def_function.function(close_fn, jit_compile=True)
+    with self.assertRaisesRegex(error_types, error_pattern):
+      compiled_close_fn(a, b)
 
   def testAverageWrongShape(self):
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError, r''):

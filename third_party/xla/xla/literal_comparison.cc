@@ -16,11 +16,13 @@ limitations under the License.
 #include "xla/literal_comparison.h"
 
 #include <complex>
+#include <cstddef>
 
 #ifndef _WIN32
 #include <unistd.h>
 #endif
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -31,6 +33,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -225,6 +228,17 @@ double FpAbsoluteValue(NativeT value) {
   return static_cast<double>(Eigen::numext::abs(value));
 }
 
+inline double RoundUpTo1SigFig(double val) {
+  if (val <= 0 || !std::isfinite(val)) {
+    return val;
+  }
+  double p = std::floor(std::log10(val));
+  double factor = std::pow(10.0, p);
+  // Subtract tiny epsilon to avoid rounding 0.001 to 0.002 due to internal
+  // float noise
+  return std::ceil(val / factor - 1e-9) * factor;
+}
+
 // Helper class for comparing floating-point literals within an error bound.
 template <typename NativeT>
 class NearComparator {
@@ -289,7 +303,8 @@ class NearComparator {
         miscompare_callback_(miscompare_callback),
         abs_value_buckets_(kAbsValueBucketBounds.size() - 1, {0, 0}),
         abs_error_buckets_(kErrorBucketBounds.size(), 0),
-        rel_error_buckets_(kErrorBucketBounds.size(), 0) {}
+        rel_error_buckets_(kErrorBucketBounds.size(), 0),
+        candidates_({error}) {}
 
   // Runs the comparison between expected and actual literals.
   absl::Status Run() {
@@ -344,6 +359,58 @@ class NearComparator {
       if (error >= kErrorBucketBounds[i]) {
         error_buckets[i]++;
       }
+    }
+  }
+
+  // Inserts an ErrorSpec candidate point `p` into `candidates` while
+  // maintaining the invariant that `candidates` is kept sorted by `abs`
+  // ascending, strictly descending by `rel`, and contains only unique,
+  // non-dominated Pareto error bounds.
+  static void InsertCandidate(const ErrorSpec& p,
+                              std::vector<ErrorSpec>& candidates) {
+    auto it = absl::c_lower_bound(candidates, p,
+                                  [](const ErrorSpec& c, const ErrorSpec& val) {
+                                    return c.abs < val.abs;
+                                  });
+
+    if (it != candidates.begin()) {
+      if (std::prev(it)->rel <= p.rel) {
+        return;
+      }
+    }
+    if (it != candidates.end() && it->abs == p.abs && it->rel <= p.rel) {
+      return;
+    }
+
+    while (it != candidates.end() && it->rel >= p.rel) {
+      it = candidates.erase(it);
+    }
+
+    candidates.insert(it, p);
+  }
+
+  // Updates the set of candidate error bounds `candidates_` upon encountering
+  // an observed element mismatch `(abs, rel)`. Any candidate `c` strictly
+  // dominated by the mismatch (where `abs > c.abs` and `rel > c.rel`) is
+  // removed and split into two minimal boundary candidates `(abs, c.rel)` and
+  // `(c.abs, rel)`. Each boundary candidate is then inserted into `candidates_`
+  // via `InsertCandidate` to preserve the minimal 2D Pareto frontier.
+  void UpdateCandidates(double abs, double rel) {
+    ErrorSpec mismatch(abs, rel);
+    std::vector<ErrorSpec> split_candidates;
+    auto remove_it = std::remove_if(
+        candidates_.begin(), candidates_.end(), [&](const ErrorSpec& c) {
+          if (mismatch.abs > c.abs && mismatch.rel > c.rel) {
+            split_candidates.push_back(ErrorSpec(mismatch.abs, c.rel));
+            split_candidates.push_back(ErrorSpec(c.abs, mismatch.rel));
+            return true;
+          }
+          return false;
+        });
+    candidates_.erase(remove_it, candidates_.end());
+
+    for (const auto& p : split_candidates) {
+      InsertCandidate(p, candidates_);
     }
   }
 
@@ -469,6 +536,7 @@ class NearComparator {
     }
 
     num_mismatches_++;
+    UpdateCandidates(abs_error, rel_error);
 
     // Keep track of the kTopRelativeErrorCount relative error mismatches.
     if (top_rel_mismatches_.size() < kTopRelativeErrorCount ||
@@ -574,6 +642,25 @@ class NearComparator {
       StrAppend(&out, "  ", it->ToString(actual_.shape()), "\n");
     }
 
+    if (num_mismatches_ > 0) {
+      StrAppendFormat(&out, "\nCurrent ErrorSpec: ErrorSpec{%g, %g}\n",
+                      error_.abs, error_.rel);
+      StrAppend(&out,
+                "Suggested ErrorSpec adjustments to make this test pass:\n");
+
+      std::vector<ErrorSpec> rounded_candidates;
+      for (const auto& c : candidates_) {
+        InsertCandidate(
+            ErrorSpec(RoundUpTo1SigFig(c.abs), RoundUpTo1SigFig(c.rel)),
+            rounded_candidates);
+      }
+
+      for (size_t i = 0; i < rounded_candidates.size(); ++i) {
+        StrAppendFormat(&out, "  Option %d: ErrorSpec{%g, %g}\n", i + 1,
+                        rounded_candidates[i].abs, rounded_candidates[i].rel);
+      }
+    }
+
     if (!detailed_message_) {
       return out;
     }
@@ -617,6 +704,7 @@ class NearComparator {
     print_accum_buckets(
         "Absolute error breakdown of elements exceeding rel error bound",
         num_rel_mismatches_, abs_error_buckets_);
+
     return out;
   }
 
@@ -662,7 +750,7 @@ class NearComparator {
   // Actual values are bucketed by absolute value. kAbsValueBucketBounds is the
   // bounds of these buckets. abs_value_buckets_ contains a pair for each
   // bucket: the element count and failure count.
-  static inline constexpr std::array<double, 7> kAbsValueBucketBounds = {
+  static constexpr std::array<double, 7> kAbsValueBucketBounds = {
       0.0, 0.0001, 0.001, 0.01, 0.1, 1, std::numeric_limits<double>::infinity(),
   };
   std::vector<std::pair<int64_t, int64_t>> abs_value_buckets_;
@@ -675,10 +763,11 @@ class NearComparator {
   // a cumulative distribution so an error value may appear in more than one
   // bucket. For example an error value of 0.003 may appear in the buckets
   // bounded by 0.01, 0.1, and 1.0.
-  static inline constexpr std::array<double, 5> kErrorBucketBounds = {
-      0.0001, 0.001, 0.01, 0.1, 1};
+  static constexpr std::array<double, 5> kErrorBucketBounds = {0.0001, 0.001,
+                                                               0.01, 0.1, 1};
   std::vector<int64_t> abs_error_buckets_;
   std::vector<int64_t> rel_error_buckets_;
+  std::vector<ErrorSpec> candidates_;
 };
 
 absl::Status EqualHelper(const LiteralSlice& expected,

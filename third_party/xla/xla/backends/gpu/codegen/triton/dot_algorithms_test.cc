@@ -902,7 +902,7 @@ TEST_F(TritonAlgorithmTest, UnsetAlgorithmToBF16) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   module->mutable_config()
       .mutable_debug_options()
-      .set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
+      .set_xla_gpu_match_tpu_precision(true);
   EXPECT_OK(
       CreateTritonIrAndFileCheckForDot(module.get(), "triton_fusion_dot", R"(
       CHECK: tt.dot{{.*}}tensor<256x16xbf16> * tensor<16x16xbf16> -> tensor<256x16xf32>
@@ -1051,7 +1051,8 @@ class NumericTestsForBlas : public BlasAlgorithmTest,
       p1 = f32[8,8] parameter(1)
       ROOT dot = f32[8,8] dot(p0, p1),
         lhs_contracting_dims={1},
-        rhs_contracting_dims={0}
+        rhs_contracting_dims={0},
+        algorithm=dot_f32_f32_f32
     }
   )";
 
@@ -1067,7 +1068,8 @@ class NumericTestsForBlas : public BlasAlgorithmTest,
     config.set_replica_count(1);
     config.set_num_partitions(1);
 
-    auto optimized_module = GetOptimizedModule(kReferenceHloText, config);
+    auto optimized_module = GetOptimizedModule(
+        absl::StrFormat(kReferenceHloText, HloModuleTestName()), config);
     CHECK_OK(optimized_module.status());
     return std::move(optimized_module.value());
   }
@@ -1587,10 +1589,10 @@ TEST_P(TritonAndBlasSupportForDifferentTensorSizes,
       break;
     case PC::ALG_DOT_BF16_BF16_F32_X6:
     case PC::ALG_DOT_BF16_BF16_F32_X9:
-        ASSERT_TRUE(result_or_status.status().ok())
-            << "failed to compile " << algorithm_;
-        EXPECT_TRUE(result_or_status.value())
-            << "wrong result for " << algorithm_;
+      ASSERT_TRUE(result_or_status.status().ok())
+          << "failed to compile " << algorithm_;
+      EXPECT_TRUE(result_or_status.value())
+          << "wrong result for " << algorithm_;
       break;
     case PC::ALG_DOT_F64_F64_F64:
       EXPECT_EQ(result_or_status.status().code(),
@@ -1866,7 +1868,7 @@ class PrecisionTests
     if (algorithm == PC::ALG_UNSET) {
       // Here we test that the default algorithm for f32 dots is
       // ALG_DOT_BF16_BF16_F32 if the flag is set.
-      debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
+      debug_options.set_xla_gpu_match_tpu_precision(true);
     }
     if (backend == Backend::kTriton) {
       debug_options.set_xla_gpu_enable_triton_gemm(true);

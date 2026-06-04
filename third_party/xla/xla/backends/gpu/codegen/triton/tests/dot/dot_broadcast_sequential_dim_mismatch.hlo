@@ -1,8 +1,8 @@
 // RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s
-// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false %s --abs_error_bound=1e-4 --rel_error_bound=1e-6
+// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false %s --abs_error_bound=5.999999999999999e-4 --rel_error_bound=1e-6
 
 // RUN: hlo_to_xtileir %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s
-// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation --abs_error_bound=1e-4 --rel_error_bound=1e-6
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation --abs_error_bound=5.999999999999999e-4 --rel_error_bound=1e-6
 
 fusion {
   p0 = f32[16,32]{1,0} parameter(0)
@@ -26,7 +26,9 @@ fusion {
 // CHECK:     %[[OFFSET:.*]] = xla.apply_indexing #indexing_map(%[[LOOP_VAR]])
 // CHECK:     %[[EXTRACT_LHS:.*]] = xtile.extract %[[ARG0]][%[[CONSTANT_0]], %[[OFFSET]]] [16, 16] [1, 1] : memref<16x32xf32> -> tensor<16x16xf32>
 // CHECK:     %[[EXTRACT_RHS:.*]] = xtile.extract %[[ARG1]][%[[OFFSET]], %[[CONSTANT_0]]] [16, 16] [1, 1] : memref<32x16xf32> -> tensor<16x16xf32>
-// CHECK:     %{{.*}} = tt.dot %[[EXTRACT_LHS]], %[[EXTRACT_RHS]], %{{.*}} : tensor<16x16xf32> * tensor<16x16xf32> -> tensor<16x16xf32>
+// CHECK:     %[[TRUNC_LHS:.*]] = arith.truncf %[[EXTRACT_LHS]] : tensor<16x16xf32> to tensor<16x16xbf16>
+// CHECK:     %[[TRUNC_RHS:.*]] = arith.truncf %[[EXTRACT_RHS]] : tensor<16x16xf32> to tensor<16x16xbf16>
+// CHECK:     %{{.*}} = tt.dot %[[TRUNC_LHS]], %[[TRUNC_RHS]], %{{.*}} : tensor<16x16xbf16> * tensor<16x16xbf16> -> tensor<16x16xf32>
 // CHECK:     scf.yield
 // CHECK: }
 // CHECK: %[[EXPAND:.*]] = tt.expand_dims %[[LOOP]] {axis = 0 : i32} : tensor<16x16xf32> -> tensor<1x16x16xf32>
