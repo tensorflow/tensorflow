@@ -205,6 +205,7 @@ TfLiteStatus TfliteInferenceStage::Run() {
     }
     latency_stats_.UpdateStat(profiling::time::NowMicros() - start_us);
   }
+  UpdateModelInfo();
 
   return kTfLiteOk;
 }
