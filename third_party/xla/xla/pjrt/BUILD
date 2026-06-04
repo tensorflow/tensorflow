@@ -1494,6 +1494,14 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "staging_buffer",
+    srcs = ["staging_buffer.cc"],
+    hdrs = ["staging_buffer.h"],
+    visibility = internal_visibility([":friends"]),
+    deps = ["@com_google_absl//absl/types:span"],
+)
+
+cc_library(
     name = "raw_buffer",
     srcs = ["raw_buffer.cc"],
     hdrs = ["raw_buffer.h"],
