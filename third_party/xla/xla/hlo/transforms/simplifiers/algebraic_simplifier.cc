@@ -10512,4 +10512,30 @@ absl::Status AlgebraicSimplifierVisitor::HandleConditional(
   return absl::OkStatus();
 }
 
+bool AlgebraicSimplifierVisitor::ShouldStrengthReduceDotToReduce(
+    const HloInstruction* hlo) {
+  if (options_.executing_on_cpu()) {
+    if (hlo->opcode() != HloOpcode::kDot) {
+      return false;
+    }
+    const HloDotInstruction* dot = Cast<HloDotInstruction>(hlo);
+    const auto& dnums = dot->dot_dimension_numbers();
+    const HloInstruction* lhs = dot->operand(0);
+    const HloInstruction* rhs = dot->operand(1);
+
+    bool lhs_has_only_batch_and_contracting =
+        dnums.lhs_batch_dimensions_size() +
+            dnums.lhs_contracting_dimensions_size() ==
+        lhs->shape().dimensions().size();
+    bool rhs_has_only_batch_and_contracting =
+        dnums.rhs_batch_dimensions_size() +
+            dnums.rhs_contracting_dimensions_size() ==
+        rhs->shape().dimensions().size();
+
+    return lhs_has_only_batch_and_contracting &&
+           rhs_has_only_batch_and_contracting;
+  }
+  return true;
+}
+
 }  // namespace xla

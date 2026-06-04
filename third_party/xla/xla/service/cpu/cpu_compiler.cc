@@ -490,7 +490,7 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
                  /*debug_only=*/true);
 
   AlgebraicSimplifierOptions options;
-  options.set_enable_dot_strength_reduction(false);
+  options.set_enable_dot_strength_reduction(true);
   // "slow" minmax means we propagate nan.
   options.set_minmax_propagate_nan(
       !module->config().debug_options().xla_cpu_enable_fast_min_max());
@@ -1108,7 +1108,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     AlgebraicSimplifierOptions options;
     options.set_is_layout_sensitive(true);
     options.set_supports_non_canonical_dots(false);
-    options.set_enable_dot_strength_reduction(false);
+    options.set_enable_dot_strength_reduction(true);
     // "slow" minmax means we propagate nan.
     options.set_minmax_propagate_nan(
         !module->config().debug_options().xla_cpu_enable_fast_min_max());

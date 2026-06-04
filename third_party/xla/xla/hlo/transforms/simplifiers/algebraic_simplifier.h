@@ -622,9 +622,7 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // Allow backend constraints on tiling etc. to invalidate optimizations.
   virtual bool IsValidLayout(const Shape& shape) { return true; }
   // Allow backend targets to determine whether a layout is inefficient.
-  virtual bool ShouldStrengthReduceDotToReduce(const HloInstruction* hlo) {
-    return true;
-  }
+  virtual bool ShouldStrengthReduceDotToReduce(const HloInstruction* hlo);
 
  protected:
   // A method that allows various backends to specialize the propagation of
