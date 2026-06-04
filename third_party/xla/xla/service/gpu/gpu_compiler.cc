@@ -109,7 +109,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/double_buffer_loop_unrolling.h"
 #include "xla/backends/gpu/transforms/dus_accumulator_zero_init_elimination.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_annotator.h"
-#include "xla/backends/gpu/transforms/dynamic_slice_fusion_rewriter.h"
+#include "xla/backends/gpu/transforms/dynamic_slice_fusion_rewriter_v2.h"
 #include "xla/backends/gpu/transforms/estimate_cub_scan_scratch_size.h"
 #include "xla/backends/gpu/transforms/estimate_cub_sort_scratch_size.h"
 #include "xla/backends/gpu/transforms/explicit_collectives_group_async_wrapper.h"
@@ -151,6 +151,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/windowed_einsum_handler.h"
 #include "xla/core/host_offloading/hlo_host_device_type_call_wrapper.h"
 #include "xla/core/host_offloading/host_compute_asyncifier.h"
+#include "xla/ffi/ffi_registry.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
@@ -1483,6 +1484,17 @@ absl::Status RunAsyncDotPasses(HloModule* hlo_module,
       .status();
 }
 
+bool IsFfiCustomCall(const HloInstruction* hlo, se::Platform::Id platform_id) {
+  auto* custom_call = DynCast<HloCustomCallInstruction>(hlo);
+  if (!custom_call || custom_call->api_version() !=
+                          CustomCallApiVersion::API_VERSION_TYPED_FFI) {
+    return false;
+  }
+  return ffi::FindHandler(custom_call->custom_call_target(),
+                          platform_id->ToName())
+      .ok();
+}
+
 absl::Status RunDynamicSliceFusionPasses(HloModule* hlo_module,
                                          se::Platform::Id platform_id,
                                          CompilationStats* compilation_stats) {
@@ -1495,23 +1507,13 @@ absl::Status RunDynamicSliceFusionPasses(HloModule* hlo_module,
   pipeline.AddPass<DynamicSliceAnnotator>();
 
   if (opts.xla_gpu_enable_dynamic_slice_fusion()) {
-    pipeline.AddPass<GpuReduceScatterCombiner>(
-        kDefaultReduceScatterCombineThreshold,
-        opts.xla_gpu_reduce_scatter_combine_threshold_bytes(),
-        opts.xla_gpu_collective_combine_threshold_count(),
-        opts.xla_gpu_enable_reduce_scatter_combine_by_dim());
-    pipeline.AddPass<DynamicSliceFusionRewriter>(platform_id);
-    pipeline.AddPass<AsyncWrapper>([](const HloInstruction* instr) {
-      if (!IsDynamicSliceFusion(instr)) {
-        return false;
-      }
-      std::optional<const HloInstruction*> hero_op = HloBfsFindIf(
-          {instr->fused_instructions_computation()->root_instruction()},
-          [](const HloInstruction* instr) -> bool {
-            return IsCollective(instr);
-          });
-      return hero_op.has_value();
-    });
+    DynamicSliceFusionRewriterV2::Options opts;
+    opts.predicate = [platform_id](const HloInstruction* instr) {
+      return IsNonFusedCublasLtMatmul(*instr) ||
+             IsFfiCustomCall(instr, platform_id);
+    };
+    pipeline.AddPass<DynamicSliceFusionRewriterV2>(platform_id,
+                                                   std::move(opts));
   }
 
   RETURN_IF_ERROR(
