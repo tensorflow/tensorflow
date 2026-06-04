@@ -124,6 +124,9 @@ DOTPROD_ATTRIBUTE void NeonRunKernelSDot<4, 1, 32>(
   }
 }
 
+// Note: NeonRunKernelSDot<4, 2, 32> does not mutate registers v25-v31 in its
+// inline assembly block, so they are intentionally omitted from the clobber
+// list to avoid redundant register preservation.
 template <>
 DOTPROD_ATTRIBUTE void NeonRunKernelSDot<4, 2, 32>(
     const uint8_t* lhs, const int8_t* rhs, int32_t* dst, int lhs_layout_rows,
