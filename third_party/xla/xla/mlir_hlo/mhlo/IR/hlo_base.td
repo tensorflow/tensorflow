@@ -52,9 +52,6 @@ defvar MHLO_BroadcastDimAttr = I64ElementsAttr;
 // Token type.
 defvar MHLO_Token = HLO_Token;
 
-def StableHLO_TokenType : Type<CPred<"isa<::mlir::stablehlo::TokenType>($_self)">, "stablehlo token">;
-defvar MHLO_AnyToken = AnyTypeOf<[MHLO_Token, StableHLO_TokenType]>;
-
 // Any integer tensor types
 defvar MHLO_IntTensor = HLO_IntTensor;
 
@@ -86,10 +83,8 @@ defvar MHLO_Tuple = HLO_Tuple;
 
 defvar MHLO_TensorOrToken = HLO_TensorOrPerAxisQuantizedTensorOrToken;
 defvar MHLO_TensorOrTokenOrBuffer = AnyTypeOf<[MHLO_TensorOrToken, MHLO_Buffer]>;
-defvar MHLO_TensorOrAnyToken = AnyTypeOf<[MHLO_TensorOrToken, StableHLO_TokenType]>;
 
 defvar MHLO_TensorOrTokenOrTuple = AnyTypeOf<[MHLO_Tensor, MHLO_Token, MHLO_Tuple]>;
-defvar MHLO_TensorOrAnyTokenOrTuple = AnyTypeOf<[MHLO_Tensor, MHLO_AnyToken, MHLO_Tuple]>;
 defvar MHLO_TensorOrTokenOrTupleOrBuffer = AnyTypeOf<[MHLO_TensorOrTokenOrTuple, MHLO_Buffer]>;
 
 defvar MHLO_DimensionValue = HLO_DimensionValue;

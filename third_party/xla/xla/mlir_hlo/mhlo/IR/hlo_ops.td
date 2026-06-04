@@ -1395,8 +1395,8 @@ def MHLO_AddDependencyOp : MHLO_Op<"add_dependency", [Pure,
     ```
   }];
 
-  let arguments = (ins MHLO_TensorOrAnyToken:$operand, MHLO_AnyToken:$token);
-  let results = (outs MHLO_TensorOrAnyToken:$output);
+  let arguments = (ins MHLO_TensorOrToken:$operand, MHLO_Token:$token);
+  let results = (outs MHLO_TensorOrToken:$output);
   let hasCustomHLOConverter = 1;
 
   let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
@@ -1459,7 +1459,7 @@ def MHLO_AsyncStartOp : MHLO_Op<"async_start", []> {
   }];
 
   let arguments = (ins
-    Variadic<MHLO_TensorOrAnyTokenOrTuple>:$inputs,
+    Variadic<MHLO_TensorOrTokenOrTuple>:$inputs,
     FlatSymbolRefAttr:$called_computation,
     StrAttr:$execution_thread
   );
@@ -1503,7 +1503,7 @@ def MHLO_AsyncDoneOp : MHLO_Op<"async_done", [DeclareOpInterfaceMethods<InferTyp
 
   let arguments = (ins MHLO_AsyncBundle:$bundle);
 
-  let results = (outs Variadic<MHLO_TensorOrAnyTokenOrTuple>);
+  let results = (outs Variadic<MHLO_TensorOrTokenOrTuple>);
   let hasVerifier = 1;
   let hasCustomHLOConverter = 1;
 }
