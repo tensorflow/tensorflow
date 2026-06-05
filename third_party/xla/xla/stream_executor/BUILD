@@ -1266,6 +1266,7 @@ xla_cc_test(
     deps = [
         ":dnn",
         "//xla/tsl/platform:test",
+        "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_googletest//:gtest_main",
     ],
 )
