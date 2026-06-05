@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_memory_reservation.h"
 #include "xla/stream_executor/cuda/cuda_raw_memory_allocation.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
+#include "xla/stream_executor/cuda/cuda_vmm_allocator.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_reservation.h"
 #include "xla/stream_executor/platform.h"
@@ -139,12 +140,10 @@ absl::Status CudaDeviceAddressVmmAllocator::InitializeDeviceState(
     }
   }
 
-  CUmemAllocationProp alloc_props = {};
-  alloc_props.type = CU_MEM_ALLOCATION_TYPE_PINNED;
-  alloc_props.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
-  alloc_props.location.id = cu_device;
-  alloc_props.requestedHandleTypes =
-      static_cast<CUmemAllocationHandleType>(CU_MEM_HANDLE_TYPE_NONE);
+  ASSIGN_OR_RETURN(CudaVmmAllocator::Options vmm_options,
+                   QueryVmmOptions(cu_device));
+  CUmemAllocationProp alloc_props =
+      BuildVmmAllocationProp(cu_device, vmm_options);
   size_t granularity = 0;
   if (auto s = cuda::ToStatus(
           cuMemGetAllocationGranularity(&granularity, &alloc_props,

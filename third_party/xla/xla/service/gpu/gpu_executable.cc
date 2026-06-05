@@ -1218,6 +1218,11 @@ absl::StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
         collectives->SymmetricMemoryAlignment();
   }
 
+  // Tag allocations made in this invocation as multi-device for VMM reuse.
+  se::DeviceAddressVmmAllocator::DeviceAssignmentScope
+      vmm_device_assignment_scope(
+          run_options->run_options().device_assignment());
+
   absl::Span<const BufferAllocation* const> allocations = GetAllocations();
   const int64_t num_buffers = allocations.size();
   std::vector<se::DeviceAddressBase> buffers;

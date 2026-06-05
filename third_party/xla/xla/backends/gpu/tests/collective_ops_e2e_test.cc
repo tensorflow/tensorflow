@@ -3239,5 +3239,59 @@ TEST_F(CollectiveOpsTestE2E, CustomCollectiveCallShouldRun) {
   }
 }
 
+class SymmetricBufferCollectiveOpsTest : public CollectiveOpsTestE2E {
+ public:
+  SymmetricBufferCollectiveOpsTest()
+      : CollectiveOpsTestE2E(/*memory_size=*/128 * kMB,
+                             /*collectives_memory_size=*/64 * kMB) {}
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions options = CollectiveOpsTestE2E::GetDebugOptionsForTest();
+    options.set_xla_gpu_enable_nccl_user_buffers(true);
+    options.set_xla_gpu_experimental_enable_nccl_symmetric_buffers(true);
+    return options;
+  }
+};
+
+TEST_F(SymmetricBufferCollectiveOpsTest, AllReduceWithSymmetricBuffers) {
+  absl::string_view hlo_string = R"(
+HloModule AllReduceSymmetric, entry_computation_layout={(f32[128]{0})->f32[128]{0}}, replica_count=2
+apply_op {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT apply_op = f32[] add(x, y)
+}
+ENTRY main {
+  input = f32[128]{0} parameter(0)
+  all-reduce-start = f32[128]{0} all-reduce-start(input), to_apply=apply_op, replica_groups={{0,1}}
+  ROOT all-reduce-done = f32[128]{0} all-reduce-done(all-reduce-start)
+})";
+
+  const int64_t kNumReplicas = 2;
+  const int64_t kNumPartitions = 1;
+  if (device_count() < kNumReplicas * kNumPartitions) {
+    GTEST_SKIP() << "Test requires " << kNumReplicas * kNumPartitions
+                 << " devices (" << device_count() << " available)";
+  }
+
+  HloModuleConfig config = GetModuleConfigForTest(kNumReplicas, kNumPartitions);
+  config.set_debug_options(GetDebugOptionsForTest());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
+
+  auto input = LiteralUtil::CreateR1<float>(std::vector<float>(128, 1.0f));
+  std::vector<Literal*> args = {&input};
+  std::vector<std::vector<Literal*>> replica_args(kNumReplicas, args);
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult result,
+                          ExecuteReplicated(std::move(module), replica_args));
+
+  for (const auto& literal : result.results) {
+    EXPECT_TRUE(LiteralTestUtil::Near(
+        LiteralUtil::CreateR1<float>(std::vector<float>(128, 2.0f)), literal,
+        ErrorSpec(1e-4)));
+  }
+}
+
 }  // namespace
 }  // namespace xla
