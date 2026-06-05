@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "oneapi/ccl.h"
 #include "xla/core/collectives/collectives_registry.h"
 
 XLA_COLLECTIVES_REGISTER("SYCL", "oneccl", 100,
