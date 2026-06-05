@@ -1552,7 +1552,7 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
                   "Shard %d/%d: finding configs for %d/1 unique instructions",
                   node_id, kNumNodes, num_fusions_to_autotune)));
         } else {
-          EXPECT_THAT(stderr_str, HasSubstr("No instructions to autotune."));
+          EXPECT_THAT(stderr_str, HasSubstr("Found cached config for HLO"));
         }
       } else {
         stderr_str = absl::StrReplaceAll(

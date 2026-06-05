@@ -3535,13 +3535,6 @@ absl::Status GpuCompiler::AddAutotunerPass(
   // Post autotuning transformations needed after autotuning happens.
   pipeline->AddPass<ConvertTritonGemmConfig>(target_config->device_description,
                                              mlir_context);
-  pipeline->AddPass<ReshapeDecomposer>();
-  pipeline->AddPass<LayoutNormalization>(&NormalizeLayoutForGpuCustomCalls);
-  auto simplifier_options = GetAlgebraicSimplifierOptions(
-      AlgebraicSimplifierMode::kLayoutNormalization, debug_options,
-      target_config->platform_name == "ROCM");
-  pipeline->AddPass<HloPassFix<GpuAlgebraicSimplifier>>(simplifier_options,
-                                                        gpu_version);
   return absl::OkStatus();
 }
 
