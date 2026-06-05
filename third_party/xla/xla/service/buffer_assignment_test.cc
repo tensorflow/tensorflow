@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -245,6 +246,27 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
                &BufferSizeBytes, &alias_info_,
                [](LogicalBuffer::Color) { return 1; }, std::move(opts))
         .value();
+  }
+
+  // Runs buffer assignment binding Options::is_dus_address_change_only_fn to
+  // the given predicate. Used to exercise the No op DUS skip without depending
+  // on any backend that supplies the real predicate.
+  std::unique_ptr<BufferAssignment> RunBufferAssignmentWithDusAddressChangeFn(
+      HloModule* module,
+      std::function<bool(const HloInstruction*)> is_dus_address_change_only_fn,
+      int64_t alignment = 1) {
+    BufferAssigner::Options opts;
+    opts.allocate_buffers_for_constants = true;
+    opts.is_dus_address_change_only_fn =
+        std::move(is_dus_address_change_only_fn);
+    absl::StatusOr<std::unique_ptr<BufferAssignment>> assignment =
+        BufferAssigner::Run(
+            module, std::make_unique<DependencyHloOrdering>(module),
+            &BufferSizeBytes, &alias_info_,
+            [alignment](LogicalBuffer::Color) { return alignment; },
+            std::move(opts));
+    CHECK(assignment.ok()) << assignment.status();
+    return std::move(assignment).value();
   }
 
   // Builds an x+1.0 computation to use in a Map.
@@ -2481,6 +2503,168 @@ ENTRY main {
                 HloOpcode::kConditional);
     }
   }
+}
+
+// The update producer (the add) feeds only operand 1 of the DUS. When the DUS
+// is flagged address change only, buffer assignment must not allocate a top
+// level buffer for the producer, so the producer can write in place into the
+// DUS output buffer.
+TEST_F(BufferAssignmentTest, NoOpDusSkipsUpdateProducerAllocation) {
+  const char* const kHlo = R"(
+HloModule NoOpDus
+
+ENTRY e {
+  p0 = f32[100,10]{1,0} parameter(0)
+  base = f32[100,10]{1,0} add(p0, p0)
+  p1 = f32[20,10]{1,0} parameter(1)
+  p2 = f32[20,10]{1,0} parameter(2)
+  update = f32[20,10]{1,0} add(p1, p2)
+  zero = s32[] constant(0)
+  ROOT dus = f32[100,10]{1,0} dynamic-update-slice(base, update, zero, zero)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  const HloInstruction* dus = FindInstruction(module.get(), "dus");
+  const HloInstruction* update = FindInstruction(module.get(), "update");
+
+  std::unique_ptr<BufferAssignment> assignment =
+      RunBufferAssignmentWithDusAddressChangeFn(
+          module.get(), [dus](const HloInstruction* instruction) {
+            return instruction == dus;
+          });
+
+  // The skip fired: the update producer has no top level allocation.
+  EXPECT_FALSE(assignment->HasTopLevelAllocation(update));
+  // The DUS still owns its (output) allocation.
+  EXPECT_TRUE(assignment->HasTopLevelAllocation(dus));
+}
+
+// Negative control: when the predicate matches no instruction (the shipped
+// default), the update producer is allocated normally.
+TEST_F(BufferAssignmentTest, NoOpDusDisabledAllocatesUpdateProducer) {
+  const char* const kHlo = R"(
+HloModule NoOpDusDisabled
+
+ENTRY e {
+  p0 = f32[100,10]{1,0} parameter(0)
+  base = f32[100,10]{1,0} add(p0, p0)
+  p1 = f32[20,10]{1,0} parameter(1)
+  p2 = f32[20,10]{1,0} parameter(2)
+  update = f32[20,10]{1,0} add(p1, p2)
+  zero = s32[] constant(0)
+  ROOT dus = f32[100,10]{1,0} dynamic-update-slice(base, update, zero, zero)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  const HloInstruction* update = FindInstruction(module.get(), "update");
+
+  std::unique_ptr<BufferAssignment> assignment =
+      RunBufferAssignmentWithDusAddressChangeFn(
+          module.get(), [](const HloInstruction*) { return false; });
+  EXPECT_TRUE(assignment->HasTopLevelAllocation(update));
+
+  // The default Options value of is_dus_address_change_only_fn must likewise
+  // never skip, so the standard harness allocates the producer too.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> default_module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  std::unique_ptr<BufferAssignment> default_assignment =
+      RunBufferAssignment(default_module.get());
+  EXPECT_TRUE(default_assignment->HasTopLevelAllocation(
+      FindInstruction(default_module.get(), "update")));
+}
+
+// Single bitcast user case: the producer feeds a bitcast that feeds operand 1
+// of the DUS. Both the producer and the bitcast must be skipped when the DUS
+// is address change only.
+TEST_F(BufferAssignmentTest, NoOpDusSkipsUpdateProducerThroughBitcast) {
+  const char* const kHlo = R"(
+HloModule NoOpDusBitcast
+
+ENTRY e {
+  p0 = f32[100,10]{1,0} parameter(0)
+  base = f32[100,10]{1,0} add(p0, p0)
+  p1 = f32[200]{0} parameter(1)
+  p2 = f32[200]{0} parameter(2)
+  producer = f32[200]{0} add(p1, p2)
+  update = f32[20,10]{1,0} bitcast(producer)
+  zero = s32[] constant(0)
+  ROOT dus = f32[100,10]{1,0} dynamic-update-slice(base, update, zero, zero)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  const HloInstruction* dus = FindInstruction(module.get(), "dus");
+  const HloInstruction* producer = FindInstruction(module.get(), "producer");
+  const HloInstruction* bitcast = FindInstruction(module.get(), "update");
+
+  std::unique_ptr<BufferAssignment> assignment =
+      RunBufferAssignmentWithDusAddressChangeFn(
+          module.get(), [dus](const HloInstruction* instruction) {
+            return instruction == dus;
+          });
+
+  EXPECT_FALSE(assignment->HasTopLevelAllocation(producer));
+  EXPECT_FALSE(assignment->HasTopLevelAllocation(bitcast));
+
+  // Negative control with the same module: without the predicate the producer
+  // is allocated normally.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> default_module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  std::unique_ptr<BufferAssignment> default_assignment =
+      RunBufferAssignment(default_module.get());
+  EXPECT_TRUE(default_assignment->HasTopLevelAllocation(
+      FindInstruction(default_module.get(), "producer")));
+}
+
+// resolved_spaces() records, for each non materialized view position, the
+// position whose memory space it should follow. A backend lowering layer reads
+// this map in LoweringEmitter::FindMemorySpace to redirect a memory space
+// lookup. This test covers the host side accessor contract: default empty,
+// set, and read back via the same find({hlo, index}) lookup the redirect uses.
+TEST_F(BufferAssignmentTest, ResolvedSpacesRoundTrip) {
+  const char* const kHlo = R"(
+HloModule ResolvedSpaces
+
+ENTRY e {
+  p0 = f32[100,10]{1,0} parameter(0)
+  base = f32[100,10]{1,0} add(p0, p0)
+  p1 = f32[20,10]{1,0} parameter(1)
+  p2 = f32[20,10]{1,0} parameter(2)
+  update = f32[20,10]{1,0} add(p1, p2)
+  zero = s32[] constant(0)
+  ROOT dus = f32[100,10]{1,0} dynamic-update-slice(base, update, zero, zero)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  std::unique_ptr<BufferAssignment> assignment =
+      RunBufferAssignment(module.get());
+
+  // No redirects are recorded by the host buffer assignment path.
+  EXPECT_TRUE(assignment->resolved_spaces().empty());
+
+  const HloInstruction* update = FindInstruction(module.get(), "update");
+  const HloInstruction* dus = FindInstruction(module.get(), "dus");
+
+  // Redirect the update producer's top level position to the DUS top level
+  // position (the producer follows the DUS output's memory space).
+  BufferAssignment::ResolvedSpacesMap resolved;
+  const std::pair<const HloInstruction*, ShapeIndex> key(update, ShapeIndex{});
+  const std::pair<const HloInstruction*, ShapeIndex> value(dus, ShapeIndex{});
+  resolved[key] = value;
+  assignment->set_resolved_spaces(resolved);
+
+  const BufferAssignment::ResolvedSpacesMap& read_back =
+      assignment->resolved_spaces();
+  EXPECT_EQ(read_back.size(), 1u);
+
+  // Mirror the lookup performed by LoweringEmitter::FindMemorySpace.
+  BufferAssignment::ResolvedSpacesMap::const_iterator it = read_back.find(key);
+  ASSERT_NE(it, read_back.end());
+  EXPECT_EQ(it->second.first, dus);
+  EXPECT_EQ(it->second.second, ShapeIndex{});
 }
 
 class WhileBufferAssignmentTest : public HloHardwareIndependentTestBase {

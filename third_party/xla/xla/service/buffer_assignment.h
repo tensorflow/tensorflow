@@ -438,6 +438,15 @@ class BufferAssignment {
     buffer_assignment::BufferIsolationConfig config;
   };
 
+  using ResolvedSpacesMap =
+      absl::flat_hash_map<std::pair<const HloInstruction*, ShapeIndex>,
+                          std::pair<const HloInstruction*, ShapeIndex>>;
+
+  const ResolvedSpacesMap& resolved_spaces() const { return resolved_spaces_; }
+  void set_resolved_spaces(ResolvedSpacesMap resolved_spaces) {
+    resolved_spaces_ = std::move(resolved_spaces);
+  }
+
   // Returns the vector containing all buffer allocations in this assignment.
   const std::vector<BufferAllocation>& Allocations() const {
     return allocations_;
@@ -730,6 +739,8 @@ class BufferAssignment {
 
   absl::flat_hash_map<HloBuffer::Id, int64_t> cached_buffer_sizes_;
 
+  ResolvedSpacesMap resolved_spaces_;
+
   BufferAssignment(const BufferAssignment&) = delete;
   BufferAssignment& operator=(const BufferAssignment&) = delete;
 };
@@ -786,6 +797,10 @@ class BufferAssigner {
     // If set and returns > 0, the returned limit is used instead of the
     // default module config's device memory size.
     std::function<int64_t(LogicalBuffer::Color)> color_memory_limit;
+
+    // Function to determine if a DUS is address change only.
+    std::function<bool(const HloInstruction*)> is_dus_address_change_only_fn =
+        [](const HloInstruction* instruction) { return false; };
   };
 
   static Colorer DefaultColorer() {
