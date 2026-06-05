@@ -35,6 +35,24 @@ func.func @elementwise_unary_ops() -> (tensor<f32>, tensor<f32>, tensor<f32>, te
   func.return %7, %8, %9, %10, %11, %12, %13, %14, %15 : tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
 }
 
+// CHECK-LABEL: @cumsum_chained_pipeline
+func.func @cumsum_chained_pipeline() -> tensor<3xf32> {
+  %input = arith.constant dense<[1.0, 2.0, 3.0]> : tensor<3xf32>
+  %axis = arith.constant dense<0> : tensor<i32>
+  %cst_two = arith.constant dense<2.0> : tensor<3xf32>
+  %one_tensor = arith.constant dense<1.0> : tensor<3xf32>
+
+  // CHECK: %[[PIPELINE_RES:.*]] = arith.constant dense<[0.982013761, 0.999664664, 0.999999165]> : tensor<3xf32>
+  // CHECK: return %[[PIPELINE_RES]]
+
+  %0 = "tfl.cumsum"(%input, %axis) {exclusive = false, reverse = false} : (tensor<3xf32>, tensor<i32>) -> tensor<3xf32>
+  %add = "tfl.add"(%0, %cst_two) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  %sub = "tfl.sub"(%add, %one_tensor) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  %mul = "tfl.mul"(%sub, %cst_two) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  %res_pipeline = "tfl.logistic"(%mul) : (tensor<3xf32>) -> tensor<3xf32>
+  func.return %res_pipeline : tensor<3xf32>
+}
+
 // CHECK-LABEL: @rank
 func.func @rank() -> tensor<1xi32> {
   %cst = arith.constant dense<[[1], [2]]> : tensor<2x1xi32>

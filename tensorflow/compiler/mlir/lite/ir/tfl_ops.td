@@ -1062,6 +1062,7 @@ def TFL_CumsumOp: TFL_Op<"cumsum", [
   let results = (outs TFL_TensorOf<[F32, I32, I64]>:$output);
 
   let hasOptions = 1;
+  let hasFolder = 1;
 }
 
 def TFL_DepthwiseConv2DOp :

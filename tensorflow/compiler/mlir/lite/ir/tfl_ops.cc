@@ -655,6 +655,47 @@ class FlatIndHelper {
   mlir::ShapedType type_;
 };
 
+template <typename T>
+DenseElementsAttr ConstFoldCumsumOp(ShapedType result_type,
+                                    DenseElementsAttr input_elements, int axis,
+                                    bool exclusive, bool reverse) {
+  std::vector<T> in_data(input_elements.value_begin<T>(),
+                         input_elements.value_end<T>());
+  std::vector<T> out_data(result_type.getNumElements());
+
+  auto shape = result_type.getShape();
+  int64_t outer_size = 1;
+  for (int m = 0; m < axis; ++m) {
+    outer_size *= shape[m];
+  }
+  int64_t axis_size = shape[axis];
+  int64_t inner_size = 1;
+  for (int m = axis + 1; m < shape.size(); ++m) {
+    inner_size *= shape[m];
+  }
+
+  for (int64_t o = 0; o < outer_size; ++o) {
+    for (int64_t i = 0; i < inner_size; ++i) {
+      int64_t slice_offset = o * axis_size * inner_size + i;
+      T val = 0;
+      for (int64_t j = 0; j < axis_size; ++j) {
+        int64_t d = reverse ? axis_size - 1 - j : j;
+        int64_t idx = slice_offset + d * inner_size;
+        T in_val = in_data[idx];
+        if (exclusive) {
+          out_data[idx] = val;
+          val += in_val;
+        } else {
+          val += in_val;
+          out_data[idx] = val;
+        }
+      }
+    }
+  }
+
+  return DenseElementsAttr::get(result_type, llvm::ArrayRef<T>(out_data));
+}
+
 //===----------------------------------------------------------------------===//
 // TensorFlowLiteDialect
 //===----------------------------------------------------------------------===//
@@ -5556,6 +5597,53 @@ bool WhileOp::isDefinedOutsideOfLoop(Value value) {
   // TODO(jpienaar): This is to overly conservative and disables anything other
   // than constant hoisting initially.
   return false;
+}
+
+//===----------------------------------------------------------------------===//
+// CumsumOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult CumsumOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
+  auto input = adaptor.getInput();
+  auto axis = adaptor.getAxis();
+  if (!input || !axis) return nullptr;
+
+  auto input_elements = mlir::dyn_cast<DenseElementsAttr>(input);
+  if (!input_elements) return nullptr;
+
+  auto axis_elements = mlir::dyn_cast<DenseIntElementsAttr>(axis);
+  if (!axis_elements || axis_elements.getNumElements() != 1) return nullptr;
+  int64_t axis_val = axis_elements.getValues<APInt>()[0].getSExtValue();
+
+  auto input_type = mlir::cast<ShapedType>(getInput().getType());
+  if (!input_type.hasRank()) return nullptr;
+  int rank = input_type.getRank();
+  if (axis_val < 0) {
+    axis_val += rank;
+  }
+  if (axis_val < 0 || axis_val >= rank) return nullptr;
+
+  auto result_type = mlir::cast<ShapedType>(getType());
+  if (!result_type.hasStaticShape()) return nullptr;
+
+  bool exclusive = adaptor.getExclusive();
+  bool reverse = adaptor.getReverse();
+
+  Type elem_type = input_type.getElementType();
+  if (elem_type.isF32()) {
+    return ConstFoldCumsumOp<float>(result_type, input_elements, axis_val,
+                                    exclusive, reverse);
+  } else if (elem_type.isInteger(32)) {
+    return ConstFoldCumsumOp<int32_t>(result_type, input_elements, axis_val,
+                                      exclusive, reverse);
+  } else if (elem_type.isInteger(64)) {
+    return ConstFoldCumsumOp<int64_t>(result_type, input_elements, axis_val,
+                                      exclusive, reverse);
+  }
+
+  return nullptr;
 }
 
 //===----------------------------------------------------------------------===//
