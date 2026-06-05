@@ -208,12 +208,12 @@ class AutotuneMap {
     const char* threshold_str = getenv("TF_AUTOTUNE_THRESHOLD");
     if (threshold_str != nullptr) {
       VLOG(1) << "TF_AUTOTUNE_THRESHOLD = " << threshold_str;
-      strings::safe_strto32(threshold_str, &min_score_threshold_);
+      absl::SimpleAtoi(threshold_str, &min_score_threshold_);
     }
     const char* min_warmup_iteration_str =
         getenv("TF_AUTOTUNE_MIN_WARMUP_ITERATIONS");
     if (min_warmup_iteration_str != nullptr) {
-      strings::safe_strto32(min_warmup_iteration_str, &min_warmup_iterations);
+      absl::SimpleAtoi(min_warmup_iteration_str, &min_warmup_iterations);
     }
     min_score_threshold_ = std::max(min_score_threshold_, 1);
     max_autotune_count_ = std::max(
