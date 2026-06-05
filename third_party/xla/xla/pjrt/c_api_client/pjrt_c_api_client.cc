@@ -2742,7 +2742,9 @@ PjRtCApiExecutable::GetHloModules() const {
   }
 
   HloModuleProtoWithConfig proto;
-  proto.ParseFromString(code);
+  if (!proto.ParseFromString(code)) {
+    return InvalidArgument("Failed to deserialize HloModuleProtoWithConfig");
+  }
   std::vector<std::shared_ptr<HloModule>> out;
   ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                    HloModule::CreateFromProtoWithConfig(proto));

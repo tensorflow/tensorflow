@@ -107,7 +107,9 @@ absl::StatusOr<nb::bytes> GetHloModuleSerializedProto(const HloModule& module) {
 absl::StatusOr<std::shared_ptr<HloModule>> HloModuleFromSerializedProto(
     const nb::bytes& bytes) {
   HloModuleProto proto;
-  proto.ParseFromString(absl::string_view(bytes.c_str(), bytes.size()));
+  if (!proto.ParseFromString(absl::string_view(bytes.c_str(), bytes.size()))) {
+    return InvalidArgument("Failed to deserialize HloModuleProto");
+  }
   ASSIGN_OR_RETURN(const HloModuleConfig module_config,
                    HloModule::CreateModuleConfigFromProto(
                        proto, GetDebugOptionsFromFlags()));
