@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
