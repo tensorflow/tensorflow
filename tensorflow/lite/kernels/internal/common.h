@@ -79,6 +79,9 @@ bool ReduceDimensionsForBroadcast(const RuntimeShape& input1_shape,
         broadcast_input1 = true;
         broadcast_input2 = false;
         num_compressed_dims++;
+        if (num_compressed_dims > MAX_DIM) {
+          return false;
+        }
       }
       compressed_input2_shape[num_compressed_dims - 1] *= input2_dim;
       compressed_output_shape[num_compressed_dims - 1] *= input2_dim;
@@ -87,6 +90,9 @@ bool ReduceDimensionsForBroadcast(const RuntimeShape& input1_shape,
         broadcast_input1 = false;
         broadcast_input2 = true;
         num_compressed_dims++;
+        if (num_compressed_dims > MAX_DIM) {
+          return false;
+        }
       }
       compressed_input1_shape[num_compressed_dims - 1] *= input1_dim;
       compressed_output_shape[num_compressed_dims - 1] *= input1_dim;
@@ -96,6 +102,9 @@ bool ReduceDimensionsForBroadcast(const RuntimeShape& input1_shape,
         broadcast_input1 = false;
         broadcast_input2 = false;
         num_compressed_dims++;
+        if (num_compressed_dims > MAX_DIM) {
+          return false;
+        }
       }
       compressed_input1_shape[num_compressed_dims - 1] *= input1_dim;
       compressed_input2_shape[num_compressed_dims - 1] *= input1_dim;
@@ -106,6 +115,9 @@ bool ReduceDimensionsForBroadcast(const RuntimeShape& input1_shape,
   if (num_input1_dims > num_input2_dims) {
     if (!broadcast_input2) {
       num_compressed_dims++;
+      if (num_compressed_dims > MAX_DIM) {
+        return false;
+      }
     }
     for (size_t i = 0; i < num_input1_dims - num_input2_dims; i++) {
       const size_t input1_dim = input1_dims[i];
@@ -118,6 +130,9 @@ bool ReduceDimensionsForBroadcast(const RuntimeShape& input1_shape,
   } else if (num_input2_dims > num_input1_dims) {
     if (!broadcast_input1) {
       num_compressed_dims++;
+      if (num_compressed_dims > MAX_DIM) {
+        return false;
+      }
     }
     for (size_t i = 0; i < num_input2_dims - num_input1_dims; i++) {
       const size_t input2_dim = input2_dims[i];
