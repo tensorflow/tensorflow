@@ -33,12 +33,12 @@ StatusOr<mlir::Value> DeviceId(mlir::Operation* op) {
     // Device ID is the 0th argument of the enclosing function.
     function = op->getParentOfType<mlir::func::FuncOp>();
     if (!function)
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "operation must be enclosed inside a function.");
   }
 
   if (function.getNumArguments() == 0)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "enclosing function must contain device id as argument");
 
   auto device_id = function.getArgument(0);
@@ -46,7 +46,7 @@ StatusOr<mlir::Value> DeviceId(mlir::Operation* op) {
       mlir::dyn_cast<mlir::RankedTensorType>(device_id.getType());
   if (!device_id_type ||
       !mlir::isa<mlir::IntegerType>(device_id_type.getElementType()))
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "0-th argument of the enclosing function should be integer device id.");
 
   return device_id;
@@ -59,7 +59,7 @@ StatusOr<mlir::Value> DeviceId(mlir::Value val) {
         mlir::dyn_cast<mlir::RankedTensorType>(device_id.getType());
     if (!device_id_type ||
         !mlir::isa<mlir::IntegerType>(device_id_type.getElementType()))
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "0-th argument of the enclosing block should be integer device id.");
     return device_id;
   }
