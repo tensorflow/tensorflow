@@ -628,15 +628,6 @@ class HloSharding {
     return tile_assignment_;
   }
 
-  // Returns the flattened list of devices used in the tile assignment.
-  // REQUIRES: !IsReplicated() && !IsTuple()
-  absl::Span<const int64_t> flattened_device_list() const {
-    const auto& array = UseNamedShardingLeaf()
-                            ? named_sharding_->device_assignment().array()
-                            : tile_assignment_.array();
-    return absl::MakeConstSpan(array.begin(), array.num_elements());
-  }
-
   const NamedSharding& named_sharding() const {
     CHECK(UseNamedShardingLeaf());
     return named_sharding_.value();
