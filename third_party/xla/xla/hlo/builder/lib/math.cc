@@ -1981,8 +1981,68 @@ XlaOp Polygamma(XlaOp n, XlaOp x) {
 
     const double nan = std::numeric_limits<double>::quiet_NaN();
 
-    XlaOp output = Select(Eq(n, ScalarLike(n, 0.)), Digamma(x),
-                          sign * Exp(Lgamma(n_plus_one)) * Zeta(n_plus_one, x));
+    // For n >= 1 and x < 0 (non-integer), XLA's Euler-Maclaurin zeta expansion
+    // requires q > 0 and diverges for q = x <= 0, producing catastrophically
+    // wrong results. Apply the reflection formula derived by differentiating
+    // the digamma reflection identity psi(1-x) - psi(x) = pi*cot(pi*x) n times:
+    //
+    //   psi^(n)(x) = (-1)^n * psi^(n)(1-x) - g_n(x),   x not in Z
+    //
+    // where (-1)^n * psi^(n)(1-x) = -factorial(n) * Zeta(n+1, 1-x) (since
+    // (-1)^n * sign = -1 for all n >= 1), and g_n = pi*d^n/dx^n[cot(pi*x)]:
+    //
+    //   g_1 = -pi^2 / sin^2(pi*x)
+    //   g_2 = 2*pi^3 * cos(pi*x) / sin^3(pi*x)
+    //   g_3 = -2*pi^4 * (2 + cos(2*pi*x)) / sin^4(pi*x)
+    //   g_4 = 8*pi^5 * cos(pi*x) * (2 + cos^2(pi*x)) / sin^5(pi*x)
+    //
+    // For n >= 5 we fall back to the direct (inaccurate) path rather than
+    // extending the table further; those orders are rarely needed in practice.
+    //
+    // To improve precision near integer x (where pi*x has cancellation), we
+    // use reduced_x = x + |floor(x + 0.5)|, shifted into [-0.5, 0.5].  All
+    // g_n formulas are periodic in x with period 1, so g_n(reduced_x) ==
+    // g_n(x).
+    XlaOp pi = ScalarLike(x, M_PI);
+    XlaOp reduced_x = x + Abs(Floor(x + ScalarLike(x, 0.5)));
+    XlaOp pix_r = pi * reduced_x;
+    XlaOp s = Sin(pix_r);
+    XlaOp c = Cos(pix_r);
+    XlaOp s2 = s * s;
+    XlaOp s3 = s2 * s;
+    XlaOp s4 = s2 * s2;
+    XlaOp s5 = s4 * s;
+    XlaOp pi2 = pi * pi;
+    XlaOp pi3 = pi2 * pi;
+    XlaOp pi4 = pi2 * pi2;
+    XlaOp pi5 = pi4 * pi;
+
+    XlaOp g1 = Neg(pi2 / s2);
+    XlaOp g2 = ScalarLike(x, 2.) * pi3 * c / s3;
+    XlaOp g3 = ScalarLike(x, -2.) * pi4 *
+               (ScalarLike(x, 2.) + Cos(ScalarLike(x, 2.) * pix_r)) / s4;
+    XlaOp g4 = ScalarLike(x, 8.) * pi5 * c * (ScalarLike(x, 2.) + c * c) / s5;
+
+    XlaOp is_n1 = Eq(n, ScalarLike(n, 1.));
+    XlaOp is_n2 = Eq(n, ScalarLike(n, 2.));
+    XlaOp is_n3 = Eq(n, ScalarLike(n, 3.));
+    XlaOp gn = Select(is_n1, g1, Select(is_n2, g2, Select(is_n3, g3, g4)));
+
+    // (-1)^n * psi^(n)(1-x) simplifies to -factorial(n)*Zeta(n+1, 1-x) because
+    // (-1)^n * sign = (-1)^n * (-1)^(n+1) = (-1)^(2n+1) = -1 for all n >= 1.
+    XlaOp x_refl = ScalarLike(x, 1.) - x;  // 1 - x > 0 for x < 0
+    XlaOp psi_refl = Neg(Exp(Lgamma(n_plus_one))) * Zeta(n_plus_one, x_refl);
+    XlaOp reflected = psi_refl - gn;
+
+    XlaOp is_x_neg = Lt(x, ScalarLike(x, 0.));
+    XlaOp is_x_not_int = Ne(x, Floor(x));
+    XlaOp n_in_range = And(Ge(n, ScalarLike(n, 1.)), Le(n, ScalarLike(n, 4.)));
+    XlaOp use_reflection = And(And(is_x_neg, is_x_not_int), n_in_range);
+
+    XlaOp output =
+        Select(Eq(n, ScalarLike(n, 0.)), Digamma(x),
+               Select(use_reflection, reflected,
+                      sign * Exp(Lgamma(n_plus_one)) * Zeta(n_plus_one, x)));
     // Check that n is a natural number.
     output = Select(Or(Ne(n, Floor(n)), Lt(n, ScalarLike(n, 0.))),
                     ScalarLike(n, nan), output);
