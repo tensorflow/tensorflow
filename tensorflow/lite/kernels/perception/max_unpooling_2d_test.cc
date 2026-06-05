@@ -96,6 +96,20 @@ TEST(MaxUnpoolingOpTest, SimpleTest) {
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({0, 13, 0, 0, 0, 0, 4, 0}));
 }
 
+TEST(MaxUnpoolingOpTest, InvalidIndexReturnsError) {
+  MaxUnpoolingOpModel model(
+      /*input=*/{TensorType_FLOAT32, {1, 1, 2, 1}},
+      /*indices=*/{TensorType_INT32, {1, 1, 2, 1}},
+      /*stride_height=*/2, /*stride_width=*/2,
+      /*filter_height=*/2, /*filter_width=*/2,
+      /*padding=*/kTfLitePaddingSame,
+      /*output=*/{TensorType_FLOAT32, {}});
+  model.SetInput({13, 4});
+  model.SetIndices({-1, 8});
+
+  EXPECT_NE(model.Invoke(), kTfLiteOk);
+}
+
 TEST(MaxUnpoolingOpTest, Strides2x1Test) {
   constexpr int kInputB = 1;
   constexpr int kInputH = 2;
