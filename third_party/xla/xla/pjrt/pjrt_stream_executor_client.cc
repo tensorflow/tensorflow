@@ -1742,9 +1742,9 @@ PjRtRawLoadedExecutable::RawExecuteResult
 PjRtStreamExecutorRawLoadedExecutable::Execute(
     const ExecuteOptions& options, absl::Span<const PjRtRawBufferRef> inputs,
     absl::Span<const PjRtRawBufferRef> results,
-    std::unique_ptr<PjRtDeviceEventSet> extra_deps,
-    std::unique_ptr<PjRtDeviceEventSet> control_deps,
-    bool is_predetermined_error, bool fill_future) && {
+    std::vector<PjRtDeviceEventRef> extra_deps,
+    std::vector<PjRtDeviceEventRef> control_deps, bool is_predetermined_error,
+    bool fill_future) && {
   const uint64_t start_time_usecs = tsl::Env::Default()->NowMicros();
   int device_ordinal = tensorflow::down_cast<PjRtStreamExecutorDevice*>(device_)
                            ->local_device_state()
@@ -1795,14 +1795,6 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
   int command_buffer_va_range_idx =
       GetNextCommandBufferVaRangeIdx(executable_->executable(), device_ordinal);
 
-  std::vector<PjRtDeviceEventRef> extra_deps_vec =
-      std::move(
-          *tensorflow::down_cast<DefaultPjRtDeviceEventSet*>(extra_deps.get()))
-          .Consume();
-  std::vector<PjRtDeviceEventRef> control_deps_vec =
-      std::move(*tensorflow::down_cast<DefaultPjRtDeviceEventSet*>(
-                    control_deps.get()))
-          .Consume();
   auto launch_on_device =
       [device_state, gpu_run_options = client_->gpu_run_options(options),
        launch_id = options.launch_id, run_id = run_id_,
@@ -1819,9 +1811,8 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
        on_device_executable_parameter_shapes =
            on_device_executable_parameter_shapes_,
        replica = replica_, partition = partition_,
-       extra_deps = std::move(extra_deps_vec),
-       control_deps =
-           std::move(control_deps_vec)]() mutable -> PjRtDeviceEventRef {
+       extra_deps = std::move(extra_deps),
+       control_deps = std::move(control_deps)]() mutable -> PjRtDeviceEventRef {
     ExecutableRunOptions run_options;
     run_options.set_stream(device_state->compute_stream());
     run_options.set_device_ordinal(device_state->local_device_id().value());

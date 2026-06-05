@@ -312,58 +312,6 @@ class PjRtDeviceEventPromise
 
 using PjRtDeviceEventPromiseRef = tsl::RCReference<PjRtDeviceEventPromise>;
 
-// A collection of events. This is not an event itself because we may want to
-// add events in the future.
-class PjRtDeviceEventSet {
- public:
-  virtual ~PjRtDeviceEventSet() = default;
-
-  virtual void AddEvent(PjRtDeviceEventRef event) = 0;
-
-  virtual void AppendTo(
-      std::vector<tsl::RCReference<tsl::AsyncValue>>& events) = 0;
-  virtual void AppendTo(std::vector<PjRtDeviceEventRef>& events) = 0;
-  virtual void AppendTo(PjRtDeviceEventSet& events) = 0;
-};
-
-class DefaultPjRtDeviceEventSet : public PjRtDeviceEventSet {
- public:
-  DefaultPjRtDeviceEventSet() = default;
-  explicit DefaultPjRtDeviceEventSet(size_t reservation) {
-    events_.reserve(reservation);
-  }
-
-  void AddEvent(PjRtDeviceEventRef event) override {
-    if (event) {
-      events_.push_back(std::move(event));
-    }
-  }
-
-  void AppendTo(
-      std::vector<tsl::RCReference<tsl::AsyncValue>>& events) override {
-    for (const auto& event : events_) {
-      if (auto* av = event.async_value()) {
-        events.push_back(tsl::FormRef(av));
-      }
-    }
-  }
-  void AppendTo(std::vector<PjRtDeviceEventRef>& events) override {
-    events.insert(events.end(), events_.begin(), events_.end());
-  }
-  void AppendTo(PjRtDeviceEventSet& events) override {
-    for (const auto& event : events_) {
-      events.AddEvent(event);
-    }
-  }
-
-  absl::Span<const PjRtDeviceEventRef> events() const { return events_; }
-
-  std::vector<PjRtDeviceEventRef> Consume() && { return std::move(events_); }
-
- private:
-  std::vector<PjRtDeviceEventRef> events_;
-};
-
 }  // namespace xla
 
 #endif  // XLA_PJRT_DEVICE_EVENT_H_

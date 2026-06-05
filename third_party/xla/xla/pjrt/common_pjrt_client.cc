@@ -652,8 +652,9 @@ void CommonPjRtClient::ScheduleRemoteSend(
 absl::Status CommonPjRtClient::PrepareArguments(
     const ExecuteOptions& options,
     absl::Span<PjRtBuffer* const> argument_handles,
-    absl::Span<int const> donated_params, PjRtDeviceEventSet& extra_deps,
-    PjRtDeviceEventSet& control_deps,
+    absl::Span<int const> donated_params,
+    std::vector<PjRtDeviceEventRef>& extra_deps,
+    std::vector<PjRtDeviceEventRef>& control_deps,
     absl::InlinedVector<PjRtRawBufferRef, 4>& input_buffers,
     absl::InlinedVector<CommonPjRtBuffer::ScopedHold, 4>& device_buffers,
     PjRtDevice* device, int replica, int partition,
@@ -788,7 +789,7 @@ absl::Status CommonPjRtClient::PrepareArguments(
               ABSL_FALLTHROUGH_INTENDED;
             case PJRT_DeviceEvent_State_Unavailable:
               if (extra_deps_seen.insert(ev.ptr().ToC().device_event).second) {
-                extra_deps.AddEvent(ev);
+                extra_deps.push_back(ev);
               }
               break;
             case PJRT_DeviceEvent_State_Ready:
@@ -813,7 +814,7 @@ absl::Status CommonPjRtClient::PrepareArguments(
             continue;
           }
           if (control_deps_seen.insert(ev.ptr().ToC().device_event).second) {
-            control_deps.AddEvent(ev);
+            control_deps.push_back(ev);
           }
         }
       }
@@ -1387,15 +1388,13 @@ absl::Status CommonPjRtLoadedExecutable::ExecutePrepare(
   // This also ensures that the returned `execute_event` dominates all inputs'
   // events, and thus output buffer only need to contain `execute_event` as the
   // single definition event.
-  launch_args.extra_deps =
-      client()->CreateDeviceEventSet(argument_handles.size());
-  launch_args.control_deps =
-      client()->CreateDeviceEventSet(argument_handles.size());
+  launch_args.extra_deps.reserve(argument_handles.size());
+  launch_args.control_deps.reserve(argument_handles.size());
 
   bool is_error = false;
   RETURN_IF_ERROR(CommonPjRtClient::PrepareArguments(
       options, argument_handles, ParametersThatMustBeDonated(),
-      *launch_args.extra_deps, *launch_args.control_deps,
+      launch_args.extra_deps, launch_args.control_deps,
       launch_args.input_buffers, launch_args.device_buffers, device, replica,
       partition, parameter_device_shapes_, is_error,
       client()->allow_fallback_for_donation()));
@@ -1469,8 +1468,6 @@ absl::Status CommonPjRtLoadedExecutable::CheckBufferCompatibilities(
 absl::StatusOr<PjRtLoadedExecutable::Result>
 CommonPjRtLoadedExecutable::ExecuteLaunch(ExecuteLaunchArgs& launch_args,
                                           bool fill_future) const {
-  CHECK(launch_args.extra_deps.get()) << "extra_deps is nullptr";
-  CHECK(launch_args.control_deps.get()) << "control_deps is nullptr";
   auto results = std::move(*launch_args.executable)
                      .Execute(*launch_args.options, launch_args.input_buffers,
                               launch_args.output_leaf_buffers,

@@ -215,11 +215,6 @@ class CommonPjRtClient : public PjRtClient {
     return CreateLinkedEventPromise(memory_space, "CreateLinkedEventPromise");
   }
 
-  virtual std::unique_ptr<PjRtDeviceEventSet> CreateDeviceEventSet(
-      size_t preallocated_size) const {
-    return std::make_unique<DefaultPjRtDeviceEventSet>(preallocated_size);
-  }
-
   tsl::Future<> MakeTrackedReadyFuture(PjRtDeviceEventPtr device_event,
                                        PjRtMemorySpace* memory_space,
                                        const char* callee_type,
@@ -376,8 +371,9 @@ class CommonPjRtClient : public PjRtClient {
   static absl::Status PrepareArguments(
       const ExecuteOptions& options,
       absl::Span<PjRtBuffer* const> argument_handles,
-      absl::Span<int const> donated_params, PjRtDeviceEventSet& extra_deps,
-      PjRtDeviceEventSet& control_deps,
+      absl::Span<int const> donated_params,
+      std::vector<PjRtDeviceEventRef>& extra_deps,
+      std::vector<PjRtDeviceEventRef>& control_deps,
       absl::InlinedVector<PjRtRawBufferRef, 4>& input_buffers,
       absl::InlinedVector<CommonPjRtBuffer::ScopedHold, 4>& device_buffers,
       PjRtDevice* device, int replica, int partition,
@@ -437,12 +433,13 @@ class PjRtRawLoadedExecutable {
     PjRtDeviceEventRef primary_execute_event;
     absl::Status inline_status;
   };
-  virtual RawExecuteResult Execute(
-      const ExecuteOptions& options, absl::Span<const PjRtRawBufferRef> inputs,
-      absl::Span<const PjRtRawBufferRef> results,
-      std::unique_ptr<PjRtDeviceEventSet> extra_deps,
-      std::unique_ptr<PjRtDeviceEventSet> control_deps,
-      bool is_predetermined_error, bool fill_future) && = 0;
+  virtual RawExecuteResult Execute(const ExecuteOptions& options,
+                                   absl::Span<const PjRtRawBufferRef> inputs,
+                                   absl::Span<const PjRtRawBufferRef> results,
+                                   std::vector<PjRtDeviceEventRef> extra_deps,
+                                   std::vector<PjRtDeviceEventRef> control_deps,
+                                   bool is_predetermined_error,
+                                   bool fill_future) && = 0;
 };
 
 class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
@@ -637,8 +634,8 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
     std::unique_ptr<PjRtRawLoadedExecutable> executable;
     absl::InlinedVector<PjRtRawBufferRef, 4> input_buffers;
     absl::InlinedVector<CommonPjRtBuffer::ScopedHold, 4> device_buffers;
-    std::unique_ptr<PjRtDeviceEventSet> extra_deps;
-    std::unique_ptr<PjRtDeviceEventSet> control_deps;
+    std::vector<PjRtDeviceEventRef> extra_deps;
+    std::vector<PjRtDeviceEventRef> control_deps;
     absl::InlinedVector<PjRtRawBufferRef, 4> output_leaf_buffers;
     bool is_predetermined_error;
     const ExecuteOptions* options;
