@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/device_event.h"
+#include "xla/pjrt/staging_buffer.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -182,6 +184,12 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
   // require deleting after all events.
   virtual void DecrefAfter(std::vector<PjRtDeviceEventRef> avs);
 };
+
+tsl::AsyncValueRef<PjRtStagingBuffer> ToStagingBuffer(
+    PjRtRawBufferRef raw_buffer, PjRtDeviceEventPromiseRef usage_promise,
+    absl::FunctionRef<tsl::AsyncValueRef<PjRtStagingBuffer>(size_t,
+                                                            PjRtMemorySpace*)>
+        allocate_staging_buffer);
 
 class RegisterRawBufferFactory {
  public:

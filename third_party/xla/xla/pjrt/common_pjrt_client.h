@@ -73,6 +73,20 @@ class CommonPjRtClient : public PjRtClient {
   virtual bool allows_execute_recursion() const { return allows_recursion(); }
   virtual bool allow_fallback_for_donation() const { return false; }
   virtual bool supports_two_phase_launch() const { return true; }
+  // Returns true if we should skip the staging buffer during ToLiteral.
+  virtual bool ShouldDoDirectTransfer(const MutableLiteralBase& literal,
+                                      const Shape& shape,
+                                      PjRtMemorySpace* memory_space) const {
+    return false;
+  }
+
+  virtual tsl::AsyncValueRef<PjRtStagingBuffer> AllocateForDelinearizationAsync(
+      size_t size, PjRtMemorySpace* memory_space);
+
+  virtual void DelinearizeAsync(
+      tsl::AsyncValueRef<PjRtStagingBuffer> staging_buffer, const Shape& shape,
+      MutableLiteralBase* literal, tsl::Promise<void> promise);
+
   // TODO(parkers): Properly support error buffers on GPU and CPU.
   virtual bool include_raw_buffer_in_ready_event() const { return false; }
   virtual bool supports_predetermined_error() const { return true; }
@@ -733,6 +747,11 @@ class CommonPjRtRawBufferImpl : public CommonPjRtRawBuffer {
 
   Future<> CopyRawDeviceToHost(void* dst, int64_t offset,
                                int64_t transfer_size) override;
+
+  void CopyToLiteralAsync(Promise<> promise,
+                          PjRtDeviceEventPromiseRef device_promise,
+                          MutableLiteralBase* literal,
+                          xla::Shape shape) override;
 };
 
 // TODO(parkers): Merge everything here into CommonPjRtBuffer.

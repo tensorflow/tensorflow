@@ -96,6 +96,27 @@ absl::Status CommonPjRtClient::WaitOnStream(PjRtMemorySpace* memory_space,
       "WaitUntilBufferReadyOnStream is only implemented for GPU.");
 }
 
+tsl::AsyncValueRef<PjRtStagingBuffer>
+CommonPjRtClient::AllocateForDelinearizationAsync(
+    size_t size, PjRtMemorySpace* memory_space) {
+  return tsl::MakeErrorAsyncValueRef(absl::UnimplementedError(
+      "AllocateForDelinearizationAsync is not supported"));
+}
+
+void CommonPjRtClient::DelinearizeAsync(
+    tsl::AsyncValueRef<PjRtStagingBuffer> staging_buffer, const Shape& shape,
+    MutableLiteralBase* literal, tsl::Promise<void> promise) {
+  staging_buffer.AndThen(
+      [staging_buffer, promise = std::move(promise)]() mutable {
+        if (auto* error = staging_buffer.GetErrorIfPresent()) {
+          promise.Set(*error);
+        } else {
+          promise.Set(
+              absl::UnimplementedError("DelinearizeAsync is not supported"));
+        }
+      });
+}
+
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> CommonPjRtClient::DefineBuffer(
     std::shared_ptr<const Shape> on_device_shape, PjRtMemorySpace* memory_space,
     PjRtRawBufferRef raw_buffer,
@@ -558,6 +579,21 @@ Future<> CommonPjRtRawBufferImpl::CopyRawDeviceToHost(void* dst, int64_t offset,
   return absl::down_cast<CommonPjRtClient*>(memory_space()->client())
       ->MakeTrackedReadyFuture(event->ptr(), memory_space(),
                                "CommonPjRtRawBuffer", "CopyRawDeviceToHost");
+}
+
+void CommonPjRtRawBufferImpl::CopyToLiteralAsync(
+    Promise<> promise, PjRtDeviceEventPromiseRef device_promise,
+    MutableLiteralBase* literal, xla::Shape shape) {
+  auto* client = absl::down_cast<CommonPjRtClient*>(memory_space()->client());
+
+  auto staging_buffer = ToStagingBuffer(
+      tsl::FormRef(this), device_promise,
+      [&](size_t size, PjRtMemorySpace* memory_space) {
+        return client->AllocateForDelinearizationAsync(size, memory_space);
+      });
+
+  client->DelinearizeAsync(std::move(staging_buffer), shape, literal,
+                           std::move(promise));
 }
 
 void CommonPjRtBufferImpl::CopyToRemoteDevice(
@@ -2469,6 +2505,33 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
                 return;
               }
               raw_buffer = *status_or_buffer;
+              if (common_client->ShouldDoDirectTransfer(
+                      *literal, shape, raw_buffer->memory_space())) {
+                tsl::profiler::TraceMe traceme([&] {
+                  return tsl::profiler::TraceMeEncode(
+                      "PjRtBuffer::ToLiteralZeroCopyPath",
+                      {{"shape", shape.ToString(/*print_layout=*/true)}});
+                });
+                auto d2h_event = raw_buffer->CopyRawDeviceToHostAndReturnEvent(
+                    literal->untyped_data(), 0, literal->size_bytes());
+                if (!d2h_event.ok()) {
+                  notify_all(d2h_event.status());
+                  return;
+                }
+                device_promise->Set(*std::move(d2h_event));
+                ScopedLauncher launcher(
+                    [device_promise, promise = std::move(promise)]() mutable {
+                      if (auto error =
+                              device_promise->event().GetErrorIfPresent()) {
+                        promise.Set(*error);
+                      } else {
+                        promise.Set();
+                      }
+                    },
+                    common_client->async_work_runner());
+                launcher.AddDependency(device_promise->event());
+                return;
+              }
               raw_buffer->CopyToLiteralAsync(std::move(promise), device_promise,
                                              literal, std::move(shape));
             };
