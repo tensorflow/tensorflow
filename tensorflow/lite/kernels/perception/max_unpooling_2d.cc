@@ -33,26 +33,66 @@ constexpr int kOutputTensor = 0;
 
 // TODO(b/175003241): Move this logic to lite/kernels/internal when promoting
 // this op to a builtin op.
-inline void MaxUnpooling(const RuntimeShape& input_shape,
-                         const float* input_data, const int32_t* indices_data,
-                         const RuntimeShape& output_shape, float* output_data) {
-  std::memset(output_data, 0, output_shape.FlatSize() * sizeof(float));
-  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
-  const int depth = MatchingDim(input_shape, 3, output_shape, 3);
-  const int batch_stride =
-      output_shape.Dims(1) * output_shape.Dims(2) * output_shape.Dims(3);
-  for (int batch = 0; batch < batches; ++batch) {
-    for (int in_y = 0; in_y < input_shape.Dims(1); ++in_y) {
-      for (int in_x = 0; in_x < input_shape.Dims(2); ++in_x) {
-        for (int channel = 0; channel < depth; ++channel) {
+inline TfLiteStatus MaxUnpooling(TfLiteContext* context,
+                                 const RuntimeShape& input_shape,
+                                 const float* input_data,
+                                 const int32_t* indices_data,
+                                 const RuntimeShape& output_shape,
+                                 float* output_data) {
+  int input_count = 0;
+  int output_count = 0;
+  TF_LITE_ENSURE_MSG(
+      context,
+      input_shape.CheckedNumElementsInRange(
+          0, input_shape.DimensionsCount(), input_count),
+      "%s", "MaxUnpooling2D input size overflowed.");
+  TF_LITE_ENSURE_MSG(
+      context,
+      output_shape.CheckedNumElementsInRange(
+          0, output_shape.DimensionsCount(), output_count),
+      "%s", "MaxUnpooling2D output size overflowed.");
+  if (input_count > 0) {
+    TF_LITE_ENSURE(context, input_data != nullptr);
+    TF_LITE_ENSURE(context, indices_data != nullptr);
+  }
+  if (output_count > 0) {
+    TF_LITE_ENSURE(context, output_data != nullptr);
+    std::memset(output_data, 0, output_count * sizeof(float));
+  }
+
+  const int32_t batches = MatchingDim(input_shape, 0, output_shape, 0);
+  const int32_t input_height = input_shape.Dims(1);
+  const int32_t input_width = input_shape.Dims(2);
+  const int32_t depth = MatchingDim(input_shape, 3, output_shape, 3);
+  int batch_stride = 0;
+  TF_LITE_ENSURE_MSG(context,
+                     output_shape.CheckedSizeFromDimension(1, batch_stride),
+                     "%s", "MaxUnpooling2D batch stride overflowed.");
+  for (int i = 0; i < input_count; ++i) {
+    const int32_t idx = indices_data[i];
+    TF_LITE_ENSURE_MSG(context, idx >= 0 && idx < batch_stride,
+                       "Invalid MaxUnpooling2D index.");
+  }
+
+  for (int32_t batch = 0; batch < batches; ++batch) {
+    int batch_offset = 0;
+    TF_LITE_ENSURE_OK(
+        context, CheckedShapeProductToInt(
+                     context, {batch, batch_stride},
+                     "MaxUnpooling2D batch offset overflowed.", batch_offset));
+    for (int32_t in_y = 0; in_y < input_height; ++in_y) {
+      for (int32_t in_x = 0; in_x < input_width; ++in_x) {
+        for (int32_t channel = 0; channel < depth; ++channel) {
           const auto input_offset =
               Offset(input_shape, batch, in_y, in_x, channel);
-          int idx = indices_data[input_offset];
-          output_data[batch * batch_stride + idx] = input_data[input_offset];
+          const int32_t idx = indices_data[input_offset];
+          const int output_offset = batch_offset + idx;
+          output_data[output_offset] = input_data[input_offset];
         }
       }
     }
   }
+  return kTfLiteOk;
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -115,10 +155,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* indices = GetInput(context, node, kIndicesTensor);
   TF_LITE_ENSURE(context, indices != nullptr);
 
-  MaxUnpooling(GetTensorShape(input), GetTensorData<float>(input),
-               GetTensorData<int32_t>(indices), GetTensorShape(output),
-               GetTensorData<float>(output));
-  return kTfLiteOk;
+  const RuntimeShape input_shape = GetTensorShape(input);
+  TF_LITE_ENSURE(context, TfLiteIntArrayEqual(input->dims, indices->dims));
+
+  return MaxUnpooling(context, input_shape, GetTensorData<float>(input),
+                      GetTensorData<int32_t>(indices), GetTensorShape(output),
+                      GetTensorData<float>(output));
 }
 
 }  // namespace max_unpooling_2d
