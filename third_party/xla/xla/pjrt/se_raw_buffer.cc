@@ -365,7 +365,7 @@ void PjRtStreamExecutorRawBuffer::CopyToLiteralAsync(
                                 std::move(event_or).value(), stream);
       });
 
-  device_promise->Set(PjRtDeviceEventRef(std::move(usage_event)));
+  device_promise.Set(PjRtDeviceEventRef(std::move(usage_event)));
 }
 
 absl::StatusOr<PjRtDeviceEventRef>
@@ -406,23 +406,23 @@ void PjRtStreamExecutorRawBuffer::CopyTo(
     auto h2d_event = dst_raw_buffer->CopyRawHostToDeviceAndReturnEvent(
         src_ptr, 0, GetOnDeviceSizeInBytes());
     if (!h2d_event.ok()) {
-      definition_event_promise->SetError(h2d_event.status());
-      src_usage_event_promise->SetError(h2d_event.status());
+      definition_event_promise.SetError(h2d_event.status());
+      src_usage_event_promise.SetError(h2d_event.status());
       return;
     }
     (*h2d_event)
         .AndThen([src_usage_event_promise = std::move(src_usage_event_promise),
                   src_buffer = tsl::FormRef(this)]() {
-          src_usage_event_promise->SetReady();
+          src_usage_event_promise.SetReady();
         });
-    definition_event_promise->Set(*std::move(h2d_event));
+    definition_event_promise.Set(*std::move(h2d_event));
     return;
   } else if (auto* dst_ptr = dst_raw_buffer->GetHostPointer()) {
     auto d2h_event =
         CopyRawDeviceToHostAndReturnEvent(dst_ptr, 0, GetOnDeviceSizeInBytes());
     if (!d2h_event.ok()) {
-      definition_event_promise->SetError(d2h_event.status());
-      src_usage_event_promise->SetError(d2h_event.status());
+      definition_event_promise.SetError(d2h_event.status());
+      src_usage_event_promise.SetError(d2h_event.status());
       return;
     }
     (*d2h_event)
@@ -431,12 +431,12 @@ void PjRtStreamExecutorRawBuffer::CopyTo(
              d2h_event = *d2h_event, dst_buffer = dst_raw_buffer]() {
               if (const absl::Status* error =
                       d2h_event.async_value()->GetErrorIfPresent()) {
-                definition_event_promise->SetError(*error);
+                definition_event_promise.SetError(*error);
               } else {
-                definition_event_promise->SetReady();
+                definition_event_promise.SetReady();
               }
             });
-    src_usage_event_promise->Set(*std::move(d2h_event));
+    src_usage_event_promise.Set(*std::move(d2h_event));
     return;
   } else {
     HostMemoryAllocator::AllocateOptions alloc_opts;
@@ -448,8 +448,8 @@ void PjRtStreamExecutorRawBuffer::CopyTo(
     auto d2h_event = CopyRawDeviceToHostAndReturnEvent(
         staging_buffer.get(), 0, GetOnDeviceSizeInBytes());
     if (!d2h_event.ok()) {
-      definition_event_promise->SetError(d2h_event.status());
-      src_usage_event_promise->SetError(d2h_event.status());
+      definition_event_promise.SetError(d2h_event.status());
+      src_usage_event_promise.SetError(d2h_event.status());
       return;
     }
     (*d2h_event)
@@ -459,20 +459,20 @@ void PjRtStreamExecutorRawBuffer::CopyTo(
                   d2h_event = *d2h_event]() {
           if (const absl::Status* error =
                   d2h_event.async_value()->GetErrorIfPresent()) {
-            definition_event_promise->SetError(*error);
+            definition_event_promise.SetError(*error);
           } else {
             auto h2d_event = dst_raw_buffer->CopyRawHostToDeviceAndReturnEvent(
                 staging_buffer.get(), 0,
                 dst_raw_buffer->GetOnDeviceSizeInBytes());
             if (!h2d_event.ok()) {
-              definition_event_promise->SetError(*error);
+              definition_event_promise.SetError(*error);
             } else {
               (*h2d_event).AndThen([staging_buffer]() {});
-              definition_event_promise->Set(*std::move(h2d_event));
+              definition_event_promise.Set(*std::move(h2d_event));
             }
           }
         });
-    src_usage_event_promise->Set(*std::move(d2h_event));
+    src_usage_event_promise.Set(*std::move(d2h_event));
   }
 }
 
@@ -592,8 +592,8 @@ void PjRtStreamExecutorRawBuffer::IntraClientCopyToWithDependencies(
     }
   }
 
-  definition_event_promise->Set(PjRtDeviceEventRef(usage_event));
-  src_usage_event_promise->Set(PjRtDeviceEventRef(std::move(usage_event)));
+  definition_event_promise.Set(PjRtDeviceEventRef(usage_event));
+  src_usage_event_promise.Set(PjRtDeviceEventRef(std::move(usage_event)));
 }
 
 absl::StatusOr<PjRtDeviceEventRef>

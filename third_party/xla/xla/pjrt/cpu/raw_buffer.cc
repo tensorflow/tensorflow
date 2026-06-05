@@ -371,11 +371,11 @@ void CpuRawBuffer::CopyToLiteralAsync(Promise<> promise,
         }();
 
         if (status.ok()) {
-          device_promise->Set(
+          device_promise.Set(
               PjRtDeviceEventRef(tsl::MakeAvailableAsyncValueRef<CpuEvent>()));
           promise.Set(absl::OkStatus());
         } else {
-          device_promise->SetError(status);
+          device_promise.SetError(status);
           promise.Set(status);
         }
       });
@@ -391,17 +391,17 @@ void CpuRawBuffer::CopyTo(PjRtRawBufferRef dst_raw_buffer,
   auto other_event = dst_raw_buffer->CopyRawHostToDeviceAndReturnEvent(
       GetHostPointer(), 0, GetOnDeviceSizeInBytes());
   if (!other_event.ok()) {
-    definition_event_promise->SetError(other_event.status());
-    src_usage_event_promise->SetError(other_event.status());
+    definition_event_promise.SetError(other_event.status());
+    src_usage_event_promise.SetError(other_event.status());
     return;
   }
   (*other_event)
       .AndThen([src_usage_event_promise = std::move(src_usage_event_promise),
                 src_buffer = tsl::FormRef(this)]() {
-        src_usage_event_promise->Set(
+        src_usage_event_promise.Set(
             PjRtDeviceEventRef(tsl::MakeAvailableAsyncValueRef<CpuEvent>()));
       });
-  definition_event_promise->Set(*std::move(other_event));
+  definition_event_promise.Set(*std::move(other_event));
 }
 
 absl::StatusOr<PjRtDeviceEventRef> CpuRawBuffer::CopyRawToRemoteDevice(

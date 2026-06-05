@@ -1130,9 +1130,11 @@ PjRtCpuClient::CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
   auto definition_event_promise = tsl::MakeIndirectAsyncValue();
   auto definition_event = PjRtDeviceEventRef(
       tsl::AsyncValueRef<CpuEvent>(definition_event_promise));
-  return std::make_pair(tsl::MakeRef<CpuTrackedDeviceEventPromise>(
-                            std::move(definition_event_promise)),
-                        std::move(definition_event));
+  auto promise = tsl::MakeRef<CpuTrackedDeviceEventPromise>(
+      std::move(definition_event_promise));
+  return std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>(
+      PjRtDeviceEventPromiseRef(std::move(promise)),
+      std::move(definition_event));
 }
 
 absl::StatusOr<PjRtRawBufferRef> PjRtCpuClient::AllocateRawBuffer(

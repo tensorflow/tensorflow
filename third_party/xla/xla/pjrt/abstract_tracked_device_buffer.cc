@@ -461,7 +461,7 @@ CommonPjRtBuffer::GetRawBufferForUsage(const char* caller_name) {
   return RawBufferForUsage{
       std::move(raw_buffer),
       [usage_done_promise = std::move(usage_done_promise)]() mutable {
-        usage_done_promise->SetReady();
+        usage_done_promise.SetReady();
       },
       GetReadyFuture(),
   };

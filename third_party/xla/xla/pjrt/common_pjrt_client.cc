@@ -288,7 +288,7 @@ CommonPjRtClient::CreateAliasBuffer(const Shape& shape,
        memory_space,
        shared_shape](absl::StatusOr<xla::PjRtBuffer*> buffer_or) mutable {
         if (!buffer_or.ok()) {
-          definition_event_promise->SetError(buffer_or.status());
+          definition_event_promise.SetError(buffer_or.status());
           std::move(buffer_promise)(buffer_or.status()).IgnoreError();
           return buffer_or.status();
         }
@@ -298,7 +298,7 @@ CommonPjRtClient::CreateAliasBuffer(const Shape& shape,
               "Shape mismatch in CreateRawBufferChannel fulfill: expected %s, "
               "got %s",
               shared_shape->ToString(), buffer->on_device_shape().ToString()));
-          definition_event_promise->SetError(status);
+          definition_event_promise.SetError(status);
           std::move(buffer_promise)(status).IgnoreError();
           return status;
         }
@@ -307,7 +307,7 @@ CommonPjRtClient::CreateAliasBuffer(const Shape& shape,
         if (common_buffer == nullptr) {
           auto status =
               absl::InternalError("Failed to cast to CommonPjRtBuffer");
-          definition_event_promise->SetError(status);
+          definition_event_promise.SetError(status);
           std::move(buffer_promise)(status).IgnoreError();
           return status;
         }
@@ -317,17 +317,17 @@ CommonPjRtClient::CreateAliasBuffer(const Shape& shape,
         auto device_event_or = hold.buffer()->GetDefinitionEvent(memory_space);
         if (!device_event_or.ok()) {
           auto status = device_event_or.status();
-          definition_event_promise->SetError(status);
+          definition_event_promise.SetError(status);
           std::move(buffer_promise)(status).IgnoreError();
           return status;
         }
         auto status = std::move(buffer_promise)(hold.buffer()->raw_buffer());
         if (!status.ok()) {
-          definition_event_promise->SetError(status);
+          definition_event_promise.SetError(status);
           return status;
         }
 
-        definition_event_promise->Set(std::move(*device_event_or));
+        definition_event_promise.Set(std::move(*device_event_or));
         hold.ConfirmDonation();
         return absl::OkStatus();
       };
@@ -467,9 +467,9 @@ CommonPjRtClient::BufferFromHostBuffer(
             std::move(on_done_with_host_buffer), *shared_device_shape,
             raw_buffer);
         if (definition_event.ok()) {
-          definition_event_promise->Set(*std::move(definition_event));
+          definition_event_promise.Set(*std::move(definition_event));
         } else {
-          definition_event_promise->SetError(definition_event.status());
+          definition_event_promise.SetError(definition_event.status());
         }
       });
   ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> output_buffer,
@@ -682,7 +682,7 @@ void CommonPjRtClient::ScheduleRemoteSend(
       absl::StrCat("ScheduleRemoteSend is not implemented for %s",
                    memory_space->DebugString()));
   on_done(error, /*sends_were_enqueued=*/false);
-  usage_event_promise->SetError(error);
+  usage_event_promise.SetError(error);
 }
 
 absl::Status CommonPjRtClient::PrepareArguments(
@@ -1174,7 +1174,7 @@ absl::StatusOr<std::vector<Future<>>> CommonPjRtClient::CrossHostSendBuffers(
                                std::move(transfer_specs));
   if (!usage_events_or.ok()) {
     for (auto& promise : usage_event_promises) {
-      promise->SetError(usage_events_or.status());
+      promise.SetError(usage_events_or.status());
     }
     return usage_events_or.status();
   }
@@ -1183,7 +1183,7 @@ absl::StatusOr<std::vector<Future<>>> CommonPjRtClient::CrossHostSendBuffers(
 
   // Populate usage events.
   for (int i = 0; i < buffers.size(); ++i) {
-    usage_event_promises[i]->Set(usage_events[i]);
+    usage_event_promises[i].Set(usage_events[i]);
   }
 
   return futures;
@@ -1288,7 +1288,7 @@ CommonPjRtClient::CrossHostReceiveBuffers(
       CrossHostTransferBuffers(std::move(allocation_events),
                                std::move(transfer_specs));
   if (!definition_events_or.ok()) {
-    definition_event_promise->SetError(definition_events_or.status());
+    definition_event_promise.SetError(definition_events_or.status());
     return definition_events_or.status();
   }
   std::vector<PjRtDeviceEventRef> definition_events =
@@ -1299,7 +1299,7 @@ CommonPjRtClient::CrossHostReceiveBuffers(
   // device (the 'device' given as input to this function), and because
   // CrossHostTransferBuffers will only assign different definition events for
   // transfers into different devices.
-  definition_event_promise->Set(std::move(definition_events[0]));
+  definition_event_promise.Set(std::move(definition_events[0]));
 
   return buffers;
 }
@@ -1896,7 +1896,7 @@ CommonPjRtBufferImpl::CopyToCpuMemorySpace(xla::Shape dst_shape,
                   definition_event_promise = std::move(
                       definition_event_promise)](absl::Status status) mutable {
     if (!status.ok()) {
-      definition_event_promise->SetError(status);
+      definition_event_promise.SetError(status);
     } else {
       absl::StatusOr<PjRtDeviceEventRef> status_or_h2d_transfer_event;
       if (needs_second_copy) {
@@ -1905,15 +1905,15 @@ CommonPjRtBufferImpl::CopyToCpuMemorySpace(xla::Shape dst_shape,
             PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
             dst_raw_buffer);
         if (!status_or_h2d_transfer_event.ok()) {
-          definition_event_promise->SetError(status);
+          definition_event_promise.SetError(status);
         } else {
           status_or_h2d_transfer_event.value().AndThen(
               [literal = std::move(literal)] {});
-          definition_event_promise->Set(
+          definition_event_promise.Set(
               *std::move(status_or_h2d_transfer_event));
         }
       } else {
-        definition_event_promise->SetReady();
+        definition_event_promise.SetReady();
       }
     }
   });
@@ -2029,7 +2029,7 @@ static absl::Status CommonCopyToMemorySpace(
     if (allocation_event) {
       allocation_event.SetError(status);
     }
-    definition_event_promise->SetError(status);
+    definition_event_promise.SetError(status);
     return status;
   }
 
@@ -2046,8 +2046,8 @@ static absl::Status CommonCopyToMemorySpace(
             if (allocation_event) {
               allocation_event.SetError(status);
             }
-            definition_event_promise->SetError(status);
-            src_usage_event_promise->SetError(status);
+            definition_event_promise.SetError(status);
+            src_usage_event_promise.SetError(status);
           };
           absl::Status status = xla::GetErrors(definition_events);
           if (!status.ok()) {
@@ -2105,8 +2105,8 @@ CommonPjRtBufferImpl::CopyFromCpuToMemorySpace(
             if (allocation_event) {
               allocation_event.SetError(status);
             }
-            definition_event_promise->SetError(status);
-            src_usage_event_promise->SetError(status);
+            definition_event_promise.SetError(status);
+            src_usage_event_promise.SetError(status);
           };
           absl::Status status = xla::GetErrors(definition_events);
           if (!status.ok()) {
@@ -2137,14 +2137,14 @@ CommonPjRtBufferImpl::CopyFromCpuToMemorySpace(
               [src_raw_buffer = std::move(src_raw_buffer),
                literal = std::move(literal),
                src_usage_event_promise = std::move(src_usage_event_promise)]() {
-                src_usage_event_promise->SetReady();
+                src_usage_event_promise.SetReady();
               });
           if (dst_client->event_tracking_enabled()) {
             dst_client->AppendDescriptionToEvent(
                 dst_memory_space, h2d_transfer_event.ptr(),
-                " TransferToDevice ", {definition_event_promise->event()});
+                " TransferToDevice ", {definition_event_promise.event()});
           }
-          definition_event_promise->Set(std::move(h2d_transfer_event));
+          definition_event_promise.Set(std::move(h2d_transfer_event));
         });
   }
   return dst_buffer;
@@ -2418,7 +2418,7 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
   if (device_promise) {
     if (common_client->event_tracking_enabled()) {
       common_client->AddEventDependencies(
-          memory_space(), device_promise->event(), src_definition_events);
+          memory_space(), device_promise.event(), src_definition_events);
     }
   }
 
@@ -2457,7 +2457,7 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
               auto notify_all = [&](absl::Status status) {
                 promise.Set(status);
                 if (device_promise) {
-                  device_promise->SetError(status);
+                  device_promise.SetError(status);
                 }
               };
 
@@ -2491,7 +2491,7 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
                   return;
                 }
                 if (device_promise) {
-                  device_promise->SetReady();
+                  device_promise.SetReady();
                 }
                 promise.Set();
                 return;
@@ -2518,18 +2518,18 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
                   notify_all(d2h_event.status());
                   return;
                 }
-                device_promise->Set(*std::move(d2h_event));
+                device_promise.Set(*std::move(d2h_event));
                 ScopedLauncher launcher(
                     [device_promise, promise = std::move(promise)]() mutable {
                       if (auto error =
-                              device_promise->event().GetErrorIfPresent()) {
+                              device_promise.event().GetErrorIfPresent()) {
                         promise.Set(*error);
                       } else {
                         promise.Set();
                       }
                     },
                     common_client->async_work_runner());
-                launcher.AddDependency(device_promise->event());
+                launcher.AddDependency(device_promise.event());
                 return;
               }
               raw_buffer->CopyToLiteralAsync(std::move(promise), device_promise,
@@ -2668,10 +2668,10 @@ Future<> CommonPjRtBufferImpl::CopyRawToHostFuture(Future<void*> dst,
   if (buf_client->event_tracking_enabled()) {
     if (!dst.IsReady()) {
       buf_client->RegisterClientThreadWait(
-          memory_space(), usage_event_promise->event(), "CopyRawToHostFuture");
+          memory_space(), usage_event_promise.event(), "CopyRawToHostFuture");
     }
     buf_client->AddEventDependencies(
-        memory_space(), usage_event_promise->event(), definition_events);
+        memory_space(), usage_event_promise.event(), definition_events);
   }
 
   dst.OnReady([buf_client, transfer_size, offset,
@@ -2680,7 +2680,7 @@ Future<> CommonPjRtBufferImpl::CopyRawToHostFuture(Future<void*> dst,
                usage_event_promise = std::move(usage_event_promise)](
                   absl::StatusOr<void*> dst) mutable {
     if (!dst.ok()) {
-      usage_event_promise->SetError(dst.status());
+      usage_event_promise.SetError(dst.status());
       return;
     }
 
@@ -2697,16 +2697,16 @@ Future<> CommonPjRtBufferImpl::CopyRawToHostFuture(Future<void*> dst,
           for (const auto& ev : definition_events) {
             if (auto error = ev.GetErrorIfPresent()) {
               // Signal the usage event to unblock consumers of buffer.
-              usage_event_promise->SetError(std::move(*error));
+              usage_event_promise.SetError(std::move(*error));
               return;
             }
           }
           auto d2h_event = raw_buffer->CopyRawDeviceToHostAndReturnEvent(
               dst, offset, transfer_size);
           if (!d2h_event.ok()) {
-            usage_event_promise->SetError(d2h_event.status());
+            usage_event_promise.SetError(d2h_event.status());
           } else {
-            usage_event_promise->Set(*d2h_event);
+            usage_event_promise.Set(*d2h_event);
           }
         });
   });

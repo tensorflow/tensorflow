@@ -965,7 +965,7 @@ void StreamExecutorGpuClient::ScheduleRemoteSend(
   if (gpu_collectives == nullptr) {
     auto error = absl::InternalError("Failed to get GPU collectives");
     on_done(error, /*sends_were_enqueued=*/false);
-    usage_event_promise->SetError(error);
+    usage_event_promise.SetError(error);
     return;
   }
 
@@ -1030,7 +1030,7 @@ void StreamExecutorGpuClient::ScheduleRemoteSend(
               }
             });
       });
-  usage_event_promise->Set(PjRtDeviceEventRef(std::move(usage_event)));
+  usage_event_promise.Set(PjRtDeviceEventRef(std::move(usage_event)));
 }
 
 // Receive functionality for original cross-host transfers API.

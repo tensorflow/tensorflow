@@ -47,7 +47,7 @@ class HostRawBufferPjRtStagingBuffer : public PjRtStagingBuffer {
         usage_promise_(std::move(usage_promise)),
         raw_buffer_(std::move(raw_buffer)) {}
 
-  ~HostRawBufferPjRtStagingBuffer() override { usage_promise_->SetReady(); }
+  ~HostRawBufferPjRtStagingBuffer() override { usage_promise_.SetReady(); }
 
   absl::Span<uint8_t> data() override { return data_; }
   absl::Span<const uint8_t> const_data() const override { return data_; }
@@ -113,8 +113,8 @@ void CommonPjRtRawBuffer::ScheduleCopyTo(
           if (allocation_event) {
             allocation_event.SetError(status);
           }
-          definition_event_promise->SetError(status);
-          src_usage_event_promise->SetError(status);
+          definition_event_promise.SetError(status);
+          src_usage_event_promise.SetError(status);
           return;
         }
 
@@ -178,7 +178,7 @@ tsl::AsyncValueRef<PjRtStagingBuffer> ToStagingBuffer(
                                     size]() mutable {
       if (real_staging_buffer_av.IsError()) {
         returned_staging_buffer_av.SetError(real_staging_buffer_av.GetError());
-        usage_promise->SetError(real_staging_buffer_av.GetError());
+        usage_promise.SetError(real_staging_buffer_av.GetError());
         return;
       }
 
@@ -188,12 +188,12 @@ tsl::AsyncValueRef<PjRtStagingBuffer> ToStagingBuffer(
           raw_buffer->CopyRawDeviceToHostAndReturnEvent(dst, 0, size);
       if (!copy_status_or_event.ok()) {
         returned_staging_buffer_av.SetError(copy_status_or_event.status());
-        usage_promise->SetError(copy_status_or_event.status());
+        usage_promise.SetError(copy_status_or_event.status());
         return;
       }
 
       auto copy_event = *copy_status_or_event;
-      usage_promise->Set(copy_event);
+      usage_promise.Set(copy_event);
 
       copy_event.AndThen([returned_staging_buffer_av, real_staging_buffer_av,
                           copy_event, raw_buffer]() mutable {
