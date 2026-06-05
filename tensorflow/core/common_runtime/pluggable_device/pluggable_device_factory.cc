@@ -94,8 +94,8 @@ absl::Status SingleVirtualDeviceMemoryLimit(const std::string& platform_name,
   int64_t total_memory = 0;
   int64_t available_memory = 0;
   se::Platform* platform = PluggableDeviceMachineManager(platform_name);
-  se::StreamExecutor* se =
-      platform->ExecutorForDevice(platform_device_id.value()).value();
+  TF_ASSIGN_OR_RETURN(se::StreamExecutor * se,
+                      platform->ExecutorForDevice(platform_device_id.value()));
   if (!se->DeviceMemoryUsage(&available_memory, &total_memory)) {
     return absl::UnknownError(
         absl::StrCat("Failed to query available memory for PluggableDevice ",
