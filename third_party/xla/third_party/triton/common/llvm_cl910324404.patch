@@ -296,7 +296,7 @@
  // CHECK-LABEL: @experimental_lock_release
 -// CHECK: nvvm.barrier0
 +// CHECK: nvvm.barrier
- // CHECK: atom.global.acq_rel.gpu.exch.b32
+ // CHECK: atom.global.release.gpu.exch.b32
  tt.func private @experimental_lock_release(
    %lock: !tt.ptr<i32>,
 
