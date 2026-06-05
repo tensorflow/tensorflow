@@ -163,3 +163,33 @@ func.func @rsqrt_unsupported_vector_size(%arg0: vector<3xf32>) -> vector<3xf32> 
   // CHECK: return %[[RESULT]]
   return %ret : vector<3xf32>
 }
+
+// -----
+
+func.func @exp_f16(%arg0: f16) -> f16 {
+  %ret = math.exp %arg0 : f16
+  return %ret : f16
+}
+// CHECK-LABEL: @exp_f16
+// CHECK: math.exp %arg0 : f16
+// CHECK: return
+
+// -----
+
+func.func @tanh_bf16_vector(%arg0: vector<4xbf16>) -> vector<4xbf16> {
+  %ret = math.tanh %arg0 : vector<4xbf16>
+  return %ret : vector<4xbf16>
+}
+// CHECK-LABEL: @tanh_bf16_vector
+// CHECK: math.tanh %arg0 : vector<4xbf16>
+// CHECK: return
+
+// -----
+
+func.func @rsqrt_unsupported_f16_vector(%arg0: vector<3xf16>) -> vector<3xf16> {
+  %ret = math.rsqrt %arg0 : vector<3xf16>
+  return %ret : vector<3xf16>
+}
+// CHECK-LABEL: @rsqrt_unsupported_f16_vector
+// CHECK: math.rsqrt %arg0 : vector<3xf16>
+// CHECK: return

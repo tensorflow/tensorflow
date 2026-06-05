@@ -184,6 +184,7 @@ BENCHMARK_SIZES(BM_ConvertF32ToBF16);
 
 #define BM_UNARY_OP_ALL_TYPES(OP) \
   BM_UNARY_OP(OP, F32)            \
+  BM_UNARY_OP(OP, BF16)           \
   BM_UNARY_OP(OP, F64)
 
 BM_UNARY_OP_ALL_TYPES(Cbrt);
@@ -224,6 +225,9 @@ static void BM_Atan(benchmark::State& state, const HloBenchmarkOptions& options,
       case F32:
         return LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f,
                                                      0.1f);
+      case BF16:
+        return LiteralUtil::CreateRandomLiteral<BF16>(shape, &engine, 1.0f,
+                                                      0.1f);
       case F64:
         return LiteralUtil::CreateRandomLiteral<F64>(shape, &engine, 1.0, 0.1);
       default:
@@ -245,6 +249,11 @@ static void BM_AtanF32(benchmark::State& state, HloBenchmarkOptions options) {
   BM_Atan(state, options, F32);
 }
 BENCHMARK_SIZES(BM_AtanF32);
+
+static void BM_AtanBF16(benchmark::State& state, HloBenchmarkOptions options) {
+  BM_Atan(state, options, BF16);
+}
+BENCHMARK_SIZES(BM_AtanBF16);
 
 static void BM_AtanF64(benchmark::State& state, HloBenchmarkOptions options) {
   BM_Atan(state, options, F64);
