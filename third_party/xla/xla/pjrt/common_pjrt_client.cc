@@ -78,6 +78,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
+#include "tsl/platform/context.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/lib/scoped_memory_debug_annotation.h"
@@ -104,17 +105,89 @@ CommonPjRtClient::AllocateForDelinearizationAsync(
 }
 
 void CommonPjRtClient::DelinearizeAsync(
-    tsl::AsyncValueRef<PjRtStagingBuffer> staging_buffer, const Shape& shape,
+    tsl::AsyncValueRef<PjRtStagingBuffer> staging_buffer,
+    PjRtMemorySpace* memory_space, const Shape& shape,
     MutableLiteralBase* literal, tsl::Promise<void> promise) {
-  staging_buffer.AndThen(
-      [staging_buffer, promise = std::move(promise)]() mutable {
-        if (auto* error = staging_buffer.GetErrorIfPresent()) {
-          promise.Set(*error);
-        } else {
-          promise.Set(
-              absl::UnimplementedError("DelinearizeAsync is not supported"));
-        }
-      });
+  tsl::Context context(tsl::ContextKind::kThread);
+  staging_buffer.AndThen([this, staging_buffer, shape, literal,
+                          context = std::move(context),
+                          promise = std::move(promise)]() mutable {
+    if (auto* error = staging_buffer.GetErrorIfPresent()) {
+      promise.Set(*error);
+      return;
+    }
+    auto run_delinearize = [this, staging_buffer, shape, literal,
+                            context = std::move(context),
+                            promise = std::move(promise)]() mutable {
+      tsl::WithContext wc(context);
+      absl::Span<const uint8_t> input_data = staging_buffer->const_data();
+      absl::Status status = DelinearizeHostBuffer(input_data, shape, literal);
+      staging_buffer.reset();
+      promise.Set(status);
+    };
+    if (async_work_runner() != nullptr) {
+      async_work_runner()->Execute(std::move(run_delinearize));
+    } else {
+      run_delinearize();
+    }
+  });
+}
+
+absl::Status CommonPjRtClient::DelinearizeHostBuffer(
+    absl::Span<const uint8_t> input_data, const Shape& shape,
+    MutableLiteralBase* literal) {
+  xla::Layout literal_layout;
+  bool need_transpose = false;
+  if (shape.IsArray()) {
+    if (literal->shape().has_layout()) {
+      literal_layout = literal->shape().layout();
+    } else {
+      literal_layout =
+          LayoutUtil::MakeDescendingLayout(shape.dimensions().size());
+    }
+    need_transpose = literal_layout != shape.layout();
+  }
+
+  absl::Span<const char> input_span{
+      reinterpret_cast<const char*>(input_data.data()), input_data.size()};
+  size_t output_size =
+      static_cast<size_t>(ShapeUtil::ByteSizeOf(literal->shape()));
+  absl::Span<char> output_span{static_cast<char*>(literal->untyped_data()),
+                               output_size};
+
+  if (need_transpose) {
+    std::vector<char> staged_buffer;
+    if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
+      staged_buffer.resize(output_size);
+      primitive_util::UnpackIntN(shape.element_type(), input_span,
+                                 absl::MakeSpan(staged_buffer));
+      input_span = absl::MakeConstSpan(staged_buffer);
+    }
+
+    absl::InlinedVector<int64_t, 4> byte_strides(shape.dimensions().size());
+    RETURN_IF_ERROR(
+        ShapeUtil::UnpackedByteStrides(shape, absl::MakeSpan(byte_strides)));
+    absl::Span<const int64_t> dims = shape.dimensions();
+    absl::InlinedVector<int64_t, 4> permutation(dims.size());
+    absl::c_reverse_copy(literal_layout.minor_to_major(), permutation.begin());
+    TransposePlan::Options options;
+    options.elem_size_in_bytes =
+        primitive_util::ByteWidth(shape.element_type());
+    options.dims = dims;
+    options.permutation = permutation;
+    options.input_striding = TransposePlan::Striding{byte_strides};
+    ASSIGN_OR_RETURN(std::shared_ptr<TransposePlan> plan,
+                     GetTransposePlan(options));
+    plan->Execute(input_span.data(), output_span.data());
+  } else {
+    if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
+      primitive_util::UnpackIntN(shape.element_type(), input_span, output_span);
+    } else {
+      std::memcpy(output_span.data(), input_span.data(), output_size);
+    }
+  }
+
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> CommonPjRtClient::DefineBuffer(
@@ -592,8 +665,8 @@ void CommonPjRtRawBufferImpl::CopyToLiteralAsync(
         return client->AllocateForDelinearizationAsync(size, memory_space);
       });
 
-  client->DelinearizeAsync(std::move(staging_buffer), shape, literal,
-                           std::move(promise));
+  client->DelinearizeAsync(std::move(staging_buffer), memory_space(), shape,
+                           literal, std::move(promise));
 }
 
 void CommonPjRtBufferImpl::CopyToRemoteDevice(

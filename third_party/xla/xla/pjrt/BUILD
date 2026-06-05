@@ -184,6 +184,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:casts",
+        "@tsl//tsl/platform:context",
         "@tsl//tsl/profiler/lib:connected_traceme",
         "@tsl//tsl/profiler/lib:context_types_hdrs",
         "@tsl//tsl/profiler/lib:scoped_memory_debug_annotation",

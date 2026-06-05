@@ -135,11 +135,6 @@ class CpuRawBuffer : public CommonPjRtRawBufferImpl {
       const Shape& shape, AsyncWorkRunner* async_work_runner,
       tsl::thread::ThreadPool* thread_pool, int max_transpose_threads);
 
-  void CopyToLiteralAsync(Promise<> promise,
-                          PjRtDeviceEventPromiseRef device_promise,
-                          MutableLiteralBase* literal,
-                          xla::Shape shape) override;
-
   void CopyTo(PjRtRawBufferRef dst_raw_buffer,
               PjRtDeviceEventPromiseRef definition_event_promise,
               PjRtDeviceEventPromiseRef src_usage_event_promise,

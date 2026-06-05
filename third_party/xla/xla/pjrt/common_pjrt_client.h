@@ -84,7 +84,8 @@ class CommonPjRtClient : public PjRtClient {
       size_t size, PjRtMemorySpace* memory_space);
 
   virtual void DelinearizeAsync(
-      tsl::AsyncValueRef<PjRtStagingBuffer> staging_buffer, const Shape& shape,
+      tsl::AsyncValueRef<PjRtStagingBuffer> staging_buffer,
+      PjRtMemorySpace* memory_space, const Shape& shape,
       MutableLiteralBase* literal, tsl::Promise<void> promise);
 
   // TODO(parkers): Properly support error buffers on GPU and CPU.
@@ -426,6 +427,11 @@ class CommonPjRtClient : public PjRtClient {
   virtual absl::Status WaitOnStream(PjRtMemorySpace* memory_space,
                                     PjRtDeviceEventRef event,
                                     std::intptr_t stream);
+
+ protected:
+  absl::Status DelinearizeHostBuffer(absl::Span<const uint8_t> input_data,
+                                     const Shape& shape,
+                                     MutableLiteralBase* literal);
 
  private:
   mutable absl::Mutex gang_scheduler_mu_;
