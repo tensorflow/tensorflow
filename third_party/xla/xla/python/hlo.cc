@@ -1141,12 +1141,16 @@ NB_MODULE(_hlo, m) {
       .def("__repr__",
            [](const xla::HloSharding& self) { return self.ToString(); })
       .def("to_proto", &xla::HloSharding::ToProto)
-      .def("get_axis_sizes", [](const xla::HloSharding& self) {
-        // If returning the SmallVector, we encounter the error "unable to
-        // convert function return value to a Python type!".
-        mlir::SmallVector<int64_t> mesh_shape =
-            xla::sdy::getAxisSizes(self.tile_assignment());
-        return std::vector<int64_t>(mesh_shape.begin(), mesh_shape.end());
+      .def("get_axis_sizes",
+           [](const xla::HloSharding& self) {
+             // If returning the SmallVector, we encounter the error "unable to
+             // convert function return value to a Python type!".
+             mlir::SmallVector<int64_t> mesh_shape =
+                 xla::sdy::getAxisSizes(self.tile_assignment());
+             return std::vector<int64_t>(mesh_shape.begin(), mesh_shape.end());
+           })
+      .def("v3_to_v2_sharding", [](const xla::HloSharding& self) {
+        return xla::HloSharding::V3ToV2Sharding(self);
       });
 
   m.def("hlo_module_to_dot_graph",
