@@ -185,6 +185,9 @@ absl::Status Allocation::UpdateUses(HloComputation* computation,
                                     const HloLiveRange& hlo_live_range,
                                     const HloAliasAnalysis& alias_analysis) {
   for (const HloUse& use : uses()) {
+    if (use.instruction->parent() != computation) {
+      continue;
+    }
     HloInstruction* replacement_instruction = producing_instruction;
     const Shape& operand_shape =
         use.instruction->operand(use.operand_number)->shape();
@@ -313,6 +316,24 @@ HloInstruction* Allocation::AddGetTupleElements() const {
   CHECK(shape.IsArray()) << "Allocation shape is not an array. Shape = "
                          << shape.ToString()
                          << " position = " << defining_position().shape();
+
+  HloInstruction* inst = defining_position().instruction;
+  const ShapeIndex& index = defining_position().index;
+
+  if ((inst->opcode() == HloOpcode::kAsyncStart ||
+       inst->opcode() == HloOpcode::kAsyncUpdate) &&
+      !index.empty() && index[0] == 0) {
+    if (inst->opcode() == HloOpcode::kAsyncUpdate) {
+      CHECK_GE(index.size(), 2);
+      int64_t operand_idx = index[1] + 1;
+      return inst->mutable_operand(operand_idx);
+    } else {
+      CHECK_GE(index.size(), 2);
+      int64_t operand_idx = index[1];
+      return inst->mutable_operand(operand_idx);
+    }
+  }
+
   return TupleUtil::AddGetTupleElements(defining_position());
 }
 

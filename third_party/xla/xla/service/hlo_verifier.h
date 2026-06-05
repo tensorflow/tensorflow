@@ -297,6 +297,8 @@ class ShapeVerifier : public DfsHloVisitor {
     return absl::OkStatus();
   }
 
+  bool CheckShapePrefix(const Shape& shape1, const Shape& shape2);
+
  protected:
   // Helpers that switch on layout_sensitive_.
   bool ShapesSame(const Shape& a, const Shape& b, Shape::Equal equal = {});
@@ -345,17 +347,21 @@ class ShapeVerifier : public DfsHloVisitor {
                                         const HloComputation* computation,
                                         int64_t parameter_number);
 
-  // Checks that the shape of async op operands and results match the called
-  // computation parameters and root.
-  absl::Status CheckAsyncOpComputationShapes(const HloInstruction* async_op,
-                                             const Shape& async_shape);
-
+  // Checks that the shape of async op operands are the prefixes of the called
+  // computation parameters.
+  absl::Status CheckAsyncOpWithComputationShapes(
+      const HloInstruction* async_op);
+  // Checks that the shape of async op operands and outputs are the prefixes of
+  // the immediate previous async operation
+  absl::Status CheckAsyncUpdateWithPrevAsyncOp(const HloInstruction* async_op);
   // Returns true if the shapes of the two operands have the same element type,
   // and the result shape either has the same element type as the operand shapes
   // or mixed precision is allowed and the result shape and the operand shapes
   // have floating point element types.
   bool HasCompatibleElementTypes(const Shape& shape_0, const Shape& shape_1,
                                  const Shape& result_shape);
+
+  absl::Status VerifyAsyncStartAliasConfig(HloInstruction* async_op);
 
   const HloVerifierOpts& opts_;
 };

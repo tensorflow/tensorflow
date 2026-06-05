@@ -125,6 +125,8 @@ bool MayUseOperandValue(const ShapeIndex& index, const HloInstruction* user) {
       // operand. Non-top-level (nested) values are passed through
       // transparently.
       return index.empty();
+    case HloOpcode::kAsyncDone:
+      return index.empty() || index[0] == 1;
     case HloOpcode::kDomain:
     case HloOpcode::kTuple:
       // These instructions always pass through their operands transparently.
