@@ -228,7 +228,7 @@ CommonPjRtBuffer::GetBufferForDonationHoldLocked() {
 
 absl::StatusOr<std::unique_ptr<AbstractTrackedDeviceBuffer>>
 CommonPjRtBuffer::DonateTrackedBuffer() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   WaitForOutstandingDonationHold();
 
   auto buffer_or = GetBufferForDonationHoldLocked();
