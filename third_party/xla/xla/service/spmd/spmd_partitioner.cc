@@ -6373,7 +6373,8 @@ absl::StatusOr<bool> SpmdPartitioner::RunImpl(
     // For the cases where we update the shape, also fix up some bad tiling in
     // entry computation layout.
     auto update_shape = [this](Shape* subshape, const xla::ShapeIndex&) {
-      if (subshape->IsArray() && subshape->has_layout()) {
+      if (subshape->IsArray() && subshape->has_layout() &&
+          options_.allow_module_layout_signature_change) {
         UpdateLayout(subshape);
       }
     };
