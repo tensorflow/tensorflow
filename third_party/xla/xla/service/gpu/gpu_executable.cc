@@ -73,11 +73,11 @@ limitations under the License.
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
-#include "xla/core/collectives/communicator.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal.h"
 #include "xla/map_util.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/runtime/buffer_use.h"
@@ -97,6 +97,7 @@ limitations under the License.
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_value.h"
+#include "xla/service/llvm_ir/buffer_assignment_util.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/rendezvous.h"
@@ -140,10 +141,28 @@ limitations under the License.
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
 
-namespace xla {
-namespace gpu {
-
+namespace xla::gpu {
 namespace {
+
+std::optional<absl::flat_hash_map<std::string, const HloInstruction*>>
+MakeConstantsMap(HloModule* absl_nullable debug_module) {
+  if (!debug_module) {
+    return std::nullopt;
+  }
+  absl::flat_hash_map<std::string, const HloInstruction*> constants;
+  for (const HloComputation* computation :
+       debug_module->MakeComputationSorted()) {
+    for (const HloInstruction* instr : computation->instructions()) {
+      if (instr->opcode() != HloOpcode::kConstant) {
+        continue;
+      }
+      auto [it, inserted] = constants.try_emplace(
+          llvm_ir::ConstantHloToGlobalName(*instr), instr);
+      CHECK(inserted) << "Duplicate constant global name found: " << it->first;
+    }
+  }
+  return constants;
+}
 
 // Chooses the correct allocations to be used within the GpuExecutable code.
 std::vector<const BufferAllocation*> GatherAllocationPtrs(
@@ -1896,12 +1915,28 @@ GpuExecutableProto::ConstantInfoProto GpuExecutable::ConstantInfo::ToProto()
   return proto;
 }
 
-GpuExecutable::ConstantInfo GpuExecutable::ConstantInfo::FromProto(
-    const GpuExecutableProto::ConstantInfoProto& proto) {
-  return ConstantInfo{
-      /*symbol_name=*/proto.symbol_name(),
-      /*content=*/DenseDataIntermediate::FromProto(proto.content()),
-      /*allocation_index=*/static_cast<int>(proto.allocation_index())};
+absl::StatusOr<GpuExecutable::ConstantInfo>
+GpuExecutable::ConstantInfo::FromProto(
+    const GpuExecutableProto::ConstantInfoProto& proto,
+    const absl::flat_hash_map<std::string, const HloInstruction*>* absl_nullable
+        content_overrides) {
+  if (content_overrides) {
+    auto it = content_overrides->find(proto.symbol_name());
+    if (it == content_overrides->end()) {
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Instruction for ", proto.symbol_name(), " constant missing."));
+    }
+    const HloInstruction* instr = it->second;
+    const Literal& literal = instr->literal();
+    auto base = static_cast<const uint8_t*>(literal.untyped_data());
+    return ConstantInfo{proto.symbol_name(),
+                        DenseDataIntermediate::Alias(
+                            absl::MakeSpan(base, base + literal.size_bytes())),
+                        static_cast<int>(proto.allocation_index())};
+  }
+  return ConstantInfo{proto.symbol_name(),
+                      DenseDataIntermediate::FromProto(proto.content()),
+                      static_cast<int>(proto.allocation_index())};
 }
 
 absl::StatusOr<GpuExecutableProto> GpuExecutable::ToProto() const {
@@ -2042,9 +2077,16 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
   params.executable =
       std::make_unique<ThunkExecutor>(std::move(thunk_sequence));
 
+  std::optional<absl::flat_hash_map<std::string, const HloInstruction*>>
+      name_to_const = MakeConstantsMap(params.debug_module.get());
+
   params.constants.reserve(proto.constants().size());
   for (const auto& constant_proto : proto.constants()) {
-    params.constants.push_back(ConstantInfo::FromProto(constant_proto));
+    ASSIGN_OR_RETURN(
+        params.constants.emplace_back(),
+        ConstantInfo::FromProto(constant_proto, name_to_const.has_value()
+                                                    ? &*name_to_const
+                                                    : nullptr));
   }
 
   params.output_info.reserve(proto.output_info_map().size());
@@ -2106,5 +2148,4 @@ absl::Status GpuExecutable::DumpExecutableIfEnabled(
   return absl::OkStatus();
 }
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

@@ -823,8 +823,32 @@ TEST_F(GpuExecutableTest, FromProtoRegistersHloModuleWithDebugInfoManager) {
             opcode: "parameter"
             shape: { element_type: F32 dimensions: 1 }
           }
+          instructions {
+            name: "constant"
+            id: 1
+            opcode: "constant"
+            shape: {
+              element_type: U8
+              layout { format: DENSE minor_to_major: 0 }
+              dimensions: 4
+            }
+            literal: {
+              shape: {
+                element_type: U8
+                layout { format: DENSE minor_to_major: 0 }
+                dimensions: 4
+              }
+              u8s: "data"
+            }
+          }
         }
       }
+    }
+    buffer_allocations { values { index: 0 size: 4 } }
+    constants {
+      symbol_name: "buffer_for_constant"
+      content { data: "data" }
+      allocation_index: 0
     }
     thunks {
       thunk_info { thunk_id: 2 }
@@ -844,6 +868,7 @@ TEST_F(GpuExecutableTest, FromProtoRegistersHloModuleWithDebugInfoManager) {
       GpuExecutable::FromProto(proto, device_description, "TEST_PLATFORM",
                                debug_options));
   ASSERT_TRUE(executable->has_module());
+  EXPECT_EQ(executable->constants().size(), 1);
   EXPECT_TRUE(XlaDebugInfoManager::Get()->TracksModule(
       executable->module().unique_id()));
 
