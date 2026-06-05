@@ -16,18 +16,12 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_UINT8_H_
 
 #include <algorithm>
-#include <cstdint>
-#include <cstring>
-#include <memory>
+#include <type_traits>
 
 #include "ruy/profiler/instrumentation.h"  // from @ruy
-#include "tensorflow/lite/kernels/internal/common.h"
-#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8_3x3_filter.h"
-#include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
-#include "tensorflow/lite/kernels/internal/runtime_shape.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 #ifdef __AVX2__
@@ -2066,7 +2060,7 @@ inline void DepthwiseConvWithRounding(
 #if defined(__aarch64__) && !defined(GOOGLE_L4T)
 #if defined(__ANDROID__) && defined(__clang__)
   // Dispatch to dot-product 3x3 kernels when supported.
-  if (HasArmNeonDotprod()) {
+  if (cpu_flags.neon_dotprod) {
     using optimized_ops::depthwise_conv::DotProduct3x3KernelType;
     DotProduct3x3KernelType kernel_type =
         optimized_ops::depthwise_conv::CategorizeDotProductKernel(
