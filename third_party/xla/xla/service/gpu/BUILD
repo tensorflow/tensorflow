@@ -1891,6 +1891,7 @@ cc_library(
         "//xla/service:while_loop_all_reduce_code_motion",
         "//xla/service:while_loop_constant_sinking",
         "//xla/service:while_loop_simplifier",
+        "//xla/service:xla_transform",
         "//xla/service/cpu:cpu_aot_compilation_result",
         "//xla/service/debug:unstable_reduction_detector",
         "//xla/service/gpu/autotuning:autotuner_cache",

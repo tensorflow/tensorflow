@@ -44,8 +44,11 @@ namespace {
 
 class CApiXlaTransformAdapter : public HloXlaTransform {
  public:
+  // callbacks must outlive this object. The pointer is stored directly so that
+  // implementations using offsetof-based recovery (e.g. CApiTransformHloModule
+  // Callback in jaxlib/xla.cc) receive the original address they registered.
   explicit CApiXlaTransformAdapter(std::string name,
-                                   PJRT_XlaTransform_Callbacks callbacks)
+                                   PJRT_XlaTransform_Callbacks* callbacks)
       : HloXlaTransform(std::move(name)), callbacks_(callbacks) {}
 
   absl::StatusOr<bool> Transform(xla::HloModule* module) override {
@@ -63,10 +66,10 @@ class CApiXlaTransformAdapter : public HloXlaTransform {
     args.hlo_module.data = serialized_proto.data();
     args.hlo_module.size = serialized_proto.size();
 
-    if (callbacks_.transform_hlo_module == nullptr) {
+    if (callbacks_->transform_hlo_module == nullptr) {
       return absl::InternalError("transform_hlo_module callback is null");
     }
-    callbacks_.transform_hlo_module(&callbacks_, &args);
+    callbacks_->transform_hlo_module(callbacks_, &args);
 
     absl::Status status = absl::OkStatus();
     bool changed = false;
@@ -97,7 +100,7 @@ class CApiXlaTransformAdapter : public HloXlaTransform {
   }
 
  private:
-  PJRT_XlaTransform_Callbacks callbacks_;
+  PJRT_XlaTransform_Callbacks* callbacks_;
 };
 
 }  // namespace
@@ -130,7 +133,7 @@ PJRT_Error* RegisterXlaTransform(PJRT_Register_Xla_Transform_Args* args) {
   }
 
   auto transform =
-      std::make_shared<xla::CApiXlaTransformAdapter>(name, *args->callbacks);
+      std::make_shared<xla::CApiXlaTransformAdapter>(name, args->callbacks);
   xla::HloXlaTransform::PipelineStage stage;
   switch (args->stage) {
     case PJRT_XlaTransform_PipelineStage_kPreScheduler:
