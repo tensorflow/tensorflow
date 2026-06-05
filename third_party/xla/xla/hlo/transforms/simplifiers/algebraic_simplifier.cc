@@ -71,6 +71,7 @@ limitations under the License.
 #include "xla/service/host_offload_utils.h"
 #include "xla/service/memory_annotations.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/service/scatter_simplifier.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -9592,8 +9593,75 @@ bool IsPermutationOfIota(absl::Span<const int64_t> elems) {
 
 }  // namespace
 
+absl::StatusOr<bool> AlgebraicSimplifierVisitor::TryFoldTransposeIntoScatter(
+    HloInstruction* transpose) {
+  if (!options_.enable_fold_transpose_into_scatter()) {
+    return false;
+  }
+
+  HloInstruction* operand = transpose->mutable_operand(0);
+  if (operand->opcode() != HloOpcode::kScatter || operand->user_count() != 1) {
+    return false;
+  }
+
+  auto* scatter = Cast<HloScatterInstruction>(operand);
+  // Intentionally restricted to non-variadic, simplified scatter operations.
+  if (scatter->scatter_operand_count() != 1 ||
+      !xla::ScatterSimplifier::IsSimplifiedScatter(scatter)) {
+    return false;
+  }
+
+  absl::Span<const int64_t> permutation = transpose->dimensions();
+  std::vector<int64_t> inverse_permutation = InversePermutation(permutation);
+
+  // Step 1 : Transpose base operand
+  HloInstruction* scatter_operand = scatter->scatter_operands()[0];
+  HloInstruction* transposed_operand =
+      transpose->AddInstruction(HloInstruction::CreateTranspose(
+          transpose->shape(), scatter_operand, permutation));
+
+  // Step 2 : Injects a new Transpose instruction for scatter update
+  HloInstruction* scatter_update = scatter->scatter_updates()[0];
+  int64_t update_rank = scatter_update->shape().dimensions().size();
+  std::vector<int64_t> update_permutation(update_rank);
+  update_permutation[0] = 0;  // Preserve the scatter dimension, no change.
+  for (int i = 1; i < update_rank; ++i) {
+    update_permutation[i] = permutation[i - 1] + 1;
+  }
+
+  Shape new_update_shape =
+      ShapeUtil::PermuteDimensions(update_permutation, scatter_update->shape());
+  HloInstruction* transposed_update =
+      transpose->AddInstruction(HloInstruction::CreateTranspose(
+          new_update_shape, scatter_update, update_permutation));
+
+  const ScatterDimensionNumbers& old_dnums =
+      scatter->scatter_dimension_numbers();
+  ScatterDimensionNumbers new_dnums = old_dnums;
+  new_dnums.clear_scatter_dims_to_operand_dims();
+  for (int64_t dim : old_dnums.scatter_dims_to_operand_dims()) {
+    new_dnums.add_scatter_dims_to_operand_dims(inverse_permutation[dim]);
+  }
+
+  // Step 3 : Create new scatter nodes
+  std::vector<HloInstruction*> new_operands = {transposed_operand};
+  std::vector<HloInstruction*> new_updates = {transposed_update};
+  std::unique_ptr<HloInstruction> new_scatter = HloInstruction::CreateScatter(
+      transpose->shape(), new_operands, scatter->scatter_indices(), new_updates,
+      scatter->to_apply(), new_dnums, scatter->indices_are_sorted(),
+      scatter->unique_indices());
+
+  RETURN_IF_ERROR(ReplaceWithNewInstruction(transpose, std::move(new_scatter)));
+  return true;
+}
+
 absl::Status AlgebraicSimplifierVisitor::HandleTranspose(
     HloInstruction* transpose) {
+  ASSIGN_OR_RETURN(bool folded, TryFoldTransposeIntoScatter(transpose));
+  if (folded) {
+    return absl::OkStatus();
+  }
+
   auto operand = transpose->mutable_operand(0);
   if (std::is_sorted(transpose->dimensions().begin(),
                      transpose->dimensions().end())) {
