@@ -989,6 +989,7 @@ cc_library(
     strip_include_prefix = ".",
     visibility = internal_visibility(["//learning/brain/mlir:stablehlo_friends"]),
     deps = [
+        ":mlir_hlo",
         ":shape_component_analysis",
         ":stablehlo_extension_base",
         ":stablehlo_extension_ops",
