@@ -34,16 +34,28 @@ limitations under the License.
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/tsl/concurrency/executor.h"
+#include "xla/tsl/platform/env.h"
 
 namespace xla {
 namespace ifrt {
 namespace {
+
+// Wraps `SchedClosure` to make it compatible with `tsl::Executor`.
+class SchedClosureExecutor : public tsl::Executor {
+ public:
+  void Execute(Task task) override {
+    tsl::Env::Default()->SchedClosure(
+        [task = std::move(task)]() mutable { std::move(task)(); });
+  }
+};
 
 TEST(PjRtBufferHashUtilTest, HashPjRtBuffers) {
   xla::CpuClientOptions options;
   options.cpu_device_count = 1;
   ASSERT_OK_AND_ASSIGN(auto xla_pjrt_client,
                        xla::GetXlaPjrtCpuClient(std::move(options)));
+  SchedClosureExecutor executor;
 
   xla::PjRtDevice* xla_pjrt_device =
       xla_pjrt_client->addressable_devices().at(0);
@@ -62,13 +74,16 @@ TEST(PjRtBufferHashUtilTest, HashPjRtBuffers) {
   Shape shape({2, 3});
   std::vector<IndexDomain> index_domains = {IndexDomain(Index({0, 0}), shape)};
 
-  ASSERT_OK_AND_ASSIGN(
-      std::vector<uint64_t> hash,
-      HashPjRtBuffers(raw_buffers, index_domains, Client::HashMode::kPhysical));
+  ASSERT_OK_AND_ASSIGN(std::vector<uint64_t> hash,
+                       HashPjRtBuffers(executor, raw_buffers, index_domains,
+                                       Client::HashMode::kPhysical)
+                           .Await());
   EXPECT_EQ(hash.size(), 1);
 
-  ASSERT_OK_AND_ASSIGN(hash, HashPjRtBuffers(raw_buffers, index_domains,
-                                             Client::HashMode::kLogical));
+  ASSERT_OK_AND_ASSIGN(hash,
+                       HashPjRtBuffers(executor, raw_buffers, index_domains,
+                                       Client::HashMode::kLogical)
+                           .Await());
   EXPECT_EQ(hash.size(), 1);
 }
 
@@ -77,6 +92,7 @@ TEST(PjRtBufferHashUtilTest, HashPjRtBuffersSharding) {
   options.cpu_device_count = 2;
   ASSERT_OK_AND_ASSIGN(auto xla_pjrt_client,
                        xla::GetXlaPjrtCpuClient(std::move(options)));
+  SchedClosureExecutor executor;
 
   xla::PjRtDevice* xla_pjrt_device0 =
       xla_pjrt_client->addressable_devices().at(0);
@@ -116,9 +132,10 @@ TEST(PjRtBufferHashUtilTest, HashPjRtBuffersSharding) {
   {
     std::vector<PjRtBuffer*> raw_buffers = {pjrt_buffer0.get()};
     std::vector<IndexDomain> domains = {IndexDomain(Index({0}), shape)};
-    ASSERT_OK_AND_ASSIGN(
-        std::vector<uint64_t> hash0,
-        HashPjRtBuffers(raw_buffers, domains, Client::HashMode::kPhysical));
+    ASSERT_OK_AND_ASSIGN(std::vector<uint64_t> hash0,
+                         HashPjRtBuffers(executor, raw_buffers, domains,
+                                         Client::HashMode::kPhysical)
+                             .Await());
     ASSERT_EQ(hash0.size(), 1);
 
     std::vector<PjRtBuffer*> raw_buffers_shards = {pjrt_buffer_shard0.get(),
@@ -126,9 +143,11 @@ TEST(PjRtBufferHashUtilTest, HashPjRtBuffersSharding) {
     std::vector<IndexDomain> domains_shards = {
         IndexDomain(Index({0}), shard_shape),
         IndexDomain(Index({2}), shard_shape)};
-    ASSERT_OK_AND_ASSIGN(std::vector<uint64_t> hashes_shards,
-                         HashPjRtBuffers(raw_buffers_shards, domains_shards,
-                                         Client::HashMode::kPhysical));
+    ASSERT_OK_AND_ASSIGN(
+        std::vector<uint64_t> hashes_shards,
+        HashPjRtBuffers(executor, raw_buffers_shards, domains_shards,
+                        Client::HashMode::kPhysical)
+            .Await());
     ASSERT_EQ(hashes_shards.size(), 2);
     std::vector<int> replica_group_ids = GetReplicaGroupIds(domains_shards);
     ASSERT_OK_AND_ASSIGN(uint64_t hash12,
@@ -143,9 +162,10 @@ TEST(PjRtBufferHashUtilTest, HashPjRtBuffersSharding) {
   {
     std::vector<PjRtBuffer*> raw_buffers = {pjrt_buffer0.get()};
     std::vector<IndexDomain> domains = {IndexDomain(Index({0}), shape)};
-    ASSERT_OK_AND_ASSIGN(
-        std::vector<uint64_t> hash0,
-        HashPjRtBuffers(raw_buffers, domains, Client::HashMode::kLogical));
+    ASSERT_OK_AND_ASSIGN(std::vector<uint64_t> hash0,
+                         HashPjRtBuffers(executor, raw_buffers, domains,
+                                         Client::HashMode::kLogical)
+                             .Await());
     ASSERT_EQ(hash0.size(), 1);
 
     std::vector<PjRtBuffer*> raw_buffers_shards = {pjrt_buffer_shard0.get(),
@@ -153,9 +173,11 @@ TEST(PjRtBufferHashUtilTest, HashPjRtBuffersSharding) {
     std::vector<IndexDomain> domains_shards = {
         IndexDomain(Index({0}), shard_shape),
         IndexDomain(Index({2}), shard_shape)};
-    ASSERT_OK_AND_ASSIGN(std::vector<uint64_t> hashes_shards,
-                         HashPjRtBuffers(raw_buffers_shards, domains_shards,
-                                         Client::HashMode::kLogical));
+    ASSERT_OK_AND_ASSIGN(
+        std::vector<uint64_t> hashes_shards,
+        HashPjRtBuffers(executor, raw_buffers_shards, domains_shards,
+                        Client::HashMode::kLogical)
+            .Await());
     ASSERT_EQ(hashes_shards.size(), 2);
     std::vector<int> replica_group_ids = GetReplicaGroupIds(domains_shards);
     ASSERT_OK_AND_ASSIGN(uint64_t hash12,
