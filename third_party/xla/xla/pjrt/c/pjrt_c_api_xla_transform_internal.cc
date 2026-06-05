@@ -145,7 +145,38 @@ PJRT_Error* RegisterXlaTransform(PJRT_Register_Xla_Transform_Args* args) {
   }
 
   xla::RegisterHloXlaTransform(stage, transform);
+  return nullptr;
+}
 
+PJRT_Error* ClearXlaTransform(PJRT_Clear_Xla_Transform_Args* args) {
+  if (args->struct_size < PJRT_Clear_Xla_Transform_Args_STRUCT_SIZE) {
+    return pjrt::StatusToPjRtError(
+        absl::InvalidArgumentError("Invalid struct_size"));
+  }
+  std::string name;
+  if (args->name != nullptr) {
+    name = std::string(args->name, args->name_size);
+  } else if (args->callbacks != nullptr) {
+    name = "pjrt_c_api_transform_" +
+           std::to_string(reinterpret_cast<uintptr_t>(args->callbacks));
+  } else {
+    return pjrt::StatusToPjRtError(absl::InvalidArgumentError(
+        "Either name or callbacks must be provided"));
+  }
+
+  xla::HloXlaTransform::PipelineStage stage;
+  switch (args->stage) {
+    case PJRT_XlaTransform_PipelineStage_kPreScheduler:
+      stage = xla::HloXlaTransform::PipelineStage::kPreScheduler;
+      break;
+    case PJRT_XlaTransform_PipelineStage_kPostScheduler:
+      stage = xla::HloXlaTransform::PipelineStage::kPostScheduler;
+      break;
+    default:
+      return pjrt::StatusToPjRtError(
+          absl::InvalidArgumentError("Invalid pipeline stage"));
+  }
+  args->cleared = xla::ClearHloXlaTransform(stage, name);
   return nullptr;
 }
 
@@ -160,6 +191,7 @@ PJRT_Xla_Transform_Extension CreateXlaTransformExtension(
           /*next=*/next,
       },
       /*register_xla_transform=*/RegisterXlaTransform,
+      /*clear_xla_transform=*/ClearXlaTransform,
   };
 }
 

@@ -65,9 +65,36 @@ std::vector<std::shared_ptr<HloXlaTransform>> GetHloXlaTransforms(
   return transforms[stage];
 }
 
-void ClearHloXlaTransforms() {
+bool ClearHloXlaTransforms() {
   absl::MutexLock transforms_lock(&transforms_mutex);
-  GetHloXlaTransformsInternal().clear();
+  auto& transforms = GetHloXlaTransformsInternal();
+  if (transforms.empty()) {
+    return false;
+  }
+  transforms.clear();
+  return true;
+}
+
+bool ClearHloXlaTransform(HloXlaTransform::PipelineStage stage,
+                          absl::string_view name) {
+  absl::MutexLock transforms_lock(&transforms_mutex);
+  auto& transforms_map = GetHloXlaTransformsInternal();
+  auto it = transforms_map.find(stage);
+  if (it == transforms_map.end()) {
+    return false;
+  }
+  auto& stage_transforms = it->second;
+  for (auto transform_it = stage_transforms.begin();
+       transform_it != stage_transforms.end(); ++transform_it) {
+    if ((*transform_it)->name() == name) {
+      stage_transforms.erase(transform_it);
+      if (stage_transforms.empty()) {
+        transforms_map.erase(it);
+      }
+      return true;
+    }
+  }
+  return false;
 }
 
 absl::StatusOr<bool> ApplyXlaTransformsToModule(

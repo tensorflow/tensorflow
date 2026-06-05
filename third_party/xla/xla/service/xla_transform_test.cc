@@ -72,6 +72,36 @@ TEST_F(XlaTransformTest, Registration) {
   EXPECT_NE(transforms[0], nullptr);
 }
 
+TEST_F(XlaTransformTest, ClearTransforms) {
+  auto axl = std::make_shared<TrivialTransform>("test_transform");
+  RegisterHloXlaTransform(HloXlaTransform::PipelineStage::kPreScheduler, axl);
+
+  EXPECT_TRUE(ClearHloXlaTransforms());
+  EXPECT_FALSE(ClearHloXlaTransforms());
+}
+
+TEST_F(XlaTransformTest, ClearTransform) {
+  auto axl1 = std::make_shared<TrivialTransform>("test_transform1");
+  auto axl2 = std::make_shared<TrivialTransform>("test_transform2");
+  RegisterHloXlaTransform(HloXlaTransform::PipelineStage::kPreScheduler, axl1);
+  RegisterHloXlaTransform(HloXlaTransform::PipelineStage::kPreScheduler, axl2);
+
+  EXPECT_TRUE(ClearHloXlaTransform(
+      HloXlaTransform::PipelineStage::kPreScheduler, "test_transform1"));
+
+  const auto& transforms =
+      GetHloXlaTransforms(HloXlaTransform::PipelineStage::kPreScheduler);
+  ASSERT_EQ(transforms.size(), 1);
+  EXPECT_EQ(transforms[0]->name(), "test_transform2");
+
+  EXPECT_FALSE(ClearHloXlaTransform(
+      HloXlaTransform::PipelineStage::kPreScheduler, "test_transform1"));
+  EXPECT_TRUE(ClearHloXlaTransform(
+      HloXlaTransform::PipelineStage::kPreScheduler, "test_transform2"));
+  EXPECT_TRUE(GetHloXlaTransforms(HloXlaTransform::PipelineStage::kPreScheduler)
+                  .empty());
+}
+
 TEST_F(XlaTransformTest, ApplyTransforms) {
   absl::string_view hlo_text = R"(
     HloModule test_module
@@ -240,6 +270,104 @@ TEST_F(XlaTransformTest, PjrtCApiExtension) {
 
   EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
             HloOpcode::kNegate);
+}
+
+TEST_F(XlaTransformTest, PjrtCApiExtensionClear) {
+  PJRT_Xla_Transform_Extension extension = pjrt::CreateXlaTransformExtension();
+
+  // Register a transform.
+  PJRT_XlaTransform_Callbacks callbacks;
+  callbacks.version = PJRT_API_XLA_TRANSFORM_EXTENSION_VERSION;
+  callbacks.dtor = nullptr;
+  callbacks.transform_hlo_module = [](PJRT_XlaTransform_Callbacks* callbacks,
+                                      PJRT_XlaTransform_Args* args) {};
+
+  PJRT_Register_Xla_Transform_Args reg_args;
+  reg_args.struct_size = PJRT_Register_Xla_Transform_Args_STRUCT_SIZE;
+  reg_args.name = "pjrt_c_api_transform";
+  reg_args.name_size = sizeof("pjrt_c_api_transform") - 1;
+  reg_args.stage = PJRT_XlaTransform_PipelineStage_kPreScheduler;
+  reg_args.callbacks = &callbacks;
+
+  PJRT_Error* error = extension.register_xla_transform(&reg_args);
+  EXPECT_EQ(error, nullptr);
+
+  // Clear with wrong name should return false.
+  {
+    PJRT_Clear_Xla_Transform_Args args;
+    args.struct_size = PJRT_Clear_Xla_Transform_Args_STRUCT_SIZE;
+    args.stage = PJRT_XlaTransform_PipelineStage_kPreScheduler;
+    args.name = "wrong_name";
+    args.name_size = sizeof("wrong_name") - 1;
+    args.callbacks = nullptr;
+    args.cleared = true;  // initialize to true to make sure it changes
+    PJRT_Error* error = extension.clear_xla_transform(&args);
+    EXPECT_EQ(error, nullptr);
+    EXPECT_FALSE(args.cleared);
+  }
+
+  // Clear with correct name should return true.
+  {
+    PJRT_Clear_Xla_Transform_Args args;
+    args.struct_size = PJRT_Clear_Xla_Transform_Args_STRUCT_SIZE;
+    args.stage = PJRT_XlaTransform_PipelineStage_kPreScheduler;
+    args.name = "pjrt_c_api_transform";
+    args.name_size = sizeof("pjrt_c_api_transform") - 1;
+    args.callbacks = nullptr;
+    args.cleared = false;
+    PJRT_Error* error = extension.clear_xla_transform(&args);
+    EXPECT_EQ(error, nullptr);
+    EXPECT_TRUE(args.cleared);
+  }
+
+  // Clear again should return false.
+  {
+    PJRT_Clear_Xla_Transform_Args args;
+    args.struct_size = PJRT_Clear_Xla_Transform_Args_STRUCT_SIZE;
+    args.stage = PJRT_XlaTransform_PipelineStage_kPreScheduler;
+    args.name = "pjrt_c_api_transform";
+    args.name_size = sizeof("pjrt_c_api_transform") - 1;
+    args.callbacks = nullptr;
+    args.cleared = true;
+    PJRT_Error* error = extension.clear_xla_transform(&args);
+    EXPECT_EQ(error, nullptr);
+    EXPECT_FALSE(args.cleared);
+  }
+}
+
+TEST_F(XlaTransformTest, PjrtCApiExtensionClearByCallbacks) {
+  PJRT_Xla_Transform_Extension extension = pjrt::CreateXlaTransformExtension();
+
+  // Register a transform without a name.
+  PJRT_XlaTransform_Callbacks callbacks;
+  callbacks.version = PJRT_API_XLA_TRANSFORM_EXTENSION_VERSION;
+  callbacks.dtor = nullptr;
+  callbacks.transform_hlo_module = [](PJRT_XlaTransform_Callbacks* callbacks,
+                                      PJRT_XlaTransform_Args* args) {};
+
+  PJRT_Register_Xla_Transform_Args reg_args;
+  reg_args.struct_size = PJRT_Register_Xla_Transform_Args_STRUCT_SIZE;
+  reg_args.name = nullptr;
+  reg_args.name_size = 0;
+  reg_args.stage = PJRT_XlaTransform_PipelineStage_kPreScheduler;
+  reg_args.callbacks = &callbacks;
+
+  PJRT_Error* error = extension.register_xla_transform(&reg_args);
+  EXPECT_EQ(error, nullptr);
+
+  // Clear with correct callbacks should return true.
+  {
+    PJRT_Clear_Xla_Transform_Args args;
+    args.struct_size = PJRT_Clear_Xla_Transform_Args_STRUCT_SIZE;
+    args.stage = PJRT_XlaTransform_PipelineStage_kPreScheduler;
+    args.name = nullptr;
+    args.name_size = 0;
+    args.callbacks = &callbacks;
+    args.cleared = false;
+    PJRT_Error* error = extension.clear_xla_transform(&args);
+    EXPECT_EQ(error, nullptr);
+    EXPECT_TRUE(args.cleared);
+  }
 }
 
 TEST_F(XlaTransformTest, PjrtCApiExtensionPreservesSchedule) {
