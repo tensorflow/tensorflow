@@ -2105,9 +2105,9 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
             << memory_limit;
     // Apply a safety margin to the initial memory limit. Always
     // subtract 1.5GiB.
-    constexpr int64_t kOnePointFiveGiB = int64_t{3} << 29;
+    constexpr int64_t kTwoPointFiveGiB = int64_t{5} << 29;
     int64_t adjusted_memory_limit =
-        std::max<int64_t>(0, memory_limit - kOnePointFiveGiB);
+        std::max<int64_t>(0, memory_limit - kTwoPointFiveGiB);
     VLOG(1) << "Memory limit after safety margin applied: "
             << adjusted_memory_limit;
 
