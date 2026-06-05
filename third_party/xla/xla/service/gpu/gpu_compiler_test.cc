@@ -374,7 +374,7 @@ ENTRY e {
   EXPECT_THAT(entry_root, GmockMatch(m::Fusion()));
 }
 
-class PersistedAutotuningTest : public HloPjRtTestBase {
+class PersistedAutotuningTest : public HloTestBase {
  protected:
   void SetUp() override {
     AutotunerCache::ClearAutotuneResults();
@@ -1445,7 +1445,7 @@ TEST_F(PassOrderTest,
 }
 
 // Tests that passes are converging and pipelines reach a fix point.
-class FixPointTest : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+class FixPointTest : public HloPjRtInterpreterReferenceMixin<HloTestBase> {
  public:
   void ExpectPipelinesReachFixedPoint(absl::string_view module_text) {
     ASSERT_OK_AND_ASSIGN(
