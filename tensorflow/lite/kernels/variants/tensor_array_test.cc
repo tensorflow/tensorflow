@@ -230,6 +230,22 @@ TEST(OpaqueVariantTensorArrayDataTest, CastThroughVoidAndCopy) {
   delete copied_d;
 }
 
+TEST(TensorArrayTest, ResizeHugeOverflow) {
+  auto arr = MakeTensorArrayForTest({});
+  // On 32-bit platforms, 0x20000000 * sizeof(RefCountedTensor) overflows
+  // size_t.
+  if (sizeof(void*) == 4) {
+    EXPECT_FALSE(arr.Resize(0x20000000));
+    EXPECT_EQ(arr.NumElements(), 0);
+  }
+}
+
+TEST(TensorArrayTest, ResizeNegative) {
+  auto arr = MakeTensorArrayForTest({});
+  EXPECT_FALSE(arr.Resize(-1));
+  EXPECT_EQ(arr.NumElements(), 0);
+}
+
 }  // namespace
 }  // namespace variants
 }  // namespace tflite

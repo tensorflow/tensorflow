@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 
 #include "tensorflow/lite/array.h"
 #include "tensorflow/lite/c/common.h"
@@ -28,28 +29,53 @@ TensorArray::TensorArray(const TensorArray& other) {
   TfLiteIntArray* copied_shape = TfLiteIntArrayCopy(other.element_shape_.get());
   element_shape_ = IntArrayUniquePtr(copied_shape);
   element_type_ = other.element_type_;
-  num_elements_ = other.num_elements_;
-  elements_ =
-      (RefCountedTensor*)malloc(sizeof(RefCountedTensor) * other.num_elements_);
-  other.AssignBuffer(elements_);
+  num_elements_ = 0;
+  elements_ = nullptr;
+  if (other.num_elements_ > 0) {
+    if (other.num_elements_ <=
+        std::numeric_limits<size_t>::max() / sizeof(RefCountedTensor)) {
+      RefCountedTensor* new_elements = (RefCountedTensor*)malloc(
+          sizeof(RefCountedTensor) * other.num_elements_);
+      if (new_elements != nullptr) {
+        elements_ = new_elements;
+        num_elements_ = other.num_elements_;
+        other.AssignBuffer(elements_);
+      }
+    }
+  }
 }
 
 TensorArray& TensorArray::operator=(const TensorArray& other) {
+  if (this == &other) {
+    return *this;
+  }
   TfLiteIntArray* copied_shape = TfLiteIntArrayCopy(other.element_shape_.get());
-  element_shape_ = IntArrayUniquePtr(copied_shape);
-  Resize(other.num_elements_);
-  Clear();
-  other.AssignBuffer(elements_);
+  if (Resize(other.num_elements_)) {
+    Clear();
+    other.AssignBuffer(elements_);
+    element_shape_ = IntArrayUniquePtr(copied_shape);
+  } else {
+    TfLiteIntArrayFree(copied_shape);
+  }
   return *this;
 }
 
-void TensorArray::Resize(int num_elements) {
-  if (num_elements == NumElements() || num_elements < 0) return;
+bool TensorArray::Resize(int num_elements) {
+  if (num_elements < 0) return false;
+  if (num_elements == NumElements()) return true;
+  if (num_elements >
+      std::numeric_limits<size_t>::max() / sizeof(RefCountedTensor)) {
+    return false;
+  }
   if (num_elements > NumElements()) {
     // The length of the array is being increased. Reallocate the buffer
     // to the appropriate size and setup the new `RefCountedTensors`.
-    elements_ = (RefCountedTensor*)realloc(
+    RefCountedTensor* new_elements = (RefCountedTensor*)realloc(
         elements_, num_elements * sizeof(RefCountedTensor));
+    if (new_elements == nullptr) {
+      return false;
+    }
+    elements_ = new_elements;
     for (int i = NumElements(); i < num_elements; ++i) {
       elements_[i].count = nullptr;
       elements_[i].tensor = nullptr;
@@ -60,10 +86,19 @@ void TensorArray::Resize(int num_elements) {
     for (int i = num_elements; i < NumElements(); ++i) {
       Drop(i);
     }
-    elements_ = (RefCountedTensor*)realloc(
-        elements_, num_elements * sizeof(RefCountedTensor));
+    if (num_elements == 0) {
+      free(elements_);
+      elements_ = nullptr;
+    } else {
+      RefCountedTensor* new_elements = (RefCountedTensor*)realloc(
+          elements_, num_elements * sizeof(RefCountedTensor));
+      if (new_elements != nullptr) {
+        elements_ = new_elements;
+      }
+    }
   }
   num_elements_ = num_elements;
+  return true;
 }
 
 const TfLiteTensor* TensorArray::At(int index) const {
@@ -77,11 +112,14 @@ bool TensorArray::Set(int index, TensorUniquePtr tensor) {
   if (index < 0 || index >= NumElements()) {
     return false;
   }
+  int* c = (int*)malloc(sizeof(int));
+  if (c == nullptr) {
+    return false;
+  }
+  *c = 1;
   // Drop element if it exists.
   Drop(index);
   // Setup the `RefCountedTensor` at given index to wrap the given tensor.
-  int* c = (int*)malloc(sizeof(int));
-  *c = 1;
   elements_[index].tensor = tensor.release();
   elements_[index].count = c;
   return true;

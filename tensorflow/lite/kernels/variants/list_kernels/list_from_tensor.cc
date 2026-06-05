@@ -102,7 +102,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TensorArray* arr =
       static_cast<TensorArray*>(static_cast<VariantData*>(output->data.data));
 
-  arr->Resize(list_len);
+  TF_LITE_ENSURE(context, arr->Resize(list_len));
 
   // Copy each row of input into the elements of the new list.
   size_t data_offset = 0;
