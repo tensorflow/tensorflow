@@ -12,7 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <sys/types.h>
+
+#define ALLOW_SLOW_GENERIC_DEPTHWISECONV_FALLBACK
 
 #include <algorithm>
 #include <cmath>
@@ -21,25 +22,25 @@ limitations under the License.
 #include <iterator>
 #include <limits>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "ruy/context.h"  // from @ruy
-#include "tensorflow/lite/kernels/cpu_backend_context.h"
-#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
-#include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_3x3_filter_common.h"
-#include "tensorflow/lite/kernels/internal/optimized/integer_ops/depthwise_conv.h"
-#include "tensorflow/lite/kernels/internal/reference/integer_ops/depthwise_conv.h"
-#include "tensorflow/lite/kernels/internal/test_util.h"
-#include "tensorflow/lite/kernels/internal/types.h"
-
-#define ALLOW_SLOW_GENERIC_DEPTHWISECONV_FALLBACK
 #include "absl/strings/substitute.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_3x3_filter_common.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_multithread.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8_3x3_filter.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8_transitional.h"
+#include "tensorflow/lite/kernels/internal/optimized/integer_ops/depthwise_conv.h"
+#include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/depthwise_conv.h"
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
+#include "tensorflow/lite/kernels/internal/test_util.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
 namespace {
@@ -1076,12 +1077,9 @@ void TestOneDepthwiseConv3x3Filter(
 void TestOneNeonDot3x3(const TestParam& test_param) {
 #if defined(__aarch64__) && !defined(GOOGLE_L4T) && defined(__ANDROID__) && \
     defined(__clang__)
-  CpuFlags cpu_flags;
-  GetCpuFlags(&cpu_flags);
-  const bool has_dot_product_instructions = cpu_flags.neon_dotprod;
   if (test_param.forced_invocation ==
           DepthwiseConvImplementation::kUseNeon3x3DotProduct &&
-      !has_dot_product_instructions) {
+      !HasArmNeonDotprod()) {
     return;
   }
 #endif

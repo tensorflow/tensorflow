@@ -359,7 +359,6 @@ cc_library(
     deps = [
         ":cppmath",
         ":cpu_check",
-        "@cpuinfo//:cpuinfo_with_unstripped_include_path",
     ],
 )
 
@@ -849,7 +848,7 @@ cc_library(
         ":portable_tensor_utils",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
-        "@ruy//ruy",
+        "@gemmlowp//:fixedpoint",
     ],
 )
 
@@ -1071,7 +1070,6 @@ cc_test(
         "//tensorflow/lite/kernels:cpu_backend_context",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@ruy//ruy:context",
     ],
 )
 
@@ -1264,7 +1262,7 @@ cc_test(
 
 cc_library(
     name = "cpu_check",
-    srcs = ["optimized/cpu_check.cc"],
+    srcs = ["optimized/neon_check.cc"],
     hdrs = [
         "optimized/cpu_check.h",
         "optimized/neon_check.h",
@@ -1272,7 +1270,9 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
-    deps = select({
+    deps = [
+        "@cpuinfo//:cpuinfo_with_unstripped_include_path",
+    ] + select({
         ":x86_any": ["@arm_neon_2_x86_sse"],
         "//conditions:default": [],
     }),

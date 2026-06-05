@@ -12,9 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <sys/types.h>
-
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -23,14 +22,14 @@ limitations under the License.
 #include <limits>
 #include <utility>
 
-#include "ruy/ruy.h"  // from @ruy
+#include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
-#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
+#include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/neon_tensor_utils_impl.h"
 
 #ifdef USE_NEON
@@ -94,11 +93,6 @@ inline void* aligned_alloc(size_t alignment, size_t size,
 #endif
 }
 
-bool HasSdotInstruction() {
-  static const bool has_dotprod = DetectArmNeonDotprod();
-  return has_dotprod;
-}
-
 inline float AccumulateNeonLane(const float32x4_t lane) {
 #ifdef __aarch64__
   return vaddvq_f32(lane);
@@ -114,7 +108,10 @@ inline float AccumulateNeonLane(const float32x4_t lane) {
 // for large batch sizes, it makes sense to use CpuBackendGemm if the matrix
 // is not extremely rectangular.
 bool UseCpuBackendGemm(int rows, int cols, int batch) {
-  if (!HasSdotInstruction()) {
+#ifndef __aarch64__
+  return batch >= 8;
+#else
+  if (!HasArmNeonDotprod()) {
     return batch >= 8;
   }
   if (batch < 16) {
@@ -132,6 +129,7 @@ bool UseCpuBackendGemm(int rows, int cols, int batch) {
   // by significant rectangularness.
   int batch_lg2_minus_rect_lg2 = batch_lg2 - rectangularness_lg2;
   return batch_lg2_minus_rect_lg2 > kCpuBackendGemmThreshold;
+#endif
 }
 
 inline int32_t AccumulateNeonLane(const int32x4_t lane) {
@@ -1078,7 +1076,7 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const int8_t* __restrict__ matrix,
                                              int n_batch,
                                              float* __restrict__ result) {
 #ifdef __aarch64__
-  if (HasSdotInstruction() && m_cols % 16 == 0 && m_rows % 2 == 0 &&
+  if (HasArmNeonDotprod() && m_cols % 16 == 0 && m_rows % 2 == 0 &&
       m_rows >= n_batch) {
     if (n_batch % 4 == 0) {
       // Benchmarks suggest that it's always better to use the batch code
@@ -1277,7 +1275,7 @@ void NeonMatrixBatchVectorMultiplyAccumulateImpl(
     int n_batch, float* __restrict__ result, const float* per_channel_scale,
     const int32_t* input_offset, int32_t* row_sums) {
 #ifdef __aarch64__
-  if (HasSdotInstruction() && m_cols % 16 == 0 && m_rows % 2 == 0 &&
+  if (HasArmNeonDotprod() && m_cols % 16 == 0 && m_rows % 2 == 0 &&
       m_rows >= n_batch) {
     if (n_batch % 4 == 0) {
       DotprodMatrixBatchFourVectorMultiplyAccumulate(
@@ -2086,7 +2084,7 @@ void NeonSparseMatrixBatchVectorMultiplyAccumulate(
     const float* scaling_factors, int n_batch, float* __restrict__ result,
     const float* per_channel_scale) {
 #ifdef __aarch64__
-  if (HasSdotInstruction() && m_cols % 16 == 0) {
+  if (HasArmNeonDotprod() && m_cols % 16 == 0) {
     DotprodSparseMatrixBatchVectorMultiplyAccumulate(
         matrix, ledger, m_rows, m_cols, vectors, scaling_factors, n_batch,
         result, per_channel_scale);

@@ -37,4 +37,8 @@ limitations under the License.
 
 #endif  // defined(USE_NEON)
 
+// Returns true if ARM v8.2a-dotprod extension (sdot, udot instructions) are
+// supported. Note this can happen both on AArch64 and AArch32.
+bool HasArmNeonDotprod();
+
 #endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_NEON_CHECK_H_

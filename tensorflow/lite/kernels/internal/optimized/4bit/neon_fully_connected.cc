@@ -21,10 +21,10 @@ limitations under the License.
 #include <cstring>
 #include <vector>
 
-#include "include/cpuinfo.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/optimized/4bit/fully_connected_common.h"
 #include "tensorflow/lite/kernels/internal/optimized/4bit/neon_fully_connected_impl.h"
+#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 
 namespace tflite {
 namespace optimized_4bit {
@@ -541,21 +541,12 @@ void NeonUnpack(float* output_ptr, const int32_t* dst, int batch_size,
   }
 }
 
-inline bool HasSDot() {
-  // CPUInfo already guards against double init
-  if (!cpuinfo_initialize()) {
-    // If we failed to init CPUInfo, assume ARM v8.2a-dotprod is not supported.
-    return false;
-  };
-  return cpuinfo_has_arm_neon_dot();
-}
-
 template <int RowsLeft, int RowsRight, int Cols>
 void NeonRunKernel(const uint8_t* lhs, const int8_t* rhs, int32_t* dst,
                    int lhs_layout_rows, int lhs_layout_cols,
                    int rhs_layout_rows, int rhs_layout_cols,
                    int dst_layout_rows, int dst_layout_cols) {
-  if (HasSDot()) {
+  if (HasArmNeonDotprod()) {
     NeonRunKernelSDot<RowsLeft, RowsRight, Cols>(
         lhs, rhs, dst, lhs_layout_rows, lhs_layout_cols, rhs_layout_rows,
         rhs_layout_cols, dst_layout_rows, dst_layout_cols);
