@@ -595,8 +595,7 @@ TEST_P(CpuLibraryFusionTypeTest, JoiningFusions) {
   }
 }
 
-// TODO(penporn): Re-enable this test when YNNPACK supports reduce.
-TEST_P(CpuLibraryFusionTypeTest, DISABLED_Reduce) {
+TEST_P(CpuLibraryFusionTypeTest, Reduce) {
   const absl::string_view hlo_template = R"(
     HloModule reduce
 
@@ -623,6 +622,68 @@ INSTANTIATE_TEST_SUITE_P(CpuLibraryFusionTypeTestSuite,
                                               std::string("greedy"),
                                               std::string("reduce")}),
                          CpuLibraryFusionTypeTest::Name);
+
+TEST_F(CpuLibraryTest, Iota) {
+  const absl::string_view hlo_template = R"(
+    HloModule iota
+
+    ENTRY main {
+      %iota = f32[64,64] iota(), iota_dimension=1
+      %a = f32[64,64] parameter(0)
+      ROOT %add = f32[64,64] add(%iota, %a)
+    })";
+
+  DotRewriteTestSpec spec = GetDefaultTestSpec();
+  spec.fusion_mode = "greedy";
+  RunTestInternal(spec, hlo_template,
+                  FusionProperties{HloOpcode::kAdd, 1, 3, true});
+}
+
+TEST_F(CpuLibraryTest, ReduceSquare) {
+  const absl::string_view hlo_template = R"(
+    HloModule reduce_square
+
+    reducer_add {
+      lhs = $in_dtype[] parameter(0)
+      rhs = $in_dtype[] parameter(1)
+      ROOT sum = $in_dtype[] add(lhs, rhs)
+    }
+
+    ENTRY main {
+      input = $in_dtype[64,64]{1,0} parameter(0)
+      square = $in_dtype[64,64]{1,0} multiply(input, input)
+      c = $in_dtype[] constant(0)
+      ROOT output = $in_dtype[64]{0} reduce(square, c), dimensions={1}, to_apply=reducer_add
+    }
+    )";
+  DotRewriteTestSpec spec = GetDefaultTestSpec();
+  spec.fusion_mode = "reduce";
+  RunTestInternal(spec, hlo_template, {HloOpcode::kReduce, 1, 4, true});
+}
+
+TEST_F(CpuLibraryTest, ReduceSquareConvert) {
+  const absl::string_view hlo_template = R"(
+    HloModule reduce_square_convert
+
+    reducer_add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT sum = f32[] add(lhs, rhs)
+    }
+
+    ENTRY main {
+      input = bf16[64,64]{1,0} parameter(0)
+      convert = f32[64,64]{1,0} convert(input)
+      square = f32[64,64]{1,0} multiply(convert, convert)
+      c = f32[] constant(0)
+      ROOT output = f32[64]{0} reduce(square, c), dimensions={1},
+          to_apply=reducer_add
+    }
+    )";
+  DotRewriteTestSpec spec = GetDefaultTestSpec();
+  spec.fusion_mode = "reduce";
+  RunTestInternal(spec, hlo_template, {HloOpcode::kReduce, 1, 5, true});
+}
 
 TEST_F(CpuLibraryTest, RetryFusion) {
   //   p0 -> A (abs) -> B (add) -> C (dot) -> E (add)

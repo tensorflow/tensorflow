@@ -102,11 +102,12 @@ absl::StatusOr<bool> IsDotSupportedByYnn(const HloInstruction* hlo);
 // Returns true if the reduce or reduce window op is supported by YNNPACK.
 bool IsReduceLikeOpSupportedByYnn(const HloInstruction* hlo);
 
-// Returns true if the reduce or reduce window op will be offloaded to YNNPACK.
-bool IsReduceLikeOpOffloadedToYnn(const HloInstruction* hlo);
-
 // Returns true if the convolution op is supported by YNNPACK.
 bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr);
+
+// Returns true if we want to handle the instruction in YNNPACK. Does not imply
+// the instruction is supported.
+bool IsInstructionPreferredByYnn(const HloInstruction* instr);
 
 // Convert XLA options to YNNPACK flags.
 uint32_t YnnFlags(const DebugOptions& debug_options);
