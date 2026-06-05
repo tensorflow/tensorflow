@@ -485,24 +485,25 @@ ResamplerOp::ResamplerOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 void ResamplerOp::Compile(XlaOpKernelContext* ctx) {
   TensorShape data_shape = ctx->InputShape("data");
   OP_REQUIRES(ctx, data_shape.dims() == 4,
-              errors::InvalidArgument("data must be 4-dimensional",
-                                      data_shape.DebugString()));
+              absl::InvalidArgumentError(absl::StrCat(
+                  "data must be 4-dimensional", data_shape.DebugString())));
   const int64_t data_channels = data_shape.dim_size(3);
   xla::PrimitiveType data_type = ctx->input_xla_type(0);
 
   TensorShape warp_shape = ctx->InputShape("warp");
-  OP_REQUIRES(ctx, warp_shape.dims() >= 2,
-              errors::InvalidArgument("warp must be at least 2-dimensional",
-                                      warp_shape.DebugString()));
+  OP_REQUIRES(
+      ctx, warp_shape.dims() >= 2,
+      absl::InvalidArgumentError(absl::StrCat(
+          "warp must be at least 2-dimensional", warp_shape.DebugString())));
   for (int size : warp_shape.dim_sizes()) {
     OP_REQUIRES(ctx, size > 0,
-                errors::InvalidArgument("warp sizes must be positive, got [",
-                                        size, "]"));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "warp sizes must be positive, got [", size, "]")));
   }
   const int64_t last_warp_dim = warp_shape.dims() - 1;
   // Last dimension of warp shape must be of size 2.
   OP_REQUIRES(ctx, warp_shape.dim_size(last_warp_dim) == 2,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(
                   "the last dimension of warp must be exactly size 2."));
   xla::PrimitiveType warp_type = ctx->input_xla_type(1);
 
@@ -602,32 +603,33 @@ ResamplerGradOp::ResamplerGradOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
 void ResamplerGradOp::Compile(XlaOpKernelContext* ctx) {
   TensorShape data_shape_tf = ctx->InputShape("data");
   OP_REQUIRES(ctx, data_shape_tf.dims() == 4,
-              errors::InvalidArgument("data must be 4-dimensional",
-                                      data_shape_tf.DebugString()));
+              absl::InvalidArgumentError(absl::StrCat(
+                  "data must be 4-dimensional", data_shape_tf.DebugString())));
   const int64_t data_channels = data_shape_tf.dim_size(3);
   xla::PrimitiveType data_type = ctx->input_xla_type(0);
 
   TensorShape warp_shape = ctx->InputShape("warp");
-  OP_REQUIRES(ctx, warp_shape.dims() >= 2,
-              errors::InvalidArgument("warp must be at least 2-dimensional",
-                                      warp_shape.DebugString()));
+  OP_REQUIRES(
+      ctx, warp_shape.dims() >= 2,
+      absl::InvalidArgumentError(absl::StrCat(
+          "warp must be at least 2-dimensional", warp_shape.DebugString())));
   for (int size : warp_shape.dim_sizes()) {
     OP_REQUIRES(ctx, size > 0,
-                errors::InvalidArgument("warp sizes must be positive, got [",
-                                        size, "]"));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "warp sizes must be positive, got [", size, "]")));
   }
   // Last dimension of warp shape must be of size 2.
   const int64_t last_warp_dim = warp_shape.dims() - 1;
   OP_REQUIRES(ctx, warp_shape.dim_size(last_warp_dim) == 2,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(
                   "the last dimension of warp must be exactly size 2."));
   xla::PrimitiveType warp_type = ctx->input_xla_type(1);
 
   TensorShape output_grad_shape = ctx->InputShape("grad_output");
-  OP_REQUIRES(
-      ctx, output_grad_shape.dims() >= 2,
-      errors::InvalidArgument("output_grad must be at least 2-dimensional",
-                              output_grad_shape.DebugString()));
+  OP_REQUIRES(ctx, output_grad_shape.dims() >= 2,
+              absl::InvalidArgumentError(
+                  absl::StrCat("output_grad must be at least 2-dimensional",
+                               output_grad_shape.DebugString())));
 
   // Dimensions are [batch, x, y, channel].
   XlaOp data = ctx->Input("data");

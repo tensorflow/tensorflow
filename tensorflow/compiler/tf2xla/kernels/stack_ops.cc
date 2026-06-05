@@ -68,9 +68,9 @@ absl::Status MaybeInitializeStack(xla::XlaBuilder* builder,
                                   XlaResource* resource, DataType dtype,
                                   const TensorShape& elem_shape) {
   if (resource->type() != dtype) {
-    return errors::InvalidArgument(
-        "Stack dtype is ", DataTypeString(resource->type()),
-        " but op has dtype ", DataTypeString(dtype), ".");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Stack dtype is ", DataTypeString(resource->type()),
+                     " but op has dtype ", DataTypeString(dtype), "."));
   }
 
   TensorShape stack_shape;
@@ -86,9 +86,9 @@ absl::Status MaybeInitializeStack(xla::XlaBuilder* builder,
     TensorShape actual_shape;
     TF_RETURN_IF_ERROR(GetStackShape(builder, resource, &actual_shape));
     if (stack_shape != actual_shape) {
-      return errors::InvalidArgument(
-          "Mismatched Stack shapes: ", stack_shape.DebugString(), " vs ",
-          actual_shape.DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Mismatched Stack shapes: ", stack_shape.DebugString(),
+                       " vs ", actual_shape.DebugString()));
     }
   }
   return absl::OkStatus();
@@ -106,7 +106,7 @@ class StackOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(0, &max_size));
     OP_REQUIRES(
         ctx, max_size >= 0,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(
             "XLA compilation requires a fixed stack size upper bound. If "
             "you are using tf.while_loop, set the maximum_iterations parameter "
             "to fix this issue."));
@@ -196,7 +196,7 @@ class StackPopOp : public XlaOpKernel {
     // that we run them. However, in practice the two orders should be the same
     // for the sole user of the stack operators (loop gradients).
     OP_REQUIRES(ctx, resource->initialized(),
-                errors::InvalidArgument("Stack pop on uninitialized stack"));
+                absl::InvalidArgumentError("Stack pop on uninitialized stack"));
 
     TensorShape stack_shape;
     OP_REQUIRES_OK(ctx, GetStackShape(b, resource, &stack_shape));

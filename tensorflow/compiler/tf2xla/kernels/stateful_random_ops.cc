@@ -141,14 +141,15 @@ int64_t GetMinStateSize(xla::RandomAlgorithm alg) {
 absl::Status CheckStateShape(xla::RandomAlgorithm alg,
                              const TensorShape& shape) {
   if (shape.dims() != 1) {
-    return errors::InvalidArgument(
-        "RNG state must have one and only one dimension, not ", shape.dims());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "RNG state must have one and only one dimension, not ", shape.dims()));
   }
   auto state_size = shape.dim_size(0);
   auto min_state_size = GetMinStateSize(alg);
   if (state_size < min_state_size) {
-    return errors::InvalidArgument("The size of the state must be at least ",
-                                   min_state_size, "; got ", state_size);
+    return absl::InvalidArgumentError(
+        absl::StrCat("The size of the state must be at least ", min_state_size,
+                     "; got ", state_size));
   }
   return absl::OkStatus();
 }
@@ -163,7 +164,8 @@ absl::StatusOr<xla::RandomAlgorithm> ResolveAlg(int alg_id) {
       // For AUTO_SELECT, we'll manage the counter as if it's for Philox.
       return xla::RandomAlgorithm::RNG_PHILOX;
     default:
-      return errors::InvalidArgument("Unsupported algorithm id: ", alg_id);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported algorithm id: ", alg_id));
   }
 }
 

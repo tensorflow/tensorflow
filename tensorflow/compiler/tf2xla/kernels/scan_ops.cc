@@ -52,8 +52,9 @@ class ScanOp : public XlaOpKernel {
     const TensorShape tensor_axis_shape = ctx->InputShape(1);
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(tensor_axis_shape),
-                errors::InvalidArgument("ScanOp: axis must be a scalar, not ",
-                                        tensor_axis_shape.DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("ScanOp: axis must be a scalar, not ",
+                                 tensor_axis_shape.DebugString())));
 
     int64_t axis;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(1, &axis));
@@ -62,9 +63,9 @@ class ScanOp : public XlaOpKernel {
     }
     OP_REQUIRES(
         ctx, FastBoundsCheck(axis, input_shape.dims()),
-        errors::InvalidArgument("ScanOp: Expected scan axis in the range [",
-                                -input_shape.dims(), ", ", input_shape.dims(),
-                                "), but got ", axis));
+        absl::InvalidArgumentError(absl::StrCat(
+            "ScanOp: Expected scan axis in the range [", -input_shape.dims(),
+            ", ", input_shape.dims(), "), but got ", axis)));
 
     DataType dtype = XlaHelpers::SumAccumulationType(ctx->input_type(0));
 

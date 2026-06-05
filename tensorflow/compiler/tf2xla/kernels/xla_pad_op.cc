@@ -50,29 +50,29 @@ class XlaPadOp : public XlaOpKernel {
                                 "padding_interior", &padding_interior));
 
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(padding_value_shape),
-                errors::InvalidArgument("padding_value must be a scalar"));
+                absl::InvalidArgumentError("padding_value must be a scalar"));
     const int rank = input_shape.dims();
     OP_REQUIRES(context, rank == padding_low.size(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "The size of padding_low must be equal to the input "
                     "rank (",
-                    padding_low.size(), " vs. ", rank, ")"));
+                    padding_low.size(), " vs. ", rank, ")")));
     OP_REQUIRES(context, rank == padding_high.size(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "The size of padding_high must be equal to the input "
                     "rank (",
-                    padding_high.size(), " vs. ", rank, ")"));
+                    padding_high.size(), " vs. ", rank, ")")));
     OP_REQUIRES(context, rank == padding_interior.size(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "The size of padding_interior must be equal to the input "
                     "rank (",
-                    padding_interior.size(), " vs. ", rank, ")"));
+                    padding_interior.size(), " vs. ", rank, ")")));
 
     auto non_negative = [](int64_t x) { return x >= 0; };
-    OP_REQUIRES(
-        context, absl::c_all_of(padding_interior, non_negative),
-        errors::InvalidArgument("padding_interior must be non-negative, got [",
-                                absl::StrJoin(padding_interior, ","), "]"));
+    OP_REQUIRES(context, absl::c_all_of(padding_interior, non_negative),
+                absl::InvalidArgumentError(
+                    absl::StrCat("padding_interior must be non-negative, got [",
+                                 absl::StrJoin(padding_interior, ","), "]")));
 
     xla::PaddingConfig padding_config;
     for (int i = 0; i < rank; ++i) {

@@ -39,25 +39,25 @@ class SplitOp : public XlaOpKernel {
     const TensorShape split_dim_shape = ctx->InputShape("split_dim");
     const TensorShape input_shape = ctx->InputShape(1);
 
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsScalar(split_dim_shape),
-        errors::InvalidArgument("split_dim must be a scalar but has rank ",
-                                split_dim_shape.dims()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(split_dim_shape),
+                absl::InvalidArgumentError(
+                    absl::StrCat("split_dim must be a scalar but has rank ",
+                                 split_dim_shape.dims())));
     int64_t split_dim_orig;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(0, &split_dim_orig));
 
     int32_t split_dim = split_dim_orig < 0 ? split_dim_orig + input_shape.dims()
                                            : split_dim_orig;
     OP_REQUIRES(ctx, 0 <= split_dim && split_dim < input_shape.dims(),
-                errors::InvalidArgument("-input rank(-", input_shape.dims(),
-                                        ") <= split_dim < input rank (",
-                                        input_shape.dims(), "), but got ",
-                                        split_dim_orig));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "-input rank(-", input_shape.dims(),
+                    ") <= split_dim < input rank (", input_shape.dims(),
+                    "), but got ", split_dim_orig)));
 
     OP_REQUIRES(
         ctx, num_split > 0,
-        errors::InvalidArgument(
-            "Number of ways to split should be > 0, but got ", num_split));
+        absl::InvalidArgumentError(absl::StrCat(
+            "Number of ways to split should be > 0, but got ", num_split)));
 
     xla::XlaBuilder* builder = ctx->builder();
     xla::XlaOp input = ctx->Input(1);
@@ -67,16 +67,16 @@ class SplitOp : public XlaOpKernel {
     xla::Shape xla_shape = shape_or.value();
     OP_REQUIRES(
         ctx, !xla_shape.is_dynamic_dimension(split_dim),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(
             "Split op doesn't support split for the dynamic dimension"));
 
     OP_REQUIRES(
         ctx, xla_shape.dimensions(split_dim) % num_split == 0,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Number of ways to split should evenly divide the split "
             "dimension, but got split_dim ",
             split_dim_orig, " (size = ", input_shape.dim_size(split_dim), ") ",
-            "and num_split ", num_split));
+            "and num_split ", num_split)));
 
     // All the slices are the same size: this is the size along the
     // split dimension.
@@ -116,7 +116,7 @@ class SplitVOp : public XlaOpKernel {
     const TensorShape index_shape = ctx->InputShape(2);
 
     OP_REQUIRES(ctx, index_shape.num_elements() == 1,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "split_dim_tensor must have exactly one element."));
 
     int64_t split_dim_orig;
@@ -124,20 +124,21 @@ class SplitVOp : public XlaOpKernel {
     int64_t split_dim = split_dim_orig < 0 ? split_dim_orig + input_shape.dims()
                                            : split_dim_orig;
     OP_REQUIRES(ctx, 0 <= split_dim && split_dim < input_shape.dims(),
-                errors::InvalidArgument("-input rank(-", input_shape.dims(),
-                                        ") <= split_dim < input rank (",
-                                        input_shape.dims(), "), but got ",
-                                        split_dim_orig));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "-input rank(-", input_shape.dims(),
+                    ") <= split_dim < input rank (", input_shape.dims(),
+                    "), but got ", split_dim_orig)));
 
     xla::XlaOp input = ctx->Input(0);
 
-    OP_REQUIRES(ctx, input_shape.dims() > 0,
-                errors::InvalidArgument("Can't split a 0 dimensional input"));
+    OP_REQUIRES(
+        ctx, input_shape.dims() > 0,
+        absl::InvalidArgumentError("Can't split a 0 dimensional input"));
 
     OP_REQUIRES(
         ctx, num_split > 0,
-        errors::InvalidArgument(
-            "Number of ways to split should be > 0, but got ", num_split));
+        absl::InvalidArgumentError(absl::StrCat(
+            "Number of ways to split should be > 0, but got ", num_split)));
 
     // Check that sizes are correct.
     int total_split_size = 0;
@@ -146,27 +147,28 @@ class SplitVOp : public XlaOpKernel {
     OP_REQUIRES(ctx,
                 split_size_shape.dims() == 1 &&
                     split_size_shape.num_elements() == num_split,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "shape of tensor describing "
                     " the output must have dimension 1 and the same "
                     " number of elements as the output. Got ",
                     split_size_shape.dims(), "-D and ",
-                    split_size_shape.num_elements(), " elements"));
+                    split_size_shape.num_elements(), " elements")));
     // Get the dimension of this split.
     std::vector<int64_t> split_sizes;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &split_sizes));
 
     for (int i = 0; i < num_split; ++i) {
       int64_t slice_size = split_sizes[i];
-      OP_REQUIRES(ctx, slice_size >= -1,
-                  errors::InvalidArgument("Split size at index ", i,
-                                          " must be >= -1, Got: ", slice_size));
+      OP_REQUIRES(
+          ctx, slice_size >= -1,
+          absl::InvalidArgumentError(absl::StrCat(
+              "Split size at index ", i, " must be >= -1, Got: ", slice_size)));
       if (slice_size == -1) {
-        OP_REQUIRES(
-            ctx, neg_one_dim == -1,
-            errors::InvalidArgument("Only one dimensions can have a value of"
-                                    "-1. Second one found at dimension ",
-                                    i));
+        OP_REQUIRES(ctx, neg_one_dim == -1,
+                    absl::InvalidArgumentError(
+                        absl::StrCat("Only one dimensions can have a value of"
+                                     "-1. Second one found at dimension ",
+                                     i)));
         neg_one_dim = i;
       } else {
         total_split_size += slice_size;
@@ -181,21 +183,21 @@ class SplitVOp : public XlaOpKernel {
     xla::Shape xla_shape = shape_or.value();
     OP_REQUIRES(
         ctx, !xla_shape.is_dynamic_dimension(split_dim),
-        errors::Unimplemented("SplitV op doesn't yet support dynamic split "
-                              "dimension."));
+        absl::UnimplementedError("SplitV op doesn't yet support dynamic split "
+                                 "dimension."));
 
-    OP_REQUIRES(
-        ctx,
-        (neg_one_dim == -1 &&
-         total_split_size == xla_shape.dimensions(split_dim)) ||
-            (neg_one_dim >= 0 &&
-             total_split_size <= xla_shape.dimensions(split_dim)),
-        errors::InvalidArgument("Determined shape must either match "
-                                "input shape along split_dim exactly if "
-                                "fully specified, or be less than the size of "
-                                "the input along split_dim if not fully "
-                                "specified.  Got: ",
-                                total_split_size));
+    OP_REQUIRES(ctx,
+                (neg_one_dim == -1 &&
+                 total_split_size == xla_shape.dimensions(split_dim)) ||
+                    (neg_one_dim >= 0 &&
+                     total_split_size <= xla_shape.dimensions(split_dim)),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Determined shape must either match "
+                                 "input shape along split_dim exactly if "
+                                 "fully specified, or be less than the size of "
+                                 "the input along split_dim if not fully "
+                                 "specified.  Got: ",
+                                 total_split_size)));
 
     if (neg_one_dim >= 0) {
       split_sizes[neg_one_dim] =

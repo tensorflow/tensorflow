@@ -47,9 +47,9 @@ class XlaCustomCallV2Op : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("result_dtypes", &result_dtypes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("result_shapes", &result_shapes_));
     OP_REQUIRES(ctx, result_shapes_.size() == result_dtypes_.size(),
-                errors::InvalidArgument("Unexpected number of result shapes: ",
-                                        result_shapes_.size(),
-                                        " != ", result_dtypes_.size()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Unexpected number of result shapes: ",
+                    result_shapes_.size(), " != ", result_dtypes_.size())));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {

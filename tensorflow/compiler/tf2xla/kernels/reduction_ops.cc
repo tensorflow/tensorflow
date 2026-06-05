@@ -102,9 +102,9 @@ class MaxOp : public XlaReductionOp {
     if (xla_reduction_type == xla::C64 || xla_reduction_type == xla::C128 ||
         xla_reduction_type == xla::TUPLE ||
         xla_reduction_type == xla::OPAQUE_TYPE) {
-      return errors::InvalidArgument(
-          "Unsupported PrimitiveType in MaxOp: '",
-          xla::PrimitiveType_Name(xla_reduction_type), "'");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported PrimitiveType in MaxOp: '",
+                       xla::PrimitiveType_Name(xla_reduction_type), "'"));
     } else {
       return absl::OkStatus();
     }

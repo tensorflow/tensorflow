@@ -130,7 +130,7 @@ absl::Status IsNestedTensorList(xla::XlaOp list, bool* is_nested_list) {
   bool is_initialized;
   TF_RETURN_IF_ERROR(IsTensorListInitialized(list, &is_initialized));
   if (!is_initialized) {
-    return errors::InvalidArgument("TensorList is not initialized");
+    return absl::InvalidArgumentError("TensorList is not initialized");
   }
   TF_ASSIGN_OR_RETURN(xla::Shape list_shape, list.builder()->GetShape(list));
   *is_nested_list = (xla::ShapeUtil::TupleElementCount(list_shape) > 2);
@@ -149,7 +149,7 @@ absl::Status GetTensorListBufferShape(xla::XlaOp list,
   bool is_initialized;
   TF_RETURN_IF_ERROR(IsTensorListInitialized(list, &is_initialized));
   if (!is_initialized) {
-    return errors::InvalidArgument("TensorList is not initialized");
+    return absl::InvalidArgumentError("TensorList is not initialized");
   }
   TF_ASSIGN_OR_RETURN(xla::Shape list_shape, list.builder()->GetShape(list));
   *buffer_shape = xla::ShapeUtil::GetTupleElementShape(list_shape, 0);
@@ -160,7 +160,7 @@ absl::Status GetTensorListBuffer(xla::XlaOp list, xla::XlaOp* buffer) {
   bool is_initialized;
   TF_RETURN_IF_ERROR(IsTensorListInitialized(list, &is_initialized));
   if (!is_initialized) {
-    return errors::InvalidArgument("TensorList is not initialized");
+    return absl::InvalidArgumentError("TensorList is not initialized");
   }
   *buffer = xla::GetTupleElement(list, 0);
   return absl::OkStatus();
@@ -170,7 +170,7 @@ absl::Status GetTensorListPushIndex(xla::XlaOp list, xla::XlaOp* push_index) {
   bool is_initialized;
   TF_RETURN_IF_ERROR(IsTensorListInitialized(list, &is_initialized));
   if (!is_initialized) {
-    return errors::InvalidArgument("TensorList is not initialized");
+    return absl::InvalidArgumentError("TensorList is not initialized");
   }
   TF_ASSIGN_OR_RETURN(xla::Shape list_shape, list.builder()->GetShape(list));
   int tuple_size = xla::ShapeUtil::TupleElementCount(list_shape);
@@ -183,7 +183,7 @@ absl::Status SetTensorListPushIndex(xla::XlaOp list, xla::XlaOp push_index,
   bool is_initialized;
   TF_RETURN_IF_ERROR(IsTensorListInitialized(list, &is_initialized));
   if (!is_initialized) {
-    return errors::InvalidArgument("TensorList is not initialized");
+    return absl::InvalidArgumentError("TensorList is not initialized");
   }
   TF_ASSIGN_OR_RETURN(xla::Shape list_shape, list.builder()->GetShape(list));
   int tuple_size = xla::ShapeUtil::TupleElementCount(list_shape);
@@ -259,10 +259,10 @@ absl::Status GetTensorListShapeFromElementShape(const xla::Shape& element_shape,
                                                 bool leading_dim_is_dynamic,
                                                 xla::Shape* tensor_list_shape) {
   if (!element_shape.IsArray()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "GetTensorListShapeFromElementShape() only supports normal tensor "
         "shape. But element shape is ",
-        element_shape.ToString());
+        element_shape.ToString()));
   }
   std::vector<xla::Shape> shapes;
   std::vector<int64_t> dimensions =
@@ -333,9 +333,9 @@ absl::Status GetInitializedTensorListForElement(xla::XlaOp list,
     // Check shape of initialized list is correct.
     TF_ASSIGN_OR_RETURN(xla::Shape original_list_shape, b->GetShape(list));
     if (!xla::ShapeUtil::Compatible(original_list_shape, list_shape)) {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "Invalid TensorList shape: ", original_list_shape.ToString(),
-          ", expected: ", list_shape.ToString());
+          ", expected: ", list_shape.ToString()));
     }
     *initialized_list = list;
     return absl::OkStatus();
@@ -369,7 +369,7 @@ absl::Status ExecuteTensorListPushBack(xla::XlaOp list, xla::XlaOp element,
   bool is_initialized;
   TF_RETURN_IF_ERROR(IsTensorListInitialized(list, &is_initialized));
   if (!is_initialized) {
-    return errors::InvalidArgument("TensorList is not initialized");
+    return absl::InvalidArgumentError("TensorList is not initialized");
   }
 
   xla::XlaBuilder* b = list.builder();
@@ -431,7 +431,7 @@ absl::Status ExecuteTensorListPopBack(xla::XlaOp list, xla::XlaOp* list_result,
   bool is_initialized;
   TF_RETURN_IF_ERROR(IsTensorListInitialized(list, &is_initialized));
   if (!is_initialized) {
-    return errors::InvalidArgument("TensorList is not initialized");
+    return absl::InvalidArgumentError("TensorList is not initialized");
   }
 
   // If the TensorList is a nested TensorList, element will be TensorList.
@@ -479,12 +479,12 @@ absl::Status ExecuteTensorListSetItem(xla::XlaOp list, xla::XlaOp index,
   bool is_initialized;
   TF_RETURN_IF_ERROR(IsTensorListInitialized(list, &is_initialized));
   if (!is_initialized) {
-    return errors::InvalidArgument("TensorList is not initialized");
+    return absl::InvalidArgumentError("TensorList is not initialized");
   }
   bool is_nested;
   TF_RETURN_IF_ERROR(IsNestedTensorList(list, &is_nested));
   if (is_nested) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "ExecuteTensorListSetItem() only supports non-nested TensorList");
   }
 
@@ -536,12 +536,12 @@ absl::Status ExecuteTensorListGetItem(xla::XlaOp list, xla::XlaOp index,
   bool is_initialized;
   TF_RETURN_IF_ERROR(IsTensorListInitialized(list, &is_initialized));
   if (!is_initialized) {
-    return errors::InvalidArgument("TensorList is not initialized");
+    return absl::InvalidArgumentError("TensorList is not initialized");
   }
   bool is_nested;
   TF_RETURN_IF_ERROR(IsNestedTensorList(list, &is_nested));
   if (is_nested) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "ExecuteTensorListGetItem() only supports non-nested TensorList");
   }
 
@@ -578,10 +578,10 @@ absl::Status ExecuteTensorListFromTensor(int push_index, xla::XlaOp tensor,
   xla::XlaBuilder* b = tensor.builder();
   TF_ASSIGN_OR_RETURN(xla::Shape shape, b->GetShape(tensor));
   if (!shape.IsArray()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "ExecuteTensorListFromTensor() only supports normal tensor. But input "
         "shape is ",
-        shape.ToString());
+        shape.ToString()));
   }
 
   std::vector<xla::XlaOp> result_parts{tensor,

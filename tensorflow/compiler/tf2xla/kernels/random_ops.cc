@@ -96,12 +96,14 @@ class RandomUniformIntOp : public XlaOpKernel {
 
     const TensorShape minval_shape = ctx->InputShape(1);
     const TensorShape maxval_shape = ctx->InputShape(2);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(minval_shape),
-                errors::InvalidArgument("minval must be 0-D, got shape ",
-                                        minval_shape.DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(maxval_shape),
-                errors::InvalidArgument("maxval must be 0-D, got shape ",
-                                        maxval_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(minval_shape),
+        absl::InvalidArgumentError(absl::StrCat(
+            "minval must be 0-D, got shape ", minval_shape.DebugString())));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(maxval_shape),
+        absl::InvalidArgumentError(absl::StrCat(
+            "maxval must be 0-D, got shape ", maxval_shape.DebugString())));
 
     auto minval = ctx->Input(1);
     auto maxval = ctx->Input(2);
@@ -226,9 +228,9 @@ class ParameterizedTruncatedNormalOp : public XlaOpKernel {
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype, shape, &xla_shape));
     OP_REQUIRES(ctx, xla_shape.dimensions().size() >= 1,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "shape parameter must have rank >= 1, received (",
-                    xla::ShapeUtil::HumanString(xla_shape), ")"));
+                    xla::ShapeUtil::HumanString(xla_shape), ")")));
 
     xla::XlaBuilder* b = ctx->builder();
 

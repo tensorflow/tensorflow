@@ -37,16 +37,16 @@ class XlaDotOp : public XlaOpKernel {
   explicit XlaDotOp(OpKernelConstruction* context) : XlaOpKernel(context) {
     std::string dnums_attr;
     OP_REQUIRES_OK(context, context->GetAttr("dimension_numbers", &dnums_attr));
-    OP_REQUIRES(
-        context, dnums_.ParsePartialFromString(dnums_attr),
-        errors::InvalidArgument("Error parsing convolution dimension numbers"));
+    OP_REQUIRES(context, dnums_.ParsePartialFromString(dnums_attr),
+                absl::InvalidArgumentError(
+                    "Error parsing convolution dimension numbers"));
     std::string precision_config_attr;
     OP_REQUIRES_OK(
         context, context->GetAttr("precision_config", &precision_config_attr));
-    OP_REQUIRES(
-        context,
-        precision_config_.ParsePartialFromString(precision_config_attr),
-        errors::InvalidArgument("Error parsing convolution dimension numbers"));
+    OP_REQUIRES(context,
+                precision_config_.ParsePartialFromString(precision_config_attr),
+                absl::InvalidArgumentError(
+                    "Error parsing convolution dimension numbers"));
     preferred_element_type_ = std::nullopt;
   }
 

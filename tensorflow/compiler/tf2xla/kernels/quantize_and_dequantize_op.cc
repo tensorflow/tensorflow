@@ -88,12 +88,13 @@ class QuantizeAndDequantizeOp : public XlaOpKernel {
         std::vector<int64_t> dimensions_to_reduce;
         TensorShape input_shape = ctx->InputShape(0);
         int64_t input_rank = input_shape.dims();
-        OP_REQUIRES(ctx, input_rank >= 1,
-                    errors::Unimplemented("QuantizeAndDequantizeOp with axis "
-                                          "!= -1 requires minimum rank 1"));
         OP_REQUIRES(
-            ctx, axis_ >= 0 && axis_ < input_rank,
-            errors::Unimplemented("QuantizeAndDequantizeOp with invalid axis"));
+            ctx, input_rank >= 1,
+            absl::UnimplementedError("QuantizeAndDequantizeOp with axis "
+                                     "!= -1 requires minimum rank 1"));
+        OP_REQUIRES(ctx, axis_ >= 0 && axis_ < input_rank,
+                    absl::UnimplementedError(
+                        "QuantizeAndDequantizeOp with invalid axis"));
         dimensions_to_reduce.reserve(input_rank - 1);
         for (int64_t i = 0; i < input_rank; ++i) {
           if (i != axis_) {
@@ -111,7 +112,7 @@ class QuantizeAndDequantizeOp : public XlaOpKernel {
     if (num_bits_ < 0) {
       OP_REQUIRES(
           ctx, ctx->num_inputs() == 4,
-          errors::Internal("Expected 4 inputs to QuantizeAndDequantize"));
+          absl::InternalError("Expected 4 inputs to QuantizeAndDequantize"));
       num_bits = ctx->Input(3);
     } else {
       num_bits = xla::ConstantR0<int32_t>(b, num_bits_);
@@ -221,17 +222,18 @@ class QuantizeAndDequantizeV2Op : public QuantizeAndDequantizeOp {
       : QuantizeAndDequantizeOp(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("num_bits", &num_bits_));
     OP_REQUIRES(ctx, num_bits_ > 0 && num_bits_ < (signed_input_ ? 62 : 63),
-                errors::InvalidArgument("num_bits is out of range: ", num_bits_,
-                                        " with signed_input_ ", signed_input_));
+                absl::InvalidArgumentError(
+                    absl::StrCat("num_bits is out of range: ", num_bits_,
+                                 " with signed_input_ ", signed_input_)));
     std::string round_mode_string;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("round_mode", &round_mode_string));
     OP_REQUIRES(
         ctx,
         (round_mode_string == "HALF_UP" || round_mode_string == "HALF_TO_EVEN"),
-        errors::InvalidArgument("Round mode string must be "
-                                "'HALF_UP' or "
-                                "'HALF_TO_EVEN', is '" +
-                                round_mode_string + "'"));
+        absl::InvalidArgumentError("Round mode string must be "
+                                   "'HALF_UP' or "
+                                   "'HALF_TO_EVEN', is '" +
+                                   round_mode_string + "'"));
     if (round_mode_string == "HALF_UP") {
       round_mode_ = ROUND_HALF_UP;
     } else if (round_mode_string == "HALF_TO_EVEN") {

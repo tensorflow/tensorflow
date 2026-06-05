@@ -73,18 +73,19 @@ class SegmentReduce : public XlaOpKernel {
                    ctx->ConstantInputAsIntScalar(
                        2, &num_segments, xla::ValueInferenceMode::kUpperBound));
     OP_REQUIRES(ctx, data_shape.dims() >= indices_shape.dims(),
-                errors::InvalidArgument(type_string(),
-                                        " requires that indices' rank be"
-                                        " less than or equal to data's rank."));
+                absl::InvalidArgumentError(
+                    absl::StrCat(type_string(),
+                                 " requires that indices' rank be"
+                                 " less than or equal to data's rank.")));
     // Validate that indices.shape is a prefix of data.shape.
     for (int d = 0; d < indices_shape.dims(); ++d) {
-      OP_REQUIRES(
-          ctx, (data_shape.dim_size(d) == indices_shape.dim_size(d)),
-          errors::InvalidArgument(type_string(),
-                                  " requires indices shape to be prefix"
-                                  " of data_shape, but dimension ",
-                                  d, " differs ", data_shape.dim_size(d),
-                                  " vs. ", indices_shape.dim_size(d)));
+      OP_REQUIRES(ctx, (data_shape.dim_size(d) == indices_shape.dim_size(d)),
+                  absl::InvalidArgumentError(
+                      absl::StrCat(type_string(),
+                                   " requires indices shape to be prefix"
+                                   " of data_shape, but dimension ",
+                                   d, " differs ", data_shape.dim_size(d),
+                                   " vs. ", indices_shape.dim_size(d))));
     }
     xla::XlaBuilder* builder = ctx->builder();
     // data shape = [indices_shape, segment_shape]
