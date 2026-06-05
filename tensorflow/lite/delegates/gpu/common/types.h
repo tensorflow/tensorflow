@@ -35,7 +35,7 @@ class alignas(2) half {
 
   half() = default;
 
-  half(const half& f) : bits(f.bits) {}
+  half(const half& f) : = default;
 
   explicit half(float other) { bits = fp16_ieee_from_fp32_value(other); }
 
