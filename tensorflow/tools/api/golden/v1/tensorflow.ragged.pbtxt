@@ -2,7 +2,7 @@ path: "tensorflow.ragged"
 tf_module {
   member {
     name: "RaggedTensorValue"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member_method {
     name: "boolean_mask"

@@ -2,11 +2,11 @@ path: "tensorflow.__internal__.saved_model"
 tf_module {
   member {
     name: "SavedModelBuilder"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "load"
-    mtype: "<type \'module\'>"
+    mtype: "<class \'module\'>"
   }
   member_method {
     name: "decode_proto"

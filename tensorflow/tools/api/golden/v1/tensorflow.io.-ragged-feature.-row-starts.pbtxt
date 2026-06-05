@@ -1,7 +1,7 @@
 path: "tensorflow.io.RaggedFeature.RowStarts"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.parsing_config.RowStarts\'>"
-  is_instance: "<type \'tuple\'>"
+  is_instance: "<class \'tuple\'>"
   member {
     name: "key"
     mtype: "<class \'collections._tuplegetter\'>"

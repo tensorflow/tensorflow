@@ -2,7 +2,7 @@ path: "tensorflow.tpu.experimental.TPUSystemMetadata"
 tf_class {
   is_instance: "<class \'tensorflow.python.tpu.tpu_system_metadata.TPUSystemMetadata\'>"
   is_instance: "<class \'tensorflow.python.tpu.tpu_system_metadata.TPUSystemMetadata\'>"
-  is_instance: "<type \'tuple\'>"
+  is_instance: "<class \'tuple\'>"
   member {
     name: "devices"
     mtype: "<class \'collections._tuplegetter\'>"

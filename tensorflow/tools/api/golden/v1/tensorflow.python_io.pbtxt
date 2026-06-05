@@ -2,11 +2,11 @@ path: "tensorflow.python_io"
 tf_module {
   member {
     name: "TFRecordCompressionType"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "TFRecordOptions"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "TFRecordWriter"

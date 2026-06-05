@@ -2,7 +2,7 @@ path: "tensorflow.profiler.experimental.ProfilerOptions"
 tf_class {
   is_instance: "<class \'tensorflow.python.profiler.profiler_v2.ProfilerOptions\'>"
   is_instance: "<class \'tensorflow.python.profiler.profiler_v2.ProfilerOptions\'>"
-  is_instance: "<type \'tuple\'>"
+  is_instance: "<class \'tuple\'>"
   member {
     name: "delay_ms"
     mtype: "<class \'collections._tuplegetter\'>"

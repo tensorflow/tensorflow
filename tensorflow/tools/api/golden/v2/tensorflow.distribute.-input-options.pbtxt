@@ -2,7 +2,7 @@ path: "tensorflow.distribute.InputOptions"
 tf_class {
   is_instance: "<class \'tensorflow.python.distribute.distribute_lib.InputOptions\'>"
   is_instance: "<class \'tensorflow.python.distribute.distribute_lib.InputOptions\'>"
-  is_instance: "<type \'tuple\'>"
+  is_instance: "<class \'tuple\'>"
   member {
     name: "experimental_fetch_to_device"
     mtype: "<class \'collections._tuplegetter\'>"

@@ -2,7 +2,7 @@ path: "tensorflow.config.LogicalDeviceConfiguration"
 tf_class {
   is_instance: "<class \'tensorflow.python.eager.context.LogicalDeviceConfiguration\'>"
   is_instance: "<class \'tensorflow.python.eager.context.LogicalDeviceConfiguration\'>"
-  is_instance: "<type \'tuple\'>"
+  is_instance: "<class \'tuple\'>"
   member {
     name: "experimental_device_ordinal"
     mtype: "<class \'collections._tuplegetter\'>"

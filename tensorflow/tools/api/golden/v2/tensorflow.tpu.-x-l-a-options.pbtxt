@@ -2,7 +2,7 @@ path: "tensorflow.tpu.XLAOptions"
 tf_class {
   is_instance: "<class \'tensorflow.python.tpu.tpu.XLAOptions\'>"
   is_instance: "<class \'tensorflow.python.tpu.tpu.XLAOptions\'>"
-  is_instance: "<type \'tuple\'>"
+  is_instance: "<class \'tuple\'>"
   member {
     name: "enable_xla_dynamic_padder"
     mtype: "<class \'collections._tuplegetter\'>"

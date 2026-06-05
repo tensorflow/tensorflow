@@ -7,30 +7,30 @@ tf_class {
   is_instance: "<class \'tensorflow.python.types.trace.TraceType\'>"
   is_instance: "<class \'tensorflow.core.function.trace_type.serialization.Serializable\'>"
   is_instance: "<class \'tensorflow.python.types.internal.RaggedTensorSpec\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "dtype"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "flat_values_spec"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "ragged_rank"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "row_splits_dtype"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "shape"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "value_type"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

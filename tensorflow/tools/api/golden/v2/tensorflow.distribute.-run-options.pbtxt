@@ -2,7 +2,7 @@ path: "tensorflow.distribute.RunOptions"
 tf_class {
   is_instance: "<class \'tensorflow.python.distribute.distribute_lib.RunOptions\'>"
   is_instance: "<class \'tensorflow.python.distribute.distribute_lib.RunOptions\'>"
-  is_instance: "<type \'tuple\'>"
+  is_instance: "<class \'tuple\'>"
   member {
     name: "experimental_bucketizing_dynamic_shape"
     mtype: "<class \'collections._tuplegetter\'>"

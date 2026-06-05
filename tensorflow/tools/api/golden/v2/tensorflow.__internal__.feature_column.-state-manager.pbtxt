@@ -2,7 +2,7 @@ path: "tensorflow.__internal__.feature_column.StateManager"
 tf_class {
   is_instance: "<class \'tensorflow.python.feature_column.feature_column_v2._StateManagerImpl\'>"
   is_instance: "<class \'tensorflow.python.feature_column.feature_column_v2.StateManager\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'layer\', \'trainable\'], varargs=None, keywords=None, defaults=None"

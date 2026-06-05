@@ -4,7 +4,7 @@ tf_class {
   is_instance: "<class \'tensorflow.lite.python.lite.TFLiteFrozenGraphConverterV2\'>"
   is_instance: "<class \'tensorflow.lite.python.lite.TFLiteConverterBaseV2\'>"
   is_instance: "<class \'tensorflow.lite.python.lite.TFLiteConverterBase\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'funcs\', \'trackable_obj\'], varargs=None, keywords=None, defaults=[\'None\'], "

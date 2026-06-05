@@ -3,7 +3,7 @@ tf_class {
   is_instance: "<class \'tensorflow.python.training.experimental.loss_scale.FixedLossScale\'>"
   is_instance: "<class \'tensorflow.python.training.experimental.loss_scale.LossScale\'>"
   is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'loss_scale_value\'], varargs=None, keywords=None, defaults=None"

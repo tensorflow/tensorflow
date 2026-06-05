@@ -2,7 +2,7 @@ path: "tensorflow.io.SparseFeature"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.parsing_config.SparseFeature\'>"
   is_instance: "<class \'tensorflow.python.ops.parsing_config.SparseFeature\'>"
-  is_instance: "<type \'tuple\'>"
+  is_instance: "<class \'tuple\'>"
   member {
     name: "already_sorted"
     mtype: "<class \'collections._tuplegetter\'>"

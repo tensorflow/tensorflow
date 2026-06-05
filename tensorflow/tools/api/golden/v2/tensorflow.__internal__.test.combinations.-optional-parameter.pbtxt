@@ -2,10 +2,10 @@ path: "tensorflow.__internal__.test.combinations.OptionalParameter"
 tf_class {
   is_instance: "<class \'tensorflow.python.framework.test_combinations.OptionalParameter\'>"
   is_instance: "<class \'tensorflow.python.framework.test_combinations.ParameterModifier\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "DO_NOT_PASS_TO_THE_TEST"
-    mtype: "<type \'object\'>"
+    mtype: "<class \'object\'>"
   }
   member_method {
     name: "__init__"

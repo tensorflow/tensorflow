@@ -6,7 +6,7 @@ tf_module {
   }
   member {
     name: "QUANTIZED_DTYPES"
-    mtype: "<type \'frozenset\'>"
+    mtype: "<class \'frozenset\'>"
   }
   member {
     name: "bfloat16"
@@ -30,7 +30,7 @@ tf_module {
   }
   member {
     name: "experimental"
-    mtype: "<type \'module\'>"
+    mtype: "<class \'module\'>"
   }
   member {
     name: "float16"

@@ -2,7 +2,7 @@ path: "tensorflow.train.VocabInfo"
 tf_class {
   is_instance: "<class \'tensorflow.python.training.warm_starting_util.VocabInfo\'>"
   is_instance: "<class \'tensorflow.python.training.warm_starting_util.VocabInfo\'>"
-  is_instance: "<type \'tuple\'>"
+  is_instance: "<class \'tuple\'>"
   member {
     name: "axis"
     mtype: "<class \'collections._tuplegetter\'>"

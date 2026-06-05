@@ -1,7 +1,7 @@
 path: "tensorflow.train.experimental.MaxShardSizePolicy.MaxShardSizePartitioner"
 tf_class {
   is_instance: "<class \'tensorflow.python.checkpoint.sharding.sharding_policies.MaxShardSizePolicy.MaxShardSizePartitioner\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
   }

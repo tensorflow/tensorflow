@@ -8,22 +8,22 @@ tf_class {
   is_instance: "<class \'tensorflow.python.types.trace.TraceType\'>"
   is_instance: "<class \'tensorflow.core.function.trace_type.serialization.Serializable\'>"
   is_instance: "<class \'tensorflow.python.types.internal.TensorSpec\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "dtype"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "name"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "shape"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "value_type"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

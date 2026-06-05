@@ -2,7 +2,7 @@ path: "tensorflow.config.PhysicalDevice"
 tf_class {
   is_instance: "<class \'tensorflow.python.eager.context.PhysicalDevice\'>"
   is_instance: "<class \'tensorflow.python.eager.context.PhysicalDevice\'>"
-  is_instance: "<type \'tuple\'>"
+  is_instance: "<class \'tuple\'>"
   member {
     name: "device_type"
     mtype: "<class \'collections._tuplegetter\'>"

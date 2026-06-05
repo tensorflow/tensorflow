@@ -2,7 +2,7 @@ path: "tensorflow.train.ProfilerHook"
 tf_class {
   is_instance: "<class \'tensorflow.python.training.basic_session_run_hooks.ProfilerHook\'>"
   is_instance: "<class \'tensorflow.python.training.session_run_hook.SessionRunHook\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'save_steps\', \'save_secs\', \'output_dir\', \'show_dataflow\', \'show_memory\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'\', \'True\', \'False\'], "
