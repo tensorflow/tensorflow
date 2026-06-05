@@ -557,7 +557,10 @@ CodegenDecision IsTritonSupportedDot(
            (lhs_type == compare2 && rhs_type == compare1);
   };
   // TODO(b/393299275): add support tests for mixed types.
-  if (lhs_type != rhs_type && !types_are(F8E5M2, F8E4M3FN)) {
+  const bool mixed_fp8_ok =
+      types_are(F8E5M2, F8E4M3FN) ||
+      (gpu_version.IsRocm() && types_are(F8E5M2FNUZ, F8E4M3FNUZ));
+  if (lhs_type != rhs_type && !mixed_fp8_ok) {
     return CodegenDecision::Forbid(
         "Dot operation only supports same types for lhs and rhs.");
   }
