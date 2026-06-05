@@ -109,7 +109,6 @@ def mkl_deps():
     """
     return select({
         Label("//xla/tsl/mkl:build_with_mkl_aarch64"): ["@mkl_dnn_acl_compatible//:mkl_dnn_acl"],
-        Label("//xla/tsl:linux_x86_64_with_onednn_async"): ["@onednn_async//:mkl_dnn"],
         Label("//xla/tsl:linux_x86_64"): ["@onednn_async//:mkl_dnn"],
         Label("//xla/tsl:windows"): ["@onednn_async//:mkl_dnn"],
         "//conditions:default": [],
