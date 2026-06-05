@@ -329,6 +329,78 @@ diff --ruN a/stablehlo/stablehlo/dialect/VhloOps.cpp b/stablehlo/stablehlo/diale
  }
  
  }  // namespace vhlo
+diff --ruN a/stablehlo/stablehlo/reference/Ops.h b/stablehlo/stablehlo/reference/Ops.h
+--- stablehlo/stablehlo/reference/Ops.h
++++ stablehlo/stablehlo/reference/Ops.h
+@@ -109,7 +109,7 @@
+                 bool indicesAreSorted, ShapedType resultType);
+ Tensor getDimensionSizeOp(const Tensor &operand, Axis dimension,
+                           ShapedType resultType);
+-InterpreterValue getTupleElementOp(const Tuple &operand, int32_t index);
++InterpreterValue getTupleElementOp(const class Tuple &operand, int32_t index);
+ SmallVector<InterpreterValue> ifOp(const Tensor &pred, Region &trueBranch,
+                                    Region &falseBranch, Process *process,
+                                    Scope &scope);
+@@ -206,7 +206,7 @@
+ Tensor triangularSolveOp(const Tensor &A, const Tensor &b, bool leftSide,
+                          bool lower, bool unitDiagonal, Transpose transposeA,
+                          ShapedType resultType);
+-Tuple tupleOp(ArrayRef<InterpreterValue> val, TupleType resultType);
++class Tuple tupleOp(ArrayRef<InterpreterValue> val, TupleType resultType);
+ SmallVector<InterpreterValue> whileOp(SmallVector<InterpreterValue> operand,
+                                       Region &cond, Region &body,
+                                       InterpreterFallback *fallback,
+diff --ruN a/stablehlo/stablehlo/reference/Scope.h b/stablehlo/stablehlo/reference/Scope.h
+--- stablehlo/stablehlo/reference/Scope.h
++++ stablehlo/stablehlo/reference/Scope.h
+@@ -51,7 +51,7 @@
+ 
+   /// Add the mapping from SSA value (`ssaValue`), defined in a region, to its
+   /// evaluated runtime value (`runtimeValue`).
+-  void add(Value ssaValue, Tuple runtimeValue);
++  void add(Value ssaValue, class Tuple runtimeValue);
+ 
+   /// Add the mapping from SSA values (`ssaValues`), defined in a region, to its
+   /// evaluated runtime values (`runtimeValues`).
+@@ -92,7 +92,7 @@
+   /// Find the runtime value mapped to SSA value `ssaValue`. The search starts
+   /// with the current scope and then recursively continues over to the scope
+   /// defined by `parent_`.
+-  Tuple findTuple(Value ssaValue) const;
++  class Tuple findTuple(Value ssaValue) const;
+ 
+  private:
+   /// Internal store for mapping from SSA values to runtime `InterpreterValue`
+diff --ruN a/stablehlo/stablehlo/reference/Value.h b/stablehlo/stablehlo/reference/Value.h
+--- stablehlo/stablehlo/reference/Value.h
++++ stablehlo/stablehlo/reference/Value.h
+@@ -58,7 +58,7 @@
+   InterpreterValue() = default;
+   InterpreterValue(const Tensor &tensor);
+   InterpreterValue(const Token &token);
+-  InterpreterValue(const Tuple &tuple);
++  InterpreterValue(const class Tuple &tuple);
+   /// @}
+ 
+   /// Getter method for Tensor object.
+@@ -68,7 +68,7 @@
+   Token getToken() const;
+ 
+   /// Getter method for Tuple object.
+-  Tuple getTuple() const;
++  class Tuple getTuple() const;
+ 
+   /// Getter method for type_;
+   Type getType() const;
+@@ -89,7 +89,7 @@
+   void dump() const;
+ 
+  private:
+-  std::variant<Tensor, Token, Tuple> value_;
++  std::variant<Tensor, Token, class Tuple> value_;
+ };
+ 
+ }  // namespace stablehlo
 diff --ruN a/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir b/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
 --- stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
 +++ stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
