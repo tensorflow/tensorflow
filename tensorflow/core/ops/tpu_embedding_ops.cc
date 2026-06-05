@@ -67,12 +67,13 @@ REGISTER_OP("RecvTPUEmbeddingActivations")
       TF_RETURN_IF_ERROR(c->GetAttr("config", &config_string));
       tpu::TPUEmbeddingConfiguration config;
       if (!config.ParseFromString(config_string)) {
-        return errors::InvalidArgument("Malformed tpu_embedding_config.");
+        return absl::InvalidArgumentError("Malformed tpu_embedding_config.");
       }
       std::vector<TensorShapeProto> output_shapes;
       TF_RETURN_IF_ERROR(ComputeOutputTensorShapes(config, &output_shapes));
       if (c->num_outputs() != output_shapes.size()) {
-        return errors::InvalidArgument("num outputs != size of output shapes");
+        return absl::InvalidArgumentError(
+            "num outputs != size of output shapes");
       }
       for (int i = 0; i < c->num_outputs(); ++i) {
         shape_inference::ShapeHandle output_shape;
@@ -142,9 +143,9 @@ REGISTER_OP("EnqueueTPUEmbeddingSparseBatch")
       int n;
       TF_RETURN_IF_ERROR(c->GetAttr("N", &n));
       if (!combiners.empty() && combiners.size() != n) {
-        return errors::InvalidArgument("Invalid length of combiners. Have ",
-                                       combiners.size(), " but expected 0 or ",
-                                       n);
+        return absl::InvalidArgumentError(
+            absl::StrCat("Invalid length of combiners. Have ", combiners.size(),
+                         " but expected 0 or ", n));
       }
 
       return absl::OkStatus();
