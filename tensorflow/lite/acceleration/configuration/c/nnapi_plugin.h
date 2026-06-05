@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_ACCELERATION_CONFIGURATION_C_NNAPI_PLUGIN_H_
 #define TENSORFLOW_LITE_ACCELERATION_CONFIGURATION_C_NNAPI_PLUGIN_H_
 
+/// WARNING: this header file is DEPRECATED.
+/// See https://developer.android.com/ndk/guides/neuralnetworks/migration-guide.
+
 /// For documentation, see
 /// third_party/tensorflow/lite/core/acceleration/configuration/c/nnapi_plugin.h
 
