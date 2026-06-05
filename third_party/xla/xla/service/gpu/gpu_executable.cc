@@ -156,6 +156,9 @@ MakeConstantsMap(HloModule* absl_nullable debug_module) {
       if (instr->opcode() != HloOpcode::kConstant) {
         continue;
       }
+      if (llvm_ir::SanitizeConstantName(*instr) != instr->name()) {
+        continue;
+      }
       auto [it, inserted] = constants.try_emplace(
           llvm_ir::ConstantHloToGlobalName(*instr), instr);
       CHECK(inserted) << "Duplicate constant global name found: " << it->first;
