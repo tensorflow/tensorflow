@@ -19,7 +19,15 @@ limitations under the License.
 // This logic allows Python to import _pywrap_tensorflow_internal.so by
 // creating a PyInit function and exposing it. It is required in opensource
 // only.
+namespace tensorflow {
+namespace python {
+void protobuf_inline_symbols_enforcer();
+}  // namespace python
+}  // namespace tensorflow
+
 PYBIND11_MODULE(_pywrap_tensorflow_internal, m) {
   m.def("pywrap_library_dependency_symbol",
         &tensorflow::python::pywrap_library_dependency_symbol);
+  m.def("protobuf_inline_symbols_enforcer",
+        &tensorflow::python::protobuf_inline_symbols_enforcer);
 };
