@@ -23,10 +23,7 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-using TraceMeConsumer ABSL_DEPRECATE_AND_INLINE() =
-    tsl::profiler::TraceMeConsumer;  // NOLINT
-using TraceMeProducer ABSL_DEPRECATE_AND_INLINE() =
-    tsl::profiler::TraceMeProducer;  // NOLINT
+// TraceMeProducer and TraceMeConsumer are now macros and don't need aliases.
 
 }  // namespace profiler
 }  // namespace tensorflow

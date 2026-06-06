@@ -199,11 +199,13 @@ class OpDefBuilder {
 
   // Turns on the indicated boolean flag in this OpDefBuilder (and
   // returns *this).
-  OpDefBuilder& SetIsCommutative();
-  OpDefBuilder& SetIsAggregate();
-  OpDefBuilder& SetIsStateful();
-  OpDefBuilder& SetAllowsUninitializedInput();
-  OpDefBuilder& SetIsDistributedCommunication();
+  OpDefBuilder& SetIsCommutative(bool is_commutative = true);
+  OpDefBuilder& SetIsAggregate(bool is_aggregate = true);
+  OpDefBuilder& SetIsStateful(bool is_stateful = true);
+  OpDefBuilder& SetAllowsUninitializedInput(
+      bool allows_uninitialized_input = true);
+  OpDefBuilder& SetIsDistributedCommunication(
+      bool is_distributed_communication = true);
 
   // Deprecate the op at a certain GraphDef version.
   OpDefBuilder& Deprecated(int version, std::string explanation);
