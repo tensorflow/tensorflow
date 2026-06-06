@@ -248,6 +248,7 @@ class PjRtDeviceEventRef {
               value.ReleaseRCRef().release()}) {}
 
   PjRtDeviceEventPtr ptr() const { return ptr_; }
+  explicit operator PjRtDeviceEventPtr() const { return ptr_; }
 
   template <typename Waiter>
   void AndThen(Waiter&& cb) const {
@@ -369,6 +370,14 @@ class PjRtDeviceEventPromiseRef {
   PJRT_DeviceEventPromise* promise_;
 };
 
+using PjRtDeviceEventRefVector = std::vector<PjRtDeviceEventRef>;
+
+template <typename Functor>
+void ConsumeEvents(PjRtDeviceEventRefVector&& events, Functor&& f) {
+  for (size_t i = 0; i < events.size(); ++i) {
+    f(std::move(events[i]));
+  }
+}
 }  // namespace xla
 
 #endif  // XLA_PJRT_DEVICE_EVENT_H_
