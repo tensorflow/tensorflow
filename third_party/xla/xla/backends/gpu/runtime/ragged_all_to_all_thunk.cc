@@ -1144,7 +1144,7 @@ absl::Status RunOneShotRaggedAllToAllWithNccl(
 
     se::StreamExecutor* stream_executor = stream.parent();
     std::vector<char> input_buffer_host;
-    input_buffer_host.resize(output_buffer.size());
+    input_buffer_host.resize(input_buffer.size());
     RETURN_IF_ERROR(stream_executor->SynchronousMemcpyD2H(
         input_buffer, input_buffer.size(), input_buffer_host.data()));
     XLA_VLOG_DEVICE(6, device_ordinal)
