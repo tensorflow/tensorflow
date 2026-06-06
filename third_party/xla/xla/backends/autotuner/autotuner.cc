@@ -449,6 +449,12 @@ tsl::Future<Autotuner::Config> Autotuner::TuneBestConfig(
         LogConfigResults(*instr, results);
         absl::StatusOr<ConfigResult> best_result = PickBestConfig(results);
         if (!best_result.ok()) {
+          if (best_result.status().code() == absl::StatusCode::kNotFound) {
+            LOG(WARNING) << "Failed to pick best config for HLO: "
+                         << instr->ToString()
+                         << ". Falling back to default config.";
+            return GetDefaultConfig(*instr);
+          }
           return absl::InternalError(
               absl::StrCat("Autotuning failed for HLO: ", instr->ToString(),
                            ". Failed to pick best config: ",

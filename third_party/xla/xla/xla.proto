@@ -603,8 +603,8 @@ message DebugOptions {
   optional bool xla_gpu_default_to_alg_dot_bf16_bf16_f32 = 441;
 
   // Guarantees run-to-run determinism.
-  // This flag implies --xla_gpu_exclude_nondeterministic_ops and in addition
-  // disables autotuning.
+  // This flag disables autotuning and selects the first __valid__ autotune
+  // config.
   optional bool xla_gpu_deterministic_ops = 148;
 
   repeated CollectiveOpType xla_gpu_disable_async_collectives = 289;
@@ -749,10 +749,8 @@ message DebugOptions {
   optional WhileLoopUnrolling xla_gpu_enable_while_loop_unrolling = 294;
 
   // Excludes non-deterministic ops from compiled executables.
-  // Unlike --xla_gpu_deterministic_ops does not disable autotuning - the
-  // compilation itself can be non-deterministic.
-  // Scatter ops can non-deterministic by default; these get converted to
-  // a deterministic implementation.
+  // This flag disables autotuning and selects the first __valid__ autotune
+  // config.
   optional bool xla_gpu_exclude_nondeterministic_ops = 297;
 
   optional bool xla_gpu_executable_embed_debug_info = 437;
