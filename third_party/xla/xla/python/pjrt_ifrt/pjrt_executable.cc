@@ -358,6 +358,23 @@ GatherHostSendAndRecvCallbacks(
   return host_send_and_recv_callbacks;
 }
 
+// Gathers all `PjRtHloOutputLoadedHostCallback` from the given list of
+// loaded host callbacks.
+std::vector<PjRtHloOutputLoadedHostCallback*> GatherHloOutputCallbacks(
+    absl::Span<const tsl::RCReference<LoadedHostCallback>>
+        loaded_host_callbacks) {
+  std::vector<PjRtHloOutputLoadedHostCallback*> hlo_output_callbacks;
+  hlo_output_callbacks.reserve(loaded_host_callbacks.size());
+  for (auto& loaded_host_callback : loaded_host_callbacks) {
+    auto* hlo_output_callback = llvm::dyn_cast<PjRtHloOutputLoadedHostCallback>(
+        loaded_host_callback.get());
+    if (hlo_output_callback != nullptr) {
+      hlo_output_callbacks.push_back(hlo_output_callback);
+    }
+  }
+  return hlo_output_callbacks;
+}
+
 }  // namespace
 
 char PjRtCompatibleExecutable::ID = 0;
@@ -776,6 +793,8 @@ PjRtLoadedExecutable::PjRtLoadedExecutable(
               std::move(all_loaded_host_callbacks))),
       host_send_recv_callbacks_(
           GatherHostSendAndRecvCallbacks(*all_loaded_host_callbacks_)),
+      host_hlo_output_callbacks_(
+          GatherHloOutputCallbacks(*all_loaded_host_callbacks_)),
       common_metadata_(std::move(common_metadata)),
       user_context_(UserContextScope::current()) {
   output_shardings_ = MakeShardings(
@@ -819,7 +838,6 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
     }
     num_computations = addressable_devices_.size();
   }
-
   argument_handles.resize(num_computations);
   for (int i = 0; i < num_computations; ++i) {
     argument_handles[i].reserve(args.size());
@@ -902,7 +920,8 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
   }
 
   std::unique_ptr<HostCallbackStates> host_callback_states;
-  if (!host_send_recv_callbacks_.empty()) {
+  if (!host_send_recv_callbacks_.empty() ||
+      !host_hlo_output_callbacks_.empty()) {
     host_callback_states = std::make_unique<HostCallbackStates>();
     for (int i = 0; i < num_computations; ++i) {
       auto& contexts = host_callback_states->contexts.emplace_back();
@@ -918,8 +937,13 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
             recv_callbacks, opts.use_major_to_minor_data_layout_for_callbacks));
       }
     }
+    for (const auto& hlo_output_callback : host_hlo_output_callbacks_) {
+      host_callback_states->hlo_output_callbacks.push_back(
+          hlo_output_callback->hlo_output_callback());
+    }
     opts.send_callbacks = host_callback_states->send_callbacks;
     opts.recv_callbacks = host_callback_states->recv_callbacks;
+    opts.hlo_output_callbacks = host_callback_states->hlo_output_callbacks;
   }
 
   // Execute the computation.

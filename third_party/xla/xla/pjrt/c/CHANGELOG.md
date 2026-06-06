@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.112
+
+*   Added PJRT_HloOutputCallbackInfo to PJRT_ExecuteOptions.
+
 ## 0.111
 
 * Added `PJRT_LoadOptions` and `load_options` to `PJRT_Executable_DeserializeAndLoad_Args`.
