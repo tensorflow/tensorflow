@@ -163,10 +163,10 @@ absl::Status ComputeTheoreticalJacobianTranspose(
 
         for (int x_idx = 0; x_idx < x_num; x_idx++) {
           if (x_shapes[x_idx] != dxout[x_idx].shape()) {
-            return errors::Internal("Gradient for input ", x_idx,
-                                    " expected shape ",
-                                    x_shapes[x_idx].DebugString(), " but was ",
-                                    dxout[x_idx].shape().DebugString());
+            return absl::InternalError(
+                absl::StrCat("Gradient for input ", x_idx, " expected shape ",
+                             x_shapes[x_idx].DebugString(), " but was ",
+                             dxout[x_idx].shape().DebugString()));
           }
           const int64_t x_size = x_shapes[x_idx].num_elements();
           auto jacobian = (*jacobian_ts)[x_idx * y_num + y_idx].matrix<JAC_T>();
@@ -381,14 +381,14 @@ absl::Status ComputeGradientError(const Scope& scope, const OutputList& xs,
                                   const std::vector<TensorShape>& y_shapes,
                                   JAC_T* max_error) {
   if (xs.size() != x_shapes.size()) {
-    return errors::InvalidArgument("xs(size ", xs.size(),
-                                   ") and x_shapes(size ", x_shapes.size(),
-                                   ") must be the same size.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("xs(size ", xs.size(), ") and x_shapes(size ",
+                     x_shapes.size(), ") must be the same size."));
   }
   if (ys.size() != y_shapes.size()) {
-    return errors::InvalidArgument("ys(size ", ys.size(),
-                                   ") and y_shapes(size ", y_shapes.size(),
-                                   ") must be the same size.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("ys(size ", ys.size(), ") and y_shapes(size ",
+                     y_shapes.size(), ") must be the same size."));
   }
   // Initialize 'x_datas' to random values.
   std::vector<Tensor> x_datas(x_shapes.size());
