@@ -262,6 +262,7 @@ AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options,
       debug_options.xla_gpu_autotune_level() == 0;
 
   if (is_deviceless) {
+    LOG(INFO) << "Running on a deviceless target, using default configs.";
     // If we are running on a deviceless target, we want to use default configs.
     autotune_config.use_default_config = true;
   }

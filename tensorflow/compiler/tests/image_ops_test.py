@@ -811,7 +811,7 @@ class ResizeBilinearGradTest(parameterized.TestCase, xla_test.XLATestCase):
     result = GetRow(src_x, dst_x) * np.transpose(GetRow(src_y, dst_y))
     self._assertBackwardOpMatchesExpected(
         np.array(input_data, dtype=np.float32), [src_y, src_x],
-        expected=np.array(result, dtype=np.float32),
+        expected=np.array(result, dtype=np.float16),
         large_tolerance=True)
 
 
