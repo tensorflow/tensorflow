@@ -15,11 +15,22 @@ limitations under the License.
 #include "tensorflow/core/data/service/task_runner.h"
 
 #include <algorithm>
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
-#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
+#include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/cross_trainer_cache.h"

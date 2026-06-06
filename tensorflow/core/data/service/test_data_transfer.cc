@@ -14,9 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
 
 #include "absl/status/status.h"
 #include "tensorflow/core/data/service/data_transfer.h"
+#include "tensorflow/core/data/service/worker.pb.h"
+#include "tensorflow/core/protobuf/service_config.pb.h"
 
 namespace tensorflow {
 namespace data {
