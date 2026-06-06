@@ -753,11 +753,6 @@ class CommonPjRtRawBufferImpl : public CommonPjRtRawBuffer {
 
   Future<> CopyRawDeviceToHost(void* dst, int64_t offset,
                                int64_t transfer_size) override;
-
-  void CopyToLiteralAsync(Promise<> promise,
-                          PjRtDeviceEventPromiseRef device_promise,
-                          MutableLiteralBase* literal,
-                          xla::Shape shape) override;
 };
 
 // TODO(parkers): Merge everything here into CommonPjRtBuffer.

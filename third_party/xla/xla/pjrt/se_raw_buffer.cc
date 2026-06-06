@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/tracked_device_buffer.h"
-#include "xla/pjrt/transpose.h"
 #include "xla/primitive_util.h"
 #include "xla/service/generic_transfer_manager.h"
 #include "xla/shape_util.h"
@@ -248,124 +247,6 @@ absl::StatusOr<PjRtRawBufferRef> PjRtStreamExecutorRawBuffer::Slice(
   return tsl::MakeRef<PjRtStreamExecutorRawBuffer>(
       client_, memory_space_, local_device_,
       RawSEDeviceMemory::CreateSlice(device_buffer_, offset, size), size);
-}
-
-void PjRtStreamExecutorRawBuffer::CopyToLiteralAsync(
-    Promise<> promise, PjRtDeviceEventPromiseRef device_promise,
-    MutableLiteralBase* literal, xla::Shape shape) {
-  auto usage_event =
-      BufferSequencingEvent::Create(client_->async_work_runner());
-  usage_event.AndThen([device_buffer = device_buffer_]() {});
-  client_->async_work_runner()->Schedule(
-      [usage_event, local_device = local_device_,
-       on_device_shape = std::move(shape), promise = std::move(promise),
-       literal, client = client_, memory_space = memory_space_,
-       device_buffer = device_buffer_]() mutable {
-        std::shared_ptr<TransposePlan> transpose;
-        se::Stream* stream = local_device->GetDeviceToHostStream();
-        TransferManager* transfer_manager =
-            client->client()->backend().transfer_manager();
-        if (on_device_shape.IsArray()) {
-          xla::Layout literal_layout;
-          if (literal->shape().has_layout()) {
-            literal_layout = literal->shape().layout();
-          } else {
-            literal_layout = LayoutUtil::MakeDescendingLayout(
-                on_device_shape.dimensions().size());
-          }
-
-          if (on_device_shape.layout() != literal_layout) {
-            absl::InlinedVector<int64_t, 4> byte_strides(
-                on_device_shape.dimensions().size());
-            absl::Status s = ShapeUtil::UnpackedByteStrides(
-                on_device_shape, absl::MakeSpan(byte_strides));
-            if (!s.ok()) {
-              promise.Set(s);
-              client->SetEventAsError(usage_event, s);
-              return;
-            }
-            absl::Span<const int64_t> dims = on_device_shape.dimensions();
-            absl::InlinedVector<int64_t, 4> permutation(dims.size());
-            absl::c_reverse_copy(literal_layout.minor_to_major(),
-                                 permutation.begin());
-            TransposePlan::Options options;
-            options.elem_size_in_bytes =
-                primitive_util::ByteWidth(on_device_shape.element_type());
-            options.dims = on_device_shape.dimensions();
-            options.permutation = permutation;
-            options.input_striding = TransposePlan::Striding{byte_strides};
-            absl::StatusOr<std::shared_ptr<TransposePlan>> t =
-                client->GetTransposePlan(options);
-            if (!t.ok()) {
-              promise.Set(t.status());
-              client->SetEventAsError(usage_event, t.status());
-              return;
-            }
-            transpose = *std::move(t);
-          }
-        }
-
-        absl::StatusOr<EventPool::Handle> event_or =
-            local_device->event_pool().AllocateEvent(
-                client->async_work_runner(), stream->parent());
-        if (!event_or.ok()) {
-          promise.Set(event_or.status());
-          client->SetEventAsError(usage_event, event_or.status());
-          return;
-        }
-
-        ShapedBuffer shaped_buffer = device_buffer->AsShapedBuffer(
-            memory_space->devices()[0], on_device_shape);
-
-        GenericTransferManager::LiteralFromDeviceMetadata transfer_metadata;
-        // We never call device functions from the `done` callback.
-        transfer_metadata.callback_is_host_callback_safe = true;
-
-        TransferManager::TransferMetadata* transfer_metadata_ptr =
-            (dynamic_cast<GenericTransferManager*>(transfer_manager) != nullptr)
-                ? &transfer_metadata
-                : nullptr;
-
-        if (transpose) {
-          // Copy the device buffer to a temporary literal with descending
-          // layout and transpose to the requested layout.
-
-          Shape stage_shape = literal->shape();
-          *stage_shape.mutable_layout() =
-              LayoutUtil::MakeDescendingLayout(stage_shape.dimensions().size());
-          auto staged = std::make_shared<Literal>(stage_shape);
-
-          transfer_manager->TransferLiteralFromDevice(
-              stream, shaped_buffer, staged.get(),
-              [transpose = std::move(transpose),
-               promise = std::move(promise).ToShared(), staged, client,
-               literal = std::move(literal)](absl::Status status) mutable {
-                if (status.ok()) {
-                  transpose->Execute(staged->untyped_data(),
-                                     literal->untyped_data());
-                }
-                client->async_work_runner()->Schedule(
-                    [promise = std::move(promise),
-                     status = std::move(status)]() {
-                      promise->Set(std::move(status));
-                    });
-              },
-              transfer_metadata_ptr);
-        } else {
-          transfer_manager->TransferLiteralFromDevice(
-              stream, shaped_buffer, literal,
-              [promise =
-                   std::move(promise).ToShared()](absl::Status status) mutable {
-                promise->Set(std::move(status));
-              },
-              transfer_metadata_ptr);
-        }
-
-        client->ThenRecordEvent(usage_event, local_device,
-                                std::move(event_or).value(), stream);
-      });
-
-  device_promise.Set(PjRtDeviceEventRef(std::move(usage_event)));
 }
 
 absl::StatusOr<PjRtDeviceEventRef>

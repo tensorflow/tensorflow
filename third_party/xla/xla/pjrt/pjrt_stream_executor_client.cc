@@ -107,6 +107,7 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/buffer_sequencing_event.h"
@@ -135,6 +136,7 @@ limitations under the License.
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/se_raw_buffer.h"
 #include "xla/pjrt/semaphore.h"
+#include "xla/pjrt/staging_buffer.h"
 #include "xla/pjrt/stream_executor_executable.h"
 #include "xla/pjrt/stream_executor_pjrt_abi_version.h"
 #include "xla/pjrt/thread_pool_async_work_runner.h"
@@ -177,6 +179,27 @@ limitations under the License.
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
+
+namespace {
+class HostStagingBuffer : public PjRtStagingBuffer {
+ public:
+  HostStagingBuffer(std::shared_ptr<void> buffer, size_t size)
+      : buffer_(std::move(buffer)), size_(size) {}
+
+  absl::Span<uint8_t> data() override {
+    return absl::MakeSpan(static_cast<uint8_t*>(buffer_.get()), size_);
+  }
+
+  absl::Span<const uint8_t> const_data() const override {
+    return absl::MakeConstSpan(static_cast<const uint8_t*>(buffer_.get()),
+                               size_);
+  }
+
+ private:
+  std::shared_ptr<void> buffer_;
+  size_t size_;
+};
+}  // namespace
 
 template <typename T>
 static std::function<void()> WrapClosureAsCopyable(T cb) {
@@ -2843,6 +2866,39 @@ absl::Status PjRtStreamExecutorClient::WaitOnStream(
     std::intptr_t stream) {
   return event.down_cast<BufferSequencingEvent>()->WaitForEventOnExternalStream(
       stream);
+}
+
+bool PjRtStreamExecutorClient::ShouldDoDirectTransfer(
+    const MutableLiteralBase& literal, const Shape& shape,
+    PjRtMemorySpace* memory_space) const {
+  if (shape.IsTuple()) {
+    return false;
+  }
+  if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
+    return false;
+  }
+
+  if (literal.shape().has_layout()) {
+    return Layout::Equal().IgnoreMemorySpace()(shape.layout(),
+                                               literal.shape().layout());
+  }
+
+  return LayoutUtil::HasDescendingLayout(shape.layout());
+}
+
+tsl::AsyncValueRef<PjRtStagingBuffer>
+PjRtStreamExecutorClient::AllocateForDelinearizationAsync(
+    size_t size, PjRtMemorySpace* memory_space) {
+  void* ptr = malloc(size);
+  if (ptr == nullptr) {
+    return tsl::MakeErrorAsyncValueRef(absl::ResourceExhaustedError(
+        absl::StrCat("Failed to allocate staging buffer of size ", size)));
+  }
+  std::shared_ptr<void> buffer(ptr, free);
+
+  auto staging_buffer = tsl::MakeAvailableAsyncValueRef<HostStagingBuffer>(
+      std::move(buffer), size);
+  return tsl::AsyncValueRef<PjRtStagingBuffer>(std::move(staging_buffer));
 }
 
 }  // namespace xla

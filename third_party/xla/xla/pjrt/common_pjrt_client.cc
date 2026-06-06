@@ -654,21 +654,6 @@ Future<> CommonPjRtRawBufferImpl::CopyRawDeviceToHost(void* dst, int64_t offset,
                                "CommonPjRtRawBuffer", "CopyRawDeviceToHost");
 }
 
-void CommonPjRtRawBufferImpl::CopyToLiteralAsync(
-    Promise<> promise, PjRtDeviceEventPromiseRef device_promise,
-    MutableLiteralBase* literal, xla::Shape shape) {
-  auto* client = absl::down_cast<CommonPjRtClient*>(memory_space()->client());
-
-  auto staging_buffer = ToStagingBuffer(
-      tsl::FormRef(this), device_promise,
-      [&](size_t size, PjRtMemorySpace* memory_space) {
-        return client->AllocateForDelinearizationAsync(size, memory_space);
-      });
-
-  client->DelinearizeAsync(std::move(staging_buffer), memory_space(), shape,
-                           literal, std::move(promise));
-}
-
 void CommonPjRtBufferImpl::CopyToRemoteDevice(
     Future<std::string> serialized_descriptor, RemoteSendCallback on_done) {
   auto* common_client = absl::down_cast<CommonPjRtClient*>(client());
@@ -2605,8 +2590,16 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
                 launcher.AddDependency(device_promise.event());
                 return;
               }
-              raw_buffer->CopyToLiteralAsync(std::move(promise), device_promise,
-                                             literal, std::move(shape));
+              PjRtMemorySpace* memory_space = raw_buffer->memory_space();
+              auto staging_buffer = ToStagingBuffer(
+                  std::move(raw_buffer), device_promise,
+                  [common_client](size_t size, PjRtMemorySpace* memory_space) {
+                    return common_client->AllocateForDelinearizationAsync(
+                        size, memory_space);
+                  });
+              common_client->DelinearizeAsync(std::move(staging_buffer),
+                                              memory_space, shape, literal,
+                                              std::move(promise));
             };
 
         if (literal != nullptr) {

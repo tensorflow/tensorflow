@@ -839,6 +839,7 @@ cc_library(
         ":pjrt_stream_executor_device_description",
         ":raw_buffer",
         ":semaphore",
+        ":staging_buffer",
         ":stream_executor_executable",
         ":stream_executor_pjrt_abi_version",
         ":thread_pool_async_work_runner",

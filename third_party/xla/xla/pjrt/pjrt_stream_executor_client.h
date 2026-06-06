@@ -440,6 +440,13 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
                             PjRtDeviceEventRef event,
                             std::intptr_t stream) override;
 
+  bool ShouldDoDirectTransfer(const MutableLiteralBase& literal,
+                              const Shape& shape,
+                              PjRtMemorySpace* memory_space) const override;
+
+  tsl::AsyncValueRef<PjRtStagingBuffer> AllocateForDelinearizationAsync(
+      size_t size, PjRtMemorySpace* memory_space) override;
+
   absl::Status WaitForAllocation(se::Stream* stream,
                                  const CommonPjRtRawBuffer& raw_buffer);
 

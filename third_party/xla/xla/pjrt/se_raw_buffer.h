@@ -108,11 +108,6 @@ class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBufferImpl {
 
   absl::StatusOr<PjRtRawBufferRef> Slice(int64_t offset, int64_t size) override;
 
-  void CopyToLiteralAsync(Promise<> promise,
-                          PjRtDeviceEventPromiseRef device_promise,
-                          MutableLiteralBase* literal,
-                          xla::Shape shape) override;
-
   void CopyTo(PjRtRawBufferRef dst_raw_buffer,
               PjRtDeviceEventPromiseRef definition_event_promise,
               PjRtDeviceEventPromiseRef src_usage_event_promise,
