@@ -160,7 +160,7 @@ static absl::StatusOr<const se::CommandBuffer::Command*> RecordNoOpCollective(
     const CollectiveThunk& thunk, const Thunk::ExecuteParams& execute_params,
     const Command::RecordParams&, Command::RecordAction record_action,
     se::CommandBuffer* command_buffer) {
-  se::DeviceMemoryBase dst =
+  stream_executor::DeviceAddressBase dst =
       execute_params.buffer_allocations->GetDeviceAddress(
           thunk.buffers()[0].destination_buffer.slice);
   ASSIGN_OR_RETURN(
