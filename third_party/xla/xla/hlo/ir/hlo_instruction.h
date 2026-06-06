@@ -689,7 +689,7 @@ class HloInstruction {
   // in the target replica output perspective.
   //
   // For i-th output offset, the current replica will send
-  // `input[input_offsets[i]:input_offsets[i]+input_sizes[i]]` update to
+  // `input[input_offsets[i]:input_offsets[i]+send_sizes[i]]` update to
   // `i`-th replica that will be written to
   // `output_i[output_offsets[i]:output_offsets[i]+send_sizes[i]]` in `i`-th
   // replica ``output``.
