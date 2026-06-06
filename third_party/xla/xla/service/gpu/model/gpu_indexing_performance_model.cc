@@ -625,8 +625,9 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
     const HloFusionAdaptor& fusion_adaptor,
     const BlockLevelParameters& block_level_parameters) {
   if (use_experimental_tiling_) {
-    std::unique_ptr<experimental::TilingSpace> tiling_space =
-        experimental::TilingSpace::Create(fusion_adaptor, mlir_context_);
+    ASSIGN_OR_RETURN(
+        std::unique_ptr<experimental::TilingSpace> tiling_space,
+        experimental::TilingSpace::Create(fusion_adaptor, mlir_context_));
 
     ASSIGN_OR_RETURN(
         llvm::SmallVector<int64_t> tile_sizes,
@@ -708,8 +709,8 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
     using experimental::TiledHloComputation;
     using experimental::TilingSpace;
 
-    std::unique_ptr<TilingSpace> tiling_space =
-        TilingSpace::Create(fusion_adaptor, mlir_context_);
+    ASSIGN_OR_RETURN(std::unique_ptr<TilingSpace> tiling_space,
+                     TilingSpace::Create(fusion_adaptor, mlir_context_));
 
     ASSIGN_OR_RETURN(auto tilings, tiling_space->GetValidTilings());
     VLOG(1) << absl::StrCat(
@@ -717,9 +718,9 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
         tilings.size(), " tilings.");
 
     for (const llvm::SmallVector<int64_t, 4>& tiling : tilings) {
-      VLOG(1) << "Trying tiling: " << absl::StrJoin(tiling, ",");
-      std::unique_ptr<TilingSpace> tiling_space =
-          TilingSpace::Create(fusion_adaptor, mlir_context_);
+      VLOG(2) << "Trying tiling: " << absl::StrJoin(tiling, ",");
+      ASSIGN_OR_RETURN(std::unique_ptr<TilingSpace> tiling_space,
+                       TilingSpace::Create(fusion_adaptor, mlir_context_));
 
       RETURN_IF_ERROR(tiling_space->AssignTileSizes(
           xla::xtile::GetPaddedTileSizes(tiling)));
