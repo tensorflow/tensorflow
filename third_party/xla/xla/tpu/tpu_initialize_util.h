@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_TPU_TPU_INITIALIZE_UTIL_H_
-#define XLA_STREAM_EXECUTOR_TPU_TPU_INITIALIZE_UTIL_H_
+#ifndef XLA_TPU_TPU_INITIALIZE_UTIL_H_
+#define XLA_TPU_TPU_INITIALIZE_UTIL_H_
 
 #include <string>
 #include <utility>
@@ -39,4 +39,4 @@ GetLibTpuInitArguments();
 }  // namespace tpu
 }  // namespace tensorflow
 
-#endif  // XLA_STREAM_EXECUTOR_TPU_TPU_INITIALIZE_UTIL_H_
+#endif  // XLA_TPU_TPU_INITIALIZE_UTIL_H_

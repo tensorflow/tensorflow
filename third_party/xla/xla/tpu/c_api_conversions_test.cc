@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/tpu/c_api_conversions.h"
+#include "xla/tpu/c_api_conversions.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -32,7 +32,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/tpu/c_api_decl.h"
+#include "xla/tpu/c_api_decl.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"

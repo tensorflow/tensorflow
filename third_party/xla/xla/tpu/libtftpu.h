@@ -15,8 +15,8 @@ limitations under the License.
 
 #include <stdbool.h>
 
-#ifndef XLA_STREAM_EXECUTOR_TPU_LIBTFTPU_H_
-#define XLA_STREAM_EXECUTOR_TPU_LIBTFTPU_H_
+#ifndef XLA_TPU_LIBTFTPU_H_
+#define XLA_TPU_LIBTFTPU_H_
 
 #ifndef __cplusplus
 #define decltype(expr) __typeof__(expr)
@@ -56,4 +56,4 @@ struct TfTpu_BaseFn {
   TFTPU_ADD_FN_IN_STRUCT(TfTpu_Initialize);
 };
 
-#endif  // XLA_STREAM_EXECUTOR_TPU_LIBTFTPU_H_
+#endif  // XLA_TPU_LIBTFTPU_H_

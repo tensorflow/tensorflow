@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_TPU_C_API_CONVERSIONS_H_
-#define XLA_STREAM_EXECUTOR_TPU_C_API_CONVERSIONS_H_
+#ifndef XLA_TPU_C_API_CONVERSIONS_H_
+#define XLA_TPU_C_API_CONVERSIONS_H_
 
 #include <array>
 #include <cstdint>
@@ -34,7 +34,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
-#include "xla/stream_executor/tpu/c_api_decl.h"
+#include "xla/tpu/c_api_decl.h"
 #include "xla/xla_data.pb.h"
 
 // APIs for converting between internal and external versions of
@@ -168,4 +168,4 @@ struct StackHelper {
 
 }  // namespace ApiConverter
 
-#endif  // XLA_STREAM_EXECUTOR_TPU_C_API_CONVERSIONS_H_
+#endif  // XLA_TPU_C_API_CONVERSIONS_H_

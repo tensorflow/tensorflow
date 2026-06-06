@@ -1,5 +1,7 @@
-#include "xla/stream_executor/tpu/tpu_executor_init_fns.inc"
-#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "xla/tsl/platform/status_macros.h"
+#include "xla/tpu/tpu_api.h"
+#include "xla/tpu/tpu_executor_init_fns.inc"
+#include "xla/tpu/tpu_ops_c_api.h"
 
 namespace {
 
@@ -120,8 +122,8 @@ absl::Status SetTpuOpsStructFns(void* library_handle) {  // TENSORFLOW_STATUS_OK
 
 absl::Status InitializeTpuStructFns(  // TENSORFLOW_STATUS_OK
     void* library_handle) {
-  TF_RETURN_IF_ERROR(SetTpuOpsStructFns(library_handle));
-  TF_RETURN_IF_ERROR(SetExecutorStructFn(library_handle));
+  RETURN_IF_ERROR(SetTpuOpsStructFns(library_handle));
+  RETURN_IF_ERROR(SetExecutorStructFn(library_handle));
 
   return absl::OkStatus();
 }

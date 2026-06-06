@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_STREAM_EXECUTOR_TPU_TPU_OPS_C_API_H_
-#define XLA_STREAM_EXECUTOR_TPU_TPU_OPS_C_API_H_
+#ifndef XLA_TPU_TPU_OPS_C_API_H_
+#define XLA_TPU_TPU_OPS_C_API_H_
 
 #include <stddef.h>
 
@@ -21,8 +21,8 @@ limitations under the License.
 #include <optional>
 
 #include "absl/status/statusor.h"
-#include "xla/stream_executor/tpu/c_api_decl.h"
-#include "xla/stream_executor/tpu/libtftpu.h"
+#include "xla/tpu/c_api_decl.h"
+#include "xla/tpu/libtftpu.h"
 
 typedef struct TpuSerializedProto TpuSerializedProto;
 
@@ -856,4 +856,4 @@ struct TfTpu_OpsApiFn {
 
 }  // extern "C"
 
-#endif  // XLA_STREAM_EXECUTOR_TPU_TPU_OPS_C_API_H_
+#endif  // XLA_TPU_TPU_OPS_C_API_H_

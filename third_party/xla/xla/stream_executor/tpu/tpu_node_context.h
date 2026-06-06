@@ -25,8 +25,8 @@ limitations under the License.
 #include "xla/service/backend.h"
 #include "xla/service/stream_pool.h"
 #include "xla/stream_executor/device_address_allocator.h"
-#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "xla/stream_executor/tpu/tpu_platform_interface.h"
+#include "xla/tpu/tpu_ops_c_api.h"
 #include "tsl/platform/macros.h"
 
 namespace tensorflow {

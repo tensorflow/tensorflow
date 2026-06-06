@@ -122,7 +122,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "xla/service/computation_placer.h"
-#include "xla/stream_executor/tpu/tpu_topology.h"
+#include "xla/tpu/tpu_topology.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/attr_value.pb.h"

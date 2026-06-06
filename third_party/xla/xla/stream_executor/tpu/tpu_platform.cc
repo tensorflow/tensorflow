@@ -28,13 +28,13 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/tpu/c_api_decl.h"
-#include "xla/stream_executor/tpu/status_helper.h"
-#include "xla/stream_executor/tpu/tpu_api.h"
 #include "xla/stream_executor/tpu/tpu_executor.h"
-#include "xla/stream_executor/tpu/tpu_executor_api.h"
 #include "xla/stream_executor/tpu/tpu_platform_id.h"
-#include "xla/stream_executor/tpu/tpu_topology.h"
+#include "xla/tpu/c_api_decl.h"
+#include "xla/tpu/status_helper.h"
+#include "xla/tpu/tpu_api.h"
+#include "xla/tpu/tpu_executor_api.h"
+#include "xla/tpu/tpu_topology.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace tensorflow {

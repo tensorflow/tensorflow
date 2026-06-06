@@ -13,19 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/tpu/proto_helper.h"
+#ifndef XLA_TPU_TPU_API_H_
+#define XLA_TPU_TPU_API_H_
 
-#include "absl/log/check.h"
-#include "xla/stream_executor/tpu/c_api_decl.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tpu/libtftpu.h"
+#include "xla/tpu/tpu_executor_api.h"
+#include "xla/tpu/tpu_ops_c_api.h"
+#include "xla/tpu/tpu_profiler_c_api.h"
 
-extern "C" {
+namespace stream_executor {
+namespace tpu {
 
-void StreamExecutor_Tpu_FreeSerializedProto(const TpuSerializedProto* proto) {
-  CHECK_NE(proto, nullptr);
-  CHECK_NE(proto->bytes, nullptr);
-  CHECK_GT(proto->size, 0);
-  delete[] proto->bytes;
-}
+TfTpu_BaseFn* InitializeApiFn();
 
-}  // extern "C"
+const TfTpu_OpsApiFn* OpsApiFn();
+
+const TfTpu_ProfilerApiFn* ProfilerApiFn();
+
+}  // namespace tpu
+}  // namespace stream_executor
+
+#endif  // XLA_TPU_TPU_API_H_

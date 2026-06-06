@@ -22,8 +22,8 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
-#include "xla/stream_executor/tpu/status_helper.h"
-#include "xla/stream_executor/tpu/tpu_api.h"
+#include "xla/tpu/status_helper.h"
+#include "xla/tpu/tpu_api.h"
 #include "xla/tsl/platform/errors.h"
 
 #if defined(LIBTPU_ON_GCE)

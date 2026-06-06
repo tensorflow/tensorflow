@@ -23,7 +23,7 @@ limitations under the License.
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/tpu/noncopyable_buffer.h"
+#include "xla/tpu/noncopyable_buffer.h"
 
 namespace xla {
 

@@ -13,26 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_TPU_TPU_EXECUTOR_API_H_
-#define XLA_STREAM_EXECUTOR_TPU_TPU_EXECUTOR_API_H_
+#include "xla/tpu/tpu_api.h"
 
-#include "xla/stream_executor/tpu/libtftpu.h"
-#include "xla/stream_executor/tpu/tpu_executor_c_api.h"
+#include "xla/tpu/tpu_ops_c_api.h"
+#include "xla/tpu/tpu_profiler_c_api.h"
 
 namespace stream_executor {
 namespace tpu {
 
-TfTpu_ExecutorApiFn* ExecutorApiFn();
+TfTpu_BaseFn* InitializeApiFn() {
+  static TfTpu_BaseFn base_fn;
+  return &base_fn;
+}
 
-// Returns whether function pointers in `executor_api_fn` have been set and
-// stream_executor is enabled.
-bool IsStreamExecutorEnabled(TfTpu_ExecutorApiFn* executor_api_fn);
+const TfTpu_OpsApiFn* OpsApiFn() {
+  static TfTpu_OpsApiFn ops_api_fn;
+  return &ops_api_fn;
+}
 
-// Returns whether function pointers in `executor_api_fn` have been set.  If
-// false, it probably means an appropriate initializer needs to be linked in.
-bool IsInitialized(TfTpu_ExecutorApiFn* executor_api_fn);
+const TfTpu_ProfilerApiFn* ProfilerApiFn() {
+  static TfTpu_ProfilerApiFn profiler_api_fn;
+  return &profiler_api_fn;
+}
 
 }  // namespace tpu
 }  // namespace stream_executor
-
-#endif  // XLA_STREAM_EXECUTOR_TPU_TPU_EXECUTOR_API_H_

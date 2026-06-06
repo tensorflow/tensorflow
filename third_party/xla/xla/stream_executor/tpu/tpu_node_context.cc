@@ -21,10 +21,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/service/backend.h"
 #include "xla/service/stream_pool.h"
-#include "xla/stream_executor/tpu/status_helper.h"
-#include "xla/stream_executor/tpu/tpu_api.h"
-#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "xla/stream_executor/tpu/tpu_platform_interface.h"
+#include "xla/tpu/status_helper.h"
+#include "xla/tpu/tpu_api.h"
+#include "xla/tpu/tpu_ops_c_api.h"
 
 namespace tensorflow {
 namespace tpu {

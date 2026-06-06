@@ -13,22 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if !defined(PLATFORM_GOOGLE)
 #include "tensorflow/core/tpu/tpu_model_server_initializer.h"
 
 #include <dlfcn.h>
 
-#include "xla/stream_executor/tpu/tpu_api.h"
-#include "xla/stream_executor/tpu/tpu_api_dlsym_set_fn.h"
-#include "xla/stream_executor/tpu/tpu_initialize_util.h"
 #include "xla/stream_executor/tpu/tpu_platform.h"
-#include "tensorflow/core/platform/errors.h"
+#include "xla/tpu/tpu_initialize_util.h"
 #include "tensorflow/core/platform/status.h"
+
+#define TFTPU_SET_FN(Struct, FnName) Struct->FnName##Fn = &FnName;
+#include "xla/tpu/tpu_library_init_fns.inc"
+#undef TFTPU_SET_FN
 
 namespace tensorflow {
 namespace tpu {
 namespace {
-#if !defined(PLATFORM_GOOGLE)
-#include "xla/stream_executor/tpu/tpu_library_init_fns.inc"
 Status InitializeTpuLibrary(void* library_handle) {
   Status s = InitializeTpuStructFns(library_handle);
 
@@ -71,7 +71,7 @@ bool FindAndLoadTpuModelServer() {
 }
 
 static bool tpu_library_finder = FindAndLoadTpuModelServer();
-#endif  // PLATFORM_GOOGLE
 }  // namespace
 }  // namespace tpu
 }  // namespace tensorflow
+#endif  // PLATFORM_GOOGLE

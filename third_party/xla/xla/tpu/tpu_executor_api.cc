@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/tpu/tpu_executor_api.h"
+#include "xla/tpu/tpu_executor_api.h"
 
-#include "xla/stream_executor/tpu/tpu_executor_c_api.h"
+#include "xla/tpu/tpu_executor_c_api.h"
 
 namespace stream_executor {
 namespace tpu {

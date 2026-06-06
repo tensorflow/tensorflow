@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/tpu/tpu_initialize_util.h"
+#include "xla/tpu/tpu_initialize_util.h"
 
 #include <dirent.h>
 #include <dlfcn.h>
@@ -246,11 +246,10 @@ GetLibTpuInitArguments() {
     args = absl::StrSplit(env, ' ');
   }
 
-  arg_ptrs.reserve(args.size() + 1);
+  arg_ptrs.reserve(args.size());
   for (int i = 0; i < args.size(); ++i) {
     arg_ptrs.push_back(args[i].data());
   }
-  arg_ptrs.push_back(nullptr);
 
   return {std::move(args), std::move(arg_ptrs)};
 }

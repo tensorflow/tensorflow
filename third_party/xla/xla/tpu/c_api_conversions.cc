@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/tpu/c_api_conversions.h"
+#include "xla/tpu/c_api_conversions.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -41,13 +41,13 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
-#include "xla/stream_executor/tpu/c_api_decl.h"
-#include "xla/stream_executor/tpu/c_api_defn.h"  // IWYU pragma: keep
-#include "xla/stream_executor/tpu/proto_helper.h"
-#include "xla/stream_executor/tpu/tpu_api.h"  // IWYU pragma: keep
-#include "xla/stream_executor/tpu/tpu_executor_api.h"
-#include "xla/stream_executor/tpu/tpu_executor_c_api.h"
-#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "xla/tpu/c_api_decl.h"
+#include "xla/tpu/c_api_defn.h"  // IWYU pragma: keep
+#include "xla/tpu/proto_helper.h"
+#include "xla/tpu/tpu_api.h"  // IWYU pragma: keep
+#include "xla/tpu/tpu_executor_api.h"
+#include "xla/tpu/tpu_executor_c_api.h"
+#include "xla/tpu/tpu_ops_c_api.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"

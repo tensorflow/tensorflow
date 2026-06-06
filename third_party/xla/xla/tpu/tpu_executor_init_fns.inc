@@ -1,3 +1,5 @@
+#include "xla/tpu/tpu_executor_api.h"
+
 namespace {
 
 absl::Status SetExecutorStructFn(

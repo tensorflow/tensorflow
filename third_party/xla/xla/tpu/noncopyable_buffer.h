@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_TPU_NONCOPYABLE_BUFFER_H_
-#define XLA_STREAM_EXECUTOR_TPU_NONCOPYABLE_BUFFER_H_
+#ifndef XLA_TPU_NONCOPYABLE_BUFFER_H_
+#define XLA_TPU_NONCOPYABLE_BUFFER_H_
 
 #include <algorithm>
 #include <cstddef>
@@ -156,4 +156,4 @@ class NoncopyableBuffer {
 }  // namespace tpu
 }  // namespace tensorflow
 
-#endif  // XLA_STREAM_EXECUTOR_TPU_NONCOPYABLE_BUFFER_H_
+#endif  // XLA_TPU_NONCOPYABLE_BUFFER_H_

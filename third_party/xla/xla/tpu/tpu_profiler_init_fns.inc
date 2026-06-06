@@ -1,5 +1,5 @@
-#include "xla/stream_executor/tpu/tpu_api.h"
-#include "xla/stream_executor/tpu/tpu_profiler_c_api.h"
+#include "xla/tpu/tpu_api.h"
+#include "xla/tpu/tpu_profiler_c_api.h"
 
 namespace {
 

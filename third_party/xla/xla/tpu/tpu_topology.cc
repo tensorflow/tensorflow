@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/tpu/tpu_topology.h"
+#include "xla/tpu/tpu_topology.h"
 
 #include <cstdint>
 #include <string>
 #include <vector>
 
-#include "xla/stream_executor/tpu/c_api_decl.h"
-#include "xla/stream_executor/tpu/tpu_executor_api.h"
+#include "xla/tpu/c_api_decl.h"
+#include "xla/tpu/tpu_executor_api.h"
 
 namespace tensorflow {
 namespace tpu {

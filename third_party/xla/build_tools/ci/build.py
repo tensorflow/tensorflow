@@ -33,7 +33,6 @@ import subprocess
 import sys
 from typing import Any, ClassVar, Dict, List, Tuple
 
-
 # TODO(ddunleavy): move this to the bazelrc
 _DEFAULT_BAZEL_OPTIONS = dict(
     color="yes",
@@ -397,6 +396,7 @@ Build(
         "//build_tools/...",
         "@tsl//tsl/...",
         "-//xla/stream_executor/tpu/...",
+        "-//xla/tpu/...",
         # mpitrampoline and gloo are not windows compatible
         "-//xla/backends/cpu/collectives:gloo_collectives_test",
         "-//xla/backends/cpu/collectives:mpi_collectives",

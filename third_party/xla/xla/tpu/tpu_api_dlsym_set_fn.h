@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_TPU_TPU_API_DLSYM_SET_FN_H_
-#define XLA_STREAM_EXECUTOR_TPU_TPU_API_DLSYM_SET_FN_H_
+#ifndef XLA_TPU_TPU_API_DLSYM_SET_FN_H_
+#define XLA_TPU_TPU_API_DLSYM_SET_FN_H_
 
 #define TFTPU_SET_FN(Struct, FnName)                                       \
   Struct->FnName##Fn =                                                     \
@@ -25,4 +25,4 @@ limitations under the License.
                                     " not available in this library.");    \
   }
 
-#endif  // XLA_STREAM_EXECUTOR_TPU_TPU_API_DLSYM_SET_FN_H_
+#endif  // XLA_TPU_TPU_API_DLSYM_SET_FN_H_

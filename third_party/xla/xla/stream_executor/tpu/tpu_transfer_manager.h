@@ -31,10 +31,10 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/tpu/c_api_decl.h"
-#include "xla/stream_executor/tpu/noncopyable_buffer.h"
-#include "xla/stream_executor/tpu/tpu_executor_c_api.h"
 #include "xla/stream_executor/tpu/tpu_transfer_manager_interface.h"
+#include "xla/tpu/c_api_decl.h"
+#include "xla/tpu/noncopyable_buffer.h"
+#include "xla/tpu/tpu_executor_c_api.h"
 
 namespace tensorflow {
 namespace tpu {

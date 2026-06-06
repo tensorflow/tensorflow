@@ -295,8 +295,8 @@ cc_library(
         "@xla//xla/mlir_hlo:convert_op_folder",
         "@xla//xla/mlir_hlo:mhlo_passes",
         "@xla//xla/mlir_hlo:type_conversion",
-        "@xla//xla/stream_executor/tpu:c_api_conversions",
-        "@xla//xla/stream_executor/tpu:tpu_api",
+        "@xla//xla/tpu:c_api_conversions",
+        "@xla//xla/tpu:tpu_api",
     ],
 )
 

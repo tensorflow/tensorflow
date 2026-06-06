@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_TPU_C_API_DEFN_H_
-#define XLA_STREAM_EXECUTOR_TPU_C_API_DEFN_H_
+#ifndef XLA_TPU_C_API_DEFN_H_
+#define XLA_TPU_C_API_DEFN_H_
 
 #include <memory>
 
@@ -55,4 +55,4 @@ struct XLA_ComputationPlacer {};
 struct SE_TpuTopology {};
 struct SE_TpuTopology_Core {};
 
-#endif  // XLA_STREAM_EXECUTOR_TPU_C_API_DEFN_H_
+#endif  // XLA_TPU_C_API_DEFN_H_

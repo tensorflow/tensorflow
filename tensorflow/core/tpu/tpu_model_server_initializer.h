@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_TPU_MODEL_SERVER_INITIALIZER_H_
 #define TENSORFLOW_CORE_TPU_TPU_MODEL_SERVER_INITIALIZER_H_
 
-#include "xla/stream_executor/tpu/libtftpu.h"
-#include "xla/stream_executor/tpu/tpu_executor_c_api.h"
-#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "xla/tpu/libtftpu.h"
+#include "xla/tpu/tpu_executor_c_api.h"
+#include "xla/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {

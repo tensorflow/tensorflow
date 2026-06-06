@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_TPU_PROTO_HELPER_H_
-#define XLA_STREAM_EXECUTOR_TPU_PROTO_HELPER_H_
+#ifndef XLA_TPU_PROTO_HELPER_H_
+#define XLA_TPU_PROTO_HELPER_H_
 
 #include <cstddef>
 
 #include "absl/log/check.h"
-#include "xla/stream_executor/tpu/c_api_decl.h"
+#include "xla/tpu/c_api_decl.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 extern "C" {
@@ -81,4 +81,4 @@ inline void SerializedProto_Free(const SerializedProtoType& serialized_proto) {
 }  // namespace tpu
 }  // namespace stream_executor
 
-#endif  // XLA_STREAM_EXECUTOR_TPU_PROTO_HELPER_H_
+#endif  // XLA_TPU_PROTO_HELPER_H_

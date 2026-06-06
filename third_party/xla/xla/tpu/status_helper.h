@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_TPU_STATUS_HELPER_H_
-#define XLA_STREAM_EXECUTOR_TPU_STATUS_HELPER_H_
+#ifndef XLA_TPU_STATUS_HELPER_H_
+#define XLA_TPU_STATUS_HELPER_H_
 
 #include "absl/status/status.h"
-#include "xla/stream_executor/tpu/c_api_decl.h"
-#include "xla/stream_executor/tpu/tpu_executor_api.h"
-#include "xla/stream_executor/tpu/tpu_executor_c_api.h"
+#include "xla/tpu/c_api_decl.h"
+#include "xla/tpu/tpu_executor_api.h"
+#include "xla/tpu/tpu_executor_c_api.h"
 
 class StatusHelper {
  public:
@@ -57,4 +57,4 @@ class StatusHelper {
   TF_Status* const c_status;  // NOLINT
 };
 
-#endif  // XLA_STREAM_EXECUTOR_TPU_STATUS_HELPER_H_
+#endif  // XLA_TPU_STATUS_HELPER_H_
