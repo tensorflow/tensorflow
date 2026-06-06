@@ -28,7 +28,7 @@ absl::Status ParseUnicodeEncoding(const std::string& str,
   } else if (str == "UTF-32-BE") {
     *encoding = UnicodeEncoding::UTF32BE;
   } else {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         absl::StrCat("Invalid encoding \"", str,
                      "\": Should be one of: UTF-8, UTF-16-BE, UTF-32-BE"));
   }
@@ -42,7 +42,7 @@ absl::Status ParseCharUnit(const std::string& str, CharUnit* unit) {
   } else if (str == "UTF8_CHAR") {
     *unit = CharUnit::UTF8_CHAR;
   } else {
-    return errors::InvalidArgument(absl::StrCat(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Invalid unit \"", str, "\": Should be one of: BYTE, UTF8_CHAR"));
   }
   return absl::OkStatus();

@@ -38,14 +38,15 @@ class AudioSpectrogramOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
-    OP_REQUIRES(context, input.dims() == 2,
-                errors::InvalidArgument("input must be 2-dimensional",
-                                        input.shape().DebugString()));
+    OP_REQUIRES(
+        context, input.dims() == 2,
+        absl::InvalidArgumentError(absl::StrCat("input must be 2-dimensional",
+                                                input.shape().DebugString())));
     Spectrogram spectrogram;
     OP_REQUIRES(context, spectrogram.Initialize(window_size_, stride_),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Spectrogram initialization failed for window size ",
-                    window_size_, " and stride ", stride_));
+                    window_size_, " and stride ", stride_)));
 
     const auto input_as_matrix = input.matrix<float>();
 
@@ -73,7 +74,7 @@ class AudioSpectrogramOp : public OpKernel {
     std::vector<float> input_for_channel(sample_count);
     for (int64_t channel = 0; channel < channel_count; ++channel) {
       OP_REQUIRES(context, spectrogram.Reset(),
-                  errors::InvalidArgument("Failed to Reset()"));
+                  absl::InvalidArgumentError("Failed to Reset()"));
 
       float* output_slice =
           output_flat + (channel * output_height * output_width);
@@ -84,17 +85,18 @@ class AudioSpectrogramOp : public OpKernel {
       OP_REQUIRES(context,
                   spectrogram.ComputeSquaredMagnitudeSpectrogram(
                       input_for_channel, &spectrogram_output),
-                  errors::InvalidArgument("Spectrogram compute failed"));
+                  absl::InvalidArgumentError("Spectrogram compute failed"));
       OP_REQUIRES(context, (spectrogram_output.size() == output_height),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "Spectrogram size calculation failed: Expected height ",
-                      output_height, " but got ", spectrogram_output.size()));
-      OP_REQUIRES(context,
-                  spectrogram_output.empty() ||
-                      (spectrogram_output[0].size() == output_width),
-                  errors::InvalidArgument(
-                      "Spectrogram size calculation failed: Expected width ",
-                      output_width, " but got ", spectrogram_output[0].size()));
+                      output_height, " but got ", spectrogram_output.size())));
+      OP_REQUIRES(
+          context,
+          spectrogram_output.empty() ||
+              (spectrogram_output[0].size() == output_width),
+          absl::InvalidArgumentError(absl::StrCat(
+              "Spectrogram size calculation failed: Expected width ",
+              output_width, " but got ", spectrogram_output[0].size())));
       for (int row_index = 0; row_index < output_height; ++row_index) {
         const std::vector<float>& spectrogram_row =
             spectrogram_output[row_index];
