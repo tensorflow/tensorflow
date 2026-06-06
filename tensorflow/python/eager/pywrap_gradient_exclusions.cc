@@ -49,7 +49,7 @@ auto OpGradientInfoInit(const T &a) {
 }  // namespace
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
-    const tensorflow::string &op_name) {
+    const std::string& op_name) {
   static std::array<OpIndexInfo, 367> a = {{
       {"Acosh"},
       {"AllToAll", 1, {0}},
