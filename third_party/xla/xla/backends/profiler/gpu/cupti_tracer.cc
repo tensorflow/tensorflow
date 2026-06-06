@@ -49,6 +49,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_driver_cbid.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_result.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/backends/profiler/gpu/cuda_graph_annotation_registry.h"
 #include "xla/backends/profiler/gpu/cuda_version_variants.h"
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
@@ -59,7 +60,6 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_utils.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/profiler/backends/cpu/annotation_stack.h"
 #include "xla/tsl/profiler/utils/per_thread.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
@@ -1668,22 +1668,28 @@ absl::Status CuptiTracer::HandleResourceCallback(
       cupti_interface_->GetGraphId(graph_data->graph, &graph_id_info.graph_id);
       graph_id_info.orig_graph_id = 0;
       break;
-    case CUPTI_CBID_RESOURCE_GRAPH_CLONED:
+    case CUPTI_CBID_RESOURCE_GRAPH_CLONED: {
       cupti_interface_->GetGraphId(graph_data->graph, &graph_id_info.graph_id);
       cupti_interface_->GetGraphId(graph_data->originalGraph,
                                    &graph_id_info.orig_graph_id);
+      xla::profiler::CudaGraphAnnotationRegistry::RegisterGraphMapping(
+          graph_id_info.graph_id, graph_id_info.orig_graph_id);
       break;
-    case CUPTI_CBID_RESOURCE_GRAPHEXEC_CREATED:
+    }
+    case CUPTI_CBID_RESOURCE_GRAPHEXEC_CREATED: {
       cupti_interface_->GetGraphExecId(graph_data->graphExec,
                                        &graph_id_info.graph_id);
       cupti_interface_->GetGraphId(graph_data->graph,
                                    &graph_id_info.orig_graph_id);
+      xla::profiler::CudaGraphAnnotationRegistry::RegisterGraphMapping(
+          graph_id_info.graph_id, graph_id_info.orig_graph_id);
       break;
+    }
     case CUPTI_CBID_RESOURCE_GRAPHNODE_CREATED:
       cupti_interface_->GetGraphNodeId(created_graph_node, &graph_node_id);
       graph_id_info.node_id_map[graph_node_id] = 0;
       break;
-    case CUPTI_CBID_RESOURCE_GRAPHNODE_CLONED:
+    case CUPTI_CBID_RESOURCE_GRAPHNODE_CLONED: {
       cupti_interface_->GetGraphNodeId(created_graph_node, &graph_node_id);
       cupti_interface_->GetGraphNodeId(orig_graph_node, &orig_graph_node_id);
       // Graph Node instance process, two graph nodes are first created this
@@ -1701,6 +1707,7 @@ absl::Status CuptiTracer::HandleResourceCallback(
       }
       graph_id_info.node_id_map[graph_node_id] = orig_graph_node_id;
       break;
+    }
   }
   return absl::OkStatus();
 }

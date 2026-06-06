@@ -43,6 +43,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_occupancy.h"
+#include "xla/backends/profiler/gpu/cuda_graph_annotation_registry.h"
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 #include "xla/backends/profiler/gpu/cupti_pm_sampler_utils.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
@@ -112,8 +113,9 @@ bool IsHostEvent(const CuptiTracerEvent& event, int64_t* line_id) {
   if (event.stream_id != CuptiTracerEvent::kInvalidStreamId) {
     *line_id = event.stream_id;
     return false;
-  } else if (event.thread_id != CuptiTracerEvent::kInvalidThreadId &&
-             event.thread_id != 0) {
+  }
+  if (event.thread_id != CuptiTracerEvent::kInvalidThreadId &&
+      event.thread_id != 0) {
     *line_id = event.thread_id;
     return true;
   } else {
@@ -435,6 +437,7 @@ class PerDeviceCollector {
     if (event_types.count(CuptiTracerEventType::Overhead))
       return "CUPTI overhead";
     std::vector<const char*> type_names;
+    type_names.reserve(event_types.size());
     for (const auto event_type : event_types) {
       type_names.emplace_back(GetTraceEventTypeName(event_type));
     }
@@ -448,6 +451,15 @@ class PerDeviceCollector {
 
   void AddDeviceEvent(CuptiTracerEvent&& event, bool aggregated_tracing) {
     absl::MutexLock l(m_);
+    if (event.source == CuptiTracerEventSource::Activity &&
+        event.graph_node_id != 0 && event.graph_id != 0) {
+      std::string annotation =
+          xla::profiler::CudaGraphAnnotationRegistry::LookupAnnotation(
+              event.graph_id, event.graph_node_id);
+      if (!annotation.empty()) {
+        event.annotation = annotation_deduper_.Dedup(annotation);
+      }
+    }
     if (aggregated_tracing) {
       if (event.start_time_ns < start_gpu_ns_) {
         return;
@@ -692,6 +704,7 @@ class PerDeviceCollector {
 
   cudaOccDeviceProp device_properties_;
   absl::flat_hash_map<DeviceOccupancyParams, OccupancyStats> occupancy_cache_;
+  StringDeduper annotation_deduper_ TF_GUARDED_BY(m_);
 };
 
 // Using two iterator of the CuptiTracerEvent queue to mark the current and
@@ -842,7 +855,9 @@ void CuptiTraceCollector::OnTracerCollectedCallbackData(
   }
 
   // If we are not collecting CPU events from Callback API, we can return now.
-  if (!need_callback_events) return;
+  if (!need_callback_events) {
+    return;
+  }
 
   size_t total_dropped_callback_event_count = 0;
   for (auto& annotations_and_events : callback_annotations_and_events) {
@@ -895,7 +910,9 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
   }
 
   void AddEvent(CuptiTracerEvent&& event) override {
-    if (event.device_id >= num_gpus_) return;
+    if (event.device_id >= num_gpus_) {
+      return;
+    }
     if (event.source == CuptiTracerEventSource::DriverCallback) {
       num_callback_events_++;
     } else {
@@ -907,7 +924,9 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
       // Process the nvtx marker, merge thread range start/end if appropriate.
       // If merged, the event will contains the merged content, and be used for
       // followed AddEvent() processing.
-      if (!AddNvtxMarker(event)) return;
+      if (!AddNvtxMarker(event)) {
+        return;
+      }
     }
 
     // If this is a CudaGraphNodeMap event, we need to record the mapping from
@@ -923,22 +942,9 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     // the annotation to reflect the detail framework information which are got
     // during the callback for cuda graph creation and nodes insertion.
     if (event.source == CuptiTracerEventSource::Activity &&
-        (event.graph_id != 0 && event.graph_node_id != 0)) {
-      // We need to rewrite the annotation of this inner node event in cuda
-      // graph device plane.
-      auto orig_graph_id_it = cuda_graph_id_map_.find(event.graph_id);
-      if (orig_graph_id_it != cuda_graph_id_map_.end()) {
-        uint32_t orig_graph_id = orig_graph_id_it->second;
-        const auto& node_id_2_orig = cuda_graph_node_id_map_[event.graph_id];
-        auto orig_node_id_it = node_id_2_orig.find(event.graph_node_id);
-        if (orig_node_id_it != node_id_2_orig.end()) {
-          uint64_t orig_node_id = orig_node_id_it->second;
-          auto annotation_it =
-              graph_node_annotations_.find({orig_graph_id, orig_node_id});
-          if (annotation_it != graph_node_annotations_.end()) {
-            event.annotation = annotation_it->second;
-          }
-        }
+        event.graph_node_id != 0) {
+      if (event.graph_id == 0) {
+        event.graph_id = event.graph_node_id >> 32;
       }
     }
     per_device_collector_[event.device_id].AddDeviceEvent(
@@ -1010,12 +1016,16 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
       absl::StrAppend(&result, " ", dropped.second, " events dropped because ",
                       dropped.first, ";");
     }
-    if (!result.empty()) result.back() = '.';
+    if (!result.empty()) {
+      result.back() = '.';
+    }
     return result;
   }
   std::string ReportNumEventsIfDropped() override {
     std::string events_dropped = ReportDroppedEvents();
-    if (events_dropped.empty()) return "";
+    if (events_dropped.empty()) {
+      return "";
+    }
     return absl::StrCat("Detected GPU events dropped on ",
                         tsl::port::Hostname(), ": Profiler has collected ",
                         num_callback_events_, " driver events and ",
@@ -1067,10 +1077,10 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
             it->second->marker_data_info.marker_string;
         nvtx_markers_.erase(it);
         return true;  // The event is merged for further processing.
-      } else {
+      }
         LOG_IF(ERROR, ++num_unmatched_nvtx_marker_end_ < 100)
             << "Unmatched nvtx thread range end marker id: " << marker_id;
-      }
+
     } else if (event.type == CuptiTracerEventType::MarkerData) {
       if (it == nvtx_markers_.end()) {
         LOG_IF(ERROR, ++num_unmatched_nvtx_marker_end_ < 100)
