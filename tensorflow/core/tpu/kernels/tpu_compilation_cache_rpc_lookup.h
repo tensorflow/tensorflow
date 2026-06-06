@@ -21,6 +21,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_grpc.h"
