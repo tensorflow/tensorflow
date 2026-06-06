@@ -19,18 +19,19 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tensor_helper.h"
-#include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/status_helper.h"
 #include "xla/stream_executor/tpu/tpu_api.h"
+#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tsl/platform/tstring.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
 
@@ -93,7 +94,7 @@ class EnqueueTPUEmbeddingArbitraryTensorBatchOp : public OpKernel {
 
     std::vector<char*> c_str_combiners;
     c_str_combiners.reserve(combiners.size());
-    for (std::string combiner : combiners) {
+    for (std::string& combiner : combiners) {
       c_str_combiners.push_back(&combiner.front());
     }
     fixed_state_create_params.combiners_size = c_str_combiners.size();
