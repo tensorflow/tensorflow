@@ -53,8 +53,8 @@ absl::Status DoParallelConcat(const CPUDevice& d, const Tensor& value,
     TF_CALL_variant(CASE);
 #undef CASE
     default:
-      return errors::InvalidArgument("Unsupported data type: ",
-                                     DataTypeString(value.dtype()));
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Unsupported data type: ", DataTypeString(value.dtype())));
   }
 }
 
@@ -74,29 +74,30 @@ class ParallelConcatUpdate : public OpKernel {
     // Value should be at least rank 1. Also the 0th dimension should be
     // at least loc_.
     OP_REQUIRES(ctx, value.dims() >= 1,
-                errors::InvalidArgument("value should be at least rank 1."));
-    OP_REQUIRES(
-        ctx, value.dim_size(0) > loc_,
-        errors::InvalidArgument("0th dimension of value = ", value.dim_size(0),
-                                " must be greater than loc_ = ", loc_));
+                absl::InvalidArgumentError("value should be at least rank 1."));
+    OP_REQUIRES(ctx, value.dim_size(0) > loc_,
+                absl::InvalidArgumentError(
+                    absl::StrCat("0th dimension of value = ", value.dim_size(0),
+                                 " must be greater than loc_ = ", loc_)));
 
     auto update = ctx->input(1);
 
-    OP_REQUIRES(
-        ctx, value.dims() == update.dims(),
-        errors::InvalidArgument("value and update shape doesn't match: ",
-                                value.shape().DebugString(), " vs. ",
-                                update.shape().DebugString()));
+    OP_REQUIRES(ctx, value.dims() == update.dims(),
+                absl::InvalidArgumentError(
+                    absl::StrCat("value and update shape doesn't match: ",
+                                 value.shape().DebugString(), " vs. ",
+                                 update.shape().DebugString())));
     for (int i = 1; i < value.dims(); ++i) {
-      OP_REQUIRES(
-          ctx, value.dim_size(i) == update.dim_size(i),
-          errors::InvalidArgument("value and update shape doesn't match ",
-                                  value.shape().DebugString(), " vs. ",
-                                  update.shape().DebugString()));
+      OP_REQUIRES(ctx, value.dim_size(i) == update.dim_size(i),
+                  absl::InvalidArgumentError(
+                      absl::StrCat("value and update shape doesn't match ",
+                                   value.shape().DebugString(), " vs. ",
+                                   update.shape().DebugString())));
     }
-    OP_REQUIRES(ctx, 1 == update.dim_size(0),
-                errors::InvalidArgument("update shape doesn't match: ",
-                                        update.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, 1 == update.dim_size(0),
+        absl::InvalidArgumentError(absl::StrCat("update shape doesn't match: ",
+                                                update.shape().DebugString())));
 
     Tensor output = value;  // This creates an alias intentionally.
     const auto& d = ctx->eigen_device<Device>();
@@ -133,8 +134,8 @@ class FailureKernel : public OpKernel {
  public:
   explicit FailureKernel(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx,
-                   errors::Internal("Found instance of parallel_stack which "
-                                    "could not be properly replaced."));
+                   absl::InternalError("Found instance of parallel_stack which "
+                                       "could not be properly replaced."));
   }
 
   void Compute(OpKernelContext*) override {}
@@ -213,23 +214,25 @@ class InplaceOpBase : public OpKernel {
     auto v = ctx->input(2);
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(i.shape()),
-                errors::InvalidArgument("i must be a vector. ",
-                                        i.shape().DebugString()));
-    OP_REQUIRES(ctx, x.dims() == v.dims(),
-                errors::InvalidArgument(
-                    "x and v shape doesn't match (ranks differ): ",
-                    x.shape().DebugString(), " vs. ", v.shape().DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "i must be a vector. ", i.shape().DebugString())));
+    OP_REQUIRES(
+        ctx, x.dims() == v.dims(),
+        absl::InvalidArgumentError(absl::StrCat(
+            "x and v shape doesn't match (ranks differ): ",
+            x.shape().DebugString(), " vs. ", v.shape().DebugString())));
     for (int i = 1; i < x.dims(); ++i) {
       OP_REQUIRES(
           ctx, x.dim_size(i) == v.dim_size(i),
-          errors::InvalidArgument("x and v shape doesn't match at index ", i,
-                                  " : ", x.shape().DebugString(), " vs. ",
-                                  v.shape().DebugString()));
+          absl::InvalidArgumentError(absl::StrCat(
+              "x and v shape doesn't match at index ", i, " : ",
+              x.shape().DebugString(), " vs. ", v.shape().DebugString())));
     }
-    OP_REQUIRES(ctx, i.dim_size(0) == v.dim_size(0),
-                errors::InvalidArgument(
-                    "i and x shape doesn't match at index 0: ",
-                    i.shape().DebugString(), " vs. ", v.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, i.dim_size(0) == v.dim_size(0),
+        absl::InvalidArgumentError(absl::StrCat(
+            "i and x shape doesn't match at index 0: ", i.shape().DebugString(),
+            " vs. ", v.shape().DebugString())));
 
     Tensor y = x;  // This creates an alias intentionally.
     // Skip processing if tensors are empty.
@@ -305,8 +308,8 @@ absl::Status DoInplace(const CPUDevice& device, InplaceOpType op,
     TF_CALL_NUMBER_TYPES(CASE);
 #undef CASE
     default:
-      return errors::InvalidArgument("Unsupported data type: ",
-                                     DataTypeString(v.dtype()));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported data type: ", DataTypeString(v.dtype())));
   }
   return absl::OkStatus();
 }
@@ -376,8 +379,8 @@ absl::Status DoCopy(const CPUDevice& device, const Tensor& x, Tensor* y) {
     TF_CALL_tstring(CASE);
 #undef CASE
     default:
-      return errors::InvalidArgument("Unsupported data type: ",
-                                     DataTypeString(x.dtype()));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported data type: ", DataTypeString(x.dtype())));
   }
   return absl::OkStatus();
 }
@@ -394,10 +397,10 @@ class EmptyOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& shape = ctx->input(0);
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsVector(shape.shape()),
-        errors::InvalidArgument("shape must be a vector of int32, got shape ",
-                                shape.shape().DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(shape.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("shape must be a vector of int32, got shape ",
+                                 shape.shape().DebugString())));
     auto dims = shape.flat<int32_t>();
     TensorShape out_shape;
     OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(
