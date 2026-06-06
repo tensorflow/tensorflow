@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -272,11 +273,11 @@ void PjRtStreamExecutorRawBuffer::CopyTo(
     PjRtRawBufferRef dst_raw_buffer,
     PjRtDeviceEventPromiseRef definition_event_promise,
     PjRtDeviceEventPromiseRef src_usage_event_promise,
-    ::tsl::AsyncValueRef<bool> allocation_event) {
+    absl::AnyInvocable<void(absl::Status) &&> allocation_event) {
   bool is_intra_client =
       dst_raw_buffer->memory_space()->client() == memory_space()->client();
   if (!is_intra_client && allocation_event) {
-    allocation_event.SetStateConcrete();
+    std::move(allocation_event)(absl::OkStatus());
   }
   if (is_intra_client) {
     IntraClientCopyToWithDependencies(
@@ -366,7 +367,7 @@ void PjRtStreamExecutorRawBuffer::ScheduleCopyTo(
     PjRtRawBufferRef dst_raw_buffer,
     PjRtDeviceEventPromiseRef definition_event_promise,
     PjRtDeviceEventPromiseRef src_usage_event_promise,
-    ::tsl::AsyncValueRef<bool> allocation_event) {
+    absl::AnyInvocable<void(absl::Status) &&> allocation_event) {
   if (dst_raw_buffer->memory_space()->client() == memory_space()->client()) {
     async_work_runner->Schedule(
         [this_ref = tsl::FormRef(this),
@@ -393,7 +394,7 @@ void PjRtStreamExecutorRawBuffer::IntraClientCopyToWithDependencies(
     PjRtRawBufferRef dst_raw_buffer,
     PjRtDeviceEventPromiseRef definition_event_promise,
     PjRtDeviceEventPromiseRef src_usage_event_promise,
-    ::tsl::AsyncValueRef<bool> allocation_event) {
+    absl::AnyInvocable<void(absl::Status) &&> allocation_event) {
   auto usage_event =
       BufferSequencingEvent::Create(client_->async_work_runner());
 
@@ -434,7 +435,7 @@ void PjRtStreamExecutorRawBuffer::IntraClientCopyToWithDependencies(
 
       if (allocation_event) {
         allocation_set = true;
-        allocation_event.SetStateConcrete();
+        std::move(allocation_event)(absl::OkStatus());
       }
 
       auto dst_buffer =
@@ -456,7 +457,7 @@ void PjRtStreamExecutorRawBuffer::IntraClientCopyToWithDependencies(
     if (!status.ok()) {
       client->SetEventAsError(usage_event, status);
       if (allocation_event && !allocation_set) {
-        allocation_event.SetError(status);
+        std::move(allocation_event)(status);
       }
       return;
     }

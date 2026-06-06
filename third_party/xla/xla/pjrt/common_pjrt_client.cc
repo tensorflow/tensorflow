@@ -1979,6 +1979,21 @@ CommonPjRtBufferImpl::CopyToCpuMemorySpace(xla::Shape dst_shape,
   return buffer;
 }
 
+static absl::AnyInvocable<void(absl::Status) &&> ToAllocationCallback(
+    ::tsl::AsyncValueRef<bool> allocation_event) {
+  if (!allocation_event) {
+    return {};
+  }
+  return [allocation_event =
+              std::move(allocation_event)](absl::Status status) mutable {
+    if (status.ok()) {
+      allocation_event.SetStateConcrete();
+    } else {
+      allocation_event.SetError(status);
+    }
+  };
+}
+
 static absl::Status CommonCopyToMemorySpace(
     CommonPjRtBuffer* src_buffer, PjRtMemorySpace* dst_memory_space,
     std::shared_ptr<const xla::Shape> dst_shape,
@@ -2364,7 +2379,8 @@ CommonPjRtBufferImpl::DirectCopyToMemorySpace(
     src_raw_buffer->ScheduleCopyTo(
         src_client->async_work_runner(), std::move(definition_events),
         std::move(dst_raw_buffer), std::move(definition_event_promise),
-        std::move(src_usage_event_promise), std::move(allocation_event));
+        std::move(src_usage_event_promise),
+        ToAllocationCallback(std::move(allocation_event)));
   }
   return dst_buffer;
 }
@@ -2407,7 +2423,8 @@ CommonPjRtBufferImpl::DirectCopyToMemorySpace(PjRtBuffer* donated_dst) {
     src_raw_buffer->ScheduleCopyTo(
         src_client->async_work_runner(), std::move(definition_events),
         std::move(dst_raw_buffer), std::move(definition_event_promise),
-        std::move(src_usage_event_promise), std::move(allocation_event));
+        std::move(src_usage_event_promise),
+        ToAllocationCallback(std::move(allocation_event)));
   }
   return dst_buffer;
 }

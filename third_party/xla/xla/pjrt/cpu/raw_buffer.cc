@@ -302,12 +302,13 @@ absl::StatusOr<PjRtDeviceEventRef> CpuRawBuffer::MakeAllocationReadyEvent() {
   return PjRtDeviceEventRef(tsl::MakeAvailableAsyncValueRef<CpuEvent>());
 }
 
-void CpuRawBuffer::CopyTo(PjRtRawBufferRef dst_raw_buffer,
-                          PjRtDeviceEventPromiseRef definition_event_promise,
-                          PjRtDeviceEventPromiseRef src_usage_event_promise,
-                          ::tsl::AsyncValueRef<bool> allocation_event) {
+void CpuRawBuffer::CopyTo(
+    PjRtRawBufferRef dst_raw_buffer,
+    PjRtDeviceEventPromiseRef definition_event_promise,
+    PjRtDeviceEventPromiseRef src_usage_event_promise,
+    absl::AnyInvocable<void(absl::Status) &&> allocation_event) {
   if (allocation_event) {
-    allocation_event.SetStateConcrete();
+    std::move(allocation_event)(absl::OkStatus());
   }
   auto other_event = dst_raw_buffer->CopyRawHostToDeviceAndReturnEvent(
       GetHostPointer(), 0, GetOnDeviceSizeInBytes());

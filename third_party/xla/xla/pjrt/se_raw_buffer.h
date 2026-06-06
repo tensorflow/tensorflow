@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/future.h"
@@ -108,10 +109,11 @@ class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBufferImpl {
 
   absl::StatusOr<PjRtRawBufferRef> Slice(int64_t offset, int64_t size) override;
 
-  void CopyTo(PjRtRawBufferRef dst_raw_buffer,
-              PjRtDeviceEventPromiseRef definition_event_promise,
-              PjRtDeviceEventPromiseRef src_usage_event_promise,
-              ::tsl::AsyncValueRef<bool> allocation_event) override;
+  void CopyTo(
+      PjRtRawBufferRef dst_raw_buffer,
+      PjRtDeviceEventPromiseRef definition_event_promise,
+      PjRtDeviceEventPromiseRef src_usage_event_promise,
+      absl::AnyInvocable<void(absl::Status) &&> allocation_event) override;
 
   void ScheduleCopyTo(
       AsyncWorkRunner* async_work_runner,
@@ -119,7 +121,7 @@ class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBufferImpl {
       PjRtRawBufferRef dst_raw_buffer,
       PjRtDeviceEventPromiseRef definition_event_promise,
       PjRtDeviceEventPromiseRef src_usage_event_promise,
-      ::tsl::AsyncValueRef<bool> allocation_event) override;
+      absl::AnyInvocable<void(absl::Status) &&> allocation_event) override;
   PjRtDeviceEventPtr GetRawBufferAsyncValue() override {
     return PjRtDeviceEventPtr::FromAsyncValue(device_buffer_.GetAsyncValue());
   }
@@ -142,7 +144,7 @@ class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBufferImpl {
       PjRtRawBufferRef dst_raw_buffer,
       PjRtDeviceEventPromiseRef definition_event_promise,
       PjRtDeviceEventPromiseRef src_usage_event_promise,
-      ::tsl::AsyncValueRef<bool> allocation_event);
+      absl::AnyInvocable<void(absl::Status) &&> allocation_event);
 };
 
 }  // namespace xla

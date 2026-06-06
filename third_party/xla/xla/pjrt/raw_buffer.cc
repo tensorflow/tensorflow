@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -97,7 +98,7 @@ void CommonPjRtRawBuffer::ScheduleCopyTo(
     PjRtRawBufferRef dst_raw_buffer,
     PjRtDeviceEventPromiseRef definition_event_promise,
     PjRtDeviceEventPromiseRef src_usage_event_promise,
-    tsl::AsyncValueRef<bool> allocation_event) {
+    absl::AnyInvocable<void(absl::Status) &&> allocation_event) {
   absl::Span<const PjRtDeviceEventRef> events_span = transfer_dependency_events;
   xla::ExecuteWhenReady(
       events_span, async_work_runner,
@@ -111,7 +112,7 @@ void CommonPjRtRawBuffer::ScheduleCopyTo(
         absl::Status status = xla::GetErrors(transfer_dependency_events);
         if (!status.ok()) {
           if (allocation_event) {
-            allocation_event.SetError(status);
+            std::move(allocation_event)(status);
           }
           definition_event_promise.SetError(status);
           src_usage_event_promise.SetError(status);

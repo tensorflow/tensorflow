@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -151,10 +152,11 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
   // Copies directly into dst_raw_buffer. Must set definition_event_promise,
   // when dst_raw_buffer is ready, allocation_event before using dst_raw_buffer
   // and src_usage_event_promise when done using this buffer.
-  virtual void CopyTo(PjRtRawBufferRef dst_raw_buffer,
-                      PjRtDeviceEventPromiseRef definition_event_promise,
-                      PjRtDeviceEventPromiseRef src_usage_event_promise,
-                      tsl::AsyncValueRef<bool> allocation_event) = 0;
+  virtual void CopyTo(
+      PjRtRawBufferRef dst_raw_buffer,
+      PjRtDeviceEventPromiseRef definition_event_promise,
+      PjRtDeviceEventPromiseRef src_usage_event_promise,
+      absl::AnyInvocable<void(absl::Status) &&> allocation_event) = 0;
 
   // Blocks on a list of dependencies and then copies directly into
   // dst_raw_buffer. Must set definition_event_promise,
@@ -166,7 +168,7 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
       PjRtRawBufferRef dst_raw_buffer,
       PjRtDeviceEventPromiseRef definition_event_promise,
       PjRtDeviceEventPromiseRef src_usage_event_promise,
-      tsl::AsyncValueRef<bool> allocation_event);
+      absl::AnyInvocable<void(absl::Status) &&> allocation_event);
 
   // Returns the async value associated with the buffer.
   virtual PjRtDeviceEventPtr GetRawBufferAsyncValue() = 0;
