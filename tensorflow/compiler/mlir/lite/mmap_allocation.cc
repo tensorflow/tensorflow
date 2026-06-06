@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/compiler/mlir/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace {
@@ -99,7 +100,10 @@ MMAPAllocation::MMAPAllocation(ErrorReporter* error_reporter, int owned_fd,
   offset_of_buffer_in_file_ = offset - offset_in_buffer_;
 
   size_t file_size = GetFdSizeBytes(mmap_fd_);
-  if (length + offset > file_size) {
+  CheckedInt<size_t> checked_length_offset =
+      CheckedInt<size_t>(length) + offset;
+  if (checked_length_offset.Overflow() ||
+      checked_length_offset.Value() > file_size) {
     TF_LITE_REPORT_ERROR(error_reporter,
                          "Asked to mmap '%d' bytes from fd '%d' at offset "
                          "'%d'. This is over the length of file '%d'.",
