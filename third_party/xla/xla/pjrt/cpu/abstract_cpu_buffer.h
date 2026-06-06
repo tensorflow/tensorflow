@@ -67,7 +67,9 @@ class MarkEventReadyOnExit {
   MarkEventReadyOnExit& operator=(MarkEventReadyOnExit&&) noexcept = default;
 
   ~MarkEventReadyOnExit() {
-    if (event_) event_.SetStateConcrete();
+    if (event_) {
+      event_.SetStateConcrete();
+    }
   }
 
   tsl::AsyncValueRef<CpuEvent> Release() && { return std::move(event_); }
