@@ -106,7 +106,6 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -241,7 +240,6 @@ std::unique_ptr<mlir::MLIRContext> CreateMlirContext() {
   auto mlir_context = std::make_unique<mlir::MLIRContext>(
       mlir::MLIRContext::Threading::DISABLED);
   mlir_context->getDiagEngine().registerHandler(DiagnosticHandler);
-  RegisterSymbolicExprStorage(mlir_context.get());
   return mlir_context;
 }
 
@@ -439,7 +437,6 @@ xla::Future<LlvmKernelSource> MlirKernelFusion::CreateLLVMModule(
 
   mlir_context->appendDialectRegistry(MlirKernelEmitter::GetDialectRegistry());
   mlir_context->loadAllAvailableDialects();
-  RegisterSymbolicExprStorage(mlir_context);
 
   ASSIGN_OR_RETURN(MlirKernelSource source,
                    emitter_->Emit(mlir_context, fusion, entry_function_name,

@@ -1400,6 +1400,7 @@ SymbolicTileAnalysis::AnalyzeFromInstruction(
 /*static*/ SymbolicTileAnalysisOrError SymbolicTileAnalysis::AnalyzeFusion(
     const HloFusionAdaptor& fusion, MLIRContext* mlir_context,
     EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder) {
+  RegisterSymbolicExprStorage(mlir_context);
   auto real_root_index_or = GetRealRootIndex(fusion.GetRoots());
   if (!real_root_index_or.ok()) {
     return FusionDecision(real_root_index_or.status());

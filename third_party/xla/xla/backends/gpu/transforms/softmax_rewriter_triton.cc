@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -447,8 +446,6 @@ absl::StatusOr<bool> CanSymbolicTileAnalysisTileDiamond(
   ASSIGN_OR_RETURN(HloFusionInstruction * normalization_fusion,
                    MakeFusionForDiamond(diamond));
   mlir::MLIRContext mlir_context;
-  RegisterSymbolicExprStorage(&mlir_context);
-
   bool use_experimental_tiling =
       normalization_fusion->GetModule()
           ->config()
