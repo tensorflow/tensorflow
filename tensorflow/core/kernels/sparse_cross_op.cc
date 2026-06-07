@@ -236,7 +236,7 @@ int64_t KeyedDenseTensorColumn<int64_t>::Feature(int64_t batch, int64_t n,
     return StrongKeyedHash(
         key_,
         {reinterpret_cast<const char*>(&tensor_.matrix<int64_t>()(batch, n)),
-         sizeof(tensor_.dtype())});
+         sizeof(int64_t)});
   }
   if (DT_STRING == tensor_.dtype())
     return Fingerprint64(tensor_.matrix<tstring>()(batch, n));
