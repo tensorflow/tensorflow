@@ -1400,6 +1400,13 @@ SymbolicTileAnalysis::AnalyzeFromInstruction(
 /*static*/ SymbolicTileAnalysisOrError SymbolicTileAnalysis::AnalyzeFusion(
     const HloFusionAdaptor& fusion, MLIRContext* mlir_context,
     EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder) {
+  CHECK(!fusion.GetRoots()
+             .front()
+             .instruction()
+             .GetModule()
+             ->config()
+             .debug_options()
+             .xla_gpu_experimental_enable_tiling_propagation());
   RegisterSymbolicExprStorage(mlir_context);
   auto real_root_index_or = GetRealRootIndex(fusion.GetRoots());
   if (!real_root_index_or.ok()) {
@@ -1431,6 +1438,11 @@ SymbolicTileAnalysis::AnalyzeFromInstruction(
 
 absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyConstraints(
     const Tiling& tiling) const {
+  CHECK(!GetRoot(0)
+             ->GetModule()
+             ->config()
+             .debug_options()
+             .xla_gpu_experimental_enable_tiling_propagation());
   const ConstraintExpression& constraints = tiling_specification_.constraints();
   CHECK(constraints.is_satisfiable());  // Crash OK
 
@@ -1967,6 +1979,11 @@ SymbolicTileAnalysis::ComputeTiledComputation(
     const Tiling& tiling, const TiledHloScheduleBuilder& schedule_builder,
     bool constraints_are_known_satisfied,
     bool compute_all_tile_offset_indexing_maps) const {
+  CHECK(!GetRoot(0)
+             ->GetModule()
+             ->config()
+             .debug_options()
+             .xla_gpu_experimental_enable_tiling_propagation());
   // We first check that the provided tiling satisfies the constraints, if
   // necessary. We do this here instead of in `ComputeTiledComputationImpl`
   // because the latter is called recursively, and we don't want to perform
@@ -1994,6 +2011,11 @@ SymbolicTileAnalysis::ComputeTiledComputation(
 }
 
 std::string SymbolicTileAnalysis::ToString() const {
+  CHECK(!GetRoot(0)
+             ->GetModule()
+             ->config()
+             .debug_options()
+             .xla_gpu_experimental_enable_tiling_propagation());
   NameUniquer name_uniquer("_");
   absl::flat_hash_map<const SymbolicTiledHloInstruction*, std::string>
       tile_names;
@@ -2012,6 +2034,11 @@ absl::StatusOr<std::vector<FlatTiling>> GetFlatTilingsForInputSpace(
 
 absl::StatusOr<std::vector<Tiling>> SymbolicTileAnalysis::GetValidTilings()
     const {
+  CHECK(!GetRoot(0)
+             ->GetModule()
+             ->config()
+             .debug_options()
+             .xla_gpu_experimental_enable_tiling_propagation());
   const TilingSpecification::ParameterMapping& parameter_mapping =
       tiling_specification_.parameter_mapping();
 
@@ -2019,6 +2046,8 @@ absl::StatusOr<std::vector<Tiling>> SymbolicTileAnalysis::GetValidTilings()
   ASSIGN_OR_RETURN(std::vector<FlatTiling> flat_tilings,
                    detail::GetFlatTilingsForInputSpace(
                        InputSpaceForParameterMapping(parameter_mapping)));
+  VLOG(3) << "SymbolicTileAnalysis::GetValidTilings: filtering "
+          << flat_tilings.size() << " tilings";
   for (const FlatTiling& flat_tile_sizes : flat_tilings) {
     ASSIGN_OR_RETURN(Tiling tiling,
                      Tiling::Unflatten(flat_tile_sizes, tiling_specification_));
@@ -2028,6 +2057,8 @@ absl::StatusOr<std::vector<Tiling>> SymbolicTileAnalysis::GetValidTilings()
       tilings.push_back(tiling);
     }
   }
+  VLOG(3) << "SymbolicTileAnalysis::GetValidTilings " << tilings.size()
+          << " tilngs satisfy constraints";
   return tilings;
 }
 
