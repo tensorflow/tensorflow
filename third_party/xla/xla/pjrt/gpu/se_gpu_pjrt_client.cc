@@ -627,10 +627,10 @@ void FulfillDeviceEvent(PjRtStreamExecutorClient* client,
 }
 
 absl::Status WaitForDeviceEventRefsOnStream(
-    absl::Span<const PjRtDeviceEventRef> device_event_refs,
-    se::Stream* stream) {
-  for (const auto& event : device_event_refs) {
-    tsl::AsyncValueRef<BufferSequencingEvent> event_ref =
+    PjRtDeviceEventSpan device_event_refs, se::Stream* stream) {
+  for (size_t i = 0; i < device_event_refs.size(); ++i) {
+    PjRtDeviceEventPtr event = device_event_refs[i];
+    tsl::AsyncValuePtr<BufferSequencingEvent> event_ref =
         event.down_cast<BufferSequencingEvent>();
     if (!event_ref) {
       return InvalidArgument(
@@ -638,7 +638,8 @@ absl::Status WaitForDeviceEventRefsOnStream(
           "PjRtDeviceEventRefs are backed by BufferSequencingEventRefs.");
     }
     event_ref->WaitForEventOnStream(stream);
-    if (auto* status = event_ref.GetErrorIfPresent(); status != nullptr) {
+    if (auto* status = event_ref.value()->GetErrorIfPresent();
+        status != nullptr) {
       return *status;
     }
   }
@@ -646,9 +647,9 @@ absl::Status WaitForDeviceEventRefsOnStream(
 }
 }  // namespace
 
-absl::StatusOr<std::vector<PjRtDeviceEventRef>>
+absl::StatusOr<PjRtDeviceEventRefVector>
 StreamExecutorGpuClient::CrossHostTransferBuffers(
-    std::vector<PjRtDeviceEventRef> transfer_dependencies,
+    PjRtDeviceEventRefVector transfer_dependencies,
     std::vector<CrossHostTransferSpec> transfer_specs) {
   // Validate arguments.
   for (int i = 0; i < transfer_specs.size(); ++i) {
@@ -749,13 +750,18 @@ StreamExecutorGpuClient::CrossHostTransferBuffers(
     }
   }
 
-  return output_transfer_events;
+  PjRtDeviceEventRefVector result;
+  result.reserve(output_transfer_events.size());
+  for (auto& ev : output_transfer_events) {
+    result.push_back(std::move(ev));
+  }
+  return result;
 }
 
 void StreamExecutorGpuClient::ScheduleTransfersOnLocalDevice(
     LocalDeviceState* local_device_state, GlobalDeviceId device_id,
     tsl::AsyncValueRef<BufferSequencingEvent> transfer_event,
-    std::vector<PjRtDeviceEventRef> transfer_dependencies,
+    PjRtDeviceEventRefVector transfer_dependencies,
     std::vector<CrossHostTransferSpec> transfer_specs) {
   tsl::profiler::TraceMe trace([&] {
     return tsl::profiler::TraceMeEncode(
@@ -940,7 +946,7 @@ StreamExecutorGpuClient::PrepareReceiveBuffer(PjRtDevice* device, Shape shape) {
 // Send functionality for original cross-host transfers API.
 void StreamExecutorGpuClient::ScheduleRemoteSend(
     PjRtMemorySpace* memory_space, PjRtRawBufferRef raw_buffer,
-    std::vector<PjRtDeviceEventRef> definition_events,
+    PjRtDeviceEventRefVector definition_events,
     PjRtDeviceEventPromiseRef usage_event_promise,
     Future<std::string> serialized_descriptor,
     PjRtBuffer::RemoteSendCallback on_done) {
@@ -976,7 +982,7 @@ void StreamExecutorGpuClient::ScheduleRemoteSend(
                   /*sends_were_enqueued=*/false);
           SetEventAsError(usage_event, serialized_descriptor.status());
         }
-        auto definition_events_span = absl::MakeSpan(definition_events);
+        PjRtDeviceEventSpan definition_events_span(definition_events);
         ExecuteWhenReady(
             definition_events_span, async_work_runner(),
             [this, on_done = std::move(on_done),
@@ -2130,7 +2136,9 @@ StreamExecutorGpuClient::RunAsync(
                                        /*retry_on_failure=*/true,
                                        /*memory_space=*/allocation->color());
         if (!allocated_buffer.ok()) {
-          return gpu_exec->VerboseAllocationError(allocated_buffer.status());
+          return ResourceExhausted(
+              "%s\n%s\n", allocated_buffer.status().message(),
+              gpu_exec->buffer_allocations_debug_summary());
         }
         result_buffer = allocated_buffer->Release();
         se::DeviceAddressBase& aliased_buffer =
