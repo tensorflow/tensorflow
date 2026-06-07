@@ -478,6 +478,7 @@ cc_library(
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
+        ":dense_data_intermediate",
         ":execution_stream_assignment",
         ":gpu_constants",
         ":gpu_conv_runner",
@@ -702,6 +703,7 @@ cc_library(
         ":alias_info",
         ":backend_configs_cc",
         ":buffer_allocations",
+        ":dense_data_intermediate",
         ":gpu_constants",
         ":gpu_executable_proto_cc",
         ":gpu_executable_run_options",
@@ -820,7 +822,7 @@ tf_proto_library(
     name = "gpu_executable_proto",
     srcs = ["gpu_executable.proto"],
     deps = [
-        ":ir_emission_utils_proto",
+        ":dense_data_intermediate_proto",
         "//xla:shape_util_proto",
         "//xla:xla_data_proto",
         "//xla:xla_proto",
@@ -892,16 +894,49 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "dense_data_intermediate",
+    srcs = ["dense_data_intermediate.cc"],
+    hdrs = ["dense_data_intermediate.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":dense_data_intermediate_proto_cc",
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/tsl/util:safe_reinterpret_cast",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_proto_library(
+    name = "dense_data_intermediate_proto",
+    srcs = ["dense_data_intermediate.proto"],
+)
+
+xla_cc_test(
+    name = "dense_data_intermediate_test",
+    srcs = ["dense_data_intermediate_test.cc"],
+    deps = [
+        ":dense_data_intermediate",
+        ":dense_data_intermediate_proto_cc",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:types",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "ir_emission_utils",
     srcs = ["ir_emission_utils.cc"],
     hdrs = ["ir_emission_utils.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":backend_configs_cc",
-        ":ir_emission_utils_proto_cc",
-        ":launch_dimensions",
         ":target_util",
-        "//xla:literal",
         "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -912,11 +947,9 @@ cc_library(
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:buffer_assignment",
         "//xla/service:matmul_indexing_utils",
-        "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor:device_description",
         "//xla/tsl/lib/strings:proto_serialization",
         "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -926,7 +959,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
@@ -936,21 +968,12 @@ cc_library(
     ],
 )
 
-tf_proto_library(
-    name = "ir_emission_utils_proto",
-    srcs = ["ir_emission_utils.proto"],
-)
-
 xla_cc_test(
     name = "ir_emission_utils_test",
     srcs = ["ir_emission_utils_test.cc"],
     deps = [
         ":backend_configs_cc",
         ":ir_emission_utils",
-        ":ir_emission_utils_proto_cc",
-        "//xla:literal",
-        "//xla:literal_util",
-        "//xla:types",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_traversal",
