@@ -635,6 +635,7 @@ py_library(
     # visibility = visibility + [
     # "//learning/deepmind/deepfunc:__subpackages__",
     # "//platforms/darwinn:__subpackages__",
+    # "//research/air/foundation/pterodactyl:__subpackages__",
     # "//tensorflow:internal",
     # ],
     # copybara:uncomment_end_and_comment_begin
