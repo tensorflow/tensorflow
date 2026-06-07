@@ -1090,7 +1090,7 @@ class SparseCrossHashedOpTest(BaseSparseCrossOpTest):
     num_buckets = 101
     salt = [1234, 5678]
     strong_hash = True
-    _ = gen_sparse_ops.sparse_cross_hashed(
+    indices, values, shapes = gen_sparse_ops.sparse_cross_hashed(
       indices=indices,
       values=values,
       shapes=shapes,
@@ -1099,9 +1099,14 @@ class SparseCrossHashedOpTest(BaseSparseCrossOpTest):
       salt=salt,
       strong_hash=strong_hash,
     )
+    output = sparse_tensor.SparseTensor(
+      indices, 
+      values, 
+      shapes
+    )
 
-    with session.Session():
-      self.assertTrue(True)    
+    with self.session():
+      self.evaluate(output)    
 
 if __name__ == '__main__':
   test.main()
