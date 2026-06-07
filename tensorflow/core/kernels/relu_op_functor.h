@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_RELU_OP_FUNCTOR_H_
 // Functor definition for ReluOp and ReluGradOp, must be compilable by nvcc.
 
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor_types.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 
 namespace tensorflow {
 namespace functor {
@@ -183,10 +183,14 @@ struct Selu {
     const auto scale_alpha = static_cast<T>(1.7580993408473768599402175208123);
     const auto one = static_cast<T>(1);
     const auto zero = static_cast<T>(0);
+
     activations.device(d) =
-        (features < zero)
-            .select(scale_alpha * (features.exp() - features.constant(one)),
-                    scale * features);
+        (features != features)
+            .select(features,
+                    (features < zero)
+                        .select(scale_alpha *
+                                    (features.exp() - features.constant(one)),
+                                scale * features));
   }
 };
 
