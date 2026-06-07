@@ -15,8 +15,10 @@ limitations under the License.
 #include "xla/pjrt/device_event.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
