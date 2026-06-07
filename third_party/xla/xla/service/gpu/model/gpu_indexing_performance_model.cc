@@ -699,17 +699,22 @@ int64_t GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
 absl::StatusOr<TopKTiledRunTimeDataOrError>
 GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
     const HloFusionAdaptor& fusion_adaptor, int top_k) {
+  XLA_SCOPED_LOGGING_TIMER(
+      "GpuPerformanceModelWithIndexingAnalysis::"
+      "TryFindTopKBestTilingsForFusion");
   absl::InlinedVector<TiledRunTimeData, 4> candidates;
 
   if (use_experimental_tiling_) {
     using experimental::TiledHloComputation;
     using experimental::TilingSpace;
 
-    std::unique_ptr<TilingSpace> sampling_tiling_space =
+    std::unique_ptr<TilingSpace> tiling_space =
         TilingSpace::Create(fusion_adaptor, mlir_context_);
 
-    ASSIGN_OR_RETURN(auto tilings, sampling_tiling_space->GetValidTilings());
-    VLOG(1) << "Number of tilings: " << tilings.size();
+    ASSIGN_OR_RETURN(auto tilings, tiling_space->GetValidTilings());
+    VLOG(1) << absl::StrCat(
+        "TryFindTopKBestTilingsForFusion tiling_space evaluating ",
+        tilings.size(), " tilings.");
 
     for (const llvm::SmallVector<int64_t, 4>& tiling : tilings) {
       std::unique_ptr<TilingSpace> tiling_space =
@@ -760,8 +765,9 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
         std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
 
     ASSIGN_OR_RETURN(auto tilings, analysis.GetValidTilings());
-    VLOG(1) << "Number of tilings: " << tilings.size();
-
+    VLOG(1) << absl::StrCat(
+        "TryFindTopKBestTilingsForFusion symbolic analysis evaluating ",
+        tilings.size(), " tilings.");
     for (const auto& tiling : tilings) {
       // TODO(b/372454662): This needs to be adjusted if we want to support more
       // than one "real root" (i.e. a root without users).
@@ -794,6 +800,8 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
     }
   }
 
+  VLOG(1) << absl::StrCat("TryFindTopKBestTilingsForFusion found ",
+                          candidates.size(), " valid tiling candidates.");
   absl::c_stable_sort(
       candidates, [](const TiledRunTimeData& a, const TiledRunTimeData& b) {
         return a.runtime_data.exec_time < b.runtime_data.exec_time;
