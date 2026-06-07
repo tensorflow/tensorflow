@@ -523,5 +523,20 @@ TEST(SelectOpTest, MixedFlatSizeOneInputsWithScalarInputYTensor) {
   EXPECT_EQ(model.GetOutputShape().size(), 0);
 }
 
+TEST(SelectV2OpTest,
+     BroadcastSelectInt32OneDimensionConditionWithSingleValue6D) {
+  SelectV2OpModel model({1}, {1, 1, 2, 2, 2, 1}, {1, 2, 2, 1},
+                        TensorType_INT32);
+
+  model.PopulateTensor<bool>(model.input1(), {false});
+  model.PopulateTensor<int32_t>(model.input2(), {1, 2, 3, 4, 5, 6, 7, 8});
+  model.PopulateTensor<int32_t>(model.input3(), {9, 10, 11, 12});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput<int32_t>(),
+              ElementsAreArray({9, 10, 11, 12, 9, 10, 11, 12}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 2, 2, 2, 1}));
+}
+
 }  // namespace
 }  // namespace tflite
