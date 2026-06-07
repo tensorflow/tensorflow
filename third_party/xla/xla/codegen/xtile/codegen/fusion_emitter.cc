@@ -1187,6 +1187,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     return absl::InvalidArgumentError("Multi-output fusion is disabled.");
   }
 
+  CHECK(!debug_options.xla_gpu_experimental_enable_tiling_propagation());
+
   const HloComputation* hlo_computation =
       fusion.fused_instructions_computation();
 

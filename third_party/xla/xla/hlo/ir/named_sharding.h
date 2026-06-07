@@ -170,12 +170,12 @@ class NamedSharding {
   }
 
   bool IsManual() const {
-    return mesh_.num_axes() != 0 &&
+    return !manual_axes_.empty() &&
            mesh_.ContainsAllMeshAxesInOrder(manual_axes_);
   }
 
   bool IsUnreduced() const {
-    return mesh_.num_axes() != 0 &&
+    return !unreduced_axes_.empty() &&
            mesh_.ContainsAllMeshAxesInOrder(unreduced_axes_);
   }
 
