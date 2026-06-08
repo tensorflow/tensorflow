@@ -94,8 +94,12 @@ jobs:
             --local_test_jobs=1 \
             --action_env=JAX_ENABLE_X64=0 \
             --repo_env=HERMETIC_PYTHON_VERSION=3.14 \
-            --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}"
-
+            --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}" \
+            --bes_keywords=xla \
+            --bes_keywords=jax \
+            --bes_keywords=upstream \
+            --bes_keywords=gpu \
+            --bes_keywords=pull_request
   xla:
     needs: rocm-config
     name: XLA Linux x86 AMD Instinct GPU
@@ -136,7 +140,11 @@ jobs:
             --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}" \
             --local_test_jobs=1 \
             --internal_spawn_scheduler \
-            --strategy=TestRunner=dynamic
+            --strategy=TestRunner=dynamic \
+            --bes_keywords=xla \
+            --bes_keywords=upstream \
+            --bes_keywords=gpu \
+            --bes_keywords=pull_request
       - name: Test XLA [rocm_cpu]
         timeout-minutes: 80
         run: |
@@ -145,4 +153,8 @@ jobs:
             --config=rocm_rbe \
             --config=ci_rocm_cpu \
             --local_test_jobs=200 \
-            --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}"
+            --repo_env=TF_ROCM_RBE_DOCKER_IMAGE="${DOCKER_IMAGE}" \
+            --bes_keywords=xla \
+            --bes_keywords=upstream \
+            --bes_keywords=cpu \
+            --bes_keywords=pull_request
