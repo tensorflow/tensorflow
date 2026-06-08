@@ -14,11 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/cc/framework/gradient_checker.h"
+
+#include "absl/status/status.h"
 #include "tensorflow/cc/framework/grad_op_registry.h"
 #include "tensorflow/cc/framework/testutil.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.h"  // Needed for DT_FLOAT, DT_INT32
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/equal_graph_def.h"
@@ -180,6 +183,21 @@ TEST(GradientCheckerTest, StackUnstackGrad) {
   TF_ASSERT_OK((ComputeGradientError<double, double, double>(
       scope, xs, {shape, shape}, y.output, {shape, shape}, &max_error)));
   EXPECT_LT(max_error, 1e-10);
+}
+
+TEST(GradientCheckerTest, ShapeMismatchError) {
+  Scope scope = Scope::NewRootScope();
+  auto x = Placeholder(scope, DT_FLOAT);
+  auto y = ops::Concat(scope, std::vector<Output>{x, x}, ops::Const(scope, 0));
+
+  TensorShape x_shape({1});
+  TensorShape y_shape({4});  // Intentionally wrong, evaluate returns 2.
+
+  float max_error;
+  auto status = ComputeGradientError<float, float, float>(
+      scope, {x}, {x_shape}, {y}, {y_shape}, &max_error);
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
 }
 
 }  // namespace

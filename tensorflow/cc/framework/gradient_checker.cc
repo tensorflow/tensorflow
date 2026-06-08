@@ -253,7 +253,19 @@ absl::Status ComputeNumericJacobianTranspose(
           // Compute element-wise centered difference and store in each
           // Jacobian.
           auto y_pos_flat = y_pos[y_idx].flat<Y_T>();
+          if (y_pos_flat.size() != y_shapes[y_idx].num_elements()) {
+            return absl::InvalidArgumentError(
+                absl::StrCat("Gradient for output ", y_idx, " expected shape ",
+                             y_shapes[y_idx].DebugString(), " but was ",
+                             y_pos[y_idx].shape().DebugString()));
+          }
           auto y_neg_flat = y_neg[y_idx].flat<Y_T>();
+          if (y_neg_flat.size() != y_shapes[y_idx].num_elements()) {
+            return absl::InvalidArgumentError(
+                absl::StrCat("Gradient for output ", y_idx, " expected shape ",
+                             y_shapes[y_idx].DebugString(), " but was ",
+                             y_neg[y_idx].shape().DebugString()));
+          }
           const int64_t y_size = y_shapes[y_idx].num_elements();
           const Y_T scale = 2 * delta;
           auto jacobian = (*jacobian_ts)[x_idx * y_num + y_idx].matrix<JAC_T>();
