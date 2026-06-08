@@ -70,16 +70,17 @@ class AbstractTrackedDeviceBuffer {
 
   // Construct (or return) a vector of PjRtDeviceEventRef events which
   // will become ready when this buffer is ok to mutate.
-  std::vector<PjRtDeviceEventRef>
-  GetAsyncValueDefinitionAndUsageDeviceEvents() {
-    std::vector<PjRtDeviceEventRef> result;
+  PjRtDeviceEventRefVector GetAsyncValueDefinitionAndUsageDeviceEvents() {
+    PjRtDeviceEventRefVector result;
     result.reserve(definition_events_.size() + usage_events_.size());
     for (const auto& ev : definition_events_) {
       if (ev) {
         result.push_back(ev);
       }
     }
-    result.insert(result.end(), usage_events_.begin(), usage_events_.end());
+    for (const auto& ev : usage_events_) {
+      result.push_back(ev);
+    }
     return result;
   }
 
@@ -286,7 +287,7 @@ class CommonPjRtBuffer : public PjRtBuffer {
   absl::Status AcquireScopedRawBuffer(
       absl::AnyInvocable<absl::StatusOr<PjRtDeviceEventRef>(
           PjRtRawBufferRef raw_buffer,
-          std::vector<PjRtDeviceEventRef> definition_events) &&>
+          PjRtDeviceEventRefVector definition_events) &&>
           scoped_acquire,
       const char* caller_name = "AcquireScopedRawBuffer");
 

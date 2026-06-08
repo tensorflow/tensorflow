@@ -1,6 +1,6 @@
 --- a/python/test/unit/language/test_conversions.py
 +++ b/python/test/unit/language/test_conversions.py
-@@ -337,14 +337,18 @@ def test_typeconvert_upcast(src_dtype, dst_dtype, device):
+@@ -338,14 +338,18 @@ def test_typeconvert_upcast(src_dtype, dst_dtype, device):
  def test_typeconvert_downcast(src_dtype, dst_dtype, rounding, max_repr, device):
  
      if is_cuda():

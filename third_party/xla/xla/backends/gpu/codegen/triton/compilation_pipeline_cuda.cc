@@ -169,6 +169,8 @@ static void MakeLLIR(mlir::OpPassManager* pm,
   pm->addPass(ttng::createTritonNvidiaGPUTMemBarrierInsertionPass());
   pm->addPass(
       mt::createConvertTritonGPUToLLVMPass(cuda_cc_as_int, final_ptx_version));
+  pm->addPass(mt::createInitializeWSClusterBarriers(
+      {cuda_cc_as_int, final_ptx_version}));
   pm->addNestedPass<mlir::LLVM::LLVMFuncOp>(
       mlir::triton::gpu::createCanonicalizeLLVMIR());
   pm->addPass(mlir::createCSEPass());
