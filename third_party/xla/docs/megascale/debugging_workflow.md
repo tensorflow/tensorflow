@@ -44,6 +44,26 @@ Megascale hang detected: Timed out waiting for 4 graphs to complete at launch_id
 
 ### Diagnosis
 
+#### Interpreting TPU States
+
+Before diagnosing MXLA hangs, it is important to understand the TPU states
+report format. Below is a sample report:
+
+```text
+Full error digest:
+  Potential cause: <determined_cause>
+  Potential culprit workers: <task_name>
+  First error timestamp: <timestamp>
+  First error type: <error_type>
+  TPU states:
+    Launch ID: <launch_id>
+    Module: jit.step_fn Fingerprint: <fingerprint>
+      Sample worker: <task_name>@<host_name>:<tpu_chip>:<tpu_core>
+    Tag:PC breakdown:
+      <num_cores>@<location>(HLO): [<task_name>:<host_name>@<tpu_chip>:<tpu_core>, ...]
+      ...
+```
+
 #### Bad TPU Chip (tensor core or sparse core)
 
 ```text
