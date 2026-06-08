@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/log/check.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 
