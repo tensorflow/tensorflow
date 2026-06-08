@@ -1902,7 +1902,9 @@ inline int ParseBytesFeature(protobuf::io::CodedInputStream* stream,
         return -1;
       }
       if (out == nullptr) {
-        stream->Skip(bytes_length);
+        if (!stream->Skip(bytes_length)) {
+          return -1;
+        }
       } else {
         out->resize_uninitialized(bytes_length);
         if (!stream->ReadRaw(out->data(), bytes_length)) {
