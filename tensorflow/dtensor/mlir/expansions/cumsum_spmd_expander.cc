@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <cassert>
 #include <cstdint>
-#include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
