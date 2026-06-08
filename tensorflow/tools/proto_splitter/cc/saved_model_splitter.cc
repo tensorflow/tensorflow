@@ -38,6 +38,7 @@ absl::Status SavedModelSplitter::BuildChunks() {
   SavedModel* sm = google::protobuf::DynamicCastMessage<SavedModel>(message());
   int max_size = GetMaxSize();
   if (GetInitialSize() < max_size) return absl::OkStatus();
+  if (sm->meta_graphs_size() == 0) return absl::OkStatus();
 
   std::vector<FieldType> fields_to_graph_def = {"meta_graphs"s, 0,
                                                 "graph_def"s};
