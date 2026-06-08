@@ -134,6 +134,8 @@ class CustomCallThunk : public TracedCommand {
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  bool requires_warmup() const override { return true; }
+
   const std::string& target_name() const { return target_name_; }
 
   std::optional<XLA_FFI_Handler_Bundle> bundle() const {

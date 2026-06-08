@@ -207,9 +207,9 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
       GetOrCreateCommandBuffer(params.executor, *params.buffer_allocations));
   absl::MutexLock lock(cmd_buffer->mutex);
 
-  // If there are no thunks, or command buffer does not require initialization,
+  // If there are no thunks, or command buffer does not require warmup,
   // we can mark warm up as done immediately.
-  if (!thunks_ || !commands_.requires_initialization()) {
+  if (!thunks_ || !commands_.requires_warmup()) {
     cmd_buffer->warmup_done = true;
   }
 

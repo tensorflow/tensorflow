@@ -162,6 +162,14 @@ class CommandExecutor {
     return requires_initialization;
   }
 
+  bool requires_warmup() const {
+    bool requires_warmup = false;
+    commands_.Walk([&](const Command* command) {
+      requires_warmup |= command->requires_warmup();
+    });
+    return requires_warmup;
+  }
+
   bool support_loop_unroll() const {
     bool support_loop_unroll = true;
     commands_.Walk([&](const Command* command) {
