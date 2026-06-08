@@ -2338,7 +2338,10 @@ cc_library(
         "//third_party/py/jax:__subpackages__",
         ":friends",
     ]),
-    deps = ["@com_google_absl//absl/strings:str_format"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+    ],
 )
 
 xla_cc_test(
