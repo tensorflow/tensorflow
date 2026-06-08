@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "third_party/gloop/util/status/status_macros.h"
 #include "riegeli/bytes/fd_reader.h"  // from @riegeli
 #include "riegeli/records/record_reader.h"  // from @riegeli
 #include "tensorflow/cc/saved_model/constants.h"
@@ -46,8 +47,7 @@ limitations under the License.
 #include "tensorflow/tools/proto_splitter/cc/util.h"
 #include "tensorflow/tools/proto_splitter/chunk.pb.h"
 #include "tensorflow/tools/proto_splitter/merge.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "tsl/platform/protobuf.h"
 // IWYU pragma: no_include "third_party/protobuf/repeated_ptr_field.h"
 // IWYU pragma: no_include "third_party/protobuf/io/coded_stream.h"
 // IWYU pragma: no_include "third_party/protobuf/io/zero_copy_stream_impl_lite.h"
@@ -73,6 +73,7 @@ namespace fingerprinting_utils_internal {
 
 using ::tensorflow::protobuf::Map;
 using ::tensorflow::protobuf::Message;
+// NOLINTNEXTLINE: clang-tidy missing-includes false positive
 using ::tensorflow::protobuf::RepeatedPtrField;
 // NOLINTNEXTLINE: clang-tidy missing-includes false positive
 using ::tensorflow::protobuf::io::CodedOutputStream;
@@ -168,19 +169,17 @@ PruneChunkedMessage(
   // target_fields, and copy over the relevant data.
   for (const ChunkedField& chunked_field : chunked_message.chunked_fields()) {
     for (const auto& target_fields : target_fields_list) {
-      TF_ASSIGN_OR_RETURN(
-          int matches,
-          fieldTagMatches(chunked_field.field_tag(), target_fields));
+      ASSIGN_OR_RETURN(int matches, fieldTagMatches(chunked_field.field_tag(),
+                                                    target_fields));
       if (matches == chunked_field.field_tag_size()) {
         // chunked_field_tags is an initial subsequence of target_fields, which
         // means the chunked_field is relevant and the necessary data should be
         // copied over.
         auto cf = std::make_unique<proto_splitter::ChunkedField>();
         cf->mutable_field_tag()->CopyFrom(chunked_field.field_tag());
-        TF_ASSIGN_OR_RETURN(
-            *cf->mutable_message(),
-            PruneChunkedMessage(chunked_field.message(), reader, chunks_info,
-                                target_fields_list));
+        ASSIGN_OR_RETURN(*cf->mutable_message(),
+                         PruneChunkedMessage(chunked_field.message(), reader,
+                                             chunks_info, target_fields_list));
         pruned_chunked_message.mutable_chunked_fields()->AddAllocated(
             cf.release());
       }
@@ -213,13 +212,13 @@ absl::StatusOr<uint64_t> HashFields(
         chunked_field.field_tag();
     const ChunkedMessage& chunked_message = chunked_field.message();
     // Number of sequential field_tag matches.
-    TF_ASSIGN_OR_RETURN(int matches,
-                        fieldTagMatches(chunked_field_tags, field_tags));
+    ASSIGN_OR_RETURN(int matches,
+                     fieldTagMatches(chunked_field_tags, field_tags));
 
     if (chunked_message.has_chunk_index() && matches == field_tags.size()) {
       // chunked_field_tags are an exact match with field_tags. Hash referenced
       // chunk.
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           std::string chunk,
           ReadChunk(reader, chunks_info[chunked_message.chunk_index()]));
       field_checksum = FingerprintCat64(field_checksum, Fingerprint64(chunk));
@@ -227,38 +226,48 @@ absl::StatusOr<uint64_t> HashFields(
       // chunked_field_tags are an exact match, but chunked_field is further
       // broken down into separate chunked_fields (no chunk_index). Hash those
       // chunked_fields.
-      TF_ASSIGN_OR_RETURN(uint64_t hash,
-                          HashFields(chunked_message, reader, chunks_info,
-                                     field_tags, merged_message));
+      ASSIGN_OR_RETURN(uint64_t hash,
+                       HashFields(chunked_message, reader, chunks_info,
+                                  field_tags, merged_message));
       field_checksum = FingerprintCat64(field_checksum, hash);
     } else if (chunked_message.has_chunk_index() &&
                matches == chunked_field_tags.size()) {
       // chunked_field_tags are a partial match (an initial segment/subsequence
       // of field_tags). Merge chunk in, attempt to locate & hash the target
       // field by recursing.
-      TF_ASSIGN_OR_RETURN(std::vector<Field> fields,
-                          GetFieldTypes(chunked_field_tags));
+      ASSIGN_OR_RETURN(std::vector<Field> fields,
+                       GetFieldTypes(chunked_field_tags));
       for (const auto& field : fields) {
-        TF_ASSIGN_OR_RETURN(MutableFieldResult mfr,
-                            GetMutableField(merged_message, field));
-        merged_message =
-            mfr.parent->GetReflection()->MutableMessage(mfr.parent, mfr.field);
+        ASSIGN_OR_RETURN(MutableFieldResult mfr,
+                         GetMutableField(merged_message, field));
+        if (mfr.field->is_repeated()) {
+          if (mfr.index != -1) {
+            merged_message =
+                mfr.parent->GetReflection()->MutableRepeatedMessage(
+                    mfr.parent, mfr.field, mfr.index);
+          } else {
+            break;
+          }
+        } else {
+          merged_message = mfr.parent->GetReflection()->MutableMessage(
+              mfr.parent, mfr.field);
+        }
       }
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           std::string chunk,
           ReadChunk(reader, chunks_info[chunked_message.chunk_index()]));
       merged_message->ParseFromString(chunk);
-      TF_ASSIGN_OR_RETURN(uint64_t hash,
-                          HashFields(chunked_message, reader, chunks_info,
-                                     field_tags, merged_message));
+      ASSIGN_OR_RETURN(uint64_t hash,
+                       HashFields(chunked_message, reader, chunks_info,
+                                  field_tags, merged_message));
       field_checksum = FingerprintCat64(field_checksum, hash);
     } else if (matches == chunked_field_tags.size()) {
       // chunk_field_tags are a partial match, but chunked_field is broken down.
       // Merge chunked_fields in, attempt to locate & hash target field.
       for (const ChunkedField& cf : chunked_message.chunked_fields()) {
-        TF_ASSIGN_OR_RETURN(uint64_t hash,
-                            HashFields(cf.message(), reader, chunks_info,
-                                       field_tags, merged_message));
+        ASSIGN_OR_RETURN(uint64_t hash,
+                         HashFields(cf.message(), reader, chunks_info,
+                                    field_tags, merged_message));
         field_checksum = FingerprintCat64(field_checksum, hash);
       }
     }
@@ -321,13 +330,13 @@ absl::StatusOr<SavedModel> PrunedSavedModel(
   SavedModel saved_model;
   ChunkMetadata pruned_chunk_metadata;
   pruned_chunk_metadata.mutable_chunks()->CopyFrom(chunk_metadata.chunks());
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       *pruned_chunk_metadata.mutable_message(),
       PruneChunkedMessage(chunk_metadata.message(), reader, chunks_info,
                           {GraphDefFieldTags(), SignatureDefFieldTags(),
                            SavedObjectGraphFieldTags()}));
   // Read into saved_model.
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       Merger::ReadPartial(io::JoinPath(export_dir, kSavedModelFilenamePrefix),
                           pruned_chunk_metadata, &saved_model));
   return saved_model;
@@ -339,7 +348,7 @@ absl::StatusOr<uint64_t> HashMessage(
     const std::vector<ChunkInfo>& chunks_info,
     const RepeatedPtrField<FieldIndex>& field_tags) {
   uint64_t total_message_hash = Fingerprint64(SerializeProto(*message));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       uint64_t message_hash,
       HashFields(chunked_message, reader, chunks_info, field_tags, message));
   return FingerprintCat64(total_message_hash, message_hash);
@@ -375,10 +384,9 @@ absl::StatusOr<uint64_t> HashSignatureDef(
     signature_def_hash =
         FingerprintCat64(signature_def_hash, signature_def_pair_hash);
     SignatureDef signature_def_val = signature_def.second;
-    TF_ASSIGN_OR_RETURN(
-        uint64_t signature_def_entry_hash,
-        HashFields(chunked_message, reader, chunks_info,
-                   SignatureDefFieldTags(), &signature_def_val));
+    ASSIGN_OR_RETURN(uint64_t signature_def_entry_hash,
+                     HashFields(chunked_message, reader, chunks_info,
+                                SignatureDefFieldTags(), &signature_def_val));
     signature_def_hash =
         FingerprintCat64(signature_def_hash, signature_def_entry_hash);
   }
@@ -421,7 +429,7 @@ absl::StatusOr<FingerprintDef> CreateFingerprintDefCpb(
   // Version of the code that produced the fingerprint.
   const int kFingerprintProducer = 2;
 
-  TF_ASSIGN_OR_RETURN(auto reader, GetRiegeliReader(cpb_file));
+  ASSIGN_OR_RETURN(auto reader, GetRiegeliReader(cpb_file));
 
   auto read_metadata = GetChunkMetadata(reader);
   if (!read_metadata.ok()) {
@@ -439,19 +447,18 @@ absl::StatusOr<FingerprintDef> CreateFingerprintDefCpb(
   SavedModel saved_model;
 
   // Set the saved_model_checksum.
-  TF_ASSIGN_OR_RETURN(uint64_t saved_model_hash,
-                      HashFields(chunk_metadata.message(), reader, chunks_info,
-                                 {}, &saved_model));
+  ASSIGN_OR_RETURN(uint64_t saved_model_hash,
+                   HashFields(chunk_metadata.message(), reader, chunks_info, {},
+                              &saved_model));
   saved_model_hash = FingerprintCat64(
       saved_model_hash, Fingerprint64(SerializeProto(saved_model)));
   fingerprint_def.set_saved_model_checksum(saved_model_hash);
 
   // Fill saved_model with only relevant chunk(s).
-  TF_ASSIGN_OR_RETURN(
-      saved_model,
-      PrunedSavedModel(export_dir, reader, chunks_info, chunk_metadata));
+  ASSIGN_OR_RETURN(saved_model, PrunedSavedModel(export_dir, reader,
+                                                 chunks_info, chunk_metadata));
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       uint64_t graph_def_program_hash,
       HashGraphDef(saved_model.mutable_meta_graphs(0)->mutable_graph_def(),
                    chunk_metadata.message(), reader, chunks_info));
@@ -459,13 +466,13 @@ absl::StatusOr<FingerprintDef> CreateFingerprintDefCpb(
 
   // TODO(adamcogdell): HashSignatureDef relies on the signatue_def map being
   // populated with all of its entries, which may not be the case
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       uint64_t signature_def_hash,
       HashSignatureDef(saved_model.meta_graphs(0).signature_def(),
                        chunk_metadata.message(), reader, chunks_info));
   fingerprint_def.set_signature_def_hash(signature_def_hash);
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       uint64_t saved_object_graph_hash,
       HashSavedObjectGraph(
           saved_model.mutable_meta_graphs(0)->mutable_object_graph_def(),

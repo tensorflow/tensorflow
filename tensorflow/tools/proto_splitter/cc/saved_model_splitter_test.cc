@@ -22,7 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "xla/tsl/lib/core/status_test_util.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/tools/proto_splitter/cc/util.h"
 #include "tensorflow/tools/proto_splitter/testdata/test_message.pb.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tools::proto_splitter {
@@ -69,19 +68,41 @@ TEST(SavedModelSplitterTest, TestSplit) {
   int64_t max_size = 80000;
   DebugSetMaxSize(max_size);
 
-  TF_EXPECT_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(),
-                                           NonChunkedSavedModel(), &proto));
+  EXPECT_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(),
+                                        NonChunkedSavedModel(), &proto));
   EXPECT_GE(proto.ByteSizeLong(), GetMaxSize());
 
   SavedModelSplitter splitter(&proto);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto x, splitter.Split());
+  ASSERT_OK_AND_ASSIGN(auto x, splitter.Split());
   std::vector<MessageBytes>* chunks = x.chunks;
   ASSERT_NE(chunks, nullptr);
 
   // Should create a new chunk with the single large constant.
   EXPECT_EQ(2, chunks->size());
   EXPECT_CHUNK_SIZES(chunks, max_size);
+}
+
+TEST(SavedModelSplitterTest, TestNotSavedModel) {
+  GraphDef proto;
+  int64_t max_size = 0;
+  DebugSetMaxSize(max_size);
+
+  SavedModelSplitter splitter(&proto);
+  auto status_or = splitter.Split();
+  EXPECT_FALSE(status_or.ok());
+  EXPECT_EQ(status_or.status().code(), absl::StatusCode::kInvalidArgument);
+}
+
+TEST(SavedModelSplitterTest, TestNoMetaGraphs) {
+  SavedModel proto;
+  int64_t max_size = 0;
+  DebugSetMaxSize(max_size);
+
+  SavedModelSplitter splitter(&proto);
+  auto status_or = splitter.Split();
+  EXPECT_FALSE(status_or.ok());
+  EXPECT_EQ(status_or.status().code(), absl::StatusCode::kFailedPrecondition);
 }
 
 }  // namespace

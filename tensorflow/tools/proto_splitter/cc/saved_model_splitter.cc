@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/tools/proto_splitter/cc/saved_model_splitter.h"
 
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "third_party/gloop/util/status/status_macros.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
@@ -24,27 +26,34 @@ limitations under the License.
 #include "tensorflow/tools/proto_splitter/cc/large_node_splitter.h"
 #include "tensorflow/tools/proto_splitter/cc/max_size.h"
 #include "tensorflow/tools/proto_splitter/cc/util.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/protobuf.h"
 
 namespace tensorflow {
 namespace tools::proto_splitter {
 
-// Required in OSS to prevent string to bool conversion in FieldType variant.
-using namespace std::string_literals;  // NOLINT
+// Explicit std::string conversion is used below to prevent string to bool
+// conversion in FieldType variant.
 
 absl::Status SavedModelSplitter::BuildChunks() {
-  TF_RETURN_IF_ERROR(SetMessageAsBaseChunk());
+  RETURN_IF_ERROR(SetMessageAsBaseChunk());
   SavedModel* sm = google::protobuf::DynamicCastMessage<SavedModel>(message());
   int max_size = GetMaxSize();
   if (GetInitialSize() < max_size) return absl::OkStatus();
 
-  std::vector<FieldType> fields_to_graph_def = {"meta_graphs"s, 0,
-                                                "graph_def"s};
+  if (sm == nullptr) {
+    return absl::InvalidArgumentError("Message is not a SavedModel.");
+  }
+
+  if (sm->meta_graphs_size() == 0) {
+    return absl::FailedPreconditionError("SavedModel has no meta graphs.");
+  }
+
+  std::vector<FieldType> fields_to_graph_def = {std::string("meta_graphs"), 0,
+                                                std::string("graph_def")};
   GraphDefSplitter graph_def_splitter(
       sm->mutable_meta_graphs(0)->mutable_graph_def(), this,
       &fields_to_graph_def);
-  TF_RETURN_IF_ERROR(graph_def_splitter.BuildChunks());
+  RETURN_IF_ERROR(graph_def_splitter.BuildChunks());
 
   if (sm->ByteSizeLong() < max_size) return absl::OkStatus();
 
@@ -53,7 +62,7 @@ absl::Status SavedModelSplitter::BuildChunks() {
       &fields_to_graph_def);
   int index = 1;
   entire_graph_splitter.SetChunkIndex(&index);
-  TF_RETURN_IF_ERROR(entire_graph_splitter.BuildChunks());
+  RETURN_IF_ERROR(entire_graph_splitter.BuildChunks());
 
   return absl::OkStatus();
 }
