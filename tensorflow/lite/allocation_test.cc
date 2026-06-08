@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/allocation.h"
 
 #include <cstddef>
+#include <cstdint>
 
 #if defined(__linux__)
 #include <fcntl.h>
@@ -94,6 +95,10 @@ TEST(MMAPAllocation, TestInvalidSizeAndOffset) {
   MMAPAllocation allocation_excessive_length_with_offset(
       fd, /*offset=*/10, /*length=*/file_size, &error_reporter);
   EXPECT_FALSE(allocation_excessive_length_with_offset.valid());
+
+  MMAPAllocation allocation_integer_overflow(
+      fd, /*offset=*/10, /*length=*/SIZE_MAX - 5, &error_reporter);
+  EXPECT_FALSE(allocation_integer_overflow.valid());
 
   close(fd);
 }
