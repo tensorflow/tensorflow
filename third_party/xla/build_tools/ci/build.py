@@ -44,6 +44,7 @@ _DEFAULT_BAZEL_OPTIONS = dict(
     flaky_test_attempts=3,
     jobs=150,
     bes_upload_mode="fully_async",
+    lockfile_mode="update",
 )
 
 _KW_ONLY_IF_PYTHON310 = {"kw_only": True} if sys.version_info >= (3, 10) else {}
@@ -924,6 +925,7 @@ Build(
         profile="profile.json.gz",
         test_lang_filters="cc,py",
         color="yes",
+        lockfile_mode="update",
     ),
     override_repository=dict(
         xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
@@ -961,6 +963,7 @@ Build(
         profile="profile.json.gz",
         test_lang_filters="cc,py",
         color="yes",
+        lockfile_mode="update",
     ),
     repo_env={"USE_PYWRAP_RULES": "True"},
     extra_setup_commands=(["nvidia-smi"],),

@@ -268,7 +268,7 @@ cc_library(
 # bzl_library(
 #     name = "ifrt_proxy_bzl",
 #     srcs = ["ifrt_proxy.bzl"],
-#     parse_tests = False,
+#     # parse_tests = False,
 #     visibility = ["//visibility:private"],
 #     deps = [
 #         "@rules_cc//cc:core_rules",
@@ -279,7 +279,7 @@ cc_library(
 # bzl_library(
 #     name = "ifrt_proxy_google_bzl",
 #     srcs = ["ifrt_proxy.google.bzl"],
-#     parse_tests = False,
+#     # parse_tests = False,
 #     visibility = ["//visibility:private"],
 #     deps = [
 #         "//devtools/build_cleaner/skylark:build_defs_lib",

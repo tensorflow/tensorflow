@@ -465,6 +465,7 @@ common:windows --host_copt=-D_ENABLE_EXTENDED_ALIGNED_STORAGE
 # runfiles symlink tree to decide what to put into the Python wheel.
 startup --windows_enable_symlinks
 common:windows --enable_runfiles
+common:windows --action_env=BAZEL_NODE_RUNFILES_HELPER=node
 common:windows --nobuild_python_zip
 common:windows --dynamic_mode=off
 

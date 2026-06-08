@@ -83,6 +83,62 @@ def workspace():
         urls = tf_mirror_urls("https://github.com/erenon/bazel_clang_tidy/archive/c4d35e0d0b838309358e57a2efed831780f85cd0.tar.gz"),
     )
 
+    tf_http_archive(
+        name = "tar.bzl",
+        sha256 = "2799dfd43131e872c8f9fed41a547a8c5afd571c5df6b809eab6219d44403872",
+        strip_prefix = "tar.bzl-0.10.5",
+        urls = tf_mirror_urls("https://github.com/bazel-contrib/tar.bzl/releases/download/v0.10.5/tar.bzl-v0.10.5.tar.gz"),
+    )
+
+    tf_http_archive(
+        name = "jq.bzl",
+        sha256 = "7b63435aa19cc6a0cfd1a82fbdf2c7a2f0a94db1a79ff7a4469ffa94286261ab",
+        strip_prefix = "jq.bzl-0.1.0",
+        urls = tf_mirror_urls("https://github.com/bazel-contrib/jq.bzl/releases/download/v0.1.0/jq.bzl-v0.1.0.tar.gz"),
+    )
+
+    tf_http_archive(
+        name = "yq.bzl",
+        sha256 = "b51d82b561a78ab21d265107b0edbf98d68a390b4103992d0b03258bb3819601",
+        strip_prefix = "yq.bzl-0.1.1",
+        urls = tf_mirror_urls("https://github.com/bazel-contrib/yq.bzl/releases/download/v0.1.1/yq.bzl-v0.1.1.tar.gz"),
+    )
+
+    tf_http_archive(
+        name = "aspect_bazel_lib",
+        sha256 = "db7da732db4dece80cd6d368220930950c9306ff356ebba46498fe64e65a3945",
+        strip_prefix = "bazel-lib-2.19.3",
+        urls = tf_mirror_urls("https://github.com/aspect-build/bazel-lib/releases/download/v2.19.3/bazel-lib-v2.19.3.tar.gz"),
+    )
+
+    tf_http_archive(
+        name = "bazel_lib",
+        sha256 = "db7da732db4dece80cd6d368220930950c9306ff356ebba46498fe64e65a3945",
+        strip_prefix = "bazel-lib-2.19.3",
+        urls = tf_mirror_urls("https://github.com/aspect-build/bazel-lib/releases/download/v2.19.3/bazel-lib-v2.19.3.tar.gz"),
+    )
+
+    tf_http_archive(
+        name = "aspect_rules_js",
+        sha256 = "9dd50d3bacb2fe1d4a721098981b70290fe9ac56d3625791f490d2ab94f2cac6",
+        strip_prefix = "rules_js-2.7.0",
+        urls = tf_mirror_urls("https://github.com/aspect-build/rules_js/releases/download/v2.7.0/rules_js-v2.7.0.tar.gz"),
+    )
+
+    tf_http_archive(
+        name = "aspect_rules_esbuild",
+        sha256 = "550e33ddeb86a564b22b2c5d3f84748c6639b1b2b71fae66bf362c33392cbed8",
+        strip_prefix = "rules_esbuild-0.21.0",
+        urls = tf_mirror_urls("https://github.com/aspect-build/rules_esbuild/releases/download/v0.21.0/rules_esbuild-v0.21.0.tar.gz"),
+    )
+
+    tf_http_archive(
+        name = "aspect_rules_ts",
+        sha256 = "6fd16aa24c2e8547b72561ece1c7d307b77a5f98f0402934396f6eefbac59aa2",
+        strip_prefix = "rules_ts-3.7.0",
+        urls = tf_mirror_urls("https://github.com/aspect-build/rules_ts/releases/download/v3.7.0/rules_ts-v3.7.0.tar.gz"),
+    )
+
 # Alias so it can be loaded without assigning to a different symbol to prevent
 # shadowing previous loads and trigger a buildifier warning.
 xla_workspace3 = workspace
