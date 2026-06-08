@@ -20,15 +20,21 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/c/tf_tensor_internal.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/flex/util.h"
 #include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace flex {
@@ -195,6 +201,12 @@ absl::Status SetTfTensorFromTfLite(const TfLiteTensor* tensor,
   // preferable to somehow reuse the buffer.
   BaseTfLiteTensorBuffer* buf;
   if (tensor->type == kTfLiteString) {
+    int64_t num_strings =
+        tensor->data.raw != nullptr ? GetStringCount(tensor) : 0;
+    if (shape.num_elements() != num_strings) {
+      return absl::InvalidArgumentError(
+          "TFLite tensor shape does not match the number of strings.");
+    }
     buf = new StringTfLiteTensorBuffer(tensor);
   } else {
     buf = new TfLiteTensorBuffer(tensor, allow_reusing);
