@@ -145,8 +145,8 @@ bool ReduceDimensionsForBroadcast(const RuntimeShape& input1_shape,
   }
   num_compressed_dims = (num_compressed_dims > 1) ? num_compressed_dims : 1;
 
-  int input1_stride = 1;
-  int input2_stride = 1;
+  size_t input1_stride = 1;
+  size_t input2_stride = 1;
   for (int i = 0; i < MAX_DIM; ++i) {
     compressed_input1_stride[i] = input1_stride;
     input1_stride *= compressed_input1_shape[i];
@@ -1006,34 +1006,42 @@ struct NdArrayDesc {
 
   // The number of *elements* (not bytes) between consecutive indices of each
   // dimension.
-  int strides[N];
+  size_t strides[N];
 };
 
 // DO NOT USE THIS FUNCTION FOR NEW FUNCTIONALITY BEYOND IMPLEMENTING
 // BROADCASTING.
 //
 // Same as Offset(), except takes as NdArrayDesc<N> instead of Dims<N>.
-inline int SubscriptToIndex(const NdArrayDesc<4>& desc, int i0, int i1, int i2,
-                            int i3) {
+inline size_t SubscriptToIndex(const NdArrayDesc<4>& desc, int i0, int i1,
+                               int i2, int i3) {
   TFLITE_DCHECK(i0 >= 0 && i0 < desc.extents[0]);
   TFLITE_DCHECK(i1 >= 0 && i1 < desc.extents[1]);
   TFLITE_DCHECK(i2 >= 0 && i2 < desc.extents[2]);
   TFLITE_DCHECK(i3 >= 0 && i3 < desc.extents[3]);
-  return i0 * desc.strides[0] + i1 * desc.strides[1] + i2 * desc.strides[2] +
-         i3 * desc.strides[3];
+  return static_cast<size_t>(i0) * desc.strides[0] +
+         static_cast<size_t>(i1) * desc.strides[1] +
+         static_cast<size_t>(i2) * desc.strides[2] +
+         static_cast<size_t>(i3) * desc.strides[3];
 }
 
-inline int SubscriptToIndex(const NdArrayDesc<5>& desc, int indexes[5]) {
-  return indexes[0] * desc.strides[0] + indexes[1] * desc.strides[1] +
-         indexes[2] * desc.strides[2] + indexes[3] * desc.strides[3] +
-         indexes[4] * desc.strides[4];
+inline size_t SubscriptToIndex(const NdArrayDesc<5>& desc, int indexes[5]) {
+  return static_cast<size_t>(indexes[0]) * desc.strides[0] +
+         static_cast<size_t>(indexes[1]) * desc.strides[1] +
+         static_cast<size_t>(indexes[2]) * desc.strides[2] +
+         static_cast<size_t>(indexes[3]) * desc.strides[3] +
+         static_cast<size_t>(indexes[4]) * desc.strides[4];
 }
 
-inline int SubscriptToIndex(const NdArrayDesc<8>& desc, int indexes[8]) {
-  return indexes[0] * desc.strides[0] + indexes[1] * desc.strides[1] +
-         indexes[2] * desc.strides[2] + indexes[3] * desc.strides[3] +
-         indexes[4] * desc.strides[4] + indexes[5] * desc.strides[5] +
-         indexes[6] * desc.strides[6] + indexes[7] * desc.strides[7];
+inline size_t SubscriptToIndex(const NdArrayDesc<8>& desc, int indexes[8]) {
+  return static_cast<size_t>(indexes[0]) * desc.strides[0] +
+         static_cast<size_t>(indexes[1]) * desc.strides[1] +
+         static_cast<size_t>(indexes[2]) * desc.strides[2] +
+         static_cast<size_t>(indexes[3]) * desc.strides[3] +
+         static_cast<size_t>(indexes[4]) * desc.strides[4] +
+         static_cast<size_t>(indexes[5]) * desc.strides[5] +
+         static_cast<size_t>(indexes[6]) * desc.strides[6] +
+         static_cast<size_t>(indexes[7]) * desc.strides[7];
 }
 
 // Given the dimensions of the operands for an element-wise binary broadcast,
@@ -1097,7 +1105,7 @@ inline void NdArrayDescsForElementwiseBroadcast(const Dims<N>& input0_dims,
 template <int N>
 TFLITE_NOINLINE void CopyDimsToDesc(const RuntimeShape& input_shape,
                                     NdArrayDesc<N>* desc_out) {
-  int desc_stride = 1;
+  size_t desc_stride = 1;
   for (int i = N - 1; i >= 0; --i) {
     desc_out->extents[i] = input_shape.Dims(i);
     desc_out->strides[i] = desc_stride;
