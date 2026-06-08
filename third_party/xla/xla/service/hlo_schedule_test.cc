@@ -17,16 +17,19 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
@@ -659,6 +662,93 @@ ENTRY %test (arg.0: (f32[], f32[])) -> f32[] {
   ASSERT_IS_NOT_OK(module->schedule().Verify());
   ASSERT_OK(module->schedule().Update());
   ASSERT_OK(module->schedule().Verify());
+}
+
+TEST_F(HloScheduleTest, VerifyFailsOnMissingOperandInSchedule) {
+  const std::string module_str = R"(
+HloModule TestModule
+
+ENTRY main {
+  a = f32[] parameter(0)
+  ROOT neg = f32[] negate(a)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(module_str));
+  TF_ASSERT_OK_AND_ASSIGN(
+      HloSchedule schedule,
+      ScheduleModule(module.get(), &alias_info_, [](const BufferValue& buffer) {
+        return ShapeUtil::ByteSizeOf(buffer.shape());
+      }));
+
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* neg = entry->root_instruction();
+
+  // Create a dummy instruction that is NOT in the computation.
+  auto dummy =
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f));
+
+  // Replace operand 0 of `neg` (which is `a`) with `dummy`.
+  TF_ASSERT_OK(neg->ReplaceOperandWith(0, dummy.get()));
+
+  // Verify should fail gracefully instead of crashing.
+  absl::Status status = schedule.Verify();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              ::testing::HasSubstr("is not in the schedule / computation"));
+}
+
+TEST_F(HloScheduleTest, VerifyFailsOnMissingControlPredecessorInSchedule) {
+  const std::string module_str = R"(
+HloModule TestModule
+
+ENTRY main {
+  a = f32[] parameter(0)
+  ROOT neg = f32[] negate(a)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(module_str));
+  TF_ASSERT_OK_AND_ASSIGN(
+      HloSchedule schedule,
+      ScheduleModule(module.get(), &alias_info_, [](const BufferValue& buffer) {
+        return ShapeUtil::ByteSizeOf(buffer.shape());
+      }));
+
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* old_neg = entry->root_instruction();
+  HloInstruction* a = entry->parameter_instruction(0);
+
+  // Create a dummy instruction that is NOT in the computation.
+  auto dummy =
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f));
+
+  // Create a new root instruction that is not yet in the computation.
+  auto new_neg_ptr = HloInstruction::CreateUnary(ShapeUtil::MakeShape(F32, {}),
+                                                 HloOpcode::kNegate, a);
+  HloInstruction* new_neg = new_neg_ptr.get();
+
+  // Add control dependency from `dummy` to `new_neg`.
+  // This is allowed because both have parent `nullptr`.
+  TF_ASSERT_OK(dummy->AddControlDependencyTo(new_neg));
+
+  // Add `new_neg` to the computation.
+  HloInstruction* neg_in_comp = entry->AddInstruction(std::move(new_neg_ptr));
+
+  // Replace the old root instruction with `neg_in_comp`.
+  entry->set_root_instruction(neg_in_comp);
+
+  // Update the schedule to replace `old_neg` with `neg_in_comp`.
+  schedule.replace_instruction(entry, old_neg, neg_in_comp);
+
+  // Remove the old root instruction.
+  TF_ASSERT_OK(entry->RemoveInstruction(old_neg));
+
+  // Verify should fail gracefully instead of crashing.
+  absl::Status status = schedule.Verify();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              ::testing::HasSubstr("is not in the schedule / computation"));
 }
 }  // namespace
 }  // namespace xla
