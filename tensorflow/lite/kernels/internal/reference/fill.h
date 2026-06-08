@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_FILL_H_
 
 #include <cmath>
+#include <cstddef>
 
 #include "tensorflow/lite/kernels/internal/types.h"
 
@@ -26,8 +27,11 @@ template <typename T>
 void Fill(const RuntimeShape& value_shape, const T* value_data,
           const RuntimeShape& output_shape, T* output_data) {
   TFLITE_DCHECK_EQ(value_shape.DimensionsCount(), 0);
-  const int flat_size = output_shape.FlatSize();
-  for (int i = 0; i < flat_size; ++i) {
+  size_t flat_size = 0;
+  if (!output_shape.CheckedFlatSize(flat_size)) {
+    return;
+  }
+  for (size_t i = 0; i < flat_size; ++i) {
     output_data[i] = *value_data;
   }
 }
