@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {

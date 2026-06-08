@@ -265,6 +265,7 @@ xla_cc_test(
     srcs = ["fusion_emitter_shared_dialect_test.cc"],
     tags = ["no_mac"],
     deps = [
+        "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen/triton:xtile_test_base",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
