@@ -20,6 +20,7 @@ limitations under the License.
 #include <set>
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/lite/delegates/gpu/common/kernel_info.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"

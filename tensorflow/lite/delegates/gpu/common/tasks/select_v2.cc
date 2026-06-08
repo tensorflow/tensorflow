@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/select_v2.h"
 
 #include <string>
-#include <utility>
 
 namespace tflite {
 namespace gpu {
