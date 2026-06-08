@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/sorted_range.h"
+#include "xla/xla_data.pb.h"
 
 namespace stream_executor {
 
