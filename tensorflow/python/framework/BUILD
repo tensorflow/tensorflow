@@ -3,7 +3,6 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
-load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -50,6 +49,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:null_file_system",
     ],
+    alwayslink = 1,
 )
 
 stripped_cc_info(
