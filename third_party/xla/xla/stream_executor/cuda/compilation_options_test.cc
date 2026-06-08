@@ -31,6 +31,7 @@ TEST(CompilationOptionsTest, HashAndComparison) {
   options2.cancel_if_reg_spill = true;
   options2.generate_line_info = true;
   options2.generate_debug_info = true;
+  options2.additional_ptxas_flags = {"--verbose"};
   EXPECT_NE(options1, options2);
 
   absl::flat_hash_set<CompilationOptions> options_set;
@@ -47,10 +48,12 @@ TEST(CompilationOptionsTest, Stringify) {
   options.generate_line_info = true;
   options.generate_debug_info = false;
   options.dump_compilation_log = true;
+  options.additional_ptxas_flags = {"--verbose", "--warn-on-spills"};
   EXPECT_EQ(absl::StrCat(options),
             "disable_optimizations: true, cancel_if_reg_spill: false, "
             "generate_line_info: true, generate_debug_info: false, "
-            "dump_compilation_log: true");
+            "dump_compilation_log: true, additional_ptxas_flags: [--verbose, "
+            "--warn-on-spills]");
 }
 
 }  // namespace
