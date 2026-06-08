@@ -468,16 +468,13 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  // Currently failing in experimental tiling due to the unsupported reshape.
-  bool expected_fuse = !GetParam();
   ASSERT_OK_AND_ASSIGN(bool fused, fusion_rewriter_.Run(module.get()));
-  EXPECT_EQ(fused, expected_fuse);
-  if (expected_fuse) {
-    EXPECT_TRUE(verifier().Run(module.get()).status().ok());
-    EXPECT_THAT(module->entry_computation()->root_instruction(),
-                GmockMatch(m::Fusion(m::Parameter())
-                               .WithPredicate(HasBlockLevelFusionConfig)));
-  }
+  EXPECT_TRUE(fused);
+  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::Fusion(m::Parameter()).WithPredicate(HasBlockLevelFusionConfig)));
 }
 
 TEST_P(SoftmaxRewriterTritonTest,

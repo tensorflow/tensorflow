@@ -735,10 +735,7 @@ TEST_F(TilePropagationTest, CanNotPropagateThroughBitcastReshapeOp) {
   )");
   auto tiling_space = TilingSpace::Create(
       *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
-  EXPECT_THAT(PropagateTileToInput(
-                  *tiling_space, *root,
-                  GetTestTile(*tiling_space, root->shape().dimensions()), 0),
-              StatusIs(absl::StatusCode::kUnimplemented));
+  ASSERT_OK(tiling_space->AssignTileSizes({2, 2, 2}));
   EXPECT_THAT(PropagateTileToInput(
                   *tiling_space, *root,
                   GetTestTile(*tiling_space, root->shape().dimensions()), 0),
@@ -755,9 +752,35 @@ TEST_F(TilePropagationTest, CanNotPropagateThroughBitcastTrtInput) {
   )");
   auto tiling_space = TilingSpace::Create(
       *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  ASSERT_OK(tiling_space->AssignTileSizes({2, 2, 2}));
   EXPECT_THAT(PropagateTileToInput(
                   *tiling_space, *root,
                   GetTestTile(*tiling_space, root->shape().dimensions()), 0),
+              StatusIs(absl::StatusCode::kUnimplemented));
+}
+
+TEST_F(TilePropagationTest, AllowSymbolicTilingOfRehsapeButRejectsConcrete) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[4, 4, 4, 4] parameter(0)
+      ROOT bitcast = f32[256] bitcast(p0)
+    }
+  )");
+  auto tiling_space = TilingSpace::Create(
+      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+
+  // Before AssignTileSizes: ACCEPTED as the tiling space is symbolic.
+  EXPECT_TRUE(PropagateTileToInput(*tiling_space, *root,
+                                   tiling_space->tiled_roots()[0], 0)
+                  .ok());
+
+  // After AssignTileSizes: REJECTED as "Multiple dimensions are partially tiled
+  // tile_size [1, 1, 3, 2], dims [4, 4, 4, 4]".
+  ASSERT_OK(tiling_space->AssignTileSizes({10}));
+  Tile input_tile = tiling_space->tiled_roots()[0];
+  input_tile.Simplify();
+  EXPECT_THAT(PropagateTileToInput(*tiling_space, *root, input_tile, 0),
               StatusIs(absl::StatusCode::kUnimplemented));
 }
 

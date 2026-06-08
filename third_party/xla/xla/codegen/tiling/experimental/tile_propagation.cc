@@ -985,6 +985,12 @@ absl::Status PropagateTileThroughMinimalReshape(
 
       target_dim_tiles[target_id].Simplify(tiling_space);
 
+      if (tiling_space.IsSymbolic()) {
+        VLOG(2) << "Skipping reshape contiguity check as tile sizes are not "
+                   "assigned yet.";
+        return absl::OkStatus();
+      }
+
       return VerifyReshapeContiguity(
           minimal_reshape, absl::MakeSpan(&target_dim_tiles[target_id], 1),
           source_info.tiles, source_info.dims);
@@ -1008,6 +1014,12 @@ absl::Status PropagateTileThroughMinimalReshape(
         target_dim_tiles[target_id].upper_bound = upper_bounds_inclusive[i] + 1;
         target_dim_tiles[target_id].Simplify(tiling_space);
         target_info.tiles[i] = target_dim_tiles[target_id];
+      }
+
+      if (tiling_space.IsSymbolic()) {
+        VLOG(2) << "Skipping reshape contiguity check as tile sizes are not "
+                   "assigned yet.";
+        return absl::OkStatus();
       }
 
       return VerifyReshapeContiguity(minimal_reshape, source_info.tiles,
