@@ -54,6 +54,7 @@ class LegacyGpuAotCompilationResult : public CompiledModule {
   static absl::StatusOr<std::unique_ptr<LegacyGpuAotCompilationResult>>
   FromModule(const HloModule* hlo_module,
              BufferAssignmentProto buffer_assignment_proto,
+             std::string buffer_allocations_debug_summary,
              absl::string_view asm_text, absl::Span<const uint8_t> binary,
              const BinaryMap& dnn_compiled_graphs, int pointer_size,
              Compiler* compiler);
