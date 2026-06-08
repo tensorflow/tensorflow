@@ -18,6 +18,10 @@ single_version_override(
 
 bazel_dep(name = "nlohmann_json", version = "3.12.0.bcr.1", repo_name = "nlohmann_json_lib")
 bazel_dep(name = "abseil-py", version = "2.1.0", repo_name = "absl_py")
+bazel_dep(name = "aspect_bazel_lib", version = "2.19.3")
+bazel_dep(name = "aspect_rules_esbuild", version = "0.21.0")
+bazel_dep(name = "aspect_rules_js", version = "2.7.0")
+bazel_dep(name = "aspect_rules_ts", version = "3.7.0")
 bazel_dep(name = "rules_python", version = "1.6.1")
 bazel_dep(name = "rules_shell", version = "0.6.1")
 bazel_dep(name = "bazel_skylib", version = "1.8.1")

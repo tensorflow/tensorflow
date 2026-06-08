@@ -1,8 +1,11 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
+load("@aspect_bazel_lib//lib:repositories.bzl", "register_copy_directory_toolchains", "register_copy_to_directory_toolchains")
+load("@aspect_rules_esbuild//esbuild:repositories.bzl", "LATEST_ESBUILD_VERSION", "esbuild_register_toolchains")
 load("@com_github_grpc_grpc//bazel:grpc_deps.bzl", "grpc_deps")
 load("@com_google_benchmark//:bazel/benchmark_deps.bzl", "benchmark_deps")
 load("@io_bazel_rules_closure//closure:defs.bzl", "closure_repositories")
+load("@rules_nodejs//nodejs:repositories.bzl", "DEFAULT_NODE_VERSION", "nodejs_register_toolchains")
 load("@rules_pkg//:deps.bzl", "rules_pkg_dependencies")
 load("@xla//third_party/llvm:setup.bzl", "llvm_setup")
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
@@ -18,6 +21,16 @@ def workspace(with_rules_cc = True):
     llvm_setup(name = "llvm-project")
     native.register_toolchains("@local_config_python//:py_toolchain")
     rules_pkg_dependencies()
+    nodejs_register_toolchains(
+        name = "nodejs",
+        node_version = DEFAULT_NODE_VERSION,
+    )
+    register_copy_directory_toolchains()
+    register_copy_to_directory_toolchains()
+    esbuild_register_toolchains(
+        name = "esbuild",
+        esbuild_version = LATEST_ESBUILD_VERSION,
+    )
 
     closure_repositories()
 
