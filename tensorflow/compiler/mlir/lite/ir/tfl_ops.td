@@ -1026,9 +1026,9 @@ def TFL_CosOp: TFL_Op<"cos", [
     Computes element-wise Cosine of input
   }];
 
-  let arguments = (ins TFL_FpTensor:$x);
+  let arguments = (ins TFL_TensorOf<[F32, F16]>:$x);
 
-  let results = (outs TFL_FpTensor:$y);
+  let results = (outs TFL_TensorOf<[F32, F16]>:$y);
 
   let hasFolder = 1;
 

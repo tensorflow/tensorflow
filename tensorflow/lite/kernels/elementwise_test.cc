@@ -199,6 +199,17 @@ TEST(ElementWise, Cos) {
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
 }
 
+TEST(ElementWise, CosHalf) {
+  ElementWiseOpModel<half> m(BuiltinOperator_COS, {1, 1, 4, 1});
+  m.PopulateTensor<half>(m.input(), {0, 3.1415926, -3.1415926, 1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<half>(m.output()),
+              ElementsAreArray(ArrayFloatNear(
+                  {1, -1, -1, 0.54030},
+                  static_cast<float>(NumericLimits<half>::epsilon()) * 10)));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+}
+
 TEST(ElementWise, Log) {
   ElementWiseOpFloatModel m(BuiltinOperator_LOG, {1, 1, 4, 1});
   m.PopulateTensor<float>(m.input(), {1, 3.1415926, 1, 1});

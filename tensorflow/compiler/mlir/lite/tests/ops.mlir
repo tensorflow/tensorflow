@@ -16,7 +16,7 @@ func.func @testCos(tensor<? x f32>) -> tensor<? x f32> {
 // test invalid Cos input
 func.func @testCosWithWrongInputType(tensor<?xi32>) -> tensor<?xi32> {
 ^bb0(%arg0: tensor<?xi32>):
-  // expected-error @+1 {{tfl.cos' op operand #0 must be tensor of 32-bit float values}}
+  // expected-error @+1 {{tfl.cos' op operand #0 must be tensor of 32-bit float or 16-bit float values}}
   %0 = "tfl.cos"(%arg0): (tensor<?xi32>) -> tensor<?xi32>
   func.return %0#0 : tensor<?xi32>
 }
