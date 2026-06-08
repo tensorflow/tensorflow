@@ -105,3 +105,24 @@ xla_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+xla_test(
+    name = "output_buffer_debug_test",
+    srcs = ["output_buffer_debug_test.cc"],
+    backends = [
+        "h100",
+    ],
+    deps = [
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/base:log_severity",
+        "@com_google_absl//absl/log:scoped_mock_log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
