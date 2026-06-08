@@ -605,7 +605,7 @@ bool VerifyMulOpShapeConstraints(MulOp op) {
   if (IsI32Type(element_type) || IsUI32Type(element_type) ||
       IsI64Type(element_type) || IsQI16Type(element_type) ||
       IsI16Type(element_type) || mlir::isa<ComplexType>(element_type) ||
-      element_type.isF32()) {
+      element_type.isF32() || element_type.isF16()) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
         /*max_bcast_rank=*/6);

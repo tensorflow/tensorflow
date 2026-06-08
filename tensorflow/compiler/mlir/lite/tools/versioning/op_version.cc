@@ -316,6 +316,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_MUL:
+      if (!op_sig.inputs.empty() &&
+          op_sig.inputs.at(0).type == kTfLiteFloat16) {
+        return 8;
+      }
       // Version 7 supports int16 and uint32 inputs
       if ((op_sig.inputs.at(0).type == kTfLiteInt16 &&
            !op_sig.ext_options.mul.input_quantized) ||
