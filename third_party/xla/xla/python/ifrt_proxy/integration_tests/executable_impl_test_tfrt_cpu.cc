@@ -24,6 +24,8 @@ int main(int argc, char** argv) {
   const std::string disabled[] = {
       // Neither IFRT Proxy nor PjRt CPU does not support `GetHloModules`.
       "*LoadedExecutableImplTest.GetHloModules*",
+      // ExecuteBundle is not implemented.
+      "*CompileAndExecuteBundle*",
       // CPU backend does not support serialization.
       "*SerializeAndLoad*",
   };
