@@ -591,8 +591,9 @@ bool IsCubSortFasterOnA100(int bitwidth, int batch_size, int num_elements,
 
 // Returns whether a compatible sort should be rewritten based on the current
 // sort mode and possibly a heuristic.
-bool ShouldRewriteCompatibleSort(se::DeviceDescription device_description,
-                                 const HloSortInstruction* sort_op) {
+bool ShouldRewriteCompatibleSort(
+    const se::DeviceDescription& device_description,
+    const HloSortInstruction* sort_op) {
   if (SortRewriter::SortMode() == SortRewriter::Mode::kAlways) {
     return true;
   }
