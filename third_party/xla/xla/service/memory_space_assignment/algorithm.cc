@@ -215,6 +215,42 @@ bool LooksLikeAnActivation(const HloInstruction* inst, bool permissive_mode) {
   return false;
 }
 
+// Returns true if the use value does not live out of the module. The value
+// lives out if it is the root or it aliases with another value that lives out.
+// We recurse to detect the latter case.
+bool UseDoesNotLiveOut(const HloUse& use,
+                       const HloAliasAnalysis& alias_analysis,
+                       const AliasInfo* alias_info,
+                       const HloInstruction* root_instruction) {
+  if (use.instruction == root_instruction &&
+      (use.instruction->opcode() == HloOpcode::kTuple ||
+       use.instruction->opcode() == HloOpcode::kBitcast)) {
+    return false;
+  }
+  auto in_place_pairs = alias_info->GetInPlaceInputOutputPairs(use.instruction);
+  return absl::c_all_of(
+      in_place_pairs,
+      [&](const std::pair<HloOperandIndex, ShapeIndex>& in_place_pair) {
+        if (in_place_pair.first.operand_number == use.operand_number &&
+            in_place_pair.first.operand_index == use.operand_index) {
+          if (use.instruction == root_instruction) {
+            return false;
+          }
+          for (const HloUse& nested_use :
+               alias_analysis.dataflow_analysis()
+                   .GetUniqueValueAt(use.instruction, in_place_pair.second)
+                   .GetUses()) {
+            if (nested_use != use &&
+                !UseDoesNotLiveOut(nested_use, alias_analysis, alias_info,
+                                   root_instruction)) {
+              return false;
+            }
+          }
+        }
+        return true;
+      });
+}
+
 // Filters out buffer uses that cannot use the cross-program prefetch due to
 // aliasing with program output.
 std::vector<HloUse> FindCrossProgramPrefetchUses(
@@ -224,45 +260,17 @@ std::vector<HloUse> FindCrossProgramPrefetchUses(
   if (buffer_uses.empty()) {
     return uses;
   }
-  const HloInstruction* root_instruction = buffer_uses.at(0)
+
+  const HloInstruction* root_instruction = buffer_uses.front()
                                                .instruction->GetModule()
                                                ->entry_computation()
                                                ->root_instruction();
-  // This function returns true if the use value does not live out of the
-  // module. The value lives out if it is the root or it aliases with another
-  // value that lives out. We recurse to detect the latter case.
-  std::function<bool(const HloUse&)> use_does_not_live_out =
-      [&](const HloUse& use) {
-        if (use.instruction == root_instruction &&
-            (use.instruction->opcode() == HloOpcode::kTuple ||
-             use.instruction->opcode() == HloOpcode::kBitcast)) {
-          return false;
-        }
-        auto in_place_pairs =
-            alias_info->GetInPlaceInputOutputPairs(use.instruction);
-        return absl::c_all_of(
-            in_place_pairs,
-            [&](const std::pair<HloOperandIndex, ShapeIndex>& in_place_pair) {
-              if (in_place_pair.first.operand_number == use.operand_number &&
-                  in_place_pair.first.operand_index == use.operand_index) {
-                if (use.instruction == root_instruction) {
-                  return false;
-                }
-                for (const HloUse& nested_use :
-                     alias_analysis.dataflow_analysis()
-                         .GetUniqueValueAt(use.instruction,
-                                           in_place_pair.second)
-                         .GetUses()) {
-                  if (nested_use != use && !use_does_not_live_out(nested_use)) {
-                    return false;
-                  }
-                }
-              }
-              return true;
-            });
-      };
 
-  absl::c_copy_if(buffer_uses, std::back_inserter(uses), use_does_not_live_out);
+  absl::c_copy_if(buffer_uses, std::back_inserter(uses),
+                  [&](const HloUse& use) {
+                    return UseDoesNotLiveOut(use, alias_analysis, alias_info,
+                                             root_instruction);
+                  });
   return uses;
 }
 
@@ -7850,19 +7858,18 @@ absl::Status MsaAlgorithm::WindowPrefetch() {
   // Determine which instructions are window-prefetchable. Use the
   // caller-provided functor if available, otherwise fall back to the default
   // logic: output fusions and loop fusions not on sparsecore.
-  auto is_window_prefetchable =
-      options_.is_window_prefetchable_instruction_fn
-          ? options_.is_window_prefetchable_instruction_fn
-          : [](const HloInstruction* instruction) {
-              if (!instruction->IsOutputFusion() &&
-                  !instruction->IsLoopFusion()) {
-                return false;
-              }
-              if (instruction->parent()->execution_thread() == "sparsecore") {
-                return false;
-              }
-              return true;
-            };
+  auto is_window_prefetchable = [&](const HloInstruction* instruction) {
+    if (!instruction->IsOutputFusion() && !instruction->IsLoopFusion()) {
+      return false;
+    }
+    if (instruction->parent()->execution_thread() == "sparsecore") {
+      return false;
+    }
+    if (options_.is_window_prefetchable_instruction_fn) {
+      return options_.is_window_prefetchable_instruction_fn(instruction);
+    }
+    return true;
+  };
 
   for (HloInstruction* instruction : instruction_sequence) {
     if (!is_window_prefetchable(instruction)) {
