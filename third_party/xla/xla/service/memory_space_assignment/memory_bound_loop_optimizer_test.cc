@@ -520,8 +520,8 @@ ENTRY Entry {
       RETURN_IF_ERROR(Initialize(module, alternate_memory_size));
     }
     CostAnalysis::Cache cache;
-    MemoryBoundednessBufferIntervalComparator comparator(*cost_analysis_,
-                                                         &cache);
+    MemoryBoundednessBufferSorterProvider provider(*cost_analysis_, &cache);
+    ProviderBufferIntervalComparator comparator(provider);
     options_.buffer_interval_comparator = &comparator;
     CostAnalysisPrefetchIntervalPicker prefetch_interval_picker(
         CostAnalysisPrefetchIntervalPicker(

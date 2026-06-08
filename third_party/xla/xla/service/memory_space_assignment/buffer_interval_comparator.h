@@ -21,6 +21,8 @@ limitations under the License.
 #include <tuple>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
@@ -66,46 +68,105 @@ class BufferIntervalComparator {
   BufferIntervalComparator() = default;
 };
 
-// A BufferIntervalComparator that utilizes MemoryBoundedness as its primary
-// sorting criteria.
+// Interface for providing the tuple used to sort MsaBufferIntervals.
 //
-// This comparator caches HloValues -> latest use time.
-class MemoryBoundednessBufferIntervalComparator
-    : public BufferIntervalComparator {
+// This abstraction separates the definition of a buffer's sorting criteria from
+// the comparator mechanism itself. This is designed to enable an Agent via an
+// API to seamlessly inject custom tensor sorting policies. An Agent
+// implementing this interface only needs to return a scoring tuple, while
+// ProviderBufferIntervalComparator automatically handles the `<` comparison
+// between pairs of buffer intervals.
+template <typename TupleType>
+class BufferSorterProvider {
  public:
-  MemoryBoundednessBufferIntervalComparator(
-      const CostAnalysis& cost_analysis,
-      CostAnalysis::Cache* cost_analysis_cache);
+  virtual ~BufferSorterProvider() = default;
+  // A logging string explaining the sorting criteria. E.g., [ -size, offset ]
+  virtual std::string DescribeComparisonCriteria() const = 0;
+  // Returns the full comparison tuple used to sort buffer intervals.
+  virtual TupleType GetBufferSortingTuple(
+      const MsaBufferInterval& buffer_interval) = 0;
+};
 
-  MemoryBoundednessBufferIntervalComparator(
-      const CostAnalysis& cost_analysis,
-      CostAnalysis::Cache* cost_analysis_cache,
-      MsaSortOrderOverrides msa_sort_order_overrides);
-
-  ~MemoryBoundednessBufferIntervalComparator() override = default;
-
-  std::string DescribeComparisonCriteria() const override;
-  std::string CriteriaToString(
-      const MsaBufferInterval& buffer_interval) override;
-  bool LessThan(const MsaBufferInterval& lhs,
-                const MsaBufferInterval& rhs) override;
-
- private:
-  // See the value returned by DescribeComparisonCriteria() for the meaning of
-  // each tuple element.
+// A BufferSorterProvider that utilizes memory boundedness as its primary
+// sorting criterion.
+//
+// Specifically, the sorting tuple is defined as follows:
+// 1. int64_t: Override priority (higher priority sorts earlier).
+// 2. float: Inverse memory boundedness (-1.0 * memory_boundedness; higher
+//    boundedness sorts earlier).
+// 3. int64_t: Inverse buffer size (-1 * size; larger buffers sort earlier).
+// 4. int64_t: Inverse buffer duration (start - end; longer duration sorts
+//    earlier).
+// 5. int64_t: Latest use time (buffers used later sort earlier).
+// 6. int64_t: Buffer start time (buffers starting earlier sort earlier).
+// 7. BufferValue::Id: Buffer ID (deterministic tie-breaker).
+class MemoryBoundednessBufferSorterProvider
+    : public BufferSorterProvider<
+          std::tuple<int64_t, float, int64_t, int64_t, int64_t, int64_t,
+                     BufferValue::Id>> {
+ public:
   using ComparisonTuple = std::tuple<int64_t, float, int64_t, int64_t, int64_t,
                                      int64_t, BufferValue::Id>;
 
-  ComparisonTuple GetTuple(const MsaBufferInterval& buffer_interval);
+  MemoryBoundednessBufferSorterProvider(
+      const CostAnalysis& cost_analysis,
+      CostAnalysis::Cache* cost_analysis_cache,
+      MsaSortOrderOverrides msa_sort_order_overrides = {});
+
+  ~MemoryBoundednessBufferSorterProvider() override = default;
+
+  std::string DescribeComparisonCriteria() const override;
+  ComparisonTuple GetBufferSortingTuple(
+      const MsaBufferInterval& buffer_interval) override;
+
+ private:
   int64_t GetLatestUseTime(const MsaBufferInterval& buffer_interval);
+
   absl::flat_hash_map<const HloValue*, int64_t> buffer_to_latest_use_;
   const CostAnalysis& cost_analysis_;
   CostAnalysis::Cache* cost_analysis_cache_;
-
-  // Config to override alternate memory assignment sorting order for filtered
-  // buffers.
   MsaSortOrderOverrides msa_sort_order_overrides_;
 };
+
+// A BufferIntervalComparator that utilizes a BufferSorterProvider as its
+// sorting criteria.
+template <typename TupleType>
+class ProviderBufferIntervalComparator : public BufferIntervalComparator {
+ public:
+  explicit ProviderBufferIntervalComparator(
+      BufferSorterProvider<TupleType>& buffer_sorter_provider)
+      : BufferIntervalComparator(),
+        buffer_sorter_provider_(buffer_sorter_provider) {}
+
+  ~ProviderBufferIntervalComparator() override = default;
+
+  std::string DescribeComparisonCriteria() const override {
+    return buffer_sorter_provider_.DescribeComparisonCriteria();
+  }
+
+  std::string CriteriaToString(
+      const MsaBufferInterval& buffer_interval) override {
+    return absl::StrCat(
+        "[ ",
+        absl::StrJoin(
+            buffer_sorter_provider_.GetBufferSortingTuple(buffer_interval),
+            ", "),
+        " ]");
+  }
+
+  bool LessThan(const MsaBufferInterval& lhs,
+                const MsaBufferInterval& rhs) override {
+    return buffer_sorter_provider_.GetBufferSortingTuple(lhs) <
+           buffer_sorter_provider_.GetBufferSortingTuple(rhs);
+  }
+
+ private:
+  BufferSorterProvider<TupleType>& buffer_sorter_provider_;
+};
+
+template <typename ProviderType>
+ProviderBufferIntervalComparator(ProviderType&)
+    -> ProviderBufferIntervalComparator<typename ProviderType::ComparisonTuple>;
 
 // The default BufferIntervalComparator used for cross-program prefetching.
 //
