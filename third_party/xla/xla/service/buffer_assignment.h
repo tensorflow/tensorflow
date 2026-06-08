@@ -443,6 +443,11 @@ class BufferAssignment {
     return allocations_;
   }
 
+  // Moves out the allocations, consuming the BufferAssignment.
+  std::vector<BufferAllocation> TakeAllocations() && {
+    return std::move(allocations_);
+  }
+
   // Returns the total size allocation holding all temporary buffers.
   int64_t temp_allocation_total_size() const {
     return temp_allocation_total_size_;
