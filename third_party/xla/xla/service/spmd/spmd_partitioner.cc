@@ -6556,9 +6556,8 @@ absl::Status SpmdPartitioner::ConvertUnreducedSharding(
             } else {
               ASSIGN_OR_RETURN(subsharding, convert_unreduced_subgroup_sharding(
                                                 hlo, subsharding));
-
-              should_convert = true;
             }
+            should_convert = true;
           } else if (subsharding.IsUnreduced()) {
             subsharding = convert_unreduced_sharding(hlo);
             should_convert = true;

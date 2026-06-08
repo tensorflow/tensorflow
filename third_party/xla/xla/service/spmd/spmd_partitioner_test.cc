@@ -17727,6 +17727,25 @@ ENTRY entry {
       Each(op::Sharding("{mesh['x'=2,'y'=2] [{?},{'x'}], unreduced={'y'}}")));
 }
 
+TEST_F(SpmdPartitioningV3Test, TupleSubgroupUnreducedParamV3) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  a = (f32[8]{0}, f32[8]{0}) parameter(0), sharding={{mesh['x'=2] [], unreduced={'x'}}, {mesh['x'=2] [], unreduced={'x'}}}
+  gte0 = f32[8]{0} get-tuple-element(a), index=0
+  gte1 = f32[8]{0} get-tuple-element(a), index=1
+  c0 = f32[8]{0} copy(gte0), sharding={mesh['x'=2] []}
+  c1 = f32[8]{0} copy(gte1), sharding={mesh['x'=2] []}
+  ROOT tuple = (f32[8]{0}, f32[8]{0}) tuple(c0, c1)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  EXPECT_THAT(module->entry_computation()->parameter_instructions(),
+              Each(op::Sharding("{{mesh['x'=2] [], unreduced={'x'}}, "
+                                "{mesh['x'=2] [], unreduced={'x'}}}")));
+}
+
 TEST_F(SpmdPartitioningV3Test, PatternMatchMergeNamedSharding) {
   absl::string_view hlo_string = R"(
 HloModule module
