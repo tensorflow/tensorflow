@@ -2688,6 +2688,43 @@ LogicalResult SubcoreIdOp::verify() {
   }
   return success();
 }
+
+LogicalResult EXMYFloatSpecAttr::verify(
+    function_ref<InFlightDiagnostic()> emitError, int64_t exponent_width,
+    int64_t mantissa_width, int64_t bias, bool satfinite,
+    SpecialValuesAttr special_values) {
+  int64_t total_width =
+      exponent_width + mantissa_width + 1;  // +1 for the sign bit.
+  if (total_width > 8) {
+    return emitError() << "Float spec width must be <= 8, got " << total_width
+                       << " (exponent: " << exponent_width
+                       << ", mantissa: " << mantissa_width << ")";
+  }
+  return success();
+}
+
+LogicalResult EXMYType::verify(function_ref<InFlightDiagnostic()> emitError,
+                               Type underlying_type,
+                               EXMYFloatSpecAttr float_spec) {
+  if (underlying_type != nullptr && float_spec == nullptr) {
+    if (!underlying_type.isIntOrFloat() ||
+        underlying_type.getIntOrFloatBitWidth() > 8) {
+      return emitError() << "Underlying type must be an integer or float type "
+                            "with bitwidth <= 8, got "
+                         << underlying_type;
+    }
+    if (underlying_type.isInteger() && underlying_type.isSignlessInteger()) {
+      return emitError()
+             << "Underlying type must not be a signless integer type";
+    }
+  } else if (float_spec != nullptr && underlying_type == nullptr) {
+  } else {
+    return emitError()
+           << "Exactly one of underlying type or float spec must be specified";
+  }
+  return success();
+}
+
 }  // namespace tpu
 }  // namespace mlir
 
