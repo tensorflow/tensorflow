@@ -15,16 +15,17 @@ limitations under the License.
 
 #include "xla/tpu/proto_helper.h"
 
+#include "absl/base/nullability.h"
 #include "absl/log/check.h"
 #include "xla/tpu/c_api_decl.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 extern "C" {
 
-void StreamExecutor_Tpu_FreeSerializedProto(const TpuSerializedProto* proto) {
+void StreamExecutor_Tpu_FreeSerializedProto(
+    const TpuSerializedProto* absl_nonnull proto) {
   CHECK_NE(proto, nullptr);
-  CHECK_NE(proto->bytes, nullptr);
-  CHECK_GT(proto->size, 0);
+  // delete[] nullptr is a safe no-op in C++.
   delete[] proto->bytes;
 }
 

@@ -90,6 +90,7 @@ xla_cc_test(
     deps = [
         ":c_api_conversions",
         ":c_api_decl",
+        ":proto_helper",
         "//xla:executable_run_options",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
@@ -152,6 +153,7 @@ cc_library(
     hdrs = ["proto_helper.h"],
     deps = [
         ":c_api_decl",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log:check",
         "@tsl//tsl/platform:logging",
     ],

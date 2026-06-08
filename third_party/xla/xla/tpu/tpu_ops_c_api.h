@@ -41,21 +41,29 @@ typedef struct XLA_TpuProgram XLA_TpuProgram;
 // Enum for choosing sharding/unsharding program from a `XLA_TpuProgram` obj.
 enum TpuProgramShardingType { kInvalid = 0, kMain, kSharding, kUnsharding };
 
+// An empty fingerprint is always represented as (bytes=nullptr, size=0).
+// There is no other valid way to represent it.
 struct TpuProgramFingerprint {
   const char* bytes;
   size_t size;
 };
 
+// An empty proto is always represented as (bytes=nullptr, size=0).
+// There is no other valid way to represent it.
 struct TpuExecutableSerializedProto {
   const char* bytes;
   size_t size;
 };
 
+// An empty proto is always represented as (bytes=nullptr, size=0).
+// There is no other valid way to represent it.
 struct CompilerMetadataSerializedProto {
   const char* bytes;
   size_t size;
 };
 
+// An empty proto is always represented as (bytes=nullptr, size=0).
+// There is no other valid way to represent it.
 struct HostComputeMetadataSerializedProto {
   const char* bytes;
   size_t size;
@@ -68,6 +76,8 @@ typedef struct XLA_TpuEmbeddingEngineState XLA_TpuEmbeddingEngineState;
 typedef struct TpuEmbedding_TensorBatchFixedState
     TpuEmbedding_TensorBatchFixedState;
 
+// An empty device assignment is always represented as (bytes=nullptr, size=0).
+// There is no other valid way to represent it.
 typedef struct XLA_DeviceAssignment {
   const char* bytes;
   size_t size;
