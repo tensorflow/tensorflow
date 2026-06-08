@@ -44,8 +44,8 @@ class GpuCostModelStatsCollection : public HloModulePass {
         cost_analysis_(cost_analysis_options, device_info_),
         fusion_analysis_cache_(device_info_),
         indexing_cost_analysis_(&device_info_, &fusion_analysis_cache_,
-                                cost_analysis_options.shape_size, mlir_context),
-        mlir_context_(mlir_context) {}
+                                cost_analysis_options.shape_size,
+                                mlir_context) {}
 
   absl::string_view name() const override {
     return "gpu_cost_model_stats_collection";
@@ -61,7 +61,6 @@ class GpuCostModelStatsCollection : public HloModulePass {
   GpuHloCostAnalysis cost_analysis_;
   HloFusionAnalysisCache fusion_analysis_cache_;
   GpuPerformanceModelWithIndexingAnalysis indexing_cost_analysis_;
-  mlir::MLIRContext* mlir_context_;
 };
 
 }  // namespace gpu

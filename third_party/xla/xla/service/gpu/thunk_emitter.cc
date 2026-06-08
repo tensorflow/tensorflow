@@ -1377,11 +1377,9 @@ AsyncThunkSequence ThunkEmitter::EmitFusion(const HloFusionInstruction* instr) {
     }
   }
 
-  VLOG(3) << "ThunkEmitter::EmitFusion:start";
   std::unique_ptr<FusionInterface> emitter = GetFusionEmitter(
       HloFusionInfo(fusion_analysis, instr,
-                    &ir_emitter_context_->buffer_assignment(), *call_graph_),
-      ir_emitter_context_->mlir_context());
+                    &ir_emitter_context_->buffer_assignment(), *call_graph_));
   return emitter->Emit(*ir_emitter_context_, *instr);
 }
 

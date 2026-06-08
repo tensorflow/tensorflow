@@ -51,10 +51,9 @@ CombinedGpuPerformanceModel::CombinedGpuPerformanceModel(
     HloCostAnalysis::ShapeSizeFunction shape_size)
     : device_info_(device_info),
       fusion_analysis_cache_(fusion_analysis_cache),
-      mlir_context_(mlir_context),
       indexing_model_(&device_info, &fusion_analysis_cache, shape_size,
                       &mlir_context),
-      model_(device_info, fusion_analysis_cache, cache_, &mlir_context) {}
+      model_(device_info, fusion_analysis_cache, cache_) {}
 
 absl::StatusOr<EstimateRunTimeData>
 CombinedGpuPerformanceModel::EstimateRunTimeForInstruction(
@@ -169,7 +168,7 @@ absl::Duration CombinedGpuPerformanceModel::EstimateRunTimeForFusionUncached(
       fusion_analysis_cache_.Get(*producer, *consumer);
 
   LaunchDimensions launch_dimensions =
-      EstimateFusionLaunchDimensions(fusion_analysis, &mlir_context_);
+      EstimateFusionLaunchDimensions(fusion_analysis);
 
   int64_t flops = producer_runtime.flops * utilization_by_this_consumer +
                   consumer_runtime.flops;

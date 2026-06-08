@@ -82,7 +82,6 @@ struct ModuleWithFusion {
 };
 
 struct ModuleWithEmitter : public ModuleWithFusion {
-  mlir::MLIRContext mlir_context;
   std::optional<HloFusionAnalysis> analysis;
   std::unique_ptr<TritonFusion> emitter;
   llvm::LLVMContext llvm_context;
@@ -164,8 +163,7 @@ class CollectiveEmitterTest : public CollectiveBlockLevelConfigTest {
     result->analysis =
         HloFusionAnalysis::Create(*result->FusionInstr(), device_info);
     std::unique_ptr<FusionInterface> fusion_emitter =
-        GetFusionEmitter(PreBufferAssignmentFusionInfo{*result->analysis},
-                         &result->mlir_context);
+        GetFusionEmitter(PreBufferAssignmentFusionInfo{*result->analysis});
     TritonFusion* triton_emitter =
         dynamic_cast<TritonFusion*>(fusion_emitter.get());
     TF_RET_CHECK(triton_emitter != nullptr);

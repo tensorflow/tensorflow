@@ -72,7 +72,7 @@ TEST_F(CombinedGpuPerformanceModelTest,
   ASSERT_OK(add->Accept(&analysis_));
   GpuPerformanceModelCache reference_cache;
   GpuPerformanceModel reference_model(device_info_, fusion_analysis_cache_,
-                                      reference_cache, &mlir_context_);
+                                      reference_cache);
   const EstimateRunTimeData expected_result =
       reference_model.EstimateRunTimeForInstruction(add, &analysis_);
 
@@ -106,7 +106,7 @@ TEST_F(CombinedGpuPerformanceModelTest,
   ASSERT_OK(module->entry_computation()->Accept(&analysis_));
   GpuPerformanceModelCache cache;
   GpuPerformanceModel standalone_model(device_info_, fusion_analysis_cache_,
-                                       cache, &mlir_context_);
+                                       cache);
   standalone_model.EstimateRunTimeForInstruction(add, &analysis_);
   standalone_model.EstimateRunTimeForInstruction(exp, &analysis_);
   auto expected = standalone_model.EstimateRunTimes(add, &analysis_, {exp});
@@ -139,7 +139,7 @@ TEST_F(CombinedGpuPerformanceModelTest,
   ASSERT_OK(module->entry_computation()->Accept(&analysis_));
   GpuPerformanceModelCache cache;
   GpuPerformanceModel standalone_model(device_info_, fusion_analysis_cache_,
-                                       cache, &mlir_context_);
+                                       cache);
   auto expected = standalone_model.EstimateRunTimesForMultiOutputFusion(
       add, exp, &analysis_);
 

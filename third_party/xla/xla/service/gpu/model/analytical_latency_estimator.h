@@ -40,7 +40,7 @@ class AnalyticalLatencyEstimator : public LatencyEstimator {
       std::unique_ptr<LatencyEstimator> latency_estimator,
       const se::DeviceDescription& gpu_info,
       HloCostAnalysis::ShapeSizeFunction shape_size_function,
-      HloComputation* computation, mlir::MLIRContext* mlir_context);
+      HloComputation* computation);
 
   TimeCost GetLatencyBetween(const HloGraphNode& from,
                              const HloGraphNode& target) const override;

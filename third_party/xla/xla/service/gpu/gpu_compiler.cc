@@ -3133,8 +3133,7 @@ absl::Status GpuCompiler::RunPreSchedulingPasses(
             .debug_options()
             .xla_gpu_enable_analytical_sol_latency_estimator()) {
       pipeline.AddPass<SolGpuCostModelStatsCollection>(
-          gpu_device_info, ShapeSizeBytesFunction(), pointer_size_,
-          mlir_context);
+          gpu_device_info, ShapeSizeBytesFunction(), pointer_size_);
     }
 
     // Perf tables model analysis for collectives.

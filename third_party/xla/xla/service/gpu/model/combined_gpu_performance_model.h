@@ -111,7 +111,6 @@ class CombinedGpuPerformanceModel : public GpuPerformanceModelBase {
 
   const se::DeviceDescription& device_info_;
   HloFusionAnalysisCache& fusion_analysis_cache_;
-  mlir::MLIRContext& mlir_context_;
 
   GpuPerformanceModelWithIndexingAnalysis indexing_model_;
   GpuPerformanceModel model_;

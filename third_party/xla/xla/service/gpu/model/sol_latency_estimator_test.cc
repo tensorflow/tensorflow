@@ -99,7 +99,7 @@ class SolLatencyEstimatorTest : public HloHardwareIndependentTestBase,
   absl::StatusOr<absl::Duration> ComputeCollectiveTime(
       const HloInstruction& instr) {
     return SolLatencyEstimator::ComputeCollectiveTime(
-        instr, gpu_device_info_, shape_size_fn_, sol_flags_, &mlir_context_,
+        instr, gpu_device_info_, shape_size_fn_, sol_flags_,
         collective_interpolator_.get());
   }
 
@@ -108,7 +108,7 @@ class SolLatencyEstimatorTest : public HloHardwareIndependentTestBase,
     std::unique_ptr<SolLatencyEstimator> estimator =
         *SolLatencyEstimator::Create(
             scheduler_config_, std::make_unique<DummyLatencyEstimator>(),
-            gpu_device_info_, shape_size_fn_, computation, &mlir_context_);
+            gpu_device_info_, shape_size_fn_, computation);
     LatencyEstimator::TimeCost cost_val = estimator->NodeCost(&instr);
     return absl::Microseconds(static_cast<int64_t>(cost_val));
   }
@@ -119,7 +119,7 @@ class SolLatencyEstimatorTest : public HloHardwareIndependentTestBase,
     std::unique_ptr<SolLatencyEstimator> estimator =
         *SolLatencyEstimator::Create(
             scheduler_config_, std::make_unique<DummyLatencyEstimator>(),
-            gpu_device_info_, shape_size_fn_, computation, &mlir_context_);
+            gpu_device_info_, shape_size_fn_, computation);
     LatencyEstimator::TimeCost cost_val =
         estimator->GetLatencyBetween(from, target);
     return absl::Microseconds(static_cast<int64_t>(cost_val));
@@ -130,7 +130,6 @@ class SolLatencyEstimatorTest : public HloHardwareIndependentTestBase,
   const SolGPUCostModel::Config sol_flags_;
   SchedulerConfig scheduler_config_;
   std::unique_ptr<CollectiveInterpolator> collective_interpolator_;
-  mlir::MLIRContext mlir_context_;
 };
 
 TEST_P(SolLatencyEstimatorTest, TestLatencyEstimation) {
@@ -659,7 +658,6 @@ TEST_F(HloHardwareIndependentTestBase, CollectiveCostModelDispatching) {
   const SolGPUCostModel::Config sol_flags = {
       absl::Microseconds(100), 100, absl::Microseconds(100),
       absl::Microseconds(100), 8,   4 * 1024 * 1024};
-  mlir::MLIRContext mlir_ctx;
   auto interpolator =
       *CollectiveInterpolator::Create(sol_flags.gpus_per_node, gpu_info,
                                       /*analysis=*/nullptr);
@@ -676,13 +674,13 @@ ENTRY main {
   HloInstruction* nvl_instr = hlo_query::FindInstruction(
       nvl_module->entry_computation(), HloOpcode::kAllToAll);
   EXPECT_FALSE(SolLatencyEstimator::ComputeCollectiveTime(
-                   *nvl_instr, gpu_info, shape_size_fn, sol_flags, &mlir_ctx,
+                   *nvl_instr, gpu_info, shape_size_fn, sol_flags,
                    /*collective_interpolator=*/nullptr)
                    .ok());
-  EXPECT_TRUE(SolLatencyEstimator::ComputeCollectiveTime(
-                  *nvl_instr, gpu_info, shape_size_fn, sol_flags, &mlir_ctx,
-                  interpolator.get())
-                  .ok());
+  EXPECT_TRUE(
+      SolLatencyEstimator::ComputeCollectiveTime(
+          *nvl_instr, gpu_info, shape_size_fn, sol_flags, interpolator.get())
+          .ok());
 
   // Cross-partition collective should use S-curve model (world-level across 2
   // hosts).
@@ -697,7 +695,7 @@ ENTRY main {
   HloInstruction* ib_instr = hlo_query::FindInstruction(
       ib_module->entry_computation(), HloOpcode::kAllToAll);
   EXPECT_TRUE(SolLatencyEstimator::ComputeCollectiveTime(
-                  *ib_instr, gpu_info, shape_size_fn, sol_flags, &mlir_ctx,
+                  *ib_instr, gpu_info, shape_size_fn, sol_flags,
                   /*collective_interpolator=*/nullptr)
                   .ok());
 }

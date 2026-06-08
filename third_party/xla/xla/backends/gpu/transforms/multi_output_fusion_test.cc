@@ -51,19 +51,16 @@ class MultiOutputFusionTest : public HloHardwareIndependentTestBase {
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
   GpuAliasInfo alias_info_{device_info_};
   MultiOutputFusion mof_{device_info_, &alias_info_,
-                         HloCostAnalysis::DefaultShapeSize, &mlir_context_};
+                         HloCostAnalysis::DefaultShapeSize};
 
   void CheckMultiOutputFusion(absl::string_view hlo,
                               std::optional<absl::string_view> expected) {
     RunAndFilecheckHloRewrite(
         hlo,
         MultiOutputFusion{device_info_, &alias_info_,
-                          HloCostAnalysis::DefaultShapeSize, &mlir_context_},
+                          HloCostAnalysis::DefaultShapeSize},
         expected);
   }
-
- protected:
-  mlir::MLIRContext mlir_context_;
 };
 
 const char kModulePrefix[] = R"(

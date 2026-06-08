@@ -439,8 +439,7 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
   GpuPerformanceModelCache gpu_performance_model_cache;
   HloFusionAnalysisCache fusion_analysis_cache(device_info_);
   GpuPerformanceModel gpu_performance_model(device_info_, fusion_analysis_cache,
-                                            gpu_performance_model_cache,
-                                            mlir_context_);
+                                            gpu_performance_model_cache);
   // Traverse the HLO in uses-before-defs order.
   for (auto it = defs_before_uses.rbegin(); it != defs_before_uses.rend();
        ++it) {

@@ -47,7 +47,6 @@ class SolGpuCostModelStatsCollectionTest
   se::DeviceDescription device_info_ =
       TestGpuDeviceInfo::RTXA6000DeviceInfo(se::CudaComputeCapability(9, 0));
   int pointer_size_ = 8;
-  MLIRContext mlir_context_;
 };
 
 TEST_F(SolGpuCostModelStatsCollectionTest,
@@ -71,11 +70,11 @@ TEST_F(SolGpuCostModelStatsCollectionTest,
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
 
-  ASSERT_OK_AND_ASSIGN(bool changed,
-                       SolGpuCostModelStatsCollection(
-                           device_info_, HloCostAnalysis::DefaultShapeSize,
-                           pointer_size_, &mlir_context_)
-                           .Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      SolGpuCostModelStatsCollection(
+          device_info_, HloCostAnalysis::DefaultShapeSize, pointer_size_)
+          .Run(module.get()));
 
   VLOG(1) << module->ToString();
 
@@ -108,11 +107,11 @@ TEST_F(SolGpuCostModelStatsCollectionTest,
       ROOT %rs_done = f32[512,128256] async-done(%rs_start)
   })";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  ASSERT_OK_AND_ASSIGN(bool changed,
-                       SolGpuCostModelStatsCollection(
-                           device_info_, HloCostAnalysis::DefaultShapeSize,
-                           pointer_size_, &mlir_context_)
-                           .Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      SolGpuCostModelStatsCollection(
+          device_info_, HloCostAnalysis::DefaultShapeSize, pointer_size_)
+          .Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_FALSE(changed);
   HloInstruction* rs_start = FindInstruction(module.get(), "rs_start");

@@ -500,7 +500,7 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
         auto sol = SolLatencyEstimator::Create(
             config, std::move(gpu_latency_estimator), gpu_device_info,
             ShapeSizeBytesFunction(pointer_size), module.entry_computation(),
-            mlir_context, std::move(cost_analysis));
+            std::move(cost_analysis));
         if (sol.ok()) {
           base_estimator = std::move(*sol);
           VLOG(1) << "PGLE fallback: using SolLatencyEstimator";
@@ -529,8 +529,7 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
     VLOG(1) << "Using analytical latency estimator";
     return std::make_unique<AnalyticalLatencyEstimator>(
         config, std::move(gpu_latency_estimator), gpu_device_info,
-        ShapeSizeBytesFunction(pointer_size), module.entry_computation(),
-        mlir_context);
+        ShapeSizeBytesFunction(pointer_size), module.entry_computation());
   }
 
   if (SolLatencyEstimator::IsSupportedForModule(module, gpu_device_info)) {
@@ -553,7 +552,7 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
     auto sol_latency_estimator = SolLatencyEstimator::Create(
         config, std::move(gpu_latency_estimator), gpu_device_info,
         ShapeSizeBytesFunction(pointer_size), module.entry_computation(),
-        mlir_context, std::move(cost_analysis));
+        std::move(cost_analysis));
     if (sol_latency_estimator.ok()) {
       return std::move(*sol_latency_estimator);
     }
