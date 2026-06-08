@@ -457,7 +457,7 @@ using WhileBodyFnType = llvm::function_ref<void(
     Location loc, Value iteration, ArrayRef<Value> old_values,
     SmallVectorImpl<Value> *new_values, OpBuilder *builder)>;
 
-// Creates a stablehlo.while op with `builder` to loop `num_interations` times,
+// Creates a stablehlo.while op with `builder` to loop `num_iterations` times,
 // each time calling the given `body_fn` on a set of values to generate a new
 // set of values. Returns the final set of values via `final_values`. The
 // initial set of values is passed in via `init_values`.
@@ -6827,7 +6827,7 @@ class ConvertXlaReducePrecisionOp
                                 PatternRewriter &rewriter) const override {
     IntegerType int32_type = rewriter.getIntegerType(32);
     APInt exponent_bits = op.getExponentBitsAttr().getValue();
-    // Truncating to 32-bits is safe, since pasing any number above the dtype
+    // Truncating to 32-bits is safe, since passing any number above the dtype
     // size (which is at most 64, for float64) is equivalent to passing the
     // dtype size.
     IntegerAttr new_exponent_attr =
