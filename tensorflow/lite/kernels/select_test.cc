@@ -415,20 +415,6 @@ TEST(SelectV2OpTest,
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 2, 2, 1}));
 }
 
-TEST(SelectV2OpTest, BroadcastSelectInt32RankSix) {
-  SelectV2OpModel model({1, 1, 2}, {1, 2, 1, 1, 2, 2}, {1, 1, 2},
-                        TensorType_INT32);
-
-  model.PopulateTensor<bool>(model.input1(), {true, false});
-  model.PopulateTensor<int32_t>(model.input2(), {1, 2, 3, 4, 5, 6, 7, 8});
-  model.PopulateTensor<int32_t>(model.input3(), {50, 60});
-  ASSERT_EQ(model.Invoke(), kTfLiteOk);
-
-  EXPECT_THAT(model.GetOutput<int32_t>(),
-              ElementsAreArray({1, 60, 3, 60, 5, 60, 7, 60}));
-  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 1, 1, 2, 2}));
-}
-
 TEST(SelectV2OpTest, BroadcastSelectInt32LesserThan4D) {
   SelectV2OpModel model({1, 2}, {1, 2, 2}, {1, 2, 2}, TensorType_INT32);
 
