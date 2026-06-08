@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "riegeli/bytes/cfile_reader.h"
 #include "riegeli/bytes/string_reader.h"
@@ -96,6 +97,10 @@ using ::tsl::proto_testing::EqualsProto;
 using ::tsl::proto_testing::ParseTextProtoOrDie;
 using ::tsl::proto_testing::Partially;
 using ::tsl::testing::TemporaryDirectory;
+
+std::string ToString(absl::Span<const uint8_t> data) {
+  return std::string(reinterpret_cast<const char*>(data.data()), data.size());
+}
 
 using GpuExecutableTest = HloHardwareIndependentTestBase;
 
@@ -869,6 +874,7 @@ TEST_F(GpuExecutableTest, FromProtoRegistersHloModuleWithDebugInfoManager) {
                                debug_options));
   ASSERT_TRUE(executable->has_module());
   EXPECT_EQ(executable->constants().size(), 1);
+
   EXPECT_TRUE(XlaDebugInfoManager::Get()->TracksModule(
       executable->module().unique_id()));
 
@@ -880,6 +886,83 @@ TEST_F(GpuExecutableTest, FromProtoRegistersHloModuleWithDebugInfoManager) {
   ASSERT_TRUE(executable_without_debug_info_manager->has_module());
   EXPECT_FALSE(XlaDebugInfoManager::Get()->TracksModule(
       executable_without_debug_info_manager->module().unique_id()));
+}
+
+TEST_F(GpuExecutableTest, ConstantContentOnlySerializedInHloModule) {
+  const auto proto = ParseTextProtoOrDie<GpuExecutableProto>(R"pb(
+    module_name: "test_module"
+    gpu_compute_capability: {
+      cuda_compute_capability: { major: 9 minor: 0 feature_extension: NONE }
+    }
+    hlo_module_with_config {
+      config {
+        entry_computation_layout {
+          parameters { element_type: F32 dimensions: 1 }
+          parameter_names: "parameter"
+        }
+      }
+      hlo_module {
+        name: "test_module"
+        entry_computation_name: "test_computation"
+        host_program_shape {
+          parameters { element_type: F32 dimensions: 1 }
+          parameter_names: "parameter"
+        }
+        computations {
+          name: "test_computation"
+          instructions {
+            name: "test_instruction"
+            opcode: "parameter"
+            shape: { element_type: F32 dimensions: 1 }
+          }
+          instructions {
+            name: "constant"
+            id: 1
+            opcode: "constant"
+            shape: {
+              element_type: U8
+              layout { format: DENSE minor_to_major: 0 }
+              dimensions: 4
+            }
+            literal: {
+              shape: {
+                element_type: U8
+                layout { format: DENSE minor_to_major: 0 }
+                dimensions: 4
+              }
+              u8s: "data"
+            }
+          }
+        }
+      }
+    }
+    buffer_allocations { values { index: 0 size: 4 } }
+    constants { symbol_name: "buffer_for_constant" allocation_index: 0 }
+    thunks {
+      thunk_info { thunk_id: 2 }
+      host_send_done_thunk { channel_id: 123 async_events_unique_id: 1 }
+    }
+  )pb");
+
+  stream_executor::DeviceDescription device_description;
+  device_description.set_gpu_compute_capability(
+      se::GpuComputeCapability{se::CudaComputeCapability::Hopper()});
+
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
+  debug_options.set_xla_gpu_executable_embed_debug_info(true);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GpuExecutable> executable,
+      GpuExecutable::FromProto(proto, device_description, "TEST_PLATFORM",
+                               debug_options));
+  ASSERT_TRUE(executable->has_module());
+  EXPECT_EQ(executable->constants().size(), 1);
+
+  EXPECT_EQ(ToString(executable->constants()[0].content.span()), "data");
+
+  TF_ASSERT_OK_AND_ASSIGN(auto serialized, executable->ToProto());
+  EXPECT_EQ(serialized.constants().size(), 1);
+  EXPECT_THAT(serialized.constants()[0], EqualsProto(proto.constants()[0]));
 }
 
 TEST_F(GpuExecutableTest, ExecutableAbiVersion) {

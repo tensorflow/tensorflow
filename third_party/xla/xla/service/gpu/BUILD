@@ -884,6 +884,7 @@ xla_cc_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@riegeli//riegeli/bytes:cfile_reader",
         "@riegeli//riegeli/bytes:string_reader",

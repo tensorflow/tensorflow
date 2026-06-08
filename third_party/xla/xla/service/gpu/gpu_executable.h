@@ -95,7 +95,8 @@ class GpuExecutable : public Executable {
     DenseDataIntermediate content;
     int allocation_index = -1;
 
-    GpuExecutableProto::ConstantInfoProto ToProto() const;
+    GpuExecutableProto::ConstantInfoProto ToProto(
+        bool skip_content_serialization = false) const;
 
     static absl::StatusOr<ConstantInfo> FromProto(
         const GpuExecutableProto::ConstantInfoProto& proto,

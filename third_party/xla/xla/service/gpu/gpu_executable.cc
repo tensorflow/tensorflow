@@ -1914,11 +1914,13 @@ absl::StatusOr<GpuExecutable::OutputInfo> GpuExecutable::OutputInfo::FromProto(
   return output_info;
 }
 
-GpuExecutableProto::ConstantInfoProto GpuExecutable::ConstantInfo::ToProto()
-    const {
+GpuExecutableProto::ConstantInfoProto GpuExecutable::ConstantInfo::ToProto(
+    bool skip_content_serialization) const {
   GpuExecutableProto::ConstantInfoProto proto;
   proto.set_symbol_name(symbol_name);
-  *proto.mutable_content() = content.ToProto();
+  if (!skip_content_serialization) {
+    *proto.mutable_content() = content.ToProto();
+  }
   proto.set_allocation_index(allocation_index);
   return proto;
 }
@@ -1997,7 +1999,7 @@ absl::StatusOr<GpuExecutableProto> GpuExecutable::ToProto() const {
 
   proto.mutable_constants()->Reserve(constants_.size());
   for (const auto& constant : constants_) {
-    *proto.add_constants() = constant.ToProto();
+    *proto.add_constants() = constant.ToProto(has_module());
   }
 
   *proto.mutable_executable_abi_version() = executable_abi_version_.proto();
