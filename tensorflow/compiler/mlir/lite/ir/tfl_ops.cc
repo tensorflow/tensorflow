@@ -543,7 +543,7 @@ bool VerifyAddOpShapeConstraints(AddOp op) {
 
   // Allows F32, QI8, QUI8 and I32 outputs when the operands have valid shapes,
   // which are broadcastable shapes up to four dimensions or have same shapes.
-  if (element_type.isF32() || IsQI8Type(element_type) ||
+  if (element_type.isF32() || element_type.isF16() || IsQI8Type(element_type) ||
       IsQUI8Type(element_type) || IsI16Type(element_type) ||
       IsI32Type(element_type) || IsI64Type(element_type)) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
@@ -786,6 +786,14 @@ inline bool IsTrailingDimensions(ArrayRef<int64_t> a, ArrayRef<int64_t> b) {
 inline bool IsF32ShapedType(Type t) {
   if (auto shaped_type = mlir::dyn_cast_or_null<ShapedType>(t)) {
     return shaped_type.getElementType().isF32();
+  }
+  return false;
+}
+
+// Returns true if it is a shaped type of f16 elements.
+inline bool IsF16ShapedType(Type t) {
+  if (auto shaped_type = mlir::dyn_cast_or_null<ShapedType>(t)) {
+    return shaped_type.getElementType().isF16();
   }
   return false;
 }
@@ -1164,7 +1172,8 @@ Attribute ConstFoldBinaryOp(
 /// "tfl.logical_not".
 Attribute ConstFoldUnaryOp(Type result_type, Attribute operand,
                            llvm::function_ref<APFloat(APFloat)> calculate) {
-  assert(IsF32ShapedType(result_type) || IsBF16ShapedType(result_type));
+  assert(IsF32ShapedType(result_type) || IsF16ShapedType(result_type) ||
+         IsBF16ShapedType(result_type));
   auto result_shape_type = mlir::cast<ShapedType>(result_type);
 
   if (!result_shape_type.hasStaticShape()) return {};

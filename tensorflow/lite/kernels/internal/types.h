@@ -19,10 +19,40 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <initializer_list>
+#include <limits>
 #include <type_traits>
 
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/runtime_shape.h"
+#include "tensorflow/lite/types/half.h"
+
+namespace std {
+template <>
+class numeric_limits<tflite::half> {
+ public:
+  static constexpr bool is_specialized =
+      true;  // NOLINT(readability-identifier-naming)
+  static constexpr tflite::half min() noexcept {
+    return tflite::half::smallest_normal();
+  }
+  static constexpr tflite::half max() noexcept { return tflite::half::max(); }
+  static constexpr tflite::half lowest() noexcept {
+    return tflite::half::min();
+  }
+  static constexpr tflite::half epsilon() noexcept {
+    return tflite::half::epsilon();
+  }
+  static constexpr tflite::half quiet_NaN() noexcept {
+#if TFLITE_ARCH_FLOAT16
+    return tflite::half(__builtin_nanf(""));
+#else
+    return tflite::half::from_bits(0x7e00);
+#endif
+  }
+  static constexpr bool is_signed =
+      true;  // NOLINT(readability-identifier-naming)
+};
+}  // namespace std
 
 namespace tflite {
 
@@ -1073,6 +1103,12 @@ template <typename P>
 inline void GetActivationParams(const P& params, float* min, float* max) {
   *min = params.float_activation_min;
   *max = params.float_activation_max;
+}
+
+template <typename P>
+inline void GetActivationParams(const P& params, half* min, half* max) {
+  *min = static_cast<half>(params.float_activation_min);
+  *max = static_cast<half>(params.float_activation_max);
 }
 
 template <typename P>

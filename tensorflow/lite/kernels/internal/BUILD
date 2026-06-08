@@ -75,6 +75,7 @@ cc_library(
     deps = [
         ":compatibility",
         ":runtime_shape",
+        "//tensorflow/lite/types:half",
     ],
 )
 

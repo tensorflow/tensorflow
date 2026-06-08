@@ -724,6 +724,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_ADD: {
+      if (!op_sig.inputs.empty() &&
+          op_sig.inputs.at(0).type == kTfLiteFloat16) {
+        return 6;
+      }
       if (!op_sig.inputs.empty() && op_sig.inputs.at(0).type == kTfLiteInt16 &&
           !op_sig.ext_options.add.input_quantized) {
         return 5;
