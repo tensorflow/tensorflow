@@ -204,7 +204,7 @@ func.func @testSin(tensor<? x f32>) -> tensor<? x f32> {
 // test invalid Sin input
 func.func @testSinWithWrongInputType(tensor<?xi32>) -> tensor<?xi32> {
 ^bb0(%arg0: tensor<?xi32>):
-  // expected-error @+1 {{tfl.sin' op operand #0 must be tensor of 32-bit float values}}
+  // expected-error @+1 {{tfl.sin' op operand #0 must be tensor of 32-bit float or 16-bit float values}}
   %0 = "tfl.sin"(%arg0): (tensor<?xi32>) -> tensor<?xi32>
   func.return %0#0 : tensor<?xi32>
 }

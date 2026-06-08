@@ -218,7 +218,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_SLICE, Register_SLICE(),
              /* min_version = */ 1,
              /* max_version = */ 7);
-  AddBuiltin(BuiltinOperator_SIN, Register_SIN());
+  AddBuiltin(BuiltinOperator_SIN, Register_SIN(),
+             /* min_version = */ 1,
+             /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_COS, Register_COS());
   AddBuiltin(BuiltinOperator_TRANSPOSE_CONV, Register_TRANSPOSE_CONV(),
              /* min_version = */ 1,

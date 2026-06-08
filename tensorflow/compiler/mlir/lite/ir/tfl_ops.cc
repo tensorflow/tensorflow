@@ -4008,13 +4008,22 @@ OpFoldResult SinOp::fold(FoldAdaptor adaptor) {
 
   auto operands = adaptor.getOperands();
   Type result_type = getType();
-  // Only constant fold for tensor of f32 is implemented.
-  if (!IsF32ShapedType(result_type)) return nullptr;
+  // Only constant fold for tensor of f32/f16/bf16 is implemented.
+  if (!IsF32ShapedType(result_type) && !IsF16ShapedType(result_type) &&
+      !IsBF16ShapedType(result_type))
+    return nullptr;
 
   auto compute = [](APFloat value) -> APFloat {
+    bool loseInfo;
+    const llvm::fltSemantics& original_float_semantics = value.getSemantics();
+    value.convert(APFloat::IEEEsingle(), APFloat::rmNearestTiesToEven,
+                  &loseInfo);
     float f = value.convertToFloat();
     float result = std::sin(f);
-    return APFloat(result);
+    APFloat ap_result(result);
+    ap_result.convert(original_float_semantics, APFloat::rmNearestTiesToEven,
+                      &loseInfo);
+    return ap_result;
   };
   return ConstFoldUnaryOp(result_type, operands[0], compute);
 }
