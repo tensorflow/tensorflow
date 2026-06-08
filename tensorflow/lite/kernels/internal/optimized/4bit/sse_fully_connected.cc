@@ -114,7 +114,7 @@ void SsePackInner(const int8_t* src, uint8_t* box, int src_rows, int src_cols,
 void SsePrepack(uint8_t* dest, const int8_t* tensor, int layout_rows,
                 int layout_cols, int src_rows, int src_cols, int width,
                 int depth) {
-  size_t size = layout_rows * layout_cols / 2;
+  size_t size = static_cast<size_t>(layout_rows) * layout_cols / 2;
   memset(dest, static_cast<uint8_t>(119), sizeof(uint8_t) * size);
   int outer_cols = layout_cols / depth;
   int outer_rows = layout_rows / width;
@@ -124,7 +124,8 @@ void SsePrepack(uint8_t* dest, const int8_t* tensor, int layout_rows,
     for (int outer_col = 0; outer_col < outer_cols; ++outer_col) {
       const int cluster_index = outer_row * outer_cols + outer_col;
       const int real_depth = inner_cols / 2;
-      uint8_t* box = dest + cluster_index * real_depth * inner_rows;
+      uint8_t* box =
+          dest + static_cast<size_t>(cluster_index) * real_depth * inner_rows;
       SsePackInner(tensor, box, src_rows, src_cols, outer_row, outer_col,
                    outer_rows, outer_cols, inner_rows, inner_cols);
     }
@@ -140,7 +141,7 @@ void SseBatchQuantizeFloats4Bit(const float* float_data_ptr, int n_batch,
   // depth is always cols
   const int layout_rows = (rows + (width - 1)) & ~(width - 1);
   const int layout_cols = (cols + (depth - 1)) & ~(depth - 1);
-  const int size = layout_rows * layout_cols;
+  const size_t size = static_cast<size_t>(layout_rows) * layout_cols;
   int8_t* data = quantized_data_ptr;
   memset(data, 0, sizeof(int8_t) * size);
   memset(input_offsets, 0, sizeof(int32_t) * layout_rows);
@@ -175,7 +176,7 @@ void SseBatchQuantizeFloats4Bit(const float* float_data_ptr, int n_batch,
       const int src_width = std::min(width, rows - row);
       const int src_depth = std::min(depth, cols - col);
       const int cluster_index = outer_row * outer_cols + outer_col;
-      int8_t* box = data + cluster_index * depth * width;
+      int8_t* box = data + static_cast<size_t>(cluster_index) * depth * width;
       for (int w = 0; w < src_width; ++w) {
         const float* float_data = tensor_data + (row + w) * cols + col;
         int d = 0;
@@ -267,8 +268,10 @@ void SseUnpack(float* output_ptr, const int32_t* dst, int batch_size,
       const int batch = outer_row * Width;
       const int remaining_width = std::min(batch_size - batch, Width);
       const int cluster_index = outer_col * outer_rows + outer_row;
-      const int32_t* dst_ptr = dst + cluster_index * Depth * Width;
-      float* tmp_output_ptr = output_ptr + batch * num_units + unit;
+      const int32_t* dst_ptr =
+          dst + static_cast<size_t>(cluster_index) * Depth * Width;
+      float* tmp_output_ptr =
+          output_ptr + static_cast<size_t>(batch) * num_units + unit;
       const float* scale = scaling_factors + batch;
       int w = remaining_width;
       for (; w > 0; --w, scale++) {
@@ -330,7 +333,7 @@ void SseRunKernel(const uint8_t* lhs, const int8_t* rhs, int32_t* dst,
   std::vector<uint8_t> lhs_vec_data((RowsLeft * lhs_layout_cols / 2) + padding);
   uint8_t* lhs_vec = lhs_vec_data.data();
   for (int i = start_row; i < outer_rows; ++i) {
-    int left_index = i * RowsLeft * lhs_layout_cols / 2;
+    size_t left_index = static_cast<size_t>(i) * RowsLeft * lhs_layout_cols / 2;
     const uint8_t* lhs_val_data = lhs + left_index;
     if (!is_aligned(lhs_val_data, 16)) {
       size_t size = RowsLeft * lhs_layout_cols / 2;
@@ -342,7 +345,7 @@ void SseRunKernel(const uint8_t* lhs, const int8_t* rhs, int32_t* dst,
     }
     for (int j = start_col; j < outer_cols; ++j) {
       const uint8_t* lhs_val = lhs_val_data;
-      int right_index = j * RowsRight * rhs_layout_cols;
+      size_t right_index = static_cast<size_t>(j) * RowsRight * rhs_layout_cols;
       const int8_t* rhs_val = rhs + right_index;
       __m128i accum[RowsRight * RowsLeft];
       for (int m = 0; m < (RowsLeft * RowsRight); ++m) {
