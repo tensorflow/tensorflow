@@ -24,13 +24,11 @@ limitations under the License.
 #include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/activate_context.h"
+#include "xla/stream_executor/cuda/cuda_device_allocator.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
-#include "xla/stream_executor/cuda/cuda_vmm_allocator.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
 
@@ -42,7 +40,8 @@ CudaRawMemoryAllocation::Create(StreamExecutor* executor, uint64_t size) {
   RETURN_IF_ERROR(
       cuda::ToStatus(cuDeviceGet(&device, executor->device_ordinal())));
 
-  ASSIGN_OR_RETURN(CudaVmmAllocator::Options options, QueryVmmOptions(device));
+  ASSIGN_OR_RETURN(CudaDeviceAllocator::Options options,
+                   QueryDeviceAllocatorOptions(device));
   CUmemAllocationProp props = BuildVmmAllocationProp(device, options);
 
   size_t granularity = 0;

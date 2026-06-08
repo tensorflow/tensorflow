@@ -41,9 +41,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/profiler/lib/profiler_lock.h"
@@ -395,13 +393,13 @@ CommandBufferThunk::GetOrCreateCommandBuffer(
     // its buffer allocation. This address serves as the key to identify which
     // VA reservation set is active for the current execution.
     //
-    // This works because the VMM allocator assigns each VA reservation set a
-    // distinct physical memory region: when execution alternates between two
-    // VA ranges (indices 0 and 1), the physical address backing
-    // first_traced_cmd_alloc_idx_ will differ between the two sets, uniquely
-    // identifying the active VA range. Constants and zero-size allocations are
-    // excluded (at construction time) to ensure the chosen index maps to a
-    // real, varying physical address.
+    // This works because the device-address allocator assigns each VA
+    // reservation set a distinct physical memory region: when execution
+    // alternates between two VA ranges (indices 0 and 1), the physical address
+    // backing first_traced_cmd_alloc_idx_ will differ between the two sets,
+    // uniquely identifying the active VA range. Constants and zero-size
+    // allocations are excluded (at construction time) to ensure the chosen
+    // index maps to a real, varying physical address.
     if (first_traced_cmd_alloc_idx_.has_value()) {
       first_alloc_address =
           buffer_allocations.GetDeviceAddress(*first_traced_cmd_alloc_idx_)

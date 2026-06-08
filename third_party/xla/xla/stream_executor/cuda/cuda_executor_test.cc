@@ -242,7 +242,7 @@ TEST(CudaExecutorTest, GetPointerMemorySpaceWorksWithDeviceAddress) {
               absl_testing::IsOkAndHolds(MemorySpace::kDevice));
 }
 
-TEST(CudaExecutorTest, AllocateMemoryWithVmmApi) {
+TEST(CudaExecutorTest, AllocateCollectiveMemoryWithDeviceAllocator) {
   TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
                           PlatformManager::PlatformWithName("CUDA"));
   TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
@@ -292,13 +292,14 @@ TEST(CudaExecutorTest, MultipleExecutorsForSameDevice) {
     EXPECT_NE(ptr.opaque(), nullptr);
     executors[i]->Deallocate(&ptr);
 
-    // Allocate VMM memory (collective memory space uses the VMM allocator).
+    // Allocate collective memory through the device allocator.
     TF_ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<MemoryAllocator> vmm_allocator,
+        std::unique_ptr<MemoryAllocator> collective_allocator,
         executors[i]->CreateMemoryAllocator(MemorySpace::kCollective));
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> vmm_allocation,
-                            vmm_allocator->Allocate(4096));
-    EXPECT_NE(vmm_allocation->address().opaque(), nullptr);
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<MemoryAllocation> collective_allocation,
+        collective_allocator->Allocate(4096));
+    EXPECT_NE(collective_allocation->address().opaque(), nullptr);
   }
 }
 

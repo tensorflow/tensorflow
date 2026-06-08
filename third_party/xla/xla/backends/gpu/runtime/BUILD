@@ -633,7 +633,6 @@ cc_library(
         ":sequential_thunk",  # build_cleaner: keep
         ":thunk",
         ":thunk_proto_cc",
-        "//xla:debug_options_flags",
         "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/service:buffer_assignment",  # build_cleaner: keep
@@ -642,10 +641,8 @@ cc_library(
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:function_ref",

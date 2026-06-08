@@ -45,7 +45,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_device_allocator.h"
 #include "xla/stream_executor/cuda/cuda_host_allocator.h"
 #include "xla/stream_executor/cuda/cuda_kernel.h"
-#include "xla/stream_executor/cuda/cuda_vmm_allocator.h"
 #include "xla/stream_executor/cuda/host_callback_registry.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
@@ -221,7 +220,9 @@ class CudaExecutor : public GpuExecutor {
     return is_multicast_supported_;
   }
 
-  bool is_fabric_supported() const { return vmm_options_.enable_fabric_handle; }
+  bool is_fabric_supported() const {
+    return device_allocator_options_.enable_fabric_handle;
+  }
 
  private:
   // Allocates memory using the given allocator and tracks the resulting
@@ -246,9 +247,10 @@ class CudaExecutor : public GpuExecutor {
   // Whether multicast objects are supported by this device.
   bool is_multicast_supported_ = false;
 
-  // VMM allocator options, probed during Init() with fallback. The handle-type
-  // flags may differ from device-reported caps (e.g. in MIG or containers).
-  CudaVmmAllocator::Options vmm_options_;
+  // Device allocator options, probed during Init() with fallback. The
+  // handle-type flags may differ from device-reported caps (e.g. in MIG or
+  // containers).
+  CudaDeviceAllocator::Options device_allocator_options_;
 
   // Guards the in-memory-module mapping.
   absl::Mutex in_memory_modules_mu_;
@@ -305,9 +307,8 @@ class CudaExecutor : public GpuExecutor {
       ABSL_GUARDED_BY(alive_gpu_streams_mu_);
 
   // Memory allocators for supported memory spaces.
-  std::unique_ptr<CudaVmmAllocator> device_allocator_;
+  std::unique_ptr<CudaDeviceAllocator> device_allocator_;
   std::unique_ptr<CudaHostAllocator> host_allocator_;
-  std::unique_ptr<CudaVmmAllocator> vmm_allocator_;
 
   // Tracks allocations made through the memory allocators, bridging the RAII
   // MemoryAllocation API to the raw-pointer Allocate/Deallocate interface.

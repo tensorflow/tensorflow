@@ -21,9 +21,10 @@ limitations under the License.
 #include "absl/base/log_severity.h"
 #include "absl/log/scoped_mock_log.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/cuda/cuda_device_allocator.h"
 #include "xla/stream_executor/cuda/cuda_executor.h"
-#include "xla/stream_executor/cuda/cuda_vmm_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -42,7 +43,7 @@ absl::StatusOr<StreamExecutor*> GetGpuExecutor(int64_t device_ordinal) {
   return executor;
 }
 
-TEST(CudaVmmAllocatorTest, HopperNoWarningCheck) {
+TEST(CudaDeviceAllocatorTest, HopperNoWarningCheck) {
   ASSERT_OK_AND_ASSIGN(StreamExecutor * executor, GetGpuExecutor(0));
   CudaComputeCapability cc =
       executor->GetDeviceDescription().cuda_compute_capability();
@@ -52,7 +53,7 @@ TEST(CudaVmmAllocatorTest, HopperNoWarningCheck) {
 
   auto* cuda_executor = static_cast<CudaExecutor*>(executor);
 
-  CudaVmmAllocator::Options options;
+  CudaDeviceAllocator::Options options;
   options.enable_fabric_handle = cuda_executor->is_fabric_supported();
   options.enable_posix_fd_handle = true;
 
@@ -72,7 +73,7 @@ TEST(CudaVmmAllocatorTest, HopperNoWarningCheck) {
       .Times(0);
   log.StartCapturingLogs();
 
-  CudaVmmAllocator allocator(executor, options);
+  CudaDeviceAllocator allocator(executor, options);
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
                        allocator.Allocate(1024));
   EXPECT_NE(allocation, nullptr);
