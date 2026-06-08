@@ -912,6 +912,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_CONCATENATION:
+      if (!op_sig.inputs.empty() &&
+          op_sig.inputs.at(0).type == kTfLiteFloat16) {
+        return 6;
+      }
       if (op_sig.inputs.at(0).type == kTfLiteInt4) {
         return 5;
       }
