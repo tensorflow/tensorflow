@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace reduce_window_util {
