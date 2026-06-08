@@ -6368,29 +6368,36 @@ absl::StatusOr<bool> SpmdPartitioner::RunImpl(
   }
 
   if (options_.allow_module_signature_change) {
-    const ComputationLayout& old_entry_layout =
-        module->entry_computation_layout();
-    // For the cases where we update the shape, also fix up some bad tiling in
-    // entry computation layout.
-    auto update_shape = [this](Shape* subshape, const xla::ShapeIndex&) {
-      if (subshape->IsArray() && subshape->has_layout()) {
-        UpdateLayout(subshape);
-      }
+    // Inherit the layout from the old global shape to the new local shape. If
+    // the new local shape's dimensions differs from the old global shape,
+    // update the layout. Otherwise, do not update the pre-set layout in the
+    // old global shape unless allow_module_layout_signature_change is true.
+    auto update_layout = [&](Shape* new_local_shape,
+                             const Shape& old_global_shape) {
+      TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(old_global_shape,
+                                                             new_local_shape));
+      ShapeUtil::ForEachMutableSubshape(
+          new_local_shape, [&](Shape* subshape, const xla::ShapeIndex& index) {
+            if (subshape->IsArray() && subshape->has_layout() &&
+                (options_.allow_module_layout_signature_change ||
+                 !Shape::Equal().IgnoreLayout()(
+                     *subshape,
+                     ShapeUtil::GetSubshape(old_global_shape, index)))) {
+              UpdateLayout(subshape);
+            }
+          });
+      return absl::OkStatus();
     };
-    // Shapes can change but the layout should still remain the same.
-    // If the shapes do not change, we shouldn't change the layout if pre-set.
+
     for (int64_t i = 0; i < new_program_shape.parameters_size(); ++i) {
-      RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
-          old_entry_layout.parameter_shape(i),
-          new_program_shape.mutable_parameters(i)));
-      ShapeUtil::ForEachMutableSubshape(new_program_shape.mutable_parameters(i),
-                                        update_shape);
+      RETURN_IF_ERROR(
+          update_layout(new_program_shape.mutable_parameters(i),
+                        module->entry_computation_layout().parameter_shape(i)));
     }
 
-    RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
-        old_entry_layout.result_shape(), new_program_shape.mutable_result()));
-    ShapeUtil::ForEachMutableSubshape(new_program_shape.mutable_result(),
-                                      update_shape);
+    RETURN_IF_ERROR(
+        update_layout(new_program_shape.mutable_result(),
+                      module->entry_computation_layout().result_shape()));
 
     HloModuleConfig config = module->config();
     *config.mutable_entry_computation_layout() =
