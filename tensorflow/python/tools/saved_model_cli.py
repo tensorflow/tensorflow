@@ -876,6 +876,13 @@ def run_saved_model_with_feed_dict(
         if not os.path.isdir(outdir):
           os.makedirs(outdir)
         output_full_path = os.path.join(outdir, output_tensor_key + '.npy')
+        if os.path.commonpath(
+            [os.path.abspath(outdir), os.path.abspath(output_full_path)]
+        ) != os.path.abspath(outdir):
+          raise ValueError(
+              f'Output tensor key "{output_tensor_key}" is invalid as it '
+              'results in a path outside of the output directory.'
+          )
 
         # If overwrite not enabled and file already exist, error out
         if not overwrite_flag and os.path.exists(output_full_path):
@@ -958,7 +965,7 @@ def preprocess_input_exprs_arg_string(input_exprs_str, safe=True):
   input_dict = {}
 
   for input_raw in filter(bool, input_exprs_str.split(';')):
-    if '=' not in input_exprs_str:
+    if '=' not in input_raw:
       raise RuntimeError(
           '--input_exprs "%s" format is incorrect. Please follow'
           '"<input_key>=<python expression>"' % input_exprs_str
