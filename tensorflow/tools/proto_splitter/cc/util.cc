@@ -494,7 +494,7 @@ absl::StatusOr<MutableFieldResult> GetMutableField(
                               &index](FieldType list_index) -> absl::Status {
     TF_ASSIGN_OR_RETURN(index, FieldInt(list_index));
     const tsl::protobuf::Reflection* reflection = parent->GetReflection();
-    if (reflection->FieldSize(*parent, field) <= index) {
+    if (index < 0 || reflection->FieldSize(*parent, field) <= index) {
       return absl::NotFoundError(absl::StrCat(
           "Can't access index ", index, " in field '", field->name(),
           "' (size = ", reflection->FieldSize(*parent, field), ")."));

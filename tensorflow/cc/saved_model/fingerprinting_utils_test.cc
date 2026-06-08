@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/fingerprinting_utils.h"
 
 #include <cstdint>
+#include <iostream>
 #include <string>
 #include <vector>
 
@@ -34,6 +35,7 @@ limitations under the License.
 #include "tensorflow/tools/proto_splitter/chunk.pb.h"
 #include "tensorflow/tools/proto_splitter/testdata/test_message.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -392,5 +394,106 @@ TEST(FingerprintingTest, TestHashSavedObjectGraph) {
 }
 
 }  // namespace
+
+TEST(FingerprintingTest, TestHashFieldsThirdBranchSingularCovered) {
+  const std::string export_dir = io::JoinPath(
+      TensorFlowSrcRoot(), "tools/proto_splitter/testdata", "many-field.cpb");
+  TF_ASSERT_OK_AND_ASSIGN(auto reader, GetRiegeliReader(export_dir));
+  auto read_metadata = GetChunkMetadata(reader);
+  if (!read_metadata.ok()) {
+    reader.Close();
+    TF_ASSERT_OK(read_metadata.status());
+  }
+  ChunkMetadata chunk_metadata = read_metadata.value();
+
+  std::vector<ChunkInfo> chunks_info = std::vector<ChunkInfo>(
+      chunk_metadata.chunks().begin(), chunk_metadata.chunks().end());
+
+  // Modify metadata to add a synthetic cf.
+  // In ManyFields, field 1 is field_one (singular).
+  auto* cf = chunk_metadata.mutable_message()->add_chunked_fields();
+  cf->add_field_tag()->set_field(1);          // field_one
+  cf->mutable_message()->set_chunk_index(1);  // valid chunk index
+
+  // Now call HashFields with field_tags that are LONGER.
+  ::tensorflow::protobuf::RepeatedPtrField<FieldIndex> field_tags;
+  field_tags.Add()->set_field(1);
+  field_tags.Add()->set_field(1);  // longer tag
+
+  ManyFields many_fields;
+  // It should hit third branch, see singular field, and call MutableMessage.
+  auto hash_or = fingerprinting_utils_internal::HashFields(
+      chunk_metadata.message(), reader, chunks_info, field_tags, &many_fields);
+  TF_EXPECT_OK(hash_or.status());
+}
+
+TEST(FingerprintingTest, TestHashFieldsRepeatedMissingIndexInFile) {
+  const std::string export_dir = io::JoinPath(
+      TensorFlowSrcRoot(), "tools/proto_splitter/testdata", "many-field.cpb");
+  TF_ASSERT_OK_AND_ASSIGN(auto reader, GetRiegeliReader(export_dir));
+  auto read_metadata = GetChunkMetadata(reader);
+  if (!read_metadata.ok()) {
+    reader.Close();
+    TF_ASSERT_OK(read_metadata.status());
+  }
+  ChunkMetadata chunk_metadata = read_metadata.value();
+
+  std::vector<ChunkInfo> chunks_info = std::vector<ChunkInfo>(
+      chunk_metadata.chunks().begin(), chunk_metadata.chunks().end());
+
+  // Modify metadata to add a synthetic cf.
+  // In ManyFields, field 2 is repeated_field.
+  auto* cf = chunk_metadata.mutable_message()->add_chunked_fields();
+  cf->add_field_tag()->set_field(2);          // repeated_field (missing index)
+  cf->mutable_message()->set_chunk_index(1);  // valid chunk index
+
+  // Now call HashFields with field_tags that are LONGER.
+  ::tensorflow::protobuf::RepeatedPtrField<FieldIndex> field_tags;
+  field_tags.Add()->set_field(2);
+  field_tags.Add()->set_index(0);  // longer tag
+
+  ManyFields many_fields;
+  // It should hit third branch, see missing index, and break.
+  auto hash_or = fingerprinting_utils_internal::HashFields(
+      chunk_metadata.message(), reader, chunks_info, field_tags, &many_fields);
+  TF_EXPECT_OK(hash_or.status());
+}
+
+TEST(FingerprintingTest, TestHashFieldsThirdBranchCovered) {
+  const std::string export_dir = io::JoinPath(
+      TensorFlowSrcRoot(), "tools/proto_splitter/testdata", "many-field.cpb");
+  TF_ASSERT_OK_AND_ASSIGN(auto reader, GetRiegeliReader(export_dir));
+  auto read_metadata = GetChunkMetadata(reader);
+  if (!read_metadata.ok()) {
+    reader.Close();
+    TF_ASSERT_OK(read_metadata.status());
+  }
+  ChunkMetadata chunk_metadata = read_metadata.value();
+
+  std::vector<ChunkInfo> chunks_info = std::vector<ChunkInfo>(
+      chunk_metadata.chunks().begin(), chunk_metadata.chunks().end());
+
+  // Modify metadata to add a synthetic cf.
+  // In ManyFields, field 2 is repeated_field.
+  auto* cf = chunk_metadata.mutable_message()->add_chunked_fields();
+  cf->add_field_tag()->set_field(2);          // repeated_field
+  cf->add_field_tag()->set_index(0);          // index 0
+  cf->mutable_message()->set_chunk_index(1);  // valid chunk index
+
+  // Now call HashFields with field_tags that are LONGER.
+  ::tensorflow::protobuf::RepeatedPtrField<FieldIndex> field_tags;
+  field_tags.Add()->set_field(2);
+  field_tags.Add()->set_index(0);
+  field_tags.Add()->set_field(
+      1);  // longer tag (field 1 is singular ManyFields)
+
+  ManyFields many_fields;
+  many_fields.add_repeated_field();
+  // It should hit third branch, see valid index, and call
+  // MutableRepeatedMessage.
+  auto hash_or = fingerprinting_utils_internal::HashFields(
+      chunk_metadata.message(), reader, chunks_info, field_tags, &many_fields);
+  TF_EXPECT_OK(hash_or.status());
+}
 
 }  // namespace tensorflow::saved_model::fingerprinting
