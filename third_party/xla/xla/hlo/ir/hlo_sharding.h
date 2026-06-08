@@ -57,11 +57,7 @@ class HloSharding {
 
   // Creates a trivial sharding that replicates a maximal tile across all
   // devices.
-  static HloSharding Replicate(absl::Span<const OpMetadata> metadata = {},
-                               bool use_named_sharding = false) {
-    if (use_named_sharding) {
-      return HloSharding(NamedSharding::Replicate(metadata));
-    }
+  static HloSharding Replicate(absl::Span<const OpMetadata> metadata = {}) {
     return HloSharding(/*manual=*/false, /*replicated=*/true, /*unknown=*/false,
                        /*unreduced=*/false, metadata);
   }
@@ -86,8 +82,7 @@ class HloSharding {
   // Creates a sharding that emulates device placement; a tile shape equal to
   // the input shape (one tile) assigned to a single device.
   static HloSharding SingleDevice(int64_t device_id,
-                                  absl::Span<const OpMetadata> metadata = {},
-                                  bool use_named_sharding = false);
+                                  absl::Span<const OpMetadata> metadata = {});
 
   // Creates a new sharding which splits a shape into tiles amongst the devices
   // specified by `tile_assignment`.

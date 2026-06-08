@@ -198,11 +198,7 @@ std::vector<AxisRef> GetOrderedAxisRefs(const NamedSharding& sharding) {
 }  // namespace
 
 HloSharding HloSharding::SingleDevice(int64_t device_id,
-                                      absl::Span<const OpMetadata> metadata,
-                                      bool use_named_sharding) {
-  if (use_named_sharding) {
-    return HloSharding(NamedSharding::SingleDevice(device_id, metadata));
-  }
+                                      absl::Span<const OpMetadata> metadata) {
   return HloSharding(device_id, metadata);
 }
 
