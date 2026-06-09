@@ -32,9 +32,24 @@ tf_cc_test(
     srcs = ["runtime_shape_test.cc"],
     deps = [
         ":runtime_shape",
+        ":types",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "types",
+    hdrs = [
+        "runtime_shape.h",
+        "types.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    deps = [
+        ":compatibility_macros",
+        ":runtime_shape",
     ],
 )
 
