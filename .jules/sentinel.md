@@ -1,0 +1,4 @@
+## 2025-05-14 - Path Traversal (Zip Slip) in Archive Extraction
+**Vulnerability:** Several utility functions and examples in TensorFlow used `tarfile.extractall()` and `zipfile.extractall()` on potentially untrusted data without validating that the archive members would be extracted within the intended target directory. This allowed for Path Traversal (Zip Slip) attacks.
+**Learning:** Python's `tarfile.extractall()` is notoriously unsafe and does not prevent extraction outside the destination if members have names starting with `..` or `/`. `zipfile.extractall()` was safer in my tests but should still be explicitly validated for defense-in-depth.
+**Prevention:** Always iterate over archive members and validate their absolute paths against the target directory using `os.path.commonpath` and `os.path.abspath` before calling `extractall()`.

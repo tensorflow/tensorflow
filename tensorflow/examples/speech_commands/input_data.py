@@ -62,6 +62,13 @@ def prepare_words_list(wanted_words):
   return [SILENCE_LABEL, UNKNOWN_WORD_LABEL] + wanted_words
 
 
+def _is_within_directory(directory, target):
+  abs_directory = os.path.abspath(directory)
+  abs_target = os.path.abspath(target)
+  prefix = os.path.commonpath([abs_directory, abs_target])
+  return prefix == abs_directory
+
+
 def which_set(filename, validation_percentage, testing_percentage):
   """Determines which data partition the file should belong to.
 
@@ -237,7 +244,12 @@ class AudioProcessor(object):
       tf.compat.v1.logging.info(
           'Successfully downloaded {0} ({1} bytes)'.format(
               filename, statinfo.st_size))
-      tarfile.open(filepath, 'r:gz').extractall(dest_directory)
+      with tarfile.open(filepath, 'r:gz') as archive:
+        for member in archive.getmembers():
+          member_path = os.path.join(dest_directory, member.name)
+          if not _is_within_directory(dest_directory, member_path):
+            raise RuntimeError('Attempted Path Traversal in Tar File')
+        archive.extractall(dest_directory)
 
   def prepare_data_index(self, silence_percentage, unknown_percentage,
                          wanted_words, validation_percentage,

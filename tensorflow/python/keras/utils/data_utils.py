@@ -95,6 +95,13 @@ def is_generator_or_sequence(x):
           isinstance(x, typing.Iterator))
 
 
+def _is_within_directory(directory, target):
+  abs_directory = os.path.abspath(directory)
+  abs_target = os.path.abspath(target)
+  prefix = os.path.commonpath([abs_directory, abs_target])
+  return prefix == abs_directory
+
+
 def _extract_archive(file_path, path='.', archive_format='auto'):
   """Extracts an archive if it matches tar, tar.gz, tar.bz, or zip formats.
 
@@ -132,6 +139,15 @@ def _extract_archive(file_path, path='.', archive_format='auto'):
     if is_match_fn(file_path):
       with open_fn(file_path) as archive:
         try:
+          if archive_type == 'tar':
+            for member in archive.getmembers():
+              if not _is_within_directory(path, os.path.join(path, member.name)):
+                raise RuntimeError('Attempted Path Traversal in Tar File')
+          if archive_type == 'zip':
+            for member in archive.infolist():
+              if not _is_within_directory(path,
+                                          os.path.join(path, member.filename)):
+                raise RuntimeError('Attempted Path Traversal in Zip File')
           archive.extractall(path)
         except (tarfile.TarError, RuntimeError, KeyboardInterrupt):
           if os.path.exists(path):

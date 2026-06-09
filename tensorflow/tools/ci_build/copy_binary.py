@@ -37,6 +37,13 @@ TF_NIGHTLY_REGEX = (r"(.+)(tf_nightly.*)-(\d\.[\d]{1,2}"
 BINARY_STRING_TEMPLATE = "%s-%s-%s.whl"
 
 
+def _is_within_directory(directory, target):
+  abs_directory = os.path.abspath(directory)
+  abs_target = os.path.abspath(target)
+  prefix = os.path.commonpath([abs_directory, abs_target])
+  return prefix == abs_directory
+
+
 def check_existence(filename):
   """Check the existence of file or dir."""
   if not os.path.exists(filename):
@@ -62,6 +69,10 @@ def copy_binary(directory, origin_tag, new_tag, version, package):
   try:
     tmpdir = tempfile.mkdtemp()
     os.chdir(tmpdir)
+
+    for member in zip_ref.infolist():
+      if not _is_within_directory(tmpdir, os.path.join(tmpdir, member.filename)):
+        raise RuntimeError("Attempted Path Traversal in Zip File")
 
     zip_ref.extractall()
     zip_ref.close()
