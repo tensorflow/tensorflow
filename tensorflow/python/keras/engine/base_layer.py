@@ -23,9 +23,9 @@ import threading
 import warnings
 import weakref
 
+from google.protobuf import json_format
 import numpy as np
 
-from google.protobuf import json_format
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.python import tf2
 from tensorflow.python.autograph.core import ag_ctx
