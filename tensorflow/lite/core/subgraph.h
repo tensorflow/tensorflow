@@ -536,6 +536,13 @@ class Subgraph {
     return (options_ && options_->GetDisableDelegateClustering());
   }
 
+  // WARNING: This is an experimental API and subject to change.
+  // If true, node fusion (clustering) when partitioning delegated graphs
+  // is disabled, forcing single-operator delegated subsets.
+  bool DisableDelegateNodeFusion() const {
+    return (options_ && options_->GetDisableDelegateNodeFusion());
+  }
+
   // Retrieves the corresponding TfLiteContext of a subgraph given a subgraph
   // index and switches to the delegate context for this subgraph. If an invalid
   // subgraph index is given, returns kTfLiteError.
