@@ -376,11 +376,6 @@ CrossProgramPrefetches FindCrossProgramPrefetches(
             << prefetch.buffer->ToString();
   }
 
-  for (auto& prefetch : cross_program_prefetches.prefetches) {
-    VLOG(3) << "User annotated cross-program prefetch: "
-            << prefetch.buffer->ToString();
-  }
-
   DefaultCrossProgramPrefetchBufferIntervalComparator default_comparator(
       hlo_live_range, options.msa_sort_order_overrides);
   BufferIntervalComparator* comparator =

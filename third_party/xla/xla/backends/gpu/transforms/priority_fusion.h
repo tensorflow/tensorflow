@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -39,6 +40,13 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+struct SkippedFusionCandidate {
+  std::string producer_name;
+  std::string consumer_name;
+  absl::Duration estimated_benefit;
+  std::string reason;
+};
 
 // PriorityFusion is the main fusion pass for XLA:GPU. It is an HLO pass that
 // assigns a priority to each producer instruction based on the estimated
@@ -129,6 +137,8 @@ class PriorityFusion : public HloModulePass {
   HloFusionAnalysisCache fusion_analysis_cache_;
 
   mlir::MLIRContext* mlir_context_;
+
+  std::vector<SkippedFusionCandidate> skipped_fusion_candidates_;
 };
 
 }  // namespace gpu

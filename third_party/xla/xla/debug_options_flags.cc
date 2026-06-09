@@ -506,7 +506,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_collective_timeout_seconds(30 * 60);
 
   opts.set_xla_keep_shardings_after_spmd(false);
-  opts.set_xla_enable_hlo_sharding_v3(false);
+  opts.set_xla_enable_hlo_sharding_v3(true);
   opts.set_xla_enable_rgv3_materialization(true);
   opts.set_xla_sdy_export_all_reduce_scatter(false);
   opts.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(false);
@@ -2278,6 +2278,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Enable heroless Triton fusions in the PriorityFusion pass. The pass "
       "will try to make Triton fusions first and foremost where it is "
       "possible."));
+  flag_list->push_back(tsl::Flag(
+      "xla_priority_fusion_log_skipped_candidates",
+      bool_setter_for(
+          &DebugOptions::set_xla_priority_fusion_log_skipped_candidates),
+      debug_options->xla_priority_fusion_log_skipped_candidates(),
+      "Log skipped fusion candidates in PriorityFusion pass."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_dump_autotune_results_to",
       string_setter_for(&DebugOptions::set_xla_gpu_dump_autotune_results_to),

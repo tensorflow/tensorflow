@@ -165,7 +165,9 @@ class PriorityFusionQueue {
       tsl::thread::ThreadPool* thread_pool, mlir::MLIRContext* mlir_context,
       HloFusionAnalysisCache& fusion_analysis_cache,
       FusionDeduplicationCache& fusion_deduplication_cache,
-      bool triton_heroless_fusion_enabled, const AliasInfo* alias_info) {
+      bool triton_heroless_fusion_enabled, const AliasInfo* alias_info,
+      std::vector<SkippedFusionCandidate>* final_skipped_candidates,
+      bool log_skipped) {
     auto cost_analysis = std::make_unique<GpuHloCostAnalysis>(
         cost_analysis_options, *device_info);
     VLOG(2) << "Running full HLO cost analysis for " << computation->name();
@@ -175,7 +177,8 @@ class PriorityFusionQueue {
         computation, std::move(cost_analysis), cost_analysis_options,
         device_info, fusion_process_dump, thread_pool, mlir_context,
         fusion_analysis_cache, fusion_deduplication_cache,
-        triton_heroless_fusion_enabled, alias_info);
+        triton_heroless_fusion_enabled, alias_info, final_skipped_candidates,
+        log_skipped);
 
     std::vector<HloInstruction*> instructions;
     for (auto* instruction : computation->MakeInstructionPostOrder()) {
@@ -194,17 +197,18 @@ class PriorityFusionQueue {
     return queue;
   }
 
-  PriorityFusionQueue(HloComputation* computation,
-                      std::unique_ptr<GpuHloCostAnalysis>&& cost_analysis,
-                      const GpuHloCostAnalysis::Options& cost_analysis_options,
-                      const se::DeviceDescription* device_info,
-                      FusionProcessDumpProto* fusion_process_dump,
-                      tsl::thread::ThreadPool* thread_pool,
-                      mlir::MLIRContext* mlir_context,
-                      HloFusionAnalysisCache& fusion_analysis_cache,
-                      FusionDeduplicationCache& fusion_deduplication_cache,
-                      bool triton_heroless_fusion_enabled,
-                      const AliasInfo* alias_info)
+  PriorityFusionQueue(
+      HloComputation* computation,
+      std::unique_ptr<GpuHloCostAnalysis>&& cost_analysis,
+      const GpuHloCostAnalysis::Options& cost_analysis_options,
+      const se::DeviceDescription* device_info,
+      FusionProcessDumpProto* fusion_process_dump,
+      tsl::thread::ThreadPool* thread_pool, mlir::MLIRContext* mlir_context,
+      HloFusionAnalysisCache& fusion_analysis_cache,
+      FusionDeduplicationCache& fusion_deduplication_cache,
+      bool triton_heroless_fusion_enabled, const AliasInfo* alias_info,
+      std::vector<SkippedFusionCandidate>* final_skipped_candidates,
+      bool log_skipped)
       : computation_(computation),
         device_info_(device_info),
         cost_analysis_(std::move(cost_analysis)),
@@ -218,11 +222,45 @@ class PriorityFusionQueue {
         fusion_info_cache_(*device_info_),
         reachability_(HloDfsReachability::Build(computation)),
         triton_heroless_fusion_enabled_(triton_heroless_fusion_enabled),
-        alias_info_(alias_info) {
+        alias_info_(alias_info),
+        log_skipped_(log_skipped),
+        final_skipped_candidates_(final_skipped_candidates) {
     dump_fusion_visualization_ = computation->parent()
                                      ->config()
                                      .debug_options()
                                      .xla_dump_fusion_visualization();
+  }
+
+  ~PriorityFusionQueue() {
+    if (final_skipped_candidates_) {
+      absl::MutexLock lock(&skipped_candidates_mutex_);
+      for (const auto& [name, candidate] : skipped_candidates_map_) {
+        final_skipped_candidates_->push_back(candidate);
+      }
+    }
+  }
+
+  void RecordSkipped(HloInstruction* producer, Priority benefit,
+                     absl::string_view reason) {
+    absl::MutexLock lock(&skipped_candidates_mutex_);
+    SkippedFusionCandidate candidate;
+    candidate.producer_name = producer->name();
+    candidate.consumer_name = "all fusible users";
+    candidate.estimated_benefit = benefit;
+    candidate.reason = std::string(reason);
+
+    if (log_skipped_) {
+      LOG(INFO) << "Skipped fusion candidate: producer="
+                << candidate.producer_name
+                << ", benefit=" << absl::FormatDuration(benefit)
+                << ", reason=" << candidate.reason;
+    }
+    skipped_candidates_map_[producer->name()] = candidate;
+  }
+
+  void RemoveSkipped(HloInstruction* producer) {
+    absl::MutexLock lock(&skipped_candidates_mutex_);
+    skipped_candidates_map_.erase(producer->name());
   }
 
   absl::Status ComputeAndSetPriorities(
@@ -248,11 +286,28 @@ class PriorityFusionQueue {
       // If the priority is negative, it's not helpful to perform fusion on this
       // instruction.
       if (priority < absl::ZeroDuration()) {
+        if (HloPredicateIsOp<HloOpcode::kConstant>(instruction)) {
+          continue;
+        }
+        std::string reason = "Unknown reason";
+        {
+          absl::MutexLock lock(&ineligibility_reasons_mutex_);
+          auto it = ineligibility_reasons_.find(instruction);
+          if (it != ineligibility_reasons_.end()) {
+            reason = it->second;
+          }
+        }
+        RecordSkipped(instruction, priority, reason);
         continue;
       }
 
+      RemoveSkipped(instruction);
       auto emplace_result = producer_priority_queue_.emplace(key, instruction);
       reverse_map_.emplace(instruction, emplace_result.first);
+    }
+    {
+      absl::MutexLock lock(&ineligibility_reasons_mutex_);
+      ineligibility_reasons_.clear();
     }
     return absl::OkStatus();
   }
@@ -616,6 +671,10 @@ class PriorityFusionQueue {
         step->set_producer_name(producer->name());
         step->set_reason(fusion_decision.Explain());
       }
+      {
+        absl::MutexLock lock(&ineligibility_reasons_mutex_);
+        ineligibility_reasons_[producer] = fusion_decision.Explain();
+      }
       return -absl::InfiniteDuration();
     }
 
@@ -656,7 +715,13 @@ class PriorityFusionQueue {
       step->set_us_fused(absl::ToDoubleMicroseconds(run_times.time_fused));
       step->set_us_unfused(absl::ToDoubleMicroseconds(run_times.time_unfused));
     }
-    return current_priority + run_times.time_unfused - run_times.time_fused;
+    Priority prio =
+        current_priority + run_times.time_unfused - run_times.time_fused;
+    if (prio < absl::ZeroDuration()) {
+      absl::MutexLock lock(&ineligibility_reasons_mutex_);
+      ineligibility_reasons_[producer] = "Estimated benefit is negative";
+    }
+    return prio;
   }
 
   FusionDecision IsTritonSupported(const HloInstruction& instruction) {
@@ -1092,6 +1157,15 @@ class PriorityFusionQueue {
   const AliasInfo* alias_info_;
 
   bool dump_fusion_visualization_;
+
+  bool log_skipped_;
+  std::vector<SkippedFusionCandidate>* final_skipped_candidates_;
+  absl::Mutex ineligibility_reasons_mutex_;
+  absl::flat_hash_map<const HloInstruction*, std::string>
+      ineligibility_reasons_;
+  absl::Mutex skipped_candidates_mutex_;
+  absl::flat_hash_map<std::string, SkippedFusionCandidate>
+      skipped_candidates_map_;
 };
 
 }  // namespace
@@ -1174,6 +1248,11 @@ absl::StatusOr<bool> PriorityFusion::RunImpl(
   FusionDeduplicationCache fusion_deduplication_cache =
       FusionDeduplicationCache::Create(*module, IsFusible);
 
+  bool log_skipped = module->config()
+                         .debug_options()
+                         .xla_priority_fusion_log_skipped_candidates();
+  skipped_fusion_candidates_.clear();
+
   bool changed = false;
   for (auto* computation : fusible_computations) {
     CHECK(!computation->IsFusionComputation());
@@ -1184,7 +1263,8 @@ absl::StatusOr<bool> PriorityFusion::RunImpl(
             computation, cost_analysis_options_, &device_info_,
             fusion_process_dump_.get(), thread_pool_, mlir_context_,
             fusion_analysis_cache_, fusion_deduplication_cache,
-            triton_heroless_fusion_enabled, alias_info_));
+            triton_heroless_fusion_enabled, alias_info_,
+            &skipped_fusion_candidates_, log_skipped));
 
     while (fusion_queue->DequeueNextProducer()) {
       auto producer = fusion_queue->current_producer();
@@ -1291,6 +1371,24 @@ absl::StatusOr<bool> PriorityFusion::RunImpl(
     DumpPerModuleProtobufToFile(*module, *fusion_process_dump_,
                                 module->config().debug_options(),
                                 "priority_fusion_dump");
+  }
+
+  if (log_skipped && !skipped_fusion_candidates_.empty()) {
+    std::stable_sort(
+        skipped_fusion_candidates_.begin(), skipped_fusion_candidates_.end(),
+        [](const SkippedFusionCandidate& a, const SkippedFusionCandidate& b) {
+          return a.estimated_benefit > b.estimated_benefit;
+        });
+    LOG(INFO)
+        << "=== PriorityFusion Skipped Candidates (Decreasing Priority) ===";
+    for (const auto& candidate : skipped_fusion_candidates_) {
+      LOG(INFO) << "Producer: " << candidate.producer_name << ", Benefit: "
+                << absl::FormatDuration(candidate.estimated_benefit)
+                << ", Reason: " << candidate.reason;
+    }
+    LOG(INFO)
+        << "===============================================================";
+    skipped_fusion_candidates_.clear();
   }
 
   return changed;
