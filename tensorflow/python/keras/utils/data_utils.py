@@ -141,7 +141,8 @@ def _extract_archive(file_path, path='.', archive_format='auto'):
         try:
           if archive_type == 'tar':
             for member in archive.getmembers():
-              if not _is_within_directory(path, os.path.join(path, member.name)):
+              if not _is_within_directory(path,
+                                          os.path.join(path, member.name)):
                 raise RuntimeError('Attempted Path Traversal in Tar File')
           if archive_type == 'zip':
             for member in archive.infolist():
