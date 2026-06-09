@@ -564,10 +564,8 @@ TEST_F(AutotunerPassTest, CublasLtSelectFirstConfig) {
           allocator_.get()));
 
   absl::ScopedMockLog log;
-  EXPECT_CALL(
-      log,
-      Log(absl::LogSeverity::kInfo, testing::_,
-          testing::HasSubstr("Skipping profiling and using the first config")))
+  EXPECT_CALL(log, Log(absl::LogSeverity::kInfo, testing::_,
+                       testing::HasSubstr("Using first compilable config")))
       .Times(testing::AtLeast(1));
 
   log.StartCapturingLogs();
@@ -653,10 +651,8 @@ TEST_F(AutotunerPassTest, TritonSelectFirstConfig) {
           allocator_.get()));
 
   absl::ScopedMockLog log;
-  EXPECT_CALL(
-      log,
-      Log(absl::LogSeverity::kInfo, testing::_,
-          testing::HasSubstr("Skipping profiling and using the first config")))
+  EXPECT_CALL(log, Log(absl::LogSeverity::kInfo, testing::_,
+                       testing::HasSubstr("Using first compilable config")))
       .Times(testing::AtLeast(1));
 
   log.StartCapturingLogs();
@@ -731,7 +727,7 @@ TEST_F(AutotunerPassTest, CudnnSelectFirstConfig) {
 
   absl::ScopedMockLog log;
   EXPECT_CALL(log, Log(absl::LogSeverity::kInfo, testing::_,
-                       testing::HasSubstr("Found only one supported config")))
+                       testing::HasSubstr("Using first compilable config")))
       .Times(testing::AtLeast(1));
 
   log.StartCapturingLogs();
