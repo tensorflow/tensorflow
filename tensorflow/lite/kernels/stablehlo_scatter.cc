@@ -102,7 +102,7 @@ static bool IsInBounds(Index<IndexType> index, RuntimeShape shape) {
 
   for (int dim = 0; dim < shape.DimensionsCount(); ++dim) {
     // int32 is implicitly promoted to int64 if needed.
-    if (index[dim] >= shape.Dims(dim)) {
+    if (index[dim] < 0 || index[dim] >= shape.Dims(dim)) {
       return false;
     }
   }

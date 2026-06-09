@@ -56,8 +56,9 @@ TfLiteStatus ClipStartingIndex(const RuntimeShape& operand_shape,
     return kTfLiteError;
   }
   for (int dim = 0; dim < starting_index.size(); ++dim) {
-    starting_index[dim] = std::min((int64_t)starting_index[dim],
-                                   operand_shape.Dims(dim) - slice_sizes[dim]);
+    starting_index[dim] = std::max((int64_t)0,
+                          std::min((int64_t)starting_index[dim],
+                                   operand_shape.Dims(dim) - slice_sizes[dim]));
   }
   return kTfLiteOk;
 }
