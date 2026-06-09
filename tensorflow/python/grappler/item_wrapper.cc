@@ -234,6 +234,9 @@ PYBIND11_MODULE(_pywrap_tf_item, m) {
               }
               const auto& range = inputs[arg.name()];
               for (int i = range.first; i < range.second; ++i) {
+                if (i >= node.input_size()) {
+                  continue;
+                }
                 groupings.Group(node.name(),
                                 tensorflow::grappler::NodeName(node.input(i)));
               }

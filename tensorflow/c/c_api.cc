@@ -1787,6 +1787,7 @@ static void GraphImportGraphDefLocked(TF_Graph* graph, const GraphDef& def,
   size_t size = results.missing_unused_input_map_keys.size();
   tf_results->missing_unused_key_names.resize(size);
   tf_results->missing_unused_key_indexes.resize(size);
+  tf_results->missing_unused_key_names_data.reserve(size);
 
   for (int i = 0; i < size; ++i) {
     TensorId id = results.missing_unused_input_map_keys[i];
