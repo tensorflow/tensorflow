@@ -4,10 +4,6 @@
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
 load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
-load(
-    "//tensorflow:strict.default.bzl",
-    "py_strict_binary",  # @unused
-)
 load("//tensorflow:tensorflow.bzl", "if_google", "if_xla_available", "py_test", "tf_cc_test", "tf_py_test")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
 load("//tensorflow/python/tools:tools.bzl", "saved_model_compile_aot")

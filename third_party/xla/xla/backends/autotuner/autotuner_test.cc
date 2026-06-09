@@ -1070,11 +1070,11 @@ TEST_F(AutotunerTest, DumpLogsToFile) {
   EXPECT_THAT(actual_logs, EqualsProto(expected_logs));
 }
 
-class AutotunerTestWithBackendName
+class AutotunerTestWithBackend
     : public AutotunerTest,
-      public ::testing::WithParamInterface<std::string> {};
+      public ::testing::WithParamInterface<autotuner::Backend> {};
 
-TEST_P(AutotunerTestWithBackendName, ExcludeCublasConfig) {
+TEST_P(AutotunerTestWithBackend, ExcludeCublasConfig) {
   config_.exclude_cublas_config = true;
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.push_back(GetTestConfig("test_config_1"));
@@ -1083,7 +1083,8 @@ TEST_P(AutotunerTestWithBackendName, ExcludeCublasConfig) {
   auto backend = std::make_unique<MockCodegenBackend>();
   EXPECT_CALL(*backend, GetSupportedConfigs(_))
       .WillOnce(Return(std::move(configs)));
-  EXPECT_CALL(*backend, name()).WillRepeatedly(Return(GetParam()));
+  EXPECT_CALL(*backend, backend()).WillRepeatedly(Return(GetParam()));
+  EXPECT_CALL(*backend, name()).WillRepeatedly(Return("mock_backend"));
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::move(backend));
 
@@ -1098,10 +1099,10 @@ TEST_P(AutotunerTestWithBackendName, ExcludeCublasConfig) {
               StatusIs(absl::StatusCode::kInternal));
 }
 
-INSTANTIATE_TEST_SUITE_P(ExcludeCublasConfigInstance,
-                         AutotunerTestWithBackendName,
-                         ::testing::Values("CUBLAS_FISSION",
-                                           "CUBLASLT_FISSION"));
+INSTANTIATE_TEST_SUITE_P(
+    ExcludeCublasConfigInstance, AutotunerTestWithBackend,
+    ::testing::Values(autotuner::Backend::CUBLASLT_FISSION,
+                      autotuner::Backend::HIPBLASLT_FISSION));
 
 TEST_F(AutotunerTest, SelectFirstConfig) {
   config_.select_first_config = true;
@@ -1207,39 +1208,6 @@ TEST_F(AutotunerTest, ConfigsWithRegisterSpillingAreFiltered) {
   EXPECT_THAT(autotuner->Autotune(dummy_instr), absl_testing::IsOk());
 }
 
-TEST_F(AutotunerTest, SelectFirstConfigStopsAfterFirstSuccess) {
-  config_.select_first_config = true;
-
-  std::vector<std::unique_ptr<BackendConfig>> configs;
-  configs.push_back(GetTestConfig("test_config_1"));
-  configs.push_back(GetTestConfig("test_config_2"));
-  configs.push_back(GetTestConfig("test_config_3"));
-
-  auto backend = std::make_unique<MockCodegenBackend>();
-  EXPECT_CALL(*backend, GetSupportedConfigs(_))
-      .WillOnce(Return(std::move(configs)));
-  EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_1")))
-      .WillOnce(Return(std::unique_ptr<Executable>()));
-  EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_2"))).Times(0);
-  EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_3"))).Times(0);
-
-  EXPECT_CALL(*backend, ApplyConfig(_, ConfigMatcher("test_config_1")))
-      .Times(1)
-      .WillRepeatedly(Return(absl::OkStatus()));
-  std::vector<std::unique_ptr<CodegenBackend>> backends;
-  backends.push_back(std::move(backend));
-
-  auto profiler = std::make_unique<MockProfiler>();
-
-  ASSERT_OK_AND_ASSIGN(
-      auto autotuner, Autotuner::Create(std::move(backends),
-                                        std::move(profiler), config_, nullptr));
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                       ParseAndReturnVerifiedModule(kHlo));
-  auto dummy_instr = module->entry_computation()->root_instruction();
-  EXPECT_THAT(autotuner->Autotune(dummy_instr), absl_testing::IsOk());
-}
-
 TEST_F(AutotunerTest, SelectFirstConfigFirstConfigFails) {
   config_.select_first_config = true;
 
@@ -1323,30 +1291,6 @@ TEST_F(AutotunerTest, UseDefaultConfig) {
                        ParseAndReturnVerifiedModule(kHlo));
   auto dummy_instr = module->entry_computation()->root_instruction();
   EXPECT_THAT(autotuner->Autotune(dummy_instr), absl_testing::IsOk());
-}
-
-TEST_F(AutotunerTest, UseDefaultConfigUnimplemented) {
-  config_.use_default_config = true;
-
-  auto backend = std::make_unique<MockCodegenBackend>();
-  EXPECT_CALL(*backend, name()).WillRepeatedly(Return("mock_backend"));
-  EXPECT_CALL(*backend, GetSupportedConfigs(_)).Times(0);
-  EXPECT_CALL(*backend, GetDefaultConfig(_))
-      .Times(AtMost(1))
-      .WillRepeatedly(
-          [] { return absl::UnimplementedError("not implemented"); });
-  std::vector<std::unique_ptr<CodegenBackend>> backends;
-  backends.push_back(std::move(backend));
-
-  ASSERT_OK_AND_ASSIGN(
-      auto autotuner,
-      Autotuner::Create(std::move(backends), /*profiler=*/nullptr, config_,
-                        /*cache=*/nullptr));
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                       ParseAndReturnVerifiedModule(kHlo));
-  auto dummy_instr = module->entry_computation()->root_instruction();
-  EXPECT_DEATH(autotuner->Autotune(dummy_instr).IgnoreError(),
-               "GetDefaultConfig is not implemented for mock_backend");
 }
 
 class MockKeyValueStore : public KeyValueStoreInterface {

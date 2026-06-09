@@ -4408,7 +4408,11 @@ tf_kernel_library(
     name = "in_topk_op",
     features = if_cuda(["-layering_check"]),
     prefix = "in_topk_op",
-    deps = NN_DEPS + [":reduction_ops"],
+    deps = NN_DEPS + [
+        ":reduction_ops",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
