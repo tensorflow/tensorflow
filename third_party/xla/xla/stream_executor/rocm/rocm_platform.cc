@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/rocm/rocm_executor.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
+#include "xla/stream_executor/rocm/rocm_runtime_abi_version.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
 #include "xla/tsl/platform/errors.h"
 
@@ -107,6 +108,11 @@ ROCmPlatform::GetUncachedExecutor(int ordinal) {
   auto executor = std::make_unique<RocmExecutor>(this, ordinal);
   RETURN_IF_ERROR(executor->Init());
   return std::move(executor);
+}
+
+absl::StatusOr<std::unique_ptr<RuntimeAbiVersion> absl_nonnull>
+ROCmPlatform::GetRuntimeAbiVersion() const {
+  return std::make_unique<ROCmRuntimeAbiVersion>();
 }
 
 }  // namespace gpu

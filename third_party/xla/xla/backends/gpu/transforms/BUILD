@@ -745,7 +745,6 @@ xla_cc_test(
     ],
     deps = [
         ":cublas_pad_for_gemms",
-        "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -862,6 +861,7 @@ cc_library(
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "//xla/tests/restricted:hlo_test_base_legacy",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
         "//xla/tsl/protobuf:dnn_proto_cc",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -949,12 +949,6 @@ cc_library(
         "@tsl//tsl/platform:errors",
         "@tsl//tsl/platform:statusor",
     ]) + [
-        "//xla:status_macros",
-        "//xla/service:matmul_indexing_utils",
-        "//xla/stream_executor:engine_options",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
         "@cudnn_frontend_archive//:cudnn_frontend",
     ],
@@ -1150,11 +1144,6 @@ cc_library(
         "@tsl//tsl/platform:errors",
         "@tsl//tsl/platform:statusor",
     ]) + [
-        "//xla:xla_data_proto_cc",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
-        "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -1270,15 +1259,12 @@ xla_test(
             "//xla/hlo/ir:hlo",
             "//xla/hlo/utils:hlo_matchers",
             "//xla/service:pattern_matcher",
-            "@tsl//tsl/platform:statusor",
         ],
         [
             # b/317293391
             "@com_google_googletest//:gtest_main",
         ],
-    ) + [
-        "//xla/tsl/platform:statusor",
-    ],
+    ),
 )
 
 cc_library(
@@ -1564,6 +1550,7 @@ cc_library(
     hdrs = ["dynamic_slice_fusion_rewriter_v2.h"],
     tags = ["gpu"],
     deps = [
+        ":dynamic_slice_fusion",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
@@ -1598,6 +1585,7 @@ xla_cc_test(
         ":dynamic_slice_annotator",
         ":dynamic_slice_fusion",
         ":dynamic_slice_fusion_rewriter_v2",
+        "//xla:comparison_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -1607,6 +1595,7 @@ xla_cc_test(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/stream_executor:platform_id",
         "//xla/stream_executor/gpu:gpu_init_impl",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",

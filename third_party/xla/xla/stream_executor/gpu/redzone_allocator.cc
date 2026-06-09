@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/redzone_allocator_kernel.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/allocator.h"
@@ -273,14 +274,16 @@ absl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
                    gpu::GpuKernelRegistry::GetGlobalRegistry()
                        .LoadKernel<gpu::RedzoneAllocatorKernel>(executor));
 
-  DeviceAddressHandle out_param(executor, executor->AllocateScalar<uint64_t>());
-  RETURN_IF_ERROR(stream_->MemZero(out_param.address_ptr(), sizeof(uint64_t)));
+  ASSIGN_OR_RETURN(std::unique_ptr<MemoryAllocation> allocation,
+                   executor->HostMemoryAllocate(sizeof(uint64_t)));
+  DeviceAddressBase out_param_addr = allocation->address();
+  RETURN_IF_ERROR(stream_->MemZero(&out_param_addr, sizeof(uint64_t)));
 
   for (const auto& buf_and_size : allocated_buffers_) {
     ASSIGN_OR_RETURN(RedzoneCheckStatus redzone_status,
                      CheckRedzonesForBuffer(
                          stream_, *buf_and_size.first,
-                         DeviceAddress<uint64_t>(out_param.address()), kernel,
+                         DeviceAddress<uint64_t>(out_param_addr), kernel,
                          buf_and_size.second, redzone_size_, redzone_pattern_));
     if (!redzone_status.ok()) {
       return redzone_status;
