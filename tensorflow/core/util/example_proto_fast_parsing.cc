@@ -2905,6 +2905,7 @@ absl::Status ParseSequenceRaggedFeatures(
             int num_added_or_err =
                 ParseFeature(dtype, &stream, &out_values, &out_values_offset);
             if (num_added_or_err < 0) {
+              stream.PopLimit(limit);
               return absl::InvalidArgumentError(absl::StrCat(
                   "Unable to parse sequence ragged feature ", c.feature_name,
                   " in example ", ExampleName(example_names, e)));
