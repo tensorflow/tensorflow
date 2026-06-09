@@ -23,6 +23,10 @@ tf_class {
     name: "__init__"
   }
   member_method {
+    name: "__new__"
+    argspec: "args=[\'cls\', \'shape\', \'dtype\', \'allow_missing\', \'default_value\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
     name: "count"
   }
   member_method {

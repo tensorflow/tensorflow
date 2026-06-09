@@ -27,6 +27,10 @@ tf_class {
     name: "__init__"
   }
   member_method {
+    name: "__new__"
+    argspec: "args=[\'cls\', \'num_cores\', \'num_hosts\', \'num_of_cores_per_host\', \'topology\', \'devices\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "count"
   }
   member_method {

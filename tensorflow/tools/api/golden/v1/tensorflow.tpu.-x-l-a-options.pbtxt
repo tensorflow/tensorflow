@@ -19,6 +19,10 @@ tf_class {
     name: "__init__"
   }
   member_method {
+    name: "__new__"
+    argspec: "args=[\'cls\', \'use_spmd_for_xla_partitioning\', \'enable_xla_dynamic_padder\', \'use_shardy_partitioner\'], varargs=None, keywords=None, defaults=[\'True\', \'True\', \'False\'], "
+  }
+  member_method {
     name: "count"
   }
   member_method {

@@ -31,6 +31,10 @@ tf_class {
     name: "__init__"
   }
   member_method {
+    name: "__new__"
+    argspec: "args=[\'cls\', \'max_workspace_size_bytes\', \'precision_mode\', \'minimum_segment_size\', \'maximum_cached_engines\', \'use_calibration\', \'allow_build_at_runtime\'], varargs=None, keywords=None, defaults=[\'1073741824\', \'FP32\', \'3\', \'1\', \'True\', \'True\'], "
+  }
+  member_method {
     name: "count"
   }
   member_method {

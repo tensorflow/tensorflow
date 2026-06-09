@@ -23,6 +23,10 @@ tf_class {
     name: "__init__"
   }
   member_method {
+    name: "__new__"
+    argspec: "args=[\'cls\', \'experimental_fetch_to_device\', \'experimental_replication_mode\', \'experimental_place_dataset_on_device\', \'experimental_per_replica_buffer_size\'], varargs=None, keywords=None, defaults=[\'None\', \'InputReplicationMode.PER_WORKER\', \'False\', \'1\'], "
+  }
+  member_method {
     name: "count"
   }
   member_method {

@@ -19,6 +19,10 @@ tf_class {
     name: "__init__"
   }
   member_method {
+    name: "__new__"
+    argspec: "args=[\'cls\', \'experimental_enable_dynamic_batch_size\', \'experimental_bucketizing_dynamic_shape\', \'experimental_xla_options\'], varargs=None, keywords=None, defaults=[\'True\', \'False\', \'None\'], "
+  }
+  member_method {
     name: "count"
   }
   member_method {

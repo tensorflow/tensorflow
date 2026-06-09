@@ -43,6 +43,10 @@ tf_class {
     name: "__init__"
   }
   member_method {
+    name: "__new__"
+    argspec: "args=[\'cls\', \'port\', \'protocol\', \'work_dir\', \'fault_tolerant_mode\', \'worker_addresses\', \'job_gc_check_interval_ms\', \'job_gc_timeout_ms\', \'worker_timeout_ms\', \'worker_max_concurrent_snapshots\'], varargs=None, keywords=None, defaults=[\'0\', \'None\', \'None\', \'False\', \'None\', \'None\', \'None\', \'None\', \'0\'], "
+  }
+  member_method {
     name: "count"
   }
   member_method {
