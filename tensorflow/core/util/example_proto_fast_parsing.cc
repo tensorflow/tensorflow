@@ -2776,6 +2776,7 @@ absl::Status ParseSequenceSparseFeatures(
               num_added_or_err = 0;
           }
           if (num_added_or_err < 0) {
+            stream.PopLimit(limit);
             return absl::InvalidArgumentError(absl::StrCat(
                 "Unable to parse sequence sparse feature ", c.feature_name,
                 " in example ", ExampleName(example_names, e)));
