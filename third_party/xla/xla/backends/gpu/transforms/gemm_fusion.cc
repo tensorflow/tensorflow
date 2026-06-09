@@ -18,6 +18,7 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <queue>
 #include <string>
@@ -41,6 +42,8 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/codegen/triton/support_legacy.h"
 #include "xla/backends/gpu/transforms/bitcast_utils.h"
+#include "xla/codegen/tiling/experimental/tiled_hlo.h"
+#include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -1061,6 +1064,24 @@ absl::StatusOr<bool> FusionSearchSpace::SinkBitcast(HloInstruction* instr) {
 
 // Checks if the fusion can be tiled by SymbolicTileAnalysis.
 bool CanTile(mlir::MLIRContext& mlir_context, const HloFusionAdaptor& fusion) {
+  if (fusion.GetRoots()[0]
+          .instruction()
+          .GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_experimental_enable_tiling_propagation()) {
+    namespace ge = ::xla::gpu::experimental;
+    std::unique_ptr<ge::TilingSpace> ts =
+        ge::TilingSpace::Create(fusion, &mlir_context);
+    auto tiled_computation_or =
+        ge::TiledHloComputation::Tile(fusion, std::move(ts));
+    if (!tiled_computation_or.ok()) {
+      VLOG(1) << "Fusion is not tileable with experimental tiling: "
+              << tiled_computation_or.status().message();
+      return false;
+    }
+    return true;
+  }
   auto tile_or_error =
       SymbolicTileAnalysis::AnalyzeFusion(fusion, &mlir_context);
   if (std::holds_alternative<FusionDecision>(tile_or_error)) {

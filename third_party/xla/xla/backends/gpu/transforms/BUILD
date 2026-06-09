@@ -1774,6 +1774,8 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/codegen/triton:support",
         "//xla/codegen/tiling:symbolic_tile_analysis",
+        "//xla/codegen/tiling/experimental:tile",
+        "//xla/codegen/tiling/experimental:tiled_hlo",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
