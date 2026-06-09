@@ -16302,8 +16302,7 @@ ENTRY %entry {
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
   auto sort_instruction = FindInstruction(module.get(), HloOpcode::kSort);
-  EXPECT_THAT(sort_instruction,
-              op::Shape("(bf16[64,80]{1,0}, s32[64,80]{1,0})"));
+  EXPECT_THAT(sort_instruction, op::Shape("bf16[64,80]{1,0}"));
   auto topk_instruction = FindInstruction(module.get(), HloOpcode::kCustomCall);
   auto topk_operand = topk_instruction->operand(0);
   EXPECT_EQ(topk_instruction->custom_call_target(), "TopK");
@@ -16328,6 +16327,8 @@ ENTRY %entry {
   %multiply.43401 = bf16[64,256000]{1,0} parameter(0), sharding={devices=[2,1]<=[2]}
   %custom-call = (bf16[64,40]{1,0}, s32[64,40]{1,0}) custom-call(bf16[64,256000]{1,0} %multiply.43401), custom_call_target="TopK", called_computations={%region_695.22546}, sharding={{devices=[1,2]<=[2]}, {devices=[2,1]<=[2]}}
   %get-tuple-element.336 = bf16[64,40]{1,0} get-tuple-element((bf16[64,40]{1,0}, s32[64,40]{1,0}) %custom-call), index=0
+  %get-tuple-element.337 = s32[64,40]{1,0} get-tuple-element((bf16[64,40]{1,0}, s32[64,40]{1,0}) %custom-call), index=1
+  ROOT %tuple = (bf16[64,40]{1,0}, s32[64,40]{1,0}) tuple(bf16[64,40]{1,0} %get-tuple-element.336, s32[64,40]{1,0} %get-tuple-element.337)
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -16366,8 +16367,7 @@ ENTRY %entry {
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
   auto sort_instruction = FindInstruction(module.get(), HloOpcode::kSort);
-  EXPECT_THAT(sort_instruction,
-              op::Shape("(bf16[32,40]{1,0}, s32[32,40]{1,0})"));
+  EXPECT_THAT(sort_instruction, op::Shape("bf16[32,40]{1,0}"));
   auto topk_instruction = FindInstruction(module.get(), HloOpcode::kCustomCall);
   auto topk_operand = topk_instruction->operand(0);
   EXPECT_EQ(topk_instruction->custom_call_target(), "TopK");
@@ -16399,8 +16399,7 @@ ENTRY %entry {
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
   auto sort_instruction = FindInstruction(module.get(), HloOpcode::kSort);
-  EXPECT_THAT(sort_instruction,
-              op::Shape("(bf16[64,80]{1,0}, s32[64,80]{1,0})"));
+  EXPECT_THAT(sort_instruction, op::Shape("bf16[64,80]{1,0}"));
   auto topk_instruction = FindInstruction(module.get(), HloOpcode::kCustomCall);
   auto topk_operand = topk_instruction->operand(0);
   EXPECT_EQ(topk_instruction->custom_call_target(), "TopK");

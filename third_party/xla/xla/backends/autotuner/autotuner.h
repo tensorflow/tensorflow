@@ -23,10 +23,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
@@ -43,6 +41,7 @@ limitations under the License.
 using InstructionFilterFn = std::function<bool(const xla::HloInstruction&)>;
 
 #include "xla/backends/autotuner/codegen_orchestrator.h"
+#include "xla/backends/autotuner/tuner.h"
 
 namespace xla {
 
@@ -170,11 +169,11 @@ class Autotuner {
   };
 
   Autotuner(std::unique_ptr<CodegenOrchestrator> orchestrator,
-            std::unique_ptr<Profiler> profiler, AutotuneConfig autotune_config,
+            std::unique_ptr<Tuner> tuner, AutotuneConfig autotune_config,
             std::unique_ptr<AutotunerCacheInterface> cache,
             tsl::thread::ThreadPool* thread_pool)
       : orchestrator_(std::move(orchestrator)),
-        profiler_(std::move(profiler)),
+        tuner_(std::move(tuner)),
         autotune_config_(autotune_config),
         cache_(std::move(cache)),
         thread_pool_(thread_pool) {}
@@ -200,57 +199,15 @@ class Autotuner {
   absl::Status Insert(const HloInstruction* instr,
                       const Autotuner::Config& config);
 
-  // Profiles all the executable candidates for a given instruction.
-  absl::StatusOr<std::vector<ConfigResult>> ProfileAll(
-      std::vector<ExecutableCandidate> candidates,
-      const HloInstruction* instr = nullptr);
-
-  ConfigResult ProfileCandidate(ExecutableCandidate& candidate,
-                                InputBuffers& input_buffers,
-                                std::vector<OutputCluster>& clusters,
-                                bool is_trusted_config, bool allow_new_cluster)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(profiler_m_);
-
-  // Picks the best config from the given results.
-  // Result is moved from the input vector.
-  absl::StatusOr<ConfigResult> PickBestConfig(
-      std::vector<ConfigResult>& results);
-
-  // Assigns `output` to the first cluster whose representative matches within
-  // autotune_config_.relative_tolerance. If `allow_new_cluster` is true,
-  // creates a new cluster if no match is found; otherwise returns -1.
-  // `is_trusted_config` marks the cluster as having a trustworthy-backend
-  // member (propagates through the OR of member trust flags). Returns the
-  // assigned cluster index.
-  int AssignToOutputCluster(std::vector<OutputCluster>& clusters,
-                            ScopedShapedBuffer& output, bool is_trusted_config,
-                            bool allow_new_cluster)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(profiler_m_);
-
-  // Stamps kWrongResults on every successful result that is not in the
-  // winning cluster. Winner: if any cluster has a trustworthy member, the
-  // largest among those; otherwise the largest overall. Earliest insertion
-  // wins on tie. Reads `ConfigResult::cluster_index` to find each result's
-  // cluster.
-  void DemoteNonWinningClusterConfigs(
-      std::vector<ConfigResult>& results,
-      const std::vector<OutputCluster>& clusters);
-
-  void LogConfigResults(const HloInstruction& instr,
-                        const std::vector<ConfigResult>& results);
-  absl::Status DumpLogsToFile();
   // Dumps HLO before and after applying the config.
   absl::Status DumpHlo(HloInstruction* instr, const Config& config);
 
   std::unique_ptr<CodegenOrchestrator> orchestrator_;
-  std::unique_ptr<Profiler> profiler_ ABSL_GUARDED_BY(profiler_m_);
+  std::unique_ptr<Tuner> tuner_;
   AutotuneConfig autotune_config_;
   std::unique_ptr<AutotunerCacheInterface> cache_;
   tsl::thread::ThreadPool* thread_pool_;
-  AutotuningLogs logs_;
   int dump_counter_ = 0;
-
-  absl::Mutex profiler_m_;
 };
 }  // namespace xla
 

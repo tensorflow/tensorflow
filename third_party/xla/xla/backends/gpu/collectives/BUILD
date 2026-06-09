@@ -558,10 +558,13 @@ cc_library(
     ],
     deps = [
         ":nccl_errors",
+        "//xla:future",
         "//xla/core/collectives:rank_id",
         "//xla/core/collectives:symmetric_memory",
         "//xla/stream_executor:device_address",
+        "//xla/tsl/concurrency:executor",
         "//xla/tsl/cuda:nccl",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
