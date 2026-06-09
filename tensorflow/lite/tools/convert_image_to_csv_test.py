@@ -23,7 +23,9 @@ from tensorflow.python.framework.errors_impl import NotFoundError
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 
-PREFIX_PATH = resource_loader.get_path_to_datafile("../../core/lib/")
+PREFIX_PATH = os.path.abspath(
+    resource_loader.get_path_to_datafile("../../core/lib/")
+)
 
 
 class ConvertImageToCsvTest(test_util.TensorFlowTestCase):

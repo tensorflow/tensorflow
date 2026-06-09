@@ -3394,7 +3394,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "whole_file_read_ops",
     prefix = "whole_file_read_ops",
-    deps = IO_DEPS + ["@com_google_absl//absl/strings"],
+    deps = IO_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_cc_tests(
@@ -7350,6 +7353,8 @@ cc_library(
     deps = [
         "//tensorflow/core:portable_tensorflow_lib_lite",
         "//tensorflow/core/framework:reader_base_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )

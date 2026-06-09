@@ -16,8 +16,13 @@ limitations under the License.
 // See docs in ../ops/io_ops.cc.
 
 #include <memory>
+#include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/reader_base.h"
 #include "tensorflow/core/framework/reader_base.pb.h"
@@ -34,9 +39,21 @@ limitations under the License.
 
 namespace tensorflow {
 
+absl::Status ValidateFilename(const std::string& filename) {
+  if (filename.empty()) {
+    return absl::InvalidArgumentError("Filename cannot be empty.");
+  }
+  if (absl::StrContains(filename, "..")) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Filename cannot contain '..': ", filename));
+  }
+  return absl::OkStatus();
+}
+
 template <typename T>
 static absl::Status ReadEntireFile(Env* env, const std::string& filename,
                                    T* contents) {
+  TF_RETURN_IF_ERROR(ValidateFilename(filename));
   std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename, &file));
   io::RandomAccessInputStream input_stream(file.get());
@@ -137,6 +154,7 @@ class WriteFileOp : public OpKernel {
                     "Contents tensor must be scalar, but had shape: ",
                     contents_input->shape().DebugString())));
     const std::string& filename = filename_input->scalar<tstring>()();
+    OP_REQUIRES_OK(context, ValidateFilename(filename));
     const std::string dir(io::Dirname(filename));
     if (!context->env()->FileExists(dir).ok()) {
       OP_REQUIRES_OK(context, context->env()->RecursivelyCreateDir(dir));
