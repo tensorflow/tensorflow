@@ -645,6 +645,11 @@ message DebugOptions {
   // dimension.
   optional bool xla_gpu_enable_all_gather_combine_by_dim = 254;
 
+  // Enables spatial partitioning of the GPU BFC allocator so default and
+  // collective allocations share one fixed address range. Requires BFC
+  // preallocation.
+  optional bool xla_gpu_enable_allocator_spatial_partitioning = 494;
+
   optional bool xla_gpu_enable_analytical_latency_estimator = 255;
 
   // Enables NCCL Speed-of-Light (SoL) analytical cost model
