@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/util/split_proto/split_gpu_executable_writer.h"
 
+#include <cmath>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -65,6 +67,33 @@ SplitProtoManifest BuildManifest(int32_t num_of_contants) {
   return manifest;
 }
 
+void NormalizeLiteralProto(LiteralProto* literal) {
+  if (!literal) return;
+  for (int i = 0; i < literal->f32s_size(); ++i) {
+    if (std::isnan(literal->f32s(i))) {
+      literal->set_f32s(i, std::numeric_limits<float>::quiet_NaN());
+    }
+  }
+  for (int i = 0; i < literal->f64s_size(); ++i) {
+    if (std::isnan(literal->f64s(i))) {
+      literal->set_f64s(i, std::numeric_limits<double>::quiet_NaN());
+    }
+  }
+  for (int i = 0; i < literal->c64s_size(); ++i) {
+    if (std::isnan(literal->c64s(i))) {
+      literal->set_c64s(i, std::numeric_limits<float>::quiet_NaN());
+    }
+  }
+  for (int i = 0; i < literal->c128s_size(); ++i) {
+    if (std::isnan(literal->c128s(i))) {
+      literal->set_c128s(i, std::numeric_limits<double>::quiet_NaN());
+    }
+  }
+  for (int i = 0; i < literal->tuple_literals_size(); ++i) {
+    NormalizeLiteralProto(literal->mutable_tuple_literals(i));
+  }
+}
+
 // If the backend config is a json string, sort the keys to ensure that the
 // serialized form is consistent. This is needed to make the output
 // deterministic because the order of keys in json is not guaranteed.
@@ -77,6 +106,9 @@ absl::Status NormalizeBackendConfig(gpu::GpuExecutableProto& executable) {
             ->mutable_computations()) {
     for (HloInstructionProto& instruction :
          *computation.mutable_instructions()) {
+      if (instruction.has_literal()) {
+        NormalizeLiteralProto(instruction.mutable_literal());
+      }
       auto backend_config_str_or = GetBackendConfigString(
           instruction, &executable.hlo_module_with_config().hlo_module());
       if (!backend_config_str_or.ok()) {
