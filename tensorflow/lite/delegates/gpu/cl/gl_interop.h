@@ -22,21 +22,26 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
-#include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
+#include "tensorflow/lite/delegates/gpu/cl/environment.h"
+#include "tensorflow/lite/delegates/gpu/common/access_type.h"
+#include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/spi.h"
+
+#ifndef CL_DELEGATE_NO_GL
+#include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_event.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_memory.h"
 #include "tensorflow/lite/delegates/gpu/cl/egl_sync.h"
-#include "tensorflow/lite/delegates/gpu/cl/environment.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
-#include "tensorflow/lite/delegates/gpu/common/access_type.h"
-#include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/gl/portable_gl31.h"
-#include "tensorflow/lite/delegates/gpu/spi.h"
+#endif
 
 namespace tflite {
 namespace gpu {
 namespace cl {
+
+#ifndef CL_DELEGATE_NO_GL
 
 // Creates an EglSync from OpenCL event. Source event does not need to outlive
 // returned sync and could be safely destroyed.
@@ -162,6 +167,102 @@ class GlClBufferCopier : public TensorObjectConverter {
   size_t size_in_bytes_;
   CLCommandQueue* queue_ = nullptr;
 };
+
+#else
+
+class EglSync;
+class CLEvent;
+class CLContext;
+class CLMemory;
+
+inline absl::Status CreateEglSyncFromClEvent(cl_event event, EGLDisplay display,
+                                             EglSync* sync) {
+  return absl::UnimplementedError(
+      "GL interop is not supported when compiled with CL_DELEGATE_NO_GL");
+}
+
+inline bool IsEglSyncFromClEventSupported() { return false; }
+
+inline absl::Status CreateClEventFromEglSync(cl_context context,
+                                             const EglSync& egl_sync,
+                                             CLEvent* event) {
+  return absl::UnimplementedError(
+      "GL interop is not supported when compiled with CL_DELEGATE_NO_GL");
+}
+
+inline bool IsClEventFromEglSyncSupported(const CLDevice& device) {
+  return false;
+}
+
+inline absl::Status CreateClMemoryFromGlBuffer(GLuint gl_ssbo_id,
+                                               AccessType access_type,
+                                               CLContext* context,
+                                               CLMemory* memory) {
+  return absl::UnimplementedError(
+      "GL interop is not supported when compiled with CL_DELEGATE_NO_GL");
+}
+
+inline absl::Status CreateClMemoryFromGlTexture(GLenum texture_target,
+                                                GLuint texture_id,
+                                                AccessType access_type,
+                                                CLContext* context,
+                                                CLMemory* memory) {
+  return absl::UnimplementedError(
+      "GL interop is not supported when compiled with CL_DELEGATE_NO_GL");
+}
+
+inline bool IsGlSharingSupported(const CLDevice& device) { return false; }
+
+class AcquiredGlObjects {
+ public:
+  static bool IsSupported(const CLDevice& device) { return false; }
+
+  AcquiredGlObjects() = default;
+  ~AcquiredGlObjects() = default;
+
+  static absl::Status Acquire(const std::vector<cl_mem>& memory,
+                              cl_command_queue queue,
+                              const std::vector<cl_event>& wait_events,
+                              CLEvent* acquire_event /* optional */,
+                              AcquiredGlObjects* objects) {
+    return absl::UnimplementedError(
+        "GL interop is not supported when compiled with CL_DELEGATE_NO_GL");
+  }
+
+  absl::Status Release(const std::vector<cl_event>& wait_events,
+                       CLEvent* release_event /* optional */) {
+    return absl::OkStatus();
+  }
+};
+
+class GlInteropFabric {
+ public:
+  GlInteropFabric(EGLDisplay egl_display, Environment* environment) {}
+
+  absl::Status Start() { return absl::OkStatus(); }
+  absl::Status Finish() { return absl::OkStatus(); }
+  void RegisterMemory(cl_mem memory) {}
+  void UnregisterMemory(cl_mem memory) {}
+};
+
+class GlClBufferCopier : public TensorObjectConverter {
+ public:
+  static bool IsSupported(const ObjectDef& input, const ObjectDef& output) {
+    return false;
+  }
+
+  GlClBufferCopier(const TensorObjectDef& input_def,
+                   const TensorObjectDef& output_def,
+                   Environment* environment) {}
+
+  absl::Status Convert(const TensorObject& input_obj,
+                       const TensorObject& output_obj) override {
+    return absl::UnimplementedError(
+        "GL interop is not supported when compiled with CL_DELEGATE_NO_GL");
+  }
+};
+
+#endif  // CL_DELEGATE_NO_GL
 
 }  // namespace cl
 }  // namespace gpu
