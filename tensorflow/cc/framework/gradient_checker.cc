@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -248,6 +249,22 @@ absl::Status ComputeNumericJacobianTranspose(
         x_data_flat(r) = v - x_delta;
         std::vector<Tensor> y_neg;
         TF_RETURN_IF_ERROR(EvaluateGraph(&session, xs, ys, x_datas, &y_neg));
+
+        if (y_pos.size() != y_num || y_neg.size() != y_num) {
+          return absl::InternalError(
+              "Evaluated Tensors sizes do not match y_num");
+        }
+        for (int y_idx = 0; y_idx < y_num; ++y_idx) {
+          if (y_pos[y_idx].shape() != y_shapes[y_idx] ||
+              y_neg[y_idx].shape() != y_shapes[y_idx]) {
+            return absl::InvalidArgumentError(
+                absl::StrCat("Evaluated Tensor shape (pos: ",
+                             y_pos[y_idx].shape().DebugString(),
+                             ", neg: ", y_neg[y_idx].shape().DebugString(),
+                             ") does not match expected y_shapes (",
+                             y_shapes[y_idx].DebugString(), ")"));
+          }
+        }
 
         for (int y_idx = 0; y_idx < y_num; y_idx++) {
           // Compute element-wise centered difference and store in each

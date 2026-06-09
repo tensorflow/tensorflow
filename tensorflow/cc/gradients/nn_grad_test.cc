@@ -225,7 +225,7 @@ TEST_F(NNGradTest, SeluGrad) {
 
 TEST_F(NNGradTest, L2LossGrad) {
   TensorShape x_shape({5, 2});
-  TensorShape y_shape({1});
+  TensorShape y_shape({});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
   auto y = L2Loss(scope_, x);
   RunTest(x, x_shape, y, y_shape);

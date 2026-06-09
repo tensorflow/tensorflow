@@ -547,7 +547,7 @@ TEST_F(ArrayGradTest, GatherV2Grad_TwoBatchDimsWithAxis) {
   attrs.batch_dims_ = 2;
   auto y = GatherV2(scope_, x, {{{2, 0}, {2, 5}}, {{1, 1}, {7, 10}}},
                     /*axis=*/3, attrs);
-  TensorShape y_shape({2, 2, 2, 3});
+  TensorShape y_shape({2, 2, 3, 2});
   RunTest(x, shape, y, y_shape);
 }
 
