@@ -76,6 +76,22 @@ jobs:
           else
             "$GITHUB_WORKSPACE"/openxla/xla/build_tools/ci/build.py --build="${{ matrix.job_info.name }}_github_actions"
           fi
+      - name: "Send email notification on failure"
+        if: ${{ failure() }}
+        uses: dawidd6/action-send-mail@v3 # zizmor: ignore[unpinned-uses]
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "Multi-Device CI Failed (${{ matrix.job_info.name }})"
+          to: patrios@google.com
+          from: "XLA Multi-Device CI"
+          secure: true
+          body: |
+            The Multi-Device CI workflow failed on ${{ matrix.job_info.name }}.
+
+            See https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }} for details.
 
 
 
