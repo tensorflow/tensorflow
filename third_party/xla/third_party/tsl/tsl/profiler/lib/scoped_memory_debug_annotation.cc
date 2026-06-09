@@ -16,6 +16,8 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/base/no_destructor.h"
+
 namespace tsl {
 namespace profiler {
 
@@ -23,8 +25,8 @@ std::string DefaultPendingShapeFunc() { return ""; }
 
 /*static*/ MemoryDebugAnnotation*
 ScopedMemoryDebugAnnotation::ThreadMemoryDebugAnnotation() {
-  static thread_local MemoryDebugAnnotation annotation;
-  return &annotation;
+  static thread_local absl::NoDestructor<MemoryDebugAnnotation> annotation;
+  return annotation.get();
 }
 
 }  // namespace profiler

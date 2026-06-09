@@ -399,6 +399,19 @@ cc_library(
     hdrs = ["scoped_memory_debug_annotation.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+tsl_cc_test(
+    name = "scoped_memory_debug_annotation_test",
+    size = "small",
+    srcs = ["scoped_memory_debug_annotation_test.cc"],
+    deps = [
+        ":scoped_memory_debug_annotation",
+        "@com_google_googletest//:gtest_main",
+        "@xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:test",
     ],
 )
