@@ -537,7 +537,21 @@ absl::StatusOr<Shape> LayoutModeToXlaShape(
   // shape with the sharded layout.
   Shape result = unsharded_shape;
   LayoutUtil::ClearLayout(&result);
-  switch (layout_mode.mode) {
+  LayoutMode::Mode mode = layout_mode.mode;
+  if (mode == LayoutMode::Mode::kAuto &&
+      memory_space == Layout::kHostMemorySpace) {
+    // Fall back to default layout mode so that the memory space is preserved,
+    // in order to prevent the
+    // CompileTimeHostOffloadOutputLocationMismatch error later.
+    LOG(WARNING) << "Auto layout mode is not supported for host memory "
+                    "space (memory space is part of Layout). Falling back to "
+                    "default layout mode. "
+                 << "unsharded_shape: " << unsharded_shape.ToString()
+                 << ", sharded_shape: " << sharded_shape.ToString()
+                 << ", memory_space: " << memory_space;
+    mode = LayoutMode::Mode::kDefault;
+  }
+  switch (mode) {
     case LayoutMode::Mode::kDefault: {
       ASSIGN_OR_RETURN(Shape layout,
                        choose_compact_layout_for_shape_function(sharded_shape));

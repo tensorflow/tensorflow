@@ -669,6 +669,19 @@ xla_cc_test(
     ],
 )
 
+xla_cc_test(
+    name = "utils_test",
+    srcs = ["utils_test.cc"],
+    deps = [
+        ":layout_mode",
+        ":utils",
+        "//xla:shape_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "utils",
     srcs = ["utils.cc"],
