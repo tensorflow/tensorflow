@@ -103,8 +103,12 @@ absl::StatusOr<std::shared_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
     se::StreamExecutor* executor, double memory_fraction, bool preallocate,
     std::optional<int64_t> gpu_system_memory_size,
     const std::vector<tsl::SubAllocator::Visitor>& sub_allocator_alloc_visitors,
-    const std::vector<tsl::SubAllocator::Visitor>&
-        sub_allocator_free_visitors) {
+    const std::vector<tsl::SubAllocator::Visitor>& sub_allocator_free_visitors,
+    bool enable_spatial_partitioning) {
+  if (enable_spatial_partitioning && !preallocate) {
+    return InvalidArgument(
+        "Spatial partitioning of the BFC allocator requires preallocate=true.");
+  }
   bool enable_unified_memory;
   absl::Status status = tsl::ReadBoolFromEnvVar("TF_FORCE_UNIFIED_MEMORY",
                                                 false, &enable_unified_memory);
@@ -164,13 +168,14 @@ absl::StatusOr<std::shared_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
 
   tsl::BFCAllocator::Options opts;
   opts.allow_growth = !preallocate;
+  opts.enable_spatial_partitioning = enable_spatial_partitioning;
   return std::make_shared<tsl::BFCAllocator>(
       std::move(sub_allocator), allocator_memory,
       absl::StrCat("GPU_", device_ordinal, "_bfc"), opts);
 }
 
 // Builds a BFCAllocator for all local GPUs that uses collective memory.
-absl::StatusOr<std::shared_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
+absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
     se::StreamExecutor* executor, double memory_fraction,
     size_t collective_memory_size) {
   int device_ordinal = executor->device_ordinal();
@@ -205,7 +210,7 @@ absl::StatusOr<std::shared_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
 
   tsl::BFCAllocator::Options opts;
   opts.allow_growth = !preallocate;
-  return std::make_shared<tsl::BFCAllocator>(
+  return std::make_unique<tsl::BFCAllocator>(
       std::move(sub_allocator), allocator_memory,
       absl::StrCat("GPU_collectivememory_", device_ordinal, "_bfc"), opts);
 }
