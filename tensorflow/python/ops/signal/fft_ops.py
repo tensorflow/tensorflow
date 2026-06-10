@@ -189,6 +189,14 @@ def _irfft_wrapper(ifft_fn, fft_rank, default_name):
         fft_length = _infer_fft_length_for_irfft(input_tensor, fft_rank)
       else:
         fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
+      # Validate that fft_length does not contain zero or negative values,
+      # which would produce an empty or invalid output tensor.
+      fft_length_val = _tensor_util.constant_value(fft_length)
+      if fft_length_val is not None and fft_length_val[-1] <= 0:
+        raise ValueError(
+            "Input to IRFFT must have last dimension of at least 2 to "
+            "produce a non-empty output, but got shape: %s"
+            % input_tensor.shape)
       input_tensor = _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length,
                                          is_reverse=True)
       fft_length_static = _tensor_util.constant_value(fft_length)
