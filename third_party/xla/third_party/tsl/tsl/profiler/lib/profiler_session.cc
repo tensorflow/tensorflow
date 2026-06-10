@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tsl/profiler/lib/profiler_session.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/tsl/profiler/convert/post_process_single_host_xplane.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
 #include "tsl/platform/host_info.h"
+#include "tsl/profiler/lib/continuous_profiler_orchestrator.h"
 #include "tsl/profiler/lib/profiler_collection.h"
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/lib/profiler_interface.h"
@@ -135,8 +137,23 @@ ProfilerSession::ProfilerSession(const ProfileOptions& options)
   start_time_ns_ = profiler::GetCurrentTimeNanos();
 
   DCHECK(profiler_lock_.Active());
-  profilers_ = std::make_unique<tsl::profiler::ProfilerCollection>(
-      profiler::CreateProfilers(options_));
+  std::unique_ptr<tsl::profiler::ProfilerInterface> collection =
+      std::make_unique<tsl::profiler::ProfilerCollection>(
+          profiler::CreateProfilers(options_));
+
+  bool enable_circular_buffer_tracing = false;
+  const auto& advanced_config = options_.advanced_configuration();
+  if (auto it = advanced_config.find("tpu_circular_buffer_tracing");
+      it != advanced_config.end()) {
+    enable_circular_buffer_tracing = it->second.bool_value();
+  }
+
+  if (enable_circular_buffer_tracing) {
+    profilers_ = std::make_unique<tsl::profiler::ContinuousProfilerOrchestrator<
+        tsl::profiler::ProfilerInterface> >(std::move(collection));
+  } else {
+    profilers_ = std::move(collection);
+  }
 
   absl::Status status = profilers_->Start();
   if (options_.raise_error_on_start_failure()) {
