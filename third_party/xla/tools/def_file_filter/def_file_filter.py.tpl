@@ -41,7 +41,7 @@ DUMPBIN_CMD = "\"{}\" /SYMBOLS".format("%{dumpbin_bin_path}")
 EXCLUDE_RE = re.compile(r"RTTI|deleting destructor|::internal::")
 
 # Include if matched before exclude
-INCLUDEPRE_RE = re.compile(r"absl::lts_[0-9]+::base_internal::ThrowStdOutOfRange|" # for _pywrap_tfe
+INCLUDEPRE_RE = re.compile(r"absl::lts_[0-9]+::ThrowStdOutOfRange|" # for _pywrap_tfe
                            r"absl::lts_[0-9]+::str_format_internal::FormatArgImpl|" # for _pywrap_tfe
                            r"absl::lts_[0-9]+::ByChar|" # for _pywrap_tfe
                            r"absl::lts_[0-9]+::numbers_internal::FastIntToBuffer|" # for _pywrap_tfe
@@ -84,6 +84,7 @@ INCLUDEPRE_RE = re.compile(r"absl::lts_[0-9]+::base_internal::ThrowStdOutOfRange
                            r"tsl::ops::internal::Enter|"
                            r"tsl::strings::internal::AppendPieces|"
                            r"tsl::strings::internal::CatPieces|"
+                           r"xla::BackendConfigWrapper|"
                            r"tensorflow::io::internal::JoinPathImpl")
 
 # Include if matched after exclude

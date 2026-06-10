@@ -1,4 +1,5 @@
 diff --git a/absl/BUILD.bazel b/absl/BUILD.bazel
+index e33d648..0c6b436 100644
 --- a/absl/BUILD.bazel
 +++ b/absl/BUILD.bazel
 @@ -15,11 +15,26 @@
@@ -20,7 +21,7 @@ diff --git a/absl/BUILD.bazel b/absl/BUILD.bazel
 +config_setting(
 +    name = "config_use_dlls",
 +    flag_values = {
-+        ":use_dlls": "True",
++        ":use_dlls": "true",
 +    },
 +    visibility = [":__subpackages__"],
 +)
@@ -28,7 +29,87 @@ diff --git a/absl/BUILD.bazel b/absl/BUILD.bazel
  config_setting(
      name = "clang_compiler",
      flag_values = {
+diff --git a/absl/base/throw_delegate.h b/absl/base/throw_delegate.h
+index e89712a..b40a342 100644
+--- a/absl/base/throw_delegate.h
++++ b/absl/base/throw_delegate.h
+@@ -36,28 +36,28 @@ ABSL_NAMESPACE_BEGIN
+ // both with and without exceptions and you need to conform to an interface
+ // that uses exceptions.
+ 
+-[[noreturn]] void ThrowStdLogicError(const std::string& what_arg);
+-[[noreturn]] void ThrowStdLogicError(const char* what_arg);
+-[[noreturn]] void ThrowStdInvalidArgument(const std::string& what_arg);
+-[[noreturn]] void ThrowStdInvalidArgument(const char* what_arg);
+-[[noreturn]] void ThrowStdDomainError(const std::string& what_arg);
+-[[noreturn]] void ThrowStdDomainError(const char* what_arg);
+-[[noreturn]] void ThrowStdLengthError(const std::string& what_arg);
+-[[noreturn]] void ThrowStdLengthError(const char* what_arg);
+-[[noreturn]] void ThrowStdOutOfRange(const std::string& what_arg);
+-[[noreturn]] void ThrowStdOutOfRange(const char* what_arg);
+-[[noreturn]] void ThrowStdRuntimeError(const std::string& what_arg);
+-[[noreturn]] void ThrowStdRuntimeError(const char* what_arg);
+-[[noreturn]] void ThrowStdRangeError(const std::string& what_arg);
+-[[noreturn]] void ThrowStdRangeError(const char* what_arg);
+-[[noreturn]] void ThrowStdOverflowError(const std::string& what_arg);
+-[[noreturn]] void ThrowStdOverflowError(const char* what_arg);
+-[[noreturn]] void ThrowStdUnderflowError(const std::string& what_arg);
+-[[noreturn]] void ThrowStdUnderflowError(const char* what_arg);
++[[noreturn]] ABSL_DLL void ThrowStdLogicError(const std::string& what_arg);
++[[noreturn]] ABSL_DLL void ThrowStdLogicError(const char* what_arg);
++[[noreturn]] ABSL_DLL void ThrowStdInvalidArgument(const std::string& what_arg);
++[[noreturn]] ABSL_DLL void ThrowStdInvalidArgument(const char* what_arg);
++[[noreturn]] ABSL_DLL void ThrowStdDomainError(const std::string& what_arg);
++[[noreturn]] ABSL_DLL void ThrowStdDomainError(const char* what_arg);
++[[noreturn]] ABSL_DLL void ThrowStdLengthError(const std::string& what_arg);
++[[noreturn]] ABSL_DLL void ThrowStdLengthError(const char* what_arg);
++[[noreturn]] ABSL_DLL void ThrowStdOutOfRange(const std::string& what_arg);
++[[noreturn]] ABSL_DLL void ThrowStdOutOfRange(const char* what_arg);
++[[noreturn]] ABSL_DLL void ThrowStdRuntimeError(const std::string& what_arg);
++[[noreturn]] ABSL_DLL void ThrowStdRuntimeError(const char* what_arg);
++[[noreturn]] ABSL_DLL void ThrowStdRangeError(const std::string& what_arg);
++[[noreturn]] ABSL_DLL void ThrowStdRangeError(const char* what_arg);
++[[noreturn]] ABSL_DLL void ThrowStdOverflowError(const std::string& what_arg);
++[[noreturn]] ABSL_DLL void ThrowStdOverflowError(const char* what_arg);
++[[noreturn]] ABSL_DLL void ThrowStdUnderflowError(const std::string& what_arg);
++[[noreturn]] ABSL_DLL void ThrowStdUnderflowError(const char* what_arg);
+ 
+-[[noreturn]] void ThrowStdBadFunctionCall();
+-[[noreturn]] void ThrowStdBadAlloc();
+-[[noreturn]] void ThrowStdBadArrayNewLength();
++[[noreturn]] ABSL_DLL void ThrowStdBadFunctionCall();
++[[noreturn]] ABSL_DLL void ThrowStdBadAlloc();
++[[noreturn]] ABSL_DLL void ThrowStdBadArrayNewLength();
+ 
+ ABSL_NAMESPACE_END
+ }  // namespace absl
+diff --git a/absl/container/internal/raw_hash_set.h b/absl/container/internal/raw_hash_set.h
+index a50a488..bd8ff1d 100644
+--- a/absl/container/internal/raw_hash_set.h
++++ b/absl/container/internal/raw_hash_set.h
+@@ -1939,8 +1939,7 @@ void ResizeAllocatedTableWithSeedChange(CommonFields& common,
+ // ClearBackingArray clears the backing array, either modifying it in place,
+ // or creating a new one based on the value of "reuse".
+ // REQUIRES: c.capacity > MaxSmallCapacity().
+-void ClearBackingArray(CommonFields& c, const PolicyFunctions& policy,
+-                       void* alloc, bool reuse);
++ABSL_DLL void ClearBackingArray(CommonFields& c, const PolicyFunctions& policy, void* alloc, bool reuse);
+ 
+ // Type-erased versions of raw_hash_set::erase_meta_only_{small,large}.
+ void EraseMetaOnlySmall(CommonFields& c, bool soo_enabled, size_t slot_size);
+@@ -1982,9 +1981,7 @@ void* GetRefForEmptyClass(CommonFields& common);
+ //           `target_group`.
+ // REQUIRES: `target_group` is a starting position for the group that has
+ //            at least one empty slot.
+-size_t PrepareInsertLarge(CommonFields& common, const PolicyFunctions& policy,
+-                          size_t hash, Group::NonIterableBitMaskType mask_empty,
+-                          FindInfo target_group);
++ABSL_DLL size_t PrepareInsertLarge(CommonFields& common, const PolicyFunctions& policy, size_t hash, Group::NonIterableBitMaskType mask_empty, FindInfo target_group);
+ 
+ // Same as above, but with generations enabled, we may end up changing the seed,
+ // which means we need to be able to recompute the hash.
 diff --git a/absl/copts/configure_copts.bzl b/absl/copts/configure_copts.bzl
+index 9e0be28..61a72a3 100644
 --- a/absl/copts/configure_copts.bzl
 +++ b/absl/copts/configure_copts.bzl
 @@ -23,6 +23,9 @@ ABSL_DEFAULT_COPTS = select({
@@ -41,3 +122,162 @@ diff --git a/absl/copts/configure_copts.bzl b/absl/copts/configure_copts.bzl
  })
  
  ABSL_TEST_COPTS = select({
+diff --git a/absl/status/status.cc b/absl/status/status.cc
+index 3ef4a27..6915a67 100644
+--- a/absl/status/status.cc
++++ b/absl/status/status.cc
+@@ -169,23 +169,23 @@ Status MakeErrorImpl(string_view message, SourceLocation loc) {
+ // If we add more error code, we need to add their values on this list.
+ // Using ints here instead of static_cast<int>(StatusCode::kFoo) makes it easier
+ // to see that the list is complete.
+-template Status MakeErrorImpl<0>(string_view, SourceLocation);
+-template Status MakeErrorImpl<1>(string_view, SourceLocation);
+-template Status MakeErrorImpl<2>(string_view, SourceLocation);
+-template Status MakeErrorImpl<3>(string_view, SourceLocation);
+-template Status MakeErrorImpl<4>(string_view, SourceLocation);
+-template Status MakeErrorImpl<5>(string_view, SourceLocation);
+-template Status MakeErrorImpl<6>(string_view, SourceLocation);
+-template Status MakeErrorImpl<7>(string_view, SourceLocation);
+-template Status MakeErrorImpl<8>(string_view, SourceLocation);
+-template Status MakeErrorImpl<9>(string_view, SourceLocation);
+-template Status MakeErrorImpl<10>(string_view, SourceLocation);
+-template Status MakeErrorImpl<11>(string_view, SourceLocation);
+-template Status MakeErrorImpl<12>(string_view, SourceLocation);
+-template Status MakeErrorImpl<13>(string_view, SourceLocation);
+-template Status MakeErrorImpl<14>(string_view, SourceLocation);
+-template Status MakeErrorImpl<15>(string_view, SourceLocation);
+-template Status MakeErrorImpl<16>(string_view, SourceLocation);
++template ABSL_DLL Status MakeErrorImpl<0>(string_view, SourceLocation);
++template ABSL_DLL Status MakeErrorImpl<1>(string_view, SourceLocation);
++template ABSL_DLL Status MakeErrorImpl<2>(string_view, SourceLocation);
++template ABSL_DLL Status MakeErrorImpl<3>(string_view, SourceLocation);
++template ABSL_DLL Status MakeErrorImpl<4>(string_view, SourceLocation);
++template ABSL_DLL Status MakeErrorImpl<5>(string_view, SourceLocation);
++template ABSL_DLL Status MakeErrorImpl<6>(string_view, SourceLocation);
++template ABSL_DLL Status MakeErrorImpl<7>(string_view, SourceLocation);
++template ABSL_DLL Status MakeErrorImpl<8>(string_view, SourceLocation);
++template ABSL_DLL Status MakeErrorImpl<9>(string_view, SourceLocation);
++template ABSL_DLL Status MakeErrorImpl<10>(string_view, SourceLocation);
++template ABSL_DLL Status MakeErrorImpl<11>(string_view, SourceLocation);
++template ABSL_DLL Status MakeErrorImpl<12>(string_view, SourceLocation);
++template ABSL_DLL Status MakeErrorImpl<13>(string_view, SourceLocation);
++template ABSL_DLL Status MakeErrorImpl<14>(string_view, SourceLocation);
++template ABSL_DLL Status MakeErrorImpl<15>(string_view, SourceLocation);
++template ABSL_DLL Status MakeErrorImpl<16>(string_view, SourceLocation);
+ }  // namespace status_internal
+ 
+ bool IsAborted(const Status& status) {
+diff --git a/absl/status/status.h b/absl/status/status.h
+index 88486d3..d40eb8a 100644
+--- a/absl/status/status.h
++++ b/absl/status/status.h
+@@ -438,7 +438,7 @@ inline StatusToStringMode& operator^=(StatusToStringMode& lhs,
+ // Returned Status objects may not be ignored. status_internal.h has a forward
+ // declaration of the form
+ // class ABSL_MUST_USE_RESULT Status;
+-class ABSL_ATTRIBUTE_TRIVIAL_ABI Status final {
++class ABSL_ATTRIBUTE_TRIVIAL_ABI ABSL_DLL Status final {
+  public:
+   // Constructors
+ 
+@@ -834,43 +834,43 @@ ABSL_MUST_USE_RESULT bool IsUnknown(const Status& status);
+ // These convenience functions create an `absl::Status` object with an error
+ // code as indicated by the associated function name, using the error message
+ // passed in `message`.
+-Status AbortedError(absl::string_view message,
++ABSL_DLL Status AbortedError(absl::string_view message,
+                     absl::SourceLocation loc = SourceLocation::current());
+-Status AlreadyExistsError(absl::string_view message,
++ABSL_DLL Status AlreadyExistsError(absl::string_view message,
+                           absl::SourceLocation loc = SourceLocation::current());
+-Status CancelledError(absl::string_view message,
++ABSL_DLL Status CancelledError(absl::string_view message,
+                       absl::SourceLocation loc = SourceLocation::current());
+-Status DataLossError(absl::string_view message,
++ABSL_DLL Status DataLossError(absl::string_view message,
+                      absl::SourceLocation loc = SourceLocation::current());
+-Status DeadlineExceededError(
++ABSL_DLL Status DeadlineExceededError(
+     absl::string_view message,
+     absl::SourceLocation loc = SourceLocation::current());
+-Status FailedPreconditionError(
++ABSL_DLL Status FailedPreconditionError(
+     absl::string_view message,
+     absl::SourceLocation loc = SourceLocation::current());
+-Status InternalError(absl::string_view message,
++ABSL_DLL Status InternalError(absl::string_view message,
+                      absl::SourceLocation loc = SourceLocation::current());
+-Status InvalidArgumentError(
++ABSL_DLL Status InvalidArgumentError(
+     absl::string_view message,
+     absl::SourceLocation loc = SourceLocation::current());
+-Status NotFoundError(absl::string_view message,
++ABSL_DLL Status NotFoundError(absl::string_view message,
+                      absl::SourceLocation loc = SourceLocation::current());
+-Status OutOfRangeError(absl::string_view message,
++ABSL_DLL Status OutOfRangeError(absl::string_view message,
+                        absl::SourceLocation loc = SourceLocation::current());
+-Status PermissionDeniedError(
++ABSL_DLL Status PermissionDeniedError(
+     absl::string_view message,
+     absl::SourceLocation loc = SourceLocation::current());
+-Status ResourceExhaustedError(
++ABSL_DLL Status ResourceExhaustedError(
+     absl::string_view message,
+     absl::SourceLocation loc = SourceLocation::current());
+-Status UnauthenticatedError(
++ABSL_DLL Status UnauthenticatedError(
+     absl::string_view message,
+     absl::SourceLocation loc = SourceLocation::current());
+-Status UnavailableError(absl::string_view message,
++ABSL_DLL Status UnavailableError(absl::string_view message,
+                         absl::SourceLocation loc = SourceLocation::current());
+-Status UnimplementedError(absl::string_view message,
++ABSL_DLL Status UnimplementedError(absl::string_view message,
+                           absl::SourceLocation loc = SourceLocation::current());
+-Status UnknownError(absl::string_view message,
++ABSL_DLL Status UnknownError(absl::string_view message,
+                     absl::SourceLocation loc = SourceLocation::current());
+ 
+ // ErrnoToStatusCode()
+@@ -1068,23 +1068,23 @@ namespace status_internal {
+ template <int error_code>
+ Status MakeErrorImpl(string_view message, SourceLocation loc);
+ // Make the instantiations extern to reduce bloat on callers.
+-extern template Status MakeErrorImpl<0>(string_view, SourceLocation);
+-extern template Status MakeErrorImpl<1>(string_view, SourceLocation);
+-extern template Status MakeErrorImpl<2>(string_view, SourceLocation);
+-extern template Status MakeErrorImpl<3>(string_view, SourceLocation);
+-extern template Status MakeErrorImpl<4>(string_view, SourceLocation);
+-extern template Status MakeErrorImpl<5>(string_view, SourceLocation);
+-extern template Status MakeErrorImpl<6>(string_view, SourceLocation);
+-extern template Status MakeErrorImpl<7>(string_view, SourceLocation);
+-extern template Status MakeErrorImpl<8>(string_view, SourceLocation);
+-extern template Status MakeErrorImpl<9>(string_view, SourceLocation);
+-extern template Status MakeErrorImpl<10>(string_view, SourceLocation);
+-extern template Status MakeErrorImpl<11>(string_view, SourceLocation);
+-extern template Status MakeErrorImpl<12>(string_view, SourceLocation);
+-extern template Status MakeErrorImpl<13>(string_view, SourceLocation);
+-extern template Status MakeErrorImpl<14>(string_view, SourceLocation);
+-extern template Status MakeErrorImpl<15>(string_view, SourceLocation);
+-extern template Status MakeErrorImpl<16>(string_view, SourceLocation);
++extern template ABSL_DLL Status MakeErrorImpl<0>(string_view, SourceLocation);
++extern template ABSL_DLL Status MakeErrorImpl<1>(string_view, SourceLocation);
++extern template ABSL_DLL Status MakeErrorImpl<2>(string_view, SourceLocation);
++extern template ABSL_DLL Status MakeErrorImpl<3>(string_view, SourceLocation);
++extern template ABSL_DLL Status MakeErrorImpl<4>(string_view, SourceLocation);
++extern template ABSL_DLL Status MakeErrorImpl<5>(string_view, SourceLocation);
++extern template ABSL_DLL Status MakeErrorImpl<6>(string_view, SourceLocation);
++extern template ABSL_DLL Status MakeErrorImpl<7>(string_view, SourceLocation);
++extern template ABSL_DLL Status MakeErrorImpl<8>(string_view, SourceLocation);
++extern template ABSL_DLL Status MakeErrorImpl<9>(string_view, SourceLocation);
++extern template ABSL_DLL Status MakeErrorImpl<10>(string_view, SourceLocation);
++extern template ABSL_DLL Status MakeErrorImpl<11>(string_view, SourceLocation);
++extern template ABSL_DLL Status MakeErrorImpl<12>(string_view, SourceLocation);
++extern template ABSL_DLL Status MakeErrorImpl<13>(string_view, SourceLocation);
++extern template ABSL_DLL Status MakeErrorImpl<14>(string_view, SourceLocation);
++extern template ABSL_DLL Status MakeErrorImpl<15>(string_view, SourceLocation);
++extern template ABSL_DLL Status MakeErrorImpl<16>(string_view, SourceLocation);
+ 
+ template <StatusCode error_code>
+ Status MakeError(string_view message, SourceLocation loc) {

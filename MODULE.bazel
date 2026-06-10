@@ -6,14 +6,18 @@ module(
 )
 
 bazel_dep(name = "bazel_features", version = "1.36.0")
-bazel_dep(name = "abseil-cpp", version = "20250814.1", repo_name = "com_google_absl")
-single_version_override(
+bazel_dep(name = "abseil-cpp", version = "20260526.0", repo_name = "com_google_absl")
+archive_override(
     module_name = "abseil-cpp",
+    integrity = "sha256-usVp4xQp+F173Z+Q5HZ0Qvr5yPod7wiman1deOD7ogQ=",
     patch_strip = 1,
     patches = [
+        "//third_party/absl:btree.patch",
         "//third_party/absl:build_dll.patch",
         "//third_party/absl:endian.patch",
     ],
+    strip_prefix = "abseil-cpp-5650e9cf76d3be4318d5fa3af38ee483ddfd5e4a",
+    urls = ["https://github.com/abseil/abseil-cpp/archive/5650e9cf76d3be4318d5fa3af38ee483ddfd5e4a.tar.gz"],
 )
 
 bazel_dep(name = "nlohmann_json", version = "3.12.0.bcr.1", repo_name = "nlohmann_json_lib")
