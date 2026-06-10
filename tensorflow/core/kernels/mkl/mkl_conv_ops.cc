@@ -809,6 +809,18 @@ class MklConvOp : public OpKernel {
           absl::InvalidArgumentError("filter must not have zero elements "
                                      "(i.e. all dimensions must be non-zero)"));
 
+      int expected_dims = strides_.size();
+      OP_REQUIRES(
+          context, src_tensor.dims() == expected_dims,
+          absl::InvalidArgumentError(absl::StrCat(
+              "input must be ", expected_dims, "-dimensional but got ",
+              src_tensor.shape().DebugString())));
+      OP_REQUIRES(
+          context, filter_tensor.dims() == expected_dims,
+          absl::InvalidArgumentError(absl::StrCat(
+              "filter must be ", expected_dims, "-dimensional but got ",
+              filter_tensor.shape().DebugString())));
+
       if (std::is_same<Tinput, float>::value) {
         (void)SetFPMathMode();
       }

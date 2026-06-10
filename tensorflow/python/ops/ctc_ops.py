@@ -839,6 +839,21 @@ def ctc_loss_v2(labels,
         [Graves et al., 2006](https://dl.acm.org/citation.cfm?id=1143891)
         ([pdf](http://www.cs.toronto.edu/~graves/icml_2006.pdf))
   """
+  logits = ops.convert_to_tensor(logits, name="logits")
+  num_classes = tensor_shape.dimension_value(logits.shape[2])
+  if num_classes is not None:
+    if num_classes == 0:
+      raise ValueError(
+          "Logits must have at least 1 class, got 0 classes "
+          f"(logits shape: {logits.shape}).")
+    if (blank_index is not None
+        and blank_index >= 0
+        and blank_index >= num_classes):
+      raise ValueError(
+          f"Argument `blank_index` ({blank_index}) must be less than "
+          f"the number of classes ({num_classes}) "
+          f"(logits shape: {logits.shape}).")
+
   if isinstance(labels, sparse_tensor.SparseTensor):
     if blank_index is None:
       raise ValueError(
@@ -980,6 +995,21 @@ def ctc_loss_v3(labels,
 
       https://en.wikipedia.org/wiki/Connectionist_temporal_classification
   """
+  logits = ops.convert_to_tensor(logits, name="logits")
+  num_classes = tensor_shape.dimension_value(logits.shape[2])
+  if num_classes is not None:
+    if num_classes == 0:
+      raise ValueError(
+          "Logits must have at least 1 class, got 0 classes "
+          f"(logits shape: {logits.shape}).")
+    if (blank_index is not None
+        and blank_index >= 0
+        and blank_index >= num_classes):
+      raise ValueError(
+          f"Argument `blank_index` ({blank_index}) must be less than "
+          f"the number of classes ({num_classes}) "
+          f"(logits shape: {logits.shape}).")
+
   if isinstance(labels, sparse_tensor.SparseTensor):
     if blank_index is None:
       raise ValueError(
@@ -988,8 +1018,6 @@ def ctc_loss_v3(labels,
 
     if blank_index < 0:
       blank_index += _get_dim(logits, 2)
-
-    logits = ops.convert_to_tensor(logits, name="logits")
 
     params = {
         "labels": labels,
