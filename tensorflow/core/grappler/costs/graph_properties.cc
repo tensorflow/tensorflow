@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 
+#include <memory>
+
 #include "absl/hash/hash.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -180,7 +182,7 @@ struct Processor<DimensionHandle> {
 template <typename Handle>
 class DisjointSet {
  public:
-  DisjointSet() {}
+  DisjointSet() = default;
   ~DisjointSet() {
     for (auto rep : nodes_) {
       delete rep.second;
@@ -1378,10 +1380,10 @@ class SymbolicShapeRefiner {
     std::vector<const Tensor*> input_tensors(num_inputs, nullptr);
     std::vector<ShapeHandle> input_tensors_as_shapes;
 
-    node_ctx.inference_context.reset(new InferenceContext(
+    node_ctx.inference_context = std::make_unique<InferenceContext>(
         graph_def_version_, *node, node_ctx.op_data->op_def, input_shapes,
         input_tensors, input_tensors_as_shapes,
-        std::move(input_handle_shapes_and_types)));
+        std::move(input_handle_shapes_and_types));
     const absl::Status s = node_ctx.inference_context->construction_status();
     if (!s.ok()) {
       node_ctx.inference_context.reset(nullptr);
@@ -2072,7 +2074,7 @@ class SymbolicShapeRefiner {
 // dims, and consolidate the information globally.
 class SymbolicShapeManager {
  public:
-  SymbolicShapeManager() {}
+  SymbolicShapeManager() = default;
 
   absl::Status Merge(ShapeHandle s1, ShapeHandle s2) {
     if (!s1.IsSet() || !s2.IsSet()) {

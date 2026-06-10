@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/measuring_cost_estimator.h"
 
 #include <limits>
+#include <memory>
 
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
@@ -37,9 +38,9 @@ MeasuringCostEstimator::MeasuringCostEstimator(Cluster* cluster,
       measurement_threads_(measurement_threads) {
   CHECK_GE(measurement_steps, 1);
   if (measurement_threads > 0) {
-    thread_pool_.reset(new thread::ThreadPool(
+    thread_pool_ = std::make_unique<thread::ThreadPool>(
         Env::Default(), SanitizeThreadSuffix("measurements"),
-        measurement_threads));
+        measurement_threads);
   }
   cluster_ = cluster;
 }
