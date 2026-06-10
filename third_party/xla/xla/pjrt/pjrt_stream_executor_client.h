@@ -374,10 +374,10 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
                        LocalDeviceState* local_device,
                        EventPool::Handle device_event, se::Stream* stream);
 
-  absl::Status AllocateAndRecordEvent(BufferSequencingEventRef event,
-                                      LocalDeviceState* local_device,
-                                      se::Stream* stream,
-                                      absl::string_view tag = "");
+  absl::Status AllocateAndRecordEvent(
+      BufferSequencingEventRef event, LocalDeviceState* local_device,
+      se::Stream* stream, absl::string_view tag = "",
+      absl::AnyInvocable<void() &&> cleanup = {});
 
   PjRtDeviceEventRef CreateErrorDeviceEvent(absl::Status error);
 
