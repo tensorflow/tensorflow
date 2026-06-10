@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/fully_connected.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
