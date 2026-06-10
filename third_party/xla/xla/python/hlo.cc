@@ -480,10 +480,10 @@ NB_MODULE(_hlo, m) {
                       SequenceToVector<int64_t>(*layout_seq);
                   return MakeShapeWithDenseLayout(type, dims, layout,
                                                   dynamic_dimensions);
-                } else {
+                }
                   return MakeShapeWithDenseLayout(type, dims, std::nullopt,
                                                   dynamic_dimensions);
-                }
+                
               }),
           "Constructs an array shape.", nb::arg("type"), nb::arg("dims"),
           nb::arg("layout").none() = std::nullopt,
@@ -502,10 +502,10 @@ NB_MODULE(_hlo, m) {
                       SequenceToVector<int64_t>(*layout_seq);
                   return MakeShapeWithDenseLayout(type, dims, layout,
                                                   dynamic_dimensions);
-                } else {
+                }
                   return MakeShapeWithDenseLayout(type, dims, std::nullopt,
                                                   dynamic_dimensions);
-                }
+                
               }),
           "Constructs an array shape.", nb::arg("type"), nb::arg("dims"),
           nb::arg("layout").none() = std::nullopt,
@@ -800,7 +800,7 @@ NB_MODULE(_hlo, m) {
           tsl::Env::Default(), absl::StrCat(filename, ".html"), html));
     }
     const HloComputation* comp() const { return comp_; }
-    const std::shared_ptr<HloModule> module() const { return module_; }
+    std::shared_ptr<HloModule> module() const { return module_; }
 
    private:
     const HloComputation* comp_;
@@ -922,7 +922,9 @@ NB_MODULE(_hlo, m) {
       .def("schedule",
            [](const std::shared_ptr<HloModule> m)
                -> std::optional<ScheduleWrapper> {
-             if (!m->has_schedule()) return std::nullopt;
+             if (!m->has_schedule()) {
+               return std::nullopt;
+             }
              return ScheduleWrapper(m->schedule(), m);
            })
       .def("set_schedule",
@@ -941,30 +943,35 @@ NB_MODULE(_hlo, m) {
            [](const std::shared_ptr<HloModule> m)
                -> std::vector<std::shared_ptr<ComputationWrapper>> {
              std::vector<std::shared_ptr<ComputationWrapper>> computations;
-             for (HloComputation* comp : m->computations())
+             for (HloComputation* comp : m->computations()) {
                computations.push_back(
                    std::make_shared<ComputationWrapper>(comp, m));
+             }
              return computations;
            })
       .def("make_nonfusion_computations",
            [](const std::shared_ptr<HloModule> m)
                -> std::vector<std::shared_ptr<ComputationWrapper>> {
              std::vector<std::shared_ptr<ComputationWrapper>> computations;
-             for (HloComputation* comp : m->MakeNonfusionComputations())
+             for (HloComputation* comp : m->MakeNonfusionComputations()) {
                computations.push_back(
                    std::make_shared<ComputationWrapper>(comp, m));
+             }
              return computations;
            })
       .def_prop_ro("spmd_output_sharding",
                    [](const HloModule& m) -> std::optional<xla::OpSharding> {
-                     if (!m.has_spmd_output_sharding()) return std::nullopt;
+                     if (!m.has_spmd_output_sharding()) {
+                       return std::nullopt;
+                     }
                      return m.spmd_output_sharding().ToProto();
                    })
       .def_prop_ro("spmd_parameters_shardings",
                    [](const HloModule& m)
                        -> std::optional<std::vector<xla::OpSharding>> {
-                     if (!m.has_spmd_parameters_shardings())
+                     if (!m.has_spmd_parameters_shardings()) {
                        return std::nullopt;
+                     }
                      std::vector<xla::OpSharding> param_shardings;
                      for (const auto& parameter_sharding :
                           m.spmd_parameters_shardings()) {
