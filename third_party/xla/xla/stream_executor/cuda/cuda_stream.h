@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_executor.h"
@@ -87,6 +88,9 @@ class CudaStream : public StreamCommon {
   CUstream stream_handle() const { return stream_handle_; }
 
  private:
+  friend class CudaCommandBuffer;
+  friend class CudaStream_Tracing_Test;
+
   CudaStream(CudaExecutor* executor, CudaEvent completed_event,
              std::optional<std::variant<StreamPriority, int>> priority,
              CUstream stream_handle);
@@ -105,6 +109,8 @@ class CudaStream : public StreamCommon {
   std::atomic<uint32_t> tsan_proxy_{false};
   std::unique_ptr<HostCallbackRegistry::RegistryHandle>
       callback_registry_handle_;
+
+  absl::Mutex tracing_mutex_;
 };
 }  // namespace gpu
 
