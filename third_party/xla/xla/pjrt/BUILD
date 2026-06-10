@@ -1215,6 +1215,7 @@ cc_library(
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_cost_analysis",
         "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -1241,6 +1242,7 @@ xla_cc_test(
         "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
         "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
         "//xla/service:hlo_proto_cc",
+        "@com_google_absl//absl/base",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:env",
         "@tsl//tsl/platform:test",
@@ -1350,6 +1352,7 @@ cc_library(
     ],
     visibility = internal_visibility([":friends"]),
     deps = [
+        "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen/triton:compilation_pipeline",
         "//xla/service/gpu/llvm_gpu_backend",
         "//xla/service/gpu/llvm_gpu_backend:nvptx_backend",

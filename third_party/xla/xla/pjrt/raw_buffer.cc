@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/pjrt/raw_buffer.h"
 
-#include <cstdint>
 #include <utility>
 #include <vector>
 
