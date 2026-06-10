@@ -54,6 +54,9 @@ class KernelArgument {
   bool written() const { return written_; }
   void set_written(bool written) { written_ = written; }
 
+  bool invariant() const { return invariant_; }
+  void set_invariant(bool invariant) { invariant_ = invariant; }
+
   // An alignment of 0 means that the alignment attribute shouldn't be set.
   int64_t alignment() const { return alignment_; }
   void set_alignment(int64_t alignment) { alignment_ = alignment; }
@@ -71,6 +74,7 @@ class KernelArgument {
   bool aliased_ = true;
   int64_t alignment_ = 1;
   bool written_ = true;
+  bool invariant_ = true;
 
   // The index of the unique slice in the kernel argument list. When the kernel
   // is called, runtime will pass the same buffer to arguments with the same

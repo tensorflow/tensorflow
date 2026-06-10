@@ -19,8 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "xla/hlo/evaluator/hlo_evaluator.h"
-#include "xla/service/hlo_runner_interface.h"
-#include "xla/service/hlo_runner_pjrt.h"
+#include "xla/service/hlo_runner.h"
 #include "xla/tests/aot_utils.h"
 #include "xla/tests/hlo_runner_agnostic_reference_mixin.h"
 
@@ -31,6 +30,11 @@ namespace xla {
 //
 // The mixin requires that that the test class is a subclass of
 // HloRunnerAgnosticTestBase.
+//
+// === DO NOT ADD FUNCTIONS TO THIS MIXIN. ===
+// Functions interacting with the reference backend should be added to
+// HloRunnerAgnosticReferenceMixin. Functions interacting with the test backend
+// should be added to T.
 template <typename T>
 class HloPjRtInterpreterReferenceMixin
     : public HloRunnerAgnosticReferenceMixin<T> {
@@ -41,9 +45,6 @@ class HloPjRtInterpreterReferenceMixin
             std::make_unique<HloRunner>(MakeAotAwareInterpreterClient(
                 []() { return std::make_unique<HloEvaluator>(); })),
             std::forward<BaseArgs>(base_args)...) {}
-  bool IsRocm() {
-    return this->test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm);
-  }
   ~HloPjRtInterpreterReferenceMixin() override = default;
 };
 
