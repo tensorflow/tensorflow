@@ -255,7 +255,7 @@ absl::Status TPUReshardVariablesOpKernel::DoTpuExecute(
 
   // Only perform compaction when sharding.
   // NOTE: Compaction is not supported on some TPUs, see b/168322060 for details
-  if (node_interfaces->CompactionSupported(device_ordinal) &&
+  if (node_interfaces->CompactionSupported() &&
       fetch_target == tpu::CompilationCacheFetchTarget::SHARDING) {
     // Block until program execution is done so that input, output, and program
     // cache memory can be actually released.

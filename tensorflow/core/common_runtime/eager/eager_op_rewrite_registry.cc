@@ -14,8 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/eager/eager_op_rewrite_registry.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
+
+#include "absl/status/status.h"
 
 namespace tensorflow {
 
