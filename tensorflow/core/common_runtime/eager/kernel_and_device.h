@@ -29,6 +29,7 @@ limitations under the License.
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
