@@ -564,6 +564,8 @@ def AsyncIfrtCallOp : TensorflowMlrt_Op<"async_ifrt_call", []> {
   let arguments = (ins
     I64Attr:$program_id,
     I32ArrayAttr:$variable_arg_indices,
+    OptionalAttr<I64ArrayAttr>:$ifrt_pack_group_ids,
+    OptionalAttr<I64ArrayAttr>:$ifrt_pack_offsets,
     Variadic<TFTensorType>:$args
   );
 

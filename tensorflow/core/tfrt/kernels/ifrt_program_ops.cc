@@ -36,8 +36,13 @@ IfrtCallOp::IfrtCallOp(tensorflow::OpKernelConstruction* ctx) : OpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("program_id", &program_id_));
   OP_REQUIRES_OK(ctx,
                  ctx->GetAttr("variable_arg_indices", &variable_arg_indices_));
+  // Optional pack-inputs plan; absent if the planner+propagator weren't run
+  // in the compile pipeline. `IgnoreError` keeps the un-packed path
+  // backward-compatible: missing attrs leave the vectors empty, and Execute()
+  // treats empty as "no packing."
+  ctx->GetAttr("ifrt_pack_group_ids", &ifrt_pack_group_ids_).IgnoreError();
+  ctx->GetAttr("ifrt_pack_offsets", &ifrt_pack_offsets_).IgnoreError();
 }
-
 void IfrtCallOp::Compute(tensorflow::OpKernelContext* ctx) {
   absl::call_once(init_once_, [&]() {
     executable_ = tensorflow::ifrt_serving::ServingExecutableRegistry::Lookup(
@@ -53,8 +58,9 @@ void IfrtCallOp::Compute(tensorflow::OpKernelContext* ctx) {
     inputs.push_back(ctx->input(i));
   }
 
-  absl::StatusOr<std::vector<Tensor>> results =
-      executable_->Execute(inputs, absl::MakeSpan(variable_arg_indices_));
+  absl::StatusOr<std::vector<Tensor>> results = executable_->Execute(
+      inputs, absl::MakeSpan(variable_arg_indices_),
+      absl::MakeSpan(ifrt_pack_group_ids_), absl::MakeSpan(ifrt_pack_offsets_));
   OP_REQUIRES(ctx, results.ok(), results.status());
 
   OP_REQUIRES(

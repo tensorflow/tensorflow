@@ -67,6 +67,7 @@ void AddClusterToIfrtRuntimeOpsPassPipeline(
   pm.addPass(CreateRewriteClusterToIfrtCallPass(enable_async_ifrt));
 
   if (enable_propagate_static_shapes_pass) {
+    LOG(INFO) << "IFRT: PropagateStaticShapesPass enabled";
     pm.addPass(CreatePropagateStaticShapesPass());
   }
 
@@ -98,6 +99,14 @@ void AddClusterToIfrtRuntimeOpsPassPipeline(
 
   // Sink variable tensor as named array in IFRT.
   pm.addPass(CreateSinkVariableAsNamedArrayPass());
+
+  // IFRT pack-inputs H2D fusion: planner annotates tf.IfrtCall with
+  // ifrt_pack_group_ids; propagator computes ifrt_pack_offsets and copies
+  // both onto the atom @main callee so the per-program orchestrator inside
+  // IfrtServingExecutable can drive PackInputsPass post-tf2hlo. Order is
+  // load-bearing — propagator must follow planner.
+  pm.addPass(CreateIfrtPackInputsPlannerPass());
+  pm.addPass(CreateIfrtPackInputsPropagatorPass());
 }
 
 }  // namespace
