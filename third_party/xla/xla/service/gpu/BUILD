@@ -573,6 +573,7 @@ cc_library(
         "//xla/service:collective_opt_utils",
         "//xla/service:hlo_creation_utils",
         "//xla/service:hlo_proto_cc",
+        "//xla/service:pattern_matcher",
         "//xla/service:shaped_slice",
         "//xla/service/gpu/model:block_level_parameters",
         "//xla/service/llvm_ir:buffer_assignment_util",

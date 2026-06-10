@@ -136,14 +136,14 @@ std::vector<std::vector<T>> CopyDeviceToHost2D(
 
 absl::StatusOr<std::vector<std::unique_ptr<xla::SymmetricMemory>>>
 CreateSymmetricMemory(
-    tsl::Executor& exec, const std::vector<ncclComm_t>& comms,
+    std::shared_ptr<tsl::Executor> exec, const std::vector<ncclComm_t>& comms,
     const std::vector<std::unique_ptr<se::MemoryAllocation>>& buffers) {
   int64_t num_devices = comms.size();
   std::vector<tsl::Future<std::unique_ptr<NcclSymmetricMemory>>>
       symmetric_memory_futures(num_devices);
   for (int i = 0; i < num_devices; ++i) {
-    symmetric_memory_futures[i] = tsl::MakeFutureOn(exec, [&, i]() {
-      return NcclSymmetricMemory::Create(comms[i], buffers[i]->address());
+    symmetric_memory_futures[i] = tsl::MakeFutureOn(*exec, [&, exec, i]() {
+      return NcclSymmetricMemory::Create(comms[i], buffers[i]->address(), exec);
     });
   }
 
@@ -374,7 +374,8 @@ TEST_F(RaggedAllToAllKernelTest, KernelWithSymmetricMemory) {
 
   tsl::thread::ThreadPool pool(tsl::Env::Default(), "nccl",
                                visible_device_count);
-  tsl::Executor& exec = *pool.AsExecutor();
+  auto exec =
+      std::shared_ptr<tsl::Executor>(pool.AsExecutor(), [](tsl::Executor*) {});
 
   ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<xla::SymmetricMemory>>
                            output_buffers_symmetric_memory,

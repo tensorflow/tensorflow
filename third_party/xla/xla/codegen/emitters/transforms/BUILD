@@ -124,6 +124,8 @@ cc_library(
         "//xla/tsl/platform:logging",
         "@com_google_protobuf//:protobuf",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AMDGPUDialect",
+        "@llvm-project//mlir:AMDGPUToROCDL",
         "@llvm-project//mlir:AMDGPUUtils",
         "@llvm-project//mlir:AffineToStandard",
         "@llvm-project//mlir:ArithToLLVM",

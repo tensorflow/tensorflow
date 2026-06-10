@@ -214,7 +214,7 @@ NcclCommunicator::CreateSymmetricMemory(se::DeviceAddressBase addr) {
           return FailedPrecondition("NcclCommunicator aborted");
         }
 
-        return NcclSymmetricMemory::Create(comm_, addr);
+        return NcclSymmetricMemory::Create(comm_, addr, executor_);
       });
 }
 

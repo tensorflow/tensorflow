@@ -152,11 +152,12 @@ class ThunkEmitter {
 
   AsyncThunkSequence EmitFusion(const HloFusionInstruction* instr);
 
+  absl::StatusOr<std::optional<ThunkSequence>> TryEmitTrivialSliceFusion(
+      const HloFusionInstruction* instr);
+
   absl::StatusOr<ThunkSequence> EmitFftThunk(const HloFftInstruction* hlo);
 
   absl::StatusOr<ThunkSequence> EmitInfeed(const HloInfeedInstruction* hlo);
-
-
 
   absl::StatusOr<ThunkSequence> EmitNormThunk(
       const HloCustomCallInstruction* hlo);

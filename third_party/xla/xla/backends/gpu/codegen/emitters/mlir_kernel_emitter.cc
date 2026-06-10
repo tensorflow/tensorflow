@@ -638,6 +638,11 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
   pm.addPass(emitters::CreateExpandFloatOpsPass());
   pm.addPass(mlir::createLowerAffinePass());
   pm.addPass(mlir::createSCFToControlFlowPass());
+
+  if (device.gpu_compute_capability().rocm_compute_capability()) {
+    pm.addPass(CreatePromoteShuffleToDPPPass());
+  }
+
   pm.addPass(emitters::CreateLowerToLLVMGPUPass(device));
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
 }

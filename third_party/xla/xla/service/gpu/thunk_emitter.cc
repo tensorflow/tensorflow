@@ -158,6 +158,7 @@ limitations under the License.
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
+#include "xla/service/pattern_matcher.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -179,6 +180,8 @@ limitations under the License.
 
 namespace xla::gpu {
 namespace {
+
+namespace m = ::xla::match;
 
 absl::StatusOr<TritonKernelSource> EmitTritonFrom(
     const TritonCall& call, const std::string& kernel_name,
@@ -1362,6 +1365,12 @@ AsyncThunkSequence ThunkEmitter::EmitAsyncComputation(
 }
 
 AsyncThunkSequence ThunkEmitter::EmitFusion(const HloFusionInstruction* instr) {
+  ASSIGN_OR_RETURN(std::optional<ThunkSequence> slice_thunks,
+                   TryEmitTrivialSliceFusion(instr));
+  if (slice_thunks.has_value()) {
+    return std::move(*slice_thunks);
+  }
+
   analysis_garbage_collector_.push_back(
       std::make_unique<HloFusionAnalysis>(HloFusionAnalysis::Create(
           *instr, ir_emitter_context_->gpu_device_info())));
@@ -1382,6 +1391,55 @@ AsyncThunkSequence ThunkEmitter::EmitFusion(const HloFusionInstruction* instr) {
       HloFusionInfo(fusion_analysis, instr,
                     &ir_emitter_context_->buffer_assignment(), *call_graph_));
   return emitter->Emit(*ir_emitter_context_, *instr);
+}
+
+// Pattern match wrapped slice instruction that slices a contiguous buffer out
+// of the fusion parameter. Such trivial slices can be emitted as d2d copy.
+absl::StatusOr<std::optional<ThunkSequence>>
+ThunkEmitter::TryEmitTrivialSliceFusion(const HloFusionInstruction* instr) {
+  const HloInstruction* slice_instr = nullptr;
+  const HloInstruction* src = nullptr;
+
+  if (!Match(instr->fused_expression_root(),
+             m::Slice(&slice_instr, m::Parameter(&src, 0)))) {
+    return std::nullopt;
+  }
+  const HloSliceInstruction* slice = Cast<HloSliceInstruction>(slice_instr);
+
+  const Shape& src_shape = src->shape();
+  const Shape& dst_shape = instr->shape();
+  if (!Layout::Equal().MinorToMajorOnly()(src_shape.layout(),
+                                          dst_shape.layout()) ||
+      !IsContiguousSlice(*slice)) {
+    return std::nullopt;
+  }
+
+  auto byte_strides = ShapeUtil::ByteStrides(src_shape);
+  if (!byte_strides.has_value()) {
+    return std::nullopt;
+  }
+
+  int64_t src_byte_offset = 0;
+  for (int64_t dim = 0; dim < src_shape.dimensions().size(); ++dim) {
+    src_byte_offset += slice->slice_starts(dim) * (*byte_strides)[dim];
+  }
+
+  ASSIGN_OR_RETURN(BufferAllocation::Slice arg_slice,
+                   GetAllocationSliceForHlo(instr->operand(0)));
+  ASSIGN_OR_RETURN(BufferAllocation::Slice dst_slice,
+                   GetAllocationSliceForHlo(instr));
+
+  // Slice of the parameter buffer copied to the result buffer.
+  int64_t byte_size = ShapeUtil::ByteSizeOf(dst_shape);
+  BufferAllocation::Slice src_slice(arg_slice.allocation(),
+                                    arg_slice.offset() + src_byte_offset,
+                                    byte_size, arg_slice.element_type());
+
+  return GetThunkSequence(std::make_unique<DeviceToDeviceCopyThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(
+          instr, ir_emitter_context_->GetNextThunkId()),
+      ShapedSlice{src_slice, dst_shape}, ShapedSlice{dst_slice, dst_shape},
+      byte_size));
 }
 
 AsyncThunkSequence ThunkEmitter::EmitDynamicSliceFusionV2(
