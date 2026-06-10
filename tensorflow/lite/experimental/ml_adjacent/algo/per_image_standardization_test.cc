@@ -119,6 +119,23 @@ INSTANTIATE_TEST_SUITE_P(
                                            2.1105793, -0.30151135}},
     }));
 
+TEST(PerImageStandardizationDeathTest, WrongInputTypeFails) {
+  OwningVectorRef img(etype_t::i32);
+  img.Resize({1, 1, 1, 1});
+  OwningVectorRef output(etype_t::f32);
+
+  const Algo* per_image_standardization = Impl_PerImageStandardization();
+  EXPECT_DEATH(per_image_standardization->process({&img}, {&output}), "");
+}
+
+TEST(PerImageStandardizationDeathTest, WrongOutputTypeFails) {
+  OwningVectorRef img(etype_t::f32);
+  img.Resize({1, 1, 1, 1});
+  OwningVectorRef output(etype_t::i32);
+
+  const Algo* per_image_standardization = Impl_PerImageStandardization();
+  EXPECT_DEATH(per_image_standardization->process({&img}, {&output}), "");
+}
 }  // namespace
 }  // namespace per_image_standardization
 }  // namespace ml_adj

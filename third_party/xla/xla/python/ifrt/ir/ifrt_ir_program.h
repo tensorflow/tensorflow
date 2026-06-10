@@ -150,6 +150,7 @@ struct IfrtIRCompileOptions
       std::shared_ptr<
           absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
           compile_options_overrides = {},
+      std::optional<std::vector<int>> outputs_bundle_slice_sizes = std::nullopt,
       std::string mlir_dump_to = "", std::string mlir_dump_pass_re = "",
       std::string mlir_dump_func_re = ".*", bool mlir_enable_timing = false,
       std::string dot_graph_dump_to = "",
@@ -170,7 +171,9 @@ struct IfrtIRCompileOptions
         dot_graph_min_executable_flops(dot_graph_min_executable_flops),
         dot_graph_min_per_device_transfer_size_bytes(
             dot_graph_min_per_device_transfer_size_bytes),
-        strict_memory_reservation(strict_memory_reservation) {}
+        strict_memory_reservation(strict_memory_reservation) {
+    this->outputs_bundle_slice_sizes = std::move(outputs_bundle_slice_sizes);
+  }
 
   // Mapping from logical device ids in IFRT IR MLIR module to runtime device
   // ids obtained from IFRT client.

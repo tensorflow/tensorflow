@@ -1,4 +1,4 @@
-/* Copyright 2023 The OpenXLA Authors.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,15 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-syntax = "proto3";
+#include <gtest/gtest.h>
+#include "tensorflow/lite/experimental/shlo/legacy/include/shlo.h"
 
-package xla.ifrt;
+namespace stablehlo {
+namespace {
 
-import "xla/pjrt/proto/compile_options.proto";
-
-message XlaCompileOptionsProto {
-  int32 version_number = 3;
-
-  xla.CompileOptionsProto compile_options = 1;
-  repeated int32 outputs_bundle_slice_sizes = 2;
+TEST(ShapeTest, NumElementsEmpty) {
+  Shape shape;
+  EXPECT_EQ(shape.num_elements(), 0);
 }
+
+TEST(ShapeTest, NumElementsNonEmpty) {
+  Shape shape({2, 3});
+  EXPECT_EQ(shape.num_elements(), 6);
+}
+
+TEST(ShapeTest, NumElementsLargeDimensions) {
+  Shape shape({65536ULL, 45876ULL});
+  EXPECT_EQ(shape.num_elements(), 3006529536ULL);
+}
+
+}  // namespace
+}  // namespace stablehlo
