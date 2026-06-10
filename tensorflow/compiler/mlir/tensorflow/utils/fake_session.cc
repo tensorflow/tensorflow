@@ -92,19 +92,19 @@ void FakeSession::InitVariables() {
 }
 
 Status FakeSession::Create(const tensorflow::GraphDef& graph) {
-  return tensorflow::errors::Unimplemented("not available");
+  return absl::UnimplementedError("not available");
 }
 Status FakeSession::Extend(const tensorflow::GraphDef& graph) {
-  return tensorflow::errors::Unimplemented("not available");
+  return absl::UnimplementedError("not available");
 }
 
 Status FakeSession::Close() {
-  return tensorflow::errors::Unimplemented("not available");
+  return absl::UnimplementedError("not available");
 }
 
 Status FakeSession::ListDevices(
     std::vector<tensorflow::DeviceAttributes>* response) {
-  return tensorflow::errors::Unimplemented("not available");
+  return absl::UnimplementedError("not available");
 }
 
 Status FakeSession::LocalDeviceManager(
