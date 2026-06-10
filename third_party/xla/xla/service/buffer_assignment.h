@@ -675,9 +675,15 @@ class BufferAssignment {
   // Returns the HloModule used to construct this assignment.
   const HloModule& module() const { return *module_; }
 
-  void ResetAllocationsForTest() {
+  // Clears all buffer allocations and assignment stats to allow re-runs of
+  // buffer assignment. Preserves read-only analyses (like `alias_analysis_`,
+  // `hlo_ordering_`, and `hlo_live_range_`) and the `cached_buffer_sizes_`
+  // cache.
+  void ClearAllocations() {
     allocations_.clear();
+    temp_allocation_total_size_ = 0;
     allocation_index_for_value_.clear();
+    stats_ = Stats();
   }
 
   // Creates and returns a new BufferAllocation, with no assigned
@@ -906,6 +912,11 @@ class BufferAssigner {
             buffer_assignment::
                 AssignmentAlgorithmForComputationsWithoutOrderingProto::DEFAULT;
 
+    buffer_assignment::AssignmentAlgorithmForComputationsWithoutOrderingProto::
+        Value fallback_algorithm_for_computations_without_ordering =
+            buffer_assignment::
+                AssignmentAlgorithmForComputationsWithoutOrderingProto::DEFAULT;
+
     BufferOrder buffer_order = BufferOrder::kBiggestFirst;
 
     buffer_assignment::BufferAssignmentAlgorithmProto::Value
@@ -915,6 +926,10 @@ class BufferAssigner {
     buffer_assignment::BufferAssignmentAlgorithmProto::Value
         fallback_algorithm =
             buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT;
+
+    // If true, evaluate memory usage and fallback to DEFAULT algorithm if
+    // exceeded.
+    bool enable_fallback = false;
 
     // Optional callback to return the memory limit for a given buffer color.
     // If set and returns > 0, the returned limit is used instead of the
@@ -969,7 +984,7 @@ class BufferAssigner {
   static absl::StatusOr<std::unique_ptr<BufferAssignment>> Run(
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
       BufferValue::SizeFunction buffer_size, const AliasInfo* alias_info,
-      LogicalBuffer::AlignmentFunction color_alignment, Options options);
+      LogicalBuffer::AlignmentFunction color_alignment, Options opts);
 
   BufferAssigner(const AliasInfo* alias_info, Options opts);
   virtual ~BufferAssigner() = default;
@@ -980,11 +995,35 @@ class BufferAssigner {
       BufferValue::SizeFunction buffer_size,
       LogicalBuffer::AlignmentFunction color_alignment);
 
- private:
-  friend class DefaultBufferAllocationsManagerForComputationsWithoutOrdering;
-  friend class FastMergeBufferAllocationsManagerForComputationsWithoutOrdering;
+  // Tries to assign the given instruction to the given buffer. Returns if the
+  // assignment was successful.
+  absl::StatusOr<bool> MaybeAssignBuffer(BufferAllocation* allocation,
+                                         const HloBuffer& buffer,
+                                         BufferAssignment* assignment);
 
-  // Assigns buffers to the instructions in the given computations. "assignment"
+  // Returns the memory limit for a given color. If no limit is configured,
+  // returns 0, indicating that fallback or FastMerge bounds don't apply.
+  int64_t GetMemoryLimit(const BufferAssignment& assignment,
+                         LogicalBuffer::Color color) const;
+
+ private:
+  absl::Status RunAssignBuffers(
+      const HloModule* module,
+      const std::vector<const HloComputation*>& global_computations,
+      const std::vector<const HloComputation*>& thread_local_computations,
+      BufferAssignment* assignment,
+      buffer_assignment::BufferAssignmentAlgorithmProto::Value
+          sequential_algorithm,
+      buffer_assignment::
+          AssignmentAlgorithmForComputationsWithoutOrderingProto::Value
+              non_sequential_algorithm);
+
+  absl::Status RunAssignBuffersWithFallback(
+      const HloModule* module,
+      const std::vector<const HloComputation*>& global_computations,
+      const std::vector<const HloComputation*>& thread_local_computations,
+      BufferAssignment* assignment);
+
   // is modified to reflect the new buffer assignments. If is_thread_local is
   // true, then all assigned buffers have the is_thread_local flag set to
   // true.
@@ -1094,12 +1133,7 @@ class BufferAssigner {
       std::optional<BufferAssignment::BufferIsolationOptions>
           isolation_options);
 
-  // Tries to assign the given instruction to the given buffer. Returns if the
-  // assignment was successful.
-  absl::StatusOr<bool> MaybeAssignBuffer(BufferAllocation* allocation,
-                                         const HloBuffer& buffer,
-                                         BufferAssignment* assignment);
-
+ private:
   // Split a set of buffers into several sets, each of which contains buffers
   // colored with the same color.
   absl::flat_hash_map<LogicalBuffer::Color,
