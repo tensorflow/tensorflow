@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/cost_measurement.h"
 #include "tensorflow/core/platform/logging.h"

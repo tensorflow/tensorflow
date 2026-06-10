@@ -14,6 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/all_to_all.h"
 
+#include <cstdint>
+#include <memory>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/collective_test_util.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/framework/device.h"
