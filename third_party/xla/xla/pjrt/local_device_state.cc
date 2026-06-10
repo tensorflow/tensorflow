@@ -167,15 +167,27 @@ LocalDeviceState::~LocalDeviceState() {
     LOG(ERROR) << "Error when closing device: " << status;
   }
 
-  // Explicitly delete all the streams and events to ensure that their callbacks
-  // are executed before the destruction of the LocalDeviceState and its
-  // callback threads.
+  // Explicitly delete all the streams first.
+  // Since the worker threads (specifically callback_thread_) are still alive,
+  // any error or cancellation callbacks triggered during stream destruction
+  // can be safely scheduled and executed.
   external_ready_event_streams_.clear();
   fixed_size_pool_usage_streams_.clear();
   device_to_device_streams_.clear();
   device_to_host_streams_.clear();
   host_to_device_stream_.reset();
   compute_stream_.reset();
+
+  // Explicitly destroy and join the worker threads.
+  // This blocks until all enqueued closures (including the cancellation
+  // callbacks scheduled above) have completed.
+  execute_thread_.reset();
+  async_dispatch_thread_.reset();
+  callback_thread_.reset();
+  cleanup_thread_.reset();
+
+  // Now that the background threads are completely terminated, it is
+  // safe to clear the compute_events_ deque.
   compute_events_.clear();
 }
 
