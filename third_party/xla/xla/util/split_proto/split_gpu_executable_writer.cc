@@ -16,12 +16,17 @@ limitations under the License.
 #include "xla/util/split_proto/split_gpu_executable_writer.h"
 
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/message.h"
 #include "riegeli/bytes/writer.h"
 #include "riegeli/records/record_writer.h"
@@ -65,52 +70,64 @@ SplitProtoManifest BuildManifest(int32_t num_of_contants) {
   return manifest;
 }
 
-// If the backend config is a json string, sort the keys to ensure that the
-// serialized form is consistent. This is needed to make the output
-// deterministic because the order of keys in json is not guaranteed.
+// Normalizes the backend config JSONs by sorting the keys to ensure
+// deterministic serialization, since the order of keys in JSON is not
+// guaranteed.
 //
-// If the backend config is not a json string, it is not modified.
+// For this we need to re-map the de-duped payload IDs since two configs that
+// were bit different before may become the same after normalization.
 absl::Status NormalizeBackendConfig(gpu::GpuExecutableProto& executable) {
-  for (HloComputationProto& computation :
-       *executable.mutable_hlo_module_with_config()
-            ->mutable_hlo_module()
-            ->mutable_computations()) {
+  HloModuleProto* module =
+      executable.mutable_hlo_module_with_config()->mutable_hlo_module();
+  std::vector<std::string> new_payloads;
+
+  // Map from normalized string to its new payload ID.
+  absl::flat_hash_map<std::string, int> normalized_to_new_id;
+  auto get_new_payload_id = [&](const std::string& s) -> int {
+    auto [it, inserted] =
+        normalized_to_new_id.try_emplace(s, new_payloads.size());
+    if (inserted) {
+      new_payloads.push_back(s);
+    }
+    return it->second;
+  };
+
+  for (HloComputationProto& computation : *module->mutable_computations()) {
     for (HloInstructionProto& instruction :
          *computation.mutable_instructions()) {
-      auto backend_config_str_or = GetBackendConfigString(
-          instruction, &executable.hlo_module_with_config().hlo_module());
-      if (!backend_config_str_or.ok()) {
-        return backend_config_str_or.status();
+      ASSIGN_OR_RETURN(std::string backend_config_str,
+                       GetBackendConfigString(instruction, module));
+
+      absl::StatusOr<std::string> normalized_or = SortJson(backend_config_str);
+      if (normalized_or.ok()) {
+        // The backend config may not be valid JSON, in which case we do not
+        // normalize it.
+        backend_config_str = std::move(normalized_or).value();
       }
-      std::string backend_config_str = std::move(backend_config_str_or).value();
-      auto normalized_or = SortJson(backend_config_str);
-      if (!normalized_or.ok()) {
-        continue;
-      }
-      std::string normalized = std::move(normalized_or).value();
-      if (normalized == backend_config_str) {
-        continue;
-      }
+
       if (instruction.has_backend_config_payload()) {
         Payload* payload = instruction.mutable_backend_config_payload();
         switch (payload->payload_source_case()) {
-          case Payload::kId: {
-            int id = static_cast<int>(payload->id());
-            auto* module = executable.mutable_hlo_module_with_config()
-                               ->mutable_hlo_module();
-            *module->mutable_payloads(id) = normalized;
+          case Payload::kId:
+            payload->set_id(get_new_payload_id(backend_config_str));
             break;
-          }
           case Payload::kValue:
-          case Payload::PAYLOAD_SOURCE_NOT_SET:
-            payload->set_value(normalized);
+            payload->set_value(std::move(backend_config_str));
             break;
+          default:
+            return absl::InvalidArgumentError(
+                absl::StrCat("Unknown payload source case: ",
+                             payload->payload_source_case()));
         }
-      } else {
-        instruction.set_backend_config(normalized);
+      } else if (!instruction.backend_config().empty()) {
+        instruction.set_backend_config(std::move(backend_config_str));
       }
     }
   }
+  module->mutable_payloads()->Assign(
+      std::make_move_iterator(new_payloads.begin()),
+      std::make_move_iterator(new_payloads.end()));
+
   return absl::OkStatus();
 }
 
@@ -154,6 +171,9 @@ absl::Status WriteSplitGpuExecutable(gpu::GpuExecutableProto executable,
   executable.clear_constants();
 
   // The rest of the fields (i.e. the non-offloaded fields)
+
+  // Ideally the backend configs would always be normalized when turned into a
+  // string, but doing so now breaks many many tests, so we just do it here.
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       NormalizeBackendConfig(executable),
       "failed to normalize backend config in GpuExecutableProto split proto");
