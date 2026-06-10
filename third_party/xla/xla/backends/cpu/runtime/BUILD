@@ -1520,3 +1520,8 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "host_execution_abi",
+    hdrs = ["host_execution_abi.h"],
+)
