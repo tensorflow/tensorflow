@@ -369,6 +369,8 @@ class PjRtDeviceEventPromiseRef {
   PJRT_DeviceEventPromise* promise_;
 };
 
+using PjRtDeviceEventRefVector = std::vector<PjRtDeviceEventRef>;
+
 }  // namespace xla
 
 #endif  // XLA_PJRT_DEVICE_EVENT_H_

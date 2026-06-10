@@ -656,6 +656,10 @@ message DebugOptions {
   // Whether to use cuBLASLt for GEMMs on GPUs.
   optional bool xla_gpu_enable_cublaslt = 166 [deprecated = true];
 
+  // Enables host-side tracking of CUDA Graphs to resolve XLA metadata for
+  // profiling.
+  optional bool xla_gpu_enable_cuda_graphs_telemetry = 513;
+
   optional bool xla_gpu_enable_cudnn_int8x32_convolution_reordering = 189;
 
   // Rewrite layer norm patterns into cuDNN library calls.
