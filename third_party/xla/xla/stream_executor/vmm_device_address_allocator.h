@@ -93,6 +93,11 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
 
   ~DeviceAddressVmmAllocator() override;
 
+  // Clears the Stream pointer for the given device ordinal during shutdown.
+  // Subsequent deallocations for this device will bypass the deferred queue
+  // and perform immediate, synchronous deallocations.
+  void ClearStream(int device_ordinal);
+
   absl::StatusOr<ScopedDeviceAddress<uint8_t>> Allocate(
       int device_ordinal, uint64_t size, bool retry_on_failure,
       int64_t memory_space) override;

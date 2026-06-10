@@ -892,6 +892,7 @@ cc_library(
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:stream",
+        "//xla/stream_executor:vmm_device_address_allocator",
         "//xla/stream_executor/abi:executable_abi_version",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
