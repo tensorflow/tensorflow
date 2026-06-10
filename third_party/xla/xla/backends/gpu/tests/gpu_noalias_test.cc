@@ -56,7 +56,7 @@ TEST_F(GpuNoAliasTest, Concat) {
   // - We only pass the same parameters once, so the kernel will have these
   // parameters: (x, y, output), and all of them will be noalias.
   const char* expected_ir;
-  if (is_built_with_rocm_) {
+  if (IsBuiltWithRocm()) {
     expected_ir = R"(
 CHECK: define amdgpu_kernel void @{{[a-zA-Z0-9_]+}}(ptr noalias align 16 dereferenceable(16) %{{[a-zA-Z0-9_]+}}, ptr noalias align 16 dereferenceable(16) %{{[a-zA-Z0-9_]+}}, ptr noalias align 256 dereferenceable(48) %{{[a-zA-Z0-9_]+}}) #0
   )";

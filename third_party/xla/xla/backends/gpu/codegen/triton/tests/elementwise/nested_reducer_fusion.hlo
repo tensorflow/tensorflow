@@ -1,4 +1,5 @@
-// RUN: triton_test_correctness %s --abs_error_bound=0.0 --rel_error_bound=0.0
+// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false %s --abs_error_bound=0.0 --rel_error_bound=0.0
+// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation %s --abs_error_bound=0.0 --rel_error_bound=0.0
 
 fusion {
   p0 = f32[] parameter(0)
