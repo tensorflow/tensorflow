@@ -180,18 +180,17 @@ cc_library(
     hdrs = ["tpu_node_context.h"],
     deps = [
         ":tpu_platform_interface",
-        "//xla:executable_run_options",
-        "//xla/service",
         "//xla/service:backend",
-        "//xla/service:stream_pool",
-        "//xla/stream_executor:device_address_allocator",
+        "//xla/stream_executor:stream_executor_h",
         "//xla/tpu:status_helper",
         "//xla/tpu:tpu_api",
         "//xla/tpu:tpu_ops_c_api_hdrs",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@tsl//tsl/platform:macros",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
