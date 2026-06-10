@@ -1998,7 +1998,9 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       pipeline.AddPass<SoftmaxRewriterTriton>(
           gpu_target_config.device_description, ShapeSizeBytesFunction(),
           alias_info, mlir_context,
-          /*only_fuse_if_profitable=*/true);
+          /*only_fuse_if_profitable=*/true,
+          /*use_experimental_tiling=*/
+          debug_options.xla_gpu_experimental_enable_tiling_propagation());
     }
 
     pipeline.AddPass<ReductionDimensionGrouper>();

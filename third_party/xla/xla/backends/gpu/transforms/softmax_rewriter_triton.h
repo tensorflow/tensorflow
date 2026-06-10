@@ -54,8 +54,8 @@ class SoftmaxRewriterTriton : public HloModulePass {
                                  HloCostAnalysis::ShapeSizeFunction shape_size,
                                  const GpuAliasInfo* alias_info,
                                  mlir::MLIRContext* mlir_context,
-                                 bool only_fuse_if_profitable = false,
-                                 bool use_experimental_tiling = false)
+                                 bool only_fuse_if_profitable,
+                                 bool use_experimental_tiling)
       : device_info_(device_info),
         shape_size_(shape_size),
         alias_info_(alias_info),
