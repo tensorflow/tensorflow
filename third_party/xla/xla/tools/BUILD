@@ -404,7 +404,9 @@ cc_library(
     name = "hlo_module_loader",
     srcs = ["hlo_module_loader.cc"],
     hdrs = ["hlo_module_loader.h"],
-    visibility = ["//xla:friends"],
+    visibility = [
+        "//xla:friends",
+    ],
     deps = [
         ":run_hlo_module_proto_cc",
         "//xla:debug_options_flags",
@@ -516,6 +518,9 @@ cc_library(
     name = "run_hlo_module_lib",
     srcs = ["run_hlo_module.cc"],
     hdrs = ["run_hlo_module.h"],
+    visibility = [
+        "//xla:internal",
+    ],
     deps = [
         ":hlo_control_flow_flattening",
         ":hlo_decomposer_lib",

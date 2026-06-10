@@ -1382,7 +1382,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
   transfer_specs.reserve(num_transfers);
 
   // Holds definition events of owned_buffers.
-  std::vector<PjRtDeviceEventRef> transfer_dependencies;
+  PjRtDeviceEventRefVector transfer_dependencies;
 
   LOG(INFO) << log_prefix << ": preparing transfers.";
   for (int i = 0; i < num_transfers; ++i) {
@@ -1417,13 +1417,14 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
         tensorflow::down_cast<CommonPjRtBufferImpl*>(buffer.get())
             ->AcquireScopedRawBuffer(
                 [&](tsl::RCReference<CommonPjRtRawBuffer> buf_raw_buffer,
-                    std::vector<PjRtDeviceEventRef>
-                        buf_definition_events) mutable
+                    PjRtDeviceEventRefVector buf_definition_events) mutable
                     -> absl::StatusOr<PjRtDeviceEventRef> {
                   raw_buffer = std::move(buf_raw_buffer);
-                  for (PjRtDeviceEventRef& event : buf_definition_events) {
-                    transfer_dependencies.push_back(std::move(event));
-                  }
+                  ConsumeEvents(
+                      std::move(buf_definition_events),
+                      [&](PjRtDeviceEventRef&& ev) {
+                        transfer_dependencies.push_back(std::move(ev));
+                      });
                   return PjRtDeviceEventRef(usage_event);
                 },
                 "SuccessfulCrossHostTransferTestBody"));
@@ -1441,7 +1442,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(int rank_id,
   // Perform transfers.
   LOG(INFO) << log_prefix << ": enqueuing transfers";
   ASSIGN_OR_RETURN(
-      std::vector<PjRtDeviceEventRef> usage_events,
+      PjRtDeviceEventRefVector usage_events,
       tensorflow::down_cast<CommonPjRtClient*>(client.get())
           ->CrossHostTransferBuffers(std::move(transfer_dependencies),
                                      std::move(transfer_specs)));
@@ -1497,7 +1498,7 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
 
   if (tsl::kIsOpenSource) {
     // Test relies on VLOG(1) messages. Enable VLOG(1) in OSS.
-    tsl::setenv("TF_CPP_VMODULE", "autotuner_pass=10,autotuner=10",
+    tsl::setenv("TF_CPP_VMODULE", "autotuner_pass=10,config_assigner=10",
                 /*overwrite=*/true);
   }
 
@@ -1518,7 +1519,7 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
       argv.push_back(absl::StrFormat("--cache_dir=%s", cache_dir));
       // Test relies on VLOG(1) messages. Enable VLOG(1) in Non-OSS.
       if (!tsl::kIsOpenSource) {
-        argv.push_back("--vmodule=autotuner_pass=10,autotuner=10");
+        argv.push_back("--vmodule=autotuner_pass=10,config_assigner=10");
         argv.push_back("--logtostderr");
       }
       child[node_id].SetProgram(test_binary_name, argv);
