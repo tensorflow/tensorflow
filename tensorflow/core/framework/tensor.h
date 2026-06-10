@@ -72,7 +72,7 @@ absl::Status MaybeMoveContiguousSlices(Tensor& src, int64_t src_offset,
 class TensorBuffer : public core::RefCounted {
  public:
   explicit TensorBuffer(void* data_ptr) : data_(data_ptr) {}
-  ~TensorBuffer() override {}
+  ~TensorBuffer() override = default;
 
   /// \brief data() points to a memory region of size() bytes.
   ///

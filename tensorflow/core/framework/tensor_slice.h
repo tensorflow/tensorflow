@@ -42,7 +42,7 @@ class TensorSlice {
   //    "start,length" pair represents the slice on one dimension. We allow a
   //    special "-" that means "everything for this dimension". One such example
   //    is:  0,10:-:14,1:-:-
-  TensorSlice() {}
+  TensorSlice() = default;
   explicit TensorSlice(int dim);
   explicit TensorSlice(const TensorSliceProto& proto);
   explicit TensorSlice(

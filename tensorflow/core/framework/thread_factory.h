@@ -29,7 +29,7 @@ using tsl::Thread;  // NOLINT
 // Virtual interface for an object that creates threads.
 class ThreadFactory {
  public:
-  virtual ~ThreadFactory() {}
+  virtual ~ThreadFactory() = default;
 
   // Runs `fn` asynchronously in a different thread. `fn` may block.
   //

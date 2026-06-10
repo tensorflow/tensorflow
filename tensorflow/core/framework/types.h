@@ -103,7 +103,7 @@ class DataTypeSet {
   static constexpr uint64_t kNumBits = 64;
 
  public:
-  constexpr DataTypeSet(const DataTypeSet& other) : mask_(other.mask_) {}
+  constexpr DataTypeSet(const DataTypeSet& other) : = default;
   explicit constexpr DataTypeSet(uint64_t mask) : mask_(mask) {}
 
   constexpr bool Contains(DataType dt) const {

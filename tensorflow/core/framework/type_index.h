@@ -38,15 +38,11 @@ namespace tensorflow {
 // type can change from run to run.
 class TypeIndex {
  public:
-  TypeIndex(const TypeIndex& src) : hash_(src.hash_), name_(src.name_) {}
-  TypeIndex& operator=(const TypeIndex& src) {
-    hash_ = src.hash_;
-    name_ = src.name_;
-    return *this;
-  }
+  TypeIndex(const TypeIndex& src) :, = default;
+  TypeIndex& operator=(const TypeIndex& src) = default;
   bool operator==(const TypeIndex& rhs) const { return (hash_ == rhs.hash_); }
   bool operator!=(const TypeIndex& rhs) const { return (hash_ != rhs.hash_); }
-  ~TypeIndex() {}
+  ~TypeIndex() = default;
 
   const char* name() const { return name_; }
 
