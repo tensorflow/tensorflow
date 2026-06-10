@@ -133,25 +133,14 @@ BackendConfigWrapper& BackendConfigWrapper::operator=(
 }
 
 bool BackendConfigWrapper::operator==(const BackendConfigWrapper& other) const {
-  tsl::protobuf::Message* this_proto = nullptr;
-
-  // Do not hold two mutexes at the same time to avoid deadlocks.
-  {
-    absl::MutexLock this_lock{mutex_};
-    this_proto = proto_.get();
-  }
-
   const std::string* other_raw_string = nullptr;
   {
+    // Make sure to drop the lock on this mutex before calling GetRawString()
+    // to avoid deadlock.
     absl::MutexLock other_lock{other.mutex_};
-    if (this_proto != nullptr && other.proto_ != nullptr) {
-      using ::tsl::protobuf::util::MessageDifferencer;
-      return MessageDifferencer::Equals(*this_proto, *other.proto_);
-    }
     other_raw_string = &other.GetRawStringWithoutMutex();
   }
 
   return GetRawString() == *other_raw_string;
 }
-
 }  // namespace xla
