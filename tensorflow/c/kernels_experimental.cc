@@ -16,21 +16,42 @@ limitations under the License.
 #include "tensorflow/c/kernels_experimental.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/c/c_api.h"
+#include "tensorflow/c/kernels.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_status_internal.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tensor_internal.h"
+#include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/control_flow.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/ref_var.h"
+#include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/strcat.h"
 
 #ifndef IS_MOBILE_PLATFORM
 #include "tensorflow/core/kernels/data/optional_ops_util.h"
@@ -40,7 +61,6 @@ limitations under the License.
 #include "tensorflow/core/platform/abi.h"
 #endif  // IS_MOBILE_PLATFORM
 
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
 
@@ -52,7 +72,6 @@ using tensorflow::Tensor;
 using tensorflow::TF_TensorFromTensor;
 using tensorflow::Var;
 using tensorflow::Variant;
-using tensorflow::errors::InvalidArgument;
 
 struct TF_VariableInputLockHolder {
   TF_VariableInputLockHolder(
@@ -358,6 +377,7 @@ void TF_TemporaryVariable(TF_OpKernelContext* ctx, TF_DataType dtype,
   context->set_output_ref(0, &tmp_var->mu, &tmp_var->val);
 
   if (context->track_allocations()) {
+    mutex_lock l(tmp_var->mu);
     context->record_persistent_memory_allocation(tmp_var->val.AllocatedBytes());
   }
 
@@ -611,41 +631,37 @@ static Status CCBinaryAddFunc(
     return absl::OkStatus();
   }
 
-  Status status;
-  TF_Tensor* a = TF_TensorFromTensor(cc_a, &status);
-  TF_RETURN_IF_ERROR(status);
-
-  TF_Tensor* b = TF_TensorFromTensor(cc_b, &status);
-  if (!status.ok()) {
-    TF_DeleteTensor(a);
-    return status;
-  }
-
   ::tensorflow::AllocatorAttributes attr;
   if (cc_a.dtype() == ::tensorflow::DT_VARIANT) {
     attr.set_on_host(true);
   }
 
-  status = cc_ctx->allocate_temp(cc_a.dtype(), cc_a.shape(), cc_out, attr);
-  if (!status.ok()) {
-    TF_DeleteTensor(a);
-    TF_DeleteTensor(b);
-    return status;
-  }
+  Status status =
+      cc_ctx->allocate_temp(cc_a.dtype(), cc_a.shape(), cc_out, attr);
+  TF_RETURN_IF_ERROR(status);
 
-  TF_Tensor* out = TF_TensorFromTensor(*cc_out, &status);
-  if (!status.ok()) {
-    TF_DeleteTensor(a);
-    TF_DeleteTensor(b);
-    return status;
-  }
-
-  auto* ctx = reinterpret_cast<TF_OpKernelContext*>(cc_ctx);
   if (cc_a.dtype() == ::tensorflow::DT_VARIANT) {
     return VariantBinaryAddFunc(
         cc_ctx, cc_a.scalar<Variant>()(), cc_b.scalar<Variant>()(),
         cc_out->scalar<Variant>().data(), binary_add_func);
   } else {
+    TF_Tensor* a = TF_TensorFromTensor(cc_a, &status);
+    TF_RETURN_IF_ERROR(status);
+
+    TF_Tensor* b = TF_TensorFromTensor(cc_b, &status);
+    if (!status.ok()) {
+      TF_DeleteTensor(a);
+      return status;
+    }
+
+    TF_Tensor* out = TF_TensorFromTensor(*cc_out, &status);
+    if (!status.ok()) {
+      TF_DeleteTensor(a);
+      TF_DeleteTensor(b);
+      return status;
+    }
+
+    auto* ctx = reinterpret_cast<TF_OpKernelContext*>(cc_ctx);
     binary_add_func(ctx, a, b, out);
     return cc_ctx->status();
   }
