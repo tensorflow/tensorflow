@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_memcpy_thunk.h"
+#include "xla/backends/gpu/runtime/dynamic_slice_fusion_v2_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
@@ -82,8 +83,10 @@ CommandBufferConfig GetCommandBufferConfig(
     num_local_devices = hlo_module->config().partition_size();
   }
 
-  CommandBufferConfig config{std::move(commands), device_info,
-                             num_local_devices};
+  CommandBufferConfig config{
+      std::move(commands), device_info,
+      debug_options.xla_gpu_command_buffer_update_mode(),
+      debug_options.xla_gpu_command_buffer_unroll_loops(), num_local_devices};
 
   // Erase command buffer cmd types that are not supported by the gpu runtime.
   static constexpr auto kRequireConditionals = {DebugOptions::CONDITIONAL,
@@ -174,6 +177,8 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
       return DebugOptions::CUBLASLT;
     case Thunk::kDynamicSlice:
       return DebugOptions::DYNAMIC_SLICE_FUSION;
+    case Thunk::kDynamicSliceFusion:
+      return DebugOptions::DYNAMIC_SLICE_FUSION;
     default:
       VLOG(2) << "Unsupported thunk kind: " << Thunk::KindToString(kind);
       return std::nullopt;
@@ -185,11 +190,36 @@ bool ThunkSequenceIsConvertible(const ThunkSequence& thunks,
 size_t CheckAsyncRegion(absl::Span<const std::unique_ptr<Thunk>> thunks,
                         const CommandBufferConfig& config);
 
+bool HasLoopDependentDynamicSliceFusionV2(const ThunkSequence& thunks) {
+  bool has_loop_dependent_dsf = false;
+  for (const std::unique_ptr<Thunk>& thunk : thunks) {
+    if (has_loop_dependent_dsf) {
+      break;
+    }
+    thunk->Walk([&](const Thunk* nested) {
+      if (const auto* dsf =
+              dynamic_cast<const DynamicSliceFusionV2Thunk*>(nested);
+          dsf != nullptr && dsf->HasLoopDependentOffsets()) {
+        has_loop_dependent_dsf = true;
+      }
+    });
+  }
+  return has_loop_dependent_dsf;
+}
+
 // Returns true if the WhileThunk is convertible to a command buffer operation.
 // This requires that all thunks in both the condition and body sequences are
 // convertible.
 bool IsConvertible(const WhileThunk& while_thunk,
                    const CommandBufferConfig& config) {
+  if (HasLoopDependentDynamicSliceFusionV2(
+          while_thunk.body_executor().thunks()) &&
+      !(config.enable_loop_unroll && while_thunk.trip_count().has_value())) {
+    VLOG(2) << "WhileThunk is not convertible to command buffers because its "
+               "body contains loop-dependent DynamicSliceFusionV2Thunk and "
+               "the while loop will not be unrolled";
+    return false;
+  }
   return ThunkSequenceIsConvertible(while_thunk.body_executor().thunks(),
                                     config) &&
          ThunkSequenceIsConvertible(while_thunk.condition_executor().thunks(),
@@ -270,6 +300,28 @@ static bool IsConvertible(const DynamicSliceThunk& dynamic_slice_thunk,
       dynamic_slice_thunk.get_embedded_executor().thunks(), config);
 }
 
+// Returns true if the DynamicSliceFusionV2Thunk is convertible to a command
+// buffer operation. Runtime offset verification performs synchronous D2H copies
+// and is intentionally unsupported for command buffer lowering.
+static bool IsConvertible(
+    const DynamicSliceFusionV2Thunk& dynamic_slice_fusion_thunk,
+    const CommandBufferConfig& config) {
+  if (dynamic_slice_fusion_thunk.verify_offsets()) {
+    VLOG(2) << "DynamicSliceFusionV2Thunk is not convertible to command "
+               "buffers because runtime offset verification is enabled";
+    return false;
+  }
+  if (config.update_mode == DebugOptions::NEVER_UPDATE &&
+      dynamic_slice_fusion_thunk.HasLoopDependentOffsets()) {
+    VLOG(2) << "DynamicSliceFusionV2Thunk is not convertible in NEVER_UPDATE "
+               "command-buffer mode because its offsets depend on loop "
+               "iteration";
+    return false;
+  }
+  return ThunkSequenceIsConvertible(dynamic_slice_fusion_thunk.thunks(),
+                                    config);
+}
+
 // Returns true if the AsyncStartThunk is convertible to a command buffer
 // operation. This requires that all nested thunks are convertible.
 static bool IsConvertible(const AsyncStartThunk& async_start_thunk,
@@ -320,6 +372,11 @@ bool IsConvertible(const Thunk& thunk, const CommandBufferConfig& config) {
 
   if (thunk.kind() == Thunk::kDynamicSlice) {
     return IsConvertible(static_cast<const DynamicSliceThunk&>(thunk), config);
+  }
+
+  if (thunk.kind() == Thunk::kDynamicSliceFusion) {
+    return IsConvertible(static_cast<const DynamicSliceFusionV2Thunk&>(thunk),
+                         config);
   }
 
   if (thunk.kind() == Thunk::kRaggedAllToAll) {
