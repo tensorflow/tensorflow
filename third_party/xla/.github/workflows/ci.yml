@@ -69,7 +69,7 @@ jobs:
           {
             pool: "linux-x86-n2-16",
             container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
-            name: "XLA Linux x86 GPU ROCm",
+            name: "XLA Linux x86 GPU Hermetic ROCm",
             repo: "openxla/xla",
           },
           {
