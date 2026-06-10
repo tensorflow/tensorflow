@@ -129,30 +129,28 @@ NB_MODULE(ir_py, m) {
       "serialize_ifrt_ir_program",
       [](MlirModule module, absl::string_view ifrt_ir_version,
          absl::string_view atom_program_version,
+         absl::string_view atom_program_sdy_version,
          bool version_in_place) -> nb::bytes {
-        // TODO(hyeontaek): Take `atom_program_sdy_version` as an argument.
         return xla::ValueOrThrow(SerializeVersionedProgram(
             module, ifrt_ir_version, atom_program_version,
-            /*atom_program_sdy_version=*/
-            mlir::sdy::SdyDialectVersion::getCurrentVersion().toString(),
-            version_in_place));
+            atom_program_sdy_version, version_in_place));
       },
       nb::arg("module"), nb::arg("ifrt_ir_version"),
-      nb::arg("atom_program_version"), nb::arg("version_in_place"));
+      nb::arg("atom_program_version"), nb::arg("atom_program_sdy_version"),
+      nb::arg("version_in_place"));
   m.def(
       "serialize_ifrt_ir_program",
       [](absl::string_view module_str, absl::string_view ifrt_ir_version,
          absl::string_view atom_program_version,
+         absl::string_view atom_program_sdy_version,
          bool version_in_place) -> nb::bytes {
-        // TODO(hyeontaek): Take `atom_program_sdy_version` as an argument.
         return xla::ValueOrThrow(SerializeVersionedProgram(
             module_str, ifrt_ir_version, atom_program_version,
-            /*atom_program_sdy_version=*/
-            mlir::sdy::SdyDialectVersion::getCurrentVersion().toString(),
-            version_in_place));
+            atom_program_sdy_version, version_in_place));
       },
       nb::arg("module_str"), nb::arg("ifrt_ir_version"),
-      nb::arg("atom_program_version"), nb::arg("version_in_place"));
+      nb::arg("atom_program_version"), nb::arg("atom_program_sdy_version"),
+      nb::arg("version_in_place"));
 
   // Deserializes a versioned IFRT IR program to IFRT IR.
   m.def(
