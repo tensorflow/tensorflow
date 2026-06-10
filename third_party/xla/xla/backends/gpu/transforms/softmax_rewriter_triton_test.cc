@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -67,9 +68,13 @@ class SoftmaxRewriterTritonTest : public HloHardwareIndependentTestBase,
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
   mlir::MLIRContext mlir_context_;
   GpuAliasInfo alias_info_{device_info_};
-  SoftmaxRewriterTriton fusion_rewriter_{device_info_,
-                                         HloCostAnalysis::DefaultShapeSize,
-                                         &alias_info_, &mlir_context_};
+  SoftmaxRewriterTriton fusion_rewriter_{
+      device_info_,
+      HloCostAnalysis::DefaultShapeSize,
+      &alias_info_,
+      &mlir_context_,
+      /*only_fuse_if_profitable=*/false,
+      /*use_experimental_tiling=*/GetParam()};
 
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options =
