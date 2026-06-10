@@ -1,5 +1,7 @@
-// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s
+// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s --check-prefix=CHECK-OLD,CHECK
 // RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation=false %s
+// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation %s | FileCheck %s --check-prefix=CHECK-NEW,CHECK
+// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation %s
 
 max {
   Arg_0 = f32[] parameter(0)
@@ -20,8 +22,10 @@ fusion {
   broadcast_4 = f32[10,125,127]{2,1,0} broadcast(reduce_0), dimensions={0,1}
   ROOT multiply = f32[10,125,127]{2,1,0} multiply(multiply_1, broadcast_4)
 }
-// CHECK:        #[[MAP:.*]] = #xla.indexing_map<"(pid_0) -> (pid_0 / 125), domain: pid_0 in [0, 1249]">
-// CHECK:        #[[MAP1:.*]] = #xla.indexing_map<"(pid_0) -> (pid_0 mod 125), domain: pid_0 in [0, 1249]">
+// CHECK-OLD:    #[[MAP:.*]] = #xla.indexing_map<"(pid_0) -> (pid_0 / 125), domain: pid_0 in [0, 1249]">
+// CHECK-OLD:    #[[MAP1:.*]] = #xla.indexing_map<"(pid_0) -> (pid_0 mod 125), domain: pid_0 in [0, 1249]">
+// CHECK-NEW:    #[[MAP:.*]] = #xla.indexing_map<"(pid) -> (pid / 125), domain: pid in [0, 1249]">
+// CHECK-NEW:    #[[MAP1:.*]] = #xla.indexing_map<"(pid) -> (pid mod 125), domain: pid in [0, 1249]">
 // CHECK:        xtile.entry_func @triton_fn
 // CHECK-SAME:      (%[[P0:.*]]: {{.*}}, %[[P1:.*]]: {{.*}}, %[[P2:.*]]: {{.*}}, %[[P3:.*]]: {{.*}}, %[[TID:.*]]: index)
 // CHECK-DAG:        %[[C_0:.*]] = arith.constant 0 : index
