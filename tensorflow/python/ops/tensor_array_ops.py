@@ -371,6 +371,13 @@ class _GraphTensorArray:
         if not context.executing_eagerly():
           clengths = tensor_util.constant_value(lengths_64)
           if value.shape.dims is not None and clengths is not None:
+            sum_lengths = int(np.sum(clengths))
+            if value.shape.dims[0].value is not None:
+              if sum_lengths != value.shape.dims[0].value:
+                raise ValueError(
+                    "Expected sum of lengths to be equal to values.shape[0], "
+                    "but sum of lengths is %d and value's shape is: %s"
+                    % (sum_lengths, value.shape.as_list()))
             if clengths.shape and clengths.max() == clengths.min():
               self._check_element_shape(
                   tensor_shape.TensorShape([clengths[0]
@@ -646,6 +653,13 @@ class _GraphTensorArrayV2:
       if not context.executing_eagerly():
         clengths = tensor_util.constant_value(lengths_64)
         if value.shape.dims is not None and clengths is not None:
+          sum_lengths = int(np.sum(clengths))
+          if value.shape.dims[0].value is not None:
+            if sum_lengths != value.shape.dims[0].value:
+              raise ValueError(
+                  "Expected sum of lengths to be equal to values.shape[0], "
+                  "but sum of lengths is %d and value's shape is: %s"
+                  % (sum_lengths, value.shape.as_list()))
           if clengths.shape and clengths.max() == clengths.min():
             self._check_element_shape(
                 tensor_shape.TensorShape([clengths[0]
