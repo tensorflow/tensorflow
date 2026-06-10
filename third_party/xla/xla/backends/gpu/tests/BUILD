@@ -587,8 +587,9 @@ xla_test(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/platform:test",
     ],
 )
 

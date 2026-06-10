@@ -225,9 +225,10 @@ void PjRtStreamExecutorClient::ThenRecordEvent(BufferSequencingEventRef event,
 
 absl::Status PjRtStreamExecutorClient::AllocateAndRecordEvent(
     BufferSequencingEventRef event, LocalDeviceState* local_device,
-    se::Stream* stream, absl::string_view tag) {
+    se::Stream* stream, absl::string_view tag,
+    absl::AnyInvocable<void() &&> cleanup) {
   return local_device->AllocateAndRecordEvent(async_work_runner(), event,
-                                              stream, tag);
+                                              stream, tag, std::move(cleanup));
 }
 
 void PjRtStreamExecutorClient::SetEventAsError(BufferSequencingEventRef event,

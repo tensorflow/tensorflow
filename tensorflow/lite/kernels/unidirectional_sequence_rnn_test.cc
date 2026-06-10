@@ -15,6 +15,7 @@ limitations under the License.
 // Unit test for TFLite Sequential RNN op.
 
 #include <initializer_list>
+#include <tuple>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -28,7 +29,7 @@ namespace {
 
 using ::testing::ElementsAreArray;
 
-static float rnn_input[] = {
+constexpr float kRnnInput[] = {
     0.23689353,   0.285385,     0.037029743, -0.19858193,  -0.27569133,
     0.43773448,   0.60379338,   0.35562468,  -0.69424844,  -0.93421471,
     -0.87287879,  0.37144363,   -0.62476718, 0.23791671,   0.40060222,
@@ -56,7 +57,7 @@ static float rnn_input[] = {
     -0.56172788,  -0.044897556, 0.89964068,  -0.067662835, 0.76863563,
     0.93455386,   -0.6324693,   -0.083922029};
 
-static float rnn_golden_output[] = {
+constexpr float kRnnGoldenOutput[] = {
     0.496726,   0,          0.965996,  0,         0.0584254, 0,
     0,          0.12315,    0,         0,         0.612266,  0.456601,
     0,          0.52286,    1.16099,   0.0291232,
@@ -121,7 +122,7 @@ static float rnn_golden_output[] = {
     0,          2.02616,    0,         0.728256,  0.84183,   0.0907453,
     0.628881,   3.58099,    1.49974,   0};
 
-static std::initializer_list<float> rnn_weights = {
+constexpr std::initializer_list<float> kRnnWeights = {
     0.461459,    0.153381,   0.529743,    -0.00371218, 0.676267,   -0.211346,
     0.317493,    0.969689,   -0.343251,   0.186423,    0.398151,   0.152399,
     0.448504,    0.317662,   0.523556,    -0.323514,   0.480877,   0.333113,
@@ -145,7 +146,7 @@ static std::initializer_list<float> rnn_weights = {
     -0.276798,   0.837861,   0.747958,    -0.0151566,  -0.330057,  -0.469077,
     0.277308,    0.415818};
 
-static std::initializer_list<float> rnn_recurrent_weights = {
+constexpr std::initializer_list<float> kRnnRecurrentWeights = {
     0.1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0.1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0.1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -163,28 +164,30 @@ static std::initializer_list<float> rnn_recurrent_weights = {
     0.1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0.1};
 
-static std::initializer_list<float> rnn_bias = {
+constexpr std::initializer_list<float> kRnnBias = {
     0.065691948, -0.69055247, 0.1107955,  -0.97084129, -0.23957068, -0.23566568,
     -0.389184,   0.47481549,  -0.4791103, 0.29931796,  0.10463274,  0.83918178,
     0.37197268,  0.61957061,  0.3956964,  -0.37609905};
 
+// Base test model for the unidirectional sequence RNN op, encapsulating
+// interpreter setup, tensor allocation, and input/output population.
 class UnidirectionalRNNOpModel : public SingleOpModel {
  public:
-  UnidirectionalRNNOpModel(
-      int batches, int sequence_len, int units, int size, bool time_major,
-      const TensorType& weights = TensorType_FLOAT32,
-      const TensorType& recurrent_weights = TensorType_FLOAT32,
-      bool asymmetric_quantize_inputs = false)
-      : batches_(batches),
+  UnidirectionalRNNOpModel(int batches, int sequence_len, int units, int size,
+                           bool time_major,
+                           TensorType weights = TensorType_FLOAT32,
+                           TensorType recurrent_weights = TensorType_FLOAT32,
+                           bool asymmetric_quantize_inputs = false)
+      : input_(AddInput(TensorType_FLOAT32)),
+        weights_(AddInput(weights)),
+        recurrent_weights_(AddInput(recurrent_weights)),
+        bias_(AddInput(TensorType_FLOAT32)),
+        hidden_state_(AddVariableInput(TensorType_FLOAT32)),
+        output_(AddOutput(TensorType_FLOAT32)),
+        batches_(batches),
         sequence_len_(sequence_len),
         units_(units),
         input_size_(size) {
-    input_ = AddInput(TensorType_FLOAT32);
-    weights_ = AddInput(weights);
-    recurrent_weights_ = AddInput(recurrent_weights);
-    bias_ = AddInput(TensorType_FLOAT32);
-    hidden_state_ = AddVariableInput(TensorType_FLOAT32);
-    output_ = AddOutput(TensorType_FLOAT32);
     SetBuiltinOp(BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN,
                  BuiltinOptions_SequenceRNNOptions,
                  CreateSequenceRNNOptions(builder_, time_major,
@@ -196,7 +199,7 @@ class UnidirectionalRNNOpModel : public SingleOpModel {
                         {units_, input_size_},
                         {units_, units_},
                         {units_},
-                        {batches_, units}});
+                        {batches_, units_}});
     } else {
       BuildInterpreter({{batches_, sequence_len_, input_size_},
                         {units_, input_size_},
@@ -206,13 +209,15 @@ class UnidirectionalRNNOpModel : public SingleOpModel {
     }
   }
 
+  virtual ~UnidirectionalRNNOpModel() = default;
+
   void SetBias(std::initializer_list<float> f) { PopulateTensor(bias_, f); }
 
-  void SetWeights(std::initializer_list<float> f) {
+  virtual void SetWeights(std::initializer_list<float> f) {
     PopulateTensor(weights_, f);
   }
 
-  void SetRecurrentWeights(std::initializer_list<float> f) {
+  virtual void SetRecurrentWeights(std::initializer_list<float> f) {
     PopulateTensor(recurrent_weights_, f);
   }
 
@@ -220,16 +225,17 @@ class UnidirectionalRNNOpModel : public SingleOpModel {
     PopulateTensor(input_, data);
   }
 
-  void SetInput(int offset, float* begin, float* end) {
-    PopulateTensor(input_, offset, begin, end);
+  void SetInput(int offset, const float* begin, const float* end) {
+    PopulateTensor(input_, offset, const_cast<float*>(begin),
+                   const_cast<float*>(end));
   }
 
-  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+  std::vector<float> GetOutput() const { return ExtractVector<float>(output_); }
 
-  int input_size() { return input_size_; }
-  int num_units() { return units_; }
-  int num_batches() { return batches_; }
-  int sequence_len() { return sequence_len_; }
+  int input_size() const { return input_size_; }
+  int num_units() const { return units_; }
+  int num_batches() const { return batches_; }
+  int sequence_len() const { return sequence_len_; }
 
  protected:
   int input_;
@@ -245,7 +251,8 @@ class UnidirectionalRNNOpModel : public SingleOpModel {
   int input_size_;
 };
 
-// The hybrid model has quantized weights and recurrent_weights.
+// Hybrid test model for the unidirectional sequence RNN op, specializing
+// weight population to perform symmetric or signed symmetric quantization.
 class HybridUnidirectionalRNNOpModel : public UnidirectionalRNNOpModel {
  public:
   HybridUnidirectionalRNNOpModel(int batches, int sequence_len, int units,
@@ -254,9 +261,8 @@ class HybridUnidirectionalRNNOpModel : public UnidirectionalRNNOpModel {
                                  bool asymmetric_quantize_inputs)
       : UnidirectionalRNNOpModel(batches, sequence_len, units, size, time_major,
                                  tensor_type, tensor_type,
-                                 asymmetric_quantize_inputs) {
-    tensor_type_ = tensor_type;
-  }
+                                 asymmetric_quantize_inputs),
+        tensor_type_(tensor_type) {}
 
   void SetWeights(int weights_idx, const std::vector<float>& f) {
     if (tensor_type_ == TensorType_UINT8) {
@@ -266,9 +272,11 @@ class HybridUnidirectionalRNNOpModel : public UnidirectionalRNNOpModel {
     }
   }
 
-  void SetWeights(std::initializer_list<float> f) { SetWeights(weights_, f); }
+  void SetWeights(std::initializer_list<float> f) override {
+    SetWeights(weights_, f);
+  }
 
-  void SetRecurrentWeights(std::initializer_list<float> f) {
+  void SetRecurrentWeights(std::initializer_list<float> f) override {
     SetWeights(recurrent_weights_, f);
   }
 
@@ -276,181 +284,153 @@ class HybridUnidirectionalRNNOpModel : public UnidirectionalRNNOpModel {
   TensorType tensor_type_;
 };
 
+// Helper function that populates weights, bias, and input tensors for a
+// unidirectional sequence RNN model, invokes the interpreter, and verifies
+// the generated output against the expected golden values.
+void PopulateAndVerifyBlackBox(UnidirectionalRNNOpModel* rnn, bool time_major,
+                               float max_abs_err = 1e-5f) {
+  rnn->SetWeights(kRnnWeights);
+  rnn->SetBias(kRnnBias);
+  rnn->SetRecurrentWeights(kRnnRecurrentWeights);
+
+  if (time_major) {
+    for (int i = 0; i < rnn->sequence_len(); i++) {
+      const float* batch_start = kRnnInput + i * rnn->input_size();
+      const float* batch_end = batch_start + rnn->input_size();
+      // The two batches are identical.
+      rnn->SetInput(2 * i * rnn->input_size(), batch_start, batch_end);
+      rnn->SetInput((2 * i + 1) * rnn->input_size(), batch_start, batch_end);
+    }
+  } else {
+    const int input_sequence_size = rnn->input_size() * rnn->sequence_len();
+    const float* batch_start = kRnnInput;
+    const float* batch_end = batch_start + input_sequence_size;
+    rnn->SetInput(0, batch_start, batch_end);
+    rnn->SetInput(input_sequence_size, batch_start, batch_end);
+  }
+
+  ASSERT_EQ(rnn->Invoke(), kTfLiteOk);
+
+  std::vector<float> expected;
+  if (time_major) {
+    for (int i = 0; i < rnn->sequence_len(); i++) {
+      const float* golden_batch_start = kRnnGoldenOutput + i * rnn->num_units();
+      const float* golden_batch_end = golden_batch_start + rnn->num_units();
+      expected.insert(expected.end(), golden_batch_start, golden_batch_end);
+      expected.insert(expected.end(), golden_batch_start, golden_batch_end);
+    }
+  } else {
+    const float* golden_start = kRnnGoldenOutput;
+    const float* golden_end =
+        golden_start + rnn->num_units() * rnn->sequence_len();
+    expected.insert(expected.end(), golden_start, golden_end);
+    expected.insert(expected.end(), golden_start, golden_end);
+  }
+
+  if (max_abs_err > 1e-4f) {
+    EXPECT_THAT(rnn->GetOutput(),
+                ElementsAreArray(ArrayFloatNear(expected, max_abs_err)));
+  } else {
+    EXPECT_THAT(rnn->GetOutput(), ElementsAreArray(ArrayFloatNear(expected)));
+  }
+}
+
 TEST(UnidirectionalRNNOpTest, BlackBoxTest) {
   UnidirectionalRNNOpModel rnn(/*batches=*/2, /*sequence_len=*/16,
                                /*units=*/16, /*size=*/8, /*time_major=*/false);
-  rnn.SetWeights(rnn_weights);
-  rnn.SetBias(rnn_bias);
-  rnn.SetRecurrentWeights(rnn_recurrent_weights);
-
-  const int input_sequence_size = rnn.input_size() * rnn.sequence_len();
-  float* batch_start = rnn_input;
-  float* batch_end = batch_start + input_sequence_size;
-  rnn.SetInput(0, batch_start, batch_end);
-  rnn.SetInput(input_sequence_size, batch_start, batch_end);
-
-  ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
-
-  float* golden_start = rnn_golden_output;
-  float* golden_end = golden_start + rnn.num_units() * rnn.sequence_len();
-  std::vector<float> expected;
-  expected.insert(expected.end(), golden_start, golden_end);
-  expected.insert(expected.end(), golden_start, golden_end);
-
-  EXPECT_THAT(rnn.GetOutput(), ElementsAreArray(ArrayFloatNear(expected)));
+  PopulateAndVerifyBlackBox(&rnn, /*time_major=*/false);
 }
 
 class HybridUnidirectionalRNNOpModelOpTest
-    : public ::testing::TestWithParam<bool> {};
+    : public testing::TestWithParam<std::tuple<bool, TensorType>> {};
 
-TEST_P(HybridUnidirectionalRNNOpModelOpTest, BlackBoxTestUint8) {
+TEST_P(HybridUnidirectionalRNNOpModelOpTest, BlackBoxTestQuantized) {
+  const bool asymmetric_quantize_inputs = std::get<0>(GetParam());
+  const TensorType tensor_type = std::get<1>(GetParam());
   HybridUnidirectionalRNNOpModel rnn(/*batches=*/2, /*sequence_len=*/16,
                                      /*units=*/16, /*size=*/8,
-                                     /*time_major=*/false, TensorType_UINT8,
-                                     GetParam());
-  rnn.SetWeights(rnn_weights);
-  rnn.SetBias(rnn_bias);
-  rnn.SetRecurrentWeights(rnn_recurrent_weights);
-
-  const int input_sequence_size = rnn.input_size() * rnn.sequence_len();
-  float* batch_start = rnn_input;
-  float* batch_end = batch_start + input_sequence_size;
-  rnn.SetInput(0, batch_start, batch_end);
-  rnn.SetInput(input_sequence_size, batch_start, batch_end);
-
-  ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
-
-  float* golden_start = rnn_golden_output;
-  float* golden_end = golden_start + rnn.num_units() * rnn.sequence_len();
-  std::vector<float> expected;
-  expected.insert(expected.end(), golden_start, golden_end);
-  expected.insert(expected.end(), golden_start, golden_end);
-
-  EXPECT_THAT(rnn.GetOutput(), ElementsAreArray(ArrayFloatNear(
-                                   expected, /*max_abs_err=*/0.013)));
-}
-
-TEST_P(HybridUnidirectionalRNNOpModelOpTest, BlackBoxTestInt8) {
-  HybridUnidirectionalRNNOpModel rnn(/*batches=*/2, /*sequence_len=*/16,
-                                     /*units=*/16, /*size=*/8,
-                                     /*time_major=*/false, TensorType_INT8,
-                                     GetParam());
-  rnn.SetWeights(rnn_weights);
-  rnn.SetBias(rnn_bias);
-  rnn.SetRecurrentWeights(rnn_recurrent_weights);
-
-  const int input_sequence_size = rnn.input_size() * rnn.sequence_len();
-  float* batch_start = rnn_input;
-  float* batch_end = batch_start + input_sequence_size;
-  rnn.SetInput(0, batch_start, batch_end);
-  rnn.SetInput(input_sequence_size, batch_start, batch_end);
-
-  ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
-
-  float* golden_start = rnn_golden_output;
-  float* golden_end = golden_start + rnn.num_units() * rnn.sequence_len();
-  std::vector<float> expected;
-  expected.insert(expected.end(), golden_start, golden_end);
-  expected.insert(expected.end(), golden_start, golden_end);
-
-  EXPECT_THAT(rnn.GetOutput(), ElementsAreArray(ArrayFloatNear(
-                                   expected, /*max_abs_err=*/0.013)));
+                                     /*time_major=*/false, tensor_type,
+                                     asymmetric_quantize_inputs);
+  PopulateAndVerifyBlackBox(&rnn, /*time_major=*/false, /*max_abs_err=*/0.013f);
 }
 
 TEST(UnidirectionalRNNOpTest, TimeMajorBlackBoxTest) {
   UnidirectionalRNNOpModel rnn(/*batches=*/2, /*sequence_len=*/16,
                                /*units=*/16, /*size=*/8,
                                /*time_major=*/true);
-  rnn.SetWeights(rnn_weights);
-  rnn.SetBias(rnn_bias);
-  rnn.SetRecurrentWeights(rnn_recurrent_weights);
-
-  for (int i = 0; i < rnn.sequence_len(); i++) {
-    float* batch_start = rnn_input + i * rnn.input_size();
-    float* batch_end = batch_start + rnn.input_size();
-    // The two batches are identical.
-    rnn.SetInput(2 * i * rnn.input_size(), batch_start, batch_end);
-    rnn.SetInput((2 * i + 1) * rnn.input_size(), batch_start, batch_end);
-  }
-
-  ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
-
-  std::vector<float> expected;
-  for (int i = 0; i < rnn.sequence_len(); i++) {
-    float* golden_batch_start = rnn_golden_output + i * rnn.num_units();
-    float* golden_batch_end = golden_batch_start + rnn.num_units();
-    expected.insert(expected.end(), golden_batch_start, golden_batch_end);
-    expected.insert(expected.end(), golden_batch_start, golden_batch_end);
-  }
-
-  EXPECT_THAT(rnn.GetOutput(), ElementsAreArray(ArrayFloatNear(expected)));
+  PopulateAndVerifyBlackBox(&rnn, /*time_major=*/true);
 }
 
-TEST_P(HybridUnidirectionalRNNOpModelOpTest, TimeMajorBlackBoxTestUint8) {
+TEST_P(HybridUnidirectionalRNNOpModelOpTest, TimeMajorBlackBoxTestQuantized) {
+  const bool asymmetric_quantize_inputs = std::get<0>(GetParam());
+  const TensorType tensor_type = std::get<1>(GetParam());
   HybridUnidirectionalRNNOpModel rnn(/*batches=*/2, /*sequence_len=*/16,
                                      /*units=*/16, /*size=*/8,
-                                     /*time_major=*/true, TensorType_UINT8,
-                                     GetParam());
-  rnn.SetWeights(rnn_weights);
-  rnn.SetBias(rnn_bias);
-  rnn.SetRecurrentWeights(rnn_recurrent_weights);
-
-  for (int i = 0; i < rnn.sequence_len(); i++) {
-    float* batch_start = rnn_input + i * rnn.input_size();
-    float* batch_end = batch_start + rnn.input_size();
-    // The two batches are identical.
-    rnn.SetInput(2 * i * rnn.input_size(), batch_start, batch_end);
-    rnn.SetInput((2 * i + 1) * rnn.input_size(), batch_start, batch_end);
-  }
-
-  ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
-
-  std::vector<float> expected;
-  for (int i = 0; i < rnn.sequence_len(); i++) {
-    float* golden_batch_start = rnn_golden_output + i * rnn.num_units();
-    float* golden_batch_end = golden_batch_start + rnn.num_units();
-    expected.insert(expected.end(), golden_batch_start, golden_batch_end);
-    expected.insert(expected.end(), golden_batch_start, golden_batch_end);
-  }
-
-  EXPECT_THAT(rnn.GetOutput(), ElementsAreArray(ArrayFloatNear(
-                                   expected, /*max_abs_err=*/0.013)));
+                                     /*time_major=*/true, tensor_type,
+                                     asymmetric_quantize_inputs);
+  PopulateAndVerifyBlackBox(&rnn, /*time_major=*/true, /*max_abs_err=*/0.013f);
 }
 
-TEST_P(HybridUnidirectionalRNNOpModelOpTest, TimeMajorBlackBoxTestInt8) {
-  HybridUnidirectionalRNNOpModel rnn(/*batches=*/2, /*sequence_len=*/16,
-                                     /*units=*/16, /*size=*/8,
-                                     /*time_major=*/true, TensorType_INT8,
-                                     GetParam());
-  rnn.SetWeights(rnn_weights);
-  rnn.SetBias(rnn_bias);
-  rnn.SetRecurrentWeights(rnn_recurrent_weights);
+INSTANTIATE_TEST_SUITE_P(
+    HybridUnidirectionalRNNOpModelOpTest, HybridUnidirectionalRNNOpModelOpTest,
+    testing::Combine(testing::ValuesIn({true, false}),
+                     testing::ValuesIn({TensorType_UINT8, TensorType_INT8})));
 
-  for (int i = 0; i < rnn.sequence_len(); i++) {
-    float* batch_start = rnn_input + i * rnn.input_size();
-    float* batch_end = batch_start + rnn.input_size();
-    // The two batches are identical.
-    rnn.SetInput(2 * i * rnn.input_size(), batch_start, batch_end);
-    rnn.SetInput((2 * i + 1) * rnn.input_size(), batch_start, batch_end);
+// Test model for verifying invalid tensor shape allocations in the op.
+class InvalidUnidirectionalRNNOpModel : public SingleOpModel {
+ public:
+  explicit InvalidUnidirectionalRNNOpModel(
+      const std::vector<std::vector<int>>& input_shapes,
+      TensorType weights_type = TensorType_FLOAT32) {
+    AddInput(TensorType_FLOAT32);
+    AddInput(weights_type);
+    AddInput(weights_type);
+    AddInput(TensorType_FLOAT32);
+    AddVariableInput(TensorType_FLOAT32);
+    AddOutput(TensorType_FLOAT32);
+
+    SetBuiltinOp(BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN,
+                 BuiltinOptions_SequenceRNNOptions,
+                 CreateSequenceRNNOptions(builder_, /*time_major=*/true,
+                                          ActivationFunctionType_RELU,
+                                          /*asymmetric_quantize_inputs=*/false)
+                     .Union());
+
+    BuildInterpreter(input_shapes,
+                     /*num_threads=*/-1, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/true,
+                     /*allocate_and_delegate=*/false);
   }
 
-  ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
+  TfLiteStatus Allocate() { return AllocateTensors(); }
+};
 
-  std::vector<float> expected;
-  for (int i = 0; i < rnn.sequence_len(); i++) {
-    float* golden_batch_start = rnn_golden_output + i * rnn.num_units();
-    float* golden_batch_end = golden_batch_start + rnn.num_units();
-    expected.insert(expected.end(), golden_batch_start, golden_batch_end);
-    expected.insert(expected.end(), golden_batch_start, golden_batch_end);
-  }
+// Parameterized test suite verifying op allocation failures for invalid shapes.
+class InvalidUnidirectionalRNNOpTest
+    : public testing::TestWithParam<std::vector<std::vector<int>>> {};
 
-  EXPECT_THAT(rnn.GetOutput(), ElementsAreArray(ArrayFloatNear(
-                                   expected, /*max_abs_err=*/0.013)));
+TEST_P(InvalidUnidirectionalRNNOpTest, AllocationFails) {
+  InvalidUnidirectionalRNNOpModel m(GetParam());
+  EXPECT_EQ(m.Allocate(), kTfLiteError);
 }
 
-INSTANTIATE_TEST_SUITE_P(HybridUnidirectionalRNNOpModelOpTest,
-                         HybridUnidirectionalRNNOpModelOpTest,
-                         ::testing::ValuesIn({true, false}));
+INSTANTIATE_TEST_SUITE_P(
+    InvalidShapes, InvalidUnidirectionalRNNOpTest,
+    testing::Values(
+        std::vector<std::vector<int>>{{2, 4}, {4, 4}, {4, 4}, {4}, {2, 4}},
+        std::vector<std::vector<int>>{{2, 2, 4}, {4}, {4, 4}, {4}, {2, 4}},
+        std::vector<std::vector<int>>{{2, 2, 4}, {4, 4}, {4}, {4}, {2, 4}},
+        std::vector<std::vector<int>>{
+            {2, 2, 4}, {4, 4}, {4, 4}, {4, 4}, {2, 4}},
+        std::vector<std::vector<int>>{{2, 2, 4}, {4, 4}, {4, 4}, {4}, {4}},
+        std::vector<std::vector<int>>{{2, 4, 3}, {4, 4}, {4, 4}, {4}, {2, 4}}));
+
+TEST(UnidirectionalRNNOpTest, UnsupportedWeightsType) {
+  InvalidUnidirectionalRNNOpModel m({{2, 2, 4}, {4, 4}, {4, 4}, {4}, {2, 4}},
+                                    TensorType_FLOAT16);
+  EXPECT_EQ(m.Allocate(), kTfLiteOk);
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+}
 
 }  // namespace
 }  // namespace tflite
