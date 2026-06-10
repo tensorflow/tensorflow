@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/xla_transform.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -31,6 +32,7 @@ limitations under the License.
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
