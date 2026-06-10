@@ -42,7 +42,7 @@ Project maintainers have the right and responsibility to remove, edit, or reject
 
 This Code of Conduct applies to all content on tensorflow.org, TensorFlow’s GitHub organization, or any other official TensorFlow web presence allowing for community interactions, as well as at all official TensorFlow events, whether offline or online.
 
-The Code of Conduct also applies within project spaces and in public spaces whenever an individual is representing TensorFlow or its community. Examples of representing a project or community include using an official project e-mail address, posting via an official social media account, or acting as an appointed or de facto representative at an online or offline event. 
+The Code of Conduct also applies within project spaces and in public spaces whenever an individual is representing TensorFlow or its community. Examples of representing a project or community include using an official project e-mail address, posting via an official social media account, or acting as an appointed or de facto representative at an online or offline event.
 
 
 ## Conflict Resolution
@@ -51,7 +51,7 @@ Conflicts in an open source project can take many forms, from someone having a b
 
 If the behavior is threatening or harassing, or for other reasons requires immediate escalation, please see below.
 
-However, for the vast majority of issues, we aim to empower individuals to first resolve conflicts themselves, asking for help when needed, and only after that fails to escalate further. This approach gives people more control over the outcome of their dispute. 
+However, for the vast majority of issues, we aim to empower individuals to first resolve conflicts themselves, asking for help when needed, and only after that fails to escalate further. This approach gives people more control over the outcome of their dispute.
 
 If you are experiencing or witnessing conflict, we ask you to use the following escalation strategy to address the conflict:
 
