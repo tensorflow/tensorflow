@@ -163,7 +163,6 @@ func.func @rsqrt_unsupported_vector_size(%arg0: vector<3xf32>) -> vector<3xf32> 
   // CHECK: return %[[RESULT]]
   return %ret : vector<3xf32>
 }
-
 // -----
 
 func.func @exp_f16(%arg0: f16) -> f16 {
@@ -181,8 +180,10 @@ func.func @tanh_bf16_vector(%arg0: vector<4xbf16>) -> vector<4xbf16> {
   return %ret : vector<4xbf16>
 }
 // CHECK-LABEL: @tanh_bf16_vector
-// CHECK: math.tanh %arg0 : vector<4xbf16>
-// CHECK: return
+// CHECK: %[[EXT:.*]] = arith.extf %arg0 : vector<4xbf16> to vector<4xf32>
+// CHECK: %[[CALL:.*]] = call @xla.tanh.v4f32(%[[EXT]])
+// CHECK: %[[TRUNC:.*]] = call @xla.fptrunc.v4f32.to.v4bf16(%[[CALL]])
+// CHECK: return %[[TRUNC]]
 
 // -----
 
@@ -191,5 +192,13 @@ func.func @rsqrt_unsupported_f16_vector(%arg0: vector<3xf16>) -> vector<3xf16> {
   return %ret : vector<3xf16>
 }
 // CHECK-LABEL: @rsqrt_unsupported_f16_vector
-// CHECK: math.rsqrt %arg0 : vector<3xf16>
-// CHECK: return
+// CHECK: %[[EXT:.*]] = arith.extf %arg0 : vector<3xf16> to vector<3xf32>
+// CHECK: %[[EX0:.*]] = vector.extract %[[EXT]][0]
+// CHECK: %[[C0:.*]] = call @xla.rsqrt.f32(%[[EX0]])
+// CHECK: %[[EX1:.*]] = vector.extract %[[EXT]][1]
+// CHECK: %[[C1:.*]] = call @xla.rsqrt.f32(%[[EX1]])
+// CHECK: %[[EX2:.*]] = vector.extract %[[EXT]][2]
+// CHECK: %[[C2:.*]] = call @xla.rsqrt.f32(%[[EX2]])
+// CHECK: %[[FROM:.*]] = vector.from_elements %[[C0]], %[[C1]], %[[C2]]
+// CHECK: %[[TRUNC:.*]] = arith.truncf %[[FROM]] : vector<3xf32> to vector<3xf16>
+// CHECK: return %[[TRUNC]]
