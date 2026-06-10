@@ -174,6 +174,7 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//third_party/py/numpy:headers",
+        "@pybind11",
         "@xla//third_party/python_runtime:headers",
         "@xla//xla/tsl/python/lib/core:numpy",
     ],
