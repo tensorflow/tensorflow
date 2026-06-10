@@ -264,20 +264,37 @@ def MHLO_TypeExtensions : AttrDef<MHLO_Dialect, "TypeExtensions", [
   let assemblyFormat = "`<` `bounds` `=` ` ` custom<DimSizes>($bounds) `>`";
 }
 
-// A layout attribute (1D tensor of index type)
-def MHLO_LayoutAttr : Attr<
+// Base class for a 1D tensor of index type.
+class MHLO_1DIndexTensorAttrBase : Attr<
   And<[IndexElementsAttr.predicate,
        CPred<[{mlir::cast<::mlir::DenseIntElementsAttr>($_self).getType().getRank()
                == 1}]>]>,
-  "A 1D tensor of index type (layout)"> {
+  "A 1D tensor of index type"> {
   let storageType = IndexElementsAttr.storageType;
   let returnType = IndexElementsAttr.returnType;
   let convertFromStorage = IndexElementsAttr.convertFromStorage;
 }
 
+// A 1D tensor of index type.
+def MHLO_1DIndexTensorAttr : MHLO_1DIndexTensorAttrBase;
+
+// A layout attribute (1D tensor of index type)
+def MHLO_LayoutAttr : MHLO_1DIndexTensorAttrBase {
+  let summary = "A 1D tensor of index type (layout)";
+}
+
 // An array of layout (1D tensor) attributes.
 def MHLO_ArrayOfLayoutAttr : TypedArrayAttrBase<MHLO_LayoutAttr,
     "Array of layout (1D tensor of index type) attributes">;
+
+// A tiling attribute (array of rank 1 tensors).
+// Each tile is a 1D tensor of dimensions.
+def MHLO_TilingAttr : TypedArrayAttrBase<MHLO_1DIndexTensorAttr,
+    "Tiling (array of rank 1 tensors)">;
+
+// An array of tiling attributes.
+def MHLO_ArrayOfTilingAttr : TypedArrayAttrBase<MHLO_TilingAttr,
+    "Array of tiling attributes">;
 
 // An array of FlatSymbolRef attributes that can be used as a default valued
 // attribute.

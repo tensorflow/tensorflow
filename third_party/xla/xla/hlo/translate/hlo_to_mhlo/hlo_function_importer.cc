@@ -1162,16 +1162,24 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         attributes.push_back(
             builder_->getNamedAttr("operand_layouts", operand_layouts));
         mlir::ArrayAttr result_layouts;
+        mlir::ArrayAttr result_tilings;
         if (custom_call->shape().IsTuple()) {
           ASSIGN_OR_RETURN(result_layouts, ExtractLayoutsFromTuple(
+                                               custom_call->shape(), builder_));
+          ASSIGN_OR_RETURN(result_tilings, ExtractTilingsFromTuple(
                                                custom_call->shape(), builder_));
         } else {
           ASSIGN_OR_RETURN(
               result_layouts,
               ExtractLayoutsFromShapes({custom_call->shape()}, builder_));
+          ASSIGN_OR_RETURN(
+              result_tilings,
+              ExtractTilingsFromShapes({custom_call->shape()}, builder_));
         }
         attributes.push_back(
             builder_->getNamedAttr("result_layouts", result_layouts));
+        attributes.push_back(
+            builder_->getNamedAttr("result_tilings", result_tilings));
       }
 
       attributes.push_back(builder_->getNamedAttr(
