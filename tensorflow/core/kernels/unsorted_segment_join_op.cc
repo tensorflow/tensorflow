@@ -15,25 +15,28 @@ limitations under the License.
 
 // See docs in ../ops/string_ops.cc.
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
+#include <tuple>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/tstring.h"
 
 namespace tensorflow {
 
 namespace {
 
-template <typename INDICES_TYPE>
 gtl::InlinedVector<int64_t, 8> GetFlattenedRelativeOffsets(int64_t small_stride,
                                                            int64_t big_stride) {
   gtl::InlinedVector<int64_t, 8> flattened_offsets(small_stride);
@@ -43,7 +46,6 @@ gtl::InlinedVector<int64_t, 8> GetFlattenedRelativeOffsets(int64_t small_stride,
   return flattened_offsets;
 }
 
-template <typename INDICES_TYPE>
 std::pair<int64_t, int64_t> GetStrides(const TensorShape& input_shape,
                                        const TensorShape& segment_id_shape) {
   int64_t small_stride = 1;
@@ -142,9 +144,9 @@ class UnsortedSegmentJoinOp : public OpKernel {
     int64_t big_stride;
     int64_t small_stride;
     std::tie(big_stride, small_stride) =
-        GetStrides<INDICES_TYPE>(input_shape, segment_id_shape);
+        GetStrides(input_shape, segment_id_shape);
     auto relative_offset_set =
-        GetFlattenedRelativeOffsets<INDICES_TYPE>(small_stride, big_stride);
+        GetFlattenedRelativeOffsets(small_stride, big_stride);
     for (int64_t start_offset = 0; start_offset < big_stride; start_offset++) {
       for (int64_t i = 0; i < relative_offset_set.size(); i++) {
         auto output_index = start_offset + flat_segment_id(i) * big_stride;

@@ -7850,19 +7850,18 @@ absl::Status MsaAlgorithm::WindowPrefetch() {
   // Determine which instructions are window-prefetchable. Use the
   // caller-provided functor if available, otherwise fall back to the default
   // logic: output fusions and loop fusions not on sparsecore.
-  auto is_window_prefetchable =
-      options_.is_window_prefetchable_instruction_fn
-          ? options_.is_window_prefetchable_instruction_fn
-          : [](const HloInstruction* instruction) {
-              if (!instruction->IsOutputFusion() &&
-                  !instruction->IsLoopFusion()) {
-                return false;
-              }
-              if (instruction->parent()->execution_thread() == "sparsecore") {
-                return false;
-              }
-              return true;
-            };
+  auto is_window_prefetchable = [&](const HloInstruction* instruction) {
+    if (!instruction->IsOutputFusion() && !instruction->IsLoopFusion()) {
+      return false;
+    }
+    if (instruction->parent()->execution_thread() == "sparsecore") {
+      return false;
+    }
+    if (options_.is_window_prefetchable_instruction_fn) {
+      return options_.is_window_prefetchable_instruction_fn(instruction);
+    }
+    return true;
+  };
 
   for (HloInstruction* instruction : instruction_sequence) {
     if (!is_window_prefetchable(instruction)) {

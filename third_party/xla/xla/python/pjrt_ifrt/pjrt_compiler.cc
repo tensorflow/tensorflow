@@ -45,9 +45,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -125,6 +123,7 @@ tsl::Future<LoadedExecutableRef> PjRtCompiler::CompileAndLoad(
         client, std::move(*xla_program).ToMaybeOwningMlirModule(),
         std::move(xla_compile_options->compile_options),
         std::move(xla_compile_options->loaded_host_callbacks),
+        std::move(xla_compile_options->outputs_bundle_slice_sizes),
         std::move(xla_compile_options->devices));
   };
   if (thread_pool_.has_value()) {
