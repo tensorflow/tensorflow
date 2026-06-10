@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <atomic>
 
-#include "tensorflow/core/platform/errors.h"
+#include "absl/status/status.h"
 #define EIGEN_USE_THREADS
 
 #include "absl/strings/str_cat.h"
@@ -302,9 +302,9 @@ class DenseBincountOp : public OpKernel {
                     weights.shape().DebugString())));
 
     Tidx size = size_t.scalar<Tidx>()();
-    OP_REQUIRES(
-        ctx, size >= 0,
-        errors::InvalidArgument("size (", size, ") must be non-negative"));
+    OP_REQUIRES(ctx, size >= 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("size (", size, ") must be non-negative")));
 
     Tensor* out_t;
     functor::SetZeroFunctor<Device, T> fill;
@@ -402,12 +402,17 @@ class SparseBincountOp : public OpKernel {
                 absl::InvalidArgumentError(absl::StrCat(
                     "Shape must be rank 0 but is rank ", size_t.dims())));
     Tidx size = size_t.scalar<Tidx>()();
-    OP_REQUIRES(
-        ctx, size >= 0,
-        errors::InvalidArgument("size (", size, ") must be non-negative"));
+    OP_REQUIRES(ctx, size >= 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("size (", size, ") must be non-negative")));
     OP_REQUIRES_OK(ctx, sparse_utils::ValidateSparseTensor<int64_t>(
                             indices, values, dense_shape,
                             sparse_utils::IndexValidation::kUnordered));
+
+    OP_REQUIRES(ctx, dense_shape.NumElements() > 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "dense_shape must have at least 1 dimension, got ",
+                    dense_shape.NumElements())));
 
     bool is_1d = dense_shape.NumElements() == 1;
 
@@ -493,9 +498,9 @@ class RaggedBincountOp : public OpKernel {
                 absl::InvalidArgumentError(absl::StrCat(
                     "Shape must be rank 0 but is rank ", size_t.dims())));
     Tidx size = size_t.scalar<Tidx>()();
-    OP_REQUIRES(
-        ctx, size >= 0,
-        errors::InvalidArgument("size (", size, ") must be non-negative"));
+    OP_REQUIRES(ctx, size >= 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("size (", size, ") must be non-negative")));
 
     int num_rows = splits.size() - 1;
     int num_values = values.size();

@@ -1,5 +1,6 @@
 # Generates CUDA kernels using MLIR codegen.
 
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(
@@ -434,13 +435,9 @@ cc_library(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:ops_testutil",
         "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
-        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -464,8 +461,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core:lib",
-        "//tensorflow/core/common_runtime:device",
-        "//tensorflow/core/common_runtime:device_factory",
         "//tensorflow/core/framework:types_proto_cc",
         "@com_google_googletest//:gtest_main",
         "@eigen_archive//:eigen3",
@@ -492,8 +487,6 @@ tf_cuda_cc_test(
         ":base_unary_ops_test",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_types_hdr",
-        "//tensorflow/core/common_runtime:device",
-        "//tensorflow/core/common_runtime:device_factory",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -512,12 +505,10 @@ cc_library(
         "//tensorflow/core:testlib",
         "//tensorflow/core/common_runtime:device",
         "//tensorflow/core/common_runtime:device_factory",
-        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:ops_testutil",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -561,8 +552,6 @@ tf_cuda_cc_test(
     deps = [
         ":base_binary_ops_test",
         ":base_ops_test",
-        "//tensorflow/core/common_runtime:device",
-        "//tensorflow/core/common_runtime:device_factory",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -2024,4 +2013,20 @@ gpu_kernel_library(
     op = "next_after",
     tile_size = "1024",
     types = [],
+)
+
+bzl_library(
+    name = "build_defs_bzl",
+    srcs = ["build_defs.bzl"],
+    parse_tests = False,
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tools/cpp:toolchain_utils_bzl",
+        "@local_config_cuda//cuda:build_defs_bzl",
+        "@local_config_rocm//rocm:build_defs_bzl",
+        "@rules_cc//cc:core_rules",
+        "@rules_cc//cc/common",
+        "@rules_shell//shell:rules_bzl",
+        "@xla//xla/stream_executor:build_defs_bzl",
+    ],
 )

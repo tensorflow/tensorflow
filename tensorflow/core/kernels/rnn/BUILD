@@ -64,7 +64,6 @@ tf_kernel_library(
         ":blas_gemm",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/kernels:eigen_helpers",
         "@eigen_archive//:eigen3",
     ],
 )

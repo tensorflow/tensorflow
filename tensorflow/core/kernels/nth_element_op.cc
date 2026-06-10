@@ -19,6 +19,8 @@ limitations under the License.
 #include <algorithm>
 #include <iostream>
 #include <vector>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -92,8 +94,8 @@ struct NthElementFunctor<CPUDevice, T> {
 
     // Assume input_shape is [d1,d2,...dk], and output_shape is [d1,d2...dk-1],
     // then num_rows = d1*d2...dk-1, last_dim = dk.
-    const int num_rows = output_tensor.NumElements();
-    const int last_dim = input_tensor.dim_size(input_tensor.dims() - 1);
+    const int64_t num_rows = output_tensor.NumElements();
+    const int64_t last_dim = input_tensor.dim_size(input_tensor.dims() - 1);
 
     // Allocate each row to different shard.
     auto SubNthElement = [&, input, output, last_dim, n](int64_t start,
@@ -101,7 +103,7 @@ struct NthElementFunctor<CPUDevice, T> {
       // std::nth_element would rearrange the array, so we need a new buffer.
       std::vector<T> buf(last_dim);
 
-      for (int b = start; b < limit; ++b) {
+      for (int64_t b = start; b < limit; ++b) {
         // Copy from one row of elements to buffer
         const T* input_start = input + b * last_dim;
         const T* input_end = input + (b + 1) * last_dim;

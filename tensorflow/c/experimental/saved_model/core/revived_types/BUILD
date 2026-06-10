@@ -224,7 +224,6 @@ cc_library(
         ":tf_concrete_function",
         "//tensorflow/c/eager:immediate_execution_context",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/types:optional",
     ],
@@ -261,7 +260,6 @@ cc_library(
     deps = [
         ":tf_signature_def_function",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
-        "//tensorflow/c/experimental/saved_model/core:signature_def_function_metadata",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/types:optional",
     ],

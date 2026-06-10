@@ -19,13 +19,14 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/linalg/linalg_ops_common.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/cuda_sparse.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_solvers.h"
@@ -111,22 +112,23 @@ class TridiagonalSolveOpGpuLinalg : public LinearAlgebraOp<Scalar> {
       const TensorShapes& input_matrix_shapes) const final {
     auto num_inputs = input_matrix_shapes.size();
     OP_REQUIRES(context, num_inputs == 2,
-                errors::InvalidArgument("Expected two input matrices, got ",
-                                        num_inputs, "."));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Expected two input matrices, got ", num_inputs, ".")));
 
     auto num_diags = input_matrix_shapes[0].dim_size(0);
-    OP_REQUIRES(
-        context, num_diags == 3,
-        errors::InvalidArgument("Expected diagonals to be provided as a "
-                                "matrix with 3 columns, got ",
-                                num_diags, " columns."));
+    OP_REQUIRES(context, num_diags == 3,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Expected diagonals to be provided as a "
+                                 "matrix with 3 columns, got ",
+                                 num_diags, " columns.")));
 
     auto num_rows1 = input_matrix_shapes[0].dim_size(1);
     auto num_rows2 = input_matrix_shapes[1].dim_size(0);
     OP_REQUIRES(context, num_rows1 == num_rows2,
-                errors::InvalidArgument("Expected same number of rows in both "
-                                        "arguments, got ",
-                                        num_rows1, " and ", num_rows2, "."));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Expected same number of rows in both "
+                                 "arguments, got ",
+                                 num_rows1, " and ", num_rows2, ".")));
   }
 
   bool EnableInputForwarding() const final { return false; }
@@ -253,8 +255,37 @@ class TridiagonalSolveOpGpu : public OpKernel {
     const Tensor& lhs = context->input(0);
     const Tensor& rhs = context->input(1);
     const int ndims = lhs.dims();
-    const int64_t num_rhs = rhs.dim_size(rhs.dims() - 1);
+
+    OP_REQUIRES(context, ndims >= 2,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "diagonals must be at least rank 2, got ", ndims)));
+    OP_REQUIRES(context, rhs.dims() >= 2,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "rhs must be at least rank 2, got ", rhs.dims())));
+    OP_REQUIRES(context, ndims == rhs.dims(),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "diagonals and rhs must have the same rank, got ", ndims,
+                    " vs ", rhs.dims())));
+    OP_REQUIRES(
+        context, lhs.dim_size(ndims - 2) == 3,
+        absl::InvalidArgumentError(absl::StrCat(
+            "diagonals must have size 3 on the second-to-last dimension, got ",
+            lhs.dim_size(ndims - 2))));
+
     const int64_t matrix_size = lhs.dim_size(ndims - 1);
+    OP_REQUIRES(context, matrix_size == rhs.dim_size(ndims - 2),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "diagonals matrix size ", matrix_size,
+                    " must match rhs matrix size ", rhs.dim_size(ndims - 2))));
+
+    for (int i = 0; i < ndims - 2; i++) {
+      OP_REQUIRES(context, lhs.dim_size(i) == rhs.dim_size(i),
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "diagonals and rhs batch dimensions must match at index ",
+                      i, ", got ", lhs.dim_size(i), " vs ", rhs.dim_size(i))));
+    }
+
+    const int64_t num_rhs = rhs.dim_size(rhs.dims() - 1);
     int64_t batch_size = 1;
     for (int i = 0; i < ndims - 2; i++) {
       batch_size *= lhs.dim_size(i);

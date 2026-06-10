@@ -15,7 +15,6 @@ tf_kernel_library(
         "//tensorflow/c:kernels",
         "//tensorflow/c:ops",
         "//tensorflow/c:tf_datatype",
-        "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_tensor",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -136,7 +135,6 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
     ],
 )
 
@@ -146,10 +144,8 @@ tf_cc_test(
     srcs = ["summary_op_benchmark_test.cc"],
     deps = [
         ":summary_op",
-        "//tensorflow/c:kernels",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

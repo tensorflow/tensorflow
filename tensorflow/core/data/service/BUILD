@@ -105,7 +105,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@xla//xla/tsl/platform:errors",
-        "@xla//xla/tsl/platform:status",
         "@xla//xla/tsl/platform:statusor",
     ],
 )
@@ -211,7 +210,6 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
     ],
 )
 
@@ -310,7 +308,6 @@ tf_cc_test(
     deps = [
         ":data_transfer",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -332,7 +329,6 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -346,7 +342,6 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/framework:graph_proto_cc",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
@@ -578,7 +573,6 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
     ],
 )
 
@@ -636,7 +630,6 @@ cc_library(
         "//tensorflow/core/platform:regexp",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -663,7 +656,6 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
     ],
@@ -799,7 +791,6 @@ tf_cc_test(
         ":task_runner",
         ":worker_proto_cc",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -973,7 +964,6 @@ cc_library(
     deps = [
         ":common_proto_cc",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -988,7 +978,6 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
     ],
 )
 
@@ -1014,7 +1003,6 @@ tf_cc_test(
     deps = [
         ":validate_utils",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

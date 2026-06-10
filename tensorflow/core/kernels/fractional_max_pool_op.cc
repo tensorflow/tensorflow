@@ -16,12 +16,15 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/log/check.h"
+#include "Eigen/Core"  // from @eigen_archive
 #define EIGEN_USE_THREADS
 
 #include <algorithm>
 #include <cmath>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"

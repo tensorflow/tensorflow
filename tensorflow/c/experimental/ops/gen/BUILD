@@ -19,7 +19,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//tensorflow/c/experimental/ops/gen/common",
         "//tensorflow/c/experimental/ops/gen/cpp/renderers",
-        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/c/experimental/ops/gen/cpp",
         "//tensorflow/c/experimental/ops/gen/model",

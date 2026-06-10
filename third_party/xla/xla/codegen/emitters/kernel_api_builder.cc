@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/emitters/type_util.h"
 #include "xla/codegen/kernel_spec.h"
+#include "xla/frontend_attributes.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
@@ -172,8 +173,13 @@ absl::StatusOr<mlir::func::FuncOp> EmitKernelApi(
         mlir::LLVM::LLVMDialect::getDereferenceableAttrName(),
         builder.getIndexAttr(arg.slice().size())));
     if (!arg.written()) {
-      attrs.push_back(
-          builder.getNamedAttr(kXlaInvariantAttr, builder.getUnitAttr()));
+      if (arg.invariant()) {
+        attrs.push_back(
+            builder.getNamedAttr(kXlaInvariantAttr, builder.getUnitAttr()));
+      } else {
+        attrs.push_back(
+            builder.getNamedAttr(kXlaNotInvariantAttr, builder.getUnitAttr()));
+      }
     }
     return builder.getDictionaryAttr(attrs);
   };
@@ -409,6 +415,8 @@ absl::StatusOr<KernelSpec> GetKernelSpec(
 
   KernelSpec::Buffers argument_buffers;
   absl::flat_hash_set<int64_t> invariant_arguments;
+  absl::flat_hash_set<int> no_invariant_operands =
+      NonInvariantOperands(hlo_instruction);
   int64_t operand_index = 0;
   for (HloInstruction* operand : hlo_instruction.operands()) {
     for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
@@ -420,6 +428,10 @@ absl::StatusOr<KernelSpec> GetKernelSpec(
           result_buffers, [&slice](const ShapedSlice& result_slice) {
             return result_slice.slice.OverlapsWith(slice);
           });
+      // Allow overriding invariant attribute via frontend attribute
+      if (no_invariant_operands.contains(operand_index)) {
+        invariant = false;
+      }
       if (invariant) {
         invariant_arguments.insert(operand_index);
       }
