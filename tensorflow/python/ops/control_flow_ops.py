@@ -372,6 +372,7 @@ def _shape_invariant_to_type_spec(var, shape=None):
     TypeError: If `shape` is a TensorShape, `var` is a CompositeTensor, and
       `var` doesn't implement the `_shape_invariant_to_type_spec` method.
   """
+  is_tensor_array = isinstance(var, tensor_array_ops.TensorArray)
   var = _convert_tensorarray_to_flow(var)
   if shape is None:
     return type_spec.type_spec_from_value(var)
@@ -383,6 +384,13 @@ def _shape_invariant_to_type_spec(var, shape=None):
     raise TypeError(
         "'shape' must be one of TypeSpec, TensorShape or None. "
         f"Received: {type(shape)}")
+
+  if is_tensor_array and shape.ndims is not None and shape.ndims > 0:
+    raise ValueError(
+        "The shape invariant for a TensorArray must be a scalar shape "
+        f"(e.g., tf.TensorShape([])), but received: {shape}. "
+        "TensorArray shape invariants apply to its flow variable, which is a "
+        "scalar, not to its stacked output shape.")
 
   if isinstance(var, tensor_lib.Tensor):
     return tensor_lib.TensorSpec(shape, var.dtype)
