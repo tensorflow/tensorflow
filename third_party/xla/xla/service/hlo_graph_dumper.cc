@@ -1447,7 +1447,7 @@ std::string HloDotDumper::GetInstructionNodeBackendConfig(
       props = ExtractCudnnConvBackendConfigProps(
           config->cudnn_conv_backend_config());
     }
-  } else if (gpu::IsCublasLtGemm(*instr)) {
+  } else if (gpu::IsCublasGemm(*instr)) {
     absl::StatusOr<gpu::GpuBackendConfig> config =
         instr->backend_config<gpu::GpuBackendConfig>();
     if (config.ok()) {

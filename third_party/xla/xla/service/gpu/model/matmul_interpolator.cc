@@ -150,7 +150,7 @@ InterpolationSpecification Spec(const HloDotInstruction& dot,
 
 InterpolationSpecification Spec(const HloCustomCallInstruction& dot,
                                 const Shape& out_shape) {
-  CHECK(IsCublasLtGemm(dot));
+  CHECK(IsCublasGemm(dot));
   const Shape& lhs_shape = dot.operand(0)->shape();
   const Shape& rhs_shape = dot.operand(1)->shape();
   DotDimensionNumbers dot_dims = dot.backend_config<GpuBackendConfig>()
@@ -190,7 +190,7 @@ std::optional<InterpolationSpecification> GetInterpolationSpec(
   if (instr.opcode() == HloOpcode::kDot) {
     auto* dot = Cast<HloDotInstruction>(&instr);
     spec = Spec(*dot, instr.shape());
-  } else if (IsCublasLtGemm(instr)) {
+  } else if (IsCublasGemm(instr)) {
     auto* dot = Cast<HloCustomCallInstruction>(&instr);
     spec = Spec(*dot, instr.shape().IsTuple()
                           ? ShapeUtil::GetTupleElementShape(instr.shape(), 0)

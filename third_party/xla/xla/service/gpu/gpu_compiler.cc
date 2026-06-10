@@ -1472,7 +1472,7 @@ absl::Status RunAsyncDotPasses(HloModule* hlo_module,
     pipeline.AddPass<AsyncWrapper>([](HloInstruction* instruction) {
       // TODO(b/339654953): Use a better heuristic to determine whether a
       // `dot` operation should be wrapped in an async computation.
-      if (IsCublasLtGemm(*instruction)) {
+      if (IsCublasGemm(*instruction)) {
         return true;
       }
       if (instruction->called_computations().size() == 1 &&

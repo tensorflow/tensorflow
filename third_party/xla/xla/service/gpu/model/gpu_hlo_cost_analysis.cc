@@ -267,7 +267,7 @@ bool GpuHloCostAnalysis::ProducerConsumerMergedTooLarge(
 
 absl::Status GpuHloCostAnalysis::HandleCustomCall(
     const HloInstruction* custom_call) {
-  if (IsCublasLtGemm(*custom_call)) {
+  if (IsCublasGemm(*custom_call)) {
     // The naming conventions and meanings of gemm parameters are documented
     // here:
     // https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-gemm
