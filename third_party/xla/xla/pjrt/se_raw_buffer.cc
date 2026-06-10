@@ -146,10 +146,10 @@ PjRtStreamExecutorRawBuffer::CopyRawHostToDeviceAndReturnEvent(
     if (status.ok()) {
       status = client->AllocateAndRecordEvent(
           device_event, local_device, stream,
-          "PjRtStreamExecutorRawBuffer::CopyRawHostToDevice");
-      if (staging_buffer) {
-        device_event.AndThen([staging_buffer = std::move(staging_buffer)]() {});
-      }
+          "PjRtStreamExecutorRawBuffer::CopyRawHostToDevice",
+          [staging_buffer = std::move(staging_buffer)]() mutable {
+            staging_buffer.reset();
+          });
     }
     if (!status.ok()) {
       client->SetEventAsError(device_event, status);
@@ -173,6 +173,7 @@ PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
     if (transfer_size < sub_buffer.size()) {
       sub_buffer = sub_buffer.GetByteSlice(offset, transfer_size);
     }
+    std::shared_ptr<void> staging_buffer;
     auto status = [&]() -> absl::Status {
       RETURN_IF_ERROR(client->WaitForAllocation(stream, *buf));
       if (transfer_size > 0) {
@@ -185,9 +186,8 @@ PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
           HostMemoryAllocator::AllocateOptions alloc_opts;
           alloc_opts.numa_node = stream->parent()->numa_node();
           alloc_opts.local_device_id = local_device->local_device_id();
-          std::shared_ptr<void> staging_buffer =
-              client->GetHostMemoryAllocator()->Allocate(transfer_size,
-                                                         alloc_opts);
+          staging_buffer = client->GetHostMemoryAllocator()->Allocate(
+              transfer_size, alloc_opts);
           RETURN_IF_ERROR(
               stream->Memcpy(staging_buffer.get(), sub_buffer, transfer_size));
           auto copy_from_staging_buffer = [dst, transfer_size,
@@ -205,7 +205,10 @@ PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
     if (status.ok()) {
       status = client->AllocateAndRecordEvent(
           device_event, local_device, stream,
-          "PjRtStreamExecutorRawBuffer::CopyRawDeviceToHost");
+          "PjRtStreamExecutorRawBuffer::CopyRawDeviceToHost",
+          [staging_buffer = std::move(staging_buffer)]() mutable {
+            staging_buffer.reset();
+          });
     }
     if (!status.ok()) {
       client->SetEventAsError(device_event, status);
