@@ -192,6 +192,16 @@ class StridedSliceTest(xla_test.XLATestCase):
 
         self.assertEqual(tensor_shape.TensorShape((0, 3)), result.shape)
 
+  def test2DDegenerateFromWhere(self):
+    with self.session():
+      with self.test_scope():
+        x = array_ops.placeholder(dtypes.bool)
+        indices = array_ops.where(x)
+        o = array_ops.strided_slice(indices, [-1, 0], [0, 3])
+      result = o.eval(feed_dict={x: [True, False, True]})
+
+      self.assertEqual(tensor_shape.TensorShape((0, 1)), result.shape)
+
   def test2DFullSlice(self):
     for dtype in self.numeric_types:
       with self.session():
