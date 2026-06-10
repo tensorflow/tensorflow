@@ -31,7 +31,7 @@ namespace xla {
 namespace cpu {
 namespace {
 
-using CpuProfilingTest = HloPjRtTestBase;
+using CpuProfilingTest = HloTestBase;
 
 TEST_F(CpuProfilingTest, ProfilingNWayConditionalDoesNotCrash) {
   const std::string hlo_text = R"(
