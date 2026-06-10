@@ -53,6 +53,7 @@ cc_library(
         "//tensorflow/lite/toco:types_proto_cc",
         "//tensorflow/lite/toco/logging:conversion_log_util",
         "//tensorflow/lite/toco/logging:toco_conversion_log_proto_cc",
+        "//third_party/protobuf",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
