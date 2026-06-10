@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
@@ -26,7 +27,8 @@ namespace xla::gpu {
 // Records outputs of thunks selected by ThunkFilter.
 absl::Status RunDebugSaverInserter(ThunkSequence* thunk_sequence,
                                    const DebugOptions& debug_options,
-                                   const HloModule& hlo_module);
+                                   const HloModule& hlo_module,
+                                   const BufferAssignment* buffer_assignment);
 
 }  // namespace xla::gpu
 

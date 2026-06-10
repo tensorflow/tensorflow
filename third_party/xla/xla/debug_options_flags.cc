@@ -511,6 +511,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_sdy_export_all_reduce_scatter(false);
   opts.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(false);
   opts.set_xla_gpu_experimental_enable_buffer_saver_on_thunks(false);
+  opts.set_xla_gpu_experimental_thunk_buffer_debug_module_outputs(false);
 
   // Disable float checks.
   opts.set_xla_gpu_detect_nan(DebugOptions::DETECTION_MODE_NONE);
@@ -3148,6 +3149,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_experimental_enable_buffer_saver_on_thunks(),
       "When provided, enables an experimental feature to save results of "
       "selected thunks."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_thunk_buffer_debug_module_outputs",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_experimental_thunk_buffer_debug_module_outputs),
+      debug_options->xla_gpu_experimental_thunk_buffer_debug_module_outputs(),
+      "Whether to enable runtime instrumentation (float check, checksum, "
+      "buffer saver) on all output buffers of an XLA module after all "
+      "computation is finished. Setting this flag disables instrumentation "
+      "of thunks not explicitly enabled by other filter flags."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_thunk_buffer_debug_filter_by_thunk_id_ranges",
       setter_for_thunk_buffer_debug_filter_by_thunk_id, "(none)",

@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
@@ -28,6 +29,7 @@ namespace xla::gpu {
 absl::Status RunChecksumPassInternal(ThunkSequence* thunk_sequence,
                                      const DebugOptions& debug_options,
                                      const HloModule* absl_nonnull hlo_module,
+                                     const BufferAssignment* buffer_assignment,
                                      ThunkPassBufferAllocator& allocator);
 
 }  // namespace xla::gpu
