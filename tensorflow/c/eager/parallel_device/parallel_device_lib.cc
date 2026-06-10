@@ -587,7 +587,7 @@ std::unique_ptr<ParallelTensor> ParallelTensor::FromTensorHandles(
 }
 
 absl::Status ParallelTensor::Shape(const std::vector<int64_t>** shape) const {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   if (!shape_.has_value()) {
     TF_Status status;
     PartialTensorShape combined_shape;

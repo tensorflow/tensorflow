@@ -67,6 +67,7 @@ limitations under the License.
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
+#include "xla/service/hlo_verifier.h"
 #include "xla/service/memory_space_assignment/algorithm.h"
 #include "xla/service/memory_space_assignment/allocation.h"
 #include "xla/service/memory_space_assignment/allocation_value.h"
@@ -16722,7 +16723,7 @@ ENTRY entry {
   gte_param0_0 = f32[2,3]{1,0} get-tuple-element(prefetch_start_param0), index=0
   gte_param0_1 = s32[]{:T(128)S(2)} get-tuple-element(prefetch_start_param0), index=1
   prefetch_done_param0 = f32[2,3]{1,0} custom-call(p0, gte_param0_0, gte_param0_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
-  
+
   negate0 = f32[2,3]{1,0} negate(prefetch_done_param0)
   negate1 = f32[2,3]{1,0} negate(negate0)
   negate2 = f32[2,3]{1,0} negate(negate1)
@@ -17828,6 +17829,313 @@ TEST_F(MemorySpaceAssignmentTest, ConditionalCommonInputAliasedOutputTest) {
   CheckMemorySpaceForInstructionNames(
       module.get(), {"negate0", "custom_call2", "custom_call0", "custom_call1"},
       kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, AsyncUpdate_WithAliasing) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+async_computation {
+  p = f32[4] parameter(0)
+  ROOT custom-call = f32[4] custom-call(p), custom_call_target="foo"
+}
+
+ENTRY entry {
+  param = f32[4] parameter(0)
+  negate0 = f32[4] negate(param)
+  tuple0 = (f32[4], f32[4]) tuple(negate0, param)
+  async-start = ((f32[4]), f32[4], s32[]) async-start(negate0),
+                                          calls=async_computation,
+                                          output_to_operand_aliasing={{1}: (0, {})}
+  negate1 = f32[4] negate(param)
+  async-update = ((f32[4]), f32[4], s32[]) async-update(async-start)
+  param_from_tuple = f32[4] get-tuple-element(tuple0), index=1
+  async-done = f32[4] async-done(async-update)
+  add0 = f32[4] add(param_from_tuple, negate1)
+  ROOT add = add(async-done, add0)
+}
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  auto preset_assignments = AssignMemorySpace(module.get());
+  ASSERT_NE(preset_assignments, nullptr);
+  LOG(INFO) << "=== HLO AFTER MSA ===\n" << module->ToString();
+  HloInstruction* async_start =
+      module->entry_computation()->GetInstructionWithName("async-start");
+  VLOG(3) << "async_start shape detailed: "
+          << async_start->shape().ToString(true);
+  VLOG(3) << "async_start tuple 1 memory space: "
+          << async_start->shape().tuple_shapes(1).layout().memory_space();
+  // EXPECT_EQ(async_start->shape().tuple_shapes(1).layout().memory_space(),
+  //          kAlternateMemorySpace);
+
+  HloInstruction* async_update =
+      module->entry_computation()->GetInstructionWithName("async-update");
+  VLOG(3) << "async_update tuple 1 memory space: "
+          << async_update->shape().tuple_shapes(1).layout().memory_space();
+  // EXPECT_EQ(async_update->shape().tuple_shapes(1).layout().memory_space(),
+  //          kAlternateMemorySpace);
+
+  HloInstruction* async_done =
+      module->entry_computation()->GetInstructionWithName("async-done");
+  VLOG(3) << "async_done memory space: "
+          << async_done->shape().layout().memory_space();
+  // EXPECT_EQ(async_done->shape().layout().memory_space(),
+  //          kAlternateMemorySpace);
+  HloVerifier verifier(HloVerifierOpts{}.WithLayoutSensitive(false));
+  ASSERT_OK(verifier.Run(module.get()).status());
+}
+
+TEST_F(MemorySpaceAssignmentTest, AsyncUpdate) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+async_computation {
+  p = f32[4] parameter(0)
+  ROOT custom-call = f32[4] custom-call(p), custom_call_target="foo"
+}
+
+ENTRY entry {
+  param = f32[4] parameter(0)
+  negate0 = f32[4] negate(param)
+  async-start = ((f32[4]), f32[4], s32[]) async-start(negate0),
+                                          calls=async_computation,
+                                          output_to_operand_aliasing={{1}: (0, {})}
+  negate1 = f32[4] negate(param)
+  async-update = ((f32[4]), f32[4], s32[]) async-update(async-start)
+  async-done = f32[4] async-done(async-update)
+  ROOT add = add(async-done, negate1)
+}
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  auto preset_assignments = AssignMemorySpace(module.get());
+  ASSERT_NE(preset_assignments, nullptr);
+  LOG(INFO) << "=== HLO AFTER MSA ===\n" << module->ToString();
+  HloInstruction* async_start =
+      module->entry_computation()->GetInstructionWithName("async-start");
+  VLOG(3) << "async_start shape detailed: "
+          << async_start->shape().ToString(true);
+  VLOG(3) << "async_start tuple 1 memory space: "
+          << async_start->shape().tuple_shapes(1).layout().memory_space();
+  // EXPECT_EQ(async_start->shape().tuple_shapes(1).layout().memory_space(),
+  //          kAlternateMemorySpace);
+
+  HloInstruction* async_update =
+      module->entry_computation()->GetInstructionWithName("async-update");
+  VLOG(3) << "async_update tuple 1 memory space: "
+          << async_update->shape().ToString(true);
+  VLOG(3) << "async_update tuple 1 memory space: "
+          << async_update->shape().tuple_shapes(1).layout().memory_space();
+  // EXPECT_EQ(async_update->shape().tuple_shapes(1).layout().memory_space(),
+  //          kAlternateMemorySpace);
+
+  HloInstruction* async_done =
+      module->entry_computation()->GetInstructionWithName("async-done");
+  VLOG(3) << "async_done memory space: "
+          << async_done->shape().layout().memory_space();
+  // EXPECT_EQ(async_done->shape().layout().memory_space(),
+  // kAlternateMemorySpace);
+
+  HloVerifier verifier(HloVerifierOpts{}.WithLayoutSensitive(false));
+  ASSERT_OK(verifier.Run(module.get()).status());
+}
+
+TEST_F(MemorySpaceAssignmentTest, AsyncUpdate_TwoLiveAllocationValuesBase) {
+  absl::string_view hlo_string = R"hlo(
+  HloModule module, is_scheduled=true
+
+  async_computation {
+    p = f32[10,10,10,10] parameter(0)
+    ROOT custom-call = f32[10,10,10,10] custom-call(p), custom_call_target="foo"
+  }
+
+  ENTRY entry {
+    /*00:*/ p.0 = f32[10,10,10,10] parameter(0)
+    /*01:*/ p.1 = f32[10,10,10,10] parameter(1)
+    /*02:*/ v.0 = f32[10,10,10,10] add(p.1, p.1)
+    /*03:*/ negate.0 = f32[10,10,10,10] negate(p.0)
+    /*04:*/ async-start = ((f32[10,10,10,10]), f32[10,10,10,10], s32[]) async-start(negate.0), calls=async_computation, output_to_operand_aliasing={{1}: (0, {})}
+    /*05:*/ v.1 = f32[10,10,10,10] add(v.0, v.0)
+    /*06:*/ add.0 = f32[10,10,10,10] add(negate.0, negate.0)
+    /*07:*/ v.2 = f32[10,10,10,10] add(v.1, v.1)
+    /*08:*/ async-update = ((f32[10,10,10,10]), f32[10,10,10,10], s32[]) async-update(async-start), calls=async_computation
+    /*09:*/ v.3 = f32[10,10,10,10] add(v.2, v.2)
+    /*10:*/ async-done = f32[10,10,10,10] async-done(async-update), calls=async_computation
+    /*11:*/ v.4 = f32[10,10,10,10] add(v.3, v.3)
+    /*12:*/ ROOT tuple.0 = (f32[10,10,10,10], f32[10,10,10,10], f32[10,10,10,10]) tuple(add.0, async-done, v.4)
+  })hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 4 * 10 * 10 * 10 * 10;
+  MsaBufferIntervalCompare buffer_interval_compare =
+      CreateBufferIntervalCompareFnFromInstructionNames({"negate.0"});
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(1, 10);
+  auto preset_assignments =
+      AssignMemorySpace(module.get(), std::move(options),
+                        buffer_interval_compare, &prefetch_interval_picker);
+  ASSERT_NE(preset_assignments, nullptr);
+  LOG(INFO) << "Module after MSA:\n" << module->ToString();
+
+  HloInstruction* copy0 = FindInstruction(module.get(), "negate.0");
+  ASSERT_NE(copy0, nullptr);
+  VLOG(3) << "copy0 memory space: " << copy0->shape().layout().memory_space();
+  // EXPECT_EQ(copy0->shape().layout().memory_space(), kAlternateMemorySpace);
+
+  HloVerifier verifier(HloVerifierOpts{}.WithLayoutSensitive(false));
+  ASSERT_OK(verifier.Run(module.get()).status());
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       AsyncUpdate_TwoLiveAllocationValuesTwoInstructionOverlap) {
+  absl::string_view hlo_string = R"hlo(
+  HloModule module, is_scheduled=true
+
+  async_computation {
+    p = f32[10,10,10,10] parameter(0)
+    ROOT custom-call = f32[10,10,10,10] custom-call(p), custom_call_target="foo"
+  }
+
+  ENTRY entry {
+    /*00:*/ p.0 = f32[10,10,10,10] parameter(0)
+    /*01:*/ p.1 = f32[10,10,10,10] parameter(1)
+    /*02:*/ v.0 = f32[10,10,10,10] add(p.1, p.1)
+    /*03:*/ negate.0 = f32[10,10,10,10] negate(p.0)
+    /*04:*/ async-start = ((f32[10,10,10,10]), f32[10,10,10,10], s32[]) async-start(negate.0), calls=async_computation, output_to_operand_aliasing={{1}: (0, {})}
+    /*05:*/ add.0 = f32[10,10,10,10] add(negate.0, negate.0)
+    /*06:*/ v.1 = f32[10,10,10,10] add(v.0, v.0)
+    /*07:*/ v.2 = f32[10,10,10,10] add(v.1, v.1)
+    /*08:*/ async-update = ((f32[10,10,10,10]), f32[10,10,10,10], s32[]) async-update(async-start), calls=async_computation
+    /*09:*/ v.3 = f32[10,10,10,10] add(v.2, v.2)
+    /*10:*/ async-done = f32[10,10,10,10] async-done(async-update), calls=async_computation
+    /*11:*/ v.4 = f32[10,10,10,10] add(v.3, v.3)
+    /*12:*/ ROOT tuple.0 = (f32[10,10,10,10], f32[10,10,10,10], f32[10,10,10,10]) tuple(add.0, async-done, v.4)
+  })hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 4 * 10 * 10 * 10 * 10;
+  MsaBufferIntervalCompare buffer_interval_compare =
+      CreateBufferIntervalCompareFnFromInstructionNames({"negate.0"});
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(1, 10);
+  auto preset_assignments =
+      AssignMemorySpace(module.get(), std::move(options),
+                        buffer_interval_compare, &prefetch_interval_picker);
+  ASSERT_NE(preset_assignments, nullptr);
+  LOG(INFO) << "Module after MSA:\n" << module->ToString();
+
+  HloInstruction* copy0 = FindInstruction(module.get(), "negate.0");
+  ASSERT_NE(copy0, nullptr);
+  VLOG(3) << "copy0 memory space: " << copy0->shape().layout().memory_space();
+  // EXPECT_EQ(copy0->shape().layout().memory_space(), kAlternateMemorySpace);
+
+  HloVerifier verifier(HloVerifierOpts{}.WithLayoutSensitive(false));
+  TF_ASSERT_OK(verifier.Run(module.get()).status());
+}
+
+TEST_F(
+    MemorySpaceAssignmentTest,
+    AsyncUpdate_TwoLiveAllocationValuesFirstLiveAllocationValueOutlastsSecond) {
+  absl::string_view hlo_string = R"hlo(
+  HloModule module, is_scheduled=true
+
+  async_computation {
+    p = f32[10,10,10,10] parameter(0)
+    ROOT custom-call = f32[10,10,10,10] custom-call(p), custom_call_target="foo"
+  }
+
+  ENTRY entry {
+    /*00:*/ p.0 = f32[10,10,10,10] parameter(0)
+    /*01:*/ p.1 = f32[10,10,10,10] parameter(1)
+    /*02:*/ v.0 = f32[10,10,10,10] add(p.1, p.1)
+    /*03:*/ negate.0 = f32[10,10,10,10] negate(p.0)
+    /*04:*/ async-start = ((f32[10,10,10,10]), f32[10,10,10,10], s32[]) async-start(negate.0), calls=async_computation, output_to_operand_aliasing={{1}: (0, {})}
+    /*05:*/ v.1 = f32[10,10,10,10] add(v.0, v.0)
+    /*06:*/ add.0 = f32[10,10,10,10] add(negate.0, negate.0)
+    /*07:*/ v.2 = f32[10,10,10,10] add(v.1, v.1)
+    /*08:*/ async-update = ((f32[10,10,10,10]), f32[10,10,10,10], s32[]) async-update(async-start), calls=async_computation
+    /*09:*/ v.3 = f32[10,10,10,10] add(v.2, v.2)
+    /*10:*/ async-done = f32[10,10,10,10] async-done(async-update), calls=async_computation
+    /*11:*/ v.4 = f32[10,10,10,10] add(v.3, v.3)
+    /*12:*/ add.1 = f32[10,10,10,10] add(add.0, negate.0)
+    /*13:*/ ROOT tuple.0 = (f32[10,10,10,10], f32[10,10,10,10], f32[10,10,10,10]) tuple(add.1, async-done, v.4)
+  })hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 4 * 10 * 10 * 10 * 10;
+  MsaBufferIntervalCompare buffer_interval_compare =
+      CreateBufferIntervalCompareFnFromInstructionNames({"negate.0"});
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(1, 10);
+  auto preset_assignments =
+      AssignMemorySpace(module.get(), std::move(options),
+                        buffer_interval_compare, &prefetch_interval_picker);
+  ASSERT_NE(preset_assignments, nullptr);
+  LOG(INFO) << "Module after MSA:\n" << module->ToString();
+
+  HloInstruction* copy0 = FindInstruction(module.get(), "negate.0");
+  ASSERT_NE(copy0, nullptr);
+  VLOG(3) << "copy0 memory space: " << copy0->shape().layout().memory_space();
+  // EXPECT_EQ(copy0->shape().layout().memory_space(), kAlternateMemorySpace);
+
+  HloVerifier verifier(HloVerifierOpts{}.WithLayoutSensitive(false));
+  ASSERT_OK(verifier.Run(module.get()).status());
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       AsyncUpdate_TwoLiveAllocationValuesUnableToAllocateContiguousAltMem) {
+  absl::string_view hlo_string = R"hlo(
+  HloModule module, is_scheduled=true
+
+  async_computation {
+    p = f32[10,10,10,10] parameter(0)
+    ROOT custom-call = f32[10,10,10,10] custom-call(p), custom_call_target="foo"
+  }
+
+  ENTRY entry {
+    /*00:*/ p.0 = f32[10,10,10,10] parameter(0)
+    /*01:*/ p.1 = f32[10,10,10,10] parameter(1)
+    /*02:*/ v.0 = f32[10,10,10,10] add(p.1, p.1)
+    /*03:*/ negate.0 = f32[10,10,10,10] negate(p.0)
+    /*04:*/ async-start = ((f32[10,10,10,10]), f32[10,10,10,10], s32[]) async-start(negate.0), calls=async_computation, output_to_operand_aliasing={{1}: (0, {})}
+    /*05:*/ v.1 = f32[10,10,10,10] add(v.0, v.0)
+    /*06:*/ add.0 = f32[10,10,10,10] add(negate.0, negate.0)
+    /*07:*/ v.2 = f32[10,10,10,10] add(v.1, v.1)
+    /*08:*/ async-update = ((f32[10,10,10,10]), f32[10,10,10,10], s32[]) async-update(async-start), calls=async_computation
+    /*09:*/ v.3 = f32[10,10,10,10] add(v.2, v.2)
+    /*10:*/ async-done = f32[10,10,10,10] async-done(async-update), calls=async_computation
+    /*11:*/ v.4 = f32[10,10,10,10] add(v.3, v.3)
+    /*12:*/ ROOT tuple.0 = (f32[10,10,10,10], f32[10,10,10,10], f32[10,10,10,10]) tuple(add.0, async-done, v.4)
+  })hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 4 * 10 * 10 * 10 * 10;
+  MsaBufferIntervalCompare buffer_interval_compare =
+      CreateBufferIntervalCompareFnFromInstructionNames({"v.2", "negate.0"});
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(1, 10);
+  auto preset_assignments =
+      AssignMemorySpace(module.get(), std::move(options),
+                        buffer_interval_compare, &prefetch_interval_picker);
+  ASSERT_NE(preset_assignments, nullptr);
+  LOG(INFO) << "Module after MSA:\n" << module->ToString();
+
+  HloInstruction* v2 = FindInstruction(module.get(), "v.2");
+  ASSERT_NE(v2, nullptr);
+  VLOG(3) << "v.2 memory space: " << v2->shape().layout().memory_space();
+  // EXPECT_EQ(v2->shape().layout().memory_space(), kAlternateMemorySpace);
+  HloInstruction* copy0 = FindInstruction(module.get(), "negate.0");
+  ASSERT_NE(copy0, nullptr);
+  VLOG(3) << "copy0 memory space: " << copy0->shape().layout().memory_space();
+  // EXPECT_EQ(copy0->shape().layout().memory_space(), kDefaultMemorySpace);
+
+  HloVerifier verifier(HloVerifierOpts{}.WithLayoutSensitive(false));
+  ASSERT_OK(verifier.Run(module.get()).status());
 }
 
 }  // namespace

@@ -544,7 +544,7 @@ void MsaAlgorithm::CreateAllocationValues(
     const MsaBufferInterval& buffer_interval,
     std::vector<AllocationValue>& allocation_values) const {
   const HloValue* value = buffer_interval.buffer;
-  VLOG(3) << "Creating AllocationValues";
+  VLOG(3) << "Creating AllocationValues for " << value->ToString();
 
   // Find and sort all non-trivial (excluding GTE, Tuple, and bitcast)
   // positions. We create an AllocationValue object for each non-trivial
@@ -592,40 +592,65 @@ void MsaAlgorithm::CreateAllocationValues(
   for (const HloUse& use : uses) {
     int64_t use_time = instruction_schedule.at(use.instruction);
     HloComputation* use_computation = use.instruction->parent();
+    HloInstruction* use_instruction = use.instruction;
 
-    AllocationValue* last_allocation_value = nullptr;
+    AllocationValue* use_allocation_value = nullptr;
     for (int i = beginning_idx; i < allocation_values.size(); ++i) {
       AllocationValue* allocation_value = &allocation_values.at(i);
-      if (HloDataflowAnalysis::IsAsynchronousOperationDone(
-              use.instruction->opcode())) {
-        if (allocation_value->defining_instruction() ==
-                use.instruction->operand(0) &&
+      const HloInstruction* allocation_value_defining_instruction =
+          allocation_value->defining_instruction();
+
+      // The AllocationValue for a use is determined by:
+      // - If the use is an async-done or async-update => the latest
+      //   async-update/async-done in the async def-use chain.
+      // - Else => the latest non-async-start/async-done position in the same
+      //   computation.
+      //
+      // In essecence, we want to associate the use with the lastest defining
+      // position from the same computation, unless its an async value that
+      // could be in flight.
+      if ((use_instruction->opcode() == HloOpcode::kAsyncUpdate ||
+           HloDataflowAnalysis::IsAsynchronousOperationDone(
+               use_instruction->opcode())) &&
+          use.operand_number == 0) {
+        if (allocation_value_defining_instruction ==
+                use_instruction->operand(0) &&
             use.operand_index == allocation_value->defining_position().index) {
-          last_allocation_value = allocation_value;
+          use_allocation_value = allocation_value;
         }
       } else if (!HloDataflowAnalysis::IsAsynchronousOperationStart(
-                     allocation_value->defining_instruction()->opcode()) &&
+                     allocation_value_defining_instruction->opcode()) &&
+                 allocation_value_defining_instruction->opcode() !=
+                     HloOpcode::kAsyncUpdate &&
                  allocation_value->computation() == use_computation &&
                  instruction_schedule.at(
                      allocation_value->defining_position().instruction) <
                      use_time) {
-        last_allocation_value = allocation_value;
+        use_allocation_value = allocation_value;
       }
     }
-    CHECK(last_allocation_value != nullptr);
-    last_allocation_value->AddUse(use, use_time);
+    CHECK(use_allocation_value != nullptr);
+    use_allocation_value->AddUse(use, use_time);
   }
 
+  // Mark allocation values contiguous as appropriate.
   for (int i = beginning_idx; i < allocation_values.size(); ++i) {
     AllocationValue& allocation_value = allocation_values.at(i);
+    const HloInstruction* allocation_value_defining_instruction =
+        allocation_value.defining_instruction();
     if (HloDataflowAnalysis::IsAsynchronousOperationStart(
-            allocation_value.defining_instruction()->opcode())) {
+            allocation_value_defining_instruction->opcode()) ||
+        allocation_value_defining_instruction->opcode() ==
+            HloOpcode::kAsyncUpdate) {
       CHECK_EQ(allocation_value.uses().size(), 1);
-      CHECK(HloDataflowAnalysis::IsAsynchronousOperationDone(
-          allocation_value.uses().at(0).hlo_use.instruction->opcode()));
+      const AllocationValue::Use& use = allocation_value.uses().at(0);
+      HloInstruction* use_instruction = use.hlo_use.instruction;
+      CHECK(use_instruction->opcode() == HloOpcode::kAsyncUpdate ||
+            HloDataflowAnalysis::IsAsynchronousOperationDone(
+                use_instruction->opcode()));
       VLOG(3) << "Mark " << allocation_value.ToShortString()
               << " to require contiguous allocation because it is an async "
-                 "start operation.";
+                 "start or async update operation.";
       allocation_value.set_requires_contiguous_allocation(true);
     } else if (options_.position_requires_contiguous_allocation_fn(
                    allocation_value.defining_position())) {
@@ -3608,7 +3633,7 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
 
   VLOG(2) << "Total reserved bytes = " << reserved_in_bytes_;
   for (MsaBufferInterval& interval : sorted_buffer_intervals) {
-    VLOG(3) << "Processing buffer: " << interval.buffer->ToString();
+    VLOG(3) << "Processing interval: " << interval.ToString();
     if (IsValueFinalized(interval.buffer)) {
       VLOG(3) << "Skip entrance interval" << interval.buffer->ToShortString()
               << " because it is already processed.";

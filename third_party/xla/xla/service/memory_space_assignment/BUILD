@@ -117,6 +117,7 @@ xla_test(
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_value",
+        "//xla/service:hlo_verifier",
         "//xla/service/cost_modelling:op_cost",
         "//xla/service/heap_simulator",
         "//xla/service/heap_simulator:allocation_block",
