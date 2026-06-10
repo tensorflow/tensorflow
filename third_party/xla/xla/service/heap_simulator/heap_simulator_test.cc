@@ -2122,13 +2122,13 @@ TEST_F(IntervalTreeTest, ThreeLevelsRightLeftChunkDifferent) {
   EXPECT_TRUE(tree.Remove(25, 45, chunk2));
   // Chunk 1 is till the root after removing chunk 2.
   EXPECT_EQ(tree.GetRoot()->subtree_end, 40);
-  EXPECT_EQ(tree.GetRoot()->chunk.offset, 1);
-  EXPECT_EQ(tree.GetRoot()->chunk.size, 2);
+  EXPECT_EQ(tree.GetRoot()->value.offset, 1);
+  EXPECT_EQ(tree.GetRoot()->value.size, 2);
   EXPECT_TRUE(tree.Remove(20, 36, chunk1));
   // Chunk 3 becomes the root now.
   EXPECT_EQ(tree.GetRoot()->subtree_end, 40);
-  EXPECT_EQ(tree.GetRoot()->chunk.offset, 3);
-  EXPECT_EQ(tree.GetRoot()->chunk.size, 4);
+  EXPECT_EQ(tree.GetRoot()->value.offset, 3);
+  EXPECT_EQ(tree.GetRoot()->value.size, 4);
   EXPECT_TRUE(tree.Remove(22, 40, chunk3));
   ASSERT_EQ(tree.GetRoot(), nullptr);
 }
