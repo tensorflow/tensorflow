@@ -42,22 +42,26 @@ inline void CropToBoundingBox(dim_t offset_height, dim_t offset_width,
   const dim_t in_img_size = in_height * in_width;
   const dim_t out_img_size = out_height * out_width;
 
-  for (int b = 0; b < input->Dims()[0]; ++b) {
-    for (int i = 0; i < out_height; ++i) {
-      const dim_t read_byte_ofs =
-          (in_img_size * b + (i + offset_height) * in_width + offset_width) *
+  for (dim_t b = 0; b < input->Dims()[0]; ++b) {
+    for (dim_t i = 0; i < out_height; ++i) {
+      const size_t read_byte_ofs =
+          (static_cast<size_t>(in_img_size) * b +
+           (static_cast<size_t>(i) + offset_height) * in_width + offset_width) *
           chunk;
 
       const void* read_start_addr =
           reinterpret_cast<const char*>(input->Data()) + read_byte_ofs;
 
-      const dim_t write_byte_ofs = chunk * (out_img_size * b + i * out_width);
+      const size_t write_byte_ofs =
+          static_cast<size_t>(chunk) *
+          (static_cast<size_t>(out_img_size) * b + i * out_width);
 
       void* write_addr =
           reinterpret_cast<char*>(output->Data()) + write_byte_ofs;
 
       // Copy slice of each input row by row.
-      std::memcpy(write_addr, read_start_addr, chunk * out_width);
+      std::memcpy(write_addr, read_start_addr,
+                  static_cast<size_t>(chunk) * out_width);
     }
   }
 }

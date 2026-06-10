@@ -37,8 +37,8 @@ size_t Shape::num_elements() const {
   if (dims_.empty()) {
     return 0;
   }
-  return std::accumulate(dims_.begin(), dims_.end(), 1,
-                         std::multiplies<size_t>());
+  return std::accumulate(dims_.begin(), dims_.end(), DimensionSize{1},
+                         std::multiplies<DimensionSize>());
 }
 
 namespace {

@@ -32,12 +32,13 @@ using ::ml_adj::data::MutableDataRef;
 inline void PerImageStandardization(dim_t batches, dim_t height, dim_t width,
                                     dim_t num_channels, const float* input_data,
                                     float* output_data) {
-  const dim_t num_pixels_per_image = height * width * num_channels;
+  const ind_t num_pixels_per_image =
+      static_cast<ind_t>(height) * width * num_channels;
 
   const float inv_num_pixels_per_image = 1.0f / num_pixels_per_image;
 
   for (ind_t b = 0; b < batches; ++b) {
-    const dim_t offset = b * num_pixels_per_image;
+    const ind_t offset = b * num_pixels_per_image;
     const float* input_ptr = input_data + offset;
     float* output_ptr = output_data + offset;
 

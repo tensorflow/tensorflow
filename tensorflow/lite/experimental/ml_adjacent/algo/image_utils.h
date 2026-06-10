@@ -26,11 +26,12 @@ inline void ConvertColorSpace(dim_t batches, dim_t height, dim_t width,
   TFLITE_DCHECK(kernel_size == 9);
 
   const dim_t kNumChannels = 3;
-  const dim_t output_num_pixels = batches * width * height;
+  const size_t output_num_pixels =
+      static_cast<size_t>(batches) * width * height;
   const float* src_data_prt = input_data;
   float* dst_data_prt = output_data;
 
-  for (int i = 0; i < output_num_pixels; ++i) {
+  for (size_t i = 0; i < output_num_pixels; ++i) {
     dst_data_prt[0] = kernel_data[0] * src_data_prt[0] +
                       kernel_data[1] * src_data_prt[1] +
                       kernel_data[2] * src_data_prt[2];

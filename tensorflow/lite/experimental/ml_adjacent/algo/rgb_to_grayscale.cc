@@ -29,13 +29,14 @@ using ::ml_adj::data::MutableDataRef;
 
 inline void ConvertRgbToGrayscale(dim_t batches, dim_t height, dim_t width,
                                   const float* input_data, float* output_data) {
-  const dim_t output_num_pixels = batches * width * height;
+  const size_t output_num_pixels =
+      static_cast<size_t>(batches) * width * height;
   // Reference for converting between RGB and grayscale. Same as in
   // tf.image.rgb_to_convert: https://en.wikipedia.org/wiki/Luma_%28video%29.
   constexpr float kRgb2GrayscaleKernel[] = {0.2989f, 0.5870f, 0.1140f};
   const float* src_ptr = input_data;
   float* dst_ptr = output_data;
-  for (int i = 0; i < output_num_pixels; ++i) {
+  for (size_t i = 0; i < output_num_pixels; ++i) {
     *dst_ptr = kRgb2GrayscaleKernel[0] * src_ptr[0] +
                kRgb2GrayscaleKernel[1] * src_ptr[1] +
                kRgb2GrayscaleKernel[2] * src_ptr[2];

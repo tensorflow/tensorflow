@@ -48,53 +48,58 @@ void ComputeNewSize(dim_t src_width, dim_t src_height, int angle,
     const float cos_angle = std::cos(angle_rad);
     const float sin_angle = std::sin(angle_rad);
 
-    const int edge_x = src_width / 2;
-    const int edge_y = src_height / 2;
-    for (int y : {-edge_y, edge_y}) {
-      for (int x : {-edge_x, edge_x}) {
-        const int x_transformed =
-            static_cast<int>(std::floor(cos_angle * x + sin_angle * y));
-        const int y_transformed =
-            static_cast<int>(std::floor(-sin_angle * x + cos_angle * y));
+    const int64_t edge_x = static_cast<int64_t>(src_width) / 2;
+    const int64_t edge_y = static_cast<int64_t>(src_height) / 2;
+    int64_t max_dst_width = 0;
+    int64_t max_dst_height = 0;
+    for (int64_t y : {-edge_y, edge_y}) {
+      for (int64_t x : {-edge_x, edge_x}) {
+        const int64_t x_transformed =
+            static_cast<int64_t>(std::floor(cos_angle * x + sin_angle * y));
+        const int64_t y_transformed =
+            static_cast<int64_t>(std::floor(-sin_angle * x + cos_angle * y));
 
-        if (std::abs(x_transformed) > dst_width / 2)
-          dst_width = 2 * std::abs(x_transformed);
-        if (std::abs(y_transformed) > dst_height / 2)
-          dst_height = 2 * std::abs(y_transformed);
+        if (std::abs(x_transformed) > max_dst_width / 2)
+          max_dst_width = 2 * std::abs(x_transformed);
+        if (std::abs(y_transformed) > max_dst_height / 2)
+          max_dst_height = 2 * std::abs(y_transformed);
       }
     }
+    dst_width = static_cast<dim_t>(max_dst_width);
+    dst_height = static_cast<dim_t>(max_dst_height);
   }
 }
 
 // Rotates image for 90 degree.
-void Rotate90(int batches, int input_height, int input_width, int depth,
-              int output_height, int output_width, const float* input_data,
+void Rotate90(dim_t batches, dim_t input_height, dim_t input_width, dim_t depth,
+              dim_t output_height, dim_t output_width, const float* input_data,
               float* output_data) {
   TFLITE_DCHECK(input_data != nullptr);
   TFLITE_DCHECK(output_data != nullptr);
 
-  const int pixel_stride = depth;
-  const int src_row_stride = input_width * depth;
-  const int dst_row_stride = output_width * depth;
-  const int src_batch_stride = src_row_stride * input_height;
-  const int dst_batch_stride = dst_row_stride * output_height;
+  const size_t pixel_stride = depth;
+  const size_t src_row_stride = static_cast<size_t>(input_width) * depth;
+  const size_t dst_row_stride = static_cast<size_t>(output_width) * depth;
+  const size_t src_batch_stride = src_row_stride * input_height;
+  const size_t dst_batch_stride = dst_row_stride * output_height;
 
   // Iterate over batches to perform the following transformation:
   // dst[x][width - y - 1] = src[y][x].
-  for (int b = 0; b < batches; ++b) {
+  for (dim_t b = 0; b < batches; ++b) {
     const float* src_data_prt = input_data + b * src_batch_stride;
     float* dst_data_prt = output_data + b * dst_batch_stride;
 
-    for (int y = 0; y < input_height; ++y) {
+    for (dim_t y = 0; y < input_height; ++y) {
       const float* src_ptr_row = src_data_prt + y * src_row_stride;
-      for (int x = 0; x < input_width; ++x) {
+      for (dim_t x = 0; x < input_width; ++x) {
         float* dst_ptr_row = dst_data_prt + x * dst_row_stride;
 
         const float* src_ptr_pixel = src_ptr_row + x * pixel_stride;
         float* dst_pixel_ptr =
-            dst_ptr_row + (output_width - y - 1) * pixel_stride;
+            dst_ptr_row +
+            static_cast<size_t>(output_width - y - 1) * pixel_stride;
 
-        for (int c = 0; c < depth; ++c) {
+        for (dim_t c = 0; c < depth; ++c) {
           *dst_pixel_ptr++ = *src_ptr_pixel++;
         }
       }
@@ -103,31 +108,32 @@ void Rotate90(int batches, int input_height, int input_width, int depth,
 }
 
 // Rotates image for 180 degree.
-void Rotate180(int batches, int input_height, int input_width, int depth,
-               int output_height, int output_width, const float* input_data,
-               float* output_data) {
+void Rotate180(dim_t batches, dim_t input_height, dim_t input_width,
+               dim_t depth, dim_t output_height, dim_t output_width,
+               const float* input_data, float* output_data) {
   TFLITE_DCHECK(input_data != nullptr);
   TFLITE_DCHECK(output_data != nullptr);
 
-  const int dst_pixel_stride = depth;
-  const int src_row_stride = input_width * depth;
-  const int dst_row_stride = output_width * depth;
-  const int src_batch_stride = src_row_stride * input_height;
-  const int dst_batch_stride = dst_row_stride * output_height;
+  const size_t dst_pixel_stride = depth;
+  const size_t src_row_stride = static_cast<size_t>(input_width) * depth;
+  const size_t dst_row_stride = static_cast<size_t>(output_width) * depth;
+  const size_t src_batch_stride = src_row_stride * input_height;
+  const size_t dst_batch_stride = dst_row_stride * output_height;
 
   // Iterate over batches to perform the following transformation:
   // dst[height - y - 1][width - x - 1] = src[y][x].
-  for (int b = 0; b < batches; ++b) {
+  for (dim_t b = 0; b < batches; ++b) {
     const float* src_data_prt = input_data + b * src_batch_stride;
     float* dst_data_prt = output_data + b * dst_batch_stride;
 
-    for (int y = 0; y < input_height; ++y) {
+    for (dim_t y = 0; y < input_height; ++y) {
       const float* src_ptr_row = src_data_prt + y * src_row_stride;
-      float* dst_ptr_row = dst_data_prt +
-                           (output_height - y - 1) * dst_row_stride +
-                           (output_width - 1) * dst_pixel_stride;
-      for (int x = 0; x < input_width; ++x) {
-        for (int c = 0; c < depth; ++c) {
+      float* dst_ptr_row =
+          dst_data_prt +
+          static_cast<size_t>(output_height - y - 1) * dst_row_stride +
+          static_cast<size_t>(output_width - 1) * dst_pixel_stride;
+      for (dim_t x = 0; x < input_width; ++x) {
+        for (dim_t c = 0; c < depth; ++c) {
           dst_ptr_row[c] = src_ptr_row[c];
         }
         dst_ptr_row -= depth;
@@ -138,34 +144,35 @@ void Rotate180(int batches, int input_height, int input_width, int depth,
 }
 
 // Rotates image for 270 degree.
-void Rotate270(int batches, int input_height, int input_width, int depth,
-               int output_height, int output_width, const float* input_data,
-               float* output_data) {
+void Rotate270(dim_t batches, dim_t input_height, dim_t input_width,
+               dim_t depth, dim_t output_height, dim_t output_width,
+               const float* input_data, float* output_data) {
   TFLITE_DCHECK(input_data != nullptr);
   TFLITE_DCHECK(output_data != nullptr);
 
-  const int pixel_stride = depth;
-  const int src_row_stride = input_width * depth;
-  const int dst_row_stride = output_width * depth;
-  const int src_batch_stride = src_row_stride * input_height;
-  const int dst_batch_stride = dst_row_stride * output_height;
+  const size_t pixel_stride = depth;
+  const size_t src_row_stride = static_cast<size_t>(input_width) * depth;
+  const size_t dst_row_stride = static_cast<size_t>(output_width) * depth;
+  const size_t src_batch_stride = src_row_stride * input_height;
+  const size_t dst_batch_stride = dst_row_stride * output_height;
 
   // Iterate over batches to perform the following transformation:
   // dst[output_height - x - 1][y] = src[y][x].
-  for (int b = 0; b < batches; ++b) {
+  for (dim_t b = 0; b < batches; ++b) {
     const float* src_data_prt = input_data + b * src_batch_stride;
     float* dst_data_prt = output_data + b * dst_batch_stride;
 
-    for (int y = 0; y < input_height; ++y) {
+    for (dim_t y = 0; y < input_height; ++y) {
       const float* src_ptr_row = src_data_prt + y * src_row_stride;
-      for (int x = 0; x < input_width; ++x) {
+      for (dim_t x = 0; x < input_width; ++x) {
         float* dst_ptr_row =
-            dst_data_prt + (output_height - x - 1) * dst_row_stride;
+            dst_data_prt +
+            static_cast<size_t>(output_height - x - 1) * dst_row_stride;
 
         const float* src_ptr_pixel = src_ptr_row + x * pixel_stride;
         float* dst_pixel_ptr = dst_ptr_row + y * pixel_stride;
 
-        for (int c = 0; c < depth; ++c) {
+        for (dim_t c = 0; c < depth; ++c) {
           *dst_pixel_ptr++ = *src_ptr_pixel++;
         }
       }
@@ -174,58 +181,63 @@ void Rotate270(int batches, int input_height, int input_width, int depth,
 }
 
 // Performs generic rotation for arbitrary angle.
-void RotateGeneric(int batches, int input_height, int input_width, int depth,
-                   int output_height, int output_width, int angle,
-                   const float* input_data, float* output_data) {
+void RotateGeneric(dim_t batches, dim_t input_height, dim_t input_width,
+                   dim_t depth, dim_t output_height, dim_t output_width,
+                   int angle, const float* input_data, float* output_data) {
   TFLITE_DCHECK(input_data != nullptr);
   TFLITE_DCHECK(output_data != nullptr);
 
-  const int pixel_stride = depth;
-  const int src_row_stride = input_width * depth;
-  const int dst_row_stride = output_width * depth;
-  const int src_batch_stride = src_row_stride * input_height;
-  const int dst_batch_stride = dst_row_stride * output_height;
+  const size_t pixel_stride = depth;
+  const size_t src_row_stride = static_cast<size_t>(input_width) * depth;
+  const size_t dst_row_stride = static_cast<size_t>(output_width) * depth;
+  const size_t src_batch_stride = src_row_stride * input_height;
+  const size_t dst_batch_stride = dst_row_stride * output_height;
 
   // Start off with dark image by initializing all pixels with zeros.
-  memset(
-      output_data, 0,
-      batches * output_width * output_height * depth * sizeof(output_data[0]));
+  memset(output_data, 0,
+         static_cast<size_t>(batches) * output_width * output_height * depth *
+             sizeof(output_data[0]));
 
   const float angle_rad = DegreesToRadians(angle);
   const float cos_angle = std::cos(angle_rad);
   const float sin_angle = std::sin(angle_rad);
 
+  const int64_t half_output_height = static_cast<int64_t>(output_height) / 2;
+  const int64_t half_output_width = static_cast<int64_t>(output_width) / 2;
+  const int64_t half_input_height = static_cast<int64_t>(input_height) / 2;
+  const int64_t half_input_width = static_cast<int64_t>(input_width) / 2;
+
   // Iterate over batches to perform a rotation with arbitrary angle.
-  for (int b = 0; b < batches; ++b) {
+  for (dim_t b = 0; b < batches; ++b) {
     const float* src_data_prt = input_data + b * src_batch_stride;
     float* dst_data_prt = output_data + b * dst_batch_stride;
 
-    for (int y = -output_height / 2; y < output_height / 2; ++y) {
-      for (int x = -output_width / 2; x < output_width / 2; ++x) {
+    for (int64_t y = -half_output_height; y < half_output_height; ++y) {
+      for (int64_t x = -half_output_width; x < half_output_width; ++x) {
         const float x_transformed = cos_angle * x + sin_angle * y;
         const float y_transformed = -sin_angle * x + cos_angle * y;
 
         // Convert to integer by computing the next smaller integer number.
-        const int x_transformed_integer =
-            static_cast<int>(std::floor(x_transformed));
-        const int y_transformed_integer =
-            static_cast<int>(std::floor(y_transformed));
+        const int64_t x_transformed_integer =
+            static_cast<int64_t>(std::floor(x_transformed));
+        const int64_t y_transformed_integer =
+            static_cast<int64_t>(std::floor(y_transformed));
 
         // Move into the coordinate system of input image.
-        const int x_src_integer = x_transformed_integer + input_width / 2;
-        const int y_src_integer = y_transformed_integer + input_height / 2;
+        const int64_t x_src_integer = x_transformed_integer + half_input_width;
+        const int64_t y_src_integer = y_transformed_integer + half_input_height;
 
         // Calculate coordinates for interpolation.
-        const int x0 = x_src_integer;
-        const int x1 = x_src_integer + 1;
-        const int y0 = y_src_integer;
-        const int y1 = y_src_integer + 1;
+        const int64_t x0 = x_src_integer;
+        const int64_t x1 = x_src_integer + 1;
+        const int64_t y0 = y_src_integer;
+        const int64_t y1 = y_src_integer + 1;
 
         // Skip further calculations if coordinates are out of bounds.
-        if (x0 < 0 || x0 >= input_width) continue;
-        if (x1 < 0 || x1 >= input_width) continue;
-        if (y0 < 0 || y0 >= input_height) continue;
-        if (y1 < 0 || y1 >= input_height) continue;
+        if (x0 < 0 || x0 >= static_cast<int64_t>(input_width)) continue;
+        if (x1 < 0 || x1 >= static_cast<int64_t>(input_width)) continue;
+        if (y0 < 0 || y0 >= static_cast<int64_t>(input_height)) continue;
+        if (y1 < 0 || y1 >= static_cast<int64_t>(input_height)) continue;
 
         const float x_dist = x_transformed - x_transformed_integer;
         const float y_dist = y_transformed - y_transformed_integer;
@@ -236,16 +248,18 @@ void RotateGeneric(int batches, int input_height, int input_width, int depth,
         const float* src_ptr_row0 = src_data_prt + y0 * src_row_stride;
         const float* src_ptr_row1 = src_data_prt + y1 * src_row_stride;
         float* dst_row_ptr =
-            dst_data_prt + (y + output_height / 2) * dst_row_stride;
+            dst_data_prt +
+            static_cast<size_t>(y + half_output_height) * dst_row_stride;
 
         const float* src_ptr_pixel00 = src_ptr_row0 + x0 * pixel_stride;
         const float* src_ptr_pixel10 = src_ptr_row0 + x1 * pixel_stride;
         const float* src_ptr_pixel01 = src_ptr_row1 + x0 * pixel_stride;
         const float* src_ptr_pixel11 = src_ptr_row1 + x1 * pixel_stride;
         float* dst_pixel_ptr =
-            dst_row_ptr + (x + output_width / 2) * pixel_stride;
+            dst_row_ptr +
+            static_cast<size_t>(x + half_output_width) * pixel_stride;
 
-        for (int c = 0; c < depth; ++c) {
+        for (dim_t c = 0; c < depth; ++c) {
           const float v00 = *src_ptr_pixel00++;
           const float v01 = *src_ptr_pixel01++;
           const float v10 = *src_ptr_pixel10++;

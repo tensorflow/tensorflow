@@ -32,21 +32,32 @@ using ::ml_adj::data::MutableDataRef;
 
 // Calculates bilinear interpolated values and lower and upper bounds.
 inline void ComputeInterpolationValues(const float value, const float scale,
-                                       int32_t input_size, float& scaled_value,
-                                       int32_t& lower_bound,
-                                       int32_t& upper_bound) {
+                                       dim_t input_size, float& scaled_value,
+                                       dim_t& lower_bound, dim_t& upper_bound) {
   scaled_value = value * scale;
 
   float scaled_value_floor = std::floor(scaled_value);
-  lower_bound = std::max(static_cast<int32_t>(scaled_value_floor), 0);
-  upper_bound =
-      std::min(static_cast<int32_t>(std::ceil(scaled_value)), input_size - 1);
+  int64_t lower = static_cast<int64_t>(scaled_value_floor);
+  if (lower < 0) {
+    lower_bound = 0;
+  } else {
+    lower_bound = static_cast<dim_t>(lower);
+  }
+
+  int64_t upper = static_cast<int64_t>(std::ceil(scaled_value));
+  if (upper < 0) {
+    upper_bound = 0;
+  } else if (upper >= static_cast<int64_t>(input_size)) {
+    upper_bound = input_size > 0 ? input_size - 1 : 0;
+  } else {
+    upper_bound = static_cast<dim_t>(upper);
+  }
 }
 
 // Applies depth-wise scaling.
-inline void ScaleDepthwise(const float* input_ptr, int32_t depth, float scale,
+inline void ScaleDepthwise(const float* input_ptr, dim_t depth, float scale,
                            float* output_ptr) {
-  for (int32_t i = 0; i < depth; ++i) {
+  for (dim_t i = 0; i < depth; ++i) {
     *output_ptr += *input_ptr * scale;
     output_ptr++;
     input_ptr++;
@@ -54,43 +65,45 @@ inline void ScaleDepthwise(const float* input_ptr, int32_t depth, float scale,
 }
 
 // Calculates 1D pixel offset in NHWC data.
-inline int Offset(const int32_t* dims_data, int32_t dims_num, int32_t i0,
-                  int32_t i1, int32_t i2, int32_t i3) {
+inline size_t Offset(const dim_t* dims_data, int32_t dims_num, dim_t i0,
+                     dim_t i1, dim_t i2, dim_t i3) {
 #ifndef NDEBUG
   TFLITE_CHECK_EQ(dims_num, 3);
 #endif
-  return ((i0 * dims_data[0] + i1) * dims_data[1] + i2) * dims_data[2] + i3;
+  return ((static_cast<size_t>(i0) * dims_data[0] + i1) * dims_data[1] + i2) *
+             dims_data[2] +
+         i3;
 }
 
 // Generic implementation of bilinear resize.
-inline void ResizeBilinear(int32_t batches, int32_t input_height,
-                           int32_t input_width, int32_t depth,
-                           int32_t output_height, int32_t output_width,
+inline void ResizeBilinear(dim_t batches, dim_t input_height, dim_t input_width,
+                           dim_t depth, dim_t output_height, dim_t output_width,
                            float height_scale, float width_scale,
                            const float* input_data, float* output_data) {
   memset(output_data, 0,
-         batches * output_height * output_width * depth * sizeof(float));
-  const int dims_data[] = {input_height, input_width, depth};
+         static_cast<size_t>(batches) * output_height * output_width * depth *
+             sizeof(float));
+  const dim_t dims_data[] = {input_height, input_width, depth};
   const int dims_num = sizeof(dims_data) / sizeof(dims_data[0]);
 
-  int32_t output_offset = 0;
-  for (int b = 0; b < batches; ++b) {
-    for (int y = 0; y < output_height; ++y) {
+  size_t output_offset = 0;
+  for (dim_t b = 0; b < batches; ++b) {
+    for (dim_t y = 0; y < output_height; ++y) {
       float input_y = 0.0f;
-      int32_t y0 = 0;
-      int32_t y1 = 0;
-      ComputeInterpolationValues(y, height_scale, input_height, input_y, y0,
-                                 y1);
-      for (int x = 0; x < output_width; ++x) {
+      dim_t y0 = 0;
+      dim_t y1 = 0;
+      ComputeInterpolationValues(static_cast<float>(y), height_scale,
+                                 input_height, input_y, y0, y1);
+      for (dim_t x = 0; x < output_width; ++x) {
         float input_x = 0.0f;
-        int32_t x0 = 0;
-        int32_t x1 = 0;
-        ComputeInterpolationValues(x, width_scale, input_width, input_x, x0,
-                                   x1);
+        dim_t x0 = 0;
+        dim_t x1 = 0;
+        ComputeInterpolationValues(static_cast<float>(x), width_scale,
+                                   input_width, input_x, x0, x1);
         float* output_ptr = output_data + output_offset;
 
         // Run kernel on the 4 corners of the bilinear resize algorithm.
-        int32_t input_offset = Offset(dims_data, dims_num, b, y0, x0, 0);
+        size_t input_offset = Offset(dims_data, dims_num, b, y0, x0, 0);
         float scale = (1 - (input_y - y0)) * (1 - (input_x - x0));
         const float* input_ptr = &input_data[input_offset];
         ScaleDepthwise(input_ptr, depth, scale, output_ptr);
@@ -117,28 +130,31 @@ inline void ResizeBilinear(int32_t batches, int32_t input_height,
 }
 
 // Optimized implementatin of bilinear resize for 2X upscaling case.
-inline void ResizeBilinear2x2(int32_t batches, int32_t input_height,
-                              int32_t input_width, int32_t depth,
-                              int32_t output_height, int32_t output_width,
+inline void ResizeBilinear2x2(dim_t batches, dim_t input_height,
+                              dim_t input_width, dim_t depth,
+                              dim_t output_height, dim_t output_width,
                               float height_scale, float width_scale,
                               const float* input_data, float* output_data) {
-  const int input_dims_data[] = {input_height, input_width, depth};
-  const int output_dims_data[] = {output_height, output_width, depth};
+  const dim_t input_dims_data[] = {input_height, input_width, depth};
+  const dim_t output_dims_data[] = {output_height, output_width, depth};
   const int dims_num = sizeof(input_dims_data) / sizeof(input_dims_data[0]);
 
-  for (int32_t b = 0; b < batches; ++b) {
-    for (int32_t y0 = 0, y = 0; y <= output_height - 2; y += 2, ++y0) {
-      for (int32_t x0 = 0, x = 0; x <= output_width - 2; x += 2, ++x0) {
-        int32_t x1 = std::min(x0 + 1, input_width - 1);
-        int32_t y1 = std::min(y0 + 1, input_height - 1);
+  if (output_height < 2 || output_width < 2) return;
+  for (dim_t b = 0; b < batches; ++b) {
+    for (dim_t y0 = 0, y = 0; y <= output_height - 2; y += 2, ++y0) {
+      for (dim_t x0 = 0, x = 0; x <= output_width - 2; x += 2, ++x0) {
+        dim_t x1 = std::min(x0 + 1, input_width - 1);
+        dim_t y1 = std::min(y0 + 1, input_height - 1);
 
-        const int32 input_x_offset = (x1 - x0) * depth;
-        const int32 input_y_offset = (y1 - y0) * depth * input_width;
-        const int32 output_x_offset = depth;
-        const int32 output_y_offset = depth * output_width;
+        const size_t input_x_offset = static_cast<size_t>(x1 - x0) * depth;
+        const size_t input_y_offset =
+            static_cast<size_t>(y1 - y0) * depth * input_width;
+        const size_t output_x_offset = depth;
+        const size_t output_y_offset =
+            static_cast<size_t>(depth) * output_width;
 
-        for (int ch = 0; ch < depth; ++ch) {
-          const int32 input_offset =
+        for (dim_t ch = 0; ch < depth; ++ch) {
+          const size_t input_offset =
               Offset(input_dims_data, dims_num, b, y0, x0, ch);
 
           const float x0y0 = input_data[input_offset];
@@ -148,7 +164,7 @@ inline void ResizeBilinear2x2(int32_t batches, int32_t input_height,
               input_data[input_offset + input_x_offset + input_y_offset];
 
           // Calculate top left corner value.
-          const int32 output_offset =
+          const size_t output_offset =
               Offset(output_dims_data, dims_num, b, y, x, ch);
           output_data[output_offset] = x0y0;
 

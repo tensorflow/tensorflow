@@ -33,19 +33,20 @@ using ::ml_adj::data::TypeWidth;
 void FlipLeftRight(dim_t batches, dim_t input_height, dim_t input_width,
                    const char* input_data, char* output_data,
                    dim_t chunk_size) {
-  const dim_t row_stride = input_width * chunk_size;
-  const dim_t batch_stride = row_stride * input_height;
+  const size_t row_stride = static_cast<size_t>(input_width) * chunk_size;
+  const size_t batch_stride = row_stride * input_height;
 
   // Iterate over batches to flip multi-channel image.
-  for (int b = 0; b < batches; ++b) {
+  for (dim_t b = 0; b < batches; ++b) {
     const char* src_data_prt = input_data + b * batch_stride;
     char* dst_data_prt = output_data + b * batch_stride;
 
-    for (int y = 0; y < input_height; ++y) {
+    for (dim_t y = 0; y < input_height; ++y) {
       const char* src_ptr_row =
-          src_data_prt + y * row_stride + (input_width - 1) * chunk_size;
+          src_data_prt + y * row_stride +
+          static_cast<size_t>(input_width - 1) * chunk_size;
       char* dst_ptr_row = dst_data_prt + y * row_stride;
-      for (int x = 0; x < input_width; ++x) {
+      for (dim_t x = 0; x < input_width; ++x) {
         std::memcpy(dst_ptr_row, src_ptr_row, chunk_size);
 
         src_ptr_row -= chunk_size;
