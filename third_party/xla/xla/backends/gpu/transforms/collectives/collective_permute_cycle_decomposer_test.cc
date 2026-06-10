@@ -15,10 +15,8 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/collectives/collective_permute_cycle_decomposer.h"
 
-#include <cstdint>
 #include <memory>
 #include <string>
-#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
