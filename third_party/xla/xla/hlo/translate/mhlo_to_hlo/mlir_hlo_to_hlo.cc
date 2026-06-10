@@ -900,6 +900,7 @@ static xla::FrontendAttributes CreateXlaFrontendAttributesFromOp(
       op->getAttrOfType<mlir::DictionaryAttr>(xla::kMhloFrontendAttributes);
   if (!frontend_attributes_dict) return frontend_attributes;
   CreateFrontendAttributes(frontend_attributes_dict, frontend_attributes);
+  frontend_attributes.mutable_map()->erase("xla_metadata_payload");
   return frontend_attributes;
 }
 
