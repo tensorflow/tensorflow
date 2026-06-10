@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/bundle.h"
+#include "xla/python/ifrt/client_impl_util.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
@@ -396,8 +397,9 @@ absl::StatusOr<LoadedExecutable::ExecuteResult> IfrtIrLoadedExecutable::Execute(
 absl::StatusOr<LoadedExecutable::ExecuteBundleResult>
 IfrtIrLoadedExecutable::ExecuteBundle(absl::Span<BundleRef> args,
                                       const ExecuteOptions& options) {
-  return absl::UnimplementedError(
-      "ExecuteBundle is not implemented in IfrtIrLoadedExecutable");
+  return xla::ifrt::LoadedExecutableExecuteBundle(
+      this, args, options,
+      program_->compile_options->outputs_bundle_slice_sizes);
 }
 
 absl::StatusOr<absl::Span<const int>>

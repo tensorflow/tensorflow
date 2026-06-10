@@ -155,6 +155,25 @@ message CollectiveBackendConfig {
   // the operation's buffers must be allocated in (private, symmetric, or peer
   // memory).
   xla.DebugOptions.CollectivesMode collectives_mode = 6;
+
+  // Identifies which intra-node kernel strategy will be used at runtime.
+  // Set by CollectiveKernelStrategyAnnotator before scheduling so that the
+  // latency estimator can apply the correct cost model.
+  enum CollectiveKernelStrategy {
+    // Default: NCCL / RCCL ring algorithm (or unset).
+    KERNEL_STRATEGY_DEFAULT = 0;
+    // Intra-node one-shot GPU kernel using NVLink / xGMI P2P symmetric memory
+    // (size <= 256 KB).  Covers both the Triton codegen kernel and the
+    // built-in custom C++ kernel; both use the same NVLink-based cost formula
+    // so no distinction is needed in the cost model.
+    // Set by CollectiveKernelStrategyAnnotator before scheduling.
+    KERNEL_STRATEGY_TRITON_ONE_SHOT = 1;
+    // Intra-node two-shot GPU kernel using NVLink / xGMI P2P symmetric memory
+    // (256 KB < size <= 4 MB).  Same coverage as TRITON_ONE_SHOT above.
+    // Set by CollectiveKernelStrategyAnnotator before scheduling.
+    KERNEL_STRATEGY_TRITON_TWO_SHOT = 2;
+  }
+  CollectiveKernelStrategy kernel_strategy = 7;
 }
 
 // Backend config for collective metadata operation.

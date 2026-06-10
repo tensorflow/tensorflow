@@ -33,3 +33,10 @@ message CustomCallProgramProto {
   repeated ArraySpecProto input_specs = 5;
   repeated ArraySpecProto output_specs = 6;
 }
+
+// Proto equivalent of C++ `CustomCallCompileOptions`.
+message CustomCallCompileOptionsProto {
+  int32 version_number = 1;
+
+  repeated int32 outputs_bundle_slice_sizes = 2;
+}

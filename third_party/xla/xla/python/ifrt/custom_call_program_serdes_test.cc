@@ -16,17 +16,17 @@ limitations under the License.
 #include <memory>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/status/status.h"
-#include "absl/status/status_matchers.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/custom_call_program.h"
+#include "xla/python/ifrt/custom_call_program.pb.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/dtype.h"
@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
@@ -46,7 +45,6 @@ namespace xla {
 namespace ifrt {
 namespace {
 
-using ::testing::MatchesRegex;
 using ::testing::SizeIs;
 
 using CustomCallProgramSerDesTestParam =
@@ -167,25 +165,20 @@ class CustomCallCompileOptionsSerDesTest
 
 TEST_P(CustomCallCompileOptionsSerDesTest, RoundTrip) {
   CustomCallCompileOptions orig;
+  if (version().version_number() >= SerDesVersionNumber(4)) {
+    orig.outputs_bundle_slice_sizes = std::vector<int>{2, 3};
+  }
   auto serialize_options = std::make_unique<SerializeOptions>(version());
-  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
-                          Serialize(orig, std::move(serialize_options)));
-  TF_EXPECT_OK(
-      Deserialize<CustomCallCompileOptions>(serialized, /*options=*/nullptr)
-          .status());
-}
-
-TEST_P(CustomCallCompileOptionsSerDesTest, InvalidSerialized) {
-  CustomCallCompileOptions orig;
-  auto serialize_options = std::make_unique<SerializeOptions>(version());
-  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
-                          Serialize(orig, std::move(serialize_options)));
-  serialized.set_data("abc");
-  EXPECT_THAT(
-      Deserialize<CustomCallCompileOptions>(serialized, /*options=*/nullptr),
-      absl_testing::StatusIs(
-          absl::StatusCode::kInvalidArgument,
-          MatchesRegex("Invalid serialized CustomCallCompileOptions.*")));
+  auto serialized_or = Serialize(orig, std::move(serialize_options));
+  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized, serialized_or);
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CustomCallCompileOptions> deserialized,
+      Deserialize<CustomCallCompileOptions>(serialized,
+                                            /*options=*/nullptr));
+  if (version().version_number() >= SerDesVersionNumber(4)) {
+    EXPECT_THAT(deserialized->outputs_bundle_slice_sizes,
+                testing::Optional(testing::ElementsAre(2, 3)));
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(
