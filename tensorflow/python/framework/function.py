@@ -454,40 +454,12 @@ class _DefinedFunction(object):
         base_func_name += ("_%s" % self._grad_func.name)
     kwargs_attr = _parse_kwargs_as_attrs(base_func_name, **self._extra_kwargs)
 
-    # FIXME(feyu): C API is always enabled now. The if-true branch never runs.
-    if not temp_graph._c_graph:  # pylint: disable=protected-access
-      # Build the FunctionDef
-      self._definition = graph_to_function_def.graph_to_function_def(
-          temp_graph,
-          temp_graph.get_operations(),
-          temp_graph.inputs,
-          temp_graph.outputs,
-          out_names=self._out_names)
-
-      for k in kwargs_attr:
-        self._definition.attr[k].CopyFrom(kwargs_attr[k])
-
-      # Hash the definition and its dependencies.
-      self._hash_str = self._create_hash_str(
-          self._definition.signature.input_arg,
-          self._definition.signature.output_arg, self._definition.node_def)
-
-      # Finally, we decide the function name to use.  If not specified,
-      # make up something which is almost certainly unique (but deterministic).
-      if not self._func_name:
-        self._func_name = "_".join([base_func_name, self._hash_str])
-      self._definition.signature.name = self._func_name
-      if self._func.__doc__:
-        self._definition.signature.description = self._func.__doc__
-
-      self._op_def = self._definition.signature
-    else:  # C API is enabled
-      output_names = ([compat.as_bytes(x) for x in self._out_names]
-                      if self._out_names else [])
-      description = self._func.__doc__ or None
-      # pylint: disable=protected-access
-      with temp_graph._c_graph.get() as c_graph:
-        c_func = c_api.TF_GraphToFunction_wrapper(
+    output_names = ([compat.as_bytes(x) for x in self._out_names]
+                    if self._out_names else [])
+    description = self._func.__doc__ or None
+    # pylint: disable=protected-access
+    with temp_graph._c_graph.get() as c_graph:
+      c_func = c_api.TF_GraphToFunction_wrapper(
             c_graph,
             base_func_name,
             self._func_name is None,  # append_hash_to_fn_name
@@ -499,16 +471,16 @@ class _DefinedFunction(object):
             [],  # control_output_names
             None,  # opts
             description)
-      self._c_func = c_api_util.ScopedTFFunction(c_func, base_func_name)
-      # pylint: enable=protected-access
-      self._set_c_attrs(kwargs_attr)
+    self._c_func = c_api_util.ScopedTFFunction(c_func, base_func_name)
+    # pylint: enable=protected-access
+    self._set_c_attrs(kwargs_attr)
 
-      # Set cached fields: _op_def and _func_name (if not already set)
-      self._op_def = self.definition.signature
-      if self._func_name:
-        assert self._func_name == self._op_def.name
-      else:
-        self._func_name = compat.as_str(self._op_def.name)
+    # Set cached fields: _op_def and _func_name (if not already set)
+    self._op_def = self.definition.signature
+    if self._func_name:
+      assert self._func_name == self._op_def.name
+    else:
+      self._func_name = compat.as_str(self._op_def.name)
 
     self._stateful_ops = [(op.name, op.type)
                           for op in temp_graph.get_operations()
