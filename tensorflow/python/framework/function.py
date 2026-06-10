@@ -19,7 +19,6 @@ with caution.
 """
 
 import collections
-import hashlib
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
@@ -313,12 +312,10 @@ class _DefinedFunction(object):
       self._allowlisted_stateful_ops = set()
     self._capture_resource_var_by_value = capture_resource_var_by_value
     self._extra_kwargs = kwargs
-    # Constructed only when C API is disabled, lazily
     self._definition = None
-    # Constructed only when C API is enabled, lazily
     self._c_func = None
     self._function_deleter = None
-    self._sub_functions = {}  # Constructed with _definition or _c_func
+    self._sub_functions = {}
     # pylint: disable=protected-access
     device_funcs = ops.get_default_graph()._device_functions_outer_to_inner
     # pylint: enable=protected-access
@@ -326,10 +323,8 @@ class _DefinedFunction(object):
     # Get the innermost device if possible.
     self._caller_device = device_funcs[-1] if device_funcs else None
 
-    # Cached OpDef for this function. When C API is enabled, this is
-    # the only part of FunctionDef that we cache in Python. When C API
-    # is disabled the whole _definition is available and this is simply
-    # another reference to _definition.signature
+    # Cached OpDef for this function. This is the only part of
+    # FunctionDef that we cache in Python.
     self._op_def = None
 
     assert isinstance(input_types, (list, tuple))
@@ -454,61 +449,33 @@ class _DefinedFunction(object):
         base_func_name += ("_%s" % self._grad_func.name)
     kwargs_attr = _parse_kwargs_as_attrs(base_func_name, **self._extra_kwargs)
 
-    # FIXME(feyu): C API is always enabled now. The if-true branch never runs.
-    if not temp_graph._c_graph:  # pylint: disable=protected-access
-      # Build the FunctionDef
-      self._definition = graph_to_function_def.graph_to_function_def(
-          temp_graph,
-          temp_graph.get_operations(),
-          temp_graph.inputs,
-          temp_graph.outputs,
-          out_names=self._out_names)
+    output_names = ([compat.as_bytes(x) for x in self._out_names]
+                    if self._out_names else [])
+    description = self._func.__doc__ or None
+    # pylint: disable=protected-access
+    with temp_graph._c_graph.get() as c_graph:
+      c_func = c_api.TF_GraphToFunction_wrapper(
+          c_graph,
+          base_func_name,
+          self._func_name is None,  # append_hash_to_fn_name
+          None,  # opers
+          [t._as_tf_output() for t in temp_graph.inputs],
+          [t._as_tf_output() for t in temp_graph.outputs],
+          output_names,
+          [],  # control_outputs
+          [],  # control_output_names
+          None,  # opts
+          description)
+    self._c_func = c_api_util.ScopedTFFunction(c_func, base_func_name)
+    # pylint: enable=protected-access
+    self._set_c_attrs(kwargs_attr)
 
-      for k in kwargs_attr:
-        self._definition.attr[k].CopyFrom(kwargs_attr[k])
-
-      # Hash the definition and its dependencies.
-      self._hash_str = self._create_hash_str(
-          self._definition.signature.input_arg,
-          self._definition.signature.output_arg, self._definition.node_def)
-
-      # Finally, we decide the function name to use.  If not specified,
-      # make up something which is almost certainly unique (but deterministic).
-      if not self._func_name:
-        self._func_name = "_".join([base_func_name, self._hash_str])
-      self._definition.signature.name = self._func_name
-      if self._func.__doc__:
-        self._definition.signature.description = self._func.__doc__
-
-      self._op_def = self._definition.signature
-    else:  # C API is enabled
-      output_names = ([compat.as_bytes(x) for x in self._out_names]
-                      if self._out_names else [])
-      description = self._func.__doc__ or None
-      # pylint: disable=protected-access
-      with temp_graph._c_graph.get() as c_graph:
-        c_func = c_api.TF_GraphToFunction_wrapper(
-            c_graph,
-            base_func_name,
-            self._func_name is None,  # append_hash_to_fn_name
-            None,  # opers
-            [t._as_tf_output() for t in temp_graph.inputs],
-            [t._as_tf_output() for t in temp_graph.outputs],
-            output_names,
-            [],  # control_outputs
-            [],  # control_output_names
-            None,  # opts
-            description)
-      self._c_func = c_api_util.ScopedTFFunction(c_func, base_func_name)
-      # pylint: enable=protected-access
-      self._set_c_attrs(kwargs_attr)
-
-      # Set cached fields: _op_def and _func_name (if not already set)
-      self._op_def = self.definition.signature
-      if self._func_name:
-        assert self._func_name == self._op_def.name
-      else:
-        self._func_name = compat.as_str(self._op_def.name)
+    # Set cached fields: _op_def and _func_name (if not already set)
+    self._op_def = self.definition.signature
+    if self._func_name:
+      assert self._func_name == self._op_def.name
+    else:
+      self._func_name = compat.as_str(self._op_def.name)
 
     self._stateful_ops = [(op.name, op.type)
                           for op in temp_graph.get_operations()
@@ -530,51 +497,6 @@ class _DefinedFunction(object):
         c_api.TF_FunctionSetAttrValueProto(func, compat.as_str(name),
                                            serialized)
 
-  def _create_hash_str(self, input_arg, output_arg, node_def):
-    """Creates an 8-character string unique to this input.
-
-    Args:
-      input_arg: the input_arg field of an OpDef
-                 (e.g. self._definition.signature.input_arg)
-      output_arg: the output_arg field of an OpDef
-                 (e.g. self._definition.signature.output_arg)
-      node_def: the node_def field of a FunctionDef
-                (e.g. self._definition.node_def)
-
-    Returns:
-      The unique string for this input
-    """
-    hasher = hashlib.sha1()
-
-    def update_num(n):
-      hasher.update(compat.as_bytes("%x" % n))
-
-    def update_str(s):
-      update_num(len(s))
-      hasher.update(compat.as_bytes(s))
-
-    def update_strs(slist):
-      update_num(len(slist))
-      for s in slist:
-        update_str(s)
-
-    for adef in input_arg:
-      update_str(adef.SerializeToString())
-
-    for adef in output_arg:
-      update_str(adef.SerializeToString())
-
-    for n in sorted(node_def, key=lambda n: n.name):
-      update_str(n.name)
-      update_str(n.op)
-      update_strs(n.input)
-      update_num(len(n.attr))
-      # NOTE: protobuf map serialization does not guarantee ordering.
-      for k in sorted(n.attr):
-        update_str(k)
-        update_str(n.attr[k].SerializeToString())
-
-    return hasher.hexdigest()[:8]
 
   def add_to_graph(self, g):
     """Adds this function into the graph g."""
