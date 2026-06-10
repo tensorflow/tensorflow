@@ -147,7 +147,7 @@ bool AllOperationSafe(Block &block) {
     }
     // op has implict arguments not listed in operands.
     // Fact: if every op's operands are defined in the same block as op,
-    //       then no operation has implicit arugments (constant doesn't count).
+    //       then no operation has implicit arguments (constant doesn't count).
     for (auto operand : op->getOperands()) {
       if (auto arg = mlir::dyn_cast_or_null<BlockArgument>(operand)) {
         if (arg.getOwner() == &block) {
