@@ -391,8 +391,11 @@ CHECK: ROOT {{.*}} = bf16[1,4,2048,32768]{3,2,1,0} add(%[[DOT3:.*]], %[[ADD2:.*]
       .mutable_debug_options()
       .set_xla_gpu_experimental_enable_alltoall_windowed_einsum(true);
   TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
-  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
-                          RunFileCheck(module->ToString(), kExpected));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool filecheck_matched,
+      RunFileCheck(
+          module->ToString(HloPrintOptions().set_sort_backend_config(false)),
+          kExpected));
   EXPECT_TRUE(filecheck_matched);
 }
 
@@ -466,8 +469,11 @@ CHECK: ROOT {{.*}} = bf16[1,4,2048,8192]{3,2,1,0} add(%[[A2A3:.*]], %[[ADD2:.*]]
       .mutable_debug_options()
       .set_xla_gpu_experimental_enable_alltoall_windowed_einsum(true);
   TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
-  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
-                          RunFileCheck(module->ToString(), kExpected));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool filecheck_matched,
+      RunFileCheck(
+          module->ToString(HloPrintOptions().set_sort_backend_config(false)),
+          kExpected));
   EXPECT_TRUE(filecheck_matched);
 }
 
@@ -552,8 +558,11 @@ CHECK: ROOT {{.*}} = bf16[1,4,2048,32768]{3,2,1,0} add(%[[DOT3:.*]], %[[ADD2:.*]
       .set_xla_gpu_experimental_enable_alltoall_windowed_einsum(true);
   TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
   EXPECT_TRUE(changed);
-  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
-                          RunFileCheck(module->ToString(), kExpected));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool filecheck_matched,
+      RunFileCheck(
+          module->ToString(HloPrintOptions().set_sort_backend_config(false)),
+          kExpected));
   EXPECT_TRUE(filecheck_matched);
 }
 
@@ -639,8 +648,11 @@ CHECK: ROOT {{.*}} = bf16[1,4,1,1,2048,8192]{5,4,3,2,1,0} reshape(%[[RESHAPE0:.*
       .set_xla_gpu_experimental_enable_alltoall_windowed_einsum(true);
   TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
   EXPECT_TRUE(changed);
-  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
-                          RunFileCheck(module->ToString(), kExpected));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool filecheck_matched,
+      RunFileCheck(
+          module->ToString(HloPrintOptions().set_sort_backend_config(false)),
+          kExpected));
   EXPECT_TRUE(filecheck_matched);
 }
 

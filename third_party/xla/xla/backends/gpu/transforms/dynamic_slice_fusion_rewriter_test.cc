@@ -28,7 +28,9 @@ limitations under the License.
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
@@ -60,6 +62,41 @@ class DynamicSliceFusionRewriterTest : public HloHardwareIndependentTestBase {
 
  protected:
   stream_executor::Platform::Id platform_id() const { return platform_id_; }
+
+  void RunAndFilecheckHloRewrite(
+      absl::string_view hlo_with_filecheck_lines, HloPassInterface&& hlo_pass,
+      std::optional<absl::string_view> expected,
+      std::function<void(HloModule*)> after_pass_checks = nullptr,
+      const HloModuleConfig* config = nullptr,
+      absl::Span<const absl::string_view> additional_check_prefixes = {})
+      const {
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<VerifiedHloModule> module,
+        config ? ParseAndReturnVerifiedModule(hlo_with_filecheck_lines, *config)
+               : ParseAndReturnVerifiedModule(hlo_with_filecheck_lines));
+    TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&hlo_pass, module.get()));
+    EXPECT_EQ(changed, expected.has_value()) << module->ToString();
+    if (changed) {
+      TF_ASSERT_OK_AND_ASSIGN(
+          bool filecheck_matches,
+          RunFileCheck(module->ToString(HloPrintOptions()
+                                            .set_print_large_constants(true)
+                                            .set_sort_backend_config(false)),
+                       *expected, additional_check_prefixes));
+      EXPECT_TRUE(filecheck_matches) << module->ToString();
+      if (after_pass_checks) {
+        after_pass_checks(module.get());
+      }
+    }
+  }
+
+  void RunAndFilecheckHloRewrite(
+      absl::string_view hlo_with_checks, HloPassInterface&& hlo_pass,
+      std::function<void(HloModule*)> after_pass_checks,
+      const HloModuleConfig* config = nullptr) const {
+    RunAndFilecheckHloRewrite(hlo_with_checks, std::move(hlo_pass),
+                              hlo_with_checks, after_pass_checks, config);
+  }
 
  private:
   stream_executor::Platform::Id platform_id_;

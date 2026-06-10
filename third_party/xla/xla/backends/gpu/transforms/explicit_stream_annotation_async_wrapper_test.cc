@@ -56,7 +56,8 @@ TEST_F(ExplicitStreamAnnotationAsyncWrapperTest, AnnotatedOpIsWrapped) {
   ExplicitStreamAnnotationAsyncWrapper wrapper_pass;
 
   TF_ASSERT_OK_AND_ASSIGN(bool mutated, wrapper_pass.Run(module.get()));
-  absl::StatusOr<bool> filecheck_result = RunFileCheck(module->ToString({}), R"(
+  absl::StatusOr<bool> filecheck_result = RunFileCheck(
+      module->ToString(HloPrintOptions().set_sort_backend_config(false)), R"(
   // CHECK: %lhs.1 = f32[] constant(42)
   // CHECK: %call-start = ((f32[]), f32[]) call-start(%lhs.1), to_apply=%sub, frontend_attributes={_xla_stream_annotation="1"}
   // CHECK: ROOT %call-done = f32[] call-done(%call-start), frontend_attributes={_xla_stream_annotation="1"}, backend_config={"operation_queue_id":"0","force_earliest_schedule":false
@@ -102,7 +103,8 @@ TEST_F(ExplicitStreamAnnotationAsyncWrapperTest, OverlappingGemms) {
   TF_ASSERT_OK_AND_ASSIGN(bool mutated, wrapper_pass.Run(module.get()));
   ASSERT_TRUE(mutated);
 
-  absl::StatusOr<bool> filecheck_result = RunFileCheck(module->ToString({}), R"(
+  absl::StatusOr<bool> filecheck_result = RunFileCheck(
+      module->ToString(HloPrintOptions().set_sort_backend_config(false)), R"(
   // CHECK: %call-start = ((f32[2048,2048]{1,0}, f32[2048,2048]{1,0}), f32[2048,2048]{1,0}) call-start(%x, %y), to_apply=%gemm1, frontend_attributes={_scheduling_group_id="0",_xla_stream_annotation="2"}
   // CHECK: %call-done = f32[2048,2048]{1,0} call-done(%call-start), frontend_attributes={_scheduling_group_id="0",_xla_stream_annotation="2"}, backend_config={"operation_queue_id":"0","force_earliest_schedule":false
   // CHECK: %call-start.1 = ((f32[2048,2048]{1,0}, f32[2048,2048]{1,0}), f32[2048,2048]{1,0}) call-start(%x, %y), to_apply=%gemm2, frontend_attributes={_scheduling_group_id="1",_xla_stream_annotation="1"}

@@ -1539,6 +1539,7 @@ xla_cc_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder/lib:constants",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:custom_call_target_registry",
         "//xla/service:hlo_module_config",

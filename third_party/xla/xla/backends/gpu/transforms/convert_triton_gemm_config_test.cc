@@ -94,7 +94,8 @@ ENTRY entry {
 })";
 
   std::unique_ptr<VerifiedHloModule> module = RunConvertTritonGemmConfig(hlo);
-  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+  EXPECT_TRUE(*RunFileCheck(
+      module->ToString(HloPrintOptions().set_sort_backend_config(false)), R"(
     CHECK: ROOT {{.*}} = f32[8192,512]{1,0} dot(
     CHECK-SAME: backend_config={"sizes":["32"]}
     CHECK: ENTRY
@@ -153,7 +154,8 @@ ENTRY entry {
                   .Run(module.get()),
               IsOkAndHolds(true));
   EXPECT_OK(verifier().Run(module.get()).status());
-  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+  EXPECT_TRUE(*RunFileCheck(
+      module->ToString(HloPrintOptions().set_sort_backend_config(false)), R"(
     CHECK: ROOT {{.*}} = bf16[4,4]{1,0} scaled-dot({{.*}}backend_config={"sizes":["64"]}
     CHECK: ENTRY
     CHECK: ROOT{{.*}}fusion(
@@ -187,7 +189,8 @@ ENTRY entry {
 })";
 
   std::unique_ptr<VerifiedHloModule> module = RunConvertTritonGemmConfig(hlo);
-  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+  EXPECT_TRUE(*RunFileCheck(
+      module->ToString(HloPrintOptions().set_sort_backend_config(false)), R"(
     CHECK: ROOT{{.*}}fusion(
     CHECK-SAME: "block_level_fusion_config"
     CHECK-SAME: "waves_per_eu":4
