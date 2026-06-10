@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/triton_wrapper_result.h"
 
+#include <ostream>
+
 namespace xla::gpu {
 
 std::ostream& operator<<(std::ostream& os, const TritonWrapperResult& result) {
