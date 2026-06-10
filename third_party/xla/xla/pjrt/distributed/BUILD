@@ -45,6 +45,7 @@ xla_cc_test(
         ":topology_util",
         "//xla/backends/cpu:target_machine_options",
         "//xla/backends/gpu/target_config",
+        "//xla/stream_executor:device_description_proto_cc",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
