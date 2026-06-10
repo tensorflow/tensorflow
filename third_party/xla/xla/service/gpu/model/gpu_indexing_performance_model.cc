@@ -717,6 +717,7 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
         tilings.size(), " tilings.");
 
     for (const llvm::SmallVector<int64_t, 4>& tiling : tilings) {
+      VLOG(1) << "Trying tiling: " << absl::StrJoin(tiling, ",");
       std::unique_ptr<TilingSpace> tiling_space =
           TilingSpace::Create(fusion_adaptor, mlir_context_);
 
