@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <optional>
+#include <cstdint>
+#include <memory>
 #include <utility>
+#include <vector>
 
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
