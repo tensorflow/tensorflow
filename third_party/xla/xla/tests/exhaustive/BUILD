@@ -55,6 +55,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:types",
         "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/client:executable_build_options",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
@@ -73,6 +74,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:vlog_is_on",
         "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -99,6 +101,7 @@ cc_library(
     deps = [
         ":exhaustive_op_test_utils",
         "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_for_library",
         "@tsl//tsl/platform:logging",
         "@tsl//tsl/platform:test",
