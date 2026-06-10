@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/layout_assignment.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/service/matmul_indexing_utils.h"
