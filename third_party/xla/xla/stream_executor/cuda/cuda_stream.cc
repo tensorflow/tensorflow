@@ -293,17 +293,18 @@ absl::Status CudaStream::BlockHostUntilDone() {
 }
 
 absl::Status CudaStream::RefreshStatus() {
+  if (!tracing_mutex_.TryLock()) {
+    return absl::OkStatus();
+  }
+
   TraceMe trace([] { return TraceMeEncode("CudaStream::RefreshStatus", {}); },
                 /*level=*/TraceMeLevel::kVerbose);
   std::unique_ptr<ActivateContext> activation = executor_->Activate();
-  const absl::StatusOr<bool> is_capturing = StreamIsCapturing(stream_handle_);
-  // Stream querying is not allowed during graph capture.
-  // Errors during `StreamIsCapturing` itself means we will use cuStreamQuery
-  // after.
-  if (is_capturing.ok() && *is_capturing) {
-    return absl::OkStatus();
-  }
+
   CUresult res = cuStreamQuery(stream_handle_);
+
+  tracing_mutex_.Unlock();
+
   if (res == CUDA_SUCCESS || res == CUDA_ERROR_NOT_READY) {
     return absl::OkStatus();
   }

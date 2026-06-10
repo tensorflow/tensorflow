@@ -46,6 +46,14 @@ limitations under the License.
 
 namespace stream_executor {
 namespace gpu {
+
+class CudaStream_Tracing_Test {
+ public:
+  static absl::Mutex* GetMutex(CudaStream* stream) {
+    return &stream->tracing_mutex_;
+  }
+};
+
 namespace {
 
 using ::testing::Each;
@@ -379,7 +387,10 @@ TEST_F(CudaStreamTest, DoHostCallbackDuringGraphCapture) {
               absl_testing::IsOk());
 
   // Refresh status should return ok even during capture.
-  ASSERT_THAT(stream->RefreshStatus(), absl_testing::IsOk());
+  {
+    absl::MutexLock lock(CudaStream_Tracing_Test::GetMutex(stream.get()));
+    ASSERT_THAT(stream->RefreshStatus(), absl_testing::IsOk());
+  }
 
   CUgraph graph;
   ASSERT_THAT(cuda::ToStatus(cuStreamEndCapture(cu_stream, &graph)),
