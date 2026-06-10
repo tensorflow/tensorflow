@@ -6185,6 +6185,7 @@ xla_cc_test(
     srcs = ["batched_gather_scatter_normalizer_test.cc"],
     deps = [
         ":batched_gather_scatter_normalizer",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings:string_view",
