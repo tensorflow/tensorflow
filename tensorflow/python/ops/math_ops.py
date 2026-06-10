@@ -5527,6 +5527,11 @@ def polyval(coeffs, x, name=None):
     p = coeffs[0]
     for c in coeffs[1:]:
       p = c + p * x
+    # For single-coefficient polynomials, the loop above never executes,
+    # so x is unused. Add x*0 to broadcast against x's shape and
+    # propagate NaN, matching numpy.polyval behavior.
+    if len(coeffs) == 1:
+      p = p + x * 0
     return p
 
 
