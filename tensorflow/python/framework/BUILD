@@ -1400,6 +1400,7 @@ pytype_strict_library(
 py_library(
     name = "tensor_conversion_registry",
     srcs = ["tensor_conversion_registry.py"],
+    lazy_imports = True,
     strict_deps = True,
     # TODO(b/266747022): remove extra visibility
     visibility = visibility + ["//learning/brain/experimental:__subpackages__"],
