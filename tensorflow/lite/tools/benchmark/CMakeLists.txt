@@ -16,6 +16,8 @@
 
 # The benchmark tool for Tensorflow Lite.
 
+find_package(Protobuf REQUIRED)
+
 populate_source_vars("${TFLITE_SOURCE_DIR}/tools/benchmark"
   TFLITE_BENCHMARK_SRCS
   FILTER "(_test|_plus_flex_main|_performance_options.*)\\.cc$"
