@@ -284,8 +284,7 @@ cc_library(
         ":aot_utils",
         ":hlo_runner_agnostic_reference_mixin",
         "//xla/hlo/evaluator:hlo_evaluator",
-        "//xla/service:hlo_runner_interface",
-        "//xla/service:hlo_runner_pjrt",
+        "//xla/service:hlo_runner",
     ],
 )
 
@@ -3315,6 +3314,7 @@ xla_test(
         "//xla/hlo/builder/lib:arithmetic",
         "//xla/hlo/builder/lib:matrix",
         "//xla/hlo/testlib:test",
+        "//xla/service:hlo_runner_interface",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
     ],

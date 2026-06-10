@@ -33,8 +33,8 @@ jobs:
       - id: out
         shell: bash
         run: |
-          # rocm/tensorflow-build:2.22-jammy-pythonall-rocm7.2.3-ci_official
-          echo "docker-image=rocm/tensorflow-build@sha256:5261e6df4fe13264a0e4443d36a620e3b1304b89bd45853ad342fb391c3c935f" >> "$GITHUB_OUTPUT"
+          # hermetic llvm based on  ghcr.io/rocm/jax-ubu22.rocm7.2.4:latest
+          echo "docker-image=ghcr.io/rocm/jax-ubu22.rocm7.2.4@sha256:248db525342fb7438ccbc6f5f1396ec82c783f7e0ae5667cb698edcddc8fe2fd" >> "$GITHUB_OUTPUT"
 
   jax:
     needs: rocm-config
@@ -64,12 +64,12 @@ jobs:
         shell: bash
     steps:
       - name: Checking out openxla/xla
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
 
       - name: Checkout JAX
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: jax-ml/jax
           path: jax
@@ -114,7 +114,7 @@ jobs:
         shell: bash
     steps:
       - name: Checking out openxla/xla
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
 
@@ -130,7 +130,7 @@ jobs:
         run: /opt/rocm/bin/rocminfo
 
       - name: Test XLA [single_gpu]
-        timeout-minutes: 60
+        timeout-minutes: 120
         run: |
           build_tools/rocm/execute_ci_build_upstream.sh \
             --config=rocm_ci \
