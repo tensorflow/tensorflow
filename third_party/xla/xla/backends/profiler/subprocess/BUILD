@@ -13,6 +13,7 @@ cc_library(
     srcs = ["subprocess_registry.cc"],
     hdrs = ["subprocess_registry.h"],
     visibility = internal_visibility([
+        "//third_party/pathways/data_parallel/google:__pkg__",  # TODO(b/498635490): Remove this visibility once the Pathways sidecar is migrated out of internal.
         "//xla/python:__pkg__",
     ]),
     deps = [
