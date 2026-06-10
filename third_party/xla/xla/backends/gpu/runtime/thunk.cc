@@ -63,6 +63,15 @@ Thunk::ExecuteParams Thunk::ExecuteParams::Create(
     CollectiveMemory* collective_memory,
     std::vector<se::Stream*> additional_compute_streams,
     ExecutionScopedState* execution_scoped_state) {
+  const gpu::GpuExecutableRunOptions* gpu_opts =
+      run_options.run_options().gpu_executable_run_options();
+
+  bool enable_mock_collectives =
+      gpu_opts ? gpu_opts->enable_mock_collectives() : false;
+
+  uint64_t rng_seed = static_cast<uint64_t>(
+      static_cast<uint32_t>(run_options.run_options().rng_seed()));
+
   return ExecuteParams(&buffer_allocations, stream, command_buffer_trace_stream,
                        collective_params, collective_cliques, collective_memory,
                        run_options.run_options().device_to_host_stream(),
@@ -71,13 +80,8 @@ Thunk::ExecuteParams Thunk::ExecuteParams::Create(
                        run_options.run_options().recv_device_memory_function(),
                        run_options.run_options().ffi_execution_context(),
                        additional_compute_streams, execution_scoped_state,
-                       run_options.run_options().gpu_executable_run_options()
-                           ? run_options.run_options()
-                                 .gpu_executable_run_options()
-                                 ->enable_mock_collectives()
-                           : false,
-                       run_options.run_options().rng_seed(),
-                       run_options.run_options().run_id().ToInt());
+                       enable_mock_collectives,
+                       run_options.run_options().run_id().ToInt(), rng_seed);
 }
 
 Thunk::ExecuteParams Thunk::ExecuteParams::CloneWithNewAllocations(
