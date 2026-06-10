@@ -174,8 +174,8 @@ struct InTopKFunctor<GPUDevice, T, TargetT> {
 #define DEFINE_GPU_KERNELS(T, TARGET_T) \
   template struct functor::InTopKFunctor<GPUDevice, T, TARGET_T>;
 
-DEFINE_GPU_KERNELS(float, int32);
-DEFINE_GPU_KERNELS(float, int64);
+DEFINE_GPU_KERNELS(float, int32_t);
+DEFINE_GPU_KERNELS(float, int64_t);
 
 #undef DEFINE_GPU_KERNELS
 
