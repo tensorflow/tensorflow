@@ -154,6 +154,18 @@ absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
 absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromTuple(xla::Shape shape,
                                                         mlir::Builder* builder);
 
+// Extracts tilings from shapes and converts it into tiling attributes (array of
+// arrays of rank-1 index tensors). Returns an error if any of the shapes is a
+// tuple.
+absl::StatusOr<mlir::ArrayAttr> ExtractTilingsFromShapes(
+    absl::Span<const Shape> shapes_with_layouts, mlir::Builder* builder);
+
+// Extracts the tilings of each element from a tuple shape and returns them as
+// an array of tiling attributes. Returns an error in presence of nested
+// tuple shapes.
+absl::StatusOr<mlir::ArrayAttr> ExtractTilingsFromTuple(xla::Shape shape,
+                                                        mlir::Builder* builder);
+
 }  // namespace xla
 
 #endif  // XLA_HLO_TRANSLATE_HLO_TO_MHLO_ATTRIBUTE_IMPORTER_H_
