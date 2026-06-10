@@ -1690,9 +1690,12 @@ cc_library(
     hdrs = ["reduce_window_util.h"],
     deps = [
         "//xla:shape_util",
+        "//xla:side_effect_util",
         "//xla/hlo/ir:hlo",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

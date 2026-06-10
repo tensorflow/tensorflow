@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -25,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/tsl/platform/errors.h"
 
 namespace xla {
@@ -45,6 +48,61 @@ HloInstruction* GetAtIndex(HloInstruction* hlo, const ShapeIndex& shape_index) {
   CHECK_EQ(shape_index.size(), 1);
   return hlo->parent()->AddInstruction(HloInstruction::CreateGetTupleElement(
       ShapeAtIndex(hlo->shape(), shape_index), hlo, shape_index.back()));
+}
+
+// Memoized recursive helper for GetSparseCoreComputations. Tracks whether each
+// computation was already determined to be on SparseCore to avoid redundant
+// graph traversals.
+static bool IsSparseCoreComputationMemoized(
+    const HloComputation* computation,
+    absl::flat_hash_map<const HloComputation*, bool>& memo) {
+  if (auto it = memo.find(computation); it != memo.end()) {
+    return it->second;
+  }
+  memo[computation] = false;
+
+  if (computation->execution_thread() ==
+      HloInstruction::kSparseCoreExecutionThread) {
+    memo[computation] = true;
+    return true;
+  }
+
+  auto has_sparse_compute_type = [](const HloInstruction* inst) {
+    auto it = inst->frontend_attributes().map().find(kXlaComputeTypeAttr);
+    return it != inst->frontend_attributes().map().end() &&
+           (it->second == kXlaComputeTypeSparse ||
+            it->second == kXlaComputeTypeSparseOffload);
+  };
+
+  for (const HloInstruction* instruction : computation->instructions()) {
+    if (has_sparse_compute_type(instruction)) {
+      memo[computation] = true;
+      return true;
+    }
+  }
+  for (const HloInstruction* caller : computation->caller_instructions()) {
+    if (has_sparse_compute_type(caller)) {
+      memo[computation] = true;
+      return true;
+    }
+    if (IsSparseCoreComputationMemoized(caller->parent(), memo)) {
+      memo[computation] = true;
+      return true;
+    }
+  }
+  return false;
+}
+
+absl::flat_hash_set<const HloComputation*> GetSparseCoreComputations(
+    const HloModule& module) {
+  absl::flat_hash_map<const HloComputation*, bool> memo;
+  absl::flat_hash_set<const HloComputation*> sparse_core_comps;
+  for (const HloComputation* computation : module.computations()) {
+    if (IsSparseCoreComputationMemoized(computation, memo)) {
+      sparse_core_comps.insert(computation);
+    }
+  }
+  return sparse_core_comps;
 }
 
 absl::Status Replace1DReduceWindowWithReshape(
