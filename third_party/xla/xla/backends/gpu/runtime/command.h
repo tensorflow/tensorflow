@@ -165,6 +165,10 @@ class Command : public Thunk {
   // recorded into a command buffer.
   virtual bool requires_warmup() const { return false; }
 
+  // Returns true if command buffer command parameters can change even when
+  // buffer allocation base addresses are unchanged.
+  virtual bool requires_update() const { return false; }
+
   // Returns true if this command is implemented via CUDA stream activity
   // tracing (i.e. a subclass of TracedCommand).
   virtual bool IsTracedCommand() const { return false; }

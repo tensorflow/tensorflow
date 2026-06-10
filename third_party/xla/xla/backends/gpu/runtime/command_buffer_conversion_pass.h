@@ -52,6 +52,9 @@ class CommandBufferConversionPass : public ThunkPassInterface {
     // remove that flag and enable all supported commands by default.
     absl::flat_hash_set<DebugOptions::CommandBufferCmdType> enabled_commands;
     const se::DeviceDescription& device_description;
+    DebugOptions::CommandBufferUpdateMode update_mode =
+        DebugOptions::ALWAYS_UPDATE;
+    bool enable_loop_unroll = false;
     // Number of devices in a fast-interconnect domain (host/node).
     // 0 means unknown.
     int64_t num_local_devices = 0;
