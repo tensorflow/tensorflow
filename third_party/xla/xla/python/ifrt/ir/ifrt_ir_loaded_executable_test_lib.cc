@@ -21,6 +21,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
@@ -29,11 +31,13 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
@@ -50,6 +54,7 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/ifrt/topology.h"
+#include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -2483,6 +2488,188 @@ module {
   ASSERT_EQ(result.outputs[1]->dtype(), DType(DType::kToken));
   ASSERT_EQ(result.outputs[1]->shape(), Shape({}));
   ASSERT_TRUE(result.outputs[1]->sharding().IsFullyReplicated());
+}
+
+TEST_F(IfrtIrLoadedExecutableTest,
+       CompileAndExecuteBundleThreeInputsOutputsSplitBundle) {
+  std::string source = R"(
+!array = !ifrt.array<tensor<2x3xf32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                     [0,1]>
+module {
+  func.func @main(%arg0: !array, %arg1: !array, %arg2: !array)
+      -> (!array, !array, !array) attributes {ifrt.function} {
+    %0, %1, %2, %ctrl_0 = ifrt.Call @add_stuff(%arg0, %arg1, %arg2) on devices [0,1]
+        : (!array, !array, !array) -> (!array, !array, !array)
+    return %0, %1, %2 : !array, !array, !array
+  }
+
+  func.func private @add_stuff(%arg0: tensor<2x3xf32>, %arg1: tensor<2x3xf32>,
+                               %arg2: tensor<2x3xf32>)
+      -> (tensor<2x3xf32>, tensor<2x3xf32>, tensor<2x3xf32>) {
+    %c100 = stablehlo.constant dense<1.000000e+02> : tensor<2x3xf32>
+    %c200 = stablehlo.constant dense<2.000000e+02> : tensor<2x3xf32>
+    %c300 = stablehlo.constant dense<3.000000e+02> : tensor<2x3xf32>
+    %out0 = stablehlo.add %arg0, %c100 : tensor<2x3xf32>
+    %out1 = stablehlo.add %arg1, %c200 : tensor<2x3xf32>
+    %out2 = stablehlo.add %arg2, %c300 : tensor<2x3xf32>
+    return %out0, %out1, %out2 : tensor<2x3xf32>, tensor<2x3xf32>, tensor<2x3xf32>
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+
+  // Output bundle split: 2 bundles of sizes 2 and 1.
+  auto compile_options =
+      std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices));
+  compile_options->outputs_bundle_slice_sizes = {2, 1};
+  ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_exec,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(std::make_unique<IfrtIRProgram>(*mlir_module),
+                           std::move(compile_options))
+          .Await());
+
+  DType dtype(DType::kF32);
+  Shape shard_shape({1, 3});
+  Shape shape({2, 3});
+
+  std::vector<ArrayRef> input_arrays;
+  input_arrays.reserve(3);
+  const float kPerArrayIncrement = 10.0f;
+  for (int i = 0; i < 3; ++i) {
+    std::vector<float> data0(3);
+    absl::c_iota(data0, i * kPerArrayIncrement);
+    std::vector<float> data1(3);
+    absl::c_iota(data1, i * kPerArrayIncrement + 3);
+    ASSERT_OK_AND_ASSIGN(ArrayRef array,
+                         CreateArray({data0.data(), data1.data()}, shape,
+                                     shard_shape, dtype, devices));
+    input_arrays.push_back(array);
+  }
+
+  // 2 input bundles: sizes 1 and 2.
+  std::vector<ValueRef> values1 = {input_arrays[0]};
+  ASSERT_OK_AND_ASSIGN(BundleRef input_bundle1,
+                       client_->Bundle(absl::MakeSpan(values1),
+                                       ArrayCopySemantics::kReuseInput));
+
+  std::vector<ValueRef> values2 = {input_arrays[1], input_arrays[2]};
+  ASSERT_OK_AND_ASSIGN(BundleRef input_bundle2,
+                       client_->Bundle(absl::MakeSpan(values2),
+                                       ArrayCopySemantics::kReuseInput));
+
+  std::vector<BundleRef> input_bundles = {input_bundle1, input_bundle2};
+
+  ExecuteOptions execute_options;
+  execute_options.fill_status = true;
+
+  {
+    ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteBundleResult result,
+                         loaded_exec->ExecuteBundle(
+                             absl::MakeSpan(input_bundles), execute_options));
+    ASSERT_OK(result.status.Await());
+    ASSERT_EQ(result.outputs.size(), 2);
+    EXPECT_EQ(result.outputs[0]->num_values(), 2);
+    EXPECT_EQ(result.outputs[1]->num_values(), 1);
+
+    ASSERT_OK_AND_ASSIGN(
+        std::vector<ValueRef> retrieved_outputs0,
+        result.outputs[0]->GetValues(ArrayCopySemantics::kReuseInput));
+    ASSERT_EQ(retrieved_outputs0.size(), 2);
+
+    ASSERT_OK_AND_ASSIGN(
+        std::vector<ValueRef> retrieved_outputs1,
+        result.outputs[1]->GetValues(ArrayCopySemantics::kReuseInput));
+    ASSERT_EQ(retrieved_outputs1.size(), 1);
+
+    std::vector<ValueRef> all_outputs;
+    all_outputs.reserve(3);
+    all_outputs.insert(all_outputs.end(), retrieved_outputs0.begin(),
+                       retrieved_outputs0.end());
+    all_outputs.insert(all_outputs.end(), retrieved_outputs1.begin(),
+                       retrieved_outputs1.end());
+
+    for (int i = 0; i < 3; ++i) {
+      auto* out_array = llvm::dyn_cast<Array>(all_outputs[i].get());
+      ASSERT_NE(out_array, nullptr);
+      ArrayRef out_array_ref = tsl::FormRef(out_array);
+
+      std::vector<float> expected_data0 = {
+          i * kPerArrayIncrement + (i + 1) * 100 + 0,
+          i * kPerArrayIncrement + (i + 1) * 100 + 1,
+          i * kPerArrayIncrement + (i + 1) * 100 + 2};
+      std::vector<float> expected_data1 = {
+          i * kPerArrayIncrement + (i + 1) * 100 + 3,
+          i * kPerArrayIncrement + (i + 1) * 100 + 4,
+          i * kPerArrayIncrement + (i + 1) * 100 + 5};
+
+      ASSERT_NO_FATAL_FAILURE(
+          AssertPerShardData<float>(out_array_ref, dtype, shard_shape,
+                                    {expected_data0, expected_data1}, devices));
+    }
+  }
+
+  // Test the execution after serialization and deserialization to verify that
+  // `outputs_bundle_slice_sizes` is correctly applied across the roundtrip.
+  {
+    ASSERT_OK_AND_ASSIGN(std::string serialized_executable,
+                         loaded_exec->Serialize());
+
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<DeserializeIfrtIRProgramOptions> options,
+        GetDeserializeOptions(devices));
+    ASSERT_OK_AND_ASSIGN(std::shared_ptr<LoadedExecutable> deserialized_exec,
+                         client_->GetDefaultCompiler()
+                             ->DeserializeLoadedExecutable(
+                                 serialized_executable, std::move(options))
+                             .Await());
+
+    ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteBundleResult result,
+                         deserialized_exec->ExecuteBundle(
+                             absl::MakeSpan(input_bundles), execute_options));
+    ASSERT_OK(result.status.Await());
+    ASSERT_EQ(result.outputs.size(), 2);
+    EXPECT_EQ(result.outputs[0]->num_values(), 2);
+    EXPECT_EQ(result.outputs[1]->num_values(), 1);
+
+    ASSERT_OK_AND_ASSIGN(
+        std::vector<ValueRef> retrieved_outputs0,
+        result.outputs[0]->GetValues(ArrayCopySemantics::kReuseInput));
+    ASSERT_EQ(retrieved_outputs0.size(), 2);
+
+    ASSERT_OK_AND_ASSIGN(
+        std::vector<ValueRef> retrieved_outputs1,
+        result.outputs[1]->GetValues(ArrayCopySemantics::kReuseInput));
+    ASSERT_EQ(retrieved_outputs1.size(), 1);
+
+    std::vector<ValueRef> all_outputs;
+    all_outputs.reserve(3);
+    all_outputs.insert(all_outputs.end(), retrieved_outputs0.begin(),
+                       retrieved_outputs0.end());
+    all_outputs.insert(all_outputs.end(), retrieved_outputs1.begin(),
+                       retrieved_outputs1.end());
+
+    for (int i = 0; i < 3; ++i) {
+      auto* out_array = llvm::dyn_cast<Array>(all_outputs[i].get());
+      ASSERT_NE(out_array, nullptr);
+      ArrayRef out_array_ref = tsl::FormRef(out_array);
+
+      std::vector<float> expected_data0 = {
+          i * kPerArrayIncrement + (i + 1) * 100 + 0,
+          i * kPerArrayIncrement + (i + 1) * 100 + 1,
+          i * kPerArrayIncrement + (i + 1) * 100 + 2};
+      std::vector<float> expected_data1 = {
+          i * kPerArrayIncrement + (i + 1) * 100 + 3,
+          i * kPerArrayIncrement + (i + 1) * 100 + 4,
+          i * kPerArrayIncrement + (i + 1) * 100 + 5};
+
+      ASSERT_NO_FATAL_FAILURE(
+          AssertPerShardData<float>(out_array_ref, dtype, shard_shape,
+                                    {expected_data0, expected_data1}, devices));
+    }
+  }
 }
 
 }  // namespace
