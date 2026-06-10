@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_PROFILER_CPU_METADATA_UTILS_H_
 #define XLA_BACKENDS_PROFILER_CPU_METADATA_UTILS_H_
 
+#include "absl/log/log.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/tsl/profiler/convert/xla_op_utils.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
@@ -35,6 +36,11 @@ class MetadataXPlaneBuilder {
             GetStatTypeStr(tsl::profiler::StatType::kProgramId))) {}
 
   void AddHloProto(uint64_t program_id, const xla::HloProto& hlo_proto) {
+    if (hlo_proto.ByteSizeLong() > 2000000000) {
+      LOG(WARNING) << "HloProto too large to serialize: "
+                   << hlo_proto.ByteSizeLong() << " bytes. Skipping.";
+      return;
+    }
     auto name = tsl::profiler::HloModuleNameWithProgramId(
         hlo_proto.hlo_module().name(), program_id);
     tsl::profiler::XEventMetadata* event_metadata =

@@ -383,5 +383,39 @@ TEST_F(KernelArgumentsTest, UnmanagedArguments) {
                           kUnmanaged, kUnmanaged));
 }
 
+TEST_F(KernelArgumentsTest,
+       NoInvariantFrontendAnnotationPropagatesToArguments) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+    e {
+      a = s4[5] parameter(0)
+      b = s4[6] parameter(1)
+      c = s4[7] parameter(2)
+      t = tuple(c, b, a),
+        frontend_attributes={xla.no_invariant_operands="0,2"}
+    }
+  )"));
+  AliasInfo alias_info;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> assignment,
+      BufferAssigner::Run(
+          module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
+          &BufferSizeBytes, &alias_info, [](LogicalBuffer::Color) { return 0; },
+          BufferAssigner::Options{.allocate_buffers_for_constants = true}));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto kernel_arguments,
+      KernelArguments::Create(*assignment, gpu::GetDefaultBufferAlignment(),
+                              module->entry_computation()->root_instruction()));
+
+  std::vector<bool> invariant_flags;
+  invariant_flags.reserve(kernel_arguments.args().size());
+  for (const KernelArgument& arg : kernel_arguments.args()) {
+    invariant_flags.push_back(arg.invariant());
+  }
+  EXPECT_THAT(invariant_flags,
+              ElementsAre(false, true, false, true, true, true));
+}
+
 }  // namespace
 }  // namespace xla::emitters

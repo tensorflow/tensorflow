@@ -122,6 +122,7 @@ cc_library(
         "//xla/tsl/profiler/convert:xla_op_utils",
         "//xla/tsl/profiler/utils:xplane_builder",
         "//xla/tsl/profiler/utils:xplane_schema",
+        "@com_google_absl//absl/log",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
