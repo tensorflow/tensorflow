@@ -57,6 +57,7 @@ cc_library(
         "//xla:shape_util",
         "//xla/hlo/analysis:hlo_alias_analysis",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_instruction_utils",
         "//xla/service:hlo_buffer",
         "//xla/service:hlo_value",
         "@com_google_absl//absl/algorithm:container",
