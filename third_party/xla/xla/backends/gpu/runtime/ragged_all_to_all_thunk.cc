@@ -184,11 +184,11 @@ RaggedAllToAllConfig GetRaggedAllToAllConfig(
 // memory.
 absl::Status LoadRaggedTensorMetadata(
     se::Stream& stream, absl::Span<DeviceBufferPair const> buffers,
-    absl::Span<int64_t* const> ragged_metadata_allocs) {
+    absl::Span<se::DeviceAddressBase const> ragged_metadata_allocs) {
   for (int64_t i = 0; i < kNumRaggedMetadataOperands; ++i) {
-    RETURN_IF_ERROR(stream.Memcpy(ragged_metadata_allocs[i],
+    RETURN_IF_ERROR(stream.Memcpy(ragged_metadata_allocs[i].opaque(),
                                   buffers[i + 2].source_buffer,
-                                  buffers[i + 2].source_buffer.size()));
+                                  ragged_metadata_allocs[i].size()));
   }
 
   // Wait for the copies to complete.
@@ -350,6 +350,151 @@ absl::Status CheckRaggedAllToAllBounds(
       << min_expected_recv_bytes << "/" << actual_output_size;
 
   return absl::OkStatus();
+}
+
+// Executes a generic Ragged All-to-All collective operation using the provided
+// communicator (e.g., NCCL).
+//
+// This function handles the "multi-step" coordination required for ragged
+// data:
+// 1. Exchanges metadata (data sizes) between ranks using the provided host
+//    buffers (`ragged_metadata_allocs`).
+// 2. Calculates the necessary output offsets based on the exchanged sizes.
+// 3. Populates `output_offsets_device_buffer` on the device.
+// 4. Performs the actual data transfer into the destination buffers.
+//
+// Arguments:
+//  - ragged_metadata_allocs: Host-side pointers used to exchange row sizes
+//    between ranks before the main data transfer.
+//  - output_offsets_device_buffer: Device buffer where the calculated
+//    destination offsets will be written.
+absl::Status RunRaggedAllToAll(
+    int64_t ragged_row_element_size, int64_t num_total_updates,
+    const std::vector<DeviceBufferPair>& original_buffers, se::Stream& stream,
+    Communicator& comm,
+    absl::Span<se::DeviceAddressBase const> ragged_metadata_allocs,
+    const se::DeviceAddressBase& output_offsets_device_buffer,
+    CollectiveThunk::CollectivesMode collectives_mode,
+    SymmetricMemory* output_symmetric_memory, size_t output_base_offset) {
+  int device_ordinal = stream.parent()->device_ordinal();
+  XLA_VLOG_DEVICE(3, device_ordinal)
+      << "Performing ragged-all-to-all from device ordinal: " << device_ordinal;
+  ASSIGN_OR_RETURN(int32_t num_ranks, comm.NumRanks());
+
+  std::vector<DeviceBufferPair> buffers = original_buffers;
+
+  int64_t num_updates_per_replica = num_total_updates / num_ranks;
+
+  bool use_put_path =
+      collectives_mode == DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY &&
+      output_symmetric_memory != nullptr;
+
+  if (!use_put_path) {
+    // `output_offsets` of the RaggedAllToAll instruction are sharded in a way,
+    // that `output_offset[i]` is an offset in the i-th peer output buffer. To
+    // make it work for NCCL model with send/recv, we need to know offsets in
+    // the local output buffer. To get the correct offsets we perform an
+    // AllToAll on the output_offsets buffer.
+    DeviceBufferPair& output_offsets_buffer_pair = buffers[4];
+    RETURN_IF_ERROR(RunAllToAllOnIndexBuffer(
+        output_offsets_buffer_pair.source_buffer, num_updates_per_replica,
+        output_offsets_device_buffer, output_offsets_buffer_pair.element_type,
+        stream, comm));
+    output_offsets_buffer_pair.source_buffer = output_offsets_device_buffer;
+  }
+
+  RETURN_IF_ERROR(
+      LoadRaggedTensorMetadata(stream, buffers, ragged_metadata_allocs));
+
+  const int64_t* input_offsets =
+      reinterpret_cast<const int64_t*>(ragged_metadata_allocs[0].opaque());
+  const int64_t* send_sizes =
+      reinterpret_cast<const int64_t*>(ragged_metadata_allocs[1].opaque());
+  const int64_t* output_offsets =
+      reinterpret_cast<const int64_t*>(ragged_metadata_allocs[2].opaque());
+
+  if (use_put_path) {
+    XLA_VLOG_DEVICE(3, device_ordinal)
+        << "RunRaggedAllToAll: using Put+Signal path";
+    PrimitiveType element_type = buffers[0].element_type;
+    int64_t element_byte_width = primitive_util::ByteWidth(element_type);
+    se::DeviceAddressBase input_buffer = buffers[0].source_buffer;
+
+    auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
+    Future<> future = gpu_comm->GroupExecute([&]() -> absl::Status {
+      for (int peer = 0; peer < num_ranks; ++peer) {
+        for (int64_t i = 0; i < num_updates_per_replica; ++i) {
+          const int64_t idx = peer * num_updates_per_replica + i;
+          const int64_t send_count = send_sizes[idx] * ragged_row_element_size;
+
+          const se::DeviceAddressBase send_slice = GpuCollectives::Slice(
+              input_buffer, element_type,
+              input_offsets[idx] * ragged_row_element_size, send_count);
+
+          const size_t byte_offset =
+              output_base_offset + output_offsets[idx] *
+                                       ragged_row_element_size *
+                                       element_byte_width;
+          const size_t byte_count = send_count * element_byte_width;
+
+          RETURN_IF_ERROR(gpu_comm->LaunchPut(
+              send_slice, output_symmetric_memory, byte_offset, byte_count,
+              RankId(peer), GpuCollectives::On(stream)));
+        }
+      }
+      return absl::OkStatus();
+    });
+    RETURN_IF_ERROR(future.Await());
+
+    GpuSignalDesc signal_desc(/*sig_idx=*/0, /*ctx=*/0);
+    for (int peer = 0; peer < num_ranks; ++peer) {
+      RETURN_IF_ERROR(comm.WaitSignal(RankId(peer),
+                                      /*op_cnt=*/num_updates_per_replica,
+                                      signal_desc, GpuCollectives::On(stream))
+                          .Await());
+    }
+
+    return absl::OkStatus();
+  }
+
+  XLA_VLOG_DEVICE(3, device_ordinal)
+      << "RunRaggedAllToAll: using Send/Recv path";
+  const int64_t* recv_sizes =
+      reinterpret_cast<const int64_t*>(ragged_metadata_allocs[3].opaque());
+
+  auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
+  Future<> future = gpu_comm->GroupExecute([&]() -> absl::Status {
+    PrimitiveType element_type = buffers[0].element_type;
+
+    se::DeviceAddressBase input_buffer = buffers[0].source_buffer;
+    se::DeviceAddressBase output_buffer = buffers[1].destination_buffer;
+
+    for (int64_t i = 0; i < num_updates_per_replica; ++i) {
+      for (int peer = 0; peer < num_ranks; ++peer) {
+        int64_t idx = peer * num_updates_per_replica + i;
+        se::DeviceAddressBase send_slice =
+            GpuCollectives::Slice(input_buffer, element_type,
+                                  input_offsets[idx] * ragged_row_element_size,
+                                  send_sizes[idx] * ragged_row_element_size);
+
+        se::DeviceAddressBase recv_slice =
+            GpuCollectives::Slice(output_buffer, element_type,
+                                  output_offsets[idx] * ragged_row_element_size,
+                                  recv_sizes[idx] * ragged_row_element_size);
+
+        RETURN_IF_ERROR(gpu_comm->LaunchSend(
+            send_slice, element_type, send_sizes[idx] * ragged_row_element_size,
+            RankId(peer), GpuCollectives::On(stream)));
+
+        RETURN_IF_ERROR(gpu_comm->LaunchRecv(
+            recv_slice, element_type, recv_sizes[idx] * ragged_row_element_size,
+            RankId(peer), GpuCollectives::On(stream)));
+      }
+    }
+
+    return absl::OkStatus();
+  });
+  return future.Await();
 }
 
 }  // namespace
@@ -823,11 +968,10 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
 
   // Get buffer allocs to load sizes and offsets of ragged tensors from device
   // memory.
-  absl::InlinedVector<int64_t*, 8> ragged_metadata_allocs;
+  absl::InlinedVector<se::DeviceAddressBase, 8> ragged_metadata_allocs;
   ragged_metadata_allocs.reserve(kNumRaggedMetadataOperands);
   for (int64_t i = 0; i < kNumRaggedMetadataOperands; ++i) {
-    ragged_metadata_allocs.push_back(reinterpret_cast<int64_t*>(
-        state->host_buffer_allocs[i]->address().opaque()));
+    ragged_metadata_allocs.push_back(state->host_buffer_allocs[i]->address());
   }
 
   SymmetricMemory* output_sym_mem = nullptr;
@@ -910,130 +1054,6 @@ absl::Status RaggedAllToAllThunk::PrepareCollective(
   }
 
   return absl::OkStatus();
-}
-
-absl::Status RunRaggedAllToAll(
-    int64_t ragged_row_element_size, int64_t num_total_updates,
-    const std::vector<DeviceBufferPair>& original_buffers, se::Stream& stream,
-    Communicator& comm, absl::Span<int64_t* const> ragged_metadata_allocs,
-    const se::DeviceAddressBase& output_offsets_device_buffer,
-    CollectiveThunk::CollectivesMode collectives_mode,
-    SymmetricMemory* output_symmetric_memory, size_t output_base_offset) {
-  int device_ordinal = stream.parent()->device_ordinal();
-  XLA_VLOG_DEVICE(3, device_ordinal)
-      << "Performing ragged-all-to-all from device ordinal: " << device_ordinal;
-  ASSIGN_OR_RETURN(int32_t num_ranks, comm.NumRanks());
-
-  std::vector<DeviceBufferPair> buffers = original_buffers;
-
-  int64_t num_updates_per_replica = num_total_updates / num_ranks;
-
-  bool use_put_path =
-      collectives_mode == DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY &&
-      output_symmetric_memory != nullptr;
-
-  if (!use_put_path) {
-    // `output_offsets` of the RaggedAllToAll instruction are sharded in a way,
-    // that `output_offset[i]` is an offset in the i-th peer output buffer. To
-    // make it work for NCCL model with send/recv, we need to know offsets in
-    // the local output buffer. To get the correct offsets we perform an
-    // AllToAll on the output_offsets buffer.
-    DeviceBufferPair& output_offsets_buffer_pair = buffers[4];
-    RETURN_IF_ERROR(RunAllToAllOnIndexBuffer(
-        output_offsets_buffer_pair.source_buffer, num_updates_per_replica,
-        output_offsets_device_buffer, output_offsets_buffer_pair.element_type,
-        stream, comm));
-    output_offsets_buffer_pair.source_buffer = output_offsets_device_buffer;
-  }
-
-  RETURN_IF_ERROR(
-      LoadRaggedTensorMetadata(stream, buffers, ragged_metadata_allocs));
-
-  const int64_t* input_offsets = ragged_metadata_allocs[0];
-  const int64_t* send_sizes = ragged_metadata_allocs[1];
-  const int64_t* output_offsets = ragged_metadata_allocs[2];
-
-  if (use_put_path) {
-    XLA_VLOG_DEVICE(3, device_ordinal)
-        << "RunRaggedAllToAll: using Put+Signal path";
-    PrimitiveType element_type = buffers[0].element_type;
-    int64_t element_byte_width = primitive_util::ByteWidth(element_type);
-    se::DeviceAddressBase input_buffer = buffers[0].source_buffer;
-
-    auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
-    Future<> future = gpu_comm->GroupExecute([&]() -> absl::Status {
-      for (int peer = 0; peer < num_ranks; ++peer) {
-        for (int64_t i = 0; i < num_updates_per_replica; ++i) {
-          const int64_t idx = peer * num_updates_per_replica + i;
-          const int64_t send_count = send_sizes[idx] * ragged_row_element_size;
-
-          const se::DeviceAddressBase send_slice = GpuCollectives::Slice(
-              input_buffer, element_type,
-              input_offsets[idx] * ragged_row_element_size, send_count);
-
-          const size_t byte_offset =
-              output_base_offset + output_offsets[idx] *
-                                       ragged_row_element_size *
-                                       element_byte_width;
-          const size_t byte_count = send_count * element_byte_width;
-
-          RETURN_IF_ERROR(gpu_comm->LaunchPut(
-              send_slice, output_symmetric_memory, byte_offset, byte_count,
-              RankId(peer), GpuCollectives::On(stream)));
-        }
-      }
-      return absl::OkStatus();
-    });
-    RETURN_IF_ERROR(future.Await());
-
-    GpuSignalDesc signal_desc(/*sig_idx=*/0, /*ctx=*/0);
-    for (int peer = 0; peer < num_ranks; ++peer) {
-      RETURN_IF_ERROR(comm.WaitSignal(RankId(peer),
-                                      /*op_cnt=*/num_updates_per_replica,
-                                      signal_desc, GpuCollectives::On(stream))
-                          .Await());
-    }
-
-    return absl::OkStatus();
-  }
-
-  XLA_VLOG_DEVICE(3, device_ordinal)
-      << "RunRaggedAllToAll: using Send/Recv path";
-  const int64_t* recv_sizes = ragged_metadata_allocs[3];
-
-  auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
-  Future<> future = gpu_comm->GroupExecute([&]() -> absl::Status {
-    PrimitiveType element_type = buffers[0].element_type;
-
-    se::DeviceAddressBase input_buffer = buffers[0].source_buffer;
-    se::DeviceAddressBase output_buffer = buffers[1].destination_buffer;
-
-    for (int64_t i = 0; i < num_updates_per_replica; ++i) {
-      for (int peer = 0; peer < num_ranks; ++peer) {
-        int64_t idx = peer * num_updates_per_replica + i;
-        se::DeviceAddressBase send_slice =
-            GpuCollectives::Slice(input_buffer, element_type,
-                                  input_offsets[idx] * ragged_row_element_size,
-                                  send_sizes[idx] * ragged_row_element_size);
-
-        se::DeviceAddressBase recv_slice =
-            GpuCollectives::Slice(output_buffer, element_type,
-                                  output_offsets[idx] * ragged_row_element_size,
-                                  recv_sizes[idx] * ragged_row_element_size);
-
-        RETURN_IF_ERROR(gpu_comm->LaunchSend(
-            send_slice, element_type, send_sizes[idx] * ragged_row_element_size,
-            RankId(peer), GpuCollectives::On(stream)));
-
-        RETURN_IF_ERROR(gpu_comm->LaunchRecv(
-            recv_slice, element_type, recv_sizes[idx] * ragged_row_element_size,
-            RankId(peer), GpuCollectives::On(stream)));
-      }
-    }
-
-    return absl::OkStatus();
-  });
-  return future.Await();
 }
 
 struct CharFormatter {

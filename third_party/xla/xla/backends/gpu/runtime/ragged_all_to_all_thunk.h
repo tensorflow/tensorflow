@@ -238,31 +238,6 @@ RendezvousResources(int device_ordinal, RankId rank,
                     const se::DeviceAddressBase& output_buffer,
                     const se::DeviceAddressBase& barrier_signal_buffer);
 
-// Executes a generic Ragged All-to-All collective operation using the provided
-// communicator (e.g., NCCL).
-//
-// This function handles the "multi-step" coordination required for ragged
-// data:
-// 1. Exchanges metadata (data sizes) between ranks using the provided host
-//    buffers (`ragged_metadata_allocs`).
-// 2. Calculates the necessary output offsets based on the exchanged sizes.
-// 3. Populates `output_offsets_device_buffer` on the device.
-// 4. Performs the actual data transfer into the destination buffers.
-//
-// Arguments:
-//  - ragged_metadata_allocs: Host-side pointers used to exchange row sizes
-//    between ranks before the main data transfer.
-//  - output_offsets_device_buffer: Device buffer where the calculated
-//    destination offsets will be written.
-absl::Status RunRaggedAllToAll(
-    int64_t ragged_row_element_size, int64_t num_total_updates,
-    const std::vector<DeviceBufferPair>& original_buffers, se::Stream& stream,
-    Communicator& comm, absl::Span<int64_t* const> ragged_metadata_allocs,
-    const se::DeviceAddressBase& output_offsets_device_buffer,
-    CollectiveThunk::CollectivesMode collectives_mode,
-    SymmetricMemory* output_symmetric_memory = nullptr,
-    size_t output_base_offset = 0);
-
 // Executes an optimized "One-Shot" Ragged All-to-All collective.
 //
 // Unlike the standard implementation, this approach consolidates the
