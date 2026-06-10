@@ -30,8 +30,10 @@ limitations under the License.
 #include <sys/types.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <iterator>
 #include <memory>
@@ -389,6 +391,27 @@ class Batch {
   void operator=(const Batch&) = delete;
 };
 
+// A snapshot of the per-criticality state of a priority-aware task queue.
+// Used by schedulers that maintain a criticality-ordered queue (i.e. when
+// `enable_priority_aware_batch_scheduler` is true) to export per-criticality
+// queue utilization metrics. The criticality bands are indexed by
+// static_cast<int>(tsl::criticality::Criticality), i.e. the order is
+// [kSheddable, kSheddablePlus, kCritical, kCriticalPlus].
+struct PriorityQueueState {
+  // The number of distinct criticality bands. Canonically defined next to the
+  // `Criticality` enum in tsl/platform/criticality.h; re-exported here to size
+  // the per-criticality arrays below.
+  static constexpr int kNumCriticalities = tsl::criticality::kNumCriticalities;
+
+  // Current number of enqueued tasks per criticality.
+  std::array<int, kNumCriticalities> num_tasks = {};
+  // Current summed size (sum of task sizes) of enqueued tasks per criticality.
+  std::array<size_t, kNumCriticalities> size = {};
+  // The maximum queue depth (capacity, in summed task size), shared across all
+  // criticalities.
+  size_t max_queue_depth = 0;
+};
+
 // An abstract batch scheduler class. Collects individual tasks into batches,
 // and processes each batch on a pool of "batch threads" that it manages. The
 // actual logic for processing a batch is accomplished via a callback.
@@ -443,6 +466,14 @@ class BatchScheduler {
   // Returns the maximum allowed size of tasks submitted to the scheduler. (This
   // is typically equal to a configured maximum batch size.)
   virtual size_t max_task_size() const = 0;
+
+  // Returns a snapshot of the per-criticality state of the scheduler's
+  // priority-aware task queue, or nullopt if this scheduler does not maintain
+  // such a queue (e.g. `enable_priority_aware_batch_scheduler` is false).
+  // Intended for monitoring/metrics export.
+  virtual std::optional<PriorityQueueState> GetPriorityQueueState() const {
+    return std::nullopt;
+  }
 };
 
 //////////

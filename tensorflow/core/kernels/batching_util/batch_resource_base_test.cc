@@ -164,6 +164,39 @@ class FailBatchResource : public BatchResourceBase {
   }
 };
 
+// Like TestBatchResourceBase, but the first batch processed blocks until
+// `unblock_` is notified (after signaling `thread_blocked_`). This lets a test
+// pin the single batch thread with one "blocker" task so that subsequent tasks
+// stay enqueued, enabling deterministic, timing-independent eviction.
+class BlockingBatchResource : public BatchResourceBase {
+ public:
+  using BatchResourceBase::BatchResourceBase;
+
+  std::string DebugString() const override { return "BlockingBatchResource"; }
+
+  // Set by the test before scheduling any input. Only the first processed batch
+  // blocks; later batches drain normally.
+  absl::Notification* thread_blocked_ = nullptr;
+  absl::Notification* unblock_ = nullptr;
+
+ protected:
+  void ProcessFuncBatchImpl(
+      const BatchResourceBase::BatchTask& /*last_task*/,
+      absl::Span<const Tensor> inputs, std::vector<Tensor>* combined_outputs,
+      std::function<void(const absl::Status&)> done) const override {
+    if (thread_blocked_ != nullptr && !thread_blocked_->HasBeenNotified()) {
+      thread_blocked_->Notify();
+      if (unblock_ != nullptr) {
+        unblock_->WaitForNotification();
+      }
+    }
+    for (const auto& input : inputs) {
+      combined_outputs->push_back(input);
+    }
+    done(absl::OkStatus());
+  }
+};
+
 class BatchResourceBaseWithPriorityTest
     : public ::testing::TestWithParam<PriorityTestParams> {
  protected:
@@ -174,6 +207,8 @@ class BatchResourceBaseWithPriorityTest
         "/tensorflow/serving/batching/padding_size_v2");
     mixed_priority_policy_reader_ = std::make_unique<CellReader<std::string>>(
         "/tensorflow/serving/batching/mixed_priority_batching_policy");
+    priority_queue_max_depth_reader_ = std::make_unique<CellReader<int64_t>>(
+        "/tensorflow/serving/batching/priority_queue_max_depth");
     // Create device_.
     device_ = DeviceFactory::NewDevice("CPU", SessionOptions{},
                                        "/job:a/replica:0/task:0");
@@ -229,6 +264,7 @@ class BatchResourceBaseWithPriorityTest
   std::unique_ptr<CellReader<int64_t>> processed_batch_size_v2_reader_;
   std::unique_ptr<CellReader<Histogram>> padding_size_v2_reader_;
   std::unique_ptr<CellReader<std::string>> mixed_priority_policy_reader_;
+  std::unique_ptr<CellReader<int64_t>> priority_queue_max_depth_reader_;
   std::unique_ptr<Device> device_;
   std::unique_ptr<OpKernel> batch_kernel_;
   Tensor input_tensor_;
@@ -368,6 +404,188 @@ TEST_P(BatchResourceBaseWithPriorityTest, BatchingWithMixedPriorityPolicy) {
             .sum(),
         expected_padding_sum);
   }
+}
+
+TEST_F(BatchResourceBaseWithPriorityTest,
+       PriorityAwareSchedulerExportsQueueStateMetrics) {
+  std::shared_ptr<SharedBatchScheduler<BatchResourceBase::BatchTask>> batcher;
+  TF_ASSERT_OK(SharedBatchScheduler<BatchResourceBase::BatchTask>::Create(
+      SharedBatchScheduler<BatchResourceBase::BatchTask>::Options(), &batcher));
+  std::vector<int32_t> allowed_batch_sizes = {4, 8, 12, 16};
+  int max_batch_size = 16;
+  int64_t batch_timeout = absl::ToInt64Microseconds(absl::Seconds(3));
+  int num_requests = 6;
+  BatchResourceBase::BatcherT::QueueOptions queue_options =
+      TestBatchResourceBase::GetBatcherQueueOptions(
+          /*num_batch_threads=*/num_requests, /*max_batch_size=*/max_batch_size,
+          /*batch_timeout_micros=*/batch_timeout,
+          /*max_enqueued_batches=*/num_requests, allowed_batch_sizes,
+          /*enable_large_batch_splitting=*/true,
+          /*disable_padding=*/false, kPadUpPolicy,
+          /*low_priority_max_batch_size=*/max_batch_size,
+          /*low_priority_batch_timeout_micros=*/batch_timeout * 3,
+          /*low_priority_max_enqueued_batches=*/num_requests,
+          /*low_priority_allowed_batch_sizes=*/allowed_batch_sizes,
+          /*mixed_priority_batching_policy=*/
+          MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize,
+          /*enable_priority_aware_batch_scheduler=*/true,
+          /*enable_priority_aware_batch_scheduler_resplit=*/false,
+          /*enable_batching_task_lazy_cancellation=*/false);
+  tsl::core::RefCountPtr<BatchResourceBase> batch_resource(
+      new TestBatchResourceBase(true, batcher, queue_options,
+                                allowed_batch_sizes));
+
+  std::vector<std::unique_ptr<OpKernelContext>> contexts;
+  for (int i = 0; i < num_requests; ++i) {
+    contexts.push_back(std::make_unique<OpKernelContext>(&params_));
+  }
+
+  absl::BlockingCounter blocking_counter(num_requests);
+  for (int i = 0; i < num_requests; ++i) {
+    auto create_batch_task_fn =
+        []() -> absl::StatusOr<std::unique_ptr<BatchResourceBase::BatchTask>> {
+      return std::make_unique<BatchResourceBase::BatchTask>();
+    };
+    auto done_callback = [&]() { blocking_counter.DecrementCount(); };
+    TF_ASSERT_OK(batch_resource->RegisterInput(
+        /*guid=*/i, contexts[i].get(),
+        /*batcher_queue_name=*/"batcher_queue_name",
+        /*create_batch_task_fn=*/create_batch_task_fn,
+        /*done_callback=*/done_callback,
+        /*forced_warmup_batch_size=*/0));
+  }
+  blocking_counter.Wait();
+
+  // The priority aware scheduler should have exported the max_queue_depth
+  // gauge, which is deterministic (does not depend on batch draining timing).
+  // max_queue_depth = max_enqueued_batches * max_execution_batch_size.
+  EXPECT_GT(
+      priority_queue_max_depth_reader_->Read("my_model_name", "my_batch_node"),
+      0);
+}
+
+// A BatchTask whose criticality is fixed at construction. This lets the test
+// assign distinct per-task criticalities portably, without ScopedCriticality
+// (which is only available on PLATFORM_GOOGLE). criticality() is virtual, so
+// the scheduler observes the overridden value.
+class FixedCriticalityBatchTask : public BatchResourceBase::BatchTask {
+ public:
+  explicit FixedCriticalityBatchTask(tsl::criticality::Criticality criticality)
+      : criticality_(criticality) {}
+
+  tsl::criticality::Criticality criticality() const override {
+    return criticality_;
+  }
+
+ private:
+  tsl::criticality::Criticality criticality_;
+};
+
+// Verifies end-to-end that the priority aware scheduler populates the
+// per-criticality eviction (preemption) counters. When a lower-criticality task
+// is evicted to make room for a higher-criticality one, the
+// on_task_evicted callback wired in LookupOrCreateBatcherQueue must increment
+// the priority_queue_evicted_task_{count,size} tfstreamz cells, labeled by the
+// evicted task's criticality.
+TEST_F(BatchResourceBaseWithPriorityTest,
+       PriorityAwareSchedulerExportsEvictionMetrics) {
+  using ::tsl::criticality::Criticality;
+
+  CellReader<int64_t> evicted_count_reader(
+      "/tensorflow/serving/batching/priority_queue_evicted_task_count");
+  CellReader<int64_t> evicted_size_reader(
+      "/tensorflow/serving/batching/priority_queue_evicted_task_size");
+
+  // A single batch thread lets one blocker task occupy the thread while the
+  // subsequent tasks remain enqueued, making the eviction deterministic.
+  std::shared_ptr<SharedBatchScheduler<BatchResourceBase::BatchTask>> batcher;
+  SharedBatchScheduler<BatchResourceBase::BatchTask>::Options scheduler_options;
+  scheduler_options.num_batch_threads = 1;
+  TF_ASSERT_OK(SharedBatchScheduler<BatchResourceBase::BatchTask>::Create(
+      scheduler_options, &batcher));
+
+  // allowed_batch_sizes = {4} and max_enqueued_batches = 1 give a
+  // max_queue_depth of 4 (in summed task size). Each request has size 3, so one
+  // task fits but two do not, forcing an eviction of the lowest priority task.
+  std::vector<int32_t> allowed_batch_sizes = {4};
+  int max_batch_size = 4;
+  int64_t batch_timeout = absl::ToInt64Microseconds(absl::Seconds(1));
+  BatchResourceBase::BatcherT::QueueOptions queue_options =
+      TestBatchResourceBase::GetBatcherQueueOptions(
+          /*num_batch_threads=*/1, /*max_batch_size=*/max_batch_size,
+          /*batch_timeout_micros=*/batch_timeout,
+          /*max_enqueued_batches=*/1, allowed_batch_sizes,
+          /*enable_large_batch_splitting=*/true,
+          /*disable_padding=*/false, kPadUpPolicy,
+          /*low_priority_max_batch_size=*/max_batch_size,
+          /*low_priority_batch_timeout_micros=*/batch_timeout,
+          /*low_priority_max_enqueued_batches=*/1,
+          /*low_priority_allowed_batch_sizes=*/allowed_batch_sizes,
+          /*mixed_priority_batching_policy=*/
+          MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize,
+          /*enable_priority_aware_batch_scheduler=*/true,
+          /*enable_priority_aware_batch_scheduler_resplit=*/false,
+          /*enable_batching_task_lazy_cancellation=*/false);
+
+  absl::Notification thread_blocked;
+  absl::Notification unblock;
+  tsl::core::RefCountPtr<BlockingBatchResource> batch_resource(
+      new BlockingBatchResource(true, batcher, queue_options,
+                                allowed_batch_sizes));
+  batch_resource->thread_blocked_ = &thread_blocked;
+  batch_resource->unblock_ = &unblock;
+
+  std::vector<std::unique_ptr<OpKernelContext>> contexts;
+  for (int i = 0; i < 3; ++i) {
+    contexts.push_back(std::make_unique<OpKernelContext>(&params_));
+  }
+  absl::BlockingCounter blocking_counter(3);
+  auto done_callback = [&]() { blocking_counter.DecrementCount(); };
+
+  // Creates a task-creation fn that stamps the task with `criticality`.
+  auto make_task_fn = [](Criticality criticality) {
+    return
+        [criticality]()
+            -> absl::StatusOr<std::unique_ptr<BatchResourceBase::BatchTask>> {
+          return std::make_unique<FixedCriticalityBatchTask>(criticality);
+        };
+  };
+
+  // 1. Blocker (kCriticalPlus) occupies the only batch thread; once it is being
+  //    processed the queue is empty again.
+  TF_ASSERT_OK(batch_resource->RegisterInput(
+      /*guid=*/0, contexts[0].get(), "batcher_queue_name",
+      make_task_fn(Criticality::kCriticalPlus), done_callback,
+      /*forced_warmup_batch_size=*/0));
+  thread_blocked.WaitForNotification();
+
+  // 2. Sheddable task (size 3) stays enqueued (3 <= max_queue_depth 4).
+  TF_ASSERT_OK(batch_resource->RegisterInput(
+      /*guid=*/1, contexts[1].get(), "batcher_queue_name",
+      make_task_fn(Criticality::kSheddable), done_callback,
+      /*forced_warmup_batch_size=*/0));
+
+  // 3. A higher-priority task (size 3) does not fit (3 + 3 > 4), so the
+  //    lowest-priority enqueued task (the sheddable one) is evicted.
+  TF_ASSERT_OK(batch_resource->RegisterInput(
+      /*guid=*/2, contexts[2].get(), "batcher_queue_name",
+      make_task_fn(Criticality::kCriticalPlus), done_callback,
+      /*forced_warmup_batch_size=*/0));
+
+  // Release the blocker so all surviving tasks drain, then wait for every
+  // request (including the evicted one) to finish. The eviction counters are
+  // incremented before the evicted task's done callback runs, so once the
+  // counter reaches zero the metrics are guaranteed to be populated.
+  unblock.Notify();
+  blocking_counter.Wait();
+
+  const std::string sheddable_str = absl::StrCat(Criticality::kSheddable);
+  EXPECT_EQ(evicted_count_reader.Delta("my_model_name", "my_batch_node",
+                                       sheddable_str),
+            1);
+  EXPECT_EQ(evicted_size_reader.Delta("my_model_name", "my_batch_node",
+                                      sheddable_str),
+            3);
 }
 
 INSTANTIATE_TEST_SUITE_P(

@@ -37,6 +37,11 @@ enum class Criticality {
   kCriticalPlus = 3,
 };
 
+// The number of distinct criticality bands defined by `Criticality` above.
+// Keep in sync with the enum. Callers that maintain per-criticality bookkeeping
+// indexed by static_cast<int>(Criticality) should size their arrays with this.
+inline constexpr int kNumCriticalities = 4;
+
 }  // namespace criticality
 
 }  // namespace tsl
