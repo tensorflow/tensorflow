@@ -363,6 +363,7 @@ py_library(
         "constant_op.py",
         "constant_tensor_conversion.py",
     ],
+    lazy_imports = True,
     strict_deps = True,
     visibility = visibility + [
         "//smartass:__subpackages__",
