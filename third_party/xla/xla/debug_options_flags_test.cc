@@ -27,21 +27,24 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "tsl/platform/protobuf.h"
 
+using ::testing::ElementsAre;
 using ::testing::IsEmpty;
 
 namespace xla {
 namespace {
 
-TEST(DebugOptions, GetDebugOptionsFromProtoAndFlags_Nullptr) {
+TEST(DebugOptions, GetDebugOptionsFromProtoAndFlags_WithEmptyProto) {
   int* pargc;
   std::vector<char*>* pargv;
   ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
   tsl::setenv("XLA_FLAGS", "--xla_cpu_enable_fast_math=true", 1);
-  DebugOptions options = GetDebugOptionsFromProtoAndFlags(nullptr);
+
+  DebugOptions empty_options;
+  DebugOptions options = GetDebugOptionsFromProtoAndFlags(&empty_options);
   EXPECT_TRUE(options.xla_cpu_enable_fast_math());
 }
 
-TEST(DebugOptions, GetDebugOptionsFromProtoAndFlags_WithProto) {
+TEST(DebugOptions, GetDebugOptionsFromProtoAndFlags_WithExistingProto) {
   int* pargc;
   std::vector<char*>* pargv;
   ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
@@ -55,6 +58,23 @@ TEST(DebugOptions, GetDebugOptionsFromProtoAndFlags_WithProto) {
 
   EXPECT_TRUE(options.xla_cpu_enable_fast_math());
   EXPECT_EQ(options.xla_backend_optimization_level(), 1);
+}
+
+TEST(DebugOptions, GetDebugOptionsFromProtoAndFlags_PtxCompilerExtraFlags) {
+  int* pargc;
+  std::vector<char*>* pargv;
+  ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
+
+  // Needed to avoid using globally-set and cached flags set by other tests.
+  DebugOptions empty_options;
+  tsl::setenv("XLA_FLAGS",
+              "--xla_gpu_ptx_compiler_extra_flags='--maxntid=8,8,8 "
+              "--register-usage-level=10'",
+              1);
+
+  DebugOptions options = GetDebugOptionsFromProtoAndFlags(&empty_options);
+  EXPECT_THAT(options.xla_gpu_ptx_compiler_extra_flags(),
+              ElementsAre("--maxntid=8,8,8", "--register-usage-level=10"));
 }
 
 TEST(DebugOptions, AllFieldsHavePresence) {

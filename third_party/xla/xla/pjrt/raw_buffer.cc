@@ -93,7 +93,7 @@ absl::StatusOr<std::vector<PjRtRawBufferRef>> CommonPjRtRawBuffer::MultiSlice(
 
 void CommonPjRtRawBuffer::ScheduleCopyTo(
     AsyncWorkRunner* async_work_runner,
-    std::vector<PjRtDeviceEventRef> transfer_dependency_events,
+    PjRtDeviceEventRefVector transfer_dependency_events,
     PjRtRawBufferRef dst_raw_buffer,
     PjRtDeviceEventPromiseRef definition_event_promise,
     PjRtDeviceEventPromiseRef src_usage_event_promise,
@@ -124,7 +124,7 @@ void CommonPjRtRawBuffer::ScheduleCopyTo(
       });
 }
 
-void CommonPjRtRawBuffer::DecrefAfter(std::vector<PjRtDeviceEventRef> events) {
+void CommonPjRtRawBuffer::DecrefAfter(PjRtDeviceEventRefVector events) {
   xla::RunWhenReady(events, [this]() { DropRef(); });
 }
 
