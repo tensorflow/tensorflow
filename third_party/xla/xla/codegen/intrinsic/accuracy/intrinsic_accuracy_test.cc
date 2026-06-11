@@ -262,6 +262,12 @@ std::vector<IntrinsicAccuracyTestParam> GetAccuracyTestParams() {
       {"sqrt", F32, accuracy::kGoldenSqrt, accuracy::kSqrtF32Budget},
       {"sqrt", F64, accuracy::kGoldenSqrt, accuracy::kSqrtF64Budget},
 
+      {"sine", F32, accuracy::kGoldenSin, accuracy::kSinF32Budget},
+      {"sine", F64, accuracy::kGoldenSin, accuracy::kSinF64Budget},
+
+      {"cosine", F32, accuracy::kGoldenCos, accuracy::kCosF32Budget},
+      {"cosine", F64, accuracy::kGoldenCos, accuracy::kCosF64Budget},
+
       {"erf", F32, accuracy::kGoldenErf, accuracy::kErfF32Budget},
       {"erf", F64, accuracy::kGoldenErf, accuracy::kErfF64Budget}};
   return params;

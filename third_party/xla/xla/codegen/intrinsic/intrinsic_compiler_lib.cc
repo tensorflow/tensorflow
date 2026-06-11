@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/IPO/GlobalDCE.h"
+#include "llvm/Transforms/IPO/Inliner.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/Scalar/DCE.h"
 #include "llvm/Transforms/Scalar/EarlyCSE.h"
@@ -53,6 +54,8 @@ void RunInlineAndOptPasses(llvm::Module& module) {
 
   llvm::ModulePassManager mpm;
   mpm.addPass(llvm::AlwaysInlinerPass());
+  mpm.addPass(
+      llvm::createModuleToPostOrderCGSCCPassAdaptor(llvm::InlinerPass()));
 
   llvm::FunctionPassManager fpm;
   fpm.addPass(llvm::InstCombinePass());
