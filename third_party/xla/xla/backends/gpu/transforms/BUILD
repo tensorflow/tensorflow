@@ -1564,6 +1564,7 @@ cc_library(
     hdrs = ["dynamic_slice_fusion_rewriter_v2.h"],
     tags = ["gpu"],
     deps = [
+        ":dynamic_slice_fusion",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
@@ -1598,6 +1599,7 @@ xla_cc_test(
         ":dynamic_slice_annotator",
         ":dynamic_slice_fusion",
         ":dynamic_slice_fusion_rewriter_v2",
+        "//xla:comparison_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -1607,6 +1609,7 @@ xla_cc_test(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/stream_executor:platform_id",
         "//xla/stream_executor/gpu:gpu_init_impl",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
@@ -4043,6 +4046,35 @@ xla_cc_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "pdl_launch_annotation",
+    srcs = ["pdl_launch_annotation.cc"],
+    hdrs = ["pdl_launch_annotation.h"],
+    deps = [
+        "//xla:frontend_attributes",
+        "//xla:status_macros",
+        "//xla/backends/gpu/codegen/triton:support",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "pdl_launch_annotation_test",
+    srcs = ["pdl_launch_annotation_test.cc"],
+    deps = [
+        ":pdl_launch_annotation",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "@com_google_googletest//:gtest_main",
     ],
 )

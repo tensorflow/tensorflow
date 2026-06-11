@@ -42,6 +42,7 @@ cc_library(
     hdrs = ["passes.h"],
     deps = [
         ":passes_inc_gen",
+        "//xla:frontend_attributes",
         "//xla/backends/gpu/codegen/emitters/ir:xla_gpu",
         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
         "//xla/codegen/emitters/ir:xla",
@@ -75,5 +76,6 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:VectorDialect",
+        "@triton//:TritonDialects",
     ],
 )
