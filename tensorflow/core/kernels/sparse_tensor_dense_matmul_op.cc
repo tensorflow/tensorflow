@@ -81,6 +81,13 @@ class SparseTensorDenseMatMulOp : public OpKernel {
                     "number of entries in a_shape"));
 
     auto a_shape_t = a_shape->vec<int64_t>();
+    // `a_shape` is runtime-provided, so validate its logical dimensions before
+    // using them in shape arithmetic or output allocation.
+    OP_REQUIRES(
+        ctx, a_shape_t(0) >= 0 && a_shape_t(1) >= 0,
+        absl::InvalidArgumentError(absl::StrCat(
+            "Tensor 'a_shape' cannot contain negative dimensions, but got [",
+            a_shape_t(0), ", ", a_shape_t(1), "]")));
     const int64_t outer_left = (adjoint_a_) ? a_shape_t(1) : a_shape_t(0);
     const int64_t outer_right =
         (adjoint_b_) ? b->shape().dim_size(0) : b->shape().dim_size(1);
