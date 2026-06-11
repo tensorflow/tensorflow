@@ -19,6 +19,7 @@ from tensorflow.python.data.util import random_seed
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import gen_dataset_ops
 
 
@@ -46,8 +47,30 @@ class _ShuffleDataset(dataset_ops.UnaryUnchangedStructureDataset):
   ):
     """See `Dataset.shuffle()` for details."""
     self._input_dataset = input_dataset
+    
+    # Validate buffer_size at Python level for constant values to prevent
+    # segmentation faults with extremely large values. This addresses issue #113167
+    # where oversized buffer_size caused segfaults instead of raising errors.
+    max_buffer_size = 2**31 - 1  # 2147483647 (max int32 value)
+    
+    # Try to extract the constant value if buffer_size is a Python int or constant tensor
+    constant_buffer_size = tensor_util.constant_value(buffer_size)
+    if constant_buffer_size is not None:
+      constant_buffer_size = int(constant_buffer_size)
+      # Validate negative values
+      if constant_buffer_size < 0:
+        raise ValueError(
+            f"buffer_size must be non-negative, got: {constant_buffer_size}")
+      # Validate oversized values
+      if constant_buffer_size > max_buffer_size:
+        raise ValueError(
+            f"buffer_size ({constant_buffer_size}) exceeds the maximum allowed "
+            f"value of {max_buffer_size}. Oversized buffer_size values can cause "
+            f"memory exhaustion and crashes. Please use a smaller buffer_size.")
+    
     self._buffer_size = ops.convert_to_tensor(
         buffer_size, dtype=dtypes.int64, name="buffer_size")
+    
     self._seed, self._seed2 = random_seed.get_seed(seed)
     self._reshuffle_each_iteration = reshuffle_each_iteration
     self._name = name

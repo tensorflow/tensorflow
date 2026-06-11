@@ -94,6 +94,32 @@ class LogdetTest(test.TestCase):
           logdet_tf = linalg.logdet(matrix)
           self.assertAllClose(logdet_np, self.evaluate(logdet_tf), atol=atol)
 
+  def test_singular_matrices_return_neg_inf(self):
+    """Test that singular matrices return -inf instead of NaN."""
+    for np_dtype in [np.float32, np.float64, np.complex64, np.complex128]:
+      with self.subTest(np_dtype=np_dtype):
+        # Rank-1 singular matrix (determinant = 0)
+        matrix = np.ones((8, 8), dtype=np_dtype)
+        _, logdet_np = np.linalg.slogdet(matrix)
+        with self.session():
+          logdet_tf = linalg.logdet(matrix)
+          result = self.evaluate(logdet_tf)
+          # Check that result matches NumPy's behavior (-inf for singular matrix)
+          self.assertEqual(result, logdet_np)
+          self.assertEqual(result, -np.inf)
+
+  def test_singular_matrices_batch(self):
+    """Test that batches of singular matrices return -inf."""
+    for np_dtype in [np.float32, np.float64]:
+      with self.subTest(np_dtype=np_dtype):
+        # Batch of singular matrices
+        matrices = np.ones((2, 4, 4), dtype=np_dtype)
+        with self.session():
+          logdet_tf = linalg.logdet(matrices)
+          result = self.evaluate(logdet_tf)
+          # All should be -inf for rank-1 singular matrices
+          np.testing.assert_array_equal(result, [-np.inf, -np.inf])
+
 
 class SlogdetTest(test.TestCase):
 
