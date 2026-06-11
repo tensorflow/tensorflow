@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/pjrt/device_event_utils.h"
 
 #include <utility>
-#include <vector>
 
 #include "absl/base/optimization.h"
 #include "absl/functional/any_invocable.h"
