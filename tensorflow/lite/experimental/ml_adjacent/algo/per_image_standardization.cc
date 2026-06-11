@@ -77,6 +77,11 @@ void ComputePerImageStandardization(const InputPack& inputs,
 
   // Extract input image data.
   const DataRef* img = inputs[0];
+  MutableDataRef* output = outputs[0];
+
+  TFLITE_CHECK_EQ(img->Type(), etype_t::f32);
+  TFLITE_CHECK_EQ(output->Type(), etype_t::f32);
+
   const float* img_data = reinterpret_cast<const float*>(img->Data());
   const dim_t img_num_batches = img->Dims()[0];
   const dim_t img_height = img->Dims()[1];
@@ -84,7 +89,6 @@ void ComputePerImageStandardization(const InputPack& inputs,
   const dim_t img_num_channels = img->Dims()[3];
 
   // Resize output buffer for resized image.
-  MutableDataRef* output = outputs[0];
   output->Resize({img_num_batches, img_height, img_width, img_num_channels});
   float* output_data = reinterpret_cast<float*>(output->Data());
 
