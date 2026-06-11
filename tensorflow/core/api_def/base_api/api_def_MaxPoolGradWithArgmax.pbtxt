@@ -18,6 +18,9 @@ END
     name: "argmax"
     description: <<END
 The indices of the maximum values chosen for each output of `max_pool`.
+Although the type constraint allows both int32 and int64, only int64 is
+supported by the registered kernels. Passing an int32 argmax will fail
+with a kernel-not-found error.
 END
   }
   out_arg {
