@@ -34,7 +34,8 @@ class HloCostAnalysis;
 // legalization that could block that is welcome into this pass.
 class HostOffloadLegalize : public HloModulePass {
  public:
-  HostOffloadLegalize() = default;
+  explicit HostOffloadLegalize(bool run_insert_move_to_device = false)
+      : run_insert_move_to_device_(run_insert_move_to_device) {}
   ~HostOffloadLegalize() override = default;
 
   absl::string_view name() const override { return "host-offload-legalize"; }
@@ -51,6 +52,8 @@ class HostOffloadLegalize : public HloModulePass {
   std::vector<HloInstruction*> FindStartingInstructionsOfHostMemoryOffload(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) const;
+
+  bool run_insert_move_to_device_;
 };
 
 }  // namespace xla
