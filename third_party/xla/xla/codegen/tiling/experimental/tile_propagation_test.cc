@@ -1499,5 +1499,144 @@ TEST_F(TilePropagationTest,
                    "1 must be a clean multiple of its tile size 5")));
 }
 
+TEST_F(TilePropagationTest, CanPropagateToInputOfScanOp) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+
+    scan_add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      add1 = f32[] add(p0, p1)
+      ROOT tuple = (f32[], f32[]) tuple(add1, add1)
+    }
+
+    ENTRY e {
+      p0 = f32[4] parameter(0)
+      p1 = f32[] parameter(1)
+      scan = (f32[4], f32[]) scan(p0, p1), dimensions={0}, num_carries=1, to_apply=scan_add
+      ROOT gte = f32[4] get-tuple-element(scan), index=0
+    }
+  )");
+  auto tiling_space = TilingSpace::Create(
+      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  const HloInstruction* scan = root->operand(0);
+
+  // Create a tile for an array output (output_index = 0)
+  auto tile_arr = GetTestTile(*tiling_space, {4});
+  ASSERT_OK_AND_ASSIGN(auto tiled_operands_arr,
+                       PropagateTileToInput(*tiling_space, *scan, tile_arr, 0));
+
+  EXPECT_THAT(tiled_operands_arr, MatchToString(R"(
+    0) (tid_0)
+         -> offsets [tid_0 * ts_0]
+            sizes [ts_0]
+            strides [1]
+            upper bounds [4]
+    1) (tid_0)
+         -> offsets []
+            sizes []
+            strides []
+            upper bounds []
+  )"));
+
+  // Create a tile for a scalar carry output (output_index = 1)
+  auto tile_carry = GetTestTile(*tiling_space, {});
+  ASSERT_OK_AND_ASSIGN(
+      auto tiled_operands_carry,
+      PropagateTileToInput(*tiling_space, *scan, tile_carry, 1));
+
+  EXPECT_THAT(tiled_operands_carry, MatchToString(R"(
+    0) (tid_0)
+         -> offsets []
+            sizes []
+            strides []
+            upper bounds []
+    1) (tid_0)
+         -> offsets []
+            sizes []
+            strides []
+            upper bounds []
+  )"));
+}
+
+TEST_F(TilePropagationTest, CanPropagateToOutputOfScanOp) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+
+    scan_add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      add1 = f32[] add(p0, p1)
+      ROOT tuple = (f32[], f32[]) tuple(add1, add1)
+    }
+
+    ENTRY e {
+      p0 = f32[4] parameter(0)
+      p1 = f32[] parameter(1)
+      scan = (f32[4], f32[]) scan(p0, p1), dimensions={0}, num_carries=1, to_apply=scan_add
+      ROOT gte = f32[4] get-tuple-element(scan), index=0
+    }
+  )");
+  auto tiling_space = TilingSpace::Create(
+      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  const HloInstruction* scan = root->operand(0);
+
+  // Create a tile for an array input (input_index = 0)
+  auto tile_arr = GetTestTile(*tiling_space, {4});
+  ASSERT_OK_AND_ASSIGN(
+      auto output_tiles,
+      PropagateTileToOutput(*tiling_space, *scan, tile_arr, 0));
+
+  EXPECT_THAT(output_tiles, MatchToString(R"(
+    0) (tid_0)
+         -> offsets [tid_0 * ts_0]
+            sizes [ts_0]
+            strides [1]
+            upper bounds [4]
+    1) (tid_0)
+         -> offsets []
+            sizes []
+            strides []
+            upper bounds []
+  )"));
+
+  // Create a tile for a scalar carry input (input_index = 1)
+  auto tile_carry = GetTestTile(*tiling_space, {});
+  EXPECT_THAT(PropagateTileToOutput(*tiling_space, *scan, tile_carry, 1),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(TilePropagationTest, CanPropagateToGetTupleElementOp) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = (f32[4], f32[]) parameter(0)
+      ROOT gte = f32[4] get-tuple-element(p0), index=0
+    }
+  )");
+  auto tiling_space = TilingSpace::Create(
+      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+
+  auto tile = GetTestTile(*tiling_space, {4});
+  ASSERT_OK_AND_ASSIGN(auto input_tiles,
+                       PropagateTileToInput(*tiling_space, *root, tile, 0));
+  EXPECT_THAT(input_tiles, MatchToString(R"(
+    0) (tid_0)
+         -> offsets [tid_0 * ts_0]
+            sizes [ts_0]
+            strides [1]
+            upper bounds [4]
+  )"));
+
+  ASSERT_OK_AND_ASSIGN(auto output_tiles,
+                       PropagateTileToOutput(*tiling_space, *root, tile, 0));
+  EXPECT_THAT(output_tiles, MatchToString(R"(
+    0) (tid_0)
+         -> offsets [tid_0 * ts_0]
+            sizes [ts_0]
+            strides [1]
+            upper bounds [4]
+  )"));
+}
 }  // namespace
 }  // namespace xla::gpu::experimental
