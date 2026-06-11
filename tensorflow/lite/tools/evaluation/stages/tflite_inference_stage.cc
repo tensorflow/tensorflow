@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/evaluation/stages/tflite_inference_stage.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <memory>
 #include <string>
@@ -192,7 +194,14 @@ TfLiteStatus TfliteInferenceStage::Run() {
   // Copy input data.
   for (int i = 0; i < interpreter_->inputs().size(); ++i) {
     TfLiteTensor* tensor = interpreter_->tensor(interpreter_->inputs()[i]);
-    tensor->data.raw = static_cast<char*>(inputs_->at(i));
+    if (tensor->type != kTfLiteString) {
+      if (input_buffer_sizes_ && i < input_buffer_sizes_->size()) {
+        std::memcpy(tensor->data.raw, inputs_->at(i),
+                    std::min(tensor->bytes, input_buffer_sizes_->at(i)));
+      } else {
+        std::memcpy(tensor->data.raw, inputs_->at(i), tensor->bytes);
+      }
+    }
   }
 
   // Invoke.
