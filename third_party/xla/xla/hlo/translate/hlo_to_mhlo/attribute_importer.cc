@@ -657,9 +657,6 @@ absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
     }
 
     const xla::Layout& xla_layout = shape_and_layout.layout();
-    if (!xla_layout.tiles().empty()) {
-      return Unimplemented("Tiled layout is not supported yet");
-    }
     if (xla_layout.memory_space() != xla::Layout::kDefaultMemorySpace) {
       return Unimplemented(
           "Layout support for non-default memory space is not yet implemented");
@@ -680,6 +677,41 @@ absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromTuple(
     return InvalidArgument("Expected shape to be Tuple");
   }
   return ExtractLayoutsFromShapes(shape.tuple_shapes(), builder);
+}
+
+absl::StatusOr<mlir::ArrayAttr> ExtractTilingsFromShapes(
+    const absl::Span<const Shape> shapes_with_layouts, mlir::Builder* builder) {
+  std::vector<mlir::Attribute> tilings;
+  tilings.reserve(shapes_with_layouts.size());
+  for (auto& shape_and_layout : shapes_with_layouts) {
+    if (shape_and_layout.IsTuple()) {
+      return Unimplemented(
+          "Tiling support for nested tuples is not implemented.");
+    }
+    // XLA can have invalid layout for certain values (such as token types).
+    // These are imported as empty tiling in MHLO.
+    if (!shape_and_layout.IsArray()) {
+      tilings.push_back(builder->getArrayAttr({}));
+      continue;
+    }
+
+    const xla::Layout& xla_layout = shape_and_layout.layout();
+    std::vector<mlir::Attribute> tiles;
+    tiles.reserve(xla_layout.tiles().size());
+    for (const auto& tile : xla_layout.tiles()) {
+      tiles.push_back(builder->getIndexTensorAttr(tile.dimensions()));
+    }
+    tilings.push_back(builder->getArrayAttr(tiles));
+  }
+  return builder->getArrayAttr(tilings);
+}
+
+absl::StatusOr<mlir::ArrayAttr> ExtractTilingsFromTuple(
+    xla::Shape shape, mlir::Builder* builder) {
+  if (!shape.IsTuple()) {
+    return InvalidArgument("Expected shape to be Tuple");
+  }
+  return ExtractTilingsFromShapes(shape.tuple_shapes(), builder);
 }
 
 }  // namespace xla

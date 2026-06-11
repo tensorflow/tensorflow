@@ -748,13 +748,13 @@ void CustomCallOp::build(
     ::mlir::StringAttr backendConfig,
     ::mlir::mhlo::CustomCallApiVersionAttr apiVersion,
     ::mlir::ArrayAttr calledComputations, ::mlir::ArrayAttr operandLayouts,
-    ::mlir::ArrayAttr resultLayouts) {
+    ::mlir::ArrayAttr resultLayouts, ::mlir::ArrayAttr resultTilings) {
   return CustomCallOp::build(
       odsBuilder, odsState, resultType, operands, callTargetName, hasSideEffect,
       backendConfig, apiVersion, calledComputations,
       CustomCallScheduleAttr::get(odsBuilder.getContext(),
                                   CustomCallSchedule::NONE),
-      operandLayouts, resultLayouts, nullptr);
+      operandLayouts, resultLayouts, nullptr, resultTilings);
 }
 
 LogicalResult CustomCallOp::verify() {

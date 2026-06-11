@@ -318,12 +318,30 @@ static std::vector<xla::ReplicaGroup> Convert_replica_groups(
   return *result;
 }
 
-static void SetLayout(xla::Shape& shape, mlir::DenseIntElementsAttr layout) {
+static void SetTiling(xla::Shape& shape, mlir::ArrayAttr tiling) {
+  if (!shape.IsArray()) {
+    return;
+  }
+  shape.mutable_layout()->clear_tiles();
+  for (auto t : tiling) {
+    auto tensor = mlir::cast<mlir::DenseIntElementsAttr>(t);
+    auto* tile = shape.mutable_layout()->add_tiles();
+    for (auto dim : tensor) {
+      tile->add_dimensions(dim.getSExtValue());
+    }
+  }
+}
+
+static void SetLayout(xla::Shape& shape, mlir::DenseIntElementsAttr layout,
+                      std::optional<mlir::ArrayAttr> tiling = std::nullopt) {
   if (shape.IsArray()) {
     shape.mutable_layout()->clear_minor_to_major();
     for (auto l : layout) {
       shape.mutable_layout()->mutable_minor_to_major()->push_back(
           l.getSExtValue());
+    }
+    if (tiling) {
+      SetTiling(shape, *tiling);
     }
   } else if (shape.IsToken()) {
     assert(layout.empty() && "Invalid layout for token type");
@@ -334,25 +352,49 @@ static void SetLayout(xla::Shape& shape, mlir::DenseIntElementsAttr layout) {
   }
 }
 
-static void SetLayout(xla::Shape& shape, mlir::ArrayAttr layouts) {
+static void SetLayout(xla::Shape& shape, mlir::ArrayAttr layouts,
+                      std::optional<mlir::ArrayAttr> tilings = std::nullopt) {
   if (shape.IsTuple()) {
+    CHECK_EQ(layouts.size(), shape.tuple_shapes().size());
+    if (tilings && !tilings->empty()) {
+      CHECK_EQ(tilings->size(), shape.tuple_shapes().size());
+    }
     for (int i = 0; i < shape.tuple_shapes().size(); ++i) {
+      std::optional<mlir::ArrayAttr> tiling;
+      if (tilings && !tilings->empty()) {
+        tiling = mlir::cast<mlir::ArrayAttr>((*tilings)[i]);
+      }
       SetLayout(*shape.mutable_tuple_shapes(i),
-                mlir::cast<mlir::DenseIntElementsAttr>(layouts[i]));
+                mlir::cast<mlir::DenseIntElementsAttr>(layouts[i]), tiling);
     }
   } else {
     assert(layouts.size() == 1);
-    SetLayout(shape, mlir::cast<mlir::DenseIntElementsAttr>(layouts[0]));
+    std::optional<mlir::ArrayAttr> tiling;
+    if (tilings && !tilings->empty()) {
+      tiling = mlir::cast<mlir::ArrayAttr>((*tilings)[0]);
+    }
+    SetLayout(shape, mlir::cast<mlir::DenseIntElementsAttr>(layouts[0]),
+              tiling);
   }
 }
 
 // Converts types and corresponding layouts into xla shapes with layouts.
 static std::vector<xla::Shape> ConvertTypesToShapesWithLayout(
-    mlir::TypeRange value_types, mlir::ArrayAttr layouts) {
+    mlir::TypeRange value_types, mlir::ArrayAttr layouts,
+    std::optional<mlir::ArrayAttr> tilings = std::nullopt) {
   std::vector<xla::Shape> shapes_with_layout;
-  for (auto [type, layout] : llvm::zip(value_types, layouts)) {
-    xla::Shape shape = xla::TypeToShape(type);
-    SetLayout(shape, mlir::cast<mlir::DenseIntElementsAttr>(layout));
+  CHECK_EQ(value_types.size(), layouts.size());
+  if (tilings) {
+    CHECK_EQ(tilings->size(), value_types.size());
+  }
+  for (int i = 0; i < value_types.size(); ++i) {
+    xla::Shape shape = xla::TypeToShape(value_types[i]);
+    std::optional<mlir::ArrayAttr> tiling;
+    if (tilings) {
+      tiling = mlir::cast<mlir::ArrayAttr>((*tilings)[i]);
+    }
+    SetLayout(shape, mlir::cast<mlir::DenseIntElementsAttr>(layouts[i]),
+              tiling);
     shapes_with_layout.push_back(std::move(shape));
   }
   return shapes_with_layout;
@@ -2724,7 +2766,8 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   } else if (op.getOperandLayouts() && op.getResultLayouts()) {
     auto operand_shapes_with_layout = ConvertTypesToShapesWithLayout(
         op.getOperandTypes(), op.getOperandLayouts().value());
-    SetLayout(result_shape, op.getResultLayouts().value());
+    SetLayout(result_shape, op.getResultLayouts().value(),
+              op.getResultTilings());
 
     custom_call = xla::CustomCallWithLayout(
         ctx.builder, call_target_name, args, result_shape,
