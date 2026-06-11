@@ -226,7 +226,8 @@ class LocalDeviceState {
 
   absl::Status AllocateAndRecordEvent(
       AsyncWorkRunner* async_work_runner, BufferSequencingEventRef event,
-      se::Stream* stream, absl::string_view tag = "AllocateAndRecordEvent");
+      se::Stream* stream, absl::string_view tag = "AllocateAndRecordEvent",
+      absl::AnyInvocable<void() &&> cleanup = {});
 
   size_t GetNextComputeStreamSyncPoint() {
     return next_compute_stream_sync_point_.load();
