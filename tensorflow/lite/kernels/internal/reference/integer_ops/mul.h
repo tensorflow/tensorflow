@@ -20,6 +20,7 @@ limitations under the License.
 #include "fixedpoint/fixedpoint.h"
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/reference/broadcast_loop.h"
 
 namespace tflite {
 namespace reference_integer_ops {
@@ -96,6 +97,29 @@ inline void BroadcastMul6DSlow(
     const T* input1_data, const RuntimeShape& input2_shape,
     const T* input2_data, const RuntimeShape& output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("BroadcastMul6DSlow");
+  const int broadcast_rank = std::max(
+      output_shape.DimensionsCount(),
+      std::max(input1_shape.DimensionsCount(), input2_shape.DimensionsCount()));
+  if (broadcast_rank > kMaxMulBroadcastDim) {
+    reference_ops::ForEachBroadcastedElement(
+        input1_shape, input2_shape, output_shape,
+        [&](int output_index, int input1_index, int input2_index) {
+          const int32_t input1_val =
+              params.input1_offset + input1_data[input1_index];
+          const int32_t input2_val =
+              params.input2_offset + input2_data[input2_index];
+          const int32_t unclamped_result =
+              params.output_offset +
+              MultiplyByQuantizedMultiplier(input1_val * input2_val,
+                                            params.output_multiplier,
+                                            params.output_shift);
+          const int32_t clamped_output = std::min(
+              params.quantized_activation_max,
+              std::max(params.quantized_activation_min, unclamped_result));
+          output_data[output_index] = static_cast<T>(clamped_output);
+        });
+    return;
+  }
 
   NdArrayDesc<kMaxMulBroadcastDim> desc1;
   NdArrayDesc<kMaxMulBroadcastDim> desc2;
