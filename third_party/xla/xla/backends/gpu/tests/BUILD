@@ -587,8 +587,9 @@ xla_test(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/platform:test",
     ],
 )
 
@@ -967,9 +968,44 @@ xla_test(
     name = "gpu_cub_sort_test",
     size = "medium",
     srcs = ["gpu_cub_sort_test.cc"],
+    # Exclude deviceless parameterized tests which are run by gpu_cub_sort_deviceless_test in the cub TAP.
+    args = ["--gtest_filter=-*deviceless*"],
     backends = ["gpu"],
     shard_count = 15,
     tags = ["nodebug"],
+    deps = [
+        "//xla:error_spec",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/backends/gpu/libraries/cub:cub_scratch_size_deviceless_lookup",
+        "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
+        "//xla/backends/gpu/transforms:sort_rewriter",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_config",
+        "//xla/service:hlo_runner_interface",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
+    name = "gpu_cub_sort_deviceless_test",
+    size = "medium",
+    srcs = ["gpu_cub_sort_test.cc"],
+    # Only run the deviceless parameterized tests. This target is explicitly tested in cub.blueprint.
+    # We run this in a different TAP to avoid breaking XLA when the cub deviceless data goes out of date.
+    args = ["--gtest_filter=*deviceless*"],
+    backends = ["gpu"],
+    shard_count = 15,
+    tags = [
+        "manual",
+        "nodebug",
+    ],
     deps = [
         "//xla:error_spec",
         "//xla:shape_util",

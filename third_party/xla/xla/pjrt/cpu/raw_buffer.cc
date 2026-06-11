@@ -328,7 +328,7 @@ void CpuRawBuffer::CopyTo(
 
 absl::StatusOr<PjRtDeviceEventRef> CpuRawBuffer::CopyRawToRemoteDevice(
     Future<std::string> serialized_descriptor, RemoteSendCallback on_done,
-    std::vector<PjRtDeviceEventRef> transfer_dependency_avs) {
+    PjRtDeviceEventRefVector transfer_dependency_avs) {
   return absl::UnimplementedError(
       "CpuRawBuffer does not support CopyRawToRemoteDevice.");
 }
