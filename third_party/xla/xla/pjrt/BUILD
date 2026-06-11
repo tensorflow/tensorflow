@@ -986,6 +986,9 @@ cc_library(
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
         "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
+        "//xla/service/spmd/shardy/stablehlo_round_trip:export_ops",
+        "//xla/service/spmd/shardy/stablehlo_round_trip:export_shardings",
+        "//xla/service/spmd/shardy/stablehlo_round_trip:shard_map_export",
         "//xla/service/spmd/shardy/stablehlo_round_trip:stablehlo_export",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status_macros",
@@ -1025,6 +1028,8 @@ xla_cc_test(
     srcs = ["mlir_to_hlo_test.cc"],
     deps = [
         ":mlir_to_hlo",
+        "//xla/client:executable_build_options",
+        "//xla/hlo/builder:xla_computation",
         "//xla/hlo/testlib:test",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",

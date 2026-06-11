@@ -74,6 +74,9 @@ limitations under the License.
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
+#include "xla/service/spmd/shardy/stablehlo_round_trip/export_ops.h"
+#include "xla/service/spmd/shardy/stablehlo_round_trip/export_shardings.h"
+#include "xla/service/spmd/shardy/stablehlo_round_trip/shard_map_export.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_export.h"
 #include "xla/service/spmd/shardy/utils.h"
 #include "xla/tsl/platform/errors.h"
@@ -119,17 +122,43 @@ absl::Status MlirToXlaComputation(
       RETURN_IF_ERROR(ExportShardyForGSPMD(module));
     }
 
-    // Export a StableHLO + Shardy module into a pure StableHLO module, to
-    // prepare for a round trip to HLO, such that the Shardy ops and attributes
-    // are preserved when going back to MLIR for Shardy propagation. This is a
-    // no-op if the module is already pure StableHLO.
-    // NOTE: we don't use `use_shardy` because it isn't guaranteed to be true if
-    // the module has Shardy artifacts.
-    bool enable_hlo_sharding_v3 =
-        exec_build_options && exec_build_options->has_debug_options() &&
-        exec_build_options->debug_options().xla_enable_hlo_sharding_v3();
-    xla::sdy::addSdyRoundTripExportPipeline(pm, /*keepMeshesInlined=*/false,
-                                            enable_hlo_sharding_v3);
+    // Export a StableHLO + Shardy module into a pure StableHLO module.
+    // When Shardy partitioning will run downstream, use the round-trip export
+    // pipeline which preserves Shardy ops/attrs through HLO for later
+    // re-import. When Shardy won't run (e.g., MPMD pre-partitioned modules),
+    // use the StableHLO export pipeline which creates SPMD-compatible ops
+    // (SPMDFullToShardShape/SPMDShardToFullShape) that XLA can handle directly,
+    // avoiding orphaned GlobalToLocalShape/LocalToGlobalShape custom calls that
+    // have no emitter.
+    bool use_shardy = exec_build_options &&
+                      exec_build_options->use_shardy_partitioner() &&
+                      exec_build_options->use_spmd_partitioning();
+    if (use_shardy) {
+      bool enable_hlo_sharding_v3 =
+          exec_build_options->has_debug_options() &&
+          exec_build_options->debug_options().xla_enable_hlo_sharding_v3();
+      xla::sdy::addSdyRoundTripExportPipeline(pm, /*keepMeshesInlined=*/false,
+                                              enable_hlo_sharding_v3);
+    } else {
+      // When Shardy partitioning won't run, clean up any remaining SDY dialect
+      // ops (sdy.reshard, sdy.sharding_constraint, sdy.constant, collectives)
+      // and attributes (sdy.sharding → mhlo.sharding) by converting them to
+      // StableHLO/MHLO equivalents. We run only the two needed passes rather
+      // than the full addStablehloExportPipeline, which includes shard map
+      // export and manual reduction collectives passes that interfere with
+      // pre-partitioned modules (e.g., stall_recovery_tpu_test_df).
+      //
+      // Note: sdy.manual_computation should never appear on this path since
+      // it's a shard_map construct that requires SPMD partitioning.
+      // Update: It appears in pmap cost analysis (uses non-SPMD path).
+      pm.addPass(xla::sdy::createExportOpsPass());
+      // TODO(b/513221048): Figure out what to do for HloShardingV2/V3 in
+      // createStablehloRoundTripShardMapExportPass and
+      // createExportStablehloShardingsPass (e.g., pass enable_hlo_sharding_v3).
+      pm.addPass(xla::sdy::createStablehloRoundTripShardMapExportPass());
+      pm.addPass(mlir::createSymbolDCEPass());
+      pm.addPass(xla::sdy::createExportStablehloShardingsPass());
+    }
 
     // CHLO -> MHLO for high level ops (TopK, Erf, RaggedDot, etc.)
     // CHLO -> StableHLO otherwise

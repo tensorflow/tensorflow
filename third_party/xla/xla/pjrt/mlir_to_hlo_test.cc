@@ -27,6 +27,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "stablehlo/api/PortableApi.h"
+#include "xla/client/executable_build_options.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -259,6 +261,69 @@ TEST(MlirToHloTest, InvalidBytecodeTest) {
   EXPECT_THAT(status.status().message(), HasSubstr("StableHLO_v2.0.0"));
   EXPECT_THAT(status.status().message(),
               HasSubstr(mlir::stablehlo::getCurrentVersion()));
+}
+
+TEST(MlirToHloTest, ManualComputationWithShardyUsesSdyRoundTripExport) {
+  // When use_shardy_partitioner and use_spmd_partitioning are both true,
+  // MlirToXlaComputation should use the SDY round-trip export pipeline, which
+  // creates GlobalToLocalShape custom calls (to be cleaned up later by the
+  // Shardy import pipeline during SPMD partitioning).
+  constexpr absl::string_view kProgram = R"(
+    sdy.mesh @mesh = <["x"=2]>
+    func.func @main(%arg0: tensor<8xf32>) -> tensor<8xf32> {
+      %0 = sdy.manual_computation(%arg0) in_shardings=[<@mesh, [{"x"}]>] out_shardings=[<@mesh, [{"x"}]>] manual_axes={"x"} (%arg1: tensor<4xf32>) {
+        sdy.return %arg1 : tensor<4xf32>
+      } : (tensor<8xf32>) -> tensor<8xf32>
+      return %0 : tensor<8xf32>
+    })";
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          ParseMlirModuleString(kProgram, context));
+
+  XlaComputation xla_computation;
+  ExecutableBuildOptions exec_build_options;
+  exec_build_options.set_use_shardy_partitioner(true);
+  exec_build_options.set_use_spmd_partitioning(true);
+  exec_build_options.set_num_partitions(2);
+
+  ASSERT_THAT(MlirToXlaComputation(*module, xla_computation,
+                                   /*use_tuple_args=*/false,
+                                   /*return_tuple=*/false, &exec_build_options),
+              absl_testing::IsOk());
+
+  std::string hlo_str = xla_computation.proto().DebugString();
+  // Round-trip export creates GlobalToLocalShape for Shardy to re-import later.
+  EXPECT_THAT(hlo_str, HasSubstr("GlobalToLocalShape"));
+  EXPECT_THAT(hlo_str, Not(HasSubstr("SPMDFullToShardShape")));
+}
+
+TEST(MlirToHloTest, SdyOpsWithoutSpmdAreCleaned) {
+  // When use_spmd_partitioning is false (e.g., MPMD pre-partitioned atom
+  // programs), SDY ops like sdy.sharding_constraint that leak from JAX's
+  // Shardy integration must be cleaned up. The targeted ExportOps pass
+  // converts them to mhlo::CopyOp, preventing crashes in the StableHLO→HLO
+  // conversion which doesn't understand SDY dialect ops.
+  constexpr absl::string_view kProgram = R"(
+    sdy.mesh @mesh = <["x"=2]>
+    func.func @main(%arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>}) -> tensor<8xf32> {
+      %0 = sdy.sharding_constraint %arg0 <@mesh, [{"x"}]> : tensor<8xf32>
+      return %0 : tensor<8xf32>
+    })";
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          ParseMlirModuleString(kProgram, context));
+
+  XlaComputation xla_computation;
+  ExecutableBuildOptions exec_build_options;
+  exec_build_options.set_use_shardy_partitioner(true);
+  exec_build_options.set_use_spmd_partitioning(false);
+  exec_build_options.set_num_partitions(2);
+
+  // Should succeed without crashing on SDY ops/attributes.
+  ASSERT_THAT(MlirToXlaComputation(*module, xla_computation,
+                                   /*use_tuple_args=*/false,
+                                   /*return_tuple=*/false, &exec_build_options),
+              absl_testing::IsOk());
 }
 
 }  // namespace
