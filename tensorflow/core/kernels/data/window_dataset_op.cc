@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
