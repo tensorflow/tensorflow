@@ -2645,6 +2645,7 @@ absl::Status SpmdPartitioningVisitor::DefaultAction(HloInstruction* hlo) {
       b_.AddInstruction(hlo->CloneWithNewOperands(hlo->shape(), new_operands));
   clone->set_frontend_attributes(hlo->frontend_attributes());
   clone->set_sharding(base_sharding.NormalizeTupleSharding(clone->shape()));
+  clone->set_frontend_attributes(hlo->frontend_attributes());
   SetPartitionedHlo(hlo,
                     PartitionedHlo(clone, hlo->shape(), MakePartitioningState())
                         .Reshard(hlo->sharding()));
