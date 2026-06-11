@@ -195,3 +195,13 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_test(
+    name = "shape_test",
+    srcs = ["shape_test.cc"],
+    tags = ["no_oss"],
+    deps = [
+        "//tensorflow/lite/experimental/shlo/legacy:shlo",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
