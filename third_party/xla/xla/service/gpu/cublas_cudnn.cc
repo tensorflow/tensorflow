@@ -36,10 +36,6 @@ bool IsCublasLtGemm(const HloInstruction& hlo) {
          IsCublasLtMatmulMx(hlo) || IsCublasLtGroupedMatmul(hlo);
 }
 
-bool IsCublasGemm(const HloInstruction& hlo) {
-  return IsLegacyCublasMatmul(hlo) || IsCublasLtGemm(hlo);
-}
-
 bool IsLegacyCublasMatmul(const HloInstruction& hlo) {
   return hlo.opcode() == HloOpcode::kCustomCall &&
          hlo.custom_call_target() == kGemmCallTarget;

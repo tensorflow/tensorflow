@@ -167,15 +167,35 @@ LocalDeviceState::~LocalDeviceState() {
     LOG(ERROR) << "Error when closing device: " << status;
   }
 
-  // Explicitly delete all the streams and events to ensure that their callbacks
-  // are executed before the destruction of the LocalDeviceState and its
-  // callback threads.
+  // 1. Join scheduling threads first to prevent any new work from being
+  // enqueued.
+  execute_thread_.reset();
+  async_dispatch_thread_.reset();
+
+  // 2. Clear streams and stream pools to trigger all pending
+  // callbacks/finalizations.
   external_ready_event_streams_.clear();
   fixed_size_pool_usage_streams_.clear();
   device_to_device_streams_.clear();
   device_to_host_streams_.clear();
+  {
+    absl::MutexLock lock(stream_pool_mu_);
+    usage_stream_pool_ = {};
+  }
+  {
+    absl::MutexLock lock(callback_stream_map_mu_);
+    if (callback_stream_map_.has_value()) {
+      callback_stream_map_.reset();
+    }
+  }
   host_to_device_stream_.reset();
   compute_stream_.reset();
+
+  // 3. Join callback/cleanup threads to execute all pending tasks.
+  callback_thread_.reset();
+  cleanup_thread_.reset();
+
+  // 4. Finally, clear compute events.
   compute_events_.clear();
 }
 
@@ -357,7 +377,8 @@ int LocalDeviceState::GetNewPrngSeed() {
 
 absl::Status LocalDeviceState::AllocateAndRecordEvent(
     AsyncWorkRunner* async_work_runner, BufferSequencingEventRef event,
-    se::Stream* stream, absl::string_view tag) {
+    se::Stream* stream, absl::string_view tag,
+    absl::AnyInvocable<void() &&> cleanup) {
   auto status = [&]() {
     ASSIGN_OR_RETURN(
         EventPool::Handle device_event,
@@ -365,7 +386,14 @@ absl::Status LocalDeviceState::AllocateAndRecordEvent(
     event_pool().ThenRecordEvent(stream, device_event);
     event->SetSequencingEvent(std::move(device_event), stream);
     return ThenExecuteCallback(
-        stream, [event]() { event.SetStateConcrete(); },
+        stream,
+        [event, cleanup = std::move(cleanup)]() mutable {
+          if (cleanup) {
+            std::move(cleanup)();
+            cleanup = nullptr;
+          }
+          event.SetStateConcrete();
+        },
         [event](absl::Status status) {
           event.SetError(event->AppendErrorContext(status));
         },

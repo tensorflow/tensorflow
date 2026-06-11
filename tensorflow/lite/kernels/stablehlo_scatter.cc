@@ -95,14 +95,15 @@ static Index<IndexType> GatherIndex(const Index<IndexType>& index,
 
 // Checks if the given index is within the bounds of the provided shape.
 template <typename IndexType>
-static bool IsInBounds(Index<IndexType> index, RuntimeShape shape) {
+static bool IsInBounds(const Index<IndexType>& index,
+                       const RuntimeShape& shape) {
   if (index.size() != shape.DimensionsCount()) {
     return false;
   }
 
   for (int dim = 0; dim < shape.DimensionsCount(); ++dim) {
     // int32 is implicitly promoted to int64 if needed.
-    if (index[dim] >= shape.Dims(dim)) {
+    if (index[dim] < 0 || index[dim] >= shape.Dims(dim)) {
       return false;
     }
   }
@@ -135,7 +136,7 @@ static TfLiteStatus GetComputationType(const Subgraph* computation_subgraph,
   }
   if (computation_subgraph->execution_plan().size() > 1) {
     TF_LITE_KERNEL_LOG(context,
-                       "Only one kernel allowed withing the stablehlo region. "
+                       "Only one kernel allowed within the stablehlo region. "
                        "(%zu) kernels found.\n",
                        computation_subgraph->execution_plan().size());
     return kTfLiteError;
@@ -237,6 +238,10 @@ TfLiteStatus EvalWithTypes(TfLiteContext* context, TfLiteNode* node) {
       data->update_window_dims,
       data->update_window_dims + data->num_update_window_dims);
 
+  if (NumElements(updates) == 0 || NumElements(output) == 0) {
+    return kTfLiteOk;
+  }
+
   do {
     Index<IndexType> update_scatter_index =
         GatherIndex(update_index, update_scatter_dims);
@@ -326,11 +331,11 @@ TfLiteStatus EvalWithIndexType(TfLiteContext* context, TfLiteNode* node,
 }
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return new ComputationType{ComputationType::kOther};
+  return new OpData{ComputationType::kOther};
 }
 
 void Free(TfLiteContext* context, void* buffer) {
-  delete reinterpret_cast<ComputationType*>(buffer);
+  delete reinterpret_cast<OpData*>(buffer);
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -341,17 +346,40 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetInputSafe(context, node, kInputsTensor, &input));
 
+  const TfLiteTensor* scatter_indices;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kScatterIndicesTensor,
+                                          &scatter_indices));
+
+  const TfLiteTensor* updates;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kUpdatesTensor, &updates));
+
+  TfLiteType index_type = scatter_indices->type;
+  if (index_type != kTfLiteInt32 && index_type != kTfLiteInt64) {
+    TF_LITE_KERNEL_LOG(context, "(Index Type: %s) currently not supported.\n",
+                       TfLiteTypeGetName(index_type));
+    return TfLiteStatus::kTfLiteError;
+  }
+
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
-  // Output is the same size as input. Scatter just updates some of the values.
+  // Output is the same size as input. Scatter just updates some of the values.
   // Need the copy since ResizeTensor takes ownership of output_size
   TfLiteIntArray* output_size = TfLiteIntArrayCopy(input->dims);
   TF_LITE_ENSURE_STATUS(context->ResizeTensor(context, output, output_size));
 
   const TfLiteStablehloScatterParams* data =
       reinterpret_cast<TfLiteStablehloScatterParams*>(node->builtin_data);
+  TF_LITE_ENSURE(context, data != nullptr);
+  TF_LITE_ENSURE(context, data->num_update_window_dims <= updates->dims->size);
+  TF_LITE_ENSURE(context, data->num_inserted_window_dims <= output->dims->size);
+  TF_LITE_ENSURE(context,
+                 data->num_scatter_dims_to_operand_dims <= input->dims->size);
+  TF_LITE_ENSURE(context,
+                 data->index_vector_dim <= scatter_indices->dims->size);
+
   Subgraph* this_subgraph = reinterpret_cast<Subgraph*>(context->impl_);
   auto* subgraphs = this_subgraph->GetSubgraphs();
 
