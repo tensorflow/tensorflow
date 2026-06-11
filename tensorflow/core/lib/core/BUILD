@@ -22,11 +22,12 @@ cc_library(
     srcs = ["arena.cc"],
     hdrs = ["arena.h"],
     deps = [
+        "//tensorflow/core:lib",
         "//tensorflow/core/lib/math:math_util",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/log:check",
     ],
 )
 
@@ -72,7 +73,7 @@ tf_cc_test(
     name = "coding_test",
     srcs = ["coding_test.cc"],
     deps = [
-        ":coding",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "@xla//xla/tsl/platform:test_main",
     ],
@@ -117,11 +118,13 @@ tf_cc_test(
     name = "status_test",
     srcs = ["status_test.cc"],
     deps = [
-        ":errors",
-        ":status",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
         "@xla//xla/tsl/platform:test_main",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -149,6 +152,7 @@ tf_cc_test(
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@xla//xla/tsl/platform:test_main",
