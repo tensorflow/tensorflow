@@ -183,7 +183,7 @@ AutotuneFusedConv(
 #endif
 }
 
-template StatusOr<AutotuneEntry<se::dnn::FusedConvOp>>
+template absl::StatusOr<AutotuneEntry<stream_executor::dnn::FusedConvOp>>
 AutotuneFusedConv<double>(
     bool cudnn_use_autotune,
     AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::FusedConvOp>>*
@@ -200,7 +200,8 @@ AutotuneFusedConv<double>(
     se::DeviceMemory<double> output_ptr, se::DeviceMemory<double> bias_ptr,
     se::DeviceMemory<double> side_input_ptr, int64_t scratch_size_limit);
 
-template StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv<float>(
+template absl::StatusOr<AutotuneEntry<stream_executor::dnn::FusedConvOp>>
+AutotuneFusedConv<float>(
     bool cudnn_use_autotune,
     AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::FusedConvOp>>*
         autotune_map,
@@ -216,7 +217,7 @@ template StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv<float>(
     se::DeviceMemory<float> output_ptr, se::DeviceMemory<float> bias_ptr,
     se::DeviceMemory<float> side_input_ptr, int64_t scratch_size_limit);
 
-template StatusOr<AutotuneEntry<se::dnn::FusedConvOp>>
+template absl::StatusOr<AutotuneEntry<stream_executor::dnn::FusedConvOp>>
 AutotuneFusedConv<Eigen::half>(
     bool cudnn_use_autotune,
     AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::FusedConvOp>>*
