@@ -7,6 +7,10 @@ load(
     "if_google",
     "internal_visibility",
 )
+load(
+    "//xla/tsl:tsl.default.bzl",
+    "get_compatible_with_portable",
+)
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured", "if_cuda_newer_than")
 
@@ -35,6 +39,7 @@ cc_library(
         "manual",
     ],
     deps = [
+        ":cuda_graph_telemetry_listener_impl",
         ":cupti_collector",
         ":cupti_tracer",
         ":cupti_tracer_options_utils",
@@ -253,6 +258,47 @@ cc_library(
         "//xla/tsl/cuda:cupti",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cupti_headers",
+    ],
+)
+
+cc_library(
+    name = "cuda_graph_annotation_registry",
+    srcs = ["cuda_graph_annotation_registry.cc"],
+    hdrs = ["cuda_graph_annotation_registry.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":cuda_driver_graph_interface",
+        ":cuda_graph_topology_mapper",
+        "//xla:debug_options_flags",
+        "//xla/tsl/cuda:cupti",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+    alwayslink = 1,
+)
+
+xla_cc_test(
+    name = "cuda_graph_annotation_registry_test",
+    srcs = ["cuda_graph_annotation_registry_test.cc"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":cuda_driver_graph_interface",
+        ":cuda_graph_annotation_registry",
+        ":cuda_graph_telemetry_listener_impl",
+        "//xla/stream_executor/gpu:scoped_command_buffer_annotation",
+        "@com_google_googletest//:gtest_main",
+        "@local_config_cuda//cuda:cuda_headers",
     ],
 )
 
@@ -939,4 +985,54 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
     ],
+)
+
+cc_library(
+    name = "cuda_graph_topology_mapper",
+    srcs = ["cuda_graph_topology_mapper.cc"],
+    hdrs = ["cuda_graph_topology_mapper.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = ["@com_google_absl//absl/container:flat_hash_map"],
+)
+
+xla_cc_test(
+    name = "cuda_graph_topology_mapper_test",
+    srcs = ["cuda_graph_topology_mapper_test.cc"],
+    deps = [
+        ":cuda_graph_topology_mapper",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "cuda_driver_graph_interface",
+    srcs = ["cuda_driver_graph_interface.cc"],
+    hdrs = ["cuda_driver_graph_interface.h"],
+    tags = ["cuda-only"],
+    deps = [
+        "@com_google_absl//absl/base:no_destructor",
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+)
+
+cc_library(
+    name = "cuda_graph_telemetry_listener_impl",
+    srcs = ["cuda_graph_telemetry_listener_impl.cc"],
+    hdrs = ["cuda_graph_telemetry_listener_impl.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":cuda_graph_annotation_registry",
+        "//xla:debug_options_flags",
+        "//xla/stream_executor/gpu:gpu_command_buffer",
+        "//xla/stream_executor/gpu:gpu_command_buffer_listener",
+        "//xla/stream_executor/gpu:scoped_command_buffer_annotation",
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+    alwayslink = 1,
 )

@@ -78,6 +78,57 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "scoped_command_buffer_annotation",
+    srcs = ["scoped_command_buffer_annotation.cc"],
+    hdrs = ["scoped_command_buffer_annotation.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "gpu_command_buffer_listener",
+    srcs = ["gpu_command_buffer_listener.cc"],
+    hdrs = ["gpu_command_buffer_listener.h"],
+    deps = [
+        ":gpu_command_buffer",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "gpu_command_buffer_listener_test_helper",
+    testonly = True,
+    hdrs = ["gpu_command_buffer_listener_test_helper.h"],
+    deps = [
+        ":gpu_command_buffer_listener",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_command_buffer_listener_test",
+    srcs = ["gpu_command_buffer_listener_test.cc"],
+    deps = [
+        ":gpu_command_buffer",
+        ":gpu_command_buffer_listener",
+        ":gpu_command_buffer_listener_test_helper",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "scoped_command_buffer_annotation_test",
+    srcs = ["scoped_command_buffer_annotation_test.cc"],
+    deps = [
+        ":scoped_command_buffer_annotation",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "mock_context",
     testonly = True,
     hdrs = ["mock_context.h"],
@@ -318,6 +369,7 @@ cc_library(
         "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:device_address_handle",
         "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
@@ -372,7 +424,6 @@ cc_library(
         ":gpu_init_impl",
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor/cuda:cuda_executor",
         "//xla/stream_executor/cuda:cuda_status",
         "//xla/tsl/framework:allocator",
         "//xla/tsl/framework:device_id",
@@ -598,6 +649,9 @@ xla_test(
     # TODO(intel-tf): Implement gpu command buffer for oneAPI and enable this test.
     tags = ["no-oneapi"],
     deps = [
+        ":gpu_command_buffer",
+        ":gpu_command_buffer_listener",
+        ":gpu_command_buffer_listener_test_helper",
         ":gpu_test_kernels",
         "//xla/service:platform_util",
         "//xla/stream_executor:command_buffer",
