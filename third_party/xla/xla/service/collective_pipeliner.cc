@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/map_util.h"
@@ -1161,7 +1162,17 @@ WhileLoopAnalysis::IsSupportedDynamicUpdateSlice(
   if (to_insert_into->opcode() == HloOpcode::kOptimizationBarrier) {
     gte_for_insert = to_insert_into->operand(0);
   }
-  if (level_to_operate_on == 0 &&
+  bool always_sink = false;
+  if (dyn_update->has_frontend_attributes()) {
+    auto it = dyn_update->frontend_attributes().map().find(
+        CollectivePipeliner::kAlwaysSinkAttr);
+    if (it != dyn_update->frontend_attributes().map().end() &&
+        it->second == "1") {
+      always_sink = true;
+    }
+  }
+
+  if (!always_sink && level_to_operate_on == 0 &&
       (gte_for_insert->opcode() != HloOpcode::kGetTupleElement ||
        gte_for_insert->operand(0) != loop_parameter)) {
     VLOG(5) << "Skipping " << instr->name()
@@ -2425,6 +2436,35 @@ absl::Status TransformFormattingOp(
             ComputeFullOutputShape(to_move, formatting_op->shape()),
             collect_operands(formatting_op)));
     pipelined_map[formatting_op] = cloned_elementwise;
+    return absl::OkStatus();
+  }
+  if (formatting_op->opcode() == HloOpcode::kCustomCall &&
+      formatting_op->custom_call_target() == "LayoutConstraint") {
+    auto operands = collect_operands(formatting_op);
+    auto* custom_call = Cast<HloCustomCallInstruction>(formatting_op);
+    Shape expanded_shape =
+        ComputeFullOutputShape(to_move, formatting_op->shape());
+
+    std::vector<Shape> operand_shapes_with_layout;
+    for (const Shape& old_shape : custom_call->operand_shapes_with_layout()) {
+      Shape new_shape_with_layout = ComputeFullOutputShape(to_move, old_shape);
+      std::vector<int64_t> new_minor_to_major;
+      new_minor_to_major.reserve(old_shape.layout().minor_to_major_size() + 1);
+      for (int64_t dim : old_shape.layout().minor_to_major()) {
+        new_minor_to_major.push_back(dim + 1);
+      }
+      new_minor_to_major.push_back(0);
+      *new_shape_with_layout.mutable_layout() =
+          LayoutUtil::MakeLayout(new_minor_to_major);
+      operand_shapes_with_layout.push_back(new_shape_with_layout);
+    }
+
+    HloInstruction* expanded_custom_call =
+        loop_computation->AddInstruction(HloInstruction::CreateCustomCall(
+            expanded_shape, operands, custom_call->custom_call_target(),
+            operand_shapes_with_layout, custom_call->opaque(),
+            custom_call->api_version()));
+    pipelined_map[formatting_op] = expanded_custom_call;
     return absl::OkStatus();
   }
   if (formatting_op->opcode() == HloOpcode::kAllGather) {
