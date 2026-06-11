@@ -1378,6 +1378,7 @@ py_library(
     srcs = [
         "cond_v2.py",
     ],
+    lazy_imports = True,
     strict_deps = True,
     deps = [
         ":array_ops",
