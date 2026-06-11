@@ -296,7 +296,7 @@ tf_cc_test(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@llvm-project//mlir:RegisterAllDialects",
+        "@llvm-project//mlir:RegisterAllDialects",  # buildcleaner: keep
         "@tf_runtime//:hostcontext",
         "@xla//xla/python/ifrt",
         "@xla//xla/python/ifrt:test_util",
