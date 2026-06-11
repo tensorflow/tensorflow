@@ -173,6 +173,7 @@ package_group(
 tf_proto_library(
     name = "protos_all",
     srcs = [],
+    aspect_hints = ["//tools/build_defs/kotlin/native:disable_kotlin_interop"],
     create_go_proto = False,
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
