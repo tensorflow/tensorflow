@@ -555,6 +555,19 @@ void GeneralCompile(XlaOpKernelContext* ctx, bool align_corners,
   dot_dnum.add_lhs_batch_dimensions(0);
   dot_dnum.add_rhs_batch_dimensions(4);
   dot_dnum.add_rhs_batch_dimensions(5);
+  if (is_kernel_bilinear) {
+    xla::Shape input_xla_shape = ctx->builder()->GetShape(input).value();
+    xla::XlaOp broadcasted_weights = xla::BroadcastInDim(
+        dot_weights, input_xla_shape.dimensions(), {5, 2, 4, 1});
+    xla::XlaOp zero_weight =
+        xla::ConvertElementType(xla::ConstantR0(ctx->builder(), 0.0f), input_type);
+    xla::XlaOp weight_is_zero = xla::Eq(broadcasted_weights, zero_weight);
+    xla::XlaOp zero_input = xla::ConvertElementType(
+        xla::Broadcast(xla::ConstantR0(ctx->builder(), 0.0f),
+                       input_xla_shape.dimensions()),
+        input_type);
+    input = xla::Select(weight_is_zero, zero_input, input);
+  }
   input = xla::DotGeneral(dot_weights, input, dot_dnum);
 
   absl::InlinedVector<int64_t, 4> perm = {2, 0, 1, 3};
@@ -599,29 +612,46 @@ void GeneralCompileGrad(XlaOpKernelContext* ctx, bool align_corners,
   //   {batch, out_size[0], out_size[1], channel}
   // After this step `grad` has dimensions
   //   {out_size[0], out_size[1], kernel_width, kernel_height, batch, channel}
-  xla::DotDimensionNumbers dot_dnum;
-  dot_dnum.add_lhs_batch_dimensions(2);
-  dot_dnum.add_lhs_batch_dimensions(0);
-  dot_dnum.add_rhs_batch_dimensions(1);
-  dot_dnum.add_rhs_batch_dimensions(2);
-  grad = xla::DotGeneral(dot_weights, grad, dot_dnum);
-  int dot_out_size_height_index = 0;
-  int dot_out_size_width_index = 1;
-  int dot_kernel_width_index = 2;
-  int dot_kernel_height_index = 3;
-  int dot_batch_index = 4;
-  int dot_channel_index = 5;
+  if (is_kernel_bilinear) {
+    std::vector<int64_t> target_dimensions = {batch, h_span_size, w_span_size,
+                                              channels, out_size[0], out_size[1]};
+    xla::XlaOp broadcasted_weights = xla::BroadcastInDim(
+        dot_weights, target_dimensions, {5, 2, 4, 1});
+    xla::XlaOp broadcasted_grad = xla::BroadcastInDim(
+        grad, target_dimensions, {0, 4, 5, 3});
 
-  // Transpose DotGeneral result's dimensions to be the same order as the
-  // forward direction's input to DotGeneral. This is needed because the
-  // backward's Scatter's input has the same order as the forward's Gather
-  // output.
-  // After this step `grad` has dimensions
-  //   {batch, kernel_height, kernel_width, channel, out_size[0], out_size[1]}
-  absl::InlinedVector<int64_t, 4> perm = {
-      dot_batch_index,   dot_kernel_height_index,   dot_kernel_width_index,
-      dot_channel_index, dot_out_size_height_index, dot_out_size_width_index};
-  grad = xla::Transpose(grad, perm);
+    xla::XlaOp zero_weight = xla::ConstantR0(b, 0.0f);
+    xla::XlaOp weight_is_zero = xla::Eq(
+        broadcasted_weights, xla::ConvertElementType(zero_weight, grad_type));
+    xla::XlaOp zero_grad = xla::Broadcast(xla::ConstantR0(b, 0.0f), target_dimensions);
+    xla::XlaOp multiplied = xla::Mul(broadcasted_weights, broadcasted_grad);
+    grad = xla::Select(
+        weight_is_zero, xla::ConvertElementType(zero_grad, grad_type), multiplied);
+  } else {
+    xla::DotDimensionNumbers dot_dnum;
+    dot_dnum.add_lhs_batch_dimensions(2);
+    dot_dnum.add_lhs_batch_dimensions(0);
+    dot_dnum.add_rhs_batch_dimensions(1);
+    dot_dnum.add_rhs_batch_dimensions(2);
+    grad = xla::DotGeneral(dot_weights, grad, dot_dnum);
+    int dot_out_size_height_index = 0;
+    int dot_out_size_width_index = 1;
+    int dot_kernel_width_index = 2;
+    int dot_kernel_height_index = 3;
+    int dot_batch_index = 4;
+    int dot_channel_index = 5;
+
+    // Transpose DotGeneral result's dimensions to be the same order as the
+    // forward direction's input to DotGeneral. This is needed because the
+    // backward's Scatter's input has the same order as the forward's Gather
+    // output.
+    // After this step `grad` has dimensions
+    //   {batch, kernel_height, kernel_width, channel, out_size[0], out_size[1]}
+    absl::InlinedVector<int64_t, 4> perm = {
+        dot_batch_index,   dot_kernel_height_index,   dot_kernel_width_index,
+        dot_channel_index, dot_out_size_height_index, dot_out_size_width_index};
+    grad = xla::Transpose(grad, perm);
+  }
 
   // A Scatter reverses the forward op's Gather. Gather can be thought of as a
   // matrix-vector multiply where each row has one 1 and the rest 0. The
