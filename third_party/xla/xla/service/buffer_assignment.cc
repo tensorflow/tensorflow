@@ -1739,6 +1739,17 @@ absl::Status BufferAssigner::AssignSingleHloBuffer(
         buffers_to_assign_sequentially,
     std::vector<BufferAllocation::Index>* allocation_indices,
     BufferAssignment* assignment) {
+  // "View" buffers are pointer stand-ins that alias into another allocation, so
+  // they get no allocation of their own. The backend injects their color; this
+  // third_party layer stays target-agnostic by matching on it.
+  if (opts_.dus_view_color.has_value()) {
+    absl::StatusOr<BufferValue::Color> buffer_color = hlo_buffer->color();
+    if (buffer_color.ok() && *buffer_color == *opts_.dus_view_color) {
+      VLOG(3) << "Not allocating buffer for view buffer: " << *hlo_buffer;
+      return absl::OkStatus();
+    }
+  }
+
   const int64_t buffer_size = assignment->HloBufferSize(*hlo_buffer);
   for (const HloValue* value : hlo_buffer->values()) {
     if (value->instruction()->opcode() == HloOpcode::kConstant) {

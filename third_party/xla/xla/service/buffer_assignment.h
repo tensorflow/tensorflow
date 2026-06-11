@@ -772,6 +772,11 @@ class BufferAssigner {
         heap_buffer_interval_compare;
     std::optional<BufferAssignment::BufferIsolationOptions> isolation_options;
     std::optional<BufferValue::Color> temp_buffer_color;
+    // Color of "view" buffers that are pointer stand-ins aliasing into another
+    // allocation (e.g. the backend's DUS view memory space). Buffers of this
+    // color are skipped during assignment: they get no allocation of their own.
+    // Injected by the backend so this third_party layer stays target-agnostic.
+    std::optional<BufferValue::Color> dus_view_color;
     BufferOrder buffer_order = BufferOrder::kBiggestFirst;
 
     buffer_assignment::BufferAssignmentAlgorithmProto::Value
