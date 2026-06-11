@@ -92,8 +92,10 @@ message DebugOptions {
     CUSTOM_CALL = 7;
     CUBLASLT = 8;
     DYNAMIC_SLICE_FUSION = 9;
-    DYNAMIC_SLICE_COPY_FUSION = 10;
     CONVOLUTION = 11;
+
+    reserved "DYNAMIC_SLICE_COPY_FUSION";
+    reserved 10;
   }
 
   enum LibNvJitLinkMode {

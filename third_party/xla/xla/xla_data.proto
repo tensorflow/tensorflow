@@ -1478,9 +1478,9 @@ message WhileLoopBackendConfig {
   }
 
   // Tuple positions that should be treated as induction variables for dynamic
-  // memcpy analysis, even though they are not the primary induction variable.
-  // When `init`/`step` are set, they take precedence over `known_init_step`
-  // for offset computation.
+  // slice offset analysis, even though they are not the primary induction
+  // variable. When `init`/`step` are set, they take precedence over
+  // `known_init_step` for offset computation.
   repeated DynamicVariable dynamic_variables = 5;
 }
 
