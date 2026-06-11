@@ -47,6 +47,7 @@ cc_library(
     srcs = ["mlir_kernel_emitter.cc"],
     hdrs = ["mlir_kernel_emitter.h"],
     deps = [
+        "//xla:frontend_attributes",
         "//xla:future",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -82,6 +83,7 @@ cc_library(
         "//xla/service:dump",
         "//xla/service/gpu:gpu_constants",
         "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:ir_emitter_context",
         "//xla/service/gpu:kernel_reuse_cache",
         "//xla/service/gpu:launch_dimensions",

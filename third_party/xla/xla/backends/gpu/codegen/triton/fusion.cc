@@ -35,6 +35,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/TargetParser/Triple.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/llvm_kernel_source.h"
+#include "xla/frontend_attributes.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -109,6 +111,11 @@ xla::Future<TritonWrapperResult> TritonFusion::GenerateTritonKernelAndWrapper(
       CreateTritonModule(impl_fn_name, fusion, device_info,
                          block_level_parameters, **borrowed_context));
 
+  // Forward PDL launch annotation from HLO to MLIR.
+  if (DoesPdlLaunch(fusion)) {
+    kernel_source.module()->setAttr(
+        kXlaPdlLaunch, mlir::UnitAttr::get(borrowed_context->get()));
+  }
   return compiler->CompileTritonToLlvm(
       impl_fn_name, *fusion.GetModule(), device_info, block_level_parameters,
       target_triple, data_layout, std::move(kernel_source),

@@ -703,6 +703,10 @@ message DebugOptions {
   // Enable PDL - Programmatic Dependent Launch.
   optional bool xla_gpu_enable_pdl = 460;
 
+  // Enable selective insertion of PDL launch instructions
+  // (on top of basic use of PDL without them enabled by xla_gpu_enable_pdl).
+  optional bool xla_gpu_enable_pdl_launch = 493;
+
   optional bool xla_gpu_enable_pipelined_all_gather = 227;
 
   optional bool xla_gpu_enable_pipelined_all_reduce = 217;
@@ -804,7 +808,9 @@ message DebugOptions {
   optional AutotuneCacheMode xla_gpu_experimental_autotune_cache_mode = 324;
 
   // If true, all autotuning is consolidated after fusion passes.
-  optional bool xla_gpu_experimental_autotune_post_fusion = 481;
+  // Deprecated, autotune post fusion is always enabled.
+  optional bool xla_gpu_experimental_autotune_post_fusion = 481
+      [deprecated = true];
 
   // Specifies the directory to store per kernel autotuning cache.
   optional string xla_gpu_experimental_autotuner_cache_dir = 407;
@@ -1611,7 +1617,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 493
+  // Next id: 494
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

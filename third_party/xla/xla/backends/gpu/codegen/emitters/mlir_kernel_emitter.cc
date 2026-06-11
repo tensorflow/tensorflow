@@ -103,6 +103,7 @@ limitations under the License.
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
+#include "xla/frontend_attributes.h"
 #include "xla/future.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -116,6 +117,7 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -141,14 +143,6 @@ using llvm::SmallVector;
 using mlir::MLIRContext;
 using mlir::Value;
 using mlir::func::FuncOp;
-
-bool EnablePDL(const HloModule& module, const se::DeviceDescription& device) {
-  return module.config().debug_options().xla_gpu_enable_pdl() &&
-         device.gpu_compute_capability().IsCuda() &&
-         device.gpu_compute_capability()
-             .cuda_compute_capability()
-             ->IsAtLeastHopper();
-}
 
 void AddRanges(llvm::Function* func, const LaunchDimensions& launch_dims,
                llvm::Module* module) {
@@ -391,8 +385,9 @@ AsyncThunkSequence MlirKernelFusion::Emit(
                   LaunchDimensions launch_dims,
                   LaunchDimensions::FromWorkDimensions(spec.work_dimensions()));
 
-              bool use_pdl = EnablePDL(*fusion.GetModule(),
-                                       ir_emitter_context.gpu_device_info());
+              bool use_pdl =
+                  IsPdlEnabled(fusion.GetModule()->config().debug_options(),
+                               ir_emitter_context.gpu_compute_capability());
 
               return ir_emitter_context.kernel_compiler()
                   ->CompileToPtx(std::move(kernel_def).TakeSource())
@@ -444,6 +439,10 @@ xla::Future<LlvmKernelSource> MlirKernelFusion::CreateLLVMModule(
   ASSIGN_OR_RETURN(MlirKernelSource source,
                    emitter_->Emit(mlir_context, fusion, entry_function_name,
                                   buffer_assignment));
+
+  if (DoesPdlLaunch(fusion)) {
+    source.module()->setAttr(kXlaPdlLaunch, mlir::UnitAttr::get(mlir_context));
+  }
 
   return kernel_compiler->CompileMlirToLlvm(
       device, *fusion.GetModule(), entry_function_name,
@@ -667,7 +666,8 @@ absl::StatusOr<LlvmKernelSource> CompileMlirToLlvm(
 
   emitters::RegisterOptimizationPasses(pm);
   AddLoopTransformationPasses(pm, device, unroll_factor);
-  if (EnablePDL(hlo_module, device)) {
+  if (IsPdlEnabled(hlo_module.config().debug_options(),
+                   device.gpu_compute_capability())) {
     pm.addPass(CreateInsertPDLPass());
   }
   AddLoweringPasses(pm, device);
