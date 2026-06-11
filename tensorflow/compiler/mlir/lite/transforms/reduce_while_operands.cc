@@ -96,20 +96,23 @@ LogicalResult FindImplicityProducers(
   return success();
 }
 
-void FindProducers(Value start_node, std::vector<uint64_t> &neighbors) {
-  llvm::DenseSet<Value> visited;
-  std::vector<Value> queue;
+void FindProducers(::mlir::Value start_node, Block& body,
+                   std::vector<uint64_t>& neighbors) {
+  llvm::DenseSet<::mlir::Value> visited;
+  std::vector<::mlir::Value> queue;
   queue.push_back(start_node);
   visited.insert(start_node);
   while (!queue.empty()) {
     auto node = queue.back();
     queue.pop_back();
     if (auto arg = mlir::dyn_cast_or_null<BlockArgument>(node)) {
-      neighbors.push_back(arg.getArgNumber());
+      if (arg.getOwner() == &body) {
+        neighbors.push_back(arg.getArgNumber());
+      }
       continue;
     }
     if (!node.getDefiningOp()) continue;
-    for (Value operand : node.getDefiningOp()->getOperands()) {
+    for (::mlir::Value operand : node.getDefiningOp()->getOperands()) {
       if (visited.contains(operand)) continue;
       queue.push_back(operand);
       visited.insert(operand);
@@ -126,7 +129,7 @@ void FindConsumedOp(Operation *start_op,
   while (!queue.empty()) {
     auto op = queue.back();
     queue.pop_back();
-    for (Value operand : op->getOperands()) {
+    for (::mlir::Value operand : op->getOperands()) {
       if (!operand.getDefiningOp()) continue;
       auto def_op = operand.getDefiningOp();
       if (consumed_ops.contains(def_op)) continue;
@@ -225,7 +228,7 @@ bool ReduceWhileOperands(TFL::WhileOp while_op) {
   for (auto i = 0; i < n; ++i) {
     std::vector<uint64_t> neighbors;
     neighbors.reserve(n);
-    FindProducers(results[i], neighbors);
+    FindProducers(results[i], body, neighbors);
     dependency_graph.push_back(neighbors);
   }
 
@@ -259,7 +262,7 @@ bool ReduceWhileOperands(TFL::WhileOp while_op) {
   body.eraseArguments(erase_indices);
   cond.eraseArguments(erase_indices);
 
-  llvm::SmallVector<Value> new_operands;
+  llvm::SmallVector<::mlir::Value> new_operands;
   llvm::SmallVector<Type> new_result_types;
   new_operands.reserve(n - erase_indices.size());
   new_result_types.reserve(n - erase_indices.size());
@@ -295,7 +298,36 @@ bool ReduceWhileOperands(TFL::WhileOp while_op) {
 
 void ReduceWhileOperandsPass::runOnOperation() {
   auto fn = getOperation();
-  fn.walk([&](TFL::WhileOp while_op) { ReduceWhileOperands(while_op); });
+  llvm::DenseSet<Operation*> alive_while_ops;
+  llvm::SmallVector<TFL::WhileOp, 4> worklist;
+
+  fn.walk([&](TFL::WhileOp while_op) {
+    alive_while_ops.insert(while_op);
+    worklist.push_back(while_op);
+  });
+
+  // Process in post-order (leaves first) to optimize nested loops correctly.
+  for (auto while_op : llvm::reverse(worklist)) {
+    if (!alive_while_ops.contains(while_op)) {
+      continue;
+    }
+
+    // Collect nested WhileOps before processing, in case they are deleted
+    // when the parent WhileOp is erased.
+    llvm::SmallVector<TFL::WhileOp, 2> nested_while_ops;
+    while_op.walk([&](TFL::WhileOp nested) {
+      if (nested != while_op) {
+        nested_while_ops.push_back(nested);
+      }
+    });
+
+    if (ReduceWhileOperands(while_op)) {
+      alive_while_ops.erase(while_op);
+      for (auto nested : nested_while_ops) {
+        alive_while_ops.erase(nested);
+      }
+    }
+  }
 }
 
 static PassRegistration<ReduceWhileOperandsPass> pass;
