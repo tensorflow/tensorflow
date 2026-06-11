@@ -174,7 +174,7 @@ def create_xml_file(result_store_dict: ResultDictType,
 
   date_time = datetime.datetime
   attrib = {'name': 'Bazel Invocations', 'time': '0.0',
-            'timestamp': date_time.isoformat(date_time.utcnow())}
+            'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()}
   testsuites = ElemTree.Element('testsuites')
   testsuite = ElemTree.SubElement(testsuites, 'testsuite')
   for url, invocation_results in result_store_dict.items():

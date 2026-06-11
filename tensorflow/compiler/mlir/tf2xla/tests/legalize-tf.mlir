@@ -2496,6 +2496,24 @@ func.func @cast_i2f(%arg0: tensor<2xi32>) -> tensor<2xf32> {
 
 // -----
 
+// CHECK-LABEL: func @cast_float_to_unsigned
+func.func @cast_float_to_unsigned(%arg0: tensor<?xf32>) -> tensor<?xui32> {
+  // CHECK: %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK: %[[BROADCAST_ZERO:.*]] = "mhlo.broadcast_in_dim"(%[[ZERO]]) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<?xf32>
+  // CHECK: %[[IS_NEGATIVE:.*]] = mhlo.compare LT, %arg0, %[[BROADCAST_ZERO]]
+  // CHECK: %[[IS_FINITE:.*]] = mhlo.is_finite %arg0 : (tensor<?xf32>) -> tensor<?xi1>
+  // CHECK: %[[FINITE_NEGATIVE:.*]] = mhlo.and %[[IS_NEGATIVE]], %[[IS_FINITE]] : tensor<?xi1>
+  // CHECK: %[[DIRECT:.*]] = mhlo.convert %arg0 : (tensor<?xf32>) -> tensor<?xui32>
+  // CHECK: %[[SIGNED:.*]] = mhlo.convert %arg0 : (tensor<?xf32>) -> tensor<?xi64>
+  // CHECK: %[[UNSIGNED:.*]] = mhlo.convert %[[SIGNED]] : (tensor<?xi64>) -> tensor<?xui64>
+  // CHECK: %[[WRAPPED:.*]] = mhlo.convert %[[UNSIGNED]] : (tensor<?xui64>) -> tensor<?xui32>
+  // CHECK: mhlo.select %[[FINITE_NEGATIVE]], %[[WRAPPED]], %[[DIRECT]]
+  %0 = "tf.Cast"(%arg0) : (tensor<?xf32>) -> tensor<?xui32>
+  func.return %0 : tensor<?xui32>
+}
+
+// -----
+
 // CHECK-LABEL: func @cast_c2f
 func.func @cast_c2f(%arg0: tensor<2xcomplex<f32>>) -> tensor<2xf32> {
   // CHECK: mhlo.convert %arg0 : (tensor<2xcomplex<f32>>) -> tensor<2xf32>

@@ -658,6 +658,75 @@ static Type ChangeTensorElementType(Builder *b, Type tensor_type,
   return UnrankedTensorType::get(element_type);
 }
 
+class ConvertFloatToUnsignedCastOp : public OpRewritePattern<TF::CastOp> {
+ public:
+  explicit ConvertFloatToUnsignedCastOp(MLIRContext *context)
+      : OpRewritePattern<TF::CastOp>(context, /*benefit=*/2) {}
+
+  LogicalResult matchAndRewrite(TF::CastOp op,
+                                PatternRewriter &rewriter) const override {
+    if (op.getTruncate()) return failure();
+
+    auto input_type = mlir::dyn_cast<RankedTensorType>(op.getX().getType());
+    auto result_type = mlir::dyn_cast<RankedTensorType>(op.getType());
+    if (!input_type || !result_type) return failure();
+
+    Type input_element_type = input_type.getElementType();
+    Type result_element_type = result_type.getElementType();
+    if (!mlir::isa<FloatType>(input_element_type) ||
+        !result_element_type.isUnsignedInteger()) {
+      return failure();
+    }
+
+    // XLA convert saturates negative floats to unsigned integers at zero, while
+    // TensorFlow Cast's CPU path wraps finite negative values in the destination
+    // unsigned type. NaN and Inf casts to integral types are documented as
+    // undefined, so keep them on the direct HLO convert path.
+    int result_width = result_element_type.getIntOrFloatBitWidth();
+    int wider_width = result_width == 64 ? 64 : result_width * 2;
+    Type signed_element_type = rewriter.getIntegerType(wider_width);
+    Type unsigned_element_type =
+        IntegerType::get(rewriter.getContext(), wider_width,
+                         IntegerType::SignednessSemantics::Unsigned);
+
+    Type signed_type =
+        ChangeTensorElementType(&rewriter, op.getType(), signed_element_type);
+    Type unsigned_type =
+        ChangeTensorElementType(&rewriter, op.getType(), unsigned_element_type);
+
+    Location loc = op.getLoc();
+    auto scalar_input_type =
+        tensorflow::GetTypeFromTFTensorShape({}, input_element_type);
+    Value zero = ConstantOp::create(
+        rewriter, loc,
+        DenseElementsAttr::get(
+            scalar_input_type,
+            rewriter.getFloatAttr(input_element_type, 0.0)));
+    Value broadcast_zero = BroadcastInDimOp::create(
+        rewriter, loc, input_type, zero, GetI64ElementsAttr({}, &rewriter));
+    Value is_negative =
+        CompareOp::create(rewriter, loc, op.getX(), broadcast_zero,
+                          ComparisonDirection::LT);
+    Type predicate_type =
+        ChangeTensorElementType(&rewriter, input_type, rewriter.getI1Type());
+    Value is_finite =
+        IsFiniteOp::create(rewriter, loc, predicate_type, op.getX());
+    Value finite_negative =
+        AndOp::create(rewriter, loc, is_negative, is_finite);
+
+    Value direct = ConvertOp::create(rewriter, loc, op.getType(), op.getX());
+    Value signed_value =
+        ConvertOp::create(rewriter, loc, signed_type, op.getX());
+    Value unsigned_value =
+        ConvertOp::create(rewriter, loc, unsigned_type, signed_value);
+    Value wrapped_negative =
+        ConvertOp::create(rewriter, loc, op.getType(), unsigned_value);
+    rewriter.replaceOpWithNewOp<SelectOp>(op, op.getType(), finite_negative,
+                                          wrapped_negative, direct);
+    return success();
+  }
+};
+
 //===----------------------------------------------------------------------===//
 // Softmax op utilities.
 //===----------------------------------------------------------------------===//
@@ -6918,6 +6987,7 @@ void PopulatePatterns(MLIRContext *context, RewritePatternSet *patterns) {
     ConvertBiasAddOp,
     ConvertBroadcastToOp,
     ConvertBF16FloorDivOp,
+    ConvertFloatToUnsignedCastOp,
     ConvertClipByValueOp,
     ConvertConstOp,
     ConvertConv2DOp,
