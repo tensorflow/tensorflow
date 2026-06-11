@@ -14,19 +14,20 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/graph_rewriters.h"
 
-#include <cstdlib>
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <string>
 #include <unordered_map>
-#include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
-#include "absl/types/optional.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/data/rewrite_utils.h"

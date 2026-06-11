@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "grpcpp/grpcpp.h"
 #include "grpcpp/security/credentials.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/status.h"
 

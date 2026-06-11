@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_GRPC_DISPATCHER_IMPL_H_
 
 #include "grpcpp/server_builder.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/dispatcher_impl.h"
 #include "tensorflow/core/data/service/export.pb.h"

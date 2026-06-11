@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/grpc_dispatcher_impl.h"
 
+#include <cstddef>
+
 #include "grpcpp/server_context.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"

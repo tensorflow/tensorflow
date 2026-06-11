@@ -21,6 +21,9 @@ limitations under the License.
 
 #include "grpcpp/server_builder.h"
 #include "grpcpp/server_context.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/worker_impl.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
