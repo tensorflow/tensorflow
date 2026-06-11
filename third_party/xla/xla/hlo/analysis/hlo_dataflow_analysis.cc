@@ -289,11 +289,11 @@ bool HloDataflowAnalysis::Phi(
     const HloValue* current_value =
         value_set.values().size() == 1 ? value_set.values()[0] : nullptr;
 
-    // Construct a vector of value IDs of the inputs.
-    std::vector<HloValue::Id> input_value_ids;
+    // Construct a vector of values of the inputs.
+    std::vector<const HloValue*> phi_inputs;
     for (const InstructionValueSet* input : inputs) {
       for (const HloValue* value : input->element(index).values()) {
-        input_value_ids.push_back(value->id());
+        phi_inputs.push_back(value);
       }
     }
 
@@ -305,18 +305,18 @@ bool HloDataflowAnalysis::Phi(
          current_value->defining_instruction() == instruction &&
          current_value->defining_index() == index);
 
-    VLOG(5) << "after input_value_ids.size = " << input_value_ids.size();
-    if (input_value_ids.empty()) {
+    VLOG(5) << "after phi_inputs.size = " << phi_inputs.size();
+    if (phi_inputs.empty()) {
       // A value set which has at least one element should never have its value
       // set reduced to zero elements. During dataflow value sets only can go
       // from empty to non-empty, not the reverse.
       CHECK_EQ(value_set.values().size(), 0)
           << "Instruction " << instruction->name() << " at index " << index
           << " previously had non-empty value set. Value set: " << value_set;
-    } else if (input_value_ids.size() == 1) {
+    } else if (phi_inputs.size() == 1) {
       // Only a single value reaches this point. There should be no phi, and
       // this value set should contain this single value.
-      const HloValue& new_value = GetValue(input_value_ids[0]);
+      const HloValue& new_value = *phi_inputs[0];
       if (current_value == nullptr) {
         value_set.Clear();
         value_set.AddValue(&new_value);
@@ -333,32 +333,21 @@ bool HloDataflowAnalysis::Phi(
     } else {
       // Multiple distinct values reach this point. A phi value is
       // necessary.
-      CHECK_GT(input_value_ids.size(), 1);
+      CHECK_GT(phi_inputs.size(), 1);
       bool phi_defined_here =
           current_value_defined_here && current_value->is_phi();
       if (current_value == nullptr || !phi_defined_here) {
         value_set.Clear();
         value_set.AddValue(NewHloValue(instruction, index, /*is_phi=*/true));
 
-        std::vector<HloValue*> inputs;
-        inputs.reserve(input_value_ids.size());
-        for (HloValue::Id id : input_value_ids) {
-          inputs.push_back(&GetValue(id));
-        }
         // Register the phi into phi graph.
-        phi_graph_.RegisterPhi(*value_set.values()[0], inputs);
+        phi_graph_.RegisterPhi(*value_set.values()[0], phi_inputs);
         changed = true;
       } else if (phi_defined_here) {
-        std::vector<HloValue*> new_inputs;
-        new_inputs.reserve(input_value_ids.size());
-        for (HloValue::Id id : input_value_ids) {
-          new_inputs.push_back(&GetValue(id));
-        }
-
-        if (!phi_graph_.InputsEqualTo(*current_value, new_inputs)) {
+        if (!phi_graph_.InputsEqualTo(*current_value, phi_inputs)) {
           VLOG(1) << current_value->ToShortString() << " has new phi inputs: ";
           // Update phi inputs.
-          phi_graph_.RegisterPhi(*current_value, new_inputs);
+          phi_graph_.RegisterPhi(*current_value, phi_inputs);
           changed = true;
         }
       }
