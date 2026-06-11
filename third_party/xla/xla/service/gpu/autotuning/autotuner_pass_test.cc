@@ -522,7 +522,7 @@ TEST_F(AutotunerFlagsTest, DeterministicAutotuningSetsSelectFirstConfig) {
 }
 
 TEST_F(AutotunerPassTest, CublasLtSelectFirstConfig) {
-  absl::SetVLogLevel("autotuner*", 10);
+  absl::SetVLogLevel("config_assigner*", 10);
   AutotunerCache::ClearAutotuneResults();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
@@ -584,7 +584,7 @@ TEST_F(AutotunerPassTest, CublasLtSelectFirstConfig) {
 }
 
 TEST_F(AutotunerPassTest, TritonSelectFirstConfig) {
-  absl::SetVLogLevel("autotuner*", 10);
+  absl::SetVLogLevel("config_assigner*", 10);
   const char kTritonGemmFusionHlo[] = R"hlo(
     HloModule module
 
@@ -673,7 +673,7 @@ TEST_F(AutotunerPassTest, TritonSelectFirstConfig) {
 }
 
 TEST_F(AutotunerPassTest, CudnnSelectFirstConfig) {
-  absl::SetVLogLevel("autotuner*", 10);
+  absl::SetVLogLevel("config_assigner*", 10);
   const char kCudnnConvForwardHlo[] = R"hlo(
     HloModule TestModule
 

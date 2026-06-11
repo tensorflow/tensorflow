@@ -32,6 +32,17 @@ double tanh_f64(double x) asm("xla.unused.tanh.f64");
 Vec4d tanh_v4f64(Vec4d x) asm("xla.unused.tanh.v4f64");
 Vec8d tanh_v8f64(Vec8d x) asm("xla.unused.tanh.v8f64");
 
+// Single precision
+float atan_f32(float x) asm("xla.atan.f32");
+Vec4f atan_v4f32(Vec4f x) asm("xla.atan.v4f32");
+Vec8f atan_v8f32(Vec8f x) asm("xla.atan.v8f32");
+Vec16f atan_v16f32(Vec16f x) asm("xla.atan.v16f32");
+
+// Double precision
+double atan_f64(double x) asm("xla.atan.f64");
+Vec4d atan_v4f64(Vec4d x) asm("xla.atan.v4f64");
+Vec8d atan_v8f64(Vec8d x) asm("xla.atan.v8f64");
+
 }  // namespace xla::codegen
 
 #endif  // XLA_CODEGEN_INTRINSIC_CPP_EIGEN_UNARY_H_
