@@ -64,8 +64,8 @@ void UnboundedWorkQueue::Schedule(WorkFunction fn) {
     // Spawn a new physical thread to process the given function.
     // NOTE: `PooledThreadFunc` will eventually increment `num_idle_threads_`
     // at the beginning of its work loop.
-    Thread* new_thread =
-        env_->StartThread({}, thread_name_, [this]() { PooledThreadFunc(); });
+    Thread* new_thread = env_->StartThread(thread_options_, thread_name_,
+                                           [this]() { PooledThreadFunc(); });
 
     absl::MutexLock l(thread_pool_mu_);
     thread_pool_.emplace_back(new_thread);
