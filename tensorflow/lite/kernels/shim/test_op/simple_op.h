@@ -17,12 +17,14 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/lite/kernels/shim/op_kernel.h"
 #include "tensorflow/lite/kernels/shim/status_macros.h"
 
@@ -37,9 +39,9 @@ class SimpleOp : public OpKernelShim<SimpleOp, Rt> {
  protected:
   enum Inputs { kInput0 = 0, kInput1 };
   enum Outputs { kOutput0 = 0, kOutput1, kOutput2, kOutput3 };
-  int64_t output1_size_;
+  int64_t output1_size_ = 0;
   std::string output2_suffix_;
-  int64_t n_;
+  int64_t n_ = 0;
   static constexpr int kOutput0Size = 5;
   static constexpr char kOutput1SizeAttr[] = "output1_size";
 
@@ -57,7 +59,7 @@ Description:
 Attrs
   output1_size: int - the size of the second output
   output2_suffix: string - the string value to be appended to the end of out2
-  N: int - the number of tensors for the second input and last output
+  N: int - the number of dates for the second input and last output
 Inputs
   in0: str, shape=[] - A scalar input
   in1: int64, list<shape=?> - A list of tensors as input
@@ -90,14 +92,17 @@ Outputs
   // Initializes the op
   absl::Status Init(InitContext* ctx) {
     SH_RETURN_IF_ERROR(ctx->GetAttr(kOutput1SizeAttr, &output1_size_));
-    if (output1_size_ < 1) {
-      return absl::InternalError(
-          absl::StrCat(kOutput1SizeAttr, " should be >= 1"));
+    if (output1_size_ < 1 || output1_size_ > std::numeric_limits<int>::max()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat(kOutput1SizeAttr, " should be >= 1 and <= INT_MAX"));
     }
     SH_RETURN_IF_ERROR(ctx->GetAttr("N", &n_));
+    if (n_ < 0 || n_ > std::numeric_limits<int>::max()) {
+      return absl::InvalidArgumentError("N must be >= 0 and <= INT_MAX");
+    }
     absl::string_view output2_suffix;
     SH_RETURN_IF_ERROR(ctx->GetAttr("output2_suffix", &output2_suffix));
-    output2_suffix_ = std::string(output2_suffix);
+    output2_suffix_ = output2_suffix;
     return absl::OkStatus();
   }
 
@@ -106,7 +111,8 @@ Outputs
     using std::int32_t;
     // read input
     SH_ASSIGN_OR_RETURN(const auto input_t, ctx->GetInput(kInput0));
-    const auto input_str = input_t->template AsScalar<::tensorflow::tstring>();
+    const tensorflow::tstring& input_str =
+        input_t->template AsScalar<tensorflow::tstring>();
     // output0 whose size is static
     SH_ASSIGN_OR_RETURN(auto output0_t,
                         ctx->GetOutput(kOutput0, Shape({kOutput0Size})));
@@ -117,22 +123,27 @@ Outputs
         auto output1_t,
         ctx->GetOutput(kOutput1, Shape({static_cast<int>(output1_size_)})));
     auto output1 = output1_t->template As<float, 1>();
-    for (int i = 0; i < output1.Dim(0); ++i) output1(i) = 0.5 * i;
+    for (int i = 0; i < output1.Dim(0); ++i) output1(i) = 0.5f * i;
     // output2 whose size is based on input
+    if (input_str.length() >= std::numeric_limits<int>::max()) {
+      return absl::InvalidArgumentError("input_str length is too large.");
+    }
     const int output2_size = input_str.length() + 1;
     SH_ASSIGN_OR_RETURN(auto output2_t,
                         ctx->GetOutput(kOutput2, Shape({output2_size})));
     auto output2 = output2_t->template As<tensorflow::tstring, 1>();
     for (int i = 0; i < output2.Dim(0) - 1; ++i) output2(i) = std::to_string(i);
-    output2(output2.Dim(0) - 1) = output2_suffix_;
+    if (output2.Dim(0) > 0) {
+      output2(output2.Dim(0) - 1) = output2_suffix_;
+    }
     // output3 which is a list of length N
-    // The values in output3 are element wise equal to input2 + 1.
+    // The values in output3 are element wise equal to in1 + 1.
     if (ctx->NumInputs() < kInput1 + n_) {
-      return absl::InternalError(absl::StrCat(
+      return absl::InvalidArgumentError(absl::StrCat(
           "out of bounds: num_inputs=", ctx->NumInputs(), " N=", n_));
     }
     if (ctx->NumOutputs() < kOutput3 + n_) {
-      return absl::InternalError(absl::StrCat(
+      return absl::InvalidArgumentError(absl::StrCat(
           "out of bounds: num_outputs=", ctx->NumOutputs(), " N=", n_));
     }
     for (int i = 0; i < n_; ++i) {
@@ -142,27 +153,38 @@ Outputs
                           ctx->GetOutput(kOutput3 + i, output_shape));
       const auto input_data = input_t->template Data<int64_t>();
       auto output_buffer = output_t->template Data<int64_t>().data();
-      std::copy(input_data.begin(), input_data.end(), output_buffer);
-      // Increment the values of the output
-      for (auto& v : output_t->template Data<int64_t>()) ++v;
+      std::transform(input_data.begin(), input_data.end(), output_buffer,
+                     [](int64_t v) { return v + 1; });
     }
     return absl::OkStatus();
   }
 
   // Shape inference
   static absl::Status ShapeInference(ShapeInferenceContext* ctx) {
-    // outpu0
+    int64_t n;
+    SH_RETURN_IF_ERROR(ctx->GetAttr("N", &n));
+    if (n + 1 != ctx->NumInputs()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "n + 1 != num_inputs: ", n + 1, " != ", ctx->NumInputs()));
+    }
+    if (n + 3 != ctx->NumOutputs()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "n + 3 != num_outputs: ", n + 3, " != ", ctx->NumOutputs()));
+    }
+    // output0
     SH_RETURN_IF_ERROR(ctx->SetOutputShape(kOutput0, Shape({kOutput0Size})));
     // output1
     SH_RETURN_IF_ERROR(
         ctx->SetOutputShape(kOutput1, Shape({Shape::kUnknownDim})));
     // output2
-    const auto input_t_or = ctx->GetInputTensor(kInput0);
+    const auto input_t_status = ctx->GetInputTensor(kInput0);
     Shape output2_shape;
-    if (input_t_or.ok()) {
-      const auto& input_t = input_t_or.value();
-      const auto input_str =
-          input_t->template AsScalar<::tensorflow::tstring>();
+    if (input_t_status.ok()) {
+      const auto& input_t = *input_t_status;
+      const auto& input_str = input_t->template AsScalar<tensorflow::tstring>();
+      if (input_str.length() >= std::numeric_limits<int>::max()) {
+        return absl::InvalidArgumentError("input_str length is too large.");
+      }
       output2_shape = Shape({static_cast<int>(input_str.length() + 1)});
     } else {
       output2_shape = Shape({Shape::kUnknownDim});
@@ -170,17 +192,7 @@ Outputs
     SH_RETURN_IF_ERROR(ctx->SetOutputShape(kOutput2, output2_shape));
     // output3
     for (int i = kOutput3; i < ctx->NumOutputs(); ++i) {
-      SH_RETURN_IF_ERROR(ctx->SetOutputShape(kOutput3, Shape()));
-    }
-    int64_t n;
-    SH_RETURN_IF_ERROR(ctx->GetAttr("N", &n));
-    if (n + 1 != ctx->NumInputs()) {
-      return absl::InternalError(absl::StrCat("n + 1 != num_inputs: ", n + 1,
-                                              " != ", ctx->NumInputs()));
-    }
-    if (n + 3 != ctx->NumOutputs()) {
-      return absl::InternalError(absl::StrCat("n + 1 != num_inputs: ", n + 1,
-                                              " != ", ctx->NumOutputs()));
+      SH_RETURN_IF_ERROR(ctx->SetOutputShape(i, Shape()));
     }
     return absl::OkStatus();
   }
