@@ -7748,14 +7748,15 @@ void MsaAlgorithm::WindowPrefetchOperand(const HloUse& use, int64_t bytes) {
 
   // Create a new HloValue for the window buffer.
   HloValue::Id new_value_id = alias_analysis_.dataflow_analysis().NewValueId();
-  HloValue hlo_value(new_value_id, operand, shape_index);
+  window_prefetch_hlo_values_.emplace_back(new_value_id, operand, shape_index);
+  HloValue* hlo_value = &window_prefetch_hlo_values_.back();
   int64_t start_time = hlo_live_range_.instruction_schedule().at(operand);
   int64_t end_time = hlo_live_range_.instruction_schedule().at(instruction);
 
   // Create a buffer interval, which has the same start and end time as the
   // operand. The hlo value is the operand.
   MsaBufferInterval buffer_interval;
-  buffer_interval.buffer = &hlo_value;
+  buffer_interval.buffer = hlo_value;
   buffer_interval.size = bytes;
   buffer_interval.start = start_time;
   buffer_interval.end = end_time;
@@ -7763,7 +7764,7 @@ void MsaAlgorithm::WindowPrefetchOperand(const HloUse& use, int64_t bytes) {
 
   // Create an allocation_values using the buffer interval.
   std::vector<AllocationValue> allocation_values;
-  allocation_values.emplace_back(&hlo_value, hlo_value.defining_position(),
+  allocation_values.emplace_back(hlo_value, hlo_value->defining_position(),
                                  bytes);
   allocation_values[0].AddUse(use, end_time);
 
