@@ -340,7 +340,7 @@ TEST(StreamExecutorGpuClientTest, MockNcclClientWithGpuTopologyTest) {
   [[deprecated(
       "remove after absl upgrade")]] const StreamExecutorGpuTopologyDescription&
       gpu_topology =
-          tensorflow::down_cast<const StreamExecutorGpuTopologyDescription&>(
+          absl::down_cast<const StreamExecutorGpuTopologyDescription&>(
               *topology);
 
   EXPECT_EQ(gpu_topology.gpu_topology().num_partitions(), 2);
