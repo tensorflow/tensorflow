@@ -320,7 +320,8 @@ void PopulateWithRandomFullRangeFloatingPointData(Literal* literal,
   // exponent of the floating point to have a uniform distribution.
   const int min_exp = std::numeric_limits<FloatT>::min_exponent;
   const int max_exp = std::numeric_limits<FloatT>::max_exponent;
-  std::uniform_real_distribution<double> generator(min_exp - 1, max_exp - 1);
+  std::uniform_real_distribution<double> generator(
+      min_exp - std::numeric_limits<FloatT>::digits - 2, max_exp);
 
   for (FloatT& value : literal->data<FloatT>()) {
     // Each special value has a kSpecialValueProbability chance to be generated
@@ -376,6 +377,12 @@ void PopulateWithFloatingPointData(
   CHECK_NOTNULL(engine);
   CHECK_EQ(literal->shape().element_type(),
            primitive_util::NativeToPrimitiveType<FloatT>());
+  const int64_t bit_width =
+      primitive_util::BitWidth(primitive_util::NativeToPrimitiveType<FloatT>());
+  // Floats with exceptionally small bit width can represent just a handful of
+  // values. No sense in restricting the output values in the way we do for
+  // higher precision formats. We just let the random generator do its thing.
+  const bool float_with_small_bit_width = (bit_width <= 4);
   if (generator != nullptr) {
     for (FloatT& value : literal->data<FloatT>()) {
       value = static_cast<FloatT>(generator(engine));
@@ -397,7 +404,7 @@ void PopulateWithFloatingPointData(
     }
   } else if (no_duplicates) {
     PopulateWithNoDuplicateData<FloatT>(literal, engine);
-  } else if (use_large_range) {
+  } else if (use_large_range || float_with_small_bit_width) {
     PopulateWithRandomFullRangeFloatingPointData<FloatT>(literal, engine);
   } else {
     PopulateWithRandomFloatingPointData<FloatT, ComputeT>(literal, engine,

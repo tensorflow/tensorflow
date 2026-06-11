@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -238,9 +239,9 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   IrEmitterContext ir_emitter_context(
       hlo_module, results.buffer_assignment.get(),
       results.execution_stream_assignment.get(), platform_id->ToName(),
-      device_desc, borrowed_context->get(), llvm_context,
-      llvm::Triple(target_triple), data_layout, compiler,
-      std::move(cpu_target_machine_options), mlir_context_pool);
+      device_desc, borrowed_context->get(), llvm::Triple(target_triple),
+      data_layout, compiler, std::move(cpu_target_machine_options),
+      mlir_context_pool);
   ThunkEmitter thunk_emitter(&ir_emitter_context, &llvm_options_lock);
 
   const DebugOptions& options = hlo_module->config().debug_options();
@@ -258,7 +259,8 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
                    thunk_emitter.EmitHloEntryComputation(hlo_module));
   results.executable = std::move(sequential_thunk);
 
-  results.llvm_module_constants = thunk_emitter.ConsumeConstantsModule();
+  results.llvm_module_constants = std::make_unique<LlvmKernelSource>(
+      thunk_emitter.ConsumeConstantsModule());
 
   // This won't record values for calls that error out (because if they error
   // out we have no way of telling how far through the process we got).

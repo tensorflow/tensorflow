@@ -57,10 +57,12 @@ void ComputeNewSize(dim_t src_width, dim_t src_height, int angle,
         const int y_transformed =
             static_cast<int>(std::floor(-sin_angle * x + cos_angle * y));
 
-        if (std::abs(x_transformed) > dst_width / 2)
+        if (std::abs(x_transformed) > dst_width / 2) {
           dst_width = 2 * std::abs(x_transformed);
-        if (std::abs(y_transformed) > dst_height / 2)
+        }
+        if (std::abs(y_transformed) > dst_height / 2) {
           dst_height = 2 * std::abs(y_transformed);
+        }
       }
     }
   }
@@ -70,25 +72,25 @@ void ComputeNewSize(dim_t src_width, dim_t src_height, int angle,
 void Rotate90(int batches, int input_height, int input_width, int depth,
               int output_height, int output_width, const float* input_data,
               float* output_data) {
-  TFLITE_DCHECK(input_data != nullptr);
-  TFLITE_DCHECK(output_data != nullptr);
+  TFLITE_CHECK(input_data != nullptr);
+  TFLITE_CHECK(output_data != nullptr);
 
-  const int pixel_stride = depth;
-  const int src_row_stride = input_width * depth;
-  const int dst_row_stride = output_width * depth;
-  const int src_batch_stride = src_row_stride * input_height;
-  const int dst_batch_stride = dst_row_stride * output_height;
+  const int64_t pixel_stride = depth;
+  const int64_t src_row_stride = static_cast<int64_t>(input_width) * depth;
+  const int64_t dst_row_stride = static_cast<int64_t>(output_width) * depth;
+  const int64_t src_batch_stride = src_row_stride * input_height;
+  const int64_t dst_batch_stride = dst_row_stride * output_height;
 
   // Iterate over batches to perform the following transformation:
   // dst[x][width - y - 1] = src[y][x].
   for (int b = 0; b < batches; ++b) {
-    const float* src_data_prt = input_data + b * src_batch_stride;
-    float* dst_data_prt = output_data + b * dst_batch_stride;
+    const float* src_data_ptr = input_data + b * src_batch_stride;
+    float* dst_data_ptr = output_data + b * dst_batch_stride;
 
     for (int y = 0; y < input_height; ++y) {
-      const float* src_ptr_row = src_data_prt + y * src_row_stride;
+      const float* src_ptr_row = src_data_ptr + y * src_row_stride;
       for (int x = 0; x < input_width; ++x) {
-        float* dst_ptr_row = dst_data_prt + x * dst_row_stride;
+        float* dst_ptr_row = dst_data_ptr + x * dst_row_stride;
 
         const float* src_ptr_pixel = src_ptr_row + x * pixel_stride;
         float* dst_pixel_ptr =
@@ -106,24 +108,24 @@ void Rotate90(int batches, int input_height, int input_width, int depth,
 void Rotate180(int batches, int input_height, int input_width, int depth,
                int output_height, int output_width, const float* input_data,
                float* output_data) {
-  TFLITE_DCHECK(input_data != nullptr);
-  TFLITE_DCHECK(output_data != nullptr);
+  TFLITE_CHECK(input_data != nullptr);
+  TFLITE_CHECK(output_data != nullptr);
 
-  const int dst_pixel_stride = depth;
-  const int src_row_stride = input_width * depth;
-  const int dst_row_stride = output_width * depth;
-  const int src_batch_stride = src_row_stride * input_height;
-  const int dst_batch_stride = dst_row_stride * output_height;
+  const int64_t dst_pixel_stride = depth;
+  const int64_t src_row_stride = static_cast<int64_t>(input_width) * depth;
+  const int64_t dst_row_stride = static_cast<int64_t>(output_width) * depth;
+  const int64_t src_batch_stride = src_row_stride * input_height;
+  const int64_t dst_batch_stride = dst_row_stride * output_height;
 
   // Iterate over batches to perform the following transformation:
   // dst[height - y - 1][width - x - 1] = src[y][x].
   for (int b = 0; b < batches; ++b) {
-    const float* src_data_prt = input_data + b * src_batch_stride;
-    float* dst_data_prt = output_data + b * dst_batch_stride;
+    const float* src_data_ptr = input_data + b * src_batch_stride;
+    float* dst_data_ptr = output_data + b * dst_batch_stride;
 
     for (int y = 0; y < input_height; ++y) {
-      const float* src_ptr_row = src_data_prt + y * src_row_stride;
-      float* dst_ptr_row = dst_data_prt +
+      const float* src_ptr_row = src_data_ptr + y * src_row_stride;
+      float* dst_ptr_row = dst_data_ptr +
                            (output_height - y - 1) * dst_row_stride +
                            (output_width - 1) * dst_pixel_stride;
       for (int x = 0; x < input_width; ++x) {
@@ -141,26 +143,26 @@ void Rotate180(int batches, int input_height, int input_width, int depth,
 void Rotate270(int batches, int input_height, int input_width, int depth,
                int output_height, int output_width, const float* input_data,
                float* output_data) {
-  TFLITE_DCHECK(input_data != nullptr);
-  TFLITE_DCHECK(output_data != nullptr);
+  TFLITE_CHECK(input_data != nullptr);
+  TFLITE_CHECK(output_data != nullptr);
 
-  const int pixel_stride = depth;
-  const int src_row_stride = input_width * depth;
-  const int dst_row_stride = output_width * depth;
-  const int src_batch_stride = src_row_stride * input_height;
-  const int dst_batch_stride = dst_row_stride * output_height;
+  const int64_t pixel_stride = depth;
+  const int64_t src_row_stride = static_cast<int64_t>(input_width) * depth;
+  const int64_t dst_row_stride = static_cast<int64_t>(output_width) * depth;
+  const int64_t src_batch_stride = src_row_stride * input_height;
+  const int64_t dst_batch_stride = dst_row_stride * output_height;
 
   // Iterate over batches to perform the following transformation:
   // dst[output_height - x - 1][y] = src[y][x].
   for (int b = 0; b < batches; ++b) {
-    const float* src_data_prt = input_data + b * src_batch_stride;
-    float* dst_data_prt = output_data + b * dst_batch_stride;
+    const float* src_data_ptr = input_data + b * src_batch_stride;
+    float* dst_data_ptr = output_data + b * dst_batch_stride;
 
     for (int y = 0; y < input_height; ++y) {
-      const float* src_ptr_row = src_data_prt + y * src_row_stride;
+      const float* src_ptr_row = src_data_ptr + y * src_row_stride;
       for (int x = 0; x < input_width; ++x) {
         float* dst_ptr_row =
-            dst_data_prt + (output_height - x - 1) * dst_row_stride;
+            dst_data_ptr + (output_height - x - 1) * dst_row_stride;
 
         const float* src_ptr_pixel = src_ptr_row + x * pixel_stride;
         float* dst_pixel_ptr = dst_ptr_row + y * pixel_stride;
@@ -177,19 +179,19 @@ void Rotate270(int batches, int input_height, int input_width, int depth,
 void RotateGeneric(int batches, int input_height, int input_width, int depth,
                    int output_height, int output_width, int angle,
                    const float* input_data, float* output_data) {
-  TFLITE_DCHECK(input_data != nullptr);
-  TFLITE_DCHECK(output_data != nullptr);
+  TFLITE_CHECK(input_data != nullptr);
+  TFLITE_CHECK(output_data != nullptr);
 
-  const int pixel_stride = depth;
-  const int src_row_stride = input_width * depth;
-  const int dst_row_stride = output_width * depth;
-  const int src_batch_stride = src_row_stride * input_height;
-  const int dst_batch_stride = dst_row_stride * output_height;
+  const int64_t pixel_stride = depth;
+  const int64_t src_row_stride = static_cast<int64_t>(input_width) * depth;
+  const int64_t dst_row_stride = static_cast<int64_t>(output_width) * depth;
+  const int64_t src_batch_stride = src_row_stride * input_height;
+  const int64_t dst_batch_stride = dst_row_stride * output_height;
 
   // Start off with dark image by initializing all pixels with zeros.
-  memset(
-      output_data, 0,
-      batches * output_width * output_height * depth * sizeof(output_data[0]));
+  memset(output_data, 0,
+         static_cast<size_t>(batches) * output_width * output_height * depth *
+             sizeof(output_data[0]));
 
   const float angle_rad = DegreesToRadians(angle);
   const float cos_angle = std::cos(angle_rad);
@@ -197,8 +199,8 @@ void RotateGeneric(int batches, int input_height, int input_width, int depth,
 
   // Iterate over batches to perform a rotation with arbitrary angle.
   for (int b = 0; b < batches; ++b) {
-    const float* src_data_prt = input_data + b * src_batch_stride;
-    float* dst_data_prt = output_data + b * dst_batch_stride;
+    const float* src_data_ptr = input_data + b * src_batch_stride;
+    float* dst_data_ptr = output_data + b * dst_batch_stride;
 
     for (int y = -output_height / 2; y < output_height / 2; ++y) {
       for (int x = -output_width / 2; x < output_width / 2; ++x) {
@@ -229,14 +231,14 @@ void RotateGeneric(int batches, int input_height, int input_width, int depth,
 
         const float x_dist = x_transformed - x_transformed_integer;
         const float y_dist = y_transformed - y_transformed_integer;
-        const float one_minus_x_dist = 1 - x_dist;
-        const float one_minus_y_dist = 1 - y_dist;
+        const float one_minus_x_dist = 1.0f - x_dist;
+        const float one_minus_y_dist = 1.0f - y_dist;
 
         // Calculate rotated pixels for all channels.
-        const float* src_ptr_row0 = src_data_prt + y0 * src_row_stride;
-        const float* src_ptr_row1 = src_data_prt + y1 * src_row_stride;
+        const float* src_ptr_row0 = src_data_ptr + y0 * src_row_stride;
+        const float* src_ptr_row1 = src_data_ptr + y1 * src_row_stride;
         float* dst_row_ptr =
-            dst_data_prt + (y + output_height / 2) * dst_row_stride;
+            dst_data_ptr + (y + output_height / 2) * dst_row_stride;
 
         const float* src_ptr_pixel00 = src_ptr_row0 + x0 * pixel_stride;
         const float* src_ptr_pixel10 = src_ptr_row0 + x1 * pixel_stride;
@@ -262,22 +264,32 @@ void RotateGeneric(int batches, int input_height, int input_width, int depth,
 
 // Rotate given input with arbitrary angle. Works on `float` datatype.
 void ComputeRotate(const InputPack& inputs, const OutputPack& outputs) {
-  TFLITE_DCHECK(inputs.size() == 2);
-  TFLITE_DCHECK(outputs.size() == 1);
+  TFLITE_CHECK_EQ(inputs.size(), 2);
+  TFLITE_CHECK_EQ(outputs.size(), 1);
 
   // Extract input image data.
   const DataRef* img = inputs[0];
+  TFLITE_CHECK_EQ(img->Dims().size(), 4);
+  MutableDataRef* output = outputs[0];
+
+  TFLITE_CHECK_EQ(img->Type(), etype_t::f32);
+  TFLITE_CHECK_EQ(output->Type(), etype_t::f32);
+
   const float* img_data = reinterpret_cast<const float*>(img->Data());
   const dim_t img_num_batches = img->Dims()[0];
   const dim_t img_height = img->Dims()[1];
   const dim_t img_width = img->Dims()[2];
   const dim_t img_num_channels = img->Dims()[3];
 
+  if (img_num_batches == 0 || img_height == 0 || img_width == 0) return;
+
   const DataRef* angle = inputs[1];
-  const int angle_data = *reinterpret_cast<const int*>(angle->Data());
+  TFLITE_CHECK_EQ(angle->NumElements(), 1);
+  TFLITE_CHECK_EQ(angle->Type(), etype_t::i32);
+  const int raw_angle = *reinterpret_cast<const int*>(angle->Data());
+  const int angle_data = ((raw_angle % 360) + 360) % 360;
 
   // Resize output buffer for rotated image.
-  MutableDataRef* output = outputs[0];
   dim_t new_width = 0;
   dim_t new_height = 0;
   ComputeNewSize(img_width, img_height, angle_data, new_width, new_height);
@@ -310,8 +322,8 @@ void ComputeRotate(const InputPack& inputs, const OutputPack& outputs) {
 }  // namespace
 
 const Algo* Impl_Rotate() {
-  static const Algo rotate = {&ComputeRotate, nullptr};
-  return &rotate;
+  static constexpr Algo kRotate = {&ComputeRotate, nullptr};
+  return &kRotate;
 }
 
 }  // namespace rotate
