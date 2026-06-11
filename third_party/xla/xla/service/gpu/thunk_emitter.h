@@ -29,12 +29,12 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
-#include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/runtime/async_execution.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/host_send_recv_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -67,8 +67,9 @@ class ThunkEmitter {
       const HloModule* module);
 
   llvm::Module* constants_module() { return constants_module_.get(); }
-  std::unique_ptr<llvm::Module> ConsumeConstantsModule() {
-    return std::move(constants_module_);
+  LlvmKernelSource ConsumeConstantsModule() {
+    return LlvmKernelSource{std::move(constants_module_context_),
+                            std::move(constants_module_)};
   }
 
  private:
@@ -89,21 +90,21 @@ class ThunkEmitter {
 
   AsyncThunkSequence EmitAsyncStart(const HloInstruction* instr);
 
-  AsyncThunkSequence EmitCallComputation(const HloInstruction* hlo);
+  AsyncThunkSequence EmitCallComputation(const HloInstruction* instr);
 
   AsyncThunkSequence EmitAsyncComputation(const HloInstruction* instr);
 
   AsyncThunkSequence EmitAsyncCustomCallStart(const HloInstruction* instr);
 
-  absl::StatusOr<ThunkSequence> EmitAsyncDone(const HloInstruction* hlo);
+  absl::StatusOr<ThunkSequence> EmitAsyncDone(const HloInstruction* instr);
 
   absl::StatusOr<ThunkSequence> EmitCollectiveAsyncDone(
-      const HloInstruction* hlo);
+      const HloInstruction* inst);
 
   AsyncThunkSequence EmitCollectiveGroupStartThunk(const HloInstruction* instr);
 
   absl::StatusOr<ThunkSequence> EmitCollectivePermute(
-      const HloCollectivePermuteInstruction* hlo);
+      const HloCollectivePermuteInstruction* instr);
 
   template <typename CollectiveThunkType, typename HloInstType>
   AsyncThunkSequence EmitCollectiveThunk(
@@ -112,38 +113,39 @@ class ThunkEmitter {
 
   AsyncThunkSequence EmitConditional(const HloInstruction* instr);
 
-  absl::StatusOr<ThunkSequence> EmitConstant(const HloConstantInstruction* hlo);
+  absl::StatusOr<ThunkSequence> EmitConstant(
+      const HloConstantInstruction* instr);
 
   absl::StatusOr<ThunkSequence> EmitConvolutionReorderThunk(
-      const HloCustomCallInstruction* hlo);
+      const HloCustomCallInstruction* instr);
 
   absl::StatusOr<ThunkSequence> EmitConvolutionThunk(
-      const HloCustomCallInstruction* hlo);
+      const HloCustomCallInstruction* instr);
 
-  absl::StatusOr<ThunkSequence> EmitCopy(const HloInstruction* hlo);
+  absl::StatusOr<ThunkSequence> EmitCopy(const HloInstruction* instr);
 
   absl::StatusOr<ThunkSequence> EmitCopyStartThunk(
-      const HloCopyStartInstruction* hlo);
+      const HloCopyStartInstruction* copy_start_instr);
 
-  absl::StatusOr<ThunkSequence> EmitCopyDoneThunk(const HloInstruction* hlo);
+  absl::StatusOr<ThunkSequence> EmitCopyDoneThunk(const HloInstruction* instr);
 
   absl::StatusOr<ThunkSequence> EmitCuDnnThunk(
-      const HloCustomCallInstruction* hlo);
+      const HloCustomCallInstruction* instr);
 
   absl::StatusOr<ThunkSequence> EmitCublasLtMatmulThunk(
-      const HloCustomCallInstruction* hlo);
+      const HloCustomCallInstruction* instr);
 
   absl::StatusOr<ThunkSequence> EmitCublasLtMatmulThunkF8(
-      const HloCustomCallInstruction* hlo);
+      const HloCustomCallInstruction* instr);
 
   absl::StatusOr<ThunkSequence> EmitCublasLtGroupedMatmulThunk(
-      const HloCustomCallInstruction* hlo);
+      const HloCustomCallInstruction* instr);
 
   absl::StatusOr<ThunkSequence> EmitCublasLtMatmulThunkMx(
-      const HloCustomCallInstruction* hlo);
+      const HloCustomCallInstruction* instr);
 
   absl::StatusOr<ThunkSequence> EmitCustomCallThunk(
-      const HloCustomCallInstruction* hlo);
+      const HloCustomCallInstruction* instr);
 
   template <typename HloInstType>
   absl::StatusOr<ThunkSequence> EmitDegeneratedCollectiveThunk(
@@ -155,29 +157,29 @@ class ThunkEmitter {
   absl::StatusOr<std::optional<ThunkSequence>> TryEmitTrivialSliceFusion(
       const HloFusionInstruction* instr);
 
-  absl::StatusOr<ThunkSequence> EmitFftThunk(const HloFftInstruction* hlo);
+  absl::StatusOr<ThunkSequence> EmitFftThunk(const HloFftInstruction* instr);
 
-  absl::StatusOr<ThunkSequence> EmitInfeed(const HloInfeedInstruction* hlo);
+  absl::StatusOr<ThunkSequence> EmitInfeed(const HloInfeedInstruction* instr);
 
   absl::StatusOr<ThunkSequence> EmitNormThunk(
-      const HloCustomCallInstruction* hlo);
+      const HloCustomCallInstruction* instr);
 
-  absl::StatusOr<ThunkSequence> EmitOutfeed(const HloOutfeedInstruction* hlo);
+  absl::StatusOr<ThunkSequence> EmitOutfeed(const HloOutfeedInstruction* instr);
 
   AsyncThunkSequence EmitPadToStatic(const HloCustomCallInstruction* instr);
 
   absl::StatusOr<ThunkSequence> EmitPtxCustomCall(
-      const HloCustomCallInstruction* hlo);
+      const HloCustomCallInstruction* instr);
 
   absl::StatusOr<ThunkSequence> EmitRecvDoneThunk(
-      const HloRecvDoneInstruction* hlo);
+      const HloRecvDoneInstruction* instr);
 
-  absl::StatusOr<ThunkSequence> EmitRecvThunk(const HloRecvInstruction* hlo,
+  absl::StatusOr<ThunkSequence> EmitRecvThunk(const HloRecvInstruction* instr,
                                               bool emit_group_thunks);
 
   template <typename ThunkType>
   absl::StatusOr<ThunkSequence> EmitReplicaOrPartitionId(
-      const HloInstruction* hlo);
+      const HloInstruction* instr);
 
   absl::StatusOr<ThunkSequence> EmitRngSeedThunk(const HloInstruction* instr);
 
@@ -187,18 +189,18 @@ class ThunkEmitter {
   AsyncThunkSequence EmitSliceToDynamic(const HloCustomCallInstruction* instr);
 
   absl::StatusOr<ThunkSequence> EmitSendDoneThunk(
-      const HloSendDoneInstruction* hlo);
+      const HloSendDoneInstruction* instr);
 
-  absl::StatusOr<ThunkSequence> EmitSendThunk(const HloSendInstruction* hlo,
+  absl::StatusOr<ThunkSequence> EmitSendThunk(const HloSendInstruction* instr,
                                               bool emit_group_thunks);
 
   AsyncThunkSequence EmitSort(const HloSortInstruction* sort);
 
   absl::StatusOr<ThunkSequence> EmitTopKCustomCall(
-      const HloCustomCallInstruction* hlo);
+      const HloCustomCallInstruction* instr);
 
   absl::StatusOr<ThunkSequence> EmitTriangularSolveCustomCall(
-      const HloInstruction* hlo);
+      const HloInstruction* instr);
 
   AsyncThunkSequence EmitTritonCustomCall(
       const HloCustomCallInstruction* instr);
@@ -233,7 +235,7 @@ class ThunkEmitter {
   // Cache to store the call_graph.
   std::unique_ptr<CallGraph> call_graph_;
 
-  // Module with constants.
+  std::unique_ptr<llvm::LLVMContext> constants_module_context_;
   std::unique_ptr<llvm::Module> constants_module_;
 
   // TODO(tjoerg): Attach the HloOrdering to the HloSchedule instead of
