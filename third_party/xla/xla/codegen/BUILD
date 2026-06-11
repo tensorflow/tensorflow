@@ -187,6 +187,7 @@ cc_library(
         "//xla/codegen/intrinsic:type",
         "//xla/codegen/intrinsic:vec_name_mangler",
         "//xla/codegen/intrinsic/cpp:_cpp_gen_intrinsics",
+        "//xla/codegen/intrinsic/cpp:_intrinsic_declarations",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -207,6 +208,7 @@ xla_cc_test(
     deps = [
         ":intrinsic_lib",
         "//xla/codegen/intrinsic",
+        "//xla/codegen/intrinsic/cpp:_cpp_gen_intrinsics",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Analysis",

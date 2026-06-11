@@ -71,6 +71,7 @@ tf_cc_test(
         "//tensorflow/lite/kernels:test_main",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
         "@flatbuffers",
     ] + select({
         "//tensorflow:android": [
@@ -102,7 +103,6 @@ cc_library(
     ],
     visibility = nonportable_visibility_allowlist(),
     deps = [
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:feature_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -144,6 +144,7 @@ tf_cc_test(
         "//tensorflow/lite/kernels:test_main",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
 )
