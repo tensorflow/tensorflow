@@ -646,9 +646,9 @@ absl::Status WaitForDeviceEventRefsOnStream(
 }
 }  // namespace
 
-absl::StatusOr<std::vector<PjRtDeviceEventRef>>
+absl::StatusOr<PjRtDeviceEventRefVector>
 StreamExecutorGpuClient::CrossHostTransferBuffers(
-    std::vector<PjRtDeviceEventRef> transfer_dependencies,
+    PjRtDeviceEventRefVector transfer_dependencies,
     std::vector<CrossHostTransferSpec> transfer_specs) {
   // Validate arguments.
   for (int i = 0; i < transfer_specs.size(); ++i) {
@@ -694,8 +694,8 @@ StreamExecutorGpuClient::CrossHostTransferBuffers(
   // We will register a single transfer event for all transfers to/from the same
   // device. We will collect the references to those events inside
   // output_transfer_events. This will eventually be returned to the user.
-  std::vector<PjRtDeviceEventRef> output_transfer_events(transfer_specs.size(),
-                                                         PjRtDeviceEventRef());
+  PjRtDeviceEventRefVector output_transfer_events(transfer_specs.size(),
+                                                  PjRtDeviceEventRef());
 
   // Schedule transfers.
   for (const auto& [device, transfer_idxs] : transfers_by_device) {
@@ -755,7 +755,7 @@ StreamExecutorGpuClient::CrossHostTransferBuffers(
 void StreamExecutorGpuClient::ScheduleTransfersOnLocalDevice(
     LocalDeviceState* local_device_state, GlobalDeviceId device_id,
     tsl::AsyncValueRef<BufferSequencingEvent> transfer_event,
-    std::vector<PjRtDeviceEventRef> transfer_dependencies,
+    PjRtDeviceEventRefVector transfer_dependencies,
     std::vector<CrossHostTransferSpec> transfer_specs) {
   tsl::profiler::TraceMe trace([&] {
     return tsl::profiler::TraceMeEncode(
@@ -940,7 +940,7 @@ StreamExecutorGpuClient::PrepareReceiveBuffer(PjRtDevice* device, Shape shape) {
 // Send functionality for original cross-host transfers API.
 void StreamExecutorGpuClient::ScheduleRemoteSend(
     PjRtMemorySpace* memory_space, PjRtRawBufferRef raw_buffer,
-    std::vector<PjRtDeviceEventRef> definition_events,
+    PjRtDeviceEventRefVector definition_events,
     PjRtDeviceEventPromiseRef usage_event_promise,
     Future<std::string> serialized_descriptor,
     PjRtBuffer::RemoteSendCallback on_done) {

@@ -1104,6 +1104,21 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
         return true;
       };
 
+  // Custom "sub-parser" lambda for xla_gpu_ptx_compiler_extra_flags.
+  // Flags are split on whitespace rather than commas to allow passing
+  // `--key=value1,value2` flags that include commas, such as
+  // `--maxntid=nx,ny,nz`.
+  auto setter_for_xla_gpu_ptx_compiler_extra_flags =
+      [debug_options](const std::string& whitespace_separated_values) {
+        for (const absl::string_view flag :
+             absl::StrSplit(whitespace_separated_values,
+                            absl::ByAsciiWhitespace(), absl::SkipEmpty())) {
+          debug_options->add_xla_gpu_ptx_compiler_extra_flags(
+              std::string(flag));
+        }
+        return true;
+      };
+
   // Don't use an initializer list for initializing the vector; this would
   // create a temporary copy, and exceeds the stack space when compiling with
   // certain configurations.
@@ -3270,6 +3285,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Experimental options for adjusting cost-model guided GEMM tiling "
       "selection; comma-separated list of 'key=val' strings (=val may be "
       "omitted); no whitespace around commas."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_ptx_compiler_extra_flags",
+      setter_for_xla_gpu_ptx_compiler_extra_flags,
+      /*default_value_for_display=*/"",
+      "Whitespace-separated extra flags to pass to the ptxas compiler, e.g. "
+      "'--maxregcount=32'."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more
