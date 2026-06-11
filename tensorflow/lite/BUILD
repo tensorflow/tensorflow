@@ -64,7 +64,6 @@ config_setting(
 # since we currently only using the BUILD files for x86.
 config_setting(
     name = "tf_lite_static_memory",
-    constraint_values = ["@platforms//cpu:x86_64"],
     values = {
         "copt": "-DTF_LITE_STATIC_MEMORY",
     },

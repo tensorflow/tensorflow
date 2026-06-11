@@ -935,6 +935,25 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "tensor_utils_arch_optimized_deps",
+    compatible_with = get_compatible_with_portable(),
+    exports = selects.with_or({
+        (
+            ":arm_any",
+        ): [":neon_tensor_utils"],
+        (
+            ":x86_any",
+        ): [
+            ":portable_tensor_utils",  # If SSSE3 isn't available, we fall back to portable
+            ":sse_tensor_utils",
+        ],
+        (
+            "//conditions:default",
+        ): [":portable_tensor_utils"],
+    }),
+)
+
 # This target is helpful to allow builds that can not use Eigen. See
 # http://b/269699951 for more information. Ideally we could call this target
 # portable_tensor_utils but that name is already being used for
@@ -952,20 +971,9 @@ cc_library(
     deps = [
         ":cpu_check",
         "//tensorflow/lite/core/c:common",
-    ] + selects.with_or({
-        (
-            ":arm_any",
-        ): [":neon_tensor_utils"],
-        (
-            ":x86_any",
-        ): [
-            ":portable_tensor_utils",  # If SSSE3 isn't available, we fall back to portable
-            ":sse_tensor_utils",
-        ],
-        (
-            "//tensorflow/lite:tf_lite_static_memory",
-            "//conditions:default",
-        ): [":portable_tensor_utils"],
+    ] + select({
+        "//tensorflow/lite:tf_lite_static_memory": [":portable_tensor_utils"],
+        "//conditions:default": [":tensor_utils_arch_optimized_deps"],
     }),
 )
 
@@ -988,20 +996,9 @@ cc_library(
         ":tensor_utils_no_eigen",
         "//tensorflow/lite/core/c:common",
         "@eigen_archive//:eigen3",
-    ] + selects.with_or({
-        (
-            ":arm_any",
-        ): [":neon_tensor_utils"],
-        (
-            ":x86_any",
-        ): [
-            ":portable_tensor_utils",  # If SSSE3 isn't available, we fall back to portable
-            ":sse_tensor_utils",
-        ],
-        (
-            "//tensorflow/lite:tf_lite_static_memory",
-            "//conditions:default",
-        ): [":portable_tensor_utils"],
+    ] + select({
+        "//tensorflow/lite:tf_lite_static_memory": [":portable_tensor_utils"],
+        "//conditions:default": [":tensor_utils_arch_optimized_deps"],
     }),
 )
 
