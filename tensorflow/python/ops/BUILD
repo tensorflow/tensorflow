@@ -140,6 +140,7 @@ tf_gen_op_strict_wrapper_private_py(
 tf_gen_op_strict_wrapper_private_py(
     name = "array_ops_gen",
     visibility = [
+        "//learning/brain/contrib/optimizers/python/training:__pkg__",
         "//learning/brain/python/ops:__pkg__",
         "//smartass/brain/ops:__subpackages__",
         "//tensorflow/compiler/mlir/tfr:__pkg__",
