@@ -1024,9 +1024,11 @@ def _BesselI1Grad(op: ops.Operation, grad):
     # we impute the gradient manually.
     # An alternative solution is to express the gradient via bessel_i0 and
     # bessel_i2, but the latter is not yet implemented in Eigen.
+    x_is_zero = math_ops.equal(x, 0.)
+    safe_x = array_ops.where_v2(x_is_zero, math_ops.cast(1., x.dtype), x)
     dy_dx = array_ops.where_v2(
-        math_ops.equal(x, 0.), math_ops.cast(0.5, x.dtype),
-        special_math_ops.bessel_i0(x) - math_ops.div(y, x))
+        x_is_zero, math_ops.cast(0.5, x.dtype),
+        special_math_ops.bessel_i0(x) - math_ops.div(y, safe_x))
     return grad * dy_dx
 
 
@@ -1041,10 +1043,12 @@ def _BesselI1eGrad(op: ops.Operation, grad):
     # we impute the gradient manually.
     # An alternative solution is to express the gradient via bessel_i0e and
     # bessel_i2e, but the latter is not yet implemented in Eigen.
+    x_is_zero = math_ops.equal(x, 0.)
+    safe_x = array_ops.where_v2(x_is_zero, math_ops.cast(1., x.dtype), x)
     dy_dx = array_ops.where_v2(
-        math_ops.equal(x, 0.), math_ops.cast(0.5, x.dtype),
+        x_is_zero, math_ops.cast(0.5, x.dtype),
         special_math_ops.bessel_i0e(x) - y *
-        (math_ops.sign(x) + math_ops.reciprocal(x)))
+        (math_ops.sign(x) + math_ops.reciprocal(safe_x)))
     return grad * dy_dx
 
 
@@ -1112,9 +1116,11 @@ def _BesselJ1Grad(op: ops.Operation, grad):
     # we impute the gradient manually.
     # An alternative solution is to express the gradient via bessel_i0e and
     # bessel_i2e, but the latter is not yet implemented in Eigen.
+    x_is_zero = math_ops.equal(x, 0.)
+    safe_x = array_ops.where_v2(x_is_zero, math_ops.cast(1., x.dtype), x)
     dy_dx = array_ops.where_v2(
-        math_ops.equal(x, 0.), math_ops.cast(0.5, x.dtype),
-        special_math_ops.bessel_j0(x) - math_ops.div(y, x))
+        x_is_zero, math_ops.cast(0.5, x.dtype),
+        special_math_ops.bessel_j0(x) - math_ops.div(y, safe_x))
     return grad * dy_dx
 
 
