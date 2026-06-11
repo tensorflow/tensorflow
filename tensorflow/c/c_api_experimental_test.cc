@@ -148,7 +148,7 @@ class ShapeInferenceTest : public ::testing::Test {
 
   absl::optional<std::vector<int64_t>> make_shape(
       std::vector<int64_t>&& dims) const {
-    return absl::make_optional(dims);
+    return std::make_optional(dims);
   }
 
   absl::optional<std::vector<int64_t>> unknown_shape() const {
