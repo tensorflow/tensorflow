@@ -1595,7 +1595,7 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
     // Affected CUDA 13.1, driver r590, should be fixed in later releases.
     if (mem_clock_khz.value() == 0 || mem_bus_width_bits.value() == 0) {
       LOG(WARNING) << "Memory clock rate or bus width is 0";
-      if (cc.major == 11 && cc.minor == 0) {  // Thor
+      if (cc.major_version == 11 && cc.minor_version == 0) {  // Thor
         LOG(WARNING) << "Using hardcoded values for Thor";
         mem_clock_khz = 4266000;
         mem_bus_width_bits = 256;

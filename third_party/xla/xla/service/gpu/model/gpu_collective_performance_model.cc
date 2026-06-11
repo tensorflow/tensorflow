@@ -55,13 +55,14 @@ struct CudaBandwidthSettings {
     // SM90 has different bandwidths.
     static const absl::NoDestructor<std::vector<double>> kIntraNodeSpeedsSm90(
         {3.0, 6.0, 12.0, 15.0, 20.0, 24.0, 30.0, 40.0, 60.0});
-    return compute_capability.major >= se::CudaComputeCapability::kHopper
+    return compute_capability.major_version >=
+                   se::CudaComputeCapability::kHopper
                ? *kIntraNodeSpeedsSm90
                : *kIntraNodeSpeeds;
   }
 
   float GetMaxSysBwFromGpu(const double* bandwidths_table) const {
-    switch (compute_capability.major) {
+    switch (compute_capability.major_version) {
       case se::CudaComputeCapability::kVolta:
         return bandwidths_table[0];
       case se::CudaComputeCapability::kAmpere:
@@ -77,7 +78,7 @@ struct CudaBandwidthSettings {
 
   // Returns NVLink bw in GB/s
   float GetNvlinkBw() const {
-    switch (compute_capability.major) {
+    switch (compute_capability.major_version) {
       case se::CudaComputeCapability::kBlackwell:
         return kSm100NvlinkBandwidth;
       case se::CudaComputeCapability::kHopper:

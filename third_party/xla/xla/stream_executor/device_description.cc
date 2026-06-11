@@ -428,7 +428,7 @@ std::string MakeComputeCapabilityAttributeString(
   GpuComputeCapability cc = desc.gpu_compute_capability();
   if (cc.IsCuda()) {
     auto* nvcc = cc.cuda_compute_capability();
-    return absl::StrCat(nvcc->major, ".", nvcc->minor);
+    return absl::StrCat(nvcc->major_version, ".", nvcc->minor_version);
   }
   if (cc.IsRocm()) {
     auto* rocmcc = cc.rocm_compute_capability();

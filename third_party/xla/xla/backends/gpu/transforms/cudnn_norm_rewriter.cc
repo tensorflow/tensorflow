@@ -107,9 +107,10 @@ using NormMetadataMap = absl::flat_hash_map<HloInstruction*, NormMetadata>;
 // bound for the size of the scratch space for layer norm kernels.
 absl::StatusOr<int64_t> CConstant(
     se::CudaComputeCapability cuda_compute_capability) {
-  if (cuda_compute_capability.major == se::CudaComputeCapability::kAmpere) {
+  if (cuda_compute_capability.major_version ==
+      se::CudaComputeCapability::kAmpere) {
     return 32 * 128;
-  } else if (cuda_compute_capability.major ==
+  } else if (cuda_compute_capability.major_version ==
              se::CudaComputeCapability::kHopper) {
     return 32 * 144;
   }
@@ -864,9 +865,9 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       }
 
       // Layer norm kernels require Ampere or Hopper architectures.
-      if (cuda_compute_capability_.major !=
+      if (cuda_compute_capability_.major_version !=
               se::CudaComputeCapability::kAmpere &&
-          cuda_compute_capability_.major !=
+          cuda_compute_capability_.major_version !=
               se::CudaComputeCapability::kHopper) {
         VLOG(1) << "Layer norm Custom Calls require Ampere or Hopper "
                    "architectures.";

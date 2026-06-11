@@ -90,7 +90,7 @@ absl::StatusOr<std::string> LLVMToPTX(mlir::ModuleOp module,
                    se::CudaComputeCapability::FromString(arch_name));
   // Hopper and Blackwell require accelerated features ("a" suffix) for TMA and
   // other advanced instructions.
-  if (cuda_cc.major >= 9) {
+  if (cuda_cc.major_version >= 9) {
     cuda_cc.feature_extension =
         se::CudaComputeCapability::FeatureExtension::kAcceleratedFeatures;
   }

@@ -138,7 +138,8 @@ StreamExecutorGpuTopologyDescription::CreateDeviceDescription(
     if (target_config_->gpu_device_info().has_cuda_compute_capability()) {
       const auto& cap =
           target_config_->gpu_device_info().cuda_compute_capability();
-      compute_capability = absl::StrCat(cap.major(), ".", cap.minor());
+      compute_capability =
+          absl::StrCat(cap.major_version(), ".", cap.minor_version());
       gpu_vendor = "NVIDIA Corporation";
     }
 

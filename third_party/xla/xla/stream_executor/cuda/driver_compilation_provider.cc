@@ -78,7 +78,8 @@ absl::StatusOr<Assembly> DriverCompilationProvider::CompileAndLink(
                                 CU_JIT_INFO_LOG_BUFFER_SIZE_BYTES,
                                 CU_JIT_ERROR_LOG_BUFFER,
                                 CU_JIT_ERROR_LOG_BUFFER_SIZE_BYTES};
-  CUjit_target target = static_cast<CUjit_target>(cc.major * 10 + cc.minor);
+  CUjit_target target =
+      static_cast<CUjit_target>(cc.major_version * 10 + cc.minor_version);
 #if CUDA_VERSION >= 12000
   // Even though CUDA 11.8 has Hopper support, SM 9.0a and most Hopper features
   // (WGMMA, TMA, and more) are only supported in CUDA 12+.
