@@ -29,8 +29,19 @@ namespace resource {
 /// WARNING: Experimental interface, subject to change.
 class ResourceBase {
  public:
+  enum class ResourceType {
+    kUnknown = 0,
+    kResourceVariable = 1,
+    kHashTable = 2,
+    kInitializationStatus = 3,
+  };
+
   explicit ResourceBase() {}
   virtual ~ResourceBase() {}
+
+  virtual ResourceType GetResourceType() const {
+    return ResourceType::kUnknown;
+  }
 
   // Returns true if it is initialized.
   virtual bool IsInitialized() = 0;
