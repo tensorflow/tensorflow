@@ -63,6 +63,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/common_runtime:dma_helper",
         "@com_google_absl//absl/log:check",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
