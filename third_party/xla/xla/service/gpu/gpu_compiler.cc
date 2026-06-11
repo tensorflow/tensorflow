@@ -38,7 +38,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/StringRef.h"
@@ -63,7 +62,6 @@ limitations under the License.
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/autotuner/block_level_emitter.h"
-#include "xla/backends/gpu/autotuner/factory.h"
 #include "xla/backends/gpu/autotuner/native_emitter.h"
 #include "xla/backends/gpu/codegen/cubin_custom_kernel_compiler.h"
 #include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
@@ -91,6 +89,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/collectives/all_reduce_splitter.h"
 #include "xla/backends/gpu/transforms/collectives/collective_backend_assigner.h"
 #include "xla/backends/gpu/transforms/collectives/collective_combiner_annotator.h"
+#include "xla/backends/gpu/transforms/collectives/collective_kernel_strategy_annotator.h"
 #include "xla/backends/gpu/transforms/collectives/collective_permute_cycle_decomposer.h"
 #include "xla/backends/gpu/transforms/collectives/collective_pipelining_analyzer.h"
 #include "xla/backends/gpu/transforms/collectives/convert_async_collectives_to_sync.h"
@@ -154,7 +153,6 @@ limitations under the License.
 #include "xla/ffi/ffi_registry.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -342,9 +340,7 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/maybe_owning.h"
 #include "xla/util.h"
@@ -1353,6 +1349,17 @@ void AddCollectiveCombinerPasses(
   pipeline.AddPass<CollectiveBackendAssigner>(
       device_description.gpu_compute_capability(),
       num_visible_devices_per_process, options.slice_size);
+
+  // Annotate AllReduce ops with the Triton kernel strategy (one-shot /
+  // two-shot) that will be used at runtime. This annotation is consumed by
+  // SolLatencyEstimator to apply the correct NVLink-based cost model instead
+  // of the NCCL ring model.  Only added when the Triton collective kernel flag
+  // is enabled; when the flag is off all collectives keep
+  // KERNEL_STRATEGY_DEFAULT.
+  if (opts.xla_gpu_unsupported_use_all_reduce_one_shot_kernel()) {
+    pipeline.AddPass<CollectiveKernelStrategyAnnotator>(
+        device_description, /*is_multimem_enabled=*/false);
+  }
 }
 
 absl::Status RunPostFusionPasses(
@@ -2644,28 +2651,6 @@ GpuCompiler::CompileSingleModule(
 }
 
 namespace {
-
-// Returns the name of the single function in the module or empty string if it's
-// not a single-function module.
-std::string SingleFunctionName(const llvm::Module& module) {
-  std::string name;
-  for (const llvm::Function& func : module.functions()) {
-    if (!func.isDeclaration() &&
-        func.getLinkage() == llvm::GlobalValue::LinkageTypes::ExternalLinkage) {
-      if (name.empty()) {
-        // First function in a module: name the module with it.
-        name = func.getName().str();
-      } else {
-        // Not the first function - the module is not cacheable.
-        return "";
-      }
-    }
-  }
-  return name;
-}
-}  // namespace
-
-namespace {
 absl::StatusOr<xla::cpu::CompilationResultProto> GetCpuCompilationResult(
     const HloModuleProto& hlo_proto,
     xla::cpu::TargetMachineOptions cpu_target_machine_options) {
@@ -2735,6 +2720,9 @@ GpuCompiler::CompileToBackendResult(
     auto llvm_compiler =
         [&](llvm::Module& llvm_module, const se::DeviceDescription& descr,
             const DebugOptions& opts) -> absl::StatusOr<std::vector<uint8_t>> {
+      llvm_ir::DumpIrIfEnabled(*module, llvm_module,
+                               /*optimized=*/false,
+                               std::to_string(shard_number.fetch_add(1)));
       ASSIGN_OR_RETURN(
           BackendCompileResult result,
           CompileSingleModule(module->config(), descr, module, &llvm_module,
@@ -2767,21 +2755,23 @@ GpuCompiler::CompileToBackendResult(
             &mlir_context_pool_));
   }
 
-  if (compile_module_results.llvm_module_constants != nullptr) {
-    llvm_ir::DumpIrIfEnabled(*module,
-                             *compile_module_results.llvm_module_constants,
-                             /*optimized=*/false, "constants");
-    CallUserPreOptimizationHook(*compile_module_results.llvm_module_constants);
-  }
+  llvm::Module* module_constants =
+      compile_module_results.llvm_module_constants->module();
+  llvm_ir::DumpIrIfEnabled(*module, *module_constants,
+                           /*optimized=*/false, "constants");
+  CallUserPreOptimizationHook(*module_constants);
 
-  BackendCompileResult backend_result;
   ASSIGN_OR_RETURN(
-      backend_result,
-      CompileSingleModule(
-          module->config(), gpu_topology.gpu_target_config().device_description,
-          module, &*compile_module_results.llvm_module_constants,
-          /*relocatable=*/false,
-          /*shard_number=*/shard_number.fetch_add(1)));
+      BackendCompileResult backend_result,
+      CompileSingleModule(module->config(),
+                          gpu_topology.gpu_target_config().device_description,
+                          module, module_constants,
+                          /*relocatable=*/false,
+                          /*shard_number=*/shard_number.fetch_add(1)));
+  if (!backend_result.asm_text.empty()) {
+    backend_result.asm_text =
+        absl::StrCat(kGpuExecutablePtxMarker, backend_result.asm_text);
+  }
 
   if (use_cache) {
     std::string resolved_path;
@@ -2805,10 +2795,6 @@ GpuCompiler::CompileToBackendResult(
   {
     absl::MutexLock lock(module_stats_m_);
     MergeModuleStatsInPlace(module_stats, backend_result.module_stats);
-  }
-  if (!backend_result.asm_text.empty()) {
-    backend_result.asm_text =
-        absl::StrCat(kGpuExecutablePtxMarker, backend_result.asm_text);
   }
 
   RecordXlaDeviceBinarySize(backend_result.binary.size());
@@ -2967,7 +2953,7 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
 
   if (embed_ir_in_executable) {
     std::string ir_module_string_before_opt = llvm_ir::DumpToString(
-        *res.compile_module_results.llvm_module_constants);
+        *res.compile_module_results.llvm_module_constants->module());
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);
     DCHECK_NE("", ir_module_string_before_opt);
   }
@@ -3077,14 +3063,20 @@ GpuCompiler::LegacyCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
                                           gpu_topology, compile_options,
                                           nullptr, borrowed_context->get()));
 
+  std::unique_ptr<GpuAliasInfo> alias_info =
+      GetAliasInfo(gpu_topology.gpu_target_config().device_description);
+  std::string buffer_assignment_debug_summary =
+      res.compile_module_results.buffer_assignment->ToVerboseString(
+          alias_info.get(),
+          options.debug_options().xla_debug_buffer_assignment_show_max());
   std::vector<std::unique_ptr<CompiledModule>> results;
-  ASSIGN_OR_RETURN(
-      results.emplace_back(),
-      LegacyGpuAotCompilationResult::FromModule(
-          hlo_module.get(),
-          res.compile_module_results.buffer_assignment->ToProto(),
+  ASSIGN_OR_RETURN(results.emplace_back(),
+                   LegacyGpuAotCompilationResult::FromModule(
+                       hlo_module.get(),
+                       res.compile_module_results.buffer_assignment->ToProto(),
+                       std::move(buffer_assignment_debug_summary),
           res.backend_result.asm_text, res.backend_result.binary,
-          res.backend_result.dnn_compiled_graphs, pointer_size_, this));
+                       {}, pointer_size_, this));
 
   return std::move(results);
 }
@@ -3108,11 +3100,18 @@ absl::StatusOr<std::unique_ptr<CompiledModule>> GpuCompiler::Export(
     ASSIGN_OR_RETURN(GpuExecutableProto proto, gpu_executable->ToProto());
     return GpuAotCompilationResult::FromProto(std::move(proto));
   }
-
+  std::string buffer_assignment_debug_summary =
+      gpu_executable->buffer_assignment()->ToVerboseString(
+          gpu_executable->alias_info(),
+          gpu_executable->module()
+              .config()
+              .debug_options()
+              .xla_debug_buffer_assignment_show_max());
   return LegacyGpuAotCompilationResult::FromModule(
       &gpu_executable->module(), gpu_executable->buffer_assignment()->ToProto(),
-      gpu_executable->text(), gpu_executable->binary(),
-      gpu_executable->dnn_compiled_graphs(), pointer_size_, this);
+      std::move(buffer_assignment_debug_summary), gpu_executable->text(),
+      gpu_executable->binary(), gpu_executable->dnn_compiled_graphs(),
+      pointer_size_, this);
 }
 
 absl::Status GpuCompiler::RunPreSchedulingPasses(
@@ -3397,8 +3396,6 @@ GpuCompiler::LoadExecutableFromAotResult(
   // Build the executable, which should be a thunk sequence.
   absl::string_view platform_name = PlatformId()->ToName();
 
-  llvm::LLVMContext llvm_context;
-
   // Recreate BufferAssignment from proto.
   std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(device_description);
   ASSIGN_OR_RETURN(
@@ -3427,7 +3424,7 @@ GpuCompiler::LoadExecutableFromAotResult(
 
   IrEmitterContext ir_emitter_context(
       hlo_module.get(), buffer_assignment.get(), &execution_stream_assignment,
-      platform_name, device_description, borrowed_context->get(), &llvm_context,
+      platform_name, device_description, borrowed_context->get(),
       llvm::Triple(target_triple()), data_layout(), &kernel_compiler,
       cpu::TargetMachineOptions(hlo_module->config().debug_options()),
       &mlir_context_pool_);
@@ -3494,7 +3491,7 @@ GpuCompiler::LoadExecutableFromAotResult(
         /*executable_abi_version=*/executable_abi_version,
         /*cpu_target_machine_options=*/std::move(cpu_target_machine_options),
         /*buffer_assignment_proto=*/std::move(buffer_assignment_proto),
-    });
+        proto.buffer_allocations_debug_summary()});
   }
 }
 

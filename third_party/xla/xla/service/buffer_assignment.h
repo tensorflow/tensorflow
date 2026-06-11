@@ -88,6 +88,7 @@ class BufferAllocation {
       : index_(index),
         size_(size),
         color_(color),
+        page_id_(0),
         is_thread_local_(false),
         is_tuple_(false),
         is_entry_computation_parameter_(false),
@@ -179,6 +180,14 @@ class BufferAllocation {
     int64_t offset = 0;
     int64_t size = 0;
   };
+
+  // Returns the page id of the allocation. This is only used for multi-page
+  // buffer assignment.
+  int64_t page_id() const { return page_id_; }
+
+  // Sets the page id of the allocation. This is only used for multi-page
+  // buffer assignment.
+  void set_page_id(int64_t page) { page_id_ = page; }
 
   // Access to the logical buffers assigned to this allocation, and their
   // associated logical offsets and sizes.
@@ -377,6 +386,12 @@ class BufferAllocation {
 
   // Color of the allocation.
   LogicalBuffer::Color color_;
+
+  // The page id of the allocation, indicating in which page of a multi-page
+  // assignment this allocation is located. Only set for multi-page buffer
+  // assignment. If multi-page buffer assignment is not used this field will be
+  // set to 0.
+  int64_t page_id_;
 
   // If this allocation holds an entry computation parameter, this field
   // indicates the index (starting from 0) of the parameter.
