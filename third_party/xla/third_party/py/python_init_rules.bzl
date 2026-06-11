@@ -45,5 +45,6 @@ def python_init_rules(extra_patches = []):
             "@xla//third_party/py:rules_python_scope.patch",
             "@xla//third_party/py:rules_python_freethreaded.patch",
             "@xla//third_party/py:rules_python_versions.patch",
+            "@xla//third_party/py:rules_python_windows_duplicate_symbols.patch",
         ] + extra_patches,
     )
