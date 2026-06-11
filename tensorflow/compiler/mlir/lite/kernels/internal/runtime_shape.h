@@ -95,11 +95,11 @@ class RuntimeShape {
 
   ~RuntimeShape();
 
-  inline int32_t DimensionsCount() const { return size_; }
+  int32_t DimensionsCount() const { return size_; }
 
   int32_t Dims(int i) const;
 
-  inline void SetDim(int i, int32_t val) {
+  void SetDim(int i, int32_t val) {
     TFLITE_DCHECK_GE(i, 0);
     TFLITE_DCHECK_LT(i, size_);
 #ifndef TF_LITE_STATIC_MEMORY
@@ -113,14 +113,14 @@ class RuntimeShape {
 #endif  // TF_LITE_STATIC_MEMORY
   }
 
-  inline int32_t* DimsData() {
+  int32_t* DimsData() {
 #ifndef TF_LITE_STATIC_MEMORY
     return size_ > kMaxSmallSize ? dims_pointer_ : dims_;
 #else
     return dims_;
 #endif  // TF_LITE_STATIC_MEMORY
   }
-  inline const int32_t* DimsData() const {
+  const int32_t* DimsData() const {
 #ifndef TF_LITE_STATIC_MEMORY
     return size_ > kMaxSmallSize ? dims_pointer_ : dims_;
 #else
@@ -128,10 +128,10 @@ class RuntimeShape {
 #endif  // TF_LITE_STATIC_MEMORY
   }
   // The caller must ensure that the shape is no bigger than 5-D.
-  inline const int32_t* DimsDataUpTo5D() const { return dims_; }
+  const int32_t* DimsDataUpTo5D() const { return dims_; }
 
 #ifndef TF_LITE_STATIC_MEMORY
-  inline void Resize(int dimensions_count) {
+  void Resize(int dimensions_count) {
     const int32_t old_size = size_;
     size_ = dimensions_count;
 
@@ -162,7 +162,7 @@ class RuntimeShape {
 
 #ifndef TF_LITE_STATIC_MEMORY
   template <typename T>
-  inline void BuildFrom(const T& src_iterable) {
+  void BuildFrom(const T& src_iterable) {
     const int dimensions_count =
         std::distance(src_iterable.begin(), src_iterable.end());
     Resize(dimensions_count);
@@ -179,8 +179,8 @@ class RuntimeShape {
   // (a) as Dims<4>-dependent code is eliminated, the reliance on this should be
   // reduced, and (b) some kernels are stricly 4-D, but then the shapes of their
   // inputs should already be 4-D, so this function should not be needed.
-  inline static RuntimeShape ExtendedShape(int new_shape_size,
-                                           const RuntimeShape& shape) {
+  static RuntimeShape ExtendedShape(int new_shape_size,
+                                    const RuntimeShape& shape) {
 #ifdef TF_LITE_STATIC_MEMORY
     TFLITE_DCHECK_LE(new_shape_size, kMaxSmallSize);
 #endif  // TF_LITE_STATIC_MEMORY
@@ -188,7 +188,7 @@ class RuntimeShape {
   }
 
 #ifndef TF_LITE_STATIC_MEMORY
-  inline void BuildFrom(const std::initializer_list<int> init_list) {
+  void BuildFrom(const std::initializer_list<int> init_list) {
     BuildFrom<const std::initializer_list<int>>(init_list);
   }
 #endif  // TF_LITE_STATIC_MEMORY
