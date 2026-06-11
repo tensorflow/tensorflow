@@ -5749,7 +5749,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "unsorted_segment_join_op",
     prefix = "unsorted_segment_join_op",
-    deps = STRING_DEPS,
+    deps = STRING_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
