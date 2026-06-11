@@ -510,6 +510,14 @@ class UnsortedSegmentReductionOp : public OpKernel {
     OP_REQUIRES(context, output_rows >= 0,
                 errors::InvalidArgument("Input num_segments == ", output_rows,
                                         " must not be negative."));
+    // Guard against excessively large num_segments that would cause integer
+    // overflow in output tensor size calculations, leading to illegal memory
+    // access or process abort (see #117549).
+    const int64_t kMaxSegments = static_cast<int64_t>(1) << 31;  // 2G
+    OP_REQUIRES(context, output_rows <= kMaxSegments,
+                errors::InvalidArgument(
+                    "Input num_segments == ", output_rows,
+                    " is too large. Must be at most ", kMaxSegments));
     TensorShape output_shape;
     OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(output_rows));
     for (int i = segment_ids.dims(); i < data.dims(); i++) {
