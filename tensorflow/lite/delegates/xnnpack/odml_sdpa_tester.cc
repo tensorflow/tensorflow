@@ -39,8 +39,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/lite/core/interpreter_builder.h"
 #include "tensorflow/lite/core/kernels/register.h"
-#include "tensorflow/lite/experimental/genai/genai_ops.h"
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
@@ -52,6 +53,177 @@ std::vector<int32_t> ODMLSDPATester::OutputShape() const {
   std::vector<int32_t> output_shape = QueryShape();
   return output_shape;
 }
+
+namespace {
+
+void ComputeReferenceSDPA(
+    const float* query, const tflite::RuntimeShape& query_shape,
+    const float* key, const tflite::RuntimeShape& key_shape, const float* value,
+    const tflite::RuntimeShape& value_shape, const float* mask,
+    const tflite::RuntimeShape& mask_shape, float scale, float logit_cap,
+    float* output) {
+  const int32_t B = query_shape.Dims(0);
+  const int32_t T = query_shape.Dims(1);
+  const int32_t N_q = query_shape.Dims(2);
+  const int32_t H = query_shape.Dims(3);
+
+  const int32_t S = key_shape.Dims(1);
+  const int32_t N_kv = key_shape.Dims(2);
+
+  const int32_t group_size = N_q / N_kv;
+
+  for (int32_t b = 0; b < B; ++b) {
+    for (int32_t hq = 0; hq < N_q; ++hq) {
+      const int32_t hkv = hq / group_size;
+      for (int32_t t = 0; t < T; ++t) {
+        std::vector<float> logits(S);
+        for (int32_t s = 0; s < S; ++s) {
+          float sum = 0.0f;
+          for (int32_t h = 0; h < H; ++h) {
+            int q_idx = b * (T * N_q * H) + t * (N_q * H) + hq * H + h;
+            int k_idx = b * (S * N_kv * H) + s * (N_kv * H) + hkv * H + h;
+            sum += query[q_idx] * key[k_idx];
+          }
+          logits[s] = sum * scale;
+
+          if (logit_cap > 0.0f) {
+            logits[s] = std::tanh(logits[s] / logit_cap) * logit_cap;
+          }
+
+          if (mask != nullptr) {
+            int mb = mask_shape.Dims(0) == 1 ? 0 : b;
+            int mn = mask_shape.Dims(1) == 1 ? 0 : hq;
+            int mt = mask_shape.Dims(2) == 1 ? 0 : t;
+            int ms = mask_shape.Dims(3) == 1 ? 0 : s;
+
+            int mask_idx = mb * (mask_shape.Dims(1) * mask_shape.Dims(2) *
+                                 mask_shape.Dims(3)) +
+                           mn * (mask_shape.Dims(2) * mask_shape.Dims(3)) +
+                           mt * mask_shape.Dims(3) + ms;
+            logits[s] += mask[mask_idx];
+          }
+        }
+
+        float max_val = -std::numeric_limits<float>::infinity();
+        for (float val : logits) {
+          max_val = std::max(max_val, val);
+        }
+        float sum = 0.0f;
+        for (int32_t s = 0; s < S; ++s) {
+          logits[s] = std::exp(logits[s] - max_val);
+          sum += logits[s];
+        }
+        for (int32_t s = 0; s < S; ++s) {
+          logits[s] /= sum;
+        }
+
+        for (int32_t h = 0; h < H; ++h) {
+          float sum_v = 0.0f;
+          for (int32_t s = 0; s < S; ++s) {
+            int v_idx = b * (S * N_kv * H) + s * (N_kv * H) + hkv * H + h;
+            sum_v += logits[s] * value[v_idx];
+          }
+          int out_idx = b * (T * N_q * H) + t * (N_q * H) + hq * H + h;
+          output[out_idx] = sum_v;
+        }
+      }
+    }
+  }
+}
+
+struct OpData {
+  float scale;
+  float logit_cap;
+};
+
+void* SDPAInit(TfLiteContext* context, const char* buffer, size_t length) {
+  auto* op_data = new OpData();
+  op_data->scale = 0.0f;
+  op_data->logit_cap = 0.0f;
+  if (buffer != nullptr && length > 0) {
+    auto flexbuffer_map =
+        flexbuffers::GetRoot(reinterpret_cast<const uint8_t*>(buffer), length)
+            .AsMap();
+    op_data->scale = flexbuffer_map["scale"].AsFloat();
+    op_data->logit_cap = flexbuffer_map["logit_cap"].AsFloat();
+  }
+  return op_data;
+}
+
+void SDPAFree(TfLiteContext* context, void* buffer) {
+  delete reinterpret_cast<OpData*>(buffer);
+}
+
+TfLiteStatus SDPAPrepare(TfLiteContext* context, TfLiteNode* node) {
+  TF_LITE_ENSURE(context, NumInputs(node) == 3 || NumInputs(node) == 4);
+  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
+
+  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
+
+  const TfLiteTensor* query;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &query));
+  const TfLiteTensor* key;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 1, &key));
+  const TfLiteTensor* value;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 2, &value));
+
+  TF_LITE_ENSURE_EQ(context, query->type, kTfLiteFloat32);
+  TF_LITE_ENSURE_EQ(context, key->type, kTfLiteFloat32);
+  TF_LITE_ENSURE_EQ(context, value->type, kTfLiteFloat32);
+
+  if (op_data->scale == 0.0f) {
+    int32_t head_dim = query->dims->data[query->dims->size - 1];
+    op_data->scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
+  }
+
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+  output->type = kTfLiteFloat32;
+
+  return context->ResizeTensor(context, output,
+                               TfLiteIntArrayCopy(query->dims));
+}
+
+TfLiteStatus SDPAInvoke(TfLiteContext* context, TfLiteNode* node) {
+  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
+
+  const TfLiteTensor* query;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &query));
+  const TfLiteTensor* key;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 1, &key));
+  const TfLiteTensor* value;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 2, &value));
+
+  const TfLiteTensor* mask = nullptr;
+  if (NumInputs(node) > 3) {
+    mask = GetInput(context, node, 3);
+  }
+
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+
+  ComputeReferenceSDPA(
+      tflite::GetTensorData<float>(query), tflite::GetTensorShape(query),
+      tflite::GetTensorData<float>(key), tflite::GetTensorShape(key),
+      tflite::GetTensorData<float>(value), tflite::GetTensorShape(value),
+      mask ? tflite::GetTensorData<float>(mask) : nullptr,
+      mask ? tflite::GetTensorShape(mask) : tflite::RuntimeShape(),
+      op_data->scale, op_data->logit_cap, tflite::GetTensorData<float>(output));
+
+  return kTfLiteOk;
+}
+
+TfLiteRegistration* Register_SDPA_Reference() {
+  static TfLiteRegistration r = {
+      SDPAInit,
+      SDPAFree,
+      SDPAPrepare,
+      SDPAInvoke,
+  };
+  return &r;
+}
+
+}  // namespace
 
 void ODMLSDPATester::Test(TfLiteDelegate* delegate) const {
   // Test for SDPA XNNPACK delegate vs TfLite Reference SDPA op.
@@ -67,7 +239,7 @@ void ODMLSDPATester::Test(TfLiteDelegate* delegate) const {
   auto resolver =
       ::tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates();
   resolver.AddCustom("odml.scaled_dot_product_attention",
-                     tflite::ops::custom::Register_SDPA());
+                     Register_SDPA_Reference());
   ASSERT_EQ(InterpreterBuilder(model, resolver)(&delegate_interpreter),
             kTfLiteOk);
   std::unique_ptr<Interpreter> default_interpreter;
