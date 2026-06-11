@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/service/spmd/sharding_format_picker.h"
 #include "xla/service/spmd/spmd_prepare.h"
 #include "xla/shape.h"
+#include "xla/side_effect_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -17931,6 +17932,46 @@ ENTRY entry {
 
   EXPECT_THAT(root,
               op::Tuple(copy_add0, copy_add1, copy_reshape, copy_transpose));
+}
+
+TEST_P(SpmdPartitioningTest, AllGatherFromReshardHasSpmdGeneratedLabel) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param = f32[4,8]{1,0} parameter(0), sharding={devices=[2,1]<=[2]}
+  ROOT %copy = f32[4,8]{1,0} copy(%param), sharding={replicated}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  auto* ag = FindInstruction(module.get(), HloOpcode::kAllGather);
+  ASSERT_NE(ag, nullptr);
+  auto attr = ag->get_frontend_attribute(kSpmdGeneratedAttr);
+  ASSERT_TRUE(attr.has_value());
+  EXPECT_EQ(attr.value(), "true");
+}
+
+TEST_P(SpmdPartitioningTest, AllGatherFromReshardPropagatesFrontendAttrs) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param = f32[4,8]{1,0} parameter(0), sharding={devices=[2,1]<=[2]},
+    frontend_attributes={test_attr="hello"}
+  ROOT %copy = f32[4,8]{1,0} copy(%param), sharding={replicated}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  auto* ag = FindInstruction(module.get(), HloOpcode::kAllGather);
+  ASSERT_NE(ag, nullptr);
+  auto attr = ag->get_frontend_attribute(kSpmdGeneratedAttr);
+  ASSERT_TRUE(attr.has_value());
+  EXPECT_EQ(attr.value(), "true");
+  auto it = ag->frontend_attributes().map().find("test_attr");
+  ASSERT_NE(it, ag->frontend_attributes().map().end());
+  EXPECT_EQ(it->second, "hello");
 }
 
 }  // namespace
