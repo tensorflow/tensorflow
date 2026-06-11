@@ -27,6 +27,7 @@ limitations under the License.
 #include <variant>
 
 #include "absl/base/casts.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/activate_context.h"
@@ -50,8 +52,6 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_common.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/env_var.h"  // IWYU pragma: keep
 #include "tsl/profiler/lib/nvtx_utils.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -65,6 +65,7 @@ namespace stream_executor {
 namespace gpu {
 
 namespace {
+
 absl::Status WaitStreamOnEvent(StreamExecutor* executor, CUstream stream,
                                CUevent event) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
@@ -184,6 +185,58 @@ absl::Status SynchronizeStream(StreamExecutor* executor, CUstream stream) {
 
 }  // namespace
 
+/*static*/ absl::StatusOr<CudaStream::CaptureHandle>
+CudaStream::CaptureHandle::BeginCapture(
+    CudaStream* stream, CUgraph graph, const CUgraphNode* dependencies,
+    const CUgraphEdgeData* dependency_data, size_t num_dependencies,
+    CUstreamCaptureMode mode) ABSL_NO_THREAD_SAFETY_ANALYSIS {
+  ASSIGN_OR_RETURN(bool is_capturing,
+                   StreamIsCapturing(stream->stream_handle_));
+  if (is_capturing) {
+    return absl::FailedPreconditionError("Stream is already capturing");
+  }
+  stream->capture_state_mutex_.lock();
+  absl::Status status = cuda::ToStatus(
+      cuStreamBeginCaptureToGraph(stream->stream_handle_, graph,
+                                  /*dependencies=*/dependencies,
+                                  /*dependencyData=*/dependency_data,
+                                  /*numDependencies=*/num_dependencies, mode),
+      "Failed to begin stream capture to graph");
+  if (!status.ok()) {
+    stream->capture_state_mutex_.unlock();
+    return status;
+  }
+  return CudaStream::CaptureHandle(stream, graph);
+}
+
+CudaStream::CaptureHandle::CaptureHandle(CaptureHandle&& other)
+    : stream_(other.stream_), graph_(other.graph_) {
+  other.stream_ = nullptr;
+  other.graph_ = nullptr;
+}
+
+absl::Status CudaStream::CaptureHandle::EndCapture() {
+  if (stream_ != nullptr && graph_ != nullptr) {
+    absl::Cleanup cleanup = [this] {
+      stream_->capture_state_mutex_.AssertHeld();
+      stream_->capture_state_mutex_.unlock();
+      stream_ = nullptr;
+      graph_ = nullptr;
+    };
+    CUgraph captured_graph;
+    RETURN_IF_ERROR(cuda::ToStatus(
+        cuStreamEndCapture(stream_->stream_handle_, &captured_graph),
+        "Failed to end stream capture"));
+    if (captured_graph != graph_) {
+      return absl::InternalError(
+          "Stream capture should update the graph passed to BeginCapture");
+    }
+  }
+  return absl::OkStatus();
+}
+
+CudaStream::CaptureHandle::~CaptureHandle() { EndCapture().IgnoreError(); }
+
 CudaStream::CudaStream(
     CudaExecutor* executor, CudaEvent completed_event,
     std::optional<std::variant<StreamPriority, int>> priority,
@@ -195,7 +248,17 @@ CudaStream::CudaStream(
       callback_registry_handle_(
           executor->GetHostCallbackRegistry()->CreateHandle(
               /*synchronization_callback=*/
-              [this] { return SynchronizeStream(executor_, stream_handle_); },
+              [this]() ABSL_NO_THREAD_SAFETY_ANALYSIS {
+                auto lock = capture_state_mutex_.try_lock_shared();
+                if (!lock) {  // return early if stream is capturing.
+                  return absl::OkStatus();
+                }
+                absl::Cleanup cleanup =
+                    [this]() ABSL_NO_THREAD_SAFETY_ANALYSIS {
+                      capture_state_mutex_.unlock_shared();
+                    };
+                return SynchronizeStream(executor_, stream_handle_);
+              },
               /*status_callback=*/[this] { return RefreshStatus(); })) {}
 
 absl::StatusOr<std::unique_ptr<CudaStream>> CudaStream::Create(
@@ -280,8 +343,13 @@ absl::Status CudaStream::BlockHostUntilDone() {
   // SynchronizeStream will wait for any pending host callbacks, but if the
   // stream is itself poisoned, it will fail without waiting. So we force fail
   // them to be called before returning.
-  if (absl::Status status = SynchronizeStream(executor_, stream_handle_);
-      !status.ok()) {
+  absl::Status status;
+  {
+    // Do not allow stream to enter capture state while blocking.
+    absl::MutexLock lock(capture_state_mutex_);
+    status = SynchronizeStream(executor_, stream_handle_);
+  }
+  if (!status.ok()) {
     callback_registry_handle_->FailAll(status);
     return status;
   }
@@ -292,17 +360,20 @@ absl::Status CudaStream::BlockHostUntilDone() {
   return absl::OkStatus();
 }
 
-absl::Status CudaStream::RefreshStatus() {
+absl::Status CudaStream::RefreshStatus() ABSL_NO_THREAD_SAFETY_ANALYSIS {
   TraceMe trace([] { return TraceMeEncode("CudaStream::RefreshStatus", {}); },
                 /*level=*/TraceMeLevel::kVerbose);
   std::unique_ptr<ActivateContext> activation = executor_->Activate();
-  const absl::StatusOr<bool> is_capturing = StreamIsCapturing(stream_handle_);
   // Stream querying is not allowed during graph capture.
   // Errors during `StreamIsCapturing` itself means we will use cuStreamQuery
   // after.
-  if (is_capturing.ok() && *is_capturing) {
-    return absl::OkStatus();
+  auto lock = capture_state_mutex_.try_lock_shared();
+  if (!lock) {
+    return absl::OkStatus();  // Stream is capturing, can't query status.
   }
+  absl::Cleanup cleanup = [this]() ABSL_NO_THREAD_SAFETY_ANALYSIS {
+    capture_state_mutex_.unlock_shared();
+  };
   CUresult res = cuStreamQuery(stream_handle_);
   if (res == CUDA_SUCCESS || res == CUDA_ERROR_NOT_READY) {
     return absl::OkStatus();
@@ -538,6 +609,14 @@ void CudaStream::SetName(std::string name) {
   tsl::profiler::NameStream(
       absl::bit_cast<tsl::profiler::StreamHandle>(stream_handle_), name);
   StreamCommon::SetName(std::move(name));
+}
+
+absl::StatusOr<CudaStream::CaptureHandle> CudaStream::BeginCapture(
+    CUgraph graph, const CUgraphNode* dependencies,
+    const CUgraphEdgeData* dependency_data, size_t num_dependencies,
+    CUstreamCaptureMode mode) {
+  return CudaStream::CaptureHandle::BeginCapture(
+      this, graph, dependencies, dependency_data, num_dependencies, mode);
 }
 
 }  // namespace gpu

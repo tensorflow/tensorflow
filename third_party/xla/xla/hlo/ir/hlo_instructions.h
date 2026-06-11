@@ -301,7 +301,6 @@ class HloAsyncInstruction : public HloInstruction {
   // the current instruction.
   void UpdateChainShapes();
 
- protected:
   // Helper to constructs async-{start,update,done}.
   HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
                       absl::Span<HloInstruction* const> operands,
