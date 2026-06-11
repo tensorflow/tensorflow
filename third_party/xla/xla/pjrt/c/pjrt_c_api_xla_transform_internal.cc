@@ -47,9 +47,17 @@ class CApiXlaTransformAdapter : public HloXlaTransform {
   // callbacks must outlive this object. The pointer is stored directly so that
   // implementations using offsetof-based recovery (e.g. CApiTransformHloModule
   // Callback in jaxlib/xla.cc) receive the original address they registered.
+  // If the callback is unregistered, CApiXlaTransformAdapter will be destroyed
+  // and its destructor will call the registered callback dtor.
   explicit CApiXlaTransformAdapter(std::string name,
                                    PJRT_XlaTransform_Callbacks* callbacks)
       : HloXlaTransform(std::move(name)), callbacks_(callbacks) {}
+
+  ~CApiXlaTransformAdapter() override {
+    if (callbacks_ != nullptr && callbacks_->dtor != nullptr) {
+      callbacks_->dtor(callbacks_);
+    }
+  }
 
   absl::StatusOr<bool> Transform(xla::HloModule* module) override {
     xla::HloModuleProto proto = module->ToProto();
