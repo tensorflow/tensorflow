@@ -57,6 +57,7 @@ cc_library(
         "//xla:shape_util",
         "//xla/hlo/analysis:hlo_alias_analysis",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_instruction_utils",
         "//xla/service:hlo_buffer",
         "//xla/service:hlo_value",
         "@com_google_absl//absl/algorithm:container",
@@ -88,6 +89,7 @@ xla_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
     ],
 )
