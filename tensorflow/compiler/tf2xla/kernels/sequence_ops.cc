@@ -85,14 +85,17 @@ class RangeOp : public XlaOpKernel {
     const TensorShape limit_in_shape = ctx->InputShape(1);
     const TensorShape delta_in_shape = ctx->InputShape(2);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(start_in_shape),
-                errors::InvalidArgument("start must be a scalar, not shape ",
-                                        start_in_shape.DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("start must be a scalar, not shape ",
+                                 start_in_shape.DebugString())));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(limit_in_shape),
-                errors::InvalidArgument("limit must be a scalar, not shape ",
-                                        limit_in_shape.DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("limit must be a scalar, not shape ",
+                                 limit_in_shape.DebugString())));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(delta_in_shape),
-                errors::InvalidArgument("delta must be a scalar, not shape ",
-                                        delta_in_shape.DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("delta must be a scalar, not shape ",
+                                 delta_in_shape.DebugString())));
     xla::Literal start, limit, delta;
     OP_REQUIRES_OK(ctx, ctx->ConstantInput(
                             0, &start, xla::ValueInferenceMode::kLowerBound));
@@ -118,8 +121,8 @@ class RangeOp : public XlaOpKernel {
         output = CreateRangeTensor<double>(start, limit, delta, ctx->builder());
         break;
       default:
-        output = errors::InvalidArgument("Invalid type for Range ",
-                                         DataTypeString(type));
+        output = absl::InvalidArgumentError(
+            absl::StrCat("Invalid type for Range ", DataTypeString(type)));
     }
     OP_REQUIRES_OK(ctx, output.status());
     bool start_is_dynamic = false;
@@ -165,19 +168,23 @@ class LinSpaceOp : public XlaOpKernel {
     const TensorShape stop_in_shape = ctx->InputShape("stop");
     const TensorShape num_in_shape = ctx->InputShape("num");
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(start_in_shape),
-                errors::InvalidArgument("start must be a scalar, not shape ",
-                                        start_in_shape.DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(stop_in_shape),
-                errors::InvalidArgument("stop must be a scalar, not shape ",
-                                        stop_in_shape.DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(num_in_shape),
-                errors::InvalidArgument("num must be a scalar, not shape ",
-                                        num_in_shape.DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("start must be a scalar, not shape ",
+                                 start_in_shape.DebugString())));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(stop_in_shape),
+        absl::InvalidArgumentError(absl::StrCat(
+            "stop must be a scalar, not shape ", stop_in_shape.DebugString())));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(num_in_shape),
+        absl::InvalidArgumentError(absl::StrCat(
+            "num must be a scalar, not shape ", num_in_shape.DebugString())));
 
     int64_t num;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar("num", &num));
-    OP_REQUIRES(ctx, num > 0,
-                errors::InvalidArgument("Requires num > 0: ", num));
+    OP_REQUIRES(
+        ctx, num > 0,
+        absl::InvalidArgumentError(absl::StrCat("Requires num > 0: ", num)));
     xla::XlaOp start = ctx->Input("start");
     xla::XlaOp stop = ctx->Input("stop");
     xla::XlaOp iota = xla::Iota(ctx->builder(), ctx->output_xla_type(0), num);

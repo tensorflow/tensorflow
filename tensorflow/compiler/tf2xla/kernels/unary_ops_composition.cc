@@ -105,8 +105,8 @@ class UnaryOpsCompositionOp : public XlaOpKernel {
     const XlaOpGeneratorMap& op_generator_map = GetXlaOpGeneratorMap();
     for (absl::string_view op_name : op_names_) {
       OP_REQUIRES(ctx, op_generator_map.contains(op_name),
-                  errors::Unimplemented(
-                      op_name, " not supported in _UnaryOpsComposition"));
+                  absl::UnimplementedError(absl::StrCat(
+                      op_name, " not supported in _UnaryOpsComposition")));
     }
   }
 

@@ -44,9 +44,9 @@ class RetvalOp : public XlaOpKernel {
     // XlaOpKernelContext::SetOutputExpression for details.
     if (DataTypeCanUseMemcpy(dtype_)) {
       OP_REQUIRES(ctx, input.dtype() == dtype_,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "Type mismatch: actual ", DataTypeString(input.dtype()),
-                      " vs. expect ", DataTypeString(dtype_)));
+                      " vs. expect ", DataTypeString(dtype_))));
     }
     auto frame = ctx->call_frame();
     if (frame) {

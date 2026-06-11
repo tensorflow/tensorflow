@@ -43,9 +43,10 @@ class ReshapeOp : public XlaOpKernel {
     auto input_xla_shape = ctx->InputXlaShape(0);
     const TensorShape sizes_shape = ctx->InputShape(1);
     // Preliminary validation of sizes.
-    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(sizes_shape),
-                errors::InvalidArgument("sizes input must be 1-D, not shape ",
-                                        sizes_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsVector(sizes_shape),
+        absl::InvalidArgumentError(absl::StrCat(
+            "sizes input must be 1-D, not shape ", sizes_shape.DebugString())));
     const int64_t num_dims = sizes_shape.num_elements();
 
     std::vector<int64_t> shape_input;
@@ -62,10 +63,10 @@ class ReshapeOp : public XlaOpKernel {
     for (int d = 0; d < num_dims; ++d) {
       const int64_t size = shape_input[d];
       if (size == -1) {
-        OP_REQUIRES(
-            ctx, unknown_index == -1,
-            errors::InvalidArgument("only one input size may be -1, not both ",
-                                    unknown_index, " and ", d));
+        OP_REQUIRES(ctx, unknown_index == -1,
+                    absl::InvalidArgumentError(
+                        absl::StrCat("only one input size may be -1, not both ",
+                                     unknown_index, " and ", d)));
         unknown_index = d;
         shape.AddDim(1);
       } else if (size == 0) {
@@ -76,8 +77,8 @@ class ReshapeOp : public XlaOpKernel {
         shape_has_zero_dim = true;
       } else {
         OP_REQUIRES(ctx, size >= 0,
-                    errors::InvalidArgument(
-                        "size ", d, " must be non-negative, not ", size));
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "size ", d, " must be non-negative, not ", size)));
         shape.AddDim(size);
         product *= size;
       }
@@ -103,10 +104,10 @@ class ReshapeOp : public XlaOpKernel {
             input_xla_shape->dimensions().size() != 1) {
           OP_REQUIRES(
               ctx, product * missing == input_num_elements,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "Input to reshape is a tensor with ", input_num_elements,
                   " values, but the requested shape requires a multiple of ",
-                  product));
+                  product)));
         } else {
           // For 1D shape, we can safely insert extra padding in the end to make
           // sure the input is multiple of the product of the known dimensions.
@@ -123,11 +124,11 @@ class ReshapeOp : public XlaOpKernel {
       }
       shape.set_dim(unknown_index, missing);
     }
-    OP_REQUIRES(ctx, shape.num_elements() == input_shape.num_elements(),
-                errors::InvalidArgument("Input to reshape is a tensor with ",
-                                        input_shape.num_elements(),
-                                        " values, but the requested shape has ",
-                                        shape.num_elements()));
+    OP_REQUIRES(
+        ctx, shape.num_elements() == input_shape.num_elements(),
+        absl::InvalidArgumentError(absl::StrCat(
+            "Input to reshape is a tensor with ", input_shape.num_elements(),
+            " values, but the requested shape has ", shape.num_elements())));
 
     VLOG(2) << "Reshape from " << input_shape.DebugString() << " to "
             << shape.DebugString() << ", unknown_index=" << unknown_index;

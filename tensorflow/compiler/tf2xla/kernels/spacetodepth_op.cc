@@ -38,12 +38,12 @@ class SpaceToDepthOp : public XlaOpKernel {
     std::string data_format_str;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format_str));
     OP_REQUIRES(ctx, FormatFromString(data_format_str, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
+                absl::InvalidArgumentError("Invalid data format"));
 
     OP_REQUIRES_OK(ctx, ctx->GetAttr("block_size", &block_size_));
-    OP_REQUIRES(
-        ctx, block_size_ > 1,
-        errors::InvalidArgument("Block size should be > 1: ", block_size_));
+    OP_REQUIRES(ctx, block_size_ > 1,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Block size should be > 1: ", block_size_)));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -60,8 +60,8 @@ class SpaceToDepthOp : public XlaOpKernel {
     }
 
     OP_REQUIRES(ctx, data_format == FORMAT_NCHW || data_format == FORMAT_NHWC,
-                errors::InvalidArgument("Unsupported data format ",
-                                        ToString(data_format_)));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Unsupported data format ", ToString(data_format_))));
 
     xla::XlaBuilder* builder = input.builder();
     auto input_xla_shape = builder->GetShape(input);
@@ -71,9 +71,10 @@ class SpaceToDepthOp : public XlaOpKernel {
     int input_rank = input_shape.size();
 
     static const int kRequiredDims = 4;
-    OP_REQUIRES(ctx, kRequiredDims == input_rank,
-                errors::InvalidArgument("Input rank should be ", kRequiredDims,
-                                        "; got ", input_rank));
+    OP_REQUIRES(
+        ctx, kRequiredDims == input_rank,
+        absl::InvalidArgumentError(absl::StrCat(
+            "Input rank should be ", kRequiredDims, "; got ", input_rank)));
 
     int feature_dim = GetTensorFeatureDimIndex(input_rank, data_format);
     int num_spatial_dims = GetTensorSpatialDims(input_rank, data_format);
@@ -88,9 +89,9 @@ class SpaceToDepthOp : public XlaOpKernel {
       int64_t block_elems = 1;
       for (int i = 0; i < num_spatial_dims; ++i) {
         OP_REQUIRES(ctx, input_shape[1 + i] % block_size_ == 0,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "input shape[", 1 + i, "]=", input_shape[1 + i],
-                        " is not divisible by block_size=", block_size_));
+                        " is not divisible by block_size=", block_size_)));
         block_elems *= block_size_;
       }
 
@@ -120,9 +121,9 @@ class SpaceToDepthOp : public XlaOpKernel {
       int64_t block_elems = 1;
       for (int i = 0; i < num_spatial_dims; ++i) {
         OP_REQUIRES(ctx, input_shape[2 + i] % block_size_ == 0,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "input shape[", 2 + i, "]=", input_shape[2 + i],
-                        " is not divisible by block_size=", block_size_));
+                        " is not divisible by block_size=", block_size_)));
         block_elems *= block_size_;
       }
 

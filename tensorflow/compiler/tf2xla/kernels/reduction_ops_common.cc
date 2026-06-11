@@ -72,9 +72,9 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
   }
 
   OP_REQUIRES(ctx, axes_tensor_shape.dims() <= 1,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "Expected scalar or vector as index argument, got ",
-                  axes_tensor_shape.DebugString()));
+                  axes_tensor_shape.DebugString())));
 
   // Evaluate the constant, reshaping to a 1-vector if it is a scalar.
   std::vector<int64_t> axes;
@@ -92,15 +92,15 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
     int64_t index = axes[i];
     OP_REQUIRES(ctx,
                 !(index < -data_shape.dims() || index >= data_shape.dims()),
-                errors::InvalidArgument("Invalid reduction dimension (", index,
-                                        " for input with ", data_shape.dims(),
-                                        " dimension(s)"));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Invalid reduction dimension (", index, " for input with ",
+                    data_shape.dims(), " dimension(s)")));
     index = (index + data_shape.dims()) % data_shape.dims();
     OP_REQUIRES(
         ctx, !bitmap[index],
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Invalid reduction arguments: Axes contains duplicate dimension: ",
-            index));
+            index)));
     bitmap[index] = true;
     xla_axes.push_back(index);
   }

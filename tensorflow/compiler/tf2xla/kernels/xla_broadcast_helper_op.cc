@@ -54,11 +54,11 @@ class XlaBroadcastHelperOp : public XlaOpKernel {
           context,
           lhs_shape.dims() == rhs_shape.dims() || lhs_shape.dims() == 0 ||
               rhs_shape.dims() == 0,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "If broadcast_dims is empty, both "
               "arguments must have equal rank; "
               "argument shapes, or at least one argument must be a scalar: ",
-              lhs_shape.DebugString(), " and ", rhs_shape.DebugString()));
+              lhs_shape.DebugString(), " and ", rhs_shape.DebugString())));
       context->SetOutput(0, lhs);
       context->SetOutput(1, rhs);
       return;
@@ -66,31 +66,31 @@ class XlaBroadcastHelperOp : public XlaOpKernel {
 
     OP_REQUIRES(
         context, broadcast_dims.size() == min_rank_shape->dims(),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "broadcast_dims must have size equal to the smaller argument rank; "
             "broadcast_dims: [",
             absl::StrJoin(broadcast_dims, ","), "]; argument shapes: ",
-            lhs_shape.DebugString(), " and ", rhs_shape.DebugString()));
+            lhs_shape.DebugString(), " and ", rhs_shape.DebugString())));
     std::vector<int64_t> sorted_broadcast_dims = broadcast_dims;
     absl::c_sort(sorted_broadcast_dims);
     std::set<int64_t> dims_set(broadcast_dims.begin(), broadcast_dims.end());
     OP_REQUIRES(context,
                 dims_set.size() == broadcast_dims.size() &&
                     broadcast_dims == sorted_broadcast_dims,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Duplicate or nonmonotonic dimension in broadcast_dims; "
                     "broadcast_dims: [",
-                    absl::StrJoin(broadcast_dims, ","), "]"));
+                    absl::StrJoin(broadcast_dims, ","), "]")));
 
     std::vector<int64_t> broadcast_shape(max_rank_shape->dims(), 1LL);
     for (int i = 0; i < broadcast_dims.size(); ++i) {
       const int dim = broadcast_dims[i];
       OP_REQUIRES(
           context, dim >= 0 && dim < broadcast_shape.size(),
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "Invalid broadcast dimension (", dim, "); broadcast_dims: [",
               absl::StrJoin(broadcast_dims, ","), "]; argument shapes: ",
-              lhs_shape.DebugString(), " and ", rhs_shape.DebugString()));
+              lhs_shape.DebugString(), " and ", rhs_shape.DebugString())));
       broadcast_shape[dim] = min_rank_shape->dim_size(i);
     }
     if (broadcast_lhs) {

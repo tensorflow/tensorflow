@@ -40,14 +40,16 @@ class ReverseOp : public XlaOpKernel {
     const TensorShape x_shape = ctx->InputShape(0);
     const TensorShape revd_shape = ctx->InputShape(1);
     // Validate input sizes.
-    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(revd_shape),
-                errors::InvalidArgument("axes must be a vector, not shape ",
-                                        revd_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsVector(revd_shape),
+        absl::InvalidArgumentError(absl::StrCat(
+            "axes must be a vector, not shape ", revd_shape.DebugString())));
     OP_REQUIRES(ctx, revd_shape.num_elements() == x_shape.dims(),
-                errors::InvalidArgument("axes ", revd_shape.DebugString(),
-                                        " must have same number of elements as"
-                                        " than input tensor has dimensions ",
-                                        x_shape.DebugString(), "."));
+                absl::InvalidArgumentError(
+                    absl::StrCat("axes ", revd_shape.DebugString(),
+                                 " must have same number of elements as"
+                                 " than input tensor has dimensions ",
+                                 x_shape.DebugString(), ".")));
     if (revd_shape.num_elements() == 0) {
       ctx->SetOutput(0, ctx->Input(0));
       return;
@@ -78,14 +80,16 @@ class ReverseV2Op : public XlaOpKernel {
     const TensorShape x_shape = ctx->InputShape(0);
     const TensorShape axes_shape = ctx->InputShape(1);
     // Validate input sizes.
-    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(axes_shape),
-                errors::InvalidArgument("axes must be a vector, not shape ",
-                                        axes_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsVector(axes_shape),
+        absl::InvalidArgumentError(absl::StrCat(
+            "axes must be a vector, not shape ", axes_shape.DebugString())));
     OP_REQUIRES(ctx, axes_shape.num_elements() <= x_shape.dims(),
-                errors::InvalidArgument("axes ", axes_shape.DebugString(),
-                                        " can not have more elements"
-                                        " than input tensor has dimensions ",
-                                        x_shape.DebugString(), "."));
+                absl::InvalidArgumentError(
+                    absl::StrCat("axes ", axes_shape.DebugString(),
+                                 " can not have more elements"
+                                 " than input tensor has dimensions ",
+                                 x_shape.DebugString(), ".")));
     // Reverse is a no-op if axes argument is empty.
     if (axes_shape.num_elements() == 0) {
       ctx->SetOutput(0, ctx->Input(0));
@@ -100,18 +104,19 @@ class ReverseV2Op : public XlaOpKernel {
     absl::InlinedVector<bool, 8> witnessed_axes(x_shape.dims(), false);
 
     for (int d = 0; d < axes.size(); ++d) {
-      OP_REQUIRES(
-          ctx, (-x_shape.dims() <= axes[d]) && (axes[d] < x_shape.dims()),
-          errors::InvalidArgument(axes[d], " is out of range [-",
-                                  x_shape.dims(), ", ", x_shape.dims(), ")."));
+      OP_REQUIRES(ctx,
+                  (-x_shape.dims() <= axes[d]) && (axes[d] < x_shape.dims()),
+                  absl::InvalidArgumentError(absl::StrCat(
+                      axes[d], " is out of range [-", x_shape.dims(), ", ",
+                      x_shape.dims(), ").")));
       // Axes can be negative and are shifted to the canonical index before
       // being lowered to HLO.
       if (axes[d] < 0) {
         axes[d] += x_shape.dims();
       }
       OP_REQUIRES(ctx, !witnessed_axes[axes[d]],
-                  errors::InvalidArgument("canonicalized axis ", axes[d],
-                                          " was repeated."));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "canonicalized axis ", axes[d], " was repeated.")));
       witnessed_axes[axes[d]] = true;
     }
 

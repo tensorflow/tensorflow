@@ -40,10 +40,10 @@ class SparseToDenseOp : public XlaOpKernel {
     // sparse_indices
     const TensorShape indices_shape = context->InputShape(0);
     OP_REQUIRES(context, indices_shape.dims() <= 2,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "sparse_indices should be a scalar, vector, or matrix, "
                     "got shape ",
-                    indices_shape.DebugString()));
+                    indices_shape.DebugString())));
     const int64_t num_elems =
         indices_shape.dims() > 0 ? indices_shape.dim_size(0) : 1;
     const int64_t num_dims =
@@ -55,9 +55,9 @@ class SparseToDenseOp : public XlaOpKernel {
                    context->ConstantInputAsShape(
                        1, &output_shape, xla::ValueInferenceMode::kUpperBound));
     OP_REQUIRES(context, output_shape.dims() == num_dims,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "output_shape has incorrect number of elements: ",
-                    output_shape.num_elements(), " should be: ", num_dims));
+                    output_shape.num_elements(), " should be: ", num_dims)));
 
     // sparse_values
     const TensorShape sparse_values_shape = context->InputShape(2);
@@ -66,14 +66,16 @@ class SparseToDenseOp : public XlaOpKernel {
         context,
         sparse_values_shape.dims() == 0 ||
             (sparse_values_shape.dims() == 1 && num_values == num_elems),
-        errors::InvalidArgument("sparse_values has incorrect shape ",
-                                sparse_values_shape.DebugString(),
-                                ", should be [] or [", num_elems, "]"));
+        absl::InvalidArgumentError(
+            absl::StrCat("sparse_values has incorrect shape ",
+                         sparse_values_shape.DebugString(),
+                         ", should be [] or [", num_elems, "]")));
 
     // default_value
     const TensorShape default_value_shape = context->InputShape(3);
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(default_value_shape),
-                errors::InvalidArgument("default_value should be a scalar."));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(default_value_shape),
+        absl::InvalidArgumentError("default_value should be a scalar."));
 
     xla::XlaOp indices = context->Input(0);
     xla::XlaOp sparse_values = context->Input(2);

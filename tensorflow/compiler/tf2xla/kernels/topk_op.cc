@@ -59,17 +59,19 @@ class TopKOp : public XlaOpKernel {
       // - If not, use last dim's size.
       k = last_dim_size;
     }
-    OP_REQUIRES(context, k >= 0,
-                errors::InvalidArgument("Need k >= 0, got ", k));
-
-    OP_REQUIRES(context, input_shape.dimensions().size() >= 1,
-                errors::InvalidArgument("input must be >= 1-D, got shape ",
-                                        input_shape.ToString()));
+    OP_REQUIRES(
+        context, k >= 0,
+        absl::InvalidArgumentError(absl::StrCat("Need k >= 0, got ", k)));
 
     OP_REQUIRES(
-        context, last_dim_size >= k,
-        errors::InvalidArgument("input must have at least k columns. Had ",
-                                last_dim_size, ", needed ", k));
+        context, input_shape.dimensions().size() >= 1,
+        absl::InvalidArgumentError(absl::StrCat(
+            "input must be >= 1-D, got shape ", input_shape.ToString())));
+
+    OP_REQUIRES(context, last_dim_size >= k,
+                absl::InvalidArgumentError(
+                    absl::StrCat("input must have at least k columns. Had ",
+                                 last_dim_size, ", needed ", k)));
     if (last_dim_size < k) {
       k = last_dim_size;
     }

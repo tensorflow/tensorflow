@@ -43,15 +43,15 @@ class TileOp : public XlaOpKernel {
     const TensorShape input_shape = ctx->InputShape("input");
     const TensorShape multiples_shape = ctx->InputShape("multiples");
 
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsVector(multiples_shape),
-        errors::InvalidArgument("Expected multiples to be 1-D, but got shape ",
-                                multiples_shape.DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(multiples_shape),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Expected multiples to be 1-D, but got shape ",
+                                 multiples_shape.DebugString())));
     OP_REQUIRES(ctx, input_shape.dims() == multiples_shape.num_elements(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Expected multiples argument to be a vector of length ",
                     input_shape.dims(), " but got length ",
-                    multiples_shape.dim_size(0)));
+                    multiples_shape.dim_size(0))));
     const int input_dims = input_shape.dims();
     auto input = ctx->Input(0);
     // If input is a scalar then multiples has 0 elements and this is
@@ -68,9 +68,10 @@ class TileOp : public XlaOpKernel {
 
     std::vector<int64_t> output_dims(input_shape.dims());
     for (int64_t i = 0; i < input_shape.dims(); ++i) {
-      OP_REQUIRES(ctx, multiples_bounds[i] >= 0,
-                  errors::InvalidArgument("Expected multiples[", i,
-                                          "] >= 0, but got ", output_dims[i]));
+      OP_REQUIRES(
+          ctx, multiples_bounds[i] >= 0,
+          absl::InvalidArgumentError(absl::StrCat(
+              "Expected multiples[", i, "] >= 0, but got ", output_dims[i])));
       output_dims[i] = input_shape.dim_size(i) * multiples_bounds[i];
     }
 

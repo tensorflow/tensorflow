@@ -43,14 +43,15 @@ class UnpackOp : public XlaOpKernel {
     if (axis < 0) axis += input_shape.dims();
 
     OP_REQUIRES(ctx, 0 <= axis && axis < input_shape.dims(),
-                errors::InvalidArgument("axis = ", axis_, " not in [",
-                                        -input_shape.dims(), ", ",
-                                        input_shape.dims(), ")"));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "axis = ", axis_, " not in [", -input_shape.dims(), ", ",
+                    input_shape.dims(), ")")));
 
-    OP_REQUIRES(
-        ctx, input_shape.dims() > 0 && input_shape.dim_size(axis) == num,
-        errors::InvalidArgument("Input shape axis ", axis, " must equal ", num,
-                                ", got shape ", input_shape.DebugString()));
+    OP_REQUIRES(ctx,
+                input_shape.dims() > 0 && input_shape.dim_size(axis) == num,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input shape axis ", axis, " must equal ", num,
+                                 ", got shape ", input_shape.DebugString())));
 
     auto output_shape = input_shape;
     output_shape.RemoveDim(axis);

@@ -40,15 +40,15 @@ class ResourceApplyGradientDescent : public XlaOpKernel {
 
     TensorShape alpha_shape = ctx->InputShape(1);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(alpha_shape),
-                errors::InvalidArgument("alpha is not a scalar: ",
-                                        alpha_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "alpha is not a scalar: ", alpha_shape.DebugString())));
 
     TensorShape delta_shape = ctx->InputShape(2);
     OP_REQUIRES(
         ctx, var_shape.IsSameSize(delta_shape),
-        errors::InvalidArgument("var and delta do not have the same shape: ",
-                                var_shape.DebugString(), " vs ",
-                                delta_shape.DebugString()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "var and delta do not have the same shape: ",
+            var_shape.DebugString(), " vs ", delta_shape.DebugString())));
 
     handle = handle - ctx->Input(1) * ctx->Input(2);
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, type, handle));
@@ -85,22 +85,22 @@ class ResourceApplyProximalGradientDescent : public XlaOpKernel {
 
     TensorShape alpha_shape = ctx->InputShape(1);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(alpha_shape),
-                errors::InvalidArgument("alpha is not a scalar: ",
-                                        alpha_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "alpha is not a scalar: ", alpha_shape.DebugString())));
     TensorShape l1_shape = ctx->InputShape(2);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(alpha_shape),
-                errors::InvalidArgument("l1 is not a scalar: ",
-                                        l1_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "l1 is not a scalar: ", l1_shape.DebugString())));
     TensorShape l2_shape = ctx->InputShape(3);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(alpha_shape),
-                errors::InvalidArgument("l2 is not a scalar: ",
-                                        l2_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "l2 is not a scalar: ", l2_shape.DebugString())));
     TensorShape delta_shape = ctx->InputShape(4);
     OP_REQUIRES(
         ctx, var_shape.IsSameSize(delta_shape),
-        errors::InvalidArgument("var and delta do not have the same shape: ",
-                                var_shape.DebugString(), " vs ",
-                                delta_shape.DebugString()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "var and delta do not have the same shape: ",
+            var_shape.DebugString(), " vs ", delta_shape.DebugString())));
     xla::XlaOp alpha = ctx->Input(1);
     xla::XlaOp l1 = ctx->Input(2);
     xla::XlaOp l2 = ctx->Input(3);
@@ -131,25 +131,26 @@ class ResourceApplyMomentum : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(1, type, &accum_shape, &accum));
 
     OP_REQUIRES(ctx, var_shape.IsSameSize(accum_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "var and accum do not have the same shape",
-                    var_shape.DebugString(), " ", accum_shape.DebugString()));
+                    var_shape.DebugString(), " ", accum_shape.DebugString())));
 
     TensorShape lr_shape = ctx->InputShape(2);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_shape),
-                errors::InvalidArgument("lr is not a scalar: ",
-                                        lr_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "lr is not a scalar: ", lr_shape.DebugString())));
 
     TensorShape grad_shape = ctx->InputShape(3);
     OP_REQUIRES(ctx, var_shape.IsSameSize(grad_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "var and grad do not have the same shape",
-                    var_shape.DebugString(), " ", grad_shape.DebugString()));
+                    var_shape.DebugString(), " ", grad_shape.DebugString())));
 
     TensorShape momentum_shape = ctx->InputShape(4);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(momentum_shape),
-                errors::InvalidArgument("momentum is not a scalar: ",
-                                        momentum_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(momentum_shape),
+        absl::InvalidArgumentError(absl::StrCat("momentum is not a scalar: ",
+                                                momentum_shape.DebugString())));
 
     xla::XlaOp lr = ctx->Input(2);
     xla::XlaOp grad = ctx->Input(3);
@@ -189,25 +190,26 @@ class ResourceApplyKerasMomentum : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(1, type, &accum_shape, &accum));
 
     OP_REQUIRES(ctx, var_shape.IsSameSize(accum_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "var and accum do not have the same shape",
-                    var_shape.DebugString(), " ", accum_shape.DebugString()));
+                    var_shape.DebugString(), " ", accum_shape.DebugString())));
 
     TensorShape lr_shape = ctx->InputShape(2);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_shape),
-                errors::InvalidArgument("lr is not a scalar: ",
-                                        lr_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "lr is not a scalar: ", lr_shape.DebugString())));
 
     TensorShape grad_shape = ctx->InputShape(3);
     OP_REQUIRES(ctx, var_shape.IsSameSize(grad_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "var and grad do not have the same shape",
-                    var_shape.DebugString(), " ", grad_shape.DebugString()));
+                    var_shape.DebugString(), " ", grad_shape.DebugString())));
 
     TensorShape momentum_shape = ctx->InputShape(4);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(momentum_shape),
-                errors::InvalidArgument("momentum is not a scalar: ",
-                                        momentum_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(momentum_shape),
+        absl::InvalidArgumentError(absl::StrCat("momentum is not a scalar: ",
+                                                momentum_shape.DebugString())));
 
     xla::XlaOp lr = ctx->Input(2);
     xla::XlaOp grad = ctx->Input(3);
@@ -247,20 +249,20 @@ class ResourceApplyAdagrad : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(1, type, &accum_shape, &accum));
 
     OP_REQUIRES(ctx, var_shape.IsSameSize(accum_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "var and accum do not have the same shape",
-                    var_shape.DebugString(), " ", accum_shape.DebugString()));
+                    var_shape.DebugString(), " ", accum_shape.DebugString())));
 
     TensorShape lr_shape = ctx->InputShape(2);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_shape),
-                errors::InvalidArgument("lr is not a scalar: ",
-                                        lr_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "lr is not a scalar: ", lr_shape.DebugString())));
 
     TensorShape grad_shape = ctx->InputShape(3);
     OP_REQUIRES(ctx, var_shape.IsSameSize(grad_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "var and grad do not have the same shape",
-                    var_shape.DebugString(), " ", grad_shape.DebugString()));
+                    var_shape.DebugString(), " ", grad_shape.DebugString())));
 
     xla::XlaOp lr = ctx->Input(2);
     xla::XlaOp grad = ctx->Input(3);
@@ -296,25 +298,25 @@ class ResourceApplyAdagradV2 : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(1, type, &accum_shape, &accum));
 
     OP_REQUIRES(ctx, var_shape.IsSameSize(accum_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "var and accum do not have the same shape",
-                    var_shape.DebugString(), " ", accum_shape.DebugString()));
+                    var_shape.DebugString(), " ", accum_shape.DebugString())));
 
     TensorShape lr_shape = ctx->InputShape(2);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_shape),
-                errors::InvalidArgument("lr is not a scalar: ",
-                                        lr_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "lr is not a scalar: ", lr_shape.DebugString())));
 
     TensorShape epsilon_shape = ctx->InputShape(3);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(epsilon_shape),
-                errors::InvalidArgument("epsilon is not a scalar: ",
-                                        epsilon_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "epsilon is not a scalar: ", epsilon_shape.DebugString())));
 
     TensorShape grad_shape = ctx->InputShape(4);
     OP_REQUIRES(ctx, var_shape.IsSameSize(grad_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "var and grad do not have the same shape",
-                    var_shape.DebugString(), " ", grad_shape.DebugString()));
+                    var_shape.DebugString(), " ", grad_shape.DebugString())));
 
     xla::XlaOp lr = ctx->Input(2);
     xla::XlaOp epsilon = ctx->Input(3);
@@ -350,27 +352,28 @@ class ResourceApplyProximalAdagrad : public XlaOpKernel {
                    ctx->ReadVariableInput(1, dtype_, &accum_shape, &accum));
 
     OP_REQUIRES(ctx, var_shape.IsSameSize(accum_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "var and accum do not have the same shape",
-                    var_shape.DebugString(), " ", accum_shape.DebugString()));
+                    var_shape.DebugString(), " ", accum_shape.DebugString())));
 
     TensorShape lr_shape = ctx->InputShape(2);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_shape),
-                errors::InvalidArgument("lr is not a scalar: ",
-                                        lr_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "lr is not a scalar: ", lr_shape.DebugString())));
     TensorShape l1_shape = ctx->InputShape(3);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(l1_shape),
-                errors::InvalidArgument("l1 is not a scalar: ",
-                                        l1_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "l1 is not a scalar: ", l1_shape.DebugString())));
     TensorShape l2_shape = ctx->InputShape(4);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(l2_shape),
-                errors::InvalidArgument("l2 is not a scalar: ",
-                                        l2_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "l2 is not a scalar: ", l2_shape.DebugString())));
     TensorShape grad_shape = ctx->InputShape(5);
-    OP_REQUIRES(ctx, var_shape.IsSameSize(grad_shape),
-                errors::InvalidArgument(
-                    "var and grad do not have the same shape: ",
-                    var_shape.DebugString(), " vs ", grad_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, var_shape.IsSameSize(grad_shape),
+        absl::InvalidArgumentError(absl::StrCat(
+            "var and grad do not have the same shape: ",
+            var_shape.DebugString(), " vs ", grad_shape.DebugString())));
 
     xla::XlaOp lr = ctx->Input(2);
     xla::XlaOp l1 = ctx->Input(3);
@@ -407,14 +410,14 @@ class ResourceApplyAdagradDA : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(2, dtype_, &squared_accum_shape,
                                                &squared_accum));
     OP_REQUIRES(ctx, var_shape.IsSameSize(accum_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "var and accum do not have the same shape",
-                    var_shape.DebugString(), " ", accum_shape.DebugString()));
+                    var_shape.DebugString(), " ", accum_shape.DebugString())));
     OP_REQUIRES(
         ctx, var_shape.IsSameSize(squared_accum_shape),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "var and squared accum do not have the same shape",
-            var_shape.DebugString(), " ", squared_accum_shape.DebugString()));
+            var_shape.DebugString(), " ", squared_accum_shape.DebugString())));
 
     TensorShape grad_shape = ctx->InputShape(3);
     TensorShape lr_shape = ctx->InputShape(4);
@@ -423,21 +426,22 @@ class ResourceApplyAdagradDA : public XlaOpKernel {
     TensorShape global_step_shape = ctx->InputShape(7);
 
     OP_REQUIRES(ctx, var_shape.IsSameSize(grad_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "var and grad do not have the same shape",
-                    var_shape.DebugString(), " ", grad_shape.DebugString()));
+                    var_shape.DebugString(), " ", grad_shape.DebugString())));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_shape),
-                errors::InvalidArgument("lr is not a scalar: ",
-                                        lr_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "lr is not a scalar: ", lr_shape.DebugString())));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(l1_shape),
-                errors::InvalidArgument("l1 is not a scalar: ",
-                                        l1_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "l1 is not a scalar: ", l1_shape.DebugString())));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(l2_shape),
-                errors::InvalidArgument("l2 is not a scalar: ",
-                                        l2_shape.DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(global_step_shape),
-                errors::InvalidArgument("global step is not a scalar: ",
-                                        global_step_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "l2 is not a scalar: ", l2_shape.DebugString())));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(global_step_shape),
+        absl::InvalidArgumentError(absl::StrCat(
+            "global step is not a scalar: ", global_step_shape.DebugString())));
 
     xla::XlaOp grad = ctx->Input(3);
     xla::XlaOp lr = ctx->Input(4);
@@ -489,37 +493,39 @@ class ResourceApplyAdam : public XlaOpKernel {
     TensorShape epsilon_shape = ctx->InputShape(8);
     TensorShape grad_shape = ctx->InputShape(9);
 
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta1_power_shape),
-                errors::InvalidArgument("beta1_power is not a scalar: ",
-                                        beta1_power_shape.DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta2_power_shape),
-                errors::InvalidArgument("beta2_power is not a scalar: ",
-                                        beta2_power_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(beta1_power_shape),
+        absl::InvalidArgumentError(absl::StrCat(
+            "beta1_power is not a scalar: ", beta1_power_shape.DebugString())));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(beta2_power_shape),
+        absl::InvalidArgumentError(absl::StrCat(
+            "beta2_power is not a scalar: ", beta2_power_shape.DebugString())));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_shape),
-                errors::InvalidArgument("lr is not a scalar : ",
-                                        lr_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "lr is not a scalar : ", lr_shape.DebugString())));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta1_shape),
-                errors::InvalidArgument("beta1 is not a scalar: ",
-                                        beta1_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "beta1 is not a scalar: ", beta1_shape.DebugString())));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta2_shape),
-                errors::InvalidArgument("beta2 is not a scalar: ",
-                                        beta2_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "beta2 is not a scalar: ", beta2_shape.DebugString())));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(epsilon_shape),
-                errors::InvalidArgument("epsilon is not a scalar: ",
-                                        epsilon_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "epsilon is not a scalar: ", epsilon_shape.DebugString())));
 
     OP_REQUIRES(ctx, var_shape.IsSameSize(m_shape),
-                errors::InvalidArgument("var and m do not have the same shape",
-                                        var_shape.DebugString(), " ",
-                                        m_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "var and m do not have the same shape",
+                    var_shape.DebugString(), " ", m_shape.DebugString())));
     OP_REQUIRES(ctx, var_shape.IsSameSize(v_shape),
-                errors::InvalidArgument("var and v do not have the same shape",
-                                        var_shape.DebugString(), " ",
-                                        v_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "var and v do not have the same shape",
+                    var_shape.DebugString(), " ", v_shape.DebugString())));
     OP_REQUIRES(ctx, var_shape.IsSameSize(grad_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "var and grad do not have the same shape",
-                    var_shape.DebugString(), " ", grad_shape.DebugString()));
+                    var_shape.DebugString(), " ", grad_shape.DebugString())));
 
     xla::XlaOp beta1_power = ctx->Input(3);
     xla::XlaOp beta2_power = ctx->Input(4);
@@ -584,33 +590,34 @@ class ResourceApplyAdaMax : public XlaOpKernel {
     TensorShape epsilon_shape = ctx->InputShape(7);
     TensorShape grad_shape = ctx->InputShape(8);
 
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta1_power_shape),
-                errors::InvalidArgument("beta1_power is not a scalar: ",
-                                        beta1_power_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(beta1_power_shape),
+        absl::InvalidArgumentError(absl::StrCat(
+            "beta1_power is not a scalar: ", beta1_power_shape.DebugString())));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_shape),
-                errors::InvalidArgument("lr is not a scalar : ",
-                                        lr_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "lr is not a scalar : ", lr_shape.DebugString())));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta1_shape),
-                errors::InvalidArgument("beta1 is not a scalar: ",
-                                        beta1_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "beta1 is not a scalar: ", beta1_shape.DebugString())));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta2_shape),
-                errors::InvalidArgument("beta2 is not a scalar: ",
-                                        beta2_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "beta2 is not a scalar: ", beta2_shape.DebugString())));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(epsilon_shape),
-                errors::InvalidArgument("epsilon is not a scalar: ",
-                                        epsilon_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "epsilon is not a scalar: ", epsilon_shape.DebugString())));
     OP_REQUIRES(ctx, var_shape.IsSameSize(m_shape),
-                errors::InvalidArgument("var and m do not have the same shape",
-                                        var_shape.DebugString(), " ",
-                                        m_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "var and m do not have the same shape",
+                    var_shape.DebugString(), " ", m_shape.DebugString())));
     OP_REQUIRES(ctx, var_shape.IsSameSize(v_shape),
-                errors::InvalidArgument("var and v do not have the same shape",
-                                        var_shape.DebugString(), " ",
-                                        v_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "var and v do not have the same shape",
+                    var_shape.DebugString(), " ", v_shape.DebugString())));
     OP_REQUIRES(ctx, var_shape.IsSameSize(grad_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "var and grad do not have the same shape",
-                    var_shape.DebugString(), " ", grad_shape.DebugString()));
+                    var_shape.DebugString(), " ", grad_shape.DebugString())));
 
     xla::XlaOp beta1_power = ctx->Input(3);
     xla::XlaOp lr = ctx->Input(4);
@@ -655,35 +662,36 @@ class ResourceApplyRMSProp : public XlaOpKernel {
 
     TensorShape lr_shape = ctx->InputShape("lr");
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_shape),
-                errors::InvalidArgument("lr is not a scalar: ",
-                                        lr_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "lr is not a scalar: ", lr_shape.DebugString())));
     TensorShape rho_shape = ctx->InputShape("rho");
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(rho_shape),
-                errors::InvalidArgument("rho is not a scalar: ",
-                                        rho_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "rho is not a scalar: ", rho_shape.DebugString())));
     TensorShape momentum_shape = ctx->InputShape("momentum");
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(momentum_shape),
-                errors::InvalidArgument("momentum is not a scalar: ",
-                                        momentum_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(momentum_shape),
+        absl::InvalidArgumentError(absl::StrCat("momentum is not a scalar: ",
+                                                momentum_shape.DebugString())));
     TensorShape epsilon_shape = ctx->InputShape("epsilon");
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(epsilon_shape),
-                errors::InvalidArgument("epsilon is not a scalar: ",
-                                        epsilon_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "epsilon is not a scalar: ", epsilon_shape.DebugString())));
     TensorShape grad_shape = ctx->InputShape("grad");
 
     // var should be the same shape as mom and ms.
     OP_REQUIRES(ctx, var_shape.IsSameSize(ms_shape),
-                errors::InvalidArgument("var and ms do not have the same shape",
-                                        var_shape.DebugString(), " ",
-                                        ms_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "var and ms do not have the same shape",
+                    var_shape.DebugString(), " ", ms_shape.DebugString())));
     OP_REQUIRES(ctx, var_shape.IsSameSize(mom_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "var and mom do not have the same shape",
-                    var_shape.DebugString(), " ", mom_shape.DebugString()));
+                    var_shape.DebugString(), " ", mom_shape.DebugString())));
     OP_REQUIRES(ctx, var_shape.IsSameSize(grad_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "var and grad do not have the same shape",
-                    var_shape.DebugString(), " ", grad_shape.DebugString()));
+                    var_shape.DebugString(), " ", grad_shape.DebugString())));
 
     xla::XlaOp lr = ctx->Input("lr");
     xla::XlaOp rho = ctx->Input("rho");
@@ -760,14 +768,14 @@ void CompileFtrl(XlaOpKernelContext* ctx, DataType dtype, bool has_l2_shrinkage,
   OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(2, dtype, &linear_shape, &linear));
 
   OP_REQUIRES(ctx, var_shape.IsSameSize(accum_shape),
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "var and accum do not have the same shape",
-                  var_shape.DebugString(), " ", accum_shape.DebugString()));
+                  var_shape.DebugString(), " ", accum_shape.DebugString())));
 
   OP_REQUIRES(ctx, var_shape.IsSameSize(linear_shape),
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "var and linear do not have the same shape",
-                  var_shape.DebugString(), " ", linear_shape.DebugString()));
+                  var_shape.DebugString(), " ", linear_shape.DebugString())));
 
   TensorShape grad_shape = ctx->InputShape(3);
   TensorShape lr_shape = ctx->InputShape(4);
@@ -783,31 +791,32 @@ void CompileFtrl(XlaOpKernelContext* ctx, DataType dtype, bool has_l2_shrinkage,
   }
 
   OP_REQUIRES(ctx, var_shape.IsSameSize(grad_shape),
-              errors::InvalidArgument("var and grad do not have the same shape",
-                                      var_shape.DebugString(), " ",
-                                      grad_shape.DebugString()));
+              absl::InvalidArgumentError(absl::StrCat(
+                  "var and grad do not have the same shape",
+                  var_shape.DebugString(), " ", grad_shape.DebugString())));
 
-  OP_REQUIRES(
-      ctx, TensorShapeUtils::IsScalar(lr_shape),
-      errors::InvalidArgument("lr is not a scalar: ", lr_shape.DebugString()));
+  OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_shape),
+              absl::InvalidArgumentError(absl::StrCat("lr is not a scalar: ",
+                                                      lr_shape.DebugString())));
 
-  OP_REQUIRES(
-      ctx, TensorShapeUtils::IsScalar(l1_shape),
-      errors::InvalidArgument("l1 is not a scalar: ", l1_shape.DebugString()));
+  OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(l1_shape),
+              absl::InvalidArgumentError(absl::StrCat("l1 is not a scalar: ",
+                                                      l1_shape.DebugString())));
 
-  OP_REQUIRES(
-      ctx, TensorShapeUtils::IsScalar(l2_shape),
-      errors::InvalidArgument("l2 is not a scalar: ", l2_shape.DebugString()));
+  OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(l2_shape),
+              absl::InvalidArgumentError(absl::StrCat("l2 is not a scalar: ",
+                                                      l2_shape.DebugString())));
 
   if (has_l2_shrinkage) {
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(l2_shrinkage_shape),
-                errors::InvalidArgument("l2_shrinkage is not a scalar: ",
-                                        l2_shrinkage_shape.DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("l2_shrinkage is not a scalar: ",
+                                 l2_shrinkage_shape.DebugString())));
   }
 
   OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_power_shape),
-              errors::InvalidArgument("lr_power is not a scalar: ",
-                                      lr_power_shape.DebugString()));
+              absl::InvalidArgumentError(absl::StrCat(
+                  "lr_power is not a scalar: ", lr_power_shape.DebugString())));
 
   xla::XlaOp grad = ctx->Input(3);
   xla::XlaOp lr = ctx->Input(4);
@@ -928,26 +937,26 @@ class ResourceApplyAdadelta : public XlaOpKernel {
     TensorShape grad_shape = ctx->InputShape(6);
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_shape),
-                errors::InvalidArgument("lr is not a scalar: ",
-                                        lr_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "lr is not a scalar: ", lr_shape.DebugString())));
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(rho_shape),
-                errors::InvalidArgument("rho is not a scalar: ",
-                                        rho_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "rho is not a scalar: ", rho_shape.DebugString())));
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(epsilon_shape),
-                errors::InvalidArgument("epsilon is not a scalar: ",
-                                        epsilon_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "epsilon is not a scalar: ", epsilon_shape.DebugString())));
 
     OP_REQUIRES(ctx, var_shape.IsSameSize(accum_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "var and accum do not have the same shape",
-                    var_shape.DebugString(), " ", accum_shape.DebugString()));
+                    var_shape.DebugString(), " ", accum_shape.DebugString())));
 
     OP_REQUIRES(ctx, var_shape.IsSameSize(grad_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "var and grad do not have the same shape",
-                    var_shape.DebugString(), " ", grad_shape.DebugString()));
+                    var_shape.DebugString(), " ", grad_shape.DebugString())));
 
     xla::XlaOp lr = ctx->Input(3);
     xla::XlaOp rho = ctx->Input(4);
@@ -986,14 +995,14 @@ class ResourceApplySignBase : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, dtype_, &var_shape, &var));
     OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(1, dtype_, &m_shape, &m));
     OP_REQUIRES(ctx, var_shape.IsSameSize(m_shape),
-                errors::InvalidArgument("var and m do not have the same shape",
-                                        var_shape.DebugString(), " ",
-                                        m_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "var and m do not have the same shape",
+                    var_shape.DebugString(), " ", m_shape.DebugString())));
     TensorShape grad_shape = ctx->InputShape(6);
     OP_REQUIRES(ctx, var_shape.IsSameSize(grad_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "var and grad do not have the same shape",
-                    var_shape.DebugString(), " ", grad_shape.DebugString()));
+                    var_shape.DebugString(), " ", grad_shape.DebugString())));
     CheckScalarParams(ctx);
 
     xla::XlaOp lr = ctx->Input(2);
@@ -1017,16 +1026,17 @@ class ResourceApplySignBase : public XlaOpKernel {
     TensorShape beta_shape = ctx->InputShape(5);
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_shape),
-                errors::InvalidArgument("lr is not a scalar: ",
-                                        lr_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "lr is not a scalar: ", lr_shape.DebugString())));
 
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(sign_decay_shape),
-                errors::InvalidArgument("sign_decay is not a scalar: ",
-                                        sign_decay_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(sign_decay_shape),
+        absl::InvalidArgumentError(absl::StrCat(
+            "sign_decay is not a scalar: ", sign_decay_shape.DebugString())));
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta_shape),
-                errors::InvalidArgument("beta is not a scalar: ",
-                                        beta_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "beta is not a scalar: ", beta_shape.DebugString())));
   }
 
   virtual xla::XlaOp ComputeGradientScale(xla::XlaOp alpha,
@@ -1045,8 +1055,8 @@ class ResourceApplyAddSign : public ResourceApplySignBase {
     ResourceApplySignBase::CheckScalarParams(ctx);
     TensorShape alpha_shape = ctx->InputShape(3);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(alpha_shape),
-                errors::InvalidArgument("alpha is not a scalar: ",
-                                        alpha_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "alpha is not a scalar: ", alpha_shape.DebugString())));
   }
 
   xla::XlaOp ComputeGradientScale(xla::XlaOp alpha, xla::XlaOp decay) override {
@@ -1065,8 +1075,8 @@ class ResourceApplyPowerSign : public ResourceApplySignBase {
     ResourceApplySignBase::CheckScalarParams(ctx);
     TensorShape logbase_shape = ctx->InputShape(3);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(logbase_shape),
-                errors::InvalidArgument("logbase is not a scalar: ",
-                                        logbase_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "logbase is not a scalar: ", logbase_shape.DebugString())));
   }
 
   xla::XlaOp ComputeGradientScale(xla::XlaOp alpha, xla::XlaOp decay) override {
