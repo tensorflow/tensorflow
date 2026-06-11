@@ -33,7 +33,6 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/autotune_results.pb.h"
-#include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
@@ -169,7 +168,6 @@ class GpuCompiler : public LLVMCompiler {
   struct BackendCompileResult {
     std::string asm_text;
     std::vector<uint8_t> binary;
-    BinaryMap dnn_compiled_graphs;
     ModuleStats module_stats;
   };
 
