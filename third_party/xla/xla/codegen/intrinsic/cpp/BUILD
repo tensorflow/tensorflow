@@ -131,15 +131,21 @@ cc_library(
 cc_ir_header(
     name = "eigen_unary_32_ll",
     src = "eigen_unary.cc",
-    copts = if_oss(
-        [
-            "-DEIGEN_GENERIC_VECTOR_SIZE_BYTES=64",
-            "-mprefer-vector-width=512",
-        ],
-        [
-            "-DEIGEN_GENERIC_VECTOR_SIZE_BYTES=32",
-            "-mprefer-vector-width=256",
-        ],
+    copts = [
+        "-DEIGEN_GENERIC_VECTOR_SIZE_BYTES=32",
+        "-mprefer-vector-width=256",
+        "-DNDEBUG",
+        "-U_LIBCPP_HARDENING_MODE",
+        "-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_NONE",
+    ] + if_oss(
+        [],
+        select({
+            ":x86_64": [
+                "-mavx2",
+                "-mfma",
+            ],
+            "//conditions:default": [],
+        }),
     ),
     deps = [
         ":cpp_context_provider",
@@ -155,6 +161,9 @@ cc_ir_header(
     copts = [
         "-DEIGEN_GENERIC_VECTOR_SIZE_BYTES=64",
         "-mprefer-vector-width=512",
+        "-DNDEBUG",
+        "-U_LIBCPP_HARDENING_MODE",
+        "-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_NONE",
     ] + if_oss(
         [],
         select({
@@ -187,7 +196,6 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:IRReader",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -234,6 +242,8 @@ cc_library(
         "//xla/codegen/intrinsic",
         "//xla/codegen/intrinsic:type",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:ir_headers",
     ],

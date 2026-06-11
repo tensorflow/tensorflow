@@ -69,8 +69,7 @@ class IrEmitterContext {
                    const ExecutionStreamAssignment* execution_stream_assignment,
                    absl::string_view platform_name,
                    const se::DeviceDescription& gpu_device_info,
-                   mlir::MLIRContext* mlir_context,
-                   llvm::LLVMContext* llvm_context, llvm::Triple target_triple,
+                   mlir::MLIRContext* mlir_context, llvm::Triple target_triple,
                    std::string data_layout, KernelCompiler* compiler,
                    xla::cpu::TargetMachineOptions cpu_target_machine_options,
                    ObjectPool<std::unique_ptr<mlir::MLIRContext>>* pool)
@@ -80,7 +79,6 @@ class IrEmitterContext {
         platform_name_(platform_name),
         gpu_device_info_(gpu_device_info),
         mlir_context_(mlir_context),
-        llvm_context_(llvm_context),
         data_layout_(std::move(data_layout)),
         target_triple_(std::move(target_triple)),
         compiler_(compiler),
@@ -90,15 +88,6 @@ class IrEmitterContext {
   // Disallow copy and assign.
   IrEmitterContext(const IrEmitterContext&) = delete;
   IrEmitterContext& operator=(const IrEmitterContext&) = delete;
-
-  std::unique_ptr<IrEmitterContext> SubContext(
-      llvm::LLVMContext* llvm_context) {
-    return std::make_unique<IrEmitterContext>(
-        hlo_module_, buffer_assignment_, execution_stream_assignment_,
-        platform_name_, gpu_device_info_, mlir_context_, llvm_context,
-        target_triple_, data_layout_, compiler_, cpu_target_machine_options_,
-        mlir_context_pool_);
-  }
 
   // Simple accessors.
   const HloModule& hlo_module() const { return *hlo_module_; }
@@ -121,7 +110,6 @@ class IrEmitterContext {
   }
 
   mlir::MLIRContext* mlir_context() { return mlir_context_; }
-  llvm::LLVMContext* llvm_context() { return llvm_context_; }
 
   const std::string& data_layout() { return data_layout_; }
   const llvm::Triple& target_triple() { return target_triple_; }
@@ -159,9 +147,9 @@ class IrEmitterContext {
   }
 
   std::unique_ptr<llvm::Module> CreateLLVMModule(
-      const std::string& module_name) {
+      const std::string& module_name, llvm::LLVMContext& llvm_context) {
     auto llvm_module =
-        std::make_unique<llvm::Module>(module_name, *llvm_context_);
+        std::make_unique<llvm::Module>(module_name, llvm_context);
     llvm_module->setTargetTriple(target_triple_);
     llvm_module->setDataLayout(data_layout_);
     return llvm_module;
@@ -183,7 +171,6 @@ class IrEmitterContext {
   absl::string_view platform_name_;
   const se::DeviceDescription& gpu_device_info_;
   mlir::MLIRContext* mlir_context_;
-  llvm::LLVMContext* llvm_context_;
   NameUniquer name_uniquer_;
   std::vector<GpuExecutable::ConstantInfo> constants_;
   KernelReuseCache kernel_cache_;

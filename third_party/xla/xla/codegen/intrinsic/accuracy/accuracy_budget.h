@@ -152,6 +152,40 @@ constexpr AccuracyBudget kTanhF64Budget = {
      /*subnormal=*/0},
 };
 
+// Sin
+constexpr AccuracyBudget kSinF32Budget = {
+    /*cpu=*/{/*regular=*/1,
+             /*subnormal=*/0},
+    /*gpu=*/
+    {/*regular=*/1,
+     /*subnormal=*/0},
+};
+
+constexpr AccuracyBudget kSinF64Budget = {
+    /*cpu=*/{/*regular=*/106,
+             /*subnormal=*/1},
+    /*gpu=*/
+    {/*regular=*/1,
+     /*subnormal=*/0},
+};
+
+// Cos
+constexpr AccuracyBudget kCosF32Budget = {
+    /*cpu=*/{/*regular=*/1,
+             /*subnormal=*/0},
+    /*gpu=*/
+    {/*regular=*/1,
+     /*subnormal=*/0},
+};
+
+constexpr AccuracyBudget kCosF64Budget = {
+    /*cpu=*/{/*regular=*/494,
+             /*subnormal=*/0},
+    /*gpu=*/
+    {/*regular=*/1,
+     /*subnormal=*/0},
+};
+
 // Erf
 constexpr AccuracyBudget kErfF32Budget = {
     /*cpu=*/{/*regular=*/2,

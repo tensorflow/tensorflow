@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/APFloat.h"
 #include "mlir/Conversion/LLVMCommon/LoweringOptions.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
@@ -38,6 +40,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/codegen/emitters/transforms/passes.h"
+#include "xla/codegen/intrinsic/cpp/intrinsic_declarations.h"
 #include "xla/codegen/intrinsic/erf.h"
 #include "xla/codegen/intrinsic/exp.h"
 #include "xla/codegen/intrinsic/fptrunc.h"
@@ -294,6 +297,31 @@ class LowerIntrinsicPattern : public mlir::OpRewritePattern<Op> {
   mlir::ModuleOp& module_op_;
 };
 
+class SimplifyAtan2Pattern
+    : public mlir::OpRewritePattern<mlir::math::Atan2Op> {
+ public:
+  SimplifyAtan2Pattern(mlir::MLIRContext* context, mlir::ModuleOp&)
+      : OpRewritePattern(context) {}
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::math::Atan2Op op, mlir::PatternRewriter& rewriter) const override {
+    mlir::Value rhs = op.getRhs();
+
+    mlir::APFloat const_val(0.0);
+    if (!mlir::matchPattern(rhs, mlir::m_ConstantFloat(&const_val))) {
+      return rewriter.notifyMatchFailure(op, "RHS is not a constant float");
+    }
+
+    if (!const_val.isExactlyValue(1.0)) {
+      return rewriter.notifyMatchFailure(op, "RHS is not 1.0");
+    }
+
+    rewriter.replaceOpWithNewOp<mlir::math::AtanOp>(op, op.getType(),
+                                                    op.getLhs());
+    return mlir::success();
+  }
+};
+
 class LowerXlaIntrinsicLibPass
     : public impl::LowerXlaIntrinsicLibPassBase<LowerXlaIntrinsicLibPass> {
  public:
@@ -308,7 +336,13 @@ class LowerXlaIntrinsicLibPass
         LowerIntrinsicPattern<codegen::intrinsics::Log1p, mlir::math::Log1pOp>,
         LowerIntrinsicPattern<codegen::intrinsics::Rsqrt, mlir::math::RsqrtOp>,
         LowerIntrinsicPattern<codegen::intrinsics::Tanh, mlir::math::TanhOp>,
-        LowerErfPattern, LowerTruncF32BF16FPattern>(&getContext(), module_op);
+        LowerIntrinsicPattern<codegen::intrinsics::EigenAtan,
+                              mlir::math::AtanOp>,
+        LowerIntrinsicPattern<codegen::intrinsics::EigenSin, mlir::math::SinOp>,
+        LowerIntrinsicPattern<codegen::intrinsics::EigenCos, mlir::math::CosOp>,
+        SimplifyAtan2Pattern, LowerErfPattern, LowerTruncF32BF16FPattern>(
+
+        &getContext(), module_op);
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(module_op, std::move(patterns)))) {
