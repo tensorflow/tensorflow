@@ -214,12 +214,31 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       for (int64_t i = 0; i < orig_input_tensor.NumElements(); ++i) {
         OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(shape_vec(i)));
       }
+
+      bool is_pool2d = (this->ksize_.size() == 4);
+      const int expected_dims = is_pool2d ? 4 : 5;
+
+      // Validate that output_shape and grad_tensor have the expected rank
+      // to prevent CHECK failure in TFShapeToMklDnnDims* functions which
+      // unconditionally access dim_size(N) (see #118354).
+      OP_REQUIRES(
+          context, output_shape.dims() == expected_dims,
+          absl::InvalidArgumentError(absl::StrCat(
+              "orig_input_shape must specify a rank-", expected_dims,
+              " tensor, but got rank-", output_shape.dims(), " shape: ",
+              output_shape.DebugString())));
+      OP_REQUIRES(
+          context, grad_tensor.dims() == expected_dims,
+          absl::InvalidArgumentError(absl::StrCat(
+              "grad must be a rank-", expected_dims,
+              " tensor, but got rank-", grad_tensor.dims(), " shape: ",
+              grad_tensor.shape().DebugString())));
+
       Tensor* output_tensor = nullptr;
       OP_REQUIRES_OK(context,
                      context->allocate_output(0, output_shape, &output_tensor));
       output_tensor->flat<T>().setZero();
 
-      bool is_pool2d = (this->ksize_.size() == 4);
 
       // out-of-memory boundary index check for output_tensor in 2D case.
       const int depth_window = this->ksize_[3];
