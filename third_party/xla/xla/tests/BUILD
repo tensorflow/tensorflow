@@ -277,15 +277,24 @@ cc_library(
 )
 
 cc_library(
-    name = "hlo_pjrt_interpreter_reference_mixin",
+    name = "hlo_interpreter_reference_mixin",
     testonly = True,
-    hdrs = ["hlo_pjrt_interpreter_reference_mixin.h"],
+    hdrs = ["hlo_interpreter_reference_mixin.h"],
     deps = [
         ":aot_utils",
         ":hlo_runner_agnostic_reference_mixin",
         "//xla/hlo/evaluator:hlo_evaluator",
-        "//xla/service:hlo_runner_interface",
-        "//xla/service:hlo_runner_pjrt",
+        "//xla/service:hlo_runner",
+    ],
+)
+
+cc_library(
+    name = "hlo_pjrt_interpreter_reference_mixin",
+    testonly = True,
+    hdrs = ["hlo_pjrt_interpreter_reference_mixin.h"],
+    deps = [
+        ":hlo_interpreter_reference_mixin",
+        "@com_google_absl//absl/base:core_headers",
     ],
 )
 
@@ -3315,6 +3324,7 @@ xla_test(
         "//xla/hlo/builder/lib:arithmetic",
         "//xla/hlo/builder/lib:matrix",
         "//xla/hlo/testlib:test",
+        "//xla/service:hlo_runner_interface",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
     ],
