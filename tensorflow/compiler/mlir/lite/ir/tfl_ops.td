@@ -1188,8 +1188,8 @@ in the batch dimensions and broadcasting.
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, QI8, QI16, I8]>:$x,
-    TFL_TensorOf<[F32, QI8, QI16, I8]>:$y,
+    TFL_TensorOf<[F32, F16, QI8, QI16, I8]>:$x,
+    TFL_TensorOf<[F32, F16, QI8, QI16, I8]>:$y,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_x,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_y,
     // Used in post-training dynamic range quantization. If the value is true,
@@ -1198,7 +1198,7 @@ in the batch dimensions and broadcasting.
   );
 
    let results = (outs
-    TFL_TensorOf<[F32, QI8, QI16, I32]>:$output
+    TFL_TensorOf<[F32, F16, QI8, QI16, I32]>:$output
   );
 
   let hasOptions = 1;
@@ -3399,11 +3399,11 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8, QI16]>:$input,
+    ins TFL_TensorOf<[F32, F16, QI8, QUI8, TFL_Quint8, QI16]>:$input,
     F32Attr:$beta
   );
 
-  let results = (outs TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8, QI16]>:$output);
+  let results = (outs TFL_TensorOf<[F32, F16, QI8, QUI8, TFL_Quint8, QI16]>:$output);
 
   let hasOptions = 1;
 
@@ -4190,11 +4190,11 @@ def TFL_GeluOp: TFL_Op<"gelu", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, QI8, QUI8]>:$input,
+    TFL_TensorOf<[F32, F16, QI8, QUI8]>:$input,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$approximate
   );
 
-  let results = (outs TFL_TensorOf<[F32, QI8, QUI8]>:$output);
+  let results = (outs TFL_TensorOf<[F32, F16, QI8, QUI8]>:$output);
 
   let hasOptions = 1;
 }
