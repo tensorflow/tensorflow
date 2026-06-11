@@ -12,8 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_COREML_COREML_DELEGATE_KERNEL_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_COREML_COREML_DELEGATE_KERNEL_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_COREML_COREML_DELEGATE_KERNEL_H_
+#define TENSORFLOW_LITE_DELEGATES_COREML_COREML_DELEGATE_KERNEL_H_
+
+#include <memory>
+#include <vector>
 
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/coreml/builders/op_builder.h"
@@ -30,8 +33,13 @@ class CoreMlDelegateKernel {
  public:
   explicit CoreMlDelegateKernel(int coreml_version)
       : coreml_version_(coreml_version) {}
+
+  CoreMlDelegateKernel(const CoreMlDelegateKernel&) = delete;
+  CoreMlDelegateKernel& operator=(const CoreMlDelegateKernel&) = delete;
+
   // Initialize the delegated graph and add required nodes.
-  TfLiteStatus Init(TfLiteContext* context, const TfLiteDelegateParams* params);
+  TfLiteStatus Init(TfLiteContext* context,
+                    const TfLiteDelegateParams* delegate_params);
 
   // Any preparation work needed for the delegated graph.
   TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node);
@@ -44,19 +52,19 @@ class CoreMlDelegateKernel {
  private:
   // Builds the ML Model protocol buffer
   TfLiteStatus BuildModel(TfLiteContext* context,
-                          const TfLiteDelegateParams* params);
+                          const TfLiteDelegateParams* delegate_params);
 
   // Adds the output tensors to the model generated.
-  void AddOutputTensors(const TfLiteIntArray* output_tensors,
-                        TfLiteContext* context);
+  TfLiteStatus AddOutputTensors(const TfLiteIntArray* output_tensors,
+                                TfLiteContext* context);
 
   // Adds the input tensors to the model generated.
-  void AddInputTensors(const TfLiteIntArray* output_tensors,
+  void AddInputTensors(const TfLiteIntArray* input_tensors,
                        TfLiteContext* context);
 
   std::unique_ptr<delegates::coreml::GraphBuilder> builder_;
   std::unique_ptr<CoreML::Specification::Model> model_;
-  ::CoreMlExecutor* executor_;
+  CoreMlExecutor* executor_ = nullptr;
   int coreml_version_;
 
   std::vector<int> input_tensor_ids_;
@@ -68,4 +76,4 @@ class CoreMlDelegateKernel {
 }  // namespace delegates
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_COREML_COREML_DELEGATE_KERNEL_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_COREML_COREML_DELEGATE_KERNEL_H_
