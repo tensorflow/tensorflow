@@ -150,6 +150,10 @@ void Allocation::RemoveUse(HloUse use) {
 }
 
 void Allocation::AddUse(HloUse use) {
+  if (use.operand_number == -1) {
+    uses_.push_back(use);
+    return;
+  }
   HloInstruction* operand =
       use.instruction->mutable_operand(use.operand_number);
   // If the use is a tuple, look inside the tuple to find the actual use.
@@ -185,6 +189,9 @@ absl::Status Allocation::UpdateUses(HloComputation* computation,
                                     const HloLiveRange& hlo_live_range,
                                     const HloAliasAnalysis& alias_analysis) {
   for (const HloUse& use : uses()) {
+    if (use.operand_number == -1) {
+      continue;
+    }
     HloInstruction* replacement_instruction = producing_instruction;
     const Shape& operand_shape =
         use.instruction->operand(use.operand_number)->shape();
@@ -226,37 +233,46 @@ absl::Status Allocation::UpdateUses(HloComputation* computation,
       };
 
       bool should_skip_reconstruction = false;
+      if (use.instruction->opcode() == HloOpcode::kAsyncUpdate ||
+          use.instruction->opcode() == HloOpcode::kAsyncDone) {
+        // kAsyncUpdate and kAsyncDone operand 0 must be an async instruction
+        // (kAsyncStart or kAsyncUpdate) and cannot be replaced by a
+        // reconstructed kTuple. Since the async instructions are updated in
+        // place, their layouts are already correct and we can skip
+        // reconstruction.
+        should_skip_reconstruction = true;
+      } else if (tuple_inst->opcode() == HloOpcode::kTuple) {
+        // If the producing instruction shares the same buffer with the operand,
+        // then we skip the reconstruction.
+        auto is_aliasing_operand = [&](int operand_index) {
+          ShapeIndex sub_index;
+          if (use.operand_index.size() > 1) {
+            sub_index = ShapeIndex(use.operand_index.begin() + 1,
+                                   use.operand_index.end());
+          }
+          auto [traced_operand, traced_index] =
+              find_original_leaf(tuple_inst->operand(operand_index), sub_index);
+          return hlo_live_range.instruction_schedule().contains(
+                     traced_operand) &&
+                 hlo_live_range.instruction_schedule().contains(tuple_inst) &&
+                 alias_analysis.GetUniqueBufferAt(traced_operand, traced_index)
+                         .id() ==
+                     alias_analysis
+                         .GetUniqueBufferAt(tuple_inst, use.operand_index)
+                         .id();
+        };
 
-      // If the producing instruction shares the same buffer with the operand,
-      // then we skip the reconstruction.
-      auto is_aliasing_operand = [&](int operand_index) {
-        ShapeIndex sub_index;
-        if (use.operand_index.size() > 1) {
-          sub_index = ShapeIndex(use.operand_index.begin() + 1,
-                                 use.operand_index.end());
-        }
-        auto [traced_operand, traced_index] =
-            find_original_leaf(tuple_inst->operand(operand_index), sub_index);
-        return hlo_live_range.instruction_schedule().contains(traced_operand) &&
-               hlo_live_range.instruction_schedule().contains(tuple_inst) &&
-               alias_analysis.GetUniqueBufferAt(traced_operand, traced_index)
-                       .id() ==
-                   alias_analysis
-                       .GetUniqueBufferAt(tuple_inst, use.operand_index)
-                       .id();
-      };
-
-      for (int operand_index = 0; operand_index < tuple_inst->operand_count();
-           ++operand_index) {
-        if (tuple_inst->opcode() == HloOpcode::kTuple &&
-            !use.operand_index.empty() &&
-            operand_index != use.operand_index.front()) {
-          continue;
-        }
-        if (tuple_inst->operand(operand_index) == producing_instruction &&
-            is_aliasing_operand(operand_index)) {
-          should_skip_reconstruction = true;
-          break;
+        for (int operand_index = 0; operand_index < tuple_inst->operand_count();
+             ++operand_index) {
+          if (!use.operand_index.empty() &&
+              operand_index != use.operand_index.front()) {
+            continue;
+          }
+          if (tuple_inst->operand(operand_index) == producing_instruction &&
+              is_aliasing_operand(operand_index)) {
+            should_skip_reconstruction = true;
+            break;
+          }
         }
       }
 

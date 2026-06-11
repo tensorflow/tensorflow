@@ -339,7 +339,7 @@ class MemorySpaceAssignment {
   // Verify that allocations_ are free of overlapping Allocations in time and
   // space. This is a post-processing step called after all allocations have
   // been finalized, before the async copies get scheduled.
-  absl::Status VerifyAllocations() const;
+  absl::Status VerifyAllocations(const HloAliasAnalysis& alias_analysis) const;
 
   // Verify that the memory space assignment is free of overlapping buffers and
   // export heap simulator trace to be used by buffer_assignment.

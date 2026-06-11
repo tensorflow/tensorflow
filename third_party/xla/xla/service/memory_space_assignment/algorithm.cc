@@ -574,6 +574,36 @@ void MsaAlgorithm::CreateAllocationValues(
   for (int i = 0; i < positions.size(); ++i) {
     const HloPosition& position = positions.at(i);
     allocation_values.emplace_back(value, position, buffer_interval.size);
+    HloComputation* comp = position.instruction->parent();
+    if (!comp->IsEntryComputation() &&
+        position.instruction == comp->root_instruction()) {
+      HloInstruction* max_caller = nullptr;
+      int64_t max_caller_time = -1;
+      bool is_async_caller = false;
+      for (const HloComputation* calling_comp :
+           module_->MakeNonfusionComputations()) {
+        for (HloInstruction* inst : calling_comp->instructions()) {
+          if (absl::c_linear_search(inst->called_computations(), comp)) {
+            int64_t inst_time = instruction_schedule.at(inst);
+            if (inst_time > max_caller_time) {
+              max_caller_time = inst_time;
+              max_caller = inst;
+              is_async_caller = (inst->opcode() == HloOpcode::kAsyncStart ||
+                                 inst->opcode() == HloOpcode::kAsyncUpdate ||
+                                 inst->opcode() == HloOpcode::kAsyncDone);
+            }
+          }
+        }
+      }
+      if (max_caller != nullptr && is_async_caller) {
+        HloUse dummy_hlo_use{max_caller, /*operand_number=*/-1,
+                             /*operand_index=*/{}};
+        allocation_values.back().AddUse(dummy_hlo_use, max_caller_time);
+        VLOG(3) << "Adding dummy caller use for root value "
+                << value->ToShortString() << " at caller " << max_caller->name()
+                << " time " << max_caller_time;
+      }
+    }
   }
 
   std::vector<HloUse> uses(value->GetUses().begin(), value->GetUses().end());
@@ -596,8 +626,15 @@ void MsaAlgorithm::CreateAllocationValues(
     AllocationValue* last_allocation_value = nullptr;
     for (int i = beginning_idx; i < allocation_values.size(); ++i) {
       AllocationValue* allocation_value = &allocation_values.at(i);
-      if (HloDataflowAnalysis::IsAsynchronousOperationDone(
-              use.instruction->opcode())) {
+      bool is_custom_async_done =
+          (use.instruction->opcode() == HloOpcode::kAsyncDone);
+      if ((HloDataflowAnalysis::IsAsynchronousOperationDone(
+               use.instruction->opcode()) &&
+           !use.operand_index.empty() &&
+           (!is_custom_async_done || use.operand_index[0] != 0)) ||
+          (use.instruction->opcode() == HloOpcode::kAsyncUpdate &&
+           use.operand_number == 0 && !use.operand_index.empty() &&
+           use.operand_index[0] != 0)) {
         if (allocation_value->defining_instruction() ==
                 use.instruction->operand(0) &&
             use.operand_index == allocation_value->defining_position().index) {
@@ -612,6 +649,10 @@ void MsaAlgorithm::CreateAllocationValues(
         last_allocation_value = allocation_value;
       }
     }
+    if (last_allocation_value == nullptr) {
+      LOG(ERROR) << "Failed to find AllocationValue for use: "
+                 << use.ToString();
+    }
     CHECK(last_allocation_value != nullptr);
     last_allocation_value->AddUse(use, use_time);
   }
@@ -620,9 +661,18 @@ void MsaAlgorithm::CreateAllocationValues(
     AllocationValue& allocation_value = allocation_values.at(i);
     if (HloDataflowAnalysis::IsAsynchronousOperationStart(
             allocation_value.defining_instruction()->opcode())) {
-      CHECK_EQ(allocation_value.uses().size(), 1);
-      CHECK(HloDataflowAnalysis::IsAsynchronousOperationDone(
-          allocation_value.uses().at(0).hlo_use.instruction->opcode()));
+      bool is_async_update =
+          (allocation_value.defining_instruction()->opcode() ==
+           HloOpcode::kAsyncUpdate);
+      const ShapeIndex& index = allocation_value.defining_position().index;
+      if (!is_async_update || (index.size() == 1 && index[0] == 2)) {
+        CHECK_EQ(allocation_value.uses().size(), 1);
+        CHECK(
+            HloDataflowAnalysis::IsAsynchronousOperationDone(
+                allocation_value.uses().at(0).hlo_use.instruction->opcode()) ||
+            allocation_value.uses().at(0).hlo_use.instruction->opcode() ==
+                HloOpcode::kAsyncUpdate);
+      }
       VLOG(3) << "Mark " << allocation_value.ToShortString()
               << " to require contiguous allocation because it is an async "
                  "start operation.";
@@ -663,6 +713,9 @@ void MsaAlgorithm::FindAliases(
 
   for (AllocationValue& value : *allocation_values) {
     for (AllocationValue::Use& use : value.uses()) {
+      if (use.hlo_use.operand_number == -1) {
+        continue;
+      }
       // Find any aliases with the instruction itself (operand and output must
       // alias).
       maybe_add_alias_with_instruction(use.hlo_use.instruction, &use);
@@ -956,6 +1009,9 @@ bool MsaAlgorithm::IsConditionalUseBeneficialInAlternateMemory(
     if (other_use.hlo_use.instruction != use.instruction) {
       continue;
     }
+    if (other_use.hlo_use.operand_number == -1) {
+      continue;
+    }
     // Operand 0 is not passed into the computation.
     if (other_use.hlo_use.operand_number == 0) {
       continue;
@@ -1176,6 +1232,9 @@ absl::Status MsaAlgorithm::OptimizeMemoryBoundLoop(int loop_start_idx,
           (allocation->memory_space() == MemorySpace::kDefault ||
            allocation->is_copy_allocation());
       for (const HloUse& use : allocation->uses()) {
+        if (use.operand_number == -1) {
+          continue;
+        }
         const int64_t use_idx =
             hlo_live_range_.instruction_schedule().at(use.instruction) -
             iteration_start_idx;
@@ -4447,6 +4506,7 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
       definition_time_for_allocation_value;
 
   AllocationResult result = AllocationResult::kSuccess;
+  absl::flat_hash_map<int64_t, AliasedOffset*> buffer_to_joint_offset_map;
   for (int alloc_value_idx = 0; alloc_value_idx < allocation_values.size();
        ++alloc_value_idx) {
     auto& allocation_value = allocation_values.at(alloc_value_idx);
@@ -4509,10 +4569,17 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
               nullptr;
         }
       }
+      const HloBuffer& buffer = alias_analysis_.GetUniqueBufferAt(
+          allocation_value_to_update.defining_instruction(),
+          allocation_value_to_update.defining_position().index);
+      AliasedOffset* preferred_offset =
+          preferred_offset_for_allocation_value.at(&allocation_value_to_update);
+      auto joint_offset_it = buffer_to_joint_offset_map.find(buffer.id());
+      if (joint_offset_it != buffer_to_joint_offset_map.end()) {
+        preferred_offset = joint_offset_it->second;
+      }
       preferred_offset_for_allocation_value[&allocation_value_to_update] =
-          CheckOrUpdatePreferredOffsetForUse(
-              use, preferred_offset_for_allocation_value.at(
-                       &allocation_value_to_update));
+          CheckOrUpdatePreferredOffsetForUse(use, preferred_offset);
       AllocationRequest request = CreateAllocationRequest(
           allocation_value, allocation_value_to_update, use, previous_use,
           preferred_offset_for_allocation_value.at(&allocation_value_to_update),
@@ -4537,6 +4604,16 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
         VLOG(2) << "AllocateSegment result: "
                 << ResultToString(allocate_segment_result);
         result_mark(allocate_segment_result, result);
+        if (allocate_segment_result == AllocationResult::kSuccess) {
+          if (!allocation_value_to_update.allocation_sequence()->empty()) {
+            Allocation* new_allocation =
+                allocation_value_to_update.allocation_sequence()->back().get();
+            if (new_allocation->memory_space() == MemorySpace::kAlternate) {
+              buffer_to_joint_offset_map[buffer.id()] =
+                  GetAliasedOffset(*new_allocation);
+            }
+          }
+        }
         if (options_.allocation_result_modifier_testing_fn) {
           options_.allocation_result_modifier_testing_fn(
               request, result,

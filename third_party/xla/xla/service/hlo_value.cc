@@ -58,6 +58,9 @@ std::ostream& operator<<(std::ostream& out, const HloPosition& position) {
 }
 
 std::string HloUse::ToString() const {
+  if (operand_number == -1) {
+    return StrCat("DummyUse at instruction: ", instruction->name());
+  }
   std::string index_str =
       instruction->operand(operand_number)->shape().IsTuple()
           ? (" " + operand_index.ToString())
@@ -125,6 +128,10 @@ bool MayUseOperandValue(const ShapeIndex& index, const HloInstruction* user) {
       // operand. Non-top-level (nested) values are passed through
       // transparently.
       return index.empty();
+    case HloOpcode::kAsyncDone:
+      return !index.empty() && (index[0] == 1 || index[0] == 2);
+    case HloOpcode::kCopyDone:
+      return !index.empty() && (index[0] == 0 || index[0] == 2);
     case HloOpcode::kDomain:
     case HloOpcode::kTuple:
       // These instructions always pass through their operands transparently.
