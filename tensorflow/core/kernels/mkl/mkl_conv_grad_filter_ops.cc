@@ -433,6 +433,20 @@ class MklConvCustomBackpropFilterOp
       TensorShape diff_dst_tf_shape =
           GetTfShape(context, kDiffDstIdx, native_format);
 
+      // Validate input and output backprop tensor ranks before passing them
+      // to GetInputSizeInMklOrder, which calls GetTensorDim and crashes
+      // with a fatal CHECK failure if the rank is unexpected. See #118340.
+      int expected_rank = (this->strides_.size() == 4) ? 4 : 5;
+      OP_REQUIRES(context, src_tf_shape.dims() == expected_rank,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "input must be ", expected_rank, "-dimensional, got: ",
+                      src_tf_shape.DebugString())));
+      OP_REQUIRES(context, diff_dst_tf_shape.dims() == expected_rank,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "out_backprop must be ", expected_rank,
+                      "-dimensional, got: ",
+                      diff_dst_tf_shape.DebugString())));
+
       // Corner cases: output with 0 elements and 0 batch size.
       Tensor* diff_filter_tensor = nullptr;
       if (src_tf_shape.num_elements() == 0 ||
