@@ -218,7 +218,8 @@ absl::StatusOr<tflite::TensorType> TfTypeToTflType(tensorflow::DataType type) {
     case tensorflow::DT_VARIANT:
       return tflite::TensorType_VARIANT;
     default:
-      return errors::InvalidArgument("unsupported tensor data type", type);
+      return absl::InvalidArgumentError(
+          absl::StrCat("unsupported tensor data type", type));
   }
 }
 
