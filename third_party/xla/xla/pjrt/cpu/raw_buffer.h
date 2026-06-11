@@ -147,7 +147,7 @@ class CpuRawBuffer : public CommonPjRtRawBufferImpl {
 
   absl::StatusOr<PjRtDeviceEventRef> CopyRawToRemoteDevice(
       Future<std::string> serialized_descriptor, RemoteSendCallback on_done,
-      std::vector<PjRtDeviceEventRef> transfer_dependency_avs) override;
+      PjRtDeviceEventRefVector transfer_dependency_avs) override;
 
  private:
   PjRtMemorySpace* const memory_space_;
