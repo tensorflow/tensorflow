@@ -667,6 +667,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   ~EagerContext() override;
 
+  absl::Status ValidateDuplicateFunction(const FunctionDef& fdef) const;
+
   absl::Status MaybeRegisterFunctionRemotely(const FunctionDef& fdef);
   absl::Status MaybeRemoveFunctionRemotely(const std::string& function_name);
   absl::Status RegisterExistingFunctionsOnRemoteWorkers(
@@ -770,13 +772,14 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   std::function<void(std::function<void()>)> runner_;
 
-  mutex cache_mu_;
+  mutable mutex cache_mu_;
   mutex device_cache_mu_;
   mutex remove_function_notifiers_mu_;
   struct RegisteredFunction : public core::RefCounted {
     ~RegisteredFunction() override = default;
 
     std::unique_ptr<std::vector<Fprint128>> cached_kernel_keys;
+    std::vector<std::string> child_functions;
   };
   std::unordered_map<Fprint128, core::RefCountPtr<KernelAndDevice>,
                      Fprint128Hasher>
