@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/kernels/converter.h"
 
-#include <algorithm>
 #include <array>
 #include <memory>
 #include <string>
@@ -23,6 +22,8 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_arguments.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/conversion.h"
+#include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
@@ -349,15 +351,15 @@ std::array<size_t, 3> CalculateTextureRegion(const TensorObjectDef& def) {
   switch (ToTensorStorageType(def.object_def.object_type,
                               def.object_def.data_layout)) {
     case TensorStorageType::SINGLE_TEXTURE_2D:
-      region[0] = static_cast<size_t>(dims.w * dims.b);
+      region[0] = static_cast<size_t>(dims.w) * dims.b;
       region[1] = static_cast<size_t>(dims.h);
       break;
     case TensorStorageType::TEXTURE_2D:
-      region[0] = static_cast<size_t>(dims.w * dims.b);
-      region[1] = static_cast<size_t>(dims.h * dims.d());
+      region[0] = static_cast<size_t>(dims.w) * dims.b;
+      region[1] = static_cast<size_t>(dims.h) * dims.d();
       break;
     case TensorStorageType::TEXTURE_ARRAY:
-      region[0] = static_cast<size_t>(dims.w * dims.b);
+      region[0] = static_cast<size_t>(dims.w) * dims.b;
       region[1] = static_cast<size_t>(dims.h);
       region[2] = static_cast<size_t>(dims.d());
       break;
@@ -388,6 +390,7 @@ class TrivialCopier : public OpenClConverterImpl {
     shape_ = BHWC(input_def.dimensions.b, input_def.dimensions.h,
                   input_def.dimensions.w, input_def.dimensions.c);
     data_type_ = input_def.object_def.data_type;
+    data_layout_ = input_def.object_def.data_layout;
     queue_ = environment->queue();
     region_ = CalculateTextureRegion(output_def);
     return absl::OkStatus();
@@ -405,18 +408,19 @@ class TrivialCopier : public OpenClConverterImpl {
     if (buffer_input && buffer_output) {
       return Copy(*buffer_input, *buffer_output);
     }
-    return absl::InternalError("Unexpected object");
+    return absl::InvalidArgumentError("Unexpected object");
   }
 
   absl::Status Copy(const OpenClBuffer& input, const OpenClBuffer& output) {
     if (input.memobj == output.memobj) {
       return absl::OkStatus();
     }
-    return GetOpenCLError(
-        clEnqueueCopyBuffer(queue_->queue(), input.memobj, output.memobj, 0, 0,
-                            SizeOf(data_type_) * shape_.w * shape_.h *
-                                AlignByN(shape_.c, 4) * shape_.b,
-                            0, nullptr, nullptr));
+    const size_t channels =
+        (data_layout_ == DataLayout::BHWC) ? shape_.c : AlignByN(shape_.c, 4);
+    return GetOpenCLError(clEnqueueCopyBuffer(
+        queue_->queue(), input.memobj, output.memobj, 0, 0,
+        SizeOf(data_type_) * shape_.w * shape_.h * channels * shape_.b, 0,
+        nullptr, nullptr));
   }
 
   absl::Status Copy(const OpenClTexture& input, const OpenClTexture& output) {
@@ -431,6 +435,7 @@ class TrivialCopier : public OpenClConverterImpl {
 
  private:
   DataType data_type_ = DataType::UNKNOWN;
+  DataLayout data_layout_ = DataLayout::UNKNOWN;
   std::array<size_t, 3> region_;
 };
 
@@ -496,7 +501,7 @@ class CpuCopier : public OpenClConverterImpl {
                                          cpu_output->data, async_);
       }
     }
-    return absl::InternalError("Unexpected object");
+    return absl::InvalidArgumentError("Unexpected object");
   }
 
  private:
@@ -512,13 +517,13 @@ class CpuCopier : public OpenClConverterImpl {
     } else {
       auto buffer_input = std::get_if<OpenClBuffer>(&tensor_obj);
       if (!buffer_input) {
-        return absl::InternalError("Unexpected object");
+        return absl::InvalidArgumentError("Unexpected object");
       }
       RETURN_IF_ERROR(queue_->EnqueueReadBuffer(
           buffer_input->memobj, tmp_data.size(), tmp_data.data(), false));
     }
     bool* output_data = reinterpret_cast<bool*>(cpu_memory->data);
-    for (int i = 0; i < num_elements; ++i) {
+    for (size_t i = 0; i < num_elements; ++i) {
       output_data[i] = tmp_data[i];
     }
     return absl::OkStatus();
@@ -528,31 +533,30 @@ class CpuCopier : public OpenClConverterImpl {
                                const TensorObject& tensor_obj) {
     const size_t num_elements = cpu_memory->size_bytes;
     const bool* bool_data = reinterpret_cast<bool*>(cpu_memory->data);
-    tmp_bool_data_ = std::make_unique<std::vector<uint8_t>>();
-    tmp_bool_data_->reserve(num_elements);
-    for (int i = 0; i < num_elements; ++i) {
-      tmp_bool_data_->push_back(bool_data[i]);
+    std::vector<uint8_t> tmp_bool_data;
+    tmp_bool_data.reserve(num_elements);
+    for (size_t i = 0; i < num_elements; ++i) {
+      tmp_bool_data.push_back(bool_data[i]);
     }
     auto texture_output = std::get_if<OpenClTexture>(&tensor_obj);
     if (texture_output) {
       return queue_->EnqueueWriteImage(texture_output->memobj,
                                        int3(region_[0], region_[1], region_[2]),
-                                       tmp_bool_data_->data(), async_);
+                                       tmp_bool_data.data(), false);
     }
     auto buffer_output = std::get_if<OpenClBuffer>(&tensor_obj);
     if (buffer_output) {
       return queue_->EnqueueWriteBuffer(buffer_output->memobj,
-                                        tmp_bool_data_->size(),
-                                        tmp_bool_data_->data(), async_);
+                                        tmp_bool_data.size(),
+                                        tmp_bool_data.data(), false);
     }
-    return absl::InternalError("Unexpected object");
+    return absl::InvalidArgumentError("Unexpected object");
   }
 
   std::array<size_t, 3> region_;
   bool async_;
   DataType input_data_type_;
   DataType output_data_type_;
-  std::unique_ptr<std::vector<uint8_t>> tmp_bool_data_;
 };
 
 class OpenClTensorConverterBuilder : public TensorObjectConverterBuilder {
@@ -599,6 +603,7 @@ class OpenClTensorConverterBuilder : public TensorObjectConverterBuilder {
     return absl::OkStatus();
   }
 
+ private:
   Environment* environment_;
 };
 

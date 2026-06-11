@@ -145,6 +145,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl:tensor",
         "//tensorflow/lite/delegates/gpu/cl:tensor_type_util",
         "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/task:arguments",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
@@ -152,6 +153,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:util",
         "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
         "//tensorflow/lite/delegates/gpu/common/tasks:conversion",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
