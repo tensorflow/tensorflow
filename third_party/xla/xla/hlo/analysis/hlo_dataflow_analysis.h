@@ -100,7 +100,7 @@ class HloDataflowAnalysis {
   HloValueSet GetFlattenedValueSet(const HloInstruction* instruction) const;
 
   // Returns the HloValueSet for the given instruction at the given index or the
-  // given position.
+  // given position. CHECKs if index is valid.
   const HloValueSet& GetValueSet(const HloInstruction* instruction,
                                  const ShapeIndex& index = {}) const;
   const HloValueSet& GetValueSet(const HloPosition& position) const;
