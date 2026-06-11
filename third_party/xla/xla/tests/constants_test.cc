@@ -46,8 +46,8 @@ namespace {
 
 constexpr ErrorSpec kErrorSpec{1e-3, 1e-5};
 
-using ConstantsTest = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using ConstantsTest =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
 
 template <typename T>
 class ConstantsFloatTest : public ConstantsTest {
@@ -264,7 +264,7 @@ TEST_F(ConstantsTest, FullLikeScalar) {
   ComputeAndCompareR0<float>(&b, -1, {}, kErrorSpec);
 }
 
-using ConstantsHloTest = HloPjRtTestBase;
+using ConstantsHloTest = HloTestBase;
 
 // TODO(b/121147351): Fails on GPU. Not clear if this is expected behavior.
 TEST_F(ConstantsHloTest, BitcastOfConstant) {
