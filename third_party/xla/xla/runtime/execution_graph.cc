@@ -279,7 +279,9 @@ std::string ExecutionGraph::ToString() const {
     std::string s;
     bool first = true;
     for (const NodeEdge& e : edges) {
-      if (!first) absl::StrAppend(&s, ", ");
+      if (!first) {
+        absl::StrAppend(&s, ", ");
+      }
       first = false;
       absl::StrAppendFormat(&s, "%v", e);
     }
