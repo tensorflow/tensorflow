@@ -24,6 +24,7 @@ limitations under the License.
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/reference/broadcast_loop.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -200,9 +201,18 @@ inline void BroadcastSubCommon(const ArithmeticParams& params,
                                const RuntimeShape& output_shape, T* output_data,
                                F binary_func) {
   constexpr int kMaxBroadcastDim = 6;
-  TFLITE_DCHECK_LE(input1_shape.DimensionsCount(), kMaxBroadcastDim);
-  TFLITE_DCHECK_LE(input2_shape.DimensionsCount(), kMaxBroadcastDim);
-  TFLITE_DCHECK_LE(output_shape.DimensionsCount(), kMaxBroadcastDim);
+  const int broadcast_rank = std::max(
+      output_shape.DimensionsCount(),
+      std::max(input1_shape.DimensionsCount(), input2_shape.DimensionsCount()));
+  if (broadcast_rank > kMaxBroadcastDim) {
+    ForEachBroadcastedElement(
+        input1_shape, input2_shape, output_shape,
+        [&](int output_index, int input1_index, int input2_index) {
+          output_data[output_index] = binary_func(
+              input1_data[input1_index], input2_data[input2_index], params);
+        });
+    return;
+  }
 
   // In Tensorflow, the dimensions are canonically named (batch_number, row,
   // col, channel), with extents (batches, height, width, depth), with the
@@ -248,10 +258,6 @@ inline void BroadcastSubCommon(const ArithmeticParams& params,
       compressed_input2_stride, compressed_output_shape, binary_func);
 }
 
-// TODO(b/151345304): We can implement BroadcastSub on buffers of arbitrary
-// dimensionality if the runtime code does a single loop over one dimension
-// that handles broadcasting as the base case. The code generator would then
-// generate max(D1, D2) nested for loops.
 template <typename T>
 void BroadcastSubSlow(const ArithmeticParams& params,
                       const RuntimeShape& input1_shape, const T* input1_data,
