@@ -333,7 +333,7 @@ void RemoveEvents(XLine* line,
 
 void RemoveEmptyPlanes(XSpace* space) {
   RemoveIf(space->mutable_planes(), [&](const XPlane* plane) {
-    return plane->lines().empty() && plane->stats().empty();
+    return plane->lines().empty() && plane->stats_size() == 0;
   });
 }
 

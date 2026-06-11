@@ -110,6 +110,28 @@ TEST(XPlaneUtilsTest, RemoveEmptyPlanes) {
   EXPECT_EQ(space.planes(1).name(), "p3");
 }
 
+TEST(XPlaneUtilsTest, RemoveNonEmptyPlanesWithStats) {
+  XSpace space;
+  // Plane with stats but no lines should be kept.
+  auto* plane1 = space.add_planes();
+  plane1->set_name("p1");
+  plane1->add_stats()->set_metadata_id(123);
+
+  // Plane with no stats and no lines should be removed.
+  auto* plane2 = space.add_planes();
+  plane2->set_name("p2");
+
+  // Plane with lines should be kept.
+  auto* plane3 = space.add_planes();
+  plane3->set_name("p3");
+  plane3->add_lines()->set_name("l1");
+
+  RemoveEmptyPlanes(&space);
+  ASSERT_EQ(space.planes_size(), 2);
+  EXPECT_EQ(space.planes(0).name(), "p1");
+  EXPECT_EQ(space.planes(1).name(), "p3");
+}
+
 TEST(XPlaneUtilsTest, RemoveEmptyLines) {
   XPlane plane;
   RemoveEmptyLines(&plane);
