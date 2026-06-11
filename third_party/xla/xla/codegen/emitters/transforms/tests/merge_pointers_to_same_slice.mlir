@@ -80,3 +80,27 @@ func.func private @private_entry_func(
 // CHECK:         %[[SUM:.*]] = arith.addf %[[V0]], %[[V1]]
 // CHECK:         return %[[SUM]]
 // CHECK:        }
+
+// -----
+
+// Verify that xla.not_invariant suppresses llvm.noalias on that argument.
+
+func.func @not_invariant_suppresses_noalias(
+    %arg0: tensor<43xf32> {xla.slice_index = 0, xla.not_invariant},
+    %arg1: tensor<43xf32> {xla.slice_index = 1},
+    %arg2: tensor<43xf32> {xla.slice_index = 2, xla.invariant},
+    %idx: index) -> f32 attributes {xla.entry} {
+  %v0 = tensor.extract %arg0[%idx] : tensor<43xf32>
+  %v1 = tensor.extract %arg1[%idx] : tensor<43xf32>
+  %v2 = tensor.extract %arg2[%idx] : tensor<43xf32>
+  %sum = arith.addf %v0, %v1 : f32
+  %sum2 = arith.addf %sum, %v2 : f32
+  func.return %sum2 : f32
+}
+
+// CHECK-LABEL: func.func @not_invariant_suppresses_noalias(
+// CHECK-SAME:    %[[ARG0:[a-z0-9]+]]: !llvm.ptr,
+// CHECK-SAME:    %[[ARG1:[a-z0-9]+]]: !llvm.ptr {llvm.noalias},
+// CHECK-SAME:    %[[ARG2:[a-z0-9]+]]: !llvm.ptr {llvm.noalias, xla.invariant},
+// CHECK-SAME:    %[[IDX:[a-z0-9]+]]: index) -> f32 attributes {xla.entry}
+// CHECK-NOT:     xla.not_invariant
