@@ -1107,7 +1107,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "listdiff_op",
     prefix = "listdiff_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
+    ],
 )
 
 tf_kernel_library(
