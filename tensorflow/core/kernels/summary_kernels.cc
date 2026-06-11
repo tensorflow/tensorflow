@@ -40,19 +40,19 @@ class CreateSummaryFileWriterOp : public OpKernel {
     const Tensor* tmp;
     OP_REQUIRES_OK(ctx, ctx->input("logdir", &tmp));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(tmp->shape()),
-                errors::InvalidArgument("logdir must be a scalar"));
+                absl::InvalidArgumentError("logdir must be a scalar"));
     const std::string logdir = tmp->scalar<tstring>()();
     OP_REQUIRES_OK(ctx, ctx->input("max_queue", &tmp));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(tmp->shape()),
-                errors::InvalidArgument("max_queue must be a scalar"));
+                absl::InvalidArgumentError("max_queue must be a scalar"));
     const int32_t max_queue = tmp->scalar<int32_t>()();
     OP_REQUIRES_OK(ctx, ctx->input("flush_millis", &tmp));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(tmp->shape()),
-                errors::InvalidArgument("flush_millis must be a scalar"));
+                absl::InvalidArgumentError("flush_millis must be a scalar"));
     const int32_t flush_millis = tmp->scalar<int32_t>()();
     OP_REQUIRES_OK(ctx, ctx->input("filename_suffix", &tmp));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(tmp->shape()),
-                errors::InvalidArgument("filename_suffix must be a scalar"));
+                absl::InvalidArgumentError("filename_suffix must be a scalar"));
     const std::string filename_suffix = tmp->scalar<tstring>()();
 
     core::RefCountPtr<SummaryWriterInterface> s;
@@ -174,9 +174,10 @@ class WriteRawProtoSummaryOp : public OpKernel {
     OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &s));
     const Tensor* tmp;
     OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(tmp->shape()),
-                errors::InvalidArgument("step must be scalar, got shape ",
-                                        tmp->shape().DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(tmp->shape()),
+        absl::InvalidArgumentError(absl::StrCat(
+            "step must be scalar, got shape ", tmp->shape().DebugString())));
     const int64_t step = tmp->scalar<int64_t>()();
     const Tensor* t;
     OP_REQUIRES_OK(ctx, ctx->input("tensor", &t));
@@ -189,9 +190,9 @@ class WriteRawProtoSummaryOp : public OpKernel {
     const auto summary_pbs = t->flat<tstring>();
     for (int i = 0; i < summary_pbs.size(); ++i) {
       if (!event->mutable_summary()->MergeFromString(summary_pbs(i))) {
-        ctx->CtxFailureWithWarning(errors::DataLoss(
+        ctx->CtxFailureWithWarning(absl::DataLossError(absl::StrCat(
             "Bad tf.compat.v1.Summary binary proto tensor string at index ",
-            i));
+            i)));
         return;
       }
     }
@@ -215,7 +216,7 @@ class ImportEventOp : public OpKernel {
     std::unique_ptr<Event> event{new Event};
     if (!ParseProtoUnlimited(event.get(), t->scalar<tstring>()())) {
       ctx->CtxFailureWithWarning(
-          errors::DataLoss("Bad tf.Event binary proto tensor string"));
+          absl::DataLossError("Bad tf.Event binary proto tensor string"));
       return;
     }
     OP_REQUIRES_OK(ctx, s->WriteEvent(std::move(event)));
@@ -277,7 +278,7 @@ class WriteImageSummaryOp : public OpKernel {
     int64_t max_images_tmp;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("max_images", &max_images_tmp));
     OP_REQUIRES(ctx, max_images_tmp < (1LL << 31),
-                errors::InvalidArgument("max_images must be < 2^31"));
+                absl::InvalidArgumentError("max_images must be < 2^31"));
     max_images_ = static_cast<int32_t>(max_images_tmp);
   }
 
@@ -293,10 +294,10 @@ class WriteImageSummaryOp : public OpKernel {
     const std::string& tag = tmp->scalar<tstring>()();
     const Tensor* bad_color;
     OP_REQUIRES_OK(ctx, ctx->input("bad_color", &bad_color));
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsVector(bad_color->shape()),
-        errors::InvalidArgument("bad_color must be a vector, got shape ",
-                                bad_color->shape().DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(bad_color->shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("bad_color must be a vector, got shape ",
+                                 bad_color->shape().DebugString())));
 
     const Tensor* t;
     OP_REQUIRES_OK(ctx, ctx->input("tensor", &t));
@@ -315,7 +316,7 @@ class WriteAudioSummaryOp : public OpKernel {
   explicit WriteAudioSummaryOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("max_outputs", &max_outputs_));
     OP_REQUIRES(ctx, max_outputs_ > 0,
-                errors::InvalidArgument("max_outputs must be > 0"));
+                absl::InvalidArgumentError("max_outputs must be > 0"));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -360,7 +361,7 @@ class WriteGraphSummaryOp : public OpKernel {
     std::unique_ptr<GraphDef> graph{new GraphDef};
     if (!ParseProtoUnlimited(graph.get(), t->scalar<tstring>()())) {
       ctx->CtxFailureWithWarning(
-          errors::DataLoss("Bad tf.GraphDef binary proto tensor string"));
+          absl::DataLossError("Bad tf.GraphDef binary proto tensor string"));
       return;
     }
     OP_REQUIRES_OK(ctx, s->WriteGraph(step, std::move(graph)));
