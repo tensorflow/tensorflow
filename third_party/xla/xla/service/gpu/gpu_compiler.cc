@@ -373,9 +373,6 @@ tsl::thread::ThreadPool* GetGpuCompilationThreadPool() {
   return GetCompilationThreadPool();
 }
 
-// Marker for hlo_opt to indicate start of the ptx.
-constexpr absl::string_view kGpuExecutablePtxMarker = "// GPU Executable\n";
-
 using MaybeOwningThreadPool = MaybeOwning<tsl::thread::ThreadPool>;
 
 MaybeOwningThreadPool CreateMaybeOwningThreadPool(
@@ -2662,6 +2659,7 @@ GpuCompiler::CompileToBackendResult(
   CompileModuleResults compile_module_results;
   std::atomic<int> shard_number = 0;
 
+  BackendCompileResult backend_result;
   {
     xla::llvm_ir::LLVMCommandLineOptionsReleasableLock llvm_options_lock(
         GetLLVMCommandLineOptions(module->config().debug_options()));
@@ -2704,24 +2702,8 @@ GpuCompiler::CompileToBackendResult(
             std::move(buffer_size_bytes_function), llvm_options_lock,
             &kernel_compiler, std::move(cpu_target_machine_options),
             &mlir_context_pool_));
-  }
 
-  llvm::Module* module_constants =
-      compile_module_results.llvm_module_constants->module();
-  llvm_ir::DumpIrIfEnabled(*module, *module_constants,
-                           /*optimized=*/false, "constants");
-  CallUserPreOptimizationHook(*module_constants);
-
-  ASSIGN_OR_RETURN(
-      BackendCompileResult backend_result,
-      CompileSingleModule(module->config(),
-                          gpu_topology.gpu_target_config().device_description,
-                          module, module_constants,
-                          /*relocatable=*/false,
-                          /*shard_number=*/shard_number.fetch_add(1)));
-  if (!backend_result.asm_text.empty()) {
-    backend_result.asm_text =
-        absl::StrCat(kGpuExecutablePtxMarker, backend_result.asm_text);
+    backend_result.binary = std::move(compile_module_results.constants_binary);
   }
 
   if (use_cache) {
@@ -2745,7 +2727,7 @@ GpuCompiler::CompileToBackendResult(
 
   {
     absl::MutexLock lock(module_stats_m_);
-    MergeModuleStatsInPlace(module_stats, backend_result.module_stats);
+    backend_result.module_stats = module_stats;
   }
 
   RecordXlaDeviceBinarySize(backend_result.binary.size());
@@ -2852,7 +2834,6 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
 
   // The module is being moved into the GpuExecutable below and we need to
   // read a few config values from the module, before it becomes invalid.
-  bool embed_ir_in_executable = debug_opts.xla_embed_ir_in_executable();
   bool embed_debug_info = debug_opts.xla_gpu_executable_embed_debug_info();
 
   tsl::profiler::ScopedAnnotation annotation([&] {
@@ -2869,8 +2850,6 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   ASSIGN_OR_RETURN(
       std::unique_ptr<GpuExecutable> gpu_executable,
       GpuExecutable::Create(GpuExecutable::Params{
-          /*asm_text=*/embed_debug_info ? std::move(res.backend_result.asm_text)
-                                        : std::string(),
           /*binary=*/std::move(res.backend_result.binary),
           /*dnn_compiled_graphs=*/
           std::move(dnn_compiled_graphs),
@@ -2901,14 +2880,6 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
           options.cpu_target_config.has_value()
               ? options.cpu_target_config->cpu_target_machine_options
               : std::nullopt}));
-
-  if (embed_ir_in_executable) {
-    std::string ir_module_string_before_opt = llvm_ir::DumpToString(
-        *res.compile_module_results.llvm_module_constants->module());
-    gpu_executable->set_ir_module_string(ir_module_string_before_opt);
-    DCHECK_NE("", ir_module_string_before_opt);
-  }
-
   IncrementCompiledProgramsCount();
 
   if (embed_debug_info && gpu_executable->has_module()) {
@@ -3047,8 +3018,8 @@ absl::StatusOr<std::unique_ptr<CompiledModule>> GpuCompiler::Export(
 
   return LegacyGpuAotCompilationResult::FromModule(
       &gpu_executable->module(), gpu_executable->buffer_assignment()->ToProto(),
-      gpu_executable->text(), gpu_executable->binary(),
-      gpu_executable->dnn_compiled_graphs(), pointer_size_, this);
+      "", gpu_executable->binary(), gpu_executable->dnn_compiled_graphs(),
+      pointer_size_, this);
 }
 
 absl::Status GpuCompiler::RunPreSchedulingPasses(
@@ -3376,8 +3347,9 @@ GpuCompiler::LoadExecutableFromAotResult(
       GetLLVMCommandLineOptions(hlo_module->config().debug_options()));
 
   ThunkEmitter thunk_emitter(&ir_emitter_context, &llvm_options_lock);
-  ASSIGN_OR_RETURN(auto sequential_thunk,
-                   thunk_emitter.EmitHloEntryComputation(hlo_module.get()));
+  ASSIGN_OR_RETURN(
+      auto sequential_thunk,
+      thunk_emitter.EmitHloEntryComputation(hlo_module.get()).Await());
 
   // Get all other fields required by GpuExecutable.
   std::vector<GpuExecutable::ConstantInfo> constants =
@@ -3406,7 +3378,6 @@ GpuCompiler::LoadExecutableFromAotResult(
     tsl::profiler::TraceMe traceme("CreateGpuExecutable");
     std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(device_description);
     return GpuExecutable::Create(GpuExecutable::Params{
-        /*asm_text=*/proto.asm_text(),
         /*binary=*/binary,
         /*dnn_compiled_graphs=*/
         BinaryMap(proto.dnn_compiled_graphs().cbegin(),
