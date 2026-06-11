@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "flatbuffers/vector.h"  // from @flatbuffers
