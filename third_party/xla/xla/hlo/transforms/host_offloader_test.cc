@@ -3281,7 +3281,7 @@ TEST_F(HostOffloaderTest, OutputStreaming) {
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
 }
 
-TEST_F(HostOffloaderTest, InvalidOutputStreaming) {
+TEST_F(HostOffloaderTest, OutputStreamingWithLayoutNotPreset) {
   const std::string& hlo_string = R"(
     HloModule ParameterStreaming, entry_computation_layout={(s32[2,1]{1,0:T(2,128)}, s32[2,1]{1,0:T(2,128)})->(s32[2,1]{1,0:T(2,128)}, s32[2,1]{1,0:T(2,128)})}
 
@@ -3303,8 +3303,51 @@ TEST_F(HostOffloaderTest, InvalidOutputStreaming) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  absl::StatusOr<bool> result = RunHostOffloader(module.get());
-  EXPECT_FALSE(result.ok());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* param_1;
+  HloInstruction* broadcast_0;
+  HloInstruction* multiply_0;
+  HloInstruction* param_0;
+  HloInstruction* multiply_1;
+  HloInstruction* broadcast_1;
+  HloInstruction* multiply_2;
+  HloInstruction* copy;
+  HloInstruction* tuple;
+  auto multiplyPattern =
+      m::Multiply(&multiply_1,
+                  m::Multiply(&multiply_0, m::Parameter(&param_1),
+                              m::Broadcast(&broadcast_0, m::ConstantScalar(2))),
+                  m::Parameter(&param_0));
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(
+          &tuple,
+          m::Copy(&copy, m::Multiply(
+                             &multiply_2, multiplyPattern,
+                             m::Broadcast(&broadcast_1, m::ConstantScalar(4)))),
+          multiplyPattern)));
+  TestShapeHasMemorySpace(param_1->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(broadcast_0->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(multiply_0->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(param_0->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(multiply_1->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(broadcast_1->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(multiply_2->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(copy->shape(), Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {0}),
+                          Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {1}),
+                          Layout::kDefaultMemorySpace);
+
+  const Shape& result_shape = module->entry_computation_layout().result_shape();
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(result_shape, {0}),
+                          Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(result_shape, {1}),
+                          Layout::kDefaultMemorySpace);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
 }
 
 TEST_F(HostOffloaderTest, OutputStreamingWithoutTuple) {

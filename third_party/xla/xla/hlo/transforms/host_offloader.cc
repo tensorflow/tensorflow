@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/service/host_offload_utils.h"
 #include "xla/service/memory_annotations.h"
 #include "xla/shape.h"
+#include "xla/shape_layout.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -91,23 +92,6 @@ bool SetBuffersToMemorySpaceColor(
     changed = true;
   }
   return changed;
-}
-
-void PrintTrace(InstructionAndShapeIndex instruction_and_shape_index,
-                const absl::flat_hash_map<InstructionAndShapeIndex,
-                                          InstructionAndShapeIndex>& previous) {
-  std::vector<InstructionAndShapeIndex> trace;
-  trace.push_back(instruction_and_shape_index);
-  auto it = previous.find(instruction_and_shape_index);
-  while (it != previous.end()) {
-    trace.push_back(it->second);
-    instruction_and_shape_index = it->second;
-    it = previous.find(instruction_and_shape_index);
-  }
-  std::reverse(trace.begin(), trace.end());
-  for (const auto& instruction_and_shape_index : trace) {
-    VLOG(1) << "  " << instruction_and_shape_index.ToString();
-  }
 }
 
 }  // namespace
@@ -182,8 +166,6 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
   HloInstruction* starting_instruction =
       starting_instruction_and_index.instruction;
   std::queue<InstructionAndShapeIndex> queue;
-  absl::flat_hash_map<InstructionAndShapeIndex, InstructionAndShapeIndex>
-      previous;
   queue.push(starting_instruction_and_index);
   while (!queue.empty()) {
     InstructionAndShapeIndex instruction_and_shape_index = queue.front();
@@ -337,35 +319,36 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
 
     // Check if this path ends at the output of the entry computation.
     if (instruction->IsRoot() && instruction->parent()->IsEntryComputation()) {
+      ShapeLayout* result_layout = instruction->GetModule()
+                                       ->mutable_entry_computation_layout()
+                                       ->mutable_result_layout();
       const Shape& output_shape = ShapeUtil::GetSubshape(
-          instruction->GetModule()->entry_computation_layout().result_shape(),
-          instruction_and_shape_index.shape_index);
-      CHECK(output_shape.has_layout())
-          << "Expecting output shape of entry computation to have a layout.";
-      if (output_shape.layout().memory_space() == Layout::kHostMemorySpace) {
-        VLOG(2) << absl::StreamFormat(
-            "Memory offloaded starting from %s is output streamed",
-            starting_instruction_and_index.ToString());
-        continue;
-      }
-      if (VLOG_IS_ON(1)) {
-        LOG(INFO) << "Instruction trace leading to error:";
-        PrintTrace(instruction_and_shape_index, previous);
-      }
-      return error::CompileTimeHostOffloadOutputLocationMismatch(
-          "Tensor which is moved to host (starting from %s) "
-          "is returned from the entry computation but the "
-          "layout for this output is not set to host memory.",
-          starting_instruction->name());
+          result_layout->shape(), instruction_and_shape_index.shape_index);
+      ShapeUtil::ForEachLeafShape(
+          output_shape,
+          [&](const Shape& subshape, const ShapeIndex& leaf_index) {
+            if (subshape.IsArray()) {
+              CHECK(subshape.has_layout()) << "Expecting output shape of entry "
+                                              "computation to have a layout.";
+              Layout new_layout = subshape.layout();
+              new_layout.set_memory_space(Layout::kHostMemorySpace);
+              ShapeIndex result_index = instruction_and_shape_index.shape_index;
+              for (int64_t i : leaf_index) {
+                result_index.push_back(i);
+              }
+              result_layout->ResetLayout(new_layout, result_index);
+            }
+          });
+      VLOG(2) << absl::StreamFormat(
+          "Memory offloaded starting from %s is output streamed",
+          starting_instruction_and_index.ToString());
+      continue;
     }
     // Push successors onto the queue to be visited.
     ASSIGN_OR_RETURN(
         const std::vector<InstructionAndShapeIndex> successors,
         host_offload_utils::GetSuccessors(instruction_and_shape_index));
     for (const InstructionAndShapeIndex& successor : successors) {
-      if (VLOG_IS_ON(1)) {
-        previous.emplace(successor, instruction_and_shape_index);
-      }
       const Shape& successor_shape = ShapeUtil::GetSubshape(
           successor.instruction->shape(), successor.shape_index);
       if (successor_shape.has_layout() &&
@@ -1133,6 +1116,32 @@ absl::StatusOr<bool> UpdateMemorySpaceForHostOffloadedOutputs(
                              instr_and_shape.instruction->mutable_shape(),
                              instr_and_shape.shape_index),
                          Layout::kHostMemorySpace);
+
+          if (instr_and_shape.instruction->IsRoot() &&
+              instr_and_shape.instruction->parent()->IsEntryComputation()) {
+            ShapeLayout* result_layout =
+                instr_and_shape.instruction->GetModule()
+                    ->mutable_entry_computation_layout()
+                    ->mutable_result_layout();
+            const Shape& output_shape = ShapeUtil::GetSubshape(
+                result_layout->shape(), instr_and_shape.shape_index);
+            ShapeUtil::ForEachLeafShape(
+                output_shape,
+                [&](const Shape& subshape, const ShapeIndex& leaf_index) {
+                  if (subshape.IsArray()) {
+                    CHECK(subshape.has_layout())
+                        << "Expecting output shape of entry computation to "
+                           "have a layout.";
+                    Layout new_layout = subshape.layout();
+                    new_layout.set_memory_space(Layout::kHostMemorySpace);
+                    ShapeIndex result_index = instr_and_shape.shape_index;
+                    for (int64_t i : leaf_index) {
+                      result_index.push_back(i);
+                    }
+                    result_layout->ResetLayout(new_layout, result_index);
+                  }
+                });
+          }
         }
 
         if (!instruction_and_shape_indexes->empty()) {
@@ -1158,16 +1167,19 @@ absl::StatusOr<bool> UpdateMemorySpaceForHostOffloadedOutputs(
 // if the respective tensor can be on host.
 bool ExtraCheckForValidUsageOnHostForHostOffloadedOutputs(
     const Shape& entry_computation_shape,
-    InstructionAndShapeIndex& instruction_and_shape_index) {
+    InstructionAndShapeIndex& instruction_and_shape_index,
+    bool has_move_to_host) {
   HloInstruction* instruction = instruction_and_shape_index.instruction;
-  ShapeIndex& shape_index = instruction_and_shape_index.shape_index;
 
   // We respect entry computation layout. So for the cases where the
-  // outputs are not expected on host, we bail.
+  // outputs are not expected on host, we bail, UNLESS there is an explicit
+  // MoveToHost custom call along the path.
   if (instruction->IsRoot() && instruction->parent()->IsEntryComputation()) {
-    if (ShapeUtil::GetSubshape(entry_computation_shape, shape_index)
-            .layout()
-            .memory_space() != Layout::kHostMemorySpace) {
+    if (!has_move_to_host &&
+        ShapeUtil::GetSubshape(entry_computation_shape,
+                               instruction_and_shape_index.shape_index)
+                .layout()
+                .memory_space() != Layout::kHostMemorySpace) {
       return false;
     }
   }
@@ -1292,10 +1304,19 @@ absl::StatusOr<bool> HostOffloader::HandleRedundantCopiesBackToHost(
 
           // Check if any of the successors needs to be on device.
           for (InstructionAndShapeIndex& successor : successors) {
+            bool has_move_to_host = false;
+            for (const auto& instr_and_shape :
+                 host_instrs_tree.element(output_shape_index)) {
+              if (instr_and_shape.instruction->IsCustomCall(
+                      memory_annotations::kMoveToHostCustomCallTarget)) {
+                has_move_to_host = true;
+                break;
+              }
+            }
             if (!host_offload_utils::IsValidDuringPureMemoryOffload(
                     successor.instruction) ||
                 !ExtraCheckForValidUsageOnHostForHostOffloadedOutputs(
-                    entry_computation_shape, successor)) {
+                    entry_computation_shape, successor, has_move_to_host)) {
               host_only = false;
               break;
             }

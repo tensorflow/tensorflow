@@ -312,6 +312,7 @@ cc_library(
     hdrs = ["host_offloader.h"],
     deps = [
         "//xla:literal_util",
+        "//xla:shape_layout",
         "//xla:shape_tree",
         "//xla:shape_util",
         "//xla:util",
