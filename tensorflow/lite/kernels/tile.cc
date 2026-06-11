@@ -58,7 +58,13 @@ TfLiteStatus MultiplyShapeDims(TfLiteContext* context,
     int64_t shape_data = static_cast<int64_t>(shape.data[i]);
     int64_t multiplier = static_cast<int64_t>(multipliers_v[i]);
 
-    if (shape_data < 0 || multiplier < 0 ||
+    if (multiplier < 0) {
+      TfLiteIntArrayFree(temp_shape);
+      TF_LITE_KERNEL_LOG(context, "Multipliers must be non-negative.");
+      return kTfLiteError;
+    }
+
+    if (shape_data < 0 ||
         (shape_data > 0 &&
          multiplier > std::numeric_limits<int32_t>::max() / shape_data)) {
       TfLiteIntArrayFree(temp_shape);

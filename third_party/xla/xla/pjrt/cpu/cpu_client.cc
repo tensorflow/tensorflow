@@ -1557,9 +1557,8 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
     const ExecuteOptions& options,
     absl::Span<const PjRtRawBufferRef> input_buffers,
     absl::Span<const PjRtRawBufferRef> output_leaf_buffers,
-    std::vector<PjRtDeviceEventRef> extra_deps,
-    std::vector<PjRtDeviceEventRef> control_deps, bool is_predetermined_error,
-    bool fill_future) && {
+    PjRtDeviceEventRefVector extra_deps, PjRtDeviceEventRefVector control_deps,
+    bool is_predetermined_error, bool fill_future) && {
   PjRtRawLoadedExecutable::RawExecuteResult result;
   // `returned_future_can_be_set_event` indicates when `returned_future` can be
   // set using `execute_event`. This is necessary to delay setting the
@@ -1571,7 +1570,7 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
   auto returned_future_can_be_set_event =
       tsl::MakeConstructedAsyncValueRef<CpuEvent>();
 
-  std::vector<PjRtDeviceEventRef> input_deps = std::move(control_deps);
+  PjRtDeviceEventRefVector input_deps = std::move(control_deps);
   size_t num_control_deps = input_deps.size();
   for (auto& event : extra_deps) {
     if (event) {
