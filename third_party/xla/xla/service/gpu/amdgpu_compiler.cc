@@ -262,7 +262,6 @@ AMDGPUCompiler::CompileTargetBinary(
   }
 
   return BackendCompileResult{"", std::move(hsaco_result.hsaco),
-                              /*dnn_compiled_graphs=*/{},
                               std::move(hsaco_result.module_stats)};
 }
 
