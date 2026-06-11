@@ -89,10 +89,10 @@ module {
 
 // -----
 
-module {
-  // Do not inline this function as it has two callers. Even if the callers are
-  // in different functions at the start, after inlining the two callers are in
-  // the same function.
+module attributes {xla.cpu} {
+  // This function has two callers, each with a single call site. It is small,
+  // so both call sites are inlined (duplicating the body); leaving calls in
+  // place would re-evaluate the callee per use.
   func.func private @large(%a: f32, %b: f32) -> f32 {
     %mul = arith.mulf %a, %b : f32
     %add = arith.addf %a, %mul : f32
@@ -119,11 +119,13 @@ module {
   }
 }
 
-// CHECK-LABEL: module {
+// CHECK-LABEL: module attributes {xla.cpu} {
 // CHECK: @caller
-// CHECK: arith.addf
-// CHECK: xla.pure_call @large
-// CHECK: xla.pure_call @large
+// CHECK-NOT: xla.pure_call
+// CHECK: math.atan2
+// CHECK-NOT: xla.pure_call
+// CHECK: math.atan2
+// CHECK-NOT: xla.pure_call
 
 // -----
 
@@ -146,7 +148,7 @@ module {
 
 // -----
 
-module {
+module attributes {xla.cpu} {
   func.func private @fib0(%start : f32) -> f32 attributes {no_compute = true} {
     %zero = arith.constant 0.0 : f32
     return %zero : f32
@@ -172,16 +174,12 @@ module {
     %ret = arith.addf %a, %b : f32
     return %ret : f32
   }
-  // When inlining the other functions into @fib5, this function exceeds the
-  // threshold for inlining.
   func.func private @fib5(%start : f32) -> f32 {
     %a = xla.pure_call @fib3(%start) : (f32) -> (f32)
     %b = xla.pure_call @fib4(%start) : (f32) -> (f32)
     %ret = arith.addf %a, %b : f32
     return %ret : f32
   }
-  // As we do not inline @fib5 into @fib6, this function stays below the
-  // threshold for inlining.
   func.func private @fib6(%start : f32) -> f32 {
     %a = xla.pure_call @fib4(%start) : (f32) -> (f32)
     %b = xla.pure_call @fib5(%start) : (f32) -> (f32)
@@ -201,10 +199,10 @@ module {
   }
 }
 
-// CHECK-LABEL: module {
+// CHECK-LABEL: module attributes {xla.cpu} {
 // CHECK-NOT: fib0
-// CHECK: func.func private @fib2
 // CHECK-NOT: fib1
+// CHECK-NOT: fib2
 // CHECK-NOT: fib3
 // CHECK-NOT: fib4
 // CHECK-NOT: fib5
@@ -212,7 +210,7 @@ module {
 // CHECK-NOT: fib7
 
 // CHECK: @caller
-// CHECK-COUNT-8: xla.pure_call @fib2
+// CHECK-NOT: xla.pure_call
 
 // -----
 
@@ -275,7 +273,7 @@ module {
 
 // -----
 
-module {
+module attributes {xla.cpu} {
   func.func private @callee1(%a: f32) -> f32 {
     %b0 = arith.addf %a, %a : f32
     %b1 = arith.addf %b0, %a : f32
@@ -316,11 +314,9 @@ module {
   }
 }
 
-// CHECK-LABEL: module {
-// CHECK:         func.func private @callee1
-// CHECK-NOT:     callee2
-// CHECK:         func.func @caller
-// CHECK-COUNT-2: pure_call @callee1
+// CHECK-LABEL: module attributes {xla.cpu} {
+// CHECK:     func.func @caller
+// CHECK-NOT: pure_call
 
 // -----
 
@@ -342,3 +338,42 @@ module {
 // CHECK: @caller
 // CHECK-NEXT: arith.addf
 // CHECK-NEXT: return
+// -----
+
+// Chain where consecutive levels share no callees (e.g. rotation/quaternion
+// chains): every component of one level calls every component of the previous
+// level exactly once. All functions are small, so they must all be inlined;
+// leaving call-per-use in place compounds recomputation exponentially with
+// chain depth.
+module attributes {xla.cpu} {
+  func.func private @x0(%a: f32, %b: f32) -> f32 {
+    %ret = arith.addf %a, %b : f32
+    return %ret : f32
+  }
+  func.func private @y0(%a: f32, %b: f32) -> f32 {
+    %ret = arith.mulf %a, %b : f32
+    return %ret : f32
+  }
+  func.func private @x1(%a: f32, %b: f32) -> f32 {
+    %x = xla.pure_call @x0(%a, %b) : (f32, f32) -> (f32)
+    %y = xla.pure_call @y0(%a, %b) : (f32, f32) -> (f32)
+    %ret = arith.subf %x, %y : f32
+    return %ret : f32
+  }
+  func.func private @y1(%a: f32, %b: f32) -> f32 {
+    %x = xla.pure_call @x0(%a, %b) : (f32, f32) -> (f32)
+    %y = xla.pure_call @y0(%a, %b) : (f32, f32) -> (f32)
+    %ret = arith.divf %x, %y : f32
+    return %ret : f32
+  }
+  func.func @caller(%a: f32, %b: f32) -> f32 {
+    %x = xla.pure_call @x1(%a, %b) : (f32, f32) -> (f32)
+    %y = xla.pure_call @y1(%a, %b) : (f32, f32) -> (f32)
+    %ret = arith.addf %x, %y : f32
+    return %ret : f32
+  }
+}
+
+// CHECK-LABEL: module attributes {xla.cpu} {
+// CHECK: @caller
+// CHECK-NOT: xla.pure_call

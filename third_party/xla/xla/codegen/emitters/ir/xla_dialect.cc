@@ -56,10 +56,6 @@ struct XlaInlinerInterface : public mlir::DialectInlinerInterface {
                        bool wouldBeCloned) const final {
     if (call->hasAttr("noinline")) return false;
     if (callable->hasAttr(emitters::kHasNoCompute)) return true;
-    // Otherwise, inline only if the called function is small. We could
-    // theoretically also inline if there is no other caller in the function
-    // that contains the callee that has a call path to the callable, but that
-    // is more expensive to check.
     auto func_op = mlir::dyn_cast<mlir::func::FuncOp>(callable);
     if (!func_op) {
       return false;
@@ -73,9 +69,16 @@ struct XlaInlinerInterface : public mlir::DialectInlinerInterface {
       return false;
     }
 
+    bool is_cpu = false;
+    if (auto module_op = call->getParentOfType<mlir::ModuleOp>()) {
+      is_cpu = module_op->hasAttr("xla.cpu");
+    }
+
     llvm::SmallDenseSet<llvm::StringRef> callee_calls;
-    for (auto callee_call : callable_region->getOps<PureCallOp>()) {
-      callee_calls.insert(callee_call.getCallee());
+    if (!is_cpu && wouldBeCloned) {
+      for (auto callee_call : callable_region->getOps<PureCallOp>()) {
+        callee_calls.insert(callee_call.getCallee());
+      }
     }
 
     // If true, then the callee and the caller call the same third function.
@@ -86,19 +89,34 @@ struct XlaInlinerInterface : public mlir::DialectInlinerInterface {
       num_calls_in_caller = 1;
     } else {
       for (auto neighbor_call : call->getParentRegion()->getOps<PureCallOp>()) {
-        contains_call_to_same_function |=
-            callee_calls.contains(neighbor_call.getCallee());
+        if (!is_cpu && wouldBeCloned) {
+          contains_call_to_same_function |=
+              callee_calls.contains(neighbor_call.getCallee());
+        }
         if (neighbor_call.getCallee() == pure_call_op.getCallee()) {
           ++num_calls_in_caller;
         }
       }
     }
+    // Calls to the same callee with distinct arguments: inlining would
+    // duplicate the body with no CSE to collapse it (identical-argument
+    // duplicates are merged by CSE before the inliner sees them).
     if (num_calls_in_caller > 1) return false;
     // Don't inline functions, if after inlining the size of the function
     // becomes too big.
     int num_ops = num_calls_in_caller * GetNumOps(callable_region->front()) +
                   GetNumOps(call->getParentRegion()->front());
     if (num_ops > kMaxFuncSize) return false;
+    // Otherwise always inline, even if the callee has other callers. A call
+    // that is not inlined re-evaluates the callee's entire transitive
+    // computation per use; across call chains whose consecutive levels share
+    // no callees (e.g. rotation/quaternion chains emitted for kinematic
+    // models) this recomputation compounds exponentially with chain depth.
+    // Inlining instead grows code, but the growth is bounded by kMaxFuncSize
+    // and collapsed by the CSE that runs interleaved with the inliner.
+    if (is_cpu) {
+      return true;
+    }
     return !wouldBeCloned || contains_call_to_same_function;
   }
 
