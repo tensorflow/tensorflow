@@ -1245,6 +1245,9 @@ TfLiteStatus Subgraph::ResizeInputTensor(int tensor_index,
   if (graph_is_immutable) {
     // Undo delegation if it resulted in the graph being immutable.
     TF_LITE_ENSURE_STATUS(UndoAllDelegates());
+    // Undoing delegates can mutate the tensor arena. Re-read the graph input
+    // after delegate rollback before handing it to ResizeTensorImpl.
+    tensor = &context_.tensors[tensor_index];
   }
   state_ = kStateUninvokable;
   return ResizeTensorImpl(tensor, BuildTfLiteArray(rank, dims_data).release());

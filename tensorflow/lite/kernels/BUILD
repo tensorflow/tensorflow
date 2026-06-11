@@ -1308,10 +1308,12 @@ cc_test(
         ":test_util",
         "//tensorflow/lite:cc_api_stable",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",
         "//tensorflow/lite/kernels/internal:tensor_ctypes",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 
