@@ -33,18 +33,10 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/traceme_global_flags.h"
 #endif
 
-#define TRACEME_ENCODE_STRINGIFY(x) #x
-#define TRACEME_ENCODE_TOSTRING(x) TRACEME_ENCODE_STRINGIFY(x)
-#define TRACEME_FILE_AND_LINE __FILE__ ":" TRACEME_ENCODE_TOSTRING(__LINE__)
-
-#if !defined(LIBTPU_ON_GCE) && ABSL_HAVE_BUILTIN(__builtin_FILE)
-// TODO(b/507077868): Switch to absl::SourceLocation after XLA upgrades to the
-// next absl version. For more details, see
-// https://gist.github.com/youchunni/24ee88f9daa9566312f055d71513dbea
-#define TRACEME_DEFAULT_FILE __builtin_FILE()
-#else
-#define TRACEME_DEFAULT_FILE ""
-#endif
+#define STRINGIZE_DETAIL(x) #x
+#define STRINGIZE(x) STRINGIZE_DETAIL(x)
+#define __LINE_STR__ STRINGIZE(__LINE__)
+#define CURRENT_LOCATION __FILE__ ":" __LINE_STR__
 
 namespace tsl {
 namespace profiler {
@@ -157,43 +149,37 @@ TF_ATTRIBUTE_ALWAYS_INLINE inline void AppendMetadata(
   }
 }
 
-}  // namespace traceme_internal
-
 // Encodes an event name and arguments into TraceMe metadata.
 // Use within a lambda to avoid expensive operations when tracing is disabled.
 // Example Usage:
 //   TraceMe trace_me([value1]() {
 //     return TraceMeEncode("my_trace", {{"key1", value1}, {"key2", 42}});
 //   });
-TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeEncode(
-    std::string name, std::initializer_list<TraceMeArg> args,
-    const char* source_loc = TRACEME_DEFAULT_FILE) {
-  return traceme_internal::AppendArgs(std::move(name), args, source_loc);
-}
-TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeEncode(
-    absl::string_view name, std::initializer_list<TraceMeArg> args,
-    const char* source_loc = TRACEME_DEFAULT_FILE) {
-  return traceme_internal::AppendArgs(std::string(name), args, source_loc);
-}
-TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeEncode(
-    const char* name, std::initializer_list<TraceMeArg> args,
-    const char* source_loc = TRACEME_DEFAULT_FILE) {
-  return traceme_internal::AppendArgs(name, args, source_loc);
-}
 
-// Encodes arguments into TraceMe metadata.
-// Use within a lambda to avoid expensive operations when tracing is disabled.
-// Example Usage:
-//   TraceMe trace_me("my_trace");
-//   ...
-//   trace_me.AppendMetadata([value1]() {
-//     return TraceMeEncode({{"key1", value1}, {"key2", 42}});
-//   });
-TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeEncode(
-    std::initializer_list<TraceMeArg> args,
-    const char* source_loc = TRACEME_DEFAULT_FILE) {
-  return traceme_internal::AppendArgs(std::string(), args, source_loc);
+TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeEncodeWithLocation(
+    const char* source_loc, std::string name,
+    std::initializer_list<TraceMeArg> args) {
+  return AppendArgs(std::move(name), args, source_loc);
 }
+TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeEncodeWithLocation(
+    const char* source_loc, absl::string_view name,
+    std::initializer_list<TraceMeArg> args) {
+  return AppendArgs(std::string(name), args, source_loc);
+}
+TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeEncodeWithLocation(
+    const char* source_loc, const char* name,
+    std::initializer_list<TraceMeArg> args) {
+  return AppendArgs(name, args, source_loc);
+}
+TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeEncodeWithLocation(
+    const char* source_loc, std::initializer_list<TraceMeArg> args) {
+  return AppendArgs(std::string(), args, source_loc);
+}
+}  // namespace traceme_internal
+
+#define TraceMeEncode(...)                                      \
+  ::tsl::profiler::traceme_internal::TraceMeEncodeWithLocation( \
+      CURRENT_LOCATION, __VA_ARGS__)
 
 // Concatenates op_name and op_type.
 TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeOp(
