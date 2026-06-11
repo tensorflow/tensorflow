@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
 #include "xla/types.h"
 #include "xla/util.h"
@@ -461,7 +462,10 @@ absl::StatusOr<bool> ConditionalSimplifier::TryRemoveConditional(
   // Do not remove conditionals that contain side-effecting instructions or
   // have control predecessors/successors in either true/false computation.
   if (!conditional->parent()->IsSafelyRemovable(conditional) ||
-      conditional->HasSideEffect()) {
+      conditional->HasSideEffect() ||
+      (conditional->has_frontend_attributes() &&
+       conditional->frontend_attributes().map().contains(
+           kXlaSchedulingGroupIdAttr))) {
     VLOG(2) << "Not attempting to remove conditional as it is not removable or "
                "has side effect: "
             << conditional->ToShortString();
