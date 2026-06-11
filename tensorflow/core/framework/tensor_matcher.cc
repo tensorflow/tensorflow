@@ -16,9 +16,7 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include <complex>
 #include <ostream>
-#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>

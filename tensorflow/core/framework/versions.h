@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_VERSIONS_H_
 #define TENSORFLOW_CORE_FRAMEWORK_VERSIONS_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
