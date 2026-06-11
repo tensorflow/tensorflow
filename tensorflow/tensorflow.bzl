@@ -107,6 +107,8 @@ two_gpu_tags = ["requires-gpu-nvidia:2", "manual", "no_pip"]
 # external project.
 workspace_root = Label("//:WORKSPACE").workspace_root or "."
 
+# temp change
+
 def clean_dep(target):
     """Returns string to 'target' in @org_tensorflow repository.
 
