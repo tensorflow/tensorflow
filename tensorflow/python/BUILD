@@ -1226,6 +1226,7 @@ cc_library(
 py_library(
     name = "pywrap_tfe",
     srcs = ["pywrap_tfe.py"],
+    lazy_imports = True,
     strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [

@@ -140,6 +140,7 @@ py_library(
     srcs = [
         "distribute_lib.py",
     ],
+    lazy_imports = True,
     strict_deps = True,
     deps = [
         ":collective_util",
