@@ -735,6 +735,7 @@ cc_library(
     hdrs = ["aggregate_profile.h"],
     deps = [
         ":xplane_to_profile_instructions",
+        "//xla:comparison_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/profiler/protobuf:profiled_instructions_proto_cc",
