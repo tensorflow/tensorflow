@@ -138,20 +138,30 @@ std::optional<int> GetAlignmentFromArg(Value addr, ValueRange indices) {
   // computing it isn't trivial and it's unclear that we need to deal with that
   // case in practice.
   auto effective_offset_is_zero = [](ValueRange offsets) -> bool {
-    if (offsets.empty()) return true;
+    if (offsets.empty()) {
+      return true;
+    }
     return mlir::matchPattern(offsets[0].getDefiningOp(), mlir::m_Zero());
   };
-  if (!effective_offset_is_zero(indices)) return std::nullopt;
+  if (!effective_offset_is_zero(indices)) {
+    return std::nullopt;
+  }
 
   // Try to get the alignment from the function signature.
   auto base = mlir::dyn_cast<mlir::BlockArgument>(addr);
-  if (!base) return std::nullopt;
+  if (!base) {
+    return std::nullopt;
+  }
   auto func =
       mlir::dyn_cast<mlir::func::FuncOp>(base.getOwner()->getParentOp());
-  if (!func) return std::nullopt;
+  if (!func) {
+    return std::nullopt;
+  }
   auto align_attr =
       func.getArgAttr(base.getArgNumber(), ml::LLVMDialect::getAlignAttrName());
-  if (!align_attr) return std::nullopt;
+  if (!align_attr) {
+    return std::nullopt;
+  }
   return mlir::cast<mlir::IntegerAttr>(align_attr).getValue().getSExtValue();
 }
 
@@ -303,7 +313,9 @@ struct RewriteFor : public OpRewritePattern<scf::ForOp> {
     rewriter.setInsertionPoint(new_terminator);
     for (auto [index, yielded_value] :
          llvm::enumerate(new_terminator.getResults())) {
-      if (inits_to_remove.test(index)) continue;
+      if (inits_to_remove.test(index)) {
+        continue;
+      }
       new_yielded_values.push_back(yielded_value);
     }
     rewriter.replaceOpWithNewOp<scf::YieldOp>(new_terminator,
