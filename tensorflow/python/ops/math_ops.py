@@ -5509,7 +5509,14 @@ def polyval(coeffs, x, name=None):
     rules for element-wise addition and multiplication applied.
 
   @compatibility(numpy)
-  Equivalent to numpy.polyval.
+  Similar to numpy.polyval. Both use Horner's method, but they differ in
+  initialization: `numpy.polyval` initializes the accumulator to zero and
+  iterates through all coefficients, while `tf.math.polyval` starts from
+  `coeffs[0]` directly. This means that for non-finite inputs (e.g., `inf`
+  or `nan`), results may differ due to IEEE 754 behavior of `0 * inf = nan`.
+  For example, `numpy.polyval([1, 1], inf)` returns `nan` (because the
+  implicit `0 * inf` in the first iteration produces `nan`), while
+  `tf.math.polyval([1, 1], inf)` returns `inf`.
   @end_compatibility
   """
   if not isinstance(coeffs, list):
