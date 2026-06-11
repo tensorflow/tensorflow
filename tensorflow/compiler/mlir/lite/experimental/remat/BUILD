@@ -20,7 +20,7 @@ tf_cc_test(
         ":rematerializer",
         "@com_google_googletest//:gtest_main",
     ],
-)
+)  # test comment to check if this run will fail
 
 cc_library(
     name = "metadata_util",
