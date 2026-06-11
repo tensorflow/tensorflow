@@ -43,6 +43,8 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/hlo/transforms/despecializer.h"
+#include "xla/hlo/transforms/simplifiers/float_normalization.h"
 #include "xla/literal.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
@@ -55,6 +57,21 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+
+// Convenience method to run the Despecializer pass on a given HloModule.
+inline absl::Status Despecialize(HloModule* module) {
+  Despecializer despecializer;
+  return despecializer.Run(module).status();
+}
+
+// Convenience method to remove bf16 mixed precision and then despecialize
+// a given HloModule.
+inline absl::Status RemoveBF16AndDespecialize(HloModule* module) {
+  BFloat16MixedPrecisionRemoval remover;
+  RETURN_IF_ERROR(remover.Run(module).status());
+  Despecializer despecializer;
+  return despecializer.Run(module).status();
+}
 
 struct HloRunnerAgnosticTestBaseOptions {
   bool verifier_layout_sensitive = false;
