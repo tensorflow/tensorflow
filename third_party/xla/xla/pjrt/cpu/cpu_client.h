@@ -83,6 +83,20 @@ namespace xla {
 
 class PjRtCpuExecutable;
 
+// Client-less CPU compilation for XlaComputation.
+absl::StatusOr<std::unique_ptr<PjRtCpuExecutable>> CompileCpuExecutable(
+    const XlaComputation& computation, CompileOptions options,
+    const CpuTopologyDescription& topology,
+    std::function<void(HloModuleConfig&)> customize_hlo_module_config =
+        nullptr);
+
+// Client-less CPU compilation for MLIR Module.
+absl::StatusOr<std::unique_ptr<PjRtCpuExecutable>> CompileCpuExecutable(
+    MaybeOwningMlirModule module, CompileOptions options,
+    const CpuTopologyDescription& topology,
+    std::function<void(HloModuleConfig&)> customize_hlo_module_config =
+        nullptr);
+
 class PjRtCpuClient final : public CommonPjRtClient {
  public:
   ~PjRtCpuClient() override;
@@ -378,8 +392,8 @@ class CpuPjRtRawLoadedExecutable : public PjRtRawLoadedExecutable {
       const ExecuteOptions& options,
       absl::Span<const PjRtRawBufferRef> input_buffers,
       absl::Span<const PjRtRawBufferRef> output_leaf_buffers,
-      std::vector<PjRtDeviceEventRef> extra_deps,
-      std::vector<PjRtDeviceEventRef> control_deps, bool is_predetermined_error,
+      PjRtDeviceEventRefVector extra_deps,
+      PjRtDeviceEventRefVector control_deps, bool is_predetermined_error,
       bool fill_future) &&
       override;
 
@@ -402,9 +416,11 @@ class PjRtCpuExecutable final : public PjRtExecutable {
       std::unique_ptr<Executable> cpu_executable,
       absl::InlinedVector<BufferAllocation::Index, 4> result_buffer_indices,
       std::unique_ptr<HloModule> unoptimized_hlo_module,
-      const CpuTopologyDescription& topology);
+      CpuTopologyDescription topology);
 
   ~PjRtCpuExecutable() override = default;
+
+  absl::Status SetUpDonation(bool tuple_inputs);
 
   absl::string_view name() const override {
     return cpu_executable_->shared_module()->name();
@@ -455,8 +471,6 @@ class PjRtCpuExecutable final : public PjRtExecutable {
   friend class CpuPjRtRawLoadedExecutable;
   friend class PjRtCpuLoadedExecutable;
 
-  absl::Status SetUpDonation(bool tuple_inputs);
-
   int num_replicas_;
   int num_partitions_;
   bool parameter_is_tupled_arguments_;
@@ -493,7 +507,7 @@ class PjRtCpuExecutable final : public PjRtExecutable {
 
   std::unique_ptr<HloModule> unoptimized_hlo_module_;
 
-  const CpuTopologyDescription* topology_;
+  const CpuTopologyDescription topology_;
 };
 
 class PjRtCpuLoadedExecutable final : public CommonPjRtLoadedExecutable {

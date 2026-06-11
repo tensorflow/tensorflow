@@ -16,80 +16,34 @@ limitations under the License.
 #include "xla/pjrt/cpu/cpu_pjrt_compiler.h"
 
 #include <memory>
-#include <optional>
 #include <utility>
-#include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/types/span.h"
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "xla/backends/cpu/collectives/cpu_collectives.h"
-#include "xla/core/collectives/clique_id.h"
-#include "xla/core/collectives/clique_key.h"
-#include "xla/core/collectives/communicator.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
-#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/stream_executor/platform/initialize.h"
-#include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/casts.h"
 
 namespace xla::cpu {
-
 namespace {
 
-// A dummy CpuCollectives implementation used for compilation.
-class DummyCpuCollectives : public xla::cpu::CpuCollectives {
- public:
-  absl::StatusOr<std::vector<std::unique_ptr<xla::Communicator>>>
-  CreateCommunicators(const xla::CliqueKey& clique_key,
-                      const std::optional<xla::CliqueIds>& clique_ids,
-                      absl::Span<const DeviceRank> ranks,
-                      const Config& config) final {
-    return absl::UnimplementedError(
-        "DummyCpuCollectives::CreateCommunicators is not implemented");
-  }
-};
-
-// Creates a PjRt CPU client from the given topology description.
-//
-absl::StatusOr<std::unique_ptr<xla::PjRtClient>>
-CreatePjRtCpuClientFromTopology(
-    const xla::PjRtTopologyDescription& topology_description) {
-  xla::CpuClientOptions options;
-  ASSIGN_OR_RETURN(options.cpu_device_count,
-                   topology_description.CoreCountOfDefaultTypePerProcess());
-  CHECK_GE(*options.cpu_device_count, 1);
-  auto cpu_topology_description =
-      absl::down_cast<const CpuTopologyDescription*>(&topology_description);
-  if (cpu_topology_description == nullptr) {
+absl::StatusOr<const CpuTopologyDescription*> GetCpuTopology(
+    const PjRtTopologyDescription& topology) {
+  if (topology.platform_id() != xla::CpuPlatformId()) {
     return absl::InvalidArgumentError(
-        "Topology description is not a CpuTopologyDescription");
+        absl::StrCat("Invalid platform ID: expected CPU platform, got ",
+                     topology.platform_name()));
   }
-  options.topology = cpu_topology_description;
-  // We need to provide `CpuCollectives` to be able to compile multi-host/-slice
-  // CPU computations. The details of the collectives is not important because
-  // the compilation only checks if any `CpuCollectives` exists.
-  options.collectives = std::make_shared<DummyCpuCollectives>();
-  return xla::GetXlaPjrtCpuClient(options);
-}
-
-template <typename T>
-absl::StatusOr<std::unique_ptr<PjRtExecutable>> CompileInternal(
-    const T& computation, CompileOptions options,
-    const PjRtTopologyDescription& topology, PjRtClient* client) {
-  ASSIGN_OR_RETURN(auto cpu_client, CreatePjRtCpuClientFromTopology(topology));
-
-  return cpu_client->Compile(computation, options);
+  return &absl::down_cast<const xla::CpuTopologyDescription&>(topology);
 }
 
 }  // namespace
@@ -97,14 +51,25 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> CompileInternal(
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> CpuPjRtCompiler::Compile(
     CompileOptions options, const XlaComputation& computation,
     const PjRtTopologyDescription& topology, PjRtClient* client) {
-  return CompileInternal(computation, options, topology, client);
+  ASSIGN_OR_RETURN(const CpuTopologyDescription* cpu_topology,
+                   GetCpuTopology(topology));
+
+  ASSIGN_OR_RETURN(
+      auto executable,
+      CompileCpuExecutable(computation, std::move(options), *cpu_topology));
+  return std::unique_ptr<PjRtExecutable>(std::move(executable));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> CpuPjRtCompiler::Compile(
     CompileOptions options, MaybeOwningMlirModule module,
     const PjRtTopologyDescription& topology, PjRtClient* client) {
-  ASSIGN_OR_RETURN(auto cpu_client, CreatePjRtCpuClientFromTopology(topology));
-  return cpu_client->Compile(std::move(module), options);
+  ASSIGN_OR_RETURN(const CpuTopologyDescription* cpu_topology,
+                   GetCpuTopology(topology));
+
+  ASSIGN_OR_RETURN(auto executable,
+                   CompileCpuExecutable(std::move(module), std::move(options),
+                                        *cpu_topology));
+  return std::unique_ptr<PjRtExecutable>(std::move(executable));
 }
 
 }  // namespace xla::cpu

@@ -122,6 +122,12 @@ struct DynamicSliceFusion {
       Value value;
     };
 
+    // Returns whether an HLO instruction can appear as an operation or leaf in
+    // the offset expression language. Offset expressions are scalar integer
+    // computations, with scalar pred values allowed for compare/select
+    // predicates.
+    static bool IsExpr(const HloInstruction* instr);
+
     static Expr Constant(int64_t value);
     static Expr Parameter(int64_t parameter_number);
     static Expr Add(Expr lhs, Expr rhs);
