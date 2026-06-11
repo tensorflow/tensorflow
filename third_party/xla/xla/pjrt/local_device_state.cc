@@ -357,7 +357,8 @@ int LocalDeviceState::GetNewPrngSeed() {
 
 absl::Status LocalDeviceState::AllocateAndRecordEvent(
     AsyncWorkRunner* async_work_runner, BufferSequencingEventRef event,
-    se::Stream* stream, absl::string_view tag) {
+    se::Stream* stream, absl::string_view tag,
+    absl::AnyInvocable<void() &&> cleanup) {
   auto status = [&]() {
     ASSIGN_OR_RETURN(
         EventPool::Handle device_event,
@@ -365,7 +366,14 @@ absl::Status LocalDeviceState::AllocateAndRecordEvent(
     event_pool().ThenRecordEvent(stream, device_event);
     event->SetSequencingEvent(std::move(device_event), stream);
     return ThenExecuteCallback(
-        stream, [event]() { event.SetStateConcrete(); },
+        stream,
+        [event, cleanup = std::move(cleanup)]() mutable {
+          if (cleanup) {
+            std::move(cleanup)();
+            cleanup = nullptr;
+          }
+          event.SetStateConcrete();
+        },
         [event](absl::Status status) {
           event.SetError(event->AppendErrorContext(status));
         },

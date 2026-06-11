@@ -7,6 +7,10 @@ load(
     "if_google",
     "internal_visibility",
 )
+load(
+    "//xla/tsl:tsl.default.bzl",
+    "get_compatible_with_portable",
+)
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured", "if_cuda_newer_than")
 
@@ -938,5 +942,23 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
+    ],
+)
+
+cc_library(
+    name = "cuda_graph_topology_mapper",
+    srcs = ["cuda_graph_topology_mapper.cc"],
+    hdrs = ["cuda_graph_topology_mapper.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = ["@com_google_absl//absl/container:flat_hash_map"],
+)
+
+xla_cc_test(
+    name = "cuda_graph_topology_mapper_test",
+    srcs = ["cuda_graph_topology_mapper_test.cc"],
+    deps = [
+        ":cuda_graph_topology_mapper",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_main",
     ],
 )
