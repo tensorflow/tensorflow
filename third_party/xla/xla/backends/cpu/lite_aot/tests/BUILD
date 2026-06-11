@@ -1,5 +1,5 @@
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/service:xla_compile.bzl", "xla_aot_compile_cpu")
+load("//xla/service:xla_compile.bzl", "xla_aot_compile_cpu", "xla_aot_cpu_cc_library")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -20,6 +20,16 @@ xla_aot_compile_cpu(
 xla_aot_compile_cpu(
     name = "dot_aot",
     module = ":hlos/dot.hlo",
+)
+
+xla_aot_cpu_cc_library(
+    name = "dot_aot_lib",
+    testonly = True,
+    compatible_with = ["//buildenv/target:non_prod"],
+    module = ":hlos/dot.hlo",
+    deps = [
+        "//xla/backends/cpu/runtime/thunk_serdes:dot_thunk_serdes",
+    ],
 )
 
 xla_aot_compile_cpu(
@@ -61,6 +71,7 @@ xla_cc_test(
     ],
     deps = [
         ":add_aot_example_lib",
+        ":dot_aot_lib",
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu:alignment",
         "//xla/backends/cpu/lite_aot:xla_aot_function",

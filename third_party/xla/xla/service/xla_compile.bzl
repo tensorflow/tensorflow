@@ -16,6 +16,7 @@ xla_aot_compile(
 
 load("//xla:xla.default.bzl", "xla_compile_target_cpu")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 visibility(DEFAULT_LOAD_VISIBILITY)
 
@@ -45,7 +46,8 @@ def xla_aot_compile_cpu(
         module,
         target_cpu = xla_compile_target_cpu(),
         target_features = "",
-        target_triple = target_llvm_triple()):
+        target_triple = target_llvm_triple(),
+        compatible_with = []):
     """Runs xla_compile to compile an MHLO or StableHLO module into an AotCompilationResult for CPU
 
     Args:
@@ -54,6 +56,7 @@ def xla_aot_compile_cpu(
         target_cpu: The cpu name to compile for.
         target_triple: The target triple to compile for.
         target_features: The target features to compile for.
+        compatible_with: Compatibility of the target.
     """
 
     # Run xla_compile to generate the file containing an AotCompilationResult.
@@ -73,9 +76,153 @@ def xla_aot_compile_cpu(
         outs = [name],
         cmd = cmd,
         tools = [xla_compile_tool],
+        compatible_with = compatible_with,
     )
 
     return
+
+def _xla_aot_cpu_validation(name, pb_target, deps, testonly, tags, compatible_with):
+    """Dependency check genrule."""
+    infer_tool = "//xla/backends/cpu/lite_aot:infer_lite_aot_deps_main"
+    deps_str = " ".join(deps)
+    validation_target = name + "_validation"
+
+    native.genrule(
+        name = validation_target,
+        srcs = [":" + pb_target],
+        outs = [name + ".validation_ok"],
+        cmd = """
+        $(location {infer_tool}) --compilation_result=$(location :{pb_target}) --output_deps=inferred_deps.txt
+        MISSING_DEPS=""
+        while read -r dep; do
+            FOUND=0
+            for actual_dep in {deps_str}; do
+                if [ "$$dep" == "$$actual_dep" ]; then
+                    FOUND=1
+                    break
+                fi
+            done
+            if [ $$FOUND -eq 0 ]; then
+                MISSING_DEPS="$$MISSING_DEPS $$dep"
+            fi
+        done < inferred_deps.txt
+        if [ -n "$$MISSING_DEPS" ]; then
+            echo -e "\\033[1;31mERROR:\\033[0m XLA:CPU dependencies are missing from '{name}':"
+            for dep in $$MISSING_DEPS; do
+                echo "  $$dep"
+            done
+            exit 1
+        fi
+        touch $@
+        """.format(
+            infer_tool = infer_tool,
+            pb_target = pb_target,
+            deps_str = deps_str,
+            name = name,
+        ),
+        tools = [infer_tool],
+        testonly = testonly,
+        tags = tags,
+        compatible_with = compatible_with,
+    )
+    return validation_target
+
+def _xla_aot_cpu_header(name, pb_target, model_factory_name, testonly, tags, compatible_with):
+    """Header generation genrule."""
+    header_target = name + ".h"
+    gen_header_tool = "//xla/backends/cpu/lite_aot:generate_aot_header"
+
+    # Compute the runtime path.
+    pb_runtime_path = native.package_name() + "/" + pb_target if native.package_name() else pb_target
+
+    native.genrule(
+        name = name + "_header",
+        srcs = [":" + pb_target],
+        outs = [header_target],
+        cmd = "$(location {gen_header_tool}) --pb_path={pb_path} --output_h=$@ --model_factory_name={model_factory_name}".format(
+            gen_header_tool = gen_header_tool,
+            pb_path = pb_runtime_path,
+            model_factory_name = model_factory_name,
+        ),
+        tools = [gen_header_tool],
+        testonly = testonly,
+        tags = tags,
+        compatible_with = compatible_with,
+    )
+    return header_target
+
+def xla_aot_cpu_cc_library(
+        name,
+        module,
+        deps = [],
+        model_factory_name = None,
+        visibility = None,
+        testonly = None,
+        tags = [],
+        compatible_with = []):
+    """Compiles an MHLO or StableHLO module into a cc_library for XLA:CPU Lite AOT.
+
+    Args:
+        name: The name of the cc_library target.
+        module: The MHLO, HLO or StableHLO file to compile.
+        deps: Additional dependencies for the cc_library.
+        model_factory_name: The full name of the generated C++ function. Defaults to 'Get' + name +
+        'AotFunction'.
+        visibility: Visibility of the target.
+        testonly: Whether the target is testonly.
+        tags: Tags for the target.
+        compatible_with: Compatibility of the target.
+    """
+    if not model_factory_name:
+        model_factory_name = "Get" + name + "AotFunction"
+
+    pb_target = name + "_aot"
+    xla_aot_compile_cpu(
+        name = pb_target,
+        module = module,
+        compatible_with = compatible_with,
+    )
+
+    validation_target = _xla_aot_cpu_validation(
+        name = name,
+        pb_target = pb_target,
+        deps = deps,
+        testonly = testonly,
+        tags = tags,
+        compatible_with = compatible_with,
+    )
+
+    header_target = _xla_aot_cpu_header(
+        name = name,
+        pb_target = pb_target,
+        model_factory_name = model_factory_name,
+        testonly = testonly,
+        tags = tags,
+        compatible_with = compatible_with,
+    )
+
+    cc_library(
+        name = name,
+        hdrs = [":" + header_target],
+        deps = [
+            "@com_google_absl//absl/status",
+            "@com_google_absl//absl/status:statusor",
+            "@com_google_absl//absl/strings",
+            "//xla/backends/cpu/lite_aot:xla_aot_function",
+            "//xla/service/cpu:executable_proto_cc",
+            "@tsl//tsl/platform:env",
+            "@tsl//tsl/platform:path",
+            "@tsl//tsl/platform:status",
+        ] + deps,
+        data = [
+            ":" + pb_target,
+            ":" + validation_target,  # We link the validation target to ensure the validation is run.
+        ],
+        visibility = visibility,
+        testonly = testonly,
+        tags = tags,
+        compatible_with = compatible_with,
+    )
 
 def xla_aot_compile_gpu(
         name,
