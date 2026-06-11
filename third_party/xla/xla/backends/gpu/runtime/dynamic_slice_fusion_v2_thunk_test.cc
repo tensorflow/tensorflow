@@ -29,6 +29,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/command_buffer_thunk.h"
+#include "xla/backends/gpu/runtime/command_executor.h"
+#include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/memset_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -46,10 +50,13 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -631,6 +638,117 @@ TEST(DynamicSliceFusionV2ThunkTest, OneSlicedOnePassthrough) {
   EXPECT_EQ(recording_ptr->recorded_buffers()[0].size(), 1024);
   EXPECT_EQ(recording_ptr->recorded_buffers()[1].opaque(), buf1.data());
   EXPECT_EQ(recording_ptr->recorded_buffers()[1].size(), 1024);
+}
+
+TEST(DynamicSliceFusionV2ThunkTest,
+     CommandBufferUpdatesLoopDependentSliceOffset) {
+  ASSERT_OK_AND_ASSIGN(auto* executor, CreateExecutor());
+  if (executor->GetDeviceDescription().gpu_compute_capability().IsRocm()) {
+    GTEST_SKIP() << "DynamicSliceFusionV2Thunk command buffer updates are not "
+                    "supported on ROCm";
+  }
+  if (executor->GetDeviceDescription().runtime_version() <
+      stream_executor::SemanticVersion(12, 9, 0)) {
+    GTEST_SKIP() << "DynamicSliceFusionV2Thunk command buffer updates require "
+                    "CUDA runtime version 12.9 or higher";
+  }
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  constexpr int64_t kSrcBytes = sizeof(int32_t) * 4;
+  constexpr int64_t kSliceBytes = sizeof(int32_t);
+
+  std::vector<BufferAllocation> embedded_allocations;
+  embedded_allocations.reserve(2);
+  embedded_allocations.emplace_back(/*index=*/0, kSliceBytes, /*color=*/0);
+  BufferAllocation::Slice embedded_src(&embedded_allocations.back(), 0,
+                                       kSliceBytes);
+  embedded_allocations.emplace_back(/*index=*/1, kSliceBytes, /*color=*/0);
+  BufferAllocation::Slice embedded_dst(&embedded_allocations.back(), 0,
+                                       kSliceBytes);
+
+  Shape src_shape = ShapeUtil::MakeShape(S32, {4});
+  Shape slice_shape = ShapeUtil::MakeShape(S32, {1});
+
+  ThunkSequence embedded_thunks;
+  embedded_thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
+      Thunk::ThunkInfo(), ShapedSlice{embedded_src, slice_shape},
+      ShapedSlice{embedded_dst, slice_shape}, kSliceBytes));
+
+  CommandSequence embedded_commands;
+  embedded_commands.Emplace<DeviceToDeviceCopyThunk>(
+      Thunk::ThunkInfo(), ShapedSlice{embedded_src, slice_shape},
+      ShapedSlice{embedded_dst, slice_shape}, kSliceBytes);
+  ASSERT_OK_AND_ASSIGN(CommandExecutor embedded_executor,
+                       CommandExecutor::Create(
+                           std::move(embedded_commands),
+                           CommandExecutor::SynchronizationMode::kSerialize));
+
+  BufferAllocation src_alloc(0, kSrcBytes, 0);
+  BufferAllocation dst_alloc(1, kSliceBytes, 0);
+
+  auto dynamic_slice_thunk = std::make_unique<DynamicSliceFusionV2Thunk>(
+      Thunk::ThunkInfo(),
+      std::vector<Parameter>{
+          {0, src_shape, slice_shape, MakeConfig(0, 0, kSliceBytes)}},
+      std::vector<Result>{{std::nullopt, 0, slice_shape, slice_shape}},
+      std::vector<BufferAllocation::Slice>{
+          BufferAllocation::Slice(&src_alloc, 0, kSrcBytes)},
+      std::vector<BufferAllocation::Slice>{
+          BufferAllocation::Slice(&dst_alloc, 0, kSliceBytes)},
+      std::move(embedded_allocations), std::move(embedded_thunks));
+  ASSERT_OK(dynamic_slice_thunk->SetOrUpdateCommandBufferExecutor(
+      std::move(embedded_executor)));
+
+  CommandSequence commands;
+  commands.Append(dynamic_slice_thunk.get());
+  ASSERT_OK_AND_ASSIGN(CommandExecutor command_executor,
+                       CommandExecutor::Create(
+                           std::move(commands),
+                           CommandExecutor::SynchronizationMode::kSerialize));
+
+  CommandBufferThunk command_buffer_thunk(
+      std::move(command_executor), Thunk::ThunkInfo(),
+      /*thunks=*/nullptr,
+      /*enable_command_buffers_during_profiling=*/true,
+      DebugOptions::ALWAYS_UPDATE);
+
+  se::DeviceAddress<int32_t> src = executor->AllocateArray<int32_t>(4, 0);
+  std::vector<int32_t> src_data{10, 20, 30, 40};
+  ASSERT_TRUE(stream->Memcpy(&src, src_data.data(), kSrcBytes).ok());
+
+  se::DeviceAddress<int32_t> dst = executor->AllocateArray<int32_t>(1, 0);
+  ASSERT_TRUE(stream->MemZero(&dst, kSliceBytes).ok());
+
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
+  BufferAllocations allocations({src, dst}, executor->device_ordinal(),
+                                &allocator);
+
+  Thunk::PrepareParams prepare_params;
+  prepare_params.executor = executor;
+  prepare_params.buffer_allocations = &allocations;
+  ASSERT_OK(command_buffer_thunk.Prepare(prepare_params));
+
+  Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
+  ASSERT_OK(command_buffer_thunk.Initialize(
+      {executor, source, &allocations, stream.get(), stream.get()}));
+
+  auto params = MakeExecuteParams(allocations, stream.get());
+
+  ScopedWhileLoop loop("dynamic_slice_fusion_v2_command_buffer",
+                       /*trip_count=*/4);
+  ASSERT_OK(command_buffer_thunk.ExecuteOnStream(params));
+  ASSERT_OK(stream->BlockHostUntilDone());
+
+  std::vector<int32_t> out(1, 0);
+  ASSERT_TRUE(stream->Memcpy(out.data(), dst, kSliceBytes).ok());
+  ASSERT_EQ(out, std::vector<int32_t>({10}));
+
+  loop.IncLoopIteration();
+  ASSERT_OK(command_buffer_thunk.ExecuteOnStream(params));
+  ASSERT_OK(stream->BlockHostUntilDone());
+
+  ASSERT_TRUE(stream->Memcpy(out.data(), dst, kSliceBytes).ok());
+  ASSERT_EQ(out, std::vector<int32_t>({20}));
 }
 
 //===----------------------------------------------------------------------===//
