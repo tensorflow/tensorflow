@@ -15,11 +15,8 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/collectives/collective_backend_assigner.h"
 
-#include <cstdint>
-
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
