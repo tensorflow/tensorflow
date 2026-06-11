@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/evaluation/stages/tflite_inference_stage.h"
 
 #include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <memory>
 #include <string>
@@ -22,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/log/absl_log.h"
 #include "absl/log/log.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -73,9 +75,13 @@ void TfliteInferenceStage::UpdateModelInfo() {
 
 TfLiteStatus TfliteInferenceStage::ResizeInputs(
     const std::vector<std::vector<int>>& shapes) {
+  if (!interpreter_) {
+    ABSL_LOG(ERROR) << "Interpreter not initialized";
+    return kTfLiteError;
+  }
   const std::vector<int>& interpreter_inputs = interpreter_->inputs();
   if (interpreter_inputs.size() != shapes.size()) {
-    LOG(ERROR) << "New shape is not compatible";
+    ABSL_LOG(ERROR) << "New shape is not compatible";
     return kTfLiteError;
   }
 
@@ -95,12 +101,13 @@ TfLiteStatus TfliteInferenceStage::ResizeInputs(
 TfLiteStatus TfliteInferenceStage::ApplyCustomDelegate(
     Interpreter::TfLiteDelegatePtr delegate) {
   if (!interpreter_) {
-    LOG(ERROR) << "Stage not initialized before calling ApplyCustomDelegate";
+    ABSL_LOG(ERROR)
+        << "Stage not initialized before calling ApplyCustomDelegate";
     return kTfLiteError;
   }
   // Skip if delegate is a nullptr.
   if (!delegate) {
-    LOG(WARNING)
+    ABSL_LOG(WARNING)
         << "Tried to apply null TfLiteDelegatePtr to TfliteInferenceStage";
     return kTfLiteOk;
   }
@@ -114,21 +121,30 @@ TfLiteStatus TfliteInferenceStage::ApplyCustomDelegate(
 TfLiteStatus TfliteInferenceStage::Init(
     const DelegateProviders* delegate_providers) {
   if (!config_.specification().has_tflite_inference_params()) {
-    LOG(ERROR) << "TfliteInferenceParams not provided";
+    ABSL_LOG(ERROR) << "TfliteInferenceParams not provided";
     return kTfLiteError;
   }
   auto& params = config_.specification().tflite_inference_params();
   if (!params.has_model_file_path()) {
-    LOG(ERROR) << "Model path not provided";
+    ABSL_LOG(ERROR) << "Model path not provided";
+    return kTfLiteError;
+  }
+  if (params.invocations_per_run() <= 0) {
+    ABSL_LOG(ERROR) << "Invalid invocations_per_run config";
     return kTfLiteError;
   }
   std::ifstream model_check(params.model_file_path());
   if (!model_check.good()) {
-    LOG(ERROR) << "Model file not found";
+    ABSL_LOG(ERROR) << "Model file not found";
     return kTfLiteError;
   }
 
   model_ = FlatBufferModel::BuildFromFile(params.model_file_path().c_str());
+  if (!model_) {
+    ABSL_LOG(ERROR) << "Failed to mmap model file: "
+                    << params.model_file_path();
+    return kTfLiteError;
+  }
 
   bool apply_default_delegates = true;
   if (delegate_providers != nullptr) {
@@ -151,7 +167,7 @@ TfLiteStatus TfliteInferenceStage::Init(
   RegisterSelectedOps(resolver_.get());
   InterpreterBuilder(*model_, *resolver_)(&interpreter_);
   if (!interpreter_) {
-    LOG(ERROR) << "Could not build interpreter";
+    ABSL_LOG(ERROR) << "Could not build interpreter";
     return kTfLiteError;
   }
   interpreter_->SetNumThreads(params.num_threads());
@@ -161,10 +177,10 @@ TfLiteStatus TfliteInferenceStage::Init(
     auto delegate = CreateTfLiteDelegate(params, &error_message);
     if (delegate) {
       delegates_.push_back(std::move(delegate));
-      LOG(INFO) << "Successfully created "
-                << params.Delegate_Name(params.delegate()) << " delegate.";
+      ABSL_LOG(INFO) << "Successfully created "
+                     << params.Delegate_Name(params.delegate()) << " delegate.";
     } else {
-      LOG(WARNING) << error_message;
+      ABSL_LOG(WARNING) << error_message;
     }
   } else {
     auto delegates = delegate_providers->CreateAllDelegates(params);
@@ -174,10 +190,11 @@ TfLiteStatus TfliteInferenceStage::Init(
   for (int i = 0; i < delegates_.size(); ++i) {
     if (interpreter_->ModifyGraphWithDelegate(delegates_[i].get()) !=
         kTfLiteOk) {
-      LOG(FATAL) << "Failed to apply delegate " << i;
+      ABSL_LOG(ERROR) << "Failed to apply delegate " << i;
+      return kTfLiteError;
     }
   }
-  interpreter_->AllocateTensors();
+  TF_LITE_ENSURE_STATUS(interpreter_->AllocateTensors());
   UpdateModelInfo();
 
   return kTfLiteOk;
@@ -185,14 +202,38 @@ TfLiteStatus TfliteInferenceStage::Init(
 
 TfLiteStatus TfliteInferenceStage::Run() {
   if (!inputs_) {
-    LOG(ERROR) << "Input data not set";
+    ABSL_LOG(ERROR) << "Input data not set";
+    return kTfLiteError;
+  }
+  if (inputs_->size() < interpreter_->inputs().size()) {
+    ABSL_LOG(ERROR)
+        << "Input data contains fewer tensors than required by the model";
     return kTfLiteError;
   }
 
   // Copy input data.
   for (int i = 0; i < interpreter_->inputs().size(); ++i) {
     TfLiteTensor* tensor = interpreter_->tensor(interpreter_->inputs()[i]);
-    tensor->data.raw = static_cast<char*>(inputs_->at(i));
+    if (inputs_->at(i) == nullptr) {
+      ABSL_LOG(ERROR) << "Input pointer " << i << " is null";
+      return kTfLiteError;
+    }
+    if (input_sizes_ != nullptr) {
+      if (input_sizes_->size() <= i) {
+        ABSL_LOG(ERROR) << "Missing input size for tensor " << i;
+        return kTfLiteError;
+      }
+      if (input_sizes_->at(i) < tensor->bytes) {
+        ABSL_LOG(ERROR) << "Input buffer size " << input_sizes_->at(i)
+                        << " is smaller than expected tensor size "
+                        << tensor->bytes;
+        return kTfLiteError;
+      }
+    } else {
+      ABSL_LOG(WARNING) << "Input buffer sizes were not provided; cannot "
+                           "verify buffer bounds before memcpy";
+    }
+    std::memcpy(tensor->data.raw, inputs_->at(i), tensor->bytes);
   }
 
   // Invoke.
@@ -200,7 +241,7 @@ TfLiteStatus TfliteInferenceStage::Run() {
   for (int i = 0; i < params.invocations_per_run(); ++i) {
     int64_t start_us = profiling::time::NowMicros();
     if (interpreter_->Invoke() != kTfLiteOk) {
-      LOG(ERROR) << "TFLite interpreter failed to invoke at run " << i;
+      ABSL_LOG(ERROR) << "TFLite interpreter failed to invoke at run " << i;
       return kTfLiteError;
     }
     latency_stats_.UpdateStat(profiling::time::NowMicros() - start_us);

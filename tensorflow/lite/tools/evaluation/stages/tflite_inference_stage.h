@@ -54,10 +54,19 @@ class TfliteInferenceStage : public EvaluationStage {
 
   ~TfliteInferenceStage() override {}
 
-  // Call before Run().
-  // This class does not take ownership of raw_input_ptrs.
+  // Call before Run(). Deprecated: prefer SetInputs(ptrs, sizes) to prevent OOB
+  // reads. This class does not take ownership of raw_input_ptrs.
   void SetInputs(const std::vector<void*>& raw_input_ptrs) {
     inputs_ = &raw_input_ptrs;
+    input_sizes_ = nullptr;
+  }
+
+  // Call before Run().
+  // This class does not take ownership of raw_input_ptrs or input_sizes.
+  void SetInputs(const std::vector<void*>& raw_input_ptrs,
+                 const std::vector<size_t>& input_sizes) {
+    inputs_ = &raw_input_ptrs;
+    input_sizes_ = &input_sizes;
   }
 
   // Resize input tensors with given shapes.
@@ -86,6 +95,7 @@ class TfliteInferenceStage : public EvaluationStage {
 
   TfLiteModelInfo model_info_;
   const std::vector<void*>* inputs_ = nullptr;
+  const std::vector<size_t>* input_sizes_ = nullptr;
   std::vector<void*> outputs_;
 
   tsl::Stat<int64_t> latency_stats_;
