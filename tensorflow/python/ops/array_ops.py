@@ -4597,6 +4597,13 @@ def where_v2(condition, x=None, y=None, name=None):
   because the gradient calculation for `tf.where` combines the two branches, for
   performance reasons.
 
+  When using `tf.where` with `tf.GradientTape`, ensure the target passed to
+  `tape.gradient` is built inside the tape context. For example, if `y` is
+  created in the tape scope but `tf.reduce_sum(y)` is created afterward, then
+  the default gradient result is `None` because that target is unconnected.
+  For piecewise semantics where branch behavior should drive gradients, use
+  `tf.cond`, arithmetic masking, or a custom gradient.
+
   A workaround is to use an inner `tf.where` to ensure the function has
   no asymptote, and to avoid computing a value whose gradient is `NaN` by
   replacing dangerous inputs with safe inputs.
