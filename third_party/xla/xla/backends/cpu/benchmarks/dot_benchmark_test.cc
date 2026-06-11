@@ -171,7 +171,7 @@ struct GenericDot {
   std::vector<int64_t> lhs_contracting_dims;
   std::vector<int64_t> rhs_contracting_dims;
 };
-// LINT.ThenChange(//tensorflow/compiler/xla/tools/extract_dots_for_benchmark.cc)
+// LINT.ThenChange(//third_party/tensorflow/compiler/xla/tools/extract_dots_for_benchmark.cc)
 
 void BM_GenericDot(benchmark::State& state, GenericDot info) {
   HloComputation::Builder builder("BM_GenericDot");
