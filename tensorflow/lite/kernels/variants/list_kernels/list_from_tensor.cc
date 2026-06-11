@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
 #include <cstring>
 #include <utility>
 
@@ -32,6 +33,42 @@ namespace {
 constexpr int kTensorInput = 0;
 constexpr int kElementShapeInput = 1;
 constexpr int kListOut = 0;
+
+void CopyPackedTensor(const TfLiteTensor* src, TfLiteTensor* dst,
+                      int src_row_offset, int num_elements) {
+  int bit_width = 8;
+  if (dst->type == kTfLiteInt4 || dst->type == kTfLiteUInt4) {
+    bit_width = 4;
+  } else if (dst->type == kTfLiteInt2) {
+    bit_width = 2;
+  }
+
+  const uint8_t* src_raw = reinterpret_cast<const uint8_t*>(src->data.raw);
+  uint8_t* dst_raw = reinterpret_cast<uint8_t*>(dst->data.raw);
+
+  if (bit_width == 8) {
+    return;
+  }
+
+  // Zero-initialize the destination buffer to make sure unused bits are 0.
+  memset(dst_raw, 0, dst->bytes);
+
+  int elements_per_byte = 8 / bit_width;
+  uint8_t mask = (1 << bit_width) - 1;
+
+  for (int j = 0; j < num_elements; ++j) {
+    int src_idx = src_row_offset + j;
+    int dst_idx = j;
+
+    uint8_t src_byte = src_raw[src_idx / elements_per_byte];
+    uint8_t val =
+        (src_byte >> ((src_idx % elements_per_byte) * bit_width)) & mask;
+
+    int dst_byte_idx = dst_idx / elements_per_byte;
+    int dst_shift = (dst_idx % elements_per_byte) * bit_width;
+    dst_raw[dst_byte_idx] |= (val & mask) << dst_shift;
+  }
+}
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
@@ -104,6 +141,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   arr->Resize(list_len);
 
+  int num_elements_per_row = 1;
+  for (int j = 0; j < element_shape_for_tensors->size; ++j) {
+    num_elements_per_row *= element_shape_for_tensors->data[j];
+  }
+  const bool is_packed_type =
+      (tensor_input->type == kTfLiteInt4 ||
+       tensor_input->type == kTfLiteUInt4 || tensor_input->type == kTfLiteInt2);
+
   // Copy each row of input into the elements of the new list.
   size_t data_offset = 0;
   for (int i = 0; i < list_len; ++i) {
@@ -115,8 +160,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     if (tensor_to_set->bytes > 0) {
       TF_LITE_ENSURE(context, tensor_to_set->data.raw != nullptr);
       TF_LITE_ENSURE(context, tensor_input->data.raw != nullptr);
-      memcpy(tensor_to_set->data.raw, tensor_input->data.raw + data_offset,
-             tensor_to_set->bytes);
+      if (is_packed_type) {
+        CopyPackedTensor(tensor_input, tensor_to_set.get(),
+                         i * num_elements_per_row, num_elements_per_row);
+      } else {
+        memcpy(tensor_to_set->data.raw, tensor_input->data.raw + data_offset,
+               tensor_to_set->bytes);
+      }
     }
     data_offset += tensor_to_set->bytes;
 
