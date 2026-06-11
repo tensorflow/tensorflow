@@ -338,7 +338,10 @@ class LowerXlaIntrinsicLibPass
         LowerIntrinsicPattern<codegen::intrinsics::Tanh, mlir::math::TanhOp>,
         LowerIntrinsicPattern<codegen::intrinsics::EigenAtan,
                               mlir::math::AtanOp>,
+        LowerIntrinsicPattern<codegen::intrinsics::EigenSin, mlir::math::SinOp>,
+        LowerIntrinsicPattern<codegen::intrinsics::EigenCos, mlir::math::CosOp>,
         SimplifyAtan2Pattern, LowerErfPattern, LowerTruncF32BF16FPattern>(
+
         &getContext(), module_op);
 
     if (mlir::failed(
