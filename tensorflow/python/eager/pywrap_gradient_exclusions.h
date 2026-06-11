@@ -33,6 +33,6 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
 // necessary because sometimes it may not be possible to enumerate all indices
 // just using OpDef e.g. when there are `list(T)` or `N * T` type outputs.
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
-    const tensorflow::string& op_name);
+    const std::string& op_name);
 
 #endif  // TENSORFLOW_PYTHON_EAGER_PYWRAP_GRADIENT_EXCLUSIONS_H_
