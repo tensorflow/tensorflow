@@ -325,12 +325,12 @@ class CommonPjRtClient : public PjRtClient {
   absl::StatusOr<std::shared_ptr<TransposePlan>> GetTransposePlan(
       const TransposePlan::Options& options);
 
-  virtual void ScheduleRemoteSend(
-      PjRtMemorySpace* memory_space, PjRtRawBufferRef raw_buffer,
-      std::vector<PjRtDeviceEventRef> definition_events,
-      PjRtDeviceEventPromiseRef usage_event_promise,
-      Future<std::string> serialized_descriptor,
-      PjRtBuffer::RemoteSendCallback on_done);
+  virtual void ScheduleRemoteSend(PjRtMemorySpace* memory_space,
+                                  PjRtRawBufferRef raw_buffer,
+                                  PjRtDeviceEventRefVector definition_events,
+                                  PjRtDeviceEventPromiseRef usage_event_promise,
+                                  Future<std::string> serialized_descriptor,
+                                  PjRtBuffer::RemoteSendCallback on_done);
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
@@ -342,8 +342,7 @@ class CommonPjRtClient : public PjRtClient {
   // Takes raw buffers, a notifier, and the transfer dependency AVs that must
   // be ready before the receive can complete. Returns a vector of definition
   // events that will be fulfilled once the receive operation completes.
-  virtual absl::StatusOr<std::vector<PjRtDeviceEventRef>>
-  CrossHostReceiveBuffersInto(
+  virtual absl::StatusOr<PjRtDeviceEventRefVector> CrossHostReceiveBuffersInto(
       absl::Span<const tsl::RCReference<PjRtRawBuffer>> buffers,
       PjRtCrossHostRecvNotifier notifier,
       absl::Span<const PjRtDeviceEventRef> transfer_dependency_avs) {
@@ -375,9 +374,8 @@ class CommonPjRtClient : public PjRtClient {
     tsl::RCReference<PjRtRawBuffer> raw_buffer;
   };
 
-  virtual absl::StatusOr<std::vector<PjRtDeviceEventRef>>
-  CrossHostTransferBuffers(
-      std::vector<PjRtDeviceEventRef> transfer_dependencies,
+  virtual absl::StatusOr<PjRtDeviceEventRefVector> CrossHostTransferBuffers(
+      PjRtDeviceEventRefVector transfer_dependencies,
       std::vector<CrossHostTransferSpec> transfer_specs) {
     return absl::UnimplementedError(
         "CrossHostTransferBuffers is not implemented.");
@@ -387,8 +385,8 @@ class CommonPjRtClient : public PjRtClient {
       const ExecuteOptions& options,
       absl::Span<PjRtBuffer* const> argument_handles,
       absl::Span<int const> donated_params,
-      std::vector<PjRtDeviceEventRef>& extra_deps,
-      std::vector<PjRtDeviceEventRef>& control_deps,
+      PjRtDeviceEventRefVector& extra_deps,
+      PjRtDeviceEventRefVector& control_deps,
       absl::InlinedVector<PjRtRawBufferRef, 4>& input_buffers,
       absl::InlinedVector<CommonPjRtBuffer::ScopedHold, 4>& device_buffers,
       PjRtDevice* device, int replica, int partition,
@@ -456,8 +454,8 @@ class PjRtRawLoadedExecutable {
   virtual RawExecuteResult Execute(const ExecuteOptions& options,
                                    absl::Span<const PjRtRawBufferRef> inputs,
                                    absl::Span<const PjRtRawBufferRef> results,
-                                   std::vector<PjRtDeviceEventRef> extra_deps,
-                                   std::vector<PjRtDeviceEventRef> control_deps,
+                                   PjRtDeviceEventRefVector extra_deps,
+                                   PjRtDeviceEventRefVector control_deps,
                                    bool is_predetermined_error,
                                    bool fill_future) && = 0;
 };
@@ -654,8 +652,8 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
     std::unique_ptr<PjRtRawLoadedExecutable> executable;
     absl::InlinedVector<PjRtRawBufferRef, 4> input_buffers;
     absl::InlinedVector<CommonPjRtBuffer::ScopedHold, 4> device_buffers;
-    std::vector<PjRtDeviceEventRef> extra_deps;
-    std::vector<PjRtDeviceEventRef> control_deps;
+    PjRtDeviceEventRefVector extra_deps;
+    PjRtDeviceEventRefVector control_deps;
     absl::InlinedVector<PjRtRawBufferRef, 4> output_leaf_buffers;
     bool is_predetermined_error;
     const ExecuteOptions* options;
