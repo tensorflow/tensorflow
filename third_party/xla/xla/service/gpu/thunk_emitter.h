@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/host_send_recv_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -67,8 +68,9 @@ class ThunkEmitter {
       const HloModule* module);
 
   llvm::Module* constants_module() { return constants_module_.get(); }
-  std::unique_ptr<llvm::Module> ConsumeConstantsModule() {
-    return std::move(constants_module_);
+  LlvmKernelSource ConsumeConstantsModule() {
+    return LlvmKernelSource{std::move(constants_module_context_),
+                            std::move(constants_module_)};
   }
 
  private:
@@ -233,7 +235,7 @@ class ThunkEmitter {
   // Cache to store the call_graph.
   std::unique_ptr<CallGraph> call_graph_;
 
-  // Module with constants.
+  std::unique_ptr<llvm::LLVMContext> constants_module_context_;
   std::unique_ptr<llvm::Module> constants_module_;
 
   // TODO(tjoerg): Attach the HloOrdering to the HloSchedule instead of
