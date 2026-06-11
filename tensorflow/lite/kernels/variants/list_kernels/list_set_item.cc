@@ -106,6 +106,7 @@ TfLiteStatus Eval(TfLiteContext* ctx, TfLiteNode* node) {
 
   TensorArray* input_arr =
       reinterpret_cast<TensorArray*>(list_input->data.data);
+  TF_LITE_ENSURE(ctx, input_arr != nullptr);
 
   int index;
   TF_LITE_ENSURE_OK(ctx, semantic.GetIndexVal(*input_arr, index));
@@ -120,11 +121,14 @@ TfLiteStatus Eval(TfLiteContext* ctx, TfLiteNode* node) {
 
   TensorArray* output_arr = static_cast<TensorArray*>(
       input_arr->CloneTo(static_cast<VariantData*>(output->data.data)));
+  TF_LITE_ENSURE(ctx, output_arr != nullptr);
 
   // TODO(b/288302706) Skip copy when tensor is used only once.
+  TF_LITE_ENSURE(ctx, item_input->dims != nullptr);
   TensorUniquePtr item_copy = BuildTfLiteTensor(
       item_input->type, BuildTfLiteArray(*item_input->dims), kTfLiteDynamic);
-  TfLiteTensorCopy(item_input, item_copy.get());
+  TF_LITE_ENSURE(ctx, item_copy != nullptr);
+  TF_LITE_ENSURE_OK(ctx, TfLiteTensorCopy(item_input, item_copy.get()));
 
   if (index >= output_arr->NumElements()) {
     output_arr->Resize(index + 1);

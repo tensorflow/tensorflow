@@ -294,6 +294,9 @@ void TfLiteSparsityFree(TfLiteSparsity* sparsity) {
 }
 
 void TfLiteTensorFree(TfLiteTensor* t) {
+  if (t == nullptr) {
+    return;
+  }
   TfLiteTensorDataFree(t);
   if (t->dims) TfLiteIntArrayFree(t->dims);
   t->dims = nullptr;
@@ -394,11 +397,12 @@ TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst) {
     }
     auto* dst_vd = static_cast<VariantData*>(dst->data.data);
     auto* src_vd = static_cast<VariantData*>(src->data.data);
-
-    // `CloneTo` will handle the case when `dst_vd` is nullptr, so it is safe
-    // to `CloneTo` something which was "freed". Also, returning from `CloneTo`
-    // will implicitly cast to `VariantData`; don't need static cast here.
-    dst->data.data = src_vd->CloneTo(dst_vd);
+    if (src_vd == nullptr) {
+      TfLiteTensorDataFree(dst);
+      dst->data.data = nullptr;
+    } else {
+      dst->data.data = src_vd->CloneTo(dst_vd);
+    }
   } else {
     memcpy(dst->data.raw, src->data.raw, src->bytes);
   }

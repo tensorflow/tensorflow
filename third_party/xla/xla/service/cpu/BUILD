@@ -220,6 +220,7 @@ cc_library(
         "//xla/hlo/transforms/simplifiers:flatten_call_graph",
         "//xla/hlo/transforms/simplifiers:float_normalization",
         "//xla/hlo/transforms/simplifiers:gather_simplifier",
+        "//xla/hlo/transforms/simplifiers:gemv_rewriter",
         "//xla/hlo/transforms/simplifiers:hlo_computation_deduplicator",
         "//xla/hlo/transforms/simplifiers:hlo_constant_folding",
         "//xla/hlo/transforms/simplifiers:hlo_dce",

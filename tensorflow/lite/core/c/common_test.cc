@@ -1050,4 +1050,6 @@ TEST(EnsureOk, WithMessage) {
   EXPECT_THAT(last_error, ::testing::HasSubstr("common_test.cc"));
 }
 
+TEST(TensorFree, NullTensor_DoesNotCrash) { TfLiteTensorFree(nullptr); }
+
 }  // namespace tflite
