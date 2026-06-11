@@ -57,6 +57,9 @@ absl::StatusOr<Layout> GetLayoutWithNewMinorMostDimension(
 
 class GemvRewriterVisitor : public DfsHloRewriteVisitor {
  public:
+  explicit GemvRewriterVisitor(const bool is_layout_sensitive = true)
+      : is_layout_sensitive_(is_layout_sensitive) {}
+
   absl::Status HandleDot(HloInstruction* instr) override {
     HloDotInstruction* dot = Cast<HloDotInstruction>(instr);
     const DotDimensionNumbers& dim_numbers = dot->dot_dimension_numbers();
@@ -88,6 +91,15 @@ class GemvRewriterVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();
     }
 
+    // Skip if the layout is not normalized and the pass is not layout
+    // sensitive.
+    if (!is_layout_sensitive_ &&
+        !(LayoutUtil::IsMonotonicWithDim0Major(lhs->shape().layout()) &&
+          LayoutUtil::IsMonotonicWithDim0Major(rhs->shape().layout()) &&
+          LayoutUtil::IsMonotonicWithDim0Major(dot->shape().layout()))) {
+      return absl::OkStatus();
+    }
+
     changed_ = true;
 
     HloComputation* computation = dot->parent();
@@ -102,7 +114,9 @@ class GemvRewriterVisitor : public DfsHloRewriteVisitor {
       ASSIGN_OR_RETURN(*new_lhs_shape.mutable_layout(),
                        GetLayoutWithNewMinorMostDimension(lhs_shape.layout()));
       new_lhs = computation->AddInstruction(
-          HloInstruction::CreateBitcast(new_lhs_shape, lhs));
+          is_layout_sensitive_
+              ? HloInstruction::CreateBitcast(new_lhs_shape, lhs)
+              : HloInstruction::CreateReshape(new_lhs_shape, lhs));
     }
 
     HloInstruction* new_rhs = rhs;
@@ -116,7 +130,9 @@ class GemvRewriterVisitor : public DfsHloRewriteVisitor {
       ASSIGN_OR_RETURN(*new_rhs_shape.mutable_layout(),
                        GetLayoutWithNewMinorMostDimension(rhs_shape.layout()));
       new_rhs = computation->AddInstruction(
-          HloInstruction::CreateBitcast(new_rhs_shape, rhs));
+          is_layout_sensitive_
+              ? HloInstruction::CreateBitcast(new_rhs_shape, rhs)
+              : HloInstruction::CreateReshape(new_rhs_shape, rhs));
     }
 
     std::vector<int64_t> new_out_dimensions;
@@ -142,15 +158,18 @@ class GemvRewriterVisitor : public DfsHloRewriteVisitor {
         computation->AddInstruction(HloInstruction::CreateDot(
             new_out_shape, new_lhs, new_rhs, dot->dot_dimension_numbers(),
             dot->precision_config()));
-    HloInstruction* bitcast = computation->AddInstruction(
-        HloInstruction::CreateBitcast(dot->shape(), new_dot));
-    return computation->ReplaceInstruction(dot, bitcast);
+    HloInstruction* bitcast_or_reshape = computation->AddInstruction(
+        is_layout_sensitive_
+            ? HloInstruction::CreateBitcast(dot->shape(), new_dot)
+            : HloInstruction::CreateReshape(dot->shape(), new_dot));
+    return computation->ReplaceInstruction(dot, bitcast_or_reshape);
   }
 
   bool changed() const { return changed_; }
 
  private:
   bool changed_ = false;
+  const bool is_layout_sensitive_;
 };
 
 }  // namespace
@@ -158,7 +177,7 @@ class GemvRewriterVisitor : public DfsHloRewriteVisitor {
 absl::StatusOr<bool> GemvRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  GemvRewriterVisitor gemv_rewriter;
+  GemvRewriterVisitor gemv_rewriter(is_layout_sensitive_);
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     RETURN_IF_ERROR(computation->Accept(&gemv_rewriter));
