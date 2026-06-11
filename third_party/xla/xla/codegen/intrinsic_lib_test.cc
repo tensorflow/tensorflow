@@ -54,6 +54,26 @@ TEST(IntrinsicLibTest, ExpVectorizations) {
                                  "xla.exp.f64:xla.exp.v4f64:4:_ZGV_LLVM_N4v",
                                  "xla.exp.f64:xla.exp.v8f64:8:_ZGV_LLVM_N8v"));
 }
+
+TEST(IntrinsicLibTest, AtanVectorizations) {
+  IntrinsicOptions options;
+  auto lib = IntrinsicFunctionLib(options);
+  std::vector<llvm::VecDesc> vec_descs = lib.Vectorizations();
+  std::vector<std::string> vec_descs_str;
+  for (const auto& vec_desc : vec_descs) {
+    if (vec_desc.getScalarFnName().starts_with("xla.atan")) {
+      vec_descs_str.push_back(ToString(vec_desc));
+    }
+  }
+
+  EXPECT_THAT(
+      vec_descs_str,
+      UnorderedElementsAre("xla.atan.f32:xla.atan.v4f32:4:_ZGV_LLVM_N4v",
+                           "xla.atan.f32:xla.atan.v8f32:8:_ZGV_LLVM_N8v",
+                           "xla.atan.f32:xla.atan.v16f32:16:_ZGV_LLVM_N16v",
+                           "xla.atan.f64:xla.atan.v4f64:4:_ZGV_LLVM_N4v",
+                           "xla.atan.f64:xla.atan.v8f64:8:_ZGV_LLVM_N8v"));
+}
 }  // namespace
 
 }  // namespace xla::codegen::intrinsics
