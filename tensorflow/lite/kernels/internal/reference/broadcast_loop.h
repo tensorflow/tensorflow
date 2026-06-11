@@ -16,114 +16,103 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_BROADCAST_LOOP_H_
 
 #include <algorithm>
-#include <vector>
 
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/runtime_shape.h"
 
 namespace tflite {
 namespace reference_ops {
 
-inline std::vector<int> BroadcastStridesForShape(
-    const RuntimeShape& unextended_shape,
-    const RuntimeShape& extended_output_shape) {
-  const int dims_count = extended_output_shape.DimensionsCount();
-  const RuntimeShape extended_shape =
-      RuntimeShape::ExtendedShape(dims_count, unextended_shape);
-  std::vector<int> strides(dims_count);
-  int stride = 1;
-  for (int i = dims_count - 1; i >= 0; --i) {
-    const int dim = extended_shape.Dims(i);
-    const int output_dim = extended_output_shape.Dims(i);
-    strides[i] = (dim == 1 && output_dim != 1) ? 0 : stride;
-    stride *= dim;
+template <typename Pointer1, typename Pointer2, typename OutputType,
+          typename BinaryOp>
+void RunBinaryOp(Pointer1 a, Pointer2 b, OutputType* output,
+                 const size_t* a_stride, const size_t* b_stride,
+                 const size_t* output_stride, const size_t* output_shape,
+                 int rank, BinaryOp op) {
+  if (rank <= 0) {
+    *output = op(*a, *b);
+  } else {
+    if (rank == 1) {
+      TFLITE_DCHECK_EQ(output_stride[0], 1);
+      if (a_stride[0] == 0) {
+        TFLITE_DCHECK_EQ(b_stride[0], 1);
+        const auto a_0 = *a;
+        for (size_t i = 0; i < output_shape[0]; ++i) {
+          output[i] = op(a_0, b[i]);
+        }
+      } else if (b_stride[0] == 0) {
+        TFLITE_DCHECK_EQ(a_stride[0], 1);
+        const auto b_0 = *b;
+        for (size_t i = 0; i < output_shape[0]; ++i) {
+          output[i] = op(a[i], b_0);
+        }
+      } else {
+        TFLITE_DCHECK_EQ(a_stride[0], 1);
+        TFLITE_DCHECK_EQ(b_stride[0], 1);
+        for (size_t i = 0; i < output_shape[0]; ++i) {
+          output[i] = op(a[i], b[i]);
+        }
+      }
+    } else {
+      for (size_t i = 0; i < output_shape[0]; ++i) {
+        RunBinaryOp(a + i * a_stride[0], b + i * b_stride[0],
+                    output + i * output_stride[0], a_stride + 1, b_stride + 1,
+                    output_stride + 1, output_shape + 1, rank - 1, op);
+      }
+    }
   }
-  return strides;
 }
 
-inline std::vector<int> StridesForShape(const RuntimeShape& shape) {
-  const int dims_count = shape.DimensionsCount();
-  std::vector<int> strides(dims_count);
-  int stride = 1;
-  for (int i = dims_count - 1; i >= 0; --i) {
-    strides[i] = stride;
-    stride *= shape.Dims(i);
-  }
-  return strides;
-}
+template <typename Pointer1, typename Pointer2, typename OutputType,
+          typename BinaryOp>
+inline void BroadcastBinaryOpSimple(const RuntimeShape& input1_shape,
+                                    Pointer1 input1_data,
+                                    const RuntimeShape& input2_shape,
+                                    Pointer2 input2_data,
+                                    const RuntimeShape& output_shape,
+                                    OutputType* output_data, BinaryOp op) {
+  constexpr int kMaxRank = 8;
 
-template <typename Fn>
-inline void ForEachBroadcastedElement(const RuntimeShape& input1_shape,
-                                      const RuntimeShape& input2_shape,
-                                      const RuntimeShape& output_shape, Fn fn) {
   const int dims_count = std::max(
       output_shape.DimensionsCount(),
       std::max(input1_shape.DimensionsCount(), input2_shape.DimensionsCount()));
+
+  TFLITE_DCHECK_LE(dims_count, kMaxRank);
+
   const RuntimeShape extended_output_shape =
       RuntimeShape::ExtendedShape(dims_count, output_shape);
-  const std::vector<int> output_strides =
-      StridesForShape(extended_output_shape);
-  const std::vector<int> input1_strides =
-      BroadcastStridesForShape(input1_shape, extended_output_shape);
-  const std::vector<int> input2_strides =
-      BroadcastStridesForShape(input2_shape, extended_output_shape);
+  const RuntimeShape extended_input1_shape =
+      RuntimeShape::ExtendedShape(dims_count, input1_shape);
+  const RuntimeShape extended_input2_shape =
+      RuntimeShape::ExtendedShape(dims_count, input2_shape);
 
-  const int flat_size = output_shape.FlatSize();
-  for (int output_index = 0; output_index < flat_size; ++output_index) {
-    int remaining_index = output_index;
-    int input1_index = 0;
-    int input2_index = 0;
-    for (int dim = 0; dim < dims_count; ++dim) {
-      const int output_stride = output_strides[dim];
-      const int coordinate =
-          output_stride == 0 ? 0 : remaining_index / output_stride;
-      if (output_stride != 0) {
-        remaining_index %= output_stride;
-      }
-      input1_index += coordinate * input1_strides[dim];
-      input2_index += coordinate * input2_strides[dim];
-    }
-    fn(output_index, input1_index, input2_index);
+  size_t a_strides[kMaxRank];
+  size_t b_strides[kMaxRank];
+  size_t o_strides[kMaxRank];
+  size_t o_shape[kMaxRank];
+
+  size_t a_accum_stride = 1;
+  size_t b_accum_stride = 1;
+  size_t o_accum_stride = 1;
+  for (int i = dims_count - 1; i >= 0; --i) {
+    a_strides[i] = (extended_input1_shape.Dims(i) == 1 &&
+                    extended_output_shape.Dims(i) != 1)
+                       ? 0
+                       : a_accum_stride;
+    b_strides[i] = (extended_input2_shape.Dims(i) == 1 &&
+                    extended_output_shape.Dims(i) != 1)
+                       ? 0
+                       : b_accum_stride;
+    o_strides[i] = o_accum_stride;
+    o_shape[i] = extended_output_shape.Dims(i);
+
+    a_accum_stride *= extended_input1_shape.Dims(i);
+    b_accum_stride *= extended_input2_shape.Dims(i);
+    o_accum_stride *= extended_output_shape.Dims(i);
   }
-}
 
-template <typename Fn>
-inline void ForEachBroadcastedElement(const RuntimeShape& input1_shape,
-                                      const RuntimeShape& input2_shape,
-                                      const RuntimeShape& input3_shape,
-                                      const RuntimeShape& output_shape, Fn fn) {
-  const int dims_count = std::max(
-      std::max(output_shape.DimensionsCount(), input1_shape.DimensionsCount()),
-      std::max(input2_shape.DimensionsCount(), input3_shape.DimensionsCount()));
-  const RuntimeShape extended_output_shape =
-      RuntimeShape::ExtendedShape(dims_count, output_shape);
-  const std::vector<int> output_strides =
-      StridesForShape(extended_output_shape);
-  const std::vector<int> input1_strides =
-      BroadcastStridesForShape(input1_shape, extended_output_shape);
-  const std::vector<int> input2_strides =
-      BroadcastStridesForShape(input2_shape, extended_output_shape);
-  const std::vector<int> input3_strides =
-      BroadcastStridesForShape(input3_shape, extended_output_shape);
-
-  const int flat_size = output_shape.FlatSize();
-  for (int output_index = 0; output_index < flat_size; ++output_index) {
-    int remaining_index = output_index;
-    int input1_index = 0;
-    int input2_index = 0;
-    int input3_index = 0;
-    for (int dim = 0; dim < dims_count; ++dim) {
-      const int output_stride = output_strides[dim];
-      const int coordinate =
-          output_stride == 0 ? 0 : remaining_index / output_stride;
-      if (output_stride != 0) {
-        remaining_index %= output_stride;
-      }
-      input1_index += coordinate * input1_strides[dim];
-      input2_index += coordinate * input2_strides[dim];
-      input3_index += coordinate * input3_strides[dim];
-    }
-    fn(output_index, input1_index, input2_index, input3_index);
-  }
+  RunBinaryOp(input1_data, input2_data, output_data, a_strides, b_strides,
+              o_strides, o_shape, dims_count, op);
 }
 
 }  // namespace reference_ops

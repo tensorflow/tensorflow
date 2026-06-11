@@ -18,179 +18,17 @@ limitations under the License.
 #include <stdint.h>
 
 #include <algorithm>
-#include <cstddef>
-#include <limits>
 
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/reference/broadcast_loop.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
 
 namespace reference_ops {
 
-template <class T>
-struct SubImpl {
-  template <class F>
-  static void BroadcastInput1(const ArithmeticParams& params,
-                              const T* input1_data, const T* input2_data,
-                              T* output_data, size_t size, F binary_func) {
-    for (size_t c = 0; c < size; ++c) {
-      output_data[c] = binary_func(input1_data[0], input2_data[c], params);
-    }
-  }
-
-  template <class F>
-  static void BroadcastInput2(const ArithmeticParams& params,
-                              const T* input1_data, const T* input2_data,
-                              T* output_data, size_t size, F binary_func) {
-    for (size_t c = 0; c < size; ++c) {
-      output_data[c] = binary_func(input1_data[c], input2_data[0], params);
-    }
-  }
-
-  template <class F>
-  static void ElementWise(const ArithmeticParams& params, const T* input1_data,
-                          const T* input2_data, T* output_data, size_t size,
-                          F binary_func) {
-    for (size_t c = 0; c < size; ++c) {
-      output_data[c] = binary_func(input1_data[c], input2_data[c], params);
-    }
-  }
-};
-
-template <>
-struct SubImpl<int32_t> {
-  template <class F>
-  static void BroadcastInput1(const ArithmeticParams& params,
-                              const int32_t* input1_data,
-                              const int32_t* input2_data, int32_t* output_data,
-                              size_t size, F binary_func) {
-    size_t c = 0;
-    int32_t activation_min, activation_max;
-    GetActivationParams(params, &activation_min, &activation_max);
-#ifdef USE_NEON
-    const int32x4_t vmax = vdupq_n_s32(activation_max);
-    const int32x4_t vmin = vdupq_n_s32(activation_min);
-    const int32x4_t va = vdupq_n_s32(input1_data[0]);
-    for (; c + 4 <= size; c += 4) {
-      const int32x4_t vb = vld1q_s32(&input2_data[c]);
-      int32x4_t vres = vsubq_s32(va, vb);
-      vres = vmaxq_s32(vmin, vres);
-      vres = vminq_s32(vmax, vres);
-      vst1q_s32(&output_data[c], vres);
-    }
-#endif
-    for (; c < size; ++c) {
-      output_data[c] = binary_func(input1_data[0], input2_data[c], params);
-    }
-  }
-
-  template <class F>
-  static void BroadcastInput2(const ArithmeticParams& params,
-                              const int32_t* input1_data,
-                              const int32_t* input2_data, int32_t* output_data,
-                              size_t size, F binary_func) {
-    size_t c = 0;
-    int32_t activation_min, activation_max;
-    GetActivationParams(params, &activation_min, &activation_max);
-#ifdef USE_NEON
-    const int32x4_t vmax = vdupq_n_s32(activation_max);
-    const int32x4_t vmin = vdupq_n_s32(activation_min);
-    const int32x4_t vb = vdupq_n_s32(input2_data[0]);
-    for (; c + 4 <= size; c += 4) {
-      const int32x4_t va = vld1q_s32(&input1_data[c]);
-      int32x4_t vres = vsubq_s32(va, vb);
-      vres = vmaxq_s32(vmin, vres);
-      vres = vminq_s32(vmax, vres);
-      vst1q_s32(&output_data[c], vres);
-    }
-#endif
-    for (; c < size; ++c) {
-      output_data[c] = binary_func(input1_data[c], input2_data[0], params);
-    }
-  }
-
-  template <class F>
-  static void ElementWise(const ArithmeticParams& params,
-                          const int32_t* input1_data,
-                          const int32_t* input2_data, int32_t* output_data,
-                          size_t size, F binary_func) {
-    size_t c = 0;
-    int32_t activation_min, activation_max;
-    GetActivationParams(params, &activation_min, &activation_max);
-#ifdef USE_NEON
-    int32x4_t vmax = vdupq_n_s32(activation_max);
-    int32x4_t vmin = vdupq_n_s32(activation_min);
-    for (; c + 4 <= size; c += 4) {
-      const int32x4_t va = vld1q_s32(&input1_data[c]);
-      const int32x4_t vb = vld1q_s32(&input2_data[c]);
-      int32x4_t vres = vsubq_s32(va, vb);
-      vres = vmaxq_s32(vmin, vres);
-      vres = vminq_s32(vmax, vres);
-      vst1q_s32(&output_data[c], vres);
-    }
-#endif
-    for (; c < size; ++c) {
-      output_data[c] = binary_func(input1_data[c], input2_data[c], params);
-    }
-  }
-};
-
-template <typename T, typename F>
-inline void BroadcastSubRecursiveDimensions(
-    int dimension, const ArithmeticParams& params, const T* input1_data,
-    const T* input2_data, T* output_data, size_t* input1_offset_p,
-    size_t* input2_offset_p, size_t* output_offset,
-    size_t* compressed_input1_stride, size_t* compressed_input2_stride,
-    size_t* compressed_output_shape, F binary_func) {
-  if (dimension > 0) {
-    for (size_t c = 0; c < compressed_output_shape[dimension]; ++c) {
-      size_t input1_offset_c = *input1_offset_p;
-      size_t input2_offset_c = *input2_offset_p;
-      BroadcastSubRecursiveDimensions(
-          dimension - 1, params, input1_data, input2_data, output_data,
-          &input1_offset_c, &input2_offset_c, output_offset,
-          compressed_input1_stride, compressed_input2_stride,
-          compressed_output_shape, binary_func);
-      *input1_offset_p += compressed_input1_stride[dimension];
-      *input2_offset_p += compressed_input2_stride[dimension];
-    }
-  } else {
-    TFLITE_DCHECK(dimension == 0);
-    bool input1_is_broadcast = compressed_input1_stride[dimension] == 0;
-    bool input2_is_broadcast = compressed_input2_stride[dimension] == 0;
-    TFLITE_DCHECK(!(input1_is_broadcast && input2_is_broadcast));
-    const T* input1_data_ptr = input1_data + *input1_offset_p;
-    const T* input2_data_ptr = input2_data + *input2_offset_p;
-    T* output_data_ptr = output_data + *output_offset;
-    if (input1_is_broadcast) {
-      // input1 is broadcast.
-      SubImpl<T>::BroadcastInput1(
-          params, input1_data_ptr, input2_data_ptr, output_data_ptr,
-          compressed_output_shape[dimension], binary_func);
-      *input2_offset_p += compressed_output_shape[dimension];
-    } else if (input2_is_broadcast) {
-      // input2 is broadcast.
-      SubImpl<T>::BroadcastInput2(
-          params, input1_data_ptr, input2_data_ptr, output_data_ptr,
-          compressed_output_shape[dimension], binary_func);
-      *input1_offset_p += compressed_output_shape[dimension];
-    } else {
-      // Add element-wise.
-      SubImpl<T>::ElementWise(params, input1_data_ptr, input2_data_ptr,
-                              output_data_ptr,
-                              compressed_output_shape[dimension], binary_func);
-      *input1_offset_p += compressed_output_shape[dimension];
-      *input2_offset_p += compressed_output_shape[dimension];
-    }
-    *output_offset += compressed_output_shape[dimension];
-  }
-}
-
-// TODO: b/296510380 - we may be able to factor out this to common.h for all
-// binary arithmetic ops (add, sub, mul).
 template <typename T, typename F>
 inline void BroadcastSubCommon(const ArithmeticParams& params,
                                const RuntimeShape& input1_shape,
@@ -199,53 +37,11 @@ inline void BroadcastSubCommon(const ArithmeticParams& params,
                                const T* input2_data,
                                const RuntimeShape& output_shape, T* output_data,
                                F binary_func) {
-  constexpr int kMaxBroadcastDim = 6;
-  TFLITE_DCHECK_LE(input1_shape.DimensionsCount(), kMaxBroadcastDim);
-  TFLITE_DCHECK_LE(input2_shape.DimensionsCount(), kMaxBroadcastDim);
-  TFLITE_DCHECK_LE(output_shape.DimensionsCount(), kMaxBroadcastDim);
-
-  // In Tensorflow, the dimensions are canonically named (batch_number, row,
-  // col, channel), with extents (batches, height, width, depth), with the
-  // trailing dimension changing most rapidly (channels has the smallest stride,
-  // typically 1 element).
-  //
-  // In generated C code, we store arrays with the dimensions reversed. The
-  // first dimension has smallest stride.
-  //
-  // We name our variables by their Tensorflow convention, but generate C code
-  // nesting loops such that the innermost loop has the smallest stride for the
-  // best cache behavior.
-
-  // In Tensorflow, the dimensions are canonically named (batch_number, row,
-  // col, channel), with extents (batches, height, width, depth), with the
-  // trailing dimension changing most rapidly (channels has the smallest stride,
-  // typically 1 element).
-  //
-  // In generated C code, we store arrays with the dimensions reversed. The
-  // first dimension has smallest stride.
-  //
-  // We name our variables by their Tensorflow convention, but generate C code
-  // nesting loops such that the innermost loop has the smallest stride for the
-  // best cache behavior.
-
-  size_t compressed_input1_stride[kMaxBroadcastDim];
-  size_t compressed_input2_stride[kMaxBroadcastDim];
-  size_t compressed_output_shape[kMaxBroadcastDim];
-  bool broadcastable_shape = ReduceDimensionsForBroadcast<kMaxBroadcastDim>(
-      input1_shape, input2_shape, compressed_input1_stride,
-      compressed_input2_stride, compressed_output_shape);
-  // Skip broadcasting for degenerate shapes.
-  if (!broadcastable_shape) {
-    return;
-  }
-
-  size_t input1_offset = 0;
-  size_t input2_offset = 0;
-  size_t output_offset = 0;
-  BroadcastSubRecursiveDimensions(
-      kMaxBroadcastDim - 1, params, input1_data, input2_data, output_data,
-      &input1_offset, &input2_offset, &output_offset, compressed_input1_stride,
-      compressed_input2_stride, compressed_output_shape, binary_func);
+  auto op = [&params, binary_func](T a, T b) {
+    return binary_func(a, b, params);
+  };
+  BroadcastBinaryOpSimple(input1_shape, input1_data, input2_shape, input2_data,
+                          output_shape, output_data, op);
 }
 
 // TODO(b/151345304): We can implement BroadcastSub on buffers of arbitrary
