@@ -263,13 +263,13 @@ absl::StatusOr<bool> LibraryRewriter::FuseNeighbors(
   std::queue<std::pair<HloInstruction*, FusionDirection>> frontier;
   absl::flat_hash_set<HloInstruction*> visited;
   visited.insert(fusion);
-  AddFusionCandidates(fusion, fusion, FusionDirection::kBoth, frontier,
+  AddFusionCandidates(fusion, fusion, lib->fusion_direction(), frontier,
                       visited);
 
   bool changed = false;
   // BFS and fuse as many neighbors as possible.
   while (!frontier.empty() &&
-         fusion->fused_instruction_count() < kMaxInstructionsInFusion) {
+         fusion->fused_instruction_count() < lib->MaxFusionSize()) {
     auto [instr, dir] = frontier.front();
     frontier.pop();
     if (dir != FusionDirection::kUp && dir != FusionDirection::kDown) {
@@ -277,10 +277,15 @@ absl::StatusOr<bool> LibraryRewriter::FuseNeighbors(
                              FusionDirectionToString(dir));
     }
 
-    // If `instr` is another fusion of the same library type, fuse it.
-    // We don't need to add its neighbors to the frontier because anything that
-    // can be fused would have already been fused into `instr`.
-    if (IsCustomFusionWithKind(instr, lib->fusion_kind())) {
+    // If `instr` is another fusion of the same library type and the library
+    // supports merging fusions, fuse it. We don't need to add its neighbors to
+    // the frontier because anything that can be fused would have already been
+    // fused into `instr`.
+    if (lib->ShouldMergeFusions() &&
+        IsCustomFusionWithKind(instr, lib->fusion_kind()) &&
+        fusion->fused_instruction_count() +
+                Cast<HloFusionInstruction>(instr)->fused_instruction_count() <=
+            lib->MaxFusionSize()) {
       ASSIGN_OR_RETURN(fusion,
                        MergeFusionInstructions(
                            fusion, Cast<HloFusionInstruction>(instr), dir));
@@ -288,9 +293,7 @@ absl::StatusOr<bool> LibraryRewriter::FuseNeighbors(
       continue;
     }
 
-    // Skip this instruction if it can't be fused.
-    ASSIGN_OR_RETURN(bool op_supported, lib->IsOpSupported(instr));
-    if (!op_supported) {
+    if (!lib->ShouldFuse(fusion, instr)) {
       VLOG(4) << "  Skipping unsupported instruction: " << instr->ToString();
       continue;
     }
@@ -306,6 +309,9 @@ absl::StatusOr<bool> LibraryRewriter::FuseNeighbors(
         InsertConvertIfNecessary(new_instr, lib->LibraryOpOutputType(instr)));
     changed = true;
   }
+
+  VLOG(4) << "Finished growing fusion with size: "
+          << fusion->fused_instruction_count();
 
   return changed;
 }

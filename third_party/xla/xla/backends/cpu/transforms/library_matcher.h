@@ -24,11 +24,23 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla::cpu {
+
+// The maximum number of instructions allowed in a library fusion. This avoids
+// crashing libraries with too large graphs. It could break good fusions, e.g.,
+// Softmax, etc. We should deploy a smarter logic in the future.
+static constexpr int kMaxFusionSize = 100;
+
+enum class FusionDirection {
+  kUp,    // Traverse up (to parents).
+  kDown,  // Traverse down (to children).
+  kBoth,  // Traverse both up and down.
+};
 
 class LibraryMatcher {
  public:
@@ -77,6 +89,24 @@ class LibraryMatcher {
   // if the op does not support the original HLO output type.
   virtual PrimitiveType LibraryOpOutputType(const HloInstruction* instr) {
     return instr->shape().element_type();
+  }
+
+  // Returns the maximum number of instructions allowed in a fusion for the
+  // library.
+  virtual int MaxFusionSize() const { return kMaxFusionSize; }
+
+  // Returns true if the HLO instruction should be fused into the given fusion.
+  virtual bool ShouldFuse(const HloFusionInstruction* fusion,
+                          const HloInstruction* instr) {
+    return IsOpSupported(instr).value_or(false);
+  }
+
+  // Return true if the library supports merging fusions.
+  virtual bool ShouldMergeFusions() { return true; }
+
+  // Returns the direction in which a fusion could grow.
+  virtual FusionDirection fusion_direction() const {
+    return FusionDirection::kBoth;
   }
 
   // Returns a prefix string for the fusion op's name.

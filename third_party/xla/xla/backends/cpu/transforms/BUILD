@@ -53,7 +53,9 @@ xla_cc_test(
     srcs = ["library_rewriter_test.cc"],
     local_defines = if_graph_api(["XLA_ONEDNN_USE_GRAPH_API=1"]),
     deps = [
+        ":library_matcher",
         ":library_rewriter",
+        ":onednn_matcher",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/cpu/codegen:target_machine_features",
