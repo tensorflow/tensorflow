@@ -188,6 +188,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
     return kTfLiteOk;
   } else {
+    // Scalar concatenation is only supported for constant tensors
+    // (handled above).
+    TF_LITE_ENSURE(context, t0->dims->size > 0);
     for (int i = 1; i < num_inputs; ++i) {
       const TfLiteTensor* t;
       TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, i, &t));
