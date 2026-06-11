@@ -768,8 +768,9 @@ class ConfigCompatChecker:
       elif p_item == "warning_msgs":
         _format("Warning Messages", self.warning_msg)
       else:
-        raise Exception(
-            "[Error] Wrong input provided for %s." % _get_func_name())
+        raise ValueError(
+            "[Error] Wrong input provided for %s."
+            % _get_func_name())
 
   def check_compatibility(self):
     """Checks version and dependency compatibility for a given configuration.
