@@ -152,6 +152,8 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:util",
         "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
         "//tensorflow/lite/delegates/gpu/common/tasks:conversion",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -255,6 +257,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:cumsum_test_util",
+        "@com_google_absl//absl/status",
     ] + gtest_main_no_heapcheck_deps(),
 )
 
@@ -380,6 +383,7 @@ cc_test(
         "//tensorflow/lite/kernels:test_main",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/log:check",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],

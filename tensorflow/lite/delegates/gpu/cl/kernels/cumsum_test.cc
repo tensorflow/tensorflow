@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/cl_test.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/cumsum_test_util.h"
 
