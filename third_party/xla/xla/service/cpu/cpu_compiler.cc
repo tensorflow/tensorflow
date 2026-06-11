@@ -142,6 +142,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
 #include "xla/hlo/transforms/simplifiers/float_normalization.h"
 #include "xla/hlo/transforms/simplifiers/gather_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/gemv_rewriter.h"
 #include "xla/hlo/transforms/simplifiers/hlo_computation_deduplicator.h"
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
@@ -929,6 +930,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass(CreateSimplificationPipeline(
       "post_scatter_expansion_simplification", module, use_fusion_emitters,
       use_onednn_custom_call));
+  pipeline.AddPass<GemvRewriter>(/*is_layout_sensitive=*/false);
 
   pipeline.AddPass<BitcastDtypesExpander>();
 
