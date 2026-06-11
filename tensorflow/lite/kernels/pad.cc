@@ -16,17 +16,20 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <cstddef>
 #include <limits>
+#include <memory>
 #include <type_traits>
 
+#include "absl/types/span.h"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
-#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace ops {
@@ -39,164 +42,284 @@ enum KernelType {
   kGenericOptimized,
 };
 
+/// Validates that the node has the Pad/PADV2 arity and index arrays.
+TfLiteStatus ValidateNodeArity(TfLiteContext* context, TfLiteNode* node) {
+  TF_LITE_ENSURE(context, node != nullptr);
+  TF_LITE_ENSURE(context, node->inputs != nullptr);
+  TF_LITE_ENSURE(context, node->outputs != nullptr);
+  TF_LITE_ENSURE(context, node->inputs->size >= 0);
+  TF_LITE_ENSURE(context, node->outputs->size >= 0);
+  const int num_inputs = NumInputs(node);
+  TF_LITE_ENSURE(context, num_inputs == 2 || num_inputs == 3);
+  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
+  return kTfLiteOk;
+}
+
+/// Validates that a tensor has usable dimension metadata.
+TfLiteStatus ValidateTensorShape(TfLiteContext* context,
+                                 const TfLiteTensor* tensor) {
+  TF_LITE_ENSURE(context, tensor != nullptr);
+  TF_LITE_ENSURE(context, tensor->dims != nullptr);
+  TF_LITE_ENSURE(context, tensor->dims->size >= 0);
+  return kTfLiteOk;
+}
+
 struct PadContext {
   PadContext(TfLiteContext* context, TfLiteNode* node) {
-    input = GetInput(context, node, 0);
-    paddings = GetInput(context, node, 1);
-    if (NumInputs(node) == 3) {
-      constant_values = GetOptionalInputTensor(context, node, 2);
-    } else {
-      constant_values = nullptr;
+    status = ValidateNodeArity(context, node);
+    if (status != kTfLiteOk) {
+      return;
     }
-    output = GetOutput(context, node, 0);
+    status = GetInputSafe(context, node, 0, &input);
+    if (status != kTfLiteOk) {
+      return;
+    }
+    status = GetInputSafe(context, node, 1, &paddings);
+    if (status != kTfLiteOk) {
+      return;
+    }
+    if (NumInputs(node) == 3 &&
+        node->inputs->data[2] != kTfLiteOptionalTensor) {
+      status = GetInputSafe(context, node, 2, &constant_values);
+      if (status != kTfLiteOk) {
+        return;
+      }
+    }
+    status = GetOutputSafe(context, node, 0, &output);
+    if (status != kTfLiteOk) {
+      return;
+    }
+    status = ValidateTensorShape(context, input);
+    if (status != kTfLiteOk) {
+      return;
+    }
+    status = ValidateTensorShape(context, paddings);
+    if (status != kTfLiteOk) {
+      return;
+    }
+    if (constant_values != nullptr) {
+      status = ValidateTensorShape(context, constant_values);
+      if (status != kTfLiteOk) {
+        return;
+      }
+    }
+    resizing_category = ResizingCategory::kGenericResize;
     dims = NumDimensions(input);
     switch (paddings->type) {
       case kTfLiteInt64: {
-        SetResizingCategory<int64_t>(context);
+        status = SetResizingCategory<int64_t>(context);
         break;
       }
       case kTfLiteInt32:
-        SetResizingCategory<int32_t>(context);
+        status = SetResizingCategory<int32_t>(context);
         break;
       case kTfLiteInt8:
-        SetResizingCategory<int8_t>(context);
+        status = SetResizingCategory<int8_t>(context);
         break;
       case kTfLiteInt16:
-        SetResizingCategory<int16_t>(context);
+        status = SetResizingCategory<int16_t>(context);
         break;
       case kTfLiteBool:
-        SetResizingCategory<bool>(context);
+        status = SetResizingCategory<bool>(context);
         break;
       default:
         TF_LITE_KERNEL_LOG(context,
                            "Padding type %s is currently not supported by Pad.",
                            TfLiteTypeGetName(paddings->type));
+        status = kTfLiteError;
     }
   }
 
+  /// Updates `resizing_category` based on the constant paddings pattern.
   template <typename padding_integer_type>
-  void SetResizingCategory(TfLiteContext* context) {
-    const padding_integer_type* paddings_data =
-        GetTensorData<padding_integer_type>(paddings);
+  TfLiteStatus SetResizingCategory(TfLiteContext* context) {
     resizing_category = ResizingCategory::kGenericResize;
-    const int paddings_total = GetTensorShape(paddings).FlatSize();
+    int paddings_total = 0;
+    TF_LITE_ENSURE_MSG(
+        context, CheckedNumElements(paddings, paddings_total) == kTfLiteOk,
+        "Pad paddings size overflowed.");
     // Paddings will be a n,2 array, and we need to detect 4D arrays with the
     // pattern { {0,0}, {a, b}, {c, d}, {0,0} }.
-    if (IsConstantTensor(paddings) && paddings_total == 8 &&
-        (paddings_data[0] == 0 && paddings_data[1] == 0) &&
-        (paddings_data[6] == 0 && paddings_data[7] == 0)) {
+    if (!IsConstantTensor(paddings) || paddings_total != 8 ||
+        NumDimensions(paddings) != 2 || SizeOfDimension(paddings, 1) != 2) {
+      return kTfLiteOk;
+    }
+    const padding_integer_type* paddings_data =
+        GetTensorData<padding_integer_type>(paddings);
+    TF_LITE_ENSURE(context, paddings_data != nullptr);
+    const absl::Span<const padding_integer_type> paddings_values(
+        paddings_data, paddings_total);
+    if ((paddings_values[0] == 0 && paddings_values[1] == 0) &&
+        (paddings_values[6] == 0 && paddings_values[7] == 0)) {
       resizing_category = ResizingCategory::kImageStyle;
     }
+    return kTfLiteOk;
   }
 
-  const TfLiteTensor* constant_values;
-  const TfLiteTensor* input;
-  const TfLiteTensor* paddings;
-  TfLiteTensor* output;
-  int dims;
-  ResizingCategory resizing_category;
+  const TfLiteTensor* constant_values = nullptr;
+  const TfLiteTensor* input = nullptr;
+  const TfLiteTensor* paddings = nullptr;
+  TfLiteTensor* output = nullptr;
+  int dims = 0;
+  ResizingCategory resizing_category = ResizingCategory::kGenericResize;
+  TfLiteStatus status = kTfLiteOk;
 };
 
-bool CheckPaddingOverflow(PadContext* op_context) {
-  if (op_context->paddings->type == kTfLiteInt64) {
-    const int64_t* paddings_data = GetTensorData<int64_t>(op_context->paddings);
-    if (paddings_data != nullptr) {
-      int64_t int32_min =
-          static_cast<int64_t>(std::numeric_limits<int32_t>::min());
-      int64_t int32_max =
-          static_cast<int64_t>(std::numeric_limits<int32_t>::max());
-      const int paddings_total =
-          GetTensorShape(op_context->paddings).FlatSize();
-      for (int idx = 0; idx < paddings_total; ++idx) {
-        int64_t padding = paddings_data[idx];
-        if (padding < int32_min || padding > int32_max) {
-          return true;
-        }
-      }
-    }
-  }
-  return false;
+/// Validates that the paddings tensor is a 2-column matrix.
+TfLiteStatus ValidatePaddingsMatrixShape(TfLiteContext* context,
+                                         const TfLiteTensor* paddings) {
+  TF_LITE_ENSURE_OK(context, ValidateTensorShape(context, paddings));
+  TF_LITE_ENSURE_EQ(context, NumDimensions(paddings), 2);
+  TF_LITE_ENSURE(context, SizeOfDimension(paddings, 0) >= 0);
+  TF_LITE_ENSURE_EQ(context, SizeOfDimension(paddings, 1), 2);
+  return kTfLiteOk;
 }
 
-// Helper template function for resizing output array based on the input size
-// and padding size. Do not call this directly, call ResizeOutputTensor()
-// instead.
+/// Validates that the paddings tensor has shape `[input_rank, 2]`.
+TfLiteStatus ValidatePaddingsShape(TfLiteContext* context,
+                                   const PadContext& op_context) {
+  TF_LITE_ENSURE_OK(context, ValidateTensorShape(context, op_context.input));
+  TF_LITE_ENSURE_EQ(context, op_context.dims, NumDimensions(op_context.input));
+  TF_LITE_ENSURE_OK(context,
+                    ValidatePaddingsMatrixShape(context, op_context.paddings));
+  TF_LITE_ENSURE_EQ(context, SizeOfDimension(op_context.paddings, 0),
+                    op_context.dims);
+  return kTfLiteOk;
+}
+
+/// Validates that PADV2's constant value tensor is a scalar when present.
+TfLiteStatus ValidateConstantValuesShape(TfLiteContext* context,
+                                         const PadContext& op_context) {
+  if (op_context.constant_values == nullptr) {
+    return kTfLiteOk;
+  }
+  TF_LITE_ENSURE_OK(context,
+                    ValidateTensorShape(context, op_context.constant_values));
+  int constant_values_count = 0;
+  TF_LITE_ENSURE_MSG(context,
+                     CheckedNumElements(op_context.constant_values,
+                                        constant_values_count) == kTfLiteOk,
+                     "Pad constant_values size overflowed.");
+  TF_LITE_ENSURE_EQ(context, constant_values_count, 1);
+  return kTfLiteOk;
+}
+
+/// Validates that a tensor with elements has a data buffer.
+TfLiteStatus ValidateTensorData(TfLiteContext* context,
+                                const TfLiteTensor* tensor) {
+  TF_LITE_ENSURE_OK(context, ValidateTensorShape(context, tensor));
+  size_t count = 0;
+  TF_LITE_ENSURE_MSG(context, CheckedNumElements(tensor, count) == kTfLiteOk,
+                     "Pad tensor size overflowed.");
+  TF_LITE_ENSURE(context, count == 0 || tensor->data.raw != nullptr);
+  return kTfLiteOk;
+}
+
+/// Converts a padding value to the int type used by PadParams.
 template <typename PaddingIntegerType>
-TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
-                                PadContext* op_context) {
-  if (op_context->paddings->type == kTfLiteInt64) {
-    TF_LITE_ENSURE(context, (std::is_same_v<PaddingIntegerType, int64_t>));
-  } else if (op_context->paddings->type == kTfLiteInt32) {
-    TF_LITE_ENSURE(context, (std::is_same_v<PaddingIntegerType, int32_t>));
-  } else if (op_context->paddings->type == kTfLiteInt8) {
-    TF_LITE_ENSURE(context, (std::is_same_v<PaddingIntegerType, int8_t>));
-  } else {
-    TF_LITE_ENSURE(context, (std::is_same_v<PaddingIntegerType, int16_t>));
+TfLiteStatus GetPaddingValueAsInt(TfLiteContext* context,
+                                  PaddingIntegerType padding, int* value) {
+  TF_LITE_ENSURE(context, value != nullptr);
+  if constexpr (std::is_same_v<PaddingIntegerType, int64_t>) {
+    const int64_t int32_min =
+        static_cast<int64_t>(std::numeric_limits<int32_t>::min());
+    const int64_t int32_max =
+        static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+    TF_LITE_ENSURE_MSG(context, padding >= int32_min && padding <= int32_max,
+                       "INT64 padding overflow. Only support value between "
+                       "INT32_MIN and INT32_MAX.");
   }
-  // Ensures the paddings array is dims x 2.
-  TF_LITE_ENSURE_EQ(context, SizeOfDimension(op_context->paddings, 0),
-                    op_context->dims);
-  TF_LITE_ENSURE_EQ(context, SizeOfDimension(op_context->paddings, 1), 2);
-
-  // Right now we only support paddings between INT32_MIN and INT32_MAX, so
-  // we are using int here and below.
-  TfLiteIntArray* input_size = op_context->input->dims;
-  TfLiteIntArray* output_size = TfLiteIntArrayCopy(input_size);
-  const PaddingIntegerType* paddings_data =
-      GetTensorData<PaddingIntegerType>(op_context->paddings);
-  for (int idx = 0; idx < op_context->dims; ++idx) {
-    // Paddings are between INT32_MIN and INT32_MAX.
-    int before_padding = static_cast<int>(*paddings_data++);
-    int after_padding = static_cast<int>(*paddings_data++);
-    TF_LITE_ENSURE_MSG(context, (before_padding >= 0 && after_padding >= 0),
-                       "Pad value has to be greater than equal to 0.");
-  }
-  paddings_data = GetTensorData<PaddingIntegerType>(op_context->paddings);
-  for (int idx = 0; idx < op_context->dims; ++idx) {
-    // Paddings are between INT32_MIN and INT32_MAX.
-    int before_padding = static_cast<int>(*paddings_data++);
-    int after_padding = static_cast<int>(*paddings_data++);
-    output_size->data[idx] =
-        (input_size->data[idx] + before_padding + after_padding);
-  }
-  return context->ResizeTensor(context, op_context->output, output_size);
+  CheckedInt<int> checked_padding(padding);
+  TF_LITE_ENSURE_MSG(context, checked_padding.Status() == kTfLiteOk,
+                     "Pad value overflowed.");
+  *value = checked_padding.Value();
+  return kTfLiteOk;
 }
 
-// Resizes output array based on the input size and padding size. This function
-// is callable from both Prepare() and Eval() as long as the caller ensures the
-// paddings data is present.
-TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
-                                PadContext* op_context) {
-  switch (op_context->paddings->type) {
-    case kTfLiteInt64: {
-      return ResizeOutputTensor<int64_t>(context, op_context);
-    }
-    case kTfLiteInt32: {
-      return ResizeOutputTensor<int32_t>(context, op_context);
-    }
-    case kTfLiteInt8: {
-      return ResizeOutputTensor<int8_t>(context, op_context);
-    }
-    case kTfLiteInt16: {
-      return ResizeOutputTensor<int16_t>(context, op_context);
-    }
-    case kTfLiteBool: {
-      return ResizeOutputTensor<bool>(context, op_context);
-    }
-    default:
-      TF_LITE_KERNEL_LOG(context,
-                         "Padding type %s is currently not supported by Pad.",
-                         TfLiteTypeGetName(op_context->paddings->type));
-  }
-  return kTfLiteError;
+/// Computes one output dimension from an input dimension and padding pair.
+TfLiteStatus GetPaddedOutputDimension(TfLiteContext* context, int input_dim,
+                                      int left_padding, int right_padding,
+                                      int* output_dim) {
+  TF_LITE_ENSURE(context, output_dim != nullptr);
+  TF_LITE_ENSURE_MSG(context, input_dim >= 0,
+                     "Pad input dimensions must be non-negative.");
+  const CheckedInt<int> checked_output_dim =
+      CheckedInt<int>(input_dim) + left_padding + right_padding;
+  TF_LITE_ENSURE_MSG(context, checked_output_dim.Status() == kTfLiteOk,
+                     "Pad output dimension overflowed.");
+  TF_LITE_ENSURE_MSG(context, checked_output_dim >= 0,
+                     "Pad output dimension has to be greater than equal to 0.");
+  *output_dim = checked_output_dim.Value();
+  return kTfLiteOk;
 }
 
-// Helper template function for getting pad params. Do not call this directly,
-// call GetPadParams() instead.
+/// Resizes output array based on the input size and padding params.
+TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
+                                const PadContext& op_context,
+                                const tflite::PadParams& op_params) {
+  TF_LITE_ENSURE_OK(context, ValidateTensorShape(context, op_context.input));
+  TF_LITE_ENSURE(context, op_context.output != nullptr);
+  TfLiteIntArray* input_size = op_context.input->dims;
+  std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> output_size(
+      TfLiteIntArrayCopy(input_size), TfLiteIntArrayFree);
+  TF_LITE_ENSURE(context, output_size != nullptr);
+  const RuntimeShape input_shape = GetTensorShape(op_context.input);
+  for (int idx = 0; idx < op_context.dims; ++idx) {
+    TF_LITE_ENSURE_OK(context,
+                      GetPaddedOutputDimension(context, input_shape.Dims(idx),
+                                               op_params.left_padding[idx],
+                                               op_params.right_padding[idx],
+                                               &output_size->data[idx]));
+  }
+  size_t output_num_elements = 0;
+  TF_LITE_ENSURE_MSG(
+      context,
+      CheckedNumElements(output_size.get(), output_num_elements) == kTfLiteOk,
+      "Pad output size overflowed.");
+  if (op_context.resizing_category == ResizingCategory::kImageStyle) {
+    int output_num_elements_int = 0;
+    TF_LITE_ENSURE_MSG(context,
+                       CheckedNumElements(output_size.get(),
+                                          output_num_elements_int) == kTfLiteOk,
+                       "Pad image-style output size overflowed.");
+  }
+  return context->ResizeTensor(context, op_context.output,
+                               output_size.release());
+}
+
+/// Validates static output dimensions against the input shape and paddings.
+TfLiteStatus ValidateOutputShape(TfLiteContext* context,
+                                 const PadContext& op_context,
+                                 const tflite::PadParams& op_params) {
+  TF_LITE_ENSURE_OK(context, ValidateTensorShape(context, op_context.input));
+  TF_LITE_ENSURE_OK(context, ValidateTensorShape(context, op_context.output));
+  const RuntimeShape input_shape = GetTensorShape(op_context.input);
+  const RuntimeShape output_shape = GetTensorShape(op_context.output);
+  TF_LITE_ENSURE_EQ(context, output_shape.DimensionsCount(), op_context.dims);
+  size_t output_num_elements = 0;
+  TF_LITE_ENSURE_MSG(context, output_shape.CheckedFlatSize(output_num_elements),
+                     "Pad output size overflowed.");
+  for (int idx = 0; idx < op_context.dims; ++idx) {
+    int expected_output_dim = 0;
+    TF_LITE_ENSURE_OK(context,
+                      GetPaddedOutputDimension(context, input_shape.Dims(idx),
+                                               op_params.left_padding[idx],
+                                               op_params.right_padding[idx],
+                                               &expected_output_dim));
+    TF_LITE_ENSURE_EQ(context, output_shape.Dims(idx), expected_output_dim);
+  }
+  return kTfLiteOk;
+}
+
+/// Extracts validated pad params for a specific paddings tensor type.
 template <typename PaddingIntegerType>
-tflite::PadParams GetPadParams(TfLiteContext* context,
-                               const PadContext& op_context) {
-  tflite::PadParams op_params;
+TfLiteStatus GetPadParams(TfLiteContext* context, const PadContext& op_context,
+                          tflite::PadParams* op_params) {
+  TF_LITE_ENSURE(context, op_params != nullptr);
+  TF_LITE_ENSURE(context, op_context.paddings != nullptr);
+  *op_params = tflite::PadParams();
+  TF_LITE_ENSURE(
+      context, op_context.dims <= reference_ops::PadKernelMaxDimensionCount());
   if (!(op_context.paddings->type == kTfLiteInt64 &&
         std::is_same_v<PaddingIntegerType, int64_t>) &&
       !(op_context.paddings->type == kTfLiteInt32 &&
@@ -209,56 +332,91 @@ tflite::PadParams GetPadParams(TfLiteContext* context,
         std::is_same_v<PaddingIntegerType, bool>)) {
     TF_LITE_KERNEL_LOG(context, "Padding type %s doesn't match typename.",
                        TfLiteTypeGetName(op_context.paddings->type));
-    return op_params;
+    return kTfLiteError;
   }
+  TF_LITE_ENSURE_OK(context, ValidatePaddingsShape(context, op_context));
+  int paddings_total = 0;
+  TF_LITE_ENSURE_MSG(
+      context,
+      CheckedNumElements(op_context.paddings, paddings_total) == kTfLiteOk,
+      "Pad paddings size overflowed.");
   const PaddingIntegerType* paddings_data =
       GetTensorData<PaddingIntegerType>(op_context.paddings);
-  op_params.left_padding_count = op_context.dims;
-  op_params.right_padding_count = op_context.dims;
-  for (int idx = op_context.dims - 1; idx >= 0; --idx) {
-    op_params.left_padding[idx] = static_cast<int32_t>(paddings_data[idx * 2]);
-    op_params.right_padding[idx] =
-        static_cast<int32_t>(paddings_data[idx * 2 + 1]);
+  TF_LITE_ENSURE(context, paddings_data != nullptr || paddings_total == 0);
+  const absl::Span<const PaddingIntegerType> paddings_values(paddings_data,
+                                                             paddings_total);
+  if constexpr (std::is_same_v<PaddingIntegerType, int64_t>) {
+    const int64_t int32_min =
+        static_cast<int64_t>(std::numeric_limits<int32_t>::min());
+    const int64_t int32_max =
+        static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+    for (const int64_t padding : paddings_values) {
+      TF_LITE_ENSURE_MSG(context, padding >= int32_min && padding <= int32_max,
+                         "INT64 padding overflow. Only support value between "
+                         "INT32_MIN and INT32_MAX.");
+    }
   }
-  return op_params;
+  op_params->left_padding_count = op_context.dims;
+  op_params->right_padding_count = op_context.dims;
+  for (int idx = op_context.dims - 1; idx >= 0; --idx) {
+    const int padding_index = idx * 2;
+    int left_padding = 0;
+    int right_padding = 0;
+    TF_LITE_ENSURE_OK(
+        context, GetPaddingValueAsInt(context, paddings_values[padding_index],
+                                      &left_padding));
+    TF_LITE_ENSURE_OK(context, GetPaddingValueAsInt(
+                                   context, paddings_values[padding_index + 1],
+                                   &right_padding));
+    TF_LITE_ENSURE_MSG(context, left_padding >= 0 && right_padding >= 0,
+                       "Pad value has to be greater than equal to 0.");
+    op_params->left_padding[idx] = left_padding;
+    op_params->right_padding[idx] = right_padding;
+  }
+  return kTfLiteOk;
 }
 
-tflite::PadParams GetPadParams(TfLiteContext* context,
-                               const PadContext& op_context) {
+/// Extracts validated pad params from the paddings tensor.
+TfLiteStatus GetPadParams(TfLiteContext* context, const PadContext& op_context,
+                          tflite::PadParams* op_params) {
+  TF_LITE_ENSURE(context, op_params != nullptr);
+  TF_LITE_ENSURE(context, op_context.paddings != nullptr);
   switch (op_context.paddings->type) {
     case kTfLiteInt64: {
-      return GetPadParams<int64_t>(context, op_context);
+      return GetPadParams<int64_t>(context, op_context, op_params);
     }
     case kTfLiteInt32: {
-      return GetPadParams<int32_t>(context, op_context);
+      return GetPadParams<int32_t>(context, op_context, op_params);
     }
     case kTfLiteInt8: {
-      return GetPadParams<int8_t>(context, op_context);
+      return GetPadParams<int8_t>(context, op_context, op_params);
     }
     case kTfLiteInt16: {
-      return GetPadParams<int16_t>(context, op_context);
+      return GetPadParams<int16_t>(context, op_context, op_params);
     }
     case kTfLiteBool: {
-      return GetPadParams<bool>(context, op_context);
+      return GetPadParams<bool>(context, op_context, op_params);
     }
     default:
       TF_LITE_KERNEL_LOG(context,
                          "Padding type %s is currently not supported by Pad.",
                          TfLiteTypeGetName(op_context.paddings->type));
   }
-  return tflite::PadParams();
+  return kTfLiteError;
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  TF_LITE_ENSURE(context, NumInputs(node) == 2 || NumInputs(node) == 3);
-  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-
   PadContext op_context(context, node);
+  TF_LITE_ENSURE_OK(context, op_context.status);
+  TF_LITE_ENSURE(context, op_context.input != nullptr);
+  TF_LITE_ENSURE(context, op_context.paddings != nullptr);
   TF_LITE_ENSURE(context, op_context.output != nullptr);
-  if (IsConstantTensor(op_context.paddings)) {
-    TF_LITE_ENSURE_MSG(context, !CheckPaddingOverflow(&op_context),
-                       "INT64 padding overflow. Only support value between "
-                       "INT32_MIN and INT32_MAX.");
+  TF_LITE_ENSURE_OK(context,
+                    ValidatePaddingsMatrixShape(context, op_context.paddings));
+  const bool paddings_are_constant =
+      IsConstantOrPersistentTensor(op_context.paddings);
+  if (op_context.dims != 0 && !paddings_are_constant) {
+    TF_LITE_ENSURE_OK(context, ValidatePaddingsShape(context, op_context));
   }
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.input->type,
                           op_context.output->type);
@@ -266,6 +424,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_TYPES_EQ(context, op_context.input->type,
                             op_context.constant_values->type);
   }
+  TF_LITE_ENSURE_OK(context, ValidateConstantValuesShape(context, op_context));
 
   // Ensure we do not exceed maximum dimension count.
   TF_LITE_ENSURE(
@@ -274,12 +433,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Exit early if paddings is a non-const tensor or the given input is an
   // unranked input. Set output tensor to dynamic so output size can be
   // determined in Eval.
-  if (NumDimensions(op_context.input) == 0 ||
-      !IsConstantOrPersistentTensor(op_context.paddings)) {
+  if (NumDimensions(op_context.input) == 0 || !paddings_are_constant) {
     SetTensorToDynamic(op_context.output);
     return kTfLiteOk;
   }
-  return ResizeOutputTensor(context, &op_context);
+  tflite::PadParams op_params;
+  TF_LITE_ENSURE_OK(context, GetPadParams(context, op_context, &op_params));
+  return ResizeOutputTensor(context, op_context, op_params);
 }
 
 template <typename integer_type>
@@ -323,25 +483,38 @@ TfLiteStatus EvalInt(TfLiteContext* context, const PadContext& op_context,
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   PadContext op_context(context, node);
-
-  TF_LITE_ENSURE_MSG(context, !CheckPaddingOverflow(&op_context),
-                     "INT64 padding overflow. Only support value between "
-                     "INT32_MIN and INT32_MAX.");
-
+  TF_LITE_ENSURE_OK(context, op_context.status);
+  TF_LITE_ENSURE(context, op_context.input != nullptr);
+  TF_LITE_ENSURE(context, op_context.paddings != nullptr);
+  TF_LITE_ENSURE(context, op_context.output != nullptr);
+  TF_LITE_ENSURE_OK(context, ValidateConstantValuesShape(context, op_context));
+  TF_LITE_ENSURE_TYPES_EQ(context, op_context.input->type,
+                          op_context.output->type);
   if (op_context.constant_values != nullptr) {
-    // Ensure that constant_values is a scalar.
-    TF_LITE_ENSURE_EQ(context, NumElements(op_context.constant_values), 1);
+    TF_LITE_ENSURE_TYPES_EQ(context, op_context.input->type,
+                            op_context.constant_values->type);
   }
-
-  // Resize the output tensor if the output tensor is dynamic.
-  if (IsDynamicTensor(op_context.output)) {
-    TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, &op_context));
-  }
-
   TF_LITE_ENSURE(
       context, op_context.dims <= reference_ops::PadKernelMaxDimensionCount());
 
-  tflite::PadParams op_params = GetPadParams(context, op_context);
+  tflite::PadParams op_params;
+  TF_LITE_ENSURE_OK(context, GetPadParams(context, op_context, &op_params));
+
+  // Resize the output tensor if the output tensor is dynamic.
+  if (IsDynamicTensor(op_context.output)) {
+    TF_LITE_ENSURE_OK(context,
+                      ResizeOutputTensor(context, op_context, op_params));
+  } else {
+    TF_LITE_ENSURE_OK(context,
+                      ValidateOutputShape(context, op_context, op_params));
+  }
+
+  TF_LITE_ENSURE_OK(context, ValidateTensorData(context, op_context.input));
+  TF_LITE_ENSURE_OK(context, ValidateTensorData(context, op_context.output));
+  if (op_context.constant_values != nullptr) {
+    TF_LITE_ENSURE_OK(context,
+                      ValidateTensorData(context, op_context.constant_values));
+  }
 
 #define TF_LITE_PAD(type, op_name, scalar, pad_value)                     \
   const scalar pad_value_copy = pad_value;                                \
@@ -408,11 +581,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       }
     } break;
     case kTfLiteUInt8: {
-      EvalInt<uint8_t>(context, op_context, op_params);
+      TF_LITE_ENSURE_OK(context,
+                        EvalInt<uint8_t>(context, op_context, op_params));
     } break;
     case kTfLiteInt8: {
       if (op_context.input->quantization.type != kTfLiteNoQuantization) {
-        EvalInt<int8_t>(context, op_context, op_params);
+        TF_LITE_ENSURE_OK(context,
+                          EvalInt<int8_t>(context, op_context, op_params));
       } else {
         int8_t pad_value =
             op_context.constant_values == nullptr
@@ -427,7 +602,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     } break;
     case kTfLiteInt16: {
       if (op_context.input->quantization.type != kTfLiteNoQuantization) {
-        EvalInt<int16_t>(context, op_context, op_params);
+        TF_LITE_ENSURE_OK(context,
+                          EvalInt<int16_t>(context, op_context, op_params));
       } else {
         int16_t pad_value =
             op_context.constant_values == nullptr

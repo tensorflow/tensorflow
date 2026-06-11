@@ -12,13 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <array>
 #include <cstdint>
 #include <initializer_list>
+#include <limits>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "absl/types/span.h"
+#include "Eigen/Core"  // from @eigen_archive
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -192,7 +196,69 @@ class PadOpDynamicModel : public PadOpModel<float, T> {
   }
 };
 
+/// Builds a Pad/PADV2 model that stops after AllocateTensors for prepare tests.
+template <typename T>
+class PrepareOnlyPadOpConstModel : public PadOpModel<float, T> {
+ public:
+  /// Creates a prepare-only Pad or PADV2 model with constant paddings.
+  PrepareOnlyPadOpConstModel(const TensorData& input,
+                             absl::Span<const int> paddings_shape,
+                             absl::Span<const T> paddings,
+                             const TensorData& output, bool padv2 = false) {
+    this->input_ = this->AddInput(input);
+    this->paddings_ = this->AddConstInput(
+        TensorData{GetTensorType<T>(), std::vector<int>(paddings_shape.begin(),
+                                                        paddings_shape.end())},
+        paddings.data(), paddings.size());
+    if (padv2) {
+      constexpr float kPadValue = 0.0f;
+      this->constant_values_ = this->AddConstInput(
+          TensorData{TensorType_FLOAT32, std::vector<int>(1, 1)}, &kPadValue,
+          /*size=*/1);
+      this->SetBuiltinOp(BuiltinOperator_PADV2, BuiltinOptions_PadV2Options,
+                         CreatePadV2Options(this->builder_).Union());
+    } else {
+      this->constant_values_ = this->AddNullInput();
+      this->SetBuiltinOp(BuiltinOperator_PAD, BuiltinOptions_PadOptions,
+                         CreatePadOptions(this->builder_).Union());
+    }
+    this->output_ = this->AddOutput(output);
+
+    this->BuildInterpreter({input.shape}, /*num_threads=*/-1,
+                           /*allow_fp32_relax_to_fp16=*/false,
+                           /*apply_delegate=*/true,
+                           /*allocate_and_delegate=*/false);
+  }
+};
+
 class PadOpTest : public ::testing::Test {};
+
+TEST_F(PadOpTest, RejectsOutputDimensionOverflow) {
+  constexpr std::array<int, 2> kPaddingsShape = {1, 2};
+  constexpr std::array<int32_t, 2> kPaddings = {
+      std::numeric_limits<int32_t>::max(), 1};
+  PrepareOnlyPadOpConstModel<int32_t> m(
+      {TensorType_FLOAT32, {1}}, absl::MakeConstSpan(kPaddingsShape),
+      absl::MakeConstSpan(kPaddings), {TensorType_FLOAT32});
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST_F(PadOpTest, RejectsImageStyleOutputSizeOverflow) {
+  constexpr std::array<int, 2> kPaddingsShape = {4, 2};
+  constexpr std::array<int32_t, 8> kPaddings = {0, 0, 46340, 0, 46340, 0, 0, 0};
+  PrepareOnlyPadOpConstModel<int32_t> m(
+      {TensorType_FLOAT32, {1, 1, 1, 1}}, absl::MakeConstSpan(kPaddingsShape),
+      absl::MakeConstSpan(kPaddings), {TensorType_FLOAT32});
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST_F(PadOpTest, RejectsDynamicOutputDimensionOverflow) {
+  PadOpDynamicModel<int32_t> m({TensorType_FLOAT32, {1}}, {1, 2},
+                               {TensorType_FLOAT32});
+  m.SetInput({1});
+  m.SetPaddings({std::numeric_limits<int32_t>::max(), 1});
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+}
 
 #if GTEST_HAS_DEATH_TEST
 template <typename padding_integer_type>
@@ -715,6 +781,16 @@ TEST_F(QuantizedPadOpTest, Int16AdvancedDynamicTest) {
 }
 
 class PadV2OpTest : public ::testing::Test {};
+
+TEST_F(PadV2OpTest, RejectsOutputDimensionOverflow) {
+  constexpr std::array<int, 2> kPaddingsShape = {1, 2};
+  constexpr std::array<int32_t, 2> kPaddings = {
+      std::numeric_limits<int32_t>::max(), 1};
+  PrepareOnlyPadOpConstModel<int32_t> m(
+      {TensorType_FLOAT32, {1}}, absl::MakeConstSpan(kPaddingsShape),
+      absl::MakeConstSpan(kPaddings), {TensorType_FLOAT32}, /*padv2=*/true);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
 
 #if GTEST_HAS_DEATH_TEST
 template <typename padding_integer_type>

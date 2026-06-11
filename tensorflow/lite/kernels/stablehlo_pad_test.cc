@@ -10,10 +10,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// #include <gmock/gmock.h>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <ostream>
 #include <string>
 #include <utility>
@@ -161,6 +161,33 @@ class StablehloPadModel : public SingleOpModel {
     return absl::OkStatus();
   }
 
+  /// Builds the model and runs Prepare without applying delegates.
+  TfLiteStatus BuildAndPrepareWithoutDelegates() {
+    if (!CheckPreconditions().ok()) {
+      return kTfLiteError;
+    }
+    input_tensor_id_ =
+        AddInput({kTensorType,
+                  std::vector<int>(input_.shape.begin(), input_.shape.end())});
+    padding_value_tensor_id_ =
+        AddConstInput(kTensorType, /*data=*/{padding_value_}, /*shape=*/{1});
+    output_tensor_id_ = AddOutput(kTensorType);
+
+    SetBuiltinOp(BuiltinOperator_STABLEHLO_PAD,
+                 BuiltinOptions2_StablehloPadOptions,
+                 CreateStablehloPadOptions(
+                     builder_, builder_.CreateVector(edge_padding_low_),
+                     builder_.CreateVector(edge_padding_high_),
+                     builder_.CreateVector(interior_padding_))
+                     .Union());
+    BuildInterpreter(
+        /*input_shapes=*/{std::vector<int>(input_.shape.begin(),
+                                           input_.shape.end())},
+        /*num_threads=*/-1, /*allow_fp32_relax_to_fp16=*/false,
+        /*apply_delegate=*/false, /*allocate_and_delegate=*/false);
+    return AllocateTensors();
+  }
+
   absl::Status BuildAndInvoke() {
     if (absl::Status status = Build(); !status.ok()) {
       return status;
@@ -283,6 +310,27 @@ TEST(StablehloPadModelTest, WrongInteriorPaddingSizeIsAnError) {
             absl::StatusCode::kFailedPrecondition);
   EXPECT_THAT(expected_status.status().message(),
               HasSubstr("Interior padding does not have the right size."));
+}
+
+TEST(StablehloPadSecurityTest, RejectsNegativeInteriorPadding) {
+  StablehloPadModel<int> model;
+  model.SetInput({2});
+  model.SetInteriorPadding({-1});
+  EXPECT_EQ(model.BuildAndPrepareWithoutDelegates(), kTfLiteError);
+}
+
+TEST(StablehloPadSecurityTest, RejectsOutputDimensionOverflow) {
+  StablehloPadModel<int> model;
+  model.SetInput({2});
+  model.SetEdgePadding({std::numeric_limits<int64_t>::max()}, {0});
+  EXPECT_EQ(model.BuildAndPrepareWithoutDelegates(), kTfLiteError);
+}
+
+TEST(StablehloPadSecurityTest, RejectsOutputDimensionThatDoesNotFitTfLiteInt) {
+  StablehloPadModel<int> model;
+  model.SetInput({1});
+  model.SetEdgePadding({0}, {std::numeric_limits<int>::max()});
+  EXPECT_EQ(model.BuildAndPrepareWithoutDelegates(), kTfLiteError);
 }
 
 TEST(StablehloPadTest, IdentityParams) {
