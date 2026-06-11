@@ -999,6 +999,7 @@ tf_proto_library(
 tf_proto_library(
     name = "saved_tensor_slice_proto",
     srcs = ["saved_tensor_slice.proto"],
+    aspect_hints = ["//tools/build_defs/kotlin/native:disable_kotlin_interop"],
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
     deps = [
@@ -1020,6 +1021,7 @@ tf_proto_library(
 
 tf_proto_library(
     name = "protos_all",
+    aspect_hints = ["//tools/build_defs/kotlin/native:disable_kotlin_interop"],
     make_default_target_header_only = True,
     tags = [
         "alt_dep=//third_party/tensorflow/core:protos_all",
