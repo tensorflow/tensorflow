@@ -199,8 +199,8 @@ TEST_F(XlaTransformTest, PjrtCApiExtension) {
     EXPECT_GT(args->hlo_module.size, 0);
 
     xla::HloModuleProto proto;
-    EXPECT_TRUE(
-        proto.ParseFromArray(args->hlo_module.data, args->hlo_module.size));
+    EXPECT_TRUE(proto.ParseFromString(
+        absl::string_view(args->hlo_module.data, args->hlo_module.size)));
 
     DebugOptions debug_options;
     TF_ASSERT_OK_AND_ASSIGN(auto config, HloModule::CreateModuleConfigFromProto(
