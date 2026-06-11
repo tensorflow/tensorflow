@@ -133,7 +133,7 @@ class RecognizeCommands(object):
       raise ValueError("The results for recognition should contain {} "
                        "elements, but there are {} produced".format(
                            self._label_count, latest_results.shape[0]))
-    if (self._previous_results.__len__() != 0 and
+    if (len(self._previous_results) != 0 and
         current_time_ms < self._previous_results[0][0]):
       raise ValueError("Results must be fed in increasing time order, "
                        "but receive a timestamp of {}, which was earlier "
@@ -149,7 +149,7 @@ class RecognizeCommands(object):
       self._previous_results.popleft()
 
     # If there are too few results, the result will be unreliable and bail.
-    how_many_results = self._previous_results.__len__()
+    how_many_results = len(self._previous_results)
     earliest_time = self._previous_results[0][0]
     sample_duration = current_time_ms - earliest_time
     if (how_many_results < self._minimum_count or

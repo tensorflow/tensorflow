@@ -119,7 +119,7 @@ class StreamingAccuracyStats(object):
           continue
         ground_truth_label = ground_truth[0]
         if (ground_truth_label == found_label and
-            has_gt_matched.count(ground_truth_time) == 0):
+            ground_truth_time not in has_gt_matched):
           self._how_many_c += 1
         else:
           self._how_many_w += 1
