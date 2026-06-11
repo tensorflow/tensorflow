@@ -48,7 +48,11 @@ struct OpData {
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   auto* op_data = new OpData();
-  context->AddTensors(context, 1, &op_data->scratch_tensor_index);
+  if (context->AddTensors(context, 1, &op_data->scratch_tensor_index) !=
+      kTfLiteOk) {
+    delete op_data;
+    return nullptr;
+  }
   return op_data;
 }
 
@@ -63,6 +67,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input1;
   TF_LITE_ENSURE_OK(context,
                     GetInputSafe(context, node, kInputTensor1, &input1));
+  TF_LITE_ENSURE_TYPES_EQ(context, input1->type, kTfLiteVariant);
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
@@ -70,6 +75,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
   TfLiteIntArrayFree(node->temporaries);
   node->temporaries = TfLiteIntArrayCreate(1);
+  TF_LITE_ENSURE(context, node->temporaries != nullptr);
   node->temporaries->data[0] = op_data->scratch_tensor_index;
   TfLiteTensor* scratch_tensor;
   TF_LITE_ENSURE_OK(
@@ -80,7 +86,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   for (int i = kInputTensor1 + 1; i < NumInputs(node); ++i) {
     const TfLiteTensor* input;
     TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, i, &input));
-    TF_LITE_ENSURE_EQ(context, input->type, kTfLiteVariant);
+    TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteVariant);
   }
   output->type = kTfLiteVariant;
   output->allocation_type = kTfLiteVariantObject;
@@ -109,34 +115,45 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   // Collect vector of input list pointers, validate num_elements and type,
   // compute merged shape.
-  const TensorArray* const arr =
-      reinterpret_cast<const TensorArray*>(input1->data.data);
+  TF_LITE_ENSURE(context, input1->data.data != nullptr);
+  const TensorArray* const arr = static_cast<const TensorArray*>(
+      static_cast<const VariantData*>(input1->data.data));
+  TF_LITE_ENSURE(context, arr != nullptr);
   const int num_elements = arr->NumElements();
   const TfLiteType t = arr->ElementType();
   const int num_inputs = NumInputs(node);
+  TF_LITE_ENSURE(context, arr->ElementShape() != nullptr);
   IntArrayUniquePtr merged_shape = BuildTfLiteArray(*arr->ElementShape());
+  TF_LITE_ENSURE(context, merged_shape != nullptr);
   std::vector<const TensorArray*> input_arrs;
   input_arrs.reserve(num_inputs);
   input_arrs.push_back(arr);
   for (int i = 1; i < num_inputs; ++i) {
     const TfLiteTensor* input;
     TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, i, &input));
-    const TensorArray* const arr_i =
-        reinterpret_cast<const TensorArray*>(input->data.data);
+    TF_LITE_ENSURE(context, input->data.data != nullptr);
+    const TensorArray* const arr_i = static_cast<const TensorArray*>(
+        static_cast<const VariantData*>(input->data.data));
+    TF_LITE_ENSURE(context, arr_i != nullptr);
     TF_LITE_ENSURE_EQ(context, num_elements, arr_i->NumElements());
-    TF_LITE_ENSURE_EQ(context, t, arr_i->ElementType());
-    merged_shape = variants::MergeShapesOrNull(
-        std::move(merged_shape), BuildTfLiteArray(*arr_i->ElementShape()));
+    TF_LITE_ENSURE_TYPES_EQ(context, t, arr_i->ElementType());
+    TF_LITE_ENSURE(context, arr_i->ElementShape() != nullptr);
+    IntArrayUniquePtr cur_shape = BuildTfLiteArray(*arr_i->ElementShape());
+    TF_LITE_ENSURE(context, cur_shape != nullptr);
+    merged_shape = variants::MergeShapesOrNull(std::move(merged_shape),
+                                               std::move(cur_shape));
     TF_LITE_ENSURE(context, merged_shape != nullptr);
     input_arrs.push_back(arr_i);
   }
 
   // Allocate output list with same length and type as all inputs.
+  IntArrayUniquePtr copied_merged_shape = BuildTfLiteArray(*merged_shape.get());
+  TF_LITE_ENSURE(context, copied_merged_shape != nullptr);
   TF_LITE_ENSURE_OK(context, TfLiteTensorVariantRealloc<TensorArray>(
-                                 output, t, BuildTfLiteArray(0)));
+                                 output, t, std::move(copied_merged_shape)));
   TensorArray* const output_arr =
-      reinterpret_cast<TensorArray*>(output->data.data);
-  output_arr->Resize(num_elements);
+      static_cast<TensorArray*>(static_cast<VariantData*>(output->data.data));
+  TF_LITE_ENSURE(context, output_arr->Resize(num_elements));
 
   ///
   // Compute out_list[i] = Sum(in_list_0[i] + ...) for 0 < i < num_elements
@@ -163,19 +180,32 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       // lists `ElementShape`.
       TF_LITE_ENSURE(context,
                      variants::IsShapeFullyDefined(*merged_shape.get()));
-      TensorUniquePtr row_output = BuildTfLiteTensor(
-          t, BuildTfLiteArray(*merged_shape.get()), kTfLiteDynamic);
-      memset(row_output->data.data, 0, row_output->bytes);
-      output_arr->Set(i, std::move(row_output));
+      IntArrayUniquePtr cur_shape = BuildTfLiteArray(*merged_shape.get());
+      TF_LITE_ENSURE(context, cur_shape != nullptr);
+      TensorUniquePtr row_output =
+          BuildTfLiteTensor(t, std::move(cur_shape), kTfLiteDynamic);
+      TF_LITE_ENSURE(context, row_output != nullptr);
+      if (row_output->bytes > 0) {
+        TF_LITE_ENSURE(context, row_output->data.data != nullptr);
+        memset(row_output->data.data, 0, row_output->bytes);
+      }
+      TF_LITE_ENSURE(context, output_arr->Set(i, std::move(row_output)));
       continue;
     }
     // Allocate tensor for the sum of this row.
+    IntArrayUniquePtr cur_shape = BuildTfLiteArray(*row_shape);
+    TF_LITE_ENSURE(context, cur_shape != nullptr);
     TensorUniquePtr row_output =
-        BuildTfLiteTensor(t, BuildTfLiteArray(*row_shape), kTfLiteDynamic);
+        BuildTfLiteTensor(t, std::move(cur_shape), kTfLiteDynamic);
+    TF_LITE_ENSURE(context, row_output != nullptr);
+    if (row_output->bytes > 0) {
+      TF_LITE_ENSURE(context, row_output->data.data != nullptr);
+    }
     if (row_tensors.size() < 2) {
       // There is only one set item in all `input_j[i]`, so just use that.
-      TfLiteTensorCopy(row_tensors[0], row_output.get());
-      output_arr->Set(i, std::move(row_output));
+      TF_LITE_ENSURE_OK(context,
+                        TfLiteTensorCopy(row_tensors[0], row_output.get()));
+      TF_LITE_ENSURE(context, output_arr->Set(i, std::move(row_output)));
       continue;
     }
     // Resize scratch tensor so it can be used for each row.
@@ -185,25 +215,25 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                  cpu_backend_context->max_num_threads());
     IntArrayUniquePtr scratch_shape = BuildTfLiteArray(
         {thread_count * static_cast<int>(NumElements(row_tensors[0]))});
+    TF_LITE_ENSURE(context, scratch_shape != nullptr);
     scratch_tensor->type = t;
-    TF_LITE_ENSURE_OK(
-        context, context->ResizeTensor(context, scratch_tensor,
-                                       BuildTfLiteArray(*row_shape).release()));
+    TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scratch_tensor,
+                                                     scratch_shape.release()));
     const RuntimeShape row_runtime_shape(row_shape->size, row_shape->data);
 
     // Compute sum of row.
     if (t == kTfLiteInt32) {
       VectorOfTensors<int> tensors(row_tensors);
-      optimized_ops::AddN<int>(row_runtime_shape, num_inputs, tensors.data(),
-                               GetTensorData<int>(row_output.get()),
-                               GetTensorData<int>(scratch_tensor),
-                               cpu_backend_context);
+      optimized_ops::AddN<int>(
+          row_runtime_shape, num_inputs_for_row, tensors.data(),
+          GetTensorData<int>(row_output.get()),
+          GetTensorData<int>(scratch_tensor), cpu_backend_context);
     } else if (t == kTfLiteFloat32) {
       VectorOfTensors<float> tensors(row_tensors);
-      optimized_ops::AddN<float>(row_runtime_shape, num_inputs, tensors.data(),
-                                 GetTensorData<float>(row_output.get()),
-                                 GetTensorData<float>(scratch_tensor),
-                                 cpu_backend_context);
+      optimized_ops::AddN<float>(
+          row_runtime_shape, num_inputs_for_row, tensors.data(),
+          GetTensorData<float>(row_output.get()),
+          GetTensorData<float>(scratch_tensor), cpu_backend_context);
     } else {
       TF_LITE_KERNEL_LOG(context, "Subtype is not supported for variant addn.");
       return kTfLiteError;
