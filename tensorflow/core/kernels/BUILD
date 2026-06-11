@@ -1016,7 +1016,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "guarantee_const_op",
     prefix = "guarantee_const_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + ["//tensorflow/core/framework:types_proto_cc"],
 )
 
 tf_kernel_library(
@@ -1204,7 +1204,11 @@ tf_kernel_library(
 tf_kernel_library(
     name = "inplace_ops",
     prefix = "inplace_ops",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+    ],
 )
 
 tf_kernel_library(
