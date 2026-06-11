@@ -29,7 +29,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/barrier.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
@@ -38,6 +42,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -262,7 +267,8 @@ TEST(PjRtCompilerTest, CompilerFactoryRegistered) {
   const std::string variant = "factory_variant";
   auto factory_called = std::make_shared<bool>(false);
 
-  auto factory = [&]() -> absl::StatusOr<std::unique_ptr<PjRtCompiler>> {
+  auto factory =
+      [factory_called]() -> absl::StatusOr<std::unique_ptr<PjRtCompiler>> {
     *factory_called = true;
     return std::make_unique<PjRtDeserializeCompiler>();
   };
@@ -300,7 +306,7 @@ TEST(PjRtCompilerInitializationTest, InitializeCompilerVariant) {
 
   EXPECT_OK(compiler_registry.RegisterFactory(
       platform, variant,
-      [&]() -> absl::StatusOr<std::unique_ptr<PjRtCompiler>> {
+      [factory_call_count]() -> absl::StatusOr<std::unique_ptr<PjRtCompiler>> {
         (*factory_call_count)++;
         return std::make_unique<PjRtDeserializeCompiler>();
       }));
@@ -402,6 +408,40 @@ TEST(PjRtCompilerInitializationTest, UnknownVariantError) {
       StatusIs(absl::StatusCode::kNotFound,
                HasSubstr("No compiler factory for platform: "
                          "unknown_test_platform, variant: no_such_variant")));
+}
+
+TEST(PjRtCompilerInitializationTest, ConcurrentInitialization) {
+  const std::string platform = "concurrent_test_platform";
+  const std::string variant = "concurrent_variant";
+  auto factory_call_count = std::make_shared<int>(0);
+
+  PjRtCompilerRegistry compiler_registry;
+
+  EXPECT_OK(compiler_registry.RegisterFactory(
+      platform, variant,
+      [factory_call_count]() -> absl::StatusOr<std::unique_ptr<PjRtCompiler>> {
+        (*factory_call_count)++;
+        // Sleep to simulate work and ensure other threads have time to wake up
+        // from the barrier and enter the initialization logic concurrently.
+        absl::SleepFor(absl::Milliseconds(100));
+        return std::make_unique<PjRtDeserializeCompiler>();
+      }));
+
+  constexpr int kNumThreads = 10;
+  absl::Barrier barrier(kNumThreads);
+  std::vector<std::unique_ptr<tsl::Thread>> threads;
+  for (int i = 0; i < kNumThreads; ++i) {
+    threads.emplace_back(tsl::Env::Default()->StartThread(
+        tsl::ThreadOptions(), absl::StrCat("init_thread_", i), [&]() {
+          barrier.Block();
+          EXPECT_OK(compiler_registry.InitializeVariant(platform, variant));
+        }));
+  }
+
+  // Wait for all threads to finish.
+  threads.clear();
+
+  EXPECT_EQ(*factory_call_count, 1);
 }
 
 TEST(PjRtCompilerInitializationTest, RegistriesOutOfSync) {

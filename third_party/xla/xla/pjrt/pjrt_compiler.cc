@@ -76,6 +76,16 @@ absl::Status PjRtCompilerRegistry::RegisterCompiler(
         ", variant: ", variant_name));
   }
   compilers_[key] = std::move(compiler);
+  {
+    absl::MutexLock lock(creation_mutexes_mutex_);
+    auto [it, inserted] = creation_mutexes_.try_emplace(key, nullptr);
+    if (inserted) {
+      it->second = std::make_unique<absl::Mutex>();
+    } else {
+      LOG(WARNING) << "Creation mutex already created for platform: "
+                   << platform_name << ", variant: " << variant_name;
+    }
+  }
   return absl::OkStatus();
 }
 
@@ -85,9 +95,40 @@ absl::StatusOr<PjRtCompiler*> PjRtCompilerRegistry::GetOrCreateCompiler(
   std::pair<std::string, std::string> key{std::string(platform_name),
                                           std::string(variant_name)};
 
-  // Check if compiler has already existed in the compiler registry.
+  // We use a safe double-checked locking pattern to initialize the compiler.
+  //
+  // Fast path: check if the compiler is already created using a reader lock.
+  // This allows concurrent access to initialized compilers without contention.
   {
-    absl::MutexLock l(compiler_mutex_);
+    absl::ReaderMutexLock l(compiler_mutex_);
+    auto it = compilers_.find(key);
+    if (it != compilers_.end()) {
+      return it->second.get();
+    }
+  }
+
+  // Slow path: initialize the compiler or wait for another thread to do so.
+  // We use a per-key creation mutex instead of compiler_mutex_ to avoid
+  // blocking the initialization of other compilers or fast-path lookups of
+  // already initialized compilers while factory() is running.
+  absl::Mutex* creation_mutex;
+  {
+    absl::MutexLock l(creation_mutexes_mutex_);
+    auto [it, inserted] = creation_mutexes_.try_emplace(key, nullptr);
+    if (inserted) {
+      it->second = std::make_unique<absl::Mutex>();
+    }
+    creation_mutex = it->second.get();
+  }
+
+  // The first thread acquires the creation mutex and initializes the compiler.
+  // Subsequent threads wait and perform the second check of the double-checked
+  // locking pattern:
+  // - return the compiler if compiler initialization succeeded
+  // - try to initialize the compiler if the first thread failed to do so
+  absl::MutexLock creation_lock(*creation_mutex);
+  {
+    absl::ReaderMutexLock l(compiler_mutex_);
     auto it = compilers_.find(key);
     if (it != compilers_.end()) {
       return it->second.get();
@@ -100,7 +141,7 @@ absl::StatusOr<PjRtCompiler*> PjRtCompilerRegistry::GetOrCreateCompiler(
   // Check if a factory is registered.
   PjRtCompilerFactory factory;
   {
-    absl::MutexLock l(factory_mutex_);
+    absl::ReaderMutexLock l(factory_mutex_);
     auto factory_it = factories_.find(key);
     if (factory_it == factories_.end()) {
       return absl::NotFoundError(absl::StrCat(
@@ -119,6 +160,12 @@ absl::StatusOr<PjRtCompiler*> PjRtCompilerRegistry::GetOrCreateCompiler(
     absl::MutexLock l(compiler_mutex_);
     auto [it, inserted] = compilers_.try_emplace(key, std::move(compiler));
     if (!inserted) {
+      // The compiler was inserted concurrently by RegisterCompiler() while we
+      // were invoking the factory (which is done without holding
+      // compiler_mutex_).
+      LOG(WARNING) << "Compiler already initialized for platform: "
+                   << platform_name << ", variant: " << variant_name
+                   << ". Returning the existing compiler.";
       return it->second.get();
     }
   }
@@ -138,7 +185,7 @@ absl::Status PjRtCompilerRegistry::InitializeVariant(
 absl::Status PjRtCompilerRegistry::InitializeAllVariants() {
   std::vector<std::pair<std::string, std::string>> keys;
   {
-    absl::MutexLock l(factory_mutex_);
+    absl::ReaderMutexLock l(factory_mutex_);
     for (const auto& [key, factory] : factories_) {
       keys.push_back(key);
     }

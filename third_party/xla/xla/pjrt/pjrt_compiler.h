@@ -42,6 +42,9 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/proto/pjrt_partial_program.pb.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
+#include "xla/runtime/chip_id.h"
+#include "xla/runtime/device_id.h"
+#include "xla/runtime/process_id.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -110,6 +113,8 @@ using PjRtCompilerFactory =
 // PjRtCompilerRegistry manages the registration and lifecycle of PjRtCompilers.
 // It supports both direct registration of compiler instances and registration
 // of factories for deferred initialization.
+// Note: This registry uses absl::flat_hash_map with absl::Mutex for thread
+// safety.
 class PjRtCompilerRegistry {
  public:
   PjRtCompilerRegistry() = default;
@@ -153,12 +158,18 @@ class PjRtCompilerRegistry {
 
   absl::Mutex factory_mutex_;
 
+  absl::Mutex creation_mutexes_mutex_;
+
   absl::flat_hash_map<std::pair<std::string, std::string>,
                       std::unique_ptr<PjRtCompiler>>
       compilers_ ABSL_GUARDED_BY(compiler_mutex_);
 
   absl::flat_hash_map<std::pair<std::string, std::string>, PjRtCompilerFactory>
       factories_ ABSL_GUARDED_BY(factory_mutex_);
+
+  absl::flat_hash_map<std::pair<std::string, std::string>,
+                      std::unique_ptr<absl::Mutex>>
+      creation_mutexes_ ABSL_GUARDED_BY(creation_mutexes_mutex_);
 };
 
 // Thread-safe. Returns a pointer to the registered compiler for the given
