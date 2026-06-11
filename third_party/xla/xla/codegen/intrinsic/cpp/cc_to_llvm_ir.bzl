@@ -8,6 +8,7 @@ It uses standard cc_library with clang flags to generate IR, then extracts it.
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 visibility(DEFAULT_LOAD_VISIBILITY)
@@ -85,13 +86,7 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
         if attr in kwargs:
             common_attrs[attr] = kwargs[attr]
 
-    compatible_with = None
-
-    # Do a little dance so the line below matches copybara rules.
-    # copybara_removed compatible_with = ["//buildenv/target:non_prod"]
-    compatible_with = kwargs.get("compatible_with", compatible_with)
-    if compatible_with:
-        common_attrs["compatible_with"] = compatible_with
+    common_attrs["compatible_with"] = kwargs.get("compatible_with", get_compatible_with_portable())
 
     # Define intermediate targets
     lib_name = name + "_lib"
