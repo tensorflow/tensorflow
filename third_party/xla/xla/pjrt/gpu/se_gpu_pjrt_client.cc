@@ -646,9 +646,9 @@ absl::Status WaitForDeviceEventRefsOnStream(
 }
 }  // namespace
 
-absl::StatusOr<std::vector<PjRtDeviceEventRef>>
+absl::StatusOr<PjRtDeviceEventRefVector>
 StreamExecutorGpuClient::CrossHostTransferBuffers(
-    std::vector<PjRtDeviceEventRef> transfer_dependencies,
+    PjRtDeviceEventRefVector transfer_dependencies,
     std::vector<CrossHostTransferSpec> transfer_specs) {
   // Validate arguments.
   for (int i = 0; i < transfer_specs.size(); ++i) {
@@ -749,13 +749,18 @@ StreamExecutorGpuClient::CrossHostTransferBuffers(
     }
   }
 
-  return output_transfer_events;
+  PjRtDeviceEventRefVector result;
+  result.reserve(output_transfer_events.size());
+  for (auto& ev : output_transfer_events) {
+    result.push_back(std::move(ev));
+  }
+  return result;
 }
 
 void StreamExecutorGpuClient::ScheduleTransfersOnLocalDevice(
     LocalDeviceState* local_device_state, GlobalDeviceId device_id,
     tsl::AsyncValueRef<BufferSequencingEvent> transfer_event,
-    std::vector<PjRtDeviceEventRef> transfer_dependencies,
+    PjRtDeviceEventRefVector transfer_dependencies,
     std::vector<CrossHostTransferSpec> transfer_specs) {
   tsl::profiler::TraceMe trace([&] {
     return tsl::profiler::TraceMeEncode(
@@ -940,7 +945,7 @@ StreamExecutorGpuClient::PrepareReceiveBuffer(PjRtDevice* device, Shape shape) {
 // Send functionality for original cross-host transfers API.
 void StreamExecutorGpuClient::ScheduleRemoteSend(
     PjRtMemorySpace* memory_space, PjRtRawBufferRef raw_buffer,
-    std::vector<PjRtDeviceEventRef> definition_events,
+    PjRtDeviceEventRefVector definition_events,
     PjRtDeviceEventPromiseRef usage_event_promise,
     Future<std::string> serialized_descriptor,
     PjRtBuffer::RemoteSendCallback on_done) {
@@ -2130,7 +2135,9 @@ StreamExecutorGpuClient::RunAsync(
                                        /*retry_on_failure=*/true,
                                        /*memory_space=*/allocation->color());
         if (!allocated_buffer.ok()) {
-          return gpu_exec->VerboseAllocationError(allocated_buffer.status());
+          return ResourceExhausted(
+              "%s\n%s\n", allocated_buffer.status().message(),
+              gpu_exec->buffer_allocations_debug_summary());
         }
         result_buffer = allocated_buffer->Release();
         se::DeviceAddressBase& aliased_buffer =
