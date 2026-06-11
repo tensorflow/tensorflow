@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include <stdint.h>
 
+#include <cmath>
 #include <initializer_list>
+#include <limits>
 #include <tuple>
 #include <vector>
 
@@ -343,6 +345,66 @@ TEST_P(ArgMinMaxOpTest, GetMaxArgUInt8LastAxis) {
 
     ValidateOutput(model, {i - 1});
   }
+}
+
+// NaN handling regression tests (b/118532).
+// Verify TFLite matches TensorFlow eager: finite values beat NaN in reduction,
+// all-NaN returns index 0.
+
+TEST_P(ArgMinMaxOpTest, ArgMaxNaN) {
+  // Core reproducer: NaN accumulator must not persist.
+  ArgMaxOpModel model({1, 1, 1, 3}, TensorType_FLOAT32, 3, AxisType(),
+                      ConstantAxis(), OutputType());
+  float nan = std::numeric_limits<float>::quiet_NaN();
+  model.PopulateTensor<float>(model.input(), {nan, 7.0f, nan});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  ValidateOutput(model, {1});
+}
+
+TEST_P(ArgMinMaxOpTest, ArgMinNaN) {
+  ArgMinOpModel model({1, 1, 1, 3}, TensorType_FLOAT32, 3, AxisType(),
+                      ConstantAxis(), OutputType());
+  float nan = std::numeric_limits<float>::quiet_NaN();
+  model.PopulateTensor<float>(model.input(), {nan, 7.0f, nan});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  ValidateOutput(model, {1});
+}
+
+TEST_P(ArgMinMaxOpTest, ArgMaxAllNaN) {
+  ArgMaxOpModel model({1, 1, 1, 3}, TensorType_FLOAT32, 3, AxisType(),
+                      ConstantAxis(), OutputType());
+  float nan = std::numeric_limits<float>::quiet_NaN();
+  model.PopulateTensor<float>(model.input(), {nan, nan, nan});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  ValidateOutput(model, {0});
+}
+
+TEST_P(ArgMinMaxOpTest, ArgMinAllNaN) {
+  ArgMinOpModel model({1, 1, 1, 3}, TensorType_FLOAT32, 3, AxisType(),
+                      ConstantAxis(), OutputType());
+  float nan = std::numeric_limits<float>::quiet_NaN();
+  model.PopulateTensor<float>(model.input(), {nan, nan, nan});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  ValidateOutput(model, {0});
+}
+
+// Last-axis path exercises ArgMaxVector/ArgMinVector optimized specializations.
+TEST_P(ArgMinMaxOpTest, ArgMaxNaNLastAxis) {
+  ArgMaxOpModel model({3}, TensorType_FLOAT32, 0, AxisType(), ConstantAxis(),
+                      OutputType());
+  float nan = std::numeric_limits<float>::quiet_NaN();
+  model.PopulateTensor<float>(model.input(), {nan, 7.0f, nan});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  ValidateOutput(model, {1});
+}
+
+TEST_P(ArgMinMaxOpTest, ArgMinNaNLastAxis) {
+  ArgMinOpModel model({3}, TensorType_FLOAT32, 0, AxisType(), ConstantAxis(),
+                      OutputType());
+  float nan = std::numeric_limits<float>::quiet_NaN();
+  model.PopulateTensor<float>(model.input(), {nan, 7.0f, nan});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  ValidateOutput(model, {1});
 }
 
 }  // namespace
