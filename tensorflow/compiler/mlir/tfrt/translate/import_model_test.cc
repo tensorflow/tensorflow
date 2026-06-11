@@ -98,13 +98,6 @@ TEST(GetTfrtPipelineOptions, LowPriorityMaxEnqueuedBatches) {
   EXPECT_EQ(pipeline_options->low_priority_max_enqueued_batches, 100);
 }
 
-TEST(GetTfrtPipelineOptions, NumWarmupBatchThreads) {
-  tensorflow::TfrtCompileOptions options;
-  options.batch_options.set_num_warmup_batch_threads(4);
-  auto pipeline_options = GetTfrtPipelineOptions(options);
-  EXPECT_EQ(pipeline_options->num_warmup_batch_threads, 4);
-}
-
 TEST(GetTfrtPipelineOptions, EnableLargeBatchSplitting) {
   tensorflow::TfrtCompileOptions options;
   options.batch_options.set_enable_large_batch_splitting(true);

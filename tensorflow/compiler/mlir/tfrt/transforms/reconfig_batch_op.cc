@@ -56,7 +56,6 @@ class ReconfigBatchOpPass
         options.low_priority_allowed_batch_sizes;
     low_priority_max_enqueued_batches_ =
         options.low_priority_max_enqueued_batches;
-    num_warmup_batch_threads_ = options.num_warmup_batch_threads;
     enable_large_batch_splitting_ = options.enable_large_batch_splitting;
     mixed_priority_batching_policy_ = options.mixed_priority_batching_policy;
     batch_queue_global_prioritization_num_threads_ =
@@ -96,7 +95,6 @@ class ReconfigBatchOpPass
         low_priority_batch_timeout_micros_ == 0 &&
         low_priority_allowed_batch_sizes_.empty() &&
         low_priority_max_enqueued_batches_ == 0 &&
-        num_warmup_batch_threads_ == 0 &&
         !enable_priority_aware_batch_scheduler_ &&
         !enable_priority_aware_batch_scheduler_resplit_ &&
         !enable_batching_task_lazy_cancellation_) {
@@ -149,9 +147,6 @@ class ReconfigBatchOpPass
       if (low_priority_max_enqueued_batches_ > 0) {
         batch_op.setLowPriorityMaxEnqueuedBatches(
             low_priority_max_enqueued_batches_);
-      }
-      if (num_warmup_batch_threads_ > 0) {
-        batch_op.setNumWarmupBatchThreads(num_warmup_batch_threads_);
       }
       if (enable_large_batch_splitting_) {
         batch_op.setEnableLargeBatchSplittingAttr(
@@ -223,13 +218,6 @@ class ReconfigBatchOpPass
       *this, "tfrt-low-priority-max-enqueued-batches", llvm::cl::init(0),
       llvm::cl::desc("The maximum number of batches enqueued for processing "
                      "before low priority requests are failed fast")};
-  // TODO(b/516818455): Remove warmup threads after in-lining warmup requests.
-  mlir::Pass::Option<int64_t> num_warmup_batch_threads_{
-      *this, "tfrt-num-warmup-batch-threads", llvm::cl::init(0),
-      llvm::cl::desc(
-          "The number of threads for processing warmup requests. "
-          "Useful to process warmup requests without starving the "
-          "regular batch threads when global scheduler is enabled.")};
   mlir::Pass::Option<bool> enable_large_batch_splitting_{
       *this, "tfrt-enable-large-batch-splitting", llvm::cl::init(false),
       llvm::cl::desc("If true, enables large batch splitting to reduce "

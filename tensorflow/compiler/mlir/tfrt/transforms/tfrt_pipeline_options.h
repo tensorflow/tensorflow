@@ -234,13 +234,6 @@ struct TfrtPipelineOptions
 
   /*experimental options end*/
 
-  Option<int64_t> num_warmup_batch_threads{
-      *this, "tfrt-num-warmup-batch-threads",
-      llvm::cl::desc("The number of threads for processing warmup requests. "
-                     "Useful to process warmup requests without starving the "
-                     "regular batch threads when global scheduler is enabled."),
-      llvm::cl::init(0)};
-
   Option<bool> enable_large_batch_splitting{
       *this, "tfrt-enable-large-batch-splitting",
       llvm::cl::desc("If true, enables large batch splitting to reduce padding "
