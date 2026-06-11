@@ -23,9 +23,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -64,6 +66,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
+#include "xla/layout_util.h"
 #include "xla/mlir/utils/type_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_constants.h"
@@ -74,8 +77,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
@@ -916,6 +917,45 @@ class AllReduceEmitter {
 };
 
 }  // namespace
+
+absl::Status FlattenCollectiveFusion(
+    HloFusionInstruction* absl_nonnull fusion_instr) {
+  HloComputation* entry_computation = fusion_instr->parent();
+  HloComputation* fused_computation =
+      fusion_instr->fused_instructions_computation();
+  Shape original_shape = fusion_instr->shape();
+  const int64_t total_elements = ShapeUtil::ElementsIn(original_shape);
+  if (fused_computation->parameter_instructions().size() != 1) {
+    return absl::InternalError(
+        "Flattening to 1D is not supported for variadic fused computations "
+        "with more than one parameter instruction");
+  }
+  DCHECK_EQ(fusion_instr->operand_count(), 1);
+  // Flatten all instructions in the fused computation to 1D.
+  for (HloInstruction* instr : fused_computation->instructions()) {
+    if (ShapeUtil::SameDimensions(instr->shape(), original_shape)) {
+      *instr->mutable_shape() = ShapeUtil::MakeShapeWithDenseLayout(
+          instr->shape().element_type(), {total_elements}, {0});
+    }
+  }
+  *fusion_instr->mutable_shape() = ShapeUtil::MakeShapeWithDenseLayout(
+      original_shape.element_type(), {total_elements}, {0});
+  HloInstruction* fusion_operand = fusion_instr->mutable_operand(0);
+  Shape flat_input_shape = ShapeUtil::MakeShapeWithDenseLayout(
+      fusion_operand->shape().element_type(), {total_elements}, {0});
+  HloInstruction* bitcast_to_1d = entry_computation->AddInstruction(
+      HloInstruction::CreateBitcast(flat_input_shape, fusion_operand));
+  RETURN_IF_ERROR(
+      fusion_instr->ReplaceOperandWithDifferentShape(0, bitcast_to_1d));
+  HloInstruction* bitcast_to_original_shape = entry_computation->AddInstruction(
+      HloInstruction::CreateBitcast(original_shape, fusion_instr));
+  if (VLOG_IS_ON(3)) {
+    VLOG(3) << "Flattening original shape : " << original_shape.ToString()
+            << " to 1D shape: " << flat_input_shape.ToString();
+  }
+  return fusion_instr->ReplaceAllUsesWithDifferentShape(
+      bitcast_to_original_shape);
+}
 
 llvm::SmallVector<int64_t> GreedyPowerOfTwoTiles(const Shape& output_shape,
                                                  int32_t num_blocks) {
