@@ -23,7 +23,6 @@ limitations under the License.
 
 #include "absl/base/no_destructor.h"
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -36,8 +35,6 @@ limitations under the License.
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/proto/pjrt_partial_program.pb.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -49,15 +46,13 @@ PjRtCompilerRegistry& PjRtCompilerRegistry::Global() {
 absl::Status PjRtCompilerRegistry::RegisterFactory(
     absl::string_view platform_name, absl::string_view variant_name,
     PjRtCompilerFactory factory) {
-  std::pair<std::string, std::string> key{std::string(platform_name),
-                                          std::string(variant_name)};
+  PjRtCompilerType key{platform_name, variant_name};
   absl::MutexLock l(factory_mutex_);
-  if (factories_.contains(key)) {
+  if (!factories_.insert({key, std::move(factory)}).second) {
     return absl::AlreadyExistsError(
         absl::StrCat("Factory already registered for platform: ", platform_name,
                      ", variant: ", variant_name));
   }
-  factories_[key] = std::move(factory);
   return absl::OkStatus();
 }
 
@@ -67,23 +62,20 @@ absl::Status PjRtCompilerRegistry::RegisterCompiler(
   if (compiler == nullptr) {
     return absl::InvalidArgumentError("Compiler cannot be null");
   }
-  std::pair<std::string, std::string> key{std::string(platform_name),
-                                          std::string(variant_name)};
+  PjRtCompilerType key{platform_name, variant_name};
   absl::MutexLock l(compiler_mutex_);
-  if (compilers_.contains(key)) {
+  if (!compilers_.insert({key, std::move(compiler)}).second) {
     return absl::AlreadyExistsError(absl::StrCat(
         "Compiler already registered for platform: ", platform_name,
         ", variant: ", variant_name));
   }
-  compilers_[key] = std::move(compiler);
   return absl::OkStatus();
 }
 
 absl::StatusOr<PjRtCompiler*> PjRtCompilerRegistry::GetOrCreateCompiler(
     absl::string_view platform_name, absl::string_view variant_name)
     ABSL_LOCKS_EXCLUDED(compiler_mutex_, factory_mutex_) {
-  std::pair<std::string, std::string> key{std::string(platform_name),
-                                          std::string(variant_name)};
+  PjRtCompilerType key{platform_name, variant_name};
 
   // Check if compiler has already existed in the compiler registry.
   {
@@ -136,16 +128,17 @@ absl::Status PjRtCompilerRegistry::InitializeVariant(
 }
 
 absl::Status PjRtCompilerRegistry::InitializeAllVariants() {
-  std::vector<std::pair<std::string, std::string>> keys;
+  std::vector<PjRtCompilerType> keys;
   {
     absl::MutexLock l(factory_mutex_);
+    keys.reserve(factories_.size());
     for (const auto& [key, factory] : factories_) {
       keys.push_back(key);
     }
   }
 
   for (const auto& key : keys) {
-    RETURN_IF_ERROR(InitializeVariant(key.first, key.second));
+    RETURN_IF_ERROR(InitializeVariant(key.platform_name, key.variant_name));
   }
   return absl::OkStatus();
 }
