@@ -83,6 +83,7 @@ struct HbmEstimates {
   absl::Duration total_time() { return read_time + write_time; }
 };
 HbmEstimates CalculateHbmTime(const DotProblemInfo& dot,
+                              const DotTileSize& dot_tile,
                               const se::DeviceDescription& device_info);
 
 // Calculates the L2 time for a GPU DOT operation.
