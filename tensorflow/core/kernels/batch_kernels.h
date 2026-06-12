@@ -114,7 +114,7 @@ class BatchFunctionKernel : public AsyncOpKernel {
   std::string batch_padding_policy_;
   int32_t num_warmup_batch_threads_ = 0;
   NameAttrList func_;
-  absl::optional<FunctionLibraryRuntime::Handle> fhandle_ TF_GUARDED_BY(mu_);
+  std::optional<FunctionLibraryRuntime::Handle> fhandle_ TF_GUARDED_BY(mu_);
   bool enable_large_batch_splitting_ = false;
   bool has_attribute_enable_large_batch_splitting_ = false;
   bool enable_priority_aware_batch_scheduler_ = false;
@@ -137,7 +137,7 @@ class BatchFunctionKernel : public AsyncOpKernel {
     int32_t batches_to_average_over = kBatchesToAverageOver;
     int64_t full_batch_scheduling_boost_micros = -1;
   };
-  absl::optional<AdaptiveBatchSchedulerOptions>
+  std::optional<BatchFunctionKernel::AdaptiveBatchSchedulerOptions>
       adaptive_batch_scheduler_options_ = absl::nullopt;
 };
 
