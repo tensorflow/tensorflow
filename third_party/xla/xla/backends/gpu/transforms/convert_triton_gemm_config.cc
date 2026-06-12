@@ -228,8 +228,9 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParametersWithTilingSpace(
   absl::c_sort(parallel_tile_sizes);
 
   do {
-    std::unique_ptr<experimental::TilingSpace> ts =
-        experimental::TilingSpace::Create(*fusion_adaptor, mlir_context);
+    ASSIGN_OR_RETURN(
+        std::unique_ptr<experimental::TilingSpace> ts,
+        experimental::TilingSpace::Create(*fusion_adaptor, mlir_context));
     llvm::SmallVector<int64_t> tile_sizes(ts->num_dimensions(), 1);
     for (const DimensionInfo& dim : ts->dimensions()) {
       if (dim.type == DimensionSemantics::kParallel) {

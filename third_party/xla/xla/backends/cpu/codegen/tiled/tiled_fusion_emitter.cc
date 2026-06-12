@@ -331,8 +331,8 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
 
   std::unique_ptr<HloFusionAdaptor> fusion_adaptor =
       HloFusionAdaptor::ForInstruction(&fusion);
-  std::unique_ptr<ge::TilingSpace> tiling_space =
-      ge::TilingSpace::Create(*fusion_adaptor, &context);
+  ASSIGN_OR_RETURN(std::unique_ptr<ge::TilingSpace> tiling_space,
+                   ge::TilingSpace::Create(*fusion_adaptor, &context));
   llvm::SmallVector<ge::TilingSpace::DimensionInfo, 4> dims =
       tiling_space->dimensions();
 
