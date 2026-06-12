@@ -918,6 +918,7 @@ ARRAY_DEPS = [
     "//tensorflow/core/framework:bounds_check",
     "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
     "//tensorflow/core/util:bad_indices_policy",
+    "//tensorflow/core/util:overflow",
     "@eigen_archive//:eigen3",
 ]
 
@@ -1113,7 +1114,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "one_hot_op",
     prefix = "one_hot_op",
-    deps = ARRAY_DEPS + ["//tensorflow/core/util:overflow"],
+    deps = ARRAY_DEPS,
 )
 
 tf_kernel_library(
