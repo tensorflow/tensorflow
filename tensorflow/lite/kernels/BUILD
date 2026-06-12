@@ -241,6 +241,7 @@ cc_library(
         "@com_google_benchmark//:benchmark",
         "@com_google_googletest//:gtest",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -390,6 +391,7 @@ cc_test(
     ],
 )
 
+# buildifier: disable=platform-specific-binaries
 cc_library(
     name = "cpu_backend_gemm",
     srcs = [
@@ -1822,9 +1824,9 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
-        "@flatbuffers",
     ],
 )
 
