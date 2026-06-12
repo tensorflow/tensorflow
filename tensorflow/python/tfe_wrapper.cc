@@ -738,7 +738,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     tensorflow::AllocatorAttributes attrs;
     tensorflow::Allocator* allocator = matched_device->GetAllocator(attrs);
 
-    if (absl::optional<tensorflow::AllocatorStats> stats =
+    if (std::optional<tensorflow::AllocatorStats> stats =
             allocator->GetStats()) {
       return std::map<std::string, int64_t>{{"current", stats->bytes_in_use},
                                             {"peak", stats->peak_bytes_in_use}};
