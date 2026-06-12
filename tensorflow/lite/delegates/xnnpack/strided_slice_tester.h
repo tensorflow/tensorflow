@@ -120,8 +120,7 @@ class StridedSliceTester {
       // 3. Special case for -max_size, which we set end_mask, which represents
       // end offset of InputShape()[i].
       std::vector<int32_t> valid_ends(max_size * 2);
-      std::iota(valid_ends.begin(), valid_ends.begin() + max_size,
-                Begin(i) + 1);
+      std::iota(valid_ends.begin(), valid_ends.begin() + max_size, Begin(i));
       std::iota(valid_ends.begin() + max_size, valid_ends.end(), -max_size);
       ends_[i] = RandomElement(valid_ends, rng);
       if (ends_[i] == -max_size) {
@@ -153,14 +152,6 @@ class StridedSliceTester {
 
   inline const std::vector<int32_t> Strides() const {
     return std::vector<int32_t>(InputShape().size(), 1);
-  }
-
-  std::vector<int32_t> OutputShape() const {
-    auto output_shape = std::vector<int32_t>(InputShape().size());
-    for (size_t i = 0; i < output_shape.size(); i++) {
-      output_shape[i] = End(i) - Begin(i);
-    }
-    return output_shape;
   }
 
   uint32_t BeginMask() const { return begin_mask_; }
