@@ -48,7 +48,7 @@ bool IsFunctionCall(const Node& node) {
 
 // Utility to set node's value in `cache` and `is_deep` to `value`.
 absl::Status Set(const Node& node, bool value, bool* is_deep,
-                 std::vector<absl::optional<bool>>* cache) {
+                 std::vector<std::optional<bool>>* cache) {
   *is_deep = value;
   (*cache)[node.id()] = value;
   return absl::OkStatus();

@@ -154,18 +154,17 @@ class DefaultFunctionBodyPlacer : public InlinedFunctionBodyPlacer {
   explicit DefaultFunctionBodyPlacer(const Node& caller)
       : input_devices_(InputDevices(caller)) {}
 
-  absl::optional<std::string> InputNodeDevice(int input_index) const override {
+  std::optional<std::string> InputNodeDevice(int input_index) const override {
     return input_devices_[input_index];
   }
-  absl::optional<std::string> OutputNodeDevice(
-      int output_index) const override {
+  std::optional<std::string> OutputNodeDevice(int output_index) const override {
     return absl::nullopt;
   }
   bool ColocateInputOutputIdentities() const override { return false; }
-  absl::optional<std::string> ControlNodeDevice() const override {
+  std::optional<std::string> ControlNodeDevice() const override {
     return absl::nullopt;
   }
-  absl::optional<std::string> BodyNodeDevice(
+  std::optional<std::string> BodyNodeDevice(
       const NodeDef& ndef) const override {
     return absl::nullopt;
   }
@@ -180,18 +179,17 @@ class SingleDeviceFunctionBodyPlacer : public InlinedFunctionBodyPlacer {
   explicit SingleDeviceFunctionBodyPlacer(const Node& caller)
       : caller_device_(caller.def().device()) {}
 
-  absl::optional<std::string> InputNodeDevice(int input_index) const override {
+  std::optional<std::string> InputNodeDevice(int input_index) const override {
     return caller_device_;
   }
-  absl::optional<std::string> OutputNodeDevice(
-      int output_index) const override {
+  std::optional<std::string> OutputNodeDevice(int output_index) const override {
     return caller_device_;
   }
   bool ColocateInputOutputIdentities() const override { return false; }
-  absl::optional<std::string> ControlNodeDevice() const override {
+  std::optional<std::string> ControlNodeDevice() const override {
     return caller_device_;
   }
-  absl::optional<std::string> BodyNodeDevice(
+  std::optional<std::string> BodyNodeDevice(
       const NodeDef& ndef) const override {
     return caller_device_;
   }
@@ -213,18 +211,17 @@ class MultiDeviceFunctionBodyPlacer : public InlinedFunctionBodyPlacer {
         DeviceNameUtils::ParseFullName(caller_device_, &caller_parsed_device_);
   }
 
-  absl::optional<std::string> InputNodeDevice(int input_index) const override {
+  std::optional<std::string> InputNodeDevice(int input_index) const override {
     return input_devices_[input_index];
   }
-  absl::optional<std::string> OutputNodeDevice(
-      int output_index) const override {
+  std::optional<std::string> OutputNodeDevice(int output_index) const override {
     return absl::nullopt;
   }
   bool ColocateInputOutputIdentities() const override { return true; }
-  absl::optional<std::string> ControlNodeDevice() const override {
+  std::optional<std::string> ControlNodeDevice() const override {
     return caller_device_;
   }
-  absl::optional<std::string> BodyNodeDevice(
+  std::optional<std::string> BodyNodeDevice(
       const NodeDef& ndef) const override {
     // LINT.IfChange
     // TODO(ezhulenev): If function would have been instantiated as a
@@ -515,7 +512,7 @@ absl::Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def,
   // Add a NoOp node for function control inputs/outputs.
   const auto no_op = [&](absl::string_view name) -> Node* {
     Node* node = AddNoOp(absl::StrCat(caller->name(), "/", name), g);
-    const absl::optional<std::string> device = placer->ControlNodeDevice();
+    const std::optional<std::string> device = placer->ControlNodeDevice();
     if (device.has_value()) node->set_requested_device(*device);
     return node;
   };
@@ -524,7 +521,7 @@ absl::Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def,
   const auto input_identity = [&](absl::string_view name, Endpoint input,
                                   int index) -> Node* {
     Node* node = AddIdentity(absl::StrCat(caller->name(), "/", name), g, input);
-    const absl::optional<std::string> device = placer->InputNodeDevice(index);
+    const std::optional<std::string> device = placer->InputNodeDevice(index);
     if (device.has_value()) node->set_requested_device(*device);
     bool colocate_identity = placer->ColocateInputOutputIdentities();
     if (colocate_identity) {
@@ -539,7 +536,7 @@ absl::Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def,
   const auto output_identity = [&](absl::string_view name, Endpoint input,
                                    int index) -> Node* {
     Node* node = AddIdentity(absl::StrCat(caller->name(), "/", name), g, input);
-    const absl::optional<std::string> device = placer->OutputNodeDevice(index);
+    const std::optional<std::string> device = placer->OutputNodeDevice(index);
     if (device.has_value()) node->set_requested_device(*device);
     bool colocate_identity = placer->ColocateInputOutputIdentities();
     if (colocate_identity) {
@@ -613,7 +610,7 @@ absl::Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def,
     NodeDef ndef = n->def();
 
     // Maybe override requested node device assignment.
-    const absl::optional<std::string> device = placer->BodyNodeDevice(ndef);
+    const std::optional<std::string> device = placer->BodyNodeDevice(ndef);
     if (device.has_value()) ndef.set_device(*device);
 
     // Add inlined function name to inlined node debug information.

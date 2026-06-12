@@ -145,7 +145,7 @@ class RecordingAllocator : public Allocator {
   size_t AllocatedSize(const void* p) const override {
     return a_->AllocatedSize(p);
   }
-  absl::optional<AllocatorStats> GetStats() override { return a_->GetStats(); }
+  std::optional<AllocatorStats> GetStats() override { return a_->GetStats(); }
   bool ClearStats() override { return a_->ClearStats(); }
 
   AllocatorMemoryType GetMemoryType() const override {
