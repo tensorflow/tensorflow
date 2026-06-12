@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/shape.h"
@@ -260,11 +261,25 @@ absl::Status TilingSpace::AssignTileSizes(
   return absl::OkStatus();
 }
 
-std::unique_ptr<TilingSpace> TilingSpace::Create(const HloFusionAdaptor& fusion,
-                                                 mlir::MLIRContext* ctx) {
+absl::StatusOr<std::unique_ptr<TilingSpace>> TilingSpace::Create(
+    const HloFusionAdaptor& fusion, mlir::MLIRContext* ctx) {
   auto tiling_space = std::make_unique<TilingSpace>();
   tiling_space->mlir_context_ = ctx;
   auto roots = fusion.GetRoots();
+  CHECK(!roots.empty()) << "Fusion has no roots";
+
+  // TODO: b/502910372 - Support multi-output fusions. The option name is
+  // misleading as it is not GPU specific.
+  if (roots.size() > 1 &&
+      !roots.back()
+           .instruction()
+           .GetModule()
+           ->config()
+           .debug_options()
+           .xla_gpu_unsupported_enable_triton_multi_output_fusion()) {
+    return absl::InvalidArgumentError(
+        "TilingSpace does not support fusions with multiple roots");
+  }
 
   // First pass: Append all dimensions. This is necessary because symbols
   // are created using the total number of dimensions, which needs to be known
