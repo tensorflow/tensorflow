@@ -74,6 +74,9 @@ absl::StatusOr<std::unique_ptr<Tuner>> Tuner::Create(
 tsl::Future<Tuner::Config> Tuner::GetTunedConfig(const HloInstruction* instr) {
   ASSIGN_OR_RETURN(std::vector<CodegenOrchestrator::Config> supported_configs,
                    orchestrator_->GetSupportedConfigs(*instr));
+  std::cerr << "DEBUG AUTOTUNER: supported_configs size = "
+            << supported_configs.size() << " for instruction: " << instr->name()
+            << std::endl;
   if (supported_configs.empty()) {
     return absl::InternalError(
         absl::StrCat("Autotuning failed for HLO: ", instr->ToString(),
@@ -103,8 +106,9 @@ tsl::Future<Tuner::Config> Tuner::GetTunedConfig(const HloInstruction* instr) {
             std::vector<ConfigResult> results;
             for (auto& [config, executable] : compile_results) {
               if (!executable.ok()) {
-                VLOG(4) << "Failed to compile config " << config.ToString()
-                        << " with status: " << executable.status();
+                std::cerr << "DEBUG AUTOTUNER compile failure: "
+                          << executable.status().ToString()
+                          << " for config: " << config.ToString() << std::endl;
                 results.push_back({/*config=*/std::move(config),
                                    /*failure=*/
                                    Failure{FailureKind::kCompilationFailed,

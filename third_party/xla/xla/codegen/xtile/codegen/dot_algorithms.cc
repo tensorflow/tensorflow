@@ -104,7 +104,7 @@ absl::StatusOr<Value> ScaledDot(mlir::ImplicitLocOpBuilder& b,
   // RHS minor dim is not K.
   const auto& lhs_shaped_type =
       mlir::dyn_cast<ShapedType>(operands.lhs.getType());
-  const bool rhs_k_pack = lhs_shaped_type.getElementType() !=
+  const bool rhs_k_pack = lhs_shaped_type.getElementType() ==
                           mlir::Float4E2M1FNType::get(b.getContext());
   auto dot_scaled_op = xtile::DotScaledOp::create(
       b, operands.accumulator.getType(), operands.lhs, operands.rhs, lhs_scale,

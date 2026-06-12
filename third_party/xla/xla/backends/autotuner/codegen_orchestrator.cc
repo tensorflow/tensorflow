@@ -55,18 +55,23 @@ CodegenOrchestrator::Create(
 
 absl::StatusOr<std::vector<CodegenOrchestrator::Config>>
 CodegenOrchestrator::GetSupportedConfigs(const HloInstruction& instr) const {
+  std::cerr << "DEBUG ORCHESTRATOR: GetSupportedConfigs for instruction: "
+            << instr.name() << std::endl;
   std::vector<Config> configs;
   for (auto& codegen_backend : codegen_backends_) {
+    std::cerr << "DEBUG ORCHESTRATOR: Checking backend: "
+              << codegen_backend->name() << std::endl;
     absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
         per_backend_configs = codegen_backend->GetSupportedConfigs(instr);
     if (!per_backend_configs.ok()) {
-      VLOG(3) << "Failed to get supported configs for backend "
-              << codegen_backend->name() << ": "
-              << per_backend_configs.status();
+      std::cerr << "DEBUG ORCHESTRATOR: Backend " << codegen_backend->name()
+                << " GetSupportedConfigs error: "
+                << per_backend_configs.status().ToString() << std::endl;
       continue;
     }
-    VLOG(3) << "Found " << per_backend_configs->size()
-            << " supported configs for backend " << codegen_backend->name();
+    std::cerr << "DEBUG ORCHESTRATOR: Backend " << codegen_backend->name()
+              << " returned " << per_backend_configs->size() << " configs"
+              << std::endl;
     for (auto& config : *per_backend_configs) {
       configs.push_back({codegen_backend.get(), std::move(config)});
     }
