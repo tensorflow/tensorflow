@@ -199,8 +199,7 @@ bool IsI32F32UniformQuantizedPerAxisType(const Type type) {
 // Determines whether the storage type of a quantized type is supported by
 // `tfl.quantize` or `tfl.dequantize` ops. ui8, i8 and i16 are supported.
 bool IsSupportedByTfliteQuantizeOrDequantizeOps(IntegerType storage_type) {
-  if (storage_type.getWidth() == 8 ||
-      (storage_type.isSigned() && storage_type.getWidth() == 16)) {
+  if (storage_type.getWidth() == 8 || storage_type.isSignlessInteger(16)) {
     return true;
   }
   LLVM_DEBUG(llvm::dbgs()
