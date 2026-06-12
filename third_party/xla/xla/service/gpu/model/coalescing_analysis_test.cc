@@ -607,9 +607,10 @@ class CoalescingForTiledHloTest : public CoalescingTest,
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
 
     if (use_experimental_tiling()) {
-      std::unique_ptr<experimental::TilingSpace> tiling_space =
+      auto tiling_space_or =
           experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_);
-
+      CHECK_OK(tiling_space_or);
+      auto tiling_space = std::move(tiling_space_or.value());
       CHECK_OK(tiling_space->AssignTileSizes(tile_sizes));
 
       absl::StatusOr<experimental::TiledHloComputation> tiled_hlo_computation =

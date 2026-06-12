@@ -30,8 +30,6 @@ limitations under the License.
 
 namespace xla::cpu {
 
-inline constexpr absl::string_view kYnnFusionKind = "__ynn_fusion";
-
 // Returns the mappings from HLO opcodes to YNNPACK unary operators.
 const absl::flat_hash_map<HloOpcode, ynn_unary_operator>& GetYnnUnaryOpMap();
 
