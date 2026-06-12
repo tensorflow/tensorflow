@@ -77,6 +77,14 @@ class _SummaryContextManager:
 
   def __init__(self, writer, step=None):
     self._writer = writer
+    if step is not None:
+      step = ops.convert_to_tensor(step, dtypes.int64)
+      n = step.shape.num_elements()
+      if n is not None and n != 1:
+        raise ValueError(
+            "Argument `step` must be a scalar. "
+            f"Received step with shape {step.shape}."
+        )
     self._step = step
     self._old_writer = None
     self._old_step = None
@@ -241,7 +249,18 @@ def set_step(step):
 
   Args:
     step: An `int64`-castable default step value, or None to unset.
+
+  Raises:
+    ValueError: If `step` is not a scalar.
   """
+  if step is not None:
+    step = ops.convert_to_tensor(step, dtypes.int64)
+    n = step.shape.num_elements()
+    if n is not None and n != 1:
+      raise ValueError(
+          "Argument `step` must be a scalar. "
+          f"Received step with shape {step.shape}."
+      )
   _summary_state.step = step
 
 
