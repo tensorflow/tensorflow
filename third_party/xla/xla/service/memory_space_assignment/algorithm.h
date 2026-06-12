@@ -774,8 +774,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // If aliased_offset is non-null, this method adds the allocation to
   // aliased_offset. Otherwise, it creates a new AliasedOffset object and adds
   // the allocation to this new AliasedOffset.
-  void CreateOrAddToAliasedOffset(const Allocation& allocation,
-                                  AliasedOffset* aliased_offset);
+  void MaybeCreateOrAddToAliasedOffset(const Allocation& allocation,
+                                       AliasedOffset* aliased_offset);
 
   // Given an allocation sequence, returns the live allocation at time with a
   // preference towards allocations in alternate memory. Returns nullptr if no
@@ -1016,6 +1016,10 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // Searches for aliases in the use for a required assignment, and returns it
   // if found.
   std::optional<RequiredMemoryAssignment> AliasedRequiredAssignmentForUse(
+      const AllocationValue::Use& use) const;
+
+  // Returns the required assignment for a given use.
+  std::optional<RequiredMemoryAssignment> RequiredAssignmentForUse(
       const AllocationValue::Use& use) const;
 
   // Adds required assignment in the default memory for conditional outputs
