@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/python/eager/pywrap_tensor.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
