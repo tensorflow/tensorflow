@@ -22,12 +22,16 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -84,6 +88,69 @@ int32_t NestingDepth(const HloInstruction* hlo) {
   }
   return level;
 }
+
+namespace async {
+
+absl::StatusOr<bool> AreOperandsAndOutputFullyBound(
+    const HloInstruction* async_op, const ShapeIndex& index) {
+  if (index.empty()) {
+    ASSIGN_OR_RETURN(bool operands_bound,
+                     AreOperandsAndOutputFullyBound(async_op, {0}));
+    ASSIGN_OR_RETURN(bool output_bound,
+                     AreOperandsAndOutputFullyBound(async_op, {1}));
+    return operands_bound && output_bound;
+  }
+
+  const Shape& async_tuple_shape = (async_op->opcode() == HloOpcode::kAsyncDone)
+                                       ? async_op->operand(0)->shape()
+                                       : async_op->shape();
+  CHECK(async_tuple_shape.IsTuple() &&
+        async_tuple_shape.tuple_shapes().size() >= 2);
+
+  const ProgramShape called_computation_shape =
+      async_op->async_wrapped_computation()->ComputeProgramShape();
+  const Shape expected_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeTupleShape(called_computation_shape.parameters()),
+       called_computation_shape.result()});
+
+  if (index.front() > 1 || !ShapeUtil::IndexIsValid(expected_shape, index)) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Invalid index: ", index.ToString(),
+        ", note that the index must start with 0 or 1, or be empty."));
+  }
+
+  // Check operands
+  if (index.front() == 0) {
+    if (!ShapeUtil::IndexIsValid(async_tuple_shape, index)) {
+      return false;
+    }
+    const Shape& expected_subshape =
+        ShapeUtil::GetSubshape(expected_shape, index);
+    const Shape& async_tuple_subshape =
+        ShapeUtil::GetSubshape(async_tuple_shape, index);
+    return ShapeUtil::Equal(expected_subshape, async_tuple_subshape);
+  }
+
+  // Check output
+  if (index.front() == 1) {
+    const Shape& output_shape = (async_op->opcode() == HloOpcode::kAsyncDone)
+                                    ? async_op->shape()
+                                    : async_op->shape().tuple_shapes(1);
+    ShapeIndex sub_index(index.begin() + 1, index.end());
+    if (!ShapeUtil::IndexIsValid(output_shape, sub_index)) {
+      return false;
+    }
+    const Shape& expected_subshape =
+        ShapeUtil::GetSubshape(expected_shape, index);
+    const Shape& async_tuple_subshape =
+        ShapeUtil::GetSubshape(output_shape, sub_index);
+    return ShapeUtil::Equal(expected_subshape, async_tuple_subshape);
+  }
+
+  return false;
+}
+
+}  // namespace async
 
 }  // namespace hlo_instruction_utils
 }  // namespace xla
