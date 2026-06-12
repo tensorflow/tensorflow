@@ -316,7 +316,7 @@ class SegmentReductionOpTest(SegmentReductionHelper, parameterized.TestCase):
           self.evaluate(s)
 
   def testNaNPropagation(self):
-    for dtype in [dtypes_lib.float32, dtypes_lib.float64]:
+    for dtype in [dtypes_lib.float16, dtypes_lib.bfloat16, dtypes_lib.float32, dtypes_lib.float64]:
       with self.session(use_gpu=False):
         # Input [1.0, NaN, 3.0]
         data_min = constant_op.constant([1.0, float('nan'), 3.0], dtype=dtype)
