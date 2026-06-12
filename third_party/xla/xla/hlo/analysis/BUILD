@@ -864,6 +864,7 @@ cc_library(
         "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",

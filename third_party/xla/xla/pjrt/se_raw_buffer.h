@@ -117,7 +117,7 @@ class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBufferImpl {
 
   void ScheduleCopyTo(
       AsyncWorkRunner* async_work_runner,
-      std::vector<PjRtDeviceEventRef> transfer_dependency_events,
+      PjRtDeviceEventRefVector transfer_dependency_events,
       PjRtRawBufferRef dst_raw_buffer,
       PjRtDeviceEventPromiseRef definition_event_promise,
       PjRtDeviceEventPromiseRef src_usage_event_promise,
@@ -128,9 +128,9 @@ class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBufferImpl {
 
   absl::StatusOr<PjRtDeviceEventRef> CopyRawToRemoteDevice(
       Future<std::string> serialized_descriptor, RemoteSendCallback on_done,
-      std::vector<PjRtDeviceEventRef> transfer_dependency_avs) override;
+      PjRtDeviceEventRefVector transfer_dependency_avs) override;
 
-  void DecrefAfter(std::vector<PjRtDeviceEventRef> avs) override { DropRef(); }
+  void DecrefAfter(PjRtDeviceEventRefVector avs) override { DropRef(); }
 
  private:
   PjRtStreamExecutorClient* client_;
@@ -140,8 +140,7 @@ class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBufferImpl {
   size_t buffer_size_;
 
   void IntraClientCopyToWithDependencies(
-      std::vector<PjRtDeviceEventRef> dependencies,
-      PjRtRawBufferRef dst_raw_buffer,
+      PjRtDeviceEventRefVector dependencies, PjRtRawBufferRef dst_raw_buffer,
       PjRtDeviceEventPromiseRef definition_event_promise,
       PjRtDeviceEventPromiseRef src_usage_event_promise,
       absl::AnyInvocable<void(absl::Status) &&> allocation_event);
