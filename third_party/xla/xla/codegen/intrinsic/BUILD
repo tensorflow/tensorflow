@@ -80,8 +80,8 @@ xla_cc_test(
     deps = [
         ":fptrunc",
         ":simple_jit_runner",
+        ":type",
         "//xla:xla_data_proto_cc",
-        "//xla/codegen/intrinsic:type",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",

@@ -80,7 +80,7 @@ namespace {
 
 bool IsFloatTypeSupportedByChecker(PrimitiveType type) {
   return type == PrimitiveType::F32 || type == PrimitiveType::BF16 ||
-         type == PrimitiveType::F64;
+         type == PrimitiveType::F16 || type == PrimitiveType::F64;
 }
 
 size_t TempBufferSizeFromMaxBufferSize(size_t max_buffer_size_bytes) {
