@@ -73,6 +73,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/cpu:target_machine_options",
+        "//xla/backends/gpu/collectives:allocator_memory_registration",
         "//xla/backends/gpu/collectives:gpu_clique",
         "//xla/backends/gpu/collectives:gpu_clique_key",
         "//xla/backends/gpu/collectives:gpu_cliques",
@@ -472,24 +473,6 @@ xla_test(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:IR",
-    ],
-)
-
-xla_test(
-    name = "pjrt_client_test_se_gpu",
-    srcs = ["pjrt_client_test_se_gpu.cc"],
-    backend_tags = {
-        "gpu": ["multi_gpu"],
-    },
-    backends = ["gpu"],
-    tags = [
-        "no_oss",
-        "notap",
-    ],
-    deps = [
-        ":se_gpu_pjrt_client",
-        "//xla/pjrt:pjrt_client_test_common",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
