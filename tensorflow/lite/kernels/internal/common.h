@@ -1002,19 +1002,19 @@ template <int N>
 struct NdArrayDesc {
   // The "extent" of each dimension. Indices along dimension d must be in the
   // half-open interval [0, extents[d]).
-  int extents[N];
+  int64_t extents[N];
 
   // The number of *elements* (not bytes) between consecutive indices of each
   // dimension.
-  int strides[N];
+  int64_t strides[N];
 };
 
 // DO NOT USE THIS FUNCTION FOR NEW FUNCTIONALITY BEYOND IMPLEMENTING
 // BROADCASTING.
 //
 // Same as Offset(), except takes as NdArrayDesc<N> instead of Dims<N>.
-inline int SubscriptToIndex(const NdArrayDesc<4>& desc, int i0, int i1, int i2,
-                            int i3) {
+inline int64_t SubscriptToIndex(const NdArrayDesc<4>& desc, int i0, int i1,
+                                int i2, int i3) {
   TFLITE_DCHECK(i0 >= 0 && i0 < desc.extents[0]);
   TFLITE_DCHECK(i1 >= 0 && i1 < desc.extents[1]);
   TFLITE_DCHECK(i2 >= 0 && i2 < desc.extents[2]);
@@ -1023,13 +1023,13 @@ inline int SubscriptToIndex(const NdArrayDesc<4>& desc, int i0, int i1, int i2,
          i3 * desc.strides[3];
 }
 
-inline int SubscriptToIndex(const NdArrayDesc<5>& desc, int indexes[5]) {
+inline int64_t SubscriptToIndex(const NdArrayDesc<5>& desc, int indexes[5]) {
   return indexes[0] * desc.strides[0] + indexes[1] * desc.strides[1] +
          indexes[2] * desc.strides[2] + indexes[3] * desc.strides[3] +
          indexes[4] * desc.strides[4];
 }
 
-inline int SubscriptToIndex(const NdArrayDesc<8>& desc, int indexes[8]) {
+inline int64_t SubscriptToIndex(const NdArrayDesc<8>& desc, int indexes[8]) {
   return indexes[0] * desc.strides[0] + indexes[1] * desc.strides[1] +
          indexes[2] * desc.strides[2] + indexes[3] * desc.strides[3] +
          indexes[4] * desc.strides[4] + indexes[5] * desc.strides[5] +
@@ -1097,7 +1097,7 @@ inline void NdArrayDescsForElementwiseBroadcast(const Dims<N>& input0_dims,
 template <int N>
 TFLITE_NOINLINE void CopyDimsToDesc(const RuntimeShape& input_shape,
                                     NdArrayDesc<N>* desc_out) {
-  int desc_stride = 1;
+  int64_t desc_stride = 1;
   for (int i = N - 1; i >= 0; --i) {
     desc_out->extents[i] = input_shape.Dims(i);
     desc_out->strides[i] = desc_stride;
@@ -1278,8 +1278,9 @@ inline int LegacyHowManyThreads(int max_num_threads, int rows, int cols,
     static constexpr std::uint64_t min_cubic_size_per_thread = 64 * 1024;
 
     // We can only multiply two out of three sizes without risking overflow
-    const std::uint64_t cubic_size =
-        std::uint64_t(rows) * std::uint64_t(cols) * std::uint64_t(depth);
+    const std::uint64_t cubic_size = static_cast<std::uint64_t>(rows) *
+                                     static_cast<std::uint64_t>(cols) *
+                                     static_cast<std::uint64_t>(depth);
 
     thread_count = std::min(
         thread_count, static_cast<int>(cubic_size / min_cubic_size_per_thread));

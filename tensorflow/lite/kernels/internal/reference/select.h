@@ -111,25 +111,25 @@ void BroadcastSelect5DSlow(const RuntimeShape& input_condition_shape,
   // nesting loops such that the innermost loop has the smallest stride for
   // the best cache behavior.
   for (int n = 0; n < desc_output.extents[0]; ++n) {
-    int out_idx_n = desc_output.extents[1] * n;
-    int cond_idx_n = desc_condition.strides[0] * n;
-    int in_idx1_n = desc_x.strides[0] * n;
-    int in_idx2_n = desc_y.strides[0] * n;
+    int64_t out_idx_n = desc_output.extents[1] * n;
+    int64_t cond_idx_n = desc_condition.strides[0] * n;
+    int64_t in_idx1_n = desc_x.strides[0] * n;
+    int64_t in_idx2_n = desc_y.strides[0] * n;
     for (int b = 0; b < desc_output.extents[1]; ++b) {
-      int out_idx_b = (out_idx_n + b) * desc_output.extents[2];
-      int cond_idx_b = cond_idx_n + desc_condition.strides[1] * b;
-      int in_idx1_b = in_idx1_n + desc_x.strides[1] * b;
-      int in_idx2_b = in_idx2_n + desc_y.strides[1] * b;
+      int64_t out_idx_b = (out_idx_n + b) * desc_output.extents[2];
+      int64_t cond_idx_b = cond_idx_n + desc_condition.strides[1] * b;
+      int64_t in_idx1_b = in_idx1_n + desc_x.strides[1] * b;
+      int64_t in_idx2_b = in_idx2_n + desc_y.strides[1] * b;
       for (int y = 0; y < desc_output.extents[2]; ++y) {
-        int out_idx_y = (out_idx_b + y) * desc_output.extents[3];
-        int cond_idx_y = cond_idx_b + desc_condition.strides[2] * y;
-        int in_idx1_y = in_idx1_b + desc_x.strides[2] * y;
-        int in_idx2_y = in_idx2_b + desc_y.strides[2] * y;
+        int64_t out_idx_y = (out_idx_b + y) * desc_output.extents[3];
+        int64_t cond_idx_y = cond_idx_b + desc_condition.strides[2] * y;
+        int64_t in_idx1_y = in_idx1_b + desc_x.strides[2] * y;
+        int64_t in_idx2_y = in_idx2_b + desc_y.strides[2] * y;
         for (int x = 0; x < desc_output.extents[3]; ++x) {
-          int out_idx = (out_idx_y + x) * desc_output.extents[4];
-          int cond_idx = cond_idx_y + desc_condition.strides[3] * x;
-          int in_idx1 = in_idx1_y + desc_x.strides[3] * x;
-          int in_idx2 = in_idx2_y + desc_y.strides[3] * x;
+          int64_t out_idx = (out_idx_y + x) * desc_output.extents[4];
+          int64_t cond_idx = cond_idx_y + desc_condition.strides[3] * x;
+          int64_t in_idx1 = in_idx1_y + desc_x.strides[3] * x;
+          int64_t in_idx2 = in_idx2_y + desc_y.strides[3] * x;
           for (int c = 0; c < desc_output.extents[4]; ++c) {
             output_data[out_idx] = input_condition_data[cond_idx]
                                        ? input_x_data[in_idx1]
