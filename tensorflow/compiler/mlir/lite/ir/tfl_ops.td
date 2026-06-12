@@ -1115,9 +1115,9 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
   let summary = "Fully connected op";
 
   let arguments = (ins
-    TFL_TensorOf<[F32, QI8, QUI8, QI16, QUI16]>:$input,
-    TFL_TensorOf<[F32, QI2, QI4, QI8, QUI8, QI16]>:$filter,
-    TFL_TensorOfOrNone<[F32, QI32, QUI32]>:$bias,
+    TFL_TensorOf<[F32, F16, QI8, QUI8, QI16, QUI16]>:$input,
+    TFL_TensorOf<[F32, F16, QI2, QI4, QI8, QUI8, QI16]>:$filter,
+    TFL_TensorOfOrNone<[F32, F16, QI32, QUI32]>:$bias,
 
     TFL_AFAttr:$fused_activation_function,
     TFL_FullyConnectedOptionsWeightFormatAttr:$weights_format,
@@ -1129,7 +1129,7 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
 
   // Depending on the weights format, this op can have one or two outputs.
   let results = (outs
-    TFL_VariadicTensorOf<[F32, QI8, QUI8, QI16, QUI16]>:$output
+    TFL_VariadicTensorOf<[F32, F16, QI8, QUI8, QI16, QUI16]>:$output
   );
 
   let hasVerifier = 1;
@@ -1188,8 +1188,8 @@ in the batch dimensions and broadcasting.
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, QI8, QI16, I8]>:$x,
-    TFL_TensorOf<[F32, QI8, QI16, I8]>:$y,
+    TFL_TensorOf<[F32, F16, QI8, QI16, I8]>:$x,
+    TFL_TensorOf<[F32, F16, QI8, QI16, I8]>:$y,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_x,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_y,
     // Used in post-training dynamic range quantization. If the value is true,
@@ -1198,7 +1198,7 @@ in the batch dimensions and broadcasting.
   );
 
    let results = (outs
-    TFL_TensorOf<[F32, QI8, QI16, I32]>:$output
+    TFL_TensorOf<[F32, F16, QI8, QI16, I32]>:$output
   );
 
   let hasOptions = 1;
@@ -3399,11 +3399,11 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8, QI16]>:$input,
+    ins TFL_TensorOf<[F32, F16, QI8, QUI8, TFL_Quint8, QI16]>:$input,
     F32Attr:$beta
   );
 
-  let results = (outs TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8, QI16]>:$output);
+  let results = (outs TFL_TensorOf<[F32, F16, QI8, QUI8, TFL_Quint8, QI16]>:$output);
 
   let hasOptions = 1;
 
@@ -4054,7 +4054,7 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I32, I64, I8, UI8, UI32, QI8, QUI8, I1, I16, QI16, TFL_Quint8, TFL_Str]>:$input,
+    TFL_TensorOf<[F32, F16, I32, I64, I8, UI8, UI32, QI8, QUI8, I1, I16, QI16, TFL_Quint8, TFL_Str]>:$input,
     TFL_I32Tensor:$begin,
     TFL_I32Tensor:$end,
     TFL_I32Tensor:$strides,
@@ -4068,7 +4068,7 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice", [
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I32, I64, I8, UI8, UI32, QI8, QUI8, I1, I16, QI16, TFL_Quint8, TFL_Str]>:$output
+    TFL_TensorOf<[F32, F16, I32, I64, I8, UI8, UI32, QI8, QUI8, I1, I16, QI16, TFL_Quint8, TFL_Str]>:$output
   );
 
   // TFLite kernel only supports up to 5D input including added axis.
@@ -4190,11 +4190,11 @@ def TFL_GeluOp: TFL_Op<"gelu", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, QI8, QUI8]>:$input,
+    TFL_TensorOf<[F32, F16, QI8, QUI8]>:$input,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$approximate
   );
 
-  let results = (outs TFL_TensorOf<[F32, QI8, QUI8]>:$output);
+  let results = (outs TFL_TensorOf<[F32, F16, QI8, QUI8]>:$output);
 
   let hasOptions = 1;
 }

@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/minimal_logging.h"
+#include "tensorflow/lite/types/half.h"
 #include "tensorflow/lite/util.h"
 #ifdef TFLITE_HAVE_CPUINFO
 #include "include/cpuinfo.h"
@@ -270,7 +271,8 @@ inline TfLiteStatus CheckTypes(TfLiteContext* context,
                        kTfLiteFullyConnectedWeightsFormatShuffled4x16Int8);
 
   // optional bias tensor.
-  const bool is_optional_bias_float = !bias || (bias->type == kTfLiteFloat32);
+  const bool is_optional_bias_float =
+      !bias || (bias->type == kTfLiteFloat32) || (bias->type == kTfLiteFloat16);
   const bool is_optional_bias_int =
       !bias || (bias->type == kTfLiteInt32) || (bias->type == kTfLiteInt64);
 
@@ -298,10 +300,14 @@ inline TfLiteStatus CheckTypes(TfLiteContext* context,
       TF_LITE_ENSURE_EQ(context, is_optional_bias_int, true);
     }
   } else {
-    // Only float32 is supported currently
-    TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteFloat32);
-    TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteFloat32);
-    TF_LITE_ENSURE_TYPES_EQ(context, filter->type, kTfLiteFloat32);
+    bool is_supported_float_path =
+        (input->type == kTfLiteFloat32 && filter->type == kTfLiteFloat32 &&
+         output->type == kTfLiteFloat32) ||
+        (input->type == kTfLiteFloat16 && filter->type == kTfLiteFloat32 &&
+         output->type == kTfLiteFloat16) ||
+        (input->type == kTfLiteFloat16 && filter->type == kTfLiteFloat16 &&
+         output->type == kTfLiteFloat16);
+    TF_LITE_ENSURE(context, is_supported_float_path);
     TF_LITE_ENSURE_EQ(context, is_optional_bias_float, true);
   }
 
@@ -1903,6 +1909,26 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
   float output_activation_min, output_activation_max;
   CalculateActivationRange(params->activation, &output_activation_min,
                            &output_activation_max);
+  if (input->type == kTfLiteFloat16) {
+    FullyConnectedParams op_params;
+    op_params.float_activation_min = output_activation_min;
+    op_params.float_activation_max = output_activation_max;
+    TF_LITE_ENSURE(context, filter->sparsity == nullptr);
+    if (filter->type == kTfLiteFloat16) {
+      reference_ops::FullyConnected(
+          op_params, GetTensorShape(input), GetTensorData<half>(input),
+          GetTensorShape(filter), GetTensorData<half>(filter),
+          GetTensorShape(bias), GetTensorData<half>(bias),
+          GetTensorShape(output), GetTensorData<half>(output));
+    } else {
+      reference_ops::FullyConnected(
+          op_params, GetTensorShape(input), GetTensorData<half>(input),
+          GetTensorShape(filter), GetTensorData<float>(filter),
+          GetTensorShape(bias), GetTensorData<float>(bias),
+          GetTensorShape(output), GetTensorData<half>(output));
+    }
+    return kTfLiteOk;
+  }
   if (kernel_type == kReference) {
     FullyConnectedParams op_params;
     op_params.float_activation_min = output_activation_min;
@@ -2013,6 +2039,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   switch (filter->type) {
     case kTfLiteFloat32:
+    case kTfLiteFloat16:
       return EvalFloat<kernel_type>(context, node, params, data, input, filter,
                                     bias, output);
     case kTfLiteUInt8:
