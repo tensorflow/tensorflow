@@ -20,7 +20,13 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
