@@ -56,12 +56,12 @@ static absl::Status Memcpy(const Communicator::Executor& executor,
   return stream->MemcpyD2D(&dst, src, size);
 }
 
-LoopbackCommunicator::LoopbackCommunicator(se::StreamExecutor* executor,
+LoopbackCommunicator::LoopbackCommunicator(se::StreamExecutor* stream_executor,
                                            size_t num_ranks, size_t rank)
-    : executor_(executor), num_ranks_(num_ranks), rank_(rank) {
+    : stream_executor_(stream_executor), num_ranks_(num_ranks), rank_(rank) {
   VLOG(1) << absl::StreamFormat(
       "LoopbackCommunicator created: rank=%d/%d, executor=%p", rank_,
-      num_ranks_, executor_);
+      num_ranks_, stream_executor_);
 }
 
 absl::StatusOr<size_t> LoopbackCommunicator::NumRanks() const {
