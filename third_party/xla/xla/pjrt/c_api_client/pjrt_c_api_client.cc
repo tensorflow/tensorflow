@@ -3036,10 +3036,10 @@ PJRT_HloOutputCallbackInfo CppHloOutputCallbackToC(
             reinterpret_cast<PjRtCApiLoadedExecutable::HloOutputCallbackState*>(
                 user_arg);
 
-        std::vector<std::shared_ptr<Literal>> accumulated_to_call;
+        std::vector<std::shared_ptr<const Literal>> accumulated_to_call;
         bool all_received = false;
         {
-          absl::MutexLock lock(&callback_state->mu);
+          absl::MutexLock lock(callback_state->mu);
           if (operand_index < 0 ||
               operand_index >= callback_state->num_operands) {
             LOG(ERROR) << "HloOutputCallback: operand_index " << operand_index
@@ -3086,7 +3086,7 @@ PJRT_HloOutputCallbackInfo CppHloOutputCallbackToC(
         if (all_received) {
           callback_state->callback(
               replica_id, partition_id,
-              absl::Span<std::shared_ptr<xla::Literal> const>(
+              absl::Span<std::shared_ptr<const xla::Literal> const>(
                   accumulated_to_call.data(), accumulated_to_call.size()));
         }
       },
