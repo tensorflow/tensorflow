@@ -1,10 +1,12 @@
 # Description:
 #   XLA service implementation.
 
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm", "if_rocm_is_configured")
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl", "if_sycl_is_configured")
+load("//xla:pytype.bzl", "pytype_strict_library")
 load(
     "//xla:xla.default.bzl",
     "xla_cc_binary",
@@ -418,7 +420,6 @@ cc_library(
         ":constant_value",
         ":hlo_value",
         "//xla:comparison_util",
-        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/analysis:hlo_dataflow_analysis",
         "//xla/hlo/ir:hlo",
@@ -1828,6 +1829,7 @@ cc_library(
         "//xla/backends/gpu/tests:__pkg__",
         "//xla/backends/gpu/transforms:__subpackages__",
         "//third_party/pathways/configuration:__subpackages__",
+        "//learning/smartchoices:__subpackages__",
     ]),
     deps = [
         ":buffer_value",
@@ -6923,12 +6925,29 @@ xla_cc_test(
     name = "io_param_test",
     srcs = ["io_param_test.cc"],
     deps = [
+        ":hlo_value",
         ":io_param",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/service:hlo_value",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
+)
+
+bzl_library(
+    name = "xla_compile_bzl",
+    srcs = ["xla_compile.bzl"],
+    parse_tests = False,
+    visibility = ["//visibility:private"],
+    deps = [
+        "//xla:xla_bzl",
+        "//xla/tsl:package_groups_bzl",
+    ],
+)
+
+pytype_strict_library(
+    name = "algebraic_simplifier_proof_distributive_property",
+    srcs = ["algebraic_simplifier_proof_distributive_property.py"],
+    deps = ["//third_party/py/z3"],
 )
