@@ -25,7 +25,7 @@ namespace xla::gpu {
 namespace {
 
 class PredArithmeticTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+    : public HloPjRtInterpreterReferenceMixin<HloTestBase> {
  protected:
   void RunAndCompareTruthTable(const char* const hlo_text) {
     auto false_literal = LiteralUtil::CreateR0(false);
