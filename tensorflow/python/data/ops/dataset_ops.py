@@ -1061,6 +1061,12 @@ class DatasetV2(
     >>> [(i.item(), j.item()) for i, j in ds.as_numpy_iterator()]
     [(1, 13), (2, 14)]
 
+    Note: `zip` iterates its input datasets in parallel. If one dataset has
+    been shuffled and another has not, the element correspondence from the
+    original order will be lost. To keep elements aligned after shuffling,
+    apply `shuffle` after `zip` rather than before it. See
+    `tf.data.Dataset.shuffle` for more details.
+
     Args:
       *args: Datasets or nested structures of datasets to zip together. This
         can't be set if `datasets` is set.
@@ -1489,6 +1495,26 @@ class DatasetV2(
     dataset = tf.data.Dataset.range(20)
     dataset = dataset.shuffle(dataset.cardinality())
     # [18, 4, 9, 2, 17, 8, 5, 10, 0, 6, 16, 3, 19, 7, 14, 11, 15, 13, 12, 1]
+    ```
+
+    #### Using shuffle with zip
+
+    When you `shuffle` a dataset and then `zip` it with an unshuffled dataset,
+    the element pairing will not match the original order because each input
+    dataset is iterated independently. If you need to shuffle multiple datasets
+    while preserving the correspondence between their elements, either shuffle
+    after zipping or use the same `seed` on all datasets:
+
+    ```python
+    # Correct: shuffle after zipping to keep pairs aligned.
+    a = tf.data.Dataset.range(3)
+    b = tf.data.Dataset.range(3)
+    dataset = tf.data.Dataset.zip(a, b).shuffle(3)
+
+    # Also correct: same seed + buffer_size on both datasets.
+    a = tf.data.Dataset.range(3).shuffle(3, seed=42)
+    b = tf.data.Dataset.range(3).shuffle(3, seed=42)
+    dataset = tf.data.Dataset.zip(a, b)
     ```
 
     Args:
