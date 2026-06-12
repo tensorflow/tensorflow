@@ -187,22 +187,9 @@ AutotuneDecision ShouldAutotunGenericFusion(bool enable_fusion_autotuner,
 AutotuneDecision ShouldAutotuneInstruction(bool do_not_autotune_cublas,
                                            bool do_not_autotune_cudnn,
                                            bool enable_fusion_autotuner,
-                                           bool has_native_or_ble_backends,
-                                           bool autotune_post_fusion,
                                            const HloInstruction& instruction) {
   // 1. Custom calls.
   if (instruction.opcode() == HloOpcode::kCustomCall) {
-    // TODO(b/511979384): Remove this condition once
-    // xla_gpu_experimental_autotune_post_fusion is enabled by default.
-    // This guard-rail is necessary in the legacy 2-autotuner-pass system
-    // because in cases where we have ALG_DOT_BF16_BF16_F32_X3 or _X6,
-    // GetCublasRewriterPipeline will split these into mutliple dots. When the
-    // fission backend tries to find the dot, it finds multiple ones. It only
-    // picks the first one and returns the rest to the graph, untuned.
-    if (!autotune_post_fusion && has_native_or_ble_backends) {
-      return AutotuneDecision::Forbid(
-          "Skip custom calls in generic fusion tuning pass (legacy)");
-    }
     return ShouldAutotuneCustomCall(do_not_autotune_cublas,
                                     do_not_autotune_cudnn, instruction);
   }
@@ -218,25 +205,9 @@ AutotuneDecision ShouldAutotuneInstruction(bool do_not_autotune_cublas,
     if (backend_config.kind() == kTritonGemmFusionKind ||
         backend_config.kind() == kCuDnnFusionKind ||
         backend_config.kind() == kCustomFusionKind) {
-      // TODO(b/511979384): Remove this condition once
-      // xla_gpu_experimental_autotune_post_fusion is enabled by default.
-      if (!autotune_post_fusion && has_native_or_ble_backends) {
-        return AutotuneDecision::Forbid(
-            "Skip GEMM fusions in generic fusion tuning pass (legacy)");
-      }
       return ShouldAutotuneGemmFusion(instruction);
     }
     // 3. Generic fusions.
-    // TODO(b/511979384): Remove this condition once
-    // xla_gpu_experimental_autotune_post_fusion is enabled by default.
-    // If we are running in the legacy GEMM/Conv autotune pass (which implies
-    // autotune_post_fusion is false AND there are no Native or BLE backends
-    // registered), we do not autotune generic fusions to avoid autotuner
-    // failure with no supported configs.
-    if (!autotune_post_fusion && !has_native_or_ble_backends) {
-      return AutotuneDecision::Forbid(
-          "Skip generic fusions in GEMM/Conv autotuning pass (legacy)");
-    }
     return ShouldAutotunGenericFusion(enable_fusion_autotuner, instruction);
   }
   return AutotuneDecision::Forbid(
@@ -333,8 +304,7 @@ AutotunerPass::GetGpuAutotunerBackends(
     disabled_autotune_backends.push_back(autotuner::Backend::HIPBLASLT_FISSION);
   }
 
-  if (!debug_options.xla_gpu_experimental_autotune_post_fusion() ||
-      debug_options.xla_gpu_autotune_level() == 0 ||
+  if (debug_options.xla_gpu_autotune_level() == 0 ||
       debug_options.xla_gpu_exclude_nondeterministic_ops() ||
       !debug_options.xla_gpu_experimental_enable_fusion_autotuner()) {
     disabled_autotune_backends.push_back(autotuner::Backend::NATIVE_EMITTER);
@@ -387,19 +357,12 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
       !debug_options.xla_gpu_exclude_nondeterministic_ops() &&
       debug_options.xla_gpu_experimental_enable_fusion_autotuner();
 
-  bool has_native_or_ble_backends = absl::c_any_of(backends, [](const auto& b) {
-    return b->name() == "NATIVE_EMITTER" || b->name() == "BLOCK_LEVEL_EMITTER";
-  });
-  bool autotune_post_fusion =
-      debug_options.xla_gpu_experimental_autotune_post_fusion();
-
   auto should_autotune =
-      [do_not_autotune_cublas, do_not_autotune_cudnn, enable_fusion_autotuner,
-       has_native_or_ble_backends,
-       autotune_post_fusion](const HloInstruction& instruction) -> bool {
-    AutotuneDecision decision = ShouldAutotuneInstruction(
-        do_not_autotune_cublas, do_not_autotune_cudnn, enable_fusion_autotuner,
-        has_native_or_ble_backends, autotune_post_fusion, instruction);
+      [do_not_autotune_cublas, do_not_autotune_cudnn,
+       enable_fusion_autotuner](const HloInstruction& instruction) -> bool {
+    AutotuneDecision decision =
+        ShouldAutotuneInstruction(do_not_autotune_cublas, do_not_autotune_cudnn,
+                                  enable_fusion_autotuner, instruction);
     if (!decision) {
       VLOG(3) << "Not autotuning " << instruction.name() << ": "
               << decision.Explain();

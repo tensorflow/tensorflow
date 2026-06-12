@@ -976,6 +976,14 @@ TfLiteStatus EvalParseExample(TfLiteContext* context, TfLiteNode* node) {
   }
 
   const TfLiteTensor* serialized = GetInput(context, node, kExampleTensor);
+  const int batch_size =
+      serialized->dims->size > 0 ? serialized->dims->data[0] : 1;
+  if (GetStringCount(serialized) > batch_size) {
+    TF_LITE_KERNEL_LOG(context,
+                       "GetStringCount(serialized) > batch_size (%d > %d)",
+                       GetStringCount(serialized), batch_size);
+    return kTfLiteError;
+  }
 
   std::map<absl::string_view, int> stats;
   const auto status = FastParseExampleLite(

@@ -24,12 +24,15 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/btree_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
@@ -38,11 +41,12 @@ limitations under the License.
 #include "xla/service/hlo_module_util.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tools/multihost_hlo_runner/functional_hlo_runner.h"
+#include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/init_main.h"
-
+#include "tsl/platform/path.h"
 namespace {
 const char* const kUsage = R"(
 This tool lets you run an HLO module on one or more GPUs.
@@ -112,6 +116,7 @@ struct HloRunnerConfig {
   int64_t gpu_client_initialization_timeout_sec = 300;
   float gpu_client_mem_fraction = xla::GpuAllocatorConfig{}.memory_fraction;
   bool profile_execution = false;
+  std::string append_profile_to_csv_file = "";
   std::string xla_gpu_dump_xspace_to = "";
 };
 
@@ -226,6 +231,77 @@ RawCompileOptionsFromFlags(const HloRunnerConfig& opts) {
   return out;
 }
 
+struct CSVProfileTimeWriter {
+  constexpr static const char kCSVSep = ',';
+
+  explicit CSVProfileTimeWriter(const HloRunnerConfig& opts)
+      : csv_file_path_(opts.append_profile_to_csv_file) {
+    // Use different CSV file for each node since they can use shared file
+    // system.
+    if (opts.num_nodes > 1) {
+      csv_file_path_ = absl::StrCat(csv_file_path_, "_", opts.task_id);
+    }
+    csv_file_path_ += ".csv";
+    new_file_ = !tsl::Env::Default()->FileExists(csv_file_path_).ok();
+    run_time_ = absl::FormatTime("%Y-%m-%d %H:%M:%S", absl::Now(),
+                                 absl::LocalTimeZone());
+  }
+
+  void append_row(absl::string_view hlo_file,
+                  const std::vector<ExecutionProfile>& exec_profiles) {
+    double total_ns = 0.0;
+    size_t num_repeats = exec_profiles.size();
+    for (size_t i = 0; i < num_repeats; ++i) {
+      total_ns += exec_profiles[i].compute_time_ns();
+    }
+    // If there are multiple repeats, we average the execution time over them
+    // skipping the first one which is a warmup run.
+    if (num_repeats > 1) {
+      total_ns -= exec_profiles[0].compute_time_ns();
+      total_ns /= (num_repeats - 1);
+    }
+    exec_time_ms_[hlo_file] = total_ns / 1e6;
+  }
+
+  ~CSVProfileTimeWriter() {
+    if (exec_time_ms_.empty()) {
+      return;
+    }
+    std::unique_ptr<tsl::WritableFile> fout;
+    if (!tsl::Env::Default()->NewAppendableFile(csv_file_path_, &fout).ok()) {
+      LOG(ERROR) << "Failed to open CSV file " << csv_file_path_;
+      return;
+    }
+    // Column headers are appended only once if a CSV file does not exist.
+    if (new_file_) {
+      std::vector<std::string> paths;
+      paths.reserve(exec_time_ms_.size());
+      for (const auto& [hlo_file, _] : exec_time_ms_) {
+        paths.push_back(hlo_file);
+      }
+      std::string prefix = tsl::io::CommonPathPrefix(paths);
+      fout->Append("Datetime").IgnoreError();
+      for (const auto& [hlo_file, _] : exec_time_ms_) {
+        auto fname = hlo_file.substr(prefix.size());
+        fout->Append(kCSVSep + fname).IgnoreError();
+      }
+      fout->Append("\n").IgnoreError();
+    }
+    fout->Append(run_time_).IgnoreError();
+    for (const auto& [_, time_ms] : exec_time_ms_) {
+      fout->Append(absl::StrFormat("%c %.4gms", kCSVSep, time_ms))
+          .IgnoreError();
+    }
+    fout->Append("\n").IgnoreError();
+  }
+
+ private:
+  std::string csv_file_path_, run_time_;
+  bool new_file_;
+  // Use a btree map to sort the HLO files by name.
+  absl::btree_map<std::string, double> exec_time_ms_;
+};  // struct CSVProfileTimeWriter
+
 static absl::Status RunMultihostHloRunner(int argc, char** argv,
                                           HloRunnerConfig& opts) {
   if (std::string error;
@@ -295,8 +371,13 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
   CHECK(env.client != nullptr);
 
   std::vector<ExecutionProfile> execution_profiles;
+  std::unique_ptr<CSVProfileTimeWriter> csv_writer;
+
   if (opts.profile_execution) {
     running_options.execution_profiles = &execution_profiles;
+    if (!opts.append_profile_to_csv_file.empty()) {
+      csv_writer = std::make_unique<CSVProfileTimeWriter>(opts);
+    }
   }
 
   for (int c = 1; c < argc; c++) {
@@ -317,10 +398,14 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
                           opts.input_format, opts.task_id)
                           .status());
     }
-    for (int i = 0; i < execution_profiles.size(); ++i) {
+
+    for (size_t i = 0; i < execution_profiles.size(); ++i) {
       std::cout << "## Execution time, file=" << hlo_file << " repeat=" << i
                 << " duration=" << execution_profiles[i].compute_time_ns()
                 << "ns" << std::endl;
+    }
+    if (csv_writer != nullptr) {
+      csv_writer->append_row(hlo_file, execution_profiles);
     }
   }
   return absl::OkStatus();
@@ -445,6 +530,13 @@ int main(int argc, char** argv) {
                 "client. Only used with the BFC allocator."),
       tsl::Flag("profile_execution", &opts.profile_execution,
                 "If set, we will profile the execution and print the results."),
+      tsl::Flag(
+          "append_profile_to_csv_file", &opts.append_profile_to_csv_file,
+          "A path to a CSV file ('.csv' extension is added automatically) "
+          "to save the averaged profile results to. Takes effect only if "
+          "--profile_execution is set. If the file does not exist, it "
+          "will be created with a header row listing all input hlo files. "
+          "Otherwise, new results will be appended to the existing file."),
       tsl::Flag("xla_gpu_dump_xspace_to", &opts.xla_gpu_dump_xspace_to,
                 "A directory to dump xspace data for GPU profiling."),
       // This option is not used during parsing, but it is added here for
