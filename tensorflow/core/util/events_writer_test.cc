@@ -17,8 +17,15 @@ limitations under the License.
 
 #include <math.h>
 
+#include <cstdint>
 #include <memory>
+#include <string>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
