@@ -1,6 +1,8 @@
 // RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation=false %s 2>&1 | FileCheck %s --check-prefix=CHECK-ERROR
+// RUN: hlo_to_xtileir --xla_gpu_experimental_enable_tiling_propagation %s 2>&1 | FileCheck %s --check-prefix=CHECK-ERROR-NEW
 
 // CHECK-ERROR: error: loc("slice"): 'scf.if' op along control flow edge from Operation scf.yield to parent: successor operand type #0 'tensor<1x1xf32>' should match successor input type #0 'tensor<64x16xf32>'
+// CHECK-ERROR-NEW: Tiling propagation rejected for %inner_concat = f32[1,32,10]{2,1,0} concatenate(%param_1, %param_2), dimensions={1}: The base offset -64 is negative.
 
 HloModule min_repro, is_scheduled=true, entry_computation_layout={(f32[64,10]{1,0}, f32[1,16,10]{2,1,0}, f32[1,16,10]{2,1,0})->f32[64,10]{1,0}}
 

@@ -306,6 +306,11 @@ message DebugOptions {
   // false.
   optional bool xla_cpu_fast_math_honor_nans = 120;
 
+  // Enable flush-to-zero semantics in the CPU backend. When true, denormal
+  // floating-point values are flushed to zero. Default is true for backwards
+  // compatibility.
+  optional bool xla_cpu_ftz = 493;
+
   // When true, XLA:CPU all LLVM kernels entry points will be prefixed with the
   // module name. They will also be converted to C style names. This is required
   // for AOT compilation.
@@ -804,7 +809,9 @@ message DebugOptions {
   optional AutotuneCacheMode xla_gpu_experimental_autotune_cache_mode = 324;
 
   // If true, all autotuning is consolidated after fusion passes.
-  optional bool xla_gpu_experimental_autotune_post_fusion = 481;
+  // Deprecated, autotune post fusion is always enabled.
+  optional bool xla_gpu_experimental_autotune_post_fusion = 481
+      [deprecated = true];
 
   // Specifies the directory to store per kernel autotuning cache.
   optional string xla_gpu_experimental_autotuner_cache_dir = 407;
@@ -1181,7 +1188,7 @@ message DebugOptions {
   optional bool xla_gpu_unsupported_enable_triton_gemm = 322;
 
   // Enable experimental triton multi-output fusion.
-  // TODO(b/390559452): Remove the flag once the feature is stable.
+  // TODO: b/502910372 - Remove the flag once the feature is stable.
   optional bool xla_gpu_unsupported_enable_triton_multi_output_fusion = 382;
 
   // Internal debug/testing flag to override the number of devices in the fast
@@ -1611,7 +1618,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 493
+  // Next id: 494
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
