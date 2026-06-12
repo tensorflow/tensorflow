@@ -765,7 +765,8 @@ TEST_F(ClientServerTest, ClientRestart_DuringConnect_Succeeds) {
       RETURN_IF_ERROR(client->Connect());
       RETURN_IF_ERROR(client->Shutdown());
       return absl::OkStatus();
-    } else if (node_id == 1) {
+    }
+    if (node_id == 1) {
       node_2_restarted.WaitForNotification();
       absl::SleepFor(absl::Seconds(1));  // Give time for node 2 to connect.
       RETURN_IF_ERROR(client->Connect());
