@@ -3,6 +3,7 @@
 # Placeholder: load py_proto_library
 load("@xla//xla/tsl:tsl.bzl", "internal_visibility")
 load("@xla//xla/tsl/platform:build_config.bzl", "tf_proto_library")
+load("//tools/build_defs/js/jspb_proto_library:rules.bzl", "jspb_proto_library")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
@@ -35,6 +36,12 @@ tf_proto_library(
     srcs = ["profiler_options.proto"],
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
+)
+
+jspb_proto_library(
+    name = "profiler_options_jspb_proto",
+    visibility = ["//visibility:public"],
+    deps = [":profiler_options_proto"],
 )
 
 tf_proto_library(
