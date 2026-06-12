@@ -126,13 +126,13 @@ absl::Status CompressElement(const std::vector<Tensor>& element,
   }
 
   if (iov.NumBytes() > std::numeric_limits<uint32_t>::max()) {
-    return errors::OutOfRange("Encountered dataset element of size ",
-                              iov.NumBytes(),
-                              ", exceeding the 4GB Snappy limit.");
+    return absl::OutOfRangeError(
+        absl::StrCat("Encountered dataset element of size ", iov.NumBytes(),
+                     ", exceeding the 4GB Snappy limit."));
   }
   if (!port::Snappy_CompressFromIOVec(iov.Data(), iov.NumBytes(),
                                       out->mutable_data())) {
-    return errors::Internal("Failed to compress using snappy.");
+    return absl::InternalError("Failed to compress using snappy.");
   }
   out->set_version(kCompressedElementVersion);
   VLOG(3) << "Compressed element from " << iov.NumBytes() << " bytes to "
@@ -143,8 +143,8 @@ absl::Status CompressElement(const std::vector<Tensor>& element,
 absl::Status UncompressElement(const CompressedElement& compressed,
                                std::vector<Tensor>* out) {
   if (compressed.version() != kCompressedElementVersion) {
-    return errors::Internal("Unsupported compressed element version: ",
-                            compressed.version());
+    return absl::InternalError(absl::StrCat(
+        "Unsupported compressed element version: ", compressed.version()));
   }
   int num_components = compressed.component_metadata_size();
   out->clear();
@@ -199,19 +199,19 @@ absl::Status UncompressElement(const CompressedElement& compressed,
   size_t uncompressed_size;
   if (!port::Snappy_GetUncompressedLength(
           compressed_data.data(), compressed_data.size(), &uncompressed_size)) {
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "Could not get snappy uncompressed length. Compressed data size: ",
-        compressed_data.size());
+        compressed_data.size()));
   }
   if (uncompressed_size != static_cast<size_t>(iov.NumBytes())) {
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "Uncompressed size mismatch. Snappy expects ", uncompressed_size,
-        " whereas the tensor metadata suggests ", iov.NumBytes());
+        " whereas the tensor metadata suggests ", iov.NumBytes()));
   }
   if (!port::Snappy_UncompressToIOVec(compressed_data.data(),
                                       compressed_data.size(), iov.Data(),
                                       iov.NumPieces())) {
-    return errors::Internal("Failed to perform snappy decompression.");
+    return absl::InternalError("Failed to perform snappy decompression.");
   }
 
   // Third pass: deserialize nonstring, non`memcpy`able tensors.
@@ -225,10 +225,10 @@ absl::Status UncompressElement(const CompressedElement& compressed,
       if (!tp.ParseFromString(
               {nonmemcpyable_pos,
                static_cast<size_t>(metadata.uncompressed_bytes(0))})) {
-        return errors::Internal("Could not parse TensorProto");
+        return absl::InternalError("Could not parse TensorProto");
       }
       if (!out->at(i).FromProto(tp)) {
-        return errors::Internal("Could not parse Tensor");
+        return absl::InternalError("Could not parse Tensor");
       }
       nonmemcpyable_pos += metadata.uncompressed_bytes(0);
     }
