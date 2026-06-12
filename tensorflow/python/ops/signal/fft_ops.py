@@ -186,6 +186,17 @@ def _irfft_wrapper(ifft_fn, fft_rank, default_name):
       complex_dtype = input_tensor.dtype
       real_dtype = complex_dtype.real_dtype
       if fft_length is None:
+        # Validate that the innermost dimension is at least 2 when known.
+        # IRFFT computes fft_length = 2 * (input_size - 1), so input_size
+        # must be >= 2 to produce a valid (non-zero) fft_length.
+        inner_dim = input_tensor.shape[-1]
+        if inner_dim is not None and inner_dim < 2:
+          raise ValueError(
+              "IRFFT requires the inner-most dimension of the input to be "
+              "at least 2, but got inner dimension of %d. This is because "
+              "IRFFT computes fft_length = 2 * (input_size - 1), and an "
+              "input size of %d would result in an invalid fft_length of "
+              "%d." % (inner_dim, inner_dim, max(0, 2 * (inner_dim - 1))))
         fft_length = _infer_fft_length_for_irfft(input_tensor, fft_rank)
       else:
         fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
@@ -364,6 +375,17 @@ def _irfftn_wrapper(irfft_n, default_name):
       complex_dtype = input_tensor.dtype
       real_dtype = complex_dtype.real_dtype
       if fft_length is None:
+        # Validate that the innermost dimension is at least 2 when known.
+        # IRFFT computes fft_length = 2 * (input_size - 1), so input_size
+        # must be >= 2 to produce a valid (non-zero) fft_length.
+        inner_dim = input_tensor.shape[-1]
+        if inner_dim is not None and inner_dim < 2:
+          raise ValueError(
+              "IRFFT requires the inner-most dimension of the input to be "
+              "at least 2, but got inner dimension of %d. This is because "
+              "IRFFT computes fft_length = 2 * (input_size - 1), and an "
+              "input size of %d would result in an invalid fft_length of "
+              "%d." % (inner_dim, inner_dim, max(0, 2 * (inner_dim - 1))))
         fft_length = _infer_fft_length_for_irfftn(input_tensor)
       else:
         fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
