@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_GL_CONVERTERS_UTIL_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_GL_CONVERTERS_UTIL_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
@@ -34,12 +35,13 @@ inline std::string GetShaderHeader(const uint3& localsize) {
                       ", local_size_z = ", localsize.z, ") in;\n");
 }
 
-inline uint32_t BytesForPHWC4(const BHWC& shape) {
-  return shape.b * shape.h * shape.w * AlignByN(shape.c, 4) * sizeof(float);
+inline size_t BytesForPHWC4(const BHWC& shape) {
+  return static_cast<size_t>(shape.b) * shape.h * shape.w *
+         AlignByN(shape.c, 4) * sizeof(float);
 }
 
-inline uint32_t BytesForBHWC(const BHWC& shape) {
-  return shape.DimensionsProduct() * sizeof(float);
+inline size_t BytesForBHWC(const BHWC& shape) {
+  return static_cast<size_t>(shape.DimensionsProduct()) * sizeof(float);
 }
 
 }  // namespace gl
