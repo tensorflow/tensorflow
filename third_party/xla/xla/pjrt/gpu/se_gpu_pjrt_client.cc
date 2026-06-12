@@ -113,6 +113,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -1340,16 +1341,21 @@ GetStreamExecutorGpuDeviceAllocator(
       break;
     }
 
-    case GpuAllocatorConfig::Kind::kPlatform:
+    case GpuAllocatorConfig::Kind::kPlatform: {
       LOG(INFO) << "Using platform allocator.";
       if (allocator_config.collective_memory_size != 0) {
         LOG(WARNING)
             << "collective_memory_size is non-zero, but allocator kind is set "
                "to \"platform\". Collective memory will not be allocated.";
       }
-      // Returning null will cause the client to use the default backend
-      // allocator.
-      return nullptr;
+      std::vector<se::StreamExecutor*> executors;
+      executors.reserve(addressable_devices.size());
+      for (const auto& [ordinal, device] : addressable_devices) {
+        executors.push_back(device->executor());
+      }
+      return std::make_unique<se::StreamExecutorAddressAllocator>(platform,
+                                                                  executors);
+    }
 
     case GpuAllocatorConfig::Kind::kVmm: {
 #if GOOGLE_CUDA
