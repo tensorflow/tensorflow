@@ -101,6 +101,7 @@ cc_library(
     hdrs = ["collective_ops_utils.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     deps = [
+        "//xla:side_effect_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_module_config",
@@ -126,6 +127,7 @@ xla_cc_test(
         ":collective_ops_utils",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
+        "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",

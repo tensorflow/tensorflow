@@ -66,6 +66,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/collective_combiner_utils.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo_cse.h"
@@ -76,6 +77,7 @@ limitations under the License.
 #include "xla/service/spmd/spmd_partitioner_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -5876,6 +5878,25 @@ std::optional<MeshAxesReplicaGroupList> TryExpandingMeshAxesDeviceList(
   return std::nullopt;
 }
 
+// SPMD-partitioned collectives are derived from the HLO operations they
+// reshard. This propagates the merged frontend attributes and metadata of
+// those operand(s) onto the derived collective so we keep the original source
+// information for debugging, and tags it with the kSpmdGeneratedAttr
+// frontend attribute, then returns it. Uses the same merge semantics as the
+// collective combiners (MergeFrontendAttributes/MergeMetadata) so this
+// information survives later combining. Backend-specific passes can use the
+// kSpmdGeneratedAttr provenance to make scheduling/backend decisions for
+// partitioner-inserted collectives.
+static HloInstruction* PropagateMetadata(
+    absl::Span<HloInstruction* const> operands, HloInstruction* collective) {
+  if (!operands.empty()) {
+    collective->set_frontend_attributes(MergeFrontendAttributes(operands));
+    collective->set_metadata(MergeMetadata(operands));
+  }
+  collective->set_frontend_attribute(kSpmdGeneratedAttr, "true");
+  return collective;
+}
+
 SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
                                                         int64_t num_replicas) {
   SPMDCollectiveOpsCreator result = {
@@ -5894,12 +5915,13 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
               HloComputation* reduction_clone =
                   reduction->parent()->AddComputationAndUnifyNamesAndIds(
                       reduction->Clone(), false);
-              return b->AddInstruction(HloInstruction::CreateAllReduce(
-                  operand->shape(), {operand}, reduction_clone,
-                  std::make_shared<MeshAxesReplicaGroupList>(
-                      *expanded_mesh_axes),
-                  /*constrain_layout=*/false, channel_id,
-                  /*use_global_device_ids=*/true));
+              return PropagateMetadata(
+                  {operand}, b->AddInstruction(HloInstruction::CreateAllReduce(
+                                 operand->shape(), {operand}, reduction_clone,
+                                 std::make_shared<MeshAxesReplicaGroupList>(
+                                     *expanded_mesh_axes),
+                                 /*constrain_layout=*/false, channel_id,
+                                 /*use_global_device_ids=*/true)));
             }
             if (std::optional<IotaReplicaGroupList> expanded =
                     TryExpandingPartitionGroupList(device_list, num_replicas,
@@ -5907,15 +5929,18 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
               HloComputation* reduction_clone =
                   reduction->parent()->AddComputationAndUnifyNamesAndIds(
                       reduction->Clone(), false);
-              return b->AddInstruction(HloInstruction::CreateAllReduce(
-                  operand->shape(), {operand}, reduction_clone,
-                  std::make_shared<IotaReplicaGroupList>(*expanded),
-                  /*constrain_layout=*/false, channel_id,
-                  /*use_global_device_ids=*/true));
+              return PropagateMetadata(
+                  {operand},
+                  b->AddInstruction(HloInstruction::CreateAllReduce(
+                      operand->shape(), {operand}, reduction_clone,
+                      std::make_shared<IotaReplicaGroupList>(*expanded),
+                      /*constrain_layout=*/false, channel_id,
+                      /*use_global_device_ids=*/true)));
             }
-            return CreateAllReduceListsOfLists(num_replicas, num_partitions, b,
-                                               operand, reduction, device_list,
-                                               channel_id);
+            return PropagateMetadata(
+                {operand}, CreateAllReduceListsOfLists(
+                               num_replicas, num_partitions, b, operand,
+                               reduction, device_list, channel_id));
           },
       .create_collective_permute =
           [num_partitions](
@@ -5939,8 +5964,10 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
             if (is_copy) {
               return operand;
             }
-            return b->AddInstruction(HloInstruction::CreateCollectivePermute(
-                operand->shape(), operand, src_dst_pairs, channel_id));
+            return PropagateMetadata(
+                {operand},
+                b->AddInstruction(HloInstruction::CreateCollectivePermute(
+                    operand->shape(), operand, src_dst_pairs, channel_id)));
           },
       .create_all_to_all =
           [num_replicas, num_partitions](
@@ -5964,22 +5991,29 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
             if (std::optional<MeshAxesReplicaGroupList> expanded_mesh_axes =
                     TryExpandingMeshAxesDeviceList(device_list, num_replicas,
                                                    num_partitions)) {
-              return b->AddInstruction(HloInstruction::CreateAllToAll(
-                  output_shape, operands,
-                  std::make_shared<MeshAxesReplicaGroupList>(
-                      *expanded_mesh_axes),
-                  /*constrain_layout=*/false, channel_id, split_dimension));
+              return PropagateMetadata(
+                  operands, b->AddInstruction(HloInstruction::CreateAllToAll(
+                                output_shape, operands,
+                                std::make_shared<MeshAxesReplicaGroupList>(
+                                    *expanded_mesh_axes),
+                                /*constrain_layout=*/false, channel_id,
+                                split_dimension)));
             }
             if (std::optional<IotaReplicaGroupList> expanded =
                     TryExpandingPartitionGroupList(device_list, num_replicas,
                                                    num_partitions)) {
-              return b->AddInstruction(HloInstruction::CreateAllToAll(
-                  output_shape, operands,
-                  std::make_shared<IotaReplicaGroupList>(*expanded),
-                  /*constrain_layout=*/false, channel_id, split_dimension));
+              return PropagateMetadata(
+                  operands,
+                  b->AddInstruction(HloInstruction::CreateAllToAll(
+                      output_shape, operands,
+                      std::make_shared<IotaReplicaGroupList>(*expanded),
+                      /*constrain_layout=*/false, channel_id,
+                      split_dimension)));
             }
-            return CreateAllToAllListsOfLists(b, operands, device_list,
-                                              channel_id, split_dimension);
+            return PropagateMetadata(
+                operands,
+                CreateAllToAllListsOfLists(b, operands, device_list, channel_id,
+                                           split_dimension));
           },
       .create_all_gather =
           [num_replicas, num_partitions](
@@ -5989,25 +6023,30 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
             if (std::optional<MeshAxesReplicaGroupList> expanded_mesh_axes =
                     TryExpandingMeshAxesDeviceList(device_list, num_replicas,
                                                    num_partitions)) {
-              return b->AddInstruction(HloInstruction::CreateAllGather(
-                  ag_shape, {operand}, all_gather_dimension,
-                  std::make_shared<MeshAxesReplicaGroupList>(
-                      *expanded_mesh_axes),
-                  /*constrain_layout=*/false, channel_id,
-                  /*use_global_device_ids=*/true));
+              return PropagateMetadata(
+                  {operand}, b->AddInstruction(HloInstruction::CreateAllGather(
+                                 ag_shape, {operand}, all_gather_dimension,
+                                 std::make_shared<MeshAxesReplicaGroupList>(
+                                     *expanded_mesh_axes),
+                                 /*constrain_layout=*/false, channel_id,
+                                 /*use_global_device_ids=*/true)));
             }
             if (std::optional<IotaReplicaGroupList> expanded =
                     TryExpandingPartitionGroupList(device_list, num_replicas,
                                                    num_partitions)) {
-              return b->AddInstruction(HloInstruction::CreateAllGather(
-                  ag_shape, {operand}, all_gather_dimension,
-                  std::make_shared<IotaReplicaGroupList>(*expanded),
-                  /*constrain_layout=*/false, channel_id,
-                  /*use_global_device_ids=*/true));
+              return PropagateMetadata(
+                  {operand},
+                  b->AddInstruction(HloInstruction::CreateAllGather(
+                      ag_shape, {operand}, all_gather_dimension,
+                      std::make_shared<IotaReplicaGroupList>(*expanded),
+                      /*constrain_layout=*/false, channel_id,
+                      /*use_global_device_ids=*/true)));
             }
-            return CreateAllGatherListsOfLists(
-                num_replicas, num_partitions, b, operand, ag_shape, device_list,
-                channel_id, all_gather_dimension);
+            return PropagateMetadata(
+                {operand},
+                CreateAllGatherListsOfLists(num_replicas, num_partitions, b,
+                                            operand, ag_shape, device_list,
+                                            channel_id, all_gather_dimension));
           },
   };
   return result;
