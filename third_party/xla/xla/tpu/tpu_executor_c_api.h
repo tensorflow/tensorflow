@@ -90,6 +90,13 @@ void TpuExecutor_EnqueueInfeed(SE_StreamExecutor* executor,
 void TpuExecutor_DequeueOutfeed(SE_StreamExecutor* executor,
                                 int32_t outfeed_queue_index, uint8_t* data,
                                 int64_t size, TF_Status* status);
+// Note: `callback` takes ownership of the heap-allocated TF_Status passed to
+// it.
+void TpuExecutor_DequeueOutfeedV2(SE_StreamExecutor* executor,
+                                  int32_t outfeed_queue_index, uint8_t* data,
+                                  int64_t size,
+                                  SE_DequeueOutfeedCallback callback,
+                                  void* ctx);
 
 void TpuExecutor_BlockHostUntilDone(SE_StreamExecutor* executor,
                                     SE_Stream* stream, TF_Status* status);
@@ -494,6 +501,8 @@ struct TfTpu_ExecutorApiFn {
 
   TFTPU_ADD_FN_IN_STRUCT(TpuAsyncCollectiveOffloadHelper_Init);
   TFTPU_ADD_FN_IN_STRUCT(TpuAsyncCollectiveOffloadHelper_Shutdown);
+
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_DequeueOutfeedV2);
 };
 }
 

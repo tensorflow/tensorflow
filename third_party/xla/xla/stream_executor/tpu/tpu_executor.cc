@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/allocator_stats.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/tpu/tpu_event.h"
 #include "xla/stream_executor/tpu/tpu_stream.h"
@@ -68,19 +70,22 @@ tensorflow::tpu::TpuCoreLocationExternal TpuExecutor::GetCoreLocationExternal()
 void TpuExecutor::DeallocateStream(Stream* stream) {
   ExecutorApiFn()->TpuExecutor_DeallocateStreamFn(executor_,
                                                   get_stream(stream));
-  tpu_platform().mutex().lock();
+  absl::MutexLock lock(&tpu_platform().mutex());
   stream_map().erase(stream);
-  tpu_platform().mutex().unlock();
 }
 
 absl::StatusOr<std::unique_ptr<Stream>> TpuExecutor::CreateStream(
     std::optional<std::variant<StreamPriority, int>> priority) {
   SE_Stream* tpu_stream = ExecutorApiFn()->TpuStream_NewFn(executor_);
+  if (tpu_stream == nullptr) {
+    return absl::InternalError("Failed to create TPU stream");
+  }
   auto stream = std::make_unique<tensorflow::tpu::TpuStream>(
       tpu_stream, this, executor_, &tpu_platform());
-  tpu_platform().mutex().lock();
-  stream_map()[stream.get()] = tpu_stream;
-  tpu_platform().mutex().unlock();
+  {
+    absl::MutexLock lock(&tpu_platform().mutex());
+    stream_map()[stream.get()] = tpu_stream;
+  }
   return std::move(stream);
 }
 
@@ -129,7 +134,7 @@ std::optional<stream_executor::AllocatorStats>
 TpuExecutor::GetAllocatorStats() {
   SE_AllocatorStats c_stats;
   if (ExecutorApiFn()->TpuExecutor_GetAllocatorStatsFn(executor_, &c_stats)) {
-    ::stream_executor::AllocatorStats stats;
+    AllocatorStats stats;
     stats.num_allocs = c_stats.num_allocs;
     stats.bytes_in_use = c_stats.bytes_in_use;
     stats.peak_bytes_in_use = c_stats.peak_bytes_in_use;
@@ -151,11 +156,32 @@ TpuExecutor::GetAllocatorStats() {
 void TpuExecutor::DequeueOutfeed(int32_t outfeed_queue_index,
                                  absl::Span<uint8_t> bytes,
                                  StatusCallback done) {
-  StatusHelper status;
-  ExecutorApiFn()->TpuExecutor_DequeueOutfeedFn(executor_, outfeed_queue_index,
-                                                bytes.data(), bytes.size(),
-                                                status.c_status);
-  done(status.status());
+  if (ExecutorApiFn()->TpuExecutor_DequeueOutfeedV2Fn != nullptr) {
+    StatusCallback* done_cb = new StatusCallback(std::move(done));
+    SE_DequeueOutfeedCallback c_callback = [](TF_Status* c_status, void* ctx) {
+      StatusCallback* cb = static_cast<StatusCallback*>(ctx);
+      absl::Status status = StatusHelper::FromC(c_status);
+      // c_callback takes ownership of c_status allocated by
+      // TpuExecutor_DequeueOutfeedV2.
+      ExecutorApiFn()->TpuStatus_FreeFn(c_status);
+      (*cb)(status);
+      delete cb;
+    };
+    ExecutorApiFn()->TpuExecutor_DequeueOutfeedV2Fn(
+        executor_, outfeed_queue_index, bytes.data(), bytes.size(), c_callback,
+        done_cb);
+  } else {
+    // Legacy fallback: TpuExecutor_DequeueOutfeedFn relies on a stack-allocated
+    // StatusHelper. Note: This exhibits potential asynchronous lifetime
+    // limitations on older runtimes if the outfeed dequeue completes
+    // asynchronously after DequeueOutfeed returns. DequeueOutfeedV2 safely
+    // resolves this by heap-allocating the status callback context.
+    StatusHelper status;
+    ExecutorApiFn()->TpuExecutor_DequeueOutfeedFn(
+        executor_, outfeed_queue_index, bytes.data(), bytes.size(),
+        status.c_status);
+    done(status.status());
+  }
 }
 
 absl::Status TpuExecutor::EnqueueInfeed(int32_t infeed_queue_index,
@@ -167,9 +193,9 @@ absl::Status TpuExecutor::EnqueueInfeed(int32_t infeed_queue_index,
   return status.status();
 }
 
-absl::Status TpuExecutor::SynchronousMemcpy(
-    ::stream_executor::DeviceAddressBase* device_dst, const void* host_src,
-    uint64_t size) {
+absl::Status TpuExecutor::SynchronousMemcpy(DeviceAddressBase* device_dst,
+                                            const void* host_src,
+                                            uint64_t size) {
   StatusHelper status;
   SE_DeviceAddressBase se_base = ApiConverter::ToC(*device_dst);
   ExecutorApiFn()->TpuExecutor_SynchronousMemcpyFromHostFn(
@@ -177,9 +203,9 @@ absl::Status TpuExecutor::SynchronousMemcpy(
   return status.status();
 }
 
-absl::Status TpuExecutor::SynchronousMemcpy(
-    void* host_dst, const ::stream_executor::DeviceAddressBase& device_src,
-    uint64_t size) {
+absl::Status TpuExecutor::SynchronousMemcpy(void* host_dst,
+                                            const DeviceAddressBase& device_src,
+                                            uint64_t size) {
   StatusHelper status;
   SE_DeviceAddressBase se_base = ApiConverter::ToC(device_src);
   ExecutorApiFn()->TpuExecutor_SynchronousMemcpyToHostFn(
@@ -201,7 +227,7 @@ absl::Status TpuExecutor::EnqueueCompactionOnStreamForHbm(
   return status.status();
 }
 
-absl::StatusOr<std::unique_ptr<::stream_executor::DeviceDescription>>
+absl::StatusOr<std::unique_ptr<DeviceDescription>>
 TpuExecutor::CreateDeviceDescription() const {
   StatusHelper status;
   SE_DeviceDescription* description =
@@ -221,6 +247,23 @@ TpuExecutor::CreateDeviceDescription() const {
     desc.set_ecc_enabled(description->ecc_enabled);
     desc.set_device_memory_size(description->device_memory_size);
     desc.set_platform_version(description->platform_version);
+    if (description->driver_version != nullptr) {
+      absl::StatusOr<SemanticVersion> version_or =
+          SemanticVersion::ParseFromString(description->driver_version);
+      if (version_or.ok()) {
+        desc.set_driver_version(version_or.value());
+      }
+    }
+    if (description->runtime_version != nullptr) {
+      absl::StatusOr<SemanticVersion> version_or =
+          SemanticVersion::ParseFromString(description->runtime_version);
+      if (version_or.ok()) {
+        desc.set_runtime_version(version_or.value());
+      }
+    }
+    if (description->pci_bus_id != nullptr) {
+      desc.set_pci_bus_id(description->pci_bus_id);
+    }
     return std::make_unique<DeviceDescription>(std::move(desc));
   }
   return status.status();

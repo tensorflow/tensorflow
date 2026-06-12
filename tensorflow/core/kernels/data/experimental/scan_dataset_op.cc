@@ -12,17 +12,28 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
+#include <cstdint>
 #include <iterator>
+#include <memory>
+#include <utility>
 #include <vector>
 
-#include "tensorflow/core/common_runtime/function.h"
+#include "absl/algorithm/container.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/data/captured_function.h"
-#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/dataset.h"
-#include "tensorflow/core/framework/partial_tensor_shape.h"
+#include "tensorflow/core/framework/model.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {
@@ -196,9 +207,8 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
 
         std::vector<Tensor> args;
         args.reserve(state_.size() + next_element.size());
-        std::copy(state_.begin(), state_.end(), std::back_inserter(args));
-        std::copy(next_element.begin(), next_element.end(),
-                  std::back_inserter(args));
+        absl::c_copy(state_, std::back_inserter(args));
+        absl::c_copy(next_element, std::back_inserter(args));
 
         std::vector<Tensor> state_and_output;
         state_and_output.reserve(dataset()->state_types_.size() +
@@ -206,9 +216,14 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
 
         absl::Status s = instantiated_captured_func_->Run(
             ctx, std::move(args), &state_and_output, model_node());
-        DCHECK(state_and_output.size() <=
-               dataset()->state_types_.size() + output_dtypes().size());
         if (s.ok()) {
+          const size_t expected_size =
+              dataset()->state_types_.size() + output_dtypes().size();
+          if (state_and_output.size() != expected_size) {
+            return absl::InvalidArgumentError(absl::StrCat(
+                "scan_func returned ", state_and_output.size(),
+                " elements, but expected ", expected_size, " elements."));
+          }
           state_.clear();
           size_t i = 0;
           for (; i < dataset()->state_types_.size(); ++i) {
@@ -225,8 +240,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
             if (state_and_output[i].dtype() != output_dtypes()[output_index]) {
               return absl::InvalidArgumentError(absl::StrCat(
                   "Got wrong type for scan_func return value ", i,
-                  " (expected ",
-                  DataTypeString(dataset()->state_types_[output_index]),
+                  " (expected ", DataTypeString(output_dtypes()[output_index]),
                   ", got ", DataTypeString(state_and_output[i].dtype()), ")."));
             }
             if (!output_shapes()[output_index].IsCompatibleWith(
