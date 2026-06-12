@@ -65,7 +65,7 @@ class DumpTensorOp : public OpKernel {
   explicit DumpTensorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     string log_dir_path;
     string file_name;
-    string func_name;
+    std::string func_name;
     string node_name;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("log_dir_path", &log_dir_path));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("enabled", &enabled_));
