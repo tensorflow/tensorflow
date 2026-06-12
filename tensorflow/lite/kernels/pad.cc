@@ -14,8 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/reference/pad.h"
 
-#include <stdint.h>
-
+#include <cstdint>
 #include <limits>
 #include <type_traits>
 
@@ -156,8 +155,16 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
     // Paddings are between INT32_MIN and INT32_MAX.
     int before_padding = static_cast<int>(*paddings_data++);
     int after_padding = static_cast<int>(*paddings_data++);
-    output_size->data[idx] =
-        (input_size->data[idx] + before_padding + after_padding);
+    const int64_t dim = static_cast<int64_t>(input_size->data[idx]) +
+                        before_padding + after_padding;
+    if (dim < 0 || dim > std::numeric_limits<int32_t>::max()) {
+      TfLiteIntArrayFree(output_size);
+      TF_LITE_KERNEL_LOG(
+          context,
+          "Pad: integer overflow computing input + paddings for dim %d", idx);
+      return kTfLiteError;
+    }
+    output_size->data[idx] = static_cast<int>(dim);
   }
   return context->ResizeTensor(context, op_context->output, output_size);
 }
