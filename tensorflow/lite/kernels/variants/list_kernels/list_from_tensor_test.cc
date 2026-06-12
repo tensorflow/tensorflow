@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
 #include <tuple>
 #include <vector>
 
@@ -51,6 +52,8 @@ class ListFromTensorModel : public SingleOpModel {
     return static_cast<const TensorArray*>(
         static_cast<const VariantData*>(tensor->data.data));
   }
+
+  TfLiteTensor* GetTensor(int index) { return interpreter_->tensor(index); }
 
   int tensor_id_;
   int shape_id_;
@@ -161,6 +164,66 @@ TEST(ListFromTensorTest, ScalarInput_Fails) {
   ListFromTensorModel m({TensorType_INT32, {}}, {TensorType_INT32, {}});
 
   ASSERT_EQ(m.Invoke(), kTfLiteError);
+}
+
+TEST(ListFromTensorTest, Int4Input_ReturnsListWithScalarElements) {
+  ListFromTensorModel m({TensorType_INT4, {4, 1}}, {TensorType_INT32, {1}});
+
+  // Populate shape tensor with element shape {1}
+  m.PopulateTensor<int>(m.shape_id_, {1});
+
+  // Populate input tensor raw data
+  TfLiteTensor* input_tensor = m.GetTensor(m.tensor_id_);
+  ASSERT_NE(input_tensor, nullptr);
+  uint8_t* raw_data = reinterpret_cast<uint8_t*>(input_tensor->data.raw);
+  ASSERT_NE(raw_data, nullptr);
+  raw_data[0] = 0x21;  // Elements 1, 2
+  raw_data[1] = 0x43;  // Elements 3, 4
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  const TensorArray* arr = m.GetOutputTensorArray(m.list_id_);
+  ASSERT_EQ(arr->NumElements(), 4);
+  ASSERT_THAT(arr->ElementShape(), DimsAre({1}));
+  ASSERT_EQ(arr->ElementType(), kTfLiteInt4);
+
+  for (int i = 0; i < 4; ++i) {
+    const TfLiteTensor* element = arr->At(i);
+    ASSERT_THAT(element, DimsAre({1}));
+    const uint8_t* val = reinterpret_cast<const uint8_t*>(element->data.raw);
+    ASSERT_NE(val, nullptr);
+    EXPECT_EQ(val[0] & 0x0F, i + 1);
+  }
+}
+
+TEST(ListFromTensorTest, Int2Input_ReturnsListWithScalarElements) {
+  ListFromTensorModel m({TensorType_INT2, {4, 1}}, {TensorType_INT32, {1}});
+
+  // Populate shape tensor with element shape {1}
+  m.PopulateTensor<int>(m.shape_id_, {1});
+
+  // Populate input tensor raw data
+  TfLiteTensor* input_tensor = m.GetTensor(m.tensor_id_);
+  ASSERT_NE(input_tensor, nullptr);
+  uint8_t* raw_data = reinterpret_cast<uint8_t*>(input_tensor->data.raw);
+  ASSERT_NE(raw_data, nullptr);
+  raw_data[0] = 0x39;  // Elements 1, 2, 3, 0
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  const TensorArray* arr = m.GetOutputTensorArray(m.list_id_);
+  ASSERT_EQ(arr->NumElements(), 4);
+  ASSERT_THAT(arr->ElementShape(), DimsAre({1}));
+  ASSERT_EQ(arr->ElementType(), kTfLiteInt2);
+
+  int expected_vals[] = {1, 2, 3, 0};
+  for (int i = 0; i < 4; ++i) {
+    const TfLiteTensor* element = arr->At(i);
+    ASSERT_THAT(element, DimsAre({1}));
+    const uint8_t* val = reinterpret_cast<const uint8_t*>(element->data.raw);
+    ASSERT_NE(val, nullptr);
+    EXPECT_EQ(val[0] & 0x03, expected_vals[i]);
+  }
 }
 
 }  // namespace
