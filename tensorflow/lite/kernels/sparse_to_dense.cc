@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <stdint.h>
-
+#include <cstdint>
+#include <limits>
 #include <vector>
 
 #include "tensorflow/lite/core/c/common.h"
@@ -42,7 +42,17 @@ TfLiteStatus Resize(TfLiteContext* context, const TfLiteTensor* output_shape,
   const int output_dimensions = NumElements(output_shape);
   TfLiteIntArray* output_shape_array = TfLiteIntArrayCreate(output_dimensions);
   for (int i = 0; i < output_dimensions; ++i) {
-    output_shape_array->data[i] = GetTensorData<T>(output_shape)[i];
+    const int64_t dim = static_cast<int64_t>(GetTensorData<T>(output_shape)[i]);
+    if (dim < 0 || dim > std::numeric_limits<int32_t>::max()) {
+      TfLiteIntArrayFree(output_shape_array);
+      TF_LITE_KERNEL_LOG(
+          context,
+          "SparseToDense: output_shape dim %d (%lld) is out of the int32 "
+          "range",
+          i, static_cast<long long>(dim));
+      return kTfLiteError;
+    }
+    output_shape_array->data[i] = static_cast<int>(dim);
   }
 
   return context->ResizeTensor(context, output, output_shape_array);
