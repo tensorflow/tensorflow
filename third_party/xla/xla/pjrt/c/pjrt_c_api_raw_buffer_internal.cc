@@ -24,12 +24,6 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/raw_buffer.h"
-#include "xla/tsl/concurrency/ref_count.h"
-
-struct PJRT_RawBuffer {
-  tsl::RCReference<xla::PjRtRawBuffer> buffer;
-  PJRT_Client* client;
-};
 
 namespace pjrt {
 
@@ -41,25 +35,28 @@ PJRT_Error* PJRT_RawBuffer_CreateRawAliasOfBuffer(
       args->struct_size));
   PJRT_ASSIGN_OR_RETURN(auto result, xla::PjRtRawBuffer::CreateRawAliasOfBuffer(
                                          args->buffer->buffer.get()));
-  args->raw_buffer =
-      new PJRT_RawBuffer{std::move(result), args->buffer->client};
+
+  args->raw_buffer = static_cast<PJRT_RawBuffer*>(result.release());
   return nullptr;
 }
+
 PJRT_Error* PJRT_RawBuffer_Destroy(PJRT_RawBuffer_Destroy_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_RawBuffer_Destroy_Args", PJRT_RawBuffer_Destroy_Args_STRUCT_SIZE,
       args->struct_size));
-  delete args->buffer;
+  args->buffer->vtable->dec_ref(args->buffer);
   return nullptr;
 }
+
 PJRT_Error* PJRT_RawBuffer_GetHostPointer(
     PJRT_RawBuffer_GetHostPointer_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_RawBuffer_GetHostPointer_Args",
       PJRT_RawBuffer_GetHostPointer_Args_STRUCT_SIZE, args->struct_size));
-  args->host_pointer = args->buffer->buffer->GetHostPointer();
+  args->host_pointer = args->buffer->vtable->get_host_pointer(args->buffer);
   return nullptr;
 }
+
 PJRT_Error* PJRT_RawBuffer_GetOnDeviceSizeInBytes(
     PJRT_RawBuffer_GetOnDeviceSizeInBytes_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -67,16 +64,16 @@ PJRT_Error* PJRT_RawBuffer_GetOnDeviceSizeInBytes(
       PJRT_RawBuffer_GetOnDeviceSizeInBytes_Args_STRUCT_SIZE,
       args->struct_size));
   args->on_device_size_in_bytes =
-      args->buffer->buffer->GetOnDeviceSizeInBytes();
+      args->buffer->vtable->get_on_device_size_in_bytes(args->buffer);
   return nullptr;
 }
+
 PJRT_Error* PJRT_RawBuffer_GetMemorySpace(
     PJRT_RawBuffer_GetMemorySpace_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_RawBuffer_GetMemorySpace_Args",
       PJRT_RawBuffer_GetMemorySpace_Args_STRUCT_SIZE, args->struct_size));
-  args->memory_space = PJRT_Client_FindMemoryWrapper(
-      args->buffer->buffer->memory_space(), args->buffer->client);
+  args->memory_space = args->buffer->vtable->get_memory_space(args->buffer);
   if (args->memory_space == nullptr) {
     return StatusToPjRtError(absl::UnimplementedError(
         "Could not find memory_space() for RawBuffer"));
@@ -89,18 +86,21 @@ PJRT_Error* PJRT_RawBuffer_CopyRawHostToDevice(
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_RawBuffer_CopyRawHostToDevice_Args",
       PJRT_RawBuffer_CopyRawHostToDevice_Args_STRUCT_SIZE, args->struct_size));
-  auto result = args->buffer->buffer->CopyRawHostToDevice(
-      args->src, args->offset, args->transfer_size);
+  auto* cpp_buffer = static_cast<xla::PjRtRawBuffer*>(args->buffer);
+  auto result = cpp_buffer->CopyRawHostToDevice(args->src, args->offset,
+                                                args->transfer_size);
   args->event = new PJRT_Event{std::move(result)};
   return nullptr;
 }
+
 PJRT_Error* PJRT_RawBuffer_CopyRawDeviceToHost(
     PJRT_RawBuffer_CopyRawDeviceToHost_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_RawBuffer_CopyRawDeviceToHost_Args",
       PJRT_RawBuffer_CopyRawDeviceToHost_Args_STRUCT_SIZE, args->struct_size));
-  auto result = args->buffer->buffer->CopyRawDeviceToHost(
-      args->dst, args->offset, args->transfer_size);
+  auto* cpp_buffer = static_cast<xla::PjRtRawBuffer*>(args->buffer);
+  auto result = cpp_buffer->CopyRawDeviceToHost(args->dst, args->offset,
+                                                args->transfer_size);
   args->event = new PJRT_Event{std::move(result)};
   return nullptr;
 }

@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/literal.h"
 #include "xla/pjrt/async_work_runner.h"
+#include "xla/pjrt/c/pjrt_c_api_raw_buffer_extension.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/staging_buffer.h"
 #include "xla/shape.h"
@@ -46,8 +47,10 @@ class PjRtBuffer;
 // Experimental. Don't use unless you know what you're doing.
 // A raw buffer is an unsafe API for directly transferring into device
 // memory while existing processes are consuming or mutating the same buffer.
-class PjRtRawBuffer : public tsl::ReferenceCounted<PjRtRawBuffer> {
+class PjRtRawBuffer : public PJRT_RawBuffer,
+                      public tsl::ReferenceCounted<PjRtRawBuffer> {
  public:
+  PjRtRawBuffer();
   virtual ~PjRtRawBuffer() = default;
 
   static absl::StatusOr<tsl::RCReference<PjRtRawBuffer>> CreateRawAliasOfBuffer(
@@ -83,6 +86,9 @@ class PjRtRawBuffer : public tsl::ReferenceCounted<PjRtRawBuffer> {
   // this method for specific alignment requirements.
   virtual Future<> CopyRawDeviceToHost(void* dst, int64_t offset,
                                        int64_t transfer_size) = 0;
+
+ private:
+  static const PJRT_RawBuffer_FunctionTable kRawBufferVtable;
 };
 
 class CommonPjRtRawBuffer;

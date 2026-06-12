@@ -27,6 +27,27 @@ extern "C" {
 
 typedef struct PJRT_RawBuffer PJRT_RawBuffer;
 
+typedef struct PJRT_RawBuffer_FunctionTable {
+  size_t struct_size;
+  size_t instance_size;
+  PJRT_Extension_Base* extension_start;
+  void (*inc_ref)(PJRT_RawBuffer* raw_buffer);
+  void (*dec_ref)(PJRT_RawBuffer* raw_buffer);
+  // Gets the number of bytes of the buffer storage on the device
+  size_t (*get_on_device_size_in_bytes)(PJRT_RawBuffer* raw_buffer);
+  // Gets the memory space that this buffer is attached to.
+  PJRT_Memory* (*get_memory_space)(PJRT_RawBuffer* raw_buffer);
+  // If visible to the host, returns the base pointer for direct access.
+  void* (*get_host_pointer)(PJRT_RawBuffer* raw_buffer);
+} PJRT_RawBuffer_FunctionTable;
+
+struct PJRT_RawBuffer {
+  const PJRT_RawBuffer_FunctionTable* vtable;
+};
+
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawBuffer_FunctionTable, get_host_pointer);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawBuffer, vtable);
+
 struct PJRT_RawBuffer_CreateRawAliasOfBuffer_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;

@@ -1535,6 +1535,7 @@ cc_library(
         "//xla:future",
         "//xla:literal",
         "//xla:shape_util",
+        "//xla/pjrt/c:pjrt_c_api_raw_buffer_extension_hdrs",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:status_macros",
