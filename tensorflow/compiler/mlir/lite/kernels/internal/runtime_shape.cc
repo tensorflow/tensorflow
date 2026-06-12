@@ -59,8 +59,8 @@ RuntimeShape::~RuntimeShape() {
 }
 
 int32_t RuntimeShape::Dims(int i) const {
-  TFLITE_DCHECK_GE(i, 0);
-  TFLITE_DCHECK_LT(i, size_);
+  TFLITE_CHECK_GE(i, 0);
+  TFLITE_CHECK_LT(i, size_);
 #ifndef TF_LITE_STATIC_MEMORY
   return size_ > kMaxSmallSize ? dims_pointer_[i] : dims_[i];
 #else
