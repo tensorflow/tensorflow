@@ -834,6 +834,7 @@ Build(
     ),
     override_repository=dict(
         xla=f"{_GITHUB_WORKSPACE}\\openxla\\xla",
+        tsl=f"{_GITHUB_WORKSPACE}\\openxla\\xla\\third_party\\tsl",
     ),
     override_module=dict(
         xla=f"{_GITHUB_WORKSPACE}\\openxla\\xla",
@@ -870,6 +871,7 @@ Build(
     ),
     override_repository=dict(
         xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
+        tsl=f"{_GITHUB_WORKSPACE}/openxla/xla/third_party/tsl",
     ),
     override_module=dict(
         xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
@@ -927,6 +929,7 @@ Build(
     ),
     override_repository=dict(
         xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
+        tsl=f"{_GITHUB_WORKSPACE}/openxla/xla/third_party/tsl",
     ),
     override_module=dict(
         xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
@@ -951,6 +954,7 @@ Build(
     test_tag_filters=tensorflow_gpu_tag_filters,
     override_repository=dict(
         xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
+        tsl=f"{_GITHUB_WORKSPACE}/openxla/xla/third_party/tsl",
     ),
     override_module=dict(
         xla=f"{_GITHUB_WORKSPACE}/openxla/xla",

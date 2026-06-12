@@ -161,6 +161,7 @@ struct TestConfig {
 using FloatTypes = ::testing::Types<
     TestConfig<float, gpu::BufferDebugFloatCheckF32Kernel>,
     TestConfig<Eigen::bfloat16, gpu::BufferDebugFloatCheckBf16Kernel>,
+    TestConfig<Eigen::half, gpu::BufferDebugFloatCheckF16Kernel>,
     TestConfig<double, gpu::BufferDebugFloatCheckF64Kernel>>;
 
 template <typename T>
