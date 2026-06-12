@@ -69,25 +69,25 @@ class ConcatBaseOp : public OpKernel {
                 (TensorShapeUtils::IsScalar(concat_dim_tensor.shape()) ||
                  (TensorShapeUtils::IsVector(concat_dim_tensor.shape()) &&
                   concat_dim_tensor.shape().dim_size(0) == 1)),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     axis_attribute_name_,
                     " tensor should be a scalar integer, but got shape ",
-                    concat_dim_tensor.shape().DebugString()));
+                    concat_dim_tensor.shape().DebugString())));
     int64_t concat_dim;
     // In case of ConcatV2, "axis" could be int32 or int64
     if (AxisArgName == NAME_IS_AXIS) {
-      OP_REQUIRES(
-          c,
-          (concat_dim_tensor.dtype() == DT_INT32 ||
-           concat_dim_tensor.dtype() == DT_INT64),
-          errors::InvalidArgument(axis_attribute_name_,
-                                  " tensor should be int32 or int64, but got ",
-                                  DataTypeString(concat_dim_tensor.dtype())));
+      OP_REQUIRES(c,
+                  (concat_dim_tensor.dtype() == DT_INT32 ||
+                   concat_dim_tensor.dtype() == DT_INT64),
+                  absl::InvalidArgumentError(
+                      absl::StrCat(axis_attribute_name_,
+                                   " tensor should be int32 or int64, but got ",
+                                   DataTypeString(concat_dim_tensor.dtype()))));
     } else {
       OP_REQUIRES(c, (concat_dim_tensor.dtype() == DT_INT32),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       axis_attribute_name_, " tensor should be int32, but got ",
-                      DataTypeString(concat_dim_tensor.dtype())));
+                      DataTypeString(concat_dim_tensor.dtype()))));
     }
     if (concat_dim_tensor.dtype() == DT_INT32) {
       concat_dim =
@@ -105,10 +105,10 @@ class ConcatBaseOp : public OpKernel {
     int32_t axis = concat_dim < 0 ? concat_dim + input_dims : concat_dim;
     // concat_dim==0 allows concatenating a list of scalars into a vector.
     OP_REQUIRES(c, (0 <= axis && axis < input_dims) || concat_dim == 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "ConcatOp : Expected concatenating dimensions in the range "
                     "[",
-                    -input_dims, ", ", input_dims, "), but got ", concat_dim));
+                    -input_dims, ", ", input_dims, "), but got ", concat_dim)));
     // Note that we reduce the concat of n-dimensional tensors into a two
     // dimensional concat. Assuming the dimensions of any input/output
     // tensor are {x0, x1,...,xn-1, y0, y1,...,ym-1}, where the concat is along
@@ -125,25 +125,25 @@ class ConcatBaseOp : public OpKernel {
       const auto& in = c->input(values_input_start_index_ + i);
       OP_REQUIRES(
           c, in.dims() > 0,
-          errors::InvalidArgument("ConcatOp : Can't concatenate scalars "
-                                  "(use tf.stack instead)"));
+          absl::InvalidArgumentError("ConcatOp : Can't concatenate scalars "
+                                     "(use tf.stack instead)"));
       OP_REQUIRES(
           c, in.dims() == input_dims,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "ConcatOp : Ranks of all input tensors should match: shape[0] = ",
               input_shape.DebugString(), " vs. shape[", i,
-              "] = ", in.shape().DebugString()));
+              "] = ", in.shape().DebugString())));
       for (int j = 0; j < input_dims; ++j) {
         if (j == axis) {
           continue;
         }
-        OP_REQUIRES(
-            c, in.dim_size(j) == input_shape.dim_size(j),
-            errors::InvalidArgument("ConcatOp : Dimension ", j,
-                                    " in both shapes must be equal: "
-                                    "shape[0] = ",
-                                    input_shape.DebugString(), " vs. shape[", i,
-                                    "] = ", in.shape().DebugString()));
+        OP_REQUIRES(c, in.dim_size(j) == input_shape.dim_size(j),
+                    absl::InvalidArgumentError(
+                        absl::StrCat("ConcatOp : Dimension ", j,
+                                     " in both shapes must be equal: "
+                                     "shape[0] = ",
+                                     input_shape.DebugString(), " vs. shape[",
+                                     i, "] = ", in.shape().DebugString())));
       }
       if (in.NumElements() > 0) {
         int64_t inputs_flat_dim1 = in.NumElements() / inputs_flat_dim0;
