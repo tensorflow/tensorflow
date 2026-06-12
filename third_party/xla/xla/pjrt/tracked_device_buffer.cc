@@ -162,16 +162,45 @@ tsl::AsyncValueRef<RawSEDeviceMemory> RawSEDeviceMemory::CreateForeign(
 
 tsl::AsyncValueRef<RawSEDeviceMemory> RawSEDeviceMemory::CreateSlice(
     tsl::AsyncValueRef<RawSEDeviceMemory> base, size_t offset, size_t size) {
-  size_t src_size = base->mem().size();
-  if (offset <= src_size && size <= src_size - offset) {
-    return tsl::MakeAvailableAsyncValueRef<SlicedRawSEDeviceMemory>(
-        se::DeviceAddressBase(
-            reinterpret_cast<char*>(base->mem().opaque()) + offset, size),
-        base);
+  if (base.IsAvailable()) {
+    if (base.IsError()) {
+      return base;
+    }
+    size_t src_size = base->mem().size();
+    if (offset <= src_size && size <= src_size - offset) {
+      return tsl::MakeAvailableAsyncValueRef<SlicedRawSEDeviceMemory>(
+          se::DeviceAddressBase(
+              reinterpret_cast<char*>(base->mem().opaque()) + offset, size),
+          base);
+    }
+    return tsl::MakeErrorAsyncValueRef(absl::InvalidArgumentError(
+        absl::StrFormat("Error when slicing: [%d,%d) in array of size %d",
+                        offset, offset + size, src_size)));
   }
-  return tsl::MakeErrorAsyncValueRef(absl::InvalidArgumentError(
-      absl::StrFormat("Error when slicing: [%d,%d) in array of size %d", offset,
-                      offset + size, src_size)));
+
+  // Return an unconstructed AsyncValueRef for the sliced buffer wrapper.
+  auto slice_av =
+      tsl::MakeUnconstructedAsyncValueRef<SlicedRawSEDeviceMemory>();
+
+  // Schedule construction asynchronously when the parent is concrete.
+  base.AndThen([base, slice_av, offset, size]() mutable {
+    if (base.IsError()) {
+      slice_av.SetError(base.GetError());
+      return;
+    }
+    size_t src_size = base->mem().size();
+    if (offset <= src_size && size <= src_size - offset) {
+      slice_av.emplace(
+          se::DeviceAddressBase(
+              reinterpret_cast<char*>(base->mem().opaque()) + offset, size),
+          base);
+    } else {
+      slice_av.SetError(absl::InvalidArgumentError(
+          absl::StrFormat("Error when slicing: [%d,%d) in array of size %d",
+                          offset, offset + size, src_size)));
+    }
+  });
+  return slice_av;
 }
 
 
