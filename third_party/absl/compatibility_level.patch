@@ -1,0 +1,9 @@
+diff --git a/MODULE.bazel b/MODULE.bazel
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -25,4 +25,5 @@
+ module(
+     name = "abseil-cpp",
+     version = "20260526.0",
++    compatibility_level = 1,
+ )
