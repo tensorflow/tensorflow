@@ -588,6 +588,7 @@ class MomentsTest(test.TestCase):
   def testVarGlobalGradient(self):
     self._testGlobalGradient(from_y="var")
 
+  @test_util.run_in_graph_and_eager_modes
   def testTensorAxes(self):
     from tensorflow.python.ops import variables
     with self.cached_session():
@@ -601,6 +602,7 @@ class MomentsTest(test.TestCase):
 
       # Test Variable
       axes_var = variables.Variable([0, 1], dtype=dtypes.int32)
+      self.evaluate(axes_var.initializer)
       mean, var = self._unweighted_moments(x, axes_var, keep_dims=False)
       mean_v, var_v = self.evaluate([mean, var])
       self.assertEqual(mean_v.shape, (4,))
