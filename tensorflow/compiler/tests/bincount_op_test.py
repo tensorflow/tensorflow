@@ -35,6 +35,17 @@ class BincountTest(xla_test.XLATestCase):
       ):
         self.evaluate(bincount)
 
+  def testDenseBincountNegativeInputRaises(self):
+    with self.session():
+      with self.test_scope():
+        bincount = gen_math_ops.dense_bincount(
+            input=[0, -1, 2], size=3, weights=[]
+        )
+
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, "Input arr must be non-negative"
+      ):
+        self.evaluate(bincount)
 
 if __name__ == "__main__":
   googletest.main()
