@@ -66,6 +66,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
@@ -803,7 +804,7 @@ struct CopyArraysOpState {
 
   std::vector<ArrayHandle> input_handles;
   absl::flat_hash_set<ArrayHandle> dead_inputs;
-  ArrayCopySemantics copy_semantics;
+  bool copy_is_donated;
 
   std::vector<ArrayHandle> output_handles;
   ShardingRef new_sharding;
@@ -838,13 +839,11 @@ struct CopyArraysOpState {
       }
       inputs.push_back(array_it->second.array);
 
-      if (copy_semantics == ArrayCopySemantics::kDonateInput &&
-          !array_it->second.can_be_donated) {
+      if (copy_is_donated && !array_it->second.can_be_donated) {
         array_idxs_to_copy.push_back(idx);
         arrays_to_copy.push_back(array_it->second.array);
       }
-      if ((copy_semantics == ArrayCopySemantics::kDonateInput &&
-           array_it->second.can_be_donated) ||
+      if ((copy_is_donated && array_it->second.can_be_donated) ||
           dead_inputs.contains(handle)) {
         arrays_to_remove.push_back(handle);
       }
@@ -878,10 +877,12 @@ struct CopyArraysOpState {
 
     // It is safe to get the devices and memory kind from the first output
     // because all outputs use the same devices and have the same memory kind.
-    ASSIGN_OR_RETURN(
-        auto copied_arrays,
-        env.client->CopyArrays(absl::MakeSpan(inputs), new_sharding->devices(),
-                               new_sharding->memory_kind(), copy_semantics));
+    ASSIGN_OR_RETURN(auto copied_arrays,
+                     env.client->CopyArrays(
+                         absl::MakeSpan(inputs), new_sharding->devices(),
+                         new_sharding->memory_kind(),
+                         copy_is_donated ? ArrayCopySemantics::kDonateInput
+                                         : ArrayCopySemantics::kAlwaysCopy));
 
     for (const auto handle : arrays_to_remove) {
       if (env.deletable_program_arguments.erase(handle)) {
@@ -921,14 +922,7 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
       state.dead_inputs.insert(ToArrayHandle(input));
     }
   }
-
-  if (copy_arrays_op.getDonated()) {
-    state.copy_semantics = ArrayCopySemantics::kDonateInput;
-  } else if (copy_arrays_op.getReuse()) {
-    state.copy_semantics = ArrayCopySemantics::kReuseInput;
-  } else {
-    state.copy_semantics = ArrayCopySemantics::kAlwaysCopy;
-  }
+  state.copy_is_donated = copy_arrays_op.getDonated();
 
   ASSIGN_OR_RETURN(state.new_sharding,
                    ShardingFromIfrtArrayType(

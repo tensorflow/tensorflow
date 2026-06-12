@@ -433,11 +433,6 @@ mlir::LogicalResult CopyArraysOp::verify() {
     return emitOpError()
            << "requires the same number of input and output arrays";
   }
-  if (getDonated() && getReuse()) {
-    return emitOpError()
-           << "requires at most one of `donated` or `reuse` to be "
-              "set to true";
-  }
   IfrtArrayType first_input = GetArrayType(getInputs().front());
   auto src_devices = first_input.getDevicesAttr();
   auto src_memory_kind = first_input.MemoryKind();

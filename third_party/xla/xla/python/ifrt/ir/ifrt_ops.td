@@ -73,7 +73,6 @@ def Ifrt_CopyArraysOp
   let arguments = (ins
     Variadic<Ifrt_ArrayType>:$inputs,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$donated,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$reuse,
     Variadic<Ifrt_ControlType>:$control_inputs);
   let results = (outs
     Variadic<Ifrt_ArrayType>:$outputs,

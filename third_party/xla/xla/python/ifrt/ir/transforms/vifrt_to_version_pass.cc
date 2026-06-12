@@ -352,44 +352,6 @@ struct VifrtTypeConversionPattern : public mlir::ConversionPattern {
   std::optional<Version> version;
 };
 
-void copyDiscardableAttrs(mlir::Operation* src, mlir::Operation* dst) {
-  dst->setDiscardableAttrs(src->getDiscardableAttrDictionary());
-}
-
-struct CopyArraysOpV1ToV2 : public mlir::OpRewritePattern<CopyArraysOpV1> {
-  using mlir::OpRewritePattern<CopyArraysOpV1>::OpRewritePattern;
-
-  mlir::LogicalResult matchAndRewrite(
-      CopyArraysOpV1 op, mlir::PatternRewriter& rewriter) const override {
-    CopyArraysOpV2 new_op = rewriter.replaceOpWithNewOp<CopyArraysOpV2>(
-        op, op->getResultTypes(), op.getInputs(), op.getDonated(),
-        /*reuse=*/mlir::BoolAttr::get(op.getContext(), false),
-        op.getControlInputs());
-    copyDiscardableAttrs(op, new_op);
-    return mlir::success();
-  }
-};
-
-struct CopyArraysOpV2ToV1 : public mlir::OpRewritePattern<CopyArraysOpV2> {
-  using mlir::OpRewritePattern<CopyArraysOpV2>::OpRewritePattern;
-
-  mlir::LogicalResult matchAndRewrite(
-      CopyArraysOpV2 op, mlir::PatternRewriter& rewriter) const override {
-    if (auto reuse_attr =
-            llvm::dyn_cast_or_null<mlir::BoolAttr>(op.getReuse())) {
-      if (reuse_attr.getValue()) {
-        return rewriter.notifyMatchFailure(
-            op, "reuse is not supported in CopyArraysOpV1");
-      }
-    }
-    CopyArraysOpV1 new_op = rewriter.replaceOpWithNewOp<CopyArraysOpV1>(
-        op, op->getResultTypes(), op.getInputs(), op.getDonated(),
-        op.getControlInputs());
-    copyDiscardableAttrs(op, new_op);
-    return mlir::success();
-  }
-};
-
 }  // namespace
 
 void populateVifrtToVersionPatterns(mlir::RewritePatternSet* patterns,
@@ -448,9 +410,6 @@ void populateVifrtToVersionPatterns(mlir::RewritePatternSet* patterns,
 
   // 3) and 4) Convert the typed attributes and attributes of operations.
   patterns->add<VifrtTypeConversionPattern>(*converter, context, version);
-
-  // Upgrade/Downgrade conversion patterns between ops.
-  patterns->add<CopyArraysOpV1ToV2, CopyArraysOpV2ToV1>(context);
 }
 
 }  // namespace ifrt

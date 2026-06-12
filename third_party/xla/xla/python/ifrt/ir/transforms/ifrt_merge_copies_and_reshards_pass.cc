@@ -80,8 +80,6 @@ llvm::hash_code GetMergeKey(CopyArraysOp op) {
   hash = llvm::hash_combine(
       hash, mlir::BoolAttr::get(op.getContext(), op.getDonated()));
   hash = llvm::hash_combine(
-      hash, mlir::BoolAttr::get(op.getContext(), op.getReuse()));
-  hash = llvm::hash_combine(
       hash,
       StringAttr::get(op.getContext(), absl::StrCat(input_type.MemoryKind())));
   hash = llvm::hash_combine(
@@ -127,21 +125,14 @@ void RewriteCopyArraysGroup(mlir::IRRewriter& rewriter,
   locs.reserve(to_merge.size());
 
   bool donated = false;
-  bool reuse = false;
-  for (auto [index, group_op] : llvm::enumerate(to_merge)) {
+  for (mlir::Operation* group_op : to_merge) {
     auto copy_arrays_op = mlir::cast<CopyArraysOp>(group_op);
     inputs.append(copy_arrays_op.getInputs().begin(),
                   copy_arrays_op.getInputs().end());
     for (mlir::Value output : copy_arrays_op.getOutputs()) {
       output_types.push_back(output.getType());
     }
-    if (index == 0) {
-      donated = copy_arrays_op.getDonated();
-      reuse = copy_arrays_op.getReuse();
-    } else {
-      CHECK_EQ(donated, copy_arrays_op.getDonated());
-      CHECK_EQ(reuse, copy_arrays_op.getReuse());
-    }
+    donated = copy_arrays_op.getDonated();
     locs.push_back(group_op->getLoc());
   }
 
@@ -156,7 +147,6 @@ void RewriteCopyArraysGroup(mlir::IRRewriter& rewriter,
                            IfrtControlType::get(rewriter.getContext()),
                            /*inputs=*/inputs,
                            /*donated=*/donated,
-                           /*reuse=*/reuse,
                            /*control_inputs=*/mlir::ValueRange());
 
   // Replace the original group with the new merged CopyArrays.

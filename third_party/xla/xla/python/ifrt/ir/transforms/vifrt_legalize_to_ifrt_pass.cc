@@ -365,7 +365,7 @@ class VifrtToIfrtOpConverter : public mlir::OpConversionPattern<VifrtOpTy> {
       return mlir::failure();
     }
 
-    // Convert the VIFRT attributes to IFRT attributes.
+    // Convert the IFRT attributes to VIFRT attributes.
     llvm::SmallVector<mlir::NamedAttribute> ifrt_attrs;
     llvm::DenseSet<mlir::StringAttr> already_converted_attrs;
     // Special case operations.

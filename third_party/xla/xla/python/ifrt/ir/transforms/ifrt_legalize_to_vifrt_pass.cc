@@ -291,16 +291,10 @@ mlir::LogicalResult addDefaultAttrs(
         convertGeneric(ifrt_attr, pattern.getTypeConverter()));
   };
 
-  if constexpr (std::is_same<IfrtOpTy, CopyArraysOp>::value) {
-    if (!ifrt_op.getDonatedAttr()) {
-      add_default_attr("donated", builder.getBoolAttr(false));
-    }
-    if (!ifrt_op.getReuseAttr()) {
-      add_default_attr("reuse", builder.getBoolAttr(false));
-    }
-  } else if constexpr (std::is_same<IfrtOpTy, ReshardOp>::value ||
-                       std::is_same<IfrtOpTy, RemapArraysOp>::value ||
-                       std::is_same<IfrtOpTy, BitcastArraysOp>::value) {
+  if constexpr (std::is_same<IfrtOpTy, ReshardOp>::value ||
+                std::is_same<IfrtOpTy, CopyArraysOp>::value ||
+                std::is_same<IfrtOpTy, RemapArraysOp>::value ||
+                std::is_same<IfrtOpTy, BitcastArraysOp>::value) {
     if (!ifrt_op.getDonatedAttr()) {
       add_default_attr("donated", builder.getBoolAttr(false));
     }
