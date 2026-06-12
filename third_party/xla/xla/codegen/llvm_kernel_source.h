@@ -46,6 +46,8 @@ class LlvmKernelSource final : public KernelSource {
     return std::move(module_);
   }
 
+  llvm::Module* module() { return module_.getModuleUnlocked(); }
+
   std::string ToString() const final;
 
  private:
