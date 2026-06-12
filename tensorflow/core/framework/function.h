@@ -424,7 +424,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
       const FunctionDefLibrary& lib_def = {},
       const FunctionDefLibraryStackTraces& library_traces = {});
   FunctionLibraryDefinition(const OpRegistryInterface* default_registry,
-                            const GraphDef& graph_def);
+                            FunctionDefLibrary&& lib_def,
+                            const GraphDebugInfo& debug_info);
   ~FunctionLibraryDefinition() override;
 
   FunctionLibraryDefinition& operator=(const FunctionLibraryDefinition&) =
@@ -655,7 +656,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
       const FunctionDefLibrary& library, const GraphDebugInfo& debug_info);
 
  private:
-  void Initialize(const FunctionDefLibrary& library,
+  void Initialize(FunctionDefLibrary library,
                   const FunctionDefLibraryStackTraces& library_traces);
 
   core::RefCountPtr<FunctionRecord> FindHelper(const std::string& func) const

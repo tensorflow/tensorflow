@@ -1316,12 +1316,12 @@ FunctionLibraryDefinition::FunctionLibraryDefinition(
 }
 
 FunctionLibraryDefinition::FunctionLibraryDefinition(
-    const OpRegistryInterface* default_registry, const GraphDef& graph_def)
+    const OpRegistryInterface* default_registry, FunctionDefLibrary&& lib_def,
+    const GraphDebugInfo& debug_info)
     : default_registry_(default_registry) {
-  const FunctionDefLibrary& library = graph_def.library();
   FunctionDefLibraryStackTraces library_traces =
-      CreateStackTracesForFunctionDefLibrary(library, graph_def.debug_info());
-  Initialize(library, library_traces);
+      CreateStackTracesForFunctionDefLibrary(lib_def, debug_info);
+  Initialize(std::move(lib_def), library_traces);
 }
 
 FunctionLibraryDefinition::~FunctionLibraryDefinition() {
@@ -1367,25 +1367,28 @@ FunctionLibraryDefinition::CreateStackTracesForFunctionDefLibrary(
 }
 
 void FunctionLibraryDefinition::Initialize(
-    const FunctionDefLibrary& library,
+    FunctionDefLibrary library,
     const FunctionDefLibraryStackTraces& library_traces) {
   tf_shared_lock lock(mu_);
-  for (const auto& fdef : library.function()) {
+  for (auto& fdef : *library.mutable_function()) {
     // The latter function definition wins.
-    auto iter = records_.find(fdef.signature().name());
+    const std::string& name = fdef.signature().name();
+    auto iter = records_.find(name);
     if (iter != records_.end()) {
       iter->second->Unref();
       records_.erase(iter);
     }
-    const auto& it = library_traces.find(fdef.signature().name());
-    records_.insert(
-        {fdef.signature().name(),
-         new FunctionRecord(
-             fdef, it != library_traces.end() ? it->second : StackTracesMap(),
-             true)});
+    const auto& it = library_traces.find(name);
+    std::string name_copy = name;
+    records_.emplace(
+        std::move(name_copy),
+        new FunctionRecord(
+            std::move(fdef),
+            it != library_traces.end() ? it->second : StackTracesMap(), true));
   }
-  for (const auto& grad : library.gradient()) {
-    func_grad_[grad.function_name()] = grad.gradient_func();
+  for (auto& grad : *library.mutable_gradient()) {
+    func_grad_[std::move(*grad.mutable_function_name())] =
+        std::move(*grad.mutable_gradient_func());
   }
 }
 
