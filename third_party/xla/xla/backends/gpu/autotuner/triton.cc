@@ -356,10 +356,14 @@ bool TritonBackend::IsSupported(const HloInstruction& instr) {
             ->config()
             .debug_options()
             .xla_gpu_experimental_enable_tiling_propagation()) {
-      std::unique_ptr<experimental::TilingSpace> ts =
+      auto ts =
           experimental::TilingSpace::Create(*fusion_adaptor, mlir_context_);
+      if (!ts.ok()) {
+        VLOG(1) << "Failed to create tiling space: " << ts.status().message();
+        return false;
+      }
       auto tiled_computation_or = experimental::TiledHloComputation::Tile(
-          *fusion_adaptor, std::move(ts));
+          *fusion_adaptor, std::move(ts.value()));
       if (!tiled_computation_or.ok()) {
         VLOG(1) << "Fusion is not tileable with experimental tiling: "
                 << tiled_computation_or.status().message();
