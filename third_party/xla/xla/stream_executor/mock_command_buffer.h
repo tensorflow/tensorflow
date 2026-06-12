@@ -135,7 +135,8 @@ class MockCommandBuffer : public CommandBuffer {
 
  private:
   MOCK_METHOD(absl::Status, Trace,
-              (Stream * stream, absl::AnyInvocable<absl::Status()> function),
+              (Stream * stream,
+               absl::AnyInvocable<absl::Status(Stream*)> function),
               (override));
 };
 

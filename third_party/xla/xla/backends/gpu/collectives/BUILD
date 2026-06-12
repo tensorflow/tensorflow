@@ -207,6 +207,34 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "allocator_memory_registration",
+    srcs = ["allocator_memory_registration.cc"],
+    hdrs = ["allocator_memory_registration.h"],
+    deps = [
+        ":gpu_clique",
+        ":gpu_cliques",
+        ":gpu_communicator",
+        "//xla:util",
+        "//xla/core/collectives:communicator",
+        "//xla/core/collectives:rank_id",
+        "//xla/core/collectives:registered_memory",
+        "//xla/runtime:device_id",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/framework:allocator",
+        "//xla/tsl/platform:status_macros",
+        "//xla/tsl/util:tied_ref",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
+        "@tsl//tsl/platform:numbers",
+        "@tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
 xla_cc_test(
     name = "gpu_cliques_test",
     srcs = ["gpu_cliques_test.cc"],
@@ -292,7 +320,9 @@ xla_cc_test(
         "requires-gpu-nvidia:2",
     ],
     deps = [
+        ":allocator_memory_registration",
         ":cancellation_token",
+        ":gpu_clique",
         ":gpu_clique_key",
         ":gpu_collectives",
         ":gpu_communicator",
@@ -322,6 +352,7 @@ xla_cc_test(
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
@@ -774,7 +805,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
     ],
-    alwayslink = True,  # registers collectives implementation
 )
 
 cc_library(
