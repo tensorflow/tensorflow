@@ -1,4 +1,4 @@
-/*Copyright 2022 The OpenXLA Authors.
+/*Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -380,8 +380,8 @@ AsyncThunkSequence ThunkEmitter::EmitConditional(const HloInstruction* instr) {
   return tsl::JoinFutures(absl::MakeSpan(branch_thunks))
       .Map([thunk_info = std::move(thunk_info),
             shaped_slice = std::move(shaped_slice)](
-               std::vector<ThunkSequence> branch_thunks) {
-        return GetThunkSequence(std::make_unique<ConditionalThunk>(
+               std::vector<ThunkSequence> branch_thunks) mutable {
+        return ThunkSequence::Of(std::make_unique<ConditionalThunk>(
             std::move(thunk_info), std::move(shaped_slice),
             std::move(branch_thunks)));
       });
@@ -410,7 +410,7 @@ AsyncThunkSequence ThunkEmitter::EmitPadToStatic(
                     instr, ir_emitter_context_->GetNextThunkId()),
                 std::move(kernel_def).TakeSource(), std::string(spec.name()),
                 kernel_arguments, launch_dimensions)
-      .Map([](std::unique_ptr<Thunk> thunk) {
+      .Map([](std::unique_ptr<Thunk> thunk) mutable {
         return ThunkSequence::Of(std::move(thunk));
       });
 }
@@ -1256,8 +1256,8 @@ AsyncThunkSequence ThunkEmitter::EmitTritonCustomCall(
               instr, call = std::move(call),
               kernel_compiler = ir_emitter_context_->kernel_compiler(),
               buffer_assignment = &ir_emitter_context_->buffer_assignment(),
-              gpu_device_info = ir_emitter_context_->gpu_device_info()](
-                 TritonWrapperResult result)
+              gpu_device_info = &ir_emitter_context_->gpu_device_info()](
+                 TritonWrapperResult result) mutable
                  -> xla::Future<KernelReuseCache::Entry> {
           auto local_module =
               std::move(result.kernel_source).thread_safe_module();
@@ -1269,7 +1269,7 @@ AsyncThunkSequence ThunkEmitter::EmitTritonCustomCall(
           auto launch_dimensions = LaunchDimensions(
               se::BlockDim(call.grid_x, call.grid_y, call.grid_z),
               se::ThreadDim(call.num_warps *
-                            gpu_device_info.threads_per_warp()));
+                            gpu_device_info->threads_per_warp()));
 
           ASSIGN_OR_RETURN(
               llvm::Function * kernel,
@@ -1279,7 +1279,7 @@ AsyncThunkSequence ThunkEmitter::EmitTritonCustomCall(
 
           AnnotateAttrsIfUnset(kernel_arguments, *kernel);
           RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
-              gpu_device_info, launch_dimensions, kernel,
+              *gpu_device_info, launch_dimensions, kernel,
               local_module.getModuleUnlocked()));
 
           return kernel_compiler
@@ -1287,8 +1287,9 @@ AsyncThunkSequence ThunkEmitter::EmitTritonCustomCall(
               .Map([use_pdl = result.use_pdl, shmem_bytes = result.shmem_bytes,
                     launch_dimensions = std::move(launch_dimensions),
                     tma_metadata = result.tma_metadata,
-                    kernel_name](const std::vector<uint8_t>& cubin) {
-                return KernelReuseCache::Entry{kernel_name,
+                    kernel_name = std::move(kernel_name)](
+                       const std::vector<uint8_t>& cubin) mutable {
+                return KernelReuseCache::Entry{std::move(kernel_name),
                                                launch_dimensions,
                                                /*cluster_dim=*/std::nullopt,
                                                shmem_bytes,
@@ -1313,8 +1314,8 @@ AsyncThunkSequence ThunkEmitter::EmitTritonCustomCall(
   return status_or_entry.Map(
       [thunk_info = std::move(thunk_info),
        kernel_arguments = std::move(kernel_arguments),
-       call_zeroed_outputs =
-           std::move(call_zeroed_outputs)](const KernelReuseCache::Entry* entry)
+       call_zeroed_outputs = std::move(call_zeroed_outputs)](
+          const KernelReuseCache::Entry* entry) mutable
           -> absl::StatusOr<ThunkSequence> {
         ASSIGN_OR_RETURN(CustomKernel custom_kernel,
                          kernel::CreateOwnedCubinCustomKernel(
@@ -1324,8 +1325,9 @@ AsyncThunkSequence ThunkEmitter::EmitTritonCustomCall(
                              entry->launch_dimensions.thread_counts_per_block(),
                              entry->shmem_bytes));
         return ThunkSequence::Of(std::make_unique<CustomKernelThunk>(
-            thunk_info, std::move(custom_kernel), kernel_arguments,
-            entry->use_pdl, call_zeroed_outputs, entry->tma_metadata));
+            std::move(thunk_info), std::move(custom_kernel),
+            std::move(kernel_arguments), entry->use_pdl, call_zeroed_outputs,
+            entry->tma_metadata));
       });
 }
 
@@ -1357,7 +1359,7 @@ AsyncThunkSequence ThunkEmitter::EmitAsyncComputation(
   return std::move(nested_thunks)
       .Map([thunk_info = std::move(thunk_info),
             async_execution = std::move(async_execution),
-            execution_stream_id](ThunkSequence nested_thunks) {
+            execution_stream_id](ThunkSequence nested_thunks) mutable {
         return ThunkSequence::Of(std::make_unique<AsyncStartThunk>(
             std::move(thunk_info), execution_stream_id,
             std::move(nested_thunks), async_execution));
@@ -1582,7 +1584,7 @@ AsyncThunkSequence ThunkEmitter::EmitAsyncCustomCallStart(
   return std::move(custom_call_thunks)
       .Map([start_thunk_info = std::move(start_thunk_info),
             async_execution = std::move(async_execution),
-            execution_stream_id](ThunkSequence custom_call_thunks) {
+            execution_stream_id](ThunkSequence custom_call_thunks) mutable {
         return ThunkSequence::Of(std::make_unique<AsyncStartThunk>(
             std::move(start_thunk_info), execution_stream_id,
             std::move(custom_call_thunks), std::move(async_execution)));
@@ -1622,7 +1624,7 @@ AsyncThunkSequence ThunkEmitter::EmitWhile(const HloInstruction* instr) {
   return std::move(tsl::JoinFutures(EmitHloComputation(condition),
                                     EmitHloComputation(body)))
       .Map([info = std::move(info), pred = pred, trip_count = trip_count](
-               std::tuple<ThunkSequence, ThunkSequence> tuple) {
+               std::tuple<ThunkSequence, ThunkSequence> tuple) mutable {
         auto [cond_thunks, body_thunks] = std::move(tuple);
         return GetThunkSequence(std::make_unique<WhileThunk>(
             std::move(info), std::move(pred), std::move(cond_thunks),
@@ -1945,9 +1947,9 @@ AsyncThunkSequence ThunkEmitter::EmitCollectiveThunk(
                                              .xla_gpu_use_memcpy_local_p2p(),
                   buffers = std::move(buffers),
                   inst](std::unique_ptr<CollectiveKernelThunk>
-                            collective_kernel_thunk) {
+                            collective_kernel_thunk) mutable {
               return ThunkSequence::Of(std::make_unique<CollectiveThunkType>(
-                  thunk_info, inst, /*buffers=*/std::move(buffers),
+                  std::move(thunk_info), inst, /*buffers=*/std::move(buffers),
                   std::move(collective_kernel_thunk), use_memcpy_local_p2p));
             });
   } else if constexpr (std::is_constructible_v<
@@ -1994,11 +1996,11 @@ AsyncThunkSequence ThunkEmitter::EmitCollectiveThunk(
 
   return std::move(thunks).Map(
       [async_start_thunk_info = std::move(async_start_thunk_info),
-       execution_stream_id,
-       async_execution = std::move(async_execution)](ThunkSequence thunks) {
+       execution_stream_id, async_execution = std::move(async_execution)](
+          ThunkSequence thunks) mutable {
         return ThunkSequence::Of(std::make_unique<AsyncStartThunk>(
-            async_start_thunk_info, execution_stream_id, std::move(thunks),
-            async_execution));
+            std::move(async_start_thunk_info), execution_stream_id,
+            std::move(thunks), async_execution));
       });
 }
 
@@ -2041,7 +2043,7 @@ AsyncThunkSequence ThunkEmitter::EmitCollectiveGroupStartThunk(
       .Map([group_thunk_info = std::move(group_thunk_info),
             start_thunk_info = std::move(start_thunk_info),
             async_execution = std::move(async_execution), execution_stream_id,
-            is_sync](std::vector<ThunkSequence> sequences) {
+            is_sync](std::vector<ThunkSequence> sequences) mutable {
         ThunkSequence thunks = FlattenThunkSequence(std::move(sequences));
         auto group_thunk = std::make_unique<CollectiveGroupThunk>(
             std::move(group_thunk_info), Thunk::Kind::kGroup,
@@ -2585,7 +2587,7 @@ AsyncThunkSequence ThunkEmitter::EmitAsyncStart(const HloInstruction* instr) {
       return std::move(fusion_thunks)
           .Map([start_thunk_info = std::move(start_thunk_info),
                 async_execution = std::move(async_execution),
-                execution_stream_id](ThunkSequence fusion_thunks) {
+                execution_stream_id](ThunkSequence fusion_thunks) mutable {
             return ThunkSequence::Of(std::make_unique<AsyncStartThunk>(
                 std::move(start_thunk_info), execution_stream_id,
                 std::move(fusion_thunks), std::move(async_execution)));
