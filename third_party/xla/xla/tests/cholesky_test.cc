@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal_util.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
@@ -259,7 +260,7 @@ TEST_P(RandomCholeskyTest, Real) {
 }
 
 TEST_P(RandomCholeskyTest, Complex) {
-  if (IsRocm()) {
+  if (test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm)) {
     GTEST_SKIP() << " hipblaslt doesn't suppport c64 c128 types";
   }
   XlaBuilder builder(TestName());
