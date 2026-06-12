@@ -39,8 +39,9 @@ TEST(PjRtExecutableImplTest, HloOutputCallbackWrapper) {
   hlo_cb->callback_id = 42;
   hlo_cb->num_operands = 1;
   hlo_cb->callback =
-      [&invoked](int64_t replica_id, int64_t partition_id,
-                 absl::Span<std::shared_ptr<xla::Literal> const> literals) {
+      [&invoked](
+          int64_t replica_id, int64_t partition_id,
+          absl::Span<std::shared_ptr<const xla::Literal> const> literals) {
         invoked = true;
         EXPECT_EQ(replica_id, 0);
         EXPECT_EQ(partition_id, 0);
@@ -58,7 +59,7 @@ TEST(PjRtExecutableImplTest, HloOutputCallbackWrapper) {
   ASSERT_OK_AND_ASSIGN(
       auto lit, xla::Literal::Make(xla::ShapeUtil::MakeShape(xla::S32, {})));
   lit.Set<int32_t>({}, 123);
-  auto shared_lit = std::make_shared<xla::Literal>(std::move(lit));
+  auto shared_lit = std::make_shared<const xla::Literal>(std::move(lit));
   loaded_host_callback->hlo_output_callback().callback(
       0, 0, absl::MakeSpan(&shared_lit, 1));
   EXPECT_TRUE(invoked);

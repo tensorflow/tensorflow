@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_TOOLS_PROTO_SPLITTER_CC_GRAPH_DEF_SPLITTER_H_
 #define TENSORFLOW_TOOLS_PROTO_SPLITTER_CC_GRAPH_DEF_SPLITTER_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/tools/proto_splitter/cc/composable_splitter.h"
 
 namespace tensorflow {
