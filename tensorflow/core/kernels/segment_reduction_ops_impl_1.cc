@@ -120,9 +120,9 @@ absl::Status ValidateSparseSegmentReduction(OpKernelContext* context,
       "SegmentMean", Eigen::internal::MeanReducer<type>, type, index_type, 0); \
   REGISTER_CPU_KERNEL_SEGMENT(                                                 \
       "SegmentProd", Eigen::internal::ProdReducer<type>, type, index_type, 1); \
-  REGISTER_CPU_KERNEL_SEGMENT("SegmentMin", Eigen::internal::MinReducer<type>, \
+  REGISTER_CPU_KERNEL_SEGMENT("SegmentMin", Eigen::internal::MinReducer<type, Eigen::PropagateNaN>, \
                               type, index_type, 0);                            \
-  REGISTER_CPU_KERNEL_SEGMENT("SegmentMax", Eigen::internal::MaxReducer<type>, \
+  REGISTER_CPU_KERNEL_SEGMENT("SegmentMax", Eigen::internal::MaxReducer<type, Eigen::PropagateNaN>, \
                               type, index_type, 0)
 
 #define REGISTER_COMPLEX_CPU_KERNELS(type, index_type)                         \
