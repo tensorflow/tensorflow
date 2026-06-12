@@ -598,6 +598,27 @@ TEST(FastParse, DenseFloat_TooFewElements_ReportsError) {
             std::string::npos);
 }
 
+TEST(FastParseSequenceExample, SparseStringMalformedBytesListReportsError) {
+  static constexpr char kMalformed[] = {
+      '\x12', '\x0e', '\x0a', '\x0c', '\x0a', '\x01', '\x73', '\x12',
+      '\x07', '\x0a', '\x05', '\x0a', '\x03', '\x0a', '\x05', '\x41'};
+
+  FastParseExampleConfig context_config;
+  FastParseExampleConfig sequence_config;
+  AddSparseFeature("s", DT_STRING, &sequence_config);
+
+  Result context_result;
+  Result sequence_result;
+  std::vector<Tensor> dense_feature_lengths;
+  std::vector<tstring> serialized = {tstring(kMalformed, sizeof(kMalformed))};
+  absl::Status parse_status =
+      FastParseSequenceExample(context_config, sequence_config, serialized, {},
+                               nullptr, &context_result, &sequence_result,
+                               &dense_feature_lengths);
+
+  EXPECT_TRUE(absl::IsInvalidArgument(parse_status)) << parse_status;
+}
+
 }  // namespace
 }  // namespace example
 }  // namespace tensorflow
