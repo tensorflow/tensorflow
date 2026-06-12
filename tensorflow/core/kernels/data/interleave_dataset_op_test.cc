@@ -585,6 +585,64 @@ TEST_F(InterleaveDatasetOpTest, InvalidLength) {
             absl::StatusCode::kInvalidArgument);
 }
 
+// test case 10: cycle_length exceeds kMaxCycleLength (1 << 20).
+InterleaveDatasetParams InterleaveDatasetParamsWithOverflowCycleLength() {
+  auto tensor_slice_dataset_params = TensorSliceDatasetParams(
+      /*components=*/
+      {CreateTensor<int64_t>(TensorShape{3, 3, 1},
+                             {0, 1, 2, 3, 4, 5, 6, 7, 8})},
+      /*node_name=*/"tensor_slice_dataset");
+  return InterleaveDatasetParams(
+      std::move(tensor_slice_dataset_params),
+      /*other_arguments=*/{},
+      /*cycle_length=*/static_cast<int64_t>(1) << 21,  // 2M, exceeds 1M limit
+      /*block_length=*/1,
+      /*func=*/
+      MakeTensorSliceDatasetFunc(
+          DataTypeVector({DT_INT64}),
+          std::vector<PartialTensorShape>({PartialTensorShape({1})})),
+      /*func_lib=*/{test::function::MakeTensorSliceDataset()},
+      /*type_arguments=*/{},
+      /*output_dtypes=*/{DT_INT64},
+      /*output_shapes=*/{PartialTensorShape({1})},
+      /*node_name=*/kNodeName);
+}
+
+TEST_F(InterleaveDatasetOpTest, InvalidCycleLengthOverflow) {
+  auto dataset_params = InterleaveDatasetParamsWithOverflowCycleLength();
+  EXPECT_EQ(Initialize(dataset_params).code(),
+            absl::StatusCode::kInvalidArgument);
+}
+
+// test case 11: block_length exceeds kMaxBlockLength (1 << 20).
+InterleaveDatasetParams InterleaveDatasetParamsWithOverflowBlockLength() {
+  auto tensor_slice_dataset_params = TensorSliceDatasetParams(
+      /*components=*/
+      {CreateTensor<int64_t>(TensorShape{3, 3, 1},
+                             {0, 1, 2, 3, 4, 5, 6, 7, 8})},
+      /*node_name=*/"tensor_slice_dataset");
+  return InterleaveDatasetParams(
+      std::move(tensor_slice_dataset_params),
+      /*other_arguments=*/{},
+      /*cycle_length=*/1,
+      /*block_length=*/static_cast<int64_t>(1) << 21,  // 2M, exceeds 1M limit
+      /*func=*/
+      MakeTensorSliceDatasetFunc(
+          DataTypeVector({DT_INT64}),
+          std::vector<PartialTensorShape>({PartialTensorShape({1})})),
+      /*func_lib=*/{test::function::MakeTensorSliceDataset()},
+      /*type_arguments=*/{},
+      /*output_dtypes=*/{DT_INT64},
+      /*output_shapes=*/{PartialTensorShape({1})},
+      /*node_name=*/kNodeName);
+}
+
+TEST_F(InterleaveDatasetOpTest, InvalidBlockLengthOverflow) {
+  auto dataset_params = InterleaveDatasetParamsWithOverflowBlockLength();
+  EXPECT_EQ(Initialize(dataset_params).code(),
+            absl::StatusCode::kInvalidArgument);
+}
+
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow
