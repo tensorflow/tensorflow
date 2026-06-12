@@ -170,6 +170,14 @@ class CommandExecutor {
     return requires_warmup;
   }
 
+  bool requires_update() const {
+    bool requires_update = false;
+    commands_.Walk([&](const Command* command) {
+      requires_update |= command->requires_update();
+    });
+    return requires_update;
+  }
+
   bool support_loop_unroll() const {
     bool support_loop_unroll = true;
     commands_.Walk([&](const Command* command) {

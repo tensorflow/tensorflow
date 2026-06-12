@@ -32,7 +32,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/Support/ExtensibleRTTI.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
@@ -56,9 +55,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
-#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -198,6 +195,9 @@ class PjRtExecutable final
     std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
         output_layouts;
 
+    // Output bundle slice sizes.
+    std::optional<std::vector<int>> outputs_bundle_slice_sizes;
+
     // Serializes the common metadata and a `PjRtExecutable`.
     absl::StatusOr<std::string> Serialize(
         xla::PjRtExecutable* pjrt_executable) const;
@@ -251,6 +251,7 @@ class PjRtLoadedExecutable final
       PjRtClient* client, xla::MaybeOwningMlirModule module,
       xla::CompileOptions compile_options,
       std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
+      std::optional<std::vector<int>> outputs_bundle_slice_sizes,
       DeviceListRef executable_devices);
 
   // PjRtCompatibleLoadedExecutable implementation.

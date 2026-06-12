@@ -976,8 +976,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Check the shape of input state tensors.
   // These tensor may be 1D or 2D. It's fine as long as the total size is
   // correct.
-  TF_LITE_ENSURE_EQ(context, NumElements(output_state), n_batch * n_output);
-  TF_LITE_ENSURE_EQ(context, NumElements(cell_state), n_batch * n_cell);
+  TF_LITE_ENSURE_EQ(context, NumElements(output_state),
+                    static_cast<int64_t>(n_batch) * n_output);
+  TF_LITE_ENSURE_EQ(context, NumElements(cell_state),
+                    static_cast<int64_t>(n_batch) * n_cell);
 
   // Resize the output tensors.
   TfLiteIntArray* output_size = TfLiteIntArrayCopy(input->dims);
