@@ -45,6 +45,14 @@ class Conv2DTester : public ModelCache<Conv2DTester> {
   Conv2DTester(const Conv2DTester&) = delete;
   Conv2DTester& operator=(const Conv2DTester&) = delete;
 
+  inline Conv2DTester& RelativeTolerance(float relative_tolerance) {
+    EXPECT_GT(relative_tolerance, 0.0f);
+    relative_tolerance_ = relative_tolerance;
+    return *this;
+  }
+
+  inline float RelativeTolerance() const { return relative_tolerance_; }
+
   inline Conv2DTester& BatchSize(int32_t batch_size) {
     EXPECT_GT(batch_size, 0);
     batch_size_ = batch_size;
@@ -242,6 +250,12 @@ class Conv2DTester : public ModelCache<Conv2DTester> {
     return *this;
   }
 
+  inline Conv2DTester& ExpectFp16Precision(bool fp16_precision = true) {
+    yield_fp16_precision_ = fp16_precision;
+    return *this;
+  }
+  inline bool ExpectFp16Precision() const { return yield_fp16_precision_; }
+
   void Test(TfLiteDelegate* delegate);
 
   std::vector<char> CreateTfLiteModel() const override;
@@ -276,6 +290,8 @@ class Conv2DTester : public ModelCache<Conv2DTester> {
   ::tflite::ActivationFunctionType activation_ =
       ::tflite::ActivationFunctionType_NONE;
   TfLiteXNNPackDelegateWeightsCache* weights_cache_ = nullptr;
+  float relative_tolerance_ = 3.0e-6f;
+  bool yield_fp16_precision_ = false;
 };
 
 }  // namespace xnnpack

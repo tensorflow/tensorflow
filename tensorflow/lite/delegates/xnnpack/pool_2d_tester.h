@@ -64,6 +64,14 @@ class Pool2DTester {
 
   inline int32_t InputWidth() const { return input_width_; }
 
+  inline Pool2DTester& Tolerance(float tolerance) {
+    EXPECT_GE(tolerance, 0.0f);
+    tolerance_ = tolerance;
+    return *this;
+  }
+
+  inline float Tolerance() const { return tolerance_; }
+
   inline int32_t OutputWidth() const {
     if (Padding() == ::tflite::Padding_SAME) {
       return (InputWidth() - 1) / StrideWidth() + 1;
@@ -147,6 +155,12 @@ class Pool2DTester {
     return *this;
   }
 
+  inline Pool2DTester& ExpectFp16Precision(bool fp16_precision = true) {
+    yield_fp16_precision_ = fp16_precision;
+    return *this;
+  }
+  inline bool ExpectFp16Precision() const { return yield_fp16_precision_; }
+
   void Test(tflite::BuiltinOperator pool_op, TfLiteDelegate* delegate) const;
 
  private:
@@ -166,9 +180,11 @@ class Pool2DTester {
   int32_t pooling_width_ = 1;
   int32_t stride_height_ = 1;
   int32_t stride_width_ = 1;
+  float tolerance_ = 0.0f;
   ::tflite::Padding padding_ = ::tflite::Padding_VALID;
   ::tflite::ActivationFunctionType activation_ =
       ::tflite::ActivationFunctionType_NONE;
+  bool yield_fp16_precision_ = false;
 };
 
 }  // namespace xnnpack

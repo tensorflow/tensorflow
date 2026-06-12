@@ -17,8 +17,6 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/ops/array_ops.h"
 
-#include <cstring>  // NOLINT
-
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_context.h"
@@ -26,6 +24,7 @@ limitations under the License.
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/tracing_utils.h"
 #include "tensorflow/core/framework/types.h"  // NOLINT
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"  // NOLINT
 
 using tensorflow::tracing::MaybeSetOpName;

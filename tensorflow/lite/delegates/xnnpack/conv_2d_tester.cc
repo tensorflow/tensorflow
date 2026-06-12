@@ -100,6 +100,7 @@ void Conv2DTester::Test(TfLiteDelegate* delegate) {
   float* delegate_output_data =
       delegate_interpreter->typed_output_tensor<float>(0);
 
+  int exact_match_count = 0;
   for (int32_t i = 0; i < BatchSize(); i++) {
     for (int32_t y = 0; y < OutputHeight(); y++) {
       for (int32_t x = 0; x < OutputWidth(); x++) {
@@ -107,15 +108,26 @@ void Conv2DTester::Test(TfLiteDelegate* delegate) {
           const int32_t index = ((i * OutputHeight() + y) * OutputWidth() + x) *
                                     OutputChannels() +
                                 c;
-          ASSERT_NEAR(default_output_data[index], delegate_output_data[index],
-                      std::abs(default_output_data[index]) * 3.0e-6f)
+          ASSERT_NEAR(
+              default_output_data[index], delegate_output_data[index],
+              std::abs(default_output_data[index]) * RelativeTolerance())
               << "batch " << i << " / " << BatchSize() << ", y position " << y
               << " / " << OutputHeight() << ", x position " << x << " / "
               << OutputWidth() << ", channel " << c << " / "
               << OutputChannels();
+          if (default_output_data[index] == delegate_output_data[index])
+            exact_match_count++;
         }
       }
     }
+  }
+
+  if (yield_fp16_precision_) {
+    const int total_elements =
+        BatchSize() * OutputHeight() * OutputWidth() * OutputChannels();
+    EXPECT_LT(exact_match_count, total_elements)
+        << "Expected FP16 precision, but all outputs exactly matched the FP32 "
+           "reference.";
   }
 }
 
