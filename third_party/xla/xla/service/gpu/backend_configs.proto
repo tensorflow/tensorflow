@@ -275,21 +275,6 @@ message DynamicSliceConfig {
   int64 byte_stride = 3;
 }
 
-message DynamicMemcpyConfig {
-  // If true, the offsets depend on the innermost while loop's induction
-  // variable. `src_offset_bytes` and `dst_offset_bytes` contain one entry
-  // for each iteration.
-  // Otherwise, `src_offset_bytes` and `dst_offset_bytes` contain one entry
-  // each, and the offset is static.
-  bool depends_on_loop = 1;
-
-  // Source offsets for each invocation of the fusion.
-  repeated int64 src_offset_bytes = 2;
-
-  // Destination offsets for invocation of the fusion.
-  repeated int64 dst_offset_bytes = 3;
-}
-
 // Next id: 8
 message FusionBackendConfig {
   // kLoop, kInput, or kOutput (from HloInstruction::FusionKind), or your own
@@ -318,9 +303,8 @@ message FusionBackendConfig {
 
   CuDnnFusionConfig cudnn_fusion_config = 5;
 
-  DynamicMemcpyConfig dynamic_memcpy_config = 7;
-
-  reserved 3;
+  reserved 3, 7;
+  reserved "dynamic_memcpy_config";
 }
 
 // Backed config for norm executed by cuDNN.

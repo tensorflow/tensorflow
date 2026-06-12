@@ -1993,7 +1993,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "xla_gpu_enable_dynamic_slice_fusion",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_dynamic_slice_fusion),
       debug_options->xla_gpu_enable_dynamic_slice_fusion(),
-      "[Stable] Whether to enable address computation fusion to optimize "
+      "[Stable] Whether to enable dynamic slice fusion to optimize "
       "dynamic-slice and dynamic-update-slice operations."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_dus_accumulator_zero_init_elimination",

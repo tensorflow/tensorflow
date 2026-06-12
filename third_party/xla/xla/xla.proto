@@ -92,8 +92,10 @@ message DebugOptions {
     CUSTOM_CALL = 7;
     CUBLASLT = 8;
     DYNAMIC_SLICE_FUSION = 9;
-    DYNAMIC_SLICE_COPY_FUSION = 10;
     CONVOLUTION = 11;
+
+    reserved "DYNAMIC_SLICE_COPY_FUSION";
+    reserved 10;
   }
 
   enum LibNvJitLinkMode {
@@ -670,7 +672,7 @@ message DebugOptions {
   // body's DUS covers every slot.
   optional bool xla_gpu_enable_dus_accumulator_zero_init_elimination = 490;
 
-  // Enables address computation fusion to optimize dynamic-slice and
+  // Enables dynamic slice fusion to optimize dynamic-slice and
   // dynamic-update-slice operations around library calls.
   optional bool xla_gpu_enable_dynamic_slice_fusion = 105;
 
