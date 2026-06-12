@@ -500,11 +500,11 @@ class GraphTypeTopologyView {
 
   // Returns a node index for the given node name, if the name exists in the
   // underlying graph. Otherwise returns empty optional.
-  const absl::optional<int> GetNodeIndex(absl::string_view node_name,
-                                         const TypeAttrId& type_attr) const;
+  const std::optional<int> GetNodeIndex(absl::string_view node_name,
+                                        const TypeAttrId& type_attr) const;
   // Returns a node index for the given node, if the node belongs to the
   // underlying graph. Otherwise returns empty optional.
-  const absl::optional<int> GetNodeIndex(const NodeTypeId& node) const;
+  const std::optional<int> GetNodeIndex(const NodeTypeId& node) const;
 
   // Returns all the node indexes that are in the direct fanin of the given
   // node. If the `node_idx` is outside of [0, num_nodes_) returns empty vector.
@@ -712,7 +712,7 @@ const NodeTypeId* GraphTypeTopologyView::GetNode(int node_idx) const {
   return &node_type_attrs_.at(node_idx);
 }
 
-const absl::optional<int> GraphTypeTopologyView::GetNodeIndex(
+const std::optional<int> GraphTypeTopologyView::GetNodeIndex(
     absl::string_view node_name, const TypeAttrId& type_attr) const {
   DCHECK(is_initialized()) << "GraphTypeTopologyView is not initialized";
   NodeTypeKey key(node_name, type_attr);
@@ -723,7 +723,7 @@ const absl::optional<int> GraphTypeTopologyView::GetNodeIndex(
                                               : std::make_optional(it->second);
 }
 
-const absl::optional<int> GraphTypeTopologyView::GetNodeIndex(
+const std::optional<int> GraphTypeTopologyView::GetNodeIndex(
     const NodeTypeId& node) const {
   return GetNodeIndex(node.node->name(), node.type_attr);
 }
@@ -829,7 +829,7 @@ void DfsTypeTraversal(const GraphTypeTopologyView& graph_type_view,
   stack.reserve(from.size());
 
   for (const NodeTypeId* node : from) {
-    const absl::optional<int> node_idx = graph_type_view.GetNodeIndex(*node);
+    const std::optional<int> node_idx = graph_type_view.GetNodeIndex(*node);
     DCHECK(node_idx.has_value())
         << "Illegal start node: " << node->node->name();
     if (node_idx.has_value()) {
@@ -1625,7 +1625,7 @@ void AutoMixedPrecisionImpl::FindFloat32TensorListOpClustersAndDenylistUnsafe(
       continue;
     }
     const NodeTypeId* root_fp32 = GetTensorListFloat32NodeTypeId(*root.node);
-    const absl::optional<int> maybe_root_fp32_idx =
+    const std::optional<int> maybe_root_fp32_idx =
         graph_type_view_.GetNodeIndex(*root_fp32);
     DCHECK(maybe_root_fp32_idx.has_value())
         << "Type attribute " << root_fp32->type_attr.DebugString()
@@ -1940,7 +1940,7 @@ absl::Status AutoMixedPrecisionImpl::ForceColorMatchOnRecurrentEdges(
               absl::StrCat("Expected Merge node after NextIteration, got ",
                            merge_node.op()));
         }
-        const absl::optional<int> maybe_merge_idx =
+        const std::optional<int> maybe_merge_idx =
             graph_type_view_.GetNodeIndex(merge_node.name(), TypeAttrId("T"));
         if (!maybe_merge_idx.has_value()) {
           return absl::InternalError(
@@ -1952,7 +1952,7 @@ absl::Status AutoMixedPrecisionImpl::ForceColorMatchOnRecurrentEdges(
         any_merge_is_not_allow =
             any_merge_is_not_allow || !allow_set->count(merge_idx);
       }
-      const absl::optional<int> maybe_nextiter_idx =
+      const std::optional<int> maybe_nextiter_idx =
           graph_type_view_.GetNodeIndex(node.name(), TypeAttrId("T"));
       if (!maybe_nextiter_idx.has_value()) {
         return absl::InternalError(
@@ -1996,7 +1996,7 @@ void AutoMixedPrecisionImpl::ForceColorMatchBetweenTensorListOps(
   node_type_idxs.reserve(tensor_list_nodes.size());
   for (const NodeDef* node : tensor_list_nodes) {
     const NodeTypeId& node_type = *GetTensorListFloat32NodeTypeId(*node);
-    const absl::optional<int> maybe_node_type_idx =
+    const std::optional<int> maybe_node_type_idx =
         graph_type_view_.GetNodeIndex(node_type);
     DCHECK(maybe_node_type_idx.has_value())
         << "Type attribute " << node_type.type_attr.DebugString() << " of node "
@@ -2062,7 +2062,7 @@ void AutoMixedPrecisionImpl::MakeCastsAllowIfAllOutputsAllow(
     for (const MutableGraphView::InputPort& dst : fanout) {
       TypeAttrId dst_type_attr =
           node_type_map_.GetInputTypeAttr(*dst.node, dst.port_id);
-      const absl::optional<int> maybe_dst_type_idx =
+      const std::optional<int> maybe_dst_type_idx =
           graph_type_view_.GetNodeIndex(dst.node->name(), dst_type_attr);
       DCHECK(maybe_dst_type_idx.has_value())
           << "Type attribute " << dst_type_attr.DebugString() << " of node "
@@ -2075,7 +2075,7 @@ void AutoMixedPrecisionImpl::MakeCastsAllowIfAllOutputsAllow(
       }
     }
     if (!fanout.empty() && all_fanouts_allow) {
-      const absl::optional<int> maybe_node_type_idx =
+      const std::optional<int> maybe_node_type_idx =
           graph_type_view_.GetNodeIndex(node_type);
       DCHECK(maybe_node_type_idx.has_value())
           << "Type attribute " << node_type.type_attr.DebugString()
@@ -2101,7 +2101,7 @@ absl::StatusOr<NodeDef*> AutoMixedPrecisionImpl::InsertCastNodeAtFanout(
   for (const MutableGraphView::InputPort& dst : fanout) {
     TypeAttrId dst_type_attr =
         node_type_map_.GetInputTypeAttr(*dst.node, dst.port_id);
-    const absl::optional<int> maybe_dst_type_idx =
+    const std::optional<int> maybe_dst_type_idx =
         graph_type_view_.GetNodeIndex(dst.node->name(), dst_type_attr);
     if (!maybe_dst_type_idx.has_value()) {
       return absl::InternalError(
@@ -2194,7 +2194,7 @@ absl::Status AutoMixedPrecisionImpl::ChangeTypeAttrsAndAddCasts(
   for (int node_idx = 0; node_idx < num_nodes_preop; ++node_idx) {
     NodeDef* node = graph_->mutable_node(node_idx);
     for (const TypeAttrId& type_attr : node_type_map_.GetTypeAttrs(*node)) {
-      const absl::optional<int> maybe_node_type_idx =
+      const std::optional<int> maybe_node_type_idx =
           graph_type_view_.GetNodeIndex(node->name(), type_attr);
       if (!maybe_node_type_idx.has_value()) {
         return absl::InternalError(absl::StrCat(
