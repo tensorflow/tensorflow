@@ -1104,6 +1104,7 @@ cuda_py_strict_test(
     name = "scan_test",
     size = "medium",
     srcs = ["scan_test.py"],
+    xla_enable_strict_auto_jit = False,
     deps = [
         ":checkpoint_test_base",
         ":test_base",

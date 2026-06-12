@@ -786,6 +786,7 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/data:metric_utils",
         "//tensorflow/core/data:standalone",
     ],
 )

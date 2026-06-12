@@ -22,11 +22,9 @@ from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.util.compat import collections_abc
 
 
-def _scan(input_dataset,
-          initial_state,
-          scan_func,
-          use_default_device=None,
-          name=None):
+def scan(
+    input_dataset, initial_state, scan_func, use_default_device=None, name=None
+):
   return _ScanDataset(
       input_dataset, initial_state, scan_func, use_default_device, name=name)
 
@@ -51,6 +49,7 @@ class _ScanDataset(dataset_ops.UnaryDataset):
 
     # Iteratively rerun the scan function until reaching a fixed point on
     # `self._state_shapes`.
+    wrapped_func = None
     need_to_rerun = True
     while need_to_rerun:
 
@@ -66,15 +65,27 @@ class _ScanDataset(dataset_ops.UnaryDataset):
                         f"but its return type is "
                         f"{wrapped_func.output_structure}.")
 
-      new_state_classes, self._output_classes = wrapped_func.output_classes
-
       # Extract and validate class information from the returned values.
       new_state_classes, output_classes = wrapped_func.output_classes
+      self._output_classes = output_classes
       old_state_classes = nest.map_structure(
           lambda component_spec: component_spec._to_legacy_output_classes(),  # pylint: disable=protected-access
           self._state_structure)
+
+      flat_new_state_classes = nest.flatten(new_state_classes)
+      flat_old_state_classes = nest.flatten(old_state_classes)
+      if len(flat_new_state_classes) != len(flat_old_state_classes):
+        raise TypeError(
+            "Invalid `scan_func`. The state returned by "
+            "`scan_func` must have the same number of elements "
+            "as the initial state. Expected "
+            f"{len(flat_old_state_classes)}, got "
+            f"{len(flat_new_state_classes)}."
+        )
+
       for new_state_class, old_state_class in zip(
-          nest.flatten(new_state_classes), nest.flatten(old_state_classes)):
+          flat_new_state_classes, flat_old_state_classes
+      ):
         if not issubclass(new_state_class, old_state_class):
           raise TypeError(f"Invalid `scan_func`. The element classes for the "
                           f"new state must match the initial state. Expected "
@@ -125,6 +136,7 @@ class _ScanDataset(dataset_ops.UnaryDataset):
             nest.pack_sequence_as(old_state_shapes, weakened_state_shapes),
             old_state_classes)
 
+    assert wrapped_func is not None
     self._scan_func = wrapped_func
     self._scan_func.function.add_to_graph(ops.get_default_graph())
 
