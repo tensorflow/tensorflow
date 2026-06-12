@@ -172,9 +172,7 @@ struct DenseMapInfo<ShapeValue> {
   static ShapeValue getEmptyKey() {
     return ShapeValue(DenseMapInfo<mlir::Value>::getEmptyKey());
   }
-  static ShapeValue getTombstoneKey() {
-    return ShapeValue(DenseMapInfo<mlir::Value>::getTombstoneKey());
-  }
+
   static unsigned getHashValue(ShapeValue shape) { return hash_value(shape); }
   static bool isEqual(ShapeValue LHS, ShapeValue RHS) { return LHS == RHS; }
 };

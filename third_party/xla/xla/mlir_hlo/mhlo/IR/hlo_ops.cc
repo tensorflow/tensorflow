@@ -7221,10 +7221,6 @@ struct DenseMapInfoNonSpatialDim {
     return NonSpatialDim(DenseMapInfo<int64_t>::getEmptyKey());
   }
 
-  static inline NonSpatialDim getTombstoneKey() {
-    return NonSpatialDim(DenseMapInfo<int64_t>::getTombstoneKey());
-  }
-
   static unsigned getHashValue(const NonSpatialDim& key) {
     return DenseMapInfo<int64_t>::getHashValue(key);
   }
