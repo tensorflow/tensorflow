@@ -58,9 +58,6 @@ class ShapeComponentAnalysis {
       static inline ShapeOrValueInfo getEmptyKey() {
         return ShapeOrValueInfo(PairInfo::getEmptyKey());
       }
-      static inline ShapeOrValueInfo getTombstoneKey() {
-        return ShapeOrValueInfo(PairInfo::getTombstoneKey());
-      }
       static unsigned getHashValue(ShapeOrValueInfo val) {
         return PairInfo::getHashValue(val.p);
       }
@@ -151,12 +148,7 @@ struct DenseMapInfo<mlir::stablehlo_ext::ShapeComponentAnalysis::Symbol> {
                 DenseMapInfo::getEmptyKey(),
             llvm::DenseMapInfo<size_t>::getEmptyKey()};
   }
-  static inline mlir::stablehlo_ext::ShapeComponentAnalysis::Symbol
-  getTombstoneKey() {
-    return {mlir::stablehlo_ext::ShapeComponentAnalysis::ShapeOrValueInfo::
-                DenseMapInfo::getTombstoneKey(),
-            llvm::DenseMapInfo<size_t>::getTombstoneKey()};
-  }
+
   static unsigned getHashValue(
       mlir::stablehlo_ext::ShapeComponentAnalysis::Symbol symbol) {
     return llvm::hash_combine(
