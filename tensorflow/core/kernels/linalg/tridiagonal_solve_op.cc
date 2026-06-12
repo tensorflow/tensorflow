@@ -20,6 +20,7 @@ limitations under the License.
 #include <limits>
 
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
