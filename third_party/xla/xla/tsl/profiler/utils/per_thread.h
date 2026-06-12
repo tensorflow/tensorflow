@@ -49,6 +49,12 @@ class PerThread {
     return Registry::Get().StartRecording();
   }
 
+  // Returns all instances of T from live and destroyed threads, without
+  // stopping.
+  static std::vector<std::shared_ptr<T>> FlushRecording() {
+    return Registry::Get().FlushRecording();
+  }
+
   // Stops keeping thread-local instances of T alive.
   // Returns all instances of T from live and destroyed threads.
   static std::vector<std::shared_ptr<T>> StopRecording() {
@@ -93,6 +99,16 @@ class PerThread {
         }
       }
       recording_ = false;
+      return threads;
+    }
+
+    std::vector<std::shared_ptr<T>> FlushRecording() {
+      std::vector<std::shared_ptr<T>> threads;
+      absl::MutexLock lock(mutex_);
+      threads.reserve(threads_.size());
+      for (auto iter = threads_.begin(); iter != threads_.end(); ++iter) {
+        threads.push_back(iter->first);
+      }
       return threads;
     }
 

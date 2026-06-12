@@ -41,6 +41,11 @@ struct HostTracerOptions {
 std::unique_ptr<tsl::profiler::ProfilerInterface> CreateHostTracer(
     const HostTracerOptions& options);
 
+namespace internal {
+std::unique_ptr<tsl::profiler::ProfilerInterface> CreateHostTracerImpl(
+    const HostTracerOptions& options);
+}  // namespace internal
+
 }  // namespace profiler
 }  // namespace xla
 

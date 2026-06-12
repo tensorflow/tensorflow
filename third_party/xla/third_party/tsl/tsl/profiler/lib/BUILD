@@ -148,7 +148,7 @@ cc_library(
     ]),
     deps = [
         "//tsl/profiler/protobuf:xplane_proto_cc",
-        "@xla//xla/tsl/platform:status",
+        "@com_google_absl//absl/status",
     ],
 )
 
