@@ -309,12 +309,11 @@ absl::StatusOr<GpuExecutable::BorrowedStreams> GpuExecutable::BorrowStreams(
   return BorrowedStreams{std::move(streams), std::move(owners)};
 }
 
-static absl::Status RunThunkPasses(const DebugOptions& debug_options,
-                                   const se::DeviceDescription& device_info,
-                                   SequentialThunk* root_thunk,
-                                   HloModule* hlo_module,
-                                   const BufferAssignment* buffer_assignment,
-                                   ThunkPassBufferAllocator& allocator) {
+static absl::Status RunThunkPasses(
+    const DebugOptions& debug_options, const se::DeviceDescription& device_info,
+    SequentialThunk* root_thunk, HloModule* hlo_module,
+    const BufferAssignment* absl_nonnull buffer_assignment,
+    ThunkPassBufferAllocator& allocator) {
   ThunkPassPipeline pipeline("thunk-passes");
   if (debug_options.xla_gpu_experimental_enable_checksum_tracing_on_thunks() ||
       debug_options.xla_gpu_experimental_thunk_buffer_debug_module_outputs()) {
@@ -364,10 +363,27 @@ static absl::Status RunThunkPasses(const DebugOptions& debug_options,
 
 absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
     Params params) {
-  if (params.buffer_assignment_proto.has_value() &&
-      params.buffer_assignment != nullptr) {
-    return absl::InvalidArgumentError(
-        "Cannot set both buffer_assignment_proto and buffer_assignment.");
+  if (params.buffer_assignment != nullptr) {
+    if (params.buffer_assignment_proto.has_value()) {
+      return absl::InvalidArgumentError(
+          "Cannot set both buffer_assignment_proto and buffer_assignment.");
+    }
+
+    params.buffer_allocations_debug_summary =
+        params.buffer_assignment->ToVerboseString(
+            params.alias_info.get(),
+            params.debug_options.xla_debug_buffer_assignment_show_max());
+  } else {
+    if (!params.buffer_assignment_proto.has_value()) {
+      return absl::InvalidArgumentError(
+          "Must set either buffer_assignment_proto or buffer_assignment.");
+    }
+
+    if (params.buffer_allocations_debug_summary.empty()) {
+      return absl::InvalidArgumentError(
+          "Must set buffer_allocations_debug_summary when "
+          "buffer_assignment_proto is set.");
+    }
   }
 
   int64_t next_idx = 0;
@@ -396,9 +412,17 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
   // thunk passes (which operate on SequentialThunk).
   auto seq_thunk = std::make_unique<SequentialThunk>(
       Thunk::ThunkInfo(), std::move(params.executable->thunks()));
-  RETURN_IF_ERROR(RunThunkPasses(
-      params.debug_options, params.device_description, seq_thunk.get(),
-      params.debug_module.get(), params.buffer_assignment.get(), allocator));
+  std::unique_ptr<BufferAssignment> dummy_assignment;
+  const BufferAssignment* assignment_ptr = params.buffer_assignment.get();
+  if (assignment_ptr == nullptr && params.debug_module != nullptr) {
+    dummy_assignment = BufferAssignment::CreateDummy(params.debug_module.get());
+    assignment_ptr = dummy_assignment.get();
+  }
+  if (assignment_ptr != nullptr) {
+    RETURN_IF_ERROR(RunThunkPasses(
+        params.debug_options, params.device_description, seq_thunk.get(),
+        params.debug_module.get(), assignment_ptr, allocator));
+  }
   // Extract modified thunks back into a ThunkExecutor.
   auto executor =
       std::make_unique<ThunkExecutor>(std::move(seq_thunk->thunks()));
@@ -415,7 +439,8 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
       std::move(params.module_stats), std::move(thunk_sequence_proto),
       std::move(params.executable_abi_version),
       std::move(params.cpu_target_machine_options),
-      std::move(params.buffer_assignment_proto)));
+      std::move(params.buffer_assignment_proto),
+      std::move(params.buffer_allocations_debug_summary)));
 }
 
 // Implementation note: HLO profiling is always enabled for GPU executables,
@@ -436,7 +461,8 @@ GpuExecutable::GpuExecutable(
     absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto,
     se::ExecutableAbiVersion executable_abi_version,
     std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
-    std::optional<BufferAssignmentProto> buffer_assignment_proto)
+    std::optional<BufferAssignmentProto> buffer_assignment_proto,
+    std::string buffer_allocations_debug_summary)
     : Executable(std::move(debug_module)),
       text_(std::move(asm_text)),
       binary_(std::move(binary)),
@@ -461,7 +487,9 @@ GpuExecutable::GpuExecutable(
       enable_debug_info_manager_(enable_debug_info_manager),
       thunk_sequence_proto_(std::move(thunk_sequence_proto)),
       executable_abi_version_(std::move(executable_abi_version)),
-      cpu_target_machine_options_(std::move(cpu_target_machine_options)) {
+      cpu_target_machine_options_(std::move(cpu_target_machine_options)),
+      buffer_allocations_debug_summary_(
+          std::move(buffer_allocations_debug_summary)) {
   if (gpu_version_.IsRocm()) {
     // ROCm uses hsaco hashes to distinguish between modules.
     // Bad things happen if multiple modules with identical code are loaded.
@@ -1261,7 +1289,8 @@ GpuExecutable::AllocateCopyProtectedOutputBuffer(
                                  /*retry_on_failure=*/true,
                                  /*memory_space=*/allocation.color());
   if (!allocated_buffer.ok()) {
-    return VerboseAllocationError(allocated_buffer.status());
+    return ResourceExhausted("%s\n%s\n", allocated_buffer.status().message(),
+                             buffer_allocations_debug_summary());
   }
   se::DeviceAddressBase result_buffer = allocated_buffer->Release();
   se::DeviceAddressBase& aliased_buffer =
@@ -1461,13 +1490,6 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     MarkToBeReleasedArguments(*args, result);
   }
   return std::move(result);
-}
-
-absl::Status GpuExecutable::VerboseAllocationError(absl::Status s) {
-  return ResourceExhausted(
-      "%s\n%s\n", s.message(),
-      buffer_assignment_->ToVerboseString(alias_info_.get(),
-                                          debug_buffer_assignment_show_max_));
 }
 
 // VA remapping execution flow for 2 consecutive calls on the same executor:
@@ -1987,6 +2009,7 @@ absl::StatusOr<GpuExecutableProto> GpuExecutable::ToProto() const {
   } else if (buffer_assignment_proto_.has_value()) {
     *proto.mutable_buffer_assignment() = buffer_assignment_proto_.value();
   }
+  proto.set_buffer_allocations_debug_summary(buffer_allocations_debug_summary_);
 
   if (has_module()) {
     *proto.mutable_hlo_module_with_config() = module().ToProtoWithConfig(
@@ -2054,6 +2077,9 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
     params.mlir_allocations->push_back(
         BufferAllocation::FromProto(allocation_proto));
   }
+
+  params.buffer_allocations_debug_summary =
+      proto.buffer_allocations_debug_summary();
 
   for (const auto& [key, value] : proto.dnn_compiled_graphs()) {
     params.dnn_compiled_graphs.emplace(key, value);

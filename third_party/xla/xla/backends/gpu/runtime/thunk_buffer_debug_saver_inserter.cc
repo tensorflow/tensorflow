@@ -93,14 +93,9 @@ absl::StatusOr<std::unique_ptr<Thunk>> InsertBufferSaverCustomCall(
 
 absl::Status AppendOutputBufferSaverThunks(
     ThunkSequence& thunk_sequence, const HloModule& hlo_module,
-    const BufferAssignment* buffer_assignment,
+    const BufferAssignment* absl_nonnull buffer_assignment,
     const DebugOptions& debug_options) {
   if (!debug_options.xla_gpu_experimental_thunk_buffer_debug_module_outputs()) {
-    return absl::OkStatus();
-  }
-  if (buffer_assignment == nullptr) {
-    LOG(ERROR) << "Buffer assignment is null, cannot determine module output "
-                  "buffers";
     return absl::OkStatus();
   }
 
@@ -139,10 +134,10 @@ absl::Status AppendOutputBufferSaverThunks(
 
 }  // namespace
 
-absl::Status RunDebugSaverInserter(ThunkSequence* thunk_sequence,
-                                   const DebugOptions& debug_options,
-                                   const HloModule& hlo_module,
-                                   const BufferAssignment* buffer_assignment) {
+absl::Status RunDebugSaverInserter(
+    ThunkSequence* thunk_sequence, const DebugOptions& debug_options,
+    const HloModule& hlo_module,
+    const BufferAssignment* absl_nonnull buffer_assignment) {
   if (debug_options.xla_dump_to().empty()) {
     LOG(WARNING)
         << "Buffer saver enabled but target directory is not provided.";
