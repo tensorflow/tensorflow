@@ -70,7 +70,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/device_address_handle.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/gpu/multi_gpu_barrier_kernel.h"
 #include "xla/stream_executor/gpu/ragged_all_to_all_kernel.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -96,11 +96,11 @@ constexpr int64_t kNumRaggedMetadataOperands = 4;
 struct RaggedAllToAllCommandState : CommandState {
   // MultiGpuBarrier: Device memory buffer for signal values (one per peer).
   // Peers write specific slots in this array to signal this device.
-  se::DeviceAddressHandle barrier_signal_buffer;
+  se::ScopedDeviceAddress<uint8_t> barrier_signal_buffer;
 
   // MultiGpuBarrier: Device memory for the current local step counter.
   // This value is incremented locally by the kernel after every barrier.
-  se::DeviceAddressHandle barrier_signal_value;
+  se::ScopedDeviceAddress<uint8_t> barrier_signal_value;
 };
 
 int64_t BarrierSignalBufferBytes() {
@@ -184,11 +184,18 @@ RaggedAllToAllConfig GetRaggedAllToAllConfig(
 // memory.
 absl::Status LoadRaggedTensorMetadata(
     se::Stream& stream, absl::Span<DeviceBufferPair const> buffers,
+    int64_t num_total_updates,
     absl::Span<int64_t* const> ragged_metadata_allocs) {
+  const uint64_t metadata_bytes =
+      static_cast<uint64_t>(num_total_updates) * sizeof(int64_t);
   for (int64_t i = 0; i < kNumRaggedMetadataOperands; ++i) {
-    RETURN_IF_ERROR(stream.Memcpy(ragged_metadata_allocs[i],
-                                  buffers[i + 2].source_buffer,
-                                  buffers[i + 2].source_buffer.size()));
+    const se::DeviceAddressBase& metadata_buffer = buffers[i + 2].source_buffer;
+    TF_RET_CHECK(metadata_buffer.size() >= metadata_bytes)
+        << "RaggedAllToAll metadata buffer " << i << " has "
+        << metadata_buffer.size() << " bytes, expected at least "
+        << metadata_bytes << " bytes";
+    RETURN_IF_ERROR(stream.Memcpy(ragged_metadata_allocs[i], metadata_buffer,
+                                  metadata_bytes));
   }
 
   // Wait for the copies to complete.
@@ -444,11 +451,15 @@ absl::StatusOr<RaggedAllToAllStreamState*> RaggedAllToAllThunk::InitializeOnce(
     state->host_buffer_allocs.push_back(std::move(alloc));
   }
 
-  state->output_offsets_device_buffer = se::DeviceAddressHandle{
-      executor,
-      executor->Allocate(config_.num_total_updates * sizeof(int64_t))};
+  const uint64_t output_offsets_buffer_bytes =
+      static_cast<uint64_t>(config_.num_total_updates) * sizeof(int64_t);
+  ASSIGN_OR_RETURN(
+      state->output_offsets_device_buffer,
+      params.buffer_allocations->memory_allocator()->Allocate(
+          executor->device_ordinal(), output_offsets_buffer_bytes));
 
-  if (state->output_offsets_device_buffer.address().is_null()) {
+  if (output_offsets_buffer_bytes > 0 &&
+      state->output_offsets_device_buffer.is_null()) {
     return absl::InternalError("Failed to allocate output offsets buffer.");
   }
 
@@ -602,27 +613,40 @@ absl::StatusOr<const se::CommandBuffer::Command*> RaggedAllToAllThunk::Record(
       << "RaggedAllToAllThunk: Peer access must be enabled.";
 
   absl::Status state_status = absl::OkStatus();
+  se::DeviceAddressAllocator* memory_allocator =
+      execute_params.buffer_allocations->memory_allocator();
   RaggedAllToAllCommandState* cmd_state =
       record_params.state.GetOrCreate<RaggedAllToAllCommandState>(
           this, command_buffer,
           [&]() -> std::unique_ptr<RaggedAllToAllCommandState> {
             auto state = std::make_unique<RaggedAllToAllCommandState>();
 
-            state->barrier_signal_buffer = se::DeviceAddressHandle{
-                executor, executor->Allocate(BarrierSignalBufferBytes())};
-            state->barrier_signal_value = se::DeviceAddressHandle{
-                executor, executor->Allocate(sizeof(uint32_t))};
+            auto barrier_signal_buffer = memory_allocator->Allocate(
+                device_ordinal, BarrierSignalBufferBytes());
+            if (!barrier_signal_buffer.ok()) {
+              state_status = barrier_signal_buffer.status();
+              return nullptr;
+            }
+            state->barrier_signal_buffer = std::move(*barrier_signal_buffer);
 
-            if (state->barrier_signal_buffer.address().is_null() ||
-                state->barrier_signal_value.address().is_null()) {
+            auto barrier_signal_value =
+                memory_allocator->Allocate(device_ordinal, sizeof(uint32_t));
+            if (!barrier_signal_value.ok()) {
+              state_status = barrier_signal_value.status();
+              return nullptr;
+            }
+            state->barrier_signal_value = std::move(*barrier_signal_value);
+
+            if (state->barrier_signal_buffer.is_null() ||
+                state->barrier_signal_value.is_null()) {
               state_status = absl::ResourceExhaustedError(
                   "Failed to allocate RaggedAllToAll barrier buffers");
               return nullptr;
             }
 
             state_status = ZeroBarrierSignalBuffers(
-                *execute_params.stream, state->barrier_signal_buffer.address(),
-                state->barrier_signal_value.address());
+                *execute_params.stream, state->barrier_signal_buffer.cref(),
+                state->barrier_signal_value.cref());
             if (!state_status.ok()) {
               return nullptr;
             }
@@ -648,12 +672,12 @@ absl::StatusOr<const se::CommandBuffer::Command*> RaggedAllToAllThunk::Record(
                     participants,
                 RendezvousRaggedAllToAllBuffers(
                     device_ordinal, rank, clique_key, device_buffers,
-                    cmd_state->barrier_signal_buffer.address()));
+                    cmd_state->barrier_signal_buffer.cref()));
 
             return RunOneShotRaggedAllToAll(
                 clique_key, *stream, rank,
-                cmd_state->barrier_signal_buffer.address(),
-                cmd_state->barrier_signal_value.address(),
+                cmd_state->barrier_signal_buffer.cref(),
+                cmd_state->barrier_signal_value.cref(),
                 config_.num_total_updates, config_.num_input_rows,
                 config_.num_row_elements, device_buffers, *participants);
           }));
@@ -752,7 +776,14 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
                                                 const GpuCliqueKey& clique_key,
                                                 se::Stream& stream,
                                                 Communicator& comm) {
+  if (config_.num_total_updates == 0) {
+    XLA_VLOG_DEVICE(3, stream.parent()->device_ordinal())
+        << "Skipping ragged-all-to-all because num_total_updates is 0";
+    return absl::OkStatus();
+  }
+
   ASSIGN_OR_RETURN(std::vector<DeviceBufferPair> device_buffers,
+
                    ConvertToDeviceBuffers(params.buffer_allocations, buffers(),
                                           config_.config.operand_element_type));
 
@@ -845,7 +876,7 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
 
   return RunRaggedAllToAll(config_.num_row_elements, config_.num_total_updates,
                            device_buffers, stream, comm, ragged_metadata_allocs,
-                           state->output_offsets_device_buffer.address(),
+                           state->output_offsets_device_buffer.cref(),
                            collectives_mode(), output_sym_mem,
                            output_base_offset);
 }
@@ -946,8 +977,8 @@ absl::Status RunRaggedAllToAll(
     output_offsets_buffer_pair.source_buffer = output_offsets_device_buffer;
   }
 
-  RETURN_IF_ERROR(
-      LoadRaggedTensorMetadata(stream, buffers, ragged_metadata_allocs));
+  RETURN_IF_ERROR(LoadRaggedTensorMetadata(stream, buffers, num_total_updates,
+                                           ragged_metadata_allocs));
 
   const int64_t* input_offsets = ragged_metadata_allocs[0];
   const int64_t* send_sizes = ragged_metadata_allocs[1];

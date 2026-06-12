@@ -422,6 +422,44 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
 }
 
+TEST_P(RaggedAllToAllTest, RaggedAllToAll_ZeroUpdates_2GPUs) {
+  absl::string_view kModuleReplicatedStr = R"(
+  HloModule module, num_partitions=1
+
+  ENTRY entry {
+    input = f32[4] parameter(0)
+    output = f32[4] parameter(1)
+    input_offsets = s64[0] parameter(2)
+    send_sizes = s64[0] parameter(3)
+    output_offsets = s64[0] parameter(4)
+    recv_sizes = s64[0] parameter(5)
+    ROOT ra2a = f32[4] ragged-all-to-all(input, output, input_offsets,
+    send_sizes, output_offsets, recv_sizes), replica_groups={{0,1}}
+  })";
+
+  const int64_t kNumReplicas = 2;
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kModuleReplicatedStr, kNumReplicas));
+
+  Array<int64_t> input_sizes({kNumReplicas, kNumReplicas, 0});
+
+  TF_ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), GetInputLiteralPtrs()));
+
+  const std::vector<Literal>& results = execution_result.results;
+
+  ASSERT_EQ(results.size(), kNumReplicas);
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
+}
+
 TEST_P(RaggedAllToAllTest, RaggedAllToAll_SeveralOps_2GPUs) {
   // TODO(patrios): Make this a loop.
   absl::string_view kModuleReplicatedStr = R"(

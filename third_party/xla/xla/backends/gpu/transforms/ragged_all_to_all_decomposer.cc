@@ -346,7 +346,20 @@ absl::StatusOr<bool> DecomposeRaggedAllToAll(HloInstruction* hlo,
   HloRaggedAllToAllInstruction* all_to_all =
       Cast<HloRaggedAllToAllInstruction>(hlo);
 
+  // If the decomposer runs on a 0-update instruction, we replace the
+  // ragged-all-to-all with its output and remove it from the computation.
+  HloInstruction* input_offsets = all_to_all->mutable_operand(2);
+  int64_t num_total_updates = input_offsets->shape().dimensions(0);
+  if (num_total_updates == 0) {
+    HloInstruction* output_operand = all_to_all->mutable_operand(1);
+    RETURN_IF_ERROR(all_to_all->ReplaceAllUsesWith(output_operand));
+    RETURN_IF_ERROR(
+        computation->RemoveInstructionAndUnusedOperands(all_to_all));
+    return true;
+  }
+
   ASSIGN_OR_RETURN(auto replica_group_count_and_size,
+
                    GetReplicaGroupCountAndSize(all_to_all));
   if (!replica_group_count_and_size.has_value()) {
     return false;
@@ -357,11 +370,9 @@ absl::StatusOr<bool> DecomposeRaggedAllToAll(HloInstruction* hlo,
   HloInstruction* input_operand = all_to_all->mutable_operand(0);
   HloInstruction* output_operand = all_to_all->mutable_operand(1);
 
-  HloInstruction* input_offsets = all_to_all->mutable_operand(2);
   HloInstruction* output_offsets = all_to_all->mutable_operand(4);
   HloInstruction* recv_sizes = all_to_all->mutable_operand(5);
 
-  int64_t num_total_updates = input_offsets->shape().dimensions(0);
   int64_t num_updates_per_replica =
       num_total_updates / num_participating_devices;
   int64_t max_update_size = input_operand->shape().dimensions(0);

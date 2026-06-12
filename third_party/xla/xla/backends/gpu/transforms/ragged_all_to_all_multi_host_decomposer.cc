@@ -506,6 +506,18 @@ absl::StatusOr<bool> DecomposeRaggedAllToAll(
     int64_t fast_interconnect_slice_size) {
   auto* ragged_all_to_all = Cast<HloRaggedAllToAllInstruction>(hlo);
 
+  // If the decomposer runs on a 0-update instruction, we replace the
+  // ragged-all-to-all with its output and remove it from the computation.
+  HloInstruction* input_offsets = ragged_all_to_all->mutable_operand(2);
+  int64_t num_total_updates = input_offsets->shape().dimensions(0);
+  if (num_total_updates == 0) {
+    HloInstruction* output_operand = ragged_all_to_all->mutable_operand(1);
+    RETURN_IF_ERROR(ragged_all_to_all->ReplaceAllUsesWith(output_operand));
+    RETURN_IF_ERROR(
+        computation->RemoveInstructionAndUnusedOperands(ragged_all_to_all));
+    return true;
+  }
+
   auto replica_groups = ragged_all_to_all->replica_groups();
 
   // Replica groups can be empty in collective instruction. Empty replica groups
