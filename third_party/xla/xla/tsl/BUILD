@@ -611,6 +611,12 @@ alias(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "build_grpc_for_libtpu_on_gce",
+    flag_values = {"//net/grpc:build_grpc_for_libtpu_on_gce": "True"},
+    visibility = ["//visibility:public"],
+)
+
 bzl_library(
     name = "tsl_bzl",
     srcs = ["tsl.bzl"],
