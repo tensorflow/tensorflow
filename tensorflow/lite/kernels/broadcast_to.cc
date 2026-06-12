@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/reference/broadcast_to.h"
 
-#include <string.h>
-
 #include <cstdint>
+#include <cstring>
+#include <limits>
 #include <memory>
 
 #include "tensorflow/lite/core/c/common.h"
@@ -58,7 +58,7 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
                      "BroadcastTo only supports 1-8D tensor.");
 
   // Check if output shape is broadcastable from input shape.
-  auto get_shape_data = [op_context](int i) -> int32_t {
+  auto get_shape_data = [op_context](int i) -> int64_t {
     if (op_context->shape->type == kTfLiteInt32) {
       return GetTensorData<int32_t>(op_context->shape)[i];
     } else {
@@ -79,7 +79,15 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
   std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)>
       scoped_output_shape(output_shape, TfLiteIntArrayFree);
   for (int idx = 0; idx < output_num_dims; ++idx) {
-    output_shape->data[idx] = get_shape_data(idx);
+    const int64_t dim = get_shape_data(idx);
+    if (dim < 0 || dim > std::numeric_limits<int32_t>::max()) {
+      TF_LITE_KERNEL_LOG(
+          context,
+          "BroadcastTo: shape dim %d (%lld) is out of the int32 range",
+          idx, static_cast<long long>(dim));
+      return kTfLiteError;
+    }
+    output_shape->data[idx] = static_cast<int>(dim);
   }
 
   return context->ResizeTensor(context, op_context->output,
