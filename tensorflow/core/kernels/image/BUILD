@@ -220,6 +220,9 @@ tf_kernel_library(
     name = "decode_image_op",
     prefix = "decode_image_op",
     deps = IMAGE_DEPS + [
+        "//tensorflow/core/platform:jpeg",
+        "//tensorflow/core/platform:png",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@tsl//tsl/profiler/lib:traceme",
@@ -519,6 +522,7 @@ cc_library(
         "//tensorflow/core/lib/png:png_io",
         "//tensorflow/core/lib/webp:webp_io",
         "//tensorflow/core/platform:byte_order",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@tsl//tsl/profiler/lib:traceme",
