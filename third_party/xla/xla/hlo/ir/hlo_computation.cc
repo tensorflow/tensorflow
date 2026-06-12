@@ -1217,6 +1217,11 @@ void HloComputation::Print(
     name_map.Reserve(instruction_count());
     auto print_one = [&](const HloInstruction* instruction) {
       DCHECK_EQ(this, instruction->parent());
+      if (options.compact_gte() &&
+          instruction->opcode() == HloOpcode::kGetTupleElement &&
+          instruction != root_instruction_) {
+        return;
+      }
       // 2 more spaces than just 'tab' due to indent_amount()+1 above
       printer->Append(tab);
       printer->Append("  ");

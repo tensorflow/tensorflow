@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -297,6 +298,110 @@ ENTRY entry {
   EXPECT_EQ(get_local_id(comp2, "add0"), 2);
   EXPECT_EQ(get_local_id(comp2, "mul0"), 3);
   EXPECT_EQ(get_local_id(comp2, "out"), 4);
+}
+
+TEST_F(HLOComputationTest, PrintWithCompactGTE) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = (f32[10], f32[20]) parameter(0)
+  gte0 = f32[10] get-tuple-element(p0), index=0
+  gte1 = f32[20] get-tuple-element(p0), index=1
+  ROOT out = (f32[10], f32[20]) tuple(gte0, gte1)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloComputation* computation = module->entry_computation();
+
+  HloPrintOptions options;
+  options.set_compact_gte(true);
+  options.set_print_ids(false);
+
+  std::string printed = computation->ToString(options);
+
+  EXPECT_FALSE(absl::StrContains(printed, "get-tuple-element"));
+  EXPECT_TRUE(absl::StrContains(printed, "tuple(%p0#0, %p0#1)"));
+}
+
+TEST_F(HLOComputationTest, PrintWithCompactGTENested) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = ((f32[10], f32[20]), f32[30]) parameter(0)
+  gte0 = (f32[10], f32[20]) get-tuple-element(p0), index=0
+  gte1 = f32[10] get-tuple-element(gte0), index=0
+  gte2 = f32[20] get-tuple-element(gte0), index=1
+  gte3 = f32[30] get-tuple-element(p0), index=1
+  ROOT out = (f32[10], f32[20], f32[30]) tuple(gte1, gte2, gte3)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloComputation* computation = module->entry_computation();
+
+  HloPrintOptions options;
+  options.set_compact_gte(true);
+  options.set_print_ids(false);
+
+  std::string printed = computation->ToString(options);
+
+  EXPECT_FALSE(absl::StrContains(printed, "get-tuple-element"));
+  EXPECT_TRUE(absl::StrContains(printed, "tuple(%p0#0#0, %p0#0#1, %p0#1)"));
+}
+
+TEST_F(HLOComputationTest, PrintWithCompactGTECanonical) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = (f32[10], f32[20]) parameter(0)
+  gte0 = f32[10] get-tuple-element(p0), index=0
+  gte1 = f32[20] get-tuple-element(p0), index=1
+  ROOT out = (f32[10], f32[20]) tuple(gte0, gte1)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloComputation* computation = module->entry_computation();
+
+  HloPrintOptions options = HloPrintOptions::Canonical();
+  options.set_compact_gte(true);
+
+  std::string printed = computation->ToString(options);
+
+  EXPECT_FALSE(absl::StrContains(printed, "get-tuple-element"));
+  EXPECT_TRUE(absl::StrContains(printed, "tmp_0#0"));
+  EXPECT_TRUE(absl::StrContains(printed, "tmp_0#1"));
+}
+
+TEST_F(HLOComputationTest, PrintWithCompactGTERoot) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = (f32[10], f32[20]) parameter(0)
+  ROOT gte0 = f32[10] get-tuple-element(p0), index=0
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloComputation* computation = module->entry_computation();
+
+  HloPrintOptions options;
+  options.set_compact_gte(true);
+  options.set_print_ids(false);
+
+  std::string printed = computation->ToString(options);
+
+  EXPECT_TRUE(absl::StrContains(
+      printed, "ROOT %gte0 = f32[10]{0} get-tuple-element(%p0), index=0"));
 }
 
 }  // namespace
