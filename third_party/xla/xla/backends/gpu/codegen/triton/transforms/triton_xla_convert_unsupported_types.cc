@@ -14,6 +14,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "stablehlo/dialect/StablehloOps.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/SCF/Transforms/Patterns.h"
@@ -90,6 +91,79 @@ struct ConstantOpConversionPattern final
   }
 };
 
+struct TransposeOpConversionPattern final
+    : public OpConversionPattern<mlir::stablehlo::TransposeOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mlir::stablehlo::TransposeOp op,
+      mlir::stablehlo::TransposeOp::Adaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    Value converted_input = adaptor.getOperand();
+    auto input_shape =
+        mlir::cast<ShapedType>(converted_input.getType()).getShape();
+    auto permutation = op.getPermutation();
+    SmallVector<int64_t> new_shape(permutation.size());
+    for (int i = 0; i < permutation.size(); ++i) {
+      new_shape[i] = input_shape[permutation[i]];
+    }
+    Type new_result_type = mlir::RankedTensorType::get(
+        new_shape,
+        mlir::cast<ShapedType>(converted_input.getType()).getElementType());
+    rewriter.replaceOpWithNewOp<mlir::stablehlo::TransposeOp>(
+        op, new_result_type, converted_input, op.getPermutationAttr());
+    return success();
+  }
+};
+
+struct TransOpConversionPattern final : public OpConversionPattern<TransOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      TransOp op, TransOp::Adaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    Value converted_input = adaptor.getSrc();
+    auto input_shape =
+        mlir::cast<ShapedType>(converted_input.getType()).getShape();
+    auto order = op.getOrder();
+    SmallVector<int64_t> new_shape(order.size());
+    for (int i = 0; i < order.size(); ++i) {
+      new_shape[i] = input_shape[order[i]];
+    }
+    Type new_result_type = mlir::RankedTensorType::get(
+        new_shape,
+        mlir::cast<ShapedType>(converted_input.getType()).getElementType());
+    rewriter.replaceOpWithNewOp<TransOp>(op, new_result_type, converted_input,
+                                         op.getOrderAttr());
+    return success();
+  }
+};
+
+Value LookThroughCast(Value val) {
+  if (auto cast_op = val.getDefiningOp<mlir::UnrealizedConversionCastOp>()) {
+    return cast_op.getOperand(0);
+  }
+  return val;
+}
+
+struct DotScaledOpConversionPattern final
+    : public OpConversionPattern<triton::DotScaledOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      triton::DotScaledOp op, triton::DotScaledOp::Adaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    SmallVector<Value> operands = {
+        LookThroughCast(adaptor.getA()), LookThroughCast(adaptor.getB()),
+        LookThroughCast(adaptor.getC()), LookThroughCast(adaptor.getAScale()),
+        LookThroughCast(adaptor.getBScale())};
+    Type result_type = adaptor.getC().getType();
+    rewriter.replaceOpWithNewOp<triton::DotScaledOp>(op, result_type, operands,
+                                                     op->getAttrs());
+    return success();
+  }
+};
+
 template <>
 LogicalResult
 GenericOpConversionPattern<::xla::xtile::ExtractTileOp>::matchAndRewrite(
@@ -97,6 +171,20 @@ GenericOpConversionPattern<::xla::xtile::ExtractTileOp>::matchAndRewrite(
     ::xla::xtile::ExtractTileOp::Adaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
   auto* ctx = op.getContext();
+  SmallVector<Value> operands(adaptor.getOperands().begin(),
+                              adaptor.getOperands().end());
+  if (op.getResult().getType().getElementType() == Float4E2M1FNType::get(ctx)) {
+    int rank = mlir::cast<mlir::MemRefType>(op.getSource().getType()).getRank();
+    Value last_offset = operands[rank];
+    rewriter.setInsertionPoint(op);
+    Location loc = op.getLoc();
+    auto const_attr = rewriter.getIntegerAttr(last_offset.getType(), 2);
+    auto const_op = rewriter.create<arith::ConstantOp>(loc, const_attr);
+    Value divided_offset =
+        rewriter.create<arith::DivSIOp>(loc, last_offset, const_op);
+    operands[rank] = divided_offset;
+  }
+
   ::xla::xtile::ExtractTileOp replacement =
       mlir::cast<::xla::xtile::ExtractTileOp>(rewriter.clone(*op));
   if (op.getResult().getType().getElementType() == Float4E2M1FNType::get(ctx)) {
@@ -104,7 +192,7 @@ GenericOpConversionPattern<::xla::xtile::ExtractTileOp>::matchAndRewrite(
     full_tile_shape[full_tile_shape.size() - 1] = full_tile_shape.back() / 2;
     replacement.setFullTileShape(full_tile_shape);
   }
-  replacement->setOperands(adaptor.getOperands());
+  replacement->setOperands(operands);
   const TypeConverter* converter = this->getTypeConverter();
   for (auto result : replacement->getResults()) {
     result.setType(converter->convertType(result.getType()));
@@ -158,24 +246,39 @@ class TritonXLAConvertUnsupportedTypesPass
           return converter.isSignatureLegal(op.getFunctionType()) &&
                  converter.isLegal(&op.getBody());
         });
+    target.addDynamicallyLegalOp<triton::DotScaledOp>(
+        [&](triton::DotScaledOp op) {
+          return !mlir::isa<Float4E2M1FNType>(
+              mlir::cast<ShapedType>(op.getA().getType()).getElementType());
+        });
+    target.addDynamicallyLegalOp<triton::TransOp>([&](triton::TransOp op) {
+      return !mlir::isa<Float4E2M1FNType>(
+          mlir::cast<ShapedType>(op.getSrc().getType()).getElementType());
+    });
+    target.addDynamicallyLegalOp<mlir::stablehlo::TransposeOp>(
+        [&](mlir::stablehlo::TransposeOp op) {
+          return !mlir::isa<Float4E2M1FNType>(
+              mlir::cast<ShapedType>(op.getOperand().getType())
+                  .getElementType());
+        });
     target.markUnknownOpDynamicallyLegal(
         [&](Operation* op) { return converter.isLegal(op); });
 
     RewritePatternSet patterns(ctx);
     patterns.add<
         // go/keep-sorted start
-        ConstantOpConversionPattern,
+        ConstantOpConversionPattern, DotScaledOpConversionPattern,
         GenericOpConversionPattern<::xla::xtile::ExtractTileOp>,
         GenericOpConversionPattern<::xla::xtile::InsertTileOp>,
         GenericOpConversionPattern<BroadcastOp>,
-        GenericOpConversionPattern<DotScaledOp>,
         GenericOpConversionPattern<ExpandDimsOp>,
         GenericOpConversionPattern<ReshapeOp>,
         GenericOpConversionPattern<SplatOp>,
-        GenericOpConversionPattern<TransOp>,
         GenericOpConversionPattern<arith::BitcastOp>,
         GenericOpConversionPattern<arith::SelectOp>,
-        GenericOpConversionPattern<tensor::ExtractOp>
+        GenericOpConversionPattern<mlir::stablehlo::ReshapeOp>,
+        GenericOpConversionPattern<tensor::ExtractOp>,
+        TransOpConversionPattern, TransposeOpConversionPattern
         // go/keep-sorted end
         >(converter, ctx);
     scf::populateSCFStructuralTypeConversions(converter, patterns);

@@ -305,3 +305,34 @@ xla_test(
         "@tsl//tsl/platform:path",
     ],
 )
+
+xla_cc_binary(
+    name = "check_e8m0",
+    srcs = ["check_e8m0.cc"],
+    deps = [
+        "@tsl//tsl/platform:ml_dtypes",
+    ],
+)
+
+xla_test(
+    name = "check_evaluator",
+    srcs = ["check_evaluator.cc"],
+    backends = ["b200"],
+    deps = [
+        "//xla:literal_util",
+        "//xla/hlo/evaluator:hlo_evaluator",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/pjrt/interpreter:interpreter_client",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_allocator_config",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_pjrt_client",
+        "//xla/service:hlo_runner",
+        "//xla/tests:test_utils",
+        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest",
+    ] + if_cuda_is_configured([
+        "//xla/stream_executor/cuda:cuda_platform",
+    ]),
+)

@@ -27,8 +27,6 @@ limitations under the License.
 
 namespace xla::cpu {
 
-inline constexpr absl::string_view kOneDnnFusionKind = "__onednn_fusion";
-
 bool IsOneDnnSupportedDType(PrimitiveType dtype);
 bool IsOneDnnSupportedDType(PrimitiveType dtype,
                             const TargetMachineFeatures* cpu_features);
