@@ -75,8 +75,10 @@ TEST_F(TiledHloTest, TestPrinting) {
       ROOT broadcast = f32[10,20,30] broadcast(p0), dimensions={0,2}
     }
   )");
-  auto tiling_space = TilingSpace::Create(
-      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(
+      auto tiling_space,
+      TilingSpace::Create(*HloFusionAdaptor::ForInstruction(root),
+                          &mlir_context_));
   ASSERT_OK_AND_ASSIGN(
       Tiles tiled_operands,
       PropagateTileToInput(
@@ -122,7 +124,8 @@ class TileAnalysisTest : public HloHardwareIndependentTestBase {
       absl::string_view hlo_string, absl::Span<const int64_t> tile_sizes) {
     HloInstruction* root = ParseAndGetRoot(hlo_string);
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
-    auto tiling_space = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+    ASSIGN_OR_RETURN(auto tiling_space,
+                     TilingSpace::Create(*fusion_adaptor, &mlir_context_));
     RETURN_IF_ERROR(tiling_space->AssignTileSizes(tile_sizes));
     return TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space));
   }
