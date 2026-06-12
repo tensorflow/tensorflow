@@ -157,15 +157,6 @@ cc_library(
 )
 
 cc_library(
-    name = "device_memory_handle",
-    hdrs = ["device_memory_handle.h"],
-    deps = [
-        ":device_address_handle",
-        "@com_google_absl//absl/base:core_headers",
-    ],
-)
-
-cc_library(
     name = "device_memory_allocator",
     hdrs = ["device_memory_allocator.h"],
     deps = [
