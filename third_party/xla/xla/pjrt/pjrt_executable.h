@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
+#include "xla/literal.h"
 #include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -234,7 +235,7 @@ struct HloOutputCallback {
   // instruction.
   //             Missing operands are represented by nullptr.
   std::function<void(int64_t replica_id, int64_t partition_id,
-                     absl::Span<std::shared_ptr<Literal> const> literals)>
+                     absl::Span<std::shared_ptr<const Literal> const> literals)>
       callback;
 };
 
