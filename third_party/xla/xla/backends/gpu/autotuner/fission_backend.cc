@@ -167,9 +167,7 @@ absl::Status FissionBackend::ApplyConfig(HloInstruction& instr,
 
   // Given that the autotuner runs post fusion, we have to run priority fusion
   // again to fuse the epilogue and prologues.
-  if (debug_options().xla_gpu_experimental_autotune_post_fusion()) {
-    RETURN_IF_ERROR(RunPriorityFusion(hlo_module.get()));
-  }
+  RETURN_IF_ERROR(RunPriorityFusion(hlo_module.get()));
 
   RETURN_IF_ERROR(
       InlineFissionedComputation(&instr, hlo_module->entry_computation()));
@@ -186,6 +184,13 @@ FissionBackend::GetFissionedAndRewrittenModule(
   const auto* fusion = Cast<HloFusionInstruction>(&fusion_instr);
   std::unique_ptr<HloModule> hlo_module =
       ExtractComputationIntoNewModule(*fusion->called_computation());
+  // ExtractComputationIntoNewModule creates a new HloModule with a default
+  // HloModuleConfig, whose DebugOptions are initialized to
+  // DefaultDebugOptionsIgnoringFlags() — not the user's values. Propagate the
+  // user-defined debug options before running any passes so that the rewriter
+  // pipeline (e.g. GemmRewriter reads xla_gpu_gemm_rewrite_size_threshold) and
+  // any subsequent PriorityFusion run observe the correct flag values.
+  hlo_module->mutable_config().set_debug_options(debug_options());
   RETURN_IF_ERROR(rewriter_pipeline_->Run(hlo_module.get()).status());
   return hlo_module;
 }

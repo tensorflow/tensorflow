@@ -319,10 +319,13 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   bool is_first_record =
       command_buffer_update_mode_ == DebugOptions::NEVER_UPDATE &&
       cmd_buffer->command_buffer->state() == se::CommandBuffer::State::kCreate;
+  bool has_commands_requiring_update =
+      command_buffer_update_mode_ != DebugOptions::NEVER_UPDATE &&
+      commands_.requires_update();
   bool needs_update =
       (command_buffer_update_mode_ == DebugOptions::ALWAYS_UPDATE ||
        command_buffer_update_mode_ == DebugOptions::CAPTURE_CMD_NEVER_UPDATE) &&
-      !updated_allocs.empty();
+      (has_commands_requiring_update || !updated_allocs.empty());
 
   if (is_first_record || needs_update) {
     XLA_VLOG_DEVICE(3, executor->device_ordinal())

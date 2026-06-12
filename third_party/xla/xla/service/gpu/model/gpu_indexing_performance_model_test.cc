@@ -791,8 +791,9 @@ ENTRY main {
 
   int64_t num_warps = 0;
   if (use_experimental_tiling()) {
-    std::unique_ptr<experimental::TilingSpace> tiling_space =
-        experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<experimental::TilingSpace> tiling_space,
+        experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_));
 
     ASSERT_OK(tiling_space->AssignTileSizes(
         xla::xtile::GetPaddedTileSizes(output_tile_sizes)));
@@ -861,8 +862,9 @@ ENTRY main {
 
   int64_t num_warps = 0;
   if (use_experimental_tiling()) {
-    std::unique_ptr<experimental::TilingSpace> tiling_space =
-        experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<experimental::TilingSpace> tiling_space,
+        experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_));
 
     absl::InlinedVector<int64_t, 4> tile_sizes = output_tile_sizes;
     tile_sizes.push_back(4096);
