@@ -267,9 +267,9 @@ std::pair<int64_t, int64_t> MaybeOverrideSeeds(
 absl::Status VerifyTypeMatch(const DataType& expected, const DataType& received,
                              int index) {
   if (expected != received) {
-    return errors::InvalidArgument("Data type mismatch at component ", index,
-                                   ": expected ", DataTypeString(expected),
-                                   " but got ", DataTypeString(received), ".");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Data type mismatch at component ", index, ": expected ",
+        DataTypeString(expected), " but got ", DataTypeString(received), "."));
   }
   return absl::OkStatus();
 }
@@ -277,9 +277,9 @@ absl::Status VerifyTypeMatch(const DataType& expected, const DataType& received,
 absl::Status VerifyTypesMatch(const DataTypeVector& expected,
                               const DataTypeVector& received) {
   if (expected.size() != received.size()) {
-    return errors::InvalidArgument(
-        "Number of components does not match: expected ", expected.size(),
-        " types but got ", received.size(), ".");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Number of components does not match: expected ",
+                     expected.size(), " types but got ", received.size(), "."));
   }
   for (size_t i = 0; i < expected.size(); ++i) {
     TF_RETURN_IF_ERROR(VerifyTypeMatch(expected[i], received[i], i));
@@ -290,9 +290,9 @@ absl::Status VerifyTypesMatch(const DataTypeVector& expected,
 absl::Status VerifyTypesMatch(const DataTypeVector& expected,
                               const std::vector<Tensor>& received) {
   if (expected.size() != received.size()) {
-    return errors::InvalidArgument(
-        "Number of components does not match: expected ", expected.size(),
-        " types but got ", received.size(), ".");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Number of components does not match: expected ",
+                     expected.size(), " types but got ", received.size(), "."));
   }
   for (size_t i = 0; i < expected.size(); ++i) {
     TF_RETURN_IF_ERROR(VerifyTypeMatch(expected[i], received[i].dtype(), i));
@@ -304,9 +304,9 @@ absl::Status VerifyShapeCompatible(const PartialTensorShape& expected,
                                    const PartialTensorShape& received,
                                    int index) {
   if (!expected.IsCompatibleWith(received)) {
-    return errors::InvalidArgument("Incompatible shapes at component ", index,
-                                   ": expected ", expected.DebugString(),
-                                   " but got ", received.DebugString(), ".");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Incompatible shapes at component ", index, ": expected ",
+        expected.DebugString(), " but got ", received.DebugString(), "."));
   }
   return absl::OkStatus();
 }
@@ -315,9 +315,9 @@ absl::Status VerifyShapesCompatible(
     const std::vector<PartialTensorShape>& expected,
     const std::vector<PartialTensorShape>& received) {
   if (expected.size() != received.size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Number of components does not match: expected ", expected.size(),
-        " shapes but got ", received.size(), ".");
+        " shapes but got ", received.size(), "."));
   }
   for (size_t i = 0; i < expected.size(); ++i) {
     TF_RETURN_IF_ERROR(VerifyShapeCompatible(expected[i], received[i], i));
@@ -330,9 +330,9 @@ absl::Status VerifyShapesCompatible(
     const std::vector<PartialTensorShape>& expected,
     const std::vector<Tensor>& received) {
   if (expected.size() != received.size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Number of components does not match: expected ", expected.size(),
-        " shapes but got ", received.size(), ".");
+        " shapes but got ", received.size(), "."));
   }
   for (size_t i = 0; i < expected.size(); ++i) {
     TF_RETURN_IF_ERROR(
@@ -347,9 +347,10 @@ absl::Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
   for (const auto& fn : to_add.ListFunctionNames()) {
     if (auto found = base->Find(fn)) {
       if (!OpDefEqual(found->signature(), to_add.Find(fn)->signature())) {
-        return errors::InvalidArgument("Cannot add function '", fn,
-                                       "' because a different function with "
-                                       "the same signature already exists.");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Cannot add function '", fn,
+                         "' because a different function with "
+                         "the same signature already exists."));
       }
       TF_RETURN_IF_ERROR(base->RemoveFunction(fn));
     }
@@ -362,10 +363,10 @@ absl::Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
   for (const auto& fd : to_add.function()) {
     if (auto found = base->Find(fd.signature().name())) {
       if (!OpDefEqual(found->signature(), fd.signature())) {
-        return errors::InvalidArgument("Cannot add function '",
-                                       fd.signature().name(),
-                                       "' because a different function with "
-                                       "the same signature already exists.");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Cannot add function '", fd.signature().name(),
+                         "' because a different function with "
+                         "the same signature already exists."));
       }
       TF_RETURN_IF_ERROR(base->RemoveFunction(fd.signature().name()));
     }
@@ -425,7 +426,8 @@ absl::Status IsNodeStateful(const FunctionLibraryDefinition& library,
     return absl::OkStatus();
   }
 
-  return errors::FailedPrecondition(op_def->name(), " is stateful.");
+  return absl::FailedPreconditionError(
+      absl::StrCat(op_def->name(), " is stateful."));
 }
 
 std::function<void(std::function<void()>)> RunnerWithMaxParallelism(
@@ -456,7 +458,8 @@ absl::Status DeterminismPolicy::FromString(const std::string& s,
   } else if (s == DeterminismPolicy::kDefault) {
     type = DeterminismPolicy::Type::kDefault;
   } else {
-    return errors::InvalidArgument("Unrecognized determinism policy: ", s);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unrecognized determinism policy: ", s));
   }
   *out = DeterminismPolicy(type);
   return absl::OkStatus();
@@ -659,8 +662,8 @@ absl::Status CopyPartialBatch(int64_t num_elements, const Tensor& value,
     TF_CALL_DATASET_TYPES(HANDLE_TYPE);
 #undef HANDLE_TYPE
     default:
-      return errors::InvalidArgument("Unsupported data type: ",
-                                     DataTypeString(value.dtype()));
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Unsupported data type: ", DataTypeString(value.dtype())));
   }
   return absl::OkStatus();
 }
@@ -787,8 +790,8 @@ absl::Status ProcessBatch(int64_t batch_size, int64_t num_elements,
       output->emplace_back(ctx->allocator(attr), (*batch)[i].dtype(),
                            component_shape);
       if (!output->back().IsInitialized()) {
-        return errors::ResourceExhausted(
-            "Failed to allocate memory for the batch of component ", i);
+        return absl::ResourceExhaustedError(absl::StrCat(
+            "Failed to allocate memory for the batch of component ", i));
       }
       TF_RETURN_IF_ERROR(
           CopyPartialBatch(num_elements, (*batch)[i], &output->back()));
@@ -815,9 +818,9 @@ absl::Status CopyBatch(AnyContext ctx,
     out_tensors->emplace_back(ctx.allocator, first_element.dtype(),
                               batch_component_shape);
     if (!out_tensors->back().IsInitialized()) {
-      return errors::ResourceExhausted(
-          "Failed to allocate memory for the batch of component ",
-          component_index);
+      return absl::ResourceExhaustedError(
+          absl::StrCat("Failed to allocate memory for the batch of component ",
+                       component_index));
     }
   }
   for (size_t component_index = 0; component_index < num_tuple_components;
@@ -831,13 +834,13 @@ absl::Status CopyBatch(AnyContext ctx,
                             &first_element_shape](int index) {
       if (batch_elements.at(index)[component_index].shape() !=
           first_element_shape) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Cannot batch tensors with different shapes in component ",
             component_index, ". First element had shape ",
             first_element_shape.DebugString(), " and element ", index,
             " had shape ",
             batch_elements.at(index)[component_index].shape().DebugString(),
-            ".");
+            "."));
       }
       return batch_util::CopyElementToSlice(
           std::move(batch_elements.at(index)[component_index]),
