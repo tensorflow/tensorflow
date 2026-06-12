@@ -214,11 +214,11 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CreateBufferDebugDumpThunk(
 
 }  // namespace
 
-absl::Status RunChecksumPassInternal(ThunkSequence* thunk_sequence,
-                                     const DebugOptions& debug_options,
-                                     const HloModule* absl_nonnull hlo_module,
-                                     const BufferAssignment* buffer_assignment,
-                                     ThunkPassBufferAllocator& allocator) {
+absl::Status RunChecksumPassInternal(
+    ThunkSequence* thunk_sequence, const DebugOptions& debug_options,
+    const HloModule* absl_nonnull hlo_module,
+    const BufferAssignment* absl_nonnull buffer_assignment,
+    ThunkPassBufferAllocator& allocator) {
   std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store =
       std::make_shared<BufferDebugLogEntryMetadataStore>();
 
@@ -249,8 +249,7 @@ absl::Status RunChecksumPassInternal(ThunkSequence* thunk_sequence,
   RETURN_IF_ERROR(thunk_sequence->TransformNested(transform_callback));
 
   std::unique_ptr<BuffersDebugChecksumThunk> output_buffers_check_thunk;
-  if (debug_options.xla_gpu_experimental_thunk_buffer_debug_module_outputs() &&
-      buffer_assignment != nullptr) {
+  if (debug_options.xla_gpu_experimental_thunk_buffer_debug_module_outputs()) {
     absl::flat_hash_map<size_t, BufferAllocation::Slice> buffers_to_check;
     ASSIGN_OR_RETURN(buffers_to_check,
                      GetOutputBuffers(hlo_module, buffer_assignment));
