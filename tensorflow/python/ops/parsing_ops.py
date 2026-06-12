@@ -38,9 +38,10 @@ SparseFeature = parsing_config.SparseFeature
 FixedLenFeature = parsing_config.FixedLenFeature
 FixedLenSequenceFeature = parsing_config.FixedLenSequenceFeature
 # pylint: disable=protected-access
-_ParseOpParams = parsing_config._ParseOpParams
+_ParseOpParams = parsing_config.ParseOpParams
 _construct_tensors_for_composite_features = (
-    parsing_config._construct_tensors_for_composite_features)
+    parsing_config.construct_tensors_for_composite_features
+)
 # pylint: enable=protected-access
 
 
@@ -355,8 +356,9 @@ def _parse_example_raw(serialized, names, params, name):
     (sparse_indices, sparse_values, sparse_shapes, dense_values,
      ragged_values, ragged_row_splits) = outputs
     # pylint: disable=protected-access
-    ragged_tensors = parsing_config._build_ragged_tensors(
-        serialized.shape, ragged_values, ragged_row_splits)
+    ragged_tensors = parsing_config.build_ragged_tensors(
+        serialized.shape, ragged_values, ragged_row_splits
+    )
 
     sparse_tensors = [
         sparse_tensor.SparseTensor(ix, val, shape) for (ix, val, shape)
@@ -652,11 +654,15 @@ def _parse_sequence_example_raw(serialized,
      feature_list_ragged_outer_splits,
      feature_list_ragged_inner_splits) = outputs
     # pylint: disable=protected-access
-    context_ragged_tensors = parsing_config._build_ragged_tensors(
-        serialized.shape, context_ragged_values, context_ragged_row_splits)
-    feature_list_ragged_tensors = parsing_config._build_ragged_tensors(
-        serialized.shape, feature_list_ragged_values,
-        feature_list_ragged_outer_splits, feature_list_ragged_inner_splits)
+    context_ragged_tensors = parsing_config.build_ragged_tensors(
+        serialized.shape, context_ragged_values, context_ragged_row_splits
+    )
+    feature_list_ragged_tensors = parsing_config.build_ragged_tensors(
+        serialized.shape,
+        feature_list_ragged_values,
+        feature_list_ragged_outer_splits,
+        feature_list_ragged_inner_splits,
+    )
 
     # pylint: disable=g-complex-comprehension
     context_sparse_tensors = [

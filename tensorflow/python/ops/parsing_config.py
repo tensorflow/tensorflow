@@ -36,8 +36,8 @@ from tensorflow.python.util.tf_export import tf_export
 #   * Move input verification to feature configuration objects (e.g.,
 #     VarLenFeature should check that dtype is a valid dtype).
 #   * Add an _add_feature() method to each feature configuration object
-#     (rather than using a dispatch table in _ParseOpParams._add_feature).
-#   * Update _construct_tensors_for_composite_features() to call a method
+#     (rather than using a dispatch table in ParseOpParams._add_feature).
+#   * Update construct_tensors_for_composite_features() to call a method
 #     on the feature object (rather than using dispatch).
 
 
@@ -48,7 +48,6 @@ class VarLenFeature(collections.namedtuple("VarLenFeature", ["dtype"])):
   Fields:
     dtype: Data type of input.
   """
-  pass
 
 
 @tf_export("io.RaggedFeature")
@@ -171,7 +170,7 @@ class RaggedFeature(
     row_splits_dtype: (Optional.) Data type for the row-partitioning tensor(s).
       One of `int32` or `int64`.  Defaults to `int32`.
     validate: (Optional.) Boolean indicating whether or not to validate that
-      the input values form a valid RaggedTensor.  Defaults to `False`.
+      the input values form a valid RaggedTensor.  Defaults to `True`.
   """
 
   # pylint: disable=invalid-name
@@ -218,12 +217,14 @@ class RaggedFeature(
         f"{type(partition)}"
     )
 
-  def __new__(cls,
-              dtype,
-              value_key=None,
-              partitions=(),
-              row_splits_dtype=dtypes.int32,
-              validate=False):
+  def __new__(
+      cls,
+      dtype,
+      value_key=None,
+      partitions=(),
+      row_splits_dtype=dtypes.int32,
+      validate=True,
+  ):
     if value_key is not None:
       if not isinstance(value_key, str):
         raise ValueError(
@@ -334,8 +335,9 @@ class SparseFeature(
   """
 
   def __new__(cls, index_key, value_key, dtype, size, already_sorted=False):
-    return super(SparseFeature, cls).__new__(
-        cls, index_key, value_key, dtype, size, already_sorted)
+    return super().__new__(
+        cls, index_key, value_key, dtype, size, already_sorted
+    )
 
 
 @tf_export("io.FixedLenFeature", v1=["io.FixedLenFeature", "FixedLenFeature"])
@@ -354,8 +356,7 @@ class FixedLenFeature(collections.namedtuple(
   """
 
   def __new__(cls, shape, dtype, default_value=None):
-    return super(FixedLenFeature, cls).__new__(
-        cls, shape, dtype, default_value)
+    return super().__new__(cls, shape, dtype, default_value)
 
 
 @tf_export("io.FixedLenSequenceFeature",
@@ -389,11 +390,10 @@ class FixedLenSequenceFeature(collections.namedtuple(
   """
 
   def __new__(cls, shape, dtype, allow_missing=False, default_value=None):
-    return super(FixedLenSequenceFeature, cls).__new__(
-        cls, shape, dtype, allow_missing, default_value)
+    return super().__new__(cls, shape, dtype, allow_missing, default_value)
 
 
-class _ParseOpParams:
+class ParseOpParams:
   """Raw parameters used by `gen_parsing_ops`.
 
   Attributes:
@@ -469,7 +469,7 @@ class _ParseOpParams:
 
   @classmethod
   def from_features(cls, features, types):
-    """Builds _ParseOpParams for a given set of features and allowed types.
+    """Builds ParseOpParams for a given set of features and allowed types.
 
     Args:
       features: A `dict` mapping feature keys to objects of a type in `types`.
@@ -477,7 +477,7 @@ class _ParseOpParams:
         `VarLenFeature`, `SparseFeature`, and `FixedLenSequenceFeature`.
 
     Returns:
-      A `_ParseOpParams` containing the raw parameters for `gen_parsing_ops`.
+      A `ParseOpParams` containing the raw parameters for `gen_parsing_ops`.
 
     Raises:
       ValueError: if `features` contains an item not in `types`, or an invalid
@@ -535,7 +535,7 @@ class _ParseOpParams:
         # Reshape to a scalar to ensure user gets an error if they
         # provide a tensor that's not intended to be a padding value
         # (0 or 2+ elements).
-        key_name = "padding_" + re.sub("[^A-Za-z0-9_.\\-/]", "_", key)
+        key_name = "padding_" + re.sub(r"[^A-Za-z0-9_.\-/]", "_", key)
         default_value = ops.convert_to_tensor(
             default_value, dtype=dtype, name=key_name)
         default_value = array_ops.reshape(default_value, [])
@@ -543,7 +543,7 @@ class _ParseOpParams:
       if default_value is None:
         default_value = constant_op.constant([], dtype=dtype)
       elif not isinstance(default_value, tensor.Tensor):
-        key_name = "key_" + re.sub("[^A-Za-z0-9_.\\-/]", "_", key)
+        key_name = "key_" + re.sub(r"[^A-Za-z0-9_.\-/]", "_", key)
         default_value = ops.convert_to_tensor(
             default_value, dtype=dtype, name=key_name)
         default_value = array_ops.reshape(default_value, shape)
@@ -754,7 +754,7 @@ class _ParseOpParams:
           f"{ragged_key_set.intersection(sparse_key_set)}")
 
 
-def _construct_tensors_for_composite_features(features, tensor_dict):
+def construct_tensors_for_composite_features(features, tensor_dict):
   """Creates tensors for SparseFeatures and RaggedFeatures.
 
   Constructs new dict based on `tensor_dict`.
@@ -955,9 +955,24 @@ def _add_batched_ragged_partition(rt, partition, tensor_dict, feature_key,
           ragged_tensor.RaggedTensor.from_row_starts(
               rt.values, adjusted_starts, validate=validate))
     elif isinstance(partition, RaggedFeature.RowLengths):
-      return partition_t.with_values(
-          ragged_tensor.RaggedTensor.from_row_lengths(
-              rt.values, partition_t.values, validate=validate))
+      lengths = partition_t.values
+      if isinstance(rt.values, ragged_tensor.RaggedTensor):
+        values_size = rt.values.nrows(out_type=lengths.dtype)
+      else:
+        values_size = math_ops.cast(
+            array_ops.shape(rt.values)[0], lengths.dtype
+        )
+      sum_matches = check_ops.assert_equal(
+          math_ops.reduce_sum(lengths),
+          values_size,
+          message="Row lengths sum must match values size",
+      )
+      with ops.control_dependencies([sum_matches]):
+        return partition_t.with_values(
+            ragged_tensor.RaggedTensor.from_row_lengths(
+                rt.values, lengths, validate=validate
+            )
+        )
     elif isinstance(partition, RaggedFeature.ValueRowIds):
       nrows = math_ops.maximum(  # number of rows in each batch item
           ragged_math_ops.reduce_max(partition_t + 1, axis=1), 0)
@@ -972,10 +987,9 @@ def _add_batched_ragged_partition(rt, partition, tensor_dict, feature_key,
     raise ValueError(f"Unhandled partition type {partition!r}")
 
 
-def _build_ragged_tensors(serialized_shape,
-                          ragged_values,
-                          ragged_row_splits,
-                          ragged_inner_splits=None):
+def build_ragged_tensors(
+    serialized_shape, ragged_values, ragged_row_splits, ragged_inner_splits=None
+):
   """Builds RaggedTensors from the outputs of a parse op.
 
   This function takes the results of parsing a serialized batch of
