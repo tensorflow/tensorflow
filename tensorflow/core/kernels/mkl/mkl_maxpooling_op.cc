@@ -63,6 +63,19 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
       MklPoolParameters pool_params;
       // Check whether pooling is 2D or 3D.
       bool is_pool2d = (this->ksize_.size() == 4);
+
+      // Validate that the input tensor rank matches the pooling type.
+      // This prevents a CHECK failure in TFShapeToMklDnnDimsInNCDHW when
+      // the input does not have the expected number of dimensions.
+      if (!dnn_shape_input.IsMklTensor()) {
+        int expected_rank = is_pool2d ? 4 : 5;
+        OP_REQUIRES(
+            context, input_tensor.dims() == expected_rank,
+            absl::InvalidArgumentError(absl::StrCat(
+                "Input must be rank ", expected_rank, " but got rank ",
+                input_tensor.dims())));
+      }
+
       // Get the input tensor and initialize the pooling parameters
       TensorShape input_tensor_shape = input_tensor.shape();
       this->InitMklPoolParameters(context, &pool_params, dnn_shape_input,
@@ -287,6 +300,17 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
         return;
       }
       bool is_pool2d = (this->ksize_.size() == 4);
+
+      // Validate that the input tensor rank matches the pooling type.
+      if (!orig_input_mkl_shape.IsMklTensor()) {
+        int expected_rank = is_pool2d ? 4 : 5;
+        OP_REQUIRES(
+            context, orig_input_tensor.dims() == expected_rank,
+            absl::InvalidArgumentError(absl::StrCat(
+                "Input must be rank ", expected_rank, " but got rank ",
+                orig_input_tensor.dims())));
+      }
+
       this->InitMklPoolParameters(context, &pool_params, orig_input_mkl_shape,
                                   orig_input_shape);
 
