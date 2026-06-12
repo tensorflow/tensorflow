@@ -102,5 +102,7 @@ message GpuExecutableProto {
   // The host target machine options of the executable.
   optional xla.cpu.TargetMachineOptionsProto cpu_target_machine_options = 15;
 
+  reserved 16;  // buffer_allocations_debug_summary (rolled back)
+
   reserved 7;
 }

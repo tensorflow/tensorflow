@@ -42,7 +42,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/device_address_handle.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/util/tied_ref.h"
@@ -104,7 +104,7 @@ struct RaggedAllToAllStreamState {
       host_buffer_allocs;
 
   // Device memory buffer for output offsets.
-  se::DeviceAddressHandle output_offsets_device_buffer;
+  se::ScopedDeviceAddress<uint8_t> output_offsets_device_buffer;
 
   // MultiGpuBarrier: Device memory buffer for signal values (one per peer).
   // Peers write specific slots in this array to signal this device.

@@ -699,10 +699,7 @@ TEST_F(GpuExecutableTest, FromProtoWithSymbolResolver) {
             arity: 42
             kernel_args_packing_spec {
               kernel_arguments {
-                relocations {
-                  kind: KIND_BITS64_ABSOLUTE
-                  argument_index: 0
-                }
+                relocations { kind: KIND_BITS64_ABSOLUTE argument_index: 0 }
               }
               kernel_arguments { data: "\x34\x12\x00\x00" }
             }

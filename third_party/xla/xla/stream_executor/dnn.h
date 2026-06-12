@@ -24,6 +24,8 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -72,10 +74,24 @@ std::vector<int64_t> ReorderDims(const std::vector<int64_t>& input,
 
 // Helper functions to make methods more readable.
 inline int64_t GetDim(absl::Span<const int64_t> data, DimIndex dim) {
+  if (static_cast<size_t>(dim) >= data.size()) {
+    std::fprintf(stderr,
+                 "Check failed: static_cast<size_t>(dim) < data.size() (%zu "
+                 "vs. %zu)\n",
+                 static_cast<size_t>(dim), data.size());
+    std::abort();
+  }
   return data.rbegin()[static_cast<int64_t>(dim)];
 }
 
 inline void SetDim(absl::Span<int64_t> data, DimIndex dim, int64_t value) {
+  if (static_cast<size_t>(dim) >= data.size()) {
+    std::fprintf(stderr,
+                 "Check failed: static_cast<size_t>(dim) < data.size() (%zu "
+                 "vs. %zu)\n",
+                 static_cast<size_t>(dim), data.size());
+    std::abort();
+  }
   data.rbegin()[static_cast<int64_t>(dim)] = value;
 }
 
