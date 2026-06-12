@@ -370,6 +370,7 @@ cc_library(
     hdrs = ["all_reduce_combiner.h"],
     deps = [
         "//xla:shape_util",
+        "//xla:side_effect_util",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
