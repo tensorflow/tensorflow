@@ -323,6 +323,12 @@ class Compiler {
       absl::string_view filename_prefix,
       absl::string_view hlo_module_name) const;
 
+  // Returns a MetricsHookInterface object used to instrument Compiler's
+  // compilation stages.
+  virtual std::unique_ptr<MetricsHookInterface> CreateMetricsHook(
+      absl::string_view filename_prefix, absl::string_view hlo_module_name,
+      MetricsHookInterface* prev_hook) const;
+
   virtual absl::StatusOr<std::unique_ptr<Executable>> DeserializeExecutable(
       const absl::string_view serialized) const {
     return Unimplemented("DeserializeExecutable unimplemented");
