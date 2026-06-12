@@ -2189,7 +2189,25 @@ TEST(StreamExecutorGpuClientTest, EventCaching) {
   // New events are getting assigned.
   EXPECT_NE(&*event0, &*event2);
   tsl::BlockUntilReady(event2);
-  // sync_point1 is ready, so it is the most recent event.
+  // Wait for the background cleanup callback to prune the completed event0,
+  // which is happening asynchronously.
+  // If pruning has occurred, querying with nullptr_if_past = true will return a
+  // null event.
+  bool pruned = false;
+  absl::Time deadline = absl::Now() + absl::Seconds(1);
+  while (absl::Now() < deadline) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto event,
+        local_device_state->GetEventForComputeStreamSyncPoint(
+            sync_point0, async_work_runner, /*nullptr_if_past=*/true));
+    if (!event) {
+      pruned = true;
+      break;
+    }
+    absl::SleepFor(absl::Milliseconds(10));
+  }
+  ASSERT_TRUE(pruned) << "Timeout waiting for completed event0 to be pruned.";
+
   TF_ASSERT_OK_AND_ASSIGN(auto event3,
                           local_device_state->GetEventForComputeStreamSyncPoint(
                               sync_point0, async_work_runner));
@@ -2858,8 +2876,9 @@ TEST_F(VmmTest, CommandBufferVaRemappingTwoExecutables) {
 
   // --- Assertions for VA range index cycling and command buffer separation ---
   //
-  // VA range index per-executable: GetNextCommandBufferVaRangeIdx is keyed by
-  // (executable_ptr, device_ordinal), so exec1 and exec2 cycle independently:
+  // VA range index per-executable: GetNextCommandBufferVaRangeIdx is a member
+  // of Executable, and its state is stored inside each Executable instance
+  // (keyed by device_ordinal), so exec1 and exec2 cycle independently:
   //   run 0: exec1→idx=0, exec2→idx=0
   //   run 1: exec1→idx=1, exec2→idx=1
   //   run 2: exec1→idx=0, exec2→idx=0  (wraps)

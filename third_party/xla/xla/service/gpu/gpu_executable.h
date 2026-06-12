@@ -152,12 +152,18 @@ class GpuExecutable : public Executable {
     se::ExecutableAbiVersion executable_abi_version;
     std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options;
     std::optional<BufferAssignmentProto> buffer_assignment_proto;
+    std::string buffer_allocations_debug_summary;
   };
 
   static absl::StatusOr<std::unique_ptr<GpuExecutable>> Create(Params params);
   ~GpuExecutable() override;
 
   int64_t SizeOfGeneratedCodeInBytes() const override;
+
+  // Returns the next VA range index for the given device ordinal. Cycle wraps
+  // at num_sets. Keeping this state in the Executable avoids ABA pointer reuse
+  // issues and memory leaks that happen when using global pointer maps.
+  int GetNextCommandBufferVaRangeIdx(int device_ordinal, int num_sets) override;
 
   // This should be called after set_ir_module_string.
   const std::string& ir_module_string() const { return ir_module_string_; }
@@ -240,6 +246,13 @@ class GpuExecutable : public Executable {
     return buffer_assignment_.get();
   }
 
+  // Human readable summary of the buffer allocations. Tailored to debugging
+  // OOMs, includes the Hlo op metadata for every buffer associated with each
+  // allocation.
+  const std::string& buffer_allocations_debug_summary() const {
+    return buffer_allocations_debug_summary_;
+  }
+
   // Returns the proto representation of `buffer_assignment()` if available,
   // otherwise returns the stored buffer assignment proto if available. Returns
   // nullopt if neither is available.
@@ -288,8 +301,6 @@ class GpuExecutable : public Executable {
       BufferAllocations& buffer_allocations, const ShapeIndex& index,
       const BufferAllocation& allocation, int device_ordinal,
       se::DeviceAddressAllocator* memory_allocator);
-
-  absl::Status VerboseAllocationError(absl::Status s);
 
   static absl::StatusOr<std::unique_ptr<GpuExecutable>> FromProto(
       const GpuExecutableProto&,
@@ -361,7 +372,8 @@ class GpuExecutable : public Executable {
       absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto,
       se::ExecutableAbiVersion executable_abi_version,
       std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
-      std::optional<BufferAssignmentProto> buffer_assignment_proto);
+      std::optional<BufferAssignmentProto> buffer_assignment_proto,
+      std::string buffer_allocations_debug_summary);
 
   // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.
@@ -513,6 +525,12 @@ class GpuExecutable : public Executable {
   absl::Mutex va_ranges_mutex_;
   absl::node_hash_map<std::pair<se::StreamExecutor*, int>, VaRanges>
       module_va_ranges_ ABSL_GUARDED_BY(va_ranges_mutex_);
+  absl::Mutex command_buffer_va_range_idx_mutex_;
+  // Map from device ordinal (key) to virtual address (VA) range index (value).
+  // Kept per GPU executable so each compiled module independently alternates
+  // between VA range sets.
+  absl::flat_hash_map<int, int> command_buffer_va_range_idx_
+      ABSL_GUARDED_BY(command_buffer_va_range_idx_mutex_);
 
   GpuExecutable(const GpuExecutable&) = delete;
   GpuExecutable& operator=(const GpuExecutable&) = delete;
@@ -526,6 +544,11 @@ class GpuExecutable : public Executable {
   std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options_;
 
   CollectiveMemoryCache collective_memory_cache_;
+
+  // Human readable summary of the buffer allocations. Tailored to debugging
+  // OOMs, includes the Hlo op metadata for every buffer associated with each
+  // allocation.
+  std::string buffer_allocations_debug_summary_;
 };
 
 absl::StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>
