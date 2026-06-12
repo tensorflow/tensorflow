@@ -6482,6 +6482,10 @@ absl::Status SpmdPartitioner::PreprocessSharding(
           hlo->set_sharding(enable_hlo_sharding_v3
                                 ? HloSharding(NamedSharding::SingleDevice(0))
                                 : HloSharding::SingleDevice(0));
+        } else if (hlo->opcode() == HloOpcode::kReverse &&
+                   hlo->operand(0)->has_sharding()) {
+          hlo->set_sharding(hlo_sharding_util::ReverseSharding(
+              hlo->operand(0)->sharding(), hlo->dimensions()));
         } else {
           hlo->set_sharding(HloSharding::Single(
               hlo->shape(), enable_hlo_sharding_v3
