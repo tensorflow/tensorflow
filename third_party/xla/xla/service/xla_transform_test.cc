@@ -270,6 +270,20 @@ TEST_F(XlaTransformTest, PjrtCApiExtension) {
 
   EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
             HloOpcode::kNegate);
+
+  // Clear the transform before callbacks goes out of scope.
+  {
+    PJRT_Clear_Xla_Transform_Args args;
+    args.struct_size = PJRT_Clear_Xla_Transform_Args_STRUCT_SIZE;
+    args.stage = PJRT_XlaTransform_PipelineStage_kPreScheduler;
+    args.name = "pjrt_c_api_transform";
+    args.name_size = sizeof("pjrt_c_api_transform") - 1;
+    args.callbacks = nullptr;
+    args.cleared = false;
+    PJRT_Error* error = extension.clear_xla_transform(&args);
+    EXPECT_EQ(error, nullptr);
+    EXPECT_TRUE(args.cleared);
+  }
 }
 
 TEST_F(XlaTransformTest, PjrtCApiExtensionClear) {
@@ -463,6 +477,20 @@ TEST_F(XlaTransformTest, PjrtCApiExtensionPreservesSchedule) {
     actual_order.push_back(std::string(inst->name()));
   }
   EXPECT_EQ(expected_order, actual_order);
+
+  // Clear the transform before callbacks goes out of scope.
+  {
+    PJRT_Clear_Xla_Transform_Args args;
+    args.struct_size = PJRT_Clear_Xla_Transform_Args_STRUCT_SIZE;
+    args.stage = PJRT_XlaTransform_PipelineStage_kPreScheduler;
+    args.name = "pjrt_c_api_transform_schedule";
+    args.name_size = sizeof("pjrt_c_api_transform_schedule") - 1;
+    args.callbacks = nullptr;
+    args.cleared = false;
+    PJRT_Error* error = extension.clear_xla_transform(&args);
+    EXPECT_EQ(error, nullptr);
+    EXPECT_TRUE(args.cleared);
+  }
 }
 
 TEST_F(XlaTransformTest, PjrtCApiExtensionUnusedComputationScheduleUAF) {
@@ -550,6 +578,20 @@ TEST_F(XlaTransformTest, PjrtCApiExtensionUnusedComputationScheduleUAF) {
   EXPECT_TRUE(module->has_schedule());
   auto status = module->schedule().Verify();
   EXPECT_TRUE(status.ok());
+
+  // Clear the transform before callbacks goes out of scope.
+  {
+    PJRT_Clear_Xla_Transform_Args args;
+    args.struct_size = PJRT_Clear_Xla_Transform_Args_STRUCT_SIZE;
+    args.stage = PJRT_XlaTransform_PipelineStage_kPreScheduler;
+    args.name = "pjrt_c_api_transform_uaf";
+    args.name_size = sizeof("pjrt_c_api_transform_uaf") - 1;
+    args.callbacks = nullptr;
+    args.cleared = false;
+    PJRT_Error* error = extension.clear_xla_transform(&args);
+    EXPECT_EQ(error, nullptr);
+    EXPECT_TRUE(args.cleared);
+  }
 }
 
 class UpdateHloModuleFromProtoTest : public XlaTransformTest {
