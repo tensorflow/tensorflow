@@ -568,6 +568,10 @@ absl::Status CommandExecutor::RecordUpdate(
 
     Command* command = commands_[id];
 
+    if (command->requires_update()) {
+      return false;
+    }
+
     // For CAPTURE_CMD_NEVER_UPDATE mode, always skip updates for commands
     // implemented via tracing. This includes CollectiveThunk command/thunk
     // hybrids: their buffer allocations are VA-remapped to fixed offsets within

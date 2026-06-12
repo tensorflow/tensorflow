@@ -855,6 +855,63 @@ TEST_F(DynamicSliceFusionTest, EvaluateOffsetExprMissingParameterFails) {
               ::testing::HasSubstr("Missing value for offset parameter 7"));
 }
 
+TEST_F(DynamicSliceFusionTest, OffsetIsExprChecksScalarIntegerOperations) {
+  const char* hlo = R"(
+    HloModule test
+
+    ENTRY main {
+      p0 = s32[] parameter(0)
+      p1 = s64[] parameter(1)
+      pred_param = pred[] parameter(2)
+      float_param = f32[] parameter(3)
+      vector_param = s32[1] parameter(4)
+      c0 = s32[] constant(0)
+      c1 = s64[] constant(1)
+      pred_const = pred[] constant(true)
+      add = s32[] add(p0, c0)
+      multiply = s64[] multiply(p1, c1)
+      compare = pred[] compare(p0, c0), direction=LT
+      select = s32[] select(compare, p0, c0)
+      pred_select = pred[] select(pred_param, compare, pred_const)
+      convert = s64[] convert(p0)
+      bitcast = s32[] bitcast(p0)
+      scalar_reshape = s32[] reshape(vector_param)
+      vector_reshape = s32[1] reshape(p0)
+      maximum = s32[] maximum(p0, c0)
+      float_add = f32[] add(float_param, float_param)
+      ROOT root = (s32[], s64[], pred[], s32[], pred[], s64[], s32[],
+                   s32[], s32[1], s32[], f32[]) tuple(
+          add, multiply, compare, select, pred_select, convert,
+          bitcast, scalar_reshape, vector_reshape,
+          maximum, float_add)
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  HloComputation* c = module->entry_computation();
+
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("p0")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("p1")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("pred_param")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("c0")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("c1")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("pred_const")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("add")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("multiply")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("compare")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("select")));
+  EXPECT_TRUE(Offset::IsExpr(c->GetInstructionWithName("pred_select")));
+
+  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("float_param")));
+  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("vector_param")));
+  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("convert")));
+  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("bitcast")));
+  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("scalar_reshape")));
+  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("vector_reshape")));
+  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("maximum")));
+  EXPECT_FALSE(Offset::IsExpr(c->GetInstructionWithName("float_add")));
+}
+
 TEST_F(DynamicSliceFusionTest, CollectOffsetParameters) {
   auto expr =
       Offset::Select(Offset::Parameter(2),
