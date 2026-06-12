@@ -16,19 +16,26 @@ limitations under the License.
 
 #include <sys/types.h>
 
+#include <cstdint>
 #include <functional>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/absl_check.h"
 #include "absl/status/status.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/delegates/flex/buffer_map_util.h"
 #include "tensorflow/lite/delegates/flex/util.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/string_util.h"
-#include "tensorflow/lite/testing/util.h"
+#include "tensorflow/lite/type_to_tflitetype.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
@@ -60,20 +67,20 @@ UniqueTfLiteTensor MakeLiteTensor(const std::vector<int>& shape,
 }
 
 template <>
-UniqueTfLiteTensor MakeLiteTensor<string>(const std::vector<int>& shape,
-                                          const std::vector<string>& data) {
+UniqueTfLiteTensor MakeLiteTensor<std::string>(
+    const std::vector<int>& shape, const std::vector<std::string>& data) {
   auto tensor = UniqueTfLiteTensor(new TfLiteTensor(), [](TfLiteTensor* t) {
     TfLiteTensorDataFree(t);
     TfLiteIntArrayFree(t->dims);
     delete t;
   });
   tensor->allocation_type = kTfLiteDynamic;
-  tensor->type = typeToTfLiteType<string>();
+  tensor->type = typeToTfLiteType<std::string>();
   tensor->dims = ConvertVectorToTfLiteIntArray(shape);
-  TfLiteTensorRealloc(data.size() * sizeof(string), tensor.get());
+  TfLiteTensorRealloc(data.size() * sizeof(std::string), tensor.get());
 
   DynamicBuffer b;
-  for (const string& s : data) {
+  for (const std::string& s : data) {
     b.AddString(s.data(), s.size());
   }
   b.WriteToTensor(tensor.get(), ConvertVectorToTfLiteIntArray(shape));
@@ -130,7 +137,7 @@ TEST(BufferMapTest, SetFromTfLiteString) {
   BufferMap buffer_map;
 
   UniqueTfLiteTensor t =
-      MakeLiteTensor<string>({1, 2, 1, 3}, {"", "", "", "str1", "", ""});
+      MakeLiteTensor<std::string>({1, 2, 1, 3}, {"", "", "", "str1", "", ""});
   buffer_map.SetFromTfLite(0, t.get());
   ASSERT_TRUE(buffer_map.HasTensor(0));
 
@@ -161,8 +168,8 @@ TEST(BufferMapTest, SetFromTfLiteTwice) {
 TEST(BufferMapTest, SetFromTfLiteStringTwice) {
   UniqueTfLiteTensor t1 =
       MakeLiteTensor<float>({1, 2, 1, 3}, {0, 0, 0, 0.123f, 0, 0});
-  UniqueTfLiteTensor t2 =
-      MakeLiteTensor<string>({1, 2, 4}, {"", "", "", "s3", "", "", "s1", "s2"});
+  UniqueTfLiteTensor t2 = MakeLiteTensor<std::string>(
+      {1, 2, 4}, {"", "", "", "s3", "", "", "s1", "s2"});
 
   BufferMap buffer_map;
   buffer_map.SetFromTfLite(0, t1.get());
@@ -207,8 +214,7 @@ TEST(BufferMapTest, SetTfTensorFromTfLiteResourceOrVariantInvalidData) {
   tensor->allocation_type = kTfLiteDynamic;
   tensor->type = kTfLiteVariant;
   tensor->dims = ConvertVectorToTfLiteIntArray({1});
-  TfLiteTensorRealloc(tflite::flex::kTensorflowResourceTensorBytes,
-                      tensor.get());
+  TfLiteTensorRealloc(kTensorflowResourceTensorBytes, tensor.get());
   tensor->delegate = nullptr;
   tensor->data_is_stale = false;
 
@@ -218,6 +224,38 @@ TEST(BufferMapTest, SetTfTensorFromTfLiteResourceOrVariantInvalidData) {
       StatusIs(absl::StatusCode::kInvalidArgument,  // NOLINT
                HasSubstr("Input tensor has resource or variant type but "
                          "is not managed by the Flex delegate.")));
+}
+
+TEST(BufferMapTest, SetTfTensorFromTfLiteStringMismatch) {
+  auto tensor = UniqueTfLiteTensor(new TfLiteTensor(), [](TfLiteTensor* t) {
+    TfLiteTensorDataFree(t);
+    TfLiteIntArrayFree(t->dims);
+    delete t;
+  });
+  tensor->allocation_type = kTfLiteDynamic;
+  tensor->type = kTfLiteString;
+  tensor->dims = ConvertVectorToTfLiteIntArray({2});
+  tensor->data.raw = nullptr;
+
+  tensorflow::Tensor out_tensor;
+  EXPECT_THAT(
+      SetTfTensorFromTfLite(tensor.get(), &out_tensor),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("TFLite tensor shape does not match the number of "
+                         "strings.")));
+}
+TEST(BufferMapTest, SetTfTensorFromTfLiteStringMismatchData) {
+  auto tensor = MakeLiteTensor<std::string>({2}, {"a", "b"});
+  // Mismatch dims
+  TfLiteIntArrayFree(tensor->dims);
+  tensor->dims = ConvertVectorToTfLiteIntArray({3});
+
+  tensorflow::Tensor out_tensor;
+  EXPECT_THAT(
+      SetTfTensorFromTfLite(tensor.get(), &out_tensor),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("TFLite tensor shape does not match the number of "
+                         "strings.")));
 }
 
 TEST(BufferMapTest, SetFromTensorFlow) {
@@ -283,7 +321,7 @@ TEST(BufferMapTest, TensorflowBufferReuse) {
   tensor.allocation_type = kTfLiteDynamic;
   tensor.data.raw = nullptr;
   TfLiteTensorRealloc(kAllocationSize, &tensor);
-  CHECK(tensor.data.raw);
+  ABSL_CHECK(tensor.data.raw);
   EXPECT_EQ(tensor.bytes, kAllocationSize);
 
   TfLiteTensorBuffer* tensor_buffer_reused = new TfLiteTensorBuffer(&tensor);
@@ -300,7 +338,7 @@ TEST(BufferMapTest, ExplicitlyDisableBufferReuse) {
   tensor.allocation_type = kTfLiteDynamic;
   tensor.data.raw = nullptr;
   TfLiteTensorRealloc(10, &tensor);
-  CHECK(tensor.data.raw);
+  ABSL_CHECK(tensor.data.raw);
   EXPECT_EQ(tensor.bytes, 10);
 
   TfLiteTensorBuffer* tensor_buffer =
