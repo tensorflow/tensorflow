@@ -248,6 +248,7 @@ class PjRtDeviceEventRef {
               value.ReleaseRCRef().release()}) {}
 
   PjRtDeviceEventPtr ptr() const { return ptr_; }
+  explicit operator PjRtDeviceEventPtr() const { return ptr_; }
 
   template <typename Waiter>
   void AndThen(Waiter&& cb) const {
@@ -367,6 +368,68 @@ class PjRtDeviceEventPromiseRef {
       : promise_(promise) {}
 
   PJRT_DeviceEventPromise* promise_;
+};
+
+// C-api compatible version of std::vector<PjRtDeviceEventRef>.
+class PjRtDeviceEventRefVector {
+ public:
+  PjRtDeviceEventRefVector() = default;
+  PjRtDeviceEventRefVector(std::initializer_list<PjRtDeviceEventRef> init);
+  PjRtDeviceEventRefVector(const PjRtDeviceEventRefVector& other);
+  PjRtDeviceEventRefVector(PjRtDeviceEventRefVector&& other) noexcept;
+  PjRtDeviceEventRefVector& operator=(const PjRtDeviceEventRefVector& other);
+  PjRtDeviceEventRefVector& operator=(
+      PjRtDeviceEventRefVector&& other) noexcept;
+  ~PjRtDeviceEventRefVector();
+
+  size_t size() const { return events_.size(); }
+  bool empty() const { return events_.empty(); }
+
+  PjRtDeviceEventPtr operator[](size_t pos) const {
+    return PjRtDeviceEventPtr(events_[pos]);
+  }
+
+  void push_back(const PjRtDeviceEventRef& value);
+  void push_back(PjRtDeviceEventRef&& value);
+
+  void reserve(size_t new_cap) { events_.reserve(new_cap); }
+
+  void Clear();
+
+ private:
+  template <typename Functor>
+  friend void ConsumeEvents(PjRtDeviceEventRefVector&& events, Functor&& f);
+  friend class PjRtDeviceEventSpan;
+
+  std::vector<PJRT_DeviceEvent> events_;
+};
+
+template <typename Functor>
+void ConsumeEvents(PjRtDeviceEventRefVector&& events, Functor&& f) {
+  for (size_t i = 0; i < events.events_.size(); ++i) {
+    PJRT_DeviceEvent ev = events.events_[i];
+    events.events_[i] = {nullptr, nullptr};
+    f(PjRtDeviceEventRef::TakeRef(PjRtDeviceEventPtr(ev)));
+  }
+}
+
+// C-api compatible version of absl::Span<const PjRtDeviceEventRef>.
+class PjRtDeviceEventSpan {
+ public:
+  PjRtDeviceEventSpan() = default;
+  PjRtDeviceEventSpan(const PjRtDeviceEventRefVector& vec)
+      : ptr_(vec.events_.data()), size_(vec.events_.size()) {}
+
+  size_t size() const { return size_; }
+  bool empty() const { return size_ == 0; }
+
+  PjRtDeviceEventPtr operator[](size_t index) const {
+    return PjRtDeviceEventPtr(ptr_[index]);
+  }
+
+ private:
+  const PJRT_DeviceEvent* ptr_ = nullptr;
+  size_t size_ = 0;
 };
 
 }  // namespace xla

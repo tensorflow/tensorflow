@@ -40,12 +40,14 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/backends/gpu/transforms/gemm_rewriter.h"
 #include "xla/error_spec.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -66,9 +68,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tests/restricted/hlo_test_base_legacy.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -256,7 +256,7 @@ void GpuBlasLtMatmulThunkTest::CreateExecuteThunksFromHLO(
     }
   }
   for (const auto& [_, res] : threads) {
-    TF_ASSERT_OK(res);
+    ASSERT_OK(res);
   }
 }
 
@@ -384,7 +384,7 @@ TEST_F(GpuBlasLtMatmulThunkTest, CacheUnitTest) {
     }  // for j
   }  // end block
   for (auto& res : results) {
-    TF_ASSERT_OK(res);
+    ASSERT_OK(res);
   }
 
   // We assert that we have the same number of cache entries for each executor
@@ -617,11 +617,11 @@ class CublasLtMatmulThunkCmdBufTest : public ::testing::Test {
     std::vector<float> a_arr{1, 2, 3, 4, 5, 6, 7, 8};
     std::vector<float> b_arr(12, 1.0f);
     std::vector<float> c_arr(6, 1.0f);
-    TF_ASSERT_OK(stream_->Memcpy(&a_buf_, a_arr.data(), kALength));
-    TF_ASSERT_OK(stream_->Memcpy(&b_buf_, b_arr.data(), kBLength));
-    TF_ASSERT_OK(stream_->Memcpy(&c_buf_, c_arr.data(), kCLength));
-    TF_ASSERT_OK(stream_->MemZero(&d_buf_, kDLength));
-    TF_ASSERT_OK(stream_->MemZero(&workspace_buf_, kWorkspaceLength));
+    ASSERT_OK(stream_->Memcpy(&a_buf_, a_arr.data(), kALength));
+    ASSERT_OK(stream_->Memcpy(&b_buf_, b_arr.data(), kBLength));
+    ASSERT_OK(stream_->Memcpy(&c_buf_, c_arr.data(), kCLength));
+    ASSERT_OK(stream_->MemZero(&d_buf_, kDLength));
+    ASSERT_OK(stream_->MemZero(&workspace_buf_, kWorkspaceLength));
 
     // Build shaped slices from the member BufferAllocation objects.
     ShapedSlice slice_a{BufferAllocation::Slice(&alloc_a_, 0, kALength),
@@ -666,7 +666,7 @@ class CublasLtMatmulThunkCmdBufTest : public ::testing::Test {
         {a_buf_, b_buf_, c_buf_, d_buf_, workspace_buf_}, 0, allocator_.get()));
 
     Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-    TF_ASSERT_OK(thunk_->Initialize(
+    ASSERT_OK(thunk_->Initialize(
         {executor_, source, allocations_.get(), stream_.get()}));
 
     params_.emplace(Thunk::ExecuteParams::Create(
@@ -712,12 +712,12 @@ TEST_F(CublasLtMatmulThunkCmdBufTest, RecordCommandBuffer) {
                      Command::RecordCreate{/*dependencies=*/{}},
                      command_buffer.get()));
   ASSERT_NE(cmd, nullptr);
-  TF_ASSERT_OK(command_buffer->Finalize());
-  TF_ASSERT_OK(command_buffer->Submit(stream_.get()));
-  TF_ASSERT_OK(stream_->BlockHostUntilDone());
+  ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Submit(stream_.get()));
+  ASSERT_OK(stream_->BlockHostUntilDone());
 
   std::vector<float> dst(6, 0.0f);
-  TF_ASSERT_OK(stream_->Memcpy(dst.data(), d_buf_, kDLength));
+  ASSERT_OK(stream_->Memcpy(dst.data(), d_buf_, kDLength));
   ASSERT_EQ(dst, std::vector<float>({11, 11, 11, 27, 27, 27}));
 }
 
@@ -735,17 +735,17 @@ TEST_F(CublasLtMatmulThunkCmdBufTest, RecordCommandBufferUpdate) {
                      Command::RecordCreate{/*dependencies=*/{}},
                      command_buffer.get()));
   ASSERT_NE(cmd, nullptr);
-  TF_ASSERT_OK(command_buffer->Finalize());
-  TF_ASSERT_OK(command_buffer->Submit(stream_.get()));
-  TF_ASSERT_OK(stream_->BlockHostUntilDone());
+  ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Submit(stream_.get()));
+  ASSERT_OK(stream_->BlockHostUntilDone());
 
   std::vector<float> dst(6, 0.0f);
-  TF_ASSERT_OK(stream_->Memcpy(dst.data(), d_buf_, kDLength));
+  ASSERT_OK(stream_->Memcpy(dst.data(), d_buf_, kDLength));
   ASSERT_EQ(dst, std::vector<float>({11, 11, 11, 27, 27, 27}));
 
   // Transition to update state; zero output to confirm re-execution.
-  TF_ASSERT_OK(command_buffer->Update());
-  TF_ASSERT_OK(stream_->MemZero(&d_buf_, kDLength));
+  ASSERT_OK(command_buffer->Update());
+  ASSERT_OK(stream_->MemZero(&d_buf_, kDLength));
 
   // Second recording: RecordUpdate with same buffers → cache hit, same cmd.
   TF_ASSERT_OK_AND_ASSIGN(
@@ -753,13 +753,34 @@ TEST_F(CublasLtMatmulThunkCmdBufTest, RecordCommandBufferUpdate) {
       thunk_->Record(*params_, record_params, Command::RecordUpdate{cmd},
                      command_buffer.get()));
   EXPECT_EQ(updated_cmd, cmd);  // same command node is reused (cache hit)
-  TF_ASSERT_OK(command_buffer->Finalize());
-  TF_ASSERT_OK(command_buffer->Submit(stream_.get()));
-  TF_ASSERT_OK(stream_->BlockHostUntilDone());
+  ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Submit(stream_.get()));
+  ASSERT_OK(stream_->BlockHostUntilDone());
 
   std::fill(dst.begin(), dst.end(), 0.0f);
-  TF_ASSERT_OK(stream_->Memcpy(dst.data(), d_buf_, kDLength));
+  ASSERT_OK(stream_->Memcpy(dst.data(), d_buf_, kDLength));
   ASSERT_EQ(dst, std::vector<float>({11, 11, 11, 27, 27, 27}));
+}
+
+TEST_F(CublasLtMatmulThunkCmdBufTest, BufferUses) {
+  Thunk::BufferUses uses = thunk_->buffer_uses();
+  ASSERT_EQ(uses.size(), 5);
+  EXPECT_EQ(uses[0],
+            BufferUse::Read(BufferAllocation::Slice(&alloc_a_, 0, kALength),
+                            ShapeUtil::MakeShape(F32, {2, 4})));
+  EXPECT_EQ(uses[1],
+            BufferUse::Read(BufferAllocation::Slice(&alloc_b_, 0, kBLength),
+                            ShapeUtil::MakeShape(F32, {4, 3})));
+  EXPECT_EQ(uses[2],
+            BufferUse::Read(BufferAllocation::Slice(&alloc_c_, 0, kCLength),
+                            ShapeUtil::MakeShape(F32, {2, 3})));
+  EXPECT_EQ(uses[3],
+            BufferUse::Write(BufferAllocation::Slice(&alloc_d_, 0, kDLength),
+                             ShapeUtil::MakeShape(F32, {2, 3})));
+  EXPECT_EQ(uses[4],
+            BufferUse::Scratch(
+                BufferAllocation::Slice(&alloc_workspace_, 0, kWorkspaceLength),
+                ShapeUtil::MakeShape(U8, {1024, 1024})));
 }
 
 }  // namespace
