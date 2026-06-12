@@ -5,7 +5,7 @@ diff --git b/BUILD b/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/BUILD
-@@ -0,0 +1,1280 @@
+@@ -0,0 +1,1289 @@
 +# This package imports OpenAI's Triton (https://github.com/triton-lang/triton).
 +
 +# copybara:uncomment load("@rules:copybara.bzl", "copybara_config_test")
@@ -539,6 +539,7 @@ new file mode 100644
 +        "include/triton/Conversion/TritonGPUToLLVM/Utility.h",  # Avoid circular dependency.
 +        "lib/Dialect/TritonGPU/Transforms/DescriptorMemoryLayouts.cpp",  # Avoid circular dependency.
 +        "lib/Dialect/TritonGPU/Transforms/Utility.cpp",  # Avoid circular dependency.
++        "lib/Dialect/TritonNvidiaGPU/Transforms/ClusterBarrierMbarAllocator.cpp",  # Avoid circular dependency.
 +        "lib/Dialect/TritonNvidiaGPU/Transforms/TMAUtilities.cpp",  # Avoid circular dependency.
 +    ],
 +    hdrs = glob([
@@ -551,6 +552,8 @@ new file mode 100644
 +        # everything in a single unit.
 +        "include/triton/Analysis/*.h",
 +    ]) + [
++        "include/triton/Dialect/TritonNvidiaGPU/Transforms/ClusterBarrierMbarAllocator.h",  # Avoid circular dependency.
++        "include/triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h",  # Avoid circular dependency.
 +        "include/triton/Dialect/TritonNvidiaGPU/Transforms/TMAUtilities.h",  # Avoid circular dependency.
 +        "include/triton/Dialect/TritonGPU/Transforms/DescriptorMemoryLayouts.h",  # Avoid circular dependency.
 +        "include/triton/Dialect/TritonGPU/Transforms/Utility.h",  # Avoid circular dependency.
@@ -597,6 +600,7 @@ new file mode 100644
 +        ":triton_nvidia_gpu_dialect_inc_gen",
 +        ":triton_nvidia_gpu_op_interfaces_inc_gen",
 +        ":triton_nvidia_gpu_ops_inc_gen",
++        ":triton_nvidia_gpu_transforms_inc_gen",
 +        ":triton_nvidia_gpu_types_inc_gen",
 +        ":triton_op_interfaces_inc_gen",
 +        ":triton_ops_inc_gen",
@@ -616,6 +620,7 @@ new file mode 100644
 +        "@llvm-project//mlir:LLVMCommonConversion",  # for Utility
 +        "@llvm-project//mlir:LLVMDialect",
 +        "@llvm-project//mlir:MathDialect",
++        "@llvm-project//mlir:Pass",
 +        "@llvm-project//mlir:SCFDialect",
 +        "@llvm-project//mlir:Support",
 +        "@llvm-project//mlir:TensorDialect",
@@ -868,6 +873,7 @@ new file mode 100644
 +        ":Dump",
 +        ":GetEnv",
 +        ":TritonDialects",
++        ":TritonTools",
 +        ":triton_instrument_transforms_inc_gen",
 +        "@llvm-project//llvm:Support",
 +        "@llvm-project//mlir:Analysis",
@@ -887,6 +893,7 @@ new file mode 100644
 +        ],
 +        # The file included into TritonDialects target which this target depends on.
 +        exclude = [
++            "lib/Dialect/TritonNvidiaGPU/Transforms/ClusterBarrierMbarAllocator.cpp",
 +            "lib/Dialect/TritonNvidiaGPU/Transforms/TMAUtilities.cpp",
 +            "lib/Dialect/TritonNvidiaGPU/Transforms/Utility.cpp",
 +        ],
@@ -898,6 +905,8 @@ new file mode 100644
 +        ],
 +        # The file included into TritonDialects target which this target depends on.
 +        exclude = [
++            "include/triton/Dialect/TritonNvidiaGPU/Transforms/ClusterBarrierMbarAllocator.h",
++            "include/triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h",
 +            "include/triton/Dialect/TritonNvidiaGPU/Transforms/TMAUtilities.h",
 +            "include/triton/Dialect/TritonNvidiaGPU/Transforms/Utility.h",
 +        ],
@@ -1291,7 +1300,7 @@ diff --git b/python/BUILD b/python/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/python/BUILD
-@@ -0,0 +1,203 @@
+@@ -0,0 +1,204 @@
 +# NOTE: Do not depend on any targets from this directory,
 +# but use //third_party/py/triton instead.
 +
@@ -1437,6 +1446,7 @@ new file mode 100644
 +        "@llvm-project//llvm:MC",
 +        "@llvm-project//llvm:Passes",
 +        "@llvm-project//llvm:Plugins",
++        "@llvm-project//llvm:Scalar",
 +        "@llvm-project//llvm:Support",
 +        "@llvm-project//llvm:Target",
 +        "@llvm-project//mlir:BuiltinToLLVMIRTranslation",
@@ -1500,7 +1510,7 @@ diff --git b/python/test/BUILD b/python/test/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/python/test/BUILD
-@@ -0,0 +1,386 @@
+@@ -0,0 +1,434 @@
 +load("//third_party/py/pytest:pytest_defs.bzl", "pytest_multi_tests", "pytest_test")
 +
 +package(
@@ -1558,7 +1568,6 @@ new file mode 100644
 +    "unit/tools/test_disasm.py",  # TODO(b/320224484): fix failing test
 +    "unit/runtime/test_blaslt.py",  # TODO(b/346755023): fix failing test
 +    "unit/test_debug.py",  # TODO(b/374733875): fix failing test. Also see b/374733872.
-+
 +    # As of Feb 2026, there is no plan to support Gluon in g3. There is no harm in running them,
 +    # but fixing failures is not a priority, so it's OK to disable them.
 +    "gluon/test_consan.py",
@@ -1582,6 +1591,7 @@ new file mode 100644
 +    "unit/runtime/test_driver.py",  # Some of the test cases does not use the
 +    # device and thus suite fails with go/forge-accel-or-fail. We run it as a
 +    # single shard to avoid this.
++    "unit/runtime/test_cache_determinism.py",  # Only 2 test cases, so sharding causes go/forge-accel-or-fail on empty shards. We run it as a single shard.
 +] + DEVICELESS_TARGETS  # targets that don't require a GPU to run
 +
 +B200_FULL_GPU_ONLY_TESTS = [
@@ -1595,6 +1605,7 @@ new file mode 100644
 +    tests = [
 +        ":ampere",
 +        ":unit/language/test_core_a100",
++        ":unit/runtime/test_cache_determinism_a100",
 +        ":unit/runtime/test_driver_a100",
 +    ],
 +)
@@ -1604,6 +1615,7 @@ new file mode 100644
 +    tests = [
 +        ":hopper",
 +        ":unit/language/test_core_h100",
++        ":unit/runtime/test_cache_determinism_h100",
 +        ":unit/runtime/test_driver_h100",
 +        ":unit/runtime/test_peer_access_h100_x2",
 +    ],
@@ -1615,6 +1627,7 @@ new file mode 100644
 +        ":blackwell",
 +        ":blackwell_full",
 +        ":unit/language/test_core_b200",
++        ":unit/runtime/test_cache_determinism_b200",
 +        ":unit/runtime/test_driver_b200",
 +        ":unit/runtime/test_peer_access_b200_x2",
 +    ],
@@ -1755,6 +1768,51 @@ new file mode 100644
 +    tags = _requires_gpu_sm100,
 +    target_compatible_with = _requires_config_cuda,
 +    tests = ["unit/runtime/test_driver.py"],
++    deps = [
++        "//third_party/py/torch:pytorch",
++        "//third_party/py/triton",
++    ],
++)
++
++pytest_test(
++    name = "unit/runtime/test_cache_determinism_a100",
++    size = "large",
++    srcs = ["conftest.py"],
++    exec_properties = _asan_needs_extra_link_memory,
++    shard_count = 1,
++    tags = _requires_gpu_sm80,
++    target_compatible_with = _requires_config_cuda,
++    tests = ["unit/runtime/test_cache_determinism.py"],
++    deps = [
++        "//third_party/py/torch:pytorch",
++        "//third_party/py/triton",
++    ],
++)
++
++pytest_test(
++    name = "unit/runtime/test_cache_determinism_h100",
++    size = "large",
++    srcs = ["conftest.py"],
++    exec_properties = _asan_needs_extra_link_memory,
++    shard_count = 1,
++    tags = _requires_gpu_sm90,
++    target_compatible_with = _requires_config_cuda,
++    tests = ["unit/runtime/test_cache_determinism.py"],
++    deps = [
++        "//third_party/py/torch:pytorch",
++        "//third_party/py/triton",
++    ],
++)
++
++pytest_test(
++    name = "unit/runtime/test_cache_determinism_b200",
++    size = "large",
++    srcs = ["conftest.py"],
++    exec_properties = _asan_needs_extra_link_memory,
++    shard_count = 1,
++    tags = _requires_gpu_sm100,
++    target_compatible_with = _requires_config_cuda,
++    tests = ["unit/runtime/test_cache_determinism.py"],
 +    deps = [
 +        "//third_party/py/torch:pytorch",
 +        "//third_party/py/triton",
@@ -3344,7 +3402,7 @@ diff --git b/third_party/proton/BUILD b/third_party/proton/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/proton/BUILD
-@@ -0,0 +1,403 @@
+@@ -0,0 +1,435 @@
 +# load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 +load("@pybind11_bazel//:build_defs.bzl", "pybind_extension")
@@ -3707,37 +3765,69 @@ new file mode 100644
 +    cmd = "sed -e 's/@BACKEND_REGISTRATION_HOOKS_FORWARD_DECLS@//g' -e 's/@BACKEND_REGISTRATION_HOOKS@//g' $< > $@",
 +)
 +
-+pybind_extension(
-+    name = "libproton",
++cc_library(
++    name = "proton_cxx",
 +    srcs = glob(
 +        [
 +            "csrc/**/*.cpp",
-+            "csrc/**/*.h",
 +            "common/**/*.cpp",
-+            "common/**/*.h",
 +        ],
-+        exclude = ["csrc/include/Profiler/Instrumentation/InstrumentationMetadata.h"],
++        exclude = [
++            "csrc/lib/Data/Dump/Hatchet.cpp",
++            "csrc/lib/Data/Dump/HatchetMsgPack.cpp",
++            "csrc/lib/Data/Dump/TreeDataDump.cpp",
++        ],
 +    ) + [
 +        ":device_type_hdr_gen",
 +        ":registered_backends_src_gen",
 +    ],
++    hdrs = glob(
++        [
++            "csrc/**/*.h",
++            "common/**/*.h",
++        ],
++        exclude = ["csrc/include/Profiler/Instrumentation/InstrumentationMetadata.h"],
++    ),
 +    copts = [
 +        "-Wno-reorder-ctor",
 +        "-Wno-implicit-fallthrough",
 +        "-Wno-pessimizing-move",
++        "-Wno-unused-variable",
++        "-fexceptions",
++    ],
++    features = [
++        "exceptions",
++        "-use_header_modules",
 +    ],
 +    includes = [
 +        "common/include",
 +        "csrc/include",
++        "csrc/lib/Data",
 +    ],
-+    visibility = [
-+        "//third_party/py/triton:__subpackages__",
++    textual_hdrs = [
++        "csrc/lib/Data/Dump/Hatchet.cpp",
++        "csrc/lib/Data/Dump/HatchetMsgPack.cpp",
++        "csrc/lib/Data/Dump/TreeDataDump.cpp",
 +    ],
 +    deps = [
 +        ":instrumentation_metadata_hdr",
 +        "@local_config_cuda//cuda:cuda_headers",
 +        "//third_party/json",
++        "//third_party/pybind11",
++        "//third_party/python_runtime:headers",
 +        "@triton//third_party/amd/backend:headers",
++    ],
++)
++
++pybind_extension(
++    name = "libproton",
++    srcs = ["csrc/Proton.cpp"],
++    copts = ["-Wno-pessimizing-move"],
++    visibility = [
++        "//third_party/py/triton:__subpackages__",
++    ],
++    deps = [
++        ":proton_cxx",
 +    ],
 +)
 +
