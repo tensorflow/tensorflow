@@ -956,6 +956,7 @@ class HloGraphNode {
 
  private:
   friend class HloScheduleGraph;
+  friend class PriorityBasedHloScheduleGraph;
 
   // Older c++ versions don't allow initializers for bitfields, so we initialize
   // these in this routine, invoked by the constructor
