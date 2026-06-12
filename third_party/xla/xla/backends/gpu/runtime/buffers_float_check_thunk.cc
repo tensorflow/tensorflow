@@ -110,6 +110,10 @@ absl::Status BuffersDebugFloatCheckThunk::Initialize(
           registry.LoadKernel<se::gpu::BufferDebugFloatCheckBf16Kernel>(
               params.executor));
       ASSIGN_OR_RETURN(
+          auto kernel_f16,
+          registry.LoadKernel<se::gpu::BufferDebugFloatCheckF16Kernel>(
+              params.executor));
+      ASSIGN_OR_RETURN(
           auto kernel_f64,
           registry.LoadKernel<se::gpu::BufferDebugFloatCheckF64Kernel>(
               params.executor));
@@ -118,9 +122,9 @@ absl::Status BuffersDebugFloatCheckThunk::Initialize(
           registry.LoadKernel<
               se::gpu::BufferDebugAppendReducedFloatCheckResultsKernel>(
               params.executor));
-      kernels_[params.executor] = std::make_unique<Kernels>(
-          Kernels{std::move(kernel_f32), std::move(kernel_bf16),
-                  std::move(kernel_f64), std::move(kernel_reduce)});
+      kernels_[params.executor] = std::make_unique<Kernels>(Kernels{
+          std::move(kernel_f32), std::move(kernel_bf16), std::move(kernel_f16),
+          std::move(kernel_f64), std::move(kernel_reduce)});
       VLOG(1) << "NanCount kernels loaded";
     }
   }
@@ -146,6 +150,8 @@ constexpr const char* FloatTypeString() {
     return "F32";
   } else if constexpr (std::is_same_v<T, Eigen::bfloat16>) {
     return "BF16";
+  } else if constexpr (std::is_same_v<T, Eigen::half>) {
+    return "F16";
   } else if constexpr (std::is_same_v<T, double>) {
     return "F64";
   } else {
@@ -241,6 +247,10 @@ absl::Status BuffersDebugFloatCheckThunk::ExecuteOnStream(
       RETURN_IF_ERROR(CheckFloatsAndLog<Eigen::bfloat16>(
           params.stream, entry_id, buffer_debug_log, device_buffer, tmp_ptr,
           kernels->bf16, kernels->reduce));
+    } else if (buffer_type == PrimitiveType::F16) {
+      RETURN_IF_ERROR(CheckFloatsAndLog<Eigen::half>(
+          params.stream, entry_id, buffer_debug_log, device_buffer, tmp_ptr,
+          kernels->f16, kernels->reduce));
     } else if (buffer_type == PrimitiveType::F64) {
       RETURN_IF_ERROR(CheckFloatsAndLog<double>(
           params.stream, entry_id, buffer_debug_log, device_buffer, tmp_ptr,

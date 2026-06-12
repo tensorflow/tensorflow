@@ -42,10 +42,10 @@ const std::string GetOpName(const OpSignature& op_sig) {
   return tflite::EnumNamesBuiltinOperator()[op_sig.op];
 }
 
-int NumElements(const std::vector<int32_t>& dims) {
-  int count = 1;
-  for (int i = 0; i < dims.size(); ++i) {
-    count *= dims.at(i);
+int64_t NumElements(const std::vector<int32_t>& dims) {
+  int64_t count = 1;
+  for (int32_t dim : dims) {
+    count *= dim;
   }
   return count;
 }
