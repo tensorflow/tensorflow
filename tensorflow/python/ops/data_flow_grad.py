@@ -59,6 +59,43 @@ def _DynamicStitchGrads(op, grad):
     output_rows = output_shape[0]
     grad = math_ops.unsorted_segment_sum(grad.values, grad.indices, output_rows)
   values_grad = [array_ops.gather(grad, inp) for inp in inputs]
+
+  if op.type == "DynamicStitch":
+    stitch_fn = data_flow_ops.dynamic_stitch
+  else:
+    stitch_fn = data_flow_ops.parallel_dynamic_stitch
+
+  # Allocate unique IDs for each position in the input indices.
+  current_offset = 0
+  ids = []
+  for inp in inputs:
+    inp_size = array_ops.size(inp)
+    inp_ids = math_ops.range(
+        current_offset, current_offset + inp_size, dtype=dtypes.int32
+    )
+    inp_ids = array_ops.reshape(inp_ids, array_ops.shape(inp))
+    ids.append(inp_ids)
+    current_offset += inp_size
+
+  # Stitch the IDs to find the winner for each index.
+  stitched_ids = stitch_fn(inputs, ids)
+
+  # Mask out gradients of overwritten entries.
+  for i, (inp, inp_ids) in enumerate(zip(inputs, ids)):
+    winner_ids = array_ops.gather(stitched_ids, inp)
+    mask = math_ops.equal(inp_ids, winner_ids)
+    mask_cast = math_ops.cast(mask, values_grad[i].dtype)
+
+    num_extra_dims = array_ops.rank(values_grad[i]) - array_ops.rank(inp)
+    mask_shape = array_ops.concat(
+        [
+            array_ops.shape(mask_cast),
+            array_ops.ones([num_extra_dims], dtype=dtypes.int32),
+        ],
+        axis=0,
+    )
+    values_grad[i] = values_grad[i] * array_ops.reshape(mask_cast, mask_shape)
+
   return indices_grad + values_grad
 
 

@@ -315,6 +315,34 @@ class SegmentReductionOpTest(SegmentReductionHelper, parameterized.TestCase):
           s = op(data=np.ones((1, 10, 1)), segment_ids=[1676240524292489355])
           self.evaluate(s)
 
+  def testNaNPropagation(self):
+    for dtype in [dtypes_lib.float32, dtypes_lib.float64]:
+      with self.session(use_gpu=False):
+        with ops.device("/cpu:0"):
+          # Input [1.0, NaN, 3.0]
+          data_min = constant_op.constant([1.0, float("nan"), 3.0], dtype=dtype)
+          segment_ids = [0, 0, 0]
+          res_min = math_ops.segment_min(data_min, segment_ids)
+          self.assertTrue(np.isnan(self.evaluate(res_min)[0]))
+
+          data_max = constant_op.constant([3.0, float("nan"), 1.0], dtype=dtype)
+          res_max = math_ops.segment_max(data_max, segment_ids)
+          self.assertTrue(np.isnan(self.evaluate(res_max)[0]))
+
+          # Test 2D input NaN propagation
+          data_2d = constant_op.constant(
+              [[1.0, 2.0], [float("nan"), 3.0], [3.0, 1.0]], dtype=dtype
+          )
+          res_2d_min = math_ops.segment_min(data_2d, segment_ids)
+          evaluated_min = self.evaluate(res_2d_min)
+          self.assertTrue(np.isnan(evaluated_min[0][0]))
+          self.assertAllClose(evaluated_min[0][1], 1.0)
+
+          res_2d_max = math_ops.segment_max(data_2d, segment_ids)
+          evaluated_max = self.evaluate(res_2d_max)
+          self.assertTrue(np.isnan(evaluated_max[0][0]))
+          self.assertAllClose(evaluated_max[0][1], 3.0)
+
 
 class UnsortedSegmentTest(SegmentReductionHelper, parameterized.TestCase):
 
@@ -605,6 +633,42 @@ class UnsortedSegmentTest(SegmentReductionHelper, parameterized.TestCase):
           "Encountered overflow when multiplying | must not be negative"
       ):
         self.evaluate(unsorted)
+
+  def testNaNPropagation(self):
+    for dtype in [dtypes_lib.float32, dtypes_lib.float64]:
+      with self.session(use_gpu=False):
+        with ops.device("/cpu:0"):
+          # Input [1.0, NaN, 3.0]
+          data_min = constant_op.constant([1.0, float("nan"), 3.0], dtype=dtype)
+          segment_ids = [0, 0, 0]
+          res_min = math_ops.unsorted_segment_min(
+              data_min, segment_ids, num_segments=1
+          )
+          self.assertTrue(np.isnan(self.evaluate(res_min)[0]))
+
+          data_max = constant_op.constant([3.0, float("nan"), 1.0], dtype=dtype)
+          res_max = math_ops.unsorted_segment_max(
+              data_max, segment_ids, num_segments=1
+          )
+          self.assertTrue(np.isnan(self.evaluate(res_max)[0]))
+
+          # 2D input
+          data_2d = constant_op.constant(
+              [[1.0, 2.0], [float("nan"), 3.0], [3.0, 1.0]], dtype=dtype
+          )
+          res_2d_min = math_ops.unsorted_segment_min(
+              data_2d, segment_ids, num_segments=1
+          )
+          evaluated_min = self.evaluate(res_2d_min)
+          self.assertTrue(np.isnan(evaluated_min[0][0]))
+          self.assertAllClose(evaluated_min[0][1], 1.0)
+
+          res_2d_max = math_ops.unsorted_segment_max(
+              data_2d, segment_ids, num_segments=1
+          )
+          evaluated_max = self.evaluate(res_2d_max)
+          self.assertTrue(np.isnan(evaluated_max[0][0]))
+          self.assertAllClose(evaluated_max[0][1], 3.0)
 
 
 class SparseSegmentReductionHelper(SegmentReductionHelper):
