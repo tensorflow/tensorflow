@@ -96,8 +96,9 @@ inline void BatchMatMul(const RuntimeShape& lhs_shape, const Ta* lhs_data,
           for (size_t i = 0; i < lhs_rows; ++i) {
             Tout total = 0;
             for (size_t k = 0; k < accum_depth; ++k) {
-              total += static_cast<Tout>(lhs_ptr2[accum_depth * i + k]) *
-                       static_cast<Tout>(rhs_ptr2[j * accum_depth + k]);
+              total =
+                  total + (static_cast<Tout>(lhs_ptr2[accum_depth * i + k]) *
+                           static_cast<Tout>(rhs_ptr2[j * accum_depth + k]));
             }
             size_t idx = lhs_rows * j + i;
             out_ptr[idx] = total;
