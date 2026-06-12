@@ -15,25 +15,93 @@ limitations under the License.
 
 #include "xla/tpu/tpu_api.h"
 
+#include <atomic>
+
+#include "absl/base/call_once.h"
+#include "absl/base/no_destructor.h"
+#include "absl/status/status.h"
 #include "xla/tpu/tpu_ops_c_api.h"
 #include "xla/tpu/tpu_profiler_c_api.h"
 
 namespace stream_executor {
 namespace tpu {
 
-TfTpu_BaseFn* InitializeApiFn() {
-  static TfTpu_BaseFn base_fn;
-  return &base_fn;
+namespace {
+absl::once_flag g_tpu_executor_init_once;
+absl::once_flag g_tpu_profiler_init_once;
+absl::once_flag g_tpu_ops_struct_fns_once;
+absl::once_flag g_tpu_base_api_init_once;
+}  // namespace
+
+absl::once_flag* GetTpuExecutorInitOnceFlag() {
+  return &g_tpu_executor_init_once;
+}
+absl::once_flag* GetTpuProfilerInitOnceFlag() {
+  return &g_tpu_profiler_init_once;
+}
+absl::once_flag* GetTpuOpsStructFnsOnceFlag() {
+  return &g_tpu_ops_struct_fns_once;
+}
+absl::once_flag* GetTpuBaseApiInitOnceFlag() {
+  return &g_tpu_base_api_init_once;
+}
+
+// Returns a reference to a globally unique absl::Status for TPU Ops struct
+// initialization.
+absl::Status& GetTpuOpsStructFnsInitStatus() {
+  static absl::NoDestructor<absl::Status> g_tpu_ops_struct_fns_init_status{
+      absl::UnknownError("TPU Ops API not initialized")};
+  return *g_tpu_ops_struct_fns_init_status;
+}
+
+// Returns a reference to a globally unique absl::Status for TPU Base API
+// initialization.
+absl::Status& GetTpuBaseApiInitStatus() {
+  static absl::NoDestructor<absl::Status> g_tpu_base_api_init_status{
+      absl::UnknownError("TPU Base API not initialized")};
+  return *g_tpu_base_api_init_status;
+}
+
+// Returns a reference to a globally unique absl::Status for TPU executor
+// initialization.
+absl::Status& GetTpuExecutorInitStatus() {
+  static absl::NoDestructor<absl::Status> g_tpu_executor_init_status{
+      absl::FailedPreconditionError("TPU executor not yet initialized.")};
+  return *g_tpu_executor_init_status;
+}
+
+namespace {
+const TfTpu_BaseFn kEmptyBaseFn{};
+const TfTpu_OpsApiFn kEmptyOpsApiFn{};
+const TfTpu_ProfilerApiFn kEmptyProfilerApiFn{};
+std::atomic<const TfTpu_BaseFn*> g_base_api_fn_ptr{&kEmptyBaseFn};
+std::atomic<const TfTpu_OpsApiFn*> g_ops_api_fn_ptr{&kEmptyOpsApiFn};
+std::atomic<const TfTpu_ProfilerApiFn*> g_profiler_api_fn_ptr{
+    &kEmptyProfilerApiFn};
+}  // namespace
+
+const TfTpu_BaseFn* BaseApiFn() {
+  return g_base_api_fn_ptr.load(std::memory_order_acquire);
+}
+
+void SetBaseApiFn(const TfTpu_BaseFn* fn) {
+  g_base_api_fn_ptr.store(fn, std::memory_order_release);
 }
 
 const TfTpu_OpsApiFn* OpsApiFn() {
-  static TfTpu_OpsApiFn ops_api_fn;
-  return &ops_api_fn;
+  return g_ops_api_fn_ptr.load(std::memory_order_acquire);
+}
+
+void SetOpsApiFn(const TfTpu_OpsApiFn* fn) {
+  g_ops_api_fn_ptr.store(fn, std::memory_order_release);
 }
 
 const TfTpu_ProfilerApiFn* ProfilerApiFn() {
-  static TfTpu_ProfilerApiFn profiler_api_fn;
-  return &profiler_api_fn;
+  return g_profiler_api_fn_ptr.load(std::memory_order_acquire);
+}
+
+void SetProfilerApiFn(const TfTpu_ProfilerApiFn* fn) {
+  g_profiler_api_fn_ptr.store(fn, std::memory_order_release);
 }
 
 }  // namespace tpu
