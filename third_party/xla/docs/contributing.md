@@ -233,3 +233,35 @@ There are a few reasons that XLA takes this approach.
     such that it is truly orthogonal to the original PR so that some other
     reviewer could review it, bandwidth would be less of a problem. In our
     experience, this is rarely the case.
+
+### What is the turn around time for code review and merge?
+
+The OpenXLA project wants to empower our partner teams to contribute high
+quality features and fixes to the codebase. For this reason we have established
+the co-maintainer program, where selected trusted partner contributors ensure
+that the PRs submitted by those partners meet OpenXLA quality requirements as
+specified in this contributing guide.
+
+If co-maintainers from external partner teams have approved a PR, the Google XLA
+team commits to either approving and merging it to the internal codebase or
+rejecting the change with a documented justification and potentially providing a
+reproducer of the failure within 72 business hours (**t<sub>Google Review</sub>**
+in the diagram below). At this moment the list of co-maintainers from our
+partner teams is:
+
+*   https://github.com/Tixx
+*   https://github.com/jreiffers
+*   https://github.com/ezhulenev
+
+![img](./images/comaintainers.png)
+
+When Google reviews the PR, it may fail due to an internal test. In this case,
+Google will try to generate a reproducer and share it with the partner. In other
+cases, the review may fail for technical, architectural or stylish reasons -
+Google will share the feedback with the author. We expect that if the PR is
+rejected in the first pass, we will enter a tight loop iteration between the
+partner team and Google (“Iterative review”) to bring the PR to the desired
+state.
+
+The OpenXLA project is committed to strengthening its co-maintainer program and
+adding more contributors to this list.
