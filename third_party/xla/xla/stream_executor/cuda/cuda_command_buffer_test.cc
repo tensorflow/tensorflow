@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -22,6 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
@@ -44,8 +46,10 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/trace_command_buffer_factory.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -239,6 +243,34 @@ TEST(CudaCommandBufferTest, PdlKernelEdgeUsesProgrammaticDependency) {
   EXPECT_EQ(edge_data.from_port, CU_GRAPH_KERNEL_NODE_PORT_PROGRAMMATIC);
   EXPECT_EQ(edge_data.type, CU_GRAPH_DEPENDENCY_TYPE_PROGRAMMATIC);
 #endif
+}
+
+TEST(CudaCommandBufferTest, TraceDisallowsForbiddenOpsOnCaptureStream) {
+  Platform* platform = CudaPlatform();
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  if (executor->GetDeviceDescription().driver_version() <
+      SemanticVersion{12, 3, 0}) {
+    GTEST_SKIP() << "Command buffer tracing is not supported";
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
+                          executor->CreateStream());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CommandBuffer> cmd_buffer,
+      TraceCommandBufferFactory::Create(
+          executor,
+          [&](Stream* capture_stream) -> absl::Status {
+            EXPECT_FALSE(capture_stream->BlockHostUntilDone().ok());
+            EXPECT_FALSE(capture_stream->RefreshStatus().ok());
+            EXPECT_FALSE(capture_stream
+                             ->DoHostCallbackWithStatus(
+                                 []() { return absl::OkStatus(); })
+                             .ok());
+            return absl::OkStatus();
+          },
+          CommandBuffer::Mode::kPrimary));
 }
 
 }  // namespace

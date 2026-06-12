@@ -611,17 +611,17 @@ absl::StatusOr<HloSchedule> DefaultMemoryScheduler::Run(
   }
 
   if (min_memory == list_memory) {
-    VLOG(2) << "Chose min-memory list sequence: "
-            << HumanReadableNumBytes(list_memory);
+    LOG(INFO) << "Chose min-memory list sequence: "
+              << HumanReadableNumBytes(list_memory);
     return list_sequence;
   }
   if (min_memory == dfs_memory) {
-    VLOG(2) << "Chose min-memory dfs sequence: "
-            << HumanReadableNumBytes(dfs_memory);
+    LOG(INFO) << "Chose min-memory dfs sequence: "
+              << HumanReadableNumBytes(dfs_memory);
     return dfs_sequence;
   }
-  VLOG(2) << "Chose min-memory post_order sequence: "
-          << HumanReadableNumBytes(post_order_memory);
+  LOG(INFO) << "Chose min-memory post_order sequence: "
+            << HumanReadableNumBytes(post_order_memory);
   return post_order_sequence;
 }
 

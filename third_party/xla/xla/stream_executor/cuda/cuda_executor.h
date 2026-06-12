@@ -67,6 +67,9 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 
+class CudaStream;
+enum class CudaStreamType;
+
 // This class implements GpuExecutor for NVIDIA GPUs that use CUDA libraries.
 class CudaExecutor : public GpuExecutor {
  public:
@@ -141,6 +144,10 @@ class CudaExecutor : public GpuExecutor {
     }
     return it->second;
   }
+
+  absl::StatusOr<std::unique_ptr<CudaStream>> CreateStream(
+      std::optional<std::variant<StreamPriority, int>> priority,
+      CudaStreamType type);
 
   static absl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription(int device_ordinal);
