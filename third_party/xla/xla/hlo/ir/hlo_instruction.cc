@@ -1540,6 +1540,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kCopy:
     case HloOpcode::kCopyDone:
+    case HloOpcode::kDataflow:
     case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kClz:
     case HloOpcode::kFloor:
@@ -2816,6 +2817,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kCopy:
     case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kCopyDone:
+    case HloOpcode::kDataflow:
     case HloOpcode::kCos:
     case HloOpcode::kCosh:
     case HloOpcode::kErf:
@@ -2949,6 +2951,12 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   // Copy the original value of the instruction if its shape is compatible with
   // the clone.
   clone->CopyOriginalValue(this);
+  if (opcode() == HloOpcode::kDataflow) {
+    clone->set_is_input_dataflow(is_input_dataflow());
+    if (!computation().empty()) {
+      clone->set_computation(computation());
+    }
+  }
   return clone;
 }
 
@@ -3384,6 +3392,10 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kAfterAll:
     case HloOpcode::kAddDependency:
       return false;
+
+    case HloOpcode::kDataflow:
+      return is_input_dataflow() == other.is_input_dataflow() &&
+             computation() == other.computation();
 
     // Remaining instructions with special values.
     case HloOpcode::kCall:
@@ -4525,6 +4537,21 @@ void HloInstruction::PrintExtraAttributes(
   }
 }
 
+void HloInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  if (opcode() == HloOpcode::kDataflow) {
+    if (!is_input_dataflow()) {
+      printer.Next(
+          [](Printer* printer) { printer->Append("is_input_dataflow=false"); });
+    }
+    if (!computation().empty()) {
+      printer.Next([this](Printer* printer) {
+        AppendCat(printer, "computation=\"", computation(), "\"");
+      });
+    }
+  }
+}
+
 std::vector<std::string> HloInstruction::ExtraAttributesToString(
     const HloPrintOptions& options) const {
   class MultiStringPrinter : public Printer {
@@ -4992,6 +5019,8 @@ absl::Status HloInstruction::Visit(
         return visitor->HandleScatter(this);
       case HloOpcode::kDomain:
         return visitor->HandleDomain(this);
+      case HloOpcode::kDataflow:
+        return visitor->HandleDataflow(this);
       case HloOpcode::kAfterAll:
         return visitor->HandleAfterAll(this);
       case HloOpcode::kAddDependency:

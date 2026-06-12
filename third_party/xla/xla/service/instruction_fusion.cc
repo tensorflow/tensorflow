@@ -99,6 +99,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kCopy:
     case HloOpcode::kCopyDone:
     case HloOpcode::kCopyStart:
+    case HloOpcode::kDataflow:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kFloor:

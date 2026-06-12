@@ -972,6 +972,11 @@ absl::Status CheckOptimizationBarrierLayout(HloInstruction* inst) {
   return absl::OkStatus();
 }
 
+absl::Status CheckDataflowLayout(HloInstruction* inst) {
+  TF_RET_CHECK(LayoutsInShapesEqual(inst->operand(0)->shape(), inst->shape()));
+  return absl::OkStatus();
+}
+
 absl::Status CheckConditionalLayout(
     HloInstruction* instruction,
     absl::Span<const ComputationLayout> branch_computation_layouts) {
@@ -1314,6 +1319,9 @@ absl::Status LayoutAssignment::CheckLayouts(
           break;
         case HloOpcode::kOptimizationBarrier:
           RETURN_IF_ERROR(CheckOptimizationBarrierLayout(instruction));
+          break;
+        case HloOpcode::kDataflow:
+          RETURN_IF_ERROR(CheckDataflowLayout(instruction));
           break;
         case HloOpcode::kConditional: {
           std::vector<ComputationLayout> branch_computation_layouts;
@@ -2904,6 +2912,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectiveBroadcast:
     case HloOpcode::kCollectivePermute:
+    case HloOpcode::kDataflow:
     case HloOpcode::kDivide:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:

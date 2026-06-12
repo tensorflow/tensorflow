@@ -152,6 +152,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kDivide:
     case HloOpcode::kDomain:
+    case HloOpcode::kDataflow:
     case HloOpcode::kDot:
     case HloOpcode::kErf:
     case HloOpcode::kExp:
@@ -1537,6 +1538,11 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
   optional<std::string> backend_config;
   attrs["backend_config"] = {/*required=*/false, AttrTy::kStringOrJsonDict,
                              &backend_config};
+  optional<std::string> computation;
+  attrs["computation"] = {/*required=*/false, AttrTy::kString, &computation};
+  optional<bool> is_input_dataflow;
+  attrs["is_input_dataflow"] = {/*required=*/false, AttrTy::kBool,
+                                &is_input_dataflow};
 
   std::optional<Shape> maybe_shape;
   if (parse_shape) {
@@ -1622,6 +1628,22 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       instruction->async_wrapped_instruction()->set_frontend_attributes(
           *frontend_attributes);
     }
+  }
+  if (computation) {
+    if (instruction->opcode() != HloOpcode::kDataflow) {
+      return Error(
+          lexer_.GetLoc(),
+          "attribute 'computation' is only allowed on dataflow instructions");
+    }
+    instruction->set_computation(*computation);
+  }
+  if (is_input_dataflow) {
+    if (instruction->opcode() != HloOpcode::kDataflow) {
+      return Error(lexer_.GetLoc(),
+                   "attribute 'is_input_dataflow' is only allowed on dataflow "
+                   "instructions");
+    }
+    instruction->set_is_input_dataflow(*is_input_dataflow);
   }
   if (statistics_viz) {
     instruction->set_statistics_viz(*statistics_viz);
@@ -1801,6 +1823,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kCopy:
     case HloOpcode::kCopyDone:
+    case HloOpcode::kDataflow:
     case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kImag:
     case HloOpcode::kIsFinite:

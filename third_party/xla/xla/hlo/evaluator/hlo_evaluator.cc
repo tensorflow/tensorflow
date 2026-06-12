@@ -872,6 +872,7 @@ std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
     case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kDomain:
+    case HloOpcode::kDataflow:
     case HloOpcode::kDynamicReshape:
     case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kOutfeed:

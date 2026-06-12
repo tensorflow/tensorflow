@@ -248,6 +248,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   absl::Status HandleAsyncDone(HloInstruction* async_done) override;
   absl::Status HandleBitcast(HloInstruction* bitcast) override;
   absl::Status HandleDomain(HloInstruction* domain) override;
+  absl::Status HandleDataflow(HloInstruction* dataflow) override;
   absl::Status HandleCopy(HloInstruction* copy) override;
   absl::Status HandleCopyStart(HloInstruction* copy_start) override;
   absl::Status HandleCopyDone(HloInstruction* copy_done) override;

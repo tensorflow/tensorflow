@@ -204,6 +204,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kMap:
     case HloOpcode::kPad:
     case HloOpcode::kPower:
+    case HloOpcode::kDataflow:
     case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kRaggedAllToAll:
     case HloOpcode::kReverse:
@@ -392,6 +393,7 @@ bool SupportSpatialPartitioning(
     case HloOpcode::kConditional:
     case HloOpcode::kConstant:
     case HloOpcode::kConvolution:
+    case HloOpcode::kDataflow:
     case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kDot:
     case HloOpcode::kDynamicSlice:

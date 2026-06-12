@@ -292,6 +292,14 @@ absl::Status TuplePointsToAnalysis::HandleDomain(HloInstruction* domain) {
   return absl::OkStatus();
 }
 
+absl::Status TuplePointsToAnalysis::HandleDataflow(HloInstruction* dataflow) {
+  // A kDataflow instruction aliases its operand. That is, the buffer of its
+  // result *is* the buffer of its operand, so just copy the operands points-to
+  // set.
+  CreateCopiedPointsToSet(dataflow, dataflow->operand(0));
+  return absl::OkStatus();
+}
+
 absl::Status TuplePointsToAnalysis::HandleAddDependency(
     HloInstruction* add_dependency) {
   // AddDependency just forwards the value of its zero-th operand.

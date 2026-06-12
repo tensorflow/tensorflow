@@ -1972,5 +1972,26 @@ TEST(HloCostAnalysisProperties, SetValues) {
   p["bar"] += 101;
   EXPECT_EQ(101, p["bar"]);
 }
+
+TEST_F(HloHardwareIndependentTestBase, DataflowTuple) {
+  const char* hlo_string = R"(
+  HloModule DataflowModule
+
+  ENTRY main {
+    p0 = (f32[2], f32[3]) parameter(0)
+    ROOT df = (f32[2], f32[3]) dataflow(p0)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloCostAnalysis analysis;
+  HloInstruction* df = module->entry_computation()->root_instruction();
+  ASSERT_IS_OK(df->Accept(&analysis));
+
+  EXPECT_EQ(analysis.flop_count(), 0);
+  EXPECT_EQ(analysis.transcendental_count(), 0);
+  EXPECT_EQ(analysis.bytes_accessed(), 0);
+}
 }  // namespace
 }  // namespace xla

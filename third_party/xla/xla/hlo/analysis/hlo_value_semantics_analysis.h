@@ -378,6 +378,7 @@ class HloValueSemanticsPropagation : public DfsHloVisitorWithDefault {
   absl::Status HandleInfeed(HloInstruction* infeed) override;
   absl::Status HandleOutfeed(HloInstruction* outfeed) override;
   absl::Status HandleDomain(HloInstruction* domain) override;
+  absl::Status HandleDataflow(HloInstruction* dataflow) override;
   absl::Status HandleOptimizationBarrier(HloInstruction* opt_barrier) override;
   absl::Status HandleRngBitGenerator(
       HloInstruction* rng_bit_generator) override;

@@ -2138,6 +2138,16 @@ absl::Status HloValueSemanticsPropagation::HandleDomain(
   return absl::OkStatus();
 }
 
+absl::Status HloValueSemanticsPropagation::HandleDataflow(
+    HloInstruction* dataflow) {
+  RETURN_IF_ALREADY_PROPAGATED(dataflow);
+  HloInstruction* dataflow_operand = dataflow->mutable_operand(0);
+  const ShapeTree<const HloValueSemantics*>& operand_semantics =
+      analysis_->GetInstructionSemantics(dataflow_operand);
+  analysis_->DeepCopyHloValueSemantics(dataflow, operand_semantics);
+  return absl::OkStatus();
+}
+
 absl::Status HloValueSemanticsPropagation::HandleOptimizationBarrier(
     HloInstruction* opt_barrier) {
   RETURN_IF_ALREADY_PROPAGATED(opt_barrier);

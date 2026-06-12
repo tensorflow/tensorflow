@@ -48,6 +48,42 @@ using ::testing::Not;
 
 using HloInstructionTest = HloHardwareIndependentTestBase;
 
+TEST_F(HloInstructionTest, DataflowCloneAndEquality) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder("main");
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {}), "param"));
+
+  std::unique_ptr<HloInstruction> dataflow_1 = HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {}), HloOpcode::kDataflow, param);
+  dataflow_1->set_is_input_dataflow(false);
+  dataflow_1->set_computation("foo");
+
+  std::unique_ptr<HloInstruction> dataflow_2 = HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {}), HloOpcode::kDataflow, param);
+  dataflow_2->set_is_input_dataflow(false);
+  dataflow_2->set_computation("foo");
+
+  // Check Identical
+  EXPECT_TRUE(dataflow_1->Identical(*dataflow_2));
+
+  // Modify computation
+  dataflow_2->set_computation("bar");
+  EXPECT_FALSE(dataflow_1->Identical(*dataflow_2));
+
+  // Reset and modify is_input_dataflow
+  dataflow_2->set_computation("foo");
+  dataflow_2->set_is_input_dataflow(true);
+  EXPECT_FALSE(dataflow_1->Identical(*dataflow_2));
+
+  // Clone and check Identical
+  std::unique_ptr<HloInstruction> clone = dataflow_1->Clone();
+  EXPECT_TRUE(dataflow_1->Identical(*clone));
+  EXPECT_FALSE(clone->is_input_dataflow());
+  EXPECT_EQ(clone->computation(), "foo");
+}
+
 TEST_F(HloInstructionTest, SparsityConfigToString_RHSOnly) {
   auto module = CreateNewVerifiedModule();
   HloComputation::Builder builder("main");

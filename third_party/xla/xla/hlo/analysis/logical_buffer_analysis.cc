@@ -150,6 +150,12 @@ absl::Status LogicalBufferAnalysis::HandleDomain(HloInstruction*) {
   return absl::OkStatus();
 }
 
+absl::Status LogicalBufferAnalysis::HandleDataflow(HloInstruction*) {
+  // A kDataflow instruction aliases its operand. That is, the buffer of its
+  // result *is* the buffer of its operand.
+  return absl::OkStatus();
+}
+
 absl::Status LogicalBufferAnalysis::HandleRecvDone(HloInstruction* recv_done) {
   // RecvDone produces a two-element tuple containing the data value (which
   // aliases part of its operand) and a token. Only the tuple index table and

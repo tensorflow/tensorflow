@@ -126,6 +126,7 @@ bool MayUseOperandValue(const ShapeIndex& index, const HloInstruction* user) {
       // transparently.
       return index.empty();
     case HloOpcode::kDomain:
+    case HloOpcode::kDataflow:
     case HloOpcode::kTuple:
       // These instructions always pass through their operands transparently.
       return false;

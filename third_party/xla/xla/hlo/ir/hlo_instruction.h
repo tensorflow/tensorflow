@@ -2014,6 +2014,32 @@ class HloInstruction {
   // kCall instructions used as a Composite op.
   bool is_composite() const { return has_rare() && rare()->is_composite; }
 
+  void set_computation(std::string name) {
+    DCHECK_EQ(opcode(), HloOpcode::kDataflow);
+    if (name.empty() && !has_rare()) {
+      return;
+    }
+    mutable_rare()->computation = std::move(name);
+  }
+
+  const std::string& computation() const {
+    DCHECK_EQ(opcode(), HloOpcode::kDataflow);
+    return rare()->computation;
+  }
+
+  void set_is_input_dataflow(bool is_input) {
+    DCHECK_EQ(opcode(), HloOpcode::kDataflow);
+    if (is_input && !has_rare()) {
+      return;
+    }
+    mutable_rare()->is_input_dataflow = is_input;
+  }
+
+  bool is_input_dataflow() const {
+    DCHECK_EQ(opcode(), HloOpcode::kDataflow);
+    return !has_rare() || rare()->is_input_dataflow;
+  }
+
   const ResultAccuracy& result_accuracy() const {
     return rare()->result_accuracy;
   }
@@ -2632,7 +2658,7 @@ class HloInstruction {
 
   // Implementation for non-common logic of PrintExtraAttributes.
   virtual void PrintExtraAttributesImpl(AttributePrinter& printer,
-                                        const HloPrintOptions& options) const {}
+                                        const HloPrintOptions& options) const;
 
   // Implementation for IsElementwise if operand_idx is nullopt and for
   // IsElementwiseOnOperand if otherwise.
@@ -2725,6 +2751,12 @@ class HloInstruction {
 
     // Used to select different implementations for unary functions.
     ResultAccuracy result_accuracy;
+
+    // The direct parent computation name for kDataflow instructions.
+    std::string computation;
+
+    // Whether this kDataflow instruction is an input (true) or output (false).
+    bool is_input_dataflow = true;
   };
 
   bool has_rare() const { return rare_ != nullptr; }

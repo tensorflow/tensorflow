@@ -468,6 +468,18 @@ absl::Status HloCostAnalysis::HandleCopy(const HloInstruction*) {
   return absl::OkStatus();
 }
 
+absl::Status HloCostAnalysis::HandleDataflow(const HloInstruction* dataflow) {
+  // Dataflow instruction does not have any computation or data transfer cost.
+  current_should_compute_bottleneck_time_ = false;
+  current_properties_[kBytesAccessedKey] = 0;
+  current_properties_.set_output_bytes_accessed(0);
+  for (int i = 0; i < dataflow->operand_count(); ++i) {
+    current_properties_.set_operand_bytes_accessed(i, 0);
+  }
+  current_properties_[kOptimalSecondsKey] = 0;
+  return absl::OkStatus();
+}
+
 absl::Status HloCostAnalysis::HandleDomain(const HloInstruction* domain) {
   // Domain does not have any computation or data transfer.
   current_should_compute_bottleneck_time_ = false;
