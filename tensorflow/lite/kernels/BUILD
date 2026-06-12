@@ -1360,6 +1360,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:util",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:absl_check",
     ],
 )
 
