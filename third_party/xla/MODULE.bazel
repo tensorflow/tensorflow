@@ -6,6 +6,10 @@ module(name = "xla")
 # go/keep-sorted start
 bazel_dep(name = "abseil-cpp", version = "20260107.1", repo_name = "com_google_absl")
 bazel_dep(name = "abseil-py", version = "2.1.0", repo_name = "absl_py")
+bazel_dep(name = "aspect_bazel_lib", version = "2.19.3")
+bazel_dep(name = "aspect_rules_esbuild", version = "0.21.0")
+bazel_dep(name = "aspect_rules_js", version = "2.7.0")
+bazel_dep(name = "aspect_rules_ts", version = "3.7.0")
 bazel_dep(name = "bazel_features", version = "1.36.0")
 bazel_dep(name = "bazel_skylib", version = "1.8.2")
 bazel_dep(name = "boringssl", version = "0.20250818.0")
@@ -16,6 +20,7 @@ bazel_dep(name = "grpc", version = "1.78.0", repo_name = "com_github_grpc_grpc")
 bazel_dep(name = "gutil", version = "20260309.0.bcr.1", repo_name = "com_google_gutil")
 bazel_dep(name = "highway", version = "1.3.0", repo_name = "com_google_highway")
 bazel_dep(name = "jsoncpp", version = "1.9.6", repo_name = "jsoncpp_git")
+bazel_dep(name = "nlohmann_json", version = "3.12.0.bcr.1", repo_name = "nlohmann_json_lib")
 bazel_dep(name = "or-tools", version = "9.12", repo_name = "com_google_ortools")
 bazel_dep(name = "platforms", version = "1.0.0")
 bazel_dep(name = "protobuf", version = "32.1", repo_name = "com_google_protobuf")
@@ -35,6 +40,34 @@ bazel_dep(name = "zlib", version = "1.3.2")
 # Only for compatibility, not directly used, change repo_name to None after upgrading Bazel to latest 7.x
 bazel_dep(name = "eigen", version = "4.0.0-20241125.bcr.3", repo_name = "DO_NOT_USE_eigen")
 bazel_dep(name = "grpc-java", version = "1.75.0", repo_name = "DO_NOT_USE_grpc_java")
+
+rules_ts_ext = use_extension("@aspect_rules_ts//ts:extensions.bzl", "ext")
+rules_ts_ext.deps(
+    ts_version = "5.2.2",
+)
+use_repo(rules_ts_ext, "npm_typescript")
+
+aspect_bazel_lib_toolchains = use_extension("@aspect_bazel_lib//lib:extensions.bzl", "toolchains")
+use_repo(
+    aspect_bazel_lib_toolchains,
+    "bsd_tar_toolchains",
+    "copy_directory_toolchains",
+    "copy_to_directory_toolchains",
+    "coreutils_toolchains",
+    "expand_template_toolchains",
+    "jq_toolchains",
+    "yq_toolchains",
+)
+
+register_toolchains(
+    "@bsd_tar_toolchains//:all",
+    "@copy_directory_toolchains//:all",
+    "@copy_to_directory_toolchains//:all",
+    "@coreutils_toolchains//:all",
+    "@expand_template_toolchains//:all",
+    "@jq_toolchains//:all",
+    "@yq_toolchains//:all",
+)
 
 # TODO: publish an official version of rules_ml_toolchain to BCR
 bazel_dep(name = "rules_ml_toolchain")

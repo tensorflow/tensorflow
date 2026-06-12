@@ -1623,4 +1623,11 @@ bzl_library(
     deps = ["//xla/tsl:package_groups_bzl"],
 )
 
+bzl_library(
+    name = "xla_default_bzl",
+    srcs = ["xla.default.bzl"],
+    # parse_tests = False,
+    visibility = ["//visibility:private"],
+)
+
 xla_bzl_library()
