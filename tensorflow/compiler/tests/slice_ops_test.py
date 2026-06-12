@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for slicing."""
+"""Tests for slicing operations and strided slice op compilation in XLA."""
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
@@ -284,6 +284,25 @@ class StridedSliceTest(xla_test.XLATestCase):
         result = o.eval(feed_dict=params)
 
         self.assertAllEqual([3, 4, 5], result)
+
+  def test1DOutOfBoundsDynamic(self):
+    """Tests 1D slice with dynamic out-of-bounds start/end indices."""
+    for dtype in self.numeric_types:
+      with self.session():
+        input_tensor = array_ops.placeholder(dtype, shape=[10])
+        begin = array_ops.placeholder(dtypes.int32, shape=[1])
+        end = array_ops.placeholder(dtypes.int32, shape=[1])
+        with self.test_scope():
+          output_tensor = array_ops.strided_slice(input_tensor, begin, end, [1])
+        params = {
+            input_tensor: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            begin: [5],
+            end: [15],
+        }
+        result = output_tensor.eval(feed_dict=params)
+
+        self.assertAllEqual([5, 6, 7, 8, 9], result)
+
 
 if __name__ == "__main__":
   googletest.main()
