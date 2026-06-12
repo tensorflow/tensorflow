@@ -41,10 +41,11 @@ class CompilationProviderOptions {
       stream_executor::StreamExecutor* stream_exec = nullptr)
       : nvjitlink_mode_(nvjitlink_mode),
         enable_libnvptxcompiler_(enable_libnvptxcompiler),
-        enable_llvm_module_compilation_parallelism_(false),
         enable_driver_compilation_(enable_driver_compilation),
         cuda_data_dir_(cuda_data_dir),
         stream_exec_(stream_exec) {}
+
+  // FIXME(b/465360188) Jax can't be updated in one CL. Remove in followup CL.
   CompilationProviderOptions(
       NvJitLinkMode nvjitlink_mode, bool enable_libnvptxcompiler,
       bool enable_llvm_module_compilation_parallelism,
@@ -52,8 +53,6 @@ class CompilationProviderOptions {
       stream_executor::StreamExecutor* stream_exec = nullptr)
       : nvjitlink_mode_(nvjitlink_mode),
         enable_libnvptxcompiler_(enable_libnvptxcompiler),
-        enable_llvm_module_compilation_parallelism_(
-            enable_llvm_module_compilation_parallelism),
         enable_driver_compilation_(enable_driver_compilation),
         cuda_data_dir_(cuda_data_dir),
         stream_exec_(stream_exec) {}
@@ -64,9 +63,6 @@ class CompilationProviderOptions {
 
   NvJitLinkMode nvjitlink_mode() const { return nvjitlink_mode_; }
   bool enable_libnvptxcompiler() const { return enable_libnvptxcompiler_; }
-  bool enable_llvm_module_compilation_parallelism() const {
-    return enable_llvm_module_compilation_parallelism_;
-  }
   bool enable_driver_compilation() const { return enable_driver_compilation_; }
   const std::string& cuda_data_dir() const { return cuda_data_dir_; }
 
@@ -78,8 +74,6 @@ class CompilationProviderOptions {
                          const CompilationProviderOptions& rhs) {
     return lhs.nvjitlink_mode_ == rhs.nvjitlink_mode_ &&
            lhs.enable_libnvptxcompiler_ == rhs.enable_libnvptxcompiler_ &&
-           lhs.enable_llvm_module_compilation_parallelism_ ==
-               rhs.enable_llvm_module_compilation_parallelism_ &&
            lhs.enable_driver_compilation_ == rhs.enable_driver_compilation_ &&
            lhs.cuda_data_dir_ == rhs.cuda_data_dir_;
   }
@@ -106,7 +100,6 @@ class CompilationProviderOptions {
   friend H AbslHashValue(H h, const CompilationProviderOptions& options) {
     return H::combine(std::move(h), options.nvjitlink_mode_,
                       options.enable_libnvptxcompiler_,
-                      options.enable_llvm_module_compilation_parallelism_,
                       options.enable_driver_compilation_,
                       options.cuda_data_dir_, options.stream_exec_);
   }
@@ -114,7 +107,6 @@ class CompilationProviderOptions {
  private:
   NvJitLinkMode nvjitlink_mode_ = NvJitLinkMode::kDisabled;
   bool enable_libnvptxcompiler_ = false;
-  bool enable_llvm_module_compilation_parallelism_ = false;
   bool enable_driver_compilation_ = false;
   std::string cuda_data_dir_;
   stream_executor::StreamExecutor* absl_nullable stream_exec_ = nullptr;

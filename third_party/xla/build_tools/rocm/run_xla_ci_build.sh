@@ -42,7 +42,7 @@ bazel --bazelrc="$SCRIPT_DIR/rocm_xla_ci.bazelrc" test \
     --profile=/tf/pkg/profile.json.gz \
     --nokeep_going \
     --test_env=TF_TESTS_PER_GPU=1 \
-    --action_env=XLA_FLAGS="--xla_gpu_enable_llvm_module_compilation_parallelism=true --xla_gpu_force_compilation_parallelism=16" \
+    --action_env=XLA_FLAGS="--xla_gpu_force_compilation_parallelism=16" \
     --test_output=errors \
     --run_under=//build_tools/rocm:parallel_gpu_execute \
     "$@"
