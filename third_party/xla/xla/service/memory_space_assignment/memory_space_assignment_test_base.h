@@ -231,8 +231,9 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     if (optional_msa_sort_order_overrides.has_value()) {
       msa_sort_order_overrides = optional_msa_sort_order_overrides.value();
     }
-    MemoryBoundednessBufferIntervalComparator comparator(
-        *cost_analysis, &cache_, msa_sort_order_overrides);
+    MemoryBoundednessBufferSorterProvider provider(*cost_analysis, &cache_,
+                                                   msa_sort_order_overrides);
+    ProviderBufferIntervalComparator comparator(provider);
     return AssignMemorySpace(
         module, std::move(memory_space_options),
         [&comparator](const MsaBufferInterval& lhs,
