@@ -1991,7 +1991,28 @@ def _CumprodGrad(op: ops.Operation, grad):
   out = math_ops.cumsum(
       prod * grad, axis, exclusive=exclusive, reverse=not reverse
   )
-  return [math_ops.div_no_nan(out, x), None]
+  non_zero_grad = math_ops.div_no_nan(out, x)
+
+  is_zero = math_ops.equal(x, 0)
+  zero_count = math_ops.cumsum(
+      math_ops.cast(is_zero, dtypes.int32),
+      axis,
+      exclusive=exclusive,
+      reverse=reverse,
+  )
+  non_zero_x = array_ops.where_v2(is_zero, math_ops.cast(1, x.dtype), x)
+  non_zero_prod = math_ops.cumprod(
+      non_zero_x, axis, exclusive=exclusive, reverse=reverse
+  )
+  zero_prod_grad = array_ops.where_v2(
+      math_ops.equal(zero_count, 1),
+      non_zero_prod * grad,
+      math_ops.cast(0, grad.dtype),
+  )
+  zero_grad = math_ops.cumsum(
+      zero_prod_grad, axis, exclusive=exclusive, reverse=not reverse
+  )
+  return [array_ops.where_v2(is_zero, zero_grad, non_zero_grad), None]
 
 
 # pylint: disable=missing-function-docstring
