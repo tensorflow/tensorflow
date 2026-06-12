@@ -1198,7 +1198,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "searchsorted_op",
     prefix = "searchsorted_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
