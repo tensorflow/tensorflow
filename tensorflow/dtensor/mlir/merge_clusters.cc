@@ -78,7 +78,7 @@ mlir::LogicalResult ExtractMeshFromCluster(mlir::tf_device::ClusterOp cluster,
   auto mesh_or_status = ExtractDeviceMeshFromOp(cluster);
   if (!mesh_or_status.ok()) return cluster.emitOpError(kMissingMeshErrorMsg);
 
-  const absl::optional<Mesh>& mesh_or_null = *mesh_or_status;
+  const std::optional<Mesh>& mesh_or_null = *mesh_or_status;
   if (!mesh_or_null.has_value())
     return cluster.emitOpError(kMissingMeshErrorMsg);
 
