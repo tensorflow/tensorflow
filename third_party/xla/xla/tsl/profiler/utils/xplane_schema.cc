@@ -153,8 +153,10 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       // Batching related.
       {"BatchingSessionRun", kBatchingSessionRun},
       {"ProcessBatch", kProcessBatch},
+      {"OrbaxServing::ProcessBatch", kOrbaxProcessBatch},
       {"BrainSessionRun", kBrainSessionRun},
       {"ConcatInputTensors", kConcatInputTensors},
+      {"OrbaxServing::ConcatInputBuffers", kOrbaxConcatInputBuffers},
       {"MergeInputTensors", kMergeInputTensors},
       {"ScheduleWithoutSplit", kScheduleWithoutSplit},
       {"ScheduleWithSplit", kScheduleWithSplit},

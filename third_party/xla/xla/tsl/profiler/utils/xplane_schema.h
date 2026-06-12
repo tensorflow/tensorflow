@@ -151,6 +151,7 @@ enum HostEventType {
   kProcessBatch,
   kBrainSessionRun,
   kConcatInputTensors,
+  kOrbaxConcatInputBuffers,
   kMergeInputTensors,
   kScheduleWithoutSplit,
   kScheduleWithSplit,
@@ -194,7 +195,8 @@ enum HostEventType {
   kLinearize,
   kDelinearize,
   kTransferBufferFromDeviceFastPath,
-  kLastHostEventType = kTransferBufferFromDeviceFastPath,
+  kOrbaxProcessBatch,
+  kLastHostEventType = kOrbaxProcessBatch,
 };
 
 enum StatType {
