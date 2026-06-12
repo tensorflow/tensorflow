@@ -232,7 +232,7 @@ int GetValueOfIndicesAt(const DimensionMetadata* dim_metadata, const int i) {
 // tensor.
 // Traverse the tree level by level, count total number of elements, and
 // validate the sparsity parameters along the way.
-absl::optional<uint64_t> VerifyAndCountElements(
+std::optional<uint64_t> VerifyAndCountElements(
     const SparsityParameters& sparsity, const std::vector<int>& dim_sizes) {
   const int total_level = sparsity.traversal_order()->size();
   uint64_t num_elements = 1;
@@ -288,7 +288,7 @@ absl::optional<uint64_t> VerifyAndCountElements(
   return num_elements;
 }
 
-absl::optional<uint64_t> VerifyAndCountSparseElements(const Tensor& tensor) {
+std::optional<uint64_t> VerifyAndCountSparseElements(const Tensor& tensor) {
   const auto* sparsity = tensor.sparsity();
   if (sparsity->traversal_order() == nullptr ||
       sparsity->dim_metadata() == nullptr) {
