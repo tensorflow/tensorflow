@@ -397,9 +397,6 @@ TEST_F(CustomCallTest, ExportedFfiUnknownTarget) {
               "No FFI handler registered for __xla_test$$unknown_target")));
 }
 
-// Memcpy and SubBuffers tests are already ported in
-// fusions/address_computation_fusion_test.cc
-
 std::string& kExpectedOpaque = *new std::string("abc\0def", 7);
 
 static absl::Status Opaque(ffi::Result<ffi::AnyBuffer>,

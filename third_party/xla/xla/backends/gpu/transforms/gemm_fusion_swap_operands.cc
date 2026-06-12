@@ -111,7 +111,7 @@ absl::Status SwapDotOperandsInFusion(HloComputation* computation) {
 
 bool HasCodeGeneratingInstructions(const HloInstruction* instruction) {
   while (!instruction->operands().empty()) {
-    // Skip instruction that are likely to just affect the address computation
+    // Skip instructions that are likely to just affect indexing or layout
     // rather than result in actual computation.
     switch (instruction->opcode()) {
       case HloOpcode::kBitcast:
