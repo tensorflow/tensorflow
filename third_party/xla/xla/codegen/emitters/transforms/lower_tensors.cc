@@ -15,6 +15,7 @@ limitations under the License.
 #include <cassert>
 #include <cstdint>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -68,6 +69,7 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/transforms/atomic_rmw_utils.h"
 #include "xla/codegen/emitters/transforms/passes.h"
+#include "xla/mlir/utils/math_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
@@ -131,28 +133,53 @@ Value GetDestinationBuffer(Value dest) {
   return dest;
 }
 
-std::optional<int> GetAlignmentFromArg(Value addr, ValueRange indices) {
+std::optional<int64_t> GetAlignmentFromArg(Value addr, ValueRange indices) {
   CHECK_LE(indices.size(), 1) << "Only 0D and 1D tensors are supported";
 
-  // If the offset isn't empty or {0}, we don't return any alignment because
-  // computing it isn't trivial and it's unclear that we need to deal with that
-  // case in practice.
-  auto effective_offset_is_zero = [](ValueRange offsets) -> bool {
-    if (offsets.empty()) return true;
-    return mlir::matchPattern(offsets[0].getDefiningOp(), mlir::m_Zero());
-  };
-  if (!effective_offset_is_zero(indices)) return std::nullopt;
-
-  // Try to get the alignment from the function signature.
+  // Try to get the base alignment from the function signature.
   auto base = mlir::dyn_cast<mlir::BlockArgument>(addr);
-  if (!base) return std::nullopt;
+  if (!base) {
+    return std::nullopt;
+  }
   auto func =
       mlir::dyn_cast<mlir::func::FuncOp>(base.getOwner()->getParentOp());
-  if (!func) return std::nullopt;
+  if (!func) {
+    return std::nullopt;
+  }
   auto align_attr =
       func.getArgAttr(base.getArgNumber(), ml::LLVMDialect::getAlignAttrName());
-  if (!align_attr) return std::nullopt;
-  return mlir::cast<mlir::IntegerAttr>(align_attr).getValue().getSExtValue();
+  if (!align_attr) {
+    return std::nullopt;
+  }
+  int64_t base_alignment =
+      mlir::cast<mlir::IntegerAttr>(align_attr).getValue().getSExtValue();
+
+  // If offset is zero, return base alignment directly.
+  if (indices.empty()) {
+    return base_alignment;
+  }
+  if (mlir::matchPattern(indices[0].getDefiningOp(), mlir::m_Zero())) {
+    return base_alignment;
+  }
+
+  // For non-zero offsets, the effective alignment is the gcd of the base
+  // alignment and the offset. We analyze the index value to find its known
+  // alignment factor (largest power of 2 that divides it).
+  auto tensor_type = mlir::dyn_cast<mlir::RankedTensorType>(addr.getType());
+  if (!tensor_type) {
+    return std::nullopt;
+  }
+  auto data_layout = mlir::DataLayout::closest(func);
+  int64_t elem_bits =
+      data_layout.getTypeSizeInBits(tensor_type.getElementType());
+  if (elem_bits == 0 || elem_bits % 8 != 0) {
+    return std::nullopt;
+  }
+  int64_t element_size = elem_bits / 8;
+
+  int64_t index_alignment = GetKnownAlignment(indices[0]);
+  int64_t offset_byte_alignment = index_alignment * element_size;
+  return std::gcd(base_alignment, offset_byte_alignment);
 }
 
 template <typename Op>
@@ -303,7 +330,9 @@ struct RewriteFor : public OpRewritePattern<scf::ForOp> {
     rewriter.setInsertionPoint(new_terminator);
     for (auto [index, yielded_value] :
          llvm::enumerate(new_terminator.getResults())) {
-      if (inits_to_remove.test(index)) continue;
+      if (inits_to_remove.test(index)) {
+        continue;
+      }
       new_yielded_values.push_back(yielded_value);
     }
     rewriter.replaceOpWithNewOp<scf::YieldOp>(new_terminator,
@@ -467,7 +496,10 @@ struct RewriteTransferRead : OpRewritePattern<vector::TransferReadOp> {
     mlir::LLVMTypeConverter converter(b.getContext());
     auto llvm_vector_type = converter.convertType(vector_type);
     auto load = ml::LoadOp::create(b, llvm_vector_type, gep);
-    if (auto alignment = GetAlignmentFromArg(op.getBase(), op.getIndices())) {
+    if (auto align_attr = op->getAttrOfType<mlir::IntegerAttr>("alignment")) {
+      load.setAlignment(align_attr.getInt());
+    } else if (auto alignment =
+                   GetAlignmentFromArg(op.getBase(), op.getIndices())) {
       load.setAlignment(*alignment);
     } else {
       auto data_layout = mlir::DataLayout::closest(op);
@@ -624,7 +656,10 @@ struct RewriteTransferWrite : OpRewritePattern<vector::TransferWriteOp> {
         UnrealizedConversionCastOp::create(b, llvm_type, vector_value)
             .getResult(0);
     auto store = ml::StoreOp::create(b, vector_value, gep);
-    if (auto alignment = GetAlignmentFromArg(op.getBase(), op.getIndices())) {
+    if (auto align_attr = op->getAttrOfType<mlir::IntegerAttr>("alignment")) {
+      store.setAlignment(align_attr.getInt());
+    } else if (auto alignment =
+                   GetAlignmentFromArg(op.getBase(), op.getIndices())) {
       store.setAlignment(*alignment);
     } else {
       auto data_layout = mlir::DataLayout::closest(op);
@@ -826,14 +861,6 @@ struct RemoveUnusedIndexSwitchResults : OpRewritePattern<scf::IndexSwitchOp> {
     return success();
   }
 };
-
-bool IsAtomicIntegral(Type element_type) {
-  if (!element_type.isInteger()) {
-    return false;
-  }
-  unsigned element_bitwidth = element_type.getIntOrFloatBitWidth();
-  return element_bitwidth == 32 || element_bitwidth == 64;
-}
 
 Value CreateBitcast(mlir::ImplicitLocOpBuilder& b, mlir::Operation* op,
                     Value value, Type ty) {
@@ -1438,7 +1465,7 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
       return;
     }
 
-    getOperation()->walk([this](ml::LoadOp load) {
+    getOperation()->walk([](ml::LoadOp load) {
       Value addr = load.getAddr();
       while (auto gep = addr.getDefiningOp<ml::GEPOp>()) {
         addr = gep.getBase();
