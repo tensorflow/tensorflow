@@ -288,4 +288,62 @@ void PjRtDeviceEventPromiseRef::SetReady() const {
   promise_->vtable->set_ready(promise_);
 }
 
+PjRtDeviceEventRefVector::~PjRtDeviceEventRefVector() { Clear(); }
+
+PjRtDeviceEventRefVector::PjRtDeviceEventRefVector(
+    const PjRtDeviceEventRefVector& other) {
+  events_.reserve(other.events_.size());
+  for (const auto& ev : other.events_) {
+    events_.push_back(PjRtDeviceEventPtr(ev).CopyRef().release().ToC());
+  }
+}
+
+PjRtDeviceEventRefVector::PjRtDeviceEventRefVector(
+    PjRtDeviceEventRefVector&& other) noexcept
+    : events_(std::move(other.events_)) {}
+
+PjRtDeviceEventRefVector& PjRtDeviceEventRefVector::operator=(
+    const PjRtDeviceEventRefVector& other) {
+  if (this != &other) {
+    Clear();
+    events_.reserve(other.events_.size());
+    for (const auto& ev : other.events_) {
+      events_.push_back(PjRtDeviceEventPtr(ev).CopyRef().release().ToC());
+    }
+  }
+  return *this;
+}
+
+PjRtDeviceEventRefVector& PjRtDeviceEventRefVector::operator=(
+    PjRtDeviceEventRefVector&& other) noexcept {
+  if (this != &other) {
+    Clear();
+    events_ = std::move(other.events_);
+  }
+  return *this;
+}
+
+PjRtDeviceEventRefVector::PjRtDeviceEventRefVector(
+    std::initializer_list<PjRtDeviceEventRef> init) {
+  events_.reserve(init.size());
+  for (const auto& ref : init) {
+    events_.push_back(ref.ptr().CopyRef().release().ToC());
+  }
+}
+
+void PjRtDeviceEventRefVector::push_back(const PjRtDeviceEventRef& value) {
+  events_.push_back(value.ptr().CopyRef().release().ToC());
+}
+
+void PjRtDeviceEventRefVector::push_back(PjRtDeviceEventRef&& value) {
+  events_.push_back(std::move(value).release().ToC());
+}
+
+void PjRtDeviceEventRefVector::Clear() {
+  for (auto& ev : events_) {
+    PjRtDeviceEventPtr(ev).DecRef();
+  }
+  events_.clear();
+}
+
 }  // namespace xla

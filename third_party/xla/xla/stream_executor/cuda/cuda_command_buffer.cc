@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_context.h"
 #include "xla/stream_executor/cuda/cuda_kernel.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
+#include "xla/stream_executor/cuda/cuda_stream.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
@@ -737,30 +738,25 @@ absl::Status CudaCommandBuffer::Trace(
   VLOG(5) << "Trace into GPU command buffer graph " << graph_
           << " on a stream: " << stream;
 
-  CUstream stream_handle =
-      absl::bit_cast<CUstream>(stream->platform_specific_handle().stream);
+  CudaStream* cuda_stream = static_cast<CudaStream*>(stream);
 
-  // Switch stream into the capture mode.
   uint64_t start_nanos = tsl::Env::Default()->NowNanos();
-
-  RETURN_IF_ERROR(cuda::ToStatus(
-      cuStreamBeginCaptureToGraph(stream_handle, graph_,
-                                  /*dependencies=*/nullptr,
-                                  /*dependencyData=*/nullptr,
-                                  /*numDependencies=*/0,
-                                  CU_STREAM_CAPTURE_MODE_THREAD_LOCAL),
-      "Failed to begin stream capture to graph"));
-  auto traced = function();
-
-  // Always stop capturing the stream before checking `traced` result.
-  VLOG(5) << "End stream " << stream << " capture";
-  CUgraph captured_graph;
-  RETURN_IF_ERROR(
-      cuda::ToStatus(cuStreamEndCapture(stream_handle, &captured_graph),
-                     "Failed to end stream capture"));
-  DCHECK(captured_graph == graph_) << "Stream capture should update graph_";
-  RETURN_IF_ERROR(traced);
-
+  {
+    ASSIGN_OR_RETURN(
+        CudaStream::CaptureHandle capture_handle,
+        cuda_stream->BeginCapture(
+            graph_, /*dependencies=*/nullptr, /*dependency_data=*/nullptr,
+            /*num_dependencies=*/0,
+            // THREAD_LOCAL implies that capturing is done only on the current
+            // stream. Cuda calls can be made on other streams without
+            // interrupting the capture.
+            // The default mode CU_STREAM_CAPTURE_MODE_GLOBAL, will capture at
+            // at a global level. That would stall everything at a driver level.
+            CU_STREAM_CAPTURE_MODE_THREAD_LOCAL));
+    RETURN_IF_ERROR(function());
+    VLOG(5) << "End stream " << stream << " capture";
+    RETURN_IF_ERROR(capture_handle.EndCapture());
+  }
   uint64_t end_nanos = tsl::Env::Default()->NowNanos();
   VLOG(5) << "Traced into the GPU command buffer graph " << graph_ << " (took "
           << (end_nanos - start_nanos) / 1000 << " μs)";
@@ -770,8 +766,8 @@ absl::Status CudaCommandBuffer::Trace(
   // launch any CUDA work, add an explicit empty node so the child graph is a
   // valid no-op command.
   size_t num_root_nodes = 0;
-  RETURN_IF_ERROR(cuda::ToStatus(
-      cuGraphGetRootNodes(captured_graph, nullptr, &num_root_nodes)));
+  RETURN_IF_ERROR(
+      cuda::ToStatus(cuGraphGetRootNodes(graph_, nullptr, &num_root_nodes)));
 
   if (num_root_nodes == 0) {
     VLOG(5) << "Traced CUDA graph is empty; adding an empty node";
