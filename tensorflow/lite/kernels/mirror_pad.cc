@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
 
 #include <algorithm>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -79,7 +80,8 @@ inline void GetPadding(const TfLiteTensor* padding_matrix, int dimension,
   }
 }
 
-// Returns the shape of the final output after padding.
+// Returns the shape of the final output after padding, or `nullptr` on
+// integer overflow / negative-padding error.
 std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> GetPaddedOutputShape(
     const TfLiteTensor* input, const TfLiteTensor* padding_matrix) {
   const int input_dims = NumDimensions(input);
@@ -89,7 +91,15 @@ std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> GetPaddedOutputShape(
   int64_t left_pad = 0, right_pad = 0;
   for (int i = 0; i < input_dims; ++i) {
     GetPadding(padding_matrix, i, &left_pad, &right_pad);
-    shape->data[i] = SizeOfDimension(input, i) + left_pad + right_pad;
+    if (left_pad < 0 || right_pad < 0) {
+      return {nullptr, TfLiteIntArrayFree};
+    }
+    const int64_t dim = static_cast<int64_t>(SizeOfDimension(input, i)) +
+                        left_pad + right_pad;
+    if (dim < 0 || dim > std::numeric_limits<int32_t>::max()) {
+      return {nullptr, TfLiteIntArrayFree};
+    }
+    shape->data[i] = static_cast<int>(dim);
   }
   return shape;
 }
