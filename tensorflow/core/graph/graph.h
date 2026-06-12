@@ -805,7 +805,7 @@ class Graph {
   // Builds a node name to node pointer index for all nodes in the graph.
   std::unordered_map<std::string, Node*> BuildNodeNameIndex() const;
 
-  absl::optional<std::vector<bool>>& GetConstArgIndicesCache() const {
+  std::optional<std::vector<bool>>& GetConstArgIndicesCache() const {
     return const_arg_indices_cache_;
   }
 
@@ -919,7 +919,7 @@ class Graph {
 
   // Cache of the indices of the arguments which need to be constant for the XLA
   // compilation.
-  mutable absl::optional<std::vector<bool>> const_arg_indices_cache_;
+  mutable std::optional<std::vector<bool>> const_arg_indices_cache_;
 
   // Indicates the context that this Graph instance is constructed.
   ConstructionContext construction_context_ = ConstructionContext::kNotTracked;
