@@ -18,7 +18,10 @@ There is a fair amount of setup needed to initialize tensorflow and get it
 into a proper TF2 execution mode. This hides that boilerplate.
 """
 
+import shutil
+import sys
 import tempfile
+
 from absl import app
 from absl import flags
 from absl import logging
@@ -44,6 +47,7 @@ def set_tf_options():
 # after absl and tensorflow have run various initialization steps.
 def do_test(
     create_signature,
+    *,
     canonicalize=False,
     show_debug_info=False,
     use_lite=False,
@@ -85,58 +89,64 @@ def do_test(
     """Function passed to absl.app.run."""
     if len(argv) > 1:
       raise app.UsageError('Too many command-line arguments.')
+    clean_up = False
     if FLAGS.save_model_path:
       save_model_path = FLAGS.save_model_path
     else:
-      save_model_path = tempfile.mktemp(suffix='.saved_model')
+      save_model_path = tempfile.mkdtemp(suffix='.saved_model')
+      clean_up = True
 
-    signature_def_map, init_op, assets_collection = create_signature()
+    try:
+      signature_def_map, init_op, assets_collection = create_signature()
 
-    sess = tf.Session()
-    sess.run(tf.initializers.global_variables())
-    builder = tf.saved_model.builder.SavedModelBuilder(save_model_path)
-    builder.add_meta_graph_and_variables(
-        sess,
-        [tf.saved_model.tag_constants.SERVING],
-        signature_def_map,
-        main_op=init_op,
-        assets_collection=assets_collection,
-        strip_default_attrs=True,
-    )
-    builder.save()
+      with tf.Session() as sess:
+        sess.run(tf.initializers.global_variables())
+        builder = tf.saved_model.builder.SavedModelBuilder(save_model_path)
+        builder.add_meta_graph_and_variables(
+            sess,
+            [tf.saved_model.tag_constants.SERVING],
+            signature_def_map,
+            main_op=init_op,
+            assets_collection=assets_collection,
+            strip_default_attrs=True,
+        )
+        builder.save()
 
-    logging.info('Saved model to: %s', save_model_path)
-    exported_names = ''
-    upgrade_legacy = True
-    if use_lite:
-      mlir = pywrap_mlir.experimental_convert_saved_model_v1_to_mlir_lite(
-          save_model_path,
-          exported_names,
-          ','.join([tf.saved_model.tag_constants.SERVING]),
-          upgrade_legacy,
-          show_debug_info,
-      )
-      # We don't strictly need this, but it serves as a handy sanity check
-      # for that API, which is otherwise a bit annoying to test.
-      # The canonicalization shouldn't affect these tests in any way.
-      mlir = pywrap_mlir.experimental_run_pass_pipeline(
-          mlir, 'tf-standard-pipeline', show_debug_info
-      )
-    else:
-      mlir = pywrap_mlir.experimental_convert_saved_model_v1_to_mlir(
-          save_model_path,
-          exported_names,
-          ','.join([tf.saved_model.tag_constants.SERVING]),
-          lift_variables,
-          include_variables_in_initializers,
-          upgrade_legacy,
-          show_debug_info,
-      )
+      logging.info('Saved model to: %s', save_model_path)
+      exported_names = ''
+      upgrade_legacy = True
+      if use_lite:
+        mlir = pywrap_mlir.experimental_convert_saved_model_v1_to_mlir_lite(
+            save_model_path,
+            exported_names,
+            ','.join([tf.saved_model.tag_constants.SERVING]),
+            upgrade_legacy,
+            show_debug_info,
+        )
+        # We don't strictly need this, but it serves as a handy sanity check
+        # for that API, which is otherwise a bit annoying to test.
+        # The canonicalization shouldn't affect these tests in any way.
+        mlir = pywrap_mlir.experimental_run_pass_pipeline(
+            mlir, 'tf-standard-pipeline', show_debug_info
+        )
+      else:
+        mlir = pywrap_mlir.experimental_convert_saved_model_v1_to_mlir(
+            save_model_path,
+            exported_names,
+            ','.join([tf.saved_model.tag_constants.SERVING]),
+            lift_variables,
+            include_variables_in_initializers,
+            upgrade_legacy,
+            show_debug_info,
+        )
 
-    if canonicalize:
-      mlir = pywrap_mlir.experimental_run_pass_pipeline(
-          mlir, 'canonicalize', show_debug_info
-      )
-    print(mlir)
+      if canonicalize:
+        mlir = pywrap_mlir.experimental_run_pass_pipeline(
+            mlir, 'canonicalize', show_debug_info
+        )
+      sys.stdout.write(mlir + '\n')
+    finally:
+      if clean_up:
+        shutil.rmtree(save_model_path, ignore_errors=True)
 
   app.run(app_main)
