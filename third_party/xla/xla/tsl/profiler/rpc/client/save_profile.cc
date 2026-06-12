@@ -19,23 +19,22 @@ limitations under the License.
 #include <ostream>
 #include <sstream>
 #include <string>
-#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
-#include "absl/strings/string_view.h"
-#include "absl/strings/strip.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "riegeli/bytes/cord_writer.h"
+#include "riegeli/records/record_writer.h"
 #include "xla/tsl/lib/io/zlib_compression_options.h"
 #include "xla/tsl/lib/io/zlib_outputbuffer.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/profiler/utils/file_system_utils.h"
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -44,7 +43,6 @@ namespace tsl {
 namespace profiler {
 namespace {
 
-constexpr char kProtoTraceFileName[] = "trace";
 constexpr char kTfStatsHelperSuffix[] = "tf_stats_helper_result";
 constexpr char kXPlanePb[] = "xplane.pb";
 
@@ -75,6 +73,56 @@ absl::Status WriteGzippedDataToFile(const std::string& filepath,
   RETURN_IF_ERROR(buffer.Init());
   RETURN_IF_ERROR(buffer.Append(data));
   RETURN_IF_ERROR(buffer.Close());
+  RETURN_IF_ERROR(file->Close());
+  return absl::OkStatus();
+}
+
+// Returns a comma-separated string of plane names in the given XSpace.
+// Used for logging/debugging purposes.
+std::string GetPlaneNames(const tensorflow::profiler::XSpace& xspace) {
+  std::string plane_names;
+  for (const auto& plane : xspace.planes()) {
+    if (!plane_names.empty()) {
+      absl::StrAppend(&plane_names, ", ");
+    }
+    absl::StrAppend(&plane_names, plane.name());
+  }
+  return plane_names;
+}
+
+// Serializes the given XSpace proto into a Riegeli-formatted buffer.
+// Uses Brotli compression (level 6) by default.
+absl::Status SerializeXSpaceToRiegeli(
+    const tensorflow::profiler::XSpace& xspace, absl::Cord* buffer) {
+  riegeli::RecordWriterBase::Options record_options;
+  absl::Status status = record_options.FromString("brotli:6");
+  if (!status.ok()) {
+    return status;
+  }
+  record_options.set_padding(64 * 1024);
+  riegeli::RecordWriter writer{riegeli::CordWriter(buffer), record_options};
+  if (!writer.WriteRecord(xspace)) {
+    return writer.status();
+  }
+  if (!writer.Close()) {
+    return writer.status();
+  }
+  return absl::OkStatus();
+}
+
+// Writes `data` to a file at `path`. If `append` is true, appends to the
+// existing file (or creates it if it doesn't exist); otherwise, overwrites
+// the file.
+absl::Status WriteOrAppendToFile(absl::string_view path, const absl::Cord& data,
+                                 bool append) {
+  std::unique_ptr<WritableFile> file;
+  std::string path_str(path);
+  if (append) {
+    RETURN_IF_ERROR(Env::Default()->NewAppendableFile(path_str, &file));
+  } else {
+    RETURN_IF_ERROR(Env::Default()->NewWritableFile(path_str, &file));
+  }
+  RETURN_IF_ERROR(file->Append(data));
   RETURN_IF_ERROR(file->Close());
   return absl::OkStatus();
 }
@@ -151,6 +199,39 @@ absl::Status SaveXSpace(const std::string& repository_root,
   LOG(INFO) << "Collecting XSpace to repository: " << out_path;
 
   return WriteBinaryProto(Env::Default(), out_path, xspace);
+}
+
+absl::Status SaveXSpaceChunk(absl::string_view repository_root,
+                             absl::string_view run, absl::string_view host,
+                             int chunk_index,
+                             const tensorflow::profiler::XSpace& xspace) {
+  std::string plane_names = GetPlaneNames(xspace);
+  LOG(INFO) << "SaveXSpaceChunk index: " << chunk_index
+            << ", size: " << xspace.ByteSizeLong() << " bytes"
+            << (plane_names.empty()
+                    ? ""
+                    : absl::StrCat(" [Planes: ", plane_names, "]"));
+  std::string log_dir = ProfilerJoinPath(repository_root, run);
+  VLOG(1) << "Creating " << log_dir;
+  RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(log_dir));
+
+  std::string file_name = absl::StrCat(host, ".xplane.riegeli");
+  // Windows file names do not support colons.
+  absl::StrReplaceAll({{":", "_"}}, &file_name);
+
+  std::string out_path = ProfilerJoinPath(log_dir, file_name);
+  absl::Cord buffer;
+  RETURN_IF_ERROR(SerializeXSpaceToRiegeli(xspace, &buffer));
+
+  bool append = (chunk_index > 0);
+  if (append) {
+    LOG(INFO) << "Appending chunk " << chunk_index
+              << " to Riegeli file: " << out_path;
+  } else {
+    LOG(INFO) << "Creating new Riegeli file: " << out_path;
+  }
+  RETURN_IF_ERROR(WriteOrAppendToFile(out_path, buffer, append));
+  return absl::OkStatus();
 }
 
 }  // namespace profiler

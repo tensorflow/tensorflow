@@ -313,6 +313,19 @@ auto BlasLt::RegularMatmulPlan::GetAlgorithms(size_t max_algorithm_count,
 
 absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetMatmulPlan(
     const gpu::GemmConfig& cfg, Epilogue epilogue) const {
+  // hipBLASLt has no complex GEMM kernels; redirect C64/C128 to rocBLAS while
+  // still consuming the cublasLt matmul custom call emitted by GemmRewriter.
+  // TODO(magaonka-amd): Once we get a hipBLASLt that supports complex GEMMs,
+  // clean up this routing code.
+  if (cfg.output_layout.dtype == xla::C64 ||
+      cfg.output_layout.dtype == xla::C128) {
+    TF_RET_CHECK(epilogue == Epilogue::kDefault)
+        << "rocBLAS complex fallback does not support epilogues (bias, GELU, "
+           "etc.); got epilogue="
+        << static_cast<int>(epilogue);
+    return std::make_unique<RocBlasGemmPlan>(*this, cfg);
+  }
+
   auto lhs_layout = cfg.lhs_layout, rhs_layout = cfg.rhs_layout,
        output_layout = cfg.output_layout, c_layout = cfg.c_layout;
 
@@ -543,6 +556,78 @@ absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetMatmulPlan(
   }
 #undef TYPED_MATMUL
   return plan;
+}
+
+absl::Status BlasLt::RocBlasGemmPlan::ExecuteOnStream(
+    Stream* stream, const gpu::BlasLt::MemoryArgs& args,
+    blas::ProfileResult* profile_result) const {
+  blas::BlasSupport* blas = blas_lt_.executor_->AsBlas();
+  if (blas == nullptr) {
+    return absl::InternalError(
+        "No BLAS support for stream (complex rocBLAS fallback).");
+  }
+
+  // Replicate GemmConfig::GetMatrixDescriptors so rocBLAS receives the same
+  // canonicalized (column-major output) descriptors the legacy GEMM path used.
+  gpu::MatrixLayout lhs = cfg_.lhs_layout, rhs = cfg_.rhs_layout,
+                    out = cfg_.output_layout;
+  // Broadcast batch sizes like the regular hipBLASLt plan does.
+  size_t batch_size = std::max(lhs.batch_size, rhs.batch_size);
+  lhs.batch_size = batch_size;
+  rhs.batch_size = batch_size;
+
+  DeviceAddressBase a_buf = args.a, b_buf = args.b;
+  bool must_swap_operands = gpu::MakeOutputColumnMajor(lhs, rhs, out);
+  if (must_swap_operands) {
+    std::swap(a_buf, b_buf);
+  }
+
+  auto transpose_of = [](const gpu::MatrixLayout& l) {
+    return l.order == gpu::MatrixLayout::Order::kColumnMajor
+               ? blas::Transpose::kNoTranspose
+               : blas::Transpose::kTranspose;
+  };
+  blas::Transpose trans_a = transpose_of(lhs), trans_b = transpose_of(rhs);
+
+  const uint64_t m = out.num_rows, n = out.num_cols, k = lhs.num_cols;
+  const int lda = static_cast<int>(lhs.leading_dim_stride),
+            ldb = static_cast<int>(rhs.leading_dim_stride),
+            ldc = static_cast<int>(out.leading_dim_stride);
+
+  ASSIGN_OR_RETURN(blas::DataType dtype, gpu::AsBlasDataType(out.dtype));
+
+  // rocBLAS GEMM accumulates in-place into the output buffer. When beta != 0
+  // and C and D are distinct buffers, stage C into D first.
+  DeviceAddressBase out_buf = args.d;
+  if (cfg_.beta != 0.0 && args.c.opaque() != args.d.opaque()) {
+    RETURN_IF_ERROR(stream->Memcpy(&out_buf, args.c, out_buf.size()));
+  }
+
+  const blas::CallContext context = blas::CallContext::kNone;
+  const EngineOptions engine_options{};
+
+  auto run = [&](auto alpha, auto beta) -> absl::Status {
+    if (batch_size != 1) {
+      return blas->DoBlasGemmStridedBatched(
+          stream, trans_a, trans_b, m, n, k, dtype, &alpha, a_buf, lda,
+          lhs.batch_stride, b_buf, ldb, rhs.batch_stride, &beta, &out_buf, ldc,
+          out.batch_stride, static_cast<int>(batch_size), engine_options,
+          context);
+    }
+    return blas->DoBlasGemm(stream, trans_a, trans_b, m, n, k, dtype, &alpha,
+                            a_buf, lda, b_buf, ldb, &beta, &out_buf, ldc,
+                            engine_options, context);
+  };
+
+  if (out.dtype == xla::C64) {
+    xla::complex64 alpha(static_cast<float>(cfg_.alpha.real()),
+                         static_cast<float>(cfg_.alpha.imag()));
+    xla::complex64 beta(static_cast<float>(cfg_.beta), 0.0f);
+    return run(alpha, beta);
+  }
+  xla::complex128 alpha = cfg_.alpha;
+  xla::complex128 beta(cfg_.beta, 0.0);
+  return run(alpha, beta);
 }
 
 absl::Status BlasLt::RegularMatmulPlan::ExecuteOnStream(
