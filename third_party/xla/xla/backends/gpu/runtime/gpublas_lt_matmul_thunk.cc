@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
-#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/traced_command.h"
@@ -41,8 +40,6 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -206,7 +203,7 @@ Thunk::BufferUses CublasLtMatmulThunk::buffer_uses() const {
     res.push_back(BufferUse::Write(d_amax_->slice, d_amax_->shape));
   }
   if (workspace_.has_value()) {
-    res.push_back(BufferUse::Write(workspace_->slice, workspace_->shape));
+    res.push_back(BufferUse::Scratch(workspace_->slice, workspace_->shape));
   }
   return res;
 }
