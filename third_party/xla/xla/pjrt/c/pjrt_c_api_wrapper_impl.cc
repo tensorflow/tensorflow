@@ -2264,24 +2264,24 @@ static xla::HloOutputCallback CHloOutputCallbackToCpp(
   xla::HloOutputCallback cb;
   cb.callback_id = c_callback.callback_id;
   cb.num_operands = c_callback.num_operands;
-  cb.callback = [user_arg = c_callback.user_arg,
-                 callback = c_callback.callback](
-                    int64_t replica_id, int64_t partition_id,
-                    absl::Span<std::shared_ptr<xla::Literal> const> literals) {
-    for (int i = 0; i < literals.size(); ++i) {
-      const auto lit = literals[i];
-      if (lit != nullptr) {
-        absl::Span<const int64_t> dims = lit->shape().dimensions();
-        callback(replica_id, partition_id, lit->untyped_data(), dims.data(),
-                 dims.size(),
-                 pjrt::ConvertToPjRtBufferType(lit->shape().element_type()), i,
-                 user_arg);
-      } else {
-        callback(replica_id, partition_id, nullptr, nullptr, 0,
-                 PJRT_Buffer_Type::PJRT_Buffer_Type_INVALID, i, user_arg);
-      }
-    }
-  };
+  cb.callback =
+      [user_arg = c_callback.user_arg, callback = c_callback.callback](
+          int64_t replica_id, int64_t partition_id,
+          absl::Span<std::shared_ptr<const xla::Literal> const> literals) {
+        for (int i = 0; i < literals.size(); ++i) {
+          const auto lit = literals[i];
+          if (lit != nullptr) {
+            absl::Span<const int64_t> dims = lit->shape().dimensions();
+            callback(replica_id, partition_id, lit->untyped_data(), dims.data(),
+                     dims.size(),
+                     pjrt::ConvertToPjRtBufferType(lit->shape().element_type()),
+                     i, user_arg);
+          } else {
+            callback(replica_id, partition_id, nullptr, nullptr, 0,
+                     PJRT_Buffer_Type::PJRT_Buffer_Type_INVALID, i, user_arg);
+          }
+        }
+      };
   return cb;
 }
 
