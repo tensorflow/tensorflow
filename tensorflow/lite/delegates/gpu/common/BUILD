@@ -22,6 +22,7 @@ cc_library(
         ":types",
         ":util",
         "@FP16",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
