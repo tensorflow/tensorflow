@@ -79,6 +79,10 @@ cc_library(
         "gpu_id.h",
         "gpu_id_manager.h",
     ],
+    visibility = [
+        "//tensorflow:internal",
+        "//tensorflow_models:__subpackages__",
+    ],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/device:device_id",
