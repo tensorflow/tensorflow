@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/math_ops.cc.
+#include <cstdint>
+
 #include "tensorflow/core/kernels/segment_reduction_ops_impl.h"
 
 namespace tensorflow {
@@ -48,6 +50,20 @@ absl::Status ValidateUnsortedSegmentReduction(OpKernel* op_kernel,
     return absl::InvalidArgumentError(
         absl::StrCat("num_segments should be a scalar, not shape ",
                      num_segments.shape().DebugString()));
+  }
+
+  int64_t num_segments_val = num_segments.dtype() == DT_INT32
+                                 ? num_segments.scalar<int32_t>()()
+                                 : num_segments.scalar<int64_t>()();
+
+  if (num_segments_val < 0) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "num_segments must be non-negative, but got ", num_segments_val));
+  }
+
+  if (num_segments_val >= (1LL << 31)) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "num_segments must be less than 2G, but got ", num_segments_val));
   }
 
   if (!TensorShapeUtils::StartsWith(data.shape(), segment_ids.shape())) {
