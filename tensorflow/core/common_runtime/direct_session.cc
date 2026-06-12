@@ -644,7 +644,7 @@ absl::Status DirectSession::RunInternal(
   const int64_t call_timeout = run_options.timeout_in_ms() > 0
                                    ? run_options.timeout_in_ms()
                                    : operation_timeout_in_ms_;
-  absl::optional<absl::Time> deadline;
+  std::optional<absl::Time> deadline;
   if (call_timeout > 0) {
     deadline = absl::Now() + absl::Milliseconds(call_timeout);
   }
