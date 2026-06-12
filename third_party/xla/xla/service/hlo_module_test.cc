@@ -479,11 +479,10 @@ ENTRY ReduceR3ToR2.v3 {
   EXPECT_NE(module->unique_id(), module_copy->unique_id());
 
   // Verify that the computations and instructions all have the same unique id.
+  auto computation_copy = module_copy->computations();
+  auto computation_copy_it = computation_copy.begin();
   for (const HloComputation* computation_orig : module->computations()) {
-    HloComputation* computation_copy =
-        module_copy->GetComputationWithName(computation_orig->name());
-    ASSERT_NE(computation_copy, nullptr)
-        << "Computation not found: " << computation_orig->name();
+    const HloComputation* computation_copy = *computation_copy_it++;
     EXPECT_EQ(computation_orig->unique_id(), computation_copy->unique_id())
         << absl::StrFormat(
                "ID of original computation %s != ID of deserialized "
@@ -491,12 +490,10 @@ ENTRY ReduceR3ToR2.v3 {
                computation_orig->name(), computation_copy->name(),
                computation_orig->unique_id(), computation_copy->unique_id());
 
+    auto instruction_copy_it = computation_copy->instructions().begin();
     for (const HloInstruction* instruction_orig :
          computation_orig->instructions()) {
-      const HloInstruction* instruction_copy =
-          computation_copy->GetInstructionWithName(instruction_orig->name());
-      ASSERT_NE(instruction_copy, nullptr)
-          << "Instruction not found: " << instruction_orig->name();
+      const HloInstruction* instruction_copy = *instruction_copy_it++;
       EXPECT_EQ(instruction_orig->unique_id(), instruction_copy->unique_id())
           << absl::StrFormat(
                  "ID of original instruction %s != ID of deserialized "
