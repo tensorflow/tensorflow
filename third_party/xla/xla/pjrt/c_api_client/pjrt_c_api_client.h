@@ -454,7 +454,6 @@ class PjRtCApiClient : public PjRtClient {
   absl::StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
       const override;
 
-  absl::StatusOr<HostAllocator*> GetHostAllocator() const override;
   HostMemoryAllocator* GetHostMemoryAllocator() const override;
 
   absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
@@ -595,8 +594,6 @@ class PjRtCApiClient : public PjRtClient {
   // from GetTopologyDescription().
   absl::StatusOr<const PjRtCApiTopologyDescription> topo_desc_;
   absl::flat_hash_map<PJRT_Extension_Type, PJRT_Extension_Base*> extensions_;
-  // Not all PJRT C API implementations support the host allocator extension.
-  absl::StatusOr<std::unique_ptr<PjRtClient::HostAllocator>> host_allocator_;
   std::unique_ptr<HostMemoryAllocator> host_memory_allocator_;
 
   const std::string platform_version_;
@@ -922,9 +919,9 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   // std::function version of PJRT_RecvCallback
   using RecvCallbackFunction = std::function<void(PJRT_CopyToDeviceStream*)>;
   // std::function version of PJRT_HloOutputCallback
-  using HloOutputCallbackFunction =
-      std::function<void(int64_t replica_id, int64_t partition_id,
-                         absl::Span<std::shared_ptr<Literal> const> literals)>;
+  using HloOutputCallbackFunction = std::function<void(
+      int64_t replica_id, int64_t partition_id,
+      absl::Span<std::shared_ptr<const Literal> const> literals)>;
 
   // Override to call FingerprintExecutable through the wrapped
   // PjRtCApiExecutable.
@@ -938,7 +935,7 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   struct HloOutputCallbackState {
     // Key is {replica_id, partition_id}.
     absl::flat_hash_map<std::pair<int64_t, int64_t>,
-                        std::vector<std::shared_ptr<Literal>>>
+                        std::vector<std::shared_ptr<const Literal>>>
         accumulated_literals;
     absl::flat_hash_map<std::pair<int64_t, int64_t>, std::vector<bool>>
         received_operands;

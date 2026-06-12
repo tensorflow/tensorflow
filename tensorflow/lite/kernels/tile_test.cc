@@ -295,7 +295,7 @@ TEST_P(TileTest, StringMatrixEmptyInputElements) {
       /*multiply_type=*/TensorType_INT32, GetParam());
 }
 
-TEST(TileTest, TestEmptyInput) {
+TEST(TileDynamicTest, TestEmptyInput) {
   TileOpDynamicModel m({2, 1, 3}, TensorType_INT32, TensorType_INT32);
   m.SetInput({11, 12, 13, 21, 22, 23});
   m.SetMultipliers({2, 0, 2});
@@ -304,12 +304,19 @@ TEST(TileTest, TestEmptyInput) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 0, 6}));
 }
 
-TEST(TileTest, MultiplierOverflowInt32) {
+TEST(TileDynamicTest, MultiplierOverflowInt32) {
   TileOpDynamicModel m({2, 3}, TensorType_INT32, TensorType_INT32);
   m.SetInput({11, 12, 13, 21, 22, 23});
   // 2 * 1073741824 = 2147483648 > 2147483647 (INT32_MAX)
   m.SetMultipliers({1073741824, 1});
-  ASSERT_NE(m.Invoke(), kTfLiteOk);
+  EXPECT_NE(m.Invoke(), kTfLiteOk);
+}
+
+TEST(TileDynamicTest, NegativeMultipliersString) {
+  TileOpDynamicModel m({2, 1, 1}, TensorType_STRING, TensorType_INT32);
+  m.SetInput<std::string>({"A", "B"});
+  m.SetMultipliers({2, -100, -10});
+  EXPECT_NE(m.Invoke(), kTfLiteOk);
 }
 
 INSTANTIATE_TEST_SUITE_P(TileTest, TileTest,
