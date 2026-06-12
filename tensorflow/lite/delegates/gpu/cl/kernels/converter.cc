@@ -23,6 +23,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_arguments.h"
@@ -462,9 +463,12 @@ class CpuCopier : public OpenClConverterImpl {
   absl::Status Init(const TensorObjectDef& input_def,
                     const TensorObjectDef& output_def,
                     Environment* environment) final {
-    region_ = CalculateTextureRegion(
+    const TensorObjectDef& gpu_def =
         input_def.object_def.object_type == ObjectType::CPU_MEMORY ? output_def
-                                                                   : input_def);
+                                                                   : input_def;
+    region_ = CalculateTextureRegion(gpu_def);
+    required_bytes_ =
+        NumElements(gpu_def) * SizeOf(gpu_def.object_def.data_type);
     input_data_type_ = input_def.object_def.data_type;
     output_data_type_ = output_def.object_def.data_type;
     queue_ = environment->queue();
@@ -476,6 +480,11 @@ class CpuCopier : public OpenClConverterImpl {
     auto cpu_input = std::get_if<CpuMemory>(&input_obj);
     auto cpu_output = std::get_if<CpuMemory>(&output_obj);
     if (cpu_input) {
+      if (cpu_input->size_bytes < required_bytes_) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("CPU input memory size ", cpu_input->size_bytes,
+                         " is less than required ", required_bytes_));
+      }
       if (output_data_type_ == DataType::BOOL) {
         return CopyFromBoolCpu(cpu_input, output_obj);
       }
@@ -487,11 +496,15 @@ class CpuCopier : public OpenClConverterImpl {
       }
       auto buffer_output = std::get_if<OpenClBuffer>(&output_obj);
       if (buffer_output) {
-        return queue_->EnqueueWriteBuffer(buffer_output->memobj,
-                                          cpu_input->size_bytes,
-                                          cpu_input->data, async_);
+        return queue_->EnqueueWriteBuffer(
+            buffer_output->memobj, required_bytes_, cpu_input->data, async_);
       }
     } else if (cpu_output) {
+      if (cpu_output->size_bytes < required_bytes_) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("CPU output memory size ", cpu_output->size_bytes,
+                         " is less than required ", required_bytes_));
+      }
       if (input_data_type_ == DataType::BOOL) {
         return CopyToBoolCpu(input_obj, cpu_output);
       }
@@ -503,8 +516,7 @@ class CpuCopier : public OpenClConverterImpl {
       }
       auto buffer_input = std::get_if<OpenClBuffer>(&input_obj);
       if (buffer_input) {
-        return queue_->EnqueueReadBuffer(buffer_input->memobj,
-                                         cpu_output->size_bytes,
+        return queue_->EnqueueReadBuffer(buffer_input->memobj, required_bytes_,
                                          cpu_output->data, async_);
       }
     }
@@ -514,7 +526,7 @@ class CpuCopier : public OpenClConverterImpl {
  private:
   absl::Status CopyToBoolCpu(const TensorObject& tensor_obj,
                              const CpuMemory* cpu_memory) {
-    const size_t num_elements = cpu_memory->size_bytes;
+    const size_t num_elements = required_bytes_;
     std::vector<uint8_t> tmp_data(num_elements);
     auto texture_input = std::get_if<OpenClTexture>(&tensor_obj);
     if (texture_input) {
@@ -530,7 +542,7 @@ class CpuCopier : public OpenClConverterImpl {
           buffer_input->memobj, tmp_data.size(), tmp_data.data(), false));
     }
     bool* output_data = reinterpret_cast<bool*>(cpu_memory->data);
-    for (int i = 0; i < num_elements; ++i) {
+    for (size_t i = 0; i < num_elements; ++i) {
       output_data[i] = tmp_data[i];
     }
     return absl::OkStatus();
@@ -538,11 +550,11 @@ class CpuCopier : public OpenClConverterImpl {
 
   absl::Status CopyFromBoolCpu(const CpuMemory* cpu_memory,
                                const TensorObject& tensor_obj) {
-    const size_t num_elements = cpu_memory->size_bytes;
+    const size_t num_elements = required_bytes_;
     const bool* bool_data = reinterpret_cast<bool*>(cpu_memory->data);
     tmp_bool_data_ = std::make_unique<std::vector<uint8_t>>();
     tmp_bool_data_->reserve(num_elements);
-    for (int i = 0; i < num_elements; ++i) {
+    for (size_t i = 0; i < num_elements; ++i) {
       tmp_bool_data_->push_back(bool_data[i]);
     }
     auto texture_output = std::get_if<OpenClTexture>(&tensor_obj);
@@ -561,6 +573,7 @@ class CpuCopier : public OpenClConverterImpl {
   }
 
   std::array<size_t, 3> region_;
+  size_t required_bytes_ = 0;
   bool async_;
   DataType input_data_type_;
   DataType output_data_type_;
