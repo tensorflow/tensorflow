@@ -433,6 +433,35 @@ class MklConvCustomBackpropFilterOp
       TensorShape diff_dst_tf_shape =
           GetTfShape(context, kDiffDstIdx, native_format);
 
+      bool is_conv2d = (this->strides_.size() == 4);
+      if (is_conv2d) {
+        OP_REQUIRES(context, src_tf_shape.dims() == 4,
+                    absl::InvalidArgumentError(
+                        absl::StrCat("input must be 4-dimensional, got ",
+                                     src_tf_shape.DebugString())));
+        OP_REQUIRES(context, filter_tf_shape.dims() == 4,
+                    absl::InvalidArgumentError(
+                        absl::StrCat("filter must be 4-dimensional, got ",
+                                     filter_tf_shape.DebugString())));
+        OP_REQUIRES(context, diff_dst_tf_shape.dims() == 4,
+                    absl::InvalidArgumentError(
+                        absl::StrCat("diff_dst must be 4-dimensional, got ",
+                                     diff_dst_tf_shape.DebugString())));
+      } else {
+        OP_REQUIRES(context, src_tf_shape.dims() == 5,
+                    absl::InvalidArgumentError(
+                        absl::StrCat("input must be 5-dimensional, got ",
+                                     src_tf_shape.DebugString())));
+        OP_REQUIRES(context, filter_tf_shape.dims() == 5,
+                    absl::InvalidArgumentError(
+                        absl::StrCat("filter must be 5-dimensional, got ",
+                                     filter_tf_shape.DebugString())));
+        OP_REQUIRES(context, diff_dst_tf_shape.dims() == 5,
+                    absl::InvalidArgumentError(
+                        absl::StrCat("diff_dst must be 5-dimensional, got ",
+                                     diff_dst_tf_shape.DebugString())));
+      }
+
       // Corner cases: output with 0 elements and 0 batch size.
       Tensor* diff_filter_tensor = nullptr;
       if (src_tf_shape.num_elements() == 0 ||
@@ -473,7 +502,7 @@ class MklConvCustomBackpropFilterOp
           is_depthwise);
       if (!context->status().ok()) return;
 
-      bool is_conv2d = (this->strides_.size() == 4);
+      is_conv2d = (this->strides_.size() == 4);
 
       auto tf_fmt = is_conv2d
                         ? TFDataFormatToMklDnnDataFormat(this->data_format_)
