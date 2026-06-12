@@ -1277,7 +1277,7 @@ def _cast_nested_seqs_to_dtype(dtype):
   return _maybe_cast
 
 
-_NON_AUTOPACKABLE_TYPES = set((
+_NON_AUTOPACKABLE_TYPES = frozenset((
     int,
     float,
     complex,
@@ -1309,8 +1309,8 @@ _NON_AUTOPACKABLE_TYPES = set((
     np.uint64,
     np.ulonglong,
     np.void,
+    np.ndarray,
 ))
-_NON_AUTOPACKABLE_TYPES.add(np.ndarray)
 
 
 def _should_not_autopack(v):
@@ -3463,62 +3463,6 @@ SHRINK_AXIS = -2
 
 # PEP-8 naming
 # pylint: disable=invalid-name,redefined-outer-name
-def _compute_size_of_strided_dim(shrink, spec, size):
-  """Computes the size of a single strided slice dimension."""
-
-  unknown = None  # Document what None means here.
-  use_full_range = None  # Document other use of None.
-  # if this is a shrink axis (i.e. a non-range index)
-  # it either will produce an error or return 1
-  if shrink:
-    return 1
-  if size is unknown or size.value is unknown:
-    return unknown
-  size = size.value
-  stride = spec.step
-  if stride is not unknown:
-    if stride == 0:
-      return unknown
-    stride = spec.step
-    valid_range = [0, size] if stride > 0 else [-1, size - 1]
-
-    # PEP-8 naming
-    # pylint: disable=invalid-name
-    def canonical(x, c):
-      if x is use_full_range:
-        return valid_range[c] if stride > 0 else valid_range[(c + 1) & 1]
-      else:
-        x_fwd = size + x if x < 0 else x  # make negative indices positive
-        return max(valid_range[0], min(valid_range[1], x_fwd))
-
-    begin = canonical(spec.start, 0)
-    end = canonical(spec.stop, 1)
-    interval_length = end - begin
-    if interval_length == 0 or ((interval_length < 0) != (stride < 0)):
-      return 0
-    else:
-      remainder = 1 if interval_length % stride != 0 else 0
-      return interval_length // stride + remainder
-  else:
-    return unknown  # unknown because stride is unknown
-
-
-def _TileGradShape(op: ops.Operation):
-  """Shape function for the TileGrad op."""
-  multiples_shape = op.inputs[1].get_shape().with_rank(1)
-  input_shape = op.inputs[0].get_shape().with_rank(multiples_shape[0])
-  # NOTE(mrry): Represent `multiples` as a `TensorShape` because (i)
-  # it is a vector of non-negative integers, and (ii) doing so allows
-  # us to handle partially-known multiples.
-  multiples = tensor_util.constant_value_as_shape(op.inputs[1]).with_rank(
-      input_shape.ndims)
-  if multiples.ndims is None:
-    return [tensor_shape.unknown_shape()]
-  else:
-    output_dims = []
-    for dim, multiple in zip(input_shape.dims, multiples.dims):
-      output_dims.append(dim // multiple)
-    return [tensor_shape.TensorShape(output_dims)]
 
 
 @tf_export("edit_distance")
@@ -5133,9 +5077,16 @@ def _batch_gather(params, indices, batch_dims, axis=None):
   accum_dim_value = ones((), dtype=indices_dtype)
   # Use correct type for offset index computation
   casted_params_shape = gen_math_ops.cast(params_shape, indices_dtype)
+
+  # Pad casted_params_shape with 1s to prevent out-of-bounds read if batch_dims >= rank(params)
+  params_rank = rank(params)
+  padding_needed = gen_math_ops.maximum(0, batch_dims + 1 - params_rank)
+  padding_ones = ones(reshape(padding_needed, [1]), dtype=indices_dtype)
+  padded_params_shape = concat([casted_params_shape, padding_ones], axis=0)
+
   for dim in range(batch_dims, 0, -1):
-    dim_value = casted_params_shape[dim - 1]
-    accum_dim_value *= casted_params_shape[dim]
+    dim_value = padded_params_shape[dim - 1]
+    accum_dim_value *= padded_params_shape[dim]
     start = zeros((), dtype=indices_dtype)
     step = ones((), dtype=indices_dtype)
     dim_indices = gen_math_ops._range(start, dim_value, step)
