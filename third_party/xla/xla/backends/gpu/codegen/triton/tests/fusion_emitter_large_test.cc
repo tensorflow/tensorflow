@@ -27,11 +27,10 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class TritonGemmTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+class TritonGemmTest : public HloPjRtInterpreterReferenceMixin<HloTestBase> {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_cublas_fallback(false);
     return debug_options;
   }
@@ -125,8 +124,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-using TritonNormalizationTest =
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
+using TritonNormalizationTest = HloPjRtInterpreterReferenceMixin<HloTestBase>;
 
 TEST_F(TritonNormalizationTest,
        CanEmitDiamondWithInputNumberOfElementsLargerThanInt32Max) {
