@@ -26,7 +26,6 @@ cc_library(
     name = "toco_python_api",
     srcs = ["toco_python_api.cc"],
     hdrs = ["toco_python_api.h"],
-    features = ["-parse_headers"],
     visibility = [
         "//tensorflow/python:__subpackages__",
     ],

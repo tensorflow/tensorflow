@@ -225,9 +225,10 @@ void PjRtStreamExecutorClient::ThenRecordEvent(BufferSequencingEventRef event,
 
 absl::Status PjRtStreamExecutorClient::AllocateAndRecordEvent(
     BufferSequencingEventRef event, LocalDeviceState* local_device,
-    se::Stream* stream, absl::string_view tag) {
+    se::Stream* stream, absl::string_view tag,
+    absl::AnyInvocable<void() &&> cleanup) {
   return local_device->AllocateAndRecordEvent(async_work_runner(), event,
-                                              stream, tag);
+                                              stream, tag, std::move(cleanup));
 }
 
 void PjRtStreamExecutorClient::SetEventAsError(BufferSequencingEventRef event,
@@ -1765,9 +1766,8 @@ PjRtRawLoadedExecutable::RawExecuteResult
 PjRtStreamExecutorRawLoadedExecutable::Execute(
     const ExecuteOptions& options, absl::Span<const PjRtRawBufferRef> inputs,
     absl::Span<const PjRtRawBufferRef> results,
-    std::vector<PjRtDeviceEventRef> extra_deps,
-    std::vector<PjRtDeviceEventRef> control_deps, bool is_predetermined_error,
-    bool fill_future) && {
+    PjRtDeviceEventRefVector extra_deps, PjRtDeviceEventRefVector control_deps,
+    bool is_predetermined_error, bool fill_future) && {
   const uint64_t start_time_usecs = tsl::Env::Default()->NowMicros();
   int device_ordinal = tensorflow::down_cast<PjRtStreamExecutorDevice*>(device_)
                            ->local_device_state()
@@ -1868,7 +1868,8 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
     }
 
     absl::Status predetermined_error;
-    for (PjRtDeviceEventRef& event : extra_deps) {
+    for (size_t i = 0; i < extra_deps.size(); ++i) {
+      const auto& event = extra_deps[i];
       if (auto ev = event.down_cast<BufferSequencingEvent>()) {
         if (ev->IsPredeterminedError()) {
           if (predetermined_error.ok()) {
@@ -1886,7 +1887,8 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
       }
     }
 
-    for (PjRtDeviceEventRef& event : control_deps) {
+    for (size_t i = 0; i < control_deps.size(); ++i) {
+      const auto& event = control_deps[i];
       if (auto ev = event.down_cast<BufferSequencingEvent>()) {
         ev->WaitForEventOnStream(device_state->compute_stream());
       } else if (event) {
