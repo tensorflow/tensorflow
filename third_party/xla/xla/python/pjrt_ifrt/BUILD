@@ -1,5 +1,10 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
+# copybara:uncomment_begin(google-only)
+# load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+#
+# copybara:uncomment_end
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/python/pjrt_ifrt:pjrt_ifrt.bzl", "pjrt_ifrt_package_groups")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
@@ -21,6 +26,18 @@ exports_files([
 ])
 
 pjrt_ifrt_package_groups()
+
+# copybara:uncomment_begin(google-only)
+# bool_flag(
+#     name = "include_google_compilation_registrations",
+#     build_setting_default = False,
+# )
+#
+# config_setting(
+#     name = "use_google_compilation_registrations",
+#     flag_values = {":include_google_compilation_registrations": "True"},
+# )
+# copybara:uncomment_end
 
 # TODO(hyeontaek): Move this target out of pjrt_ifrt.
 cc_library(
@@ -552,7 +569,12 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@tsl//tsl/platform:protobuf",
-    ],
+    ] + select({
+        # copybara:uncomment_begin(google-only)
+        # ":use_google_compilation_registrations": ["//third_party/pathways/compilation_service/google:google_compilation_registrations"],
+        # "//conditions:default": [],
+        # copybara:uncomment_end
+    }),
 )
 
 cc_library(
