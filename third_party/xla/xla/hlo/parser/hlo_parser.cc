@@ -31,6 +31,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
@@ -683,9 +684,6 @@ class HloParserImpl : public HloParser {
   bool AddComputation(const std::string& name, HloComputation* computation,
                       LocTy name_loc);
 
-  static constexpr int kMaxShapeDepth = 32768;
-  int64_t shape_depth_ = 0;
-
   HloLexer lexer_;
 
   // A stack for the instruction names. The top of the stack stores the
@@ -732,6 +730,9 @@ class HloParserImpl : public HloParser {
   NameUniquer name_uniquer_{/*separator=*/"."};
 
   const HloParserOptions options_;
+
+  // Tracks recursion depth to prevent stack overflow from deeply nested input.
+  int current_recursion_depth_ = 0;
   StackFrameIndexProto stack_frame_index_proto_;
 };
 
@@ -1493,6 +1494,12 @@ bool HloParserImpl::ParseInstruction(HloComputation::Builder* builder,
 bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                                         std::string name, LocTy name_loc,
                                         bool allow_attributes) {
+  ++current_recursion_depth_;
+  auto depth_guard = absl::MakeCleanup([this] { --current_recursion_depth_; });
+  if (current_recursion_depth_ > options_.max_recursion_depth()) {
+    return Error(lexer_.GetLoc(), "maximum recursion depth exceeded");
+  }
+
   Shape shape;
   HloOpcode opcode;
   std::optional<HloOpcode> async_wrapped_opcode;
@@ -5131,6 +5138,11 @@ bool HloParserImpl::SetValueInLiteral(LocTy loc, std::complex<double> value,
 // Similar to ParseLiteral(Literal* literal, const Shape& shape), but parse the
 // shape instead of accepting one as argument.
 bool HloParserImpl::ParseLiteral(Literal* literal) {
+  ++current_recursion_depth_;
+  auto depth_guard = absl::MakeCleanup([this] { --current_recursion_depth_; });
+  if (current_recursion_depth_ > options_.max_recursion_depth()) {
+    return Error(lexer_.GetLoc(), "maximum recursion depth exceeded");
+  }
   if (lexer_.GetKind() == TokKind::kLparen) {
     // Consume Lparen
     lexer_.Lex();
@@ -5171,6 +5183,11 @@ bool HloParserImpl::ParseLiteral(Literal* literal, const Shape& shape) {
 //  ::= /*empty*/
 //  ::= literal (',' literal)*
 bool HloParserImpl::ParseTupleLiteral(Literal* literal, const Shape& shape) {
+  ++current_recursion_depth_;
+  auto depth_guard = absl::MakeCleanup([this] { --current_recursion_depth_; });
+  if (current_recursion_depth_ > options_.max_recursion_depth()) {
+    return Error(lexer_.GetLoc(), "maximum recursion depth exceeded");
+  }
   if (!ParseToken(TokKind::kLparen, "expects '(' in front of tuple elements")) {
     return false;
   }
@@ -5407,6 +5424,12 @@ bool HloParserImpl::ParseDenseLiteral(Literal* literal, const Shape& shape) {
 bool HloParserImpl::ParseOperands(std::vector<HloInstruction*>* operands,
                                   HloComputation::Builder* builder) {
   CHECK(operands != nullptr);
+  ++current_recursion_depth_;
+  auto depth_guard = absl::MakeCleanup([this] { --current_recursion_depth_; });
+  if (current_recursion_depth_ > options_.max_recursion_depth()) {
+    return Error(lexer_.GetLoc(), "maximum recursion depth exceeded");
+  }
+
   if (!ParseToken(TokKind::kLparen,
                   "expects '(' at the beginning of operands")) {
     return false;
@@ -6503,6 +6526,11 @@ bool HloParserImpl::ParsePrecisionList(
 }
 
 bool HloParserImpl::ParseHloComputation(HloComputation** result) {
+  ++current_recursion_depth_;
+  auto depth_guard = absl::MakeCleanup([this] { --current_recursion_depth_; });
+  if (current_recursion_depth_ > options_.max_recursion_depth()) {
+    return Error(lexer_.GetLoc(), "maximum recursion depth exceeded");
+  }
   if (lexer_.GetKind() == TokKind::kLbrace) {
     // This means it is a nested computation.
     return ParseInstructionList(result, /*computation_name=*/"_");
@@ -7023,16 +7051,11 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
 //   ::= shape (',' shape)*
 bool HloParserImpl::ParseShape(Shape* result,
                                bool allow_fallback_to_default_layout) {
-  if (shape_depth_ >= kMaxShapeDepth) {
-    return Error(lexer_.GetLoc(),
-                 "Shape depth exceeds maximum supported depth.");
+  ++current_recursion_depth_;
+  auto depth_guard = absl::MakeCleanup([this] { --current_recursion_depth_; });
+  if (current_recursion_depth_ > options_.max_recursion_depth()) {
+    return Error(lexer_.GetLoc(), "maximum recursion depth exceeded");
   }
-  struct DepthGuard {
-    int64_t* d;
-    explicit DepthGuard(int64_t* d) : d(d) { (*d)++; }
-    ~DepthGuard() { (*d)--; }
-  } guard(&shape_depth_);
-
   if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "b" &&
       lexer_.LookAhead() == TokKind::kLparen) {  // Buffer shape
     lexer_.Lex();
