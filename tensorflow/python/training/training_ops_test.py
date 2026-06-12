@@ -22,6 +22,7 @@ import numpy as np
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.test_util import TensorFlowTestCase
@@ -503,8 +504,24 @@ class TrainingOpsTest(TensorFlowTestCase):
         target=lambda: self.evaluate(fn_resource_sparse_apply_adagrad_v2()))
     thread1.start()
     thread2.start()
-    thread1.join()
+    thread1.join() 
     thread2.join()
+
+  @test_util.run_v2_only
+  def testResourceSparseApplyAdagradDtypeMismatch(self):
+    var = variables.Variable(np.zeros((3, 3), dtype=np.float32))
+    accum = variables.Variable(np.zeros((3, 3), dtype=np.float32))
+    lr = constant_op.constant(0.1, dtype=dtypes.float16)
+    grad = constant_op.constant(
+        [[0.1, 0.2, 0.3], [0.0, 0.0, 0.0], [0.5, 0.5, 0.5]],
+        dtype=dtypes.float16)
+    indices = constant_op.constant([0, 1, 2], dtype=dtypes.int32)
+    self.evaluate(variables.global_variables_initializer())
+
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Resource variable input at index 0"):
+      self.evaluate(gen_training_ops.resource_sparse_apply_adagrad(
+          var.handle, accum.handle, lr, grad, indices))
 
 
 if __name__ == '__main__':
